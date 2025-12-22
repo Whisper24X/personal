@@ -32,11 +32,6 @@ export async function generateTestCasesFromPRDFile(
     // 保存 PRD 到数据库
     console.log('💾 保存 PRD 到数据库...');
     const prdRecord = await prdService.upsertPRD(prd);
-    
-    if (!prdRecord || !prdRecord.prdId) {
-      throw new Error(`Failed to save PRD: prdRecord is ${prdRecord ? 'missing prdId' : 'null'}`);
-    }
-    
     console.log(`✅ PRD 已保存: ${prdRecord.prdId}`);
 
     // 生成测试用例
@@ -89,11 +84,6 @@ export async function generateTestCasesFromPRDString(
     // 保存 PRD 到数据库
     console.log('💾 保存 PRD 到数据库...');
     const prdRecord = await prdService.upsertPRD(prd);
-    
-    if (!prdRecord || !prdRecord.prdId) {
-      throw new Error(`Failed to save PRD: prdRecord is ${prdRecord ? 'missing prdId' : 'null'}`);
-    }
-    
     console.log(`✅ PRD 已保存: ${prdRecord.prdId}`);
 
     // 生成测试用例

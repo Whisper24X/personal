@@ -8,6 +8,7 @@ import { cursorApiClient } from '../../adapters/cursor/cursorApiClient.js';
 import { createLogger } from '../../utils/logger.js';
 import { prdService } from '../../db/services/prdService.js';
 import { directGeneratedPrdService } from '../../db/services/directGeneratedPrdService.js';
+import { generateHtmlPrototypePrompt } from '../../prompts/htmlPrototype/htmlPrototype.js';
 
 const logger = createLogger('HtmlPrototypeController');
 
@@ -61,21 +62,7 @@ export async function generateHtmlPrototype(req: Request, res: Response): Promis
     }
 
     // 构建生成HTML原型的提示词
-    const prompt = `请根据以下产品需求文档(PRD)，生成一个完整的HTML原型（包括HTML、CSS和JavaScript）:
-
-${prdContent}
-
-要求:
-1. 创建一个现代化、美观的响应式网页原型
-2. 使用语义化的HTML5标签
-3. 使用现代CSS（可以使用Flexbox/Grid布局）
-4. 如果需要交互，请使用原生JavaScript（不依赖外部库）
-5. 确保代码结构清晰，有适当的注释
-6. 创建一个index.html作为主入口文件
-7. 如果需要，可以创建多个HTML页面和样式文件
-8. 请确保页面在移动端和桌面端都有良好的显示效果
-
-请直接生成可运行的HTML原型代码。`;
+    const prompt = generateHtmlPrototypePrompt(prdContent);
 
     logger.info('Creating Cursor Cloud Agent for HTML prototype generation', {
       prdId,
@@ -105,7 +92,7 @@ ${prdContent}
     } catch (error: any) {
       // 提供更详细的错误信息
       let errorMessage = '创建Cloud Agent失败';
-      
+
       if (error.response?.status === 400) {
         errorMessage = '请求参数错误。请检查：\n' +
           '1. GitHub仓库是否存在且有访问权限\n' +
@@ -120,13 +107,13 @@ ${prdContent}
       } else if (error.response?.status === 404) {
         errorMessage = 'GitHub仓库不存在，请检查仓库URL';
       }
-      
+
       logger.error('Failed to create Cursor Agent', error, {
         status: error.response?.status,
         data: error.response?.data,
         repository: targetRepository,
       });
-      
+
       res.status(error.response?.status || 500).json({
         success: false,
         error: errorMessage,
