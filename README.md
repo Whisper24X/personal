@@ -1,618 +1,322 @@
-# TestFlow - AI驱动的Playwright自动化测试系统
+# Mind2Build (即思即成)
 
-基于AI大模型和Playwright MCP的自动化测试框架，通过自然语言测试用例自动执行浏览器测试。
+**Slogan**: 让所思，即所得 (Let Your Thoughts Become Reality)
 
-## 功能特性
+Mind2Build is a multi-agent AI collaboration framework that simulates a software company team to automatically generate complete software projects from simple ideas.
 
-- 📝 支持 Markdown 格式的测试用例
-- 🗺️ **支持 XMind 文件解析**（将思维导图转换为测试用例）
-- 🤖 使用 AI 大模型（GLM-4.5）解析测试步骤
-- 🎭 通过 MCP 协议调用 Playwright 执行浏览器操作
-- 📊 生成详细的测试报告（Markdown/JSON）
-- ⚡ 自动化测试执行流程
-- 🌐 提供 Web API 服务（RESTful API）
-- 💻 提供 Web UI 界面（Vue 3 + Element Plus）
-- 🗄️ 数据库存储（PostgreSQL）
-- 📦 测试用例管理（CRUD 操作）
-- 🎯 测试用例集管理（创建、执行、记录查看）
-- 🌍 环境管理（生产环境/预发布环境/测试环境）
-- 📋 **PRD 解析生成测试用例**（从产品需求文档自动生成测试用例）
-- 🎨 **HTML 原型自动生成**（集成Cursor Cloud Agent API，从PRD生成HTML原型代码）
-- 🔍 **智能元素匹配**（支持关键词提取和多种匹配策略）
-- 🚫 **默认移除用户缓存**（每次测试运行在全新的浏览器上下文中）
-- ✅ **预期结果自动匹配**（支持精确匹配、部分匹配、包含匹配）
-- 🏥 **健康检查接口**（系统状态监控）
+## 🌟 Features
 
-## 快速开始
+- **Multi-Agent Collaboration**: AI agents (ProductManager, Architect, Engineer) work together like a real team
+- **Complete Project Generation**: From idea to PRD, design documents, and working code
+- **Interactive Mode** ✨: Manual review and confirmation at each SOP step for better control
+  - **CLI Interactive Mode**: Terminal-based with editor integration
+  - **Web Interactive Mode**: Beautiful browser interface with real-time updates
+- **Multiple LLM Support**: OpenAI, Anthropic Claude, Zhipu AI, and more
+- **Cost Management**: Budget tracking and limits to control LLM usage
+- **Web Interface**: Vue 3-based dashboard with WebSocket support
+- **CLI Tool**: Command-line interface for quick project generation
+- **Database Persistence**: PostgreSQL storage for all projects and messages
 
-### 1. 安装依赖
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────┐
+│        User Interface Layer             │  CLI, Web UI, API
+├─────────────────────────────────────────┤
+│        Orchestration Layer              │  Team, Environment
+├─────────────────────────────────────────┤
+│        Role Layer                       │  ProductManager, Architect, Engineer
+├─────────────────────────────────────────┤
+│        Action Layer                     │  WritePRD, WriteDesign, WriteCode
+├─────────────────────────────────────────┤
+│        Infrastructure Layer             │  Message, Memory, Context
+├─────────────────────────────────────────┤
+│        Provider Layer                   │  LLM, Tools
+└─────────────────────────────────────────┘
+```
+
+## 🚀 Quick Start
+
+See [QUICKSTART.md](./QUICKSTART.md) for detailed setup guide.
+
+### Prerequisites
+
+- Node.js >= 18.0.0
+- pnpm >= 8.0.0
+- PostgreSQL >= 14
+- LLM API Key (Zhipu AI or OpenAI)
+
+### 5-Minute Setup
 
 ```bash
+# 1. Install dependencies
 pnpm install
-```
 
-### 2. 配置环境变量
+# 2. Configure environment
+cp .env.example .env
+# Edit .env with your API key
 
-创建 `.env` 文件并配置必要的环境变量：
-
-```bash
-# Cursor API Key（用于HTML原型生成功能）
-CURSOR_API_KEY=key_5ec9b36ee4704179ee13de83f518d34d235d867bd1182f92c7b062f00fb8fce6
-
-# 其他环境变量配置...
-```
-
-更多配置说明请参考下方配置说明章节
-
-### 3. 初始化数据库
-
-```bash
+# 3. Setup database
+createdb mind2build
 pnpm db:migrate
+
+# 4. Try it out!
+pnpm --filter backend cli generate "Create a TODO app" --output my-todo-app
 ```
 
-### 4. 启动服务
-
-**方式一：使用 Web UI（推荐）**
+### Web Interface
 
 ```bash
-# 终端1：启动后端 API 服务器
-pnpm server:dev
+# Terminal 1 - Start backend
+pnpm dev:backend
 
-# 终端2：启动前端界面
-cd frontend && pnpm dev
+# Terminal 2 - Start frontend
+pnpm dev:frontend
+
+# Open http://localhost:5173
 ```
 
-然后访问 `http://localhost:5174` 使用 Web UI
+## 📦 Project Structure
 
-**方式二：使用命令行工具**
+```
+ax/
+├── backend/          # Node.js/TypeScript backend
+│   ├── src/
+│   │   ├── core/            # Message, Memory, Context, Base classes
+│   │   ├── roles/           # AI agent roles
+│   │   ├── actions/         # Agent actions
+│   │   ├── providers/       # LLM providers
+│   │   ├── orchestration/   # Team & Environment
+│   │   ├── database/        # Data layer
+│   │   ├── api/             # REST API
+│   │   └── cli/             # CLI commands
+│   └── tests/
+├── frontend/         # Vue 3 + Vite frontend
+│   └── src/
+├── database/         # Prisma schema and migrations
+├── shared/           # Shared TypeScript types
+└── workspace/        # Generated projects
+```
+
+## 🛠️ Development
 
 ```bash
-pnpm dev run
+# Run backend only
+pnpm dev:backend
+
+# Run frontend only
+pnpm dev:frontend
+
+# Run tests
+pnpm test
+
+# Lint and fix
+pnpm lint:fix
+
+# Build for production
+pnpm build
+
+# Database commands
+pnpm db:generate   # Generate Prisma client
+pnpm db:migrate    # Run migrations
+pnpm db:studio     # Open Prisma Studio
 ```
 
-## 安装
+## 📚 Documentation
+
+### Getting Started
+- [Quick Start Guide](./QUICKSTART.md)
+- [CLI Interactive Mode Guide](./doc/22_交互模式使用指南_INTERACTIVE.md) ✨
+- [Web Interactive Mode Guide](./doc/23_前端交互模式实现指南_FRONTEND_INTERACTIVE.md) ✨
+
+### Implementation Summaries
+- [Backend Interactive Implementation](./INTERACTIVE_MODE_IMPLEMENTATION.md)
+- [Frontend Interactive Implementation](./FRONTEND_INTERACTIVE_IMPLEMENTATION.md)
+
+### Technical Documentation
+- [Implementation Plan](./mind2build-implementation.plan.md)
+- [Architecture](./doc/04_系统架构文档_ARCHITECTURE.md)
+- [Database Design](./doc/18_数据库设计_DATABASE.md)
+- [API Reference](./doc/12_API参考文档_API.md)
+- [Development Guide](./doc/14_开发指南_DEVELOPMENT.md)
+
+## 🎯 Usage Example
+
+### CLI
 
 ```bash
-pnpm install
+# Generate a project (automatic mode)
+mind2build generate "Create a 2048 game with React" --output ./game-2048
+
+# Generate with interactive mode (manual confirmation at each step) ✨
+mind2build generate "Create a blog API" --interactive --output ./blog-api
+
+# Short form with all options
+mind2build generate "Create a TODO app" -i -o ./todo-app -b 10.0 -r 5
+
+# Check project status
+mind2build status --project-id <id>
+
+# List all projects
+mind2build list
 ```
 
-## 配置
+### Interactive Mode Example ✨
 
-### 1. 环境变量配置
+```bash
+$ mind2build generate "Create a calculator" -i -o ./calculator
 
-在项目根目录创建 `.env` 文件：
+🎯 [ProductManager] 完成 WritePRD
+
+📋 内容预览:
+# Calculator - 产品需求文档
+...
+
+🛑 等待确认 (c=继续, e=编辑, r=重新生成, v=查看全文, s=跳过, q=退出): c
+✅ 继续下一步
+
+🎯 [Architect] 完成 WriteDesign
+
+📋 内容预览:
+# Calculator - 系统设计文档
+...
+
+🛑 等待确认: e
+📝 正在打开编辑器...
+✅ 已保存修改，继续下一步
+
+🎯 [Engineer] 完成 WriteCode
+
+📋 内容预览:
+Generated files:
+- src/calculator.js
+- src/index.html
+...
+
+🛑 等待确认: c
+✅ 继续下一步
+
+✅ Project generation completed!
+```
+
+**Interactive Mode Commands:**
+- `c` / `continue` - Accept and continue
+- `e` / `edit` - Open editor to modify
+- `r` / `regenerate` - Regenerate current output
+- `v` / `view` - View full content
+- `s` / `skip` - Skip current step
+- `q` / `quit` - Save and exit
+
+See [Interactive Mode Guide](./doc/22_交互模式使用指南_INTERACTIVE.md) for CLI details.
+
+### Web Interactive Mode ✨
+
+Access the web interface at `http://localhost:5173`:
+
+1. **Create Project**
+   - Click "Create New Project"
+   - Fill in project details
+   - Select "Interactive Mode"
+   - Click "Create and Start Project"
+
+2. **Interactive Generation**
+   - View real-time progress timeline
+   - When a role completes, review the output
+   - Choose your action:
+     - **Continue** (C) - Accept and proceed
+     - **Edit** (E) - Modify content inline
+     - **Regenerate** (R) - Request new output
+     - **View** (V) - See full content
+     - **Skip** (S) - Skip this step
+     - **Quit** (Q) - Save and exit
+
+3. **Completion**
+   - View execution summary with statistics
+   - Download generated files
+   - Review project details
+
+**Features**:
+- 🎨 Beautiful visual interface
+- ⚡ Real-time WebSocket updates
+- ⌨️ Keyboard shortcuts
+- 📊 Live statistics and progress tracking
+- 💾 Auto-save on interruption
+
+See [Frontend Interactive Guide](./doc/23_前端交互模式实现指南_FRONTEND_INTERACTIVE.md) for technical details.
+
+### API
+
+```javascript
+// Create a project
+const response = await fetch('http://localhost:3000/api/projects', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    idea: 'Create a blog platform with user authentication'
+  })
+});
+
+const project = await response.json();
+console.log('Project ID:', project.id);
+```
+
+### Programmatic
+
+```typescript
+import { Team, ProductManager, Architect, Engineer, Context } from 'mind2build';
+
+const ctx = new Context();
+const team = new Team(ctx);
+
+team.hire([
+  new ProductManager(),
+  new Architect(),
+  new Engineer()
+]);
+
+team.invest(10.0); // $10 budget
+
+await team.run('Create a TODO app', 5); // 5 rounds max
+```
+
+## 🔧 Configuration
+
+### LLM Providers
+
+Edit `.env` to configure your LLM provider:
 
 ```env
-# AI API 配置
-API_KEY=xxx.xxx
-BASE_URL=https://open.bigmodel.cn/api/paas/v4
-DEFAULT_MODEL=glm-4.5
+# Use Zhipu AI
+LLM_PROVIDER=zhipuai
+ZHIPUAI_API_KEY=your-api-key
 
-# 数据库配置
-DATABASE_URL=postgresql://user:password@localhost:5432/testflow
-# 或者分别配置
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=testflow
-DB_USER=user
-DB_PASSWORD=password
-
-# 服务器配置（可选）
-PORT=3000
+# Or use OpenAI
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-...
 ```
 
-**注意**: 请确保 `.env` 文件已创建，否则程序会报错。
+### Database
 
-### 2. 数据库初始化
+Configure PostgreSQL connection:
 
-首次使用前需要初始化数据库：
-
-```bash
-# 运行数据库迁移
-pnpm db:migrate
-
-# 验证数据库表结构
-pnpm db:verify
+```env
+DATABASE_URL="postgresql://user:password@localhost:5432/mind2build?schema=public"
 ```
 
-### 3. 安装 Playwright 浏览器
+## 🤝 Contributing
 
-```bash
-npx playwright install
-```
+Contributions are welcome! Please read our contributing guidelines before submitting PRs.
 
-这将安装 Playwright 所需的浏览器驱动。
+## 📄 License
 
-## 使用方法
+MIT License - see LICENSE file for details
 
-### 方式一：Web UI 界面（推荐）
+## 🙏 Acknowledgments
 
-1. **启动后端 API 服务器**
+- Inspired by [mind2build](https://github.com/geekan/mind2build)
+- Built with Node.js, TypeScript, Vue 3, and PostgreSQL
 
-```bash
-# 开发模式
-pnpm server:dev
+## 📧 Contact
 
-# 或生产模式
-pnpm build
-pnpm server
-```
-
-后端服务器默认运行在 `http://localhost:3000`
-
-2. **启动前端界面**
-
-```bash
-cd frontend
-pnpm install  # 如果还没安装依赖
-pnpm dev
-```
-
-前端界面默认运行在 `http://localhost:5174`
-
-3. **访问 Web UI**
-
-打开浏览器访问 `http://localhost:5174`，即可使用可视化界面进行：
-- 测试用例管理（新增、编辑、删除、筛选）
-- **XMind 文件导入**（上传 XMind 文件自动解析为测试用例）
-- 测试用例集管理（创建、执行、查看记录）
-- 测试执行和报告查看
-
-### 方式二：命令行工具（CLI）
-
-#### 开发模式运行
-
-```bash
-pnpm dev run
-```
-
-#### 编译后运行
-
-```bash
-pnpm build
-pnpm start run
-```
-
-#### 直接使用命令（需要先 build）
-
-```bash
-npm run build
-./dist/index.js run
-```
-
-### 命令行选项
-
-#### 运行所有测试用例
-
-```bash
-testflow run [options]
-
-Options:
-  -c, --case-dir <dir>     测试用例目录 (默认: case)
-  -o, --output-dir <dir>   报告输出目录 (默认: reports)
-  -f, --format <format>    报告格式: markdown, json, both (默认: both)
-```
-
-#### 运行单个测试用例文件
-
-```bash
-testflow run-file <file> [options]
-
-Options:
-  -o, --output-dir <dir>   报告输出目录 (默认: reports)
-  -f, --format <format>    报告格式: markdown, json, both (默认: both)
-```
-
-#### 直接运行用例字符串
-
-```bash
-testflow run-string "<case-content>" [options]
-
-Options:
-  -u, --entry-url <url>    测试页面的入口URL
-  -o, --output-dir <dir>   报告输出目录 (默认: reports)
-  -f, --format <format>    报告格式: markdown, json, both (默认: both)
-```
-
-#### 从 PRD 生成测试用例（新功能）
-
-```bash
-# 从 PRD 文件生成测试用例
-testflow prd-generate <prd-file> [options]
-
-Options:
-  --prd-id <id>            PRD ID（可选，不提供则自动生成）
-  --no-save                不保存测试用例到数据库
-
-# 从 PRD 字符串生成测试用例
-testflow prd-generate-string "<prd-content>" [options]
-
-Options:
-  --prd-id <id>            PRD ID（可选，不提供则自动生成）
-  --no-save                不保存测试用例到数据库
-```
-
-示例：
-
-```bash
-# 从 PRD 文件生成测试用例
-testflow prd-generate PRD.md
-
-# 从 PRD 字符串生成测试用例
-testflow prd-generate-string "$(cat PRD.md)"
-```
-
-示例：
-
-```bash
-# 从字符串运行测试用例
-testflow run-string "$(cat case/登录测试用例.md)" -u "https://example.com"
-
-# 或者直接传入用例内容
-testflow run-string "# 登录模块
-
-## 模块说明
-登录功能测试
-
-## 测试页面的入口url
-* https://example.com
-
----
-
-## TC-LOGIN-001: 正常登录
-
-**功能模块**: 登录模块
-**优先级**: P0
-**测试类型**: 功能测试
-
-**前置条件**:
-- 系统正常运行
-- 已存在有效的测试账号和密码
-- 浏览器已打开
-
-**测试步骤**:
-1. 导航到登录页面
-2. 在账号输入框中输入有效的账号
-3. 在密码输入框中输入对应的密码
-4. 点击登录按钮
-
-**预期结果**:
-- 页面正常加载，显示登录界面
-- 账号和密码输入框正常显示
-- 登录按钮可点击
-- 输入账号和密码后，点击登录按钮能够成功登录
-- 登录成功后跳转到系统主页面"
-```
-
-## 测试用例格式
-
-### Markdown 格式
-
-测试用例文件应放在 `case/` 目录下，使用 Markdown 格式：
-
-```markdown
-# 模块名称
-
-## 模块说明
-模块描述信息
-
-## 测试页面的入口url
-* https://example.com
-
----
-
-## TC-XXX-001: 测试用例标题
-
-**功能模块**: 模块名称
-**优先级**: P0
-**测试类型**: 功能测试
-
-**前置条件**:
-- 系统正常运行
-- 已存在有效的测试账号和密码
-- 浏览器已打开
-
-**测试步骤**:
-1. 导航到 https://example.com/login
-2. 在"请输入账号"输入框中输入 username
-3. 在"请输入密码"输入框中输入 password
-4. 点击登录按钮
-
-**预期结果**:
-- 页面正常加载，显示登录界面
-- 账号和密码输入框正常显示
-- 登录按钮可点击
-- 输入账号和密码后，点击登录按钮能够成功登录
-- 登录成功后跳转到系统主页面
-
----
-
-## TC-XXX-002: 账号为空时登录
-
-**功能模块**: 模块名称
-**优先级**: P1
-**测试类型**: 功能测试
-
-**前置条件**:
-- 系统正常运行
-- 浏览器已打开
-- 已打开登录页面
-
-**测试步骤**:
-1. 导航到登录页面
-2. 账号输入框保持为空
-3. 在密码输入框中输入密码
-4. 点击登录按钮
-
-**预期结果**:
-- 账号输入框为空
-- 密码输入框有输入内容
-- 点击登录按钮后，系统提示账号不能为空
-- 登录失败，停留在登录页面
-```
-
-### 测试用例字段说明
-
-- **用例ID**: 格式为 `TC-XXX-001`，可通过 Web UI 自动生成
-- **测试名称**: 测试用例的标题
-- **环境**: 生产环境/预发布环境/测试环境（通过 Web UI 选择）
-- **功能模块**: 测试用例所属的功能模块
-- **优先级**: P0（最高）/P1（高）/P2（中）
-- **测试类型**: 功能测试/性能测试/UI测试/兼容性测试等
-- **测试目的**: 测试用例的目的说明
-- **入口URL**: 测试页面的入口地址
-- **前置条件**: 执行测试前需要满足的条件
-- **测试步骤**: 详细的测试操作步骤
-- **预期结果**: 每个步骤或整体的预期结果
-
-### XMind 格式
-
-系统支持直接导入 XMind 思维导图文件（`.xmind`），自动解析为测试用例。
-
-**XMind 文件结构要求**：
-- 根主题：作为模块名称
-- 第一层子主题：每个子主题作为一个测试用例标题
-- 第二层子主题：包含前置条件、测试步骤、预期结果等信息
-
-**解析规则**：
-- 自动识别包含"前置条件"、"进入"、"环境"等关键词的节点作为前置条件
-- 自动识别包含"步骤"、"操作"或数字编号的节点作为测试步骤
-- 自动识别包含"预期"、"结果"、"验证"等关键词的节点作为预期结果
-- 自动提取测试用例 ID（如果标题中包含 TC- 格式）
-- 自动识别优先级、测试类型等信息
-
-**使用方式**：
-
-1. **Web UI 导入**：
-   - 在"测试用例管理"页面点击"导入 XMind"按钮
-   - 选择或拖拽 XMind 文件
-   - 系统自动解析并批量创建测试用例
-
-2. **命令行解析**：
-   ```bash
-   # 解析 XMind 文件（通过文件路径）
-   testflow parse-file case/example.xmind
-   ```
-
-3. **API 上传**：
-   ```bash
-   # 通过 API 上传 XMind 文件
-   curl -X POST http://localhost:3000/api/v1/parse/xmind \
-     -F "file=@example.xmind"
-   ```
-
-## 项目结构
-
-```
-testflow/
-├── case/                    # 测试用例目录
-│   └── *.md
-├── frontend/                # Web UI 前端
-│   ├── src/
-│   │   ├── views/          # 页面视图
-│   │   │   ├── Home.vue
-│   │   │   ├── TestCases.vue
-│   │   │   ├── TestSuites.vue
-│   │   │   ├── Run.vue
-│   │   │   ├── Reports.vue
-│   │   │   └── ExecutionDetail.vue
-│   │   ├── api/            # API 接口
-│   │   ├── router/         # 路由配置
-│   │   └── components/     # 组件
-│   └── package.json
-├── src/
-│   ├── core/               # 核心功能模块
-│   │   ├── parser/         # 用例解析器
-│   │   │   ├── caseParser.ts        # 主解析器（协调器）
-│   │   │   ├── markdownCaseParser.ts # Markdown 解析器
-│   │   │   └── xmindCaseParser.ts   # XMind 解析器
-│   │   └── runner/         # 测试执行器
-│   ├── adapters/           # 适配器层（便于扩展其他能力）
-│   │   ├── ai/             # AI 客户端适配器
-│   │   └── mcp/            # MCP 客户端适配器
-│   ├── services/           # 服务层（封装业务逻辑）
-│   │   └── testService.ts  # 测试服务
-│   ├── server/             # Web API 服务器
-│   │   ├── app.ts          # Express 应用配置
-│   │   ├── controllers/    # 控制器层
-│   │   ├── routes/         # 路由层
-│   │   └── middleware/     # 中间件
-│   ├── db/                  # 数据库相关
-│   │   ├── config.ts       # 数据库配置
-│   │   ├── migrate.ts      # 数据库迁移
-│   │   ├── migrations/      # 迁移脚本
-│   │   └── services/       # 数据库服务层
-│   ├── commands/           # CLI 命令模块
-│   │   └── runCommand.ts   # 运行命令实现
-│   ├── reporter/           # 报告生成器
-│   ├── types/              # 类型定义
-│   ├── utils/              # 工具函数
-│   └── index.ts            # CLI 主入口
-├── scripts/                # 工具脚本
-│   ├── migrate.ts          # 数据库迁移脚本
-│   ├── verify-tables.ts    # 验证数据库表
-│   └── add-test-cases-via-api.ts  # 通过 API 添加测试用例
-├── reports/                # 测试报告输出目录
-├── package.json
-├── tsconfig.json
-└── README.md
-```
-
-### 目录结构说明
-
-- **core/**: 核心功能模块，包含测试运行和解析的核心逻辑
-- **adapters/**: 适配器层，封装外部依赖（AI、MCP等），便于后续扩展其他能力
-- **services/**: 服务层，封装业务逻辑，提供统一的测试服务接口
-- **server/**: Web API 服务器，提供 RESTful API 接口
-- **db/**: 数据库相关，包括配置、迁移和服务层
-- **frontend/**: Web UI 前端，基于 Vue 3 + Element Plus
-- **commands/**: CLI 命令模块，将命令逻辑与入口文件分离
-- **reporter/**: 报告生成模块
-- **types/**: 类型定义
-- **utils/**: 工具函数
-- **scripts/**: 工具脚本，用于数据库迁移和管理
-
-## 工作流程
-
-### CLI 命令行模式
-
-1. **读取测试用例**: 从 `case/` 目录读取 Markdown 格式的测试用例文件
-2. **AI 解析**: 使用 GLM-4.5 将自然语言测试步骤转换为 Playwright 操作序列
-3. **MCP 执行**: 通过 MCP 协议调用 Playwright 服务器执行浏览器操作
-4. **结果收集**: 收集每个操作的执行结果
-5. **报告生成**: 生成详细的测试报告（Markdown/JSON）
-
-### Web UI 模式
-
-1. **测试用例管理**: 通过 Web UI 界面创建、编辑、删除测试用例
-2. **用例集管理**: 创建测试用例集，关联多个测试用例
-3. **执行用例集**: 一键执行用例集中的所有测试用例
-4. **查看报告**: 查看执行记录和详细的测试报告
-5. **数据持久化**: 所有数据存储在 PostgreSQL 数据库中
-
-## 注意事项
-
-1. **环境变量**: 确保 `.env` 文件已创建并配置正确的 API 密钥和数据库连接
-2. **数据库**: 确保 PostgreSQL 数据库已安装并运行，并已执行数据库迁移
-3. **Playwright MCP**: 首次运行时会自动通过 `npx` 下载 `@playwright/mcp` 包
-4. **网络连接**: 需要网络连接以访问 AI API 和下载 MCP 服务器
-5. **浏览器**: 确保已安装 Playwright 浏览器驱动（运行 `npx playwright install`）
-6. **端口占用**: 确保端口 3000（后端）和 5174（前端）未被占用
-7. **用户缓存**: 系统默认移除用户缓存，每次测试运行在全新的浏览器上下文中，确保测试的独立性和可重复性
-8. **元素定位**: 测试用例中应使用页面上的可见文本内容（如"账号"、"密码"、"登录"）而非 CSS 选择器，系统会自动匹配元素
-
-## 故障排除
-
-### 连接 Playwright MCP 服务器失败
-
-如果遇到连接问题，可以尝试：
-1. 手动安装: `npm install -g @playwright/mcp`
-2. 检查网络连接
-3. 查看错误日志了解详细信息
-
-### AI API 调用失败
-
-1. 检查 `.env` 文件中的 API_KEY 是否正确
-2. 确认 BASE_URL 和 DEFAULT_MODEL 配置正确
-3. 检查网络连接和 API 配额
-
-## API 文档
-
-详细的 API 文档请参考 [API.md](./API.md)
-
-### 主要 API 端点
-
-#### 健康检查
-- `GET /health` - 健康状态检查
-- `GET /api/v1/info` - API 信息
-
-#### 测试用例管理
-- `GET /api/v1/test-cases` - 获取所有测试用例
-- `GET /api/v1/test-cases/:caseId` - 获取单个测试用例
-- `POST /api/v1/test-cases` - 创建测试用例
-- `PUT /api/v1/test-cases/:caseId` - 更新测试用例
-- `DELETE /api/v1/test-cases/:caseId` - 删除测试用例
-
-#### 测试用例集管理
-- `GET /api/v1/test-suites` - 获取所有用例集
-- `GET /api/v1/test-suites/:suiteId` - 获取单个用例集
-- `POST /api/v1/test-suites` - 创建用例集
-- `PUT /api/v1/test-suites/:suiteId` - 更新用例集
-- `DELETE /api/v1/test-suites/:suiteId` - 删除用例集
-- `POST /api/v1/test-suites/:suiteId/execute` - 执行用例集
-- `GET /api/v1/test-suites/:suiteId/executions` - 获取用例集执行记录
-- `GET /api/v1/executions/:executionId` - 获取执行详情
-
-#### 测试报告管理
-- `GET /api/v1/reports` - 获取所有测试报告
-- `GET /api/v1/reports/:reportId` - 获取单个测试报告
-
-#### 用例解析
-- `POST /api/v1/parse/file` - 解析测试用例文件（支持 .md 和 .xmind）
-- `POST /api/v1/parse/string` - 解析测试用例字符串
-- `POST /api/v1/parse/directory` - 解析目录
-- `POST /api/v1/parse/xmind` - 上传并解析 XMind 文件（multipart/form-data）
-
-#### 测试执行
-- `POST /api/v1/run/all` - 运行所有测试用例
-- `POST /api/v1/run/file` - 运行单个测试用例文件
-- `POST /api/v1/run/testcase` - 运行单个测试用例对象
-- `POST /api/v1/run/string` - 运行用例字符串
-
-#### PRD 管理
-- `GET /api/v1/prds` - 获取所有 PRD
-- `GET /api/v1/prds/:prdId` - 获取单个 PRD
-- `POST /api/v1/prds` - 创建或更新 PRD
-- `PUT /api/v1/prds/:prdId` - 更新 PRD
-- `DELETE /api/v1/prds/:prdId` - 删除 PRD
-- `POST /api/v1/prds/upload` - 上传 PRD 文件（multipart/form-data）
-- `POST /api/v1/prds/:prdId/generate-test-cases` - 从 PRD 生成测试用例
-- `GET /api/v1/prds/:prdId/test-cases` - 获取 PRD 生成的测试用例
-
-#### HTML 原型生成（🆕）
-- `POST /api/v1/html-prototype/generate` - 生成 HTML 原型
-- `POST /api/v1/html-prototype/generate-from-prd/:prdId` - 从 PRD 生成 HTML 原型
-- `GET /api/v1/html-prototype/generate/:taskId/status` - 查询生成状态
-- `GET /api/v1/html-prototype/generate/:taskId/conversation` - 获取会话历史
-- `POST /api/v1/html-prototype/generate/:taskId/followup` - 发送后续指令
-- `POST /api/v1/html-prototype/generate/:taskId/stop` - 停止生成
-- `DELETE /api/v1/html-prototype/generate/:taskId` - 删除生成任务
-- `GET /api/v1/html-prototype/generate` - 列出所有生成任务
-
-📖 **详细文档**：[HTML原型生成功能说明](doc/HTML_PROTOTYPE_GENERATION.md) | [快速开始指南](doc/QUICKSTART_HTML_PROTOTYPE.md)
-
-## 数据库
-
-系统使用 PostgreSQL 数据库存储数据，主要数据表：
-- `test_cases` - 测试用例表（支持 system 和 test_objective 字段）
-- `test_reports` - 测试报告表
-- `test_report_summaries` - 测试报告摘要表
-- `test_results` - 测试结果表
-- `test_result_summaries` - 测试结果摘要表
-- `action_results` - 操作结果表
-- `expected_result_checks` - 预期结果检查表
-- `test_suites` - 测试用例集表
-- `test_suite_cases` - 用例集与测试用例关联表
-- `test_suite_executions` - 用例集执行记录表
-- `test_suite_execution_results` - 用例集执行结果表
-- `prds` - PRD 表
-- `prd_reviews` - PRD 评审表
-- `prd_test_cases` - PRD 与测试用例关联表
-- `prd_generated_test_cases` - PRD 生成的测试用例表
-
-## 依赖
-
-- Node.js 18+
-- TypeScript
-- PostgreSQL
-- Playwright
-- MCP SDK
-- OpenAI SDK (兼容 GLM-4.5 API)
-- Express.js (Web API)
-- Vue 3 (Web UI)
-- Element Plus (UI 组件库)
-
-## 许可证
-
-MIT
+For questions and support, please open an issue on GitHub.
 

@@ -1,78 +1,39 @@
-import { createRouter, createWebHistory } from 'vue-router'
-import type { RouteRecordRaw } from 'vue-router'
+/**
+ * Vue Router 路由配置
+ */
 
-const routes: RouteRecordRaw[] = [
-  {
-    path: '/',
-    name: 'Home',
-    component: () => import('@/views/Home.vue')
-  },
-  {
-    path: '/test-cases',
-    name: 'TestCases',
-    component: () => import('@/views/TestCases.vue')
-  },
-  {
-    path: '/test-suites',
-    name: 'TestSuites',
-    component: () => import('@/views/TestSuites.vue')
-  },
-  {
-    path: '/executions/:executionId',
-    name: 'ExecutionDetail',
-    component: () => import('@/views/ExecutionDetail.vue')
-  },
-  {
-    path: '/executions/:executionId/report',
-    name: 'SuiteReport',
-    component: () => import('@/views/SuiteReport.vue')
-  },
-  {
-    path: '/run',
-    name: 'Run',
-    component: () => import('@/views/Run.vue')
-  },
-  {
-    path: '/reports',
-    name: 'Reports',
-    component: () => import('@/views/Reports.vue')
-  },
-  {
-    path: '/prds',
-    name: 'PRDs',
-    component: () => import('@/views/PRDs.vue')
-  },
-  {
-    path: '/product-requirements',
-    name: 'ProductRequirements',
-    component: () => import('@/views/ProductRequirements.vue')
-  },
-  {
-    path: '/prd-generation',
-    name: 'PRDGeneration',
-    component: () => import('@/views/PRDGeneration.vue')
-  },
-  {
-    path: '/prd-generation-direct',
-    name: 'PRDGenerationDirect',
-    component: () => import('@/views/PRDGenerationDirect.vue')
-  },
-  {
-    path: '/prd-edit/:taskId',
-    name: 'PRDEdit',
-    component: () => import('@/views/PRDEdit.vue')
-  },
-  {
-    path: '/applications',
-    name: 'Applications',
-    component: () => import('@/views/Applications.vue')
-  }
-]
+import { createRouter, createWebHistory } from 'vue-router';
+import Dashboard from '../views/Dashboard.vue';
+import ProjectCreate from '../views/ProjectCreate.vue';
+import ProjectDetail from '../views/ProjectDetail.vue';
+import ProjectInteractive from '../views/ProjectInteractive.vue';
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
-})
+  routes: [
+    {
+      path: '/',
+      name: 'Dashboard',
+      component: Dashboard,
+    },
+    {
+      path: '/create',
+      name: 'ProjectCreate',
+      component: ProjectCreate,
+    },
+    {
+      path: '/project/interactive',
+      name: 'ProjectInteractive',
+      component: ProjectInteractive,
+    },
+    {
+      path: '/project/:id',
+      name: 'ProjectDetail',
+      component: ProjectDetail,
+      props: true,
+    },
+  ],
+});
 
-export default router
+export default router;
 

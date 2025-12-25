@@ -1,0 +1,15 @@
+{
+    "watch": {
+        "ignore": [
+            "node_modules/**",
+            "dist/**",
+            "logs/**",
+            "*.log",
+            "*.pid",
+            "**/*.test.ts",
+            "**/*.spec.ts",
+            ".git/**",
+            "coverage/**"
+        ]
+    }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "@mind2build/shared",
+  "version": "1.0.0",
+  "description": "Shared types and utilities for Mind2Build",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+

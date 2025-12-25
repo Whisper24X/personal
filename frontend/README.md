@@ -1,58 +1,81 @@
-# TestFlow Frontend
+# Mind2Build Frontend
 
-TestFlow 前端界面，基于 Vue 3 + Element Plus + Vite 构建。
+Vue 3 + Vite frontend for Mind2Build AI project generator.
 
-## 功能特性
+## Tech Stack
 
-- ✅ 用例解析（文件、字符串、目录）
-- ✅ 测试执行（所有、文件、字符串）
-- ✅ 测试报告查看和管理
-- ✅ 实时状态显示
+- **Vue 3** - Progressive JavaScript framework
+- **Vite** - Next generation frontend tooling
+- **TypeScript** - Typed JavaScript
+- **Vue Router** - Official router for Vue.js
+- **Pinia** - State management
+- **Axios** - HTTP client
 
-## 技术栈
-
-- Vue 3
-- Element Plus
-- Vite
-- TypeScript
-- Vue Router
-- Pinia
-- Axios
-
-## 开发
+## Development
 
 ```bash
-# 安装依赖
+# Install dependencies
 pnpm install
 
-# 启动开发服务器
+# Start dev server
 pnpm dev
 
-# 构建生产版本
+# Build for production
 pnpm build
 
-# 预览生产构建
+# Preview production build
 pnpm preview
 ```
 
-## 配置
-
-前端默认运行在 `http://localhost:5174`，API 代理到 `http://localhost:3000`。
-
-如需修改，请编辑 `vite.config.ts` 中的配置。
-
-## 项目结构
+## Project Structure
 
 ```
-frontend/
-├── src/
-│   ├── api/          # API 接口
-│   ├── components/   # 组件
-│   ├── router/       # 路由配置
-│   ├── views/        # 页面视图
-│   ├── utils/        # 工具函数
-│   └── main.ts       # 入口文件
-├── public/           # 静态资源
-└── vite.config.ts    # Vite 配置
+src/
+├── api/           # API client and services
+├── assets/        # Static assets
+├── components/    # Reusable components
+├── router/        # Vue Router configuration
+├── stores/        # Pinia stores
+├── views/         # Page components
+├── App.vue        # Root component
+├── main.ts        # Application entry point
+└── style.css      # Global styles
 ```
+
+## Features
+
+- ✅ Project dashboard
+- ✅ Create new projects
+- ✅ View project details and progress
+- ✅ Real-time status updates
+- ✅ View generated documents
+- ✅ Message flow visualization
+- ✅ Cost tracking
+
+## Environment Variables
+
+Create `.env.local`:
+
+```env
+VITE_API_URL=http://localhost:3000/api
+```
+
+## Development Server
+
+The dev server runs on `http://localhost:5173` and proxies API requests to the backend at `http://localhost:3000`.
+
+## Building for Production
+
+```bash
+pnpm build
+```
+
+Output will be in the `dist/` directory.
+
+## Browser Support
+
+- Chrome >= 87
+- Firefox >= 78
+- Safari >= 14
+- Edge >= 88
 
