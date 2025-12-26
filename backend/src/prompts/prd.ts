@@ -159,8 +159,76 @@ ${input}
 请使用 Markdown 格式生成完整的 PRD，遵循上述提供的结构。`;
 }
 
+/**
+ * Build prompt for updating PRD based on history
+ */
+export function buildPRDUpdatePrompt(historyPRD: string, newRequirements: string): string {
+  return `基于以下历史PRD文档和新的需求变更，生成更新后的产品需求文档（PRD）：
+
+## 历史PRD文档：
+${historyPRD}
+
+## 新的需求变更：
+${newRequirements}
+
+请按照以下要求更新PRD：
+
+1. **保留历史PRD中的有效内容**：如果新需求没有明确修改某个部分，请保留历史PRD中的相关内容
+2. **更新变更的部分**：根据新需求明确更新或修改相关的章节
+3. **添加新功能**：如果新需求包含新功能，请在相应章节中添加
+4. **保持文档结构**：保持PRD的标准结构，确保所有章节完整
+5. **版本说明**：在文档开头添加版本更新说明，说明本次更新的主要内容
+
+**重要要求**：
+- 请生成完整、详尽的产品需求文档，不要省略或简化任何章节
+- 每个章节都要包含充分的内容和具体的细节
+- PRD 文档应该包含至少 3000 字的实质性内容
+- 确保文档的每个部分都有详细的说明和分析
+- 明确标注哪些是新增内容，哪些是修改内容（可选）
+
+请使用 Markdown 格式生成完整的更新后的PRD，遵循标准PRD结构。`;
+}
+
+/**
+ * Build prompt with RAG retrieval results
+ */
+export function buildPRDWithRAGPrompt(
+  query: string,
+  relevantChunks: string,
+  newRequirements: string
+): string {
+  return `基于以下检索到的历史PRD相关内容和新需求，生成或更新产品需求文档（PRD）：
+
+## 检索到的相关历史PRD内容：
+${relevantChunks}
+
+## 用户查询：
+${query}
+
+## 新的需求：
+${newRequirements}
+
+请按照以下要求生成PRD：
+
+1. **参考历史内容**：使用检索到的历史PRD内容作为参考，保持项目的一致性和连贯性
+2. **整合新需求**：将新需求整合到PRD中，确保与历史内容协调一致
+3. **生成完整文档**：生成完整的PRD文档，包含所有标准章节
+4. **保持结构**：遵循标准PRD结构，确保文档组织清晰
+
+**重要要求**：
+- 请生成完整、详尽的产品需求文档，不要省略或简化任何章节
+- 每个章节都要包含充分的内容和具体的细节
+- PRD 文档应该包含至少 3000 字的实质性内容
+- 确保文档的每个部分都有详细的说明和分析
+- 如果历史内容与新需求冲突，以新需求为准，但需要说明变更原因
+
+请使用 Markdown 格式生成完整的PRD，遵循标准PRD结构。`;
+}
+
 export default {
   PRD_SYSTEM_PROMPT,
   PRD_TEMPLATE,
   buildPRDPrompt,
+  buildPRDUpdatePrompt,
+  buildPRDWithRAGPrompt,
 };

@@ -5,6 +5,7 @@
 
 import { query } from '../client';
 import { DocumentType } from '@mind2build/shared';
+import { logger } from '../../utils';
 
 export interface Document {
   id: string;
@@ -15,6 +16,10 @@ export interface Document {
   storage_path?: string;
   metadata: any;
   created_at: Date;
+  version?: number;
+  is_deleted?: boolean;
+  deleted_at?: Date;
+  parent_id?: string;
 }
 
 export class DocumentRepository {
@@ -29,22 +34,43 @@ export class DocumentRepository {
     storagePath?: string;
     metadata?: Record<string, any>;
   }): Promise<Document> {
-    const result = await query<Document>(
-      `INSERT INTO documents (
-        project_id, filename, doc_type, content, storage_path, metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING *`,
-      [
-        data.projectId,
-        data.filename,
-        data.docType,
-        data.content,
-        data.storagePath || null,
-        JSON.stringify(data.metadata || {}),
-      ]
-    );
-    
-    return result.rows[0];
+    try {
+      const result = await query<Document>(
+        `INSERT INTO documents (
+          project_id, filename, doc_type, content, storage_path, metadata
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING *`,
+        [
+          data.projectId,
+          data.filename,
+          data.docType,
+          data.content,
+          data.storagePath || null,
+          JSON.stringify(data.metadata || {}),
+        ]
+      );
+      
+      if (!result.rows[0]) {
+        throw new Error('Failed to create document: no row returned');
+      }
+      
+      logger.info(`Successfully created document: ${data.filename}`, {
+        projectId: data.projectId,
+        docType: data.docType,
+        contentLength: data.content.length,
+      });
+      return result.rows[0];
+    } catch (error: any) {
+      logger.error('Failed to create document:', {
+        projectId: data.projectId,
+        filename: data.filename,
+        docType: data.docType,
+        contentLength: data.content.length,
+        error: error.message,
+        stack: error.stack,
+      });
+      throw error;
+    }
   }
 
   /**
@@ -86,6 +112,211 @@ export class DocumentRepository {
     );
     
     return result.rows[0]?.content || null;
+  }
+
+  /**
+   * Find all PRD documents for a project
+   */
+  async findPRDsByProject(projectId: string, includeDeleted: boolean = false): Promise<Document[]> {
+    let sql = `
+      SELECT * FROM documents 
+      WHERE project_id = $1 AND doc_type = 'prd'
+    `;
+    
+    const params: any[] = [projectId];
+    
+    if (!includeDeleted) {
+      sql += ` AND (is_deleted IS NULL OR is_deleted = FALSE)`;
+    }
+    
+    sql += ` ORDER BY version DESC, created_at DESC`;
+    
+    const result = await query<Document>(sql, params);
+    return result.rows;
+  }
+
+  /**
+   * Find the latest PRD for a project
+   */
+  async findLatestPRD(projectId: string): Promise<Document | null> {
+    const result = await query<Document>(
+      `SELECT * FROM documents 
+       WHERE project_id = $1 AND doc_type = 'prd' 
+       AND (is_deleted IS NULL OR is_deleted = FALSE)
+       ORDER BY version DESC, created_at DESC 
+       LIMIT 1`,
+      [projectId]
+    );
+    
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Create a new PRD version
+   * Automatically increments version number
+   */
+  async createPRDVersion(
+    projectId: string,
+    content: string,
+    parentId?: string
+  ): Promise<Document> {
+    try {
+      // Get the latest version number for this project
+      const latestPRD = await this.findLatestPRD(projectId);
+      const nextVersion = latestPRD ? (latestPRD.version || 1) + 1 : 1;
+
+      const result = await query<Document>(
+        `INSERT INTO documents (
+          project_id, filename, doc_type, content, storage_path, metadata, version, parent_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING *`,
+        [
+          projectId,
+          `PRD_v${nextVersion}.md`,
+          'prd',
+          content,
+          null,
+          JSON.stringify({ version: nextVersion }),
+          nextVersion,
+          parentId || null,
+        ]
+      );
+
+      if (!result.rows[0]) {
+        throw new Error('Failed to create PRD version: no row returned');
+      }
+
+      logger.info(`Successfully created PRD version ${nextVersion}`, {
+        projectId,
+        documentId: result.rows[0].id,
+        parentId,
+      });
+
+      return result.rows[0];
+    } catch (error: any) {
+      logger.error('Failed to create PRD version:', {
+        projectId,
+        parentId,
+        error: error.message,
+        stack: error.stack,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Soft delete a PRD document
+   */
+  async softDeletePRD(documentId: string): Promise<Document> {
+    try {
+      const result = await query<Document>(
+        `UPDATE documents 
+         SET is_deleted = TRUE, deleted_at = NOW() 
+         WHERE id = $1 AND doc_type = 'prd'
+         RETURNING *`,
+        [documentId]
+      );
+
+      if (!result.rows[0]) {
+        throw new Error('PRD document not found or already deleted');
+      }
+
+      logger.info(`Successfully soft deleted PRD`, {
+        documentId,
+        version: result.rows[0].version,
+      });
+
+      return result.rows[0];
+    } catch (error: any) {
+      logger.error('Failed to soft delete PRD:', {
+        documentId,
+        error: error.message,
+        stack: error.stack,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Restore a soft-deleted PRD document
+   */
+  async restorePRD(documentId: string): Promise<Document> {
+    try {
+      const result = await query<Document>(
+        `UPDATE documents 
+         SET is_deleted = FALSE, deleted_at = NULL 
+         WHERE id = $1 AND doc_type = 'prd'
+         RETURNING *`,
+        [documentId]
+      );
+
+      if (!result.rows[0]) {
+        throw new Error('PRD document not found');
+      }
+
+      logger.info(`Successfully restored PRD`, {
+        documentId,
+        version: result.rows[0].version,
+      });
+
+      return result.rows[0];
+    } catch (error: any) {
+      logger.error('Failed to restore PRD:', {
+        documentId,
+        error: error.message,
+        stack: error.stack,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get PRD version history for a project
+   */
+  async getPRDVersions(projectId: string): Promise<Document[]> {
+    const result = await query<Document>(
+      `SELECT * FROM documents 
+       WHERE project_id = $1 AND doc_type = 'prd'
+       ORDER BY version ASC, created_at ASC`,
+      [projectId]
+    );
+
+    return result.rows;
+  }
+
+  /**
+   * Get a specific PRD document by ID
+   */
+  async findPRDById(documentId: string): Promise<Document | null> {
+    const result = await query<Document>(
+      `SELECT * FROM documents 
+       WHERE id = $1 AND doc_type = 'prd'`,
+      [documentId]
+    );
+
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Find all PRD documents for an application (across all projects)
+   */
+  async findPRDsByApplication(applicationId: string, includeDeleted: boolean = false): Promise<Document[]> {
+    let sql = `
+      SELECT d.* FROM documents d
+      INNER JOIN projects p ON d.project_id = p.id
+      WHERE p.application_id = $1 AND d.doc_type = 'prd'
+    `;
+    
+    const params: any[] = [applicationId];
+    
+    if (!includeDeleted) {
+      sql += ` AND (d.is_deleted IS NULL OR d.is_deleted = FALSE)`;
+    }
+    
+    sql += ` ORDER BY d.version DESC, d.created_at DESC`;
+    
+    const result = await query<Document>(sql, params);
+    return result.rows;
   }
 }
 

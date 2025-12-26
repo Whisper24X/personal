@@ -44,6 +44,39 @@ class APIClient {
     );
   }
 
+  // 应用 API 端点
+  async createApplication(data: {
+    name: string;
+    description?: string;
+    metadata?: Record<string, any>;
+  }) {
+    return this.client.post('/applications', data);
+  }
+
+  async getApplications() {
+    return this.client.get('/applications');
+  }
+
+  async getApplication(id: string) {
+    return this.client.get(`/applications/${id}`);
+  }
+
+  async updateApplication(id: string, data: {
+    name?: string;
+    description?: string;
+    metadata?: Record<string, any>;
+  }) {
+    return this.client.put(`/applications/${id}`, data);
+  }
+
+  async deleteApplication(id: string) {
+    return this.client.delete(`/applications/${id}`);
+  }
+
+  async getApplicationProjects(id: string) {
+    return this.client.get(`/applications/${id}/projects`);
+  }
+
   // 项目 API 端点
   async createProject(data: {
     name: string;
@@ -51,6 +84,7 @@ class APIClient {
     description?: string;
     investment?: number;
     nRound?: number;
+    applicationId?: string;
   }) {
     return this.client.post('/projects', data);
   }
@@ -73,6 +107,33 @@ class APIClient {
 
   async getProjectDocuments(id: string) {
     return this.client.get(`/projects/${id}/documents`);
+  }
+
+  // PRD API 端点
+  async generatePRD(projectId: string, data: {
+    requirements: string;
+    mode?: 'new' | 'update';
+    useRAG?: boolean;
+  }) {
+    return this.client.post(`/projects/${projectId}/prd`, data);
+  }
+
+  async getPRDs(projectId: string, includeDeleted?: boolean) {
+    return this.client.get(`/projects/${projectId}/prds`, {
+      params: { includeDeleted },
+    });
+  }
+
+  async getPRD(projectId: string, prdId: string) {
+    return this.client.get(`/projects/${projectId}/prds/${prdId}`);
+  }
+
+  async deletePRD(projectId: string, prdId: string) {
+    return this.client.delete(`/projects/${projectId}/prds/${prdId}`);
+  }
+
+  async restorePRD(projectId: string, prdId: string) {
+    return this.client.post(`/projects/${projectId}/prds/${prdId}/restore`);
   }
 }
 

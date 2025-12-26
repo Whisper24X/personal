@@ -52,14 +52,66 @@
           </el-col>
         </el-row>
 
+        <el-card class="applications-card">
+          <template #header>
+            <div class="card-header-content">
+              <span class="card-title">应用管理</span>
+              <div>
+                <el-button @click="router.push('/applications')">
+                  <el-icon><Box /></el-icon>
+                  管理应用
+                </el-button>
+                <el-button type="primary" @click="router.push('/create')">
+                  <el-icon><Plus /></el-icon>
+                  新建项目
+                </el-button>
+              </div>
+            </div>
+          </template>
+
+          <el-empty 
+            v-if="applications.length === 0" 
+            description="还没有应用。创建您的第一个应用！"
+          >
+            <el-button type="primary" @click="router.push('/applications')">
+              创建应用
+            </el-button>
+          </el-empty>
+
+          <div v-else class="applications-preview">
+            <el-card
+              v-for="app in applications.slice(0, 3)"
+              :key="app.id"
+              shadow="hover"
+              class="application-preview-card"
+              @click="router.push(`/application/${app.id}`)"
+            >
+              <div class="application-preview-header">
+                <h4 class="application-preview-name">
+                  <el-icon><Box /></el-icon>
+                  {{ app.name }}
+                </h4>
+                <el-tag size="small">{{ app.projectCount }} 个项目</el-tag>
+              </div>
+            </el-card>
+            <el-card
+              v-if="applications.length > 3"
+              shadow="hover"
+              class="application-preview-card view-more-card"
+              @click="router.push('/applications')"
+            >
+              <div class="view-more-content">
+                <el-icon><ArrowRight /></el-icon>
+                <span>查看更多</span>
+              </div>
+            </el-card>
+          </div>
+        </el-card>
+
         <el-card class="projects-card">
           <template #header>
             <div class="card-header-content">
               <span class="card-title">最近项目</span>
-              <el-button type="primary" @click="router.push('/create')">
-                <el-icon><Plus /></el-icon>
-                新建项目
-              </el-button>
             </div>
           </template>
 
@@ -126,6 +178,7 @@
 import { onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useProjectStore } from '../stores/project';
+import { useApplicationStore } from '../stores/application';
 import { storeToRefs } from 'pinia';
 import { 
   Folder, 
@@ -134,15 +187,20 @@ import {
   Plus, 
   Document, 
   Clock,
-  TrendCharts
+  TrendCharts,
+  Box,
+  ArrowRight
 } from '@element-plus/icons-vue';
 
 const router = useRouter();
 const projectStore = useProjectStore();
+const applicationStore = useApplicationStore();
 const { projects, loading, error, projectCount, completedCount } = storeToRefs(projectStore);
+const { applications } = storeToRefs(applicationStore);
 
 onMounted(() => {
   projectStore.fetchProjects();
+  applicationStore.fetchApplications();
 });
 
 function viewProject(id: string) {
@@ -209,6 +267,56 @@ function getStatusType(status: string): 'success' | 'warning' | 'info' | 'danger
 
 .stat-card.stat-warning :deep(.el-statistic__number) {
   color: #e6a23c;
+}
+
+.applications-card {
+  margin-bottom: 24px;
+}
+
+.applications-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.application-preview-card {
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.application-preview-card:hover {
+  transform: translateY(-2px);
+}
+
+.application-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.application-preview-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.view-more-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+}
+
+.view-more-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #909399;
+  font-size: 14px;
 }
 
 .projects-card {

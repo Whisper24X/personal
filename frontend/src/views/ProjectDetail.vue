@@ -101,6 +101,70 @@
         </el-scrollbar>
       </el-card>
 
+      <el-card class="prds-card">
+        <template #header>
+          <div class="card-header-content">
+            <span class="card-title">
+              <el-icon><Document /></el-icon>
+              PRD 管理
+            </span>
+            <el-tag>{{ prds.length }}</el-tag>
+          </div>
+        </template>
+
+        <el-empty 
+          v-if="prds.length === 0" 
+          description="暂无 PRD 文档"
+          :image-size="100"
+        />
+
+        <el-table v-else :data="prds" style="width: 100%">
+          <el-table-column prop="version" label="版本" width="80" />
+          <el-table-column prop="filename" label="文件名" />
+          <el-table-column prop="createdAt" label="创建时间">
+            <template #default="{ row }">
+              {{ formatDate(row.createdAt) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag v-if="row.isDeleted" type="danger" size="small">已删除</el-tag>
+              <el-tag v-else type="success" size="small">正常</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="200">
+            <template #default="{ row }">
+              <el-button 
+                type="primary" 
+                link 
+                size="small"
+                @click.stop="viewPRD(row)"
+              >
+                查看
+              </el-button>
+              <el-button 
+                v-if="!row.isDeleted"
+                type="danger" 
+                link 
+                size="small"
+                @click.stop="handleDeletePRD(row)"
+              >
+                删除
+              </el-button>
+              <el-button 
+                v-else
+                type="success" 
+                link 
+                size="small"
+                @click.stop="handleRestorePRD(row)"
+              >
+                恢复
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+
       <el-card class="documents-card">
         <template #header>
           <div class="card-header-content">
@@ -153,10 +217,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useProjectStore } from '../stores/project';
 import { storeToRefs } from 'pinia';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { apiClient } from '../api/client';
 import { 
   TrendCharts, 
   Refresh, 
@@ -172,12 +238,61 @@ const projectStore = useProjectStore();
 const { currentProject, messages, documents, loading } = storeToRefs(projectStore);
 
 const projectId = route.params.id as string;
+const prds = ref<any[]>([]);
 
 onMounted(async () => {
   await projectStore.fetchProject(projectId);
   await projectStore.fetchMessages(projectId);
   await projectStore.fetchDocuments(projectId);
+  await fetchPRDs();
 });
+
+async function fetchPRDs() {
+  try {
+    const response = await apiClient.getPRDs(projectId, true);
+    prds.value = response.prds || [];
+  } catch (err: any) {
+    ElMessage.error(err.message || '获取 PRD 列表失败');
+  }
+}
+
+async function handleDeletePRD(prd: any) {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除 PRD 版本 ${prd.version} 吗？`,
+      '确认删除',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+
+    await apiClient.deletePRD(projectId, prd.id);
+    ElMessage.success('PRD 删除成功');
+    await fetchPRDs();
+  } catch (err: any) {
+    if (err !== 'cancel') {
+      ElMessage.error(err.message || '删除 PRD 失败');
+    }
+  }
+}
+
+async function handleRestorePRD(prd: any) {
+  try {
+    await apiClient.restorePRD(projectId, prd.id);
+    ElMessage.success('PRD 恢复成功');
+    await fetchPRDs();
+  } catch (err: any) {
+    ElMessage.error(err.message || '恢复 PRD 失败');
+  }
+}
+
+function viewPRD(prd: any) {
+  const blob = new Blob([prd.content], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+}
 
 function viewDocument(doc: any) {
   // Open document in modal or new window
@@ -203,6 +318,11 @@ function getRoleType(role: string): 'success' | 'warning' | 'info' | 'danger' {
     Engineer: 'info',
   };
   return roleMap[role] || 'info';
+}
+
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString();
 }
 </script>
 
@@ -285,8 +405,10 @@ function getRoleType(role: string): 'success' | 'warning' | 'info' | 'danger' {
 
 .message-content {
   white-space: pre-wrap;
-  word-break: break-word;
-  line-height: 1.6;
+}
+
+.prds-card {
+  margin-bottom: 0;
 }
 
 .document-card {

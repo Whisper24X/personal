@@ -1,0 +1,257 @@
+<template>
+  <div class="application-detail">
+    <el-page-header @back="router.push('/applications')" class="page-header">
+      <template #content>
+        <div class="header-content">
+          <span class="header-title">{{ application?.name || '应用详情' }}</span>
+          <p v-if="application?.description" class="header-desc">
+            {{ application.description }}
+          </p>
+        </div>
+      </template>
+    </el-page-header>
+
+    <div v-loading="loading" class="content-section">
+      <el-alert
+        v-if="error"
+        :title="error"
+        type="error"
+        :closable="false"
+        show-icon
+      />
+
+      <el-row :gutter="20" class="stats-row">
+        <el-col :xs="24" :sm="8">
+          <el-card shadow="hover" class="stat-card">
+            <el-statistic title="项目总数" :value="application?.projectCount || 0">
+              <template #prefix>
+                <el-icon><Folder /></el-icon>
+              </template>
+            </el-statistic>
+          </el-card>
+        </el-col>
+        <el-col :xs="24" :sm="8">
+          <el-card shadow="hover" class="stat-card">
+            <el-statistic title="创建时间" :value="formatDate(application?.createdAt || '')">
+              <template #prefix>
+                <el-icon><Clock /></el-icon>
+              </template>
+            </el-statistic>
+          </el-card>
+        </el-col>
+        <el-col :xs="24" :sm="8">
+          <el-card shadow="hover" class="stat-card">
+            <el-button type="primary" @click="goToCreateProject">
+              <el-icon><Plus /></el-icon>
+              新建项目
+            </el-button>
+          </el-card>
+        </el-col>
+      </el-row>
+
+      <el-card class="projects-card">
+        <template #header>
+          <div class="card-header-content">
+            <span class="card-title">项目列表</span>
+          </div>
+        </template>
+
+        <el-empty 
+          v-if="projects.length === 0" 
+          description="还没有项目。创建您的第一个项目！"
+        >
+          <el-button type="primary" @click="goToCreateProject">
+            创建项目
+          </el-button>
+        </el-empty>
+
+        <div v-else>
+          <el-card
+            v-for="project in projects"
+            :key="project.id"
+            shadow="hover"
+            class="project-card"
+            @click="viewProject(project.id)"
+          >
+            <div class="project-header">
+              <div class="project-info">
+                <h3 class="project-name">
+                  <el-icon><Document /></el-icon>
+                  {{ project.name }}
+                </h3>
+                <p class="project-idea">{{ project.idea }}</p>
+              </div>
+              <el-tag 
+                :type="getStatusType(project.status)" 
+                size="large"
+                effect="plain"
+              >
+                {{ project.status }}
+              </el-tag>
+            </div>
+          </el-card>
+        </div>
+      </el-card>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, computed } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
+import { useApplicationStore } from '../stores/application';
+import { storeToRefs } from 'pinia';
+import { ElMessage } from 'element-plus';
+import { apiClient } from '../api/client';
+import { 
+  Folder, 
+  Clock,
+  Plus,
+  Document
+} from '@element-plus/icons-vue';
+
+const router = useRouter();
+const route = useRoute();
+const applicationStore = useApplicationStore();
+const { currentApplication, loading, error } = storeToRefs(applicationStore);
+
+const application = computed(() => currentApplication.value);
+const projects = ref<any[]>([]);
+
+onMounted(async () => {
+  const applicationId = route.params.id as string;
+  await applicationStore.fetchApplication(applicationId);
+  await fetchProjects(applicationId);
+});
+
+async function fetchProjects(applicationId: string) {
+  try {
+    const response = await apiClient.getApplicationProjects(applicationId);
+    projects.value = response.projects || [];
+  } catch (err: any) {
+    ElMessage.error(err.message || '获取项目列表失败');
+  }
+}
+
+function viewProject(id: string) {
+  router.push(`/project/${id}`);
+}
+
+function goToCreateProject() {
+  const applicationId = route.params.id as string;
+  router.push({
+    path: '/create',
+    query: {
+      applicationId: applicationId
+    }
+  });
+}
+
+function formatDate(dateStr: string): string {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString();
+}
+
+function getStatusType(status: string): 'success' | 'warning' | 'info' | 'danger' {
+  const statusMap: Record<string, 'success' | 'warning' | 'info' | 'danger'> = {
+    completed: 'success',
+    running: 'warning',
+    pending: 'info',
+    failed: 'danger',
+  };
+  return statusMap[status] || 'info';
+}
+</script>
+
+<style scoped>
+.application-detail {
+  max-width: 100%;
+}
+
+.page-header {
+  margin-bottom: 24px;
+}
+
+.header-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.header-title {
+  font-size: 28px;
+  font-weight: bold;
+  color: #303133;
+}
+
+.header-desc {
+  color: #909399;
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+.content-section {
+  min-height: 400px;
+}
+
+.stats-row {
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  margin-bottom: 16px;
+}
+
+.projects-card {
+  margin-bottom: 24px;
+}
+
+.card-header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.project-card {
+  margin-bottom: 16px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.project-card:hover {
+  transform: translateY(-2px);
+}
+
+.project-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.project-info {
+  flex: 1;
+}
+
+.project-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+  margin: 0 0 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-idea {
+  color: #606266;
+  font-size: 14px;
+  margin: 0;
+  line-height: 1.5;
+}
+</style>
+

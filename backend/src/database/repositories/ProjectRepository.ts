@@ -9,6 +9,7 @@ import { ProjectStatus } from '@mind2build/shared';
 export interface Project {
   id: string;
   user_id: string;
+  application_id?: string;
   name: string;
   idea: string;
   description?: string;
@@ -38,14 +39,16 @@ export class ProjectRepository {
     description?: string;
     investment?: number;
     nRound?: number;
+    applicationId?: string;
   }): Promise<Project> {
     const result = await query<Project>(
       `INSERT INTO projects (
-        user_id, name, idea, description, investment, n_round, status, progress, current_round, total_cost, metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        user_id, application_id, name, idea, description, investment, n_round, status, progress, current_round, total_cost, metadata
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *`,
       [
         data.userId,
+        data.applicationId || null,
         data.name,
         data.idea,
         data.description || null,
@@ -84,6 +87,20 @@ export class ProjectRepository {
        ORDER BY created_at DESC 
        LIMIT $2`,
       [userId, limit]
+    );
+    
+    return result.rows;
+  }
+
+  /**
+   * Find projects by application ID
+   */
+  async findByApplicationId(applicationId: string): Promise<Project[]> {
+    const result = await query<Project>(
+      `SELECT * FROM projects 
+       WHERE application_id = $1 AND deleted_at IS NULL 
+       ORDER BY created_at DESC`,
+      [applicationId]
     );
     
     return result.rows;

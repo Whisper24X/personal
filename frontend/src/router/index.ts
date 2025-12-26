@@ -7,6 +7,8 @@ import Dashboard from '../views/Dashboard.vue';
 import ProjectCreate from '../views/ProjectCreate.vue';
 import ProjectDetail from '../views/ProjectDetail.vue';
 import ProjectInteractive from '../views/ProjectInteractive.vue';
+import ApplicationList from '../views/ApplicationList.vue';
+import ApplicationDetail from '../views/ApplicationDetail.vue';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -15,6 +17,17 @@ const router = createRouter({
       path: '/',
       name: 'Dashboard',
       component: Dashboard,
+    },
+    {
+      path: '/applications',
+      name: 'ApplicationList',
+      component: ApplicationList,
+    },
+    {
+      path: '/application/:id',
+      name: 'ApplicationDetail',
+      component: ApplicationDetail,
+      props: true,
     },
     {
       path: '/create',

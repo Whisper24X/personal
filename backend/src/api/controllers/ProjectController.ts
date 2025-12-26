@@ -30,7 +30,7 @@ export class ProjectController {
    */
   static async create(req: Request, res: Response) {
     try {
-      const { name, idea, description, investment, nRound } = req.body;
+      const { name, idea, description, investment, nRound, applicationId } = req.body;
       const userId = (req as any).userId || DEFAULT_USER_ID; // From auth middleware
       
       if (!name || !idea) {
@@ -47,6 +47,7 @@ export class ProjectController {
         description,
         investment: investment || 10.0,
         nRound: nRound || 5,
+        applicationId,
       });
       
       logger.info(`Project created: ${project.id}`);
@@ -137,15 +138,34 @@ export class ProjectController {
       // Run the team
       const result = await team.run(idea, nRound);
       
+      logger.info(`Project ${projectId} team run completed, saving data to database...`, {
+        messageCount: result.messages.length,
+        totalCost: result.cost,
+      });
+      
       // Save messages to database
-      await messageRepo.saveMany(projectId, result.messages);
+      try {
+        const savedCount = await messageRepo.saveMany(projectId, result.messages);
+        logger.info(`Project ${projectId} saved ${savedCount} messages to database`);
+      } catch (error: any) {
+        logger.error(`Project ${projectId} failed to save messages:`, error);
+        throw error;
+      }
       
       // Update project cost
-      await projectRepo.updateCost(projectId, result.cost);
+      try {
+        await projectRepo.updateCost(projectId, result.cost);
+        logger.info(`Project ${projectId} updated cost to ${result.cost}`);
+      } catch (error: any) {
+        logger.error(`Project ${projectId} failed to update cost:`, error);
+        throw error;
+      }
       
       // Extract and save documents
       const docActions = ['WriteRequirementSpec', 'WritePRD', 'WriteDesign', 'WriteCode', 'WriteTest'];
       const documents = result.messages.filter((msg) => docActions.includes(msg.causeBy));
+      
+      logger.info(`Project ${projectId} found ${documents.length} documents to save`);
       
       for (const doc of documents) {
         const docTypeMap: Record<string, string> = {
@@ -158,16 +178,28 @@ export class ProjectController {
         
         const docType = docTypeMap[doc.causeBy] || 'unknown';
         
-        await documentRepo.create({
-          projectId,
-          filename: `${docType.toUpperCase()}.md`,
-          docType: docType as any,
-          content: doc.content,
-        });
+        try {
+          await documentRepo.create({
+            projectId,
+            filename: `${docType.toUpperCase()}.md`,
+            docType: docType as any,
+            content: doc.content,
+          });
+          logger.info(`Project ${projectId} saved document: ${docType}`);
+        } catch (error: any) {
+          logger.error(`Project ${projectId} failed to save document ${docType}:`, error);
+          // Continue with other documents even if one fails
+        }
       }
       
       // Mark as completed
-      await projectRepo.markCompleted(projectId);
+      try {
+        await projectRepo.markCompleted(projectId);
+        logger.info(`Project ${projectId} marked as completed`);
+      } catch (error: any) {
+        logger.error(`Project ${projectId} failed to mark as completed:`, error);
+        throw error;
+      }
       
       logger.info(`Project ${projectId} completed successfully`);
     } catch (error: any) {

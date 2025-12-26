@@ -1,5 +1,5 @@
 -- Mind2Build Database Schema
--- Initial migration
+-- Initial migration (includes PRD management and applications)
 
 -- Create users table
 CREATE TABLE IF NOT EXISTS users (
@@ -18,14 +18,30 @@ CREATE TABLE IF NOT EXISTS users (
   deleted_at TIMESTAMP
 );
 
-CREATE INDEX idx_users_username ON users(username);
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_status ON users(status);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 
--- Create projects table
+-- Create applications table (needed before projects)
+CREATE TABLE IF NOT EXISTS applications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name VARCHAR(200) NOT NULL,
+  description TEXT,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  deleted_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_applications_user_id ON applications(user_id);
+CREATE INDEX IF NOT EXISTS idx_applications_created_at ON applications(created_at DESC);
+
+-- Create projects table (with application_id column)
 CREATE TABLE IF NOT EXISTS projects (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  application_id UUID REFERENCES applications(id) ON DELETE SET NULL,
   name VARCHAR(200) NOT NULL,
   idea TEXT NOT NULL,
   description TEXT,
@@ -44,9 +60,10 @@ CREATE TABLE IF NOT EXISTS projects (
   deleted_at TIMESTAMP
 );
 
-CREATE INDEX idx_projects_user_id ON projects(user_id);
-CREATE INDEX idx_projects_status ON projects(status);
-CREATE INDEX idx_projects_created_at ON projects(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id);
+CREATE INDEX IF NOT EXISTS idx_projects_application_id ON projects(application_id);
+CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+CREATE INDEX IF NOT EXISTS idx_projects_created_at ON projects(created_at DESC);
 
 -- Create teams table
 CREATE TABLE IF NOT EXISTS teams (
@@ -64,8 +81,8 @@ CREATE TABLE IF NOT EXISTS teams (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_teams_project_id ON teams(project_id);
-CREATE INDEX idx_teams_status ON teams(status);
+CREATE INDEX IF NOT EXISTS idx_teams_project_id ON teams(project_id);
+CREATE INDEX IF NOT EXISTS idx_teams_status ON teams(status);
 
 -- Create roles table
 CREATE TABLE IF NOT EXISTS roles (
@@ -90,9 +107,9 @@ CREATE TABLE IF NOT EXISTS roles (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_roles_team_id ON roles(team_id);
-CREATE INDEX idx_roles_profile ON roles(profile);
-CREATE INDEX idx_roles_is_idle ON roles(is_idle);
+CREATE INDEX IF NOT EXISTS idx_roles_team_id ON roles(team_id);
+CREATE INDEX IF NOT EXISTS idx_roles_profile ON roles(profile);
+CREATE INDEX IF NOT EXISTS idx_roles_is_idle ON roles(is_idle);
 
 -- Create messages table
 CREATE TABLE IF NOT EXISTS messages (
@@ -110,10 +127,10 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_messages_project_id ON messages(project_id);
-CREATE INDEX idx_messages_role_id ON messages(role_id);
-CREATE INDEX idx_messages_cause_by ON messages(cause_by);
-CREATE INDEX idx_messages_created_at ON messages(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_project_id ON messages(project_id);
+CREATE INDEX IF NOT EXISTS idx_messages_role_id ON messages(role_id);
+CREATE INDEX IF NOT EXISTS idx_messages_cause_by ON messages(cause_by);
+CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
 
 -- Create actions table
 CREATE TABLE IF NOT EXISTS actions (
@@ -128,12 +145,12 @@ CREATE TABLE IF NOT EXISTS actions (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_actions_role_id ON actions(role_id);
-CREATE INDEX idx_actions_message_id ON actions(message_id);
-CREATE INDEX idx_actions_action_type ON actions(action_type);
-CREATE INDEX idx_actions_status ON actions(status);
+CREATE INDEX IF NOT EXISTS idx_actions_role_id ON actions(role_id);
+CREATE INDEX IF NOT EXISTS idx_actions_message_id ON actions(message_id);
+CREATE INDEX IF NOT EXISTS idx_actions_action_type ON actions(action_type);
+CREATE INDEX IF NOT EXISTS idx_actions_status ON actions(status);
 
--- Create documents table
+-- Create documents table (with PRD version management columns)
 CREATE TABLE IF NOT EXISTS documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -142,11 +159,19 @@ CREATE TABLE IF NOT EXISTS documents (
   content TEXT NOT NULL,
   storage_path VARCHAR(500),
   metadata JSONB DEFAULT '{}',
+  version INT DEFAULT 1,
+  is_deleted BOOLEAN DEFAULT FALSE,
+  deleted_at TIMESTAMP,
+  parent_id UUID REFERENCES documents(id) ON DELETE SET NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_documents_project_id ON documents(project_id);
-CREATE INDEX idx_documents_doc_type ON documents(doc_type);
+CREATE INDEX IF NOT EXISTS idx_documents_project_id ON documents(project_id);
+CREATE INDEX IF NOT EXISTS idx_documents_doc_type ON documents(doc_type);
+CREATE INDEX IF NOT EXISTS idx_documents_version ON documents(version);
+CREATE INDEX IF NOT EXISTS idx_documents_parent_id ON documents(parent_id);
+CREATE INDEX IF NOT EXISTS idx_documents_is_deleted ON documents(is_deleted);
+CREATE INDEX IF NOT EXISTS idx_documents_prd_version ON documents(project_id, doc_type, version) WHERE doc_type = 'prd';
 
 -- Create cost_records table
 CREATE TABLE IF NOT EXISTS cost_records (
@@ -161,9 +186,9 @@ CREATE TABLE IF NOT EXISTS cost_records (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_cost_records_project_id ON cost_records(project_id);
-CREATE INDEX idx_cost_records_role_id ON cost_records(role_id);
-CREATE INDEX idx_cost_records_created_at ON cost_records(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cost_records_project_id ON cost_records(project_id);
+CREATE INDEX IF NOT EXISTS idx_cost_records_role_id ON cost_records(role_id);
+CREATE INDEX IF NOT EXISTS idx_cost_records_created_at ON cost_records(created_at DESC);
 
 -- Create memories table (for future use)
 CREATE TABLE IF NOT EXISTS memories (
@@ -176,9 +201,9 @@ CREATE TABLE IF NOT EXISTS memories (
   expires_at TIMESTAMP
 );
 
-CREATE INDEX idx_memories_role_id ON memories(role_id);
-CREATE INDEX idx_memories_type ON memories(type);
-CREATE INDEX idx_memories_expires_at ON memories(expires_at);
+CREATE INDEX IF NOT EXISTS idx_memories_role_id ON memories(role_id);
+CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);
+CREATE INDEX IF NOT EXISTS idx_memories_expires_at ON memories(expires_at);
 
 -- Create embeddings table (for future use)
 CREATE TABLE IF NOT EXISTS embeddings (
@@ -189,10 +214,24 @@ CREATE TABLE IF NOT EXISTS embeddings (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_embeddings_memory_id ON embeddings(memory_id);
+CREATE INDEX IF NOT EXISTS idx_embeddings_memory_id ON embeddings(memory_id);
 
 -- Insert default user for development
-INSERT INTO users (username, email, password_hash, full_name) 
-VALUES ('default-user', 'default@mind2build.com', 'not-used', 'Default User')
+INSERT INTO users (id, username, email, password_hash, full_name) 
+VALUES ('302769d6-247d-43db-a005-0519712255fb', 'default-user', 'default@mind2build.com', 'not-used', 'Default User')
 ON CONFLICT (username) DO NOTHING;
 
+-- Add comments (if supported)
+DO $$ 
+BEGIN
+  COMMENT ON TABLE applications IS 'Applications group related projects together';
+  COMMENT ON COLUMN projects.application_id IS 'Reference to parent application';
+  COMMENT ON COLUMN documents.version IS 'Document version number, starts from 1';
+  COMMENT ON COLUMN documents.is_deleted IS 'Soft delete flag for documents';
+  COMMENT ON COLUMN documents.deleted_at IS 'Timestamp when document was soft deleted';
+  COMMENT ON COLUMN documents.parent_id IS 'Reference to parent document version for version chain';
+EXCEPTION
+  WHEN OTHERS THEN
+    -- Comments might not be supported in all PostgreSQL versions, ignore errors
+    NULL;
+END $$;

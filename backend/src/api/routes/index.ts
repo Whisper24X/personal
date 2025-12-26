@@ -5,11 +5,13 @@
 
 import { Router } from 'express';
 import projectRoutes from './projects';
+import applicationRoutes from './applications';
 import interactiveRoutes from './interactive';
 
 const router = Router();
 
 // API v1 routes
+router.use('/applications', applicationRoutes);
 router.use('/projects', projectRoutes);
 router.use('/', interactiveRoutes); // Interactive routes: /api/interactive, /api/interactive-stats
 

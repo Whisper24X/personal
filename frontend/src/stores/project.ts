@@ -52,6 +52,7 @@ export const useProjectStore = defineStore('project', () => {
     description?: string;
     investment?: number;
     nRound?: number;
+    applicationId?: string;
   }) {
     loading.value = true;
     error.value = null;

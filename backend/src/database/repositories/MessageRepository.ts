@@ -5,6 +5,7 @@
 
 import { query } from '../client';
 import { Message } from '../../core/message/Message';
+import { logger } from '../../utils';
 
 export interface DBMessage {
   id: string;
@@ -57,11 +58,11 @@ export class MessageRepository {
     
     const values: any[] = [];
     const placeholders: string[] = [];
+    let paramIndex = 1;
     
-    messages.forEach((msg, index) => {
-      const offset = index * 9;
+    messages.forEach((msg) => {
       placeholders.push(
-        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9})`
+        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8})`
       );
       
       values.push(
@@ -75,6 +76,8 @@ export class MessageRepository {
         JSON.stringify(Array.from(msg.sendTo)),
         JSON.stringify(msg.metadata)
       );
+      
+      paramIndex += 9;
     });
     
     const sql = `
@@ -84,8 +87,25 @@ export class MessageRepository {
       ) VALUES ${placeholders.join(', ')}
     `;
     
-    const result = await query(sql, values);
-    return result.rowCount || 0;
+    try {
+      const result = await query(sql, values);
+      logger.info(`Successfully saved ${result.rowCount || 0} messages to database`, {
+        projectId,
+        messageCount: messages.length,
+      });
+      return result.rowCount || 0;
+    } catch (error: any) {
+      // Log detailed error information
+      logger.error('Failed to save messages:', {
+        projectId,
+        messageCount: messages.length,
+        error: error.message,
+        stack: error.stack,
+        sql: sql.substring(0, 200) + '...',
+        valuesCount: values.length,
+      });
+      throw error;
+    }
   }
 
   /**
