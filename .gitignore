@@ -50,6 +50,10 @@ generated/
 # Workspace - generated projects
 workspace/*
 !workspace/.gitkeep
+backend/workspace/*
+!backend/workspace/.gitkeep
+frontend/workspace/*
+!frontend/workspace/.gitkeep
 
 # Prisma
 *.db-journal
