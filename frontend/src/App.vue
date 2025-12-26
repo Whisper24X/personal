@@ -4,38 +4,35 @@
       <div class="header-content">
         <div class="logo-section">
           <router-link to="/" class="logo-link">
-            <el-icon :size="28" color="#409EFF"><Promotion /></el-icon>
+            <el-icon :size="28" color="#409EFF">
+              <Promotion />
+            </el-icon>
             <span class="logo-text">Mind2Build</span>
             <el-tag size="small" type="info" effect="plain">即思即成</el-tag>
           </router-link>
         </div>
-        <el-menu
-          mode="horizontal"
-          :ellipsis="false"
-          class="header-menu"
-          router
-        >
+        <el-menu mode="horizontal" :ellipsis="false" class="header-menu" router>
           <el-menu-item index="/">
-            <el-icon><Monitor /></el-icon>
+            <el-icon>
+              <Monitor />
+            </el-icon>
             控制面板
-          </el-menu-item>
-          <el-menu-item index="/create">
-            <el-icon><Plus /></el-icon>
-            新建项目
           </el-menu-item>
         </el-menu>
       </div>
     </el-header>
-    
+
     <el-main>
       <div class="main-content">
         <router-view />
       </div>
     </el-main>
-    
+
     <el-footer class="footer">
       <p class="footer-text">
-        <el-icon><MagicStick /></el-icon>
+        <el-icon>
+          <MagicStick />
+        </el-icon>
         Mind2Build - AI 多智能体协作框架
       </p>
     </el-footer>
@@ -124,4 +121,3 @@ body {
   min-height: calc(100vh - 120px);
 }
 </style>
-
