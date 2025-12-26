@@ -7,6 +7,7 @@ import { ILLMConfig, LLMProvider } from '@mind2build/shared';
 import { BaseLLM } from './BaseLLM';
 import { OpenAILLM } from './OpenAILLM';
 import { ZhipuLLM } from './ZhipuLLM';
+import { ArkLLM } from './ArkLLM';
 
 /**
  * Create an LLM instance based on provider type
@@ -18,6 +19,9 @@ export function createLLM(config: ILLMConfig): BaseLLM {
     
     case 'zhipuai':
       return new ZhipuLLM(config);
+    
+    case 'ark':
+      return new ArkLLM(config);
     
     // Add more providers as needed
     case 'anthropic':
@@ -44,7 +48,7 @@ export function createLLM(config: ILLMConfig): BaseLLM {
  * Get list of supported providers
  */
 export function getSupportedProviders(): LLMProvider[] {
-  return ['openai', 'zhipuai'];
+  return ['openai', 'zhipuai', 'ark'];
 }
 
 /**

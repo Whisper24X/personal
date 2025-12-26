@@ -34,6 +34,8 @@ export class WritePRD extends BaseAction {
       useRAG,
       hasHistoryPRD: !!options?.historyPRD,
       hasRelevantChunks: !!options?.relevantChunks,
+      requestTimeout: process.env.REQUEST_TIMEOUT || '300',
+      inputLength: input.length,
     });
 
     try {
@@ -71,11 +73,30 @@ export class WritePRD extends BaseAction {
         },
       };
     } catch (error: any) {
+      const isTimeout = error.message?.includes('timeout') || error.message?.includes('exceeded');
+
       logger.error('WritePRD: Failed to generate PRD', {
         mode,
         error: error.message,
+        isTimeout,
+        requestTimeout: process.env.REQUEST_TIMEOUT || '300',
         stack: error.stack,
       });
+
+      // 如果是超时错误，提供更友好的错误信息
+      if (isTimeout) {
+        const timeoutError = new Error(
+          `PRD 生成超时。当前超时设置: ${process.env.REQUEST_TIMEOUT || '300'}秒。\n` +
+          `建议解决方案：\n` +
+          `1. 在项目根目录的 .env 文件中设置 REQUEST_TIMEOUT=600（10分钟）或更高\n` +
+          `2. 重启后端服务使配置生效\n` +
+          `3. 如果问题持续，可以尝试分段生成 PRD 或简化需求描述\n\n` +
+          `原始错误: ${error.message}`
+        );
+        timeoutError.name = 'PRDGenerationTimeoutError';
+        throw timeoutError;
+      }
+
       throw error;
     }
   }

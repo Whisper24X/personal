@@ -55,6 +55,12 @@ function loadLLMConfig(): ILLMConfig {
       baseURL: 'http://localhost:11434',
       model: 'llama2',
     },
+    ark: {
+      provider: 'ark',
+      apiKey: process.env.ARK_API_KEY || '',
+      baseURL: process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
+      model: process.env.ARK_MODEL || 'doubao-1-5-pro-32k-250115',
+    },
   };
   
   const config = configs[provider];

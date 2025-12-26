@@ -14,10 +14,13 @@ export class OpenAILLM extends BaseLLM {
   constructor(config: ILLMConfig) {
     super(config);
     
+    // 从环境变量读取超时时间，默认 5 分钟（300000ms）
+    const timeout = parseInt(process.env.REQUEST_TIMEOUT || '300') * 1000;
+    
     this.client = new OpenAI({
       apiKey: config.apiKey,
       baseURL: config.baseURL,
-      timeout: 60000,
+      timeout: timeout,
     });
   }
 

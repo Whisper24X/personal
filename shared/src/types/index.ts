@@ -36,7 +36,7 @@ export interface IRoleConfig {
 
 // ==================== LLM Types ====================
 
-export type LLMProvider = 'openai' | 'anthropic' | 'gemini' | 'zhipuai' | 'qianfan' | 'dashscope' | 'ollama';
+export type LLMProvider = 'openai' | 'anthropic' | 'gemini' | 'zhipuai' | 'qianfan' | 'dashscope' | 'ollama' | 'ark';
 
 export interface ILLMConfig {
   provider: LLMProvider;
