@@ -196,12 +196,10 @@ export class WriteRequirementSpec extends BaseAction {
       const entries = await fs.readdir(workspaceDir, { withFileTypes: true });
 
       const sortedEntries = entries
-        .filter(entry => entry.isFile() && entry.name.endsWith('.md'))
+        .filter(entry => entry.isFile() && entry.name.endsWith('.md') && !entry.name.endsWith('-final.md'))
         .sort((a, b) => {
           if (a.name === '00-outline.md') return -1;
           if (b.name === '00-outline.md') return 1;
-          if (a.name === 'REQUIREMENT_SPEC-final.md') return 1;
-          if (b.name === 'REQUIREMENT_SPEC-final.md') return 1;
           return a.name.localeCompare(b.name);
         });
 

@@ -224,15 +224,13 @@ export class WritePRD extends BaseAction {
       // 读取目录中的所有文件
       const entries = await fs.readdir(workspaceDir, { withFileTypes: true });
 
-      // 按文件名排序（确保顺序：outline -> sections -> PRD -> review -> final）
+      // 按文件名排序（确保顺序：outline -> sections -> PRD -> review，排除 final 文件）
       const sortedEntries = entries
-        .filter(entry => entry.isFile() && entry.name.endsWith('.md'))
+        .filter(entry => entry.isFile() && entry.name.endsWith('.md') && !entry.name.endsWith('-final.md'))
         .sort((a, b) => {
-          // 特殊排序：00-outline.md 在最前，PRD-final.md 在最后
+          // 特殊排序：00-outline.md 在最前
           if (a.name === '00-outline.md') return -1;
           if (b.name === '00-outline.md') return 1;
-          if (a.name === 'PRD-final.md') return 1;
-          if (b.name === 'PRD-final.md') return -1;
           return a.name.localeCompare(b.name);
         });
 

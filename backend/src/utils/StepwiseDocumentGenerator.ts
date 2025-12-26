@@ -21,19 +21,19 @@ export interface StepwiseGenerationConfig {
   buildOutlinePrompt: (input: string) => string;
   buildSectionPrompt: (input: string, outline: string, sectionNumber: number, sectionTitle: string) => string;
   systemPrompt: string;
-  
+
   // 审查（可选）
   reviewAction?: BaseAction;
   reviewTitle?: string; // 审查报告标题，如 "PRD 审查报告"
-  
+
   // 文档元信息
   documentTitle: string; // 如 "产品需求文档（PRD）"
   documentType: string; // 如 "PRD", "REQUIREMENT"
   mainFileName: string; // 如 "PRD.md", "REQUIREMENT_SPEC.md"
-  
+
   // 默认章节（当无法解析目录时使用）
   defaultSections: Section[];
-  
+
   // Workspace 配置
   workspaceDir: string;
   applicationId?: string;
@@ -387,15 +387,13 @@ export class StepwiseDocumentGenerator {
       const files: string[] = [];
       const entries = await fs.readdir(this.config.workspaceDir, { withFileTypes: true });
 
-      // 按文件名排序（确保顺序：outline -> sections -> main -> review -> final）
+      // 按文件名排序（确保顺序：outline -> sections -> main -> review，排除 final 文件）
+      const finalFileName = this.config.mainFileName.replace('.md', '-final.md');
       const sortedEntries = entries
-        .filter(entry => entry.isFile() && entry.name.endsWith('.md'))
+        .filter(entry => entry.isFile() && entry.name.endsWith('.md') && entry.name !== finalFileName)
         .sort((a, b) => {
           if (a.name === '00-outline.md') return -1;
           if (b.name === '00-outline.md') return 1;
-          const finalFileName = this.config.mainFileName.replace('.md', '-final.md');
-          if (a.name === finalFileName) return 1;
-          if (b.name === finalFileName) return 1;
           return a.name.localeCompare(b.name);
         });
 
@@ -440,7 +438,7 @@ export function getWorkspaceDir(
   let projectRoot = possibleRoots[0];
   for (const root of possibleRoots) {
     if (fsSync.existsSync(path.join(root, 'pnpm-workspace.yaml')) ||
-        fsSync.existsSync(path.join(root, 'package.json'))) {
+      fsSync.existsSync(path.join(root, 'package.json'))) {
       projectRoot = root;
       break;
     }
