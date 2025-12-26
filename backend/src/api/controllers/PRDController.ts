@@ -50,6 +50,8 @@ export class PRDController {
       // Set LLM from context
       writePRDAction.setLLM(ctx.llm);
 
+      // Get application ID and prepare for version
+      const applicationId = project.application_id || 'default';
       let prdContent: string;
       let parentId: string | undefined;
 
@@ -86,26 +88,36 @@ export class PRDController {
 
           if (searchResults.length > 0) {
             const relevantChunks = ragService.combinePRDResults(searchResults);
+            // Get next version number
+            const nextVersion = (latestPRD.version || 1) + 1;
             const result = await writePRDAction.run(requirements, {
               mode: 'update',
               useRAG: true,
               relevantChunks,
               historyPRD: latestPRD.content,
+              applicationId,
+              version: nextVersion,
             });
             prdContent = result.content;
           } else {
             // Fallback to standard update mode if no similar PRDs found
+            const nextVersion = (latestPRD.version || 1) + 1;
             const result = await writePRDAction.run(requirements, {
               mode: 'update',
               historyPRD: latestPRD.content,
+              applicationId,
+              version: nextVersion,
             });
             prdContent = result.content;
           }
         } else {
           // Standard update mode: use latest PRD directly
+          const nextVersion = (latestPRD.version || 1) + 1;
           const result = await writePRDAction.run(requirements, {
             mode: 'update',
             historyPRD: latestPRD.content,
+            applicationId,
+            version: nextVersion,
           });
           prdContent = result.content;
         }
@@ -132,20 +144,37 @@ export class PRDController {
 
           if (searchResults.length > 0) {
             const relevantChunks = ragService.combinePRDResults(searchResults);
+            // Get next version number (will be created in createPRDVersion)
+            const latestPRD = await documentRepo.findLatestPRD(id);
+            const nextVersion = latestPRD ? (latestPRD.version || 1) + 1 : 1;
             const result = await writePRDAction.run(requirements, {
               mode: 'new',
               useRAG: true,
               relevantChunks,
+              applicationId,
+              version: nextVersion,
             });
             prdContent = result.content;
           } else {
             // Standard new mode
-            const result = await writePRDAction.run(requirements, { mode: 'new' });
+            const latestPRD = await documentRepo.findLatestPRD(id);
+            const nextVersion = latestPRD ? (latestPRD.version || 1) + 1 : 1;
+            const result = await writePRDAction.run(requirements, {
+              mode: 'new',
+              applicationId,
+              version: nextVersion,
+            });
             prdContent = result.content;
           }
         } else {
           // Standard new mode
-          const result = await writePRDAction.run(requirements, { mode: 'new' });
+          const latestPRD = await documentRepo.findLatestPRD(id);
+          const nextVersion = latestPRD ? (latestPRD.version || 1) + 1 : 1;
+          const result = await writePRDAction.run(requirements, {
+            mode: 'new',
+            applicationId,
+            version: nextVersion,
+          });
           prdContent = result.content;
         }
       }
@@ -153,10 +182,16 @@ export class PRDController {
       // Save as new PRD version
       const newPRD = await documentRepo.createPRDVersion(id, prdContent, parentId);
 
+      // Read all content from workspace (if stepwise generation was used)
+      // The content from WritePRD already includes all files merged
+      const finalContent = prdContent; // This already contains all merged content from workspace
+
       logger.info(`PRDController: PRD generated successfully`, {
         projectId: id,
         documentId: newPRD.id,
         version: newPRD.version,
+        applicationId,
+        contentLength: finalContent.length,
       });
 
       return res.status(201).json({
@@ -164,10 +199,11 @@ export class PRDController {
         prd: {
           id: newPRD.id,
           version: newPRD.version,
-          content: newPRD.content,
+          content: finalContent, // Return merged content from workspace
           filename: newPRD.filename,
           createdAt: newPRD.created_at,
           parentId: newPRD.parent_id,
+          workspaceDir: `workspace/${applicationId}-v${newPRD.version}`,
         },
       });
     } catch (error: any) {

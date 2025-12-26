@@ -312,10 +312,142 @@ ${PRD_TEMPLATE}
 `;
 }
 
+/**
+ * 生成 PRD 目录（仅输出章节结构）
+ */
+export function buildPRDOutlinePrompt(input: string): string {
+  return `基于以下需求信息，生成 PRD 的目录结构（仅输出章节标题，不输出内容）：
+
+【需求背景】
+${input}
+
+【PRD 模板格式（必须严格遵循）】
+${PRD_TEMPLATE}
+
+要求：
+1. **严格按照模板结构输出目录，包含所有一级章节（## 0. 到 ## 10.）**
+2. **只输出 Markdown 格式的目录，格式如下：**
+\`\`\`
+## 0. 版本说明
+## 1. 产品概述
+## 2. 目标与成功指标
+...
+## 10. 附录
+\`\`\`
+3. 不要输出任何章节内容，只输出章节标题
+4. 保持章节编号和标题与模板完全一致
+
+输出格式：纯 Markdown 目录，每个章节一行
+`;
+}
+
+/**
+ * 生成单个章节的详细内容
+ */
+export function buildPRDSectionPrompt(
+  input: string,
+  outline: string,
+  sectionNumber: number,
+  sectionTitle: string
+): string {
+  return `基于以下需求信息和 PRD 目录，生成第 ${sectionNumber} 章「${sectionTitle}」的详细内容：
+
+【需求背景】
+${input}
+
+【PRD 目录】
+${outline}
+
+【目标章节】
+## ${sectionNumber}. ${sectionTitle}
+
+生成要求：
+1. **严格按照 PRD 模板中第 ${sectionNumber} 章的结构和格式输出**
+2. **必须包含该章节下的所有子章节和内容点**
+3. 内容要详细、具体、可执行，避免空洞和占位符
+4. 所有功能描述必须包含：触发条件、前置条件、主流程、异常流程、边界条件、验收标准
+5. 内容要面向研发和测试团队，确保可直接使用
+
+输出要求：
+- 只输出第 ${sectionNumber} 章的内容（包含章节标题）
+- 内容要充实，不少于 500 字
+- 使用 Markdown 格式
+- 不保留任何占位符
+`;
+}
+
+/**
+ * PRD Review 提示词
+ */
+export const PRD_REVIEW_SYSTEM_PROMPT = `你是一位资深的产品文档审查专家，擅长检查 PRD 文档的完整性和质量。
+
+你的职责是：
+- 检查 PRD 是否包含所有必需的章节（0-10章）
+- 检查每个章节的内容是否充实、具体
+- 识别空洞、模糊或占位符内容
+- 提供改进建议
+
+输出格式：结构化的审查报告`;
+
+export function buildPRDReviewPrompt(prdContent: string, outline: string): string {
+  return `请审查以下 PRD 文档的质量：
+
+【PRD 文档】
+${prdContent}
+
+【预期目录结构】
+${outline}
+
+审查要求：
+1. **检查章节完整性**：是否包含所有必需的章节（## 0. 版本说明 到 ## 10. 附录）？
+2. **检查内容质量**：每个章节是否有充实的内容？是否存在空洞、模糊或占位符？
+3. **检查格式规范**：章节编号、标题是否与模板一致？
+4. **检查可执行性**：功能描述是否包含触发条件、主流程、异常流程、边界条件、验收标准？
+
+输出格式：
+\`\`\`markdown
+# PRD 审查报告
+
+## 1. 章节完整性检查
+- [ ] 章节 0. 版本说明：存在/缺失
+- [ ] 章节 1. 产品概述：存在/缺失
+- [ ] 章节 2. 目标与成功指标：存在/缺失
+- [ ] 章节 3. 用户故事：存在/缺失
+- [ ] 章节 4. 功能需求：存在/缺失
+- [ ] 章节 5. 页面与交互设计说明：存在/缺失
+- [ ] 章节 6. 非功能需求：存在/缺失
+- [ ] 章节 7. 技术实现建议：存在/缺失
+- [ ] 章节 8. 验收与交付标准：存在/缺失
+- [ ] 章节 9. 风险与应对：存在/缺失
+- [ ] 章节 10. 附录：存在/缺失
+
+## 2. 内容质量检查
+### 发现的问题：
+1. [章节编号] 问题描述
+2. [章节编号] 问题描述
+
+### 空洞内容识别：
+- [章节编号] 具体位置和问题
+
+## 3. 改进建议
+1. 建议 1
+2. 建议 2
+
+## 4. 审查结论
+- 通过 / 需要改进
+- 主要问题：[列出主要问题]
+\`\`\`
+`;
+}
+
 export default {
   PRD_SYSTEM_PROMPT,
   PRD_TEMPLATE,
   buildPRDPrompt,
   buildPRDUpdatePrompt,
-  buildPRDWithRAGPrompt
+  buildPRDWithRAGPrompt,
+  buildPRDOutlinePrompt,
+  buildPRDSectionPrompt,
+  PRD_REVIEW_SYSTEM_PROMPT,
+  buildPRDReviewPrompt,
 };
