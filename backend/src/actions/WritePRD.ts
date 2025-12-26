@@ -16,6 +16,7 @@ import {
 import { logger } from '../utils';
 import { PRDReview } from './PRDReview';
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import * as path from 'path';
 
 export interface WritePRDOptions {
@@ -138,12 +139,34 @@ export class WritePRD extends BaseAction {
 
   /**
    * 获取工作目录路径
+   * 使用根目录的 workspace 目录，文件夹命名格式：应用-版本号-类型（如 default-v1-PRD）
    */
   private getWorkspaceDir(options?: WritePRDOptions): string {
-    const workspaceRoot = options?.workspacePath || process.env.WORKSPACE_PATH || './workspace';
+    // 计算项目根目录：从 backend/src/actions 或 backend/dist/actions 到项目根目录
+    // 在开发环境：backend/src/actions -> ../../../
+    // 在编译后：backend/dist/actions -> ../../../
+    // 为了兼容两种情况，先尝试从 __dirname 向上查找，如果找不到则使用 process.cwd()
+    const possibleRoots = [
+      path.resolve(__dirname, '../../../'), // backend/src/actions 或 backend/dist/actions
+      path.resolve(__dirname, '../../../../'), // 如果编译后结构不同
+      process.cwd(), // 当前工作目录（通常是项目根目录）
+    ];
+
+    // 查找包含 pnpm-workspace.yaml 或 package.json 的目录作为项目根目录
+    let projectRoot = possibleRoots[0]; // 默认使用第一个
+    for (const root of possibleRoots) {
+      if (fsSync.existsSync(path.join(root, 'pnpm-workspace.yaml')) ||
+        fsSync.existsSync(path.join(root, 'package.json'))) {
+        projectRoot = root;
+        break;
+      }
+    }
+
+    const workspaceRoot = options?.workspacePath || process.env.WORKSPACE_PATH || path.join(projectRoot, 'workspace');
     const applicationId = options?.applicationId || 'default';
     const version = options?.version || 1;
-    return path.join(workspaceRoot, `${applicationId}-v${version}`);
+    const type = 'PRD'; // 文档类型
+    return path.join(workspaceRoot, `${applicationId}-v${version}-${type}`);
   }
 
   /**
