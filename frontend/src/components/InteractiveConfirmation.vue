@@ -68,8 +68,8 @@
                 <el-scrollbar :max-height="viewMode === 'preview' ? '200px' : '400px'" class="content-scrollbar">
                     <div class="content-display">
                         <!-- File content view/edit -->
-                        <!-- For WritePRD action, always show main content first, not files -->
-                        <div v-if="selectedFileIndex >= 0 && hasFiles && roleInfo.action !== 'WritePRD'" class="file-content-editor">
+                        <!-- For WritePRD and WriteRequirementSpec actions, always show main content first, not files -->
+                        <div v-if="selectedFileIndex >= 0 && hasFiles && roleInfo.action !== 'WritePRD' && roleInfo.action !== 'WriteRequirementSpec'" class="file-content-editor">
                             <div class="file-header">
                                 <span class="file-path">{{ getFilePath(roleInfo.outputFiles![selectedFileIndex]) }}</span>
                                 <el-button v-if="!isEditing" size="small" type="primary" :icon="Edit" @click="startEditFile(selectedFileIndex)">
@@ -245,16 +245,17 @@ const hasFiles = computed(() => {
 });
 
 // Auto-select first file when files are available
-// But for WritePRD action, don't auto-select files - show main content instead
+// But for WritePRD and WriteRequirementSpec actions, don't auto-select files - show main content instead
 watch(() => props.roleInfo.outputFiles, (files) => {
-    if (files && files.length > 0 && selectedFileIndex.value < 0 && props.roleInfo.action !== 'WritePRD') {
+    if (files && files.length > 0 && selectedFileIndex.value < 0 && 
+        props.roleInfo.action !== 'WritePRD' && props.roleInfo.action !== 'WriteRequirementSpec') {
         selectedFileIndex.value = 0;
     }
 }, { immediate: true });
 
-// Reset file selection when action is WritePRD to ensure main content is shown
+// Reset file selection when action is WritePRD or WriteRequirementSpec to ensure main content is shown
 watch(() => props.roleInfo.action, (action) => {
-    if (action === 'WritePRD' && selectedFileIndex.value >= 0) {
+    if ((action === 'WritePRD' || action === 'WriteRequirementSpec') && selectedFileIndex.value >= 0) {
         selectedFileIndex.value = -1;
     }
 }, { immediate: true });

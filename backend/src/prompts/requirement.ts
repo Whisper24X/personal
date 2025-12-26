@@ -131,9 +131,145 @@ ${REQUIREMENT_SPEC_TEMPLATE}
 `;
 }
 
+/**
+ * 生成需求说明文档目录的提示词
+ */
+export function buildRequirementSpecOutlinePrompt(userIdea: string): string {
+  return `基于以下用户需求，生成需求说明文档的目录结构：
+
+【用户需求】
+${userIdea}
+
+【需求说明文档模板格式（必须严格遵循）】
+${REQUIREMENT_SPEC_TEMPLATE}
+
+生成要求：
+1. **必须严格按照模板的章节结构输出目录**
+2. **必须包含所有一级章节（## 1. 需求概述 到 ## 9. 下一步建议）**
+3. 目录要简洁明了，只包含一级章节标题
+4. 每个章节标题必须与模板完全一致
+
+输出格式：
+\`\`\`markdown
+## 1. 需求概述
+## 2. 用户分析
+## 3. 功能需求概述
+## 4. 市场分析
+## 5. 可行性分析
+## 6. 项目范围
+## 7. 约束条件
+## 8. 风险评估
+## 9. 下一步建议
+\`\`\`
+
+只输出目录结构，不要输出章节内容。`;
+}
+
+/**
+ * 生成需求说明文档单个章节的提示词
+ */
+export function buildRequirementSpecSectionPrompt(
+  input: string,
+  outline: string,
+  sectionNumber: number,
+  sectionTitle: string
+): string {
+  return `基于以下需求信息和需求说明文档目录，生成第 ${sectionNumber} 章「${sectionTitle}」的详细内容：
+
+【需求背景】
+${input}
+
+【需求说明文档目录】
+${outline}
+
+【目标章节】
+## ${sectionNumber}. ${sectionTitle}
+
+生成要求：
+1. **严格按照需求说明文档模板中第 ${sectionNumber} 章的结构和格式输出**
+2. **必须包含该章节下的所有子章节和内容点**
+3. 内容要详细、具体、充实，避免空洞和占位符
+4. 内容要面向产品经理和研发团队，确保可直接使用
+5. 每个子章节都要包含充分的内容和具体的细节
+
+输出要求：
+- 只输出第 ${sectionNumber} 章的内容（包含章节标题）
+- 内容要充实，不少于 300 字
+- 使用 Markdown 格式
+- 不保留任何占位符（如"[描述]"等）
+- 章节编号和标题必须与模板完全一致
+`;
+}
+
+/**
+ * Requirement Spec Review 提示词
+ */
+export const REQUIREMENT_SPEC_REVIEW_SYSTEM_PROMPT = `你是一位资深的需求文档审查专家，擅长检查需求说明文档的完整性和质量。
+
+你的职责是：
+- 检查需求说明文档是否包含所有必需的章节（1-9章）
+- 检查每个章节的内容是否充实、具体
+- 识别空洞、模糊或占位符内容
+- 提供改进建议
+
+输出格式：结构化的审查报告`;
+
+export function buildRequirementSpecReviewPrompt(requirementSpecContent: string, outline: string): string {
+  return `请审查以下需求说明文档的质量：
+
+【需求说明文档】
+${requirementSpecContent}
+
+【预期目录结构】
+${outline}
+
+审查要求：
+1. **检查章节完整性**：是否包含所有必需的章节（## 1. 需求概述 到 ## 9. 下一步建议）？
+2. **检查内容质量**：每个章节是否有充实的内容？是否存在空洞、模糊或占位符？
+3. **检查格式规范**：章节编号、标题是否与模板一致？
+4. **检查内容充实度**：每个章节是否包含充分的细节和具体信息？
+
+输出格式：
+\`\`\`markdown
+# 需求说明文档审查报告
+
+## 1. 章节完整性检查
+- [ ] 章节 1. 需求概述：存在/缺失
+- [ ] 章节 2. 用户分析：存在/缺失
+- [ ] 章节 3. 功能需求概述：存在/缺失
+- [ ] 章节 4. 市场分析：存在/缺失
+- [ ] 章节 5. 可行性分析：存在/缺失
+- [ ] 章节 6. 项目范围：存在/缺失
+- [ ] 章节 7. 约束条件：存在/缺失
+- [ ] 章节 8. 风险评估：存在/缺失
+- [ ] 章节 9. 下一步建议：存在/缺失
+
+## 2. 内容质量检查
+### 发现的问题：
+1. [章节编号] 问题描述
+2. [章节编号] 问题描述
+
+### 空洞内容识别：
+- [章节编号] 具体位置和问题
+
+## 3. 改进建议
+1. 建议 1
+2. 建议 2
+
+## 4. 审查结论
+- 通过 / 需要改进
+- 主要问题：[列出主要问题]
+\`\`\`
+`;
+}
+
 export default {
   REQUIREMENT_SPEC_SYSTEM_PROMPT,
   REQUIREMENT_SPEC_TEMPLATE,
   buildRequirementSpecPrompt,
+  buildRequirementSpecOutlinePrompt,
+  buildRequirementSpecSectionPrompt,
+  REQUIREMENT_SPEC_REVIEW_SYSTEM_PROMPT,
+  buildRequirementSpecReviewPrompt,
 };
 

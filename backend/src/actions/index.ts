@@ -5,7 +5,9 @@
 
 export { UserRequirement } from './UserRequirement';
 export { WriteRequirementSpec } from './WriteRequirementSpec';
+export { RequirementSpecReview } from './RequirementSpecReview';
 export { WritePRD } from './WritePRD';
+export { PRDReview } from './PRDReview';
 export { WriteDesign } from './WriteDesign';
 export { WriteCode } from './WriteCode';
 export { WriteTest } from './WriteTest';

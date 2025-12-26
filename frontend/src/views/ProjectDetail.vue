@@ -101,6 +101,45 @@
         </el-scrollbar>
       </el-card>
 
+      <el-card class="requirement-specs-card">
+        <template #header>
+          <div class="card-header-content">
+            <span class="card-title">
+              <el-icon><Document /></el-icon>
+              需求说明文档管理
+            </span>
+            <el-tag>{{ requirementSpecs.length }}</el-tag>
+          </div>
+        </template>
+
+        <el-empty 
+          v-if="requirementSpecs.length === 0" 
+          description="暂无需求说明文档"
+          :image-size="100"
+        />
+
+        <el-table v-else :data="requirementSpecs" style="width: 100%">
+          <el-table-column prop="filename" label="文件名" />
+          <el-table-column prop="createdAt" label="创建时间">
+            <template #default="{ row }">
+              {{ formatDate(row.createdAt) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="150">
+            <template #default="{ row }">
+              <el-button 
+                type="primary" 
+                link 
+                size="small"
+                @click.stop="viewRequirementSpec(row)"
+              >
+                查看
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+
       <el-card class="prds-card">
         <template #header>
           <div class="card-header-content">
@@ -239,12 +278,14 @@ const { currentProject, messages, documents, loading } = storeToRefs(projectStor
 
 const projectId = route.params.id as string;
 const prds = ref<any[]>([]);
+const requirementSpecs = ref<any[]>([]);
 
 onMounted(async () => {
   await projectStore.fetchProject(projectId);
   await projectStore.fetchMessages(projectId);
   await projectStore.fetchDocuments(projectId);
   await fetchPRDs();
+  await fetchRequirementSpecs();
 });
 
 async function fetchPRDs() {
@@ -288,8 +329,31 @@ async function handleRestorePRD(prd: any) {
   }
 }
 
+async function fetchRequirementSpecs() {
+  try {
+    // 从 documents 中筛选出 requirement 类型的文档
+    const requirementDocs = documents.value.filter(
+      (doc: any) => doc.docType === 'requirement'
+    );
+    requirementSpecs.value = requirementDocs.map((doc: any) => ({
+      id: doc.id,
+      filename: doc.filename,
+      content: doc.content,
+      createdAt: doc.createdAt,
+    }));
+  } catch (err: any) {
+    ElMessage.error(err.message || '获取需求说明文档列表失败');
+  }
+}
+
 function viewPRD(prd: any) {
   const blob = new Blob([prd.content], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+}
+
+function viewRequirementSpec(requirementSpec: any) {
+  const blob = new Blob([requirementSpec.content], { type: 'text/markdown' });
   const url = URL.createObjectURL(blob);
   window.open(url, '_blank');
 }
@@ -405,6 +469,10 @@ function formatDate(dateStr: string): string {
 
 .message-content {
   white-space: pre-wrap;
+}
+
+.requirement-specs-card {
+  margin-bottom: 0;
 }
 
 .prds-card {

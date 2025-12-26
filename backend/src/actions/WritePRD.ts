@@ -15,6 +15,7 @@ import {
 } from '../prompts/prd';
 import { logger } from '../utils';
 import { PRDReview } from './PRDReview';
+import { StepwiseDocumentGenerator } from '../utils/StepwiseDocumentGenerator';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
@@ -267,214 +268,22 @@ export class WritePRD extends BaseAction {
 
   /**
    * 分步骤生成 PRD
-   * 1. 生成目录
-   * 2. 按章节生成内容
-   * 3. 合并并审查
+   * 使用通用的 StepwiseDocumentGenerator
    */
   private async generateStepwise(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
-    logger.info('WritePRD: Starting stepwise generation', {
-      workspaceDir: this.getWorkspaceDir(options),
-    });
+    const workspaceDir = this.getWorkspaceDir(options);
+    const reviewAction = new PRDReview();
 
-    try {
-      // Step 1: 生成 PRD 目录
-      logger.info('WritePRD: Step 1 - Generating outline');
-      const outlinePrompt = buildPRDOutlinePrompt(input);
-      const outline = await this.aask(outlinePrompt, [PRD_SYSTEM_PROMPT]);
-
-      // 保存目录到文件
-      await this.saveToWorkspace('00-outline.md', outline, options);
-
-      logger.info('WritePRD: Outline generated', {
-        outlineLength: outline.length,
-      });
-
-      // Step 2: 解析章节列表
-      const sections = this.parseSections(outline);
-      logger.info('WritePRD: Parsed sections', {
-        sectionCount: sections.length,
-        sections: sections.map(s => `${s.number}. ${s.title}`),
-      });
-
-      // Step 3: 按章节生成内容（串行生成，每个章节独立配置）
-      const sectionContents: string[] = [];
-
-      // 保存原始配置
-      const originalMaxTokens = this.llm?.config?.maxTokens;
-      const maxTokensPerSection = parseInt(process.env.MAX_TOKENS_PER_SECTION || '32000'); // 默认 32k
-
-      for (const section of sections) {
-        logger.info(`WritePRD: Generating section ${section.number} - ${section.title}`, {
-          maxTokens: maxTokensPerSection,
-        });
-
-        try {
-          // 为每个章节设置独立的 max_tokens
-          if (this.llm && this.llm.config) {
-            this.llm.config.maxTokens = maxTokensPerSection;
-          }
-
-          const sectionPrompt = buildPRDSectionPrompt(
-            input,
-            outline,
-            section.number,
-            section.title
-          );
-
-          // 构建消息
-          const messages: any[] = [
-            {
-              role: 'system',
-              content: PRD_SYSTEM_PROMPT,
-            },
-            {
-              role: 'user',
-              content: sectionPrompt,
-            },
-          ];
-
-          // 使用 acompletion 以便传递 max_tokens
-          const response = await this.acompletion(messages);
-          const sectionContent = response.content;
-
-          sectionContents.push(sectionContent);
-
-          // 保存每个章节到文件
-          const sectionFileName = `${String(section.number).padStart(2, '0')}-section-${section.number}.md`;
-          await this.saveToWorkspace(sectionFileName, sectionContent, options);
-
-          logger.info(`WritePRD: Section ${section.number} generated`, {
-            contentLength: sectionContent.length,
-            tokensUsed: response.usage?.totalTokens || 0,
-            fileName: sectionFileName,
-          });
-        } catch (error: any) {
-          logger.error(`WritePRD: Failed to generate section ${section.number}`, {
-            error: error.message,
-            section: section.title,
-          });
-          // 如果某个章节生成失败，使用占位符
-          sectionContents.push(`## ${section.number}. ${section.title}\n\n[生成失败: ${error.message}]`);
-        }
-      }
-
-      // 恢复原始配置
-      if (this.llm && this.llm.config && originalMaxTokens !== undefined) {
-        this.llm.config.maxTokens = originalMaxTokens;
-      }
-
-      // Step 4: 合并所有章节
-      const prdContent = this.mergeSections(outline, sectionContents);
-
-      // 保存合并后的 PRD
-      await this.saveToWorkspace('PRD.md', prdContent, options);
-
-      logger.info('WritePRD: All sections merged', {
-        totalLength: prdContent.length,
-        sectionCount: sections.length,
-      });
-
-      // Step 5: PRD Review
-      logger.info('WritePRD: Step 5 - Running PRD review');
-      let finalContent = prdContent;
-
-      try {
-        const reviewAction = new PRDReview();
-        reviewAction.setLLM(this.llm);
-
-        const reviewResult = await reviewAction.run(prdContent, { outline });
-
-        logger.info('WritePRD: PRD review completed', {
-          reviewLength: reviewResult.content.length,
-        });
-
-        // 保存审查报告到文件
-        await this.saveToWorkspace('PRD-review.md', reviewResult.content, options);
-
-        // 将审查结果附加到 PRD 内容，使用清晰的分隔
-        finalContent = [
-          prdContent,
-          '',
-          '---',
-          '',
-          '# PRD 审查报告',
-          '',
-          reviewResult.content,
-        ].join('\n');
-      } catch (reviewError: any) {
-        logger.warn('WritePRD: PRD review failed, continuing without review', {
-          error: reviewError.message,
-        });
-        // 审查失败不影响 PRD 返回，只记录警告
-      }
-
-      // 保存最终合并内容
-      await this.saveToWorkspace('PRD-final.md', finalContent, options);
-
-      logger.info('WritePRD: Stepwise generation completed', {
-        finalContentLength: finalContent.length,
-        sectionCount: sections.length,
-        workspaceDir: this.getWorkspaceDir(options),
-      });
-
-      // 从 workspace 读取所有文件内容
-      let allContent: string;
-      try {
-        allContent = await this.readAllFromWorkspace(options);
-        // 如果读取失败或为空，使用合并后的内容
-        if (!allContent || allContent.trim().length === 0) {
-          logger.warn('WritePRD: Workspace content is empty, using merged content');
-          allContent = finalContent;
-        }
-      } catch (error: any) {
-        logger.warn('WritePRD: Failed to read from workspace, using merged content', {
-          error: error.message,
-        });
-        allContent = finalContent;
-      }
-
-      return {
-        content: allContent,
-        data: {
-          type: 'prd',
-          filename: 'PRD.md',
-          timestamp: new Date().toISOString(),
-          mode: 'new',
-          stepwise: true,
-          sectionCount: sections.length,
-          reviewIncluded: true,
-          workspaceDir: this.getWorkspaceDir(options),
-        },
-      };
-    } catch (error: any) {
-      logger.error('WritePRD: Stepwise generation failed', {
-        error: error.message,
-        stack: error.stack,
-      });
-      throw error;
-    }
-  }
-
-  /**
-   * 解析章节列表
-   */
-  private parseSections(outline: string): Array<{ number: number; title: string }> {
-    const sections: Array<{ number: number; title: string }> = [];
-    const lines = outline.split('\n');
-
-    for (const line of lines) {
-      const match = line.match(/^##\s+(\d+)\.\s+(.+)$/);
-      if (match) {
-        sections.push({
-          number: parseInt(match[1]),
-          title: match[2].trim(),
-        });
-      }
-    }
-
-    // 如果没有解析到章节，使用默认章节
-    if (sections.length === 0) {
-      return [
+    const generator = new StepwiseDocumentGenerator(this, {
+      buildOutlinePrompt: buildPRDOutlinePrompt,
+      buildSectionPrompt: buildPRDSectionPrompt,
+      systemPrompt: PRD_SYSTEM_PROMPT,
+      reviewAction: reviewAction,
+      reviewTitle: 'PRD 审查报告',
+      documentTitle: '产品需求文档（PRD）',
+      documentType: 'PRD',
+      mainFileName: 'PRD.md',
+      defaultSections: [
         { number: 0, title: '版本说明' },
         { number: 1, title: '产品概述' },
         { number: 2, title: '目标与成功指标' },
@@ -486,67 +295,15 @@ export class WritePRD extends BaseAction {
         { number: 8, title: '验收与交付标准' },
         { number: 9, title: '风险与应对' },
         { number: 10, title: '附录' },
-      ];
-    }
-
-    return sections;
-  }
-
-  /**
-   * 合并章节内容
-   */
-  private mergeSections(outline: string, sectionContents: string[]): string {
-    const sections = this.parseSections(outline);
-    const mergedParts: string[] = [];
-
-    // 添加 PRD 标题
-    mergedParts.push('# 产品需求文档（PRD）\n');
-
-    // 合并所有章节
-    for (let i = 0; i < sections.length; i++) {
-      const section = sections[i];
-      let content = sectionContents[i] || '';
-
-      // 如果没有内容，使用占位符
-      if (!content || content.trim() === '') {
-        content = `## ${section.number}. ${section.title}\n\n[待补充]`;
-      } else {
-        // 清理内容：移除开头的空白行
-        content = content.trim();
-
-        // 确保章节标题格式正确
-        const expectedTitle = `## ${section.number}. ${section.title}`;
-        if (content.startsWith('##')) {
-          // 如果已有章节标题，检查是否正确
-          const firstLine = content.split('\n')[0];
-          if (firstLine !== expectedTitle) {
-            // 替换为正确的标题
-            content = content.replace(/^##\s+\d+\.\s+.+/, expectedTitle);
-          }
-        } else {
-          // 如果没有章节标题，添加
-          content = `${expectedTitle}\n\n${content}`;
-        }
-      }
-
-      mergedParts.push(content);
-
-      // 章节之间添加分隔（除了最后一个）
-      if (i < sections.length - 1) {
-        mergedParts.push('\n---\n');
-      }
-    }
-
-    // 合并所有部分
-    const merged = mergedParts.join('\n\n');
-
-    logger.info('WritePRD: Sections merged', {
-      sectionCount: sections.length,
-      mergedLength: merged.length,
+      ],
+      workspaceDir,
+      applicationId: options?.applicationId,
+      version: options?.version,
     });
 
-    return merged;
+    return await generator.generate(input);
   }
+
 
   /**
    * Build PRD with history context
