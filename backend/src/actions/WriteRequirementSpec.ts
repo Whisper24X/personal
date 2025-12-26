@@ -13,7 +13,7 @@ import {
 } from '../prompts/requirement';
 import { logger } from '../utils';
 import { RequirementSpecReview } from './RequirementSpecReview';
-import { StepwiseDocumentGenerator, getWorkspaceDir } from '../utils/StepwiseDocumentGenerator';
+import { StepwiseDocumentGenerator } from '../utils/StepwiseDocumentGenerator';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
@@ -31,8 +31,7 @@ export class WriteRequirementSpec extends BaseAction {
   constructor() {
     super(
       'WriteRequirementSpec',
-      '编写需求说明文档',
-      '分析用户原始需求，进行市场调研，输出详细的需求说明文档'
+      '编写需求说明文档：分析用户原始需求，进行市场调研，输出详细的需求说明文档'
     );
   }
 
@@ -136,7 +135,7 @@ export class WriteRequirementSpec extends BaseAction {
     let projectRoot = possibleRoots[0];
     for (const root of possibleRoots) {
       if (fsSync.existsSync(path.join(root, 'pnpm-workspace.yaml')) ||
-          fsSync.existsSync(path.join(root, 'package.json'))) {
+        fsSync.existsSync(path.join(root, 'package.json'))) {
         projectRoot = root;
         break;
       }
@@ -250,9 +249,6 @@ export class WriteRequirementSpec extends BaseAction {
         { number: 4, title: '市场分析' },
         { number: 5, title: '可行性分析' },
         { number: 6, title: '项目范围' },
-        { number: 7, title: '约束条件' },
-        { number: 8, title: '风险评估' },
-        { number: 9, title: '下一步建议' },
       ],
       workspaceDir,
       applicationId: options?.applicationId,

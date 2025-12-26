@@ -68,7 +68,7 @@ export class RequirementSpecReview extends BaseAction {
       }
     }
 
-    return outline.join('\n') || '## 1. 需求概述\n## 2. 用户分析\n## 3. 功能需求概述\n## 4. 市场分析\n## 5. 可行性分析\n## 6. 项目范围\n## 7. 约束条件\n## 8. 风险评估\n## 9. 下一步建议';
+    return outline.join('\n') || '## 1. 需求概述\n## 2. 用户分析\n## 3. 功能需求概述\n## 4. 市场分析\n## 5. 可行性分析\n## 6. 项目范围';
   }
 }
 
