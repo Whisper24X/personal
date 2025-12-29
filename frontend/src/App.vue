@@ -18,6 +18,12 @@
             </el-icon>
             控制面板
           </el-menu-item>
+          <el-menu-item index="/config/llm">
+            <el-icon>
+              <Setting />
+            </el-icon>
+            LLM 配置
+          </el-menu-item>
         </el-menu>
       </div>
     </el-header>
@@ -40,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { Promotion, Monitor, Plus, MagicStick } from '@element-plus/icons-vue';
+import { Promotion, Monitor, Plus, MagicStick, Setting } from '@element-plus/icons-vue';
 </script>
 
 <style>

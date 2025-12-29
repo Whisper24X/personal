@@ -1,0 +1,274 @@
+/**
+ * LLM Config Controller
+ * Handles LLM configuration-related HTTP requests
+ */
+
+import { Request, Response } from 'express';
+import { LLMConfigRepository } from '../../database';
+import { logger, clearLLMConfigCache } from '../../utils';
+import { LLMProvider } from '@mind2build/shared';
+
+const llmConfigRepo = new LLMConfigRepository();
+const DEFAULT_USER_ID = '302769d6-247d-43db-a005-0519712255fb';
+
+export class LLMConfigController {
+  /**
+   * Get all LLM configurations for the user
+   * GET /api/config/llm
+   */
+  static async list(req: Request, res: Response) {
+    try {
+      const userId = (req as any).userId || DEFAULT_USER_ID;
+
+      const configs = await llmConfigRepo.findByUserId(userId);
+
+      return res.json({
+        success: true,
+        configs: configs.map((config) => ({
+          id: config.id,
+          provider: config.provider,
+          model: config.model,
+          baseURL: config.base_url,
+          temperature: config.temperature,
+          maxTokens: config.max_tokens,
+          isActive: config.is_active,
+          createdAt: config.created_at,
+          updatedAt: config.updated_at,
+          // Don't expose API key in list
+        })),
+      });
+    } catch (error: any) {
+      logger.error('LLMConfigController: Failed to list configs:', error);
+      return res.status(500).json({
+        error: 'Failed to list LLM configurations',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Get active LLM configuration
+   * GET /api/config/llm/active
+   */
+  static async getActive(req: Request, res: Response) {
+    try {
+      const userId = (req as any).userId || DEFAULT_USER_ID;
+
+      const config = await llmConfigRepo.findActive(userId);
+
+      if (!config) {
+        return res.json({
+          success: true,
+          config: null,
+        });
+      }
+
+      return res.json({
+        success: true,
+        config: {
+          id: config.id,
+          provider: config.provider,
+          apiKey: config.api_key, // Include API key for active config
+          baseURL: config.base_url,
+          model: config.model,
+          temperature: config.temperature,
+          maxTokens: config.max_tokens,
+          isActive: config.is_active,
+          createdAt: config.created_at,
+          updatedAt: config.updated_at,
+        },
+      });
+    } catch (error: any) {
+      logger.error('LLMConfigController: Failed to get active config:', error);
+      return res.status(500).json({
+        error: 'Failed to get active LLM configuration',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Get LLM configuration by provider
+   * GET /api/config/llm/:provider
+   */
+  static async getByProvider(req: Request, res: Response) {
+    try {
+      const userId = (req as any).userId || DEFAULT_USER_ID;
+      const { provider } = req.params;
+
+      if (!provider || !['openai', 'anthropic', 'gemini', 'zhipuai', 'qianfan', 'dashscope', 'ollama', 'ark'].includes(provider)) {
+        return res.status(400).json({
+          error: 'Invalid provider',
+        });
+      }
+
+      const config = await llmConfigRepo.findByProvider(userId, provider as LLMProvider);
+
+      if (!config) {
+        return res.status(404).json({
+          error: 'Configuration not found',
+        });
+      }
+
+      return res.json({
+        success: true,
+        config: {
+          id: config.id,
+          provider: config.provider,
+          apiKey: config.api_key,
+          baseURL: config.base_url,
+          model: config.model,
+          temperature: config.temperature,
+          maxTokens: config.max_tokens,
+          isActive: config.is_active,
+          createdAt: config.created_at,
+          updatedAt: config.updated_at,
+        },
+      });
+    } catch (error: any) {
+      logger.error('LLMConfigController: Failed to get config by provider:', error);
+      return res.status(500).json({
+        error: 'Failed to get LLM configuration',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Create or update LLM configuration
+   * POST /api/config/llm
+   */
+  static async upsert(req: Request, res: Response) {
+    try {
+      const userId = (req as any).userId || DEFAULT_USER_ID;
+      const { provider, apiKey, baseURL, model, temperature, maxTokens, isActive } = req.body;
+
+      if (!provider || !model) {
+        return res.status(400).json({
+          error: 'Missing required fields: provider and model',
+        });
+      }
+
+      if (!['openai', 'anthropic', 'gemini', 'zhipuai', 'qianfan', 'dashscope', 'ollama', 'ark'].includes(provider)) {
+        return res.status(400).json({
+          error: 'Invalid provider',
+        });
+      }
+
+      const config = await llmConfigRepo.upsert({
+        userId,
+        provider: provider as LLMProvider,
+        apiKey,
+        baseURL,
+        model,
+        temperature: temperature !== undefined ? parseFloat(temperature) : undefined,
+        maxTokens: maxTokens !== undefined ? parseInt(maxTokens, 10) : undefined,
+        isActive: isActive !== undefined ? Boolean(isActive) : undefined,
+      });
+
+      logger.info(`LLMConfigController: Configuration upserted`, {
+        userId,
+        provider,
+        isActive: config.is_active,
+      });
+
+      // Clear config cache so new config is used
+      clearLLMConfigCache();
+
+      return res.json({
+        success: true,
+        config: {
+          id: config.id,
+          provider: config.provider,
+          apiKey: config.api_key,
+          baseURL: config.base_url,
+          model: config.model,
+          temperature: config.temperature,
+          maxTokens: config.max_tokens,
+          isActive: config.is_active,
+          createdAt: config.created_at,
+          updatedAt: config.updated_at,
+        },
+      });
+    } catch (error: any) {
+      logger.error('LLMConfigController: Failed to upsert config:', error);
+      return res.status(500).json({
+        error: 'Failed to save LLM configuration',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Set a configuration as active
+   * POST /api/config/llm/:id/activate
+   */
+  static async activate(req: Request, res: Response) {
+    try {
+      const userId = (req as any).userId || DEFAULT_USER_ID;
+      const { id } = req.params;
+
+      const config = await llmConfigRepo.setActive(userId, id);
+
+      logger.info(`LLMConfigController: Configuration activated`, {
+        userId,
+        configId: id,
+      });
+
+      // Clear config cache so new config is used
+      clearLLMConfigCache();
+
+      return res.json({
+        success: true,
+        config: {
+          id: config.id,
+          provider: config.provider,
+          apiKey: config.api_key,
+          baseURL: config.base_url,
+          model: config.model,
+          temperature: config.temperature,
+          maxTokens: config.max_tokens,
+          isActive: config.is_active,
+          createdAt: config.created_at,
+          updatedAt: config.updated_at,
+        },
+      });
+    } catch (error: any) {
+      logger.error('LLMConfigController: Failed to activate config:', error);
+      return res.status(500).json({
+        error: 'Failed to activate LLM configuration',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Delete LLM configuration
+   * DELETE /api/config/llm/:id
+   */
+  static async delete(req: Request, res: Response) {
+    try {
+      const userId = (req as any).userId || DEFAULT_USER_ID;
+      const { id } = req.params;
+
+      await llmConfigRepo.softDelete(userId, id);
+
+      logger.info(`LLMConfigController: Configuration deleted`, {
+        userId,
+        configId: id,
+      });
+
+      return res.json({
+        success: true,
+        message: 'Configuration deleted successfully',
+      });
+    } catch (error: any) {
+      logger.error('LLMConfigController: Failed to delete config:', error);
+      return res.status(500).json({
+        error: 'Failed to delete LLM configuration',
+        message: error.message,
+      });
+    }
+  }
+}
+

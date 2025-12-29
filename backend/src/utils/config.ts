@@ -6,9 +6,15 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import { IAppConfig, ILLMConfig, LLMProvider } from '@mind2build/shared';
+import { LLMConfigRepository } from '../database';
 
 // Load .env file from project root
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+
+// Cache for database config
+let dbConfigCache: ILLMConfig | null = null;
+let dbConfigCacheTime: number = 0;
+const DB_CONFIG_CACHE_TTL = 60000; // 1 minute cache
 
 /**
  * Load LLM configuration from environment
@@ -73,6 +79,49 @@ function loadLLMConfig(): ILLMConfig {
     temperature: parseFloat(process.env.TEMPERATURE || '0.7'),
     maxTokens: parseInt(process.env.MAX_TOKENS || '8000'),
   } as ILLMConfig;
+}
+
+/**
+ * Load LLM configuration from database (if available), fallback to environment
+ * This function tries to load from database first, then falls back to env vars
+ */
+export async function loadLLMConfigFromDB(userId?: string): Promise<ILLMConfig> {
+  // Check cache first
+  const now = Date.now();
+  if (dbConfigCache && (now - dbConfigCacheTime) < DB_CONFIG_CACHE_TTL) {
+    return dbConfigCache;
+  }
+
+  try {
+    const llmConfigRepo = new LLMConfigRepository();
+    const defaultUserId = userId || '302769d6-247d-43db-a005-0519712255fb';
+    const dbConfig = await llmConfigRepo.findActive(defaultUserId);
+
+    if (dbConfig) {
+      const config = llmConfigRepo.toILLMConfig(dbConfig);
+      // Update cache
+      dbConfigCache = config;
+      dbConfigCacheTime = now;
+      return config;
+    }
+  } catch (error: any) {
+    // If database query fails, fall back to environment variables
+    // This allows the app to start even if database is not available
+  }
+
+  // Fallback to environment variables
+  const envConfig = loadLLMConfig();
+  dbConfigCache = envConfig;
+  dbConfigCacheTime = now;
+  return envConfig;
+}
+
+/**
+ * Clear LLM config cache (call this after updating config)
+ */
+export function clearLLMConfigCache(): void {
+  dbConfigCache = null;
+  dbConfigCacheTime = 0;
 }
 
 /**

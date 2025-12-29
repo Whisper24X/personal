@@ -7,12 +7,14 @@ import { Router } from 'express';
 import projectRoutes from './projects';
 import applicationRoutes from './applications';
 import interactiveRoutes from './interactive';
+import configRoutes from './config';
 
 const router = Router();
 
 // API v1 routes
 router.use('/applications', applicationRoutes);
 router.use('/projects', projectRoutes);
+router.use('/config', configRoutes);
 router.use('/', interactiveRoutes); // Interactive routes: /api/interactive, /api/interactive-stats
 
 // Health check

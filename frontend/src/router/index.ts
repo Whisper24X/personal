@@ -9,6 +9,7 @@ import ProjectDetail from '../views/ProjectDetail.vue';
 import ProjectInteractive from '../views/ProjectInteractive.vue';
 import ApplicationList from '../views/ApplicationList.vue';
 import ApplicationDetail from '../views/ApplicationDetail.vue';
+import LLMConfig from '../views/LLMConfig.vue';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -44,6 +45,11 @@ const router = createRouter({
       name: 'ProjectDetail',
       component: ProjectDetail,
       props: true,
+    },
+    {
+      path: '/config/llm',
+      name: 'LLMConfig',
+      component: LLMConfig,
     },
   ],
 });

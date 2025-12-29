@@ -163,6 +163,40 @@ class APIClient {
       { userRequest }
     );
   }
+
+  // LLM Config API 端点
+  async getLLMConfigs() {
+    return this.client.get('/config/llm');
+  }
+
+  async getActiveLLMConfig() {
+    return this.client.get('/config/llm/active');
+  }
+
+  async getLLMConfigByProvider(provider: string) {
+    return this.client.get(`/config/llm/${provider}`);
+  }
+
+  async createLLMConfig(data: {
+    provider: string;
+    apiKey?: string;
+    baseURL?: string;
+    model: string;
+    temperature?: number;
+    maxTokens?: number;
+    isActive?: boolean;
+  }) {
+    return this.client.post('/config/llm', data);
+  }
+
+
+  async activateLLMConfig(id: string) {
+    return this.client.post(`/config/llm/${id}/activate`);
+  }
+
+  async deleteLLMConfig(id: string) {
+    return this.client.delete(`/config/llm/${id}`);
+  }
 }
 
 export const apiClient = new APIClient();
