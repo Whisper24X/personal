@@ -90,8 +90,9 @@ class Engineer(RoleZero):
 **工作流程**:
 1. 接收设计文档（订阅 WriteDesign）
 2. 编写代码（WriteCode）
-3. 代码审查（WriteCodeReview）
-4. 输出源代码
+3. 输出源代码
+
+**注意**: WriteCodeReview（代码审查）功能计划在未来版本中实现
 
 ### 4. QA Engineer (QA 工程师)
 

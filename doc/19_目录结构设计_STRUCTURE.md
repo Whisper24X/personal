@@ -137,13 +137,19 @@ backend/
 │   │   └── index.ts
 │   ├── actions/                 # 行动层
 │   │   ├── Action.ts            # 行动基类
-│   │   ├── WritePRD.ts          # 编写 PRD
-│   │   ├── WriteDesign.ts       # 编写设计
-│   │   ├── WriteCode.ts         # 编写代码
-│   │   ├── WriteTest.ts         # 编写测试
-│   │   ├── WriteCodeReview.ts   # 代码审查
-│   │   ├── FixBug.ts            # 修复 Bug
+│   │   ├── UserRequirement.ts        # 用户需求收集
+│   │   ├── WriteRequirementSpec.ts   # 编写需求说明文档
+│   │   ├── RequirementSpecReview.ts # 需求说明文档审查
+│   │   ├── WritePRD.ts               # 编写 PRD
+│   │   ├── PRDReview.ts              # PRD文档审查
+│   │   ├── WriteDesign.ts            # 编写设计
+│   │   ├── WriteCode.ts              # 编写代码
+│   │   ├── WriteTest.ts              # 编写测试
+│   │   ├── SearchEnhancedQA.ts       # 增强搜索问答
+│   │   ├── DataAnalysis.ts           # 数据分析
+│   │   ├── Coordinate.ts             # 协调任务
 │   │   └── index.ts
+│   │   # 注意: WriteCodeReview.ts (代码审查) 和 FixBug.ts (修复Bug) 计划在未来版本中实现
 │   ├── providers/               # 提供商层
 │   │   ├── llm/                 # LLM 提供商
 │   │   │   ├── BaseLLM.ts       # LLM 基类

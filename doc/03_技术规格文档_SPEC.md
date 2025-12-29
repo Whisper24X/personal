@@ -64,19 +64,28 @@
 - ✅ DataInterpreter（数据解释器）
 
 #### 行动实现层
+- ✅ UserRequirement（用户需求收集）
+- ✅ WriteRequirementSpec（编写需求说明文档）
+- ✅ RequirementSpecReview（需求说明文档审查）
 - ✅ WritePRD（编写PRD）
+- ✅ PRDReview（PRD文档审查）
 - ✅ WriteDesign（编写设计）
 - ✅ WriteCode（编写代码）
 - ✅ WriteTest（编写测试）
-- ✅ WriteCodeReview（代码审查）
+- 🚧 WriteCodeReview（代码审查）- 计划中
 - ✅ SearchEnhancedQA（增强搜索）
+- ✅ DataAnalysis（数据分析）
+- ✅ Coordinate（协调任务）
 
 #### LLM 集成层
-- ✅ OpenAI / Azure OpenAI
-- ✅ Anthropic Claude
-- ✅ Google Gemini
-- ✅ 国内厂商（智谱、百度、阿里、讯飞）
-- ✅ 本地模型（Ollama）
+- ✅ OpenAI
+- ✅ 智谱AI (ZhipuAI) - 默认提供商
+- ✅ 火山引擎 Ark (豆包)
+- 🚧 Anthropic Claude - 计划中
+- 🚧 Google Gemini - 计划中
+- 🚧 百度千帆 (Qianfan) - 计划中
+- 🚧 阿里云 DashScope - 计划中
+- 🚧 Ollama (本地模型) - 计划中
 
 #### 工具集成层
 - ✅ Browser（网页访问）

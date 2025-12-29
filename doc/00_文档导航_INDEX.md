@@ -71,20 +71,24 @@
 - 自定义角色开发指南
 
 #### 7. [行动系统设计](./07_行动系统设计_ACTIONS.md)
+- UserRequirement（用户需求收集）
+- WriteRequirementSpec（编写需求说明文档）
+- RequirementSpecReview（需求说明文档审查）
 - WritePRD（编写 PRD）
+- PRDReview（PRD文档审查）
 - WriteDesign（编写设计）
 - WriteCode（编写代码）
 - WriteTest（编写测试）
-- WriteCodeReview（代码审查）
+- SearchEnhancedQA（增强搜索问答）
+- DataAnalysis（数据分析）
+- Coordinate（协调任务）
 - 自定义 Action 开发指南
 
 #### 8. [LLM 提供商集成](./08_LLM提供商集成_PROVIDERS.md)
 - LLM 抽象层设计
-- OpenAI / Azure OpenAI
-- Anthropic Claude
-- Google Gemini
-- 国内厂商（智谱、百度、阿里等）
-- 本地模型（Ollama）
+- ✅ 已实现：OpenAI、智谱AI (ZhipuAI)、火山引擎 Ark (豆包)
+- 🚧 计划中：Anthropic Claude、Google Gemini、百度千帆、阿里云 DashScope、Ollama
+- 自定义提供商开发指南
 
 ### 四、数据流与工作流
 

@@ -340,15 +340,21 @@ graph LR
 
 #### 核心 Actions 规格
 
-| Action | 功能 | 输入 | 输出 | 使用角色 |
-|--------|------|------|------|---------|
-| WritePRD | 编写产品需求文档 | 用户需求 | PRD Markdown | ProductManager |
-| WriteDesign | 编写系统设计 | PRD | 设计文档 | Architect |
-| WriteCode | 编写代码 | 设计文档 | Python/JS代码 | Engineer |
-| WriteTest | 编写测试 | 代码 | 测试代码 | QA Engineer |
-| WriteCodeReview | 代码审查 | 代码 | 审查报告 | Engineer |
-| SearchEnhancedQA | 增强搜索 | 问题 | 答案+引用 | ProductManager |
-| RunCode | 执行代码 | 代码 | 执行结果 | DataInterpreter |
+| Action | 功能 | 输入 | 输出 | 使用角色 | 状态 |
+|--------|------|------|------|---------|------|
+| UserRequirement | 用户需求收集 | 用户原始需求 | 结构化需求 | Salesperson | ✅ 已实现 |
+| WriteRequirementSpec | 编写需求说明文档 | 用户需求 | 需求说明文档 | Salesperson | ✅ 已实现 |
+| RequirementSpecReview | 需求说明文档审查 | 需求说明文档 | 审查报告 | Salesperson | ✅ 已实现 |
+| WritePRD | 编写产品需求文档 | 需求说明文档 | PRD Markdown | ProductManager | ✅ 已实现 |
+| PRDReview | PRD文档审查 | PRD文档 | 审查报告 | ProductManager | ✅ 已实现 |
+| WriteDesign | 编写系统设计 | PRD | 设计文档 | Architect | ✅ 已实现 |
+| WriteCode | 编写代码 | 设计文档 | Python/JS代码 | Engineer | ✅ 已实现 |
+| WriteTest | 编写测试 | 代码 | 测试代码 | QA Engineer | ✅ 已实现 |
+| WriteCodeReview | 代码审查 | 代码 | 审查报告 | Engineer | 🚧 计划中 |
+| SearchEnhancedQA | 增强搜索 | 问题 | 答案+引用 | ProductManager | ✅ 已实现 |
+| DataAnalysis | 数据分析 | 数据/需求 | 分析代码和可视化 | DataAnalyst | ✅ 已实现 |
+| Coordinate | 协调任务 | 任务和上下文 | 协调结果 | TeamLeader | ✅ 已实现 |
+| RunCode | 执行代码 | 代码 | 执行结果 | DataInterpreter | 🚧 计划中 |
 
 ### 2.6 工具集成 [P1 - 重要功能]
 
