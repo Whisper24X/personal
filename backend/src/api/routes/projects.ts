@@ -27,6 +27,9 @@ router.get('/:id/prds/versions', PRDController.getPRDVersions);
 router.get('/:id/prds/:prdId', PRDController.getPRD);
 router.delete('/:id/prds/:prdId', PRDController.deletePRD);
 router.post('/:id/prds/:prdId/restore', PRDController.restorePRD);
+router.get('/:id/prds/:prdId/sections', PRDController.getPRDSections);
+router.post('/:id/prds/:prdId/sections/:sectionNumber/adjust', PRDController.adjustPRDSection);
+router.post('/:id/sections/:sectionNumber/adjust', PRDController.adjustSectionFromWorkspace);
 
 export default router;
 

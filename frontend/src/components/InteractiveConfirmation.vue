@@ -49,19 +49,15 @@
                         生成的文件 ({{ roleInfo.outputFiles.length }})
                     </el-divider>
                     <div class="files-tabs">
-                        <el-tag 
-                            v-for="(file, index) in roleInfo.outputFiles" 
-                            :key="getFilePath(file)" 
-                            class="file-tag" 
+                        <el-tag v-for="(file, index) in roleInfo.outputFiles" :key="getFilePath(file)" class="file-tag"
                             :type="selectedFileIndex === index ? 'primary' : 'info'"
-                            :effect="selectedFileIndex === index ? 'dark' : 'plain'"
-                            @click="selectFile(index)"
+                            :effect="selectedFileIndex === index ? 'dark' : 'plain'" @click="selectFile(index)"
                             style="cursor: pointer;">
-                        <el-icon>
-                            <DocumentCopy />
-                        </el-icon>
+                            <el-icon>
+                                <DocumentCopy />
+                            </el-icon>
                             {{ getFilePath(file) }}
-                    </el-tag>
+                        </el-tag>
                     </div>
                 </div>
 
@@ -69,26 +65,26 @@
                     <div class="content-display">
                         <!-- File content view/edit -->
                         <!-- For WritePRD and WriteRequirementSpec actions, always show main content first, not files -->
-                        <div v-if="selectedFileIndex >= 0 && hasFiles && roleInfo.action !== 'WritePRD' && roleInfo.action !== 'WriteRequirementSpec'" class="file-content-editor">
+                        <div v-if="selectedFileIndex >= 0 && hasFiles && roleInfo.action !== 'WritePRD' && roleInfo.action !== 'WriteRequirementSpec'"
+                            class="file-content-editor">
                             <div class="file-header">
-                                <span class="file-path">{{ getFilePath(roleInfo.outputFiles![selectedFileIndex]) }}</span>
-                                <el-button v-if="!isEditing" size="small" type="primary" :icon="Edit" @click="startEditFile(selectedFileIndex)">
+                                <span class="file-path">{{ getFilePath(roleInfo.outputFiles![selectedFileIndex])
+                                    }}</span>
+                                <el-button v-if="!isEditing" size="small" type="primary" :icon="Edit"
+                                    @click="startEditFile(selectedFileIndex)">
                                     编辑文件
                                 </el-button>
                             </div>
-                            <el-input 
-                                v-if="isEditing && selectedFileIndex >= 0" 
+                            <el-input v-if="isEditing && selectedFileIndex >= 0"
                                 :model-value="getCurrentFileEditedContent()"
-                                @update:model-value="updateCurrentFileContent"
-                                type="textarea" 
-                                :rows="viewMode === 'preview' ? '10' : '20'"
-                                placeholder="编辑文件内容..." />
+                                @update:model-value="updateCurrentFileContent" type="textarea"
+                                :rows="viewMode === 'preview' ? '10' : '20'" placeholder="编辑文件内容..." />
                             <pre v-else class="content-text file-content">{{ getFileContent(selectedFileIndex) }}</pre>
                         </div>
                         <!-- Main content view/edit -->
                         <div v-else>
-                            <el-input v-if="isEditing && !isIdle" v-model="editedContent" type="textarea" :rows="viewMode === 'preview' ? '10' : '20'"
-                            placeholder="编辑内容..." />
+                            <el-input v-if="isEditing && !isIdle" v-model="editedContent" type="textarea"
+                                :rows="viewMode === 'preview' ? '10' : '20'" placeholder="编辑内容..." />
                             <div v-else-if="isIdle" class="idle-content">
                                 <el-alert type="info" :closable="false" show-icon>
                                     <template #title>
@@ -104,6 +100,11 @@
                 <div v-if="viewMode === 'preview' && roleInfo.content.length > 500" class="preview-notice">
                     <el-alert title="这是内容预览，点击'完整内容'查看全部" type="info" :closable="false" show-icon />
                 </div>
+
+                <!-- Section adjustment using generic component -->
+                <SectionAdjuster v-if="hasSectionedContent" :content="roleInfo.content" :document-type="documentType"
+                    :action="roleInfo.action" :project-id="projectId || ''" :document-id="prdId || ''"
+                    @section-adjusted="handleSectionAdjusted" />
             </div>
 
             <el-divider />
@@ -125,7 +126,8 @@
                         </div>
                     </el-button>
 
-                    <el-button v-if="!isIdle && !isEditing && (!hasFiles || selectedFileIndex < 0)" type="primary" size="large" :icon="Edit" @click="startEdit">
+                    <el-button v-if="!isIdle && !isEditing && (!hasFiles || selectedFileIndex < 0)" type="primary"
+                        size="large" :icon="Edit" @click="startEdit">
                         <div class="button-content">
                             <span class="shortcut">E</span>
                             <span>编辑内容</span>
@@ -199,6 +201,7 @@ import {
     SetUp,
     Cpu,
 } from '@element-plus/icons-vue';
+import SectionAdjuster from './SectionAdjuster.vue';
 
 interface FileInfo {
     path: string;
@@ -215,10 +218,14 @@ interface RoleInfo {
 interface Props {
     roleInfo: RoleInfo;
     loading?: boolean;
+    projectId?: string;
+    prdId?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
     loading: false,
+    projectId: '',
+    prdId: '',
 });
 
 const emit = defineEmits<{
@@ -230,6 +237,40 @@ const isEditing = ref(false);
 const editedContent = ref('');
 const editedFiles = ref<Map<string, string>>(new Map());
 const selectedFileIndex = ref<number>(-1);
+
+// Document type detection
+const documentType = computed(() => {
+    if (props.roleInfo.action === 'WritePRD') {
+        return 'PRD';
+    } else if (props.roleInfo.action === 'WriteRequirementSpec') {
+        return 'REQUIREMENT';
+    } else if (props.roleInfo.action === 'WriteDesign') {
+        return 'DESIGN';
+    }
+    return 'OTHER';
+});
+
+// Check if content has sections - more lenient check
+const hasSectionedContent = computed(() => {
+    const content = props.roleInfo.content;
+    if (!content || content.trim().length === 0) return false;
+
+    // Check for section markers - check if any line starts with ## followed by a number
+    const lines = content.split('\n');
+    const hasSectionMarkers = lines.some(line => /^##\s+\d+\.\s+/.test(line.trim()));
+
+    // Also check for document type indicators
+    const isDocumentType = props.roleInfo.action === 'WritePRD' ||
+        props.roleInfo.action === 'WriteRequirementSpec' ||
+        props.roleInfo.action === 'WriteDesign';
+
+    return hasSectionMarkers || (isDocumentType && content.length > 100);
+});
+
+function handleSectionAdjusted(sectionNumber: number) {
+    // Optionally update the displayed content
+    ElMessage.success(`章节 ${sectionNumber} 已调整`);
+}
 
 const displayContent = computed(() => {
     if (viewMode.value === 'preview') {
@@ -247,7 +288,7 @@ const hasFiles = computed(() => {
 // Auto-select first file when files are available
 // But for WritePRD and WriteRequirementSpec actions, don't auto-select files - show main content instead
 watch(() => props.roleInfo.outputFiles, (files) => {
-    if (files && files.length > 0 && selectedFileIndex.value < 0 && 
+    if (files && files.length > 0 && selectedFileIndex.value < 0 &&
         props.roleInfo.action !== 'WritePRD' && props.roleInfo.action !== 'WriteRequirementSpec') {
         selectedFileIndex.value = 0;
     }
@@ -349,6 +390,7 @@ function getActionType(action: string): 'success' | 'warning' | 'info' | 'danger
 
 const isIdle = computed(() => props.roleInfo.action === 'idle');
 
+
 function startEdit() {
     isEditing.value = true;
     editedContent.value = props.roleInfo.content;
@@ -383,17 +425,17 @@ function saveEdit() {
         }
     } else {
         // Editing main content
-    if (editedContent.value.trim() === '') {
-        ElMessage.warning('内容不能为空');
-        return;
+        if (editedContent.value.trim() === '') {
+            ElMessage.warning('内容不能为空');
+            return;
+        }
     }
-    }
-    
+
     isEditing.value = false;
-    
+
     // Prepare modified content with files
     let modifiedContent = editedContent.value || props.roleInfo.content;
-    
+
     // If files were edited, include them in the content
     if (editedFiles.value.size > 0 && props.roleInfo.outputFiles) {
         const filesSummary = Array.from(editedFiles.value.entries())
@@ -401,7 +443,7 @@ function saveEdit() {
             .join('');
         modifiedContent += filesSummary;
     }
-    
+
     emit('action', 'edit', modifiedContent);
 }
 
@@ -640,6 +682,57 @@ onUnmounted(() => {
 
 .shortcuts-hint {
     margin-top: 16px;
+}
+
+.sections-section {
+    margin-top: 20px;
+    padding-top: 16px;
+}
+
+.sections-empty {
+    margin-top: 12px;
+}
+
+.sections-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.section-tag {
+    transition: all 0.2s;
+}
+
+.section-tag:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.section-adjust-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.section-original h4,
+.section-adjust h4 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    color: #303133;
+}
+
+.section-content {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #606266;
+    background: #f5f7fa;
+    padding: 12px;
+    border-radius: 4px;
 }
 
 @media (max-width: 768px) {

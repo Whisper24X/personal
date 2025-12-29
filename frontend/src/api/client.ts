@@ -135,6 +135,34 @@ class APIClient {
   async restorePRD(projectId: string, prdId: string) {
     return this.client.post(`/projects/${projectId}/prds/${prdId}/restore`);
   }
+
+  async getPRDSections(projectId: string, prdId: string) {
+    return this.client.get(`/projects/${projectId}/prds/${prdId}/sections`);
+  }
+
+  async adjustPRDSection(
+    projectId: string,
+    prdId: string,
+    sectionNumber: number,
+    userRequest: string
+  ) {
+    return this.client.post(
+      `/projects/${projectId}/prds/${prdId}/sections/${sectionNumber}/adjust`,
+      { userRequest }
+    );
+  }
+
+  async adjustRequirementSection(
+    projectId: string,
+    requirementId: string,
+    sectionNumber: number,
+    userRequest: string
+  ) {
+    return this.client.post(
+      `/projects/${projectId}/requirements/${requirementId}/sections/${sectionNumber}/adjust`,
+      { userRequest }
+    );
+  }
 }
 
 export const apiClient = new APIClient();

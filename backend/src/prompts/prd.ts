@@ -440,6 +440,46 @@ ${outline}
 `;
 }
 
+/**
+ * 调整单个章节的提示词
+ */
+export function buildPRDSectionAdjustPrompt(
+  originalSectionContent: string,
+  sectionNumber: number,
+  sectionTitle: string,
+  userRequest: string,
+  fullPRDContext?: string
+): string {
+  const contextPart = fullPRDContext
+    ? `\n\n【完整 PRD 上下文（仅供参考）】\n${fullPRDContext}`
+    : '';
+
+  return `请根据用户的要求，调整以下 PRD 章节的内容：
+
+【原始章节内容】
+## ${sectionNumber}. ${sectionTitle}
+
+${originalSectionContent}
+
+【用户调整要求】
+${userRequest}
+${contextPart}
+
+调整要求：
+1. **保持章节标题格式不变**：## ${sectionNumber}. ${sectionTitle}
+2. **根据用户要求调整章节内容**，确保调整后的内容：
+   - 符合 PRD 模板中该章节的结构要求
+   - 保持与整体 PRD 的一致性
+   - 内容详细、具体、可执行
+   - 面向研发和测试团队
+3. **只输出调整后的章节内容**（包含章节标题）
+4. **不要输出其他章节的内容**
+5. 如果用户要求与 PRD 模板结构冲突，优先满足用户要求，但保持格式规范
+
+输出格式：Markdown 格式的章节内容
+`;
+}
+
 export default {
   PRD_SYSTEM_PROMPT,
   PRD_TEMPLATE,
@@ -450,4 +490,5 @@ export default {
   buildPRDSectionPrompt,
   PRD_REVIEW_SYSTEM_PROMPT,
   buildPRDReviewPrompt,
+  buildPRDSectionAdjustPrompt,
 };

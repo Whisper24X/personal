@@ -9,6 +9,7 @@ import { ProjectRepository } from '../../database/repositories/ProjectRepository
 import { WritePRD } from '../../actions/WritePRD';
 import { Context } from '../../core/context/Context';
 import { RAGService } from '../../services/RAGService';
+import { SectionAdjustService } from '../../services/SectionAdjustService';
 import { logger } from '../../utils';
 
 const documentRepo = new DocumentRepository();
@@ -71,7 +72,7 @@ export class PRDController {
           // RAG mode: search for similar PRDs and extract relevant chunks
           // If project belongs to an application, search across all projects in the application
           let searchResults: any[] = [];
-          
+
           if (project.application_id) {
             // Search across all projects in the application
             searchResults = await ragService.searchSimilarPRDsByApplication(
@@ -80,7 +81,7 @@ export class PRDController {
               5
             );
           }
-          
+
           // If no results from application search, try project-level search
           if (searchResults.length === 0) {
             searchResults = await ragService.searchSimilarPRDs(id, requirements, 3);
@@ -127,7 +128,7 @@ export class PRDController {
           // RAG mode: search for similar PRDs even in new mode
           // If project belongs to an application, search across all projects in the application
           let searchResults: any[] = [];
-          
+
           if (project.application_id) {
             // Search across all projects in the application
             searchResults = await ragService.searchSimilarPRDsByApplication(
@@ -136,7 +137,7 @@ export class PRDController {
               5
             );
           }
-          
+
           // If no results from application search, try project-level search
           if (searchResults.length === 0) {
             searchResults = await ragService.searchSimilarPRDs(id, requirements, 3);
@@ -445,6 +446,225 @@ export class PRDController {
       logger.error('PRDController: Failed to restore PRD:', error);
       return res.status(500).json({
         error: 'Failed to restore PRD',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Get sections from PRD
+   * GET /api/projects/:id/prds/:prdId/sections
+   */
+  static async getPRDSections(req: Request, res: Response) {
+    try {
+      const { id, prdId } = req.params;
+
+      // Verify project exists
+      const project = await projectRepo.findById(id);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      const prd = await documentRepo.findPRDById(prdId);
+
+      if (!prd) {
+        return res.status(404).json({ error: 'PRD not found' });
+      }
+
+      // Verify PRD belongs to the project
+      if (prd.project_id !== id) {
+        return res.status(403).json({ error: 'PRD does not belong to this project' });
+      }
+
+      // Get workspace directory
+      const applicationId = project.application_id || 'default';
+      const version = prd.version || 1;
+      const { getWorkspaceDir } = await import('../../utils/StepwiseDocumentGenerator');
+      const workspaceDir = getWorkspaceDir('PRD', {
+        applicationId,
+        version,
+      });
+
+      // Get sections
+      const sectionAdjustService = new SectionAdjustService();
+      const sections = await sectionAdjustService.getSections(prd.content, workspaceDir);
+
+      return res.json({
+        success: true,
+        sections: sections.map(s => ({
+          number: s.number,
+          title: s.title,
+          contentPreview: s.content?.substring(0, 200) || '',
+        })),
+      });
+    } catch (error: any) {
+      logger.error('PRDController: Failed to get PRD sections:', error);
+      return res.status(500).json({
+        error: 'Failed to get PRD sections',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Adjust a specific section of PRD
+   * POST /api/projects/:id/prds/:prdId/sections/:sectionNumber/adjust
+   */
+  static async adjustPRDSection(req: Request, res: Response) {
+    try {
+      const { id, prdId, sectionNumber } = req.params;
+      const { userRequest } = req.body;
+
+      if (!userRequest || typeof userRequest !== 'string') {
+        return res.status(400).json({
+          error: 'Missing or invalid userRequest field',
+        });
+      }
+
+      const sectionNum = parseInt(sectionNumber);
+      if (isNaN(sectionNum) || sectionNum < 0) {
+        return res.status(400).json({
+          error: 'Invalid section number',
+        });
+      }
+
+      // Verify project exists
+      const project = await projectRepo.findById(id);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      const prd = await documentRepo.findPRDById(prdId);
+
+      if (!prd) {
+        return res.status(404).json({ error: 'PRD not found' });
+      }
+
+      // Verify PRD belongs to the project
+      if (prd.project_id !== id) {
+        return res.status(403).json({ error: 'PRD does not belong to this project' });
+      }
+
+      logger.info(`PRDController: Adjusting section ${sectionNum} of PRD ${prdId}`, {
+        projectId: id,
+        userRequestLength: userRequest.length,
+      });
+
+      // Adjust section
+      const sectionAdjustService = new SectionAdjustService();
+      const applicationId = project.application_id || 'default';
+      const version = prd.version || 1;
+
+      const result = await sectionAdjustService.adjustSection({
+        projectId: id,
+        prdId,
+        sectionNumber: sectionNum,
+        userRequest,
+        applicationId,
+        version,
+      });
+
+      // Update PRD in database if needed
+      // Note: We might want to update the full PRD content in the database
+      // For now, we'll just return the updated content
+      // The workspace files are already updated
+
+      logger.info(`PRDController: Section ${sectionNum} adjusted successfully`, {
+        projectId: id,
+        prdId,
+        sectionNumber: sectionNum,
+      });
+
+      return res.json({
+        success: true,
+        section: {
+          number: sectionNum,
+          content: result.sectionContent,
+        },
+        updatedPRD: result.updatedContent,
+      });
+    } catch (error: any) {
+      logger.error('PRDController: Failed to adjust PRD section:', error);
+      return res.status(500).json({
+        error: 'Failed to adjust PRD section',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Adjust a section directly from workspace (for interactive sessions)
+   * POST /api/projects/:id/sections/:sectionNumber/adjust
+   */
+  static async adjustSectionFromWorkspace(req: Request, res: Response) {
+    try {
+      const { id, sectionNumber } = req.params;
+      const { userRequest, documentType = 'PRD', applicationId, version } = req.body;
+
+      if (!userRequest || typeof userRequest !== 'string') {
+        return res.status(400).json({
+          error: 'Missing or invalid userRequest field',
+        });
+      }
+
+      const sectionNum = parseInt(sectionNumber);
+      if (isNaN(sectionNum) || sectionNum < 0) {
+        return res.status(400).json({
+          error: 'Invalid section number',
+        });
+      }
+
+      // Verify project exists (or use sessionId as projectId for interactive sessions)
+      let project;
+      try {
+        project = await projectRepo.findById(id);
+      } catch {
+        // If project not found, might be a sessionId - continue with workspace-only mode
+        project = null;
+      }
+
+      logger.info(`PRDController: Adjusting section ${sectionNum} from workspace`, {
+        projectId: id,
+        documentType,
+        userRequestLength: userRequest.length,
+        hasProject: !!project,
+      });
+
+      // Adjust section directly from workspace
+      const sectionAdjustService = new SectionAdjustService();
+      const appId = applicationId || project?.application_id || 'default';
+      const ver = version || 1;
+
+      // Determine document type for workspace directory
+      const docType = documentType === 'REQUIREMENT' ? 'REQUIREMENT' : 'PRD';
+
+      const result = await sectionAdjustService.adjustSection({
+        projectId: id,
+        prdId: id, // Use projectId/sessionId as prdId for workspace lookup
+        sectionNumber: sectionNum,
+        userRequest,
+        applicationId: appId,
+        version: ver,
+        documentType: docType as 'PRD' | 'REQUIREMENT',
+      });
+
+      logger.info(`PRDController: Section ${sectionNum} adjusted from workspace successfully`, {
+        projectId: id,
+        sectionNumber: sectionNum,
+      });
+
+      return res.json({
+        success: true,
+        section: {
+          number: sectionNum,
+          content: result.sectionContent,
+        },
+        updatedPRD: result.updatedContent,
+      });
+    } catch (error: any) {
+      logger.error('PRDController: Failed to adjust section from workspace:', error);
+      return res.status(500).json({
+        error: 'Failed to adjust section',
         message: error.message,
       });
     }

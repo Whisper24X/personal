@@ -88,7 +88,11 @@
 
         <!-- Current Step (if waiting for confirmation) -->
         <el-timeline-item v-if="currentStep" :timestamp="'正在进行'" type="primary" :hollow="true" size="large">
-          <InteractiveConfirmation :role-info="currentStep" :loading="actionLoading" @action="handleUserAction" />
+          <InteractiveConfirmation 
+            :role-info="currentStep" 
+            :loading="actionLoading" 
+            :project-id="projectId"
+            @action="handleUserAction" />
         </el-timeline-item>
 
         <!-- Running indicator -->
@@ -174,6 +178,7 @@ const router = useRouter();
 const projectId = ref(route.params.id as string || '');
 const projectName = ref(route.query.name as string || 'Untitled Project');
 const maxRounds = ref(parseInt(route.query.rounds as string) || 5);
+const sessionId = ref<string>('');
 
 // State
 const isRunning = ref(false);
@@ -242,10 +247,22 @@ async function startInteractiveSession() {
     }
 
     const data = await response.json();
-    const sessionId = data.sessionId;
+    const sid = data.sessionId;
+    sessionId.value = sid;
+    
+    // In interactive session, use sessionId as projectId if no projectId provided
+    // Update projectId if provided in response
+    if (data.projectId) {
+      projectId.value = data.projectId;
+    } else if (data.project?.id) {
+      projectId.value = data.project.id;
+    } else if (!projectId.value && sid) {
+      // Use sessionId as projectId for interactive sessions
+      projectId.value = sid;
+    }
 
     // Connect WebSocket
-    connectWebSocket(sessionId);
+    connectWebSocket(sid);
   } catch (error: any) {
     ElMessage.error('启动会话失败: ' + error.message);
     isRunning.value = false;
@@ -334,6 +351,13 @@ function handleWebSocketMessage(message: { type: string; data: any }) {
       break;
 
     case 'completed':
+      // Update projectId from completion message
+      if (message.data.projectId) {
+        projectId.value = message.data.projectId;
+      } else if (sessionId.value && !projectId.value) {
+        // Fallback to sessionId if no projectId in message
+        projectId.value = sessionId.value;
+      }
       complete();
       ElMessage.success('项目生成完成！');
       break;
