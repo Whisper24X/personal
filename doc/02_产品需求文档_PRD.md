@@ -348,9 +348,12 @@ graph LR
 | WritePRD | 编写产品需求文档 | 需求说明文档 | PRD Markdown | ProductManager | ✅ 已实现 |
 | PRDReview | PRD文档审查 | PRD文档 | 审查报告 | ProductManager | ✅ 已实现 |
 | WriteDesign | 编写系统设计 | PRD | 设计文档 | Architect | ✅ 已实现 |
+| BreakdownTasks | 任务拆分 | PRD和设计文档 | 任务拆分文档 | ProjectManager | ✅ 已实现 |
+| WriteSubProjectDesign | 子项目设计 | 任务拆分和设计文档 | 子项目设计文档 | ProjectManager | ✅ 已实现 |
+| GenerateTask | 生成任务说明 | 任务拆分文档 | 详细任务说明 | ProjectManager | ✅ 已实现 |
 | WriteCode | 编写代码 | 设计文档 | Python/JS代码 | Engineer | ✅ 已实现 |
+| CodeReview | 代码审查 | 代码、任务描述 | 审查报告 | ProjectManager | ✅ 已实现 |
 | WriteTest | 编写测试 | 代码 | 测试代码 | QA Engineer | ✅ 已实现 |
-| WriteCodeReview | 代码审查 | 代码 | 审查报告 | Engineer | 🚧 计划中 |
 | SearchEnhancedQA | 增强搜索 | 问题 | 答案+引用 | ProductManager | ✅ 已实现 |
 | DataAnalysis | 数据分析 | 数据/需求 | 分析代码和可视化 | DataAnalyst | ✅ 已实现 |
 | Coordinate | 协调任务 | 任务和上下文 | 协调结果 | TeamLeader | ✅ 已实现 |

@@ -84,7 +84,7 @@ class ProjectManager extends Role {
     name = "ProjectManager"
     profile = "ProjectManager"
     goal = "Break down projects into minimal granularity tasks, provide sub-project design and task generation support for engineers"
-    tools = ["BreakdownTasks", "WriteSubProjectDesign", "GenerateTask"]
+    tools = ["BreakdownTasks", "WriteSubProjectDesign", "GenerateTask", "CodeReview"]
 }
 ```
 
@@ -102,6 +102,10 @@ class ProjectManager extends Role {
 4. 生成详细任务说明（GenerateTask）
    - 为工程师提供清晰的任务描述
    - 包含技术实现指导和代码示例
+5. 进行代码审查（CodeReview）
+   - 审查代码质量和规范性
+   - 提供改进建议和代码示例
+   - 评估代码完成度和质量
 
 **输出产物**:
 - 任务拆分文档（TASK_BREAKDOWN.md）
@@ -116,6 +120,10 @@ class ProjectManager extends Role {
 - 任务说明文档（TASK_DESCRIPTION.md）
   - 详细开发指南
   - 技术实现方案
+  - 代码示例
+- 代码审查报告（CODE_REVIEW.md）
+  - 代码质量评估
+  - 改进建议
   - 代码示例
 
 **核心原则**:

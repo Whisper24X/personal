@@ -858,7 +858,7 @@ class WritePRD(Action):
 
 ### T5-5: 实现其他 Actions
 
-**任务目标**: 实现 WriteTest, WriteCodeReview 等
+**任务目标**: 实现 WriteTest, CodeReview, BreakdownTasks, WriteSubProjectDesign, GenerateTask 等
 
 **前置条件**: T5-4
 

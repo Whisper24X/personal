@@ -148,8 +148,12 @@ backend/
 │   │   ├── SearchEnhancedQA.ts       # 增强搜索问答
 │   │   ├── DataAnalysis.ts           # 数据分析
 │   │   ├── Coordinate.ts             # 协调任务
+│   │   ├── BreakdownTasks.ts         # 任务拆分
+│   │   ├── WriteSubProjectDesign.ts  # 子项目设计
+│   │   ├── GenerateTask.ts           # 生成任务说明
+│   │   ├── CodeReview.ts              # 代码审查
 │   │   └── index.ts
-│   │   # 注意: WriteCodeReview.ts (代码审查) 和 FixBug.ts (修复Bug) 计划在未来版本中实现
+│   │   # 注意: FixBug.ts (修复Bug) 计划在未来版本中实现
 │   ├── providers/               # 提供商层
 │   │   ├── llm/                 # LLM 提供商
 │   │   │   ├── BaseLLM.ts       # LLM 基类

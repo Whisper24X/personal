@@ -70,9 +70,12 @@
 - ✅ WritePRD（编写PRD）
 - ✅ PRDReview（PRD文档审查）
 - ✅ WriteDesign（编写设计）
+- ✅ BreakdownTasks（任务拆分）
+- ✅ WriteSubProjectDesign（子项目设计）
+- ✅ GenerateTask（生成任务说明）
 - ✅ WriteCode（编写代码）
+- ✅ CodeReview（代码审查）
 - ✅ WriteTest（编写测试）
-- 🚧 WriteCodeReview（代码审查）- 计划中
 - ✅ SearchEnhancedQA（增强搜索）
 - ✅ DataAnalysis（数据分析）
 - ✅ Coordinate（协调任务）
