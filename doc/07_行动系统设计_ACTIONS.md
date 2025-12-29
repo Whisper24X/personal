@@ -118,7 +118,84 @@ class WritePRD extends BaseAction {
 
 **使用角色**: Engineer
 
-### 8. WriteTest
+### 8. BreakdownTasks
+
+**功能**: 基于 PRD 和系统设计文档进行任务拆分
+
+**输入**: PRD 文档和系统设计文档
+
+**输出**: 任务拆分文档（TASK_BREAKDOWN.md）
+
+**关键特性**:
+- 任务拆分符合最小颗粒度原则（1-3天可完成）
+- 每个任务独立、可测试、可交付
+- 识别任务依赖关系
+- 定义任务优先级和验收标准
+- 明确任务类型（前端/后端/全栈/基础设施）
+
+**实现要点**:
+```typescript
+class BreakdownTasks extends BaseAction {
+  async run(prd: string, design: string): Promise<IActionOutput> {
+    const prompt = buildTaskBreakdownPrompt(prd, design);
+    const content = await this.aask(prompt, [TASK_BREAKDOWN_SYSTEM_PROMPT]);
+    return { content, data: { type: 'task_breakdown', filename: 'TASK_BREAKDOWN.md' } };
+  }
+}
+```
+
+**使用角色**: ProjectManager
+
+### 9. WriteSubProjectDesign
+
+**功能**: 基于任务拆分生成子项目设计文档
+
+**输入**: 任务拆分文档和系统设计文档
+
+**输出**: 子项目设计文档（SUB_PROJECT_DESIGN.md）
+
+**关键特性**:
+- 将相关任务组织成子项目
+- 为每个子项目提供详细技术设计
+- 定义子项目间的接口和依赖关系
+- 确保子项目可独立开发和测试
+
+**使用角色**: ProjectManager
+
+### 10. GenerateTask
+
+**功能**: 为工程师生成详细的任务说明
+
+**输入**: 任务拆分文档，可选子项目设计文档
+
+**输出**: 任务说明文档（TASK_DESCRIPTION.md）
+
+**关键特性**:
+- 详细开发指南
+- 技术实现方案
+- 代码示例和最佳实践
+- 测试要点和注意事项
+
+**使用角色**: ProjectManager
+
+### 11. CodeReview
+
+**功能**: 代码审查和反馈
+
+**输入**: 代码内容、任务描述，可选设计文档
+
+**输出**: 代码审查报告（CODE_REVIEW.md）
+
+**关键特性**:
+- 代码质量审查（结构、命名、可读性）
+- 技术审查（设计规范、性能、安全性）
+- 功能审查（任务完成度、边界处理）
+- 提供改进建议和代码示例
+- 评分（1-10分）
+
+**使用角色**: ProjectManager
+
+### 12. WriteTest
 
 **功能**: 编写测试用例
 
@@ -128,7 +205,7 @@ class WritePRD extends BaseAction {
 
 **使用角色**: QAEngineer
 
-### 9. SearchEnhancedQA
+### 13. SearchEnhancedQA
 
 **功能**: 增强搜索和问答
 
@@ -143,7 +220,7 @@ class WritePRD extends BaseAction {
 
 **使用角色**: ProductManager
 
-### 10. DataAnalysis
+### 14. DataAnalysis
 
 **功能**: 数据分析和可视化
 
@@ -153,7 +230,7 @@ class WritePRD extends BaseAction {
 
 **使用角色**: DataAnalyst
 
-### 11. Coordinate
+### 15. Coordinate
 
 **功能**: 协调和任务分配
 

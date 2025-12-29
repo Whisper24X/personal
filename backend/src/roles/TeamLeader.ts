@@ -11,7 +11,7 @@ import { Message } from '../core/message/Message';
 import { logger } from '../utils';
 
 export class TeamLeader extends Role {
-  constructor(context: Context, name: string = 'Mike') {
+  constructor(context: Context, name: string = 'TeamLeader') {
     const config: IRoleConfig = {
       name,
       profile: 'TeamLeader',

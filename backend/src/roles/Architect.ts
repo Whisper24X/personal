@@ -9,7 +9,7 @@ import { Context } from '../core/context/Context';
 import { WriteDesign } from '../actions/WriteDesign';
 
 export class Architect extends Role {
-  constructor(context: Context, name: string = 'Bob') {
+  constructor(context: Context, name: string = 'Architect') {
     const config: IRoleConfig = {
       name,
       profile: 'Architect',

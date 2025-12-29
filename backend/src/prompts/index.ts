@@ -7,3 +7,4 @@ export * from './prd';
 export * from './design';
 export * from './code';
 export * from './test';
+export * from './task';

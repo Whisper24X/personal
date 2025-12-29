@@ -10,7 +10,7 @@ import { WritePRD } from '../actions/WritePRD';
 import { SearchEnhancedQA } from '../actions/SearchEnhancedQA';
 
 export class ProductManager extends Role {
-  constructor(context: Context, name: string = 'Alice') {
+  constructor(context: Context, name: string = 'ProductManager') {
     const config: IRoleConfig = {
       name,
       profile: 'ProductManager',

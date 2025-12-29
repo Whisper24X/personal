@@ -9,7 +9,7 @@ import { Context } from '../core/context/Context';
 import { WriteTest } from '../actions/WriteTest';
 
 export class QAEngineer extends Role {
-  constructor(context: Context, name: string = 'David') {
+  constructor(context: Context, name: string = 'QAEngineer') {
     const config: IRoleConfig = {
       name,
       profile: 'QAEngineer',

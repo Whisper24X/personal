@@ -9,7 +9,7 @@ import { Context } from '../core/context/Context';
 import { WriteCode } from '../actions/WriteCode';
 
 export class Engineer extends Role {
-  constructor(context: Context, name: string = 'Charlie') {
+  constructor(context: Context, name: string = 'Engineer') {
     const config: IRoleConfig = {
       name,
       profile: 'Engineer',
@@ -17,12 +17,12 @@ export class Engineer extends Role {
       constraints: 'Follow coding standards, write clean and maintainable code',
       description: 'Skilled engineer who brings designs to life through code',
     };
-    
+
     super(config, context);
-    
+
     // Watch for design completion
     this.watch([ACTION_WRITE_DESIGN]);
-    
+
     // Set actions
     this.setActions([new WriteCode()]);
   }

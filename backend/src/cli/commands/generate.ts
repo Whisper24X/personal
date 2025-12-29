@@ -7,6 +7,7 @@ import { Context } from '../../core/context/Context';
 import { Team } from '../../orchestration/Team';
 import { ProductManager } from '../../roles/ProductManager';
 import { Architect } from '../../roles/Architect';
+import { ProjectManager as ProjectManagerRole } from '../../roles/ProjectManager';
 import { Engineer } from '../../roles/Engineer';
 import { ProjectManager } from '../../orchestration/ProjectManager';
 import { logger } from '../../utils';
@@ -32,10 +33,12 @@ export async function generateCommand(idea: string, options: any) {
     team.hire([
       new ProductManager(ctx),
       new Architect(ctx),
+      new ProjectManagerRole(ctx),
       new Engineer(ctx),
     ]);
     console.log('   ✅ ProductManager (Alice)');
     console.log('   ✅ Architect (Bob)');
+    console.log('   ✅ ProjectManager (David)');
     console.log('   ✅ Engineer (Charlie)\n');
     
     if (options.interactive) {
@@ -78,6 +81,15 @@ export async function generateCommand(idea: string, options: any) {
         } else if (msg.causeBy === 'WriteDesign') {
           await projectManager.writeFile(projectPath, 'DESIGN.md', msg.content);
           console.log('   ✅ Saved DESIGN.md');
+        } else if (msg.causeBy === 'BreakdownTasks') {
+          await projectManager.writeFile(projectPath, 'TASK_BREAKDOWN.md', msg.content);
+          console.log('   ✅ Saved TASK_BREAKDOWN.md');
+        } else if (msg.causeBy === 'WriteSubProjectDesign') {
+          await projectManager.writeFile(projectPath, 'SUB_PROJECT_DESIGN.md', msg.content);
+          console.log('   ✅ Saved SUB_PROJECT_DESIGN.md');
+        } else if (msg.causeBy === 'GenerateTask') {
+          await projectManager.writeFile(projectPath, 'TASK_DESCRIPTION.md', msg.content);
+          console.log('   ✅ Saved TASK_DESCRIPTION.md');
         } else if (msg.causeBy === 'WriteCode') {
           const files = parseCodeFiles(msg.content);
           for (const file of files) {
@@ -97,6 +109,15 @@ export async function generateCommand(idea: string, options: any) {
           console.log(`   ${msg.content.substring(0, 200)}...\n`);
         } else if (msg.causeBy === 'WriteDesign') {
           console.log('🏗️  System Design Document');
+          console.log(`   ${msg.content.substring(0, 200)}...\n`);
+        } else if (msg.causeBy === 'BreakdownTasks') {
+          console.log('📝 Task Breakdown Document');
+          console.log(`   ${msg.content.substring(0, 200)}...\n`);
+        } else if (msg.causeBy === 'WriteSubProjectDesign') {
+          console.log('🏛️  Sub-Project Design Document');
+          console.log(`   ${msg.content.substring(0, 200)}...\n`);
+        } else if (msg.causeBy === 'GenerateTask') {
+          console.log('📋 Task Description Document');
           console.log(`   ${msg.content.substring(0, 200)}...\n`);
         } else if (msg.causeBy === 'WriteCode') {
           const files = parseCodeFiles(msg.content);

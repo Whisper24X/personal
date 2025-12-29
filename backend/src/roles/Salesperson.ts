@@ -9,7 +9,7 @@ import { Context } from '../core/context/Context';
 import { WriteRequirementSpec } from '../actions/WriteRequirementSpec';
 
 export class Salesperson extends Role {
-  constructor(context: Context, name: string = 'Sales') {
+  constructor(context: Context, name: string = 'Salesperson') {
     const config: IRoleConfig = {
       name,
       profile: 'Salesperson',

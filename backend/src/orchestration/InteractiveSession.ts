@@ -9,6 +9,7 @@ import { Context } from '../core/context/Context';
 import { Salesperson } from '../roles/Salesperson';
 import { ProductManager } from '../roles/ProductManager';
 import { Architect } from '../roles/Architect';
+import { ProjectManager } from '../roles/ProjectManager';
 import { Engineer } from '../roles/Engineer';
 import { QAEngineer } from '../roles/QAEngineer';
 import { logger } from '../utils';
@@ -53,6 +54,7 @@ export class InteractiveSession {
       new Salesperson(ctx),
       new ProductManager(ctx),
       new Architect(ctx),
+      new ProjectManager(ctx),
       new Engineer(ctx),
       new QAEngineer(ctx),
     ]);

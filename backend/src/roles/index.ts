@@ -11,3 +11,4 @@ export { Engineer } from './Engineer';
 export { QAEngineer } from './QAEngineer';
 export { DataAnalyst } from './DataAnalyst';
 export { TeamLeader } from './TeamLeader';
+export { ProjectManager } from './ProjectManager';

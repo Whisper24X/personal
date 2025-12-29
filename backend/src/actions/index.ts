@@ -14,3 +14,7 @@ export { WriteTest } from './WriteTest';
 export { SearchEnhancedQA } from './SearchEnhancedQA';
 export { DataAnalysis } from './DataAnalysis';
 export { Coordinate } from './Coordinate';
+export { BreakdownTasks } from './BreakdownTasks';
+export { WriteSubProjectDesign } from './WriteSubProjectDesign';
+export { GenerateTask } from './GenerateTask';
+export { CodeReview } from './CodeReview';

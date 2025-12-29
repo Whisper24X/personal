@@ -21,6 +21,10 @@ export const ACTION_SEARCH_ENHANCED_QA = 'SearchEnhancedQA';
 export const ACTION_DATA_ANALYSIS = 'DataAnalysis';
 export const ACTION_COORDINATE = 'Coordinate';
 export const ACTION_RUN_CODE = 'RunCode';
+export const ACTION_BREAKDOWN_TASKS = 'BreakdownTasks';
+export const ACTION_WRITE_SUB_PROJECT_DESIGN = 'WriteSubProjectDesign';
+export const ACTION_GENERATE_TASK = 'GenerateTask';
+export const ACTION_CODE_REVIEW = 'CodeReview';
 
 // ==================== Role Profiles ====================
 
@@ -30,6 +34,7 @@ export const ROLE_ENGINEER = 'Engineer';
 export const ROLE_QA_ENGINEER = 'QAEngineer';
 export const ROLE_TEAM_LEADER = 'TeamLeader';
 export const ROLE_DATA_ANALYST = 'DataAnalyst';
+export const ROLE_PROJECT_MANAGER = 'ProjectManager';
 
 // ==================== Default Values ====================
 

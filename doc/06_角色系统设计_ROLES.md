@@ -12,7 +12,7 @@
 **核心属性**:
 ```javascript
 class Salesperson extends RoleZero {
-    name = "Sales"
+    name = "Salesperson"
     profile = "Salesperson"
     goal = "Collect customer requirements and produce requirement specification"
     tools = ["Browser", "Editor", "SearchEnhancedQA"]
@@ -42,7 +42,7 @@ class Salesperson extends RoleZero {
 **核心属性**:
 ```javascript
 class ProductManager extends RoleZero {
-    name = "Alice"
+    name = "ProductManager"
     profile = "Product Manager"
     goal = "Create detailed PRD based on requirement specification"
     tools = ["Browser", "Editor", "SearchEnhancedQA"]
@@ -62,7 +62,7 @@ class ProductManager extends RoleZero {
 **核心属性**:
 ```python
 class Architect(RoleZero):
-    name: str = "Bob"
+    name: str = "Architect"
     profile: str = "Architect"
     goal: str = "Design complete software system"
     tools: list[str] = ["Editor", "Terminal"]
@@ -74,7 +74,56 @@ class Architect(RoleZero):
 3. 生成设计文档
 4. 发布给 Engineer
 
-### 3. Engineer (工程师)
+### 3. ProjectManager (项目经理)
+
+**职责**: 任务拆分、子项目设计、任务生成
+
+**核心属性**:
+```typescript
+class ProjectManager extends Role {
+    name = "ProjectManager"
+    profile = "ProjectManager"
+    goal = "Break down projects into minimal granularity tasks, provide sub-project design and task generation support for engineers"
+    tools = ["BreakdownTasks", "WriteSubProjectDesign", "GenerateTask"]
+}
+```
+
+**工作流程**:
+1. 接收 PRD 和系统设计文档（订阅 WritePRD 和 WriteDesign）
+2. 进行任务拆分（BreakdownTasks）
+   - 基于 PRD 和设计文档
+   - 确保任务符合最小颗粒度（1-3天可完成）
+   - 识别任务依赖关系
+   - 定义任务优先级和验收标准
+3. 生成子项目设计（WriteSubProjectDesign）
+   - 将相关任务组织成子项目
+   - 为每个子项目提供详细技术设计
+   - 定义子项目间的接口和依赖
+4. 生成详细任务说明（GenerateTask）
+   - 为工程师提供清晰的任务描述
+   - 包含技术实现指导和代码示例
+
+**输出产物**:
+- 任务拆分文档（TASK_BREAKDOWN.md）
+  - 任务列表（ID、名称、类型、优先级、工时、依赖）
+  - 任务描述、输入、输出、验收标准
+  - 技术要点和注意事项
+- 子项目设计文档（SUB_PROJECT_DESIGN.md）
+  - 子项目概述和目标
+  - 技术架构设计
+  - API 接口设计
+  - 数据模型设计
+- 任务说明文档（TASK_DESCRIPTION.md）
+  - 详细开发指南
+  - 技术实现方案
+  - 代码示例
+
+**核心原则**:
+- 任务拆分符合最小颗粒度原则
+- 每个任务独立、可测试、可交付
+- 为工程师提供清晰的决策支撑
+
+### 4. Engineer (工程师)
 
 **职责**: 代码实现
 
@@ -89,12 +138,13 @@ class Engineer(RoleZero):
 
 **工作流程**:
 1. 接收设计文档（订阅 WriteDesign）
-2. 编写代码（WriteCode）
-3. 输出源代码
+2. 接收任务说明（来自 ProjectManager）
+3. 编写代码（WriteCode）
+4. 输出源代码
 
-**注意**: WriteCodeReview（代码审查）功能计划在未来版本中实现
+**注意**: 现在可以通过 ProjectManager 获得任务拆分、子项目设计和代码审查支持
 
-### 4. QA Engineer (QA 工程师)
+### 5. QA Engineer (QA 工程师)
 
 **职责**: 测试用例编写和执行
 
@@ -104,13 +154,13 @@ class Engineer(RoleZero):
 3. 执行测试
 4. 报告问题
 
-### 5. TeamLeader (团队领导)
+### 6. TeamLeader (团队领导)
 
 **职责**: 协调、决策、任务分配
 
 **特点**: 监听所有消息，协调团队工作
 
-### 6. DataInterpreter (数据解释器)
+### 7. DataInterpreter (数据解释器)
 
 **职责**: 数据分析和可视化
 
