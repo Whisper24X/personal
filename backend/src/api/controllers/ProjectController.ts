@@ -91,7 +91,8 @@ export class ProjectController {
       await projectRepo.updateStatus(id, ProjectStatus.RUNNING);
 
       // Start execution in background
-      ProjectController.executeProject(id, project.idea, project.investment, project.nRound)
+      const userId = (req as any).userId || DEFAULT_USER_ID;
+      ProjectController.executeProject(id, project.idea, project.investment, project.nRound, userId)
         .catch((error) => {
           logger.error(`Project ${id} execution failed:`, error);
         });
@@ -117,11 +118,16 @@ export class ProjectController {
     projectId: string,
     idea: string,
     investment: number,
-    nRound: number
+    nRound: number,
+    userId?: string
   ) {
     try {
       // Create context and team
       const ctx = new Context();
+      // Set userId in context so roles can load their specific LLM configs
+      if (userId) {
+        ctx.set('userId', userId);
+      }
       const team = new Team(ctx);
 
       // Hire roles - 按照 PRD 文档定义的完整流程

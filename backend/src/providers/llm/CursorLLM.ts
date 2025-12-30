@@ -23,15 +23,83 @@ export class CursorLLM extends BaseLLM {
       throw new Error('CursorLLM: repository is required in config');
     }
 
-    this.repository = config.repository;
-    this.branchName = config.branchName || `cursor/${Date.now()}`;
+    // Normalize repository format - convert to full GitHub URL
+    this.repository = this.normalizeRepository(config.repository);
+
+    // Validate repository format (should be full GitHub URL)
+    const githubUrlPattern = /^https?:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/i;
+    if (!githubUrlPattern.test(this.repository)) {
+      throw new Error(`CursorLLM: Invalid repository format. Expected GitHub URL (e.g., https://github.com/owner/repo), got: ${config.repository}`);
+    }
+
+    // Validate and sanitize branch name
+    let branchName = config.branchName || `cursor/${Date.now()}`;
+    // Remove invalid characters from branch name (Git branch name rules)
+    branchName = branchName.replace(/[^a-zA-Z0-9/._-]/g, '-');
+    // Ensure it doesn't start with a slash
+    branchName = branchName.replace(/^\/+/, '');
+    this.branchName = branchName;
+
     this.autoCreatePr = config.autoCreatePr ?? true;
 
     logger.info('CursorLLM: Initializing', {
       repository: this.repository,
       branchName: this.branchName,
       autoCreatePr: this.autoCreatePr,
+      model: config.model,
     });
+  }
+
+  /**
+   * Normalize repository format to full GitHub URL
+   * According to Cursor API docs, repository should be full GitHub URL
+   * Examples:
+   *   "https://github.com/owner/repo" -> "https://github.com/owner/repo"
+   *   "https://github.com/owner/repo.git" -> "https://github.com/owner/repo"
+   *   "git@github.com:owner/repo.git" -> "https://github.com/owner/repo"
+   *   "owner/repo" -> "https://github.com/owner/repo"
+   */
+  private normalizeRepository(repo: string): string {
+    // If already a full GitHub URL, normalize it (remove .git if present)
+    const githubUrlPattern = /^https?:\/\/github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)(?:\.git)?\/?$/i;
+    const urlMatch = repo.match(githubUrlPattern);
+    if (urlMatch && urlMatch[1] && urlMatch[2]) {
+      const normalized = `https://github.com/${urlMatch[1]}/${urlMatch[2]}`;
+      if (normalized !== repo) {
+        logger.debug('CursorLLM: Normalized repository URL', {
+          original: repo,
+          normalized,
+        });
+      }
+      return normalized;
+    }
+
+    // If it's git@github.com format, convert to HTTPS URL
+    const gitSshPattern = /^git@github\.com:([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)(?:\.git)?$/i;
+    const sshMatch = repo.match(gitSshPattern);
+    if (sshMatch && sshMatch[1] && sshMatch[2]) {
+      const normalized = `https://github.com/${sshMatch[1]}/${sshMatch[2]}`;
+      logger.debug('CursorLLM: Converted SSH URL to HTTPS', {
+        original: repo,
+        normalized,
+      });
+      return normalized;
+    }
+
+    // If it's "owner/repo" format, convert to full GitHub URL
+    const repoPattern = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
+    if (repoPattern.test(repo)) {
+      const normalized = `https://github.com/${repo}`;
+      logger.debug('CursorLLM: Converted owner/repo to full URL', {
+        original: repo,
+        normalized,
+      });
+      return normalized;
+    }
+
+    // If no pattern matches, return original (will fail validation)
+    logger.warn('CursorLLM: Could not normalize repository format', { repo });
+    return repo;
   }
 
   /**
@@ -45,33 +113,36 @@ export class CursorLLM extends BaseLLM {
       // Extract prompt from messages
       const userMessage = messages.find(m => m.role === 'user');
       const systemMessages = messages.filter(m => m.role === 'system');
-      
+
       if (!userMessage) {
         throw new Error('CursorLLM: No user message found in messages');
       }
 
       const promptText = userMessage.content;
-      const systemPrompt = systemMessages.length > 0 
+      const systemPrompt = systemMessages.length > 0
         ? systemMessages.map(m => m.content).join('\n\n')
         : undefined;
 
       // Combine system prompt with user prompt if system prompt exists
-      const fullPrompt = systemPrompt 
+      const fullPrompt = systemPrompt
         ? `${systemPrompt}\n\n${promptText}`
         : promptText;
 
       logger.info('CursorLLM: Starting agent creation', {
         promptLength: fullPrompt.length,
         hasSystemPrompt: !!systemPrompt,
+        repository: this.repository,
+        branchName: this.branchName,
+        model: this.config.model,
       });
 
       // Create or reuse agent
       let agentId = this.currentAgentId;
-      
+
       if (!agentId) {
         // Create new agent
+        // Note: According to Cursor API, 'name' field is not required in the request
         const createRequest: CreateAgentRequest = {
-          name: `Code Generation - ${new Date().toISOString()}`,
           prompt: {
             text: fullPrompt,
           },
@@ -81,18 +152,46 @@ export class CursorLLM extends BaseLLM {
           },
           target: {
             branchName: this.branchName,
-            autoCreatePr: this.autoCreatePr,
+            autoCreatePr: this.autoCreatePr ?? true,
             openAsCursorGithubApp: false,
             skipReviewerRequest: false,
           },
-          model: this.config.model || undefined, // Use model from config if specified
+          // Only include model if it's not 'auto' (API may not accept 'auto' as model value)
+          model: this.config.model && this.config.model !== 'auto' ? this.config.model : undefined,
         };
 
-        const createResponse = await cursorAgentClient.createAgent(createRequest);
-        agentId = createResponse.id;
-        this.currentAgentId = agentId;
+        logger.debug('CursorLLM: Creating agent with request', {
+          repository: createRequest.source.repository,
+          ref: createRequest.source.ref,
+          branchName: createRequest.target?.branchName,
+          autoCreatePr: createRequest.target?.autoCreatePr,
+          model: createRequest.model,
+          promptLength: createRequest.prompt.text.length,
+        });
 
-        logger.info('CursorLLM: Agent created', { agentId });
+        try {
+          const createResponse = await cursorAgentClient.createAgent(createRequest);
+          agentId = createResponse.id;
+          this.currentAgentId = agentId;
+
+          logger.info('CursorLLM: Agent created', { agentId });
+        } catch (createError: any) {
+          // Extract safe error information without circular references
+          const errorMessage = createError?.message || String(createError);
+          logger.error('CursorLLM: Failed to create agent', {
+            error: errorMessage,
+            statusCode: createError?.statusCode,
+            statusText: createError?.statusText,
+            responseData: createError?.responseData,
+            request: {
+              repository: createRequest.source.repository,
+              ref: createRequest.source.ref,
+              branchName: createRequest.target?.branchName,
+              model: createRequest.model,
+            },
+          });
+          throw createError;
+        }
       } else {
         // Send followup to existing agent
         logger.info('CursorLLM: Sending followup to existing agent', { agentId });
@@ -108,12 +207,12 @@ export class CursorLLM extends BaseLLM {
 
       // Get conversation to extract response
       const conversation = await cursorAgentClient.getAgentConversation(agentId);
-      
+
       // Extract the last assistant message as the response
       const assistantMessages = conversation.messages
         .filter(m => m.type === 'assistant_message')
         .reverse();
-      
+
       const responseText = assistantMessages.length > 0
         ? assistantMessages[0].text
         : 'Agent completed but no response message found';
@@ -148,16 +247,37 @@ export class CursorLLM extends BaseLLM {
       return llmResponse;
     } catch (error: any) {
       const elapsedTime = Date.now() - startTime;
+      const statusCode = error.response?.status || error.statusCode;
+      const errorData = error.response?.data;
+      const errorMessage = errorData?.message || errorData?.error || error.message || 'Unknown error';
+
       logger.error('CursorLLM: Completion failed', {
-        error: error.message,
+        error: errorMessage,
+        statusCode,
+        statusText: error.response?.statusText,
+        errorData,
         elapsedTime,
         elapsedSeconds: elapsedTime / 1000,
+        repository: this.repository,
+        branchName: this.branchName,
       });
 
-      throw new LLMAPIError(
-        `Cursor Agent API error: ${error.message}`,
-        error.statusCode
-      );
+      // Provide more helpful error messages based on status code
+      let finalErrorMessage = `Cursor Agent API error: ${errorMessage}`;
+      if (statusCode === 400) {
+        finalErrorMessage = `Cursor Agent API validation error (400): ${errorMessage}. ` +
+          `Please check: repository format (should be "owner/repo"), branch name format, and API key permissions. ` +
+          `Repository: ${this.repository}, Branch: ${this.branchName}`;
+      } else if (statusCode === 401) {
+        finalErrorMessage = `Cursor Agent API authentication error (401): Invalid API key. Please check your CURSOR_API_KEY.`;
+      } else if (statusCode === 404) {
+        finalErrorMessage = `Cursor Agent API not found error (404): ${errorMessage}. ` +
+          `Repository may not exist or API endpoint may have changed.`;
+      } else if (statusCode === 429) {
+        finalErrorMessage = `Cursor Agent API rate limit error (429): ${errorMessage}. Please try again later.`;
+      }
+
+      throw new LLMAPIError(finalErrorMessage, statusCode);
     }
   }
 
@@ -177,7 +297,7 @@ export class CursorLLM extends BaseLLM {
 
     for (let i = 0; i < maxPolls; i++) {
       const agent = await cursorAgentClient.getAgent(agentId);
-      
+
       if (agent.status === 'FINISHED' || agent.status === 'FAILED' || agent.status === 'STOPPED') {
         logger.info('CursorLLM: Agent finished', {
           agentId,

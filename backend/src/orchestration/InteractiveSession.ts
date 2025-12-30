@@ -47,6 +47,10 @@ export class InteractiveSession {
     
     // Create team with interactive mode enabled (but custom handler)
     const ctx = new Context(undefined, config.investment);
+    // Set userId in context so roles can load their specific LLM configs
+    if (this.userId) {
+      ctx.set('userId', this.userId);
+    }
     this.team = new Team(ctx, false); // We'll handle interaction via WebSocket
     
     // Hire roles - 按照 PRD 文档定义的完整流程

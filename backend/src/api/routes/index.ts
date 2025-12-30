@@ -8,6 +8,7 @@ import projectRoutes from './projects';
 import applicationRoutes from './applications';
 import interactiveRoutes from './interactive';
 import configRoutes from './config';
+import testRoutes from './test';
 
 const router = Router();
 
@@ -15,6 +16,7 @@ const router = Router();
 router.use('/applications', applicationRoutes);
 router.use('/projects', projectRoutes);
 router.use('/config', configRoutes);
+router.use('/test', testRoutes); // Test routes: /api/test/engineer/*
 router.use('/', interactiveRoutes); // Interactive routes: /api/interactive, /api/interactive-stats
 
 // Health check

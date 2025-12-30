@@ -7,6 +7,7 @@ import {
   IRoleConfig,
   RoleReactMode,
   anyToStr,
+  ILLMConfig,
 } from '@mind2build/shared';
 import { BaseRole } from '../core/base/BaseRole';
 import { BaseAction } from '../core/base/BaseAction';
@@ -15,6 +16,7 @@ import { RoleContext } from '../core/context/RoleContext';
 import { Context } from '../core/context/Context';
 import { logger, WorkspaceOptions } from '../utils';
 import { createLLM } from '../providers/llm/factory';
+import { RoleLLMConfigRepository } from '../database';
 
 export class Role extends BaseRole {
   goal: string;
@@ -26,6 +28,8 @@ export class Role extends BaseRole {
   private addresses: Set<string> = new Set();
 
   private roleLLM?: any; // Role-specific LLM instance
+  private roleLLMConfigRepo = new RoleLLMConfigRepository();
+  private llmLoadPromise?: Promise<void>; // Track async LLM loading
 
   constructor(config: IRoleConfig, context: Context) {
     super(config.name, config.profile);
@@ -36,15 +40,80 @@ export class Role extends BaseRole {
     this.rc = new RoleContext();
 
     // Initialize role-specific LLM if configured
+    // Priority: database config > config.llm (explicit) > default (context.llm)
+    // First, try to load from database (highest priority)
+    this.llmLoadPromise = this.loadRoleLLMFromDatabase(context);
+    
+    // If explicit config.llm is provided, use it as fallback (for backward compatibility)
+    // But database config will override it when loaded
     if (config.llm) {
+      // Use explicitly provided LLM config as temporary fallback
+      // Will be overridden by database config if available
       this.roleLLM = createLLM(config.llm);
       this.roleLLM.costManager = context.costManager;
+      logger.info(`${this.profile} using explicitly configured LLM (may be overridden by database config): ${config.llm.provider}/${config.llm.model}`);
     }
 
     // Initialize addresses for message routing
     this.addresses.add(this.name);
     this.addresses.add(this.profile);
     this.addresses.add(anyToStr(this));
+  }
+
+  /**
+   * Load role-specific LLM configuration from database
+   * Priority: database config > explicit config.llm > default context.llm
+   */
+  private async loadRoleLLMFromDatabase(context: Context): Promise<void> {
+    try {
+      // Get userId from context (if set)
+      const userId = context.get('userId') || '302769d6-247d-43db-a005-0519712255fb';
+      
+      // Load role-specific LLM config from database
+      const dbConfig = await this.roleLLMConfigRepo.findByProfile(userId, this.profile);
+      
+      if (dbConfig) {
+        // Convert database config to ILLMConfig
+        const llmConfig: ILLMConfig = {
+          provider: dbConfig.provider,
+          apiKey: dbConfig.api_key || '',
+          baseURL: dbConfig.base_url,
+          model: dbConfig.model,
+          temperature: dbConfig.temperature !== null ? dbConfig.temperature : undefined,
+          maxTokens: dbConfig.max_tokens !== null ? dbConfig.max_tokens : undefined,
+          repository: dbConfig.repository || undefined,
+          branchName: dbConfig.branch_name || undefined,
+          autoCreatePr: dbConfig.auto_create_pr,
+        };
+        
+        // Create role-specific LLM instance (overrides any explicit config.llm)
+        this.roleLLM = createLLM(llmConfig);
+        this.roleLLM.costManager = context.costManager;
+        
+        // If actions have already been set, update their LLM
+        if (this.actions.length > 0) {
+          this.actions.forEach((action) => action.setLLM(this.roleLLM));
+          logger.info(`${this.profile} updated actions with database LLM config: ${dbConfig.provider}/${dbConfig.model}`);
+        } else {
+          logger.info(`${this.profile} loaded LLM config from database (highest priority): ${dbConfig.provider}/${dbConfig.model}`);
+        }
+      } else {
+        // No database config found
+        // If explicit config.llm was provided, keep using it
+        // Otherwise, will use default context.llm in setActions
+        if (!this.roleLLM) {
+          logger.debug(`${this.profile} no database LLM config found, will use default context.llm`);
+        } else {
+          logger.debug(`${this.profile} no database LLM config found, using explicit config.llm`);
+        }
+      }
+    } catch (error: any) {
+      // If database query fails, keep using explicit config.llm or default LLM
+      logger.debug(`${this.profile} error loading LLM config from database:`, error.message);
+      if (!this.roleLLM) {
+        logger.debug(`${this.profile} will use default context.llm due to database error`);
+      }
+    }
   }
 
   /**
@@ -60,8 +129,15 @@ export class Role extends BaseRole {
   setActions(actions: BaseAction[]): void {
     this.actions = actions;
     // Set LLM for each action - use role-specific LLM if available, otherwise use context LLM
+    // If database config is still loading, use default LLM for now; it will be updated when loading completes
     const llmToUse = this.roleLLM || this.context.llm;
     actions.forEach((action) => action.setLLM(llmToUse));
+    
+    if (this.roleLLM) {
+      logger.debug(`${this.profile} setActions: using role-specific LLM`);
+    } else {
+      logger.debug(`${this.profile} setActions: using default context LLM (database config may still be loading)`);
+    }
   }
 
   /**

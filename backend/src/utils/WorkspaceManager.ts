@@ -149,7 +149,8 @@ export class WorkspaceManager {
       try {
         await fs.access(workspaceDir);
       } catch {
-        logger.warn('WorkspaceManager: Workspace directory does not exist', {
+        // 目录不存在是正常情况（特别是在测试环境中），使用 debug 级别而不是 warn
+        logger.debug('WorkspaceManager: Workspace directory does not exist', {
           workspaceDir,
         });
         return ''; // 如果目录不存在，返回空字符串
