@@ -6,14 +6,18 @@
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { DESIGN_SYSTEM_PROMPT, buildDesignPrompt } from '../prompts/design';
-import { logger } from '../utils';
+import { logger, WorkspaceOptions } from '../utils';
+
+export interface WriteDesignOptions extends WorkspaceOptions {
+  // 继承WorkspaceOptions的所有选项
+}
 
 export class WriteDesign extends BaseAction {
   constructor() {
     super('WriteDesign', 'Generate System Design Document from PRD');
   }
 
-  async run(prd: string): Promise<IActionOutput> {
+  async run(prd: string, options?: WriteDesignOptions): Promise<IActionOutput> {
     logger.info('WriteDesign: Starting design generation');
     
     try {
@@ -23,8 +27,16 @@ export class WriteDesign extends BaseAction {
       // Call LLM with system message and prompt
       const designContent = await this.aask(prompt, [DESIGN_SYSTEM_PROMPT]);
       
+      // 保存到workspace
+      const workspaceOptions: WorkspaceOptions = {
+        ...options,
+        documentType: 'DESIGN',
+      };
+      await this.saveToWorkspace('DESIGN.md', designContent, workspaceOptions);
+      
       logger.info('WriteDesign: Design generation completed', {
         contentLength: designContent.length,
+        workspaceDir: this.getWorkspaceDir(workspaceOptions),
       });
       
       return {
@@ -33,6 +45,7 @@ export class WriteDesign extends BaseAction {
           type: 'design',
           filename: 'DESIGN.md',
           timestamp: new Date().toISOString(),
+          workspaceDir: this.getWorkspaceDir(workspaceOptions),
         },
       };
     } catch (error: any) {

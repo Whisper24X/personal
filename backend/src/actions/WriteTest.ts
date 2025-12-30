@@ -6,7 +6,11 @@
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { TEST_SYSTEM_PROMPT, buildTestPrompt } from '../prompts/test';
-import { logger } from '../utils';
+import { logger, WorkspaceOptions } from '../utils';
+
+export interface WriteTestOptions extends WorkspaceOptions {
+  // 继承WorkspaceOptions的所有选项
+}
 
 export class WriteTest extends BaseAction {
   constructor() {
@@ -17,7 +21,7 @@ export class WriteTest extends BaseAction {
     );
   }
 
-  async run(input: string): Promise<IActionOutput> {
+  async run(input: string, options?: WriteTestOptions): Promise<IActionOutput> {
     logger.info('WriteTest: Starting test generation');
     
     if (!input || input.trim() === '') {
@@ -56,8 +60,16 @@ export class WriteTest extends BaseAction {
     // 调用 LLM 生成测试用例
       const content = await this.aask(prompt, [TEST_SYSTEM_PROMPT]);
       
+      // 保存到workspace
+      const workspaceOptions: WorkspaceOptions = {
+        ...options,
+        documentType: 'TEST',
+      };
+      await this.saveToWorkspace('TEST.md', content, workspaceOptions);
+      
       logger.info('WriteTest: Test generation completed', {
         contentLength: content.length,
+        workspaceDir: this.getWorkspaceDir(workspaceOptions),
       });
       
       return {
@@ -66,6 +78,7 @@ export class WriteTest extends BaseAction {
           type: 'test',
           filename: 'TEST.md',
           timestamp: new Date().toISOString(),
+          workspaceDir: this.getWorkspaceDir(workspaceOptions),
         },
       };
     } catch (error: any) {

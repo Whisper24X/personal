@@ -13,7 +13,7 @@ import { BaseAction } from '../core/base/BaseAction';
 import { Message } from '../core/message/Message';
 import { RoleContext } from '../core/context/RoleContext';
 import { Context } from '../core/context/Context';
-import { logger } from '../utils';
+import { logger, WorkspaceOptions } from '../utils';
 
 export class Role extends BaseRole {
   goal: string;
@@ -248,6 +248,147 @@ export class Role extends BaseRole {
   }
 
   /**
+   * Extract workspace options from messages
+   * 从消息中提取workspace选项（applicationId, version等）
+   */
+  protected extractWorkspaceOptions(): WorkspaceOptions | undefined {
+    // 尝试从最近的PRD、Design或RequirementSpec消息中获取workspace选项
+    const messagesToCheck = [
+      ...this.rc.news,
+      ...this.rc.memory.getByAction('WritePRD'),
+      ...this.rc.memory.getByAction('WriteDesign'),
+      ...this.rc.memory.getByAction('WriteRequirementSpec'),
+    ];
+
+    for (const msg of messagesToCheck) {
+      const data = msg.instructContent as any;
+      if (data?.workspaceDir) {
+        // 从workspaceDir解析applicationId和version
+        // 格式: {applicationId}-v{version}-{documentType}
+        const match = data.workspaceDir.match(/(.+)-v(\d+)-(.+)/);
+        if (match) {
+          return {
+            applicationId: match[1],
+            version: parseInt(match[2], 10),
+            documentType: this.getDocumentTypeForAction(this.rc.todo?.name || ''),
+          };
+        }
+      }
+      
+      // 如果消息数据中直接包含workspace选项
+      if (data?.applicationId && data?.version) {
+        return {
+          applicationId: data.applicationId,
+          version: data.version,
+          documentType: this.getDocumentTypeForAction(this.rc.todo?.name || ''),
+        };
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Get document type for action
+   */
+  private getDocumentTypeForAction(actionName: string): string {
+    const typeMap: Record<string, string> = {
+      'WriteRequirementSpec': 'REQUIREMENT',
+      'WritePRD': 'PRD',
+      'WriteDesign': 'DESIGN',
+      'WriteSubProjectDesign': 'DESIGN',
+      'BreakdownTasks': 'TASKS',
+      'GenerateTask': 'TASKS',
+      'WriteCode': 'CODE',
+      'WriteTest': 'TEST',
+      'ExecuteSubtask': 'CODE',
+    };
+    return typeMap[actionName] || 'DOCS';
+  }
+
+  /**
+   * Check if action accepts options parameter
+   */
+  private actionAcceptsOptions(actionName: string): boolean {
+    // 这些Action支持options参数
+    const actionsWithOptions = [
+      'WriteRequirementSpec',
+      'WritePRD',
+      'WriteDesign',
+      'WriteSubProjectDesign',
+      'BreakdownTasks',
+      'GenerateTask',
+      'WriteCode',
+      'WriteTest',
+      'ExecuteSubtask',
+    ];
+    return actionsWithOptions.includes(actionName);
+  }
+
+  /**
+   * Run action with workspace options
+   */
+  private async runActionWithOptions(
+    action: BaseAction,
+    input: string,
+    workspaceOptions: WorkspaceOptions
+  ): Promise<any> {
+    const actionName = action.name;
+
+    // 根据不同的Action，传递不同的参数
+    switch (actionName) {
+      case 'WriteRequirementSpec':
+        return await (action as any).run(input, workspaceOptions);
+      
+      case 'WritePRD':
+        return await (action as any).run(input, workspaceOptions);
+      
+      case 'WriteDesign':
+        return await (action as any).run(input, workspaceOptions);
+      
+      case 'WriteSubProjectDesign':
+        // WriteSubProjectDesign需要两个参数：taskBreakdown和design
+        // 这里需要特殊处理，暂时只传递第一个参数
+        return await (action as any).run(input, undefined, workspaceOptions);
+      
+      case 'BreakdownTasks':
+        // BreakdownTasks需要两个参数：prd和design
+        // 需要从消息中提取
+        const prdMessages = this.rc.memory.getByAction('WritePRD');
+        const designMessages = this.rc.memory.getByAction('WriteDesign');
+        const prd = prdMessages.length > 0 ? prdMessages[prdMessages.length - 1].content : input;
+        const design = designMessages.length > 0 ? designMessages[designMessages.length - 1].content : input;
+        return await (action as any).run(prd, design, workspaceOptions);
+      
+      case 'GenerateTask':
+        // GenerateTask需要taskBreakdown和可选的subProjectDesign
+        const taskBreakdownMessages = this.rc.memory.getByAction('BreakdownTasks');
+        const subProjectMessages = this.rc.memory.getByAction('WriteSubProjectDesign');
+        const taskBreakdown = taskBreakdownMessages.length > 0 
+          ? taskBreakdownMessages[taskBreakdownMessages.length - 1].content 
+          : input;
+        const subProjectDesign = subProjectMessages.length > 0 
+          ? subProjectMessages[subProjectMessages.length - 1].content 
+          : undefined;
+        return await (action as any).run(taskBreakdown, subProjectDesign, workspaceOptions);
+      
+      case 'WriteCode':
+        return await (action as any).run(input, workspaceOptions);
+      
+      case 'WriteTest':
+        return await (action as any).run(input, workspaceOptions);
+      
+      case 'ExecuteSubtask':
+        // ExecuteSubtask需要taskDescription和options
+        return await (action as any).run(input, workspaceOptions);
+      
+      default:
+        // 默认情况，只传递input
+        return await action.run(input);
+    }
+  }
+
+  /**
    * Act: Execute the current action
    */
   async act(): Promise<Message | null> {
@@ -261,6 +402,9 @@ export class Role extends BaseRole {
     try {
       // Get relevant context from news
       const context = this.rc.news.map((msg) => msg.content).join('\n\n');
+
+      // Extract workspace options
+      const workspaceOptions = this.extractWorkspaceOptions();
 
       // Special handling for WriteTest: also include PRD from memory
       let actionInput = context;
@@ -285,6 +429,7 @@ export class Role extends BaseRole {
         contextLength: actionInput.length,
         contextPreview: actionInput.substring(0, 500) + (actionInput.length > 500 ? '...' : ''),
         newsCount: this.rc.news.length,
+        workspaceOptions,
         newsDetails: this.rc.news.map(msg => ({
           causeBy: msg.causeBy,
           sentFrom: msg.sentFrom,
@@ -293,8 +438,16 @@ export class Role extends BaseRole {
         })),
       });
 
-      // Execute action
-      const result = await action.run(actionInput);
+      // Execute action with workspace options
+      // 根据Action的签名决定如何传递参数
+      let result;
+      if (workspaceOptions && this.actionAcceptsOptions(action.name)) {
+        // 如果Action支持options参数，传递workspace选项
+        result = await this.runActionWithOptions(action, actionInput, workspaceOptions);
+      } else {
+        // 否则使用默认方式
+        result = await action.run(actionInput);
+      }
 
       // Log output for act
       logger.info(`${this.profile} act() output:`, {

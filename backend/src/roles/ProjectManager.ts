@@ -14,7 +14,7 @@ import { BreakdownTasks } from '../actions/BreakdownTasks';
 import { WriteSubProjectDesign } from '../actions/WriteSubProjectDesign';
 import { GenerateTask } from '../actions/GenerateTask';
 import { Message } from '../core/message/Message';
-import { logger } from '../utils';
+import { logger, SubtaskManager, WorkspaceOptions } from '../utils';
 
 export class ProjectManager extends Role {
   constructor(context: Context, name: string = 'ProjectManager') {
@@ -85,7 +85,9 @@ export class ProjectManager extends Role {
           return null;
         }
         
-        result = await action.run(prdContent, designContent);
+        // 获取workspace选项
+        const workspaceOptions = this.extractWorkspaceOptions();
+        result = await action.run(prdContent, designContent, workspaceOptions);
       } else if (action.name === 'WriteSubProjectDesign') {
         // WriteSubProjectDesign needs task breakdown and design
         const taskBreakdownMessage = this.rc.news.find(msg => msg.causeBy === 'BreakdownTasks');
@@ -114,7 +116,9 @@ export class ProjectManager extends Role {
           return null;
         }
         
-        result = await action.run(taskBreakdownContent, designContent);
+        // 获取workspace选项
+        const workspaceOptions = this.extractWorkspaceOptions();
+        result = await action.run(taskBreakdownContent, designContent, workspaceOptions);
       } else if (action.name === 'GenerateTask') {
         // GenerateTask needs task breakdown, optionally sub-project design
         const taskBreakdownMessage = this.rc.news.find(msg => msg.causeBy === 'BreakdownTasks');
@@ -143,7 +147,13 @@ export class ProjectManager extends Role {
           return null;
         }
         
-        result = await action.run(taskBreakdownContent, subProjectDesignContent);
+        // 获取workspace选项（从消息的instructContent中获取）
+        const workspaceOptions = this.extractWorkspaceOptions();
+        
+        result = await action.run(taskBreakdownContent, subProjectDesignContent, workspaceOptions);
+        
+        // GenerateTask完成后，检查子任务状态
+        await this.checkAndManageSubtasks(workspaceOptions);
       } else {
         // Default: use all news messages as context
         const context = this.rc.news.map((msg) => msg.content).join('\n\n');
@@ -169,6 +179,70 @@ export class ProjectManager extends Role {
       logger.error(`${this.profile} action failed:`, error);
       this.rc.todo = null;
       throw error;
+    }
+  }
+
+
+  /**
+   * 检查和管理子任务执行状态
+   */
+  private async checkAndManageSubtasks(options?: WorkspaceOptions): Promise<void> {
+    if (!options?.applicationId || !options?.version) {
+      logger.warn('ProjectManager: Cannot check subtasks without workspace options');
+      return;
+    }
+
+    try {
+      const subtaskManager = new SubtaskManager();
+      const loaded = await subtaskManager.loadFromWorkspace({
+        applicationId: options.applicationId,
+        version: options.version,
+        documentType: 'TASKS',
+      });
+
+      if (!loaded) {
+        logger.warn('ProjectManager: Failed to load task breakdown from workspace');
+        return;
+      }
+
+      const stats = subtaskManager.getStatistics();
+      logger.info('ProjectManager: Subtask status', stats);
+
+      // 检查是否所有任务都已完成
+      if (subtaskManager.areAllTasksCompleted()) {
+        logger.info('ProjectManager: All subtasks completed!');
+        
+        // 生成最终执行报告
+        const report = subtaskManager.getExecutionReport();
+        await subtaskManager.saveToWorkspace({
+          applicationId: options.applicationId,
+          version: options.version,
+          documentType: 'TASKS',
+        });
+
+        // 可以在这里发布一个消息，通知所有任务已完成
+        // 或者让Engineer继续执行剩余的任务
+      } else {
+        // 获取待执行的任务
+        const pendingTasks = subtaskManager.getPendingTasks();
+        logger.info('ProjectManager: Pending tasks', {
+          count: pendingTasks.length,
+          taskIds: pendingTasks.map(t => t.id),
+        });
+
+        // 如果有待执行的任务，可以在这里触发执行
+        // 或者让Engineer角色来处理这些任务
+        if (pendingTasks.length > 0) {
+          logger.info('ProjectManager: There are pending tasks that need to be executed', {
+            pendingCount: pendingTasks.length,
+            taskIds: pendingTasks.map(t => `${t.id}: ${t.name}`),
+          });
+        }
+      }
+    } catch (error: any) {
+      logger.error('ProjectManager: Failed to check subtasks', {
+        error: error.message,
+      });
     }
   }
 }

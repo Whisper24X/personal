@@ -9,14 +9,22 @@ import {
   SUB_PROJECT_DESIGN_SYSTEM_PROMPT,
   buildSubProjectDesignPrompt,
 } from '../prompts/task';
-import { logger } from '../utils';
+import { logger, WorkspaceOptions } from '../utils';
+
+export interface WriteSubProjectDesignOptions extends WorkspaceOptions {
+  // 继承WorkspaceOptions的所有选项
+}
 
 export class WriteSubProjectDesign extends BaseAction {
   constructor() {
     super('WriteSubProjectDesign', 'Generate sub-project design documents');
   }
 
-  async run(taskBreakdown: string, design: string): Promise<IActionOutput> {
+  async run(
+    taskBreakdown: string,
+    design: string,
+    options?: WriteSubProjectDesignOptions
+  ): Promise<IActionOutput> {
     logger.info('WriteSubProjectDesign: Starting sub-project design generation');
     
     try {
@@ -26,8 +34,16 @@ export class WriteSubProjectDesign extends BaseAction {
       // Call LLM with system message and prompt
       const subProjectDesignContent = await this.aask(prompt, [SUB_PROJECT_DESIGN_SYSTEM_PROMPT]);
       
+      // 保存到workspace
+      const workspaceOptions: WorkspaceOptions = {
+        ...options,
+        documentType: 'DESIGN',
+      };
+      await this.saveToWorkspace('SUB_PROJECT_DESIGN.md', subProjectDesignContent, workspaceOptions);
+      
       logger.info('WriteSubProjectDesign: Sub-project design generation completed', {
         contentLength: subProjectDesignContent.length,
+        workspaceDir: this.getWorkspaceDir(workspaceOptions),
       });
       
       return {
@@ -36,6 +52,7 @@ export class WriteSubProjectDesign extends BaseAction {
           type: 'sub_project_design',
           filename: 'SUB_PROJECT_DESIGN.md',
           timestamp: new Date().toISOString(),
+          workspaceDir: this.getWorkspaceDir(workspaceOptions),
         },
       };
     } catch (error: any) {
