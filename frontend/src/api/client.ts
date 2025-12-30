@@ -197,6 +197,33 @@ class APIClient {
   async deleteLLMConfig(id: string) {
     return this.client.delete(`/config/llm/${id}`);
   }
+
+  // Role LLM Config API 端点
+  async getRoleLLMConfigs() {
+    return this.client.get('/config/role-llm');
+  }
+
+  async getRoleLLMConfig(profile: string) {
+    return this.client.get(`/config/role-llm/${profile}`);
+  }
+
+  async saveRoleLLMConfig(profile: string, data: {
+    provider: string;
+    apiKey?: string;
+    baseURL?: string;
+    model: string;
+    temperature?: number;
+    maxTokens?: number;
+    repository?: string;
+    branchName?: string;
+    autoCreatePr?: boolean;
+  }) {
+    return this.client.post(`/config/role-llm/${profile}`, data);
+  }
+
+  async deleteRoleLLMConfig(profile: string) {
+    return this.client.delete(`/config/role-llm/${profile}`);
+  }
 }
 
 export const apiClient = new APIClient();

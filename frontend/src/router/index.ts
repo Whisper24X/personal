@@ -10,6 +10,7 @@ import ProjectInteractive from '../views/ProjectInteractive.vue';
 import ApplicationList from '../views/ApplicationList.vue';
 import ApplicationDetail from '../views/ApplicationDetail.vue';
 import LLMConfig from '../views/LLMConfig.vue';
+import RoleLLMConfig from '../views/RoleLLMConfig.vue';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -50,6 +51,11 @@ const router = createRouter({
       path: '/config/llm',
       name: 'LLMConfig',
       component: LLMConfig,
+    },
+    {
+      path: '/config/role-llm',
+      name: 'RoleLLMConfig',
+      component: RoleLLMConfig,
     },
   ],
 });

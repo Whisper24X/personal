@@ -14,6 +14,7 @@ import { Message } from '../core/message/Message';
 import { RoleContext } from '../core/context/RoleContext';
 import { Context } from '../core/context/Context';
 import { logger, WorkspaceOptions } from '../utils';
+import { createLLM } from '../providers/llm/factory';
 
 export class Role extends BaseRole {
   goal: string;
@@ -24,6 +25,8 @@ export class Role extends BaseRole {
   context: Context;
   private addresses: Set<string> = new Set();
 
+  private roleLLM?: any; // Role-specific LLM instance
+
   constructor(config: IRoleConfig, context: Context) {
     super(config.name, config.profile);
     this.goal = config.goal;
@@ -31,6 +34,12 @@ export class Role extends BaseRole {
     this.description = config.description || '';
     this.context = context;
     this.rc = new RoleContext();
+
+    // Initialize role-specific LLM if configured
+    if (config.llm) {
+      this.roleLLM = createLLM(config.llm);
+      this.roleLLM.costManager = context.costManager;
+    }
 
     // Initialize addresses for message routing
     this.addresses.add(this.name);
@@ -50,8 +59,9 @@ export class Role extends BaseRole {
    */
   setActions(actions: BaseAction[]): void {
     this.actions = actions;
-    // Set LLM for each action
-    actions.forEach((action) => action.setLLM(this.context.llm));
+    // Set LLM for each action - use role-specific LLM if available, otherwise use context LLM
+    const llmToUse = this.roleLLM || this.context.llm;
+    actions.forEach((action) => action.setLLM(llmToUse));
   }
 
   /**

@@ -11,6 +11,7 @@ import { WriteCode, WriteCodeOptions } from './WriteCode';
 export interface ExecuteSubtaskOptions extends WorkspaceOptions {
   taskId: string; // 要执行的任务ID
   taskDescription: string; // 任务描述
+  prd?: string; // PRD文档（可选）
   design?: string; // 设计文档（可选）
 }
 
@@ -34,7 +35,7 @@ export class ExecuteSubtask extends BaseAction {
     try {
       // 构建任务执行的prompt
       // 将任务描述转换为设计文档格式，供WriteCode使用
-      const designContent = this.buildDesignFromTask(taskDescription, options.design);
+      const designContent = this.buildDesignFromTask(taskDescription, options.prd, options.design);
 
       // 使用WriteCode来生成代码
       const writeCodeAction = new WriteCode();
@@ -132,16 +133,20 @@ export class ExecuteSubtask extends BaseAction {
   /**
    * 从任务描述构建设计文档格式
    */
-  private buildDesignFromTask(taskDescription: string, design?: string): string {
+  private buildDesignFromTask(taskDescription: string, prd?: string, design?: string): string {
     let designContent = `# 任务实现设计\n\n`;
     designContent += `## 任务描述\n\n${taskDescription}\n\n`;
+
+    if (prd) {
+      designContent += `## 产品需求文档（PRD）参考\n\n${prd}\n\n`;
+    }
 
     if (design) {
       designContent += `## 系统设计参考\n\n${design}\n\n`;
     }
 
     designContent += `## 实现要求\n\n`;
-    designContent += `请根据任务描述和系统设计，生成完整的代码实现。\n`;
+    designContent += `请根据任务描述、PRD和系统设计，生成完整的代码实现。\n`;
     designContent += `确保代码符合设计规范，包含必要的注释和文档。\n`;
 
     return designContent;

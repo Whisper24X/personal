@@ -35,11 +35,34 @@
         </div>
       </el-card>
 
+      <!-- 角色配置快捷入口 -->
+      <el-card class="role-config-card" shadow="hover">
+        <template #header>
+          <div class="card-header-content">
+            <span class="card-title">
+              <el-icon>
+                <User />
+              </el-icon>
+              角色 LLM 配置
+            </span>
+            <el-button type="success" @click="router.push('/config/role-llm')">
+              <el-icon>
+                <Setting />
+              </el-icon>
+              配置角色 LLM
+            </el-button>
+          </div>
+        </template>
+        <div class="role-config-desc">
+          <p>为不同的角色配置专属的大模型提供商，例如：Engineer 使用 Cursor Agent，ProductManager 使用 GPT-4 等。</p>
+        </div>
+      </el-card>
+
       <!-- 配置列表 -->
       <el-card class="configs-card">
         <template #header>
           <div class="card-header-content">
-            <span class="card-title">配置列表</span>
+            <span class="card-title">系统默认 LLM 配置</span>
             <el-button type="primary" @click="showCreateDialog = true">
               <el-icon>
                 <Plus />
@@ -114,6 +137,7 @@
             <el-option label="百度千帆" value="qianfan" />
             <el-option label="阿里通义" value="dashscope" />
             <el-option label="Ollama" value="ollama" />
+        <el-option label="Cursor Agent" value="cursor" />
           </el-select>
         </el-form-item>
 
@@ -139,9 +163,31 @@
 
         <el-form-item label="模型" prop="model">
           <el-input v-model="form.model" placeholder="例如: gpt-4-turbo, glm-4-flash" />
+          <el-text v-if="form.provider === 'cursor'" type="info" size="small" style="margin-top: 4px; display: block">
+            使用 "auto" 让 Cursor 自动选择最合适的模型
+          </el-text>
         </el-form-item>
 
-        <el-row :gutter="20">
+        <!-- Cursor 特定配置 -->
+        <template v-if="form.provider === 'cursor'">
+          <el-form-item label="GitHub 仓库 URL" prop="repository">
+            <el-input
+              v-model="form.repository"
+              placeholder="https://github.com/your-org/your-repo"
+            />
+          </el-form-item>
+          <el-form-item label="分支名称" prop="branchName">
+            <el-input
+              v-model="form.branchName"
+              placeholder="cursor/work"
+            />
+          </el-form-item>
+          <el-form-item label="自动创建 PR">
+            <el-switch v-model="form.autoCreatePr" />
+          </el-form-item>
+        </template>
+
+        <el-row v-if="form.provider !== 'cursor'" :gutter="20">
           <el-col :span="12">
             <el-form-item label="Temperature" prop="temperature">
               <el-slider
@@ -185,7 +231,7 @@
 import { ref, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus';
-import { Check, Plus, Setting } from '@element-plus/icons-vue';
+import { Check, Plus, Setting, User } from '@element-plus/icons-vue';
 import { apiClient } from '../api/client';
 
 interface LLMConfig {
@@ -220,6 +266,9 @@ const form = ref({
   temperature: 0.7,
   maxTokens: 8000,
   isActive: false,
+  repository: '',
+  branchName: '',
+  autoCreatePr: true,
 });
 
 const rules: FormRules = {
@@ -246,6 +295,7 @@ const defaultModels: Record<string, string> = {
   openai: 'gpt-4-turbo',
   zhipuai: 'glm-4-flash',
   ark: 'doubao-1-5-pro-32k-250115',
+  cursor: 'auto',
   anthropic: 'claude-3-opus-20240229',
   gemini: 'gemini-pro',
   qianfan: 'ERNIE-Bot',
@@ -292,6 +342,9 @@ async function editConfig(config: LLMConfig) {
       temperature: fullConfig.temperature,
       maxTokens: fullConfig.maxTokens,
       isActive: fullConfig.isActive,
+      repository: fullConfig.repository || '',
+      branchName: fullConfig.branchName || '',
+      autoCreatePr: fullConfig.autoCreatePr ?? true,
     };
     showCreateDialog.value = true;
   } catch (err: any) {
@@ -309,6 +362,9 @@ function resetForm() {
     temperature: 0.7,
     maxTokens: 8000,
     isActive: false,
+    repository: '',
+    branchName: '',
+    autoCreatePr: true,
   };
   formRef.value?.resetFields();
 }
@@ -468,6 +524,20 @@ onMounted(() => {
 .config-actions {
   display: flex;
   gap: 8px;
+}
+
+.role-config-card {
+  margin-bottom: 24px;
+  border: 2px solid #409eff;
+}
+
+.role-config-desc {
+  color: #606266;
+  line-height: 1.6;
+}
+
+.role-config-desc p {
+  margin: 0;
 }
 </style>
 

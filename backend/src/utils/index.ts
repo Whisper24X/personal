@@ -8,4 +8,5 @@ export * from './StepwiseDocumentGenerator';
 export * from './InteractiveHandler';
 export * from './WorkspaceManager';
 export * from './SubtaskManager';
+export * from './CursorAgentClient';
 

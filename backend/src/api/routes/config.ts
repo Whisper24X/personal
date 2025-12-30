@@ -4,6 +4,7 @@
 
 import { Router } from 'express';
 import { LLMConfigController } from '../controllers/LLMConfigController';
+import { RoleLLMConfigController } from '../controllers/RoleLLMConfigController';
 import { authMiddleware } from '../middleware/auth';
 
 const router = Router();
@@ -18,6 +19,12 @@ router.get('/llm/:provider', LLMConfigController.getByProvider);
 router.post('/llm', LLMConfigController.upsert);
 router.post('/llm/:id/activate', LLMConfigController.activate);
 router.delete('/llm/:id', LLMConfigController.delete);
+
+// Role LLM configuration routes
+router.get('/role-llm', RoleLLMConfigController.list);
+router.get('/role-llm/:profile', RoleLLMConfigController.getByProfile);
+router.post('/role-llm/:profile', RoleLLMConfigController.upsert);
+router.delete('/role-llm/:profile', RoleLLMConfigController.delete);
 
 export default router;
 

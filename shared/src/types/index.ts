@@ -32,11 +32,12 @@ export interface IRoleConfig {
   goal: string;
   constraints?: string;
   description?: string;
+  llm?: ILLMConfig; // Optional role-specific LLM configuration
 }
 
 // ==================== LLM Types ====================
 
-export type LLMProvider = 'openai' | 'anthropic' | 'gemini' | 'zhipuai' | 'qianfan' | 'dashscope' | 'ollama' | 'ark';
+export type LLMProvider = 'openai' | 'anthropic' | 'gemini' | 'zhipuai' | 'qianfan' | 'dashscope' | 'ollama' | 'ark' | 'cursor';
 
 export interface ILLMConfig {
   provider: LLMProvider;
@@ -46,6 +47,10 @@ export interface ILLMConfig {
   temperature?: number;
   maxTokens?: number;
   topP?: number;
+  // Cursor-specific configuration
+  repository?: string; // GitHub repository URL for Cursor Agent
+  branchName?: string; // Branch name for Cursor Agent
+  autoCreatePr?: boolean; // Auto-create PR for Cursor Agent
 }
 
 export interface ILLMUsage {

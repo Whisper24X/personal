@@ -8,6 +8,7 @@ import { BaseLLM } from './BaseLLM';
 import { OpenAILLM } from './OpenAILLM';
 import { ZhipuLLM } from './ZhipuLLM';
 import { ArkLLM } from './ArkLLM';
+import { CursorLLM } from './CursorLLM';
 
 /**
  * Create an LLM instance based on provider type
@@ -22,6 +23,9 @@ export function createLLM(config: ILLMConfig): BaseLLM {
     
     case 'ark':
       return new ArkLLM(config);
+    
+    case 'cursor':
+      return new CursorLLM(config);
     
     // Add more providers as needed
     case 'anthropic':
@@ -48,7 +52,7 @@ export function createLLM(config: ILLMConfig): BaseLLM {
  * Get list of supported providers
  */
 export function getSupportedProviders(): LLMProvider[] {
-  return ['openai', 'zhipuai', 'ark'];
+  return ['openai', 'zhipuai', 'ark', 'cursor'];
 }
 
 /**
