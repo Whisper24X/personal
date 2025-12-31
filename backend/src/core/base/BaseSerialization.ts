@@ -54,7 +54,7 @@ export function deserializeWithType<T>(
   
   // Otherwise, create instance and assign properties
   const instance = new ClassConstructor();
-  Object.assign(instance, cleanData);
+  Object.assign(instance as any, cleanData);
   
   return instance;
 }

@@ -4,7 +4,6 @@
  */
 
 import { IActionOutput } from '@mind2build/shared';
-import { Message } from '../message/Message';
 import { WorkspaceManager, WorkspaceOptions } from '../../utils/WorkspaceManager';
 import { Context } from '../context/Context';
 

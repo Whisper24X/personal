@@ -79,7 +79,7 @@ export class Memory {
   /**
    * Get messages in a time range
    */
-  getInTimeRange(startTime: Date, endTime: Date): Message[] {
+  getInTimeRange(_startTime: Date, _endTime: Date): Message[] {
     // Note: Messages don't have timestamps in current implementation
     // This is a placeholder for future enhancement
     return this.storage;
@@ -129,7 +129,7 @@ export class Memory {
   static fromJSON(data: any): Memory {
     const memory = new Memory(data.maxSize);
     if (data.storage && Array.isArray(data.storage)) {
-      memory.storage = data.storage.map((item) => Message.fromJSON(item));
+      memory.storage = data.storage.map((item: any) => Message.fromJSON(item));
     }
     return memory;
   }

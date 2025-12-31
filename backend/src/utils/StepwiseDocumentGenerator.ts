@@ -259,7 +259,7 @@ export class StepwiseDocumentGenerator {
   /**
    * Step 4: 合并章节内容
    */
-  private mergeSections(outline: string, sectionContents: string[], sections: Section[]): string {
+  private mergeSections(_outline: string, sectionContents: string[], sections: Section[]): string {
     const mergedParts: string[] = [];
 
     // 添加文档标题

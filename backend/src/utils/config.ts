@@ -68,6 +68,11 @@ function loadLLMConfig(): ILLMConfig {
       baseURL: process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
       model: process.env.ARK_MODEL || 'doubao-1-5-pro-32k-250115',
     },
+    cursor: {
+      provider: 'cursor',
+      apiKey: process.env.CURSOR_API_KEY || '',
+      model: 'auto',
+    },
   };
   
   const config = configs[provider];

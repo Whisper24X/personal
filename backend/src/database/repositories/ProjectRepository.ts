@@ -3,7 +3,8 @@
  * Data access layer for projects using native PostgreSQL
  */
 
-import { query, transaction } from '../client';
+import { query } from '../client';
+// import { transaction } from '../client'; // Unused
 import { ProjectStatus } from '@mind2build/shared';
 
 export interface Project {

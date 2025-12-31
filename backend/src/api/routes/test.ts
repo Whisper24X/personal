@@ -11,7 +11,7 @@ import {
   testCustom,
 } from '../controllers/EngineerTestController';
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * Engineer role test routes

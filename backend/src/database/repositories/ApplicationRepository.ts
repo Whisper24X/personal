@@ -3,7 +3,8 @@
  * Data access layer for applications using native PostgreSQL
  */
 
-import { query, transaction } from '../client';
+import { query } from '../client';
+// import { transaction } from '../client'; // Unused
 import { logger } from '../../utils';
 
 export interface Application {

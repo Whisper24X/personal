@@ -6,7 +6,7 @@ import { Router } from 'express';
 import { sessionManager } from '../../orchestration/InteractiveSessionManager';
 import { logger } from '../../utils';
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * Create a new interactive session
@@ -34,7 +34,7 @@ router.post('/interactive', async (req, res) => {
     
     logger.info(`API: Created interactive session ${session.id}`);
     
-    res.json({
+    return res.json({
       sessionId: session.id,
       config: {
         name,
@@ -46,7 +46,7 @@ router.post('/interactive', async (req, res) => {
     });
   } catch (error: any) {
     logger.error('API: Error creating interactive session', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: error.message || 'Failed to create interactive session',
     });
   }
@@ -66,12 +66,12 @@ router.get('/interactive/:sessionId', async (req, res) => {
       });
     }
     
-    res.json({
+    return res.json({
       session: session.getInfo(),
     });
   } catch (error: any) {
     logger.error('API: Error getting session info', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: error.message || 'Failed to get session info',
     });
   }
@@ -91,12 +91,12 @@ router.delete('/interactive/:sessionId', async (req, res) => {
       });
     }
     
-    res.json({
+    return res.json({
       message: 'Session deleted successfully',
     });
   } catch (error: any) {
     logger.error('API: Error deleting session', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: error.message || 'Failed to delete session',
     });
   }
@@ -105,16 +105,16 @@ router.delete('/interactive/:sessionId', async (req, res) => {
 /**
  * Get manager stats
  */
-router.get('/interactive-stats', async (req, res) => {
+router.get('/interactive-stats', async (_req, res) => {
   try {
     const stats = sessionManager.getStats();
     
-    res.json({
+    return res.json({
       stats,
     });
   } catch (error: any) {
     logger.error('API: Error getting stats', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: error.message || 'Failed to get stats',
     });
   }

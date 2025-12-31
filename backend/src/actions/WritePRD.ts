@@ -17,7 +17,6 @@ import { logger, loadPrompt } from '../utils';
 import { PRDReview } from './PRDReview';
 import { StepwiseDocumentGenerator } from '../utils/StepwiseDocumentGenerator';
 import * as fs from 'fs/promises';
-import * as fsSync from 'fs';
 import * as path from 'path';
 
 export interface WritePRDOptions {
@@ -77,7 +76,7 @@ export class WritePRD extends BaseAction {
       // Load system prompt from database or use default
       const userId = this.context?.get('userId');
       const systemPrompt = await loadPrompt(userId, 'prd', 'system_prompt', PRD_SYSTEM_PROMPT);
-      
+
       // Call LLM with system message and prompt
       const prdContent = await this.aask(prompt, [systemPrompt]);
 
@@ -87,7 +86,7 @@ export class WritePRD extends BaseAction {
       logger.info('WritePRD: PRD generation completed', {
         mode,
         contentLength: prdContent.length,
-        workspaceDir: this.getWorkspaceDir(options),
+        workspaceDir: this.getWorkspaceDir({ ...options, documentType: 'PRD' }),
       });
 
       // 尝试从 workspace 读取所有内容，如果失败则返回当前内容
@@ -110,7 +109,7 @@ export class WritePRD extends BaseAction {
           filename: 'PRD.md',
           timestamp: new Date().toISOString(),
           mode,
-          workspaceDir: this.getWorkspaceDir(options),
+          workspaceDir: this.getWorkspaceDir({ ...options, documentType: 'PRD' }),
         },
       };
     } catch (error: any) {
@@ -142,47 +141,14 @@ export class WritePRD extends BaseAction {
     }
   }
 
-  /**
-   * 获取工作目录路径
-   * 新的目录结构：workspace/{applicationId}/v{version}/{documentType}/
-   * 例如：workspace/default/v1/PRD/
-   */
-  private getWorkspaceDir(options?: WritePRDOptions): string {
-    // 计算项目根目录：从 backend/src/actions 或 backend/dist/actions 到项目根目录
-    // 在开发环境：backend/src/actions -> ../../../
-    // 在编译后：backend/dist/actions -> ../../../
-    // 为了兼容两种情况，先尝试从 __dirname 向上查找，如果找不到则使用 process.cwd()
-    const possibleRoots = [
-      path.resolve(__dirname, '../../../'), // backend/src/actions 或 backend/dist/actions
-      path.resolve(__dirname, '../../../../'), // 如果编译后结构不同
-      process.cwd(), // 当前工作目录（通常是项目根目录）
-    ];
-
-    // 查找包含 pnpm-workspace.yaml 或 package.json 的目录作为项目根目录
-    let projectRoot = possibleRoots[0]; // 默认使用第一个
-    for (const root of possibleRoots) {
-      if (fsSync.existsSync(path.join(root, 'pnpm-workspace.yaml')) ||
-        fsSync.existsSync(path.join(root, 'package.json'))) {
-        projectRoot = root;
-        break;
-      }
-    }
-
-    const workspaceRoot = options?.workspacePath || process.env.WORKSPACE_PATH || path.join(projectRoot, 'workspace');
-    const applicationId = options?.applicationId || 'default';
-    const version = options?.version || 1;
-    const type = 'PRD'; // 文档类型
-    // 新的目录结构：workspace/{applicationId}/v{version}/{documentType}/
-    return path.join(workspaceRoot, applicationId, `v${version}`, type);
-  }
 
 
   /**
    * 读取 workspace 中的所有文件内容
    */
-  private async readAllFromWorkspace(options?: WritePRDOptions): Promise<string> {
+  protected async readAllFromWorkspace(options?: WritePRDOptions): Promise<string> {
     try {
-      const workspaceDir = this.getWorkspaceDir(options);
+      const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'PRD' });
 
       // 检查目录是否存在
       try {
@@ -232,7 +198,7 @@ export class WritePRD extends BaseAction {
     } catch (error: any) {
       logger.error('WritePRD: Failed to read files from workspace', {
         error: error.message,
-        workspaceDir: this.getWorkspaceDir(options),
+        workspaceDir: this.getWorkspaceDir({ ...options, documentType: 'PRD' }),
       });
       // 如果读取失败，返回空字符串而不是抛出错误
       return '';
@@ -250,8 +216,8 @@ export class WritePRD extends BaseAction {
     // Load system prompt from database or use default
     const userId = this.context?.get('userId');
     const systemPrompt = await loadPrompt(userId, 'prd', 'system_prompt', PRD_SYSTEM_PROMPT);
-    
-    const generator = new StepwiseDocumentGenerator(this, {
+
+    const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
       buildOutlinePrompt: buildPRDOutlinePrompt,
       buildSectionPrompt: buildPRDSectionPrompt,
       systemPrompt: systemPrompt,

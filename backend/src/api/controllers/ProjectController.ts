@@ -13,14 +13,14 @@ import { Architect } from '../../roles/Architect';
 import { ProjectManager as ProjectManagerRole } from '../../roles/ProjectManager';
 import { Engineer } from '../../roles/Engineer';
 import { QAEngineer } from '../../roles/QAEngineer';
-import { ProjectManager } from '../../orchestration/ProjectManager';
+// import { ProjectManager } from '../../orchestration/ProjectManager'; // Unused
 import { logger } from '../../utils';
 import { ProjectStatus } from '@mind2build/shared';
 
 const projectRepo = new ProjectRepository();
 const messageRepo = new MessageRepository();
 const documentRepo = new DocumentRepository();
-const projectManager = new ProjectManager();
+// const projectManager = new ProjectManager(); // Unused for now
 
 // Default user UUID (created during database migration)
 const DEFAULT_USER_ID = '302769d6-247d-43db-a005-0519712255fb';
@@ -92,7 +92,7 @@ export class ProjectController {
 
       // Start execution in background
       const userId = (req as any).userId || DEFAULT_USER_ID;
-      ProjectController.executeProject(id, project.idea, project.investment, project.nRound, userId)
+      ProjectController.executeProject(id, project.idea, project.investment, project.n_round || 1, userId)
         .catch((error) => {
           logger.error(`Project ${id} execution failed:`, error);
         });
@@ -388,6 +388,8 @@ export class ProjectController {
       fileStream.pipe(res);
 
       logger.info(`Project zip downloaded: ${fullPath}`);
+      // Note: fileStream.pipe(res) handles the response, no explicit return needed
+      return;
     } catch (error: any) {
       logger.error('Failed to download zip:', error);
       return res.status(500).json({

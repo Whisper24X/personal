@@ -15,7 +15,6 @@ import { logger, loadPrompt } from '../utils';
 import { RequirementSpecReview } from './RequirementSpecReview';
 import { StepwiseDocumentGenerator } from '../utils/StepwiseDocumentGenerator';
 import * as fs from 'fs/promises';
-import * as fsSync from 'fs';
 import * as path from 'path';
 
 export interface WriteRequirementSpecOptions {
@@ -72,7 +71,7 @@ export class WriteRequirementSpec extends BaseAction {
       logger.info('WriteRequirementSpec: Requirement spec generation completed', {
         mode,
         contentLength: content.length,
-        workspaceDir: this.getWorkspaceDir(options),
+        workspaceDir: this.getWorkspaceDir({ ...options, documentType: 'REQUIREMENT' }),
       });
 
       // 尝试从 workspace 读取所有内容，如果失败则返回当前内容
@@ -95,7 +94,7 @@ export class WriteRequirementSpec extends BaseAction {
           filename: 'REQUIREMENT_SPEC.md',
           timestamp: new Date().toISOString(),
           mode,
-          workspaceDir: this.getWorkspaceDir(options),
+          workspaceDir: this.getWorkspaceDir({ ...options, documentType: 'REQUIREMENT' }),
         },
       };
     } catch (error: any) {
@@ -126,42 +125,14 @@ export class WriteRequirementSpec extends BaseAction {
     }
   }
 
-  /**
-   * 获取工作目录路径
-   * 新的目录结构：workspace/{applicationId}/v{version}/{documentType}/
-   * 例如：workspace/default/v1/REQUIREMENT/
-   */
-  private getWorkspaceDir(options?: WriteRequirementSpecOptions): string {
-    const possibleRoots = [
-      path.resolve(__dirname, '../../../'),
-      path.resolve(__dirname, '../../../../'),
-      process.cwd(),
-    ];
-
-    let projectRoot = possibleRoots[0];
-    for (const root of possibleRoots) {
-      if (fsSync.existsSync(path.join(root, 'pnpm-workspace.yaml')) ||
-        fsSync.existsSync(path.join(root, 'package.json'))) {
-        projectRoot = root;
-        break;
-      }
-    }
-
-    const workspaceRoot = options?.workspacePath || process.env.WORKSPACE_PATH || path.join(projectRoot, 'workspace');
-    const applicationId = options?.applicationId || 'default';
-    const version = options?.version || 1;
-    const type = 'REQUIREMENT';
-    // 新的目录结构：workspace/{applicationId}/v{version}/{documentType}/
-    return path.join(workspaceRoot, applicationId, `v${version}`, type);
-  }
 
 
   /**
    * 读取 workspace 中的所有文件内容
    */
-  private async readAllFromWorkspace(options?: WriteRequirementSpecOptions): Promise<string> {
+  protected async readAllFromWorkspace(options?: WriteRequirementSpecOptions): Promise<string> {
     try {
-      const workspaceDir = this.getWorkspaceDir(options);
+      const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'REQUIREMENT' });
 
       try {
         await fs.access(workspaceDir);
@@ -197,7 +168,7 @@ export class WriteRequirementSpec extends BaseAction {
     } catch (error: any) {
       logger.error('WriteRequirementSpec: Failed to read files from workspace', {
         error: error.message,
-        workspaceDir: this.getWorkspaceDir(options),
+        workspaceDir: this.getWorkspaceDir({ ...options, documentType: 'REQUIREMENT' }),
       });
       return '';
     }
@@ -215,7 +186,7 @@ export class WriteRequirementSpec extends BaseAction {
     const userId = this.context?.get('userId');
     const systemPrompt = await loadPrompt(userId, 'requirement', 'system_prompt', REQUIREMENT_SPEC_SYSTEM_PROMPT);
     
-    const generator = new StepwiseDocumentGenerator(this, {
+    const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
       buildOutlinePrompt: buildRequirementSpecOutlinePrompt,
       buildSectionPrompt: buildRequirementSpecSectionPrompt,
       systemPrompt: systemPrompt,

@@ -213,7 +213,7 @@ export class ProjectManager extends Role {
         logger.info('ProjectManager: All subtasks completed!');
         
         // 生成最终执行报告
-        const report = subtaskManager.getExecutionReport();
+        // const report = subtaskManager.getExecutionReport(); // Unused for now
         await subtaskManager.saveToWorkspace({
           applicationId: options.applicationId,
           version: options.version,

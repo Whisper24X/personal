@@ -4,7 +4,7 @@
  */
 
 export {
-  getPrismaClient,
+  // getPrismaClient, // Not exported from client.ts
   connectDatabase,
   disconnectDatabase,
   checkDatabaseConnection,

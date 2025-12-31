@@ -24,8 +24,7 @@ export class Coordinate extends BaseAction {
   constructor() {
     super(
       'Coordinate',
-      'Coordinate team work and make decisions based on all messages',
-      'Analyze all team messages and coordinate work with task assignments'
+      'Coordinate team work and make decisions based on all messages. Analyze all team messages and coordinate work with task assignments'
     );
   }
 

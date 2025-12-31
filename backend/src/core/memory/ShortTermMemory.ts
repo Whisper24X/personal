@@ -32,6 +32,17 @@ export class ShortTermMemory extends Memory {
   getImportant(watchedActions: Set<string>): Message[] {
     return this.get().filter((msg) => watchedActions.has(msg.causeBy));
   }
+
+  /**
+   * Deserialize from JSON
+   */
+  static fromJSON(data: any): ShortTermMemory {
+    const memory = new ShortTermMemory(data.maxSize);
+    if (data.storage && Array.isArray(data.storage)) {
+      (memory as any).storage = data.storage.map((item: any) => Message.fromJSON(item));
+    }
+    return memory;
+  }
 }
 
 export default ShortTermMemory;

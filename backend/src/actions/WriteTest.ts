@@ -16,8 +16,7 @@ export class WriteTest extends BaseAction {
   constructor() {
     super(
       'WriteTest',
-      '编写测试用例',
-      '基于代码实现，编写全面的测试用例，包括单元测试和集成测试'
+      '编写测试用例。基于代码实现，编写全面的测试用例，包括单元测试和集成测试'
     );
   }
 

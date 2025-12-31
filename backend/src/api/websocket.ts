@@ -6,7 +6,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
 import { sessionManager } from '../orchestration/InteractiveSessionManager';
 import { logger } from '../utils';
-import url from 'url';
+// import url from 'url'; // Unused
 
 /**
  * Setup WebSocket server for interactive sessions
@@ -151,7 +151,7 @@ function handleClientMessage(sessionId: string, message: any): void {
 /**
  * Broadcast message to all sessions
  */
-export function broadcastToAllSessions(message: any): void {
+export function broadcastToAllSessions(_message: any): void {
   const sessions = sessionManager.getAllSessions();
   logger.info(`WebSocket: Broadcasting to ${sessions.length} sessions`);
 

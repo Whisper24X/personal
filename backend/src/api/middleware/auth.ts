@@ -50,14 +50,14 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
 /**
  * Generate JWT token (for testing)
  */
-export function generateToken(userId: string, expiresIn: string = '7d'): string {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn });
+export function generateToken(userId: string, expiresIn: string | number = '7d'): string {
+  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: expiresIn as string | number } as jwt.SignOptions);
 }
 
 /**
  * Optional auth middleware (doesn't reject unauthenticated requests)
  */
-export function optionalAuthMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
+export function optionalAuthMiddleware(req: AuthRequest, _res: Response, next: NextFunction) {
   try {
     const authHeader = req.headers.authorization;
     

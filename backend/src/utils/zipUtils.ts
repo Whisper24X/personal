@@ -7,7 +7,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from './logger';
-import { WorkspaceOptions, WorkspaceManager } from './WorkspaceManager';
+import { WorkspaceOptions } from './WorkspaceManager';
 
 /**
  * Create a zip archive from a directory

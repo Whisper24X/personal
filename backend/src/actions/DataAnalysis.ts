@@ -23,8 +23,7 @@ export class DataAnalysis extends BaseAction {
   constructor() {
     super(
       'DataAnalysis',
-      'Perform data analysis and generate analysis code with visualization',
-      'Analyze data requirements and generate complete analysis code with visualizations'
+      'Perform data analysis and generate analysis code with visualization. Analyze data requirements and generate complete analysis code with visualizations'
     );
   }
 

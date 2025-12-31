@@ -30,7 +30,7 @@ export class Role extends BaseRole {
 
   private roleLLM?: any; // Role-specific LLM instance
   private roleLLMConfigRepo = new RoleLLMConfigRepository();
-  private llmLoadPromise?: Promise<void>; // Track async LLM loading
+  protected llmLoadPromise?: Promise<void>; // Track async LLM loading
 
   constructor(config: IRoleConfig, context: Context) {
     super(config.name, config.profile);
@@ -78,7 +78,7 @@ export class Role extends BaseRole {
         const llmConfig: ILLMConfig = {
           provider: dbConfig.provider,
           apiKey: dbConfig.api_key || '',
-          baseURL: dbConfig.base_url,
+          baseURL: dbConfig.base_url || undefined,
           model: dbConfig.model,
           temperature: dbConfig.temperature !== null ? dbConfig.temperature : undefined,
           maxTokens: dbConfig.max_tokens !== null ? dbConfig.max_tokens : undefined,

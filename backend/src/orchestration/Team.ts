@@ -7,7 +7,7 @@ import { Context } from '../core/context/Context';
 import { Environment } from './Environment';
 import { Role } from '../roles/Role';
 import { Message } from '../core/message/Message';
-import { UserRequirement } from '../actions/UserRequirement';
+// import { UserRequirement } from '../actions/UserRequirement'; // Unused
 import { logger } from '../utils';
 import { NoMoneyException } from '@mind2build/shared';
 import { InteractiveHandler } from '../utils/InteractiveHandler';

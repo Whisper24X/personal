@@ -23,8 +23,7 @@ export class SearchEnhancedQA extends BaseAction {
   constructor() {
     super(
       'SearchEnhancedQA',
-      'Enhanced search and Q&A for market research and requirement validation',
-      'Perform intelligent search and provide answers with citations for product research'
+      'Enhanced search and Q&A for market research and requirement validation. Perform intelligent search and provide answers with citations for product research'
     );
   }
 

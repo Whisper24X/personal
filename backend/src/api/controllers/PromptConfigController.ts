@@ -4,7 +4,8 @@
  */
 
 import { Request, Response } from 'express';
-import { PromptConfigRepository, PromptType } from '../../database';
+import { PromptConfigRepository } from '../../database';
+import { PromptType } from '../../database/repositories/PromptConfigRepository';
 import { logger, clearPromptCacheForType } from '../../utils';
 
 const promptConfigRepo = new PromptConfigRepository();

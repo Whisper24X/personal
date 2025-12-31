@@ -14,7 +14,7 @@ import apiRoutes from './api/routes';
 import { setupWebSocketServer } from './api/websocket';
 import { sessionManager } from './orchestration/InteractiveSessionManager';
 
-const app = express();
+const app: express.Application = express();
 const port = config.server.port;
 
 // Middleware
@@ -59,7 +59,7 @@ if (process.env.NODE_ENV !== 'test') {
   // Note: We verify the path in verifyClient to ensure it matches /api/interactive/:sessionId
   const wss = new WebSocketServer({
     server,
-    verifyClient: (info) => {
+    verifyClient: (info: any) => {
       // Only accept connections to /api/interactive/:sessionId
       const path = info.req.url || '';
       const isValid = path.startsWith('/api/interactive/') && path.split('/').length >= 4;

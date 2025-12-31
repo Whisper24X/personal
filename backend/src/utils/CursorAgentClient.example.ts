@@ -4,7 +4,8 @@
  * This file demonstrates how to use the CursorAgentClient
  */
 
-import { cursorAgentClient, CursorAgentClient, CreateAgentRequest } from './CursorAgentClient';
+import { cursorAgentClient, CreateAgentRequest } from './CursorAgentClient';
+// import { CursorAgentClient } from './CursorAgentClient'; // Unused in examples
 
 // Example 1: List all agents
 async function listAgentsExample() {
@@ -20,7 +21,7 @@ async function listAgentsExample() {
 // Example 2: Create a new agent
 async function createAgentExample() {
   const request: CreateAgentRequest = {
-    name: 'Add README Documentation',
+    // name: 'Add README Documentation', // Note: name is not part of CreateAgentRequest interface
     prompt: {
       text: 'Add a comprehensive README.md file with installation instructions and usage examples',
     },
@@ -135,8 +136,8 @@ async function listRepositoriesExample() {
 
 // Example 11: Create client with custom API key
 function createCustomClientExample() {
-  const customApiKey = 'your-custom-api-key';
-  const client = new CursorAgentClient(customApiKey);
+  // const customApiKey = 'your-custom-api-key';
+  // const client = new CursorAgentClient(customApiKey);
   // Use client...
 }
 
@@ -145,7 +146,7 @@ async function completeWorkflowExample() {
   try {
     // 1. Create agent
     const createResponse = await cursorAgentClient.createAgent({
-      name: 'Fix authentication bug',
+      // name: 'Fix authentication bug', // Note: name is not part of CreateAgentRequest interface
       prompt: {
         text: 'Fix the authentication bug in the login flow',
       },

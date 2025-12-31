@@ -5,7 +5,7 @@
  */
 
 import { DocumentRepository } from '../database/repositories/DocumentRepository';
-import { ProjectRepository } from '../database/repositories/ProjectRepository';
+// import { ProjectRepository } from '../database/repositories/ProjectRepository'; // Reserved for future use
 import { calculateCosineSimilarity, findSimilarChunks, extractKeywords } from '../utils/textSimilarity';
 import { logger } from '../utils';
 
@@ -19,11 +19,11 @@ export interface PRDSearchResult {
 
 export class RAGService {
   private documentRepo: DocumentRepository;
-  private projectRepo: ProjectRepository;
+  // private projectRepo: ProjectRepository; // Reserved for future use
 
   constructor() {
     this.documentRepo = new DocumentRepository();
-    this.projectRepo = new ProjectRepository();
+    // this.projectRepo = new ProjectRepository(); // Reserved for future use
   }
 
   /**

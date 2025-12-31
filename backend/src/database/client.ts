@@ -74,7 +74,7 @@ export async function checkDatabaseConnection(): Promise<boolean> {
 /**
  * Execute a query
  */
-export async function query<T = any>(
+export async function query<T extends Record<string, any> = any>(
   text: string,
   params?: any[]
 ): Promise<QueryResult<T>> {

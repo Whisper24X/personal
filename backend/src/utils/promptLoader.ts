@@ -29,7 +29,7 @@ export async function loadPrompt(
   defaultPrompt: string
 ): Promise<string> {
   const actualUserId = userId || DEFAULT_USER_ID;
-  const cacheKey = `${actualUserId}:${promptType}:${promptKey}`;
+  // const cacheKey = `${actualUserId}:${promptType}:${promptKey}`; // Unused for now
 
   // Check cache first
   const now = Date.now();

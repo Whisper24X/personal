@@ -3,7 +3,7 @@
  * 用于调整 PRD 章节内容的服务
  */
 
-import { BaseAction } from '../core/base/BaseAction';
+// import { BaseAction } from '../core/base/BaseAction'; // Unused
 import { Context } from '../core/context/Context';
 import { WritePRD } from '../actions/WritePRD';
 import { buildPRDSectionAdjustPrompt, PRD_SYSTEM_PROMPT } from '../prompts/prd';
@@ -151,7 +151,7 @@ export class SectionAdjustService {
         fullPRDContent
       );
 
-      const adjustedContent = await writePRDAction.aask(adjustPrompt, [PRD_SYSTEM_PROMPT]);
+      const adjustedContent = await (writePRDAction as any).aask(adjustPrompt, [PRD_SYSTEM_PROMPT]);
 
       logger.info('SectionAdjustService: Section adjusted successfully', {
         sectionNumber,

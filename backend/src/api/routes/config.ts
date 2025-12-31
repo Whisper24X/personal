@@ -6,9 +6,9 @@ import { Router } from 'express';
 import { LLMConfigController } from '../controllers/LLMConfigController';
 import { RoleLLMConfigController } from '../controllers/RoleLLMConfigController';
 import { PromptConfigController } from '../controllers/PromptConfigController';
-import { authMiddleware } from '../middleware/auth';
+// import { authMiddleware } from '../middleware/auth'; // Unused
 
-const router = Router();
+const router: Router = Router();
 
 // All routes require authentication (in real app)
 // For MVP, auth is optional

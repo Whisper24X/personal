@@ -13,7 +13,7 @@ import { ProjectManager } from '../roles/ProjectManager';
 import { Engineer } from '../roles/Engineer';
 import { QAEngineer } from '../roles/QAEngineer';
 import { logger } from '../utils';
-import { UserAction } from '../utils/InteractiveHandler';
+// import { UserAction } from '../utils/InteractiveHandler'; // Unused
 
 export interface SessionConfig {
   name: string;
@@ -363,7 +363,7 @@ export class InteractiveSession {
    */
   private async processUserAction(
     userAction: UserActionMessage,
-    originalMessage: any
+    _originalMessage: any
   ): Promise<boolean> {
     switch (userAction.action) {
       case 'continue':
@@ -431,7 +431,7 @@ export class InteractiveSession {
       const fileList = generatedMatch[1];
       const fileLines = fileList.split('\n');
 
-      fileLines.forEach(line => {
+      fileLines.forEach((line: string) => {
         const fileMatch = line.match(/[-*]\s+([\w/\-.]+)/);
         if (fileMatch) {
           // Check if we already have this file

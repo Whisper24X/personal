@@ -10,7 +10,7 @@ import interactiveRoutes from './interactive';
 import configRoutes from './config';
 import testRoutes from './test';
 
-const router = Router();
+const router: Router = Router();
 
 // API v1 routes
 router.use('/applications', applicationRoutes);

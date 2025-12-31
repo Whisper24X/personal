@@ -5,9 +5,9 @@
 import { Router } from 'express';
 import { ProjectController } from '../controllers/ProjectController';
 import { PRDController } from '../controllers/PRDController';
-import { authMiddleware } from '../middleware/auth';
+// import { authMiddleware } from '../middleware/auth'; // Unused
 
-const router = Router();
+const router: Router = Router();
 
 // All routes require authentication (in real app)
 // For MVP, auth is optional
