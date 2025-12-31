@@ -7,6 +7,7 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 import { IAppConfig, ILLMConfig, LLMProvider } from '@mind2build/shared';
 import { LLMConfigRepository } from '../database';
+import { logger } from './logger';
 
 // Load .env file from project root
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -125,10 +126,37 @@ export function clearLLMConfigCache(): void {
 }
 
 /**
+ * Initialize default LLM configuration from database
+ * This function should be called after database connection is established
+ * It will update config.llm with the database configuration if available
+ */
+export async function initializeDefaultLLMConfig(userId?: string): Promise<void> {
+  try {
+    const dbConfig = await loadLLMConfigFromDB(userId);
+    // Update the config object with database configuration
+    config.llm = dbConfig;
+    logger.info(`Default LLM config initialized from database: ${dbConfig.provider}/${dbConfig.model}`);
+  } catch (error: any) {
+    // If initialization fails, keep using environment config
+    logger.warn(`Failed to initialize LLM config from database, using environment config: ${error.message}`);
+  }
+}
+
+/**
+ * Get current LLM configuration
+ * Returns database config if available, otherwise returns environment config
+ */
+export async function getLLMConfig(userId?: string): Promise<ILLMConfig> {
+  return await loadLLMConfigFromDB(userId);
+}
+
+/**
  * Application configuration
+ * Note: config.llm will be initialized from database after database connection is established
+ * See initializeDefaultLLMConfig() function
  */
 export const config: IAppConfig = {
-  llm: loadLLMConfig(),
+  llm: loadLLMConfig(), // Initial fallback, will be updated by initializeDefaultLLMConfig()
   database: {
     url: process.env.DATABASE_URL || 'postgresql://postgres:123456@127.0.0.1:5432/mind2build',
   },

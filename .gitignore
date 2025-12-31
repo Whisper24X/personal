@@ -51,6 +51,8 @@ generated/
 workspace/*
 !workspace/.gitkeep
 backend/workspace/*
+backend/workspace_bak/*
+
 !backend/workspace/.gitkeep
 frontend/workspace/*
 !frontend/workspace/.gitkeep
