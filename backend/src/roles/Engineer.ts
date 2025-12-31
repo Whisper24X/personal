@@ -9,7 +9,7 @@ import { Context } from '../core/context/Context';
 import { WriteCode } from '../actions/WriteCode';
 import { ExecuteSubtask } from '../actions/ExecuteSubtask';
 import { Message } from '../core/message/Message';
-import { logger, SubtaskManager, loadPrompt } from '../utils';
+import { logger, SubtaskManager, loadPrompt, createWorkspaceZip, createCodeZip } from '../utils';
 import {
   buildCodePromptWithStandardDocs,
   buildTaskDescriptionPrompt,
@@ -68,6 +68,15 @@ export class Engineer extends Role {
   }
 
   /**
+   * Check if auto code generation is enabled
+   */
+  private isAutoCodeEnabled(): boolean {
+    const autoCode = process.env.ENGINEER_AUTO_CODE;
+    // Default to false if not set or set to 'false'
+    return autoCode === 'true' || autoCode === '1';
+  }
+
+  /**
    * Write code based on ProductManager and Architect outputs, with task breakdown if available
    */
   private async writeCodeWithTaskBreakdown(): Promise<Message | null> {
@@ -79,6 +88,49 @@ export class Engineer extends Role {
       const workspaceOptions = this.extractWorkspaceOptions();
       const applicationId = workspaceOptions?.applicationId || 'default';
       const version = workspaceOptions?.version || 1;
+
+      // 检查是否启用自动编码
+      const autoCodeEnabled = this.isAutoCodeEnabled();
+
+      if (!autoCodeEnabled) {
+        // 不启用自动编码：直接返回workspace压缩包
+        logger.info(`${this.profile} WriteCode: Auto code generation disabled, returning workspace zip`);
+
+        if (!workspaceOptions) {
+          logger.error(`${this.profile} WriteCode: Workspace options are required but not provided`);
+          this.rc.todo = null;
+          return null;
+        }
+
+        try {
+          const zipPath = await createWorkspaceZip(workspaceOptions);
+
+          // 创建消息，包含压缩包路径信息
+          const message = new Message({
+            content: `# Workspace Archive\n\n自动编码未启用，已生成workspace压缩包。\n\n压缩包路径: ${zipPath}`,
+            role: this.profile,
+            causeBy: action.constructor.name,
+            sentFrom: this.name,
+            instructContent: {
+              type: 'workspace_zip',
+              zipPath: zipPath,
+              autoCodeEnabled: false,
+            },
+          });
+
+          logger.info(`${this.profile} WriteCode: Workspace zip created`, { zipPath });
+
+          // Clear current action
+          this.rc.todo = null;
+
+          return message;
+        } catch (error: any) {
+          logger.error(`${this.profile} WriteCode: Failed to create workspace zip`, error);
+          // 如果压缩包创建失败，返回错误消息，不继续执行代码生成
+          this.rc.todo = null;
+          throw new Error(`Failed to create workspace zip: ${error.message}`);
+        }
+      }
 
       // 必须从workspace读取标准文档：PRD、DESIGN、TASKS
       const { WorkspaceManager } = await import('../utils/WorkspaceManager');
@@ -136,7 +188,8 @@ export class Engineer extends Role {
       });
 
       // 如果有任务拆分，则根据任务拆分拆解出多个子任务完成代码编写
-      if (taskBreakdown && workspaceOptions?.applicationId && workspaceOptions?.version) {
+      // 但只有在启用自动编码时才执行子任务
+      if (autoCodeEnabled && taskBreakdown && workspaceOptions?.applicationId && workspaceOptions?.version) {
         logger.info(`${this.profile} WriteCode: Found task breakdown, will execute subtasks`);
 
         // 解析任务拆分
@@ -163,6 +216,8 @@ export class Engineer extends Role {
         } else {
           logger.info(`${this.profile} WriteCode: All tasks completed, proceeding with WriteCode`);
         }
+      } else if (!autoCodeEnabled && taskBreakdown) {
+        logger.info(`${this.profile} WriteCode: Task breakdown found but auto code generation is disabled, skipping subtask execution`);
       }
 
       // 使用提示词函数构建完整的输入：必须包含PRD、DESIGN和TASKS三个标准文档
@@ -370,6 +425,17 @@ export class Engineer extends Role {
         isComplete,
       });
 
+      // 如果启用了自动编码，创建代码压缩包
+      let zipPath: string | undefined;
+      if (autoCodeEnabled && accumulatedFiles.length > 0 && workspaceOptions) {
+        try {
+          zipPath = await createCodeZip(accumulatedFiles, workspaceOptions);
+          logger.info(`${this.profile} WriteCode: Code zip created`, { zipPath });
+        } catch (error: any) {
+          logger.error(`${this.profile} WriteCode: Failed to create code zip`, error);
+        }
+      }
+
       // 创建消息
       const message = new Message({
         content: result.content,
@@ -383,6 +449,10 @@ export class Engineer extends Role {
             attempts: attempt,
             issues: lastIssues,
           },
+          ...(zipPath && {
+            zipPath: zipPath,
+            autoCodeEnabled: true,
+          }),
         },
       });
 
@@ -407,6 +477,51 @@ export class Engineer extends Role {
     logger.info(`${this.profile} executing subtask`);
 
     try {
+      // 检查是否启用自动编码
+      const autoCodeEnabled = this.isAutoCodeEnabled();
+
+      if (!autoCodeEnabled) {
+        // 不启用自动编码：直接返回workspace压缩包
+        logger.info(`${this.profile} ExecuteSubtask: Auto code generation disabled, returning workspace zip`);
+
+        const workspaceOptions = this.extractWorkspaceOptions();
+
+        if (!workspaceOptions?.applicationId || !workspaceOptions?.version) {
+          logger.error(`${this.profile} ExecuteSubtask: Workspace options are required but not provided`);
+          this.rc.todo = null;
+          return null;
+        }
+
+        try {
+          const zipPath = await createWorkspaceZip(workspaceOptions);
+
+          // 创建消息，包含压缩包路径信息
+          const message = new Message({
+            content: `# Workspace Archive\n\n自动编码未启用，已生成workspace压缩包。\n\n压缩包路径: ${zipPath}`,
+            role: this.profile,
+            causeBy: action.constructor.name,
+            sentFrom: this.name,
+            instructContent: {
+              type: 'workspace_zip',
+              zipPath: zipPath,
+              autoCodeEnabled: false,
+            },
+          });
+
+          logger.info(`${this.profile} ExecuteSubtask: Workspace zip created`, { zipPath });
+
+          // Clear current action
+          this.rc.todo = null;
+
+          return message;
+        } catch (error: any) {
+          logger.error(`${this.profile} ExecuteSubtask: Failed to create workspace zip`, error);
+          // 如果压缩包创建失败，返回错误消息，不继续执行代码生成
+          this.rc.todo = null;
+          throw new Error(`Failed to create workspace zip: ${error.message}`);
+        }
+      }
+
       // 获取workspace选项
       const workspaceOptions = this.extractWorkspaceOptions();
 
@@ -737,6 +852,17 @@ export class Engineer extends Role {
         });
       }
 
+      // 如果启用了自动编码，创建代码压缩包
+      let zipPath: string | undefined;
+      if (autoCodeEnabled && accumulatedFiles.length > 0 && workspaceOptions) {
+        try {
+          zipPath = await createCodeZip(accumulatedFiles, workspaceOptions);
+          logger.info(`${this.profile} ExecuteSubtask: Code zip created`, { zipPath, taskId: task.id });
+        } catch (error: any) {
+          logger.error(`${this.profile} ExecuteSubtask: Failed to create code zip`, error);
+        }
+      }
+
       // 创建消息
       const message = new Message({
         content: result.content,
@@ -750,6 +876,10 @@ export class Engineer extends Role {
             attempts: attempt,
             issues: lastIssues,
           },
+          ...(zipPath && {
+            zipPath: zipPath,
+            autoCodeEnabled: true,
+          }),
         },
       });
 

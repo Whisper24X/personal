@@ -66,6 +66,26 @@
             <div class="step-content">
               {{ step.content }}
             </div>
+            <!-- Zip Archive Info -->
+            <div v-if="step.zipPath" class="step-zip">
+              <el-divider content-position="left">
+                <el-icon>
+                  <Download />
+                </el-icon>
+                压缩包
+              </el-divider>
+              <el-alert type="success" :closable="false" show-icon>
+                <template #title>
+                  <div class="zip-alert-content">
+                    <span>{{ step.zipType === 'workspace_zip' ? 'Workspace压缩包' : '代码压缩包' }}</span>
+                    <el-button type="primary" size="small" :icon="Download" @click="downloadZip(step.zipPath)">
+                      下载
+                    </el-button>
+                  </div>
+                </template>
+              </el-alert>
+            </div>
+
             <div v-if="step.outputFiles && step.outputFiles.length > 0" class="step-files">
               <el-divider content-position="left">
                 <el-icon>
@@ -168,8 +188,10 @@ import {
   DataAnalysis,
   FolderOpened,
   DocumentCopy,
+  Download,
 } from '@element-plus/icons-vue';
 import InteractiveConfirmation from '../components/InteractiveConfirmation.vue';
+import apiClient from '../api/client';
 
 const route = useRoute();
 const router = useRouter();
@@ -343,6 +365,7 @@ function handleWebSocketMessage(message: { type: string; data: any }) {
         action: message.data.action,
         content: message.data.content,
         outputFiles: message.data.outputFiles || [],
+        instructContent: message.data.instructContent || {},
       };
       break;
 
@@ -388,6 +411,9 @@ async function handleUserAction(action: string, modifiedContent?: string) {
       content: modifiedContent || currentStep.value.content,
       // Preserve outputFiles if they exist
       outputFiles: currentStep.value.outputFiles || [],
+      // Preserve zip info if it exists
+      zipPath: currentStep.value.instructContent?.zipPath,
+      zipType: currentStep.value.instructContent?.type,
     };
 
     completedSteps.value.push(step);
@@ -539,6 +565,20 @@ function downloadProject() {
   ElMessage.info('下载功能开发中');
 }
 
+async function downloadZip(zipPath: string) {
+  if (!zipPath || !projectId.value) {
+    ElMessage.error('压缩包路径或项目ID不存在');
+    return;
+  }
+
+  try {
+    await apiClient.downloadZip(projectId.value, zipPath);
+    ElMessage.success('压缩包下载已开始');
+  } catch (error: any) {
+    ElMessage.error('下载失败: ' + (error.message || '未知错误'));
+  }
+}
+
 async function handleBack() {
   if (isRunning.value) {
     try {
@@ -674,6 +714,17 @@ function cleanup() {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.step-zip {
+  margin-top: 16px;
+}
+
+.zip-alert-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
 }
 
 .running-card {

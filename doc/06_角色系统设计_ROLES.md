@@ -1,7 +1,8 @@
 # 即思即成（Mind2Build）角色系统设计文档
 
-**文档版本**: v1.0  
+**文档版本**: v1.1  
 **创建日期**: 2025-12-24
+**最后更新**: 2025-12-25
 
 ## 核心角色
 
@@ -10,12 +11,12 @@
 **职责**: 收集需求、产出需求说明文档
 
 **核心属性**:
-```javascript
-class Salesperson extends RoleZero {
+```typescript
+class Salesperson extends Role {
     name = "Salesperson"
     profile = "Salesperson"
     goal = "Collect customer requirements and produce requirement specification"
-    tools = ["Browser", "Editor", "SearchEnhancedQA"]
+    // Actions: UserRequirement, WriteRequirementSpec, RequirementSpecReview
 }
 ```
 
@@ -40,12 +41,12 @@ class Salesperson extends RoleZero {
 **职责**: 基于需求说明编写 PRD、产品规划
 
 **核心属性**:
-```javascript
-class ProductManager extends RoleZero {
+```typescript
+class ProductManager extends Role {
     name = "ProductManager"
     profile = "Product Manager"
     goal = "Create detailed PRD based on requirement specification"
-    tools = ["Browser", "Editor", "SearchEnhancedQA"]
+    // Actions: WritePRD, PRDReview, SearchEnhancedQA
 }
 ```
 
@@ -60,12 +61,13 @@ class ProductManager extends RoleZero {
 **职责**: 系统设计、架构规划
 
 **核心属性**:
-```python
-class Architect(RoleZero):
-    name: str = "Architect"
-    profile: str = "Architect"
-    goal: str = "Design complete software system"
-    tools: list[str] = ["Editor", "Terminal"]
+```typescript
+class Architect extends Role {
+    name = "Architect"
+    profile = "Architect"
+    goal = "Design complete software system"
+    // Actions: WriteDesign
+}
 ```
 
 **工作流程**:
@@ -84,7 +86,7 @@ class ProjectManager extends Role {
     name = "ProjectManager"
     profile = "ProjectManager"
     goal = "Break down projects into minimal granularity tasks, provide sub-project design and task generation support for engineers"
-    tools = ["BreakdownTasks", "WriteSubProjectDesign", "GenerateTask", "CodeReview"]
+    // Actions: BreakdownTasks, WriteSubProjectDesign, GenerateTask, CodeReview
 }
 ```
 
@@ -136,25 +138,37 @@ class ProjectManager extends Role {
 **职责**: 代码实现
 
 **核心属性**:
-```python
-class Engineer(RoleZero):
-    name: str = "Engineer"
-    profile: str = "Engineer"
-    goal: str = "Write elegant code"
-    tools: list[str] = ["Editor"]
+```typescript
+class Engineer extends Role {
+    name = "Engineer"
+    profile = "Engineer"
+    goal = "Write elegant code"
+    // Actions: WriteCode, ExecuteSubtask
+}
 ```
 
 **工作流程**:
 1. 接收设计文档（订阅 WriteDesign）
 2. 接收任务说明（来自 ProjectManager）
 3. 编写代码（WriteCode）
-4. 输出源代码
+4. 执行子任务（ExecuteSubtask）
+5. 输出源代码
 
 **注意**: 现在可以通过 ProjectManager 获得任务拆分、子项目设计和代码审查支持
 
 ### 5. QA Engineer (QA 工程师)
 
 **职责**: 测试用例编写和执行
+
+**核心属性**:
+```typescript
+class QAEngineer extends Role {
+    name = "QAEngineer"
+    profile = "QAEngineer"
+    goal = "Write comprehensive test cases"
+    // Actions: WriteTest
+}
+```
 
 **工作流程**:
 1. 接收代码（订阅 WriteCode）
@@ -166,11 +180,31 @@ class Engineer(RoleZero):
 
 **职责**: 协调、决策、任务分配
 
+**核心属性**:
+```typescript
+class TeamLeader extends Role {
+    name = "TeamLeader"
+    profile = "TeamLeader"
+    goal = "Coordinate team work and make decisions"
+    // Actions: Coordinate
+}
+```
+
 **特点**: 监听所有消息，协调团队工作
 
-### 7. DataInterpreter (数据解释器)
+### 7. DataAnalyst (数据分析师)
 
 **职责**: 数据分析和可视化
+
+**核心属性**:
+```typescript
+class DataAnalyst extends Role {
+    name = "DataAnalyst"
+    profile = "DataAnalyst"
+    goal = "Analyze data and create visualizations"
+    // Actions: DataAnalysis
+}
+```
 
 **核心能力**:
 - 数据加载和处理
@@ -180,24 +214,37 @@ class Engineer(RoleZero):
 
 ---
 
+## 已实现角色列表
+
+✅ **Salesperson** - 需求收集和需求说明文档编写  
+✅ **ProductManager** - PRD编写和产品规划  
+✅ **Architect** - 系统架构设计  
+✅ **ProjectManager** - 任务拆分、子项目设计、代码审查  
+✅ **Engineer** - 代码实现  
+✅ **QAEngineer** - 测试用例编写  
+✅ **TeamLeader** - 团队协调和任务分配  
+✅ **DataAnalyst** - 数据分析和可视化
+
 ## 自定义角色开发
 
 **示例**:
-```python
-from mind2build.roles.role import Role
-from mind2build.actions import Action
+```typescript
+import { Role } from './Role';
+import { BaseAction } from '../actions/BaseAction';
 
-class CustomRole(Role):
-    name: str = "CustomName"
-    profile: str = "Custom Profile"
-    goal: str = "Custom Goal"
+class CustomRole extends Role {
+    name = "CustomName";
+    profile = "Custom Profile";
+    goal = "Custom Goal";
     
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.set_actions([CustomAction])
-        self._watch([SomeAction])
+    constructor() {
+        super();
+        this.setActions([CustomAction]);
+        this._watch([SomeAction]);
+    }
+}
 ```
 
 ---
 
-**参考**: 完整实现见源码 `mind2build/roles/`
+**参考**: 完整实现见源码 `backend/src/roles/`

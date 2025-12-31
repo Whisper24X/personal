@@ -18,6 +18,7 @@ router.post('/:id/start', ProjectController.start);
 router.get('/:id', ProjectController.getStatus);
 router.get('/:id/messages', ProjectController.getMessages);
 router.get('/:id/documents', ProjectController.getDocuments);
+router.get('/:id/download/:zipPath(*)', ProjectController.downloadZip);
 router.get('/', ProjectController.list);
 
 // PRD management routes

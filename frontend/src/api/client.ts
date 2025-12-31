@@ -255,6 +255,21 @@ class APIClient {
   async deletePromptConfig(type: string, key: string) {
     return this.client.delete(`/config/prompts/${type}/${key}`);
   }
+
+  // Download zip archive
+  async downloadZip(projectId: string, zipPath: string) {
+    // Encode the zip path for URL
+    const encodedPath = encodeURIComponent(zipPath);
+    const url = `${API_BASE_URL}/projects/${projectId}/download/${encodedPath}`;
+    
+    // Create a temporary link and trigger download
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = zipPath.split('/').pop() || 'archive.zip';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
 }
 
 export const apiClient = new APIClient();

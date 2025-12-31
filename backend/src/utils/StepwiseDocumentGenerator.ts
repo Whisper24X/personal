@@ -420,6 +420,8 @@ export class StepwiseDocumentGenerator {
 
 /**
  * 获取工作目录路径的通用函数
+ * 新的目录结构：workspace/{applicationId}/v{version}/{documentType}/
+ * 例如：workspace/default/v1/PRD/
  */
 export function getWorkspaceDir(
   documentType: string,
@@ -447,6 +449,7 @@ export function getWorkspaceDir(
   const workspaceRoot = options?.workspacePath || process.env.WORKSPACE_PATH || path.join(projectRoot, 'workspace');
   const applicationId = options?.applicationId || 'default';
   const version = options?.version || 1;
-  return path.join(workspaceRoot, `${applicationId}-v${version}-${documentType}`);
+  // 新的目录结构：workspace/{applicationId}/v{version}/{documentType}/
+  return path.join(workspaceRoot, applicationId, `v${version}`, documentType);
 }
 

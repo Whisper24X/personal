@@ -1,11 +1,526 @@
 # mind2build API 参考文档
 
-**文档版本**: v1.0  
+**文档版本**: v1.1  
 **创建日期**: 2025-12-24
+**最后更新**: 2025-12-25
 
 ---
 
-## 1. CLI 命令
+## 1. REST API
+
+### 1.1 基础信息
+
+**Base URL**: `http://localhost:3000/api`
+
+**Content-Type**: `application/json`
+
+**认证**: MVP阶段认证可选，生产环境需要JWT Token
+
+### 1.2 健康检查
+
+**GET** `/api/health`
+
+检查服务状态。
+
+**响应**:
+```json
+{
+  "status": "ok",
+  "service": "mind2build-api",
+  "version": "1.0.0"
+}
+```
+
+### 1.3 项目管理 API
+
+#### 创建项目
+
+**POST** `/api/projects`
+
+创建新项目。
+
+**请求体**:
+```json
+{
+  "name": "项目名称",
+  "idea": "项目需求描述",
+  "description": "项目描述（可选）",
+  "investment": 10.0,
+  "nRound": 5,
+  "applicationId": "应用ID（可选）"
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "project": {
+    "id": "项目UUID",
+    "name": "项目名称",
+    "status": "pending",
+    "createdAt": "2025-12-25T00:00:00Z"
+  }
+}
+```
+
+#### 启动项目
+
+**POST** `/api/projects/:id/start`
+
+启动项目执行。
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Project started"
+}
+```
+
+#### 获取项目状态
+
+**GET** `/api/projects/:id`
+
+获取项目详细信息。
+
+**响应**:
+```json
+{
+  "success": true,
+  "project": {
+    "id": "项目UUID",
+    "name": "项目名称",
+    "status": "running",
+    "progress": 50,
+    "currentRound": 2,
+    "nRound": 5,
+    "totalCost": 2.5
+  }
+}
+```
+
+#### 获取项目消息
+
+**GET** `/api/projects/:id/messages`
+
+获取项目的消息历史。
+
+**查询参数**:
+- `limit`: 返回数量限制（默认：100）
+- `offset`: 偏移量（默认：0）
+
+**响应**:
+```json
+{
+  "success": true,
+  "messages": [
+    {
+      "id": "消息UUID",
+      "content": "消息内容",
+      "roleType": "user",
+      "sentFrom": "Salesperson",
+      "causeBy": "UserRequirement",
+      "createdAt": "2025-12-25T00:00:00Z"
+    }
+  ],
+  "total": 50
+}
+```
+
+#### 获取项目文档
+
+**GET** `/api/projects/:id/documents`
+
+获取项目生成的所有文档。
+
+**响应**:
+```json
+{
+  "success": true,
+  "documents": [
+    {
+      "id": "文档UUID",
+      "filename": "PRD.md",
+      "docType": "prd",
+      "version": 1,
+      "createdAt": "2025-12-25T00:00:00Z"
+    }
+  ]
+}
+```
+
+#### 下载项目文件
+
+**GET** `/api/projects/:id/download/:zipPath(*)`
+
+下载项目文件或ZIP压缩包。
+
+#### 列出所有项目
+
+**GET** `/api/projects`
+
+获取用户的所有项目列表。
+
+**查询参数**:
+- `status`: 按状态过滤（pending, running, completed, failed）
+- `limit`: 返回数量限制
+- `offset`: 偏移量
+
+**响应**:
+```json
+{
+  "success": true,
+  "projects": [
+    {
+      "id": "项目UUID",
+      "name": "项目名称",
+      "status": "completed",
+      "createdAt": "2025-12-25T00:00:00Z"
+    }
+  ],
+  "total": 10
+}
+```
+
+### 1.4 PRD 管理 API
+
+#### 生成 PRD
+
+**POST** `/api/projects/:id/prd`
+
+为项目生成PRD文档。
+
+**请求体**:
+```json
+{
+  "requirement": "需求描述"
+}
+```
+
+#### 获取 PRD 列表
+
+**GET** `/api/projects/:id/prds`
+
+获取项目的所有PRD版本。
+
+#### 获取 PRD 版本列表
+
+**GET** `/api/projects/:id/prds/versions`
+
+获取PRD的所有版本信息。
+
+#### 获取特定 PRD
+
+**GET** `/api/projects/:id/prds/:prdId`
+
+获取特定版本的PRD内容。
+
+#### 删除 PRD
+
+**DELETE** `/api/projects/:id/prds/:prdId`
+
+软删除PRD文档。
+
+#### 恢复 PRD
+
+**POST** `/api/projects/:id/prds/:prdId/restore`
+
+恢复已删除的PRD文档。
+
+#### 获取 PRD 章节
+
+**GET** `/api/projects/:id/prds/:prdId/sections`
+
+获取PRD的所有章节。
+
+#### 调整 PRD 章节
+
+**POST** `/api/projects/:id/prds/:prdId/sections/:sectionNumber/adjust`
+
+调整PRD的特定章节。
+
+**请求体**:
+```json
+{
+  "instruction": "调整指令"
+}
+```
+
+#### 从工作区调整章节
+
+**POST** `/api/projects/:id/sections/:sectionNumber/adjust`
+
+从工作区直接调整PRD章节。
+
+### 1.5 应用管理 API
+
+#### 创建应用
+
+**POST** `/api/applications`
+
+创建新应用（应用用于组织相关项目）。
+
+**请求体**:
+```json
+{
+  "name": "应用名称",
+  "description": "应用描述（可选）",
+  "metadata": {}
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "application": {
+    "id": "应用UUID",
+    "name": "应用名称",
+    "createdAt": "2025-12-25T00:00:00Z"
+  }
+}
+```
+
+#### 列出所有应用
+
+**GET** `/api/applications`
+
+获取用户的所有应用列表。
+
+#### 获取应用详情
+
+**GET** `/api/applications/:id`
+
+获取应用的详细信息。
+
+#### 更新应用
+
+**PUT** `/api/applications/:id`
+
+更新应用信息。
+
+**请求体**:
+```json
+{
+  "name": "新名称",
+  "description": "新描述",
+  "metadata": {}
+}
+```
+
+#### 删除应用
+
+**DELETE** `/api/applications/:id`
+
+删除应用（软删除）。
+
+#### 获取应用的项目列表
+
+**GET** `/api/applications/:id/projects`
+
+获取应用下的所有项目。
+
+### 1.6 交互式会话 API
+
+#### 创建交互式会话
+
+**POST** `/api/interactive`
+
+创建新的交互式会话。
+
+**请求体**:
+```json
+{
+  "name": "会话名称",
+  "idea": "项目想法",
+  "description": "描述（可选）",
+  "investment": 10.0,
+  "nRound": 5,
+  "userId": "用户ID（可选）"
+}
+```
+
+**响应**:
+```json
+{
+  "sessionId": "会话UUID",
+  "config": {
+    "name": "会话名称",
+    "idea": "项目想法",
+    "investment": 10.0,
+    "nRound": 5
+  }
+}
+```
+
+#### 获取会话信息
+
+**GET** `/api/interactive/:sessionId`
+
+获取交互式会话的详细信息。
+
+#### 删除会话
+
+**DELETE** `/api/interactive/:sessionId`
+
+删除交互式会话。
+
+#### 获取会话统计
+
+**GET** `/api/interactive-stats`
+
+获取所有会话的统计信息。
+
+**响应**:
+```json
+{
+  "stats": {
+    "totalSessions": 10,
+    "activeSessions": 2,
+    "completedSessions": 8
+  }
+}
+```
+
+### 1.7 配置管理 API
+
+#### LLM 配置
+
+**获取所有 LLM 配置**
+
+**GET** `/api/config/llm`
+
+**获取激活的 LLM 配置**
+
+**GET** `/api/config/llm/active`
+
+**获取特定提供商的配置**
+
+**GET** `/api/config/llm/:provider`
+
+**创建或更新 LLM 配置**
+
+**POST** `/api/config/llm`
+
+**请求体**:
+```json
+{
+  "provider": "zhipuai",
+  "apiKey": "API密钥",
+  "model": "glm-4-flash",
+  "baseURL": "https://open.bigmodel.cn/api/paas/v4",
+  "isActive": true
+}
+```
+
+**激活 LLM 配置**
+
+**POST** `/api/config/llm/:id/activate`
+
+**删除 LLM 配置**
+
+**DELETE** `/api/config/llm/:id`
+
+#### 角色 LLM 配置
+
+**获取所有角色 LLM 配置**
+
+**GET** `/api/config/role-llm`
+
+**获取特定角色的配置**
+
+**GET** `/api/config/role-llm/:profile`
+
+**创建或更新角色配置**
+
+**POST** `/api/config/role-llm/:profile`
+
+**请求体**:
+```json
+{
+  "llmConfigId": "LLM配置ID",
+  "model": "glm-4-flash"
+}
+```
+
+**删除角色配置**
+
+**DELETE** `/api/config/role-llm/:profile`
+
+#### Prompt 配置
+
+**获取所有 Prompt 配置**
+
+**GET** `/api/config/prompts`
+
+**获取分组后的 Prompt 配置**
+
+**GET** `/api/config/prompts/grouped`
+
+**获取特定类型的 Prompt**
+
+**GET** `/api/config/prompts/:type`
+
+**获取特定 Prompt**
+
+**GET** `/api/config/prompts/:type/:key`
+
+**创建或更新 Prompt**
+
+**POST** `/api/config/prompts`
+
+**请求体**:
+```json
+{
+  "type": "prd",
+  "key": "write_prd",
+  "content": "Prompt内容",
+  "metadata": {}
+}
+```
+
+**删除 Prompt**
+
+**DELETE** `/api/config/prompts/:type/:key`
+
+### 1.8 测试 API
+
+#### 获取工程师信息
+
+**GET** `/api/test/engineer/info`
+
+获取Engineer角色的详细信息。
+
+#### 测试 WriteCode Action
+
+**POST** `/api/test/engineer/write-code`
+
+测试WriteCode Action的执行。
+
+**请求体**:
+```json
+{
+  "designDoc": "设计文档内容",
+  "taskDescription": "任务描述"
+}
+```
+
+#### 测试 ExecuteSubtask Action
+
+**POST** `/api/test/engineer/execute-subtask`
+
+测试ExecuteSubtask Action的执行。
+
+#### 自定义测试场景
+
+**POST** `/api/test/engineer/custom`
+
+执行自定义测试场景。
+
+---
+
+## 2. CLI 命令
 
 ### 1.1 mind2build 主命令
 

@@ -118,7 +118,23 @@ class WritePRD extends BaseAction {
 
 **使用角色**: Engineer
 
-### 8. BreakdownTasks
+### 8. ExecuteSubtask
+
+**功能**: 执行子任务（工程师执行具体开发任务）
+
+**输入**: 任务描述、设计文档、上下文信息
+
+**输出**: 代码实现结果
+
+**关键特性**:
+- 解析任务描述
+- 根据设计文档实现代码
+- 支持增量开发
+- 自动生成和更新代码文件
+
+**使用角色**: Engineer
+
+### 9. BreakdownTasks
 
 **功能**: 基于 PRD 和系统设计文档进行任务拆分
 
@@ -146,7 +162,7 @@ class BreakdownTasks extends BaseAction {
 
 **使用角色**: ProjectManager
 
-### 9. WriteSubProjectDesign
+### 10. WriteSubProjectDesign
 
 **功能**: 基于任务拆分生成子项目设计文档
 
@@ -162,7 +178,7 @@ class BreakdownTasks extends BaseAction {
 
 **使用角色**: ProjectManager
 
-### 10. GenerateTask
+### 11. GenerateTask
 
 **功能**: 为工程师生成详细的任务说明
 
@@ -178,7 +194,7 @@ class BreakdownTasks extends BaseAction {
 
 **使用角色**: ProjectManager
 
-### 11. CodeReview
+### 12. CodeReview
 
 **功能**: 代码审查和反馈
 
@@ -195,7 +211,7 @@ class BreakdownTasks extends BaseAction {
 
 **使用角色**: ProjectManager
 
-### 12. WriteTest
+### 13. WriteTest
 
 **功能**: 编写测试用例
 
@@ -205,7 +221,7 @@ class BreakdownTasks extends BaseAction {
 
 **使用角色**: QAEngineer
 
-### 13. SearchEnhancedQA
+### 14. SearchEnhancedQA
 
 **功能**: 增强搜索和问答
 
@@ -220,7 +236,7 @@ class BreakdownTasks extends BaseAction {
 
 **使用角色**: ProductManager
 
-### 14. DataAnalysis
+### 15. DataAnalysis
 
 **功能**: 数据分析和可视化
 
@@ -230,7 +246,7 @@ class BreakdownTasks extends BaseAction {
 
 **使用角色**: DataAnalyst
 
-### 15. Coordinate
+### 16. Coordinate
 
 **功能**: 协调和任务分配
 
@@ -242,21 +258,43 @@ class BreakdownTasks extends BaseAction {
 
 ---
 
+## 已实现 Actions 列表
+
+✅ **UserRequirement** - 用户需求收集  
+✅ **WriteRequirementSpec** - 需求说明文档编写  
+✅ **RequirementSpecReview** - 需求说明文档审查  
+✅ **WritePRD** - PRD文档编写  
+✅ **PRDReview** - PRD文档审查  
+✅ **WriteDesign** - 系统设计文档编写  
+✅ **BreakdownTasks** - 任务拆分  
+✅ **WriteSubProjectDesign** - 子项目设计  
+✅ **GenerateTask** - 任务说明生成  
+✅ **WriteCode** - 代码编写  
+✅ **ExecuteSubtask** - 子任务执行  
+✅ **CodeReview** - 代码审查  
+✅ **WriteTest** - 测试用例编写  
+✅ **SearchEnhancedQA** - 增强搜索和问答  
+✅ **DataAnalysis** - 数据分析和可视化  
+✅ **Coordinate** - 团队协调和任务分配
+
 ## 自定义 Action
 
 **示例**:
-```python
-from mind2build.actions import Action
+```typescript
+import { BaseAction } from './BaseAction';
+import { IActionOutput } from '@mind2build/shared';
 
-class CustomAction(Action):
-    name: str = "CustomAction"
+export class CustomAction extends BaseAction {
+    name = "CustomAction";
     
-    async def run(self, *args, **kwargs):
-        prompt = f"Task: {args[0]}"
-        result = await self._aask(prompt)
-        return result
+    async run(input: string): Promise<IActionOutput> {
+        const prompt = `Task: ${input}`;
+        const content = await this.aask(prompt);
+        return { content };
+    }
+}
 ```
 
 ---
 
-**参考**: 完整实现见源码 `mind2build/actions/`
+**参考**: 完整实现见源码 `backend/src/actions/`

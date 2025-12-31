@@ -18,7 +18,8 @@ export interface WorkspaceOptions {
 export class WorkspaceManager {
   /**
    * 获取工作目录路径
-   * 使用根目录的 workspace 目录，文件夹命名格式：应用-版本号-类型（如 default-v1-PRD）
+   * 新的目录结构：workspace/{applicationId}/v{version}/{documentType}/
+   * 例如：workspace/default/v1/PRD/
    */
   static getWorkspaceDir(options?: WorkspaceOptions): string {
     // 计算项目根目录：从 backend/src/utils 或 backend/dist/utils 到项目根目录
@@ -48,7 +49,8 @@ export class WorkspaceManager {
     const version = options?.version || 1;
     const type = options?.documentType || 'DOCS'; // 默认类型
 
-    return path.join(workspaceRoot, `${applicationId}-v${version}-${type}`);
+    // 新的目录结构：workspace/{applicationId}/v{version}/{documentType}/
+    return path.join(workspaceRoot, applicationId, `v${version}`, type);
   }
 
   /**

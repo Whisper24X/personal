@@ -344,6 +344,58 @@ export class ProjectController {
       });
     }
   }
+
+  /**
+   * Download zip archive
+   * GET /api/projects/:id/download/:zipPath
+   */
+  static async downloadZip(req: Request, res: Response) {
+    try {
+      const { zipPath } = req.params;
+      const fs = await import('fs');
+      const path = await import('path');
+
+      // Decode the zip path (it might be URL encoded)
+      const decodedPath = decodeURIComponent(zipPath);
+      
+      // Security: Only allow paths within the project directory
+      const projectRoot = process.cwd();
+      const tempDir = path.join(projectRoot, 'temp');
+      const fullPath = path.resolve(tempDir, path.basename(decodedPath));
+
+      // Verify the file is within the temp directory
+      if (!fullPath.startsWith(path.resolve(tempDir))) {
+        return res.status(403).json({
+          error: 'Invalid file path',
+        });
+      }
+
+      // Check if file exists
+      if (!fs.existsSync(fullPath)) {
+        return res.status(404).json({
+          error: 'File not found',
+        });
+      }
+
+      // Get filename for download
+      const filename = path.basename(fullPath);
+
+      // Set headers and send file
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      
+      const fileStream = fs.createReadStream(fullPath);
+      fileStream.pipe(res);
+
+      logger.info(`Project zip downloaded: ${fullPath}`);
+    } catch (error: any) {
+      logger.error('Failed to download zip:', error);
+      return res.status(500).json({
+        error: 'Failed to download zip',
+        message: error.message,
+      });
+    }
+  }
 }
 
 export default ProjectController;

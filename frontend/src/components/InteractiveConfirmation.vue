@@ -41,6 +41,23 @@
                     </el-button-group>
                 </div>
 
+                <!-- Zip Archive Download -->
+                <div v-if="zipPath" class="zip-download-section">
+                    <el-alert type="success" :closable="false" show-icon>
+                        <template #title>
+                            <div class="zip-info">
+                                <el-icon>
+                                    <Download />
+                                </el-icon>
+                                <span>{{ zipType === 'workspace_zip' ? 'Workspace压缩包已生成' : '代码压缩包已生成' }}</span>
+                                <el-button type="primary" size="small" :icon="Download" @click="downloadZip">
+                                    下载压缩包
+                                </el-button>
+                            </div>
+                        </template>
+                    </el-alert>
+                </div>
+
                 <div v-if="roleInfo.outputFiles && roleInfo.outputFiles.length > 0" class="output-files">
                     <el-divider content-position="left">
                         <el-icon>
@@ -200,8 +217,10 @@ import {
     UserFilled,
     SetUp,
     Cpu,
+    Download,
 } from '@element-plus/icons-vue';
 import SectionAdjuster from './SectionAdjuster.vue';
+import apiClient from '../api/client';
 
 interface FileInfo {
     path: string;
@@ -213,6 +232,11 @@ interface RoleInfo {
     action: string;
     content: string;
     outputFiles?: Array<FileInfo | string>;
+    instructContent?: {
+        zipPath?: string;
+        autoCodeEnabled?: boolean;
+        type?: string;
+    };
 }
 
 interface Props {
@@ -237,6 +261,10 @@ const isEditing = ref(false);
 const editedContent = ref('');
 const editedFiles = ref<Map<string, string>>(new Map());
 const selectedFileIndex = ref<number>(-1);
+
+// Zip archive info
+const zipPath = computed(() => props.roleInfo.instructContent?.zipPath);
+const zipType = computed(() => props.roleInfo.instructContent?.type || 'code_zip');
 
 // Document type detection
 const documentType = computed(() => {
@@ -468,6 +496,20 @@ async function confirmQuit() {
     }
 }
 
+async function downloadZip() {
+    if (!zipPath.value || !props.projectId) {
+        ElMessage.error('压缩包路径或项目ID不存在');
+        return;
+    }
+
+    try {
+        await apiClient.downloadZip(props.projectId, zipPath.value);
+        ElMessage.success('压缩包下载已开始');
+    } catch (error: any) {
+        ElMessage.error('下载失败: ' + (error.message || '未知错误'));
+    }
+}
+
 // Keyboard shortcuts
 function handleKeyPress(event: KeyboardEvent) {
     if (isEditing.value) return;
@@ -682,6 +724,21 @@ onUnmounted(() => {
 
 .shortcuts-hint {
     margin-top: 16px;
+}
+
+.zip-download-section {
+    margin-bottom: 16px;
+}
+
+.zip-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+}
+
+.zip-info span {
+    flex: 1;
 }
 
 .sections-section {

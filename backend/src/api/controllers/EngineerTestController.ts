@@ -37,8 +37,8 @@ function getValidUserId(userId: string | undefined): string | null {
 
 /**
  * Load documents from workspace filesystem
- * Reads from default-v1-PRD, default-v1-DESIGN, default-v1-TASKS directories
- * Files are located in workspace/workspace/ directory
+ * Reads from workspace/{applicationId}/v{version}/{documentType}/ directories
+ * For example: workspace/default/v1/PRD/, workspace/default/v1/DESIGN/, workspace/default/v1/TASKS/
  */
 async function loadDocumentsFromWorkspace(
     applicationId: string = 'default',
@@ -317,7 +317,7 @@ export async function testExecuteSubtask(req: Request, res: Response) {
         // Validate required fields
         if (!taskBreakdown) {
             return res.status(400).json({
-                error: 'taskBreakdown is required for ExecuteSubtask. Please provide in request body or ensure TASK_BREAKDOWN.md exists in workspace/default-v1-TASKS/',
+                error: 'taskBreakdown is required for ExecuteSubtask. Please provide in request body or ensure TASK_BREAKDOWN.md exists in workspace/{applicationId}/v{version}/TASKS/',
             });
         }
 

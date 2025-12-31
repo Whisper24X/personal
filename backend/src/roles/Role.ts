@@ -9,6 +9,7 @@ import {
   anyToStr,
   ILLMConfig,
 } from '@mind2build/shared';
+import * as path from 'path';
 import { BaseRole } from '../core/base/BaseRole';
 import { BaseAction } from '../core/base/BaseAction';
 import { Message } from '../core/message/Message';
@@ -350,13 +351,32 @@ export class Role extends BaseRole {
       const data = msg.instructContent as any;
       if (data?.workspaceDir) {
         // 从workspaceDir解析applicationId和version
-        // 格式: {applicationId}-v{version}-{documentType}
+        // 新格式: workspace/{applicationId}/v{version}/{documentType}/
+        // 或者: {applicationId}/v{version}/{documentType}/
+        const pathParts = data.workspaceDir.split(path.sep).filter((p: string) => p);
+        
+        // 查找版本号部分（格式为 v{number}）
+        const versionIndex = pathParts.findIndex((p: string) => p.startsWith('v') && /^v\d+$/.test(p));
+        
+        if (versionIndex > 0 && versionIndex < pathParts.length - 1) {
+          const applicationId = pathParts[versionIndex - 1];
+          const versionStr = pathParts[versionIndex].substring(1); // 移除 'v' 前缀
+          const documentType = pathParts[versionIndex + 1] || this.getDocumentTypeForAction(this.rc.todo?.name || '');
+          
+          return {
+            applicationId,
+            version: parseInt(versionStr, 10),
+            documentType,
+          };
+        }
+        
+        // 兼容旧格式: {applicationId}-v{version}-{documentType}
         const match = data.workspaceDir.match(/(.+)-v(\d+)-(.+)/);
         if (match) {
           return {
             applicationId: match[1],
             version: parseInt(match[2], 10),
-            documentType: this.getDocumentTypeForAction(this.rc.todo?.name || ''),
+            documentType: match[3] || this.getDocumentTypeForAction(this.rc.todo?.name || ''),
           };
         }
       }

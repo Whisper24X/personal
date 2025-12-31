@@ -1,9 +1,10 @@
 # mind2build 数据库设计文档
 
-**文档版本**: v1.0  
+**文档版本**: v1.1  
 **创建日期**: 2025-12-24  
-**数据库类型**: PostgreSQL / MySQL  
-**ORM 推荐**: SQLAlchemy
+**最后更新**: 2025-12-25  
+**数据库类型**: PostgreSQL  
+**主键类型**: UUID (使用 `gen_random_uuid()`)
 
 ---
 
@@ -33,6 +34,7 @@
 | 实体 | 说明 | 优先级 |
 |------|------|--------|
 | users | 用户信息 | P0 |
+| applications | 应用信息（组织项目） | P0 |
 | projects | 项目信息 | P0 |
 | teams | 团队信息 | P0 |
 | roles | 角色实例 | P0 |
@@ -49,8 +51,10 @@
 
 ```mermaid
 erDiagram
+    users ||--o{ applications : creates
     users ||--o{ projects : creates
     users ||--o{ teams : owns
+    applications ||--o{ projects : contains
     projects ||--|| teams : has
     teams ||--o{ roles : contains
     projects ||--o{ messages : generates
@@ -63,7 +67,7 @@ erDiagram
     memories ||--o{ embeddings : has
     
     users {
-        bigint id PK
+        uuid id PK
         string username UK
         string email UK
         string password_hash
@@ -72,11 +76,22 @@ erDiagram
         timestamp updated_at
     }
     
-    projects {
-        bigint id PK
-        bigint user_id FK
+    applications {
+        uuid id PK
+        uuid user_id FK
         string name
-        string idea
+        text description
+        json metadata
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    projects {
+        uuid id PK
+        uuid user_id FK
+        uuid application_id FK
+        string name
+        text idea
         string status
         json metadata
         timestamp created_at
@@ -84,31 +99,37 @@ erDiagram
     }
     
     teams {
-        bigint id PK
-        bigint project_id FK
-        bigint user_id FK
-        float investment
+        uuid id PK
+        uuid project_id FK
+        uuid user_id FK
+        decimal investment
         string status
         json config
+        json state
         timestamp created_at
+        timestamp updated_at
     }
     
     roles {
-        bigint id PK
-        bigint team_id FK
+        uuid id PK
+        uuid team_id FK
         string name
         string profile
-        string goal
+        text goal
         json state
+        json actions_list
+        json watch_actions
         timestamp created_at
+        timestamp updated_at
     }
     
     messages {
-        bigint id PK
-        bigint project_id FK
-        bigint role_id FK
-        string message_uuid UK
+        uuid id PK
+        uuid project_id FK
+        uuid role_id FK
+        uuid message_uuid UK
         text content
+        json instruct_content
         string role_type
         string cause_by
         string sent_from
@@ -118,35 +139,39 @@ erDiagram
     }
     
     actions {
-        bigint id PK
-        bigint role_id FK
-        bigint message_id FK
+        uuid id PK
+        uuid role_id FK
+        uuid message_id FK
         string action_type
         json input_data
         json output_data
         string status
-        float duration
+        double duration
         timestamp created_at
     }
     
     documents {
-        bigint id PK
-        bigint project_id FK
+        uuid id PK
+        uuid project_id FK
         string filename
         string doc_type
         text content
         string storage_path
+        int version
+        boolean is_deleted
+        uuid parent_id FK
         timestamp created_at
     }
     
     cost_records {
-        bigint id PK
-        bigint project_id FK
-        bigint role_id FK
+        uuid id PK
+        uuid project_id FK
+        uuid role_id FK
         string model
         int prompt_tokens
         int completion_tokens
-        float cost
+        int total_tokens
+        double cost
         timestamp created_at
     }
 ```
@@ -161,7 +186,7 @@ erDiagram
 
 ```sql
 CREATE TABLE users (
-    id BIGSERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username VARCHAR(50) NOT NULL UNIQUE,
     email VARCHAR(100) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
@@ -170,8 +195,8 @@ CREATE TABLE users (
     api_keys JSONB DEFAULT '{}',  -- 存储各种 LLM API Keys (加密)
     config JSONB DEFAULT '{}',     -- 用户配置
     status VARCHAR(20) DEFAULT 'active',  -- active, inactive, banned
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
     last_login_at TIMESTAMP,
     deleted_at TIMESTAMP
 );
@@ -182,20 +207,52 @@ CREATE INDEX idx_users_status ON users(status);
 ```
 
 **字段说明**:
+- `id`: UUID主键，使用`gen_random_uuid()`自动生成
 - `api_keys`: 加密存储的 API Keys (OpenAI, Claude 等)
 - `config`: 用户偏好配置 (默认模型、预算等)
 - `deleted_at`: 软删除标记
 
 ---
 
-### 3.2 projects (项目表)
+### 3.2 applications (应用表)
+
+**用途**: 存储应用信息，用于组织相关项目
+
+```sql
+CREATE TABLE applications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    deleted_at TIMESTAMP
+);
+
+CREATE INDEX idx_applications_user_id ON applications(user_id);
+CREATE INDEX idx_applications_created_at ON applications(created_at DESC);
+```
+
+**字段说明**:
+- `id`: UUID主键
+- `user_id`: 所属用户
+- `name`: 应用名称
+- `description`: 应用描述
+- `metadata`: 额外元数据
+- `deleted_at`: 软删除标记
+
+---
+
+### 3.3 projects (项目表)
 
 **用途**: 存储项目基本信息
 
 ```sql
 CREATE TABLE projects (
-    id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    application_id UUID REFERENCES applications(id) ON DELETE SET NULL,
     name VARCHAR(200) NOT NULL,
     idea TEXT NOT NULL,                    -- 项目需求/想法
     description TEXT,
@@ -204,22 +261,25 @@ CREATE TABLE projects (
     progress INT DEFAULT 0,                 -- 进度 0-100
     n_round INT DEFAULT 5,                  -- 计划轮数
     current_round INT DEFAULT 0,            -- 当前轮数
-    investment FLOAT DEFAULT 10.0,          -- 预算
-    total_cost FLOAT DEFAULT 0.0,           -- 实际花费
+    investment DECIMAL(10,2) DEFAULT 10.0,          -- 预算
+    total_cost DECIMAL(10,2) DEFAULT 0.0,           -- 实际花费
     metadata JSONB DEFAULT '{}',            -- 其他元数据
     started_at TIMESTAMP,
     completed_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
     deleted_at TIMESTAMP
 );
 
 CREATE INDEX idx_projects_user_id ON projects(user_id);
+CREATE INDEX idx_projects_application_id ON projects(application_id);
 CREATE INDEX idx_projects_status ON projects(status);
 CREATE INDEX idx_projects_created_at ON projects(created_at DESC);
 ```
 
 **字段说明**:
+- `id`: UUID主键
+- `application_id`: 所属应用（可选，用于组织项目）
 - `status`: 
   - `pending`: 待开始
   - `running`: 运行中
@@ -230,24 +290,24 @@ CREATE INDEX idx_projects_created_at ON projects(created_at DESC);
 
 ---
 
-### 3.3 teams (团队表)
+### 3.4 teams (团队表)
 
 **用途**: 存储团队信息（一个项目对应一个团队）
 
 ```sql
 CREATE TABLE teams (
-    id BIGSERIAL PRIMARY KEY,
-    project_id BIGINT NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
-    user_id BIGINT NOT NULL REFERENCES users(id),
-    investment FLOAT DEFAULT 10.0,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id),
+    investment DECIMAL(10,2) DEFAULT 10.0,
     idea TEXT NOT NULL,
     use_mgx BOOLEAN DEFAULT true,
     env_type VARCHAR(50) DEFAULT 'Environment',  -- Environment, MGXEnv
     status VARCHAR(20) DEFAULT 'idle',  -- idle, running, stopped
     config JSONB DEFAULT '{}',
     state JSONB DEFAULT '{}',           -- 序列化的团队状态
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_teams_project_id ON teams(project_id);
@@ -256,14 +316,14 @@ CREATE INDEX idx_teams_status ON teams(status);
 
 ---
 
-### 3.4 roles (角色表)
+### 3.5 roles (角色表)
 
 **用途**: 存储角色实例信息
 
 ```sql
 CREATE TABLE roles (
-    id BIGSERIAL PRIMARY KEY,
-    team_id BIGINT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
     profile VARCHAR(100) NOT NULL,        -- ProductManager, Architect, Engineer
     goal TEXT,
@@ -276,11 +336,11 @@ CREATE TABLE roles (
     enable_memory BOOLEAN DEFAULT true,
     use_fixed_sop BOOLEAN DEFAULT false,
     tools JSONB DEFAULT '[]',              -- 工具列表
-    actions JSONB DEFAULT '[]',            -- Action 类型列表
+    actions_list JSONB DEFAULT '[]',            -- Action 类型列表（注意：字段名为actions_list）
     watch_actions JSONB DEFAULT '[]',      -- 订阅的 Action
     state JSONB DEFAULT '{}',              -- 序列化的角色状态
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_roles_team_id ON roles(team_id);
@@ -289,235 +349,193 @@ CREATE INDEX idx_roles_is_idle ON roles(is_idle);
 ```
 
 **字段说明**:
-- `profile`: 角色类型 (ProductManager, Architect, Engineer, QAEngineer, TeamLeader)
+- `id`: UUID主键
+- `profile`: 角色类型 (ProductManager, Architect, Engineer, QAEngineer, TeamLeader, Salesperson, DataAnalyst)
+- `actions_list`: Action类型列表（注意：实际字段名为`actions_list`而非`actions`）
 - `state`: 完整的 RoleContext 序列化数据
 
 ---
 
-### 3.5 messages (消息表)
+### 3.6 messages (消息表)
 
 **用途**: 存储所有消息记录
 
 ```sql
 CREATE TABLE messages (
-    id BIGSERIAL PRIMARY KEY,
-    message_uuid VARCHAR(32) NOT NULL UNIQUE,  -- Message.id
-    project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    role_id BIGINT REFERENCES roles(id),       -- 发送者角色 (NULL 表示用户)
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    message_uuid UUID UNIQUE NOT NULL,  -- Message.id (UUID格式)
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    role_id UUID REFERENCES roles(id) ON DELETE SET NULL,       -- 发送者角色 (NULL 表示用户)
     content TEXT NOT NULL,
     instruct_content JSONB,                    -- 结构化内容
-    role_type VARCHAR(20) DEFAULT 'user',      -- system, user, assistant
-    cause_by VARCHAR(200),                     -- 触发的 Action 类名
-    sent_from VARCHAR(200),                    -- 发送者标识
-    send_to JSONB DEFAULT '[]',                -- 接收者列表
+    role_type VARCHAR(50) NOT NULL,      -- system, user, assistant
+    cause_by VARCHAR(100) NOT NULL,                     -- 触发的 Action 类名
+    sent_from VARCHAR(100) NOT NULL,                    -- 发送者标识
+    send_to JSONB NOT NULL,                -- 接收者列表
     metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_messages_project_id ON messages(project_id);
 CREATE INDEX idx_messages_role_id ON messages(role_id);
-CREATE INDEX idx_messages_uuid ON messages(message_uuid);
 CREATE INDEX idx_messages_cause_by ON messages(cause_by);
 CREATE INDEX idx_messages_created_at ON messages(created_at DESC);
-
--- 分区策略（可选，大数据量时）
--- PARTITION BY RANGE (created_at);
 ```
 
 **字段说明**:
-- `message_uuid`: 对应 Message.id (UUID)
+- `id`: UUID主键
+- `message_uuid`: 对应 Message.id (UUID格式)
 - `instruct_content`: 结构化的指令内容
 - `cause_by`: 触发此消息的 Action 类名
 
 ---
 
-### 3.6 actions (行动记录表)
+### 3.7 actions (行动记录表)
 
 **用途**: 记录所有 Action 的执行
 
 ```sql
 CREATE TABLE actions (
-    id BIGSERIAL PRIMARY KEY,
-    project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    role_id BIGINT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-    message_id BIGINT REFERENCES messages(id),  -- 触发的消息
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    message_id UUID REFERENCES messages(id) ON DELETE SET NULL,  -- 触发的消息
     action_type VARCHAR(100) NOT NULL,          -- WritePRD, WriteDesign, WriteCode
-    action_name VARCHAR(200),
     input_data JSONB,                           -- 输入数据
     output_data JSONB,                          -- 输出数据
     status VARCHAR(20) DEFAULT 'pending',       -- pending, running, completed, failed
-    error_message TEXT,
-    duration_seconds FLOAT,                     -- 执行时长（秒）
-    started_at TIMESTAMP,
-    completed_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    duration DOUBLE PRECISION,                     -- 执行时长（秒）
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_actions_project_id ON actions(project_id);
 CREATE INDEX idx_actions_role_id ON actions(role_id);
-CREATE INDEX idx_actions_type ON actions(action_type);
+CREATE INDEX idx_actions_message_id ON actions(message_id);
+CREATE INDEX idx_actions_action_type ON actions(action_type);
 CREATE INDEX idx_actions_status ON actions(status);
-CREATE INDEX idx_actions_created_at ON actions(created_at DESC);
 ```
 
 **字段说明**:
-- `action_type`: Action 类名 (WritePRD, WriteDesign, WriteCode)
-- `duration_seconds`: 执行时长，用于性能分析
+- `id`: UUID主键
+- `action_type`: Action 类名 (WritePRD, WriteDesign, WriteCode, ExecuteSubtask等)
+- `duration`: 执行时长，用于性能分析
 
 ---
 
-### 3.7 documents (文档表)
+### 3.8 documents (文档表)
 
-**用途**: 存储生成的文档
+**用途**: 存储生成的文档（支持版本管理和软删除）
 
 ```sql
 CREATE TABLE documents (
-    id BIGSERIAL PRIMARY KEY,
-    project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    action_id BIGINT REFERENCES actions(id),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     filename VARCHAR(255) NOT NULL,
     doc_type VARCHAR(50) NOT NULL,          -- PRD, Design, Code, Test, README
-    file_path VARCHAR(500),                  -- 文件路径
-    content TEXT,                            -- 文档内容（可选，大文件存储到对象存储）
-    content_hash VARCHAR(64),                -- 内容哈希
-    size_bytes BIGINT,                       -- 文件大小
-    mime_type VARCHAR(100),
-    language VARCHAR(20),                    -- 编程语言或自然语言
-    version INT DEFAULT 1,                   -- 版本号
-    storage_type VARCHAR(20) DEFAULT 'db',   -- db, s3, local
+    content TEXT NOT NULL,                            -- 文档内容
     storage_path VARCHAR(500),               -- 外部存储路径
     metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    version INT DEFAULT 1,                   -- 版本号
+    is_deleted BOOLEAN DEFAULT FALSE,        -- 软删除标记
+    deleted_at TIMESTAMP,
+    parent_id UUID REFERENCES documents(id) ON DELETE SET NULL,  -- 父版本引用
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_documents_project_id ON documents(project_id);
-CREATE INDEX idx_documents_type ON documents(doc_type);
-CREATE INDEX idx_documents_filename ON documents(filename);
-CREATE INDEX idx_documents_created_at ON documents(created_at DESC);
+CREATE INDEX idx_documents_doc_type ON documents(doc_type);
+CREATE INDEX idx_documents_version ON documents(version);
+CREATE INDEX idx_documents_parent_id ON documents(parent_id);
+CREATE INDEX idx_documents_is_deleted ON documents(is_deleted);
+CREATE INDEX idx_documents_prd_version ON documents(project_id, doc_type, version) WHERE doc_type = 'prd';
 ```
 
 **字段说明**:
+- `id`: UUID主键
 - `doc_type`: PRD, Design, Code, Test, README, Config
-- `storage_type`: 
-  - `db`: 直接存储在数据库
-  - `s3`: 存储在 S3 或兼容对象存储
-  - `local`: 存储在本地文件系统
+- `version`: 文档版本号，从1开始
+- `is_deleted`: 软删除标记，用于PRD版本管理
+- `parent_id`: 指向父版本，形成版本链
 
 ---
 
-### 3.8 cost_records (成本记录表)
+### 3.9 cost_records (成本记录表)
 
 **用途**: 跟踪 LLM 调用成本
 
 ```sql
 CREATE TABLE cost_records (
-    id BIGSERIAL PRIMARY KEY,
-    project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    role_id BIGINT REFERENCES roles(id),
-    action_id BIGINT REFERENCES actions(id),
-    provider VARCHAR(50) NOT NULL,           -- openai, anthropic, gemini
-    model VARCHAR(100) NOT NULL,              -- gpt-4-turbo, claude-3-opus
-    prompt_tokens INT DEFAULT 0,
-    completion_tokens INT DEFAULT 0,
-    total_tokens INT DEFAULT 0,
-    cost DECIMAL(10, 6) DEFAULT 0.0,         -- 成本（美元）
-    currency VARCHAR(3) DEFAULT 'USD',
-    request_duration_ms INT,                  -- 请求时长（毫秒）
-    metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    role_id UUID REFERENCES roles(id) ON DELETE SET NULL,
+    model VARCHAR(50) NOT NULL,
+    prompt_tokens INT NOT NULL,
+    completion_tokens INT NOT NULL,
+    total_tokens INT NOT NULL,
+    cost DOUBLE PRECISION NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_cost_project_id ON cost_records(project_id);
-CREATE INDEX idx_cost_role_id ON cost_records(role_id);
-CREATE INDEX idx_cost_model ON cost_records(model);
-CREATE INDEX idx_cost_created_at ON cost_records(created_at DESC);
-
--- 用于统计的物化视图
-CREATE MATERIALIZED VIEW project_cost_summary AS
-SELECT 
-    project_id,
-    SUM(cost) as total_cost,
-    SUM(total_tokens) as total_tokens,
-    COUNT(*) as total_requests,
-    AVG(request_duration_ms) as avg_duration_ms
-FROM cost_records
-GROUP BY project_id;
+CREATE INDEX idx_cost_records_project_id ON cost_records(project_id);
+CREATE INDEX idx_cost_records_role_id ON cost_records(role_id);
+CREATE INDEX idx_cost_records_created_at ON cost_records(created_at DESC);
 ```
 
 **字段说明**:
-- `cost`: 精确到小数点后 6 位
-- 支持按项目、角色、模型等维度统计成本
+- `id`: UUID主键
+- `cost`: 成本（美元）
 
 ---
 
-### 3.9 memories (长期记忆表)
+### 3.10 memories (长期记忆表)
 
 **用途**: 存储角色的长期记忆
 
 ```sql
 CREATE TABLE memories (
-    id BIGSERIAL PRIMARY KEY,
-    role_id BIGINT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-    message_id BIGINT REFERENCES messages(id),
-    memory_type VARCHAR(20) DEFAULT 'short_term',  -- short_term, long_term, working
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    type VARCHAR(20) NOT NULL,
     content TEXT NOT NULL,
-    importance_score FLOAT DEFAULT 0.5,           -- 重要性评分 0-1
-    access_count INT DEFAULT 0,                    -- 访问次数
-    last_accessed_at TIMESTAMP,
-    expires_at TIMESTAMP,                          -- 过期时间（可选）
     metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMP
 );
 
 CREATE INDEX idx_memories_role_id ON memories(role_id);
-CREATE INDEX idx_memories_type ON memories(memory_type);
-CREATE INDEX idx_memories_importance ON memories(importance_score DESC);
-CREATE INDEX idx_memories_created_at ON memories(created_at DESC);
+CREATE INDEX idx_memories_type ON memories(type);
+CREATE INDEX idx_memories_expires_at ON memories(expires_at);
 ```
 
 ---
 
-### 3.10 embeddings (向量嵌入表)
+### 3.11 embeddings (向量嵌入表)
 
 **用途**: 存储文本的向量嵌入（用于语义搜索）
 
 ```sql
 CREATE TABLE embeddings (
-    id BIGSERIAL PRIMARY KEY,
-    memory_id BIGINT REFERENCES memories(id) ON DELETE CASCADE,
-    document_id BIGINT REFERENCES documents(id) ON DELETE CASCADE,
-    embedding_key VARCHAR(200) NOT NULL,
-    embedding_vector VECTOR(1536),              -- 使用 pgvector 扩展
-    embedding_model VARCHAR(50) DEFAULT 'text-embedding-ada-002',
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    memory_id UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+    vector JSONB NOT NULL,
+    model VARCHAR(50) NOT NULL,
     metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    CONSTRAINT chk_one_ref CHECK (
-        (memory_id IS NOT NULL AND document_id IS NULL) OR
-        (memory_id IS NULL AND document_id IS NOT NULL)
-    )
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_embeddings_memory_id ON embeddings(memory_id);
-CREATE INDEX idx_embeddings_document_id ON embeddings(document_id);
--- 向量索引（需要 pgvector 扩展）
-CREATE INDEX idx_embeddings_vector ON embeddings USING ivfflat (embedding_vector vector_cosine_ops);
 ```
 
-**注意**: 需要安装 PostgreSQL pgvector 扩展
+**注意**: 当前实现使用JSONB存储向量，未来可考虑使用pgvector扩展
 
 ---
 
-### 3.11 project_snapshots (项目快照表)
+### 3.12 project_snapshots (项目快照表) [可选]
 
-**用途**: 保存项目状态快照，用于恢复
+**用途**: 保存项目状态快照，用于恢复（当前未实现）
 
 ```sql
 CREATE TABLE project_snapshots (
-    id BIGSERIAL PRIMARY KEY,
-    project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     snapshot_name VARCHAR(200),
     snapshot_type VARCHAR(20) DEFAULT 'manual',  -- manual, auto, checkpoint
     team_state JSONB NOT NULL,                   -- 序列化的 Team 状态
@@ -525,9 +543,9 @@ CREATE TABLE project_snapshots (
     roles_state JSONB,                           -- 所有角色状态
     messages_count INT,
     documents_count INT,
-    total_cost FLOAT,
+    total_cost DECIMAL(10,2),
     description TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_snapshots_project_id ON project_snapshots(project_id);
@@ -536,22 +554,22 @@ CREATE INDEX idx_snapshots_created_at ON project_snapshots(created_at DESC);
 
 ---
 
-### 3.12 audit_logs (审计日志表)
+### 3.13 audit_logs (审计日志表) [可选]
 
-**用途**: 记录所有重要操作
+**用途**: 记录所有重要操作（当前未实现）
 
 ```sql
 CREATE TABLE audit_logs (
-    id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT REFERENCES users(id),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id),
     entity_type VARCHAR(50) NOT NULL,    -- project, team, role, message
-    entity_id BIGINT NOT NULL,
+    entity_id UUID NOT NULL,
     action VARCHAR(50) NOT NULL,         -- create, update, delete, execute
     old_value JSONB,
     new_value JSONB,
     ip_address INET,
     user_agent TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_audit_user_id ON audit_logs(user_id);
@@ -623,8 +641,7 @@ CREATE INDEX idx_cost_project_model ON cost_records(project_id, model, created_a
 
 ```sql
 -- 启用必要的扩展
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "vector";  -- 用于向量搜索
+-- PostgreSQL 13+ 内置 gen_random_uuid()，无需 uuid-ossp 扩展
 
 -- 创建数据库
 CREATE DATABASE mind2build_db
@@ -637,19 +654,19 @@ CREATE DATABASE mind2build_db
 
 -- 创建所有表（顺序很重要，考虑外键依赖）
 -- 1. users
--- 2. projects
--- 3. teams
--- 4. roles
--- 5. messages
--- 6. actions
--- 7. documents
--- 8. cost_records
--- 9. memories
--- 10. embeddings
--- 11. project_snapshots
--- 12. audit_logs
+-- 2. applications
+-- 3. projects
+-- 4. teams
+-- 5. roles
+-- 6. messages
+-- 7. actions
+-- 8. documents
+-- 9. cost_records
+-- 10. memories
+-- 11. embeddings
 
 -- (完整 SQL 见上面各表定义)
+-- 实际迁移脚本见: backend/src/database/migrations/001_initial.sql
 ```
 
 ### 6.2 常用查询示例
@@ -663,7 +680,7 @@ SELECT
     SUM(cr.total_tokens) as total_tokens
 FROM projects p
 LEFT JOIN cost_records cr ON p.id = cr.project_id
-WHERE p.user_id = ?
+WHERE p.user_id = $1::uuid
 GROUP BY p.id, p.name
 ORDER BY total_cost DESC;
 ```
@@ -676,7 +693,7 @@ SELECT
     r.profile
 FROM messages m
 JOIN roles r ON m.role_id = r.id
-WHERE m.project_id = ?
+WHERE m.project_id = $1::uuid
 ORDER BY m.created_at ASC
 LIMIT 100;
 ```
@@ -699,58 +716,44 @@ LEFT JOIN roles r ON t.id = r.team_id
 LEFT JOIN messages m ON p.id = m.project_id
 LEFT JOIN documents d ON p.id = d.project_id
 LEFT JOIN cost_records cr ON p.id = cr.project_id
-WHERE p.id = ?
+WHERE p.id = $1::uuid
 GROUP BY p.id;
 ```
 
 ---
 
-## 7. SQLAlchemy 模型示例
+## 7. TypeScript/Node.js 模型示例
 
-```python
-from sqlalchemy import Column, Integer, BigInteger, String, Text, Float, Boolean, TIMESTAMP, JSON, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
-from datetime import datetime
+当前项目使用TypeScript + PostgreSQL，使用原生SQL查询和Repository模式。
 
-Base = declarative_base()
-
-class User(Base):
-    __tablename__ = 'users'
-    
-    id = Column(BigInteger, primary_key=True)
-    username = Column(String(50), unique=True, nullable=False)
-    email = Column(String(100), unique=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
-    config = Column(JSON, default={})
-    created_at = Column(TIMESTAMP, default=datetime.utcnow)
-    updated_at = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # 关系
-    projects = relationship("Project", back_populates="user")
-
-class Project(Base):
-    __tablename__ = 'projects'
-    
-    id = Column(BigInteger, primary_key=True)
-    user_id = Column(BigInteger, ForeignKey('users.id'), nullable=False)
-    name = Column(String(200), nullable=False)
-    idea = Column(Text, nullable=False)
-    status = Column(String(20), default='pending')
-    investment = Column(Float, default=10.0)
-    total_cost = Column(Float, default=0.0)
-    metadata = Column(JSON, default={})
-    created_at = Column(TIMESTAMP, default=datetime.utcnow)
-    updated_at = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # 关系
-    user = relationship("User", back_populates="projects")
-    team = relationship("Team", back_populates="project", uselist=False)
-    messages = relationship("Message", back_populates="project")
-    documents = relationship("Document", back_populates="project")
-
-# ... 其他模型类似
+**Repository示例**:
+```typescript
+// backend/src/database/repositories/ProjectRepository.ts
+export class ProjectRepository {
+  async create(data: CreateProjectData): Promise<Project> {
+    const result = await db.query(
+      `INSERT INTO projects (id, user_id, name, idea, ...)
+       VALUES (gen_random_uuid(), $1, $2, $3, ...)
+       RETURNING *`,
+      [data.userId, data.name, data.idea, ...]
+    );
+    return result.rows[0];
+  }
+  
+  async findById(id: string): Promise<Project | null> {
+    const result = await db.query(
+      'SELECT * FROM projects WHERE id = $1::uuid',
+      [id]
+    );
+    return result.rows[0] || null;
+  }
+}
 ```
+
+**注意**: 
+- 所有ID字段使用UUID类型
+- 使用参数化查询防止SQL注入
+- 使用`gen_random_uuid()`生成UUID
 
 ---
 
@@ -758,21 +761,21 @@ class Project(Base):
 
 ### 8.1 版本管理
 
-使用 Alembic 进行数据库迁移：
+当前项目使用SQL迁移脚本：
 
 ```bash
-# 初始化
-alembic init alembic
+# 运行迁移
+cd backend
+pnpm db:migrate
 
-# 创建迁移
-alembic revision --autogenerate -m "Initial tables"
+# 初始化LLM配置
+pnpm db:init-llm
 
-# 执行迁移
-alembic upgrade head
-
-# 回滚
-alembic downgrade -1
+# 初始化Prompt配置
+pnpm db:init-prompts
 ```
+
+迁移脚本位置: `backend/src/database/migrations/`
 
 ### 8.2 数据备份
 
@@ -851,4 +854,10 @@ CREATE TABLE messages_2025_01 PARTITION OF messages
 ---
 
 **文档维护**: 随系统演进更新  
-**最后更新**: 2025-12-24
+**最后更新**: 2025-12-25
+
+**重要变更**:
+- ✅ 所有主键从BIGSERIAL改为UUID
+- ✅ 添加applications表用于组织项目
+- ✅ documents表支持版本管理和软删除
+- ✅ roles表的actions字段实际名为actions_list
