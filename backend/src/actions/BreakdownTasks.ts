@@ -9,7 +9,7 @@ import {
   TASK_BREAKDOWN_SYSTEM_PROMPT,
   buildTaskBreakdownPrompt,
 } from '../prompts/task';
-import { logger, SubtaskManager, WorkspaceOptions } from '../utils';
+import { logger, SubtaskManager, WorkspaceOptions, loadPrompt } from '../utils';
 
 export interface BreakdownTasksOptions extends WorkspaceOptions {
   // 继承WorkspaceOptions的所有选项
@@ -27,8 +27,12 @@ export class BreakdownTasks extends BaseAction {
       // Build the prompt
       const prompt = buildTaskBreakdownPrompt(prd, design);
       
+      // Load system prompt from database or use default
+      const userId = this.context?.get('userId');
+      const systemPrompt = await loadPrompt(userId, 'task', 'system_prompt', TASK_BREAKDOWN_SYSTEM_PROMPT);
+      
       // Call LLM with system message and prompt
-      const taskBreakdownContent = await this.aask(prompt, [TASK_BREAKDOWN_SYSTEM_PROMPT]);
+      const taskBreakdownContent = await this.aask(prompt, [systemPrompt]);
       
       // 解析任务拆分结果
       const subtaskManager = new SubtaskManager();

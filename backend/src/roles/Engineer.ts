@@ -9,7 +9,7 @@ import { Context } from '../core/context/Context';
 import { WriteCode } from '../actions/WriteCode';
 import { ExecuteSubtask } from '../actions/ExecuteSubtask';
 import { Message } from '../core/message/Message';
-import { logger, SubtaskManager } from '../utils';
+import { logger, SubtaskManager, loadPrompt } from '../utils';
 import {
   buildCodePromptWithStandardDocs,
   buildTaskDescriptionPrompt,
@@ -230,7 +230,9 @@ export class Engineer extends Role {
         if (completenessCheck.isComplete && isStructurallyComplete && this.context.llm) {
           try {
             const checkPrompt = buildCodeCompletenessCheckPrompt(accumulatedFiles, design);
-            const llmCheckResult = await this.context.llm.aask(checkPrompt, [CODE_COMPLETENESS_CHECK_SYSTEM_PROMPT]);
+            const userId = this.context.get('userId');
+            const systemPrompt = await loadPrompt(userId, 'code', 'completeness_check_system_prompt', CODE_COMPLETENESS_CHECK_SYSTEM_PROMPT);
+            const llmCheckResult = await this.context.llm.aask(checkPrompt, [systemPrompt]);
 
             if (llmCheckResult.includes('INCOMPLETE')) {
               const match = llmCheckResult.match(/INCOMPLETE:\s*(.+)/i);
@@ -580,7 +582,9 @@ export class Engineer extends Role {
         if (completenessCheck.isComplete && isStructurallyComplete && this.context.llm) {
           try {
             const checkPrompt = buildCodeCompletenessCheckPrompt(accumulatedFiles, design);
-            const llmCheckResult = await this.context.llm.aask(checkPrompt, [CODE_COMPLETENESS_CHECK_SYSTEM_PROMPT]);
+            const userId = this.context.get('userId');
+            const systemPrompt = await loadPrompt(userId, 'code', 'completeness_check_system_prompt', CODE_COMPLETENESS_CHECK_SYSTEM_PROMPT);
+            const llmCheckResult = await this.context.llm.aask(checkPrompt, [systemPrompt]);
 
             if (llmCheckResult.includes('INCOMPLETE')) {
               const match = llmCheckResult.match(/INCOMPLETE:\s*(.+)/i);

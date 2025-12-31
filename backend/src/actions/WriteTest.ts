@@ -6,7 +6,7 @@
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { TEST_SYSTEM_PROMPT, buildTestPrompt } from '../prompts/test';
-import { logger, WorkspaceOptions } from '../utils';
+import { logger, WorkspaceOptions, loadPrompt } from '../utils';
 
 export interface WriteTestOptions extends WorkspaceOptions {
   // 继承WorkspaceOptions的所有选项
@@ -57,8 +57,12 @@ export class WriteTest extends BaseAction {
       // 构建提示词
       const prompt = buildTestPrompt(code, prd);
 
-    // 调用 LLM 生成测试用例
-      const content = await this.aask(prompt, [TEST_SYSTEM_PROMPT]);
+      // Load system prompt from database or use default
+      const userId = this.context?.get('userId');
+      const systemPrompt = await loadPrompt(userId, 'test', 'system_prompt', TEST_SYSTEM_PROMPT);
+
+      // 调用 LLM 生成测试用例
+      const content = await this.aask(prompt, [systemPrompt]);
       
       // 保存到workspace
       const workspaceOptions: WorkspaceOptions = {

@@ -9,7 +9,7 @@ import {
   REQUIREMENT_SPEC_REVIEW_SYSTEM_PROMPT,
   buildRequirementSpecReviewPrompt,
 } from '../prompts/requirement';
-import { logger } from '../utils';
+import { logger, loadPrompt } from '../utils';
 
 export interface RequirementSpecReviewOptions {
   outline?: string;
@@ -30,8 +30,12 @@ export class RequirementSpecReview extends BaseAction {
       const outline = options?.outline || this.extractOutline(requirementSpecContent);
       const prompt = buildRequirementSpecReviewPrompt(requirementSpecContent, outline);
 
+      // Load system prompt from database or use default
+      const userId = this.context?.get('userId');
+      const systemPrompt = await loadPrompt(userId, 'requirement', 'review_system_prompt', REQUIREMENT_SPEC_REVIEW_SYSTEM_PROMPT);
+
       // Call LLM with system message and prompt
-      const reviewResult = await this.aask(prompt, [REQUIREMENT_SPEC_REVIEW_SYSTEM_PROMPT]);
+      const reviewResult = await this.aask(prompt, [systemPrompt]);
 
       logger.info('RequirementSpecReview: Review completed', {
         reviewLength: reviewResult.length,

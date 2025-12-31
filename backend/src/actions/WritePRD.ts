@@ -13,7 +13,7 @@ import {
   buildPRDOutlinePrompt,
   buildPRDSectionPrompt,
 } from '../prompts/prd';
-import { logger } from '../utils';
+import { logger, loadPrompt } from '../utils';
 import { PRDReview } from './PRDReview';
 import { StepwiseDocumentGenerator } from '../utils/StepwiseDocumentGenerator';
 import * as fs from 'fs/promises';
@@ -74,8 +74,12 @@ export class WritePRD extends BaseAction {
         logger.info('WritePRD: Using new mode');
       }
 
+      // Load system prompt from database or use default
+      const userId = this.context?.get('userId');
+      const systemPrompt = await loadPrompt(userId, 'prd', 'system_prompt', PRD_SYSTEM_PROMPT);
+      
       // Call LLM with system message and prompt
-      const prdContent = await this.aask(prompt, [PRD_SYSTEM_PROMPT]);
+      const prdContent = await this.aask(prompt, [systemPrompt]);
 
       // 保存到 workspace（即使是非分步骤模式）
       await this.saveToWorkspace('PRD.md', prdContent, options);
@@ -272,10 +276,14 @@ export class WritePRD extends BaseAction {
     const workspaceDir = this.getWorkspaceDir(options);
     const reviewAction = new PRDReview();
 
+    // Load system prompt from database or use default
+    const userId = this.context?.get('userId');
+    const systemPrompt = await loadPrompt(userId, 'prd', 'system_prompt', PRD_SYSTEM_PROMPT);
+    
     const generator = new StepwiseDocumentGenerator(this, {
       buildOutlinePrompt: buildPRDOutlinePrompt,
       buildSectionPrompt: buildPRDSectionPrompt,
-      systemPrompt: PRD_SYSTEM_PROMPT,
+      systemPrompt: systemPrompt,
       reviewAction: reviewAction,
       reviewTitle: 'PRD 审查报告',
       documentTitle: '产品需求文档（PRD）',

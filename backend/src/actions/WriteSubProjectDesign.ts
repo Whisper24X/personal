@@ -9,7 +9,7 @@ import {
   SUB_PROJECT_DESIGN_SYSTEM_PROMPT,
   buildSubProjectDesignPrompt,
 } from '../prompts/task';
-import { logger, WorkspaceOptions } from '../utils';
+import { logger, WorkspaceOptions, loadPrompt } from '../utils';
 
 export interface WriteSubProjectDesignOptions extends WorkspaceOptions {
   // 继承WorkspaceOptions的所有选项
@@ -31,8 +31,13 @@ export class WriteSubProjectDesign extends BaseAction {
       // Build the prompt
       const prompt = buildSubProjectDesignPrompt(taskBreakdown, design);
       
+      // Load system prompt from database or use default
+      // Note: SUB_PROJECT_DESIGN_SYSTEM_PROMPT uses design type as it's a design-related prompt
+      const userId = this.context?.get('userId');
+      const systemPrompt = await loadPrompt(userId, 'design', 'system_prompt', SUB_PROJECT_DESIGN_SYSTEM_PROMPT);
+      
       // Call LLM with system message and prompt
-      const subProjectDesignContent = await this.aask(prompt, [SUB_PROJECT_DESIGN_SYSTEM_PROMPT]);
+      const subProjectDesignContent = await this.aask(prompt, [systemPrompt]);
       
       // 保存到workspace
       const workspaceOptions: WorkspaceOptions = {

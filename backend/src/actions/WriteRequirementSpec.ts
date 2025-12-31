@@ -11,7 +11,7 @@ import {
   buildRequirementSpecOutlinePrompt,
   buildRequirementSpecSectionPrompt,
 } from '../prompts/requirement';
-import { logger } from '../utils';
+import { logger, loadPrompt } from '../utils';
 import { RequirementSpecReview } from './RequirementSpecReview';
 import { StepwiseDocumentGenerator } from '../utils/StepwiseDocumentGenerator';
 import * as fs from 'fs/promises';
@@ -59,7 +59,12 @@ export class WriteRequirementSpec extends BaseAction {
 
       // 否则使用传统的一次性生成
       const prompt = buildRequirementSpecPrompt(userIdea);
-      const content = await this.aask(prompt, [REQUIREMENT_SPEC_SYSTEM_PROMPT]);
+      
+      // Load system prompt from database or use default
+      const userId = this.context?.get('userId');
+      const systemPrompt = await loadPrompt(userId, 'requirement', 'system_prompt', REQUIREMENT_SPEC_SYSTEM_PROMPT);
+      
+      const content = await this.aask(prompt, [systemPrompt]);
 
       // 保存到 workspace
       await this.saveToWorkspace('REQUIREMENT_SPEC.md', content, options);
@@ -231,10 +236,14 @@ export class WriteRequirementSpec extends BaseAction {
     const workspaceDir = this.getWorkspaceDir(options);
     const reviewAction = new RequirementSpecReview();
 
+    // Load system prompt from database or use default
+    const userId = this.context?.get('userId');
+    const systemPrompt = await loadPrompt(userId, 'requirement', 'system_prompt', REQUIREMENT_SPEC_SYSTEM_PROMPT);
+    
     const generator = new StepwiseDocumentGenerator(this, {
       buildOutlinePrompt: buildRequirementSpecOutlinePrompt,
       buildSectionPrompt: buildRequirementSpecSectionPrompt,
-      systemPrompt: REQUIREMENT_SPEC_SYSTEM_PROMPT,
+      systemPrompt: systemPrompt,
       reviewAction: reviewAction,
       reviewTitle: '需求说明文档审查报告',
       documentTitle: '需求说明文档',

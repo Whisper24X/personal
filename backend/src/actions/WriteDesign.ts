@@ -6,7 +6,7 @@
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { DESIGN_SYSTEM_PROMPT, buildDesignPrompt } from '../prompts/design';
-import { logger, WorkspaceOptions } from '../utils';
+import { logger, WorkspaceOptions, loadPrompt } from '../utils';
 
 export interface WriteDesignOptions extends WorkspaceOptions {
   // 继承WorkspaceOptions的所有选项
@@ -24,8 +24,12 @@ export class WriteDesign extends BaseAction {
       // Build the prompt
       const prompt = buildDesignPrompt(prd);
       
+      // Load system prompt from database or use default
+      const userId = this.context?.get('userId');
+      const systemPrompt = await loadPrompt(userId, 'design', 'system_prompt', DESIGN_SYSTEM_PROMPT);
+      
       // Call LLM with system message and prompt
-      const designContent = await this.aask(prompt, [DESIGN_SYSTEM_PROMPT]);
+      const designContent = await this.aask(prompt, [systemPrompt]);
       
       // 保存到workspace
       const workspaceOptions: WorkspaceOptions = {

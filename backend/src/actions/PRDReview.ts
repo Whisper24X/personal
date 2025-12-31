@@ -9,7 +9,7 @@ import {
   PRD_REVIEW_SYSTEM_PROMPT,
   buildPRDReviewPrompt,
 } from '../prompts/prd';
-import { logger } from '../utils';
+import { logger, loadPrompt } from '../utils';
 
 export interface PRDReviewOptions {
   outline?: string;
@@ -30,8 +30,12 @@ export class PRDReview extends BaseAction {
       const outline = options?.outline || this.extractOutline(prdContent);
       const prompt = buildPRDReviewPrompt(prdContent, outline);
 
+      // Load system prompt from database or use default
+      const userId = this.context?.get('userId');
+      const systemPrompt = await loadPrompt(userId, 'prd', 'review_system_prompt', PRD_REVIEW_SYSTEM_PROMPT);
+
       // Call LLM with system message and prompt
-      const reviewResult = await this.aask(prompt, [PRD_REVIEW_SYSTEM_PROMPT]);
+      const reviewResult = await this.aask(prompt, [systemPrompt]);
 
       logger.info('PRDReview: Review completed', {
         reviewLength: reviewResult.length,
