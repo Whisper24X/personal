@@ -37,7 +37,7 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true;
     error.value = null;
     try {
-      const response = await apiClient.getProjects();
+      const response = await apiClient.getProjects() as any;
       projects.value = response.projects || [];
     } catch (err: any) {
       error.value = err.message || '获取项目列表失败';
@@ -57,7 +57,7 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true;
     error.value = null;
     try {
-      const response = await apiClient.createProject(data);
+      const response = await apiClient.createProject(data) as any;
       await fetchProjects(); // 刷新列表
       return response.project;
     } catch (err: any) {
@@ -82,7 +82,7 @@ export const useProjectStore = defineStore('project', () => {
     loading.value = true;
     error.value = null;
     try {
-      const response = await apiClient.getProject(id);
+      const response = await apiClient.getProject(id) as any;
       currentProject.value = response.project;
     } catch (err: any) {
       error.value = err.message || '获取项目失败';
@@ -93,7 +93,7 @@ export const useProjectStore = defineStore('project', () => {
 
   async function fetchMessages(id: string) {
     try {
-      const response = await apiClient.getProjectMessages(id);
+      const response = await apiClient.getProjectMessages(id) as any;
       messages.value = response.messages || [];
     } catch (err: any) {
       error.value = err.message || '获取消息失败';
@@ -102,7 +102,7 @@ export const useProjectStore = defineStore('project', () => {
 
   async function fetchDocuments(id: string) {
     try {
-      const response = await apiClient.getProjectDocuments(id);
+      const response = await apiClient.getProjectDocuments(id) as any;
       documents.value = response.documents || [];
     } catch (err: any) {
       error.value = err.message || '获取文档失败';

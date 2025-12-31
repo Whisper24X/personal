@@ -6,7 +6,8 @@
   "scripts": {
     "dev:backend": "pnpm --filter @mind2build/backend dev",
     "dev:frontend": "pnpm --filter @mind2build/frontend dev",
-    "build": "pnpm --filter @mind2build/backend build && pnpm --filter @mind2build/frontend build",
+    "build": "pnpm --filter @mind2build/shared build && pnpm --filter @mind2build/backend build && pnpm --filter @mind2build/frontend build",
+    "build:shared": "pnpm --filter @mind2build/shared build",
     "build:backend": "pnpm --filter @mind2build/backend build",
     "build:frontend": "pnpm --filter @mind2build/frontend build",
     "start:backend": "pnpm --filter @mind2build/backend start",

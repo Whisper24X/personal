@@ -190,7 +190,7 @@
                 :max="2"
                 :step="0.1"
                 show-input
-                :format-tooltip="(val) => val.toFixed(1)"
+                :format-tooltip="(val: number) => val.toFixed(1)"
               />
             </el-form-item>
           </el-col>
@@ -311,7 +311,7 @@ const rules: FormRules = {
   model: [{ required: true, message: '请输入模型名称', trigger: 'blur' }],
   apiKey: [
     {
-      validator: (rule, value, callback) => {
+      validator: (_rule: any, value: string, callback: (error?: Error) => void) => {
         if (form.value.provider === 'ollama') {
           callback();
         } else if (!value || value.trim() === '') {
@@ -325,7 +325,7 @@ const rules: FormRules = {
   ],
   repository: [
     {
-      validator: (rule, value, callback) => {
+      validator: (_rule: any, value: string, callback: (error?: Error) => void) => {
         if (form.value.provider === 'cursor') {
           if (!value || value.trim() === '') {
             callback(new Error('Cursor Agent 需要配置 GitHub 仓库 URL'));
@@ -382,7 +382,7 @@ async function fetchRoleConfigs() {
   loading.value = true;
   error.value = null;
   try {
-    const response = await apiClient.getRoleLLMConfigs();
+    const response = await apiClient.getRoleLLMConfigs() as any;
     roleConfigs.value = response.configs || {};
   } catch (err: any) {
     error.value = err.message || '获取角色配置失败';
@@ -437,7 +437,7 @@ async function saveRoleConfig() {
 
     saving.value = true;
     try {
-      await apiClient.saveRoleLLMConfig(currentRole.value.profile, form.value);
+      await apiClient.saveRoleLLMConfig(currentRole.value!.profile, form.value);
       ElMessage.success('角色配置保存成功');
       showConfigDialog.value = false;
       resetForm();

@@ -219,7 +219,7 @@
                 :max="2"
                 :step="0.1"
                 show-input
-                :format-tooltip="(val) => val.toFixed(1)"
+                :format-tooltip="(val: number) => val.toFixed(1)"
               />
             </el-form-item>
           </el-col>
@@ -266,6 +266,9 @@ interface LLMConfig {
   temperature: number;
   maxTokens: number;
   isActive: boolean;
+  repository?: string;
+  branchName?: string;
+  autoCreatePr?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -299,7 +302,7 @@ const rules: FormRules = {
   model: [{ required: true, message: '请输入模型名称', trigger: 'blur' }],
   apiKey: [
     {
-      validator: (rule, value, callback) => {
+      validator: (_rule: any, value: string, callback: (error?: Error) => void) => {
         if (form.value.provider === 'ollama') {
           callback();
         } else if (!value || value.trim() === '') {
@@ -337,11 +340,11 @@ async function fetchConfigs() {
   loading.value = true;
   error.value = null;
   try {
-    const response = await apiClient.getLLMConfigs();
+    const response = await apiClient.getLLMConfigs() as any;
     configs.value = response.configs || [];
     
     // 获取激活配置
-    const activeResponse = await apiClient.getActiveLLMConfig();
+    const activeResponse = await apiClient.getActiveLLMConfig() as any;
     activeConfig.value = activeResponse.config || null;
   } catch (err: any) {
     error.value = err.message || '获取配置列表失败';
@@ -353,8 +356,8 @@ async function fetchConfigs() {
 async function editConfig(config: LLMConfig) {
   try {
     // 获取完整的配置信息（包括 API Key）
-    const response = await apiClient.getLLMConfigByProvider(config.provider);
-    const fullConfig = response.config;
+    const response = await apiClient.getLLMConfigByProvider(config.provider) as any;
+    const fullConfig = response.config as LLMConfig;
     
     editingConfig.value = fullConfig;
     form.value = {

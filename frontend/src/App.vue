@@ -46,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { Promotion, Monitor, Plus, MagicStick, Setting } from '@element-plus/icons-vue';
+import { Promotion, Monitor, MagicStick, Setting } from '@element-plus/icons-vue';
 </script>
 
 <style>

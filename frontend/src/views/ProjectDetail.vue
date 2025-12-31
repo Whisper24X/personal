@@ -290,7 +290,7 @@ onMounted(async () => {
 
 async function fetchPRDs() {
   try {
-    const response = await apiClient.getPRDs(projectId, true);
+    const response = await apiClient.getPRDs(projectId, true) as any;
     prds.value = response.prds || [];
   } catch (err: any) {
     ElMessage.error(err.message || '获取 PRD 列表失败');

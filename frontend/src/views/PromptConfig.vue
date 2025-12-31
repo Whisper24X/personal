@@ -196,7 +196,7 @@ const rules: FormRules = {
   promptKey: [{ required: true, message: '请选择提示词键名', trigger: 'change' }],
   customKey: [
     {
-      validator: (rule, value, callback) => {
+      validator: (_rule: any, value: string, callback: (error?: Error) => void) => {
         if (form.value.promptKey === 'custom' && (!value || value.trim() === '')) {
           callback(new Error('请输入自定义键名'));
         } else {
@@ -219,7 +219,7 @@ async function fetchPrompts() {
   loading.value = true;
   error.value = null;
   try {
-    const response = await apiClient.getPromptConfigsGrouped();
+    const response = await apiClient.getPromptConfigsGrouped() as any;
     prompts.value = response.configs || {};
   } catch (err: any) {
     error.value = err.message || '获取提示词配置失败';

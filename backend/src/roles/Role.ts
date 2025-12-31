@@ -132,7 +132,11 @@ export class Role extends BaseRole {
     // Set LLM for each action - use role-specific LLM if available, otherwise use context LLM
     // If database config is still loading, use default LLM for now; it will be updated when loading completes
     const llmToUse = this.roleLLM || this.context.llm;
-    actions.forEach((action) => action.setLLM(llmToUse));
+    actions.forEach((action) => {
+      action.setLLM(llmToUse);
+      // Set context for each action
+      (action as any).context = this.context;
+    });
     
     if (this.roleLLM) {
       logger.debug(`${this.profile} setActions: using role-specific LLM`);

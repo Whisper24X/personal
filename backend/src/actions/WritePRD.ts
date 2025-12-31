@@ -176,37 +176,6 @@ export class WritePRD extends BaseAction {
     return path.join(workspaceRoot, applicationId, `v${version}`, type);
   }
 
-  /**
-   * 保存文件到 workspace
-   */
-  private async saveToWorkspace(
-    filePath: string,
-    content: string,
-    options?: WritePRDOptions
-  ): Promise<void> {
-    try {
-      const workspaceDir = this.getWorkspaceDir(options);
-      const fullPath = path.join(workspaceDir, filePath);
-      const dir = path.dirname(fullPath);
-
-      // 确保目录存在
-      await fs.mkdir(dir, { recursive: true });
-
-      // 写入文件
-      await fs.writeFile(fullPath, content, 'utf-8');
-
-      logger.info('WritePRD: Saved file to workspace', {
-        filePath: fullPath,
-        contentLength: content.length,
-      });
-    } catch (error: any) {
-      logger.error('WritePRD: Failed to save file to workspace', {
-        filePath,
-        error: error.message,
-      });
-      // 不抛出错误，继续执行
-    }
-  }
 
   /**
    * 读取 workspace 中的所有文件内容

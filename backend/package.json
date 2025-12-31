@@ -21,6 +21,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@mind2build/shared": "workspace:*",
     "@types/ws": "^8.18.1",
     "archiver": "^7.0.1",
     "axios": "^1.6.5",

@@ -34,7 +34,7 @@ class APIClient {
 
     // 响应拦截器（用于错误处理）
     this.client.interceptors.response.use(
-      (response) => response.data,
+      (response) => response.data as any,
       (error) => {
         if (error.response) {
           return Promise.reject(error.response.data);

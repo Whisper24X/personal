@@ -32,7 +32,7 @@ export const useApplicationStore = defineStore('application', () => {
     loading.value = true;
     error.value = null;
     try {
-      const response = await apiClient.getApplications();
+      const response = await apiClient.getApplications() as any;
       applications.value = response.applications || [];
     } catch (err: any) {
       error.value = err.message || '获取应用列表失败';
@@ -49,7 +49,7 @@ export const useApplicationStore = defineStore('application', () => {
     loading.value = true;
     error.value = null;
     try {
-      const response = await apiClient.createApplication(data);
+      const response = await apiClient.createApplication(data) as any;
       await fetchApplications(); // 刷新列表
       return response.application;
     } catch (err: any) {
@@ -64,7 +64,7 @@ export const useApplicationStore = defineStore('application', () => {
     loading.value = true;
     error.value = null;
     try {
-      const response = await apiClient.getApplication(id);
+      const response = await apiClient.getApplication(id) as any;
       currentApplication.value = response.application;
       return response.application;
     } catch (err: any) {
@@ -83,7 +83,7 @@ export const useApplicationStore = defineStore('application', () => {
     loading.value = true;
     error.value = null;
     try {
-      const response = await apiClient.updateApplication(id, data);
+      const response = await apiClient.updateApplication(id, data) as any;
       await fetchApplications(); // 刷新列表
       if (currentApplication.value?.id === id) {
         currentApplication.value = response.application;

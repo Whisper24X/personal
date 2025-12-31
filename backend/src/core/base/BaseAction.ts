@@ -6,6 +6,7 @@
 import { IActionOutput } from '@mind2build/shared';
 import { Message } from '../message/Message';
 import { WorkspaceManager, WorkspaceOptions } from '../../utils/WorkspaceManager';
+import { Context } from '../context/Context';
 
 export abstract class BaseAction {
   name: string;
@@ -13,6 +14,9 @@ export abstract class BaseAction {
 
   // LLM instance will be injected by Role
   protected llm?: any;
+  
+  // Context instance will be injected by Role
+  protected context?: Context;
 
   constructor(name?: string, description?: string) {
     this.name = name || this.constructor.name;

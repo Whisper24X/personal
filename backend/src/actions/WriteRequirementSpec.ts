@@ -155,33 +155,6 @@ export class WriteRequirementSpec extends BaseAction {
     return path.join(workspaceRoot, applicationId, `v${version}`, type);
   }
 
-  /**
-   * 保存文件到 workspace
-   */
-  private async saveToWorkspace(
-    filePath: string,
-    content: string,
-    options?: WriteRequirementSpecOptions
-  ): Promise<void> {
-    try {
-      const workspaceDir = this.getWorkspaceDir(options);
-      const fullPath = path.join(workspaceDir, filePath);
-      const dir = path.dirname(fullPath);
-
-      await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(fullPath, content, 'utf-8');
-
-      logger.info('WriteRequirementSpec: Saved file to workspace', {
-        filePath: fullPath,
-        contentLength: content.length,
-      });
-    } catch (error: any) {
-      logger.error('WriteRequirementSpec: Failed to save file to workspace', {
-        filePath,
-        error: error.message,
-      });
-    }
-  }
 
   /**
    * 读取 workspace 中的所有文件内容

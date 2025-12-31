@@ -126,7 +126,7 @@ onMounted(async () => {
 
 async function fetchProjects(applicationId: string) {
   try {
-    const response = await apiClient.getApplicationProjects(applicationId);
+    const response = await apiClient.getApplicationProjects(applicationId) as any;
     projects.value = response.projects || [];
   } catch (err: any) {
     ElMessage.error(err.message || '获取项目列表失败');
