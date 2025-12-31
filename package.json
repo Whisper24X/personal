@@ -14,7 +14,15 @@
     "lint:fix": "pnpm --filter @mind2build/backend lint:fix && pnpm --filter @mind2build/frontend lint",
     "db:migrate": "pnpm --filter @mind2build/backend db:migrate",
     "db:seed": "pnpm --filter @mind2build/backend db:seed",
-    "db:init-llm": "pnpm --filter @mind2build/backend db:init-llm"
+    "db:init-llm": "pnpm --filter @mind2build/backend db:init-llm",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop ecosystem.config.js",
+    "pm2:restart": "pm2 restart ecosystem.config.js",
+    "pm2:reload": "pm2 reload ecosystem.config.js",
+    "pm2:delete": "pm2 delete ecosystem.config.js",
+    "pm2:logs": "pm2 logs",
+    "pm2:monit": "pm2 monit",
+    "pm2:status": "pm2 status"
   },
   "engines": {
     "node": ">=18.0.0",

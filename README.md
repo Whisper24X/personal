@@ -122,6 +122,51 @@ pnpm db:migrate    # Run migrations
 pnpm db:studio     # Open Prisma Studio
 ```
 
+### Production Deployment with PM2
+
+```bash
+# Install PM2 globally (if not already installed)
+npm install -g pm2
+
+# Build the project first
+pnpm build
+
+# Start all services in production mode
+pnpm pm2:start
+
+# Or start with specific environment
+pm2 start ecosystem.config.js --env production
+pm2 start ecosystem.config.js --env development
+
+# Start only backend or frontend
+pm2 start ecosystem.config.js --only mind2build-backend
+pm2 start ecosystem.config.js --only mind2build-frontend
+
+# Management commands
+pnpm pm2:stop      # Stop all services
+pnpm pm2:restart   # Restart all services
+pnpm pm2:reload    # Zero-downtime reload
+pnpm pm2:delete    # Delete all services
+pnpm pm2:logs      # View logs
+pnpm pm2:monit     # Monitor resources
+pnpm pm2:status    # Check status
+
+# Save PM2 configuration
+pm2 save
+
+# Setup PM2 to start on system boot
+pm2 startup
+pm2 save
+```
+
+**PM2 Configuration Features:**
+- ✅ Automatic restart on crash
+- ✅ Memory limit monitoring (1GB backend, 500MB frontend)
+- ✅ Log rotation and management
+- ✅ Environment-specific configurations
+- ✅ Graceful shutdown support
+- ✅ Zero-downtime reload for backend
+
 ## 📚 Documentation
 
 ### Getting Started
