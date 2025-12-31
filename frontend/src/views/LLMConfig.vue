@@ -58,6 +58,29 @@
         </div>
       </el-card>
 
+      <!-- 提示词配置快捷入口 -->
+      <el-card class="prompt-config-card" shadow="hover">
+        <template #header>
+          <div class="card-header-content">
+            <span class="card-title">
+              <el-icon>
+                <Document />
+              </el-icon>
+              提示词配置
+            </span>
+            <el-button type="primary" @click="router.push('/config/prompts')">
+              <el-icon>
+                <Setting />
+              </el-icon>
+              配置提示词
+            </el-button>
+          </div>
+        </template>
+        <div class="prompt-config-desc">
+          <p>配置各类提示词模板和系统提示词，包括需求说明、PRD、设计、代码生成、测试用例等提示词。</p>
+        </div>
+      </el-card>
+
       <!-- 配置列表 -->
       <el-card class="configs-card">
         <template #header>
@@ -231,7 +254,7 @@
 import { ref, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus';
-import { Check, Plus, Setting, User } from '@element-plus/icons-vue';
+import { Check, Plus, Setting, User, Document } from '@element-plus/icons-vue';
 import { apiClient } from '../api/client';
 
 interface LLMConfig {
@@ -537,6 +560,20 @@ onMounted(() => {
 }
 
 .role-config-desc p {
+  margin: 0;
+}
+
+.prompt-config-card {
+  margin-bottom: 24px;
+  border: 2px solid #409eff;
+}
+
+.prompt-config-desc {
+  color: #606266;
+  line-height: 1.6;
+}
+
+.prompt-config-desc p {
   margin: 0;
 }
 </style>

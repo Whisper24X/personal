@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import { LLMConfigController } from '../controllers/LLMConfigController';
 import { RoleLLMConfigController } from '../controllers/RoleLLMConfigController';
+import { PromptConfigController } from '../controllers/PromptConfigController';
 import { authMiddleware } from '../middleware/auth';
 
 const router = Router();
@@ -25,6 +26,14 @@ router.get('/role-llm', RoleLLMConfigController.list);
 router.get('/role-llm/:profile', RoleLLMConfigController.getByProfile);
 router.post('/role-llm/:profile', RoleLLMConfigController.upsert);
 router.delete('/role-llm/:profile', RoleLLMConfigController.delete);
+
+// Prompt configuration routes
+router.get('/prompts', PromptConfigController.list);
+router.get('/prompts/grouped', PromptConfigController.listGrouped);
+router.get('/prompts/:type', PromptConfigController.getByType);
+router.get('/prompts/:type/:key', PromptConfigController.get);
+router.post('/prompts', PromptConfigController.upsert);
+router.delete('/prompts/:type/:key', PromptConfigController.delete);
 
 export default router;
 

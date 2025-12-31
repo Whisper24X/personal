@@ -9,4 +9,5 @@ export * from './InteractiveHandler';
 export * from './WorkspaceManager';
 export * from './SubtaskManager';
 export * from './CursorAgentClient';
+export * from './promptLoader';
 

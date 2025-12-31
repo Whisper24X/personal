@@ -17,6 +17,7 @@
     "db:migrate": "tsx src/database/migrations/run.ts",
     "db:seed": "tsx src/database/seed.ts",
     "db:init-llm": "tsx src/database/migrations/init_llm_configs.ts",
+    "db:init-prompts": "tsx src/database/migrations/init_prompt_configs.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {

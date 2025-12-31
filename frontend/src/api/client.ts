@@ -224,6 +224,37 @@ class APIClient {
   async deleteRoleLLMConfig(profile: string) {
     return this.client.delete(`/config/role-llm/${profile}`);
   }
+
+  // Prompt Config API 端点
+  async getPromptConfigs() {
+    return this.client.get('/config/prompts');
+  }
+
+  async getPromptConfigsGrouped() {
+    return this.client.get('/config/prompts/grouped');
+  }
+
+  async getPromptConfigsByType(type: string) {
+    return this.client.get(`/config/prompts/${type}`);
+  }
+
+  async getPromptConfig(type: string, key: string) {
+    return this.client.get(`/config/prompts/${type}/${key}`);
+  }
+
+  async savePromptConfig(data: {
+    promptType: string;
+    promptKey: string;
+    content: string;
+    description?: string;
+    isActive?: boolean;
+  }) {
+    return this.client.post('/config/prompts', data);
+  }
+
+  async deletePromptConfig(type: string, key: string) {
+    return this.client.delete(`/config/prompts/${type}/${key}`);
+  }
 }
 
 export const apiClient = new APIClient();

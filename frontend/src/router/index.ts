@@ -11,6 +11,7 @@ import ApplicationList from '../views/ApplicationList.vue';
 import ApplicationDetail from '../views/ApplicationDetail.vue';
 import LLMConfig from '../views/LLMConfig.vue';
 import RoleLLMConfig from '../views/RoleLLMConfig.vue';
+import PromptConfig from '../views/PromptConfig.vue';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -56,6 +57,11 @@ const router = createRouter({
       path: '/config/role-llm',
       name: 'RoleLLMConfig',
       component: RoleLLMConfig,
+    },
+    {
+      path: '/config/prompts',
+      name: 'PromptConfig',
+      component: PromptConfig,
     },
   ],
 });

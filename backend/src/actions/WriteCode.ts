@@ -6,7 +6,7 @@
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { CODE_SYSTEM_PROMPT, buildCodePrompt, parseCodeFiles } from '../prompts/code';
-import { logger, WorkspaceOptions } from '../utils';
+import { logger, WorkspaceOptions, loadPrompt } from '../utils';
 
 export interface WriteCodeOptions extends WorkspaceOptions {
   // 继承WorkspaceOptions的所有选项
@@ -21,11 +21,15 @@ export class WriteCode extends BaseAction {
     logger.info('WriteCode: Starting code generation');
     
     try {
+      // Load system prompt from database or use default
+      const userId = this.context?.get('userId');
+      const systemPrompt = await loadPrompt(userId, 'code', 'system_prompt', CODE_SYSTEM_PROMPT);
+      
       // Build the prompt
       const prompt = buildCodePrompt(design);
       
       // Call LLM with system message and prompt
-      const codeOutput = await this.aask(prompt, [CODE_SYSTEM_PROMPT]);
+      const codeOutput = await this.aask(prompt, [systemPrompt]);
       
       // Parse the output into separate files
       const files = parseCodeFiles(codeOutput);
