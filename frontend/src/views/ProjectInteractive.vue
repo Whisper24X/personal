@@ -189,7 +189,7 @@ import {
 } from '@element-plus/icons-vue';
 import InteractiveConfirmation from '../components/InteractiveConfirmation.vue';
 import apiClient from '../api/client';
-import { createPolling } from '../utils/polling';
+import { createPolling, type PollingResult } from '../utils/polling';
 
 const route = useRoute();
 const router = useRouter();
@@ -230,7 +230,7 @@ const totalDuration = computed(() => {
 });
 
 // Polling mechanism
-let pollingController: ReturnType<typeof createPolling> | null = null;
+let pollingController: PollingResult | null = null;
 let lastMessageId: string | null = null;
 
 onMounted(() => {

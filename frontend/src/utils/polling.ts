@@ -18,7 +18,7 @@ export interface PollingOptions {
   onError?: (error: Error) => void;
 }
 
-export interface PollingResult<T> {
+export interface PollingResult {
   /** 停止轮询 */
   stop: () => void;
   /** 手动触发一次轮询 */
@@ -37,7 +37,7 @@ export function createPolling<T>(
   pollFn: () => Promise<T>,
   onUpdate: (data: T) => void,
   options: PollingOptions = {}
-): PollingResult<T> {
+): PollingResult {
   const {
     interval = 1000,
     maxRetries = 3,
