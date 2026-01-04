@@ -70,10 +70,27 @@ export function createPolling<T>(
     } catch (error: any) {
       retryCount++;
       
+      // 确保错误对象有 message 属性
+      // 处理各种错误格式：Error 对象、API 错误响应对象、字符串等
+      let errorMessage = '未知错误';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error?.error) {
+        errorMessage = typeof error.error === 'string' ? error.error : JSON.stringify(error.error);
+      } else if (error?.message) {
+        errorMessage = error.message;
+      } else {
+        errorMessage = JSON.stringify(error) || '未知错误';
+      }
+      
+      const errorObj = error instanceof Error ? error : new Error(errorMessage);
+      
       if (retryCount <= maxRetries) {
-        console.warn(`轮询失败，${retryDelay}ms 后重试 (${retryCount}/${maxRetries}):`, error.message);
+        console.warn(`轮询失败，${retryDelay}ms 后重试 (${retryCount}/${maxRetries}):`, errorMessage, error);
         if (onError) {
-          onError(error);
+          onError(errorObj);
         }
         // 延迟后重试
         timeoutId = setTimeout(() => {
@@ -82,9 +99,9 @@ export function createPolling<T>(
         }, retryDelay);
         return;
       } else {
-        console.error('轮询失败，已达到最大重试次数:', error);
+        console.error('轮询失败，已达到最大重试次数:', errorMessage, error);
         if (onError) {
-          onError(error);
+          onError(errorObj);
         }
         stop();
         return;

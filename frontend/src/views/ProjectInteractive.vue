@@ -306,12 +306,18 @@ function startPolling(sessionId: string) {
     // Create polling instance
     pollingController = createPolling(
       async () => {
-        const response = await apiClient.pollInteractiveMessages(sessionId, lastMessageId);
-        return response;
+        try {
+          const response = await apiClient.pollInteractiveMessages(sessionId, lastMessageId);
+          return response;
+        } catch (error: any) {
+          console.error('Poll API error:', error);
+          // 重新抛出错误以便轮询工具处理
+          throw error;
+        }
       },
       (data: any) => {
         // Process messages
-        if (data.messages && Array.isArray(data.messages)) {
+        if (data && data.messages && Array.isArray(data.messages)) {
           data.messages.forEach((msg: any) => {
             handlePollingMessage({
               type: msg.type,
@@ -323,6 +329,8 @@ function startPolling(sessionId: string) {
           if (data.lastMessageId) {
             lastMessageId = data.lastMessageId;
           }
+        } else {
+          console.warn('Unexpected polling response format:', data);
         }
       },
       {
@@ -333,7 +341,8 @@ function startPolling(sessionId: string) {
         shouldContinue: () => !isCompleted.value,
         onError: (error: Error) => {
           console.error('Polling error:', error);
-          ElMessage.error('轮询错误: ' + error.message);
+          const errorMessage = error?.message || '未知错误';
+          ElMessage.error('轮询错误: ' + errorMessage);
         },
       }
     );
