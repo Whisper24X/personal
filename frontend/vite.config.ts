@@ -11,6 +11,7 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0', // 监听所有网络接口，允许外部访问
     port: 5173,
     hmr: {
       overlay: true,
