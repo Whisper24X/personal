@@ -295,7 +295,10 @@ async function handleSectionAdjust() {
             );
         } else {
             // Use workspace-only API (for interactive sessions)
-            const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3000/api';
+            const apiUrl = (import.meta as any).env?.VITE_API_URL;
+            if (!apiUrl) {
+                throw new Error('VITE_API_URL environment variable is not set. Please configure it in your .env file.');
+            }
             const response = await fetch(
                 `${apiUrl}/projects/${props.projectId}/sections/${selectedSectionNumber.value}/adjust`,
                 {

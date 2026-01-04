@@ -1,7 +1,7 @@
 -- Create role_llm_configs table
 -- Stores LLM configuration for each role profile
 CREATE TABLE IF NOT EXISTS role_llm_configs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   role_profile VARCHAR(100) NOT NULL,
   provider VARCHAR(50) NOT NULL,

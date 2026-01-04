@@ -1,9 +1,12 @@
 -- Mind2Build Database Schema
 -- Initial migration (includes PRD management and applications)
 
+-- Enable required extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- Create users table
 CREATE TABLE IF NOT EXISTS users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   username VARCHAR(50) UNIQUE NOT NULL,
   email VARCHAR(100) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
@@ -24,7 +27,7 @@ CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 
 -- Create applications table (needed before projects)
 CREATE TABLE IF NOT EXISTS applications (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name VARCHAR(200) NOT NULL,
   description TEXT,
@@ -39,7 +42,7 @@ CREATE INDEX IF NOT EXISTS idx_applications_created_at ON applications(created_a
 
 -- Create projects table (with application_id column)
 CREATE TABLE IF NOT EXISTS projects (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   application_id UUID REFERENCES applications(id) ON DELETE SET NULL,
   name VARCHAR(200) NOT NULL,
@@ -67,7 +70,7 @@ CREATE INDEX IF NOT EXISTS idx_projects_created_at ON projects(created_at DESC);
 
 -- Create teams table
 CREATE TABLE IF NOT EXISTS teams (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id UUID UNIQUE NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id),
   investment DECIMAL(10,2) DEFAULT 10.0,
@@ -86,7 +89,7 @@ CREATE INDEX IF NOT EXISTS idx_teams_status ON teams(status);
 
 -- Create roles table
 CREATE TABLE IF NOT EXISTS roles (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   name VARCHAR(100) NOT NULL,
   profile VARCHAR(100) NOT NULL,
@@ -113,7 +116,7 @@ CREATE INDEX IF NOT EXISTS idx_roles_is_idle ON roles(is_idle);
 
 -- Create messages table
 CREATE TABLE IF NOT EXISTS messages (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   role_id UUID REFERENCES roles(id) ON DELETE SET NULL,
   message_uuid UUID UNIQUE NOT NULL,
@@ -134,7 +137,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
 
 -- Create actions table
 CREATE TABLE IF NOT EXISTS actions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
   message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
   action_type VARCHAR(100) NOT NULL,
@@ -152,7 +155,7 @@ CREATE INDEX IF NOT EXISTS idx_actions_status ON actions(status);
 
 -- Create documents table (with PRD version management columns)
 CREATE TABLE IF NOT EXISTS documents (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   filename VARCHAR(255) NOT NULL,
   doc_type VARCHAR(50) NOT NULL,
@@ -175,7 +178,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_prd_version ON documents(project_id, do
 
 -- Create cost_records table
 CREATE TABLE IF NOT EXISTS cost_records (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   role_id UUID REFERENCES roles(id) ON DELETE SET NULL,
   model VARCHAR(50) NOT NULL,
@@ -192,7 +195,7 @@ CREATE INDEX IF NOT EXISTS idx_cost_records_created_at ON cost_records(created_a
 
 -- Create memories table (for future use)
 CREATE TABLE IF NOT EXISTS memories (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
   type VARCHAR(20) NOT NULL,
   content TEXT NOT NULL,
@@ -207,7 +210,7 @@ CREATE INDEX IF NOT EXISTS idx_memories_expires_at ON memories(expires_at);
 
 -- Create embeddings table (for future use)
 CREATE TABLE IF NOT EXISTS embeddings (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   memory_id UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
   vector JSONB NOT NULL,
   model VARCHAR(50) NOT NULL,

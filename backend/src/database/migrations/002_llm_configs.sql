@@ -3,7 +3,7 @@
 
 -- Create llm_configs table
 CREATE TABLE IF NOT EXISTS llm_configs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   provider VARCHAR(50) NOT NULL,
   api_key VARCHAR(500),

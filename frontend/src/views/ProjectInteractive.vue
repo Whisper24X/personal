@@ -108,10 +108,7 @@
 
         <!-- Current Step (if waiting for confirmation) -->
         <el-timeline-item v-if="currentStep" :timestamp="'正在进行'" type="primary" :hollow="true" size="large">
-          <InteractiveConfirmation 
-            :role-info="currentStep" 
-            :loading="actionLoading" 
-            :project-id="projectId"
+          <InteractiveConfirmation :role-info="currentStep" :loading="actionLoading" :project-id="projectId"
             @action="handleUserAction" />
         </el-timeline-item>
 
@@ -249,7 +246,10 @@ async function startInteractiveSession() {
     startTime.value = Date.now();
 
     // Create session via API
-    const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3000/api';
+    const apiUrl = (import.meta as any).env?.VITE_API_URL;
+    if (!apiUrl) {
+      throw new Error('VITE_API_URL environment variable is not set. Please configure it in your .env file.');
+    }
     const response = await fetch(`${apiUrl}/interactive`, {
       method: 'POST',
       headers: {
@@ -271,7 +271,7 @@ async function startInteractiveSession() {
     const data = await response.json();
     const sid = data.sessionId;
     sessionId.value = sid;
-    
+
     // In interactive session, use sessionId as projectId if no projectId provided
     // Update projectId if provided in response
     if (data.projectId) {

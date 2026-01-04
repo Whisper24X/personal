@@ -1,7 +1,7 @@
 -- Create prompt_configs table
 -- Stores prompt templates and system prompts for different prompt types
 CREATE TABLE IF NOT EXISTS prompt_configs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   prompt_type VARCHAR(50) NOT NULL,
   prompt_key VARCHAR(100) NOT NULL,
