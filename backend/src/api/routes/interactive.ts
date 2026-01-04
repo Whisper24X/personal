@@ -9,6 +9,24 @@ import { logger } from '../../utils';
 const router: Router = Router();
 
 /**
+ * List all interactive sessions
+ */
+router.get('/interactive', async (_req, res) => {
+  try {
+    const sessions = sessionManager.getAllSessions();
+    
+    return res.json({
+      sessions: sessions.map(session => session.getInfo()),
+    });
+  } catch (error: any) {
+    logger.error('API: Error listing interactive sessions', error);
+    return res.status(500).json({
+      error: error.message || 'Failed to list interactive sessions',
+    });
+  }
+});
+
+/**
  * Create a new interactive session
  */
 router.post('/interactive', async (req, res) => {
