@@ -44,7 +44,7 @@ export class Role extends BaseRole {
     // Priority: database config > config.llm (explicit) > default (context.llm)
     // First, try to load from database (highest priority)
     this.llmLoadPromise = this.loadRoleLLMFromDatabase(context);
-    
+
     // If explicit config.llm is provided, use it as fallback (for backward compatibility)
     // But database config will override it when loaded
     if (config.llm) {
@@ -63,16 +63,17 @@ export class Role extends BaseRole {
 
   /**
    * Load role-specific LLM configuration from database
-   * Priority: database config > explicit config.llm > default context.llm
+   * Priority: database config (role-specific) > explicit config.llm > system default (context.llm)
+   * If no role-specific config is found, will use system default LLM config
    */
   private async loadRoleLLMFromDatabase(context: Context): Promise<void> {
     try {
       // Get userId from context (if set)
       const userId = context.get('userId') || '302769d6-247d-43db-a005-0519712255fb';
-      
+
       // Load role-specific LLM config from database
       const dbConfig = await this.roleLLMConfigRepo.findByProfile(userId, this.profile);
-      
+
       if (dbConfig) {
         // Convert database config to ILLMConfig
         const llmConfig: ILLMConfig = {
@@ -86,11 +87,11 @@ export class Role extends BaseRole {
           branchName: dbConfig.branch_name || undefined,
           autoCreatePr: dbConfig.auto_create_pr,
         };
-        
+
         // Create role-specific LLM instance (overrides any explicit config.llm)
         this.roleLLM = createLLM(llmConfig);
         this.roleLLM.costManager = context.costManager;
-        
+
         // If actions have already been set, update their LLM
         if (this.actions.length > 0) {
           this.actions.forEach((action) => action.setLLM(this.roleLLM));
@@ -99,20 +100,22 @@ export class Role extends BaseRole {
           logger.info(`${this.profile} loaded LLM config from database (highest priority): ${dbConfig.provider}/${dbConfig.model}`);
         }
       } else {
-        // No database config found
+        // No database config found - will use system default LLM config (from context.llm)
         // If explicit config.llm was provided, keep using it
-        // Otherwise, will use default context.llm in setActions
+        // Otherwise, will use system default context.llm in setActions
         if (!this.roleLLM) {
-          logger.debug(`${this.profile} no database LLM config found, will use default context.llm`);
+          const defaultConfig = context.config.llm;
+          logger.info(`${this.profile} no role-specific LLM config found, will use system default LLM config: ${defaultConfig.provider}/${defaultConfig.model}`);
         } else {
           logger.debug(`${this.profile} no database LLM config found, using explicit config.llm`);
         }
       }
     } catch (error: any) {
-      // If database query fails, keep using explicit config.llm or default LLM
+      // If database query fails, keep using explicit config.llm or system default LLM
       logger.debug(`${this.profile} error loading LLM config from database:`, error.message);
       if (!this.roleLLM) {
-        logger.debug(`${this.profile} will use default context.llm due to database error`);
+        const defaultConfig = context.config.llm;
+        logger.info(`${this.profile} will use system default LLM config due to database error: ${defaultConfig.provider}/${defaultConfig.model}`);
       }
     }
   }
@@ -129,19 +132,21 @@ export class Role extends BaseRole {
    */
   setActions(actions: BaseAction[]): void {
     this.actions = actions;
-    // Set LLM for each action - use role-specific LLM if available, otherwise use context LLM
-    // If database config is still loading, use default LLM for now; it will be updated when loading completes
+    // Set LLM for each action - use role-specific LLM if available, otherwise use system default LLM (context.llm)
+    // Priority: role-specific LLM > system default LLM config
+    // If database config is still loading, use system default LLM for now; it will be updated when loading completes
     const llmToUse = this.roleLLM || this.context.llm;
     actions.forEach((action) => {
       action.setLLM(llmToUse);
       // Set context for each action
       (action as any).context = this.context;
     });
-    
+
     if (this.roleLLM) {
       logger.debug(`${this.profile} setActions: using role-specific LLM`);
     } else {
-      logger.debug(`${this.profile} setActions: using default context LLM (database config may still be loading)`);
+      const defaultConfig = this.context.config.llm;
+      logger.info(`${this.profile} setActions: using system default LLM config: ${defaultConfig.provider}/${defaultConfig.model}`);
     }
   }
 
@@ -358,22 +363,22 @@ export class Role extends BaseRole {
         // 新格式: workspace/{applicationId}/v{version}/{documentType}/
         // 或者: {applicationId}/v{version}/{documentType}/
         const pathParts = data.workspaceDir.split(path.sep).filter((p: string) => p);
-        
+
         // 查找版本号部分（格式为 v{number}）
         const versionIndex = pathParts.findIndex((p: string) => p.startsWith('v') && /^v\d+$/.test(p));
-        
+
         if (versionIndex > 0 && versionIndex < pathParts.length - 1) {
           const applicationId = pathParts[versionIndex - 1];
           const versionStr = pathParts[versionIndex].substring(1); // 移除 'v' 前缀
           const documentType = pathParts[versionIndex + 1] || this.getDocumentTypeForAction(this.rc.todo?.name || '');
-          
+
           return {
             applicationId,
             version: parseInt(versionStr, 10),
             documentType,
           };
         }
-        
+
         // 兼容旧格式: {applicationId}-v{version}-{documentType}
         const match = data.workspaceDir.match(/(.+)-v(\d+)-(.+)/);
         if (match) {
@@ -384,7 +389,7 @@ export class Role extends BaseRole {
           };
         }
       }
-      
+
       // 如果消息数据中直接包含workspace选项
       if (data?.applicationId && data?.version) {
         return {
@@ -449,18 +454,18 @@ export class Role extends BaseRole {
     switch (actionName) {
       case 'WriteRequirementSpec':
         return await (action as any).run(input, workspaceOptions);
-      
+
       case 'WritePRD':
         return await (action as any).run(input, workspaceOptions);
-      
+
       case 'WriteDesign':
         return await (action as any).run(input, workspaceOptions);
-      
+
       case 'WriteSubProjectDesign':
         // WriteSubProjectDesign需要两个参数：taskBreakdown和design
         // 这里需要特殊处理，暂时只传递第一个参数
         return await (action as any).run(input, undefined, workspaceOptions);
-      
+
       case 'BreakdownTasks':
         // BreakdownTasks需要两个参数：prd和design
         // 需要从消息中提取
@@ -469,29 +474,29 @@ export class Role extends BaseRole {
         const prd = prdMessages.length > 0 ? prdMessages[prdMessages.length - 1].content : input;
         const design = designMessages.length > 0 ? designMessages[designMessages.length - 1].content : input;
         return await (action as any).run(prd, design, workspaceOptions);
-      
+
       case 'GenerateTask':
         // GenerateTask需要taskBreakdown和可选的subProjectDesign
         const taskBreakdownMessages = this.rc.memory.getByAction('BreakdownTasks');
         const subProjectMessages = this.rc.memory.getByAction('WriteSubProjectDesign');
-        const taskBreakdown = taskBreakdownMessages.length > 0 
-          ? taskBreakdownMessages[taskBreakdownMessages.length - 1].content 
+        const taskBreakdown = taskBreakdownMessages.length > 0
+          ? taskBreakdownMessages[taskBreakdownMessages.length - 1].content
           : input;
-        const subProjectDesign = subProjectMessages.length > 0 
-          ? subProjectMessages[subProjectMessages.length - 1].content 
+        const subProjectDesign = subProjectMessages.length > 0
+          ? subProjectMessages[subProjectMessages.length - 1].content
           : undefined;
         return await (action as any).run(taskBreakdown, subProjectDesign, workspaceOptions);
-      
+
       case 'WriteCode':
         return await (action as any).run(input, workspaceOptions);
-      
+
       case 'WriteTest':
         return await (action as any).run(input, workspaceOptions);
-      
+
       case 'ExecuteSubtask':
         // ExecuteSubtask需要taskDescription和options
         return await (action as any).run(input, workspaceOptions);
-      
+
       default:
         // 默认情况，只传递input
         return await action.run(input);

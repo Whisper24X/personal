@@ -22,10 +22,17 @@ export class Context {
 
   /**
    * Get LLM instance (lazy loading)
+   * Uses system default LLM config (from database only, no environment variable fallback)
+   * If explicitly configured in config.llm, uses that; otherwise uses system default from database
+   * Note: All LLM configurations are loaded from database, environment variables are not used
    */
   get llm(): BaseLLM {
     if (!this._llm) {
-      this._llm = createLLM(this.config.llm);
+      // Priority: explicit config.llm > system default (from database)
+      // If no explicit config provided, use system default from database
+      // Note: defaultConfig.llm is initialized from database via initializeDefaultLLMConfig()
+      const llmConfig = this.config.llm || defaultConfig.llm;
+      this._llm = createLLM(llmConfig);
       this._llm.costManager = this.costManager;
     }
     return this._llm;
@@ -80,11 +87,11 @@ export class Context {
   static fromJSON(data: any): Context {
     const ctx = new Context(data.config);
     ctx.costManager = CostManager.fromJSON(data.costManager);
-    
+
     if (data.kwargs) {
       ctx.kwargs = new Map(Object.entries(data.kwargs));
     }
-    
+
     return ctx;
   }
 

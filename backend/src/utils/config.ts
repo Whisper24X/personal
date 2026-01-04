@@ -19,6 +19,8 @@ const DB_CONFIG_CACHE_TTL = 60000; // 1 minute cache
 
 /**
  * Load LLM configuration from environment
+ * @deprecated This function is deprecated. LLM configuration should only be loaded from database.
+ * This function is kept for backward compatibility but should not be used in new code.
  */
 function loadLLMConfig(): ILLMConfig {
   const provider = (process.env.LLM_PROVIDER || 'zhipuai') as LLMProvider;
@@ -88,8 +90,9 @@ function loadLLMConfig(): ILLMConfig {
 }
 
 /**
- * Load LLM configuration from database (if available), fallback to environment
- * This function tries to load from database first, then falls back to env vars
+ * Load LLM configuration from database only
+ * This function only loads from database, no fallback to environment variables
+ * @throws Error if no active LLM configuration is found in database
  */
 export async function loadLLMConfigFromDB(userId?: string): Promise<ILLMConfig> {
   // Check cache first
@@ -109,17 +112,18 @@ export async function loadLLMConfigFromDB(userId?: string): Promise<ILLMConfig> 
       dbConfigCache = config;
       dbConfigCacheTime = now;
       return config;
+    } else {
+      // No active LLM configuration found in database
+      throw new Error(`No active LLM configuration found in database for user ${defaultUserId}. Please configure LLM settings in the database.`);
     }
   } catch (error: any) {
-    // If database query fails, fall back to environment variables
-    // This allows the app to start even if database is not available
+    // Re-throw error if it's already our custom error
+    if (error.message && error.message.includes('No active LLM configuration')) {
+      throw error;
+    }
+    // If database query fails, throw error instead of falling back to environment variables
+    throw new Error(`Failed to load LLM configuration from database: ${error.message}. Please ensure database is available and LLM configuration is set.`);
   }
-
-  // Fallback to environment variables
-  const envConfig = loadLLMConfig();
-  dbConfigCache = envConfig;
-  dbConfigCacheTime = now;
-  return envConfig;
 }
 
 /**
@@ -133,7 +137,8 @@ export function clearLLMConfigCache(): void {
 /**
  * Initialize default LLM configuration from database
  * This function should be called after database connection is established
- * It will update config.llm with the database configuration if available
+ * It will update config.llm with the database configuration
+ * @throws Error if no active LLM configuration is found in database
  */
 export async function initializeDefaultLLMConfig(userId?: string): Promise<void> {
   try {
@@ -142,14 +147,15 @@ export async function initializeDefaultLLMConfig(userId?: string): Promise<void>
     config.llm = dbConfig;
     logger.info(`Default LLM config initialized from database: ${dbConfig.provider}/${dbConfig.model}`);
   } catch (error: any) {
-    // If initialization fails, keep using environment config
-    logger.warn(`Failed to initialize LLM config from database, using environment config: ${error.message}`);
+    // If initialization fails, throw error - no fallback to environment variables
+    logger.error(`Failed to initialize LLM config from database: ${error.message}`);
+    throw error;
   }
 }
 
 /**
- * Get current LLM configuration
- * Returns database config if available, otherwise returns environment config
+ * Get current LLM configuration from database only
+ * @throws Error if no active LLM configuration is found in database
  */
 export async function getLLMConfig(userId?: string): Promise<ILLMConfig> {
   return await loadLLMConfigFromDB(userId);
@@ -158,10 +164,19 @@ export async function getLLMConfig(userId?: string): Promise<ILLMConfig> {
 /**
  * Application configuration
  * Note: config.llm will be initialized from database after database connection is established
+ * The initial value is a placeholder and MUST be replaced by initializeDefaultLLMConfig()
  * See initializeDefaultLLMConfig() function
  */
 export const config: IAppConfig = {
-  llm: loadLLMConfig(), // Initial fallback, will be updated by initializeDefaultLLMConfig()
+  // Placeholder config - will be replaced by initializeDefaultLLMConfig() from database
+  // This is only used during initialization before database connection
+  llm: {
+    provider: 'zhipuai',
+    apiKey: '',
+    model: 'glm-4-flash',
+    temperature: 0.7,
+    maxTokens: 8000,
+  },
   database: {
     url: process.env.DATABASE_URL || 'postgresql://postgres:123456@127.0.0.1:5432/mind2build',
   },
