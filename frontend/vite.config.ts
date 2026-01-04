@@ -13,6 +13,11 @@ export default defineConfig({
   server: {
     host: '0.0.0.0', // 监听所有网络接口，允许外部访问
     port: 5173,
+    allowedHosts: [
+      'device-test.local.yc345.tv',
+      'localhost',
+      '.yc345.tv', // 允许所有 yc345.tv 的子域名
+    ],
     hmr: {
       overlay: true,
     },
