@@ -189,6 +189,7 @@ import {
 } from '@element-plus/icons-vue';
 import InteractiveConfirmation from '../components/InteractiveConfirmation.vue';
 import apiClient from '../api/client';
+import { createPolling } from '../utils/polling';
 
 const route = useRoute();
 const router = useRouter();
@@ -228,9 +229,9 @@ const totalDuration = computed(() => {
   return `${minutes}分${seconds}秒`;
 });
 
-// WebSocket connection
-let ws: WebSocket | null = null;
-const WS_BASE_URL = (import.meta as any).env?.VITE_WS_URL || 'ws://localhost:3000';
+// Polling mechanism
+let pollingController: ReturnType<typeof createPolling> | null = null;
+let lastMessageId: string | null = null;
 
 onMounted(() => {
   startInteractiveSession();
@@ -283,73 +284,76 @@ async function startInteractiveSession() {
       projectId.value = sid;
     }
 
-    // Connect WebSocket
-    connectWebSocket(sid);
+    // Start polling
+    startPolling(sid);
   } catch (error: any) {
     ElMessage.error('启动会话失败: ' + error.message);
     isRunning.value = false;
   }
 }
 
-function connectWebSocket(sessionId: string) {
+function startPolling(sessionId: string) {
   try {
-    // Close existing connection if any
-    if (ws) {
-      ws.close();
-      ws = null;
+    // Stop existing polling if any
+    if (pollingController) {
+      pollingController.stop();
+      pollingController = null;
     }
 
-    const wsUrl = `${WS_BASE_URL}/api/interactive/${sessionId}`;
-    console.log('Connecting to WebSocket:', wsUrl);
-    ws = new WebSocket(wsUrl);
+    lastMessageId = null;
+    ElMessage.success('已连接到服务器');
 
-    ws.onopen = () => {
-      console.log('WebSocket connected successfully');
-      ElMessage.success('已连接到服务器');
-      isRunning.value = true;
-    };
+    // Create polling instance
+    pollingController = createPolling(
+      async () => {
+        const response = await apiClient.pollInteractiveMessages(sessionId, lastMessageId);
+        return response;
+      },
+      (data: any) => {
+        // Process messages
+        if (data.messages && Array.isArray(data.messages)) {
+          data.messages.forEach((msg: any) => {
+            handlePollingMessage({
+              type: msg.type,
+              data: msg.data,
+            });
+          });
 
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        console.log('WebSocket message received:', message.type);
-        handleWebSocketMessage(message);
-      } catch (error: any) {
-        console.error('Failed to parse WebSocket message:', error);
-        ElMessage.error('解析消息失败: ' + error.message);
+          // Update last message ID
+          if (data.lastMessageId) {
+            lastMessageId = data.lastMessageId;
+          }
+        }
+      },
+      {
+        interval: 1000, // Poll every 1 second
+        maxRetries: 3,
+        retryDelay: 2000,
+        immediate: true,
+        shouldContinue: () => !isCompleted.value,
+        onError: (error: Error) => {
+          console.error('Polling error:', error);
+          ElMessage.error('轮询错误: ' + error.message);
+        },
       }
-    };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      ElMessage.error('WebSocket 连接错误，请检查服务器是否运行');
-      isRunning.value = false;
-    };
-
-    ws.onclose = (event) => {
-      console.log('WebSocket closed:', event.code, event.reason);
-      if (event.code !== 1000) { // Not a normal closure
-        ElMessage.warning(`连接已断开 (${event.code}): ${event.reason || '未知原因'}`);
-      }
-      ws = null;
-      // Don't set isRunning to false here, as it might be intentional
-    };
+    );
   } catch (error: any) {
-    console.error('Failed to create WebSocket:', error);
-    ElMessage.error('创建 WebSocket 连接失败: ' + error.message);
-    ws = null;
+    console.error('Failed to start polling:', error);
+    ElMessage.error('启动轮询失败: ' + error.message);
     isRunning.value = false;
   }
 }
 
-function handleWebSocketMessage(message: { type: string; data: any }) {
+function handlePollingMessage(message: { type: string; data: any }) {
   switch (message.type) {
     case 'connected':
       ElMessage.success('会话已连接');
+      isRunning.value = true;
       break;
 
     case 'started':
       ElMessage.info('项目生成已开始');
+      isRunning.value = true;
       break;
 
     case 'role_start':
@@ -418,42 +422,13 @@ async function handleUserAction(action: string, modifiedContent?: string) {
 
     completedSteps.value.push(step);
 
-    // Send action to backend via WebSocket
-    if (!ws) {
-      console.error('WebSocket is null, attempting to reconnect...');
-      ElMessage.error('WebSocket 未连接，请刷新页面重试');
-      actionLoading.value = false;
-      return;
-    }
-
-    if (ws.readyState === WebSocket.CONNECTING) {
-      console.log('WebSocket is connecting, waiting...');
-      // Wait a bit for connection to establish
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-
-    if (ws.readyState === WebSocket.OPEN) {
-      const message = {
-        type: 'user_action',
-        action: action,
-        modifiedContent: modifiedContent,
-      };
-      console.log('Sending user action to backend:', message);
-      try {
-        ws.send(JSON.stringify(message));
-        console.log('User action sent successfully');
-      } catch (error: any) {
-        console.error('Failed to send message:', error);
-        ElMessage.error('发送消息失败: ' + error.message);
-        actionLoading.value = false;
-        return;
-      }
-    } else {
-      const stateText = ws.readyState === WebSocket.CLOSING ? '正在关闭'
-        : ws.readyState === WebSocket.CLOSED ? '已关闭'
-          : '未知状态';
-      console.error(`WebSocket not ready, state: ${ws.readyState} (${stateText})`);
-      ElMessage.error(`WebSocket 未就绪 (${stateText})，请刷新页面重试`);
+    // Send action to backend via HTTP API
+    try {
+      await apiClient.sendInteractiveAction(sessionId.value, action, modifiedContent);
+      console.log('User action sent successfully');
+    } catch (error: any) {
+      console.error('Failed to send action:', error);
+      ElMessage.error('发送操作失败: ' + (error.message || '未知错误'));
       actionLoading.value = false;
       return;
     }
@@ -602,10 +577,11 @@ async function handleBack() {
 }
 
 function cleanup() {
-  if (ws) {
-    ws.close();
-    ws = null;
+  if (pollingController) {
+    pollingController.stop();
+    pollingController = null;
   }
+  lastMessageId = null;
 }
 </script>
 

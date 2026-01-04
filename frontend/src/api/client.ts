@@ -273,6 +273,22 @@ class APIClient {
     link.click();
     document.body.removeChild(link);
   }
+
+  // Interactive session API endpoints (polling mode)
+  async pollInteractiveMessages(sessionId: string, lastMessageId?: string | null) {
+    const params: Record<string, string> = {};
+    if (lastMessageId) {
+      params.lastMessageId = lastMessageId;
+    }
+    return this.client.get(`/interactive/${sessionId}/poll`, { params });
+  }
+
+  async sendInteractiveAction(sessionId: string, action: string, modifiedContent?: string) {
+    return this.client.post(`/interactive/${sessionId}/action`, {
+      action,
+      modifiedContent,
+    });
+  }
 }
 
 export const apiClient = new APIClient();

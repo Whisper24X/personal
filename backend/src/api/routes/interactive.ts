@@ -138,5 +138,92 @@ router.get('/interactive-stats', async (_req, res) => {
   }
 });
 
+/**
+ * Poll for new messages (for polling mechanism)
+ * GET /api/interactive/:sessionId/poll?lastMessageId=xxx
+ */
+router.get('/interactive/:sessionId/poll', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { lastMessageId } = req.query;
+    
+    const session = sessionManager.getSession(sessionId);
+    
+    if (!session) {
+      return res.status(404).json({
+        error: 'Session not found',
+      });
+    }
+
+    // Start session if not already started (for polling mode)
+    // This allows starting session without WebSocket
+    const sessionInfo = session.getInfo();
+    if (!sessionInfo.isStarted) {
+      // Session hasn't started yet, start it
+      (session as any).startWithoutWebSocket();
+    }
+
+    // Get messages since last poll
+    const messages = session.getMessagesSince(lastMessageId as string | null || null);
+    
+    // Get the last message ID for next poll
+    const latestMessageId = messages.length > 0 
+      ? messages[messages.length - 1].id 
+      : (lastMessageId as string | null);
+
+    return res.json({
+      messages,
+      lastMessageId: latestMessageId,
+      hasMore: messages.length > 0,
+    });
+  } catch (error: any) {
+    logger.error('API: Error polling messages', error);
+    return res.status(500).json({
+      error: error.message || 'Failed to poll messages',
+    });
+  }
+});
+
+/**
+ * Send user action (for polling mechanism)
+ * POST /api/interactive/:sessionId/action
+ */
+router.post('/interactive/:sessionId/action', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { action, modifiedContent } = req.body;
+    
+    if (!action) {
+      return res.status(400).json({
+        error: 'Missing required field: action',
+      });
+    }
+
+    const session = sessionManager.getSession(sessionId);
+    
+    if (!session) {
+      return res.status(404).json({
+        error: 'Session not found',
+      });
+    }
+
+    // Handle user action
+    session.handleUserAction({
+      action,
+      modifiedContent,
+    });
+
+    return res.json({
+      success: true,
+      message: 'Action processed successfully',
+    });
+  } catch (error: any) {
+    logger.error('API: Error processing user action', error);
+    return res.status(500).json({
+      error: error.message || 'Failed to process user action',
+    });
+  }
+});
+
 export default router;
 

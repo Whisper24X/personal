@@ -29,6 +29,13 @@ export interface UserActionMessage {
   modifiedContent?: string;
 }
 
+export interface MessageQueueItem {
+  type: string;
+  data: any;
+  timestamp: number;
+  id: string;
+}
+
 export class InteractiveSession {
   public readonly id: string;
   public readonly userId?: string;
@@ -39,6 +46,10 @@ export class InteractiveSession {
   private userActionResolver: ((value: UserActionMessage) => void) | null = null;
   private config: SessionConfig;
   private startTime: number = Date.now();
+  // Message queue for polling
+  private messageQueue: MessageQueueItem[] = [];
+  private lastPolledMessageId: string | null = null;
+  private isStarted: boolean = false;
 
   constructor(id: string, config: SessionConfig) {
     this.id = id;
@@ -67,7 +78,7 @@ export class InteractiveSession {
   }
 
   /**
-   * Set WebSocket connection
+   * Set WebSocket connection (optional, for backward compatibility)
    */
   setWebSocket(ws: WebSocket): void {
     this.ws = ws;
@@ -83,12 +94,34 @@ export class InteractiveSession {
   }
 
   /**
+   * Start session without WebSocket (for polling mode)
+   */
+  startWithoutWebSocket(): void {
+    this.updateActivity();
+    
+    // Send connection confirmation
+    this.sendMessage('connected', {
+      sessionId: this.id,
+      config: this.config,
+    });
+
+    // Start the session asynchronously
+    this.start().catch((error) => {
+      logger.error(`InteractiveSession: Error starting session ${this.id}`, error);
+    });
+  }
+
+  /**
    * Start the interactive generation process
+   * Can be started without WebSocket (for polling mode)
    */
   async start(): Promise<void> {
-    if (!this.ws) {
-      throw new Error('WebSocket not connected');
+    if (this.isStarted) {
+      logger.warn(`InteractiveSession: Session ${this.id} already started`);
+      return;
     }
+
+    this.isStarted = true;
 
     try {
       logger.info(`InteractiveSession: Starting session ${this.id}`);
@@ -457,19 +490,61 @@ export class InteractiveSession {
   }
 
   /**
-   * Send message to client via WebSocket
+   * Send message to client via WebSocket or add to queue for polling
    */
   private sendMessage(type: string, data: any): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      logger.warn(`InteractiveSession: Cannot send message, WebSocket not open`);
-      return;
+    // Add message to queue for polling
+    const messageId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const queueItem: MessageQueueItem = {
+      type,
+      data,
+      timestamp: Date.now(),
+      id: messageId,
+    };
+    this.messageQueue.push(queueItem);
+    
+    // Keep only last 100 messages to prevent memory issues
+    if (this.messageQueue.length > 100) {
+      this.messageQueue.shift();
     }
 
-    try {
-      this.ws.send(JSON.stringify({ type, data }));
-    } catch (error: any) {
-      logger.error(`InteractiveSession: Error sending message`, error);
+    // Also send via WebSocket if available (for backward compatibility)
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(JSON.stringify({ type, data }));
+      } catch (error: any) {
+        logger.error(`InteractiveSession: Error sending message via WebSocket`, error);
+      }
     }
+  }
+
+  /**
+   * Get messages since last poll (for polling mechanism)
+   */
+  getMessagesSince(lastMessageId: string | null = null): MessageQueueItem[] {
+    if (!lastMessageId) {
+      // Return all messages if no last message ID provided
+      return [...this.messageQueue];
+    }
+
+    // Find the index of the last polled message
+    const lastIndex = this.messageQueue.findIndex(msg => msg.id === lastMessageId);
+    if (lastIndex === -1) {
+      // Last message not found, return all messages
+      return [...this.messageQueue];
+    }
+
+    // Return messages after the last polled one
+    return this.messageQueue.slice(lastIndex + 1);
+  }
+
+  /**
+   * Get all pending messages and clear them (alternative polling method)
+   */
+  getAndClearMessages(): MessageQueueItem[] {
+    const messages = [...this.messageQueue];
+    this.messageQueue = [];
+    return messages;
   }
 
   /**
@@ -511,6 +586,7 @@ export class InteractiveSession {
       id: this.id,
       config: this.config,
       isPaused: this.isPaused,
+      isStarted: this.isStarted,
       lastActivity: this.lastActivity,
       costReport: this.team.getCostReport(),
       messageHistory: this.team.getHistory().map(m => ({
@@ -518,6 +594,7 @@ export class InteractiveSession {
         causeBy: m.causeBy,
         contentPreview: m.content.substring(0, 100),
       })),
+      messageQueueLength: this.messageQueue.length,
     };
   }
 }
