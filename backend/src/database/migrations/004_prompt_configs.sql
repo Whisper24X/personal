@@ -21,7 +21,7 @@ CREATE INDEX IF NOT EXISTS idx_prompt_configs_active ON prompt_configs(is_active
 CREATE INDEX IF NOT EXISTS idx_prompt_configs_deleted_at ON prompt_configs(deleted_at);
 
 COMMENT ON TABLE prompt_configs IS 'Stores prompt templates and system prompts for different prompt types';
-COMMENT ON COLUMN prompt_configs.prompt_type IS 'Prompt type: requirement, prd, design, code, test, task';
+COMMENT ON COLUMN prompt_configs.prompt_type IS 'Prompt type: prd, design, code, test, task';
 COMMENT ON COLUMN prompt_configs.prompt_key IS 'Prompt key: system_prompt, template, etc.';
 COMMENT ON COLUMN prompt_configs.content IS 'The actual prompt content';
 COMMENT ON COLUMN prompt_configs.description IS 'Description of what this prompt is used for';
@@ -32,135 +32,135 @@ DO $$
 DECLARE
   default_user_id UUID := '302769d6-247d-43db-a005-0519712255fb';
 BEGIN
-  -- Requirement prompts
-  INSERT INTO prompt_configs (user_id, prompt_type, prompt_key, content, description, is_active)
-  VALUES (
-    default_user_id,
-    'requirement',
-    'system_prompt',
-    '你是一位经验丰富的需求收集专家（Salesperson），擅长与客户沟通并深入理解需求。
-
-你的角色是收集并分析用户的原始需求，进行初步的市场调研和可行性分析，输出结构化的需求说明文档。
-
-主要职责：
-- 理解用户的真实需求和痛点
-- 识别目标用户群体和使用场景
-- 分析市场竞品和可行性
-- 明确项目范围和边界
-- 整理并结构化需求信息
-
-输出要求：
-- 使用 Markdown 格式
-- **必须严格按照提供的需求说明文档模板格式输出，保持章节编号和结构完全一致**
-- **必须包含模板中的所有章节（1-6章），不得缺失或跳过任何章节**
-- 结构清晰、层级合理',
-    '需求说明文档系统提示词',
-    true
-  ) ON CONFLICT (user_id, prompt_type, prompt_key) DO NOTHING;
-
-  INSERT INTO prompt_configs (user_id, prompt_type, prompt_key, content, description, is_active)
-  VALUES (
-    default_user_id,
-    'requirement',
-    'template',
-    '# 需求说明文档
-
-## 1. 需求概述
-
-### 1.1 项目背景
-[简要说明项目的背景和起因]
-
-### 1.2 用户需求描述
-[用户原始需求的详细描述]
-
-### 1.3 目标和预期成果
-[项目要达成的目标和预期产出]
-
-## 2. 用户分析
-
-### 2.1 目标用户群体
-- 用户类型 1：[描述]
-- 用户类型 2：[描述]
-
-### 2.2 用户痛点
-- 痛点 1：[描述]
-- 痛点 2：[描述]
-
-### 2.3 使用场景
-**场景 1**：[描述]
-- 触发条件：
-- 用户操作：
-- 预期结果：
-
-## 3. 功能需求概述
-
-### 3.1 核心功能
-1. **功能 1**：[简要描述]
-2. **功能 2**：[简要描述]
-
-### 3.2 辅助功能
-1. **功能 1**：[简要描述]
-2. **功能 2**：[简要描述]
-
-## 4. 市场分析
-
-### 4.1 竞品分析
-- **竞品 1**：
-  - 优势：
-  - 劣势：
-  
-- **竞品 2**：
-  - 优势：
-  - 劣势：
-
-### 4.2 差异化优势
-- 优势 1：[描述]
-- 优势 2：[描述]
-
-## 5. 可行性分析
-
-### 5.1 技术可行性
-- 技术难点：
-- 解决方案：
-- 风险评估：
-
-### 5.2 商业可行性
-- 市场需求：
-- 预期收益：
-- 投入成本：
-
-## 6. 项目范围
-
-### 6.1 包含的内容
-- 项 1
-- 项 2
-
-### 6.2 不包含的内容
-- 项 1
-- 项 2
-
-',
-    '需求说明文档模板',
-    true
-  ) ON CONFLICT (user_id, prompt_type, prompt_key) DO NOTHING;
-
-  INSERT INTO prompt_configs (user_id, prompt_type, prompt_key, content, description, is_active)
-  VALUES (
-    default_user_id,
-    'requirement',
-    'review_system_prompt',
-    '你是一位资深的需求文档审查专家，擅长检查需求说明文档的完整性和质量。
-
-你的职责是：
-- 检查需求说明文档是否包含所有必需的章节（1-6章）
-- 检查每个章节的内容是否充实、具体
-- 识别空洞、模糊或占位符内容
-- 提供改进建议
-
-输出格式：结构化的审查报告',
-    '需求说明文档审查系统提示词',
-    true
-  ) ON CONFLICT (user_id, prompt_type, prompt_key) DO NOTHING;
+  -- Requirement prompts (deprecated - no longer used)
+  -- INSERT INTO prompt_configs (user_id, prompt_type, prompt_key, content, description, is_active)
+  -- VALUES (
+  --   default_user_id,
+  --   'requirement',
+  --   'system_prompt',
+  --   '你是一位经验丰富的需求收集专家（Salesperson），擅长与客户沟通并深入理解需求。
+  --
+  -- 你的角色是收集并分析用户的原始需求，进行初步的市场调研和可行性分析，输出结构化的需求说明文档。
+  --
+  -- 主要职责：
+  -- - 理解用户的真实需求和痛点
+  -- - 识别目标用户群体和使用场景
+  -- - 分析市场竞品和可行性
+  -- - 明确项目范围和边界
+  -- - 整理并结构化需求信息
+  --
+  -- 输出要求：
+  -- - 使用 Markdown 格式
+  -- - **必须严格按照提供的需求说明文档模板格式输出，保持章节编号和结构完全一致**
+  -- - **必须包含模板中的所有章节（1-6章），不得缺失或跳过任何章节**
+  -- - 结构清晰、层级合理',
+  --   '需求说明文档系统提示词',
+  --   true
+  -- ) ON CONFLICT (user_id, prompt_type, prompt_key) DO NOTHING;
+  --
+  -- INSERT INTO prompt_configs (user_id, prompt_type, prompt_key, content, description, is_active)
+  -- VALUES (
+  --   default_user_id,
+  --   'requirement',
+  --   'template',
+  --   '# 需求说明文档
+  --
+  -- ## 1. 需求概述
+  --
+  -- ### 1.1 项目背景
+  -- [简要说明项目的背景和起因]
+  --
+  -- ### 1.2 用户需求描述
+  -- [用户原始需求的详细描述]
+  --
+  -- ### 1.3 目标和预期成果
+  -- [项目要达成的目标和预期产出]
+  --
+  -- ## 2. 用户分析
+  --
+  -- ### 2.1 目标用户群体
+  -- - 用户类型 1：[描述]
+  -- - 用户类型 2：[描述]
+  --
+  -- ### 2.2 用户痛点
+  -- - 痛点 1：[描述]
+  -- - 痛点 2：[描述]
+  --
+  -- ### 2.3 使用场景
+  -- **场景 1**：[描述]
+  -- - 触发条件：
+  -- - 用户操作：
+  -- - 预期结果：
+  --
+  -- ## 3. 功能需求概述
+  --
+  -- ### 3.1 核心功能
+  -- 1. **功能 1**：[简要描述]
+  -- 2. **功能 2**：[简要描述]
+  --
+  -- ### 3.2 辅助功能
+  -- 1. **功能 1**：[简要描述]
+  -- 2. **功能 2**：[简要描述]
+  --
+  -- ## 4. 市场分析
+  --
+  -- ### 4.1 竞品分析
+  -- - **竞品 1**：
+  --   - 优势：
+  --   - 劣势：
+  --   
+  -- - **竞品 2**：
+  --   - 优势：
+  --   - 劣势：
+  --
+  -- ### 4.2 差异化优势
+  -- - 优势 1：[描述]
+  -- - 优势 2：[描述]
+  --
+  -- ## 5. 可行性分析
+  --
+  -- ### 5.1 技术可行性
+  -- - 技术难点：
+  -- - 解决方案：
+  -- - 风险评估：
+  --
+  -- ### 5.2 商业可行性
+  -- - 市场需求：
+  -- - 预期收益：
+  -- - 投入成本：
+  --
+  -- ## 6. 项目范围
+  --
+  -- ### 6.1 包含的内容
+  -- - 项 1
+  -- - 项 2
+  --
+  -- ### 6.2 不包含的内容
+  -- - 项 1
+  -- - 项 2
+  --
+  -- ',
+  --   '需求说明文档模板',
+  --   true
+  -- ) ON CONFLICT (user_id, prompt_type, prompt_key) DO NOTHING;
+  --
+  -- INSERT INTO prompt_configs (user_id, prompt_type, prompt_key, content, description, is_active)
+  -- VALUES (
+  --   default_user_id,
+  --   'requirement',
+  --   'review_system_prompt',
+  --   '你是一位资深的需求文档审查专家，擅长检查需求说明文档的完整性和质量。
+  --
+  -- 你的职责是：
+  -- - 检查需求说明文档是否包含所有必需的章节（1-6章）
+  -- - 检查每个章节的内容是否充实、具体
+  -- - 识别空洞、模糊或占位符内容
+  -- - 提供改进建议
+  --
+  -- 输出格式：结构化的审查报告',
+  --   '需求说明文档审查系统提示词',
+  --   true
+  -- ) ON CONFLICT (user_id, prompt_type, prompt_key) DO NOTHING;
 
   -- PRD prompts
   INSERT INTO prompt_configs (user_id, prompt_type, prompt_key, content, description, is_active)

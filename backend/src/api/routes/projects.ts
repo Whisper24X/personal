@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import { ProjectController } from '../controllers/ProjectController';
 import { PRDController } from '../controllers/PRDController';
+import { MRDController } from '../controllers/MRDController';
 // import { authMiddleware } from '../middleware/auth'; // Unused
 
 const router: Router = Router();
@@ -31,6 +32,14 @@ router.post('/:id/prds/:prdId/restore', PRDController.restorePRD);
 router.get('/:id/prds/:prdId/sections', PRDController.getPRDSections);
 router.post('/:id/prds/:prdId/sections/:sectionNumber/adjust', PRDController.adjustPRDSection);
 router.post('/:id/sections/:sectionNumber/adjust', PRDController.adjustSectionFromWorkspace);
+router.post('/:id/prds/:prdId/improve', PRDController.improvePRD);
+
+// MRD management routes
+router.post('/:id/mrd', MRDController.generateMRD);
+router.get('/:id/mrds', MRDController.listMRDs);
+router.get('/:id/mrds/:mrdId', MRDController.getMRD);
+router.post('/:id/mrds/:mrdId/adjust-section', MRDController.adjustSection);
+router.post('/:id/mrds/:mrdId/improve', MRDController.improveMRD);
 
 export default router;
 

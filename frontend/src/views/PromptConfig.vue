@@ -20,7 +20,7 @@
           </div>
         </template>
         <el-radio-group v-model="selectedType" @change="handleTypeChange">
-          <el-radio-button label="requirement">需求说明</el-radio-button>
+          <el-radio-button label="mrd">市场研究文档（MRD）</el-radio-button>
           <el-radio-button label="prd">产品需求文档</el-radio-button>
           <el-radio-button label="design">系统设计</el-radio-button>
           <el-radio-button label="code">代码生成</el-radio-button>
@@ -165,14 +165,14 @@ const router = useRouter();
 const loading = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
-const selectedType = ref<string>('requirement');
+const selectedType = ref<string>('mrd');
 const prompts = ref<Record<string, PromptConfig[]>>({});
 const showCreateDialog = ref(false);
 const editingPrompt = ref<PromptConfig | null>(null);
 const formRef = ref<FormInstance>();
 
 const typeLabels: Record<string, string> = {
-  requirement: '需求说明',
+  mrd: '市场研究文档（MRD）',
   prd: '产品需求文档',
   design: '系统设计',
   code: '代码生成',

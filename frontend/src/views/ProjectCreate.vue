@@ -101,41 +101,6 @@
           </template>
         </el-form-item>
 
-        <el-form-item label="生成模式">
-          <el-radio-group v-model="formData.mode" size="large">
-            <el-radio-button value="auto">
-              <div class="mode-option">
-                <el-icon><Lightning /></el-icon>
-                <span>自动模式</span>
-              </div>
-            </el-radio-button>
-            <el-radio-button value="interactive">
-              <div class="mode-option">
-                <el-icon><UserFilled /></el-icon>
-                <span>交互模式</span>
-              </div>
-            </el-radio-button>
-          </el-radio-group>
-          <template #extra>
-            <el-alert
-              v-if="formData.mode === 'interactive'"
-              title="交互模式: 每个 SOP 步骤完成后会暂停，等待您的确认和修改"
-              type="info"
-              :closable="false"
-              show-icon
-              class="mode-alert"
-            />
-            <el-alert
-              v-else
-              title="自动模式: 项目将自动生成，无需人工干预"
-              type="success"
-              :closable="false"
-              show-icon
-              class="mode-alert"
-            />
-          </template>
-        </el-form-item>
-
         <el-alert
           v-if="error"
           :title="error"
@@ -181,9 +146,7 @@ import {
   InfoFilled, 
   Refresh, 
   MagicStick, 
-  Close,
-  Lightning,
-  UserFilled 
+  Close
 } from '@element-plus/icons-vue';
 
 const router = useRouter();
@@ -200,7 +163,6 @@ const formData = reactive({
   idea: '',
   description: '',
   nRound: 5,
-  mode: 'auto' as 'auto' | 'interactive',
   applicationId: '',
 });
 
@@ -241,43 +203,40 @@ async function handleSubmit() {
   await formRef.value.validate(async (valid) => {
     if (valid) {
       try {
-        // Check if interactive mode
-        if (formData.mode === 'interactive') {
-          ElMessage.success('启动交互式项目生成');
-          
-          // Navigate to interactive page
-          router.push({
-            path: '/project/interactive',
-            query: {
-              name: formData.name,
-              idea: formData.idea,
-              description: formData.description,
-              rounds: formData.nRound.toString(),
-            }
-          });
-        } else {
-          // Automatic mode - original logic
-          const project = await projectStore.createProject({
-            name: formData.name,
-            idea: formData.idea,
-            description: formData.description,
-            nRound: formData.nRound,
-            applicationId: formData.applicationId || undefined,
-          });
-          
-          ElMessage.success('项目创建成功！');
-          
-          // Start the project
-          await projectStore.startProject(project.id);
-          
-          ElMessage.info('项目已启动，正在生成...');
-          
-          // Navigate to project detail
-          router.push(`/project/${project.id}`);
+        // Create project in database first
+        const project = await projectStore.createProject({
+          name: formData.name,
+          idea: formData.idea,
+          description: formData.description || undefined,
+          nRound: formData.nRound,
+          applicationId: formData.applicationId || undefined,
+        });
+        
+        ElMessage.success('项目创建成功，启动交互式项目生成');
+        
+        // Navigate to interactive page with project ID
+        const query: Record<string, string> = {
+          id: project.id,
+          name: formData.name,
+          idea: formData.idea,
+          description: formData.description,
+          rounds: formData.nRound.toString(),
+        };
+        if (formData.applicationId) {
+          query.applicationId = formData.applicationId;
         }
+        router.push({
+          path: '/project/interactive',
+          query
+        });
       } catch (err: any) {
         console.error('Failed to create project:', err);
-        ElMessage.error(err.message || '创建项目失败');
+        // Handle duplicate project name error
+        if (err.status === 409 || err.error === 'Duplicate project name') {
+          ElMessage.error(err.message || '项目名称已存在，请使用不同的名称');
+        } else {
+          ElMessage.error(err.message || '创建项目失败');
+        }
       }
     }
   });
@@ -328,17 +287,6 @@ async function handleSubmit() {
 .submit-buttons :deep(.el-form-item__content) {
   display: flex;
   gap: 16px;
-}
-
-.mode-option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-}
-
-.mode-alert {
-  margin-top: 8px;
 }
 </style>
 

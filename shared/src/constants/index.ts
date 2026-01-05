@@ -9,8 +9,7 @@ export const MESSAGE_ROUTE_TO_SELF = '<self>';
 
 // ==================== Action Names ====================
 
-export const ACTION_USER_REQUIREMENT = 'UserRequirement';
-export const ACTION_WRITE_REQUIREMENT_SPEC = 'WriteRequirementSpec';
+export const ACTION_WRITE_MRD = 'WriteMRD';
 export const ACTION_WRITE_PRD = 'WritePRD';
 export const ACTION_WRITE_DESIGN = 'WriteDesign';
 export const ACTION_WRITE_CODE = 'WriteCode';

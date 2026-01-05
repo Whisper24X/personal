@@ -11,10 +11,10 @@ import { logger } from '../../utils';
 
 // Import all prompt constants
 import {
-  REQUIREMENT_SPEC_SYSTEM_PROMPT,
-  REQUIREMENT_SPEC_TEMPLATE,
-  REQUIREMENT_SPEC_REVIEW_SYSTEM_PROMPT,
-} from '../../prompts/requirement';
+  MRD_SYSTEM_PROMPT,
+  MRD_TEMPLATE,
+  MRD_REVIEW_SYSTEM_PROMPT,
+} from '../../prompts/mrd';
 
 import {
   PRD_SYSTEM_PROMPT,
@@ -47,7 +47,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 const DEFAULT_USER_ID = '302769d6-247d-43db-a005-0519712255fb';
 
 interface PromptConfig {
-  promptType: 'requirement' | 'prd' | 'design' | 'code' | 'test' | 'task';
+  promptType: 'mrd' | 'prd' | 'design' | 'code' | 'test' | 'task';
   promptKey: string;
   content: string;
   description: string;
@@ -62,24 +62,24 @@ async function initPromptConfigs() {
 
     // Define all prompt configurations
     const configs: PromptConfig[] = [
-      // Requirement prompts
+      // MRD prompts
       {
-        promptType: 'requirement',
+        promptType: 'mrd',
         promptKey: 'system_prompt',
-        content: REQUIREMENT_SPEC_SYSTEM_PROMPT,
-        description: '需求说明文档系统提示词',
+        content: MRD_SYSTEM_PROMPT,
+        description: '市场研究文档系统提示词',
       },
       {
-        promptType: 'requirement',
+        promptType: 'mrd',
         promptKey: 'template',
-        content: REQUIREMENT_SPEC_TEMPLATE,
-        description: '需求说明文档模板',
+        content: MRD_TEMPLATE,
+        description: '市场研究文档模板',
       },
       {
-        promptType: 'requirement',
+        promptType: 'mrd',
         promptKey: 'review_system_prompt',
-        content: REQUIREMENT_SPEC_REVIEW_SYSTEM_PROMPT,
-        description: '需求说明文档审查系统提示词',
+        content: MRD_REVIEW_SYSTEM_PROMPT,
+        description: '市场研究文档审查系统提示词',
       },
       // PRD prompts
       {

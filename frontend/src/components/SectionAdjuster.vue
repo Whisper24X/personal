@@ -78,7 +78,7 @@ interface Section {
 
 interface Props {
     content: string;
-    documentType?: 'PRD' | 'REQUIREMENT' | 'DESIGN' | 'OTHER';
+    documentType?: 'PRD' | 'MRD' | 'DESIGN' | 'OTHER';
     action?: string;
     projectId?: string;
     documentId?: string;
@@ -233,9 +233,10 @@ async function handleSectionAdjust() {
 
     if (props.documentType === 'PRD') {
         adjustFunction = apiClient.adjustPRDSection;
-    } else if (props.documentType === 'REQUIREMENT') {
-        // We'll need to add this API method
-        adjustFunction = apiClient.adjustRequirementSection;
+    } else if (props.documentType === 'MRD') {
+        adjustFunction = async (projectId: string, docId: string, sectionNumber: number, userRequest: string) => {
+            return apiClient.adjustMRDSection(projectId, docId, sectionNumber, userRequest);
+        };
     }
 
     if (!adjustFunction) {
@@ -261,12 +262,10 @@ async function handleSectionAdjust() {
                 if (prdsResponse.prds && prdsResponse.prds.length > 0) {
                     docId = prdsResponse.prds[0].id;
                 }
-            } else if (props.documentType === 'REQUIREMENT') {
-                // Similar logic for requirement specs
-                const docsResponse: any = await apiClient.getProjectDocuments(props.projectId);
-                const requirementDocs = docsResponse.documents?.filter((doc: any) => doc.docType === 'requirement') || [];
-                if (requirementDocs.length > 0) {
-                    docId = requirementDocs[0].id;
+            } else if (props.documentType === 'MRD') {
+                const mrdsResponse: any = await apiClient.getMRDs(props.projectId);
+                if (mrdsResponse.documents && mrdsResponse.documents.length > 0) {
+                    docId = mrdsResponse.documents[0].id;
                 }
             }
 

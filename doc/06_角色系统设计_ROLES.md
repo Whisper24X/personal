@@ -8,52 +8,55 @@
 
 ### 0. Salesperson (销售)
 
-**职责**: 收集需求、产出需求说明文档
+**职责**: 收集需求、进行市场调研和业务分析，产出市场研究文档（MRD）
 
 **核心属性**:
 ```typescript
 class Salesperson extends Role {
     name = "Salesperson"
     profile = "Salesperson"
-    goal = "Collect customer requirements and produce requirement specification"
-    // Actions: UserRequirement, WriteRequirementSpec, RequirementSpecReview
+    goal = "Collect customer requirements, conduct market research and business analysis, produce Market Research Document (MRD)"
+    // Actions: UserRequirement, WriteMRD, MRDReview
 }
 ```
 
 **工作流程**:
 1. 接收用户原始需求（UserRequirement）
 2. 与用户沟通确认需求细节
-3. 进行市场调研和竞品分析
-4. 编写需求说明文档（RequirementSpecification）
-5. 发布需求说明给 ProductManager
+3. 进行目标价值分析和需求价值分析
+4. 进行市场调研和竞品分析
+5. 生成业务流程分析
+6. 编写市场研究文档（MRD - Market Research Document）
+7. 发布 MRD 给 ProductManager
 
 **输出产物**:
-- 需求说明文档（RequirementSpecification.md）
-  - 客户需求描述
-  - 目标用户画像
-  - 业务场景分析
-  - 核心功能列表
-  - 竞品分析
-  - 初步预算和时间估算
+- 市场研究文档（MRD.md）
+  - 需求背景与目标价值分析
+  - 需求价值分析（优先级、重要程度、业务价值）
+  - 用户分析（用户画像、痛点、使用场景）
+  - 业务流程分析（业务流程图、功能逻辑、模块关系）
+  - 市场分析（竞品分析、差异化优势、市场机会）
+  - 可行性分析（商业可行性、风险评估）
+  - 项目范围
 
 ### 1. ProductManager (产品经理)
 
-**职责**: 基于需求说明编写 PRD、产品规划
+**职责**: 基于市场研究文档（MRD）编写 PRD、产品规划
 
 **核心属性**:
 ```typescript
 class ProductManager extends Role {
     name = "ProductManager"
     profile = "Product Manager"
-    goal = "Create detailed PRD based on requirement specification"
+    goal = "Create detailed PRD based on Market Research Document (MRD)"
     // Actions: WritePRD, PRDReview, SearchEnhancedQA
 }
 ```
 
 **工作流程**:
-1. 接收销售的需求说明（RequirementSpecification）
-2. 准备文档（PrepareDocuments）
-3. 编写产品需求文档 PRD（WritePRD）
+1. 接收销售的市场研究文档（MRD）
+2. 使用 RAG 检索历史 PRD 文档（如可用）
+3. 基于 MRD 和历史 PRD 编写产品需求文档 PRD（WritePRD）
 4. 发布 PRD 给 Architect
 
 ### 2. Architect (架构师)
@@ -216,8 +219,8 @@ class DataAnalyst extends Role {
 
 ## 已实现角色列表
 
-✅ **Salesperson** - 需求收集和需求说明文档编写  
-✅ **ProductManager** - PRD编写和产品规划  
+✅ **Salesperson** - 需求收集、市场调研和业务分析，生成市场研究文档（MRD）  
+✅ **ProductManager** - 基于 MRD 编写 PRD 和产品规划  
 ✅ **Architect** - 系统架构设计  
 ✅ **ProjectManager** - 任务拆分、子项目设计、代码审查  
 ✅ **Engineer** - 代码实现  

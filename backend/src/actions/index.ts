@@ -3,11 +3,15 @@
  * Exports all action implementations
  */
 
-export { UserRequirement } from './UserRequirement';
-export { WriteRequirementSpec } from './WriteRequirementSpec';
-export { RequirementSpecReview } from './RequirementSpecReview';
+export { WriteMRD } from './WriteMRD';
+export { MRDReview } from './MRDReview';
 export { WritePRD } from './WritePRD';
 export { PRDReview } from './PRDReview';
+export { ImproveDocument } from './ImproveDocument';
+export { WriteDesign } from './WriteDesign';
+export { DesignReview } from './DesignReview';
+export { WriteSubProjectDesign } from './WriteSubProjectDesign';
+export { SubProjectDesignReview } from './SubProjectDesignReview';
 export { WriteDesign } from './WriteDesign';
 export { WriteCode } from './WriteCode';
 export { WriteTest } from './WriteTest';

@@ -12,7 +12,7 @@ export interface WorkspaceOptions {
   applicationId?: string;
   version?: number;
   workspacePath?: string;
-  documentType?: string; // PRD, CODE, DESIGN, REQUIREMENT等
+  documentType?: string; // PRD, CODE, DESIGN等
 }
 
 export class WorkspaceManager {

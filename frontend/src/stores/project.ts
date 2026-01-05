@@ -61,7 +61,12 @@ export const useProjectStore = defineStore('project', () => {
       await fetchProjects(); // 刷新列表
       return response.project;
     } catch (err: any) {
-      error.value = err.message || '创建项目失败';
+      // Handle duplicate project name error (409 Conflict)
+      if (err.status === 409 || err.error === 'Duplicate project name') {
+        error.value = err.message || '项目名称已存在，请使用不同的名称';
+      } else {
+        error.value = err.message || '创建项目失败';
+      }
       throw err;
     } finally {
       loading.value = false;

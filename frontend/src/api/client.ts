@@ -40,7 +40,12 @@ class APIClient {
       (response) => response.data as any,
       (error) => {
         if (error.response) {
-          return Promise.reject(error.response.data);
+          // Preserve status code in error object
+          const errorData = error.response.data;
+          if (errorData && typeof errorData === 'object') {
+            errorData.status = error.response.status;
+          }
+          return Promise.reject(errorData || error.response.data);
         }
         return Promise.reject(error);
       }
@@ -122,9 +127,14 @@ class APIClient {
   }
 
   async getPRDs(projectId: string, includeDeleted?: boolean) {
-    return this.client.get(`/projects/${projectId}/prds`, {
+    const response = await this.client.get(`/projects/${projectId}/prds`, {
       params: { includeDeleted },
-    });
+    }) as any;
+    // Normalize response format
+    return {
+      prds: response.documents || response.prds || [],
+      ...response,
+    };
   }
 
   async getPRD(projectId: string, prdId: string) {
@@ -155,15 +165,39 @@ class APIClient {
     );
   }
 
-  async adjustRequirementSection(
+  // MRD API 端点
+  async generateMRD(projectId: string, data: {
+    requirements: string;
+    mode?: 'new' | 'update';
+    useRAG?: boolean;
+  }) {
+    return this.client.post(`/projects/${projectId}/mrd`, data);
+  }
+
+  async getMRDs(projectId: string) {
+    const response = await this.client.get(`/projects/${projectId}/mrds`) as any;
+    // Normalize response format
+    return {
+      documents: response.documents || [],
+      ...response,
+    };
+  }
+
+  async getMRD(projectId: string, mrdId: string) {
+    return this.client.get(`/projects/${projectId}/mrds/${mrdId}`);
+  }
+
+  async adjustMRDSection(
     projectId: string,
-    requirementId: string,
+    mrdId: string,
     sectionNumber: number,
-    userRequest: string
+    userRequest: string,
+    applicationId?: string,
+    version?: number
   ) {
     return this.client.post(
-      `/projects/${projectId}/requirements/${requirementId}/sections/${sectionNumber}/adjust`,
-      { userRequest }
+      `/projects/${projectId}/mrds/${mrdId}/adjust-section`,
+      { sectionNumber, userRequest, applicationId, version }
     );
   }
 
@@ -264,7 +298,7 @@ class APIClient {
     // Encode the zip path for URL
     const encodedPath = encodeURIComponent(zipPath);
     const url = `${API_BASE_URL}/projects/${projectId}/download/${encodedPath}`;
-    
+
     // Create a temporary link and trigger download
     const link = document.createElement('a');
     link.href = url;

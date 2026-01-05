@@ -14,13 +14,18 @@
                 ID: {{ currentProject.id }}
               </el-text>
             </div>
-            <el-tag 
-              :type="getStatusType(currentProject.status)" 
-              size="large"
-              effect="light"
-            >
-              {{ currentProject.status }}
-            </el-tag>
+            <div class="header-right">
+              <el-tag :type="getStatusType(currentProject.status)" size="large" effect="light">
+                {{ currentProject.status }}
+              </el-tag>
+              <el-button v-if="currentProject.status === 'pending' || currentProject.status === 'running'"
+                type="primary" size="large" @click="continueProject">
+                <el-icon>
+                  <VideoPlay />
+                </el-icon>
+                继续执行
+              </el-button>
+            </div>
           </div>
         </template>
       </el-page-header>
@@ -30,59 +35,47 @@
           <el-col :xs="12" :sm="12">
             <el-statistic title="进度" :value="currentProject.progress" suffix="%">
               <template #prefix>
-                <el-icon><TrendCharts /></el-icon>
+                <el-icon>
+                  <TrendCharts />
+                </el-icon>
               </template>
             </el-statistic>
           </el-col>
           <el-col :xs="12" :sm="12">
-            <el-statistic 
-              title="当前轮次" 
-              :value="currentProject.currentRound"
-              :suffix="`/ ${currentProject.nRound}`"
-            >
+            <el-statistic title="当前轮次" :value="currentProject.currentRound" :suffix="`/ ${currentProject.nRound}`">
               <template #prefix>
-                <el-icon><Refresh /></el-icon>
+                <el-icon>
+                  <Refresh />
+                </el-icon>
               </template>
             </el-statistic>
           </el-col>
         </el-row>
 
-        <el-progress 
-          v-if="currentProject.status === 'running'" 
-          :percentage="currentProject.progress"
-          :status="currentProject.progress === 100 ? 'success' : undefined"
-          :stroke-width="12"
-          striped
-          striped-flow
-          class="progress-bar"
-        />
+        <el-progress v-if="currentProject.status === 'running'" :percentage="currentProject.progress"
+          :status="currentProject.progress === 100 ? 'success' : undefined" :stroke-width="12" striped striped-flow
+          class="progress-bar" />
       </el-card>
 
       <el-card class="messages-card">
         <template #header>
           <div class="card-header-content">
             <span class="card-title">
-              <el-icon><ChatLineRound /></el-icon>
+              <el-icon>
+                <ChatLineRound />
+              </el-icon>
               消息
             </span>
             <el-tag>{{ messages.length }}</el-tag>
           </div>
         </template>
 
-        <el-empty 
-          v-if="messages.length === 0" 
-          description="暂无消息"
-          :image-size="100"
-        />
+        <el-empty v-if="messages.length === 0" description="暂无消息" :image-size="100" />
 
         <el-scrollbar v-else max-height="500px">
           <el-timeline>
-            <el-timeline-item
-              v-for="message in messages"
-              :key="message.id"
-              :timestamp="message.causeBy"
-              placement="top"
-            >
+            <el-timeline-item v-for="message in messages" :key="message.id" :timestamp="message.causeBy"
+              placement="top">
               <el-card class="message-card">
                 <template #header>
                   <div class="message-header">
@@ -101,24 +94,23 @@
         </el-scrollbar>
       </el-card>
 
-      <el-card class="requirement-specs-card">
+      <el-card class="mrds-card">
         <template #header>
           <div class="card-header-content">
             <span class="card-title">
-              <el-icon><Document /></el-icon>
-              需求说明文档管理
+              <el-icon>
+                <Document />
+              </el-icon>
+              市场研究文档（MRD）管理
             </span>
-            <el-tag>{{ requirementSpecs.length }}</el-tag>
+            <el-tag>{{ mrds.length }}</el-tag>
           </div>
         </template>
 
-        <el-empty 
-          v-if="requirementSpecs.length === 0" 
-          description="暂无需求说明文档"
-          :image-size="100"
-        />
+        <el-empty v-if="mrds.length === 0" description="暂无市场研究文档" :image-size="100" />
 
-        <el-table v-else :data="requirementSpecs" style="width: 100%">
+        <el-table v-else :data="mrds" style="width: 100%">
+          <el-table-column prop="version" label="版本" width="80" />
           <el-table-column prop="filename" label="文件名" />
           <el-table-column prop="createdAt" label="创建时间">
             <template #default="{ row }">
@@ -127,12 +119,7 @@
           </el-table-column>
           <el-table-column label="操作" width="150">
             <template #default="{ row }">
-              <el-button 
-                type="primary" 
-                link 
-                size="small"
-                @click.stop="viewRequirementSpec(row)"
-              >
+              <el-button type="primary" link size="small" @click.stop="viewMRD(row)">
                 查看
               </el-button>
             </template>
@@ -144,18 +131,16 @@
         <template #header>
           <div class="card-header-content">
             <span class="card-title">
-              <el-icon><Document /></el-icon>
+              <el-icon>
+                <Document />
+              </el-icon>
               PRD 管理
             </span>
             <el-tag>{{ prds.length }}</el-tag>
           </div>
         </template>
 
-        <el-empty 
-          v-if="prds.length === 0" 
-          description="暂无 PRD 文档"
-          :image-size="100"
-        />
+        <el-empty v-if="prds.length === 0" description="暂无 PRD 文档" :image-size="100" />
 
         <el-table v-else :data="prds" style="width: 100%">
           <el-table-column prop="version" label="版本" width="80" />
@@ -173,30 +158,13 @@
           </el-table-column>
           <el-table-column label="操作" width="200">
             <template #default="{ row }">
-              <el-button 
-                type="primary" 
-                link 
-                size="small"
-                @click.stop="viewPRD(row)"
-              >
+              <el-button type="primary" link size="small" @click.stop="viewPRD(row)">
                 查看
               </el-button>
-              <el-button 
-                v-if="!row.isDeleted"
-                type="danger" 
-                link 
-                size="small"
-                @click.stop="handleDeletePRD(row)"
-              >
+              <el-button v-if="!row.isDeleted" type="danger" link size="small" @click.stop="handleDeletePRD(row)">
                 删除
               </el-button>
-              <el-button 
-                v-else
-                type="success" 
-                link 
-                size="small"
-                @click.stop="handleRestorePRD(row)"
-              >
+              <el-button v-else type="success" link size="small" @click.stop="handleRestorePRD(row)">
                 恢复
               </el-button>
             </template>
@@ -208,42 +176,27 @@
         <template #header>
           <div class="card-header-content">
             <span class="card-title">
-              <el-icon><Document /></el-icon>
+              <el-icon>
+                <Document />
+              </el-icon>
               文档
             </span>
             <el-tag>{{ documents.length }}</el-tag>
           </div>
         </template>
 
-        <el-empty 
-          v-if="documents.length === 0" 
-          description="暂无生成的文档"
-          :image-size="100"
-        />
+        <el-empty v-if="documents.length === 0" description="暂无生成的文档" :image-size="100" />
 
         <el-row v-else :gutter="16">
-          <el-col 
-            v-for="doc in documents" 
-            :key="doc.id"
-            :xs="24"
-            :sm="12"
-            :md="8"
-          >
-            <el-card 
-              shadow="hover" 
-              class="document-card"
-              @click="viewDocument(doc)"
-            >
+          <el-col v-for="doc in documents" :key="doc.id" :xs="24" :sm="12" :md="8">
+            <el-card shadow="hover" class="document-card" @click="viewDocument(doc)">
               <div class="document-content">
-                <el-icon :size="40" color="#409EFF"><DocumentCopy /></el-icon>
+                <el-icon :size="40" color="#409EFF">
+                  <DocumentCopy />
+                </el-icon>
                 <h4 class="document-title">{{ doc.filename }}</h4>
                 <el-tag size="small" type="info">{{ doc.docType }}</el-tag>
-                <el-button 
-                  type="primary" 
-                  link 
-                  :icon="View"
-                  class="view-button"
-                >
+                <el-button type="primary" link :icon="View" class="view-button">
                   查看文档
                 </el-button>
               </div>
@@ -262,13 +215,14 @@ import { useProjectStore } from '../stores/project';
 import { storeToRefs } from 'pinia';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { apiClient } from '../api/client';
-import { 
-  TrendCharts, 
-  Refresh, 
+import {
+  TrendCharts,
+  Refresh,
   ChatLineRound,
   Document,
   DocumentCopy,
-  View
+  View,
+  VideoPlay
 } from '@element-plus/icons-vue';
 
 const route = useRoute();
@@ -278,14 +232,14 @@ const { currentProject, messages, documents, loading } = storeToRefs(projectStor
 
 const projectId = route.params.id as string;
 const prds = ref<any[]>([]);
-const requirementSpecs = ref<any[]>([]);
+const mrds = ref<any[]>([]);
 
 onMounted(async () => {
   await projectStore.fetchProject(projectId);
   await projectStore.fetchMessages(projectId);
   await projectStore.fetchDocuments(projectId);
   await fetchPRDs();
-  await fetchRequirementSpecs();
+  await fetchMRDs();
 });
 
 async function fetchPRDs() {
@@ -329,31 +283,37 @@ async function handleRestorePRD(prd: any) {
   }
 }
 
-async function fetchRequirementSpecs() {
+async function fetchMRDs() {
   try {
-    // 从 documents 中筛选出 requirement 类型的文档
-    const requirementDocs = documents.value.filter(
-      (doc: any) => doc.docType === 'requirement'
-    );
-    requirementSpecs.value = requirementDocs.map((doc: any) => ({
-      id: doc.id,
-      filename: doc.filename,
-      content: doc.content,
-      createdAt: doc.createdAt,
-    }));
+    const response = await apiClient.getMRDs(projectId) as any;
+    mrds.value = response.documents || [];
   } catch (err: any) {
-    ElMessage.error(err.message || '获取需求说明文档列表失败');
+    ElMessage.error(err.message || '获取 MRD 列表失败');
+  }
+}
+
+async function viewMRD(mrd: any) {
+  try {
+    // Fetch full MRD content if not already loaded
+    let content = mrd.content;
+    if (!content) {
+      const response = await apiClient.getMRD(projectId, mrd.id) as any;
+      content = response.document?.content || response.content || '';
+    }
+    if (!content) {
+      ElMessage.warning('MRD 内容为空');
+      return;
+    }
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  } catch (err: any) {
+    ElMessage.error(err.message || '获取 MRD 内容失败');
   }
 }
 
 function viewPRD(prd: any) {
   const blob = new Blob([prd.content], { type: 'text/markdown' });
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
-}
-
-function viewRequirementSpec(requirementSpec: any) {
-  const blob = new Blob([requirementSpec.content], { type: 'text/markdown' });
   const url = URL.createObjectURL(blob);
   window.open(url, '_blank');
 }
@@ -388,6 +348,36 @@ function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
   return date.toLocaleDateString();
 }
+
+async function continueProject() {
+  if (!currentProject.value) return;
+
+  const project = currentProject.value;
+
+  // Fetch full project details if needed
+  let projectData = project;
+  if (!project.idea || !project.nRound) {
+    try {
+      const response = await apiClient.getProject(project.id) as any;
+      projectData = response.project || response || project;
+    } catch (err: any) {
+      console.warn('Failed to fetch project details:', err);
+      // Use current project data as fallback
+    }
+  }
+
+  router.push({
+    path: '/project/interactive',
+    query: {
+      id: projectData.id,
+      name: projectData.name,
+      idea: projectData.idea || '',
+      description: projectData.description || '',
+      rounds: (projectData.nRound || projectData.n_round || 5).toString(),
+      applicationId: projectData.applicationId || projectData.application_id || '',
+    }
+  });
+}
 </script>
 
 <style scoped>
@@ -417,6 +407,12 @@ function formatDate(dateStr: string): string {
   justify-content: space-between;
   align-items: flex-start;
   width: 100%;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .header-left {
@@ -471,7 +467,7 @@ function formatDate(dateStr: string): string {
   white-space: pre-wrap;
 }
 
-.requirement-specs-card {
+.mrds-card {
   margin-bottom: 0;
 }
 
@@ -509,4 +505,3 @@ function formatDate(dateStr: string): string {
   margin-top: 8px;
 }
 </style>
-

@@ -98,6 +98,7 @@ export interface IProject {
 // ==================== Document Types ====================
 
 export enum DocumentType {
+  MRD = 'mrd',
   PRD = 'prd',
   DESIGN = 'design',
   CODE = 'code',

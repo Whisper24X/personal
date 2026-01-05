@@ -348,12 +348,12 @@ export class Role extends BaseRole {
    * 从消息中提取workspace选项（applicationId, version等）
    */
   protected extractWorkspaceOptions(): WorkspaceOptions | undefined {
-    // 尝试从最近的PRD、Design或RequirementSpec消息中获取workspace选项
+    // 尝试从最近的PRD、Design或MRD消息中获取workspace选项
     const messagesToCheck = [
       ...this.rc.news,
       ...this.rc.memory.getByAction('WritePRD'),
       ...this.rc.memory.getByAction('WriteDesign'),
-      ...this.rc.memory.getByAction('WriteRequirementSpec'),
+      ...this.rc.memory.getByAction('WriteMRD'),
     ];
 
     for (const msg of messagesToCheck) {
@@ -408,7 +408,7 @@ export class Role extends BaseRole {
    */
   private getDocumentTypeForAction(actionName: string): string {
     const typeMap: Record<string, string> = {
-      'WriteRequirementSpec': 'REQUIREMENT',
+      'WriteMRD': 'MRD',
       'WritePRD': 'PRD',
       'WriteDesign': 'DESIGN',
       'WriteSubProjectDesign': 'DESIGN',
@@ -427,7 +427,7 @@ export class Role extends BaseRole {
   private actionAcceptsOptions(actionName: string): boolean {
     // 这些Action支持options参数
     const actionsWithOptions = [
-      'WriteRequirementSpec',
+      'WriteMRD',
       'WritePRD',
       'WriteDesign',
       'WriteSubProjectDesign',
@@ -452,7 +452,7 @@ export class Role extends BaseRole {
 
     // 根据不同的Action，传递不同的参数
     switch (actionName) {
-      case 'WriteRequirementSpec':
+      case 'WriteMRD':
         return await (action as any).run(input, workspaceOptions);
 
       case 'WritePRD':

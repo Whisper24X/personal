@@ -75,6 +75,42 @@
               创建应用
             </el-button>
           </el-empty>
+
+          <div v-else class="applications-grid">
+            <el-card v-for="app in applications" :key="app.id" shadow="hover" class="application-card"
+              @click="viewApplication(app.id)">
+              <div class="application-header">
+                <div class="application-info">
+                  <h3 class="application-name">
+                    <el-icon>
+                      <Box />
+                    </el-icon>
+                    {{ app.name }}
+                  </h3>
+                  <p v-if="app.description" class="application-desc">
+                    {{ app.description }}
+                  </p>
+                </div>
+              </div>
+
+              <el-divider />
+
+              <div class="application-stats">
+                <div class="stat-item">
+                  <el-icon>
+                    <Folder />
+                  </el-icon>
+                  <span>项目数: <strong>{{ app.projectCount }}</strong></span>
+                </div>
+                <div class="stat-item">
+                  <el-icon>
+                    <Clock />
+                  </el-icon>
+                  <span>创建于 {{ formatDate(app.createdAt) }}</span>
+                </div>
+              </div>
+            </el-card>
+          </div>
         </el-card>
       </div>
     </div>
@@ -92,7 +128,8 @@ import {
   CircleCheck,
   Loading,
   Plus,
-  Box
+  Box,
+  Clock
 } from '@element-plus/icons-vue';
 
 const router = useRouter();
@@ -105,6 +142,15 @@ onMounted(() => {
   projectStore.fetchProjects();
   applicationStore.fetchApplications();
 });
+
+function viewApplication(id: string) {
+  router.push(`/application/${id}`);
+}
+
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString();
+}
 </script>
 
 <style scoped>
@@ -170,5 +216,61 @@ onMounted(() => {
 .card-title {
   font-size: 18px;
   font-weight: 600;
+}
+
+.applications-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.application-card {
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.application-card:hover {
+  transform: translateY(-2px);
+}
+
+.application-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.application-info {
+  flex: 1;
+}
+
+.application-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+  margin: 0 0 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.application-desc {
+  color: #909399;
+  font-size: 14px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.application-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #606266;
+  font-size: 14px;
 }
 </style>

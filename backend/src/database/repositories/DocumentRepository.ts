@@ -103,6 +103,27 @@ export class DocumentRepository {
   }
 
   /**
+   * Find a document by ID
+   */
+  async findById(documentId: string): Promise<Document | null> {
+    const result = await query<Document>(
+      `SELECT * FROM documents WHERE id = $1`,
+      [documentId]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Update parent relationship for a document
+   */
+  async updateParent(documentId: string, parentId: string): Promise<void> {
+    await query(
+      `UPDATE documents SET parent_id = $1 WHERE id = $2`,
+      [parentId, documentId]
+    );
+  }
+
+  /**
    * Get document content
    */
   async getContent(id: string): Promise<string | null> {
@@ -305,6 +326,65 @@ export class DocumentRepository {
       SELECT d.* FROM documents d
       INNER JOIN projects p ON d.project_id = p.id
       WHERE p.application_id = $1 AND d.doc_type = 'prd'
+    `;
+    
+    const params: any[] = [applicationId];
+    
+    if (!includeDeleted) {
+      sql += ` AND (d.is_deleted IS NULL OR d.is_deleted = FALSE)`;
+    }
+    
+    sql += ` ORDER BY d.version DESC, d.created_at DESC`;
+    
+    const result = await query<Document>(sql, params);
+    return result.rows;
+  }
+
+  /**
+   * Find all MRD documents for a project
+   */
+  async findMRDsByProject(projectId: string, includeDeleted: boolean = false): Promise<Document[]> {
+    let sql = `
+      SELECT * FROM documents 
+      WHERE project_id = $1 AND doc_type = 'mrd'
+    `;
+    
+    const params: any[] = [projectId];
+    
+    if (!includeDeleted) {
+      sql += ` AND (is_deleted IS NULL OR is_deleted = FALSE)`;
+    }
+    
+    sql += ` ORDER BY version DESC, created_at DESC`;
+    
+    const result = await query<Document>(sql, params);
+    return result.rows;
+  }
+
+  /**
+   * Find the latest MRD for a project
+   */
+  async findLatestMRD(projectId: string): Promise<Document | null> {
+    const result = await query<Document>(
+      `SELECT * FROM documents 
+       WHERE project_id = $1 AND doc_type = 'mrd' 
+       AND (is_deleted IS NULL OR is_deleted = FALSE)
+       ORDER BY version DESC, created_at DESC 
+       LIMIT 1`,
+      [projectId]
+    );
+
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Find all MRD documents for an application (across all projects)
+   */
+  async findMRDsByApplication(applicationId: string, includeDeleted: boolean = false): Promise<Document[]> {
+    let sql = `
+      SELECT d.* FROM documents d
+      INNER JOIN projects p ON d.project_id = p.id
+      WHERE p.application_id = $1 AND d.doc_type = 'mrd'
     `;
     
     const params: any[] = [applicationId];

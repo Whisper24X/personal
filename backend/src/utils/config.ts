@@ -22,6 +22,7 @@ const DB_CONFIG_CACHE_TTL = 60000; // 1 minute cache
  * @deprecated This function is deprecated. LLM configuration should only be loaded from database.
  * This function is kept for backward compatibility but should not be used in new code.
  */
+// @ts-ignore - Deprecated function, kept for backward compatibility
 function loadLLMConfig(): ILLMConfig {
   const provider = (process.env.LLM_PROVIDER || 'zhipuai') as LLMProvider;
   

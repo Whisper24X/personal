@@ -169,7 +169,7 @@ export async function createWorkspaceZip(
   // Find all workspace directories for this application and version
   // 新的目录结构：workspace/{applicationId}/v{version}/{documentType}/
   const workspaceDirs: Array<{ name: string; path: string }> = [];
-  const documentTypes = ['PRD', 'DESIGN', 'TASKS', 'CODE', 'REQUIREMENT', 'DOCS'];
+  const documentTypes = ['PRD', 'DESIGN', 'TASKS', 'CODE', 'DOCS'];
   
   try {
     // 检查应用目录是否存在：workspace/{applicationId}/

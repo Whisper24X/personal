@@ -21,7 +21,7 @@ export interface SectionAdjustOptions {
   applicationId?: string;
   version?: number;
   workspacePath?: string;
-  documentType?: 'PRD' | 'REQUIREMENT' | 'DESIGN';
+  documentType?: 'PRD' | 'MRD' | 'DESIGN';
 }
 
 export class SectionAdjustService {
@@ -45,7 +45,7 @@ export class SectionAdjustService {
 
     try {
       // 1. 获取 workspace 目录
-      const workspaceDocType = documentType === 'REQUIREMENT' ? 'REQUIREMENT' : 'PRD';
+      const workspaceDocType = documentType === 'MRD' ? 'MRD' : documentType === 'DESIGN' ? 'DESIGN' : 'PRD';
       const workspaceDir = getWorkspaceDir(workspaceDocType, {
         applicationId,
         version,
@@ -53,7 +53,7 @@ export class SectionAdjustService {
       });
 
       // 2. 确定主文档文件名
-      const mainFileName = documentType === 'REQUIREMENT' ? 'REQUIREMENT_SPEC.md' : 'PRD.md';
+      const mainFileName = documentType === 'MRD' ? 'MRD.md' : documentType === 'DESIGN' ? 'DESIGN.md' : 'PRD.md';
 
       // 3. 读取章节文件
       const sectionFileName = `${String(sectionNumber).padStart(2, '0')}-section-${sectionNumber}.md`;

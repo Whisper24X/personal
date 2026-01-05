@@ -40,6 +40,17 @@ export class ProjectController {
         });
       }
 
+      // Check for duplicate project name in the same application
+      const exists = await projectRepo.existsByNameAndApplication(name, applicationId || null, userId);
+      if (exists) {
+        return res.status(409).json({
+          error: 'Duplicate project name',
+          message: applicationId
+            ? `项目名称 "${name}" 在该应用下已存在，请使用不同的名称`
+            : `项目名称 "${name}" 已存在，请使用不同的名称`,
+        });
+      }
+
       // Create project in database
       const project = await projectRepo.create({
         userId,
@@ -170,14 +181,14 @@ export class ProjectController {
       }
 
       // Extract and save documents
-      const docActions = ['WriteRequirementSpec', 'WritePRD', 'WriteDesign', 'BreakdownTasks', 'WriteSubProjectDesign', 'GenerateTask', 'WriteCode', 'WriteTest'];
+      const docActions = ['WriteMRD', 'WritePRD', 'WriteDesign', 'BreakdownTasks', 'WriteSubProjectDesign', 'GenerateTask', 'WriteCode', 'WriteTest'];
       const documents = result.messages.filter((msg) => docActions.includes(msg.causeBy));
 
       logger.info(`Project ${projectId} found ${documents.length} documents to save`);
 
       for (const doc of documents) {
         const docTypeMap: Record<string, string> = {
-          'WriteRequirementSpec': 'requirement',
+          'WriteMRD': 'mrd',
           'WritePRD': 'prd',
           'WriteDesign': 'design',
           'BreakdownTasks': 'task_breakdown',
@@ -239,6 +250,7 @@ export class ProjectController {
           id: project.id,
           name: project.name,
           status: project.status,
+          idea: project.idea,
           progress: project.progress || 0,
           currentRound: project.current_round || 0,
           nRound: project.n_round || 5,
@@ -274,6 +286,7 @@ export class ProjectController {
           id: p.id,
           name: p.name,
           status: p.status,
+          idea: p.idea,
           progress: p.progress || 0,
           totalCost: parseFloat(p.total_cost?.toString() || '0'),
           createdAt: p.created_at,
@@ -357,7 +370,7 @@ export class ProjectController {
 
       // Decode the zip path (it might be URL encoded)
       const decodedPath = decodeURIComponent(zipPath);
-      
+
       // Security: Only allow paths within the project directory
       const projectRoot = process.cwd();
       const tempDir = path.join(projectRoot, 'temp');
@@ -383,7 +396,7 @@ export class ProjectController {
       // Set headers and send file
       res.setHeader('Content-Type', 'application/zip');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      
+
       const fileStream = fs.createReadStream(fullPath);
       fileStream.pipe(res);
 

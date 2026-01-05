@@ -3,7 +3,7 @@
  * Performs data analysis and generates analysis code with visualization
  */
 
-import { IRoleConfig, ACTION_USER_REQUIREMENT } from '@mind2build/shared';
+import { IRoleConfig } from '@mind2build/shared';
 import { Role } from './Role';
 import { Context } from '../core/context/Context';
 import { DataAnalysis } from '../actions/DataAnalysis';
@@ -19,10 +19,6 @@ export class DataAnalyst extends Role {
     };
     
     super(config, context);
-    
-    // Watch for user requirements or data analysis requests
-    // Data Analyst can work independently or based on user requirements
-    this.watch([ACTION_USER_REQUIREMENT]);
     
     // Set actions
     this.setActions([new DataAnalysis()]);

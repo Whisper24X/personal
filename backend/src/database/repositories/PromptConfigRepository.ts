@@ -6,7 +6,7 @@
 import { query } from '../client';
 import { logger } from '../../utils';
 
-export type PromptType = 'requirement' | 'prd' | 'design' | 'code' | 'test' | 'task';
+export type PromptType = 'mrd' | 'prd' | 'design' | 'code' | 'test' | 'task';
 export type PromptKey = 'system_prompt' | 'template' | 'review_system_prompt' | string;
 
 export interface PromptConfig {

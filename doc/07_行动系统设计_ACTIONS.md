@@ -86,6 +86,52 @@ class WritePRD extends BaseAction {
 
 **使用角色**: ProductManager
 
+### 5.1. ImproveDocument
+
+**功能**: 根据审查报告改进和完善PRD或MRD文档
+
+**输入**: 审查报告内容（或从workspace自动读取）
+
+**输出**: 改进后的PRD或MRD文档
+
+**关键特性**:
+- 支持PRD和MRD两种文档类型
+- 自动从workspace读取当前文档和审查报告
+- 根据审查报告中的改进建议，针对性地补充和完善文档内容
+- 保持文档的原有结构和格式
+- 移除文档中的审查报告部分，只保留改进后的文档内容
+
+**实现要点**:
+```typescript
+class ImproveDocument extends BaseAction {
+  async run(input: string, options?: ImproveDocumentOptions): Promise<IActionOutput> {
+    // 1. 读取当前文档（PRD.md 或 MRD.md）
+    const currentDocument = await this.readCurrentDocument(documentType, options);
+    
+    // 2. 读取审查报告（从workspace或输入）
+    const reviewReport = await this.readReviewReport(documentType, options);
+    
+    // 3. 移除文档中的审查报告部分
+    const cleanDocument = this.removeReviewReport(currentDocument, documentType);
+    
+    // 4. 根据审查报告改进文档
+    const improvedDocument = await this.improveDocument(cleanDocument, reviewReport, documentType);
+    
+    // 5. 保存改进后的文档
+    await this.saveToWorkspace(mainFileName, improvedDocument, options);
+    
+    return { content: improvedDocument, ... };
+  }
+}
+```
+
+**使用角色**: ProductManager, Salesperson
+
+**使用场景**:
+- PRD或MRD文档经过审查后，需要根据审查报告中的改进建议完善文档
+- 文档内容过于简略，需要补充详细描述
+- 功能需求描述不完整，需要补充触发条件、异常流程等
+
 ### 6. WriteDesign
 
 **功能**: 编写系统设计文档
@@ -265,6 +311,7 @@ class BreakdownTasks extends BaseAction {
 ✅ **RequirementSpecReview** - 需求说明文档审查  
 ✅ **WritePRD** - PRD文档编写  
 ✅ **PRDReview** - PRD文档审查  
+✅ **ImproveDocument** - 根据审查报告改进PRD/MRD文档  
 ✅ **WriteDesign** - 系统设计文档编写  
 ✅ **BreakdownTasks** - 任务拆分  
 ✅ **WriteSubProjectDesign** - 子项目设计  

@@ -7,9 +7,11 @@ import { Request, Response } from 'express';
 import { DocumentRepository } from '../../database/repositories/DocumentRepository';
 import { ProjectRepository } from '../../database/repositories/ProjectRepository';
 import { WritePRD } from '../../actions/WritePRD';
+import { ImproveDocument } from '../../actions/ImproveDocument';
 import { Context } from '../../core/context/Context';
 import { RAGService } from '../../services/RAGService';
 import { SectionAdjustService } from '../../services/SectionAdjustService';
+import { WorkspaceManager } from '../../utils/WorkspaceManager';
 import { logger } from '../../utils';
 
 const documentRepo = new DocumentRepository();
@@ -233,18 +235,47 @@ export class PRDController {
 
       const prds = await documentRepo.findPRDsByProject(id, includeDeleted);
 
+      // 为每个 PRD 尝试从 workspace 读取 PRD.md 文件
+      const prdList = await Promise.all(
+        prds.map(async (prd) => {
+          let content = prd.content;
+
+          // 优先从 workspace 读取 PRD.md 文件
+          try {
+            const metadata = prd.metadata as any;
+            const applicationId = metadata?.applicationId || project.application_id || 'default';
+            const version = prd.version || 1;
+
+            const workspaceContent = await WorkspaceManager.readFile('PRD.md', {
+              applicationId,
+              version,
+              documentType: 'PRD',
+            });
+
+            if (workspaceContent) {
+              content = workspaceContent;
+            }
+          } catch (error: any) {
+            // 如果读取失败，使用数据库中的内容
+            logger.debug(`PRDController: Failed to read PRD.md from workspace for PRD ${prd.id}, using database content`);
+          }
+
+          return {
+            id: prd.id,
+            version: prd.version || 1,
+            filename: prd.filename,
+            content: content,
+            isDeleted: prd.is_deleted || false,
+            deletedAt: prd.deleted_at,
+            parentId: prd.parent_id,
+            createdAt: prd.created_at,
+          };
+        })
+      );
+
       return res.json({
         success: true,
-        prds: prds.map((prd) => ({
-          id: prd.id,
-          version: prd.version || 1,
-          filename: prd.filename,
-          content: prd.content,
-          isDeleted: prd.is_deleted || false,
-          deletedAt: prd.deleted_at,
-          parentId: prd.parent_id,
-          createdAt: prd.created_at,
-        })),
+        prds: prdList,
       });
     } catch (error: any) {
       logger.error('PRDController: Failed to list PRDs:', error);
@@ -280,13 +311,44 @@ export class PRDController {
         return res.status(403).json({ error: 'PRD does not belong to this project' });
       }
 
+      // 优先从 workspace 读取 PRD.md 文件
+      let content = prd.content;
+      try {
+        const metadata = prd.metadata as any;
+        const applicationId = metadata?.applicationId || project.application_id || 'default';
+        const version = prd.version || 1;
+
+        // 尝试从 workspace 读取 PRD.md 文件
+        const workspaceContent = await WorkspaceManager.readFile('PRD.md', {
+          applicationId,
+          version,
+          documentType: 'PRD',
+        });
+
+        if (workspaceContent) {
+          content = workspaceContent;
+          logger.info(`PRDController: Loaded PRD content from workspace for PRD ${prdId}`, {
+            applicationId,
+            version,
+          });
+        } else {
+          logger.debug(`PRDController: PRD.md not found in workspace, using database content for PRD ${prdId}`);
+        }
+      } catch (error: any) {
+        logger.warn(`PRDController: Failed to read PRD.md from workspace, using database content:`, {
+          error: error.message,
+          prdId,
+        });
+        // 如果读取失败，使用数据库中的内容
+      }
+
       return res.json({
         success: true,
         prd: {
           id: prd.id,
           version: prd.version || 1,
           filename: prd.filename,
-          content: prd.content,
+          content: content,
           isDeleted: prd.is_deleted || false,
           deletedAt: prd.deleted_at,
           parentId: prd.parent_id,
@@ -636,7 +698,7 @@ export class PRDController {
       const ver = version || 1;
 
       // Determine document type for workspace directory
-      const docType = documentType === 'REQUIREMENT' ? 'REQUIREMENT' : 'PRD';
+      const docType = documentType === 'MRD' ? 'MRD' : 'PRD';
 
       const result = await sectionAdjustService.adjustSection({
         projectId: id,
@@ -645,7 +707,7 @@ export class PRDController {
         userRequest,
         applicationId: appId,
         version: ver,
-        documentType: docType as 'PRD' | 'REQUIREMENT',
+        documentType: docType as 'PRD' | 'MRD',
       });
 
       logger.info(`PRDController: Section ${sectionNum} adjusted from workspace successfully`, {
@@ -665,6 +727,91 @@ export class PRDController {
       logger.error('PRDController: Failed to adjust section from workspace:', error);
       return res.status(500).json({
         error: 'Failed to adjust section',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Improve PRD based on review report
+   * POST /api/projects/:id/prds/:prdId/improve
+   */
+  static async improvePRD(req: Request, res: Response) {
+    try {
+      const { id, prdId } = req.params;
+      const { reviewReport, applicationId, version } = req.body;
+
+      // Verify project exists
+      const project = await projectRepo.findById(id);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      // Verify PRD exists
+      const prd = await documentRepo.findPRDById(prdId);
+      if (!prd) {
+        return res.status(404).json({ error: 'PRD not found' });
+      }
+
+      // Verify PRD belongs to the project
+      if (prd.project_id !== id) {
+        return res.status(403).json({ error: 'PRD does not belong to this project' });
+      }
+
+      logger.info(`PRDController: Improving PRD ${prdId}`, {
+        projectId: id,
+        hasReviewReport: !!reviewReport,
+      });
+
+      // Create context and ImproveDocument action
+      const ctx = new Context();
+      const improveAction = new ImproveDocument();
+      improveAction.setLLM(ctx.llm);
+      improveAction.setContext(ctx);
+
+      // Determine application ID and version
+      const appId = applicationId || project.application_id || 'default';
+      const ver = version || prd.version || 1;
+
+      // Run improve action
+      // If reviewReport is provided, use it; otherwise, the action will try to read from workspace
+      const input = reviewReport || 'PRD';
+      const result = await improveAction.run(input, {
+        documentType: 'PRD',
+        reviewReport: reviewReport,
+        applicationId: appId,
+        version: ver,
+      });
+
+      // Create a new PRD version with improved content
+      // Use the current PRD as parent to maintain version history
+      const newPRD = await documentRepo.createPRDVersion(id, result.content, prdId);
+
+      logger.info(`PRDController: PRD improved successfully`, {
+        projectId: id,
+        documentId: newPRD.id,
+        parentId: prdId,
+        version: newPRD.version,
+        improvedLength: result.content.length,
+      });
+
+      return res.json({
+        success: true,
+        prd: {
+          id: newPRD.id,
+          version: newPRD.version,
+          content: result.content,
+          filename: newPRD.filename,
+          createdAt: newPRD.created_at,
+          parentId: newPRD.parent_id,
+          improvedLength: result.content.length,
+          originalLength: result.data?.originalLength,
+        },
+      });
+    } catch (error: any) {
+      logger.error('PRDController: Failed to improve PRD:', error);
+      return res.status(500).json({
+        error: 'Failed to improve PRD',
         message: error.message,
       });
     }

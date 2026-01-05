@@ -31,13 +31,48 @@ router.get('/interactive', async (_req, res) => {
  */
 router.post('/interactive', async (req, res) => {
   try {
-    const { name, idea, description, investment, nRound } = req.body;
+    const { name, idea, description, investment, nRound, projectId, applicationId } = req.body;
     
     // Validate required fields
     if (!name || !idea) {
       return res.status(400).json({
         error: 'Missing required fields: name, idea',
       });
+    }
+    
+    // If projectId is provided, use it; otherwise create a new project
+    let finalProjectId = projectId;
+    const DEFAULT_USER_ID = '302769d6-247d-43db-a005-0519712255fb';
+    const userId = req.body.userId || DEFAULT_USER_ID;
+    
+    if (!finalProjectId) {
+      // Create project in database
+      const { ProjectRepository } = await import('../../database/repositories/ProjectRepository');
+      const projectRepo = new ProjectRepository();
+      
+      // Check for duplicate project name in the same application
+      const exists = await projectRepo.existsByNameAndApplication(name, applicationId || null, userId);
+      if (exists) {
+        return res.status(409).json({
+          error: 'Duplicate project name',
+          message: applicationId 
+            ? `项目名称 "${name}" 在该应用下已存在，请使用不同的名称`
+            : `项目名称 "${name}" 已存在，请使用不同的名称`,
+        });
+      }
+      
+      const project = await projectRepo.create({
+        userId,
+        name,
+        idea,
+        description,
+        investment: investment || 10.0,
+        nRound: nRound || 5,
+        applicationId,
+      });
+      
+      finalProjectId = project.id;
+      logger.info(`API: Created project ${finalProjectId} for interactive session`);
     }
     
     // Create session
@@ -47,13 +82,14 @@ router.post('/interactive', async (req, res) => {
       description,
       investment: investment || 10.0,
       nRound: nRound || 5,
-      userId: req.body.userId, // TODO: Get from auth middleware
+      userId,
     });
     
-    logger.info(`API: Created interactive session ${session.id}`);
+    logger.info(`API: Created interactive session ${session.id} for project ${finalProjectId}`);
     
     return res.json({
       sessionId: session.id,
+      projectId: finalProjectId,
       config: {
         name,
         idea,

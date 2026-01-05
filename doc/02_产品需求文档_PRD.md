@@ -102,8 +102,8 @@ graph TB
 
 | 角色 | 默认名称 | 核心职责 | 主要 Actions | 输入 | 输出 |
 |------|---------|---------|-------------|------|------|
-| Salesperson | Sales | 需求收集、市场调研 | WriteRequirementSpec | 用户需求 | 需求说明文档 |
-| ProductManager | Alice | PRD编写、需求分析 | WritePRD, SearchEnhancedQA | 需求说明文档 | PRD文档 |
+| Salesperson | Sales | 需求收集、市场调研、业务分析 | WriteMRD | 用户需求 | 市场研究文档（MRD） |
+| ProductManager | Alice | PRD编写、需求分析 | WritePRD, SearchEnhancedQA | 市场研究文档（MRD） | PRD文档 |
 | Architect | Bob | 系统设计、架构规划 | WriteDesign | PRD | 设计文档 |
 | Engineer | - | 代码实现 | WriteCode | 设计文档 | 源代码 |
 | QA Engineer | - | 测试编写与执行 | WriteTest | 代码 | 测试用例 |
@@ -347,6 +347,7 @@ graph LR
 | RequirementSpecReview | 需求说明文档审查 | 需求说明文档 | 审查报告 | Salesperson | ✅ 已实现 |
 | WritePRD | 编写产品需求文档 | 需求说明文档 | PRD Markdown | ProductManager | ✅ 已实现 |
 | PRDReview | PRD文档审查 | PRD文档 | 审查报告 | ProductManager | ✅ 已实现 |
+| ImproveDocument | 根据审查报告改进文档 | 审查报告 | 改进后的PRD/MRD | ProductManager/Salesperson | ✅ 已实现 |
 | WriteDesign | 编写系统设计 | PRD | 设计文档 | Architect | ✅ 已实现 |
 | BreakdownTasks | 任务拆分 | PRD和设计文档 | 任务拆分文档 | ProjectManager | ✅ 已实现 |
 | WriteSubProjectDesign | 子项目设计 | 任务拆分和设计文档 | 子项目设计文档 | ProjectManager | ✅ 已实现 |

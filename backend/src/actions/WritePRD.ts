@@ -12,10 +12,13 @@ import {
   buildPRDWithRAGPrompt,
   buildPRDOutlinePrompt,
   buildPRDSectionPrompt,
+  buildPRDSectionReviewPrompt,
 } from '../prompts/prd';
 import { logger, loadPrompt } from '../utils';
 import { PRDReview } from './PRDReview';
+import { ImproveDocument } from './ImproveDocument';
 import { StepwiseDocumentGenerator } from '../utils/StepwiseDocumentGenerator';
+import { WorkspaceManager } from '../utils/WorkspaceManager';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -40,6 +43,39 @@ export class WritePRD extends BaseAction {
     const useRAG = options?.useRAG || false;
     const useStepwise = options?.useStepwiseGeneration ?? true; // 默认启用分步骤生成
 
+    // 优先从 workspace 读取 MRD.md 文件作为输入
+    let mrdContent = input;
+    try {
+      const applicationId = options?.applicationId || 'default';
+      const version = options?.version || 1;
+
+      const mrdFromWorkspace = await WorkspaceManager.readFile('MRD.md', {
+        applicationId,
+        version,
+        documentType: 'MRD',
+        workspacePath: options?.workspacePath,
+      });
+
+      if (mrdFromWorkspace) {
+        mrdContent = mrdFromWorkspace;
+        logger.info('WritePRD: Loaded MRD content from workspace', {
+          applicationId,
+          version,
+          contentLength: mrdContent.length,
+        });
+      } else {
+        logger.info('WritePRD: MRD.md not found in workspace, using input from message', {
+          inputLength: input.length,
+        });
+      }
+    } catch (error: any) {
+      logger.warn('WritePRD: Failed to read MRD.md from workspace, using input from message', {
+        error: error.message,
+        inputLength: input.length,
+      });
+      // 如果读取失败，使用传入的 input
+    }
+
     logger.info('WritePRD: Starting PRD generation', {
       mode,
       useRAG,
@@ -48,12 +84,14 @@ export class WritePRD extends BaseAction {
       hasRelevantChunks: !!options?.relevantChunks,
       requestTimeout: process.env.REQUEST_TIMEOUT || '300',
       inputLength: input.length,
+      mrdContentLength: mrdContent.length,
+      usingWorkspaceMRD: mrdContent !== input,
     });
 
     try {
       // 如果启用分步骤生成且是新模式，使用分步骤生成
       if (useStepwise && mode === 'new' && !options?.historyPRD) {
-        return await this.generateStepwise(input, options);
+        return await this.generateStepwise(mrdContent, options);
       }
 
       // 否则使用传统的一次性生成
@@ -61,16 +99,16 @@ export class WritePRD extends BaseAction {
 
       if (mode === 'update' && options?.historyPRD) {
         // Update mode: use history PRD + new requirements
-        prompt = buildPRDUpdatePrompt(options.historyPRD, input);
+        prompt = buildPRDUpdatePrompt(options.historyPRD, mrdContent);
         logger.info('WritePRD: Using update mode with history PRD');
       } else if (useRAG && options?.relevantChunks) {
         // RAG mode: use retrieved chunks + new requirements
-        prompt = buildPRDWithRAGPrompt(input, options.relevantChunks, input);
+        prompt = buildPRDWithRAGPrompt(mrdContent, options.relevantChunks, mrdContent);
         logger.info('WritePRD: Using RAG mode with relevant chunks');
       } else {
-        // New mode: standard PRD generation
-        prompt = buildPRDPrompt(input);
-        logger.info('WritePRD: Using new mode');
+        // New mode: standard PRD generation (使用从 workspace 读取的 MRD 内容)
+        prompt = buildPRDPrompt(mrdContent);
+        logger.info('WritePRD: Using new mode with MRD from workspace');
       }
 
       // Load system prompt from database or use default
@@ -80,8 +118,8 @@ export class WritePRD extends BaseAction {
       // Call LLM with system message and prompt
       const prdContent = await this.aask(prompt, [systemPrompt]);
 
-      // 保存到 workspace（即使是非分步骤模式）
-      await this.saveToWorkspace('PRD.md', prdContent, options);
+      // 保存到 workspace，确保使用PRD目录
+      await this.saveToWorkspace('PRD.md', prdContent, { ...options, documentType: 'PRD' });
 
       logger.info('WritePRD: PRD generation completed', {
         mode,
@@ -89,17 +127,23 @@ export class WritePRD extends BaseAction {
         workspaceDir: this.getWorkspaceDir({ ...options, documentType: 'PRD' }),
       });
 
-      // 尝试从 workspace 读取所有内容，如果失败则返回当前内容
+      // 尝试从 workspace 读取 PRD.md 主文件内容，如果失败则返回当前内容
       let finalContent = prdContent;
       try {
-        const workspaceContent = await this.readAllFromWorkspace(options);
-        if (workspaceContent && workspaceContent.length > 0) {
-          finalContent = workspaceContent;
+        const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'PRD' });
+        const mainFilePath = path.join(workspaceDir, 'PRD.md');
+        const mainFileContent = await fs.readFile(mainFilePath, 'utf-8');
+        if (mainFileContent && mainFileContent.length > 0) {
+          finalContent = mainFileContent;
+          logger.info('WritePRD: Loaded PRD.md from workspace', {
+            contentLength: finalContent.length,
+          });
         }
       } catch (error: any) {
-        logger.warn('WritePRD: Failed to read from workspace, using direct content', {
+        logger.debug('WritePRD: PRD.md not found in workspace, using direct content', {
           error: error.message,
         });
+        // 如果主文件不存在，使用当前生成的内容
       }
 
       return {
@@ -210,8 +254,10 @@ export class WritePRD extends BaseAction {
    * 使用通用的 StepwiseDocumentGenerator
    */
   private async generateStepwise(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
-    const workspaceDir = this.getWorkspaceDir(options);
+    // 确保使用PRD目录
+    const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'PRD' });
     const reviewAction = new PRDReview();
+    const improveAction = new ImproveDocument();
 
     // Load system prompt from database or use default
     const userId = this.context?.get('userId');
@@ -220,9 +266,12 @@ export class WritePRD extends BaseAction {
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
       buildOutlinePrompt: buildPRDOutlinePrompt,
       buildSectionPrompt: buildPRDSectionPrompt,
+      buildSectionReviewPrompt: buildPRDSectionReviewPrompt,
       systemPrompt: systemPrompt,
       reviewAction: reviewAction,
       reviewTitle: 'PRD 审查报告',
+      improveAction: improveAction,
+      autoImprove: true, // 自动在审查后改进文档
       documentTitle: '产品需求文档（PRD）',
       documentType: 'PRD',
       mainFileName: 'PRD.md',

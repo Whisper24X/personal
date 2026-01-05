@@ -108,6 +108,25 @@ export class ProjectRepository {
   }
 
   /**
+   * Check if a project with the same name exists in the same application
+   */
+  async existsByNameAndApplication(name: string, applicationId: string | null, userId: string): Promise<boolean> {
+    if (applicationId) {
+      // Check within the same application
+      const result = await query<Project>(
+        `SELECT COUNT(*) as count FROM projects 
+         WHERE name = $1 AND application_id = $2 AND user_id = $3 AND deleted_at IS NULL`,
+        [name, applicationId, userId]
+      );
+      return parseInt(result.rows[0].count) > 0;
+    } else {
+      // If no applicationId, check globally for the user (optional: you might want to allow duplicates without application)
+      // For now, we'll allow duplicates when applicationId is null
+      return false;
+    }
+  }
+
+  /**
    * Update project status
    */
   async updateStatus(id: string, status: ProjectStatus): Promise<Project> {

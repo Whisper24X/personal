@@ -48,6 +48,7 @@ export class InteractiveSession {
   private startTime: number = Date.now();
   // Message queue for polling
   private messageQueue: MessageQueueItem[] = [];
+  // @ts-ignore - Reserved for future use
   private lastPolledMessageId: string | null = null;
   private isStarted: boolean = false;
 
@@ -174,7 +175,7 @@ export class InteractiveSession {
     const initialMessage = new Message({
       content: this.config.idea,
       role: 'user',
-      causeBy: 'UserRequirement',
+      causeBy: 'User',
       sentFrom: 'User',
     });
     env.publishMessage(initialMessage);

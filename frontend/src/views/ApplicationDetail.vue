@@ -12,20 +12,16 @@
     </el-page-header>
 
     <div v-loading="loading" class="content-section">
-      <el-alert
-        v-if="error"
-        :title="error"
-        type="error"
-        :closable="false"
-        show-icon
-      />
+      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
 
       <el-row :gutter="20" class="stats-row">
         <el-col :xs="24" :sm="8">
           <el-card shadow="hover" class="stat-card">
             <el-statistic title="项目总数" :value="application?.projectCount || 0">
               <template #prefix>
-                <el-icon><Folder /></el-icon>
+                <el-icon>
+                  <Folder />
+                </el-icon>
               </template>
             </el-statistic>
           </el-card>
@@ -34,7 +30,9 @@
           <el-card shadow="hover" class="stat-card">
             <el-statistic title="创建时间" :value="formatDate(application?.createdAt || '')">
               <template #prefix>
-                <el-icon><Clock /></el-icon>
+                <el-icon>
+                  <Clock />
+                </el-icon>
               </template>
             </el-statistic>
           </el-card>
@@ -42,7 +40,9 @@
         <el-col :xs="24" :sm="8">
           <el-card shadow="hover" class="stat-card">
             <el-button type="primary" @click="goToCreateProject">
-              <el-icon><Plus /></el-icon>
+              <el-icon>
+                <Plus />
+              </el-icon>
               新建项目
             </el-button>
           </el-card>
@@ -56,36 +56,26 @@
           </div>
         </template>
 
-        <el-empty 
-          v-if="projects.length === 0" 
-          description="还没有项目。创建您的第一个项目！"
-        >
+        <el-empty v-if="projects.length === 0" description="还没有项目。创建您的第一个项目！">
           <el-button type="primary" @click="goToCreateProject">
             创建项目
           </el-button>
         </el-empty>
 
         <div v-else>
-          <el-card
-            v-for="project in projects"
-            :key="project.id"
-            shadow="hover"
-            class="project-card"
-            @click="viewProject(project.id)"
-          >
+          <el-card v-for="project in projects" :key="project.id" shadow="hover" class="project-card"
+            @click="viewProject(project)">
             <div class="project-header">
               <div class="project-info">
                 <h3 class="project-name">
-                  <el-icon><Document /></el-icon>
+                  <el-icon>
+                    <Document />
+                  </el-icon>
                   {{ project.name }}
                 </h3>
                 <p class="project-idea">{{ project.idea }}</p>
               </div>
-              <el-tag 
-                :type="getStatusType(project.status)" 
-                size="large"
-                effect="plain"
-              >
+              <el-tag :type="getStatusType(project.status)" size="large" effect="plain">
                 {{ project.status }}
               </el-tag>
             </div>
@@ -103,8 +93,8 @@ import { useApplicationStore } from '../stores/application';
 import { storeToRefs } from 'pinia';
 import { ElMessage } from 'element-plus';
 import { apiClient } from '../api/client';
-import { 
-  Folder, 
+import {
+  Folder,
   Clock,
   Plus,
   Document
@@ -133,8 +123,43 @@ async function fetchProjects(applicationId: string) {
   }
 }
 
-function viewProject(id: string) {
-  router.push(`/project/${id}`);
+function viewProject(project: any) {
+  const projectId = project.id;
+  const status = project.status;
+
+  // 如果项目未完成（pending 或 running），跳转到交互式页面继续执行
+  if (status === 'pending' || status === 'running') {
+    // 获取项目详情以获取完整信息
+    apiClient.getProject(projectId).then((response: any) => {
+      const projectData = response.project || response;
+      router.push({
+        path: '/project/interactive',
+        query: {
+          id: projectId,
+          name: projectData.name || project.name,
+          idea: projectData.idea || '',
+          description: projectData.description || '',
+          rounds: (projectData.nRound || projectData.n_round || 5).toString(),
+          applicationId: route.params.id as string,
+        }
+      });
+    }).catch((err: any) => {
+      // 如果获取项目详情失败，使用基本信息跳转
+      router.push({
+        path: '/project/interactive',
+        query: {
+          id: projectId,
+          name: project.name,
+          idea: project.idea || '',
+          rounds: '5',
+          applicationId: route.params.id as string,
+        }
+      });
+    });
+  } else {
+    // 如果项目已完成，跳转到项目详情页面
+    router.push(`/project/${projectId}`);
+  }
 }
 
 function goToCreateProject() {
@@ -254,4 +279,3 @@ function getStatusType(status: string): 'success' | 'warning' | 'info' | 'danger
   line-height: 1.5;
 }
 </style>
-

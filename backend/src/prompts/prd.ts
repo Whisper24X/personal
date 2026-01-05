@@ -312,9 +312,9 @@ export const PRD_TEMPLATE = `# 产品需求文档（PRD）
 `;
 
 export function buildPRDPrompt(input: string): string {
-  return `基于以下需求信息，生成一份【研发与交互可直接执行】的产品需求文档（PRD）：
+  return `基于以下市场研究文档（MRD），生成一份【研发与交互可直接执行】的产品需求文档（PRD）：
 
-【需求背景】
+【市场研究文档（MRD）】
 ${input}
 
 【PRD 模板格式（必须严格遵循）】
@@ -371,15 +371,15 @@ export function buildPRDWithRAGPrompt(
   relevantChunks: string,
   newRequirements: string
 ): string {
-  return `请基于以下历史 PRD 片段与新需求，生成或更新完整 PRD：
+  return `请基于以下历史 PRD 片段与新的市场研究文档（MRD），生成或更新完整 PRD：
 
-【检索到的历史内容】
+【检索到的历史PRD内容】
 ${relevantChunks}
 
 【用户关注点】
 ${query}
 
-【新需求】
+【新的市场研究文档（MRD）】
 ${newRequirements}
 
 【PRD 模板格式（必须严格遵循）】
@@ -404,9 +404,9 @@ ${PRD_TEMPLATE}
  * 生成 PRD 目录（仅输出章节结构）
  */
 export function buildPRDOutlinePrompt(input: string): string {
-  return `基于以下需求信息，生成 PRD 的目录结构（仅输出章节标题，不输出内容）：
+  return `基于以下市场研究文档（MRD），生成 PRD 的目录结构（仅输出章节标题，不输出内容）：
 
-【需求背景】
+【市场研究文档（MRD）】
 ${input}
 
 【PRD 模板格式（必须严格遵循）】
@@ -438,9 +438,9 @@ export function buildPRDSectionPrompt(
   sectionNumber: number,
   sectionTitle: string
 ): string {
-  return `基于以下需求信息和 PRD 目录，生成第 ${sectionNumber} 章「${sectionTitle}」的详细内容：
+  return `基于以下市场研究文档（MRD）和 PRD 目录，生成第 ${sectionNumber} 章「${sectionTitle}」的详细内容：
 
-【需求背景】
+【市场研究文档（MRD）】
 ${input}
 
 【PRD 目录】
@@ -535,6 +535,56 @@ ${outline}
 }
 
 /**
+ * 审核单个章节的提示词
+ */
+export function buildPRDSectionReviewPrompt(
+  sectionContent: string,
+  sectionNumber: number,
+  sectionTitle: string,
+  outline: string
+): string {
+  return `请审查以下 PRD 章节的质量：
+
+【章节内容】
+## ${sectionNumber}. ${sectionTitle}
+
+${sectionContent}
+
+【完整目录结构】
+${outline}
+
+审查要求：
+1. **检查内容充实度**：章节内容是否充实、具体？是否存在空洞、模糊或占位符？
+2. **检查格式规范**：章节编号、标题是否与目录一致？
+3. **检查可执行性**：如果是功能需求章节，是否包含触发条件、主流程、异常流程、边界条件、验收标准？
+4. **检查交互细节**：如果是交互设计章节，是否包含详细的交互细节？表单校验逻辑是否具体？是否包含错误提示文案？
+5. **检查完整性**：章节是否包含该章节应该包含的所有子章节和内容？
+
+输出格式：
+\`\`\`markdown
+## 章节 ${sectionNumber}. ${sectionTitle} 审查结果
+
+### 1. 内容质量
+- [ ] 内容充实：是/否
+- [ ] 内容具体：是/否
+- [ ] 无占位符：是/否
+
+### 2. 发现的问题
+1. 问题描述（具体位置）
+2. 问题描述（具体位置）
+
+### 3. 改进建议
+1. 建议 1
+2. 建议 2
+
+### 4. 审查结论
+- 通过 / 需要改进
+- 主要问题：[列出主要问题]
+\`\`\`
+`;
+}
+
+/**
  * 调整单个章节的提示词
  */
 export function buildPRDSectionAdjustPrompt(
@@ -574,6 +624,60 @@ ${contextPart}
 `;
 }
 
+/**
+ * 根据审查报告改进PRD文档的提示词
+ */
+export const PRD_IMPROVE_SYSTEM_PROMPT = `你是一位资深的产品文档改进专家，擅长根据审查报告的建议，补充和完善PRD文档。
+
+你的职责是：
+- 仔细分析审查报告中的改进建议
+- 识别文档中需要补充和完善的部分
+- 针对性地改进文档内容，使其更加详细、具体、可执行
+- 保持文档的原有结构和格式
+- 确保改进后的内容符合PRD模板要求
+
+改进原则：
+- 保持文档的章节结构和编号不变
+- 根据审查报告中的具体建议，补充缺失的内容
+- 完善模糊或简略的描述，使其更加详细具体
+- 确保所有功能描述包含：触发条件、前置条件、主流程、异常流程、边界条件、验收标准
+- 改进后的内容要面向研发和测试团队，确保可直接使用`;
+
+export function buildPRDImprovePrompt(
+  prdContent: string,
+  reviewReport: string
+): string {
+  return `请根据以下审查报告的建议，改进和完善PRD文档：
+
+【当前PRD文档】
+${prdContent}
+
+【审查报告】
+${reviewReport}
+
+改进要求：
+1. **仔细分析审查报告**：识别所有改进建议和问题点
+2. **保持文档结构**：不要改变章节编号和标题，只改进内容
+3. **针对性改进**：
+   - 补充缺失的章节内容
+   - 完善简略或模糊的描述
+   - 补充功能需求的触发条件、异常流程等
+   - 细化交互细节和错误提示文案
+   - 补充版本说明等元数据
+4. **内容质量**：
+   - 所有内容必须详细、具体、可执行
+   - 避免空洞、模糊或占位符内容
+   - 确保研发和测试团队可直接使用
+5. **保持格式**：使用Markdown格式，保持章节层级清晰
+
+输出要求：
+- 输出完整的改进后的PRD文档
+- 保持所有章节（## 0. 到 ## 8.）
+- 确保改进后的内容解决了审查报告中提出的所有问题
+- 如果审查报告建议增加新章节，可以在现有章节基础上扩展，但保持主要结构不变
+`;
+}
+
 export default {
   PRD_SYSTEM_PROMPT,
   PRD_TEMPLATE,
@@ -584,5 +688,8 @@ export default {
   buildPRDSectionPrompt,
   PRD_REVIEW_SYSTEM_PROMPT,
   buildPRDReviewPrompt,
+  buildPRDSectionReviewPrompt,
   buildPRDSectionAdjustPrompt,
+  PRD_IMPROVE_SYSTEM_PROMPT,
+  buildPRDImprovePrompt,
 };

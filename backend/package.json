@@ -21,6 +21,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@langchain/community": "^1.1.1",
+    "@langchain/core": "^1.1.8",
     "@mind2build/shared": "workspace:*",
     "@types/ws": "^8.18.1",
     "archiver": "^7.0.1",
@@ -32,6 +34,7 @@
     "helmet": "^7.1.0",
     "joi": "^17.11.0",
     "jsonwebtoken": "^9.0.2",
+    "langchain": "^1.2.3",
     "openai": "^4.24.1",
     "pg": "^8.11.3",
     "pino": "^8.17.2",

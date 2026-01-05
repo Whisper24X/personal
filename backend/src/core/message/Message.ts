@@ -28,7 +28,7 @@ export class Message implements IMessage {
     this.id = uuidv4();
     this.content = params.content;
     this.role = params.role || 'user';
-    this.causeBy = params.causeBy ? anyToStr(params.causeBy) : 'UserRequirement';
+    this.causeBy = params.causeBy ? anyToStr(params.causeBy) : 'User';
     this.sentFrom = params.sentFrom || '';
     this.instructContent = params.instructContent;
     this.metadata = params.metadata || {};

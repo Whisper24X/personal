@@ -244,12 +244,78 @@ ${code}
 `;
 }
 
+/**
+ * Sub-Project Design Review 提示词
+ */
+export const SUB_PROJECT_DESIGN_REVIEW_SYSTEM_PROMPT = `你是一位资深的子项目设计审查专家，擅长检查子项目设计文档的完整性和质量。
+
+你的职责是：
+- 检查子项目设计文档是否包含所有必需的章节
+- 检查每个章节的内容是否充实、具体
+- 识别空洞、模糊或占位符内容
+- 特别检查技术架构、API设计、数据模型是否完整
+- 检查与整体系统设计的一致性
+- 提供改进建议
+
+输出格式：结构化的审查报告`;
+
+export function buildSubProjectDesignReviewPrompt(designContent: string, outline: string): string {
+  return `请审查以下子项目设计文档的质量：
+
+【子项目设计文档】
+${designContent}
+
+【预期目录结构】
+${outline}
+
+审查要求：
+1. **检查章节完整性**：是否包含所有必需的章节？
+2. **检查内容质量**：每个章节是否有充实的内容？是否存在空洞、模糊或占位符？
+3. **检查格式规范**：章节编号、标题是否规范？
+4. **检查技术设计**：技术架构、API设计、数据模型是否完整？
+5. **检查一致性**：是否与整体系统设计保持一致？
+6. **检查可执行性**：设计是否达到可直接开发级别？
+
+输出格式：
+\`\`\`markdown
+# 子项目设计文档审查报告
+
+## 1. 章节完整性检查
+- [ ] 章节完整性检查项
+
+## 2. 内容质量检查
+### 发现的问题：
+1. [章节编号] 问题描述
+2. [章节编号] 问题描述
+
+### 空洞内容识别：
+- [章节编号] 具体位置和问题
+
+### 技术设计检查：
+- [ ] 技术架构是否完整？
+- [ ] API设计是否清晰？
+- [ ] 数据模型设计是否完整？
+- [ ] 与整体系统设计是否一致？
+
+## 3. 改进建议
+1. 建议 1
+2. 建议 2
+
+## 4. 审查结论
+- 通过 / 需要改进
+- 主要问题：[列出主要问题]
+\`\`\`
+`;
+}
+
 export default {
   TASK_BREAKDOWN_SYSTEM_PROMPT,
   TASK_BREAKDOWN_TEMPLATE,
   buildTaskBreakdownPrompt,
   SUB_PROJECT_DESIGN_SYSTEM_PROMPT,
   buildSubProjectDesignPrompt,
+  SUB_PROJECT_DESIGN_REVIEW_SYSTEM_PROMPT,
+  buildSubProjectDesignReviewPrompt,
   TASK_GENERATION_SYSTEM_PROMPT,
   buildTaskGenerationPrompt,
   CODE_REVIEW_SYSTEM_PROMPT,

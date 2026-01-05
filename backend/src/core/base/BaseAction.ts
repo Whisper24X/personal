@@ -37,6 +37,13 @@ export abstract class BaseAction {
   }
 
   /**
+   * Set Context instance for this action
+   */
+  setContext(context: Context): void {
+    this.context = context;
+  }
+
+  /**
    * Helper method to call LLM with a prompt
    * @param prompt - The prompt to send to LLM
    * @param systemMsgs - Optional system messages

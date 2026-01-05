@@ -92,10 +92,10 @@ export class PromptConfigController {
       const userId = (req as any).userId || DEFAULT_USER_ID;
       const { type } = req.params;
 
-      if (!['requirement', 'prd', 'design', 'code', 'test', 'task'].includes(type)) {
+      if (!['prd', 'design', 'code', 'test', 'task'].includes(type)) {
         return res.status(400).json({
           error: 'Invalid prompt type',
-          message: 'Prompt type must be one of: requirement, prd, design, code, test, task',
+          message: 'Prompt type must be one of: prd, design, code, test, task',
         });
       }
 
@@ -132,10 +132,10 @@ export class PromptConfigController {
       const userId = (req as any).userId || DEFAULT_USER_ID;
       const { type, key } = req.params;
 
-      if (!['requirement', 'prd', 'design', 'code', 'test', 'task'].includes(type)) {
+      if (!['prd', 'design', 'code', 'test', 'task'].includes(type)) {
         return res.status(400).json({
           error: 'Invalid prompt type',
-          message: 'Prompt type must be one of: requirement, prd, design, code, test, task',
+          message: 'Prompt type must be one of: prd, design, code, test, task',
         });
       }
 
@@ -235,10 +235,10 @@ export class PromptConfigController {
       const userId = (req as any).userId || DEFAULT_USER_ID;
       const { type, key } = req.params;
 
-      if (!['requirement', 'prd', 'design', 'code', 'test', 'task'].includes(type)) {
+      if (!['prd', 'design', 'code', 'test', 'task'].includes(type)) {
         return res.status(400).json({
           error: 'Invalid prompt type',
-          message: 'Prompt type must be one of: requirement, prd, design, code, test, task',
+          message: 'Prompt type must be one of: prd, design, code, test, task',
         });
       }
 
