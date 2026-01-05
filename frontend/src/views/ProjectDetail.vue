@@ -1,9 +1,5 @@
 <template>
   <div class="project-detail">
-    <div v-loading="loading && !currentProject" class="loading-container">
-      <el-empty v-if="!currentProject && !loading" description="项目未找到" />
-    </div>
-
     <div v-if="currentProject" class="detail-content">
       <el-page-header @back="router.push('/')" class="page-header">
         <template #content>
@@ -94,84 +90,6 @@
         </el-scrollbar>
       </el-card>
 
-      <el-card class="mrds-card">
-        <template #header>
-          <div class="card-header-content">
-            <span class="card-title">
-              <el-icon>
-                <Document />
-              </el-icon>
-              市场研究文档（MRD）管理
-            </span>
-            <el-tag>{{ mrds.length }}</el-tag>
-          </div>
-        </template>
-
-        <el-empty v-if="mrds.length === 0" description="暂无市场研究文档" :image-size="100" />
-
-        <el-table v-else :data="mrds" style="width: 100%">
-          <el-table-column prop="version" label="版本" width="80" />
-          <el-table-column prop="filename" label="文件名" />
-          <el-table-column prop="createdAt" label="创建时间">
-            <template #default="{ row }">
-              {{ formatDate(row.createdAt) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="150">
-            <template #default="{ row }">
-              <el-button type="primary" link size="small" @click.stop="viewMRD(row)">
-                查看
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-card>
-
-      <el-card class="prds-card">
-        <template #header>
-          <div class="card-header-content">
-            <span class="card-title">
-              <el-icon>
-                <Document />
-              </el-icon>
-              PRD 管理
-            </span>
-            <el-tag>{{ prds.length }}</el-tag>
-          </div>
-        </template>
-
-        <el-empty v-if="prds.length === 0" description="暂无 PRD 文档" :image-size="100" />
-
-        <el-table v-else :data="prds" style="width: 100%">
-          <el-table-column prop="version" label="版本" width="80" />
-          <el-table-column prop="filename" label="文件名" />
-          <el-table-column prop="createdAt" label="创建时间">
-            <template #default="{ row }">
-              {{ formatDate(row.createdAt) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="状态" width="100">
-            <template #default="{ row }">
-              <el-tag v-if="row.isDeleted" type="danger" size="small">已删除</el-tag>
-              <el-tag v-else type="success" size="small">正常</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="200">
-            <template #default="{ row }">
-              <el-button type="primary" link size="small" @click.stop="viewPRD(row)">
-                查看
-              </el-button>
-              <el-button v-if="!row.isDeleted" type="danger" link size="small" @click.stop="handleDeletePRD(row)">
-                删除
-              </el-button>
-              <el-button v-else type="success" link size="small" @click.stop="handleRestorePRD(row)">
-                恢复
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-card>
-
       <el-card class="documents-card">
         <template #header>
           <div class="card-header-content">
@@ -209,11 +127,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useProjectStore } from '../stores/project';
 import { storeToRefs } from 'pinia';
-import { ElMessage, ElMessageBox } from 'element-plus';
 import { apiClient } from '../api/client';
 import MarkdownIt from 'markdown-it';
 import {
@@ -236,99 +153,15 @@ const md = new MarkdownIt({
 const route = useRoute();
 const router = useRouter();
 const projectStore = useProjectStore();
-const { currentProject, messages, documents, loading } = storeToRefs(projectStore);
+const { currentProject, messages, documents } = storeToRefs(projectStore);
 
 const projectId = route.params.id as string;
-const prds = ref<any[]>([]);
-const mrds = ref<any[]>([]);
 
 onMounted(async () => {
   await projectStore.fetchProject(projectId);
   await projectStore.fetchMessages(projectId);
   await projectStore.fetchDocuments(projectId);
-  await fetchPRDs();
-  await fetchMRDs();
 });
-
-async function fetchPRDs() {
-  try {
-    const response = await apiClient.getPRDs(projectId, true) as any;
-    prds.value = response.prds || [];
-  } catch (err: any) {
-    ElMessage.error(err.message || '获取 PRD 列表失败');
-  }
-}
-
-async function handleDeletePRD(prd: any) {
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除 PRD 版本 ${prd.version} 吗？`,
-      '确认删除',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }
-    );
-
-    await apiClient.deletePRD(projectId, prd.id);
-    ElMessage.success('PRD 删除成功');
-    await fetchPRDs();
-  } catch (err: any) {
-    if (err !== 'cancel') {
-      ElMessage.error(err.message || '删除 PRD 失败');
-    }
-  }
-}
-
-async function handleRestorePRD(prd: any) {
-  try {
-    await apiClient.restorePRD(projectId, prd.id);
-    ElMessage.success('PRD 恢复成功');
-    await fetchPRDs();
-  } catch (err: any) {
-    ElMessage.error(err.message || '恢复 PRD 失败');
-  }
-}
-
-async function fetchMRDs() {
-  try {
-    const response = await apiClient.getMRDs(projectId) as any;
-    mrds.value = response.documents || [];
-  } catch (err: any) {
-    ElMessage.error(err.message || '获取 MRD 列表失败');
-  }
-}
-
-async function viewMRD(mrd: any) {
-  try {
-    // Fetch full MRD content if not already loaded
-    let content = mrd.content;
-    if (!content) {
-      const response = await apiClient.getMRD(projectId, mrd.id) as any;
-      content = response.document?.content || response.content || '';
-    }
-    if (!content) {
-      ElMessage.warning('MRD 内容为空');
-      return;
-    }
-    // Render markdown to HTML
-    const htmlContent = renderMarkdownDocument(content, mrd.filename || 'MRD 文档');
-    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
-  } catch (err: any) {
-    ElMessage.error(err.message || '获取 MRD 内容失败');
-  }
-}
-
-function viewPRD(prd: any) {
-  // Render markdown to HTML
-  const htmlContent = renderMarkdownDocument(prd.content, prd.filename || 'PRD 文档');
-  const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
-}
 
 function viewDocument(doc: any) {
   // Render markdown to HTML
@@ -527,11 +360,6 @@ function getRoleType(role: string): 'success' | 'warning' | 'info' | 'danger' {
   return roleMap[role] || 'info';
 }
 
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString();
-}
-
 async function continueProject() {
   if (!currentProject.value) return;
 
@@ -566,13 +394,6 @@ async function continueProject() {
 <style scoped>
 .project-detail {
   max-width: 100%;
-}
-
-.loading-container {
-  min-height: 400px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .detail-content {
@@ -648,14 +469,6 @@ async function continueProject() {
 
 .message-content {
   white-space: pre-wrap;
-}
-
-.mrds-card {
-  margin-bottom: 0;
-}
-
-.prds-card {
-  margin-bottom: 0;
 }
 
 .document-card {

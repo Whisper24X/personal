@@ -53,8 +53,10 @@ export class PRDController {
       // Set LLM from context
       writePRDAction.setLLM(ctx.llm);
 
-      // Get application ID and prepare for version
-      const applicationId = project.application_id || 'default';
+      // Get application ID and project ID for workspace directory
+      // 使用应用ID，如果没有则使用项目ID，防止不同应用/项目互相覆盖文件
+      const applicationId = project.application_id || project.id;
+      const projectId = project.id;
       let prdContent: string;
       let parentId: string | undefined;
 
@@ -99,6 +101,7 @@ export class PRDController {
               relevantChunks,
               historyPRD: latestPRD.content,
               applicationId,
+              projectId,
               version: nextVersion,
             });
             prdContent = result.content;
@@ -109,6 +112,7 @@ export class PRDController {
               mode: 'update',
               historyPRD: latestPRD.content,
               applicationId,
+              projectId,
               version: nextVersion,
             });
             prdContent = result.content;
@@ -155,6 +159,7 @@ export class PRDController {
               useRAG: true,
               relevantChunks,
               applicationId,
+              projectId,
               version: nextVersion,
             });
             prdContent = result.content;
@@ -165,6 +170,7 @@ export class PRDController {
             const result = await writePRDAction.run(requirements, {
               mode: 'new',
               applicationId,
+              projectId,
               version: nextVersion,
             });
             prdContent = result.content;
@@ -206,7 +212,7 @@ export class PRDController {
           filename: newPRD.filename,
           createdAt: newPRD.created_at,
           parentId: newPRD.parent_id,
-          workspaceDir: `workspace/${applicationId}-v${newPRD.version}`,
+          workspaceDir: `workspace/${applicationId}/${projectId}/v${newPRD.version}`,
         },
       });
     } catch (error: any) {
@@ -243,11 +249,13 @@ export class PRDController {
           // 优先从 workspace 读取 PRD.md 文件
           try {
             const metadata = prd.metadata as any;
-            const applicationId = metadata?.applicationId || project.application_id || 'default';
+            const applicationId = metadata?.applicationId || project.application_id || project.id;
+            const projectId = project.id;
             const version = prd.version || 1;
 
             const workspaceContent = await WorkspaceManager.readFile('PRD.md', {
               applicationId,
+              projectId,
               version,
               documentType: 'PRD',
             });
@@ -315,12 +323,14 @@ export class PRDController {
       let content = prd.content;
       try {
         const metadata = prd.metadata as any;
-        const applicationId = metadata?.applicationId || project.application_id || 'default';
+        const applicationId = metadata?.applicationId || project.application_id || project.id;
+        const projectId = project.id;
         const version = prd.version || 1;
 
         // 尝试从 workspace 读取 PRD.md 文件
         const workspaceContent = await WorkspaceManager.readFile('PRD.md', {
           applicationId,
+          projectId,
           version,
           documentType: 'PRD',
         });
@@ -539,11 +549,13 @@ export class PRDController {
       }
 
       // Get workspace directory
-      const applicationId = project.application_id || 'default';
+      const applicationId = project.application_id || project.id;
+      const projectId = project.id;
       const version = prd.version || 1;
       const { getWorkspaceDir } = await import('../../utils/StepwiseDocumentGenerator');
       const workspaceDir = getWorkspaceDir('PRD', {
         applicationId,
+        projectId,
         version,
       });
 
@@ -614,7 +626,7 @@ export class PRDController {
 
       // Adjust section
       const sectionAdjustService = new SectionAdjustService();
-      const applicationId = project.application_id || 'default';
+      const applicationId = project.application_id || project.id;
       const version = prd.version || 1;
 
       const result = await sectionAdjustService.adjustSection({
@@ -694,7 +706,7 @@ export class PRDController {
 
       // Adjust section directly from workspace
       const sectionAdjustService = new SectionAdjustService();
-      const appId = applicationId || project?.application_id || 'default';
+      const appId = applicationId || project?.application_id || project?.id;
       const ver = version || 1;
 
       // Determine document type for workspace directory
@@ -706,6 +718,7 @@ export class PRDController {
         sectionNumber: sectionNum,
         userRequest,
         applicationId: appId,
+        projectIdForWorkspace: project?.id,
         version: ver,
         documentType: docType as 'PRD' | 'MRD',
       });
@@ -770,7 +783,8 @@ export class PRDController {
       improveAction.setContext(ctx);
 
       // Determine application ID and version
-      const appId = applicationId || project.application_id || 'default';
+      const appId = applicationId || project.application_id || project.id;
+      const projId = project.id;
       const ver = version || prd.version || 1;
 
       // Run improve action
@@ -780,6 +794,7 @@ export class PRDController {
         documentType: 'PRD',
         reviewReport: reviewReport,
         applicationId: appId,
+        projectId: projId,
         version: ver,
       });
 

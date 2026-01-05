@@ -14,11 +14,12 @@ import * as path from 'path';
 import { getWorkspaceDir } from '../utils/StepwiseDocumentGenerator';
 
 export interface SectionAdjustOptions {
-  projectId: string;
+  projectId: string; // 项目ID（数据库中的项目ID）
   prdId: string;
   sectionNumber: number;
   userRequest: string;
   applicationId?: string;
+  projectIdForWorkspace?: string; // 用于 workspace 目录的项目ID
   version?: number;
   workspacePath?: string;
   documentType?: 'PRD' | 'MRD' | 'DESIGN';
@@ -33,7 +34,9 @@ export class SectionAdjustService {
     updatedContent: string;
     sectionContent: string;
   }> {
-    const { projectId, prdId, sectionNumber, userRequest, applicationId, version, workspacePath, documentType = 'PRD' } = options;
+    const { projectId, prdId, sectionNumber, userRequest, applicationId, projectIdForWorkspace, version, workspacePath, documentType = 'PRD' } = options;
+    // 使用传入的 projectIdForWorkspace，如果没有则使用 projectId
+    const workspaceProjectId = projectIdForWorkspace || projectId;
 
     logger.info('SectionAdjustService: Starting section adjustment', {
       projectId,
@@ -48,6 +51,7 @@ export class SectionAdjustService {
       const workspaceDocType = documentType === 'MRD' ? 'MRD' : documentType === 'DESIGN' ? 'DESIGN' : 'PRD';
       const workspaceDir = getWorkspaceDir(workspaceDocType, {
         applicationId,
+        projectId: workspaceProjectId,
         version,
         workspacePath,
       });

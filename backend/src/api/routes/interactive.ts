@@ -75,6 +75,22 @@ router.post('/interactive', async (req, res) => {
       logger.info(`API: Created project ${finalProjectId} for interactive session`);
     }
     
+    // Get applicationId from project if projectId is provided
+    let finalApplicationId = applicationId;
+    if (finalProjectId && !finalApplicationId) {
+      // Try to get applicationId from project
+      try {
+        const { ProjectRepository } = await import('../../database/repositories/ProjectRepository');
+        const projectRepo = new ProjectRepository();
+        const project = await projectRepo.findById(finalProjectId);
+        if (project?.application_id) {
+          finalApplicationId = project.application_id;
+        }
+      } catch (error: any) {
+        logger.warn('API: Failed to get applicationId from project', { error: error.message });
+      }
+    }
+    
     // Create session
     const session = sessionManager.createSession({
       name,
@@ -83,6 +99,8 @@ router.post('/interactive', async (req, res) => {
       investment: investment || 10.0,
       nRound: nRound || 5,
       userId,
+      applicationId: finalApplicationId,
+      projectId: finalProjectId,
     });
     
     logger.info(`API: Created interactive session ${session.id} for project ${finalProjectId}`);

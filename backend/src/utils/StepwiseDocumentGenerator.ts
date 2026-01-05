@@ -42,6 +42,7 @@ export interface StepwiseGenerationConfig {
   // Workspace 配置
   workspaceDir: string;
   applicationId?: string;
+  projectId?: string;
   version?: number;
 }
 
@@ -517,6 +518,7 @@ export class StepwiseDocumentGenerator {
         documentType,
         reviewReport: reviewReport,
         applicationId: this.config.applicationId,
+        projectId: this.config.projectId,
         version: this.config.version,
       });
 
@@ -756,13 +758,14 @@ export class StepwiseDocumentGenerator {
 
 /**
  * 获取工作目录路径的通用函数
- * 新的目录结构：workspace/{applicationId}/v{version}/{documentType}/
- * 例如：workspace/default/v1/PRD/
+ * 新的目录结构：workspace/{applicationId}/{projectId}/v{version}/{documentType}/
+ * applicationId 和 projectId 必须提供，不能使用 'default'，以防止不同应用/项目互相覆盖文件
  */
 export function getWorkspaceDir(
   documentType: string,
   options?: {
     applicationId?: string;
+    projectId?: string;
     version?: number;
     workspacePath?: string;
   }
@@ -783,10 +786,20 @@ export function getWorkspaceDir(
   }
 
   const workspaceRoot = options?.workspacePath || process.env.WORKSPACE_PATH || path.join(projectRoot, 'workspace');
-  const applicationId = options?.applicationId || 'default';
+  
+  // applicationId 必须提供，不能使用 'default'
+  if (!options?.applicationId) {
+    throw new Error('applicationId is required for workspace directory. Cannot use "default" to prevent file conflicts between different applications.');
+  }
+  // projectId 必须提供，不能使用 'default'
+  if (!options?.projectId) {
+    throw new Error('projectId is required for workspace directory. Cannot use "default" to prevent file conflicts between different projects.');
+  }
+  const applicationId = options.applicationId;
+  const projectId = options.projectId;
   const version = options?.version || 1;
-  // 新的目录结构：workspace/{applicationId}/v{version}/{documentType}/
-  return path.join(workspaceRoot, applicationId, `v${version}`, documentType);
+  // 新的目录结构：workspace/{applicationId}/{projectId}/v{version}/{documentType}/
+  return path.join(workspaceRoot, applicationId, projectId, `v${version}`, documentType);
 }
 
 

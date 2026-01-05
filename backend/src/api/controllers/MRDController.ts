@@ -60,8 +60,9 @@ export class MRDController {
       writeMRDAction.setLLM(ctx.llm);
       writeMRDAction.setContext(ctx);
 
-      // Get application ID and prepare for version
-      const applicationId = project.application_id || 'default';
+      // Get application ID and project ID for workspace directory
+      const applicationId = project.application_id || project.id;
+      const projectId = project.id;
       let mrdContent: string;
       let parentId: string | undefined;
 
@@ -106,6 +107,7 @@ export class MRDController {
               relevantChunks,
               historyMRD: latestMRD.content,
               applicationId,
+              projectId,
               version: nextVersion,
             });
             mrdContent = result.content;
@@ -116,6 +118,7 @@ export class MRDController {
               mode: 'update',
               historyMRD: latestMRD.content,
               applicationId,
+              projectId,
               version: nextVersion,
             });
             mrdContent = result.content;
@@ -162,6 +165,7 @@ export class MRDController {
               useRAG: true,
               relevantChunks,
               applicationId,
+              projectId,
               version: nextVersion,
             });
             mrdContent = result.content;
@@ -172,6 +176,7 @@ export class MRDController {
             const result = await writeMRDAction.run(requirements, {
               mode: 'new',
               applicationId,
+              projectId,
               version: nextVersion,
             });
             mrdContent = result.content;
@@ -267,11 +272,13 @@ export class MRDController {
           // 优先从 workspace 读取 MRD.md 文件
           try {
             const metadata = mrd.metadata as any;
-            const applicationId = metadata?.applicationId || project.application_id || 'default';
+            const applicationId = metadata?.applicationId || project.application_id || project.id;
+            const projectId = project.id;
             const version = mrd.version || 1;
 
             const workspaceContent = await WorkspaceManager.readFile('MRD.md', {
               applicationId,
+              projectId,
               version,
               documentType: 'MRD',
             });
@@ -333,7 +340,7 @@ export class MRDController {
       let content = mrd.content;
       try {
         const metadata = mrd.metadata as any;
-        const applicationId = metadata?.applicationId || project.application_id || 'default';
+        const applicationId = metadata?.applicationId || project.application_id || project.id;
         const version = mrd.version || 1;
 
         // 尝试从 workspace 读取 MRD.md 文件
@@ -421,7 +428,8 @@ export class MRDController {
         prdId: mrdId,
         sectionNumber,
         userRequest,
-        applicationId: applicationId || project.application_id || 'default',
+        applicationId: applicationId || project.application_id || project.id,
+        projectIdForWorkspace: project.id,
         version: version || mrd.version || 1,
         documentType: 'MRD',
       });
@@ -480,7 +488,8 @@ export class MRDController {
       improveAction.setContext(ctx);
 
       // Determine application ID and version
-      const appId = applicationId || project.application_id || 'default';
+      const appId = applicationId || project.application_id || project.id;
+      const projId = project.id;
       const ver = version || mrd.version || 1;
 
       // Run improve action
@@ -490,6 +499,7 @@ export class MRDController {
         documentType: 'MRD',
         reviewReport: reviewReport,
         applicationId: appId,
+        projectId: projId,
         version: ver,
       });
 

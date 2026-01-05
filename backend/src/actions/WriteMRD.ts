@@ -26,6 +26,7 @@ export interface WriteMRDOptions {
   relevantChunks?: string; // RAG 检索到的相关文档片段
   useStepwiseGeneration?: boolean; // 是否使用分步骤生成
   applicationId?: string; // 应用ID，用于文件夹命名
+  projectId?: string; // 项目ID，用于文件夹命名
   version?: number; // 版本号，用于文件夹命名
   workspacePath?: string; // workspace 路径，默认 ./workspace
 }
@@ -237,6 +238,7 @@ export class WriteMRD extends BaseAction {
       ],
       workspaceDir,
       applicationId: options?.applicationId,
+      projectId: options?.projectId,
       version: options?.version,
     });
 

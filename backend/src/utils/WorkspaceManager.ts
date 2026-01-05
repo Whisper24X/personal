@@ -10,6 +10,7 @@ import { logger } from './logger';
 
 export interface WorkspaceOptions {
   applicationId?: string;
+  projectId?: string;
   version?: number;
   workspacePath?: string;
   documentType?: string; // PRD, CODE, DESIGN等
@@ -18,8 +19,8 @@ export interface WorkspaceOptions {
 export class WorkspaceManager {
   /**
    * 获取工作目录路径
-   * 新的目录结构：workspace/{applicationId}/v{version}/{documentType}/
-   * 例如：workspace/default/v1/PRD/
+   * 新的目录结构：workspace/{applicationId}/{projectId}/v{version}/{documentType}/
+   * applicationId 和 projectId 必须提供，不能使用 'default'，以防止不同应用/项目互相覆盖文件
    */
   static getWorkspaceDir(options?: WorkspaceOptions): string {
     // 计算项目根目录：从 backend/src/utils 或 backend/dist/utils 到项目根目录
@@ -45,12 +46,22 @@ export class WorkspaceManager {
       options?.workspacePath ||
       process.env.WORKSPACE_PATH ||
       path.join(projectRoot, 'workspace');
-    const applicationId = options?.applicationId || 'default';
+    
+    // applicationId 必须提供，不能使用 'default'
+    if (!options?.applicationId) {
+      throw new Error('applicationId is required for workspace directory. Cannot use "default" to prevent file conflicts between different applications.');
+    }
+    // projectId 必须提供，不能使用 'default'
+    if (!options?.projectId) {
+      throw new Error('projectId is required for workspace directory. Cannot use "default" to prevent file conflicts between different projects.');
+    }
+    const applicationId = options.applicationId;
+    const projectId = options.projectId;
     const version = options?.version || 1;
     const type = options?.documentType || 'DOCS'; // 默认类型
 
-    // 新的目录结构：workspace/{applicationId}/v{version}/{documentType}/
-    return path.join(workspaceRoot, applicationId, `v${version}`, type);
+    // 新的目录结构：workspace/{applicationId}/{projectId}/v{version}/{documentType}/
+    return path.join(workspaceRoot, applicationId, projectId, `v${version}`, type);
   }
 
   /**

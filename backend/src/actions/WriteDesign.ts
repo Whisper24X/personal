@@ -118,6 +118,7 @@ export class WriteDesign extends BaseAction {
       ],
       workspaceDir,
       applicationId: options?.applicationId,
+      projectId: options?.projectId,
       version: options?.version,
     });
 

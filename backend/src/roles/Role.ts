@@ -359,14 +359,30 @@ export class Role extends BaseRole {
     for (const msg of messagesToCheck) {
       const data = msg.instructContent as any;
       if (data?.workspaceDir) {
-        // 从workspaceDir解析applicationId和version
-        // 新格式: workspace/{applicationId}/v{version}/{documentType}/
-        // 或者: {applicationId}/v{version}/{documentType}/
+        // 从workspaceDir解析applicationId、projectId和version
+        // 新格式: workspace/{applicationId}/{projectId}/v{version}/{documentType}/
+        // 或者: {applicationId}/{projectId}/v{version}/{documentType}/
         const pathParts = data.workspaceDir.split(path.sep).filter((p: string) => p);
 
         // 查找版本号部分（格式为 v{number}）
         const versionIndex = pathParts.findIndex((p: string) => p.startsWith('v') && /^v\d+$/.test(p));
 
+        if (versionIndex > 1 && versionIndex < pathParts.length - 1) {
+          // 新格式：applicationId 在 versionIndex - 2，projectId 在 versionIndex - 1
+          const applicationId = pathParts[versionIndex - 2];
+          const projectId = pathParts[versionIndex - 1];
+          const versionStr = pathParts[versionIndex].substring(1); // 移除 'v' 前缀
+          const documentType = pathParts[versionIndex + 1] || this.getDocumentTypeForAction(this.rc.todo?.name || '');
+
+          return {
+            applicationId,
+            projectId,
+            version: parseInt(versionStr, 10),
+            documentType,
+          };
+        }
+
+        // 兼容旧格式（没有 projectId）: workspace/{applicationId}/v{version}/{documentType}/
         if (versionIndex > 0 && versionIndex < pathParts.length - 1) {
           const applicationId = pathParts[versionIndex - 1];
           const versionStr = pathParts[versionIndex].substring(1); // 移除 'v' 前缀
@@ -394,10 +410,23 @@ export class Role extends BaseRole {
       if (data?.applicationId && data?.version) {
         return {
           applicationId: data.applicationId,
+          projectId: data.projectId,
           version: data.version,
           documentType: this.getDocumentTypeForAction(this.rc.todo?.name || ''),
         };
       }
+    }
+
+    // 如果无法从消息中提取，尝试从 Context 中获取
+    const applicationId = this.context?.get('applicationId');
+    const projectId = this.context?.get('projectId');
+    if (applicationId && projectId) {
+      return {
+        applicationId: applicationId as string,
+        projectId: projectId as string,
+        version: 1, // 默认版本为 1
+        documentType: this.getDocumentTypeForAction(this.rc.todo?.name || ''),
+      };
     }
 
     return undefined;

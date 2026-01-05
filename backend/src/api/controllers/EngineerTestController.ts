@@ -37,13 +37,20 @@ function getValidUserId(userId: string | undefined): string | null {
 
 /**
  * Load documents from workspace filesystem
- * Reads from workspace/{applicationId}/v{version}/{documentType}/ directories
- * For example: workspace/default/v1/PRD/, workspace/default/v1/DESIGN/, workspace/default/v1/TASKS/
+ * Reads from workspace/{applicationId}/{projectId}/v{version}/{documentType}/ directories
+ * applicationId 和 projectId 必须提供，不能使用 'default'，以防止不同应用/项目互相覆盖文件
  */
 async function loadDocumentsFromWorkspace(
-    applicationId: string = 'default',
+    applicationId: string,
+    projectId: string,
     version: number = 1
 ): Promise<{ prd: string; design: string; taskBreakdown: string }> {
+    if (!applicationId) {
+        throw new Error('applicationId is required for loadDocumentsFromWorkspace. Cannot use "default" to prevent file conflicts between different applications.');
+    }
+    if (!projectId) {
+        throw new Error('projectId is required for loadDocumentsFromWorkspace. Cannot use "default" to prevent file conflicts between different projects.');
+    }
     const result = {
         prd: '',
         design: '',
@@ -59,6 +66,7 @@ async function loadDocumentsFromWorkspace(
         // Load PRD
         const prdContent = await WorkspaceManager.readAllFromWorkspace({
             applicationId,
+            projectId,
             version,
             documentType: 'PRD',
             workspacePath,
@@ -68,6 +76,7 @@ async function loadDocumentsFromWorkspace(
         // Load DESIGN
         const designContent = await WorkspaceManager.readAllFromWorkspace({
             applicationId,
+            projectId,
             version,
             documentType: 'DESIGN',
             workspacePath,
@@ -77,6 +86,7 @@ async function loadDocumentsFromWorkspace(
         // Load TASKS
         const tasksContent = await WorkspaceManager.readAllFromWorkspace({
             applicationId,
+            projectId,
             version,
             documentType: 'TASKS',
             workspacePath,
@@ -149,8 +159,20 @@ export async function testWriteCode(req: Request, res: Response) {
             llmConfig,
         } = req.body as EngineerTestRequest;
 
-        // Determine applicationId and version from workspaceOptions or use defaults
-        const applicationId = workspaceOptions?.applicationId || 'default';
+        // Determine applicationId, projectId and version from workspaceOptions
+        // applicationId 和 projectId 必须提供，不能使用 'default'
+        if (!workspaceOptions?.applicationId) {
+            return res.status(400).json({
+                error: 'applicationId is required in workspaceOptions. Cannot use "default" to prevent file conflicts between different applications.',
+            });
+        }
+        if (!workspaceOptions?.projectId) {
+            return res.status(400).json({
+                error: 'projectId is required in workspaceOptions. Cannot use "default" to prevent file conflicts between different projects.',
+            });
+        }
+        const applicationId = workspaceOptions.applicationId;
+        const projectId = workspaceOptions.projectId;
         const version = workspaceOptions?.version || 1;
 
         // Load documents from workspace if not provided in request
@@ -159,7 +181,7 @@ export async function testWriteCode(req: Request, res: Response) {
         let taskBreakdown = providedTaskBreakdown;
 
         if (!prd || !design || !taskBreakdown) {
-            const workspaceDocs = await loadDocumentsFromWorkspace(applicationId, version);
+            const workspaceDocs = await loadDocumentsFromWorkspace(applicationId, projectId, version);
             prd = prd || workspaceDocs.prd;
             design = design || workspaceDocs.design;
             taskBreakdown = taskBreakdown || workspaceDocs.taskBreakdown;
@@ -298,8 +320,20 @@ export async function testExecuteSubtask(req: Request, res: Response) {
             llmConfig,
         } = req.body as EngineerTestRequest;
 
-        // Determine applicationId and version from workspaceOptions or use defaults
-        const applicationId = workspaceOptions?.applicationId || 'default';
+        // Determine applicationId, projectId and version from workspaceOptions
+        // applicationId 和 projectId 必须提供，不能使用 'default'
+        if (!workspaceOptions?.applicationId) {
+            return res.status(400).json({
+                error: 'applicationId is required in workspaceOptions. Cannot use "default" to prevent file conflicts between different applications.',
+            });
+        }
+        if (!workspaceOptions?.projectId) {
+            return res.status(400).json({
+                error: 'projectId is required in workspaceOptions. Cannot use "default" to prevent file conflicts between different projects.',
+            });
+        }
+        const applicationId = workspaceOptions.applicationId;
+        const projectId = workspaceOptions.projectId;
         const version = workspaceOptions?.version || 1;
 
         // Load documents from workspace if not provided in request
@@ -308,7 +342,7 @@ export async function testExecuteSubtask(req: Request, res: Response) {
         let taskBreakdown = providedTaskBreakdown;
 
         if (!prd || !design || !taskBreakdown) {
-            const workspaceDocs = await loadDocumentsFromWorkspace(applicationId, version);
+            const workspaceDocs = await loadDocumentsFromWorkspace(applicationId, projectId, version);
             prd = prd || workspaceDocs.prd;
             design = design || workspaceDocs.design;
             taskBreakdown = taskBreakdown || workspaceDocs.taskBreakdown;
@@ -490,8 +524,20 @@ export async function testCustom(req: Request, res: Response) {
             });
         }
 
-        // Determine applicationId and version from workspaceOptions or use defaults
-        const applicationId = workspaceOptions?.applicationId || 'default';
+        // Determine applicationId, projectId and version from workspaceOptions
+        // applicationId 和 projectId 必须提供，不能使用 'default'
+        if (!workspaceOptions?.applicationId) {
+            return res.status(400).json({
+                error: 'applicationId is required in workspaceOptions. Cannot use "default" to prevent file conflicts between different applications.',
+            });
+        }
+        if (!workspaceOptions?.projectId) {
+            return res.status(400).json({
+                error: 'projectId is required in workspaceOptions. Cannot use "default" to prevent file conflicts between different projects.',
+            });
+        }
+        const applicationId = workspaceOptions.applicationId;
+        const projectId = workspaceOptions.projectId;
         const version = workspaceOptions?.version || 1;
 
         // Load documents from workspace if not provided in request
@@ -500,7 +546,7 @@ export async function testCustom(req: Request, res: Response) {
         let taskBreakdown = providedTaskBreakdown;
 
         if (!prd || !design || !taskBreakdown) {
-            const workspaceDocs = await loadDocumentsFromWorkspace(applicationId, version);
+            const workspaceDocs = await loadDocumentsFromWorkspace(applicationId, projectId, version);
             prd = prd || workspaceDocs.prd;
             design = design || workspaceDocs.design;
             taskBreakdown = taskBreakdown || workspaceDocs.taskBreakdown;

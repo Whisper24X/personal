@@ -22,6 +22,8 @@ export interface SessionConfig {
   investment: number;
   nRound: number;
   userId?: string;
+  applicationId?: string;
+  projectId?: string;
 }
 
 export interface UserActionMessage {
@@ -62,6 +64,16 @@ export class InteractiveSession {
     // Set userId in context so roles can load their specific LLM configs
     if (this.userId) {
       ctx.set('userId', this.userId);
+    }
+    // Set applicationId and projectId in context for workspace operations
+    if (config.applicationId) {
+      ctx.set('applicationId', config.applicationId);
+    }
+    if (config.projectId) {
+      ctx.set('projectId', config.projectId);
+    } else {
+      // Use session id as projectId if not provided
+      ctx.set('projectId', id);
     }
     this.team = new Team(ctx, false); // We'll handle interaction via WebSocket
 

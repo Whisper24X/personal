@@ -29,6 +29,7 @@ export interface WritePRDOptions {
   useRAG?: boolean;
   useStepwiseGeneration?: boolean; // 是否使用分步骤生成
   applicationId?: string; // 应用ID，用于文件夹命名
+  projectId?: string; // 项目ID，用于文件夹命名
   version?: number; // 版本号，用于文件夹命名
   workspacePath?: string; // workspace 路径，默认 ./workspace
 }
@@ -46,7 +47,11 @@ export class WritePRD extends BaseAction {
     // 优先从 workspace 读取 MRD.md 文件作为输入
     let mrdContent = input;
     try {
-      const applicationId = options?.applicationId || 'default';
+      // applicationId 必须提供，不能使用 'default'
+      if (!options?.applicationId) {
+        throw new Error('applicationId is required for WritePRD action. Cannot use "default" to prevent file conflicts between different applications.');
+      }
+      const applicationId = options.applicationId;
       const version = options?.version || 1;
 
       const mrdFromWorkspace = await WorkspaceManager.readFile('MRD.md', {
@@ -290,6 +295,7 @@ export class WritePRD extends BaseAction {
       ],
       workspaceDir,
       applicationId: options?.applicationId,
+      projectId: options?.projectId,
       version: options?.version,
     });
 

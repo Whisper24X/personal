@@ -20,6 +20,7 @@ export interface ImproveDocumentOptions {
   documentType: 'PRD' | 'MRD' | 'DESIGN';
   reviewReport?: string; // 审查报告内容，如果不提供则从workspace读取
   applicationId?: string;
+  projectId?: string;
   version?: number;
   workspacePath?: string;
 }
@@ -40,7 +41,11 @@ export class ImproveDocument extends BaseAction {
       throw new Error('Document type must be PRD, MRD, or DESIGN');
     }
 
-    const applicationId = options?.applicationId || 'default';
+    // applicationId 必须提供，不能使用 'default'
+    if (!options?.applicationId) {
+      throw new Error('applicationId is required for ImproveDocument action. Cannot use "default" to prevent file conflicts between different applications.');
+    }
+    const applicationId = options.applicationId;
     const version = options?.version || 1;
 
     logger.info('ImproveDocument: Starting document improvement', {

@@ -86,7 +86,14 @@ export class Engineer extends Role {
     try {
       // 获取workspace选项
       const workspaceOptions = this.extractWorkspaceOptions();
-      const applicationId = workspaceOptions?.applicationId || 'default';
+      
+      // applicationId 必须提供，不能使用 'default'
+      if (!workspaceOptions?.applicationId) {
+        logger.error(`${this.profile} WriteCode: applicationId is required in workspaceOptions. Cannot use "default" to prevent file conflicts between different applications.`);
+        this.rc.todo = null;
+        return null;
+      }
+      const applicationId = workspaceOptions.applicationId;
       const version = workspaceOptions?.version || 1;
 
       // 检查是否启用自动编码

@@ -123,7 +123,11 @@ export async function createWorkspaceZip(
   options: WorkspaceOptions,
   outputPath?: string
 ): Promise<string> {
-  const applicationId = options.applicationId || 'default';
+  // applicationId 必须提供，不能使用 'default'
+  if (!options.applicationId) {
+    throw new Error('applicationId is required for createWorkspaceZip. Cannot use "default" to prevent file conflicts between different applications.');
+  }
+  const applicationId = options.applicationId;
   const version = options.version || 1;
   
   // Calculate workspace root
@@ -166,36 +170,46 @@ export async function createWorkspaceZip(
     fs.mkdirSync(workspaceRoot, { recursive: true });
   }
 
-  // Find all workspace directories for this application and version
-  // 新的目录结构：workspace/{applicationId}/v{version}/{documentType}/
+  // Find all workspace directories for this application, project and version
+  // 新的目录结构：workspace/{applicationId}/{projectId}/v{version}/{documentType}/
   const workspaceDirs: Array<{ name: string; path: string }> = [];
   const documentTypes = ['PRD', 'DESIGN', 'TASKS', 'CODE', 'DOCS'];
+  
+  // projectId 必须提供
+  if (!options.projectId) {
+    throw new Error('projectId is required for createWorkspaceZip. Cannot use "default" to prevent file conflicts between different projects.');
+  }
+  const projectId = options.projectId;
   
   try {
     // 检查应用目录是否存在：workspace/{applicationId}/
     const applicationDir = path.join(workspaceRoot, applicationId);
     if (fs.existsSync(applicationDir)) {
-      // 检查版本目录是否存在：workspace/{applicationId}/v{version}/
-      const versionDir = path.join(applicationDir, `v${version}`);
-      if (fs.existsSync(versionDir)) {
-        // 遍历版本目录下的所有文档类型目录
-        const entries = fs.readdirSync(versionDir, { withFileTypes: true });
-        for (const entry of entries) {
-          if (entry.isDirectory() && documentTypes.includes(entry.name)) {
-            const dirPath = path.join(versionDir, entry.name);
-            // Check if directory has files
-            try {
-              const files = fs.readdirSync(dirPath);
-              if (files.length > 0) {
-                // 使用相对路径作为名称，保持目录结构
-                const relativePath = path.join(applicationId, `v${version}`, entry.name);
-                workspaceDirs.push({
-                  name: relativePath,
-                  path: dirPath,
-                });
+      // 检查项目目录是否存在：workspace/{applicationId}/{projectId}/
+      const projectDir = path.join(applicationDir, projectId);
+      if (fs.existsSync(projectDir)) {
+        // 检查版本目录是否存在：workspace/{applicationId}/{projectId}/v{version}/
+        const versionDir = path.join(projectDir, `v${version}`);
+        if (fs.existsSync(versionDir)) {
+          // 遍历版本目录下的所有文档类型目录
+          const entries = fs.readdirSync(versionDir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (entry.isDirectory() && documentTypes.includes(entry.name)) {
+              const dirPath = path.join(versionDir, entry.name);
+              // Check if directory has files
+              try {
+                const files = fs.readdirSync(dirPath);
+                if (files.length > 0) {
+                  // 使用相对路径作为名称，保持目录结构
+                  const relativePath = path.join(applicationId, projectId, `v${version}`, entry.name);
+                  workspaceDirs.push({
+                    name: relativePath,
+                    path: dirPath,
+                  });
+                }
+              } catch {
+                // Skip directories we can't read
               }
-            } catch {
-              // Skip directories we can't read
             }
           }
         }
@@ -222,7 +236,7 @@ export async function createWorkspaceZip(
     const readmePath = path.join(tempWorkspaceDir, 'README.md');
     fs.writeFileSync(
       readmePath,
-      `# Workspace Archive\n\nThis workspace was created automatically.\n\nApplication ID: ${applicationId}\nVersion: ${version}\n\nNo files have been generated yet.\n\nTo enable code generation, set ENGINEER_AUTO_CODE=true in your .env file.\n`
+      `# Workspace Archive\n\nThis workspace was created automatically.\n\nApplication ID: ${applicationId}\nProject ID: ${projectId}\nVersion: ${version}\n\nNo files have been generated yet.\n\nTo enable code generation, set ENGINEER_AUTO_CODE=true in your .env file.\n`
     );
     
     // Create zip from temporary directory
@@ -307,7 +321,11 @@ export async function createCodeZip(
 ): Promise<string> {
   // Generate output path if not provided
   if (!outputPath) {
-    const applicationId = options.applicationId || 'default';
+    // applicationId 必须提供，不能使用 'default'
+    if (!options.applicationId) {
+      throw new Error('applicationId is required for createCodeZip. Cannot use "default" to prevent file conflicts between different applications.');
+    }
+    const applicationId = options.applicationId;
     const version = options.version || 1;
     const tempDir = path.join(process.cwd(), 'temp');
     if (!fs.existsSync(tempDir)) {
