@@ -143,7 +143,7 @@ function viewProject(project: any) {
           applicationId: route.params.id as string,
         }
       });
-    }).catch((err: any) => {
+    }).catch(() => {
       // 如果获取项目详情失败，使用基本信息跳转
       router.push({
         path: '/project/interactive',
