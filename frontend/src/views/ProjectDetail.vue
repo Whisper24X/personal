@@ -215,6 +215,7 @@ import { useProjectStore } from '../stores/project';
 import { storeToRefs } from 'pinia';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { apiClient } from '../api/client';
+import MarkdownIt from 'markdown-it';
 import {
   TrendCharts,
   Refresh,
@@ -224,6 +225,13 @@ import {
   View,
   VideoPlay
 } from '@element-plus/icons-vue';
+
+// Initialize markdown parser
+const md = new MarkdownIt({
+  html: true,
+  linkify: true,
+  typographer: true,
+});
 
 const route = useRoute();
 const router = useRouter();
@@ -304,7 +312,9 @@ async function viewMRD(mrd: any) {
       ElMessage.warning('MRD 内容为空');
       return;
     }
-    const blob = new Blob([content], { type: 'text/markdown' });
+    // Render markdown to HTML
+    const htmlContent = renderMarkdownDocument(content, mrd.filename || 'MRD 文档');
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');
   } catch (err: any) {
@@ -313,16 +323,189 @@ async function viewMRD(mrd: any) {
 }
 
 function viewPRD(prd: any) {
-  const blob = new Blob([prd.content], { type: 'text/markdown' });
+  // Render markdown to HTML
+  const htmlContent = renderMarkdownDocument(prd.content, prd.filename || 'PRD 文档');
+  const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   window.open(url, '_blank');
 }
 
 function viewDocument(doc: any) {
-  // Open document in modal or new window
-  const blob = new Blob([doc.content], { type: 'text/markdown' });
+  // Render markdown to HTML
+  const htmlContent = renderMarkdownDocument(doc.content, doc.filename || '文档');
+  const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   window.open(url, '_blank');
+}
+
+// Helper function to render markdown document as HTML page
+function renderMarkdownDocument(markdownContent: string, title: string): string {
+  // Render markdown to HTML
+  const renderedHtml = md.render(markdownContent);
+
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)}</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.8;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      background: #fafafa;
+      color: #333;
+    }
+    .markdown-body {
+      background: #fff;
+      padding: 40px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    h1 {
+      font-size: 2em;
+      border-bottom: 2px solid #eaecef;
+      padding-bottom: 0.3em;
+      margin-top: 0;
+      margin-bottom: 16px;
+    }
+    h2 {
+      font-size: 1.5em;
+      border-bottom: 1px solid #eaecef;
+      padding-bottom: 0.3em;
+      margin-top: 24px;
+      margin-bottom: 16px;
+    }
+    h3 {
+      font-size: 1.25em;
+      margin-top: 20px;
+      margin-bottom: 12px;
+    }
+    h4 {
+      font-size: 1em;
+      margin-top: 16px;
+      margin-bottom: 8px;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      font-weight: 600;
+      line-height: 1.25;
+      color: #24292e;
+    }
+    p {
+      margin-top: 0;
+      margin-bottom: 16px;
+    }
+    ul, ol {
+      margin-top: 0;
+      margin-bottom: 16px;
+      padding-left: 2em;
+    }
+    li {
+      margin-bottom: 8px;
+    }
+    blockquote {
+      padding: 0 1em;
+      color: #6a737d;
+      border-left: 0.25em solid #dfe2e5;
+      margin: 0 0 16px 0;
+    }
+    code {
+      padding: 0.2em 0.4em;
+      margin: 0;
+      font-size: 85%;
+      background-color: rgba(27, 31, 35, 0.05);
+      border-radius: 3px;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    }
+    pre {
+      padding: 16px;
+      overflow: auto;
+      font-size: 85%;
+      line-height: 1.45;
+      background-color: #f6f8fa;
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+    pre code {
+      display: inline;
+      max-width: auto;
+      padding: 0;
+      margin: 0;
+      overflow: visible;
+      line-height: inherit;
+      word-wrap: normal;
+      background-color: transparent;
+      border: 0;
+    }
+    table {
+      border-spacing: 0;
+      border-collapse: collapse;
+      width: 100%;
+      margin-bottom: 16px;
+    }
+    table th,
+    table td {
+      padding: 6px 13px;
+      border: 1px solid #dfe2e5;
+    }
+    table th {
+      font-weight: 600;
+      background-color: #f6f8fa;
+    }
+    table tr:nth-child(2n) {
+      background-color: #f6f8fa;
+    }
+    a {
+      color: #0366d6;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      margin: 16px 0;
+    }
+    hr {
+      height: 0.25em;
+      padding: 0;
+      margin: 24px 0;
+      background-color: #e1e4e8;
+      border: 0;
+    }
+    strong {
+      font-weight: 600;
+    }
+    @media (max-width: 768px) {
+      body {
+        padding: 20px 10px;
+      }
+      .markdown-body {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="markdown-body">
+    ${renderedHtml}
+  </div>
+</body>
+</html>`;
+}
+
+// Helper function to escape HTML special characters
+function escapeHtml(text: string): string {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 function getStatusType(status: string): 'success' | 'warning' | 'info' | 'danger' {
