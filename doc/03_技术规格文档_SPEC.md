@@ -397,17 +397,19 @@ class Action(BaseModel):
 ### 5.1 技术约束
 
 **运行环境**:
-- Server / Local（命令行或 Python 脚本）
+- Server / Local（命令行或 Node.js 脚本）
 - 操作系统：Linux / macOS / Windows
-- Python 版本：3.9 - 3.11（不支持 3.12+）
+- Node.js 版本：v18+（推荐 v20+）
 
 **语言 / 框架**:
-- 主语言：Python 3.9+
-- 依赖管理：pip / poetry
-- 异步框架：asyncio
-- 数据验证：Pydantic v2
-- CLI 框架：Typer
-- 测试框架：pytest
+- 主语言：TypeScript 5.3+
+- 运行时：Node.js v18+
+- 依赖管理：pnpm（monorepo）
+- 异步框架：async/await + Promise
+- 数据验证：Zod v3.22+
+- CLI 框架：Commander.js
+- 测试框架：Jest
+- Web 框架：Express
 
 **第三方依赖**:
 - ✅ 允许引入必要的依赖
@@ -423,9 +425,9 @@ class Action(BaseModel):
 ### 5.2 架构原则
 
 **架构形态**:
-- **主体**: 模块化单体架构
+- **主体**: 模块化单体架构（monorepo）
 - **扩展**: 插件化设计（角色、Action 可扩展）
-- **部署**: 单进程多协程（asyncio）
+- **部署**: 单进程异步（Node.js Event Loop）
 
 **设计优先级**:
 1. **可扩展性** - 易于添加新角色和 Action

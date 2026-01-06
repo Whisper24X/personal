@@ -6,7 +6,7 @@
 
 本文档集为即思即成（Mind2Build）多代理协作框架提供完整的项目文档，涵盖产品需求、技术规格、系统架构、任务拆解、API 参考等内容，帮助开发者理解和实现该框架。
 
-**技术架构**: Node.js + Vue + Vite + PostgreSQL
+**技术架构**: Node.js + TypeScript + Vue 3 + Vite + PostgreSQL
 
 ---
 
@@ -280,6 +280,8 @@
 - **维护状态**: 活跃维护中
 
 ### 更新日志
+- 2025-12-25: 根据代码实现更新角色系统设计文档，详细说明每个角色的监听机制、Actions 和工作流程，移除不存在的 CodeReview action，添加各角色的实际监听目标和约束条件
+- 2025-12-25: 根据代码实现全面更新文档，修正技术栈描述（Node.js + TypeScript，而非 Python），更新 Actions 列表（WriteMRD, MRDReview, DesignReview, SubProjectDesignReview, ExecuteSubtask），添加 WebSocket API 文档，更新 LLM 提供商状态（OpenAI, ZhipuAI, Ark, Cursor）
 - 2025-12-25: 根据代码实现更新文档，添加 ProjectManager 角色和新增 Actions（BreakdownTasks, WriteSubProjectDesign, GenerateTask, CodeReview）的完整描述
 - 2025-12-25: 新增项目介绍与使用指南(25)、设计方案文档(24)
 - 2025-12-24: 初始版本创建，完整文档结构建立
@@ -288,9 +290,10 @@
 
 ## 🔗 技术架构
 
-- **后端**: Node.js
-- **前端**: Vue + Vite
+- **后端**: Node.js + TypeScript + Express
+- **前端**: Vue 3 + Vite + TypeScript
 - **数据库**: PostgreSQL
+- **包管理**: pnpm (monorepo)
 - **核心理念**: Code = SOP(Team)
 - **特色**: 让所思，即所得
 

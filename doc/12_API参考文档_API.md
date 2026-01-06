@@ -383,7 +383,122 @@
 }
 ```
 
-### 1.7 配置管理 API
+#### 轮询消息（Polling）
+
+**GET** `/api/interactive/:sessionId/poll`
+
+轮询获取会话的新消息（用于不支持 WebSocket 的场景）。
+
+**查询参数**:
+- `lastMessageId`: 上次获取的最后一条消息ID（可选）
+
+**响应**:
+```json
+{
+  "messages": [
+    {
+      "id": "消息UUID",
+      "type": "agent_output",
+      "content": "消息内容",
+      "role": "Salesperson",
+      "action": "WriteMRD",
+      "timestamp": "2025-12-25T00:00:00Z"
+    }
+  ],
+  "lastMessageId": "最后一条消息ID",
+  "hasMore": false
+}
+```
+
+#### 发送用户操作
+
+**POST** `/api/interactive/:sessionId/action`
+
+发送用户操作（确认、修改、跳过等）。
+
+**请求体**:
+```json
+{
+  "action": "continue",  // continue, edit, regenerate, skip, quit
+  "modifiedContent": "修改后的内容（可选，edit 时必需）"
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Action processed successfully"
+}
+```
+
+**支持的操作**:
+- `continue` / `c`: 确认继续
+- `edit` / `e`: 修改后继续（需要提供 `modifiedContent`）
+- `regenerate` / `r`: 重新生成
+- `skip` / `s`: 跳过当前节点
+- `quit` / `q`: 退出流程
+
+### 1.7 WebSocket API
+
+#### 连接 WebSocket
+
+**WS** `ws://localhost:3000/ws`
+
+建立 WebSocket 连接以接收实时消息更新。
+
+**连接参数**:
+- `sessionId`: 会话ID（必需）
+
+**连接示例**:
+```javascript
+const ws = new WebSocket('ws://localhost:3000/ws?sessionId=your-session-id');
+
+ws.on('open', () => {
+  console.log('WebSocket connected');
+});
+
+ws.on('message', (data) => {
+  const message = JSON.parse(data);
+  console.log('Received:', message);
+});
+
+ws.on('error', (error) => {
+  console.error('WebSocket error:', error);
+});
+```
+
+**消息格式**:
+
+**客户端发送**:
+```json
+{
+  "type": "action",
+  "action": "continue",  // continue, edit, regenerate, skip, quit
+  "modifiedContent": "修改后的内容（可选）"
+}
+```
+
+**服务器推送**:
+```json
+{
+  "type": "agent_output",
+  "id": "消息UUID",
+  "role": "Salesperson",
+  "action": "WriteMRD",
+  "content": "消息内容",
+  "files": ["MRD.md"],
+  "timestamp": "2025-12-25T00:00:00Z"
+}
+```
+
+**消息类型**:
+- `agent_output`: Agent 输出消息
+- `user_action`: 用户操作确认
+- `error`: 错误消息
+- `status`: 状态更新（开始、暂停、完成等）
+
+### 1.8 配置管理 API
 
 #### LLM 配置
 
@@ -484,7 +599,7 @@
 
 **DELETE** `/api/config/prompts/:type/:key`
 
-### 1.8 测试 API
+### 1.9 测试 API
 
 #### 获取工程师信息
 

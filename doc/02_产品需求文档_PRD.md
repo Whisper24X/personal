@@ -82,33 +82,45 @@
 
 ```mermaid
 graph TB
-    User[用户需求] --> TL[Team Leader<br/>Mike<br/>协调与决策]
-    TL --> Sales[Salesperson<br/>Sales<br/>需求收集与分析]
-    TL --> PM[Product Manager<br/>Alice<br/>需求分析与PRD]
-    TL --> Arch[Architect<br/>Bob<br/>系统设计]
-    TL --> Eng[Engineer<br/>工程实现]
-    TL --> QA[QA Engineer<br/>质量保证]
-    TL --> DA[Data Analyst<br/>数据分析]
+    User[用户需求] --> Sales[Salesperson<br/>需求收集与分析<br/>监听: User消息]
+    Sales --> MRD[MRD文档<br/>WriteMRD]
     
-    Sales --> ReqSpec[需求说明文档]
-    PM --> PRD[PRD文档]
-    Arch --> Design[设计文档]
-    Eng --> Code[源代码]
-    QA --> Tests[测试用例]
-    DA --> Analysis[分析报告]
+    MRD --> PM[ProductManager<br/>需求分析与PRD<br/>监听: WriteMRD]
+    PM --> PRD[PRD文档<br/>WritePRD]
+    
+    PRD --> Arch[Architect<br/>系统设计<br/>监听: WritePRD]
+    Arch --> Design[设计文档<br/>WriteDesign]
+    
+    PRD --> PMgr[ProjectManager<br/>任务拆分与规划<br/>监听: WritePRD, WriteDesign]
+    Design --> PMgr
+    PMgr --> Tasks[任务拆分文档<br/>BreakdownTasks]
+    
+    Design --> Eng[Engineer<br/>工程实现<br/>监听: WritePRD, WriteDesign, BreakdownTasks]
+    Tasks --> Eng
+    Eng --> Code[源代码<br/>WriteCode, ExecuteSubtask]
+    
+    Code --> QA[QAEngineer<br/>质量保证<br/>监听: WriteCode]
+    QA --> Tests[测试用例<br/>WriteTest]
+    
+    User -.-> TL[TeamLeader<br/>协调与决策<br/>监听: 所有广播消息]
+    TL -.-> Coordinate[协调结果<br/>Coordinate]
+    
+    User -.-> DA[DataAnalyst<br/>数据分析<br/>独立任务]
+    DA --> Analysis[分析报告<br/>DataAnalysis]
 ```
 
 ##### 角色详细规格
 
-| 角色 | 默认名称 | 核心职责 | 主要 Actions | 输入 | 输出 |
-|------|---------|---------|-------------|------|------|
-| Salesperson | Sales | 需求收集、市场调研、业务分析 | WriteMRD | 用户需求 | 市场研究文档（MRD） |
-| ProductManager | Alice | PRD编写、需求分析 | WritePRD, SearchEnhancedQA | 市场研究文档（MRD） | PRD文档 |
-| Architect | Bob | 系统设计、架构规划 | WriteDesign | PRD | 设计文档 |
-| Engineer | - | 代码实现 | WriteCode | 设计文档 | 源代码 |
-| QA Engineer | - | 测试编写与执行 | WriteTest | 代码 | 测试用例 |
-| Data Analyst | - | 数据分析 | DataAnalysis | 数据需求 | 分析代码+可视化 |
-| Team Leader | Mike | 协调、决策 | Coordinate | 所有消息 | 任务分配 |
+| 角色 | 默认名称 | 核心职责 | 监听机制 | 主要 Actions | 输入 | 输出 |
+|------|---------|---------|---------|-------------|------|------|
+| Salesperson | Salesperson | 需求收集、市场调研、业务分析 | 监听 User 消息 | WriteMRD | 用户原始需求 | 市场研究文档（MRD） |
+| ProductManager | ProductManager | PRD编写、需求分析 | 监听 WriteMRD action | WritePRD, SearchEnhancedQA | 市场研究文档（MRD） | PRD文档 |
+| Architect | Architect | 系统设计、架构规划 | 监听 WritePRD action | WriteDesign | PRD文档 | 设计文档 |
+| ProjectManager | ProjectManager | 任务拆分、子项目设计、任务生成 | 监听 WritePRD 和 WriteDesign actions | BreakdownTasks, WriteSubProjectDesign, GenerateTask | PRD和设计文档 | 任务拆分文档、子项目设计、任务说明 |
+| Engineer | Engineer | 代码实现 | 监听 WritePRD, WriteDesign, BreakdownTasks actions | WriteCode, ExecuteSubtask | 设计文档、任务拆分 | TypeScript/JavaScript源代码 |
+| QA Engineer | QAEngineer | 测试编写与执行 | 监听 WriteCode action | WriteTest | 代码 | 测试用例 |
+| Data Analyst | DataAnalyst | 数据分析 | 无特定监听（独立任务） | DataAnalysis | 数据需求 | 分析代码+可视化 |
+| Team Leader | TeamLeader | 协调、决策 | 监听所有广播消息 | Coordinate | 所有消息历史 | 协调结果和任务分配 |
 
 ### 2.2 标准操作流程（SOP）[P0 - 核心功能]
 
@@ -151,33 +163,36 @@ graph TB
 ```mermaid
 sequenceDiagram
     participant User as 用户
-    participant TL as TeamLeader
     participant Sales as Salesperson
     participant PM as ProductManager
     participant Arch as Architect
+    participant PMgr as ProjectManager
     participant Eng as Engineer
     participant QA as QA Engineer
     participant Env as Environment
     
-    User->>Env: 发布需求消息
-    Env->>TL: 路由消息
-    TL->>Sales: 分配需求收集任务
-    Sales->>Sales: 执行 WriteRequirementSpec
-    Sales->>Env: 发布需求说明文档
+    User->>Env: 发布需求消息（User类型）
+    Env->>Sales: 路由消息（Salesperson监听User消息）
+    Sales->>Sales: 执行 WriteMRD
+    Sales->>Env: 发布MRD文档
     
-    Env->>PM: 路由需求说明
+    Env->>PM: 路由MRD（ProductManager监听WriteMRD）
     PM->>PM: 执行 WritePRD
     PM->>Env: 发布PRD文档
     
-    Env->>Arch: 路由PRD
+    Env->>Arch: 路由PRD（Architect监听WritePRD）
     Arch->>Arch: 执行 WriteDesign
     Arch->>Env: 发布设计文档
     
-    Env->>Eng: 路由设计文档
-    Eng->>Eng: 执行 WriteCode
+    Env->>PMgr: 路由PRD和Design（ProjectManager监听WritePRD和WriteDesign）
+    PMgr->>PMgr: 执行 BreakdownTasks
+    PMgr->>Env: 发布任务拆分文档
+    
+    Env->>Eng: 路由设计文档和任务拆分（Engineer监听WritePRD, WriteDesign, BreakdownTasks）
+    Eng->>Eng: 执行 WriteCode / ExecuteSubtask
     Eng->>Env: 发布代码
     
-    Env->>QA: 路由代码
+    Env->>QA: 路由代码（QAEngineer监听WriteCode）
     QA->>QA: 执行 WriteTest
     QA->>Env: 发布测试
     
@@ -192,18 +207,19 @@ sequenceDiagram
     participant Sales as Salesperson
     participant PM as ProductManager
     participant Arch as Architect
+    participant PMgr as ProjectManager
     participant Eng as Engineer
     
     User->>Env: 发布需求消息 (--interactive)
-    Env->>Sales: 分配任务
-    Sales->>Sales: 执行 WriteRequirementSpec
-    Sales->>Env: 发布需求说明文档
+    Env->>Sales: 路由消息（Salesperson监听User消息）
+    Sales->>Sales: 执行 WriteMRD
+    Sales->>Env: 发布MRD文档
     
-    Env->>User: 🛑 暂停：展示需求说明文档
+    Env->>User: 🛑 暂停：展示MRD文档
     User->>User: 查看并修改文档
     User->>Env: ✅ 确认继续
     
-    Env->>PM: 路由需求说明
+    Env->>PM: 路由MRD（ProductManager监听WriteMRD）
     PM->>PM: 执行 WritePRD
     PM->>Env: 发布PRD文档
     
@@ -211,7 +227,7 @@ sequenceDiagram
     User->>User: 查看并修改PRD
     User->>Env: ✅ 确认继续
     
-    Env->>Arch: 路由PRD
+    Env->>Arch: 路由PRD（Architect监听WritePRD）
     Arch->>Arch: 执行 WriteDesign
     Arch->>Env: 发布设计文档
     
@@ -219,8 +235,16 @@ sequenceDiagram
     User->>User: 查看并修改设计
     User->>Env: ✅ 确认继续
     
-    Env->>Eng: 路由设计文档
-    Eng->>Eng: 执行 WriteCode
+    Env->>PMgr: 路由PRD和Design（ProjectManager监听WritePRD和WriteDesign）
+    PMgr->>PMgr: 执行 BreakdownTasks
+    PMgr->>Env: 发布任务拆分文档
+    
+    Env->>User: 🛑 暂停：展示任务拆分文档
+    User->>User: 查看并修改任务拆分
+    User->>Env: ✅ 确认继续
+    
+    Env->>Eng: 路由设计文档和任务拆分（Engineer监听WritePRD, WriteDesign, BreakdownTasks）
+    Eng->>Eng: 执行 WriteCode / ExecuteSubtask
     Eng->>Env: 发布代码
     
     Env->>User: 🛑 暂停：展示生成代码
@@ -342,17 +366,19 @@ graph LR
 
 | Action | 功能 | 输入 | 输出 | 使用角色 | 状态 |
 |--------|------|------|------|---------|------|
-| UserRequirement | 用户需求收集 | 用户原始需求 | 结构化需求 | Salesperson | ✅ 已实现 |
-| WriteRequirementSpec | 编写需求说明文档 | 用户需求 | 需求说明文档 | Salesperson | ✅ 已实现 |
-| RequirementSpecReview | 需求说明文档审查 | 需求说明文档 | 审查报告 | Salesperson | ✅ 已实现 |
-| WritePRD | 编写产品需求文档 | 需求说明文档 | PRD Markdown | ProductManager | ✅ 已实现 |
+| WriteMRD | 编写市场研究文档 | 用户需求 | 市场研究文档（MRD） | Salesperson | ✅ 已实现 |
+| MRDReview | MRD文档审查 | MRD文档 | 审查报告 | Salesperson | ✅ 已实现 |
+| WritePRD | 编写产品需求文档 | MRD或需求说明 | PRD Markdown | ProductManager | ✅ 已实现 |
 | PRDReview | PRD文档审查 | PRD文档 | 审查报告 | ProductManager | ✅ 已实现 |
 | ImproveDocument | 根据审查报告改进文档 | 审查报告 | 改进后的PRD/MRD | ProductManager/Salesperson | ✅ 已实现 |
 | WriteDesign | 编写系统设计 | PRD | 设计文档 | Architect | ✅ 已实现 |
+| DesignReview | 设计文档审查 | 设计文档 | 审查报告 | Architect | ✅ 已实现 |
 | BreakdownTasks | 任务拆分 | PRD和设计文档 | 任务拆分文档 | ProjectManager | ✅ 已实现 |
 | WriteSubProjectDesign | 子项目设计 | 任务拆分和设计文档 | 子项目设计文档 | ProjectManager | ✅ 已实现 |
+| SubProjectDesignReview | 子项目设计审查 | 子项目设计文档 | 审查报告 | ProjectManager | ✅ 已实现 |
 | GenerateTask | 生成任务说明 | 任务拆分文档 | 详细任务说明 | ProjectManager | ✅ 已实现 |
-| WriteCode | 编写代码 | 设计文档 | Python/JS代码 | Engineer | ✅ 已实现 |
+| WriteCode | 编写代码 | 设计文档 | TypeScript/JavaScript代码 | Engineer | ✅ 已实现 |
+| ExecuteSubtask | 执行子任务 | 任务描述、设计文档 | 代码实现结果 | Engineer | ✅ 已实现 |
 | CodeReview | 代码审查 | 代码、任务描述 | 审查报告 | ProjectManager | ✅ 已实现 |
 | WriteTest | 编写测试 | 代码 | 测试代码 | QA Engineer | ✅ 已实现 |
 | SearchEnhancedQA | 增强搜索 | 问题 | 答案+引用 | ProductManager | ✅ 已实现 |
@@ -497,9 +523,10 @@ llm:
 
 ### 3.5 兼容性要求
 
-- **后端**: Node.js v18+
-- **前端**: Vue 3 + Vite
+- **后端**: Node.js v18+ + TypeScript v5.3+
+- **前端**: Vue 3 + Vite + TypeScript
 - **数据库**: PostgreSQL v14+
+- **包管理**: pnpm v8+
 - **操作系统**: Linux, macOS, Windows
 
 ---
@@ -627,8 +654,8 @@ mind2build "Create a todo app with backend API" --interactive
 ```
 **预期交互流程**:
 ```
-[Salesperson] 完成需求说明文档
-📄 生成文件: requirement_spec.md
+[Salesperson] 完成市场研究文档（MRD）
+📄 生成文件: MRD.md
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🛑 等待确认 (continue/edit/regenerate/skip/quit):
 > c
@@ -642,13 +669,25 @@ mind2build "Create a todo app with backend API" --interactive
 ✅ 已保存修改，继续下一步
 
 [Architect] 完成系统设计文档
-📄 生成文件: design.md
+📄 生成文件: DESIGN.md
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🛑 等待确认 (continue/edit/regenerate/skip/quit):
+> c
+
+[ProjectManager] 完成任务拆分文档
+📄 生成文件: TASK_BREAKDOWN.md
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🛑 等待确认 (continue/edit/regenerate/skip/quit):
 > c
 
 [Engineer] 完成代码实现
-📄 生成文件: src/main.py, src/api.py
+📄 生成文件: src/index.ts, src/api.ts
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🛑 等待确认 (continue/edit/regenerate/skip/quit):
+> c
+
+[QAEngineer] 完成测试用例
+📄 生成文件: tests/index.test.ts
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🛑 等待确认 (continue/edit/regenerate/skip/quit):
 > c

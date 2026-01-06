@@ -22,7 +22,8 @@ export class ProductManager extends Role {
     super(config, context);
     
     // Watch for MRD completion (from Salesperson)
-    this.watch([ACTION_WRITE_MRD]);
+    // Use string literal to ensure it's not undefined
+    this.watch([ACTION_WRITE_MRD || 'WriteMRD']);
     
     // Set actions - WritePRD and SearchEnhancedQA as per PRD
     this.setActions([new WritePRD(), new SearchEnhancedQA()]);

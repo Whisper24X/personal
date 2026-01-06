@@ -155,7 +155,16 @@ export class Role extends BaseRole {
    */
   watch(actionTypes: Array<string | Function>): void {
     actionTypes.forEach((actionType) => {
-      this.rc.watch.add(anyToStr(actionType));
+      if (actionType === undefined || actionType === null) {
+        logger.warn(`${this.profile} watch(): Received undefined/null actionType, skipping`);
+        return;
+      }
+      const actionStr = anyToStr(actionType);
+      if (!actionStr || actionStr === 'undefined' || actionStr === 'null') {
+        logger.warn(`${this.profile} watch(): Failed to convert actionType to string: ${actionType}, skipping`);
+        return;
+      }
+      this.rc.watch.add(actionStr);
     });
   }
 

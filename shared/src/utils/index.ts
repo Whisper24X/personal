@@ -46,6 +46,9 @@ export function hasIntersection<T>(set1: Set<T>, set2: Set<T>): boolean {
  * Convert class/function to string name
  */
 export function anyToStr(obj: any): string {
+  if (obj === undefined || obj === null) {
+    return String(obj); // Returns "undefined" or "null" as string
+  }
   if (typeof obj === 'string') {
     return obj;
   }

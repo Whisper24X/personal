@@ -306,15 +306,16 @@ class BreakdownTasks extends BaseAction {
 
 ## 已实现 Actions 列表
 
-✅ **UserRequirement** - 用户需求收集  
-✅ **WriteRequirementSpec** - 需求说明文档编写  
-✅ **RequirementSpecReview** - 需求说明文档审查  
+✅ **WriteMRD** - 市场研究文档编写  
+✅ **MRDReview** - MRD文档审查  
 ✅ **WritePRD** - PRD文档编写  
 ✅ **PRDReview** - PRD文档审查  
 ✅ **ImproveDocument** - 根据审查报告改进PRD/MRD文档  
 ✅ **WriteDesign** - 系统设计文档编写  
+✅ **DesignReview** - 设计文档审查  
 ✅ **BreakdownTasks** - 任务拆分  
 ✅ **WriteSubProjectDesign** - 子项目设计  
+✅ **SubProjectDesignReview** - 子项目设计审查  
 ✅ **GenerateTask** - 任务说明生成  
 ✅ **WriteCode** - 代码编写  
 ✅ **ExecuteSubtask** - 子任务执行  

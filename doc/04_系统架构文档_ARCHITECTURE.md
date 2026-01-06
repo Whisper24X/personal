@@ -34,7 +34,7 @@
 - **消息驱动**: 基于发布/订阅的消息系统
 - **可扩展性**: 支持自定义角色、行动和工作流
 - **LLM 无关**: 抽象层设计支持多种 LLM 提供商
-- **异步执行**: 基于 asyncio 的高效异步架构
+- **异步执行**: 基于 Node.js Event Loop 的高效异步架构
 
 ### 1.3 核心组件
 
@@ -42,7 +42,8 @@
 graph TB
     subgraph UserInterface[用户接口层]
         CLI[CLI命令行]
-        API[Python API]
+        API[REST API + WebSocket]
+        WebUI[Web UI (Vue 3)]
     end
     
     subgraph OrchestrationLayer[编排层]
@@ -130,7 +131,7 @@ mind2build 采用六层架构设计：
 
 ```
 ┌─────────────────────────────────────────┐
-│        用户接口层 (Interface Layer)       │  CLI, Python API
+│        用户接口层 (Interface Layer)       │  CLI, REST API, Web UI
 ├─────────────────────────────────────────┤
 │        编排层 (Orchestration Layer)      │  Team, Environment
 ├─────────────────────────────────────────┤
@@ -1328,7 +1329,7 @@ async def test_full_workflow():
 1. **清晰的分层**: 职责明确，易于维护
 2. **高度可扩展**: 支持自定义角色和 Action
 3. **LLM 无关**: 抽象层设计支持多提供商
-4. **异步高效**: 基于 asyncio 的并发架构
+4. **异步高效**: 基于 Node.js Event Loop 的异步架构
 5. **消息驱动**: 解耦的通信机制
 
 ### 13.2 技术亮点
