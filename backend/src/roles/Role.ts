@@ -17,7 +17,7 @@ import { RoleContext } from '../core/context/RoleContext';
 import { Context } from '../core/context/Context';
 import { logger, WorkspaceOptions } from '../utils';
 import { createLLM } from '../providers/llm/factory';
-import { RoleLLMConfigRepository } from '../database';
+import { RoleLLMConfigRepository, LLMConfigRepository } from '../database';
 
 export class Role extends BaseRole {
   goal: string;
@@ -30,6 +30,7 @@ export class Role extends BaseRole {
 
   private roleLLM?: any; // Role-specific LLM instance
   private roleLLMConfigRepo = new RoleLLMConfigRepository();
+  private llmConfigRepo = new LLMConfigRepository();
   protected llmLoadPromise?: Promise<void>; // Track async LLM loading
 
   constructor(config: IRoleConfig, context: Context) {
@@ -63,8 +64,8 @@ export class Role extends BaseRole {
 
   /**
    * Load role-specific LLM configuration from database
-   * Priority: database config (role-specific) > explicit config.llm > system default (context.llm)
-   * If no role-specific config is found, will use system default LLM config
+   * Priority: database config (role-specific) > explicit config.llm > active LLM config from database
+   * If no role-specific config is found, will use active LLM config from database
    */
   private async loadRoleLLMFromDatabase(context: Context): Promise<void> {
     try {
@@ -100,14 +101,40 @@ export class Role extends BaseRole {
           logger.info(`${this.profile} loaded LLM config from database (highest priority): ${dbConfig.provider}/${dbConfig.model}`);
         }
       } else {
-        // No database config found - will use system default LLM config (from context.llm)
-        // If explicit config.llm was provided, keep using it
-        // Otherwise, will use system default context.llm in setActions
-        if (!this.roleLLM) {
-          const defaultConfig = context.config.llm;
-          logger.info(`${this.profile} no role-specific LLM config found, will use system default LLM config: ${defaultConfig.provider}/${defaultConfig.model}`);
-        } else {
-          logger.debug(`${this.profile} no database LLM config found, using explicit config.llm`);
+        // No role-specific config found - use active LLM config from database
+        try {
+          const activeConfig = await this.llmConfigRepo.findActive(userId);
+          if (activeConfig) {
+            // Convert database config to ILLMConfig using repository method
+            const llmConfig = this.llmConfigRepo.toILLMConfig(activeConfig);
+            
+            // Create LLM instance using active config
+            this.roleLLM = createLLM(llmConfig);
+            this.roleLLM.costManager = context.costManager;
+
+            // If actions have already been set, update their LLM
+            if (this.actions.length > 0) {
+              this.actions.forEach((action) => action.setLLM(this.roleLLM));
+              logger.info(`${this.profile} updated actions with active LLM config from database: ${llmConfig.provider}/${llmConfig.model}`);
+            } else {
+              logger.info(`${this.profile} using active LLM config from database: ${llmConfig.provider}/${llmConfig.model}`);
+            }
+          } else {
+            // No active config found - fallback to context.llm or explicit config.llm
+            if (!this.roleLLM) {
+              const defaultConfig = context.config.llm;
+              logger.warn(`${this.profile} no role-specific or active LLM config found, using system default: ${defaultConfig.provider}/${defaultConfig.model}`);
+            } else {
+              logger.debug(`${this.profile} no database LLM config found, using explicit config.llm`);
+            }
+          }
+        } catch (activeConfigError: any) {
+          // If failed to load active config, fallback to context.llm or explicit config.llm
+          logger.debug(`${this.profile} error loading active LLM config from database:`, activeConfigError.message);
+          if (!this.roleLLM) {
+            const defaultConfig = context.config.llm;
+            logger.info(`${this.profile} will use system default LLM config due to database error: ${defaultConfig.provider}/${defaultConfig.model}`);
+          }
         }
       }
     } catch (error: any) {

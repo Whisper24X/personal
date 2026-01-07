@@ -44,10 +44,10 @@ export class RAGService {
 
   constructor() {
     this.documentRepo = new DocumentRepository();
-    
+
     // Check if LangChain should be used (requires OpenAI API key)
     this.useLangChainRAG = process.env.OPENAI_API_KEY !== undefined && useLangChain;
-    
+
     if (this.useLangChainRAG) {
       try {
         // Initialize OpenAI embeddings if API key is available
