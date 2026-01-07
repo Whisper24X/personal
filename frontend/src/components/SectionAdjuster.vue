@@ -52,14 +52,15 @@
                                 <div class="message-role">{{ msg.role === 'user' ? '👤 您' : '🤖 AI助手' }}</div>
                                 <div class="message-content" v-if="msg.role === 'user'">{{ msg.content }}</div>
                                 <div class="message-content" v-else>
-                                    <pre class="section-content-preview">{{ msg.content.substring(0, 200) }}{{ msg.content.length > 200 ? '...' : '' }}</pre>
+                                    <pre class="section-content-preview">{{ msg.content.substring(0, 200) }}{{
+                                        msg.content.length > 200 ? '...' : '' }}</pre>
                                 </div>
                                 <div class="message-time">{{ formatTime(msg.timestamp) }}</div>
                             </div>
                         </div>
                     </el-scrollbar>
                 </div>
-                
+
                 <div class="section-original">
                     <h4>当前章节内容：</h4>
                     <el-scrollbar max-height="200px">
@@ -74,7 +75,8 @@
             </div>
             <template #footer>
                 <el-button @click="closeDialog">完成</el-button>
-                <el-button type="primary" @click="handleSectionAdjust" :loading="sectionAdjustLoading" :disabled="!sectionAdjustRequest.trim()">
+                <el-button type="primary" @click="handleSectionAdjust" :loading="sectionAdjustLoading"
+                    :disabled="!sectionAdjustRequest.trim()">
                     {{ conversationHistory && conversationHistory.messages.length > 0 ? '继续调整' : '确认调整' }}
                 </el-button>
             </template>
@@ -250,21 +252,21 @@ async function openSectionAdjustDialog() {
     if (selectedSectionNumber.value === null) return;
     sectionAdjustRequest.value = '';
     showSectionDialog.value = true;
-    
+
     // Load conversation history
     await loadConversationHistory();
 }
 
 async function loadConversationHistory() {
     if (!selectedSectionNumber.value || !props.projectId) return;
-    
+
     loadingHistory.value = true;
     try {
         const apiUrl = (import.meta as any).env?.VITE_API_URL;
         if (!apiUrl) {
             return;
         }
-        
+
         const response = await fetch(
             `${apiUrl}/projects/${props.projectId}/sections/${selectedSectionNumber.value}/conversation?documentType=${props.documentType}`,
             {
@@ -274,7 +276,7 @@ async function loadConversationHistory() {
                 },
             }
         );
-        
+
         if (response.ok) {
             const data = await response.json();
             conversationHistory.value = data.conversationHistory || null;
@@ -292,7 +294,7 @@ function formatTime(timestamp: string): string {
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const minutes = Math.floor(diff / 60000);
-    
+
     if (minutes < 1) return '刚刚';
     if (minutes < 60) return `${minutes}分钟前`;
     const hours = Math.floor(minutes / 60);
@@ -439,7 +441,7 @@ async function handleSectionAdjust() {
         if (sectionIndex !== -1 && result.section) {
             // Update section content
             sections.value[sectionIndex].content = result.section.content;
-            
+
             // Trigger content update callback if provided
             if (props.onSectionAdjusted) {
                 props.onSectionAdjusted(selectedSectionNumber.value, result.section.content);
@@ -448,10 +450,10 @@ async function handleSectionAdjust() {
 
         // Clear input but keep dialog open for continuous conversation
         sectionAdjustRequest.value = '';
-        
+
         // Reload conversation history to get latest updates
         await loadConversationHistory();
-        
+
         // Scroll to bottom of conversation history
         await nextTick();
         scrollConversationToBottom();

@@ -93,7 +93,7 @@
                 <span class="description-text">{{ getActionDescription(step.action) }}</span>
               </div>
             </div>
-            <div class="step-content">
+            <div v-if="!step.userAction" class="step-content">
               {{ step.content }}
             </div>
             <!-- Zip Archive Info -->

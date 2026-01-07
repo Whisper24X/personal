@@ -22,38 +22,38 @@ export class BreakdownTasks extends BaseAction {
 
   async run(prd: string, design: string, options?: BreakdownTasksOptions): Promise<IActionOutput> {
     logger.info('BreakdownTasks: Starting task breakdown');
-    
+
     try {
       // Build the prompt
       const prompt = buildTaskBreakdownPrompt(prd, design);
-      
+
       // Load system prompt from database or use default
       const userId = this.context?.get('userId');
       const systemPrompt = await loadPrompt(userId, 'task', 'system_prompt', TASK_BREAKDOWN_SYSTEM_PROMPT);
-      
+
       // Call LLM with system message and prompt
       const taskBreakdownContent = await this.aask(prompt, [systemPrompt]);
-      
+
       // 解析任务拆分结果
       const subtaskManager = new SubtaskManager();
       const breakdown = subtaskManager.parseTaskBreakdown(taskBreakdownContent);
-      
+
       // 保存到workspace
       const workspaceOptions: WorkspaceOptions = {
         ...options,
         documentType: 'TASKS',
       };
       await subtaskManager.saveToWorkspace(workspaceOptions);
-      
+
       // 同时保存原始文档
       await this.saveToWorkspace('TASK_BREAKDOWN.md', taskBreakdownContent, workspaceOptions);
-      
+
       logger.info('BreakdownTasks: Task breakdown completed', {
         contentLength: taskBreakdownContent.length,
         taskCount: breakdown.tasks.length,
         workspaceDir: this.getWorkspaceDir(workspaceOptions),
       });
-      
+
       return {
         content: taskBreakdownContent,
         data: {
