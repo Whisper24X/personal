@@ -2,9 +2,9 @@
 
 **Slogan**: 让所思，即所得
 
-**文档版本**: v1.1  
+**文档版本**: v1.4  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-06（根据实际代码实现更新架构细节）
+**最后更新**: 2026-01-07（补充完整的前后端方案设计，包括目录结构、接口对接、交互流程等）
 
 ---
 
@@ -13,9 +13,12 @@
 1. [架构概述](#1-架构概述)
 2. [整体架构设计](#2-整体架构设计)
 3. [核心模块详解](#3-核心模块详解)
-4. [技术选型](#4-技术选型)
-5. [扩展机制](#5-扩展机制)
-6. [部署架构](#6-部署架构)
+4. [数据库设计](#4-数据库设计)
+5. [接口设计](#5-接口设计)
+6. [前后端方案设计](#6-前后端方案设计)
+7. [技术选型](#7-技术选型)
+8. [扩展机制](#8-扩展机制)
+9. [部署架构](#9-部署架构)
 
 ---
 
@@ -35,6 +38,9 @@
 - **可扩展性**: 支持自定义角色、行动和工作流
 - **LLM 无关**: 抽象层设计支持多种 LLM 提供商
 - **异步执行**: 基于 Node.js Event Loop 的高效异步架构
+- **知识库增强**: 通过RAG技术提供上下文知识支持
+- **工作流编排**: 支持多角色串联和灵活的输入输出映射
+- **独立调试**: 每个角色支持独立运行、测试和调试
 
 ### 1.3 核心组件
 
@@ -71,6 +77,13 @@ graph TB
         Message[消息系统]
         Memory[记忆系统]
         Context[上下文管理]
+        KB[知识库系统<br/>RAG检索]
+    end
+    
+    subgraph WorkflowLayer[工作流编排层]
+        WFEngine[工作流引擎]
+        WFDesigner[可视化设计器]
+        IOMapping[输入输出映射]
     end
     
     subgraph ProviderLayer[提供商层]
@@ -119,6 +132,14 @@ graph TB
     PM --> Browser
     Eng --> Editor
     Arch --> Terminal
+    
+    PM --> KB
+    Arch --> KB
+    Eng --> KB
+    
+    Team --> WFEngine
+    WFEngine --> Env
+    WFDesigner --> WFEngine
 ```
 
 ---
@@ -127,11 +148,13 @@ graph TB
 
 ### 2.1 分层架构
 
-mind2build 采用六层架构设计：
+mind2build 采用七层架构设计：
 
 ```
 ┌─────────────────────────────────────────┐
 │        用户接口层 (Interface Layer)       │  CLI, REST API, Web UI
+├─────────────────────────────────────────┤
+│      工作流编排层 (Workflow Layer)        │  工作流引擎、可视化设计器
 ├─────────────────────────────────────────┤
 │        编排层 (Orchestration Layer)      │  Team, Environment
 ├─────────────────────────────────────────┤
@@ -139,7 +162,7 @@ mind2build 采用六层架构设计：
 ├─────────────────────────────────────────┤
 │        行动层 (Action Layer)             │  WritePRD, WriteCode...
 ├─────────────────────────────────────────┤
-│      基础设施层 (Infrastructure Layer)   │  Message, Memory, Context
+│      基础设施层 (Infrastructure Layer)   │  Message, Memory, Context, KnowledgeBase
 ├─────────────────────────────────────────┤
 │       提供商层 (Provider Layer)          │  LLM, Tools
 └─────────────────────────────────────────┘
@@ -149,11 +172,12 @@ mind2build 采用六层架构设计：
 
 | 层次 | 职责 | 关键组件 |
 |------|------|---------|
-| 用户接口层 | 提供用户交互入口 | CLI, generate_repo() |
+| 用户接口层 | 提供用户交互入口 | CLI, REST API, Web UI |
+| 工作流编排层 | 管理工作流定义和执行 | WorkflowEngine, WorkflowDesigner |
 | 编排层 | 管理角色生命周期和协作 | Team, Environment |
 | 角色层 | 定义 AI 角色的行为和职责 | Role, ProductManager, Engineer |
 | 行动层 | 实现具体的任务执行逻辑 | Action, WritePRD, WriteCode |
-| 基础设施层 | 提供核心支撑服务 | Message, Memory, Context |
+| 基础设施层 | 提供核心支撑服务 | Message, Memory, Context, KnowledgeBase |
 | 提供商层 | 对接外部服务 | BaseLLM, Browser, Editor |
 
 ### 2.2 核心交互流程
@@ -325,18 +349,36 @@ class Context(BaseModel):
 ```
 
 **配置管理**:
-```yaml
-# config2.yaml
-llm:
-  api_type: "openai"
-  model: "gpt-4-turbo"
-  api_key: "${OPENAI_API_KEY}"
+```typescript
+// config.ts
+export interface LLMConfig {
+  api_type: 'openai' | 'zhipuai' | 'ark' | 'cursor';
+  model: string;
+  api_key: string;
+  base_url?: string;
+}
 
-workspace:
-  path: "./workspace"
-  
-cost:
-  max_budget: 10.0
+export interface WorkspaceConfig {
+  path: string;
+}
+
+export interface CostConfig {
+  max_budget: number;
+}
+
+export const config = {
+  llm: {
+    api_type: process.env.LLM_PROVIDER || 'zhipuai',
+    model: process.env.LLM_MODEL || 'glm-4-flash',
+    api_key: process.env.ZHIPUAI_API_KEY || '',
+  },
+  workspace: {
+    path: process.env.WORKSPACE_PATH || './workspace',
+  },
+  cost: {
+    max_budget: parseFloat(process.env.MAX_BUDGET || '10.0'),
+  },
+};
 ```
 
 ### 3.2 角色层 (Role Layer)
@@ -512,6 +554,10 @@ abstract class BaseAction {
     protected async saveToWorkspace(filePath: string, content: string, options?: WorkspaceOptions): Promise<void>;
     protected getWorkspaceDir(options?: WorkspaceOptions): string;
     protected async readWorkspaceFile(filePath: string, options?: WorkspaceOptions): Promise<string | null>;
+    // Git管理相关方法
+    protected async initGitRepository(repoUrl?: string, options?: WorkspaceOptions): Promise<void>;
+    protected async createVersionBranch(version: number, options?: WorkspaceOptions): Promise<void>;
+    protected async commitToGit(message: string, options?: WorkspaceOptions): Promise<void>;
 }
 ```
 
@@ -593,9 +639,70 @@ graph TB
     C --> C2
 ```
 
-### 3.4 编排层 (Orchestration Layer)
+### 3.4 工作流编排层 (Workflow Layer)
 
-#### 3.4.1 Environment (环境)
+#### 3.4.1 工作流引擎 (WorkflowEngine)
+
+**职责**:
+- 管理工作流的定义、执行和状态
+- 处理多角色串联和输入输出映射
+- 支持工作流的验证和优化
+
+**核心方法**:
+```typescript
+class WorkflowEngine {
+    private workflows: Map<string, Workflow>;
+    
+    createWorkflow(config: WorkflowConfig): Workflow;
+    executeWorkflow(workflowId: string, input: any): Promise<any>;
+    validateWorkflow(workflow: Workflow): ValidationResult;
+    reorderSteps(workflowId: string, stepOrder: string[]): void;
+    updateMapping(workflowId: string, stepId: string, mapping: IOMapping): void;
+}
+```
+
+**工作流配置**:
+```typescript
+interface WorkflowConfig {
+    name: string;
+    description: string;
+    chain: WorkflowStep[];
+    version: string;
+}
+
+interface WorkflowStep {
+    id: string;
+    role: string;
+    actions: string[];
+    input: {
+        source: string | string[];
+        mapping: Record<string, string>;
+    };
+    output: {
+        target: string | string[];
+        mapping: Record<string, string>;
+    };
+    condition?: string;  // 可选执行条件
+}
+```
+
+#### 3.4.2 可视化工作流设计器 (WorkflowDesigner)
+
+**职责**:
+- 提供拖拽式界面设计工作流
+- 可视化编辑输入输出映射
+- 实时预览工作流执行
+
+**核心功能**:
+- **拖拽式界面**: 直观拖拽角色节点
+- **连线编辑**: 配置角色间的输入输出关系
+- **顺序调整**: 拖拽调整角色执行顺序
+- **映射编辑**: 可视化编辑数据映射
+- **验证提示**: 实时验证工作流完整性
+
+### 3.5 编排层 (Orchestration Layer)
+
+#### 3.5.1 Environment (环境)
 
 **职责**:
 - 容器：管理多个 Role 实例
@@ -691,7 +798,68 @@ class CostManager {
 }
 ```
 
-### 3.5 提供商层 (Provider Layer)
+### 3.6 知识库系统 (Knowledge Base System)
+
+#### 3.6.1 知识库架构
+
+**设计目标**: 通过RAG技术为角色提供上下文知识支持，确保完整迭代产出
+
+**核心组件**:
+```typescript
+class KnowledgeBase {
+    applicationId: string;
+    version: string;
+    documents: DocumentRepository;      // 文档知识库
+    codeRepositories: CodeRepository[]; // 代码仓库
+    apiDocs: APIDocument[];             // API文档库
+    vectorStore: VectorStore;            // 向量数据库
+    retrievalConfig: RetrievalConfig;   // 检索配置
+}
+```
+
+**知识库类型**:
+- **文档知识库**: 技术文档、规范、最佳实践（Markdown, PDF, Word）
+- **代码仓库**: Git仓库或本地代码仓库（GitHub, GitLab, Gitee）
+- **API文档库**: API文档、接口规范（OpenAPI, GraphQL Schema）
+- **设计规范库**: UI/UX设计规范、组件库文档
+- **测试用例库**: 测试用例、测试策略
+
+#### 3.6.2 RAG检索机制
+
+**检索流程**:
+```mermaid
+graph LR
+    A[迭代开始] --> B[需求理解]
+    B --> C[查询生成]
+    C --> D[多源检索]
+    D --> E[代码仓库解析]
+    E --> F[结果融合]
+    F --> G[上下文注入]
+    G --> H[完整产出]
+    H --> I[知识更新]
+```
+
+**检索优化**:
+- **语义检索**: 向量数据库语义相似度匹配
+- **代码仓库索引**: 代码结构分析和索引
+- **关键词检索**: 结合传统关键词检索
+- **重排序**: 交叉编码器重排序
+- **上下文感知**: 根据任务类型调整检索策略
+
+#### 3.6.3 知识库管理
+
+**自动更新模式**:
+- 每次迭代完成后自动提取产出
+- 自动向量化和索引化
+- 增量更新，避免重复内容
+
+**版本管理**:
+- 支持知识库版本控制
+- 支持代码仓库版本管理（Git分支、标签）
+- 支持回滚到历史版本
+- 支持版本差异对比
+
+### 3.7 提供商层 (Provider Layer)
 
 #### 3.5.1 LLM 抽象层
 
@@ -810,7 +978,1824 @@ class Terminal:
 
 ---
 
-## 4. 技术选型
+## 4. 数据库设计
+
+### 4.1 数据库架构
+
+**数据库类型**: PostgreSQL v14+
+
+**设计原则**:
+- **可扩展性**: 支持水平扩展和分表
+- **性能优化**: 合理的索引和分区策略
+- **数据完整性**: 外键约束和数据验证
+- **审计追踪**: 记录创建和更新时间
+- **软删除**: 重要数据不物理删除
+
+### 4.2 核心表结构
+
+#### 4.2.1 用户相关表
+
+**users (用户表)**:
+```sql
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username VARCHAR(50) NOT NULL UNIQUE,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(100),
+    avatar_url VARCHAR(500),
+    api_keys JSONB DEFAULT '{}',  -- 存储各种 LLM API Keys (加密)
+    config JSONB DEFAULT '{}',     -- 用户配置
+    status VARCHAR(20) DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    last_login_at TIMESTAMP,
+    deleted_at TIMESTAMP
+);
+```
+
+**applications (应用表)**:
+```sql
+CREATE TABLE applications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    deleted_at TIMESTAMP
+);
+```
+
+#### 4.2.2 项目相关表
+
+**projects (项目表)**:
+```sql
+CREATE TABLE projects (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    application_id UUID REFERENCES applications(id) ON DELETE SET NULL,
+    name VARCHAR(200) NOT NULL,
+    idea TEXT NOT NULL,
+    description TEXT,
+    status VARCHAR(50) DEFAULT 'pending',  -- pending, running, completed, failed, cancelled
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    deleted_at TIMESTAMP
+);
+```
+
+**teams (团队表)**:
+```sql
+CREATE TABLE teams (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    investment DECIMAL(10, 2) DEFAULT 10.0,
+    status VARCHAR(50) DEFAULT 'idle',
+    config JSONB DEFAULT '{}',
+    state JSONB DEFAULT '{}',  -- 序列化的团队状态
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+#### 4.2.3 角色和消息表
+
+**roles (角色表)**:
+```sql
+CREATE TABLE roles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    profile VARCHAR(100) NOT NULL,  -- ProductManager, Architect, etc.
+    goal TEXT,
+    constraints TEXT,
+    state JSONB DEFAULT '{}',
+    actions_list JSONB DEFAULT '[]',
+    watch_actions JSONB DEFAULT '[]',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+**messages (消息表)**:
+```sql
+CREATE TABLE messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    role_id UUID REFERENCES roles(id) ON DELETE SET NULL,
+    message_uuid VARCHAR(36) UNIQUE NOT NULL,  -- Message对象的UUID
+    content TEXT NOT NULL,
+    instruct_content JSONB,
+    role_type VARCHAR(50) DEFAULT 'user',  -- system, user, assistant
+    cause_by VARCHAR(100),  -- Action类名
+    sent_from VARCHAR(100),
+    send_to JSONB DEFAULT '[]',  -- 接收者集合
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+#### 4.2.4 行动和文档表
+
+**actions (行动表)**:
+```sql
+CREATE TABLE actions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+    action_type VARCHAR(100) NOT NULL,  -- WritePRD, WriteCode, etc.
+    input_data JSONB DEFAULT '{}',
+    output_data JSONB DEFAULT '{}',
+    status VARCHAR(50) DEFAULT 'pending',  -- pending, completed, failed
+    duration INTEGER,  -- 执行时间（毫秒）
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+**documents (文档表)**:
+```sql
+CREATE TABLE documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    filename VARCHAR(500) NOT NULL,
+    doc_type VARCHAR(50),  -- PRD, MRD, DESIGN, CODE, TEST, etc.
+    content TEXT,
+    storage_path VARCHAR(1000),
+    version INTEGER DEFAULT 1,
+    is_deleted BOOLEAN DEFAULT FALSE,
+    parent_id UUID REFERENCES documents(id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+#### 4.2.5 成本和知识库表
+
+**cost_records (成本记录表)**:
+```sql
+CREATE TABLE cost_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    role_id UUID REFERENCES roles(id) ON DELETE SET NULL,
+    model VARCHAR(100),
+    prompt_tokens INTEGER DEFAULT 0,
+    completion_tokens INTEGER DEFAULT 0,
+    total_tokens INTEGER DEFAULT 0,
+    cost DECIMAL(10, 6) DEFAULT 0.0,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+**llm_configs (LLM配置表)**:
+```sql
+CREATE TABLE llm_configs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    role_name VARCHAR(100),  -- 角色特定配置，NULL表示系统默认配置
+    provider VARCHAR(50) NOT NULL,  -- openai, zhipuai, ark, cursor
+    model VARCHAR(100) NOT NULL,
+    api_key VARCHAR(500),  -- 加密存储
+    base_url VARCHAR(500),
+    temperature DECIMAL(3, 2) DEFAULT 0.7,
+    max_tokens INTEGER DEFAULT 8000,
+    is_default BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+**prompts (提示词表)**:
+```sql
+CREATE TABLE prompts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    prompt_type VARCHAR(50) NOT NULL,  -- mrd, prd, design, code, test
+    prompt_name VARCHAR(100) NOT NULL,  -- system_prompt, user_prompt, etc.
+    content TEXT NOT NULL,
+    version INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(user_id, prompt_type, prompt_name, version)
+);
+```
+
+### 4.3 索引设计
+
+**单列索引**:
+```sql
+-- 用户表索引
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_status ON users(status);
+
+-- 项目表索引
+CREATE INDEX idx_projects_user_id ON projects(user_id);
+CREATE INDEX idx_projects_application_id ON projects(application_id);
+CREATE INDEX idx_projects_status ON projects(status);
+CREATE INDEX idx_projects_created_at ON projects(created_at DESC);
+
+-- 消息表索引
+CREATE INDEX idx_messages_project_id ON messages(project_id);
+CREATE INDEX idx_messages_role_id ON messages(role_id);
+CREATE INDEX idx_messages_cause_by ON messages(cause_by);
+CREATE INDEX idx_messages_created_at ON messages(created_at DESC);
+
+-- 文档表索引
+CREATE INDEX idx_documents_project_id ON documents(project_id);
+CREATE INDEX idx_documents_doc_type ON documents(doc_type);
+CREATE INDEX idx_documents_is_deleted ON documents(is_deleted);
+```
+
+**复合索引**:
+```sql
+-- 项目消息查询优化
+CREATE INDEX idx_messages_project_time ON messages(project_id, created_at DESC);
+
+-- 角色行动查询
+CREATE INDEX idx_actions_role_status ON actions(role_id, status);
+
+-- 成本分析
+CREATE INDEX idx_cost_project_model ON cost_records(project_id, model, created_at);
+```
+
+### 4.4 ER 关系图
+
+```mermaid
+erDiagram
+    users ||--o{ applications : creates
+    users ||--o{ projects : creates
+    users ||--o{ teams : owns
+    applications ||--o{ projects : contains
+    projects ||--|| teams : has
+    teams ||--o{ roles : contains
+    projects ||--o{ messages : generates
+    projects ||--o{ documents : outputs
+    projects ||--o{ cost_records : tracks
+    roles ||--o{ messages : sends
+    roles ||--o{ actions : executes
+    messages ||--o{ actions : triggers
+```
+
+---
+
+## 5. 接口设计
+
+### 5.1 REST API 设计
+
+#### 5.1.1 API 基础信息
+
+**Base URL**: `http://localhost:3000/api`
+
+**Content-Type**: `application/json`
+
+**认证方式**: JWT Token（可选，MVP阶段可跳过）
+
+**版本控制**: URL路径版本控制 `/api/v1/...`
+
+#### 5.1.2 Git仓库管理接口
+
+**Git仓库初始化**:
+```http
+POST /api/v1/projects/{projectId}/git/init
+Content-Type: application/json
+
+{
+  "repositoryUrl": "https://github.com/user/project.git",
+  "version": 1
+}
+```
+
+**创建版本分支**:
+```http
+POST /api/v1/projects/{projectId}/git/branch
+Content-Type: application/json
+
+{
+  "version": 2,
+  "baseBranch": "main"
+}
+```
+
+**提交到Git仓库**:
+```http
+POST /api/v1/projects/{projectId}/git/commit
+Content-Type: application/json
+
+{
+  "message": "feat: 生成v1版本文档和代码",
+  "version": 1
+}
+```
+
+#### 5.1.3 项目管理接口
+
+**创建项目**:
+```http
+POST /api/v1/projects
+Content-Type: application/json
+
+{
+  "name": "项目名称",
+  "idea": "项目需求描述",
+  "description": "项目描述（可选）",
+  "applicationId": "应用ID（可选）",
+  "version": 1,
+  "investment": 10.0,
+  "nRound": 5,
+  "interactive": false,
+  "knowledgeBase": {
+    "documents": ["./knowledge/tech-specs"],
+    "codeRepository": {
+      "type": "git",
+      "url": "https://github.com/company/repo"
+    }
+  }
+}
+
+Response: 201 Created
+{
+  "success": true,
+  "project": {
+    "id": "uuid",
+    "name": "项目名称",
+    "status": "pending",
+    "createdAt": "2025-12-25T00:00:00Z"
+  }
+}
+```
+
+**获取项目列表**:
+```http
+GET /api/v1/projects?page=1&limit=10&applicationId=xxx
+
+Response: 200 OK
+{
+  "success": true,
+  "data": [...],
+  "total": 100,
+  "page": 1,
+  "limit": 10
+}
+```
+
+**获取项目详情**:
+```http
+GET /api/v1/projects/:id
+
+Response: 200 OK
+{
+  "success": true,
+  "project": {
+    "id": "uuid",
+    "name": "项目名称",
+    "status": "completed",
+    "documents": [...],
+    "messages": [...],
+    "totalCost": 2.5
+  }
+}
+```
+
+**启动项目**:
+```http
+POST /api/v1/projects/:id/start
+
+Response: 200 OK
+{
+  "success": true,
+  "message": "Project started"
+}
+```
+
+#### 5.1.3 交互式会话接口
+
+**创建交互式会话**:
+```http
+POST /api/v1/projects/interactive
+Content-Type: application/json
+
+{
+  "name": "项目名称",
+  "idea": "项目需求",
+  "investment": 10.0,
+  "nRound": 5
+}
+
+Response: 201 Created
+{
+  "success": true,
+  "sessionId": "uuid",
+  "projectId": "uuid",
+  "wsUrl": "ws://localhost:3000/api/interactive/:sessionId"
+}
+```
+
+**发送用户操作**:
+```http
+POST /api/v1/interactive/:sessionId/action
+Content-Type: application/json
+
+{
+  "action": "continue",  // continue, edit, regenerate, skip, quit
+  "modifiedContent": "修改后的内容（可选，edit时必需）"
+}
+
+Response: 200 OK
+{
+  "success": true,
+  "message": "Action processed successfully"
+}
+```
+
+#### 5.1.4 工作流接口
+
+**创建工作流**:
+```http
+POST /api/v1/workflow/create
+Content-Type: application/json
+
+{
+  "name": "自定义串联工作流",
+  "description": "ProductManager -> Architect -> Engineer",
+  "chain": [
+    {
+      "id": "step1",
+      "role": "ProductManager",
+      "actions": ["WritePRD"],
+      "input": {
+        "source": "user",
+        "mapping": {
+          "idea": "${user.idea}"
+        }
+      },
+      "output": {
+        "target": "step2",
+        "mapping": {
+          "prd": "${output.prd}"
+        }
+      }
+    }
+  ]
+}
+
+Response: 201 Created
+{
+  "success": true,
+  "workflowId": "uuid"
+}
+```
+
+**执行工作流**:
+```http
+POST /api/v1/workflow/execute
+Content-Type: application/json
+
+{
+  "workflowId": "uuid",
+  "input": {
+    "idea": "Create a todo app"
+  }
+}
+
+Response: 200 OK
+{
+  "success": true,
+  "result": {...}
+}
+```
+
+**调整工作流顺序**:
+```http
+PUT /api/v1/workflow/:workflowId/reorder
+Content-Type: application/json
+
+{
+  "stepOrder": ["step1", "step3", "step2"]
+}
+
+Response: 200 OK
+{
+  "success": true
+}
+```
+
+#### 5.1.5 角色调试接口
+
+**角色独立调试**:
+```http
+POST /api/v1/role/debug
+Content-Type: application/json
+
+{
+  "roleName": "ProductManager",
+  "input": {
+    "mrd": "...",
+    "context": {...}
+  },
+  "options": {
+    "breakpoints": ["WritePRD"],
+    "verbose": true,
+    "saveLogs": true
+  }
+}
+
+Response: 200 OK
+{
+  "success": true,
+  "sessionId": "uuid",
+  "result": {...},
+  "logs": [...],
+  "metrics": {...}
+}
+```
+
+**获取调试日志**:
+```http
+GET /api/v1/role/:roleName/logs?sessionId=xxx
+
+Response: 200 OK
+{
+  "success": true,
+  "logs": [...]
+}
+```
+
+#### 5.1.6 知识库接口
+
+**关联知识库**:
+```http
+POST /api/v1/projects/:projectId/knowledge-base
+Content-Type: application/json
+
+{
+  "documents": ["./knowledge/tech-specs"],
+  "codeRepository": {
+    "type": "git",
+    "url": "https://github.com/company/repo",
+    "branch": "main"
+  },
+  "apis": ["./knowledge/api/payment.ts"]  // TypeScript配置文件
+}
+
+Response: 200 OK
+{
+  "success": true
+}
+```
+
+**检索知识库**:
+```http
+POST /api/v1/knowledge-base/search
+Content-Type: application/json
+
+{
+  "applicationId": "xxx",
+  "query": "支付模块设计",
+  "topK": 5
+}
+
+Response: 200 OK
+{
+  "success": true,
+  "results": [...]
+}
+```
+
+### 5.2 WebSocket API 设计
+
+#### 5.2.1 连接方式
+
+**连接URL**: `ws://localhost:3000/api/interactive/:sessionId`
+
+**连接参数**:
+- `sessionId`: 会话ID（必需）
+
+**连接示例**:
+```typescript
+const ws = new WebSocket('ws://localhost:3000/api/interactive/:sessionId');
+
+ws.on('open', () => {
+  console.log('WebSocket connected');
+});
+
+ws.on('message', (data) => {
+  const message = JSON.parse(data);
+  handleMessage(message);
+});
+
+ws.on('error', (error) => {
+  console.error('WebSocket error:', error);
+});
+```
+
+#### 5.2.2 消息格式
+
+**服务端 -> 客户端消息类型**:
+
+**角色开始工作**:
+```typescript
+{
+  type: 'role_start',
+  data: {
+    role: 'ProductManager',
+    action: 'WritePRD',
+    timestamp: '2025-12-25T00:00:00Z'
+  }
+}
+```
+
+**需要确认**:
+```typescript
+{
+  type: 'confirmation_required',
+  data: {
+    role: 'ProductManager',
+    action: 'WritePRD',
+    content: '生成的内容...',
+    outputFiles: [
+      { path: 'PRD.md', content: '...' }
+    ],
+    timestamp: '2025-12-25T00:00:00Z'
+  }
+}
+```
+
+**进度更新**:
+```typescript
+{
+  type: 'progress',
+  data: {
+    currentRound: 1,
+    totalRounds: 5,
+    totalCost: 0.15,
+    message: '正在执行...',
+    timestamp: '2025-12-25T00:00:00Z'
+  }
+}
+```
+
+**Agent输出**:
+```typescript
+{
+  type: 'agent_output',
+  data: {
+    id: 'message-uuid',
+    role: 'Salesperson',
+    action: 'WriteMRD',
+    content: '消息内容',
+    files: ['MRD.md'],
+    timestamp: '2025-12-25T00:00:00Z'
+  }
+}
+```
+
+**完成**:
+```typescript
+{
+  type: 'completed',
+  data: {
+    projectId: 'project-uuid',
+    summary: {
+      totalSteps: 3,
+      totalCost: 0.45,
+      duration: 180000
+    },
+    timestamp: '2025-12-25T00:00:00Z'
+  }
+}
+```
+
+**错误**:
+```typescript
+{
+  type: 'error',
+  data: {
+    message: '错误信息',
+    code: 'ERROR_CODE',
+    timestamp: '2025-12-25T00:00:00Z'
+  }
+}
+```
+
+**客户端 -> 服务端消息类型**:
+
+**用户操作**:
+```typescript
+{
+  type: 'user_action',
+  action: 'continue' | 'edit' | 'regenerate' | 'skip' | 'quit',
+  modifiedContent?: string  // 仅 edit 时提供
+}
+```
+
+### 5.3 配置管理（TypeScript格式）
+
+#### 5.3.1 系统配置
+
+**config.ts**:
+```typescript
+// backend/src/config/config.ts
+export interface SystemConfig {
+  server: {
+    port: number;
+    host: string;
+  };
+  database: {
+    host: string;
+    port: number;
+    database: string;
+    username: string;
+    password: string;
+    ssl?: boolean;
+  };
+  llm: {
+    defaultProvider: 'openai' | 'zhipuai' | 'ark' | 'cursor';
+    defaultModel: string;
+    timeout: number;
+    maxRetries: number;
+  };
+  workspace: {
+    path: string;
+    maxSize: number;
+  };
+  cost: {
+    defaultBudget: number;
+    warningThreshold: number;
+  };
+}
+
+export const defaultConfig: SystemConfig = {
+  server: {
+    port: 3000,
+    host: '0.0.0.0',
+  },
+  database: {
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '5432'),
+    database: process.env.DB_NAME || 'mind2build_db',
+    username: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || '',
+  },
+  llm: {
+    defaultProvider: (process.env.LLM_PROVIDER as any) || 'zhipuai',
+    defaultModel: process.env.LLM_MODEL || 'glm-4-flash',
+    timeout: parseInt(process.env.REQUEST_TIMEOUT || '300000'),
+    maxRetries: 3,
+  },
+  workspace: {
+    path: process.env.WORKSPACE_PATH || './workspace',
+    maxSize: 10 * 1024 * 1024 * 1024, // 10GB
+  },
+  cost: {
+    defaultBudget: parseFloat(process.env.DEFAULT_BUDGET || '10.0'),
+    warningThreshold: 0.8,
+  },
+};
+```
+
+#### 5.3.2 工作流配置
+
+**workflow.config.ts**:
+```typescript
+// backend/src/config/workflow.config.ts
+export interface WorkflowStepConfig {
+  id: string;
+  role: string;
+  actions: string[];
+  input: {
+    source: string | string[];
+    mapping: Record<string, string>;
+  };
+  output: {
+    target: string | string[];
+    mapping: Record<string, string>;
+  };
+  condition?: string;
+}
+
+export interface WorkflowConfig {
+  name: string;
+  description: string;
+  version: string;
+  chain: WorkflowStepConfig[];
+}
+
+export const defaultWorkflowConfig: WorkflowConfig = {
+  name: '标准软件开发流程',
+  description: 'Salesperson -> ProductManager -> Architect -> Engineer -> QAEngineer',
+  version: '1.0',
+  chain: [
+    {
+      id: 'step1',
+      role: 'Salesperson',
+      actions: ['WriteMRD'],
+      input: {
+        source: 'user',
+        mapping: {
+          idea: '${user.idea}',
+        },
+      },
+      output: {
+        target: 'step2',
+        mapping: {
+          mrd: '${output.mrd}',
+        },
+      },
+    },
+    // ... 更多步骤
+  ],
+};
+```
+
+#### 5.3.3 知识库配置
+
+**knowledge-base.config.ts**:
+```typescript
+// backend/src/config/knowledge-base.config.ts
+export interface CodeRepositoryConfig {
+  name: string;
+  type: 'git' | 'local';
+  url?: string;
+  path?: string;
+  branch?: string;
+  languages?: string[];
+  extractPatterns?: boolean;
+  sync?: boolean;
+}
+
+export interface KnowledgeBaseConfig {
+  applicationId: string;
+  version: string;
+  documents?: Array<{
+    name: string;
+    path: string;
+    type: string;
+  }>;
+  codeRepository?: CodeRepositoryConfig;
+  apis?: Array<{
+    name: string;
+    path: string;
+    type: string;
+  }>;
+  retrieval: {
+    topK: number;
+    threshold: number;
+    rerank: boolean;
+  };
+}
+
+export const defaultKnowledgeBaseConfig: Partial<KnowledgeBaseConfig> = {
+  retrieval: {
+    topK: 5,
+    threshold: 0.7,
+    rerank: true,
+  },
+};
+```
+
+---
+
+## 6. 前后端方案设计
+
+### 6.1 目录结构
+
+#### 6.1.1 后端目录结构
+
+```
+backend/
+├── src/
+│   ├── actions/              # 行动系统
+│   │   ├── WriteMRD.ts
+│   │   ├── WritePRD.ts
+│   │   ├── WriteDesign.ts
+│   │   ├── WriteCode.ts
+│   │   └── ...
+│   ├── api/                  # API层
+│   │   ├── controllers/      # 控制器
+│   │   │   ├── ProjectController.ts
+│   │   │   ├── ApplicationController.ts
+│   │   │   ├── PRDController.ts
+│   │   │   ├── MRDController.ts
+│   │   │   ├── LLMConfigController.ts
+│   │   │   └── ...
+│   │   ├── routes/           # 路由定义
+│   │   │   ├── index.ts
+│   │   │   ├── projects.ts
+│   │   │   ├── applications.ts
+│   │   │   ├── interactive.ts
+│   │   │   └── config.ts
+│   │   ├── middleware/       # 中间件
+│   │   │   └── auth.ts
+│   │   ├── websocket.ts      # WebSocket服务
+│   │   └── index.ts          # API入口
+│   ├── core/                 # 核心模块
+│   │   ├── base/             # 基础类
+│   │   │   ├── BaseRole.ts
+│   │   │   └── BaseAction.ts
+│   │   ├── context/          # 上下文管理
+│   │   │   └── Context.ts
+│   │   ├── message/          # 消息系统
+│   │   │   └── Message.ts
+│   │   └── memory/           # 记忆系统
+│   │       └── Memory.ts
+│   ├── database/             # 数据库层
+│   │   ├── client.ts         # 数据库客户端
+│   │   ├── repositories/     # 数据仓库
+│   │   │   ├── ProjectRepository.ts
+│   │   │   ├── DocumentRepository.ts
+│   │   │   └── ...
+│   │   └── migrations/       # 数据库迁移
+│   │       └── 001_initial.sql
+│   ├── orchestration/        # 编排层
+│   │   ├── Team.ts
+│   │   ├── Environment.ts
+│   │   └── InteractiveSession.ts
+│   ├── providers/            # 提供商层
+│   │   └── llm/              # LLM提供商
+│   │       ├── BaseLLM.ts
+│   │       ├── OpenAILLM.ts
+│   │       ├── ZhipuLLM.ts
+│   │       └── factory.ts
+│   ├── roles/                # 角色实现
+│   │   ├── Role.ts
+│   │   ├── ProductManager.ts
+│   │   ├── Architect.ts
+│   │   ├── Engineer.ts
+│   │   └── ...
+│   ├── services/             # 服务层
+│   │   ├── RAGService.ts     # RAG检索服务
+│   │   └── ...
+│   ├── utils/                # 工具函数
+│   │   ├── WorkspaceManager.ts
+│   │   ├── GitManager.ts     # Git仓库管理
+│   │   └── ...
+│   ├── server.ts             # 服务器入口
+│   └── index.ts              # 应用入口
+├── dist/                     # 编译输出
+├── tests/                    # 测试文件
+├── package.json
+├── tsconfig.json
+└── README.md
+```
+
+#### 6.1.2 前端目录结构
+
+```
+frontend/
+├── src/
+│   ├── api/                  # API客户端
+│   │   └── client.ts         # Axios客户端封装
+│   ├── components/           # 可复用组件
+│   │   ├── InteractiveConfirmation.vue  # 交互确认组件
+│   │   └── SectionAdjuster.vue         # 章节调整组件
+│   ├── router/               # 路由配置
+│   │   └── index.ts
+│   ├── stores/               # Pinia状态管理
+│   │   ├── project.ts        # 项目状态
+│   │   └── application.ts   # 应用状态
+│   ├── views/                # 页面组件
+│   │   ├── Dashboard.vue              # 控制面板
+│   │   ├── ProjectCreate.vue          # 创建项目
+│   │   ├── ProjectDetail.vue          # 项目详情
+│   │   ├── ProjectInteractive.vue     # 交互式项目生成
+│   │   ├── ApplicationList.vue        # 应用列表
+│   │   ├── ApplicationDetail.vue      # 应用详情
+│   │   ├── LLMConfig.vue              # LLM配置
+│   │   ├── RoleLLMConfig.vue         # 角色LLM配置
+│   │   └── PromptConfig.vue          # 提示词配置
+│   ├── utils/                # 工具函数
+│   │   └── polling.ts        # 轮询工具
+│   ├── App.vue               # 根组件
+│   ├── main.ts               # 入口文件
+│   └── style.css             # 全局样式
+├── dist/                     # 构建输出
+├── index.html                # HTML模板
+├── vite.config.ts            # Vite配置
+├── tsconfig.json             # TypeScript配置
+├── package.json
+└── README.md
+```
+
+### 6.2 前后端接口对接
+
+#### 6.2.1 API客户端设计
+
+**前端API客户端（client.ts）**:
+```typescript
+// frontend/src/api/client.ts
+import axios, { AxiosInstance } from 'axios';
+
+class APIClient {
+  private client: AxiosInstance;
+
+  constructor() {
+    this.client = axios.create({
+      baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api',
+      timeout: 60000,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    // 请求拦截器（认证令牌）
+    this.client.interceptors.request.use((config) => {
+      const token = localStorage.getItem('auth_token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    });
+
+    // 响应拦截器（错误处理）
+    this.client.interceptors.response.use(
+      (response) => response.data,
+      (error) => {
+        // 统一错误处理
+        return Promise.reject(error.response?.data || error);
+      }
+    );
+  }
+
+  // 项目管理接口
+  async createProject(data: ProjectCreateData) {
+    return this.client.post('/projects', data);
+  }
+
+  async getProject(id: string) {
+    return this.client.get(`/projects/${id}`);
+  }
+
+  async startProject(id: string) {
+    return this.client.post(`/projects/${id}/start`);
+  }
+
+  // 交互式会话接口
+  async pollInteractiveMessages(sessionId: string, lastMessageId?: string) {
+    return this.client.get(`/interactive/${sessionId}/poll`, {
+      params: { lastMessageId },
+    });
+  }
+
+  async sendInteractiveAction(sessionId: string, action: string, modifiedContent?: string) {
+    return this.client.post(`/interactive/${sessionId}/action`, {
+      action,
+      modifiedContent,
+    });
+  }
+
+  // ... 更多接口方法
+}
+
+export const apiClient = new APIClient();
+```
+
+#### 6.2.2 后端路由设计
+
+**后端路由结构（routes/index.ts）**:
+```typescript
+// backend/src/api/routes/index.ts
+import { Router } from 'express';
+import projectRoutes from './projects';
+import applicationRoutes from './applications';
+import interactiveRoutes from './interactive';
+import configRoutes from './config';
+
+const router: Router = Router();
+
+// API v1 routes
+router.use('/applications', applicationRoutes);
+router.use('/projects', projectRoutes);
+router.use('/config', configRoutes);
+router.use('/', interactiveRoutes);
+
+// Health check
+router.get('/health', (_req, res) => {
+  res.json({ status: 'ok', service: 'mind2build-api', version: '1.0.0' });
+});
+
+export default router;
+```
+
+**项目路由（routes/projects.ts）**:
+```typescript
+// backend/src/api/routes/projects.ts
+import { Router } from 'express';
+import { ProjectController } from '../controllers/ProjectController';
+
+const router = Router();
+const controller = new ProjectController();
+
+// 创建项目
+router.post('/', controller.create.bind(controller));
+
+// 获取项目列表
+router.get('/', controller.list.bind(controller));
+
+// 获取项目详情
+router.get('/:id', controller.getById.bind(controller));
+
+// 启动项目
+router.post('/:id/start', controller.start.bind(controller));
+
+// 获取项目消息
+router.get('/:id/messages', controller.getMessages.bind(controller));
+
+// 获取项目文档
+router.get('/:id/documents', controller.getDocuments.bind(controller));
+
+export default router;
+```
+
+### 6.3 前端状态管理
+
+#### 6.3.1 Pinia Store设计
+
+**项目Store（stores/project.ts）**:
+```typescript
+// frontend/src/stores/project.ts
+import { defineStore } from 'pinia';
+import { ref, computed } from 'vue';
+import apiClient from '../api/client';
+
+export interface Project {
+  id: string;
+  name: string;
+  idea: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  progress?: number;
+  totalCost?: number;
+  createdAt: string;
+  completedAt?: string;
+}
+
+export const useProjectStore = defineStore('project', () => {
+  // 状态
+  const projects = ref<Project[]>([]);
+  const currentProject = ref<Project | null>(null);
+  const messages = ref<any[]>([]);
+  const documents = ref<any[]>([]);
+  const loading = ref(false);
+  const error = ref<string | null>(null);
+
+  // 计算属性
+  const projectCount = computed(() => projects.value.length);
+  const completedCount = computed(
+    () => projects.value.filter((p) => p.status === 'completed').length
+  );
+
+  // 操作方法
+  async function fetchProjects() {
+    loading.value = true;
+    error.value = null;
+    try {
+      const response = await apiClient.getProjects();
+      projects.value = response.projects || [];
+    } catch (err: any) {
+      error.value = err.message || '获取项目列表失败';
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function createProject(data: ProjectCreateData) {
+    loading.value = true;
+    error.value = null;
+    try {
+      const response = await apiClient.createProject(data);
+      await fetchProjects(); // 刷新列表
+      return response.project;
+    } catch (err: any) {
+      error.value = err.message || '创建项目失败';
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function fetchProject(id: string) {
+    loading.value = true;
+    error.value = null;
+    try {
+      const response = await apiClient.getProject(id);
+      currentProject.value = response.project;
+    } catch (err: any) {
+      error.value = err.message || '获取项目失败';
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  return {
+    // 状态
+    projects,
+    currentProject,
+    messages,
+    documents,
+    loading,
+    error,
+    // 计算属性
+    projectCount,
+    completedCount,
+    // 操作方法
+    fetchProjects,
+    createProject,
+    fetchProject,
+  };
+});
+```
+
+**应用Store（stores/application.ts）**:
+```typescript
+// frontend/src/stores/application.ts
+import { defineStore } from 'pinia';
+import { ref, computed } from 'vue';
+import apiClient from '../api/client';
+
+export interface Application {
+  id: string;
+  name: string;
+  description?: string;
+  metadata?: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const useApplicationStore = defineStore('application', () => {
+  const applications = ref<Application[]>([]);
+  const currentApplication = ref<Application | null>(null);
+  const loading = ref(false);
+  const error = ref<string | null>(null);
+
+  const applicationCount = computed(() => applications.value.length);
+
+  async function fetchApplications() {
+    loading.value = true;
+    error.value = null;
+    try {
+      const response = await apiClient.getApplications();
+      applications.value = response.applications || [];
+    } catch (err: any) {
+      error.value = err.message || '获取应用列表失败';
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function createApplication(data: ApplicationCreateData) {
+    loading.value = true;
+    error.value = null;
+    try {
+      const response = await apiClient.createApplication(data);
+      await fetchApplications();
+      return response.application;
+    } catch (err: any) {
+      error.value = err.message || '创建应用失败';
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  return {
+    applications,
+    currentApplication,
+    loading,
+    error,
+    applicationCount,
+    fetchApplications,
+    createApplication,
+  };
+});
+```
+
+### 6.4 前端路由设计
+
+**路由配置（router/index.ts）**:
+```typescript
+// frontend/src/router/index.ts
+import { createRouter, createWebHistory } from 'vue-router';
+import Dashboard from '../views/Dashboard.vue';
+import ProjectCreate from '../views/ProjectCreate.vue';
+import ProjectDetail from '../views/ProjectDetail.vue';
+import ProjectInteractive from '../views/ProjectInteractive.vue';
+import ApplicationList from '../views/ApplicationList.vue';
+import ApplicationDetail from '../views/ApplicationDetail.vue';
+import LLMConfig from '../views/LLMConfig.vue';
+import RoleLLMConfig from '../views/RoleLLMConfig.vue';
+import PromptConfig from '../views/PromptConfig.vue';
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    {
+      path: '/',
+      name: 'Dashboard',
+      component: Dashboard,
+      meta: { title: '控制面板' },
+    },
+    {
+      path: '/applications',
+      name: 'ApplicationList',
+      component: ApplicationList,
+      meta: { title: '应用列表' },
+    },
+    {
+      path: '/application/:id',
+      name: 'ApplicationDetail',
+      component: ApplicationDetail,
+      props: true,
+      meta: { title: '应用详情' },
+    },
+    {
+      path: '/create',
+      name: 'ProjectCreate',
+      component: ProjectCreate,
+      meta: { title: '创建项目' },
+    },
+    {
+      path: '/project/interactive',
+      name: 'ProjectInteractive',
+      component: ProjectInteractive,
+      meta: { title: '交互式项目生成' },
+    },
+    {
+      path: '/project/:id',
+      name: 'ProjectDetail',
+      component: ProjectDetail,
+      props: true,
+      meta: { title: '项目详情' },
+    },
+    {
+      path: '/config/llm',
+      name: 'LLMConfig',
+      component: LLMConfig,
+      meta: { title: 'LLM配置' },
+    },
+    {
+      path: '/config/role-llm',
+      name: 'RoleLLMConfig',
+      component: RoleLLMConfig,
+      meta: { title: '角色LLM配置' },
+    },
+    {
+      path: '/config/prompts',
+      name: 'PromptConfig',
+      component: PromptConfig,
+      meta: { title: '提示词配置' },
+    },
+  ],
+});
+
+export default router;
+```
+
+### 6.5 前端交互流程
+
+#### 6.5.1 项目创建流程
+
+```mermaid
+sequenceDiagram
+    participant User as 用户
+    participant UI as ProjectCreate.vue
+    participant Store as ProjectStore
+    participant API as APIClient
+    participant Backend as Backend API
+    
+    User->>UI: 填写项目信息并提交
+    UI->>Store: createProject(data)
+    Store->>API: apiClient.createProject(data)
+    API->>Backend: POST /api/projects
+    Backend-->>API: { project: {...} }
+    API-->>Store: 返回项目数据
+    Store->>Store: fetchProjects() 刷新列表
+    Store-->>UI: 返回项目对象
+    UI->>UI: 路由跳转到项目详情页
+```
+
+#### 6.5.2 交互式项目生成流程
+
+```mermaid
+sequenceDiagram
+    participant User as 用户
+    participant UI as ProjectInteractive.vue
+    participant Component as InteractiveConfirmation.vue
+    participant API as APIClient
+    participant Backend as Backend API
+    participant WS as WebSocket
+    
+    User->>UI: 启动交互式项目生成
+    UI->>API: 创建交互式会话
+    API->>Backend: POST /api/projects/interactive
+    Backend-->>API: { sessionId, projectId }
+    API-->>UI: 返回会话信息
+    
+    UI->>UI: 开始轮询消息
+    UI->>API: pollInteractiveMessages(sessionId)
+    API->>Backend: GET /api/interactive/:sessionId/poll
+    
+    alt 需要确认
+        Backend-->>API: { type: 'confirmation_required', data: {...} }
+        API-->>UI: 返回确认消息
+        UI->>Component: 显示确认对话框
+        User->>Component: 选择操作（continue/edit/regenerate/skip）
+        Component->>API: sendInteractiveAction(sessionId, action, content)
+        API->>Backend: POST /api/interactive/:sessionId/action
+        Backend-->>API: { success: true }
+        API-->>Component: 确认成功
+    else 进度更新
+        Backend-->>API: { type: 'progress', data: {...} }
+        API-->>UI: 更新进度显示
+    else 完成
+        Backend-->>API: { type: 'completed', data: {...} }
+        API-->>UI: 显示完成信息
+        UI->>UI: 停止轮询
+    end
+```
+
+#### 6.5.3 轮询机制实现
+
+**轮询工具（utils/polling.ts）**:
+```typescript
+// frontend/src/utils/polling.ts
+export interface PollingOptions {
+  interval?: number;        // 轮询间隔（毫秒）
+  maxAttempts?: number;     // 最大尝试次数
+  onMessage?: (data: any) => void;
+  onError?: (error: any) => void;
+  onComplete?: () => void;
+}
+
+export class PollingService {
+  private timer: number | null = null;
+  private attempts = 0;
+
+  start(
+    pollFn: () => Promise<any>,
+    options: PollingOptions = {}
+  ) {
+    const {
+      interval = 2000,
+      maxAttempts = Infinity,
+      onMessage,
+      onError,
+      onComplete,
+    } = options;
+
+    const poll = async () => {
+      try {
+        const data = await pollFn();
+        this.attempts++;
+
+        if (onMessage) {
+          onMessage(data);
+        }
+
+        // 检查是否完成
+        if (data.type === 'completed' || data.status === 'completed') {
+          this.stop();
+          if (onComplete) {
+            onComplete();
+          }
+          return;
+        }
+
+        // 检查最大尝试次数
+        if (this.attempts >= maxAttempts) {
+          this.stop();
+          return;
+        }
+
+        // 继续轮询
+        this.timer = window.setTimeout(poll, interval);
+      } catch (error) {
+        if (onError) {
+          onError(error);
+        }
+        // 错误后继续轮询
+        this.timer = window.setTimeout(poll, interval);
+      }
+    };
+
+    poll();
+  }
+
+  stop() {
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    this.attempts = 0;
+  }
+}
+```
+
+### 6.6 前端组件设计
+
+#### 6.6.1 交互确认组件
+
+**InteractiveConfirmation.vue**:
+```typescript
+// frontend/src/components/InteractiveConfirmation.vue
+<template>
+  <el-card class="confirmation-card">
+    <template #header>
+      <div class="card-header">
+        <div class="role-info">
+          <h3>{{ roleInfo.role }}</h3>
+          <el-tag>{{ roleInfo.action }}</el-tag>
+        </div>
+        <el-tag type="warning">等待确认</el-tag>
+      </div>
+    </template>
+
+    <div class="content-section">
+      <el-tabs v-model="viewMode">
+        <el-tab-pane label="预览" name="preview">
+          <div class="content-preview" v-html="formattedContent"></div>
+        </el-tab-pane>
+        <el-tab-pane label="编辑" name="edit">
+          <el-input
+            v-model="editedContent"
+            type="textarea"
+            :rows="20"
+            placeholder="编辑内容..."
+          />
+        </el-tab-pane>
+      </el-tabs>
+
+      <div class="action-buttons">
+        <el-button type="primary" @click="handleContinue">
+          <el-icon><Check /></el-icon>
+          确认继续
+        </el-button>
+        <el-button type="warning" @click="handleEdit" v-if="viewMode === 'edit'">
+          <el-icon><Edit /></el-icon>
+          保存并继续
+        </el-button>
+        <el-button @click="handleRegenerate">
+          <el-icon><Refresh /></el-icon>
+          重新生成
+        </el-button>
+        <el-button type="info" @click="handleSkip">
+          <el-icon><ArrowRight /></el-icon>
+          跳过
+        </el-button>
+      </div>
+    </div>
+  </el-card>
+</template>
+
+<script setup lang="ts">
+import { ref, computed } from 'vue';
+import { useProjectStore } from '../stores/project';
+import apiClient from '../api/client';
+
+const props = defineProps<{
+  sessionId: string;
+  roleInfo: { role: string; action: string };
+  content: string;
+}>();
+
+const emit = defineEmits<{
+  (e: 'action', action: string, content?: string): void;
+}>();
+
+const viewMode = ref<'preview' | 'edit'>('preview');
+const editedContent = ref(props.content);
+
+const formattedContent = computed(() => {
+  // 使用 markdown-it 格式化内容
+  return props.content;
+});
+
+async function handleContinue() {
+  await apiClient.sendInteractiveAction(props.sessionId, 'continue');
+  emit('action', 'continue');
+}
+
+async function handleEdit() {
+  await apiClient.sendInteractiveAction(
+    props.sessionId,
+    'edit',
+    editedContent.value
+  );
+  emit('action', 'edit', editedContent.value);
+}
+
+async function handleRegenerate() {
+  await apiClient.sendInteractiveAction(props.sessionId, 'regenerate');
+  emit('action', 'regenerate');
+}
+
+async function handleSkip() {
+  await apiClient.sendInteractiveAction(props.sessionId, 'skip');
+  emit('action', 'skip');
+}
+</script>
+```
+
+#### 6.6.2 项目详情组件
+
+**ProjectDetail.vue 核心功能**:
+- 项目基本信息展示
+- 实时进度显示
+- 消息流可视化
+- 文档列表和预览
+- 成本统计
+
+### 6.7 前后端数据流
+
+#### 6.7.1 项目创建数据流
+
+```mermaid
+graph LR
+    A[前端表单] --> B[ProjectStore.createProject]
+    B --> C[APIClient.createProject]
+    C --> D[POST /api/projects]
+    D --> E[ProjectController.create]
+    E --> F[ProjectRepository.create]
+    F --> G[PostgreSQL]
+    G --> F
+    F --> E
+    E --> H[JSON Response]
+    H --> C
+    C --> B
+    B --> I[更新Store状态]
+    I --> J[路由跳转]
+```
+
+#### 6.7.2 交互式会话数据流
+
+```mermaid
+graph TB
+    A[用户操作] --> B[InteractiveConfirmation组件]
+    B --> C[sendInteractiveAction]
+    C --> D[POST /api/interactive/:sessionId/action]
+    D --> E[InteractiveController.handleAction]
+    E --> F[InteractiveSession.processAction]
+    F --> G[更新会话状态]
+    G --> H[继续执行角色]
+    H --> I[生成新消息]
+    I --> J[轮询获取消息]
+    J --> K[更新UI显示]
+```
+
+### 6.8 前端页面设计
+
+#### 6.8.1 控制面板（Dashboard.vue）
+
+**功能**:
+- 项目统计概览（总数、完成数、进行中）
+- 最近项目列表
+- 快速创建项目入口
+- 成本统计图表
+
+**布局**:
+```typescript
+<template>
+  <div class="dashboard">
+    <!-- 统计卡片 -->
+    <el-row :gutter="20">
+      <el-col :span="6">
+        <el-statistic title="总项目数" :value="projectCount" />
+      </el-col>
+      <el-col :span="6">
+        <el-statistic title="已完成" :value="completedCount" />
+      </el-col>
+      <el-col :span="6">
+        <el-statistic title="总成本" :value="totalCost" suffix="USD" />
+      </el-col>
+      <el-col :span="6">
+        <el-statistic title="平均时间" :value="avgDuration" suffix="分钟" />
+      </el-col>
+    </el-row>
+
+    <!-- 最近项目列表 -->
+    <el-card>
+      <template #header>
+        <span>最近项目</span>
+        <el-button type="primary" @click="$router.push('/create')">
+          创建新项目
+        </el-button>
+      </template>
+      <el-table :data="recentProjects">
+        <!-- 表格列 -->
+      </el-table>
+    </el-card>
+  </div>
+</template>
+```
+
+#### 6.8.2 交互式项目生成页面（ProjectInteractive.vue）
+
+**功能**:
+- 项目信息展示
+- 执行进度时间线
+- 交互确认对话框
+- 实时消息流
+- 操作按钮组
+
+**核心状态管理**:
+```typescript
+const state = reactive({
+  sessionId: '',
+  projectId: '',
+  projectName: '',
+  userIdea: '',
+  currentRound: 0,
+  maxRounds: 5,
+  status: 'idle' as 'idle' | 'running' | 'paused' | 'completed',
+  completedSteps: [] as Step[],
+  currentStep: null as Step | null,
+  pollingService: null as PollingService | null,
+});
+```
+
+### 6.9 错误处理和加载状态
+
+#### 6.9.1 统一错误处理
+
+**API错误处理**:
+```typescript
+// frontend/src/api/client.ts
+this.client.interceptors.response.use(
+  (response) => response.data,
+  (error) => {
+    const errorData = error.response?.data || {};
+    
+    // 统一错误格式
+    const formattedError = {
+      message: errorData.message || '请求失败',
+      code: errorData.code || 'UNKNOWN_ERROR',
+      status: error.response?.status || 500,
+    };
+    
+    // 根据错误类型处理
+    if (error.response?.status === 401) {
+      // 未授权，跳转到登录页
+      router.push('/login');
+    } else if (error.response?.status === 409) {
+      // 冲突错误（如项目名重复）
+      ElMessage.warning(formattedError.message);
+    } else {
+      ElMessage.error(formattedError.message);
+    }
+    
+    return Promise.reject(formattedError);
+  }
+);
+```
+
+#### 6.9.2 加载状态管理
+
+**全局加载状态**:
+```typescript
+// stores/loading.ts
+export const useLoadingStore = defineStore('loading', () => {
+  const loading = ref(false);
+  const loadingText = ref('加载中...');
+
+  function setLoading(value: boolean, text?: string) {
+    loading.value = value;
+    if (text) {
+      loadingText.value = text;
+    }
+  }
+
+  return { loading, loadingText, setLoading };
+});
+```
+
+### 6.10 响应式设计
+
+#### 6.10.1 移动端适配
+
+- 使用 Element Plus 的响应式栅格系统
+- 移动端优化布局（单列显示）
+- 触摸友好的交互元素
+- 适配不同屏幕尺寸
+
+#### 6.10.2 主题配置
+
+**主题配置（config/theme.ts）**:
+```typescript
+// frontend/src/config/theme.ts
+export const themeConfig = {
+  primaryColor: '#409EFF',
+  successColor: '#67C23A',
+  warningColor: '#E6A23C',
+  dangerColor: '#F56C6C',
+  infoColor: '#909399',
+};
+```
+
+---
+
+## 7. 技术选型
 
 ### 4.1 核心技术栈
 
@@ -911,7 +2896,7 @@ apt install postgresql-14    # Ubuntu/Debian
 
 ---
 
-## 5. 扩展机制
+## 8. 扩展机制
 
 ### 5.1 自定义角色
 
@@ -1060,7 +3045,7 @@ LLM_REGISTRY["custom"] = CustomLLM
 
 ---
 
-## 6. 部署架构
+## 9. 部署架构
 
 ### 6.1 单机部署
 
@@ -1136,6 +3121,7 @@ CMD ["node", "backend/dist/server.js"]
 
 **docker-compose.yml**:
 ```yaml
+# docker-compose.yml (Docker配置文件仍使用YAML)
 version: '3.8'
 
 services:
@@ -1230,8 +3216,8 @@ def get_recent_messages(self, max_tokens: int = 2000):
 import os
 api_key = os.getenv("OPENAI_API_KEY")
 
-# 或从配置文件读取（不提交到版本控制）
-# .gitignore 中包含 config2.yaml
+# 或从TypeScript配置文件读取（不提交到版本控制）
+# .gitignore 中包含 config.ts（如果包含敏感信息）
 ```
 
 **日志脱敏**:
@@ -1371,7 +3357,7 @@ except NoMoneyException as e:
 
 ## 11. 架构演进
 
-### 11.1 当前架构 (v1.1)
+### 11.1 当前架构 (v1.2)
 
 **特点**:
 - ✅ 单机部署（支持 Docker）
@@ -1385,6 +3371,9 @@ except NoMoneyException as e:
 - ✅ 工作区管理（按应用ID和版本组织）
 - ✅ 分步骤文档生成（MRD、PRD、Design）
 - ✅ 任务拆分和执行（SubtaskManager）
+- ✅ 知识库系统（RAG检索、代码仓库关联）
+- ✅ 多角色串联工作流（输入输出映射）
+- ✅ 角色独立调试能力
 
 ### 11.2 近期规划 (v1.5)
 

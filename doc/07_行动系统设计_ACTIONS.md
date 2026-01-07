@@ -1,8 +1,8 @@
 # mind2build 行动系统设计文档
 
-**文档版本**: v1.2  
+**文档版本**: v1.3  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-06（根据实际代码实现更新 Actions 接口、参数和功能特性）
+**最后更新**: 2026-01-07（根据PRD更新，添加知识库集成和RAG检索支持）
 
 ## BaseAction 基类
 
@@ -609,6 +609,87 @@ export class CustomAction extends BaseAction {
 - 使用 `this.getWorkspaceDir()` 获取工作区目录
 - 使用 `this.readWorkspaceFile()` 读取工作区文件
 - LLM 和 Context 实例由 Role 自动注入，无需手动设置
+
+## 知识库集成
+
+### RAG检索支持
+
+Actions 可以通过 RAGService 检索相关知识库：
+
+**RAG检索示例**:
+```typescript
+import { RAGService } from '../services/RAGService';
+
+export class WritePRD extends BaseAction {
+  async run(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
+    const ragService = new RAGService();
+    
+    // 检索相关PRD文档
+    const searchResult = await ragService.searchPRD(
+      input,
+      options?.applicationId || 'default',
+      options?.topK || 5
+    );
+    
+    // 将检索结果注入提示词
+    const prompt = buildPRDPrompt(input, searchResult.relevantChunks);
+    
+    // 生成PRD
+    const content = await this.aask(prompt);
+    
+    return { content, data: {...} };
+  }
+}
+```
+
+### 代码仓库检索
+
+Actions 可以从关联的代码仓库检索相关代码：
+
+**代码仓库检索示例**:
+```typescript
+// 在WriteCode Action中使用代码仓库
+async run(design: string, options?: WriteCodeOptions): Promise<IActionOutput> {
+  const ragService = new RAGService();
+  
+  // 检索代码仓库中的相关代码
+  if (options?.codeRepository) {
+    const codeResults = await ragService.searchCodeRepository(
+      design,
+      options.codeRepository
+    );
+    
+    // 将代码示例注入提示词
+    const prompt = buildCodePrompt(design, codeResults);
+    const content = await this.aask(prompt);
+    
+    return { content, data: {...} };
+  }
+}
+```
+
+### 知识库自动更新
+
+Actions 执行完成后，可以自动更新知识库：
+
+**知识库更新示例**:
+```typescript
+async run(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
+  // ... 生成PRD ...
+  
+  // 如果启用自动更新知识库
+  if (options?.autoUpdateKnowledge && options?.applicationId) {
+    await this.updateKnowledgeBase({
+      applicationId: options.applicationId,
+      version: options.version,
+      documentType: 'PRD',
+      content: content
+    });
+  }
+  
+  return { content, data: {...} };
+}
+```
 
 ---
 

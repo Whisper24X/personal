@@ -2,8 +2,9 @@
 
 **Slogan**: 让所思，即所得
 
-**文档版本**: v1.0  
-**创建日期**: 2025-12-24
+**文档版本**: v1.2  
+**创建日期**: 2025-12-24  
+**最后更新**: 2026-01-07（根据PRD更新，添加知识库检索流程和工作流数据流）
 
 ## 1. 典型软件开发流程
 
@@ -115,6 +116,81 @@ graph LR
     E -->|短期| F[最近N条]
     E -->|长期| G[向量存储]
     E -->|工作| H[当前任务]
+```
+
+## 6. 知识库检索流程
+
+```mermaid
+sequenceDiagram
+    participant Role as 角色
+    participant Action as Action
+    participant RAG as RAGService
+    participant KB as 知识库
+    participant VS as 向量数据库
+    participant CR as 代码仓库
+    
+    Role->>Action: 执行Action
+    Action->>RAG: search(query, applicationId)
+    RAG->>KB: 检索文档知识库
+    RAG->>VS: 语义检索
+    RAG->>CR: 检索代码仓库
+    VS-->>RAG: 相关文档片段
+    CR-->>RAG: 相关代码示例
+    RAG->>RAG: 结果融合和排序
+    RAG-->>Action: 检索结果
+    Action->>Action: 注入上下文
+    Action->>Action: 生成完整产出
+    Action->>KB: 更新知识库（可选）
+```
+
+## 7. 工作流数据流
+
+```mermaid
+sequenceDiagram
+    participant User as 用户
+    participant WF as WorkflowEngine
+    participant Step1 as Step1(PM)
+    participant Step2 as Step2(Arch)
+    participant Step3 as Step3(Eng)
+    
+    User->>WF: 执行工作流
+    WF->>Step1: 执行步骤1（输入：user.idea）
+    Step1->>Step1: WritePRD
+    Step1-->>WF: 输出：prd
+    WF->>WF: 应用输入输出映射
+    WF->>Step2: 执行步骤2（输入：step1.output.prd）
+    Step2->>Step2: WriteDesign
+    Step2-->>WF: 输出：design
+    WF->>WF: 应用输入输出映射
+    WF->>Step3: 执行步骤3（输入：step1.output.prd + step2.output.design）
+    Step3->>Step3: WriteCode
+    Step3-->>WF: 输出：code
+    WF-->>User: 返回最终结果
+```
+
+## 8. 知识库更新流程
+
+```mermaid
+graph TB
+    A[迭代完成] --> B[提取产出]
+    B --> C{产出类型}
+    C -->|文档| D[文档知识库]
+    C -->|代码| E[代码仓库]
+    C -->|API| F[API文档库]
+    
+    D --> G[向量化]
+    E --> H[代码索引]
+    F --> I[API索引]
+    
+    G --> J[更新向量数据库]
+    H --> K[更新代码索引]
+    I --> L[更新API索引]
+    
+    J --> M[知识库版本管理]
+    K --> M
+    L --> M
+    
+    M --> N[下一轮迭代]
 ```
 
 ---

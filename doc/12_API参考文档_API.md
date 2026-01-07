@@ -1,8 +1,8 @@
 # mind2build API 参考文档
 
-**文档版本**: v1.1  
+**文档版本**: v1.2  
 **创建日期**: 2025-12-24
-**最后更新**: 2025-12-25
+**最后更新**: 2026-01-07（添加知识库和工作流相关API）
 
 ---
 
@@ -47,9 +47,16 @@
   "description": "项目描述（可选）",
   "investment": 10.0,
   "nRound": 5,
-  "applicationId": "应用ID（可选）"
+  "applicationId": "应用ID（可选）",
+  "version": 1,
+  "gitRepositoryUrl": "https://github.com/user/project.git"
 }
 ```
+
+**Git仓库管理说明**:
+- 如果提供 `gitRepositoryUrl`，系统会自动执行 `git clone` 拉取仓库
+- 如果仓库中已有文档或代码，系统会根据 `version` 创建新分支（如 `v2`, `v3`）
+- 所有生成的文档和代码会自动提交到对应版本分支
 
 **响应**:
 ```json
@@ -155,6 +162,102 @@
 **GET** `/api/projects/:id/download/:zipPath(*)`
 
 下载项目文件或ZIP压缩包。
+
+### 1.3.1 Git仓库管理 API
+
+#### Git仓库初始化
+
+**POST** `/api/projects/:id/git/init`
+
+初始化项目的Git仓库。
+
+**请求体**:
+```json
+{
+  "repositoryUrl": "https://github.com/user/project.git",
+  "version": 1
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Git repository initialized",
+  "repositoryUrl": "https://github.com/user/project.git",
+  "branch": "v1"
+}
+```
+
+#### 创建版本分支
+
+**POST** `/api/projects/:id/git/branch`
+
+为项目创建新的版本分支。
+
+**请求体**:
+```json
+{
+  "version": 2,
+  "baseBranch": "main"
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Branch created",
+  "branch": "v2"
+}
+```
+
+#### 提交到Git仓库
+
+**POST** `/api/projects/:id/git/commit`
+
+将项目文件提交到Git仓库。
+
+**请求体**:
+```json
+{
+  "message": "feat: 生成v1版本文档和代码",
+  "version": 1,
+  "files": ["MRD/", "PRD/", "DESIGN/", "CODE/"]
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Committed successfully",
+  "commitHash": "abc123...",
+  "branch": "v1"
+}
+```
+
+#### 获取Git仓库信息
+
+**GET** `/api/projects/:id/git/info`
+
+获取项目的Git仓库信息。
+
+**响应**:
+```json
+{
+  "success": true,
+  "repositoryUrl": "https://github.com/user/project.git",
+  "currentBranch": "v1",
+  "branches": ["main", "v1", "v2"],
+  "lastCommit": {
+    "hash": "abc123...",
+    "message": "feat: 生成v1版本文档和代码",
+    "author": "mind2build",
+    "date": "2025-12-25T00:00:00Z"
+  }
+}
+```
 
 #### 列出所有项目
 
@@ -599,7 +702,433 @@ ws.on('error', (error) => {
 
 **DELETE** `/api/config/prompts/:type/:key`
 
-### 1.9 测试 API
+### 1.9 知识库 API
+
+#### 关联知识库
+
+**POST** `/api/projects/:projectId/knowledge-base`
+
+为项目关联知识库和代码仓库。
+
+**请求体**:
+```json
+{
+  "documents": [
+    {
+      "name": "技术规范",
+      "path": "./knowledge/tech-specs",
+      "type": "markdown"
+    }
+  ],
+  "codeRepository": {
+    "name": "参考代码仓库",
+    "type": "git",
+    "url": "https://github.com/company/repo",
+    "branch": "main",
+    "languages": ["typescript", "javascript"],
+    "extractPatterns": true,
+    "sync": true
+  },
+  "apis": [
+    {
+      "name": "支付API",
+      "path": "./knowledge/api/payment.yaml",
+      "type": "openapi"
+    }
+  ],
+  "retrieval": {
+    "topK": 5,
+    "threshold": 0.7,
+    "rerank": true
+  }
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Knowledge base associated successfully"
+}
+```
+
+#### 检索知识库
+
+**POST** `/api/knowledge-base/search`
+
+检索知识库中的相关内容。
+
+**请求体**:
+```json
+{
+  "applicationId": "ecommerce-app",
+  "query": "支付模块设计",
+  "topK": 5,
+  "documentTypes": ["PRD", "DESIGN"],
+  "includeCode": true
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "results": [
+    {
+      "type": "document",
+      "source": "PRD",
+      "content": "相关文档片段...",
+      "score": 0.85,
+      "metadata": {
+        "filename": "PRD.md",
+        "version": 1
+      }
+    },
+    {
+      "type": "code",
+      "source": "codeRepository",
+      "content": "相关代码片段...",
+      "score": 0.78,
+      "metadata": {
+        "file": "src/payment.ts",
+        "line": 10
+      }
+    }
+  ]
+}
+```
+
+#### 更新知识库
+
+**POST** `/api/projects/:projectId/knowledge-base/update`
+
+手动更新知识库（将项目产出添加到知识库）。
+
+**请求体**:
+```json
+{
+  "documentType": "PRD",
+  "content": "PRD文档内容...",
+  "autoIndex": true
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Knowledge base updated successfully"
+}
+```
+
+### 1.10 工作流 API
+
+#### 创建工作流
+
+**POST** `/api/v1/workflow/create`
+
+创建多角色串联工作流。
+
+**请求体**:
+```json
+{
+  "name": "自定义串联工作流",
+  "description": "ProductManager -> Architect -> Engineer",
+  "version": "1.0",
+  "chain": [
+    {
+      "id": "step1",
+      "role": "ProductManager",
+      "actions": ["WritePRD"],
+      "input": {
+        "source": "user",
+        "mapping": {
+          "idea": "${user.idea}"
+        }
+      },
+      "output": {
+        "target": "step2",
+        "mapping": {
+          "prd": "${output.prd}"
+        }
+      }
+    },
+    {
+      "id": "step2",
+      "role": "Architect",
+      "actions": ["WriteDesign"],
+      "input": {
+        "source": "step1",
+        "mapping": {
+          "prd": "${step1.output.prd}"
+        }
+      },
+      "output": {
+        "target": "step3",
+        "mapping": {
+          "design": "${output.design}"
+        }
+      }
+    }
+  ]
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "workflowId": "workflow-uuid",
+  "message": "Workflow created successfully"
+}
+```
+
+#### 执行工作流
+
+**POST** `/api/v1/workflow/execute`
+
+执行指定的工作流。
+
+**请求体**:
+```json
+{
+  "workflowId": "workflow-uuid",
+  "input": {
+    "idea": "Create a todo app"
+  },
+  "options": {
+    "interactive": false,
+    "autoUpdateKnowledge": true
+  }
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "result": {
+    "code": "...",
+    "files": ["src/index.ts", "src/api.ts"]
+  }
+}
+```
+
+#### 调整工作流顺序
+
+**PUT** `/api/v1/workflow/:workflowId/reorder`
+
+调整工作流中角色的执行顺序。
+
+**请求体**:
+```json
+{
+  "stepOrder": ["step1", "step3", "step2"]
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Workflow order updated"
+}
+```
+
+#### 更新输入输出映射
+
+**PUT** `/api/v1/workflow/:workflowId/mapping`
+
+更新工作流中某个步骤的输入输出映射。
+
+**请求体**:
+```json
+{
+  "stepId": "step2",
+  "input": {
+    "source": "step1",
+    "mapping": {
+      "prd": "${step1.output.prd}",
+      "additional_context": "${step1.output.metadata}"
+    }
+  },
+  "output": {
+    "target": ["step3", "user"],
+    "mapping": {
+      "design": "${output.design}"
+    }
+  }
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Mapping updated successfully"
+}
+```
+
+#### 获取工作流列表
+
+**GET** `/api/v1/workflow`
+
+获取所有工作流列表。
+
+**查询参数**:
+- `limit`: 返回数量限制
+- `offset`: 偏移量
+
+**响应**:
+```json
+{
+  "success": true,
+  "workflows": [
+    {
+      "id": "workflow-uuid",
+      "name": "自定义串联工作流",
+      "description": "ProductManager -> Architect -> Engineer",
+      "version": "1.0",
+      "createdAt": "2025-12-25T00:00:00Z"
+    }
+  ],
+  "total": 10
+}
+```
+
+#### 获取工作流详情
+
+**GET** `/api/v1/workflow/:workflowId`
+
+获取工作流的详细信息。
+
+**响应**:
+```json
+{
+  "success": true,
+  "workflow": {
+    "id": "workflow-uuid",
+    "name": "自定义串联工作流",
+    "description": "ProductManager -> Architect -> Engineer",
+    "version": "1.0",
+    "chain": [...],
+    "createdAt": "2025-12-25T00:00:00Z",
+    "updatedAt": "2025-12-25T00:00:00Z"
+  }
+}
+```
+
+### 1.11 角色调试 API
+
+#### 角色独立调试
+
+**POST** `/api/v1/role/debug`
+
+独立运行和调试某个角色。
+
+**请求体**:
+```json
+{
+  "roleName": "ProductManager",
+  "input": {
+    "mrd": "市场研究文档内容...",
+    "context": {}
+  },
+  "options": {
+    "breakpoints": ["WritePRD"],
+    "verbose": true,
+    "saveLogs": true,
+    "stepMode": false
+  }
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "sessionId": "debug-session-uuid",
+  "result": {
+    "content": "PRD文档内容...",
+    "data": {
+      "type": "PRD",
+      "filename": "PRD.md"
+    }
+  },
+  "logs": [
+    {
+      "timestamp": "2025-12-25T00:00:00Z",
+      "level": "info",
+      "message": "Role started",
+      "role": "ProductManager"
+    }
+  ],
+  "metrics": {
+    "executionTime": 1234,
+    "tokenUsage": {
+      "promptTokens": 1000,
+      "completionTokens": 500,
+      "totalTokens": 1500
+    },
+    "apiCalls": 1
+  }
+}
+```
+
+#### 获取调试日志
+
+**GET** `/api/v1/role/:roleName/logs`
+
+获取角色的调试日志。
+
+**查询参数**:
+- `sessionId`: 调试会话ID（可选）
+- `limit`: 返回数量限制（默认：100）
+
+**响应**:
+```json
+{
+  "success": true,
+  "logs": [
+    {
+      "timestamp": "2025-12-25T00:00:00Z",
+      "level": "info",
+      "message": "Role started",
+      "role": "ProductManager",
+      "action": "WritePRD"
+    }
+  ],
+  "total": 50
+}
+```
+
+#### 获取角色性能指标
+
+**GET** `/api/v1/role/:roleName/metrics`
+
+获取角色的性能指标。
+
+**查询参数**:
+- `sessionId`: 调试会话ID（可选）
+
+**响应**:
+```json
+{
+  "success": true,
+  "metrics": {
+    "executionTime": 1234,
+    "tokenUsage": {
+      "promptTokens": 1000,
+      "completionTokens": 500,
+      "totalTokens": 1500
+    },
+    "apiCalls": 1,
+    "averageResponseTime": 1.2
+  }
+}
+```
+
+### 1.12 测试 API
 
 #### 获取工程师信息
 

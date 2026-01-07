@@ -1,7 +1,8 @@
 # mind2build 核心类设计文档
 
-**文档版本**: v1.0  
-**创建日期**: 2025-12-24
+**文档版本**: v1.1  
+**创建日期**: 2025-12-24  
+**最后更新**: 2026-01-07（根据PRD更新，添加知识库系统和工作流编排相关类）
 
 ---
 
@@ -14,6 +15,8 @@
 5. [Memory](#5-memory)
 6. [Context](#6-context)
 7. [Team](#7-team)
+8. [KnowledgeBase](#8-knowledgebase)
+9. [WorkflowEngine](#9-workflowengine)
 
 ---
 
@@ -489,6 +492,15 @@ classDiagram
     Context *-- Config
     Context *-- CostManager
     Context *-- BaseLLM
+    Context *-- KnowledgeBase
+    
+    Team *-- WorkflowEngine
+    WorkflowEngine *-- Workflow
+    Workflow *-- WorkflowStep
+    
+    KnowledgeBase *-- DocumentRepository
+    KnowledgeBase *-- CodeRepository
+    KnowledgeBase *-- VectorStore
     
     class Role {
         +name: str

@@ -11,6 +11,39 @@ git clone https://github.com/geekan/mind2build.git
 cd mind2build
 ```
 
+### 1.2 Git仓库管理
+
+**重要说明**: 系统使用Git来管理每个生成的项目，所有文档和代码都存储在Git仓库中。
+
+**项目初始化流程**:
+1. 创建项目时，可以提供Git仓库地址（GitHub、GitLab、Gitee等）
+2. 如果提供仓库地址，系统会自动执行 `git clone` 拉取仓库
+3. 如果仓库中已有文档或代码，系统会根据版本号创建新分支（如 `v2`, `v3`）
+4. 所有生成的文档和代码会自动提交到对应版本分支
+
+**版本分支管理**:
+- 每个版本对应一个Git分支：`v1`, `v2`, `v3`...
+- 主分支（`main`）存储最新稳定版本
+- 系统自动检测已有版本并创建新分支
+
+**Git操作示例**:
+```bash
+# 项目初始化时
+git clone https://github.com/user/project.git
+cd project
+
+# 检查是否存在已有版本
+git branch -a | grep "v[0-9]"
+
+# 如果存在v1分支，创建v2分支
+git checkout -b v2
+
+# 生成文档和代码后，提交到版本分支
+git add .
+git commit -m "feat: 生成v2版本文档和代码"
+git push origin v2
+```
+
 ### 1.2 创建虚拟环境
 ```bash
 conda create -n mind2build python=3.9
