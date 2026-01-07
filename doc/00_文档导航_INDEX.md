@@ -71,13 +71,20 @@
 - 自定义角色开发指南
 
 #### 7. [行动系统设计](./07_行动系统设计_ACTIONS.md)
-- UserRequirement（用户需求收集）
-- WriteRequirementSpec（编写需求说明文档）
-- RequirementSpecReview（需求说明文档审查）
+- WriteMRD（编写市场研究文档）
+- MRDReview（MRD文档审查）
 - WritePRD（编写 PRD）
 - PRDReview（PRD文档审查）
+- ImproveDocument（改进文档）
 - WriteDesign（编写设计）
+- DesignReview（设计文档审查）
+- BreakdownTasks（任务拆分）
+- WriteSubProjectDesign（子项目设计）
+- SubProjectDesignReview（子项目设计审查）
+- GenerateTask（生成任务说明）
 - WriteCode（编写代码）
+- ExecuteSubtask（执行子任务）
+- CodeReview（代码审查）
 - WriteTest（编写测试）
 - SearchEnhancedQA（增强搜索问答）
 - DataAnalysis（数据分析）
@@ -86,7 +93,7 @@
 
 #### 8. [LLM 提供商集成](./08_LLM提供商集成_PROVIDERS.md)
 - LLM 抽象层设计
-- ✅ 已实现：OpenAI、智谱AI (ZhipuAI)、火山引擎 Ark (豆包)
+- ✅ 已实现：OpenAI、智谱AI (ZhipuAI)、火山引擎 Ark (豆包)、Cursor Agent
 - 🚧 计划中：Anthropic Claude、Google Gemini、百度千帆、阿里云 DashScope、Ollama
 - 自定义提供商开发指南
 
@@ -158,11 +165,11 @@
 ### 八、数据持久化
 
 #### 18. [数据库设计](./18_数据库设计_DATABASE.md)
-- 数据库表结构设计
+- 数据库表结构设计（PostgreSQL）
 - ER 图与关系设计
 - 索引与性能优化
 - 数据迁移策略
-- SQLAlchemy 模型示例
+- 原生 SQL 实现（pg 驱动）
 
 ### 九、配置指南
 
@@ -275,11 +282,12 @@
 
 ## 📝 文档维护
 
-- **当前版本**: v1.1
-- **最后更新**: 2025-12-25
+- **当前版本**: v1.2
+- **最后更新**: 2026-01-06
 - **维护状态**: 活跃维护中
 
 ### 更新日志
+- 2026-01-06: 根据实际代码实现全面更新文档导航、项目需求文档、产品需求文档和技术规格文档，修正技术栈（Node.js + TypeScript + Vue 3），更新角色和Actions列表，添加交互模式和Web UI说明，更新LLM提供商状态
 - 2025-12-25: 根据代码实现更新角色系统设计文档，详细说明每个角色的监听机制、Actions 和工作流程，移除不存在的 CodeReview action，添加各角色的实际监听目标和约束条件
 - 2025-12-25: 根据代码实现全面更新文档，修正技术栈描述（Node.js + TypeScript，而非 Python），更新 Actions 列表（WriteMRD, MRDReview, DesignReview, SubProjectDesignReview, ExecuteSubtask），添加 WebSocket API 文档，更新 LLM 提供商状态（OpenAI, ZhipuAI, Ark, Cursor）
 - 2025-12-25: 根据代码实现更新文档，添加 ProjectManager 角色和新增 Actions（BreakdownTasks, WriteSubProjectDesign, GenerateTask, CodeReview）的完整描述

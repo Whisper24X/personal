@@ -4,10 +4,11 @@
 
 ## 文档信息
 - **产品名称**: 即思即成（Mind2Build）- 多代理协作框架
-- **文档版本**: v1.0
+- **文档版本**: v1.1
 - **创建日期**: 2025-12-24
+- **最后更新**: 2026-01-06
 - **产品经理**: AI Product Team
-- **目标版本**: Mind2Build 1.0
+- **目标版本**: Mind2Build 1.1
 
 ---
 
@@ -524,9 +525,10 @@ llm:
 ### 3.5 兼容性要求
 
 - **后端**: Node.js v18+ + TypeScript v5.3+
-- **前端**: Vue 3 + Vite + TypeScript
+- **前端**: Vue 3 + Vite + TypeScript + Element Plus
 - **数据库**: PostgreSQL v14+
-- **包管理**: pnpm v8+
+- **包管理**: pnpm v8+ (monorepo)
+- **WebSocket**: ws v8.18+ (实时通信)
 - **操作系统**: Linux, macOS, Windows
 
 ---
@@ -540,17 +542,22 @@ llm:
 - ✅ CLI 界面
 
 ### 里程碑 M2: 稳定版本 (当前)
-- ✅ 完整角色系统
-- ✅ 多 LLM 支持
+- ✅ 完整角色系统（8个角色）
+- ✅ 多 LLM 支持（OpenAI, ZhipuAI, Ark, Cursor）
 - ✅ 增量开发
-- ✅ 数据解释器
-- ⏳ 交互式确认模式
+- ✅ 数据解释器（DataAnalyst）
+- ✅ 交互式确认模式（CLI + Web）
+- ✅ Web UI 界面（Vue 3 + Element Plus）
+- ✅ REST API + WebSocket API
+- ✅ PostgreSQL 数据库集成
+- ✅ 工作区管理（WorkspaceManager）
+- ✅ 分步骤文档生成（StepwiseDocumentGenerator）
 
 ### 里程碑 M3: 增强版本 (规划中)
-- ⏳ Web UI 界面
-- ⏳ 实时协作
+- ⏳ 更多 LLM 提供商支持
+- ⏳ 实时协作（多人）
 - ⏳ 更多编程语言支持
-- ⏳ 企业级功能
+- ⏳ 企业级功能（权限管理、多租户）
 
 ### 里程碑 M4: 生态版本 (远期)
 - ⏳ 插件市场
@@ -630,9 +637,16 @@ mind2build "Create a 2048 game"
 - 总时间 < 10分钟
 
 #### 场景2: 数据分析
-```python
-di = DataInterpreter()
-await di.run("Run data analysis on sklearn Iris dataset, include a plot")
+```typescript
+// 通过 CLI
+mind2build "Analyze Iris dataset and create visualization" --role DataAnalyst
+
+// 或通过 API
+POST /api/v1/run
+{
+  "idea": "Analyze Iris dataset and create visualization",
+  "roles": ["DataAnalyst"]
+}
 ```
 **预期输出**:
 - 数据加载代码
@@ -641,12 +655,13 @@ await di.run("Run data analysis on sklearn Iris dataset, include a plot")
 
 #### 场景3: 增量开发
 ```bash
-mind2build "Add user login feature" --inc --project-path ./game_2048
+mind2build "Add user login feature" --inc --project-path ./game_2048 --application-id my-app --version 2
 ```
 **预期输出**:
 - 更新的设计文档
 - 新增的登录功能代码
 - 保留原有文件
+- 工作区按 applicationId 和 version 组织
 
 #### 场景4: 交互模式开发
 ```bash

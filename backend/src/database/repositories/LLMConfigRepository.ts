@@ -6,6 +6,7 @@
 import { query } from '../client';
 import { logger } from '../../utils';
 import { ILLMConfig, LLMProvider } from '@mind2build/shared';
+import { ProviderConfigRepository } from './ProviderConfigRepository';
 
 export interface LLMConfig {
   id: string;
@@ -23,14 +24,21 @@ export interface LLMConfig {
 }
 
 export class LLMConfigRepository {
+  private providerConfigRepo: ProviderConfigRepository;
+
+  constructor() {
+    this.providerConfigRepo = new ProviderConfigRepository();
+  }
+
   /**
    * Create or update LLM configuration
+   * Note: apiKey and baseURL should be managed separately via ProviderConfigRepository
    */
   async upsert(data: {
     userId: string;
     provider: LLMProvider;
-    apiKey?: string;
-    baseURL?: string;
+    apiKey?: string; // Deprecated: kept for backward compatibility
+    baseURL?: string; // Deprecated: kept for backward compatibility
     model: string;
     temperature?: number;
     maxTokens?: number;
@@ -55,25 +63,31 @@ export class LLMConfigRepository {
         [data.userId, data.provider]
       );
 
+      // If apiKey or baseURL provided, update provider config (for backward compatibility)
+      if (data.apiKey !== undefined || data.baseURL !== undefined) {
+        await this.providerConfigRepo.upsert({
+          userId: data.userId,
+          provider: data.provider,
+          apiKey: data.apiKey,
+          baseURL: data.baseURL,
+        });
+      }
+
       let result: any;
       if (existing.rows.length > 0) {
-        // Update existing config
+        // Update existing config (without api_key and base_url)
         result = await query<LLMConfig>(
           `UPDATE llm_configs 
-           SET api_key = $3,
-               base_url = $4,
-               model = $5,
-               temperature = $6,
-               max_tokens = $7,
-               is_active = $8,
+           SET model = $3,
+               temperature = $4,
+               max_tokens = $5,
+               is_active = $6,
                updated_at = NOW()
            WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
            RETURNING *`,
           [
             existing.rows[0].id,
             data.userId,
-            data.apiKey || null,
-            data.baseURL || null,
             data.model,
             data.temperature ?? 0.7,
             data.maxTokens ?? 8000,
@@ -81,19 +95,17 @@ export class LLMConfigRepository {
           ]
         );
       } else {
-        // Insert new config
+        // Insert new config (without api_key and base_url)
         result = await query<LLMConfig>(
           `INSERT INTO llm_configs (
-            user_id, provider, api_key, base_url, model, 
+            user_id, provider, model, 
             temperature, max_tokens, is_active
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          VALUES ($1, $2, $3, $4, $5, $6)
           RETURNING *`,
           [
             data.userId,
             data.provider,
-            data.apiKey || null,
-            data.baseURL || null,
             data.model,
             data.temperature ?? 0.7,
             data.maxTokens ?? 8000,
@@ -126,12 +138,21 @@ export class LLMConfigRepository {
 
   /**
    * Find active LLM configuration for a user
+   * Automatically joins with provider_configs to get apiKey and baseURL
    */
-  async findActive(userId: string): Promise<LLMConfig | null> {
-    const result = await query<LLMConfig>(
-      `SELECT * FROM llm_configs 
-       WHERE user_id = $1 AND is_active = true AND deleted_at IS NULL
-       ORDER BY updated_at DESC
+  async findActive(userId: string): Promise<LLMConfig & { provider_api_key?: string | null; provider_base_url?: string | null } | null> {
+    const result = await query<LLMConfig & { provider_api_key?: string | null; provider_base_url?: string | null }>(
+      `SELECT 
+         lc.*,
+         pc.api_key as provider_api_key,
+         pc.base_url as provider_base_url
+       FROM llm_configs lc
+       LEFT JOIN llm_provider_configs pc 
+         ON lc.user_id = pc.user_id 
+         AND lc.provider = pc.provider 
+         AND pc.deleted_at IS NULL
+       WHERE lc.user_id = $1 AND lc.is_active = true AND lc.deleted_at IS NULL
+       ORDER BY lc.updated_at DESC
        LIMIT 1`,
       [userId]
     );
@@ -141,12 +162,21 @@ export class LLMConfigRepository {
 
   /**
    * Find LLM configuration by provider for a user
+   * Automatically joins with provider_configs to get apiKey and baseURL
    */
-  async findByProvider(userId: string, provider: LLMProvider): Promise<LLMConfig | null> {
-    const result = await query<LLMConfig>(
-      `SELECT * FROM llm_configs 
-       WHERE user_id = $1 AND provider = $2 AND deleted_at IS NULL
-       ORDER BY updated_at DESC
+  async findByProvider(userId: string, provider: LLMProvider): Promise<LLMConfig & { provider_api_key?: string | null; provider_base_url?: string | null } | null> {
+    const result = await query<LLMConfig & { provider_api_key?: string | null; provider_base_url?: string | null }>(
+      `SELECT 
+         lc.*,
+         pc.api_key as provider_api_key,
+         pc.base_url as provider_base_url
+       FROM llm_configs lc
+       LEFT JOIN llm_provider_configs pc 
+         ON lc.user_id = pc.user_id 
+         AND lc.provider = pc.provider 
+         AND pc.deleted_at IS NULL
+       WHERE lc.user_id = $1 AND lc.provider = $2 AND lc.deleted_at IS NULL
+       ORDER BY lc.updated_at DESC
        LIMIT 1`,
       [userId, provider]
     );
@@ -156,12 +186,21 @@ export class LLMConfigRepository {
 
   /**
    * Find all LLM configurations for a user
+   * Automatically joins with provider_configs to get apiKey and baseURL
    */
-  async findByUserId(userId: string): Promise<LLMConfig[]> {
-    const result = await query<LLMConfig>(
-      `SELECT * FROM llm_configs 
-       WHERE user_id = $1 AND deleted_at IS NULL
-       ORDER BY is_active DESC, updated_at DESC`,
+  async findByUserId(userId: string): Promise<(LLMConfig & { provider_api_key?: string | null; provider_base_url?: string | null })[]> {
+    const result = await query<LLMConfig & { provider_api_key?: string | null; provider_base_url?: string | null }>(
+      `SELECT 
+         lc.*,
+         pc.api_key as provider_api_key,
+         pc.base_url as provider_base_url
+       FROM llm_configs lc
+       LEFT JOIN llm_provider_configs pc 
+         ON lc.user_id = pc.user_id 
+         AND lc.provider = pc.provider 
+         AND pc.deleted_at IS NULL
+       WHERE lc.user_id = $1 AND lc.deleted_at IS NULL
+       ORDER BY lc.is_active DESC, lc.updated_at DESC`,
       [userId]
     );
 
@@ -247,12 +286,17 @@ export class LLMConfigRepository {
 
   /**
    * Convert database row to ILLMConfig
+   * Uses provider_api_key and provider_base_url if available, otherwise falls back to legacy fields
    */
-  toILLMConfig(row: LLMConfig): ILLMConfig {
+  toILLMConfig(row: LLMConfig & { provider_api_key?: string | null; provider_base_url?: string | null }): ILLMConfig {
+    // Prefer provider config values, fall back to legacy fields for backward compatibility
+    const apiKey = row.provider_api_key !== undefined ? row.provider_api_key : row.api_key;
+    const baseURL = row.provider_base_url !== undefined ? row.provider_base_url : row.base_url;
+    
     return {
       provider: row.provider,
-      apiKey: row.api_key || '',
-      baseURL: row.base_url || undefined,
+      apiKey: apiKey || '',
+      baseURL: baseURL || undefined,
       model: row.model,
       temperature: row.temperature,
       maxTokens: row.max_tokens,

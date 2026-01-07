@@ -235,6 +235,24 @@ class APIClient {
     return this.client.delete(`/config/llm/${id}`);
   }
 
+  // Provider Config API 端点 (API keys and base URLs)
+  async getProviderConfigs() {
+    return this.client.get('/config/llm/providers');
+  }
+
+  async getProviderConfig(provider: string) {
+    return this.client.get(`/config/llm/providers/${provider}`);
+  }
+
+  async saveProviderConfig(data: {
+    provider: string;
+    apiKey?: string;
+    baseURL?: string;
+    model?: string;
+  }) {
+    return this.client.post('/config/llm/providers', data);
+  }
+
   // Role LLM Config API 端点
   async getRoleLLMConfigs() {
     return this.client.get('/config/role-llm');

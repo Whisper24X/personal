@@ -105,40 +105,50 @@
         <el-form-item label="提供商" prop="provider">
           <el-select
             v-model="form.provider"
-            placeholder="选择提供商"
+            placeholder="选择已配置的提供商"
             style="width: 100%"
             @change="onProviderChange"
           >
-            <el-option label="OpenAI" value="openai" />
-            <el-option label="智谱AI (ZhipuAI)" value="zhipuai" />
-            <el-option label="火山引擎 Ark (豆包)" value="ark" />
-            <el-option label="Cursor Agent" value="cursor" />
-            <el-option label="Anthropic Claude" value="anthropic" />
-            <el-option label="Google Gemini" value="gemini" />
-            <el-option label="百度千帆" value="qianfan" />
-            <el-option label="阿里通义" value="dashscope" />
-            <el-option label="Ollama" value="ollama" />
+            <el-option
+              v-for="provider in providerConfigs"
+              :key="provider.provider"
+              :label="getProviderName(provider.provider)"
+              :value="provider.provider"
+            />
           </el-select>
+          <el-alert
+            v-if="providerConfigs.length === 0"
+            type="warning"
+            :closable="false"
+            show-icon
+            style="margin-top: 8px"
+          >
+            还没有配置任何 Provider。请先到 <el-button type="text" size="small" @click="router.push('/config/llm')">LLM 配置页面</el-button> 配置 Provider。
+          </el-alert>
         </el-form-item>
 
         <el-form-item label="API Key" prop="apiKey">
           <el-input
             v-model="form.apiKey"
             type="password"
-            placeholder="输入 API Key"
+            placeholder="将使用已配置的 Provider API Key"
             show-password
-            :disabled="form.provider === 'ollama'"
+            :disabled="true"
           />
-          <el-text v-if="form.provider === 'ollama'" type="info" size="small" style="margin-top: 4px; display: block">
-            Ollama 不需要 API Key
+          <el-text type="success" size="small" style="margin-top: 4px; display: block">
+            将使用已配置的 Provider API Key
           </el-text>
         </el-form-item>
 
         <el-form-item v-if="form.provider !== 'cursor'" label="Base URL" prop="baseURL">
           <el-input
             v-model="form.baseURL"
-            placeholder="可选，留空使用默认 URL"
+            placeholder="将使用已配置的 Provider Base URL"
+            :disabled="true"
           />
+          <el-text type="success" size="small" style="margin-top: 4px; display: block">
+            将使用已配置的 Provider Base URL
+          </el-text>
         </el-form-item>
 
         <!-- Cursor 特定配置 -->
@@ -172,12 +182,26 @@
         </template>
 
         <el-form-item label="模型" prop="model">
-          <el-input
+          <el-select
             v-model="form.model"
-            placeholder="例如: gpt-4-turbo, glm-4-flash, auto"
-          />
+            placeholder="选择模型"
+            style="width: 100%"
+            filterable
+            allow-create
+            default-first-option
+          >
+            <el-option
+              v-for="model in availableModels"
+              :key="model"
+              :label="model"
+              :value="model"
+            />
+          </el-select>
           <el-text v-if="form.provider === 'cursor'" type="info" size="small" style="margin-top: 4px; display: block">
             使用 "auto" 让 Cursor 自动选择最合适的模型
+          </el-text>
+          <el-text v-else-if="availableModels.length === 0" type="warning" size="small" style="margin-top: 4px; display: block">
+            该 Provider 未配置默认模型，请输入模型名称
           </el-text>
         </el-form-item>
 
@@ -293,6 +317,8 @@ const roleConfigs = ref<Record<string, RoleLLMConfig>>({});
 const showConfigDialog = ref(false);
 const currentRole = ref<Role | null>(null);
 const formRef = ref<FormInstance>();
+const providerConfigs = ref<Array<{ provider: string; apiKey?: string; baseURL?: string; model?: string }>>([]);
+const availableModels = ref<string[]>([]);
 
 const form = ref<RoleLLMConfig & { provider: string }>({
   provider: 'zhipuai',
@@ -307,22 +333,23 @@ const form = ref<RoleLLMConfig & { provider: string }>({
 });
 
 const rules: FormRules = {
-  provider: [{ required: true, message: '请选择提供商', trigger: 'change' }],
-  model: [{ required: true, message: '请输入模型名称', trigger: 'blur' }],
-  apiKey: [
+  provider: [
     {
+      required: true,
+      message: '请选择已配置的提供商',
+      trigger: 'change',
       validator: (_rule: any, value: string, callback: (error?: Error) => void) => {
-        if (form.value.provider === 'ollama') {
-          callback();
-        } else if (!value || value.trim() === '') {
-          callback(new Error('请输入 API Key'));
+        if (!value) {
+          callback(new Error('请选择已配置的提供商'));
+        } else if (!providerConfigs.value.some(p => p.provider === value)) {
+          callback(new Error('请选择已配置的提供商'));
         } else {
           callback();
         }
       },
-      trigger: 'blur',
     },
   ],
+  model: [{ required: true, message: '请选择或输入模型名称', trigger: 'blur' }],
   repository: [
     {
       validator: (_rule: any, value: string, callback: (error?: Error) => void) => {
@@ -358,8 +385,24 @@ const defaultModels: Record<string, string> = {
 
 // 监听提供商变化
 watch(() => form.value.provider, (newProvider) => {
-  if (defaultModels[newProvider]) {
-    form.value.model = defaultModels[newProvider];
+  if (!newProvider) return;
+  
+  // 从已配置的 Provider 中获取配置
+  const providerConfig = providerConfigs.value.find(p => p.provider === newProvider);
+  if (providerConfig) {
+    // 自动填充 API Key 和 Base URL（虽然禁用，但保留值用于显示）
+    form.value.apiKey = providerConfig.apiKey || '';
+    form.value.baseURL = providerConfig.baseURL || '';
+    
+    // 更新可用模型列表
+    updateAvailableModels(newProvider);
+    
+    // 如果有配置的模型，自动选择
+    if (providerConfig.model) {
+      form.value.model = providerConfig.model;
+    } else if (defaultModels[newProvider]) {
+      form.value.model = defaultModels[newProvider];
+    }
   }
   
   // 重置 Cursor 特定字段
@@ -370,11 +413,66 @@ watch(() => form.value.provider, (newProvider) => {
   }
 });
 
+function getProviderName(provider: string): string {
+  const names: Record<string, string> = {
+    openai: 'OpenAI',
+    zhipuai: '智谱AI (ZhipuAI)',
+    ark: '火山引擎 Ark (豆包)',
+    anthropic: 'Anthropic Claude',
+    gemini: 'Google Gemini',
+    qianfan: '百度千帆',
+    dashscope: '阿里通义',
+    ollama: 'Ollama',
+    cursor: 'Cursor Agent',
+  };
+  return names[provider] || provider;
+}
+
+function updateAvailableModels(provider: string) {
+  // 获取该 Provider 配置的模型
+  const providerConfig = providerConfigs.value.find(p => p.provider === provider);
+  const models: string[] = [];
+  
+  if (providerConfig?.model) {
+    models.push(providerConfig.model);
+  }
+  
+  // 添加默认模型（如果不同）
+  if (defaultModels[provider] && !models.includes(defaultModels[provider])) {
+    models.push(defaultModels[provider]);
+  }
+  
+  // Cursor 特殊处理
+  if (provider === 'cursor') {
+    if (!models.includes('auto')) {
+      models.unshift('auto');
+    }
+  }
+  
+  availableModels.value = models;
+}
+
 function onProviderChange() {
   // 当切换提供商时，重置相关字段
   if (form.value.provider !== 'cursor') {
     form.value.repository = '';
     form.value.branchName = '';
+  }
+}
+
+async function fetchProviderConfigs() {
+  try {
+    const response = await apiClient.getProviderConfigs() as any;
+    if (response && response.providers) {
+      providerConfigs.value = response.providers.filter((p: any) => p.hasApiKey) || [];
+    } else if (Array.isArray(response)) {
+      providerConfigs.value = response.filter((p: any) => p.hasApiKey) || [];
+    } else {
+      providerConfigs.value = [];
+    }
+  } catch (err: any) {
+    console.error('Failed to fetch provider configs:', err);
+    providerConfigs.value = [];
   }
 }
 
@@ -407,8 +505,15 @@ function openConfigDialog(role: Role) {
       branchName: existingConfig.branchName || '',
       autoCreatePr: existingConfig.autoCreatePr ?? true,
     };
+    // 更新可用模型列表
+    updateAvailableModels(existingConfig.provider);
   } else {
     resetForm();
+    // 如果有已配置的 Provider，默认选择第一个
+    if (providerConfigs.value.length > 0) {
+      form.value.provider = providerConfigs.value[0].provider;
+      updateAvailableModels(form.value.provider);
+    }
   }
   
   showConfigDialog.value = true;
@@ -437,7 +542,23 @@ async function saveRoleConfig() {
 
     saving.value = true;
     try {
-      await apiClient.saveRoleLLMConfig(currentRole.value!.profile, form.value);
+      // 从 Provider 配置中获取 API Key 和 Base URL
+      const providerConfig = providerConfigs.value.find(p => p.provider === form.value.provider);
+      const configToSave: RoleLLMConfig = {
+        provider: form.value.provider,
+        model: form.value.model,
+        temperature: form.value.temperature,
+        maxTokens: form.value.maxTokens,
+        // 使用 Provider 配置中的值，如果 Provider 配置中没有，则使用表单中的值（向后兼容）
+        apiKey: providerConfig?.apiKey || form.value.apiKey,
+        baseURL: providerConfig?.baseURL || form.value.baseURL,
+        // Cursor 特定配置
+        repository: form.value.repository,
+        branchName: form.value.branchName,
+        autoCreatePr: form.value.autoCreatePr,
+      };
+      
+      await apiClient.saveRoleLLMConfig(currentRole.value!.profile, configToSave);
       ElMessage.success('角色配置保存成功');
       showConfigDialog.value = false;
       resetForm();
@@ -470,6 +591,7 @@ async function clearRoleConfig(profile: string) {
 }
 
 onMounted(() => {
+  fetchProviderConfigs();
   fetchRoleConfigs();
 });
 </script>

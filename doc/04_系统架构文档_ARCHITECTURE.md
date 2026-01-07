@@ -2,9 +2,9 @@
 
 **Slogan**: 让所思，即所得
 
-**文档版本**: v1.0  
+**文档版本**: v1.1  
 **创建日期**: 2025-12-24  
-**最后更新**: 2025-12-24
+**最后更新**: 2026-01-06（根据实际代码实现更新架构细节）
 
 ---
 
@@ -247,9 +247,15 @@ graph TB
 ```
 
 **关键方法**:
-- `Environment.publish_message()`: 发布消息到环境
-- `Role.put_message()`: 将消息放入角色队列
-- `Role._observe()`: 观察并获取新消息
+- `Environment.publishMessage(message: Message)`: 发布消息到环境并路由到匹配的角色
+- `Role.putMessage(message: Message)`: 将消息放入角色的消息缓冲区（MessageQueue）
+- `Role.observe()`: 观察并获取新消息（从 msgBuffer 移动到 news）
+- `Environment.isMessageFor(message: Message, role: Role)`: 判断消息是否应该发送给某个角色
+
+**消息路由规则**:
+1. **广播消息** (`MESSAGE_ROUTE_TO_ALL`): 所有角色接收
+2. **订阅机制** (`watch`): 角色通过 `watch([ACTION_NAME])` 订阅特定 Action 的消息
+3. **直接发送**: 消息的 `sendTo` 包含角色的地址（角色名称）
 
 #### 3.1.2 记忆系统 (Memory System)
 
@@ -275,21 +281,29 @@ graph TB
 ```
 
 **核心类**:
-```python
-class Memory(BaseModel):
-    storage: list[Message]     # 消息存储
-    index: dict                # 索引
+```typescript
+class Memory {
+    private storage: Message[];     // 消息存储数组
+    private maxSize: number;        // 最大存储数量（默认100）
     
-    def add(self, message: Message): pass
-    def get_by_role(self, role: str): pass
-    def get_by_action(self, action: Type[Action]): pass
-    def get_by_content(self, query: str): pass  # 向量检索
+    add(message: Message): void;   // 添加消息（自动截断到maxSize）
+    get(k?: number): Message[];     // 获取所有消息或最近k条
+    getByRole(role: string): Message[];  // 按角色筛选
+    getByAction(actionType: string | Function): Message[];  // 按Action类型筛选
+    getByActions(actionTypes: Array<string | Function>): Message[];  // 按多个Action类型筛选
+    searchByContent(query: string): Message[];  // 按内容搜索
+}
+
+class ShortTermMemory extends Memory {
+    // 工作记忆，默认保留最近10条消息
+}
 ```
 
 **存储策略**:
-- 短期记忆：保留最近 100 条消息
-- 长期记忆：关键信息持久化到向量数据库
-- 工作记忆：当前任务的临时上下文
+- **Memory**: 长期记忆，默认保留最近 100 条消息（可配置）
+- **ShortTermMemory**: 工作记忆，默认保留最近 10 条消息
+- **MessageQueue**: 消息缓冲区，用于异步消息传递
+- 未来计划：向量数据库集成用于语义检索
 
 #### 3.1.3 上下文管理 (Context)
 
@@ -332,30 +346,52 @@ cost:
 **设计模式**: 模板方法模式 + 策略模式
 
 **类层次结构**:
-```
+```typescript
 BaseRole (抽象基类)
-  ├─ is_idle: bool
-  ├─ think(): 决策
-  ├─ act(): 执行
-  ├─ react(): 响应
-  └─ run(): 运行主循环
+  ├─ name: string
+  ├─ profile: string
+  ├─ isIdle: boolean
+  ├─ observe(): Promise<number>  // 观察新消息
+  ├─ think(): Promise<boolean>   // 思考决策
+  ├─ act(): Promise<Message | null>  // 执行行动
+  └─ run(): Promise<Message | null>  // 运行主循环
 
-Role (具体实现)
-  ├─ name: str
-  ├─ profile: str
-  ├─ goal: str
-  ├─ constraints: str
-  ├─ actions: list[Action]
+Role extends BaseRole (具体实现)
+  ├─ goal: string
+  ├─ constraints: string
+  ├─ description: string
+  ├─ actions: BaseAction[]
   ├─ rc: RoleContext
-  ├─ _observe(): 观察
-  ├─ _think(): 思考
-  ├─ _act(): 行动
-  ├─ _react(): 反应循环
-  └─ _plan_and_act(): 计划并执行
+  ├─ context: Context
+  ├─ watch(actions: string[]): void  // 订阅Action
+  ├─ setActions(actions: BaseAction[]): void  // 设置Actions
+  ├─ putMessage(message: Message): void  // 接收消息
+  └─ getAddresses(): Set<string>  // 获取角色地址
 
-ProductManager (角色实例)
-Architect (角色实例)
-Engineer (角色实例)
+ProductManager extends Role
+Architect extends Role
+Engineer extends Role
+Salesperson extends Role
+ProjectManager extends Role
+QAEngineer extends Role
+TeamLeader extends Role
+DataAnalyst extends Role
+```
+
+**RoleContext (角色运行时上下文)**:
+```typescript
+class RoleContext {
+    env?: Environment;              // 环境引用（由Environment设置）
+    msgBuffer: MessageQueue;        // 消息缓冲区
+    memory: Memory;                 // 长期记忆（默认100条）
+    workingMemory: ShortTermMemory; // 工作记忆（默认10条）
+    state: number;                  // 当前状态（-1=初始/终止）
+    todo: BaseAction | null;        // 待执行的Action
+    watch: Set<string>;             // 订阅的Action集合
+    news: Message[];               // 新消息（临时存储）
+    reactMode: RoleReactMode;       // React模式（默认BY_ORDER）
+    maxReactLoop: number;           // 最大React循环次数（默认1）
+}
 ```
 
 **角色状态机**:
@@ -372,61 +408,86 @@ stateDiagram-v2
 
 #### 3.2.2 React 模式
 
-mind2build 支持三种 react 模式：
+mind2build 支持三种 react 模式（通过 `RoleReactMode` 枚举）：
 
 **1. REACT 模式** (标准 ReAct 循环)
-```python
+```typescript
+// LLM 动态选择 Action（当前未完全实现）
 while actions_taken < max_react_loop:
-    has_todo = await self._think()  # LLM 动态选择 Action
-    if not has_todo:
-        break
-    rsp = await self._act()
-    actions_taken += 1
+    has_todo = await this.think();  // LLM 动态选择 Action
+    if (!has_todo) break;
+    await this.act();
+    actions_taken++;
 ```
 
-**2. BY_ORDER 模式** (按顺序执行)
-```python
-# 按照 actions 列表顺序依次执行
-self.set_actions([PrepareDocuments, WritePRD])
-self.rc.react_mode = RoleReactMode.BY_ORDER
+**2. BY_ORDER 模式** (按顺序执行，默认模式)
+```typescript
+// 按照 actions 列表顺序依次执行
+this.setActions([new WritePRD(), new SearchEnhancedQA()]);
+this.rc.reactMode = RoleReactMode.BY_ORDER;
+// 每次 think() 会选择下一个未执行的 Action
 ```
 
 **3. PLAN_AND_ACT 模式** (先规划后执行)
-```python
-# 先用 LLM 生成完整计划，再依次执行
-plan = await self.planner.plan()
-for action in plan:
-    await action.run()
+```typescript
+// 先用 LLM 生成完整计划，再依次执行（未来实现）
+const plan = await this.planner.plan();
+for (const action of plan) {
+    await action.run();
+}
 ```
+
+**当前实现**:
+- 默认使用 `BY_ORDER` 模式
+- `think()` 方法会根据 `reactMode` 选择下一个 Action
+- 支持 `maxReactLoop` 控制最大执行次数（默认1）
 
 #### 3.2.3 角色实现示例
 
 **ProductManager**:
-```python
-class ProductManager(RoleZero):
-    name: str = "Alice"
-    profile: str = "Product Manager"
-    goal: str = "Create PRD or market research"
-    tools: list[str] = ["Browser", "Editor", "SearchEnhancedQA"]
-    
-    def __init__(self):
-        super().__init__()
-        self.set_actions([PrepareDocuments, WritePRD])
-        self._watch([UserRequirement])
+```typescript
+class ProductManager extends Role {
+    constructor(context: Context, name: string = 'ProductManager') {
+        const config: IRoleConfig = {
+            name,
+            profile: 'ProductManager',
+            goal: 'Create comprehensive Product Requirements Document (PRD) from Market Research Document (MRD)',
+            constraints: 'Focus on user needs, market analysis, and clear feature specifications',
+            description: 'Experienced product manager...',
+        };
+        
+        super(config, context);
+        
+        // 订阅 WriteMRD action
+        this.watch([ACTION_WRITE_MRD]);
+        
+        // 设置 Actions
+        this.setActions([new WritePRD(), new SearchEnhancedQA()]);
+    }
+}
 ```
 
 **Architect**:
-```python
-class Architect(RoleZero):
-    name: str = "Bob"
-    profile: str = "Architect"
-    goal: str = "Design complete software system"
-    tools: list[str] = ["Editor", "Terminal"]
-    
-    def __init__(self):
-        super().__init__()
-        self.set_actions([WriteDesign])
-        self._watch([WritePRD])
+```typescript
+class Architect extends Role {
+    constructor(context: Context, name: string = 'Architect') {
+        const config: IRoleConfig = {
+            name,
+            profile: 'Architect',
+            goal: 'Design comprehensive system architecture and technical specifications',
+            constraints: 'Follow best practices, ensure scalability and maintainability',
+            description: 'Senior architect who creates robust system designs',
+        };
+        
+        super(config, context);
+        
+        // 订阅 WritePRD action
+        this.watch([ACTION_WRITE_PRD]);
+        
+        // 设置 Actions
+        this.setActions([new WriteDesign()]);
+    }
+}
 ```
 
 ### 3.3 行动层 (Action Layer)
@@ -436,25 +497,34 @@ class Architect(RoleZero):
 **设计模式**: 命令模式
 
 **核心接口**:
-```python
-class Action(BaseModel):
-    name: str                  # Action 名称
-    i_context: Union[dict, str] # 输入上下文
-    llm: BaseLLM              # LLM 实例
+```typescript
+abstract class BaseAction {
+    name: string;              // Action 名称
+    description?: string;      // Action 描述
+    protected llm?: BaseLLM;   // LLM 实例（由Role注入）
+    protected context?: Context; // Context 实例（由Role注入）
     
-    async def run(self, *args, **kwargs) -> ActionOutput:
-        """执行 Action 主逻辑"""
-        raise NotImplementedError
+    abstract run(...args: any[]): Promise<IActionOutput>;
+    
+    // 辅助方法
+    protected async aask(prompt: string, systemMsgs?: string[]): Promise<string>;
+    protected async acompletion(messages: any[]): Promise<any>;
+    protected async saveToWorkspace(filePath: string, content: string, options?: WorkspaceOptions): Promise<void>;
+    protected getWorkspaceDir(options?: WorkspaceOptions): string;
+    protected async readWorkspaceFile(filePath: string, options?: WorkspaceOptions): Promise<string | null>;
+}
 ```
 
-**Action 注册机制**:
-```python
-# actions/__init__.py
-class ActionType(Enum):
-    WRITE_PRD = WritePRD
-    WRITE_DESIGN = WriteDesign
-    WRITE_CODE = WriteCode
-    WRITE_TEST = WriteTest
+**Action 常量定义**:
+```typescript
+// shared/src/constants/index.ts
+export const ACTION_WRITE_MRD = 'WriteMRD';
+export const ACTION_WRITE_PRD = 'WritePRD';
+export const ACTION_WRITE_DESIGN = 'WriteDesign';
+export const ACTION_WRITE_CODE = 'WriteCode';
+export const ACTION_WRITE_TEST = 'WriteTest';
+export const ACTION_BREAKDOWN_TASKS = 'BreakdownTasks';
+// ... 更多 Actions
 ```
 
 #### 3.3.2 核心 Actions
@@ -533,37 +603,37 @@ graph TB
 - 调度：协调 Role 的执行顺序
 
 **核心方法**:
-```python
-class Environment(BaseModel):
-    roles: dict[str, Role]     # 角色字典
-    history: list[Message]     # 消息历史
+```typescript
+class Environment {
+    private roles: Map<string, Role>;  // 角色字典（key: 角色名称）
+    private memberAddrs: Map<Role, Set<string>>;  // 角色地址映射
+    public history: Message[];         // 消息历史
+    private interactiveHandler?: InteractiveHandler;  // 交互式处理器
     
-    def add_roles(self, roles: list[Role]):
-        """添加角色到环境"""
+    addRoles(roles: Role[]): void;     // 添加角色到环境
+    publishMessage(message: Message): boolean;  // 发布消息并路由
+    async run(): Promise<void>;        // 运行所有活跃角色（一轮）
+    async runForRounds(rounds: number): Promise<void>;  // 运行多轮
+    get isIdle(): boolean;             // 检查所有角色是否空闲
+    
+    // 消息路由
+    private isMessageFor(message: Message, role: Role): boolean {
+        // 1. 广播消息：所有角色接收
+        if (message.sendTo.has(MESSAGE_ROUTE_TO_ALL)) return true;
         
-    def publish_message(self, message: Message):
-        """发布消息并路由"""
-        for role in self.roles.values():
-            if self._should_receive(role, message):
-                role.put_message(message)
-    
-    async def run(self, k=1):
-        """运行所有角色"""
-        for _ in range(k):
-            futures = [role.run() for role in self.roles.values() if not role.is_idle]
-            await asyncio.gather(*futures)
+        // 2. 订阅机制：角色通过 watch 订阅特定 Action
+        if (role.rc.watch.has(message.causeBy)) return true;
+        
+        // 3. 直接发送：消息的 sendTo 包含角色地址
+        const addresses = role.getAddresses();
+        return hasIntersection(message.sendTo, addresses);
+    }
+}
 ```
 
-**消息路由规则**:
-```python
-def is_send_to(message: Message, addresses: set[str]) -> bool:
-    """判断消息是否应该发送给某个地址"""
-    if MESSAGE_ROUTE_TO_ALL in message.send_to:
-        return True
-    if addresses & message.send_to:  # 交集非空
-        return True
-    return False
-```
+**执行模式**:
+- **非交互模式**: 角色并行执行（`Promise.allSettled`）
+- **交互模式**: 角色顺序执行，每个角色执行后等待用户确认
 
 #### 3.4.2 Team (团队)
 
@@ -571,28 +641,54 @@ def is_send_to(message: Message, addresses: set[str]) -> bool:
 - 高层封装：提供简单的 API 接口
 - 预算管理：控制 LLM 调用成本
 - 项目管理：管理生成的项目文件
+- 交互式模式：支持用户确认和编辑（通过 InteractiveHandler）
+
+**交互式模式**:
+- 支持 CLI 交互式确认（每个角色执行后等待用户确认）
+- 支持 WebSocket 实时交互（通过 InteractiveSession）
+- 用户操作：继续、编辑、重新生成、跳过、退出
 
 **使用示例**:
-```python
-team = Team(context=ctx)
-team.hire([ProductManager(), Architect(), Engineer()])
-team.invest(10.0)  # 投资 $10
-await team.run(n_round=5, idea="Create a 2048 game")
+```typescript
+const context = new Context(config, maxBudget);
+const team = new Team(context, interactive: false);
+team.hire([
+    new Salesperson(context),
+    new ProductManager(context),
+    new Architect(context),
+    new Engineer(context)
+]);
+team.invest(10.0);  // 设置预算 $10
+await team.run("Create a 2048 game", nRound: 5);
 ```
 
 **成本管理**:
-```python
-class CostManager:
-    total_prompt_tokens: int = 0
-    total_completion_tokens: int = 0
-    total_cost: float = 0.0
-    max_budget: float = 10.0
+```typescript
+class CostManager {
+    totalPromptTokens: number = 0;
+    totalCompletionTokens: number = 0;
+    totalCost: number = 0.0;
+    maxBudget: number = 10.0;
     
-    def update_cost(self, usage: dict):
-        """更新成本"""
-        self.total_cost += calculate_cost(usage)
-        if self.total_cost >= self.max_budget:
-            raise NoMoneyException()
+    updateCost(usage: ILLMUsage): void {
+        // 更新Token和成本
+        this.totalPromptTokens += usage.promptTokens || 0;
+        this.totalCompletionTokens += usage.completionTokens || 0;
+        this.totalCost += usage.cost || 0;
+        
+        if (this.totalCost >= this.maxBudget) {
+            throw new NoMoneyException();
+        }
+    }
+    
+    getReport(): CostReport {
+        return {
+            totalCost: this.totalCost,
+            totalTokens: this.totalPromptTokens + this.totalCompletionTokens,
+            budgetRemaining: this.maxBudget - this.totalCost,
+        };
+    }
+}
 ```
 
 ### 3.5 提供商层 (Provider Layer)
@@ -602,81 +698,83 @@ class CostManager:
 **设计模式**: 工厂模式 + 策略模式
 
 **类层次结构**:
-```
-BaseLLM (抽象基类)
-  ├─ aask(prompt): 异步提问
-  ├─ acompletion(messages): 异步补全
-  ├─ achat(messages): 异步对话
-  └─ cost_manager: 成本管理
+```typescript
+abstract class BaseLLM {
+    config: ILLMConfig;
+    costManager?: CostManager;
+    
+    abstract async aask(prompt: string, systemMsgs?: string[]): Promise<string>;
+    abstract async acompletion(messages: any[]): Promise<ILLMResponse>;
+    abstract async achat(messages: any[]): Promise<ILLMResponse>;
+}
 
-OpenAILLM
-AnthropicLLM  
-GeminiLLM
-ZhipuAILLM
-OllamaLLM
-...
+OpenAILLM extends BaseLLM
+ZhipuLLM extends BaseLLM
+ArkLLM extends BaseLLM
+CursorLLM extends BaseLLM
 ```
 
 **LLM 工厂**:
-```python
-def create_llm_instance(config: LLMConfig) -> BaseLLM:
-    """根据配置创建 LLM 实例"""
-    if config.api_type == "openai":
-        return OpenAILLM(config)
-    elif config.api_type == "anthropic":
-        return AnthropicLLM(config)
-    elif config.api_type == "gemini":
-        return GeminiLLM(config)
-    # ...
+```typescript
+export function createLLM(config: ILLMConfig): BaseLLM {
+    switch (config.provider) {
+        case 'openai':
+            return new OpenAILLM(config);
+        case 'zhipuai':
+            return new ZhipuLLM(config);
+        case 'ark':
+            return new ArkLLM(config);
+        case 'cursor':
+            return new CursorLLM(config);
+        default:
+            throw new Error(`Unsupported LLM provider: ${config.provider}`);
+    }
+}
 ```
 
 **统一接口**:
-```python
-class BaseLLM(BaseModel):
-    async def aask(
-        self,
-        prompt: str,
-        system_msgs: list[str] = None
-    ) -> str:
-        """统一的提问接口"""
-        
-    async def acompletion(
-        self,
-        messages: list[dict],
-        timeout: int = 60
-    ) -> dict:
-        """统一的补全接口"""
+```typescript
+abstract class BaseLLM {
+    config: ILLMConfig;
+    costManager?: CostManager;
+    
+    abstract async aask(
+        prompt: string,
+        systemMsgs?: string[]
+    ): Promise<string>;
+    
+    abstract async acompletion(
+        messages: any[],
+        timeout?: number
+    ): Promise<ILLMResponse>;
+    
+    abstract async achat(
+        messages: any[]
+    ): Promise<ILLMResponse>;
+}
 ```
 
 #### 3.5.2 多 LLM 支持
 
 **支持的提供商**:
 
-| 提供商 | API Type | 实现类 | 优先级 |
-|--------|----------|--------|--------|
-| OpenAI | openai | OpenAILLM | P0 |
-| Azure OpenAI | azure | AzureOpenAILLM | P0 |
-| Anthropic | anthropic | AnthropicLLM | P1 |
-| Google Gemini | gemini | GeminiLLM | P1 |
-| 智谱AI | zhipuai | ZhipuAILLM | P1 |
-| 百度千帆 | qianfan | QianfanLLM | P1 |
-| 阿里通义 | dashscope | DashScopeLLM | P1 |
-| Ollama | ollama | OllamaLLM | P1 |
+| 提供商 | Provider | 实现类 | 状态 |
+|--------|----------|--------|------|
+| OpenAI | openai | OpenAILLM | ✅ 已实现 |
+| 智谱AI | zhipuai | ZhipuLLM | ✅ 已实现 |
+| Ark | ark | ArkLLM | ✅ 已实现 |
+| Cursor Agent | cursor | CursorLLM | ✅ 已实现 |
+| Anthropic | anthropic | - | ⏳ 计划中 |
+| Google Gemini | gemini | - | ⏳ 计划中 |
+| 百度千帆 | qianfan | - | ⏳ 计划中 |
+| 阿里通义 | dashscope | - | ⏳ 计划中 |
+| Ollama | ollama | - | ⏳ 计划中 |
 
-**配置切换**:
-```yaml
-# 使用 OpenAI
-llm:
-  api_type: "openai"
-  model: "gpt-4-turbo"
-  api_key: "${OPENAI_API_KEY}"
-
-# 切换到 Claude
-llm:
-  api_type: "anthropic"
-  model: "claude-3-opus"
-  api_key: "${ANTHROPIC_API_KEY}"
-```
+**配置管理**:
+- LLM 配置存储在 PostgreSQL 数据库的 `llm_configs` 表中
+- 支持系统默认配置和角色特定配置
+- 配置包含：`provider`, `model`, `apiKey`, `baseURL`, `temperature`, `maxTokens` 等
+- 配置优先级：角色特定配置 > 系统默认配置
 
 #### 3.5.3 工具层
 
@@ -718,16 +816,21 @@ class Terminal:
 
 | 类别 | 技术选型 | 版本要求 | 选型理由 |
 |------|---------|---------|---------|
-| **后端语言** | Node.js | v18+ | 生态成熟，性能优秀，异步支持良好 |
-| **后端框架** | Express/Fastify | latest | 轻量高效，中间件丰富 |
-| **前端框架** | Vue 3 | latest | 渐进式，易学易用，生态完善 |
-| **构建工具** | Vite | latest | 快速冷启动，HMR性能卓越 |
+| **后端语言** | TypeScript/Node.js | v18+ | 类型安全，生态成熟，异步支持良好 |
+| **后端框架** | Express | ^4.18.2 | 轻量高效，中间件丰富 |
+| **前端框架** | Vue 3 | ^3.4.5 | 渐进式，易学易用，生态完善 |
+| **UI组件库** | Element Plus | ^2.13.0 | 企业级UI组件库 |
+| **状态管理** | Pinia | ^2.1.7 | Vue 3 官方推荐的状态管理 |
+| **构建工具** | Vite | ^5.0.11 | 快速冷启动，HMR性能卓越 |
 | **数据库** | PostgreSQL | v14+ | 开源稳定，功能强大，支持JSON |
-| **ORM框架** | Prisma/TypeORM | latest | 类型安全，开发效率高 |
-| **API规范** | RESTful/GraphQL | - | 标准化接口设计 |
-| **测试框架** | Jest/Vitest | latest | 功能丰富，社区活跃 |
+| **数据库驱动** | pg | ^8.11.3 | PostgreSQL 官方驱动 |
+| **WebSocket** | ws | ^8.18.3 | 实时通信支持 |
+| **API规范** | RESTful + WebSocket | - | REST API + WebSocket 实时通信 |
+| **测试框架** | Jest | ^29.7.0 | 功能丰富，社区活跃 |
 | **代码规范** | ESLint, Prettier | latest | 自动化，标准化 |
-| **LLM SDK** | openai, anthropic等 | latest | 官方SDK，稳定可靠 |
+| **LLM SDK** | openai | ^4.24.1 | OpenAI 官方SDK |
+| **日志** | Winston + Pino | latest | 结构化日志 |
+| **类型系统** | TypeScript | ^5.3.3 | 类型安全，开发体验好 |
 
 ### 4.2 依赖管理
 
@@ -735,19 +838,30 @@ class Terminal:
 ```json
 {
   "dependencies": {
-    "express": "^4.18.0",
-    "pg": "^8.11.0",
-    "prisma": "^5.7.0",
-    "@prisma/client": "^5.7.0",
-    "openai": "^4.20.0",
-    "axios": "^1.6.0",
-    "dotenv": "^16.3.0"
+    "express": "^4.18.2",
+    "pg": "^8.11.3",
+    "openai": "^4.24.1",
+    "axios": "^1.6.5",
+    "dotenv": "^16.3.1",
+    "ws": "^8.18.3",
+    "winston": "^3.11.0",
+    "pino": "^8.17.2",
+    "uuid": "^9.0.1",
+    "commander": "^11.1.0",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "joi": "^17.11.0",
+    "jsonwebtoken": "^9.0.2",
+    "archiver": "^7.0.1",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
-    "typescript": "^5.3.0",
+    "typescript": "^5.3.3",
     "jest": "^29.7.0",
-    "eslint": "^8.55.0",
-    "prettier": "^3.1.0"
+    "ts-jest": "^29.4.6",
+    "tsx": "^4.7.0",
+    "eslint": "^8.56.0",
+    "prettier": "^3.1.1"
   }
 }
 ```
@@ -756,16 +870,22 @@ class Terminal:
 ```json
 {
   "dependencies": {
-    "vue": "^3.3.0",
-    "vue-router": "^4.2.0",
-    "pinia": "^2.1.0",
-    "axios": "^1.6.0"
+    "vue": "^3.4.5",
+    "vue-router": "^4.2.5",
+    "pinia": "^2.1.7",
+    "axios": "^1.6.5",
+    "element-plus": "^2.13.0",
+    "@element-plus/icons-vue": "^2.3.2",
+    "@vueuse/core": "^10.7.1",
+    "markdown-it": "^14.1.0"
   },
   "devDependencies": {
-    "vite": "^5.0.0",
-    "@vitejs/plugin-vue": "^4.5.0",
-    "typescript": "^5.3.0",
-    "vitest": "^1.0.0"
+    "vite": "^5.0.11",
+    "@vitejs/plugin-vue": "^5.0.2",
+    "typescript": "^5.3.3",
+    "vue-tsc": "^3.2.1",
+    "eslint": "^8.56.0",
+    "prettier": "^3.1.1"
   }
 }
 ```
@@ -797,51 +917,92 @@ apt install postgresql-14    # Ubuntu/Debian
 
 **扩展步骤**:
 
-```python
-# 1. 继承 Role 或 RoleZero
-class CustomRole(RoleZero):
-    name: str = "CustomName"
-    profile: str = "Custom Profile"
-    goal: str = "Custom goal"
-    
-    def __init__(self):
-        super().__init__()
-        # 2. 设置 Actions
-        self.set_actions([CustomAction])
-        # 3. 订阅消息
-        self._watch([SomeAction])
+```typescript
+// 1. 继承 Role
+import { IRoleConfig } from '@mind2build/shared';
+import { Role } from './Role';
+import { Context } from '../core/context/Context';
+import { CustomAction } from '../actions/CustomAction';
+import { ACTION_SOME_ACTION } from '@mind2build/shared';
 
-# 4. 使用自定义角色
-team.hire([CustomRole()])
+class CustomRole extends Role {
+    constructor(context: Context, name: string = 'CustomRole') {
+        const config: IRoleConfig = {
+            name,
+            profile: 'CustomRole',
+            goal: 'Custom goal',
+            constraints: 'Custom constraints',
+            description: 'Custom description',
+        };
+        
+        super(config, context);
+        
+        // 2. 订阅消息
+        this.watch([ACTION_SOME_ACTION]);
+        
+        // 3. 设置 Actions
+        this.setActions([new CustomAction()]);
+    }
+    
+    // 4. 可选：重写方法
+    // async act(): Promise<Message | null> {
+    //     // 自定义执行逻辑
+    // }
+}
+
+// 5. 使用自定义角色
+team.hire([new CustomRole(context)]);
 ```
 
 **扩展点**:
-- `_think()`: 自定义决策逻辑
-- `_act()`: 自定义执行逻辑
-- `_observe()`: 自定义观察逻辑
+- `think()`: 自定义决策逻辑
+- `act()`: 自定义执行逻辑
+- `observe()`: 自定义观察逻辑（通常不需要重写）
 
 ### 5.2 自定义 Action
 
 **扩展步骤**:
 
-```python
-# 1. 继承 Action
-class CustomAction(Action):
-    name: str = "CustomAction"
-    
-    async def run(self, *args, **kwargs) -> ActionOutput:
-        # 2. 实现执行逻辑
-        prompt = self._build_prompt(*args)
-        result = await self.llm.aask(prompt)
-        return ActionOutput(content=result)
-    
-    def _build_prompt(self, *args) -> str:
-        # 3. 构建提示词
-        return f"Task: {args}"
+```typescript
+// 1. 继承 BaseAction
+import { BaseAction } from '../core/base/BaseAction';
+import { IActionOutput } from '@mind2build/shared';
+import { WorkspaceOptions } from '../utils/WorkspaceManager';
 
-# 4. 注册 Action（可选）
-class ActionType(Enum):
-    CUSTOM = CustomAction
+export class CustomAction extends BaseAction {
+    constructor() {
+        super('CustomAction', 'Custom action description');
+    }
+    
+    async run(input: string, options?: WorkspaceOptions): Promise<IActionOutput> {
+        // 2. 构建提示词
+        const prompt = this.buildPrompt(input);
+        
+        // 3. 调用 LLM
+        const content = await this.aask(prompt);
+        
+        // 4. 可选：保存到 workspace
+        if (options?.applicationId) {
+            await this.saveToWorkspace('output.md', content, options);
+        }
+        
+        // 5. 返回结果
+        return {
+            content,
+            data: {
+                type: 'custom',
+                timestamp: new Date().toISOString(),
+            },
+        };
+    }
+    
+    private buildPrompt(input: string): string {
+        return `Task: ${input}`;
+    }
+}
+
+// 6. 在 shared/src/constants/index.ts 中添加常量（可选）
+export const ACTION_CUSTOM = 'CustomAction';
 ```
 
 ### 5.3 自定义工作流
@@ -940,31 +1101,37 @@ LLM_REGISTRY["custom"] = CustomLLM
 
 ### 6.2 容器化部署
 
-**Dockerfile**:
+**Dockerfile** (示例):
 ```dockerfile
-FROM python:3.11-slim
+FROM node:18-alpine
 
 WORKDIR /app
 
-# 安装 Node.js (用于 Mermaid)
-RUN apt-get update && \
-    apt-get install -y nodejs npm && \
-    npm install -g pnpm && \
-    npm install -g @mermaid-js/mermaid-cli
+# 安装 pnpm
+RUN npm install -g pnpm
 
-# 安装 Python 依赖
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# 复制依赖文件
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY backend/package.json ./backend/
+COPY frontend/package.json ./frontend/
+COPY shared/package.json ./shared/
 
-# 复制代码
+# 安装依赖
+RUN pnpm install --frozen-lockfile
+
+# 复制源代码
 COPY . .
-RUN pip install -e .
+
+# 构建
+RUN pnpm build
 
 # 配置
-ENV PYTHONUNBUFFERED=1
+ENV NODE_ENV=production
 VOLUME ["/workspace"]
 
-ENTRYPOINT ["mind2build"]
+EXPOSE 3000
+
+CMD ["node", "backend/dist/server.js"]
 ```
 
 **docker-compose.yml**:
@@ -1204,13 +1371,20 @@ except NoMoneyException as e:
 
 ## 11. 架构演进
 
-### 11.1 当前架构 (v1.0)
+### 11.1 当前架构 (v1.1)
 
 **特点**:
-- 单机部署
-- 同步工作流
-- 文件系统存储
-- 固定 SOP
+- ✅ 单机部署（支持 Docker）
+- ✅ 异步工作流（Node.js Event Loop）
+- ✅ PostgreSQL 数据库存储（配置、提示词）
+- ✅ 文件系统存储（工作区）
+- ✅ 交互式模式（CLI + WebSocket）
+- ✅ Web UI（Vue 3 + Element Plus）
+- ✅ REST API + WebSocket 实时通信
+- ✅ 角色特定 LLM 配置
+- ✅ 工作区管理（按应用ID和版本组织）
+- ✅ 分步骤文档生成（MRD、PRD、Design）
+- ✅ 任务拆分和执行（SubtaskManager）
 
 ### 11.2 近期规划 (v1.5)
 

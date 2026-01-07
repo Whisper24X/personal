@@ -5,7 +5,7 @@
 
 import * as dotenv from 'dotenv';
 import * as path from 'path';
-import { LLMConfigRepository } from '../repositories/LLMConfigRepository';
+import { LLMConfigRepository, ProviderConfigRepository } from '../repositories';
 import { connectDatabase, disconnectDatabase } from '../client';
 import { logger } from '../../utils';
 import { LLMProvider } from '@mind2build/shared';
@@ -31,6 +31,7 @@ async function initLLMConfigs() {
     logger.info('🔄 Initializing LLM configs from environment variables...');
 
     const llmConfigRepo = new LLMConfigRepository();
+    const providerConfigRepo = new ProviderConfigRepository();
 
     // Define all provider configurations from environment
     const configs: ProviderConfig[] = [
@@ -99,11 +100,26 @@ async function initLLMConfigs() {
       try {
         const isActive = config.provider === ACTIVE_PROVIDER;
         
+        // Step 1: Save provider config (API Key, Base URL, and Model) separately
+        if (config.apiKey || config.baseURL || config.model || config.provider === 'ollama') {
+          try {
+            await providerConfigRepo.upsert({
+              userId: DEFAULT_USER_ID,
+              provider: config.provider,
+              apiKey: config.apiKey || '',
+              baseURL: config.baseURL,
+              model: config.model,
+            });
+            logger.info(`   ✅ Provider config saved: ${config.provider}`);
+          } catch (error: any) {
+            logger.warn(`   ⚠️  Failed to save provider config for ${config.provider}:`, error.message);
+          }
+        }
+        
+        // Step 2: Save model config (Model, Temperature, Max Tokens)
         const savedConfig = await llmConfigRepo.upsert({
           userId: DEFAULT_USER_ID,
           provider: config.provider,
-          apiKey: config.apiKey || '',
-          baseURL: config.baseURL,
           model: config.model,
           temperature,
           maxTokens,
@@ -114,7 +130,7 @@ async function initLLMConfigs() {
           activeConfigId = savedConfig.id;
         }
 
-        logger.info(`   ✅ ${config.provider}: ${savedConfig.id} (${isActive ? 'ACTIVE' : 'inactive'})`);
+        logger.info(`   ✅ Model config saved: ${config.provider}/${config.model} (${isActive ? 'ACTIVE' : 'inactive'})`);
         
         // Check if it was an update or create by comparing timestamps
         const timeDiff = savedConfig.updated_at.getTime() - savedConfig.created_at.getTime();

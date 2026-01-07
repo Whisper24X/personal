@@ -3,8 +3,9 @@
 > AI 辅助工程 · 规格说明文档  
 > 用于在人与 AI 协作编码前，对齐目标、边界与工程决策  
 
-**文档版本**: v1.0  
+**文档版本**: v1.1  
 **创建日期**: 2025-12-24  
+**最后更新**: 2026-01-06
 **规格状态**: ✅ Frozen（已冻结，可进入实现阶段）
 
 ---
@@ -56,24 +57,29 @@
 - ✅ Context 上下文管理（配置、成本追踪）
 
 #### 角色实现层
-- ✅ ProductManager（产品经理）
-- ✅ Architect（架构师）
-- ✅ Engineer（工程师）
-- ✅ QA Engineer（QA工程师）
-- ✅ TeamLeader（团队领导）
-- ✅ DataInterpreter（数据解释器）
+- ✅ Salesperson（销售）- 需求收集和市场调研
+- ✅ ProductManager（产品经理）- PRD编写
+- ✅ Architect（架构师）- 系统设计
+- ✅ ProjectManager（项目经理）- 任务拆分和规划
+- ✅ Engineer（工程师）- 代码实现
+- ✅ QA Engineer（QA工程师）- 测试编写
+- ✅ TeamLeader（团队领导）- 协调和决策
+- ✅ DataAnalyst（数据分析师）- 数据分析和可视化
 
 #### 行动实现层
-- ✅ UserRequirement（用户需求收集）
-- ✅ WriteRequirementSpec（编写需求说明文档）
-- ✅ RequirementSpecReview（需求说明文档审查）
+- ✅ WriteMRD（编写市场研究文档）
+- ✅ MRDReview（MRD文档审查）
 - ✅ WritePRD（编写PRD）
 - ✅ PRDReview（PRD文档审查）
+- ✅ ImproveDocument（改进文档）
 - ✅ WriteDesign（编写设计）
+- ✅ DesignReview（设计文档审查）
 - ✅ BreakdownTasks（任务拆分）
 - ✅ WriteSubProjectDesign（子项目设计）
+- ✅ SubProjectDesignReview（子项目设计审查）
 - ✅ GenerateTask（生成任务说明）
 - ✅ WriteCode（编写代码）
+- ✅ ExecuteSubtask（执行子任务）
 - ✅ CodeReview（代码审查）
 - ✅ WriteTest（编写测试）
 - ✅ SearchEnhancedQA（增强搜索）
@@ -81,9 +87,10 @@
 - ✅ Coordinate（协调任务）
 
 #### LLM 集成层
-- ✅ OpenAI
-- ✅ 智谱AI (ZhipuAI) - 默认提供商
+- ✅ OpenAI (GPT-4, GPT-3.5)
+- ✅ 智谱AI (ZhipuAI) - GLM-4系列
 - ✅ 火山引擎 Ark (豆包)
+- ✅ Cursor Agent
 - 🚧 Anthropic Claude - 计划中
 - 🚧 Google Gemini - 计划中
 - 🚧 百度千帆 (Qianfan) - 计划中
@@ -103,14 +110,15 @@
 - ✅ 项目序列化和恢复
 
 #### 接口层
-- ✅ CLI 命令行接口（mind2build）
-- ✅ Python API（generate_repo）
-- ✅ 配置文件管理（config2.yaml）
+- ✅ CLI 命令行接口（TypeScript CLI）
+- ✅ REST API（Express）
+- ✅ WebSocket API（实时通信）
+- ✅ Web UI（Vue 3 + Element Plus）
+- ✅ 配置文件管理（PostgreSQL 数据库存储）
 
 ### 2.2 本次不做的（Out of Scope）
 
 #### 明确排除的功能
-- ❌ Web UI 界面（远期规划）
 - ❌ 实时协作功能（多人同时使用）
 - ❌ 插件市场和社区角色库
 - ❌ 多模态输入（图片、语音）
@@ -118,6 +126,14 @@
 - ❌ 分布式部署和高可用
 - ❌ 企业级权限管理
 - ❌ 支付和计费系统
+
+#### 已实现但不在初始规划的功能
+- ✅ Web UI 界面（Vue 3 + Element Plus）
+- ✅ WebSocket 实时通信
+- ✅ 交互式模式（CLI 和 Web）
+- ✅ PostgreSQL 数据库集成
+- ✅ 工作区管理（WorkspaceManager）
+- ✅ 分步骤文档生成（StepwiseDocumentGenerator）
 
 #### 暂不支持的能力
 - ❌ 除 Python/JS 外的其他语言全面支持
@@ -132,39 +148,44 @@
 
 ### 3.1 目标用户
 
-#### 用户类型 1：Python 开发者
-- **技术能力**: 熟悉 Python 3.9+，了解基本的 CLI 操作
-- **环境假设**: 已安装 Python、pip、Node.js
-- **使用方式**: CLI + Python API
+#### 用户类型 1：Node.js/TypeScript 开发者
+- **技术能力**: 熟悉 Node.js v18+、TypeScript，了解基本的 CLI 操作
+- **环境假设**: 已安装 Node.js、pnpm、PostgreSQL
+- **使用方式**: CLI + REST API + Web UI
 
 #### 用户类型 2：AI 研究者
-- **技术能力**: 了解多代理系统，熟悉 Python
+- **技术能力**: 了解多代理系统，熟悉 TypeScript/JavaScript
 - **环境假设**: 需要扩展框架，自定义角色
-- **使用方式**: Python API + 源码修改
+- **使用方式**: TypeScript API + 源码修改
 
 #### 用户类型 3：产品经理/技术 PM
-- **技术能力**: 基本技术背景，能运行命令行
+- **技术能力**: 基本技术背景，能运行命令行或使用 Web UI
 - **环境假设**: 由技术团队协助安装
-- **使用方式**: 主要使用 CLI
+- **使用方式**: 主要使用 Web UI 或 CLI
 
 ### 3.2 核心使用场景
 
 #### 场景 A：创建新项目
 **使用前**:
 - 用户有一个软件想法（如"创建一个2048游戏"）
-- 已完成 mind2build 安装和配置
+- 已完成 mind2build 安装和配置（包括 PostgreSQL 数据库）
 
 **使用中**:
 ```bash
-mind2build "Create a 2048 game"
+# CLI 方式
+pnpm --filter @mind2build/backend cli "Create a 2048 game" --application-id my-game --version 1
+
+# 或通过 Web UI
+# 访问 http://localhost:5173，输入需求并提交
 ```
 - 系统自动执行完整的软件开发流程
-- 用户可以实时查看日志输出
+- 用户可以实时查看日志输出（CLI）或通过 WebSocket 接收更新（Web UI）
+- 支持交互模式，每个角色完成后等待用户确认
 - 系统会在遇到问题时提示用户
 
 **使用后**:
-- 在 ./workspace 目录生成完整项目
-- 包含 PRD、设计文档、源代码、README
+- 在 `./workspace/{applicationId}/v{version}/` 目录生成完整项目
+- 包含 MRD、PRD、设计文档、源代码、README
 - 代码可直接运行
 
 **关键决策点**:
@@ -178,10 +199,18 @@ mind2build "Create a 2048 game"
 - 已准备好数据或数据集名称
 
 **使用中**:
-```python
-from mind2build.roles.di.data_interpreter import DataInterpreter
-di = DataInterpreter()
-await di.run("Analyze Iris dataset and create visualization")
+```bash
+# CLI 方式
+pnpm --filter @mind2build/backend cli "Analyze Iris dataset and create visualization" --role DataAnalyst
+
+# 或通过 REST API
+POST /api/v1/run
+{
+  "idea": "Analyze Iris dataset and create visualization",
+  "roles": ["DataAnalyst"],
+  "applicationId": "data-analysis",
+  "version": 1
+}
 ```
 
 **使用后**:
@@ -192,17 +221,18 @@ await di.run("Analyze Iris dataset and create visualization")
 #### 场景 C：增量开发
 **使用前**:
 - 已有项目需要新增功能
-- 项目在 Git 管理下
+- 项目在 workspace 中，有明确的 applicationId 和 version
 
 **使用中**:
 ```bash
-mind2build "Add user login feature" --inc --project-path ./my_project
+pnpm --filter @mind2build/backend cli "Add user login feature" --application-id my-app --version 2
 ```
 
 **使用后**:
 - 更新现有设计文档
 - 新增必要的代码文件
 - 保留原有项目结构
+- 新版本文件保存在 `./workspace/{applicationId}/v{version}/` 目录
 
 ---
 
@@ -234,15 +264,18 @@ mind2build "Add user login feature" --inc --project-path ./my_project
 - 内存不足 → 清理旧消息，保留关键信息
 
 **数据结构**:
-```python
-class Role(BaseRole):
-    name: str                    # 角色名称
-    profile: str                 # 角色类型
-    goal: str                    # 角色目标
-    constraints: str             # 约束条件
-    actions: list[Action]        # 可执行的行动
-    rc: RoleContext              # 运行时上下文
-    llm: BaseLLM                 # LLM实例
+```typescript
+class Role extends BaseRole {
+    name: string;                    // 角色名称
+    profile: string;                 // 角色类型
+    goal: string;                    // 角色目标
+    constraints: string;             // 约束条件
+    description: string;             // 角色描述
+    actions: BaseAction[];           // 可执行的行动
+    rc: RoleContext;                 // 运行时上下文
+    context: Context;                // 全局上下文
+    // LLM 实例由 Role 内部管理（支持角色特定配置）
+}
 ```
 
 #### F2. 消息系统
@@ -267,16 +300,21 @@ class Role(BaseRole):
 - 消息格式错误 → 拒绝消息，返回错误
 
 **路由规则**:
-```python
-# 广播
-send_to = {MESSAGE_ROUTE_TO_ALL}
+```typescript
+// 广播
+sendTo = new Set([MESSAGE_ROUTE_TO_ALL])
 
-# 定向
-send_to = {"ProductManager", "Architect"}
+// 定向
+sendTo = new Set(["ProductManager", "Architect"])
 
-# 订阅（通过 _watch）
-role._watch([WritePRD, WriteDesign])
+// 订阅（通过 watch）
+role.watch([ACTION_WRITE_PRD, ACTION_WRITE_DESIGN])
 ```
+
+**消息路由优先级**:
+1. 广播消息（`MESSAGE_ROUTE_TO_ALL`）：所有角色接收
+2. 订阅机制（`watch`）：角色通过 `watch([ACTION_NAME])` 订阅特定 Action
+3. 直接发送：消息的 `sendTo` 包含角色地址（角色名称）
 
 #### F3. Action 执行系统
 
@@ -300,11 +338,20 @@ role._watch([WritePRD, WriteDesign])
 - 生成内容质量低 → 代码审查机制介入
 
 **Action 接口**:
-```python
-class Action(BaseModel):
-    async def run(self, *args, **kwargs) -> ActionOutput:
-        """执行 Action 的主逻辑"""
-        pass
+```typescript
+abstract class BaseAction {
+    name: string;
+    description?: string;
+    protected llm?: BaseLLM;      // 由 Role 注入
+    protected context?: Context;  // 由 Role 注入
+    
+    abstract async run(...args: any[]): Promise<IActionOutput>;
+    
+    // 辅助方法
+    protected async aask(prompt: string, systemMsgs?: string[]): Promise<string>;
+    protected async saveToWorkspace(filePath: string, content: string, options?: WorkspaceOptions): Promise<void>;
+    protected getWorkspaceDir(options?: WorkspaceOptions): string;
+}
 ```
 
 #### F4. 环境管理系统
@@ -567,15 +614,15 @@ stateDiagram-v2
 - ✅ 使用依赖注入而非硬编码
 
 **文档要求**:
-- ✅ 所有公共 API 必须有 docstring
+- ✅ 所有公共 API 必须有 JSDoc 注释
 - ✅ 复杂逻辑必须有注释说明
 - ✅ 提供使用示例和教程
 
 **代码规范**:
-- 遵循 PEP 8
-- 使用类型注解（Type Hints）
-- 使用 Black 格式化
-- 使用 Ruff 进行 lint
+- 遵循 ESLint 规则
+- 使用 TypeScript 类型注解
+- 使用 Prettier 格式化
+- 使用 ESLint 进行 lint
 
 ### 7.3 安全与风险
 
@@ -620,7 +667,7 @@ stateDiagram-v2
 - 工具函数和辅助类
 - LLM 提供商集成（使用 Mock）
 
-**工具**: pytest + pytest-asyncio + pytest-mock
+**工具**: Jest + ts-jest
 
 #### 集成测试
 **范围**:
@@ -628,7 +675,7 @@ stateDiagram-v2
 - 消息路由机制
 - 项目生成完整流程
 
-**工具**: pytest + 真实 LLM API（使用测试账号）
+**工具**: Jest + 真实 LLM API（使用测试账号）
 
 #### 端到端测试
 **测试用例**:
@@ -699,10 +746,13 @@ stateDiagram-v2
 ## 10. 未决问题（Open Questions）
 
 ### 已决策的问题
-- ✅ 使用 Python 3.9-3.11（不支持 3.12 因为依赖兼容性）
-- ✅ 使用 asyncio 而非多进程（简化实现）
-- ✅ 使用 Pydantic v2（数据验证）
+- ✅ 使用 Node.js v18+ + TypeScript v5.3+（类型安全，生态成熟）
+- ✅ 使用 async/await 而非多进程（简化实现，Node.js Event Loop）
+- ✅ 使用 Zod v3.22+（运行时数据验证）
 - ✅ 消息系统采用发布/订阅模式
+- ✅ 使用 PostgreSQL 数据库存储配置和提示词（而非配置文件）
+- ✅ 使用 pnpm monorepo 管理多包项目
+- ✅ 前端使用 Vue 3 + Element Plus（渐进式，企业级UI）
 
 ### 当前无需决策的问题
 以下问题在当前阶段不影响核心实现：
