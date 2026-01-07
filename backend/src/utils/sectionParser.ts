@@ -58,11 +58,24 @@ export function parseSectionsFromContent(content: string): Section[] {
 
 /**
  * 从章节列表中提取特定章节的内容
+ * @returns 章节内容，如果找不到章节则返回 null，如果章节存在但内容为空则返回空字符串
  */
 export function extractSectionContent(content: string, sectionNumber: number): string | null {
   const sections = parseSectionsFromContent(content);
   const section = sections.find(s => s.number === sectionNumber);
-  return section?.content?.trim() || null;
+  if (!section) {
+    return null; // 章节不存在
+  }
+  // 章节存在，返回内容（可能为空字符串）
+  return section.content?.trim() ?? '';
+}
+
+/**
+ * 获取文档中所有章节的编号列表
+ */
+export function getAvailableSectionNumbers(content: string): number[] {
+  const sections = parseSectionsFromContent(content);
+  return sections.map(s => s.number).sort((a, b) => a - b);
 }
 
 /**

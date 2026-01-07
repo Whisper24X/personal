@@ -201,6 +201,21 @@ class APIClient {
     );
   }
 
+  async getSectionConversation(
+    projectId: string,
+    sectionNumber: number,
+    documentType: 'PRD' | 'MRD' = 'PRD',
+    applicationId?: string,
+    version?: number
+  ) {
+    return this.client.get(
+      `/projects/${projectId}/sections/${sectionNumber}/conversation`,
+      {
+        params: { documentType, applicationId, version },
+      }
+    );
+  }
+
   // LLM Config API 端点
   async getLLMConfigs() {
     return this.client.get('/config/llm');

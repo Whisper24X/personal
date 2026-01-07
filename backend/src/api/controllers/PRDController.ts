@@ -656,6 +656,7 @@ export class PRDController {
           content: result.sectionContent,
         },
         updatedPRD: result.updatedContent,
+        conversationHistory: result.conversationHistory,
       });
     } catch (error: any) {
       logger.error('PRDController: Failed to adjust PRD section:', error);
@@ -706,11 +707,26 @@ export class PRDController {
 
       // Adjust section directly from workspace
       const sectionAdjustService = new SectionAdjustService();
-      const appId = applicationId || project?.application_id || project?.id;
+      
+      // Determine applicationId: use provided, project's application_id, or fallback to projectId/sessionId
+      // Note: 'default' is not allowed, so we use projectId/sessionId as fallback for interactive sessions
+      let appId = applicationId;
+      if (!appId || appId === 'default') {
+        appId = project?.application_id || project?.id || id;
+      }
+      
       const ver = version || 1;
 
       // Determine document type for workspace directory
       const docType = documentType === 'MRD' ? 'MRD' : 'PRD';
+
+      logger.info(`PRDController: Workspace directory parameters`, {
+        applicationId: appId,
+        projectId: id,
+        projectIdForWorkspace: project?.id,
+        version: ver,
+        documentType: docType,
+      });
 
       const result = await sectionAdjustService.adjustSection({
         projectId: id,
@@ -735,11 +751,70 @@ export class PRDController {
           content: result.sectionContent,
         },
         updatedPRD: result.updatedContent,
+        conversationHistory: result.conversationHistory,
       });
     } catch (error: any) {
       logger.error('PRDController: Failed to adjust section from workspace:', error);
       return res.status(500).json({
         error: 'Failed to adjust section',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Get conversation history for a section
+   * GET /api/projects/:id/sections/:sectionNumber/conversation
+   */
+  static async getSectionConversation(req: Request, res: Response) {
+    try {
+      const { id, sectionNumber } = req.params;
+      const { documentType = 'PRD', applicationId, version } = req.query;
+
+      const sectionNum = parseInt(sectionNumber);
+      if (isNaN(sectionNum) || sectionNum < 0) {
+        return res.status(400).json({
+          error: 'Invalid section number',
+        });
+      }
+
+      // Verify project exists (or use sessionId as projectId for interactive sessions)
+      let project;
+      try {
+        project = await projectRepo.findById(id);
+      } catch {
+        project = null;
+      }
+
+      const { SectionAdjustService } = await import('../../services/SectionAdjustService');
+      const sectionAdjustService = new SectionAdjustService();
+      
+      // Determine applicationId
+      let appId = applicationId as string | undefined;
+      if (!appId || appId === 'default') {
+        appId = project?.application_id || project?.id || id;
+      }
+      
+      const ver = version ? parseInt(version as string) : 1;
+      const docType = (documentType === 'MRD' ? 'MRD' : 'PRD') as 'PRD' | 'MRD';
+
+      // Load conversation history from database
+      const { loadSectionConversationHistory } = await import('../../utils/sectionConversationHistory');
+      const history = await loadSectionConversationHistory(
+        id,
+        sectionNum,
+        docType,
+        ver
+      );
+
+      return res.json({
+        success: true,
+        conversationHistory: history || { sectionNumber: sectionNum, messages: [], lastUpdated: new Date().toISOString() },
+      });
+    } catch (error: any) {
+      logger.error('PRDController: Failed to get section conversation:', error);
+      return res.status(500).json({
+        error: 'Failed to get section conversation',
         message: error.message,
       });
     }

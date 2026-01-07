@@ -7,11 +7,17 @@
 import { Context } from '../core/context/Context';
 import { WritePRD } from '../actions/WritePRD';
 import { buildPRDSectionAdjustPrompt, PRD_SYSTEM_PROMPT } from '../prompts/prd';
-import { extractSectionContent, replaceSectionContent } from '../utils/sectionParser';
+import { extractSectionContent, replaceSectionContent, getAvailableSectionNumbers } from '../utils/sectionParser';
 import { logger } from '../utils';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { getWorkspaceDir } from '../utils/StepwiseDocumentGenerator';
+import {
+  loadSectionConversationHistory,
+  addMessageToSectionConversation,
+  formatConversationHistoryForPrompt,
+  type SectionConversationHistory,
+} from '../utils/sectionConversationHistory';
 
 export interface SectionAdjustOptions {
   projectId: string; // 项目ID（数据库中的项目ID）
@@ -33,6 +39,7 @@ export class SectionAdjustService {
     success: boolean;
     updatedContent: string;
     sectionContent: string;
+    conversationHistory?: SectionConversationHistory;
   }> {
     const { projectId, prdId, sectionNumber, userRequest, applicationId, projectIdForWorkspace, version, workspacePath, documentType = 'PRD' } = options;
     // 使用传入的 projectIdForWorkspace，如果没有则使用 projectId
@@ -48,12 +55,31 @@ export class SectionAdjustService {
 
     try {
       // 1. 获取 workspace 目录
+      // Ensure applicationId is valid (not 'default' or empty)
+      // For interactive sessions, use projectId/sessionId as applicationId if needed
+      let finalApplicationId = applicationId;
+      if (!finalApplicationId || finalApplicationId === 'default') {
+        finalApplicationId = workspaceProjectId || projectId;
+        logger.warn('SectionAdjustService: applicationId is missing or "default", using projectId', {
+          originalApplicationId: applicationId,
+          fallbackApplicationId: finalApplicationId,
+        });
+      }
+
       const workspaceDocType = documentType === 'MRD' ? 'MRD' : documentType === 'DESIGN' ? 'DESIGN' : 'PRD';
       const workspaceDir = getWorkspaceDir(workspaceDocType, {
-        applicationId,
+        applicationId: finalApplicationId,
         projectId: workspaceProjectId,
         version,
         workspacePath,
+      });
+
+      logger.info('SectionAdjustService: Workspace directory resolved', {
+        workspaceDir,
+        applicationId: finalApplicationId,
+        projectId: workspaceProjectId,
+        version,
+        documentType: workspaceDocType,
       });
 
       // 2. 确定主文档文件名
@@ -98,11 +124,23 @@ export class SectionAdjustService {
           if (prd) {
             fullPRDContent = prd.content;
             const extractedContent = extractSectionContent(prd.content, sectionNumber);
-            
-            if (extractedContent) {
-              originalSectionContent = extractedContent;
+
+            if (extractedContent !== null) {
+              // 章节存在（内容可能为空字符串）
+              originalSectionContent = extractedContent || ''; // 确保至少是空字符串
             } else {
-              throw new Error(`Section ${sectionNumber} not found in PRD`);
+              // 章节不存在
+              const availableSections = getAvailableSectionNumbers(prd.content);
+              logger.error('SectionAdjustService: Section not found in PRD from database', {
+                requestedSection: sectionNumber,
+                availableSections,
+                prdId,
+              });
+              throw new Error(
+                `Section ${sectionNumber} not found in PRD. ` +
+                `Available sections: ${availableSections.length > 0 ? availableSections.join(', ') : 'none'}. ` +
+                `Please ensure the document has been generated and contains section ${sectionNumber}.`
+              );
             }
           } else {
             // 如果数据库中没有，尝试从 workspace 的主文档文件读取
@@ -110,13 +148,63 @@ export class SectionAdjustService {
             try {
               fullPRDContent = await fs.readFile(mainFilePath, 'utf-8');
               const extractedContent = extractSectionContent(fullPRDContent, sectionNumber);
-              if (extractedContent) {
-                originalSectionContent = extractedContent;
+              if (extractedContent !== null) {
+                // 章节存在（内容可能为空字符串）
+                originalSectionContent = extractedContent || ''; // 确保至少是空字符串
               } else {
-                throw new Error(`Section ${sectionNumber} not found in workspace ${mainFileName}`);
+                // 章节不存在
+                const availableSections = getAvailableSectionNumbers(fullPRDContent);
+                logger.error('SectionAdjustService: Section not found in workspace file', {
+                  requestedSection: sectionNumber,
+                  availableSections,
+                  filePath: mainFilePath,
+                });
+                throw new Error(
+                  `Section ${sectionNumber} not found in workspace ${mainFileName}. ` +
+                  `Available sections: ${availableSections.length > 0 ? availableSections.join(', ') : 'none'}. ` +
+                  `Please ensure the document has been generated and contains section ${sectionNumber}.`
+                );
               }
             } catch (workspaceError: any) {
-              throw new Error(`Section ${sectionNumber} not found. Please ensure the document has been generated.`);
+              // 如果文件读取失败，检查是否是章节不存在的问题
+              if (workspaceError.message.includes('not found') && workspaceError.message.includes('Available sections')) {
+                throw workspaceError;
+              }
+              // 检查文件是否存在
+              try {
+                await fs.access(mainFilePath);
+                // 文件存在，尝试读取并获取可用章节
+                try {
+                  const fileContent = await fs.readFile(mainFilePath, 'utf-8');
+                  const availableSections = getAvailableSectionNumbers(fileContent);
+                  logger.error('SectionAdjustService: Failed to extract section from workspace file', {
+                    error: workspaceError.message,
+                    requestedSection: sectionNumber,
+                    availableSections,
+                    filePath: mainFilePath,
+                  });
+                  throw new Error(
+                    `Section ${sectionNumber} not found in workspace ${mainFileName}. ` +
+                    `Available sections: ${availableSections.length > 0 ? availableSections.join(', ') : 'none'}. ` +
+                    `Please ensure the document has been generated and contains section ${sectionNumber}. ` +
+                    `File path: ${mainFilePath}`
+                  );
+                } catch (readError: any) {
+                  // 如果读取失败，抛出原始错误
+                  throw workspaceError;
+                }
+              } catch (accessError: any) {
+                // 文件不存在
+                logger.error('SectionAdjustService: Workspace file does not exist', {
+                  error: workspaceError.message,
+                  filePath: mainFilePath,
+                });
+                throw new Error(
+                  `Document file not found at ${mainFilePath}. ` +
+                  `Please ensure the ${documentType} document has been generated first. ` +
+                  `Requested section: ${sectionNumber}`
+                );
+              }
             }
           }
         } catch (dbError: any) {
@@ -125,24 +213,87 @@ export class SectionAdjustService {
           try {
             fullPRDContent = await fs.readFile(mainFilePath, 'utf-8');
             const extractedContent = extractSectionContent(fullPRDContent, sectionNumber);
-            if (extractedContent) {
-              originalSectionContent = extractedContent;
+            if (extractedContent !== null) {
+              // 章节存在（内容可能为空字符串）
+              originalSectionContent = extractedContent || ''; // 确保至少是空字符串
             } else {
-              throw new Error(`Section ${sectionNumber} not found in workspace ${mainFileName}`);
+              // 章节不存在
+              const availableSections = getAvailableSectionNumbers(fullPRDContent);
+              logger.error('SectionAdjustService: Section not found in workspace file (fallback)', {
+                requestedSection: sectionNumber,
+                availableSections,
+                filePath: mainFilePath,
+              });
+              throw new Error(
+                `Section ${sectionNumber} not found in workspace ${mainFileName}. ` +
+                `Available sections: ${availableSections.length > 0 ? availableSections.join(', ') : 'none'}. ` +
+                `Please ensure the document has been generated and contains section ${sectionNumber}.`
+              );
             }
           } catch (workspaceError: any) {
-            throw new Error(`Section ${sectionNumber} not found. Please ensure the document has been generated.`);
+            // 如果文件读取失败，检查是否是章节不存在的问题
+            if (workspaceError.message.includes('not found') && workspaceError.message.includes('Available sections')) {
+              throw workspaceError;
+            }
+            // 检查文件是否存在
+            try {
+              await fs.access(mainFilePath);
+              // 文件存在，尝试读取并获取可用章节
+              try {
+                const fileContent = await fs.readFile(mainFilePath, 'utf-8');
+                const availableSections = getAvailableSectionNumbers(fileContent);
+                logger.error('SectionAdjustService: Failed to extract section from workspace file (fallback)', {
+                  error: workspaceError.message,
+                  requestedSection: sectionNumber,
+                  availableSections,
+                  filePath: mainFilePath,
+                  dbError: dbError.message,
+                });
+                throw new Error(
+                  `Section ${sectionNumber} not found in workspace ${mainFileName}. ` +
+                  `Available sections: ${availableSections.length > 0 ? availableSections.join(', ') : 'none'}. ` +
+                  `Please ensure the document has been generated and contains section ${sectionNumber}. ` +
+                  `File path: ${mainFilePath}. ` +
+                  `Database error: ${dbError.message}`
+                );
+              } catch (readError: any) {
+                // 如果读取失败，抛出原始错误
+                throw workspaceError;
+              }
+            } catch (accessError: any) {
+              // 文件不存在
+              logger.error('SectionAdjustService: Workspace file does not exist (fallback)', {
+                error: workspaceError.message,
+                filePath: mainFilePath,
+                dbError: dbError.message,
+              });
+              throw new Error(
+                `Document file not found at ${mainFilePath}. ` +
+                `Please ensure the ${documentType} document has been generated first. ` +
+                `Requested section: ${sectionNumber}. ` +
+                `Database error: ${dbError.message}`
+              );
+            }
           }
         }
       }
 
       // 3. 解析章节标题
       const sectionTitleMatch = originalSectionContent.match(/^##\s+\d+\.\s+(.+)$/m);
-      const sectionTitle = sectionTitleMatch 
+      const sectionTitle = sectionTitleMatch
         ? sectionTitleMatch[1].trim()
         : `章节 ${sectionNumber}`;
 
-      // 4. 使用大模型调整章节
+      // 4. 加载对话历史（支持多轮对话）- 从数据库加载
+      const conversationHistory = await loadSectionConversationHistory(
+        projectId,
+        sectionNumber,
+        documentType,
+        version || 1
+      );
+      const historyText = formatConversationHistoryForPrompt(conversationHistory);
+
+      // 5. 使用大模型调整章节
       const ctx = new Context();
       const writePRDAction = new WritePRD();
       writePRDAction.setLLM(ctx.llm);
@@ -152,10 +303,31 @@ export class SectionAdjustService {
         sectionNumber,
         sectionTitle,
         userRequest,
-        fullPRDContent
+        fullPRDContent,
+        historyText
+      );
+
+      // 保存用户请求到对话历史（数据库）
+      await addMessageToSectionConversation(
+        projectId,
+        sectionNumber,
+        documentType,
+        'user',
+        userRequest,
+        version || 1
       );
 
       const adjustedContent = await (writePRDAction as any).aask(adjustPrompt, [PRD_SYSTEM_PROMPT]);
+
+      // 保存 AI 响应到对话历史（数据库）
+      await addMessageToSectionConversation(
+        projectId,
+        sectionNumber,
+        documentType,
+        'assistant',
+        adjustedContent,
+        version || 1
+      );
 
       logger.info('SectionAdjustService: Section adjusted successfully', {
         sectionNumber,
@@ -197,10 +369,19 @@ export class SectionAdjustService {
         }
       }
 
+      // 加载更新后的对话历史（数据库）
+      const updatedHistory = await loadSectionConversationHistory(
+        projectId,
+        sectionNumber,
+        documentType,
+        version || 1
+      );
+
       return {
         success: true,
         updatedContent: updatedPRDContent || adjustedContent,
         sectionContent: adjustedContent,
+        conversationHistory: updatedHistory || undefined,
       };
     } catch (error: any) {
       logger.error('SectionAdjustService: Failed to adjust section', {
@@ -225,8 +406,8 @@ export class SectionAdjustService {
           await fs.access(workspaceDir);
           const entries = await fs.readdir(workspaceDir, { withFileTypes: true });
           const sectionFiles = entries
-            .filter(entry => 
-              entry.isFile() && 
+            .filter(entry =>
+              entry.isFile() &&
               entry.name.match(/^\d{2}-section-\d+\.md$/)
             )
             .sort((a, b) => a.name.localeCompare(b.name));
@@ -240,7 +421,7 @@ export class SectionAdjustService {
               const content = await fs.readFile(filePath, 'utf-8');
               const titleMatch = content.match(/^##\s+\d+\.\s+(.+)$/m);
               const title = titleMatch ? titleMatch[1].trim() : `章节 ${sectionNumber}`;
-              
+
               sections.push({
                 number: sectionNumber,
                 title,

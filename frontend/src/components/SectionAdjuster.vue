@@ -42,22 +42,40 @@
         <el-dialog v-model="showSectionDialog" :title="`调整章节 ${selectedSectionNumber}: ${selectedSectionTitle}`"
             width="80%" :close-on-click-modal="false">
             <div class="section-adjust-dialog">
+                <!-- Conversation History -->
+                <div v-if="conversationHistory && conversationHistory.messages.length > 0" class="conversation-history">
+                    <h4>对话历史（{{ conversationHistory.messages.length }} 条）：</h4>
+                    <el-scrollbar max-height="200px" ref="conversationScrollbar">
+                        <div class="conversation-messages" ref="conversationMessages">
+                            <div v-for="(msg, index) in conversationHistory.messages" :key="index"
+                                :class="['conversation-message', msg.role === 'user' ? 'user-message' : 'assistant-message']">
+                                <div class="message-role">{{ msg.role === 'user' ? '👤 您' : '🤖 AI助手' }}</div>
+                                <div class="message-content" v-if="msg.role === 'user'">{{ msg.content }}</div>
+                                <div class="message-content" v-else>
+                                    <pre class="section-content-preview">{{ msg.content.substring(0, 200) }}{{ msg.content.length > 200 ? '...' : '' }}</pre>
+                                </div>
+                                <div class="message-time">{{ formatTime(msg.timestamp) }}</div>
+                            </div>
+                        </div>
+                    </el-scrollbar>
+                </div>
+                
                 <div class="section-original">
-                    <h4>原始内容：</h4>
-                    <el-scrollbar max-height="300px">
+                    <h4>当前章节内容：</h4>
+                    <el-scrollbar max-height="200px">
                         <pre class="section-content">{{ selectedSectionContent }}</pre>
                     </el-scrollbar>
                 </div>
                 <div class="section-adjust">
                     <h4>调整要求：</h4>
                     <el-input v-model="sectionAdjustRequest" type="textarea" :rows="6"
-                        placeholder="请描述您希望如何调整这个章节的内容，例如：&#10;- 添加更多细节&#10;- 修改某个功能描述&#10;- 补充验收标准等" />
+                        placeholder="请描述您希望如何调整这个章节的内容，例如：&#10;- 添加更多细节&#10;- 修改某个功能描述&#10;- 补充验收标准等&#10;&#10;您可以基于之前的对话继续调整..." />
                 </div>
             </div>
             <template #footer>
-                <el-button @click="showSectionDialog = false">取消</el-button>
-                <el-button type="primary" @click="handleSectionAdjust" :loading="sectionAdjustLoading">
-                    确认调整
+                <el-button @click="closeDialog">完成</el-button>
+                <el-button type="primary" @click="handleSectionAdjust" :loading="sectionAdjustLoading" :disabled="!sectionAdjustRequest.trim()">
+                    {{ conversationHistory && conversationHistory.messages.length > 0 ? '继续调整' : '确认调整' }}
                 </el-button>
             </template>
         </el-dialog>
@@ -65,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { ElMessage } from 'element-plus';
 import { Document, ChatLineRound } from '@element-plus/icons-vue';
 import { apiClient } from '../api/client';
@@ -92,11 +110,27 @@ const props = withDefaults(defineProps<Props>(), {
     documentId: '',
 });
 
+interface ConversationMessage {
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: string;
+}
+
+interface ConversationHistory {
+    sectionNumber: number;
+    messages: ConversationMessage[];
+    lastUpdated: string;
+}
+
 const sections = ref<Section[]>([]);
 const selectedSectionNumber = ref<number | null>(null);
 const showSectionDialog = ref(false);
 const sectionAdjustRequest = ref('');
 const sectionAdjustLoading = ref(false);
+const conversationHistory = ref<ConversationHistory | null>(null);
+const loadingHistory = ref(false);
+const conversationScrollbar = ref<any>(null);
+const conversationMessages = ref<HTMLElement | null>(null);
 
 const selectedSectionTitle = computed(() => {
     if (selectedSectionNumber.value === null) return '';
@@ -212,10 +246,80 @@ function selectSection(sectionNumber: number) {
     selectedSectionNumber.value = sectionNumber;
 }
 
-function openSectionAdjustDialog() {
+async function openSectionAdjustDialog() {
     if (selectedSectionNumber.value === null) return;
     sectionAdjustRequest.value = '';
     showSectionDialog.value = true;
+    
+    // Load conversation history
+    await loadConversationHistory();
+}
+
+async function loadConversationHistory() {
+    if (!selectedSectionNumber.value || !props.projectId) return;
+    
+    loadingHistory.value = true;
+    try {
+        const apiUrl = (import.meta as any).env?.VITE_API_URL;
+        if (!apiUrl) {
+            return;
+        }
+        
+        const response = await fetch(
+            `${apiUrl}/projects/${props.projectId}/sections/${selectedSectionNumber.value}/conversation?documentType=${props.documentType}`,
+            {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            }
+        );
+        
+        if (response.ok) {
+            const data = await response.json();
+            conversationHistory.value = data.conversationHistory || null;
+        }
+    } catch (error: any) {
+        console.warn('Failed to load conversation history:', error);
+        conversationHistory.value = null;
+    } finally {
+        loadingHistory.value = false;
+    }
+}
+
+function formatTime(timestamp: string): string {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const minutes = Math.floor(diff / 60000);
+    
+    if (minutes < 1) return '刚刚';
+    if (minutes < 60) return `${minutes}分钟前`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}小时前`;
+    const days = Math.floor(hours / 24);
+    return `${days}天前`;
+}
+
+function closeDialog() {
+    // Clear input when closing
+    sectionAdjustRequest.value = '';
+    showSectionDialog.value = false;
+}
+
+function scrollConversationToBottom() {
+    // Scroll conversation history to bottom
+    nextTick(() => {
+        if (conversationMessages.value) {
+            conversationMessages.value.scrollTop = conversationMessages.value.scrollHeight;
+        }
+        if (conversationScrollbar.value) {
+            const scrollbarEl = conversationScrollbar.value.$el?.querySelector('.el-scrollbar__wrap');
+            if (scrollbarEl) {
+                scrollbarEl.scrollTop = scrollbarEl.scrollHeight;
+            }
+        }
+    });
 }
 
 async function handleSectionAdjust() {
@@ -308,8 +412,8 @@ async function handleSectionAdjust() {
                     body: JSON.stringify({
                         userRequest: sectionAdjustRequest.value,
                         documentType: props.documentType,
-                        // Try to get applicationId and version from current content or use defaults
-                        applicationId: 'default',
+                        // Don't pass applicationId if not available - backend will handle it
+                        // version defaults to 1 if not provided
                         version: 1,
                     }),
                 }
@@ -325,20 +429,32 @@ async function handleSectionAdjust() {
 
         ElMessage.success('章节调整成功');
 
+        // Update conversation history
+        if (result.conversationHistory) {
+            conversationHistory.value = result.conversationHistory;
+        }
+
         // Update the section content in local state
         const sectionIndex = sections.value.findIndex(s => s.number === selectedSectionNumber.value);
         if (sectionIndex !== -1 && result.section) {
-            const adjustedContent = result.section.content.replace(/^##\s+\d+\.\s+.+\n\n?/, '');
-            sections.value[sectionIndex].content = adjustedContent;
-
-            // Notify parent component
+            // Update section content
+            sections.value[sectionIndex].content = result.section.content;
+            
+            // Trigger content update callback if provided
             if (props.onSectionAdjusted) {
                 props.onSectionAdjusted(selectedSectionNumber.value, result.section.content);
             }
         }
 
-        showSectionDialog.value = false;
+        // Clear input but keep dialog open for continuous conversation
         sectionAdjustRequest.value = '';
+        
+        // Reload conversation history to get latest updates
+        await loadConversationHistory();
+        
+        // Scroll to bottom of conversation history
+        await nextTick();
+        scrollConversationToBottom();
     } catch (error: any) {
         ElMessage.error('调整失败: ' + (error.message || '未知错误'));
     } finally {
@@ -376,6 +492,67 @@ async function handleSectionAdjust() {
 .section-adjust-dialog {
     display: flex;
     flex-direction: column;
+    gap: 16px;
+}
+
+.conversation-history {
+    border: 1px solid #e4e7ed;
+    border-radius: 4px;
+    padding: 12px;
+    background-color: #f5f7fa;
+}
+
+.conversation-history h4 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    color: #606266;
+}
+
+.conversation-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.conversation-message {
+    padding: 10px;
+    border-radius: 4px;
+    background-color: white;
+    border-left: 3px solid #409eff;
+}
+
+.conversation-message.user-message {
+    border-left-color: #67c23a;
+}
+
+.conversation-message.assistant-message {
+    border-left-color: #409eff;
+}
+
+.message-role {
+    font-weight: bold;
+    font-size: 12px;
+    color: #909399;
+    margin-bottom: 4px;
+}
+
+.message-content {
+    font-size: 13px;
+    color: #303133;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-bottom: 4px;
+}
+
+.message-time {
+    font-size: 11px;
+    color: #c0c4cc;
+    text-align: right;
+}
+
+.section-adjust-dialog {
+    display: flex;
+    flex-direction: column;
     gap: 20px;
 }
 
@@ -397,5 +574,22 @@ async function handleSectionAdjust() {
     background: #f5f7fa;
     padding: 12px;
     border-radius: 4px;
+}
+
+.section-content-preview {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #606266;
+    background: transparent;
+    padding: 0;
+}
+
+.conversation-messages {
+    max-height: 200px;
+    overflow-y: auto;
 }
 </style>

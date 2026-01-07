@@ -32,6 +32,7 @@ router.post('/:id/prds/:prdId/restore', PRDController.restorePRD);
 router.get('/:id/prds/:prdId/sections', PRDController.getPRDSections);
 router.post('/:id/prds/:prdId/sections/:sectionNumber/adjust', PRDController.adjustPRDSection);
 router.post('/:id/sections/:sectionNumber/adjust', PRDController.adjustSectionFromWorkspace);
+router.get('/:id/sections/:sectionNumber/conversation', PRDController.getSectionConversation);
 router.post('/:id/prds/:prdId/improve', PRDController.improvePRD);
 
 // MRD management routes

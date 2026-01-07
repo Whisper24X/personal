@@ -592,11 +592,14 @@ export function buildPRDSectionAdjustPrompt(
   sectionNumber: number,
   sectionTitle: string,
   userRequest: string,
-  fullPRDContext?: string
+  fullPRDContext?: string,
+  conversationHistory?: string
 ): string {
   const contextPart = fullPRDContext
     ? `\n\n【完整 PRD 上下文（仅供参考）】\n${fullPRDContext}`
     : '';
+  
+  const historyPart = conversationHistory || '';
 
   return `请根据用户的要求，调整以下 PRD 章节的内容：
 
@@ -604,6 +607,7 @@ export function buildPRDSectionAdjustPrompt(
 ## ${sectionNumber}. ${sectionTitle}
 
 ${originalSectionContent}
+${historyPart}
 
 【用户调整要求】
 ${userRequest}
@@ -616,6 +620,7 @@ ${contextPart}
    - 保持与整体 PRD 的一致性
    - 内容详细、具体、可执行
    - 面向研发和测试团队
+   - ${historyPart ? '**考虑之前的对话历史，保持调整的连贯性**' : ''}
 3. **只输出调整后的章节内容**（包含章节标题）
 4. **不要输出其他章节的内容**
 5. 如果用户要求与 PRD 模板结构冲突，优先满足用户要求，但保持格式规范

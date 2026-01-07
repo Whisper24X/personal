@@ -9,4 +9,5 @@ export { LLMConfigRepository } from './LLMConfigRepository';
 export { ProviderConfigRepository } from './ProviderConfigRepository';
 export { RoleLLMConfigRepository } from './RoleLLMConfigRepository';
 export { PromptConfigRepository } from './PromptConfigRepository';
+export { SectionConversationRepository } from './SectionConversationRepository';
 
