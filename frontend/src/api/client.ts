@@ -366,6 +366,49 @@ class APIClient {
   async getInteractiveRunning(sessionId: string) {
     return this.client.get(`/interactive/${sessionId}/running`);
   }
+
+  // Knowledge Base API endpoints
+  async createKnowledgeBase(projectId: string, data: {
+    title: string;
+    content: string;
+    description?: string;
+    tags?: string[];
+    metadata?: Record<string, any>;
+  }) {
+    return this.client.post(`/projects/${projectId}/knowledge-base`, data);
+  }
+
+  async getKnowledgeBases(projectId: string, includeInactive?: boolean) {
+    return this.client.get(`/projects/${projectId}/knowledge-base`, {
+      params: { includeInactive },
+    });
+  }
+
+  async getKnowledgeBase(projectId: string, docId: string) {
+    return this.client.get(`/projects/${projectId}/knowledge-base/${docId}`);
+  }
+
+  async updateKnowledgeBase(projectId: string, docId: string, data: {
+    title?: string;
+    content?: string;
+    description?: string;
+    tags?: string[];
+    metadata?: Record<string, any>;
+    isActive?: boolean;
+  }) {
+    return this.client.put(`/projects/${projectId}/knowledge-base/${docId}`, data);
+  }
+
+  async deleteKnowledgeBase(projectId: string, docId: string) {
+    return this.client.delete(`/projects/${projectId}/knowledge-base/${docId}`);
+  }
+
+  async searchKnowledgeBase(projectId: string, query: string, limit?: number) {
+    return this.client.post(`/projects/${projectId}/knowledge-base/search`, {
+      query,
+      limit,
+    });
+  }
 }
 
 export const apiClient = new APIClient();

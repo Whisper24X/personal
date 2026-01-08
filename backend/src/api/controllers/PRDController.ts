@@ -18,6 +18,21 @@ const documentRepo = new DocumentRepository();
 const projectRepo = new ProjectRepository();
 const ragService = new RAGService();
 
+// Initialize RAG service (lazy initialization)
+let ragServiceInitialized = false;
+async function ensureRAGServiceInitialized() {
+  if (!ragServiceInitialized) {
+    try {
+      await ragService.initialize();
+      ragServiceInitialized = true;
+    } catch (error: any) {
+      logger.warn('PRDController: Failed to initialize RAG service', {
+        error: error.message,
+      });
+    }
+  }
+}
+
 export class PRDController {
   /**
    * Generate PRD (new or update)
@@ -131,6 +146,9 @@ export class PRDController {
       } else {
         // New mode: generate new PRD
         if (useRAG) {
+          // Ensure RAG service is initialized
+          await ensureRAGServiceInitialized();
+
           // RAG mode: search for similar PRDs even in new mode
           // If project belongs to an application, search across all projects in the application
           let searchResults: any[] = [];
@@ -190,6 +208,23 @@ export class PRDController {
 
       // Save as new PRD version
       const newPRD = await documentRepo.createPRDVersion(id, prdContent, parentId);
+
+      // Index document to Qdrant for vector search
+      try {
+        await ensureRAGServiceInitialized();
+        await ragService.indexDocuments([{
+          id: newPRD.id,
+          content: prdContent,
+          type: 'PRD',
+          projectId: id,
+          version: newPRD.version,
+        }]);
+      } catch (error: any) {
+        logger.warn('PRDController: Failed to index document to Qdrant', {
+          error: error.message,
+          documentId: newPRD.id,
+        });
+      }
 
       // Read all content from workspace (if stepwise generation was used)
       // The content from WritePRD already includes all files merged

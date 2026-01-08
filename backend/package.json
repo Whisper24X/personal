@@ -24,6 +24,7 @@
     "@langchain/community": "^1.1.1",
     "@langchain/core": "^1.1.8",
     "@mind2build/shared": "workspace:*",
+    "@qdrant/js-client-rest": "^1.16.2",
     "@types/ws": "^8.18.1",
     "archiver": "^7.0.1",
     "axios": "^1.6.5",

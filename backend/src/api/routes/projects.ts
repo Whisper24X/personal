@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { ProjectController } from '../controllers/ProjectController';
 import { PRDController } from '../controllers/PRDController';
 import { MRDController } from '../controllers/MRDController';
+import { KnowledgeBaseController } from '../controllers/KnowledgeBaseController';
 // import { authMiddleware } from '../middleware/auth'; // Unused
 
 const router: Router = Router();
@@ -41,6 +42,14 @@ router.get('/:id/mrds', MRDController.listMRDs);
 router.get('/:id/mrds/:mrdId', MRDController.getMRD);
 router.post('/:id/mrds/:mrdId/adjust-section', MRDController.adjustSection);
 router.post('/:id/mrds/:mrdId/improve', MRDController.improveMRD);
+
+// Knowledge Base routes
+router.post('/:id/knowledge-base', KnowledgeBaseController.create);
+router.get('/:id/knowledge-base', KnowledgeBaseController.list);
+router.get('/:id/knowledge-base/:docId', KnowledgeBaseController.getById);
+router.put('/:id/knowledge-base/:docId', KnowledgeBaseController.update);
+router.delete('/:id/knowledge-base/:docId', KnowledgeBaseController.delete);
+router.post('/:id/knowledge-base/search', KnowledgeBaseController.search);
 
 export default router;
 

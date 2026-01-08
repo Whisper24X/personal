@@ -12,6 +12,7 @@ import ApplicationDetail from '../views/ApplicationDetail.vue';
 import LLMConfig from '../views/LLMConfig.vue';
 import RoleLLMConfig from '../views/RoleLLMConfig.vue';
 import PromptConfig from '../views/PromptConfig.vue';
+import KnowledgeBase from '../views/KnowledgeBase.vue';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -46,6 +47,12 @@ const router = createRouter({
       path: '/project/:id',
       name: 'ProjectDetail',
       component: ProjectDetail,
+      props: true,
+    },
+    {
+      path: '/project/:id/knowledge-base',
+      name: 'KnowledgeBase',
+      component: KnowledgeBase,
       props: true,
     },
     {

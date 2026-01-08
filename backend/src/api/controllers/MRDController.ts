@@ -18,6 +18,21 @@ const documentRepo = new DocumentRepository();
 const projectRepo = new ProjectRepository();
 const ragService = new RAGService();
 
+// Initialize RAG service (lazy initialization)
+let ragServiceInitialized = false;
+async function ensureRAGServiceInitialized() {
+  if (!ragServiceInitialized) {
+    try {
+      await ragService.initialize();
+      ragServiceInitialized = true;
+    } catch (error: any) {
+      logger.warn('MRDController: Failed to initialize RAG service', {
+        error: error.message,
+      });
+    }
+  }
+}
+
 export class MRDController {
   /**
    * Generate MRD (new or update)
@@ -137,6 +152,9 @@ export class MRDController {
       } else {
         // New mode: generate new MRD
         if (useRAG) {
+          // Ensure RAG service is initialized
+          await ensureRAGServiceInitialized();
+
           // RAG mode: search for similar MRDs even in new mode
           // If project belongs to an application, search across all projects in the application
           let searchResults: any[] = [];
@@ -218,6 +236,23 @@ export class MRDController {
       // If update mode, set parent relationship
       if (parentId) {
         await documentRepo.updateParent(savedDoc.id, parentId);
+      }
+
+      // Index document to Qdrant for vector search
+      try {
+        await ensureRAGServiceInitialized();
+        await ragService.indexDocuments([{
+          id: savedDoc.id,
+          content: mrdContent,
+          type: 'MRD',
+          projectId: id,
+          version: savedDoc.version,
+        }]);
+      } catch (error: any) {
+        logger.warn('MRDController: Failed to index document to Qdrant', {
+          error: error.message,
+          documentId: savedDoc.id,
+        });
       }
 
       logger.info(`MRDController: MRD generated and saved for project ${id}`, {

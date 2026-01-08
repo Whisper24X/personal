@@ -75,11 +75,59 @@
                 </h3>
                 <p class="project-idea">{{ project.idea }}</p>
               </div>
-              <el-tag :type="getStatusType(project.status)" size="large" effect="plain">
-                {{ project.status }}
-              </el-tag>
+              <div class="project-actions">
+                <el-tag :type="getStatusType(project.status)" size="large" effect="plain">
+                  {{ project.status }}
+                </el-tag>
+                <el-button
+                  type="primary"
+                  link
+                  size="small"
+                  @click.stop="goToProjectKnowledgeBase(project.id)"
+                  style="margin-left: 8px"
+                >
+                  <el-icon><Collection /></el-icon>
+                  知识库
+                </el-button>
+              </div>
             </div>
           </el-card>
+        </div>
+      </el-card>
+
+      <el-card class="knowledge-base-card" v-if="projects.length > 0">
+        <template #header>
+          <div class="card-header-content">
+            <span class="card-title">
+              <el-icon>
+                <Collection />
+              </el-icon>
+              应用知识库
+            </span>
+          </div>
+        </template>
+        <div class="knowledge-base-content">
+          <el-text type="info">
+            知识库用于存储项目相关的参考文档，这些文档会被自动索引到向量数据库，用于RAG检索增强生成。
+            您可以为每个项目单独管理知识库文档。
+          </el-text>
+          <div class="knowledge-base-projects" style="margin-top: 16px">
+            <el-text type="info" size="small" style="display: block; margin-bottom: 12px">
+              快速访问项目知识库：
+            </el-text>
+            <div class="project-links">
+              <el-button
+                v-for="project in projects"
+                :key="project.id"
+                type="primary"
+                link
+                @click="goToProjectKnowledgeBase(project.id)"
+              >
+                <el-icon><Collection /></el-icon>
+                {{ project.name }} 的知识库
+              </el-button>
+            </div>
+          </div>
         </div>
       </el-card>
     </div>
@@ -97,7 +145,8 @@ import {
   Folder,
   Clock,
   Plus,
-  Document
+  Document,
+  Collection
 } from '@element-plus/icons-vue';
 
 const router = useRouter();
@@ -186,6 +235,10 @@ function getStatusType(status: string): 'success' | 'warning' | 'info' | 'danger
     failed: 'danger',
   };
   return statusMap[status] || 'info';
+}
+
+function goToProjectKnowledgeBase(projectId: string) {
+  router.push(`/project/${projectId}/knowledge-base`);
 }
 </script>
 
@@ -277,5 +330,29 @@ function getStatusType(status: string): 'success' | 'warning' | 'info' | 'danger
   font-size: 14px;
   margin: 0;
   line-height: 1.5;
+}
+
+.project-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.knowledge-base-card {
+  margin-top: 24px;
+}
+
+.knowledge-base-content {
+  padding: 20px 0;
+}
+
+.knowledge-base-projects {
+  margin-top: 16px;
+}
+
+.project-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 </style>
