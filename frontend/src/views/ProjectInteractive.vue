@@ -82,7 +82,15 @@
               <el-badge v-if="isRunning && runningRole === roleColumn.role && currentAction" :value="'运行中'"
                 class="running-badge" type="danger" />
             </div>
-            <span class="column-count">{{ roleColumn.completedCount }} / {{ roleColumn.totalCount }}</span>
+            <div class="column-header-right">
+              <span class="column-count">{{ roleColumn.completedCount }} / {{ roleColumn.totalCount }}</span>
+              <el-button v-if="roleColumn.completedCount === roleColumn.totalCount && roleColumn.totalCount > 0"
+                type="warning" size="small" :icon="Refresh" @click.stop="handleResetRole(roleColumn.role)"
+                :loading="resettingRoles.has(roleColumn.role)" plain class="reset-button"
+                :title="`重置 ${getRoleDisplayName(roleColumn.role)} 及下游所有角色的工作流`">
+                重置
+              </el-button>
+            </div>
           </div>
           <div class="column-description">
             {{ getRoleDescription(roleColumn.role) }}
@@ -352,6 +360,9 @@ const completedSteps = ref<any[]>([]);
 const currentStep = ref<any>(null);
 const showConfirmationDialog = ref(false);
 
+// Reset state
+const resettingRoles = ref<Set<string>>(new Set());
+
 // Content Dialog
 const showContentDialog = ref(false);
 const contentDialogTitle = ref('');
@@ -545,6 +556,26 @@ async function loadWorkflowInfo() {
         structure[roleInfo.role] = roleInfo.actions.map((action: any) => action.name);
       });
       workflowStructure.value = structure;
+
+      // Restore completed steps from workflow items
+      if (response.items && Array.isArray(response.items)) {
+        const completedItems = response.items.filter((item: any) => item.status === 'completed');
+        // Only restore if we don't already have these steps (to avoid duplicates)
+        const existingKeys = new Set(completedSteps.value.map(s => `${s.role}-${s.action}`));
+        const newSteps = completedItems
+          .filter((item: any) => item.role && item.action && !existingKeys.has(`${item.role}-${item.action}`))
+          .map((item: any) => ({
+            role: item.role,
+            action: item.action,
+            userAction: 'skip', // Default, will be updated if we have more info
+            timestamp: new Date().toISOString(),
+            content: undefined,
+            outputFiles: undefined,
+            zipPath: undefined,
+            zipType: undefined,
+          }));
+        completedSteps.value.push(...newSteps);
+      }
     }
   } catch (error: any) {
     console.error('Failed to load workflow info:', error);
@@ -1380,6 +1411,65 @@ function cleanup() {
   }
   lastMessageId = null;
 }
+
+/**
+ * Handle reset workflow from a specific role
+ * This will reset the role and all downstream roles to pending status
+ */
+async function handleResetRole(role: string) {
+  if (!sessionId.value) {
+    ElMessage.error('会话ID不存在');
+    return;
+  }
+
+  try {
+    // Confirm reset action
+    await ElMessageBox.confirm(
+      `确定要重置 ${getRoleDisplayName(role)} 及下游所有角色的工作流吗？\n\n这将清除这些角色的已完成状态，需要重新执行。`,
+      '确认重置',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+
+    // Set loading state
+    resettingRoles.value.add(role);
+
+    // Call API to reset workflow
+    await apiClient.resetInteractiveWorkflow(sessionId.value, role);
+
+    // Remove completed steps for this role and downstream roles
+    const roleOrder = [
+      'Salesperson',
+      'ProductManager',
+      'Architect',
+      'ProjectManager',
+      'Engineer',
+      'QAEngineer',
+    ];
+    const roleIndex = roleOrder.indexOf(role);
+    if (roleIndex !== -1) {
+      const downstreamRoles = roleOrder.slice(roleIndex);
+      completedSteps.value = completedSteps.value.filter(
+        step => !downstreamRoles.includes(step.role)
+      );
+    }
+
+    // Reload workflow info to refresh the kanban board
+    await loadWorkflowInfo();
+
+    ElMessage.success(`已重置 ${getRoleDisplayName(role)} 及下游角色的工作流`);
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('Failed to reset workflow:', error);
+      ElMessage.error('重置失败: ' + (error.message || '未知错误'));
+    }
+  } finally {
+    resettingRoles.value.delete(role);
+  }
+}
 </script>
 
 <style scoped>
@@ -1594,6 +1684,17 @@ function cleanup() {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+}
+
+.column-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reset-button {
+  font-size: 12px;
+  padding: 4px 8px;
 }
 
 .column-header-left {

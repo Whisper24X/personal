@@ -168,9 +168,44 @@ export class InteractiveSession {
       // Clear running state when session completes
       await this.workflowTracker.clearState();
 
+      // Check if all workflow items are completed and update project status
+      const projectId = this.config.projectId || this.id;
+      if (projectId) {
+        try {
+          const workflowItems = await this.workflowTracker.getWorkflowItems();
+
+          // Check if there are any workflow items and if all are completed (no pending or running items)
+          const hasWorkflowItems = workflowItems.length > 0;
+          const completedCount = workflowItems.filter(item => item.status === 'completed').length;
+          const pendingCount = workflowItems.filter(item => item.status === 'pending').length;
+          const runningCount = workflowItems.filter(item => item.status === 'running').length;
+
+          // Mark as completed if:
+          // 1. There are workflow items AND
+          // 2. No pending or running items (all are either completed or failed/skipped)
+          const shouldMarkCompleted = hasWorkflowItems && pendingCount === 0 && runningCount === 0;
+
+          if (shouldMarkCompleted) {
+            logger.info(`InteractiveSession: All workflow items finished (${completedCount}/${workflowItems.length} completed, ${workflowItems.length - completedCount} failed/skipped), marking project ${projectId} as completed`);
+            const { ProjectRepository } = await import('../database/repositories/ProjectRepository');
+            const projectRepo = new ProjectRepository();
+            await projectRepo.markCompleted(projectId);
+            logger.info(`InteractiveSession: Project ${projectId} marked as completed`);
+          } else {
+            logger.info(`InteractiveSession: Workflow not fully completed (${completedCount}/${workflowItems.length} completed, ${pendingCount} pending, ${runningCount} running), project status not updated`);
+          }
+        } catch (error: any) {
+          logger.error(`InteractiveSession: Failed to update project status for ${projectId}`, {
+            error: error.message,
+            stack: error.stack,
+          });
+          // Don't throw - continue with completion message even if status update fails
+        }
+      }
+
       // Send completion
       this.sendMessage('completed', {
-        projectId: this.id,
+        projectId: projectId || this.id,
         summary: {
           totalSteps: env.history.length,
           totalCost: this.team.getCostReport().totalCost,
@@ -829,9 +864,60 @@ export class InteractiveSession {
       // Check if we're about to cycle back to the first role (last role just completed)
       const isLastRole = roleIndex === roles.length - 1;
 
-      // If the last role just completed, stop execution immediately
+      // If the last role just completed, check if project should be marked as completed
       if (isLastRole && nextRoleIndex === 0) {
-        logger.info(`InteractiveSession: Last role (${role.profile}) completed, stopping execution`);
+        logger.info(`InteractiveSession: Last role (${role.profile}) completed, checking if project should be marked as completed`);
+
+        // Ensure current role's workflow item is marked as completed if message was produced
+        // Note: onRoleComplete should have already updated the status, but we'll verify it's completed
+        if (message && message.causeBy) {
+          const currentActionName = message.causeBy;
+          const isCompleted = await this.workflowTracker.isActionCompleted(role.profile, currentActionName);
+          if (!isCompleted) {
+            logger.warn(`InteractiveSession: Workflow item ${role.profile}:${currentActionName} is not marked as completed, this may cause status check to fail`);
+          }
+        }
+
+        // Wait a bit to ensure workflow item status is updated in database
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // Check if all workflow items are completed and update project status
+        const projectId = this.config.projectId || this.id;
+        if (projectId) {
+          try {
+            const workflowItems = await this.workflowTracker.getWorkflowItems();
+
+            // Check if there are any workflow items and if all are completed (no pending or running items)
+            const hasWorkflowItems = workflowItems.length > 0;
+            const completedCount = workflowItems.filter(item => item.status === 'completed').length;
+            const pendingCount = workflowItems.filter(item => item.status === 'pending').length;
+            const runningCount = workflowItems.filter(item => item.status === 'running').length;
+
+            logger.info(`InteractiveSession: Workflow status check - total: ${workflowItems.length}, completed: ${completedCount}, pending: ${pendingCount}, running: ${runningCount}`);
+
+            // Mark as completed if:
+            // 1. There are workflow items AND
+            // 2. No pending or running items (all are either completed or failed/skipped)
+            const shouldMarkCompleted = hasWorkflowItems && pendingCount === 0 && runningCount === 0;
+
+            if (shouldMarkCompleted) {
+              logger.info(`InteractiveSession: All workflow items finished (${completedCount}/${workflowItems.length} completed, ${workflowItems.length - completedCount} failed/skipped), marking project ${projectId} as completed`);
+              const { ProjectRepository } = await import('../database/repositories/ProjectRepository');
+              const projectRepo = new ProjectRepository();
+              await projectRepo.markCompleted(projectId);
+              logger.info(`InteractiveSession: Project ${projectId} marked as completed`);
+            } else {
+              logger.info(`InteractiveSession: Workflow not fully completed (${completedCount}/${workflowItems.length} completed, ${pendingCount} pending, ${runningCount} running), project status not updated`);
+            }
+          } catch (error: any) {
+            logger.error(`InteractiveSession: Failed to update project status for ${projectId}`, {
+              error: error.message,
+              stack: error.stack,
+            });
+            // Don't throw - continue even if status update fails
+          }
+        }
+
         // Clear running state before exiting
         await this.workflowTracker.clearState();
         break;

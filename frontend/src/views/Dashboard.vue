@@ -118,7 +118,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { onMounted, onActivated, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useProjectStore } from '../stores/project';
 import { useApplicationStore } from '../stores/application';
@@ -138,9 +138,37 @@ const applicationStore = useApplicationStore();
 const { loading, error, projectCount, completedCount } = storeToRefs(projectStore);
 const { applications } = storeToRefs(applicationStore);
 
-onMounted(() => {
+function refreshData() {
   projectStore.fetchProjects();
   applicationStore.fetchApplications();
+}
+
+// Listen for page visibility changes to refresh when user returns to the page
+const visibilityHandler = () => {
+  if (!document.hidden) {
+    refreshData();
+  }
+};
+
+// Listen for custom refresh event from router guard
+const refreshHandler = () => {
+  refreshData();
+};
+
+onMounted(() => {
+  refreshData();
+  document.addEventListener('visibilitychange', visibilityHandler);
+  window.addEventListener('refresh-project-list', refreshHandler);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', visibilityHandler);
+  window.removeEventListener('refresh-project-list', refreshHandler);
+});
+
+// Refresh when component is activated (if using keep-alive)
+onActivated(() => {
+  refreshData();
 });
 
 function viewApplication(id: string) {

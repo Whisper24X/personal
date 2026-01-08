@@ -135,7 +135,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, onActivated, onUnmounted, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useApplicationStore } from '../stores/application';
 import { storeToRefs } from 'pinia';
@@ -157,10 +157,38 @@ const { currentApplication, loading, error } = storeToRefs(applicationStore);
 const application = computed(() => currentApplication.value);
 const projects = ref<any[]>([]);
 
-onMounted(async () => {
+async function refreshData() {
   const applicationId = route.params.id as string;
   await applicationStore.fetchApplication(applicationId);
   await fetchProjects(applicationId);
+}
+
+// Listen for page visibility changes to refresh when user returns to the page
+const visibilityHandler = () => {
+  if (!document.hidden) {
+    refreshData();
+  }
+};
+
+// Listen for custom refresh event from router guard
+const refreshHandler = () => {
+  refreshData();
+};
+
+onMounted(async () => {
+  await refreshData();
+  document.addEventListener('visibilitychange', visibilityHandler);
+  window.addEventListener('refresh-project-list', refreshHandler);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', visibilityHandler);
+  window.removeEventListener('refresh-project-list', refreshHandler);
+});
+
+// Refresh when component is activated (if using keep-alive)
+onActivated(() => {
+  refreshData();
 });
 
 async function fetchProjects(applicationId: string) {

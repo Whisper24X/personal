@@ -73,5 +73,17 @@ const router = createRouter({
   ],
 });
 
+// Add navigation guard to refresh project list when returning from interactive page
+router.afterEach((to, from) => {
+  // If navigating from interactive page to dashboard or application detail, refresh data
+  if (from.name === 'ProjectInteractive' && (to.name === 'Dashboard' || to.name === 'ApplicationDetail')) {
+    // Use nextTick to ensure component is mounted before refreshing
+    setTimeout(() => {
+      // Trigger refresh by dispatching a custom event
+      window.dispatchEvent(new CustomEvent('refresh-project-list'));
+    }, 100);
+  }
+});
+
 export default router;
 

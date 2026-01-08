@@ -357,5 +357,62 @@ export class InteractiveSessionWorkflowRepository {
             return false; // On error, assume not completed to be safe
         }
     }
+
+    /**
+     * Reset workflow items for a role and all downstream roles
+     * Role order: Salesperson -> ProductManager -> Architect -> ProjectManager -> Engineer -> QAEngineer
+     */
+    async resetWorkflowFromRole(
+        sessionId: string,
+        role: string
+    ): Promise<void> {
+        try {
+            // Define role order (upstream to downstream)
+            const roleOrder = [
+                'Salesperson',
+                'ProductManager',
+                'Architect',
+                'ProjectManager',
+                'Engineer',
+                'QAEngineer',
+            ];
+
+            // Find the index of the target role
+            const roleIndex = roleOrder.indexOf(role);
+            if (roleIndex === -1) {
+                throw new Error(`Unknown role: ${role}`);
+            }
+
+            // Get all downstream roles (including the target role)
+            const downstreamRoles = roleOrder.slice(roleIndex);
+
+            logger.info(`Resetting workflow from role ${role}`, {
+                sessionId,
+                role,
+                downstreamRoles,
+            });
+
+            // Reset all workflow items for downstream roles to 'pending'
+            await query(
+                `UPDATE interactive_session_workflows 
+         SET status = 'pending', updated_at = NOW()
+         WHERE session_id = $1 AND role = ANY($2::text[])`,
+                [sessionId, downstreamRoles]
+            );
+
+            logger.info(`Successfully reset workflow from role ${role}`, {
+                sessionId,
+                role,
+                downstreamRoles,
+            });
+        } catch (error: any) {
+            logger.error('Failed to reset workflow from role:', {
+                sessionId,
+                role,
+                error: error.message,
+            });
+            throw error;
+        }
+    }
 }
 
