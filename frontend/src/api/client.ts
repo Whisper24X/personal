@@ -356,6 +356,16 @@ class APIClient {
       modifiedContent,
     });
   }
+
+  // Get workflow information (all roles and their actions)
+  async getInteractiveWorkflow(sessionId: string) {
+    return this.client.get(`/interactive/${sessionId}/workflow`);
+  }
+
+  // Get current running role and action
+  async getInteractiveRunning(sessionId: string) {
+    return this.client.get(`/interactive/${sessionId}/running`);
+  }
 }
 
 export const apiClient = new APIClient();

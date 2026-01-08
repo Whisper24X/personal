@@ -47,15 +47,15 @@
       </div>
     </el-card>
 
-    <!-- Progress Timeline -->
-    <el-card class="timeline-card">
+    <!-- Workflow Kanban Board -->
+    <el-card class="kanban-card">
       <template #header>
         <div class="card-header-content">
           <span class="card-title">
             <el-icon>
-              <Timer />
+              <Operation />
             </el-icon>
-            执行进度
+            工作流看板
           </span>
           <el-tag :type="getStatusType()" effect="dark">
             {{ getStatusText() }}
@@ -63,136 +63,163 @@
         </div>
       </template>
 
-      <el-timeline>
-        <el-timeline-item v-for="(step, index) in completedSteps" :key="index" :timestamp="step.timestamp"
-          :type="step.userAction === 'edit' ? 'warning' : 'success'" :hollow="false">
-          <el-card class="timeline-step-card">
-            <div class="step-header">
-              <el-tag :type="getRoleTagType(step.role)">
-                {{ step.role }}
+      <div class="kanban-board" ref="kanbanBoardRef">
+        <div v-for="roleColumn in workflowKanban" :key="roleColumn.role" class="kanban-column" :class="{
+          'column-active': roleColumn.isActive,
+          'column-running': isRunning && runningRole === roleColumn.role
+        }" :ref="el => setColumnRef(el, roleColumn.role)">
+          <div class="column-header">
+            <div class="column-header-left">
+              <el-tag :type="getRoleTagType(roleColumn.role)" size="large"
+                :effect="isRunning && runningRole === roleColumn.role ? 'dark' : 'plain'"
+                :class="{ 'role-tag-running': isRunning && runningRole === roleColumn.role }">
+                <el-icon v-if="isRunning && runningRole === roleColumn.role" class="is-loading"
+                  style="margin-right: 4px;">
+                  <Loading />
+                </el-icon>
+                {{ getRoleDisplayName(roleColumn.role) }}
               </el-tag>
-              <el-tag size="small" type="info">{{ step.action }}</el-tag>
-              <el-tag v-if="step.userAction" size="small" :type="getUserActionTagType(step.userAction)">
-                {{ getUserActionText(step.userAction) }}
-              </el-tag>
+              <el-badge v-if="isRunning && runningRole === roleColumn.role && currentAction" :value="'运行中'"
+                class="running-badge" type="danger" />
             </div>
-            <!-- Role and Action Description -->
-            <div v-if="getRoleDescription(step.role) || getActionDescription(step.action)" class="step-description">
-              <div v-if="getRoleDescription(step.role)" class="description-item">
-                <el-icon>
-                  <User />
-                </el-icon>
-                <span class="description-label">角色职责:</span>
-                <span class="description-text">{{ getRoleDescription(step.role) }}</span>
-              </div>
-              <div v-if="getActionDescription(step.action)" class="description-item">
-                <el-icon>
-                  <Operation />
-                </el-icon>
-                <span class="description-label">操作说明:</span>
-                <span class="description-text">{{ getActionDescription(step.action) }}</span>
-              </div>
-            </div>
-            <div v-if="!step.userAction" class="step-content">
-              {{ step.content }}
-            </div>
-            <!-- Zip Archive Info -->
-            <div v-if="step.zipPath" class="step-zip">
-              <el-divider content-position="left">
-                <el-icon>
-                  <Download />
-                </el-icon>
-                压缩包
-              </el-divider>
-              <el-alert type="success" :closable="false" show-icon>
-                <template #title>
-                  <div class="zip-alert-content">
-                    <span>{{ step.zipType === 'workspace_zip' ? 'Workspace压缩包' : '代码压缩包' }}</span>
-                    <el-button type="primary" size="small" :icon="Download" @click="downloadZip(step.zipPath)">
-                      下载
-                    </el-button>
-                  </div>
-                </template>
-              </el-alert>
-            </div>
-
-            <div v-if="step.outputFiles && step.outputFiles.length > 0" class="step-files">
-              <el-divider content-position="left">
-                <el-icon>
-                  <FolderOpened />
-                </el-icon>
-                生成的文件 ({{ step.outputFiles.length }})
-              </el-divider>
-              <div class="files-list">
-                <el-tag v-for="file in step.outputFiles" :key="file.path || file" class="file-tag" type="info"
-                  effect="plain">
-                  <el-icon>
-                    <DocumentCopy />
+            <span class="column-count">{{ roleColumn.completedCount }} / {{ roleColumn.totalCount }}</span>
+          </div>
+          <div class="column-description">
+            {{ getRoleDescription(roleColumn.role) }}
+          </div>
+          <div class="column-cards">
+            <!-- Running indicator for this role (only show if action is not in the list) -->
+            <div
+              v-if="roleColumn.runningAction && !roleColumn.currentStep && isRunning && !roleColumn.actions.some(a => a.name === roleColumn.runningAction && a.status === 'running')"
+              class="kanban-card-item card-status-running" style="order: -2;">
+              <div class="card-item-header">
+                <el-tag type="danger" size="small" effect="dark">
+                  <el-icon class="is-loading" style="margin-right: 4px;">
+                    <Loading />
                   </el-icon>
-                  {{ typeof file === 'string' ? file : file.path }}
+                  正在运行
                 </el-tag>
               </div>
-            </div>
-          </el-card>
-        </el-timeline-item>
-
-        <!-- Current Step (if waiting for confirmation) -->
-        <el-timeline-item v-if="currentStep" :timestamp="'正在进行'" type="primary" :hollow="true" size="large">
-          <InteractiveConfirmation :role-info="currentStep" :loading="actionLoading" :project-id="projectId"
-            @action="handleUserAction" />
-        </el-timeline-item>
-
-        <!-- Running indicator -->
-        <el-timeline-item v-if="isRunning && !currentStep" type="primary" :hollow="true">
-          <el-card class="running-card">
-            <div class="running-content">
-              <el-icon class="is-loading">
-                <Loading />
-              </el-icon>
-              <div class="running-info">
-                <div class="running-role">AI {{ runningRole || '系统' }} 正在工作中...</div>
-                <div v-if="currentStageName" class="running-stage">
-                  <el-icon>
-                    <Timer />
-                  </el-icon>
-                  <span class="stage-label">当前阶段:</span>
-                  <el-tag size="small" :type="getStageTagType()">{{ currentStageName }}</el-tag>
-                </div>
-                <div v-if="currentAction" class="running-action">
-                  <el-tag size="small" type="info">{{ currentAction }}</el-tag>
-                </div>
-                <!-- Running Role and Action Description -->
-                <div
-                  v-if="(runningRole && getRoleDescription(runningRole)) || (currentAction && getActionDescription(currentAction))"
-                  class="running-description">
-                  <div v-if="runningRole && getRoleDescription(runningRole)" class="description-item">
-                    <el-icon>
-                      <User />
-                    </el-icon>
-                    <span class="description-label">角色职责:</span>
-                    <span class="description-text">{{ getRoleDescription(runningRole) }}</span>
-                  </div>
-                  <div v-if="currentAction && getActionDescription(currentAction)" class="description-item">
-                    <el-icon>
-                      <Operation />
-                    </el-icon>
-                    <span class="description-label">操作说明:</span>
-                    <span class="description-text">{{ getActionDescription(currentAction) }}</span>
-                  </div>
-                </div>
-                <div v-if="userIdea" class="running-input">
-                  <el-icon>
-                    <Edit />
-                  </el-icon>
-                  <span class="input-label">处理中:</span>
-                  <span class="input-text">{{ userIdea }}</span>
-                </div>
+              <div class="card-item-title running-title">
+                <el-icon class="is-loading running-icon">
+                  <Loading />
+                </el-icon>
+                {{ getActionDisplayName(roleColumn.runningAction) }}
+              </div>
+              <div class="card-item-description">{{ getActionDescription(roleColumn.runningAction) }}</div>
+              <div v-if="currentStageName && runningRole === roleColumn.role" class="card-item-stage">
+                <el-icon>
+                  <Timer />
+                </el-icon>
+                <el-tag size="small" :type="getStageTagType()">{{ currentStageName }}</el-tag>
               </div>
             </div>
-          </el-card>
-        </el-timeline-item>
-      </el-timeline>
+
+            <!-- Current step waiting for confirmation -->
+            <div v-if="roleColumn.currentStep" class="kanban-card-item card-status-waiting"
+              @click="showConfirmationDialog = true">
+              <div class="card-item-header">
+                <el-tag type="warning" size="small" effect="plain">
+                  等待确认
+                </el-tag>
+              </div>
+              <div class="card-item-title">{{ getActionDisplayName(roleColumn.currentStep.action) }}</div>
+              <div class="card-item-description">{{ getActionDescription(roleColumn.currentStep.action) }}</div>
+              <div class="card-item-footer">
+                <el-button type="primary" size="small" @click.stop="showConfirmationDialog = true">
+                  点击确认
+                </el-button>
+              </div>
+            </div>
+
+            <!-- Action cards (exclude waiting actions, but show running actions) -->
+            <div v-for="action in roleColumn.actions" :key="action.name" v-show="action.status !== 'waiting'"
+              class="kanban-card-item" :class="[
+                getActionCardClass(action.status),
+                { 'action-running': action.status === 'running' && isRunning && runningRole === roleColumn.role }
+              ]" :ref="el => setActionRef(el, roleColumn.role, action.name)"
+              :style="action.status === 'running' ? { order: -1, zIndex: 10 } : {}">
+              <div class="card-item-header">
+                <el-tag :type="getActionStatusTagType(action.status)" size="small"
+                  :effect="action.status === 'running' ? 'dark' : 'plain'">
+                  <el-icon v-if="action.status === 'running'" class="is-loading" style="margin-right: 4px;">
+                    <Loading />
+                  </el-icon>
+                  {{ getActionStatusText(action.status) }}
+                </el-tag>
+                <el-tag v-if="action.userAction" size="small" :type="getUserActionTagType(action.userAction)">
+                  {{ getUserActionText(action.userAction) }}
+                </el-tag>
+              </div>
+              <div class="card-item-title" :class="{ 'running-title': action.status === 'running' }">
+                <el-icon v-if="action.status === 'running'" class="is-loading running-icon">
+                  <Loading />
+                </el-icon>
+                {{ getActionDisplayName(action.name) }}
+              </div>
+              <div class="card-item-description">{{ getActionDescription(action.name) }}</div>
+
+              <!-- Content preview for completed actions -->
+              <div v-if="action.status === 'completed' && action.content" class="card-item-content">
+                <el-button type="primary" size="small" @click="openContentDialog(action)">
+                  <el-icon>
+                    <Document />
+                  </el-icon>
+                  查看内容
+                </el-button>
+              </div>
+
+              <!-- Output files -->
+              <div v-if="action.outputFiles && action.outputFiles.length > 0" class="card-item-files">
+                <el-divider content-position="left">
+                  <el-icon>
+                    <FolderOpened />
+                  </el-icon>
+                  生成的文件 ({{ action.outputFiles.length }})
+                </el-divider>
+                <div class="files-list">
+                  <el-tag v-for="file in action.outputFiles" :key="file.path || file" class="file-tag" type="info"
+                    effect="plain" size="small">
+                    <el-icon>
+                      <DocumentCopy />
+                    </el-icon>
+                    {{ typeof file === 'string' ? file : file.path }}
+                  </el-tag>
+                </div>
+              </div>
+
+              <!-- Zip archive -->
+              <div v-if="action.zipPath" class="card-item-zip">
+                <el-divider content-position="left">
+                  <el-icon>
+                    <Download />
+                  </el-icon>
+                  压缩包
+                </el-divider>
+                <el-alert type="success" :closable="false" show-icon>
+                  <template #title>
+                    <div class="zip-alert-content">
+                      <span>{{ action.zipType === 'workspace_zip' ? 'Workspace压缩包' : '代码压缩包' }}</span>
+                      <el-button type="primary" size="small" :icon="Download" @click="downloadZip(action.zipPath!)">
+                        下载
+                      </el-button>
+                    </div>
+                  </template>
+                </el-alert>
+              </div>
+
+              <div v-if="action.timestamp" class="card-item-footer">
+                <el-icon>
+                  <Timer />
+                </el-icon>
+                <span>{{ action.timestamp }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </el-card>
+
 
     <!-- Completion Card -->
     <el-card v-if="isCompleted" class="completion-card">
@@ -237,11 +264,50 @@
         </el-descriptions>
       </div>
     </el-card>
+
+    <!-- Confirmation Dialog -->
+    <el-dialog v-model="showConfirmationDialog"
+      :title="currentStep ? `${getRoleDisplayName(currentStep.role)} - ${getActionDisplayName(currentStep.action)}` : '确认操作'"
+      width="80%" :close-on-click-modal="false" :close-on-press-escape="false" :show-close="false" destroy-on-close>
+      <div v-if="currentStep">
+        <InteractiveConfirmation :role-info="currentStep" :loading="actionLoading" :project-id="projectId"
+          :hide-card="true" @action="handleUserAction" />
+      </div>
+    </el-dialog>
+
+    <!-- Content View Dialog -->
+    <el-dialog v-model="showContentDialog" :title="contentDialogTitle" width="80%" destroy-on-close>
+      <div class="content-dialog-body">
+        <div class="content-dialog-info">
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="角色">
+              {{ contentDialogRole ? getRoleDisplayName(contentDialogRole) : '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="操作">
+              {{ contentDialogAction ? getActionDisplayName(contentDialogAction) : '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="状态">
+              <el-tag type="success" size="small">已完成</el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="时间" v-if="contentDialogTimestamp">
+              {{ contentDialogTimestamp }}
+            </el-descriptions-item>
+          </el-descriptions>
+        </div>
+        <el-divider />
+        <div class="content-dialog-content">
+          <div class="content-text">{{ contentDialogContent }}</div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showContentDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
@@ -255,7 +321,6 @@ import {
   DocumentCopy,
   Download,
   Edit,
-  User,
   Operation,
 } from '@element-plus/icons-vue';
 import InteractiveConfirmation from '../components/InteractiveConfirmation.vue';
@@ -285,6 +350,15 @@ const startTime = ref(Date.now());
 // Steps
 const completedSteps = ref<any[]>([]);
 const currentStep = ref<any>(null);
+const showConfirmationDialog = ref(false);
+
+// Content Dialog
+const showContentDialog = ref(false);
+const contentDialogTitle = ref('');
+const contentDialogRole = ref('');
+const contentDialogAction = ref('');
+const contentDialogContent = ref('');
+const contentDialogTimestamp = ref('');
 
 // Stats
 const editCount = computed(() =>
@@ -303,9 +377,219 @@ const totalDuration = computed(() => {
   return `${minutes}分${seconds}秒`;
 });
 
+// Workflow Kanban Data Structure
+interface WorkflowAction {
+  name: string;
+  status: 'pending' | 'running' | 'waiting' | 'completed';
+  userAction?: string;
+  timestamp?: string;
+  content?: string;
+  outputFiles?: any[];
+  zipPath?: string;
+  zipType?: string;
+  stepData?: any; // Full step data for detailed view
+}
+
+interface WorkflowRoleColumn {
+  role: string;
+  actions: WorkflowAction[];
+  isActive: boolean;
+  completedCount: number;
+  totalCount: number;
+  currentStep?: any; // Current step waiting for confirmation
+  runningAction?: string; // Currently running action
+}
+
+// Workflow structure: role -> actions mapping (loaded from API)
+const workflowStructure = ref<Record<string, string[]>>({});
+const workflowLoading = ref(false);
+
+// Computed kanban board data
+const workflowKanban = computed<WorkflowRoleColumn[]>(() => {
+  const columns: WorkflowRoleColumn[] = [];
+
+  // If workflow structure is not loaded yet, return empty array
+  if (!workflowStructure.value || Object.keys(workflowStructure.value).length === 0) {
+    return columns;
+  }
+
+  // Create a map of completed steps by role and action
+  const completedMap = new Map<string, any>();
+  completedSteps.value.forEach(step => {
+    const key = `${step.role}-${step.action}`;
+    completedMap.set(key, step);
+  });
+
+  // Process each role
+  Object.entries(workflowStructure.value).forEach(([role, actions]) => {
+    const roleActions: WorkflowAction[] = actions.map(actionName => {
+      const key = `${role}-${actionName}`;
+      const completedStep = completedMap.get(key);
+
+      let status: 'pending' | 'running' | 'waiting' | 'completed' = 'pending';
+      let userAction: string | undefined;
+      let timestamp: string | undefined;
+      let content: string | undefined;
+      let outputFiles: any[] | undefined;
+      let zipPath: string | undefined;
+      let zipType: string | undefined;
+      let stepData: any | undefined;
+
+      if (completedStep) {
+        status = 'completed';
+        userAction = completedStep.userAction;
+        timestamp = completedStep.timestamp;
+        content = completedStep.content;
+        outputFiles = completedStep.outputFiles;
+        zipPath = completedStep.zipPath;
+        zipType = completedStep.zipType;
+        stepData = completedStep;
+      } else if (currentStep.value && currentStep.value.role === role && currentStep.value.action === actionName) {
+        status = 'waiting';
+        content = currentStep.value.content;
+        outputFiles = currentStep.value.outputFiles;
+        stepData = currentStep.value;
+      } else if (isRunning.value && runningRole.value === role && currentAction.value === actionName) {
+        // Check if this action is currently running
+        status = 'running';
+        // Debug log for Salesperson
+        if (role === 'Salesperson') {
+          console.log('[Salesperson running check]', {
+            role,
+            actionName,
+            runningRole: runningRole.value,
+            currentAction: currentAction.value,
+            isRunning: isRunning.value,
+            status: 'running'
+          });
+        }
+      }
+
+      return {
+        name: actionName,
+        status,
+        userAction,
+        timestamp,
+        content,
+        outputFiles,
+        zipPath,
+        zipType,
+        stepData,
+      };
+    });
+
+    const completedCount = roleActions.filter(a => a.status === 'completed').length;
+    const isActive = runningRole.value === role ||
+      (currentStep.value && currentStep.value.role === role) ||
+      roleActions.some(a => a.status === 'running' || a.status === 'waiting');
+
+    const currentStepForRole = currentStep.value && currentStep.value.role === role ? currentStep.value : undefined;
+    const runningActionForRole = runningRole.value === role && currentAction.value ? currentAction.value : undefined;
+
+    columns.push({
+      role,
+      actions: roleActions,
+      isActive,
+      completedCount,
+      totalCount: actions.length,
+      currentStep: currentStepForRole,
+      runningAction: runningActionForRole,
+    });
+  });
+
+  return columns;
+});
+
 // Polling mechanism
 let pollingController: PollingResult | null = null;
 let lastMessageId: string | null = null;
+
+// Refs for auto-scrolling
+const kanbanBoardRef = ref<HTMLElement | null>(null);
+const columnRefs = new Map<string, HTMLElement>();
+const actionRefs = new Map<string, HTMLElement>();
+
+// Helper functions for refs
+function setColumnRef(el: any, role: string) {
+  if (el) {
+    columnRefs.set(role, el);
+  } else {
+    columnRefs.delete(role);
+  }
+}
+
+function setActionRef(el: any, role: string, action: string) {
+  if (el) {
+    const key = `${role}-${action}`;
+    actionRefs.set(key, el);
+  } else {
+    const key = `${role}-${action}`;
+    actionRefs.delete(key);
+  }
+}
+
+// Load workflow information from API
+async function loadWorkflowInfo() {
+  if (!sessionId.value) {
+    return;
+  }
+
+  try {
+    workflowLoading.value = true;
+    const response = await apiClient.getInteractiveWorkflow(sessionId.value) as any;
+
+    if (response && response.roles) {
+      // Convert API response to workflow structure format
+      const structure: Record<string, string[]> = {};
+      response.roles.forEach((roleInfo: any) => {
+        structure[roleInfo.role] = roleInfo.actions.map((action: any) => action.name);
+      });
+      workflowStructure.value = structure;
+    }
+  } catch (error: any) {
+    console.error('Failed to load workflow info:', error);
+    ElMessage.warning('加载工作流信息失败，使用默认配置');
+    // Fallback to default structure if API fails
+    workflowStructure.value = {
+      Salesperson: ['WriteMRD', 'MRDReview', 'WriteRequirementSpec', 'RequirementSpecReview'],
+      ProductManager: ['WritePRD', 'PRDReview', 'ImproveDocument', 'SearchEnhancedQA'],
+      Architect: ['WriteDesign'],
+      ProjectManager: ['BreakdownTasks', 'WriteSubProjectDesign', 'GenerateTask', 'CodeReview'],
+      Engineer: ['WriteCode', 'ExecuteSubtask'],
+      QAEngineer: ['WriteTest', 'CodeReview'],
+    };
+  } finally {
+    workflowLoading.value = false;
+  }
+}
+
+// Load current running role and action from API
+async function loadRunningInfo() {
+  if (!sessionId.value) {
+    return;
+  }
+
+  try {
+    const response = await apiClient.getInteractiveRunning(sessionId.value) as any;
+
+    if (response && (response.role || response.action)) {
+      // Update running state from API
+      if (response.role) {
+        runningRole.value = response.role;
+      }
+      if (response.action) {
+        currentAction.value = response.action;
+      }
+      if (response.role && response.action) {
+        currentStageName.value = getStageName(response.role, response.action);
+        isRunning.value = true;
+      }
+    }
+  } catch (error: any) {
+    console.error('Failed to load running info:', error);
+    // Don't show error message for this, as it's called frequently
+  }
+}
 
 onMounted(async () => {
   // If projectId is provided, load project info first
@@ -344,6 +628,41 @@ onMounted(async () => {
 onUnmounted(() => {
   cleanup();
 });
+
+// Watch currentStep to show dialog automatically
+watch(currentStep, (newStep) => {
+  if (newStep) {
+    showConfirmationDialog.value = true;
+  } else {
+    showConfirmationDialog.value = false;
+  }
+}, { immediate: true });
+
+// Watch runningRole and currentAction to auto-scroll to current position
+watch([runningRole, currentAction, isRunning], ([newRole, newAction, running]) => {
+  if (running && newRole && newAction) {
+    nextTick(() => {
+      scrollToCurrentPosition(newRole, newAction);
+    });
+  }
+}, { immediate: false });
+
+// Auto-scroll function
+function scrollToCurrentPosition(role: string, action: string) {
+  // First try to scroll to the action
+  const actionKey = `${role}-${action}`;
+  const actionEl = actionRefs.get(actionKey);
+  if (actionEl) {
+    actionEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    return;
+  }
+
+  // Fallback to scroll to the column
+  const columnEl = columnRefs.get(role);
+  if (columnEl && kanbanBoardRef.value) {
+    columnEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }
+}
 
 async function startInteractiveSession() {
   try {
@@ -428,6 +747,9 @@ async function startInteractiveSession() {
       projectId.value = sid;
     }
 
+    // Load workflow information
+    await loadWorkflowInfo();
+
     // Start polling
     startPolling(sid);
   } catch (error: any) {
@@ -452,6 +774,8 @@ function startPolling(sessionId: string) {
       async () => {
         try {
           const response = await apiClient.pollInteractiveMessages(sessionId, lastMessageId);
+          // Also load running info periodically
+          await loadRunningInfo();
           return response;
         } catch (error: any) {
           console.error('Poll API error:', error);
@@ -506,6 +830,13 @@ function handlePollingMessage(message: { type: string; data: any }) {
       if (!currentStageName.value) {
         currentStageName.value = '市场研究阶段';
         runningRole.value = 'Salesperson';
+        currentAction.value = 'WriteMRD';
+      }
+      // Auto-scroll to current position
+      if (runningRole.value && currentAction.value) {
+        nextTick(() => {
+          scrollToCurrentPosition(runningRole.value, currentAction.value);
+        });
       }
       break;
 
@@ -521,13 +852,33 @@ function handlePollingMessage(message: { type: string; data: any }) {
         // Default to first stage: Salesperson (市场研究阶段)
         currentStageName.value = '市场研究阶段';
         runningRole.value = 'Salesperson';
+        // Set default action for Salesperson (usually WriteMRD)
+        currentAction.value = 'WriteMRD';
       }
+      // Auto-scroll to current position
+      nextTick(() => {
+        scrollToCurrentPosition(runningRole.value, currentAction.value);
+      });
       break;
 
     case 'role_start':
+      isRunning.value = true;
       runningRole.value = message.data.role || '';
       currentAction.value = message.data.action || '';
       currentStageName.value = getStageName(message.data.role, message.data.action);
+      // Clear currentStep when a new role starts
+      currentStep.value = null;
+      // Auto-scroll to current position
+      nextTick(() => {
+        scrollToCurrentPosition(runningRole.value, currentAction.value);
+      });
+      // Debug: log running state
+      console.log('[role_start]', {
+        role: runningRole.value,
+        action: currentAction.value,
+        isRunning: isRunning.value,
+        stage: currentStageName.value
+      });
       break;
 
     case 'confirmation_required':
@@ -544,6 +895,8 @@ function handlePollingMessage(message: { type: string; data: any }) {
         outputFiles: message.data.outputFiles || [],
         instructContent: message.data.instructContent || {},
       };
+      // Show confirmation dialog
+      showConfirmationDialog.value = true;
       break;
 
     case 'progress':
@@ -611,22 +964,31 @@ async function handleUserAction(action: string, modifiedContent?: string) {
       case 'continue':
       case 'edit':
         ElMessage.success('已确认，等待下一步...');
+        // Close dialog
+        showConfirmationDialog.value = false;
         // Clear current step - backend will send next confirmation_required
         currentStep.value = null;
         // Set running state to show loading indicator
         isRunning.value = true;
+        // Clear runningRole and currentAction to wait for next role_start message
+        // This ensures the next role will be correctly identified when role_start arrives
+        runningRole.value = '';
+        currentAction.value = '';
         // Keep stage name until next role_start message updates it
-        // Don't clear currentAction and currentStageName here
         break;
 
       case 'regenerate':
         ElMessage.info('重新生成中...');
+        // Close dialog
+        showConfirmationDialog.value = false;
         // Keep currentStep to show regeneration in progress
         // Backend will send new confirmation_required when done
         break;
 
       case 'skip':
         ElMessage.warning('已跳过当前步骤');
+        // Close dialog
+        showConfirmationDialog.value = false;
         // Clear current step - backend will send next confirmation_required
         currentStep.value = null;
         // Set running state to show loading indicator
@@ -848,6 +1210,98 @@ function getActionDescription(action: string): string {
   return actionDescriptions[action] || '';
 }
 
+/**
+ * 获取角色显示名称
+ */
+function getRoleDisplayName(role: string): string {
+  const roleNames: Record<string, string> = {
+    Salesperson: '销售',
+    ProductManager: '产品经理',
+    Architect: '架构师',
+    ProjectManager: '项目经理',
+    Engineer: '工程师',
+    QAEngineer: 'QA工程师',
+    TeamLeader: '团队领导',
+    DataAnalyst: '数据分析师',
+  };
+  return roleNames[role] || role;
+}
+
+/**
+ * 获取Action显示名称
+ */
+function getActionDisplayName(action: string): string {
+  const actionNames: Record<string, string> = {
+    // Salesperson actions
+    WriteMRD: '编写MRD',
+    MRDReview: 'MRD审查',
+    WriteRequirementSpec: '编写需求说明',
+    RequirementSpecReview: '需求说明审查',
+
+    // ProductManager actions
+    WritePRD: '编写PRD',
+    PRDReview: 'PRD审查',
+    ImproveDocument: '改进文档',
+    SearchEnhancedQA: 'RAG增强',
+
+    // Architect actions
+    WriteDesign: '编写设计文档',
+
+    // ProjectManager actions
+    BreakdownTasks: '任务拆分',
+    WriteSubProjectDesign: '子项目设计',
+    GenerateTask: '生成任务说明',
+    CodeReview: '代码审查',
+
+    // Engineer actions
+    WriteCode: '编写代码',
+    ExecuteSubtask: '执行子任务',
+
+    // QAEngineer actions
+    WriteTest: '编写测试',
+
+    // TeamLeader actions
+    Coordinate: '协调工作',
+
+    // DataAnalyst actions
+    DataAnalysis: '数据分析',
+  };
+  return actionNames[action] || action;
+}
+
+/**
+ * 获取Action卡片样式类
+ */
+function getActionCardClass(status: string): string {
+  return `card-status-${status}`;
+}
+
+/**
+ * 获取Action状态标签类型
+ */
+function getActionStatusTagType(status: string): 'success' | 'warning' | 'info' | 'danger' {
+  const typeMap: Record<string, 'success' | 'warning' | 'info' | 'danger'> = {
+    pending: 'info',
+    running: 'danger', // 使用danger类型（红色）来突出显示运行中的action
+    waiting: 'warning',
+    completed: 'success',
+  };
+  return typeMap[status] || 'info';
+}
+
+/**
+ * 获取Action状态文本
+ */
+function getActionStatusText(status: string): string {
+  const textMap: Record<string, string> = {
+    pending: '待处理',
+    running: '进行中',
+    waiting: '等待确认',
+    completed: '已完成',
+  };
+  return textMap[status] || status;
+}
+
 function viewProject() {
   if (projectId.value) {
     router.push(`/project/${projectId.value}`);
@@ -872,6 +1326,29 @@ async function downloadZip(zipPath: string) {
   } catch (error: any) {
     ElMessage.error('下载失败: ' + (error.message || '未知错误'));
   }
+}
+
+function openContentDialog(action: WorkflowAction) {
+  // Get role from stepData if available, otherwise find from workflowKanban
+  let roleForAction = '';
+  if (action.stepData && action.stepData.role) {
+    roleForAction = action.stepData.role;
+  } else {
+    // Fallback: find role from workflowKanban
+    for (const column of workflowKanban.value) {
+      if (column.actions.some(a => a.name === action.name)) {
+        roleForAction = column.role;
+        break;
+      }
+    }
+  }
+
+  contentDialogRole.value = roleForAction;
+  contentDialogAction.value = action.name;
+  contentDialogContent.value = action.content || '';
+  contentDialogTimestamp.value = action.timestamp || '';
+  contentDialogTitle.value = `${getRoleDisplayName(roleForAction)} - ${getActionDisplayName(action.name)}`;
+  showContentDialog.value = true;
 }
 
 async function handleBack() {
@@ -907,8 +1384,7 @@ function cleanup() {
 
 <style scoped>
 .project-interactive {
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .page-header {
@@ -1021,6 +1497,382 @@ function cleanup() {
   background: #f0f9ff;
   border-radius: 4px;
   border-left: 3px solid #409EFF;
+}
+
+.kanban-card {
+  margin-bottom: 20px;
+}
+
+.kanban-board {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  padding: 8px 0;
+  min-height: 400px;
+}
+
+.kanban-column {
+  flex: 1;
+  min-width: 280px;
+  max-width: 320px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  padding: 16px;
+  border: 2px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.kanban-column.column-active {
+  border-color: #409EFF;
+  background: #ecf5ff;
+  box-shadow: 0 2px 12px rgba(64, 158, 255, 0.2);
+}
+
+.kanban-column.column-running {
+  border-color: #f56c6c !important;
+  background: linear-gradient(135deg, #fff5f5 0%, #ffe8e8 100%) !important;
+  box-shadow: 0 4px 16px rgba(245, 108, 108, 0.4) !important;
+  animation: pulse-column 2s ease-in-out infinite;
+  position: relative;
+}
+
+.kanban-column.column-running::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #f56c6c, #ff8787, #f56c6c);
+  background-size: 200% 100%;
+  animation: shimmer-border 2s linear infinite;
+  border-radius: 8px 8px 0 0;
+}
+
+@keyframes pulse-column {
+
+  0%,
+  100% {
+    box-shadow: 0 4px 16px rgba(245, 108, 108, 0.4);
+    transform: scale(1);
+  }
+
+  50% {
+    box-shadow: 0 6px 20px rgba(245, 108, 108, 0.6);
+    transform: scale(1.01);
+  }
+}
+
+@keyframes shimmer-border {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.role-tag-running {
+  animation: pulse-tag 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-tag {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.column-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.column-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.running-badge {
+  margin-left: 4px;
+}
+
+.running-badge :deep(.el-badge__content) {
+  font-size: 10px;
+  padding: 2px 6px;
+  animation: pulse-badge 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-badge {
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+.column-count {
+  font-size: 12px;
+  color: #909399;
+  font-weight: 600;
+}
+
+.column-description {
+  font-size: 12px;
+  color: #606266;
+  line-height: 1.5;
+  margin-bottom: 16px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 4px;
+}
+
+.column-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.kanban-card-item {
+  background: #ffffff;
+  border-radius: 6px;
+  padding: 12px;
+  border: 1px solid #e4e7ed;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.kanban-card-item:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.kanban-card-item.card-status-pending {
+  opacity: 0.6;
+  border-color: #dcdfe6;
+}
+
+.kanban-card-item.card-status-running,
+.kanban-card-item.action-running {
+  border-color: #f56c6c !important;
+  background: linear-gradient(135deg, #fff5f5 0%, #ffe8e8 100%) !important;
+  border-left: 5px solid #f56c6c !important;
+  border-right: 2px solid #f56c6c !important;
+  border-top: 2px solid #f56c6c !important;
+  border-bottom: 2px solid #f56c6c !important;
+  box-shadow: 0 4px 12px rgba(245, 108, 108, 0.3) !important;
+  animation: pulse-running 2s ease-in-out infinite;
+  position: relative;
+  overflow: hidden;
+  z-index: 10;
+  transform: scale(1.02);
+}
+
+.kanban-card-item.card-status-running::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes pulse-running {
+
+  0%,
+  100% {
+    box-shadow: 0 4px 12px rgba(245, 108, 108, 0.3);
+    transform: scale(1);
+  }
+
+  50% {
+    box-shadow: 0 6px 16px rgba(245, 108, 108, 0.5);
+    transform: scale(1.01);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    left: -100%;
+  }
+
+  100% {
+    left: 100%;
+  }
+}
+
+.kanban-card-item.card-status-waiting {
+  border-color: #409EFF;
+  background: #ecf5ff;
+  border-left: 4px solid #409EFF;
+}
+
+.kanban-card-item.card-status-completed {
+  border-color: #67c23a;
+  background: #f0f9ff;
+  border-left: 4px solid #67c23a;
+}
+
+.card-item-header {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.card-item-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #303133;
+  margin-bottom: 6px;
+}
+
+.card-item-title.running-title {
+  color: #f56c6c;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.running-icon {
+  color: #f56c6c;
+  font-size: 16px;
+}
+
+.card-item-description {
+  font-size: 12px;
+  color: #606266;
+  line-height: 1.5;
+  margin-bottom: 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-item-footer {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #909399;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #ebeef5;
+}
+
+.card-item-stage {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.card-item-confirmation {
+  margin-top: 12px;
+}
+
+.card-item-content {
+  margin-top: 12px;
+}
+
+.content-preview {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.content-dialog-body {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.content-dialog-info {
+  margin-bottom: 16px;
+}
+
+.content-dialog-content {
+  padding: 16px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  border-left: 3px solid #409EFF;
+}
+
+.content-dialog-content .content-text {
+  font-size: 14px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #303133;
+}
+
+.card-item-files {
+  margin-top: 12px;
+}
+
+.card-item-files .files-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.card-item-files .file-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.card-item-zip {
+  margin-top: 12px;
+}
+
+.card-item-zip .zip-alert-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.kanban-card-item .is-loading {
+  animation: rotating 2s linear infinite;
+}
+
+@keyframes rotating {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .timeline-card {
@@ -1257,6 +2109,15 @@ function cleanup() {
 @media (max-width: 768px) {
   .project-info {
     grid-template-columns: 1fr;
+  }
+
+  .kanban-board {
+    flex-direction: column;
+  }
+
+  .kanban-column {
+    min-width: 100%;
+    max-width: 100%;
   }
 }
 </style>

@@ -70,8 +70,6 @@ body {
 }
 
 .header-content {
-  max-width: 1200px;
-  margin: 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -102,9 +100,7 @@ body {
 }
 
 .main-content {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px;
+  width: 100%;
 }
 
 .footer {
@@ -125,5 +121,6 @@ body {
 .el-main {
   background-color: #f5f7fa;
   min-height: calc(100vh - 120px);
+  padding: 0 !important;
 }
 </style>

@@ -13,6 +13,7 @@ import { ProjectManager } from '../roles/ProjectManager';
 import { Engineer } from '../roles/Engineer';
 import { QAEngineer } from '../roles/QAEngineer';
 import { logger } from '../utils';
+import { WorkflowTracker } from './WorkflowTracker';
 // import { UserAction } from '../utils/InteractiveHandler'; // Unused
 
 export interface SessionConfig {
@@ -53,6 +54,8 @@ export class InteractiveSession {
   // @ts-ignore - Reserved for future use
   private lastPolledMessageId: string | null = null;
   private isStarted: boolean = false;
+  // Workflow tracker for state management
+  private workflowTracker: WorkflowTracker;
 
   constructor(id: string, config: SessionConfig) {
     this.id = id;
@@ -87,6 +90,18 @@ export class InteractiveSession {
       new QAEngineer(ctx),
     ]);
 
+    // Initialize workflow tracker
+    this.workflowTracker = new WorkflowTracker(
+      this.id,
+      config.projectId || null,
+      this.team
+    );
+
+    // Initialize workflow in database
+    this.workflowTracker.initialize().catch((error) => {
+      logger.error(`InteractiveSession: Failed to initialize workflow tracker for session ${id}`, error);
+    });
+
     logger.info(`InteractiveSession: Created session ${id}`);
   }
 
@@ -111,7 +126,7 @@ export class InteractiveSession {
    */
   startWithoutWebSocket(): void {
     this.updateActivity();
-    
+
     // Send connection confirmation
     this.sendMessage('connected', {
       sessionId: this.id,
@@ -150,6 +165,9 @@ export class InteractiveSession {
       // Run team with custom interactive handler
       await this.runWithWebSocketInteraction();
 
+      // Clear running state when session completes
+      await this.workflowTracker.clearState();
+
       // Send completion
       this.sendMessage('completed', {
         projectId: this.id,
@@ -163,6 +181,8 @@ export class InteractiveSession {
       logger.info(`InteractiveSession: Completed session ${this.id}`);
     } catch (error: any) {
       logger.error(`InteractiveSession: Error in session ${this.id}`, error);
+      // Clear running state on error
+      await this.workflowTracker.clearState();
       this.sendMessage('error', {
         message: error.message || 'Unknown error occurred',
       });
@@ -209,21 +229,85 @@ export class InteractiveSession {
       const watchSet = Array.from(role.rc.watch).join(', ');
       logger.debug(`InteractiveSession: Role ${role.profile} state: ${role.rc.state}, todo: ${role.rc.todo ? role.rc.todo.name : 'null'}, news: ${role.rc.news.length} [${newsCauseBys}], watch: [${watchSet}]`);
 
+      // Track role execution start
+      logger.info(`InteractiveSession: onRoleStart called for role=${role.profile}, todo=${role.rc.todo ? role.rc.todo.name : 'null'}`);
+      await this.workflowTracker.onRoleStart(role);
+      logger.info(`InteractiveSession: onRoleStart completed for role=${role.profile}`);
+
       // Run the role (this will observe, think, and act)
       // role.run() will check if it has relevant messages and execute if needed
+      logger.info(`InteractiveSession: About to call role.run() for role=${role.profile}`);
+
+      // IMPORTANT: We need to update state after think() but before act() completes
+      // Since role.run() is async and act() may take a long time, we need to track
+      // when think() sets the todo, and update state immediately
+      const workflowTracker = this.workflowTracker;
+      const roleProfile = role.profile;
+      let thinkCompleted = false;
+      const originalThink = role.think.bind(role);
+      role.think = async function () {
+        const result = await originalThink();
+        if (!thinkCompleted) {
+          thinkCompleted = true;
+          // After think() completes, check if todo was set and update state
+          if (role.rc.todo) {
+            const todoAction = role.rc.todo.name;
+            logger.info(`InteractiveSession: think() completed for role=${roleProfile}, todo=${todoAction}, updating state immediately`);
+            await workflowTracker.setRunningState(roleProfile, todoAction);
+            logger.info(`InteractiveSession: State updated after think() - role=${roleProfile}, action=${todoAction}`);
+          }
+        }
+        return result;
+      };
+
       const message = await role.run();
 
+      // Restore original think method
+      role.think = originalThink;
+
+      logger.info(`InteractiveSession: role.run() completed for role=${role.profile}, message=${message ? 'exists' : 'null'}`);
+
+      if (message) {
+        logger.info(`InteractiveSession: Message details - causeBy=${message.causeBy}, causeBy type=${typeof message.causeBy}, role=${message.role}, content length=${message.content?.length || 0}`);
+      } else {
+        logger.warn(`InteractiveSession: role.run() returned null message for role=${role.profile}`);
+      }
+
+      // Track role execution completion
+      logger.info(`InteractiveSession: onRoleComplete called for role=${role.profile}, message=${message ? `exists, causeBy=${message.causeBy}` : 'null'}`);
+      await this.workflowTracker.onRoleComplete(role, message);
+      logger.info(`InteractiveSession: onRoleComplete completed for role=${role.profile}`);
+
       logger.debug(`InteractiveSession: Role ${role.profile} run() returned: ${message ? message.causeBy : 'null'}`);
+
+      // CRITICAL: Immediately ensure state is set after onRoleComplete
+      // This is needed because onRoleComplete might have set action to null
+      if (message && message.causeBy && typeof message.causeBy === 'string' && message.causeBy.trim().length > 0) {
+        logger.info(`InteractiveSession: Immediately setting state after onRoleComplete - role=${role.profile}, action=${message.causeBy}`);
+        await this.workflowTracker.setRunningState(role.profile, message.causeBy);
+        logger.info(`InteractiveSession: State set immediately after onRoleComplete - role=${role.profile}, action=${message.causeBy}`);
+      } else {
+        logger.warn(`InteractiveSession: Cannot set state immediately after onRoleComplete - message=${!!message}, causeBy=${message?.causeBy}, type=${typeof message?.causeBy}`);
+      }
 
       if (!message) {
         // Role produced no message - still need to wait for user confirmation to proceed
         logger.info(`InteractiveSession: Role ${role.profile} produced no message, but waiting for confirmation to proceed`);
+
+        // Track role idle state (this clears the state)
+        await this.workflowTracker.onRoleIdle(role);
 
         // Wait for user confirmation even when no message (to ensure step-by-step flow)
         // Debug: Log why role is idle
         const newsCauseBys = role.rc.news.map((msg: any) => msg.causeBy).join(', ');
         const watchSet = Array.from(role.rc.watch).join(', ');
         logger.warn(`InteractiveSession: Role ${role.profile} is idle. News: [${newsCauseBys}], Watch: [${watchSet}], News count: ${role.rc.news.length}`);
+
+        // IMPORTANT: Set state to 'idle' before waiting for confirmation
+        // This ensures the API can return the correct state during confirmation
+        logger.info(`InteractiveSession: Setting running state to 'idle' before confirmation - role=${role.profile}`);
+        await this.workflowTracker.setRunningState(role.profile, 'idle');
+        logger.info(`InteractiveSession: Running state set to 'idle' completed - role=${role.profile}`);
 
         const userAction = await this.waitForUserConfirmation({
           role: role.profile,
@@ -264,6 +348,7 @@ export class InteractiveSession {
       logger.info(`InteractiveSession: Role ${role.profile} produced message: ${message.causeBy}`);
 
       // Notify role started (after execution, before confirmation)
+      // Note: WorkflowTracker already updated the state in onRoleComplete()
       this.sendMessage('role_start', {
         role: role.profile,
         action: message.causeBy,
@@ -274,7 +359,20 @@ export class InteractiveSession {
 
       logger.info(`InteractiveSession: Waiting for user confirmation for ${role.profile}`);
 
-      // Wait for user confirmation
+      // Ensure state is correctly set before waiting for confirmation
+      // This is important because onRoleComplete might have set action to null
+      // if message.causeBy was not available at that time
+      // Double-check that we have a valid action name before waiting
+      logger.info(`InteractiveSession: Checking message.causeBy before confirmation - causeBy=${message.causeBy}, type=${typeof message.causeBy}`);
+      if (message.causeBy && typeof message.causeBy === 'string' && message.causeBy.trim().length > 0) {
+        logger.info(`InteractiveSession: Setting running state before confirmation - role=${role.profile}, action=${message.causeBy}`);
+        await this.workflowTracker.setRunningState(role.profile, message.causeBy);
+        logger.info(`InteractiveSession: Running state set before confirmation completed - role=${role.profile}, action=${message.causeBy}`);
+      } else {
+        logger.warn(`InteractiveSession: message.causeBy is invalid, cannot set running state - causeBy=${message.causeBy}, type=${typeof message.causeBy}, trimmed=${message.causeBy ? message.causeBy.trim() : 'N/A'}`);
+      }
+
+      // Wait for user confirmation (keep running state during this time)
       const userAction = await this.waitForUserConfirmation({
         role: role.profile,
         action: message.causeBy,
@@ -290,13 +388,15 @@ export class InteractiveSession {
 
       if (!shouldContinue) {
         logger.info(`InteractiveSession: User requested to quit`);
+        // Clear running state when quitting
+        await this.workflowTracker.clearState();
         return; // Exit the function
       }
 
       // Handle regenerate action
       if (userAction.action === 'regenerate') {
         logger.info(`InteractiveSession: User requested regeneration, re-running role ${role.profile}`);
-        // Don't move to next role, stay on current role to regenerate
+        // Keep running state for regeneration, will be updated on next run
         continue; // This will re-run the same role
       }
 
@@ -325,6 +425,10 @@ export class InteractiveSession {
 
       // Move to next role (one step at a time)
       roleIndex = nextRoleIndex;
+
+      // Clear current running state when moving to next role
+      // (will be set again when next role starts)
+      await this.workflowTracker.clearState();
 
       // If we've cycled through all roles, check if we're done
       if (roleIndex === 0) {
@@ -515,7 +619,7 @@ export class InteractiveSession {
       id: messageId,
     };
     this.messageQueue.push(queueItem);
-    
+
     // Keep only last 100 messages to prevent memory issues
     if (this.messageQueue.length > 100) {
       this.messageQueue.shift();
@@ -609,6 +713,36 @@ export class InteractiveSession {
       })),
       messageQueueLength: this.messageQueue.length,
     };
+  }
+
+  /**
+   * Get workflow information (all roles and their actions)
+   */
+  getWorkflowInfo(): {
+    roles: Array<{
+      role: string;
+      actions: Array<{
+        name: string;
+        description: string;
+      }>;
+    }>;
+  } {
+    const workflowStructure = this.workflowTracker.getWorkflowStructure();
+    return { roles: workflowStructure };
+  }
+
+  /**
+   * Get current running role and action
+   * Uses WorkflowTracker for reliable state management
+   */
+  async getCurrentRunning(): Promise<{
+    role: string | null;
+    action: string | null;
+  }> {
+    logger.info(`InteractiveSession: getCurrentRunning called - sessionId=${this.id}`);
+    const state = await this.workflowTracker.getCurrentState();
+    logger.info(`InteractiveSession: getCurrentRunning returning - role=${state.role}, action=${state.action}, sessionId=${this.id}`);
+    return state;
   }
 }
 

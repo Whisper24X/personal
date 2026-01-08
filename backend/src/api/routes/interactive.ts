@@ -14,7 +14,7 @@ const router: Router = Router();
 router.get('/interactive', async (_req, res) => {
   try {
     const sessions = sessionManager.getAllSessions();
-    
+
     return res.json({
       sessions: sessions.map(session => session.getInfo()),
     });
@@ -32,35 +32,35 @@ router.get('/interactive', async (_req, res) => {
 router.post('/interactive', async (req, res) => {
   try {
     const { name, idea, description, investment, nRound, projectId, applicationId } = req.body;
-    
+
     // Validate required fields
     if (!name || !idea) {
       return res.status(400).json({
         error: 'Missing required fields: name, idea',
       });
     }
-    
+
     // If projectId is provided, use it; otherwise create a new project
     let finalProjectId = projectId;
     const DEFAULT_USER_ID = '302769d6-247d-43db-a005-0519712255fb';
     const userId = req.body.userId || DEFAULT_USER_ID;
-    
+
     if (!finalProjectId) {
       // Create project in database
       const { ProjectRepository } = await import('../../database/repositories/ProjectRepository');
       const projectRepo = new ProjectRepository();
-      
+
       // Check for duplicate project name in the same application
       const exists = await projectRepo.existsByNameAndApplication(name, applicationId || null, userId);
       if (exists) {
         return res.status(409).json({
           error: 'Duplicate project name',
-          message: applicationId 
+          message: applicationId
             ? `项目名称 "${name}" 在该应用下已存在，请使用不同的名称`
             : `项目名称 "${name}" 已存在，请使用不同的名称`,
         });
       }
-      
+
       const project = await projectRepo.create({
         userId,
         name,
@@ -70,11 +70,11 @@ router.post('/interactive', async (req, res) => {
         nRound: nRound || 5,
         applicationId,
       });
-      
+
       finalProjectId = project.id;
       logger.info(`API: Created project ${finalProjectId} for interactive session`);
     }
-    
+
     // Get applicationId from project if projectId is provided
     let finalApplicationId = applicationId;
     if (finalProjectId && !finalApplicationId) {
@@ -90,7 +90,7 @@ router.post('/interactive', async (req, res) => {
         logger.warn('API: Failed to get applicationId from project', { error: error.message });
       }
     }
-    
+
     // Create session
     const session = sessionManager.createSession({
       name,
@@ -102,9 +102,9 @@ router.post('/interactive', async (req, res) => {
       applicationId: finalApplicationId,
       projectId: finalProjectId,
     });
-    
+
     logger.info(`API: Created interactive session ${session.id} for project ${finalProjectId}`);
-    
+
     return res.json({
       sessionId: session.id,
       projectId: finalProjectId,
@@ -131,13 +131,13 @@ router.get('/interactive/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
     const session = sessionManager.getSession(sessionId);
-    
+
     if (!session) {
       return res.status(404).json({
         error: 'Session not found',
       });
     }
-    
+
     return res.json({
       session: session.getInfo(),
     });
@@ -156,13 +156,13 @@ router.delete('/interactive/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
     const removed = sessionManager.removeSession(sessionId);
-    
+
     if (!removed) {
       return res.status(404).json({
         error: 'Session not found',
       });
     }
-    
+
     return res.json({
       message: 'Session deleted successfully',
     });
@@ -180,7 +180,7 @@ router.delete('/interactive/:sessionId', async (req, res) => {
 router.get('/interactive-stats', async (_req, res) => {
   try {
     const stats = sessionManager.getStats();
-    
+
     return res.json({
       stats,
     });
@@ -200,9 +200,9 @@ router.get('/interactive/:sessionId/poll', async (req, res) => {
   try {
     const { sessionId } = req.params;
     const { lastMessageId } = req.query;
-    
+
     const session = sessionManager.getSession(sessionId);
-    
+
     if (!session) {
       return res.status(404).json({
         error: 'Session not found',
@@ -219,10 +219,10 @@ router.get('/interactive/:sessionId/poll', async (req, res) => {
 
     // Get messages since last poll
     const messages = session.getMessagesSince(lastMessageId as string | null || null);
-    
+
     // Get the last message ID for next poll
-    const latestMessageId = messages.length > 0 
-      ? messages[messages.length - 1].id 
+    const latestMessageId = messages.length > 0
+      ? messages[messages.length - 1].id
       : (lastMessageId as string | null);
 
     return res.json({
@@ -246,7 +246,7 @@ router.post('/interactive/:sessionId/action', async (req, res) => {
   try {
     const { sessionId } = req.params;
     const { action, modifiedContent } = req.body;
-    
+
     if (!action) {
       return res.status(400).json({
         error: 'Missing required field: action',
@@ -254,7 +254,7 @@ router.post('/interactive/:sessionId/action', async (req, res) => {
     }
 
     const session = sessionManager.getSession(sessionId);
-    
+
     if (!session) {
       return res.status(404).json({
         error: 'Session not found',
@@ -275,6 +275,76 @@ router.post('/interactive/:sessionId/action', async (req, res) => {
     logger.error('API: Error processing user action', error);
     return res.status(500).json({
       error: error.message || 'Failed to process user action',
+    });
+  }
+});
+
+/**
+ * Get workflow information (all roles and their actions)
+ * GET /api/interactive/:sessionId/workflow
+ */
+router.get('/interactive/:sessionId/workflow', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const session = sessionManager.getSession(sessionId);
+
+    if (!session) {
+      return res.status(404).json({
+        error: 'Session not found',
+      });
+    }
+
+    const workflowInfo = session.getWorkflowInfo();
+
+    return res.json({
+      success: true,
+      ...workflowInfo,
+    });
+  } catch (error: any) {
+    logger.error('API: Error getting workflow info', error);
+    return res.status(500).json({
+      error: error.message || 'Failed to get workflow info',
+    });
+  }
+});
+
+/**
+ * Get current running role and action
+ * GET /api/interactive/:sessionId/running
+ */
+router.get('/interactive/:sessionId/running', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    logger.info(`API: GET /interactive/${sessionId}/running - Request received`);
+
+    const session = sessionManager.getSession(sessionId);
+
+    if (!session) {
+      logger.warn(`API: GET /interactive/${sessionId}/running - Session not found`);
+      return res.status(404).json({
+        error: 'Session not found',
+      });
+    }
+
+    // getCurrentRunning is now async and reads from database
+    logger.info(`API: GET /interactive/${sessionId}/running - Calling session.getCurrentRunning()`);
+    const runningInfo = await session.getCurrentRunning();
+    logger.info(`API: GET /interactive/${sessionId}/running - Running info received: role=${runningInfo.role}, action=${runningInfo.action}`);
+
+    const response = {
+      success: true,
+      ...runningInfo,
+    };
+    logger.info(`API: GET /interactive/${sessionId}/running - Returning response: ${JSON.stringify(response)}`);
+
+    return res.json(response);
+  } catch (error: any) {
+    logger.error(`API: GET /interactive/${req.params.sessionId}/running - Error getting running info`, {
+      error: error.message,
+      errorStack: error.stack,
+    });
+    return res.status(500).json({
+      error: error.message || 'Failed to get running info',
     });
   }
 });

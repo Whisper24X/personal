@@ -1,6 +1,6 @@
 <template>
     <div class="interactive-confirmation">
-        <el-card class="confirmation-card" shadow="always">
+        <el-card v-if="!hideCard" class="confirmation-card" shadow="always">
             <template #header>
                 <div class="card-header">
                     <div class="header-left">
@@ -210,6 +210,215 @@
                 </el-alert>
             </div>
         </el-card>
+        <!-- Content without card wrapper when hideCard is true -->
+        <template v-else>
+            <div class="card-header">
+                <div class="header-left">
+                    <el-icon :size="24" color="#409EFF">
+                        <component :is="getRoleIcon(roleInfo.role)" />
+                    </el-icon>
+                    <div class="role-info">
+                        <h3 class="role-name">{{ roleInfo.role }}</h3>
+                        <el-tag :type="getActionType(roleInfo.action)" size="small">
+                            {{ roleInfo.action === 'idle' ? '空闲状态' : roleInfo.action }}
+                        </el-tag>
+                        <!-- Role and Action Description -->
+                        <div v-if="(getRoleDescription(roleInfo.role) || getActionDescription(roleInfo.action)) && !isIdle" class="role-action-description">
+                            <div v-if="getRoleDescription(roleInfo.role)" class="description-item">
+                                <el-icon>
+                                    <User />
+                                </el-icon>
+                                <span class="description-text">{{ getRoleDescription(roleInfo.role) }}</span>
+                            </div>
+                            <div v-if="getActionDescription(roleInfo.action)" class="description-item">
+                                <el-icon>
+                                    <Operation />
+                                </el-icon>
+                                <span class="description-text">{{ getActionDescription(roleInfo.action) }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <el-tag :type="isIdle ? 'info' : 'warning'" effect="dark" size="large">
+                    <el-icon>
+                        <Clock />
+                    </el-icon>
+                    {{ isIdle ? '状态检查' : '等待确认' }}
+                </el-tag>
+            </div>
+
+            <div class="content-section">
+                <div class="section-header">
+                    <h4>
+                        <el-icon>
+                            <Document />
+                        </el-icon>
+                        {{ isIdle ? '角色状态' : '生成内容' }}
+                    </h4>
+                    <el-button-group size="small">
+                        <el-button :type="viewMode === 'preview' ? 'primary' : ''" @click="viewMode = 'preview'">
+                            预览
+                        </el-button>
+                        <el-button :type="viewMode === 'full' ? 'primary' : ''" @click="viewMode = 'full'">
+                            完整内容
+                        </el-button>
+                    </el-button-group>
+                </div>
+
+                <!-- Zip Archive Download -->
+                <div v-if="zipPath" class="zip-download-section">
+                    <el-alert type="success" :closable="false" show-icon>
+                        <template #title>
+                            <div class="zip-info">
+                                <el-icon>
+                                    <Download />
+                                </el-icon>
+                                <span>{{ zipType === 'workspace_zip' ? 'Workspace压缩包已生成' : '代码压缩包已生成' }}</span>
+                                <el-button type="primary" size="small" :icon="Download" @click="downloadZip">
+                                    下载压缩包
+                                </el-button>
+                            </div>
+                        </template>
+                    </el-alert>
+                </div>
+
+                <div v-if="roleInfo.outputFiles && roleInfo.outputFiles.length > 0" class="output-files">
+                    <el-divider content-position="left">
+                        <el-icon>
+                            <FolderOpened />
+                        </el-icon>
+                        生成的文件 ({{ roleInfo.outputFiles.length }})
+                    </el-divider>
+                    <div class="files-tabs">
+                        <el-tag v-for="(file, index) in roleInfo.outputFiles" :key="getFilePath(file)" class="file-tag"
+                            :type="selectedFileIndex === index ? 'primary' : 'info'"
+                            :effect="selectedFileIndex === index ? 'dark' : 'plain'" @click="selectFile(index)"
+                            style="cursor: pointer;">
+                            <el-icon>
+                                <DocumentCopy />
+                            </el-icon>
+                            {{ getFilePath(file) }}
+                        </el-tag>
+                    </div>
+                </div>
+
+                <el-scrollbar :max-height="viewMode === 'preview' ? '200px' : '400px'" class="content-scrollbar">
+                    <div class="content-display">
+                        <!-- File content view/edit -->
+                        <!-- For WritePRD action, always show main content first, not files -->
+                        <div v-if="selectedFileIndex >= 0 && hasFiles && roleInfo.action !== 'WritePRD'"
+                            class="file-content-editor">
+                            <div class="file-header">
+                                <span class="file-path">{{ getFilePath(roleInfo.outputFiles![selectedFileIndex])
+                                    }}</span>
+                                <el-button v-if="!isEditing" size="small" type="primary" :icon="Edit"
+                                    @click="startEditFile(selectedFileIndex)">
+                                    编辑文件
+                                </el-button>
+                            </div>
+                            <el-input v-if="isEditing && selectedFileIndex >= 0"
+                                :model-value="getCurrentFileEditedContent()"
+                                @update:model-value="updateCurrentFileContent" type="textarea"
+                                :rows="viewMode === 'preview' ? '10' : '20'" placeholder="编辑文件内容..." />
+                            <pre v-else class="content-text file-content">{{ getFileContent(selectedFileIndex) }}</pre>
+                        </div>
+                        <!-- Main content view/edit -->
+                        <div v-else>
+                            <el-input v-if="isEditing && !isIdle" v-model="editedContent" type="textarea"
+                                :rows="viewMode === 'preview' ? '10' : '20'" placeholder="编辑内容..." />
+                            <div v-else-if="isIdle" class="idle-content">
+                                <el-alert type="info" :closable="false" show-icon>
+                                    <template #title>
+                                        <div class="idle-message">{{ displayContent }}</div>
+                                    </template>
+                                </el-alert>
+                            </div>
+                            <pre v-else class="content-text">{{ displayContent }}</pre>
+                        </div>
+                    </div>
+                </el-scrollbar>
+
+                <div v-if="viewMode === 'preview' && roleInfo.content.length > 500" class="preview-notice">
+                    <el-alert title="这是内容预览，点击'完整内容'查看全部" type="info" :closable="false" show-icon />
+                </div>
+
+                <!-- Section adjustment using generic component -->
+                <SectionAdjuster v-if="hasSectionedContent" :content="roleInfo.content" :document-type="documentType"
+                    :action="roleInfo.action" :project-id="projectId || ''" :document-id="prdId || ''"
+                    @section-adjusted="handleSectionAdjusted" />
+            </div>
+
+            <el-divider />
+
+            <div class="actions-section">
+                <h4 class="actions-title">
+                    <el-icon>
+                        <Operation />
+                    </el-icon>
+                    请选择操作
+                </h4>
+
+                <div class="action-buttons">
+                    <el-button v-if="!isEditing" type="success" size="large" :icon="Check"
+                        @click="handleAction('continue')" :loading="loading">
+                        <div class="button-content">
+                            <span class="shortcut">C</span>
+                            <span>{{ isIdle ? '继续下一步' : '确认继续' }}</span>
+                        </div>
+                    </el-button>
+
+                    <el-button v-if="!isIdle && !isEditing && (!hasFiles || selectedFileIndex < 0)" type="primary"
+                        size="large" :icon="Edit" @click="startEdit">
+                        <div class="button-content">
+                            <span class="shortcut">E</span>
+                            <span>编辑内容</span>
+                        </div>
+                    </el-button>
+
+                    <el-button v-if="!isIdle && isEditing" type="success" size="large" :icon="Check" @click="saveEdit"
+                        :loading="loading">
+                        保存修改并继续
+                    </el-button>
+
+                    <el-button v-if="!isIdle && isEditing" size="large" :icon="Close" @click="cancelEdit">
+                        取消编辑
+                    </el-button>
+
+                    <el-button v-if="!isIdle && !isEditing" type="warning" size="large" :icon="Refresh"
+                        @click="handleAction('regenerate')" :loading="loading">
+                        <div class="button-content">
+                            <span class="shortcut">R</span>
+                            <span>重新生成</span>
+                        </div>
+                    </el-button>
+
+                    <el-button v-if="!isEditing" type="info" size="large" plain :icon="DArrowRight"
+                        @click="handleAction('skip')" :loading="loading">
+                        <div class="button-content">
+                            <span class="shortcut">S</span>
+                            <span>跳过</span>
+                        </div>
+                    </el-button>
+
+                    <el-button v-if="!isEditing" type="danger" size="large" plain :icon="CloseBold" @click="confirmQuit"
+                        :loading="loading">
+                        <div class="button-content">
+                            <span class="shortcut">Q</span>
+                            <span>退出</span>
+                        </div>
+                    </el-button>
+                </div>
+
+                <el-alert class="shortcuts-hint" type="info" :closable="false">
+                    <template #title>
+                        <el-icon>
+                            <InfoFilled />
+                        </el-icon>
+                        快捷键提示: 按 C/E/R/S/Q 快速执行对应操作
+                    </template>
+                </el-alert>
+            </div>
+        </template>
     </div>
 </template>
 
@@ -260,12 +469,14 @@ interface Props {
     loading?: boolean;
     projectId?: string;
     prdId?: string;
+    hideCard?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
     loading: false,
     projectId: '',
     prdId: '',
+    hideCard: false,
 });
 
 const emit = defineEmits<{
