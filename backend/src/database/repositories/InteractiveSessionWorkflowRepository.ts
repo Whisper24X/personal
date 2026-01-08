@@ -37,13 +37,19 @@ export class InteractiveSessionWorkflowRepository {
         roles: Array<{ role: string; actions: Array<{ name: string }> }>
     ): Promise<void> {
         try {
-            // Delete existing workflow items for this session
-            await query(
-                `DELETE FROM interactive_session_workflows WHERE session_id = $1`,
+            // Check if workflow already exists for this session
+            const existingWorkflow = await query<{ count: number }>(
+                `SELECT COUNT(*) as count FROM interactive_session_workflows WHERE session_id = $1`,
                 [sessionId]
             );
 
-            // Insert all roles and actions
+            // If workflow already exists, don't reinitialize (preserve existing status)
+            if (existingWorkflow.rows[0] && parseInt(existingWorkflow.rows[0].count) > 0) {
+                logger.info(`Workflow already exists for session ${sessionId}, skipping reinitialization to preserve existing status`);
+                return;
+            }
+
+            // Insert all roles and actions (only if workflow doesn't exist)
             for (const roleInfo of roles) {
                 for (const action of roleInfo.actions) {
                     await query(
@@ -51,7 +57,7 @@ export class InteractiveSessionWorkflowRepository {
               session_id, project_id, role, action, status
             ) VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (session_id, role, action) DO UPDATE SET
-              status = EXCLUDED.status,
+              status = COALESCE(interactive_session_workflows.status, EXCLUDED.status),
               updated_at = NOW()`,
                         [sessionId, projectId, roleInfo.role, action.name, 'pending']
                     );
@@ -118,7 +124,7 @@ export class InteractiveSessionWorkflowRepository {
     }
 
     /**
-     * Get current running state
+     * Get current running state by sessionId
      */
     async getRunningState(sessionId: string): Promise<RunningState | null> {
         logger.info(`InteractiveSessionWorkflowRepository: getRunningState called - sessionId=${sessionId}`);
@@ -149,6 +155,74 @@ export class InteractiveSessionWorkflowRepository {
                 errorStack: error.stack,
             });
             return null;
+        }
+    }
+
+    /**
+     * Get current running state by projectId (for resuming sessions)
+     */
+    async getRunningStateByProjectId(projectId: string): Promise<RunningState | null> {
+        logger.info(`InteractiveSessionWorkflowRepository: getRunningStateByProjectId called - projectId=${projectId}`);
+        try {
+            const result = await query<RunningState>(
+                `SELECT id, session_id, project_id, "current_role", "current_action", updated_at, created_at 
+         FROM interactive_session_running_state 
+         WHERE project_id = $1 
+         ORDER BY updated_at DESC 
+         LIMIT 1`,
+                [projectId]
+            );
+
+            logger.info(`InteractiveSessionWorkflowRepository: getRunningStateByProjectId - Query returned ${result.rows.length} row(s)`);
+
+            if (result.rows[0]) {
+                const state = {
+                    ...result.rows[0],
+                    current_role: result.rows[0].current_role,
+                    current_action: result.rows[0].current_action,
+                };
+                logger.info(`InteractiveSessionWorkflowRepository: getRunningStateByProjectId - Found state: role=${state.current_role}, action=${state.current_action}, sessionId=${state.session_id}, projectId=${projectId}`);
+                return state;
+            }
+            logger.warn(`InteractiveSessionWorkflowRepository: getRunningStateByProjectId - No state found for projectId=${projectId}`);
+            return null;
+        } catch (error: any) {
+            logger.error('InteractiveSessionWorkflowRepository: Failed to get running state by projectId:', {
+                projectId,
+                error: error.message,
+                errorStack: error.stack,
+            });
+            return null;
+        }
+    }
+
+    /**
+     * Get workflow items by projectId (for resuming sessions)
+     */
+    async getWorkflowItemsByProjectId(projectId: string): Promise<WorkflowItem[]> {
+        try {
+            // Get the most recent session_id for this project
+            const sessionResult = await query<{ session_id: string }>(
+                `SELECT session_id FROM interactive_session_workflows 
+         WHERE project_id = $1 
+         ORDER BY updated_at DESC 
+         LIMIT 1`,
+                [projectId]
+            );
+
+            if (sessionResult.rows.length === 0) {
+                logger.warn(`InteractiveSessionWorkflowRepository: No workflow found for projectId=${projectId}`);
+                return [];
+            }
+
+            const sessionId = sessionResult.rows[0].session_id;
+            return this.getWorkflowItems(sessionId);
+        } catch (error: any) {
+            logger.error('InteractiveSessionWorkflowRepository: Failed to get workflow items by projectId:', {
+                projectId,
+                error: error.message,
+            });
+            return [];
         }
     }
 
@@ -202,6 +276,38 @@ export class InteractiveSessionWorkflowRepository {
     }
 
     /**
+     * Migrate workflow item from old session to new session
+     */
+    async migrateWorkflowItem(
+        newSessionId: string,
+        projectId: string | null,
+        role: string,
+        action: string,
+        status: string
+    ): Promise<void> {
+        try {
+            await query(
+                `INSERT INTO interactive_session_workflows (
+              session_id, project_id, role, action, status
+            ) VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (session_id, role, action) DO UPDATE SET
+              status = EXCLUDED.status,
+              updated_at = NOW()`,
+                [newSessionId, projectId, role, action, status]
+            );
+        } catch (error: any) {
+            logger.error('Failed to migrate workflow item:', {
+                newSessionId,
+                projectId,
+                role,
+                action,
+                status,
+                error: error.message,
+            });
+        }
+    }
+
+    /**
      * Clear running state
      */
     async clearRunningState(sessionId: string): Promise<void> {
@@ -217,6 +323,38 @@ export class InteractiveSessionWorkflowRepository {
                 sessionId,
                 error: error.message,
             });
+        }
+    }
+
+    /**
+     * Check if a specific role and action is completed
+     */
+    async isActionCompleted(
+        sessionId: string,
+        role: string,
+        action: string
+    ): Promise<boolean> {
+        try {
+            const result = await query<{ status: string }>(
+                `SELECT status FROM interactive_session_workflows 
+         WHERE session_id = $1 AND role = $2 AND action = $3`,
+                [sessionId, role, action]
+            );
+
+            if (result.rows.length === 0) {
+                // If workflow item doesn't exist, consider it not completed
+                return false;
+            }
+
+            return result.rows[0].status === 'completed';
+        } catch (error: any) {
+            logger.error('Failed to check action completion status:', {
+                sessionId,
+                role,
+                action,
+                error: error.message,
+            });
+            return false; // On error, assume not completed to be safe
         }
     }
 }
