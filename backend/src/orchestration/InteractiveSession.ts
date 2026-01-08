@@ -326,21 +326,29 @@ export class InteractiveSession {
           return;
         }
 
-        // Move to next role
-        roleIndex = (roleIndex + 1) % roles.length;
+        // Check if we're about to cycle back to the first role (last role just went idle)
+        const isLastRole = roleIndex === roles.length - 1;
+        const nextRoleIndex = (roleIndex + 1) % roles.length;
 
-        // If we've cycled through all roles without any producing messages, check if we're done
-        if (roleIndex === 0) {
+        // If the last role just went idle, check if all roles are done before moving to first role
+        if (isLastRole && nextRoleIndex === 0) {
           // Check if any role has pending work
           const hasPendingWork = roles.some(r => {
             return r.rc.news.length > 0 || r.rc.todo !== null;
           });
 
           if (!hasPendingWork) {
-            logger.info(`InteractiveSession: All roles are idle, session complete`);
+            logger.info(`InteractiveSession: Last role (${role.profile}) is idle and all roles are idle, session complete`);
+            // Clear running state before exiting
+            await this.workflowTracker.clearState();
             break;
+          } else {
+            logger.info(`InteractiveSession: Last role (${role.profile}) is idle, but some roles have pending work. Continuing to next cycle...`);
           }
         }
+
+        // Move to next role
+        roleIndex = nextRoleIndex;
 
         continue;
       }
@@ -412,6 +420,27 @@ export class InteractiveSession {
 
       // Log which roles should receive this message
       const nextRoleIndex = (roleIndex + 1) % roles.length;
+
+      // Check if we're about to cycle back to the first role (last role just completed)
+      const isLastRole = roleIndex === roles.length - 1;
+
+      // If the last role just completed, check if all roles are done before moving to first role
+      if (isLastRole && nextRoleIndex === 0) {
+        // Check if any role has pending work
+        const hasPendingWork = roles.some(r => {
+          return r.rc.news.length > 0 || r.rc.todo !== null;
+        });
+
+        if (!hasPendingWork) {
+          logger.info(`InteractiveSession: Last role (${role.profile}) completed and all roles are idle, session complete`);
+          // Clear running state before exiting
+          await this.workflowTracker.clearState();
+          break;
+        } else {
+          logger.info(`InteractiveSession: Last role (${role.profile}) completed, but some roles have pending work. Continuing to next cycle...`);
+        }
+      }
+
       const nextRole = roles[nextRoleIndex];
       const nextRoleWatchSet = Array.from(nextRole.rc.watch).join(', ');
       logger.info(`InteractiveSession: Next role will be ${nextRole.profile}, watching: [${nextRoleWatchSet}], message causeBy: ${message.causeBy}`);
@@ -429,19 +458,6 @@ export class InteractiveSession {
       // Clear current running state when moving to next role
       // (will be set again when next role starts)
       await this.workflowTracker.clearState();
-
-      // If we've cycled through all roles, check if we're done
-      if (roleIndex === 0) {
-        // Check if any role has pending work
-        const hasPendingWork = roles.some(r => {
-          return r.rc.news.length > 0 || r.rc.todo !== null;
-        });
-
-        if (!hasPendingWork) {
-          logger.info(`InteractiveSession: All roles are idle, session complete`);
-          break;
-        }
-      }
     }
 
     logger.info(`InteractiveSession: All roles processed, session complete`);
