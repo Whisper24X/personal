@@ -202,16 +202,203 @@ export class InteractiveSession {
       totalCost: 0,
     });
 
-    // Publish initial user requirement message
-    const { Message } = await import('../core/message/Message');
-    const initialMessage = new Message({
-      content: this.config.idea,
-      role: 'user',
-      causeBy: 'User',
-      sentFrom: 'User',
-    });
-    env.publishMessage(initialMessage);
-    logger.info(`InteractiveSession: Published initial requirement: ${this.config.idea.substring(0, 100)}...`);
+    // Restore message history from database if projectId is provided
+    const projectId = this.config.projectId || this.id;
+    if (projectId) {
+      try {
+        const { MessageRepository } = await import('../database/repositories/MessageRepository');
+        const messageRepo = new MessageRepository();
+        const dbMessages = await messageRepo.findByProjectId(projectId, 1000);
+
+        logger.info(`InteractiveSession: Checking messages for project ${projectId}, found ${dbMessages.length} messages in database`);
+
+        if (dbMessages.length > 0) {
+          logger.info(`InteractiveSession: Found ${dbMessages.length} messages in database for project ${projectId}, restoring message history`);
+          // Log message details for debugging
+          dbMessages.forEach((msg, idx) => {
+            logger.debug(`InteractiveSession: Message ${idx + 1}/${dbMessages.length}: role=${msg.role_type}, causeBy=${msg.cause_by}, id=${msg.message_uuid}`);
+          });
+
+          // Restore messages to environment
+          const { Message } = await import('../core/message/Message');
+          const { MESSAGE_ROUTE_TO_ALL } = await import('@mind2build/shared');
+
+          for (const dbMsg of dbMessages) {
+            try {
+              // Ensure sendTo is properly set - if empty, use broadcast
+              let sendTo = Array.isArray(dbMsg.send_to) ? dbMsg.send_to : [];
+              if (sendTo.length === 0) {
+                // If sendTo is empty, use broadcast to ensure message reaches all roles
+                // This is safe because roles will filter via watch mechanism
+                sendTo = [MESSAGE_ROUTE_TO_ALL];
+              }
+
+              // Use fromJSON to properly restore message with original ID
+              const restoredMessage = Message.fromJSON({
+                id: dbMsg.message_uuid,
+                content: dbMsg.content,
+                role: dbMsg.role_type,
+                causeBy: dbMsg.cause_by,
+                sentFrom: dbMsg.sent_from,
+                sendTo: sendTo,
+                instructContent: dbMsg.instruct_content,
+                metadata: dbMsg.metadata || {},
+              });
+
+              const published = env.publishMessage(restoredMessage);
+              logger.info(`InteractiveSession: Restored message ${dbMsg.message_uuid} - role: ${dbMsg.role_type}, causeBy: ${dbMsg.cause_by}, published: ${published}, sendTo: [${sendTo.join(', ')}]`);
+            } catch (error: any) {
+              logger.warn(`InteractiveSession: Failed to restore message ${dbMsg.message_uuid}`, {
+                error: error.message,
+                stack: error.stack,
+              });
+            }
+          }
+
+          logger.info(`InteractiveSession: Successfully restored ${dbMessages.length} messages to environment`);
+
+          // After restoring messages, check if we need to restore messages for completed actions
+          // that roles are watching for
+          try {
+            const workflowItems = await this.workflowTracker.getWorkflowItems();
+            const completedActions = new Set<string>();
+            workflowItems.forEach(item => {
+              if (item.status === 'completed') {
+                completedActions.add(item.action);
+              }
+            });
+
+            // Check which completed actions have messages in environment history
+            const envHistoryCauseBys = new Set(env.history.map(msg => msg.causeBy));
+            const missingActions = Array.from(completedActions).filter(action => !envHistoryCauseBys.has(action));
+
+            if (missingActions.length > 0) {
+              logger.info(`InteractiveSession: Found ${missingActions.length} completed actions without messages in environment: [${missingActions.join(', ')}]`);
+              logger.info(`InteractiveSession: Attempting to restore missing messages from database...`);
+
+              // Try to restore missing messages from database
+              const { MessageRepository } = await import('../database/repositories/MessageRepository');
+              const messageRepo = new MessageRepository();
+              const allDbMessages = await messageRepo.findByProjectId(projectId, 1000);
+
+              // Find messages for missing actions
+              const missingMessages = allDbMessages.filter(dbMsg =>
+                missingActions.includes(dbMsg.cause_by) &&
+                !env.history.some(msg => msg.id === dbMsg.message_uuid)
+              );
+
+              if (missingMessages.length > 0) {
+                logger.info(`InteractiveSession: Found ${missingMessages.length} missing messages in database, restoring...`);
+                const { Message } = await import('../core/message/Message');
+                const { MESSAGE_ROUTE_TO_ALL } = await import('@mind2build/shared');
+
+                for (const dbMsg of missingMessages) {
+                  try {
+                    let sendTo = Array.isArray(dbMsg.send_to) ? dbMsg.send_to : [];
+                    if (sendTo.length === 0) {
+                      sendTo = [MESSAGE_ROUTE_TO_ALL];
+                    }
+
+                    const restoredMessage = Message.fromJSON({
+                      id: dbMsg.message_uuid,
+                      content: dbMsg.content,
+                      role: dbMsg.role_type,
+                      causeBy: dbMsg.cause_by,
+                      sentFrom: dbMsg.sent_from,
+                      sendTo: sendTo,
+                      instructContent: dbMsg.instruct_content,
+                      metadata: dbMsg.metadata || {},
+                    });
+
+                    const published = env.publishMessage(restoredMessage);
+                    logger.info(`InteractiveSession: Restored missing message ${dbMsg.message_uuid} - role: ${dbMsg.role_type}, causeBy: ${dbMsg.cause_by}, published: ${published}`);
+                  } catch (error: any) {
+                    logger.warn(`InteractiveSession: Failed to restore missing message ${dbMsg.message_uuid}`, {
+                      error: error.message,
+                    });
+                  }
+                }
+                logger.info(`InteractiveSession: Successfully restored ${missingMessages.length} missing messages`);
+              } else {
+                logger.warn(`InteractiveSession: Missing actions [${missingActions.join(', ')}] are marked as completed but no messages found in database`);
+              }
+            }
+          } catch (error: any) {
+            logger.warn(`InteractiveSession: Failed to check and restore missing messages`, {
+              error: error.message,
+            });
+          }
+        } else {
+          logger.info(`InteractiveSession: No messages found in database for project ${projectId}, will publish initial message`);
+
+          // Publish initial user requirement message if no messages found
+          const { Message } = await import('../core/message/Message');
+          const initialMessage = new Message({
+            content: this.config.idea,
+            role: 'user',
+            causeBy: 'User',
+            sentFrom: 'User',
+          });
+          env.publishMessage(initialMessage);
+          logger.info(`InteractiveSession: Published initial requirement: ${this.config.idea.substring(0, 100)}...`);
+
+          // Save initial message to database
+          try {
+            const { MessageRepository } = await import('../database/repositories/MessageRepository');
+            const messageRepo = new MessageRepository();
+            await messageRepo.save(projectId, initialMessage);
+            logger.info(`InteractiveSession: Saved initial message ${initialMessage.id} to database for project ${projectId}`);
+          } catch (error: any) {
+            logger.warn(`InteractiveSession: Failed to save initial message to database`, {
+              error: error.message,
+              projectId,
+            });
+          }
+        }
+      } catch (error: any) {
+        logger.warn(`InteractiveSession: Failed to restore message history for project ${projectId}`, {
+          error: error.message,
+        });
+
+        // Fallback: publish initial message
+        const { Message } = await import('../core/message/Message');
+        const initialMessage = new Message({
+          content: this.config.idea,
+          role: 'user',
+          causeBy: 'User',
+          sentFrom: 'User',
+        });
+        env.publishMessage(initialMessage);
+        logger.info(`InteractiveSession: Published initial requirement (fallback): ${this.config.idea.substring(0, 100)}...`);
+
+        // Save initial message to database
+        try {
+          const { MessageRepository } = await import('../database/repositories/MessageRepository');
+          const messageRepo = new MessageRepository();
+          await messageRepo.save(projectId, initialMessage);
+          logger.info(`InteractiveSession: Saved initial message (fallback) ${initialMessage.id} to database for project ${projectId}`);
+        } catch (error: any) {
+          logger.warn(`InteractiveSession: Failed to save initial message (fallback) to database`, {
+            error: error.message,
+            projectId,
+          });
+        }
+      }
+    } else {
+      // No projectId, just publish initial message
+      const { Message } = await import('../core/message/Message');
+      const initialMessage = new Message({
+        content: this.config.idea,
+        role: 'user',
+        causeBy: 'User',
+        sentFrom: 'User',
+      });
+      env.publishMessage(initialMessage);
+      logger.info(`InteractiveSession: Published initial requirement: ${this.config.idea.substring(0, 100)}...`);
+
+      // Note: Cannot save message without projectId
+      logger.debug(`InteractiveSession: Skipping message save - no projectId available`);
+    }
 
     // Run through each role sequentially, one at a time
     // Each step requires user confirmation before proceeding
@@ -219,53 +406,271 @@ export class InteractiveSession {
     let iteration = 0;
     let roleIndex = 0; // Track current role index
 
+    // Restore state from previous session (if resuming)
+    const currentState = await this.workflowTracker.getCurrentState();
+    let shouldFindNextIncompleteRole = false;
+
+    if (currentState.role && currentState.action) {
+      logger.info(`InteractiveSession: Resuming session - current role: ${currentState.role}, action: ${currentState.action}`);
+
+      // If action is 'idle', it means the role has no work to do, skip to next role
+      if (currentState.action === 'idle') {
+        logger.info(`InteractiveSession: Current role ${currentState.role} is idle, will find next incomplete role`);
+        shouldFindNextIncompleteRole = true;
+        // Clear the running state since we're moving to next role
+        await this.workflowTracker.clearState();
+      } else {
+        // Find the role index for the current role
+        const currentRoleIndex = roles.findIndex(r => r.profile === currentState.role);
+        if (currentRoleIndex !== -1) {
+          // Check if the current action is already completed
+          const isCompleted = await this.workflowTracker.isActionCompleted(
+            currentState.role,
+            currentState.action
+          );
+
+          if (isCompleted) {
+            logger.info(`InteractiveSession: Current action ${currentState.action} for role ${currentState.role} is already completed, will find next incomplete role`);
+            shouldFindNextIncompleteRole = true;
+            // Clear the running state since we're moving to next role
+            await this.workflowTracker.clearState();
+          } else {
+            logger.info(`InteractiveSession: Current action ${currentState.action} for role ${currentState.role} is not completed, will continue from here`);
+            roleIndex = currentRoleIndex;
+          }
+        } else {
+          logger.warn(`InteractiveSession: Could not find role ${currentState.role} in roles list, will find next incomplete role`);
+          shouldFindNextIncompleteRole = true;
+        }
+      }
+    } else {
+      logger.info(`InteractiveSession: No previous state found, will find next incomplete role`);
+      shouldFindNextIncompleteRole = true;
+    }
+
+    // If we need to find the next incomplete role, iterate through roles to find the first one with incomplete actions
+    if (shouldFindNextIncompleteRole) {
+      logger.info(`InteractiveSession: Finding next incomplete role...`);
+      let foundIncompleteRole = false;
+
+      // Get all workflow items to check completion status
+      const workflowItems = await this.workflowTracker.getWorkflowItems();
+      const completedActions = new Set<string>();
+      workflowItems.forEach(item => {
+        if (item.status === 'completed') {
+          completedActions.add(`${item.role}:${item.action}`);
+        }
+      });
+
+      // Try to find the first role with incomplete actions
+      // Check roles in order to respect workflow dependencies
+      for (let i = 0; i < roles.length; i++) {
+        const role = roles[i];
+        const roleActions = role.actions.map(a => a.name);
+
+        // Check if this role has any incomplete actions
+        const incompleteActions = roleActions.filter(action => {
+          const actionKey = `${role.profile}:${action}`;
+          return !completedActions.has(actionKey);
+        });
+
+        if (incompleteActions.length > 0) {
+          // Check if this role is waiting for messages from previous roles
+          const watchSet = Array.from(role.rc.watch);
+          if (watchSet.length > 0 && i > 0) {
+            // Check if messages matching watch set exist in environment history
+            const envHistory = env.history;
+            const hasWatchedMessages = envHistory.some(msg => watchSet.includes(msg.causeBy));
+
+            if (!hasWatchedMessages) {
+              // This role is waiting for messages from previous roles
+              // Check if previous roles have completed their primary actions
+              let previousRolesCompleted = true;
+              for (let j = 0; j < i; j++) {
+                const prevRole = roles[j];
+                const prevRoleActions = prevRole.actions.map(a => a.name);
+                // Check if previous role has completed at least one action
+                const prevRoleCompleted = prevRoleActions.some(action => {
+                  const actionKey = `${prevRole.profile}:${action}`;
+                  return completedActions.has(actionKey);
+                });
+                if (!prevRoleCompleted) {
+                  previousRolesCompleted = false;
+                  break;
+                }
+              }
+
+              if (!previousRolesCompleted) {
+                // Previous roles haven't completed, skip this role for now
+                logger.info(`InteractiveSession: Role ${role.profile} is waiting for messages from previous roles that haven't completed, skipping for now`);
+                continue;
+              } else {
+                // Previous roles completed but messages not restored
+                // This means messages should be in database but weren't restored
+                // Try this role anyway - it might be able to proceed with restored messages
+                logger.warn(`InteractiveSession: Role ${role.profile} is waiting for messages (watch: [${watchSet.join(', ')}]) but messages not found in environment. Previous roles completed. Will try this role anyway.`);
+              }
+            }
+          }
+
+          logger.info(`InteractiveSession: Found incomplete role: ${role.profile} at index ${i}, incomplete actions: [${incompleteActions.join(', ')}]`);
+          roleIndex = i;
+          foundIncompleteRole = true;
+          break;
+        }
+      }
+
+      if (!foundIncompleteRole) {
+        logger.info(`InteractiveSession: All roles are completed, starting from beginning`);
+        roleIndex = 0;
+      }
+    }
+
+    logger.info(`InteractiveSession: Starting from role index ${roleIndex} (${roles[roleIndex].profile})`);
+
     while (iteration < maxIterations) {
       iteration++;
 
       // Process one role at a time, cycling through all roles
       const role = roles[roleIndex];
       logger.info(`InteractiveSession: Processing role ${role.profile} (iteration ${iteration}, roleIndex ${roleIndex})`);
-      const newsCauseBys = role.rc.news.map((msg: any) => msg.causeBy).join(', ');
+      const currentNewsCauseBys = role.rc.news.map((msg: any) => msg.causeBy).join(', ');
       const watchSet = Array.from(role.rc.watch).join(', ');
-      logger.debug(`InteractiveSession: Role ${role.profile} state: ${role.rc.state}, todo: ${role.rc.todo ? role.rc.todo.name : 'null'}, news: ${role.rc.news.length} [${newsCauseBys}], watch: [${watchSet}]`);
+      logger.debug(`InteractiveSession: Role ${role.profile} state: ${role.rc.state}, todo: ${role.rc.todo ? role.rc.todo.name : 'null'}, news: ${role.rc.news.length} [${currentNewsCauseBys}], watch: [${watchSet}]`);
 
-      // Track role execution start
+      // Let role observe and think first to determine what action it wants to take
+      // This is needed to check if the todo action is already completed
+      logger.info(`InteractiveSession: Letting role ${role.profile} observe and think to determine todo`);
+
+      // Log message buffer state before observe (peek at buffer without consuming)
+      const bufferMessages = role.rc.msgBuffer.toJSON();
+      const bufferSize = bufferMessages.length;
+      const bufferCauseBys = bufferMessages.map((msg: any) => msg.causeBy).join(', ');
+      logger.info(`InteractiveSession: Role ${role.profile} message buffer before observe: size=${bufferSize}, causeBys=[${bufferCauseBys}], watch=[${Array.from(role.rc.watch).join(', ')}]`);
+
+      await role.observe();
+
+      // Log news after observe
+      const newsSize = role.rc.news.length;
+      const newsCauseBysAfterObserve = role.rc.news.map((msg: any) => msg.causeBy).join(', ');
+      logger.info(`InteractiveSession: Role ${role.profile} news after observe: size=${newsSize}, causeBys=[${newsCauseBysAfterObserve}]`);
+
+      const hasTodo = await role.think();
+
+      // Log todo after think
+      logger.info(`InteractiveSession: Role ${role.profile} after think: hasTodo=${hasTodo}, todo=${role.rc.todo ? role.rc.todo.name : 'null'}`);
+
+      // Check if the todo action is already completed (if role has a todo)
+      if (hasTodo && role.rc.todo) {
+        const todoAction = role.rc.todo.name;
+        const isTodoCompleted = await this.workflowTracker.isActionCompleted(
+          role.profile,
+          todoAction
+        );
+
+        if (isTodoCompleted) {
+          logger.info(`InteractiveSession: Role ${role.profile} todo action ${todoAction} is already completed, skipping execution`);
+
+          // Mark role as idle and move to next role
+          await this.workflowTracker.onRoleIdle(role);
+
+          // Move to next role
+          const nextRoleIndex = (roleIndex + 1) % roles.length;
+
+          // Check if we've cycled through all roles
+          if (nextRoleIndex === 0) {
+            const hasPendingWork = roles.some(r => {
+              return r.rc.news.length > 0 || r.rc.todo !== null;
+            });
+            if (!hasPendingWork) {
+              logger.info(`InteractiveSession: All roles are idle, session complete`);
+              break;
+            }
+          }
+
+          roleIndex = nextRoleIndex;
+          continue;
+        }
+      }
+
+      // If role has no todo after think(), mark as idle and move to next role
+      if (!hasTodo || !role.rc.todo) {
+        logger.info(`InteractiveSession: Role ${role.profile} has no todo after think(), marking as idle and moving to next role`);
+
+        // Mark role as idle
+        await this.workflowTracker.onRoleIdle(role);
+
+        // Set state to 'idle' before waiting for confirmation
+        await this.workflowTracker.setRunningState(role.profile, 'idle');
+
+        // Wait for user confirmation for idle state
+        const newsCauseBys = role.rc.news.map((msg: any) => msg.causeBy).join(', ');
+        const watchSet = Array.from(role.rc.watch).join(', ');
+        const userAction = await this.waitForUserConfirmation({
+          role: role.profile,
+          action: 'idle',
+          content: `**${role.profile} 状态检查**\n\n当前 ${role.profile} 没有需要执行的任务。\n\n- 已观察的消息数: ${role.rc.news.length}\n- 消息类型: ${newsCauseBys || '无'}\n- 待办任务: ${role.rc.todo ? role.rc.todo.name : '无'}\n- 关注的动作: ${watchSet || '无'}\n\n可以继续下一步，让其他角色继续工作。`,
+          outputFiles: [],
+        });
+
+        logger.info(`InteractiveSession: User action received for idle role: ${userAction.action}`);
+
+        // Handle user action
+        const shouldContinue = await this.processUserAction(userAction, null);
+
+        if (!shouldContinue) {
+          logger.info(`InteractiveSession: User requested to quit`);
+          return;
+        }
+
+        // Check if we're about to cycle back to the first role
+        const isLastRole = roleIndex === roles.length - 1;
+        const nextRoleIndex = (roleIndex + 1) % roles.length;
+
+        // If the last role just went idle, check if all roles are done before moving to first role
+        if (isLastRole && nextRoleIndex === 0) {
+          // Check if any role has pending work
+          const hasPendingWork = roles.some(r => {
+            return r.rc.news.length > 0 || r.rc.todo !== null;
+          });
+
+          if (!hasPendingWork) {
+            logger.info(`InteractiveSession: Last role (${role.profile}) is idle and all roles are idle, session complete`);
+            // Clear running state before exiting
+            await this.workflowTracker.clearState();
+            break;
+          } else {
+            logger.info(`InteractiveSession: Last role (${role.profile}) is idle, but some roles have pending work. Continuing to next cycle...`);
+          }
+        }
+
+        // Move to next role
+        roleIndex = nextRoleIndex;
+        continue;
+      }
+
+      // Track role execution start (after checking completion)
       logger.info(`InteractiveSession: onRoleStart called for role=${role.profile}, todo=${role.rc.todo ? role.rc.todo.name : 'null'}`);
       await this.workflowTracker.onRoleStart(role);
       logger.info(`InteractiveSession: onRoleStart completed for role=${role.profile}`);
 
-      // Run the role (this will observe, think, and act)
-      // role.run() will check if it has relevant messages and execute if needed
-      logger.info(`InteractiveSession: About to call role.run() for role=${role.profile}`);
+      // Run the role's act() method (observe and think already done above)
+      // Only execute act() since we already called observe() and think()
+      logger.info(`InteractiveSession: About to call role.act() for role=${role.profile}`);
 
-      // IMPORTANT: We need to update state after think() but before act() completes
-      // Since role.run() is async and act() may take a long time, we need to track
-      // when think() sets the todo, and update state immediately
-      const workflowTracker = this.workflowTracker;
-      const roleProfile = role.profile;
-      let thinkCompleted = false;
-      const originalThink = role.think.bind(role);
-      role.think = async function () {
-        const result = await originalThink();
-        if (!thinkCompleted) {
-          thinkCompleted = true;
-          // After think() completes, check if todo was set and update state
-          if (role.rc.todo) {
-            const todoAction = role.rc.todo.name;
-            logger.info(`InteractiveSession: think() completed for role=${roleProfile}, todo=${todoAction}, updating state immediately`);
-            await workflowTracker.setRunningState(roleProfile, todoAction);
-            logger.info(`InteractiveSession: State updated after think() - role=${roleProfile}, action=${todoAction}`);
-          }
-        }
-        return result;
-      };
+      // IMPORTANT: Update state before act() completes
+      // Since act() may take a long time, we update state immediately after think()
+      if (role.rc.todo) {
+        const todoAction = role.rc.todo.name;
+        logger.info(`InteractiveSession: Setting running state before act() - role=${role.profile}, action=${todoAction}`);
+        await this.workflowTracker.setRunningState(role.profile, todoAction);
+        logger.info(`InteractiveSession: State updated before act() - role=${role.profile}, action=${todoAction}`);
+      }
 
-      const message = await role.run();
+      // Execute act() only (observe and think already done)
+      const message = await role.act();
 
-      // Restore original think method
-      role.think = originalThink;
-
-      logger.info(`InteractiveSession: role.run() completed for role=${role.profile}, message=${message ? 'exists' : 'null'}`);
+      logger.info(`InteractiveSession: role.act() completed for role=${role.profile}, message=${message ? 'exists' : 'null'}`);
 
       if (message) {
         logger.info(`InteractiveSession: Message details - causeBy=${message.causeBy}, causeBy type=${typeof message.causeBy}, role=${message.role}, content length=${message.content?.length || 0}`);
@@ -326,21 +731,29 @@ export class InteractiveSession {
           return;
         }
 
-        // Move to next role
-        roleIndex = (roleIndex + 1) % roles.length;
+        // Check if we're about to cycle back to the first role (last role just went idle)
+        const isLastRole = roleIndex === roles.length - 1;
+        const nextRoleIndex = (roleIndex + 1) % roles.length;
 
-        // If we've cycled through all roles without any producing messages, check if we're done
-        if (roleIndex === 0) {
+        // If the last role just went idle, check if all roles are done before moving to first role
+        if (isLastRole && nextRoleIndex === 0) {
           // Check if any role has pending work
           const hasPendingWork = roles.some(r => {
             return r.rc.news.length > 0 || r.rc.todo !== null;
           });
 
           if (!hasPendingWork) {
-            logger.info(`InteractiveSession: All roles are idle, session complete`);
+            logger.info(`InteractiveSession: Last role (${role.profile}) is idle and all roles are idle, session complete`);
+            // Clear running state before exiting
+            await this.workflowTracker.clearState();
             break;
+          } else {
+            logger.info(`InteractiveSession: Last role (${role.profile}) is idle, but some roles have pending work. Continuing to next cycle...`);
           }
         }
+
+        // Move to next role
+        roleIndex = nextRoleIndex;
 
         continue;
       }
@@ -410,8 +823,47 @@ export class InteractiveSession {
       env.publishMessage(message);
       logger.info(`InteractiveSession: Published message from ${role.profile} (causeBy: ${message.causeBy}) to environment`);
 
+      // Save message to database for persistence
+      const projectId = this.config.projectId || this.id;
+      if (projectId) {
+        try {
+          const { MessageRepository } = await import('../database/repositories/MessageRepository');
+          const messageRepo = new MessageRepository();
+          await messageRepo.save(projectId, message);
+          logger.info(`InteractiveSession: Saved message ${message.id} to database for project ${projectId}`);
+        } catch (error: any) {
+          logger.warn(`InteractiveSession: Failed to save message to database`, {
+            error: error.message,
+            messageId: message.id,
+            projectId,
+          });
+          // Don't throw - continue even if save fails
+        }
+      }
+
       // Log which roles should receive this message
       const nextRoleIndex = (roleIndex + 1) % roles.length;
+
+      // Check if we're about to cycle back to the first role (last role just completed)
+      const isLastRole = roleIndex === roles.length - 1;
+
+      // If the last role just completed, check if all roles are done before moving to first role
+      if (isLastRole && nextRoleIndex === 0) {
+        // Check if any role has pending work
+        const hasPendingWork = roles.some(r => {
+          return r.rc.news.length > 0 || r.rc.todo !== null;
+        });
+
+        if (!hasPendingWork) {
+          logger.info(`InteractiveSession: Last role (${role.profile}) completed and all roles are idle, session complete`);
+          // Clear running state before exiting
+          await this.workflowTracker.clearState();
+          break;
+        } else {
+          logger.info(`InteractiveSession: Last role (${role.profile}) completed, but some roles have pending work. Continuing to next cycle...`);
+        }
+      }
+
       const nextRole = roles[nextRoleIndex];
       const nextRoleWatchSet = Array.from(nextRole.rc.watch).join(', ');
       logger.info(`InteractiveSession: Next role will be ${nextRole.profile}, watching: [${nextRoleWatchSet}], message causeBy: ${message.causeBy}`);
@@ -429,19 +881,6 @@ export class InteractiveSession {
       // Clear current running state when moving to next role
       // (will be set again when next role starts)
       await this.workflowTracker.clearState();
-
-      // If we've cycled through all roles, check if we're done
-      if (roleIndex === 0) {
-        // Check if any role has pending work
-        const hasPendingWork = roles.some(r => {
-          return r.rc.news.length > 0 || r.rc.todo !== null;
-        });
-
-        if (!hasPendingWork) {
-          logger.info(`InteractiveSession: All roles are idle, session complete`);
-          break;
-        }
-      }
     }
 
     logger.info(`InteractiveSession: All roles processed, session complete`);

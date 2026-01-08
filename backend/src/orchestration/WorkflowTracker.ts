@@ -207,14 +207,21 @@ export class WorkflowTracker {
 
     /**
      * Get current running state
-     * First tries database, then falls back to memory
+     * First tries database by sessionId, then by projectId, then falls back to memory
      */
     async getCurrentState(): Promise<WorkflowState> {
-        logger.info(`WorkflowTracker: getCurrentState called - sessionId=${this.sessionId}`);
+        logger.info(`WorkflowTracker: getCurrentState called - sessionId=${this.sessionId}, projectId=${this.projectId}`);
         try {
-            // Try database first (most reliable)
-            const dbState = await this.repository.getRunningState(this.sessionId);
-            logger.info(`WorkflowTracker: getCurrentState - Database state: ${JSON.stringify(dbState)}`);
+            // Try database first by sessionId (most reliable)
+            let dbState = await this.repository.getRunningState(this.sessionId);
+            logger.info(`WorkflowTracker: getCurrentState - Database state by sessionId: ${JSON.stringify(dbState)}`);
+
+            // If not found and we have projectId, try by projectId
+            if ((!dbState || (!dbState.current_role && !dbState.current_action)) && this.projectId) {
+                logger.info(`WorkflowTracker: getCurrentState - No state found by sessionId, trying by projectId=${this.projectId}`);
+                dbState = await this.repository.getRunningStateByProjectId(this.projectId);
+                logger.info(`WorkflowTracker: getCurrentState - Database state by projectId: ${JSON.stringify(dbState)}`);
+            }
 
             if (dbState && (dbState.current_role || dbState.current_action)) {
                 const state = {
@@ -229,6 +236,7 @@ export class WorkflowTracker {
         } catch (error: any) {
             logger.warn('WorkflowTracker: Failed to get state from database, using memory', {
                 sessionId: this.sessionId,
+                projectId: this.projectId,
                 error: error.message,
                 errorStack: error.stack,
             });
@@ -242,10 +250,18 @@ export class WorkflowTracker {
 
     /**
      * Get all workflow items
+     * First tries by sessionId, then by projectId if not found
      */
     async getWorkflowItems(): Promise<WorkflowItem[]> {
         try {
-            const items = await this.repository.getWorkflowItems(this.sessionId);
+            let items = await this.repository.getWorkflowItems(this.sessionId);
+
+            // If no items found and we have projectId, try by projectId
+            if (items.length === 0 && this.projectId) {
+                logger.info(`WorkflowTracker: No workflow items found by sessionId, trying by projectId=${this.projectId}`);
+                items = await this.repository.getWorkflowItemsByProjectId(this.projectId);
+            }
+
             return items.map(item => ({
                 role: item.role,
                 action: item.action || '',
@@ -254,6 +270,7 @@ export class WorkflowTracker {
         } catch (error: any) {
             logger.error('WorkflowTracker: Failed to get workflow items', {
                 sessionId: this.sessionId,
+                projectId: this.projectId,
                 error: error.message,
             });
             return [];
@@ -289,6 +306,30 @@ export class WorkflowTracker {
         logger.debug(`WorkflowTracker: setRunningState - Updated memory state: ${JSON.stringify(this.currentState)}`);
         await this.updateState(role, action);
         logger.info(`WorkflowTracker: setRunningState completed - role=${role}, action=${action}`);
+    }
+
+    /**
+     * Check if a specific role and action is completed
+     */
+    async isActionCompleted(role: string, action: string): Promise<boolean> {
+        logger.info(`WorkflowTracker: isActionCompleted called - role=${role}, action=${action}, sessionId=${this.sessionId}`);
+        try {
+            const isCompleted = await this.repository.isActionCompleted(
+                this.sessionId,
+                role,
+                action
+            );
+            logger.info(`WorkflowTracker: isActionCompleted - role=${role}, action=${action}, completed=${isCompleted}`);
+            return isCompleted;
+        } catch (error: any) {
+            logger.error('WorkflowTracker: Failed to check action completion', {
+                sessionId: this.sessionId,
+                role,
+                action,
+                error: error.message,
+            });
+            return false; // On error, assume not completed to be safe
+        }
     }
 
     /**

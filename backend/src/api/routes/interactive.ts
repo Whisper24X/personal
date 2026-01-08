@@ -91,7 +91,7 @@ router.post('/interactive', async (req, res) => {
       }
     }
 
-    // Create session
+    // Create new session (always create new session, but will restore state from projectId if exists)
     const session = sessionManager.createSession({
       name,
       idea,
@@ -102,8 +102,50 @@ router.post('/interactive', async (req, res) => {
       applicationId: finalApplicationId,
       projectId: finalProjectId,
     });
-
     logger.info(`API: Created interactive session ${session.id} for project ${finalProjectId}`);
+
+    // If projectId is provided, try to migrate workflow state from old session to new session
+    if (finalProjectId) {
+      try {
+        const { InteractiveSessionWorkflowRepository } = await import('../../database/repositories/InteractiveSessionWorkflowRepository');
+        const workflowRepo = new InteractiveSessionWorkflowRepository();
+        
+        // Get old running state by projectId
+        const oldState = await workflowRepo.getRunningStateByProjectId(finalProjectId);
+        if (oldState && oldState.session_id !== session.id) {
+          logger.info(`API: Found old session ${oldState.session_id} for project ${finalProjectId}, migrating state to new session ${session.id}`);
+          
+          // Migrate running state to new session
+          await workflowRepo.updateRunningState(
+            session.id,
+            finalProjectId,
+            oldState.current_role,
+            oldState.current_action
+          );
+          
+          // Migrate workflow items to new session
+          const oldWorkflowItems = await workflowRepo.getWorkflowItems(oldState.session_id);
+          for (const item of oldWorkflowItems) {
+            if (item.action) {
+              await workflowRepo.migrateWorkflowItem(
+                session.id,
+                finalProjectId,
+                item.role,
+                item.action,
+                item.status
+              );
+            }
+          }
+          
+          logger.info(`API: Successfully migrated workflow state from session ${oldState.session_id} to ${session.id}`);
+        }
+      } catch (error: any) {
+        logger.warn(`API: Failed to migrate workflow state for project ${finalProjectId}`, {
+          error: error.message,
+        });
+        // Continue even if migration fails
+      }
+    }
 
     return res.json({
       sessionId: session.id,
