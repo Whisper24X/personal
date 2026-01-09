@@ -29,6 +29,7 @@ import {
     SubProjectDesignReview,
     CodeReview,
     ImproveDocument,
+    ImproveMRD,
     BreakdownTasks,
     GenerateTask,
     ExecuteSubtask,
@@ -46,6 +47,7 @@ const ACTION_DISPLAY_NAMES: Record<string, string> = {
     // Salesperson actions
     WriteMRD: '编写MRD',
     MRDReview: 'MRD审查',
+    ImproveMRD: '改进MRD',
 
     // ProductManager actions
     WritePRD: '编写PRD',
@@ -165,6 +167,7 @@ export class RoleActionController {
                 SubProjectDesignReview,
                 CodeReview,
                 ImproveDocument,
+                ImproveMRD,
                 BreakdownTasks,
                 GenerateTask,
                 ExecuteSubtask,

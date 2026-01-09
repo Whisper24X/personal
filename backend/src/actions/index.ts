@@ -20,6 +20,7 @@ export { CodeReview } from './CodeReview';
 
 // Document Improvement Actions
 export { ImproveDocument } from './ImproveDocument';
+export { ImproveMRD } from './ImproveMRD';
 
 // Task Management Actions
 export { BreakdownTasks } from './BreakdownTasks';
