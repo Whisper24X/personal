@@ -3,22 +3,34 @@
  * Exports all action implementations
  */
 
+// Document Writing Actions
 export { WriteMRD } from './WriteMRD';
-export { MRDReview } from './MRDReview';
 export { WritePRD } from './WritePRD';
-export { PRDReview } from './PRDReview';
-export { ImproveDocument } from './ImproveDocument';
 export { WriteDesign } from './WriteDesign';
-export { DesignReview } from './DesignReview';
 export { WriteSubProjectDesign } from './WriteSubProjectDesign';
-export { SubProjectDesignReview } from './SubProjectDesignReview';
-export { WriteDesign } from './WriteDesign';
 export { WriteCode } from './WriteCode';
 export { WriteTest } from './WriteTest';
+
+// Document Review Actions
+export { MRDReview } from './MRDReview';
+export { PRDReview } from './PRDReview';
+export { DesignReview } from './DesignReview';
+export { SubProjectDesignReview } from './SubProjectDesignReview';
+export { CodeReview } from './CodeReview';
+
+// Document Improvement Actions
+export { ImproveDocument } from './ImproveDocument';
+
+// Task Management Actions
+export { BreakdownTasks } from './BreakdownTasks';
+export { GenerateTask } from './GenerateTask';
+export { ExecuteSubtask } from './ExecuteSubtask';
+
+// Code Execution and Bug Fix Actions
+export { RunCode } from './RunCode';
+export { FixBug } from './FixBug';
+
+// Other Actions
 export { SearchEnhancedQA } from './SearchEnhancedQA';
 export { DataAnalysis } from './DataAnalysis';
 export { Coordinate } from './Coordinate';
-export { BreakdownTasks } from './BreakdownTasks';
-export { WriteSubProjectDesign } from './WriteSubProjectDesign';
-export { GenerateTask } from './GenerateTask';
-export { CodeReview } from './CodeReview';

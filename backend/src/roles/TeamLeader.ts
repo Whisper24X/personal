@@ -39,9 +39,7 @@ export class TeamLeader extends Role {
     }
     
     const action = this.rc.todo;
-    logger.info(`${this.profile} executing action: ${action.name}`);
     
-    try {
       // For TeamLeader, get all messages from environment history, not just news
       let allMessagesContent: string;
       
@@ -56,8 +54,28 @@ export class TeamLeader extends Role {
         allMessagesContent = this.rc.news.map((msg) => msg.content).join('\n\n');
       }
       
+    // Log action execution start
+    logger.info(`Action [${action.name}]: Starting execution`, {
+      actionName: action.name,
+      role: this.profile,
+      description: action.description,
+      inputLength: allMessagesContent.length,
+    });
+    
+    const actionStartTime = Date.now();
+    try {
       // Execute action with all messages
       const result = await action.run(allMessagesContent);
+      
+      // Log action execution success
+      const executionTime = Date.now() - actionStartTime;
+      logger.info(`Action [${action.name}]: Execution completed successfully`, {
+        actionName: action.name,
+        role: this.profile,
+        executionTimeMs: executionTime,
+        outputType: result.data?.type,
+        contentLength: result.content?.length || 0,
+      });
       
       // Create message from result
       const message = new Message({
@@ -68,14 +86,20 @@ export class TeamLeader extends Role {
         instructContent: result.data,
       });
       
-      logger.info(`${this.profile} completed action: ${action.name}`);
-      
       // Clear current action
       this.rc.todo = null;
       
       return message;
     } catch (error: any) {
-      logger.error(`${this.profile} action failed:`, error);
+      // Log action execution failure
+      const executionTime = Date.now() - actionStartTime;
+      logger.error(`Action [${action.name}]: Execution failed`, {
+        actionName: action.name,
+        role: this.profile,
+        executionTimeMs: executionTime,
+        error: error.message,
+        errorStack: error.stack,
+      });
       this.rc.todo = null;
       throw error;
     }

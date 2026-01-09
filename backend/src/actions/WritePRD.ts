@@ -15,8 +15,7 @@ import {
   buildPRDSectionReviewPrompt,
 } from '../prompts/prd';
 import { logger, loadPrompt } from '../utils';
-import { PRDReview } from './PRDReview';
-import { ImproveDocument } from './ImproveDocument';
+// Review和ImproveDocument已移除，由角色通过消息机制管理
 import { StepwiseDocumentGenerator } from '../utils/StepwiseDocumentGenerator';
 import { WorkspaceManager } from '../utils/WorkspaceManager';
 import * as fs from 'fs/promises';
@@ -261,8 +260,7 @@ export class WritePRD extends BaseAction {
   private async generateStepwise(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
     // 确保使用PRD目录
     const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'PRD' });
-    const reviewAction = new PRDReview();
-    const improveAction = new ImproveDocument();
+    // 移除对Review和ImproveDocument的直接调用，改为通过角色管理
 
     // Load system prompt from database or use default
     const userId = this.context?.get('userId');
@@ -271,12 +269,8 @@ export class WritePRD extends BaseAction {
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
       buildOutlinePrompt: buildPRDOutlinePrompt,
       buildSectionPrompt: buildPRDSectionPrompt,
-      buildSectionReviewPrompt: buildPRDSectionReviewPrompt,
       systemPrompt: systemPrompt,
-      reviewAction: reviewAction,
-      reviewTitle: 'PRD 审查报告',
-      improveAction: improveAction,
-      autoImprove: true, // 自动在审查后改进文档
+      // Review 由角色通过 PRDReview action 统一处理
       documentTitle: '产品需求文档（PRD）',
       documentType: 'PRD',
       mainFileName: 'PRD.md',

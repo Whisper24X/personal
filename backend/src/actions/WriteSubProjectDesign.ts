@@ -10,8 +10,7 @@ import {
   buildSubProjectDesignPrompt,
 } from '../prompts/task';
 import { logger, WorkspaceOptions, loadPrompt } from '../utils';
-import { SubProjectDesignReview } from './SubProjectDesignReview';
-import { ImproveDocument } from './ImproveDocument';
+// Review和ImproveDocument已移除，由角色通过消息机制管理
 
 export interface WriteSubProjectDesignOptions extends WorkspaceOptions {
   // 继承WorkspaceOptions的所有选项
@@ -62,119 +61,28 @@ export class WriteSubProjectDesign extends BaseAction {
         workspaceDir: this.getWorkspaceDir(workspaceOptions),
       });
 
-      // Step 2: 审查（如果启用）
+      // Step 2: 审查（已移除直接调用，改为通过角色管理）
+      // 审查由角色通过消息机制管理，不再在这里直接调用
       let reviewReport: string | undefined;
       if (autoReview) {
-        const reviewStart = Date.now();
-        logger.info('WriteSubProjectDesign: Running review');
-        
-        try {
-          const reviewAction = new SubProjectDesignReview();
-          reviewAction.setLLM((this as any).llm);
-          if ((this as any).context) {
-            reviewAction.setContext((this as any).context);
-          }
-
-          const reviewResult = await reviewAction.run(subProjectDesignContent);
-          reviewReport = reviewResult.content;
-
-          // 保存审查报告到单独文件
-          await this.saveToWorkspace('SUB_PROJECT_DESIGN-review.md', `# 子项目设计文档审查报告\n\n${reviewReport}`, workspaceOptions);
-
-          logger.info('WriteSubProjectDesign: Review completed', {
-            reviewLength: reviewReport.length,
-            duration: `${Date.now() - reviewStart}ms`,
-          });
-        } catch (reviewError: any) {
-          logger.warn('WriteSubProjectDesign: Review failed, continuing without review', {
-            error: reviewError.message,
-          });
-        }
+        logger.info('WriteSubProjectDesign: Review skipped (managed by role)', {
+          note: 'Review will be handled by role through message mechanism',
+        });
       }
 
-      // Step 3: 改进（如果启用且审查报告存在）
+      // Step 3: 改进（已移除直接调用，改为通过角色管理）
+      // 改进由角色通过消息机制管理，不再在这里直接调用
       if (autoImprove && reviewReport) {
-        const improveStart = Date.now();
-        logger.info('WriteSubProjectDesign: Running improvement');
-        
-        try {
-          // 直接使用 LLM 改进文档（因为 ImproveDocument 期望 DESIGN.md，而这里是 SUB_PROJECT_DESIGN.md）
-          const improvePrompt = `请根据以下审查报告的建议，改进和完善子项目设计文档：
-
-【当前子项目设计文档】
-${subProjectDesignContent}
-
-【审查报告】
-${reviewReport}
-
-改进要求：
-1. **仔细分析审查报告**：识别所有改进建议和问题点
-2. **保持文档结构**：不要改变章节编号和标题，只改进内容
-3. **针对性改进**：
-   - 补充缺失的章节内容
-   - 完善简略或模糊的描述
-   - 明确技术架构和API设计
-   - 完善数据模型设计
-   - 确保与整体系统设计保持一致
-4. **内容质量**：
-   - 所有内容必须详细、具体、可执行
-   - 避免空洞、模糊或占位符内容
-   - 确保研发团队可直接使用
-5. **保持格式**：使用Markdown格式，保持章节层级清晰
-
-输出要求：
-- 输出完整的改进后的子项目设计文档
-- 确保改进后的内容解决了审查报告中提出的所有问题`;
-
-          const userId = this.context?.get('userId');
-          const improveSystemPrompt = await loadPrompt(
-            userId,
-            'design',
-            'improve_system_prompt',
-            `你是一位资深的子项目设计改进专家，擅长根据审查报告的建议，补充和完善子项目设计文档。
-
-你的职责是：
-- 仔细分析审查报告中的改进建议
-- 识别文档中需要补充和完善的部分
-- 针对性地改进文档内容，使其更加详细、具体、可执行
-- 保持文档的原有结构和格式
-- 确保改进后的内容符合子项目设计文档要求
-
-改进原则：
-- 保持文档的章节结构和编号不变
-- 根据审查报告中的具体建议，补充缺失的内容
-- 完善模糊或简略的描述，使其更加详细具体
-- 确保技术架构、API设计、数据模型设计完整
-- 改进后的内容要面向研发团队，确保可直接使用`
-          );
-
-          const improvedContent = await this.aask(improvePrompt, [improveSystemPrompt]);
-          subProjectDesignContent = improvedContent;
-
-          // 保存改进后的文档
-          await this.saveToWorkspace('SUB_PROJECT_DESIGN.md', subProjectDesignContent, workspaceOptions);
-
-          // 在审查报告中标注已改进
-          const improvedMark = '\n\n---\n\n**状态**: ✅ 已根据审查报告完成改进\n\n**改进时间**: ' + new Date().toISOString();
-          await this.saveToWorkspace('SUB_PROJECT_DESIGN-review.md', `# 子项目设计文档审查报告\n\n${reviewReport}${improvedMark}`, workspaceOptions);
-
-          logger.info('WriteSubProjectDesign: Improvement completed', {
-            originalLength: subProjectDesignContent.length,
-            improvedLength: improvedContent.length,
-            duration: `${Date.now() - improveStart}ms`,
-          });
-        } catch (improveError: any) {
-          logger.warn('WriteSubProjectDesign: Improvement failed, continuing without improvement', {
-            error: improveError.message,
-          });
-        }
+        logger.info('WriteSubProjectDesign: Improvement skipped (managed by role)', {
+          note: 'Improvement will be handled by role through message mechanism',
+        });
       }
       
       logger.info('WriteSubProjectDesign: Sub-project design generation completed', {
         contentLength: subProjectDesignContent.length,
         workspaceDir: this.getWorkspaceDir(workspaceOptions),
-        reviewIncluded: !!reviewReport,
-        improvementIncluded: autoImprove && !!reviewReport,
+        reviewIncluded: false, // Review由角色管理
+        improvementIncluded: false, // Improvement由角色管理
       });
       
       return {
@@ -184,8 +92,8 @@ ${reviewReport}
           filename: 'SUB_PROJECT_DESIGN.md',
           timestamp: new Date().toISOString(),
           workspaceDir: this.getWorkspaceDir(workspaceOptions),
-          reviewIncluded: !!reviewReport,
-          improvementIncluded: autoImprove && !!reviewReport,
+          reviewIncluded: false, // Review由角色管理
+          improvementIncluded: false, // Improvement由角色管理
         },
       };
     } catch (error: any) {

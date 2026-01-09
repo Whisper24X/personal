@@ -3,13 +3,17 @@
  * Abstract interface for all actions that agents can perform
  */
 
-import { IActionOutput } from '@mind2build/shared';
+import { IActionOutput, ActionStatus } from '@mind2build/shared';
 import { WorkspaceManager, WorkspaceOptions } from '../../utils/WorkspaceManager';
 import { Context } from '../context/Context';
+import { logger } from '../../utils';
 
 export abstract class BaseAction {
   name: string;
   description?: string;
+
+  // Action status (统一状态管理)
+  status: ActionStatus = ActionStatus.PENDING;
 
   // LLM instance will be injected by Role
   protected llm?: any;
@@ -28,6 +32,104 @@ export abstract class BaseAction {
    * @returns Action output
    */
   abstract run(...args: any[]): Promise<IActionOutput>;
+
+  /**
+   * Execute the action with logging wrapper
+   * This method wraps the run() method with unified logging
+   * @param args - Input arguments
+   * @returns Action output
+   */
+  async executeWithLogging(...args: any[]): Promise<IActionOutput> {
+    const startTime = Date.now();
+    const actionName = this.name;
+    
+    // Log action start
+    logger.info(`Action [${actionName}]: Starting execution`, {
+      actionName,
+      description: this.description,
+      argsCount: args.length,
+      argsPreview: args.length > 0 ? this.serializeArgsForLog(args) : undefined,
+    });
+
+    try {
+      // Execute the actual run method
+      const result = await this.run(...args);
+      
+      // Calculate execution time
+      const executionTime = Date.now() - startTime;
+      
+      // Log success
+      logger.info(`Action [${actionName}]: Execution completed successfully`, {
+        actionName,
+        executionTimeMs: executionTime,
+        outputType: result.data?.type,
+        contentLength: result.content?.length || 0,
+      });
+
+      return result;
+    } catch (error: any) {
+      // Calculate execution time
+      const executionTime = Date.now() - startTime;
+      
+      // Log failure
+      logger.error(`Action [${actionName}]: Execution failed`, {
+        actionName,
+        executionTimeMs: executionTime,
+        error: error.message,
+        errorStack: error.stack,
+      });
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Serialize arguments for logging (avoid logging sensitive or very large data)
+   */
+  private serializeArgsForLog(args: any[]): any {
+    return args.map((arg, index) => {
+      if (arg === null || arg === undefined) {
+        return arg;
+      }
+      
+      const argType = typeof arg;
+      
+      // For strings, show length and preview
+      if (argType === 'string') {
+        const length = arg.length;
+        const preview = length > 100 ? arg.substring(0, 100) + '...' : arg;
+        return {
+          type: 'string',
+          length,
+          preview: preview.substring(0, 100),
+        };
+      }
+      
+      // For objects, show keys and basic info
+      if (argType === 'object' && !Array.isArray(arg)) {
+        const keys = Object.keys(arg);
+        return {
+          type: 'object',
+          keys,
+          keysCount: keys.length,
+        };
+      }
+      
+      // For arrays, show length
+      if (Array.isArray(arg)) {
+        return {
+          type: 'array',
+          length: arg.length,
+        };
+      }
+      
+      // For other types, return as is
+      return {
+        type: argType,
+        value: String(arg).substring(0, 100),
+      };
+    });
+  }
 
   /**
    * Set LLM instance for this action
@@ -139,6 +241,7 @@ export abstract class BaseAction {
       name: this.name,
       description: this.description,
       type: this.constructor.name,
+      status: this.status,
     };
   }
 }

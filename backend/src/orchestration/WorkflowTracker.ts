@@ -6,6 +6,7 @@
 import { Team } from './Team';
 import { Role } from '../roles/Role';
 import { InteractiveSessionWorkflowRepository } from '../database/repositories/InteractiveSessionWorkflowRepository';
+import { ActionStatus } from '@mind2build/shared';
 import { logger } from '../utils';
 
 export interface WorkflowState {
@@ -16,7 +17,7 @@ export interface WorkflowState {
 export interface WorkflowItem {
     role: string;
     action: string;
-    status: 'pending' | 'running' | 'completed' | 'failed';
+    status: ActionStatus;
 }
 
 export class WorkflowTracker {
@@ -146,12 +147,14 @@ export class WorkflowTracker {
 
         // Update workflow item status if action was executed
         if (actionName) {
-            logger.info(`WorkflowTracker: onRoleComplete - Updating workflow item status: role=${roleName}, action=${actionName}, status=${message ? 'completed' : 'running'}`);
+            // 使用统一的状态枚举
+            const status = message ? ActionStatus.COMPLETED : ActionStatus.RUNNING;
+            logger.info(`WorkflowTracker: onRoleComplete - Updating workflow item status: role=${roleName}, action=${actionName}, status=${status}`);
             await this.repository.updateWorkflowItemStatus(
                 this.sessionId,
                 roleName,
                 actionName,
-                message ? 'completed' : 'running'
+                status
             );
             logger.info(`WorkflowTracker: onRoleComplete - Workflow item status updated`);
         } else {
@@ -180,7 +183,7 @@ export class WorkflowTracker {
                 this.sessionId,
                 roleName,
                 actionName,
-                'failed'
+                ActionStatus.FAILED
             );
         }
 
@@ -210,11 +213,9 @@ export class WorkflowTracker {
      * First tries database by sessionId, then by projectId, then falls back to memory
      */
     async getCurrentState(): Promise<WorkflowState> {
-        logger.info(`WorkflowTracker: getCurrentState called - sessionId=${this.sessionId}, projectId=${this.projectId}`);
         try {
             // Try database first by sessionId (most reliable)
             let dbState = await this.repository.getRunningState(this.sessionId);
-            logger.info(`WorkflowTracker: getCurrentState - Database state by sessionId: ${JSON.stringify(dbState)}`);
 
             // If not found and we have projectId, try by projectId
             if ((!dbState || (!dbState.current_role && !dbState.current_action)) && this.projectId) {
@@ -228,7 +229,6 @@ export class WorkflowTracker {
                     role: dbState.current_role,
                     action: dbState.current_action,
                 };
-                logger.info(`WorkflowTracker: getCurrentState - Returning database state: role=${state.role}, action=${state.action}`);
                 return state;
             } else {
                 logger.warn(`WorkflowTracker: getCurrentState - Database state is empty or null, will fallback to memory`);
@@ -265,7 +265,7 @@ export class WorkflowTracker {
             return items.map(item => ({
                 role: item.role,
                 action: item.action || '',
-                status: item.status as 'pending' | 'running' | 'completed' | 'failed',
+                status: item.status as ActionStatus,
             }));
         } catch (error: any) {
             logger.error('WorkflowTracker: Failed to get workflow items', {

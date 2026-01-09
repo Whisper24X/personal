@@ -14,6 +14,7 @@ import { Engineer } from '../roles/Engineer';
 import { QAEngineer } from '../roles/QAEngineer';
 import { logger } from '../utils';
 import { WorkflowTracker } from './WorkflowTracker';
+import { RoleReactMode } from '@mind2build/shared';
 // import { UserAction } from '../utils/InteractiveHandler'; // Unused
 
 export interface SessionConfig {
@@ -571,7 +572,7 @@ export class InteractiveSession {
       logger.info(`InteractiveSession: Processing role ${role.profile} (iteration ${iteration}, roleIndex ${roleIndex})`);
       const currentNewsCauseBys = role.rc.news.map((msg: any) => msg.causeBy).join(', ');
       const watchSet = Array.from(role.rc.watch).join(', ');
-      logger.debug(`InteractiveSession: Role ${role.profile} state: ${role.rc.state}, todo: ${role.rc.todo ? role.rc.todo.name : 'null'}, news: ${role.rc.news.length} [${currentNewsCauseBys}], watch: [${watchSet}]`);
+      logger.info(`InteractiveSession: Role ${role.profile} state BEFORE observe/think: state=${role.rc.state}, todo=${role.rc.todo ? role.rc.todo.name : 'null'}, news=${role.rc.news.length} [${currentNewsCauseBys}], watch=[${watchSet}], actions.length=${role.actions.length}, reactMode=${role.rc.reactMode}`);
 
       // Let role observe and think first to determine what action it wants to take
       // This is needed to check if the todo action is already completed
@@ -787,7 +788,57 @@ export class InteractiveSession {
       // Extract output files from message
       const outputFiles = this.extractOutputFiles(message);
 
-      logger.info(`InteractiveSession: Waiting for user confirmation for ${role.profile}`);
+      // IMPORTANT: Check if role has more actions BEFORE waiting for user confirmation
+      // If role has more actions, skip confirmation and continue executing actions
+      // Only wait for confirmation when all actions for this role are completed
+      const hasMoreActions = role.rc.reactMode === RoleReactMode.BY_ORDER &&
+        role.rc.state >= 0 &&
+        role.rc.state < role.actions.length - 1;
+
+      logger.info(`InteractiveSession: Checking if role ${role.profile} has more actions before confirmation`, {
+        reactMode: role.rc.reactMode,
+        state: role.rc.state,
+        actionsLength: role.actions.length,
+        hasMoreActions: hasMoreActions,
+        actionNames: role.actions.map(a => a.name).join(', '),
+        nextActionIndex: role.rc.state + 1,
+        nextActionName: hasMoreActions ? role.actions[role.rc.state + 1].name : 'none',
+        todo: role.rc.todo ? role.rc.todo.name : 'null',
+        newsCount: role.rc.news.length,
+      });
+
+      if (hasMoreActions) {
+        // Role has more actions to execute - skip user confirmation and continue
+        logger.info(`InteractiveSession: Role ${role.profile} has more actions in sequence (state=${role.rc.state}, total=${role.actions.length}), skipping confirmation and continuing with next action`);
+
+        // Publish message to environment (for other roles to observe)
+        env.publishMessage(message);
+        logger.info(`InteractiveSession: Published message from ${role.profile} (causeBy: ${message.causeBy}) to environment`);
+
+        // Save message to database for persistence
+        const projectId = this.config.projectId || this.id;
+        if (projectId) {
+          try {
+            const { MessageRepository } = await import('../database/repositories/MessageRepository');
+            const messageRepo = new MessageRepository();
+            await messageRepo.save(projectId, message);
+            logger.info(`InteractiveSession: Saved message ${message.id} to database for project ${projectId}`);
+          } catch (error: any) {
+            logger.warn(`InteractiveSession: Failed to save message to database`, {
+              error: error.message,
+              messageId: message.id,
+              projectId,
+            });
+            // Don't throw - continue even if save fails
+          }
+        }
+
+        // Continue with the same role to execute next action
+        continue;
+      }
+
+      // All actions for this role are completed - wait for user confirmation
+      logger.info(`InteractiveSession: All actions completed for ${role.profile}, waiting for user confirmation`);
 
       // Ensure state is correctly set before waiting for confirmation
       // This is important because onRoleComplete might have set action to null
@@ -1237,9 +1288,7 @@ export class InteractiveSession {
     role: string | null;
     action: string | null;
   }> {
-    logger.info(`InteractiveSession: getCurrentRunning called - sessionId=${this.id}`);
     const state = await this.workflowTracker.getCurrentState();
-    logger.info(`InteractiveSession: getCurrentRunning returning - role=${state.role}, action=${state.action}, sessionId=${this.id}`);
     return state;
   }
 }

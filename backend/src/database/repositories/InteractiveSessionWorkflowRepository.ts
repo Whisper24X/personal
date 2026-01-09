@@ -3,8 +3,8 @@
  * Data access layer for interactive session workflow state
  */
 
+import { ActionStatus } from '@mind2build/shared';
 import { query } from '../client';
-import { logger } from '../../utils';
 
 export interface WorkflowItem {
     id: string;
@@ -44,8 +44,8 @@ export class InteractiveSessionWorkflowRepository {
             );
 
             // If workflow already exists, don't reinitialize (preserve existing status)
-            if (existingWorkflow.rows[0] && parseInt(existingWorkflow.rows[0].count) > 0) {
-                logger.info(`Workflow already exists for session ${sessionId}, skipping reinitialization to preserve existing status`);
+            const count = existingWorkflow.rows[0]?.count;
+            if (count && (typeof count === 'number' ? count > 0 : parseInt(String(count), 10) > 0)) {
                 return;
             }
 
@@ -59,22 +59,11 @@ export class InteractiveSessionWorkflowRepository {
             ON CONFLICT (session_id, role, action) DO UPDATE SET
               status = COALESCE(interactive_session_workflows.status, EXCLUDED.status),
               updated_at = NOW()`,
-                        [sessionId, projectId, roleInfo.role, action.name, 'pending']
+                        [sessionId, projectId, roleInfo.role, action.name, ActionStatus.PENDING]
                     );
                 }
             }
-
-            logger.info(`Initialized workflow for session ${sessionId}`, {
-                sessionId,
-                projectId,
-                rolesCount: roles.length,
-            });
         } catch (error: any) {
-            logger.error('Failed to initialize workflow:', {
-                sessionId,
-                projectId,
-                error: error.message,
-            });
             throw error;
         }
     }
@@ -88,7 +77,6 @@ export class InteractiveSessionWorkflowRepository {
         role: string | null,
         action: string | null
     ): Promise<RunningState> {
-        logger.info(`InteractiveSessionWorkflowRepository: updateRunningState called - sessionId=${sessionId}, projectId=${projectId}, role=${role}, action=${action}`);
         try {
             const result = await query<RunningState>(
                 `INSERT INTO interactive_session_running_state (
@@ -103,22 +91,12 @@ export class InteractiveSessionWorkflowRepository {
             );
 
             if (!result.rows[0]) {
-                logger.error(`InteractiveSessionWorkflowRepository: updateRunningState - No row returned from database`);
                 throw new Error('Failed to update running state: no row returned');
             }
 
             const updatedState = result.rows[0];
-            logger.info(`InteractiveSessionWorkflowRepository: updateRunningState succeeded - Updated state: role=${updatedState.current_role}, action=${updatedState.current_action}, sessionId=${sessionId}`);
             return updatedState;
         } catch (error: any) {
-            logger.error('InteractiveSessionWorkflowRepository: Failed to update running state:', {
-                sessionId,
-                projectId,
-                role,
-                action,
-                error: error.message,
-                errorStack: error.stack,
-            });
             throw error;
         }
     }
@@ -127,7 +105,6 @@ export class InteractiveSessionWorkflowRepository {
      * Get current running state by sessionId
      */
     async getRunningState(sessionId: string): Promise<RunningState | null> {
-        logger.info(`InteractiveSessionWorkflowRepository: getRunningState called - sessionId=${sessionId}`);
         try {
             const result = await query<RunningState>(
                 `SELECT id, session_id, project_id, "current_role", "current_action", updated_at, created_at 
@@ -135,25 +112,16 @@ export class InteractiveSessionWorkflowRepository {
                 [sessionId]
             );
 
-            logger.info(`InteractiveSessionWorkflowRepository: getRunningState - Query returned ${result.rows.length} row(s)`);
-
             if (result.rows[0]) {
                 const state = {
                     ...result.rows[0],
                     current_role: result.rows[0].current_role,
                     current_action: result.rows[0].current_action,
                 };
-                logger.info(`InteractiveSessionWorkflowRepository: getRunningState - Found state: role=${state.current_role}, action=${state.current_action}, sessionId=${sessionId}`);
                 return state;
             }
-            logger.warn(`InteractiveSessionWorkflowRepository: getRunningState - No state found for sessionId=${sessionId}`);
             return null;
         } catch (error: any) {
-            logger.error('InteractiveSessionWorkflowRepository: Failed to get running state:', {
-                sessionId,
-                error: error.message,
-                errorStack: error.stack,
-            });
             return null;
         }
     }
@@ -162,7 +130,6 @@ export class InteractiveSessionWorkflowRepository {
      * Get current running state by projectId (for resuming sessions)
      */
     async getRunningStateByProjectId(projectId: string): Promise<RunningState | null> {
-        logger.info(`InteractiveSessionWorkflowRepository: getRunningStateByProjectId called - projectId=${projectId}`);
         try {
             const result = await query<RunningState>(
                 `SELECT id, session_id, project_id, "current_role", "current_action", updated_at, created_at 
@@ -173,25 +140,16 @@ export class InteractiveSessionWorkflowRepository {
                 [projectId]
             );
 
-            logger.info(`InteractiveSessionWorkflowRepository: getRunningStateByProjectId - Query returned ${result.rows.length} row(s)`);
-
             if (result.rows[0]) {
                 const state = {
                     ...result.rows[0],
                     current_role: result.rows[0].current_role,
                     current_action: result.rows[0].current_action,
                 };
-                logger.info(`InteractiveSessionWorkflowRepository: getRunningStateByProjectId - Found state: role=${state.current_role}, action=${state.current_action}, sessionId=${state.session_id}, projectId=${projectId}`);
                 return state;
             }
-            logger.warn(`InteractiveSessionWorkflowRepository: getRunningStateByProjectId - No state found for projectId=${projectId}`);
             return null;
         } catch (error: any) {
-            logger.error('InteractiveSessionWorkflowRepository: Failed to get running state by projectId:', {
-                projectId,
-                error: error.message,
-                errorStack: error.stack,
-            });
             return null;
         }
     }
@@ -211,17 +169,12 @@ export class InteractiveSessionWorkflowRepository {
             );
 
             if (sessionResult.rows.length === 0) {
-                logger.warn(`InteractiveSessionWorkflowRepository: No workflow found for projectId=${projectId}`);
                 return [];
             }
 
             const sessionId = sessionResult.rows[0].session_id;
             return this.getWorkflowItems(sessionId);
         } catch (error: any) {
-            logger.error('InteractiveSessionWorkflowRepository: Failed to get workflow items by projectId:', {
-                projectId,
-                error: error.message,
-            });
             return [];
         }
     }
@@ -240,10 +193,6 @@ export class InteractiveSessionWorkflowRepository {
 
             return result.rows;
         } catch (error: any) {
-            logger.error('Failed to get workflow items:', {
-                sessionId,
-                error: error.message,
-            });
             return [];
         }
     }
@@ -255,7 +204,7 @@ export class InteractiveSessionWorkflowRepository {
         sessionId: string,
         role: string,
         action: string,
-        status: string
+        status: ActionStatus
     ): Promise<void> {
         try {
             await query(
@@ -265,13 +214,7 @@ export class InteractiveSessionWorkflowRepository {
                 [status, sessionId, role, action]
             );
         } catch (error: any) {
-            logger.error('Failed to update workflow item status:', {
-                sessionId,
-                role,
-                action,
-                status,
-                error: error.message,
-            });
+            // Error handling
         }
     }
 
@@ -283,7 +226,7 @@ export class InteractiveSessionWorkflowRepository {
         projectId: string | null,
         role: string,
         action: string,
-        status: string
+        status: ActionStatus
     ): Promise<void> {
         try {
             await query(
@@ -296,14 +239,7 @@ export class InteractiveSessionWorkflowRepository {
                 [newSessionId, projectId, role, action, status]
             );
         } catch (error: any) {
-            logger.error('Failed to migrate workflow item:', {
-                newSessionId,
-                projectId,
-                role,
-                action,
-                status,
-                error: error.message,
-            });
+            // Error handling
         }
     }
 
@@ -319,10 +255,7 @@ export class InteractiveSessionWorkflowRepository {
                 [sessionId]
             );
         } catch (error: any) {
-            logger.error('Failed to clear running state:', {
-                sessionId,
-                error: error.message,
-            });
+            // Error handling
         }
     }
 
@@ -346,14 +279,8 @@ export class InteractiveSessionWorkflowRepository {
                 return false;
             }
 
-            return result.rows[0].status === 'completed';
+            return result.rows[0].status === ActionStatus.COMPLETED;
         } catch (error: any) {
-            logger.error('Failed to check action completion status:', {
-                sessionId,
-                role,
-                action,
-                error: error.message,
-            });
             return false; // On error, assume not completed to be safe
         }
     }
@@ -386,31 +313,14 @@ export class InteractiveSessionWorkflowRepository {
             // Get all downstream roles (including the target role)
             const downstreamRoles = roleOrder.slice(roleIndex);
 
-            logger.info(`Resetting workflow from role ${role}`, {
-                sessionId,
-                role,
-                downstreamRoles,
-            });
-
             // Reset all workflow items for downstream roles to 'pending'
             await query(
                 `UPDATE interactive_session_workflows 
-         SET status = 'pending', updated_at = NOW()
+         SET status = $3, updated_at = NOW()
          WHERE session_id = $1 AND role = ANY($2::text[])`,
-                [sessionId, downstreamRoles]
+                [sessionId, downstreamRoles, ActionStatus.PENDING]
             );
-
-            logger.info(`Successfully reset workflow from role ${role}`, {
-                sessionId,
-                role,
-                downstreamRoles,
-            });
         } catch (error: any) {
-            logger.error('Failed to reset workflow from role:', {
-                sessionId,
-                role,
-                error: error.message,
-            });
             throw error;
         }
     }

@@ -416,6 +416,16 @@ class APIClient {
       limit,
     });
   }
+
+  // Generic GET method for custom endpoints
+  async get(url: string, config?: any) {
+    return this.client.get(url, config);
+  }
+
+  // Generic POST method for custom endpoints
+  async post(url: string, data?: any, config?: any) {
+    return this.client.post(url, data, config);
+  }
 }
 
 export const apiClient = new APIClient();

@@ -8,6 +8,8 @@ import { Role } from './Role';
 import { Context } from '../core/context/Context';
 import { WritePRD } from '../actions/WritePRD';
 import { SearchEnhancedQA } from '../actions/SearchEnhancedQA';
+import { PRDReview } from '../actions/PRDReview';
+import { ImproveDocument } from '../actions/ImproveDocument';
 
 export class ProductManager extends Role {
   constructor(context: Context, name: string = 'ProductManager') {
@@ -25,8 +27,8 @@ export class ProductManager extends Role {
     // Use string literal to ensure it's not undefined
     this.watch([ACTION_WRITE_MRD || 'WriteMRD']);
     
-    // Set actions - WritePRD and SearchEnhancedQA as per PRD
-    this.setActions([new WritePRD(), new SearchEnhancedQA()]);
+    // Set actions - WritePRD, SearchEnhancedQA, PRDReview, and ImproveDocument
+    this.setActions([new WritePRD(), new SearchEnhancedQA(), new PRDReview(), new ImproveDocument()]);
   }
 }
 

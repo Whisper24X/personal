@@ -8,6 +8,8 @@ import { Role } from './Role';
 import { Context } from '../core/context/Context';
 import { WriteCode } from '../actions/WriteCode';
 import { ExecuteSubtask } from '../actions/ExecuteSubtask';
+import { RunCode } from '../actions/RunCode';
+import { FixBug } from '../actions/FixBug';
 import { Message } from '../core/message/Message';
 import { logger, SubtaskManager, loadPrompt, createWorkspaceZip, createCodeZip } from '../utils';
 import {
@@ -39,12 +41,42 @@ export class Engineer extends Role {
     // Watch for ProductManager output (WritePRD), Architect output (WriteDesign, BreakdownTasks)
     this.watch([ACTION_WRITE_PRD, ACTION_WRITE_DESIGN, ACTION_BREAKDOWN_TASKS]);
 
-    // Set actions - WriteCode and ExecuteSubtask
-    this.setActions([new WriteCode(), new ExecuteSubtask()]);
+    // Set actions - WriteCode, ExecuteSubtask, RunCode, and FixBug
+    this.setActions([new WriteCode(), new ExecuteSubtask(), new RunCode(), new FixBug()]);
   }
 
   /**
-   * Override act to handle subtask execution based on ProductManager and Architect outputs
+   * Override think to manage action coordination
+   * 通过think方法管理action之间的协作，而不是在act方法中直接切换
+   */
+  async think(): Promise<boolean> {
+    // 先调用基类的think方法
+    const hasTodo = await super.think();
+    
+    if (hasTodo && this.rc.todo) {
+      const action = this.rc.todo;
+      
+      // 如果当前action是ExecuteSubtask，检查是否需要先准备设计文档
+      if (action.name === 'ExecuteSubtask') {
+        // ExecuteSubtask需要从任务拆分中获取任务信息
+        // 这个逻辑在executeSubtask方法中处理
+        return true;
+      }
+      
+      // 如果当前action是WriteCode，检查是否有任务拆分需要处理
+      if (action.name === 'WriteCode') {
+        // WriteCode的处理逻辑在writeCodeWithTaskBreakdown方法中
+        // 如果需要执行子任务，会在那里切换到ExecuteSubtask
+        return true;
+      }
+    }
+    
+    return hasTodo;
+  }
+
+  /**
+   * Override act to handle action execution
+   * 移除action切换逻辑，改为通过think方法管理
    */
   async act(): Promise<Message | null> {
     if (!this.rc.todo) {
@@ -213,10 +245,16 @@ export class Engineer extends Role {
         const pendingTasks = subtaskManager.getPendingTasks();
 
         if (pendingTasks.length > 0) {
-          // 有任务需要执行，切换到ExecuteSubtask
+          // 有任务需要执行，设置下一个action为ExecuteSubtask
+          // 通过think方法管理action之间的协作，而不是直接切换
           const executeSubtaskAction = this.actions.find(a => a.name === 'ExecuteSubtask');
           if (executeSubtaskAction) {
-            logger.info(`${this.profile} WriteCode: Found ${pendingTasks.length} pending tasks, switching to ExecuteSubtask`);
+            logger.info(`${this.profile} WriteCode: Found ${pendingTasks.length} pending tasks, will execute ExecuteSubtask next`);
+            // 保存状态，让think方法决定下一个action
+            this.rc.state = -1; // 重置状态，让think方法重新选择action
+            // 将ExecuteSubtask设置为下一个待执行的action
+            // 注意：这里不直接切换，而是通过think方法管理
+            // 为了保持向后兼容，暂时直接设置，但应该通过think方法管理
             this.rc.todo = executeSubtaskAction;
             return await this.executeSubtask();
           }
@@ -533,13 +571,8 @@ export class Engineer extends Role {
       const workspaceOptions = this.extractWorkspaceOptions();
 
       if (!workspaceOptions?.applicationId || !workspaceOptions?.version) {
-        logger.warn(`${this.profile} ExecuteSubtask: Missing workspace options, falling back to WriteCode`);
-        // 如果没有workspace选项，使用WriteCode
-        const writeCodeAction = this.actions.find(a => a.name === 'WriteCode');
-        if (writeCodeAction) {
-          this.rc.todo = writeCodeAction;
-          return await super.act();
-        }
+        logger.warn(`${this.profile} ExecuteSubtask: Missing workspace options`);
+        this.rc.todo = null;
         return null;
       }
 
@@ -552,12 +585,8 @@ export class Engineer extends Role {
       });
 
       if (!loaded) {
-        logger.warn(`${this.profile} ExecuteSubtask: Failed to load task breakdown, falling back to WriteCode`);
-        const writeCodeAction = this.actions.find(a => a.name === 'WriteCode');
-        if (writeCodeAction) {
-          this.rc.todo = writeCodeAction;
-          return await super.act();
-        }
+        logger.warn(`${this.profile} ExecuteSubtask: Failed to load task breakdown`);
+        this.rc.todo = null;
         return null;
       }
 
@@ -565,12 +594,8 @@ export class Engineer extends Role {
       const pendingTasks = subtaskManager.getPendingTasks();
       if (pendingTasks.length === 0) {
         logger.info(`${this.profile} ExecuteSubtask: No pending tasks, all tasks completed`);
-        // 所有任务已完成，使用WriteCode处理设计文档
-        const writeCodeAction = this.actions.find(a => a.name === 'WriteCode');
-        if (writeCodeAction) {
-          this.rc.todo = writeCodeAction;
-          return await super.act();
-        }
+        // 所有任务已完成，清除当前action，让think方法决定下一个action
+        this.rc.todo = null;
         return null;
       }
 
@@ -622,12 +647,7 @@ export class Engineer extends Role {
       // 验证必需文档：DESIGN是必需的
       if (!design) {
         logger.warn(`${this.profile} ExecuteSubtask: No Design document found in workspace or memory, Design is required for code generation`);
-        // 回退到WriteCode
-        const writeCodeAction = this.actions.find(a => a.name === 'WriteCode');
-        if (writeCodeAction) {
-          this.rc.todo = writeCodeAction;
-          return await super.act();
-        }
+        this.rc.todo = null;
         return null;
       }
 
@@ -660,19 +680,71 @@ export class Engineer extends Role {
         attempt++;
         logger.info(`${this.profile} ExecuteSubtask: Code generation attempt ${attempt} for task ${task.id}`);
 
-        // 执行任务，传入PRD、Design和任务拆分文档信息
-        result = await (action as any).run(currentTaskDescription, {
-          ...workspaceOptions,
-          taskId: task.id,
-          taskDescription: currentTaskDescription,
-          prd: prd,
-          design: design,
-          taskBreakdown: taskBreakdownContent,
+      // 先调用ExecuteSubtask action来准备设计文档
+      const executeSubtaskResult = await (action as any).run(currentTaskDescription, {
+        ...workspaceOptions,
+        taskId: task.id,
+        taskDescription: currentTaskDescription,
+        prd: prd,
+        design: design,
+        taskBreakdown: taskBreakdownContent,
+      });
+
+      // ExecuteSubtask返回设计文档内容，现在需要调用WriteCode来生成代码
+      const designContent = executeSubtaskResult.data?.designContent;
+      if (!designContent) {
+        logger.error(`${this.profile} ExecuteSubtask: No design content returned from ExecuteSubtask action`);
+        throw new Error('ExecuteSubtask action did not return design content');
+      }
+
+      // 调用WriteCode action来生成代码
+      const writeCodeAction = this.actions.find(a => a.name === 'WriteCode');
+      if (!writeCodeAction) {
+        logger.error(`${this.profile} ExecuteSubtask: WriteCode action not found`);
+        throw new Error('WriteCode action not found');
+      }
+
+      // 调用WriteCode生成代码
+      const codeResult = await (writeCodeAction as any).run(designContent, executeSubtaskResult.data?.workspaceOptions);
+
+      // 更新子任务状态为已完成
+      if (workspaceOptions?.applicationId && workspaceOptions?.version) {
+        const subtaskManager = new SubtaskManager();
+        const loaded = await subtaskManager.loadFromWorkspace({
+          applicationId: workspaceOptions.applicationId,
+          version: workspaceOptions.version,
+          documentType: 'TASKS',
         });
 
-        // 解析生成的代码文件
-        const codeOutput = result.content || '';
-        const files = parseCodeFiles(codeOutput);
+        if (loaded) {
+          subtaskManager.markTaskCompleted(task.id);
+          await subtaskManager.saveToWorkspace({
+            applicationId: workspaceOptions.applicationId,
+            version: workspaceOptions.version,
+            documentType: 'TASKS',
+          });
+
+          // 生成执行报告并保存
+          const report = subtaskManager.getExecutionReport();
+          const WorkspaceManager = (await import('../utils/WorkspaceManager')).WorkspaceManager;
+          await WorkspaceManager.saveToWorkspace(
+            'TASK_EXECUTION_REPORT.md',
+            report,
+            {
+              applicationId: workspaceOptions.applicationId,
+              version: workspaceOptions.version,
+              documentType: 'TASKS',
+            }
+          );
+        }
+      }
+
+      // 使用WriteCode的结果
+      result = codeResult;
+
+      // 解析生成的代码文件
+      const codeOutput = result.content || '';
+      const files = parseCodeFiles(codeOutput);
 
         if (files.length === 0) {
           logger.warn(`${this.profile} ExecuteSubtask: No files generated in attempt ${attempt}`);

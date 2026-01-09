@@ -1,12 +1,12 @@
 /**
  * ExecuteSubtask Action
- * 执行单个子任务，生成对应的代码
+ * 准备子任务执行所需的设计文档内容，不直接生成代码
+ * 代码生成由Engineer角色通过WriteCode action来完成
  */
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { logger, SubtaskManager, WorkspaceOptions } from '../utils';
-import { WriteCode, WriteCodeOptions } from './WriteCode';
 
 export interface ExecuteSubtaskOptions extends WorkspaceOptions {
   taskId: string; // 要执行的任务ID
@@ -18,7 +18,7 @@ export interface ExecuteSubtaskOptions extends WorkspaceOptions {
 
 export class ExecuteSubtask extends BaseAction {
   constructor() {
-    super('ExecuteSubtask', 'Execute a single subtask and generate code');
+    super('ExecuteSubtask', 'Prepare subtask execution design document for code generation');
   }
 
   async run(
@@ -29,33 +29,12 @@ export class ExecuteSubtask extends BaseAction {
       throw new Error('ExecuteSubtask: taskId is required');
     }
 
-    logger.info('ExecuteSubtask: Starting subtask execution', {
+    logger.info('ExecuteSubtask: Preparing subtask execution design', {
       taskId: options.taskId,
     });
 
     try {
-      // 构建任务执行的prompt
-      // 将任务描述转换为设计文档格式，供WriteCode使用
-      const designContent = this.buildDesignFromTask(
-        taskDescription,
-        options.prd,
-        options.design,
-        options.taskBreakdown
-      );
-
-      // 使用WriteCode来生成代码
-      const writeCodeAction = new WriteCode();
-      writeCodeAction.setLLM(this.llm);
-
-      const writeCodeOptions: WriteCodeOptions = {
-        applicationId: options?.applicationId,
-        version: options?.version,
-        workspacePath: options?.workspacePath,
-      };
-
-      const codeResult = await writeCodeAction.run(designContent, writeCodeOptions);
-
-      // 更新子任务状态
+      // 标记任务为进行中
       if (options?.applicationId && options?.version) {
         const subtaskManager = new SubtaskManager();
         const loaded = await subtaskManager.loadFromWorkspace({
@@ -65,27 +44,7 @@ export class ExecuteSubtask extends BaseAction {
         });
 
         if (loaded) {
-          subtaskManager.markTaskCompleted(options.taskId);
-          await subtaskManager.saveToWorkspace({
-            applicationId: options.applicationId,
-            version: options.version,
-            documentType: 'TASKS',
-          });
-
-          // 生成执行报告并保存
-          const report = subtaskManager.getExecutionReport();
-          const WorkspaceManager = (await import('../utils/WorkspaceManager')).WorkspaceManager;
-          await WorkspaceManager.saveToWorkspace(
-            'TASK_EXECUTION_REPORT.md',
-            report,
-            {
-              applicationId: options.applicationId,
-              version: options.version,
-              documentType: 'TASKS',
-            }
-          );
-          
-          // 保存更新后的任务状态
+          subtaskManager.markTaskInProgress(options.taskId);
           await subtaskManager.saveToWorkspace({
             applicationId: options.applicationId,
             version: options.version,
@@ -94,21 +53,39 @@ export class ExecuteSubtask extends BaseAction {
         }
       }
 
-      logger.info('ExecuteSubtask: Subtask execution completed', {
+      // 构建任务执行的prompt
+      // 将任务描述转换为设计文档格式，供WriteCode使用
+      const designContent = this.buildDesignFromTask(
+        taskDescription,
+        options.prd,
+        options.design,
+        options.taskBreakdown
+      );
+
+      logger.info('ExecuteSubtask: Design document prepared', {
         taskId: options.taskId,
-        filesGenerated: codeResult.data?.filesCount || 0,
+        designContentLength: designContent.length,
       });
 
+      // 返回设计文档内容，由Engineer角色通过WriteCode action来生成代码
       return {
-        content: `# 子任务执行完成\n\n任务ID: ${options.taskId}\n\n${codeResult.content}`,
+        content: `# 子任务准备完成\n\n任务ID: ${options.taskId}\n\n已准备好任务执行所需的设计文档内容。`,
         data: {
-          type: 'subtask_execution',
+          type: 'subtask_preparation',
           taskId: options.taskId,
-          ...codeResult.data,
+          designContent: designContent,
+          // 保留原始选项，供后续WriteCode使用
+          workspaceOptions: {
+            applicationId: options.applicationId,
+            version: options.version,
+            workspacePath: options.workspacePath,
+            projectId: options.projectId,
+            documentType: 'CODE',
+          },
         },
       };
     } catch (error: any) {
-      logger.error('ExecuteSubtask: Failed to execute subtask', {
+      logger.error('ExecuteSubtask: Failed to prepare subtask', {
         taskId: options.taskId,
         error: error.message,
       });

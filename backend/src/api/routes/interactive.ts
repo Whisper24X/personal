@@ -273,7 +273,6 @@ router.get('/interactive/:sessionId/poll', async (req, res) => {
       hasMore: messages.length > 0,
     });
   } catch (error: any) {
-    logger.error('API: Error polling messages', error);
     return res.status(500).json({
       error: error.message || 'Failed to poll messages',
     });
@@ -337,7 +336,7 @@ router.get('/interactive/:sessionId/workflow', async (req, res) => {
     }
 
     const workflowInfo = session.getWorkflowInfo();
-    
+
     // Also get workflow items status
     const workflowTracker = (session as any).workflowTracker;
     const workflowItems = workflowTracker ? await workflowTracker.getWorkflowItems() : [];
@@ -362,7 +361,6 @@ router.get('/interactive/:sessionId/workflow', async (req, res) => {
 router.get('/interactive/:sessionId/running', async (req, res) => {
   try {
     const { sessionId } = req.params;
-    logger.info(`API: GET /interactive/${sessionId}/running - Request received`);
 
     const session = sessionManager.getSession(sessionId);
 
@@ -374,15 +372,12 @@ router.get('/interactive/:sessionId/running', async (req, res) => {
     }
 
     // getCurrentRunning is now async and reads from database
-    logger.info(`API: GET /interactive/${sessionId}/running - Calling session.getCurrentRunning()`);
     const runningInfo = await session.getCurrentRunning();
-    logger.info(`API: GET /interactive/${sessionId}/running - Running info received: role=${runningInfo.role}, action=${runningInfo.action}`);
 
     const response = {
       success: true,
       ...runningInfo,
     };
-    logger.info(`API: GET /interactive/${sessionId}/running - Returning response: ${JSON.stringify(response)}`);
 
     return res.json(response);
   } catch (error: any) {

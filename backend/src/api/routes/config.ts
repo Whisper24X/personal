@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { LLMConfigController } from '../controllers/LLMConfigController';
 import { RoleLLMConfigController } from '../controllers/RoleLLMConfigController';
 import { PromptConfigController } from '../controllers/PromptConfigController';
+import { RoleActionController } from '../controllers/RoleActionController';
 // import { authMiddleware } from '../middleware/auth'; // Unused
 
 const router: Router = Router();
@@ -39,6 +40,11 @@ router.get('/prompts/:type', PromptConfigController.getByType);
 router.get('/prompts/:type/:key', PromptConfigController.get);
 router.post('/prompts', PromptConfigController.upsert);
 router.delete('/prompts/:type/:key', PromptConfigController.delete);
+
+// Role and Action metadata routes
+router.get('/roles', RoleActionController.getRoles);
+router.get('/actions', RoleActionController.getActions);
+router.get('/roles-actions', RoleActionController.getRolesAndActions);
 
 export default router;
 

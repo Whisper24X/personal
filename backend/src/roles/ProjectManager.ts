@@ -13,6 +13,8 @@ import { Context } from '../core/context/Context';
 import { BreakdownTasks } from '../actions/BreakdownTasks';
 import { WriteSubProjectDesign } from '../actions/WriteSubProjectDesign';
 import { GenerateTask } from '../actions/GenerateTask';
+import { SubProjectDesignReview } from '../actions/SubProjectDesignReview';
+import { CodeReview } from '../actions/CodeReview';
 import { Message } from '../core/message/Message';
 import { logger, SubtaskManager, WorkspaceOptions } from '../utils';
 
@@ -36,6 +38,8 @@ export class ProjectManager extends Role {
       new BreakdownTasks(),
       new WriteSubProjectDesign(),
       new GenerateTask(),
+      new SubProjectDesignReview(),
+      new CodeReview(),
     ]);
   }
 

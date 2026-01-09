@@ -13,8 +13,7 @@ import {
   buildMRDSectionReviewPrompt,
 } from '../prompts/mrd';
 import { logger, loadPrompt } from '../utils';
-import { MRDReview } from './MRDReview';
-import { ImproveDocument } from './ImproveDocument';
+// Review和ImproveDocument已移除，由角色通过消息机制管理
 import { StepwiseDocumentGenerator } from '../utils/StepwiseDocumentGenerator';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -208,8 +207,7 @@ export class WriteMRD extends BaseAction {
   private async generateStepwise(input: string, options?: WriteMRDOptions): Promise<IActionOutput> {
     // 确保使用MRD目录
     const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'MRD' });
-    const reviewAction = new MRDReview();
-    const improveAction = new ImproveDocument();
+    // 移除对Review和ImproveDocument的直接调用，改为通过角色管理
 
     // Load system prompt from database or use default
     const userId = this.context?.get('userId');
@@ -218,12 +216,8 @@ export class WriteMRD extends BaseAction {
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
       buildOutlinePrompt: buildMRDOutlinePrompt,
       buildSectionPrompt: buildMRDSectionPrompt,
-      buildSectionReviewPrompt: buildMRDSectionReviewPrompt,
       systemPrompt: systemPrompt,
-      reviewAction: reviewAction,
-      reviewTitle: '市场研究文档审查报告',
-      improveAction: improveAction,
-      autoImprove: true, // 自动在审查后改进文档
+      // Review 由角色通过 MRDReview action 统一处理
       documentTitle: '市场研究文档（MRD）',
       documentType: 'MRD',
       mainFileName: 'MRD.md',
