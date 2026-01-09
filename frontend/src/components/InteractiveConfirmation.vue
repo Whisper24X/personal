@@ -129,7 +129,7 @@
                     </div>
                 </el-scrollbar>
 
-                <div v-if="viewMode === 'preview' && roleInfo.content.length > 500" class="preview-notice">
+                <div v-if="viewMode === 'preview' && roleInfo.content && roleInfo.content.length > 500" class="preview-notice">
                     <el-alert title="这是内容预览，点击'完整内容'查看全部" type="info" :closable="false" show-icon />
                 </div>
 
@@ -338,7 +338,7 @@
                     </div>
                 </el-scrollbar>
 
-                <div v-if="viewMode === 'preview' && roleInfo.content.length > 500" class="preview-notice">
+                <div v-if="viewMode === 'preview' && roleInfo.content && roleInfo.content.length > 500" class="preview-notice">
                     <el-alert title="这是内容预览，点击'完整内容'查看全部" type="info" :closable="false" show-icon />
                 </div>
 
@@ -509,7 +509,7 @@ const documentType = computed(() => {
 // Check if content has sections - more lenient check
 const hasSectionedContent = computed(() => {
     const content = props.roleInfo.content;
-    if (!content || content.trim().length === 0) return false;
+    if (!content || typeof content !== 'string' || content.trim().length === 0) return false;
 
     // Check for section markers - check if any line starts with ## followed by a number
     const lines = content.split('\n');
@@ -528,12 +528,13 @@ function handleSectionAdjusted(sectionNumber: number) {
 }
 
 const displayContent = computed(() => {
+    const content = props.roleInfo.content || '';
     if (viewMode.value === 'preview') {
-        return props.roleInfo.content.length > 500
-            ? props.roleInfo.content.substring(0, 500) + '\n...\n\n[查看完整内容]'
-            : props.roleInfo.content;
+        return content.length > 500
+            ? content.substring(0, 500) + '\n...\n\n[查看完整内容]'
+            : content;
     }
-    return props.roleInfo.content;
+    return content;
 });
 
 const hasFiles = computed(() => {
@@ -663,7 +664,7 @@ const isIdle = computed(() => props.roleInfo.action === 'idle');
 
 function startEdit() {
     isEditing.value = true;
-    editedContent.value = props.roleInfo.content;
+    editedContent.value = props.roleInfo.content || '';
     viewMode.value = 'full';
     // Initialize file edits
     if (props.roleInfo.outputFiles) {
@@ -704,7 +705,7 @@ function saveEdit() {
     isEditing.value = false;
 
     // Prepare modified content with files
-    let modifiedContent = editedContent.value || props.roleInfo.content;
+    let modifiedContent = editedContent.value || props.roleInfo.content || '';
 
     // If files were edited, include them in the content
     if (editedFiles.value.size > 0 && props.roleInfo.outputFiles) {

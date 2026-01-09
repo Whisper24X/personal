@@ -3,7 +3,6 @@
  * Manages multiple interactive sessions
  */
 
-import { v4 as uuidv4 } from 'uuid';
 import { InteractiveSession, SessionConfig } from './InteractiveSession';
 import { logger } from '../utils';
 
@@ -31,21 +30,23 @@ export class InteractiveSessionManager {
      * Create a new interactive session
      */
     createSession(config: SessionConfig): InteractiveSession {
-        const sessionId = uuidv4();
-        const session = new InteractiveSession(sessionId, config);
+        if (!config.projectId) {
+            throw new Error('projectId is required to create an interactive session');
+        }
+        const session = new InteractiveSession(config.projectId, config);
 
-        this.sessions.set(sessionId, session);
+        this.sessions.set(config.projectId, session);
 
-        logger.info(`SessionManager: Created session ${sessionId} for project "${config.name}"`);
+        logger.info(`SessionManager: Created session for project ${config.projectId} "${config.name}"`);
 
         return session;
     }
 
     /**
-     * Get a session by ID
+     * Get a session by projectId
      */
-    getSession(sessionId: string): InteractiveSession | undefined {
-        const session = this.sessions.get(sessionId);
+    getSession(projectId: string): InteractiveSession | undefined {
+        const session = this.sessions.get(projectId);
 
         if (session) {
             session.updateActivity();
@@ -57,13 +58,13 @@ export class InteractiveSessionManager {
     /**
      * Remove a session
      */
-    removeSession(sessionId: string): boolean {
-        const session = this.sessions.get(sessionId);
+    removeSession(projectId: string): boolean {
+        const session = this.sessions.get(projectId);
 
         if (session) {
             session.cleanup();
-            this.sessions.delete(sessionId);
-            logger.info(`SessionManager: Removed session ${sessionId}`);
+            this.sessions.delete(projectId);
+            logger.info(`SessionManager: Removed session for project ${projectId}`);
             return true;
         }
 
@@ -120,19 +121,19 @@ export class InteractiveSessionManager {
      * Clean up expired sessions
      */
     cleanupExpiredSessions(): void {
-        const expiredSessions: string[] = [];
+        const expiredProjects: string[] = [];
 
-        for (const [id, session] of this.sessions.entries()) {
+        for (const [projectId, session] of this.sessions.entries()) {
             if (session.isExpired()) {
-                expiredSessions.push(id);
+                expiredProjects.push(projectId);
             }
         }
 
-        if (expiredSessions.length > 0) {
-            logger.info(`SessionManager: Cleaning up ${expiredSessions.length} expired sessions`);
+        if (expiredProjects.length > 0) {
+            logger.info(`SessionManager: Cleaning up ${expiredProjects.length} expired sessions`);
 
-            expiredSessions.forEach(id => {
-                this.removeSession(id);
+            expiredProjects.forEach(projectId => {
+                this.removeSession(projectId);
             });
         }
     }

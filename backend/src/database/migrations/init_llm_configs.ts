@@ -6,7 +6,7 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import { LLMConfigRepository, ProviderConfigRepository } from '../repositories';
-import { connectDatabase, disconnectDatabase } from '../client';
+import { connectDatabase, disconnectDatabase, query } from '../client';
 import { logger } from '../../utils';
 import { LLMProvider } from '@mind2build/shared';
 
@@ -15,6 +15,59 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const DEFAULT_USER_ID = '302769d6-247d-43db-a005-0519712255fb';
 const ACTIVE_PROVIDER = (process.env.LLM_PROVIDER || 'zhipuai') as LLMProvider;
+
+async function ensureDefaultUser(): Promise<string> {
+  try {
+    // Check if user exists
+    const userResult = await query<{ id: string }>(
+      'SELECT id FROM users WHERE id = $1',
+      [DEFAULT_USER_ID]
+    );
+
+    if (userResult.rows.length === 0) {
+      // Create default user if not exists
+      // Using a simple password hash (in production, use proper bcrypt)
+      // For initialization scripts, we use a placeholder hash
+      const defaultPasswordHash = '$2b$10$placeholder.hash.for.default.user.initialization';
+      
+      try {
+        await query(
+          `INSERT INTO users (id, username, email, password_hash, full_name, status)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            DEFAULT_USER_ID,
+            'default_user',
+            'default@mind2build.com',
+            defaultPasswordHash,
+            'Default User',
+            'active'
+          ]
+        );
+        logger.info('   ✅ Default user created');
+        return DEFAULT_USER_ID;
+      } catch (insertError: any) {
+        // If user already exists (by username or email), use the existing user id
+        if (insertError.code === '23505') { // Unique violation
+          const existingUser = await query<{ id: string }>(
+            'SELECT id FROM users WHERE username = $1 OR email = $2 LIMIT 1',
+            ['default_user', 'default@mind2build.com']
+          );
+          if (existingUser.rows.length > 0) {
+            logger.info(`   ℹ️  Default user already exists with id: ${existingUser.rows[0].id}`);
+            return existingUser.rows[0].id;
+          }
+        }
+        throw insertError;
+      }
+    } else {
+      logger.info('   ✅ Default user already exists');
+      return DEFAULT_USER_ID;
+    }
+  } catch (error: any) {
+    logger.warn(`   ⚠️  Failed to ensure default user: ${error.message}`);
+    throw error;
+  }
+}
 
 interface ProviderConfig {
   provider: LLMProvider;
@@ -29,6 +82,9 @@ async function initLLMConfigs() {
   try {
     await connectDatabase();
     logger.info('🔄 Initializing LLM configs from environment variables...');
+
+    // Ensure default user exists before inserting LLM configs
+    const actualUserId = await ensureDefaultUser();
 
     const llmConfigRepo = new LLMConfigRepository();
     const providerConfigRepo = new ProviderConfigRepository();
@@ -104,7 +160,7 @@ async function initLLMConfigs() {
         if (config.apiKey || config.baseURL || config.model || config.provider === 'ollama') {
           try {
             await providerConfigRepo.upsert({
-              userId: DEFAULT_USER_ID,
+              userId: actualUserId,
               provider: config.provider,
               apiKey: config.apiKey || '',
               baseURL: config.baseURL,
@@ -118,7 +174,7 @@ async function initLLMConfigs() {
         
         // Step 2: Save model config (Model, Temperature, Max Tokens)
         const savedConfig = await llmConfigRepo.upsert({
-          userId: DEFAULT_USER_ID,
+          userId: actualUserId,
           provider: config.provider,
           model: config.model,
           temperature,
@@ -146,7 +202,7 @@ async function initLLMConfigs() {
 
     // Ensure active provider is set correctly
     if (activeConfigId) {
-      await llmConfigRepo.setActive(DEFAULT_USER_ID, activeConfigId);
+      await llmConfigRepo.setActive(actualUserId, activeConfigId);
       logger.info(`   ✅ Activated provider: ${ACTIVE_PROVIDER}`);
     }
 

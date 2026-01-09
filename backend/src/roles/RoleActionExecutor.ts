@@ -358,8 +358,14 @@ export class RoleActionExecutor {
                 `${this.profile} cleared todo but kept news (${this.rc.news.length} messages) for next action in sequence`
             );
         } else {
+            // All actions completed - clear todo and news, and reset state
             this.rc.todo = null;
             this.rc.news = [];
+            // Reset state to -1 to indicate sequence is complete
+            if (this.rc.reactMode === RoleReactMode.BY_ORDER && this.rc.state >= this.actions.length - 1) {
+                logger.debug(`${this.profile} all actions completed (state=${this.rc.state} >= ${this.actions.length - 1}), resetting state to -1`);
+                this.rc.state = -1;
+            }
             logger.debug(`${this.profile} cleared todo and news after successful action execution (no more actions in sequence)`);
         }
     }

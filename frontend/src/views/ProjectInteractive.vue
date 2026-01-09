@@ -344,7 +344,6 @@ const roleActionStore = useRoleActionStore();
 const projectId = ref((route.params.id as string) || (route.query.id as string) || '');
 const projectName = ref(route.query.name as string || 'Untitled Project');
 const maxRounds = ref(parseInt(route.query.rounds as string) || 5);
-const sessionId = ref<string>('');
 const userIdea = ref(route.query.idea as string || '');
 
 // State
@@ -416,6 +415,9 @@ interface WorkflowRoleColumn {
 // Workflow structure: role -> actions mapping (loaded from API)
 const workflowStructure = ref<Record<string, string[]>>({});
 const workflowLoading = ref(false);
+// Workflow items from /api/interactive/:projectId/running endpoint
+// This is the primary source of truth for role and action statuses
+const workflowItems = ref<any[]>([]);
 
 // Computed kanban board data
 const workflowKanban = computed<WorkflowRoleColumn[]>(() => {
@@ -433,11 +435,21 @@ const workflowKanban = computed<WorkflowRoleColumn[]>(() => {
     completedMap.set(key, step);
   });
 
+  // Create a map of workflow items status from API
+  const workflowItemsMap = new Map<string, any>();
+  workflowItems.value.forEach(item => {
+    if (item.role && item.action) {
+      const key = `${item.role}-${item.action}`;
+      workflowItemsMap.set(key, item);
+    }
+  });
+
   // Process each role
   Object.entries(workflowStructure.value).forEach(([role, actions]) => {
     const roleActions: WorkflowAction[] = actions.map(actionName => {
       const key = `${role}-${actionName}`;
       const completedStep = completedMap.get(key);
+      const workflowItem = workflowItemsMap.get(key);
 
       let status: 'pending' | 'running' | 'waiting' | 'completed' = 'pending';
       let userAction: string | undefined;
@@ -448,7 +460,36 @@ const workflowKanban = computed<WorkflowRoleColumn[]>(() => {
       let zipType: string | undefined;
       let stepData: any | undefined;
 
-      if (completedStep) {
+      // Priority: workflowItem status (from API) > currentStep > completedStep > running state
+      // Use workflowItem status as primary source of truth from /running API
+      if (workflowItem) {
+        // Use status from workflow items API (primary source)
+        const itemStatus = workflowItem.status;
+        if (itemStatus === 'completed') {
+          status = 'completed';
+          // If we have completedStep data, use it for additional info
+          if (completedStep) {
+            userAction = completedStep.userAction;
+            timestamp = completedStep.timestamp;
+            content = completedStep.content;
+            outputFiles = completedStep.outputFiles;
+            zipPath = completedStep.zipPath;
+            zipType = completedStep.zipType;
+            stepData = completedStep;
+          }
+        } else if (itemStatus === 'running') {
+          status = 'running';
+        } else if (itemStatus === 'pending') {
+          status = 'pending';
+        }
+      } else if (currentStep.value && currentStep.value.role === role && currentStep.value.action === actionName) {
+        // Waiting for confirmation (from confirmationRequired)
+        status = 'waiting';
+        content = currentStep.value.content;
+        outputFiles = currentStep.value.outputFiles;
+        stepData = currentStep.value;
+      } else if (completedStep) {
+        // Fallback to local completed step
         status = 'completed';
         userAction = completedStep.userAction;
         timestamp = completedStep.timestamp;
@@ -457,25 +498,9 @@ const workflowKanban = computed<WorkflowRoleColumn[]>(() => {
         zipPath = completedStep.zipPath;
         zipType = completedStep.zipType;
         stepData = completedStep;
-      } else if (currentStep.value && currentStep.value.role === role && currentStep.value.action === actionName) {
-        status = 'waiting';
-        content = currentStep.value.content;
-        outputFiles = currentStep.value.outputFiles;
-        stepData = currentStep.value;
       } else if (isRunning.value && runningRole.value === role && currentAction.value === actionName) {
-        // Check if this action is currently running
+        // Fallback: Check if this action is currently running (from local state)
         status = 'running';
-        // Debug log for Salesperson
-        if (role === 'Salesperson') {
-          console.log('[Salesperson running check]', {
-            role,
-            actionName,
-            runningRole: runningRole.value,
-            currentAction: currentAction.value,
-            isRunning: isRunning.value,
-            status: 'running'
-          });
-        }
       }
 
       return {
@@ -543,13 +568,13 @@ function setActionRef(el: any, role: string, action: string) {
 
 // Load workflow information from API
 async function loadWorkflowInfo() {
-  if (!sessionId.value) {
+  if (!projectId.value) {
     return;
   }
 
   try {
     workflowLoading.value = true;
-    const response = await apiClient.getInteractiveWorkflow(sessionId.value) as any;
+    const response = await apiClient.getInteractiveWorkflow(projectId.value) as any;
 
     if (response && response.roles) {
       // Convert API response to workflow structure format
@@ -559,8 +584,11 @@ async function loadWorkflowInfo() {
       });
       workflowStructure.value = structure;
 
-      // Restore completed steps from workflow items
+      // Update workflow items from API response
       if (response.items && Array.isArray(response.items)) {
+        workflowItems.value = response.items;
+
+        // Restore completed steps from workflow items
         const completedItems = response.items.filter((item: any) => item.status === 'completed');
         // Only restore if we don't already have these steps (to avoid duplicates)
         const existingKeys = new Set(completedSteps.value.map(s => `${s.role}-${s.action}`));
@@ -606,26 +634,124 @@ async function loadWorkflowInfo() {
   }
 }
 
-// Load current running role and action from API
+/**
+ * Load current running state and workflow items from /api/interactive/:projectId/running
+ * This is the primary source of truth for rendering role and action statuses in the UI
+ */
 async function loadRunningInfo() {
-  if (!sessionId.value) {
+  if (!projectId.value) {
     return;
   }
 
   try {
-    const response = await apiClient.getInteractiveRunning(sessionId.value) as any;
+    // Call /api/interactive/:projectId/running endpoint
+    const response = await apiClient.getInteractiveRunning(projectId.value) as any;
 
-    if (response && (response.role || response.action)) {
-      // Update running state from API
-      if (response.role) {
-        runningRole.value = response.role;
+    if (!response || !response.success) {
+      return;
+    }
+
+    // Update workflow items from API response (primary source for status rendering)
+    // This array contains all workflow items with their current status (pending/running/completed)
+    if (response.items && Array.isArray(response.items)) {
+      workflowItems.value = response.items;
+
+      // Update completed steps from workflow items
+      const completedItems = response.items.filter((item: any) => item.status === 'completed');
+      const existingKeys = new Set(completedSteps.value.map(s => `${s.role}-${s.action}`));
+      const newSteps = completedItems
+        .filter((item: any) => item.role && item.action && !existingKeys.has(`${item.role}-${item.action}`))
+        .map((item: any) => ({
+          role: item.role,
+          action: item.action,
+          userAction: 'skip', // Default, will be updated if we have more info
+          timestamp: new Date().toISOString(),
+          content: undefined,
+          outputFiles: undefined,
+          zipPath: undefined,
+          zipType: undefined,
+        }));
+      completedSteps.value.push(...newSteps);
+    }
+
+    // Update running state from API response
+    // Use response.running object if available, otherwise fall back to response.role/action
+    const runningState = response.running || { role: response.role, action: response.action };
+
+    if (runningState.role) {
+      runningRole.value = runningState.role;
+    }
+    if (runningState.action) {
+      currentAction.value = runningState.action;
+    }
+
+    if (runningState.role && runningState.action) {
+      currentStageName.value = getStageName(runningState.role, runningState.action);
+    }
+
+    // Handle paused state (waiting for manual confirmation)
+    // Use requiresConfirmation from database as primary source of truth
+    const requiresConfirmation = response.requiresConfirmation || false;
+    const confirmationRole = response.confirmationRole || null;
+    const isPaused = response.isPaused || false;
+    const confirmationRequired = response.confirmationRequired;
+
+    // If confirmation is required (from database), force show confirmation dialog
+    if (requiresConfirmation || (isPaused && confirmationRequired)) {
+      // Workflow is paused waiting for confirmation
+      isRunning.value = false;
+
+      // Set current step for confirmation dialog
+      if (confirmationRequired) {
+        currentStep.value = {
+          role: confirmationRequired.role,
+          action: confirmationRequired.action,
+          content: confirmationRequired.content,
+          outputFiles: confirmationRequired.outputFiles || [],
+          instructContent: confirmationRequired.instructContent || {},
+        };
+      } else if (confirmationRole) {
+        // Fallback: use confirmationRole from database if confirmationRequired details not available
+        currentStep.value = {
+          role: confirmationRole,
+          action: runningState.action || '',
+          content: null,
+          outputFiles: [],
+          instructContent: {},
+        };
       }
-      if (response.action) {
-        currentAction.value = response.action;
+
+      // Update running role and action for display
+      const roleToShow = confirmationRequired?.role || confirmationRole || runningState.role;
+      const actionToShow = confirmationRequired?.action || runningState.action;
+
+      if (roleToShow) {
+        runningRole.value = roleToShow;
       }
-      if (response.role && response.action) {
-        currentStageName.value = getStageName(response.role, response.action);
+      if (actionToShow) {
+        currentAction.value = actionToShow;
+      }
+      if (roleToShow && actionToShow) {
+        currentStageName.value = getStageName(roleToShow, actionToShow);
+      }
+
+      // Force show confirmation dialog when requiresConfirmation is true
+      if (requiresConfirmation && currentStep.value) {
+        showConfirmationDialog.value = true;
+      }
+    } else {
+      // Workflow is running (not paused and no confirmation required)
+      // Check if there's a running state
+      if (runningState.role && runningState.action) {
         isRunning.value = true;
+        // Clear current step if workflow is running
+        currentStep.value = null;
+        showConfirmationDialog.value = false;
+      } else {
+        // No running state, workflow might be idle or completed
+        isRunning.value = false;
+        currentStep.value = null;
+        showConfirmationDialog.value = false;
       }
     }
   } catch (error: any) {
@@ -673,6 +799,11 @@ onMounted(async () => {
       console.warn('Failed to load project info:', err);
       // Continue with query params or default values
     }
+  }
+
+  // Load running info if projectId exists (for existing projects)
+  if (projectId.value) {
+    await loadRunningInfo();
   }
 
   startInteractiveSession();
@@ -786,37 +917,35 @@ async function startInteractiveSession() {
     }
 
     const data = await response.json();
-    const sid = data.sessionId;
-    sessionId.value = sid;
+
+    // Update projectId from response
+    if (data.projectId) {
+      projectId.value = data.projectId;
+    } else if (data.project?.id) {
+      projectId.value = data.project.id;
+    }
+
+    if (!projectId.value) {
+      throw new Error('Project ID not found in response');
+    }
 
     // Update maxRounds from backend response config (source of truth)
     if (data.config?.nRound !== undefined && data.config.nRound !== null) {
       maxRounds.value = data.config.nRound;
     }
 
-    // In interactive session, use sessionId as projectId if no projectId provided
-    // Update projectId if provided in response
-    if (data.projectId) {
-      projectId.value = data.projectId;
-    } else if (data.project?.id) {
-      projectId.value = data.project.id;
-    } else if (!projectId.value && sid) {
-      // Use sessionId as projectId for interactive sessions
-      projectId.value = sid;
-    }
-
     // Load workflow information
     await loadWorkflowInfo();
 
     // Start polling
-    startPolling(sid);
+    startPolling(projectId.value);
   } catch (error: any) {
     ElMessage.error('启动会话失败: ' + error.message);
     isRunning.value = false;
   }
 }
 
-function startPolling(sessionId: string) {
+function startPolling(projectId: string) {
   try {
     // Stop existing polling if any
     if (pollingController) {
@@ -831,7 +960,7 @@ function startPolling(sessionId: string) {
     pollingController = createPolling(
       async () => {
         try {
-          const response = await apiClient.pollInteractiveMessages(sessionId, lastMessageId);
+          const response = await apiClient.pollInteractiveMessages(projectId, lastMessageId);
           // Also load running info periodically
           await loadRunningInfo();
           return response;
@@ -957,12 +1086,9 @@ function handlePollingMessage(message: { type: string; data: any }) {
       break;
 
     case 'completed':
-      // Update projectId from completion message
+      // Update projectId from completion message if provided
       if (message.data.projectId) {
         projectId.value = message.data.projectId;
-      } else if (sessionId.value && !projectId.value) {
-        // Fallback to sessionId if no projectId in message
-        projectId.value = sessionId.value;
       }
       complete();
       ElMessage.success('项目生成完成！');
@@ -1001,13 +1127,14 @@ async function handleUserAction(action: string, modifiedContent?: string) {
 
     completedSteps.value.push(step);
 
-    // Send action to backend via HTTP API
+    // Send confirmation to backend via HTTP API
+    // This will clear the confirmation status in database and allow workflow to proceed
     try {
-      await apiClient.sendInteractiveAction(sessionId.value, action, modifiedContent);
-      console.log('User action sent successfully');
+      await apiClient.confirmRoleCompletion(projectId.value, action, modifiedContent);
+      console.log('Role confirmation sent successfully');
     } catch (error: any) {
-      console.error('Failed to send action:', error);
-      ElMessage.error('发送操作失败: ' + (error.message || '未知错误'));
+      console.error('Failed to send confirmation:', error);
+      ElMessage.error('确认操作失败: ' + (error.message || '未知错误'));
       actionLoading.value = false;
       return;
     }
@@ -1349,8 +1476,8 @@ function cleanup() {
  * This will reset the role and all downstream roles to pending status
  */
 async function handleResetRole(role: string) {
-  if (!sessionId.value) {
-    ElMessage.error('会话ID不存在');
+  if (!projectId.value) {
+    ElMessage.error('项目ID不存在');
     return;
   }
 
@@ -1370,7 +1497,7 @@ async function handleResetRole(role: string) {
     resettingRoles.value.add(role);
 
     // Call API to reset workflow
-    await apiClient.resetInteractiveWorkflow(sessionId.value, role);
+    await apiClient.resetInteractiveWorkflow(projectId.value, role);
 
     // Remove completed steps for this role and downstream roles
     const roleOrder = [

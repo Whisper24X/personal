@@ -21,14 +21,11 @@ export interface WorkflowItem {
 }
 
 export class WorkflowTracker {
-    private sessionId: string;
-    private projectId: string | null;
+    private projectId: string;
     private team: Team;
     private repository: InteractiveSessionWorkflowRepository;
-    private currentState: WorkflowState = { role: null, action: null };
 
-    constructor(sessionId: string, projectId: string | null, team: Team) {
-        this.sessionId = sessionId;
+    constructor(projectId: string, team: Team) {
         this.projectId = projectId;
         this.team = team;
         this.repository = new InteractiveSessionWorkflowRepository();
@@ -49,18 +46,17 @@ export class WorkflowTracker {
             }));
 
             await this.repository.initializeWorkflow(
-                this.sessionId,
                 this.projectId,
                 workflowData
             );
 
-            logger.info(`WorkflowTracker: Initialized workflow for session ${this.sessionId}`, {
-                sessionId: this.sessionId,
+            logger.info(`WorkflowTracker: Initialized workflow for project ${this.projectId}`, {
+                projectId: this.projectId,
                 rolesCount: roles.length,
             });
         } catch (error: any) {
             logger.error('WorkflowTracker: Failed to initialize workflow', {
-                sessionId: this.sessionId,
+                projectId: this.projectId,
                 error: error.message,
             });
             throw error;
@@ -75,16 +71,29 @@ export class WorkflowTracker {
         const roleName = role.profile;
         const actionName = role.rc.todo ? role.rc.todo.name : null;
 
-        logger.info(`WorkflowTracker: onRoleStart - role=${roleName}, todo=${role.rc.todo ? role.rc.todo.name : 'null'}, actionName=${actionName}, sessionId=${this.sessionId}`);
+        logger.info(`WorkflowTracker: onRoleStart - role=${roleName}, todo=${role.rc.todo ? role.rc.todo.name : 'null'}, actionName=${actionName}, projectId=${this.projectId}`);
 
-        this.currentState = {
-            role: roleName,
-            action: actionName,
-        };
+        // IMPORTANT: Clear all running statuses before setting a new one
+        // This ensures only one action can be running at a time
+        logger.info(`WorkflowTracker: onRoleStart - Clearing all running statuses before starting new action`);
+        await this.repository.clearAllRunningStatuses(this.projectId);
+        logger.info(`WorkflowTracker: onRoleStart - All running statuses cleared`);
 
         logger.info(`WorkflowTracker: onRoleStart - Updating state: role=${roleName}, action=${actionName}`);
         await this.updateState(roleName, actionName);
         logger.info(`WorkflowTracker: onRoleStart - State updated: role=${roleName}, action=${actionName}`);
+
+        // Update workflow item status to RUNNING when action starts
+        if (actionName) {
+            logger.info(`WorkflowTracker: onRoleStart - Updating workflow item status to RUNNING: role=${roleName}, action=${actionName}`);
+            await this.repository.updateWorkflowItemStatus(
+                this.projectId,
+                roleName,
+                actionName,
+                ActionStatus.RUNNING
+            );
+            logger.info(`WorkflowTracker: onRoleStart - Workflow item status updated to RUNNING`);
+        }
     }
 
     /**
@@ -95,7 +104,7 @@ export class WorkflowTracker {
         const roleName = role.profile;
         let actionName: string | null = null;
 
-        logger.info(`WorkflowTracker: onRoleComplete START - role=${roleName}, sessionId=${this.sessionId}`);
+        logger.info(`WorkflowTracker: onRoleComplete START - role=${roleName}, projectId=${this.projectId}`);
         logger.info(`WorkflowTracker: onRoleComplete - message exists: ${!!message}, message.causeBy: ${message?.causeBy}, message.causeBy type: ${typeof message?.causeBy}`);
         logger.info(`WorkflowTracker: onRoleComplete - role.rc.todo: ${role.rc.todo ? role.rc.todo.name : 'null'}`);
 
@@ -135,23 +144,18 @@ export class WorkflowTracker {
             }
         }
 
-        // Update state with the actual executed action
-        this.currentState = {
-            role: roleName,
-            action: actionName,
-        };
-
-        logger.info(`WorkflowTracker: onRoleComplete - Determined action: ${actionName}, updating state: role=${roleName}, action=${actionName}, sessionId=${this.sessionId}`);
+        logger.info(`WorkflowTracker: onRoleComplete - Determined action: ${actionName}, updating state: role=${roleName}, action=${actionName}, projectId=${this.projectId}`);
         await this.updateState(roleName, actionName);
         logger.info(`WorkflowTracker: onRoleComplete - State updated successfully: role=${roleName}, action=${actionName}`);
 
         // Update workflow item status if action was executed
         if (actionName) {
-            // 使用统一的状态枚举
-            const status = message ? ActionStatus.COMPLETED : ActionStatus.RUNNING;
-            logger.info(`WorkflowTracker: onRoleComplete - Updating workflow item status: role=${roleName}, action=${actionName}, status=${status}`);
+            // If message exists, action is completed; otherwise, set to pending (not running)
+            // This ensures we don't have multiple running actions at the same time
+            const status = message ? ActionStatus.COMPLETED : ActionStatus.PENDING;
+            logger.info(`WorkflowTracker: onRoleComplete - Updating workflow item status: role=${roleName}, action=${actionName}, status=${status} (message exists: ${!!message})`);
             await this.repository.updateWorkflowItemStatus(
-                this.sessionId,
+                this.projectId,
                 roleName,
                 actionName,
                 status
@@ -161,7 +165,7 @@ export class WorkflowTracker {
             logger.warn(`WorkflowTracker: onRoleComplete - Skipping workflow item status update (actionName is null)`);
         }
 
-        logger.info(`WorkflowTracker: onRoleComplete END - role=${roleName}, action=${actionName}, sessionId=${this.sessionId}`);
+        logger.info(`WorkflowTracker: onRoleComplete END - role=${roleName}, action=${actionName}, projectId=${this.projectId}`);
     }
 
     /**
@@ -172,7 +176,7 @@ export class WorkflowTracker {
         const actionName = role.rc.todo ? role.rc.todo.name : null;
 
         logger.error('WorkflowTracker: Role execution error', {
-            sessionId: this.sessionId,
+            projectId: this.projectId,
             role: roleName,
             action: actionName,
             error: error.message,
@@ -180,7 +184,7 @@ export class WorkflowTracker {
 
         if (actionName) {
             await this.repository.updateWorkflowItemStatus(
-                this.sessionId,
+                this.projectId,
                 roleName,
                 actionName,
                 ActionStatus.FAILED
@@ -204,64 +208,47 @@ export class WorkflowTracker {
      * Called when moving to next role or session completes
      */
     async clearState(): Promise<void> {
-        this.currentState = { role: null, action: null };
         await this.updateState(null, null);
     }
 
     /**
      * Get current running state
-     * First tries database by sessionId, then by projectId, then falls back to memory
+     * Only reads from database (no memory fallback)
      */
     async getCurrentState(): Promise<WorkflowState> {
         try {
-            // Try database first by sessionId (most reliable)
-            let dbState = await this.repository.getRunningState(this.sessionId);
+            const dbState = await this.repository.getRunningState(this.projectId);
 
-            // If not found and we have projectId, try by projectId
-            if ((!dbState || (!dbState.current_role && !dbState.current_action)) && this.projectId) {
-                logger.info(`WorkflowTracker: getCurrentState - No state found by sessionId, trying by projectId=${this.projectId}`);
-                dbState = await this.repository.getRunningStateByProjectId(this.projectId);
-                logger.info(`WorkflowTracker: getCurrentState - Database state by projectId: ${JSON.stringify(dbState)}`);
-            }
-
-            if (dbState && (dbState.current_role || dbState.current_action)) {
+            if (dbState) {
                 const state = {
                     role: dbState.current_role,
                     action: dbState.current_action,
                 };
+                logger.info(`WorkflowTracker: getCurrentState - Returning database state: role=${state.role}, action=${state.action}`);
                 return state;
-            } else {
-                logger.warn(`WorkflowTracker: getCurrentState - Database state is empty or null, will fallback to memory`);
             }
+
+            // Return empty state if no database record exists
+            logger.info(`WorkflowTracker: getCurrentState - No database state found, returning empty state`);
+            return { role: null, action: null };
         } catch (error: any) {
-            logger.warn('WorkflowTracker: Failed to get state from database, using memory', {
-                sessionId: this.sessionId,
+            logger.error('WorkflowTracker: Failed to get state from database', {
                 projectId: this.projectId,
                 error: error.message,
                 errorStack: error.stack,
             });
+            // Return empty state on error
+            return { role: null, action: null };
         }
-
-        // Fallback to memory state
-        const memoryState = { ...this.currentState };
-        logger.info(`WorkflowTracker: getCurrentState - Returning memory state: role=${memoryState.role}, action=${memoryState.action}`);
-        return memoryState;
     }
 
     /**
      * Get all workflow items
-     * First tries by sessionId, then by projectId if not found
      * Returns items sorted by role and action registration order (not alphabetical)
      */
     async getWorkflowItems(): Promise<WorkflowItem[]> {
         try {
-            let items = await this.repository.getWorkflowItems(this.sessionId);
-
-            // If no items found and we have projectId, try by projectId
-            if (items.length === 0 && this.projectId) {
-                logger.info(`WorkflowTracker: No workflow items found by sessionId, trying by projectId=${this.projectId}`);
-                items = await this.repository.getWorkflowItemsByProjectId(this.projectId);
-            }
+            const items = await this.repository.getWorkflowItems(this.projectId);
 
             // Get workflow structure to determine the correct order
             const workflowStructure = this.getWorkflowStructure();
@@ -313,7 +300,6 @@ export class WorkflowTracker {
             return sortedItems;
         } catch (error: any) {
             logger.error('WorkflowTracker: Failed to get workflow items', {
-                sessionId: this.sessionId,
                 projectId: this.projectId,
                 error: error.message,
             });
@@ -343,11 +329,10 @@ export class WorkflowTracker {
 
     /**
      * Set running state explicitly (public method for external updates)
+     * Directly updates database, no memory state
      */
     async setRunningState(role: string | null, action: string | null): Promise<void> {
-        logger.info(`WorkflowTracker: setRunningState called - role=${role}, action=${action}, sessionId=${this.sessionId}`);
-        this.currentState = { role, action };
-        logger.debug(`WorkflowTracker: setRunningState - Updated memory state: ${JSON.stringify(this.currentState)}`);
+        logger.info(`WorkflowTracker: setRunningState called - role=${role}, action=${action}, projectId=${this.projectId}`);
         await this.updateState(role, action);
         logger.info(`WorkflowTracker: setRunningState completed - role=${role}, action=${action}`);
     }
@@ -356,10 +341,10 @@ export class WorkflowTracker {
      * Check if a specific role and action is completed
      */
     async isActionCompleted(role: string, action: string): Promise<boolean> {
-        logger.info(`WorkflowTracker: isActionCompleted called - role=${role}, action=${action}, sessionId=${this.sessionId}`);
+        logger.info(`WorkflowTracker: isActionCompleted called - role=${role}, action=${action}, projectId=${this.projectId}`);
         try {
             const isCompleted = await this.repository.isActionCompleted(
-                this.sessionId,
+                this.projectId,
                 role,
                 action
             );
@@ -367,7 +352,7 @@ export class WorkflowTracker {
             return isCompleted;
         } catch (error: any) {
             logger.error('WorkflowTracker: Failed to check action completion', {
-                sessionId: this.sessionId,
+                projectId: this.projectId,
                 role,
                 action,
                 error: error.message,
@@ -380,24 +365,122 @@ export class WorkflowTracker {
      * Update state in database
      */
     private async updateState(role: string | null, action: string | null): Promise<void> {
-        logger.info(`WorkflowTracker: updateState called - role=${role}, action=${action}, sessionId=${this.sessionId}, projectId=${this.projectId}`);
+        logger.info(`WorkflowTracker: updateState called - role=${role}, action=${action}, projectId=${this.projectId}`);
         try {
             const result = await this.repository.updateRunningState(
-                this.sessionId,
                 this.projectId,
                 role,
                 action
             );
-            logger.info(`WorkflowTracker: updateState succeeded - Database returned: role=${result.current_role}, action=${result.current_action}, sessionId=${this.sessionId}`);
+            logger.info(`WorkflowTracker: updateState succeeded - Database returned: role=${result.current_role}, action=${result.current_action}, projectId=${this.projectId}`);
         } catch (error: any) {
             logger.error('WorkflowTracker: Failed to update state in database', {
-                sessionId: this.sessionId,
+                projectId: this.projectId,
                 role,
                 action,
                 error: error.message,
                 errorStack: error.stack,
             });
             // Don't throw - allow workflow to continue even if DB update fails
+        }
+    }
+
+    /**
+     * Check if all actions for a role are completed
+     * Based on database state for the given project
+     */
+    async areAllRoleActionsCompleted(role: string): Promise<boolean> {
+        logger.info(`WorkflowTracker: areAllRoleActionsCompleted called - role=${role}, projectId=${this.projectId}`);
+        try {
+            const allCompleted = await this.repository.areAllRoleActionsCompleted(
+                this.projectId,
+                role
+            );
+            logger.info(`WorkflowTracker: areAllRoleActionsCompleted - role=${role}, allCompleted=${allCompleted}, projectId=${this.projectId}`);
+            return allCompleted;
+        } catch (error: any) {
+            logger.error('WorkflowTracker: Failed to check if all role actions are completed', {
+                projectId: this.projectId,
+                role,
+                error: error.message,
+            });
+            return false; // On error, assume not completed to be safe
+        }
+    }
+
+    /**
+     * Get all actions status for a role
+     * Returns array of action statuses for the given project and role
+     */
+    async getRoleActionsStatus(role: string): Promise<Array<{ action: string; status: ActionStatus }>> {
+        logger.info(`WorkflowTracker: getRoleActionsStatus called - role=${role}, projectId=${this.projectId}`);
+        try {
+            const statuses = await this.repository.getRoleActionsStatus(
+                this.projectId,
+                role
+            );
+            logger.info(`WorkflowTracker: getRoleActionsStatus - role=${role}, actionCount=${statuses.length}, projectId=${this.projectId}`);
+            return statuses;
+        } catch (error: any) {
+            logger.error('WorkflowTracker: Failed to get role actions status', {
+                projectId: this.projectId,
+                role,
+                error: error.message,
+            });
+            return [];
+        }
+    }
+
+    /**
+     * Set confirmation required status for a role
+     */
+    async setConfirmationRequired(role: string): Promise<void> {
+        logger.info(`WorkflowTracker: setConfirmationRequired called - role=${role}, projectId=${this.projectId}`);
+        try {
+            await this.repository.setConfirmationRequired(this.projectId, role);
+            logger.info(`WorkflowTracker: setConfirmationRequired completed - role=${role}, projectId=${this.projectId}`);
+        } catch (error: any) {
+            logger.error('WorkflowTracker: Failed to set confirmation required', {
+                projectId: this.projectId,
+                role,
+                error: error.message,
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Clear confirmation required status
+     */
+    async clearConfirmationRequired(): Promise<void> {
+        logger.info(`WorkflowTracker: clearConfirmationRequired called - projectId=${this.projectId}`);
+        try {
+            await this.repository.clearConfirmationRequired(this.projectId);
+            logger.info(`WorkflowTracker: clearConfirmationRequired completed - projectId=${this.projectId}`);
+        } catch (error: any) {
+            logger.error('WorkflowTracker: Failed to clear confirmation required', {
+                projectId: this.projectId,
+                error: error.message,
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Get confirmation status
+     */
+    async isConfirmationRequired(): Promise<{ required: boolean; role: string | null }> {
+        logger.info(`WorkflowTracker: isConfirmationRequired called - projectId=${this.projectId}`);
+        try {
+            const status = await this.repository.getConfirmationStatus(this.projectId);
+            logger.info(`WorkflowTracker: isConfirmationRequired - required=${status.required}, role=${status.role}, projectId=${this.projectId}`);
+            return status;
+        } catch (error: any) {
+            logger.error('WorkflowTracker: Failed to get confirmation status', {
+                projectId: this.projectId,
+                error: error.message,
+            });
+            return { required: false, role: null };
         }
     }
 }

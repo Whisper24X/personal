@@ -12,8 +12,6 @@ export interface LLMConfig {
   id: string;
   user_id: string;
   provider: LLMProvider;
-  api_key: string | null;
-  base_url: string | null;
   model: string;
   temperature: number;
   max_tokens: number;
@@ -286,17 +284,13 @@ export class LLMConfigRepository {
 
   /**
    * Convert database row to ILLMConfig
-   * Uses provider_api_key and provider_base_url if available, otherwise falls back to legacy fields
+   * Uses provider_api_key and provider_base_url from joined llm_provider_configs table
    */
   toILLMConfig(row: LLMConfig & { provider_api_key?: string | null; provider_base_url?: string | null }): ILLMConfig {
-    // Prefer provider config values, fall back to legacy fields for backward compatibility
-    const apiKey = row.provider_api_key !== undefined ? row.provider_api_key : row.api_key;
-    const baseURL = row.provider_base_url !== undefined ? row.provider_base_url : row.base_url;
-    
     return {
       provider: row.provider,
-      apiKey: apiKey || '',
-      baseURL: baseURL || undefined,
+      apiKey: row.provider_api_key || '',
+      baseURL: row.provider_base_url || undefined,
       model: row.model,
       temperature: row.temperature,
       maxTokens: row.max_tokens,

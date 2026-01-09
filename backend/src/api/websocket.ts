@@ -18,27 +18,27 @@ export function setupWebSocketServer(wss: WebSocketServer): void {
     const requestUrl = req.url || '';
     logger.info(`WebSocket: New connection attempt from ${req.headers.origin || 'unknown'}, URL: ${requestUrl}`);
 
-    // Extract session ID from URL
-    const sessionId = extractSessionId(requestUrl);
+    // Extract project ID from URL
+    const projectId = extractProjectId(requestUrl);
 
-    if (!sessionId) {
-      logger.warn(`WebSocket: Connection rejected - no session ID in URL: ${requestUrl}`);
-      ws.close(1008, 'Session ID required');
+    if (!projectId) {
+      logger.warn(`WebSocket: Connection rejected - no project ID in URL: ${requestUrl}`);
+      ws.close(1008, 'Project ID required');
       return;
     }
 
-    logger.info(`WebSocket: Extracted session ID: ${sessionId}`);
+    logger.info(`WebSocket: Extracted project ID: ${projectId}`);
 
     // Get session
-    const session = sessionManager.getSession(sessionId);
+    const session = sessionManager.getSession(projectId);
 
     if (!session) {
-      logger.warn(`WebSocket: Connection rejected - session ${sessionId} not found`);
-      ws.close(1008, `Session ${sessionId} not found`);
+      logger.warn(`WebSocket: Connection rejected - session for project ${projectId} not found`);
+      ws.close(1008, `Session for project ${projectId} not found`);
       return;
     }
 
-    logger.info(`WebSocket: Client connected to session ${sessionId}`);
+    logger.info(`WebSocket: Client connected to project ${projectId}`);
 
     // Attach WebSocket to session
     session.setWebSocket(ws);
@@ -50,7 +50,7 @@ export function setupWebSocketServer(wss: WebSocketServer): void {
         logger.info(`WebSocket: Received message from client: ${messageStr}`);
         const message = JSON.parse(messageStr);
         logger.info(`WebSocket: Parsed message type: ${message.type}, action: ${message.action}`);
-        handleClientMessage(session.id, message);
+        handleClientMessage(session.projectId, message);
       } catch (error: any) {
         logger.error('WebSocket: Error parsing message', error);
         ws.send(JSON.stringify({
@@ -62,17 +62,17 @@ export function setupWebSocketServer(wss: WebSocketServer): void {
 
     // Handle connection close
     ws.on('close', () => {
-      logger.info(`WebSocket: Client disconnected from session ${sessionId}`);
+      logger.info(`WebSocket: Client disconnected from project ${projectId}`);
     });
 
     // Handle errors
     ws.on('error', (error) => {
-      logger.error(`WebSocket: Error in session ${sessionId}`, error);
+      logger.error(`WebSocket: Error in session for project ${projectId}`, error);
     });
 
     // Start the session
     session.start().catch((error) => {
-      logger.error(`WebSocket: Error starting session ${sessionId}`, error);
+      logger.error(`WebSocket: Error starting session for project ${projectId}`, error);
       ws.send(JSON.stringify({
         type: 'error',
         data: { message: error.message || 'Session error' },
@@ -84,9 +84,9 @@ export function setupWebSocketServer(wss: WebSocketServer): void {
 }
 
 /**
- * Extract session ID from WebSocket URL
+ * Extract project ID from WebSocket URL
  */
-function extractSessionId(urlString: string): string | null {
+function extractProjectId(urlString: string): string | null {
   try {
     // Remove query string if present
     const pathOnly = urlString.split('?')[0];
@@ -94,18 +94,18 @@ function extractSessionId(urlString: string): string | null {
 
     logger.debug(`WebSocket: Parsing URL: ${urlString}, path parts:`, pathParts);
 
-    // Expected URL format: /api/interactive/:sessionId
+    // Expected URL format: /api/interactive/:projectId
     const interactiveIndex = pathParts.indexOf('interactive');
     if (interactiveIndex !== -1 && pathParts.length > interactiveIndex + 1) {
-      const sessionId = pathParts[interactiveIndex + 1];
-      logger.debug(`WebSocket: Found session ID: ${sessionId}`);
-      return sessionId;
+      const projectId = pathParts[interactiveIndex + 1];
+      logger.debug(`WebSocket: Found project ID: ${projectId}`);
+      return projectId;
     }
 
-    logger.warn(`WebSocket: Could not find session ID in URL: ${urlString}`);
+    logger.warn(`WebSocket: Could not find project ID in URL: ${urlString}`);
     return null;
   } catch (error) {
-    logger.error('WebSocket: Error extracting session ID', error);
+    logger.error('WebSocket: Error extracting project ID', error);
     return null;
   }
 }
@@ -113,13 +113,13 @@ function extractSessionId(urlString: string): string | null {
 /**
  * Handle client message
  */
-function handleClientMessage(sessionId: string, message: any): void {
-  logger.info(`WebSocket: Handling client message for session ${sessionId}, type: ${message.type}`);
+function handleClientMessage(projectId: string, message: any): void {
+  logger.info(`WebSocket: Handling client message for project ${projectId}, type: ${message.type}`);
 
-  const session = sessionManager.getSession(sessionId);
+  const session = sessionManager.getSession(projectId);
 
   if (!session) {
-    logger.warn(`WebSocket: Session ${sessionId} not found for message`);
+    logger.warn(`WebSocket: Session for project ${projectId} not found for message`);
     return;
   }
 
@@ -160,7 +160,7 @@ export function broadcastToAllSessions(_message: any): void {
       // Send via session's WebSocket (handled internally)
       // This is a placeholder - actual implementation would be in InteractiveSession
     } catch (error: any) {
-      logger.error(`WebSocket: Error broadcasting to session ${session.id}`, error);
+      logger.error(`WebSocket: Error broadcasting to project ${session.projectId}`, error);
     }
   });
 }

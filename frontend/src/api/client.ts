@@ -342,34 +342,45 @@ class APIClient {
   }
 
   // Interactive session API endpoints (polling mode)
-  async pollInteractiveMessages(sessionId: string, lastMessageId?: string | null) {
+  async pollInteractiveMessages(projectId: string, lastMessageId?: string | null) {
     const params: Record<string, string> = {};
     if (lastMessageId) {
       params.lastMessageId = lastMessageId;
     }
-    return this.client.get(`/interactive/${sessionId}/poll`, { params });
+    return this.client.get(`/interactive/${projectId}/poll`, { params });
   }
 
-  async sendInteractiveAction(sessionId: string, action: string, modifiedContent?: string) {
-    return this.client.post(`/interactive/${sessionId}/action`, {
+  async sendInteractiveAction(projectId: string, action: string, modifiedContent?: string) {
+    return this.client.post(`/interactive/${projectId}/action`, {
+      action,
+      modifiedContent,
+    });
+  }
+
+  /**
+   * Confirm role completion and allow proceeding to next role
+   * This endpoint clears the confirmation status in database
+   */
+  async confirmRoleCompletion(projectId: string, action: string, modifiedContent?: string) {
+    return this.client.post(`/interactive/${projectId}/confirm`, {
       action,
       modifiedContent,
     });
   }
 
   // Get workflow information (all roles and their actions)
-  async getInteractiveWorkflow(sessionId: string) {
-    return this.client.get(`/interactive/${sessionId}/workflow`);
+  async getInteractiveWorkflow(projectId: string) {
+    return this.client.get(`/interactive/${projectId}/workflow`);
   }
 
   // Get current running role and action
-  async getInteractiveRunning(sessionId: string) {
-    return this.client.get(`/interactive/${sessionId}/running`);
+  async getInteractiveRunning(projectId: string) {
+    return this.client.get(`/interactive/${projectId}/running`);
   }
 
   // Reset workflow from a specific role (reset that role and all downstream roles)
-  async resetInteractiveWorkflow(sessionId: string, role: string) {
-    return this.client.post(`/interactive/${sessionId}/reset-workflow`, {
+  async resetInteractiveWorkflow(projectId: string, role: string) {
+    return this.client.post(`/interactive/${projectId}/reset-workflow`, {
       role,
     });
   }
