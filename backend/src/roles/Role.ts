@@ -647,7 +647,7 @@ export class Role extends BaseRole {
       'WriteCode',
       'WriteTest',
       'ExecuteSubtask',
-      'ImproveDocument',
+      'ImprovePRD',
       'ImproveMRD',
       'MRDReview',
       'PRDReview',
@@ -714,44 +714,13 @@ export class Role extends BaseRole {
         // ExecuteSubtask需要taskDescription和options
         return await (action as any).run(input, workspaceOptions);
 
+      case 'ImprovePRD':
+        // ImprovePRD需要input（审查报告）和options
+        return await (action as any).run(input, workspaceOptions);
+
       case 'ImproveMRD':
         // ImproveMRD需要input（审查报告）和options
         return await (action as any).run(input, workspaceOptions);
-
-      case 'ImproveDocument':
-        // ImproveDocument需要input和options，options需要包含documentType
-        // 从input、news或memory中检测文档类型
-        // 优先从最近的Review action推断文档类型
-        let documentType: 'PRD' | 'MRD' | 'DESIGN' = 'PRD'; // 默认值
-
-        // 检查news中是否有Review消息
-        const reviewMessage = this.rc.news.find(msg =>
-          msg.causeBy === 'MRDReview' ||
-          msg.causeBy === 'PRDReview' ||
-          msg.causeBy === 'DesignReview'
-        );
-
-        if (reviewMessage) {
-          // 根据Review action类型推断文档类型
-          if (reviewMessage.causeBy === 'MRDReview') {
-            documentType = 'MRD';
-          } else if (reviewMessage.causeBy === 'PRDReview') {
-            documentType = 'PRD';
-          } else if (reviewMessage.causeBy === 'DesignReview') {
-            documentType = 'DESIGN';
-          }
-          logger.info(`${this.profile} ImproveDocument: Detected document type from review message: ${documentType}`);
-        } else {
-          // 从input或context中检测文档类型
-          documentType = this.detectDocumentTypeForImprove(input) as 'PRD' | 'MRD' | 'DESIGN';
-          logger.info(`${this.profile} ImproveDocument: Detected document type from input: ${documentType}`);
-        }
-
-        const improveOptions = {
-          ...workspaceOptions,
-          documentType: documentType,
-        };
-        return await (action as any).run(input, improveOptions);
 
       case 'MRDReview':
       case 'PRDReview':
@@ -766,40 +735,6 @@ export class Role extends BaseRole {
     }
   }
 
-  /**
-   * Detect document type for ImproveDocument action
-   */
-  private detectDocumentTypeForImprove(input: string): string {
-    // 检查input中是否包含文档类型标识
-    if (input.includes('PRD') || input.includes('产品需求文档')) {
-      return 'PRD';
-    }
-    if (input.includes('MRD') || input.includes('市场研究文档')) {
-      return 'MRD';
-    }
-    if (input.includes('DESIGN') || input.includes('设计文档')) {
-      return 'DESIGN';
-    }
-
-    // 从最近的文档消息中推断
-    const prdMessages = this.rc.memory.getByAction('WritePRD');
-    const mrdMessages = this.rc.memory.getByAction('WriteMRD');
-    const designMessages = this.rc.memory.getByAction('WriteDesign');
-
-    // 优先使用最近的文档类型
-    if (designMessages.length > 0) {
-      return 'DESIGN';
-    }
-    if (prdMessages.length > 0) {
-      return 'PRD';
-    }
-    if (mrdMessages.length > 0) {
-      return 'MRD';
-    }
-
-    // 默认返回PRD
-    return 'PRD';
-  }
 
   /**
    * Act: Execute the current action
@@ -885,6 +820,30 @@ export class Role extends BaseRole {
             actionInput = '';
           }
         }
+      } else if (action.name === 'ImprovePRD') {
+        // ImprovePRD needs review report from PRDReview action
+        // Try to find review report from news first
+        const prdReviewMessage = this.rc.news.find(msg => msg.causeBy === 'PRDReview');
+        if (prdReviewMessage) {
+          actionInput = prdReviewMessage.content;
+          logger.info(`${this.profile} ImprovePRD: Using review report from news`, {
+            reviewLength: actionInput.length,
+          });
+        } else {
+          // Try to get from memory
+          const prdReviewMessages = this.rc.memory.getByAction('PRDReview');
+          if (prdReviewMessages.length > 0) {
+            actionInput = prdReviewMessages[prdReviewMessages.length - 1].content;
+            logger.info(`${this.profile} ImprovePRD: Using review report from memory`, {
+              reviewLength: actionInput.length,
+            });
+          } else {
+            // If no review report found, use empty string
+            // The action will try to read review report from workspace
+            logger.warn(`${this.profile} ImprovePRD: No review report found in news or memory, will try to read from workspace`);
+            actionInput = '';
+          }
+        }
       } else if (action.name === 'ImproveMRD') {
         // ImproveMRD needs review report from MRDReview action
         // Try to find review report from news first
@@ -907,42 +866,6 @@ export class Role extends BaseRole {
             // The action will try to read review report from workspace
             logger.warn(`${this.profile} ImproveMRD: No review report found in news or memory, will try to read from workspace`);
             actionInput = '';
-          }
-        }
-      } else if (action.name === 'ImproveDocument') {
-        // ImproveDocument needs review report from Review action
-        // Try to find review report from news first (MRDReview, PRDReview, etc.)
-        const reviewMessage = this.rc.news.find(msg =>
-          msg.causeBy === 'MRDReview' ||
-          msg.causeBy === 'PRDReview' ||
-          msg.causeBy === 'DesignReview' ||
-          msg.causeBy === 'SubProjectDesignReview'
-        );
-        if (reviewMessage) {
-          actionInput = reviewMessage.content;
-          logger.info(`${this.profile} ImproveDocument: Using review report from news`, {
-            reviewAction: reviewMessage.causeBy,
-            reviewLength: actionInput.length,
-          });
-        } else {
-          // Try to get from memory
-          const reviewMessages = [
-            ...this.rc.memory.getByAction('MRDReview'),
-            ...this.rc.memory.getByAction('PRDReview'),
-            ...this.rc.memory.getByAction('DesignReview'),
-            ...this.rc.memory.getByAction('SubProjectDesignReview'),
-          ];
-          if (reviewMessages.length > 0) {
-            actionInput = reviewMessages[reviewMessages.length - 1].content;
-            logger.info(`${this.profile} ImproveDocument: Using review report from memory`, {
-              reviewAction: reviewMessages[reviewMessages.length - 1].causeBy,
-              reviewLength: actionInput.length,
-            });
-          } else {
-            // If no review report found, use document type identifier
-            // The action will try to read review report from workspace
-            logger.warn(`${this.profile} ImproveDocument: No review report found in news or memory, will try to read from workspace`);
-            actionInput = context; // Use context which may contain document type hints
           }
         }
       }

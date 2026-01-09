@@ -16,6 +16,8 @@ import { QAEngineer } from '../../roles/QAEngineer';
 // import { ProjectManager } from '../../orchestration/ProjectManager'; // Unused
 import { logger } from '../../utils';
 import { ProjectStatus } from '@mind2build/shared';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const projectRepo = new ProjectRepository();
 const messageRepo = new MessageRepository();
@@ -239,6 +241,29 @@ export class ProjectController {
 
       const project = await projectRepo.findById(id);
       if (!project) {
+        // If project not found in database, check if it exists in workspace
+        const workspaceProject = ProjectController.findProjectInWorkspace(id);
+        if (workspaceProject) {
+          // Return basic project info from workspace
+          return res.json({
+            success: true,
+            project: {
+              id: id,
+              name: workspaceProject.name || 'Unknown Project',
+              status: 'pending',
+              idea: workspaceProject.idea || '',
+              progress: 0,
+              currentRound: 0,
+              nRound: 5,
+              totalCost: 0,
+              investment: 10,
+              messageCount: 0,
+              createdAt: workspaceProject.createdAt || new Date(),
+              completedAt: null,
+              workspaceOnly: true, // Flag to indicate this is from workspace only
+            },
+          });
+        }
         return res.status(404).json({ error: 'Project not found' });
       }
 
@@ -267,6 +292,118 @@ export class ProjectController {
         error: 'Failed to get project status',
         message: error.message,
       });
+    }
+  }
+
+  /**
+   * Find project in workspace directory
+   * Checks if project directory exists in workspace/{applicationId}/{projectId}/
+   */
+  private static findProjectInWorkspace(projectId: string): { name?: string; idea?: string; applicationId?: string; createdAt?: Date } | null {
+    try {
+      // Calculate workspace root
+      const possibleRoots = [
+        path.resolve(__dirname, '../../../'),
+        path.resolve(__dirname, '../../../../'),
+        process.cwd(),
+      ];
+
+      let projectRoot = possibleRoots[0];
+      for (const root of possibleRoots) {
+        if (
+          fs.existsSync(path.join(root, 'pnpm-workspace.yaml')) ||
+          fs.existsSync(path.join(root, 'package.json'))
+        ) {
+          projectRoot = root;
+          break;
+        }
+      }
+
+      const workspaceRoot = process.env.WORKSPACE_PATH || path.join(projectRoot, 'workspace');
+
+      if (!fs.existsSync(workspaceRoot)) {
+        return null;
+      }
+
+      // Search through all application directories
+      const applicationDirs = fs.readdirSync(workspaceRoot, { withFileTypes: true });
+      for (const appDir of applicationDirs) {
+        if (!appDir.isDirectory()) continue;
+
+        const applicationId = appDir.name;
+        const projectDir = path.join(workspaceRoot, applicationId, projectId);
+
+        if (fs.existsSync(projectDir)) {
+          // Project directory exists, try to get basic info
+          // Check if there's a version directory
+          const versionDirs = fs.readdirSync(projectDir, { withFileTypes: true });
+          let latestVersion = 1;
+          for (const versionDir of versionDirs) {
+            if (versionDir.isDirectory() && versionDir.name.startsWith('v')) {
+              const versionNum = parseInt(versionDir.name.substring(1));
+              if (versionNum > latestVersion) {
+                latestVersion = versionNum;
+              }
+            }
+          }
+
+          // Try to read PRD or MRD to get project name/idea
+          const prdPath = path.join(projectDir, `v${latestVersion}`, 'PRD', 'PRD.md');
+          const mrdPath = path.join(projectDir, `v${latestVersion}`, 'MRD', 'MRD.md');
+
+          let name: string | undefined;
+          let idea: string | undefined;
+
+          // Try to read PRD first
+          if (fs.existsSync(prdPath)) {
+            try {
+              const content = fs.readFileSync(prdPath, 'utf-8');
+              // Extract project name from PRD (usually in first few lines)
+              const lines = content.split('\n').slice(0, 20);
+              for (const line of lines) {
+                if (line.includes('#') && line.length < 100) {
+                  name = line.replace(/^#+\s*/, '').trim();
+                  break;
+                }
+              }
+            } catch (e) {
+              // Ignore read errors
+            }
+          }
+
+          // Try to read MRD if PRD didn't work
+          if (!name && fs.existsSync(mrdPath)) {
+            try {
+              const content = fs.readFileSync(mrdPath, 'utf-8');
+              const lines = content.split('\n').slice(0, 20);
+              for (const line of lines) {
+                if (line.includes('#') && line.length < 100) {
+                  name = line.replace(/^#+\s*/, '').trim();
+                  break;
+                }
+              }
+            } catch (e) {
+              // Ignore read errors
+            }
+          }
+
+          // Get directory creation time as createdAt
+          const stats = fs.statSync(projectDir);
+          const createdAt = stats.birthtime || stats.mtime;
+
+          return {
+            name: name || `Project ${projectId.substring(0, 8)}`,
+            idea: idea,
+            applicationId,
+            createdAt,
+          };
+        }
+      }
+
+      return null;
+    } catch (error: any) {
+      logger.debug('Failed to find project in workspace:', error.message);
+      return null;
     }
   }
 

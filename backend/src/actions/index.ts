@@ -19,7 +19,7 @@ export { SubProjectDesignReview } from './SubProjectDesignReview';
 export { CodeReview } from './CodeReview';
 
 // Document Improvement Actions
-export { ImproveDocument } from './ImproveDocument';
+export { ImprovePRD } from './ImprovePRD';
 export { ImproveMRD } from './ImproveMRD';
 
 // Task Management Actions

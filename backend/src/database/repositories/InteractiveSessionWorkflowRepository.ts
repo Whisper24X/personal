@@ -78,16 +78,34 @@ export class InteractiveSessionWorkflowRepository {
         action: string | null
     ): Promise<RunningState> {
         try {
+            // Validate projectId if provided
+            let validProjectId: string | null = projectId;
+            if (projectId) {
+                try {
+                    const { ProjectRepository } = await import('./ProjectRepository');
+                    const projectRepo = new ProjectRepository();
+                    const project = await projectRepo.findById(projectId);
+                    if (!project) {
+                        // Project doesn't exist, use null instead
+                        validProjectId = null;
+                    }
+                } catch (error: any) {
+                    // If validation fails, use null to avoid foreign key constraint violation
+                    validProjectId = null;
+                }
+            }
+
             const result = await query<RunningState>(
                 `INSERT INTO interactive_session_running_state (
           session_id, project_id, "current_role", "current_action"
         ) VALUES ($1, $2, $3, $4)
         ON CONFLICT (session_id) DO UPDATE SET
+          project_id = EXCLUDED.project_id,
           "current_role" = EXCLUDED."current_role",
           "current_action" = EXCLUDED."current_action",
           updated_at = NOW()
         RETURNING *`,
-                [sessionId, projectId, role, action]
+                [sessionId, validProjectId, role, action]
             );
 
             if (!result.rows[0]) {
