@@ -20,16 +20,7 @@ export interface StepwiseGenerationConfig {
   // Prompt 构建函数
   buildOutlinePrompt: (input: string) => string;
   buildSectionPrompt: (input: string, outline: string, sectionNumber: number, sectionTitle: string) => string;
-  buildSectionReviewPrompt?: (sectionContent: string, sectionNumber: number, sectionTitle: string, outline: string) => string; // 审核单个章节的提示词
   systemPrompt: string;
-
-  // 审查（可选）
-  reviewAction?: BaseAction;
-  reviewTitle?: string; // 审查报告标题，如 "PRD 审查报告"
-
-  // 改进（可选，在审查后自动改进文档）
-  improveAction?: BaseAction;
-  autoImprove?: boolean; // 是否自动改进，默认为 true（如果配置了 improveAction）
 
   // 文档元信息
   documentTitle: string; // 如 "产品需求文档（PRD）"
@@ -66,9 +57,6 @@ export class StepwiseDocumentGenerator {
       workspaceDir: this.config.workspaceDir,
       applicationId: this.config.applicationId,
       version: this.config.version,
-      hasReviewAction: !!this.config.reviewAction,
-      hasImproveAction: !!this.config.improveAction,
-      autoImprove: this.config.autoImprove !== false,
       inputLength: input.length,
     });
 
@@ -78,16 +66,16 @@ export class StepwiseDocumentGenerator {
       logger.info('StepwiseDocumentGenerator: Step 1/7 - Generating outline');
       const outline = await this.generateOutline(input);
       await this.saveToWorkspace('00-outline.md', outline);
-      logger.info('StepwiseDocumentGenerator: Step 1/7 completed - Outline generated', {
+      logger.info('StepwiseDocumentGenerator: Step 1/5 completed - Outline generated', {
         outlineLength: outline.length,
         duration: `${Date.now() - step1Start}ms`,
       });
 
       // Step 2: 解析章节列表
       const step2Start = Date.now();
-      logger.info('StepwiseDocumentGenerator: Step 2/7 - Parsing sections');
+      logger.info('StepwiseDocumentGenerator: Step 2/5 - Parsing sections');
       const sections = this.parseSections(outline);
-      logger.info('StepwiseDocumentGenerator: Step 2/7 completed - Sections parsed', {
+      logger.info('StepwiseDocumentGenerator: Step 2/5 completed - Sections parsed', {
         sectionCount: sections.length,
         sections: sections.map(s => `${s.number}. ${s.title}`),
         duration: `${Date.now() - step2Start}ms`,
@@ -95,68 +83,36 @@ export class StepwiseDocumentGenerator {
 
       // Step 3: 按章节生成内容
       const step3Start = Date.now();
-      logger.info('StepwiseDocumentGenerator: Step 3/7 - Generating section contents', {
+      logger.info('StepwiseDocumentGenerator: Step 3/5 - Generating section contents', {
         sectionCount: sections.length,
       });
       const sectionContents = await this.generateSections(input, outline, sections);
-      logger.info('StepwiseDocumentGenerator: Step 3/7 completed - All sections generated', {
+      logger.info('StepwiseDocumentGenerator: Step 3/5 completed - All sections generated', {
         sectionCount: sectionContents.length,
         totalSectionsLength: sectionContents.reduce((sum, content) => sum + content.length, 0),
         duration: `${Date.now() - step3Start}ms`,
       });
 
-      // Step 4: 审核各个章节
+      // Step 4: 跳过改进步骤（改进由角色管理，不在这里直接调用）
       const step4Start = Date.now();
-      logger.info('StepwiseDocumentGenerator: Step 4/7 - Reviewing sections', {
-        sectionCount: sections.length,
-      });
-      const sectionReviews = await this.reviewSections(sectionContents, sections, outline);
-      logger.info('StepwiseDocumentGenerator: Step 4/7 completed - All sections reviewed', {
-        reviewCount: sectionReviews.length,
+      logger.info('StepwiseDocumentGenerator: Step 4/5 - Skipping improvement (managed by role)');
+      // 改进步骤已移除，由角色通过消息机制管理
+      const improvedSectionContents = sectionContents;
+      logger.info('StepwiseDocumentGenerator: Step 4/5 completed - Improvement skipped (managed by role)', {
+        sectionCount: improvedSectionContents.length,
         duration: `${Date.now() - step4Start}ms`,
+        note: 'Improvement will be handled by role through message mechanism',
       });
 
-      // Step 5: 生成审核文档
+      // Step 5: 合并所有章节
       const step5Start = Date.now();
-      logger.info('StepwiseDocumentGenerator: Step 5/7 - Generating review document');
-      const reviewReport = await this.generateReviewDocument(sectionReviews, sections);
-      logger.info('StepwiseDocumentGenerator: Step 5/7 completed - Review document generated', {
-        reviewReportLength: reviewReport?.length || 0,
-        duration: `${Date.now() - step5Start}ms`,
-      });
-
-      // Step 6: 修改审核文档中提到的内容（改进各个章节）
-      const step6Start = Date.now();
-      logger.info('StepwiseDocumentGenerator: Step 6/7 - Improving sections based on review');
-      let improvedSectionContents = sectionContents;
-      if (reviewReport && this.config.improveAction && (this.config.autoImprove !== false)) {
-        improvedSectionContents = await this.improveSections(
-          sectionContents,
-          sections,
-          reviewReport,
-          outline
-        );
-        logger.info('StepwiseDocumentGenerator: Step 6/7 completed - Sections improved', {
-          sectionCount: improvedSectionContents.length,
-          duration: `${Date.now() - step6Start}ms`,
-        });
-      } else {
-        logger.info('StepwiseDocumentGenerator: Step 6/7 skipped - Improvement not configured or disabled', {
-          hasReviewReport: !!reviewReport,
-          hasImproveAction: !!this.config.improveAction,
-          autoImprove: this.config.autoImprove,
-        });
-      }
-
-      // Step 7: 合并所有章节
-      const step7Start = Date.now();
-      logger.info('StepwiseDocumentGenerator: Step 7/7 - Merging sections');
+      logger.info('StepwiseDocumentGenerator: Step 5/5 - Merging sections');
       const mergedContent = this.mergeSections(outline, improvedSectionContents, sections);
       await this.saveToWorkspace(this.config.mainFileName, mergedContent);
-      logger.info('StepwiseDocumentGenerator: Step 7/7 completed - Sections merged', {
+      logger.info('StepwiseDocumentGenerator: Step 5/5 completed - Sections merged', {
         totalLength: mergedContent.length,
         sectionCount: sections.length,
-        duration: `${Date.now() - step7Start}ms`,
+        duration: `${Date.now() - step5Start}ms`,
       });
 
       const totalDuration = Date.now() - startTime;
@@ -165,8 +121,8 @@ export class StepwiseDocumentGenerator {
         sectionCount: sections.length,
         workspaceDir: this.config.workspaceDir,
         mainFileName: this.config.mainFileName,
-        reviewIncluded: !!reviewReport,
-        improvementIncluded: !!(this.config.improveAction && (this.config.autoImprove !== false) && reviewReport),
+        reviewIncluded: false, // Review 由角色通过 action 统一处理
+        improvementIncluded: false, // 改进由角色管理，不在这里执行
         totalDuration: `${totalDuration}ms`,
       });
 
@@ -194,7 +150,7 @@ export class StepwiseDocumentGenerator {
           mode: 'new',
           stepwise: true,
           sectionCount: sections.length,
-          reviewIncluded: !!reviewReport,
+          reviewIncluded: false, // Review 由角色通过 action 统一处理
           workspaceDir: this.config.workspaceDir,
         },
       };
@@ -389,6 +345,14 @@ export class StepwiseDocumentGenerator {
       const section = sections[i];
       const sectionContent = sectionContents[i] || '';
 
+      // Log review start
+      logger.info(`StepwiseDocumentGenerator: Starting review for section ${section.number}`, {
+        sectionNumber: section.number,
+        sectionTitle: section.title,
+        sectionContentLength: sectionContent.length,
+        progress: `${i + 1}/${sections.length}`,
+      });
+
       try {
         const reviewPrompt = this.config.buildSectionReviewPrompt(
           sectionContent,
@@ -408,8 +372,10 @@ export class StepwiseDocumentGenerator {
           },
         ];
 
+        const reviewStartTime = Date.now();
         const response = await (this.action as any).acompletion(messages);
         const reviewResult = response.content;
+        const reviewTime = Date.now() - reviewStartTime;
 
         sectionReviews.push(reviewResult);
 
@@ -417,16 +383,20 @@ export class StepwiseDocumentGenerator {
         const reviewFileName = `${String(section.number).padStart(2, '0')}-section-${section.number}-review.md`;
         await this.saveToWorkspace(reviewFileName, reviewResult);
 
-        logger.info(`StepwiseDocumentGenerator: Section ${section.number} reviewed`, {
+        logger.info(`StepwiseDocumentGenerator: Section ${section.number} reviewed successfully`, {
           sectionNumber: section.number,
           sectionTitle: section.title,
           reviewLength: reviewResult.length,
+          reviewTimeMs: reviewTime,
+          progress: `${i + 1}/${sections.length}`,
         });
       } catch (error: any) {
         logger.error(`StepwiseDocumentGenerator: Failed to review section ${section.number}`, {
           sectionNumber: section.number,
           sectionTitle: section.title,
           error: error.message,
+          errorStack: error.stack,
+          progress: `${i + 1}/${sections.length}`,
         });
         // 如果审核失败，添加空审核结果
         sectionReviews.push('');
@@ -438,12 +408,13 @@ export class StepwiseDocumentGenerator {
 
   /**
    * Step 5: 生成审核文档
+   * 注意：不再调用reviewAction，只生成审核报告内容
    */
   private async generateReviewDocument(
     sectionReviews: string[],
     sections: Section[]
   ): Promise<string | undefined> {
-    if (!this.config.reviewAction || sectionReviews.length === 0) {
+    if (sectionReviews.length === 0) {
       return undefined;
     }
 
@@ -486,61 +457,8 @@ export class StepwiseDocumentGenerator {
 
   /**
    * Step 6: 改进各个章节（根据审核文档）
+   * 注意：此方法已移除，改进由角色通过消息机制管理
    */
-  private async improveSections(
-    sectionContents: string[],
-    sections: Section[],
-    reviewReport: string,
-    outline: string
-  ): Promise<string[]> {
-    if (!this.config.improveAction) {
-      return sectionContents;
-    }
-
-    const improvedContents: string[] = [];
-
-    // 为每个章节调用改进逻辑
-    // 这里我们使用 ImproveDocument 来改进整个文档，然后提取各个章节
-    // 或者我们可以为每个章节单独调用改进逻辑
-    // 为了简化，我们先改进整个文档，然后提取章节
-
-    // 先合并当前章节内容
-    const currentDocument = this.mergeSections(outline, sectionContents, sections);
-
-    try {
-      this.config.improveAction.setLLM((this.action as any).llm);
-      if ((this.action as any).context) {
-        this.config.improveAction.setContext((this.action as any).context);
-      }
-
-      const documentType = this.config.documentType as 'PRD' | 'MRD' | 'DESIGN';
-      const improveResult = await (this.config.improveAction as any).run(reviewReport, {
-        documentType,
-        reviewReport: reviewReport,
-        applicationId: this.config.applicationId,
-        projectId: this.config.projectId,
-        version: this.config.version,
-      });
-
-      // 从改进后的文档中提取各个章节
-      const improvedDocument = improveResult.content;
-      improvedContents.push(...this.extractSections(improvedDocument, sections));
-
-      logger.info('StepwiseDocumentGenerator: Sections improved', {
-        sectionCount: improvedContents.length,
-        originalLength: currentDocument.length,
-        improvedLength: improvedDocument.length,
-      });
-    } catch (error: any) {
-      logger.error('StepwiseDocumentGenerator: Failed to improve sections', {
-        error: error.message,
-      });
-      // 如果改进失败，返回原始内容
-      return sectionContents;
-    }
-
-    return improvedContents;
-  }
 
   /**
    * 从文档中提取各个章节内容

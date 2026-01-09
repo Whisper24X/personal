@@ -3,7 +3,7 @@
  * Runtime context for a specific role instance
  */
 
-import { RoleReactMode } from '@mind2build/shared';
+import { RoleReactMode, RoleStatus } from '@mind2build/shared';
 import { MessageQueue } from '../message/MessageQueue';
 import { Message } from '../message/Message';
 import { BaseAction } from '../base/BaseAction';
@@ -23,6 +23,9 @@ export class RoleContext {
 
   // Current state (-1 = initial/terminal)
   state: number = -1;
+
+  // Role status (统一状态管理) - initialized in constructor to avoid module loading issues
+  status: RoleStatus;
 
   // Current action to execute
   todo: BaseAction | null = null;
@@ -44,6 +47,9 @@ export class RoleContext {
     maxReactLoop?: number;
     watch?: string[];
   }) {
+    // Initialize status in constructor to ensure RoleStatus is loaded
+    this.status = RoleStatus.IDLE;
+    
     if (params) {
       this.reactMode = params.reactMode || RoleReactMode.BY_ORDER;
       this.maxReactLoop = params.maxReactLoop || 1;
@@ -102,6 +108,7 @@ export class RoleContext {
   toJSON(): Record<string, any> {
     return {
       state: this.state,
+      status: this.status,
       watch: Array.from(this.watch),
       reactMode: this.reactMode,
       maxReactLoop: this.maxReactLoop,
@@ -122,6 +129,7 @@ export class RoleContext {
     });
     
     rc.state = data.state || -1;
+    rc.status = data.status || RoleStatus.IDLE;
     
     if (data.msgBuffer) {
       rc.msgBuffer = MessageQueue.fromJSON(data.msgBuffer);

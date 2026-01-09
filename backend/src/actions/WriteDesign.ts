@@ -12,8 +12,7 @@ import {
   buildDesignSectionPrompt,
 } from '../prompts/design';
 import { logger, WorkspaceOptions, loadPrompt } from '../utils';
-import { DesignReview } from './DesignReview';
-import { ImproveDocument } from './ImproveDocument';
+// Review和ImproveDocument已移除，由角色通过消息机制管理
 import { StepwiseDocumentGenerator } from '../utils/StepwiseDocumentGenerator';
 
 export interface WriteDesignOptions extends WorkspaceOptions {
@@ -84,8 +83,7 @@ export class WriteDesign extends BaseAction {
   private async generateStepwise(input: string, options?: WriteDesignOptions): Promise<IActionOutput> {
     // 确保使用DESIGN目录
     const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'DESIGN' });
-    const reviewAction = new DesignReview();
-    const improveAction = new ImproveDocument();
+    // 移除对Review和ImproveDocument的直接调用，改为通过角色管理
 
     // Load system prompt from database or use default
     const userId = this.context?.get('userId');
@@ -95,10 +93,7 @@ export class WriteDesign extends BaseAction {
       buildOutlinePrompt: buildDesignOutlinePrompt,
       buildSectionPrompt: buildDesignSectionPrompt,
       systemPrompt: systemPrompt,
-      reviewAction: reviewAction,
-      reviewTitle: '系统设计文档审查报告',
-      improveAction: improveAction,
-      autoImprove: true, // 自动在审查后改进文档
+      // Review 由角色通过 DesignReview action 统一处理
       documentTitle: '系统设计文档',
       documentType: 'DESIGN',
       mainFileName: 'DESIGN.md',

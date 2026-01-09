@@ -7,6 +7,7 @@ import { IRoleConfig, ACTION_WRITE_PRD } from '@mind2build/shared';
 import { Role } from './Role';
 import { Context } from '../core/context/Context';
 import { WriteDesign } from '../actions/WriteDesign';
+import { DesignReview } from '../actions/DesignReview';
 
 export class Architect extends Role {
   constructor(context: Context, name: string = 'Architect') {
@@ -24,7 +25,7 @@ export class Architect extends Role {
     this.watch([ACTION_WRITE_PRD]);
     
     // Set actions
-    this.setActions([new WriteDesign()]);
+    this.setActions([new WriteDesign(), new DesignReview()]);
   }
 }
 

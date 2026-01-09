@@ -1,6 +1,25 @@
 <template>
   <div class="project-detail">
-    <div v-if="currentProject" class="detail-content">
+    <!-- Error state: Project not found -->
+    <div v-if="!loading && error && !currentProject" class="error-state">
+      <el-result
+        icon="error"
+        title="项目不存在"
+        sub-title="该项目可能已被删除或ID不正确"
+      >
+        <template #extra>
+          <el-button type="primary" @click="router.push('/')">返回首页</el-button>
+        </template>
+      </el-result>
+    </div>
+
+    <!-- Loading state -->
+    <div v-else-if="loading" class="loading-state">
+      <el-skeleton :rows="5" animated />
+    </div>
+
+    <!-- Project content -->
+    <div v-else-if="currentProject" class="detail-content">
       <el-page-header @back="router.push('/')" class="page-header">
         <template #content>
           <div class="header-content">
@@ -181,7 +200,7 @@ const md = new MarkdownIt({
 const route = useRoute();
 const router = useRouter();
 const projectStore = useProjectStore();
-const { currentProject, messages, documents } = storeToRefs(projectStore);
+const { currentProject, messages, documents, loading, error } = storeToRefs(projectStore);
 
 const projectId = route.params.id as string;
 
@@ -426,6 +445,18 @@ function goToKnowledgeBase() {
 <style scoped>
 .project-detail {
   max-width: 100%;
+}
+
+.error-state {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+  padding: 40px 20px;
+}
+
+.loading-state {
+  padding: 40px 20px;
 }
 
 .detail-content {

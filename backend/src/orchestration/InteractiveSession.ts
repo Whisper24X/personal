@@ -14,6 +14,7 @@ import { Engineer } from '../roles/Engineer';
 import { QAEngineer } from '../roles/QAEngineer';
 import { logger } from '../utils';
 import { WorkflowTracker } from './WorkflowTracker';
+import { RoleReactMode } from '@mind2build/shared';
 // import { UserAction } from '../utils/InteractiveHandler'; // Unused
 
 export interface SessionConfig {
@@ -168,9 +169,44 @@ export class InteractiveSession {
       // Clear running state when session completes
       await this.workflowTracker.clearState();
 
+      // Check if all workflow items are completed and update project status
+      const projectId = this.config.projectId || this.id;
+      if (projectId) {
+        try {
+          const workflowItems = await this.workflowTracker.getWorkflowItems();
+
+          // Check if there are any workflow items and if all are completed (no pending or running items)
+          const hasWorkflowItems = workflowItems.length > 0;
+          const completedCount = workflowItems.filter(item => item.status === 'completed').length;
+          const pendingCount = workflowItems.filter(item => item.status === 'pending').length;
+          const runningCount = workflowItems.filter(item => item.status === 'running').length;
+
+          // Mark as completed if:
+          // 1. There are workflow items AND
+          // 2. No pending or running items (all are either completed or failed/skipped)
+          const shouldMarkCompleted = hasWorkflowItems && pendingCount === 0 && runningCount === 0;
+
+          if (shouldMarkCompleted) {
+            logger.info(`InteractiveSession: All workflow items finished (${completedCount}/${workflowItems.length} completed, ${workflowItems.length - completedCount} failed/skipped), marking project ${projectId} as completed`);
+            const { ProjectRepository } = await import('../database/repositories/ProjectRepository');
+            const projectRepo = new ProjectRepository();
+            await projectRepo.markCompleted(projectId);
+            logger.info(`InteractiveSession: Project ${projectId} marked as completed`);
+          } else {
+            logger.info(`InteractiveSession: Workflow not fully completed (${completedCount}/${workflowItems.length} completed, ${pendingCount} pending, ${runningCount} running), project status not updated`);
+          }
+        } catch (error: any) {
+          logger.error(`InteractiveSession: Failed to update project status for ${projectId}`, {
+            error: error.message,
+            stack: error.stack,
+          });
+          // Don't throw - continue with completion message even if status update fails
+        }
+      }
+
       // Send completion
       this.sendMessage('completed', {
-        projectId: this.id,
+        projectId: projectId || this.id,
         summary: {
           totalSteps: env.history.length,
           totalCost: this.team.getCostReport().totalCost,
@@ -536,7 +572,7 @@ export class InteractiveSession {
       logger.info(`InteractiveSession: Processing role ${role.profile} (iteration ${iteration}, roleIndex ${roleIndex})`);
       const currentNewsCauseBys = role.rc.news.map((msg: any) => msg.causeBy).join(', ');
       const watchSet = Array.from(role.rc.watch).join(', ');
-      logger.debug(`InteractiveSession: Role ${role.profile} state: ${role.rc.state}, todo: ${role.rc.todo ? role.rc.todo.name : 'null'}, news: ${role.rc.news.length} [${currentNewsCauseBys}], watch: [${watchSet}]`);
+      logger.info(`InteractiveSession: Role ${role.profile} state BEFORE observe/think: state=${role.rc.state}, todo=${role.rc.todo ? role.rc.todo.name : 'null'}, news=${role.rc.news.length} [${currentNewsCauseBys}], watch=[${watchSet}], actions.length=${role.actions.length}, reactMode=${role.rc.reactMode}`);
 
       // Let role observe and think first to determine what action it wants to take
       // This is needed to check if the todo action is already completed
@@ -627,21 +663,12 @@ export class InteractiveSession {
         const isLastRole = roleIndex === roles.length - 1;
         const nextRoleIndex = (roleIndex + 1) % roles.length;
 
-        // If the last role just went idle, check if all roles are done before moving to first role
+        // If the last role just went idle, stop execution immediately
         if (isLastRole && nextRoleIndex === 0) {
-          // Check if any role has pending work
-          const hasPendingWork = roles.some(r => {
-            return r.rc.news.length > 0 || r.rc.todo !== null;
-          });
-
-          if (!hasPendingWork) {
-            logger.info(`InteractiveSession: Last role (${role.profile}) is idle and all roles are idle, session complete`);
-            // Clear running state before exiting
-            await this.workflowTracker.clearState();
-            break;
-          } else {
-            logger.info(`InteractiveSession: Last role (${role.profile}) is idle, but some roles have pending work. Continuing to next cycle...`);
-          }
+          logger.info(`InteractiveSession: Last role (${role.profile}) is idle, stopping execution`);
+          // Clear running state before exiting
+          await this.workflowTracker.clearState();
+          break;
         }
 
         // Move to next role
@@ -735,21 +762,12 @@ export class InteractiveSession {
         const isLastRole = roleIndex === roles.length - 1;
         const nextRoleIndex = (roleIndex + 1) % roles.length;
 
-        // If the last role just went idle, check if all roles are done before moving to first role
+        // If the last role just went idle, stop execution immediately
         if (isLastRole && nextRoleIndex === 0) {
-          // Check if any role has pending work
-          const hasPendingWork = roles.some(r => {
-            return r.rc.news.length > 0 || r.rc.todo !== null;
-          });
-
-          if (!hasPendingWork) {
-            logger.info(`InteractiveSession: Last role (${role.profile}) is idle and all roles are idle, session complete`);
-            // Clear running state before exiting
-            await this.workflowTracker.clearState();
-            break;
-          } else {
-            logger.info(`InteractiveSession: Last role (${role.profile}) is idle, but some roles have pending work. Continuing to next cycle...`);
-          }
+          logger.info(`InteractiveSession: Last role (${role.profile}) is idle, stopping execution`);
+          // Clear running state before exiting
+          await this.workflowTracker.clearState();
+          break;
         }
 
         // Move to next role
@@ -770,7 +788,57 @@ export class InteractiveSession {
       // Extract output files from message
       const outputFiles = this.extractOutputFiles(message);
 
-      logger.info(`InteractiveSession: Waiting for user confirmation for ${role.profile}`);
+      // IMPORTANT: Check if role has more actions BEFORE waiting for user confirmation
+      // If role has more actions, skip confirmation and continue executing actions
+      // Only wait for confirmation when all actions for this role are completed
+      const hasMoreActions = role.rc.reactMode === RoleReactMode.BY_ORDER &&
+        role.rc.state >= 0 &&
+        role.rc.state < role.actions.length - 1;
+
+      logger.info(`InteractiveSession: Checking if role ${role.profile} has more actions before confirmation`, {
+        reactMode: role.rc.reactMode,
+        state: role.rc.state,
+        actionsLength: role.actions.length,
+        hasMoreActions: hasMoreActions,
+        actionNames: role.actions.map(a => a.name).join(', '),
+        nextActionIndex: role.rc.state + 1,
+        nextActionName: hasMoreActions ? role.actions[role.rc.state + 1].name : 'none',
+        todo: role.rc.todo ? role.rc.todo.name : 'null',
+        newsCount: role.rc.news.length,
+      });
+
+      if (hasMoreActions) {
+        // Role has more actions to execute - skip user confirmation and continue
+        logger.info(`InteractiveSession: Role ${role.profile} has more actions in sequence (state=${role.rc.state}, total=${role.actions.length}), skipping confirmation and continuing with next action`);
+
+        // Publish message to environment (for other roles to observe)
+        env.publishMessage(message);
+        logger.info(`InteractiveSession: Published message from ${role.profile} (causeBy: ${message.causeBy}) to environment`);
+
+        // Save message to database for persistence
+        const projectId = this.config.projectId || this.id;
+        if (projectId) {
+          try {
+            const { MessageRepository } = await import('../database/repositories/MessageRepository');
+            const messageRepo = new MessageRepository();
+            await messageRepo.save(projectId, message);
+            logger.info(`InteractiveSession: Saved message ${message.id} to database for project ${projectId}`);
+          } catch (error: any) {
+            logger.warn(`InteractiveSession: Failed to save message to database`, {
+              error: error.message,
+              messageId: message.id,
+              projectId,
+            });
+            // Don't throw - continue even if save fails
+          }
+        }
+
+        // Continue with the same role to execute next action
+        continue;
+      }
+
+      // All actions for this role are completed - wait for user confirmation
+      logger.info(`InteractiveSession: All actions completed for ${role.profile}, waiting for user confirmation`);
 
       // Ensure state is correctly set before waiting for confirmation
       // This is important because onRoleComplete might have set action to null
@@ -847,21 +915,63 @@ export class InteractiveSession {
       // Check if we're about to cycle back to the first role (last role just completed)
       const isLastRole = roleIndex === roles.length - 1;
 
-      // If the last role just completed, check if all roles are done before moving to first role
+      // If the last role just completed, check if project should be marked as completed
       if (isLastRole && nextRoleIndex === 0) {
-        // Check if any role has pending work
-        const hasPendingWork = roles.some(r => {
-          return r.rc.news.length > 0 || r.rc.todo !== null;
-        });
+        logger.info(`InteractiveSession: Last role (${role.profile}) completed, checking if project should be marked as completed`);
 
-        if (!hasPendingWork) {
-          logger.info(`InteractiveSession: Last role (${role.profile}) completed and all roles are idle, session complete`);
-          // Clear running state before exiting
-          await this.workflowTracker.clearState();
-          break;
-        } else {
-          logger.info(`InteractiveSession: Last role (${role.profile}) completed, but some roles have pending work. Continuing to next cycle...`);
+        // Ensure current role's workflow item is marked as completed if message was produced
+        // Note: onRoleComplete should have already updated the status, but we'll verify it's completed
+        if (message && message.causeBy) {
+          const currentActionName = message.causeBy;
+          const isCompleted = await this.workflowTracker.isActionCompleted(role.profile, currentActionName);
+          if (!isCompleted) {
+            logger.warn(`InteractiveSession: Workflow item ${role.profile}:${currentActionName} is not marked as completed, this may cause status check to fail`);
+          }
         }
+
+        // Wait a bit to ensure workflow item status is updated in database
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // Check if all workflow items are completed and update project status
+        const projectId = this.config.projectId || this.id;
+        if (projectId) {
+          try {
+            const workflowItems = await this.workflowTracker.getWorkflowItems();
+
+            // Check if there are any workflow items and if all are completed (no pending or running items)
+            const hasWorkflowItems = workflowItems.length > 0;
+            const completedCount = workflowItems.filter(item => item.status === 'completed').length;
+            const pendingCount = workflowItems.filter(item => item.status === 'pending').length;
+            const runningCount = workflowItems.filter(item => item.status === 'running').length;
+
+            logger.info(`InteractiveSession: Workflow status check - total: ${workflowItems.length}, completed: ${completedCount}, pending: ${pendingCount}, running: ${runningCount}`);
+
+            // Mark as completed if:
+            // 1. There are workflow items AND
+            // 2. No pending or running items (all are either completed or failed/skipped)
+            const shouldMarkCompleted = hasWorkflowItems && pendingCount === 0 && runningCount === 0;
+
+            if (shouldMarkCompleted) {
+              logger.info(`InteractiveSession: All workflow items finished (${completedCount}/${workflowItems.length} completed, ${workflowItems.length - completedCount} failed/skipped), marking project ${projectId} as completed`);
+              const { ProjectRepository } = await import('../database/repositories/ProjectRepository');
+              const projectRepo = new ProjectRepository();
+              await projectRepo.markCompleted(projectId);
+              logger.info(`InteractiveSession: Project ${projectId} marked as completed`);
+            } else {
+              logger.info(`InteractiveSession: Workflow not fully completed (${completedCount}/${workflowItems.length} completed, ${pendingCount} pending, ${runningCount} running), project status not updated`);
+            }
+          } catch (error: any) {
+            logger.error(`InteractiveSession: Failed to update project status for ${projectId}`, {
+              error: error.message,
+              stack: error.stack,
+            });
+            // Don't throw - continue even if status update fails
+          }
+        }
+
+        // Clear running state before exiting
+        await this.workflowTracker.clearState();
+        break;
       }
 
       const nextRole = roles[nextRoleIndex];
@@ -1178,9 +1288,7 @@ export class InteractiveSession {
     role: string | null;
     action: string | null;
   }> {
-    logger.info(`InteractiveSession: getCurrentRunning called - sessionId=${this.id}`);
     const state = await this.workflowTracker.getCurrentState();
-    logger.info(`InteractiveSession: getCurrentRunning returning - role=${state.role}, action=${state.action}, sessionId=${this.id}`);
     return state;
   }
 }

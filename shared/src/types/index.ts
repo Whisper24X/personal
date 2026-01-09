@@ -121,10 +121,19 @@ export interface IDocument {
 // ==================== Action Types ====================
 
 export enum ActionStatus {
-  PENDING = 'pending',
-  RUNNING = 'running',
-  COMPLETED = 'completed',
-  FAILED = 'failed',
+  PENDING = 'pending',      // 待执行
+  RUNNING = 'running',       // 执行中
+  COMPLETED = 'completed',  // 已完成
+  FAILED = 'failed',         // 失败
+}
+
+// ==================== Role Types (Status) ====================
+
+export enum RoleStatus {
+  PENDING = 'pending',      // 待执行
+  RUNNING = 'running',       // 执行中
+  COMPLETED = 'completed',  // 已完成
+  IDLE = 'idle',            // 空闲
 }
 
 export interface IActionOutput {

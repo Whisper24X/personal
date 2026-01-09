@@ -446,6 +446,7 @@ import {
 } from '@element-plus/icons-vue';
 import SectionAdjuster from './SectionAdjuster.vue';
 import apiClient from '../api/client';
+import { useRoleActionStore } from '../stores/roleAction';
 
 interface FileInfo {
     path: string;
@@ -630,6 +631,8 @@ function getRoleIcon(role: string) {
     return iconMap[role] || UserFilled;
 }
 
+const roleActionStore = useRoleActionStore();
+
 function getActionType(action: string): 'success' | 'warning' | 'info' | 'danger' {
     const typeMap: Record<string, 'success' | 'warning' | 'info' | 'danger'> = {
         WritePRD: 'success',
@@ -645,59 +648,14 @@ function getActionType(action: string): 'success' | 'warning' | 'info' | 'danger
  * 获取角色描述
  */
 function getRoleDescription(role: string): string {
-    const roleDescriptions: Record<string, string> = {
-        Salesperson: '需求收集专家，负责收集和分析用户需求，进行市场调研和业务分析，输出市场研究文档（MRD）',
-        ProductManager: '产品经理，负责基于市场研究文档（MRD）编写产品需求文档（PRD），进行需求分析和产品规划',
-        Architect: '系统架构师，负责系统设计、架构规划，输出系统设计文档和技术方案',
-        ProjectManager: '项目经理，负责任务拆分、子项目设计和代码审查，为工程师提供清晰的开发指南',
-        Engineer: '工程师，负责代码实现，根据设计文档和任务说明编写高质量的代码',
-        QAEngineer: 'QA工程师，负责测试用例编写和执行，确保代码质量和功能正确性',
-        TeamLeader: '团队领导，负责协调团队工作、做出决策和任务分配',
-        DataAnalyst: '数据分析师，负责数据分析和可视化，提供数据洞察',
-    };
-    return roleDescriptions[role] || '';
+    return roleActionStore.getRoleDescription(role);
 }
 
 /**
  * 获取Action描述
  */
 function getActionDescription(action: string): string {
-    const actionDescriptions: Record<string, string> = {
-        // Salesperson actions
-        WriteMRD: '编写市场研究文档（MRD），包含需求背景、目标价值分析、用户分析、业务流程分析、市场分析和可行性分析',
-        MRDReview: '审查市场研究文档（MRD），评估文档质量和完整性，提供改进建议',
-        WriteRequirementSpec: '编写需求说明文档，整理和分析用户需求，进行市场调研和竞品分析',
-        RequirementSpecReview: '审查需求说明文档，确保需求描述的准确性和完整性',
-        
-        // ProductManager actions
-        WritePRD: '编写产品需求文档（PRD），基于MRD进行详细的功能需求分析和产品规划',
-        PRDReview: '审查产品需求文档（PRD），评估需求的合理性和可实现性',
-        ImproveDocument: '根据审查报告改进和完善PRD或MRD文档，补充详细描述和缺失内容',
-        SearchEnhancedQA: '使用RAG检索历史PRD文档，增强文档质量和一致性',
-        
-        // Architect actions
-        WriteDesign: '编写系统设计文档，包含架构设计、数据结构设计、API设计和技术选型说明',
-        
-        // ProjectManager actions
-        BreakdownTasks: '基于PRD和系统设计文档进行任务拆分，将项目拆分为可独立完成的小任务',
-        WriteSubProjectDesign: '编写子项目设计文档，为每个子任务提供详细的技术实现方案',
-        GenerateTask: '生成任务说明文档，为工程师提供清晰的开发指南和代码示例',
-        CodeReview: '进行代码审查，评估代码质量，提供改进建议',
-        
-        // Engineer actions
-        WriteCode: '编写代码实现，根据设计文档和任务说明生成高质量的源代码',
-        ExecuteSubtask: '执行子任务，根据任务描述和设计文档实现具体的代码功能',
-        
-        // QAEngineer actions
-        WriteTest: '编写测试用例，确保代码的功能正确性和质量',
-        
-        // TeamLeader actions
-        Coordinate: '协调团队工作，做出决策，分配任务，确保项目顺利进行',
-        
-        // DataAnalyst actions
-        DataAnalysis: '进行数据分析和可视化，提供数据洞察和报告',
-    };
-    return actionDescriptions[action] || '';
+    return roleActionStore.getActionDescription(action);
 }
 
 const isIdle = computed(() => props.roleInfo.action === 'idle');
@@ -818,7 +776,8 @@ function handleKeyPress(event: KeyboardEvent) {
     }
 }
 
-onMounted(() => {
+onMounted(async () => {
+    await roleActionStore.fetchRolesAndActions();
     document.addEventListener('keypress', handleKeyPress);
 });
 

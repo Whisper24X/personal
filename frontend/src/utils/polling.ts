@@ -88,7 +88,6 @@ export function createPolling<T>(
       const errorObj = error instanceof Error ? error : new Error(errorMessage);
       
       if (retryCount <= maxRetries) {
-        console.warn(`轮询失败，${retryDelay}ms 后重试 (${retryCount}/${maxRetries}):`, errorMessage, error);
         if (onError) {
           onError(errorObj);
         }
@@ -99,7 +98,6 @@ export function createPolling<T>(
         }, retryDelay);
         return;
       } else {
-        console.error('轮询失败，已达到最大重试次数:', errorMessage, error);
         if (onError) {
           onError(errorObj);
         }
@@ -169,7 +167,7 @@ export function simplePolling<T>(
       const data = await pollFn();
       onUpdate(data);
     } catch (error: any) {
-      console.error('轮询错误:', error);
+      // Error handled silently
     } finally {
       isPolling = false;
       timeoutId = setTimeout(poll, interval);

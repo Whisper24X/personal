@@ -367,6 +367,13 @@ class APIClient {
     return this.client.get(`/interactive/${sessionId}/running`);
   }
 
+  // Reset workflow from a specific role (reset that role and all downstream roles)
+  async resetInteractiveWorkflow(sessionId: string, role: string) {
+    return this.client.post(`/interactive/${sessionId}/reset-workflow`, {
+      role,
+    });
+  }
+
   // Knowledge Base API endpoints
   async createKnowledgeBase(projectId: string, data: {
     title: string;
@@ -408,6 +415,16 @@ class APIClient {
       query,
       limit,
     });
+  }
+
+  // Generic GET method for custom endpoints
+  async get(url: string, config?: any) {
+    return this.client.get(url, config);
+  }
+
+  // Generic POST method for custom endpoints
+  async post(url: string, data?: any, config?: any) {
+    return this.client.post(url, data, config);
   }
 }
 

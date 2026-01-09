@@ -242,18 +242,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus';
 import { User, Plus, Edit, Delete } from '@element-plus/icons-vue';
 import { apiClient } from '../api/client';
-
-interface Role {
-  profile: string;
-  name: string;
-  description: string;
-  goal: string;
-}
+import { useRoleActionStore } from '../stores/roleAction';
 
 interface RoleLLMConfig {
   provider: string;
@@ -269,46 +263,25 @@ interface RoleLLMConfig {
 }
 
 const router = useRouter();
+const roleActionStore = useRoleActionStore();
 
-// 定义所有角色
-const roles: Role[] = [
-  {
-    profile: 'Salesperson',
-    name: '销售',
-    description: '需求收集、市场调研',
-    goal: '收集用户需求并编写需求说明文档',
-  },
-  {
-    profile: 'ProductManager',
-    name: '产品经理',
-    description: 'PRD编写、需求分析',
-    goal: '基于需求说明文档编写产品需求文档（PRD）',
-  },
-  {
-    profile: 'Architect',
-    name: '架构师',
-    description: '系统设计、架构规划',
-    goal: '基于PRD设计系统架构和技术方案',
-  },
-  {
-    profile: 'ProjectManager',
-    name: '项目经理',
-    description: '任务拆分、项目管理',
-    goal: '将项目拆分为可执行的任务',
-  },
-  {
-    profile: 'Engineer',
-    name: '工程师',
-    description: '代码实现',
-    goal: '根据设计文档和任务拆分实现代码',
-  },
-  {
-    profile: 'QAEngineer',
-    name: 'QA工程师',
-    description: '测试编写与执行',
-    goal: '编写和执行测试用例',
-  },
-];
+// 定义Role类型
+interface Role {
+  profile: string;
+  name: string;
+  description: string;
+  goal: string;
+}
+
+// 从store获取角色列表
+const roles = computed<Role[]>(() => {
+  return roleActionStore.roles.map(role => ({
+    profile: role.profile,
+    name: roleActionStore.getRoleDisplayName(role.profile),
+    description: role.description,
+    goal: role.goal,
+  }));
+});
 
 const loading = ref(false);
 const saving = ref(false);
@@ -573,8 +546,9 @@ async function saveRoleConfig() {
 
 async function clearRoleConfig(profile: string) {
   try {
+    const roleName = roleActionStore.getRoleDisplayName(profile);
     await ElMessageBox.confirm(
-      `确定要清除 ${roles.find(r => r.profile === profile)?.name} 的 LLM 配置吗？清除后将使用系统默认 LLM。`,
+      `确定要清除 ${roleName} 的 LLM 配置吗？清除后将使用系统默认 LLM。`,
       '确认清除',
       {
         type: 'warning',
@@ -590,7 +564,8 @@ async function clearRoleConfig(profile: string) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await roleActionStore.fetchRolesAndActions();
   fetchProviderConfigs();
   fetchRoleConfigs();
 });

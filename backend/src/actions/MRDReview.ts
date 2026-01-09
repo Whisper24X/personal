@@ -9,9 +9,9 @@ import {
   MRD_REVIEW_SYSTEM_PROMPT,
   buildMRDReviewPrompt,
 } from '../prompts/mrd';
-import { logger, loadPrompt } from '../utils';
+import { logger, loadPrompt, WorkspaceOptions } from '../utils';
 
-export interface MRDReviewOptions {
+export interface MRDReviewOptions extends WorkspaceOptions {
   outline?: string;
 }
 
@@ -21,14 +21,44 @@ export class MRDReview extends BaseAction {
   }
 
   async run(mrdContent: string, options?: MRDReviewOptions): Promise<IActionOutput> {
+    // 如果输入内容为空或很短，尝试从 workspace 读取 MRD.md
+    let actualMRDContent = mrdContent;
+    if ((!mrdContent || mrdContent.trim().length < 100) && options?.applicationId) {
+      try {
+        const mrdFromWorkspace = await this.readWorkspaceFile('MRD.md', {
+          applicationId: options.applicationId,
+          projectId: options.projectId,
+          version: options.version || 1,
+          documentType: 'MRD',
+          workspacePath: options.workspacePath,
+        });
+
+        if (mrdFromWorkspace) {
+          actualMRDContent = mrdFromWorkspace;
+          logger.info('MRDReview: Loaded MRD content from workspace', {
+            applicationId: options.applicationId,
+            version: options.version || 1,
+            contentLength: actualMRDContent.length,
+          });
+        }
+      } catch (error: any) {
+        logger.warn('MRDReview: Failed to read MRD.md from workspace, using provided content', {
+          error: error.message,
+          contentLength: mrdContent.length,
+        });
+      }
+    }
+
     logger.info('MRDReview: Starting MRD review', {
-      contentLength: mrdContent.length,
+      contentLength: actualMRDContent.length,
       hasOutline: !!options?.outline,
+      applicationId: options?.applicationId,
+      version: options?.version,
     });
 
     try {
-      const outline = options?.outline || this.extractOutline(mrdContent);
-      const prompt = buildMRDReviewPrompt(mrdContent, outline);
+      const outline = options?.outline || this.extractOutline(actualMRDContent);
+      const prompt = buildMRDReviewPrompt(actualMRDContent, outline);
 
       // Load system prompt from database or use default
       const userId = this.context?.get('userId');
@@ -41,11 +71,36 @@ export class MRDReview extends BaseAction {
         reviewLength: reviewResult.length,
       });
 
+      // Save review report to workspace if workspace options are provided
+      if (options?.applicationId) {
+        const workspaceOptions: WorkspaceOptions = {
+          applicationId: options.applicationId,
+          projectId: options.projectId,
+          version: options.version || 1,
+          documentType: 'MRD',
+          workspacePath: options.workspacePath,
+        };
+
+        await this.saveToWorkspace('MRD_REVIEW.md', reviewResult, workspaceOptions);
+        logger.info('MRDReview: Saved review report to workspace', {
+          filename: 'MRD_REVIEW.md',
+          workspaceDir: this.getWorkspaceDir(workspaceOptions),
+        });
+      }
+
       return {
         content: reviewResult,
         data: {
           type: 'mrd_review',
+          filename: 'MRD_REVIEW.md',
           timestamp: new Date().toISOString(),
+          workspaceDir: options?.applicationId ? this.getWorkspaceDir({
+            applicationId: options.applicationId,
+            projectId: options.projectId,
+            version: options.version || 1,
+            documentType: 'MRD',
+            workspacePath: options.workspacePath,
+          }) : undefined,
         },
       };
     } catch (error: any) {
@@ -63,7 +118,7 @@ export class MRDReview extends BaseAction {
   private extractOutline(content: string): string {
     const lines = content.split('\n');
     const outline: string[] = [];
-    
+
     for (const line of lines) {
       // Match ## X. Title format
       const match = line.match(/^##\s+(\d+)\.\s+(.+)$/);

@@ -109,12 +109,12 @@ router.post('/interactive', async (req, res) => {
       try {
         const { InteractiveSessionWorkflowRepository } = await import('../../database/repositories/InteractiveSessionWorkflowRepository');
         const workflowRepo = new InteractiveSessionWorkflowRepository();
-        
+
         // Get old running state by projectId
         const oldState = await workflowRepo.getRunningStateByProjectId(finalProjectId);
         if (oldState && oldState.session_id !== session.id) {
           logger.info(`API: Found old session ${oldState.session_id} for project ${finalProjectId}, migrating state to new session ${session.id}`);
-          
+
           // Migrate running state to new session
           await workflowRepo.updateRunningState(
             session.id,
@@ -122,7 +122,7 @@ router.post('/interactive', async (req, res) => {
             oldState.current_role,
             oldState.current_action
           );
-          
+
           // Migrate workflow items to new session
           const oldWorkflowItems = await workflowRepo.getWorkflowItems(oldState.session_id);
           for (const item of oldWorkflowItems) {
@@ -136,7 +136,7 @@ router.post('/interactive', async (req, res) => {
               );
             }
           }
-          
+
           logger.info(`API: Successfully migrated workflow state from session ${oldState.session_id} to ${session.id}`);
         }
       } catch (error: any) {
@@ -273,7 +273,6 @@ router.get('/interactive/:sessionId/poll', async (req, res) => {
       hasMore: messages.length > 0,
     });
   } catch (error: any) {
-    logger.error('API: Error polling messages', error);
     return res.status(500).json({
       error: error.message || 'Failed to poll messages',
     });
@@ -338,9 +337,14 @@ router.get('/interactive/:sessionId/workflow', async (req, res) => {
 
     const workflowInfo = session.getWorkflowInfo();
 
+    // Also get workflow items status
+    const workflowTracker = (session as any).workflowTracker;
+    const workflowItems = workflowTracker ? await workflowTracker.getWorkflowItems() : [];
+
     return res.json({
       success: true,
       ...workflowInfo,
+      items: workflowItems, // Include workflow items with their status
     });
   } catch (error: any) {
     logger.error('API: Error getting workflow info', error);
@@ -357,7 +361,6 @@ router.get('/interactive/:sessionId/workflow', async (req, res) => {
 router.get('/interactive/:sessionId/running', async (req, res) => {
   try {
     const { sessionId } = req.params;
-    logger.info(`API: GET /interactive/${sessionId}/running - Request received`);
 
     const session = sessionManager.getSession(sessionId);
 
@@ -369,15 +372,12 @@ router.get('/interactive/:sessionId/running', async (req, res) => {
     }
 
     // getCurrentRunning is now async and reads from database
-    logger.info(`API: GET /interactive/${sessionId}/running - Calling session.getCurrentRunning()`);
     const runningInfo = await session.getCurrentRunning();
-    logger.info(`API: GET /interactive/${sessionId}/running - Running info received: role=${runningInfo.role}, action=${runningInfo.action}`);
 
     const response = {
       success: true,
       ...runningInfo,
     };
-    logger.info(`API: GET /interactive/${sessionId}/running - Returning response: ${JSON.stringify(response)}`);
 
     return res.json(response);
   } catch (error: any) {
@@ -387,6 +387,61 @@ router.get('/interactive/:sessionId/running', async (req, res) => {
     });
     return res.status(500).json({
       error: error.message || 'Failed to get running info',
+    });
+  }
+});
+
+/**
+ * Reset workflow from a specific role (reset that role and all downstream roles)
+ * POST /api/interactive/:sessionId/reset-workflow
+ */
+router.post('/interactive/:sessionId/reset-workflow', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { role } = req.body;
+
+    if (!role) {
+      return res.status(400).json({
+        error: 'Missing required field: role',
+      });
+    }
+
+    const session = sessionManager.getSession(sessionId);
+
+    if (!session) {
+      return res.status(404).json({
+        error: 'Session not found',
+      });
+    }
+
+    // Get workflow tracker from session
+    const workflowTracker = (session as any).workflowTracker;
+    if (!workflowTracker) {
+      return res.status(500).json({
+        error: 'Workflow tracker not found',
+      });
+    }
+
+    // Get repository and reset workflow
+    const repository = (workflowTracker as any).repository;
+    await repository.resetWorkflowFromRole(sessionId, role);
+
+    // Clear running state if the reset role is currently running
+    const currentState = await workflowTracker.getCurrentState();
+    if (currentState.role === role) {
+      await workflowTracker.clearState();
+    }
+
+    logger.info(`API: Reset workflow from role ${role} for session ${sessionId}`);
+
+    return res.json({
+      success: true,
+      message: `Workflow reset from role ${role} and all downstream roles`,
+    });
+  } catch (error: any) {
+    logger.error('API: Error resetting workflow', error);
+    return res.status(500).json({
+      error: error.message || 'Failed to reset workflow',
     });
   }
 });

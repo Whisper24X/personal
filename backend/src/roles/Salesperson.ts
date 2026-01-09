@@ -7,6 +7,8 @@ import { IRoleConfig } from '@mind2build/shared';
 import { Role } from './Role';
 import { Context } from '../core/context/Context';
 import { WriteMRD } from '../actions/WriteMRD';
+import { MRDReview } from '../actions/MRDReview';
+import { ImproveMRD } from '../actions/ImproveMRD';
 
 export class Salesperson extends Role {
   constructor(context: Context, name: string = 'Salesperson') {
@@ -24,7 +26,8 @@ export class Salesperson extends Role {
     // Salesperson is the first role in the workflow, so it needs to listen for User messages
     this.watch(['User']);
 
-    this.setActions([new WriteMRD()]);
+    // Actions: WriteMRD -> MRDReview -> ImproveMRD
+    this.setActions([new WriteMRD(), new MRDReview(), new ImproveMRD()]);
   }
 }
 

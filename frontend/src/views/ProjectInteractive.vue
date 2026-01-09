@@ -82,7 +82,15 @@
               <el-badge v-if="isRunning && runningRole === roleColumn.role && currentAction" :value="'运行中'"
                 class="running-badge" type="danger" />
             </div>
-            <span class="column-count">{{ roleColumn.completedCount }} / {{ roleColumn.totalCount }}</span>
+            <div class="column-header-right">
+              <span class="column-count">{{ roleColumn.completedCount }} / {{ roleColumn.totalCount }}</span>
+              <el-button v-if="roleColumn.completedCount === roleColumn.totalCount && roleColumn.totalCount > 0"
+                type="warning" size="small" :icon="Refresh" @click.stop="handleResetRole(roleColumn.role)"
+                :loading="resettingRoles.has(roleColumn.role)" plain class="reset-button"
+                :title="`重置 ${getRoleDisplayName(roleColumn.role)} 及下游所有角色的工作流`">
+                重置
+              </el-button>
+            </div>
           </div>
           <div class="column-description">
             {{ getRoleDescription(roleColumn.role) }}
@@ -326,9 +334,11 @@ import {
 import InteractiveConfirmation from '../components/InteractiveConfirmation.vue';
 import apiClient from '../api/client';
 import { createPolling, type PollingResult } from '../utils/polling';
+import { useRoleActionStore } from '../stores/roleAction';
 
 const route = useRoute();
 const router = useRouter();
+const roleActionStore = useRoleActionStore();
 
 // Project Info
 const projectId = ref((route.params.id as string) || (route.query.id as string) || '');
@@ -351,6 +361,9 @@ const startTime = ref(Date.now());
 const completedSteps = ref<any[]>([]);
 const currentStep = ref<any>(null);
 const showConfirmationDialog = ref(false);
+
+// Reset state
+const resettingRoles = ref<Set<string>>(new Set());
 
 // Content Dialog
 const showContentDialog = ref(false);
@@ -545,19 +558,49 @@ async function loadWorkflowInfo() {
         structure[roleInfo.role] = roleInfo.actions.map((action: any) => action.name);
       });
       workflowStructure.value = structure;
+
+      // Restore completed steps from workflow items
+      if (response.items && Array.isArray(response.items)) {
+        const completedItems = response.items.filter((item: any) => item.status === 'completed');
+        // Only restore if we don't already have these steps (to avoid duplicates)
+        const existingKeys = new Set(completedSteps.value.map(s => `${s.role}-${s.action}`));
+        const newSteps = completedItems
+          .filter((item: any) => item.role && item.action && !existingKeys.has(`${item.role}-${item.action}`))
+          .map((item: any) => ({
+            role: item.role,
+            action: item.action,
+            userAction: 'skip', // Default, will be updated if we have more info
+            timestamp: new Date().toISOString(),
+            content: undefined,
+            outputFiles: undefined,
+            zipPath: undefined,
+            zipType: undefined,
+          }));
+        completedSteps.value.push(...newSteps);
+      }
     }
   } catch (error: any) {
     console.error('Failed to load workflow info:', error);
-    ElMessage.warning('加载工作流信息失败，使用默认配置');
-    // Fallback to default structure if API fails
-    workflowStructure.value = {
-      Salesperson: ['WriteMRD', 'MRDReview', 'WriteRequirementSpec', 'RequirementSpecReview'],
-      ProductManager: ['WritePRD', 'PRDReview', 'ImproveDocument', 'SearchEnhancedQA'],
-      Architect: ['WriteDesign'],
-      ProjectManager: ['BreakdownTasks', 'WriteSubProjectDesign', 'GenerateTask', 'CodeReview'],
-      Engineer: ['WriteCode', 'ExecuteSubtask'],
-      QAEngineer: ['WriteTest', 'CodeReview'],
-    };
+    ElMessage.warning('加载工作流信息失败，使用角色配置');
+    // Fallback: use role actions from store to build workflow structure
+    if (roleActionStore.roles.length > 0) {
+      const structure: Record<string, string[]> = {};
+      roleActionStore.roles.forEach((role) => {
+        structure[role.profile] = role.actions.map((action) => action.name);
+      });
+      workflowStructure.value = structure;
+    } else {
+      // If store is not loaded yet, use a minimal default structure
+      // This should rarely happen as we load store in onMounted
+      workflowStructure.value = {
+        Salesperson: ['WriteMRD'],
+        ProductManager: ['WritePRD', 'SearchEnhancedQA'],
+        Architect: ['WriteDesign'],
+        ProjectManager: ['BreakdownTasks', 'WriteSubProjectDesign', 'GenerateTask'],
+        Engineer: ['WriteCode', 'ExecuteSubtask'],
+        QAEngineer: ['WriteTest'],
+      };
+    }
   } finally {
     workflowLoading.value = false;
   }
@@ -592,6 +635,9 @@ async function loadRunningInfo() {
 }
 
 onMounted(async () => {
+  // Load roles and actions metadata
+  await roleActionStore.fetchRolesAndActions();
+
   // If projectId is provided, load project info first
   if (projectId.value) {
     try {
@@ -778,7 +824,6 @@ function startPolling(sessionId: string) {
           await loadRunningInfo();
           return response;
         } catch (error: any) {
-          console.error('Poll API error:', error);
           // 重新抛出错误以便轮询工具处理
           throw error;
         }
@@ -797,8 +842,6 @@ function startPolling(sessionId: string) {
           if (data.lastMessageId) {
             lastMessageId = data.lastMessageId;
           }
-        } else {
-          console.warn('Unexpected polling response format:', data);
         }
       },
       {
@@ -808,14 +851,12 @@ function startPolling(sessionId: string) {
         immediate: true,
         shouldContinue: () => !isCompleted.value,
         onError: (error: Error) => {
-          console.error('Polling error:', error);
           const errorMessage = error?.message || '未知错误';
           ElMessage.error('轮询错误: ' + errorMessage);
         },
       }
     );
   } catch (error: any) {
-    console.error('Failed to start polling:', error);
     ElMessage.error('启动轮询失败: ' + error.message);
     isRunning.value = false;
   }
@@ -1155,118 +1196,28 @@ function getStageTagType(): 'success' | 'warning' | 'info' | 'danger' {
  * 获取角色描述
  */
 function getRoleDescription(role: string): string {
-  const roleDescriptions: Record<string, string> = {
-    Salesperson: '需求收集专家，负责收集和分析用户需求，进行市场调研和业务分析，输出市场研究文档（MRD）',
-    ProductManager: '产品经理，负责基于市场研究文档（MRD）编写产品需求文档（PRD），进行需求分析和产品规划',
-    Architect: '系统架构师，负责系统设计、架构规划，输出系统设计文档和技术方案',
-    ProjectManager: '项目经理，负责任务拆分、子项目设计和代码审查，为工程师提供清晰的开发指南',
-    Engineer: '工程师，负责代码实现，根据设计文档和任务说明编写高质量的代码',
-    QAEngineer: 'QA工程师，负责测试用例编写和执行，确保代码质量和功能正确性',
-    TeamLeader: '团队领导，负责协调团队工作、做出决策和任务分配',
-    DataAnalyst: '数据分析师，负责数据分析和可视化，提供数据洞察',
-  };
-  return roleDescriptions[role] || '';
+  return roleActionStore.getRoleDescription(role);
 }
 
 /**
  * 获取Action描述
  */
 function getActionDescription(action: string): string {
-  const actionDescriptions: Record<string, string> = {
-    // Salesperson actions
-    WriteMRD: '编写市场研究文档（MRD），包含需求背景、目标价值分析、用户分析、业务流程分析、市场分析和可行性分析',
-    MRDReview: '审查市场研究文档（MRD），评估文档质量和完整性，提供改进建议',
-    WriteRequirementSpec: '编写需求说明文档，整理和分析用户需求，进行市场调研和竞品分析',
-    RequirementSpecReview: '审查需求说明文档，确保需求描述的准确性和完整性',
-
-    // ProductManager actions
-    WritePRD: '编写产品需求文档（PRD），基于MRD进行详细的功能需求分析和产品规划',
-    PRDReview: '审查产品需求文档（PRD），评估需求的合理性和可实现性',
-    ImproveDocument: '根据审查报告改进和完善PRD或MRD文档，补充详细描述和缺失内容',
-    SearchEnhancedQA: '使用RAG检索历史PRD文档，增强文档质量和一致性',
-
-    // Architect actions
-    WriteDesign: '编写系统设计文档，包含架构设计、数据结构设计、API设计和技术选型说明',
-
-    // ProjectManager actions
-    BreakdownTasks: '基于PRD和系统设计文档进行任务拆分，将项目拆分为可独立完成的小任务',
-    WriteSubProjectDesign: '编写子项目设计文档，为每个子任务提供详细的技术实现方案',
-    GenerateTask: '生成任务说明文档，为工程师提供清晰的开发指南和代码示例',
-    CodeReview: '进行代码审查，评估代码质量，提供改进建议',
-
-    // Engineer actions
-    WriteCode: '编写代码实现，根据设计文档和任务说明生成高质量的源代码',
-    ExecuteSubtask: '执行子任务，根据任务描述和设计文档实现具体的代码功能',
-
-    // QAEngineer actions
-    WriteTest: '编写测试用例，确保代码的功能正确性和质量',
-
-    // TeamLeader actions
-    Coordinate: '协调团队工作，做出决策，分配任务，确保项目顺利进行',
-
-    // DataAnalyst actions
-    DataAnalysis: '进行数据分析和可视化，提供数据洞察和报告',
-  };
-  return actionDescriptions[action] || '';
+  return roleActionStore.getActionDescription(action);
 }
 
 /**
  * 获取角色显示名称
  */
 function getRoleDisplayName(role: string): string {
-  const roleNames: Record<string, string> = {
-    Salesperson: '销售',
-    ProductManager: '产品经理',
-    Architect: '架构师',
-    ProjectManager: '项目经理',
-    Engineer: '工程师',
-    QAEngineer: 'QA工程师',
-    TeamLeader: '团队领导',
-    DataAnalyst: '数据分析师',
-  };
-  return roleNames[role] || role;
+  return roleActionStore.getRoleDisplayName(role);
 }
 
 /**
  * 获取Action显示名称
  */
 function getActionDisplayName(action: string): string {
-  const actionNames: Record<string, string> = {
-    // Salesperson actions
-    WriteMRD: '编写MRD',
-    MRDReview: 'MRD审查',
-    WriteRequirementSpec: '编写需求说明',
-    RequirementSpecReview: '需求说明审查',
-
-    // ProductManager actions
-    WritePRD: '编写PRD',
-    PRDReview: 'PRD审查',
-    ImproveDocument: '改进文档',
-    SearchEnhancedQA: 'RAG增强',
-
-    // Architect actions
-    WriteDesign: '编写设计文档',
-
-    // ProjectManager actions
-    BreakdownTasks: '任务拆分',
-    WriteSubProjectDesign: '子项目设计',
-    GenerateTask: '生成任务说明',
-    CodeReview: '代码审查',
-
-    // Engineer actions
-    WriteCode: '编写代码',
-    ExecuteSubtask: '执行子任务',
-
-    // QAEngineer actions
-    WriteTest: '编写测试',
-
-    // TeamLeader actions
-    Coordinate: '协调工作',
-
-    // DataAnalyst actions
-    DataAnalysis: '数据分析',
-  };
-  return actionNames[action] || action;
+  return roleActionStore.getActionDisplayName(action);
 }
 
 /**
@@ -1379,6 +1330,65 @@ function cleanup() {
     pollingController = null;
   }
   lastMessageId = null;
+}
+
+/**
+ * Handle reset workflow from a specific role
+ * This will reset the role and all downstream roles to pending status
+ */
+async function handleResetRole(role: string) {
+  if (!sessionId.value) {
+    ElMessage.error('会话ID不存在');
+    return;
+  }
+
+  try {
+    // Confirm reset action
+    await ElMessageBox.confirm(
+      `确定要重置 ${getRoleDisplayName(role)} 及下游所有角色的工作流吗？\n\n这将清除这些角色的已完成状态，需要重新执行。`,
+      '确认重置',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+
+    // Set loading state
+    resettingRoles.value.add(role);
+
+    // Call API to reset workflow
+    await apiClient.resetInteractiveWorkflow(sessionId.value, role);
+
+    // Remove completed steps for this role and downstream roles
+    const roleOrder = [
+      'Salesperson',
+      'ProductManager',
+      'Architect',
+      'ProjectManager',
+      'Engineer',
+      'QAEngineer',
+    ];
+    const roleIndex = roleOrder.indexOf(role);
+    if (roleIndex !== -1) {
+      const downstreamRoles = roleOrder.slice(roleIndex);
+      completedSteps.value = completedSteps.value.filter(
+        step => !downstreamRoles.includes(step.role)
+      );
+    }
+
+    // Reload workflow info to refresh the kanban board
+    await loadWorkflowInfo();
+
+    ElMessage.success(`已重置 ${getRoleDisplayName(role)} 及下游角色的工作流`);
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('Failed to reset workflow:', error);
+      ElMessage.error('重置失败: ' + (error.message || '未知错误'));
+    }
+  } finally {
+    resettingRoles.value.delete(role);
+  }
 }
 </script>
 
@@ -1594,6 +1604,17 @@ function cleanup() {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+}
+
+.column-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reset-button {
+  font-size: 12px;
+  padding: 4px 8px;
 }
 
 .column-header-left {

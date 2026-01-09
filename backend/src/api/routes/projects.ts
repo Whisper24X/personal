@@ -15,13 +15,18 @@ const router: Router = Router();
 // For MVP, auth is optional
 
 // Project routes
+// List and create routes (no ID)
+router.get('/', ProjectController.list);
 router.post('/', ProjectController.create);
+
+// More specific routes with additional path segments (must come before generic /:id)
 router.post('/:id/start', ProjectController.start);
-router.get('/:id', ProjectController.getStatus);
 router.get('/:id/messages', ProjectController.getMessages);
 router.get('/:id/documents', ProjectController.getDocuments);
 router.get('/:id/download/:zipPath(*)', ProjectController.downloadZip);
-router.get('/', ProjectController.list);
+
+// Generic project routes (must come after more specific routes)
+router.get('/:id', ProjectController.getStatus);
 
 // PRD management routes
 router.post('/:id/prd', PRDController.generatePRD);

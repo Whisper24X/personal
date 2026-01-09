@@ -89,8 +89,17 @@ export const useProjectStore = defineStore('project', () => {
     try {
       const response = await apiClient.getProject(id) as any;
       currentProject.value = response.project;
+      if (!response.project) {
+        error.value = '项目不存在';
+      }
     } catch (err: any) {
-      error.value = err.message || '获取项目失败';
+      // Handle 404 specifically
+      if (err.response?.status === 404 || err.response?.data?.error === 'Project not found') {
+        error.value = '项目不存在';
+      } else {
+        error.value = err.response?.data?.message || err.message || '获取项目失败';
+      }
+      currentProject.value = null;
     } finally {
       loading.value = false;
     }
