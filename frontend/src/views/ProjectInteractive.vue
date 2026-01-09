@@ -661,6 +661,13 @@ onMounted(async () => {
         } else if (route.query.rounds) {
           maxRounds.value = parseInt(route.query.rounds as string) || maxRounds.value;
         }
+
+        // Load current round from project data
+        if (project.currentRound !== undefined && project.currentRound !== null) {
+          currentRound.value = project.currentRound;
+        } else if (project.current_round !== undefined && project.current_round !== null) {
+          currentRound.value = project.current_round;
+        }
       }
     } catch (err: any) {
       console.warn('Failed to load project info:', err);
@@ -781,6 +788,11 @@ async function startInteractiveSession() {
     const data = await response.json();
     const sid = data.sessionId;
     sessionId.value = sid;
+
+    // Update maxRounds from backend response config (source of truth)
+    if (data.config?.nRound !== undefined && data.config.nRound !== null) {
+      maxRounds.value = data.config.nRound;
+    }
 
     // In interactive session, use sessionId as projectId if no projectId provided
     // Update projectId if provided in response

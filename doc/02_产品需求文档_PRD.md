@@ -106,6 +106,78 @@
 
 #### 功能规格
 
+##### Role类实现架构
+
+Role类采用模块化设计，将职责分离到不同的组件中，提供清晰的职责划分和易于扩展的架构：
+
+**核心组件**：
+
+1. **RoleActionExecutor（行动执行器）**
+   - **职责**: 处理action执行逻辑，包括输入准备、执行和状态管理
+   - **核心功能**:
+     - 支持workspace options的actions列表（WriteMRD, WritePRD, WriteDesign等15个actions）
+     - 特殊输入处理：
+       - `WriteTest`: 自动从memory中获取PRD文档，组合PRD和代码作为输入
+       - `MRDReview/PRDReview`: 从news或memory中查找对应的文档内容
+       - `ImprovePRD/ImproveMRD`: 从news或memory中查找审查报告
+       - `BreakdownTasks`: 从memory中获取WritePRD和WriteDesign的消息
+       - `GenerateTask`: 从memory中获取BreakdownTasks和WriteSubProjectDesign的消息
+     - 序列继续处理（BY_ORDER模式）：action执行完成后，如果还有更多actions，清除todo但保留news供下一个action使用
+     - 状态管理：action执行前设置为RUNNING，成功完成设置为COMPLETED，失败设置为FAILED（不清理news，允许重试）
+
+2. **RoleThinker（思考决策器）**
+   - **职责**: 处理角色决策逻辑，决定下一步要执行的action
+   - **支持的React模式**:
+     - **BY_ORDER**: 按顺序执行actions，支持序列继续
+     - **REACT**: LLM动态决策（MVP阶段使用简单逻辑）
+     - **PLAN_AND_ACT**: 先计划后执行（MVP阶段类似BY_ORDER）
+   - **状态管理**: state=-1表示初始/终止状态，state>=0表示正在执行序列中的某个action
+
+3. **RoleLLMConfig（LLM配置管理器）**
+   - **职责**: 管理角色的LLM配置，支持从数据库加载角色特定配置
+   - **配置优先级**:
+     1. 数据库配置（角色特定，最高优先级）- 从`role_llm_configs`表加载
+     2. 显式配置（构造函数传入的config.llm）
+     3. 默认配置（系统默认的context.llm，最低优先级）
+   - **功能特性**:
+     - 异步加载数据库配置（不阻塞角色初始化）
+     - 自动更新actions的LLM实例
+     - 支持fallback到active LLM config（如果角色特定配置不存在）
+
+4. **RoleWorkspaceExtractor（工作区选项提取器）**
+   - **职责**: 从消息和上下文中提取workspace选项
+   - **提取策略**:
+     1. 从`rc.news`中查找消息的`instructContent`
+     2. 从`rc.memory`中查找WritePRD、WriteDesign、WriteMRD的消息
+     3. 解析`workspaceDir`路径（支持新格式和旧格式）
+     4. Fallback到context中的applicationId和projectId
+   - **支持的路径格式**:
+     - 新格式: `workspace/{applicationId}/{projectId}/v{version}/{documentType}/`
+     - 旧格式: `workspace/{applicationId}/v{version}/{documentType}/`
+     - 遗留格式: `{applicationId}-v{version}-{documentType}`
+   - **文档类型映射**: 自动根据action名称映射到对应的文档类型（MRD, PRD, DESIGN, TASKS, CODE, TEST）
+
+**状态管理**：
+
+- **RoleStatus（角色状态）**:
+  - `IDLE`: 空闲状态
+  - `PENDING`: 有待执行的任务
+  - `RUNNING`: 正在执行action
+  - `FAILED`: 执行失败
+
+- **ActionStatus（Action状态）**:
+  - `PENDING`: 待执行
+  - `RUNNING`: 执行中
+  - `COMPLETED`: 已完成
+  - `FAILED`: 执行失败
+
+- **状态转换流程**:
+  ```
+  IDLE -> PENDING (think()选择action) 
+    -> RUNNING (act()开始执行)
+      -> IDLE (执行完成) 或 FAILED (执行失败)
+  ```
+
 ##### 角色清单
 
 ```mermaid
@@ -170,21 +242,41 @@ prompt: |
 **方式2: TypeScript类（适合复杂角色）**
 ```typescript
 // roles/UIDesigner.ts
-import { BaseRole } from '@/core/base/Role';
+import { IRoleConfig } from '@mind2build/shared';
+import { Role } from './Role';
+import { Context } from '../core/context/Context';
+import { CreateWireframe, DesignUI, CreatePrototype } from '../actions';
+import { ACTION_WRITE_PRD } from '@mind2build/shared';
 
-export class UIDesigner extends BaseRole {
-  name = 'UIDesigner';
-  profile = 'UI设计师';
-  
-  _watch = ['WritePRD'];
-  
-  _think() {
-    // 自定义思考逻辑
+export class UIDesigner extends Role {
+  constructor(context: Context, name: string = 'UIDesigner') {
+    const config: IRoleConfig = {
+      name,
+      profile: 'UI设计师',
+      goal: '负责UI/UX设计和原型制作',
+      constraints: '遵循设计规范，确保用户体验',
+      description: '我是一名资深的UI/UX设计师，擅长...',
+      // 可选：为角色配置特定的LLM
+      // llm: { provider: 'openai', model: 'gpt-4' }
+    };
+    
+    super(config, context);
+    
+    // Watch for specific actions
+    this.watch([ACTION_WRITE_PRD]);
+    
+    // Set actions
+    this.setActions([
+      new CreateWireframe(),
+      new DesignUI(),
+      new CreatePrototype()
+    ]);
   }
   
-  _act() {
-    // 自定义行动逻辑
-  }
+  // 可选：重写act()方法实现自定义行为
+  // async act(): Promise<Message | null> {
+  //   // Custom implementation
+  // }
 }
 ```
 
@@ -960,6 +1052,42 @@ graph LR
 #### 功能描述
 每个角色通过执行特定的 Action 来完成任务，Action 是可重用的原子操作单元。
 
+#### Action执行机制
+
+**RoleActionExecutor（行动执行器）**负责处理action的执行逻辑，提供以下功能：
+
+**1. 支持Workspace Options的Actions**
+以下actions支持workspace options参数（applicationId, projectId, version等）：
+- `WriteMRD`, `WritePRD`, `WriteDesign`, `WriteSubProjectDesign`
+- `BreakdownTasks`, `GenerateTask`
+- `WriteCode`, `WriteTest`, `ExecuteSubtask`
+- `ImprovePRD`, `ImproveMRD`
+- `MRDReview`, `PRDReview`, `DesignReview`, `SubProjectDesignReview`
+
+这些actions在执行时会自动从消息中提取workspace选项，如果找不到则从context中获取。
+
+**2. 特殊输入处理**
+RoleActionExecutor为某些actions提供特殊的输入准备逻辑：
+- **WriteTest**: 自动从memory中获取PRD文档，组合PRD和代码作为输入
+- **MRDReview/PRDReview**: 从news或memory中查找对应的文档内容
+- **ImprovePRD/ImproveMRD**: 从news或memory中查找审查报告
+- **BreakdownTasks**: 从memory中获取WritePRD和WriteDesign的消息
+- **GenerateTask**: 从memory中获取BreakdownTasks和WriteSubProjectDesign的消息
+
+**3. 序列继续处理（BY_ORDER模式）**
+在BY_ORDER模式下，当action执行完成后：
+- 如果还有更多actions需要执行（`state < actions.length - 1`）：
+  - 清除todo，但保留news（供下一个action使用）
+  - 下次think()时会自动选择下一个action
+- 如果所有actions都已完成：
+  - 清除todo和news
+  - 重置状态
+
+**4. 状态管理**
+- Action执行前：`action.status = RUNNING`, `role.status = RUNNING`
+- Action执行成功：`action.status = COMPLETED`, `role.status = IDLE`
+- Action执行失败：`action.status = FAILED`, `role.status = IDLE`（不清理news，允许重试）
+
 #### 核心 Actions 规格
 
 | Action | 功能 | 输入 | 输出 | 使用角色 | 状态 |
@@ -1060,6 +1188,30 @@ graph LR
 - **优先级**: P1
 
 ### 2.10 多 LLM 支持 [P0 - 核心功能]
+
+#### LLM配置管理
+
+**角色特定LLM配置**:
+- 支持为每个角色配置独立的LLM（通过数据库`role_llm_configs`表）
+- **配置优先级**:
+  1. 数据库配置（角色特定，最高优先级）- 从`role_llm_configs`表加载
+  2. 显式配置（构造函数传入的config.llm）
+  3. 默认配置（系统默认的context.llm，最低优先级）
+- **功能特性**:
+  - 异步加载数据库配置（不阻塞角色初始化）
+  - 自动更新actions的LLM实例
+  - 支持fallback到active LLM config（如果角色特定配置不存在）
+
+**配置字段**:
+- `provider`: LLM提供商（如'openai', 'zhipu'等）
+- `api_key`: API密钥
+- `base_url`: API基础URL（可选）
+- `model`: 模型名称
+- `temperature`: 温度参数（可选）
+- `max_tokens`: 最大token数（可选）
+- `repository`: 代码仓库（可选）
+- `branch_name`: 分支名称（可选）
+- `auto_create_pr`: 是否自动创建PR（可选）
 
 #### 支持的 LLM 提供商
 

@@ -1,8 +1,156 @@
 # 即思即成（Mind2Build）角色系统设计文档
 
-**文档版本**: v1.4  
+**文档版本**: v1.5  
 **创建日期**: 2025-12-24
-**最后更新**: 2026-01-07（根据PRD更新，添加知识库集成和角色独立调试能力）
+**最后更新**: 2026-01-15（更新Role类实现细节，添加模块化组件说明）
+
+## Role类实现架构
+
+### 核心组件
+
+Role类采用模块化设计，将职责分离到不同的组件中：
+
+#### 1. RoleActionExecutor（行动执行器）
+
+**职责**: 处理action执行逻辑，包括输入准备、执行和状态管理
+
+**核心功能**:
+- 支持workspace options的actions列表（WriteMRD, WritePRD, WriteDesign等）
+- 特殊输入处理：
+  - `WriteTest`: 自动从memory中获取PRD文档，组合PRD和代码作为输入
+  - `MRDReview/PRDReview`: 从news或memory中查找对应的文档内容
+  - `ImprovePRD/ImproveMRD`: 从news或memory中查找审查报告
+- 序列继续处理（BY_ORDER模式）：自动处理action序列的执行和状态清理
+- 状态管理：action执行时设置为RUNNING，完成后设置为COMPLETED，失败时设置为FAILED
+
+**支持的Actions（带workspace options）**:
+```typescript
+const ACTIONS_WITH_OPTIONS = [
+  'WriteMRD', 'WritePRD', 'WriteDesign', 'WriteSubProjectDesign',
+  'BreakdownTasks', 'GenerateTask', 'WriteCode', 'WriteTest',
+  'ExecuteSubtask', 'ImprovePRD', 'ImproveMRD',
+  'MRDReview', 'PRDReview', 'DesignReview', 'SubProjectDesignReview'
+];
+```
+
+#### 2. RoleThinker（思考决策器）
+
+**职责**: 处理角色决策逻辑，决定下一步要执行的action
+
+**支持的React模式**:
+- **BY_ORDER**: 按顺序执行actions，支持序列继续
+  - 检查是否有相关消息（匹配watch set）
+  - 如果已有todo，保持不变
+  - 如果在序列中，继续下一个action
+  - 否则从第一个action开始新序列
+- **REACT**: LLM动态决策（MVP阶段使用简单逻辑）
+- **PLAN_AND_ACT**: 先计划后执行（MVP阶段类似BY_ORDER）
+
+**状态管理**:
+- `state: -1` 表示初始/终止状态
+- `state >= 0` 表示正在执行序列中的某个action
+- 序列完成后重置state为-1
+
+#### 3. RoleLLMConfig（LLM配置管理器）
+
+**职责**: 管理角色的LLM配置，支持从数据库加载角色特定配置
+
+**配置优先级**:
+1. **数据库配置（最高优先级）**: 从`role_llm_configs`表加载角色特定的LLM配置
+2. **显式配置**: 构造函数中传入的`config.llm`
+3. **默认配置（最低优先级）**: 使用系统默认的LLM配置（`context.llm`）
+
+**功能特性**:
+- 异步加载数据库配置（`startLoadingFromDatabase()`）
+- 自动更新actions的LLM实例
+- 支持fallback到active LLM config（如果角色特定配置不存在）
+
+**数据库配置字段**:
+- `provider`: LLM提供商（如'openai', 'zhipu'等）
+- `api_key`: API密钥
+- `base_url`: API基础URL（可选）
+- `model`: 模型名称
+- `temperature`: 温度参数（可选）
+- `max_tokens`: 最大token数（可选）
+- `repository`: 代码仓库（可选）
+- `branch_name`: 分支名称（可选）
+- `auto_create_pr`: 是否自动创建PR（可选）
+
+#### 4. RoleWorkspaceExtractor（工作区选项提取器）
+
+**职责**: 从消息和上下文中提取workspace选项（applicationId, projectId, version等）
+
+**提取策略**:
+1. 从`rc.news`中查找消息的`instructContent`
+2. 从`rc.memory`中查找WritePRD、WriteDesign、WriteMRD的消息
+3. 解析`workspaceDir`路径（支持新格式和旧格式）
+4. Fallback到context中的applicationId和projectId
+
+**支持的路径格式**:
+- 新格式: `workspace/{applicationId}/{projectId}/v{version}/{documentType}/`
+- 旧格式（无projectId）: `workspace/{applicationId}/v{version}/{documentType}/`
+- 遗留格式: `{applicationId}-v{version}-{documentType}`
+
+**文档类型映射**:
+```typescript
+const DOCUMENT_TYPE_MAP = {
+  WriteMRD: 'MRD',
+  WritePRD: 'PRD',
+  WriteDesign: 'DESIGN',
+  WriteSubProjectDesign: 'DESIGN',
+  BreakdownTasks: 'TASKS',
+  GenerateTask: 'TASKS',
+  WriteCode: 'CODE',
+  WriteTest: 'TEST',
+  ExecuteSubtask: 'CODE'
+};
+```
+
+### Role类核心方法
+
+#### observe(): Promise<number>
+- 从消息缓冲区获取新消息
+- 将新消息添加到news和memory
+- 检查消息是否匹配watch set
+- 返回新消息数量
+
+#### think(): Promise<boolean>
+- 委托给`RoleThinker.think()`
+- 根据reactMode选择相应的决策策略
+- 返回是否有待执行的action
+
+#### act(): Promise<Message | null>
+- 委托给`RoleActionExecutor.act()`
+- 执行当前todo action
+- 返回action产生的消息
+
+#### run(): Promise<Message | null>
+- 主执行循环：observe -> think -> act
+- 处理边界情况（无新消息、无todo等）
+- 返回action产生的消息或null
+
+### 状态管理
+
+**RoleStatus（角色状态）**:
+- `IDLE`: 空闲状态
+- `PENDING`: 有待执行的任务
+- `RUNNING`: 正在执行action
+- `FAILED`: 执行失败
+
+**ActionStatus（Action状态）**:
+- `PENDING`: 待执行
+- `RUNNING`: 执行中
+- `COMPLETED`: 已完成
+- `FAILED`: 执行失败
+
+**状态转换流程**:
+```
+IDLE -> PENDING (think()选择action) 
+  -> RUNNING (act()开始执行)
+    -> IDLE (执行完成) 或 FAILED (执行失败)
+```
+
+---
 
 ## 核心角色
 

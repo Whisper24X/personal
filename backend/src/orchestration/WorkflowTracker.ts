@@ -251,6 +251,7 @@ export class WorkflowTracker {
     /**
      * Get all workflow items
      * First tries by sessionId, then by projectId if not found
+     * Returns items sorted by role and action registration order (not alphabetical)
      */
     async getWorkflowItems(): Promise<WorkflowItem[]> {
         try {
@@ -262,11 +263,54 @@ export class WorkflowTracker {
                 items = await this.repository.getWorkflowItemsByProjectId(this.projectId);
             }
 
-            return items.map(item => ({
-                role: item.role,
-                action: item.action || '',
-                status: item.status as ActionStatus,
-            }));
+            // Get workflow structure to determine the correct order
+            const workflowStructure = this.getWorkflowStructure();
+
+            // Create a map for quick lookup: role -> [action1, action2, ...] in registration order
+            const roleActionOrderMap = new Map<string, Map<string, number>>();
+            workflowStructure.forEach((roleInfo) => {
+                const actionOrderMap = new Map<string, number>();
+                roleInfo.actions.forEach((action, index) => {
+                    actionOrderMap.set(action.name, index);
+                });
+                roleActionOrderMap.set(roleInfo.role, actionOrderMap);
+            });
+
+            // Create role order map
+            const roleOrderMap = new Map<string, number>();
+            workflowStructure.forEach((roleInfo, index) => {
+                roleOrderMap.set(roleInfo.role, index);
+            });
+
+            // Sort items by role order first, then by action order within each role
+            const sortedItems = items
+                .map(item => ({
+                    role: item.role,
+                    action: item.action || '',
+                    status: item.status as ActionStatus,
+                }))
+                .sort((a, b) => {
+                    // First, sort by role order
+                    const roleOrderA = roleOrderMap.get(a.role) ?? 999;
+                    const roleOrderB = roleOrderMap.get(b.role) ?? 999;
+
+                    if (roleOrderA !== roleOrderB) {
+                        return roleOrderA - roleOrderB;
+                    }
+
+                    // If same role, sort by action order within that role
+                    const actionOrderMap = roleActionOrderMap.get(a.role);
+                    if (actionOrderMap) {
+                        const actionOrderA = actionOrderMap.get(a.action) ?? 999;
+                        const actionOrderB = actionOrderMap.get(b.action) ?? 999;
+                        return actionOrderA - actionOrderB;
+                    }
+
+                    // Fallback to alphabetical if order not found
+                    return a.action.localeCompare(b.action);
+                });
+
+            return sortedItems;
         } catch (error: any) {
             logger.error('WorkflowTracker: Failed to get workflow items', {
                 sessionId: this.sessionId,

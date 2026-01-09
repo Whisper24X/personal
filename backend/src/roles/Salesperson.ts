@@ -1,6 +1,6 @@
 /**
  * Salesperson Role
- * 负责需求收集和市场调研，生成市场研究文档（MRD）
+ * Responsible for requirement collection and market research, generating Market Research Document (MRD)
  */
 
 import { IRoleConfig } from '@mind2build/shared';
@@ -15,9 +15,9 @@ export class Salesperson extends Role {
     const config: IRoleConfig = {
       name,
       profile: 'Salesperson',
-      goal: '需求收集专家，负责收集和分析用户需求，进行市场调研和业务分析，输出市场研究文档（MRD）',
-      constraints: '深入理解用户需求，进行市场调研、目标价值分析、需求价值分析和业务流程分析',
-      description: '我是一名专业的需求收集和市场研究专家，擅长与客户沟通，深入理解用户需求，进行市场调研和业务分析，并将其转化为清晰的市场研究文档（MRD）。',
+      goal: 'Create comprehensive Market Research Document (MRD) from user requirements',
+      constraints: 'Focus on user needs, market research, target value analysis, requirement value analysis, and business process analysis. Transform user requirements into detailed MRD',
+      description: 'Experienced requirement collection and market research expert who transforms user requirements into comprehensive Market Research Documents (MRD)',
     };
 
     super(config, context);

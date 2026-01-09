@@ -232,14 +232,31 @@ export class InteractiveSession {
     const env = this.team.getEnvironment();
     const roles = env.getRoles();
 
+    // Declare projectId and currentRound at the top of the function to avoid scope issues
+    const projectId = this.config.projectId || this.id;
+    let currentRound = 0; // Track current round (1-based)
+    
+    // Load current round from project database if projectId exists
+    if (projectId) {
+      try {
+        const { ProjectRepository } = await import('../database/repositories/ProjectRepository');
+        const projectRepo = new ProjectRepository();
+        const project = await projectRepo.findById(projectId);
+        if (project && (project.current_round !== undefined && project.current_round !== null)) {
+          currentRound = project.current_round;
+          logger.info(`InteractiveSession: Loaded current round ${currentRound} from project ${projectId}`);
+        }
+      } catch (error: any) {
+        logger.warn(`InteractiveSession: Failed to load current round from project ${projectId}`, { error: error.message });
+      }
+    }
+
+    // Send initial progress with current round from project (or 0 if new)
     this.sendMessage('progress', {
       message: 'Starting generation...',
-      currentRound: 0,
+      currentRound: currentRound,
       totalCost: 0,
     });
-
-    // Restore message history from database if projectId is provided
-    const projectId = this.config.projectId || this.id;
     if (projectId) {
       try {
         const { MessageRepository } = await import('../database/repositories/MessageRepository');
@@ -438,7 +455,7 @@ export class InteractiveSession {
 
     // Run through each role sequentially, one at a time
     // Each step requires user confirmation before proceeding
-    let maxIterations = roles.length * 10; // Safety limit
+    let maxIterations = roles.length * this.config.nRound; // Max iterations based on rounds
     let iteration = 0;
     let roleIndex = 0; // Track current role index
 
@@ -566,6 +583,34 @@ export class InteractiveSession {
 
     while (iteration < maxIterations) {
       iteration++;
+
+      // Calculate current round: each round consists of processing all roles once
+      // Round = floor((iteration - 1) / roles.length) + 1, but cap at nRound
+      // Ensure we don't go below the loaded currentRound
+      const calculatedRound = Math.min(
+        Math.max(
+          Math.floor((iteration - 1) / roles.length) + 1,
+          currentRound // Don't go below loaded round
+        ),
+        this.config.nRound
+      );
+      if (calculatedRound > currentRound) {
+        currentRound = calculatedRound;
+        
+        // Update project database with current round
+        if (projectId) {
+          try {
+            const { ProjectRepository } = await import('../database/repositories/ProjectRepository');
+            const projectRepo = new ProjectRepository();
+            // Calculate progress percentage (rough estimate based on rounds)
+            const progress = Math.min((currentRound / this.config.nRound) * 100, 100);
+            await projectRepo.updateProgress(projectId, progress, currentRound);
+            logger.info(`InteractiveSession: Updated project ${projectId} progress: round ${currentRound}/${this.config.nRound}, progress ${progress.toFixed(1)}%`);
+          } catch (error: any) {
+            logger.warn(`InteractiveSession: Failed to update project progress for ${projectId}`, { error: error.message });
+          }
+        }
+      }
 
       // Process one role at a time, cycling through all roles
       const role = roles[roleIndex];
@@ -816,7 +861,6 @@ export class InteractiveSession {
         logger.info(`InteractiveSession: Published message from ${role.profile} (causeBy: ${message.causeBy}) to environment`);
 
         // Save message to database for persistence
-        const projectId = this.config.projectId || this.id;
         if (projectId) {
           try {
             const { MessageRepository } = await import('../database/repositories/MessageRepository');
@@ -892,7 +936,6 @@ export class InteractiveSession {
       logger.info(`InteractiveSession: Published message from ${role.profile} (causeBy: ${message.causeBy}) to environment`);
 
       // Save message to database for persistence
-      const projectId = this.config.projectId || this.id;
       if (projectId) {
         try {
           const { MessageRepository } = await import('../database/repositories/MessageRepository');
@@ -933,7 +976,6 @@ export class InteractiveSession {
         await new Promise(resolve => setTimeout(resolve, 200));
 
         // Check if all workflow items are completed and update project status
-        const projectId = this.config.projectId || this.id;
         if (projectId) {
           try {
             const workflowItems = await this.workflowTracker.getWorkflowItems();
@@ -978,10 +1020,10 @@ export class InteractiveSession {
       const nextRoleWatchSet = Array.from(nextRole.rc.watch).join(', ');
       logger.info(`InteractiveSession: Next role will be ${nextRole.profile}, watching: [${nextRoleWatchSet}], message causeBy: ${message.causeBy}`);
 
-      // Send progress update
+      // Send progress update with correct current round
       this.sendMessage('progress', {
         message: `${role.profile} completed`,
-        currentRound: iteration,
+        currentRound: currentRound,
         totalCost: this.team.getCostReport().totalCost,
       });
 

@@ -75,19 +75,29 @@ router.post('/interactive', async (req, res) => {
       logger.info(`API: Created project ${finalProjectId} for interactive session`);
     }
 
-    // Get applicationId from project if projectId is provided
+    // Get applicationId and nRound from project if projectId is provided
     let finalApplicationId = applicationId;
-    if (finalProjectId && !finalApplicationId) {
-      // Try to get applicationId from project
+    let finalNRound = nRound || 5;
+    if (finalProjectId) {
+      // Try to get project data to use as source of truth
       try {
         const { ProjectRepository } = await import('../../database/repositories/ProjectRepository');
         const projectRepo = new ProjectRepository();
         const project = await projectRepo.findById(finalProjectId);
-        if (project?.application_id) {
-          finalApplicationId = project.application_id;
+        if (project) {
+          // Use project's nRound as source of truth if project exists
+          if (project.nRound !== undefined && project.nRound !== null) {
+            finalNRound = project.nRound;
+          } else if (project.n_round !== undefined && project.n_round !== null) {
+            finalNRound = project.n_round;
+          }
+          // Get applicationId from project if not provided
+          if (!finalApplicationId && project.application_id) {
+            finalApplicationId = project.application_id;
+          }
         }
       } catch (error: any) {
-        logger.warn('API: Failed to get applicationId from project', { error: error.message });
+        logger.warn('API: Failed to get project data', { error: error.message });
       }
     }
 
@@ -97,7 +107,7 @@ router.post('/interactive', async (req, res) => {
       idea,
       description,
       investment: investment || 10.0,
-      nRound: nRound || 5,
+      nRound: finalNRound,
       userId,
       applicationId: finalApplicationId,
       projectId: finalProjectId,
@@ -155,7 +165,7 @@ router.post('/interactive', async (req, res) => {
         idea,
         description,
         investment: investment || 10.0,
-        nRound: nRound || 5,
+        nRound: finalNRound,
       },
     });
   } catch (error: any) {

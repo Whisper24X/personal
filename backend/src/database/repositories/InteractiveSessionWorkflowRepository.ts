@@ -199,13 +199,17 @@ export class InteractiveSessionWorkflowRepository {
 
     /**
      * Get workflow items for a session
+     * Note: Items are returned without action ordering - sorting by registration order
+     * is handled by WorkflowTracker.getWorkflowItems()
      */
     async getWorkflowItems(sessionId: string): Promise<WorkflowItem[]> {
         try {
+            // Only order by role, not by action, to preserve registration order
+            // Action ordering is handled by WorkflowTracker based on getWorkflowStructure()
             const result = await query<WorkflowItem>(
                 `SELECT * FROM interactive_session_workflows 
          WHERE session_id = $1 
-         ORDER BY role, action`,
+         ORDER BY role`,
                 [sessionId]
             );
 
