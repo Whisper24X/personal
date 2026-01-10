@@ -38,7 +38,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import InteractiveConfirmation from '../../components/InteractiveConfirmation.vue';
+import InteractiveConfirmation from './components/InteractiveConfirmation.vue';
 import ProjectInteractiveHeader from './components/ProjectInteractiveHeader.vue';
 import ProjectInfoCard from './components/ProjectInfoCard.vue';
 import WorkflowKanban from './components/WorkflowKanban.vue';

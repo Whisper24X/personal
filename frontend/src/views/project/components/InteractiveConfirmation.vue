@@ -13,7 +13,8 @@
                                 {{ roleInfo.action === 'idle' ? '空闲状态' : roleInfo.action }}
                             </el-tag>
                             <!-- Role and Action Description -->
-                            <div v-if="(getRoleDescription(roleInfo.role) || getActionDescription(roleInfo.action)) && !isIdle" class="role-action-description">
+                            <div v-if="(getRoleDescription(roleInfo.role) || getActionDescription(roleInfo.action)) && !isIdle"
+                                class="role-action-description">
                                 <div v-if="getRoleDescription(roleInfo.role)" class="description-item">
                                     <el-icon>
                                         <User />
@@ -101,7 +102,7 @@
                             class="file-content-editor">
                             <div class="file-header">
                                 <span class="file-path">{{ getFilePath(roleInfo.outputFiles![selectedFileIndex])
-                                    }}</span>
+                                }}</span>
                                 <el-button v-if="!isEditing" size="small" type="primary" :icon="Edit"
                                     @click="startEditFile(selectedFileIndex)">
                                     编辑文件
@@ -129,7 +130,8 @@
                     </div>
                 </el-scrollbar>
 
-                <div v-if="viewMode === 'preview' && roleInfo.content && roleInfo.content.length > 500" class="preview-notice">
+                <div v-if="viewMode === 'preview' && roleInfo.content && roleInfo.content.length > 500"
+                    class="preview-notice">
                     <el-alert title="这是内容预览，点击'完整内容'查看全部" type="info" :closable="false" show-icon />
                 </div>
 
@@ -223,7 +225,8 @@
                             {{ roleInfo.action === 'idle' ? '空闲状态' : roleInfo.action }}
                         </el-tag>
                         <!-- Role and Action Description -->
-                        <div v-if="(getRoleDescription(roleInfo.role) || getActionDescription(roleInfo.action)) && !isIdle" class="role-action-description">
+                        <div v-if="(getRoleDescription(roleInfo.role) || getActionDescription(roleInfo.action)) && !isIdle"
+                            class="role-action-description">
                             <div v-if="getRoleDescription(roleInfo.role)" class="description-item">
                                 <el-icon>
                                     <User />
@@ -310,7 +313,7 @@
                             class="file-content-editor">
                             <div class="file-header">
                                 <span class="file-path">{{ getFilePath(roleInfo.outputFiles![selectedFileIndex])
-                                    }}</span>
+                                }}</span>
                                 <el-button v-if="!isEditing" size="small" type="primary" :icon="Edit"
                                     @click="startEditFile(selectedFileIndex)">
                                     编辑文件
@@ -338,7 +341,8 @@
                     </div>
                 </el-scrollbar>
 
-                <div v-if="viewMode === 'preview' && roleInfo.content && roleInfo.content.length > 500" class="preview-notice">
+                <div v-if="viewMode === 'preview' && roleInfo.content && roleInfo.content.length > 500"
+                    class="preview-notice">
                     <el-alert title="这是内容预览，点击'完整内容'查看全部" type="info" :closable="false" show-icon />
                 </div>
 
@@ -444,9 +448,9 @@ import {
     Download,
     User,
 } from '@element-plus/icons-vue';
-import SectionAdjuster from './SectionAdjuster.vue';
-import apiClient from '../api/client';
-import { useRoleActionStore } from '../stores/roleAction';
+import SectionAdjuster from '../../../components/SectionAdjuster.vue';
+import apiClient from '../../../api/client';
+import { useRoleActionStore } from '../../../stores/roleAction';
 
 interface FileInfo {
     path: string;
