@@ -1,13 +1,10 @@
 <template>
   <div class="role-llm-config">
-    <el-page-header class="page-header" @back="() => router.push('/config/llm')">
-      <template #content>
-        <div class="header-content">
-          <span class="header-title">角色 LLM 配置</span>
-          <p class="header-desc">为每个角色配置专属的大模型提供商</p>
-        </div>
-      </template>
-    </el-page-header>
+    <PageHeader
+      title="角色 LLM 配置"
+      description="为每个角色配置专属的大模型提供商"
+      :back-handler="() => router.push('/config/llm')"
+    />
 
     <div v-loading="loading" class="content-section">
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
@@ -246,8 +243,9 @@ import { ref, onMounted, watch, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus';
 import { User, Plus, Edit, Delete } from '@element-plus/icons-vue';
-import { apiClient } from '../api/client';
-import { useRoleActionStore } from '../stores/roleAction';
+import { apiClient } from '../../api/client';
+import { useRoleActionStore } from '../../stores/roleAction';
+import PageHeader from '../../components/common/PageHeader.vue';
 
 interface RoleLLMConfig {
   provider: string;

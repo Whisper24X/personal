@@ -1,13 +1,10 @@
 <template>
   <div class="project-create">
-    <el-page-header @back="handleBack" class="page-header">
-      <template #content>
-        <div class="header-content">
-          <span class="header-title">创建新项目</span>
-          <p class="header-desc">描述您的项目想法，让 AI 帮您构建</p>
-        </div>
-      </template>
-    </el-page-header>
+    <PageHeader
+      title="创建新项目"
+      description="描述您的项目想法，让 AI 帮您构建"
+      :back-handler="handleBack"
+    />
 
     <el-card class="form-card">
       <el-form
@@ -137,10 +134,11 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { useProjectStore } from '../stores/project';
-import { useApplicationStore } from '../stores/application';
+import { useProjectStore } from '../../stores/project';
+import { useApplicationStore } from '../../stores/application';
 import { storeToRefs } from 'pinia';
 import { ElMessage, FormInstance, FormRules } from 'element-plus';
+import PageHeader from '../../components/common/PageHeader.vue';
 import { 
   Edit, 
   InfoFilled, 

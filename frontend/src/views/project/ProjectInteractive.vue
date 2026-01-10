@@ -1,277 +1,20 @@
 <template>
   <div class="project-interactive">
-    <el-page-header @back="handleBack" class="page-header">
-      <template #content>
-        <div class="header-content">
-          <span class="header-title">
-            <el-icon>
-              <MagicStick />
-            </el-icon>
-            交互式项目生成
-          </span>
-          <p class="header-desc">在每个步骤人工确认和审查</p>
-        </div>
-      </template>
-    </el-page-header>
+    <ProjectInteractiveHeader @back="handleBack" />
 
-    <!-- Project Info Card -->
-    <el-card class="project-info-card">
-      <div class="project-info">
-        <div class="info-item">
-          <el-icon>
-            <Document />
-          </el-icon>
-          <span class="label">项目名称:</span>
-          <span class="value">{{ projectName }}</span>
-        </div>
-        <div class="info-item">
-          <el-icon>
-            <Refresh />
-          </el-icon>
-          <span class="label">当前轮次:</span>
-          <span class="value">{{ currentRound }} / {{ maxRounds }}</span>
-        </div>
-      </div>
-      <!-- Current Input Display -->
-      <el-divider v-if="userIdea" />
-      <div v-if="userIdea" class="user-input-section">
-        <div class="user-input-header">
-          <el-icon>
-            <Edit />
-          </el-icon>
-          <span class="user-input-label">当前输入:</span>
-        </div>
-        <div class="user-input-content">
-          {{ userIdea }}
-        </div>
-      </div>
-    </el-card>
+    <ProjectInfoCard :project-name="projectName" :current-round="currentRound" :max-rounds="maxRounds"
+      :user-idea="userIdea" />
 
-    <!-- Workflow Kanban Board -->
-    <el-card class="kanban-card">
-      <template #header>
-        <div class="card-header-content">
-          <span class="card-title">
-            <el-icon>
-              <Operation />
-            </el-icon>
-            工作流看板
-          </span>
-          <el-tag :type="getStatusType()" effect="dark">
-            {{ getStatusText() }}
-          </el-tag>
-        </div>
-      </template>
+    <WorkflowKanban :workflow-kanban="workflowKanban" :is-running="isRunning" :running-role="runningRole"
+      :current-action="currentAction" :current-stage-name="currentStageName" :resetting-roles="resettingRoles"
+      :get-role-display-name="getRoleDisplayName" :get-role-description="getRoleDescription"
+      :get-action-display-name="getActionDisplayName" :get-action-description="getActionDescription"
+      :get-stage-tag-type="getStageTagType" @reset-role="handleResetRole"
+      @show-confirmation="showConfirmationDialog = true" @view-content="openContentDialog"
+      @download-zip="downloadZip" />
 
-      <div class="kanban-board" ref="kanbanBoardRef">
-        <div v-for="roleColumn in workflowKanban" :key="roleColumn.role" class="kanban-column" :class="{
-          'column-active': roleColumn.isActive,
-          'column-running': isRunning && runningRole === roleColumn.role
-        }" :ref="el => setColumnRef(el, roleColumn.role)">
-          <div class="column-header">
-            <div class="column-header-left">
-              <el-tag :type="getRoleTagType(roleColumn.role)" size="large"
-                :effect="isRunning && runningRole === roleColumn.role ? 'dark' : 'plain'"
-                :class="{ 'role-tag-running': isRunning && runningRole === roleColumn.role }">
-                <el-icon v-if="isRunning && runningRole === roleColumn.role" class="is-loading"
-                  style="margin-right: 4px;">
-                  <Loading />
-                </el-icon>
-                {{ getRoleDisplayName(roleColumn.role) }}
-              </el-tag>
-              <el-badge v-if="isRunning && runningRole === roleColumn.role && currentAction" :value="'运行中'"
-                class="running-badge" type="danger" />
-            </div>
-            <div class="column-header-right">
-              <span class="column-count">{{ roleColumn.completedCount }} / {{ roleColumn.totalCount }}</span>
-              <el-button v-if="roleColumn.completedCount === roleColumn.totalCount && roleColumn.totalCount > 0"
-                type="warning" size="small" :icon="Refresh" @click.stop="handleResetRole(roleColumn.role)"
-                :loading="resettingRoles.has(roleColumn.role)" plain class="reset-button"
-                :title="`重置 ${getRoleDisplayName(roleColumn.role)} 及下游所有角色的工作流`">
-                重置
-              </el-button>
-            </div>
-          </div>
-          <div class="column-description">
-            {{ getRoleDescription(roleColumn.role) }}
-          </div>
-          <div class="column-cards">
-            <!-- Running indicator for this role (only show if action is not in the list) -->
-            <div
-              v-if="roleColumn.runningAction && !roleColumn.currentStep && isRunning && !roleColumn.actions.some(a => a.name === roleColumn.runningAction && a.status === 'running')"
-              class="kanban-card-item card-status-running" style="order: -2;">
-              <div class="card-item-header">
-                <el-tag type="danger" size="small" effect="dark">
-                  <el-icon class="is-loading" style="margin-right: 4px;">
-                    <Loading />
-                  </el-icon>
-                  正在运行
-                </el-tag>
-              </div>
-              <div class="card-item-title running-title">
-                <el-icon class="is-loading running-icon">
-                  <Loading />
-                </el-icon>
-                {{ getActionDisplayName(roleColumn.runningAction) }}
-              </div>
-              <div class="card-item-description">{{ getActionDescription(roleColumn.runningAction) }}</div>
-              <div v-if="currentStageName && runningRole === roleColumn.role" class="card-item-stage">
-                <el-icon>
-                  <Timer />
-                </el-icon>
-                <el-tag size="small" :type="getStageTagType()">{{ currentStageName }}</el-tag>
-              </div>
-            </div>
-
-            <!-- Current step waiting for confirmation -->
-            <div v-if="roleColumn.currentStep" class="kanban-card-item card-status-waiting"
-              @click="showConfirmationDialog = true">
-              <div class="card-item-header">
-                <el-tag type="warning" size="small" effect="plain">
-                  等待确认
-                </el-tag>
-              </div>
-              <div class="card-item-title">{{ getActionDisplayName(roleColumn.currentStep.action) }}</div>
-              <div class="card-item-description">{{ getActionDescription(roleColumn.currentStep.action) }}</div>
-              <div class="card-item-footer">
-                <el-button type="primary" size="small" @click.stop="showConfirmationDialog = true">
-                  点击确认
-                </el-button>
-              </div>
-            </div>
-
-            <!-- Action cards (exclude waiting actions, but show running actions) -->
-            <div v-for="action in roleColumn.actions" :key="action.name" v-show="action.status !== 'waiting'"
-              class="kanban-card-item" :class="[
-                getActionCardClass(action.status),
-                { 'action-running': action.status === 'running' && isRunning && runningRole === roleColumn.role }
-              ]" :ref="el => setActionRef(el, roleColumn.role, action.name)"
-              :style="action.status === 'running' ? { order: -1, zIndex: 10 } : {}">
-              <div class="card-item-header">
-                <el-tag :type="getActionStatusTagType(action.status)" size="small"
-                  :effect="action.status === 'running' ? 'dark' : 'plain'">
-                  <el-icon v-if="action.status === 'running'" class="is-loading" style="margin-right: 4px;">
-                    <Loading />
-                  </el-icon>
-                  {{ getActionStatusText(action.status) }}
-                </el-tag>
-                <el-tag v-if="action.userAction" size="small" :type="getUserActionTagType(action.userAction)">
-                  {{ getUserActionText(action.userAction) }}
-                </el-tag>
-              </div>
-              <div class="card-item-title" :class="{ 'running-title': action.status === 'running' }">
-                <el-icon v-if="action.status === 'running'" class="is-loading running-icon">
-                  <Loading />
-                </el-icon>
-                {{ getActionDisplayName(action.name) }}
-              </div>
-              <div class="card-item-description">{{ getActionDescription(action.name) }}</div>
-
-              <!-- Content preview for completed actions -->
-              <div v-if="action.status === 'completed' && action.content" class="card-item-content">
-                <el-button type="primary" size="small" @click="openContentDialog(action)">
-                  <el-icon>
-                    <Document />
-                  </el-icon>
-                  查看内容
-                </el-button>
-              </div>
-
-              <!-- Output files -->
-              <div v-if="action.outputFiles && action.outputFiles.length > 0" class="card-item-files">
-                <el-divider content-position="left">
-                  <el-icon>
-                    <FolderOpened />
-                  </el-icon>
-                  生成的文件 ({{ action.outputFiles.length }})
-                </el-divider>
-                <div class="files-list">
-                  <el-tag v-for="file in action.outputFiles" :key="file.path || file" class="file-tag" type="info"
-                    effect="plain" size="small">
-                    <el-icon>
-                      <DocumentCopy />
-                    </el-icon>
-                    {{ typeof file === 'string' ? file : file.path }}
-                  </el-tag>
-                </div>
-              </div>
-
-              <!-- Zip archive -->
-              <div v-if="action.zipPath" class="card-item-zip">
-                <el-divider content-position="left">
-                  <el-icon>
-                    <Download />
-                  </el-icon>
-                  压缩包
-                </el-divider>
-                <el-alert type="success" :closable="false" show-icon>
-                  <template #title>
-                    <div class="zip-alert-content">
-                      <span>{{ action.zipType === 'workspace_zip' ? 'Workspace压缩包' : '代码压缩包' }}</span>
-                      <el-button type="primary" size="small" :icon="Download" @click="downloadZip(action.zipPath!)">
-                        下载
-                      </el-button>
-                    </div>
-                  </template>
-                </el-alert>
-              </div>
-
-              <div v-if="action.timestamp" class="card-item-footer">
-                <el-icon>
-                  <Timer />
-                </el-icon>
-                <span>{{ action.timestamp }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </el-card>
-
-
-    <!-- Completion Card -->
-    <el-card v-if="isCompleted" class="completion-card">
-      <el-result icon="success" title="项目生成完成！" sub-title="所有步骤已完成，您可以查看生成的文档和代码">
-        <template #extra>
-          <el-space>
-            <el-button type="primary" size="large" @click="viewProject">
-              查看项目详情
-            </el-button>
-            <el-button size="large" @click="downloadProject">
-              下载项目文件
-            </el-button>
-          </el-space>
-        </template>
-      </el-result>
-
-      <el-divider />
-
-      <div class="summary-section">
-        <h3>
-          <el-icon>
-            <DataAnalysis />
-          </el-icon>
-          执行摘要
-        </h3>
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="总步骤数">
-            {{ completedSteps.length }}
-          </el-descriptions-item>
-          <el-descriptions-item label="编辑次数">
-            {{ editCount }}
-          </el-descriptions-item>
-          <el-descriptions-item label="重新生成次数">
-            {{ regenerateCount }}
-          </el-descriptions-item>
-          <el-descriptions-item label="跳过次数">
-            {{ skipCount }}
-          </el-descriptions-item>
-          <el-descriptions-item label="总耗时">
-            {{ totalDuration }}
-          </el-descriptions-item>
-        </el-descriptions>
-      </div>
-    </el-card>
+    <CompletionCard v-if="isCompleted" :completed-steps="completedSteps" :start-time="startTime"
+      @view-project="viewProject" @download-project="downloadProject" />
 
     <!-- Confirmation Dialog -->
     <el-dialog v-model="showConfirmationDialog"
@@ -284,57 +27,28 @@
     </el-dialog>
 
     <!-- Content View Dialog -->
-    <el-dialog v-model="showContentDialog" :title="contentDialogTitle" width="80%" destroy-on-close>
-      <div class="content-dialog-body">
-        <div class="content-dialog-info">
-          <el-descriptions :column="2" border size="small">
-            <el-descriptions-item label="角色">
-              {{ contentDialogRole ? getRoleDisplayName(contentDialogRole) : '-' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="操作">
-              {{ contentDialogAction ? getActionDisplayName(contentDialogAction) : '-' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="状态">
-              <el-tag type="success" size="small">已完成</el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="时间" v-if="contentDialogTimestamp">
-              {{ contentDialogTimestamp }}
-            </el-descriptions-item>
-          </el-descriptions>
-        </div>
-        <el-divider />
-        <div class="content-dialog-content">
-          <div class="content-text">{{ contentDialogContent }}</div>
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="showContentDialog = false">关闭</el-button>
-      </template>
-    </el-dialog>
+    <ContentDialog v-model="showContentDialog" :role="contentDialogRole" :action="contentDialogAction"
+      :content="contentDialogContent" :timestamp="contentDialogTimestamp"
+      :role-display-name="contentDialogRole ? getRoleDisplayName(contentDialogRole) : ''"
+      :action-display-name="contentDialogAction ? getActionDisplayName(contentDialogAction) : ''" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import {
-  MagicStick,
-  Document,
-  Refresh,
-  Timer,
-  Loading,
-  DataAnalysis,
-  FolderOpened,
-  DocumentCopy,
-  Download,
-  Edit,
-  Operation,
-} from '@element-plus/icons-vue';
-import InteractiveConfirmation from '../components/InteractiveConfirmation.vue';
-import apiClient from '../api/client';
-import { createPolling, type PollingResult } from '../utils/polling';
-import { useRoleActionStore } from '../stores/roleAction';
+import InteractiveConfirmation from '../../components/InteractiveConfirmation.vue';
+import ProjectInteractiveHeader from './components/ProjectInteractiveHeader.vue';
+import ProjectInfoCard from './components/ProjectInfoCard.vue';
+import WorkflowKanban from './components/WorkflowKanban.vue';
+import CompletionCard from './components/CompletionCard.vue';
+import ContentDialog from './components/ContentDialog.vue';
+import apiClient from '../../api/client';
+import { createPolling, type PollingResult } from '../../utils/polling';
+import { useRoleActionStore } from '../../stores/roleAction';
+import type { WorkflowAction } from './components/ActionCard.vue';
+import type { WorkflowRoleColumn } from './components/KanbanColumn.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -366,51 +80,14 @@ const resettingRoles = ref<Set<string>>(new Set());
 
 // Content Dialog
 const showContentDialog = ref(false);
-const contentDialogTitle = ref('');
 const contentDialogRole = ref('');
 const contentDialogAction = ref('');
 const contentDialogContent = ref('');
 const contentDialogTimestamp = ref('');
 
-// Stats
-const editCount = computed(() =>
-  completedSteps.value.filter(s => s.userAction === 'edit').length
-);
-const regenerateCount = computed(() =>
-  completedSteps.value.filter(s => s.userAction === 'regenerate').length
-);
-const skipCount = computed(() =>
-  completedSteps.value.filter(s => s.userAction === 'skip').length
-);
-const totalDuration = computed(() => {
-  const duration = Date.now() - startTime.value;
-  const minutes = Math.floor(duration / 60000);
-  const seconds = Math.floor((duration % 60000) / 1000);
-  return `${minutes}分${seconds}秒`;
-});
+// Stats moved to CompletionCard component
 
-// Workflow Kanban Data Structure
-interface WorkflowAction {
-  name: string;
-  status: 'pending' | 'running' | 'waiting' | 'completed';
-  userAction?: string;
-  timestamp?: string;
-  content?: string;
-  outputFiles?: any[];
-  zipPath?: string;
-  zipType?: string;
-  stepData?: any; // Full step data for detailed view
-}
-
-interface WorkflowRoleColumn {
-  role: string;
-  actions: WorkflowAction[];
-  isActive: boolean;
-  completedCount: number;
-  totalCount: number;
-  currentStep?: any; // Current step waiting for confirmation
-  runningAction?: string; // Currently running action
-}
+// Types are imported from components
 
 // Workflow structure: role -> actions mapping (loaded from API)
 const workflowStructure = ref<Record<string, string[]>>({});
@@ -542,29 +219,7 @@ const workflowKanban = computed<WorkflowRoleColumn[]>(() => {
 let pollingController: PollingResult | null = null;
 let lastMessageId: string | null = null;
 
-// Refs for auto-scrolling
-const kanbanBoardRef = ref<HTMLElement | null>(null);
-const columnRefs = new Map<string, HTMLElement>();
-const actionRefs = new Map<string, HTMLElement>();
-
-// Helper functions for refs
-function setColumnRef(el: any, role: string) {
-  if (el) {
-    columnRefs.set(role, el);
-  } else {
-    columnRefs.delete(role);
-  }
-}
-
-function setActionRef(el: any, role: string, action: string) {
-  if (el) {
-    const key = `${role}-${action}`;
-    actionRefs.set(key, el);
-  } else {
-    const key = `${role}-${action}`;
-    actionRefs.delete(key);
-  }
-}
+// Refs removed - handled by components
 
 // Load workflow information from API
 async function loadWorkflowInfo() {
@@ -675,8 +330,7 @@ async function loadRunningInfo() {
     }
 
     // Update running state from API response
-    // Use response.running object if available, otherwise fall back to response.role/action
-    const runningState = response.running || { role: response.role, action: response.action };
+    const runningState = response.running || { role: null, action: null };
 
     if (runningState.role) {
       runningRole.value = runningState.role;
@@ -689,41 +343,27 @@ async function loadRunningInfo() {
       currentStageName.value = getStageName(runningState.role, runningState.action);
     }
 
-    // Handle paused state (waiting for manual confirmation)
-    // Use requiresConfirmation from database as primary source of truth
+    // Handle confirmation state (waiting for manual confirmation)
     const requiresConfirmation = response.requiresConfirmation || false;
-    const confirmationRole = response.confirmationRole || null;
-    const isPaused = response.isPaused || false;
     const confirmationRequired = response.confirmationRequired;
 
-    // If confirmation is required (from database), force show confirmation dialog
-    if (requiresConfirmation || (isPaused && confirmationRequired)) {
+    // If confirmation is required, show confirmation dialog
+    if (requiresConfirmation && confirmationRequired) {
       // Workflow is paused waiting for confirmation
       isRunning.value = false;
 
       // Set current step for confirmation dialog
-      if (confirmationRequired) {
-        currentStep.value = {
-          role: confirmationRequired.role,
-          action: confirmationRequired.action,
-          content: confirmationRequired.content,
-          outputFiles: confirmationRequired.outputFiles || [],
-          instructContent: confirmationRequired.instructContent || {},
-        };
-      } else if (confirmationRole) {
-        // Fallback: use confirmationRole from database if confirmationRequired details not available
-        currentStep.value = {
-          role: confirmationRole,
-          action: runningState.action || '',
-          content: null,
-          outputFiles: [],
-          instructContent: {},
-        };
-      }
+      currentStep.value = {
+        role: confirmationRequired.role,
+        action: confirmationRequired.action,
+        content: confirmationRequired.content,
+        outputFiles: confirmationRequired.outputFiles || [],
+        instructContent: confirmationRequired.instructContent || {},
+      };
 
       // Update running role and action for display
-      const roleToShow = confirmationRequired?.role || confirmationRole || runningState.role;
-      const actionToShow = confirmationRequired?.action || runningState.action;
+      const roleToShow = confirmationRequired.role || runningState.role;
+      const actionToShow = confirmationRequired.action || runningState.action;
 
       if (roleToShow) {
         runningRole.value = roleToShow;
@@ -735,12 +375,10 @@ async function loadRunningInfo() {
         currentStageName.value = getStageName(roleToShow, actionToShow);
       }
 
-      // Force show confirmation dialog when requiresConfirmation is true
-      if (requiresConfirmation && currentStep.value) {
-        showConfirmationDialog.value = true;
-      }
+      // Show confirmation dialog
+      showConfirmationDialog.value = true;
     } else {
-      // Workflow is running (not paused and no confirmation required)
+      // Workflow is running (no confirmation required)
       // Check if there's a running state
       if (runningState.role && runningState.action) {
         isRunning.value = true;
@@ -822,31 +460,8 @@ watch(currentStep, (newStep) => {
   }
 }, { immediate: true });
 
-// Watch runningRole and currentAction to auto-scroll to current position
-watch([runningRole, currentAction, isRunning], ([newRole, newAction, running]) => {
-  if (running && newRole && newAction) {
-    nextTick(() => {
-      scrollToCurrentPosition(newRole, newAction);
-    });
-  }
-}, { immediate: false });
-
-// Auto-scroll function
-function scrollToCurrentPosition(role: string, action: string) {
-  // First try to scroll to the action
-  const actionKey = `${role}-${action}`;
-  const actionEl = actionRefs.get(actionKey);
-  if (actionEl) {
-    actionEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-    return;
-  }
-
-  // Fallback to scroll to the column
-  const columnEl = columnRefs.get(role);
-  if (columnEl && kanbanBoardRef.value) {
-    columnEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-  }
-}
+// Auto-scroll functionality can be added later if needed
+// Currently handled by component-level scrolling
 
 async function startInteractiveSession() {
   try {
@@ -1014,12 +629,7 @@ function handlePollingMessage(message: { type: string; data: any }) {
         runningRole.value = 'Salesperson';
         currentAction.value = 'WriteMRD';
       }
-      // Auto-scroll to current position
-      if (runningRole.value && currentAction.value) {
-        nextTick(() => {
-          scrollToCurrentPosition(runningRole.value, currentAction.value);
-        });
-      }
+      // Auto-scroll handled by components
       break;
 
     case 'started':
@@ -1037,10 +647,7 @@ function handlePollingMessage(message: { type: string; data: any }) {
         // Set default action for Salesperson (usually WriteMRD)
         currentAction.value = 'WriteMRD';
       }
-      // Auto-scroll to current position
-      nextTick(() => {
-        scrollToCurrentPosition(runningRole.value, currentAction.value);
-      });
+      // Auto-scroll handled by components
       break;
 
     case 'role_start':
@@ -1050,10 +657,7 @@ function handlePollingMessage(message: { type: string; data: any }) {
       currentStageName.value = getStageName(message.data.role, message.data.action);
       // Clear currentStep when a new role starts
       currentStep.value = null;
-      // Auto-scroll to current position
-      nextTick(() => {
-        scrollToCurrentPosition(runningRole.value, currentAction.value);
-      });
+      // Auto-scroll handled by components
       // Debug: log running state
       console.log('[role_start]', {
         role: runningRole.value,
@@ -1204,48 +808,7 @@ function complete() {
   ElMessage.success('项目生成完成！');
 }
 
-function getStatusType(): 'success' | 'warning' | 'info' | 'danger' {
-  if (isCompleted.value) return 'success';
-  if (isRunning.value) return 'warning';
-  return 'info';
-}
-
-function getStatusText(): string {
-  if (isCompleted.value) return '已完成';
-  if (isRunning.value) return '进行中';
-  return '等待中';
-}
-
-function getRoleTagType(role: string): 'success' | 'warning' | 'info' | 'danger' {
-  const typeMap: Record<string, 'success' | 'warning' | 'info' | 'danger'> = {
-    Salesperson: 'info',
-    ProductManager: 'success',
-    Architect: 'warning',
-    Engineer: 'info',
-    QAEngineer: 'danger',
-  };
-  return typeMap[role] || 'info';
-}
-
-function getUserActionTagType(action: string): 'success' | 'warning' | 'info' | 'danger' {
-  const typeMap: Record<string, 'success' | 'warning' | 'info' | 'danger'> = {
-    continue: 'success',
-    edit: 'warning',
-    regenerate: 'info',
-    skip: 'danger',
-  };
-  return typeMap[action] || 'info';
-}
-
-function getUserActionText(action: string): string {
-  const textMap: Record<string, string> = {
-    continue: '✓ 已确认',
-    edit: '✎ 已编辑',
-    regenerate: '↻ 已重生成',
-    skip: '→ 已跳过',
-  };
-  return textMap[action] || action;
-}
+// Helper functions moved to components
 
 /**
  * 根据角色和操作获取阶段名称
@@ -1359,38 +922,7 @@ function getActionDisplayName(action: string): string {
   return roleActionStore.getActionDisplayName(action);
 }
 
-/**
- * 获取Action卡片样式类
- */
-function getActionCardClass(status: string): string {
-  return `card-status-${status}`;
-}
-
-/**
- * 获取Action状态标签类型
- */
-function getActionStatusTagType(status: string): 'success' | 'warning' | 'info' | 'danger' {
-  const typeMap: Record<string, 'success' | 'warning' | 'info' | 'danger'> = {
-    pending: 'info',
-    running: 'danger', // 使用danger类型（红色）来突出显示运行中的action
-    waiting: 'warning',
-    completed: 'success',
-  };
-  return typeMap[status] || 'info';
-}
-
-/**
- * 获取Action状态文本
- */
-function getActionStatusText(status: string): string {
-  const textMap: Record<string, string> = {
-    pending: '待处理',
-    running: '进行中',
-    waiting: '等待确认',
-    completed: '已完成',
-  };
-  return textMap[status] || status;
-}
+// Action status helpers moved to ActionCard component
 
 function viewProject() {
   if (projectId.value) {
@@ -1437,7 +969,6 @@ function openContentDialog(action: WorkflowAction) {
   contentDialogAction.value = action.name;
   contentDialogContent.value = action.content || '';
   contentDialogTimestamp.value = action.timestamp || '';
-  contentDialogTitle.value = `${getRoleDisplayName(roleForAction)} - ${getActionDisplayName(action.name)}`;
   showContentDialog.value = true;
 }
 

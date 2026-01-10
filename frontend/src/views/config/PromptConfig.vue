@@ -1,13 +1,6 @@
 <template>
   <div class="prompt-config">
-    <el-page-header class="page-header" @back="() => router.push('/')">
-      <template #content>
-        <div class="header-content">
-          <span class="header-title">提示词配置</span>
-          <p class="header-desc">配置各类提示词模板和系统提示词</p>
-        </div>
-      </template>
-    </el-page-header>
+    <PageHeader title="提示词配置" description="配置各类提示词模板和系统提示词" :back-handler="() => router.push('/')" />
 
     <div v-loading="loading" class="content-section">
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
@@ -15,9 +8,7 @@
       <!-- 提示词类型选择 -->
       <el-card class="type-selector-card" shadow="hover">
         <template #header>
-          <div class="card-header-content">
-            <span class="card-title">提示词类型</span>
-          </div>
+          <CardHeader title="提示词类型" />
         </template>
         <el-radio-group v-model="selectedType" @change="handleTypeChange">
           <el-radio-button label="mrd">市场研究文档（MRD）</el-radio-button>
@@ -32,30 +23,23 @@
       <!-- 提示词列表 -->
       <el-card class="prompts-card">
         <template #header>
-          <div class="card-header-content">
-            <span class="card-title">{{ typeLabels[selectedType] }}提示词配置</span>
-            <el-button type="primary" @click="showCreateDialog = true">
-              <el-icon>
-                <Plus />
-              </el-icon>
-              新建提示词
-            </el-button>
-          </div>
+          <CardHeader :title="`${typeLabels[selectedType]}提示词配置`">
+            <template #right>
+              <el-button type="primary" @click="showCreateDialog = true">
+                <el-icon>
+                  <Plus />
+                </el-icon>
+                新建提示词
+              </el-button>
+            </template>
+          </CardHeader>
         </template>
 
-        <el-empty v-if="currentPrompts.length === 0" description="还没有配置提示词。创建您的第一个提示词配置！">
-          <el-button type="primary" @click="showCreateDialog = true">
-            创建提示词
-          </el-button>
-        </el-empty>
+        <EmptyState v-if="currentPrompts.length === 0" description="还没有配置提示词。创建您的第一个提示词配置！" action-text="创建提示词"
+          :action-handler="() => showCreateDialog = true" />
 
         <div v-else class="prompts-list">
-          <el-card
-            v-for="prompt in currentPrompts"
-            :key="prompt.id"
-            shadow="hover"
-            class="prompt-card"
-          >
+          <el-card v-for="prompt in currentPrompts" :key="prompt.id" shadow="hover" class="prompt-card">
             <div class="prompt-header">
               <div class="prompt-info">
                 <h3 class="prompt-name">
@@ -83,12 +67,7 @@
     </div>
 
     <!-- 创建/编辑提示词对话框 -->
-    <el-dialog
-      v-model="showCreateDialog"
-      :title="editingPrompt ? '编辑提示词' : '新建提示词'"
-      width="900px"
-      @close="resetForm"
-    >
+    <el-dialog v-model="showCreateDialog" :title="editingPrompt ? '编辑提示词' : '新建提示词'" width="900px" @close="resetForm">
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
         <el-form-item label="提示词键名" prop="promptKey">
           <el-select v-model="form.promptKey" placeholder="选择提示词键名" style="width: 100%">
@@ -108,23 +87,12 @@
         </el-form-item>
 
         <el-form-item label="描述" prop="description">
-          <el-input
-            v-model="form.description"
-            type="textarea"
-            :rows="2"
-            placeholder="输入提示词的描述信息（可选）"
-          />
+          <el-input v-model="form.description" type="textarea" :rows="2" placeholder="输入提示词的描述信息（可选）" />
         </el-form-item>
 
         <el-form-item label="提示词内容" prop="content">
-          <el-input
-            v-model="form.content"
-            type="textarea"
-            :rows="20"
-            placeholder="输入提示词内容"
-            show-word-limit
-            maxlength="50000"
-          />
+          <el-input v-model="form.content" type="textarea" :rows="20" placeholder="输入提示词内容" show-word-limit
+            maxlength="50000" />
         </el-form-item>
 
         <el-form-item label="激活状态" prop="isActive">
@@ -147,7 +115,10 @@ import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus';
 import { Plus, Document } from '@element-plus/icons-vue';
-import { apiClient } from '../api/client';
+import { apiClient } from '../../api/client';
+import PageHeader from '../../components/common/PageHeader.vue';
+import CardHeader from '../../components/common/CardHeader.vue';
+import EmptyState from '../../components/common/EmptyState.vue';
 
 interface PromptConfig {
   id: string;
@@ -269,7 +240,7 @@ async function savePrompt() {
     saving.value = true;
     try {
       const promptKey = form.value.promptKey === 'custom' ? form.value.customKey : form.value.promptKey;
-      
+
       await apiClient.savePromptConfig({
         promptType: selectedType.value,
         promptKey,
@@ -277,7 +248,7 @@ async function savePrompt() {
         description: form.value.description || undefined,
         isActive: form.value.isActive,
       });
-      
+
       ElMessage.success(editingPrompt.value ? '提示词更新成功' : '提示词创建成功');
       showCreateDialog.value = false;
       resetForm();
@@ -344,19 +315,6 @@ onMounted(() => {
   margin-bottom: 24px;
 }
 
-.card-header-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.card-title {
-  font-size: 18px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 
 .prompts-card {
   margin-bottom: 24px;
@@ -409,4 +367,3 @@ onMounted(() => {
   gap: 8px;
 }
 </style>
-

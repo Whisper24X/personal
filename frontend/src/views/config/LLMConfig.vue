@@ -1,13 +1,10 @@
 <template>
   <div class="llm-config">
-    <el-page-header class="page-header" @back="() => router.push('/')">
-      <template #content>
-        <div class="header-content">
-          <span class="header-title">LLM 配置</span>
-          <p class="header-desc">配置大模型提供商和 API Key</p>
-        </div>
-      </template>
-    </el-page-header>
+    <PageHeader
+      title="LLM 配置"
+      description="配置大模型提供商和 API Key"
+      :back-handler="() => router.push('/')"
+    />
 
     <div v-loading="loading" class="content-section">
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
@@ -425,7 +422,8 @@ import { ref, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus';
 import { Check, Plus, Setting, User, Document } from '@element-plus/icons-vue';
-import { apiClient } from '../api/client';
+import { apiClient } from '../../api/client';
+import PageHeader from '../../components/common/PageHeader.vue';
 
 interface LLMConfig {
   id: string;

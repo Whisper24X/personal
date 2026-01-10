@@ -1,0 +1,157 @@
+<template>
+  <div class="application-detail">
+    <PageHeader
+      :title="application?.name || '应用详情'"
+      :description="application?.description"
+      :back-handler="() => router.push('/applications')"
+    />
+
+    <div v-loading="loading" class="content-section">
+      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+
+      <ApplicationStats
+        :application="application"
+        @create-project="goToCreateProject"
+      />
+
+      <ProjectList
+        :projects="projects"
+        @project-click="viewProject"
+        @knowledge-base="goToProjectKnowledgeBase"
+        @empty-action="goToCreateProject"
+      />
+
+      <KnowledgeBaseSection
+        :projects="projects"
+        @project-click="goToProjectKnowledgeBase"
+      />
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, onActivated, onUnmounted, computed } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
+import { useApplicationStore } from '../../stores/application';
+import { storeToRefs } from 'pinia';
+import { ElMessage } from 'element-plus';
+import { apiClient } from '../../api/client';
+import PageHeader from '../../components/common/PageHeader.vue';
+import ApplicationStats from './components/ApplicationStats.vue';
+import ProjectList from './components/ProjectList.vue';
+import KnowledgeBaseSection from './components/KnowledgeBaseSection.vue';
+
+const router = useRouter();
+const route = useRoute();
+const applicationStore = useApplicationStore();
+const { currentApplication, loading, error } = storeToRefs(applicationStore);
+
+const application = computed(() => currentApplication.value);
+const projects = ref<any[]>([]);
+
+async function refreshData() {
+  const applicationId = route.params.id as string;
+  await applicationStore.fetchApplication(applicationId);
+  await fetchProjects(applicationId);
+}
+
+// Listen for page visibility changes to refresh when user returns to the page
+const visibilityHandler = () => {
+  if (!document.hidden) {
+    refreshData();
+  }
+};
+
+// Listen for custom refresh event from router guard
+const refreshHandler = () => {
+  refreshData();
+};
+
+onMounted(async () => {
+  await refreshData();
+  document.addEventListener('visibilitychange', visibilityHandler);
+  window.addEventListener('refresh-project-list', refreshHandler);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', visibilityHandler);
+  window.removeEventListener('refresh-project-list', refreshHandler);
+});
+
+// Refresh when component is activated (if using keep-alive)
+onActivated(() => {
+  refreshData();
+});
+
+async function fetchProjects(applicationId: string) {
+  try {
+    const response = await apiClient.getApplicationProjects(applicationId) as any;
+    projects.value = response.projects || [];
+  } catch (err: any) {
+    ElMessage.error(err.message || '获取项目列表失败');
+  }
+}
+
+function viewProject(project: any) {
+  const projectId = project.id;
+  const status = project.status;
+
+  // 如果项目未完成（pending 或 running），跳转到交互式页面继续执行
+  if (status === 'pending' || status === 'running') {
+    // 获取项目详情以获取完整信息
+    apiClient.getProject(projectId).then((response: any) => {
+      const projectData = response.project || response;
+      router.push({
+        path: '/project/interactive',
+        query: {
+          id: projectId,
+          name: projectData.name || project.name,
+          idea: projectData.idea || '',
+          description: projectData.description || '',
+          rounds: (projectData.nRound || projectData.n_round || 5).toString(),
+          applicationId: route.params.id as string,
+        }
+      });
+    }).catch(() => {
+      // 如果获取项目详情失败，使用基本信息跳转
+      router.push({
+        path: '/project/interactive',
+        query: {
+          id: projectId,
+          name: project.name,
+          idea: project.idea || '',
+          rounds: '5',
+          applicationId: route.params.id as string,
+        }
+      });
+    });
+  } else {
+    // 如果项目已完成，跳转到项目详情页面
+    router.push(`/project/${projectId}`);
+  }
+}
+
+function goToCreateProject() {
+  const applicationId = route.params.id as string;
+  router.push({
+    path: '/create',
+    query: {
+      applicationId: applicationId
+    }
+  });
+}
+
+function goToProjectKnowledgeBase(projectId: string) {
+  router.push(`/project/${projectId}/knowledge-base`);
+}
+</script>
+
+<style scoped>
+.application-detail {
+  max-width: 100%;
+}
+
+.content-section {
+  min-height: 400px;
+}
+</style>

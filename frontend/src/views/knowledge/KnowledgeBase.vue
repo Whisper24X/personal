@@ -1,23 +1,18 @@
 <template>
   <div class="knowledge-base">
-    <el-page-header @back="goBack" class="page-header">
-      <template #content>
-        <div class="header-content">
-          <div class="header-left">
-            <span class="header-title">知识库管理</span>
-            <el-text type="info" size="small" class="project-info">
-              项目: {{ projectName }}
-            </el-text>
-          </div>
-          <div class="header-right">
-            <el-button type="primary" @click="showCreateDialog = true">
-              <el-icon><Plus /></el-icon>
-              添加文档
-            </el-button>
-          </div>
-        </div>
+    <PageHeader title="知识库管理" :back-handler="goBack">
+      <template #extra>
+        <el-text type="info" size="small" class="project-info">
+          项目: {{ projectName }}
+        </el-text>
       </template>
-    </el-page-header>
+      <template #right>
+        <el-button type="primary" @click="showCreateDialog = true">
+          <el-icon><Plus /></el-icon>
+          添加文档
+        </el-button>
+      </template>
+    </PageHeader>
 
     <!-- 搜索栏 -->
     <el-card class="search-card">
@@ -42,77 +37,35 @@
     <!-- 文档列表 -->
     <el-card class="documents-card">
       <template #header>
-        <div class="card-header-content">
-          <span class="card-title">
-            <el-icon><Collection /></el-icon>
-            知识库文档
-          </span>
-          <el-tag>{{ documents.length }}</el-tag>
-        </div>
+        <CardHeader title="知识库文档" :icon="Collection" :badge="documents.length" />
       </template>
 
-      <el-empty v-if="documents.length === 0 && !loading" description="暂无知识库文档" :image-size="100">
-        <el-button type="primary" @click="showCreateDialog = true">
-          添加第一个文档
-        </el-button>
-      </el-empty>
+      <EmptyState
+        v-if="documents.length === 0 && !loading"
+        description="暂无知识库文档"
+        :image-size="100"
+        action-text="添加第一个文档"
+        :action-handler="() => showCreateDialog = true"
+      />
 
       <el-loading v-if="loading" />
 
       <div v-else class="documents-list">
-        <el-card
+        <DocumentCard
           v-for="doc in documents"
           :key="doc.id"
-          shadow="hover"
-          class="document-item"
-        >
-          <div class="document-header">
-            <div class="document-info">
-              <h3 class="document-title">{{ doc.title }}</h3>
-              <el-text v-if="doc.description" type="info" size="small" class="document-description">
-                {{ doc.description }}
-              </el-text>
-              <div class="document-meta">
-                <el-tag v-if="doc.tags && doc.tags.length > 0" v-for="tag in doc.tags" :key="tag" size="small" class="tag-item">
-                  {{ tag }}
-                </el-tag>
-                <el-tag :type="doc.isActive ? 'success' : 'info'" size="small">
-                  {{ doc.isActive ? '激活' : '停用' }}
-                </el-tag>
-                <el-text type="info" size="small">
-                  {{ formatDate(doc.createdAt) }}
-                </el-text>
-              </div>
-            </div>
-            <div class="document-actions">
-              <el-button type="primary" link @click="viewDocument(doc)">
-                <el-icon><View /></el-icon>
-                查看
-              </el-button>
-              <el-button type="primary" link @click="editDocument(doc)">
-                <el-icon><Edit /></el-icon>
-                编辑
-              </el-button>
-              <el-button type="danger" link @click="handleDelete(doc)">
-                <el-icon><Delete /></el-icon>
-                删除
-              </el-button>
-            </div>
-          </div>
-        </el-card>
+          :document="doc"
+          @view="viewDocument"
+          @edit="editDocument"
+          @delete="handleDelete"
+        />
       </div>
     </el-card>
 
     <!-- 搜索结果 -->
     <el-card v-if="searchResults.length > 0" class="search-results-card">
       <template #header>
-        <div class="card-header-content">
-          <span class="card-title">
-            <el-icon><Search /></el-icon>
-            搜索结果
-          </span>
-          <el-tag>{{ searchResults.length }}</el-tag>
-        </div>
+        <CardHeader title="搜索结果" :icon="Search" :badge="searchResults.length" />
       </template>
 
       <div class="search-results-list">
@@ -251,7 +204,11 @@ import {
   Edit,
   Delete,
 } from '@element-plus/icons-vue';
-import { apiClient } from '../api/client';
+import { apiClient } from '../../api/client';
+import PageHeader from '../../components/common/PageHeader.vue';
+import CardHeader from '../../components/common/CardHeader.vue';
+import EmptyState from '../../components/common/EmptyState.vue';
+import DocumentCard from './components/DocumentCard.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -510,11 +467,6 @@ function formatDate(dateStr: string): string {
   margin-bottom: 20px;
 }
 
-.card-header-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
 
 .card-title {
   font-size: 18px;
@@ -530,51 +482,6 @@ function formatDate(dateStr: string): string {
   gap: 16px;
 }
 
-.document-item {
-  transition: all 0.3s;
-}
-
-.document-item:hover {
-  transform: translateY(-2px);
-}
-
-.document-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-
-.document-info {
-  flex: 1;
-}
-
-.document-title {
-  font-size: 18px;
-  font-weight: 600;
-  margin: 0 0 8px 0;
-  color: #303133;
-}
-
-.document-description {
-  display: block;
-  margin-bottom: 12px;
-}
-
-.document-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.tag-item {
-  margin-right: 4px;
-}
-
-.document-actions {
-  display: flex;
-  gap: 8px;
-}
 
 .search-results-list {
   display: flex;
