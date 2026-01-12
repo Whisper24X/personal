@@ -8,7 +8,7 @@ import { IActionOutput } from '@mind2build/shared';
 import {
   CODE_REVIEW_SYSTEM_PROMPT,
   buildCodeReviewPrompt,
-} from '../prompts/task';
+} from '../prompts/code';
 import { logger } from '../utils';
 
 export class CodeReview extends BaseAction {

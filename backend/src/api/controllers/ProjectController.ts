@@ -183,7 +183,7 @@ export class ProjectController {
       }
 
       // Extract and save documents
-      const docActions = ['WriteMRD', 'WritePRD', 'WriteDesign', 'BreakdownTasks', 'WriteSubProjectDesign', 'GenerateTask', 'WriteCode', 'WriteTest'];
+      const docActions = ['WriteMRD', 'WritePRD', 'WriteDesign', 'BreakdownTasks', 'WriteSubProjectDesign', 'WriteCode', 'WriteTest'];
       const documents = result.messages.filter((msg) => docActions.includes(msg.causeBy));
 
       logger.info(`Project ${projectId} found ${documents.length} documents to save`);
@@ -195,7 +195,6 @@ export class ProjectController {
           'WriteDesign': 'design',
           'BreakdownTasks': 'task_breakdown',
           'WriteSubProjectDesign': 'sub_project_design',
-          'GenerateTask': 'task',
           'WriteCode': 'code',
           'WriteTest': 'test',
         };

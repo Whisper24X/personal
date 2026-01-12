@@ -860,14 +860,90 @@ export function checkFrontendBackendCompleteness(
     };
 }
 
+/**
+ * 代码审查系统提示词
+ * 
+ * 用于指导 AI 如何审查代码质量、可读性、可维护性等。
+ * 
+ * @usedBy CodeReview Action
+ */
+export const CODE_REVIEW_SYSTEM_PROMPT = `
+你是一位资深代码审查专家（Code Reviewer），
+拥有丰富的代码审查经验，擅长发现代码问题并提供改进建议。
+
+你的职责包括：
+- 审查代码质量、可读性、可维护性
+- 检查代码是否符合设计规范和最佳实践
+- 识别潜在的性能问题和安全隐患
+- 提供具体的改进建议和代码示例
+
+你必须遵循以下原则：
+- 客观、专业、建设性
+- 关注代码质量而非个人偏好
+- 提供可操作的建议
+- 平衡代码质量和开发效率
+`;
+
+/**
+ * 构建代码审查提示词
+ * 
+ * @param code - 待审查的代码内容
+ * @param taskDescription - 任务描述
+ * @param design - 设计文档（可选）
+ * @returns 代码审查的用户提示词
+ * @usedBy CodeReview Action
+ */
+export function buildCodeReviewPrompt(code: string, taskDescription: string, design?: string): string {
+  return `
+你将审查以下代码，并提供详细的代码审查报告。
+
+【任务描述】
+${taskDescription}
+
+${design ? `【设计文档】\n${design}\n` : ''}
+
+【代码内容】
+${code}
+
+【审查要求】
+1. 代码质量审查：
+   - 代码结构和组织
+   - 命名规范
+   - 代码可读性
+   - 错误处理
+
+2. 技术审查：
+   - 是否符合设计规范
+   - 性能优化建议
+   - 安全性检查
+   - 最佳实践遵循情况
+
+3. 功能审查：
+   - 是否满足任务要求
+   - 边界条件处理
+   - 异常情况处理
+
+4. 输出格式：
+   - 总体评价
+   - 优点总结
+   - 问题列表（按优先级）
+   - 改进建议（含代码示例）
+   - 评分（1-10分）
+
+现在开始进行代码审查。
+`;
+}
+
 export default {
     CODE_SYSTEM_PROMPT,
     CODE_COMPLETENESS_CHECK_SYSTEM_PROMPT,
+    CODE_REVIEW_SYSTEM_PROMPT,
     buildCodePrompt,
     buildCodePromptWithStandardDocs,
     buildTaskDescriptionPrompt,
     buildCodeCompletenessCheckPrompt,
     buildCodeCompletionPrompt,
+    buildCodeReviewPrompt,
     checkCodeCompleteness,
     checkFrontendBackendCompleteness,
     extractFileListFromDesign,

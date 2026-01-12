@@ -24,7 +24,6 @@ export { ImproveMRD } from './ImproveMRD';
 
 // Task Management Actions
 export { BreakdownTasks } from './BreakdownTasks';
-export { GenerateTask } from './GenerateTask';
 export { ExecuteSubtask } from './ExecuteSubtask';
 
 // Code Execution and Bug Fix Actions
