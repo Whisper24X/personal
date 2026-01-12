@@ -6,6 +6,16 @@
 export * from './types';
 export * from './utils';
 
+// Re-export enums explicitly to ensure they are available
+export {
+  RoleReactMode,
+  ProjectStatus,
+  DocumentType,
+  ActionStatus,
+  RoleStatus,
+  InteractiveMode,
+} from './types';
+
 // Re-export constants separately to avoid conflicts
 export {
   MESSAGE_ROUTE_TO_ALL,
