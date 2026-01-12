@@ -38,6 +38,17 @@ export class ImprovePRD extends BaseAction {
     // 尝试从 options 或 context 中获取 projectId
     const projectId = options?.projectId || (this.context?.get('projectId') as string | undefined);
     const version = options?.version || (this.context?.get('version') as number | undefined) || 1;
+    if (!projectId) {
+      throw new Error('projectId is required for ImprovePRD action. Please provide it in options or context.');
+    }
+
+    const workspaceOptions: WorkspaceOptions = {
+      applicationId,
+      projectId,
+      version,
+      documentType: 'PRD',
+      workspacePath: options?.workspacePath,
+    };
 
     logger.info('ImprovePRD: Starting PRD improvement', {
       applicationId,
@@ -48,14 +59,16 @@ export class ImprovePRD extends BaseAction {
     });
 
     try {
-      // Step 1: 读取当前PRD文档
-      const currentPRD = await this.readWorkspaceFile('PRD.md', {
-        applicationId,
-        projectId,
-        version,
-        documentType: 'PRD',
-        workspacePath: options?.workspacePath,
-      });
+      const inputIsReviewReport = this.looksLikeReviewReport(input);
+
+      // Step 1: 读取当前PRD文档（优先workspace，缺失时可回退到输入）
+      let currentPRD = await this.readWorkspaceFile('PRD.md', workspaceOptions);
+      if (!currentPRD && !inputIsReviewReport && input.trim().length > 0) {
+        currentPRD = input;
+        logger.info('ImprovePRD: Using input as PRD content', {
+          inputLength: input.length,
+        });
+      }
 
       if (!currentPRD) {
         throw new Error(
@@ -70,20 +83,14 @@ export class ImprovePRD extends BaseAction {
       // 如果没有提供审查报告，尝试从workspace读取
       if (!reviewReport) {
         // 检查输入是否看起来像审查报告（包含"审查报告"关键字）
-        if (input && (input.includes('审查报告') || input.includes('改进建议'))) {
+        if (inputIsReviewReport) {
           reviewReport = input;
           logger.info('ImprovePRD: Using input as review report', {
             inputLength: input.length,
           });
         } else {
           // 从workspace读取审查报告
-          reviewReport = await this.readReviewReport({
-            applicationId,
-            projectId,
-            version,
-            documentType: 'PRD',
-            workspacePath: options?.workspacePath,
-          });
+          reviewReport = await this.readReviewReport(workspaceOptions, currentPRD);
         }
       }
 
@@ -111,13 +118,7 @@ export class ImprovePRD extends BaseAction {
       improvedPRD = this.removeReviewReport(improvedPRD);
 
       // Step 6: 保存改进后的文档
-      await this.saveToWorkspace('PRD.md', improvedPRD, {
-        applicationId,
-        projectId,
-        version,
-        documentType: 'PRD',
-        workspacePath: options?.workspacePath,
-      });
+      await this.saveToWorkspace('PRD.md', improvedPRD, workspaceOptions);
 
       logger.info('ImprovePRD: PRD improved and saved', {
         improvedLength: improvedPRD.length,
@@ -146,14 +147,18 @@ export class ImprovePRD extends BaseAction {
    * 读取审查报告
    */
   private async readReviewReport(
-    options: any
+    options: WorkspaceOptions,
+    currentPRD?: string
   ): Promise<string | null> {
     // 尝试读取审查报告文件
     let reviewReport = await this.readWorkspaceFile('PRD_REVIEW.md', options);
+    if (!reviewReport) {
+      reviewReport = await this.readWorkspaceFile('PRD-review.md', options);
+    }
     
     // 如果找不到审查报告文件，尝试从主文档末尾提取（有些审查报告会附加在文档末尾）
     if (!reviewReport) {
-      const mainDocument = await this.readWorkspaceFile('PRD.md', options);
+      const mainDocument = currentPRD || await this.readWorkspaceFile('PRD.md', options);
       if (mainDocument) {
         // 尝试提取审查报告部分（通常在文档末尾，以"---"分隔，然后以审查报告标题开头）
         const reviewPattern = /---\s*\n\s*#\s*PRD\s*审查报告[\s\S]*$/;
@@ -174,6 +179,14 @@ export class ImprovePRD extends BaseAction {
     }
     
     return reviewReport;
+  }
+
+  /**
+   * 检查输入是否更像审查报告
+   */
+  private looksLikeReviewReport(input: string): boolean {
+    if (!input) return false;
+    return input.includes('审查报告') || input.includes('改进建议');
   }
 
   /**
@@ -249,4 +262,3 @@ export class ImprovePRD extends BaseAction {
 }
 
 export default ImprovePRD;
-

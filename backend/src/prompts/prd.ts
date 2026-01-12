@@ -522,6 +522,8 @@ export function buildPRDSectionPrompt(
   sectionNumber: number,
   sectionTitle: string
 ): string {
+  const sectionTemplate = extractSectionTemplate(PRD_TEMPLATE, sectionNumber);
+
   return `基于以下市场研究文档（MRD）和 PRD 目录，生成第 ${sectionNumber} 章「${sectionTitle}」的详细内容：
 
 【市场研究文档（MRD）】
@@ -529,6 +531,9 @@ ${input}
 
 【PRD 目录】
 ${outline}
+
+【PRD 模板（目标章节，必须严格对齐结构与格式）】
+${sectionTemplate || '（未找到模板章节，请严格对齐既定模板结构）'}
 
 【目标章节】
 ## ${sectionNumber}. ${sectionTitle}
@@ -547,6 +552,27 @@ ${outline}
 - 使用 Markdown 格式
  - 不保留任何占位符或空表格/空清单
 `;
+}
+
+function extractSectionTemplate(template: string, sectionNumber: number): string {
+  const lines = template.split('\n');
+  const startPattern = new RegExp(`^##\\s+${sectionNumber}\\.\\s+`);
+  const sectionHeaderPattern = /^##\s+\d+\.\s+/;
+
+  const startIndex = lines.findIndex((line) => startPattern.test(line));
+  if (startIndex === -1) {
+    return '';
+  }
+
+  let endIndex = lines.length;
+  for (let i = startIndex + 1; i < lines.length; i++) {
+    if (sectionHeaderPattern.test(lines[i])) {
+      endIndex = i;
+      break;
+    }
+  }
+
+  return lines.slice(startIndex, endIndex).join('\n').trim();
 }
 
 /**
@@ -637,12 +663,17 @@ export function buildPRDSectionReviewPrompt(
   sectionTitle: string,
   outline: string
 ): string {
+  const sectionTemplate = extractSectionTemplate(PRD_TEMPLATE, sectionNumber);
+
   return `请审查以下 PRD 章节的质量：
 
 【章节内容】
 ## ${sectionNumber}. ${sectionTitle}
 
 ${sectionContent}
+
+【PRD 模板（目标章节，必须严格对齐结构与格式）】
+${sectionTemplate || '（未找到模板章节，请严格对齐既定模板结构）'}
 
 【完整目录结构】
 ${outline}
@@ -653,6 +684,7 @@ ${outline}
 3. **检查可执行性**：如涉及流程/功能/规则/验收，是否包含触发条件、主流程、异常流程、边界条件、验收标准？
 4. **检查关键元素**：如为 2.3 是否写明假设与影响；如为 4.3 是否提供 Mermaid；如为 5.3 是否覆盖状态与交互细节
 5. **检查完整性**：章节是否包含该章节应该包含的所有子章节、表格与清单？
+6. **检查模板一致性**：子标题、表格结构、清单项是否与模板一致？有无遗漏或新增无关结构？
 
 输出格式：
 \`\`\`markdown

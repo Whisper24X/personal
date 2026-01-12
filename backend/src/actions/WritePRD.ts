@@ -1,6 +1,17 @@
 /**
  * WritePRD Action
  * Generates Product Requirements Document from user idea
+ *
+ * 工作流程：
+ * 1) 从 workspace 读取 MRD.md（需要 applicationId；失败或不存在则回退到 input）。
+ * 2) 构造生成输入：RAG 模式下合并 MRD + 检索片段，否则仅使用 MRD。
+ * 3) 选择生成路径：
+ *    - 新建且启用分步：走 StepwiseDocumentGenerator（目录 -> 章节 -> 章节审核 -> 合并）。
+ *    - 其他情况：走一次性生成（new/update、RAG/标准 prompt）。
+ * 4) 加载系统提示词：生成用 system_prompt；审查用 review_system_prompt（用于分步审查）。
+ * 5) 调用模型生成 PRD 内容，写入 workspace/PRD/PRD.md。
+ * 6) 尝试从 workspace 读取主文件作为最终输出（失败则用当前生成内容）。
+ * 7) 处理超时与错误：超时抛出更友好的提示，其余错误直接上抛。
  */
 
 import { BaseAction } from '../core/base/BaseAction';
@@ -49,15 +60,20 @@ export class WritePRD extends BaseAction {
     // 优先从 workspace 读取 MRD.md 文件作为输入
     let mrdContent = input;
     try {
-      // applicationId 必须提供，不能使用 'default'
-      if (!options?.applicationId) {
+      // applicationId 和 projectId 必须提供，不能使用 'default'
+      const applicationId = options?.applicationId || (this.context?.get('applicationId') as string | undefined);
+      const projectId = options?.projectId || (this.context?.get('projectId') as string | undefined);
+      if (!applicationId) {
         throw new Error('applicationId is required for WritePRD action. Cannot use "default" to prevent file conflicts between different applications.');
       }
-      const applicationId = options.applicationId;
+      if (!projectId) {
+        throw new Error('projectId is required for WritePRD action. Cannot use "default" to prevent file conflicts between different projects.');
+      }
       const version = options?.version || 1;
 
       const mrdFromWorkspace = await WorkspaceManager.readFile('MRD.md', {
         applicationId,
+        projectId,
         version,
         documentType: 'MRD',
         workspacePath: options?.workspacePath,
@@ -67,6 +83,7 @@ export class WritePRD extends BaseAction {
         mrdContent = mrdFromWorkspace;
         logger.info('WritePRD: Loaded MRD content from workspace', {
           applicationId,
+          projectId,
           version,
           contentLength: mrdContent.length,
         });
@@ -84,6 +101,8 @@ export class WritePRD extends BaseAction {
     }
 
     logger.info('WritePRD: Starting PRD generation', {
+      applicationId: options?.applicationId || (this.context?.get('applicationId') as string | undefined),
+      projectId: options?.projectId || (this.context?.get('projectId') as string | undefined),
       mode,
       useRAG,
       useStepwise,
@@ -288,13 +307,19 @@ export class WritePRD extends BaseAction {
     // Load system prompt from database or use default
     const userId = this.context?.get('userId');
     const systemPrompt = await loadPrompt(userId, 'prd', 'system_prompt', PRD_SYSTEM_PROMPT);
+    const reviewSystemPrompt = await loadPrompt(
+      userId,
+      'prd',
+      'review_system_prompt',
+      PRD_REVIEW_SYSTEM_PROMPT
+    );
 
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
       buildOutlinePrompt: buildPRDOutlinePrompt,
       buildSectionPrompt: buildPRDSectionPrompt,
       buildSectionReviewPrompt: buildPRDSectionReviewPrompt,
       systemPrompt: systemPrompt,
-      reviewSystemPrompt: systemPrompt,
+      reviewSystemPrompt: reviewSystemPrompt,
       documentTitle: '产品需求文档（PRD）',
       documentType: 'PRD',
       mainFileName: 'PRD.md',
