@@ -132,15 +132,18 @@ export class WritePRD extends BaseAction {
       });
 
       // 尝试从 workspace 读取 PRD.md 主文件内容，如果失败则返回当前内容
+      // 确保返回的是完整的PRD内容，而不是监控检测信息
       let finalContent = prdContent;
       try {
         const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'PRD' });
         const mainFilePath = path.join(workspaceDir, 'PRD.md');
         const mainFileContent = await fs.readFile(mainFilePath, 'utf-8');
         if (mainFileContent && mainFileContent.length > 0) {
+          // 确保读取的是完整的PRD内容，而不是其他文件（如review文件）
           finalContent = mainFileContent;
           logger.info('WritePRD: Loaded PRD.md from workspace', {
             contentLength: finalContent.length,
+            isCompletePRD: true,
           });
         }
       } catch (error: any) {
@@ -150,6 +153,7 @@ export class WritePRD extends BaseAction {
         // 如果主文件不存在，使用当前生成的内容
       }
 
+      // 确保返回的是完整的PRD内容，而不是监控检测信息
       return {
         content: finalContent,
         data: {
@@ -213,13 +217,25 @@ export class WritePRD extends BaseAction {
       // 读取目录中的所有文件
       const entries = await fs.readdir(workspaceDir, { withFileTypes: true });
 
-      // 按文件名排序（确保顺序：outline -> sections -> PRD -> review，排除 final 文件）
+      // 按文件名排序（确保顺序：outline -> sections -> PRD）
+      // 排除review文件和其他非PRD文件，确保只返回完整的PRD内容，而不是监控检测信息
       const sortedEntries = entries
-        .filter(entry => entry.isFile() && entry.name.endsWith('.md') && !entry.name.endsWith('-final.md'))
+        .filter(entry => {
+          // 只包含PRD相关文件，排除review文件和其他非PRD文件
+          if (!entry.isFile() || !entry.name.endsWith('.md')) return false;
+          // 排除review文件
+          if (entry.name.includes('review') || entry.name.includes('Review')) return false;
+          // 排除final文件
+          if (entry.name.endsWith('-final.md')) return false;
+          return true;
+        })
         .sort((a, b) => {
           // 特殊排序：00-outline.md 在最前
           if (a.name === '00-outline.md') return -1;
           if (b.name === '00-outline.md') return 1;
+          // 主文件（PRD.md）优先
+          if (a.name === 'PRD.md') return -1;
+          if (b.name === 'PRD.md') return 1;
           return a.name.localeCompare(b.name);
         });
 

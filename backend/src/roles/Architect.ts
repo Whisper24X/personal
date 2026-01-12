@@ -8,6 +8,7 @@ import { Role } from './Role';
 import { Context } from '../core/context/Context';
 import { WriteDesign } from '../actions/WriteDesign';
 import { DesignReview } from '../actions/DesignReview';
+import { ImproveDesign } from '../actions/ImproveDesign';
 
 export class Architect extends Role {
   constructor(context: Context, name: string = 'Architect') {
@@ -24,8 +25,8 @@ export class Architect extends Role {
     // Watch for PRD completion
     this.watch([ACTION_WRITE_PRD]);
     
-    // Set actions
-    this.setActions([new WriteDesign(), new DesignReview()]);
+    // Set actions: WriteDesign -> DesignReview -> ImproveDesign
+    this.setActions([new WriteDesign(), new DesignReview(), new ImproveDesign()]);
   }
 }
 

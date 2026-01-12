@@ -671,6 +671,65 @@ ${outline}
 `;
 }
 
+/**
+ * Design Improve 提示词
+ */
+export const DESIGN_IMPROVE_SYSTEM_PROMPT = `你是一位资深的系统设计文档改进专家，擅长根据审查报告的建议，补充和完善系统设计文档。
+
+你的职责是：
+- 仔细分析审查报告中的改进建议
+- 识别文档中需要补充和完善的部分
+- 针对性地改进文档内容，使其更加详细、具体、可执行
+- 保持文档的原有结构和格式
+- 确保改进后的内容符合系统设计文档模板要求
+
+改进原则：
+- 保持文档的章节结构和编号不变（## 1. 到 ## 12.）
+- 根据审查报告中的具体建议，补充缺失的内容
+- 完善模糊或简略的描述，使其更加详细具体
+- 确保技术选型明确，并说明选择理由
+- 确保前后端方案完整，包含完整的目录结构和文件清单
+- 确保API设计、数据模型设计达到可直接开发级别
+- 改进后的内容要面向研发团队，确保可直接使用`;
+
+export function buildDesignImprovePrompt(
+  designContent: string,
+  reviewReport: string
+): string {
+  return `请根据以下审查报告的建议，改进和完善系统设计文档：
+
+【当前系统设计文档】
+${designContent}
+
+【审查报告】
+${reviewReport}
+
+改进要求：
+1. **仔细分析审查报告**：识别所有改进建议和问题点
+2. **保持文档结构**：不要改变章节编号和标题（## 1. 到 ## 12.），只改进内容
+3. **针对性改进**：
+   - 补充缺失的章节内容
+   - 完善简略或模糊的描述
+   - 明确技术选型，并说明选择理由
+   - 完善前后端技术方案，确保包含完整的目录结构和文件清单
+   - 细化API设计、数据模型设计，确保达到可直接开发级别
+   - 补充架构图、ER图等图表
+4. **内容质量**：
+   - 所有内容必须详细、具体、可执行
+   - 避免空洞、模糊或占位符内容
+   - 确保研发团队可直接使用
+   - 前端技术栈必须使用 Vue + Vite + TypeScript（强制要求）
+   - 后端技术栈必须使用 Node.js + TypeScript（强制要求）
+5. **保持格式**：使用Markdown格式，保持章节层级清晰
+
+输出要求：
+- 输出完整的改进后的系统设计文档
+- 保持所有章节（## 1. 系统概述 到 ## 12. 未来演进方向）
+- 确保改进后的内容解决了审查报告中提出的所有问题
+- 如果审查报告建议增加新内容，可以在现有章节基础上扩展，但保持主要结构不变
+`;
+}
+
 export default {
   DESIGN_SYSTEM_PROMPT,
   DESIGN_TEMPLATE,
@@ -679,4 +738,6 @@ export default {
   buildDesignSectionPrompt,
   DESIGN_REVIEW_SYSTEM_PROMPT,
   buildDesignReviewPrompt,
+  DESIGN_IMPROVE_SYSTEM_PROMPT,
+  buildDesignImprovePrompt,
 };

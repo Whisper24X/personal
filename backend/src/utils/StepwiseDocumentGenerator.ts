@@ -127,6 +127,7 @@ export class StepwiseDocumentGenerator {
       });
 
       // 从 workspace 读取主文件内容
+      // 确保返回的是完整的PRD内容，而不是监控检测信息
       let allContent: string;
       try {
         allContent = await this.readMainFileFromWorkspace();
@@ -134,6 +135,11 @@ export class StepwiseDocumentGenerator {
           logger.warn('StepwiseDocumentGenerator: Workspace content is empty, using merged content');
           allContent = mergedContent;
         }
+        // 确保读取的是完整的PRD内容，而不是其他文件（如review文件）
+        logger.info('StepwiseDocumentGenerator: Returning complete PRD content', {
+          contentLength: allContent.length,
+          isCompletePRD: true,
+        });
       } catch (error: any) {
         logger.warn('StepwiseDocumentGenerator: Failed to read from workspace, using merged content', {
           error: error.message,
@@ -141,6 +147,7 @@ export class StepwiseDocumentGenerator {
         allContent = mergedContent;
       }
 
+      // 确保返回的是完整的PRD内容，而不是监控检测信息
       return {
         content: allContent,
         data: {
@@ -596,13 +603,16 @@ export class StepwiseDocumentGenerator {
       }
 
       // 直接读取主文件（PRD.md）
+      // 确保返回的是完整的PRD内容，而不是监控检测信息或其他文件
       const mainFilePath = path.join(this.config.workspaceDir, this.config.mainFileName);
       try {
         const content = await fs.readFile(mainFilePath, 'utf-8');
         logger.info('StepwiseDocumentGenerator: Read main file from workspace', {
           mainFileName: this.config.mainFileName,
           contentLength: content.length,
+          isCompletePRD: true,
         });
+        // 确保返回的是完整的PRD内容
         return content;
       } catch (error: any) {
         logger.warn('StepwiseDocumentGenerator: Main file not found, trying to read all files', {
@@ -610,6 +620,7 @@ export class StepwiseDocumentGenerator {
           error: error.message,
         });
         // 如果主文件不存在，尝试读取所有文件（向后兼容）
+        // 注意：readAllFromWorkspace会排除review文件，只返回PRD相关文件
         return await this.readAllFromWorkspace();
       }
     } catch (error: any) {
@@ -640,10 +651,18 @@ export class StepwiseDocumentGenerator {
       const files: string[] = [];
       const entries = await fs.readdir(this.config.workspaceDir, { withFileTypes: true });
 
-      // 按文件名排序（确保顺序：outline -> sections -> main -> review）
-      // 不再排除 final 文件，因为不再生成
+      // 按文件名排序（确保顺序：outline -> sections -> main）
+      // 排除review文件和其他非PRD文件，确保只返回完整的PRD内容，而不是监控检测信息
       const sortedEntries = entries
-        .filter(entry => entry.isFile() && entry.name.endsWith('.md'))
+        .filter(entry => {
+          // 只包含PRD相关文件，排除review文件和其他非PRD文件
+          if (!entry.isFile() || !entry.name.endsWith('.md')) return false;
+          // 排除review文件
+          if (entry.name.includes('review') || entry.name.includes('Review')) return false;
+          // 排除final文件
+          if (entry.name.endsWith('-final.md')) return false;
+          return true;
+        })
         .sort((a, b) => {
           if (a.name === '00-outline.md') return -1;
           if (b.name === '00-outline.md') return 1;

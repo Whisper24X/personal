@@ -657,6 +657,8 @@ export class SessionWorkflowExecutor {
             return;
         }
 
+        // Set confirmation required for current role
+        // This will automatically clear any previous confirmation status and set the new role
         await this.workflowTracker.setConfirmationRequired(role.profile);
         this.sendIdleConfirmation(role);
     }
@@ -701,8 +703,9 @@ export class SessionWorkflowExecutor {
         // Publish and save message first before checking completion status
         await this.publishAndSaveMessage(env, message);
 
-        // Small delay to ensure database state is updated
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Wait for message to be fully saved to database and ensure content is complete
+        // This ensures the last action's content is fully generated and persisted before showing confirmation
+        await this.waitForMessageContentComplete(message.id);
 
         // Check if role has more actions
         const allActionsCompletedInDB = await this.stateChecker.areAllRoleActionsCompleted(role.profile);
@@ -719,18 +722,33 @@ export class SessionWorkflowExecutor {
         }
 
         // All actions completed - wait for confirmation
-        logger.info(`SessionWorkflowExecutor: All actions completed for role ${role.profile}, waiting for confirmation`);
+        // IMPORTANT: Get the latest message content from database to ensure it's fully generated
+        logger.info(`SessionWorkflowExecutor: All actions completed for role ${role.profile}, ensuring last action content is complete before showing confirmation`);
+        const latestMessage = await this.getLatestMessageFromDatabase(message.id);
+        const finalContent = latestMessage ? latestMessage.content : message.content;
+        const finalInstructContent = latestMessage && latestMessage.instruct_content 
+            ? (typeof latestMessage.instruct_content === 'string' 
+                ? JSON.parse(latestMessage.instruct_content) 
+                : latestMessage.instruct_content)
+            : message.instructContent;
+
+        logger.info(`SessionWorkflowExecutor: Using ${latestMessage ? 'database' : 'memory'} message content for confirmation (content length: ${finalContent?.length || 0})`);
+
+        // Set confirmation required for current role
+        // This will automatically clear any previous confirmation status
         await this.workflowTracker.setConfirmationRequired(role.profile);
         if (message.causeBy && typeof message.causeBy === 'string' && message.causeBy.trim().length > 0) {
             await this.workflowTracker.setRunningState(role.profile, message.causeBy);
         }
 
+        // Send confirmation_required message with current role's content
+        // This ensures the confirmation dialog shows the correct role and action
         this.messageHandler.sendMessage('confirmation_required', {
             role: role.profile,
             action: message.causeBy,
-            content: message.content,
+            content: finalContent,
             outputFiles: outputFiles,
-            instructContent: message.instructContent,
+            instructContent: finalInstructContent,
         });
 
         return { shouldContinueWithSameRole: false, requiresConfirmation: true, isIdle: false };
@@ -770,6 +788,55 @@ export class SessionWorkflowExecutor {
                 messageId: message.id,
                 projectId: this.projectId,
             });
+        }
+    }
+
+    /**
+     * Wait for message content to be fully saved to database
+     * This ensures the last action's content is complete before showing confirmation dialog
+     */
+    private async waitForMessageContentComplete(messageId: string, maxRetries: number = 10, retryDelay: number = 200): Promise<void> {
+        const { MessageRepository } = await import('../database/repositories/MessageRepository');
+        const messageRepo = new MessageRepository();
+
+        for (let i = 0; i < maxRetries; i++) {
+            try {
+                const dbMessage = await messageRepo.findByUuid(messageId);
+                if (dbMessage && dbMessage.content) {
+                    logger.info(`SessionWorkflowExecutor: Message ${messageId} content confirmed in database (length: ${dbMessage.content.length})`);
+                    return;
+                }
+            } catch (error: any) {
+                logger.warn(`SessionWorkflowExecutor: Error checking message content (attempt ${i + 1}/${maxRetries})`, {
+                    error: error.message,
+                    messageId,
+                });
+            }
+
+            if (i < maxRetries - 1) {
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+            }
+        }
+
+        logger.warn(`SessionWorkflowExecutor: Could not confirm message ${messageId} content in database after ${maxRetries} attempts, proceeding anyway`);
+    }
+
+    /**
+     * Get latest message from database by UUID
+     * Returns null if message not found
+     */
+    private async getLatestMessageFromDatabase(messageId: string): Promise<any | null> {
+        try {
+            const { MessageRepository } = await import('../database/repositories/MessageRepository');
+            const messageRepo = new MessageRepository();
+            const dbMessage = await messageRepo.findByUuid(messageId);
+            return dbMessage;
+        } catch (error: any) {
+            logger.warn(`SessionWorkflowExecutor: Failed to get message from database`, {
+                error: error.message,
+                messageId,
+            });
+            return null;
         }
     }
 

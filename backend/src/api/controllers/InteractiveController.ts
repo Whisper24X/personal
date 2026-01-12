@@ -304,14 +304,32 @@ export class InteractiveController {
             let requiresConfirmation = confirmationStatus.required || false;
 
             // Get confirmation details from message queue if confirmation required
+            // IMPORTANT: Use confirmation role from database as the source of truth
+            // Only use message queue if the message role matches the database confirmation role
             let confirmationRequired = null;
             if (requiresConfirmation) {
+                // First, check if we have a confirmation role from database
+                const confirmationRoleFromDB = confirmationStatus.role;
+                
                 // Find the latest confirmation_required message from message queue
+                // But only use it if it matches the database confirmation role
                 const allMessages = session.getMessagesSince(null);
-                const confirmationMessage = allMessages
-                    .slice()
-                    .reverse()
-                    .find((msg: any) => msg.type === 'confirmation_required');
+                const confirmationMessages = allMessages
+                    .filter((msg: any) => msg.type === 'confirmation_required')
+                    .reverse();
+                
+                // Find message that matches the database confirmation role
+                let confirmationMessage = null;
+                if (confirmationRoleFromDB) {
+                    confirmationMessage = confirmationMessages.find(
+                        (msg: any) => msg.data && msg.data.role === confirmationRoleFromDB
+                    );
+                }
+                
+                // If no matching message found, use the latest one (for backward compatibility)
+                if (!confirmationMessage && confirmationMessages.length > 0) {
+                    confirmationMessage = confirmationMessages[0];
+                }
 
                 if (confirmationMessage && confirmationMessage.data) {
                     confirmationRequired = {

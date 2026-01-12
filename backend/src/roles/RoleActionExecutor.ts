@@ -24,6 +24,7 @@ export class RoleActionExecutor {
         'ExecuteSubtask',
         'ImprovePRD',
         'ImproveMRD',
+        'ImproveDesign',
         'MRDReview',
         'PRDReview',
         'DesignReview',
@@ -135,6 +136,9 @@ export class RoleActionExecutor {
 
             case 'ImproveMRD':
                 return this.prepareImproveInput('MRDReview', 'MRD review report');
+
+            case 'ImproveDesign':
+                return this.prepareImproveInput('DesignReview', 'Design review report');
 
             default:
                 return context;
@@ -272,6 +276,7 @@ export class RoleActionExecutor {
             case 'ExecuteSubtask':
             case 'ImprovePRD':
             case 'ImproveMRD':
+            case 'ImproveDesign':
             case 'MRDReview':
             case 'PRDReview':
             case 'DesignReview':
