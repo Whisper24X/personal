@@ -1,8 +1,70 @@
 # mind2build 行动系统设计文档
 
-**文档版本**: v1.3  
+**文档版本**: v1.4  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-07（根据PRD更新，添加知识库集成和RAG检索支持）
+**最后更新**: 2026-01-15（更新action执行机制，添加RoleActionExecutor说明）
+
+## Action执行机制
+
+### RoleActionExecutor（行动执行器）
+
+Role类使用`RoleActionExecutor`来处理action的执行逻辑，提供以下功能：
+
+#### 1. 支持Workspace Options的Actions
+
+以下actions支持workspace options参数（applicationId, projectId, version等）：
+- `WriteMRD`, `WritePRD`, `WriteDesign`, `WriteSubProjectDesign`
+- `BreakdownTasks`, `GenerateTask`
+- `WriteCode`, `WriteTest`, `ExecuteSubtask`
+- `ImprovePRD`, `ImproveMRD`
+- `MRDReview`, `PRDReview`, `DesignReview`, `SubProjectDesignReview`
+
+这些actions在执行时会自动从消息中提取workspace options，如果找不到则从context中获取。
+
+#### 2. 特殊输入处理
+
+RoleActionExecutor为某些actions提供特殊的输入准备逻辑：
+
+**WriteTest**:
+- 自动从memory中查找WritePRD的消息
+- 如果找到PRD，将PRD和代码内容组合：`PRD文档：\n{prd}\n\n代码实现：\n{code}`
+- 如果找不到PRD，仅使用代码内容
+
+**MRDReview / PRDReview**:
+- 优先从`rc.news`中查找对应的文档消息（通过`causeBy`匹配）
+- 如果news中找不到，从`rc.memory`中查找
+- 如果都找不到，返回空字符串（action会尝试从workspace读取）
+
+**ImprovePRD / ImproveMRD**:
+- 优先从`rc.news`中查找审查报告消息（通过`causeBy`匹配）
+- 如果news中找不到，从`rc.memory`中查找
+- 如果都找不到，返回空字符串（action会尝试从workspace读取）
+
+**BreakdownTasks**:
+- 从memory中获取WritePRD和WriteDesign的消息
+- 将PRD和Design文档内容传递给action
+
+**GenerateTask**:
+- 从memory中获取BreakdownTasks和WriteSubProjectDesign的消息
+- 将任务拆分文档和子项目设计（可选）传递给action
+
+#### 3. 序列继续处理（BY_ORDER模式）
+
+在BY_ORDER模式下，当action执行完成后：
+- 如果还有更多actions需要执行（`state < actions.length - 1`）：
+  - 清除todo，但保留news（供下一个action使用）
+  - 下次think()时会自动选择下一个action
+- 如果所有actions都已完成：
+  - 清除todo和news
+  - 重置状态
+
+#### 4. 状态管理
+
+- Action执行前：`action.status = RUNNING`, `role.status = RUNNING`
+- Action执行成功：`action.status = COMPLETED`, `role.status = IDLE`
+- Action执行失败：`action.status = FAILED`, `role.status = IDLE`（不清理news，允许重试）
+
+---
 
 ## BaseAction 基类
 

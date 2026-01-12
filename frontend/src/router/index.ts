@@ -3,16 +3,16 @@
  */
 
 import { createRouter, createWebHistory } from 'vue-router';
-import Dashboard from '../views/Dashboard.vue';
-import ProjectCreate from '../views/ProjectCreate.vue';
-import ProjectDetail from '../views/ProjectDetail.vue';
-import ProjectInteractive from '../views/ProjectInteractive.vue';
-import ApplicationList from '../views/ApplicationList.vue';
-import ApplicationDetail from '../views/ApplicationDetail.vue';
-import LLMConfig from '../views/LLMConfig.vue';
-import RoleLLMConfig from '../views/RoleLLMConfig.vue';
-import PromptConfig from '../views/PromptConfig.vue';
-import KnowledgeBase from '../views/KnowledgeBase.vue';
+import Dashboard from '../views/dashboard/Dashboard.vue';
+import ProjectCreate from '../views/project/ProjectCreate.vue';
+import ProjectDetail from '../views/project/ProjectDetail.vue';
+import ProjectInteractive from '../views/project/ProjectInteractive.vue';
+import ApplicationList from '../views/application/ApplicationList.vue';
+import ApplicationDetail from '../views/application/ApplicationDetail.vue';
+import LLMConfig from '../views/config/LLMConfig.vue';
+import RoleLLMConfig from '../views/config/RoleLLMConfig.vue';
+import PromptConfig from '../views/config/PromptConfig.vue';
+import KnowledgeBase from '../views/knowledge/KnowledgeBase.vue';
 
 const router = createRouter({
   history: createWebHistory(),

@@ -7,7 +7,7 @@ import { Request, Response } from 'express';
 import { DocumentRepository } from '../../database/repositories/DocumentRepository';
 import { ProjectRepository } from '../../database/repositories/ProjectRepository';
 import { WritePRD } from '../../actions/WritePRD';
-import { ImproveDocument } from '../../actions/ImproveDocument';
+import { ImprovePRD } from '../../actions/ImprovePRD';
 import { Context } from '../../core/context/Context';
 import { RAGService } from '../../services/RAGService';
 import { SectionAdjustService } from '../../services/SectionAdjustService';
@@ -886,9 +886,9 @@ export class PRDController {
         hasReviewReport: !!reviewReport,
       });
 
-      // Create context and ImproveDocument action
+      // Create context and ImprovePRD action
       const ctx = new Context();
-      const improveAction = new ImproveDocument();
+      const improveAction = new ImprovePRD();
       improveAction.setLLM(ctx.llm);
       improveAction.setContext(ctx);
 
@@ -899,9 +899,8 @@ export class PRDController {
 
       // Run improve action
       // If reviewReport is provided, use it; otherwise, the action will try to read from workspace
-      const input = reviewReport || 'PRD';
+      const input = reviewReport || '';
       const result = await improveAction.run(input, {
-        documentType: 'PRD',
         reviewReport: reviewReport,
         applicationId: appId,
         projectId: projId,

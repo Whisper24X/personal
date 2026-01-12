@@ -1,6 +1,6 @@
 /**
  * QA Engineer Role
- * 负责质量保证和测试用例编写
+ * Responsible for quality assurance and test case writing
  */
 
 import { IRoleConfig, ACTION_WRITE_CODE } from '@mind2build/shared';
@@ -13,16 +13,16 @@ export class QAEngineer extends Role {
     const config: IRoleConfig = {
       name,
       profile: 'QAEngineer',
-      goal: '质量保证工程师，负责编写测试用例和执行质量保证',
-      constraints: '确保代码质量和功能正确性',
-      description: '我是一名专业的QA工程师，擅长编写全面的测试用例，确保代码质量和功能正确性。',
+      goal: 'Write comprehensive test cases based on code implementation to ensure quality and functional correctness',
+      constraints: 'Focus on code quality, functional correctness, and comprehensive test coverage. Write unit tests and integration tests',
+      description: 'Experienced QA engineer who writes comprehensive test cases based on code implementation to ensure quality and functional correctness',
     };
-    
+
     super(config, context);
-    
+
     // Watch for code completion (from Engineer)
     this.watch([ACTION_WRITE_CODE]);
-    
+
     this.setActions([new WriteTest()]);
   }
 }

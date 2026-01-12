@@ -8,8 +8,7 @@ import { query } from '../client';
 
 export interface WorkflowItem {
     id: string;
-    session_id: string;
-    project_id?: string;
+    project_id: string;
     role: string;
     action: string | null;
     status: string;
@@ -19,28 +18,28 @@ export interface WorkflowItem {
 
 export interface RunningState {
     id: string;
-    session_id: string;
-    project_id?: string;
+    project_id: string;
     current_role: string | null;
     current_action: string | null;
+    requires_confirmation?: boolean;
+    confirmation_role?: string | null;
     updated_at: Date;
     created_at: Date;
 }
 
 export class InteractiveSessionWorkflowRepository {
     /**
-     * Initialize workflow for a session (save all roles and their actions)
+     * Initialize workflow for a project (save all roles and their actions)
      */
     async initializeWorkflow(
-        sessionId: string,
-        projectId: string | null,
+        projectId: string,
         roles: Array<{ role: string; actions: Array<{ name: string }> }>
     ): Promise<void> {
         try {
-            // Check if workflow already exists for this session
+            // Check if workflow already exists for this project
             const existingWorkflow = await query<{ count: number }>(
-                `SELECT COUNT(*) as count FROM interactive_session_workflows WHERE session_id = $1`,
-                [sessionId]
+                `SELECT COUNT(*) as count FROM interactive_session_workflows WHERE project_id = $1`,
+                [projectId]
             );
 
             // If workflow already exists, don't reinitialize (preserve existing status)
@@ -54,12 +53,12 @@ export class InteractiveSessionWorkflowRepository {
                 for (const action of roleInfo.actions) {
                     await query(
                         `INSERT INTO interactive_session_workflows (
-              session_id, project_id, role, action, status
-            ) VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (session_id, role, action) DO UPDATE SET
+              project_id, role, action, status
+            ) VALUES ($1, $2, $3, $4)
+            ON CONFLICT (project_id, role, action) DO UPDATE SET
               status = COALESCE(interactive_session_workflows.status, EXCLUDED.status),
               updated_at = NOW()`,
-                        [sessionId, projectId, roleInfo.role, action.name, ActionStatus.PENDING]
+                        [projectId, roleInfo.role, action.name, ActionStatus.PENDING]
                     );
                 }
             }
@@ -72,44 +71,80 @@ export class InteractiveSessionWorkflowRepository {
      * Update running state
      */
     async updateRunningState(
-        sessionId: string,
-        projectId: string | null,
+        projectId: string,
         role: string | null,
-        action: string | null
+        action: string | null,
+        requiresConfirmation?: boolean,
+        confirmationRole?: string | null
     ): Promise<RunningState> {
         try {
-            const result = await query<RunningState>(
-                `INSERT INTO interactive_session_running_state (
-          session_id, project_id, "current_role", "current_action"
-        ) VALUES ($1, $2, $3, $4)
-        ON CONFLICT (session_id) DO UPDATE SET
-          "current_role" = EXCLUDED."current_role",
-          "current_action" = EXCLUDED."current_action",
-          updated_at = NOW()
-        RETURNING *`,
-                [sessionId, projectId, role, action]
-            );
-
-            if (!result.rows[0]) {
-                throw new Error('Failed to update running state: no row returned');
+            // Validate projectId
+            try {
+                const { ProjectRepository } = await import('./ProjectRepository');
+                const projectRepo = new ProjectRepository();
+                const project = await projectRepo.findById(projectId);
+                if (!project) {
+                    throw new Error(`Project ${projectId} does not exist`);
+                }
+            } catch (error: any) {
+                throw new Error(`Failed to validate project: ${error.message}`);
             }
 
-            const updatedState = result.rows[0];
-            return updatedState;
+            // Build SQL based on whether confirmation fields are provided
+            if (requiresConfirmation !== undefined) {
+                const result = await query<RunningState>(
+                    `INSERT INTO interactive_session_running_state (
+              project_id, "current_role", "current_action", requires_confirmation, confirmation_role
+            ) VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (project_id) DO UPDATE SET
+              "current_role" = EXCLUDED."current_role",
+              "current_action" = EXCLUDED."current_action",
+              requires_confirmation = EXCLUDED.requires_confirmation,
+              confirmation_role = EXCLUDED.confirmation_role,
+              updated_at = NOW()
+            RETURNING *`,
+                    [projectId, role, action, requiresConfirmation, confirmationRole || null]
+                );
+
+                if (!result.rows[0]) {
+                    throw new Error('Failed to update running state: no row returned');
+                }
+
+                return result.rows[0];
+            } else {
+                const result = await query<RunningState>(
+                    `INSERT INTO interactive_session_running_state (
+              project_id, "current_role", "current_action"
+            ) VALUES ($1, $2, $3)
+            ON CONFLICT (project_id) DO UPDATE SET
+              "current_role" = EXCLUDED."current_role",
+              "current_action" = EXCLUDED."current_action",
+              updated_at = NOW()
+            RETURNING *`,
+                    [projectId, role, action]
+                );
+
+                if (!result.rows[0]) {
+                    throw new Error('Failed to update running state: no row returned');
+                }
+
+                return result.rows[0];
+            }
         } catch (error: any) {
             throw error;
         }
     }
 
     /**
-     * Get current running state by sessionId
+     * Get current running state by projectId
      */
-    async getRunningState(sessionId: string): Promise<RunningState | null> {
+    async getRunningState(projectId: string): Promise<RunningState | null> {
         try {
             const result = await query<RunningState>(
-                `SELECT id, session_id, project_id, "current_role", "current_action", updated_at, created_at 
-         FROM interactive_session_running_state WHERE session_id = $1`,
-                [sessionId]
+                `SELECT id, project_id, "current_role", "current_action", 
+                requires_confirmation, confirmation_role, updated_at, created_at 
+         FROM interactive_session_running_state WHERE project_id = $1`,
+                [projectId]
             );
 
             if (result.rows[0]) {
@@ -117,6 +152,8 @@ export class InteractiveSessionWorkflowRepository {
                     ...result.rows[0],
                     current_role: result.rows[0].current_role,
                     current_action: result.rows[0].current_action,
+                    requires_confirmation: result.rows[0].requires_confirmation || false,
+                    confirmation_role: result.rows[0].confirmation_role || null,
                 };
                 return state;
             }
@@ -127,68 +164,19 @@ export class InteractiveSessionWorkflowRepository {
     }
 
     /**
-     * Get current running state by projectId (for resuming sessions)
+     * Get workflow items for a project
+     * Note: Items are returned without action ordering - sorting by registration order
+     * is handled by WorkflowTracker.getWorkflowItems()
      */
-    async getRunningStateByProjectId(projectId: string): Promise<RunningState | null> {
+    async getWorkflowItems(projectId: string): Promise<WorkflowItem[]> {
         try {
-            const result = await query<RunningState>(
-                `SELECT id, session_id, project_id, "current_role", "current_action", updated_at, created_at 
-         FROM interactive_session_running_state 
-         WHERE project_id = $1 
-         ORDER BY updated_at DESC 
-         LIMIT 1`,
-                [projectId]
-            );
-
-            if (result.rows[0]) {
-                const state = {
-                    ...result.rows[0],
-                    current_role: result.rows[0].current_role,
-                    current_action: result.rows[0].current_action,
-                };
-                return state;
-            }
-            return null;
-        } catch (error: any) {
-            return null;
-        }
-    }
-
-    /**
-     * Get workflow items by projectId (for resuming sessions)
-     */
-    async getWorkflowItemsByProjectId(projectId: string): Promise<WorkflowItem[]> {
-        try {
-            // Get the most recent session_id for this project
-            const sessionResult = await query<{ session_id: string }>(
-                `SELECT session_id FROM interactive_session_workflows 
-         WHERE project_id = $1 
-         ORDER BY updated_at DESC 
-         LIMIT 1`,
-                [projectId]
-            );
-
-            if (sessionResult.rows.length === 0) {
-                return [];
-            }
-
-            const sessionId = sessionResult.rows[0].session_id;
-            return this.getWorkflowItems(sessionId);
-        } catch (error: any) {
-            return [];
-        }
-    }
-
-    /**
-     * Get workflow items for a session
-     */
-    async getWorkflowItems(sessionId: string): Promise<WorkflowItem[]> {
-        try {
+            // Only order by role, not by action, to preserve registration order
+            // Action ordering is handled by WorkflowTracker based on getWorkflowStructure()
             const result = await query<WorkflowItem>(
                 `SELECT * FROM interactive_session_workflows 
-         WHERE session_id = $1 
-         ORDER BY role, action`,
-                [sessionId]
+         WHERE project_id = $1 
+         ORDER BY role`,
+                [projectId]
             );
 
             return result.rows;
@@ -201,7 +189,7 @@ export class InteractiveSessionWorkflowRepository {
      * Update workflow item status
      */
     async updateWorkflowItemStatus(
-        sessionId: string,
+        projectId: string,
         role: string,
         action: string,
         status: ActionStatus
@@ -210,8 +198,8 @@ export class InteractiveSessionWorkflowRepository {
             await query(
                 `UPDATE interactive_session_workflows 
          SET status = $1, updated_at = NOW()
-         WHERE session_id = $2 AND role = $3 AND action = $4`,
-                [status, sessionId, role, action]
+         WHERE project_id = $2 AND role = $3 AND action = $4`,
+                [status, projectId, role, action]
             );
         } catch (error: any) {
             // Error handling
@@ -219,24 +207,16 @@ export class InteractiveSessionWorkflowRepository {
     }
 
     /**
-     * Migrate workflow item from old session to new session
+     * Clear all running statuses for a project
+     * This ensures only one action can be running at a time
      */
-    async migrateWorkflowItem(
-        newSessionId: string,
-        projectId: string | null,
-        role: string,
-        action: string,
-        status: ActionStatus
-    ): Promise<void> {
+    async clearAllRunningStatuses(projectId: string): Promise<void> {
         try {
             await query(
-                `INSERT INTO interactive_session_workflows (
-              session_id, project_id, role, action, status
-            ) VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (session_id, role, action) DO UPDATE SET
-              status = EXCLUDED.status,
-              updated_at = NOW()`,
-                [newSessionId, projectId, role, action, status]
+                `UPDATE interactive_session_workflows 
+         SET status = $1, updated_at = NOW()
+         WHERE project_id = $2 AND status = $3`,
+                [ActionStatus.PENDING, projectId, ActionStatus.RUNNING]
             );
         } catch (error: any) {
             // Error handling
@@ -245,14 +225,19 @@ export class InteractiveSessionWorkflowRepository {
 
     /**
      * Clear running state
+     * Also clears confirmation status
      */
-    async clearRunningState(sessionId: string): Promise<void> {
+    async clearRunningState(projectId: string): Promise<void> {
         try {
             await query(
                 `UPDATE interactive_session_running_state 
-         SET "current_role" = NULL, "current_action" = NULL, updated_at = NOW()
-         WHERE session_id = $1`,
-                [sessionId]
+         SET "current_role" = NULL, 
+             "current_action" = NULL, 
+             requires_confirmation = FALSE,
+             confirmation_role = NULL,
+             updated_at = NOW()
+         WHERE project_id = $1`,
+                [projectId]
             );
         } catch (error: any) {
             // Error handling
@@ -263,15 +248,15 @@ export class InteractiveSessionWorkflowRepository {
      * Check if a specific role and action is completed
      */
     async isActionCompleted(
-        sessionId: string,
+        projectId: string,
         role: string,
         action: string
     ): Promise<boolean> {
         try {
             const result = await query<{ status: string }>(
                 `SELECT status FROM interactive_session_workflows 
-         WHERE session_id = $1 AND role = $2 AND action = $3`,
-                [sessionId, role, action]
+         WHERE project_id = $1 AND role = $2 AND action = $3`,
+                [projectId, role, action]
             );
 
             if (result.rows.length === 0) {
@@ -290,7 +275,7 @@ export class InteractiveSessionWorkflowRepository {
      * Role order: Salesperson -> ProductManager -> Architect -> ProjectManager -> Engineer -> QAEngineer
      */
     async resetWorkflowFromRole(
-        sessionId: string,
+        projectId: string,
         role: string
     ): Promise<void> {
         try {
@@ -316,12 +301,153 @@ export class InteractiveSessionWorkflowRepository {
             // Reset all workflow items for downstream roles to 'pending'
             await query(
                 `UPDATE interactive_session_workflows 
-         SET status = $3, updated_at = NOW()
-         WHERE session_id = $1 AND role = ANY($2::text[])`,
-                [sessionId, downstreamRoles, ActionStatus.PENDING]
+         SET status = $2, updated_at = NOW()
+         WHERE project_id = $1 AND role = ANY($3::text[])`,
+                [projectId, ActionStatus.PENDING, downstreamRoles]
             );
         } catch (error: any) {
             throw error;
+        }
+    }
+
+    /**
+     * Check if all actions for a role are completed
+     * Based on database state for the given project
+     */
+    async areAllRoleActionsCompleted(
+        projectId: string,
+        role: string
+    ): Promise<boolean> {
+        try {
+            const result = await query<{ count: number; completed_count: number }>(
+                `SELECT 
+                    COUNT(*) as count,
+                    COUNT(*) FILTER (WHERE status = $3) as completed_count
+                FROM interactive_session_workflows 
+                WHERE project_id = $1 AND role = $2`,
+                [projectId, role, ActionStatus.COMPLETED]
+            );
+
+            if (result.rows.length === 0) {
+                return false;
+            }
+
+            const row = result.rows[0];
+            const totalCount = typeof row.count === 'number' ? row.count : parseInt(String(row.count), 10);
+            const completedCount = typeof row.completed_count === 'number'
+                ? row.completed_count
+                : parseInt(String(row.completed_count), 10);
+
+            // All actions are completed if completed_count equals total count and total count > 0
+            return totalCount > 0 && completedCount === totalCount;
+        } catch (error: any) {
+            // On error, assume not completed to be safe
+            return false;
+        }
+    }
+
+    /**
+     * Get all actions status for a role
+     * Returns array of action statuses for the given project and role
+     */
+    async getRoleActionsStatus(
+        projectId: string,
+        role: string
+    ): Promise<Array<{ action: string; status: ActionStatus }>> {
+        try {
+            const result = await query<{ action: string; status: string }>(
+                `SELECT action, status 
+                FROM interactive_session_workflows 
+                WHERE project_id = $1 AND role = $2
+                ORDER BY action`,
+                [projectId, role]
+            );
+
+            return result.rows.map(row => ({
+                action: row.action || '',
+                status: row.status as ActionStatus,
+            }));
+        } catch (error: any) {
+            return [];
+        }
+    }
+
+    /**
+     * Set confirmation required status for a role
+     */
+    async setConfirmationRequired(
+        projectId: string,
+        role: string
+    ): Promise<void> {
+        try {
+            await query(
+                `UPDATE interactive_session_running_state 
+                SET requires_confirmation = TRUE, 
+                    confirmation_role = $2,
+                    updated_at = NOW()
+                WHERE project_id = $1`,
+                [projectId, role]
+            );
+        } catch (error: any) {
+            // If no row exists, create one
+            await query(
+                `INSERT INTO interactive_session_running_state 
+                (project_id, requires_confirmation, confirmation_role)
+                VALUES ($1, TRUE, $2)
+                ON CONFLICT (project_id) DO UPDATE SET
+                    requires_confirmation = TRUE,
+                    confirmation_role = $2,
+                    updated_at = NOW()`,
+                [projectId, role]
+            );
+        }
+    }
+
+    /**
+     * Clear confirmation required status
+     */
+    async clearConfirmationRequired(
+        projectId: string
+    ): Promise<void> {
+        try {
+            await query(
+                `UPDATE interactive_session_running_state 
+                SET requires_confirmation = FALSE, 
+                    confirmation_role = NULL,
+                    updated_at = NOW()
+                WHERE project_id = $1`,
+                [projectId]
+            );
+        } catch (error: any) {
+            // Ignore errors if row doesn't exist
+        }
+    }
+
+    /**
+     * Get confirmation status
+     */
+    async getConfirmationStatus(
+        projectId: string
+    ): Promise<{ required: boolean; role: string | null }> {
+        try {
+            const result = await query<{ requires_confirmation: boolean; confirmation_role: string | null }>(
+                `SELECT requires_confirmation, confirmation_role 
+                FROM interactive_session_running_state 
+                WHERE project_id = $1`,
+                [projectId]
+            );
+
+            if (result.rows.length > 0) {
+                const row = result.rows[0];
+                return {
+                    required: row.requires_confirmation || false,
+                    role: row.confirmation_role || null,
+                };
+            }
+
+            return { required: false, role: null };
+        } catch (error: any) {
+            return { required: false, role: null };
         }
     }
 }

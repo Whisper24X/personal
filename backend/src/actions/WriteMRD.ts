@@ -1,6 +1,6 @@
 /**
  * WriteMRD Action
- * 编写市场研究文档（Market Research Document）
+ * Write Market Research Document (MRD)
  */
 
 import { BaseAction } from '../core/base/BaseAction';
@@ -10,7 +10,6 @@ import {
   buildMRDPrompt,
   buildMRDOutlinePrompt,
   buildMRDSectionPrompt,
-  buildMRDSectionReviewPrompt,
 } from '../prompts/mrd';
 import { logger, loadPrompt } from '../utils';
 // Review和ImproveDocument已移除，由角色通过消息机制管理
@@ -34,7 +33,7 @@ export class WriteMRD extends BaseAction {
   constructor() {
     super(
       'WriteMRD',
-      '编写市场研究文档：分析用户原始需求，进行市场调研和业务分析，输出详细的市场研究文档（MRD）'
+      'Write Market Research Document: Analyze user requirements, conduct market research and business analysis, and output detailed Market Research Document (MRD)'
     );
   }
 
@@ -54,7 +53,7 @@ export class WriteMRD extends BaseAction {
     });
 
     if (!userIdea || userIdea.trim() === '') {
-      throw new Error('未找到用户需求');
+      throw new Error('User requirements not found');
     }
 
     try {
@@ -138,12 +137,12 @@ export class WriteMRD extends BaseAction {
 
       if (isTimeout) {
         const timeoutError = new Error(
-          `市场研究文档生成超时。当前超时设置: ${process.env.REQUEST_TIMEOUT || '300'}秒。\n` +
-          `建议解决方案：\n` +
-          `1. 在项目根目录的 .env 文件中设置 REQUEST_TIMEOUT=600（10分钟）或更高\n` +
-          `2. 重启后端服务使配置生效\n` +
-          `3. 如果问题持续，可以尝试分段生成或简化需求描述\n\n` +
-          `原始错误: ${error.message}`
+          `MRD generation timeout. Current timeout setting: ${process.env.REQUEST_TIMEOUT || '300'} seconds.\n` +
+          `Suggested solutions:\n` +
+          `1. Set REQUEST_TIMEOUT=600 (10 minutes) or higher in the .env file in the project root directory\n` +
+          `2. Restart the backend service to apply the configuration\n` +
+          `3. If the problem persists, try generating in segments or simplifying the requirement description\n\n` +
+          `Original error: ${error.message}`
         );
         timeoutError.name = 'MRDGenerationTimeoutError';
         throw timeoutError;
@@ -154,7 +153,7 @@ export class WriteMRD extends BaseAction {
   }
 
   /**
-   * 读取 workspace 中的所有文件内容
+   * Read all file contents from workspace
    */
   protected async readAllFromWorkspace(options?: WriteMRDOptions): Promise<string> {
     try {
@@ -201,8 +200,8 @@ export class WriteMRD extends BaseAction {
   }
 
   /**
-   * 分步骤生成市场研究文档
-   * 使用通用的 StepwiseDocumentGenerator
+   * Generate Market Research Document step by step
+   * Uses the generic StepwiseDocumentGenerator
    */
   private async generateStepwise(input: string, options?: WriteMRDOptions): Promise<IActionOutput> {
     // 确保使用MRD目录
@@ -218,17 +217,17 @@ export class WriteMRD extends BaseAction {
       buildSectionPrompt: buildMRDSectionPrompt,
       systemPrompt: systemPrompt,
       // Review 由角色通过 MRDReview action 统一处理
-      documentTitle: '市场研究文档（MRD）',
+      documentTitle: 'Market Research Document (MRD)',
       documentType: 'MRD',
       mainFileName: 'MRD.md',
       defaultSections: [
-        { number: 1, title: '需求背景与目标价值分析' },
-        { number: 2, title: '需求价值分析' },
-        { number: 3, title: '用户分析' },
-        { number: 4, title: '业务流程分析' },
-        { number: 5, title: '市场分析' },
-        { number: 6, title: '可行性分析' },
-        { number: 7, title: '项目范围' },
+        { number: 1, title: 'Requirement Background and Target Value Analysis' },
+        { number: 2, title: 'Requirement Value Analysis' },
+        { number: 3, title: 'User Analysis' },
+        { number: 4, title: 'Business Process Analysis' },
+        { number: 5, title: 'Market Analysis' },
+        { number: 6, title: 'Feasibility Analysis' },
+        { number: 7, title: 'Project Scope' },
       ],
       workspaceDir,
       applicationId: options?.applicationId,

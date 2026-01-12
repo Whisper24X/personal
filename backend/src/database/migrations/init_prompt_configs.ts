@@ -6,7 +6,7 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import { PromptConfigRepository } from '../repositories/PromptConfigRepository';
-import { connectDatabase, disconnectDatabase } from '../client';
+import { connectDatabase, disconnectDatabase, query } from '../client';
 import { logger } from '../../utils';
 
 // Import all prompt constants
@@ -53,10 +53,66 @@ interface PromptConfig {
   description: string;
 }
 
+async function ensureDefaultUser(): Promise<string> {
+  try {
+    // Check if user exists
+    const userResult = await query<{ id: string }>(
+      'SELECT id FROM users WHERE id = $1',
+      [DEFAULT_USER_ID]
+    );
+
+    if (userResult.rows.length === 0) {
+      // Create default user if not exists
+      // Using a simple password hash (in production, use proper bcrypt)
+      // For initialization scripts, we use a placeholder hash
+      const defaultPasswordHash = '$2b$10$placeholder.hash.for.default.user.initialization';
+      
+      try {
+        await query(
+          `INSERT INTO users (id, username, email, password_hash, full_name, status)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            DEFAULT_USER_ID,
+            'default_user',
+            'default@mind2build.com',
+            defaultPasswordHash,
+            'Default User',
+            'active'
+          ]
+        );
+        logger.info('   ✅ Default user created');
+        return DEFAULT_USER_ID;
+      } catch (insertError: any) {
+        // If user already exists (by username or email), use the existing user id
+        if (insertError.code === '23505') { // Unique violation
+          const existingUser = await query<{ id: string }>(
+            'SELECT id FROM users WHERE username = $1 OR email = $2 LIMIT 1',
+            ['default_user', 'default@mind2build.com']
+          );
+          if (existingUser.rows.length > 0) {
+            logger.info(`   ℹ️  Default user already exists with id: ${existingUser.rows[0].id}`);
+            return existingUser.rows[0].id;
+          }
+        }
+        throw insertError;
+      }
+    } else {
+      logger.info('   ✅ Default user already exists');
+      return DEFAULT_USER_ID;
+    }
+  } catch (error: any) {
+    logger.warn(`   ⚠️  Failed to ensure default user: ${error.message}`);
+    throw error;
+  }
+}
+
 async function initPromptConfigs() {
   try {
     await connectDatabase();
     logger.info('🔄 Initializing prompt configs from source files...');
+
+    // Ensure default user exists before inserting prompts
+    const actualUserId = await ensureDefaultUser();
 
     const promptConfigRepo = new PromptConfigRepository();
 
@@ -155,7 +211,7 @@ async function initPromptConfigs() {
     for (const config of configs) {
       try {
         const savedConfig = await promptConfigRepo.upsert({
-          userId: DEFAULT_USER_ID,
+          userId: actualUserId,
           promptType: config.promptType,
           promptKey: config.promptKey,
           content: config.content,

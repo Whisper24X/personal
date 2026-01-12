@@ -1,6 +1,6 @@
 /**
  * WriteTest Action
- * 编写测试用例
+ * Write test cases
  */
 
 import { BaseAction } from '../core/base/BaseAction';
@@ -9,31 +9,31 @@ import { TEST_SYSTEM_PROMPT, buildTestPrompt } from '../prompts/test';
 import { logger, WorkspaceOptions, loadPrompt } from '../utils';
 
 export interface WriteTestOptions extends WorkspaceOptions {
-  // 继承WorkspaceOptions的所有选项
+  // Inherits all options from WorkspaceOptions
 }
 
 export class WriteTest extends BaseAction {
   constructor() {
     super(
       'WriteTest',
-      '编写测试用例。基于代码实现，编写全面的测试用例，包括单元测试和集成测试'
+      'Write test cases. Based on code implementation, write comprehensive test cases including unit tests and integration tests'
     );
   }
 
   async run(input: string, options?: WriteTestOptions): Promise<IActionOutput> {
     logger.info('WriteTest: Starting test generation');
-    
+
     if (!input || input.trim() === '') {
-      throw new Error('未找到输入内容');
+      throw new Error('Input content not found');
     }
 
     try {
-      // 解析输入：可能包含 PRD 和代码
+      // Parse input: may contain PRD and code
       let prd = '';
       let code = '';
-      
+
       if (input.includes('PRD文档：') && input.includes('代码实现：')) {
-        // 包含 PRD 和代码
+        // Contains PRD and code
         const parts = input.split('代码实现：');
         prd = parts[0].replace('PRD文档：', '').trim();
         code = parts[1]?.trim() || '';
@@ -42,7 +42,7 @@ export class WriteTest extends BaseAction {
           codeLength: code.length,
         });
       } else {
-        // 只有代码
+        // Code only
         code = input;
         logger.info('WriteTest: Using code only (no PRD found)', {
           codeLength: code.length,
@@ -50,31 +50,31 @@ export class WriteTest extends BaseAction {
       }
 
       if (!code || code.trim() === '') {
-        throw new Error('未找到代码实现');
+        throw new Error('Code implementation not found');
       }
 
-      // 构建提示词
+      // Build prompt
       const prompt = buildTestPrompt(code, prd);
 
       // Load system prompt from database or use default
       const userId = this.context?.get('userId');
       const systemPrompt = await loadPrompt(userId, 'test', 'system_prompt', TEST_SYSTEM_PROMPT);
 
-      // 调用 LLM 生成测试用例
+      // Call LLM to generate test cases
       const content = await this.aask(prompt, [systemPrompt]);
-      
-      // 保存到workspace
+
+      // Save to workspace
       const workspaceOptions: WorkspaceOptions = {
         ...options,
         documentType: 'TEST',
       };
       await this.saveToWorkspace('TEST.md', content, workspaceOptions);
-      
+
       logger.info('WriteTest: Test generation completed', {
         contentLength: content.length,
         workspaceDir: this.getWorkspaceDir(workspaceOptions),
       });
-      
+
       return {
         content: content,
         data: {

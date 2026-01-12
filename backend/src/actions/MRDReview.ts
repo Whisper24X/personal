@@ -127,7 +127,7 @@ export class MRDReview extends BaseAction {
       }
     }
 
-    return outline.join('\n') || '## 1. 需求背景与目标价值分析\n## 2. 需求价值分析\n## 3. 用户分析\n## 4. 业务流程分析\n## 5. 市场分析\n## 6. 可行性分析\n## 7. 项目范围';
+    return outline.join('\n') || '## 1. Requirement Background and Target Value Analysis\n## 2. Requirement Value Analysis\n## 3. User Analysis\n## 4. Business Process Analysis\n## 5. Market Analysis\n## 6. Feasibility Analysis\n## 7. Project Scope';
   }
 }
 

@@ -1,10 +1,12 @@
 # mind2build 数据库设计文档
 
-**文档版本**: v1.1  
+**文档版本**: v2.0  
 **创建日期**: 2025-12-24  
-**最后更新**: 2025-12-25  
+**最后更新**: 2025-01-XX  
 **数据库类型**: PostgreSQL  
-**主键类型**: UUID (使用 `gen_random_uuid()`)
+**主键类型**: UUID (使用 `uuid_generate_v4()`)
+
+**重要说明**: 本文档已根据代码实际使用情况重新设计，包含所有新增的表和字段。
 
 ---
 
@@ -44,6 +46,14 @@
 | cost_records | 成本记录 | P1 |
 | memories | 长期记忆 | P2 |
 | embeddings | 向量嵌入 | P2 |
+| llm_configs | LLM配置 | P1 |
+| llm_provider_configs | LLM提供商配置 | P1 |
+| role_llm_configs | 角色LLM配置 | P1 |
+| prompt_configs | Prompt配置 | P1 |
+| knowledge_base | 知识库 | P1 |
+| section_conversations | 章节对话 | P1 |
+| interactive_session_workflows | 交互式会话工作流 | P1 |
+| interactive_session_running_state | 交互式会话运行状态 | P1 |
 
 ---
 
@@ -54,16 +64,25 @@ erDiagram
     users ||--o{ applications : creates
     users ||--o{ projects : creates
     users ||--o{ teams : owns
+    users ||--o{ llm_configs : configures
+    users ||--o{ llm_provider_configs : configures
+    users ||--o{ role_llm_configs : configures
+    users ||--o{ prompt_configs : configures
     applications ||--o{ projects : contains
     projects ||--|| teams : has
-    teams ||--o{ roles : contains
     projects ||--o{ messages : generates
     projects ||--o{ documents : outputs
     projects ||--o{ cost_records : tracks
+    projects ||--o{ knowledge_base : contains
+    projects ||--o{ section_conversations : has
+    projects ||--|| interactive_session_running_state : has
+    projects ||--o{ interactive_session_workflows : has
+    teams ||--o{ roles : contains
     roles ||--o{ messages : sends
     roles ||--o{ actions : executes
-    messages ||--o{ actions : triggers
     roles ||--o{ memories : stores
+    messages ||--o{ actions : triggers
+    documents ||--o{ section_conversations : references
     memories ||--o{ embeddings : has
     
     users {
@@ -186,7 +205,7 @@ erDiagram
 
 ```sql
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     username VARCHAR(50) NOT NULL UNIQUE,
     email VARCHAR(100) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
@@ -207,7 +226,7 @@ CREATE INDEX idx_users_status ON users(status);
 ```
 
 **字段说明**:
-- `id`: UUID主键，使用`gen_random_uuid()`自动生成
+- `id`: UUID主键，使用`uuid_generate_v4()`自动生成
 - `api_keys`: 加密存储的 API Keys (OpenAI, Claude 等)
 - `config`: 用户偏好配置 (默认模型、预算等)
 - `deleted_at`: 软删除标记
@@ -220,7 +239,7 @@ CREATE INDEX idx_users_status ON users(status);
 
 ```sql
 CREATE TABLE applications (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name VARCHAR(200) NOT NULL,
     description TEXT,
@@ -250,7 +269,7 @@ CREATE INDEX idx_applications_created_at ON applications(created_at DESC);
 
 ```sql
 CREATE TABLE projects (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     application_id UUID REFERENCES applications(id) ON DELETE SET NULL,
     name VARCHAR(200) NOT NULL,
@@ -513,7 +532,7 @@ CREATE INDEX idx_memories_expires_at ON memories(expires_at);
 
 ```sql
 CREATE TABLE embeddings (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     memory_id UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
     vector JSONB NOT NULL,
     model VARCHAR(50) NOT NULL,
@@ -528,13 +547,225 @@ CREATE INDEX idx_embeddings_memory_id ON embeddings(memory_id);
 
 ---
 
-### 3.12 project_snapshots (项目快照表) [可选]
+### 3.12 llm_configs (LLM配置表)
+
+**用途**: 存储用户的LLM模型配置（API keys和base URLs请使用llm_provider_configs表）
+
+```sql
+CREATE TABLE llm_configs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider VARCHAR(50) NOT NULL,
+    model VARCHAR(100) NOT NULL,
+    temperature DECIMAL(3,2) DEFAULT 0.7,
+    max_tokens INT DEFAULT 8000,
+    is_active BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    deleted_at TIMESTAMP
+);
+```
+
+**字段说明**:
+- `provider`: LLM提供商 (openai, zhipuai, ark等)
+- `model`: 模型名称
+- `temperature`: 温度参数
+- `max_tokens`: 最大token数
+- `is_active`: 是否为激活配置
+
+**注意**: API keys和base URLs已迁移到`llm_provider_configs`表，请使用该表进行配置
+
+---
+
+### 3.13 llm_provider_configs (LLM提供商配置表)
+
+**用途**: 存储提供商级别的配置（API keys和base URLs）
+
+```sql
+CREATE TABLE llm_provider_configs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider VARCHAR(50) NOT NULL,
+    api_key VARCHAR(500),
+    base_url VARCHAR(500),
+    model VARCHAR(100),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    deleted_at TIMESTAMP
+);
+```
+
+**字段说明**:
+- `provider`: LLM提供商名称
+- `model`: 提供商的默认模型（可选）
+
+---
+
+### 3.14 role_llm_configs (角色LLM配置表)
+
+**用途**: 存储每个角色配置文件的LLM配置
+
+```sql
+CREATE TABLE role_llm_configs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role_profile VARCHAR(100) NOT NULL,
+    provider VARCHAR(50) NOT NULL,
+    api_key TEXT,
+    base_url TEXT,
+    model VARCHAR(100) NOT NULL,
+    temperature DECIMAL(3,2),
+    max_tokens INTEGER,
+    repository TEXT,
+    branch_name TEXT,
+    auto_create_pr BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(user_id, role_profile)
+);
+```
+
+**字段说明**:
+- `role_profile`: 角色配置文件名称 (Engineer, ProductManager等)
+- `repository`: GitHub仓库URL（用于Cursor Agent）
+- `branch_name`: 分支名称（用于Cursor Agent）
+- `auto_create_pr`: 是否自动创建PR（用于Cursor Agent）
+
+---
+
+### 3.15 prompt_configs (Prompt配置表)
+
+**用途**: 存储不同提示类型的模板和系统提示词
+
+```sql
+CREATE TABLE prompt_configs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    prompt_type VARCHAR(50) NOT NULL,
+    prompt_key VARCHAR(100) NOT NULL,
+    content TEXT NOT NULL,
+    description TEXT,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    deleted_at TIMESTAMP,
+    UNIQUE(user_id, prompt_type, prompt_key)
+);
+```
+
+**字段说明**:
+- `prompt_type`: 提示类型 (prd, design, code, test, task)
+- `prompt_key`: 提示键 (system_prompt, template, review_system_prompt等)
+- `content`: 实际的提示内容
+
+---
+
+### 3.16 knowledge_base (知识库表)
+
+**用途**: 存储项目级别的知识库文档，用于RAG检索
+
+```sql
+CREATE TABLE knowledge_base (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    description TEXT,
+    tags TEXT[],
+    metadata JSONB DEFAULT '{}',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    deleted_at TIMESTAMP
+);
+```
+
+**字段说明**:
+- `tags`: 标签数组，用于分类和过滤文档
+- `is_active`: 文档是否激活并可搜索
+
+---
+
+### 3.17 section_conversations (章节对话表)
+
+**用途**: 存储章节调整的对话历史
+
+```sql
+CREATE TABLE section_conversations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    document_id UUID REFERENCES documents(id) ON DELETE SET NULL,
+    section_number INT NOT NULL,
+    document_type VARCHAR(50) NOT NULL DEFAULT 'PRD',
+    application_id UUID,
+    version INT DEFAULT 1,
+    messages JSONB NOT NULL DEFAULT '[]',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(project_id, section_number, document_type, version)
+);
+```
+
+**字段说明**:
+- `section_number`: 章节编号
+- `document_type`: 文档类型 (PRD, Design等)
+- `messages`: 对话消息数组，包含role、content和timestamp
+
+---
+
+### 3.18 interactive_session_workflows (交互式会话工作流表)
+
+**用途**: 存储交互式会话中所有角色和行动的状态
+
+```sql
+CREATE TABLE interactive_session_workflows (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    role VARCHAR(100) NOT NULL,
+    action VARCHAR(100),
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(project_id, role, action)
+);
+```
+
+**字段说明**:
+- `role`: 角色名称
+- `action`: 行动名称
+- `status`: 工作流项状态 (pending, running, completed, failed)
+
+---
+
+### 3.19 interactive_session_running_state (交互式会话运行状态表)
+
+**用途**: 存储当前运行的角色和行动
+
+```sql
+CREATE TABLE interactive_session_running_state (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID UNIQUE NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    current_role VARCHAR(100),
+    current_action VARCHAR(100),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+**字段说明**:
+- `current_role`: 当前运行的角色
+- `current_action`: 当前运行的行动
+
+---
+
+### 3.20 project_snapshots (项目快照表) [可选]
 
 **用途**: 保存项目状态快照，用于恢复（当前未实现）
 
 ```sql
 CREATE TABLE project_snapshots (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     snapshot_name VARCHAR(200),
     snapshot_type VARCHAR(20) DEFAULT 'manual',  -- manual, auto, checkpoint
@@ -560,7 +791,7 @@ CREATE INDEX idx_snapshots_created_at ON project_snapshots(created_at DESC);
 
 ```sql
 CREATE TABLE audit_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID REFERENCES users(id),
     entity_type VARCHAR(50) NOT NULL,    -- project, team, role, message
     entity_id UUID NOT NULL,
@@ -639,35 +870,50 @@ CREATE INDEX idx_cost_project_model ON cost_records(project_id, model, created_a
 
 ### 6.1 完整建表脚本
 
-```sql
--- 启用必要的扩展
--- PostgreSQL 13+ 内置 gen_random_uuid()，无需 uuid-ossp 扩展
+完整的数据库初始化脚本位于：`backend/src/database/migrations/000_complete_schema.sql`
 
--- 创建数据库
-CREATE DATABASE mind2build_db
-    WITH 
-    ENCODING = 'UTF8'
-    LC_COLLATE = 'en_US.UTF-8'
-    LC_CTYPE = 'en_US.UTF-8';
+**使用方法**：
 
-\c mind2build_db;
+```bash
+# 连接到PostgreSQL数据库
+psql -U postgres -d your_database_name
 
--- 创建所有表（顺序很重要，考虑外键依赖）
--- 1. users
--- 2. applications
--- 3. projects
--- 4. teams
--- 5. roles
--- 6. messages
--- 7. actions
--- 8. documents
--- 9. cost_records
--- 10. memories
--- 11. embeddings
-
--- (完整 SQL 见上面各表定义)
--- 实际迁移脚本见: backend/src/database/migrations/001_initial.sql
+# 执行完整建表脚本
+\i backend/src/database/migrations/000_complete_schema.sql
 ```
+
+或者使用psql命令行：
+
+```bash
+psql -U postgres -d your_database_name -f backend/src/database/migrations/000_complete_schema.sql
+```
+
+**脚本包含内容**：
+- 启用uuid-ossp扩展
+- 创建所有19个表（包含索引、外键约束和注释）
+- 插入默认用户数据
+- 完整的表关系说明
+
+**表创建顺序**（已按依赖关系排序）：
+1. users（用户表）
+2. applications（应用表）
+3. projects（项目表）
+4. teams（团队表）
+5. roles（角色表）
+6. messages（消息表）
+7. actions（行动记录表）
+8. documents（文档表）
+9. cost_records（成本记录表）
+10. memories（长期记忆表）
+11. embeddings（向量嵌入表）
+12. llm_configs（LLM配置表）
+13. llm_provider_configs（LLM提供商配置表）
+14. role_llm_configs（角色LLM配置表）
+15. prompt_configs（Prompt配置表）
+16. knowledge_base（知识库表）
+17. section_conversations（章节对话表）
+18. interactive_session_workflows（交互式会话工作流表）
+19. interactive_session_running_state（交互式会话运行状态表）
 
 ### 6.2 常用查询示例
 
@@ -753,31 +999,38 @@ export class ProjectRepository {
 **注意**: 
 - 所有ID字段使用UUID类型
 - 使用参数化查询防止SQL注入
-- 使用`gen_random_uuid()`生成UUID
+- 使用`uuid_generate_v4()`生成UUID（需要uuid-ossp扩展）
 
 ---
 
-## 8. 数据迁移策略
+## 8. 数据库初始化
 
-### 8.1 版本管理
+### 8.1 初始化新数据库
 
-当前项目使用SQL迁移脚本：
+对于全新的数据库，直接执行完整建表脚本：
 
 ```bash
-# 运行迁移
-cd backend
-pnpm db:migrate
+# 创建数据库（如果不存在）
+createdb -U postgres mind2build_db
 
-# 初始化LLM配置
+# 执行完整建表脚本
+psql -U postgres -d mind2build_db -f backend/src/database/migrations/000_complete_schema.sql
+```
+
+### 8.2 初始化配置数据
+
+建表完成后，可以初始化默认配置：
+
+```bash
+# 初始化LLM配置（如果需要）
+cd backend
 pnpm db:init-llm
 
-# 初始化Prompt配置
+# 初始化Prompt配置（如果需要）
 pnpm db:init-prompts
 ```
 
-迁移脚本位置: `backend/src/database/migrations/`
-
-### 8.2 数据备份
+### 8.3 数据备份
 
 ```bash
 # 备份
@@ -857,7 +1110,14 @@ CREATE TABLE messages_2025_01 PARTITION OF messages
 **最后更新**: 2025-12-25
 
 **重要变更**:
-- ✅ 所有主键从BIGSERIAL改为UUID
+- ✅ 所有主键使用UUID类型
 - ✅ 添加applications表用于组织项目
 - ✅ documents表支持版本管理和软删除
 - ✅ roles表的actions字段实际名为actions_list
+- ✅ 添加LLM配置相关表（llm_configs, llm_provider_configs, role_llm_configs）
+- ✅ 添加Prompt配置表（prompt_configs）
+- ✅ 添加知识库表（knowledge_base）
+- ✅ 添加章节对话表（section_conversations）
+- ✅ 添加交互式会话相关表（interactive_session_workflows, interactive_session_running_state）
+- ✅ llm_configs表不包含api_key和base_url字段（这些字段在llm_provider_configs表中）
+- ✅ 完整表结构SQL文件：`backend/src/database/migrations/000_complete_schema.sql`

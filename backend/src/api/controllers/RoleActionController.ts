@@ -28,7 +28,7 @@ import {
     DesignReview,
     SubProjectDesignReview,
     CodeReview,
-    ImproveDocument,
+    ImprovePRD,
     ImproveMRD,
     BreakdownTasks,
     GenerateTask,
@@ -52,7 +52,7 @@ const ACTION_DISPLAY_NAMES: Record<string, string> = {
     // ProductManager actions
     WritePRD: '编写PRD',
     PRDReview: 'PRD审查',
-    ImproveDocument: '改进文档',
+    ImprovePRD: '改进PRD',
     SearchEnhancedQA: 'RAG增强',
 
     // Architect actions
@@ -166,7 +166,7 @@ export class RoleActionController {
                 DesignReview,
                 SubProjectDesignReview,
                 CodeReview,
-                ImproveDocument,
+                ImprovePRD,
                 ImproveMRD,
                 BreakdownTasks,
                 GenerateTask,
@@ -306,7 +306,7 @@ export class RoleActionController {
                 DesignReview,
                 SubProjectDesignReview,
                 CodeReview,
-                ImproveDocument,
+                ImprovePRD,
                 BreakdownTasks,
                 GenerateTask,
                 ExecuteSubtask,
