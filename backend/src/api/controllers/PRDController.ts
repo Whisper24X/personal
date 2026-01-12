@@ -88,6 +88,9 @@ export class PRDController {
         parentId = latestPRD.id;
 
         if (useRAG) {
+          // Ensure RAG service is initialized
+          await ensureRAGServiceInitialized();
+
           // RAG mode: search for similar PRDs and extract relevant chunks
           // If project belongs to an application, search across all projects in the application
           let searchResults: any[] = [];
@@ -943,4 +946,3 @@ export class PRDController {
 }
 
 export default PRDController;
-

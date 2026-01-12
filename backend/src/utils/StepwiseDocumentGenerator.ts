@@ -20,15 +20,26 @@ export interface StepwiseGenerationConfig {
   // Prompt 构建函数
   buildOutlinePrompt: (input: string) => string;
   buildSectionPrompt: (input: string, outline: string, sectionNumber: number, sectionTitle: string) => string;
+  buildSectionReviewPrompt?: (
+    sectionContent: string,
+    sectionNumber: number,
+    sectionTitle: string,
+    outline: string
+  ) => string;
   systemPrompt: string;
+  reviewSystemPrompt?: string;
 
   // 文档元信息
   documentTitle: string; // 如 "产品需求文档（PRD）"
   documentType: string; // 如 "PRD"
   mainFileName: string; // 如 "PRD.md"
+  reviewTitle?: string;
 
   // 默认章节（当无法解析目录时使用）
   defaultSections: Section[];
+
+  // 章节过滤器（可选，用于跳过可选章节等）
+  sectionFilter?: (sections: Section[]) => Section[];
 
   // Workspace 配置
   workspaceDir: string;
@@ -74,7 +85,18 @@ export class StepwiseDocumentGenerator {
       // Step 2: 解析章节列表
       const step2Start = Date.now();
       logger.info('StepwiseDocumentGenerator: Step 2/5 - Parsing sections');
-      const sections = this.parseSections(outline);
+      const parsedSections = this.parseSections(outline);
+      let sections = parsedSections;
+      if (this.config.sectionFilter) {
+        const filteredSections = this.config.sectionFilter(parsedSections);
+        if (filteredSections.length === 0) {
+          logger.warn('StepwiseDocumentGenerator: Section filter removed all sections, using parsed sections', {
+            parsedCount: parsedSections.length,
+          });
+        } else {
+          sections = filteredSections;
+        }
+      }
       logger.info('StepwiseDocumentGenerator: Step 2/5 completed - Sections parsed', {
         sectionCount: sections.length,
         sections: sections.map(s => `${s.number}. ${s.title}`),
@@ -93,21 +115,22 @@ export class StepwiseDocumentGenerator {
         duration: `${Date.now() - step3Start}ms`,
       });
 
-      // Step 4: 跳过改进步骤（改进由角色管理，不在这里直接调用）
+      // Step 4: 审核各个章节（如配置）
       const step4Start = Date.now();
-      logger.info('StepwiseDocumentGenerator: Step 4/5 - Skipping improvement (managed by role)');
-      // 改进步骤已移除，由角色通过消息机制管理
-      const improvedSectionContents = sectionContents;
-      logger.info('StepwiseDocumentGenerator: Step 4/5 completed - Improvement skipped (managed by role)', {
-        sectionCount: improvedSectionContents.length,
+      logger.info('StepwiseDocumentGenerator: Step 4/5 - Reviewing sections');
+      const sectionReviews = await this.reviewSections(sectionContents, sections, outline);
+      const reviewDocument = await this.generateReviewDocument(sectionReviews, sections);
+      logger.info('StepwiseDocumentGenerator: Step 4/5 completed - Section reviews generated', {
+        sectionCount: sectionContents.length,
+        reviewSectionCount: sectionReviews.length,
+        reviewDocumentLength: reviewDocument?.length || 0,
         duration: `${Date.now() - step4Start}ms`,
-        note: 'Improvement will be handled by role through message mechanism',
       });
 
       // Step 5: 合并所有章节
       const step5Start = Date.now();
       logger.info('StepwiseDocumentGenerator: Step 5/5 - Merging sections');
-      const mergedContent = this.mergeSections(outline, improvedSectionContents, sections);
+      const mergedContent = this.mergeSections(outline, sectionContents, sections);
       await this.saveToWorkspace(this.config.mainFileName, mergedContent);
       logger.info('StepwiseDocumentGenerator: Step 5/5 completed - Sections merged', {
         totalLength: mergedContent.length,
@@ -121,7 +144,7 @@ export class StepwiseDocumentGenerator {
         sectionCount: sections.length,
         workspaceDir: this.config.workspaceDir,
         mainFileName: this.config.mainFileName,
-        reviewIncluded: false, // Review 由角色通过 action 统一处理
+        reviewIncluded: sectionReviews.length > 0,
         improvementIncluded: false, // 改进由角色管理，不在这里执行
         totalDuration: `${totalDuration}ms`,
       });
@@ -157,7 +180,7 @@ export class StepwiseDocumentGenerator {
           mode: 'new',
           stepwise: true,
           sectionCount: sections.length,
-          reviewIncluded: false, // Review 由角色通过 action 统一处理
+          reviewIncluded: sectionReviews.length > 0,
           workspaceDir: this.config.workspaceDir,
         },
       };
@@ -348,6 +371,8 @@ export class StepwiseDocumentGenerator {
       return sectionReviews;
     }
 
+    const reviewSystemPrompt = this.config.reviewSystemPrompt || this.config.systemPrompt;
+
     for (let i = 0; i < sections.length; i++) {
       const section = sections[i];
       const sectionContent = sectionContents[i] || '';
@@ -371,7 +396,7 @@ export class StepwiseDocumentGenerator {
         const messages: any[] = [
           {
             role: 'system',
-            content: this.config.systemPrompt,
+            content: reviewSystemPrompt,
           },
           {
             role: 'user',
@@ -738,5 +763,3 @@ export function getWorkspaceDir(
   // 新的目录结构：workspace/{applicationId}/{projectId}/v{version}/{documentType}/
   return path.join(workspaceRoot, applicationId, projectId, `v${version}`, documentType);
 }
-
-
