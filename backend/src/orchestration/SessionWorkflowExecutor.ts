@@ -205,12 +205,10 @@ export class SessionWorkflowExecutor {
         const env = this.team.getEnvironment();
         const roles = env.getRoles();
 
-        let currentRound = await this.loadCurrentRound();
-
         // Send initial progress
+        await this.updateProjectProgress();
         this.messageHandler.sendMessage('progress', {
             message: 'Starting generation...',
-            currentRound: currentRound,
             totalCost: 0,
         });
 
@@ -222,30 +220,10 @@ export class SessionWorkflowExecutor {
         );
 
         // Initialize workflow state
-        const { roleIndex, currentRound: updatedRound } = await this.initializeWorkflowState(roles, env, currentRound);
-        currentRound = updatedRound;
+        const { roleIndex } = await this.initializeWorkflowState(roles, env);
 
         // Execute workflow loop
-        await this.executeWorkflowLoop(roles, env, roleIndex, currentRound);
-    }
-
-    /**
-     * Load current round from project database
-     */
-    private async loadCurrentRound(): Promise<number> {
-        try {
-            const { ProjectRepository } = await import('../database/repositories/ProjectRepository');
-            const projectRepo = new ProjectRepository();
-            const project = await projectRepo.findById(this.projectId);
-            if (project && (project.current_round !== undefined && project.current_round !== null)) {
-                const round = project.current_round;
-                logger.info(`SessionWorkflowExecutor: Loaded current round ${round} from project ${this.projectId}`);
-                return round;
-            }
-        } catch (error: any) {
-            logger.warn(`SessionWorkflowExecutor: Failed to load current round from project ${this.projectId}`, { error: error.message });
-        }
-        return 0;
+        await this.executeWorkflowLoop(roles, env, roleIndex);
     }
 
     /**
@@ -253,9 +231,8 @@ export class SessionWorkflowExecutor {
      */
     private async initializeWorkflowState(
         roles: any[],
-        env: Environment,
-        currentRound: number
-    ): Promise<{ roleIndex: number; currentRound: number }> {
+        env: Environment
+    ): Promise<{ roleIndex: number }> {
         const currentState = await this.workflowTracker.getCurrentState();
 
         // Determine if we should resume from current state or find next incomplete role
@@ -263,14 +240,14 @@ export class SessionWorkflowExecutor {
 
         if (shouldResume.shouldResume && shouldResume.roleIndex !== null) {
             logger.info(`SessionWorkflowExecutor: Resuming from role index ${shouldResume.roleIndex} (${roles[shouldResume.roleIndex].profile})`);
-            return { roleIndex: shouldResume.roleIndex, currentRound };
+            return { roleIndex: shouldResume.roleIndex };
         }
 
         // Find next incomplete role
         const roleIndex = await this.findNextIncompleteRole(roles, env);
         logger.info(`SessionWorkflowExecutor: Starting from role index ${roleIndex} (${roles[roleIndex].profile})`);
 
-        return { roleIndex, currentRound };
+        return { roleIndex };
     }
 
     /**
@@ -388,12 +365,10 @@ export class SessionWorkflowExecutor {
     private async executeWorkflowLoop(
         roles: any[],
         env: Environment,
-        startRoleIndex: number,
-        startRound: number
+        startRoleIndex: number
     ): Promise<void> {
         let iteration = 0;
         let roleIndex = startRoleIndex;
-        let currentRound = startRound;
 
         // Continue until workflow is truly completed
         while (true) {
@@ -406,7 +381,7 @@ export class SessionWorkflowExecutor {
             }
 
             // Priority 2: Check if we should move to next role (after confirmation cleared)
-            const moveResult = await this.tryMoveToNextRole(roles, currentRound);
+            const moveResult = await this.tryMoveToNextRole(roles);
             if (moveResult.moved) {
                 if (moveResult.completed) {
                     // Workflow completed
@@ -416,27 +391,26 @@ export class SessionWorkflowExecutor {
                 if (moveResult.nextRoleIndex !== undefined) {
                     roleIndex = moveResult.nextRoleIndex;
                 }
-                if (moveResult.currentRound !== undefined) {
-                    currentRound = moveResult.currentRound;
+                // Update progress after role change
+                await this.updateProjectProgress();
+                continue;
+            }
+
+            // Priority 3: Process current role
+            const processResult = await this.processRole(roles, env, roleIndex, iteration);
+            if (processResult.shouldContinueWithSameRole) {
+                // Continue with same role (has more actions)
+                // Update progress periodically
+                if (iteration % 5 === 0) {
+                    await this.updateProjectProgress();
                 }
                 continue;
             }
 
-            // Priority 3: Update round number
-            const roundUpdate = this.updateRound(iteration, roles.length, currentRound);
-            if (roundUpdate.updated) {
-                currentRound = roundUpdate.round;
-            }
-
-            // Priority 4: Process current role
-            const processResult = await this.processRole(roles, env, roleIndex, iteration);
-            if (processResult.shouldContinueWithSameRole) {
-                // Continue with same role (has more actions)
-                continue;
-            }
-
-            // Priority 5: Wait for confirmation if required
+            // Priority 4: Wait for confirmation if required
             if (processResult.requiresConfirmation) {
+                // Update progress before showing confirmation
+                await this.updateProjectProgress();
                 await this.waitForConfirmation();
                 continue;
             }
@@ -484,12 +458,10 @@ export class SessionWorkflowExecutor {
      * 2. All workflow items are completed (no pending or running items)
      */
     private async tryMoveToNextRole(
-        roles: any[],
-        currentRound: number
+        roles: any[]
     ): Promise<{
         moved: boolean;
         nextRoleIndex?: number;
-        currentRound?: number;
         completed?: boolean;
     }> {
         const currentState = await this.workflowTracker.getCurrentState();
@@ -535,62 +507,45 @@ export class SessionWorkflowExecutor {
             return { moved: false };
         }
 
-        // Move to next role in same round
+        // Move to next role
         if (isRoundComplete) {
             // Last role hasn't completed all actions yet, continue workflow
             logger.info(`SessionWorkflowExecutor: Last role (${currentState.role}) hasn't completed all actions yet, continuing workflow`);
             await this.workflowTracker.clearState();
             this.messageHandler.sendMessage('progress', {
                 message: `${currentState.role} continuing workflow`,
-                currentRound: currentRound,
                 totalCost: this.team.getCostReport().totalCost,
             });
-            return { moved: true, nextRoleIndex, currentRound };
+            return { moved: true, nextRoleIndex };
         }
 
-        // Move to next role in same round
+        // Move to next role
         await this.workflowTracker.clearState();
         this.messageHandler.sendMessage('progress', {
             message: `${currentState.role} completed`,
-            currentRound: currentRound,
             totalCost: this.team.getCostReport().totalCost,
         });
 
-        return { moved: true, nextRoleIndex, currentRound };
+        return { moved: true, nextRoleIndex };
     }
 
-
-    /**
-     * Update round number
-     * No limit on maximum rounds - continues until workflow completes
-     */
-    private updateRound(iteration: number, rolesLength: number, currentRound: number): { updated: boolean; round: number } {
-        const calculatedRound = Math.max(
-            Math.floor((iteration - 1) / rolesLength) + 1,
-            currentRound
-        );
-
-        if (calculatedRound > currentRound) {
-            const newRound = calculatedRound;
-            this.updateProjectProgress(newRound).catch(error => {
-                logger.warn(`SessionWorkflowExecutor: Failed to update project progress`, { error: error.message });
-            });
-            return { updated: true, round: newRound };
-        }
-
-        return { updated: false, round: currentRound };
-    }
 
     /**
      * Update project progress in database
+     * Progress is calculated based on completed workflow items
      */
-    private async updateProjectProgress(currentRound: number): Promise<void> {
+    private async updateProjectProgress(): Promise<void> {
         try {
+            const workflowItems = await this.workflowTracker.getWorkflowItems();
+            const totalCount = workflowItems.length;
+            const completedCount = workflowItems.filter(item => item.status === 'completed').length;
+            
+            const progress = totalCount > 0 ? Math.min((completedCount / totalCount) * 100, 100) : 0;
+            
             const { ProjectRepository } = await import('../database/repositories/ProjectRepository');
             const projectRepo = new ProjectRepository();
-            const progress = Math.min((currentRound / this.config.nRound) * 100, 100);
-            await projectRepo.updateProgress(this.projectId, progress, currentRound);
-            logger.info(`SessionWorkflowExecutor: Updated project ${this.projectId} progress: round ${currentRound}/${this.config.nRound}, progress ${progress.toFixed(1)}%`);
+            await projectRepo.updateProgress(this.projectId, progress);
+            logger.info(`SessionWorkflowExecutor: Updated project ${this.projectId} progress: ${completedCount}/${totalCount} actions completed, progress ${progress.toFixed(1)}%`);
         } catch (error: any) {
             logger.warn(`SessionWorkflowExecutor: Failed to update project progress for ${this.projectId}`, { error: error.message });
         }

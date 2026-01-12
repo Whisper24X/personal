@@ -10,11 +10,11 @@
           </template>
         </el-statistic>
       </el-col>
-      <el-col :xs="12" :sm="12">
-        <el-statistic title="当前轮次" :value="project.currentRound" :suffix="`/ ${project.nRound}`">
+      <el-col :xs="12" :sm="12" v-if="hasActionCounts">
+        <el-statistic title="已完成动作" :value="completedActions" :suffix="`/ ${totalActions}`">
           <template #prefix>
             <el-icon>
-              <Refresh />
+              <Check />
             </el-icon>
           </template>
         </el-statistic>
@@ -34,18 +34,26 @@
 </template>
 
 <script setup lang="ts">
-import { TrendCharts, Refresh } from '@element-plus/icons-vue';
+import { computed } from 'vue';
+import { TrendCharts, Check } from '@element-plus/icons-vue';
 
 interface Props {
   project: {
     progress: number;
-    currentRound: number;
-    nRound: number;
     status: string;
+    completedActions?: number;
+    totalActions?: number;
   };
 }
 
-defineProps<Props>();
+const props = defineProps<Props>();
+
+const hasActionCounts = computed(() => {
+  return props.project.completedActions !== undefined && props.project.totalActions !== undefined;
+});
+
+const completedActions = computed(() => props.project.completedActions || 0);
+const totalActions = computed(() => props.project.totalActions || 0);
 </script>
 
 <style scoped>

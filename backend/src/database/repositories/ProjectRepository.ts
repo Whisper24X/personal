@@ -39,7 +39,6 @@ export class ProjectRepository {
     idea: string;
     description?: string;
     investment?: number;
-    nRound?: number;
     applicationId?: string;
   }): Promise<Project> {
     const result = await query<Project>(
@@ -54,10 +53,10 @@ export class ProjectRepository {
         data.idea,
         data.description || null,
         data.investment || 10.0,
-        data.nRound || 5,
+        5, // Deprecated: n_round kept for backward compatibility, not used
         ProjectStatus.PENDING,
         0,
-        0,
+        0, // Deprecated: current_round kept for backward compatibility, not used
         0.0,
         JSON.stringify({}),
       ]
@@ -144,13 +143,13 @@ export class ProjectRepository {
   /**
    * Update project progress
    */
-  async updateProgress(id: string, progress: number, currentRound: number): Promise<Project> {
+  async updateProgress(id: string, progress: number): Promise<Project> {
     const result = await query<Project>(
       `UPDATE projects 
-       SET progress = $1, current_round = $2, updated_at = NOW() 
-       WHERE id = $3 
+       SET progress = $1, updated_at = NOW() 
+       WHERE id = $2 
        RETURNING *`,
-      [progress, currentRound, id]
+      [progress, id]
     );
     
     return result.rows[0];

@@ -34,7 +34,7 @@ export class InteractiveController {
      */
     static async create(req: Request, res: Response) {
         try {
-            const { name, idea, description, investment, nRound, projectId, applicationId } = req.body;
+            const { name, idea, description, investment, projectId, applicationId } = req.body;
 
             // Validate required fields
             if (!name || !idea) {
@@ -69,7 +69,6 @@ export class InteractiveController {
                     idea,
                     description,
                     investment: investment || 10.0,
-                    nRound: nRound || 5,
                     applicationId,
                 });
 
@@ -77,9 +76,8 @@ export class InteractiveController {
                 logger.info(`API: Created project ${finalProjectId} for interactive session`);
             }
 
-            // Get applicationId and nRound from project if projectId is provided
+            // Get applicationId from project if projectId is provided
             let finalApplicationId = applicationId;
-            let finalNRound = nRound || 5;
             if (finalProjectId) {
                 // Try to get project data to use as source of truth
                 try {
@@ -87,10 +85,6 @@ export class InteractiveController {
                     const projectRepo = new ProjectRepository();
                     const project = await projectRepo.findById(finalProjectId);
                     if (project) {
-                        // Use project's nRound as source of truth if project exists
-                        if (project.n_round !== undefined && project.n_round !== null) {
-                            finalNRound = project.n_round;
-                        }
                         // Get applicationId from project if not provided
                         if (!finalApplicationId && project.application_id) {
                             finalApplicationId = project.application_id;
@@ -108,7 +102,7 @@ export class InteractiveController {
                 idea,
                 description,
                 investment: investment || 10.0,
-                nRound: finalNRound,
+                nRound: 5, // Deprecated: kept for backward compatibility, not used
                 userId,
                 applicationId: finalApplicationId,
                 projectId: finalProjectId,
@@ -122,7 +116,6 @@ export class InteractiveController {
                     idea,
                     description,
                     investment: investment || 10.0,
-                    nRound: finalNRound,
                 },
             });
         } catch (error: any) {

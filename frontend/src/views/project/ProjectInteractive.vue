@@ -2,8 +2,7 @@
   <div class="project-interactive">
     <ProjectInteractiveHeader @back="handleBack" />
 
-    <ProjectInfoCard :project-name="projectName" :current-round="currentRound" :max-rounds="maxRounds"
-      :user-idea="userIdea" />
+    <ProjectInfoCard :project-name="projectName" :user-idea="userIdea" />
 
     <WorkflowKanban :workflow-kanban="workflowKanban" :is-running="isRunning" :running-role="runningRole"
       :current-action="currentAction" :current-stage-name="currentStageName" :resetting-roles="resettingRoles"
@@ -57,13 +56,11 @@ const roleActionStore = useRoleActionStore();
 // Project Info
 const projectId = ref((route.params.id as string) || (route.query.id as string) || '');
 const projectName = ref(route.query.name as string || 'Untitled Project');
-const maxRounds = ref(parseInt(route.query.rounds as string) || 5);
 const userIdea = ref(route.query.idea as string || '');
 
 // State
 const isRunning = ref(false);
 const isCompleted = ref(false);
-const currentRound = ref(0);
 const actionLoading = ref(false);
 const runningRole = ref('');
 const currentAction = ref('');
@@ -416,22 +413,6 @@ onMounted(async () => {
         const projectIdea = project.idea;
         const queryIdea = route.query.idea as string;
         userIdea.value = projectIdea || queryIdea || userIdea.value;
-
-        // For rounds, use project data or query param
-        if (project.nRound !== undefined && project.nRound !== null) {
-          maxRounds.value = project.nRound;
-        } else if (project.n_round !== undefined && project.n_round !== null) {
-          maxRounds.value = project.n_round;
-        } else if (route.query.rounds) {
-          maxRounds.value = parseInt(route.query.rounds as string) || maxRounds.value;
-        }
-
-        // Load current round from project data
-        if (project.currentRound !== undefined && project.currentRound !== null) {
-          currentRound.value = project.currentRound;
-        } else if (project.current_round !== undefined && project.current_round !== null) {
-          currentRound.value = project.current_round;
-        }
       }
     } catch (err: any) {
       console.warn('Failed to load project info:', err);
@@ -504,7 +485,6 @@ async function startInteractiveSession() {
       idea: finalIdea,
       description: route.query.description as string,
       investment: parseFloat(route.query.investment as string) || 10.0,
-      nRound: maxRounds.value,
     };
 
     // If projectId is provided, pass it to the API
@@ -544,10 +524,6 @@ async function startInteractiveSession() {
       throw new Error('Project ID not found in response');
     }
 
-    // Update maxRounds from backend response config (source of truth)
-    if (data.config?.nRound !== undefined && data.config.nRound !== null) {
-      maxRounds.value = data.config.nRound;
-    }
 
     // Load workflow information
     await loadWorkflowInfo();
@@ -686,7 +662,7 @@ function handlePollingMessage(message: { type: string; data: any }) {
       break;
 
     case 'progress':
-      currentRound.value = message.data.currentRound || 0;
+      // Progress is now calculated based on completed actions
       break;
 
     case 'completed':

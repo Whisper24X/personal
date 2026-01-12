@@ -29,8 +29,6 @@ import { Document, Edit } from '@element-plus/icons-vue';
 
 defineProps<{
   projectName: string;
-  currentRound: number;
-  maxRounds: number;
   userIdea?: string;
 }>();
 </script>
