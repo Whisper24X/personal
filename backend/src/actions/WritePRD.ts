@@ -7,8 +7,10 @@ import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import {
   PRD_SYSTEM_PROMPT,
+  PRD_REVIEW_SYSTEM_PROMPT,
   buildPRDPrompt,
   buildPRDUpdatePrompt,
+  buildPRDUpdateWithRAGPrompt,
   buildPRDWithRAGPrompt,
   buildPRDOutlinePrompt,
   buildPRDSectionPrompt,
@@ -31,6 +33,7 @@ export interface WritePRDOptions {
   projectId?: string; // 项目ID，用于文件夹命名
   version?: number; // 版本号，用于文件夹命名
   workspacePath?: string; // workspace 路径，默认 ./workspace
+  includeOptionalSections?: boolean; // 是否包含可选章节（如第 11 章角色关注块）
 }
 
 export class WritePRD extends BaseAction {
@@ -93,22 +96,42 @@ export class WritePRD extends BaseAction {
     });
 
     try {
+      const ragQuery = input && input.trim().length > 0 ? input : mrdContent;
+      const stepwiseInput = useRAG && options?.relevantChunks
+        ? `${mrdContent}\n\n【相关历史PRD参考信息】\n${options.relevantChunks}`
+        : mrdContent;
+
       // 如果启用分步骤生成且是新模式，使用分步骤生成
       if (useStepwise && mode === 'new' && !options?.historyPRD) {
-        return await this.generateStepwise(mrdContent, options);
+        return await this.generateStepwise(stepwiseInput, options);
       }
 
       // 否则使用传统的一次性生成
       let prompt: string;
 
       if (mode === 'update' && options?.historyPRD) {
-        // Update mode: use history PRD + new requirements
-        prompt = buildPRDUpdatePrompt(options.historyPRD, mrdContent);
-        logger.info('WritePRD: Using update mode with history PRD');
-      } else if (useRAG && options?.relevantChunks) {
-        // RAG mode: use retrieved chunks + new requirements
-        prompt = buildPRDWithRAGPrompt(mrdContent, options.relevantChunks, mrdContent);
-        logger.info('WritePRD: Using RAG mode with relevant chunks');
+        if (useRAG && options?.relevantChunks) {
+          prompt = buildPRDUpdateWithRAGPrompt(
+            options.historyPRD,
+            options.relevantChunks,
+            mrdContent,
+            ragQuery
+          );
+          logger.info('WritePRD: Using update mode with RAG context');
+        } else {
+          // Update mode: use history PRD + new requirements
+          prompt = buildPRDUpdatePrompt(options.historyPRD, mrdContent);
+          logger.info('WritePRD: Using update mode with history PRD');
+        }
+      } else if (useRAG) {
+        if (options?.relevantChunks) {
+          // RAG mode: use retrieved chunks + new requirements
+          prompt = buildPRDWithRAGPrompt(ragQuery, options.relevantChunks, mrdContent);
+          logger.info('WritePRD: Using RAG mode with relevant chunks');
+        } else {
+          logger.warn('WritePRD: RAG enabled but no relevant chunks provided, falling back to standard generation');
+          prompt = buildPRDPrompt(mrdContent);
+        }
       } else {
         // New mode: standard PRD generation (使用从 workspace 读取的 MRD 内容)
         prompt = buildPRDPrompt(mrdContent);
@@ -269,24 +292,31 @@ export class WritePRD extends BaseAction {
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
       buildOutlinePrompt: buildPRDOutlinePrompt,
       buildSectionPrompt: buildPRDSectionPrompt,
+      buildSectionReviewPrompt: buildPRDSectionReviewPrompt,
       systemPrompt: systemPrompt,
-      // Review 由角色通过 PRDReview action 统一处理
+      reviewSystemPrompt: systemPrompt,
       documentTitle: '产品需求文档（PRD）',
       documentType: 'PRD',
       mainFileName: 'PRD.md',
       defaultSections: [
-        { number: 0, title: '版本说明' },
-        { number: 1, title: '产品概述' },
-        { number: 2, title: '目标与成功指标' },
-        { number: 3, title: '用户故事' },
-        { number: 4, title: '功能需求' },
-        { number: 5, title: '页面与交互设计说明' },
-        { number: 6, title: '非功能需求' },
-        { number: 7, title: '技术实现建议' },
-        { number: 8, title: '验收与交付标准' },
-        { number: 9, title: '风险与应对' },
-        { number: 10, title: '附录' },
+        { number: 0, title: '基本信息' },
+        { number: 1, title: '背景与目标' },
+        { number: 2, title: '范围' },
+        { number: 3, title: '用户与场景' },
+        { number: 4, title: '核心流程' },
+        { number: 5, title: '功能与交互' },
+        { number: 6, title: '业务规则与数据口径' },
+        { number: 7, title: '权限与安全' },
+        { number: 8, title: '异常与边界' },
+        { number: 9, title: '埋点与观测' },
+        { number: 10, title: '验收标准' },
       ],
+      sectionFilter: (sections) => {
+        if (options?.includeOptionalSections) {
+          return sections;
+        }
+        return sections.filter((section) => section.number !== 11);
+      },
       workspaceDir,
       applicationId: options?.applicationId,
       projectId: options?.projectId,
@@ -313,4 +343,3 @@ export class WritePRD extends BaseAction {
 }
 
 export default WritePRD;
-
