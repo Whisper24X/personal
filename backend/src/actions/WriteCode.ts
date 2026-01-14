@@ -1,12 +1,14 @@
 /**
  * WriteCode Action
- * Generates source code from design document
+ * 使用Cursor CLI命令行执行代码生成
  */
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import { CODE_SYSTEM_PROMPT, buildCodePrompt, parseCodeFiles } from '../prompts/code';
-import { logger, WorkspaceOptions, loadPrompt } from '../utils';
+import { logger, WorkspaceOptions } from '../utils';
+import { execSync } from 'child_process';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 export interface WriteCodeOptions extends WorkspaceOptions {
   // 继承WorkspaceOptions的所有选项
@@ -14,56 +16,108 @@ export interface WriteCodeOptions extends WorkspaceOptions {
 
 export class WriteCode extends BaseAction {
   constructor() {
-    super('WriteCode', 'Generate source code from design document');
+    super('WriteCode', 'Generate source code using Cursor CLI');
   }
 
   async run(design: string, options?: WriteCodeOptions): Promise<IActionOutput> {
-    logger.info('WriteCode: Starting code generation');
+    logger.info('WriteCode: Starting code generation using Cursor CLI', {
+      designLength: design?.length || 0,
+      applicationId: options?.applicationId,
+      projectId: options?.projectId,
+      version: options?.version,
+    });
     
     try {
-      // Load system prompt from database or use default
-      const userId = this.context?.get('userId');
-      const systemPrompt = await loadPrompt(userId, 'code', 'system_prompt', CODE_SYSTEM_PROMPT);
+      // 验证必需参数
+      if (!options?.applicationId) {
+        throw new Error('WriteCode: applicationId is required in options');
+      }
+      if (!options?.projectId) {
+        throw new Error('WriteCode: projectId is required in options');
+      }
       
-      // Build the prompt
-      const prompt = buildCodePrompt(design);
-      
-      // Call LLM with system message and prompt
-      const codeOutput = await this.aask(prompt, [systemPrompt]);
-      
-      // Parse the output into separate files
-      const files = parseCodeFiles(codeOutput);
-      
-      logger.info('WriteCode: Code generation completed', {
-        filesGenerated: files.length,
-        totalLength: codeOutput.length,
-      });
-      
-      // Save files to workspace
+      // 获取CODE目录
       const workspaceOptions = {
         ...options,
         documentType: 'CODE',
       };
-      const workspaceDir = this.getWorkspaceDir(workspaceOptions);
-      for (const file of files) {
-        await this.saveToWorkspace(file.path, file.content, workspaceOptions);
+      // 确保使用绝对路径
+      const workspaceDir = path.resolve(this.getWorkspaceDir(workspaceOptions));
+      
+      // 确保目录存在
+      await fs.mkdir(workspaceDir, { recursive: true });
+      
+      logger.info('WriteCode: Workspace directory prepared', { workspaceDir });
+      
+      // 构建cursor cli命令
+      // 使用 cursor-agent --print 在非交互模式下运行，不会打开Agent窗口
+      // 使用绝对路径确保文件生成到正确的位置
+      const prompt = `生成一个test.txt文档放到${workspaceDir}目录下`;
+      const command = `cursor-agent --print "${prompt}"`;
+      
+      logger.info('WriteCode: Executing Cursor CLI command', { command, cwd: workspaceDir });
+      
+      // 执行cursor cli命令（同步执行）
+      // 设置 cwd 为工作目录，确保 cursor-agent 在正确的目录下执行
+      let stdout = '';
+      try {
+        const result = execSync(command, {
+          timeout: 300000, // 5分钟超时
+          maxBuffer: 10 * 1024 * 1024, // 10MB缓冲区
+          cwd: workspaceDir, // 设置工作目录
+          encoding: 'utf-8', // 返回字符串而不是Buffer
+        });
+        stdout = result || '';
+      } catch (execError: any) {
+        // execSync 会在命令失败时抛出错误，但我们可能仍然想继续
+        logger.warn('WriteCode: Cursor CLI command failed', { 
+          message: execError.message,
+          status: execError.status,
+        });
+        stdout = execError.stdout || '';
       }
       
-      // Create a summary of generated files
+      logger.info('WriteCode: Cursor CLI execution completed', {
+        stdoutLength: stdout.length,
+        workspaceDir,
+      });
+      
+      // 读取生成的文件列表
+      const files: Array<{ path: string; content: string }> = [];
+      try {
+        const entries = await fs.readdir(workspaceDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isFile()) {
+            const filePath = path.join(workspaceDir, entry.name);
+            const content = await fs.readFile(filePath, 'utf-8');
+            files.push({ path: entry.name, content });
+          }
+        }
+      } catch (error: any) {
+        logger.warn('WriteCode: Failed to read generated files', { error: error.message });
+      }
+      
+      // 创建文件列表摘要
       const summary = files.map((f) => `- ${f.path}`).join('\n');
+      const codeOutput = files.map(f => `===== FILE: ${f.path} =====\n${f.content}\n===== END FILE =====`).join('\n\n');
       
       return {
-        content: `# Generated Code\n\n## Files Created:\n${summary}\n\n## Full Code:\n\n${codeOutput}`,
+        content: `# Generated Code\n\n## Files Created:\n${summary}\n\n## Cursor CLI Output:\n\n${stdout}\n\n## Full Code:\n\n${codeOutput}`,
         data: {
           type: 'code',
           files: files,
           filesCount: files.length,
           workspaceDir: workspaceDir,
+          cursorOutput: stdout,
           timestamp: new Date().toISOString(),
         },
       };
     } catch (error: any) {
-      logger.error('WriteCode: Failed to generate code', error);
+      // 避免循环引用导致JSON序列化失败
+      logger.error('WriteCode: Failed to generate code using Cursor CLI', {
+        message: error.message,
+        stack: error.stack,
+      });
       throw error;
     }
   }
