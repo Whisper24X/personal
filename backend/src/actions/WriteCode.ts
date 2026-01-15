@@ -5,8 +5,7 @@
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import { logger, WorkspaceOptions } from '../utils';
-import { execSync } from 'child_process';
+import { logger, WorkspaceOptions, executeCommandSimple, CommandExecutorError } from '../utils';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -57,24 +56,22 @@ export class WriteCode extends BaseAction {
       
       logger.info('WriteCode: Executing Cursor CLI command', { command, cwd: workspaceDir });
       
-      // 执行cursor cli命令（同步执行）
+      // 执行cursor cli命令（异步执行）
       // 设置 cwd 为工作目录，确保 cursor-agent 在正确的目录下执行
       let stdout = '';
       try {
-        const result = execSync(command, {
+        stdout = await executeCommandSimple(command, {
+          cwd: workspaceDir,
           timeout: 300000, // 5分钟超时
-          maxBuffer: 10 * 1024 * 1024, // 10MB缓冲区
-          cwd: workspaceDir, // 设置工作目录
-          encoding: 'utf-8', // 返回字符串而不是Buffer
         });
-        stdout = result || '';
-      } catch (execError: any) {
-        // execSync 会在命令失败时抛出错误，但我们可能仍然想继续
+      } catch (execError) {
+        // 命令执行失败，但我们可能仍然想继续
+        const error = execError as CommandExecutorError;
         logger.warn('WriteCode: Cursor CLI command failed', { 
-          message: execError.message,
-          status: execError.status,
+          message: error.message,
+          exitCode: error.exitCode,
         });
-        stdout = execError.stdout || '';
+        stdout = error.stdout || '';
       }
       
       logger.info('WriteCode: Cursor CLI execution completed', {
