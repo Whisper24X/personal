@@ -35,34 +35,38 @@ export class WriteCode extends BaseAction {
         throw new Error('WriteCode: projectId is required in options');
       }
       
-      // 获取CODE目录
-      const workspaceOptions = {
-        ...options,
-        documentType: 'CODE',
-      };
-      // 确保使用绝对路径
-      const workspaceDir = path.resolve(this.getWorkspaceDir(workspaceOptions));
+      // 获取版本目录（v1），不包含文档类型子目录
+      // 先获取任意文档类型的路径，然后取父目录得到 v1 目录
+      const anyDocDir = this.getWorkspaceDir({ ...options, documentType: 'CODE' });
+      const versionDir = path.dirname(anyDocDir); // 去掉最后的 CODE，得到 v1 目录
       
-      // 确保目录存在
-      await fs.mkdir(workspaceDir, { recursive: true });
+      // CODE 子目录路径（由 cursor-agent 自动创建）
+      const codeDir = path.join(versionDir, 'CODE');
       
-      logger.info('WriteCode: Workspace directory prepared', { workspaceDir });
+      logger.info('WriteCode: Workspace directory prepared', { 
+        versionDir,
+        codeDir,
+      });
       
       // 构建cursor cli命令
       // 使用 cursor-agent --print 在非交互模式下运行，不会打开Agent窗口
-      // 使用绝对路径确保文件生成到正确的位置
-      const prompt = `生成一个test.txt文档放到${workspaceDir}目录下`;
-      const command = `cursor-agent --print "${prompt}"`;
+      // 命令在版本目录（v1）运行，可以访问 DESIGN、PRD、TASK 等同级目录，代码生成到 CODE 子目录
+      const prompt = `读DESIGN目录下的DESIGN.md,PRD目录下的PRD.md,TASK目录TASK_BREAKDOWN.md,严格参考我给你的设计文档，生成代码，并生成到CODE目录下`;
+      const command = `cursor-agent --model composer-1 --print "${prompt}"`;
       
-      logger.info('WriteCode: Executing Cursor CLI command', { command, cwd: workspaceDir });
+      logger.info('WriteCode: Executing Cursor CLI command', { 
+        command, 
+        cwd: versionDir,
+        targetDir: 'CODE',
+      });
       
       // 执行cursor cli命令（异步执行）
-      // 设置 cwd 为工作目录，确保 cursor-agent 在正确的目录下执行
+      // 设置 cwd 为版本目录（v1），确保 cursor-agent 能访问 DESIGN、PRD、TASK 等同级目录
       let stdout = '';
       try {
         stdout = await executeCommandSimple(command, {
-          cwd: workspaceDir,
-          timeout: 300000, // 5分钟超时
+          cwd: versionDir,
+          timeout: 3600000, // 60分钟超时（适用于生成整个项目）
         });
       } catch (execError) {
         // 命令执行失败，但我们可能仍然想继续
@@ -76,16 +80,16 @@ export class WriteCode extends BaseAction {
       
       logger.info('WriteCode: Cursor CLI execution completed', {
         stdoutLength: stdout.length,
-        workspaceDir,
+        codeDir,
       });
       
-      // 读取生成的文件列表
+      // 读取生成的文件列表（从 CODE 目录）
       const files: Array<{ path: string; content: string }> = [];
       try {
-        const entries = await fs.readdir(workspaceDir, { withFileTypes: true });
+        const entries = await fs.readdir(codeDir, { withFileTypes: true });
         for (const entry of entries) {
           if (entry.isFile()) {
-            const filePath = path.join(workspaceDir, entry.name);
+            const filePath = path.join(codeDir, entry.name);
             const content = await fs.readFile(filePath, 'utf-8');
             files.push({ path: entry.name, content });
           }
@@ -104,7 +108,7 @@ export class WriteCode extends BaseAction {
           type: 'code',
           files: files,
           filesCount: files.length,
-          workspaceDir: workspaceDir,
+          workspaceDir: codeDir,
           cursorOutput: stdout,
           timestamp: new Date().toISOString(),
         },

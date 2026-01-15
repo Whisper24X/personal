@@ -3,8 +3,67 @@
  * 提供异步执行系统命令的功能
  */
 
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import { logger } from './logger';
+
+// 跟踪所有正在运行的子进程
+const runningProcesses = new Set<ChildProcess>();
+
+// 清理所有正在运行的子进程
+function cleanupAllProcesses() {
+  if (runningProcesses.size > 0) {
+    logger.info('CommandExecutor: Cleaning up running processes', {
+      count: runningProcesses.size,
+    });
+    
+    for (const child of runningProcesses) {
+      try {
+        child.kill('SIGTERM');
+      } catch (error: any) {
+        logger.warn('CommandExecutor: Failed to kill child process', {
+          error: error.message,
+        });
+      }
+    }
+    
+    runningProcesses.clear();
+  }
+}
+
+// 监听进程退出事件，清理所有子进程
+let cleanupRegistered = false;
+function registerCleanup() {
+  if (cleanupRegistered) return;
+  cleanupRegistered = true;
+
+  // 正常退出
+  process.on('exit', () => {
+    cleanupAllProcesses();
+  });
+
+  // SIGTERM 信号（kill 命令默认）
+  process.on('SIGTERM', () => {
+    logger.info('CommandExecutor: Received SIGTERM, cleaning up...');
+    cleanupAllProcesses();
+    process.exit(0);
+  });
+
+  // SIGINT 信号（Ctrl+C）
+  process.on('SIGINT', () => {
+    logger.info('CommandExecutor: Received SIGINT, cleaning up...');
+    cleanupAllProcesses();
+    process.exit(0);
+  });
+
+  // 未捕获的异常
+  process.on('uncaughtException', (error) => {
+    logger.error('CommandExecutor: Uncaught exception, cleaning up...', {
+      error: error.message,
+    });
+    cleanupAllProcesses();
+    process.exit(1);
+  });
+}
 
 export interface CommandExecutorOptions {
   /** 工作目录 */
@@ -59,6 +118,9 @@ export async function executeCommand(
   } = options;
 
   return new Promise((resolve, reject) => {
+    // 注册清理函数（只注册一次）
+    registerCleanup();
+
     // 解析命令和参数
     const args = command.split(' ');
     const cmd = args.shift() || '';
@@ -76,6 +138,12 @@ export async function executeCommand(
       shell,
       env,
       stdio: ['ignore', 'pipe', 'pipe'], // 忽略stdin，管道化stdout和stderr
+    });
+
+    // 添加到正在运行的进程集合
+    runningProcesses.add(child);
+    logger.debug('CommandExecutor: Process added to tracking', {
+      totalProcesses: runningProcesses.size,
     });
 
     let stdout = '';
@@ -100,6 +168,12 @@ export async function executeCommand(
     if (timeout > 0) {
       timeoutHandle = setTimeout(() => {
         child.kill('SIGTERM');
+        // 从跟踪集合中移除
+        runningProcesses.delete(child);
+        logger.debug('CommandExecutor: Process removed from tracking (timeout)', {
+          totalProcesses: runningProcesses.size,
+        });
+        
         const error = new CommandExecutorError(
           `Command execution timeout (${timeout}ms)`,
           stdout,
@@ -120,6 +194,12 @@ export async function executeCommand(
       if (timeoutHandle) {
         clearTimeout(timeoutHandle);
       }
+
+      // 从跟踪集合中移除
+      runningProcesses.delete(child);
+      logger.debug('CommandExecutor: Process removed from tracking (close)', {
+        totalProcesses: runningProcesses.size,
+      });
 
       logger.info('CommandExecutor: Command execution completed', {
         exitCode: code,
@@ -151,6 +231,13 @@ export async function executeCommand(
       if (timeoutHandle) {
         clearTimeout(timeoutHandle);
       }
+      
+      // 从跟踪集合中移除
+      runningProcesses.delete(child);
+      logger.debug('CommandExecutor: Process removed from tracking (error)', {
+        totalProcesses: runningProcesses.size,
+      });
+      
       logger.error('CommandExecutor: Command spawn error', { error: err.message });
       const error = new CommandExecutorError(
         `Failed to spawn command: ${err.message}`,
