@@ -329,10 +329,31 @@ export class Engineer extends Role {
         // 如果使用LLM进行更详细的检测
         if (completenessCheck.isComplete && isStructurallyComplete && this.context.llm) {
           try {
+            // Get abortSignal from StateManager if available
+            let abortSignal: AbortSignal | undefined;
+            try {
+              const stateManager = this.context.get?.('stateManager');
+              if (stateManager && typeof stateManager.getAbortSignal === 'function') {
+                abortSignal = stateManager.getAbortSignal();
+              }
+            } catch (error: any) {
+              logger.warn(`${this.profile} WriteCode: Failed to get abortSignal`, { error: error.message });
+            }
+            
+            // Check cancellation before LLM call
+            if (abortSignal?.aborted) {
+              throw new Error('LLM call was cancelled');
+            }
+            
             const checkPrompt = buildCodeCompletenessCheckPrompt(accumulatedFiles, design);
             const userId = this.context.get('userId');
             const systemPrompt = await loadPrompt(userId, 'code', 'completeness_check_system_prompt', CODE_COMPLETENESS_CHECK_SYSTEM_PROMPT);
-            const llmCheckResult = await this.context.llm.aask(checkPrompt, [systemPrompt]);
+            const llmCheckResult = await this.context.llm.aask(checkPrompt, [systemPrompt], abortSignal);
+            
+            // Check cancellation after LLM call
+            if (abortSignal?.aborted) {
+              throw new Error('LLM call was cancelled');
+            }
 
             if (llmCheckResult.includes('INCOMPLETE')) {
               const match = llmCheckResult.match(/INCOMPLETE:\s*(.+)/i);
@@ -775,10 +796,31 @@ export class Engineer extends Role {
         // 如果使用LLM进行更详细的检测
         if (completenessCheck.isComplete && isStructurallyComplete && this.context.llm) {
           try {
+            // Get abortSignal from StateManager if available
+            let abortSignal: AbortSignal | undefined;
+            try {
+              const stateManager = this.context.get?.('stateManager');
+              if (stateManager && typeof stateManager.getAbortSignal === 'function') {
+                abortSignal = stateManager.getAbortSignal();
+              }
+            } catch (error: any) {
+              logger.warn(`${this.profile} ExecuteSubtask: Failed to get abortSignal`, { error: error.message });
+            }
+            
+            // Check cancellation before LLM call
+            if (abortSignal?.aborted) {
+              throw new Error('LLM call was cancelled');
+            }
+            
             const checkPrompt = buildCodeCompletenessCheckPrompt(accumulatedFiles, design);
             const userId = this.context.get('userId');
             const systemPrompt = await loadPrompt(userId, 'code', 'completeness_check_system_prompt', CODE_COMPLETENESS_CHECK_SYSTEM_PROMPT);
-            const llmCheckResult = await this.context.llm.aask(checkPrompt, [systemPrompt]);
+            const llmCheckResult = await this.context.llm.aask(checkPrompt, [systemPrompt], abortSignal);
+            
+            // Check cancellation after LLM call
+            if (abortSignal?.aborted) {
+              throw new Error('LLM call was cancelled');
+            }
 
             if (llmCheckResult.includes('INCOMPLETE')) {
               const match = llmCheckResult.match(/INCOMPLETE:\s*(.+)/i);

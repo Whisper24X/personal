@@ -244,14 +244,14 @@ export class InteractiveController {
 
             const workflowInfo = session.getWorkflowInfo();
 
-            // Get workflow tracker
-            const workflowTracker = (session as any).workflowTracker;
+            // Get state manager
+            const stateManager = (session as any).stateManager;
 
             // Get all workflow items with their statuses
-            const workflowItems = workflowTracker ? await workflowTracker.getWorkflowItems() : [];
+            const workflowItems = stateManager ? await stateManager.getWorkflowItems() : [];
 
             // Get current running state
-            const runningState = workflowTracker ? await workflowTracker.getCurrentState() : { role: null, action: null };
+            const runningState = stateManager ? await stateManager.getRunningState() : { role: null, action: null };
 
             return res.json({
                 success: true,
@@ -283,17 +283,17 @@ export class InteractiveController {
                 });
             }
 
-            // Get workflow tracker
-            const workflowTracker = (session as any).workflowTracker;
+            // Get state manager
+            const stateManager = (session as any).stateManager;
 
             // Get current running state
-            const runningInfo = workflowTracker ? await workflowTracker.getCurrentState() : { role: null, action: null };
+            const runningInfo = stateManager ? await stateManager.getRunningState() : { role: null, action: null };
 
             // Get all workflow items with their statuses
-            const workflowItems = workflowTracker ? await workflowTracker.getWorkflowItems() : [];
+            const workflowItems = stateManager ? await stateManager.getWorkflowItems() : [];
 
-            // Get confirmation status from database via workflowTracker
-            const confirmationStatus = workflowTracker ? await workflowTracker.isConfirmationRequired() : { required: false, role: null };
+            // Get confirmation status from database via stateManager
+            const confirmationStatus = stateManager ? await stateManager.getConfirmationStatus() : { required: false, role: null };
             let requiresConfirmation = confirmationStatus.required || false;
 
             // Get confirmation details from message queue if confirmation required
@@ -407,16 +407,16 @@ export class InteractiveController {
                 });
             }
 
-            // Get workflow tracker
-            const workflowTracker = (session as any).workflowTracker;
-            if (!workflowTracker) {
+            // Get state manager
+            const stateManager = session.getStateManager();
+            if (!stateManager) {
                 return res.status(500).json({
-                    error: 'Workflow tracker not found',
+                    error: 'State manager not found',
                 });
             }
 
             // Check current confirmation status from database
-            const confirmationStatus = await workflowTracker.isConfirmationRequired();
+            const confirmationStatus = await stateManager.getConfirmationStatus();
 
             if (!confirmationStatus.required) {
                 logger.warn(`API: POST /interactive/${projectId}/confirm - No confirmation required, but confirm endpoint called`);
@@ -436,10 +436,10 @@ export class InteractiveController {
             });
 
             // Clear confirmation status in database
-            await workflowTracker.clearConfirmationRequired();
+            await stateManager.clearConfirmationRequired();
 
             // Verify confirmation is cleared
-            const verifyStatus = await workflowTracker.isConfirmationRequired();
+            const verifyStatus = await stateManager.getConfirmationStatus();
             if (verifyStatus.required) {
                 logger.error(`API: POST /interactive/${projectId}/confirm - Failed to clear confirmation status!`);
                 return res.status(500).json({
@@ -485,25 +485,61 @@ export class InteractiveController {
                 });
             }
 
-            // Get workflow tracker from session
-            const workflowTracker = (session as any).workflowTracker;
-            if (!workflowTracker) {
+            // Stop workflow executor if it's running
+            session.stopWorkflowExecutor();
+
+            // Get state manager from session
+            const stateManager = session.getStateManager();
+            if (!stateManager) {
                 return res.status(500).json({
-                    error: 'Workflow tracker not found',
+                    error: 'State manager not found',
                 });
             }
 
-            // Get repository and reset workflow
-            const repository = (workflowTracker as any).repository;
-            await repository.resetWorkflowFromRole(projectId, role);
+            // Reset workflow using StateManager
+            await stateManager.resetWorkflow(role);
 
-            // Clear running state if the reset role is currently running
-            const currentState = await workflowTracker.getCurrentState();
-            if (currentState.role === role) {
-                await workflowTracker.clearState();
+            // Check reset result - verify first action is set to RUNNING
+            const runningState = await stateManager.getRunningState();
+            const firstActionStatus = runningState.action 
+                ? await stateManager.getActionStatus(runningState.role, runningState.action)
+                : null;
+
+            logger.info(`API: Reset workflow from role ${role} for project ${projectId}`, {
+                projectId,
+                role,
+                resetRole: runningState.role,
+                resetAction: runningState.action,
+                actionStatus: firstActionStatus,
+            });
+
+            // Restart executor if first action is RUNNING
+            // getActionStatus returns ActionStatus enum, compare with ActionStatus.RUNNING
+            const { ActionStatus } = await import('@mind2build/shared');
+            if (runningState.role && runningState.action && firstActionStatus === ActionStatus.RUNNING) {
+                logger.info(`API: Restarting executor after reset for role ${runningState.role}, action ${runningState.action}`, {
+                    projectId,
+                    role: runningState.role,
+                    action: runningState.action,
+                });
+                
+                // Restart executor asynchronously (don't block API response)
+                session.restartExecutor().catch((error: any) => {
+                    logger.error(`API: Failed to restart executor after reset for project ${projectId}`, {
+                        projectId,
+                        role: runningState.role,
+                        action: runningState.action,
+                        error: error.message,
+                    });
+                });
+            } else {
+                logger.warn(`API: Not restarting executor after reset - invalid state`, {
+                    projectId,
+                    role: runningState.role,
+                    action: runningState.action,
+                    actionStatus: firstActionStatus,
+                });
             }
-
-            logger.info(`API: Reset workflow from role ${role} for project ${projectId}`);
 
             return res.json({
                 success: true,

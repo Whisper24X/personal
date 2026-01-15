@@ -12,14 +12,20 @@ export abstract class BaseAction {
   name: string;
   description?: string;
 
-  // Action status (统一状态管理)
-  status: ActionStatus = ActionStatus.PENDING;
+  // Action status is now managed by StateManager (database-only)
+  // Removed in-memory status field - status is read from database via StateManager
 
   // LLM instance will be injected by Role
   protected llm?: any;
   
   // Context instance will be injected by Role
   protected context?: Context;
+
+  // AbortSignal for cancellation support
+  protected abortSignal?: AbortSignal;
+
+  // Role instance (set by Role.setActions)
+  protected role?: any;
 
   constructor(name?: string, description?: string) {
     this.name = name || this.constructor.name;
@@ -42,9 +48,11 @@ export abstract class BaseAction {
   async executeWithLogging(...args: any[]): Promise<IActionOutput> {
     const startTime = Date.now();
     const actionName = this.name;
+    const logContext = this.getLogContext();
     
     // Log action start
     logger.info(`Action [${actionName}]: Starting execution`, {
+      ...logContext,
       actionName,
       description: this.description,
       argsCount: args.length,
@@ -57,9 +65,11 @@ export abstract class BaseAction {
       
       // Calculate execution time
       const executionTime = Date.now() - startTime;
+      const logContext = this.getLogContext();
       
       // Log success
       logger.info(`Action [${actionName}]: Execution completed successfully`, {
+        ...logContext,
         actionName,
         executionTimeMs: executionTime,
         outputType: result.data?.type,
@@ -70,9 +80,11 @@ export abstract class BaseAction {
     } catch (error: any) {
       // Calculate execution time
       const executionTime = Date.now() - startTime;
+      const logContext = this.getLogContext();
       
       // Log failure
       logger.error(`Action [${actionName}]: Execution failed`, {
+        ...logContext,
         actionName,
         executionTimeMs: executionTime,
         error: error.message,
@@ -87,7 +99,7 @@ export abstract class BaseAction {
    * Serialize arguments for logging (avoid logging sensitive or very large data)
    */
   private serializeArgsForLog(args: any[]): any {
-    return args.map((arg, index) => {
+    return args.map((arg) => {
       if (arg === null || arg === undefined) {
         return arg;
       }
@@ -146,15 +158,61 @@ export abstract class BaseAction {
   }
 
   /**
+   * Set AbortSignal for cancellation support
+   */
+  setAbortSignal(signal: AbortSignal): void {
+    this.abortSignal = signal;
+  }
+
+  /**
+   * Check if action execution is cancelled
+   */
+  protected checkCancellation(): void {
+    if (this.abortSignal?.aborted) {
+      throw new Error('Action was cancelled');
+    }
+  }
+
+  /**
+   * Get log context (role and action name)
+   */
+  protected getLogContext(): { role?: string; action: string } {
+    const roleName = (this as any).role?.profile || (this.context?.get?.('currentRole') as string) || undefined;
+    return {
+      role: roleName,
+      action: this.name,
+    };
+  }
+
+  /**
    * Helper method to call LLM with a prompt
    * @param prompt - The prompt to send to LLM
    * @param systemMsgs - Optional system messages
    */
   protected async aask(prompt: string, systemMsgs?: string[]): Promise<string> {
+    this.checkCancellation();
+    
     if (!this.llm) {
       throw new Error('LLM not set for action');
     }
-    return await this.llm.aask(prompt, systemMsgs);
+    
+    const logContext = this.getLogContext();
+    logger.info('BaseAction: Calling LLM aask', {
+      ...logContext,
+      promptLength: prompt.length,
+      systemMsgsCount: systemMsgs?.length || 0,
+    });
+    
+    const result = await this.llm.aask(prompt, systemMsgs, this.abortSignal);
+    
+    this.checkCancellation();
+    
+    logger.info('BaseAction: LLM aask completed', {
+      ...logContext,
+      resultLength: result.length,
+    });
+    
+    return result;
   }
 
   /**
@@ -162,10 +220,29 @@ export abstract class BaseAction {
    * @param messages - Chat messages
    */
   protected async acompletion(messages: any[]): Promise<any> {
+    this.checkCancellation();
+    
     if (!this.llm) {
       throw new Error('LLM not set for action');
     }
-    return await this.llm.acompletion(messages);
+    
+    const logContext = this.getLogContext();
+    logger.info('BaseAction: Calling LLM acompletion', {
+      ...logContext,
+      messagesCount: messages.length,
+    });
+    
+    const result = await this.llm.acompletion(messages, this.abortSignal);
+    
+    this.checkCancellation();
+    
+    logger.info('BaseAction: LLM acompletion completed', {
+      ...logContext,
+      contentLength: result.content?.length || 0,
+      usage: result.usage,
+    });
+    
+    return result;
   }
 
   /**
@@ -241,7 +318,7 @@ export abstract class BaseAction {
       name: this.name,
       description: this.description,
       type: this.constructor.name,
-      status: this.status,
+      status: ActionStatus.PENDING, // Status is managed by StateManager, not stored in memory
     };
   }
 }

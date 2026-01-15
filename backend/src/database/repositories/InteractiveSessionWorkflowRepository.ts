@@ -5,6 +5,7 @@
 
 import { ActionStatus } from '@mind2build/shared';
 import { query } from '../client';
+import { logger } from '../../utils';
 
 export interface WorkflowItem {
     id: string;
@@ -12,6 +13,8 @@ export interface WorkflowItem {
     role: string;
     action: string | null;
     status: string;
+    role_order: number | null;
+    action_order: number | null;
     created_at: Date;
     updated_at: Date;
 }
@@ -23,6 +26,8 @@ export interface RunningState {
     current_action: string | null;
     requires_confirmation?: boolean;
     confirmation_role?: string | null;
+    role_state?: number | null;
+    role_todo_action?: string | null;
     updated_at: Date;
     created_at: Date;
 }
@@ -48,17 +53,21 @@ export class InteractiveSessionWorkflowRepository {
                 return;
             }
 
-            // Insert all roles and actions (only if workflow doesn't exist)
-            for (const roleInfo of roles) {
-                for (const action of roleInfo.actions) {
+            // Insert all roles and actions with role_order and action_order (only if workflow doesn't exist)
+            for (let roleIndex = 0; roleIndex < roles.length; roleIndex++) {
+                const roleInfo = roles[roleIndex];
+                for (let actionIndex = 0; actionIndex < roleInfo.actions.length; actionIndex++) {
+                    const action = roleInfo.actions[actionIndex];
                     await query(
                         `INSERT INTO interactive_session_workflows (
-              project_id, role, action, status
-            ) VALUES ($1, $2, $3, $4)
+              project_id, role, action, status, role_order, action_order
+            ) VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (project_id, role, action) DO UPDATE SET
               status = COALESCE(interactive_session_workflows.status, EXCLUDED.status),
+              role_order = COALESCE(interactive_session_workflows.role_order, EXCLUDED.role_order),
+              action_order = COALESCE(interactive_session_workflows.action_order, EXCLUDED.action_order),
               updated_at = NOW()`,
-                        [projectId, roleInfo.role, action.name, ActionStatus.PENDING]
+                        [projectId, roleInfo.role, action.name, ActionStatus.PENDING, roleIndex, actionIndex]
                     );
                 }
             }
@@ -75,7 +84,9 @@ export class InteractiveSessionWorkflowRepository {
         role: string | null,
         action: string | null,
         requiresConfirmation?: boolean,
-        confirmationRole?: string | null
+        confirmationRole?: string | null,
+        roleState?: number | null,
+        roleTodoAction?: string | null
     ): Promise<RunningState> {
         try {
             // Validate projectId
@@ -90,46 +101,50 @@ export class InteractiveSessionWorkflowRepository {
                 throw new Error(`Failed to validate project: ${error.message}`);
             }
 
-            // Build SQL based on whether confirmation fields are provided
+            // Build SQL based on provided fields
+            const fields: string[] = ['project_id', '"current_role"', '"current_action"'];
+            const values: any[] = [projectId, role, action];
+            const updates: string[] = ['"current_role" = EXCLUDED."current_role"', '"current_action" = EXCLUDED."current_action"'];
+            let paramIndex = 4;
+
             if (requiresConfirmation !== undefined) {
-                const result = await query<RunningState>(
-                    `INSERT INTO interactive_session_running_state (
-              project_id, "current_role", "current_action", requires_confirmation, confirmation_role
-            ) VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (project_id) DO UPDATE SET
-              "current_role" = EXCLUDED."current_role",
-              "current_action" = EXCLUDED."current_action",
-              requires_confirmation = EXCLUDED.requires_confirmation,
-              confirmation_role = EXCLUDED.confirmation_role,
-              updated_at = NOW()
-            RETURNING *`,
-                    [projectId, role, action, requiresConfirmation, confirmationRole || null]
-                );
-
-                if (!result.rows[0]) {
-                    throw new Error('Failed to update running state: no row returned');
-                }
-
-                return result.rows[0];
-            } else {
-                const result = await query<RunningState>(
-                    `INSERT INTO interactive_session_running_state (
-              project_id, "current_role", "current_action"
-            ) VALUES ($1, $2, $3)
-            ON CONFLICT (project_id) DO UPDATE SET
-              "current_role" = EXCLUDED."current_role",
-              "current_action" = EXCLUDED."current_action",
-              updated_at = NOW()
-            RETURNING *`,
-                    [projectId, role, action]
-                );
-
-                if (!result.rows[0]) {
-                    throw new Error('Failed to update running state: no row returned');
-                }
-
-                return result.rows[0];
+                fields.push('requires_confirmation', 'confirmation_role');
+                values.push(requiresConfirmation, confirmationRole || null);
+                updates.push('requires_confirmation = EXCLUDED.requires_confirmation', 'confirmation_role = EXCLUDED.confirmation_role');
+                paramIndex += 2;
             }
+
+            if (roleState !== undefined) {
+                fields.push('role_state');
+                values.push(roleState);
+                updates.push('role_state = EXCLUDED.role_state');
+                paramIndex += 1;
+            }
+
+            if (roleTodoAction !== undefined) {
+                fields.push('role_todo_action');
+                values.push(roleTodoAction);
+                updates.push('role_todo_action = EXCLUDED.role_todo_action');
+                paramIndex += 1;
+            }
+
+            updates.push('updated_at = NOW()');
+
+            const result = await query<RunningState>(
+                `INSERT INTO interactive_session_running_state (
+              ${fields.join(', ')}
+            ) VALUES (${fields.map((_, i) => `$${i + 1}`).join(', ')})
+            ON CONFLICT (project_id) DO UPDATE SET
+              ${updates.join(', ')}
+            RETURNING *`,
+                values
+            );
+
+            if (!result.rows[0]) {
+                throw new Error('Failed to update running state: no row returned');
+            }
+
+            return result.rows[0];
         } catch (error: any) {
             throw error;
         }
@@ -142,7 +157,8 @@ export class InteractiveSessionWorkflowRepository {
         try {
             const result = await query<RunningState>(
                 `SELECT id, project_id, "current_role", "current_action", 
-                requires_confirmation, confirmation_role, updated_at, created_at 
+                requires_confirmation, confirmation_role, role_state, role_todo_action,
+                updated_at, created_at 
          FROM interactive_session_running_state WHERE project_id = $1`,
                 [projectId]
             );
@@ -165,17 +181,15 @@ export class InteractiveSessionWorkflowRepository {
 
     /**
      * Get workflow items for a project
-     * Note: Items are returned without action ordering - sorting by registration order
-     * is handled by WorkflowTracker.getWorkflowItems()
+     * Returns items sorted by role_order and action_order (from database)
      */
     async getWorkflowItems(projectId: string): Promise<WorkflowItem[]> {
         try {
-            // Only order by role, not by action, to preserve registration order
-            // Action ordering is handled by WorkflowTracker based on getWorkflowStructure()
+            // Order by role_order and action_order from database
             const result = await query<WorkflowItem>(
                 `SELECT * FROM interactive_session_workflows 
          WHERE project_id = $1 
-         ORDER BY role`,
+         ORDER BY role_order ASC NULLS LAST, action_order ASC NULLS LAST`,
                 [projectId]
             );
 
@@ -272,38 +286,66 @@ export class InteractiveSessionWorkflowRepository {
 
     /**
      * Reset workflow items for a role and all downstream roles
-     * Role order: Salesperson -> ProductManager -> Architect -> ProjectManager -> Engineer -> QAEngineer
+     * Uses role_order from database to determine downstream roles
      */
     async resetWorkflowFromRole(
         projectId: string,
         role: string
     ): Promise<void> {
         try {
-            // Define role order (upstream to downstream)
-            const roleOrder = [
-                'Salesperson',
-                'ProductManager',
-                'Architect',
-                'ProjectManager',
-                'Engineer',
-                'QAEngineer',
-            ];
+            // Get target role's role_order
+            const targetRoleResult = await query<{ role_order: number }>(
+                `SELECT role_order
+                 FROM interactive_session_workflows
+                 WHERE project_id = $1 AND role = $2
+                 LIMIT 1`,
+                [projectId, role]
+            );
 
-            // Find the index of the target role
-            const roleIndex = roleOrder.indexOf(role);
-            if (roleIndex === -1) {
-                throw new Error(`Unknown role: ${role}`);
+            if (targetRoleResult.rows.length === 0 || targetRoleResult.rows[0].role_order === null) {
+                // Fallback to hardcoded order if role_order is NULL
+                const roleOrder = [
+                    'Salesperson',
+                    'ProductManager',
+                    'Architect',
+                    'ProjectManager',
+                    'Engineer',
+                    'QAEngineer',
+                ];
+                const roleIndex = roleOrder.indexOf(role);
+                if (roleIndex === -1) {
+                    throw new Error(`Unknown role: ${role}`);
+                }
+                const downstreamRoles = roleOrder.slice(roleIndex);
+                await query(
+                    `UPDATE interactive_session_workflows 
+                     SET status = $2, updated_at = NOW()
+                     WHERE project_id = $1 AND role = ANY($3::text[])`,
+                    [projectId, ActionStatus.PENDING, downstreamRoles]
+                );
+                return;
             }
 
-            // Get all downstream roles (including the target role)
-            const downstreamRoles = roleOrder.slice(roleIndex);
+            const targetRoleOrder = targetRoleResult.rows[0].role_order;
 
-            // Reset all workflow items for downstream roles to 'pending'
+            // Reset all workflow items for downstream roles (role_order >= target role_order) to 'pending'
             await query(
                 `UPDATE interactive_session_workflows 
-         SET status = $2, updated_at = NOW()
-         WHERE project_id = $1 AND role = ANY($3::text[])`,
-                [projectId, ActionStatus.PENDING, downstreamRoles]
+                 SET status = $2, updated_at = NOW()
+                 WHERE project_id = $1 
+                 AND role_order >= $3
+                 AND role_order IS NOT NULL`,
+                [projectId, ActionStatus.PENDING, targetRoleOrder]
+            );
+
+            // Also handle roles with NULL role_order (fallback)
+            await query(
+                `UPDATE interactive_session_workflows 
+                 SET status = $2, updated_at = NOW()
+                 WHERE project_id = $1 
+                 AND role_order IS NULL
+                 AND role = $3`,
+                [projectId, ActionStatus.PENDING, role]
             );
         } catch (error: any) {
             throw error;
@@ -359,7 +401,7 @@ export class InteractiveSessionWorkflowRepository {
                 `SELECT action, status 
                 FROM interactive_session_workflows 
                 WHERE project_id = $1 AND role = $2
-                ORDER BY action`,
+                ORDER BY action_order ASC NULLS LAST`,
                 [projectId, role]
             );
 
@@ -448,6 +490,187 @@ export class InteractiveSessionWorkflowRepository {
             return { required: false, role: null };
         } catch (error: any) {
             return { required: false, role: null };
+        }
+    }
+
+    /**
+     * Get the first action for a role (action_order minimum)
+     */
+    async getFirstActionForRole(
+        projectId: string,
+        role: string
+    ): Promise<{ role: string; action: string } | null> {
+        try {
+            const result = await query<{ role: string; action: string }>(
+                `SELECT role, action
+                 FROM interactive_session_workflows
+                 WHERE project_id = $1 AND role = $2
+                 ORDER BY action_order ASC NULLS LAST
+                 LIMIT 1`,
+                [projectId, role]
+            );
+
+            if (result.rows.length > 0) {
+                return result.rows[0];
+            }
+            return null;
+        } catch (error: any) {
+            logger.error('InteractiveSessionWorkflowRepository: Failed to get first action', {
+                projectId,
+                role,
+                error: error.message,
+            });
+            return null;
+        }
+    }
+
+    /**
+     * Get downstream roles based on role_order
+     * Returns all roles with role_order >= target role's role_order
+     */
+    async getDownstreamRoles(
+        projectId: string,
+        role: string
+    ): Promise<string[]> {
+        try {
+            // Get target role's role_order
+            const targetRoleResult = await query<{ role_order: number }>(
+                `SELECT role_order
+                 FROM interactive_session_workflows
+                 WHERE project_id = $1 AND role = $2
+                 LIMIT 1`,
+                [projectId, role]
+            );
+
+            if (targetRoleResult.rows.length === 0) {
+                return [];
+            }
+
+            const targetRoleOrder = targetRoleResult.rows[0].role_order;
+            if (targetRoleOrder === null || targetRoleOrder === undefined) {
+                // If role_order is NULL, fallback to hardcoded order
+                const roleOrder = [
+                    'Salesperson',
+                    'ProductManager',
+                    'Architect',
+                    'ProjectManager',
+                    'Engineer',
+                    'QAEngineer',
+                ];
+                const roleIndex = roleOrder.indexOf(role);
+                if (roleIndex === -1) {
+                    return [];
+                }
+                return roleOrder.slice(roleIndex);
+            }
+
+            // Get all roles with role_order >= target role_order
+            const result = await query<{ role: string; role_order: number }>(
+                `SELECT DISTINCT role, role_order
+                 FROM interactive_session_workflows
+                 WHERE project_id = $1 AND role_order >= $2
+                 ORDER BY role_order ASC`,
+                [projectId, targetRoleOrder]
+            );
+
+            return result.rows.map(row => row.role);
+        } catch (error: any) {
+            logger.error('InteractiveSessionWorkflowRepository: Failed to get downstream roles', {
+                projectId,
+                role,
+                error: error.message,
+            });
+            // Fallback to hardcoded order
+            const roleOrder = [
+                'Salesperson',
+                'ProductManager',
+                'Architect',
+                'ProjectManager',
+                'Engineer',
+                'QAEngineer',
+            ];
+            const roleIndex = roleOrder.indexOf(role);
+            if (roleIndex === -1) {
+                return [];
+            }
+            return roleOrder.slice(roleIndex);
+        }
+    }
+
+    /**
+     * Check if an action is the last action for a role (action_order maximum)
+     */
+    async isLastActionForRole(
+        projectId: string,
+        role: string,
+        action: string
+    ): Promise<boolean> {
+        try {
+            // Get max action_order for the role
+            const maxOrderResult = await query<{ max_order: number }>(
+                `SELECT MAX(action_order) as max_order
+                 FROM interactive_session_workflows
+                 WHERE project_id = $1 AND role = $2`,
+                [projectId, role]
+            );
+
+            if (maxOrderResult.rows.length === 0 || maxOrderResult.rows[0].max_order === null) {
+                return false;
+            }
+
+            const maxOrder = maxOrderResult.rows[0].max_order;
+
+            // Get current action's action_order
+            const actionResult = await query<{ action_order: number }>(
+                `SELECT action_order
+                 FROM interactive_session_workflows
+                 WHERE project_id = $1 AND role = $2 AND action = $3`,
+                [projectId, role, action]
+            );
+
+            if (actionResult.rows.length === 0 || actionResult.rows[0].action_order === null) {
+                return false;
+            }
+
+            const actionOrder = actionResult.rows[0].action_order;
+            return actionOrder === maxOrder;
+        } catch (error: any) {
+            logger.error('InteractiveSessionWorkflowRepository: Failed to check if last action', {
+                projectId,
+                role,
+                action,
+                error: error.message,
+            });
+            return false;
+        }
+    }
+
+    /**
+     * Clear message content for specific roles
+     */
+    async clearMessageContent(
+        projectId: string,
+        roles: string[]
+    ): Promise<void> {
+        try {
+            await query(
+                `UPDATE messages
+                 SET content = ''
+                 WHERE project_id = $1 AND sent_from = ANY($2::text[])`,
+                [projectId, roles]
+            );
+
+            logger.info('InteractiveSessionWorkflowRepository: Cleared message content', {
+                projectId,
+                roles,
+            });
+        } catch (error: any) {
+            logger.error('InteractiveSessionWorkflowRepository: Failed to clear message content', {
+                projectId,
+                roles,
+                error: error.message,
+            });
+            throw error;
         }
     }
 }
