@@ -24,9 +24,44 @@ export interface DBMessage {
 
 export class MessageRepository {
   /**
+   * Get role ID by project ID and profile (sentFrom)
+   * Returns null if role not found or sentFrom is 'User'
+   */
+  private async getRoleIdByProfile(projectId: string, sentFrom: string): Promise<string | null> {
+    // If sentFrom is 'User', return null (user messages don't have role_id)
+    if (!sentFrom || sentFrom === 'User' || sentFrom === 'user') {
+      return null;
+    }
+
+    try {
+      const result = await query<{ id: string }>(
+        `SELECT r.id 
+         FROM roles r
+         INNER JOIN teams t ON r.team_id = t.id
+         WHERE t.project_id = $1 AND r.profile = $2
+         LIMIT 1`,
+        [projectId, sentFrom]
+      );
+
+      return result.rows[0]?.id || null;
+    } catch (error: any) {
+      logger.warn(`Failed to get role ID for profile ${sentFrom} in project ${projectId}:`, {
+        error: error.message,
+      });
+      return null;
+    }
+  }
+
+  /**
    * Save a message to database
    */
   async save(projectId: string, message: Message, roleId?: string): Promise<DBMessage> {
+    // If roleId not provided, try to get it from sentFrom
+    let finalRoleId = roleId;
+    if (!finalRoleId && message.sentFrom) {
+      finalRoleId = await this.getRoleIdByProfile(projectId, message.sentFrom) || undefined;
+    }
+
     const result = await query<DBMessage>(
       `INSERT INTO messages (
         project_id, role_id, message_uuid, content, instruct_content,
@@ -35,7 +70,7 @@ export class MessageRepository {
       RETURNING *`,
       [
         projectId,
-        roleId || null,
+        finalRoleId || null,
         message.id,
         message.content,
         message.instructContent ? JSON.stringify(message.instructContent) : null,
@@ -56,17 +91,36 @@ export class MessageRepository {
   async saveMany(projectId: string, messages: Message[]): Promise<number> {
     if (messages.length === 0) return 0;
     
+    // Build a map of sentFrom -> roleId for efficient lookup
+    const roleIdCache = new Map<string, string | null>();
+    const getRoleId = async (sentFrom: string): Promise<string | null> => {
+      if (!sentFrom || sentFrom === 'User' || sentFrom === 'user') {
+        return null;
+      }
+      if (!roleIdCache.has(sentFrom)) {
+        const roleId = await this.getRoleIdByProfile(projectId, sentFrom);
+        roleIdCache.set(sentFrom, roleId);
+      }
+      return roleIdCache.get(sentFrom) || null;
+    };
+
+    // Resolve all role IDs first
+    const roleIds = await Promise.all(
+      messages.map((msg) => getRoleId(msg.sentFrom))
+    );
+    
     const values: any[] = [];
     const placeholders: string[] = [];
     let paramIndex = 1;
     
-    messages.forEach((msg) => {
+    messages.forEach((msg, index) => {
       placeholders.push(
-        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8})`
+        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8}, $${paramIndex + 9})`
       );
       
       values.push(
         projectId,
+        roleIds[index] || null,
         msg.id,
         msg.content,
         msg.instructContent ? JSON.stringify(msg.instructContent) : null,
@@ -77,12 +131,12 @@ export class MessageRepository {
         JSON.stringify(msg.metadata)
       );
       
-      paramIndex += 9;
+      paramIndex += 10;
     });
     
     const sql = `
       INSERT INTO messages (
-        project_id, message_uuid, content, instruct_content,
+        project_id, role_id, message_uuid, content, instruct_content,
         role_type, cause_by, sent_from, send_to, metadata
       ) VALUES ${placeholders.join(', ')}
     `;
@@ -92,6 +146,7 @@ export class MessageRepository {
       logger.info(`Successfully saved ${result.rowCount || 0} messages to database`, {
         projectId,
         messageCount: messages.length,
+        roleIdsResolved: roleIds.filter(id => id !== null).length,
       });
       return result.rowCount || 0;
     } catch (error: any) {

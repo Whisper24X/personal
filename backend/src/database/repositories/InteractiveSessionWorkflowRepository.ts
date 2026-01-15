@@ -15,6 +15,7 @@ export interface WorkflowItem {
     status: string;
     role_order: number | null;
     action_order: number | null;
+    retry_count?: number | null;
     created_at: Date;
     updated_at: Date;
 }
@@ -490,6 +491,111 @@ export class InteractiveSessionWorkflowRepository {
             return { required: false, role: null };
         } catch (error: any) {
             return { required: false, role: null };
+        }
+    }
+
+    /**
+     * Get retry count for an action
+     */
+    async getRetryCount(
+        projectId: string,
+        role: string,
+        action: string
+    ): Promise<number> {
+        try {
+            const result = await query<{ retry_count: number }>(
+                `SELECT retry_count 
+                FROM interactive_session_workflows 
+                WHERE project_id = $1 AND role = $2 AND action = $3`,
+                [projectId, role, action]
+            );
+
+            if (result.rows.length > 0 && result.rows[0].retry_count !== null) {
+                return result.rows[0].retry_count;
+            }
+
+            return 0;
+        } catch (error: any) {
+            logger.warn('InteractiveSessionWorkflowRepository: Failed to get retry count', {
+                projectId,
+                role,
+                action,
+                error: error.message,
+            });
+            return 0;
+        }
+    }
+
+    /**
+     * Increment retry count for an action
+     */
+    async incrementRetryCount(
+        projectId: string,
+        role: string,
+        action: string
+    ): Promise<number> {
+        try {
+            const result = await query<{ retry_count: number }>(
+                `UPDATE interactive_session_workflows 
+                SET retry_count = COALESCE(retry_count, 0) + 1,
+                    updated_at = NOW()
+                WHERE project_id = $1 AND role = $2 AND action = $3
+                RETURNING retry_count`,
+                [projectId, role, action]
+            );
+
+            if (result.rows.length > 0) {
+                return result.rows[0].retry_count;
+            }
+
+            // If no row exists, create one with retry_count = 1
+            await query(
+                `INSERT INTO interactive_session_workflows 
+                (project_id, role, action, status, retry_count)
+                VALUES ($1, $2, $3, $4, 1)
+                ON CONFLICT (project_id, role, action) DO UPDATE SET
+                    retry_count = COALESCE(interactive_session_workflows.retry_count, 0) + 1,
+                    updated_at = NOW()
+                RETURNING retry_count`,
+                [projectId, role, action, ActionStatus.PENDING]
+            );
+
+            return 1;
+        } catch (error: any) {
+            logger.error('InteractiveSessionWorkflowRepository: Failed to increment retry count', {
+                projectId,
+                role,
+                action,
+                error: error.message,
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Reset retry count for an action (when action succeeds)
+     */
+    async resetRetryCount(
+        projectId: string,
+        role: string,
+        action: string
+    ): Promise<void> {
+        try {
+            await query(
+                `UPDATE interactive_session_workflows 
+                SET retry_count = 0,
+                    updated_at = NOW()
+                WHERE project_id = $1 AND role = $2 AND action = $3`,
+                [projectId, role, action]
+            );
+        } catch (error: any) {
+            logger.warn('InteractiveSessionWorkflowRepository: Failed to reset retry count', {
+                projectId,
+                role,
+                action,
+                error: error.message,
+            });
+            // Don't throw - this is not critical
         }
     }
 

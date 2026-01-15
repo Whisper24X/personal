@@ -16,6 +16,7 @@ import { logger } from '../utils';
 import { StateManager } from './StateManager';
 import { SessionMessageHandler, MessageQueueItem } from './SessionMessageHandler';
 import { SessionWorkflowExecutor, WorkflowExecutorConfig } from './SessionWorkflowExecutor';
+import { InteractiveSessionManager } from './InteractiveSessionManager';
 
 export interface SessionConfig {
   name: string;
@@ -168,13 +169,99 @@ export class InteractiveSession {
 
     // Check if there's an action running in database (prevent duplicate executor on page refresh)
     try {
-      const runningState = await this.stateManager.getRunningState();
-      if (runningState.role && runningState.action) {
+      const runningStateWithTimestamp = await this.stateManager.getRunningStateWithTimestamp();
+      if (runningStateWithTimestamp.role && runningStateWithTimestamp.action) {
         const { ActionStatus } = await import('@mind2build/shared');
-        const actionStatus = await this.stateManager.getActionStatus(runningState.role, runningState.action);
+        const actionStatus = await this.stateManager.getActionStatus(
+          runningStateWithTimestamp.role,
+          runningStateWithTimestamp.action
+        );
         if (actionStatus === ActionStatus.RUNNING) {
-          logger.warn(`InteractiveSession: Action ${runningState.action} for role ${runningState.role} is already RUNNING for project ${this.projectId}, skipping start to prevent duplicate executor`);
-          return;
+          // Check if session is in memory (to detect orphaned executors)
+          const sessionManager = InteractiveSessionManager.getInstance();
+          const sessionInMemory = !!sessionManager.getSession(this.projectId);
+          
+          // Configure thresholds from environment variables or use defaults
+          const STALE_ACTION_THRESHOLD_MS = process.env.STALE_ACTION_THRESHOLD_MINUTES
+            ? parseInt(process.env.STALE_ACTION_THRESHOLD_MINUTES, 10) * 60 * 1000
+            : 30 * 60 * 1000; // Default 30 minutes
+          
+          const ORPHANED_EXECUTOR_THRESHOLD_MS = process.env.ORPHANED_EXECUTOR_THRESHOLD_MINUTES
+            ? parseInt(process.env.ORPHANED_EXECUTOR_THRESHOLD_MINUTES, 10) * 60 * 1000
+            : 2 * 60 * 1000; // Default 2 minutes
+          
+          // Choose threshold based on whether session is in memory
+          const threshold = sessionInMemory ? STALE_ACTION_THRESHOLD_MS : ORPHANED_EXECUTOR_THRESHOLD_MS;
+          const thresholdType = sessionInMemory ? 'stale action' : 'orphaned executor';
+          
+          const now = Date.now();
+          const updatedAt = runningStateWithTimestamp.updatedAt
+            ? new Date(runningStateWithTimestamp.updatedAt).getTime()
+            : null;
+          
+          const runningDuration = updatedAt ? now - updatedAt : 0;
+          const runningMinutes = Math.round(runningDuration / 1000 / 60);
+          const runningSeconds = Math.round((runningDuration % (60 * 1000)) / 1000);
+          
+          // Log detailed information for diagnosis
+          logger.info(`InteractiveSession: Checking ${thresholdType} for action ${runningStateWithTimestamp.action}`, {
+            projectId: this.projectId,
+            role: runningStateWithTimestamp.role,
+            action: runningStateWithTimestamp.action,
+            sessionInMemory,
+            updatedAt: runningStateWithTimestamp.updatedAt?.toISOString() || null,
+            runningDurationMs: runningDuration,
+            runningMinutes,
+            runningSeconds,
+            thresholdMs: threshold,
+            thresholdMinutes: Math.round(threshold / 1000 / 60),
+            thresholdType,
+          });
+
+          if (updatedAt && runningDuration > threshold) {
+            // Action has been running for too long, consider it stale/orphaned and reset it
+            logger.warn(
+              `InteractiveSession: Action ${runningStateWithTimestamp.action} for role ${runningStateWithTimestamp.role} ` +
+                `has been RUNNING for ${runningMinutes} minutes ${runningSeconds} seconds ` +
+                `(threshold: ${Math.round(threshold / 1000 / 60)} minutes, type: ${thresholdType}) ` +
+                `for project ${this.projectId}, resetting ${thresholdType} to allow session recovery`
+            );
+            
+            // Reset the stale/orphaned action status to FAILED and clear running state
+            try {
+              await this.stateManager.setActionStatus(
+                runningStateWithTimestamp.role,
+                runningStateWithTimestamp.action,
+                ActionStatus.FAILED
+              );
+              await this.stateManager.clearRunningState();
+              logger.info(
+                `InteractiveSession: Successfully reset ${thresholdType} ${runningStateWithTimestamp.action} ` +
+                  `for role ${runningStateWithTimestamp.role} for project ${this.projectId}`
+              );
+            } catch (resetError: any) {
+              logger.error(
+                `InteractiveSession: Failed to reset ${thresholdType} for project ${this.projectId}`,
+                {
+                  error: resetError.message,
+                  role: runningStateWithTimestamp.role,
+                  action: runningStateWithTimestamp.action,
+                  thresholdType,
+                }
+              );
+              // Continue anyway to allow recovery
+            }
+            // Continue with session start after resetting stale/orphaned action
+          } else {
+            // Action is still running and not stale/orphaned, prevent duplicate executor
+            logger.warn(
+              `InteractiveSession: Action ${runningStateWithTimestamp.action} for role ${runningStateWithTimestamp.role} ` +
+                `is already RUNNING for project ${this.projectId} ` +
+                `(running for ${runningMinutes}m ${runningSeconds}s, threshold: ${Math.round(threshold / 1000 / 60)}m, ` +
+                `sessionInMemory: ${sessionInMemory}), skipping start to prevent duplicate executor`
+            );
+            return;
+          }
         }
       }
     } catch (error: any) {
@@ -224,6 +311,15 @@ export class InteractiveSession {
           // Don't treat cancellation as an error - it's intentional
           return;
         }
+        
+        // Check if this is a reset error (expected during workflow reset)
+        if (error.message?.includes('reset') || error.message?.includes('Workflow execution stopped due to reset')) {
+          logger.info(`InteractiveSession: Executor stopped due to reset for project ${this.projectId}, restarting executor`);
+          // Restart executor instead of treating as error
+          await this.restartExecutor();
+          return;
+        }
+        
         // Re-throw other errors
         throw error;
       }
@@ -254,6 +350,17 @@ export class InteractiveSession {
         this.executorPromise = null;
         this.workflowExecutor = null;
         // Don't send error message for cancellation - it's intentional
+        return;
+      }
+
+      // Check if this is a reset error (expected during workflow reset)
+      if (error.message?.includes('reset') || error.message?.includes('Workflow execution stopped due to reset')) {
+        logger.info(`InteractiveSession: Executor stopped due to reset for project ${this.projectId}, restarting executor`);
+        // Clear executor promise on reset
+        this.executorPromise = null;
+        this.workflowExecutor = null;
+        // Restart executor instead of sending error
+        await this.restartExecutor();
         return;
       }
 

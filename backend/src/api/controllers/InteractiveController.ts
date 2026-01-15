@@ -325,21 +325,49 @@ export class InteractiveController {
                 }
 
                 if (confirmationMessage && confirmationMessage.data) {
+                    // Get retry_count for failed actions
+                    let retryCount = 0;
+                    if (confirmationMessage.data.role && confirmationMessage.data.action) {
+                        const failedItem = workflowItems.find(
+                            (item: any) => item.role === confirmationMessage.data.role && 
+                                          item.action === confirmationMessage.data.action &&
+                                          item.status === 'failed'
+                        );
+                        retryCount = (failedItem as any)?.retry_count || 0;
+                    }
+
                     confirmationRequired = {
                         role: confirmationMessage.data.role,
                         action: confirmationMessage.data.action,
                         content: confirmationMessage.data.content,
                         outputFiles: confirmationMessage.data.outputFiles || [],
                         instructContent: confirmationMessage.data.instructContent,
+                        retryCount: retryCount,
                     };
                 } else if (confirmationStatus.role) {
                     // Fallback: use confirmation role from database if confirmation message not found
+                    // Get the last failed or completed action for this role
+                    const roleItems = workflowItems.filter((item: any) => item.role === confirmationStatus.role);
+                    const failedItems = roleItems.filter((item: any) => item.status === 'failed');
+                    const completedItems = roleItems.filter((item: any) => item.status === 'completed');
+                    
+                    // Prefer failed action if exists, otherwise use last completed
+                    const targetItems = failedItems.length > 0 ? failedItems : completedItems;
+                    const lastAction = targetItems.sort((a: any, b: any) => {
+                        const orderA = (a as any).action_order ?? 999;
+                        const orderB = (b as any).action_order ?? 999;
+                        return orderB - orderA; // Sort descending to get last action
+                    })[0];
+                    
+                    const retryCount = lastAction ? ((lastAction as any).retry_count || 0) : 0;
+                    
                     confirmationRequired = {
                         role: confirmationStatus.role,
-                        action: runningInfo.action,
+                        action: lastAction?.action || null,
                         content: null,
                         outputFiles: [],
                         instructContent: null,
+                        retryCount: retryCount,
                     };
                 } else {
                     // Fallback: use running state if confirmation role not found
@@ -349,20 +377,13 @@ export class InteractiveController {
                         content: null,
                         outputFiles: [],
                         instructContent: null,
+                        retryCount: 0,
                     };
                 }
 
-                // Check if all workflow items are completed
-                // If all workflow items are completed, clear confirmation
-                const completedCount = workflowItems.filter((item: any) => item.status === 'completed').length;
-                const totalCount = workflowItems.length;
-
-                const allItemsCompleted = completedCount === totalCount && totalCount > 0;
-
-                if (allItemsCompleted) {
-                    confirmationRequired.role = '';
-                    requiresConfirmation = false;
-                }
+                // REMOVED: Do NOT automatically clear confirmation when all items are completed
+                // Confirmation should only be cleared when user explicitly confirms
+                // The workflow should wait for user confirmation even if all items are completed
             }
 
             const response = {
@@ -501,8 +522,8 @@ export class InteractiveController {
 
             // Check reset result - verify first action is set to RUNNING
             const runningState = await stateManager.getRunningState();
-            const firstActionStatus = runningState.action 
-                ? await stateManager.getActionStatus(runningState.role, runningState.action)
+            const firstActionStatus = runningState.action && runningState.role
+                ? await stateManager.getActionStatus(runningState.role!, runningState.action)
                 : null;
 
             logger.info(`API: Reset workflow from role ${role} for project ${projectId}`, {

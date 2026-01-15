@@ -356,6 +356,7 @@ async function loadRunningInfo() {
         content: confirmationRequired.content,
         outputFiles: confirmationRequired.outputFiles || [],
         instructContent: confirmationRequired.instructContent || {},
+        retryCount: confirmationRequired.retryCount || 0,
       };
 
       // Update running role and action for display
