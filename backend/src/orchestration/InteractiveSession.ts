@@ -215,7 +215,18 @@ export class InteractiveSession {
         this.workflowExecutor = null;
       });
 
-      await this.executorPromise;
+      try {
+        await this.executorPromise;
+      } catch (error: any) {
+        // Check if this is a cancellation error (expected during reset)
+        if (error.message?.includes('cancelled') || error.message?.includes('Workflow execution cancelled')) {
+          logger.info(`InteractiveSession: Executor cancelled for project ${this.projectId} (this is expected during reset)`);
+          // Don't treat cancellation as an error - it's intentional
+          return;
+        }
+        // Re-throw other errors
+        throw error;
+      }
 
       // Clear running state when session completes
       await this.stateManager.clearRunningState();
@@ -236,6 +247,16 @@ export class InteractiveSession {
 
       logger.info(`InteractiveSession: Completed session for project ${this.projectId}`);
     } catch (error: any) {
+      // Check if this is a cancellation error (expected during reset)
+      if (error.message?.includes('cancelled') || error.message?.includes('Workflow execution cancelled')) {
+        logger.info(`InteractiveSession: Executor cancelled for project ${this.projectId} (this is expected during reset)`);
+        // Clear executor promise on cancellation
+        this.executorPromise = null;
+        this.workflowExecutor = null;
+        // Don't send error message for cancellation - it's intentional
+        return;
+      }
+
       logger.error(`InteractiveSession: Error in session for project ${this.projectId}`, error);
       // Clear executor promise on error
       this.executorPromise = null;
