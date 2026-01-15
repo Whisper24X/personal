@@ -87,9 +87,6 @@ export async function generateCommand(idea: string, options: any) {
         } else if (msg.causeBy === 'WriteSubProjectDesign') {
           await projectManager.writeFile(projectPath, 'SUB_PROJECT_DESIGN.md', msg.content);
           console.log('   ✅ Saved SUB_PROJECT_DESIGN.md');
-        } else if (msg.causeBy === 'GenerateTask') {
-          await projectManager.writeFile(projectPath, 'TASK_DESCRIPTION.md', msg.content);
-          console.log('   ✅ Saved TASK_DESCRIPTION.md');
         } else if (msg.causeBy === 'WriteCode') {
           const files = parseCodeFiles(msg.content);
           for (const file of files) {
@@ -115,9 +112,6 @@ export async function generateCommand(idea: string, options: any) {
           console.log(`   ${msg.content.substring(0, 200)}...\n`);
         } else if (msg.causeBy === 'WriteSubProjectDesign') {
           console.log('🏛️  Sub-Project Design Document');
-          console.log(`   ${msg.content.substring(0, 200)}...\n`);
-        } else if (msg.causeBy === 'GenerateTask') {
-          console.log('📋 Task Description Document');
           console.log(`   ${msg.content.substring(0, 200)}...\n`);
         } else if (msg.causeBy === 'WriteCode') {
           const files = parseCodeFiles(msg.content);

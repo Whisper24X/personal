@@ -18,7 +18,6 @@ export class RoleActionExecutor {
         'WriteDesign',
         'WriteSubProjectDesign',
         'BreakdownTasks',
-        'GenerateTask',
         'WriteCode',
         'WriteTest',
         'ExecuteSubtask',
@@ -305,9 +304,6 @@ export class RoleActionExecutor {
             case 'BreakdownTasks':
                 return await this.runBreakdownTasks(action, workspaceOptions);
 
-            case 'GenerateTask':
-                return await this.runGenerateTask(action, input, workspaceOptions);
-
             default:
                 return await action.run(input);
         }
@@ -322,23 +318,6 @@ export class RoleActionExecutor {
         const prd = prdMessages.length > 0 ? prdMessages[prdMessages.length - 1].content : '';
         const design = designMessages.length > 0 ? designMessages[designMessages.length - 1].content : '';
         return await (action as any).run(prd, design, workspaceOptions);
-    }
-
-    /**
-     * Run GenerateTask action
-     */
-    private async runGenerateTask(
-        action: BaseAction,
-        input: string,
-        workspaceOptions: WorkspaceOptions | undefined
-    ): Promise<any> {
-        const taskBreakdownMessages = this.rc.memory.getByAction('BreakdownTasks');
-        const subProjectMessages = this.rc.memory.getByAction('WriteSubProjectDesign');
-        const taskBreakdown =
-            taskBreakdownMessages.length > 0 ? taskBreakdownMessages[taskBreakdownMessages.length - 1].content : input;
-        const subProjectDesign =
-            subProjectMessages.length > 0 ? subProjectMessages[subProjectMessages.length - 1].content : undefined;
-        return await (action as any).run(taskBreakdown, subProjectDesign, workspaceOptions);
     }
 
     /**

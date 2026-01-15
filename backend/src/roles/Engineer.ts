@@ -627,8 +627,10 @@ export class Engineer extends Role {
       // 标记任务为进行中
       subtaskManager.markTaskInProgress(task.id);
 
-      // 必须从workspace读取标准文档：PRD、DESIGN、TASKS
+      // 从workspace读取文档：PRD和TASK文件夹中的任务文件
       const { WorkspaceManager } = await import('../utils/WorkspaceManager');
+      const fs = await import('fs/promises');
+      const path = await import('path');
 
       // 从workspace读取PRD文档
       const prdFromWorkspace = await WorkspaceManager.readAllFromWorkspace({
@@ -638,36 +640,80 @@ export class Engineer extends Role {
         workspacePath: workspaceOptions.workspacePath,
       });
 
-      // 从workspace读取DESIGN文档
-      const designFromWorkspace = await WorkspaceManager.readAllFromWorkspace({
-        applicationId: workspaceOptions.applicationId,
-        version: workspaceOptions.version,
-        documentType: 'DESIGN',
-        workspacePath: workspaceOptions.workspacePath,
+      // 从workspace读取TASK文件夹中的任务文件（按文件名顺序）
+      const taskDir = WorkspaceManager.getWorkspaceDir({
+        ...workspaceOptions,
+        documentType: 'TASK',
       });
 
-      // 从workspace读取TASKS文档（完整内容）
-      const taskBreakdownFromWorkspace = await WorkspaceManager.readAllFromWorkspace({
-        applicationId: workspaceOptions.applicationId,
-        version: workspaceOptions.version,
-        documentType: 'TASKS',
-        workspacePath: workspaceOptions.workspacePath,
-      });
+      let taskContent = '';
+      try {
+        // 读取TASK目录中的所有文件
+        const files = await fs.readdir(taskDir);
+        // 过滤出task_n.md文件并按文件名排序
+        const taskFiles = files
+          .filter(file => file.startsWith('task_') && file.endsWith('.md'))
+          .sort((a, b) => {
+            // 提取数字进行排序：task_1.md < task_2.md < ... < task_10.md
+            const numA = parseInt(a.match(/task_(\d+)\.md/)?.[1] || '0');
+            const numB = parseInt(b.match(/task_(\d+)\.md/)?.[1] || '0');
+            return numA - numB;
+          });
+
+        // 找到当前任务对应的文件
+        const taskNumber = parseInt(task.id.match(/\d+/)?.[0] || '0');
+        const currentTaskFile = taskFiles.find(file => {
+          const fileNum = parseInt(file.match(/task_(\d+)\.md/)?.[1] || '0');
+          return fileNum === taskNumber;
+        });
+
+        if (currentTaskFile) {
+          const taskFilePath = path.join(taskDir, currentTaskFile);
+          taskContent = await fs.readFile(taskFilePath, 'utf-8');
+          logger.info(`${this.profile} ExecuteSubtask: Loaded task file`, {
+            taskId: task.id,
+            fileName: currentTaskFile,
+            contentLength: taskContent.length,
+          });
+        } else {
+          logger.warn(`${this.profile} ExecuteSubtask: Task file not found`, {
+            taskId: task.id,
+            taskNumber,
+            availableFiles: taskFiles,
+          });
+        }
+      } catch (error: any) {
+        logger.warn(`${this.profile} ExecuteSubtask: Failed to read task directory`, {
+          taskDir,
+          error: error.message,
+        });
+      }
 
       // 优先使用workspace中的文档，如果没有则使用memory中的文档
       const prdMessages = this.rc.memory.getByAction('WritePRD');
       const prd = prdFromWorkspace || (prdMessages.length > 0 ? prdMessages[prdMessages.length - 1].content : '');
 
-      const designMessages = this.rc.memory.getByAction('WriteDesign');
-      const design = designFromWorkspace || (designMessages.length > 0 ? designMessages[designMessages.length - 1].content : '');
+      // 如果从文件系统读取失败，尝试从memory读取任务拆分文档
+      if (!taskContent) {
+        const breakdownMessages = this.rc.memory.getByAction('BreakdownTasks');
+        if (breakdownMessages.length > 0) {
+          // 从任务拆分文档中提取当前任务的内容
+          const breakdownContent = breakdownMessages[breakdownMessages.length - 1].content;
+          // 尝试提取当前任务的内容
+          const taskMatch = breakdownContent.match(new RegExp(`###\\s*任务\\s*${task.id}[^#]*`, 's'));
+          if (taskMatch) {
+            taskContent = taskMatch[0];
+          }
+        }
+      }
 
-      // 任务拆分文档优先使用workspace中的完整内容
-      const breakdownMessages = this.rc.memory.getByAction('BreakdownTasks');
-      const taskBreakdownContent = taskBreakdownFromWorkspace || (breakdownMessages.length > 0 ? breakdownMessages[breakdownMessages.length - 1].content : '');
+      // 验证必需文档：PRD和任务内容
+      if (!prd) {
+        logger.warn(`${this.profile} ExecuteSubtask: No PRD document found in workspace or memory`);
+      }
 
-      // 验证必需文档：DESIGN是必需的
-      if (!design) {
-        logger.warn(`${this.profile} ExecuteSubtask: No Design document found in workspace or memory, Design is required for code generation`);
+      if (!taskContent) {
+        logger.warn(`${this.profile} ExecuteSubtask: No task content found for task ${task.id}`);
         this.rc.todo = null;
         return null;
       }
@@ -678,15 +724,12 @@ export class Engineer extends Role {
         version: workspaceOptions.version,
         taskId: task.id,
         hasPRD: !!prd,
-        hasDesign: !!design,
-        hasTaskBreakdown: !!taskBreakdownContent,
+        hasTaskContent: !!taskContent,
         prdFromWorkspace: !!prdFromWorkspace,
-        designFromWorkspace: !!designFromWorkspace,
-        taskBreakdownFromWorkspace: !!taskBreakdownFromWorkspace,
       });
 
-      // 构建任务描述，强调任务来自 TASK_BREAKDOWN.md
-      const taskDescription = this.buildTaskDescription(task, taskBreakdownContent);
+      // 构建任务描述，直接使用任务文件内容
+      const taskDescription = this.buildTaskDescriptionFromFile(task, taskContent, prd);
 
       // 循环检测代码完整性，不限制最大尝试次数
       let attempt = 0;
@@ -707,8 +750,6 @@ export class Engineer extends Role {
         taskId: task.id,
         taskDescription: currentTaskDescription,
         prd: prd,
-        design: design,
-        taskBreakdown: taskBreakdownContent,
       });
 
       // ExecuteSubtask返回设计文档内容，现在需要调用WriteCode来生成代码
@@ -786,8 +827,8 @@ export class Engineer extends Role {
         const allCodeContent = accumulatedFiles.map(f => f.content).join('\n\n');
         const completenessCheck = checkCodeCompleteness(allCodeContent);
 
-        // 检测前后端代码完整性
-        const frontendBackendCheck = checkFrontendBackendCompleteness(accumulatedFiles, design);
+        // 检测前后端代码完整性（传入空字符串作为design，因为不再需要design）
+        const frontendBackendCheck = checkFrontendBackendCompleteness(accumulatedFiles, '');
 
         // 合并所有问题
         const allIssues = [...completenessCheck.issues, ...frontendBackendCheck.issues];
@@ -876,9 +917,9 @@ export class Engineer extends Role {
           currentTaskDescription = buildCodeCompletionPrompt(
             accumulatedFiles,
             lastIssues,
-            design,
+            '', // design (不再需要design，传入空字符串)
             prd,
-            taskBreakdownContent
+            taskContent // taskBreakdown
           );
 
           // 如果检测到占位符问题，特别强调
@@ -1022,6 +1063,27 @@ export class Engineer extends Role {
    */
   private buildTaskDescription(task: any, taskBreakdownContent?: string): string {
     return buildTaskDescriptionPrompt(task, taskBreakdownContent);
+  }
+
+  /**
+   * 从任务文件构建任务描述
+   */
+  private buildTaskDescriptionFromFile(task: any, taskContent: string, prd?: string): string {
+    let description = `# 任务执行说明\n\n`;
+    
+    if (prd) {
+      description += `## 产品需求文档（PRD）\n\n${prd}\n\n---\n\n`;
+    }
+    
+    description += `## 任务详情\n\n${taskContent}\n\n`;
+    
+    description += `## 执行要求\n\n`;
+    description += `1. 仔细阅读任务详情，理解任务的目标和要求\n`;
+    description += `2. 根据任务类型（${task.type}）实现相应的代码\n`;
+    description += `3. 确保代码符合验收标准\n`;
+    description += `4. 生成完整、可运行的代码，不要使用占位符\n`;
+    
+    return description;
   }
 }
 

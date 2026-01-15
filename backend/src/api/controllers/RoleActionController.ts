@@ -31,7 +31,6 @@ import {
     ImprovePRD,
     ImproveMRD,
     BreakdownTasks,
-    GenerateTask,
     ExecuteSubtask,
     RunCode,
     FixBug,
@@ -62,7 +61,6 @@ const ACTION_DISPLAY_NAMES: Record<string, string> = {
     // ProjectManager actions
     BreakdownTasks: '任务拆分',
     WriteSubProjectDesign: '子项目设计',
-    GenerateTask: '生成任务说明',
     SubProjectDesignReview: '子项目设计审查',
     CodeReview: '代码审查',
 
@@ -169,7 +167,6 @@ export class RoleActionController {
                 ImprovePRD,
                 ImproveMRD,
                 BreakdownTasks,
-                GenerateTask,
                 ExecuteSubtask,
                 RunCode,
                 FixBug,
@@ -308,7 +305,6 @@ export class RoleActionController {
                 CodeReview,
                 ImprovePRD,
                 BreakdownTasks,
-                GenerateTask,
                 ExecuteSubtask,
                 RunCode,
                 FixBug,
