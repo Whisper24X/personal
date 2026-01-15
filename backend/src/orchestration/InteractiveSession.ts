@@ -13,7 +13,7 @@ import { ProjectManager } from '../roles/ProjectManager';
 import { Engineer } from '../roles/Engineer';
 import { QAEngineer } from '../roles/QAEngineer';
 import { logger } from '../utils';
-import { WorkflowTracker } from './WorkflowTracker';
+import { StateManager } from './StateManager';
 import { SessionMessageHandler, MessageQueueItem } from './SessionMessageHandler';
 import { SessionWorkflowExecutor, WorkflowExecutorConfig } from './SessionWorkflowExecutor';
 
@@ -44,14 +44,20 @@ export class InteractiveSession {
   private isPaused: boolean = false;
   private userActionResolver: ((value: UserActionMessage) => void) | null = null;
 
-  // Workflow tracker for state management
-  private workflowTracker: WorkflowTracker;
+  // State manager for unified state management
+  private stateManager: StateManager;
 
   // Message handler for WebSocket and polling
   private messageHandler: SessionMessageHandler;
 
   // Workflow executor
   private workflowExecutor: SessionWorkflowExecutor | null = null;
+  
+  // Executor promise tracking for preventing concurrent execution
+  private executorPromise: Promise<void> | null = null;
+  
+  // Executor lock to prevent concurrent executor operations
+  private executorLock: Promise<void> | null = null;
 
   constructor(projectId: string, config: SessionConfig) {
     if (!projectId) {
@@ -74,6 +80,15 @@ export class InteractiveSession {
     ctx.set('projectId', projectId);
     this.team = new Team(ctx, false); // We'll handle interaction via WebSocket
 
+    // Initialize state manager
+    this.stateManager = new StateManager(
+      projectId,
+      this.team
+    );
+
+    // Store StateManager in context so Actions can access it
+    ctx.set('stateManager', this.stateManager);
+
     // Hire roles - 按照 PRD 文档定义的完整流程
     this.team.hire([
       new Salesperson(ctx),
@@ -84,15 +99,15 @@ export class InteractiveSession {
       new QAEngineer(ctx),
     ]);
 
-    // Initialize workflow tracker
-    this.workflowTracker = new WorkflowTracker(
+    // Initialize state manager
+    this.stateManager = new StateManager(
       projectId,
       this.team
     );
 
     // Initialize workflow in database
-    this.workflowTracker.initialize().catch((error) => {
-      logger.error(`InteractiveSession: Failed to initialize workflow tracker for project ${projectId}`, error);
+    this.stateManager.initialize().catch((error) => {
+      logger.error(`InteractiveSession: Failed to initialize state manager for project ${projectId}`, error);
     });
 
     // Initialize message handler
@@ -145,6 +160,30 @@ export class InteractiveSession {
       return;
     }
 
+    // Check if executor is already running (prevent page refresh from creating duplicate executor)
+    if (this.executorPromise) {
+      logger.warn(`InteractiveSession: Executor already running for project ${this.projectId}, skipping start`);
+      return;
+    }
+
+    // Check if there's an action running in database (prevent duplicate executor on page refresh)
+    try {
+      const runningState = await this.stateManager.getRunningState();
+      if (runningState.role && runningState.action) {
+        const { ActionStatus } = await import('@mind2build/shared');
+        const actionStatus = await this.stateManager.getActionStatus(runningState.role, runningState.action);
+        if (actionStatus === ActionStatus.RUNNING) {
+          logger.warn(`InteractiveSession: Action ${runningState.action} for role ${runningState.role} is already RUNNING for project ${this.projectId}, skipping start to prevent duplicate executor`);
+          return;
+        }
+      }
+    } catch (error: any) {
+      logger.warn(`InteractiveSession: Failed to check running state before start for project ${this.projectId}`, {
+        error: error.message,
+      });
+      // Continue with start if check fails
+    }
+
     this.isStarted = true;
 
     try {
@@ -164,16 +203,33 @@ export class InteractiveSession {
       this.workflowExecutor = new SessionWorkflowExecutor(
         this.projectId,
         this.team,
-        this.workflowTracker,
+        this.stateManager,
         this.messageHandler,
         executorConfig
       );
 
-      // Execute workflow
-      await this.workflowExecutor.execute();
+      // Execute workflow and track promise
+      this.executorPromise = this.workflowExecutor.execute().finally(() => {
+        // Clear executor promise when done
+        this.executorPromise = null;
+        this.workflowExecutor = null;
+      });
+
+      try {
+        await this.executorPromise;
+      } catch (error: any) {
+        // Check if this is a cancellation error (expected during reset)
+        if (error.message?.includes('cancelled') || error.message?.includes('Workflow execution cancelled')) {
+          logger.info(`InteractiveSession: Executor cancelled for project ${this.projectId} (this is expected during reset)`);
+          // Don't treat cancellation as an error - it's intentional
+          return;
+        }
+        // Re-throw other errors
+        throw error;
+      }
 
       // Clear running state when session completes
-      await this.workflowTracker.clearState();
+      await this.stateManager.clearRunningState();
 
       // Check if all workflow items are completed and update project status
       await this.checkAndUpdateProjectStatus();
@@ -191,9 +247,22 @@ export class InteractiveSession {
 
       logger.info(`InteractiveSession: Completed session for project ${this.projectId}`);
     } catch (error: any) {
+      // Check if this is a cancellation error (expected during reset)
+      if (error.message?.includes('cancelled') || error.message?.includes('Workflow execution cancelled')) {
+        logger.info(`InteractiveSession: Executor cancelled for project ${this.projectId} (this is expected during reset)`);
+        // Clear executor promise on cancellation
+        this.executorPromise = null;
+        this.workflowExecutor = null;
+        // Don't send error message for cancellation - it's intentional
+        return;
+      }
+
       logger.error(`InteractiveSession: Error in session for project ${this.projectId}`, error);
+      // Clear executor promise on error
+      this.executorPromise = null;
+      this.workflowExecutor = null;
       // Clear running state on error
-      await this.workflowTracker.clearState();
+      await this.stateManager.clearRunningState();
       this.sendMessage('error', {
         message: error.message || 'Unknown error occurred',
       });
@@ -209,7 +278,7 @@ export class InteractiveSession {
     }
 
     try {
-      const workflowItems = await this.workflowTracker.getWorkflowItems();
+      const workflowItems = await this.stateManager.getWorkflowItems();
 
       const hasWorkflowItems = workflowItems.length > 0;
       const completedCount = workflowItems.filter(item => item.status === 'completed').length;
@@ -357,7 +426,7 @@ export class InteractiveSession {
       }>;
     }>;
   } {
-    const workflowStructure = this.workflowTracker.getWorkflowStructure();
+    const workflowStructure = this.stateManager.getWorkflowStructure();
     return { roles: workflowStructure };
   }
 
@@ -369,8 +438,164 @@ export class InteractiveSession {
     role: string | null;
     action: string | null;
   }> {
-    const state = await this.workflowTracker.getCurrentState();
+    const state = await this.stateManager.getRunningState();
     return state;
+  }
+
+  /**
+   * Get state manager (for backward compatibility and external access)
+   */
+  getStateManager(): StateManager {
+    return this.stateManager;
+  }
+
+  /**
+   * Stop workflow executor if it's running
+   */
+  stopWorkflowExecutor(): void {
+    if (this.workflowExecutor) {
+      logger.info(`InteractiveSession: Stopping workflow executor for project ${this.projectId}`);
+      (this.workflowExecutor as any).cancel();
+      this.workflowExecutor = null;
+    }
+  }
+
+  /**
+   * Wait for executor to stop completely
+   * Returns a promise that resolves when executor stops or times out
+   */
+  private async waitForExecutorStop(timeoutMs: number = 5000): Promise<void> {
+    if (!this.executorPromise) {
+      return; // No executor running
+    }
+
+    logger.info(`InteractiveSession: Waiting for executor to stop for project ${this.projectId} (timeout: ${timeoutMs}ms)`);
+
+    try {
+      // Wait for executor promise to complete or timeout
+      await Promise.race([
+        this.executorPromise,
+        new Promise<void>((resolve) => {
+          setTimeout(() => {
+            logger.warn(`InteractiveSession: Executor stop timeout for project ${this.projectId}, forcing stop`);
+            resolve();
+          }, timeoutMs);
+        }),
+      ]);
+    } catch (error: any) {
+      // Executor may have thrown an error, that's okay
+      logger.debug(`InteractiveSession: Executor promise completed with error (expected): ${error.message}`);
+    }
+
+    // Clear executor promise and reference
+    this.executorPromise = null;
+    this.workflowExecutor = null;
+
+    logger.info(`InteractiveSession: Executor stopped for project ${this.projectId}`);
+  }
+
+  /**
+   * Restart workflow executor after reset
+   * Creates a new executor and starts it asynchronously
+   * This bypasses the isStarted check to allow restarting after reset
+   */
+  async restartExecutor(): Promise<void> {
+    // Wait for executor lock if another restart is in progress
+    if (this.executorLock) {
+      logger.info(`InteractiveSession: Waiting for executor lock for project ${this.projectId}`);
+      try {
+        await this.executorLock;
+      } catch (error: any) {
+        logger.warn(`InteractiveSession: Executor lock completed with error: ${error.message}`);
+      }
+    }
+
+    // Create executor lock
+    const lockPromise = (async () => {
+      try {
+        // Ensure old executor is stopped
+        this.stopWorkflowExecutor();
+
+        // Wait for old executor to completely stop
+        await this.waitForExecutorStop(5000);
+
+        // Check if executor is already running (double-check after wait)
+        if (this.executorPromise) {
+          logger.warn(`InteractiveSession: Executor still running after wait for project ${this.projectId}, skipping restart`);
+          return;
+        }
+
+        // Check if there's an action running in database
+        try {
+          const runningState = await this.stateManager.getRunningState();
+          if (runningState.role && runningState.action) {
+            const { ActionStatus } = await import('@mind2build/shared');
+            const actionStatus = await this.stateManager.getActionStatus(runningState.role, runningState.action);
+            if (actionStatus !== ActionStatus.RUNNING) {
+              logger.warn(`InteractiveSession: Action ${runningState.action} for role ${runningState.role} is not RUNNING for project ${this.projectId}, skipping restart`);
+              return;
+            }
+          } else {
+            logger.warn(`InteractiveSession: No running state found for project ${this.projectId}, skipping restart`);
+            return;
+          }
+        } catch (error: any) {
+          logger.warn(`InteractiveSession: Failed to check running state before restart for project ${this.projectId}`, {
+            error: error.message,
+          });
+          // Continue with restart if check fails
+        }
+
+        logger.info(`InteractiveSession: Restarting executor for project ${this.projectId}`);
+
+        // Create new workflow executor
+        const executorConfig: WorkflowExecutorConfig = {
+          projectId: this.projectId,
+          nRound: this.config.nRound,
+          idea: this.config.idea,
+        };
+        this.workflowExecutor = new SessionWorkflowExecutor(
+          this.projectId,
+          this.team,
+          this.stateManager,
+          this.messageHandler,
+          executorConfig
+        );
+
+        // Execute workflow asynchronously and track promise
+        this.executorPromise = this.workflowExecutor.execute().finally(() => {
+          // Clear executor promise when done
+          this.executorPromise = null;
+          this.workflowExecutor = null;
+        });
+
+        // Handle errors asynchronously (don't await - let it run in background)
+        this.executorPromise.catch((error: any) => {
+          logger.error(`InteractiveSession: Error in restarted executor for project ${this.projectId}`, error);
+          // Clear running state on error
+          this.stateManager.clearRunningState().catch((clearError: any) => {
+            logger.error(`InteractiveSession: Failed to clear running state after executor error`, clearError);
+          });
+          this.sendMessage('error', {
+            message: error.message || 'Unknown error occurred in restarted executor',
+          });
+        });
+
+        logger.info(`InteractiveSession: Executor restarted successfully for project ${this.projectId}`);
+      } finally {
+        // Clear executor lock
+        this.executorLock = null;
+      }
+    })();
+
+    this.executorLock = lockPromise;
+
+    // Don't await - let it run asynchronously
+    lockPromise.catch((error: any) => {
+      logger.error(`InteractiveSession: Failed to restart executor for project ${this.projectId}`, error);
+      this.executorLock = null;
+      this.workflowExecutor = null;
+    });
   }
 }
 

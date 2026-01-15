@@ -39,7 +39,12 @@ export class ArkLLM extends BaseLLM {
     /**
      * Chat completion using ARK API
      */
-    async acompletion(messages: any[]): Promise<ILLMResponse> {
+    async acompletion(messages: any[], abortSignal?: AbortSignal): Promise<ILLMResponse> {
+        // Check cancellation before starting
+        if (abortSignal?.aborted) {
+            throw new Error('LLM call was cancelled');
+        }
+        
         const startTime = Date.now();
         const promptLength = JSON.stringify(messages).length;
 
@@ -53,6 +58,11 @@ export class ArkLLM extends BaseLLM {
         try {
             const response = await retry(
                 async () => {
+                    // Check cancellation before each retry attempt
+                    if (abortSignal?.aborted) {
+                        throw new Error('LLM call was cancelled');
+                    }
+                    
                     try {
                         return await this.client.post('/chat/completions', {
                             model: this.config.model,
@@ -60,8 +70,15 @@ export class ArkLLM extends BaseLLM {
                             temperature: this.config.temperature || 0.7,
                             max_tokens: this.config.maxTokens || 32000,
                             top_p: this.config.topP || 0.7,
+                        }, {
+                            signal: abortSignal, // Pass abortSignal to axios
                         });
                     } catch (retryError: any) {
+                        // If cancelled, don't retry
+                        if (abortSignal?.aborted || retryError.name === 'AbortError' || retryError.message === 'LLM call was cancelled') {
+                            throw new Error('LLM call was cancelled');
+                        }
+                        
                         // 记录重试时的错误信息
                         if (retryError.code === 'ECONNABORTED' || retryError.message?.includes('timeout')) {
                             logger.warn('ArkLLM: Request timeout during retry', {
@@ -93,6 +110,11 @@ export class ArkLLM extends BaseLLM {
                 model: data.model || this.config.model,
             };
 
+            // Check cancellation after completion
+            if (abortSignal?.aborted) {
+                throw new Error('LLM call was cancelled');
+            }
+            
             const elapsedTime = Date.now() - startTime;
             logger.info('ArkLLM: Completion request successful', {
                 elapsedTime,
@@ -144,7 +166,7 @@ export class ArkLLM extends BaseLLM {
     /**
      * Stream completion (for future implementation)
      */
-    async *acompletionStream(messages: any[]): AsyncGenerator<string> {
+    async *acompletionStream(messages: any[], abortSignal?: AbortSignal): AsyncGenerator<string> {
         try {
             const response = await this.client.post('/chat/completions', {
                 model: this.config.model,

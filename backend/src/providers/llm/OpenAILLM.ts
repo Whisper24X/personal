@@ -27,10 +27,20 @@ export class OpenAILLM extends BaseLLM {
   /**
    * Chat completion using OpenAI API
    */
-  async acompletion(messages: any[]): Promise<ILLMResponse> {
+  async acompletion(messages: any[], abortSignal?: AbortSignal): Promise<ILLMResponse> {
+    // Check cancellation before starting
+    if (abortSignal?.aborted) {
+      throw new Error('LLM call was cancelled');
+    }
+    
     try {
       const completion = await retry(
         async () => {
+          // Check cancellation before each retry attempt
+          if (abortSignal?.aborted) {
+            throw new Error('LLM call was cancelled');
+          }
+          
           return await this.client.chat.completions.create({
             model: this.config.model,
             messages: messages,
@@ -42,6 +52,11 @@ export class OpenAILLM extends BaseLLM {
         3, // max attempts
         1000 // initial delay ms
       );
+      
+      // Check cancellation after completion
+      if (abortSignal?.aborted) {
+        throw new Error('LLM call was cancelled');
+      }
 
       const response: ILLMResponse = {
         content: completion.choices[0]?.message?.content || '',
@@ -72,7 +87,7 @@ export class OpenAILLM extends BaseLLM {
   /**
    * Stream completion (for future implementation)
    */
-  async *acompletionStream(messages: any[]): AsyncGenerator<string> {
+  async *acompletionStream(messages: any[], abortSignal?: AbortSignal): AsyncGenerator<string> {
     try {
       const stream = await this.client.chat.completions.create({
         model: this.config.model,
