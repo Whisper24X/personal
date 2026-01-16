@@ -8,7 +8,6 @@ import { IActionOutput } from '@mind2build/shared';
 import { logger, WorkspaceOptions, executeCommandSimple, CommandExecutorError } from '../utils';
 import { buildCursorCLIPrompt } from '../prompts/code';
 import * as fs from 'fs/promises';
-import * as path from 'path';
 
 export interface WriteCodeOptions extends WorkspaceOptions {
   // 继承WorkspaceOptions的所有选项
@@ -58,48 +57,116 @@ export class WriteCode extends BaseAction {
         constraintType: 'Cursor CLI Code Generation',
       });
       
-      // 构建cursor cli命令
-      // 使用 cursor-agent --print 在非交互模式下运行，不会打开Agent窗口
-      // 命令在版本目录（v1）运行，可以访问 DESIGN、PRD、TASK 等同级目录，代码生成到 CODE 子目录
-      // 转义提示词中的双引号，确保命令正确执行
-      // const escapedPrompt = systemPrompt.replace(/"/g, '\\"').replace(/\n/g, ' ');
-      const escapedPrompt = "执行/openspec-apply命令"
-      // const escapedPrompt = "读DESIGN目录下的DESIGN.md,PRD目录下的PRD.md,TASK目录TASK_BREAKDOWN.md,生成完整的代码"
-
-      const command = `cursor-agent --model composer-1 --print "${escapedPrompt}"`;
+      // 定义命令
+      const applyCommand = "执行/openspec-apply命令";
+      const checkCommand = "查看openspec目录下changes目录里面的task.md,告诉我里面的任务是否全部执行完成,给我返回:已完成或未完成，不要返回具体原因。";
       
-      logger.info('WriteCode: Executing Cursor CLI command with strong constraints', { 
+      // 循环执行，直到任务完成
+      const maxRetries = 10; // 最大重试次数
+      let isCompleted = false;
+      let retryCount = 0;
+      let allOutputs: string[] = [];
+      
+      logger.info('WriteCode: Starting code generation loop', { 
         cwd: workDir,
+        maxRetries,
       });
       
-      // 执行cursor cli命令（异步执行）
-      let stdout = '';
-      try {
-        stdout = await executeCommandSimple(command, {
-          cwd: workDir,
-          timeout: 3600000, // 60分钟超时（适用于生成整个项目）
+      while (!isCompleted && retryCount < maxRetries) {
+        retryCount++;
+        
+        logger.info(`WriteCode: Iteration ${retryCount}/${maxRetries} - Executing apply command`, {
+          command: applyCommand,
         });
-      } catch (execError) {
-        // 命令执行失败，但我们可能仍然想继续
-        const error = execError as CommandExecutorError;
-        logger.warn('WriteCode: Cursor CLI command failed', { 
-          message: error.message,
-          exitCode: error.exitCode,
+        
+        // 1. 执行 apply 命令
+        let applyOutput = '';
+        try {
+          const command = `cursor-agent --model composer-1 --print "${applyCommand}"`;
+          applyOutput = await executeCommandSimple(command, {
+            cwd: workDir,
+            timeout: 3600000, // 60分钟超时
+          });
+          logger.info(`WriteCode: Apply command completed (iteration ${retryCount})`, {
+            outputLength: applyOutput.length,
+          });
+        } catch (execError) {
+          const error = execError as CommandExecutorError;
+          logger.warn(`WriteCode: Apply command failed (iteration ${retryCount})`, { 
+            message: error.message,
+            exitCode: error.exitCode,
+          });
+          applyOutput = error.stdout || '';
+        }
+        
+        allOutputs.push(`=== Iteration ${retryCount} - Apply ===\n${applyOutput}`);
+        
+        // 2. 执行 check 命令
+        logger.info(`WriteCode: Iteration ${retryCount}/${maxRetries} - Executing check command`, {
+          command: checkCommand,
         });
-        stdout = error.stdout || '';
+        
+        let checkOutput = '';
+        try {
+          const command = `cursor-agent --model composer-1 --print "${checkCommand}"`;
+          checkOutput = await executeCommandSimple(command, {
+            cwd: workDir,
+            timeout: 300000, // 5分钟超时（检查命令应该很快）
+          });
+          logger.info(`WriteCode: Check command completed (iteration ${retryCount})`, {
+            outputLength: checkOutput.length,
+            output: checkOutput.substring(0, 200), // 记录前200字符
+          });
+        } catch (execError) {
+          const error = execError as CommandExecutorError;
+          logger.warn(`WriteCode: Check command failed (iteration ${retryCount})`, { 
+            message: error.message,
+            exitCode: error.exitCode,
+          });
+          checkOutput = error.stdout || '';
+        }
+        
+        allOutputs.push(`=== Iteration ${retryCount} - Check ===\n${checkOutput}`);
+        
+        // 3. 判断是否完成
+        // 检查输出中是否包含"已完成"
+        if (checkOutput.includes('已完成')) {
+          isCompleted = true;
+          logger.info(`WriteCode: Tasks completed successfully (iteration ${retryCount})`, {
+            totalIterations: retryCount,
+          });
+        } else {
+          logger.warn(`WriteCode: Tasks not completed yet (iteration ${retryCount})`, {
+            checkOutput: checkOutput.substring(0, 200),
+            willRetry: retryCount < maxRetries,
+          });
+        }
       }
       
-      logger.info('WriteCode: Cursor CLI execution completed', {
-        stdoutLength: stdout.length,
+      // 汇总输出
+      const stdout = allOutputs.join('\n\n');
+      
+      if (!isCompleted) {
+        logger.error('WriteCode: Max retries reached, tasks still not completed', {
+          maxRetries,
+          totalIterations: retryCount,
+        });
+      }
+      
+      logger.info('WriteCode: Code generation loop completed', {
+        isCompleted,
+        totalIterations: retryCount,
         workDir,
       });
       
       return {
-        content: `# Code Generation Completed\n\n## Cursor CLI Output:\n\n${stdout}`,
+        content: `# Code Generation ${isCompleted ? 'Completed' : 'Incomplete'}\n\n## Status: ${isCompleted ? '✅ All tasks completed' : '❌ Max retries reached'}\n\n## Total Iterations: ${retryCount}\n\n## Cursor CLI Output:\n\n${stdout}`,
         data: {
           type: 'code',
           workspaceDir: codeDir,
           cursorOutput: stdout,
+          isCompleted,
+          totalIterations: retryCount,
           timestamp: new Date().toISOString(),
         },
       };
