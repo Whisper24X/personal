@@ -930,6 +930,45 @@ ${reviewReport}
 `;
 }
 
+/**
+ * 构建单个章节改进提示词
+ * 用于分章节改进，避免 LLM 输出被截断
+ */
+export function buildPRDSectionImprovePrompt(
+  sectionContent: string,
+  sectionNumber: number,
+  sectionTitle: string,
+  sectionReview: string
+): string {
+  return `请根据以下审查建议，改进和完善PRD文档的第 ${sectionNumber} 章节：
+
+【当前章节内容】
+${sectionContent}
+
+【该章节的审查建议】
+${sectionReview}
+
+改进要求：
+1. **针对性改进**：根据审查建议改进该章节内容
+2. **保持章节标题**：必须保持 "## ${sectionNumber}. ${sectionTitle}" 作为章节标题
+3. **内容质量**：
+   - 补充缺失或不完整的内容
+   - 完善简略或模糊的描述
+   - 确保内容详细、具体、可执行
+   - 避免空洞、模糊或占位符内容
+4. **格式要求**：
+   - 使用Markdown格式
+   - 保持层级结构清晰
+   - 表格、清单必须完整填充
+
+输出要求：
+- 只输出改进后的该章节完整内容（包括章节标题）
+- 不要输出其他章节的内容
+- 不要添加额外的说明或注释
+- 确保解决了审查建议中提出的问题
+`;
+}
+
 export default {
   PRD_SYSTEM_PROMPT,
   PRD_TEMPLATE,
@@ -945,4 +984,5 @@ export default {
   buildPRDSectionAdjustPrompt,
   PRD_IMPROVE_SYSTEM_PROMPT,
   buildPRDImprovePrompt,
+  buildPRDSectionImprovePrompt,
 };

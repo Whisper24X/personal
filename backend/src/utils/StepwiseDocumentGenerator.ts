@@ -12,6 +12,7 @@ import * as fsSync from 'fs';
 import * as path from 'path';
 import { StateManager } from '../orchestration/StateManager';
 import { StepState } from '../orchestration/StepStateTracker';
+import { WorkspaceManager } from './WorkspaceManager';
 
 export interface Section {
   number: number;
@@ -47,6 +48,7 @@ export interface StepwiseGenerationConfig {
   workspaceDir: string;
   applicationId?: string;
   projectId?: string;
+  /** @deprecated 版本控制已改用 git，此参数被忽略 */
   version?: number;
 
   // StateManager配置（可选，用于步骤状态管理）
@@ -91,11 +93,22 @@ export class StepwiseDocumentGenerator {
       documentTitle: this.config.documentTitle,
       workspaceDir: this.config.workspaceDir,
       applicationId: this.config.applicationId,
-      version: this.config.version,
+      projectId: this.config.projectId,
       inputLength: input.length,
     });
 
     try {
+      // Step 0: 初始化工作空间（克隆或拉取最新模板）
+      // 这一步确保在写入任何文件之前，ainative-workspace 模板项目是最新的
+      if (this.config.applicationId && this.config.projectId) {
+        logger.info('StepwiseDocumentGenerator: Step 0 - Initializing workspace (clone or pull template)', logContext);
+        await WorkspaceManager.initWorkspace({
+          applicationId: this.config.applicationId,
+          projectId: this.config.projectId,
+          documentType: this.config.documentType,
+        });
+        logger.info('StepwiseDocumentGenerator: Workspace initialized successfully', logContext);
+      }
       // Step 1: 生成目录
       const step1Start = Date.now();
       logger.info('StepwiseDocumentGenerator: Step 1/7 - Generating outline', logContext);
@@ -124,10 +137,13 @@ export class StepwiseDocumentGenerator {
       if (this.config.sectionFilter) {
         const filteredSections = this.config.sectionFilter(parsedSections);
         if (filteredSections.length === 0) {
-          logger.warn('StepwiseDocumentGenerator: Section filter removed all sections, using parsed sections', {
+          // 如果过滤后为空，使用默认章节而不是原始解析的章节
+          logger.warn('StepwiseDocumentGenerator: Section filter removed all sections, using default sections', {
             ...logContext,
             parsedCount: parsedSections.length,
+            defaultCount: this.config.defaultSections.length,
           });
+          sections = this.config.defaultSections;
         } else {
           sections = filteredSections;
         }
@@ -285,24 +301,64 @@ export class StepwiseDocumentGenerator {
    */
   private parseSections(outline: string): Section[] {
     const sections: Section[] = [];
-    const lines = outline.split('\n');
+    
+    // 先清理 outline 中的代码块标记
+    // LLM 有时会将目录包裹在 ```markdown ... ``` 代码块中
+    let cleanedOutline = outline.trim();
+    // 移除开头的代码块标记
+    cleanedOutline = cleanedOutline.replace(/^```(?:markdown|md|text)?\s*\n?/i, '');
+    // 移除结尾的代码块标记
+    cleanedOutline = cleanedOutline.replace(/\n?```\s*$/, '');
+    
+    const lines = cleanedOutline.split('\n');
 
     for (const line of lines) {
-      const match = line.match(/^##\s+(\d+)\.\s+(.+)$/);
+      // 使用更宽松的正则表达式，支持多种格式变体
+      // 匹配格式：## 数字. 标题 或 ## 数字.标题（点后无空格）
+      const match = line.match(/^##\s*(\d+)\.\s*(.+?)$/);
       if (match) {
-        sections.push({
-          number: parseInt(match[1]),
-          title: match[2].trim(),
-        });
+        const sectionNumber = parseInt(match[1]);
+        const sectionTitle = match[2].trim();
+        // 避免重复添加相同编号的章节
+        if (!sections.some(s => s.number === sectionNumber)) {
+          sections.push({
+            number: sectionNumber,
+            title: sectionTitle,
+          });
+        }
       }
     }
 
-    // 如果没有解析到章节，使用默认章节
+    const logContext = this.getLogContext();
+    const defaultSectionCount = this.config.defaultSections.length;
+    const minSectionThreshold = Math.floor(defaultSectionCount * 0.7); // 至少需要 70% 的章节数量
+
+    // 如果解析出的章节数量不足（少于默认章节的 70%），使用默认章节
     if (sections.length === 0) {
-      const logContext = this.getLogContext();
       logger.warn('StepwiseDocumentGenerator: No sections parsed, using default sections', logContext);
       return this.config.defaultSections;
     }
+
+    if (sections.length < minSectionThreshold) {
+      logger.warn('StepwiseDocumentGenerator: Parsed sections count is too low, using default sections', {
+        ...logContext,
+        parsedCount: sections.length,
+        defaultCount: defaultSectionCount,
+        threshold: minSectionThreshold,
+        parsedSections: sections.map(s => `${s.number}. ${s.title}`),
+      });
+      return this.config.defaultSections;
+    }
+
+    // 按章节编号排序，确保顺序正确
+    sections.sort((a, b) => a.number - b.number);
+
+    logger.info('StepwiseDocumentGenerator: Sections parsed successfully', {
+      ...logContext,
+      parsedCount: sections.length,
+      defaultCount: defaultSectionCount,
+      sections: sections.map(s => `${s.number}. ${s.title}`),
+    });
 
     return sections;
   }
@@ -631,69 +687,24 @@ export class StepwiseDocumentGenerator {
   }
 
   /**
-   * Step 6: 改进各个章节（根据审核文档）
-   * 注意：此方法已移除，改进由角色通过消息机制管理
-   */
-
-  /**
-   * 从文档中提取各个章节内容
-   */
-  private extractSections(document: string, sections: Section[]): string[] {
-    const extracted: string[] = [];
-    const lines = document.split('\n');
-
-    for (let i = 0; i < sections.length; i++) {
-      const section = sections[i];
-      const sectionTitle = `## ${section.number}. ${section.title}`;
-      const nextSectionTitle = i < sections.length - 1
-        ? `## ${sections[i + 1].number}. ${sections[i + 1].title}`
-        : null;
-
-      // 查找当前章节的开始位置
-      let startIndex = -1;
-      for (let j = 0; j < lines.length; j++) {
-        if (lines[j].trim() === sectionTitle) {
-          startIndex = j;
-          break;
-        }
-      }
-
-      if (startIndex === -1) {
-        // 如果找不到章节，使用空内容
-        extracted.push('');
-        continue;
-      }
-
-      // 查找下一个章节的开始位置（或文档结束）
-      let endIndex = lines.length;
-      if (nextSectionTitle) {
-        for (let j = startIndex + 1; j < lines.length; j++) {
-          if (lines[j].trim() === nextSectionTitle) {
-            endIndex = j;
-            break;
-          }
-        }
-      }
-
-      // 提取章节内容
-      const sectionLines = lines.slice(startIndex, endIndex);
-      const sectionContent = sectionLines.join('\n').trim();
-      extracted.push(sectionContent);
-    }
-
-    return extracted;
-  }
-
-  /**
    * Step 7: 合并章节内容
+   * 简化版：直接追加每个章节的内容，不进行复杂的格式处理
    */
   private mergeSections(_outline: string, sectionContents: string[], sections: Section[]): string {
     const mergedParts: string[] = [];
+    const logContext = this.getLogContext();
 
     // 添加文档标题
-    mergedParts.push(`# ${this.config.documentTitle}\n`);
+    mergedParts.push(`# ${this.config.documentTitle}`);
 
-    // 合并所有章节
+    logger.info('StepwiseDocumentGenerator: Starting merge sections (simple append mode)', {
+      ...logContext,
+      sectionsCount: sections.length,
+      sectionContentsCount: sectionContents.length,
+      sections: sections.map(s => `${s.number}. ${s.title}`),
+    });
+
+    // 直接追加所有章节内容
     for (let i = 0; i < sections.length; i++) {
       const section = sections[i];
       let content = sectionContents[i] || '';
@@ -701,36 +712,37 @@ export class StepwiseDocumentGenerator {
       // 如果没有内容，使用占位符
       if (!content || content.trim() === '') {
         content = `## ${section.number}. ${section.title}\n\n[待补充]`;
+        logger.warn('StepwiseDocumentGenerator: Section content is empty, using placeholder', {
+          ...logContext,
+          sectionNumber: section.number,
+          sectionTitle: section.title,
+        });
       } else {
-        // 清理内容：移除开头的空白行
+        // 只进行简单的清理：移除首尾空白
         content = content.trim();
-
-        // 确保章节标题格式正确
-        const expectedTitle = `## ${section.number}. ${section.title}`;
-        if (content.startsWith('##')) {
-          // 如果已有章节标题，检查是否正确
-          const firstLine = content.split('\n')[0];
-          if (firstLine !== expectedTitle) {
-            // 替换为正确的标题
-            content = content.replace(/^##\s+\d+\.\s+.+/, expectedTitle);
-          }
-        } else {
-          // 如果没有章节标题，添加
-          content = `${expectedTitle}\n\n${content}`;
-        }
       }
 
+      // 直接追加章节内容
       mergedParts.push(content);
 
-      // 章节之间添加分隔（除了最后一个）
-      if (i < sections.length - 1) {
-        mergedParts.push('\n---\n');
-      }
+      logger.debug?.('StepwiseDocumentGenerator: Appended section', {
+        ...logContext,
+        sectionNumber: section.number,
+        sectionTitle: section.title,
+        contentLength: content.length,
+      });
     }
 
-    return mergedParts.join('\n\n');
-  }
+    // 使用双换行符连接所有部分
+    const result = mergedParts.join('\n\n');
+    logger.info('StepwiseDocumentGenerator: Merge sections completed', {
+      ...logContext,
+      totalLength: result.length,
+      partsCount: mergedParts.length,
+    });
 
+    return result;
+  }
 
   /**
    * 保存文件到 workspace
@@ -1004,7 +1016,7 @@ export class StepwiseDocumentGenerator {
 
 /**
  * 获取工作目录路径的通用函数
- * 新的目录结构：workspace/{applicationId}/{projectId}/v{version}/{documentType}/
+ * 新的目录结构：workspace/{applicationId}/{projectId}/ainative-workspace/docs/{documentType}/
  * applicationId 和 projectId 必须提供，不能使用 'default'，以防止不同应用/项目互相覆盖文件
  */
 export function getWorkspaceDir(
@@ -1012,7 +1024,9 @@ export function getWorkspaceDir(
   options?: {
     applicationId?: string;
     projectId?: string;
+    /** @deprecated 版本控制已改用 git，此参数被忽略 */
     version?: number;
+    /** @deprecated 使用环境变量 WORKSPACE_PATH 代替 */
     workspacePath?: string;
   }
 ): string {
@@ -1031,7 +1045,7 @@ export function getWorkspaceDir(
     }
   }
 
-  const workspaceRoot = options?.workspacePath || process.env.WORKSPACE_PATH || path.join(projectRoot, 'workspace');
+  const workspaceRoot = process.env.WORKSPACE_PATH || path.join(projectRoot, 'workspace');
   
   // applicationId 必须提供，不能使用 'default'
   if (!options?.applicationId) {
@@ -1043,7 +1057,6 @@ export function getWorkspaceDir(
   }
   const applicationId = options.applicationId;
   const projectId = options.projectId;
-  const version = options?.version || 1;
-  // 新的目录结构：workspace/{applicationId}/{projectId}/v{version}/{documentType}/
-  return path.join(workspaceRoot, applicationId, projectId, `v${version}`, documentType);
+  // 新的目录结构：workspace/{applicationId}/{projectId}/ainative-workspace/docs/{documentType}/
+  return path.join(workspaceRoot, applicationId, projectId, 'ainative-workspace', 'docs', documentType.toLowerCase());
 }
