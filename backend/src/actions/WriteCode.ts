@@ -5,7 +5,7 @@
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import { logger, WorkspaceOptions, executeCommandSimple, CommandExecutorError } from '../utils';
+import { logger, WorkspaceOptions, executeCommandSimple, CommandExecutorError, WorkspaceManager } from '../utils';
 import { buildCursorCLIPrompt } from '../prompts/code';
 import * as fs from 'fs/promises';
 
@@ -35,14 +35,10 @@ export class WriteCode extends BaseAction {
         throw new Error('WriteCode: projectId is required in options');
       }
       
-      // 获取 CODE 目录
-      const codeDir = this.getWorkspaceDir({ ...options, documentType: 'CODE' });
-      // 获取父目录（v1 目录，包含 DESIGN、PRD、TASK 等同级目录）
-      // const versionDir = path.dirname(codeDir); // 保留供后续使用
-      // 工作目录：暂时等于 codeDir，可以根据需要修改为 versionDir
-      const workDir = codeDir;
+      // 直接获取工作空间根目录 (ainative-workspace) - 代码将在此目录下生成
+      const workDir = WorkspaceManager.getProjectWorkspacePath(options);
       
-      // 确保 工作 目录存在
+      // 确保工作目录存在
       await fs.mkdir(workDir, { recursive: true });
       
       logger.info('WriteCode: Workspace directory prepared', { 
@@ -163,7 +159,7 @@ export class WriteCode extends BaseAction {
         content: `# Code Generation ${isCompleted ? 'Completed' : 'Incomplete'}\n\n## Status: ${isCompleted ? '✅ All tasks completed' : '❌ Max retries reached'}\n\n## Total Iterations: ${retryCount}\n\n## Cursor CLI Output:\n\n${stdout}`,
         data: {
           type: 'code',
-          workspaceDir: codeDir,
+          workspaceDir: workDir,
           cursorOutput: stdout,
           isCompleted,
           totalIterations: retryCount,
