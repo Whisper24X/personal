@@ -447,6 +447,10 @@ export class SessionWorkflowExecutor {
             }
         });
 
+        // Log workflow items summary
+        const stats = await this.stateChecker.getWorkflowStatistics();
+        logger.info(`SessionWorkflowExecutor: Workflow statistics - completed: ${stats.completed}/${stats.total}, pending: ${stats.pending}, running: ${stats.running}, failed: ${stats.failed}`);
+
         for (let i = 0; i < roles.length; i++) {
             const role = roles[i];
             const roleActions = role.actions.map((a: any) => a.name);
@@ -455,6 +459,9 @@ export class SessionWorkflowExecutor {
                 const actionKey = `${role.profile}:${action}`;
                 return !completedActions.has(actionKey);
             });
+
+            // Log each role's status
+            logger.info(`SessionWorkflowExecutor: Role ${role.profile} (index ${i}) - total actions: ${roleActions.length}, incomplete: ${incompleteActions.length}, incomplete actions: [${incompleteActions.join(', ')}]`);
 
             if (incompleteActions.length > 0) {
                 const watchSet = Array.from(role.rc.watch);
@@ -491,7 +498,7 @@ export class SessionWorkflowExecutor {
             }
         }
 
-        logger.info(`SessionWorkflowExecutor: All roles are completed, starting from beginning`);
+        logger.info(`SessionWorkflowExecutor: All roles checked, no incomplete roles found. Returning index 0 (first role)`);
         return 0;
     }
 
@@ -522,7 +529,7 @@ export class SessionWorkflowExecutor {
             }
 
             // Priority 2: Check if we should move to next role (after confirmation cleared)
-            const moveResult = await this.tryMoveToNextRole(roles);
+            const moveResult = await this.tryMoveToNextRole(roles, env);
             if (moveResult.moved) {
                 if (moveResult.completed) {
                     // Workflow completed
@@ -623,7 +630,8 @@ export class SessionWorkflowExecutor {
      * 2. All workflow items are completed (no pending or running items)
      */
     private async tryMoveToNextRole(
-        roles: any[]
+        roles: any[],
+        env: Environment
     ): Promise<{
         moved: boolean;
         nextRoleIndex?: number;
@@ -661,29 +669,52 @@ export class SessionWorkflowExecutor {
             return { moved: false };
         }
 
-        const nextRoleIndex = (currentRoleIndexInList + 1) % roles.length;
-        const isLastRole = currentRoleIndexInList === roles.length - 1;
-        const isRoundComplete = isLastRole && nextRoleIndex === 0;
-
-        // Priority: Check exit conditions first (regardless of confirmation status)
-        // Exit conditions:
-        // 1. Last role has completed all its actions
-        // 2. All workflow items are completed (no pending or running items)
-        if (isRoundComplete) {
-            // Verify this is the last role and it has completed all actions
-            const lastRoleAllCompleted = await this.stateChecker.areAllRoleActionsCompleted(currentRole);
-
-            if (lastRoleAllCompleted) {
-                // Last role has completed all actions, check if workflow should be completed
-                const shouldComplete = await this.stateChecker.shouldCompleteWorkflow(currentRole, roles);
-
-                if (shouldComplete) {
-                    const stats = await this.stateChecker.getWorkflowStatistics();
-                    logger.info(`SessionWorkflowExecutor: Exit conditions met - Last role (${currentRole}) completed all actions, and all workflow items completed (${stats.completed}/${stats.total}), marking project as completed`);
-                    await this.checkAndMarkProjectCompleted(currentRole, roles);
-                    await this.stateManager.clearRunningState();
-                    return { moved: true, completed: true };
+        // Special handling for idle state (current action is null)
+        if (currentState.action === null) {
+            // Check if current role has completed all actions
+            const allCompleted = await this.stateChecker.areAllRoleActionsCompleted(currentRole);
+            
+            if (allCompleted) {
+                logger.info(`SessionWorkflowExecutor: Current role ${currentRole} is idle and all actions completed, finding next incomplete role`);
+                
+                // Find next incomplete role
+                const nextRoleIndex = await this.findNextIncompleteRole(roles, env);
+                
+                // Check if all roles are completed
+                const stats = await this.stateChecker.getWorkflowStatistics();
+                const allRolesCompleted = stats.completed === stats.total && stats.pending === 0 && stats.running === 0;
+                
+                if (allRolesCompleted) {
+                    // All workflow items are completed
+                    const shouldComplete = await this.stateChecker.shouldCompleteWorkflow(currentRole, roles);
+                    
+                    if (shouldComplete) {
+                        logger.info(`SessionWorkflowExecutor: All roles completed (${stats.completed}/${stats.total}), marking project as completed`);
+                        await this.checkAndMarkProjectCompleted(currentRole, roles);
+                        await this.stateManager.clearRunningState();
+                        return { moved: true, completed: true };
+                    }
                 }
+                
+                // Check if the next role found actually has incomplete actions
+                const nextRole = roles[nextRoleIndex];
+                const nextRoleIncomplete = await this.hasIncompleteActions(nextRole);
+                
+                if (!nextRoleIncomplete) {
+                    logger.warn(`SessionWorkflowExecutor: Next role (${nextRole?.profile}) has no incomplete actions, but workflow not completed`);
+                    await this.stateManager.clearRunningState();
+                    return { moved: false };
+                }
+                
+                // Move to next incomplete role
+                await this.stateManager.clearRunningState();
+                logger.info(`SessionWorkflowExecutor: Moving from idle role ${currentRole} to next incomplete role ${nextRole.profile}`);
+                this.messageHandler.sendMessage('progress', {
+                    message: `${currentRole} completed, moving to ${nextRole.profile}`,
+                    totalCost: this.team.getCostReport().totalCost,
+                });
+                
+                return { moved: true, nextRoleIndex };
             }
         }
 
@@ -693,26 +724,57 @@ export class SessionWorkflowExecutor {
             return { moved: false };
         }
 
-        // Move to next role
-        if (isRoundComplete) {
-            // Last role hasn't completed all actions yet, continue workflow
-            logger.info(`SessionWorkflowExecutor: Last role (${currentRole}) hasn't completed all actions yet, continuing workflow`);
-            await this.stateManager.clearRunningState();
-            this.messageHandler.sendMessage('progress', {
-                message: `${currentRole} continuing workflow`,
-                totalCost: this.team.getCostReport().totalCost,
-            });
-            return { moved: true, nextRoleIndex };
+        // Find next incomplete role instead of simple round-robin
+        const nextRoleIndex = await this.findNextIncompleteRole(roles, env);
+        
+        // Check if all roles are completed
+        const stats = await this.stateChecker.getWorkflowStatistics();
+        const allRolesCompleted = stats.completed === stats.total && stats.pending === 0 && stats.running === 0;
+        
+        if (allRolesCompleted) {
+            // All workflow items are completed, check if workflow should be completed
+            const shouldComplete = await this.stateChecker.shouldCompleteWorkflow(currentRole, roles);
+            
+            if (shouldComplete) {
+                logger.info(`SessionWorkflowExecutor: All roles completed (${stats.completed}/${stats.total}), marking project as completed`);
+                await this.checkAndMarkProjectCompleted(currentRole, roles);
+                await this.stateManager.clearRunningState();
+                return { moved: true, completed: true };
+            }
         }
 
-        // Move to next role
+        // Check if the next role found actually has incomplete actions
+        const nextRole = roles[nextRoleIndex];
+        const nextRoleIncomplete = await this.hasIncompleteActions(nextRole);
+        
+        if (!nextRoleIncomplete) {
+            logger.warn(`SessionWorkflowExecutor: Next role (${nextRole?.profile}) has no incomplete actions, but workflow not completed`);
+            await this.stateManager.clearRunningState();
+            return { moved: false };
+        }
+
+        // Move to next incomplete role
         await this.stateManager.clearRunningState();
         this.messageHandler.sendMessage('progress', {
-            message: `${currentRole} completed`,
+            message: `${currentRole} completed, moving to ${nextRole.profile}`,
             totalCost: this.team.getCostReport().totalCost,
         });
 
         return { moved: true, nextRoleIndex };
+    }
+
+    /**
+     * Check if a role has incomplete actions
+     */
+    private async hasIncompleteActions(role: any): Promise<boolean> {
+        const workflowItems = await this.stateManager.getWorkflowItems();
+        const roleItems = workflowItems.filter(item => item.role === role.profile);
+        const incompleteItems = roleItems.filter(item => 
+            item.status === ActionStatus.PENDING || 
+            item.status === ActionStatus.RUNNING ||
+            item.status === ActionStatus.FAILED
+        );
+        return incompleteItems.length > 0;
     }
 
 
