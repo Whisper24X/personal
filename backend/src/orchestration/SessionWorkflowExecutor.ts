@@ -97,22 +97,19 @@ class WorkflowStateChecker {
             return false;
         }
 
-        const pendingCount = workflowItems.filter(item => item.status === 'pending').length;
-        const runningCount = workflowItems.filter(item => item.status === 'running').length;
-        const completedCount = workflowItems.filter(item => item.status === 'completed').length;
-        const totalCount = workflowItems.length;
+        const stats = await this.stateManager.getWorkflowStatistics();
 
         const allItemsCompleted = (
-            pendingCount === 0 &&
-            runningCount === 0 &&
-            completedCount > 0 &&
-            completedCount === totalCount
+            stats.pending === 0 &&
+            stats.running === 0 &&
+            stats.completed > 0 &&
+            stats.completed === stats.total
         );
 
         if (allItemsCompleted) {
-            logger.info(`WorkflowStateChecker: Last role ${lastRole} completed all actions, and all workflow items are completed (${completedCount}/${totalCount}), workflow can be completed`);
+            logger.info(`WorkflowStateChecker: Last role ${lastRole} completed all actions, and all workflow items are completed (${stats.completed}/${stats.total}), workflow can be completed`);
         } else {
-            logger.info(`WorkflowStateChecker: Last role ${lastRole} completed, but not all workflow items finished (pending: ${pendingCount}, running: ${runningCount}, completed: ${completedCount}/${totalCount}), cannot complete workflow`);
+            logger.info(`WorkflowStateChecker: Last role ${lastRole} completed, but not all workflow items finished (pending: ${stats.pending}, running: ${stats.running}, completed: ${stats.completed}/${stats.total}), cannot complete workflow`);
         }
 
         return allItemsCompleted;
@@ -134,20 +131,103 @@ class WorkflowStateChecker {
 
     /**
      * Get workflow items statistics
+     * Uses StateManager's efficient single-pass calculation
      */
     async getWorkflowStatistics(): Promise<{
         pending: number;
         running: number;
         completed: number;
+        failed: number;
         total: number;
     }> {
+        return await this.stateManager.getWorkflowStatistics();
+    }
+
+    /**
+     * Check if role has pending actions that exceeded retry limit
+     * Returns information about pending actions with retry_count >= 3
+     */
+    async hasPendingActionsExceededRetryLimit(role: string): Promise<{
+        hasExceeded: boolean;
+        exceededActions: Array<{ action: string; retry_count: number }>;
+    }> {
         const workflowItems = await this.stateManager.getWorkflowItems();
+        const roleItems = workflowItems.filter(item => item.role === role);
+        
+        // Check both pending and failed actions
+        const pendingItems = roleItems.filter(item => item.status === ActionStatus.PENDING);
+        const failedItems = roleItems.filter(item => item.status === ActionStatus.FAILED);
+        
+        const exceededActions: Array<{ action: string; retry_count: number }> = [];
+        
+        // Check pending items
+        for (const item of pendingItems) {
+            const retryCount = item.retry_count || 0;
+            if (retryCount >= 3) {
+                exceededActions.push({
+                    action: item.action,
+                    retry_count: retryCount,
+                });
+            }
+        }
+        
+        // Check failed items (for completeness, though failed actions usually have exceeded retry limit)
+        for (const item of failedItems) {
+            const retryCount = item.retry_count || 0;
+            if (retryCount >= 3) {
+                exceededActions.push({
+                    action: item.action,
+                    retry_count: retryCount,
+                });
+            }
+        }
+
         return {
-            pending: workflowItems.filter(item => item.status === 'pending').length,
-            running: workflowItems.filter(item => item.status === 'running').length,
-            completed: workflowItems.filter(item => item.status === 'completed').length,
-            total: workflowItems.length,
+            hasExceeded: exceededActions.length > 0,
+            exceededActions,
         };
+    }
+
+    /**
+     * Get first retryable action (pending or failed) with retry_count < 3 for retry
+     * Returns action with its current status
+     */
+    async getFirstRetryablePendingAction(role: string): Promise<{ action: string; retry_count: number; status: ActionStatus } | null> {
+        const workflowItems = await this.stateManager.getWorkflowItems();
+        const roleItems = workflowItems.filter(item => item.role === role);
+        
+        // Get both pending and failed actions
+        const pendingItems = roleItems.filter(item => item.status === ActionStatus.PENDING);
+        const failedItems = roleItems.filter(item => item.status === ActionStatus.FAILED);
+        
+        // Combine and sort by action_order, prioritizing pending over failed
+        const allRetryableItems = [
+            ...pendingItems.map(item => ({ ...item, priority: 0 })), // PENDING has priority 0
+            ...failedItems.map(item => ({ ...item, priority: 1 })), // FAILED has priority 1
+        ];
+        
+        // Sort by priority first (pending before failed), then by action_order
+        const sortedItems = allRetryableItems.sort((a, b) => {
+            if (a.priority !== b.priority) {
+                return a.priority - b.priority;
+            }
+            const orderA = a.action_order ?? 999;
+            const orderB = b.action_order ?? 999;
+            return orderA - orderB;
+        });
+
+        for (const item of sortedItems) {
+            const retryCount = item.retry_count || 0;
+            if (retryCount < 3) {
+                return {
+                    action: item.action,
+                    retry_count: retryCount,
+                    status: item.status,
+                };
+            }
+        }
+
+        return null;
     }
 }
 
@@ -468,8 +548,20 @@ export class SessionWorkflowExecutor {
                 throw new Error('SessionWorkflowExecutor: Workflow execution stopped due to reset');
             }
             
+            // Check if workflow was cancelled due to exceeded retry limit
+            if (this.isCancelled) {
+                logger.info(`SessionWorkflowExecutor: Workflow was cancelled due to exceeded retry limit, stopping execution loop`);
+                break;
+            }
+            
             const processResult = await this.processRole(roles, env, roleIndex, iteration);
             this.checkCancellation();
+            
+            // Check again after processing role (in case markRoleAsIdle cancelled the workflow)
+            if (this.isCancelled) {
+                logger.info(`SessionWorkflowExecutor: Workflow was cancelled after processing role, stopping execution loop`);
+                break;
+            }
             
             if (processResult.shouldContinueWithSameRole) {
                 // Continue with same role (has more actions)
@@ -537,6 +629,12 @@ export class SessionWorkflowExecutor {
         nextRoleIndex?: number;
         completed?: boolean;
     }> {
+        // Check if workflow was cancelled due to exceeded retry limit
+        if (this.isCancelled) {
+            logger.info(`SessionWorkflowExecutor: Workflow was cancelled due to exceeded retry limit, cannot move to next role`);
+            return { moved: false };
+        }
+        
         const currentState = await this.stateManager.getRunningState();
         
         // If running state is cleared (last action completed), get role from confirmation status
@@ -546,6 +644,13 @@ export class SessionWorkflowExecutor {
             if (confirmationStatus.role) {
                 currentRole = confirmationStatus.role;
                 logger.info(`SessionWorkflowExecutor: Running state is null, using confirmation role: ${currentRole}`);
+                
+                // Check if this role has pending actions that exceeded retry limit
+                const exceededRetryCheck = await this.stateChecker.hasPendingActionsExceededRetryLimit(currentRole);
+                if (exceededRetryCheck.hasExceeded) {
+                    logger.info(`SessionWorkflowExecutor: Role ${currentRole} has pending actions that exceeded retry limit, cannot move to next role`);
+                    return { moved: false };
+                }
             } else {
                 return { moved: false };
             }
@@ -689,7 +794,28 @@ export class SessionWorkflowExecutor {
             const isTodoCompleted = await this.stateChecker.isActionCompleted(role.profile, todoAction);
 
             if (isTodoCompleted) {
-                logger.info(`SessionWorkflowExecutor: Role ${role.profile} todo action ${todoAction} is already completed, marking as idle`);
+                logger.info(`SessionWorkflowExecutor: Role ${role.profile} todo action ${todoAction} is already completed, checking for retryable pending/failed actions`);
+                
+                // Check if there are pending or failed actions that can be retried
+                const retryableAction = await this.stateChecker.getFirstRetryablePendingAction(role.profile);
+                if (retryableAction) {
+                    logger.info(`SessionWorkflowExecutor: Found retryable action ${retryableAction.action} (status: ${retryableAction.status}, retry_count: ${retryableAction.retry_count}), setting as todo`);
+                    
+                    // If action is failed, reset it to pending first
+                    if (retryableAction.status === ActionStatus.FAILED) {
+                        logger.info(`SessionWorkflowExecutor: Resetting failed action ${retryableAction.action} to pending status`);
+                        await this.stateManager.setActionStatus(role.profile, retryableAction.action, ActionStatus.PENDING);
+                    }
+                    
+                    // Set the retryable action as todo
+                    const action = role.actions.find((a: BaseAction) => a.name === retryableAction.action);
+                    if (action) {
+                        role.rc.todo = action;
+                        await this.syncRoleContextToDatabase(role);
+                        return { shouldContinueWithSameRole: true, requiresConfirmation: false, isIdle: false };
+                    }
+                }
+                
                 await this.markRoleAsIdle(role);
                 return { shouldContinueWithSameRole: false, requiresConfirmation: true, isIdle: true };
             }
@@ -697,7 +823,28 @@ export class SessionWorkflowExecutor {
 
         // Check if role has no todo
         if (!hasTodo || !role.rc.todo) {
-            logger.info(`SessionWorkflowExecutor: Role ${role.profile} has no todo after think(), marking as idle`);
+            logger.info(`SessionWorkflowExecutor: Role ${role.profile} has no todo after think(), checking for retryable pending/failed actions`);
+            
+            // Check if there are pending or failed actions that can be retried
+            const retryableAction = await this.stateChecker.getFirstRetryablePendingAction(role.profile);
+            if (retryableAction) {
+                logger.info(`SessionWorkflowExecutor: Found retryable action ${retryableAction.action} (status: ${retryableAction.status}, retry_count: ${retryableAction.retry_count}), setting as todo`);
+                
+                // If action is failed, reset it to pending first
+                if (retryableAction.status === ActionStatus.FAILED) {
+                    logger.info(`SessionWorkflowExecutor: Resetting failed action ${retryableAction.action} to pending status`);
+                    await this.stateManager.setActionStatus(role.profile, retryableAction.action, ActionStatus.PENDING);
+                }
+                
+                // Set the retryable action as todo
+                const action = role.actions.find((a: BaseAction) => a.name === retryableAction.action);
+                if (action) {
+                    role.rc.todo = action;
+                    await this.syncRoleContextToDatabase(role);
+                    return { shouldContinueWithSameRole: true, requiresConfirmation: false, isIdle: false };
+                }
+            }
+            
             await this.markRoleAsIdle(role);
             return { shouldContinueWithSameRole: false, requiresConfirmation: true, isIdle: true };
         }
@@ -707,7 +854,7 @@ export class SessionWorkflowExecutor {
 
     /**
      * Mark role as idle
-     * Checks if role has failed actions before setting confirmation required
+     * Checks if role has failed actions or exceeded retry limit before setting confirmation required
      * to avoid duplicate confirmation dialogs
      */
     private async markRoleAsIdle(role: any): Promise<void> {
@@ -715,6 +862,27 @@ export class SessionWorkflowExecutor {
         await this.stateManager.setRunningState(role.profile, null);
 
         if (await this.stateChecker.isConfirmationBlocking()) {
+            return;
+        }
+
+        // Check if role has pending actions that exceeded retry limit
+        const exceededRetryCheck = await this.stateChecker.hasPendingActionsExceededRetryLimit(role.profile);
+        if (exceededRetryCheck.hasExceeded) {
+            logger.error(`SessionWorkflowExecutor: Role ${role.profile} has pending actions that exceeded retry limit, ending workflow`, {
+                projectId: this.projectId,
+                role: role.profile,
+                exceededActions: exceededRetryCheck.exceededActions,
+            });
+            
+            // End workflow by cancelling executor
+            this.cancel();
+            
+            // Set error confirmation status
+            await this.stateManager.setConfirmationRequired(role.profile);
+            
+            // Send error confirmation message
+            this.sendIdleConfirmation(role, exceededRetryCheck.exceededActions);
+            
             return;
         }
 
@@ -774,7 +942,21 @@ export class SessionWorkflowExecutor {
         }
 
         try {
-            const message = await role.act();
+            // Add timeout for action execution
+            const ACTION_TIMEOUT_MS = process.env.ACTION_TIMEOUT_MINUTES
+                ? parseInt(process.env.ACTION_TIMEOUT_MINUTES, 10) * 60 * 1000
+                : 10 * 60 * 1000; // Default 10 minutes
+
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => {
+                    reject(new Error(`Action ${actionName || 'unknown'} execution timeout after ${ACTION_TIMEOUT_MS}ms`));
+                }, ACTION_TIMEOUT_MS);
+            });
+
+            const actionPromise = role.act();
+
+            // Race between action execution and timeout
+            const message = await Promise.race([actionPromise, timeoutPromise]);
             
             if (actionName) {
                 await this.stateManager.onActionComplete(role.profile, actionName, message);
@@ -801,6 +983,18 @@ export class SessionWorkflowExecutor {
 
             return message;
         } catch (error: any) {
+            // Handle timeout error specifically
+            if (error.message?.includes('timeout')) {
+                logger.error(`SessionWorkflowExecutor: Action ${actionName || 'unknown'} timed out`, {
+                    projectId: this.projectId,
+                    role: role.profile,
+                    action: actionName,
+                    timeoutMs: process.env.ACTION_TIMEOUT_MINUTES
+                        ? parseInt(process.env.ACTION_TIMEOUT_MINUTES, 10) * 60 * 1000
+                        : 10 * 60 * 1000,
+                });
+            }
+
             // Handle action execution error
             if (actionName) {
                 const retryResult = await this.stateManager.onActionError(role.profile, actionName, error);
@@ -958,14 +1152,28 @@ export class SessionWorkflowExecutor {
 
     /**
      * Send idle confirmation message
+     * @param role - The role that is idle
+     * @param exceededActions - Optional array of actions that exceeded retry limit
      */
-    private sendIdleConfirmation(role: any): void {
+    private sendIdleConfirmation(role: any, exceededActions?: Array<{ action: string; retry_count: number }>): void {
         const newsCauseBys = role.rc.news.map((msg: any) => msg.causeBy).join(', ');
         const watchSet = Array.from(role.rc.watch).join(', ');
+        
+        let content: string;
+        
+        if (exceededActions && exceededActions.length > 0) {
+            // Error message for exceeded retry limit
+            const actionList = exceededActions.map(a => `- ${a.action} (重试次数: ${a.retry_count})`).join('\n');
+            content = `**${role.profile} 工作流错误**\n\n⚠️ 以下 actions 超过最大重试次数（3次），工作流已终止：\n\n${actionList}\n\n请检查并修复问题后重新开始工作流。`;
+        } else {
+            // Normal idle message
+            content = `**${role.profile} 状态检查**\n\n当前 ${role.profile} 没有需要执行的任务。\n\n- 已观察的消息数: ${role.rc.news.length}\n- 消息类型: ${newsCauseBys || '无'}\n- 待办任务: ${role.rc.todo ? role.rc.todo.name : '无'}\n- 关注的动作: ${watchSet || '无'}\n\n可以继续下一步，让其他角色继续工作。`;
+        }
+        
         this.messageHandler.sendMessage('confirmation_required', {
             role: role.profile,
             action: 'idle',
-            content: `**${role.profile} 状态检查**\n\n当前 ${role.profile} 没有需要执行的任务。\n\n- 已观察的消息数: ${role.rc.news.length}\n- 消息类型: ${newsCauseBys || '无'}\n- 待办任务: ${role.rc.todo ? role.rc.todo.name : '无'}\n- 关注的动作: ${watchSet || '无'}\n\n可以继续下一步，让其他角色继续工作。`,
+            content,
             outputFiles: [],
         });
     }

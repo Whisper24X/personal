@@ -184,7 +184,7 @@ export class InteractiveSession {
           // Configure thresholds from environment variables or use defaults
           const STALE_ACTION_THRESHOLD_MS = process.env.STALE_ACTION_THRESHOLD_MINUTES
             ? parseInt(process.env.STALE_ACTION_THRESHOLD_MINUTES, 10) * 60 * 1000
-            : 30 * 60 * 1000; // Default 30 minutes
+            : 5 * 60 * 1000; // Default 5 minutes (changed from 30 minutes for faster recovery)
           
           const ORPHANED_EXECUTOR_THRESHOLD_MS = process.env.ORPHANED_EXECUTOR_THRESHOLD_MINUTES
             ? parseInt(process.env.ORPHANED_EXECUTOR_THRESHOLD_MINUTES, 10) * 60 * 1000
@@ -385,32 +385,26 @@ export class InteractiveSession {
     }
 
     try {
-      const workflowItems = await this.stateManager.getWorkflowItems();
-
-      const hasWorkflowItems = workflowItems.length > 0;
-      const completedCount = workflowItems.filter(item => item.status === 'completed').length;
-      const pendingCount = workflowItems.filter(item => item.status === 'pending').length;
-      const runningCount = workflowItems.filter(item => item.status === 'running').length;
-      const totalCount = workflowItems.length;
+      const stats = await this.stateManager.getWorkflowStatistics();
 
       // Only mark as completed if:
       // 1. There are workflow items
       // 2. No pending or running items
       // 3. All items are completed (completedCount === totalCount)
-      const shouldMarkCompleted = hasWorkflowItems &&
-        pendingCount === 0 &&
-        runningCount === 0 &&
-        completedCount > 0 &&
-        completedCount === totalCount;
+      const shouldMarkCompleted = stats.total > 0 &&
+        stats.pending === 0 &&
+        stats.running === 0 &&
+        stats.completed > 0 &&
+        stats.completed === stats.total;
 
       if (shouldMarkCompleted) {
-        logger.info(`InteractiveSession: All workflow items completed (${completedCount}/${totalCount}), marking project ${this.projectId} as completed`);
+        logger.info(`InteractiveSession: All workflow items completed (${stats.completed}/${stats.total}), marking project ${this.projectId} as completed`);
         const { ProjectRepository } = await import('../database/repositories/ProjectRepository');
         const projectRepo = new ProjectRepository();
         await projectRepo.markCompleted(this.projectId);
         logger.info(`InteractiveSession: Project ${this.projectId} marked as completed`);
       } else {
-        logger.info(`InteractiveSession: Workflow not fully completed (${completedCount}/${totalCount} completed, ${pendingCount} pending, ${runningCount} running), project status not updated`);
+        logger.info(`InteractiveSession: Workflow not fully completed (${stats.completed}/${stats.total} completed, ${stats.pending} pending, ${stats.running} running), project status not updated`);
       }
     } catch (error: any) {
       logger.error(`InteractiveSession: Failed to update project status for ${this.projectId}`, {

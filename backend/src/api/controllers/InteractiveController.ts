@@ -575,6 +575,94 @@ export class InteractiveController {
     }
 
     /**
+     * Recover from stale or failed actions
+     * Automatically detects and resets stale/failed actions to allow workflow continuation
+     */
+    static async recoverFromStaleActions(req: Request, res: Response) {
+        try {
+            const { projectId } = req.params;
+            const session = await getOrRestoreSession(projectId);
+
+            if (!session) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Session not found',
+                });
+            }
+
+            const stateManager = session.getStateManager();
+            const workflowItems = await stateManager.getWorkflowItems();
+
+            // Detect stale actions (RUNNING for too long)
+            const STALE_THRESHOLD_MS = process.env.STALE_ACTION_THRESHOLD_MINUTES
+                ? parseInt(process.env.STALE_ACTION_THRESHOLD_MINUTES, 10) * 60 * 1000
+                : 5 * 60 * 1000; // Default 5 minutes
+            const now = Date.now();
+            const runningState = await stateManager.getRunningStateWithTimestamp();
+
+            let recoveredActions: Array<{ role: string; action: string; reason: string }> = [];
+
+            // Check if current running action is stale
+            if (runningState.role && runningState.action && runningState.updatedAt) {
+                const runningDuration = now - runningState.updatedAt.getTime();
+                if (runningDuration > STALE_THRESHOLD_MS) {
+                    const { ActionStatus } = await import('@mind2build/shared');
+                    await stateManager.setActionStatus(
+                        runningState.role,
+                        runningState.action,
+                        ActionStatus.FAILED
+                    );
+                    await stateManager.clearRunningState();
+                    recoveredActions.push({
+                        role: runningState.role,
+                        action: runningState.action,
+                        reason: 'stale_running',
+                    });
+                }
+            }
+
+            // Check for failed actions that can be retried
+            const { ActionStatus } = await import('@mind2build/shared');
+            const failedItems = workflowItems.filter(item => item.status === ActionStatus.FAILED);
+            for (const item of failedItems) {
+                const retryCount = item.retry_count || 0;
+                if (retryCount < 3) {
+                    // Reset to PENDING to allow retry
+                    await stateManager.setActionStatus(item.role, item.action, ActionStatus.PENDING);
+                    recoveredActions.push({
+                        role: item.role,
+                        action: item.action,
+                        reason: 'failed_retry',
+                    });
+                }
+            }
+
+            // Restart executor if session was stopped and actions were recovered
+            if (recoveredActions.length > 0) {
+                try {
+                    await session.start();
+                } catch (error: any) {
+                    logger.warn('API: Failed to restart session after recovery', { error: error.message });
+                }
+            }
+
+            return res.json({
+                success: true,
+                recoveredActions,
+                message: recoveredActions.length > 0
+                    ? `已恢复 ${recoveredActions.length} 个异常操作`
+                    : '未发现需要恢复的操作',
+            });
+        } catch (error: any) {
+            logger.error('API: Error recovering from stale actions', error);
+            return res.status(500).json({
+                success: false,
+                error: error.message || 'Failed to recover from stale actions',
+            });
+        }
+    }
+
+    /**
      * Get session info
      */
     static async getSession(req: Request, res: Response) {

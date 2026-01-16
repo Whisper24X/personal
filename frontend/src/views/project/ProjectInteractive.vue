@@ -8,7 +8,8 @@
       :current-action="currentAction" :current-stage-name="currentStageName" :resetting-roles="resettingRoles"
       :get-role-display-name="getRoleDisplayName" :get-role-description="getRoleDescription"
       :get-action-display-name="getActionDisplayName" :get-action-description="getActionDescription"
-      :get-stage-tag-type="getStageTagType" @reset-role="handleResetRole"
+      :get-stage-tag-type="getStageTagType" :show-recover-button="showRecoverButton" :recovering="recovering"
+      @reset-role="handleResetRole" @recover="handleRecover"
       @show-confirmation="showConfirmationDialog = true" @view-content="openContentDialog"
       @download-zip="downloadZip" />
 
@@ -74,6 +75,11 @@ const showConfirmationDialog = ref(false);
 
 // Reset state
 const resettingRoles = ref<Set<string>>(new Set());
+
+// Recovery state
+const showRecoverButton = ref(false);
+const recovering = ref(false);
+let staleCheckInterval: NodeJS.Timeout | null = null;
 
 // Content Dialog
 const showContentDialog = ref(false);
@@ -340,6 +346,9 @@ async function loadRunningInfo() {
       currentStageName.value = getStageName(runningState.role, runningState.action);
     }
 
+    // Check for stale/failed actions to show recover button
+    await checkForStaleActions(response);
+
     // Handle confirmation state (waiting for manual confirmation)
     const requiresConfirmation = response.requiresConfirmation || false;
     const confirmationRequired = response.confirmationRequired;
@@ -425,6 +434,12 @@ onMounted(async () => {
   if (projectId.value) {
     await loadRunningInfo();
   }
+
+  // Check for stale actions periodically (every 30 seconds)
+  checkForStaleActions();
+  staleCheckInterval = setInterval(() => {
+    checkForStaleActions();
+  }, 30000);
 
   startInteractiveSession();
 });
@@ -977,6 +992,70 @@ function cleanup() {
     pollingController = null;
   }
   lastMessageId = null;
+  if (staleCheckInterval) {
+    clearInterval(staleCheckInterval);
+    staleCheckInterval = null;
+  }
+}
+
+/**
+ * Check for stale/failed actions to show recover button
+ */
+async function checkForStaleActions(response?: any) {
+  if (!projectId.value) return;
+
+  try {
+    const data = response || await apiClient.getInteractiveRunning(projectId.value) as any;
+    if (!data || !data.success) return;
+
+    const items = data.items || [];
+    const runningState = data.running || {};
+
+    // Check for stale running action (running for more than 5 minutes)
+    const hasStaleRunning = runningState.role && runningState.action &&
+      runningState.updatedAt &&
+      (Date.now() - new Date(runningState.updatedAt).getTime() > 5 * 60 * 1000);
+
+    // Check for failed actions that can be retried
+    const hasFailedActions = items.some((item: any) =>
+      item.status === 'failed' && (item.retry_count || 0) < 3
+    );
+
+    showRecoverButton.value = hasStaleRunning || hasFailedActions;
+  } catch (error) {
+    console.error('Failed to check for stale actions:', error);
+  }
+}
+
+/**
+ * Handle recovery from stale/failed actions
+ */
+async function handleRecover() {
+  if (!projectId.value || recovering.value) return;
+
+  try {
+    recovering.value = true;
+    ElMessage.info('正在恢复工作流...');
+
+    const response = await apiClient.recoverFromStaleActions(projectId.value) as any;
+
+    if (response && response.success) {
+      ElMessage.success(response.message || '工作流已恢复');
+      showRecoverButton.value = false;
+
+      // Reload workflow state
+      await loadRunningInfo();
+      await loadWorkflowInfo();
+    } else {
+      ElMessage.warning(response?.message || '未发现需要恢复的操作');
+      showRecoverButton.value = false;
+    }
+  } catch (error: any) {
+    console.error('Failed to recover:', error);
+    ElMessage.error(error?.message || '恢复失败，请稍后重试');
+  } finally {
+    recovering.value = false;
+  }
 }
 
 /**

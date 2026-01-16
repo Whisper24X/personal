@@ -385,6 +385,11 @@ class APIClient {
     });
   }
 
+  // Recover from stale or failed actions
+  async recoverFromStaleActions(projectId: string) {
+    return this.client.post(`/interactive/${projectId}/recover`);
+  }
+
   // Knowledge Base API endpoints
   async createKnowledgeBase(projectId: string, data: {
     title: string;
