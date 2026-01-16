@@ -7,6 +7,7 @@ import { ProjectController } from '../controllers/ProjectController';
 import { PRDController } from '../controllers/PRDController';
 import { MRDController } from '../controllers/MRDController';
 import { KnowledgeBaseController } from '../controllers/KnowledgeBaseController';
+import { RoleActionExecutionController } from '../controllers/RoleActionExecutionController';
 // import { authMiddleware } from '../middleware/auth'; // Unused
 
 const router: Router = Router();
@@ -55,6 +56,9 @@ router.get('/:id/knowledge-base/:docId', KnowledgeBaseController.getById);
 router.put('/:id/knowledge-base/:docId', KnowledgeBaseController.update);
 router.delete('/:id/knowledge-base/:docId', KnowledgeBaseController.delete);
 router.post('/:id/knowledge-base/search', KnowledgeBaseController.search);
+
+// Role Action Execution routes
+router.post('/:projectId/roles/:roleProfile/actions/:actionName/execute', RoleActionExecutionController.execute);
 
 export default router;
 
