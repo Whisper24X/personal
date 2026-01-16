@@ -14,4 +14,9 @@ export { PromptConfigRepository } from './PromptConfigRepository';
 export { SectionConversationRepository } from './SectionConversationRepository';
 export { RoleRepository } from './RoleRepository';
 export { ActionRepository } from './ActionRepository';
+export { ApplicationRepository } from './ApplicationRepository';
+export { RoleDefinitionRepository } from './RoleDefinitionRepository';
+export { ActionDefinitionRepository } from './ActionDefinitionRepository';
+export { ApplicationWorkflowRepository } from './ApplicationWorkflowRepository';
+export { SystemDefaultWorkflowTemplateRepository } from './SystemDefaultWorkflowTemplateRepository';
 

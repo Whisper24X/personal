@@ -442,6 +442,59 @@ class APIClient {
   async post(url: string, data?: any, config?: any) {
     return this.client.post(url, data, config);
   }
+
+  // 工作流 API 端点
+  async getApplicationWorkflows(applicationId: string) {
+    return this.client.get(`/applications/${applicationId}/workflows`);
+  }
+
+  async getDefaultWorkflow(applicationId: string) {
+    return this.client.get(`/applications/${applicationId}/workflows/default`);
+  }
+
+  async createWorkflow(applicationId: string, data: {
+    name: string;
+    description?: string;
+    isDefault?: boolean;
+    workflowConfig: {
+      roles: Array<{
+        profile: string;
+        name?: string;
+        order: number;
+        actions: string[];
+        watch_actions?: string[];
+        config?: Record<string, any>;
+      }>;
+    };
+  }) {
+    return this.client.post(`/applications/${applicationId}/workflows`, data);
+  }
+
+  async updateWorkflow(applicationId: string, workflowId: string, data: {
+    name?: string;
+    description?: string;
+    isDefault?: boolean;
+    workflowConfig?: {
+      roles: Array<{
+        profile: string;
+        name?: string;
+        order: number;
+        actions: string[];
+        watch_actions?: string[];
+        config?: Record<string, any>;
+      }>;
+    };
+  }) {
+    return this.client.put(`/applications/${applicationId}/workflows/${workflowId}`, data);
+  }
+
+  async deleteWorkflow(applicationId: string, workflowId: string) {
+    return this.client.delete(`/applications/${applicationId}/workflows/${workflowId}`);
+  }
+
+  async setDefaultWorkflow(applicationId: string, workflowId: string) {
+    return this.client.post(`/applications/${applicationId}/workflows/${workflowId}/set-default`);
+  }
 }
 
 export const apiClient = new APIClient();

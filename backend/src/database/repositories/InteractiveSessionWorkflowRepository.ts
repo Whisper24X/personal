@@ -36,10 +36,14 @@ export interface RunningState {
 export class InteractiveSessionWorkflowRepository {
     /**
      * Initialize workflow for a project (save all roles and their actions)
+     * @param projectId Project ID
+     * @param roles Array of roles with their actions
+     * @param forceReinitialize If true, will reinitialize even if workflow already exists (clears items not in new workflow)
      */
     async initializeWorkflow(
         projectId: string,
-        roles: Array<{ role: string; actions: Array<{ name: string }> }>
+        roles: Array<{ role: string; actions: Array<{ name: string }> }>,
+        forceReinitialize: boolean = false
     ): Promise<void> {
         try {
             // Check if workflow already exists for this project
@@ -48,13 +52,45 @@ export class InteractiveSessionWorkflowRepository {
                 [projectId]
             );
 
-            // If workflow already exists, don't reinitialize (preserve existing status)
             const count = existingWorkflow.rows[0]?.count;
-            if (count && (typeof count === 'number' ? count > 0 : parseInt(String(count), 10) > 0)) {
+            const workflowExists = count && (typeof count === 'number' ? count > 0 : parseInt(String(count), 10) > 0);
+
+            // If workflow already exists and not forcing reinitialize, don't reinitialize (preserve existing status)
+            if (workflowExists && !forceReinitialize) {
                 return;
             }
 
-            // Insert all roles and actions with role_order and action_order (only if workflow doesn't exist)
+            // If forcing reinitialize, remove workflow items that are not in the new workflow
+            if (workflowExists && forceReinitialize) {
+                // Build set of valid (role, action) pairs from new workflow
+                const validItems = new Set<string>();
+                roles.forEach(roleInfo => {
+                    roleInfo.actions.forEach(action => {
+                        validItems.add(`${roleInfo.role}:${action.name}`);
+                    });
+                });
+
+                // Get all existing workflow items
+                const existingItems = await query<{ role: string; action: string | null }>(
+                    `SELECT role, action FROM interactive_session_workflows WHERE project_id = $1`,
+                    [projectId]
+                );
+
+                // Delete items that are not in the new workflow
+                for (const item of existingItems.rows) {
+                    const itemKey = `${item.role}:${item.action || ''}`;
+                    if (!validItems.has(itemKey)) {
+                        await query(
+                            `DELETE FROM interactive_session_workflows 
+                             WHERE project_id = $1 AND role = $2 AND action = $3`,
+                            [projectId, item.role, item.action]
+                        );
+                        logger.info(`InteractiveSessionWorkflowRepository: Removed workflow item ${itemKey} not in new workflow`);
+                    }
+                }
+            }
+
+            // Insert or update all roles and actions with role_order and action_order
             for (let roleIndex = 0; roleIndex < roles.length; roleIndex++) {
                 const roleInfo = roles[roleIndex];
                 for (let actionIndex = 0; actionIndex < roleInfo.actions.length; actionIndex++) {
@@ -65,8 +101,8 @@ export class InteractiveSessionWorkflowRepository {
             ) VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (project_id, role, action) DO UPDATE SET
               status = COALESCE(interactive_session_workflows.status, EXCLUDED.status),
-              role_order = COALESCE(interactive_session_workflows.role_order, EXCLUDED.role_order),
-              action_order = COALESCE(interactive_session_workflows.action_order, EXCLUDED.action_order),
+              role_order = EXCLUDED.role_order,
+              action_order = EXCLUDED.action_order,
               updated_at = NOW()`,
                         [projectId, roleInfo.role, action.name, ActionStatus.PENDING, roleIndex, actionIndex]
                     );

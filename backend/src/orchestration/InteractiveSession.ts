@@ -17,6 +17,9 @@ import { StateManager } from './StateManager';
 import { SessionMessageHandler, MessageQueueItem } from './SessionMessageHandler';
 import { SessionWorkflowExecutor, WorkflowExecutorConfig } from './SessionWorkflowExecutor';
 import { InteractiveSessionManager } from './InteractiveSessionManager';
+import { WorkflowService } from '../services/WorkflowService';
+import { RoleActionFactory } from '../services/RoleActionFactory';
+import { ProjectRepository } from '../database/repositories/ProjectRepository';
 
 export interface SessionConfig {
   name: string;
@@ -79,18 +82,11 @@ export class InteractiveSession {
       ctx.set('applicationId', config.applicationId);
     }
     ctx.set('projectId', projectId);
+    
+    // Create default team first (will be replaced in start() if workflow is available)
     this.team = new Team(ctx, false); // We'll handle interaction via WebSocket
-
-    // Initialize state manager
-    this.stateManager = new StateManager(
-      projectId,
-      this.team
-    );
-
-    // Store StateManager in context so Actions can access it
-    ctx.set('stateManager', this.stateManager);
-
-    // Hire roles - 按照 PRD 文档定义的完整流程
+    
+    // Hire default roles - will be replaced in start() if workflow is available
     this.team.hire([
       new Salesperson(ctx),
       new ProductManager(ctx),
@@ -105,6 +101,9 @@ export class InteractiveSession {
       projectId,
       this.team
     );
+
+    // Store StateManager in context so Actions can access it
+    ctx.set('stateManager', this.stateManager);
 
     // Initialize workflow in database
     this.stateManager.initialize().catch((error) => {
@@ -165,6 +164,14 @@ export class InteractiveSession {
     if (this.executorPromise) {
       logger.warn(`InteractiveSession: Executor already running for project ${this.projectId}, skipping start`);
       return;
+    }
+
+    // Try to load workflow from database and recreate team if needed
+    try {
+      await this.loadWorkflowAndRecreateTeam();
+    } catch (workflowError: any) {
+      logger.warn(`InteractiveSession: Failed to load workflow, using default team:`, workflowError.message);
+      // Continue with default team
     }
 
     // Check if there's an action running in database (prevent duplicate executor on page refresh)
@@ -696,6 +703,62 @@ export class InteractiveSession {
       logger.error(`InteractiveSession: Failed to restart executor for project ${this.projectId}`, error);
       this.executorLock = null;
       this.workflowExecutor = null;
+    });
+  }
+
+  /**
+   * Load workflow from database and recreate team if needed
+   */
+  private async loadWorkflowAndRecreateTeam(): Promise<void> {
+    // Get project to find application ID
+    const projectRepo = new ProjectRepository();
+    const project = await projectRepo.findById(this.projectId);
+    
+    if (!project || !project.application_id) {
+      logger.info(`InteractiveSession: Project ${this.projectId} has no application_id, using default team`);
+      return;
+    }
+
+    const workflowService = new WorkflowService();
+    const workflow = await workflowService.getOrCreateDefaultWorkflow(project.application_id);
+    
+    // Recreate context with same settings
+    const ctx = new Context(undefined, this.config.investment);
+    if (this.userId) {
+      ctx.set('userId', this.userId);
+    }
+    if (this.config.applicationId) {
+      ctx.set('applicationId', this.config.applicationId);
+    }
+    ctx.set('projectId', this.projectId);
+    
+    // Create new team from workflow configuration
+    const newTeam = RoleActionFactory.createTeamFromWorkflow(workflow.workflow_config, ctx);
+    
+    // Replace the team
+    this.team = newTeam;
+    
+    // Update state manager with new team
+    this.stateManager = new StateManager(this.projectId, this.team);
+    ctx.set('stateManager', this.stateManager);
+    
+    // Re-initialize workflow items with the new team configuration
+    // Force reinitialize to remove workflow items that are not in the new workflow
+    // This ensures that only roles and actions from the workflow are tracked
+    try {
+      await this.stateManager.initialize(true); // forceReinitialize = true
+      logger.info(`InteractiveSession: Re-initialized workflow items for application ${project.application_id}`, {
+        roles: workflow.workflow_config.roles.map(r => r.profile),
+      });
+    } catch (initError: any) {
+      logger.warn(`InteractiveSession: Failed to re-initialize workflow items:`, initError.message);
+      // Continue anyway - the workflow items might already be correct
+    }
+    
+    logger.info(`InteractiveSession: Loaded workflow from application ${project.application_id}`, {
+      workflowId: workflow.id,
+      workflowName: workflow.name,
+      roles: workflow.workflow_config.roles.map(r => r.profile),
     });
   }
 }

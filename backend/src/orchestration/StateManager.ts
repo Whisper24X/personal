@@ -49,8 +49,9 @@ export class StateManager {
     /**
      * Initialize workflow tracking
      * Registers all roles and their actions in the database with role_order and action_order
+     * @param forceReinitialize If true, will reinitialize even if workflow already exists (clears items not in new workflow)
      */
-    async initialize(): Promise<void> {
+    async initialize(forceReinitialize: boolean = false): Promise<void> {
         try {
             const roles = this.team.getEnvironment().getRoles();
             const workflowData = roles.map(role => ({
@@ -62,7 +63,8 @@ export class StateManager {
 
             await this.repository.initializeWorkflow(
                 this.projectId,
-                workflowData
+                workflowData,
+                forceReinitialize
             );
 
             // Check and fix NULL order values
@@ -71,6 +73,7 @@ export class StateManager {
             logger.info(`StateManager: Initialized workflow for project ${this.projectId}`, {
                 projectId: this.projectId,
                 rolesCount: roles.length,
+                forceReinitialize,
             });
         } catch (error: any) {
             logger.error('StateManager: Failed to initialize workflow', {

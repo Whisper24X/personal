@@ -16,6 +16,8 @@ import { QAEngineer } from '../../roles/QAEngineer';
 // import { ProjectManager } from '../../orchestration/ProjectManager'; // Unused
 import { logger } from '../../utils';
 import { ProjectStatus } from '@mind2build/shared';
+import { WorkflowService } from '../../services/WorkflowService';
+import { RoleActionFactory } from '../../services/RoleActionFactory';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -135,23 +137,46 @@ export class ProjectController {
     userId?: string
   ) {
     try {
-      // Create context and team
+      // Get project to find application ID
+      const project = await projectRepo.findById(projectId);
+      if (!project) {
+        throw new Error(`Project ${projectId} not found`);
+      }
+
+      // Create context
       const ctx = new Context();
       // Set userId in context so roles can load their specific LLM configs
       if (userId) {
         ctx.set('userId', userId);
       }
-      const team = new Team(ctx);
 
-      // Hire roles - 按照 PRD 文档定义的完整流程
-      team.hire([
-        new Salesperson(ctx),
-        new ProductManager(ctx),
-        new Architect(ctx),
-        new ProjectManagerRole(ctx),
-        new Engineer(ctx),
-        new QAEngineer(ctx),
-      ]);
+      let team: Team;
+
+      // Try to get or create workflow from application if applicationId exists
+      if (project.application_id) {
+        const workflowService = new WorkflowService();
+        const workflow = await workflowService.getOrCreateDefaultWorkflow(project.application_id);
+        
+        // Create team from workflow configuration
+        team = RoleActionFactory.createTeamFromWorkflow(workflow.workflow_config, ctx);
+        
+        logger.info(`Project ${projectId} using workflow from application ${project.application_id}`, {
+          workflowId: workflow.id,
+          workflowName: workflow.name,
+        });
+      } else {
+        // No application ID, use default hardcoded workflow
+        logger.info(`Project ${projectId} has no application_id, using default hardcoded workflow`);
+        team = new Team(ctx);
+        team.hire([
+          new Salesperson(ctx),
+          new ProductManager(ctx),
+          new Architect(ctx),
+          new ProjectManagerRole(ctx),
+          new Engineer(ctx),
+          new QAEngineer(ctx),
+        ]);
+      }
 
       // Set investment
       team.invest(investment);
