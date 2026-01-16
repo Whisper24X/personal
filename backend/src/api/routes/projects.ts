@@ -27,6 +27,7 @@ router.get('/:id/download/:zipPath(*)', ProjectController.downloadZip);
 
 // Generic project routes (must come after more specific routes)
 router.get('/:id', ProjectController.getStatus);
+router.delete('/:id', ProjectController.delete);
 
 // PRD management routes
 router.post('/:id/prd', PRDController.generatePRD);

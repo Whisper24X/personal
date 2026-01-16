@@ -42,6 +42,7 @@
         @project-click="viewProject"
         @knowledge-base="goToProjectKnowledgeBase"
         @empty-action="goToCreateProject"
+        @command="handleProjectCommand"
       />
 
       <KnowledgeBaseSection
@@ -57,7 +58,7 @@ import { ref, onMounted, onActivated, onUnmounted, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useApplicationStore } from '../../stores/application';
 import { storeToRefs } from 'pinia';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { Setting } from '@element-plus/icons-vue';
 import { apiClient } from '../../api/client';
 import PageHeader from '../../components/common/PageHeader.vue';
@@ -172,6 +173,40 @@ function goToProjectKnowledgeBase(projectId: string) {
 function goToWorkflowManagement() {
   const applicationId = route.params.id as string;
   router.push(`/application/${applicationId}/workflows`);
+}
+
+async function handleProjectCommand(command: { action: string; id: string }) {
+  if (command.action === 'delete') {
+    await deleteProject(command.id);
+  } else if (command.action === 'view') {
+    const project = projects.value.find(p => p.id === command.id);
+    if (project) {
+      viewProject(project);
+    }
+  }
+}
+
+async function deleteProject(projectId: string) {
+  try {
+    await ElMessageBox.confirm(
+      '确定要删除这个项目吗？删除后无法恢复。',
+      '删除项目',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger',
+      }
+    );
+
+    await apiClient.deleteProject(projectId);
+    ElMessage.success('项目已删除');
+    await refreshData();
+  } catch (err: any) {
+    if (err !== 'cancel') {
+      ElMessage.error(err.message || '删除项目失败');
+    }
+  }
 }
 </script>
 

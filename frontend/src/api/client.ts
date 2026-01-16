@@ -105,6 +105,10 @@ class APIClient {
     return this.client.get(`/projects/${id}`);
   }
 
+  async deleteProject(id: string) {
+    return this.client.delete(`/projects/${id}`);
+  }
+
   async getProjects(limit?: number) {
     return this.client.get('/projects', { params: { limit } });
   }

@@ -516,6 +516,37 @@ export class ProjectController {
   }
 
   /**
+   * Delete a project
+   * DELETE /api/projects/:id
+   */
+  static async delete(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+
+      const project = await projectRepo.findById(id);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      // Soft delete the project
+      await projectRepo.softDelete(id);
+
+      logger.info(`Project deleted: ${id}`);
+
+      return res.json({
+        success: true,
+        message: 'Project deleted successfully',
+      });
+    } catch (error: any) {
+      logger.error('Failed to delete project:', error);
+      return res.status(500).json({
+        error: 'Failed to delete project',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
    * Download zip archive
    * GET /api/projects/:id/download/:zipPath
    */
