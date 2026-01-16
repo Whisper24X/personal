@@ -9,6 +9,7 @@ import ProjectDetail from '../views/project/ProjectDetail.vue';
 import ProjectInteractive from '../views/project/ProjectInteractive.vue';
 import ApplicationList from '../views/application/ApplicationList.vue';
 import ApplicationDetail from '../views/application/ApplicationDetail.vue';
+import WorkflowManagement from '../views/application/WorkflowManagement.vue';
 import LLMConfig from '../views/config/LLMConfig.vue';
 import RoleLLMConfig from '../views/config/RoleLLMConfig.vue';
 import PromptConfig from '../views/config/PromptConfig.vue';
@@ -31,6 +32,12 @@ const router = createRouter({
       path: '/application/:id',
       name: 'ApplicationDetail',
       component: ApplicationDetail,
+      props: true,
+    },
+    {
+      path: '/application/:id/workflows',
+      name: 'WorkflowManagement',
+      component: WorkflowManagement,
       props: true,
     },
     {

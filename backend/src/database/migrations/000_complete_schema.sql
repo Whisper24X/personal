@@ -165,7 +165,7 @@ COMMENT ON COLUMN roles.react_mode IS '反应模式: react, by_order, plan_and_a
 CREATE TABLE IF NOT EXISTS messages (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  role_id UUID REFERENCES roles(id) ON DELETE SET NULL,
+  role_id VARCHAR(100),
   message_uuid UUID UNIQUE NOT NULL,
   content TEXT NOT NULL,
   instruct_content JSONB,
@@ -183,6 +183,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_cause_by ON messages(cause_by);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
 
 COMMENT ON TABLE messages IS '消息记录表';
+COMMENT ON COLUMN messages.role_id IS '角色类型 (profile): ProductManager, Architect, Engineer, QAEngineer, TeamLeader, Salesperson, DataAnalyst, user表示用户消息';
 COMMENT ON COLUMN messages.message_uuid IS 'Message.id (UUID格式)';
 COMMENT ON COLUMN messages.instruct_content IS '结构化的指令内容';
 COMMENT ON COLUMN messages.cause_by IS '触发此消息的 Action 类名';

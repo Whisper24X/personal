@@ -20,7 +20,6 @@ export async function getOrRestoreSession(projectId: string): Promise<Interactiv
         const executorPromise = (session as any).executorPromise;
         if (executorPromise) {
             // Use debug level to reduce log noise during frequent polling
-            logger.debug(`API: Session exists with running executor for project ${projectId}, returning existing session`);
         }
         return session;
     }

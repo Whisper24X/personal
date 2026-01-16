@@ -6,6 +6,7 @@
 import { Request, Response } from 'express';
 import { Context } from '../../core/context/Context';
 import { logger } from '../../utils';
+import { RoleActionService } from '../../services/RoleActionService';
 import {
     Salesperson,
     ProductManager,
@@ -95,16 +96,63 @@ const ROLE_DISPLAY_NAMES: Record<string, string> = {
 };
 
 export class RoleActionController {
+    private static roleActionService = new RoleActionService();
+
     /**
      * Get all roles metadata
      * GET /api/config/roles
      */
     static async getRoles(_req: Request, res: Response) {
         try {
-            // Create a temporary context for instantiating roles
-            const context = new Context();
+            // Try to get from database first
+            try {
+                const rolesMetadata = await RoleActionController.roleActionService.getAllRoles();
+                
+                // If we have roles from database, enrich with actions from code instances
+                // (since role-action associations are in workflow configs, not role definitions)
+                if (rolesMetadata.length > 0) {
+                    const context = new Context();
+                    const roleInstances = [
+                        new Salesperson(context),
+                        new ProductManager(context),
+                        new Architect(context),
+                        new ProjectManager(context),
+                        new Engineer(context),
+                        new QAEngineer(context),
+                        new TeamLeader(context),
+                        new DataAnalyst(context),
+                    ];
 
-            // Instantiate all roles to get their metadata
+                    // Map role instances by profile
+                    const roleInstanceMap = new Map(roleInstances.map(r => [r.profile, r]));
+
+                    // Enrich roles with actions from code instances
+                    const enrichedRoles = rolesMetadata.map((roleMeta) => {
+                        const roleInstance = roleInstanceMap.get(roleMeta.profile);
+                        if (roleInstance) {
+                            return {
+                                ...roleMeta,
+                                actions: roleInstance.actions.map((action) => ({
+                                    name: action.name,
+                                    description: action.description,
+                                    displayName: ACTION_DISPLAY_NAMES[action.name] || action.name,
+                                })),
+                            };
+                        }
+                        return roleMeta;
+                    });
+
+                    return res.json({
+                        success: true,
+                        roles: enrichedRoles,
+                    });
+                }
+            } catch (dbError: any) {
+                logger.warn('RoleActionController: Failed to get roles from database, falling back to code:', dbError.message);
+            }
+
+            // Fallback to code-based approach
+            const context = new Context();
             const roles = [
                 new Salesperson(context),
                 new ProductManager(context),
@@ -116,7 +164,6 @@ export class RoleActionController {
                 new DataAnalyst(context),
             ];
 
-            // Extract role metadata
             const rolesMetadata = roles.map((role) => ({
                 profile: role.profile,
                 name: role.name,
@@ -150,8 +197,21 @@ export class RoleActionController {
      */
     static async getActions(_req: Request, res: Response) {
         try {
-            // Actions don't require context for metadata extraction
-            // Use action classes array to ensure all actions are included
+            // Try to get from database first
+            try {
+                const actionsMetadata = await RoleActionController.roleActionService.getAllActions();
+                if (actionsMetadata.length > 0) {
+                    return res.json({
+                        success: true,
+                        actions: actionsMetadata,
+                        total: actionsMetadata.length,
+                    });
+                }
+            } catch (dbError: any) {
+                logger.warn('RoleActionController: Failed to get actions from database, falling back to code:', dbError.message);
+            }
+
+            // Fallback to code-based approach
             const actionClasses = [
                 WriteMRD,
                 WritePRD,
@@ -175,7 +235,6 @@ export class RoleActionController {
                 Coordinate,
             ];
 
-            // Instantiate all actions and collect metadata, handling errors gracefully
             const actionsMetadata: Array<{ name: string; description: string; displayName: string }> = [];
             const errors: string[] = [];
 
@@ -210,7 +269,6 @@ export class RoleActionController {
                     new DataAnalyst(context),
                 ];
 
-                // Collect unique actions from roles
                 const roleActionsMap = new Map<string, { name: string; description: string; displayName: string }>();
                 roles.forEach((role) => {
                     role.actions.forEach((action) => {
@@ -224,7 +282,6 @@ export class RoleActionController {
                     });
                 });
 
-                // Merge role actions with direct instantiated actions
                 roleActionsMap.forEach((actionMeta, name) => {
                     const existing = actionsMetadata.find((a) => a.name === name);
                     if (!existing) {
@@ -236,7 +293,6 @@ export class RoleActionController {
                 errors.push(`Failed to collect actions from roles: ${error.message}`);
             }
 
-            // Sort actions by name for consistent output
             actionsMetadata.sort((a, b) => a.name.localeCompare(b.name));
 
             return res.json({
@@ -260,11 +316,52 @@ export class RoleActionController {
      */
     static async getRolesAndActions(_req: Request, res: Response) {
         try {
-            // Create a temporary context for instantiating roles and actions
-            // Note: context is used implicitly when instantiating roles
-            const context = new Context();
+            // Try to get from database first
+            try {
+                const { roles, actions } = await RoleActionController.roleActionService.getRolesAndActions();
+                
+                // Enrich roles with actions from code instances
+                if (roles.length > 0) {
+                    const context = new Context();
+                    const roleInstances = [
+                        new Salesperson(context),
+                        new ProductManager(context),
+                        new Architect(context),
+                        new ProjectManager(context),
+                        new Engineer(context),
+                        new QAEngineer(context),
+                        new TeamLeader(context),
+                        new DataAnalyst(context),
+                    ];
 
-            // Get roles
+                    const roleInstanceMap = new Map(roleInstances.map(r => [r.profile, r]));
+                    const enrichedRoles = roles.map((roleMeta) => {
+                        const roleInstance = roleInstanceMap.get(roleMeta.profile);
+                        if (roleInstance) {
+                            return {
+                                ...roleMeta,
+                                actions: roleInstance.actions.map((action) => ({
+                                    name: action.name,
+                                    description: action.description,
+                                    displayName: ACTION_DISPLAY_NAMES[action.name] || action.name,
+                                })),
+                            };
+                        }
+                        return roleMeta;
+                    });
+
+                    return res.json({
+                        success: true,
+                        roles: enrichedRoles,
+                        actions: actions,
+                    });
+                }
+            } catch (dbError: any) {
+                logger.warn('RoleActionController: Failed to get roles and actions from database, falling back to code:', dbError.message);
+            }
+
+            // Fallback to code-based approach
+            const context = new Context();
             const roles = [
                 new Salesperson(context),
                 new ProductManager(context),
@@ -290,7 +387,6 @@ export class RoleActionController {
                 })),
             }));
 
-            // Get actions - use the same method as getActions to ensure consistency
             const actionClasses = [
                 WriteMRD,
                 WritePRD,
@@ -313,11 +409,9 @@ export class RoleActionController {
                 Coordinate,
             ];
 
-            // Collect actions from direct instantiation
             const actionsMetadata: Array<{ name: string; description: string; displayName: string }> = [];
             const roleActionsMap = new Map<string, { name: string; description: string; displayName: string }>();
 
-            // First, collect from roles to get actual used actions
             roles.forEach((role) => {
                 role.actions.forEach((action) => {
                     if (action.name && action.description && !roleActionsMap.has(action.name)) {
@@ -330,7 +424,6 @@ export class RoleActionController {
                 });
             });
 
-            // Then, instantiate all action classes to ensure completeness
             for (const ActionClass of actionClasses) {
                 try {
                     const action = new ActionClass();
@@ -346,7 +439,6 @@ export class RoleActionController {
                 }
             }
 
-            // Convert map to array and sort
             roleActionsMap.forEach((meta) => actionsMetadata.push(meta));
             actionsMetadata.sort((a, b) => a.name.localeCompare(b.name));
 

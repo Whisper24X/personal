@@ -14,6 +14,29 @@
         @create-project="goToCreateProject"
       />
 
+      <!-- 工作流管理卡片 -->
+      <el-card class="workflow-card" shadow="hover">
+        <template #header>
+          <div class="card-header-content">
+            <span class="card-title">
+              <el-icon>
+                <Setting />
+              </el-icon>
+              工作流配置
+            </span>
+            <el-button type="primary" @click="goToWorkflowManagement">
+              <el-icon>
+                <Setting />
+              </el-icon>
+              管理工作流
+            </el-button>
+          </div>
+        </template>
+        <div class="workflow-desc">
+          <p>配置和管理应用的工作流，定义角色和Action的执行顺序。不同应用可以使用不同的工作流配置。</p>
+        </div>
+      </el-card>
+
       <ProjectList
         :projects="projects"
         @project-click="viewProject"
@@ -35,6 +58,7 @@ import { useRouter, useRoute } from 'vue-router';
 import { useApplicationStore } from '../../stores/application';
 import { storeToRefs } from 'pinia';
 import { ElMessage } from 'element-plus';
+import { Setting } from '@element-plus/icons-vue';
 import { apiClient } from '../../api/client';
 import PageHeader from '../../components/common/PageHeader.vue';
 import ApplicationStats from './components/ApplicationStats.vue';
@@ -144,6 +168,11 @@ function goToCreateProject() {
 function goToProjectKnowledgeBase(projectId: string) {
   router.push(`/project/${projectId}/knowledge-base`);
 }
+
+function goToWorkflowManagement() {
+  const applicationId = route.params.id as string;
+  router.push(`/application/${applicationId}/workflows`);
+}
 </script>
 
 <style scoped>
@@ -153,5 +182,23 @@ function goToProjectKnowledgeBase(projectId: string) {
 
 .content-section {
   min-height: 400px;
+}
+
+.card-header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.workflow-desc {
+  color: #606266;
+  line-height: 1.6;
 }
 </style>

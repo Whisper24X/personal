@@ -16,6 +16,10 @@ import { logger } from '../utils';
 import { StateManager } from './StateManager';
 import { SessionMessageHandler, MessageQueueItem } from './SessionMessageHandler';
 import { SessionWorkflowExecutor, WorkflowExecutorConfig } from './SessionWorkflowExecutor';
+import { InteractiveSessionManager } from './InteractiveSessionManager';
+import { WorkflowService } from '../services/WorkflowService';
+import { RoleActionFactory } from '../services/RoleActionFactory';
+import { ProjectRepository } from '../database/repositories/ProjectRepository';
 
 export interface SessionConfig {
   name: string;
@@ -78,18 +82,11 @@ export class InteractiveSession {
       ctx.set('applicationId', config.applicationId);
     }
     ctx.set('projectId', projectId);
+    
+    // Create default team first (will be replaced in start() if workflow is available)
     this.team = new Team(ctx, false); // We'll handle interaction via WebSocket
-
-    // Initialize state manager
-    this.stateManager = new StateManager(
-      projectId,
-      this.team
-    );
-
-    // Store StateManager in context so Actions can access it
-    ctx.set('stateManager', this.stateManager);
-
-    // Hire roles - 按照 PRD 文档定义的完整流程
+    
+    // Hire default roles - will be replaced in start() if workflow is available
     this.team.hire([
       new Salesperson(ctx),
       new ProductManager(ctx),
@@ -104,6 +101,9 @@ export class InteractiveSession {
       projectId,
       this.team
     );
+
+    // Store StateManager in context so Actions can access it
+    ctx.set('stateManager', this.stateManager);
 
     // Initialize workflow in database
     this.stateManager.initialize().catch((error) => {
@@ -166,15 +166,109 @@ export class InteractiveSession {
       return;
     }
 
+    // Try to load workflow from database and recreate team if needed
+    try {
+      await this.loadWorkflowAndRecreateTeam();
+    } catch (workflowError: any) {
+      logger.warn(`InteractiveSession: Failed to load workflow, using default team:`, workflowError.message);
+      // Continue with default team
+    }
+
     // Check if there's an action running in database (prevent duplicate executor on page refresh)
     try {
-      const runningState = await this.stateManager.getRunningState();
-      if (runningState.role && runningState.action) {
+      const runningStateWithTimestamp = await this.stateManager.getRunningStateWithTimestamp();
+      if (runningStateWithTimestamp.role && runningStateWithTimestamp.action) {
         const { ActionStatus } = await import('@mind2build/shared');
-        const actionStatus = await this.stateManager.getActionStatus(runningState.role, runningState.action);
+        const actionStatus = await this.stateManager.getActionStatus(
+          runningStateWithTimestamp.role,
+          runningStateWithTimestamp.action
+        );
         if (actionStatus === ActionStatus.RUNNING) {
-          logger.warn(`InteractiveSession: Action ${runningState.action} for role ${runningState.role} is already RUNNING for project ${this.projectId}, skipping start to prevent duplicate executor`);
-          return;
+          // Check if session is in memory (to detect orphaned executors)
+          const sessionManager = InteractiveSessionManager.getInstance();
+          const sessionInMemory = !!sessionManager.getSession(this.projectId);
+          
+          // Configure thresholds from environment variables or use defaults
+          const STALE_ACTION_THRESHOLD_MS = process.env.STALE_ACTION_THRESHOLD_MINUTES
+            ? parseInt(process.env.STALE_ACTION_THRESHOLD_MINUTES, 10) * 60 * 1000
+            : 5 * 60 * 1000; // Default 5 minutes (changed from 30 minutes for faster recovery)
+          
+          const ORPHANED_EXECUTOR_THRESHOLD_MS = process.env.ORPHANED_EXECUTOR_THRESHOLD_MINUTES
+            ? parseInt(process.env.ORPHANED_EXECUTOR_THRESHOLD_MINUTES, 10) * 60 * 1000
+            : 2 * 60 * 1000; // Default 2 minutes
+          
+          // Choose threshold based on whether session is in memory
+          const threshold = sessionInMemory ? STALE_ACTION_THRESHOLD_MS : ORPHANED_EXECUTOR_THRESHOLD_MS;
+          const thresholdType = sessionInMemory ? 'stale action' : 'orphaned executor';
+          
+          const now = Date.now();
+          const updatedAt = runningStateWithTimestamp.updatedAt
+            ? new Date(runningStateWithTimestamp.updatedAt).getTime()
+            : null;
+          
+          const runningDuration = updatedAt ? now - updatedAt : 0;
+          const runningMinutes = Math.round(runningDuration / 1000 / 60);
+          const runningSeconds = Math.round((runningDuration % (60 * 1000)) / 1000);
+          
+          // Log detailed information for diagnosis
+          logger.info(`InteractiveSession: Checking ${thresholdType} for action ${runningStateWithTimestamp.action}`, {
+            projectId: this.projectId,
+            role: runningStateWithTimestamp.role,
+            action: runningStateWithTimestamp.action,
+            sessionInMemory,
+            updatedAt: runningStateWithTimestamp.updatedAt?.toISOString() || null,
+            runningDurationMs: runningDuration,
+            runningMinutes,
+            runningSeconds,
+            thresholdMs: threshold,
+            thresholdMinutes: Math.round(threshold / 1000 / 60),
+            thresholdType,
+          });
+
+          if (updatedAt && runningDuration > threshold) {
+            // Action has been running for too long, consider it stale/orphaned and reset it
+            logger.warn(
+              `InteractiveSession: Action ${runningStateWithTimestamp.action} for role ${runningStateWithTimestamp.role} ` +
+                `has been RUNNING for ${runningMinutes} minutes ${runningSeconds} seconds ` +
+                `(threshold: ${Math.round(threshold / 1000 / 60)} minutes, type: ${thresholdType}) ` +
+                `for project ${this.projectId}, resetting ${thresholdType} to allow session recovery`
+            );
+            
+            // Reset the stale/orphaned action status to FAILED and clear running state
+            try {
+              await this.stateManager.setActionStatus(
+                runningStateWithTimestamp.role,
+                runningStateWithTimestamp.action,
+                ActionStatus.FAILED
+              );
+              await this.stateManager.clearRunningState();
+              logger.info(
+                `InteractiveSession: Successfully reset ${thresholdType} ${runningStateWithTimestamp.action} ` +
+                  `for role ${runningStateWithTimestamp.role} for project ${this.projectId}`
+              );
+            } catch (resetError: any) {
+              logger.error(
+                `InteractiveSession: Failed to reset ${thresholdType} for project ${this.projectId}`,
+                {
+                  error: resetError.message,
+                  role: runningStateWithTimestamp.role,
+                  action: runningStateWithTimestamp.action,
+                  thresholdType,
+                }
+              );
+              // Continue anyway to allow recovery
+            }
+            // Continue with session start after resetting stale/orphaned action
+          } else {
+            // Action is still running and not stale/orphaned, prevent duplicate executor
+            logger.warn(
+              `InteractiveSession: Action ${runningStateWithTimestamp.action} for role ${runningStateWithTimestamp.role} ` +
+                `is already RUNNING for project ${this.projectId} ` +
+                `(running for ${runningMinutes}m ${runningSeconds}s, threshold: ${Math.round(threshold / 1000 / 60)}m, ` +
+                `sessionInMemory: ${sessionInMemory}), skipping start to prevent duplicate executor`
+            );
+            return;
+          }
         }
       }
     } catch (error: any) {
@@ -224,6 +318,15 @@ export class InteractiveSession {
           // Don't treat cancellation as an error - it's intentional
           return;
         }
+        
+        // Check if this is a reset error (expected during workflow reset)
+        if (error.message?.includes('reset') || error.message?.includes('Workflow execution stopped due to reset')) {
+          logger.info(`InteractiveSession: Executor stopped due to reset for project ${this.projectId}, restarting executor`);
+          // Restart executor instead of treating as error
+          await this.restartExecutor();
+          return;
+        }
+        
         // Re-throw other errors
         throw error;
       }
@@ -257,6 +360,17 @@ export class InteractiveSession {
         return;
       }
 
+      // Check if this is a reset error (expected during workflow reset)
+      if (error.message?.includes('reset') || error.message?.includes('Workflow execution stopped due to reset')) {
+        logger.info(`InteractiveSession: Executor stopped due to reset for project ${this.projectId}, restarting executor`);
+        // Clear executor promise on reset
+        this.executorPromise = null;
+        this.workflowExecutor = null;
+        // Restart executor instead of sending error
+        await this.restartExecutor();
+        return;
+      }
+
       logger.error(`InteractiveSession: Error in session for project ${this.projectId}`, error);
       // Clear executor promise on error
       this.executorPromise = null;
@@ -278,32 +392,26 @@ export class InteractiveSession {
     }
 
     try {
-      const workflowItems = await this.stateManager.getWorkflowItems();
-
-      const hasWorkflowItems = workflowItems.length > 0;
-      const completedCount = workflowItems.filter(item => item.status === 'completed').length;
-      const pendingCount = workflowItems.filter(item => item.status === 'pending').length;
-      const runningCount = workflowItems.filter(item => item.status === 'running').length;
-      const totalCount = workflowItems.length;
+      const stats = await this.stateManager.getWorkflowStatistics();
 
       // Only mark as completed if:
       // 1. There are workflow items
       // 2. No pending or running items
       // 3. All items are completed (completedCount === totalCount)
-      const shouldMarkCompleted = hasWorkflowItems &&
-        pendingCount === 0 &&
-        runningCount === 0 &&
-        completedCount > 0 &&
-        completedCount === totalCount;
+      const shouldMarkCompleted = stats.total > 0 &&
+        stats.pending === 0 &&
+        stats.running === 0 &&
+        stats.completed > 0 &&
+        stats.completed === stats.total;
 
       if (shouldMarkCompleted) {
-        logger.info(`InteractiveSession: All workflow items completed (${completedCount}/${totalCount}), marking project ${this.projectId} as completed`);
+        logger.info(`InteractiveSession: All workflow items completed (${stats.completed}/${stats.total}), marking project ${this.projectId} as completed`);
         const { ProjectRepository } = await import('../database/repositories/ProjectRepository');
         const projectRepo = new ProjectRepository();
         await projectRepo.markCompleted(this.projectId);
         logger.info(`InteractiveSession: Project ${this.projectId} marked as completed`);
       } else {
-        logger.info(`InteractiveSession: Workflow not fully completed (${completedCount}/${totalCount} completed, ${pendingCount} pending, ${runningCount} running), project status not updated`);
+        logger.info(`InteractiveSession: Workflow not fully completed (${stats.completed}/${stats.total} completed, ${stats.pending} pending, ${stats.running} running), project status not updated`);
       }
     } catch (error: any) {
       logger.error(`InteractiveSession: Failed to update project status for ${this.projectId}`, {
@@ -595,6 +703,62 @@ export class InteractiveSession {
       logger.error(`InteractiveSession: Failed to restart executor for project ${this.projectId}`, error);
       this.executorLock = null;
       this.workflowExecutor = null;
+    });
+  }
+
+  /**
+   * Load workflow from database and recreate team if needed
+   */
+  private async loadWorkflowAndRecreateTeam(): Promise<void> {
+    // Get project to find application ID
+    const projectRepo = new ProjectRepository();
+    const project = await projectRepo.findById(this.projectId);
+    
+    if (!project || !project.application_id) {
+      logger.info(`InteractiveSession: Project ${this.projectId} has no application_id, using default team`);
+      return;
+    }
+
+    const workflowService = new WorkflowService();
+    const workflow = await workflowService.getOrCreateDefaultWorkflow(project.application_id);
+    
+    // Recreate context with same settings
+    const ctx = new Context(undefined, this.config.investment);
+    if (this.userId) {
+      ctx.set('userId', this.userId);
+    }
+    if (this.config.applicationId) {
+      ctx.set('applicationId', this.config.applicationId);
+    }
+    ctx.set('projectId', this.projectId);
+    
+    // Create new team from workflow configuration
+    const newTeam = RoleActionFactory.createTeamFromWorkflow(workflow.workflow_config, ctx);
+    
+    // Replace the team
+    this.team = newTeam;
+    
+    // Update state manager with new team
+    this.stateManager = new StateManager(this.projectId, this.team);
+    ctx.set('stateManager', this.stateManager);
+    
+    // Re-initialize workflow items with the new team configuration
+    // Force reinitialize to remove workflow items that are not in the new workflow
+    // This ensures that only roles and actions from the workflow are tracked
+    try {
+      await this.stateManager.initialize(true); // forceReinitialize = true
+      logger.info(`InteractiveSession: Re-initialized workflow items for application ${project.application_id}`, {
+        roles: workflow.workflow_config.roles.map(r => r.profile),
+      });
+    } catch (initError: any) {
+      logger.warn(`InteractiveSession: Failed to re-initialize workflow items:`, initError.message);
+      // Continue anyway - the workflow items might already be correct
+    }
+    
+    logger.info(`InteractiveSession: Loaded workflow from application ${project.application_id}`, {
+      workflowId: workflow.id,
+      workflowName: workflow.name,
+      roles: workflow.workflow_config.roles.map(r => r.profile),
     });
   }
 }

@@ -384,7 +384,7 @@ CREATE TABLE messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     message_uuid UUID UNIQUE NOT NULL,  -- Message.id (UUID格式)
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    role_id UUID REFERENCES roles(id) ON DELETE SET NULL,       -- 发送者角色 (NULL 表示用户)
+    role_id VARCHAR(100),              -- 角色类型 (profile): ProductManager, Architect, Engineer, QAEngineer, TeamLeader, Salesperson, DataAnalyst, user表示用户消息
     content TEXT NOT NULL,
     instruct_content JSONB,                    -- 结构化内容
     role_type VARCHAR(50) NOT NULL,      -- system, user, assistant
@@ -403,6 +403,7 @@ CREATE INDEX idx_messages_created_at ON messages(created_at DESC);
 
 **字段说明**:
 - `id`: UUID主键
+- `role_id`: 角色类型 (profile)，存储角色的 profile 值（如 ProductManager、Architect），'user' 表示用户消息
 - `message_uuid`: 对应 Message.id (UUID格式)
 - `instruct_content`: 结构化的指令内容
 - `cause_by`: 触发此消息的 Action 类名

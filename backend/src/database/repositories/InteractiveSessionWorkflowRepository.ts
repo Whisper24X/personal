@@ -15,6 +15,7 @@ export interface WorkflowItem {
     status: string;
     role_order: number | null;
     action_order: number | null;
+    retry_count?: number | null;
     created_at: Date;
     updated_at: Date;
 }
@@ -35,10 +36,14 @@ export interface RunningState {
 export class InteractiveSessionWorkflowRepository {
     /**
      * Initialize workflow for a project (save all roles and their actions)
+     * @param projectId Project ID
+     * @param roles Array of roles with their actions
+     * @param forceReinitialize If true, will reinitialize even if workflow already exists (clears items not in new workflow)
      */
     async initializeWorkflow(
         projectId: string,
-        roles: Array<{ role: string; actions: Array<{ name: string }> }>
+        roles: Array<{ role: string; actions: Array<{ name: string }> }>,
+        forceReinitialize: boolean = false
     ): Promise<void> {
         try {
             // Check if workflow already exists for this project
@@ -47,13 +52,45 @@ export class InteractiveSessionWorkflowRepository {
                 [projectId]
             );
 
-            // If workflow already exists, don't reinitialize (preserve existing status)
             const count = existingWorkflow.rows[0]?.count;
-            if (count && (typeof count === 'number' ? count > 0 : parseInt(String(count), 10) > 0)) {
+            const workflowExists = count && (typeof count === 'number' ? count > 0 : parseInt(String(count), 10) > 0);
+
+            // If workflow already exists and not forcing reinitialize, don't reinitialize (preserve existing status)
+            if (workflowExists && !forceReinitialize) {
                 return;
             }
 
-            // Insert all roles and actions with role_order and action_order (only if workflow doesn't exist)
+            // If forcing reinitialize, remove workflow items that are not in the new workflow
+            if (workflowExists && forceReinitialize) {
+                // Build set of valid (role, action) pairs from new workflow
+                const validItems = new Set<string>();
+                roles.forEach(roleInfo => {
+                    roleInfo.actions.forEach(action => {
+                        validItems.add(`${roleInfo.role}:${action.name}`);
+                    });
+                });
+
+                // Get all existing workflow items
+                const existingItems = await query<{ role: string; action: string | null }>(
+                    `SELECT role, action FROM interactive_session_workflows WHERE project_id = $1`,
+                    [projectId]
+                );
+
+                // Delete items that are not in the new workflow
+                for (const item of existingItems.rows) {
+                    const itemKey = `${item.role}:${item.action || ''}`;
+                    if (!validItems.has(itemKey)) {
+                        await query(
+                            `DELETE FROM interactive_session_workflows 
+                             WHERE project_id = $1 AND role = $2 AND action = $3`,
+                            [projectId, item.role, item.action]
+                        );
+                        logger.info(`InteractiveSessionWorkflowRepository: Removed workflow item ${itemKey} not in new workflow`);
+                    }
+                }
+            }
+
+            // Insert or update all roles and actions with role_order and action_order
             for (let roleIndex = 0; roleIndex < roles.length; roleIndex++) {
                 const roleInfo = roles[roleIndex];
                 for (let actionIndex = 0; actionIndex < roleInfo.actions.length; actionIndex++) {
@@ -64,8 +101,8 @@ export class InteractiveSessionWorkflowRepository {
             ) VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (project_id, role, action) DO UPDATE SET
               status = COALESCE(interactive_session_workflows.status, EXCLUDED.status),
-              role_order = COALESCE(interactive_session_workflows.role_order, EXCLUDED.role_order),
-              action_order = COALESCE(interactive_session_workflows.action_order, EXCLUDED.action_order),
+              role_order = EXCLUDED.role_order,
+              action_order = EXCLUDED.action_order,
               updated_at = NOW()`,
                         [projectId, roleInfo.role, action.name, ActionStatus.PENDING, roleIndex, actionIndex]
                     );
@@ -490,6 +527,111 @@ export class InteractiveSessionWorkflowRepository {
             return { required: false, role: null };
         } catch (error: any) {
             return { required: false, role: null };
+        }
+    }
+
+    /**
+     * Get retry count for an action
+     */
+    async getRetryCount(
+        projectId: string,
+        role: string,
+        action: string
+    ): Promise<number> {
+        try {
+            const result = await query<{ retry_count: number }>(
+                `SELECT retry_count 
+                FROM interactive_session_workflows 
+                WHERE project_id = $1 AND role = $2 AND action = $3`,
+                [projectId, role, action]
+            );
+
+            if (result.rows.length > 0 && result.rows[0].retry_count !== null) {
+                return result.rows[0].retry_count;
+            }
+
+            return 0;
+        } catch (error: any) {
+            logger.warn('InteractiveSessionWorkflowRepository: Failed to get retry count', {
+                projectId,
+                role,
+                action,
+                error: error.message,
+            });
+            return 0;
+        }
+    }
+
+    /**
+     * Increment retry count for an action
+     */
+    async incrementRetryCount(
+        projectId: string,
+        role: string,
+        action: string
+    ): Promise<number> {
+        try {
+            const result = await query<{ retry_count: number }>(
+                `UPDATE interactive_session_workflows 
+                SET retry_count = COALESCE(retry_count, 0) + 1,
+                    updated_at = NOW()
+                WHERE project_id = $1 AND role = $2 AND action = $3
+                RETURNING retry_count`,
+                [projectId, role, action]
+            );
+
+            if (result.rows.length > 0) {
+                return result.rows[0].retry_count;
+            }
+
+            // If no row exists, create one with retry_count = 1
+            await query(
+                `INSERT INTO interactive_session_workflows 
+                (project_id, role, action, status, retry_count)
+                VALUES ($1, $2, $3, $4, 1)
+                ON CONFLICT (project_id, role, action) DO UPDATE SET
+                    retry_count = COALESCE(interactive_session_workflows.retry_count, 0) + 1,
+                    updated_at = NOW()
+                RETURNING retry_count`,
+                [projectId, role, action, ActionStatus.PENDING]
+            );
+
+            return 1;
+        } catch (error: any) {
+            logger.error('InteractiveSessionWorkflowRepository: Failed to increment retry count', {
+                projectId,
+                role,
+                action,
+                error: error.message,
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Reset retry count for an action (when action succeeds)
+     */
+    async resetRetryCount(
+        projectId: string,
+        role: string,
+        action: string
+    ): Promise<void> {
+        try {
+            await query(
+                `UPDATE interactive_session_workflows 
+                SET retry_count = 0,
+                    updated_at = NOW()
+                WHERE project_id = $1 AND role = $2 AND action = $3`,
+                [projectId, role, action]
+            );
+        } catch (error: any) {
+            logger.warn('InteractiveSessionWorkflowRepository: Failed to reset retry count', {
+                projectId,
+                role,
+                action,
+                error: error.message,
+            });
+            // Don't throw - this is not critical
         }
     }
 

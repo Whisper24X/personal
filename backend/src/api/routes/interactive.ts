@@ -34,6 +34,9 @@ router.post('/interactive/:projectId/confirm', InteractiveController.confirm);
 // Reset workflow from a specific role
 router.post('/interactive/:projectId/reset-workflow', InteractiveController.resetWorkflow);
 
+// Recover from stale or failed actions
+router.post('/interactive/:projectId/recover', InteractiveController.recoverFromStaleActions);
+
 // Get session info
 router.get('/interactive/:projectId', InteractiveController.getSession);
 
