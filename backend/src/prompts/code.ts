@@ -935,6 +935,47 @@ ${code}
 }
 
 /**
+ * 构建 Cursor CLI 专用的代码审查提示词
+ * 用于通过 cursor-agent 命令行工具进行代码审查
+ * @returns Cursor CLI 代码审查提示词
+ */
+export function buildCursorCLICodeReviewPrompt(): string {
+    return `
+# 代码审查任务
+
+## 核心要求
+
+1. **审查 CODE 目录下的所有代码**
+   - 检查代码质量、可读性、可维护性
+   - 检查是否符合 DESIGN 文档的要求
+   - 检查是否满足 TASK_BREAKDOWN.md 中的任务要求
+   - 识别潜在的问题和改进点
+
+2. **审查重点**
+   - 代码完整性：是否有 TODO、占位符、未实现的功能
+   - 功能正确性：是否实现了所有要求的功能
+   - 代码规范：命名、格式、注释是否规范
+   - 错误处理：是否有适当的错误处理
+   - 性能问题：是否有明显的性能问题
+   - 安全问题：是否有安全隐患
+
+3. **输出要求**
+   - 列出发现的所有问题
+   - 按严重程度分类（严重、中等、轻微）
+   - 提供具体的改进建议
+   - 如果代码质量良好，明确说明
+
+4. **审查标准**
+   - 代码必须完整可运行
+   - 必须符合 DESIGN 文档
+   - 必须实现所有任务要求
+   - 不允许有占位符或未完成的代码
+
+现在开始审查 CODE 目录下的代码。
+`.trim();
+}
+
+/**
  * 构建 Cursor CLI 专用的强约束代码生成提示词
  * 用于通过 cursor-agent 命令行工具生成代码
  * @returns Cursor CLI 强约束提示词
@@ -1000,6 +1041,7 @@ export default {
     buildCodeCompletionPrompt,
     buildCodeReviewPrompt,
     buildCursorCLIPrompt,
+    buildCursorCLICodeReviewPrompt,
     checkCodeCompleteness,
     checkFrontendBackendCompleteness,
     extractFileListFromDesign,
