@@ -12,4 +12,6 @@ export { ProviderConfigRepository } from './ProviderConfigRepository';
 export { RoleLLMConfigRepository } from './RoleLLMConfigRepository';
 export { PromptConfigRepository } from './PromptConfigRepository';
 export { SectionConversationRepository } from './SectionConversationRepository';
+export { RoleRepository } from './RoleRepository';
+export { ActionRepository } from './ActionRepository';
 

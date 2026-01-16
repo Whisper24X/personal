@@ -268,6 +268,31 @@ export class StateManager {
     }
 
     /**
+     * Get running state with timestamp
+     */
+    async getRunningStateWithTimestamp(): Promise<{ role: string | null; action: string | null; updatedAt: Date | null }> {
+        try {
+            const dbState = await this.repository.getRunningState(this.projectId);
+            
+            if (dbState) {
+                return {
+                    role: dbState.current_role,
+                    action: dbState.current_action,
+                    updatedAt: dbState.updated_at,
+                };
+            }
+
+            return { role: null, action: null, updatedAt: null };
+        } catch (error: any) {
+            logger.error('StateManager: Failed to get running state with timestamp', {
+                projectId: this.projectId,
+                error: error.message,
+            });
+            return { role: null, action: null, updatedAt: null };
+        }
+    }
+
+    /**
      * Clear running state
      */
     async clearRunningState(): Promise<void> {
@@ -410,13 +435,15 @@ export class StateManager {
     /**
      * Get workflow items (sorted by role_order and action_order)
      */
-    async getWorkflowItems(): Promise<Array<{ role: string; action: string; status: ActionStatus }>> {
+    async getWorkflowItems(): Promise<Array<{ role: string; action: string; status: ActionStatus; retry_count?: number; action_order?: number | null }>> {
         try {
             const items = await this.repository.getWorkflowItems(this.projectId);
             return items.map(item => ({
                 role: item.role,
                 action: item.action || '',
                 status: item.status as ActionStatus,
+                retry_count: item.retry_count || 0,
+                action_order: item.action_order ?? null,
             }));
         } catch (error: any) {
             logger.error('StateManager: Failed to get workflow items', {
@@ -445,6 +472,62 @@ export class StateManager {
                 description: action.description || '',
             })),
         }));
+    }
+
+    /**
+     * Get workflow statistics (single-pass calculation)
+     */
+    async getWorkflowStatistics(): Promise<{
+        pending: number;
+        running: number;
+        completed: number;
+        failed: number;
+        total: number;
+    }> {
+        const workflowItems = await this.getWorkflowItems();
+        return this.calculateWorkflowStatistics(workflowItems);
+    }
+
+    /**
+     * Calculate workflow statistics in a single pass
+     * More efficient than multiple filter operations
+     */
+    private calculateWorkflowStatistics(
+        workflowItems: Array<{ role: string; action: string; status: ActionStatus }>
+    ): {
+        pending: number;
+        running: number;
+        completed: number;
+        failed: number;
+        total: number;
+    } {
+        const stats = {
+            pending: 0,
+            running: 0,
+            completed: 0,
+            failed: 0,
+            total: workflowItems.length,
+        };
+
+        // Single pass through the array
+        for (const item of workflowItems) {
+            switch (item.status) {
+                case ActionStatus.PENDING:
+                    stats.pending++;
+                    break;
+                case ActionStatus.RUNNING:
+                    stats.running++;
+                    break;
+                case ActionStatus.COMPLETED:
+                    stats.completed++;
+                    break;
+                case ActionStatus.FAILED:
+                    stats.failed++;
+                    break;
+            }
+        }
+
+        return stats;
     }
 
     /**
@@ -602,13 +685,19 @@ export class StateManager {
      */
     async onActionComplete(role: string, action: string, _message?: any): Promise<void> {
         try {
+            // Reset retry count when action succeeds
+            await this.repository.resetRetryCount(this.projectId, role, action);
+
             // Set action to COMPLETED
             await this.setActionStatus(role, action, ActionStatus.COMPLETED);
 
             // Check if this is the last action for the role
             const isLastAction = await this.isLastActionForRole(role, action);
             if (isLastAction) {
+                // Set confirmation required BEFORE clearing running state
                 await this.setConfirmationRequired(role);
+                // Clear running state when last action completes
+                await this.clearRunningState();
             }
 
             this.logStateChange('actionComplete', role, action, ActionStatus.COMPLETED);
@@ -625,14 +714,64 @@ export class StateManager {
 
     /**
      * On action error
+     * Implements auto-retry mechanism: retry up to 3 times, then require manual intervention
+     * Always clears running state immediately on error for fast recovery
      */
-    async onActionError(role: string, action: string, _error: Error): Promise<void> {
+    async onActionError(role: string, action: string, error: Error): Promise<{ shouldRetry: boolean }> {
         try {
-            await this.setActionStatus(role, action, ActionStatus.FAILED);
+            // Always clear running state immediately on error for fast recovery
             await this.clearRunningState();
             await this.clearRoleContextState(role);
 
-            this.logStateChange('actionError', role, action, ActionStatus.FAILED);
+            // Get current retry count
+            const retryCount = await this.repository.getRetryCount(this.projectId, role, action);
+
+            if (retryCount < 3) {
+                // Increment retry count and reset action to PENDING for retry
+                const newRetryCount = await this.repository.incrementRetryCount(this.projectId, role, action);
+                logger.info('StateManager: Action failed, retrying', {
+                    projectId: this.projectId,
+                    role,
+                    action,
+                    retryCount: newRetryCount,
+                    maxRetries: 3,
+                    error: error.message,
+                });
+
+                // Reset action status to PENDING to allow retry
+                await this.setActionStatus(role, action, ActionStatus.PENDING);
+
+                this.logStateChange('actionError', role, action, { status: ActionStatus.PENDING, retryCount: newRetryCount });
+
+                return { shouldRetry: true };
+            } else {
+                // Max retries reached, mark as FAILED and require manual intervention
+                logger.error('StateManager: Action failed after max retries, requiring manual intervention', {
+                    projectId: this.projectId,
+                    role,
+                    action,
+                    retryCount,
+                    error: error.message,
+                });
+
+                await this.setActionStatus(role, action, ActionStatus.FAILED);
+
+                // Check if this is the last action for the role
+                const isLastAction = await this.isLastActionForRole(role, action);
+                if (isLastAction) {
+                    // Set confirmation required for manual intervention
+                    await this.setConfirmationRequired(role);
+                    logger.info('StateManager: Set confirmation required for failed last action', {
+                        projectId: this.projectId,
+                        role,
+                        action,
+                    });
+                }
+
+                this.logStateChange('actionError', role, action, { status: ActionStatus.FAILED, retryCount, maxRetriesReached: true });
+
+                return { shouldRetry: false };
+            }
         } catch (err: any) {
             logger.error('StateManager: Failed to handle action error', {
                 projectId: this.projectId,
@@ -640,6 +779,12 @@ export class StateManager {
                 action,
                 error: err.message,
             });
+            // Ensure state is cleared even if error handling fails
+            await this.clearRunningState().catch(() => {});
+            await this.clearRoleContextState(role).catch(() => {});
+            // On error, mark as FAILED and don't retry
+            await this.setActionStatus(role, action, ActionStatus.FAILED).catch(() => {});
+            return { shouldRetry: false };
         }
     }
 
