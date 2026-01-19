@@ -1,16 +1,12 @@
 /**
  * BreakdownTasks Action
- * Breaks down project into minimal granularity tasks based on PRD only
+ * Create openSpec change proposal based on PRD and DESIGN documents
  */
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import {
-  TASK_BREAKDOWN_SYSTEM_PROMPT,
-  buildTaskBreakdownPrompt,
-} from '../prompts/task';
-import { logger, SubtaskManager, WorkspaceOptions, loadPrompt } from '../utils';
-import { Subtask } from '../utils/SubtaskManager';
+import { logger, WorkspaceOptions, executeCommandSimple, CommandExecutorError, WorkspaceManager } from '../utils';
+import * as fs from 'fs/promises';
 
 export interface BreakdownTasksOptions extends WorkspaceOptions {
   // 继承WorkspaceOptions的所有选项
@@ -18,125 +14,182 @@ export interface BreakdownTasksOptions extends WorkspaceOptions {
 
 export class BreakdownTasks extends BaseAction {
   constructor() {
-    super('BreakdownTasks', 'Break down project into minimal granularity tasks');
+    super('BreakdownTasks', 'Create openSpec change proposal based on PRD and DESIGN');
   }
 
-  async run(prd: string, options?: BreakdownTasksOptions): Promise<IActionOutput> {
-    logger.info('BreakdownTasks: Starting task breakdown based on PRD');
-
+  async run(_prd: string, options?: BreakdownTasksOptions): Promise<IActionOutput> {
+    logger.info('BreakdownTasks: Starting openSpec proposal creation using Cursor CLI', {
+      applicationId: options?.applicationId,
+      projectId: options?.projectId,
+      version: options?.version,
+    });
+    
     try {
-      // Build the prompt (only PRD, no Design)
-      const prompt = buildTaskBreakdownPrompt(prd);
-
-      // Load system prompt from database or use default
-      const userId = this.context?.get('userId');
-      const systemPrompt = await loadPrompt(userId, 'task', 'system_prompt', TASK_BREAKDOWN_SYSTEM_PROMPT);
-
-      // Call LLM with system message and prompt
-      const taskBreakdownContent = await this.aask(prompt, [systemPrompt]);
-
-      // 解析任务拆分结果
-      const subtaskManager = new SubtaskManager();
-      const breakdown = subtaskManager.parseTaskBreakdown(taskBreakdownContent);
-
-      // 保存到workspace - 使用TASK作为documentType
-      const workspaceOptions: WorkspaceOptions = {
-        ...options,
-        documentType: 'TASK',
-      };
-
-      // 保存原始任务拆分文档
-      await this.saveToWorkspace('TASK_BREAKDOWN.md', taskBreakdownContent, workspaceOptions);
-
-      // 为每个任务生成独立的task_n.md文件
-      logger.info('BreakdownTasks: Generating individual task files', {
-        taskCount: breakdown.tasks.length,
+      // 验证必需参数
+      if (!options?.applicationId) {
+        throw new Error('BreakdownTasks: applicationId is required in options');
+      }
+      if (!options?.projectId) {
+        throw new Error('BreakdownTasks: projectId is required in options');
+      }
+      
+      // 获取工作空间根目录 (ainative-workspace)
+      const workDir = WorkspaceManager.getProjectWorkspacePath(options);
+      
+      // 确保工作目录存在
+      await fs.mkdir(workDir, { recursive: true });
+      
+      logger.info('BreakdownTasks: Workspace directory prepared', { 
+        workDir,
       });
+      
+      // 定义命令
+      const proposeCommand = `创建openSpec变更提案，请执行以下步骤：
 
-      for (let i = 0; i < breakdown.tasks.length; i++) {
-        const task = breakdown.tasks[i];
-        const taskFileName = `task_${i + 1}.md`;
-        const taskContent = this.generateTaskDocument(task, i + 1);
+1. 读取并分析以下文档：
+   - docs/prd/PRD.md（产品需求文档）
+   - docs/design/DESIGN.md（系统设计文档）
+
+2. 基于这两个文档，分析项目的：
+   - 核心功能需求
+   - 技术架构设计
+   - 实现方案
+
+3. 在 openspec 目录下创建或更新变更提案，包含：
+   - 需要实现的功能列表
+   - 建议的技术方案
+   - 文件和目录结构变更
+   - 实现步骤建议
+
+请开始创建变更提案。`;
+
+      const checkCommand = `检查 openspec 目录下是否已成功创建变更提案文件。
+
+检查标准：
+1. openspec 目录下是否有新的提案文件或更新
+2. 提案内容是否包含基于 PRD.md 和 DESIGN.md 的分析
+3. 提案是否包含具体的实现建议
+
+如果提案已创建且内容完整，返回：已完成
+如果提案未创建或内容不完整，返回：未完成`;
+      
+      // 循环执行，直到任务完成
+      const maxRetries = 10; // 最大重试次数
+      let isCompleted = false;
+      let retryCount = 0;
+      let allOutputs: string[] = [];
+      
+      logger.info('BreakdownTasks: Starting openSpec proposal creation loop', { 
+        cwd: workDir,
+        maxRetries,
+      });
+      
+      while (!isCompleted && retryCount < maxRetries) {
+        retryCount++;
         
-        await this.saveToWorkspace(taskFileName, taskContent, workspaceOptions);
-        logger.debug('BreakdownTasks: Generated task file', {
-          taskId: task.id,
-          fileName: taskFileName,
+        logger.info(`BreakdownTasks: Iteration ${retryCount}/${maxRetries} - Executing propose command`, {
+          commandLength: proposeCommand.length,
+        });
+        
+        // 1. 执行创建提案命令
+        let proposeOutput = '';
+        try {
+          const command = `cursor-agent --model composer-1 --print "${proposeCommand.replace(/"/g, '\\"')}"`;
+          proposeOutput = await executeCommandSimple(command, {
+            cwd: workDir,
+            timeout: 3600000, // 60分钟超时
+          });
+          logger.info(`BreakdownTasks: Propose command completed (iteration ${retryCount})`, {
+            outputLength: proposeOutput.length,
+          });
+        } catch (execError) {
+          const error = execError as CommandExecutorError;
+          logger.warn(`BreakdownTasks: Propose command failed (iteration ${retryCount})`, { 
+            message: error.message,
+            exitCode: error.exitCode,
+          });
+          proposeOutput = error.stdout || '';
+        }
+        
+        allOutputs.push(`=== Iteration ${retryCount} - Propose ===\n${proposeOutput}`);
+        
+        // 2. 执行检查命令
+        logger.info(`BreakdownTasks: Iteration ${retryCount}/${maxRetries} - Executing check command`, {
+          commandLength: checkCommand.length,
+        });
+        
+        let checkOutput = '';
+        try {
+          const command = `cursor-agent --model composer-1 --print "${checkCommand.replace(/"/g, '\\"')}"`;
+          checkOutput = await executeCommandSimple(command, {
+            cwd: workDir,
+            timeout: 300000, // 5分钟超时（检查命令应该很快）
+          });
+          logger.info(`BreakdownTasks: Check command completed (iteration ${retryCount})`, {
+            outputLength: checkOutput.length,
+            output: checkOutput.substring(0, 200), // 记录前200字符
+          });
+        } catch (execError) {
+          const error = execError as CommandExecutorError;
+          logger.warn(`BreakdownTasks: Check command failed (iteration ${retryCount})`, { 
+            message: error.message,
+            exitCode: error.exitCode,
+          });
+          checkOutput = error.stdout || '';
+        }
+        
+        allOutputs.push(`=== Iteration ${retryCount} - Check ===\n${checkOutput}`);
+        
+        // 3. 判断是否完成
+        // 检查输出中是否包含"已完成"
+        if (checkOutput.includes('已完成')) {
+          isCompleted = true;
+          logger.info(`BreakdownTasks: OpenSpec proposal creation completed successfully (iteration ${retryCount})`, {
+            totalIterations: retryCount,
+          });
+        } else {
+          logger.warn(`BreakdownTasks: OpenSpec proposal not complete yet (iteration ${retryCount})`, {
+            checkOutput: checkOutput.substring(0, 200),
+            willRetry: retryCount < maxRetries,
+          });
+        }
+      }
+      
+      // 汇总输出
+      const stdout = allOutputs.join('\n\n');
+      
+      if (!isCompleted) {
+        logger.error('BreakdownTasks: Max retries reached, openSpec proposal still incomplete', {
+          maxRetries,
+          totalIterations: retryCount,
         });
       }
-
-      logger.info('BreakdownTasks: Task breakdown completed', {
-        contentLength: taskBreakdownContent.length,
-        taskCount: breakdown.tasks.length,
-        workspaceDir: this.getWorkspaceDir(workspaceOptions),
+      
+      logger.info('BreakdownTasks: OpenSpec proposal creation loop completed', {
+        isCompleted,
+        totalIterations: retryCount,
+        workDir,
       });
-
+      
       return {
-        content: taskBreakdownContent,
+        content: `# OpenSpec Proposal Creation ${isCompleted ? 'Completed' : 'Incomplete'}\n\n## Status: ${isCompleted ? '✅ Proposal created successfully' : '❌ Max retries reached'}\n\n## Total Iterations: ${retryCount}\n\n## Cursor CLI Output:\n\n${stdout}`,
         data: {
-          type: 'task_breakdown',
-          filename: 'TASK_BREAKDOWN.md',
+          type: 'openspec_proposal',
+          workspaceDir: workDir,
+          cursorOutput: stdout,
+          isCompleted,
+          totalIterations: retryCount,
           timestamp: new Date().toISOString(),
-          taskCount: breakdown.tasks.length,
-          tasks: breakdown.tasks,
-          workspaceDir: this.getWorkspaceDir(workspaceOptions),
         },
       };
     } catch (error: any) {
-      logger.error('BreakdownTasks: Failed to break down tasks', error);
+      // 避免循环引用导致JSON序列化失败
+      logger.error('BreakdownTasks: Failed to create openSpec proposal using Cursor CLI', {
+        message: error.message,
+        stack: error.stack,
+      });
       throw error;
     }
-  }
-
-  /**
-   * 生成单个任务文档
-   */
-  private generateTaskDocument(task: Subtask, taskNumber: number): string {
-    const dependenciesText = task.dependencies.length > 0 
-      ? task.dependencies.join(', ') 
-      : '无';
-
-    const inputsText = task.inputs.length > 0
-      ? task.inputs.map((input, idx) => `${idx + 1}. ${input}`).join('\n')
-      : '无';
-
-    const outputsText = task.outputs.length > 0
-      ? task.outputs.map((output, idx) => `${idx + 1}. ${output}`).join('\n')
-      : '无';
-
-    const acceptanceCriteriaText = task.acceptanceCriteria.length > 0
-      ? task.acceptanceCriteria.map((criteria, idx) => `${idx + 1}. ${criteria}`).join('\n')
-      : '无';
-
-    const technicalPointsText = task.technicalPoints.length > 0
-      ? task.technicalPoints.map((point, idx) => `${idx + 1}. ${point}`).join('\n')
-      : '无';
-
-    return `# 任务 ${taskNumber}: ${task.name}
-
-## 基本信息
-- **任务ID**：${task.id}
-- **任务类型**：${task.type}
-- **任务角色**：${task.type.includes('前端') ? '前端' : '后端'}
-- **优先级**：${task.priority}
-- **预估工时**：${task.estimatedHours} 小时
-- **依赖任务**：${dependenciesText}
-
-## 任务描述
-${task.description}
-
-## 输入
-${inputsText}
-
-## 输出
-${outputsText}
-
-## 验收标准
-${acceptanceCriteriaText}
-
-## 技术要点
-${technicalPointsText}
-`;
   }
 }
 
