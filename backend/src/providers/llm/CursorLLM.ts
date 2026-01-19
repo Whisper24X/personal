@@ -106,7 +106,12 @@ export class CursorLLM extends BaseLLM {
    * Chat completion using Cursor Agent API
    * Creates an agent, sends prompt, waits for completion, and returns result
    */
-  async acompletion(messages: any[]): Promise<ILLMResponse> {
+  async acompletion(messages: any[], abortSignal?: AbortSignal): Promise<ILLMResponse> {
+    // Check cancellation before starting
+    if (abortSignal?.aborted) {
+      throw new Error('LLM call was cancelled');
+    }
+    
     const startTime = Date.now();
 
     try {
@@ -202,8 +207,18 @@ export class CursorLLM extends BaseLLM {
         });
       }
 
+      // Check cancellation before waiting
+      if (abortSignal?.aborted) {
+        throw new Error('LLM call was cancelled');
+      }
+      
       // Wait for agent to complete
-      const result = await this.waitForAgentCompletion(agentId);
+      const result = await this.waitForAgentCompletion(agentId, abortSignal);
+      
+      // Check cancellation after completion
+      if (abortSignal?.aborted) {
+        throw new Error('LLM call was cancelled');
+      }
 
       // Get conversation to extract response
       const conversation = await cursorAgentClient.getAgentConversation(agentId);
@@ -284,7 +299,7 @@ export class CursorLLM extends BaseLLM {
   /**
    * Wait for agent to complete (polling)
    */
-  private async waitForAgentCompletion(agentId: string, maxWaitTime: number = 600000): Promise<{ status: string }> {
+  private async waitForAgentCompletion(agentId: string, abortSignal?: AbortSignal, maxWaitTime: number = 600000): Promise<{ status: string }> {
     const startTime = Date.now();
     const pollInterval = 5000; // Poll every 5 seconds
     const maxPolls = Math.floor(maxWaitTime / pollInterval);
@@ -296,6 +311,11 @@ export class CursorLLM extends BaseLLM {
     });
 
     for (let i = 0; i < maxPolls; i++) {
+      // Check cancellation before each poll
+      if (abortSignal?.aborted) {
+        throw new Error('LLM call was cancelled');
+      }
+      
       const agent = await cursorAgentClient.getAgent(agentId);
 
       if (agent.status === 'FINISHED' || agent.status === 'FAILED' || agent.status === 'STOPPED') {

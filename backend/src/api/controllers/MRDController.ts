@@ -309,12 +309,10 @@ export class MRDController {
             const metadata = mrd.metadata as any;
             const applicationId = metadata?.applicationId || project.application_id || project.id;
             const projectId = project.id;
-            const version = mrd.version || 1;
 
             const workspaceContent = await WorkspaceManager.readFile('MRD.md', {
               applicationId,
               projectId,
-              version,
               documentType: 'MRD',
             });
 
@@ -376,12 +374,12 @@ export class MRDController {
       try {
         const metadata = mrd.metadata as any;
         const applicationId = metadata?.applicationId || project.application_id || project.id;
-        const version = mrd.version || 1;
+        const projectId = project.id;
 
         // 尝试从 workspace 读取 MRD.md 文件
         const workspaceContent = await WorkspaceManager.readFile('MRD.md', {
           applicationId,
-          version,
+          projectId,
           documentType: 'MRD',
         });
 
@@ -389,7 +387,7 @@ export class MRDController {
           content = workspaceContent;
           logger.info(`MRDController: Loaded MRD content from workspace for MRD ${mrdId}`, {
             applicationId,
-            version,
+            projectId,
           });
         } else {
           logger.debug(`MRDController: MRD.md not found in workspace, using database content for MRD ${mrdId}`);

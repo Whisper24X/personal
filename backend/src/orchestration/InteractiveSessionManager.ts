@@ -28,11 +28,29 @@ export class InteractiveSessionManager {
 
     /**
      * Create a new interactive session
+     * If session already exists and executor is running, returns existing session
      */
     createSession(config: SessionConfig): InteractiveSession {
         if (!config.projectId) {
             throw new Error('projectId is required to create an interactive session');
         }
+
+        // Check if session already exists
+        const existingSession = this.sessions.get(config.projectId);
+        if (existingSession) {
+            // Check if executor is running (prevent duplicate executor on page refresh)
+            const executorPromise = (existingSession as any).executorPromise;
+            if (executorPromise) {
+                // Use debug level to reduce log noise - this is expected behavior during page refresh
+                logger.debug(`SessionManager: Session for project ${config.projectId} already exists with running executor, returning existing session`);
+                return existingSession;
+            }
+            // If session exists but executor is not running, we can still return it
+            // or create a new one - for now, return existing to prevent duplicate
+            logger.debug(`SessionManager: Session for project ${config.projectId} already exists, returning existing session`);
+            return existingSession;
+        }
+
         const session = new InteractiveSession(config.projectId, config);
 
         this.sessions.set(config.projectId, session);

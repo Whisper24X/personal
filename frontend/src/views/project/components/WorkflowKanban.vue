@@ -8,9 +8,21 @@
           </el-icon>
           工作流看板
         </span>
-        <el-tag :type="statusType" effect="dark">
-          {{ statusText }}
-        </el-tag>
+        <div class="header-actions">
+          <el-button
+            v-if="showRecoverButton"
+            type="warning"
+            size="small"
+            :loading="recovering"
+            @click="$emit('recover')"
+          >
+            <el-icon><Refresh /></el-icon>
+            快速恢复
+          </el-button>
+          <el-tag :type="statusType" effect="dark">
+            {{ statusText }}
+          </el-tag>
+        </div>
       </div>
     </template>
 
@@ -40,7 +52,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { Operation } from '@element-plus/icons-vue';
+import { Operation, Refresh } from '@element-plus/icons-vue';
 import KanbanColumn from './KanbanColumn.vue';
 import type { WorkflowRoleColumn } from './KanbanColumn.vue';
 
@@ -56,6 +68,8 @@ const props = defineProps<{
   getActionDisplayName: (action: string) => string;
   getActionDescription: (action: string) => string;
   getStageTagType: () => 'success' | 'warning' | 'info' | 'danger';
+  showRecoverButton?: boolean;
+  recovering?: boolean;
 }>();
 
 defineEmits<{
@@ -63,6 +77,7 @@ defineEmits<{
   'show-confirmation': [];
   'view-content': [action: any];
   'download-zip': [zipPath: string];
+  'recover': [];
 }>();
 
 const kanbanBoardRef = ref<HTMLElement | null>(null);
@@ -99,6 +114,13 @@ const statusText = computed<string>(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  width: 100%;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .card-title {

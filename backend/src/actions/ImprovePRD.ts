@@ -8,8 +8,10 @@ import { IActionOutput } from '@mind2build/shared';
 import {
   PRD_IMPROVE_SYSTEM_PROMPT,
   buildPRDImprovePrompt,
+  buildPRDSectionImprovePrompt,
 } from '../prompts/prd';
 import { logger, loadPrompt, WorkspaceOptions } from '../utils';
+import { parseSectionsFromContent, Section } from '../utils/sectionParser';
 
 export interface ImprovePRDOptions extends WorkspaceOptions {
   reviewReport?: string; // 审查报告内容，如果不提供则从workspace读取
@@ -190,7 +192,7 @@ export class ImprovePRD extends BaseAction {
   }
 
   /**
-   * 改进PRD文档
+   * 改进PRD文档 - 采用分章节改进方式避免 LLM 输出被截断
    */
   private async improvePRD(
     currentPRD: string,
@@ -205,24 +207,155 @@ export class ImprovePRD extends BaseAction {
       PRD_IMPROVE_SYSTEM_PROMPT
     );
 
-    // 构建改进提示词
-    const prompt = buildPRDImprovePrompt(currentPRD, reviewReport);
+    // 解析 PRD 中的各个章节
+    const sections = parseSectionsFromContent(currentPRD);
+    
+    if (sections.length === 0) {
+      // 如果无法解析章节，回退到整体改进（但可能会被截断）
+      logger.warn('ImprovePRD: Cannot parse sections, falling back to full document improvement');
+      const prompt = buildPRDImprovePrompt(currentPRD, reviewReport);
+      return await this.aask(prompt, [systemPrompt]);
+    }
 
-    // 调用LLM改进文档
-    const improvedPRD = await this.aask(prompt, [systemPrompt]);
+    logger.info('ImprovePRD: Starting section-by-section improvement', {
+      sectionCount: sections.length,
+      sections: sections.map(s => `${s.number}. ${s.title}`),
+    });
 
-    logger.info('ImprovePRD: PRD improved by LLM', {
+    // 提取文档标题（# 开头的行）
+    const titleMatch = currentPRD.match(/^#\s+.+$/m);
+    const documentTitle = titleMatch ? titleMatch[0] : '# 产品需求文档（PRD）';
+
+    // 分章节改进
+    const improvedSections: string[] = [];
+    
+    for (const section of sections) {
+      const sectionContent = this.extractFullSectionContent(currentPRD, section);
+      const sectionReview = this.extractSectionReview(reviewReport, section.number);
+      
+      if (!sectionReview || sectionReview.trim().length < 10) {
+        // 如果没有该章节的审查建议，保持原内容不变
+        logger.info(`ImprovePRD: No review found for section ${section.number}, keeping original`, {
+          sectionNumber: section.number,
+          sectionTitle: section.title,
+        });
+        improvedSections.push(sectionContent);
+        continue;
+      }
+
+      logger.info(`ImprovePRD: Improving section ${section.number}`, {
+        sectionNumber: section.number,
+        sectionTitle: section.title,
+        contentLength: sectionContent.length,
+        reviewLength: sectionReview.length,
+      });
+
+      try {
+        // 为每个章节单独调用 LLM 改进
+        const prompt = buildPRDSectionImprovePrompt(
+          sectionContent,
+          section.number,
+          section.title,
+          sectionReview
+        );
+        
+        const improvedSection = await this.aask(prompt, [systemPrompt]);
+        
+        // 清理可能的代码块标记
+        const cleanedSection = this.cleanCodeBlockMarkers(improvedSection);
+        improvedSections.push(cleanedSection);
+
+        logger.info(`ImprovePRD: Section ${section.number} improved`, {
+          sectionNumber: section.number,
+          originalLength: sectionContent.length,
+          improvedLength: cleanedSection.length,
+        });
+      } catch (error: any) {
+        logger.error(`ImprovePRD: Failed to improve section ${section.number}`, {
+          sectionNumber: section.number,
+          error: error.message,
+        });
+        // 如果改进失败，保持原内容
+        improvedSections.push(sectionContent);
+      }
+    }
+
+    // 合并所有改进后的章节
+    const improvedPRD = [documentTitle, '', ...improvedSections].join('\n\n');
+
+    logger.info('ImprovePRD: PRD improved by LLM (section-by-section)', {
+      originalLength: currentPRD.length,
       improvedLength: improvedPRD.length,
+      sectionCount: sections.length,
     });
 
     return improvedPRD;
   }
 
   /**
+   * 从完整 PRD 中提取章节的完整内容（包括标题）
+   */
+  private extractFullSectionContent(prd: string, section: Section): string {
+    const lines = prd.split('\n');
+    if (section.startLine === undefined) {
+      return `## ${section.number}. ${section.title}\n\n${section.content || ''}`;
+    }
+    
+    const endLine = section.endLine ?? lines.length - 1;
+    return lines.slice(section.startLine, endLine + 1).join('\n');
+  }
+
+  /**
+   * 从审查报告中提取特定章节的审查建议
+   */
+  private extractSectionReview(reviewReport: string, sectionNumber: number): string {
+    // 匹配审查报告中对应章节的内容
+    // 格式可能是：## 章节 N 或 ### N. 标题 审查结果 或 **章节 N**
+    const patterns = [
+      new RegExp(`##\\s*章节\\s*${sectionNumber}[.\\s].*?(?=##\\s*章节|$)`, 's'),
+      new RegExp(`###\\s*${sectionNumber}\\..*?审查.*?(?=###|$)`, 's'),
+      new RegExp(`\\*\\*章节\\s*${sectionNumber}[.:].*?\\*\\*.*?(?=\\*\\*章节|$)`, 's'),
+      new RegExp(`${sectionNumber}\\.\\s+\\S+.*?(?=\\d+\\.\\s+\\S|$)`, 's'),
+    ];
+
+    for (const pattern of patterns) {
+      const match = reviewReport.match(pattern);
+      if (match) {
+        return match[0].trim();
+      }
+    }
+
+    // 如果找不到特定章节的审查，返回空
+    return '';
+  }
+
+  /**
+   * 清理代码块标记
+   */
+  private cleanCodeBlockMarkers(content: string): string {
+    let cleaned = content.trim();
+    
+    // 移除开头的代码块标记
+    const startPattern = /^```(?:markdown|md|text)?\s*\n?/i;
+    if (startPattern.test(cleaned)) {
+      cleaned = cleaned.replace(startPattern, '');
+    }
+    
+    // 移除结尾的代码块标记
+    const endPattern = /\n?```\s*$/;
+    if (endPattern.test(cleaned)) {
+      cleaned = cleaned.replace(endPattern, '');
+    }
+    
+    return cleaned.trim();
+  }
+
+  /**
    * 从文档中移除审查报告部分
+   * 注意：只移除审查报告标题及其之后的内容，保留文档中其他的 --- 分隔符
    */
   private removeReviewReport(document: string): string {
-    // 定义审查报告的标题模式
+    // 定义审查报告的标题模式（匹配 # PRD 审查报告 或 # PRD审查报告）
     const reviewTitlePattern = /#\s*PRD\s*审查报告/;
     
     // 查找审查报告标题的位置
@@ -234,30 +367,40 @@ export class ImprovePRD extends BaseAction {
     }
     
     // 获取审查报告标题之前的内容
-    const beforeTitle = document.substring(0, titleMatchIndex);
+    let beforeTitle = document.substring(0, titleMatchIndex);
     
-    // 查找最后一个 "---" 分隔符（审查报告通常用 "---" 分隔）
-    // 从后往前查找，找到最后一个独立的 "---" 行
+    // 只移除紧邻审查报告标题之前的 "---" 分隔符（如果存在）
+    // 不要移除文档中其他位置的 --- 分隔符，因为它们可能是章节之间的分隔
+    // 只检查最后几行是否是 --- 分隔符
     const lines = beforeTitle.split('\n');
-    let lastSeparatorIndex = -1;
     
-    // 从后往前查找最后一个 "---" 分隔符
-    for (let i = lines.length - 1; i >= 0; i--) {
+    // 从后往前检查，只移除紧邻标题的空行和 --- 分隔符
+    let trimEnd = lines.length;
+    for (let i = lines.length - 1; i >= 0 && i >= lines.length - 5; i--) {
       const line = lines[i].trim();
-      if (line === '---') {
-        lastSeparatorIndex = i;
+      if (line === '') {
+        // 空行，继续检查
+        trimEnd = i;
+      } else if (line === '---') {
+        // 找到紧邻的分隔符，移除它和之后的空行
+        trimEnd = i;
+        break;
+      } else {
+        // 遇到非空、非分隔符的行，停止检查
         break;
       }
     }
     
-    if (lastSeparatorIndex >= 0) {
-      // 如果找到了分隔符，返回分隔符之前的内容（移除分隔符本身）
-      const result = lines.slice(0, lastSeparatorIndex).join('\n').trim();
-      return result;
-    } else {
-      // 如果没有找到分隔符，返回审查报告标题之前的内容
-      return beforeTitle.trim();
-    }
+    // 返回处理后的内容
+    const result = lines.slice(0, trimEnd).join('\n').trim();
+    
+    logger.info('ImprovePRD: Removed review report from document', {
+      originalLength: document.length,
+      resultLength: result.length,
+      removedFromIndex: titleMatchIndex,
+    });
+    
+    return result;
   }
 }
 

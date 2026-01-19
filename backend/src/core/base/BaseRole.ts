@@ -55,6 +55,24 @@ export abstract class BaseRole {
   toString(): string {
     return `${this.profile}(${this.name})`;
   }
+
+  /**
+   * Reset role state
+   * Called during rollback to clean up resources and stop ongoing operations
+   * @param abortSignal - AbortSignal to cancel ongoing operations
+   */
+  async reset(abortSignal?: AbortSignal): Promise<void> {
+    // Check abort signal
+    if (abortSignal?.aborted) {
+      return;
+    }
+
+    // Subclasses should override this method to:
+    // 1. Call reset() on all actions
+    // 2. Clean up role-specific resources
+    // 3. Reset RoleContext state (state and todo) via StateManager
+    // Note: RoleContext state is managed by StateManager, not directly modified here
+  }
 }
 
 export default BaseRole;

@@ -7,6 +7,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-01-15
+
+### Added ✨
+
+#### State Management System Refactoring
+- **Unified State Manager** - Complete refactoring of state management system
+  - **StateManager as single entry point** - All state read/write operations must go through StateManager
+  - **Database as single source of truth** - Removed all in-memory state, unified database management
+  - **RoleContext state unification** - state and todo stored in database `interactive_session_running_state` table
+  - **State synchronization mechanism** - Executor syncs state and todo from database to RoleContext memory
+  - **StepwiseDocumentGenerator integration** - Integrated StateManager for step state management with reset() support
+  - **Enhanced rollback mechanism** - Complete rollback flow including task stopping, state reset, message clearing, and step state reset
+  - **Sequential execution guarantee** - Based on database `role_order` and `action_order` fields
+  - **Database migrations** - Added `step_state` table and `role_context_state` field migrations
+
+- **New Backend Files**:
+  - `backend/src/orchestration/StateManager.ts` - Unified state manager (core component)
+  - `backend/src/orchestration/StepStateTracker.ts` - Step state tracker (internal implementation)
+
+### Changed
+
+- **Removed WorkflowTracker** - All WorkflowTracker functionality integrated into StateManager
+- **BaseAction, BaseRole** - Refactored to use StateManager for all state operations
+- **SessionWorkflowExecutor** - Refactored to use StateManager, removed direct database access
+- **InteractiveSession** - Refactored to use StateManager for state management
+- **StepwiseDocumentGenerator** - Integrated StateManager for step state management
+- **RoleContext** - State and todo now stored in database, synced to memory by executor
+
+### Technical Details
+
+- All components (Role, Action, StepwiseDocumentGenerator) now use StateManager for state operations
+- Direct Repository or database access is prohibited
+- State consistency guaranteed by StateManager
+- All state changes logged through StateManager
+- Support for interrupt and rollback operations
+
+## [1.3.0] - 2025-12-26
+
+### Added ✨
+
+#### Role Action Execution API
+- **Standalone role action execution** - Execute specific role actions independently without running the full workflow
+  - POST `/api/projects/:projectId/roles/:roleProfile/actions/:actionName/execute` endpoint
+  - Support for all role actions: WritePRD, WriteDesign, WriteCode, WriteTest, and more
+  - Flexible input methods: custom input, context messages, or auto-load from project history
+  - Automatic context loading based on action requirements
+  - Workspace options for document organization
+  - Complete error handling and timeout control (default 10 minutes)
+  - Results automatically saved to project history
+
+- **New Backend Files**:
+  - `backend/src/api/controllers/RoleActionExecutionController.ts` - Role action execution controller
+  - `backend/src/services/RoleActionFactory.ts` - Dynamic role and action factory
+  - `backend/src/services/RoleActionService.ts` - Role and action management service
+
+- **New API Routes**:
+  - `POST /api/projects/:projectId/roles/:roleProfile/actions/:actionName/execute` - Execute role action
+
+#### RAG Service Enhancement
+- **Vector search with Qdrant** - Enhanced RAG service with vector database support
+  - Qdrant vector database integration for semantic search
+  - Rerank service for result relevance improvement
+  - Hybrid search (keyword + vector) support
+  - Automatic document indexing
+  - Knowledge base document management
+  - Multiple embedding provider support (OpenAI, ZhipuAI, ARK)
+  - Graceful degradation to text similarity when vector search unavailable
+
+- **New Backend Files**:
+  - `backend/src/services/EmbeddingService.ts` - Embedding generation service
+  - `backend/src/services/QdrantService.ts` - Qdrant vector database service
+  - `backend/src/services/RerankService.ts` - Result reranking service
+
+### Changed
+
+- **projects.ts**: Added role action execution route
+- **RoleActionFactory**: Dynamic role and action creation from database configuration
+- **RAGService**: Enhanced with vector search, rerank, and hybrid query capabilities
+
+### Documentation
+
+- Updated README with Role Action Execution API examples
+- Added API documentation for standalone role action execution
+
 ## [1.2.0] - 2025-12-25
 
 ### Added ✨
@@ -148,16 +232,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Roadmap
 
-#### v1.2.0 (Planned)
-- [ ] State persistence and recovery for interactive mode
-- [ ] Custom interaction checkpoints
-- [ ] Diff display for content changes
-- [ ] API support for interactive mode
+#### v1.2.0 (Completed ✅)
+- [x] State persistence and recovery for interactive mode
+- [x] Custom interaction checkpoints
+- [x] Diff display for content changes
+- [x] API support for interactive mode
+- [x] Web UI for interactive mode
 
-#### v1.3.0 (Planned)
-- [ ] Web UI for interactive mode
+#### v1.3.0 (Completed ✅)
+- [x] Role Action Execution API
+- [x] Enhanced RAG with vector search (Qdrant)
+- [x] Rerank service for result relevance
+- [x] Hybrid search support
+
+#### v1.4.0 (Completed ✅)
+- [x] Unified State Management System refactoring
+- [x] StateManager as single entry point
+- [x] Database as single source of truth
+- [x] Enhanced rollback mechanism
+- [x] StepwiseDocumentGenerator integration
+
+#### v1.5.0 (Planned)
 - [ ] Real-time collaboration
 - [ ] Review comments and annotations
+- [ ] Enhanced RAG with more providers
+- [ ] Advanced role action debugging tools
 
 #### v2.0.0 (Future)
 - [ ] Plugin marketplace

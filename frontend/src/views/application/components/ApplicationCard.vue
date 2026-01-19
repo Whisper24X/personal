@@ -12,8 +12,10 @@
           {{ application.description }}
         </p>
       </div>
-      <el-dropdown v-if="showActions" @command="handleCommand" trigger="click" @click.stop>
-        <el-button type="text" :icon="MoreFilled" circle />
+      <el-dropdown v-if="showActions" @command="handleCommand" trigger="click">
+        <span class="dropdown-trigger" @click.stop>
+          <el-button type="primary" text :icon="MoreFilled" circle />
+        </span>
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item :command="{ action: 'view', id: application.id }">
@@ -23,7 +25,7 @@
               编辑
             </el-dropdown-item>
             <el-dropdown-item :command="{ action: 'delete', id: application.id }" divided>
-              删除
+              <span style="color: #F56C6C;">删除</span>
             </el-dropdown-item>
           </el-dropdown-menu>
         </template>
@@ -135,6 +137,12 @@ function formatDate(dateStr: string): string {
   gap: 6px;
   color: #606266;
   font-size: 14px;
+}
+
+.dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 </style>
 

@@ -42,9 +42,9 @@ export interface WritePRDOptions {
   useStepwiseGeneration?: boolean; // 是否使用分步骤生成
   applicationId?: string; // 应用ID，用于文件夹命名
   projectId?: string; // 项目ID，用于文件夹命名
-  version?: number; // 版本号，用于文件夹命名
-  workspacePath?: string; // workspace 路径，默认 ./workspace
   includeOptionalSections?: boolean; // 是否包含可选章节（如第 11 章角色关注块）
+  /** @deprecated 版本控制已改用 git，此参数被忽略 */
+  version?: number;
 }
 
 export class WritePRD extends BaseAction {
@@ -69,14 +69,11 @@ export class WritePRD extends BaseAction {
       if (!projectId) {
         throw new Error('projectId is required for WritePRD action. Cannot use "default" to prevent file conflicts between different projects.');
       }
-      const version = options?.version || 1;
 
       const mrdFromWorkspace = await WorkspaceManager.readFile('MRD.md', {
         applicationId,
         projectId,
-        version,
         documentType: 'MRD',
-        workspacePath: options?.workspacePath,
       });
 
       if (mrdFromWorkspace) {
@@ -84,7 +81,6 @@ export class WritePRD extends BaseAction {
         logger.info('WritePRD: Loaded MRD content from workspace', {
           applicationId,
           projectId,
-          version,
           contentLength: mrdContent.length,
         });
       } else {
@@ -330,6 +326,10 @@ export class WritePRD extends BaseAction {
       PRD_REVIEW_SYSTEM_PROMPT
     );
 
+    // Get StateManager and role from context (if available)
+    const stateManager = this.context?.get('stateManager') as any;
+    const role = (this as any).role?.profile || undefined;
+
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
       buildOutlinePrompt: buildPRDOutlinePrompt,
       buildSectionPrompt: buildPRDSectionPrompt,
@@ -360,8 +360,9 @@ export class WritePRD extends BaseAction {
       },
       workspaceDir,
       applicationId: options?.applicationId,
-      projectId: options?.projectId,
-      version: options?.version,
+      projectId: options?.projectId || (this.context?.get('projectId') as string | undefined),
+      stateManager,
+      role,
     });
 
     return await generator.generate(input);

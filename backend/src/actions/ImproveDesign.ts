@@ -207,9 +207,10 @@ export class ImproveDesign extends BaseAction {
 
   /**
    * 从文档中移除审查报告部分
+   * 注意：只移除审查报告标题及其之后的内容，保留文档中其他的 --- 分隔符
    */
   private removeReviewReport(document: string): string {
-    // 定义审查报告的标题模式
+    // 定义审查报告的标题模式（匹配 # 系统设计文档 审查报告 或 # 系统设计文档审查报告）
     const reviewTitlePattern = /#\s*系统设计文档\s*审查报告/;
     
     // 查找审查报告标题的位置
@@ -221,30 +222,40 @@ export class ImproveDesign extends BaseAction {
     }
     
     // 获取审查报告标题之前的内容
-    const beforeTitle = document.substring(0, titleMatchIndex);
+    let beforeTitle = document.substring(0, titleMatchIndex);
     
-    // 查找最后一个 "---" 分隔符（审查报告通常用 "---" 分隔）
-    // 从后往前查找，找到最后一个独立的 "---" 行
+    // 只移除紧邻审查报告标题之前的 "---" 分隔符（如果存在）
+    // 不要移除文档中其他位置的 --- 分隔符，因为它们可能是章节之间的分隔
+    // 只检查最后几行是否是 --- 分隔符
     const lines = beforeTitle.split('\n');
-    let lastSeparatorIndex = -1;
     
-    // 从后往前查找最后一个 "---" 分隔符
-    for (let i = lines.length - 1; i >= 0; i--) {
+    // 从后往前检查，只移除紧邻标题的空行和 --- 分隔符
+    let trimEnd = lines.length;
+    for (let i = lines.length - 1; i >= 0 && i >= lines.length - 5; i--) {
       const line = lines[i].trim();
-      if (line === '---') {
-        lastSeparatorIndex = i;
+      if (line === '') {
+        // 空行，继续检查
+        trimEnd = i;
+      } else if (line === '---') {
+        // 找到紧邻的分隔符，移除它和之后的空行
+        trimEnd = i;
+        break;
+      } else {
+        // 遇到非空、非分隔符的行，停止检查
         break;
       }
     }
     
-    if (lastSeparatorIndex >= 0) {
-      // 如果找到了分隔符，返回分隔符之前的内容（移除分隔符本身）
-      const result = lines.slice(0, lastSeparatorIndex).join('\n').trim();
-      return result;
-    } else {
-      // 如果没有找到分隔符，返回审查报告标题之前的内容
-      return beforeTitle.trim();
-    }
+    // 返回处理后的内容
+    const result = lines.slice(0, trimEnd).join('\n').trim();
+    
+    logger.info('ImproveDesign: Removed review report from document', {
+      originalLength: document.length,
+      resultLength: result.length,
+      removedFromIndex: titleMatchIndex,
+    });
+    
+    return result;
   }
 }
 

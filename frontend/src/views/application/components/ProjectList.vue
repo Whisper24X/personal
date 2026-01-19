@@ -19,6 +19,7 @@
         :show-knowledge-base="showKnowledgeBase"
         @click="handleProjectClick"
         @knowledge-base="handleKnowledgeBaseClick"
+        @command="handleCommand"
       />
     </div>
   </el-card>
@@ -51,6 +52,7 @@ const emit = defineEmits<{
   projectClick: [project: any];
   knowledgeBase: [projectId: string];
   emptyAction: [];
+  command: [command: { action: string; id: string }];
 }>();
 
 function handleProjectClick(project: any) {
@@ -59,6 +61,10 @@ function handleProjectClick(project: any) {
 
 function handleKnowledgeBaseClick(projectId: string) {
   emit('knowledgeBase', projectId);
+}
+
+function handleCommand(command: { action: string; id: string }) {
+  emit('command', command);
 }
 
 function emptyActionHandler() {

@@ -19,9 +19,15 @@ export abstract class BaseLLM {
    * Simple question-answer interface
    * @param prompt - The question/prompt
    * @param systemMsgs - Optional system messages
+   * @param abortSignal - Optional abort signal for cancellation
    * @returns LLM response as string
    */
-  async aask(prompt: string, systemMsgs?: string[]): Promise<string> {
+  async aask(prompt: string, systemMsgs?: string[], abortSignal?: AbortSignal): Promise<string> {
+    // Check cancellation before starting
+    if (abortSignal?.aborted) {
+      throw new Error('LLM call was cancelled');
+    }
+    
     const messages: any[] = [];
     
     // Add system messages
@@ -38,23 +44,30 @@ export abstract class BaseLLM {
       content: prompt,
     });
     
-    const response = await this.acompletion(messages);
+    const response = await this.acompletion(messages, abortSignal);
+    
+    // Check cancellation after completion
+    if (abortSignal?.aborted) {
+      throw new Error('LLM call was cancelled');
+    }
+    
     return response.content;
   }
 
   /**
    * Chat completion interface
    * @param messages - Array of chat messages
+   * @param abortSignal - Optional abort signal for cancellation
    * @returns Full LLM response with usage info
    */
-  abstract acompletion(messages: any[]): Promise<ILLMResponse>;
+  abstract acompletion(messages: any[], abortSignal?: AbortSignal): Promise<ILLMResponse>;
 
   /**
    * Stream completion (optional, for future implementation)
    */
-  async *acompletionStream(messages: any[]): AsyncGenerator<string> {
+  async *acompletionStream(messages: any[], abortSignal?: AbortSignal): AsyncGenerator<string> {
     // Default implementation: return full response
-    const response = await this.acompletion(messages);
+    const response = await this.acompletion(messages, abortSignal);
     yield response.content;
   }
 
@@ -69,11 +82,15 @@ export abstract class BaseLLM {
 
   /**
    * Log LLM call for debugging
+   * @param messages - Chat messages
+   * @param response - LLM response
+   * @param context - Optional context with role and action info
    */
-  protected logCall(messages: any[], response: ILLMResponse): void {
+  protected logCall(messages: any[], response: ILLMResponse, context?: { role?: string; action?: string; status?: string }): void {
     logger.debug('LLM call', {
       provider: this.config.provider,
       model: this.config.model,
+      ...(context || {}),
       messages: messages.length,
       responseLength: response.content.length,
       usage: response.usage,

@@ -20,6 +20,7 @@ export class RoleActionExecutor {
         'BreakdownTasks',
         'WriteCode',
         'WriteTest',
+        'WriteTestPlan',
         'ExecuteSubtask',
         'ImprovePRD',
         'ImproveMRD',
@@ -28,6 +29,14 @@ export class RoleActionExecutor {
         'PRDReview',
         'DesignReview',
         'SubProjectDesignReview',
+        'TestabilityReview',
+        'TestCaseReview',
+        'TestReview',
+        'ImproveTest',
+        'AutomationPlanning',
+        'AutomationExecution',
+        'CoverageQualityCheck',
+        'QAConclusion',
     ];
 
     constructor(
@@ -122,7 +131,22 @@ export class RoleActionExecutor {
         // Special handling for different action types
         switch (action.name) {
             case 'WriteTest':
+            case 'TestabilityReview':
+            case 'WriteTestPlan':
                 return this.prepareWriteTestInput(context);
+
+            case 'TestCaseReview':
+            case 'TestReview':
+            case 'AutomationPlanning':
+            case 'AutomationExecution':
+            case 'CoverageQualityCheck':
+            case 'QAConclusion':
+                // These actions will read from workspace, so pass context as fallback
+                return context;
+
+            case 'ImproveTest':
+                // ImproveTest will read from workspace, but can also accept review report as input
+                return this.prepareImproveInput('TestReview', 'test review report');
 
             case 'MRDReview':
                 return this.prepareReviewInput('WriteMRD', 'MRD');
@@ -225,6 +249,22 @@ export class RoleActionExecutor {
     ): Promise<any> {
         const actionStartTime = Date.now();
 
+        // Set abortSignal from StateManager if available
+        try {
+            const context = (action as any).context;
+            if (context) {
+                const stateManager = context.get?.('stateManager');
+                if (stateManager && typeof stateManager.getAbortSignal === 'function') {
+                    const abortSignal = stateManager.getAbortSignal();
+                    action.setAbortSignal(abortSignal);
+                }
+            }
+        } catch (error: any) {
+            logger.warn(`${this.profile} RoleActionExecutor: Failed to set abortSignal for action ${action.name}`, {
+                error: error.message,
+            });
+        }
+
         try {
             let result;
             if (this.actionAcceptsOptions(action.name)) {
@@ -272,6 +312,7 @@ export class RoleActionExecutor {
             case 'WriteDesign':
             case 'WriteCode':
             case 'WriteTest':
+            case 'WriteTestPlan':
             case 'ExecuteSubtask':
             case 'ImprovePRD':
             case 'ImproveMRD':
@@ -280,6 +321,14 @@ export class RoleActionExecutor {
             case 'PRDReview':
             case 'DesignReview':
             case 'SubProjectDesignReview':
+            case 'TestabilityReview':
+            case 'TestCaseReview':
+            case 'TestReview':
+            case 'ImproveTest':
+            case 'AutomationPlanning':
+            case 'AutomationExecution':
+            case 'CoverageQualityCheck':
+            case 'QAConclusion':
                 return await (action as any).run(input, workspaceOptions);
 
             case 'WriteSubProjectDesign':

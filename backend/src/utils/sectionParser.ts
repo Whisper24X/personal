@@ -12,19 +12,45 @@ export interface Section {
 }
 
 /**
+ * 清理内容中的代码块标记
+ * LLM 有时会将内容包裹在 ```markdown ... ``` 代码块中
+ */
+function cleanCodeBlockMarkers(content: string): string {
+  let cleaned = content.trim();
+  
+  // 移除开头的代码块标记（如 ```markdown, ```md, ``` 等）
+  const codeBlockStartPattern = /^```(?:markdown|md|text)?\s*\n?/i;
+  if (codeBlockStartPattern.test(cleaned)) {
+    cleaned = cleaned.replace(codeBlockStartPattern, '');
+  }
+  
+  // 移除结尾的代码块标记
+  const codeBlockEndPattern = /\n?```\s*$/;
+  if (codeBlockEndPattern.test(cleaned)) {
+    cleaned = cleaned.replace(codeBlockEndPattern, '');
+  }
+  
+  return cleaned.trim();
+}
+
+/**
  * 从 Markdown 内容中解析章节
  */
 export function parseSectionsFromContent(content: string): Section[] {
   const sections: Section[] = [];
-  const lines = content.split('\n');
+  
+  // 先清理可能存在的代码块标记
+  const cleanedContent = cleanCodeBlockMarkers(content);
+  const lines = cleanedContent.split('\n');
   
   let currentSection: Section | null = null;
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     
-    // 匹配章节标题：## 数字. 标题
-    const match = line.match(/^##\s+(\d+)\.\s+(.+)$/);
+    // 匹配章节标题：## 数字. 标题（支持更宽松的格式）
+    // 支持 ## 0. 标题 或 ##0. 标题 或 ## 0.标题
+    const match = line.match(/^##\s*(\d+)\.\s*(.+)$/);
     if (match) {
       // 保存上一个章节
       if (currentSection) {
