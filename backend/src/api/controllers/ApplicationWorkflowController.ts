@@ -26,6 +26,9 @@ export class ApplicationWorkflowController {
         });
       }
 
+      // Validate application exists
+      await ApplicationWorkflowController.workflowService.validateApplicationExists(applicationId);
+
       let workflows = await ApplicationWorkflowController.workflowService.getApplicationWorkflows(applicationId);
 
       // If no workflows exist, auto-create default workflow
@@ -69,6 +72,9 @@ export class ApplicationWorkflowController {
         });
       }
 
+      // Validate application exists
+      await ApplicationWorkflowController.workflowService.validateApplicationExists(applicationId);
+
       const workflow = await ApplicationWorkflowController.workflowService.getDefaultWorkflow(applicationId);
 
       return res.json({
@@ -77,6 +83,14 @@ export class ApplicationWorkflowController {
       });
     } catch (error: any) {
       logger.error('ApplicationWorkflowController: Failed to get default workflow:', error);
+      // Return 404 if workflow not found, 500 for other errors
+      if (error.message?.includes('No default workflow found')) {
+        return res.status(404).json({
+          success: false,
+          error: 'Default workflow not found',
+          message: error.message,
+        });
+      }
       return res.status(500).json({
         success: false,
         error: 'Failed to get default workflow',
@@ -115,7 +129,10 @@ export class ApplicationWorkflowController {
         });
       }
 
-      // Validate workflow config structure
+      // Validate application exists
+      await ApplicationWorkflowController.workflowService.validateApplicationExists(applicationId);
+
+      // Validate workflow config structure (basic validation)
       for (const role of workflowConfig.roles) {
         if (!role.profile || typeof role.order !== 'number' || !Array.isArray(role.actions)) {
           return res.status(400).json({
@@ -124,6 +141,11 @@ export class ApplicationWorkflowController {
           });
         }
       }
+
+      // Validate workflow config (full validation including role/action existence)
+      await ApplicationWorkflowController.workflowService.validateWorkflowConfig(
+        workflowConfig as WorkflowConfig
+      );
 
       const workflow = await ApplicationWorkflowController.workflowService.createWorkflow(applicationId, {
         name,
@@ -138,6 +160,14 @@ export class ApplicationWorkflowController {
       });
     } catch (error: any) {
       logger.error('ApplicationWorkflowController: Failed to create workflow:', error);
+      // Return 400 for validation errors, 500 for other errors
+      if (error.message?.includes('not found') || error.message?.includes('Invalid') || error.message?.includes('must')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Validation failed',
+          message: error.message,
+        });
+      }
       return res.status(500).json({
         success: false,
         error: 'Failed to create workflow',
@@ -162,6 +192,24 @@ export class ApplicationWorkflowController {
         });
       }
 
+      // Validate application exists
+      await ApplicationWorkflowController.workflowService.validateApplicationExists(applicationId);
+
+      // Verify workflow belongs to this application
+      const existingWorkflow = await ApplicationWorkflowController.workflowService.getWorkflowById(workflowId);
+      if (!existingWorkflow) {
+        return res.status(404).json({
+          success: false,
+          error: 'Workflow not found',
+        });
+      }
+      if (existingWorkflow.application_id !== applicationId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Workflow does not belong to this application',
+        });
+      }
+
       // Validate workflow config if provided
       if (workflowConfig) {
         if (!workflowConfig.roles || !Array.isArray(workflowConfig.roles)) {
@@ -171,6 +219,7 @@ export class ApplicationWorkflowController {
           });
         }
 
+        // Basic structure validation
         for (const role of workflowConfig.roles) {
           if (!role.profile || typeof role.order !== 'number' || !Array.isArray(role.actions)) {
             return res.status(400).json({
@@ -179,9 +228,14 @@ export class ApplicationWorkflowController {
             });
           }
         }
+
+        // Full validation including role/action existence
+        await ApplicationWorkflowController.workflowService.validateWorkflowConfig(
+          workflowConfig as WorkflowConfig
+        );
       }
 
-      const workflow = await ApplicationWorkflowController.workflowService.updateWorkflow(workflowId, {
+      const workflow = await ApplicationWorkflowController.workflowService.updateWorkflow(workflowId, applicationId, {
         name,
         description,
         isDefault,
@@ -201,6 +255,21 @@ export class ApplicationWorkflowController {
       });
     } catch (error: any) {
       logger.error('ApplicationWorkflowController: Failed to update workflow:', error);
+      // Return appropriate status codes based on error type
+      if (error.message?.includes('not found')) {
+        return res.status(404).json({
+          success: false,
+          error: 'Workflow not found',
+          message: error.message,
+        });
+      }
+      if (error.message?.includes('Invalid') || error.message?.includes('must')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Validation failed',
+          message: error.message,
+        });
+      }
       return res.status(500).json({
         success: false,
         error: 'Failed to update workflow',
@@ -215,16 +284,40 @@ export class ApplicationWorkflowController {
    */
   static async deleteWorkflow(req: Request, res: Response) {
     try {
-      const { workflowId } = req.params;
+      const { applicationId, workflowId } = req.params;
 
-      if (!workflowId) {
+      if (!applicationId || !workflowId) {
         return res.status(400).json({
           success: false,
-          error: 'Workflow ID is required',
+          error: 'Application ID and Workflow ID are required',
         });
       }
 
-      const deleted = await ApplicationWorkflowController.workflowService.deleteWorkflow(workflowId);
+      // Validate application exists
+      await ApplicationWorkflowController.workflowService.validateApplicationExists(applicationId);
+
+      // Verify workflow belongs to this application and is not default
+      const existingWorkflow = await ApplicationWorkflowController.workflowService.getWorkflowById(workflowId);
+      if (!existingWorkflow) {
+        return res.status(404).json({
+          success: false,
+          error: 'Workflow not found',
+        });
+      }
+      if (existingWorkflow.application_id !== applicationId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Workflow does not belong to this application',
+        });
+      }
+      if (existingWorkflow.is_default) {
+        return res.status(400).json({
+          success: false,
+          error: 'Cannot delete default workflow. Please set another workflow as default first.',
+        });
+      }
+
+      const deleted = await ApplicationWorkflowController.workflowService.deleteWorkflow(workflowId, applicationId);
 
       if (!deleted) {
         return res.status(404).json({
@@ -261,6 +354,9 @@ export class ApplicationWorkflowController {
           error: 'Application ID and Workflow ID are required',
         });
       }
+
+      // Validate application exists
+      await ApplicationWorkflowController.workflowService.validateApplicationExists(applicationId);
 
       const success = await ApplicationWorkflowController.workflowService.setDefaultWorkflow(applicationId, workflowId);
 

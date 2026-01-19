@@ -161,8 +161,10 @@ async function fetchWorkflows() {
     const response = await apiClient.getApplicationWorkflows(applicationId.value) as any;
     workflows.value = response.workflows || [];
   } catch (err: any) {
-    error.value = err.message || '获取工作流列表失败';
-    ElMessage.error(error.value);
+    const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || '获取工作流列表失败';
+    error.value = errorMessage;
+    ElMessage.error(errorMessage);
+    console.error('Failed to fetch workflows:', err);
   } finally {
     loading.value = false;
   }
@@ -196,7 +198,9 @@ async function setAsDefault(workflowId: string) {
     await fetchWorkflows();
   } catch (err: any) {
     if (err !== 'cancel') {
-      ElMessage.error(err.message || '设置默认工作流失败');
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || '设置默认工作流失败';
+      ElMessage.error(errorMessage);
+      console.error('Failed to set default workflow:', err);
     }
   }
 }
@@ -211,7 +215,9 @@ async function deleteWorkflow(workflowId: string) {
     await fetchWorkflows();
   } catch (err: any) {
     if (err !== 'cancel') {
-      ElMessage.error(err.message || '删除工作流失败');
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || '删除工作流失败';
+      ElMessage.error(errorMessage);
+      console.error('Failed to delete workflow:', err);
     }
   }
 }

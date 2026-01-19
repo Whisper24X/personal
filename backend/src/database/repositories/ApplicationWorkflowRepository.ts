@@ -14,6 +14,15 @@ export interface WorkflowConfig {
     actions: string[];
     watch_actions?: string[];
     config?: Record<string, any>;
+    // 数据传递配置
+    input?: {
+      source: string | string[]; // 'user', 'step1', ['step1', 'step2']
+      mapping?: Record<string, string>; // { "prd": "${step1.output.prd}" }
+    };
+    output?: {
+      target: string | string[]; // 'step2', 'user', ['step2', 'storage']
+      mapping?: Record<string, string>; // { "prd": "${output.prd}" }
+    };
   }>;
 }
 
@@ -108,9 +117,13 @@ export class ApplicationWorkflowRepository {
 
   /**
    * Update workflow
+   * @param id Workflow ID
+   * @param applicationId Application ID (for security validation)
+   * @param data Update data
    */
   async update(
     id: string,
+    applicationId: string,
     data: {
       name?: string;
       description?: string;
@@ -118,6 +131,15 @@ export class ApplicationWorkflowRepository {
       workflowConfig?: WorkflowConfig;
     }
   ): Promise<ApplicationWorkflow | null> {
+    // First verify the workflow exists and belongs to this application
+    const existing = await this.findById(id);
+    if (!existing) {
+      return null;
+    }
+    if (existing.application_id !== applicationId) {
+      throw new Error('Workflow does not belong to this application');
+    }
+
     const updates: string[] = [];
     const values: any[] = [];
     let paramIndex = 1;
@@ -133,15 +155,12 @@ export class ApplicationWorkflowRepository {
     if (data.isDefault !== undefined) {
       // If setting as default, unset other defaults first
       if (data.isDefault) {
-        const workflow = await this.findById(id);
-        if (workflow) {
-          await query(
-            `UPDATE application_workflows 
-             SET is_default = false, updated_at = NOW()
-             WHERE application_id = $1 AND id != $2 AND is_default = true`,
-            [workflow.application_id, id]
-          );
-        }
+        await query(
+          `UPDATE application_workflows 
+           SET is_default = false, updated_at = NOW()
+           WHERE application_id = $1 AND id != $2 AND is_default = true`,
+          [applicationId, id]
+        );
       }
       updates.push(`is_default = $${paramIndex++}`);
       values.push(data.isDefault);
@@ -152,16 +171,16 @@ export class ApplicationWorkflowRepository {
     }
 
     if (updates.length === 0) {
-      return this.findById(id);
+      return existing;
     }
 
     updates.push(`updated_at = NOW()`);
-    values.push(id);
+    values.push(id, applicationId);
 
     const result = await query<ApplicationWorkflow>(
       `UPDATE application_workflows 
        SET ${updates.join(', ')}
-       WHERE id = $${paramIndex}
+       WHERE id = $${paramIndex} AND application_id = $${paramIndex + 1}
        RETURNING *`,
       values
     );
@@ -169,7 +188,7 @@ export class ApplicationWorkflowRepository {
     const updated = result.rows[0];
     if (updated && data.workflowConfig) {
       // Update associations
-      await this.updateWorkflowAssociations(id, updated.application_id, data.workflowConfig);
+      await this.updateWorkflowAssociations(id, applicationId, data.workflowConfig);
     }
 
     return updated || null;
@@ -177,13 +196,30 @@ export class ApplicationWorkflowRepository {
 
   /**
    * Delete workflow
+   * @param id Workflow ID
+   * @param applicationId Application ID (for security validation)
    */
-  async delete(id: string): Promise<boolean> {
+  async delete(id: string, applicationId: string): Promise<boolean> {
+    // First verify the workflow exists and belongs to this application
+    const existing = await this.findById(id);
+    if (!existing) {
+      return false;
+    }
+    if (existing.application_id !== applicationId) {
+      throw new Error('Workflow does not belong to this application');
+    }
+    if (existing.is_default) {
+      throw new Error('Cannot delete default workflow');
+    }
+
     // Delete associations first
     await query(`DELETE FROM application_roles WHERE workflow_id = $1`, [id]);
     await query(`DELETE FROM application_actions WHERE workflow_id = $1`, [id]);
 
-    const result = await query(`DELETE FROM application_workflows WHERE id = $1`, [id]);
+    const result = await query(
+      `DELETE FROM application_workflows WHERE id = $1 AND application_id = $2`,
+      [id, applicationId]
+    );
     return result.rowCount > 0;
   }
 
