@@ -54,6 +54,10 @@ export interface StepwiseGenerationConfig {
   // StateManager配置（可选，用于步骤状态管理）
   stateManager?: StateManager;
   role?: string; // 角色名称，用于步骤状态管理
+
+  // 步骤控制（可选，用于跳过特定步骤）
+  skipReview?: boolean; // 是否跳过章节审核步骤
+  skipMerge?: boolean; // 是否跳过合并步骤
 }
 
 export class StepwiseDocumentGenerator {
@@ -178,41 +182,91 @@ export class StepwiseDocumentGenerator {
       // Check cancellation after Step 3
       await this.checkCancellation();
 
-      // Step 4: 审核各个章节（如配置）
-      const step4Start = Date.now();
-      logger.info('StepwiseDocumentGenerator: Step 4/5 - Reviewing sections', logContext);
-      await this.checkCancellation();
-      await this.setStepState('review-sections', StepState.RUNNING);
-      const sectionReviews = await this.reviewSections(sectionContents, sections, outline);
-      const reviewDocument = await this.generateReviewDocument(sectionReviews, sections);
-      await this.setStepState('review-sections', StepState.COMPLETED);
-      logger.info('StepwiseDocumentGenerator: Step 4/5 completed - Section reviews generated', {
-        ...logContext,
-        sectionCount: sectionContents.length,
-        reviewSectionCount: sectionReviews.length,
-        reviewDocumentLength: reviewDocument?.length || 0,
-        duration: `${Date.now() - step4Start}ms`,
-      });
-      
-      // Check cancellation after Step 4
-      await this.checkCancellation();
+      // Step 4: 审核各个章节（如配置，且未设置 skipReview）
+      let sectionReviews: string[] = [];
+      let reviewDocument: string | undefined;
+      if (!this.config.skipReview) {
+        const step4Start = Date.now();
+        logger.info('StepwiseDocumentGenerator: Step 4/5 - Reviewing sections', logContext);
+        await this.checkCancellation();
+        await this.setStepState('review-sections', StepState.RUNNING);
+        sectionReviews = await this.reviewSections(sectionContents, sections, outline);
+        reviewDocument = await this.generateReviewDocument(sectionReviews, sections);
+        await this.setStepState('review-sections', StepState.COMPLETED);
+        logger.info('StepwiseDocumentGenerator: Step 4/5 completed - Section reviews generated', {
+          ...logContext,
+          sectionCount: sectionContents.length,
+          reviewSectionCount: sectionReviews.length,
+          reviewDocumentLength: reviewDocument?.length || 0,
+          duration: `${Date.now() - step4Start}ms`,
+        });
+        
+        // Check cancellation after Step 4
+        await this.checkCancellation();
+      } else {
+        logger.info('StepwiseDocumentGenerator: Step 4/5 - Skipping section reviews (skipReview=true)', logContext);
+        await this.setStepState('review-sections', StepState.COMPLETED);
+      }
 
-      // Step 5: 合并所有章节
-      const step5Start = Date.now();
-      logger.info('StepwiseDocumentGenerator: Step 5/5 - Merging sections', logContext);
-      await this.checkCancellation();
-      await this.setStepState('merge', StepState.RUNNING);
-      const mergedContent = this.mergeSections(outline, sectionContents, sections);
-      await this.saveToWorkspace(this.config.mainFileName, mergedContent);
-      await this.setStepState('merge', StepState.COMPLETED);
-      logger.info('StepwiseDocumentGenerator: Step 5/5 completed - Sections merged', {
-        ...logContext,
-        totalLength: mergedContent.length,
-        sectionCount: sections.length,
-        duration: `${Date.now() - step5Start}ms`,
-      });
+      // Step 5: 合并所有章节（如未设置 skipMerge）
+      let mergedContent = '';
+      if (!this.config.skipMerge) {
+        const step5Start = Date.now();
+        logger.info('StepwiseDocumentGenerator: Step 5/5 - Merging sections', logContext);
+        await this.checkCancellation();
+        await this.setStepState('merge', StepState.RUNNING);
+        mergedContent = this.mergeSections(outline, sectionContents, sections);
+        await this.saveToWorkspace(this.config.mainFileName, mergedContent);
+        await this.setStepState('merge', StepState.COMPLETED);
+        logger.info('StepwiseDocumentGenerator: Step 5/5 completed - Sections merged', {
+          ...logContext,
+          totalLength: mergedContent.length,
+          sectionCount: sections.length,
+          duration: `${Date.now() - step5Start}ms`,
+        });
+      } else {
+        logger.info('StepwiseDocumentGenerator: Step 5/5 - Skipping merge (skipMerge=true)', logContext);
+        await this.setStepState('merge', StepState.COMPLETED);
+      }
 
       const totalDuration = Date.now() - startTime;
+      
+      // 如果跳过合并，返回章节文件列表信息
+      if (this.config.skipMerge) {
+        const sectionFiles = sections.map((section, index) => ({
+          number: section.number,
+          title: section.title,
+          filename: `${String(section.number).padStart(2, '0')}-section-${section.number}.md`,
+          content: sectionContents[index] || '',
+        }));
+        
+        logger.info('StepwiseDocumentGenerator: Stepwise generation completed (skipMerge mode)', {
+          ...logContext,
+          sectionCount: sections.length,
+          workspaceDir: this.config.workspaceDir,
+          skipReview: this.config.skipReview,
+          skipMerge: this.config.skipMerge,
+          totalDuration: `${totalDuration}ms`,
+        });
+
+        return {
+          content: outline, // 返回目录作为 content
+          data: {
+            type: this.config.documentType.toLowerCase(),
+            filename: '00-outline.md',
+            timestamp: new Date().toISOString(),
+            mode: 'new',
+            stepwise: true,
+            sectionCount: sections.length,
+            sections: sectionFiles,
+            outline,
+            reviewIncluded: false,
+            skipMerge: true,
+            workspaceDir: this.config.workspaceDir,
+          },
+        };
+      }
+
       logger.info('StepwiseDocumentGenerator: Stepwise generation completed', {
         ...logContext,
         finalContentLength: mergedContent.length,

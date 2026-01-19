@@ -6,11 +6,11 @@
  * 1) 从 workspace 读取 MRD.md（需要 applicationId；失败或不存在则回退到 input）。
  * 2) 构造生成输入：RAG 模式下合并 MRD + 检索片段，否则仅使用 MRD。
  * 3) 选择生成路径：
- *    - 新建且启用分步：走 StepwiseDocumentGenerator（目录 -> 章节 -> 章节审核 -> 合并）。
+ *    - 新建且启用分步：走 StepwiseDocumentGenerator（目录 -> 章节生成）。
  *    - 其他情况：走一次性生成（new/update、RAG/标准 prompt）。
- * 4) 加载系统提示词：生成用 system_prompt；审查用 review_system_prompt（用于分步审查）。
- * 5) 调用模型生成 PRD 内容，写入 workspace/PRD/PRD.md。
- * 6) 尝试从 workspace 读取主文件作为最终输出（失败则用当前生成内容）。
+ * 4) 加载系统提示词：生成用 system_prompt。
+ * 5) 调用模型生成 PRD 各章节内容，保存到 workspace/PRD/ 目录。
+ * 6) 返回章节文件列表信息，由 PRDReview 负责后续的审核和合并。
  * 7) 处理超时与错误：超时抛出更友好的提示，其余错误直接上抛。
  */
 
@@ -18,14 +18,12 @@ import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import {
   PRD_SYSTEM_PROMPT,
-  PRD_REVIEW_SYSTEM_PROMPT,
   buildPRDPrompt,
   buildPRDUpdatePrompt,
   buildPRDUpdateWithRAGPrompt,
   buildPRDWithRAGPrompt,
   buildPRDOutlinePrompt,
   buildPRDSectionPrompt,
-  buildPRDSectionReviewPrompt,
 } from '../prompts/prd';
 import { logger, loadPrompt } from '../utils';
 // Review和ImproveDocument已移除，由角色通过消息机制管理
@@ -310,21 +308,15 @@ export class WritePRD extends BaseAction {
   /**
    * 分步骤生成 PRD
    * 使用通用的 StepwiseDocumentGenerator
+   * 只负责分章节生成，不做审核和合并（由 PRDReview 负责）
    */
   private async generateStepwise(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
     // 确保使用PRD目录
     const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'PRD' });
-    // 移除对Review和ImproveDocument的直接调用，改为通过角色管理
 
     // Load system prompt from database or use default
     const userId = this.context?.get('userId');
     const systemPrompt = await loadPrompt(userId, 'prd', 'system_prompt', PRD_SYSTEM_PROMPT);
-    const reviewSystemPrompt = await loadPrompt(
-      userId,
-      'prd',
-      'review_system_prompt',
-      PRD_REVIEW_SYSTEM_PROMPT
-    );
 
     // Get StateManager and role from context (if available)
     const stateManager = this.context?.get('stateManager') as any;
@@ -333,9 +325,8 @@ export class WritePRD extends BaseAction {
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
       buildOutlinePrompt: buildPRDOutlinePrompt,
       buildSectionPrompt: buildPRDSectionPrompt,
-      buildSectionReviewPrompt: buildPRDSectionReviewPrompt,
+      // 不需要 buildSectionReviewPrompt 和 reviewSystemPrompt，因为跳过审核步骤
       systemPrompt: systemPrompt,
-      reviewSystemPrompt: reviewSystemPrompt,
       documentTitle: '产品需求文档（PRD）',
       documentType: 'PRD',
       mainFileName: 'PRD.md',
@@ -363,6 +354,9 @@ export class WritePRD extends BaseAction {
       projectId: options?.projectId || (this.context?.get('projectId') as string | undefined),
       stateManager,
       role,
+      // 跳过审核和合并步骤，由 PRDReview 负责后续处理
+      skipReview: true,
+      skipMerge: true,
     });
 
     return await generator.generate(input);

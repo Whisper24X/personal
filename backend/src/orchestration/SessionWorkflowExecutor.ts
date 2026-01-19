@@ -12,6 +12,8 @@ import { SessionMessageHandler } from './SessionMessageHandler';
 import { SessionFileExtractor } from './SessionFileExtractor';
 import { SessionStateRestorer } from './SessionStateRestorer';
 import { BaseAction } from '../core/base/BaseAction';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 export interface WorkflowExecutorConfig {
     projectId: string;
@@ -1189,7 +1191,13 @@ export class SessionWorkflowExecutor {
                 : latestMessage.instruct_content)
             : message.instructContent;
 
-        logger.info(`SessionWorkflowExecutor: Using ${latestMessage ? 'database' : 'memory'} message content for confirmation (content length: ${finalContent?.length || 0})`);
+        const confirmationContent = await this.resolveConfirmationContent(
+            message.causeBy,
+            finalInstructContent,
+            finalContent
+        );
+
+        logger.info(`SessionWorkflowExecutor: Using ${latestMessage ? 'database' : 'memory'} message content for confirmation (content length: ${confirmationContent?.length || 0})`);
 
         // Set confirmation required for current role
         // This will automatically clear any previous confirmation status
@@ -1203,7 +1211,7 @@ export class SessionWorkflowExecutor {
         this.messageHandler.sendMessage('confirmation_required', {
             role: role.profile,
             action: message.causeBy,
-            content: finalContent,
+            content: confirmationContent,
             outputFiles: outputFiles,
             instructContent: finalInstructContent,
         });
@@ -1311,6 +1319,46 @@ export class SessionWorkflowExecutor {
         }
     }
 
+    private async resolveConfirmationContent(
+        action: string,
+        instructContent: any,
+        fallbackContent: string
+    ): Promise<string> {
+        const workspaceDir = instructContent?.workspaceDir;
+        if (!workspaceDir) {
+            return fallbackContent;
+        }
+
+        const docType = String(instructContent?.documentType || instructContent?.type || '').toLowerCase();
+        const isPrdAction = action === 'WritePRD' || action === 'ImprovePRD' || action === 'PRDReview';
+        const isPrdDoc = docType === 'prd';
+
+        if (!isPrdAction && !isPrdDoc) {
+            return fallbackContent;
+        }
+
+        const prdContent = await this.readWorkspaceFile(workspaceDir, 'PRD.md');
+        if (prdContent && prdContent.trim().length > 0) {
+            return prdContent;
+        }
+
+        return fallbackContent;
+    }
+
+    private async readWorkspaceFile(workspaceDir: string, fileName: string): Promise<string | null> {
+        const fullPath = path.resolve(workspaceDir, fileName);
+        try {
+            return await fs.readFile(fullPath, 'utf-8');
+        } catch (error: any) {
+            logger.warn('SessionWorkflowExecutor: Failed to read workspace file for confirmation', {
+                fileName,
+                workspaceDir,
+                error: error.message,
+            });
+            return null;
+        }
+    }
+
     /**
      * Check and mark project as completed
      * Only marks as completed if:
@@ -1360,4 +1408,3 @@ export class SessionWorkflowExecutor {
         }
     }
 }
-

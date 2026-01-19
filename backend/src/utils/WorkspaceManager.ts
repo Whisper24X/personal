@@ -405,11 +405,150 @@ export class WorkspaceManager {
       const content = await fs.readFile(fullPath, 'utf-8');
       return content;
     } catch (error: any) {
-      logger.error('WorkspaceManager: Failed to read file', {
+      // 文件不存在是正常情况，使用 debug 级别日志
+      if (error.code === 'ENOENT') {
+        logger.debug('WorkspaceManager: File does not exist', {
+          filePath,
+        });
+      } else {
+        logger.error('WorkspaceManager: Failed to read file', {
+          filePath,
+          error: error.message,
+        });
+      }
+      return null;
+    }
+  }
+
+  /**
+   * 删除 workspace docs 目录中的文件
+   * @param filePath 相对路径（相对于 docs 目录）
+   * @param options workspace选项
+   * @returns 是否成功删除
+   */
+  static async deleteFile(
+    filePath: string,
+    options?: WorkspaceOptions
+  ): Promise<boolean> {
+    if (!options) {
+      throw new Error('WorkspaceOptions is required for deleteFile.');
+    }
+    try {
+      const docsDir = this.getDocsDir(options);
+      const fullPath = path.join(docsDir, filePath);
+      await fs.unlink(fullPath);
+      logger.info('WorkspaceManager: Deleted file from workspace', {
+        filePath: fullPath,
+      });
+      return true;
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        // 文件不存在，视为成功
+        logger.debug('WorkspaceManager: File does not exist, skip delete', {
+          filePath,
+        });
+        return true;
+      }
+      logger.error('WorkspaceManager: Failed to delete file', {
         filePath,
         error: error.message,
       });
-      return null;
+      return false;
+    }
+  }
+
+  /**
+   * 删除匹配模式的多个文件
+   * @param pattern 文件名匹配模式（正则表达式）
+   * @param options workspace选项
+   * @returns 删除的文件数量
+   */
+  static async deleteFilesByPattern(
+    pattern: RegExp,
+    options?: WorkspaceOptions
+  ): Promise<number> {
+    if (!options) {
+      throw new Error('WorkspaceOptions is required for deleteFilesByPattern.');
+    }
+    try {
+      const docsDir = this.getDocsDir(options);
+
+      // 检查目录是否存在
+      try {
+        await fs.access(docsDir);
+      } catch {
+        logger.debug('WorkspaceManager: Docs directory does not exist', { docsDir });
+        return 0;
+      }
+
+      const entries = await fs.readdir(docsDir, { withFileTypes: true });
+      const filesToDelete = entries.filter(
+        (entry) => entry.isFile() && pattern.test(entry.name)
+      );
+
+      let deletedCount = 0;
+      for (const entry of filesToDelete) {
+        const success = await this.deleteFile(entry.name, options);
+        if (success) {
+          deletedCount++;
+        }
+      }
+
+      logger.info('WorkspaceManager: Deleted files by pattern', {
+        pattern: pattern.toString(),
+        deletedCount,
+        totalMatched: filesToDelete.length,
+        docsDir,
+      });
+
+      return deletedCount;
+    } catch (error: any) {
+      logger.error('WorkspaceManager: Failed to delete files by pattern', {
+        pattern: pattern.toString(),
+        error: error.message,
+      });
+      return 0;
+    }
+  }
+
+  /**
+   * 列出 workspace docs 目录中的文件
+   * @param options workspace选项
+   * @param filter 可选的文件过滤函数
+   * @returns 文件名数组
+   */
+  static async listFiles(
+    options?: WorkspaceOptions,
+    filter?: (filename: string) => boolean
+  ): Promise<string[]> {
+    if (!options) {
+      throw new Error('WorkspaceOptions is required for listFiles.');
+    }
+    try {
+      const docsDir = this.getDocsDir(options);
+
+      // 检查目录是否存在
+      try {
+        await fs.access(docsDir);
+      } catch {
+        return [];
+      }
+
+      const entries = await fs.readdir(docsDir, { withFileTypes: true });
+      const files = entries
+        .filter((entry) => entry.isFile())
+        .map((entry) => entry.name);
+
+      if (filter) {
+        return files.filter(filter);
+      }
+
+      return files;
+    } catch (error: any) {
+      logger.error('WorkspaceManager: Failed to list files', {
+        error: error.message,
+      });
+      return [];
     }
   }
 

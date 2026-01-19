@@ -304,6 +304,45 @@ export abstract class BaseAction {
   }
 
   /**
+   * 删除workspace文件
+   * @param filePath 相对路径
+   * @param options workspace选项
+   * @returns 是否成功删除
+   */
+  protected async deleteWorkspaceFile(
+    filePath: string,
+    options?: WorkspaceOptions
+  ): Promise<boolean> {
+    return WorkspaceManager.deleteFile(filePath, options);
+  }
+
+  /**
+   * 删除匹配模式的多个workspace文件
+   * @param pattern 文件名匹配模式（正则表达式）
+   * @param options workspace选项
+   * @returns 删除的文件数量
+   */
+  protected async deleteWorkspaceFilesByPattern(
+    pattern: RegExp,
+    options?: WorkspaceOptions
+  ): Promise<number> {
+    return WorkspaceManager.deleteFilesByPattern(pattern, options);
+  }
+
+  /**
+   * 列出workspace文件
+   * @param options workspace选项
+   * @param filter 可选的文件过滤函数
+   * @returns 文件名数组
+   */
+  protected async listWorkspaceFiles(
+    options?: WorkspaceOptions,
+    filter?: (filename: string) => boolean
+  ): Promise<string[]> {
+    return WorkspaceManager.listFiles(options, filter);
+  }
+
+  /**
    * Convert action to string representation
    */
   toString(): string {

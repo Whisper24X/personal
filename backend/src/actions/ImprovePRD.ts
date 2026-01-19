@@ -92,7 +92,10 @@ export class ImprovePRD extends BaseAction {
           });
         } else {
           // 从workspace读取审查报告
-          reviewReport = await this.readReviewReport(workspaceOptions, currentPRD);
+          const reportFromWorkspace = await this.readReviewReport(workspaceOptions, currentPRD);
+          if (reportFromWorkspace) {
+            reviewReport = reportFromWorkspace;
+          }
         }
       }
 
@@ -111,19 +114,29 @@ export class ImprovePRD extends BaseAction {
       const cleanPRD = this.removeReviewReport(currentPRD);
       
       // Step 4: 根据审查报告改进文档
-      let improvedPRD = await this.improvePRD(
+      const improvementResult = await this.improvePRD(
         cleanPRD,
-        reviewReport
+        reviewReport,
+        workspaceOptions
       );
 
       // Step 5: 确保改进后的文档不包含审查报告部分（再次移除，以防LLM在改进时添加了审查报告）
-      improvedPRD = this.removeReviewReport(improvedPRD);
+      const improvedPRD = this.removeReviewReport(improvementResult.content);
 
       // Step 6: 保存改进后的文档
       await this.saveToWorkspace('PRD.md', improvedPRD, workspaceOptions);
 
+      // Step 7: 判断改进后是否需要重新审核
+      // 基于是否有实际改进行为来判断是否需要重新审核
+      const hasImprovement = improvementResult.improvedSectionCount > 0;
+      const needsReReview = hasImprovement; // 有改进才需要重新审核
+
       logger.info('ImprovePRD: PRD improved and saved', {
         improvedLength: improvedPRD.length,
+        improvedSectionCount: improvementResult.improvedSectionCount,
+        totalSectionCount: improvementResult.totalSectionCount,
+        hasImprovement,
+        needsReReview,
       });
 
       return {
@@ -134,6 +147,11 @@ export class ImprovePRD extends BaseAction {
           timestamp: new Date().toISOString(),
           originalLength: currentPRD.length,
           improvedLength: improvedPRD.length,
+          improvedSectionCount: improvementResult.improvedSectionCount,
+          totalSectionCount: improvementResult.totalSectionCount,
+          hasImprovement,
+          needsReReview, // 有改进才需要重新审核，由外部（Role 或 Controller）决定是否再次调用审核
+          workspaceDir: this.getWorkspaceDir(workspaceOptions),
         },
       };
     } catch (error: any) {
@@ -193,11 +211,13 @@ export class ImprovePRD extends BaseAction {
 
   /**
    * 改进PRD文档 - 采用分章节改进方式避免 LLM 输出被截断
+   * 返回改进后的内容和改进统计信息
    */
   private async improvePRD(
     currentPRD: string,
-    reviewReport: string
-  ): Promise<string> {
+    reviewReport: string,
+    workspaceOptions: WorkspaceOptions
+  ): Promise<{ content: string; improvedSectionCount: number; totalSectionCount: number }> {
     // Load system prompt from database or use default
     const userId = this.context?.get('userId');
     const systemPrompt = await loadPrompt(
@@ -214,7 +234,12 @@ export class ImprovePRD extends BaseAction {
       // 如果无法解析章节，回退到整体改进（但可能会被截断）
       logger.warn('ImprovePRD: Cannot parse sections, falling back to full document improvement');
       const prompt = buildPRDImprovePrompt(currentPRD, reviewReport);
-      return await this.aask(prompt, [systemPrompt]);
+      const content = await this.aask(prompt, [systemPrompt]);
+      return {
+        content,
+        improvedSectionCount: 1, // 整体改进视为改进了一个
+        totalSectionCount: 1,
+      };
     }
 
     logger.info('ImprovePRD: Starting section-by-section improvement', {
@@ -228,14 +253,33 @@ export class ImprovePRD extends BaseAction {
 
     // 分章节改进
     const improvedSections: string[] = [];
+    let improvedCount = 0; // 追踪实际改进的章节数量
     
     for (const section of sections) {
       const sectionContent = this.extractFullSectionContent(currentPRD, section);
-      const sectionReview = this.extractSectionReview(reviewReport, section.number);
+      
+      // 读取分章节 review 文件
+      const sectionReviewContent = await this.readSectionReviewFile(section.number, workspaceOptions);
+      
+      // 如果没有 review 文件，尝试从合并的 reviewReport 中提取
+      const sectionReview = sectionReviewContent || this.extractSectionReview(reviewReport, section.number);
       
       if (!sectionReview || sectionReview.trim().length < 10) {
         // 如果没有该章节的审查建议，保持原内容不变
         logger.info(`ImprovePRD: No review found for section ${section.number}, keeping original`, {
+          sectionNumber: section.number,
+          sectionTitle: section.title,
+        });
+        improvedSections.push(sectionContent);
+        continue;
+      }
+
+      // 检查审查结论是否需要改进
+      const needsImprovement = this.sectionNeedsImprovement(sectionReview);
+      
+      if (!needsImprovement) {
+        // 审核通过，不需要改进，保持原内容不变，保留 review 文件
+        logger.info(`ImprovePRD: Section ${section.number} passed review, no improvement needed`, {
           sectionNumber: section.number,
           sectionTitle: section.title,
         });
@@ -260,16 +304,26 @@ export class ImprovePRD extends BaseAction {
         );
         
         const improvedSection = await this.aask(prompt, [systemPrompt]);
-        
+
         // 清理可能的代码块标记
         const cleanedSection = this.cleanCodeBlockMarkers(improvedSection);
         improvedSections.push(cleanedSection);
+
+        // 将改进后的内容写回对应章节文件，确保后续审查使用最新章节
+        const sectionFileName = this.getSectionFileName(section.number);
+        await this.saveToWorkspace(sectionFileName, cleanedSection, workspaceOptions);
+
+        // 改进成功，增加计数
+        improvedCount++;
 
         logger.info(`ImprovePRD: Section ${section.number} improved`, {
           sectionNumber: section.number,
           originalLength: sectionContent.length,
           improvedLength: cleanedSection.length,
         });
+
+        // 改进成功后，删除该章节的 review 文件，等待下一次 review
+        await this.deleteSectionReviewFile(section.number, workspaceOptions);
       } catch (error: any) {
         logger.error(`ImprovePRD: Failed to improve section ${section.number}`, {
           sectionNumber: section.number,
@@ -287,9 +341,113 @@ export class ImprovePRD extends BaseAction {
       originalLength: currentPRD.length,
       improvedLength: improvedPRD.length,
       sectionCount: sections.length,
+      improvedSectionCount: improvedCount,
     });
 
-    return improvedPRD;
+    return {
+      content: improvedPRD,
+      improvedSectionCount: improvedCount,
+      totalSectionCount: sections.length,
+    };
+  }
+
+  /**
+   * 读取指定章节的 review 文件
+   * 文件命名格式：XX-section-X-review.md（例如 00-section-0-review.md）
+   */
+  private async readSectionReviewFile(
+    sectionNumber: number,
+    workspaceOptions: WorkspaceOptions
+  ): Promise<string | null> {
+    // 构建 review 文件名，格式：XX-section-X-review.md
+    const paddedNumber = sectionNumber.toString().padStart(2, '0');
+    const reviewFileName = `${paddedNumber}-section-${sectionNumber}-review.md`;
+
+    const content = await this.readWorkspaceFile(reviewFileName, workspaceOptions);
+    
+    if (content) {
+      logger.info(`ImprovePRD: Read section review file`, {
+        sectionNumber,
+        reviewFileName,
+        contentLength: content.length,
+      });
+    }
+    
+    return content;
+  }
+
+  /**
+   * 判断章节审查是否需要改进
+   * 通过解析审查结论来判断
+   */
+  private sectionNeedsImprovement(reviewContent: string): boolean {
+    if (!reviewContent) return false;
+
+    // 查找审查结论部分
+    // 格式：### 4. 审查结论\n- 通过 / 需要改进
+    const conclusionMatch = reviewContent.match(/###\s*\d*\.?\s*审查结论[\s\S]*?(?=###|$)/i);
+    
+    if (!conclusionMatch) {
+      // 如果找不到审查结论，检查是否有"需要改进"关键字
+      return reviewContent.includes('需要改进') || 
+             reviewContent.includes('❌') ||
+             reviewContent.includes('不通过');
+    }
+
+    const conclusion = conclusionMatch[0];
+    
+    // 如果结论中包含"需要改进"或"不通过"，则需要改进
+    if (conclusion.includes('需要改进') || 
+        conclusion.includes('不通过') ||
+        conclusion.includes('❌')) {
+      return true;
+    }
+    
+    // 如果结论明确标注"通过"且不包含"需要改进"，则不需要改进
+    if (conclusion.includes('通过') && !conclusion.includes('需要改进')) {
+      return false;
+    }
+
+    // 默认情况下，如果有发现问题或改进建议，也认为需要改进
+    if (reviewContent.includes('发现的问题') || reviewContent.includes('改进建议')) {
+      // 检查是否有实际的问题内容
+      const hasActualProblems = reviewContent.match(/问题描述[：:]\s*\S/);
+      const hasActualSuggestions = reviewContent.match(/建议\s*\d+[：:]\s*\S/);
+      return !!(hasActualProblems || hasActualSuggestions);
+    }
+
+    return false;
+  }
+
+  /**
+   * 删除指定章节的 review 文件
+   * 文件命名格式：XX-section-X-review.md（例如 00-section-0-review.md）
+   */
+  private async deleteSectionReviewFile(
+    sectionNumber: number,
+    workspaceOptions: WorkspaceOptions
+  ): Promise<void> {
+    // 构建 review 文件名，格式：XX-section-X-review.md
+    const paddedNumber = sectionNumber.toString().padStart(2, '0');
+    const reviewFileName = `${paddedNumber}-section-${sectionNumber}-review.md`;
+
+    const deleted = await this.deleteWorkspaceFile(reviewFileName, workspaceOptions);
+    
+    if (deleted) {
+      logger.info(`ImprovePRD: Deleted section review file`, {
+        sectionNumber,
+        reviewFileName,
+      });
+    }
+  }
+
+  /**
+   * 构建章节文件名
+   * 文件命名格式：XX-section-X.md（例如 00-section-0.md）
+   */
+  private getSectionFileName(sectionNumber: number): string {
+    const paddedNumber = sectionNumber.toString().padStart(2, '0');
+    return `${paddedNumber}-section-${sectionNumber}.md`;
   }
 
   /**

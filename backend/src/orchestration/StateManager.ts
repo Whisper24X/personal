@@ -694,6 +694,49 @@ export class StateManager {
             // Set action to COMPLETED
             await this.setActionStatus(role, action, ActionStatus.COMPLETED);
 
+            // Special handling for ImprovePRD: if hasImprovement is true, reset PRDReview to PENDING
+            // This creates a loop: ImprovePRD -> PRDReview -> ImprovePRD -> ... until no improvement needed
+            if (action === 'ImprovePRD' && _message) {
+                const hasImprovement = _message.instructContent?.hasImprovement ?? false;
+
+                if (hasImprovement) {
+                    logger.info('StateManager: ImprovePRD completed with improvements, resetting PRDReview to PENDING for re-review', {
+                        projectId: this.projectId,
+                        role,
+                        hasImprovement,
+                        improvedSectionCount: _message.instructContent?.improvedSectionCount,
+                    });
+
+                    // Reset PRDReview to PENDING so it will be executed again
+                    await this.setActionStatus(role, 'PRDReview', ActionStatus.PENDING);
+
+                    // Don't set confirmation required or clear running state - continue with PRDReview
+                    this.logStateChange('actionComplete', role, action, ActionStatus.COMPLETED);
+                    return;
+                } else {
+                    logger.info('StateManager: ImprovePRD completed with no improvements needed, proceeding normally', {
+                        projectId: this.projectId,
+                        role,
+                        hasImprovement,
+                    });
+                }
+            }
+
+            // If PRDReview fails, send it back to ImprovePRD for another iteration
+            if (action === 'PRDReview' && _message) {
+                const passed = _message.instructContent?.passed;
+
+                if (passed === false) {
+                    logger.info('StateManager: PRDReview failed, resetting ImprovePRD to PENDING for re-improvement', {
+                        projectId: this.projectId,
+                        role,
+                        passed,
+                    });
+
+                    await this.setActionStatus(role, 'ImprovePRD', ActionStatus.PENDING);
+                }
+            }
+
             // Check if this is the last action for the role
             const isLastAction = await this.isLastActionForRole(role, action);
             if (isLastAction) {

@@ -60,7 +60,21 @@ export class OpenAILLM extends BaseLLM {
       // Ensure numeric types for API parameters
       const temperature = this.ensureNumber(this.config.temperature, 0.7);
       const maxTokens = this.ensureNumber(this.config.maxTokens, 8000);
-      const topP = this.ensureNumber(this.config.topP, 1.0);
+
+      // Build request options - only include temperature OR top_p, not both
+      // Some models (like o1/o3) don't allow both to be specified
+      const requestOptions: any = {
+        model: this.config.model,
+        messages: messages,
+        max_tokens: maxTokens,
+      };
+
+      // Use temperature by default; only use top_p if explicitly set and temperature is default
+      if (this.config.topP !== undefined && this.config.topP !== 1.0 && this.config.temperature === undefined) {
+        requestOptions.top_p = this.ensureNumber(this.config.topP, 1.0);
+      } else {
+        requestOptions.temperature = temperature;
+      }
 
       const completion = await retry(
         async () => {
@@ -69,13 +83,7 @@ export class OpenAILLM extends BaseLLM {
             throw new Error('LLM call was cancelled');
           }
           
-          return await this.client.chat.completions.create({
-            model: this.config.model,
-            messages: messages,
-            temperature: temperature,
-            max_tokens: maxTokens,
-            top_p: topP,
-          });
+          return await this.client.chat.completions.create(requestOptions);
         },
         3, // max attempts
         1000 // initial delay ms
