@@ -54,8 +54,9 @@ export class WriteCode extends BaseAction {
       });
       
       // 定义命令
-      const applyCommand = "执行/openspec-apply命令";
-      const checkCommand = "查看openspec目录下changes目录里面的task.md,告诉我里面的任务是否全部执行完成,给我返回:已完成或未完成，不要返回具体原因。";
+      const applyCommand = "执行/openspec-apply命令，并且自动执行所有必要的构建命令（如make api、make wire、npm run generate等），不要只生成代码就停止，必须完成所有任务直到tasks.md中的任务全部标记为完成。";
+
+      const checkCommand = "查看openspec目录下changes目录里面的task.md,告诉我里面的任务是否全部执行完成,给我返回:已完成、未完成或未找到，不要返回具体原因。如果文件不存在或无法找到，返回未找到。";
       
       // 循环执行，直到任务完成
       const maxRetries = 10; // 最大重试次数
@@ -85,12 +86,15 @@ export class WriteCode extends BaseAction {
           });
           logger.info(`WriteCode: Apply command completed (iteration ${retryCount})`, {
             outputLength: applyOutput.length,
+            output: applyOutput.length > 0 ? applyOutput : '(empty output)',
           });
         } catch (execError) {
           const error = execError as CommandExecutorError;
           logger.warn(`WriteCode: Apply command failed (iteration ${retryCount})`, { 
             message: error.message,
             exitCode: error.exitCode,
+            stdout: error.stdout || '(empty)',
+            stderr: error.stderr || '(empty)',
           });
           applyOutput = error.stdout || '';
         }
@@ -118,6 +122,8 @@ export class WriteCode extends BaseAction {
           logger.warn(`WriteCode: Check command failed (iteration ${retryCount})`, { 
             message: error.message,
             exitCode: error.exitCode,
+            stdout: error.stdout || '(empty)',
+            stderr: error.stderr || '(empty)',
           });
           checkOutput = error.stdout || '';
         }
@@ -125,6 +131,16 @@ export class WriteCode extends BaseAction {
         allOutputs.push(`=== Iteration ${retryCount} - Check ===\n${checkOutput}`);
         
         // 3. 判断是否完成
+        // 先检查是否返回"未找到"，如果是则抛出错误
+        if (checkOutput.includes('未找到')) {
+          const errorMessage = `WriteCode: Task file not found. Check command returned "未找到". Output: ${checkOutput.substring(0, 500)}`;
+          logger.error(errorMessage, {
+            iteration: retryCount,
+            checkOutput: checkOutput.substring(0, 500),
+          });
+          throw new Error(errorMessage);
+        }
+        
         // 检查输出中是否包含"已完成"
         if (checkOutput.includes('已完成')) {
           isCompleted = true;
