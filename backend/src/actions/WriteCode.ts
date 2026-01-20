@@ -79,7 +79,7 @@ export class WriteCode extends BaseAction {
         // 1. 执行 apply 命令
         let applyOutput = '';
         try {
-          const command = `cursor-agent --model composer-1 --print "${applyCommand}"`;
+          const command = `cursor-agent --model sonnet-4.5-thinking --print "${applyCommand}"`;
           applyOutput = await executeCommandSimple(command, {
             cwd: workDir,
             timeout: 3600000, // 60分钟超时
