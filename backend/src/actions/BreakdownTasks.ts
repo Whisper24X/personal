@@ -94,19 +94,22 @@ export class BreakdownTasks extends BaseAction {
         // 1. 执行创建提案命令
         let proposeOutput = '';
         try {
-          const command = `cursor-agent --model composer-1 --print "${proposeCommand.replace(/"/g, '\\"')}"`;
+          const command = `cursor-agent --model auto --print "${proposeCommand.replace(/"/g, '\\"')}"`;
           proposeOutput = await executeCommandSimple(command, {
             cwd: workDir,
             timeout: 3600000, // 60分钟超时
           });
           logger.info(`BreakdownTasks: Propose command completed (iteration ${retryCount})`, {
             outputLength: proposeOutput.length,
+            output: proposeOutput.length > 0 ? proposeOutput : '(empty output)',
           });
         } catch (execError) {
           const error = execError as CommandExecutorError;
           logger.warn(`BreakdownTasks: Propose command failed (iteration ${retryCount})`, { 
             message: error.message,
             exitCode: error.exitCode,
+            stdout: error.stdout || '(empty)',
+            stderr: error.stderr || '(empty)',
           });
           proposeOutput = error.stdout || '';
         }
@@ -120,7 +123,7 @@ export class BreakdownTasks extends BaseAction {
         
         let checkOutput = '';
         try {
-          const command = `cursor-agent --model composer-1 --print "${checkCommand.replace(/"/g, '\\"')}"`;
+          const command = `cursor-agent --model auto --print "${checkCommand.replace(/"/g, '\\"')}"`;
           checkOutput = await executeCommandSimple(command, {
             cwd: workDir,
             timeout: 300000, // 5分钟超时（检查命令应该很快）
