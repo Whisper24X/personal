@@ -10,8 +10,6 @@ import { ILLMConfig, LLMProvider } from '@mind2build/shared';
 import { BaseLLM } from './BaseLLM';
 import { OpenAICompatibleLLM } from './OpenAICompatibleLLM';
 import { CursorLLM } from './CursorLLM';
-import { AnthropicLLM } from './AnthropicLLM';
-import { DeepSeekLLM } from './DeepSeekLLM';
 
 /**
  * Create an LLM instance based on provider type
