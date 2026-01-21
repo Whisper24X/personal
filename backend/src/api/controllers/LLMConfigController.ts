@@ -1,11 +1,14 @@
 /**
  * LLM Config Controller
  * Handles LLM configuration-related HTTP requests
+ * 
+ * Uses LLMManager for centralized LLM configuration management.
  */
 
 import { Request, Response } from 'express';
 import { LLMConfigRepository, ProviderConfigRepository } from '../../database';
-import { logger, clearLLMConfigCache } from '../../utils';
+import { logger } from '../../utils';
+import { llmManager } from '../../providers/llm/LLMManager';
 import { LLMProvider } from '@mind2build/shared';
 
 const llmConfigRepo = new LLMConfigRepository();
@@ -185,8 +188,8 @@ export class LLMConfigController {
         isActive: config.is_active,
       });
 
-      // Clear config cache so new config is used
-      clearLLMConfigCache();
+      // Refresh LLM manager to use new config immediately
+      await llmManager.refresh(userId);
 
       // Fetch the config again to get provider config values
       const fullConfig = await llmConfigRepo.findByProvider(userId, config.provider);
@@ -232,8 +235,8 @@ export class LLMConfigController {
         configId: id,
       });
 
-      // Clear config cache so new config is used
-      clearLLMConfigCache();
+      // Refresh LLM manager to use new config immediately
+      await llmManager.refresh(userId);
 
       // Fetch the config again to get provider config values
       const fullConfig = await llmConfigRepo.findByProvider(userId, config.provider);
@@ -400,8 +403,8 @@ export class LLMConfigController {
         provider,
       });
 
-      // Clear config cache so new config is used
-      clearLLMConfigCache();
+      // Refresh LLM manager to use new config immediately
+      await llmManager.refresh(userId);
 
       return res.json({
         success: true,

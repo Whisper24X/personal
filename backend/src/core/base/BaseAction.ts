@@ -15,8 +15,9 @@ export abstract class BaseAction {
   // Action status is now managed by StateManager (database-only)
   // Removed in-memory status field - status is read from database via StateManager
 
-  // LLM instance will be injected by Role
-  protected llm?: any;
+  // Custom LLM instance (only for role-specific config or special scenarios)
+  // If not set, LLM is dynamically obtained from Context
+  protected _customLLM?: any;
   
   // Context instance will be injected by Role
   protected context?: Context;
@@ -30,6 +31,23 @@ export abstract class BaseAction {
   constructor(name?: string, description?: string) {
     this.name = name || this.constructor.name;
     this.description = description;
+  }
+
+  /**
+   * Get LLM instance
+   * Priority: custom LLM > Context.llm (dynamic, supports hot-reload)
+   * This getter ensures that LLM configuration changes take effect immediately
+   */
+  protected get llm(): any {
+    // If custom LLM is set (role-specific config), use it
+    if (this._customLLM) {
+      return this._customLLM;
+    }
+    // Otherwise, get from Context dynamically (supports hot-reload)
+    if (!this.context) {
+      return undefined;
+    }
+    return this.context.llm;
   }
 
   /**
@@ -144,10 +162,19 @@ export abstract class BaseAction {
   }
 
   /**
-   * Set LLM instance for this action
+   * Set custom LLM instance for this action
+   * Use this only for role-specific LLM config or special scenarios
+   * If not set, LLM will be obtained dynamically from Context
    */
   setLLM(llm: any): void {
-    this.llm = llm;
+    this._customLLM = llm;
+  }
+
+  /**
+   * Clear custom LLM to use Context's LLM (supports hot-reload)
+   */
+  clearCustomLLM(): void {
+    this._customLLM = undefined;
   }
 
   /**
@@ -192,8 +219,9 @@ export abstract class BaseAction {
   protected async aask(prompt: string, systemMsgs?: string[]): Promise<string> {
     this.checkCancellation();
     
-    if (!this.llm) {
-      throw new Error('LLM not set for action');
+    const currentLLM = this.llm;
+    if (!currentLLM) {
+      throw new Error('LLM not available: Context not set for action');
     }
     
     const logContext = this.getLogContext();
@@ -203,7 +231,7 @@ export abstract class BaseAction {
       systemMsgsCount: systemMsgs?.length || 0,
     });
     
-    const result = await this.llm.aask(prompt, systemMsgs, this.abortSignal);
+    const result = await currentLLM.aask(prompt, systemMsgs, this.abortSignal);
     
     this.checkCancellation();
     
@@ -222,8 +250,9 @@ export abstract class BaseAction {
   protected async acompletion(messages: any[]): Promise<any> {
     this.checkCancellation();
     
-    if (!this.llm) {
-      throw new Error('LLM not set for action');
+    const currentLLM = this.llm;
+    if (!currentLLM) {
+      throw new Error('LLM not available: Context not set for action');
     }
     
     const logContext = this.getLogContext();
@@ -232,7 +261,7 @@ export abstract class BaseAction {
       messagesCount: messages.length,
     });
     
-    const result = await this.llm.acompletion(messages, this.abortSignal);
+    const result = await currentLLM.acompletion(messages, this.abortSignal);
     
     this.checkCancellation();
     

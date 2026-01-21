@@ -1,18 +1,21 @@
 /**
  * Global Context
  * Manages application-wide configuration and shared resources
+ * 
+ * LLM access is delegated to LLMManager for centralized management
+ * and hot-reload support.
  */
 
 import { IAppConfig } from '@mind2build/shared';
 import { config as defaultConfig } from '../../utils/config';
 import { CostManager } from './CostManager';
-import { createLLM } from '../../providers/llm/factory';
 import { BaseLLM } from '../../providers/llm/BaseLLM';
+import { llmManager } from '../../providers/llm/LLMManager';
 
 export class Context {
   config: IAppConfig;
   costManager: CostManager;
-  private _llm?: BaseLLM;
+  private _customLLM?: BaseLLM;
   private kwargs: Map<string, any> = new Map();
 
   constructor(config?: Partial<IAppConfig>, maxBudget?: number) {
@@ -21,28 +24,30 @@ export class Context {
   }
 
   /**
-   * Get LLM instance (lazy loading)
-   * Uses system default LLM config (from database only, no environment variable fallback)
-   * If explicitly configured in config.llm, uses that; otherwise uses system default from database
-   * Note: All LLM configurations are loaded from database, environment variables are not used
+   * Get LLM instance
+   * 
+   * Uses LLMManager to get the current LLM instance, which automatically
+   * uses the latest configuration from database and supports hot-reload.
+   * 
+   * If a custom LLM was set via setter, returns that instead.
+   * Each call binds this Context's CostManager to the LLM for cost tracking.
    */
   get llm(): BaseLLM {
-    if (!this._llm) {
-      // Priority: explicit config.llm > system default (from database)
-      // If no explicit config provided, use system default from database
-      // Note: defaultConfig.llm is initialized from database via initializeDefaultLLMConfig()
-      const llmConfig = this.config.llm || defaultConfig.llm;
-      this._llm = createLLM(llmConfig);
-      this._llm.costManager = this.costManager;
+    // If custom LLM was set, use that
+    if (this._customLLM) {
+      return this._customLLM;
     }
-    return this._llm;
+    
+    // Get LLM from manager (automatically uses latest config)
+    return llmManager.getDefaultLLM(this.costManager);
   }
 
   /**
-   * Set LLM instance
+   * Set custom LLM instance (for special scenarios)
+   * Note: Once set, this Context will use the custom LLM instead of LLMManager
    */
   set llm(llm: BaseLLM) {
-    this._llm = llm;
+    this._customLLM = llm;
     // Connect cost manager to LLM
     if (llm && !llm.costManager) {
       llm.costManager = this.costManager;
