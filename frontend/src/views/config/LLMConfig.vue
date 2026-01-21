@@ -362,6 +362,7 @@
             <el-option label="智谱AI (ZhipuAI)" value="zhipuai" />
             <el-option label="火山引擎 Ark (豆包)" value="ark" />
             <el-option label="Anthropic Claude" value="anthropic" />
+            <el-option label="DeepSeek" value="deepseek" />
             <el-option label="Google Gemini" value="gemini" />
             <el-option label="百度千帆" value="qianfan" />
             <el-option label="阿里通义" value="dashscope" />
@@ -403,6 +404,9 @@
           </el-text>
           <el-text v-if="providerForm.provider === 'ark'" type="info" size="small" style="margin-top: 4px; display: block">
             豆包 (ARK) 推荐模型: doubao-1-5-pro-32k-250115
+          </el-text>
+          <el-text v-if="providerForm.provider === 'deepseek'" type="info" size="small" style="margin-top: 4px; display: block">
+            DeepSeek 推荐模型: deepseek-chat (对话) 或 deepseek-coder (代码)
           </el-text>
         </el-form-item>
       </el-form>
@@ -523,6 +527,7 @@ const defaultModels: Record<string, string> = {
   ark: 'doubao-1-5-pro-32k-250115', // 豆包模型
   cursor: 'auto',
   anthropic: 'claude-3-opus-20240229',
+  deepseek: 'deepseek-v3-2',
   gemini: 'gemini-pro',
   qianfan: 'ERNIE-Bot',
   dashscope: 'qwen-turbo',
@@ -534,6 +539,8 @@ const defaultBaseURLs: Record<string, string> = {
   ark: 'https://ark.cn-beijing.volces.com/api/v3',
   zhipuai: 'https://open.bigmodel.cn/api/paas/v4',
   openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com/v1',
+  deepseek: 'https://api.deepseek.com/v1',
   ollama: 'http://localhost:11434',
 };
 
@@ -640,6 +647,7 @@ function getProviderName(provider: string): string {
     zhipuai: '智谱AI',
     ark: '火山引擎 Ark (豆包)',
     anthropic: 'Anthropic Claude',
+    deepseek: 'DeepSeek',
     gemini: 'Google Gemini',
     qianfan: '百度千帆',
     dashscope: '阿里通义',

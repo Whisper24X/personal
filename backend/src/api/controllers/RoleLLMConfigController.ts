@@ -128,6 +128,7 @@ export class RoleLLMConfigController {
         'ollama',
         'ark',
         'cursor',
+        'deepseek',
       ];
       if (!validProviders.includes(provider as LLMProvider)) {
         return res.status(400).json({
