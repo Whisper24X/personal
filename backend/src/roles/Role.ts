@@ -119,11 +119,11 @@ export class Role extends BaseRole {
       this.workspaceExtractor
     );
 
-    // Set LLM for each action - use role-specific LLM if available, otherwise use system default LLM
-    const llmToUse = this.llmConfig.getLLM() || this.context.llm;
+    // Set context and role for each action
+    // LLM is NOT set here - it will be obtained dynamically from Context
+    // unless there's a role-specific config (handled by updateActionsLLM)
     actions.forEach((action) => {
-      action.setLLM(llmToUse);
-      // Set context for each action
+      // Set context for each action (enables dynamic LLM access via context.llm)
       (action as any).context = this.context;
       // Set role for each action (for StateManager integration)
       (action as any).role = this;
@@ -131,18 +131,18 @@ export class Role extends BaseRole {
       action.status = ActionStatus.PENDING;
     });
 
-    // Update LLM config with new actions
+    // Let RoleLLMConfig handle LLM assignment
+    // Only sets custom LLM if role has specific config, otherwise Actions use Context.llm
     this.llmConfig.updateActionsLLM(actions);
 
     // Initialize role status as idle
     this.rc.status = RoleStatus.IDLE;
 
-    if (this.llmConfig.getLLM()) {
+    if (this.llmConfig.hasSpecificConfig()) {
       logger.debug(`${this.profile} setActions: using role-specific LLM`);
     } else {
-      const defaultConfig = this.context.config.llm;
       logger.info(
-        `${this.profile} setActions: using system default LLM config: ${defaultConfig.provider}/${defaultConfig.model}`
+        `${this.profile} setActions: Actions will use Context.llm (supports hot-reload)`
       );
     }
   }

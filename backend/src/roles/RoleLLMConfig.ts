@@ -1,150 +1,139 @@
 /**
- * Role LLM Configuration Manager
- * Handles loading and managing LLM configurations for roles
+ * Role LLM Configuration
+ * 
+ * Manages LLM configuration for a specific role.
+ * Delegates actual LLM management to LLMManager for centralized control.
+ * 
+ * Priority:
+ * 1. Role-specific LLM config from database (via LLMManager)
+ * 2. System default LLM (via LLMManager, supports hot-reload)
  */
 
 import { ILLMConfig } from '@mind2build/shared';
 import { Context } from '../core/context/Context';
 import { BaseAction } from '../core/base/BaseAction';
 import { logger } from '../utils';
-import { createLLM } from '../providers/llm/factory';
-import { RoleLLMConfigRepository, LLMConfigRepository } from '../database';
+import { llmManager } from '../providers/llm/LLMManager';
+import { BaseLLM } from '../providers/llm/BaseLLM';
 
 export class RoleLLMConfig {
-    private roleLLM?: any;
-    private roleLLMConfigRepo = new RoleLLMConfigRepository();
-    private llmConfigRepo = new LLMConfigRepository();
-    protected llmLoadPromise?: Promise<void>;
+  private cachedLLM?: BaseLLM;
+  private isRoleSpecific: boolean = false;
+  private initialized: boolean = false;
+  protected llmLoadPromise?: Promise<void>;
 
-    constructor(
-        private profile: string,
-        private context: Context,
-        private actions: BaseAction[] = []
-    ) { }
+  constructor(
+    private profile: string,
+    private context: Context,
+    private actions: BaseAction[] = []
+  ) {}
 
-    /**
-     * Initialize LLM with explicit config (fallback)
-     */
-    initializeWithConfig(config: ILLMConfig | undefined): void {
-        if (config) {
-            this.roleLLM = createLLM(config);
-            this.roleLLM.costManager = this.context.costManager;
-            logger.info(
-                `${this.profile} using explicitly configured LLM (may be overridden by database config): ${config.provider}/${config.model}`
-            );
-        }
+  /**
+   * Initialize LLM with explicit config (for role-specific config only)
+   * @deprecated Use startLoadingFromDatabase() instead
+   */
+  initializeWithConfig(_config: ILLMConfig | undefined): void {
+    // No-op: LLM initialization is now handled by LLMManager
+    // This method is kept for backward compatibility
+    logger.debug(`${this.profile}: initializeWithConfig called (no-op, using LLMManager)`);
+  }
+
+  /**
+   * Start loading LLM configuration from database
+   */
+  startLoadingFromDatabase(): Promise<void> {
+    this.llmLoadPromise = this.loadRoleLLM();
+    return this.llmLoadPromise;
+  }
+
+  /**
+   * Get the current LLM instance
+   * Returns role-specific LLM if configured, otherwise system default
+   * System default supports hot-reload via LLMManager
+   */
+  getLLM(): BaseLLM {
+    if (this.isRoleSpecific && this.cachedLLM) {
+      // Role-specific LLM (cached)
+      this.cachedLLM.costManager = this.context.costManager;
+      return this.cachedLLM;
     }
+    
+    // System default (supports hot-reload)
+    return llmManager.getDefaultLLM(this.context.costManager);
+  }
 
-    /**
-     * Start loading LLM configuration from database
-     */
-    startLoadingFromDatabase(): Promise<void> {
-        this.llmLoadPromise = this.loadRoleLLMFromDatabase();
-        return this.llmLoadPromise;
+  /**
+   * Check if this role has its own specific LLM configuration
+   */
+  hasSpecificConfig(): boolean {
+    return this.isRoleSpecific;
+  }
+
+  /**
+   * Update actions with role-specific LLM if configured
+   * 
+   * IMPORTANT: Only sets custom LLM on Actions when there's a role-specific config.
+   * If no role-specific config, Actions will use their Context to get LLM dynamically,
+   * which supports hot-reload of system default LLM configuration.
+   */
+  updateActionsLLM(actions: BaseAction[]): void {
+    if (actions.length === 0) return;
+
+    if (this.isRoleSpecific && this.cachedLLM) {
+      // Only set custom LLM for role-specific config
+      actions.forEach((action) => action.setLLM(this.cachedLLM!));
+      logger.debug(`${this.profile}: Set role-specific LLM for ${actions.length} actions`);
+    } else {
+      // Clear any custom LLM so Actions use Context.llm (supports hot-reload)
+      actions.forEach((action) => action.clearCustomLLM());
+      logger.debug(`${this.profile}: ${actions.length} actions will use system default LLM via Context (supports hot-reload)`);
     }
+  }
 
-    /**
-     * Get the current LLM instance
-     */
-    getLLM(): any {
-        return this.roleLLM;
+  /**
+   * Load role LLM configuration
+   * Uses LLMManager.getRoleLLM() for centralized management
+   */
+  private async loadRoleLLM(): Promise<void> {
+    try {
+      const userId = this.context.get('userId');
+      
+      const result = await llmManager.getRoleLLM(
+        this.profile,
+        userId,
+        this.context.costManager
+      );
+
+      this.cachedLLM = result.llm;
+      this.isRoleSpecific = result.isRoleSpecific;
+      this.initialized = true;
+
+      if (result.isRoleSpecific) {
+        logger.info(`${this.profile}: Using role-specific LLM configuration`);
+      } else {
+        const configInfo = llmManager.getCurrentConfigInfo();
+        logger.info(
+          `${this.profile}: Using system default LLM (supports hot-reload): ` +
+          `${configInfo?.provider}/${configInfo?.model}`
+        );
+      }
+
+      // Update actions if any
+      if (this.actions.length > 0) {
+        this.updateActionsLLM(this.actions);
+      }
+    } catch (error: any) {
+      logger.warn(`${this.profile}: Failed to load LLM config: ${error.message}`);
+      // Will use system default via LLMManager
+      this.isRoleSpecific = false;
+      this.initialized = true;
     }
+  }
 
-    /**
-     * Update actions with current LLM
-     */
-    updateActionsLLM(actions: BaseAction[]): void {
-        if (this.roleLLM && actions.length > 0) {
-            actions.forEach((action) => action.setLLM(this.roleLLM));
-            logger.info(`${this.profile} updated actions with LLM config`);
-        }
-    }
-
-    /**
-     * Load role-specific LLM configuration from database
-     * Priority: database config (role-specific) > explicit config.llm > active LLM config from database
-     */
-    private async loadRoleLLMFromDatabase(): Promise<void> {
-        try {
-            const userId = this.context.get('userId') || '302769d6-247d-43db-a005-0519712255fb';
-
-            // Try role-specific config first
-            const dbConfig = await this.roleLLMConfigRepo.findByProfile(userId, this.profile);
-
-            if (dbConfig) {
-                const llmConfig: ILLMConfig = {
-                    provider: dbConfig.provider,
-                    apiKey: dbConfig.api_key || '',
-                    baseURL: dbConfig.base_url || undefined,
-                    model: dbConfig.model,
-                    temperature: dbConfig.temperature !== null ? dbConfig.temperature : undefined,
-                    maxTokens: dbConfig.max_tokens !== null ? dbConfig.max_tokens : undefined,
-                    repository: dbConfig.repository || undefined,
-                    branchName: dbConfig.branch_name || undefined,
-                    autoCreatePr: dbConfig.auto_create_pr,
-                };
-
-                this.roleLLM = createLLM(llmConfig);
-                this.roleLLM.costManager = this.context.costManager;
-
-                if (this.actions.length > 0) {
-                    this.updateActionsLLM(this.actions);
-                    logger.info(
-                        `${this.profile} updated actions with database LLM config: ${dbConfig.provider}/${dbConfig.model}`
-                    );
-                } else {
-                    logger.info(
-                        `${this.profile} loaded LLM config from database (highest priority): ${dbConfig.provider}/${dbConfig.model}`
-                    );
-                }
-                return;
-            }
-
-            // Fallback to active LLM config
-            try {
-                const activeConfig = await this.llmConfigRepo.findActive(userId);
-                if (activeConfig) {
-                    const llmConfig = this.llmConfigRepo.toILLMConfig(activeConfig);
-                    this.roleLLM = createLLM(llmConfig);
-                    this.roleLLM.costManager = this.context.costManager;
-
-                    if (this.actions.length > 0) {
-                        this.updateActionsLLM(this.actions);
-                        logger.info(
-                            `${this.profile} updated actions with active LLM config from database: ${llmConfig.provider}/${llmConfig.model}`
-                        );
-                    } else {
-                        logger.info(
-                            `${this.profile} using active LLM config from database: ${llmConfig.provider}/${llmConfig.model}`
-                        );
-                    }
-                    return;
-                }
-            } catch (activeConfigError: any) {
-                logger.debug(
-                    `${this.profile} error loading active LLM config from database:`,
-                    activeConfigError.message
-                );
-            }
-
-            // No database config found
-            if (!this.roleLLM) {
-                const defaultConfig = this.context.config.llm;
-                logger.warn(
-                    `${this.profile} no role-specific or active LLM config found, using system default: ${defaultConfig.provider}/${defaultConfig.model}`
-                );
-            } else {
-                logger.debug(`${this.profile} no database LLM config found, using explicit config.llm`);
-            }
-        } catch (error: any) {
-            logger.debug(`${this.profile} error loading LLM config from database:`, error.message);
-            if (!this.roleLLM) {
-                const defaultConfig = this.context.config.llm;
-                logger.info(
-                    `${this.profile} will use system default LLM config due to database error: ${defaultConfig.provider}/${defaultConfig.model}`
-                );
-            }
-        }
-    }
+  /**
+   * Check if LLM configuration has been loaded
+   */
+  isLoaded(): boolean {
+    return this.initialized;
+  }
 }
-
