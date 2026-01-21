@@ -3,9 +3,7 @@
  */
 
 export { BaseLLM } from './BaseLLM';
-export { OpenAILLM } from './OpenAILLM';
-export { ZhipuLLM } from './ZhipuLLM';
-export { ArkLLM } from './ArkLLM';
+export { OpenAICompatibleLLM } from './OpenAICompatibleLLM';
 export { CursorLLM } from './CursorLLM';
 export { createLLM, getSupportedProviders, isProviderSupported } from './factory';
 export { LLMManager, llmManager } from './LLMManager';
