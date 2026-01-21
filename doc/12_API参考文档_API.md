@@ -1,8 +1,8 @@
 # mind2build API 参考文档
 
-**文档版本**: v1.2  
+**文档版本**: v1.3  
 **创建日期**: 2025-12-24
-**最后更新**: 2026-01-07（添加知识库和工作流相关API）
+**最后更新**: 2026-01-21（添加 Role Action Execution API，更新为 TypeScript API 参考）
 
 ---
 
@@ -1162,14 +1162,80 @@ ws.on('error', (error) => {
 
 执行自定义测试场景。
 
+### 1.13 角色 Action 执行 API
+
+角色 Action 执行 API 允许独立执行特定角色的特定 Action，无需运行完整工作流。
+
+#### 执行角色 Action
+
+**POST** `/api/projects/:projectId/roles/:roleName/actions/:actionName/execute`
+
+独立执行特定角色的特定 Action。
+
+**请求参数**:
+- `projectId`: 项目ID
+- `roleName`: 角色名称（如 Salesperson, ProductManager, Architect, Engineer, QAEngineer）
+- `actionName`: Action 名称（如 WriteMRD, WritePRD, WriteDesign, WriteCode）
+
+**请求体**:
+```json
+{
+  "input": "用户需求或输入内容",
+  "workspaceOptions": {
+    "applicationId": "应用ID（必须）",
+    "projectId": "项目ID",
+    "version": 1
+  },
+  "contextMessages": []
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "result": {
+    "content": "Action 输出内容",
+    "data": {
+      "type": "prd",
+      "filename": "PRD.md",
+      "timestamp": "2026-01-21T00:00:00Z",
+      "workspaceDir": "workspace/app-id/project-id/v1/PRD/"
+    }
+  },
+  "executionTime": 1234
+}
+```
+
+**支持的角色和 Actions**:
+
+| 角色 | 支持的 Actions |
+|------|---------------|
+| Salesperson | WriteMRD, MRDReview, ImproveMRD |
+| ProductManager | WritePRD, PRDReview, ImprovePRD, SearchEnhancedQA |
+| Architect | WriteDesign, DesignReview, ImproveDesign |
+| ProjectManager | BreakdownTasks, WriteSubProjectDesign, SubProjectDesignReview |
+| Engineer | WriteCode, ExecuteSubtask, RunCode, FixBug |
+| QAEngineer | TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion |
+| TeamLeader | Coordinate |
+| DataAnalyst | DataAnalysis |
+
+**功能特性**:
+- 独立执行任何角色的 Action
+- 灵活的输入方式（自定义输入、上下文消息、从历史自动加载）
+- 基于 Action 需求自动加载上下文
+- 支持 Workspace 选项进行文档组织
+- 完整的错误处理和超时控制
+- 结果自动保存到项目历史
+
 ---
 
 ## 2. CLI 命令
 
-### 1.1 mind2build 主命令
+### 2.1 generate 命令
 
 ```bash
-mind2build [OPTIONS] IDEA
+pnpm --filter backend cli generate [OPTIONS] "IDEA"
 ```
 
 **参数**:
@@ -1177,492 +1243,396 @@ mind2build [OPTIONS] IDEA
 
 **选项**:
 ```bash
---investment FLOAT          投资预算（默认：3.0）
---n-round INTEGER          运行轮数（默认：5）
---code-review             启用代码审查（默认：True）
---run-tests               启用测试（默认：False）
---project-name TEXT       项目名称
---inc                     增量模式
---project-path TEXT       项目路径（增量模式）
---init-config            初始化配置文件
---help                    显示帮助
+-o, --output <path>        输出目录
+-i, --interactive          启用交互模式
+-b, --budget <number>      投资预算（默认：3.0）
+-r, --rounds <number>      运行轮数（默认：5）
+--help                     显示帮助
 ```
 
 **示例**:
 ```bash
 # 基础使用
-mind2build "Create a 2048 game"
+pnpm --filter backend cli generate "Create a 2048 game" -o ./game-2048
+
+# 交互模式
+pnpm --filter backend cli generate "Create a blog API" -i -o ./blog-api
 
 # 完整参数
-mind2build "Create a blog system" \
-  --investment 10.0 \
-  --n-round 10 \
-  --code-review \
-  --project-name blog
-
-# 增量开发
-mind2build "Add user authentication" \
-  --inc \
-  --project-path ./blog
+pnpm --filter backend cli generate "Create a TODO app" -i -o ./todo-app -b 10.0 -r 5
 ```
 
 ---
 
-## 2. Python API
+## 3. TypeScript API
 
-### 2.1 generate_repo()
+Mind2Build 是一个 Node.js/TypeScript 项目。以下是核心 TypeScript API 参考。
 
-**函数签名**:
-```python
-def generate_repo(
-    idea: str,
-    investment: float = 3.0,
-    n_round: int = 5,
-    code_review: bool = True,
-    run_tests: bool = False,
-    implement: bool = True,
-    project_name: str = "",
-    inc: bool = False,
-    project_path: str = "",
-    reqa_file: str = "",
-    max_auto_summarize_code: int = 0,
-    recover_path: str = None,
-) -> str
+### 3.1 Team 类
+
+**位置**: `backend/src/orchestration/Team.ts`
+
+```typescript
+import { Team } from './orchestration/Team';
+import { Context } from './core/context/Context';
+import { ProductManager, Architect, Engineer } from './roles';
+
+// 创建上下文
+const context = new Context();
+
+// 创建团队
+const team = new Team(context);
+
+// 雇佣角色
+team.hire([
+  new ProductManager(context),
+  new Architect(context),
+  new Engineer(context)
+]);
+
+// 设置预算
+team.invest(10.0);
+
+// 运行团队
+const messages = await team.run('Create a TODO app', 5);
 ```
 
-**参数说明**:
-- `idea`: 项目需求描述
-- `investment`: 预算金额（美元）
-- `n_round`: 最大运行轮数
-- `code_review`: 是否启用代码审查
-- `project_name`: 项目名称
-- `inc`: 是否增量模式
-- `project_path`: 项目路径（增量模式）
+### 3.2 Role 类
 
-**返回值**: 项目路径字符串
+**位置**: `backend/src/roles/Role.ts`
 
-**示例**:
-```python
-from mind2build.software_company import generate_repo
-
-# 基础使用
-path = generate_repo("Create a TODO app")
-print(f"Project at: {path}")
-
-# 完整参数
-path = generate_repo(
-    idea="Create a calculator",
-    investment=5.0,
-    n_round=8,
-    code_review=True,
-    project_name="calculator"
-)
+**可用角色**:
+```typescript
+import {
+  Salesperson,
+  ProductManager,
+  Architect,
+  ProjectManager,
+  Engineer,
+  QAEngineer,
+  TeamLeader,
+  DataAnalyst
+} from './roles';
 ```
 
-### 2.2 Team 类
+**角色方法**:
+```typescript
+// 观察新消息
+await role.observe();
 
-**类定义**:
-```python
-class Team(BaseModel):
-    env: Optional[Environment] = None
-    investment: float = 10.0
-    idea: str = ""
+// 思考下一步行动
+const hasAction = await role.think();
+
+// 执行行动
+const message = await role.act();
+
+// 完整运行循环
+const result = await role.run();
 ```
 
-**方法**:
+### 3.3 Action 类
 
-#### hire()
-```python
-def hire(self, roles: list[Role]) -> None
-```
-雇佣角色到团队。
+**位置**: `backend/src/core/base/BaseAction.ts`
 
-**示例**:
-```python
-from mind2build.team import Team
-from mind2build.roles import ProductManager, Architect
+**自定义 Action**:
+```typescript
+import { BaseAction } from './core/base/BaseAction';
+import { IActionOutput } from '@mind2build/shared';
 
-team = Team()
-team.hire([ProductManager(), Architect()])
-```
+export class CustomAction extends BaseAction {
+  constructor() {
+    super('CustomAction', 'Custom action description');
+  }
 
-#### invest()
-```python
-def invest(self, investment: float) -> None
-```
-设置预算。
-
-#### run()
-```python
-async def run(
-    self,
-    n_round: int = 3,
-    idea: str = "",
-    send_to: str = "",
-    auto_archive: bool = True
-) -> list[Message]
-```
-运行团队。
-
-**示例**:
-```python
-import asyncio
-
-result = asyncio.run(team.run(
-    n_round=10,
-    idea="Create a web app"
-))
-```
-
-### 2.3 Role 类
-
-**基础角色**:
-```python
-from mind2build.roles import (
-    ProductManager,
-    Architect,
-    Engineer,
-    QAEngineer,
-    TeamLeader,
-)
-```
-
-**初始化**:
-```python
-pm = ProductManager(name="Alice")
-arch = Architect(name="Bob")
-```
-
-**方法**:
-```python
-async def run(self, with_message: Optional[Message] = None) -> Optional[Message]
-```
-
-### 2.4 DataInterpreter
-
-**类定义**:
-```python
-from mind2build.roles.di.data_interpreter import DataInterpreter
-```
-
-**使用**:
-```python
-import asyncio
-
-async def analyze():
-    di = DataInterpreter()
-    result = await di.run("Analyze Iris dataset")
-    return result
-
-asyncio.run(analyze())
-```
-
----
-
-## 3. 配置 API
-
-### 3.1 Config 类
-
-**加载配置**:
-```python
-from mind2build.config2 import Config
-
-# 默认配置
-config = Config.default()
-
-# 从文件加载
-config = Config.from_yaml("~/.mind2build/config2.yaml")
-```
-
-**配置项**:
-```python
-config.llm.api_type = "openai"
-config.llm.model = "gpt-4-turbo"
-config.llm.api_key = "your-key"
-config.workspace.path = "./workspace"
-```
-
-### 3.2 Context 类
-
-```python
-from mind2build.context import Context
-
-ctx = Context(config=config)
-llm = ctx.llm()  # 获取 LLM 实例
-```
-
----
-
-## 4. LLM API
-
-### 4.1 BaseLLM
-
-**方法**:
-
-#### aask()
-```python
-async def aask(
-    self,
-    prompt: str,
-    system_msgs: Optional[list[str]] = None,
-    **kwargs
-) -> str
-```
-
-**示例**:
-```python
-from mind2build.provider.openai_api import OpenAILLM
-
-llm = OpenAILLM(config)
-response = await llm.aask("What is mind2build?")
-```
-
-#### acompletion()
-```python
-async def acompletion(
-    self,
-    messages: list[dict],
-    timeout: int = 60,
-    **kwargs
-) -> dict
-```
-
-### 4.2 创建 LLM 实例
-
-```python
-from mind2build.provider.llm_provider_registry import create_llm_instance
-from mind2build.configs.llm_config import LLMConfig
-
-config = LLMConfig(
-    api_type="openai",
-    model="gpt-4-turbo",
-    api_key="your-key"
-)
-
-llm = create_llm_instance(config)
-```
-
----
-
-## 5. Action API
-
-### 5.1 自定义 Action
-
-```python
-from mind2build.actions import Action
-
-class CustomAction(Action):
-    name: str = "CustomAction"
+  async run(input: string, options?: any): Promise<IActionOutput> {
+    // 调用 LLM
+    const content = await this.aask(prompt);
     
-    async def run(self, *args, **kwargs):
-        prompt = f"Task: {args[0]}"
-        result = await self._aask(prompt)
-        return result
+    // 保存到 workspace
+    await this.saveToWorkspace('output.md', content, options);
+    
+    return {
+      content,
+      data: { type: 'custom', timestamp: new Date().toISOString() }
+    };
+  }
+}
 ```
 
-### 5.2 ActionNode
+### 3.4 Context 类
 
-```python
-from mind2build.actions.action_node import ActionNode
+**位置**: `backend/src/core/context/Context.ts`
 
-node = ActionNode(
-    key="output",
-    expected_type=str,
-    instruction="Generate output",
-    example="Example output"
-)
+```typescript
+import { Context } from './core/context/Context';
 
-result = await node.fill(context, llm)
+const context = new Context();
+
+// 获取 LLM 实例
+const llm = context.llm;
+
+// 获取成本管理器
+const costManager = context.costManager;
+
+// 设置/获取值
+context.set('key', value);
+const value = context.get('key');
+```
+
+### 3.5 LLM API
+
+**位置**: `backend/src/providers/llm/`
+
+```typescript
+import { createLLM } from './providers/llm/factory';
+import { ILLMConfig } from '@mind2build/shared';
+
+// 创建 LLM 实例
+const config: ILLMConfig = {
+  provider: 'zhipuai',
+  apiKey: 'your-api-key',
+  model: 'glm-4-flash'
+};
+
+const llm = createLLM(config);
+
+// 调用 LLM
+const response = await llm.aask('What is mind2build?');
+```
+
+### 3.6 Memory API
+
+**位置**: `backend/src/core/memory/Memory.ts`
+
+```typescript
+import { Memory } from './core/memory/Memory';
+import { Message } from './core/message/Message';
+
+const memory = new Memory();
+
+// 添加消息
+memory.add(message);
+
+// 获取最近消息
+const recent = memory.getRecent(10);
+
+// 按 action 过滤
+const prdMessages = memory.getByAction('WritePRD');
+
+// 清空
+memory.clear();
+```
+
+### 3.7 WorkspaceManager
+
+**位置**: `backend/src/utils/WorkspaceManager.ts`
+
+```typescript
+import { WorkspaceManager, WorkspaceOptions } from './utils/WorkspaceManager';
+
+const options: WorkspaceOptions = {
+  applicationId: 'my-app',
+  projectId: 'project-1',
+  version: 1,
+  documentType: 'PRD'
+};
+
+// 保存文件
+await WorkspaceManager.saveFile('PRD.md', content, options);
+
+// 读取文件
+const content = await WorkspaceManager.readFile('PRD.md', options);
+
+// 获取工作区目录
+const dir = WorkspaceManager.getWorkspaceDir(options);
 ```
 
 ---
 
-## 6. Memory API
+## 4. 共享类型定义
 
-### 6.1 Memory 操作
+**位置**: `shared/src/types/index.ts`
 
-```python
-from mind2build.memory import Memory
+### 4.1 LLM 类型
 
-memory = Memory()
+```typescript
+export type LLMProvider = 'openai' | 'anthropic' | 'gemini' | 'zhipuai' | 
+                          'qianfan' | 'dashscope' | 'ollama' | 'ark' | 
+                          'cursor' | 'deepseek';
 
-# 添加消息
-memory.add(message)
+export interface ILLMConfig {
+  provider: LLMProvider;
+  apiKey: string;
+  baseURL?: string;
+  model: string;
+  temperature?: number;
+  maxTokens?: number;
+  topP?: number;
+  repository?: string;      // Cursor Agent 专用
+  branchName?: string;      // Cursor Agent 专用
+  autoCreatePr?: boolean;   // Cursor Agent 专用
+}
 
-# 获取最近消息
-recent = memory.get(k=10)
+export interface ILLMResponse {
+  content: string;
+  usage: ILLMUsage;
+  model: string;
+}
+```
 
-# 按条件过滤
-by_role = memory.get_by_role("assistant")
-by_action = memory.get_by_action(WritePRD)
+### 4.2 项目类型
 
-# 清空
-memory.clear()
+```typescript
+export enum ProjectStatus {
+  PENDING = 'pending',
+  RUNNING = 'running',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+  CANCELLED = 'cancelled',
+}
+
+export interface IProject {
+  id: string;
+  userId: string;
+  name: string;
+  idea: string;
+  description?: string;
+  status: ProjectStatus;
+  progress: number;
+  nRound: number;
+  currentRound: number;
+  investment: number;
+  totalCost: number;
+  metadata: Record<string, any>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+### 4.3 角色类型
+
+```typescript
+export enum RoleReactMode {
+  REACT = 'react',
+  BY_ORDER = 'by_order',
+  PLAN_AND_ACT = 'plan_and_act',
+}
+
+export interface IRoleConfig {
+  name: string;
+  profile: string;
+  goal: string;
+  constraints?: string;
+  description?: string;
+  llm?: ILLMConfig;
+}
+```
+
+### 4.4 Action 常量
+
+```typescript
+// Action 名称常量
+export const ACTION_WRITE_MRD = 'WriteMRD';
+export const ACTION_WRITE_PRD = 'WritePRD';
+export const ACTION_WRITE_DESIGN = 'WriteDesign';
+export const ACTION_BREAKDOWN_TASKS = 'BreakdownTasks';
+export const ACTION_WRITE_CODE = 'WriteCode';
+export const ACTION_WRITE_TEST = 'WriteTest';
+// ... 更多常量
 ```
 
 ---
 
-## 7. 工具 API
+## 5. 完整示例
 
-### 7.1 Browser
+### 示例 1: 使用 Team 类生成项目
 
-```python
-from mind2build.tools.libs.browser import Browser
+```typescript
+import { Team } from './orchestration/Team';
+import { Context } from './core/context/Context';
+import { Salesperson, ProductManager, Architect, Engineer } from './roles';
 
-browser = Browser()
-content = await browser.browse("https://example.com")
-results = await browser.search("query")
+async function generateProject() {
+  // 1. 创建上下文
+  const context = new Context();
+  
+  // 2. 创建团队
+  const team = new Team(context);
+  
+  // 3. 雇佣角色
+  team.hire([
+    new Salesperson(context),
+    new ProductManager(context),
+    new Architect(context),
+    new Engineer(context)
+  ]);
+  
+  // 4. 设置预算
+  team.invest(10.0);
+  
+  // 5. 运行
+  const messages = await team.run('Create a blog system', 10);
+  
+  // 6. 输出结果
+  console.log(`Total cost: $${context.costManager.totalCost.toFixed(2)}`);
+  console.log(`Messages generated: ${messages.length}`);
+}
+
+generateProject();
 ```
 
-### 7.2 Editor
+### 示例 2: 独立执行角色 Action
 
-```python
-from mind2build.tools.libs.editor import Editor
+```typescript
+import { ProductManager } from './roles';
+import { Context } from './core/context/Context';
 
-editor = Editor()
-await editor.write("file.txt", "content")
-content = await editor.read("file.txt")
+async function generatePRD() {
+  const context = new Context();
+  const pm = new ProductManager(context);
+  
+  // 执行 WritePRD action
+  const message = await pm.executeAction('WritePRD', {
+    input: 'MRD 文档内容...',
+    workspaceOptions: {
+      applicationId: 'my-app',
+      projectId: 'project-1',
+      version: 1
+    }
+  });
+  
+  console.log('PRD generated:', message?.content);
+}
+
+generatePRD();
 ```
 
-### 7.3 Terminal
+### 示例 3: 使用 REST API
 
-```python
-from mind2build.tools.libs.terminal import Terminal
+```typescript
+// 创建交互式会话
+const response = await fetch('http://localhost:3000/api/interactive', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    name: 'My Project',
+    idea: 'Create a TODO app with React',
+    investment: 10.0,
+    nRound: 5
+  })
+});
 
-terminal = Terminal()
-output = await terminal.run_command("ls -la")
-```
+const { sessionId } = await response.json();
 
----
+// 连接 WebSocket 接收实时更新
+const ws = new WebSocket(`ws://localhost:3000/ws?sessionId=${sessionId}`);
 
-## 8. 成本管理 API
-
-### 8.1 CostManager
-
-```python
-from mind2build.utils.cost_manager import CostManager
-
-cm = CostManager()
-cm.max_budget = 10.0
-
-# 更新成本
-cm.update_cost("gpt-4", usage_dict)
-
-# 检查成本
-print(f"Total: ${cm.total_cost:.2f}")
-print(f"Tokens: {cm.total_tokens}")
-```
-
----
-
-## 9. 序列化 API
-
-### 9.1 保存和恢复
-
-```python
-from pathlib import Path
-
-# 保存
-team.serialize(stg_path=Path("./storage/team"))
-
-# 恢复
-team = Team.deserialize(
-    stg_path=Path("./storage/team"),
-    context=ctx
-)
-```
-
----
-
-## 10. 常用工具函数
-
-### 10.1 any_to_str()
-
-```python
-from mind2build.utils.common import any_to_str
-
-# 类转字符串
-str_name = any_to_str(WritePRD)  # "WritePRD"
-
-# 实例转字符串
-str_name = any_to_str(role)  # "ProductManager"
-```
-
-### 10.2 import_class()
-
-```python
-from mind2build.utils.common import import_class
-
-cls = import_class("WritePRD", "mind2build.actions.write_prd")
-instance = cls()
+ws.on('message', (data) => {
+  const message = JSON.parse(data);
+  console.log('Received:', message);
+});
 ```
 
 ---
 
-## 完整示例
-
-### 示例 1: 完整的团队配置
-
-```python
-from mind2build.team import Team
-from mind2build.roles import ProductManager, Architect, Engineer
-from mind2build.context import Context
-from mind2build.config2 import Config
-import asyncio
-
-async def main():
-    # 1. 配置
-    config = Config.default()
-    config.llm.model = "gpt-4-turbo"
-    
-    # 2. 创建上下文
-    ctx = Context(config=config)
-    
-    # 3. 创建团队
-    team = Team(context=ctx)
-    team.hire([
-        ProductManager(name="Alice"),
-        Architect(name="Bob"),
-        Engineer(name="Charlie")
-    ])
-    
-    # 4. 设置预算
-    team.invest(10.0)
-    
-    # 5. 运行
-    result = await team.run(
-        n_round=10,
-        idea="Create a blog system"
-    )
-    
-    # 6. 结果
-    print(f"Cost: ${team.cost_manager.total_cost:.2f}")
-    return result
-
-asyncio.run(main())
-```
-
-### 示例 2: 数据分析
-
-```python
-from mind2build.roles.di.data_interpreter import DataInterpreter
-import asyncio
-
-async def analyze():
-    di = DataInterpreter()
-    
-    result = await di.run("""
-    Load Iris dataset and:
-    1. Show statistics
-    2. Create correlation heatmap
-    3. Train a classifier
-    """)
-    
-    return result
-
-asyncio.run(analyze())
-```
-
----
-
-**更多信息**: 请参考源码和在线文档
+**更多信息**: 请参考源码 `backend/src/` 目录

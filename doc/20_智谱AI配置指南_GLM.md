@@ -1,8 +1,8 @@
 # 智谱AI（GLM）配置指南
 
-**文档版本**: v1.0  
+**文档版本**: v1.1  
 **创建日期**: 2025-12-25  
-**最后更新**: 2025-12-25
+**最后更新**: 2026-01-21
 
 ---
 
@@ -122,15 +122,15 @@ $env:ZHIPUAI_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
 $env:ZHIPUAI_MODEL="glm-4-flash"
 ```
 
-### 3.2 配置文件方式
+### 3.2 配置文件方式（可选）
 
-在 `config/` 目录创建 `llm.config.json`:
+如果需要通过配置文件方式，可以在项目根目录创建 `config/llm.config.json`:
 
 ```json
 {
   "provider": "zhipuai",
   "zhipuai": {
-    "apiKey": "b3796c2b64c34be692cc5ff35292b5f1.6dY0OHKL5BvRHQEn",
+    "apiKey": "your-api-key",
     "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
     "model": "glm-4-flash",
     "timeout": 60,
@@ -139,6 +139,8 @@ $env:ZHIPUAI_MODEL="glm-4-flash"
   }
 }
 ```
+
+**注意**: 推荐使用 `.env` 文件方式，更符合12-Factor App原则，也更安全。
 
 ### 3.3 配置参数说明
 
@@ -211,58 +213,50 @@ ZHIPUAI_MODEL=glm-4-plus
 
 ### 5.1 基础使用
 
+智谱AI通过`OpenAICompatibleLLM`统一架构集成，无需单独实现：
+
 ```typescript
-// backend/src/providers/llm/ZhipuLLM.ts
-import { BaseLLM } from './BaseLLM';
+// backend/src/providers/llm/OpenAICompatibleLLM.ts
+import { OpenAICompatibleLLM } from './OpenAICompatibleLLM';
+import { LLMConfig } from './LLMConfig';
 
-export class ZhipuLLM extends BaseLLM {
-  constructor(config: LLMConfig) {
-    super(config);
-    this.apiKey = config.apiKey || process.env.ZHIPUAI_API_KEY;
-    this.baseUrl = config.baseUrl || process.env.ZHIPUAI_BASE_URL;
-    this.model = config.model || process.env.ZHIPUAI_MODEL || 'glm-4-flash';
-  }
+// 创建智谱AI配置
+const zhipuaiConfig = new LLMConfig({
+  provider: 'zhipuai',
+  model: process.env.ZHIPUAI_MODEL || 'glm-4-flash',
+  apiKey: process.env.ZHIPUAI_API_KEY!,
+  baseUrl: process.env.ZHIPUAI_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4'
+});
 
-  async aask(prompt: string): Promise<string> {
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages: [
-          { role: 'user', content: prompt }
-        ],
-        temperature: this.temperature,
-        max_tokens: this.maxTokens
-      })
-    });
+// 使用OpenAICompatibleLLM
+const zhipuaiLLM = new OpenAICompatibleLLM(zhipuaiConfig);
 
-    const data = await response.json();
-    return data.choices[0].message.content;
-  }
-}
+// 调用
+const result = await zhipuaiLLM.aask('你好，请介绍一下你自己');
+console.log(result);
 ```
 
 ### 5.2 在角色中使用
 
 ```typescript
 // backend/src/roles/ProductManager.ts
-import { Role } from './Role';
+import { BaseRole } from './BaseRole';
 import { WritePRD } from '../actions';
+import { LLMConfig } from '../providers/llm/LLMConfig';
 
-export class ProductManager extends Role {
-  constructor() {
+export class ProductManager extends BaseRole {
+  constructor(config?: any) {
     super({
       name: 'Alice',
       profile: 'Product Manager',
       goal: 'Create comprehensive PRD',
-      llmConfig: {
+      llmConfig: config?.llmConfig || new LLMConfig({
         provider: 'zhipuai',
-        model: 'glm-4-flash'
-      }
+        model: process.env.ZHIPUAI_MODEL || 'glm-4-flash',
+        apiKey: process.env.ZHIPUAI_API_KEY!,
+        baseUrl: process.env.ZHIPUAI_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4'
+      }),
+      ...config
     });
     this.setActions([WritePRD]);
   }
@@ -576,5 +570,18 @@ class RateLimiter {
 
 ---
 
+## 10. 更新记录
+
+### v1.1 (2026-01-21)
+- 更新版本号和最后更新日期
+- 更新代码示例，说明智谱AI通过`OpenAICompatibleLLM`统一架构集成
+- 更新配置方式说明，强调使用`.env`文件方式
+- 更新角色使用示例，使用`BaseRole`和`LLMConfig`
+- 移除硬编码的API Key示例
+
+---
+
 **配置完成后，你就可以开始使用智谱AI作为默认的LLM提供商了！** 🎉
+
+**注意**: 智谱AI通过`OpenAICompatibleLLM`统一架构集成，与其他OpenAI兼容的提供商（如DeepSeek、Ark等）使用相同的接口，简化了集成和使用。
 

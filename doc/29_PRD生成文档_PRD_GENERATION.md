@@ -1,7 +1,8 @@
 # PRD 生成文档
 
-**文档版本**: v1.0  
+**文档版本**: v1.1  
 **创建日期**: 2026-01-19  
+**最后更新**: 2026-01-21  
 **适用范围**: Mind2Build 当前主干
 
 ---
@@ -141,3 +142,10 @@ workspace/{applicationId}/{projectId}/ainative-workspace/docs/prd/
 - `backend/src/api/controllers/PRDController.ts`
 - `backend/src/services/RAGService.ts`
 - `doc/prd-template/prd-template.md`
+
+---
+
+## 12. 更新记录
+
+### v1.1 (2026-01-21)
+- 更新版本号和最后更新日期

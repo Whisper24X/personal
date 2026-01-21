@@ -92,9 +92,9 @@
 - 自定义 Action 开发指南
 
 #### 8. [LLM 提供商集成](./08_LLM提供商集成_PROVIDERS.md)
-- LLM 抽象层设计
-- ✅ 已实现：OpenAI、智谱AI (ZhipuAI)、火山引擎 Ark (豆包)、Cursor Agent
-- 🚧 计划中：Anthropic Claude、Google Gemini、百度千帆、阿里云 DashScope、Ollama
+- LLM 抽象层设计（统一 OpenAICompatibleLLM 架构）
+- ✅ 已实现：OpenAI、智谱AI (ZhipuAI)、火山引擎 Ark (豆包)、DeepSeek、Cursor Agent
+- ⚙️ 可配置支持：Anthropic Claude、Google Gemini、百度千帆、阿里云 DashScope、Ollama
 - 自定义提供商开发指南
 
 ### 四、数据流与工作流
@@ -301,16 +301,22 @@
 
 ## 📝 文档维护
 
-- **当前版本**: v1.4
-- **最后更新**: 2026-01-07
+- **当前版本**: v1.5
+- **最后更新**: 2026-01-21
 - **维护状态**: 活跃维护中
 
 ### 更新日志
+- 2026-01-21: 全面更新文档与代码同步：
+  - 更新行动系统设计文档（07），添加 12 个新 Actions（WriteTestPlan、TestabilityReview、TestCaseReview、TestReview、ImproveTest、AutomationPlanning、AutomationExecution、CoverageQualityCheck、QAConclusion、RunCode、FixBug、ImproveDesign），移除不存在的 GenerateTask，更新 ImproveDocument 为独立的 ImprovePRD/ImproveMRD/ImproveDesign
+  - 更新角色系统设计文档（06），完善 QAEngineer 角色的 9 步 QA 工作流说明
+  - 更新 LLM 提供商文档（08），说明统一的 OpenAICompatibleLLM 架构，添加 DeepSeek 提供商
+  - 更新 API 参考文档（12），移除 Python API 内容，添加 TypeScript API 参考，完善 Role Action Execution API
+  - 更新架构文档（04）、核心类设计文档（05）、数据流文档（09）、工作流文档（10）
 - 2026-01-07: 根据PRD、架构文档、技术规格文档更新所有相关文档，添加知识库系统（RAG检索、代码仓库关联）、多角色串联工作流（输入输出映射）、角色独立调试能力等新功能说明
 - 2026-01-06: 根据实际代码实现全面更新文档导航、项目需求文档、产品需求文档和技术规格文档，修正技术栈（Node.js + TypeScript + Vue 3），更新角色和Actions列表，添加交互模式和Web UI说明，更新LLM提供商状态
 - 2025-12-25: 根据代码实现更新角色系统设计文档，详细说明每个角色的监听机制、Actions 和工作流程，移除不存在的 CodeReview action，添加各角色的实际监听目标和约束条件
 - 2025-12-25: 根据代码实现全面更新文档，修正技术栈描述（Node.js + TypeScript，而非 Python），更新 Actions 列表（WriteMRD, MRDReview, DesignReview, SubProjectDesignReview, ExecuteSubtask），添加 WebSocket API 文档，更新 LLM 提供商状态（OpenAI, ZhipuAI, Ark, Cursor）
-- 2025-12-25: 根据代码实现更新文档，添加 ProjectManager 角色和新增 Actions（BreakdownTasks, WriteSubProjectDesign, GenerateTask, CodeReview）的完整描述
+- 2025-12-25: 根据代码实现更新文档，添加 ProjectManager 角色和新增 Actions（BreakdownTasks, WriteSubProjectDesign, CodeReview）的完整描述
 - 2025-12-25: 新增项目介绍与使用指南(25)、设计方案文档(24)
 - 2025-12-24: 初始版本创建，完整文档结构建立
 

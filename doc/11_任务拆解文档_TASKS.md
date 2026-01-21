@@ -3,8 +3,9 @@
 > AI 可执行任务拆解文档  
 > 基于技术规格文档，用于指导 AI 逐步、可控地完成实现
 
-**文档版本**: v1.0  
+**文档版本**: v1.1  
 **创建日期**: 2025-12-24  
+**最后更新**: 2026-01-21  
 **依赖文档**: `03_技术规格文档_SPEC.md`, `04_系统架构文档_ARCHITECTURE.md`
 
 ---
@@ -520,19 +521,23 @@ class OpenAILLM(BaseLLM):
 
 ### T3-3: 实现其他 LLM 提供商
 
-**任务目标**: 集成 Anthropic, Gemini 等
+**任务目标**: 集成 ZhipuAI, Ark, DeepSeek, Cursor 等
 
 **前置条件**: T3-2
 
 **输入**: 各提供商 API 文档
 
 **输出**: 
-- `mind2build/provider/anthropic_api.py`
-- `mind2build/provider/google_gemini_api.py`
-- `mind2build/provider/zhipuai_api.py`
+- `backend/src/providers/llm/OpenAICompatibleLLM.ts`（统一架构，支持OpenAI、ZhipuAI、Ark、DeepSeek等）
+- `backend/src/providers/llm/CursorLLM.ts`（独立实现）
+- `backend/src/providers/llm/ZhipuLLM.ts`（通过OpenAICompatibleLLM）
+- `backend/src/providers/llm/ArkLLM.ts`（通过OpenAICompatibleLLM）
+- `backend/src/providers/llm/DeepSeekLLM.ts`（通过OpenAICompatibleLLM）
+
+**架构说明**: 大多数LLM提供商通过统一的 `OpenAICompatibleLLM` 类实现，简化代码结构。Cursor Agent使用独立的 `CursorLLM` 实现。
 
 **完成判定标准**:
-- [x] 至少支持 3 个提供商
+- [x] 至少支持 5 个提供商（OpenAI、ZhipuAI、Ark、DeepSeek、Cursor）
 - [x] 接口统一，可无缝切换
 - [x] 每个提供商有基础测试
 
@@ -858,14 +863,31 @@ class WritePRD(Action):
 
 ### T5-5: 实现其他 Actions
 
-**任务目标**: 实现 WriteTest, CodeReview, BreakdownTasks, WriteSubProjectDesign, GenerateTask 等
+**任务目标**: 实现所有31个Actions（文档编写、审查、改进、任务管理、代码执行与修复、QA工作流等）
 
 **前置条件**: T5-4
 
 **输出**:
-- `mind2build/actions/write_test.py`
-- `mind2build/actions/write_code_review.py`
-- `mind2build/actions/search_enhanced_qa.py`
+- `backend/src/actions/WriteTest.ts`
+- `backend/src/actions/CodeReview.ts`
+- `backend/src/actions/SearchEnhancedQA.ts`
+- `backend/src/actions/RunCode.ts`
+- `backend/src/actions/FixBug.ts`
+- `backend/src/actions/ImprovePRD.ts`
+- `backend/src/actions/ImproveMRD.ts`
+- `backend/src/actions/ImproveDesign.ts`
+- `backend/src/actions/TestabilityReview.ts`
+- `backend/src/actions/WriteTestPlan.ts`
+- `backend/src/actions/TestCaseReview.ts`
+- `backend/src/actions/TestReview.ts`
+- `backend/src/actions/ImproveTest.ts`
+- `backend/src/actions/AutomationPlanning.ts`
+- `backend/src/actions/AutomationExecution.ts`
+- `backend/src/actions/CoverageQualityCheck.ts`
+- `backend/src/actions/QAConclusion.ts`
+- 以及其他Actions
+
+**注意**: 已移除 `GenerateTask` Action，已添加完整的QA工作流Actions（9步QA流程）
 
 **完成判定标准**:
 - [x] 所有核心 Action 实现完成

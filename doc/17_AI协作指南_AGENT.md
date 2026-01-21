@@ -3,8 +3,9 @@
 > AI 工作方式与边界协议  
 > 用于约束 AI 行为，防止过度推断与失控生成
 
-**文档版本**: v1.0  
+**文档版本**: v1.1  
 **创建日期**: 2025-12-24  
+**最后更新**: 2026-01-21  
 **适用项目**: mind2build 多代理协作框架  
 **协议状态**: ✅ 生效中
 
@@ -316,59 +317,74 @@ B) 提高 Python 版本要求到 3.10+
 ### 6.1 模块命名规范
 
 **遵循现有规范**:
-```python
-# 角色文件命名
-mind2build/roles/product_manager.py  # ✅ 使用下划线
-mind2build/roles/ProductManager.py   # ❌ 不使用驼峰
+```typescript
+// 角色文件命名
+backend/src/roles/ProductManager.ts  // ✅ 使用PascalCase
+backend/src/roles/product_manager.ts // ❌ 不使用下划线
 
-# 类命名
-class ProductManager(Role):  # ✅ 驼峰命名
-class product_manager(Role):  # ❌ 不使用下划线
+// 类命名
+class ProductManager extends Role {  // ✅ 驼峰命名
+  // ...
+}
 ```
 
 ### 6.2 异步编程约定
 
-**mind2build 使用 asyncio**:
-```python
-# ✅ 正确：使用 async/await
-class Role:
-    async def run(self):
-        result = await self._act()
-        return result
+**mind2build 使用 async/await**:
+```typescript
+// ✅ 正确：使用 async/await
+class Role {
+  async run(): Promise<Message | null> {
+    const result = await this._act();
+    return result;
+  }
+}
 
-# ❌ 错误：使用同步代码
-class Role:
-    def run(self):
-        result = self._act()  # 阻塞调用
-        return result
+// ❌ 错误：使用同步代码
+class Role {
+  run(): Message | null {
+    const result = this._act();  // 阻塞调用
+    return result;
+  }
+}
 ```
 
 ### 6.3 配置管理约定
 
-**使用 Config 对象**:
-```python
-# ✅ 正确：从 Context 获取配置
-class Role(ContextMixin):
-    def method(self):
-        api_key = self.config.llm.api_key
+**使用 Context 对象**:
+```typescript
+// ✅ 正确：从 Context 获取配置
+class Role {
+  constructor(private context: Context) {}
+  
+  method() {
+    const apiKey = this.context.config.llm.apiKey;
+  }
+}
 
-# ❌ 错误：硬编码或直接读取环境变量
-class Role:
-    def method(self):
-        api_key = os.getenv("OPENAI_API_KEY")
+// ❌ 错误：硬编码或直接读取环境变量
+class Role {
+  method() {
+    const apiKey = process.env.OPENAI_API_KEY;  // 不推荐
+  }
+}
 ```
 
 ### 6.4 错误处理约定
 
 **使用项目定义的异常**:
-```python
-# ✅ 正确：使用 NoMoneyException
-if cost > budget:
-    raise NoMoneyException(f"Budget exhausted: ${cost}")
+```typescript
+// ✅ 正确：使用自定义异常
+import { NoMoneyException } from '@/exceptions';
 
-# ❌ 错误：使用通用异常
-if cost > budget:
-    raise Exception("No money")
+if (cost > budget) {
+  throw new NoMoneyException(`Budget exhausted: $${cost}`);
+}
+
+// ❌ 错误：使用通用异常
+if (cost > budget) {
+  throw new Error('No money');
+}
 ```
 
 ---
@@ -393,10 +409,10 @@ if cost > budget:
 - [ ] 类长度合理（< 300 行）
 
 **类型和规范**:
-- [ ] 使用类型注解
-- [ ] 遵循 PEP 8 规范
-- [ ] 通过 Ruff lint 检查
-- [ ] 通过 Black 格式检查
+- [ ] 使用 TypeScript 类型注解
+- [ ] 遵循 ESLint 规范
+- [ ] 通过 ESLint lint 检查
+- [ ] 通过 Prettier 格式检查
 
 **测试**:
 - [ ] 编写了单元测试
@@ -407,48 +423,61 @@ if cost > budget:
 ### 7.2 常见问题
 
 **问题 1：过度设计**
-```python
-# ❌ 错误：添加未要求的缓存层
-class Role:
-    def __init__(self):
-        self.cache = Redis()  # spec 未要求
+```typescript
+// ❌ 错误：添加未要求的缓存层
+class Role {
+  constructor() {
+    this.cache = new Redis();  // spec 未要求
+  }
+}
 
-# ✅ 正确：只实现要求的功能
-class Role:
-    def __init__(self):
-        self.actions = []
+// ✅ 正确：只实现要求的功能
+class Role {
+  constructor() {
+    this.actions = [];
+  }
+}
 ```
 
 **问题 2：忽略错误处理**
-```python
-# ❌ 错误：未处理 API 调用失败
-async def call_llm(prompt):
-    return await llm.aask(prompt)
+```typescript
+// ❌ 错误：未处理 API 调用失败
+async callLLM(prompt: string): Promise<string> {
+  return await this.llm.aask(prompt);
+}
 
-# ✅ 正确：完善的错误处理
-async def call_llm(prompt):
-    try:
-        return await llm.aask(prompt)
-    except LLMAPIError as e:
-        logger.error(f"LLM API error: {e}")
-        raise
-    except TimeoutError:
-        logger.warning("LLM timeout, retrying...")
-        await asyncio.sleep(2)
-        return await call_llm(prompt)
+// ✅ 正确：完善的错误处理
+async callLLM(prompt: string): Promise<string> {
+  try {
+    return await this.llm.aask(prompt);
+  } catch (error) {
+    if (error instanceof LLMAPIError) {
+      logger.error(`LLM API error: ${error.message}`);
+      throw error;
+    } else if (error instanceof TimeoutError) {
+      logger.warning('LLM timeout, retrying...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      return await this.callLLM(prompt);
+    }
+    throw error;
+  }
+}
 ```
 
 **问题 3：硬编码配置**
-```python
-# ❌ 错误：硬编码
-class OpenAILLM:
-    def __init__(self):
-        self.api_key = "sk-xxxxx"  # 硬编码
+```typescript
+// ❌ 错误：硬编码
+class OpenAILLM {
+  private apiKey = 'sk-xxxxx';  // 硬编码
+}
 
-# ✅ 正确：从配置读取
-class OpenAILLM:
-    def __init__(self, config: LLMConfig):
-        self.api_key = config.api_key
+// ✅ 正确：从配置读取
+class OpenAILLM extends BaseLLM {
+  constructor(config: LLMConfig) {
+    super();
+    this.apiKey = config.apiKey;
+  }
+}
 ```
 
 ---
@@ -513,6 +542,8 @@ feat: implement ProductManager role
 fix: correct message routing logic
 docs: update API reference
 test: add unit tests for Role class
+feat: add DeepSeek LLM provider support
+feat: add QA workflow actions (9-step process)
 
 # ❌ 错误的提交信息
 update code
@@ -534,8 +565,9 @@ wip
 
 ### 10.1 协议版本
 
-当前版本：v1.0  
+当前版本：v1.1  
 生效日期：2025-12-24  
+最后更新：2026-01-21  
 适用范围：mind2build 项目所有 AI 辅助开发
 
 ### 10.2 更新流程
@@ -680,4 +712,7 @@ async def test_write_prd():
 
 **协议维护**: 持续更新优化  
 **反馈渠道**: 项目协作平台  
-**最后更新**: 2025-12-24
+**最后更新**: 2026-01-21
+
+**更新记录**:
+- 2026-01-21: 更新代码示例从Python改为TypeScript，更新提交规范示例

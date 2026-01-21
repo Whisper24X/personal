@@ -2,9 +2,9 @@
 
 **Slogan**: 让所思，即所得
 
-**文档版本**: v1.3  
+**文档版本**: v1.4  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-07（添加知识库集成和多角色串联工作流）
+**最后更新**: 2026-01-21（添加完整的 QA 工作流说明）
 
 ## 1. 项目初始化与Git管理流程
 
@@ -86,7 +86,7 @@ Git仓库初始化（git clone 或 git init）
   ↓
 检查版本并创建分支（如 v1, v2...）
   ↓
-Salesperson(WriteRequirementSpec) → 保存到 MRD/ 目录
+Salesperson(WriteMRD) → 保存到 MRD/ 目录
   ↓
 ProductManager(WritePRD) → 保存到 PRD/ 目录
   ↓
@@ -94,28 +94,75 @@ Architect(WriteDesign) → 保存到 DESIGN/ 目录
   ↓
 Engineer(WriteCode) → 保存到 CODE/ 目录
   ↓
-QA(WriteTest) → 保存到 TEST/ 目录
+QAEngineer(完整QA工作流) → 保存到 TEST/ 目录
   ↓
 提交到Git仓库（git commit + git push）
   ↓
 输出项目（Git仓库地址和版本分支）
 ```
 
-## 2. 数据分析流程
+## 2.1 QA 工作流（9 步 QA 流程）
+
+QAEngineer 角色实现了完整的质量保证工作流，包含 8 个 Actions，按顺序执行：
+
+```
+PRD + 代码
+  ↓
+Step 1: TestabilityReview（可测性审查）
+  ↓ 输出: TESTABILITY_REVIEW.md
+Step 2: WriteTestPlan（制定测试计划）
+  ↓ 输出: TEST_PLAN.md
+Step 3: WriteTest（测试用例生成）
+  ↓ 输出: TEST.md
+Step 4: TestCaseReview（用例评审与补充）
+  ↓ 输出: TEST_CASES_REVIEWED.md
+Step 5: AutomationPlanning（自动化测试规划）
+  ↓ 输出: AUTOMATION_PLAN.md
+Step 6: AutomationExecution（自动化测试执行）
+  ↓ 输出: tests/automated_tests.md
+Step 7: CoverageQualityCheck（覆盖率与质量检查）
+  ↓ 输出: COVERAGE_REPORT.md, QUALITY_CHECK.md
+Step 8: QAConclusion（QA 结论）
+  ↓ 输出: QA_CONCLUSION.md
+最终结论: 通过(pass) / 阻断(block) / 需修改(needs_modification)
+```
+
+### QA 工作流详解
+
+| 步骤 | Action | 说明 | 输入 | 输出 |
+|------|--------|------|------|------|
+| 1 | TestabilityReview | 审查 PRD 和代码的可测性 | PRD, 代码 | 可测性审查报告 |
+| 2 | WriteTestPlan | 基于可测性审查制定测试计划 | PRD, 代码, 可测性报告 | 测试计划 |
+| 3 | WriteTest | 生成测试用例 | PRD, 代码 | 测试用例文档 |
+| 4 | TestCaseReview | 补充边界、异常、负面测试 | 测试用例, PRD, 代码 | 审查后的测试用例 |
+| 5 | AutomationPlanning | 评估自动化可行性 | 测试用例, 代码 | 自动化计划 |
+| 6 | AutomationExecution | 执行自动化测试 | 自动化计划 | 执行结果 |
+| 7 | CoverageQualityCheck | 分析覆盖率和质量 | 测试用例, 代码, 执行结果 | 覆盖率和质量报告 |
+| 8 | QAConclusion | 综合所有结果给出结论 | 所有测试文档 | QA 结论报告 |
+
+### QA 工作流触发条件
+
+QAEngineer 监听以下 Actions 完成事件：
+- `ACTION_WRITE_PRD` - ProductManager 完成 PRD
+- `ACTION_WRITE_CODE` - Engineer 完成代码
+
+当两者都完成时，QAEngineer 开始执行完整的 9 步 QA 工作流。
+
+## 3. 数据分析流程
 
 ```
 数据需求 → DataInterpreter → 数据加载 → 分析处理 
 → 可视化 → 输出结果
 ```
 
-## 3. 增量开发流程
+## 4. 增量开发流程
 
 ```
 已有项目 + 新需求 → 分析现有代码 → 生成增量代码 
 → 合并到项目 → 输出更新
 ```
 
-## 4. React 模式
+## 5. React 模式
 
 ### REACT 模式
 ```python
@@ -138,9 +185,9 @@ for step in plan:
     act(step)          # 后执行
 ```
 
-## 5. 多角色串联工作流
+## 6. 多角色串联工作流
 
-### 5.1 工作流配置
+### 6.1 工作流配置
 
 支持将多个角色直接串联，自定义执行顺序和输入输出映射：
 
