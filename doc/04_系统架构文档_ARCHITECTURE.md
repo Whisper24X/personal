@@ -2,9 +2,9 @@
 
 **Slogan**: 让所思，即所得
 
-**文档版本**: v1.4  
+**文档版本**: v1.5  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-07（补充完整的前后端方案设计，包括目录结构、接口对接、交互流程等）
+**最后更新**: 2026-01-21（更新 QA 工作流、LLM 提供商架构、Actions 列表）
 
 ---
 
@@ -67,10 +67,11 @@ graph TB
     end
     
     subgraph ActionLayer[行动层]
-        WritePRD[WritePRD]
-        WriteDesign[WriteDesign]
-        WriteCode[WriteCode]
-        WriteTest[WriteTest]
+        DocActions[文档Actions<br/>WriteMRD/WritePRD/WriteDesign]
+        ReviewActions[审查Actions<br/>MRDReview/PRDReview/DesignReview]
+        ImproveActions[改进Actions<br/>ImprovePRD/ImproveMRD/ImproveDesign]
+        CodeActions[代码Actions<br/>WriteCode/ExecuteSubtask/RunCode/FixBug]
+        QAActions[QA Actions<br/>TestabilityReview/WriteTestPlan/WriteTest<br/>TestCaseReview/AutomationPlanning/QAConclusion]
     end
     
     subgraph InfraLayer[基础设施层]

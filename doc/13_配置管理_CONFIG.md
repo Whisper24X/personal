@@ -1,8 +1,8 @@
 # mind2build 配置管理文档
 
-**文档版本**: v1.1  
+**文档版本**: v1.2  
 **创建日期**: 2025-12-24
-**最后更新**: 2026-01-07（添加知识库和工作流配置）
+**最后更新**: 2026-01-21（更新LLM提供商配置，添加DeepSeek）
 
 ## 1. 配置文件结构
 
@@ -151,7 +151,7 @@ interface CostConfig {
 
 ```bash
 # LLM 提供商选择
-export LLM_PROVIDER="zhipuai"  # openai, zhipuai, ark, cursor
+export LLM_PROVIDER="zhipuai"  # openai, zhipuai, ark, deepseek, cursor
 
 # 智谱AI配置（默认）
 export ZHIPUAI_API_KEY="your-api-key"
@@ -167,6 +167,11 @@ export OPENAI_BASE_URL="https://api.openai.com/v1"
 export ARK_API_KEY="your-api-key"
 export ARK_MODEL="doubao-1-5-pro-32k-250115"
 export ARK_BASE_URL="https://ark.cn-beijing.volces.com/api/v3"
+
+# DeepSeek配置
+export DEEPSEEK_API_KEY="your-api-key"
+export DEEPSEEK_MODEL="deepseek-chat"
+export DEEPSEEK_BASE_URL="https://api.deepseek.com/v1"
 
 # Cursor Agent配置
 export CURSOR_API_KEY="your-api-key"
@@ -276,7 +281,16 @@ export ARK_API_KEY="your-api-key"
 export ARK_MODEL="doubao-1-5-pro-32k-250115"
 ```
 
-### 4.4 Cursor Agent
+### 4.4 DeepSeek
+
+```bash
+export LLM_PROVIDER="deepseek"
+export DEEPSEEK_API_KEY="your-api-key"
+export DEEPSEEK_MODEL="deepseek-chat"
+export DEEPSEEK_BASE_URL="https://api.deepseek.com/v1"
+```
+
+### 4.5 Cursor Agent
 
 ```bash
 export LLM_PROVIDER="cursor"

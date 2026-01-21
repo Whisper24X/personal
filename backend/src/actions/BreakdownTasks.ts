@@ -44,10 +44,10 @@ export class BreakdownTasks extends BaseAction {
       });
       
       // 指令1：填充项目上下文
-      const contextCommand = `Please read openspec/project.md and help me fill it out with details about my project, tech stack, and conventions，参考 ../docs/design/DESIGN.md ../docs/prd/PRD.md ../AGENTS.md 这三个文档`;
+      const contextCommand = `请阅读 openspec/project.md，帮我补充完善关于当前项目、技术栈和开发规范等内容，参考 ../docs/design/DESIGN.md、../docs/prd/PRD.md、../AGENTS.md 这三个文档，用中文完善`;
 
       // 指令2: 创建openSpec变更提案
-      const proposeCommand = `创建openSpec变更提案 1. 读取并分析以下文档：- ../docs/prd/PRD.md（产品需求文档）- ../docs/design/DESIGN.md（系统设计文档）- ../AGENTS.md（项目代理和开发指南）`;
+      const proposeCommand = `创建openSpec变更提案 1. 读取并分析以下文档：- ../docs/prd/PRD.md（产品需求文档）- ../docs/design/DESIGN.md（系统设计文档）- ../AGENTS.md（项目代理和开发指南）,用中文完善`;
       
       // 指令3: 检查openSpec变更提案
       const checkCommand = `检查 openspec 目录下是否已成功创建变更提案文件。检查标准：1. openspec 目录下是否有新的提案文件或更新2. 提案内容是否包含基于 PRD.md、DESIGN.md 和 AGENTS.md 的分析3. 提案是否包含具体的实现建议和开发规范4. 提案是否涵盖了技术栈选择和项目结构，如果提案已创建且内容完整，返回：已完成，如果提案未创建或内容不完整，返回：未完成`;

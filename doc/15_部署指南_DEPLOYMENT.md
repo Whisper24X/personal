@@ -1,8 +1,9 @@
 # mind2build 部署指南
 
-**文档版本**: v1.0  
+**文档版本**: v1.1  
 **创建日期**: 2025-12-24  
-**适用版本**: mind2build v1.0+
+**最后更新**: 2026-01-21  
+**适用版本**: mind2build v1.2+
 
 ---
 
@@ -39,9 +40,10 @@
 - ✅ Windows 10/11 + WSL2
 
 **依赖软件**:
-- Python: 3.9 - 3.11
-- Node.js: 16.0+ (用于 Mermaid)
-- pnpm: 最新版本
+- Node.js: v18+ (推荐 v20+)
+- TypeScript: v5.3+
+- pnpm: v8+ (monorepo包管理)
+- PostgreSQL: v14+ (数据库)
 - Git: 2.30+ (必需，用于项目版本管理)
 
 ### 1.3 网络要求
@@ -54,73 +56,69 @@
 
 ## 2. 安装方式
 
-### 2.1 从 PyPI 安装（推荐）
+### 2.1 从源码安装（推荐）
 
-**Step 1: 创建虚拟环境**
+**Step 1: 克隆仓库**
 ```bash
-# 使用 venv
-python3.9 -m venv mind2build-env
-source mind2build-env/bin/activate  # Linux/macOS
-# mind2build-env\Scripts\activate  # Windows
-
-# 或使用 conda
-conda create -n mind2build python=3.9
-conda activate mind2build
+git clone https://github.com/your-org/testflow.git
+cd testflow
 ```
 
-**Step 2: 安装 mind2build**
+**Step 2: 安装依赖**
 ```bash
-pip install --upgrade mind2build
+# 安装所有依赖（monorepo）
+pnpm install
+
+# 或单独安装后端依赖
+cd backend
+pnpm install
 ```
 
-**Step 3: 安装 Node.js 依赖**
+**Step 3: 配置环境变量**
 ```bash
-# macOS
-brew install node pnpm
+# 复制环境变量示例文件
+cp backend/.env.example backend/.env
 
-# Ubuntu/Debian
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt-get install -y nodejs
-sudo npm install -g pnpm
-
-# 安装 mermaid-cli
-pnpm install -g @mermaid-js/mermaid-cli
+# 编辑 .env 文件，配置数据库和LLM API Keys
+vim backend/.env
 ```
 
-**Step 4: 验证安装**
+**Step 4: 初始化数据库**
 ```bash
-mind2build --version
-python -c "import mind2build; print(mind2build.__version__)"
+# 参考 21_数据库配置指南_DBSETUP.md
+# 执行数据库迁移脚本
+psql -U postgres -d your_database -f backend/src/database/migrations/000_complete_schema.sql
 ```
 
-### 2.2 从源码安装（开发者）
-
+**Step 5: 验证安装**
 ```bash
-# 克隆仓库
-git clone https://github.com/geekan/mind2build.git
-cd mind2build
+# 运行开发服务器
+pnpm --filter backend dev
 
-# 安装依赖
-pip install --upgrade -e .
-
-# 安装开发依赖
-pip install -e ".[dev]"
+# 或运行CLI命令
+pnpm --filter backend cli generate "Create a todo app"
 ```
 
-### 2.3 使用 Docker 安装
+### 2.2 使用 Docker 安装
 
-**Step 1: 拉取镜像**
+**Step 1: 构建镜像**
 ```bash
-docker pull mind2build/mind2build:latest
+# 构建后端镜像
+cd backend
+docker build -t testflow-backend:latest .
+
+# 或使用 docker-compose
+docker-compose build
 ```
 
 **Step 2: 运行容器**
 ```bash
 docker run -it \
-  -e OPENAI_API_KEY=your-api-key \
-  -v $(pwd)/workspace:/workspace \
-  mind2build/mind2build:latest \
-  "Create a 2048 game"
+  -e DATABASE_URL=postgresql://user:pass@host:5432/db \
+  -e ZHIPUAI_API_KEY=your-api-key \
+  -v $(pwd)/workspace:/app/workspace \
+  testflow-backend:latest \
+  pnpm cli generate "Create a 2048 game"
 ```
 
 **Step 3: 使用 Docker Compose**
@@ -129,18 +127,35 @@ docker run -it \
 version: '3.8'
 
 services:
-  mind2build:
-    image: mind2build/mind2build:latest
+  postgres:
+    image: postgres:14
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mind2build_db
     volumes:
-      - ./workspace:/workspace
-      - ./config:/root/.mind2build
-    command: "Create a TODO app"
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  backend:
+    build: ./backend
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/mind2build_db
+      - ZHIPUAI_API_KEY=${ZHIPUAI_API_KEY}
+    volumes:
+      - ./workspace:/app/workspace
+    depends_on:
+      - postgres
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
 ```
 
 ```bash
-docker-compose up
+docker-compose up -d
 ```
 
 ---
@@ -149,39 +164,34 @@ docker-compose up
 
 ### 3.1 初始化配置
 
+系统使用 TypeScript 配置文件和 PostgreSQL 数据库存储配置。
+
+**环境变量配置**（`.env` 文件）:
 ```bash
-# 创建配置文件
-mind2build --init-config
-```
+# 数据库配置
+DATABASE_URL="postgresql://postgres:password@localhost:5432/mind2build_db"
 
-这将创建 `~/.mind2build/config2.yaml` 文件。
+# LLM 配置（默认提供商）
+LLM_PROVIDER="zhipuai"
+ZHIPUAI_API_KEY="your-api-key"
+ZHIPUAI_MODEL="glm-4-flash"
 
-### 3.2 基础配置
-
-**config2.yaml**:
-```yaml
-# LLM 配置
-llm:
-  api_type: "openai"
-  model: "gpt-4-turbo"
-  base_url: "https://api.openai.com/v1"
-  api_key: "${OPENAI_API_KEY}"
-  temperature: 0.7
-  max_tokens: 4096
+# 服务器配置
+PORT=3000
+HOST=0.0.0.0
 
 # 工作空间配置
-workspace:
-  path: "./workspace"
-
-# 成本配置
-cost:
-  max_budget: 10.0
-
-# Git 配置（可选）
-git:
-  enabled: true
-  auto_init: true
+WORKSPACE_PATH="./workspace"
 ```
+
+### 3.2 数据库配置
+
+LLM配置存储在 PostgreSQL 数据库中：
+- `llm_configs` 表：系统默认LLM配置
+- `llm_provider_configs` 表：提供商级别的配置（API keys和base URLs）
+- `role_llm_configs` 表：角色特定的LLM配置
+
+参考 [13_配置管理_CONFIG.md](./13_配置管理_CONFIG.md) 了解详细配置方法。
 
 ### 3.3 环境变量配置
 
@@ -198,41 +208,44 @@ export HTTPS_PROXY="http://127.0.0.1:7890"
 export LOG_LEVEL="INFO"  # DEBUG/INFO/WARNING/ERROR
 ```
 
-### 3.4 多 LLM 提供商配置
+### 3.3 多 LLM 提供商配置
+
+**智谱AI（默认）**:
+```bash
+export LLM_PROVIDER="zhipuai"
+export ZHIPUAI_API_KEY="your-api-key"
+export ZHIPUAI_MODEL="glm-4-flash"
+```
 
 **OpenAI**:
-```yaml
-llm:
-  api_type: "openai"
-  model: "gpt-4-turbo"
-  api_key: "${OPENAI_API_KEY}"
+```bash
+export LLM_PROVIDER="openai"
+export OPENAI_API_KEY="sk-xxx"
+export OPENAI_MODEL="gpt-4-turbo"
 ```
 
-**Azure OpenAI**:
-```yaml
-llm:
-  api_type: "azure"
-  model: "gpt-4"
-  api_key: "${AZURE_OPENAI_API_KEY}"
-  base_url: "https://your-resource.openai.azure.com"
-  api_version: "2023-12-01-preview"
+**火山引擎 Ark**:
+```bash
+export LLM_PROVIDER="ark"
+export ARK_API_KEY="your-api-key"
+export ARK_MODEL="doubao-1-5-pro-32k-250115"
 ```
 
-**Anthropic Claude**:
-```yaml
-llm:
-  api_type: "anthropic"
-  model: "claude-3-opus"
-  api_key: "${ANTHROPIC_API_KEY}"
+**DeepSeek**:
+```bash
+export LLM_PROVIDER="deepseek"
+export DEEPSEEK_API_KEY="your-api-key"
+export DEEPSEEK_MODEL="deepseek-chat"
 ```
 
-**本地 Ollama**:
-```yaml
-llm:
-  api_type: "ollama"
-  model: "llama2"
-  base_url: "http://localhost:11434"
+**Cursor Agent**:
+```bash
+export LLM_PROVIDER="cursor"
+export CURSOR_API_KEY="your-api-key"
+export CURSOR_REPOSITORY="https://github.com/owner/repo"
 ```
+
+**架构说明**: 大多数LLM提供商通过统一的 `OpenAICompatibleLLM` 类实现，Cursor Agent使用独立的 `CursorLLM` 实现。
 
 ---
 
@@ -243,11 +256,14 @@ llm:
 **适用场景**: 个人开发、测试
 
 ```bash
-# 激活环境
-source mind2build-env/bin/activate
+# 启动后端开发服务器
+pnpm --filter backend dev
 
-# 运行项目
-mind2build "Your idea"
+# 或使用CLI命令
+pnpm --filter backend cli generate "Your idea"
+
+# 启动前端开发服务器（可选）
+pnpm --filter frontend dev
 ```
 
 ### 4.2 服务器部署
@@ -260,28 +276,36 @@ sudo su - mind2build
 
 **Step 2: 安装和配置**
 ```bash
-# 安装 mind2build
-pip install --user mind2build
+# 克隆仓库
+cd /opt
+git clone https://github.com/your-org/testflow.git
+cd testflow
 
-# 配置环境
-mind2build --init-config
-vim ~/.mind2build/config2.yaml
+# 安装依赖
+pnpm install
+
+# 配置环境变量
+cp backend/.env.example backend/.env
+vim backend/.env
+
+# 初始化数据库
+psql -U postgres -d mind2build_db -f backend/src/database/migrations/000_complete_schema.sql
 ```
 
 **Step 3: 创建服务（systemd）**
 ```ini
-# /etc/systemd/system/mind2build.service
+# /etc/systemd/system/testflow-backend.service
 [Unit]
-Description=mind2build Service
-After=network.target
+Description=TestFlow Backend Service
+After=network.target postgresql.service
 
 [Service]
 Type=simple
 User=mind2build
-WorkingDirectory=/home/mind2build
-Environment="PATH=/home/mind2build/.local/bin:/usr/bin"
-Environment="OPENAI_API_KEY=your-api-key"
-ExecStart=/home/mind2build/.local/bin/mind2build "Create projects"
+WorkingDirectory=/opt/testflow
+Environment="NODE_ENV=production"
+Environment="DATABASE_URL=postgresql://postgres:password@localhost:5432/mind2build_db"
+ExecStart=/usr/bin/pnpm --filter backend start
 Restart=on-failure
 
 [Install]
@@ -300,44 +324,49 @@ sudo systemctl status mind2build
 
 **Dockerfile**:
 ```dockerfile
-FROM python:3.11-slim
+FROM node:20-slim
 
 WORKDIR /app
 
-# 安装系统依赖
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    nodejs npm git && \
-    npm install -g pnpm && \
-    pnpm install -g @mermaid-js/mermaid-cli && \
-    rm -rf /var/lib/apt/lists/*
+# 安装 pnpm
+RUN npm install -g pnpm
 
-# 安装 Python 依赖
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# 复制 package.json 和 pnpm-lock.yaml
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY backend/package.json ./backend/
 
-# 复制代码
-COPY . .
-RUN pip install -e .
+# 安装依赖
+RUN pnpm install --frozen-lockfile
+
+# 复制源代码
+COPY backend ./backend
+COPY shared ./shared
+
+# 构建
+WORKDIR /app/backend
+RUN pnpm build
 
 # 配置
-ENV PYTHONUNBUFFERED=1
-VOLUME ["/workspace"]
-WORKDIR /workspace
+ENV NODE_ENV=production
+VOLUME ["/app/workspace"]
+EXPOSE 3000
 
-ENTRYPOINT ["mind2build"]
+# 启动命令
+CMD ["node", "dist/server.js"]
 ```
 
 **构建和运行**:
 ```bash
 # 构建镜像
-docker build -t my-mind2build .
+docker build -t testflow-backend .
 
 # 运行
 docker run -it \
-  -e OPENAI_API_KEY=your-key \
-  -v $(pwd)/output:/workspace \
-  my-mind2build "Create a game"
+  -e DATABASE_URL=postgresql://user:pass@host:5432/db \
+  -e ZHIPUAI_API_KEY=your-key \
+  -v $(pwd)/workspace:/app/workspace \
+  -p 3000:3000 \
+  testflow-backend
 ```
 
 ### 4.4 Kubernetes 部署
@@ -347,38 +376,38 @@ docker run -it \
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mind2build
+  name: testflow-backend
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: mind2build
+      app: testflow-backend
   template:
     metadata:
       labels:
-        app: mind2build
+        app: testflow-backend
     spec:
       containers:
-      - name: mind2build
-        image: mind2build/mind2build:latest
+      - name: backend
+        image: testflow-backend:latest
         env:
-        - name: OPENAI_API_KEY
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: db-secrets
+              key: database-url
+        - name: ZHIPUAI_API_KEY
           valueFrom:
             secretKeyRef:
               name: llm-secrets
-              key: openai-key
+              key: zhipuai-key
         volumeMounts:
         - name: workspace
-          mountPath: /workspace
-        - name: config
-          mountPath: /root/.mind2build
+          mountPath: /app/workspace
       volumes:
       - name: workspace
         persistentVolumeClaim:
-          claimName: mind2build-workspace
-      - name: config
-        configMap:
-          name: mind2build-config
+          claimName: testflow-workspace
 ```
 
 ---
@@ -390,40 +419,49 @@ spec:
 **查看日志**:
 ```bash
 # CLI 运行时
-mind2build "Your idea" 2>&1 | tee mind2build.log
+pnpm --filter backend cli generate "Your idea" 2>&1 | tee testflow.log
 
 # 服务日志
-journalctl -u mind2build -f
+journalctl -u testflow-backend -f
+
+# Docker 日志
+docker logs -f testflow-backend
 ```
 
 **日志配置**:
-```python
-# custom_logging.py
-import logging
-from mind2build.logs import logger
+```typescript
+// backend/src/utils/logger.ts
+import winston from 'winston';
 
-# 设置日志级别
-logger.setLevel(logging.DEBUG)
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.File({ filename: 'testflow.log' }),
+    new winston.transports.Console()
+  ]
+});
 
-# 添加文件处理器
-fh = logging.FileHandler('mind2build.log')
-fh.setLevel(logging.DEBUG)
-logger.addHandler(fh)
+export default logger;
 ```
 
 ### 5.2 性能监控
 
 **成本监控**:
-```python
-from mind2build.team import Team
+```typescript
+import { Team } from '@/orchestration/Team';
 
-team = Team()
-# ... 运行项目
+const team = new Team(context);
+// ... 运行项目
 
-# 检查成本
-print(f"Total cost: ${team.cost_manager.total_cost:.2f}")
-print(f"Tokens: {team.cost_manager.total_tokens}")
-print(f"Budget remaining: ${team.cost_manager.max_budget - team.cost_manager.total_cost:.2f}")
+// 检查成本
+const costReport = team.context.costManager.getReport();
+console.log(`Total cost: $${costReport.totalCost.toFixed(2)}`);
+console.log(`Tokens: ${costReport.totalTokens}`);
+console.log(`Budget remaining: $${(costReport.maxBudget - costReport.totalCost).toFixed(2)}`);
 ```
 
 **性能指标**:
@@ -467,34 +505,41 @@ tar -xzf workspace-20251224.tar.gz
 
 **问题 1: 安装失败**
 ```bash
-# 错误：pip install 失败
-# 解决：升级 pip
-python -m pip install --upgrade pip setuptools wheel
+# 错误：pnpm install 失败
+# 解决：清理并重新安装
+rm -rf node_modules pnpm-lock.yaml
+pnpm install
 
-# 重新安装
-pip install mind2build
+# 或单独安装后端
+cd backend
+rm -rf node_modules
+pnpm install
 ```
 
 **问题 2: API Key 无效**
 ```bash
 # 错误：Authentication failed
 # 解决：检查 API Key
-echo $OPENAI_API_KEY
+echo $ZHIPUAI_API_KEY
 
 # 重新设置
-export OPENAI_API_KEY="sk-your-correct-key"
+export ZHIPUAI_API_KEY="your-correct-key"
 
-# 或修改配置文件
-vim ~/.mind2build/config2.yaml
+# 或修改 .env 文件
+vim backend/.env
 ```
 
-**问题 3: Mermaid 图表生成失败**
+**问题 3: 数据库连接失败**
 ```bash
-# 检查 mermaid-cli 安装
-mmdc --version
+# 错误：Database connection failed
+# 解决：检查数据库配置
+echo $DATABASE_URL
 
-# 重新安装
-pnpm install -g @mermaid-js/mermaid-cli
+# 测试连接
+psql $DATABASE_URL -c "SELECT 1"
+
+# 检查PostgreSQL服务
+sudo systemctl status postgresql
 ```
 
 **问题 4: 内存不足**
@@ -510,50 +555,63 @@ free -h
 
 **启用详细日志**:
 ```bash
-export LOG_LEVEL=DEBUG
-mind2build "Your idea"
+export LOG_LEVEL=debug
+pnpm --filter backend cli generate "Your idea"
 ```
 
-**使用 Python 调试**:
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
+**使用 TypeScript 调试**:
+```typescript
+import logger from '@/utils/logger';
+logger.level = 'debug';
 
-from mind2build.software_company import generate_repo
-result = generate_repo("Your idea")
+import { Team } from '@/orchestration/Team';
+const team = new Team(context);
+const result = await team.run("Your idea");
 ```
 
 **检查依赖**:
 ```bash
-pip list | grep mind2build
-pip check
+pnpm --filter backend list
+pnpm --filter backend outdated
 ```
 
 ### 6.3 性能优化
 
 **优化 Token 使用**:
-```yaml
-# config2.yaml
-llm:
-  model: "gpt-3.5-turbo"  # 使用更经济的模型
-  max_tokens: 2048        # 限制输出长度
+```bash
+# 使用更经济的模型
+export ZHIPUAI_MODEL="glm-4-flash"  # 而不是 glm-4
+
+# 或在数据库配置中设置
+# 通过 API 更新 llm_configs 表的 model 字段
 ```
 
 **优化并发**:
-```python
-# 增加并发角色
-team.hire([Engineer(), Engineer(), Engineer()])
+```typescript
+// 增加并发角色
+const team = new Team(context);
+team.hire([
+  new Engineer(context),
+  new Engineer(context),
+  new Engineer(context)
+]);
 ```
 
 **缓存优化**:
-```python
-# 使用本地缓存避免重复调用
-from functools import lru_cache
+```typescript
+// 使用内存缓存避免重复调用
+import NodeCache from 'node-cache';
 
-@lru_cache(maxsize=100)
-def cached_operation(key):
-    # 操作逻辑
-    pass
+const cache = new NodeCache({ stdTTL: 3600 });
+
+function cachedOperation(key: string) {
+  const cached = cache.get(key);
+  if (cached) return cached;
+  
+  const result = /* 操作逻辑 */;
+  cache.set(key, result);
+  return result;
+}
 ```
 
 ---
@@ -596,26 +654,36 @@ chmod 600 ~/.mind2build/config2.yaml
 
 ```bash
 # 备份当前版本
-pip freeze > requirements-old.txt
+git tag v1.1.0
+git push origin v1.1.0
 
-# 升级 mind2build
-pip install --upgrade mind2build
+# 拉取最新代码
+git pull origin main
+
+# 更新依赖
+pnpm install
+
+# 运行数据库迁移（如果有）
+psql -U postgres -d mind2build_db -f backend/src/database/migrations/xxx_new_migration.sql
 
 # 验证
-mind2build --version
+pnpm --filter backend cli --version
 ```
 
 ### 8.2 配置迁移
 
 ```bash
 # 备份旧配置
-cp ~/.mind2build/config2.yaml ~/.mind2build/config2.yaml.bak
+cp backend/.env backend/.env.bak
 
-# 使用新版本配置
-mind2build --init-config
+# 检查新的环境变量要求
+cat backend/.env.example
 
-# 迁移旧配置内容
-# 手动合并或使用脚本
+# 更新 .env 文件
+vim backend/.env
+
+# 更新数据库配置（如果需要）
+# 通过 API 或直接更新数据库表
 ```
 
 ---
@@ -624,61 +692,58 @@ mind2build --init-config
 
 ### A. 完整配置示例
 
-```yaml
-# ~/.mind2build/config2.yaml
-llm:
-  api_type: "openai"
-  model: "gpt-4-turbo"
-  base_url: "https://api.openai.com/v1"
-  api_key: "${OPENAI_API_KEY}"
-  temperature: 0.7
-  max_tokens: 4096
-  timeout: 60
+```bash
+# backend/.env
+# 数据库配置
+DATABASE_URL="postgresql://postgres:password@localhost:5432/mind2build_db"
 
-workspace:
-  path: "./workspace"
-  use_docker: false
+# LLM 配置（默认提供商）
+LLM_PROVIDER="zhipuai"
+ZHIPUAI_API_KEY="your-api-key"
+ZHIPUAI_MODEL="glm-4-flash"
+ZHIPUAI_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
 
-git:
-  enabled: true
-  auto_init: true
-  auto_commit: true
+# 服务器配置
+PORT=3000
+HOST=0.0.0.0
+NODE_ENV=production
 
-cost:
-  max_budget: 10.0
+# 工作空间配置
+WORKSPACE_PATH="./workspace"
 
-logging:
-  level: "INFO"
-  file: "~/.mind2build/mind2build.log"
+# 成本配置
+DEFAULT_BUDGET=10.0
 
-browser:
-  engine: "playwright"  # or selenium
-  headless: true
-
-code_review:
-  enabled: true
-  strict_mode: false
+# 日志配置
+LOG_LEVEL=info
+LOG_FILE="./logs/testflow.log"
 ```
 
 ### B. 环境变量列表
 
 | 变量名 | 说明 | 示例 |
 |--------|------|------|
+| DATABASE_URL | PostgreSQL 数据库连接字符串 | postgresql://user:pass@host:5432/db |
+| LLM_PROVIDER | LLM 提供商 | zhipuai, openai, ark, deepseek, cursor |
+| ZHIPUAI_API_KEY | 智谱AI API 密钥 | your-api-key |
 | OPENAI_API_KEY | OpenAI API 密钥 | sk-xxx |
-| ANTHROPIC_API_KEY | Anthropic API 密钥 | sk-ant-xxx |
+| ARK_API_KEY | 火山引擎 Ark API 密钥 | your-api-key |
+| DEEPSEEK_API_KEY | DeepSeek API 密钥 | your-api-key |
+| CURSOR_API_KEY | Cursor Agent API 密钥 | your-api-key |
 | HTTP_PROXY | HTTP 代理 | http://127.0.0.1:7890 |
 | HTTPS_PROXY | HTTPS 代理 | http://127.0.0.1:7890 |
-| LOG_LEVEL | 日志级别 | DEBUG/INFO/WARNING |
+| LOG_LEVEL | 日志级别 | debug/info/warn/error |
+| PORT | 服务器端口 | 3000 |
+| WORKSPACE_PATH | 工作空间路径 | ./workspace |
 
 ### C. 资源链接
 
-- 官方文档: https://docs.deepwisdom.ai/
-- GitHub: https://github.com/geekan/mind2build
-- Discord: https://discord.gg/ZRHeExS6xv
+- 项目文档: `doc/` 目录
+- GitHub: [项目仓库地址]
 - 问题反馈: GitHub Issues
 
 ---
 
 **文档维护**: 持续更新  
-**最后更新**: 2025-12-24  
+**最后更新**: 2026-01-21  
 **反馈**: 欢迎提出改进建议

@@ -1,8 +1,8 @@
 # mind2build 行动系统设计文档
 
-**文档版本**: v1.4  
+**文档版本**: v1.5  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-15（更新action执行机制，添加RoleActionExecutor说明）
+**最后更新**: 2026-01-21（添加QA工作流Actions、RunCode、FixBug、ImproveDesign，更新已实现Actions列表）
 
 ## Action执行机制
 
@@ -14,10 +14,11 @@ Role类使用`RoleActionExecutor`来处理action的执行逻辑，提供以下�
 
 以下actions支持workspace options参数（applicationId, projectId, version等）：
 - `WriteMRD`, `WritePRD`, `WriteDesign`, `WriteSubProjectDesign`
-- `BreakdownTasks`, `GenerateTask`
-- `WriteCode`, `WriteTest`, `ExecuteSubtask`
-- `ImprovePRD`, `ImproveMRD`
+- `BreakdownTasks`, `WriteCode`, `WriteTest`, `ExecuteSubtask`
+- `ImprovePRD`, `ImproveMRD`, `ImproveDesign`, `ImproveTest`
 - `MRDReview`, `PRDReview`, `DesignReview`, `SubProjectDesignReview`
+- `WriteTestPlan`, `TestabilityReview`, `TestCaseReview`, `TestReview`
+- `AutomationPlanning`, `AutomationExecution`, `CoverageQualityCheck`, `QAConclusion`
 
 这些actions在执行时会自动从消息中提取workspace options，如果找不到则从context中获取。
 
@@ -44,9 +45,14 @@ RoleActionExecutor为某些actions提供特殊的输入准备逻辑：
 - 从memory中获取WritePRD和WriteDesign的消息
 - 将PRD和Design文档内容传递给action
 
-**GenerateTask**:
-- 从memory中获取BreakdownTasks和WriteSubProjectDesign的消息
-- 将任务拆分文档和子项目设计（可选）传递给action
+**ImproveDesign**:
+- 优先从`rc.news`中查找审查报告消息（通过`causeBy`匹配DesignReview）
+- 如果news中找不到，从`rc.memory`中查找
+- 如果都找不到，返回空字符串（action会尝试从workspace读取）
+
+**WriteTestPlan / TestabilityReview / TestCaseReview**:
+- 自动从memory中查找PRD和代码消息
+- 组合PRD和代码内容作为输入
 
 #### 3. 序列继续处理（BY_ORDER模式）
 
@@ -214,44 +220,99 @@ async run(input: string, options?: WritePRDOptions): Promise<IActionOutput>
 
 **使用角色**: ProductManager
 
-### 5. ImproveDocument
+### 5. ImprovePRD
 
-**功能**: 根据审查报告改进和完善 PRD、MRD 或 DESIGN 文档
+**功能**: 根据审查报告改进和完善 PRD 文档
 
 **接口**:
 ```typescript
-async run(input: string, options?: ImproveDocumentOptions): Promise<IActionOutput>
+async run(input: string, options?: ImprovePRDOptions): Promise<IActionOutput>
 ```
 
 **输入**:
-- `input: string` - 审查报告内容或文档类型标识
-- `options?: ImproveDocumentOptions` - 可选配置
-  - `documentType: 'PRD' | 'MRD' | 'DESIGN'` - 文档类型（必须）
+- `input: string` - 审查报告内容或 PRD 内容
+- `options?: ImprovePRDOptions` - 可选配置
   - `reviewReport?: string` - 审查报告内容（可选，如果不提供则从 workspace 读取）
-  - `applicationId?: string` - 应用ID（必须提供，不能为 'default'）
+  - `applicationId?: string` - 应用ID（必须提供）
+  - `projectId?: string` - 项目ID（必须提供）
+  - `version?: number` - 版本号
+  - `workspacePath?: string` - workspace 路径
+
+**输出**: 
+- `content: string` - 改进后的 PRD 文档内容
+- `data: object` - 包含类型、文档类型、时间戳、原始长度、改进后长度等信息
+
+**关键特性**:
+- 自动从 workspace 读取当前 PRD 文档（PRD.md）
+- 如果输入包含"审查报告"或"改进建议"关键字，自动识别为审查报告
+- 支持从 workspace 读取审查报告（PRD_REVIEW.md 或从主文档末尾提取）
+- 根据审查报告中的改进建议，针对性地补充和完善文档内容
+- 移除文档中的审查报告部分，只保留改进后的文档内容
+- 使用 PRD_IMPROVE_SYSTEM_PROMPT 专门的改进提示词
+
+**使用角色**: ProductManager
+
+### 5.1 ImproveMRD
+
+**功能**: 根据审查报告改进和完善 MRD 文档
+
+**接口**:
+```typescript
+async run(input: string, options?: ImproveMRDOptions): Promise<IActionOutput>
+```
+
+**输入**:
+- `input: string` - 审查报告内容或 MRD 内容
+- `options?: ImproveMRDOptions` - 可选配置
+  - `reviewReport?: string` - 审查报告内容（可选，如果不提供则从 workspace 读取）
+  - `applicationId?: string` - 应用ID（必须提供）
   - `projectId?: string` - 项目ID
   - `version?: number` - 版本号
   - `workspacePath?: string` - workspace 路径
 
 **输出**: 
-- `content: string` - 改进后的文档内容
-- `data: object` - 包含类型、文件名、时间戳等信息
+- `content: string` - 改进后的 MRD 文档内容
+- `data: object` - 包含类型、文档类型、时间戳等信息
 
 **关键特性**:
-- 支持 PRD、MRD 和 DESIGN 三种文档类型
-- 自动从 workspace 读取当前文档和审查报告
-- 如果输入包含"审查报告"关键字，自动识别为审查报告
+- 自动从 workspace 读取当前 MRD 文档（MRD.md）
+- 如果输入包含"审查报告"或"改进建议"关键字，自动识别为审查报告
 - 根据审查报告中的改进建议，针对性地补充和完善文档内容
-- 保持文档的原有结构和格式
+- 使用 MRD_IMPROVE_SYSTEM_PROMPT 专门的改进提示词
+
+**使用角色**: Salesperson
+
+### 5.2 ImproveDesign
+
+**功能**: 根据审查报告改进和完善系统设计文档
+
+**接口**:
+```typescript
+async run(input: string, options?: ImproveDesignOptions): Promise<IActionOutput>
+```
+
+**输入**:
+- `input: string` - 审查报告内容或 Design 内容
+- `options?: ImproveDesignOptions` - 可选配置
+  - `reviewReport?: string` - 审查报告内容（可选，如果不提供则从 workspace 读取）
+  - `applicationId?: string` - 应用ID（必须提供）
+  - `projectId?: string` - 项目ID
+  - `version?: number` - 版本号
+  - `workspacePath?: string` - workspace 路径
+
+**输出**: 
+- `content: string` - 改进后的设计文档内容
+- `data: object` - 包含类型、文档类型、时间戳、原始长度、改进后长度等信息
+
+**关键特性**:
+- 自动从 workspace 读取当前设计文档（DESIGN.md）
+- 如果输入包含"审查报告"或"改进建议"关键字，自动识别为审查报告
+- 支持从 workspace 读取审查报告（DESIGN_REVIEW.md 或从主文档末尾提取）
+- 根据审查报告中的改进建议，针对性地补充和完善文档内容
 - 移除文档中的审查报告部分，只保留改进后的文档内容
-- 使用专门的改进提示词（PRD_IMPROVE_SYSTEM_PROMPT、MRD_IMPROVE_SYSTEM_PROMPT）
+- 使用 DESIGN_IMPROVE_SYSTEM_PROMPT 专门的改进提示词
 
-**使用角色**: ProductManager, Salesperson, Architect
-
-**使用场景**:
-- PRD、MRD 或 DESIGN 文档经过审查后，需要根据审查报告中的改进建议完善文档
-- 文档内容过于简略，需要补充详细描述
-- 功能需求描述不完整，需要补充触发条件、异常流程等
+**使用角色**: Architect
 
 ### 6. WriteDesign
 
@@ -448,38 +509,7 @@ async run(taskBreakdown: string, design: string, options?: WriteSubProjectDesign
 
 **使用角色**: ProjectManager
 
-### 13. GenerateTask
-
-**功能**: 为工程师生成详细的任务说明
-
-**接口**:
-```typescript
-async run(taskBreakdown: string, subProjectDesign?: string, options?: GenerateTaskOptions): Promise<IActionOutput>
-```
-
-**输入**:
-- `taskBreakdown: string` - 任务拆分文档内容
-- `subProjectDesign?: string` - 子项目设计文档内容（可选）
-- `options?: GenerateTaskOptions` - 可选配置
-  - `applicationId?: string` - 应用ID（必须提供）
-  - `projectId?: string` - 项目ID
-  - `version?: number` - 版本号
-  - `workspacePath?: string` - workspace 路径
-
-**输出**: 
-- `content: string` - 任务说明文档内容
-- `data: object` - 包含类型、文件名、时间戳、工作区目录等信息
-
-**关键特性**:
-- 详细开发指南
-- 技术实现方案
-- 代码示例和最佳实践
-- 测试要点和注意事项
-- 自动保存到 workspace（TASKS 目录）
-
-**使用角色**: ProjectManager
-
-### 14. CodeReview
+### 13. CodeReview
 
 **功能**: 代码审查和反馈
 
@@ -496,7 +526,73 @@ async run(taskBreakdown: string, subProjectDesign?: string, options?: GenerateTa
 
 **使用角色**: ProjectManager
 
-### 15. WriteTest
+### 14. RunCode
+
+**功能**: 执行代码并返回执行结果
+
+**接口**:
+```typescript
+async run(code: string, options?: RunCodeOptions): Promise<IActionOutput>
+```
+
+**输入**:
+- `code: string` - 要执行的代码内容
+- `options?: RunCodeOptions` - 可选配置
+  - `language?: string` - 编程语言（如 'typescript', 'javascript', 'python'）
+  - `entryPoint?: string` - 入口文件路径
+  - `command?: string` - 自定义执行命令
+  - `timeout?: number` - 执行超时时间（毫秒，默认 30000）
+  - `applicationId?: string` - 应用ID
+  - `projectId?: string` - 项目ID
+  - `version?: number` - 版本号
+
+**输出**: 
+- `content: string` - 执行结果
+- `data: object` - 包含类型、语言、入口点、时间戳等信息
+
+**关键特性**:
+- 支持多种编程语言（TypeScript、JavaScript、Python 等）
+- 支持自定义执行命令
+- 支持超时控制
+- 捕获执行输出和错误
+
+**使用角色**: Engineer
+
+**注意**: 此 Action 目前提供基础框架，实际代码执行需要根据运行环境实现。
+
+### 15. FixBug
+
+**功能**: 根据错误报告或测试失败报告修复代码中的 Bug
+
+**接口**:
+```typescript
+async run(bugDescription: string, options?: FixBugOptions): Promise<IActionOutput>
+```
+
+**输入**:
+- `bugDescription: string` - Bug 描述
+- `options?: FixBugOptions` - 可选配置
+  - `errorReport?: string` - 错误报告内容
+  - `testFailureReport?: string` - 测试失败报告内容
+  - `codeContext?: string` - 相关代码上下文
+  - `applicationId?: string` - 应用ID
+  - `projectId?: string` - 项目ID
+  - `version?: number` - 版本号
+
+**输出**: 
+- `content: string` - Bug 修复结果，包含修复说明和修复后的代码
+- `data: object` - 包含类型、时间戳等信息
+
+**关键特性**:
+- 分析错误报告或测试失败报告
+- 识别 Bug 的根本原因
+- 提供修复方案和修复后的代码
+- 确保修复符合设计规范和最佳实践
+- 自动保存修复报告到 workspace（BUG_FIX.md）
+
+**使用角色**: Engineer
+
+### 16. WriteTest
 
 **功能**: 编写测试用例
 
@@ -522,12 +618,261 @@ async run(input: string, options?: WriteTestOptions): Promise<IActionOutput>
 **关键特性**:
 - 支持基于代码和 PRD 生成测试用例
 - 自动解析输入中的 PRD 和代码部分
-- 自动保存到 workspace（TEST 目录）
+- 自动保存到 workspace（TEST 目录，文件名 TEST.md）
 - 生成全面的测试用例，包括单元测试和集成测试
 
 **使用角色**: QAEngineer
 
-### 16. SearchEnhancedQA
+### 17. WriteTestPlan
+
+**功能**: 制定综合测试计划
+
+**接口**:
+```typescript
+async run(input: string, options?: WriteTestPlanOptions): Promise<IActionOutput>
+```
+
+**输入**:
+- `input: string` - PRD 和代码内容（格式：`PRD文档：\n{prd}\n\n代码实现：\n{code}`）
+- `options?: WriteTestPlanOptions` - 可选配置（继承 WorkspaceOptions）
+
+**输出**: 
+- `content: string` - 测试计划内容
+- `data: object` - 包含类型、文件名、时间戳、工作区目录等信息
+
+**关键特性**:
+- 自动从 workspace 读取可测性审查报告（TESTABILITY_REVIEW.md）
+- 自动从 workspace 读取 PRD 文档（如输入中没有）
+- 包含测试范围、测试策略、测试资源规划
+- 自动保存到 workspace（TEST 目录，文件名 TEST_PLAN.md）
+
+**使用角色**: QAEngineer
+
+### 18. TestabilityReview
+
+**功能**: 审查 PRD 和代码的可测性
+
+**接口**:
+```typescript
+async run(input: string, options?: TestabilityReviewOptions): Promise<IActionOutput>
+```
+
+**输入**:
+- `input: string` - PRD 和代码内容
+- `options?: TestabilityReviewOptions` - 可选配置（继承 WorkspaceOptions）
+
+**输出**: 
+- `content: string` - 可测性审查报告
+- `data: object` - 包含类型、文件名、时间戳、工作区目录等信息
+
+**关键特性**:
+- 识别难以测试或无法测试的需求
+- 分析代码的可测性
+- 提供改进建议
+- 自动保存到 workspace（TEST 目录，文件名 TESTABILITY_REVIEW.md）
+
+**使用角色**: QAEngineer
+
+### 19. TestCaseReview
+
+**功能**: 审查测试用例并补充边界、异常和负面测试用例
+
+**接口**:
+```typescript
+async run(input: string, options?: TestCaseReviewOptions): Promise<IActionOutput>
+```
+
+**输入**:
+- `input: string` - 测试用例内容（如未提供，从 workspace 读取 TEST.md）
+- `options?: TestCaseReviewOptions` - 可选配置（继承 WorkspaceOptions）
+
+**输出**: 
+- `content: string` - 审查后的测试用例
+- `data: object` - 包含类型、文件名、时间戳、工作区目录等信息
+
+**关键特性**:
+- 从 workspace 读取测试用例（TEST.md）
+- 从 workspace 读取 PRD 和代码作为参考
+- 补充边界条件测试用例
+- 补充异常情况测试用例
+- 补充负面测试用例
+- 自动保存到 workspace（TEST 目录，文件名 TEST_CASES_REVIEWED.md）
+
+**使用角色**: QAEngineer
+
+### 20. TestReview
+
+**功能**: 审查测试用例文档的完整性和质量
+
+**接口**:
+```typescript
+async run(testCasesContent: string, options?: TestReviewOptions): Promise<IActionOutput>
+```
+
+**输入**:
+- `testCasesContent: string` - 测试用例内容（如内容过短，从 workspace 读取 TEST.md）
+- `options?: TestReviewOptions` - 可选配置（继承 WorkspaceOptions）
+
+**输出**: 
+- `content: string` - 测试审查报告
+- `data: object` - 包含类型、文件名、时间戳、工作区目录等信息
+
+**关键特性**:
+- 自动从 workspace 读取测试用例文档
+- 从 workspace 读取 PRD 和代码作为参考
+- 评估测试用例的完整性
+- 评估测试用例的质量
+- 自动保存到 workspace（TEST 目录，文件名 TEST_REVIEW.md）
+
+**使用角色**: QAEngineer
+
+### 21. ImproveTest
+
+**功能**: 根据审查报告改进测试用例文档
+
+**接口**:
+```typescript
+async run(input: string, options?: ImproveTestOptions): Promise<IActionOutput>
+```
+
+**输入**:
+- `input: string` - 审查报告内容或测试用例内容
+- `options?: ImproveTestOptions` - 可选配置
+  - `reviewReport?: string` - 审查报告内容（可选，如果不提供则从 workspace 读取）
+  - `applicationId?: string` - 应用ID（必须提供）
+  - `projectId?: string` - 项目ID（必须提供）
+  - `version?: number` - 版本号
+
+**输出**: 
+- `content: string` - 改进后的测试用例文档
+- `data: object` - 包含类型、文档类型、时间戳、原始长度、改进后长度等信息
+
+**关键特性**:
+- 自动从 workspace 读取当前测试用例文档（TEST.md）
+- 支持从 workspace 读取审查报告（TEST_REVIEW.md 或从主文档末尾提取）
+- 从 workspace 读取 PRD 和代码作为参考
+- 根据审查报告改进测试用例
+- 移除文档中的审查报告部分
+- 自动保存改进后的文档到 workspace（TEST.md）
+
+**使用角色**: QAEngineer
+
+### 22. AutomationPlanning
+
+**功能**: 评估测试用例的自动化可行性并制定自动化计划
+
+**接口**:
+```typescript
+async run(input: string, options?: AutomationPlanningOptions): Promise<IActionOutput>
+```
+
+**输入**:
+- `input: string` - 测试用例内容
+- `options?: AutomationPlanningOptions` - 可选配置（继承 WorkspaceOptions）
+
+**输出**: 
+- `content: string` - 自动化测试计划
+- `data: object` - 包含类型、文件名、时间戳、工作区目录等信息
+
+**关键特性**:
+- 优先从 workspace 读取审查后的测试用例（TEST_CASES_REVIEWED.md）
+- 回退到原始测试用例（TEST.md）
+- 从 workspace 读取代码作为参考
+- 评估每个测试用例的自动化可行性
+- 确定自动化优先级
+- 选择合适的自动化技术
+- 自动保存到 workspace（TEST 目录，文件名 AUTOMATION_PLAN.md）
+
+**使用角色**: QAEngineer
+
+### 23. AutomationExecution
+
+**功能**: 实现和执行自动化测试用例
+
+**接口**:
+```typescript
+async run(input: string, options?: AutomationExecutionOptions): Promise<IActionOutput>
+```
+
+**输入**:
+- `input: string` - 自动化计划内容
+- `options?: AutomationExecutionOptions` - 可选配置（继承 WorkspaceOptions）
+
+**输出**: 
+- `content: string` - 自动化执行结果
+- `data: object` - 包含类型、是否跳过、时间戳、工作区目录等信息
+
+**关键特性**:
+- 基于自动化计划实现自动化测试
+- 执行自动化测试用例
+- 收集执行结果
+
+**使用角色**: QAEngineer
+
+**注意**: 当前实现为占位符，延迟 1 秒后跳过执行。实际的自动化测试执行需要根据项目技术栈实现。
+
+### 24. CoverageQualityCheck
+
+**功能**: 检查测试覆盖率并进行质量自评
+
+**接口**:
+```typescript
+async run(input: string, options?: CoverageQualityCheckOptions): Promise<IActionOutput>
+```
+
+**输入**:
+- `input: string` - 测试用例内容
+- `options?: CoverageQualityCheckOptions` - 可选配置（继承 WorkspaceOptions）
+
+**输出**: 
+- `content: string` - 覆盖率报告和质量检查报告
+- `data: object` - 包含类型、文件名、时间戳、工作区目录等信息
+
+**关键特性**:
+- 从 workspace 读取测试用例（优先 TEST_CASES_REVIEWED.md，回退到 TEST.md）
+- 从 workspace 读取代码
+- 尝试读取测试执行结果（如已执行自动化测试）
+- 分析测试覆盖率
+- 进行质量自评
+- 自动保存到 workspace（TEST 目录，文件名 COVERAGE_REPORT.md 和 QUALITY_CHECK.md）
+
+**使用角色**: QAEngineer
+
+### 25. QAConclusion
+
+**功能**: 基于所有测试结果给出最终 QA 结论（通过/阻断/需修改）
+
+**接口**:
+```typescript
+async run(input: string, options?: QAConclusionOptions): Promise<IActionOutput>
+```
+
+**输入**:
+- `input: string` - 输入内容（可选，主要从 workspace 读取所有测试文档）
+- `options?: QAConclusionOptions` - 可选配置（继承 WorkspaceOptions）
+
+**输出**: 
+- `content: string` - QA 结论报告
+- `data: object` - 包含类型、文件名、时间戳、工作区目录、结论状态等信息
+
+**关键特性**:
+- 从 workspace 读取所有测试相关文档：
+  - TESTABILITY_REVIEW.md - 可测性审查
+  - TEST_PLAN.md - 测试计划
+  - TEST.md - 测试用例
+  - TEST_CASES_REVIEWED.md - 审查后的测试用例
+  - AUTOMATION_PLAN.md - 自动化计划
+  - tests/automated_tests.md - 自动化执行结果
+  - COVERAGE_REPORT.md - 覆盖率报告
+  - QUALITY_CHECK.md - 质量检查报告
+- 从 workspace 读取 PRD 文档
+- 综合分析所有测试结果
+- 给出最终结论（pass/block/needs_modification）
+- 自动保存到 workspace（TEST 目录，文件名 QA_CONCLUSION.md）
+
+**使用角色**: QAEngineer
+
+### 26. SearchEnhancedQA
 
 **功能**: 增强搜索和问答（用于市场调研和需求验证）
 
@@ -553,7 +898,7 @@ async run(question: string): Promise<IActionOutput>
 
 **使用角色**: ProductManager
 
-### 17. DataAnalysis
+### 27. DataAnalysis
 
 **功能**: 数据分析和可视化
 
@@ -563,7 +908,7 @@ async run(question: string): Promise<IActionOutput>
 
 **使用角色**: DataAnalyst
 
-### 18. Coordinate
+### 28. Coordinate
 
 **功能**: 协调团队工作和制定决策
 
@@ -602,24 +947,51 @@ async run(allMessages: string): Promise<IActionOutput>
 
 ## 已实现 Actions 列表
 
+### 文档编写 Actions
 ✅ **WriteMRD** - 市场研究文档编写  
-✅ **MRDReview** - MRD文档审查  
 ✅ **WritePRD** - PRD文档编写  
-✅ **PRDReview** - PRD文档审查  
-✅ **ImproveDocument** - 根据审查报告改进PRD/MRD文档  
 ✅ **WriteDesign** - 系统设计文档编写  
-✅ **DesignReview** - 设计文档审查  
-✅ **BreakdownTasks** - 任务拆分  
 ✅ **WriteSubProjectDesign** - 子项目设计  
-✅ **SubProjectDesignReview** - 子项目设计审查  
-✅ **GenerateTask** - 任务说明生成  
 ✅ **WriteCode** - 代码编写  
-✅ **ExecuteSubtask** - 子任务执行  
-✅ **CodeReview** - 代码审查  
 ✅ **WriteTest** - 测试用例编写  
+✅ **WriteTestPlan** - 测试计划制定  
+
+### 文档审查 Actions
+✅ **MRDReview** - MRD文档审查  
+✅ **PRDReview** - PRD文档审查  
+✅ **DesignReview** - 设计文档审查  
+✅ **SubProjectDesignReview** - 子项目设计审查  
+✅ **CodeReview** - 代码审查  
+
+### 文档改进 Actions
+✅ **ImprovePRD** - 根据审查报告改进PRD文档  
+✅ **ImproveMRD** - 根据审查报告改进MRD文档  
+✅ **ImproveDesign** - 根据审查报告改进设计文档  
+✅ **ImproveTest** - 根据审查报告改进测试用例  
+
+### 任务管理 Actions
+✅ **BreakdownTasks** - 任务拆分  
+✅ **ExecuteSubtask** - 子任务执行  
+
+### 代码执行与修复 Actions
+✅ **RunCode** - 代码执行  
+✅ **FixBug** - Bug修复  
+
+### QA 工作流 Actions
+✅ **TestabilityReview** - 需求可测性审查  
+✅ **TestCaseReview** - 测试用例评审与补充  
+✅ **TestReview** - 测试用例文档审查  
+✅ **AutomationPlanning** - 自动化测试规划  
+✅ **AutomationExecution** - 自动化测试执行  
+✅ **CoverageQualityCheck** - 测试覆盖率与质量检查  
+✅ **QAConclusion** - QA结论输出  
+
+### 其他 Actions
 ✅ **SearchEnhancedQA** - 增强搜索和问答  
 ✅ **DataAnalysis** - 数据分析和可视化  
 ✅ **Coordinate** - 团队协调和任务分配
+
+**共计 31 个 Actions**
 
 ## 自定义 Action
 

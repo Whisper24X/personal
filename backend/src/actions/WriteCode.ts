@@ -56,7 +56,7 @@ export class WriteCode extends BaseAction {
       // 定义命令
       const applyCommand = "执行/openspec-apply命令，并且自动执行所有必要的构建命令（如make api、make wire、npm run generate等），不要只生成代码就停止，必须完成所有任务直到tasks.md中的任务全部标记为完成。";
 
-      const checkCommand = "查看openspec目录下changes目录里面的task.md,告诉我里面的任务是否全部执行完成,给我返回:已完成、未完成或未找到，不要返回具体原因。如果文件不存在或无法找到，返回未找到。";
+      const checkCommand = "查看openspec目录下changes目录里面的tasks.md,告诉我里面的任务是否全部执行完成,给我返回:已完成、未完成或未找到，不要返回具体原因。如果文件不存在或无法找到，返回未找到。";
       
       // 循环执行，直到任务完成
       const maxRetries = 10; // 最大重试次数

@@ -4,11 +4,11 @@
 
 ## 文档信息
 - **产品名称**: 即思即成（Mind2Build）- 多代理协作框架
-- **文档版本**: v1.2
+- **文档版本**: v1.3
 - **创建日期**: 2025-12-24
-- **最后更新**: 2026-01-07
+- **最后更新**: 2026-01-21
 - **产品经理**: AI Product Team
-- **目标版本**: Mind2Build 1.1
+- **目标版本**: Mind2Build 1.2
 
 ---
 
@@ -210,12 +210,12 @@ graph TB
 
 | 角色 | 默认名称 | 核心职责 | 监听机制 | 主要 Actions | 输入 | 输出 |
 |------|---------|---------|---------|-------------|------|------|
-| Salesperson | Salesperson | 需求收集、市场调研、业务分析 | 监听 User 消息 | WriteMRD | 用户原始需求 | 市场研究文档（MRD） |
-| ProductManager | ProductManager | PRD编写、需求分析 | 监听 WriteMRD action | WritePRD, SearchEnhancedQA | 市场研究文档（MRD） | PRD文档 |
-| Architect | Architect | 系统设计、架构规划 | 监听 WritePRD action | WriteDesign | PRD文档 | 设计文档 |
-| ProjectManager | ProjectManager | 任务拆分、子项目设计、任务生成 | 监听 WritePRD 和 WriteDesign actions | BreakdownTasks, WriteSubProjectDesign, GenerateTask | PRD和设计文档 | 任务拆分文档、子项目设计、任务说明 |
-| Engineer | Engineer | 代码实现 | 监听 WritePRD, WriteDesign, BreakdownTasks actions | WriteCode, ExecuteSubtask | 设计文档、任务拆分 | TypeScript/JavaScript源代码 |
-| QA Engineer | QAEngineer | 测试编写与执行 | 监听 WriteCode action | WriteTest | 代码 | 测试用例 |
+| Salesperson | Salesperson | 需求收集、市场调研、业务分析 | 监听 User 消息 | WriteMRD, MRDReview, ImproveMRD | 用户原始需求 | 市场研究文档（MRD） |
+| ProductManager | ProductManager | PRD编写、需求分析 | 监听 WriteMRD action | WritePRD, PRDReview, ImprovePRD, SearchEnhancedQA | 市场研究文档（MRD） | PRD文档 |
+| Architect | Architect | 系统设计、架构规划 | 监听 WritePRD action | WriteDesign, DesignReview, ImproveDesign | PRD文档 | 设计文档 |
+| ProjectManager | ProjectManager | 任务拆分、子项目设计 | 监听 WritePRD 和 WriteDesign actions | BreakdownTasks, WriteSubProjectDesign, SubProjectDesignReview | PRD和设计文档 | 任务拆分文档、子项目设计 |
+| Engineer | Engineer | 代码实现、执行和修复 | 监听 WritePRD, WriteDesign, BreakdownTasks actions | WriteCode, ExecuteSubtask, RunCode, FixBug | 设计文档、任务拆分 | TypeScript/JavaScript源代码 |
+| QA Engineer | QAEngineer | 完整 QA 工作流执行 | 监听 WritePRD 和 WriteCode actions | TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion | PRD和代码 | 测试计划、测试用例、QA结论报告 |
 | Team Leader | TeamLeader | 协调、决策 | 监听所有广播消息 | Coordinate | 所有消息历史 | 协调结果和任务分配 |
 
 #### 角色定制能力
@@ -1059,10 +1059,11 @@ graph LR
 **1. 支持Workspace Options的Actions**
 以下actions支持workspace options参数（applicationId, projectId, version等）：
 - `WriteMRD`, `WritePRD`, `WriteDesign`, `WriteSubProjectDesign`
-- `BreakdownTasks`, `GenerateTask`
-- `WriteCode`, `WriteTest`, `ExecuteSubtask`
-- `ImprovePRD`, `ImproveMRD`
+- `BreakdownTasks`, `WriteCode`, `WriteTest`, `WriteTestPlan`, `ExecuteSubtask`
+- `ImprovePRD`, `ImproveMRD`, `ImproveDesign`, `ImproveTest`
 - `MRDReview`, `PRDReview`, `DesignReview`, `SubProjectDesignReview`
+- `TestabilityReview`, `TestCaseReview`, `AutomationPlanning`, `AutomationExecution`
+- `CoverageQualityCheck`, `QAConclusion`
 
 这些actions在执行时会自动从消息中提取workspace选项，如果找不到则从context中获取。
 
@@ -1070,9 +1071,9 @@ graph LR
 RoleActionExecutor为某些actions提供特殊的输入准备逻辑：
 - **WriteTest**: 自动从memory中获取PRD文档，组合PRD和代码作为输入
 - **MRDReview/PRDReview**: 从news或memory中查找对应的文档内容
-- **ImprovePRD/ImproveMRD**: 从news或memory中查找审查报告
+- **ImprovePRD/ImproveMRD/ImproveDesign**: 从news或memory中查找审查报告
 - **BreakdownTasks**: 从memory中获取WritePRD和WriteDesign的消息
-- **GenerateTask**: 从memory中获取BreakdownTasks和WriteSubProjectDesign的消息
+- **WriteTestPlan/TestabilityReview**: 自动从memory中获取PRD和代码
 
 **3. 序列继续处理（BY_ORDER模式）**
 在BY_ORDER模式下，当action执行完成后：
@@ -1090,24 +1091,53 @@ RoleActionExecutor为某些actions提供特殊的输入准备逻辑：
 
 #### 核心 Actions 规格
 
+**文档编写与审查 Actions**:
 | Action | 功能 | 输入 | 输出 | 使用角色 | 状态 |
 |--------|------|------|------|---------|------|
 | WriteMRD | 编写市场研究文档 | 用户需求 | 市场研究文档（MRD） | Salesperson | ✅ 已实现 |
 | MRDReview | MRD文档审查 | MRD文档 | 审查报告 | Salesperson | ✅ 已实现 |
+| ImproveMRD | 改进MRD文档 | 审查报告 | 改进后的MRD | Salesperson | ✅ 已实现 |
 | WritePRD | 编写产品需求文档 | MRD或需求说明 | PRD Markdown | ProductManager | ✅ 已实现 |
 | PRDReview | PRD文档审查 | PRD文档 | 审查报告 | ProductManager | ✅ 已实现 |
-| ImproveDocument | 根据审查报告改进文档 | 审查报告 | 改进后的PRD/MRD | ProductManager/Salesperson | ✅ 已实现 |
+| ImprovePRD | 改进PRD文档 | 审查报告 | 改进后的PRD | ProductManager | ✅ 已实现 |
 | WriteDesign | 编写系统设计 | PRD | 设计文档 | Architect | ✅ 已实现 |
 | DesignReview | 设计文档审查 | 设计文档 | 审查报告 | Architect | ✅ 已实现 |
+| ImproveDesign | 改进设计文档 | 审查报告 | 改进后的设计文档 | Architect | ✅ 已实现 |
+
+**任务管理 Actions**:
+| Action | 功能 | 输入 | 输出 | 使用角色 | 状态 |
+|--------|------|------|------|---------|------|
 | BreakdownTasks | 任务拆分 | PRD和设计文档 | 任务拆分文档 | ProjectManager | ✅ 已实现 |
 | WriteSubProjectDesign | 子项目设计 | 任务拆分和设计文档 | 子项目设计文档 | ProjectManager | ✅ 已实现 |
 | SubProjectDesignReview | 子项目设计审查 | 子项目设计文档 | 审查报告 | ProjectManager | ✅ 已实现 |
-| GenerateTask | 生成任务说明 | 任务拆分文档 | 详细任务说明 | ProjectManager | ✅ 已实现 |
+
+**代码实现 Actions**:
+| Action | 功能 | 输入 | 输出 | 使用角色 | 状态 |
+|--------|------|------|------|---------|------|
 | WriteCode | 编写代码 | 设计文档 | TypeScript/JavaScript代码 | Engineer | ✅ 已实现 |
 | ExecuteSubtask | 执行子任务 | 任务描述、设计文档 | 代码实现结果 | Engineer | ✅ 已实现 |
 | CodeReview | 代码审查 | 代码、任务描述 | 审查报告 | ProjectManager | ✅ 已实现 |
-| WriteTest | 编写测试 | 代码 | 测试代码 | QA Engineer | ✅ 已实现 |
+| RunCode | 代码执行 | 代码 | 执行结果 | Engineer | ✅ 已实现 |
+| FixBug | Bug修复 | Bug描述、错误报告 | 修复后代码 | Engineer | ✅ 已实现 |
+
+**QA 工作流 Actions**（共 8 个，按顺序执行）:
+| Action | 功能 | 输入 | 输出 | 使用角色 | 状态 |
+|--------|------|------|------|---------|------|
+| TestabilityReview | 需求可测性审查 | PRD、代码 | 可测性审查报告 | QA Engineer | ✅ 已实现 |
+| WriteTestPlan | 制定测试计划 | PRD、代码、可测性报告 | 测试计划 | QA Engineer | ✅ 已实现 |
+| WriteTest | 编写测试用例 | PRD、代码 | 测试用例文档 | QA Engineer | ✅ 已实现 |
+| TestCaseReview | 用例评审与补充 | 测试用例 | 审查后的测试用例 | QA Engineer | ✅ 已实现 |
+| ImproveTest | 改进测试用例 | 审查报告 | 改进后的测试用例 | QA Engineer | ✅ 已实现 |
+| AutomationPlanning | 自动化测试规划 | 测试用例、代码 | 自动化计划 | QA Engineer | ✅ 已实现 |
+| AutomationExecution | 自动化测试执行 | 自动化计划 | 执行结果 | QA Engineer | ✅ 已实现 |
+| CoverageQualityCheck | 覆盖率与质量检查 | 测试用例、代码 | 覆盖率和质量报告 | QA Engineer | ✅ 已实现 |
+| QAConclusion | QA结论 | 所有测试文档 | QA结论报告 | QA Engineer | ✅ 已实现 |
+
+**其他 Actions**:
+| Action | 功能 | 输入 | 输出 | 使用角色 | 状态 |
+|--------|------|------|------|---------|------|
 | SearchEnhancedQA | 增强搜索 | 问题 | 答案+引用 | ProductManager | ✅ 已实现 |
+| DataAnalysis | 数据分析 | 数据或需求 | 分析代码和结果 | DataAnalyst | ✅ 已实现 |
 | Coordinate | 协调任务 | 任务和上下文 | 协调结果 | TeamLeader | ✅ 已实现 |
 
 ### 2.7 工具集成 [P1 - 重要功能]
@@ -1313,7 +1343,7 @@ llm:
 - ✅ 多角色串联自定义工作流（支持调整顺序和输入输出映射）
 - ✅ 知识库系统（文档库、代码仓库、API文档库）
 - ✅ 知识库检索和上下文注入
-- ✅ 多 LLM 支持（OpenAI, ZhipuAI, Ark, Cursor）
+- ✅ 多 LLM 支持（OpenAI, ZhipuAI, Ark, DeepSeek, Cursor）
 - ✅ 增量开发
 - ✅ 交互式确认模式（Web）
 - ✅ Web UI 界面（Vue 3 + Element Plus）

@@ -1,8 +1,8 @@
 # 即思即成（Mind2Build）角色系统设计文档
 
-**文档版本**: v1.5  
+**文档版本**: v1.6  
 **创建日期**: 2025-12-24
-**最后更新**: 2026-01-15（更新Role类实现细节，添加模块化组件说明）
+**最后更新**: 2026-01-21（更新QAEngineer完整9步QA工作流，添加新Actions支持）
 
 ## Role类实现架构
 
@@ -19,7 +19,8 @@ Role类采用模块化设计，将职责分离到不同的组件中：
 - 特殊输入处理：
   - `WriteTest`: 自动从memory中获取PRD文档，组合PRD和代码作为输入
   - `MRDReview/PRDReview`: 从news或memory中查找对应的文档内容
-  - `ImprovePRD/ImproveMRD`: 从news或memory中查找审查报告
+  - `ImprovePRD/ImproveMRD/ImproveDesign`: 从news或memory中查找审查报告
+  - `WriteTestPlan/TestabilityReview`: 自动从memory中获取PRD和代码
 - 序列继续处理（BY_ORDER模式）：自动处理action序列的执行和状态清理
 - 状态管理：action执行时设置为RUNNING，完成后设置为COMPLETED，失败时设置为FAILED
 
@@ -27,9 +28,11 @@ Role类采用模块化设计，将职责分离到不同的组件中：
 ```typescript
 const ACTIONS_WITH_OPTIONS = [
   'WriteMRD', 'WritePRD', 'WriteDesign', 'WriteSubProjectDesign',
-  'BreakdownTasks', 'GenerateTask', 'WriteCode', 'WriteTest',
-  'ExecuteSubtask', 'ImprovePRD', 'ImproveMRD',
-  'MRDReview', 'PRDReview', 'DesignReview', 'SubProjectDesignReview'
+  'BreakdownTasks', 'WriteCode', 'WriteTest', 'WriteTestPlan',
+  'ExecuteSubtask', 'ImprovePRD', 'ImproveMRD', 'ImproveDesign', 'ImproveTest',
+  'MRDReview', 'PRDReview', 'DesignReview', 'SubProjectDesignReview',
+  'TestabilityReview', 'TestCaseReview', 'TestReview',
+  'AutomationPlanning', 'AutomationExecution', 'CoverageQualityCheck', 'QAConclusion'
 ];
 ```
 
@@ -99,9 +102,17 @@ const DOCUMENT_TYPE_MAP = {
   WriteDesign: 'DESIGN',
   WriteSubProjectDesign: 'DESIGN',
   BreakdownTasks: 'TASKS',
-  GenerateTask: 'TASKS',
   WriteCode: 'CODE',
   WriteTest: 'TEST',
+  WriteTestPlan: 'TEST',
+  TestabilityReview: 'TEST',
+  TestCaseReview: 'TEST',
+  TestReview: 'TEST',
+  ImproveTest: 'TEST',
+  AutomationPlanning: 'TEST',
+  AutomationExecution: 'TEST',
+  CoverageQualityCheck: 'TEST',
+  QAConclusion: 'TEST',
   ExecuteSubtask: 'CODE'
 };
 ```
@@ -359,31 +370,90 @@ class Engineer extends Role {
 
 ### 5. QA Engineer (QA 工程师)
 
-**职责**: 测试用例编写和执行
+**职责**: 执行完整的 QA 工作流，从可测性审查到最终 QA 结论
 
 **核心属性**:
 ```typescript
 class QAEngineer extends Role {
     name = "QAEngineer"
     profile = "QAEngineer"
-    goal = "质量保证工程师，负责编写测试用例和执行质量保证"
-    constraints = "确保代码质量和功能正确性"
-    description = "我是一名专业的QA工程师，擅长编写全面的测试用例，确保代码质量和功能正确性。"
-    // 监听: ACTION_WRITE_CODE action（来自 Engineer）
-    // Actions: WriteTest
+    goal = "Execute comprehensive QA workflow from testability review to final QA conclusion, ensuring quality and functional correctness"
+    constraints = "Focus on code quality, functional correctness, comprehensive test coverage, and systematic QA process. Execute QA workflow in order: testability review -> test plan -> test cases -> test case review -> automation planning -> automation execution -> coverage check -> QA conclusion"
+    description = "Experienced QA engineer who executes comprehensive QA workflow including testability review, test planning, test case design, automation, coverage analysis, and final QA conclusion"
+    // 监听: ACTION_WRITE_PRD, ACTION_WRITE_CODE actions
+    // Actions: TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, 
+    //          AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion
 }
 ```
 
-**工作流程**:
-1. 监听 Engineer 的 WriteCode action 输出（`watch([ACTION_WRITE_CODE])`）
-2. 接收生成的代码
-3. 编写测试用例（WriteTest）
-4. 生成测试代码文件
-5. 报告测试结果
+**9 步 QA 工作流**:
+
+QAEngineer 实现了完整的质量保证工作流，包含以下 8 个 Actions（按顺序执行）：
+
+| 步骤 | Action | 说明 | 输出文件 |
+|------|--------|------|----------|
+| 1 | TestabilityReview | 需求可测性检查 | TESTABILITY_REVIEW.md |
+| 2 | WriteTestPlan | 制定测试计划 | TEST_PLAN.md |
+| 3 | WriteTest | 测试用例生成 | TEST.md |
+| 4 | TestCaseReview | 用例评审与补充 | TEST_CASES_REVIEWED.md |
+| 5 | AutomationPlanning | 自动化测试拆解与评估 | AUTOMATION_PLAN.md |
+| 6 | AutomationExecution | 自动化用例实现与执行 | tests/automated_tests.md |
+| 7 | CoverageQualityCheck | 测试覆盖率与质量自检 | COVERAGE_REPORT.md, QUALITY_CHECK.md |
+| 8 | QAConclusion | 给出 QA 结论 | QA_CONCLUSION.md |
+
+**工作流程详解**:
+
+1. **TestabilityReview（可测性审查）**
+   - 审查 PRD 和代码的可测性
+   - 识别难以测试或无法测试的需求
+   - 提供改进建议
+
+2. **WriteTestPlan（制定测试计划）**
+   - 基于可测性审查结果制定测试计划
+   - 包含测试范围、测试策略、测试资源规划
+   - 读取 PRD 和代码作为输入
+
+3. **WriteTest（测试用例生成）**
+   - 基于 PRD 和代码生成测试用例
+   - 包含单元测试和集成测试
+
+4. **TestCaseReview（用例评审与补充）**
+   - 审查测试用例的完整性
+   - 补充边界条件、异常情况、负面测试用例
+
+5. **AutomationPlanning（自动化测试规划）**
+   - 评估测试用例的自动化可行性
+   - 确定自动化优先级
+   - 选择合适的自动化技术
+
+6. **AutomationExecution（自动化测试执行）**
+   - 实现自动化测试用例
+   - 执行自动化测试
+   - 收集执行结果
+
+7. **CoverageQualityCheck（覆盖率与质量检查）**
+   - 分析测试覆盖率
+   - 进行质量自评
+   - 生成覆盖率报告和质量检查报告
+
+8. **QAConclusion（QA 结论）**
+   - 综合所有测试结果
+   - 给出最终 QA 结论（通过/阻断/需修改）
 
 **监听机制**:
-- 监听 `ACTION_WRITE_CODE` action 完成事件（使用常量 `ACTION_WRITE_CODE`）
-- 等待 Engineer 完成代码生成后触发
+- 监听 `ACTION_WRITE_PRD` 和 `ACTION_WRITE_CODE` actions
+- 等待 ProductManager 完成 PRD 和 Engineer 完成代码后触发
+- 使用 BY_ORDER 模式按顺序执行所有 8 个 Actions
+
+**输出产物**:
+- 可测性审查报告（TESTABILITY_REVIEW.md）
+- 测试计划（TEST_PLAN.md）
+- 测试用例文档（TEST.md）
+- 审查后的测试用例（TEST_CASES_REVIEWED.md）
+- 自动化测试计划（AUTOMATION_PLAN.md）
+- 覆盖率报告（COVERAGE_REPORT.md）
+- 质量检查报告（QUALITY_CHECK.md）
+- QA 结论报告（QA_CONCLUSION.md）
 
 ### 6. TeamLeader (团队领导)
 
@@ -463,29 +533,30 @@ class DataAnalyst extends Role {
 
 ✅ **Salesperson** - 需求收集、市场调研和业务分析，生成市场研究文档（MRD）
   - 监听: `'User'` 消息类型
-  - Actions: WriteMRD
+  - Actions: WriteMRD, MRDReview, ImproveMRD
   
 ✅ **ProductManager** - 基于 MRD 编写 PRD 和产品规划
   - 监听: `ACTION_WRITE_MRD` action
-  - Actions: WritePRD, SearchEnhancedQA
+  - Actions: WritePRD, PRDReview, ImprovePRD, SearchEnhancedQA
   
 ✅ **Architect** - 系统架构设计
   - 监听: `ACTION_WRITE_PRD` action
-  - Actions: WriteDesign
+  - Actions: WriteDesign, DesignReview, ImproveDesign
   
-✅ **ProjectManager** - 任务拆分、子项目设计、任务生成
+✅ **ProjectManager** - 任务拆分、子项目设计
   - 监听: `ACTION_WRITE_PRD`, `ACTION_WRITE_DESIGN` actions
-  - Actions: BreakdownTasks, WriteSubProjectDesign, GenerateTask
+  - Actions: BreakdownTasks, WriteSubProjectDesign, SubProjectDesignReview
   - 特殊: 重写 `act()` 方法处理不同 action 的输入需求
   
 ✅ **Engineer** - 代码实现
   - 监听: `ACTION_WRITE_PRD`, `ACTION_WRITE_DESIGN`, `ACTION_BREAKDOWN_TASKS` actions
-  - Actions: WriteCode, ExecuteSubtask
+  - Actions: WriteCode, ExecuteSubtask, RunCode, FixBug
   - 特殊: 重写 `act()` 方法，支持自动代码生成模式（`ENGINEER_AUTO_CODE`）
   
-✅ **QAEngineer** - 测试用例编写
-  - 监听: `ACTION_WRITE_CODE` action
-  - Actions: WriteTest
+✅ **QAEngineer** - 完整 QA 工作流执行
+  - 监听: `ACTION_WRITE_PRD`, `ACTION_WRITE_CODE` actions
+  - Actions: TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion
+  - 特殊: 使用 BY_ORDER 模式按顺序执行 8 步 QA 工作流
   
 ✅ **TeamLeader** - 团队协调和任务分配
   - 监听: 无（不 watch 任何 action）
