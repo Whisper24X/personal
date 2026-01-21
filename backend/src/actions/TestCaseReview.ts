@@ -35,7 +35,6 @@ export class TestCaseReview extends BaseAction {
       let testCases = '';
       let prd = '';
       let code = '';
-      let testPlan = '';
 
       if (options) {
         try {
@@ -74,21 +73,6 @@ export class TestCaseReview extends BaseAction {
           });
         }
 
-        // Try to read Test Plan from workspace
-        try {
-          const testPlanFromWorkspace = await this.readWorkspaceFile('TEST_PLAN.md', {
-            ...options,
-            documentType: 'TESTPLAN',
-          });
-          if (testPlanFromWorkspace) {
-            testPlan = testPlanFromWorkspace;
-          }
-        } catch (error: any) {
-          logger.warn('TestCaseReview: Failed to read TEST_PLAN from workspace', {
-            error: error.message,
-          });
-        }
-
         // Try to read code from workspace (read all code files)
         try {
           const codeFromWorkspace = await this.readAllFromWorkspace(
@@ -122,7 +106,7 @@ export class TestCaseReview extends BaseAction {
       }
 
       // Build prompt
-      const prompt = buildTestCaseReviewPrompt(testCases, prd, code, testPlan);
+      const prompt = buildTestCaseReviewPrompt(testCases, prd, code);
 
       // Load system prompt from database or use default
       const userId = this.context?.get('userId');
@@ -148,13 +132,6 @@ export class TestCaseReview extends BaseAction {
         workspaceDir: this.getWorkspaceDir(workspaceOptions),
       });
 
-      // 明确通知：测试用例审查完成，准备进行自动化规划
-      logger.info('TestCaseReview: Test case review completed, ready for AutomationPlanning', {
-        reviewedFile: 'TEST_CASES_REVIEWED.md',
-        nextAction: 'AutomationPlanning',
-        workspaceDir: this.getWorkspaceDir(workspaceOptions),
-      });
-
       return {
         content: content,
         data: {
@@ -162,7 +139,6 @@ export class TestCaseReview extends BaseAction {
           filename: 'TEST_CASES_REVIEWED.md',
           timestamp: new Date().toISOString(),
           workspaceDir: this.getWorkspaceDir(workspaceOptions),
-          nextAction: 'AutomationPlanning', // 明确标记下一个action
         },
       };
     } catch (error: any) {

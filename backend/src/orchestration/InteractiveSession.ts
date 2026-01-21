@@ -579,32 +579,13 @@ export class InteractiveSession {
 
     logger.info(`InteractiveSession: Waiting for executor to stop for project ${this.projectId} (timeout: ${timeoutMs}ms)`);
 
-    const startTime = Date.now();
-    const checkInterval = 1000; // Check every 1 second
-    
     try {
       // Wait for executor promise to complete or timeout
       await Promise.race([
         this.executorPromise,
         new Promise<void>((resolve) => {
-          const checkIntervalId = setInterval(() => {
-            const elapsed = Date.now() - startTime;
-            if (elapsed >= timeoutMs) {
-              clearInterval(checkIntervalId);
-              logger.warn(`InteractiveSession: Executor stop timeout for project ${this.projectId} after ${elapsed}ms, forcing stop`);
-              resolve();
-            } else if (!this.executorPromise) {
-              // Executor promise was cleared (executor stopped)
-              clearInterval(checkIntervalId);
-              resolve();
-            }
-          }, checkInterval);
-          
           setTimeout(() => {
-            clearInterval(checkIntervalId);
-            if (this.executorPromise) {
-              logger.warn(`InteractiveSession: Executor stop timeout for project ${this.projectId}, forcing stop`);
-            }
+            logger.warn(`InteractiveSession: Executor stop timeout for project ${this.projectId}, forcing stop`);
             resolve();
           }, timeoutMs);
         }),
@@ -613,9 +594,6 @@ export class InteractiveSession {
       // Executor may have thrown an error, that's okay
       logger.debug(`InteractiveSession: Executor promise completed with error (expected): ${error.message}`);
     }
-
-    // Additional wait to ensure executor loop has fully stopped
-    await new Promise(resolve => setTimeout(resolve, 500));
 
     // Clear executor promise and reference
     this.executorPromise = null;
@@ -646,47 +624,13 @@ export class InteractiveSession {
         // Ensure old executor is stopped
         this.stopWorkflowExecutor();
 
-        // Wait for old executor to completely stop (increased timeout to handle LLM calls)
-        await this.waitForExecutorStop(15000); // Increased from 5s to 15s
+        // Wait for old executor to completely stop
+        await this.waitForExecutorStop(5000);
 
         // Check if executor is already running (double-check after wait)
         if (this.executorPromise) {
           logger.warn(`InteractiveSession: Executor still running after wait for project ${this.projectId}, skipping restart`);
           return;
-        }
-        
-        // Additional check: verify no action is currently running in database
-        // Note: If executor is stopped but action is RUNNING, it may be from resetWorkflow
-        // which intentionally sets the first action to RUNNING. In this case, we should allow restart.
-        try {
-          const runningState = await this.stateManager.getRunningState();
-          if (runningState.role && runningState.action) {
-            const { ActionStatus } = await import('@mind2build/shared');
-            const actionStatus = await this.stateManager.getActionStatus(runningState.role, runningState.action);
-            if (actionStatus === ActionStatus.RUNNING) {
-              // If executor is stopped but action is RUNNING, it's likely from resetWorkflow
-              // Check if executor is actually stopped (not just promise cleared)
-              if (!this.executorPromise && !this.workflowExecutor) {
-                logger.info(`InteractiveSession: Executor is stopped but action ${runningState.action} is RUNNING (likely from resetWorkflow), allowing restart for project ${this.projectId}`);
-                // Allow restart - this is expected after resetWorkflow
-              } else {
-                // Executor may still be running, wait a bit more
-                logger.warn(`InteractiveSession: Action ${runningState.action} is still RUNNING in database after executor stop for project ${this.projectId}, waiting additional 5s`);
-                await new Promise(resolve => setTimeout(resolve, 5000));
-                // Check again
-                const recheckStatus = await this.stateManager.getActionStatus(runningState.role, runningState.action);
-                if (recheckStatus === ActionStatus.RUNNING && (this.executorPromise || this.workflowExecutor)) {
-                  logger.warn(`InteractiveSession: Action ${runningState.action} still RUNNING and executor still exists, skipping restart to prevent duplicate executor`);
-                  return;
-                }
-              }
-            }
-          }
-        } catch (error: any) {
-          logger.warn(`InteractiveSession: Failed to verify action status before restart for project ${this.projectId}`, {
-            error: error.message,
-          });
-          // Continue with restart if check fails
         }
 
         // Check if there's an action running in database
@@ -695,14 +639,9 @@ export class InteractiveSession {
           if (runningState.role && runningState.action) {
             const { ActionStatus } = await import('@mind2build/shared');
             const actionStatus = await this.stateManager.getActionStatus(runningState.role, runningState.action);
-            // Allow restart if action is RUNNING or PENDING (PENDING means it was reset and needs to be restarted)
-            if (actionStatus !== ActionStatus.RUNNING && actionStatus !== ActionStatus.PENDING) {
-              logger.warn(`InteractiveSession: Action ${runningState.action} for role ${runningState.role} is ${actionStatus} (not RUNNING or PENDING) for project ${this.projectId}, skipping restart`);
+            if (actionStatus !== ActionStatus.RUNNING) {
+              logger.warn(`InteractiveSession: Action ${runningState.action} for role ${runningState.role} is not RUNNING for project ${this.projectId}, skipping restart`);
               return;
-            }
-            // If action is PENDING but we have running state, it means it was reset - allow restart
-            if (actionStatus === ActionStatus.PENDING) {
-              logger.info(`InteractiveSession: Action ${runningState.action} for role ${runningState.role} is PENDING (was reset), allowing restart for project ${this.projectId}`);
             }
           } else {
             logger.warn(`InteractiveSession: No running state found for project ${this.projectId}, skipping restart`);

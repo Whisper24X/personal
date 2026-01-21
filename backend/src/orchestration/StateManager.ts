@@ -438,7 +438,7 @@ export class StateManager {
     /**
      * Get workflow items (sorted by role_order and action_order)
      */
-    async getWorkflowItems(): Promise<Array<{ role: string; action: string; status: ActionStatus; retry_count?: number; action_order?: number | null; role_order?: number | null }>> {
+    async getWorkflowItems(): Promise<Array<{ role: string; action: string; status: ActionStatus; retry_count?: number; action_order?: number | null }>> {
         try {
             const items = await this.repository.getWorkflowItems(this.projectId);
             return items.map(item => ({
@@ -447,7 +447,6 @@ export class StateManager {
                 status: item.status as ActionStatus,
                 retry_count: item.retry_count || 0,
                 action_order: item.action_order ?? null,
-                role_order: (item as any).role_order ?? null,
             }));
         } catch (error: any) {
             logger.error('StateManager: Failed to get workflow items', {
@@ -624,11 +623,11 @@ export class StateManager {
                         newRole: role,
                         newAction: action,
                     });
-                    // Wait up to 10 seconds for current action to complete (increased from 2s to handle LLM calls)
-                    const maxWaitTime = 10000;
+                    // Wait up to 2 seconds for current action to complete
+                    const maxWaitTime = 2000;
                     const startTime = Date.now();
                     while (Date.now() - startTime < maxWaitTime) {
-                        await this.delay(500); // Check every 500ms instead of 200ms
+                        await this.delay(200);
                         const checkState = await this.getRunningState();
                         if (!checkState.action || checkState.role !== currentRunningState.role || checkState.action !== currentRunningState.action) {
                             break; // Current action completed

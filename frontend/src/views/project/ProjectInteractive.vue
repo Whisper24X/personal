@@ -35,7 +35,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import InteractiveConfirmation from './components/InteractiveConfirmation.vue';
@@ -124,40 +124,9 @@ const workflowKanban = computed<WorkflowRoleColumn[]>(() => {
     }
   });
 
-  // Create a map of action_order and role_order from workflowItems for sorting
-  const actionOrderMap = new Map<string, number>();
-  const roleOrderMap = new Map<string, number>();
-  workflowItems.value.forEach(item => {
-    if (item.role && item.action && item.action_order !== null && item.action_order !== undefined) {
-      const key = `${item.role}-${item.action}`;
-      actionOrderMap.set(key, item.action_order);
-    }
-    if (item.role && (item as any).role_order !== null && (item as any).role_order !== undefined) {
-      if (!roleOrderMap.has(item.role)) {
-        roleOrderMap.set(item.role, (item as any).role_order);
-      }
-    }
-  });
-
-  // Sort roles by role_order if available
-  const sortedRoles = Object.entries(workflowStructure.value).sort(([roleA], [roleB]) => {
-    const orderA = roleOrderMap.get(roleA) ?? 999;
-    const orderB = roleOrderMap.get(roleB) ?? 999;
-    return orderA - orderB;
-  });
-
   // Process each role
-  sortedRoles.forEach(([role, actions]) => {
-    // Sort actions by action_order if available, otherwise keep original order
-    const sortedActions = [...actions].sort((a, b) => {
-      const keyA = `${role}-${a}`;
-      const keyB = `${role}-${b}`;
-      const orderA = actionOrderMap.get(keyA) ?? 999;
-      const orderB = actionOrderMap.get(keyB) ?? 999;
-      return orderA - orderB;
-    });
-
-    const roleActions: WorkflowAction[] = sortedActions.map(actionName => {
+  Object.entries(workflowStructure.value).forEach(([role, actions]) => {
+    const roleActions: WorkflowAction[] = actions.map(actionName => {
       const key = `${role}-${actionName}`;
       const completedStep = completedMap.get(key);
       const workflowItem = workflowItemsMap.get(key);
@@ -190,14 +159,6 @@ const workflowKanban = computed<WorkflowRoleColumn[]>(() => {
           }
         } else if (itemStatus === 'running') {
           status = 'running';
-          // Clear any stale completed step data when action is running
-          userAction = undefined;
-          timestamp = undefined;
-          content = undefined;
-          outputFiles = undefined;
-          zipPath = undefined;
-          zipType = undefined;
-          stepData = undefined;
         } else if (itemStatus === 'pending') {
           status = 'pending';
         }
@@ -219,18 +180,7 @@ const workflowKanban = computed<WorkflowRoleColumn[]>(() => {
         stepData = completedStep;
       } else if (isRunning.value && runningRole.value === role && currentAction.value === actionName) {
         // Fallback: Check if this action is currently running (from local state)
-        // Only use this if workflowItem doesn't exist (shouldn't happen, but safety fallback)
         status = 'running';
-      }
-      
-      // Debug: Log status changes for QAEngineer actions (only in development)
-      if (import.meta.env.DEV && role === 'QAEngineer' && (status === 'running' || status === 'completed')) {
-        console.debug(`[QAEngineer Status] ${actionName}: ${status}`, {
-          workflowItem: workflowItem ? { status: workflowItem.status } : null,
-          isRunning: isRunning.value,
-          runningRole: runningRole.value,
-          currentAction: currentAction.value,
-        });
       }
 
       return {
@@ -294,8 +244,7 @@ async function loadWorkflowInfo() {
 
       // Update workflow items from API response
       if (response.items && Array.isArray(response.items)) {
-        // Force reactivity by creating a new array reference
-        workflowItems.value = [...response.items];
+        workflowItems.value = response.items;
 
         // Restore completed steps from workflow items
         const completedItems = response.items.filter((item: any) => item.status === 'completed');
@@ -363,23 +312,7 @@ async function loadRunningInfo() {
     // Update workflow items from API response (primary source for status rendering)
     // This array contains all workflow items with their current status (pending/running/completed)
     if (response.items && Array.isArray(response.items)) {
-      // Force reactivity by creating a new array reference
-      // This ensures Vue detects the change even if the array structure is similar
-      const newItems = [...response.items];
-      
-      // Debug: Log QAEngineer status changes
-      if (import.meta.env.DEV) {
-        const qaItems = newItems.filter((item: any) => item.role === 'QAEngineer');
-        const runningQa = qaItems.find((item: any) => item.status === 'running');
-        const oldRunningQa = workflowItems.value.find((item: any) => item.role === 'QAEngineer' && item.status === 'running');
-        if (runningQa && (!oldRunningQa || oldRunningQa.action !== runningQa.action)) {
-          console.log(`[loadRunningInfo] QAEngineer action changed: ${oldRunningQa?.action || 'none'} -> ${runningQa.action}`);
-        }
-      }
-      
-      // Force reactivity update by assigning new array reference
-      // Vue 3 reactivity should detect array reference changes automatically
-      workflowItems.value = newItems;
+      workflowItems.value = response.items;
 
       // Update completed steps from workflow items
       const completedItems = response.items.filter((item: any) => item.status === 'completed');
@@ -500,12 +433,6 @@ onMounted(async () => {
   // Load running info if projectId exists (for existing projects)
   if (projectId.value) {
     await loadRunningInfo();
-    await loadWorkflowInfo();
-    // Start polling for existing projects
-    startPolling(projectId.value);
-  } else {
-    // Only start new session if projectId doesn't exist
-    startInteractiveSession();
   }
 
   // Check for stale actions periodically (every 30 seconds)
@@ -513,6 +440,8 @@ onMounted(async () => {
   staleCheckInterval = setInterval(() => {
     checkForStaleActions();
   }, 30000);
+
+  startInteractiveSession();
 });
 
 onUnmounted(() => {
@@ -638,10 +567,9 @@ function startPolling(projectId: string) {
     pollingController = createPolling(
       async () => {
         try {
-          // Always load running info first to get latest workflow status
-          await loadRunningInfo();
-          // Then poll for new messages
           const response = await apiClient.pollInteractiveMessages(projectId, lastMessageId);
+          // Also load running info periodically
+          await loadRunningInfo();
           return response;
         } catch (error: any) {
           // 重新抛出错误以便轮询工具处理
@@ -669,19 +597,10 @@ function startPolling(projectId: string) {
         maxRetries: 3,
         retryDelay: 2000,
         immediate: true,
-        shouldContinue: () => {
-          // Continue polling if project is not completed
-          // Also continue if projectId exists (for existing projects)
-          return !isCompleted.value && !!projectId.value;
-        },
+        shouldContinue: () => !isCompleted.value,
         onError: (error: Error) => {
           const errorMessage = error?.message || '未知错误';
-          // Only show error for critical errors, not for network timeouts
-          if (!errorMessage.includes('timeout') && !errorMessage.includes('Network')) {
-            console.error('轮询错误:', errorMessage);
-            // Don't show error message to user for every polling error
-            // ElMessage.error('轮询错误: ' + errorMessage);
-          }
+          ElMessage.error('轮询错误: ' + errorMessage);
         },
       }
     );
