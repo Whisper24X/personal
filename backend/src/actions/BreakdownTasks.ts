@@ -54,6 +54,7 @@ export class BreakdownTasks extends BaseAction {
       
       // 循环执行，直到任务完成
       const maxRetries = 10; // 最大重试次数
+      let retryCount = 0; // 初始化重试计数器
       let isCompleted = false;
       let allOutputs: string[] = [];
       
