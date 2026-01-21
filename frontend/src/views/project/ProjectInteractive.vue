@@ -2,14 +2,14 @@
   <div class="project-interactive">
     <ProjectInteractiveHeader @back="handleBack" />
 
-    <ProjectInfoCard :project-name="projectName" :current-round="currentRound" :max-rounds="maxRounds"
-      :user-idea="userIdea" />
+    <ProjectInfoCard :project-name="projectName" :user-idea="userIdea" />
 
     <WorkflowKanban :workflow-kanban="workflowKanban" :is-running="isRunning" :running-role="runningRole"
       :current-action="currentAction" :current-stage-name="currentStageName" :resetting-roles="resettingRoles"
       :get-role-display-name="getRoleDisplayName" :get-role-description="getRoleDescription"
       :get-action-display-name="getActionDisplayName" :get-action-description="getActionDescription"
-      :get-stage-tag-type="getStageTagType" @reset-role="handleResetRole"
+      :get-stage-tag-type="getStageTagType" :show-recover-button="showRecoverButton" :recovering="recovering"
+      @reset-role="handleResetRole" @recover="handleRecover"
       @show-confirmation="showConfirmationDialog = true" @view-content="openContentDialog"
       @download-zip="downloadZip" />
 
@@ -57,13 +57,11 @@ const roleActionStore = useRoleActionStore();
 // Project Info
 const projectId = ref((route.params.id as string) || (route.query.id as string) || '');
 const projectName = ref(route.query.name as string || 'Untitled Project');
-const maxRounds = ref(parseInt(route.query.rounds as string) || 5);
 const userIdea = ref(route.query.idea as string || '');
 
 // State
 const isRunning = ref(false);
 const isCompleted = ref(false);
-const currentRound = ref(0);
 const actionLoading = ref(false);
 const runningRole = ref('');
 const currentAction = ref('');
@@ -77,6 +75,11 @@ const showConfirmationDialog = ref(false);
 
 // Reset state
 const resettingRoles = ref<Set<string>>(new Set());
+
+// Recovery state
+const showRecoverButton = ref(false);
+const recovering = ref(false);
+let staleCheckInterval: NodeJS.Timeout | null = null;
 
 // Content Dialog
 const showContentDialog = ref(false);
@@ -343,6 +346,9 @@ async function loadRunningInfo() {
       currentStageName.value = getStageName(runningState.role, runningState.action);
     }
 
+    // Check for stale/failed actions to show recover button
+    await checkForStaleActions(response);
+
     // Handle confirmation state (waiting for manual confirmation)
     const requiresConfirmation = response.requiresConfirmation || false;
     const confirmationRequired = response.confirmationRequired;
@@ -359,6 +365,7 @@ async function loadRunningInfo() {
         content: confirmationRequired.content,
         outputFiles: confirmationRequired.outputFiles || [],
         instructContent: confirmationRequired.instructContent || {},
+        retryCount: confirmationRequired.retryCount || 0,
       };
 
       // Update running role and action for display
@@ -416,22 +423,6 @@ onMounted(async () => {
         const projectIdea = project.idea;
         const queryIdea = route.query.idea as string;
         userIdea.value = projectIdea || queryIdea || userIdea.value;
-
-        // For rounds, use project data or query param
-        if (project.nRound !== undefined && project.nRound !== null) {
-          maxRounds.value = project.nRound;
-        } else if (project.n_round !== undefined && project.n_round !== null) {
-          maxRounds.value = project.n_round;
-        } else if (route.query.rounds) {
-          maxRounds.value = parseInt(route.query.rounds as string) || maxRounds.value;
-        }
-
-        // Load current round from project data
-        if (project.currentRound !== undefined && project.currentRound !== null) {
-          currentRound.value = project.currentRound;
-        } else if (project.current_round !== undefined && project.current_round !== null) {
-          currentRound.value = project.current_round;
-        }
       }
     } catch (err: any) {
       console.warn('Failed to load project info:', err);
@@ -443,6 +434,12 @@ onMounted(async () => {
   if (projectId.value) {
     await loadRunningInfo();
   }
+
+  // Check for stale actions periodically (every 30 seconds)
+  checkForStaleActions();
+  staleCheckInterval = setInterval(() => {
+    checkForStaleActions();
+  }, 30000);
 
   startInteractiveSession();
 });
@@ -504,7 +501,6 @@ async function startInteractiveSession() {
       idea: finalIdea,
       description: route.query.description as string,
       investment: parseFloat(route.query.investment as string) || 10.0,
-      nRound: maxRounds.value,
     };
 
     // If projectId is provided, pass it to the API
@@ -544,10 +540,6 @@ async function startInteractiveSession() {
       throw new Error('Project ID not found in response');
     }
 
-    // Update maxRounds from backend response config (source of truth)
-    if (data.config?.nRound !== undefined && data.config.nRound !== null) {
-      maxRounds.value = data.config.nRound;
-    }
 
     // Load workflow information
     await loadWorkflowInfo();
@@ -686,7 +678,7 @@ function handlePollingMessage(message: { type: string; data: any }) {
       break;
 
     case 'progress':
-      currentRound.value = message.data.currentRound || 0;
+      // Progress is now calculated based on completed actions
       break;
 
     case 'completed':
@@ -1000,6 +992,70 @@ function cleanup() {
     pollingController = null;
   }
   lastMessageId = null;
+  if (staleCheckInterval) {
+    clearInterval(staleCheckInterval);
+    staleCheckInterval = null;
+  }
+}
+
+/**
+ * Check for stale/failed actions to show recover button
+ */
+async function checkForStaleActions(response?: any) {
+  if (!projectId.value) return;
+
+  try {
+    const data = response || await apiClient.getInteractiveRunning(projectId.value) as any;
+    if (!data || !data.success) return;
+
+    const items = data.items || [];
+    const runningState = data.running || {};
+
+    // Check for stale running action (running for more than 5 minutes)
+    const hasStaleRunning = runningState.role && runningState.action &&
+      runningState.updatedAt &&
+      (Date.now() - new Date(runningState.updatedAt).getTime() > 5 * 60 * 1000);
+
+    // Check for failed actions that can be retried
+    const hasFailedActions = items.some((item: any) =>
+      item.status === 'failed' && (item.retry_count || 0) < 3
+    );
+
+    showRecoverButton.value = hasStaleRunning || hasFailedActions;
+  } catch (error) {
+    console.error('Failed to check for stale actions:', error);
+  }
+}
+
+/**
+ * Handle recovery from stale/failed actions
+ */
+async function handleRecover() {
+  if (!projectId.value || recovering.value) return;
+
+  try {
+    recovering.value = true;
+    ElMessage.info('正在恢复工作流...');
+
+    const response = await apiClient.recoverFromStaleActions(projectId.value) as any;
+
+    if (response && response.success) {
+      ElMessage.success(response.message || '工作流已恢复');
+      showRecoverButton.value = false;
+
+      // Reload workflow state
+      await loadRunningInfo();
+      await loadWorkflowInfo();
+    } else {
+      ElMessage.warning(response?.message || '未发现需要恢复的操作');
+      showRecoverButton.value = false;
+    }
+  } catch (error: any) {
+    console.error('Failed to recover:', error);
+    ElMessage.error(error?.message || '恢复失败，请稍后重试');
+  } finally {
+    recovering.value = false;
+  }
 }
 
 /**

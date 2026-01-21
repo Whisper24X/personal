@@ -125,6 +125,8 @@ export class Role extends BaseRole {
       action.setLLM(llmToUse);
       // Set context for each action
       (action as any).context = this.context;
+      // Set role for each action (for StateManager integration)
+      (action as any).role = this;
       // Initialize action status as pending
       action.status = ActionStatus.PENDING;
     });

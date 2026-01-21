@@ -14,8 +14,13 @@ import { InteractiveSession } from '../../orchestration/InteractiveSession';
 export async function getOrRestoreSession(projectId: string): Promise<InteractiveSession | null> {
     let session = sessionManager.getSession(projectId);
 
-    // If session exists, return it
+    // If session exists, check executor status before returning
     if (session) {
+        // Check if executor is running (prevent duplicate executor on page refresh)
+        const executorPromise = (session as any).executorPromise;
+        if (executorPromise) {
+            // Use debug level to reduce log noise during frequent polling
+        }
         return session;
     }
 
@@ -30,6 +35,33 @@ export async function getOrRestoreSession(projectId: string): Promise<Interactiv
         if (!project) {
             logger.warn(`API: Project ${projectId} not found in database`);
             return null;
+        }
+
+        // Check if there's an action running in database before restoring
+        // This prevents creating a new executor when one might already be running
+        try {
+            const { StateManager } = await import('../../orchestration/StateManager');
+            const { Team } = await import('../../orchestration/Team');
+            const { Context } = await import('../../core/context/Context');
+            
+            // Create temporary state manager to check running state
+            const tempCtx = new Context(undefined, parseFloat(project.investment?.toString() || '10.0'));
+            const tempTeam = new Team(tempCtx, false);
+            const tempStateManager = new StateManager(projectId, tempTeam);
+            
+            const runningState = await tempStateManager.getRunningState();
+            if (runningState.role && runningState.action) {
+                const { ActionStatus } = await import('@mind2build/shared');
+                const actionStatus = await tempStateManager.getActionStatus(runningState.role, runningState.action);
+                if (actionStatus === ActionStatus.RUNNING) {
+                    logger.warn(`API: Action ${runningState.action} for role ${runningState.role} is RUNNING for project ${projectId}, but session not in memory. This may indicate an orphaned executor.`);
+                }
+            }
+        } catch (checkError: any) {
+            logger.warn(`API: Failed to check running state before restoring session for project ${projectId}`, {
+                error: checkError.message,
+            });
+            // Continue with restoration even if check fails
         }
 
         // Restore session from project data

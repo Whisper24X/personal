@@ -10,6 +10,7 @@ export { WriteDesign } from './WriteDesign';
 export { WriteSubProjectDesign } from './WriteSubProjectDesign';
 export { WriteCode } from './WriteCode';
 export { WriteTest } from './WriteTest';
+export { WriteTestPlan } from './WriteTestPlan';
 
 // Document Review Actions
 export { MRDReview } from './MRDReview';
@@ -24,12 +25,21 @@ export { ImproveMRD } from './ImproveMRD';
 
 // Task Management Actions
 export { BreakdownTasks } from './BreakdownTasks';
-export { GenerateTask } from './GenerateTask';
 export { ExecuteSubtask } from './ExecuteSubtask';
 
 // Code Execution and Bug Fix Actions
 export { RunCode } from './RunCode';
 export { FixBug } from './FixBug';
+
+// QA Actions
+export { TestabilityReview } from './TestabilityReview';
+export { TestCaseReview } from './TestCaseReview';
+export { TestReview } from './TestReview';
+export { ImproveTest } from './ImproveTest';
+export { AutomationPlanning } from './AutomationPlanning';
+export { AutomationExecution } from './AutomationExecution';
+export { CoverageQualityCheck } from './CoverageQualityCheck';
+export { QAConclusion } from './QAConclusion';
 
 // Other Actions
 export { SearchEnhancedQA } from './SearchEnhancedQA';

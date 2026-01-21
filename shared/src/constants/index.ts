@@ -24,6 +24,15 @@ export const ACTION_BREAKDOWN_TASKS = 'BreakdownTasks';
 export const ACTION_WRITE_SUB_PROJECT_DESIGN = 'WriteSubProjectDesign';
 export const ACTION_GENERATE_TASK = 'GenerateTask';
 export const ACTION_CODE_REVIEW = 'CodeReview';
+export const ACTION_TESTABILITY_REVIEW = 'TestabilityReview';
+export const ACTION_WRITE_TEST_PLAN = 'WriteTestPlan';
+export const ACTION_TEST_CASE_REVIEW = 'TestCaseReview';
+export const ACTION_TEST_REVIEW = 'TestReview';
+export const ACTION_IMPROVE_TEST = 'ImproveTest';
+export const ACTION_AUTOMATION_PLANNING = 'AutomationPlanning';
+export const ACTION_AUTOMATION_EXECUTION = 'AutomationExecution';
+export const ACTION_COVERAGE_QUALITY_CHECK = 'CoverageQualityCheck';
+export const ACTION_QA_CONCLUSION = 'QAConclusion';
 
 // ==================== Role Profiles ====================
 

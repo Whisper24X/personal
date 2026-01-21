@@ -1,6 +1,17 @@
 /**
  * WritePRD Action
  * Generates Product Requirements Document from user idea
+ *
+ * 工作流程：
+ * 1) 从 workspace 读取 MRD.md（需要 applicationId；失败或不存在则回退到 input）。
+ * 2) 构造生成输入：RAG 模式下合并 MRD + 检索片段，否则仅使用 MRD。
+ * 3) 选择生成路径：
+ *    - 新建且启用分步：走 StepwiseDocumentGenerator（目录 -> 章节生成）。
+ *    - 其他情况：走一次性生成（new/update、RAG/标准 prompt）。
+ * 4) 加载系统提示词：生成用 system_prompt。
+ * 5) 调用模型生成 PRD 各章节内容，保存到 workspace/PRD/ 目录。
+ * 6) 返回章节文件列表信息，由 PRDReview 负责后续的审核和合并。
+ * 7) 处理超时与错误：超时抛出更友好的提示，其余错误直接上抛。
  */
 
 import { BaseAction } from '../core/base/BaseAction';
@@ -9,10 +20,10 @@ import {
   PRD_SYSTEM_PROMPT,
   buildPRDPrompt,
   buildPRDUpdatePrompt,
+  buildPRDUpdateWithRAGPrompt,
   buildPRDWithRAGPrompt,
   buildPRDOutlinePrompt,
   buildPRDSectionPrompt,
-  buildPRDSectionReviewPrompt,
 } from '../prompts/prd';
 import { logger, loadPrompt } from '../utils';
 // Review和ImproveDocument已移除，由角色通过消息机制管理
@@ -29,8 +40,9 @@ export interface WritePRDOptions {
   useStepwiseGeneration?: boolean; // 是否使用分步骤生成
   applicationId?: string; // 应用ID，用于文件夹命名
   projectId?: string; // 项目ID，用于文件夹命名
-  version?: number; // 版本号，用于文件夹命名
-  workspacePath?: string; // workspace 路径，默认 ./workspace
+  includeOptionalSections?: boolean; // 是否包含可选章节（如第 11 章角色关注块）
+  /** @deprecated 版本控制已改用 git，此参数被忽略 */
+  version?: number;
 }
 
 export class WritePRD extends BaseAction {
@@ -46,25 +58,27 @@ export class WritePRD extends BaseAction {
     // 优先从 workspace 读取 MRD.md 文件作为输入
     let mrdContent = input;
     try {
-      // applicationId 必须提供，不能使用 'default'
-      if (!options?.applicationId) {
+      // applicationId 和 projectId 必须提供，不能使用 'default'
+      const applicationId = options?.applicationId || (this.context?.get('applicationId') as string | undefined);
+      const projectId = options?.projectId || (this.context?.get('projectId') as string | undefined);
+      if (!applicationId) {
         throw new Error('applicationId is required for WritePRD action. Cannot use "default" to prevent file conflicts between different applications.');
       }
-      const applicationId = options.applicationId;
-      const version = options?.version || 1;
+      if (!projectId) {
+        throw new Error('projectId is required for WritePRD action. Cannot use "default" to prevent file conflicts between different projects.');
+      }
 
       const mrdFromWorkspace = await WorkspaceManager.readFile('MRD.md', {
         applicationId,
-        version,
+        projectId,
         documentType: 'MRD',
-        workspacePath: options?.workspacePath,
       });
 
       if (mrdFromWorkspace) {
         mrdContent = mrdFromWorkspace;
         logger.info('WritePRD: Loaded MRD content from workspace', {
           applicationId,
-          version,
+          projectId,
           contentLength: mrdContent.length,
         });
       } else {
@@ -81,6 +95,8 @@ export class WritePRD extends BaseAction {
     }
 
     logger.info('WritePRD: Starting PRD generation', {
+      applicationId: options?.applicationId || (this.context?.get('applicationId') as string | undefined),
+      projectId: options?.projectId || (this.context?.get('projectId') as string | undefined),
       mode,
       useRAG,
       useStepwise,
@@ -93,22 +109,42 @@ export class WritePRD extends BaseAction {
     });
 
     try {
+      const ragQuery = input && input.trim().length > 0 ? input : mrdContent;
+      const stepwiseInput = useRAG && options?.relevantChunks
+        ? `${mrdContent}\n\n【相关历史PRD参考信息】\n${options.relevantChunks}`
+        : mrdContent;
+
       // 如果启用分步骤生成且是新模式，使用分步骤生成
       if (useStepwise && mode === 'new' && !options?.historyPRD) {
-        return await this.generateStepwise(mrdContent, options);
+        return await this.generateStepwise(stepwiseInput, options);
       }
 
       // 否则使用传统的一次性生成
       let prompt: string;
 
       if (mode === 'update' && options?.historyPRD) {
-        // Update mode: use history PRD + new requirements
-        prompt = buildPRDUpdatePrompt(options.historyPRD, mrdContent);
-        logger.info('WritePRD: Using update mode with history PRD');
-      } else if (useRAG && options?.relevantChunks) {
-        // RAG mode: use retrieved chunks + new requirements
-        prompt = buildPRDWithRAGPrompt(mrdContent, options.relevantChunks, mrdContent);
-        logger.info('WritePRD: Using RAG mode with relevant chunks');
+        if (useRAG && options?.relevantChunks) {
+          prompt = buildPRDUpdateWithRAGPrompt(
+            options.historyPRD,
+            options.relevantChunks,
+            mrdContent,
+            ragQuery
+          );
+          logger.info('WritePRD: Using update mode with RAG context');
+        } else {
+          // Update mode: use history PRD + new requirements
+          prompt = buildPRDUpdatePrompt(options.historyPRD, mrdContent);
+          logger.info('WritePRD: Using update mode with history PRD');
+        }
+      } else if (useRAG) {
+        if (options?.relevantChunks) {
+          // RAG mode: use retrieved chunks + new requirements
+          prompt = buildPRDWithRAGPrompt(ragQuery, options.relevantChunks, mrdContent);
+          logger.info('WritePRD: Using RAG mode with relevant chunks');
+        } else {
+          logger.warn('WritePRD: RAG enabled but no relevant chunks provided, falling back to standard generation');
+          prompt = buildPRDPrompt(mrdContent);
+        }
       } else {
         // New mode: standard PRD generation (使用从 workspace 读取的 MRD 内容)
         prompt = buildPRDPrompt(mrdContent);
@@ -132,15 +168,18 @@ export class WritePRD extends BaseAction {
       });
 
       // 尝试从 workspace 读取 PRD.md 主文件内容，如果失败则返回当前内容
+      // 确保返回的是完整的PRD内容，而不是监控检测信息
       let finalContent = prdContent;
       try {
         const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'PRD' });
         const mainFilePath = path.join(workspaceDir, 'PRD.md');
         const mainFileContent = await fs.readFile(mainFilePath, 'utf-8');
         if (mainFileContent && mainFileContent.length > 0) {
+          // 确保读取的是完整的PRD内容，而不是其他文件（如review文件）
           finalContent = mainFileContent;
           logger.info('WritePRD: Loaded PRD.md from workspace', {
             contentLength: finalContent.length,
+            isCompletePRD: true,
           });
         }
       } catch (error: any) {
@@ -150,6 +189,7 @@ export class WritePRD extends BaseAction {
         // 如果主文件不存在，使用当前生成的内容
       }
 
+      // 确保返回的是完整的PRD内容，而不是监控检测信息
       return {
         content: finalContent,
         data: {
@@ -213,13 +253,25 @@ export class WritePRD extends BaseAction {
       // 读取目录中的所有文件
       const entries = await fs.readdir(workspaceDir, { withFileTypes: true });
 
-      // 按文件名排序（确保顺序：outline -> sections -> PRD -> review，排除 final 文件）
+      // 按文件名排序（确保顺序：outline -> sections -> PRD）
+      // 排除review文件和其他非PRD文件，确保只返回完整的PRD内容，而不是监控检测信息
       const sortedEntries = entries
-        .filter(entry => entry.isFile() && entry.name.endsWith('.md') && !entry.name.endsWith('-final.md'))
+        .filter(entry => {
+          // 只包含PRD相关文件，排除review文件和其他非PRD文件
+          if (!entry.isFile() || !entry.name.endsWith('.md')) return false;
+          // 排除review文件
+          if (entry.name.includes('review') || entry.name.includes('Review')) return false;
+          // 排除final文件
+          if (entry.name.endsWith('-final.md')) return false;
+          return true;
+        })
         .sort((a, b) => {
           // 特殊排序：00-outline.md 在最前
           if (a.name === '00-outline.md') return -1;
           if (b.name === '00-outline.md') return 1;
+          // 主文件（PRD.md）优先
+          if (a.name === 'PRD.md') return -1;
+          if (b.name === 'PRD.md') return 1;
           return a.name.localeCompare(b.name);
         });
 
@@ -256,41 +308,55 @@ export class WritePRD extends BaseAction {
   /**
    * 分步骤生成 PRD
    * 使用通用的 StepwiseDocumentGenerator
+   * 只负责分章节生成，不做审核和合并（由 PRDReview 负责）
    */
   private async generateStepwise(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
     // 确保使用PRD目录
     const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'PRD' });
-    // 移除对Review和ImproveDocument的直接调用，改为通过角色管理
 
     // Load system prompt from database or use default
     const userId = this.context?.get('userId');
     const systemPrompt = await loadPrompt(userId, 'prd', 'system_prompt', PRD_SYSTEM_PROMPT);
 
+    // Get StateManager and role from context (if available)
+    const stateManager = this.context?.get('stateManager') as any;
+    const role = (this as any).role?.profile || undefined;
+
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
       buildOutlinePrompt: buildPRDOutlinePrompt,
       buildSectionPrompt: buildPRDSectionPrompt,
+      // 不需要 buildSectionReviewPrompt 和 reviewSystemPrompt，因为跳过审核步骤
       systemPrompt: systemPrompt,
-      // Review 由角色通过 PRDReview action 统一处理
       documentTitle: '产品需求文档（PRD）',
       documentType: 'PRD',
       mainFileName: 'PRD.md',
       defaultSections: [
-        { number: 0, title: '版本说明' },
-        { number: 1, title: '产品概述' },
-        { number: 2, title: '目标与成功指标' },
-        { number: 3, title: '用户故事' },
-        { number: 4, title: '功能需求' },
-        { number: 5, title: '页面与交互设计说明' },
-        { number: 6, title: '非功能需求' },
-        { number: 7, title: '技术实现建议' },
-        { number: 8, title: '验收与交付标准' },
-        { number: 9, title: '风险与应对' },
-        { number: 10, title: '附录' },
+        { number: 0, title: '基本信息' },
+        { number: 1, title: '背景与目标' },
+        { number: 2, title: '范围' },
+        { number: 3, title: '用户与场景' },
+        { number: 4, title: '核心流程' },
+        { number: 5, title: '功能与交互' },
+        { number: 6, title: '业务规则与数据口径' },
+        { number: 7, title: '权限与安全' },
+        { number: 8, title: '异常与边界' },
+        { number: 9, title: '埋点与观测' },
+        { number: 10, title: '验收标准' },
       ],
+      sectionFilter: (sections) => {
+        if (options?.includeOptionalSections) {
+          return sections;
+        }
+        return sections.filter((section) => section.number !== 11);
+      },
       workspaceDir,
       applicationId: options?.applicationId,
-      projectId: options?.projectId,
-      version: options?.version,
+      projectId: options?.projectId || (this.context?.get('projectId') as string | undefined),
+      stateManager,
+      role,
+      // 跳过审核和合并步骤，由 PRDReview 负责后续处理
+      skipReview: true,
+      skipMerge: true,
     });
 
     return await generator.generate(input);
@@ -313,4 +379,3 @@ export class WritePRD extends BaseAction {
 }
 
 export default WritePRD;
-

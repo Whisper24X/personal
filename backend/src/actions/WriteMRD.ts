@@ -212,6 +212,10 @@ export class WriteMRD extends BaseAction {
     const userId = this.context?.get('userId');
     const systemPrompt = await loadPrompt(userId, 'mrd', 'system_prompt', MRD_SYSTEM_PROMPT);
 
+    // Get StateManager and role from context (if available)
+    const stateManager = this.context?.get('stateManager') as any;
+    const role = (this as any).role?.profile || undefined;
+
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
       buildOutlinePrompt: buildMRDOutlinePrompt,
       buildSectionPrompt: buildMRDSectionPrompt,
@@ -231,8 +235,10 @@ export class WriteMRD extends BaseAction {
       ],
       workspaceDir,
       applicationId: options?.applicationId,
-      projectId: options?.projectId,
+      projectId: options?.projectId || (this.context?.get('projectId') as string | undefined),
       version: options?.version,
+      stateManager,
+      role,
     });
 
     return await generator.generate(input);

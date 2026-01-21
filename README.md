@@ -291,6 +291,49 @@ See [Frontend Interactive Guide](./doc/23_前端交互模式实现指南_FRONTEN
 
 ### API
 
+#### Role Action Execution API ✨ (New!)
+
+Independently execute specific role actions without running the full workflow:
+
+```bash
+# Execute a specific action for a role
+curl -X POST http://localhost:3000/api/projects/PROJECT_ID/roles/ProductManager/actions/WritePRD/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": "Create a task management app with team collaboration features"
+  }'
+
+# Auto-load context from project history
+curl -X POST http://localhost:3000/api/projects/PROJECT_ID/roles/Engineer/actions/WriteCode/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "workspaceOptions": {
+      "applicationId": "my-app",
+      "version": 1
+    }
+  }'
+```
+
+**Supported Roles & Actions:**
+- **Salesperson**: WriteMRD, MRDReview, ImproveMRD
+- **ProductManager**: WritePRD, PRDReview, ImprovePRD, SearchEnhancedQA
+- **Architect**: WriteDesign, DesignReview, ImproveDesign
+- **ProjectManager**: BreakdownTasks, WriteSubProjectDesign, SubProjectDesignReview
+- **Engineer**: WriteCode, ExecuteSubtask, RunCode, FixBug
+- **QAEngineer**: WriteTest, WriteTestPlan, TestabilityReview, TestCaseReview, TestReview, ImproveTest, AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion
+- **TeamLeader**: Coordinate
+- **DataAnalyst**: DataAnalysis
+
+**Features:**
+- ✅ Execute any role action independently
+- ✅ Flexible input methods (custom input, context messages, auto-load from history)
+- ✅ Automatic context loading based on action requirements
+- ✅ Workspace options for document organization
+- ✅ Complete error handling and timeout control
+- ✅ Results automatically saved to project history
+
+#### Standard API
+
 ```javascript
 // Create a project
 const response = await fetch('http://localhost:3000/api/projects', {

@@ -1,6 +1,8 @@
 /**
  * Section Adjust Service
  * 用于调整 PRD 章节内容的服务
+ * 
+ * 新目录结构: workspace/{applicationId}/{projectId}/ainative-workspace/docs/{documentType}
  */
 
 // import { BaseAction } from '../core/base/BaseAction'; // Unused
@@ -26,9 +28,9 @@ export interface SectionAdjustOptions {
   userRequest: string;
   applicationId?: string;
   projectIdForWorkspace?: string; // 用于 workspace 目录的项目ID
-  version?: number;
-  workspacePath?: string;
   documentType?: 'PRD' | 'MRD' | 'DESIGN';
+  /** @deprecated 版本控制已改用 git，此参数被忽略 */
+  version?: number;
 }
 
 export class SectionAdjustService {
@@ -41,7 +43,7 @@ export class SectionAdjustService {
     sectionContent: string;
     conversationHistory?: SectionConversationHistory;
   }> {
-    const { projectId, prdId, sectionNumber, userRequest, applicationId, projectIdForWorkspace, version, workspacePath, documentType = 'PRD' } = options;
+    const { projectId, prdId, sectionNumber, userRequest, applicationId, projectIdForWorkspace, documentType = 'PRD' } = options;
     // 使用传入的 projectIdForWorkspace，如果没有则使用 projectId
     const workspaceProjectId = projectIdForWorkspace || projectId;
 
@@ -70,15 +72,12 @@ export class SectionAdjustService {
       const workspaceDir = getWorkspaceDir(workspaceDocType, {
         applicationId: finalApplicationId,
         projectId: workspaceProjectId,
-        version,
-        workspacePath,
       });
 
       logger.info('SectionAdjustService: Workspace directory resolved', {
         workspaceDir,
         applicationId: finalApplicationId,
         projectId: workspaceProjectId,
-        version,
         documentType: workspaceDocType,
       });
 
@@ -288,8 +287,7 @@ export class SectionAdjustService {
       const conversationHistory = await loadSectionConversationHistory(
         projectId,
         sectionNumber,
-        documentType,
-        version || 1
+        documentType
       );
       const historyText = formatConversationHistoryForPrompt(conversationHistory);
 
@@ -313,8 +311,7 @@ export class SectionAdjustService {
         sectionNumber,
         documentType,
         'user',
-        userRequest,
-        version || 1
+        userRequest
       );
 
       const adjustedContent = await (writePRDAction as any).aask(adjustPrompt, [PRD_SYSTEM_PROMPT]);
@@ -325,8 +322,7 @@ export class SectionAdjustService {
         sectionNumber,
         documentType,
         'assistant',
-        adjustedContent,
-        version || 1
+        adjustedContent
       );
 
       logger.info('SectionAdjustService: Section adjusted successfully', {
@@ -373,8 +369,7 @@ export class SectionAdjustService {
       const updatedHistory = await loadSectionConversationHistory(
         projectId,
         sectionNumber,
-        documentType,
-        version || 1
+        documentType
       );
 
       return {
@@ -454,4 +449,3 @@ export class SectionAdjustService {
     }
   }
 }
-

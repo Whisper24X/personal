@@ -206,9 +206,10 @@ export class ImproveMRD extends BaseAction {
 
   /**
    * Remove review report section from document
+   * Note: Only remove review report title and content after it, preserve other --- separators in document
    */
   private removeReviewReport(document: string): string {
-    // Define review report title pattern
+    // Define review report title pattern (match # 市场研究文档 审查报告 or # 市场研究文档审查报告)
     const reviewTitlePattern = /#\s*市场研究文档\s*审查报告/;
 
     // Find the position of review report title
@@ -220,30 +221,40 @@ export class ImproveMRD extends BaseAction {
     }
 
     // Get content before review report title
-    const beforeTitle = document.substring(0, titleMatchIndex);
+    let beforeTitle = document.substring(0, titleMatchIndex);
 
-    // Find the last "---" separator (review reports are usually separated by "---")
-    // Search from back to front, find the last independent "---" line
+    // Only remove the "---" separator that is immediately before the review report title (if exists)
+    // Do not remove other --- separators in the document, as they may be separators between sections
+    // Only check if the last few lines are --- separator
     const lines = beforeTitle.split('\n');
-    let lastSeparatorIndex = -1;
 
-    // Search from back to front for the last "---" separator
-    for (let i = lines.length - 1; i >= 0; i--) {
+    // Check from back to front, only remove empty lines and --- separator that are immediately before the title
+    let trimEnd = lines.length;
+    for (let i = lines.length - 1; i >= 0 && i >= lines.length - 5; i--) {
       const line = lines[i].trim();
-      if (line === '---') {
-        lastSeparatorIndex = i;
+      if (line === '') {
+        // Empty line, continue checking
+        trimEnd = i;
+      } else if (line === '---') {
+        // Found adjacent separator, remove it and subsequent empty lines
+        trimEnd = i;
+        break;
+      } else {
+        // Encountered non-empty, non-separator line, stop checking
         break;
       }
     }
 
-    if (lastSeparatorIndex >= 0) {
-      // If separator is found, return content before separator (remove separator itself)
-      const result = lines.slice(0, lastSeparatorIndex).join('\n').trim();
-      return result;
-    } else {
-      // If separator is not found, return content before review report title
-      return beforeTitle.trim();
-    }
+    // Return processed content
+    const result = lines.slice(0, trimEnd).join('\n').trim();
+
+    logger.info('ImproveMRD: Removed review report from document', {
+      originalLength: document.length,
+      resultLength: result.length,
+      removedFromIndex: titleMatchIndex,
+    });
+
+    return result;
   }
 }
 

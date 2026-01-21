@@ -16,6 +16,8 @@ import { QAEngineer } from '../../roles/QAEngineer';
 // import { ProjectManager } from '../../orchestration/ProjectManager'; // Unused
 import { logger } from '../../utils';
 import { ProjectStatus } from '@mind2build/shared';
+import { WorkflowService } from '../../services/WorkflowService';
+import { RoleActionFactory } from '../../services/RoleActionFactory';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -135,23 +137,46 @@ export class ProjectController {
     userId?: string
   ) {
     try {
-      // Create context and team
+      // Get project to find application ID
+      const project = await projectRepo.findById(projectId);
+      if (!project) {
+        throw new Error(`Project ${projectId} not found`);
+      }
+
+      // Create context
       const ctx = new Context();
       // Set userId in context so roles can load their specific LLM configs
       if (userId) {
         ctx.set('userId', userId);
       }
-      const team = new Team(ctx);
 
-      // Hire roles - 按照 PRD 文档定义的完整流程
-      team.hire([
-        new Salesperson(ctx),
-        new ProductManager(ctx),
-        new Architect(ctx),
-        new ProjectManagerRole(ctx),
-        new Engineer(ctx),
-        new QAEngineer(ctx),
-      ]);
+      let team: Team;
+
+      // Try to get or create workflow from application if applicationId exists
+      if (project.application_id) {
+        const workflowService = new WorkflowService();
+        const workflow = await workflowService.getOrCreateDefaultWorkflow(project.application_id);
+        
+        // Create team from workflow configuration
+        team = RoleActionFactory.createTeamFromWorkflow(workflow.workflow_config, ctx);
+        
+        logger.info(`Project ${projectId} using workflow from application ${project.application_id}`, {
+          workflowId: workflow.id,
+          workflowName: workflow.name,
+        });
+      } else {
+        // No application ID, use default hardcoded workflow
+        logger.info(`Project ${projectId} has no application_id, using default hardcoded workflow`);
+        team = new Team(ctx);
+        team.hire([
+          new Salesperson(ctx),
+          new ProductManager(ctx),
+          new Architect(ctx),
+          new ProjectManagerRole(ctx),
+          new Engineer(ctx),
+          new QAEngineer(ctx),
+        ]);
+      }
 
       // Set investment
       team.invest(investment);
@@ -183,7 +208,7 @@ export class ProjectController {
       }
 
       // Extract and save documents
-      const docActions = ['WriteMRD', 'WritePRD', 'WriteDesign', 'BreakdownTasks', 'WriteSubProjectDesign', 'GenerateTask', 'WriteCode', 'WriteTest'];
+      const docActions = ['WriteMRD', 'WritePRD', 'WriteDesign', 'BreakdownTasks', 'WriteSubProjectDesign', 'WriteCode', 'WriteTest'];
       const documents = result.messages.filter((msg) => docActions.includes(msg.causeBy));
 
       logger.info(`Project ${projectId} found ${documents.length} documents to save`);
@@ -195,7 +220,6 @@ export class ProjectController {
           'WriteDesign': 'design',
           'BreakdownTasks': 'task_breakdown',
           'WriteSubProjectDesign': 'sub_project_design',
-          'GenerateTask': 'task',
           'WriteCode': 'code',
           'WriteTest': 'test',
         };
@@ -253,8 +277,6 @@ export class ProjectController {
               status: 'pending',
               idea: workspaceProject.idea || '',
               progress: 0,
-              currentRound: 0,
-              nRound: 5,
               totalCost: 0,
               investment: 10,
               messageCount: 0,
@@ -277,8 +299,6 @@ export class ProjectController {
           status: project.status,
           idea: project.idea,
           progress: project.progress || 0,
-          currentRound: project.current_round || 0,
-          nRound: project.n_round || 5,
           totalCost: parseFloat(project.total_cost?.toString() || '0'),
           investment: parseFloat(project.investment?.toString() || '10'),
           messageCount,
@@ -490,6 +510,37 @@ export class ProjectController {
       logger.error('Failed to get documents:', error);
       return res.status(500).json({
         error: 'Failed to get documents',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Delete a project
+   * DELETE /api/projects/:id
+   */
+  static async delete(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+
+      const project = await projectRepo.findById(id);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      // Soft delete the project
+      await projectRepo.softDelete(id);
+
+      logger.info(`Project deleted: ${id}`);
+
+      return res.json({
+        success: true,
+        message: 'Project deleted successfully',
+      });
+    } catch (error: any) {
+      logger.error('Failed to delete project:', error);
+      return res.status(500).json({
+        error: 'Failed to delete project',
         message: error.message,
       });
     }

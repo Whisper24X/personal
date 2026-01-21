@@ -37,13 +37,12 @@ function getValidUserId(userId: string | undefined): string | null {
 
 /**
  * Load documents from workspace filesystem
- * Reads from workspace/{applicationId}/{projectId}/v{version}/{documentType}/ directories
+ * Reads from workspace/{applicationId}/{projectId}/ainative-workspace/docs/{documentType}/ directories
  * applicationId 和 projectId 必须提供，不能使用 'default'，以防止不同应用/项目互相覆盖文件
  */
 async function loadDocumentsFromWorkspace(
     applicationId: string,
-    projectId: string,
-    version: number = 1
+    projectId: string
 ): Promise<{ prd: string; design: string; taskBreakdown: string }> {
     if (!applicationId) {
         throw new Error('applicationId is required for loadDocumentsFromWorkspace. Cannot use "default" to prevent file conflicts between different applications.');
@@ -58,18 +57,11 @@ async function loadDocumentsFromWorkspace(
     };
 
     try {
-        // Calculate workspace path - files are in workspace/workspace/ directory
-        const path = await import('path');
-        const projectRoot = process.cwd(); // backend directory
-        const workspacePath = path.join(projectRoot, 'workspace', 'workspace');
-
         // Load PRD
         const prdContent = await WorkspaceManager.readAllFromWorkspace({
             applicationId,
             projectId,
-            version,
             documentType: 'PRD',
-            workspacePath,
         });
         result.prd = prdContent;
 
@@ -77,9 +69,7 @@ async function loadDocumentsFromWorkspace(
         const designContent = await WorkspaceManager.readAllFromWorkspace({
             applicationId,
             projectId,
-            version,
             documentType: 'DESIGN',
-            workspacePath,
         });
         result.design = designContent;
 
@@ -87,9 +77,7 @@ async function loadDocumentsFromWorkspace(
         const tasksContent = await WorkspaceManager.readAllFromWorkspace({
             applicationId,
             projectId,
-            version,
             documentType: 'TASKS',
-            workspacePath,
         });
         result.taskBreakdown = tasksContent;
 
@@ -103,7 +91,7 @@ async function loadDocumentsFromWorkspace(
         if (foundDocs.length > 0) {
             logger.info('EngineerTestController: Loaded documents from workspace', {
                 applicationId,
-                version,
+                projectId,
                 foundDocuments: foundDocs,
                 prdLength: result.prd.length,
                 designLength: result.design.length,
@@ -112,15 +100,14 @@ async function loadDocumentsFromWorkspace(
         } else {
             logger.debug('EngineerTestController: No documents found in workspace', {
                 applicationId,
-                version,
-                workspacePath,
+                projectId,
             });
         }
     } catch (error: any) {
         logger.warn('EngineerTestController: Error loading documents from workspace', {
             error: error.message,
             applicationId,
-            version,
+            projectId,
         });
     }
 
@@ -134,8 +121,7 @@ interface EngineerTestRequest {
     action?: 'WriteCode' | 'ExecuteSubtask';
     workspaceOptions?: {
         applicationId?: string;
-        version?: number;
-        workspacePath?: string;
+        projectId?: string;
     };
     llmConfig?: {
         provider?: string;
@@ -159,7 +145,7 @@ export async function testWriteCode(req: Request, res: Response) {
             llmConfig,
         } = req.body as EngineerTestRequest;
 
-        // Determine applicationId, projectId and version from workspaceOptions
+        // Determine applicationId, projectId from workspaceOptions
         // applicationId 和 projectId 必须提供，不能使用 'default'
         if (!workspaceOptions?.applicationId) {
             return res.status(400).json({
@@ -173,7 +159,6 @@ export async function testWriteCode(req: Request, res: Response) {
         }
         const applicationId = workspaceOptions.applicationId;
         const projectId = workspaceOptions.projectId;
-        const version = workspaceOptions?.version || 1;
 
         // Load documents from workspace if not provided in request
         let prd = providedPrd;
@@ -181,7 +166,7 @@ export async function testWriteCode(req: Request, res: Response) {
         let taskBreakdown = providedTaskBreakdown;
 
         if (!prd || !design || !taskBreakdown) {
-            const workspaceDocs = await loadDocumentsFromWorkspace(applicationId, projectId, version);
+            const workspaceDocs = await loadDocumentsFromWorkspace(applicationId, projectId);
             prd = prd || workspaceDocs.prd;
             design = design || workspaceDocs.design;
             taskBreakdown = taskBreakdown || workspaceDocs.taskBreakdown;
@@ -320,7 +305,7 @@ export async function testExecuteSubtask(req: Request, res: Response) {
             llmConfig,
         } = req.body as EngineerTestRequest;
 
-        // Determine applicationId, projectId and version from workspaceOptions
+        // Determine applicationId, projectId from workspaceOptions
         // applicationId 和 projectId 必须提供，不能使用 'default'
         if (!workspaceOptions?.applicationId) {
             return res.status(400).json({
@@ -334,7 +319,6 @@ export async function testExecuteSubtask(req: Request, res: Response) {
         }
         const applicationId = workspaceOptions.applicationId;
         const projectId = workspaceOptions.projectId;
-        const version = workspaceOptions?.version || 1;
 
         // Load documents from workspace if not provided in request
         let prd = providedPrd;
@@ -342,7 +326,7 @@ export async function testExecuteSubtask(req: Request, res: Response) {
         let taskBreakdown = providedTaskBreakdown;
 
         if (!prd || !design || !taskBreakdown) {
-            const workspaceDocs = await loadDocumentsFromWorkspace(applicationId, projectId, version);
+            const workspaceDocs = await loadDocumentsFromWorkspace(applicationId, projectId);
             prd = prd || workspaceDocs.prd;
             design = design || workspaceDocs.design;
             taskBreakdown = taskBreakdown || workspaceDocs.taskBreakdown;
@@ -351,7 +335,7 @@ export async function testExecuteSubtask(req: Request, res: Response) {
         // Validate required fields
         if (!taskBreakdown) {
             return res.status(400).json({
-                error: 'taskBreakdown is required for ExecuteSubtask. Please provide in request body or ensure TASK_BREAKDOWN.md exists in workspace/{applicationId}/v{version}/TASKS/',
+                error: 'taskBreakdown is required for ExecuteSubtask. Please provide in request body or ensure TASK_BREAKDOWN.md exists in workspace/{applicationId}/{projectId}/ainative-workspace/docs/tasks/',
             });
         }
 
@@ -524,7 +508,7 @@ export async function testCustom(req: Request, res: Response) {
             });
         }
 
-        // Determine applicationId, projectId and version from workspaceOptions
+        // Determine applicationId, projectId from workspaceOptions
         // applicationId 和 projectId 必须提供，不能使用 'default'
         if (!workspaceOptions?.applicationId) {
             return res.status(400).json({
@@ -538,7 +522,6 @@ export async function testCustom(req: Request, res: Response) {
         }
         const applicationId = workspaceOptions.applicationId;
         const projectId = workspaceOptions.projectId;
-        const version = workspaceOptions?.version || 1;
 
         // Load documents from workspace if not provided in request
         let prd = providedPrd;
@@ -546,7 +529,7 @@ export async function testCustom(req: Request, res: Response) {
         let taskBreakdown = providedTaskBreakdown;
 
         if (!prd || !design || !taskBreakdown) {
-            const workspaceDocs = await loadDocumentsFromWorkspace(applicationId, projectId, version);
+            const workspaceDocs = await loadDocumentsFromWorkspace(applicationId, projectId);
             prd = prd || workspaceDocs.prd;
             design = design || workspaceDocs.design;
             taskBreakdown = taskBreakdown || workspaceDocs.taskBreakdown;

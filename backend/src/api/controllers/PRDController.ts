@@ -88,6 +88,9 @@ export class PRDController {
         parentId = latestPRD.id;
 
         if (useRAG) {
+          // Ensure RAG service is initialized
+          await ensureRAGServiceInitialized();
+
           // RAG mode: search for similar PRDs and extract relevant chunks
           // If project belongs to an application, search across all projects in the application
           let searchResults: any[] = [];
@@ -286,12 +289,10 @@ export class PRDController {
             const metadata = prd.metadata as any;
             const applicationId = metadata?.applicationId || project.application_id || project.id;
             const projectId = project.id;
-            const version = prd.version || 1;
 
             const workspaceContent = await WorkspaceManager.readFile('PRD.md', {
               applicationId,
               projectId,
-              version,
               documentType: 'PRD',
             });
 
@@ -360,13 +361,11 @@ export class PRDController {
         const metadata = prd.metadata as any;
         const applicationId = metadata?.applicationId || project.application_id || project.id;
         const projectId = project.id;
-        const version = prd.version || 1;
 
         // 尝试从 workspace 读取 PRD.md 文件
         const workspaceContent = await WorkspaceManager.readFile('PRD.md', {
           applicationId,
           projectId,
-          version,
           documentType: 'PRD',
         });
 
@@ -374,7 +373,7 @@ export class PRDController {
           content = workspaceContent;
           logger.info(`PRDController: Loaded PRD content from workspace for PRD ${prdId}`, {
             applicationId,
-            version,
+            projectId,
           });
         } else {
           logger.debug(`PRDController: PRD.md not found in workspace, using database content for PRD ${prdId}`);
@@ -940,7 +939,7 @@ export class PRDController {
       });
     }
   }
+
 }
 
 export default PRDController;
-

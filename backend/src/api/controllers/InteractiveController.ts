@@ -34,7 +34,7 @@ export class InteractiveController {
      */
     static async create(req: Request, res: Response) {
         try {
-            const { name, idea, description, investment, nRound, projectId, applicationId } = req.body;
+            const { name, idea, description, investment, projectId, applicationId } = req.body;
 
             // Validate required fields
             if (!name || !idea) {
@@ -69,7 +69,6 @@ export class InteractiveController {
                     idea,
                     description,
                     investment: investment || 10.0,
-                    nRound: nRound || 5,
                     applicationId,
                 });
 
@@ -77,9 +76,8 @@ export class InteractiveController {
                 logger.info(`API: Created project ${finalProjectId} for interactive session`);
             }
 
-            // Get applicationId and nRound from project if projectId is provided
+            // Get applicationId from project if projectId is provided
             let finalApplicationId = applicationId;
-            let finalNRound = nRound || 5;
             if (finalProjectId) {
                 // Try to get project data to use as source of truth
                 try {
@@ -87,10 +85,6 @@ export class InteractiveController {
                     const projectRepo = new ProjectRepository();
                     const project = await projectRepo.findById(finalProjectId);
                     if (project) {
-                        // Use project's nRound as source of truth if project exists
-                        if (project.n_round !== undefined && project.n_round !== null) {
-                            finalNRound = project.n_round;
-                        }
                         // Get applicationId from project if not provided
                         if (!finalApplicationId && project.application_id) {
                             finalApplicationId = project.application_id;
@@ -108,7 +102,7 @@ export class InteractiveController {
                 idea,
                 description,
                 investment: investment || 10.0,
-                nRound: finalNRound,
+                nRound: 5, // Deprecated: kept for backward compatibility, not used
                 userId,
                 applicationId: finalApplicationId,
                 projectId: finalProjectId,
@@ -122,7 +116,6 @@ export class InteractiveController {
                     idea,
                     description,
                     investment: investment || 10.0,
-                    nRound: finalNRound,
                 },
             });
         } catch (error: any) {
@@ -251,14 +244,14 @@ export class InteractiveController {
 
             const workflowInfo = session.getWorkflowInfo();
 
-            // Get workflow tracker
-            const workflowTracker = (session as any).workflowTracker;
+            // Get state manager
+            const stateManager = (session as any).stateManager;
 
             // Get all workflow items with their statuses
-            const workflowItems = workflowTracker ? await workflowTracker.getWorkflowItems() : [];
+            const workflowItems = stateManager ? await stateManager.getWorkflowItems() : [];
 
             // Get current running state
-            const runningState = workflowTracker ? await workflowTracker.getCurrentState() : { role: null, action: null };
+            const runningState = stateManager ? await stateManager.getRunningState() : { role: null, action: null };
 
             return res.json({
                 success: true,
@@ -290,45 +283,91 @@ export class InteractiveController {
                 });
             }
 
-            // Get workflow tracker
-            const workflowTracker = (session as any).workflowTracker;
+            // Get state manager
+            const stateManager = (session as any).stateManager;
 
             // Get current running state
-            const runningInfo = workflowTracker ? await workflowTracker.getCurrentState() : { role: null, action: null };
+            const runningInfo = stateManager ? await stateManager.getRunningState() : { role: null, action: null };
 
             // Get all workflow items with their statuses
-            const workflowItems = workflowTracker ? await workflowTracker.getWorkflowItems() : [];
+            const workflowItems = stateManager ? await stateManager.getWorkflowItems() : [];
 
-            // Get confirmation status from database via workflowTracker
-            const confirmationStatus = workflowTracker ? await workflowTracker.isConfirmationRequired() : { required: false, role: null };
+            // Get confirmation status from database via stateManager
+            const confirmationStatus = stateManager ? await stateManager.getConfirmationStatus() : { required: false, role: null };
             let requiresConfirmation = confirmationStatus.required || false;
 
             // Get confirmation details from message queue if confirmation required
+            // IMPORTANT: Use confirmation role from database as the source of truth
+            // Only use message queue if the message role matches the database confirmation role
             let confirmationRequired = null;
             if (requiresConfirmation) {
+                // First, check if we have a confirmation role from database
+                const confirmationRoleFromDB = confirmationStatus.role;
+                
                 // Find the latest confirmation_required message from message queue
+                // But only use it if it matches the database confirmation role
                 const allMessages = session.getMessagesSince(null);
-                const confirmationMessage = allMessages
-                    .slice()
-                    .reverse()
-                    .find((msg: any) => msg.type === 'confirmation_required');
+                const confirmationMessages = allMessages
+                    .filter((msg: any) => msg.type === 'confirmation_required')
+                    .reverse();
+                
+                // Find message that matches the database confirmation role
+                let confirmationMessage = null;
+                if (confirmationRoleFromDB) {
+                    confirmationMessage = confirmationMessages.find(
+                        (msg: any) => msg.data && msg.data.role === confirmationRoleFromDB
+                    );
+                }
+                
+                // If no matching message found, use the latest one (for backward compatibility)
+                if (!confirmationMessage && confirmationMessages.length > 0) {
+                    confirmationMessage = confirmationMessages[0];
+                }
 
                 if (confirmationMessage && confirmationMessage.data) {
+                    // Get retry_count for failed actions
+                    let retryCount = 0;
+                    if (confirmationMessage.data.role && confirmationMessage.data.action) {
+                        const failedItem = workflowItems.find(
+                            (item: any) => item.role === confirmationMessage.data.role && 
+                                          item.action === confirmationMessage.data.action &&
+                                          item.status === 'failed'
+                        );
+                        retryCount = (failedItem as any)?.retry_count || 0;
+                    }
+
                     confirmationRequired = {
                         role: confirmationMessage.data.role,
                         action: confirmationMessage.data.action,
                         content: confirmationMessage.data.content,
                         outputFiles: confirmationMessage.data.outputFiles || [],
                         instructContent: confirmationMessage.data.instructContent,
+                        retryCount: retryCount,
                     };
                 } else if (confirmationStatus.role) {
                     // Fallback: use confirmation role from database if confirmation message not found
+                    // Get the last failed or completed action for this role
+                    const roleItems = workflowItems.filter((item: any) => item.role === confirmationStatus.role);
+                    const failedItems = roleItems.filter((item: any) => item.status === 'failed');
+                    const completedItems = roleItems.filter((item: any) => item.status === 'completed');
+                    
+                    // Prefer failed action if exists, otherwise use last completed
+                    const targetItems = failedItems.length > 0 ? failedItems : completedItems;
+                    const lastAction = targetItems.sort((a: any, b: any) => {
+                        const orderA = (a as any).action_order ?? 999;
+                        const orderB = (b as any).action_order ?? 999;
+                        return orderB - orderA; // Sort descending to get last action
+                    })[0];
+                    
+                    const retryCount = lastAction ? ((lastAction as any).retry_count || 0) : 0;
+                    
                     confirmationRequired = {
                         role: confirmationStatus.role,
-                        action: runningInfo.action,
+                        action: lastAction?.action || null,
                         content: null,
                         outputFiles: [],
                         instructContent: null,
+                        retryCount: retryCount,
                     };
                 } else {
                     // Fallback: use running state if confirmation role not found
@@ -338,20 +377,13 @@ export class InteractiveController {
                         content: null,
                         outputFiles: [],
                         instructContent: null,
+                        retryCount: 0,
                     };
                 }
 
-                // Check if all workflow items are completed
-                // If all workflow items are completed, clear confirmation
-                const completedCount = workflowItems.filter((item: any) => item.status === 'completed').length;
-                const totalCount = workflowItems.length;
-
-                const allItemsCompleted = completedCount === totalCount && totalCount > 0;
-
-                if (allItemsCompleted) {
-                    confirmationRequired.role = '';
-                    requiresConfirmation = false;
-                }
+                // REMOVED: Do NOT automatically clear confirmation when all items are completed
+                // Confirmation should only be cleared when user explicitly confirms
+                // The workflow should wait for user confirmation even if all items are completed
             }
 
             const response = {
@@ -396,16 +428,16 @@ export class InteractiveController {
                 });
             }
 
-            // Get workflow tracker
-            const workflowTracker = (session as any).workflowTracker;
-            if (!workflowTracker) {
+            // Get state manager
+            const stateManager = session.getStateManager();
+            if (!stateManager) {
                 return res.status(500).json({
-                    error: 'Workflow tracker not found',
+                    error: 'State manager not found',
                 });
             }
 
             // Check current confirmation status from database
-            const confirmationStatus = await workflowTracker.isConfirmationRequired();
+            const confirmationStatus = await stateManager.getConfirmationStatus();
 
             if (!confirmationStatus.required) {
                 logger.warn(`API: POST /interactive/${projectId}/confirm - No confirmation required, but confirm endpoint called`);
@@ -425,10 +457,10 @@ export class InteractiveController {
             });
 
             // Clear confirmation status in database
-            await workflowTracker.clearConfirmationRequired();
+            await stateManager.clearConfirmationRequired();
 
             // Verify confirmation is cleared
-            const verifyStatus = await workflowTracker.isConfirmationRequired();
+            const verifyStatus = await stateManager.getConfirmationStatus();
             if (verifyStatus.required) {
                 logger.error(`API: POST /interactive/${projectId}/confirm - Failed to clear confirmation status!`);
                 return res.status(500).json({
@@ -474,25 +506,61 @@ export class InteractiveController {
                 });
             }
 
-            // Get workflow tracker from session
-            const workflowTracker = (session as any).workflowTracker;
-            if (!workflowTracker) {
+            // Stop workflow executor if it's running
+            session.stopWorkflowExecutor();
+
+            // Get state manager from session
+            const stateManager = session.getStateManager();
+            if (!stateManager) {
                 return res.status(500).json({
-                    error: 'Workflow tracker not found',
+                    error: 'State manager not found',
                 });
             }
 
-            // Get repository and reset workflow
-            const repository = (workflowTracker as any).repository;
-            await repository.resetWorkflowFromRole(projectId, role);
+            // Reset workflow using StateManager
+            await stateManager.resetWorkflow(role);
 
-            // Clear running state if the reset role is currently running
-            const currentState = await workflowTracker.getCurrentState();
-            if (currentState.role === role) {
-                await workflowTracker.clearState();
+            // Check reset result - verify first action is set to RUNNING
+            const runningState = await stateManager.getRunningState();
+            const firstActionStatus = runningState.action && runningState.role
+                ? await stateManager.getActionStatus(runningState.role!, runningState.action)
+                : null;
+
+            logger.info(`API: Reset workflow from role ${role} for project ${projectId}`, {
+                projectId,
+                role,
+                resetRole: runningState.role,
+                resetAction: runningState.action,
+                actionStatus: firstActionStatus,
+            });
+
+            // Restart executor if first action is RUNNING
+            // getActionStatus returns ActionStatus enum, compare with ActionStatus.RUNNING
+            const { ActionStatus } = await import('@mind2build/shared');
+            if (runningState.role && runningState.action && firstActionStatus === ActionStatus.RUNNING) {
+                logger.info(`API: Restarting executor after reset for role ${runningState.role}, action ${runningState.action}`, {
+                    projectId,
+                    role: runningState.role,
+                    action: runningState.action,
+                });
+                
+                // Restart executor asynchronously (don't block API response)
+                session.restartExecutor().catch((error: any) => {
+                    logger.error(`API: Failed to restart executor after reset for project ${projectId}`, {
+                        projectId,
+                        role: runningState.role,
+                        action: runningState.action,
+                        error: error.message,
+                    });
+                });
+            } else {
+                logger.warn(`API: Not restarting executor after reset - invalid state`, {
+                    projectId,
+                    role: runningState.role,
+                    action: runningState.action,
+                    actionStatus: firstActionStatus,
+                });
             }
-
-            logger.info(`API: Reset workflow from role ${role} for project ${projectId}`);
 
             return res.json({
                 success: true,
@@ -502,6 +570,94 @@ export class InteractiveController {
             logger.error('API: Error resetting workflow', error);
             return res.status(500).json({
                 error: error.message || 'Failed to reset workflow',
+            });
+        }
+    }
+
+    /**
+     * Recover from stale or failed actions
+     * Automatically detects and resets stale/failed actions to allow workflow continuation
+     */
+    static async recoverFromStaleActions(req: Request, res: Response) {
+        try {
+            const { projectId } = req.params;
+            const session = await getOrRestoreSession(projectId);
+
+            if (!session) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Session not found',
+                });
+            }
+
+            const stateManager = session.getStateManager();
+            const workflowItems = await stateManager.getWorkflowItems();
+
+            // Detect stale actions (RUNNING for too long)
+            const STALE_THRESHOLD_MS = process.env.STALE_ACTION_THRESHOLD_MINUTES
+                ? parseInt(process.env.STALE_ACTION_THRESHOLD_MINUTES, 10) * 60 * 1000
+                : 5 * 60 * 1000; // Default 5 minutes
+            const now = Date.now();
+            const runningState = await stateManager.getRunningStateWithTimestamp();
+
+            let recoveredActions: Array<{ role: string; action: string; reason: string }> = [];
+
+            // Check if current running action is stale
+            if (runningState.role && runningState.action && runningState.updatedAt) {
+                const runningDuration = now - runningState.updatedAt.getTime();
+                if (runningDuration > STALE_THRESHOLD_MS) {
+                    const { ActionStatus } = await import('@mind2build/shared');
+                    await stateManager.setActionStatus(
+                        runningState.role,
+                        runningState.action,
+                        ActionStatus.FAILED
+                    );
+                    await stateManager.clearRunningState();
+                    recoveredActions.push({
+                        role: runningState.role,
+                        action: runningState.action,
+                        reason: 'stale_running',
+                    });
+                }
+            }
+
+            // Check for failed actions that can be retried
+            const { ActionStatus } = await import('@mind2build/shared');
+            const failedItems = workflowItems.filter(item => item.status === ActionStatus.FAILED);
+            for (const item of failedItems) {
+                const retryCount = item.retry_count || 0;
+                if (retryCount < 3) {
+                    // Reset to PENDING to allow retry
+                    await stateManager.setActionStatus(item.role, item.action, ActionStatus.PENDING);
+                    recoveredActions.push({
+                        role: item.role,
+                        action: item.action,
+                        reason: 'failed_retry',
+                    });
+                }
+            }
+
+            // Restart executor if session was stopped and actions were recovered
+            if (recoveredActions.length > 0) {
+                try {
+                    await session.start();
+                } catch (error: any) {
+                    logger.warn('API: Failed to restart session after recovery', { error: error.message });
+                }
+            }
+
+            return res.json({
+                success: true,
+                recoveredActions,
+                message: recoveredActions.length > 0
+                    ? `已恢复 ${recoveredActions.length} 个异常操作`
+                    : '未发现需要恢复的操作',
+            });
+        } catch (error: any) {
+            logger.error('API: Error recovering from stale actions', error);
+            return res.status(500).json({
+                success: false,
+                error: error.message || 'Failed to recover from stale actions',
             });
         }
     }

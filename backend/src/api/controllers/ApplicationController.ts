@@ -6,6 +6,7 @@
 import { Request, Response } from 'express';
 import { ApplicationRepository } from '../../database/repositories/ApplicationRepository';
 import { ProjectRepository } from '../../database/repositories/ProjectRepository';
+import { WorkflowService } from '../../services/WorkflowService';
 import { logger } from '../../utils';
 
 const applicationRepo = new ApplicationRepository();
@@ -41,6 +42,16 @@ export class ApplicationController {
         applicationId: application.id,
         name: application.name,
       });
+
+      // Auto-create default workflow for the application
+      try {
+        const workflowService = new WorkflowService();
+        await workflowService.getOrCreateDefaultWorkflow(application.id);
+        logger.info(`ApplicationController: Auto-created default workflow for application ${application.id}`);
+      } catch (workflowError: any) {
+        // Log error but don't fail the application creation
+        logger.warn(`ApplicationController: Failed to auto-create default workflow for application ${application.id}:`, workflowError.message);
+      }
 
       return res.status(201).json({
         success: true,

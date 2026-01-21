@@ -25,13 +25,28 @@
           <el-icon><Collection /></el-icon>
           知识库
         </el-button>
+        <el-dropdown @command="handleCommand" trigger="click">
+          <span class="dropdown-trigger" @click.stop>
+            <el-button type="primary" text :icon="MoreFilled" circle />
+          </span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item :command="{ action: 'view', id: project.id }">
+                查看详情
+              </el-dropdown-item>
+              <el-dropdown-item :command="{ action: 'delete', id: project.id }" divided>
+                <span style="color: #F56C6C;">删除项目</span>
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </div>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { Document, Collection } from '@element-plus/icons-vue';
+import { Document, Collection, MoreFilled } from '@element-plus/icons-vue';
 
 interface Props {
   project: {
@@ -50,6 +65,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   click: [project: any];
   knowledgeBase: [projectId: string];
+  command: [command: { action: string; id: string }];
 }>();
 
 function handleClick() {
@@ -58,6 +74,10 @@ function handleClick() {
 
 function handleKnowledgeBaseClick() {
   emit('knowledgeBase', props.project.id);
+}
+
+function handleCommand(command: { action: string; id: string }) {
+  emit('command', command);
 }
 
 function getStatusType(status: string): 'success' | 'warning' | 'info' | 'danger' {
@@ -113,6 +133,12 @@ function getStatusType(status: string): 'success' | 'warning' | 'info' | 'danger
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 </style>
 

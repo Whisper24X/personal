@@ -251,6 +251,24 @@
             </div>
 
             <div class="content-section">
+                <!-- Error Alert for Max Retries -->
+                <el-alert
+                    v-if="roleInfo.retryCount !== undefined && roleInfo.retryCount >= 3"
+                    type="error"
+                    :closable="false"
+                    show-icon
+                    title="Action执行失败"
+                    style="margin-bottom: 16px;">
+                    <template #default>
+                        <div class="error-message">
+                            <p><strong>该action已重试3次仍失败，需要人工介入。</strong></p>
+                            <p>Action: {{ roleInfo.action }}</p>
+                            <p>重试次数: {{ roleInfo.retryCount }}/3</p>
+                            <p>请检查错误原因或选择跳过该步骤。</p>
+                        </div>
+                    </template>
+                </el-alert>
+
                 <div class="section-header">
                     <h4>
                         <el-icon>
@@ -467,6 +485,7 @@ interface RoleInfo {
         autoCodeEnabled?: boolean;
         type?: string;
     };
+    retryCount?: number;
 }
 
 interface Props {

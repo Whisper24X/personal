@@ -11,4 +11,5 @@ export * from './SubtaskManager';
 export * from './CursorAgentClient';
 export * from './promptLoader';
 export * from './zipUtils';
+export * from './commandExecutor';
 

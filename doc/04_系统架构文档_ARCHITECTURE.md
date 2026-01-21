@@ -1086,7 +1086,7 @@ CREATE TABLE roles (
 CREATE TABLE messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    role_id UUID REFERENCES roles(id) ON DELETE SET NULL,
+    role_id VARCHAR(100),  -- 角色类型 (profile): ProductManager, Architect, Engineer, QAEngineer, TeamLeader, Salesperson, DataAnalyst, user表示用户消息
     message_uuid VARCHAR(36) UNIQUE NOT NULL,  -- Message对象的UUID
     content TEXT NOT NULL,
     instruct_content JSONB,

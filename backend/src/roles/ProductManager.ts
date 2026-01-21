@@ -7,7 +7,6 @@ import { IRoleConfig, ACTION_WRITE_MRD } from '@mind2build/shared';
 import { Role } from './Role';
 import { Context } from '../core/context/Context';
 import { WritePRD } from '../actions/WritePRD';
-import { SearchEnhancedQA } from '../actions/SearchEnhancedQA';
 import { PRDReview } from '../actions/PRDReview';
 import { ImprovePRD } from '../actions/ImprovePRD';
 
@@ -27,10 +26,9 @@ export class ProductManager extends Role {
     // Use string literal to ensure it's not undefined
     this.watch([ACTION_WRITE_MRD || 'WriteMRD']);
 
-    // Set actions - WritePRD, SearchEnhancedQA, PRDReview, and ImprovePRD
-    this.setActions([new WritePRD(), new SearchEnhancedQA(), new PRDReview(), new ImprovePRD()]);
+    // Set actions - WritePRD, PRDReview, and ImprovePRD
+    this.setActions([new WritePRD(), new PRDReview(), new ImprovePRD()]);
   }
 }
 
 export default ProductManager;
-

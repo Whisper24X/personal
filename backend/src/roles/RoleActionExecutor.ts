@@ -18,16 +18,25 @@ export class RoleActionExecutor {
         'WriteDesign',
         'WriteSubProjectDesign',
         'BreakdownTasks',
-        'GenerateTask',
         'WriteCode',
         'WriteTest',
+        'WriteTestPlan',
         'ExecuteSubtask',
         'ImprovePRD',
         'ImproveMRD',
+        'ImproveDesign',
         'MRDReview',
         'PRDReview',
         'DesignReview',
         'SubProjectDesignReview',
+        'TestabilityReview',
+        'TestCaseReview',
+        'TestReview',
+        'ImproveTest',
+        'AutomationPlanning',
+        'AutomationExecution',
+        'CoverageQualityCheck',
+        'QAConclusion',
     ];
 
     constructor(
@@ -122,7 +131,22 @@ export class RoleActionExecutor {
         // Special handling for different action types
         switch (action.name) {
             case 'WriteTest':
+            case 'TestabilityReview':
+            case 'WriteTestPlan':
                 return this.prepareWriteTestInput(context);
+
+            case 'TestCaseReview':
+            case 'TestReview':
+            case 'AutomationPlanning':
+            case 'AutomationExecution':
+            case 'CoverageQualityCheck':
+            case 'QAConclusion':
+                // These actions will read from workspace, so pass context as fallback
+                return context;
+
+            case 'ImproveTest':
+                // ImproveTest will read from workspace, but can also accept review report as input
+                return this.prepareImproveInput('TestReview', 'test review report');
 
             case 'MRDReview':
                 return this.prepareReviewInput('WriteMRD', 'MRD');
@@ -135,6 +159,9 @@ export class RoleActionExecutor {
 
             case 'ImproveMRD':
                 return this.prepareImproveInput('MRDReview', 'MRD review report');
+
+            case 'ImproveDesign':
+                return this.prepareImproveInput('DesignReview', 'Design review report');
 
             default:
                 return context;
@@ -222,6 +249,22 @@ export class RoleActionExecutor {
     ): Promise<any> {
         const actionStartTime = Date.now();
 
+        // Set abortSignal from StateManager if available
+        try {
+            const context = (action as any).context;
+            if (context) {
+                const stateManager = context.get?.('stateManager');
+                if (stateManager && typeof stateManager.getAbortSignal === 'function') {
+                    const abortSignal = stateManager.getAbortSignal();
+                    action.setAbortSignal(abortSignal);
+                }
+            }
+        } catch (error: any) {
+            logger.warn(`${this.profile} RoleActionExecutor: Failed to set abortSignal for action ${action.name}`, {
+                error: error.message,
+            });
+        }
+
         try {
             let result;
             if (this.actionAcceptsOptions(action.name)) {
@@ -269,13 +312,23 @@ export class RoleActionExecutor {
             case 'WriteDesign':
             case 'WriteCode':
             case 'WriteTest':
+            case 'WriteTestPlan':
             case 'ExecuteSubtask':
             case 'ImprovePRD':
             case 'ImproveMRD':
+            case 'ImproveDesign':
             case 'MRDReview':
             case 'PRDReview':
             case 'DesignReview':
             case 'SubProjectDesignReview':
+            case 'TestabilityReview':
+            case 'TestCaseReview':
+            case 'TestReview':
+            case 'ImproveTest':
+            case 'AutomationPlanning':
+            case 'AutomationExecution':
+            case 'CoverageQualityCheck':
+            case 'QAConclusion':
                 return await (action as any).run(input, workspaceOptions);
 
             case 'WriteSubProjectDesign':
@@ -283,9 +336,6 @@ export class RoleActionExecutor {
 
             case 'BreakdownTasks':
                 return await this.runBreakdownTasks(action, workspaceOptions);
-
-            case 'GenerateTask':
-                return await this.runGenerateTask(action, input, workspaceOptions);
 
             default:
                 return await action.run(input);
@@ -301,23 +351,6 @@ export class RoleActionExecutor {
         const prd = prdMessages.length > 0 ? prdMessages[prdMessages.length - 1].content : '';
         const design = designMessages.length > 0 ? designMessages[designMessages.length - 1].content : '';
         return await (action as any).run(prd, design, workspaceOptions);
-    }
-
-    /**
-     * Run GenerateTask action
-     */
-    private async runGenerateTask(
-        action: BaseAction,
-        input: string,
-        workspaceOptions: WorkspaceOptions | undefined
-    ): Promise<any> {
-        const taskBreakdownMessages = this.rc.memory.getByAction('BreakdownTasks');
-        const subProjectMessages = this.rc.memory.getByAction('WriteSubProjectDesign');
-        const taskBreakdown =
-            taskBreakdownMessages.length > 0 ? taskBreakdownMessages[taskBreakdownMessages.length - 1].content : input;
-        const subProjectDesign =
-            subProjectMessages.length > 0 ? subProjectMessages[subProjectMessages.length - 1].content : undefined;
-        return await (action as any).run(taskBreakdown, subProjectDesign, workspaceOptions);
     }
 
     /**

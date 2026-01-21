@@ -43,7 +43,9 @@ router.delete('/prompts/:type/:key', PromptConfigController.delete);
 
 // Role and Action metadata routes
 router.get('/roles', RoleActionController.getRoles);
+router.post('/roles', RoleActionController.createRole);
 router.get('/actions', RoleActionController.getActions);
+router.post('/actions', RoleActionController.createAction);
 router.get('/roles-actions', RoleActionController.getRolesAndActions);
 
 export default router;

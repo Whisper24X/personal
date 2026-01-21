@@ -7,7 +7,7 @@ import archiver from 'archiver';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from './logger';
-import { WorkspaceOptions } from './WorkspaceManager';
+import { WorkspaceManager, WorkspaceOptions } from './WorkspaceManager';
 
 /**
  * Create a zip archive from a directory
@@ -116,6 +116,7 @@ export async function createZipFromFiles(
 
 /**
  * Create a zip archive from workspace directory
+ * 新目录结构：workspace/{applicationId}/{projectId}/ainative-workspace
  * @param options Workspace options
  * @param outputPath Optional output path (defaults to temp directory)
  */
@@ -123,35 +124,19 @@ export async function createWorkspaceZip(
   options: WorkspaceOptions,
   outputPath?: string
 ): Promise<string> {
-  // applicationId 必须提供，不能使用 'default'
+  // applicationId 和 projectId 必须提供
   if (!options.applicationId) {
-    throw new Error('applicationId is required for createWorkspaceZip. Cannot use "default" to prevent file conflicts between different applications.');
+    throw new Error('applicationId is required for createWorkspaceZip.');
   }
+  if (!options.projectId) {
+    throw new Error('projectId is required for createWorkspaceZip.');
+  }
+  
   const applicationId = options.applicationId;
-  const version = options.version || 1;
+  const projectId = options.projectId;
   
-  // Calculate workspace root
-  const possibleRoots = [
-    path.resolve(__dirname, '../../../'),
-    path.resolve(__dirname, '../../../../'),
-    process.cwd(),
-  ];
-  
-  let projectRoot = possibleRoots[0];
-  for (const root of possibleRoots) {
-    if (
-      fs.existsSync(path.join(root, 'pnpm-workspace.yaml')) ||
-      fs.existsSync(path.join(root, 'package.json'))
-    ) {
-      projectRoot = root;
-      break;
-    }
-  }
-  
-  const workspaceRoot =
-    options?.workspacePath ||
-    process.env.WORKSPACE_PATH ||
-    path.join(projectRoot, 'workspace');
+  // Get the project workspace path (ainative-workspace directory)
+  const projectWorkspace = WorkspaceManager.getProjectWorkspacePath(options);
 
   // Generate output path if not provided
   if (!outputPath) {
@@ -159,73 +144,15 @@ export async function createWorkspaceZip(
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
-    outputPath = path.join(tempDir, `${applicationId}-v${version}-workspace.zip`);
+    outputPath = path.join(tempDir, `${applicationId}-${projectId}-workspace.zip`);
   }
 
-  // Check if workspace root exists
-  if (!fs.existsSync(workspaceRoot)) {
-    logger.warn('ZipUtils: Workspace root does not exist, creating empty workspace', {
-      workspaceRoot,
-    });
-    fs.mkdirSync(workspaceRoot, { recursive: true });
-  }
-
-  // Find all workspace directories for this application, project and version
-  // 新的目录结构：workspace/{applicationId}/{projectId}/v{version}/{documentType}/
-  const workspaceDirs: Array<{ name: string; path: string }> = [];
-  const documentTypes = ['PRD', 'DESIGN', 'TASKS', 'CODE', 'DOCS'];
-  
-  // projectId 必须提供
-  if (!options.projectId) {
-    throw new Error('projectId is required for createWorkspaceZip. Cannot use "default" to prevent file conflicts between different projects.');
-  }
-  const projectId = options.projectId;
-  
-  try {
-    // 检查应用目录是否存在：workspace/{applicationId}/
-    const applicationDir = path.join(workspaceRoot, applicationId);
-    if (fs.existsSync(applicationDir)) {
-      // 检查项目目录是否存在：workspace/{applicationId}/{projectId}/
-      const projectDir = path.join(applicationDir, projectId);
-      if (fs.existsSync(projectDir)) {
-        // 检查版本目录是否存在：workspace/{applicationId}/{projectId}/v{version}/
-        const versionDir = path.join(projectDir, `v${version}`);
-        if (fs.existsSync(versionDir)) {
-          // 遍历版本目录下的所有文档类型目录
-          const entries = fs.readdirSync(versionDir, { withFileTypes: true });
-          for (const entry of entries) {
-            if (entry.isDirectory() && documentTypes.includes(entry.name)) {
-              const dirPath = path.join(versionDir, entry.name);
-              // Check if directory has files
-              try {
-                const files = fs.readdirSync(dirPath);
-                if (files.length > 0) {
-                  // 使用相对路径作为名称，保持目录结构
-                  const relativePath = path.join(applicationId, projectId, `v${version}`, entry.name);
-                  workspaceDirs.push({
-                    name: relativePath,
-                    path: dirPath,
-                  });
-                }
-              } catch {
-                // Skip directories we can't read
-              }
-            }
-          }
-        }
-      }
-    }
-  } catch (error: any) {
-    logger.warn('ZipUtils: Failed to search for workspace directories', {
-      error: error.message,
-    });
-  }
-
-  // If no workspace directories found, create an empty one
-  if (workspaceDirs.length === 0) {
-    logger.info('ZipUtils: No workspace directories found, creating empty workspace archive', {
+  // Check if workspace exists
+  if (!fs.existsSync(projectWorkspace)) {
+    logger.info('ZipUtils: Workspace does not exist, creating empty workspace archive', {
       applicationId,
-      version,
+      projectId,
+      projectWorkspace,
     });
     
     // Create a temporary directory structure for the zip
@@ -236,7 +163,7 @@ export async function createWorkspaceZip(
     const readmePath = path.join(tempWorkspaceDir, 'README.md');
     fs.writeFileSync(
       readmePath,
-      `# Workspace Archive\n\nThis workspace was created automatically.\n\nApplication ID: ${applicationId}\nProject ID: ${projectId}\nVersion: ${version}\n\nNo files have been generated yet.\n\nTo enable code generation, set ENGINEER_AUTO_CODE=true in your .env file.\n`
+      `# Workspace Archive\n\nThis workspace was created automatically.\n\nApplication ID: ${applicationId}\nProject ID: ${projectId}\n\nNo files have been generated yet.\n\nTo enable code generation, set ENGINEER_AUTO_CODE=true in your .env file.\n`
     );
     
     // Create zip from temporary directory
@@ -252,36 +179,14 @@ export async function createWorkspaceZip(
     return zipPath;
   }
 
-  // If we have workspace directories, create a zip containing all of them
-  // We'll create a temporary directory structure
-  const tempWorkspaceDir = path.join(process.cwd(), 'temp', `workspace-${Date.now()}`);
-  fs.mkdirSync(tempWorkspaceDir, { recursive: true });
+  // Create zip from the ainative-workspace directory
+  logger.info('ZipUtils: Creating workspace zip', {
+    applicationId,
+    projectId,
+    projectWorkspace,
+  });
 
-  try {
-    // Copy all workspace directories to temp directory
-    for (const dir of workspaceDirs) {
-      const destDir = path.join(tempWorkspaceDir, dir.name);
-      // Copy directory recursively
-      copyDirectoryRecursive(dir.path, destDir);
-    }
-
-    // Create zip from temporary directory
-    const zipPath = await createZipFromDirectory(tempWorkspaceDir, outputPath, { includeRoot: false });
-    
-    logger.info('ZipUtils: Created workspace zip from multiple directories', {
-      directories: workspaceDirs.map(d => d.name),
-      zipPath,
-    });
-    
-    return zipPath;
-  } finally {
-    // Clean up temporary directory
-    try {
-      fs.rmSync(tempWorkspaceDir, { recursive: true, force: true });
-    } catch {
-      // Ignore cleanup errors
-    }
-  }
+  return await createZipFromDirectory(projectWorkspace, outputPath, { includeRoot: true });
 }
 
 /**
@@ -321,19 +226,20 @@ export async function createCodeZip(
 ): Promise<string> {
   // Generate output path if not provided
   if (!outputPath) {
-    // applicationId 必须提供，不能使用 'default'
     if (!options.applicationId) {
-      throw new Error('applicationId is required for createCodeZip. Cannot use "default" to prevent file conflicts between different applications.');
+      throw new Error('applicationId is required for createCodeZip.');
+    }
+    if (!options.projectId) {
+      throw new Error('projectId is required for createCodeZip.');
     }
     const applicationId = options.applicationId;
-    const version = options.version || 1;
+    const projectId = options.projectId;
     const tempDir = path.join(process.cwd(), 'temp');
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
-    outputPath = path.join(tempDir, `${applicationId}-v${version}-code.zip`);
+    outputPath = path.join(tempDir, `${applicationId}-${projectId}-code.zip`);
   }
 
   return await createZipFromFiles(files, outputPath);
 }
-
