@@ -8,11 +8,12 @@ import cors from 'cors';
 import helmet from 'helmet';
 import http from 'http';
 import { WebSocketServer } from 'ws';
-import { config, logger, initializeDefaultLLMConfig } from './utils';
+import { config, logger } from './utils';
 import { connectDatabase } from './database';
 import apiRoutes from './api/routes';
 import { setupWebSocketServer } from './api/websocket';
 import { sessionManager } from './orchestration/InteractiveSessionManager';
+import { llmManager } from './providers/llm/LLMManager';
 
 const app: express.Application = express();
 const port = config.server.port;
@@ -75,14 +76,15 @@ if (process.env.NODE_ENV !== 'test') {
   // Connect to database first
   connectDatabase()
     .then(async () => {
-      // Initialize default LLM config from database (if available)
-      // This will update config.llm with the database configuration
-      await initializeDefaultLLMConfig();
+      // Initialize LLM Manager with configuration from database
+      await llmManager.initialize();
+      
+      const llmConfig = llmManager.getCurrentConfigInfo();
       
       server.listen(port, () => {
         logger.info(`Mind2Build backend server listening on port ${port}`);
         logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-        logger.info(`LLM Provider: ${config.llm.provider} (${config.llm.model})`);
+        logger.info(`LLM Provider: ${llmConfig?.provider} (${llmConfig?.model})`);
         logger.info(`WebSocket server ready at ws://localhost:${port}/api/interactive/:sessionId`);
       });
     })

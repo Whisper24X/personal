@@ -4,8 +4,7 @@
  * Supports multiple providers: OpenAI, ZhipuAI, ARK, etc.
  */
 
-import { getLLMConfig } from '../utils/config';
-import { createLLM } from '../providers/llm';
+import { llmManager } from '../providers/llm';
 import { logger } from '../utils';
 import OpenAI from 'openai';
 import axios, { AxiosInstance } from 'axios';
@@ -30,7 +29,7 @@ export class EmbeddingService {
    */
   async initialize(userId?: string): Promise<void> {
     try {
-      this.llmConfig = await getLLMConfig(userId);
+      this.llmConfig = await llmManager.loadConfig(userId);
       
       // Determine embedding model and vector size based on provider
       switch (this.llmConfig.provider) {

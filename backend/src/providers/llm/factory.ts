@@ -1,46 +1,41 @@
 /**
  * LLM Factory
  * Creates LLM instances based on configuration
+ * 
+ * Uses a unified OpenAICompatibleLLM class for all OpenAI-compatible providers,
+ * with provider-specific baseURL configuration handled internally.
  */
 
 import { ILLMConfig, LLMProvider } from '@mind2build/shared';
 import { BaseLLM } from './BaseLLM';
-import { OpenAILLM } from './OpenAILLM';
-import { ZhipuLLM } from './ZhipuLLM';
-import { ArkLLM } from './ArkLLM';
+import { OpenAICompatibleLLM } from './OpenAICompatibleLLM';
 import { CursorLLM } from './CursorLLM';
 import { AnthropicLLM } from './AnthropicLLM';
 import { DeepSeekLLM } from './DeepSeekLLM';
 
 /**
  * Create an LLM instance based on provider type
+ * 
+ * - CursorLLM: Uses Cursor Agent API (non-OpenAI compatible)
+ * - All other providers: Uses OpenAICompatibleLLM with appropriate baseURL
  */
 export function createLLM(config: ILLMConfig): BaseLLM {
-  switch (config.provider) {
-    case 'zhipuai':
-      return new ZhipuLLM(config);
-    
-    case 'ark':
-      return new ArkLLM(config);
-    
-    case 'cursor':
-      return new CursorLLM(config);
-    
-    case 'anthropic':
-      return new AnthropicLLM(config);
-
-    case 'deepseek':
-      return new DeepSeekLLM(config);
-    default:
-      return new OpenAILLM(config);
+  // CursorLLM uses a completely different API (Cursor Agent API)
+  if (config.provider === 'cursor') {
+    return new CursorLLM(config);
   }
+  
+  // All other providers use OpenAI-compatible API
+  // Provider-specific baseURL is handled internally by OpenAICompatibleLLM
+  return new OpenAICompatibleLLM(config);
 }
 
 /**
  * Get list of supported providers
+ * All providers except 'cursor' use the unified OpenAICompatibleLLM class
  */
 export function getSupportedProviders(): LLMProvider[] {
-  return ['openai', 'zhipuai', 'ark', 'cursor', 'gemini','anthropic', 'deepseek'];
+  return ['openai', 'anthropic', 'gemini', 'zhipuai', 'qianfan', 'dashscope', 'ollama', 'ark', 'cursor'];
 }
 
 /**
