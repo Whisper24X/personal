@@ -1,7 +1,8 @@
 # mind2build 开发指南
 
-**文档版本**: v1.0  
-**创建日期**: 2025-12-24
+**文档版本**: v1.1  
+**创建日期**: 2025-12-24  
+**最后更新**: 2026-01-21
 
 ## 1. 开发环境搭建
 
@@ -44,49 +45,58 @@ git commit -m "feat: 生成v2版本文档和代码"
 git push origin v2
 ```
 
-### 1.2 创建虚拟环境
+### 1.2 安装 Node.js 和 pnpm
+
 ```bash
-conda create -n mind2build python=3.9
-conda activate mind2build
+# macOS
+brew install node pnpm
+
+# Ubuntu/Debian
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+sudo npm install -g pnpm
+
+# 验证安装
+node --version  # v18+
+pnpm --version  # v8+
 ```
 
 ### 1.3 安装依赖
+
 ```bash
-pip install -e ".[dev]"
-pip install -e ".[test]"
+# 安装所有依赖（monorepo）
+pnpm install
+
+# 或单独安装后端依赖
+cd backend
+pnpm install
 ```
 
-### 1.4 安装 Pre-commit
-```bash
-pre-commit install
-```
+### 1.4 配置数据库
+
+参考 [21_数据库配置指南_DBSETUP.md](./21_数据库配置指南_DBSETUP.md) 配置 PostgreSQL 数据库。
 
 ## 2. 代码规范
 
 ### 2.1 格式化
 
-**Black**:
+**Prettier**:
 ```bash
-black mind2build tests
-```
-
-**isort**:
-```bash
-isort mind2build tests
+pnpm --filter backend format
 ```
 
 ### 2.2 Lint 检查
 
-**Ruff**:
+**ESLint**:
 ```bash
-ruff check mind2build tests
+pnpm --filter backend lint
 ```
 
 ### 2.3 类型检查
 
-**mypy** (可选):
+**TypeScript**:
 ```bash
-mypy mind2build
+pnpm --filter backend type-check
 ```
 
 ## 3. 测试
@@ -94,48 +104,54 @@ mypy mind2build
 ### 3.1 运行测试
 ```bash
 # 所有测试
-pytest
+pnpm --filter backend test
 
 # 特定文件
-pytest tests/test_role.py
+pnpm --filter backend test tests/roles/Role.test.ts
 
 # 特定测试
-pytest tests/test_role.py::test_role_init
+pnpm --filter backend test -- -t "test role init"
 
 # 带覆盖率
-pytest --cov=mind2build --cov-report=html
+pnpm --filter backend test -- --coverage
 ```
 
 ### 3.2 编写测试
-```python
-import pytest
-from mind2build.roles import Role
+```typescript
+import { describe, it, expect } from '@jest/globals';
+import { Role } from '@/roles/Role';
 
-def test_role_init():
-    role = Role(name="Test")
-    assert role.name == "Test"
+describe('Role', () => {
+  it('should initialize correctly', () => {
+    const role = new Role({ name: 'Test' });
+    expect(role.name).toBe('Test');
+  });
 
-@pytest.mark.asyncio
-async def test_role_run():
-    role = Role()
-    result = await role.run()
-    assert result is not None
+  it('should run successfully', async () => {
+    const role = new Role();
+    const result = await role.run();
+    expect(result).not.toBeNull();
+  });
+});
 ```
 
 ## 4. 目录结构
 
 ```
-mind2build/
-├── mind2build/          # 源代码
-│   ├── actions/      # 行动实现
-│   ├── roles/        # 角色实现
-│   ├── provider/     # LLM 提供商
-│   ├── memory/       # 记忆系统
-│   ├── tools/        # 工具
-│   └── utils/        # 工具函数
-├── tests/            # 测试代码
-├── examples/         # 示例
-└── docs/             # 文档
+testflow/
+├── backend/              # 后端服务（Node.js/TypeScript）
+│   ├── src/
+│   │   ├── actions/      # 行动实现（31个Actions）
+│   │   ├── roles/        # 角色实现
+│   │   ├── providers/    # LLM 提供商
+│   │   ├── core/         # 核心基础设施
+│   │   ├── orchestration/# 编排层
+│   │   └── api/          # API层
+│   └── tests/            # 测试代码
+├── frontend/             # 前端应用（Vue 3）
+├── shared/               # 共享代码
+├── doc/                  # 文档
+└── workspace/            # 生成项目的工作区
 ```
 
 ## 5. 开发工作流
@@ -161,17 +177,21 @@ git push origin feature/my-feature
 ## 6. 调试技巧
 
 ### 6.1 日志调试
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
+```typescript
+import logger from '@/utils/logger';
 
-from mind2build.logs import logger
-logger.debug("Debug message")
+logger.debug('Debug message');
+logger.info('Info message');
+logger.error('Error message');
 ```
 
 ### 6.2 断点调试
-```python
-import pdb; pdb.set_trace()
+```typescript
+// 使用 debugger 语句
+debugger;
+
+// 或使用 console
+console.log('Debug info:', variable);
 ```
 
 ### 6.3 VS Code 调试
@@ -180,11 +200,13 @@ import pdb; pdb.set_trace()
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Current File",
-            "type": "python",
+            "name": "Debug Backend",
+            "type": "node",
             "request": "launch",
-            "program": "${file}",
-            "console": "integratedTerminal"
+            "runtimeExecutable": "pnpm",
+            "runtimeArgs": ["--filter", "backend", "dev"],
+            "console": "integratedTerminal",
+            "sourceMaps": true
         }
     ]
 }
@@ -203,6 +225,14 @@ test: 测试相关
 refactor: 重构
 style: 代码风格
 chore: 其他改动
+perf: 性能优化
+```
+
+示例：
+```bash
+git commit -m "feat: add DeepSeek LLM provider support"
+git commit -m "fix: correct QA workflow action execution order"
+git commit -m "docs: update Actions documentation with QA workflow"
 ```
 
 ### 7.2 代码审查清单
@@ -215,20 +245,29 @@ chore: 其他改动
 ## 8. 常用命令
 
 ```bash
+# 开发模式（后端）
+pnpm --filter backend dev
+
+# 开发模式（前端）
+pnpm --filter frontend dev
+
 # 格式化代码
-make format
+pnpm --filter backend format
 
 # 运行测试
-make test
+pnpm --filter backend test
 
 # 检查代码
-make lint
+pnpm --filter backend lint
 
-# 生成文档
-make docs
+# 类型检查
+pnpm --filter backend type-check
 
-# 清理
-make clean
+# 构建
+pnpm --filter backend build
+
+# CLI命令
+pnpm --filter backend cli generate "Create a todo app"
 ```
 
 ---

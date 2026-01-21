@@ -1,8 +1,8 @@
 # mind2build 实现示例文档
 
-**文档版本**: v1.0  
+**文档版本**: v1.1  
 **创建日期**: 2025-12-24  
-**更新日期**: 2025-12-24
+**最后更新**: 2026-01-21
 
 ---
 
@@ -22,92 +22,104 @@
 **CLI 方式**:
 ```bash
 # 基础命令
-mind2build "Create a 2048 game"
+pnpm --filter backend cli generate "Create a 2048 game"
 
 # 带参数
-mind2build "Create a TODO app" \
-  --investment 5.0 \
-  --n-round 10 \
-  --code-review \
-  --project-name todo_app
+pnpm --filter backend cli generate "Create a TODO app" \
+  --application-id app001 \
+  --project-id proj001 \
+  --interactive
 ```
 
-**Python API 方式**:
-```python
-from mind2build.software_company import generate_repo
+**TypeScript API 方式**:
+```typescript
+import { InteractiveSession } from './orchestration/InteractiveSession';
+import { WorkspaceManager } from './utils/WorkspaceManager';
 
-# 基础调用
-project_path = generate_repo("Create a snake game")
-print(f"Project generated at: {project_path}")
+// 创建交互式会话
+const session = new InteractiveSession({
+  applicationId: 'app001',
+  projectId: 'proj001',
+  requirement: 'Create a calculator CLI tool'
+});
 
-# 完整参数
-project_path = generate_repo(
-    idea="Create a calculator CLI tool",
-    investment=5.0,
-    n_round=8,
-    code_review=True,
-    project_name="calculator",
-    inc=False
-)
+// 启动会话
+await session.start();
+
+// 等待完成
+await session.waitForCompletion();
 ```
 
 **预期输出**:
 ```
-workspace/
-└── calculator/
-    ├── PRD.md
-    ├── design.md
-    ├── main.py
-    ├── calculator.py
-    ├── tests/
-    │   └── test_calculator.py
-    └── README.md
+workspace/app001/proj001/v1/
+├── docs/
+│   ├── MRD.md
+│   ├── PRD.md
+│   └── DESIGN.md
+├── src/
+│   ├── calculator.ts
+│   └── index.ts
+├── tests/
+│   └── calculator.test.ts
+└── README.md
 ```
 
 ### 1.2 数据分析任务
 
-```python
-import asyncio
-from mind2build.roles.di.data_interpreter import DataInterpreter
+```typescript
+import { DataAnalyst } from './roles/DataAnalyst';
+import { Environment } from './core/Environment';
 
-async def analyze_data():
-    # 创建数据解释器
-    di = DataInterpreter()
-    
-    # 运行分析任务
-    result = await di.run(
-        "Run data analysis on sklearn Iris dataset, include a plot"
-    )
-    
-    print(f"Analysis completed: {result}")
+// 创建环境
+const env = new Environment();
 
-# 运行
-asyncio.run(analyze_data())
+// 创建数据分析师角色
+const analyst = new DataAnalyst({
+  name: 'DataAnalyst',
+  profile: 'Data Analyst',
+  goal: 'Perform data analysis tasks'
+});
+
+// 添加到环境
+env.addRole(analyst);
+
+// 运行分析任务
+const result = await analyst.run(
+  "Run data analysis on dataset, include a plot"
+);
+
+console.log(`Analysis completed: ${result}`);
 ```
 
 **输出示例**:
-- 数据加载和预处理代码
+- 数据加载和预处理代码（TypeScript）
 - 统计分析结果
-- 可视化图表（iris_analysis.png）
+- 可视化图表（使用Chart.js或D3.js）
 
 ### 1.3 增量开发
 
 ```bash
-# 在已有项目上添加新功能
-mind2build "Add user authentication feature" \
-  --inc \
-  --project-path ./existing_project
+# 在已有项目上添加新功能（使用相同applicationId和projectId）
+pnpm --filter backend cli generate "Add user authentication feature" \
+  --application-id app001 \
+  --project-id proj001 \
+  --version 2
 ```
 
-```python
-# Python API 方式
-from mind2build.software_company import generate_repo
+```typescript
+// TypeScript API 方式
+import { InteractiveSession } from './orchestration/InteractiveSession';
 
-project_path = generate_repo(
-    idea="Add login and registration pages",
-    inc=True,
-    project_path="./my_web_app"
-)
+// 使用新版本号进行增量开发
+const session = new InteractiveSession({
+  applicationId: 'app001',
+  projectId: 'proj001',
+  version: 2,  // 新版本
+  requirement: 'Add login and registration pages'
+});
+
+await session.start();
 ```
 
 ---
@@ -116,85 +128,116 @@ project_path = generate_repo(
 
 ### 2.1 自定义团队配置
 
-```python
-from mind2build.team import Team
-from mind2build.roles import ProductManager, Architect, Engineer
-from mind2build.context import Context
-from mind2build.config2 import Config
+```typescript
+import { Team } from './core/Team';
+import { ProductManager, Architect, Engineer, QAEngineer } from './roles';
+import { Environment } from './core/Environment';
+import { LLMConfig } from './providers/llm/LLMConfig';
 
-# 创建配置
-config = Config.default()
-config.llm.model = "gpt-4-turbo"
-config.llm.api_key = "your-api-key"
+// 创建LLM配置
+const llmConfig = new LLMConfig({
+  provider: 'openai',
+  model: 'gpt-4-turbo',
+  apiKey: process.env.OPENAI_API_KEY
+});
 
-# 创建上下文
-ctx = Context(config=config)
+// 创建环境
+const env = new Environment();
 
-# 创建团队
-team = Team(context=ctx)
-team.hire([
-    ProductManager(name="Alice"),
-    Architect(name="Bob"),
-    Engineer(name="Charlie")
-])
+// 创建团队
+const team = new Team(env);
+team.addRole(new ProductManager({ name: 'Alice', llmConfig }));
+team.addRole(new Architect({ name: 'Bob', llmConfig }));
+team.addRole(new Engineer({ name: 'Charlie', llmConfig }));
+team.addRole(new QAEngineer({ name: 'David', llmConfig }));
 
-# 设置预算
-team.invest(10.0)
-
-# 运行项目
-import asyncio
-asyncio.run(team.run(
-    n_round=10,
-    idea="Create a blog system with user management"
-))
+// 运行项目
+await team.run({
+  requirement: 'Create a blog system with user management',
+  applicationId: 'app001',
+  projectId: 'proj001'
+});
 ```
 
 ### 2.2 使用特定LLM提供商
 
 **OpenAI**:
-```yaml
-# config2.yaml
-llm:
-  api_type: "openai"
-  model: "gpt-4-turbo"
-  base_url: "https://api.openai.com/v1"
-  api_key: "${OPENAI_API_KEY}"
+```bash
+# .env 文件
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your-api-key
+OPENAI_MODEL=gpt-4-turbo
 ```
 
-**Claude**:
-```yaml
-llm:
-  api_type: "anthropic"
-  model: "claude-3-opus"
-  api_key: "${ANTHROPIC_API_KEY}"
+**ZhipuAI（智谱AI）**:
+```bash
+LLM_PROVIDER=zhipuai
+ZHIPUAI_API_KEY=your-api-key
+ZHIPUAI_MODEL=glm-4-flash
+```
+
+**DeepSeek**:
+```bash
+LLM_PROVIDER=deepseek
+DEEPSEEK_API_KEY=your-api-key
+DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_BASE_URL=https://api.deepseek.com
 ```
 
 **本地Ollama**:
-```yaml
-llm:
-  api_type: "ollama"
-  model: "llama2"
-  base_url: "http://localhost:11434"
+```bash
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama2
+```
+
+**TypeScript配置**:
+```typescript
+import { LLMConfig } from './providers/llm/LLMConfig';
+
+// OpenAI配置
+const openaiConfig = new LLMConfig({
+  provider: 'openai',
+  model: 'gpt-4-turbo',
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+// ZhipuAI配置（通过OpenAICompatibleLLM）
+const zhipuaiConfig = new LLMConfig({
+  provider: 'zhipuai',
+  model: 'glm-4-flash',
+  apiKey: process.env.ZHIPUAI_API_KEY,
+  baseUrl: 'https://open.bigmodel.cn/api/paas/v4'
+});
 ```
 
 ### 2.3 成本控制示例
 
-```python
-from mind2build.team import Team
-from mind2build.utils.cost_manager import CostManager
+```typescript
+import { Team } from './core/Team';
+import { CostManager } from './utils/CostManager';
 
-team = Team()
-team.hire([ProductManager(), Architect(), Engineer()])
+const team = new Team(env);
+team.addRole(new ProductManager());
+team.addRole(new Architect());
+team.addRole(new Engineer());
 
-# 设置严格的预算
-team.invest(2.0)  # 只投资 $2
+// 设置严格的预算
+const costManager = new CostManager({ maxBudget: 2.0 });  // 只投资 $2
 
-try:
-    await team.run(idea="Create a complex web app")
-except NoMoneyException as e:
-    print(f"Budget exhausted: {e}")
-    print(f"Total cost: ${team.cost_manager.total_cost:.2f}")
-    print(f"Tokens used: {team.cost_manager.total_tokens}")
+try {
+  await team.run({
+    requirement: 'Create a complex web app',
+    applicationId: 'app001',
+    projectId: 'proj001'
+  });
+} catch (error) {
+  if (error instanceof Error && error.message.includes('Budget exhausted')) {
+    console.log(`Budget exhausted: ${error.message}`);
+    console.log(`Total cost: $${costManager.totalCost.toFixed(2)}`);
+    console.log(`Tokens used: ${costManager.totalTokens}`);
+  }
+}
 ```
 
 ---
@@ -203,64 +246,83 @@ except NoMoneyException as e:
 
 ### 3.1 自定义角色
 
-```python
-from mind2build.roles.role import Role
-from mind2build.actions import Action
+```typescript
+import { BaseRole } from './roles/BaseRole';
+import { BaseAction } from './actions/BaseAction';
+import { Message } from './core/Message';
 
-class CustomAction(Action):
-    """自定义动作"""
-    name: str = "CustomAction"
-    
-    async def run(self, *args, **kwargs):
-        prompt = f"Perform custom task: {args[0]}"
-        result = await self._aask(prompt)
-        return result
+// 自定义Action
+class CustomAction extends BaseAction {
+  name = 'CustomAction';
+  
+  async execute(input: any, context: any): Promise<any> {
+    const prompt = `Perform custom task: ${input.task}`;
+    const result = await this.llm.aask(prompt);
+    return { result };
+  }
+}
 
-class CustomRole(Role):
-    """自定义角色"""
-    name: str = "Custom"
-    profile: str = "Custom Role"
-    goal: str = "Perform custom tasks"
-    
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.set_actions([CustomAction])
-        self._watch([SomeOtherAction])  # 订阅其他动作
+// 自定义Role
+class CustomRole extends BaseRole {
+  name = 'Custom';
+  profile = 'Custom Role';
+  goal = 'Perform custom tasks';
+  
+  constructor(config?: any) {
+    super(config);
+    this.setActions([CustomAction]);
+    this.watch(['ACTION_SOME_OTHER']);  // 订阅其他动作
+  }
+}
 
-# 使用自定义角色
-team = Team()
-team.hire([CustomRole(), ProductManager()])
-await team.run(idea="Your task")
+// 使用自定义角色
+const team = new Team(env);
+team.addRole(new CustomRole());
+team.addRole(new ProductManager());
+await team.run({
+  requirement: 'Your task',
+  applicationId: 'app001',
+  projectId: 'proj001'
+});
 ```
 
 ### 3.2 自定义工作流
 
 **固定顺序工作流**:
-```python
-from mind2build.roles import Role, RoleReactMode
+```typescript
+import { BaseRole } from './roles/BaseRole';
+import { RoleReactMode } from './core/RoleReactMode';
+import { WritePRD, WriteDesign, WriteCode } from './actions';
 
-class SequentialRole(Role):
-    def __init__(self):
-        super().__init__()
-        self.set_actions([Action1, Action2, Action3])
-        self.rc.react_mode = RoleReactMode.BY_ORDER
+class SequentialRole extends BaseRole {
+  constructor(config?: any) {
+    super(config);
+    this.setActions([WritePRD, WriteDesign, WriteCode]);
+    this.reactMode = RoleReactMode.BY_ORDER;  // 按顺序执行
+  }
+}
 ```
 
 **动态工作流**:
-```python
-class DynamicRole(Role):
-    async def _think(self) -> bool:
-        # 根据上下文动态选择动作
-        last_message = self.rc.memory.get(1)[0]
-        
-        if "需要设计" in last_message.content:
-            self.rc.todo = WriteDesign()
-        elif "需要代码" in last_message.content:
-            self.rc.todo = WriteCode()
-        else:
-            return False
-        
-        return True
+```typescript
+import { RoleThinker } from './core/RoleThinker';
+
+class DynamicRole extends BaseRole {
+  async think(context: any): Promise<boolean> {
+    // 根据上下文动态选择动作
+    const lastMessage = context.memory.getLastMessage();
+    
+    if (lastMessage.content.includes('需要设计')) {
+      context.todo = WriteDesign;
+      return true;
+    } else if (lastMessage.content.includes('需要代码')) {
+      context.todo = WriteCode;
+      return true;
+    }
+    
+    return false;
+  }
+}
 ```
 
 ### 3.3 自定义LLM提供商
@@ -289,13 +351,16 @@ class CustomLLM(BaseLLM):
         result = await self._achat_completion(messages, **kwargs)
         return result["content"]
 
-# 注册自定义提供商
-from mind2build.provider.llm_provider_registry import LLM_REGISTRY
-LLM_REGISTRY["custom"] = CustomLLM
+// 使用（通过OpenAICompatibleLLM架构）
+// 如果API兼容OpenAI格式，可以直接使用OpenAICompatibleLLM
+import { OpenAICompatibleLLM } from './providers/llm/OpenAICompatibleLLM';
 
-# 使用
-config = LLMConfig(api_type="custom", model="your-model")
-llm = CustomLLM(config)
+const customLLM = new OpenAICompatibleLLM({
+  provider: 'custom',
+  model: 'your-model',
+  apiKey: 'your-api-key',
+  baseUrl: 'https://your-api-endpoint.com/v1'
+});
 ```
 
 ---
@@ -304,169 +369,188 @@ llm = CustomLLM(config)
 
 ### 4.1 创建 Web 应用
 
-```python
-async def create_blog_system():
-    """创建完整的博客系统"""
-    
-    idea = """
+```typescript
+async function createBlogSystem() {
+  /**创建完整的博客系统*/
+  
+  const requirement = `
     创建一个博客系统，包含以下功能：
     1. 用户注册和登录
     2. 发布和编辑博客文章
     3. 评论功能
     4. 标签和分类
     5. 搜索功能
-    使用 Python Flask + SQLite
-    """
-    
-    team = Team()
-    team.hire([
-        ProductManager(),
-        Architect(),
-        Engineer(),
-        QA Engineer()
-    ])
-    
-    team.invest(15.0)
-    
-    result = await team.run(
-        n_round=15,
-        idea=idea
-    )
-    
-    return result
+    使用 TypeScript + Express + PostgreSQL
+  `;
+  
+  const team = new Team(env);
+  team.addRole(new ProductManager());
+  team.addRole(new Architect());
+  team.addRole(new Engineer());
+  team.addRole(new QAEngineer());
+  
+  const result = await team.run({
+    requirement,
+    applicationId: 'blog_app',
+    projectId: 'blog_v1'
+  });
+  
+  return result;
+}
 ```
 
 **生成的项目结构**:
 ```
-blog_system/
+workspace/blog_app/blog_v1/v1/
 ├── docs/
+│   ├── MRD.md
 │   ├── PRD.md
-│   ├── design.md
-│   └── api.md
-├── app/
-│   ├── __init__.py
-│   ├── models.py
-│   ├── views.py
-│   ├── forms.py
-│   └── templates/
+│   ├── DESIGN.md
+│   └── API.md
+├── src/
+│   ├── models/
+│   ├── controllers/
+│   ├── routes/
+│   └── middleware/
 ├── tests/
-│   ├── test_models.py
-│   ├── test_views.py
-│   └── test_api.py
-├── requirements.txt
-├── config.py
-└── run.py
+│   ├── unit/
+│   └── integration/
+├── package.json
+├── tsconfig.json
+└── README.md
 ```
 
 ### 4.2 数据分析流程
 
-```python
-async def data_analysis_pipeline():
-    """完整的数据分析流程"""
-    
-    di = DataInterpreter()
-    
-    # 步骤1：加载和探索数据
-    await di.run("""
-    加载 data.csv 文件，执行以下分析：
-    1. 显示前5行数据
-    2. 显示数据统计信息
-    3. 检查缺失值
-    """)
-    
-    # 步骤2：数据清洗
-    await di.run("""
-    清洗数据：
-    1. 删除重复行
-    2. 填充缺失值（数值列用均值，分类列用众数）
-    3. 移除异常值
-    """)
-    
-    # 步骤3：数据可视化
-    await di.run("""
-    创建以下可视化：
-    1. 各列的分布直方图
-    2. 相关性热力图
-    3. 关键特征的箱线图
-    保存所有图表
-    """)
-    
-    # 步骤4：建模
-    await di.run("""
-    使用随机森林进行分类：
-    1. 划分训练集和测试集（80/20）
-    2. 训练模型
-    3. 评估模型性能（准确率、混淆矩阵）
-    4. 显示特征重要性
-    """)
+```typescript
+async function dataAnalysisPipeline() {
+  /**完整的数据分析流程*/
+  
+  const analyst = new DataAnalyst();
+  
+  // 步骤1：加载和探索数据
+  await analyst.run({
+    requirement: `
+      加载 data.csv 文件，执行以下分析：
+      1. 显示前5行数据
+      2. 显示数据统计信息
+      3. 检查缺失值
+    `
+  });
+  
+  // 步骤2：数据清洗
+  await analyst.run({
+    requirement: `
+      清洗数据：
+      1. 删除重复行
+      2. 填充缺失值（数值列用均值，分类列用众数）
+      3. 移除异常值
+    `
+  });
+  
+  // 步骤3：数据可视化
+  await analyst.run({
+    requirement: `
+      创建以下可视化：
+      1. 各列的分布直方图
+      2. 相关性热力图
+      3. 关键特征的箱线图
+      保存所有图表
+    `
+  });
+  
+  // 步骤4：建模
+  await analyst.run({
+    requirement: `
+      使用机器学习进行分类：
+      1. 划分训练集和测试集（80/20）
+      2. 训练模型
+      3. 评估模型性能（准确率、混淆矩阵）
+      4. 显示特征重要性
+    `
+  });
+}
 ```
 
 ### 4.3 CLI 工具开发
 
-```python
-async def create_cli_tool():
-    """创建命令行工具"""
-    
-    idea = """
+```typescript
+async function createCLITool() {
+  /**创建命令行工具*/
+  
+  const requirement = `
     创建一个任务管理CLI工具，功能包括：
     1. 添加任务（add）
     2. 列出任务（list）
     3. 完成任务（done）
     4. 删除任务（delete）
     5. 数据存储在本地JSON文件
-    使用 Python Click 库
-    """
-    
-    project_path = generate_repo(
-        idea=idea,
-        investment=5.0,
-        n_round=8,
-        project_name="task_cli"
-    )
-    
-    print(f"CLI tool created at: {project_path}")
+    使用 TypeScript + Commander.js
+  `;
+  
+  const session = new InteractiveSession({
+    applicationId: 'cli_app',
+    projectId: 'task_cli',
+    requirement
+  });
+  
+  await session.start();
+  console.log(`CLI tool created at: ${session.workspacePath}`);
+}
 ```
 
 **使用生成的工具**:
 ```bash
-cd task_cli
-pip install -e .
+cd workspace/cli_app/task_cli/v1/src
+pnpm install
+
+# 编译
+pnpm build
 
 # 使用
-task add "Complete mind2build documentation"
-task list
-task done 1
+node dist/index.js add "Complete mind2build documentation"
+node dist/index.js list
+node dist/index.js done 1
 ```
 
 ### 4.4 增量迭代示例
 
-```python
-# 第一次：创建基础版本
-v1_path = generate_repo(
-    idea="Create a simple TODO app with add/list functions",
-    project_name="todo_app"
-)
+```typescript
+// 第一次：创建基础版本
+const v1Session = new InteractiveSession({
+  applicationId: 'todo_app',
+  projectId: 'todo_v1',
+  version: 1,
+  requirement: 'Create a simple TODO app with add/list functions'
+});
+await v1Session.start();
 
-# 第二次：添加功能
-v2_path = generate_repo(
-    idea="Add edit and delete functions to TODO app",
-    inc=True,
-    project_path=v1_path
-)
+// 第二次：添加功能
+const v2Session = new InteractiveSession({
+  applicationId: 'todo_app',
+  projectId: 'todo_v1',
+  version: 2,
+  requirement: 'Add edit and delete functions to TODO app'
+});
+await v2Session.start();
 
-# 第三次：添加数据库
-v3_path = generate_repo(
-    idea="Replace JSON storage with SQLite database",
-    inc=True,
-    project_path=v2_path
-)
+// 第三次：添加数据库
+const v3Session = new InteractiveSession({
+  applicationId: 'todo_app',
+  projectId: 'todo_v1',
+  version: 3,
+  requirement: 'Replace JSON storage with PostgreSQL database'
+});
+await v3Session.start();
 
-# 第四次：添加Web界面
-v4_path = generate_repo(
-    idea="Add Flask web interface for TODO app",
-    inc=True,
-    project_path=v3_path
-)
+// 第四次：添加Web界面
+const v4Session = new InteractiveSession({
+  applicationId: 'todo_app',
+  projectId: 'todo_v1',
+  version: 4,
+  requirement: 'Add Express web interface for TODO app'
+});
+await v4Session.start();
 ```
 
 ---
@@ -475,45 +559,49 @@ v4_path = generate_repo(
 
 ### 5.1 启用详细日志
 
-```python
-import logging
-from mind2build.logs import logger
+```typescript
+import { logger } from './utils/logger';
 
-# 设置日志级别
-logger.setLevel(logging.DEBUG)
+// 设置日志级别
+logger.level = 'debug';
 
-# 或通过环境变量
-import os
-os.environ["LOG_LEVEL"] = "DEBUG"
+// 或通过环境变量
+process.env.LOG_LEVEL = 'DEBUG';
 ```
 
 ### 5.2 处理 API 错误
 
-```python
-from mind2build.provider.base_llm import LLMAPIError
+```typescript
+import { LLMAPIError } from './providers/llm/errors';
 
-try:
-    result = await team.run(idea="Your idea")
-except LLMAPIError as e:
-    print(f"LLM API error: {e}")
-    print("Please check:")
-    print("1. API key is valid")
-    print("2. Network connection is stable")
-    print("3. API quota is not exhausted")
+try {
+  const result = await team.run({
+    requirement: 'Your idea',
+    applicationId: 'app001',
+    projectId: 'proj001'
+  });
+} catch (error) {
+  if (error instanceof LLMAPIError) {
+    console.error(`LLM API error: ${error.message}`);
+    console.log('Please check:');
+    console.log('1. API key is valid');
+    console.log('2. Network connection is stable');
+    console.log('3. API quota is not exhausted');
+  }
+}
 ```
 
 ### 5.3 恢复中断的项目
 
-```python
-from mind2build.team import Team
-from pathlib import Path
+```typescript
+import { InteractiveSession } from './orchestration/InteractiveSession';
 
-# 从序列化状态恢复
-recovery_path = Path("./storage/team")
-team = Team.deserialize(stg_path=recovery_path, context=ctx)
+// 从会话ID恢复
+const sessionId = 'existing-session-id';
+const session = await InteractiveSession.load(sessionId);
 
-# 继续运行
-await team.run(n_round=5)
+// 继续运行
+await session.resume();
 ```
 
 ---
@@ -522,36 +610,44 @@ await team.run(n_round=5)
 
 ### 6.1 减少 Token 使用
 
-```python
-# 限制历史消息数量
-role.rc.memory.max_length = 50  # 只保留最近50条消息
+```typescript
+// 限制历史消息数量
+role.context.memory.maxLength = 50;  // 只保留最近50条消息
 
-# 使用更小的模型
-config.llm.model = "gpt-3.5-turbo"  # 而不是 gpt-4
+// 使用更小的模型
+const llmConfig = new LLMConfig({
+  provider: 'openai',
+  model: 'gpt-3.5-turbo'  // 而不是 gpt-4
+});
 ```
 
 ### 6.2 并发优化
 
-```python
-# 增加并发角色数
-team = Team()
-team.hire([
-    ProductManager(),
-    Architect(),
-    Engineer(),  # 可以并发执行
-    Engineer(),  # 多个工程师并发
-    Engineer()
-])
+```typescript
+// 增加并发角色数
+const team = new Team(env);
+team.addRole(new ProductManager());
+team.addRole(new Architect());
+team.addRole(new Engineer());  // 可以并发执行
+team.addRole(new Engineer());  // 多个工程师并发
+team.addRole(new Engineer());
 ```
 
 ### 6.3 缓存LLM响应
 
-```python
-from functools import lru_cache
+```typescript
+import { LRUCache } from 'lru-cache';
 
-@lru_cache(maxsize=100)
-async def cached_llm_call(prompt: str):
-    return await llm.aask(prompt)
+const cache = new LRUCache<string, string>({ max: 100 });
+
+async function cachedLLMCall(prompt: string): Promise<string> {
+  if (cache.has(prompt)) {
+    return cache.get(prompt)!;
+  }
+  const result = await llm.aask(prompt);
+  cache.set(prompt, result);
+  return result;
+}
 ```
 
 ---
@@ -560,45 +656,46 @@ async def cached_llm_call(prompt: str):
 
 ### 7.1 清晰的需求描述
 
-```python
-# ❌ 不好的需求
-generate_repo("make an app")
+```typescript
+// ❌ 不好的需求
+await session.start({ requirement: 'make an app' });
 
-# ✅ 好的需求
-generate_repo("""
-创建一个图书管理系统，包括：
-1. 图书的增删改查
-2. 借阅记录管理
-3. 用户管理（管理员、普通用户）
-4. 图书搜索功能
-技术栈：Python Flask + SQLite + Bootstrap
-""")
+// ✅ 好的需求
+await session.start({
+  requirement: `
+    创建一个图书管理系统，包括：
+    1. 图书的增删改查
+    2. 借阅记录管理
+    3. 用户管理（管理员、普通用户）
+    4. 图书搜索功能
+    技术栈：TypeScript + Express + PostgreSQL + React
+  `
+});
 ```
 
 ### 7.2 合理的预算设置
 
-```python
-# 根据项目复杂度设置预算
-simple_project = 2.0    # 简单CLI工具
-medium_project = 5.0    # 中等Web应用
-complex_project = 10.0  # 复杂企业应用
+```typescript
+// 根据项目复杂度设置预算
+const budgets = {
+  simpleProject: 2.0,    // 简单CLI工具
+  mediumProject: 5.0,    // 中等Web应用
+  complexProject: 10.0   // 复杂企业应用
+};
 ```
 
 ### 7.3 使用配置文件
 
-```yaml
-# ~/.mind2build/config2.yaml
-llm:
-  api_type: "openai"
-  model: "gpt-4-turbo"
-  api_key: "${OPENAI_API_KEY}"
-  temperature: 0.7
+```bash
+# .env 文件
+LLM_PROVIDER=openai
+OPENAI_MODEL=gpt-4-turbo
+OPENAI_API_KEY=${OPENAI_API_KEY}
+TEMPERATURE=0.7
 
-workspace:
-  path: "./workspace"
+WORKSPACE_PATH=./workspace
 
-cost:
-  max_budget: 10.0
+MAX_BUDGET=10.0
 ```
 
 ---
@@ -606,23 +703,38 @@ cost:
 ## 8. 常见问题
 
 **Q: 如何查看成本使用情况？**
-```python
-print(f"Total cost: ${team.cost_manager.total_cost:.2f}")
-print(f"Tokens used: {team.cost_manager.total_tokens}")
+```typescript
+console.log(`Total cost: $${costManager.totalCost.toFixed(2)}`);
+console.log(`Tokens used: ${costManager.totalTokens}`);
 ```
 
 **Q: 如何更换LLM提供商？**
 ```bash
-# 修改配置文件
-vim ~/.mind2build/config2.yaml
-# 更改 api_type 和相关配置
+# 修改 .env 文件
+vim .env
+# 更改 LLM_PROVIDER 和相关配置
+# 例如：LLM_PROVIDER=zhipuai
 ```
 
 **Q: 生成的代码质量不理想怎么办？**
-- 使用更强大的模型（如 GPT-4）
+- 使用更强大的模型（如 GPT-4、GLM-4）
 - 提供更详细的需求描述
-- 启用代码审查功能
+- 启用QAEngineer的完整9步QA工作流
 - 使用增量模式逐步优化
+- 使用RunCode和FixBug Actions进行代码验证和修复
+
+---
+
+## 9. 更新记录
+
+### v1.1 (2026-01-21)
+- 更新版本号和最后更新日期
+- 将所有Python代码示例更新为TypeScript/Node.js示例
+- 更新CLI命令从Python CLI改为pnpm CLI
+- 更新LLM提供商配置方式（从YAML改为.env）
+- 更新项目结构示例（从Python项目结构改为TypeScript项目结构）
+- 更新角色和Actions示例，反映当前实现（31个Actions，完整QA工作流等）
+- 更新工作流示例，反映TypeScript实现
 
 ---
 

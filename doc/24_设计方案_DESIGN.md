@@ -1,7 +1,8 @@
 # Mind2Build 设计方案文档
 
-**文档版本**: v1.0  
+**文档版本**: v1.1  
 **创建日期**: 2025-12-25  
+**最后更新**: 2026-01-21  
 **项目名称**: Mind2Build (即思即成)
 
 ---
@@ -357,6 +358,17 @@ abstract class BaseAction {
 - 输出: 测试代码
 - 使用角色: QAEngineer
 
+**QA工作流Actions**（9步QA流程）:
+- TestabilityReview: 需求可测性审查
+- WriteTestPlan: 制定测试计划
+- WriteTest: 编写测试用例
+- TestCaseReview: 用例评审与补充
+- ImproveTest: 改进测试用例
+- AutomationPlanning: 自动化测试规划
+- AutomationExecution: 自动化测试执行
+- CoverageQualityCheck: 覆盖率与质量检查
+- QAConclusion: QA结论输出
+
 ### 3.4 基础设施层 (Infrastructure Layer)
 
 #### 3.4.1 Message (消息)
@@ -467,13 +479,17 @@ abstract class BaseLLM {
 #### 3.5.2 LLM实现
 
 **支持的提供商**:
-- OpenAI (GPT-4, GPT-3.5)
-- Anthropic (Claude)
-- ZhipuAI (GLM-4)
-- 其他国内厂商（百度、阿里、讯飞等）
+- OpenAI (GPT-4, GPT-3.5) - 通过 OpenAICompatibleLLM
+- ZhipuAI (GLM-4) - 通过 OpenAICompatibleLLM
+- 火山引擎 Ark (豆包) - 通过 OpenAICompatibleLLM
+- DeepSeek - 通过 OpenAICompatibleLLM
+- Cursor Agent - 独立 CursorLLM 实现
+- 其他国内厂商（百度、阿里、讯飞等）- 可通过 OpenAICompatibleLLM 配置支持
 
 **统一接口设计**:
 - 所有LLM实现继承BaseLLM
+- 大多数提供商通过统一的 OpenAICompatibleLLM 类实现
+- Cursor Agent使用独立的 CursorLLM 实现（非OpenAI兼容API）
 - 统一的错误处理和重试机制
 - 统一的成本计算接口
 
@@ -1034,4 +1050,7 @@ class CustomLLM extends BaseLLM {
 
 **文档维护**: 本文档随系统演进持续更新  
 **反馈渠道**: GitHub Issues / 项目文档
+
+**更新记录**:
+- 2026-01-21: 更新LLM提供商架构说明（统一OpenAICompatibleLLM、添加DeepSeek），更新QA工作流Actions
 

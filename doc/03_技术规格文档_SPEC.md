@@ -3,9 +3,9 @@
 > AI 辅助工程 · 规格说明文档  
 > 用于在人与 AI 协作编码前，对齐目标、边界与工程决策  
 
-**文档版本**: v1.2  
+**文档版本**: v1.3  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-07
+**最后更新**: 2026-01-21
 **规格状态**: ✅ Frozen（已冻结，可进入实现阶段）
 
 ---
@@ -69,36 +69,66 @@
 - ✅ TeamLeader（团队领导）- 协调和决策
 - ✅ DataAnalyst（数据分析师）- 数据分析和可视化
 
-#### 行动实现层
+#### 行动实现层（共 31 个 Actions）
+
+**文档编写 Actions**:
 - ✅ WriteMRD（编写市场研究文档）
-- ✅ MRDReview（MRD文档审查）
 - ✅ WritePRD（编写PRD）
-- ✅ PRDReview（PRD文档审查）
-- ✅ ImproveDocument（改进文档）
 - ✅ WriteDesign（编写设计）
-- ✅ DesignReview（设计文档审查）
-- ✅ BreakdownTasks（任务拆分）
 - ✅ WriteSubProjectDesign（子项目设计）
-- ✅ SubProjectDesignReview（子项目设计审查）
-- ✅ GenerateTask（生成任务说明）
 - ✅ WriteCode（编写代码）
-- ✅ ExecuteSubtask（执行子任务）
+- ✅ WriteTest（编写测试用例）
+- ✅ WriteTestPlan（编写测试计划）
+
+**文档审查 Actions**:
+- ✅ MRDReview（MRD文档审查）
+- ✅ PRDReview（PRD文档审查）
+- ✅ DesignReview（设计文档审查）
+- ✅ SubProjectDesignReview（子项目设计审查）
 - ✅ CodeReview（代码审查）
-- ✅ WriteTest（编写测试）
+
+**文档改进 Actions**:
+- ✅ ImprovePRD（改进PRD文档）
+- ✅ ImproveMRD（改进MRD文档）
+- ✅ ImproveDesign（改进设计文档）
+- ✅ ImproveTest（改进测试用例）
+
+**任务管理 Actions**:
+- ✅ BreakdownTasks（任务拆分）
+- ✅ ExecuteSubtask（执行子任务）
+
+**代码执行与修复 Actions**:
+- ✅ RunCode（代码执行）
+- ✅ FixBug（Bug修复）
+
+**QA 工作流 Actions**:
+- ✅ TestabilityReview（需求可测性审查）
+- ✅ TestCaseReview（测试用例评审）
+- ✅ TestReview（测试文档审查）
+- ✅ AutomationPlanning（自动化测试规划）
+- ✅ AutomationExecution（自动化测试执行）
+- ✅ CoverageQualityCheck（覆盖率与质量检查）
+- ✅ QAConclusion（QA结论输出）
+
+**其他 Actions**:
 - ✅ SearchEnhancedQA（增强搜索）
 - ✅ DataAnalysis（数据分析）
 - ✅ Coordinate（协调任务）
 
 #### LLM 集成层
-- ✅ OpenAI (GPT-4, GPT-3.5)
-- ✅ 智谱AI (ZhipuAI) - GLM-4系列
-- ✅ 火山引擎 Ark (豆包)
-- ✅ Cursor Agent
-- 🚧 Anthropic Claude - 计划中
-- 🚧 Google Gemini - 计划中
-- 🚧 百度千帆 (Qianfan) - 计划中
-- 🚧 阿里云 DashScope - 计划中
-- 🚧 Ollama (本地模型) - 计划中
+
+**统一 OpenAICompatibleLLM 架构**：大多数 LLM 提供商通过统一的 OpenAICompatibleLLM 类实现，简化代码结构。
+
+- ✅ OpenAI (GPT-4, GPT-3.5) - 通过 OpenAICompatibleLLM
+- ✅ 智谱AI (ZhipuAI) - GLM-4系列，通过 OpenAICompatibleLLM
+- ✅ 火山引擎 Ark (豆包) - 通过 OpenAICompatibleLLM
+- ✅ DeepSeek - 通过 OpenAICompatibleLLM
+- ✅ Cursor Agent - 独立 CursorLLM 实现（非 OpenAI 兼容 API）
+- ⚙️ Anthropic Claude - 可配置支持（通过 OpenAICompatibleLLM）
+- ⚙️ Google Gemini - 可配置支持（通过 OpenAICompatibleLLM）
+- ⚙️ 百度千帆 (Qianfan) - 可配置支持（通过 OpenAICompatibleLLM）
+- ⚙️ 阿里云 DashScope - 可配置支持（通过 OpenAICompatibleLLM）
+- ⚙️ Ollama (本地模型) - 可配置支持（通过 OpenAICompatibleLLM）
 
 #### 工具集成层
 - ✅ Browser（网页访问）
@@ -949,5 +979,6 @@ stateDiagram-v2
 |------|------|---------|--------|
 | 2025-12-24 | 1.0 | 初始版本创建 | AI Team |
 | 2026-01-07 | 1.2 | 添加知识库系统、工作流编排系统、角色独立调试系统规格 | AI Team |
+| 2026-01-21 | 1.3 | 更新 Actions 列表（添加 QA 工作流 Actions、RunCode、FixBug、ImproveDesign），更新 LLM 提供商架构说明（统一 OpenAICompatibleLLM、添加 DeepSeek） | AI Team |
 
 ---
