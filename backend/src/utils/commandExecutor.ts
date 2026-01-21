@@ -121,24 +121,36 @@ export async function executeCommand(
     // 注册清理函数（只注册一次）
     registerCleanup();
 
-    // 解析命令和参数
-    const args = command.split(' ');
-    const cmd = args.shift() || '';
-
     logger.info('CommandExecutor: Spawning command', {
-      cmd,
-      args: args.length > 0 ? args : '(no args)',
+      command: shell ? command : command.split(' ')[0],
       cwd,
       timeout,
+      shell,
     });
 
     // 使用spawn执行命令
-    const child = spawn(cmd, args, {
-      cwd,
-      shell,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'], // 忽略stdin，管道化stdout和stderr
-    });
+    // 当shell=true时，直接传递完整命令字符串，让shell处理参数解析（包括引号）
+    // 当shell=false时，需要手动拆分命令和参数
+    let child: ChildProcess;
+    if (shell) {
+      // shell模式：直接传递完整命令，shell会正确处理引号和转义
+      child = spawn(command, {
+        cwd,
+        shell: true,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'], // 忽略stdin，管道化stdout和stderr
+      });
+    } else {
+      // 非shell模式：手动拆分命令和参数
+      const args = command.split(' ');
+      const cmd = args.shift() || '';
+      child = spawn(cmd, args, {
+        cwd,
+        shell: false,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    }
 
     // 添加到正在运行的进程集合
     runningProcesses.add(child);
