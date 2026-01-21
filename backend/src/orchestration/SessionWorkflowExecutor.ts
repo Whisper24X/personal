@@ -313,12 +313,31 @@ export class SessionWorkflowExecutor {
             const actionStatus = await this.stateManager.getActionStatus(currentRole, currentAction);
             const runningState = await this.stateManager.getRunningState();
             
-            // If we were processing this action but it's now PENDING, reset occurred
+            // Only consider it a reset if:
+            // 1. We were processing this action (runningState matches)
+            // 2. Action status is PENDING
+            // 3. Action has been attempted before (retry_count > 0)
+            // This prevents false positives when manually setting an action to PENDING for the first time
             if (runningState.role === currentRole && 
                 runningState.action === currentAction && 
                 actionStatus === ActionStatus.PENDING) {
-                logger.info(`SessionWorkflowExecutor: Detected reset - action ${currentAction} for role ${currentRole} was reset from RUNNING to PENDING`);
-                return true;
+                // Check retry count to determine if this is a fresh start or a reset
+                const workflowItems = await this.stateManager.getWorkflowItems();
+                const workflowItem = workflowItems.find(
+                    item => item.role === currentRole && item.action === currentAction
+                );
+                const retryCount = workflowItem?.retry_count || 0;
+                
+                // If retry_count is 0 and action is PENDING, it's likely a fresh start, not a reset
+                // Only consider it a reset if retry_count > 0 (meaning it was attempted before)
+                if (retryCount > 0) {
+                    logger.info(`SessionWorkflowExecutor: Detected reset - action ${currentAction} for role ${currentRole} was reset from RUNNING to PENDING (retry_count: ${retryCount})`);
+                    return true;
+                } else {
+                    // This is a fresh start, not a reset
+                    logger.debug(`SessionWorkflowExecutor: Action ${currentAction} for role ${currentRole} is PENDING with retry_count=0, treating as fresh start, not reset`);
+                    return false;
+                }
             }
             
             return false;
@@ -563,35 +582,46 @@ export class SessionWorkflowExecutor {
                 break;
             }
             
-            const processResult = await this.processRole(roles, env, roleIndex, iteration);
-            this.checkCancellation();
+            // Check cancellation before processing role (critical for stopping executor)
+            try {
+                const processResult = await this.processRole(roles, env, roleIndex, iteration);
+                this.checkCancellation();
             
-            // Check again after processing role (in case markRoleAsIdle cancelled the workflow)
-            if (this.isCancelled) {
-                logger.info(`SessionWorkflowExecutor: Workflow was cancelled after processing role, stopping execution loop`);
-                break;
-            }
-            
-            if (processResult.shouldContinueWithSameRole) {
-                // Continue with same role (has more actions)
-                // Update progress periodically
-                if (iteration % 5 === 0) {
-                    await this.updateProjectProgress();
+                // Check again after processing role (in case markRoleAsIdle cancelled the workflow)
+                if (this.isCancelled) {
+                    logger.info(`SessionWorkflowExecutor: Workflow was cancelled after processing role, stopping execution loop`);
+                    break;
                 }
-                continue;
-            }
+                
+                if (processResult.shouldContinueWithSameRole) {
+                    // Continue with same role (has more actions)
+                    // Update progress periodically
+                    if (iteration % 5 === 0) {
+                        await this.updateProjectProgress();
+                    }
+                    continue;
+                }
 
-            // Priority 4: Wait for confirmation if required
-            if (processResult.requiresConfirmation) {
-                // Update progress before showing confirmation
-                await this.updateProjectProgress();
+                // Priority 4: Wait for confirmation if required
+                if (processResult.requiresConfirmation) {
+                    // Update progress before showing confirmation
+                    await this.updateProjectProgress();
+                    await this.waitForConfirmation();
+                    continue;
+                }
+
+                // Unexpected state - wait and retry
+                logger.warn(`SessionWorkflowExecutor: Unexpected state after processRole, waiting...`);
                 await this.waitForConfirmation();
-                continue;
+            } catch (error: any) {
+                // Check if cancellation was requested
+                if (this.isCancelled || error.message?.includes('cancelled')) {
+                    logger.info(`SessionWorkflowExecutor: Workflow was cancelled during role processing, stopping execution loop`);
+                    break;
+                }
+                // Re-throw other errors
+                throw error;
             }
-
-            // Unexpected state - wait and retry
-            logger.warn(`SessionWorkflowExecutor: Unexpected state after processRole, waiting...`);
-            await this.waitForConfirmation();
         }
 
         // Verify workflow completion
@@ -997,6 +1027,9 @@ export class SessionWorkflowExecutor {
      * Execute role action
      */
     private async executeRoleAction(role: any): Promise<any> {
+        // Check cancellation before starting action execution
+        this.checkCancellation();
+        
         // Sync RoleContext state from database before execution
         await this.syncRoleContextFromDatabase(role);
 
@@ -1004,6 +1037,9 @@ export class SessionWorkflowExecutor {
         if (actionName) {
             await this.stateManager.onActionStart(role.profile, actionName);
         }
+
+        // Check cancellation after onActionStart (may have waited)
+        this.checkCancellation();
 
         try {
             // Add timeout for action execution
@@ -1017,10 +1053,16 @@ export class SessionWorkflowExecutor {
                 }, ACTION_TIMEOUT_MS);
             });
 
+            // Check cancellation before calling role.act() (which may call LLM)
+            this.checkCancellation();
+            
             const actionPromise = role.act();
 
             // Race between action execution and timeout
             const message = await Promise.race([actionPromise, timeoutPromise]);
+            
+            // Check cancellation after action completes (before updating state)
+            this.checkCancellation();
             
             if (actionName) {
                 await this.stateManager.onActionComplete(role.profile, actionName, message);

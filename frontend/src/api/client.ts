@@ -220,6 +220,30 @@ class APIClient {
     );
   }
 
+  async reviewMRD(
+    projectId: string,
+    mrdId: string,
+    data?: {
+      applicationId?: string;
+      version?: number;
+      mrdContent?: string;
+    }
+  ) {
+    return this.client.post(`/projects/${projectId}/mrds/${mrdId}/review`, data || {});
+  }
+
+  async improveMRD(
+    projectId: string,
+    mrdId: string,
+    data?: {
+      reviewReport?: string;
+      applicationId?: string;
+      version?: number;
+    }
+  ) {
+    return this.client.post(`/projects/${projectId}/mrds/${mrdId}/improve`, data || {});
+  }
+
   // LLM Config API 端点
   async getLLMConfigs() {
     return this.client.get('/config/llm');

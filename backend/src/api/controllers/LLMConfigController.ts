@@ -101,7 +101,7 @@ export class LLMConfigController {
       const userId = (req as any).userId || DEFAULT_USER_ID;
       const { provider } = req.params;
 
-      if (!provider || !['openai', 'anthropic', 'gemini', 'zhipuai', 'qianfan', 'dashscope', 'ollama', 'ark', 'cursor'].includes(provider)) {
+      if (!provider || !['openai', 'anthropic', 'gemini', 'zhipuai', 'qianfan', 'dashscope', 'ollama', 'ark', 'cursor', 'deepseek'].includes(provider)) {
         return res.status(400).json({
           error: 'Invalid provider',
         });
@@ -154,7 +154,7 @@ export class LLMConfigController {
         });
       }
 
-      if (!['openai', 'anthropic', 'gemini', 'zhipuai', 'qianfan', 'dashscope', 'ollama', 'ark', 'cursor'].includes(provider)) {
+      if (!['openai', 'anthropic', 'gemini', 'zhipuai', 'qianfan', 'dashscope', 'ollama', 'ark', 'cursor', 'deepseek'].includes(provider)) {
         return res.status(400).json({
           error: 'Invalid provider',
         });
@@ -332,7 +332,7 @@ export class LLMConfigController {
       const userId = (req as any).userId || DEFAULT_USER_ID;
       const { provider } = req.params;
 
-      if (!provider || !['openai', 'anthropic', 'gemini', 'zhipuai', 'qianfan', 'dashscope', 'ollama', 'ark', 'cursor'].includes(provider)) {
+      if (!provider || !['openai', 'anthropic', 'gemini', 'zhipuai', 'qianfan', 'dashscope', 'ollama', 'ark', 'cursor', 'deepseek'].includes(provider)) {
         return res.status(400).json({
           error: 'Invalid provider',
         });
@@ -381,7 +381,7 @@ export class LLMConfigController {
         });
       }
 
-      if (!['openai', 'anthropic', 'gemini', 'zhipuai', 'qianfan', 'dashscope', 'ollama', 'ark', 'cursor'].includes(provider)) {
+      if (!['openai', 'anthropic', 'gemini', 'zhipuai', 'qianfan', 'dashscope', 'ollama', 'ark', 'cursor', 'deepseek'].includes(provider)) {
         return res.status(400).json({
           error: 'Invalid provider',
         });

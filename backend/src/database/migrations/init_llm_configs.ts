@@ -135,6 +135,12 @@ async function initLLMConfigs() {
         baseURL: process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
         model: process.env.ARK_MODEL || 'doubao-1-5-pro-32k-250115',
       },
+      {
+        provider: 'deepseek',
+        apiKey: process.env.DEEPSEEK_API_KEY,
+        baseURL: process.env.DEEPSEEK_BASE_URL || 'https://ops-ai-gateway.yc345.tv/v1',
+        model: process.env.DEEPSEEK_MODEL || 'deepseek-v3-2',
+      },
     ];
 
     // Get temperature and maxTokens from environment

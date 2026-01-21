@@ -25,7 +25,7 @@ export class OpenAILLM extends BaseLLM {
       timeout: timeout,
       timeoutSeconds: timeout / 1000,
     });
-    
+
     this.client = new OpenAI({
       apiKey: config.apiKey,
       baseURL: config.baseURL,
@@ -55,7 +55,7 @@ export class OpenAILLM extends BaseLLM {
     if (abortSignal?.aborted) {
       throw new Error('LLM call was cancelled');
     }
-    
+
     try {
       // Ensure numeric types for API parameters
       const temperature = this.ensureNumber(this.config.temperature, 0.7);
@@ -82,13 +82,13 @@ export class OpenAILLM extends BaseLLM {
           if (abortSignal?.aborted) {
             throw new Error('LLM call was cancelled');
           }
-          
+
           return await this.client.chat.completions.create(requestOptions);
         },
         3, // max attempts
         1000 // initial delay ms
       );
-      
+
       // Check cancellation after completion
       if (abortSignal?.aborted) {
         throw new Error('LLM call was cancelled');

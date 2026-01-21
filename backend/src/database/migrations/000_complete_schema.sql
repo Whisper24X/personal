@@ -356,7 +356,7 @@ CREATE INDEX IF NOT EXISTS idx_llm_provider_configs_provider ON llm_provider_con
 CREATE INDEX IF NOT EXISTS idx_llm_provider_configs_deleted_at ON llm_provider_configs(deleted_at);
 
 COMMENT ON TABLE llm_provider_configs IS 'LLM提供商配置表，存储提供商级别的配置（API keys和base URLs）';
-COMMENT ON COLUMN llm_provider_configs.provider IS 'LLM提供商名称: openai, zhipuai, ark, anthropic, gemini, qianfan, dashscope, ollama, cursor';
+COMMENT ON COLUMN llm_provider_configs.provider IS 'LLM提供商名称: openai, zhipuai, ark, anthropic, deepseek, gemini, qianfan, dashscope, ollama, cursor';
 COMMENT ON COLUMN llm_provider_configs.model IS '提供商的默认模型（可选）';
 
 -- 8.3 role_llm_configs (角色LLM配置表)

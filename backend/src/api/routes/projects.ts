@@ -48,6 +48,7 @@ router.post('/:id/mrd', MRDController.generateMRD);
 router.get('/:id/mrds', MRDController.listMRDs);
 router.get('/:id/mrds/:mrdId', MRDController.getMRD);
 router.post('/:id/mrds/:mrdId/adjust-section', MRDController.adjustSection);
+router.post('/:id/mrds/:mrdId/review', MRDController.reviewMRD);
 router.post('/:id/mrds/:mrdId/improve', MRDController.improveMRD);
 
 // Knowledge Base routes
