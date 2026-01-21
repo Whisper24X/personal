@@ -43,40 +43,19 @@ export class BreakdownTasks extends BaseAction {
         workDir,
       });
       
-      // 定义命令
-      const proposeCommand = `创建openSpec变更提案，请执行以下步骤：
+      // 指令1：填充项目上下文
+      const contextCommand = `Please read openspec/project.md and help me fill it out with details about my project, tech stack, and conventions，参考 ../docs/design/DESIGN.md ../docs/prd/PRD.md ../AGENTS.md 这三个文档`;
 
-1. 读取并分析以下文档：
-   - docs/prd/PRD.md（产品需求文档）
-   - docs/design/DESIGN.md（系统设计文档）
-
-2. 基于这两个文档，分析项目的：
-   - 核心功能需求
-   - 技术架构设计
-   - 实现方案
-
-3. 在 openspec 目录下创建或更新变更提案，包含：
-   - 需要实现的功能列表
-   - 建议的技术方案
-   - 文件和目录结构变更
-   - 实现步骤建议
-
-请开始创建变更提案。`;
-
-      const checkCommand = `检查 openspec 目录下是否已成功创建变更提案文件。
-
-检查标准：
-1. openspec 目录下是否有新的提案文件或更新
-2. 提案内容是否包含基于 PRD.md 和 DESIGN.md 的分析
-3. 提案是否包含具体的实现建议
-
-如果提案已创建且内容完整，返回：已完成
-如果提案未创建或内容不完整，返回：未完成`;
+      // 指令2: 创建openSpec变更提案
+      const proposeCommand = `创建openSpec变更提案 1. 读取并分析以下文档：- ../docs/prd/PRD.md（产品需求文档）- ../docs/design/DESIGN.md（系统设计文档）- ../AGENTS.md（项目代理和开发指南）`;
+      
+      // 指令3: 检查openSpec变更提案
+      const checkCommand = `检查 openspec 目录下是否已成功创建变更提案文件。检查标准：1. openspec 目录下是否有新的提案文件或更新2. 提案内容是否包含基于 PRD.md、DESIGN.md 和 AGENTS.md 的分析3. 提案是否包含具体的实现建议和开发规范4. 提案是否涵盖了技术栈选择和项目结构，如果提案已创建且内容完整，返回：已完成，如果提案未创建或内容不完整，返回：未完成`;
       
       // 循环执行，直到任务完成
       const maxRetries = 10; // 最大重试次数
+      let retryCount = 0; // 初始化重试计数器
       let isCompleted = false;
-      let retryCount = 0;
       let allOutputs: string[] = [];
       
       logger.info('BreakdownTasks: Starting openSpec proposal creation loop', { 
@@ -91,10 +70,37 @@ export class BreakdownTasks extends BaseAction {
           commandLength: proposeCommand.length,
         });
         
-        // 1. 执行创建提案命令
+        // 1. 执行项目上下文填充命令（仅在第一次迭代时执行）
+        logger.info(`BreakdownTasks: Executing context command (iteration ${retryCount})`, {
+          commandLength: contextCommand.length,
+        });
+        
+        try {
+          const command = `cursor-agent --model composer-1 --print "${contextCommand}"`;
+          const contextOutput = await executeCommandSimple(command, {
+            cwd: workDir,
+            timeout: 1800000, // 30分钟超时
+          });
+          logger.info(`BreakdownTasks: Context command completed (iteration ${retryCount})`, {
+            outputLength: contextOutput.length,
+            output: contextOutput.length > 0 ? contextOutput.substring(0, 200) : '(empty output)',
+          });
+          allOutputs.push(`=== Iteration ${retryCount} - Context ===\n${contextOutput}`);
+        } catch (execError) {
+          const error = execError as CommandExecutorError;
+          logger.warn(`BreakdownTasks: Context command failed (iteration ${retryCount})`, { 
+            message: error.message,
+            exitCode: error.exitCode,
+            stdout: error.stdout || '(empty)',
+            stderr: error.stderr || '(empty)',
+          });
+          allOutputs.push(`=== Iteration ${retryCount} - Context (FAILED) ===\n${error.stdout || ''}`);
+        }
+
+        // 2. 执行创建提案命令
         let proposeOutput = '';
         try {
-          const command = `cursor-agent --model auto --print "${proposeCommand.replace(/"/g, '\\"')}"`;
+          const command = `cursor-agent --model composer-1 --print "${proposeCommand}"`;
           proposeOutput = await executeCommandSimple(command, {
             cwd: workDir,
             timeout: 3600000, // 60分钟超时
@@ -116,14 +122,14 @@ export class BreakdownTasks extends BaseAction {
         
         allOutputs.push(`=== Iteration ${retryCount} - Propose ===\n${proposeOutput}`);
         
-        // 2. 执行检查命令
+        // 3. 执行检查命令
         logger.info(`BreakdownTasks: Iteration ${retryCount}/${maxRetries} - Executing check command`, {
           commandLength: checkCommand.length,
         });
         
         let checkOutput = '';
         try {
-          const command = `cursor-agent --model auto --print "${checkCommand.replace(/"/g, '\\"')}"`;
+          const command = `cursor-agent --model composer-1 --print "${checkCommand}"`;
           checkOutput = await executeCommandSimple(command, {
             cwd: workDir,
             timeout: 300000, // 5分钟超时（检查命令应该很快）
