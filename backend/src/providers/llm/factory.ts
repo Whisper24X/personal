@@ -9,6 +9,8 @@ import { OpenAILLM } from './OpenAILLM';
 import { ZhipuLLM } from './ZhipuLLM';
 import { ArkLLM } from './ArkLLM';
 import { CursorLLM } from './CursorLLM';
+import { AnthropicLLM } from './AnthropicLLM';
+import { DeepSeekLLM } from './DeepSeekLLM';
 
 /**
  * Create an LLM instance based on provider type
@@ -27,9 +29,11 @@ export function createLLM(config: ILLMConfig): BaseLLM {
     case 'cursor':
       return new CursorLLM(config);
     
-    // Add more providers as needed
     case 'anthropic':
-      throw new Error('Anthropic provider not yet implemented');
+      return new AnthropicLLM(config);
+    
+    case 'deepseek':
+      return new DeepSeekLLM(config);
     
     case 'gemini':
       throw new Error('Gemini provider not yet implemented');
@@ -52,7 +56,7 @@ export function createLLM(config: ILLMConfig): BaseLLM {
  * Get list of supported providers
  */
 export function getSupportedProviders(): LLMProvider[] {
-  return ['openai', 'zhipuai', 'ark', 'cursor'];
+  return ['openai', 'zhipuai', 'ark', 'cursor', 'anthropic', 'deepseek'];
 }
 
 /**

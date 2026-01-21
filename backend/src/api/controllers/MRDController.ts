@@ -8,6 +8,7 @@ import { DocumentRepository } from '../../database/repositories/DocumentReposito
 import { ProjectRepository } from '../../database/repositories/ProjectRepository';
 import { WriteMRD } from '../../actions/WriteMRD';
 import { ImproveMRD } from '../../actions/ImproveMRD';
+import { MRDReview } from '../../actions/MRDReview';
 import { Context } from '../../core/context/Context';
 import { RAGService } from '../../services/RAGService';
 import { SectionAdjustService } from '../../services/SectionAdjustService';
@@ -485,6 +486,108 @@ export class MRDController {
       logger.error(`MRDController: Failed to adjust section of MRD ${req.params.mrdId}:`, error);
       return res.status(500).json({
         error: 'Failed to adjust section',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Review MRD document
+   * POST /api/projects/:id/mrds/:mrdId/review
+   */
+  static async reviewMRD(req: Request, res: Response) {
+    try {
+      const { id, mrdId } = req.params;
+      const { applicationId, version, mrdContent } = req.body;
+
+      // Verify project exists
+      const project = await projectRepo.findById(id);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      // Verify MRD exists
+      const mrd = await documentRepo.findById(mrdId);
+      if (!mrd || mrd.project_id !== id || mrd.doc_type !== 'mrd') {
+        return res.status(404).json({ error: 'MRD not found' });
+      }
+
+      logger.info(`MRDController: Reviewing MRD ${mrdId}`, {
+        projectId: id,
+        hasContent: !!mrdContent,
+      });
+
+      // Create context and MRDReview action
+      const ctx = new Context();
+      // Note: req.user would be set by auth middleware if authentication is enabled
+      const userId = (req as any).user?.id || (req as any).userId || req.headers['x-user-id'];
+      if (userId) {
+        ctx.set('userId', userId as string);
+      }
+      const reviewAction = new MRDReview();
+      reviewAction.setLLM(ctx.llm);
+      reviewAction.setContext(ctx);
+
+      // Determine application ID and version
+      const appId = applicationId || project.application_id || project.id;
+      const projId = project.id;
+      const ver = version || mrd.version || 1;
+
+      // Get MRD content - prefer provided content, then workspace, then database
+      let contentToReview = mrdContent;
+      if (!contentToReview) {
+        // Try to read from workspace first
+        try {
+          const workspaceContent = await WorkspaceManager.readFile('MRD.md', {
+            applicationId: appId,
+            projectId: projId,
+            version: ver,
+            documentType: 'MRD',
+          });
+          if (workspaceContent) {
+            contentToReview = workspaceContent;
+            logger.info(`MRDController: Loaded MRD content from workspace for review`, {
+              applicationId: appId,
+              version: ver,
+            });
+          }
+        } catch (error: any) {
+          logger.debug(`MRDController: Failed to read MRD.md from workspace, using database content`);
+        }
+      }
+
+      // Fallback to database content if workspace read failed
+      if (!contentToReview) {
+        contentToReview = mrd.content;
+      }
+
+      // Run review action
+      const result = await reviewAction.run(contentToReview, {
+        applicationId: appId,
+        projectId: projId,
+        version: ver,
+      });
+
+      logger.info(`MRDController: MRD review completed successfully`, {
+        projectId: id,
+        mrdId,
+        reviewLength: result.content.length,
+      });
+
+      return res.status(200).json({
+        success: true,
+        review: {
+          content: result.content,
+          filename: result.data?.filename || 'MRD_REVIEW.md',
+          type: result.data?.type || 'mrd_review',
+          timestamp: result.data?.timestamp || new Date().toISOString(),
+          workspaceDir: result.data?.workspaceDir,
+        },
+      });
+    } catch (error: any) {
+      logger.error('MRDController: Failed to review MRD:', error);
+      return res.status(500).json({
+        error: 'Failed to review MRD',
         message: error.message,
       });
     }

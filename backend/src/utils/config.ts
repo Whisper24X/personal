@@ -76,6 +76,12 @@ function loadLLMConfig(): ILLMConfig {
       apiKey: process.env.CURSOR_API_KEY || '',
       model: 'auto',
     },
+    deepseek: {
+      provider: 'deepseek',
+      apiKey: process.env.DEEPSEEK_API_KEY || '',
+      baseURL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1',
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+    },
   };
   
   const config = configs[provider];

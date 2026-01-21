@@ -29,14 +29,27 @@ export class OpenAILLM extends BaseLLM {
    */
   async acompletion(messages: any[]): Promise<ILLMResponse> {
     try {
+      // Ensure numeric values are properly typed
+      const temperature = typeof this.config.temperature === 'string'
+        ? parseFloat(this.config.temperature)
+        : (this.config.temperature || 0.7);
+      
+      const maxTokens = typeof this.config.maxTokens === 'string'
+        ? parseInt(this.config.maxTokens, 10)
+        : (this.config.maxTokens || 8000);
+      
+      const topP = typeof this.config.topP === 'string'
+        ? parseFloat(this.config.topP)
+        : (this.config.topP || 1.0);
+
       const completion = await retry(
         async () => {
           return await this.client.chat.completions.create({
             model: this.config.model,
             messages: messages,
-            temperature: this.config.temperature || 0.7,
-            max_tokens: this.config.maxTokens || 8000,
-            top_p: this.config.topP || 1.0,
+            temperature: temperature,
+            max_tokens: maxTokens,
+            top_p: topP,
           });
         },
         3, // max attempts
