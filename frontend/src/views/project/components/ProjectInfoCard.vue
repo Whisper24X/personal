@@ -1,12 +1,33 @@
 <template>
   <el-card class="project-info-card">
     <div class="project-info">
-      <div class="info-item">
-        <el-icon>
-          <Document />
-        </el-icon>
-        <span class="label">项目名称:</span>
-        <span class="value">{{ projectName }}</span>
+      <div class="info-row">
+        <div class="info-item">
+          <el-icon>
+            <Document />
+          </el-icon>
+          <span class="label">项目名称:</span>
+          <span class="value">{{ projectName }}</span>
+        </div>
+        <el-dropdown trigger="click" @command="handleDownloadCommand">
+          <el-button type="primary" size="small">
+            <el-icon class="el-icon--left"><Download /></el-icon>
+            下载
+            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="code">
+                <el-icon><FolderOpened /></el-icon>
+                下载代码
+              </el-dropdown-item>
+              <el-dropdown-item command="docs">
+                <el-icon><Document /></el-icon>
+                下载文档
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </div>
     <el-divider v-if="userIdea" />
@@ -25,12 +46,25 @@
 </template>
 
 <script setup lang="ts">
-import { Document, Edit } from '@element-plus/icons-vue';
+import { Document, Edit, Download, ArrowDown, FolderOpened } from '@element-plus/icons-vue';
 
 defineProps<{
   projectName: string;
   userIdea?: string;
 }>();
+
+const emit = defineEmits<{
+  'download-code': [];
+  'download-docs': [];
+}>();
+
+function handleDownloadCommand(command: string) {
+  if (command === 'code') {
+    emit('download-code');
+  } else if (command === 'docs') {
+    emit('download-docs');
+  }
+}
 </script>
 
 <style scoped>
@@ -39,8 +73,15 @@ defineProps<{
 }
 
 .project-info {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 16px;
 }
 
@@ -48,6 +89,14 @@ defineProps<{
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.info-item .value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .info-item .label {
