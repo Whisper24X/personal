@@ -449,6 +449,32 @@ class APIClient {
     return this.client.get(`/workflow/${projectId}/recovery-status`);
   }
 
+  // Download workspace code (full ainative-workspace directory)
+  downloadWorkspaceCode(projectId: string) {
+    const url = `${API_BASE_URL}/interactive/${projectId}/download/code`;
+    
+    // Create a temporary link and trigger download
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${projectId}-workspace.zip`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  // Download workspace docs (docs and openspec directories)
+  downloadWorkspaceDocs(projectId: string) {
+    const url = `${API_BASE_URL}/interactive/${projectId}/download/docs`;
+    
+    // Create a temporary link and trigger download
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${projectId}-docs.zip`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
   // Knowledge Base API endpoints
   async createKnowledgeBase(projectId: string, data: {
     title: string;

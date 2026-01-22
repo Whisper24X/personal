@@ -2,7 +2,8 @@
   <div class="project-interactive">
     <ProjectInteractiveHeader @back="handleBack" />
 
-    <ProjectInfoCard :project-name="projectName" :user-idea="userIdea" />
+    <ProjectInfoCard :project-name="projectName" :user-idea="userIdea" 
+      @download-code="handleDownloadCode" @download-docs="handleDownloadDocs" />
 
     <WorkflowKanban :workflow-kanban="workflowKanban" :is-running="isRunning" :running-role="runningRole"
       :current-action="currentAction" :current-stage-name="currentStageName" :resetting-roles="resettingRoles"
@@ -936,6 +937,34 @@ async function downloadZip(zipPath: string) {
   try {
     await apiClient.downloadZip(projectId.value, zipPath);
     ElMessage.success('压缩包下载已开始');
+  } catch (error: any) {
+    ElMessage.error('下载失败: ' + (error.message || '未知错误'));
+  }
+}
+
+function handleDownloadCode() {
+  if (!projectId.value) {
+    ElMessage.error('项目ID不存在');
+    return;
+  }
+
+  try {
+    apiClient.downloadWorkspaceCode(projectId.value);
+    ElMessage.success('正在下载全部代码...');
+  } catch (error: any) {
+    ElMessage.error('下载失败: ' + (error.message || '未知错误'));
+  }
+}
+
+function handleDownloadDocs() {
+  if (!projectId.value) {
+    ElMessage.error('项目ID不存在');
+    return;
+  }
+
+  try {
+    apiClient.downloadWorkspaceDocs(projectId.value);
+    ElMessage.success('正在下载文档...');
   } catch (error: any) {
     ElMessage.error('下载失败: ' + (error.message || '未知错误'));
   }
