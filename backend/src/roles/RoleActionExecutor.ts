@@ -249,22 +249,6 @@ export class RoleActionExecutor {
     ): Promise<any> {
         const actionStartTime = Date.now();
 
-        // Set abortSignal from StateManager if available
-        try {
-            const context = (action as any).context;
-            if (context) {
-                const stateManager = context.get?.('stateManager');
-                if (stateManager && typeof stateManager.getAbortSignal === 'function') {
-                    const abortSignal = stateManager.getAbortSignal();
-                    action.setAbortSignal(abortSignal);
-                }
-            }
-        } catch (error: any) {
-            logger.warn(`${this.profile} RoleActionExecutor: Failed to set abortSignal for action ${action.name}`, {
-                error: error.message,
-            });
-        }
-
         try {
             let result;
             if (this.actionAcceptsOptions(action.name)) {

@@ -369,53 +369,84 @@ class APIClient {
     document.body.removeChild(link);
   }
 
-  // Interactive session API endpoints (polling mode)
-  async pollInteractiveMessages(projectId: string, lastMessageId?: string | null) {
-    const params: Record<string, string> = {};
-    if (lastMessageId) {
-      params.lastMessageId = lastMessageId;
-    }
-    return this.client.get(`/interactive/${projectId}/poll`, { params });
+  // ==================== 工作流 API 端点 ====================
+
+  /**
+   * 获取工作流执行状态
+   * 返回当前状态、运行位置、步骤列表、待确认信息等
+   */
+  async getWorkflowState(projectId: string) {
+    return this.client.get(`/workflow/${projectId}/state`);
   }
 
-  async sendInteractiveAction(projectId: string, action: string, modifiedContent?: string) {
-    return this.client.post(`/interactive/${projectId}/action`, {
-      action,
-      modifiedContent,
+  /**
+   * 获取工作流执行完整记录
+   * 包含工作流配置快照和所有执行详情
+   */
+  async getWorkflowExecution(projectId: string) {
+    return this.client.get(`/workflow/${projectId}/execution`);
+  }
+
+  /**
+   * 启动工作流执行
+   * @param projectId 项目ID
+   * @param currentPosition 可选：从指定位置开始执行（用于 reset 后启动）
+   */
+  async startWorkflow(projectId: string, currentPosition?: { roleIndex: number; actionIndex: number }) {
+    return this.client.post(`/workflow/${projectId}/start`, { currentPosition });
+  }
+
+  /**
+   * 确认并继续执行下一步
+   */
+  async confirmWorkflow(projectId: string) {
+    return this.client.post(`/workflow/${projectId}/confirm`);
+  }
+
+  /**
+   * 重置工作流到指定角色
+   * @param projectId 项目ID
+   * @param targetRole 目标角色名称（该角色及下游角色将被重置）
+   */
+  async resetWorkflow(projectId: string, targetRole: string) {
+    return this.client.post(`/workflow/${projectId}/reset`, {
+      targetRole,
     });
   }
 
   /**
-   * Confirm role completion and allow proceeding to next role
-   * This endpoint clears the confirmation status in database
+   * 暂停工作流执行
    */
-  async confirmRoleCompletion(projectId: string, action: string, modifiedContent?: string) {
-    return this.client.post(`/interactive/${projectId}/confirm`, {
-      action,
-      modifiedContent,
-    });
+  async pauseWorkflow(projectId: string) {
+    return this.client.post(`/workflow/${projectId}/pause`);
   }
 
-  // Get workflow information (all roles and their actions)
-  async getInteractiveWorkflow(projectId: string) {
-    return this.client.get(`/interactive/${projectId}/workflow`);
+  /**
+   * 恢复已暂停的工作流
+   */
+  async resumeWorkflow(projectId: string) {
+    return this.client.post(`/workflow/${projectId}/resume`);
   }
 
-  // Get current running role and action
-  async getInteractiveRunning(projectId: string) {
-    return this.client.get(`/interactive/${projectId}/running`);
+  /**
+   * 重试失败的工作流
+   */
+  async retryWorkflow(projectId: string) {
+    return this.client.post(`/workflow/${projectId}/retry`);
   }
 
-  // Reset workflow from a specific role (reset that role and all downstream roles)
-  async resetInteractiveWorkflow(projectId: string, role: string) {
-    return this.client.post(`/interactive/${projectId}/reset-workflow`, {
-      role,
-    });
+  /**
+   * 恢复工作流状态（用于页面刷新、服务重启等场景）
+   */
+  async recoverWorkflow(projectId: string) {
+    return this.client.post(`/workflow/${projectId}/recover`);
   }
 
-  // Recover from stale or failed actions
-  async recoverFromStaleActions(projectId: string) {
-    return this.client.post(`/interactive/${projectId}/recover`);
+  /**
+   * 获取恢复状态（检查是否需要恢复）
+   */
+  async getWorkflowRecoveryStatus(projectId: string) {
+    return this.client.get(`/workflow/${projectId}/recovery-status`);
   }
 
   // Knowledge Base API endpoints

@@ -4,7 +4,6 @@
 
 export { ProjectRepository } from './ProjectRepository';
 export { MessageRepository } from './MessageRepository';
-export { InteractiveSessionWorkflowRepository } from './InteractiveSessionWorkflowRepository';
 export { DocumentRepository } from './DocumentRepository';
 export { KnowledgeBaseRepository } from './KnowledgeBaseRepository';
 export { LLMConfigRepository } from './LLMConfigRepository';

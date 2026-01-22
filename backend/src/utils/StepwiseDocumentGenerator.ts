@@ -10,9 +10,17 @@ import { logger } from './logger';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
-import { StateManager } from '../orchestration/StateManager';
-import { StepState } from '../orchestration/StepStateTracker';
 import { WorkspaceManager } from './WorkspaceManager';
+
+/**
+ * Step state enum for logging purposes
+ */
+enum StepState {
+  PENDING = 'pending',
+  RUNNING = 'running',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+}
 
 export interface Section {
   number: number;
@@ -51,9 +59,8 @@ export interface StepwiseGenerationConfig {
   /** @deprecated 版本控制已改用 git，此参数被忽略 */
   version?: number;
 
-  // StateManager配置（可选，用于步骤状态管理）
-  stateManager?: StateManager;
-  role?: string; // 角色名称，用于步骤状态管理
+  // 角色名称（可选，用于日志）
+  role?: string;
 
   // 步骤控制（可选，用于跳过特定步骤）
   skipReview?: boolean; // 是否跳过章节审核步骤
@@ -965,22 +972,6 @@ export class StepwiseDocumentGenerator {
       return;
     }
 
-    // Reset step states via StateManager
-    if (this.config.stateManager && this.config.projectId && this.config.role && this.action.name) {
-      try {
-        await this.config.stateManager.resetStepStates(
-          this.config.role,
-          this.action.name
-        );
-        logger.info('StepwiseDocumentGenerator: Step states reset via StateManager', logContext);
-      } catch (error: any) {
-        logger.error('StepwiseDocumentGenerator: Failed to reset step states', {
-          ...logContext,
-          error: error.message,
-        });
-      }
-    }
-
     // Create new AbortController for future operations
     this.abortController = new AbortController();
     // Keep isCancelled = true until generate() is called again
@@ -1019,52 +1010,18 @@ export class StepwiseDocumentGenerator {
       throw new Error('StepwiseDocumentGenerator: Operation cancelled via Action abortSignal');
     }
     
-    // Check StateManager's abortSignal directly (most reliable)
-    // This ensures we always get the latest cancellation state even if Action's signal reference is stale
-    if (this.config.stateManager) {
-      try {
-        const stateManagerAbortSignal = this.config.stateManager.getAbortSignal();
-        if (stateManagerAbortSignal?.aborted) {
-          logger.info('StepwiseDocumentGenerator: Operation cancelled via StateManager abortSignal', {
-            ...logContext,
-            stateManagerAbortSignalAborted: true,
-          });
-          throw new Error('StepwiseDocumentGenerator: Operation cancelled via StateManager abortSignal');
-        }
-      } catch (error: any) {
-        // If getAbortSignal throws an error, log it but don't fail the check
-        // This might happen if StateManager is not properly initialized
-        logger.warn('StepwiseDocumentGenerator: Failed to get abortSignal from StateManager', {
-          ...logContext,
-          error: error.message,
-        });
-      }
     }
-  }
 
   /**
-   * Set step state via StateManager
+   * Set step state (for logging purposes)
    */
   private async setStepState(stepId: string, status: StepState): Promise<void> {
-    if (this.config.stateManager && this.config.projectId && this.config.role && this.action.name) {
-      try {
-        await this.config.stateManager.setStepState(
-          this.config.role,
-          this.action.name,
-          stepId,
-          status
-        );
-      } catch (error: any) {
-        const logContext = this.getLogContext();
-        logger.warn('StepwiseDocumentGenerator: Failed to set step state', {
-          ...logContext,
-          stepId,
-          status,
-          error: error.message,
-        });
-        // Don't throw - step state management is optional
-      }
-    }
+    const logContext = this.getLogContext();
+    logger.debug('StepwiseDocumentGenerator: Step state changed', {
+      ...logContext,
+      stepId,
+      status,
+    });
   }
 }
 

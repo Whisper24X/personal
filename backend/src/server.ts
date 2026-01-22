@@ -1,18 +1,14 @@
 /**
  * Express server entry point
- * Will be implemented in Phase 9
  */
 
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import http from 'http';
-import { WebSocketServer } from 'ws';
 import { config, logger } from './utils';
 import { connectDatabase } from './database';
 import apiRoutes from './api/routes';
-import { setupWebSocketServer } from './api/websocket';
-import { sessionManager } from './orchestration/InteractiveSessionManager';
 import { llmManager } from './providers/llm/LLMManager';
 
 const app: express.Application = express();
@@ -56,23 +52,6 @@ if (process.env.NODE_ENV !== 'test') {
   // Create HTTP server
   const server = http.createServer(app);
   
-  // Setup WebSocket server
-  // Note: We verify the path in verifyClient to ensure it matches /api/interactive/:sessionId
-  const wss = new WebSocketServer({
-    server,
-    verifyClient: (info: any) => {
-      // Only accept connections to /api/interactive/:sessionId
-      const path = info.req.url || '';
-      const isValid = path.startsWith('/api/interactive/') && path.split('/').length >= 4;
-      if (!isValid) {
-        logger.warn(`WebSocket: Connection rejected - invalid path: ${path}`);
-      }
-      return isValid;
-    },
-  });
-  
-  setupWebSocketServer(wss);
-  
   // Connect to database first
   connectDatabase()
     .then(async () => {
@@ -85,7 +64,6 @@ if (process.env.NODE_ENV !== 'test') {
         logger.info(`Mind2Build backend server listening on port ${port}`);
         logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
         logger.info(`LLM Provider: ${llmConfig?.provider} (${llmConfig?.model})`);
-        logger.info(`WebSocket server ready at ws://localhost:${port}/api/interactive/:sessionId`);
       });
     })
     .catch((error) => {
@@ -96,7 +74,6 @@ if (process.env.NODE_ENV !== 'test') {
   // Graceful shutdown
   process.on('SIGTERM', () => {
     logger.info('SIGTERM received, shutting down gracefully');
-    sessionManager.shutdown();
     server.close(() => {
       logger.info('Server closed');
       process.exit(0);
@@ -105,7 +82,6 @@ if (process.env.NODE_ENV !== 'test') {
   
   process.on('SIGINT', () => {
     logger.info('SIGINT received, shutting down gracefully');
-    sessionManager.shutdown();
     server.close(() => {
       logger.info('Server closed');
       process.exit(0);

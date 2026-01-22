@@ -76,6 +76,10 @@ const showConfirmationDialog = ref(false);
 // Reset state
 const resettingRoles = ref<Set<string>>(new Set());
 
+// Workflow state for start button visibility
+const workflowState = ref<string>('');
+const workflowCurrentPosition = ref<{ roleIndex: number; actionIndex: number } | null>(null);
+
 // Recovery state
 const showRecoverButton = ref(false);
 const recovering = ref(false);
@@ -95,7 +99,7 @@ const contentDialogTimestamp = ref('');
 // Workflow structure: role -> actions mapping (loaded from API)
 const workflowStructure = ref<Record<string, string[]>>({});
 const workflowLoading = ref(false);
-// Workflow items from /api/interactive/:projectId/running endpoint
+// Workflow items from /api/workflow/:projectId/state endpoint
 // This is the primary source of truth for role and action statuses
 const workflowItems = ref<any[]>([]);
 
@@ -220,11 +224,10 @@ const workflowKanban = computed<WorkflowRoleColumn[]>(() => {
 
 // Polling mechanism
 let pollingController: PollingResult | null = null;
-let lastMessageId: string | null = null;
 
 // Refs removed - handled by components
 
-// Load workflow information from API
+// Load workflow information from API (使用新的工作流 API)
 async function loadWorkflowInfo() {
   if (!projectId.value) {
     return;
@@ -232,31 +235,44 @@ async function loadWorkflowInfo() {
 
   try {
     workflowLoading.value = true;
-    const response = await apiClient.getInteractiveWorkflow(projectId.value) as any;
+    const response = await apiClient.getWorkflowExecution(projectId.value) as any;
 
-    if (response && response.roles) {
-      // Convert API response to workflow structure format
-      const structure: Record<string, string[]> = {};
-      response.roles.forEach((roleInfo: any) => {
-        structure[roleInfo.role] = roleInfo.actions.map((action: any) => action.name);
-      });
-      workflowStructure.value = structure;
+    if (response && response.success && response.data) {
+      const execution = response.data;
+      
+      // Convert workflowSnapshot to workflow structure format
+      if (execution.workflowSnapshot && execution.workflowSnapshot.roles) {
+        const structure: Record<string, string[]> = {};
+        // Sort roles by order
+        const sortedRoles = [...execution.workflowSnapshot.roles].sort((a: any, b: any) => a.order - b.order);
+        sortedRoles.forEach((roleConfig: any) => {
+          structure[roleConfig.profile] = roleConfig.actions || [];
+        });
+        workflowStructure.value = structure;
+      }
 
-      // Update workflow items from API response
-      if (response.items && Array.isArray(response.items)) {
-        workflowItems.value = response.items;
+      // Update workflow items from steps array
+      if (execution.steps && Array.isArray(execution.steps)) {
+        // Map new steps format to old workflowItems format
+        workflowItems.value = execution.steps.map((step: any) => ({
+          role: step.role,
+          action: step.action,
+          status: step.state, // state -> status
+          role_order: step.roleIndex,
+          action_order: step.actionIndex,
+          retry_count: step.retryCount,
+        }));
 
-        // Restore completed steps from workflow items
-        const completedItems = response.items.filter((item: any) => item.status === 'completed');
-        // Only restore if we don't already have these steps (to avoid duplicates)
+        // Restore completed steps from steps
+        const completedItems = execution.steps.filter((step: any) => step.state === 'completed');
         const existingKeys = new Set(completedSteps.value.map(s => `${s.role}-${s.action}`));
         const newSteps = completedItems
-          .filter((item: any) => item.role && item.action && !existingKeys.has(`${item.role}-${item.action}`))
-          .map((item: any) => ({
-            role: item.role,
-            action: item.action,
-            userAction: 'skip', // Default, will be updated if we have more info
-            timestamp: new Date().toISOString(),
+          .filter((step: any) => step.role && step.action && !existingKeys.has(`${step.role}-${step.action}`))
+          .map((step: any) => ({
+            role: step.role,
+            action: step.action,
+            userAction: 'skip',
+            timestamp: step.completedAt || new Date().toISOString(),
             content: undefined,
             outputFiles: undefined,
             zipPath: undefined,
@@ -277,7 +293,6 @@ async function loadWorkflowInfo() {
       workflowStructure.value = structure;
     } else {
       // If store is not loaded yet, use a minimal default structure
-      // This should rarely happen as we load store in onMounted
       workflowStructure.value = {
         Salesperson: ['WriteMRD'],
         ProductManager: ['WritePRD', 'SearchEnhancedQA'],
@@ -293,8 +308,9 @@ async function loadWorkflowInfo() {
 }
 
 /**
- * Load current running state and workflow items from /api/interactive/:projectId/running
+ * Load current running state and workflow items from /api/workflow/:projectId/state
  * This is the primary source of truth for rendering role and action statuses in the UI
+ * 使用新的统一工作流 API
  */
 async function loadRunningInfo() {
   if (!projectId.value) {
@@ -302,28 +318,37 @@ async function loadRunningInfo() {
   }
 
   try {
-    // Call /api/interactive/:projectId/running endpoint
-    const response = await apiClient.getInteractiveRunning(projectId.value) as any;
+    // Call new /api/workflow/:projectId/state endpoint
+    const response = await apiClient.getWorkflowState(projectId.value) as any;
 
-    if (!response || !response.success) {
+    if (!response || !response.success || !response.data) {
       return;
     }
 
-    // Update workflow items from API response (primary source for status rendering)
-    // This array contains all workflow items with their current status (pending/running/completed)
-    if (response.items && Array.isArray(response.items)) {
-      workflowItems.value = response.items;
+    const stateData = response.data;
 
-      // Update completed steps from workflow items
-      const completedItems = response.items.filter((item: any) => item.status === 'completed');
+    // Update workflow items from steps array (new format)
+    if (stateData.steps && Array.isArray(stateData.steps)) {
+      // Map new steps format to old workflowItems format for backward compatibility with UI
+      workflowItems.value = stateData.steps.map((step: any) => ({
+        role: step.role,
+        action: step.action,
+        status: step.state, // state -> status (pending/running/completed/failed)
+        role_order: step.roleIndex,
+        action_order: step.actionIndex,
+        retry_count: step.retryCount,
+      }));
+
+      // Update completed steps from steps
+      const completedItems = stateData.steps.filter((step: any) => step.state === 'completed');
       const existingKeys = new Set(completedSteps.value.map(s => `${s.role}-${s.action}`));
       const newSteps = completedItems
-        .filter((item: any) => item.role && item.action && !existingKeys.has(`${item.role}-${item.action}`))
-        .map((item: any) => ({
-          role: item.role,
-          action: item.action,
-          userAction: 'skip', // Default, will be updated if we have more info
-          timestamp: new Date().toISOString(),
+        .filter((step: any) => step.role && step.action && !existingKeys.has(`${step.role}-${step.action}`))
+        .map((step: any) => ({
+          role: step.role,
+          action: step.action,
+          userAction: 'skip',
+          timestamp: step.completedAt || new Date().toISOString(),
           content: undefined,
           outputFiles: undefined,
           zipPath: undefined,
@@ -332,45 +357,42 @@ async function loadRunningInfo() {
       completedSteps.value.push(...newSteps);
     }
 
-    // Update running state from API response
-    const runningState = response.running || { role: null, action: null };
-
-    if (runningState.role) {
-      runningRole.value = runningState.role;
+    // Update running state from new API response
+    if (stateData.currentRole) {
+      runningRole.value = stateData.currentRole;
     }
-    if (runningState.action) {
-      currentAction.value = runningState.action;
+    if (stateData.currentAction) {
+      currentAction.value = stateData.currentAction;
     }
 
-    if (runningState.role && runningState.action) {
-      currentStageName.value = getStageName(runningState.role, runningState.action);
+    if (stateData.currentRole && stateData.currentAction) {
+      currentStageName.value = getStageName(stateData.currentRole, stateData.currentAction);
     }
 
     // Check for stale/failed actions to show recover button
-    await checkForStaleActions(response);
+    await checkForStaleActions(stateData);
 
-    // Handle confirmation state (waiting for manual confirmation)
-    const requiresConfirmation = response.requiresConfirmation || false;
-    const confirmationRequired = response.confirmationRequired;
+    // Handle confirmation state (waiting_confirmation state)
+    const isWaitingConfirmation = stateData.state === 'waiting_confirmation';
+    const pendingConfirmation = stateData.pendingConfirmation;
 
-    // If confirmation is required, show confirmation dialog
-    if (requiresConfirmation && confirmationRequired) {
+    if (isWaitingConfirmation && pendingConfirmation) {
       // Workflow is paused waiting for confirmation
       isRunning.value = false;
 
       // Set current step for confirmation dialog
       currentStep.value = {
-        role: confirmationRequired.role,
-        action: confirmationRequired.action,
-        content: confirmationRequired.content,
-        outputFiles: confirmationRequired.outputFiles || [],
-        instructContent: confirmationRequired.instructContent || {},
-        retryCount: confirmationRequired.retryCount || 0,
+        role: pendingConfirmation.role,
+        action: pendingConfirmation.action,
+        content: pendingConfirmation.content,
+        outputFiles: pendingConfirmation.outputFiles || [],
+        instructContent: pendingConfirmation.instructContent || {},
+        retryCount: 0,
       };
 
       // Update running role and action for display
-      const roleToShow = confirmationRequired.role || runningState.role;
-      const actionToShow = confirmationRequired.action || runningState.action;
+      const roleToShow = pendingConfirmation.role || stateData.currentRole;
+      const actionToShow = pendingConfirmation.action || stateData.currentAction;
 
       if (roleToShow) {
         runningRole.value = roleToShow;
@@ -384,20 +406,28 @@ async function loadRunningInfo() {
 
       // Show confirmation dialog
       showConfirmationDialog.value = true;
+    } else if (stateData.state === 'completed') {
+      // Workflow completed
+      isRunning.value = false;
+      isCompleted.value = true;
+      currentStep.value = null;
+      showConfirmationDialog.value = false;
+    } else if (stateData.state === 'failed') {
+      // Workflow failed
+      isRunning.value = false;
+      currentStep.value = null;
+      showConfirmationDialog.value = false;
+      showRecoverButton.value = true;
+    } else if (stateData.state === 'running') {
+      // Workflow is running
+      isRunning.value = true;
+      currentStep.value = null;
+      showConfirmationDialog.value = false;
     } else {
-      // Workflow is running (no confirmation required)
-      // Check if there's a running state
-      if (runningState.role && runningState.action) {
-        isRunning.value = true;
-        // Clear current step if workflow is running
-        currentStep.value = null;
-        showConfirmationDialog.value = false;
-      } else {
-        // No running state, workflow might be idle or completed
-        isRunning.value = false;
-        currentStep.value = null;
-        showConfirmationDialog.value = false;
-      }
+      // Other states (initialized, paused)
+      isRunning.value = false;
+      currentStep.value = null;
+      showConfirmationDialog.value = false;
     }
   } catch (error: any) {
     console.error('Failed to load running info:', error);
@@ -469,82 +499,54 @@ async function startInteractiveSession() {
     currentStageName.value = '市场研究阶段';
     runningRole.value = 'Salesperson';
 
-    // Create session via API
-    const apiUrl = (import.meta as any).env?.VITE_API_URL;
-    if (!apiUrl) {
-      throw new Error('VITE_API_URL environment variable is not set. Please configure it in your .env file.');
-    }
-
-    // Get the final idea value (prioritize userIdea, then query param)
-    const queryIdea = route.query.idea as string;
-    const finalIdea = (userIdea.value && userIdea.value.trim()) || (queryIdea && queryIdea.trim()) || '';
-    const finalName = (projectName.value && projectName.value.trim()) || 'Untitled Project';
-
-    // Validate required fields before sending request
-    if (!finalName || finalName.trim() === '' || finalName === 'Untitled Project') {
-      // If we have projectId but no name, it means project loading failed or incomplete
-      if (projectId.value) {
-        throw new Error('无法加载项目信息，请刷新页面重试');
-      }
-      throw new Error('项目名称不能为空');
-    }
-    if (!finalIdea || finalIdea.trim() === '') {
-      // If we have projectId but no idea, it means project loading failed or project has no idea
-      if (projectId.value) {
-        throw new Error('项目缺少必要的描述信息，请先编辑项目添加项目描述');
-      }
-      throw new Error('项目想法不能为空，请提供项目描述');
-    }
-
-    const requestBody: any = {
-      name: finalName,
-      idea: finalIdea,
-      description: route.query.description as string,
-      investment: parseFloat(route.query.investment as string) || 10.0,
-    };
-
-    // If projectId is provided, pass it to the API
-    if (projectId.value) {
-      requestBody.projectId = projectId.value;
-    }
-
-    // If applicationId is provided, pass it to the API
-    if (route.query.applicationId) {
-      requestBody.applicationId = route.query.applicationId as string;
-    }
-
-    const response = await fetch(`${apiUrl}/interactive`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData.error || errorData.message || `Failed to create session: ${response.status} ${response.statusText}`;
-      throw new Error(errorMessage);
-    }
-
-    const data = await response.json();
-
-    // Update projectId from response
-    if (data.projectId) {
-      projectId.value = data.projectId;
-    } else if (data.project?.id) {
-      projectId.value = data.project.id;
-    }
-
+    // Check if project already exists
     if (!projectId.value) {
-      throw new Error('Project ID not found in response');
-    }
+      // Create project first if no projectId
+      const queryIdea = route.query.idea as string;
+      const finalIdea = (userIdea.value && userIdea.value.trim()) || (queryIdea && queryIdea.trim()) || '';
+      const finalName = (projectName.value && projectName.value.trim()) || 'Untitled Project';
 
+      // Validate required fields
+      if (!finalName || finalName.trim() === '' || finalName === 'Untitled Project') {
+        throw new Error('项目名称不能为空');
+      }
+      if (!finalIdea || finalIdea.trim() === '') {
+        throw new Error('项目想法不能为空，请提供项目描述');
+      }
+
+      // Create project via API
+      const projectResponse = await apiClient.createProject({
+        name: finalName,
+        idea: finalIdea,
+        description: route.query.description as string,
+        investment: parseFloat(route.query.investment as string) || 10.0,
+        applicationId: route.query.applicationId as string,
+      }) as any;
+
+      if (projectResponse.project?.id) {
+        projectId.value = projectResponse.project.id;
+      } else if (projectResponse.id) {
+        projectId.value = projectResponse.id;
+      }
+
+      if (!projectId.value) {
+        throw new Error('创建项目失败：未获取到项目ID');
+      }
+    }
 
     // Load workflow information
     await loadWorkflowInfo();
 
-    // Start polling
+    // Start workflow via new API
+    try {
+      await apiClient.startWorkflow(projectId.value);
+      console.log('Workflow started successfully');
+    } catch (error: any) {
+      // Workflow might already be running, continue with polling
+      console.warn('Start workflow warning:', error.message);
+    }
+
+    // Start polling for workflow state
     startPolling(projectId.value);
   } catch (error: any) {
     ElMessage.error('启动会话失败: ' + error.message);
@@ -552,7 +554,7 @@ async function startInteractiveSession() {
   }
 }
 
-function startPolling(projectId: string) {
+function startPolling(projectIdToUse: string) {
   try {
     // Stop existing polling if any
     if (pollingController) {
@@ -560,16 +562,14 @@ function startPolling(projectId: string) {
       pollingController = null;
     }
 
-    lastMessageId = null;
     ElMessage.success('已连接到服务器');
 
-    // Create polling instance
+    // Create polling instance using new workflow state API
     pollingController = createPolling(
       async () => {
         try {
-          const response = await apiClient.pollInteractiveMessages(projectId, lastMessageId);
-          // Also load running info periodically
-          await loadRunningInfo();
+          // Use new workflow state API for polling
+          const response = await apiClient.getWorkflowState(projectIdToUse) as any;
           return response;
         } catch (error: any) {
           // 重新抛出错误以便轮询工具处理
@@ -577,23 +577,13 @@ function startPolling(projectId: string) {
         }
       },
       (data: any) => {
-        // Process messages
-        if (data && data.messages && Array.isArray(data.messages)) {
-          data.messages.forEach((msg: any) => {
-            handlePollingMessage({
-              type: msg.type,
-              data: msg.data,
-            });
-          });
-
-          // Update last message ID
-          if (data.lastMessageId) {
-            lastMessageId = data.lastMessageId;
-          }
+        // Process workflow state response
+        if (data && data.success && data.data) {
+          handleWorkflowStateUpdate(data.data);
         }
       },
       {
-        interval: 1000, // Poll every 1 second
+        interval: 1500, // Poll every 1.5 seconds
         maxRetries: 3,
         retryDelay: 2000,
         immediate: true,
@@ -610,98 +600,113 @@ function startPolling(projectId: string) {
   }
 }
 
-function handlePollingMessage(message: { type: string; data: any }) {
-  switch (message.type) {
-    case 'connected':
-      ElMessage.success('会话已连接');
-      isRunning.value = true;
-      // Set default first stage: Salesperson (市场研究阶段)
-      if (!currentStageName.value) {
-        currentStageName.value = '市场研究阶段';
-        runningRole.value = 'Salesperson';
-        currentAction.value = 'WriteMRD';
-      }
-      // Auto-scroll handled by components
-      break;
+/**
+ * Handle workflow state updates from polling
+ */
+function handleWorkflowStateUpdate(stateData: any) {
+  // Update workflow items from steps array
+  if (stateData.steps && Array.isArray(stateData.steps)) {
+    workflowItems.value = stateData.steps.map((step: any) => ({
+      role: step.role,
+      action: step.action,
+      status: step.state,
+      role_order: step.roleIndex,
+      action_order: step.actionIndex,
+      retry_count: step.retryCount,
+    }));
 
-    case 'started':
-      ElMessage.info('项目生成已开始');
-      isRunning.value = true;
-      // Set initial stage name - default to Salesperson (市场研究阶段)
-      if (message.data?.role && message.data?.action) {
-        currentStageName.value = getStageName(message.data.role, message.data.action);
-        runningRole.value = message.data.role || '';
-        currentAction.value = message.data.action || '';
-      } else {
-        // Default to first stage: Salesperson (市场研究阶段)
-        currentStageName.value = '市场研究阶段';
-        runningRole.value = 'Salesperson';
-        // Set default action for Salesperson (usually WriteMRD)
-        currentAction.value = 'WriteMRD';
-      }
-      // Auto-scroll handled by components
-      break;
-
-    case 'role_start':
-      isRunning.value = true;
-      runningRole.value = message.data.role || '';
-      currentAction.value = message.data.action || '';
-      currentStageName.value = getStageName(message.data.role, message.data.action);
-      // Clear currentStep when a new role starts
-      currentStep.value = null;
-      // Auto-scroll handled by components
-      // Debug: log running state
-      console.log('[role_start]', {
-        role: runningRole.value,
-        action: currentAction.value,
-        isRunning: isRunning.value,
-        stage: currentStageName.value
-      });
-      break;
-
-    case 'confirmation_required':
-      // Stop running state and show confirmation UI
-      isRunning.value = false;
-      // Keep runningRole and currentAction for display, but update stage name
-      runningRole.value = message.data.role || '';
-      currentAction.value = message.data.action || '';
-      currentStageName.value = getStageName(message.data.role, message.data.action);
-      currentStep.value = {
-        role: message.data.role,
-        action: message.data.action,
-        content: message.data.content,
-        outputFiles: message.data.outputFiles || [],
-        instructContent: message.data.instructContent || {},
-      };
-      // Show confirmation dialog
-      showConfirmationDialog.value = true;
-      break;
-
-    case 'progress':
-      // Progress is now calculated based on completed actions
-      break;
-
-    case 'completed':
-      // Update projectId from completion message if provided
-      if (message.data.projectId) {
-        projectId.value = message.data.projectId;
-      }
-      complete();
-      ElMessage.success('项目生成完成！');
-      break;
-
-    case 'error':
-      ElMessage.error('错误: ' + (message.data.message || '未知错误'));
-      isRunning.value = false;
-      break;
-
-    case 'info':
-      ElMessage.info(message.data.message || '');
-      break;
-
-    default:
-      console.warn('Unknown message type:', message.type);
+    // Update completed steps
+    const completedItems = stateData.steps.filter((step: any) => step.state === 'completed');
+    const existingKeys = new Set(completedSteps.value.map(s => `${s.role}-${s.action}`));
+    const newSteps = completedItems
+      .filter((step: any) => step.role && step.action && !existingKeys.has(`${step.role}-${step.action}`))
+      .map((step: any) => ({
+        role: step.role,
+        action: step.action,
+        userAction: 'skip',
+        timestamp: step.completedAt || new Date().toISOString(),
+        content: undefined,
+        outputFiles: undefined,
+        zipPath: undefined,
+        zipType: undefined,
+      }));
+    completedSteps.value.push(...newSteps);
   }
+
+  // Update running state
+  if (stateData.currentRole) {
+    runningRole.value = stateData.currentRole;
+  }
+  if (stateData.currentAction) {
+    currentAction.value = stateData.currentAction;
+  }
+  if (stateData.currentRole && stateData.currentAction) {
+    currentStageName.value = getStageName(stateData.currentRole, stateData.currentAction);
+  }
+
+  // Handle different workflow states
+  const currentWorkflowState = stateData.state;
+  const pendingConfirmation = stateData.pendingConfirmation;
+
+  // Update global workflow state refs
+  workflowState.value = currentWorkflowState;
+  workflowCurrentPosition.value = stateData.currentPosition || null;
+
+  if (currentWorkflowState === 'waiting_confirmation' && pendingConfirmation) {
+    // Workflow is paused waiting for confirmation
+    isRunning.value = false;
+    currentStep.value = {
+      role: pendingConfirmation.role,
+      action: pendingConfirmation.action,
+      content: pendingConfirmation.content,
+      outputFiles: pendingConfirmation.outputFiles || [],
+      instructContent: pendingConfirmation.instructContent || {},
+      retryCount: 0,
+    };
+
+    const roleToShow = pendingConfirmation.role || stateData.currentRole;
+    const actionToShow = pendingConfirmation.action || stateData.currentAction;
+
+    if (roleToShow) runningRole.value = roleToShow;
+    if (actionToShow) currentAction.value = actionToShow;
+    if (roleToShow && actionToShow) {
+      currentStageName.value = getStageName(roleToShow, actionToShow);
+    }
+
+    showConfirmationDialog.value = true;
+  } else if (currentWorkflowState === 'completed') {
+    // Workflow completed
+    isRunning.value = false;
+    isCompleted.value = true;
+    currentStep.value = null;
+    showConfirmationDialog.value = false;
+    ElMessage.success('项目生成完成！');
+  } else if (currentWorkflowState === 'failed') {
+    // Workflow failed
+    isRunning.value = false;
+    currentStep.value = null;
+    showConfirmationDialog.value = false;
+    showRecoverButton.value = true;
+    ElMessage.error('工作流执行失败，请尝试恢复');
+  } else if (currentWorkflowState === 'running') {
+    // Workflow is running
+    isRunning.value = true;
+    currentStep.value = null;
+    showConfirmationDialog.value = false;
+  } else if (currentWorkflowState === 'initialized') {
+    // Workflow initialized, waiting for user to start
+    isRunning.value = false;
+    currentStep.value = null;
+    showConfirmationDialog.value = false;
+  } else {
+    // Other states (paused)
+    isRunning.value = false;
+    currentStep.value = null;
+    showConfirmationDialog.value = false;
+  }
+
+  // Check for stale/failed actions
+  checkForStaleActions(stateData);
 }
 
 async function handleUserAction(action: string, modifiedContent?: string) {
@@ -723,11 +728,11 @@ async function handleUserAction(action: string, modifiedContent?: string) {
 
     completedSteps.value.push(step);
 
-    // Send confirmation to backend via HTTP API
-    // This will clear the confirmation status in database and allow workflow to proceed
+    // Send confirmation to backend via new workflow API
+    // This will transition workflow from waiting_confirmation to running state
     try {
-      await apiClient.confirmRoleCompletion(projectId.value, action, modifiedContent);
-      console.log('Role confirmation sent successfully');
+      await apiClient.confirmWorkflow(projectId.value);
+      console.log('Workflow confirmation sent successfully');
     } catch (error: any) {
       console.error('Failed to send confirmation:', error);
       ElMessage.error('确认操作失败: ' + (error.message || '未知错误'));
@@ -792,12 +797,6 @@ async function handleQuit() {
   setTimeout(() => {
     router.push('/');
   }, 1000);
-}
-
-function complete() {
-  isRunning.value = false;
-  isCompleted.value = true;
-  ElMessage.success('项目生成完成！');
 }
 
 // Helper functions moved to components
@@ -991,7 +990,6 @@ function cleanup() {
     pollingController.stop();
     pollingController = null;
   }
-  lastMessageId = null;
   if (staleCheckInterval) {
     clearInterval(staleCheckInterval);
     staleCheckInterval = null;
@@ -1000,28 +998,32 @@ function cleanup() {
 
 /**
  * Check for stale/failed actions to show recover button
+ * 使用新的工作流状态格式
  */
-async function checkForStaleActions(response?: any) {
+async function checkForStaleActions(stateData?: any) {
   if (!projectId.value) return;
 
   try {
-    const data = response || await apiClient.getInteractiveRunning(projectId.value) as any;
-    if (!data || !data.success) return;
+    // Use passed stateData or fetch new state
+    let data = stateData;
+    if (!data) {
+      const response = await apiClient.getWorkflowState(projectId.value) as any;
+      if (!response || !response.success) return;
+      data = response.data;
+    }
 
-    const items = data.items || [];
-    const runningState = data.running || {};
+    const steps = data.steps || [];
 
-    // Check for stale running action (running for more than 5 minutes)
-    const hasStaleRunning = runningState.role && runningState.action &&
-      runningState.updatedAt &&
-      (Date.now() - new Date(runningState.updatedAt).getTime() > 5 * 60 * 1000);
+    // Check for failed workflow state
+    const isWorkflowFailed = data.state === 'failed';
 
-    // Check for failed actions that can be retried
-    const hasFailedActions = items.some((item: any) =>
-      item.status === 'failed' && (item.retry_count || 0) < 3
+    // Check for any step in running state that might be stale
+    // (The new system handles stale detection on the backend, but we still show the button for failed state)
+    const hasFailedSteps = steps.some((step: any) =>
+      step.state === 'failed' && (step.retryCount || 0) < 3
     );
 
-    showRecoverButton.value = hasStaleRunning || hasFailedActions;
+    showRecoverButton.value = isWorkflowFailed || hasFailedSteps;
   } catch (error) {
     console.error('Failed to check for stale actions:', error);
   }
@@ -1029,6 +1031,7 @@ async function checkForStaleActions(response?: any) {
 
 /**
  * Handle recovery from stale/failed actions
+ * 使用新的工作流恢复 API
  */
 async function handleRecover() {
   if (!projectId.value || recovering.value) return;
@@ -1037,10 +1040,11 @@ async function handleRecover() {
     recovering.value = true;
     ElMessage.info('正在恢复工作流...');
 
-    const response = await apiClient.recoverFromStaleActions(projectId.value) as any;
+    const response = await apiClient.recoverWorkflow(projectId.value) as any;
 
     if (response && response.success) {
-      ElMessage.success(response.message || '工作流已恢复');
+      const result = response.data;
+      ElMessage.success(result?.message || '工作流已恢复');
       showRecoverButton.value = false;
 
       // Reload workflow state
@@ -1061,6 +1065,7 @@ async function handleRecover() {
 /**
  * Handle reset workflow from a specific role
  * This will reset the role and all downstream roles to pending status
+ * Reset 只重置状态到 INITIALIZED，用户需要点击"开始执行"按钮来启动
  */
 async function handleResetRole(role: string) {
   if (!projectId.value) {
@@ -1071,7 +1076,7 @@ async function handleResetRole(role: string) {
   try {
     // Confirm reset action
     await ElMessageBox.confirm(
-      `确定要重置 ${getRoleDisplayName(role)} 及下游所有角色的工作流吗？\n\n这将清除这些角色的已完成状态，需要重新执行。`,
+      `确定要重置 ${getRoleDisplayName(role)} 及下游所有角色的工作流吗？\n\n这将清除这些角色的已完成状态，重置后需要点击"开始执行"按钮继续。`,
       '确认重置',
       {
         confirmButtonText: '确定',
@@ -1083,30 +1088,13 @@ async function handleResetRole(role: string) {
     // Set loading state
     resettingRoles.value.add(role);
 
-    // Call API to reset workflow
-    await apiClient.resetInteractiveWorkflow(projectId.value, role);
-
-    // Remove completed steps for this role and downstream roles
-    const roleOrder = [
-      'Salesperson',
-      'ProductManager',
-      'Architect',
-      'ProjectManager',
-      'Engineer',
-      'QAEngineer',
-    ];
-    const roleIndex = roleOrder.indexOf(role);
-    if (roleIndex !== -1) {
-      const downstreamRoles = roleOrder.slice(roleIndex);
-      completedSteps.value = completedSteps.value.filter(
-        step => !downstreamRoles.includes(step.role)
-      );
-    }
-
-    // Reload workflow info to refresh the kanban board
-    await loadWorkflowInfo();
-
-    ElMessage.success(`已重置 ${getRoleDisplayName(role)} 及下游角色的工作流`);
+    // Call reset API - resets state to INITIALIZED
+    // 不自动调用 start，让用户手动点击"开始执行"按钮
+    await apiClient.resetWorkflow(projectId.value, role);
+    ElMessage.success(`已重置到 ${getRoleDisplayName(role)}，请点击"开始执行"按钮继续`);
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
   } catch (error: any) {
     if (error !== 'cancel') {
       console.error('Failed to reset workflow:', error);
@@ -1116,11 +1104,64 @@ async function handleResetRole(role: string) {
     resettingRoles.value.delete(role);
   }
 }
+
+/**
+ * Handle manual start workflow execution
+ * Called when user clicks "开始执行" button after reset
+ */
+async function handleStartWorkflow() {
+  if (!projectId.value) {
+    ElMessage.error('项目ID不存在');
+    return;
+  }
+
+  try {
+    actionLoading.value = true;
+
+    // Get current position from workflow state (set by reset)
+    const position = workflowCurrentPosition.value;
+
+    // Start workflow from the current position
+    await apiClient.startWorkflow(projectId.value, position || undefined);
+
+    // Reload workflow info
+    await loadRunningInfo();
+
+    ElMessage.success('工作流开始执行');
+  } catch (error: any) {
+    console.error('Failed to start workflow:', error);
+    ElMessage.error('启动失败: ' + (error.message || '未知错误'));
+  } finally {
+    actionLoading.value = false;
+  }
+}
 </script>
 
 <style scoped>
 .project-interactive {
   width: 100%;
+}
+
+.start-workflow-card {
+  margin-bottom: 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+}
+
+.start-workflow-card :deep(.el-card__body) {
+  padding: 16px 24px;
+}
+
+.start-workflow-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.start-workflow-text {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 500;
 }
 
 .page-header {

@@ -318,8 +318,7 @@ export class WritePRD extends BaseAction {
     const userId = this.context?.get('userId');
     const systemPrompt = await loadPrompt(userId, 'prd', 'system_prompt', PRD_SYSTEM_PROMPT);
 
-    // Get StateManager and role from context (if available)
-    const stateManager = this.context?.get('stateManager') as any;
+    // Get role from context (if available)
     const role = (this as any).role?.profile || undefined;
 
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
@@ -352,7 +351,6 @@ export class WritePRD extends BaseAction {
       workspaceDir,
       applicationId: options?.applicationId,
       projectId: options?.projectId || (this.context?.get('projectId') as string | undefined),
-      stateManager,
       role,
       // 跳过审核和合并步骤，由 PRDReview 负责后续处理
       skipReview: true,

@@ -30,7 +30,6 @@
       <div class="column-header-right">
         <span class="column-count">{{ column.completedCount }} / {{ column.totalCount }}</span>
         <el-button
-          v-if="column.completedCount === column.totalCount && column.totalCount > 0"
           type="warning"
           size="small"
           :icon="Refresh"
