@@ -37,6 +37,12 @@ router.post('/interactive/:projectId/reset-workflow', InteractiveController.rese
 // Recover from stale or failed actions
 router.post('/interactive/:projectId/recover', InteractiveController.recoverFromStaleActions);
 
+// Download workspace code (full ainative-workspace directory)
+router.get('/interactive/:projectId/download/code', InteractiveController.downloadCode);
+
+// Download workspace docs (docs and openspec directories)
+router.get('/interactive/:projectId/download/docs', InteractiveController.downloadDocs);
+
 // Get session info
 router.get('/interactive/:projectId', InteractiveController.getSession);
 
