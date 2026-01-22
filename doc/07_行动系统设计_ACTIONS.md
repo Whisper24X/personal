@@ -1,8 +1,8 @@
 # mind2build 行动系统设计文档
 
-**文档版本**: v1.5  
+**文档版本**: v1.6  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-21（添加QA工作流Actions、RunCode、FixBug、ImproveDesign，更新已实现Actions列表）
+**最后更新**: 2026-01-22（拆分QAEngineer和AutomationEngineer的Actions，添加配置驱动的Action注册机制）
 
 ## Action执行机制
 
@@ -783,7 +783,7 @@ async run(input: string, options?: AutomationPlanningOptions): Promise<IActionOu
 - 选择合适的自动化技术
 - 自动保存到 workspace（TEST 目录，文件名 AUTOMATION_PLAN.md）
 
-**使用角色**: QAEngineer
+**使用角色**: AutomationEngineer
 
 ### 23. AutomationExecution
 
@@ -807,7 +807,7 @@ async run(input: string, options?: AutomationExecutionOptions): Promise<IActionO
 - 执行自动化测试用例
 - 收集执行结果
 
-**使用角色**: QAEngineer
+**使用角色**: AutomationEngineer
 
 **注意**: 当前实现为占位符，延迟 1 秒后跳过执行。实际的自动化测试执行需要根据项目技术栈实现。
 
@@ -836,7 +836,7 @@ async run(input: string, options?: CoverageQualityCheckOptions): Promise<IAction
 - 进行质量自评
 - 自动保存到 workspace（TEST 目录，文件名 COVERAGE_REPORT.md 和 QUALITY_CHECK.md）
 
-**使用角色**: QAEngineer
+**使用角色**: AutomationEngineer
 
 ### 25. QAConclusion
 
@@ -977,14 +977,16 @@ async run(allMessages: string): Promise<IActionOutput>
 ✅ **RunCode** - 代码执行  
 ✅ **FixBug** - Bug修复  
 
-### QA 工作流 Actions
+### QA 工作流 Actions (QAEngineer)
 ✅ **TestabilityReview** - 需求可测性审查  
 ✅ **TestCaseReview** - 测试用例评审与补充  
 ✅ **TestReview** - 测试用例文档审查  
+✅ **QAConclusion** - QA结论输出
+
+### 自动化测试 Actions (AutomationEngineer)
 ✅ **AutomationPlanning** - 自动化测试规划  
 ✅ **AutomationExecution** - 自动化测试执行  
 ✅ **CoverageQualityCheck** - 测试覆盖率与质量检查  
-✅ **QAConclusion** - QA结论输出  
 
 ### 其他 Actions
 ✅ **SearchEnhancedQA** - 增强搜索和问答  
@@ -995,8 +997,14 @@ async run(allMessages: string): Promise<IActionOutput>
 
 ## 自定义 Action
 
-**示例**:
+系统采用配置驱动的动态加载架构，添加新 Action 只需修改少量文件，无需改动核心业务代码。
+
+### 步骤 1: 创建 Action 类文件
+
+在 `backend/src/actions/` 目录下创建 Action 文件：
+
 ```typescript
+// backend/src/actions/CustomAction.ts
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { WorkspaceOptions } from '../utils/WorkspaceManager';
@@ -1034,7 +1042,37 @@ export class CustomAction extends BaseAction {
 }
 ```
 
-**注意事项**:
+### 步骤 2: 注册到 ACTION_REGISTRY
+
+修改 `backend/src/actions/index.ts`：
+
+```typescript
+// 添加 export
+export { CustomAction } from './CustomAction';
+
+// 在 ACTION_REGISTRY 中添加（这是唯一需要修改的代码文件）
+export const ACTION_REGISTRY: Record<string, new () => BaseAction> = {
+  // 文档编写 Actions
+  WriteMRD, WritePRD, WriteDesign, WriteSubProjectDesign,
+  WriteCode, WriteTest, WriteTestPlan,
+  // 文档审查 Actions
+  MRDReview, PRDReview, DesignReview, SubProjectDesignReview, CodeReview,
+  // ... 其他 Actions
+  CustomAction,  // 添加新 Action
+};
+```
+
+### 步骤 3: 运行数据库迁移
+
+```bash
+cd backend
+npx ts-node --transpile-only src/database/migrations/init_role_action_definitions.ts
+```
+
+迁移脚本会自动从 ACTION_REGISTRY 读取 Action 信息并更新数据库。
+
+### 注意事项
+
 - 继承 `BaseAction` 基类
 - 在构造函数中调用 `super(name, description)` 设置名称和描述
 - 实现 `run(...args: any[]): Promise<IActionOutput>` 方法
@@ -1043,6 +1081,21 @@ export class CustomAction extends BaseAction {
 - 使用 `this.getWorkspaceDir()` 获取工作区目录
 - 使用 `this.readWorkspaceFile()` 读取工作区文件
 - LLM 和 Context 实例由 Role 自动注入，无需手动设置
+- **核心文件零修改**: Controller、Service 等核心业务文件无需改动
+
+### 架构优势
+
+```
+┌─────────────────────────────────────────┐
+│  actions/index.ts (ACTION_REGISTRY)     │  ← 唯一需要修改的代码文件
+├─────────────────────────────────────────┤
+│  RoleActionFactory                      │  ← 自动从 REGISTRY 读取
+├─────────────────────────────────────────┤
+│  Database (action_definitions)          │  ← 元数据存储
+├─────────────────────────────────────────┤
+│  Controllers / Services                 │  ← 无需修改
+└─────────────────────────────────────────┘
+```
 
 ## 知识库集成
 

@@ -1,6 +1,9 @@
 /**
  * Workflow Service
  * Provides workflow configuration and management services
+ * 
+ * Default workflow configuration is loaded from database (system_default_workflow_templates)
+ * with fallback to getDefaultWorkflowConfig() from migrations
  */
 
 import { ApplicationWorkflowRepository, WorkflowConfig } from '../database/repositories/ApplicationWorkflowRepository';
@@ -9,63 +12,7 @@ import { ApplicationRepository } from '../database/repositories/ApplicationRepos
 import { RoleDefinitionRepository } from '../database/repositories/RoleDefinitionRepository';
 import { ActionDefinitionRepository } from '../database/repositories/ActionDefinitionRepository';
 import { logger } from '../utils';
-
-// 默认工作流配置（与init_role_action_definitions.ts中的配置保持一致）
-const DEFAULT_WORKFLOW_CONFIG: WorkflowConfig = {
-  roles: [
-    {
-      profile: 'Salesperson',
-      name: 'Salesperson',
-      order: 0,
-      actions: ['WriteMRD', 'MRDReview', 'ImproveMRD'],
-      watch_actions: ['User'],
-    },
-    {
-      profile: 'ProductManager',
-      name: 'ProductManager',
-      order: 1,
-      actions: ['WritePRD', 'PRDReview', 'ImprovePRD'],
-      watch_actions: ['WriteMRD'],
-    },
-    {
-      profile: 'Architect',
-      name: 'Architect',
-      order: 2,
-      actions: ['WriteDesign', 'DesignReview', 'ImproveDesign'],
-      watch_actions: ['WritePRD'],
-    },
-    {
-      profile: 'ProjectManager',
-      name: 'ProjectManager',
-      order: 3,
-      actions: ['BreakdownTasks'],
-      watch_actions: ['WritePRD'],
-    },
-    {
-      profile: 'Engineer',
-      name: 'Engineer',
-      order: 4,
-      actions: ['WriteCode'],
-      watch_actions: ['WritePRD', 'WriteDesign', 'BreakdownTasks'],
-    },
-    {
-      profile: 'QAEngineer',
-      name: 'QAEngineer',
-      order: 5,
-      actions: [
-        'TestabilityReview',
-        'WriteTestPlan',
-        'WriteTest',
-        'TestCaseReview',
-        'AutomationPlanning',
-        'AutomationExecution',
-        'CoverageQualityCheck',
-        'QAConclusion',
-      ],
-      watch_actions: ['WritePRD', 'WriteCode'],
-    },
-  ],
-};
+import { getDefaultWorkflowConfig } from '../database/migrations/init_role_action_definitions';
 
 export class WorkflowService {
   private workflowRepo: ApplicationWorkflowRepository;
@@ -402,9 +349,9 @@ export class WorkflowService {
           throw new Error('No active default workflow template found in database');
         }
       } catch (templateError: any) {
-        // Fallback to hardcoded config (with warning)
-        logger.warn(`WorkflowService: Failed to load default template from database, using hardcoded config:`, templateError.message);
-        defaultConfig = DEFAULT_WORKFLOW_CONFIG; // 保留作为fallback
+        // Fallback to config from migration module (with warning)
+        logger.warn(`WorkflowService: Failed to load default template from database, using fallback config:`, templateError.message);
+        defaultConfig = getDefaultWorkflowConfig();
       }
       
       try {

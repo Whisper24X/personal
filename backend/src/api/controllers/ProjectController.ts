@@ -7,13 +7,7 @@ import { Request, Response } from 'express';
 import { ProjectRepository, MessageRepository, DocumentRepository } from '../../database';
 import { Context } from '../../core/context/Context';
 import { Team } from '../../orchestration/Team';
-import { Salesperson } from '../../roles/Salesperson';
-import { ProductManager } from '../../roles/ProductManager';
-import { Architect } from '../../roles/Architect';
-import { ProjectManager as ProjectManagerRole } from '../../roles/ProjectManager';
-import { Engineer } from '../../roles/Engineer';
-import { QAEngineer } from '../../roles/QAEngineer';
-// import { ProjectManager } from '../../orchestration/ProjectManager'; // Unused
+// Role imports removed - now using RoleActionFactory for dynamic role instantiation
 import { logger } from '../../utils';
 import { ProjectStatus } from '@mind2build/shared';
 import { WorkflowService } from '../../services/WorkflowService';
@@ -165,17 +159,9 @@ export class ProjectController {
           workflowName: workflow.name,
         });
       } else {
-        // No application ID, use default hardcoded workflow
-        logger.info(`Project ${projectId} has no application_id, using default hardcoded workflow`);
-        team = new Team(ctx);
-        team.hire([
-          new Salesperson(ctx),
-          new ProductManager(ctx),
-          new Architect(ctx),
-          new ProjectManagerRole(ctx),
-          new Engineer(ctx),
-          new QAEngineer(ctx),
-        ]);
+        // No application ID, use default team from factory
+        logger.info(`Project ${projectId} has no application_id, using default team from registry`);
+        team = RoleActionFactory.createDefaultTeam(ctx);
       }
 
       // Set investment

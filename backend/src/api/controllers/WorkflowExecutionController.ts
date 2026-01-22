@@ -2,6 +2,8 @@
  * Workflow Execution Controller
  * HTTP API for workflow execution management
  * Provides unified endpoints for workflow state management
+ * 
+ * Default workflow configuration is loaded from database with fallback to migration config
  */
 
 import { Request, Response } from 'express';
@@ -15,21 +17,10 @@ import { logger } from '../../utils';
 import { ProjectRepository } from '../../database/repositories/ProjectRepository';
 import { WorkflowService } from '../../services/WorkflowService';
 import { WorkflowConfig } from '../../database/repositories/ApplicationWorkflowRepository';
+import { getDefaultWorkflowConfig } from '../../database/migrations/init_role_action_definitions';
 
 // Map to track running executors by projectId
 const runningExecutors: Map<string, WorkflowExecutor> = new Map();
-
-// Default workflow config (fallback if no application workflow found)
-const DEFAULT_WORKFLOW_CONFIG: WorkflowConfig = {
-  roles: [
-    { profile: 'Salesperson', name: 'Salesperson', order: 0, actions: ['WriteMRD', 'MRDReview', 'ImproveMRD'], watch_actions: ['User'] },
-    { profile: 'ProductManager', name: 'ProductManager', order: 1, actions: ['WritePRD', 'PRDReview', 'ImprovePRD'], watch_actions: ['WriteMRD'] },
-    { profile: 'Architect', name: 'Architect', order: 2, actions: ['WriteDesign', 'DesignReview', 'ImproveDesign'], watch_actions: ['WritePRD'] },
-    { profile: 'ProjectManager', name: 'ProjectManager', order: 3, actions: ['BreakdownTasks'], watch_actions: ['WritePRD'] },
-    { profile: 'Engineer', name: 'Engineer', order: 4, actions: ['WriteCode'], watch_actions: ['WritePRD', 'WriteDesign', 'BreakdownTasks'] },
-    { profile: 'QAEngineer', name: 'QAEngineer', order: 5, actions: ['TestabilityReview', 'WriteTestPlan', 'WriteTest', 'TestCaseReview', 'AutomationPlanning', 'AutomationExecution', 'CoverageQualityCheck', 'QAConclusion'], watch_actions: ['WritePRD', 'WriteCode'] },
-  ],
-};
 
 export class WorkflowExecutionController {
   private static executionService = new WorkflowExecutionService();
@@ -158,7 +149,7 @@ export class WorkflowExecutionController {
         }
 
         // Get workflow config from application or use default
-        let workflowConfig: WorkflowConfig = DEFAULT_WORKFLOW_CONFIG;
+        let workflowConfig: WorkflowConfig = getDefaultWorkflowConfig();
         
         if (project.application_id) {
           try {

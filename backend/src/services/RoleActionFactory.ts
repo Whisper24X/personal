@@ -1,6 +1,9 @@
 /**
  * Role Action Factory
- * Dynamically creates role and action instances based on database configuration
+ * Dynamically creates role and action instances based on registry and database configuration
+ * 
+ * This factory uses centralized registries from roles/index.ts and actions/index.ts
+ * to create instances, eliminating the need for hardcoded mappings in multiple files.
  */
 
 import { Context } from '../core/context/Context';
@@ -10,93 +13,9 @@ import { BaseAction } from '../core/base/BaseAction';
 import { WorkflowConfig } from '../database/repositories/ApplicationWorkflowRepository';
 import { logger } from '../utils';
 
-// Import all role classes
-import { Salesperson } from '../roles/Salesperson';
-import { ProductManager } from '../roles/ProductManager';
-import { Architect } from '../roles/Architect';
-import { ProjectManager } from '../roles/ProjectManager';
-import { Engineer } from '../roles/Engineer';
-import { QAEngineer } from '../roles/QAEngineer';
-import { TeamLeader } from '../roles/TeamLeader';
-import { DataAnalyst } from '../roles/DataAnalyst';
-
-// Import all action classes
-import { WriteMRD } from '../actions/WriteMRD';
-import { WritePRD } from '../actions/WritePRD';
-import { WriteDesign } from '../actions/WriteDesign';
-import { WriteSubProjectDesign } from '../actions/WriteSubProjectDesign';
-import { WriteCode } from '../actions/WriteCode';
-import { WriteTest } from '../actions/WriteTest';
-import { WriteTestPlan } from '../actions/WriteTestPlan';
-import { MRDReview } from '../actions/MRDReview';
-import { PRDReview } from '../actions/PRDReview';
-import { DesignReview } from '../actions/DesignReview';
-import { SubProjectDesignReview } from '../actions/SubProjectDesignReview';
-import { CodeReview } from '../actions/CodeReview';
-import { TestCaseReview } from '../actions/TestCaseReview';
-import { TestReview } from '../actions/TestReview';
-import { ImprovePRD } from '../actions/ImprovePRD';
-import { ImproveMRD } from '../actions/ImproveMRD';
-import { ImproveDesign } from '../actions/ImproveDesign';
-import { ImproveTest } from '../actions/ImproveTest';
-import { BreakdownTasks } from '../actions/BreakdownTasks';
-import { ExecuteSubtask } from '../actions/ExecuteSubtask';
-import { RunCode } from '../actions/RunCode';
-import { FixBug } from '../actions/FixBug';
-import { TestabilityReview } from '../actions/TestabilityReview';
-import { AutomationPlanning } from '../actions/AutomationPlanning';
-import { AutomationExecution } from '../actions/AutomationExecution';
-import { CoverageQualityCheck } from '../actions/CoverageQualityCheck';
-import { QAConclusion } from '../actions/QAConclusion';
-import { SearchEnhancedQA } from '../actions/SearchEnhancedQA';
-import { DataAnalysis } from '../actions/DataAnalysis';
-import { Coordinate } from '../actions/Coordinate';
-
-// Role class mapping
-const ROLE_CLASS_MAP: Record<string, new (context: Context, name?: string) => Role> = {
-  Salesperson,
-  ProductManager,
-  Architect,
-  ProjectManager,
-  Engineer,
-  QAEngineer,
-  TeamLeader,
-  DataAnalyst,
-};
-
-// Action class mapping
-const ACTION_CLASS_MAP: Record<string, new () => BaseAction> = {
-  WriteMRD,
-  WritePRD,
-  WriteDesign,
-  WriteSubProjectDesign,
-  WriteCode,
-  WriteTest,
-  WriteTestPlan,
-  MRDReview,
-  PRDReview,
-  DesignReview,
-  SubProjectDesignReview,
-  CodeReview,
-  TestCaseReview,
-  TestReview,
-  ImprovePRD,
-  ImproveMRD,
-  ImproveDesign,
-  ImproveTest,
-  BreakdownTasks,
-  ExecuteSubtask,
-  RunCode,
-  FixBug,
-  TestabilityReview,
-  AutomationPlanning,
-  AutomationExecution,
-  CoverageQualityCheck,
-  QAConclusion,
-  SearchEnhancedQA,
-  DataAnalysis,
-  Coordinate,
-};
+// Import registries from centralized locations
+import { ROLE_REGISTRY } from '../roles';
+import { ACTION_REGISTRY } from '../actions';
 
 export class RoleActionFactory {
   /**
@@ -109,9 +28,9 @@ export class RoleActionFactory {
     actions?: string[],
     watchActions?: string[]
   ): Role {
-    const RoleClass = ROLE_CLASS_MAP[profile];
+    const RoleClass = ROLE_REGISTRY[profile];
     if (!RoleClass) {
-      throw new Error(`Unknown role profile: ${profile}`);
+      throw new Error(`Unknown role profile: ${profile}. Available profiles: ${Object.keys(ROLE_REGISTRY).join(', ')}`);
     }
 
     // Create role instance
@@ -121,7 +40,7 @@ export class RoleActionFactory {
     if (actions && actions.length > 0) {
       const actionInstances = actions
         .map((actionName) => {
-          const ActionClass = ACTION_CLASS_MAP[actionName];
+          const ActionClass = ACTION_REGISTRY[actionName];
           if (!ActionClass) {
             logger.warn(`Unknown action: ${actionName}, skipping`);
             return null;
@@ -145,11 +64,41 @@ export class RoleActionFactory {
    * Create an action instance from action definition
    */
   static createActionFromDefinition(actionName: string): BaseAction {
-    const ActionClass = ACTION_CLASS_MAP[actionName];
+    const ActionClass = ACTION_REGISTRY[actionName];
     if (!ActionClass) {
-      throw new Error(`Unknown action: ${actionName}`);
+      throw new Error(`Unknown action: ${actionName}. Available actions: ${Object.keys(ACTION_REGISTRY).join(', ')}`);
     }
     return new ActionClass();
+  }
+
+  /**
+   * Create all role instances from the registry
+   * Useful for getting metadata from all roles
+   */
+  static createAllRoleInstances(context: Context): Role[] {
+    return Object.entries(ROLE_REGISTRY).map(([profile, RoleClass]) => {
+      try {
+        return new RoleClass(context);
+      } catch (error: any) {
+        logger.warn(`Failed to create role instance for ${profile}:`, error.message);
+        return null;
+      }
+    }).filter((role): role is Role => role !== null);
+  }
+
+  /**
+   * Create all action instances from the registry
+   * Useful for getting metadata from all actions
+   */
+  static createAllActionInstances(): BaseAction[] {
+    return Object.entries(ACTION_REGISTRY).map(([name, ActionClass]) => {
+      try {
+        return new ActionClass();
+      } catch (error: any) {
+        logger.warn(`Failed to create action instance for ${name}:`, error.message);
+        return null;
+      }
+    }).filter((action): action is BaseAction => action !== null);
   }
 
   /**
@@ -194,16 +143,46 @@ export class RoleActionFactory {
   }
 
   /**
+   * Create a default team with all registered roles
+   * Used as fallback when no workflow configuration is available
+   */
+  static createDefaultTeam(context: Context): Team {
+    const team = new Team(context, false);
+    const roles = this.createAllRoleInstances(context);
+    team.hire(roles);
+    
+    logger.info(`Created default team with ${roles.length} roles from registry`, {
+      roles: roles.map((r) => r.profile),
+    });
+    
+    return team;
+  }
+
+  /**
    * Get available role profiles
    */
   static getAvailableRoleProfiles(): string[] {
-    return Object.keys(ROLE_CLASS_MAP);
+    return Object.keys(ROLE_REGISTRY);
   }
 
   /**
    * Get available action names
    */
   static getAvailableActionNames(): string[] {
-    return Object.keys(ACTION_CLASS_MAP);
+    return Object.keys(ACTION_REGISTRY);
+  }
+
+  /**
+   * Check if a role profile exists in the registry
+   */
+  static hasRoleProfile(profile: string): boolean {
+    return profile in ROLE_REGISTRY;
+  }
+
+  /**
+   * Check if an action name exists in the registry
+   */
+  static hasActionName(name: string): boolean {
+    return name in ACTION_REGISTRY;
   }
 }

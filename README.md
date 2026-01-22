@@ -98,6 +98,123 @@ ax/
 └── workspace/        # Generated projects
 ```
 
+## 🔌 扩展开发 - 创建新角色和 Action
+
+系统采用配置驱动的动态加载架构，添加新角色或 Action 只需修改少量文件，无需改动核心业务代码。
+
+### 创建新角色 (Role)
+
+**步骤 1**: 创建角色类文件 `backend/src/roles/NewRole.ts`
+
+```typescript
+import { IRoleConfig, ACTION_SOME_TRIGGER } from '@mind2build/shared';
+import { Role } from './Role';
+import { Context } from '../core/context/Context';
+import { SomeAction } from '../actions/SomeAction';
+
+export class NewRole extends Role {
+  constructor(context: Context, name: string = 'NewRole') {
+    const config: IRoleConfig = {
+      name,
+      profile: 'NewRole',           // 角色唯一标识
+      goal: '角色目标描述',
+      constraints: '角色约束条件',
+      description: '角色详细描述',
+    };
+    super(config, context);
+    
+    // 设置监听的 action（触发条件）
+    this.watch([ACTION_SOME_TRIGGER]);
+    
+    // 设置角色执行的 actions
+    this.setActions([
+      new SomeAction(),
+    ]);
+  }
+}
+
+export default NewRole;
+```
+
+**步骤 2**: 注册到 `backend/src/roles/index.ts`
+
+```typescript
+// 添加 export
+export { NewRole } from './NewRole';
+
+// 在 ROLE_REGISTRY 中添加
+export const ROLE_REGISTRY = {
+  // ... 现有角色
+  NewRole,  // 添加新角色
+};
+```
+
+**步骤 3**: 运行数据库迁移添加角色定义
+
+```bash
+# 创建迁移脚本或直接运行初始化
+cd backend
+npx ts-node --transpile-only src/database/migrations/init_role_action_definitions.ts
+```
+
+### 创建新 Action
+
+**步骤 1**: 创建 Action 类文件 `backend/src/actions/NewAction.ts`
+
+```typescript
+import { BaseAction } from '../core/base/BaseAction';
+import { Message } from '../core/message/Message';
+
+export class NewAction extends BaseAction {
+  name = 'NewAction';
+  description = 'Action 描述';
+
+  async run(context: string, options?: any): Promise<Message> {
+    // 实现 Action 逻辑
+    const result = await this.aask(context, [
+      { role: 'system', content: 'System prompt here' }
+    ]);
+    
+    return new Message({
+      content: result,
+      role: this.role?.profile || 'Assistant',
+      causeBy: this.name,
+    });
+  }
+}
+```
+
+**步骤 2**: 注册到 `backend/src/actions/index.ts`
+
+```typescript
+// 添加 export
+export { NewAction } from './NewAction';
+
+// 在 ACTION_REGISTRY 中添加
+export const ACTION_REGISTRY = {
+  // ... 现有 actions
+  NewAction,  // 添加新 action
+};
+```
+
+**步骤 3**: 运行数据库迁移添加 Action 定义
+
+```bash
+cd backend
+npx ts-node --transpile-only src/database/migrations/init_role_action_definitions.ts
+```
+
+### 更新默认工作流
+
+修改 `backend/src/database/migrations/init_role_action_definitions.ts` 中的 `getDefaultWorkflowConfig()` 函数，将新角色添加到默认工作流中。
+
+### 架构优势
+
+- **核心文件零修改**: Controller、Service 等核心业务文件无需改动
+- **集中注册**: 角色和 Action 的类映射集中在 `index.ts`
+- **数据库驱动**: 元数据（显示名称、描述等）从数据库读取
+- **动态加载**: 工作流配置从 `system_default_workflow_templates` 表读取
+
 ## 🛠️ Development
 
 ```bash
@@ -320,7 +437,8 @@ curl -X POST http://localhost:3000/api/projects/PROJECT_ID/roles/Engineer/action
 - **Architect**: WriteDesign, DesignReview, ImproveDesign
 - **ProjectManager**: BreakdownTasks, WriteSubProjectDesign, SubProjectDesignReview
 - **Engineer**: WriteCode, ExecuteSubtask, RunCode, FixBug
-- **QAEngineer**: WriteTest, WriteTestPlan, TestabilityReview, TestCaseReview, TestReview, ImproveTest, AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion
+- **QAEngineer**: TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, QAConclusion
+- **AutomationEngineer**: AutomationPlanning, AutomationExecution, CoverageQualityCheck
 - **TeamLeader**: Coordinate
 - **DataAnalyst**: DataAnalysis
 

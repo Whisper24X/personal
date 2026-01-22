@@ -1,8 +1,8 @@
 # mind2build 开发指南
 
-**文档版本**: v1.1  
+**文档版本**: v1.2  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-21
+**最后更新**: 2026-01-22（添加扩展开发章节）
 
 ## 1. 开发环境搭建
 
@@ -212,9 +212,140 @@ console.log('Debug info:', variable);
 }
 ```
 
-## 7. 贡献指南
+## 7. 扩展开发 - 创建新角色和 Action
 
-### 7.1 提交规范
+系统采用配置驱动的动态加载架构，添加新角色或 Action 只需修改少量文件，无需改动核心业务代码。
+
+### 7.1 创建新角色
+
+**步骤 1**: 创建角色类文件 `backend/src/roles/NewRole.ts`
+
+```typescript
+import { IRoleConfig, ACTION_SOME_WATCH } from '@mind2build/shared';
+import { Role } from './Role';
+import { Context } from '../core/context/Context';
+import { SomeAction } from '../actions/SomeAction';
+
+export class NewRole extends Role {
+  constructor(context: Context, name: string = 'NewRole') {
+    const config: IRoleConfig = {
+      name,
+      profile: 'NewRole',
+      goal: '角色目标描述',
+      constraints: '角色约束条件',
+      description: '角色详细描述',
+    };
+    super(config, context);
+    
+    // 设置监听的 action（触发条件）
+    this.watch([ACTION_SOME_WATCH]);
+    
+    // 设置角色执行的 actions
+    this.setActions([
+      new SomeAction(),
+    ]);
+  }
+}
+
+export default NewRole;
+```
+
+**步骤 2**: 注册到 `backend/src/roles/index.ts`
+
+```typescript
+// 添加 export
+export { NewRole } from './NewRole';
+
+// 在 ROLE_REGISTRY 中添加
+export const ROLE_REGISTRY = {
+  // ... 现有角色
+  NewRole,  // 添加这行
+};
+```
+
+**步骤 3**: 运行数据库迁移
+
+```bash
+cd backend
+npx ts-node --transpile-only src/database/migrations/init_role_action_definitions.ts
+```
+
+### 7.2 创建新 Action
+
+**步骤 1**: 创建 Action 类文件 `backend/src/actions/NewAction.ts`
+
+```typescript
+import { BaseAction } from '../core/base/BaseAction';
+import { Message } from '../core/message/Message';
+
+export class NewAction extends BaseAction {
+  name = 'NewAction';
+  description = 'Action 描述';
+
+  async run(context: string, options?: any): Promise<Message> {
+    // 实现 Action 逻辑
+    const result = await this.aask(context, [
+      { role: 'system', content: 'System prompt here' }
+    ]);
+    
+    return new Message({
+      content: result,
+      role: this.role?.profile || 'Assistant',
+      causeBy: this.name,
+    });
+  }
+}
+```
+
+**步骤 2**: 注册到 `backend/src/actions/index.ts`
+
+```typescript
+// 添加 export
+export { NewAction } from './NewAction';
+
+// 在 ACTION_REGISTRY 中添加
+export const ACTION_REGISTRY = {
+  // ... 现有 actions
+  NewAction,  // 添加这行
+};
+```
+
+**步骤 3**: 运行数据库迁移
+
+```bash
+cd backend
+npx ts-node --transpile-only src/database/migrations/init_role_action_definitions.ts
+```
+
+### 7.3 更新默认工作流
+
+如需将新角色添加到默认工作流，修改 `backend/src/database/migrations/init_role_action_definitions.ts` 中的 `getDefaultWorkflowConfig()` 函数。
+
+### 7.4 架构优势
+
+```
+┌─────────────────────────────────────────┐
+│  index.ts (ROLE_REGISTRY/ACTION_REGISTRY)│  ← 唯一需要修改的代码文件
+├─────────────────────────────────────────┤
+│  RoleActionFactory                       │  ← 自动从 REGISTRY 读取
+├─────────────────────────────────────────┤
+│  Database (role/action_definitions)      │  ← 元数据存储
+├─────────────────────────────────────────┤
+│  Controllers / Services                  │  ← 无需修改
+└─────────────────────────────────────────┘
+```
+
+**核心优势**：
+- 无需修改 RoleActionController、ProjectController、WorkflowService 等核心业务文件
+- 角色和 Action 的类映射集中在 `index.ts`
+- 元数据（显示名称、描述等）从数据库读取
+- 工作流配置从 `system_default_workflow_templates` 表读取
+
+---
+
+## 8. 贡献指南
+
+### 8.1 提交规范
 
 遵循 Conventional Commits:
 ```
@@ -235,14 +366,14 @@ git commit -m "fix: correct QA workflow action execution order"
 git commit -m "docs: update Actions documentation with QA workflow"
 ```
 
-### 7.2 代码审查清单
+### 8.2 代码审查清单
 - [ ] 代码通过所有测试
 - [ ] 代码符合规范（black/ruff）
 - [ ] 添加了必要的测试
 - [ ] 更新了相关文档
 - [ ] Commit 信息清晰
 
-## 8. 常用命令
+## 9. 常用命令
 
 ```bash
 # 开发模式（后端）
