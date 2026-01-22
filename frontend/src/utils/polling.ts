@@ -6,6 +6,8 @@
 export interface PollingOptions {
   /** 轮询间隔（毫秒），默认 1000ms */
   interval?: number;
+  /** 动态轮询间隔函数，返回下次轮询间隔（毫秒），优先级高于 interval */
+  getInterval?: () => number;
   /** 最大重试次数，默认 3 */
   maxRetries?: number;
   /** 重试延迟（毫秒），默认 1000ms */
@@ -40,12 +42,16 @@ export function createPolling<T>(
 ): PollingResult {
   const {
     interval = 1000,
+    getInterval,
     maxRetries = 3,
     retryDelay = 1000,
     immediate = true,
     shouldContinue = () => true,
     onError,
   } = options;
+
+  // Get current interval (dynamic or static)
+  const getCurrentInterval = () => getInterval ? getInterval() : interval;
 
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   let isPolling = false;
@@ -112,7 +118,7 @@ export function createPolling<T>(
     if (shouldContinue()) {
       timeoutId = setTimeout(() => {
         poll();
-      }, interval);
+      }, getCurrentInterval());
     }
   };
 
@@ -135,7 +141,7 @@ export function createPolling<T>(
   } else {
     timeoutId = setTimeout(() => {
       poll();
-    }, interval);
+    }, getCurrentInterval());
   }
 
   return {

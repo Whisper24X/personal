@@ -114,6 +114,7 @@ import { ref } from 'vue';
 import { Loading, Refresh, Timer } from '@element-plus/icons-vue';
 import ActionCard from './ActionCard.vue';
 import type { WorkflowAction } from './ActionCard.vue';
+import { getRoleTagType } from '../../../config/stageConfig';
 
 export interface WorkflowRoleColumn {
   role: string;
@@ -151,17 +152,6 @@ const columnRef = ref<HTMLElement | null>(null);
 defineExpose({
   element: columnRef,
 });
-
-function getRoleTagType(role: string): 'success' | 'warning' | 'info' | 'danger' {
-  const typeMap: Record<string, 'success' | 'warning' | 'info' | 'danger'> = {
-    Salesperson: 'info',
-    ProductManager: 'success',
-    Architect: 'warning',
-    Engineer: 'info',
-    QAEngineer: 'danger',
-  };
-  return typeMap[role] || 'info';
-}
 </script>
 
 <style scoped>
