@@ -599,6 +599,226 @@ export class ProjectController {
       });
     }
   }
+
+  /**
+   * Download workspace code (full ainative-workspace directory)
+   * GET /api/projects/:id/download/code
+   */
+  static async downloadCode(req: Request, res: Response) {
+    try {
+      const { id: projectId } = req.params;
+
+      // Get project to find applicationId
+      const project = await projectRepo.findById(projectId);
+
+      if (!project) {
+        return res.status(404).json({
+          error: 'Project not found',
+        });
+      }
+
+      if (!project.application_id) {
+        return res.status(400).json({
+          error: 'Project does not have an associated application',
+        });
+      }
+
+      const { WorkspaceManager } = await import('../../utils/WorkspaceManager');
+      const { createZipFromDirectory } = await import('../../utils/zipUtils');
+
+      // Get workspace path
+      const workspacePath = WorkspaceManager.getProjectWorkspacePath({
+        applicationId: project.application_id,
+        projectId: projectId,
+      });
+
+      // Check if workspace exists
+      if (!fs.existsSync(workspacePath)) {
+        return res.status(404).json({
+          error: 'Workspace not found',
+          message: '工作区目录不存在，可能还未生成代码',
+        });
+      }
+
+      // Create temp directory for zip
+      const tempDir = path.join(process.cwd(), 'temp');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      // Generate zip file with clean filename
+      // Format: 项目名称-全部代码-YYYYMMDD-HHMMSS.zip
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
+      const safeProjectName = (project.name || 'project').replace(/[<>:"/\\|?*\s]/g, '_').slice(0, 50);
+      const zipFileName = `${safeProjectName}-全部代码-${dateStr}-${timeStr}.zip`;
+      const zipPath = path.join(tempDir, zipFileName);
+
+      await createZipFromDirectory(workspacePath, zipPath, { includeRoot: true });
+
+      // Send file
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(zipFileName)}`);
+
+      const fileStream = fs.createReadStream(zipPath);
+      fileStream.pipe(res);
+
+      // Clean up zip file after sending (with delay to ensure stream completes)
+      fileStream.on('close', () => {
+        setTimeout(() => {
+          try {
+            fs.unlinkSync(zipPath);
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+        }, 5000);
+      });
+
+      logger.info(`API: Downloaded workspace code for project ${projectId}`, {
+        projectId,
+        applicationId: project.application_id,
+        zipPath,
+      });
+    } catch (error: any) {
+      logger.error('API: Error downloading workspace code', error);
+      return res.status(500).json({
+        error: error.message || 'Failed to download workspace code',
+      });
+    }
+  }
+
+  /**
+   * Download workspace docs (docs and openspec directories)
+   * GET /api/projects/:id/download/docs
+   */
+  static async downloadDocs(req: Request, res: Response) {
+    try {
+      const { id: projectId } = req.params;
+
+      // Get project to find applicationId
+      const project = await projectRepo.findById(projectId);
+
+      if (!project) {
+        return res.status(404).json({
+          error: 'Project not found',
+        });
+      }
+
+      if (!project.application_id) {
+        return res.status(400).json({
+          error: 'Project does not have an associated application',
+        });
+      }
+
+      const { WorkspaceManager } = await import('../../utils/WorkspaceManager');
+      const archiver = (await import('archiver')).default;
+
+      // Get workspace path
+      const workspacePath = WorkspaceManager.getProjectWorkspacePath({
+        applicationId: project.application_id,
+        projectId: projectId,
+      });
+
+      // Check if workspace exists
+      if (!fs.existsSync(workspacePath)) {
+        return res.status(404).json({
+          error: 'Workspace not found',
+          message: '工作区目录不存在，可能还未生成文档',
+        });
+      }
+
+      const docsPath = path.join(workspacePath, 'docs');
+      const openspecPath = path.join(workspacePath, 'openspec');
+
+      // Check if at least one directory exists
+      const docsExists = fs.existsSync(docsPath);
+      const openspecExists = fs.existsSync(openspecPath);
+
+      if (!docsExists && !openspecExists) {
+        return res.status(404).json({
+          error: 'No documents found',
+          message: 'docs 和 openspec 目录均不存在',
+        });
+      }
+
+      // Create temp directory for zip
+      const tempDir = path.join(process.cwd(), 'temp');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      // Generate zip file with clean filename
+      // Format: 项目名称-文档-YYYYMMDD-HHMMSS.zip
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
+      const safeProjectName = (project.name || 'project').replace(/[<>:"/\\|?*\s]/g, '_').slice(0, 50);
+      const zipFileName = `${safeProjectName}-文档-${dateStr}-${timeStr}.zip`;
+      const zipPath = path.join(tempDir, zipFileName);
+
+      // Create zip with both directories
+      await new Promise<void>((resolve, reject) => {
+        const output = fs.createWriteStream(zipPath);
+        const archive = archiver('zip', {
+          zlib: { level: 9 },
+        });
+
+        output.on('close', () => {
+          resolve();
+        });
+
+        archive.on('error', (err: Error) => {
+          reject(err);
+        });
+
+        archive.pipe(output);
+
+        // Add docs directory if exists
+        if (docsExists) {
+          archive.directory(docsPath, 'docs');
+        }
+
+        // Add openspec directory if exists
+        if (openspecExists) {
+          archive.directory(openspecPath, 'openspec');
+        }
+
+        archive.finalize();
+      });
+
+      // Send file
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(zipFileName)}`);
+
+      const fileStream = fs.createReadStream(zipPath);
+      fileStream.pipe(res);
+
+      // Clean up zip file after sending (with delay to ensure stream completes)
+      fileStream.on('close', () => {
+        setTimeout(() => {
+          try {
+            fs.unlinkSync(zipPath);
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+        }, 5000);
+      });
+
+      logger.info(`API: Downloaded workspace docs for project ${projectId}`, {
+        projectId,
+        applicationId: project.application_id,
+        docsExists,
+        openspecExists,
+        zipPath,
+      });
+    } catch (error: any) {
+      logger.error('API: Error downloading workspace docs', error);
+      return res.status(500).json({
+        error: error.message || 'Failed to download workspace docs',
+      });
+    }
+  }
 }
 
 export default ProjectController;

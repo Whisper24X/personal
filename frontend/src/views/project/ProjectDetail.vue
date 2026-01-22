@@ -24,6 +24,8 @@
         :project="currentProject"
         @back="router.push('/')"
         @continue="continueProject"
+        @download-code="handleDownloadCode"
+        @download-docs="handleDownloadDocs"
       />
 
       <ProjectStats :project="currentProject" />
@@ -281,6 +283,30 @@ async function continueProject() {
 
 function goToKnowledgeBase() {
   router.push(`/project/${projectId}/knowledge-base`);
+}
+
+function handleDownloadCode() {
+  if (!projectId) {
+    return;
+  }
+
+  try {
+    apiClient.downloadWorkspaceCode(projectId);
+  } catch (error: any) {
+    console.error('Download failed:', error);
+  }
+}
+
+function handleDownloadDocs() {
+  if (!projectId) {
+    return;
+  }
+
+  try {
+    apiClient.downloadWorkspaceDocs(projectId);
+  } catch (error: any) {
+    console.error('Download failed:', error);
+  }
 }
 </script>
 

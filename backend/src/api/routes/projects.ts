@@ -24,6 +24,8 @@ router.post('/', ProjectController.create);
 router.post('/:id/start', ProjectController.start);
 router.get('/:id/messages', ProjectController.getMessages);
 router.get('/:id/documents', ProjectController.getDocuments);
+router.get('/:id/download/code', ProjectController.downloadCode);
+router.get('/:id/download/docs', ProjectController.downloadDocs);
 router.get('/:id/download/:zipPath(*)', ProjectController.downloadZip);
 
 // Generic project routes (must come after more specific routes)

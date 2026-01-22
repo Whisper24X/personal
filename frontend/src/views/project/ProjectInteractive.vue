@@ -493,6 +493,13 @@ watch(currentStep, (newStep) => {
 
 async function startInteractiveSession() {
   try {
+    // 如果工作流已完成，直接加载信息并开始轮询，不要尝试启动
+    if (isCompleted.value) {
+      await loadWorkflowInfo();
+      startPolling(projectId.value);
+      return;
+    }
+
     isRunning.value = true;
     startTime.value = Date.now();
 
@@ -925,7 +932,17 @@ function viewProject() {
 }
 
 function downloadProject() {
-  ElMessage.info('下载功能开发中');
+  if (!projectId.value) {
+    ElMessage.error('项目ID不存在');
+    return;
+  }
+
+  try {
+    apiClient.downloadWorkspaceCode(projectId.value);
+    ElMessage.success('正在下载项目文件...');
+  } catch (error: any) {
+    ElMessage.error('下载失败: ' + (error.message || '未知错误'));
+  }
 }
 
 async function downloadZip(zipPath: string) {
