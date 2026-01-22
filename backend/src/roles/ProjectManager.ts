@@ -117,6 +117,7 @@ export class ProjectManager extends Role {
 
   /**
    * Override act to handle different action input requirements
+   * Supports both think()->act() flow and direct WorkflowExecutor calls
    */
   async act(): Promise<Message | null> {
     if (!this.rc.todo) {
@@ -131,9 +132,33 @@ export class ProjectManager extends Role {
       
       // Handle different actions with specific input requirements
       if (action.name === 'BreakdownTasks') {
-        const prdContent = this.pendingBreakdown?.prdContent;
+        // 优先使用 pendingBreakdown（来自 think()）
+        // 如果没有，从 memory 获取（来自 WorkflowExecutor.loadRelevantMessages）
+        let prdContent = this.pendingBreakdown?.prdContent;
+        let designContent = '';
+        
         if (!prdContent) {
-          logger.warn(`${this.profile} BreakdownTasks: Missing gated PRD content`);
+          // Fallback: get PRD from memory (loaded by WorkflowExecutor)
+          const prdMessages = this.rc.memory.getByAction('WritePRD');
+          if (prdMessages.length > 0) {
+            prdContent = prdMessages[prdMessages.length - 1].content;
+            logger.info(`${this.profile} BreakdownTasks: Got PRD from memory`, {
+              prdLength: prdContent.length,
+            });
+          }
+        }
+        
+        // Get Design content from memory
+        const designMessages = this.rc.memory.getByAction('WriteDesign');
+        if (designMessages.length > 0) {
+          designContent = designMessages[designMessages.length - 1].content;
+          logger.info(`${this.profile} BreakdownTasks: Got Design from memory`, {
+            designLength: designContent.length,
+          });
+        }
+        
+        if (!prdContent) {
+          logger.warn(`${this.profile} BreakdownTasks: No PRD content found in pendingBreakdown or memory`);
           return null;
         }
         
@@ -153,7 +178,14 @@ export class ProjectManager extends Role {
             workspaceProjectId: workspaceOptions.projectId,
           });
         }
-        result = await action.run(prdContent, workspaceOptions);
+        
+        logger.info(`${this.profile} BreakdownTasks: Executing with content`, {
+          prdLength: prdContent.length,
+          designLength: designContent.length,
+          hasWorkspaceOptions: !!workspaceOptions,
+        });
+        
+        result = await action.run(prdContent, designContent, workspaceOptions);
       } else {
         // Default: use all news messages as context
         const context = this.rc.news.map((msg) => msg.content).join('\n\n');

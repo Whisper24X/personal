@@ -17,11 +17,13 @@ export class BreakdownTasks extends BaseAction {
     super('BreakdownTasks', 'Create openSpec change proposal based on PRD and DESIGN');
   }
 
-  async run(_prd: string, options?: BreakdownTasksOptions): Promise<IActionOutput> {
+  async run(prd: string, design: string, options?: BreakdownTasksOptions): Promise<IActionOutput> {
     logger.info('BreakdownTasks: Starting openSpec proposal creation using Cursor CLI', {
       applicationId: options?.applicationId,
       projectId: options?.projectId,
       version: options?.version,
+      prdLength: prd?.length || 0,
+      designLength: design?.length || 0,
     });
     
     try {
@@ -50,7 +52,7 @@ export class BreakdownTasks extends BaseAction {
       const proposeCommand = `创建openSpec变更提案 1. 读取并分析以下文档：- ../docs/prd/PRD.md（产品需求文档）- ../docs/design/DESIGN.md（系统设计文档）- ../AGENTS.md（项目代理和开发指南）,用中文完善`;
       
       // 指令3: 检查openSpec变更提案
-      const checkCommand = `检查 openspec 目录下是否已成功创建变更提案文件。检查标准：1. openspec 目录下是否有新的提案文件或更新2. 提案内容是否包含基于 PRD.md、DESIGN.md 和 AGENTS.md 的分析3. 提案是否包含具体的实现建议和开发规范4. 提案是否涵盖了技术栈选择和项目结构，如果提案已创建且内容完整，返回：已完成，如果提案未创建或内容不完整，返回：未完成`;
+      const checkCommand = `执行指令openspec-validate 检查变更提案的格式、结构是否符合 OpenSpec 规范（避免格式错误）,符合规范返回：SUCCESS，不符合返回: FAIL`;
       
       // 循环执行，直到任务完成
       const maxRetries = 10; // 最大重试次数
@@ -150,8 +152,8 @@ export class BreakdownTasks extends BaseAction {
         allOutputs.push(`=== Iteration ${retryCount} - Check ===\n${checkOutput}`);
         
         // 3. 判断是否完成
-        // 检查输出中是否包含"已完成"
-        if (checkOutput.includes('已完成')) {
+        // 检查输出中是否包含"SUCCESS"
+        if (checkOutput.includes('SUCCESS')) {
           isCompleted = true;
           logger.info(`BreakdownTasks: OpenSpec proposal creation completed successfully (iteration ${retryCount})`, {
             totalIterations: retryCount,
