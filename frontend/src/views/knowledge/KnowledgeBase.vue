@@ -200,9 +200,6 @@ import {
   Plus,
   Search,
   Collection,
-  View,
-  Edit,
-  Delete,
 } from '@element-plus/icons-vue';
 import { apiClient } from '../../api/client';
 import PageHeader from '../../components/common/PageHeader.vue';

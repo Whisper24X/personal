@@ -5,7 +5,7 @@
       'column-active': column.isActive,
       'column-running': isRunning && runningRole === column.role
     }"
-    :ref="columnRef"
+    ref="columnRef"
   >
     <div class="column-header">
       <div class="column-header-left">

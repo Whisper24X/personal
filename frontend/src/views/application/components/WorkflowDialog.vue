@@ -228,8 +228,7 @@ function removeRole(index: number) {
   });
 }
 
-function onRoleChange(index: number) {
-  const role = form.value.workflowConfig.roles[index];
+function onRoleChange(_index: number) {
   // 可以根据角色类型设置默认的actions
   // 这里可以根据需要实现
 }

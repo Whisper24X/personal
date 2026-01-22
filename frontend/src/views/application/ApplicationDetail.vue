@@ -10,7 +10,7 @@
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
 
       <ApplicationStats
-        :application="application"
+        :application="application ?? undefined"
         @create-project="goToCreateProject"
       />
 

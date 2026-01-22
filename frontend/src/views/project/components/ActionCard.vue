@@ -5,7 +5,7 @@
       getActionCardClass(action.status),
       { 'action-running': action.status === 'running' && isRunning && runningRole === role }
     ]"
-    :ref="cardRef"
+    ref="cardRef"
     :style="action.status === 'running' ? { order: -1, zIndex: 10 } : {}"
   >
     <div class="card-item-header">

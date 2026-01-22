@@ -1151,36 +1151,6 @@ async function handleResetRole(role: string) {
   }
 }
 
-/**
- * Handle manual start workflow execution
- * Called when user clicks "开始执行" button after reset
- */
-async function handleStartWorkflow() {
-  if (!projectId.value) {
-    ElMessage.error('项目ID不存在');
-    return;
-  }
-
-  try {
-    actionLoading.value = true;
-
-    // Get current position from workflow state (set by reset)
-    const position = workflowCurrentPosition.value;
-
-    // Start workflow from the current position
-    await apiClient.startWorkflow(projectId.value, position || undefined);
-
-    // Reload workflow info
-    await loadRunningInfo();
-
-    ElMessage.success('工作流开始执行');
-  } catch (error: any) {
-    console.error('Failed to start workflow:', error);
-    ElMessage.error('启动失败: ' + (error.message || '未知错误'));
-  } finally {
-    actionLoading.value = false;
-  }
-}
 </script>
 
 <style scoped>

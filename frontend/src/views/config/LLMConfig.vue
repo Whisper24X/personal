@@ -637,10 +637,6 @@ async function fetchProviderConfigs() {
   }
 }
 
-function hasProviderConfig(provider: string): boolean {
-  return providerConfigs.value.some(p => p.provider === provider && p.hasApiKey);
-}
-
 function getProviderName(provider: string): string {
   const names: Record<string, string> = {
     openai: 'OpenAI',
