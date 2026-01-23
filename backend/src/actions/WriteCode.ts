@@ -6,7 +6,7 @@
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { logger, WorkspaceOptions, executeCommandSimple, CommandExecutorError, WorkspaceManager } from '../utils';
-import { buildCursorCLIPrompt } from '../prompts/code';
+import { getApplyCommand, getCheckCommand } from '../prompts/code';
 import * as fs from 'fs/promises';
 
 export interface WriteCodeOptions extends WorkspaceOptions {
@@ -45,18 +45,9 @@ export class WriteCode extends BaseAction {
         workDir,
       });
       
-      // 构建强约束提示词
-      const systemPrompt = buildCursorCLIPrompt();
-      
-      logger.info('WriteCode: Using strong constraint prompt for Cursor CLI', {
-        promptLength: systemPrompt.length,
-        constraintType: 'Cursor CLI Code Generation',
-      });
-      
-      // 定义命令
-      const applyCommand = "执行/openspec-apply命令，并且自动执行所有必要的构建命令（如make api、make wire、npm run generate等），不要只生成代码就停止，必须完成所有任务直到tasks.md中的任务全部标记为完成。如果遇到模版页面如\"最好用的 uniapp 开发模板\"、\"专注企业级 AI 原生协作\"、\"企业级 AI 原生工作空间\"等页面需要改成本次tasks.md对应页面不能有模版页面相关数据";
-
-      const checkCommand = "查找 openspec/changes/ 目录下子文件夹中的 tasks.md 文件（路径模式为 openspec/changes/*/tasks.md），检查里面的任务是否全部执行完成。请以JSON格式返回，包含：result字段（值为：已完成、未完成或未找到）和reason字段（说明具体原因）。例如：{\"result\": \"已完成\", \"reason\": \"所有任务都已标记为完成\"} 或 {\"result\": \"未完成\", \"reason\": \"还有3个任务未完成\"} 或 {\"result\": \"未找到\", \"reason\": \"文件不存在或无法找到\"}。只返回JSON格式，不要返回其他内容。";
+      // 从 prompts/code.ts 获取命令提示词
+      const applyCommand = getApplyCommand();
+      const checkCommand = getCheckCommand();
       
       // 循环执行，直到任务完成
       const maxRetries = 10; // 最大重试次数
