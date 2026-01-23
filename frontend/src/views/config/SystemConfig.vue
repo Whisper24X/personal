@@ -10,6 +10,9 @@
       <el-tab-pane label="LLM 服务商" name="llm">
         <LLMConfigPanel />
       </el-tab-pane>
+      <el-tab-pane label="模型管理" name="models">
+        <ModelManagePanel />
+      </el-tab-pane>
       <el-tab-pane label="角色配置" name="roles">
         <RoleConfigPanel />
       </el-tab-pane>
@@ -25,6 +28,7 @@ import { ref, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import PageHeader from '../../components/common/PageHeader.vue';
 import LLMConfigPanel from './panels/LLMConfigPanel.vue';
+import ModelManagePanel from './panels/ModelManagePanel.vue';
 import RoleConfigPanel from './panels/RoleConfigPanel.vue';
 import PromptConfigPanel from './panels/PromptConfigPanel.vue';
 
@@ -36,7 +40,7 @@ const activeTab = ref('llm');
 // 从 URL query 参数初始化 tab
 onMounted(() => {
   const tab = route.query.tab as string;
-  if (tab && ['llm', 'roles', 'prompts'].includes(tab)) {
+  if (tab && ['llm', 'models', 'roles', 'prompts'].includes(tab)) {
     activeTab.value = tab;
   }
 });

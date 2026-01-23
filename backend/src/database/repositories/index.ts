@@ -18,4 +18,5 @@ export { RoleDefinitionRepository } from './RoleDefinitionRepository';
 export { ActionDefinitionRepository } from './ActionDefinitionRepository';
 export { ApplicationWorkflowRepository } from './ApplicationWorkflowRepository';
 export { SystemDefaultWorkflowTemplateRepository } from './SystemDefaultWorkflowTemplateRepository';
+export { LLMModelRepository } from './LLMModelRepository';
 

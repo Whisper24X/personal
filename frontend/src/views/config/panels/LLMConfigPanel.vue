@@ -197,12 +197,13 @@
               filterable
               allow-create
               default-first-option
+              :loading="modelsLoading"
             >
               <el-option
                 v-for="model in getModelsForProvider(form.provider)"
-                :key="model"
-                :label="model"
-                :value="model"
+                :key="model.value"
+                :label="model.label"
+                :value="model.value"
               />
             </el-select>
             <el-text v-if="form.provider === 'cursor'" type="info" size="small" style="margin-top: 4px; display: block">
@@ -343,6 +344,10 @@ const currentStep = ref(1);
 const showAdvanced = ref<string[]>([]);
 const formRef = ref<FormInstance>();
 
+// Dynamic models loaded from API
+const dynamicModels = ref<Record<string, { modelName: string; displayName: string | null }[]>>({});
+const modelsLoading = ref(false);
+
 const form = ref({
   provider: '',
   customProviderName: '',  // 自定义服务商名称
@@ -371,7 +376,8 @@ const availableProviders = [
   { value: 'cursor', label: 'Cursor Agent' },
 ];
 
-const defaultModels: Record<string, string[]> = {
+// Fallback models (used when API is unavailable)
+const fallbackModels: Record<string, string[]> = {
   openai: ['gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
   zhipuai: ['glm-4-flash', 'glm-4', 'glm-3-turbo'],
   ark: ['doubao-1-5-pro-32k-250115', 'doubao-pro-32k'],
@@ -491,8 +497,18 @@ function getProviderName(provider: string): string {
   return found?.label || provider;
 }
 
-function getModelsForProvider(provider: string): string[] {
-  return defaultModels[provider] || [];
+function getModelsForProvider(provider: string): { value: string; label: string }[] {
+  // First try dynamic models from API
+  const dynamic = dynamicModels.value[provider];
+  if (dynamic && dynamic.length > 0) {
+    return dynamic.map(m => ({
+      value: m.modelName,
+      label: m.displayName || m.modelName,
+    }));
+  }
+  // Fallback to static list
+  const fallback = fallbackModels[provider] || [];
+  return fallback.map(m => ({ value: m, label: m }));
 }
 
 function getDefaultBaseURL(provider: string): string {
@@ -512,7 +528,7 @@ function selectProvider(provider: string) {
   // 设置默认模型
   const models = getModelsForProvider(provider);
   if (models.length > 0) {
-    form.value.model = models[0];
+    form.value.model = models[0].value;
   } else {
     form.value.model = '';
   }
@@ -526,6 +542,29 @@ function selectCustomProvider() {
   form.value.customProviderName = '';
   form.value.model = '';
   form.value.baseURL = '';
+}
+
+async function fetchModels() {
+  modelsLoading.value = true;
+  try {
+    const response = await apiClient.getLLMModels() as any;
+    if (response.models) {
+      // Transform the API response to our format
+      const models: Record<string, { modelName: string; displayName: string | null }[]> = {};
+      for (const [provider, modelList] of Object.entries(response.models)) {
+        models[provider] = (modelList as any[]).map(m => ({
+          modelName: m.model_name,
+          displayName: m.display_name,
+        }));
+      }
+      dynamicModels.value = models;
+    }
+  } catch (err: any) {
+    console.warn('Failed to fetch models from API, using fallback list:', err.message);
+    // Keep using fallback models, no error shown to user
+  } finally {
+    modelsLoading.value = false;
+  }
 }
 
 async function fetchConfigs() {
@@ -662,6 +701,7 @@ async function deleteConfig(config: LLMConfig) {
 }
 
 onMounted(() => {
+  fetchModels();
   fetchConfigs();
 });
 </script>
