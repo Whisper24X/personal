@@ -253,9 +253,14 @@ export async function testWriteCode(req: Request, res: Response) {
 
         engineer['rc'].todo = writeCodeAction;
 
-        // Mock extractWorkspaceOptions if workspaceOptions provided
+        // Set workspaceOptions in context if provided
         if (workspaceOptions) {
-            engineer['extractWorkspaceOptions'] = () => workspaceOptions;
+            if (workspaceOptions.applicationId) {
+                context.set('applicationId', workspaceOptions.applicationId);
+            }
+            if (workspaceOptions.projectId) {
+                context.set('projectId', workspaceOptions.projectId);
+            }
         }
 
         // Execute action

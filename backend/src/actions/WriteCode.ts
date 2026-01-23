@@ -45,6 +45,41 @@ export class WriteCode extends BaseAction {
         workDir,
       });
       
+      // 调试模式检查
+      const isDebugMode = process.env.WRITE_CODE_DEBUG === 'true';
+      if (isDebugMode) {
+        logger.info('WriteCode: Debug mode enabled, executing debug command', {
+          workDir,
+        });
+        
+        try {
+          const debugCommand = 'cursor-agent --model composer-1 --print "在当前目录下生成一个writeCodeTest.txt文档，内容为 我是编写代码调试"';
+          const debugOutput = await executeCommandSimple(debugCommand, {
+            cwd: workDir,
+            timeout: 300000, // 5分钟超时
+          });
+          
+          logger.info('WriteCode: Debug command completed', {
+            outputLength: debugOutput.length,
+          });
+          
+          return {
+            content: `# WriteCode Debug Mode\n\n## Debug Command Executed\n\`\`\`\n${debugCommand}\n\`\`\`\n\n## Output:\n\`\`\`\n${debugOutput}\n\`\`\``,
+            data: {
+              type: 'debug',
+              workspaceDir: workDir,
+              debugOutput,
+              timestamp: new Date().toISOString(),
+            },
+          };
+        } catch (error: any) {
+          logger.error('WriteCode: Debug command failed', {
+            message: error.message,
+          });
+          throw error;
+        }
+      }
+      
       // 从 prompts/code.ts 获取命令提示词
       const applyCommand = getApplyCommand();
       const checkCommand = getCheckCommand();
