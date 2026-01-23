@@ -4,9 +4,7 @@
 
 import { createRouter, createWebHistory } from 'vue-router';
 import Dashboard from '../views/dashboard/Dashboard.vue';
-import LLMConfig from '../views/config/LLMConfig.vue';
-import RoleLLMConfig from '../views/config/RoleLLMConfig.vue';
-import PromptConfig from '../views/config/PromptConfig.vue';
+import SystemConfig from '../views/config/SystemConfig.vue';
 import KnowledgeBase from '../views/knowledge/KnowledgeBase.vue';
 
 // 业务线相关组件
@@ -68,20 +66,24 @@ const router = createRouter({
     },
     
     // ==================== 配置相关路由 ====================
+    // 统一配置页面（支持 tab 参数：llm, roles, prompts）
+    {
+      path: '/config',
+      name: 'SystemConfig',
+      component: SystemConfig,
+    },
+    // 兼容旧路由，重定向到新的统一配置页面
     {
       path: '/config/llm',
-      name: 'LLMConfig',
-      component: LLMConfig,
+      redirect: '/config?tab=llm',
     },
     {
       path: '/config/role-llm',
-      name: 'RoleLLMConfig',
-      component: RoleLLMConfig,
+      redirect: '/config?tab=roles',
     },
     {
       path: '/config/prompts',
-      name: 'PromptConfig',
-      component: PromptConfig,
+      redirect: '/config?tab=prompts',
     },
   ],
 });
