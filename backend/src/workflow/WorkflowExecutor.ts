@@ -47,6 +47,7 @@ export class WorkflowExecutor {
   private messageHandler?: WorkflowMessageHandler;
   private isExecuting: boolean = false;
   private shouldStop: boolean = false;
+  private abortController?: AbortController;
 
   constructor(config?: WorkflowExecutorConfig) {
     this.executionService = new WorkflowExecutionService();
@@ -79,10 +80,17 @@ export class WorkflowExecutor {
   }
 
   /**
-   * Stop the current execution loop
+   * Stop the current execution loop and abort any running action
    */
   stop(): void {
     this.shouldStop = true;
+    
+    // Abort any running action
+    if (this.abortController) {
+      this.abortController.abort();
+      logger.info('WorkflowExecutor: Aborted running action');
+    }
+    
     logger.info('WorkflowExecutor: Stop requested');
   }
 
@@ -98,11 +106,14 @@ export class WorkflowExecutor {
 
     this.isExecuting = true;
     this.shouldStop = false;
+    // Create a new AbortController for this execution
+    this.abortController = new AbortController();
 
     try {
       await this.executeLoop(projectId);
     } finally {
       this.isExecuting = false;
+      this.abortController = undefined;
     }
   }
 
@@ -183,6 +194,21 @@ export class WorkflowExecutor {
       try {
         await this.executeStep(projectId, currentRole, currentAction);
       } catch (error: any) {
+        // Check if this was a cancellation
+        const isCancelled = error.message?.includes('cancelled') || 
+                           error.message?.includes('was cancelled') ||
+                           this.shouldStop;
+        
+        if (isCancelled) {
+          logger.info('WorkflowExecutor: Step execution cancelled', {
+            projectId,
+            role: currentRole,
+            action: currentAction,
+          });
+          // Don't mark as failed, just exit the loop
+          break;
+        }
+        
         logger.error('WorkflowExecutor: Step execution error', {
           projectId,
           role: currentRole,
@@ -264,6 +290,11 @@ export class WorkflowExecutor {
     const targetAction = roleInstance.actions.find(a => a.name === action);
     if (!targetAction) {
       throw new Error(`Action not found: ${action}`);
+    }
+
+    // Set abort signal on the target action for cancellation support
+    if (this.abortController) {
+      targetAction.setAbortSignal(this.abortController.signal);
     }
 
     // Load relevant messages from project history

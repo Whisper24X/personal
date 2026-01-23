@@ -61,6 +61,8 @@ export class WriteCode extends BaseAction {
       });
       
       while (!isCompleted && retryCount < maxRetries) {
+        // 检查是否被取消
+        this.checkCancellation();
         retryCount++;
         
         logger.info(`WriteCode: Iteration ${retryCount}/${maxRetries} - Executing apply command`, {
@@ -103,6 +105,7 @@ export class WriteCode extends BaseAction {
           checkOutput = await executeCommandSimple(command, {
             cwd: workDir,
             timeout: 300000, // 5分钟超时（检查命令应该很快）
+            abortSignal: this.abortSignal, // 传递取消信号
           });
           logger.info(`WriteCode: Check command completed (iteration ${retryCount})`, {
             outputLength: checkOutput.length,
@@ -110,6 +113,11 @@ export class WriteCode extends BaseAction {
           });
         } catch (execError) {
           const error = execError as CommandExecutorError;
+          // 如果是取消错误，向上抛出
+          if (error.message?.includes('cancelled')) {
+            logger.info(`WriteCode: Check command cancelled (iteration ${retryCount})`);
+            throw error;
+          }
           logger.warn(`WriteCode: Check command failed (iteration ${retryCount})`, { 
             message: error.message,
             exitCode: error.exitCode,

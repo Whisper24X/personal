@@ -7,6 +7,7 @@ import { IActionOutput, ActionStatus } from '@mind2build/shared';
 import { WorkspaceManager, WorkspaceOptions } from '../../utils/WorkspaceManager';
 import { Context } from '../context/Context';
 import { logger } from '../../utils';
+import { llmManager } from '../../providers/llm/LLMManager';
 
 export abstract class BaseAction {
   name: string;
@@ -213,25 +214,29 @@ export abstract class BaseAction {
 
   /**
    * Helper method to call LLM with a prompt
+   * Uses callWithFallback for automatic retry with model switching
    * @param prompt - The prompt to send to LLM
    * @param systemMsgs - Optional system messages
    */
   protected async aask(prompt: string, systemMsgs?: string[]): Promise<string> {
     this.checkCancellation();
     
-    const currentLLM = this.llm;
-    if (!currentLLM) {
-      throw new Error('LLM not available: Context not set for action');
-    }
-    
     const logContext = this.getLogContext();
-    logger.info('BaseAction: Calling LLM aask', {
+    const userId = this.context?.get('userId') as string | undefined;
+    
+    logger.info('BaseAction: Calling LLM aask with fallback', {
       ...logContext,
       promptLength: prompt.length,
       systemMsgsCount: systemMsgs?.length || 0,
     });
     
-    const result = await currentLLM.aask(prompt, systemMsgs, this.abortSignal);
+    // Use callWithFallback for automatic retry with model switching
+    const result = await llmManager.callWithFallback(
+      (llm) => llm.aask(prompt, systemMsgs, this.abortSignal),
+      userId,
+      this.context?.costManager,
+      this.abortSignal
+    );
     
     this.checkCancellation();
     
@@ -245,23 +250,27 @@ export abstract class BaseAction {
 
   /**
    * Helper method for chat completion
+   * Uses callWithFallback for automatic retry with model switching
    * @param messages - Chat messages
    */
   protected async acompletion(messages: any[]): Promise<any> {
     this.checkCancellation();
     
-    const currentLLM = this.llm;
-    if (!currentLLM) {
-      throw new Error('LLM not available: Context not set for action');
-    }
-    
     const logContext = this.getLogContext();
-    logger.info('BaseAction: Calling LLM acompletion', {
+    const userId = this.context?.get('userId') as string | undefined;
+    
+    logger.info('BaseAction: Calling LLM acompletion with fallback', {
       ...logContext,
       messagesCount: messages.length,
     });
     
-    const result = await currentLLM.acompletion(messages, this.abortSignal);
+    // Use callWithFallback for automatic retry with model switching
+    const result = await llmManager.callWithFallback(
+      (llm) => llm.acompletion(messages, this.abortSignal),
+      userId,
+      this.context?.costManager,
+      this.abortSignal
+    );
     
     this.checkCancellation();
     
