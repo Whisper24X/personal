@@ -6,7 +6,7 @@
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { logger, WorkspaceOptions, executeCommandSimple, CommandExecutorError, WorkspaceManager } from '../utils';
-import { buildCursorCLIPrompt } from '../prompts/code';
+import { getApplyCommand, getCheckCommand } from '../prompts/code';
 import * as fs from 'fs/promises';
 
 export interface WriteCodeOptions extends WorkspaceOptions {
@@ -45,18 +45,9 @@ export class WriteCode extends BaseAction {
         workDir,
       });
       
-      // 构建强约束提示词
-      const systemPrompt = buildCursorCLIPrompt();
-      
-      logger.info('WriteCode: Using strong constraint prompt for Cursor CLI', {
-        promptLength: systemPrompt.length,
-        constraintType: 'Cursor CLI Code Generation',
-      });
-      
-      // 定义命令
-      const applyCommand = "执行/openspec-apply命令，并且自动执行所有必要的构建命令（如make api、make wire、npm run generate等），不要只生成代码就停止，必须完成所有任务直到tasks.md中的任务全部标记为完成。";
-
-      const checkCommand = "在openspec目录下changes目录内查找tasks.md,告诉我里面的任务是否全部执行完成,给我返回:已完成、未完成或未找到，不要返回具体原因。如果文件不存在或无法找到，返回未找到。";
+      // 从 prompts/code.ts 获取命令提示词
+      const applyCommand = getApplyCommand();
+      const checkCommand = getCheckCommand();
       
       // 循环执行，直到任务完成
       const maxRetries = 10; // 最大重试次数
@@ -130,28 +121,73 @@ export class WriteCode extends BaseAction {
         
         allOutputs.push(`=== Iteration ${retryCount} - Check ===\n${checkOutput}`);
         
-        // 3. 判断是否完成
-        // 先检查是否返回"未找到"，如果是则抛出错误
-        if (checkOutput.includes('未找到')) {
-          const errorMessage = `WriteCode: Task file not found. Check command returned "未找到". Output: ${checkOutput.substring(0, 500)}`;
-          logger.error(errorMessage, {
-            iteration: retryCount,
-            checkOutput: checkOutput.substring(0, 500),
-          });
-          throw new Error(errorMessage);
-        }
-        
-        // 检查输出中是否包含"已完成"
-        if (checkOutput.includes('已完成')) {
-          isCompleted = true;
-          logger.info(`WriteCode: Tasks completed successfully (iteration ${retryCount})`, {
-            totalIterations: retryCount,
-          });
-        } else {
-          logger.warn(`WriteCode: Tasks not completed yet (iteration ${retryCount})`, {
+        // 3. 判断是否完成 - 解析JSON响应
+        try {
+          // 尝试从输出中提取JSON
+          const jsonMatch = checkOutput.match(/\{[\s\S]*"result"[\s\S]*\}/);
+          if (!jsonMatch) {
+            logger.warn(`WriteCode: Unable to parse JSON from check output (iteration ${retryCount})`, {
+              checkOutput: checkOutput.substring(0, 200),
+            });
+            // 回退到旧的文本匹配方式
+            if (checkOutput.includes('未找到')) {
+              const errorMessage = `WriteCode: Task file not found. Check command returned "未找到". Output: ${checkOutput.substring(0, 500)}`;
+              logger.error(errorMessage, {
+                iteration: retryCount,
+                checkOutput: checkOutput.substring(0, 500),
+              });
+              throw new Error(errorMessage);
+            } else if (checkOutput.includes('已完成')) {
+              isCompleted = true;
+            }
+          } else {
+            const checkResult = JSON.parse(jsonMatch[0]);
+            const result = checkResult.result;
+            const reason = checkResult.reason || '';
+            
+            logger.info(`WriteCode: Check result parsed (iteration ${retryCount})`, {
+              result,
+              reason,
+            });
+            
+            if (result === '未找到') {
+              const errorMessage = `WriteCode: Task file not found. Reason: ${reason}`;
+              logger.error(errorMessage, {
+                iteration: retryCount,
+                result,
+                reason,
+              });
+              throw new Error(errorMessage);
+            } else if (result === '已完成') {
+              isCompleted = true;
+              logger.info(`WriteCode: Tasks completed successfully (iteration ${retryCount})`, {
+                totalIterations: retryCount,
+                reason,
+              });
+            } else {
+              logger.warn(`WriteCode: Tasks not completed yet (iteration ${retryCount})`, {
+                result,
+                reason,
+                willRetry: retryCount < maxRetries,
+              });
+            }
+          }
+        } catch (parseError: any) {
+          logger.warn(`WriteCode: Failed to parse check output as JSON (iteration ${retryCount})`, {
+            error: parseError.message,
             checkOutput: checkOutput.substring(0, 200),
-            willRetry: retryCount < maxRetries,
           });
+          // 回退到旧的文本匹配方式
+          if (checkOutput.includes('未找到')) {
+            const errorMessage = `WriteCode: Task file not found. Check command returned "未找到". Output: ${checkOutput.substring(0, 500)}`;
+            logger.error(errorMessage, {
+              iteration: retryCount,
+              checkOutput: checkOutput.substring(0, 500),
+            });
+            throw new Error(errorMessage);
+          } else if (checkOutput.includes('已完成')) {
+            isCompleted = true;
+          }
         }
       }
       
