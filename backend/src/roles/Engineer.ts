@@ -7,6 +7,7 @@ import { IRoleConfig, ACTION_WRITE_DESIGN, ACTION_WRITE_PRD, ACTION_BREAKDOWN_TA
 import { Role } from './Role';
 import { Context } from '../core/context/Context';
 import { WriteCode } from '../actions/WriteCode';
+import { Deploy } from '../actions/Deploy';
 
 export class Engineer extends Role {
   constructor(context: Context, name: string = 'Engineer') {
@@ -24,7 +25,7 @@ export class Engineer extends Role {
     this.watch([ACTION_WRITE_PRD, ACTION_WRITE_DESIGN, ACTION_BREAKDOWN_TASKS]);
 
     // 设置 WriteCode action
-    this.setActions([new WriteCode()]);
+    this.setActions([new WriteCode(), new Deploy()]);
   }
 }
 
