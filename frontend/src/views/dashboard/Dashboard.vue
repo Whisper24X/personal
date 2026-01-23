@@ -60,17 +60,9 @@
               <el-icon><Box /></el-icon>
               查看业务线列表
             </el-button>
-            <el-button size="large" @click="router.push('/config/llm')">
+            <el-button size="large" @click="router.push('/config')">
               <el-icon><Setting /></el-icon>
-              大模型配置
-            </el-button>
-            <el-button size="large" @click="router.push('/config/role-llm')">
-              <el-icon><UserFilled /></el-icon>
-              角色LLM配置
-            </el-button>
-            <el-button size="large" @click="router.push('/config/prompts')">
-              <el-icon><Document /></el-icon>
-              提示词配置
+              系统配置
             </el-button>
           </div>
         </el-card>
@@ -120,7 +112,7 @@ import { useBusinessLineStore } from '../../stores/businessLine';
 import { storeToRefs } from 'pinia';
 import PageHeader from '../../components/common/PageHeader.vue';
 import CardHeader from '../../components/common/CardHeader.vue';
-import { Box, Monitor, CircleCheck, Setting, UserFilled, Document, ArrowRight } from '@element-plus/icons-vue';
+import { Box, Monitor, CircleCheck, Setting, ArrowRight } from '@element-plus/icons-vue';
 
 const router = useRouter();
 const platformStore = usePlatformStore();

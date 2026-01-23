@@ -1,16 +1,11 @@
 <template>
-  <div class="prompt-config">
-    <PageHeader title="提示词配置" description="配置各类提示词模板和系统提示词" :back-handler="() => router.push('/')" />
-
-    <div v-loading="loading" class="content-section">
-      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+  <div class="prompt-config-panel">
+    <div v-loading="loading">
+      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon style="margin-bottom: 20px" />
 
       <!-- 提示词类型选择 -->
-      <el-card class="type-selector-card" shadow="hover">
-        <template #header>
-          <CardHeader title="提示词类型" />
-        </template>
-        <el-radio-group v-model="selectedType" @change="handleTypeChange">
+      <div class="type-selector">
+        <el-radio-group v-model="selectedType" size="large">
           <el-radio-button label="mrd">市场研究文档（MRD）</el-radio-button>
           <el-radio-button label="prd">产品需求文档</el-radio-button>
           <el-radio-button label="design">系统设计</el-radio-button>
@@ -18,67 +13,62 @@
           <el-radio-button label="test">测试用例</el-radio-button>
           <el-radio-button label="task">任务拆分</el-radio-button>
         </el-radio-group>
-      </el-card>
+      </div>
 
       <!-- 提示词列表 -->
-      <el-card class="prompts-card">
-        <template #header>
-          <CardHeader :title="`${typeLabels[selectedType]}提示词配置`">
-            <template #right>
-              <el-button type="primary" @click="showCreateDialog = true">
-                <el-icon>
-                  <Plus />
-                </el-icon>
-                新建提示词
-              </el-button>
-            </template>
-          </CardHeader>
-        </template>
+      <div class="prompts-section">
+        <div class="section-header">
+          <h3 class="section-title">{{ typeLabels[selectedType] }}提示词</h3>
+          <el-button type="primary" size="small" @click="showCreateDialog = true">
+            <el-icon><Plus /></el-icon>
+            新建提示词
+          </el-button>
+        </div>
 
-        <EmptyState v-if="currentPrompts.length === 0" description="还没有配置提示词。创建您的第一个提示词配置！" action-text="创建提示词"
-          :action-handler="() => showCreateDialog = true" />
+        <el-empty v-if="currentPrompts.length === 0" description="还没有配置提示词">
+          <el-button type="primary" @click="showCreateDialog = true">
+            创建提示词
+          </el-button>
+        </el-empty>
 
         <div v-else class="prompts-list">
           <el-card v-for="prompt in currentPrompts" :key="prompt.id" shadow="hover" class="prompt-card">
             <div class="prompt-header">
               <div class="prompt-info">
-                <h3 class="prompt-name">
-                  <el-icon>
-                    <Document />
-                  </el-icon>
-                  {{ prompt.promptKey }}
-                  <el-tag v-if="prompt.isActive" type="success" size="small" effect="plain">激活</el-tag>
-                </h3>
+                <div class="prompt-title">
+                  <el-icon><Document /></el-icon>
+                  <span class="prompt-key">{{ prompt.promptKey }}</span>
+                  <el-tag v-if="prompt.isActive" type="success" size="small" effect="plain">启用</el-tag>
+                </div>
                 <p v-if="prompt.description" class="prompt-desc">{{ prompt.description }}</p>
-                <p class="prompt-preview">{{ getPreview(prompt.content) }}</p>
               </div>
               <div class="prompt-actions">
-                <el-button size="small" @click="editPrompt(prompt)">
-                  编辑
-                </el-button>
-                <el-button type="danger" size="small" @click="deletePrompt(prompt)">
-                  删除
-                </el-button>
+                <el-button size="small" @click="editPrompt(prompt)">编辑</el-button>
+                <el-button type="danger" size="small" plain @click="deletePrompt(prompt)">删除</el-button>
               </div>
+            </div>
+            <div class="prompt-preview">
+              <pre>{{ getPreview(prompt.content) }}</pre>
             </div>
           </el-card>
         </div>
-      </el-card>
+      </div>
     </div>
 
     <!-- 创建/编辑提示词对话框 -->
-    <el-dialog v-model="showCreateDialog" :title="editingPrompt ? '编辑提示词' : '新建提示词'" width="900px" @close="resetForm">
+    <el-dialog
+      v-model="showCreateDialog"
+      :title="editingPrompt ? '编辑提示词' : '新建提示词'"
+      width="800px"
+      @close="resetForm"
+    >
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
         <el-form-item label="提示词键名" prop="promptKey">
           <el-select v-model="form.promptKey" placeholder="选择提示词键名" style="width: 100%">
             <el-option label="系统提示词 (system_prompt)" value="system_prompt" />
             <el-option label="模板 (template)" value="template" />
             <el-option label="审查系统提示词 (review_system_prompt)" value="review_system_prompt" />
-            <el-option label="自定义" value="custom">
-              <template #default>
-                <span>自定义键名</span>
-              </template>
-            </el-option>
+            <el-option label="自定义" value="custom" />
           </el-select>
         </el-form-item>
 
@@ -91,11 +81,17 @@
         </el-form-item>
 
         <el-form-item label="提示词内容" prop="content">
-          <el-input v-model="form.content" type="textarea" :rows="20" placeholder="输入提示词内容" show-word-limit
-            maxlength="50000" />
+          <el-input
+            v-model="form.content"
+            type="textarea"
+            :rows="15"
+            placeholder="输入提示词内容"
+            show-word-limit
+            maxlength="50000"
+          />
         </el-form-item>
 
-        <el-form-item label="激活状态" prop="isActive">
+        <el-form-item label="启用状态" prop="isActive">
           <el-switch v-model="form.isActive" />
         </el-form-item>
       </el-form>
@@ -103,7 +99,7 @@
       <template #footer>
         <el-button @click="showCreateDialog = false">取消</el-button>
         <el-button type="primary" :loading="saving" @click="savePrompt">
-          {{ editingPrompt ? '更新' : '创建' }}
+          {{ editingPrompt ? '保存修改' : '创建' }}
         </el-button>
       </template>
     </el-dialog>
@@ -111,14 +107,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus';
 import { Plus, Document } from '@element-plus/icons-vue';
-import { apiClient } from '../../api/client';
-import PageHeader from '../../components/common/PageHeader.vue';
-import CardHeader from '../../components/common/CardHeader.vue';
-import EmptyState from '../../components/common/EmptyState.vue';
+import { apiClient } from '../../../api/client';
 
 interface PromptConfig {
   id: string;
@@ -131,12 +123,10 @@ interface PromptConfig {
   updatedAt: string;
 }
 
-const router = useRouter();
-
 const loading = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
-const selectedType = ref<string>('mrd');
+const selectedType = ref('mrd');
 const prompts = ref<Record<string, PromptConfig[]>>({});
 const showCreateDialog = ref(false);
 const editingPrompt = ref<PromptConfig | null>(null);
@@ -150,10 +140,6 @@ const typeLabels: Record<string, string> = {
   test: '测试用例',
   task: '任务拆分',
 };
-
-const currentPrompts = computed(() => {
-  return prompts.value[selectedType.value] || [];
-});
 
 const form = ref({
   promptKey: 'system_prompt',
@@ -180,10 +166,14 @@ const rules: FormRules = {
   content: [{ required: true, message: '请输入提示词内容', trigger: 'blur' }],
 };
 
+const currentPrompts = computed(() => {
+  return prompts.value[selectedType.value] || [];
+});
+
 function getPreview(content: string): string {
   if (!content) return '';
-  const preview = content.substring(0, 200);
-  return content.length > 200 ? preview + '...' : preview;
+  const preview = content.substring(0, 300);
+  return content.length > 300 ? preview + '...' : preview;
 }
 
 async function fetchPrompts() {
@@ -199,17 +189,13 @@ async function fetchPrompts() {
   }
 }
 
-function handleTypeChange() {
-  // Type changed, prompts will be updated via computed property
-}
-
 function editPrompt(prompt: PromptConfig) {
   editingPrompt.value = prompt;
   form.value = {
-    promptKey: prompt.promptKey === 'system_prompt' || prompt.promptKey === 'template' || prompt.promptKey === 'review_system_prompt'
+    promptKey: ['system_prompt', 'template', 'review_system_prompt'].includes(prompt.promptKey)
       ? prompt.promptKey
       : 'custom',
-    customKey: prompt.promptKey === 'system_prompt' || prompt.promptKey === 'template' || prompt.promptKey === 'review_system_prompt'
+    customKey: ['system_prompt', 'template', 'review_system_prompt'].includes(prompt.promptKey)
       ? ''
       : prompt.promptKey,
     content: prompt.content,
@@ -249,7 +235,7 @@ async function savePrompt() {
         isActive: form.value.isActive,
       });
 
-      ElMessage.success(editingPrompt.value ? '提示词更新成功' : '提示词创建成功');
+      ElMessage.success(editingPrompt.value ? '提示词已更新' : '提示词已创建');
       showCreateDialog.value = false;
       resetForm();
       await fetchPrompts();
@@ -282,48 +268,38 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.prompt-config {
-  max-width: 100%;
+.prompt-config-panel {
+  width: 100%;
 }
 
-.page-header {
+.type-selector {
   margin-bottom: 24px;
 }
 
-.header-content {
+.prompts-section {
+  background: #fafafa;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.section-header {
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
 }
 
-.header-title {
-  font-size: 28px;
-  font-weight: bold;
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
   color: #303133;
-}
-
-.header-desc {
-  color: #909399;
-  margin-top: 8px;
-  margin-bottom: 0;
-}
-
-.content-section {
-  min-height: 400px;
-}
-
-.type-selector-card {
-  margin-bottom: 24px;
-}
-
-
-.prompts-card {
-  margin-bottom: 24px;
+  margin: 0;
 }
 
 .prompts-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .prompt-card {
@@ -334,36 +310,54 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  margin-bottom: 12px;
 }
 
 .prompt-info {
   flex: 1;
 }
 
-.prompt-name {
-  font-size: 18px;
-  font-weight: 600;
-  margin: 0 0 8px 0;
+.prompt-title {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 4px;
+}
+
+.prompt-title .el-icon {
+  color: #409eff;
+}
+
+.prompt-key {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
 }
 
 .prompt-desc {
+  font-size: 13px;
   color: #606266;
-  margin: 0 0 8px 0;
-}
-
-.prompt-preview {
-  color: #909399;
   margin: 0;
-  font-size: 14px;
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 .prompt-actions {
   display: flex;
   gap: 8px;
+}
+
+.prompt-preview {
+  background: #f5f7fa;
+  border-radius: 4px;
+  padding: 12px;
+}
+
+.prompt-preview pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #606266;
 }
 </style>
