@@ -447,7 +447,7 @@ curl -X POST http://localhost:3000/api/projects/PROJECT_ID/roles/Engineer/action
 - ✅ Flexible input methods (custom input, context messages, auto-load from history)
 - ✅ Automatic context loading based on action requirements
 - ✅ Workspace options for document organization
-- ✅ Complete error handling and timeout control
+- ✅ Complete error handling (timeout handled by individual actions)
 - ✅ Results automatically saved to project history
 
 #### Standard API

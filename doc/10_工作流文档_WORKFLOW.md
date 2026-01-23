@@ -2,9 +2,9 @@
 
 **Slogan**: 让所思，即所得
 
-**文档版本**: v1.4  
+**文档版本**: v1.5  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-21（添加完整的 QA 工作流说明）
+**最后更新**: 2026-01-23（移除外层超时机制，超时由各个 Action 自行处理）
 
 ## 1. 项目初始化与Git管理流程
 
@@ -464,6 +464,39 @@ class AgileRole(Role):
 - **单步执行**: 支持逐步执行角色的思考和行为过程
 - **日志记录**: 详细记录角色的思考过程、Action执行、LLM调用等
 - **性能监控**: 监控角色的执行时间、Token使用、API调用次数等
+
+## 11. 超时机制
+
+### 11.1 设计原则
+
+工作流执行层（`WorkflowExecutor`）和 API 控制器层（`RoleActionExecutionController`）不再设置统一的外层超时。超时由各个 Action 自行处理。
+
+**原因**：
+- 不同 Action 执行时间差异很大
+- 统一的外层超时可能导致长时间运行的 Action 被错误中断并触发重试
+- 各 Action 更清楚自己的执行时间需求
+
+### 11.2 各 Action 超时配置
+
+| Action | 操作 | 超时时间 | 说明 |
+|--------|------|----------|------|
+| WriteCode | apply 命令 | 60 分钟 | cursor-agent 代码生成 |
+| WriteCode | check 命令 | 5 分钟 | 任务完成检查 |
+| BreakdownTasks | propose 命令 | 60 分钟 | OpenSpec 任务拆分 |
+| BreakdownTasks | context 命令 | 30 分钟 | 上下文准备 |
+| CodeReview | 代码审查 | 10 分钟 | 代码审查分析 |
+| LLM 请求 | aask 调用 | REQUEST_TIMEOUT | 默认 300 秒 |
+
+### 11.3 配置说明
+
+**LLM 请求超时**：通过环境变量 `REQUEST_TIMEOUT` 配置（单位：秒），默认 300 秒。
+
+```bash
+# .env
+REQUEST_TIMEOUT=600  # 设置为 10 分钟
+```
+
+**Action 内部超时**：在各 Action 实现中通过 `executeCommandSimple` 的 `timeout` 参数配置。
 
 ---
 

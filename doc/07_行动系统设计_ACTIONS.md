@@ -1,8 +1,8 @@
 # mind2build 行动系统设计文档
 
-**文档版本**: v1.6  
+**文档版本**: v1.7  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-22（拆分QAEngineer和AutomationEngineer的Actions，添加配置驱动的Action注册机制）
+**最后更新**: 2026-01-23（移除外层超时机制，超时由各个 Action 自行处理）
 
 ## Action执行机制
 
@@ -69,6 +69,32 @@ RoleActionExecutor为某些actions提供特殊的输入准备逻辑：
 - Action执行前：`action.status = RUNNING`, `role.status = RUNNING`
 - Action执行成功：`action.status = COMPLETED`, `role.status = IDLE`
 - Action执行失败：`action.status = FAILED`, `role.status = IDLE`（不清理news，允许重试）
+
+#### 5. 超时机制
+
+**设计原则**：超时由各个 Action 自行处理，外层执行器不设置统一超时。
+
+**原因**：
+- 不同 Action 执行时间差异很大（如 WritePRD 可能需要几分钟，而 WriteCode 可能需要 30-60 分钟）
+- 统一的外层超时可能导致长时间运行的 Action 被错误中断
+- 各 Action 更清楚自己的执行时间需求
+
+**各 Action 超时配置**：
+
+| Action | 超时时间 | 说明 |
+|--------|----------|------|
+| WriteCode | 60 分钟 | cursor-agent apply 命令执行 |
+| WriteCode (check) | 5 分钟 | cursor-agent check 命令执行 |
+| BreakdownTasks | 60 分钟 | cursor-agent propose 命令执行 |
+| BreakdownTasks (context) | 30 分钟 | cursor-agent context 命令执行 |
+| CodeReview | 10 分钟 | 代码审查 |
+| 其他 Action | 由 LLM 请求超时控制 | 参考 `REQUEST_TIMEOUT` 环境变量 |
+
+**实现说明**：
+
+- `WorkflowExecutor` 和 `RoleActionExecutionController` 不再设置外层超时
+- 各 Action 内部通过 `executeCommandSimple` 等方法设置具体超时
+- LLM 请求超时通过 `REQUEST_TIMEOUT` 环境变量控制（默认 300 秒）
 
 ---
 
