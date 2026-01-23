@@ -60,6 +60,82 @@ export class WorkspaceManager {
     return process.env.WORKSPACE_PATH || path.join(this.getProjectRoot(), 'workspace');
   }
 
+  // ============================================
+  // 环境检测方法
+  // ============================================
+
+  /**
+   * 判断是否在容器环境中
+   * 通过检查 CONTAINER_WORKSPACE_ROOT 环境变量判断
+   */
+  static isContainerEnvironment(): boolean {
+    return !!process.env.CONTAINER_WORKSPACE_ROOT;
+  }
+
+  /**
+   * 判断是否为本地开发模式
+   */
+  static isLocalDevelopmentMode(): boolean {
+    return process.env.NODE_ENV === 'development' ||
+           process.env.LOCAL_DEV === 'true' ||
+           !this.isContainerEnvironment();
+  }
+
+  /**
+   * 获取容器内 workspace 路径
+   * 用于容器化部署场景
+   */
+  static getContainerWorkspacePath(options: WorkspaceOptions): string {
+    const containerWorkspaceRoot = process.env.CONTAINER_WORKSPACE_ROOT || '/workspace';
+    return path.join(
+      containerWorkspaceRoot,
+      options.applicationId || 'default',
+      options.projectId || 'default'
+    );
+  }
+
+  /**
+   * 获取 workspace 路径（自动判断环境）
+   * 容器环境使用容器路径，本地环境使用本地路径
+   */
+  static getWorkspacePath(options: WorkspaceOptions): string {
+    if (this.isContainerEnvironment()) {
+      return this.getContainerWorkspacePath(options);
+    }
+    return this.getProjectWorkspacePath(options);
+  }
+
+  /**
+   * 获取本地开发 workspace 路径
+   */
+  static getLocalWorkspacePath(options: WorkspaceOptions): string {
+    const projectRoot = this.getProjectRoot();
+    return path.join(
+      projectRoot,
+      'workspace',
+      options.applicationId || 'default',
+      options.projectId || 'default'
+    );
+  }
+
+  /**
+   * 初始化容器 workspace
+   * 确保所有必要的目录结构存在
+   */
+  static async initializeContainerWorkspace(options: WorkspaceOptions): Promise<void> {
+    const workspacePath = this.getContainerWorkspacePath(options);
+    const directories = ['MRD', 'PRD', 'DESIGN', 'CODE', 'TEST', 'docs'];
+
+    for (const dir of directories) {
+      await fs.mkdir(path.join(workspacePath, dir), { recursive: true });
+    }
+
+    logger.info('WorkspaceManager: Container workspace initialized', {
+      workspacePath,
+      directories,
+    });
+  }
+
   /**
    * 获取项目工作目录路径（包含 ainative-workspace）
    * 目录结构：workspace/{applicationId}/{projectId}/ainative-workspace

@@ -1,6 +1,10 @@
 /**
  * Role class
  * Concrete implementation of BaseRole with full observe-think-act lifecycle
+ * 
+ * 支持两种执行模式：
+ * - LLM 模式：使用大模型 API 执行（默认）
+ * - CLI 模式：使用命令行工具执行（如 Cursor CLI, Aider）
  */
 
 import {
@@ -17,6 +21,7 @@ import { RoleContext } from '../core/context/RoleContext';
 import { Context } from '../core/context/Context';
 import { logger } from '../utils';
 import { RoleLLMConfig } from './RoleLLMConfig';
+import { RoleExecutorConfig } from './RoleExecutorConfig';
 import { RoleThinker } from './RoleThinker';
 import { RoleActionExecutor } from './RoleActionExecutor';
 import { RoleWorkspaceExtractor } from './RoleWorkspaceExtractor';
@@ -31,6 +36,7 @@ export class Role extends BaseRole {
   private addresses: Set<string> = new Set();
 
   private llmConfig: RoleLLMConfig;
+  private executorConfig: RoleExecutorConfig;
   private thinker: RoleThinker;
   private actionExecutor: RoleActionExecutor;
   private workspaceExtractor: RoleWorkspaceExtractor;
@@ -45,6 +51,7 @@ export class Role extends BaseRole {
 
     // Initialize modules
     this.llmConfig = new RoleLLMConfig(this.profile, context, this.actions);
+    this.executorConfig = new RoleExecutorConfig(this.profile, context);
     this.workspaceExtractor = new RoleWorkspaceExtractor(this.rc, context);
     this.thinker = new RoleThinker(this.profile, this.rc, this.actions);
     this.actionExecutor = new RoleActionExecutor(
@@ -58,6 +65,9 @@ export class Role extends BaseRole {
     // Priority: database config > config.llm (explicit) > default (context.llm)
     this.llmConfig.initializeWithConfig(config.llm);
     this.llmConfig.startLoadingFromDatabase();
+
+    // Start loading executor config
+    this.executorConfig.startLoading();
 
     // Initialize addresses for message routing
     this.addresses.add(this.name);
@@ -105,6 +115,14 @@ export class Role extends BaseRole {
   }
 
   /**
+   * 获取执行器配置
+   * 用于 Action 获取当前角色的执行模式配置
+   */
+  getExecutorConfig(): RoleExecutorConfig {
+    return this.executorConfig;
+  }
+
+  /**
    * Set actions for this role
    */
   setActions(actions: BaseAction[]): void {
@@ -145,6 +163,10 @@ export class Role extends BaseRole {
         `${this.profile} setActions: Actions will use Context.llm (supports hot-reload)`
       );
     }
+
+    // Log executor mode
+    const executorMode = this.executorConfig.getModeSync();
+    logger.info(`${this.profile} setActions: executor mode is '${executorMode}'`);
   }
 
   /**
@@ -353,6 +375,7 @@ export class Role extends BaseRole {
       description: this.description,
       actions: this.actions.map((a) => a.toJSON()),
       rc: this.rc.toJSON(),
+      executorMode: this.executorConfig.getModeSync(),
     };
   }
 }
