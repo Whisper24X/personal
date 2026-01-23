@@ -52,8 +52,10 @@ class APIClient {
     );
   }
 
-  // 应用 API 端点
-  async createApplication(data: {
+  // ==================== 业务线 API 端点（原应用 API）====================
+  
+  // 创建业务线
+  async createBusinessLine(data: {
     name: string;
     description?: string;
     metadata?: Record<string, any>;
@@ -61,15 +63,18 @@ class APIClient {
     return this.client.post('/applications', data);
   }
 
-  async getApplications() {
+  // 获取业务线列表
+  async getBusinessLines() {
     return this.client.get('/applications');
   }
 
-  async getApplication(id: string) {
+  // 获取单个业务线
+  async getBusinessLine(id: string) {
     return this.client.get(`/applications/${id}`);
   }
 
-  async updateApplication(id: string, data: {
+  // 更新业务线
+  async updateBusinessLine(id: string, data: {
     name?: string;
     description?: string;
     metadata?: Record<string, any>;
@@ -77,16 +82,58 @@ class APIClient {
     return this.client.put(`/applications/${id}`, data);
   }
 
-  async deleteApplication(id: string) {
+  // 删除业务线
+  async deleteBusinessLine(id: string) {
     return this.client.delete(`/applications/${id}`);
   }
 
-  async getApplicationProjects(id: string) {
+  // 获取业务线下的平台列表
+  async getBusinessLinePlatforms(id: string) {
     return this.client.get(`/applications/${id}/projects`);
   }
 
-  // 项目 API 端点
-  async createProject(data: {
+  // 获取业务线工作流列表
+  async getBusinessLineWorkflows(businessLineId: string) {
+    return this.client.get(`/applications/${businessLineId}/workflows`);
+  }
+
+  // 兼容旧的应用 API（保持向后兼容）
+  async createApplication(data: {
+    name: string;
+    description?: string;
+    metadata?: Record<string, any>;
+  }) {
+    return this.createBusinessLine(data);
+  }
+
+  async getApplications() {
+    return this.getBusinessLines();
+  }
+
+  async getApplication(id: string) {
+    return this.getBusinessLine(id);
+  }
+
+  async updateApplication(id: string, data: {
+    name?: string;
+    description?: string;
+    metadata?: Record<string, any>;
+  }) {
+    return this.updateBusinessLine(id, data);
+  }
+
+  async deleteApplication(id: string) {
+    return this.deleteBusinessLine(id);
+  }
+
+  async getApplicationProjects(id: string) {
+    return this.getBusinessLinePlatforms(id);
+  }
+
+  // ==================== 平台 API 端点（原项目 API）====================
+  
+  // 创建平台
+  async createPlatform(data: {
     name: string;
     idea: string;
     description?: string;
@@ -97,28 +144,70 @@ class APIClient {
     return this.client.post('/projects', data);
   }
 
-  async startProject(id: string) {
+  // 启动平台
+  async startPlatform(id: string) {
     return this.client.post(`/projects/${id}/start`);
   }
 
-  async getProject(id: string) {
+  // 获取单个平台
+  async getPlatform(id: string) {
     return this.client.get(`/projects/${id}`);
   }
 
-  async deleteProject(id: string) {
+  // 删除平台
+  async deletePlatform(id: string) {
     return this.client.delete(`/projects/${id}`);
   }
 
-  async getProjects(limit?: number) {
+  // 获取平台列表
+  async getPlatforms(limit?: number) {
     return this.client.get('/projects', { params: { limit } });
   }
 
-  async getProjectMessages(id: string, limit?: number) {
+  // 获取平台消息
+  async getPlatformMessages(id: string, limit?: number) {
     return this.client.get(`/projects/${id}/messages`, { params: { limit } });
   }
 
-  async getProjectDocuments(id: string) {
+  // 获取平台文档
+  async getPlatformDocuments(id: string) {
     return this.client.get(`/projects/${id}/documents`);
+  }
+
+  // 兼容旧的项目 API（保持向后兼容）
+  async createProject(data: {
+    name: string;
+    idea: string;
+    description?: string;
+    investment?: number;
+    nRound?: number;
+    applicationId?: string;
+  }) {
+    return this.createPlatform(data);
+  }
+
+  async startProject(id: string) {
+    return this.startPlatform(id);
+  }
+
+  async getProject(id: string) {
+    return this.getPlatform(id);
+  }
+
+  async deleteProject(id: string) {
+    return this.deletePlatform(id);
+  }
+
+  async getProjects(limit?: number) {
+    return this.getPlatforms(limit);
+  }
+
+  async getProjectMessages(id: string, limit?: number) {
+    return this.getPlatformMessages(id, limit);
+  }
+
+  async getProjectDocuments(id: string) {
+    return this.getPlatformDocuments(id);
   }
 
   // PRD API 端点

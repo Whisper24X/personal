@@ -1,6 +1,8 @@
 /**
  * Initialize Role and Action Definitions
- * Extracts role and action definitions from code and inserts into database
+ * Extracts role and action definitions from code registry and inserts into database
+ * 
+ * Uses RoleActionFactory for dynamic role/action instantiation
  */
 
 import { connectDatabase, disconnectDatabase } from '../client';
@@ -8,50 +10,9 @@ import { RoleDefinitionRepository, ActionDefinitionRepository, ApplicationWorkfl
 import { logger } from '../../utils';
 import { Context } from '../../core/context/Context';
 import { WorkflowConfig } from '../repositories/ApplicationWorkflowRepository';
+import { RoleActionFactory } from '../../services/RoleActionFactory';
 
-// Import all role classes to extract metadata
-import { Salesperson } from '../../roles/Salesperson';
-import { ProductManager } from '../../roles/ProductManager';
-import { Architect } from '../../roles/Architect';
-import { ProjectManager } from '../../roles/ProjectManager';
-import { Engineer } from '../../roles/Engineer';
-import { QAEngineer } from '../../roles/QAEngineer';
-import { TeamLeader } from '../../roles/TeamLeader';
-import { DataAnalyst } from '../../roles/DataAnalyst';
-
-// Import all action classes
-import { WriteMRD } from '../../actions/WriteMRD';
-import { WritePRD } from '../../actions/WritePRD';
-import { WriteDesign } from '../../actions/WriteDesign';
-import { WriteSubProjectDesign } from '../../actions/WriteSubProjectDesign';
-import { WriteCode } from '../../actions/WriteCode';
-import { WriteTest } from '../../actions/WriteTest';
-import { WriteTestPlan } from '../../actions/WriteTestPlan';
-import { MRDReview } from '../../actions/MRDReview';
-import { PRDReview } from '../../actions/PRDReview';
-import { DesignReview } from '../../actions/DesignReview';
-import { SubProjectDesignReview } from '../../actions/SubProjectDesignReview';
-import { CodeReview } from '../../actions/CodeReview';
-import { TestCaseReview } from '../../actions/TestCaseReview';
-import { TestReview } from '../../actions/TestReview';
-import { ImprovePRD } from '../../actions/ImprovePRD';
-import { ImproveMRD } from '../../actions/ImproveMRD';
-import { ImproveDesign } from '../../actions/ImproveDesign';
-import { ImproveTest } from '../../actions/ImproveTest';
-import { BreakdownTasks } from '../../actions/BreakdownTasks';
-import { ExecuteSubtask } from '../../actions/ExecuteSubtask';
-import { RunCode } from '../../actions/RunCode';
-import { FixBug } from '../../actions/FixBug';
-import { TestabilityReview } from '../../actions/TestabilityReview';
-import { AutomationPlanning } from '../../actions/AutomationPlanning';
-import { AutomationExecution } from '../../actions/AutomationExecution';
-import { CoverageQualityCheck } from '../../actions/CoverageQualityCheck';
-import { QAConclusion } from '../../actions/QAConclusion';
-import { SearchEnhancedQA } from '../../actions/SearchEnhancedQA';
-import { DataAnalysis } from '../../actions/DataAnalysis';
-import { Coordinate } from '../../actions/Coordinate';
-
-// Role display names mapping (Chinese)
+// Role display names mapping (Chinese) - used for initial seeding
 const ROLE_DISPLAY_NAMES: Record<string, string> = {
   Salesperson: '销售',
   ProductManager: '产品经理',
@@ -59,11 +20,12 @@ const ROLE_DISPLAY_NAMES: Record<string, string> = {
   ProjectManager: '项目经理',
   Engineer: '工程师',
   QAEngineer: 'QA工程师',
+  AutomationEngineer: '自动化工程师',
   TeamLeader: '团队领导',
   DataAnalyst: '数据分析师',
 };
 
-// Action display names mapping (Chinese)
+// Action display names mapping (Chinese) - used for initial seeding
 const ACTION_DISPLAY_NAMES: Record<string, string> = {
   // Salesperson actions
   WriteMRD: '编写MRD',
@@ -100,6 +62,8 @@ const ACTION_DISPLAY_NAMES: Record<string, string> = {
   TestCaseReview: '测试用例审查',
   TestReview: '测试审查',
   ImproveTest: '改进测试',
+
+  // AutomationEngineer actions
   AutomationPlanning: '自动化规划',
   AutomationExecution: '自动化执行',
   CoverageQualityCheck: '覆盖率质量检查',
@@ -112,7 +76,7 @@ const ACTION_DISPLAY_NAMES: Record<string, string> = {
   DataAnalysis: '数据分析',
 };
 
-// Action categories
+// Action categories - used for initial seeding
 const ACTION_CATEGORIES: Record<string, string> = {
   WriteMRD: 'document_writing',
   WritePRD: 'document_writing',
@@ -150,17 +114,8 @@ async function initRoleDefinitions() {
   const roleDefRepo = new RoleDefinitionRepository();
   const context = new Context();
 
-  // Create role instances to extract metadata
-  const roles = [
-    new Salesperson(context),
-    new ProductManager(context),
-    new Architect(context),
-    new ProjectManager(context),
-    new Engineer(context),
-    new QAEngineer(context),
-    new TeamLeader(context),
-    new DataAnalyst(context),
-  ];
+  // Create role instances using factory
+  const roles = RoleActionFactory.createAllRoleInstances(context);
 
   logger.info('   📝 Initializing role definitions...');
 
@@ -198,70 +153,31 @@ async function initActionDefinitions() {
   const actionDefRepo = new ActionDefinitionRepository();
   const context = new Context();
 
-  // Collect all actions from roles
-  const roles = [
-    new Salesperson(context),
-    new ProductManager(context),
-    new Architect(context),
-    new ProjectManager(context),
-    new Engineer(context),
-    new QAEngineer(context),
-    new TeamLeader(context),
-    new DataAnalyst(context),
-  ];
+  // Collect all actions from roles using factory
+  const roles = RoleActionFactory.createAllRoleInstances(context);
 
-  // Collect unique actions
-  const actionMap = new Map<string, { name: string; description?: string }>();
+  // Collect unique actions from roles
+  const actionMap = new Map<string, { name: string; description?: string; className: string }>();
   roles.forEach((role) => {
     role.actions.forEach((action) => {
       if (!actionMap.has(action.name)) {
         actionMap.set(action.name, {
           name: action.name,
           description: action.description,
+          className: action.constructor.name,
         });
       }
     });
   });
 
-  // Also add actions that might not be in roles
-  const standaloneActions = [
-    new WriteMRD(),
-    new WritePRD(),
-    new WriteDesign(),
-    new WriteSubProjectDesign(),
-    new WriteCode(),
-    new WriteTest(),
-    new WriteTestPlan(),
-    new MRDReview(),
-    new PRDReview(),
-    new DesignReview(),
-    new SubProjectDesignReview(),
-    new CodeReview(),
-    new TestCaseReview(),
-    new TestReview(),
-    new ImprovePRD(),
-    new ImproveMRD(),
-    new ImproveDesign(),
-    new ImproveTest(),
-    new BreakdownTasks(),
-    new ExecuteSubtask(),
-    new RunCode(),
-    new FixBug(),
-    new TestabilityReview(),
-    new AutomationPlanning(),
-    new AutomationExecution(),
-    new CoverageQualityCheck(),
-    new QAConclusion(),
-    new SearchEnhancedQA(),
-    new DataAnalysis(),
-    new Coordinate(),
-  ];
-
+  // Also add standalone actions from factory
+  const standaloneActions = RoleActionFactory.createAllActionInstances();
   standaloneActions.forEach((action) => {
     if (!actionMap.has(action.name)) {
       actionMap.set(action.name, {
         name: action.name,
         description: action.description,
+        className: action.constructor.name,
       });
     }
   });
@@ -277,18 +193,11 @@ async function initActionDefinitions() {
         continue;
       }
 
-      // Find the class name
-      let className = actionName;
-      const actionInstance = standaloneActions.find((a) => a.name === actionName);
-      if (actionInstance) {
-        className = actionInstance.constructor.name;
-      }
-
       await actionDefRepo.create({
         name: actionName,
         display_name: ACTION_DISPLAY_NAMES[actionName] || actionName,
         description: actionData.description,
-        class_name: className,
+        class_name: actionData.className,
         category: ACTION_CATEGORIES[actionName] || 'other',
         is_active: true,
       });
@@ -303,18 +212,12 @@ async function initActionDefinitions() {
   logger.info(`   ✅ Initialized ${actionMap.size} action definitions`);
 }
 
-async function createDefaultWorkflow(applicationId: string) {
-  const workflowRepo = new ApplicationWorkflowRepository();
-
-  // Check if default workflow already exists
-  const existing = await workflowRepo.findDefaultByApplicationId(applicationId);
-  if (existing) {
-    logger.info(`   ⏭️  Default workflow already exists for application ${applicationId}, skipping`);
-    return existing;
-  }
-
-  // Create default workflow based on the current hardcoded workflow
-  const defaultWorkflowConfig = {
+/**
+ * Get the default workflow configuration
+ * This is the single source of truth for the default workflow
+ */
+function getDefaultWorkflowConfig(): WorkflowConfig {
+  return {
     roles: [
       {
         profile: 'Salesperson',
@@ -360,22 +263,41 @@ async function createDefaultWorkflow(applicationId: string) {
           'WriteTestPlan',
           'WriteTest',
           'TestCaseReview',
+        ],
+        watch_actions: ['WritePRD', 'WriteCode'],
+      },
+      {
+        profile: 'AutomationEngineer',
+        name: 'AutomationEngineer',
+        order: 6,
+        actions: [
           'AutomationPlanning',
           'AutomationExecution',
           'CoverageQualityCheck',
           'QAConclusion',
         ],
-        watch_actions: ['WritePRD', 'WriteCode'],
+        watch_actions: ['TestCaseReview'],
       },
     ],
   };
+}
+
+async function createDefaultWorkflow(applicationId: string) {
+  const workflowRepo = new ApplicationWorkflowRepository();
+
+  // Check if default workflow already exists
+  const existing = await workflowRepo.findDefaultByApplicationId(applicationId);
+  if (existing) {
+    logger.info(`   ⏭️  Default workflow already exists for application ${applicationId}, skipping`);
+    return existing;
+  }
 
   const workflow = await workflowRepo.create({
     applicationId,
     name: '默认工作流',
     description: '默认的完整工作流，包含从需求收集到QA的完整流程',
     isDefault: true,
-    workflowConfig: defaultWorkflowConfig,
+    workflowConfig: getDefaultWorkflowConfig(),
   });
 
   logger.info(`   ✅ Created default workflow for application ${applicationId}`);
@@ -392,66 +314,9 @@ async function initDefaultWorkflowTemplate() {
     return existing;
   }
 
-  // Default workflow configuration (same as DEFAULT_WORKFLOW_CONFIG in WorkflowService)
-  const defaultWorkflowConfig: WorkflowConfig = {
-    roles: [
-      {
-        profile: 'Salesperson',
-        name: 'Salesperson',
-        order: 0,
-        actions: ['WriteMRD', 'MRDReview', 'ImproveMRD'],
-        watch_actions: ['User'],
-      },
-      {
-        profile: 'ProductManager',
-        name: 'ProductManager',
-        order: 1,
-        actions: ['WritePRD', 'PRDReview', 'ImprovePRD'],
-        watch_actions: ['WriteMRD'],
-      },
-      {
-        profile: 'Architect',
-        name: 'Architect',
-        order: 2,
-        actions: ['WriteDesign', 'DesignReview', 'ImproveDesign'],
-        watch_actions: ['WritePRD'],
-      },
-      {
-        profile: 'ProjectManager',
-        name: 'ProjectManager',
-        order: 3,
-        actions: ['BreakdownTasks'],
-        watch_actions: ['WritePRD'],
-      },
-      {
-        profile: 'Engineer',
-        name: 'Engineer',
-        order: 4,
-        actions: ['WriteCode'],
-        watch_actions: ['WritePRD', 'WriteDesign', 'BreakdownTasks'],
-      },
-      {
-        profile: 'QAEngineer',
-        name: 'QAEngineer',
-        order: 5,
-        actions: [
-          'TestabilityReview',
-          'WriteTestPlan',
-          'WriteTest',
-          'TestCaseReview',
-          'AutomationPlanning',
-          'AutomationExecution',
-          'CoverageQualityCheck',
-          'QAConclusion',
-        ],
-        watch_actions: ['WritePRD', 'WriteCode'],
-      },
-    ],
-  };
-
   const template = await templateRepo.create({
     name: 'default',
-    workflowConfig: defaultWorkflowConfig,
+    workflowConfig: getDefaultWorkflowConfig(),
     description: '默认的完整工作流，包含从需求收集到QA的完整流程',
     isActive: true,
   });
@@ -485,7 +350,7 @@ async function initRoleActionDefinitions() {
 }
 
 // Export for use in migration runner
-export { initRoleActionDefinitions, createDefaultWorkflow, initDefaultWorkflowTemplate };
+export { initRoleActionDefinitions, createDefaultWorkflow, initDefaultWorkflowTemplate, getDefaultWorkflowConfig };
 
 // Run if executed directly
 if (require.main === module) {

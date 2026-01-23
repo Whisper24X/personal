@@ -338,11 +338,27 @@ export class WorkflowExecutionRepository {
         throw new Error(`Role ${targetRole} not found in workflow`);
       }
 
-      const targetRoleIndex = targetStep.roleIndex;
+      // Ensure targetRoleIndex is a number for proper comparison
+      const targetRoleIndex = Number(targetStep.roleIndex);
+
+      // Log which steps will be reset (for debugging)
+      const stepsToReset = steps.filter(s => Number(s.roleIndex) >= targetRoleIndex);
+      logger.debug('WorkflowExecutionRepository: Steps to reset', {
+        projectId,
+        targetRole,
+        targetRoleIndex,
+        stepsToReset: stepsToReset.map(s => ({
+          role: s.role,
+          action: s.action,
+          roleIndex: s.roleIndex,
+          currentState: s.state,
+        })),
+      });
 
       // Reset all steps from target role onwards to PENDING
+      // Use Number() to ensure proper numeric comparison (JSON may deserialize as strings)
       const updatedSteps = steps.map(step => {
-        if (step.roleIndex >= targetRoleIndex) {
+        if (Number(step.roleIndex) >= targetRoleIndex) {
           return {
             ...step,
             state: StepState.PENDING,
@@ -354,6 +370,21 @@ export class WorkflowExecutionRepository {
         }
         return step;
       });
+
+      // Verify reset was applied correctly
+      const resetCount = updatedSteps.filter(s => 
+        Number(s.roleIndex) >= targetRoleIndex && s.state === StepState.PENDING
+      ).length;
+      const expectedResetCount = stepsToReset.length;
+
+      if (resetCount !== expectedResetCount) {
+        logger.warn('WorkflowExecutionRepository: Reset count mismatch', {
+          projectId,
+          targetRole,
+          expectedResetCount,
+          actualResetCount: resetCount,
+        });
+      }
 
       // Update execution - set state to INITIALIZED (not RUNNING)
       // The frontend will call /start to begin execution
@@ -378,10 +409,12 @@ export class WorkflowExecutionRepository {
 
       await client.query('COMMIT');
 
-      logger.info('WorkflowExecutionRepository: Reset workflow to role', {
+      logger.info('WorkflowExecutionRepository: Reset workflow to role completed', {
         projectId,
         targetRole,
         targetRoleIndex,
+        resetStepsCount: resetCount,
+        totalSteps: steps.length,
       });
 
       return rowToWorkflowExecution(updateResult.rows[0]);

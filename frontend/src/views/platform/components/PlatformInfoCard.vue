@@ -1,13 +1,13 @@
 <template>
-  <el-card class="project-info-card">
-    <div class="project-info">
+  <el-card class="platform-info-card">
+    <div class="platform-info">
       <div class="info-row">
         <div class="info-item">
           <el-icon>
-            <Document />
+            <Monitor />
           </el-icon>
-          <span class="label">项目名称:</span>
-          <span class="value">{{ projectName }}</span>
+          <span class="label">平台名称:</span>
+          <span class="value">{{ platformName }}</span>
         </div>
         <el-dropdown trigger="click" @command="handleDownloadCommand">
           <el-button type="primary" size="small">
@@ -36,7 +36,7 @@
         <el-icon>
           <Edit />
         </el-icon>
-        <span class="user-input-label">当前输入:</span>
+        <span class="user-input-label">平台描述:</span>
       </div>
       <div class="user-input-content">
         {{ userIdea }}
@@ -46,10 +46,10 @@
 </template>
 
 <script setup lang="ts">
-import { Document, Edit, Download, ArrowDown, FolderOpened } from '@element-plus/icons-vue';
+import { Monitor, Document, Edit, Download, ArrowDown, FolderOpened } from '@element-plus/icons-vue';
 
 defineProps<{
-  projectName: string;
+  platformName: string;
   userIdea?: string;
 }>();
 
@@ -68,11 +68,11 @@ function handleDownloadCommand(command: string) {
 </script>
 
 <style scoped>
-.project-info-card {
+.platform-info-card {
   margin-bottom: 20px;
 }
 
-.project-info {
+.platform-info {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -139,4 +139,3 @@ function handleDownloadCommand(command: string) {
   border-left: 3px solid #409EFF;
 }
 </style>
-

@@ -40,6 +40,7 @@ export const ROLE_PRODUCT_MANAGER = 'ProductManager';
 export const ROLE_ARCHITECT = 'Architect';
 export const ROLE_ENGINEER = 'Engineer';
 export const ROLE_QA_ENGINEER = 'QAEngineer';
+export const ROLE_AUTOMATION_ENGINEER = 'AutomationEngineer';
 export const ROLE_TEAM_LEADER = 'TeamLeader';
 export const ROLE_DATA_ANALYST = 'DataAnalyst';
 export const ROLE_PROJECT_MANAGER = 'ProjectManager';

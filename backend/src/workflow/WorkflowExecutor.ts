@@ -27,14 +27,11 @@ export type WorkflowMessageHandler = (type: string, data: any) => void;
  * Executor configuration
  */
 export interface WorkflowExecutorConfig {
-  /** Timeout for action execution in milliseconds (default: 10 minutes) */
-  actionTimeoutMs?: number;
   /** Whether to auto-continue without confirmation (for testing) */
   autoConfirm?: boolean;
 }
 
 const DEFAULT_CONFIG: WorkflowExecutorConfig = {
-  actionTimeoutMs: 10 * 60 * 1000, // 10 minutes
   autoConfirm: false,
 };
 
@@ -300,12 +297,8 @@ export class WorkflowExecutor {
     // Set the action as todo
     roleInstance['rc'].todo = targetAction;
 
-    // Execute with timeout
-    const result = await this.executeWithTimeout(
-      async () => roleInstance.act(),
-      this.config.actionTimeoutMs!,
-      `Action ${action} execution timeout`
-    );
+    // Execute action (timeout handled by individual actions)
+    const result = await roleInstance.act();
 
     if (!result) {
       throw new Error(`Action ${action} produced no output`);
@@ -339,31 +332,6 @@ export class WorkflowExecutor {
       action,
       needsConfirmation,
       isCompleted,
-    });
-  }
-
-  /**
-   * Execute with timeout
-   */
-  private async executeWithTimeout<T>(
-    fn: () => Promise<T>,
-    timeoutMs: number,
-    errorMessage: string
-  ): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        reject(new Error(errorMessage));
-      }, timeoutMs);
-
-      fn()
-        .then((result) => {
-          clearTimeout(timeoutId);
-          resolve(result);
-        })
-        .catch((error) => {
-          clearTimeout(timeoutId);
-          reject(error);
-        });
     });
   }
 

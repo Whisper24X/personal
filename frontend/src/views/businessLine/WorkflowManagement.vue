@@ -1,9 +1,9 @@
 <template>
   <div class="workflow-management">
     <PageHeader
-      :title="`${application?.name || '应用'} - 工作流管理`"
-      description="配置和管理应用的工作流，定义角色和Action的执行顺序"
-      :back-handler="() => router.push(`/applications/${applicationId}`)"
+      :title="`${businessLine?.name || '业务线'} - 工作流管理`"
+      description="配置和管理业务线的工作流，定义角色和Action的执行顺序"
+      :back-handler="() => router.push(`/business-line/${businessLineId}/platforms`)"
     />
 
     <div v-loading="loading" class="content-section">
@@ -103,14 +103,14 @@
     <!-- 创建工作流对话框 -->
     <WorkflowDialog
       v-model="showCreateDialog"
-      :application-id="applicationId"
+      :application-id="businessLineId"
       @success="handleWorkflowCreated"
     />
 
     <!-- 编辑工作流对话框 -->
     <WorkflowDialog
       v-model="showEditDialog"
-      :application-id="applicationId"
+      :application-id="businessLineId"
       :workflow="editingWorkflow"
       @success="handleWorkflowUpdated"
     />
@@ -132,18 +132,18 @@ import { apiClient } from '../../api/client';
 import PageHeader from '../../components/common/PageHeader.vue';
 import WorkflowDialog from './components/WorkflowDialog.vue';
 import WorkflowViewDialog from './components/WorkflowViewDialog.vue';
-import { useApplicationStore } from '../../stores/application';
+import { useBusinessLineStore } from '../../stores/businessLine';
 import { useRoleActionStore } from '../../stores/roleAction';
 import { storeToRefs } from 'pinia';
 
 const router = useRouter();
 const route = useRoute();
-const applicationStore = useApplicationStore();
+const businessLineStore = useBusinessLineStore();
 const roleActionStore = useRoleActionStore();
-const { currentApplication } = storeToRefs(applicationStore);
+const { currentBusinessLine } = storeToRefs(businessLineStore);
 
-const applicationId = computed(() => route.params.id as string);
-const application = computed(() => currentApplication.value);
+const businessLineId = computed(() => route.params.id as string);
+const businessLine = computed(() => currentBusinessLine.value);
 
 const loading = ref(false);
 const error = ref<string | null>(null);
@@ -158,7 +158,7 @@ async function fetchWorkflows() {
   loading.value = true;
   error.value = null;
   try {
-    const response = await apiClient.getApplicationWorkflows(applicationId.value) as any;
+    const response = await apiClient.getBusinessLineWorkflows(businessLineId.value) as any;
     workflows.value = response.workflows || [];
   } catch (err: any) {
     const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || '获取工作流列表失败';
@@ -170,11 +170,11 @@ async function fetchWorkflows() {
   }
 }
 
-async function fetchApplication() {
+async function fetchBusinessLine() {
   try {
-    await applicationStore.fetchApplication(applicationId.value);
+    await businessLineStore.fetchBusinessLine(businessLineId.value);
   } catch (err: any) {
-    ElMessage.error('获取应用信息失败');
+    ElMessage.error('获取业务线信息失败');
   }
 }
 
@@ -193,7 +193,7 @@ async function setAsDefault(workflowId: string) {
     await ElMessageBox.confirm('确定要将此工作流设为默认吗？', '确认', {
       type: 'warning',
     });
-    await apiClient.setDefaultWorkflow(applicationId.value, workflowId);
+    await apiClient.setDefaultWorkflow(businessLineId.value, workflowId);
     ElMessage.success('设置默认工作流成功');
     await fetchWorkflows();
   } catch (err: any) {
@@ -210,7 +210,7 @@ async function deleteWorkflow(workflowId: string) {
     await ElMessageBox.confirm('确定要删除此工作流吗？删除后无法恢复。', '确认删除', {
       type: 'warning',
     });
-    await apiClient.deleteWorkflow(applicationId.value, workflowId);
+    await apiClient.deleteWorkflow(businessLineId.value, workflowId);
     ElMessage.success('删除工作流成功');
     await fetchWorkflows();
   } catch (err: any) {
@@ -244,7 +244,7 @@ function getRoleDisplayName(profile: string): string {
 }
 
 onMounted(async () => {
-  await fetchApplication();
+  await fetchBusinessLine();
   await fetchWorkflows();
   await roleActionStore.fetchRolesAndActions();
 });

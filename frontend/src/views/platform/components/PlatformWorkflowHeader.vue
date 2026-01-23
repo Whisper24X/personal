@@ -6,7 +6,7 @@
           <el-icon>
             <MagicStick />
           </el-icon>
-          交互式项目生成
+          平台工作流执行
         </span>
         <p class="header-desc">在每个步骤人工确认和审查</p>
       </div>
@@ -47,4 +47,3 @@ defineEmits<{
   margin-bottom: 0;
 }
 </style>
-

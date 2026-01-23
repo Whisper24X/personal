@@ -1,8 +1,8 @@
 # mind2build 行动系统设计文档
 
-**文档版本**: v1.5  
+**文档版本**: v1.7  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-21（添加QA工作流Actions、RunCode、FixBug、ImproveDesign，更新已实现Actions列表）
+**最后更新**: 2026-01-23（移除外层超时机制，超时由各个 Action 自行处理）
 
 ## Action执行机制
 
@@ -69,6 +69,32 @@ RoleActionExecutor为某些actions提供特殊的输入准备逻辑：
 - Action执行前：`action.status = RUNNING`, `role.status = RUNNING`
 - Action执行成功：`action.status = COMPLETED`, `role.status = IDLE`
 - Action执行失败：`action.status = FAILED`, `role.status = IDLE`（不清理news，允许重试）
+
+#### 5. 超时机制
+
+**设计原则**：超时由各个 Action 自行处理，外层执行器不设置统一超时。
+
+**原因**：
+- 不同 Action 执行时间差异很大（如 WritePRD 可能需要几分钟，而 WriteCode 可能需要 30-60 分钟）
+- 统一的外层超时可能导致长时间运行的 Action 被错误中断
+- 各 Action 更清楚自己的执行时间需求
+
+**各 Action 超时配置**：
+
+| Action | 超时时间 | 说明 |
+|--------|----------|------|
+| WriteCode | 60 分钟 | cursor-agent apply 命令执行 |
+| WriteCode (check) | 5 分钟 | cursor-agent check 命令执行 |
+| BreakdownTasks | 60 分钟 | cursor-agent propose 命令执行 |
+| BreakdownTasks (context) | 30 分钟 | cursor-agent context 命令执行 |
+| CodeReview | 10 分钟 | 代码审查 |
+| 其他 Action | 由 LLM 请求超时控制 | 参考 `REQUEST_TIMEOUT` 环境变量 |
+
+**实现说明**：
+
+- `WorkflowExecutor` 和 `RoleActionExecutionController` 不再设置外层超时
+- 各 Action 内部通过 `executeCommandSimple` 等方法设置具体超时
+- LLM 请求超时通过 `REQUEST_TIMEOUT` 环境变量控制（默认 300 秒）
 
 ---
 
@@ -783,7 +809,7 @@ async run(input: string, options?: AutomationPlanningOptions): Promise<IActionOu
 - 选择合适的自动化技术
 - 自动保存到 workspace（TEST 目录，文件名 AUTOMATION_PLAN.md）
 
-**使用角色**: QAEngineer
+**使用角色**: AutomationEngineer
 
 ### 23. AutomationExecution
 
@@ -807,7 +833,7 @@ async run(input: string, options?: AutomationExecutionOptions): Promise<IActionO
 - 执行自动化测试用例
 - 收集执行结果
 
-**使用角色**: QAEngineer
+**使用角色**: AutomationEngineer
 
 **注意**: 当前实现为占位符，延迟 1 秒后跳过执行。实际的自动化测试执行需要根据项目技术栈实现。
 
@@ -836,7 +862,7 @@ async run(input: string, options?: CoverageQualityCheckOptions): Promise<IAction
 - 进行质量自评
 - 自动保存到 workspace（TEST 目录，文件名 COVERAGE_REPORT.md 和 QUALITY_CHECK.md）
 
-**使用角色**: QAEngineer
+**使用角色**: AutomationEngineer
 
 ### 25. QAConclusion
 
@@ -977,14 +1003,16 @@ async run(allMessages: string): Promise<IActionOutput>
 ✅ **RunCode** - 代码执行  
 ✅ **FixBug** - Bug修复  
 
-### QA 工作流 Actions
+### QA 工作流 Actions (QAEngineer)
 ✅ **TestabilityReview** - 需求可测性审查  
 ✅ **TestCaseReview** - 测试用例评审与补充  
 ✅ **TestReview** - 测试用例文档审查  
+✅ **QAConclusion** - QA结论输出
+
+### 自动化测试 Actions (AutomationEngineer)
 ✅ **AutomationPlanning** - 自动化测试规划  
 ✅ **AutomationExecution** - 自动化测试执行  
 ✅ **CoverageQualityCheck** - 测试覆盖率与质量检查  
-✅ **QAConclusion** - QA结论输出  
 
 ### 其他 Actions
 ✅ **SearchEnhancedQA** - 增强搜索和问答  
@@ -995,8 +1023,14 @@ async run(allMessages: string): Promise<IActionOutput>
 
 ## 自定义 Action
 
-**示例**:
+系统采用配置驱动的动态加载架构，添加新 Action 只需修改少量文件，无需改动核心业务代码。
+
+### 步骤 1: 创建 Action 类文件
+
+在 `backend/src/actions/` 目录下创建 Action 文件：
+
 ```typescript
+// backend/src/actions/CustomAction.ts
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { WorkspaceOptions } from '../utils/WorkspaceManager';
@@ -1034,7 +1068,37 @@ export class CustomAction extends BaseAction {
 }
 ```
 
-**注意事项**:
+### 步骤 2: 注册到 ACTION_REGISTRY
+
+修改 `backend/src/actions/index.ts`：
+
+```typescript
+// 添加 export
+export { CustomAction } from './CustomAction';
+
+// 在 ACTION_REGISTRY 中添加（这是唯一需要修改的代码文件）
+export const ACTION_REGISTRY: Record<string, new () => BaseAction> = {
+  // 文档编写 Actions
+  WriteMRD, WritePRD, WriteDesign, WriteSubProjectDesign,
+  WriteCode, WriteTest, WriteTestPlan,
+  // 文档审查 Actions
+  MRDReview, PRDReview, DesignReview, SubProjectDesignReview, CodeReview,
+  // ... 其他 Actions
+  CustomAction,  // 添加新 Action
+};
+```
+
+### 步骤 3: 运行数据库迁移
+
+```bash
+cd backend
+npx ts-node --transpile-only src/database/migrations/init_role_action_definitions.ts
+```
+
+迁移脚本会自动从 ACTION_REGISTRY 读取 Action 信息并更新数据库。
+
+### 注意事项
+
 - 继承 `BaseAction` 基类
 - 在构造函数中调用 `super(name, description)` 设置名称和描述
 - 实现 `run(...args: any[]): Promise<IActionOutput>` 方法
@@ -1043,6 +1107,21 @@ export class CustomAction extends BaseAction {
 - 使用 `this.getWorkspaceDir()` 获取工作区目录
 - 使用 `this.readWorkspaceFile()` 读取工作区文件
 - LLM 和 Context 实例由 Role 自动注入，无需手动设置
+- **核心文件零修改**: Controller、Service 等核心业务文件无需改动
+
+### 架构优势
+
+```
+┌─────────────────────────────────────────┐
+│  actions/index.ts (ACTION_REGISTRY)     │  ← 唯一需要修改的代码文件
+├─────────────────────────────────────────┤
+│  RoleActionFactory                      │  ← 自动从 REGISTRY 读取
+├─────────────────────────────────────────┤
+│  Database (action_definitions)          │  ← 元数据存储
+├─────────────────────────────────────────┤
+│  Controllers / Services                 │  ← 无需修改
+└─────────────────────────────────────────┘
+```
 
 ## 知识库集成
 

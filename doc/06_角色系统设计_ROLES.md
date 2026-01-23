@@ -1,8 +1,8 @@
 # 即思即成（Mind2Build）角色系统设计文档
 
-**文档版本**: v1.6  
+**文档版本**: v1.7  
 **创建日期**: 2025-12-24
-**最后更新**: 2026-01-21（更新QAEngineer完整9步QA工作流，添加新Actions支持）
+**最后更新**: 2026-01-22（拆分QAEngineer和AutomationEngineer角色，添加配置驱动的角色注册机制）
 
 ## Role类实现架构
 
@@ -370,25 +370,24 @@ class Engineer extends Role {
 
 ### 5. QA Engineer (QA 工程师)
 
-**职责**: 执行完整的 QA 工作流，从可测性审查到最终 QA 结论
+**职责**: 执行测试设计工作流，从可测性审查到测试用例评审，最终给出 QA 结论
 
 **核心属性**:
 ```typescript
 class QAEngineer extends Role {
     name = "QAEngineer"
     profile = "QAEngineer"
-    goal = "Execute comprehensive QA workflow from testability review to final QA conclusion, ensuring quality and functional correctness"
-    constraints = "Focus on code quality, functional correctness, comprehensive test coverage, and systematic QA process. Execute QA workflow in order: testability review -> test plan -> test cases -> test case review -> automation planning -> automation execution -> coverage check -> QA conclusion"
-    description = "Experienced QA engineer who executes comprehensive QA workflow including testability review, test planning, test case design, automation, coverage analysis, and final QA conclusion"
-    // 监听: ACTION_WRITE_PRD, ACTION_WRITE_CODE actions
-    // Actions: TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, 
-    //          AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion
+    goal = "Execute QA workflow from testability review to final QA conclusion, ensuring quality and functional correctness"
+    constraints = "Focus on code quality, functional correctness, comprehensive test coverage, and systematic QA process. Execute QA workflow in order: testability review -> test plan -> test cases -> test case review -> QA conclusion"
+    description = "Experienced QA engineer who executes QA workflow including testability review, test planning, test case design, and final QA conclusion"
+    // 监听: ACTION_WRITE_PRD, ACTION_WRITE_CODE, ACTION_COVERAGE_QUALITY_CHECK actions
+    // Actions: TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, QAConclusion
 }
 ```
 
-**9 步 QA 工作流**:
+**5 步 QA 工作流**:
 
-QAEngineer 实现了完整的质量保证工作流，包含以下 8 个 Actions（按顺序执行）：
+QAEngineer 实现测试设计工作流，包含以下 5 个 Actions（按顺序执行）：
 
 | 步骤 | Action | 说明 | 输出文件 |
 |------|--------|------|----------|
@@ -396,10 +395,7 @@ QAEngineer 实现了完整的质量保证工作流，包含以下 8 个 Actions�
 | 2 | WriteTestPlan | 制定测试计划 | TEST_PLAN.md |
 | 3 | WriteTest | 测试用例生成 | TEST.md |
 | 4 | TestCaseReview | 用例评审与补充 | TEST_CASES_REVIEWED.md |
-| 5 | AutomationPlanning | 自动化测试拆解与评估 | AUTOMATION_PLAN.md |
-| 6 | AutomationExecution | 自动化用例实现与执行 | tests/automated_tests.md |
-| 7 | CoverageQualityCheck | 测试覆盖率与质量自检 | COVERAGE_REPORT.md, QUALITY_CHECK.md |
-| 8 | QAConclusion | 给出 QA 结论 | QA_CONCLUSION.md |
+| 5 | QAConclusion | 给出 QA 结论 | QA_CONCLUSION.md |
 
 **工作流程详解**:
 
@@ -421,39 +417,92 @@ QAEngineer 实现了完整的质量保证工作流，包含以下 8 个 Actions�
    - 审查测试用例的完整性
    - 补充边界条件、异常情况、负面测试用例
 
-5. **AutomationPlanning（自动化测试规划）**
-   - 评估测试用例的自动化可行性
-   - 确定自动化优先级
-   - 选择合适的自动化技术
-
-6. **AutomationExecution（自动化测试执行）**
-   - 实现自动化测试用例
-   - 执行自动化测试
-   - 收集执行结果
-
-7. **CoverageQualityCheck（覆盖率与质量检查）**
-   - 分析测试覆盖率
-   - 进行质量自评
-   - 生成覆盖率报告和质量检查报告
-
-8. **QAConclusion（QA 结论）**
-   - 综合所有测试结果
+5. **QAConclusion（QA 结论）**
+   - 综合所有测试结果（包括 AutomationEngineer 的覆盖率报告）
    - 给出最终 QA 结论（通过/阻断/需修改）
 
 **监听机制**:
-- 监听 `ACTION_WRITE_PRD` 和 `ACTION_WRITE_CODE` actions
-- 等待 ProductManager 完成 PRD 和 Engineer 完成代码后触发
-- 使用 BY_ORDER 模式按顺序执行所有 8 个 Actions
+- 监听 `ACTION_WRITE_PRD`、`ACTION_WRITE_CODE` 和 `ACTION_COVERAGE_QUALITY_CHECK` actions
+- 等待 ProductManager 完成 PRD、Engineer 完成代码后触发测试设计流程
+- 等待 AutomationEngineer 完成覆盖率检查后触发 QAConclusion
+- 使用 BY_ORDER 模式按顺序执行所有 5 个 Actions
 
 **输出产物**:
 - 可测性审查报告（TESTABILITY_REVIEW.md）
 - 测试计划（TEST_PLAN.md）
 - 测试用例文档（TEST.md）
 - 审查后的测试用例（TEST_CASES_REVIEWED.md）
+- QA 结论报告（QA_CONCLUSION.md）
+
+### 5.1 Automation Engineer (自动化工程师)
+
+**职责**: 执行自动化测试工作流，包括自动化规划、执行和覆盖率检查
+
+**核心属性**:
+```typescript
+class AutomationEngineer extends Role {
+    name = "AutomationEngineer"
+    profile = "AutomationEngineer"
+    goal = "Execute automation test workflow including planning, execution and coverage quality check"
+    constraints = "Focus on automation feasibility assessment, technology selection, test execution and coverage analysis. Execute automation workflow in order: automation planning -> automation execution -> coverage quality check"
+    description = "Experienced automation engineer who handles automation test planning, execution and coverage quality analysis"
+    // 监听: ACTION_TEST_CASE_REVIEW action（来自 QAEngineer）
+    // Actions: AutomationPlanning, AutomationExecution, CoverageQualityCheck
+}
+```
+
+**3 步自动化测试工作流**:
+
+AutomationEngineer 实现自动化测试工作流，包含以下 3 个 Actions（按顺序执行）：
+
+| 步骤 | Action | 说明 | 输出文件 |
+|------|--------|------|----------|
+| 1 | AutomationPlanning | 自动化测试拆解与评估 | AUTOMATION_PLAN.md |
+| 2 | AutomationExecution | 自动化用例实现与执行 | tests/automated_tests.md |
+| 3 | CoverageQualityCheck | 测试覆盖率与质量自检 | COVERAGE_REPORT.md, QUALITY_CHECK.md |
+
+**工作流程详解**:
+
+1. **AutomationPlanning（自动化测试规划）**
+   - 评估测试用例的自动化可行性
+   - 确定自动化优先级
+   - 选择合适的自动化技术
+
+2. **AutomationExecution（自动化测试执行）**
+   - 实现自动化测试用例
+   - 执行自动化测试
+   - 收集执行结果
+
+3. **CoverageQualityCheck（覆盖率与质量检查）**
+   - 分析测试覆盖率
+   - 进行质量自评
+   - 生成覆盖率报告和质量检查报告
+
+**监听机制**:
+- 监听 `ACTION_TEST_CASE_REVIEW` action（来自 QAEngineer）
+- 等待 QAEngineer 完成测试用例评审后触发
+- 使用 BY_ORDER 模式按顺序执行所有 3 个 Actions
+
+**输出产物**:
 - 自动化测试计划（AUTOMATION_PLAN.md）
+- 自动化测试结果（tests/automated_tests.md）
 - 覆盖率报告（COVERAGE_REPORT.md）
 - 质量检查报告（QUALITY_CHECK.md）
-- QA 结论报告（QA_CONCLUSION.md）
+
+**与 QAEngineer 的协作**:
+```
+QAEngineer                           AutomationEngineer
+    │                                      │
+    ├─ TestabilityReview                   │
+    ├─ WriteTestPlan                       │
+    ├─ WriteTest                           │
+    ├─ TestCaseReview ─────────────────────┤
+    │                                      ├─ AutomationPlanning
+    │                                      ├─ AutomationExecution
+    │                                      ├─ CoverageQualityCheck
+    ├─ QAConclusion ◄──────────────────────┘
+    │
+```
 
 ### 6. TeamLeader (团队领导)
 
@@ -553,10 +602,15 @@ class DataAnalyst extends Role {
   - Actions: WriteCode, ExecuteSubtask, RunCode, FixBug
   - 特殊: 重写 `act()` 方法，支持自动代码生成模式（`ENGINEER_AUTO_CODE`）
   
-✅ **QAEngineer** - 完整 QA 工作流执行
-  - 监听: `ACTION_WRITE_PRD`, `ACTION_WRITE_CODE` actions
-  - Actions: TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion
-  - 特殊: 使用 BY_ORDER 模式按顺序执行 8 步 QA 工作流
+✅ **QAEngineer** - 测试设计工作流执行
+  - 监听: `ACTION_WRITE_PRD`, `ACTION_WRITE_CODE`, `ACTION_COVERAGE_QUALITY_CHECK` actions
+  - Actions: TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, QAConclusion
+  - 特殊: 使用 BY_ORDER 模式按顺序执行 5 步测试设计工作流
+
+✅ **AutomationEngineer** - 自动化测试工作流执行
+  - 监听: `ACTION_TEST_CASE_REVIEW` action
+  - Actions: AutomationPlanning, AutomationExecution, CoverageQualityCheck
+  - 特殊: 使用 BY_ORDER 模式按顺序执行 3 步自动化测试工作流
   
 ✅ **TeamLeader** - 团队协调和任务分配
   - 监听: 无（不 watch 任何 action）
@@ -569,15 +623,20 @@ class DataAnalyst extends Role {
 
 ## 自定义角色开发
 
-**示例**:
+系统采用配置驱动的动态加载架构，添加新角色只需修改少量文件，无需改动核心业务代码。
+
+### 步骤 1: 创建角色类文件
+
+在 `backend/src/roles/` 目录下创建角色文件：
+
 ```typescript
-import { IRoleConfig } from '@mind2build/shared';
+// backend/src/roles/CustomRole.ts
+import { IRoleConfig, ACTION_SOME_ACTION } from '@mind2build/shared';
 import { Role } from './Role';
 import { Context } from '../core/context/Context';
 import { CustomAction } from '../actions/CustomAction';
-import { ACTION_SOME_ACTION } from '@mind2build/shared';
 
-class CustomRole extends Role {
+export class CustomRole extends Role {
     constructor(context: Context, name: string = 'CustomRole') {
         const config: IRoleConfig = {
             name,
@@ -601,14 +660,64 @@ class CustomRole extends Role {
     //     // Custom implementation
     // }
 }
+
+export default CustomRole;
 ```
 
-**注意事项**:
+### 步骤 2: 注册到 ROLE_REGISTRY
+
+修改 `backend/src/roles/index.ts`：
+
+```typescript
+// 添加 export
+export { CustomRole } from './CustomRole';
+
+// 在 ROLE_REGISTRY 中添加（这是唯一需要修改的代码文件）
+export const ROLE_REGISTRY: Record<string, new (context: Context, name?: string) => Role> = {
+  Salesperson,
+  ProductManager,
+  Architect,
+  ProjectManager,
+  Engineer,
+  QAEngineer,
+  AutomationEngineer,
+  TeamLeader,
+  DataAnalyst,
+  CustomRole,  // 添加新角色
+};
+```
+
+### 步骤 3: 运行数据库迁移
+
+```bash
+cd backend
+npx ts-node --transpile-only src/database/migrations/init_role_action_definitions.ts
+```
+
+迁移脚本会自动从 ROLE_REGISTRY 读取角色信息并更新数据库。
+
+### 注意事项
+
 - 所有角色都需要 `IRoleConfig` 配置对象，包含 `name`, `profile`, `goal`, `constraints`, `description`
 - 使用 `this.watch([...])` 来监听特定的 action（使用常量，如 `ACTION_WRITE_PRD`）
 - 使用 `this.setActions([...])` 来设置角色可执行的 actions
 - 可以重写 `act()` 方法来实现自定义的行为（如 ProjectManager, Engineer, TeamLeader）
 - 监听 `'User'` 消息类型时使用字符串字面量，监听 action 时使用常量
+- **核心文件零修改**: Controller、Service 等核心业务文件无需改动
+
+### 架构优势
+
+```
+┌─────────────────────────────────────────┐
+│  roles/index.ts (ROLE_REGISTRY)         │  ← 唯一需要修改的代码文件
+├─────────────────────────────────────────┤
+│  RoleActionFactory                      │  ← 自动从 REGISTRY 读取
+├─────────────────────────────────────────┤
+│  Database (role_definitions)            │  ← 元数据存储
+├─────────────────────────────────────────┤
+│  Controllers / Services                 │  ← 无需修改
+└─────────────────────────────────────────┘
+```
 
 ---
 
