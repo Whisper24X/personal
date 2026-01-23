@@ -239,33 +239,27 @@ export abstract class BaseAction {
 
   /**
    * Helper method for chat completion
+   * 支持双模式：根据配置自动选择 LLM 或 CLI 模式执行
    * @param messages - Chat messages
    */
   protected async acompletion(messages: any[]): Promise<any> {
     this.checkCancellation();
-    
-    const currentLLM = this.llm;
-    if (!currentLLM) {
-      throw new Error('LLM not available: Context not set for action');
-    }
-    
-    const logContext = this.getLogContext();
-    logger.info('BaseAction: Calling LLM acompletion', {
-      ...logContext,
-      messagesCount: messages.length,
+
+    // 从 messages 提取 prompt 和 system message
+    const systemMsg = messages.find(m => m.role === 'system')?.content;
+    const userMsg = messages.find(m => m.role === 'user')?.content || 
+                   messages[messages.length - 1]?.content || '';
+
+    const content = await this.execute(userMsg, {
+      systemPrompt: systemMsg,
+      workDir: this.getDefaultWorkDir(),
     });
-    
-    const result = await currentLLM.acompletion(messages, this.abortSignal);
-    
-    this.checkCancellation();
-    
-    logger.info('BaseAction: LLM acompletion completed', {
-      ...logContext,
-      contentLength: result.content?.length || 0,
-      usage: result.usage,
-    });
-    
-    return result;
+
+    // 包装成 completion 响应格式
+    return {
+      content,
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+    };
   }
 
   // ============================================
