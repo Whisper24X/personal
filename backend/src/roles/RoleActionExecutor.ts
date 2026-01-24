@@ -240,6 +240,32 @@ export class RoleActionExecutor {
     }
 
     /**
+     * Find document content from news or memory for Improve actions
+     * Same logic as prepareReviewInput, used as fallback when workspace file is empty
+     */
+    private findDocumentFromMessages(writeActionName: string): string | undefined {
+        const docMessage = this.rc.news.find((msg) => msg.causeBy === writeActionName);
+        if (docMessage) {
+            logger.info(`${this.profile} Improve: Found document content from news for fallback`, {
+                writeActionName,
+                docLength: docMessage.content.length,
+            });
+            return docMessage.content;
+        }
+
+        const docMessages = this.rc.memory.getByAction(writeActionName);
+        if (docMessages.length > 0) {
+            logger.info(`${this.profile} Improve: Found document content from memory for fallback`, {
+                writeActionName,
+                docLength: docMessages[docMessages.length - 1].content.length,
+            });
+            return docMessages[docMessages.length - 1].content;
+        }
+
+        return undefined;
+    }
+
+    /**
      * Execute action with appropriate parameters
      */
     private async executeAction(
@@ -291,6 +317,24 @@ export class RoleActionExecutor {
         const actionName = action.name;
 
         switch (actionName) {
+            // Improve actions: pass documentContent for fallback when workspace file is empty
+            case 'ImprovePRD':
+                return await (action as any).run(input, {
+                    ...workspaceOptions,
+                    documentContent: this.findDocumentFromMessages('WritePRD'),
+                });
+            case 'ImproveMRD':
+                return await (action as any).run(input, {
+                    ...workspaceOptions,
+                    documentContent: this.findDocumentFromMessages('WriteMRD'),
+                });
+            case 'ImproveDesign':
+                return await (action as any).run(input, {
+                    ...workspaceOptions,
+                    documentContent: this.findDocumentFromMessages('WriteDesign'),
+                });
+
+            // Other actions with options
             case 'WriteMRD':
             case 'WritePRD':
             case 'WriteDesign':
@@ -298,9 +342,6 @@ export class RoleActionExecutor {
             case 'WriteTest':
             case 'WriteTestPlan':
             case 'ExecuteSubtask':
-            case 'ImprovePRD':
-            case 'ImproveMRD':
-            case 'ImproveDesign':
             case 'MRDReview':
             case 'PRDReview':
             case 'DesignReview':

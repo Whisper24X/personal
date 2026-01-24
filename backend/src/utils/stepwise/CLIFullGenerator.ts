@@ -97,9 +97,18 @@ export class CLIFullGenerator extends BaseGenerator {
             actualContentLength: actualContent.length,
           });
         } else {
-          // 如果找不到实际文件，使用CLI输出作为回退
-          logger.warn('CLIFullGenerator: Could not find actual document in workspace, using CLI output', logContext);
-          finalContent = cliOutput.trim();
+          // 如果找不到实际文件，抛出明确错误而非静默回退到总结内容
+          // 这可以防止文档丢失的情况发生（如 DESIGN.md 为空）
+          logger.error('CLIFullGenerator: CLI returned summary but actual document not found in workspace', {
+            ...logContext,
+            expectedFile: `${this.config.workspaceDir}/${this.config.mainFileName}`,
+            cliOutputPreview: cliOutput.substring(0, 500),
+          });
+          throw new Error(
+            `CLI模式文档生成失败: CLI返回了操作总结，但在workspace中找不到实际文档。` +
+            `预期文件路径: ${this.config.workspaceDir}/${this.config.mainFileName}。` +
+            `CLI可能未能保存文件或保存到了错误的位置。`
+          );
         }
       } else {
         // LLM模式或CLI输出看起来是实际文档内容

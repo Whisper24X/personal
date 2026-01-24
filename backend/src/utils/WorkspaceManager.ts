@@ -270,6 +270,9 @@ export class WorkspaceManager {
     // 克隆或拉取最新模板项目（pullTemplate 内部会处理：未克隆则克隆，已克隆则 pull）
     await this.pullTemplate(options);
 
+    // 清理 CLI 误创建的无效文件（包含中文、Mermaid 语法等）
+    await this.cleanInvalidFiles(options);
+
     // 确保 docs 目录存在
     const docsDir = this.getDocsDir(options);
     await fs.mkdir(docsDir, { recursive: true });
@@ -674,5 +677,96 @@ export class WorkspaceManager {
       });
       throw error;
     }
+  }
+
+  // ============================================
+  // 清理无效文件方法
+  // ============================================
+
+  /**
+   * 清理 workspace 根目录下的无效文件
+   * CLI 可能误创建包含中文、特殊字符的文件，需要定期清理
+   * @param options workspace选项
+   * @returns 删除的文件数量
+   */
+  static async cleanInvalidFiles(options: WorkspaceOptions): Promise<number> {
+    const projectWorkspace = this.getProjectWorkspacePath(options);
+
+    try {
+      // 检查目录是否存在
+      try {
+        await fs.access(projectWorkspace);
+      } catch {
+        return 0;
+      }
+
+      const entries = await fs.readdir(projectWorkspace, { withFileTypes: true });
+      let cleanedCount = 0;
+
+      for (const entry of entries) {
+        // 只处理文件，不处理目录
+        if (!entry.isFile()) continue;
+
+        // 检查文件名是否无效
+        if (this.isInvalidFileName(entry.name)) {
+          const filePath = path.join(projectWorkspace, entry.name);
+          await fs.unlink(filePath);
+          cleanedCount++;
+          logger.info('WorkspaceManager: Cleaned invalid file', {
+            filename: entry.name,
+            projectWorkspace,
+          });
+        }
+      }
+
+      if (cleanedCount > 0) {
+        logger.info('WorkspaceManager: Cleaned invalid files', {
+          cleanedCount,
+          projectWorkspace,
+        });
+      }
+
+      return cleanedCount;
+    } catch (error: any) {
+      logger.warn('WorkspaceManager: Failed to clean invalid files', {
+        error: error.message,
+        projectWorkspace,
+      });
+      return 0;
+    }
+  }
+
+  /**
+   * 检查文件名是否无效（应该被清理）
+   * @param filename 文件名
+   * @returns 是否是无效文件名
+   */
+  private static isInvalidFileName(filename: string): boolean {
+    // 白名单：合法的文件名模式
+    const validPatterns = [
+      /^\./, // 隐藏文件（.gitignore 等）
+      /^[A-Za-z0-9_-]+\.(md|json|yaml|yml|toml|txt|sh|js|ts|cjs|mjs)$/, // 常规文件
+      /^Makefile$/, // Makefile
+      /^README/, // README 文件
+      /^AGENTS/, // AGENTS 文件
+      /^LICENSE/, // LICENSE 文件
+      /^CHANGELOG/, // CHANGELOG 文件
+    ];
+
+    // 如果匹配任何白名单模式，则是合法文件
+    if (validPatterns.some(pattern => pattern.test(filename))) {
+      return false;
+    }
+
+    // 无效文件特征
+    const invalidPatterns = [
+      /[\u4e00-\u9fa5]/, // 包含中文字符
+      /：/, // 包含全角冒号
+      /[\[\]{}()]/, // 包含 Mermaid 语法括号
+      /-->/, // 包含 Mermaid 箭头
+    ];
+
+    // 如果匹配任何无效模式，则需要清理
+    return invalidPatterns.some(pattern => pattern.test(filename));
   }
 }

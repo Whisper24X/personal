@@ -3,15 +3,14 @@
  * Generates Product Requirements Document from user idea
  *
  * 工作流程：
- * 1) 从 workspace 读取 MRD.md（需要 applicationId；失败或不存在则回退到 input）。
- * 2) 构造生成输入：RAG 模式下合并 MRD + 检索片段，否则仅使用 MRD。
- * 3) 选择生成路径：
- *    - 新建且启用分步：走 StepwiseDocumentGenerator（目录 -> 章节生成）。
- *    - 其他情况：走一次性生成（new/update、RAG/标准 prompt）。
- * 4) 加载系统提示词：生成用 system_prompt。
- * 5) 调用模型生成 PRD 各章节内容，保存到 workspace/PRD/ 目录。
- * 6) 返回章节文件列表信息，由 PRDReview 负责后续的审核和合并。
- * 7) 处理超时与错误：超时抛出更友好的提示，其余错误直接上抛。
+ * 1) CLI模式：使用 DocumentWriteHandler 直接生成（只传MRD文件夹路径）
+ * 2) LLM模式：
+ *    - 从 workspace 读取 MRD.md（需要 applicationId；失败或不存在则回退到 input）
+ *    - 构造生成输入：RAG 模式下合并 MRD + 检索片段，否则仅使用 MRD
+ *    - 选择生成路径：新建且启用分步走 StepwiseDocumentGenerator，其他走一次性生成
+ * 3) 加载系统提示词：生成用 system_prompt
+ * 4) 调用模型生成 PRD 各章节内容，保存到 workspace/PRD/ 目录
+ * 5) 返回章节文件列表信息，由 PRDReview 负责后续的审核和合并
  */
 
 import { BaseAction } from '../core/base/BaseAction';
@@ -25,10 +24,13 @@ import {
   buildPRDOutlinePrompt,
   buildPRDSectionPrompt,
 } from '../prompts/prd';
-import { logger, loadPrompt } from '../utils';
-// Review和ImproveDocument已移除，由角色通过消息机制管理
+import { logger } from '../utils';
 import { StepwiseDocumentGenerator } from '../utils/stepwise';
-import { WorkspaceManager } from '../utils/WorkspaceManager';
+import {
+  DocumentWriteHandler,
+  DOCUMENT_CONFIGS,
+  WriteConfig,
+} from '../utils/document';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -50,71 +52,72 @@ export class WritePRD extends BaseAction {
     super('WritePRD', 'Generate Product Requirements Document from user idea');
   }
 
+  /**
+   * 创建 WriteHandler
+   */
+  private async createWriteHandler(): Promise<DocumentWriteHandler> {
+    const systemPrompt = await this.loadSystemPrompt('prd', 'system_prompt', PRD_SYSTEM_PROMPT);
+
+    const config: WriteConfig = {
+      ...DOCUMENT_CONFIGS.PRD,
+      buildWritePrompt: buildPRDPrompt,
+      systemPrompt,
+    };
+
+    return new DocumentWriteHandler(this, config);
+  }
+
   async run(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
     const mode = options?.mode || 'new';
     const useRAG = options?.useRAG || false;
     const useStepwise = options?.useStepwiseGeneration ?? true; // 默认启用分步骤生成
 
-    // 优先从 workspace 读取 MRD.md 文件作为输入
-    let mrdContent = input;
+    // 使用 BaseAction 提供的验证方法
+    const workspaceOptions = this.validateWorkspaceOptions(options, 'PRD');
+    const { applicationId, projectId } = workspaceOptions;
+
+    const isCLIMode = this.isCLIMode();
+
+    logger.info('WritePRD: Starting PRD generation', {
+      applicationId,
+      projectId,
+      mode,
+      useRAG,
+      useStepwise,
+      isCLIMode,
+      hasHistoryPRD: !!options?.historyPRD,
+      hasRelevantChunks: !!options?.relevantChunks,
+      inputLength: input.length,
+    });
+
     try {
-      // applicationId 和 projectId 必须提供，不能使用 'default'
-      const applicationId = options?.applicationId || (this.context?.get('applicationId') as string | undefined);
-      const projectId = options?.projectId || (this.context?.get('projectId') as string | undefined);
-      if (!applicationId) {
-        throw new Error('applicationId is required for WritePRD action. Cannot use "default" to prevent file conflicts between different applications.');
-      }
-      if (!projectId) {
-        throw new Error('projectId is required for WritePRD action. Cannot use "default" to prevent file conflicts between different projects.');
+      // CLI模式：使用 BaseAction 封装的执行方法
+      // 不使用 StepwiseDocumentGenerator
+      if (isCLIMode && mode === 'new' && !options?.historyPRD) {
+        const handler = await this.getCachedHandler('write', () => this.createWriteHandler());
+        return await this.executeWriteHandler(handler, '', workspaceOptions, {
+          type: 'prd',
+          mode,
+        });
       }
 
-      const mrdFromWorkspace = await WorkspaceManager.readFile('MRD.md', {
-        applicationId,
-        projectId,
-        documentType: 'MRD',
-      });
-
+      // LLM模式：从 workspace 读取 MRD.md 文件作为输入
+      let mrdContent = input;
+      const mrdFromWorkspace = await this.loadDocumentFromWorkspace('MRD.md', workspaceOptions, 'MRD');
       if (mrdFromWorkspace) {
         mrdContent = mrdFromWorkspace;
-        logger.info('WritePRD: Loaded MRD content from workspace', {
-          applicationId,
-          projectId,
-          contentLength: mrdContent.length,
-        });
       } else {
         logger.info('WritePRD: MRD.md not found in workspace, using input from message', {
           inputLength: input.length,
         });
       }
-    } catch (error: any) {
-      logger.warn('WritePRD: Failed to read MRD.md from workspace, using input from message', {
-        error: error.message,
-        inputLength: input.length,
-      });
-      // 如果读取失败，使用传入的 input
-    }
 
-    logger.info('WritePRD: Starting PRD generation', {
-      applicationId: options?.applicationId || (this.context?.get('applicationId') as string | undefined),
-      projectId: options?.projectId || (this.context?.get('projectId') as string | undefined),
-      mode,
-      useRAG,
-      useStepwise,
-      hasHistoryPRD: !!options?.historyPRD,
-      hasRelevantChunks: !!options?.relevantChunks,
-      requestTimeout: process.env.REQUEST_TIMEOUT || '300',
-      inputLength: input.length,
-      mrdContentLength: mrdContent.length,
-      usingWorkspaceMRD: mrdContent !== input,
-    });
-
-    try {
       const ragQuery = input && input.trim().length > 0 ? input : mrdContent;
       const stepwiseInput = useRAG && options?.relevantChunks
         ? `${mrdContent}\n\n【相关历史PRD参考信息】\n${options.relevantChunks}`
         : mrdContent;
 
-      // 如果启用分步骤生成且是新模式，使用分步骤生成
+      // LLM模式：如果启用分步骤生成且是新模式，使用分步骤生成
       if (useStepwise && mode === 'new' && !options?.historyPRD) {
         return await this.generateStepwise(stepwiseInput, options);
       }
@@ -152,8 +155,7 @@ export class WritePRD extends BaseAction {
       }
 
       // Load system prompt from database or use default
-      const userId = this.context?.get('userId');
-      const systemPrompt = await loadPrompt(userId, 'prd', 'system_prompt', PRD_SYSTEM_PROMPT);
+      const systemPrompt = await this.loadSystemPrompt('prd', 'system_prompt', PRD_SYSTEM_PROMPT);
 
       // Call LLM with system message and prompt
       const prdContent = await this.aask(prompt, [systemPrompt]);
@@ -190,16 +192,12 @@ export class WritePRD extends BaseAction {
       }
 
       // 确保返回的是完整的PRD内容，而不是监控检测信息
-      return {
-        content: finalContent,
-        data: {
-          type: 'prd',
-          filename: 'PRD.md',
-          timestamp: new Date().toISOString(),
-          mode,
-          workspaceDir: this.getWorkspaceDir({ ...options, documentType: 'PRD' }),
-        },
-      };
+      return this.createActionOutput(finalContent, {
+        type: 'prd',
+        filename: 'PRD.md',
+        mode,
+        workspaceDir: this.getWorkspaceDir(workspaceOptions),
+      });
     } catch (error: any) {
       const isTimeout = error.message?.includes('timeout') || error.message?.includes('exceeded');
 
@@ -317,8 +315,7 @@ export class WritePRD extends BaseAction {
     const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'PRD' });
 
     // Load system prompt from database or use default
-    const userId = this.context?.get('userId');
-    const systemPrompt = await loadPrompt(userId, 'prd', 'system_prompt', PRD_SYSTEM_PROMPT);
+    const systemPrompt = await this.loadSystemPrompt('prd', 'system_prompt', PRD_SYSTEM_PROMPT);
 
     // Get role from context (if available)
     const role = (this as any).role?.profile || undefined;

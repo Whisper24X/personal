@@ -3,11 +3,10 @@
  * Reviews PRD document for completeness and quality
  *
  * 工作流程：
- * 1) 从 workspace 读取各章节文件
- * 2) 分章节审核，生成各章节的审核结果
- * 3) 合并所有章节为 PRD.md
- * 4) 对合并后的完整 PRD 进行整体审核
- * 5) 生成综合审核报告并保存
+ * 1) CLI模式：使用 DocumentReviewHandler 直接审核完整文档
+ * 2) LLM模式：分章节审核，合并后进行整体审核
+ * 
+ * 使用 DocumentReviewHandler 统一处理 CLI 模式逻辑
  */
 
 import { BaseAction } from '../core/base/BaseAction';
@@ -18,8 +17,14 @@ import {
   buildPRDSectionReviewPrompt,
   buildPRDFullReviewPrompt,
 } from '../prompts/prd';
-import { logger, loadPrompt, WorkspaceOptions } from '../utils';
-import { buildCLISaveInstruction } from '../utils/stepwise';
+import { logger, WorkspaceOptions } from '../utils';
+import {
+  DocumentReviewHandler,
+  DOCUMENT_CONFIGS,
+  ReviewConfig,
+  isReviewPassed,
+  extractOutline,
+} from '../utils/document';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -47,26 +52,26 @@ export class PRDReview extends BaseAction {
     super('PRDReview', 'Review PRD document for completeness and quality');
   }
 
-  async run(prdContent: string, options?: PRDReviewOptions): Promise<IActionOutput> {
-    // 尝试从 options 或 context 中获取 workspace 参数
-    const applicationId = options?.applicationId || (this.context?.get('applicationId') as string | undefined);
-    const projectId = options?.projectId || (this.context?.get('projectId') as string | undefined);
-    const version = options?.version || (this.context?.get('version') as number | undefined) || 1;
+  /**
+   * 创建 ReviewHandler
+   */
+  private async createReviewHandler(): Promise<DocumentReviewHandler> {
+    const systemPrompt = await this.loadSystemPrompt('prd', 'review_system_prompt', PRD_REVIEW_SYSTEM_PROMPT);
 
-    if (!applicationId) {
-      throw new Error('applicationId is required for PRDReview action.');
-    }
-    if (!projectId) {
-      throw new Error('projectId is required for PRDReview action.');
-    }
-
-    const workspaceOptions: WorkspaceOptions = {
-      applicationId,
-      projectId,
-      version,
-      documentType: 'PRD',
-      workspacePath: options?.workspacePath,
+    const config: ReviewConfig = {
+      ...DOCUMENT_CONFIGS.PRD,
+      buildReviewPrompt: buildPRDFullReviewPrompt,
+      systemPrompt,
+      extractOutline: (content: string) => this.extractOutlineFromContent(content),
     };
+
+    return new DocumentReviewHandler(this, config);
+  }
+
+  async run(prdContent: string, options?: PRDReviewOptions): Promise<IActionOutput> {
+    // 使用 BaseAction 提供的验证方法
+    const workspaceOptions = this.validateWorkspaceOptions(options, 'PRD');
+    const { applicationId, projectId, version } = workspaceOptions;
 
     // 检查是否为CLI模式
     const isCLIMode = this.isCLIMode();
@@ -81,28 +86,16 @@ export class PRDReview extends BaseAction {
     });
 
     try {
-      // CLI模式下直接审核完整文档，不分章节
+      // CLI模式：使用 BaseAction 封装的执行方法
       if (isCLIMode) {
-        logger.info('PRDReview: CLI mode detected, using full document review', {
-          applicationId,
-          projectId,
+        const handler = await this.getCachedHandler('review', () => this.createReviewHandler());
+        return await this.executeReviewHandler(handler, prdContent, {
+          ...workspaceOptions,
+          outline: options?.outline,
+        }, {
+          type: 'prd_review',
+          filename: 'PRD_REVIEW.md',
         });
-
-        // 读取完整的 PRD.md
-        let actualPRDContent = prdContent;
-        if (!prdContent || prdContent.trim().length < 100) {
-          const prdFromWorkspace = await this.readWorkspaceFile('PRD.md', workspaceOptions);
-          if (prdFromWorkspace) {
-            actualPRDContent = prdFromWorkspace;
-          }
-        }
-
-        if (!actualPRDContent || actualPRDContent.trim().length === 0) {
-          throw new Error('Cannot find PRD content for review. Please generate PRD first.');
-        }
-
-        // CLI模式：直接审核完整文档
-        return await this.reviewFullDocumentOnly(actualPRDContent, options, workspaceOptions);
       }
 
       // LLM模式：尝试读取章节文件进行分章节审核
@@ -163,25 +156,21 @@ export class PRDReview extends BaseAction {
       await this.saveToWorkspace('PRD_REVIEW.md', finalReport, workspaceOptions);
 
       // 判断是否通过
-      const passed = this.isReviewPassed(finalReport);
+      const passed = isReviewPassed(finalReport);
 
       logger.info('PRDReview: Review workflow completed', {
         finalReportLength: finalReport.length,
         passed,
       });
 
-      return {
-        content: finalReport,
-        data: {
-          type: 'prd_review',
-          filename: 'PRD_REVIEW.md',
-          timestamp: new Date().toISOString(),
-          passed,
-          sectionReviewCount: sectionReviews.length,
-          sectionPassedCount: sectionReviews.filter(r => r.passed).length,
-          workspaceDir: this.getWorkspaceDir(workspaceOptions),
-        },
-      };
+      return this.createActionOutput(finalReport, {
+        type: 'prd_review',
+        filename: 'PRD_REVIEW.md',
+        passed,
+        sectionReviewCount: sectionReviews.length,
+        sectionPassedCount: sectionReviews.filter(r => r.passed).length,
+        workspaceDir: this.getWorkspaceDir(workspaceOptions),
+      });
     } catch (error: any) {
       logger.error('PRDReview: Failed to review PRD', {
         error: error.message,
@@ -274,8 +263,7 @@ export class PRDReview extends BaseAction {
     options: WorkspaceOptions
   ): Promise<SectionReview[]> {
     const reviews: SectionReview[] = [];
-    const userId = this.context?.get('userId');
-    const systemPrompt = await loadPrompt(userId, 'prd', 'review_system_prompt', PRD_REVIEW_SYSTEM_PROMPT);
+    const systemPrompt = await this.loadSystemPrompt('prd', 'review_system_prompt', PRD_REVIEW_SYSTEM_PROMPT);
 
     for (const section of sections) {
       // 检查是否已存在审核文件，如果存在则跳过审核
@@ -383,28 +371,16 @@ export class PRDReview extends BaseAction {
   private async reviewFullDocument(
     prdContent: string,
     outline: string,
-    workspaceOptions: WorkspaceOptions
+    _workspaceOptions: WorkspaceOptions
   ): Promise<string> {
-    const userId = this.context?.get('userId');
-    const systemPrompt = await loadPrompt(userId, 'prd', 'review_system_prompt', PRD_REVIEW_SYSTEM_PROMPT);
+    const systemPrompt = await this.loadSystemPrompt('prd', 'review_system_prompt', PRD_REVIEW_SYSTEM_PROMPT);
 
     logger.info('PRDReview: Reviewing full document (cross-section consistency check)', {
       contentLength: prdContent.length,
     });
 
     // 使用专门的整体审核提示词，侧重于跨章节一致性和整体连贯性
-    let prompt = buildPRDFullReviewPrompt(prdContent, outline);
-    
-    // CLI 模式下，在 prompt 中指定文件保存路径和限制指令
-    const isCLIMode = this.isCLIMode();
-    if (isCLIMode && workspaceOptions.applicationId) {
-      const savePath = `${this.getWorkspaceDir(workspaceOptions)}/PRD_REVIEW.md`;
-      const saveInstruction = buildCLISaveInstruction(savePath, '审核报告');
-      prompt += saveInstruction;
-      
-      logger.info('PRDReview: Added CLI save path instruction', { savePath });
-    }
-    
+    const prompt = buildPRDFullReviewPrompt(prdContent, outline);
     const reviewResult = await this.aask(prompt, [systemPrompt]);
 
     logger.info('PRDReview: Full document review completed', {
@@ -456,7 +432,7 @@ export class PRDReview extends BaseAction {
 
     // 总结
     parts.push('\n## 四、审核总结\n');
-    const overallPassed = this.isReviewPassed(fullReview);
+    const overallPassed = isReviewPassed(fullReview);
     if (overallPassed) {
       parts.push('**审核结论**: ✅ 通过\n');
       parts.push('PRD 文档整体质量良好，可以进入下一阶段。');
@@ -485,26 +461,6 @@ export class PRDReview extends BaseAction {
   }
 
   /**
-   * 判断整体审核是否通过
-   */
-  private isReviewPassed(reviewContent: string): boolean {
-    // 检查审核结论部分
-    const conclusionMatch = reviewContent.match(/##\s*\d*\.?\s*审查?结论[\s\S]*?(通过|需要改进|不通过)/i);
-    if (conclusionMatch) {
-      const conclusion = conclusionMatch[1];
-      return conclusion === '通过';
-    }
-    
-    // 检查是否有明确的通过标识
-    if (reviewContent.includes('✅ 通过') && !reviewContent.includes('❌')) {
-      return true;
-    }
-    
-    // 默认需要改进
-    return false;
-  }
-
-  /**
    * 向后兼容：只审核完整文档（当没有章节文件时）
    */
   private async reviewFullDocumentOnly(
@@ -525,44 +481,30 @@ export class PRDReview extends BaseAction {
     // 保存审核报告
     await this.saveToWorkspace('PRD_REVIEW.md', fullReview, workspaceOptions);
 
-    const passed = this.isReviewPassed(fullReview);
+    const passed = isReviewPassed(fullReview);
 
-    return {
-      content: fullReview,
-      data: {
-        type: 'prd_review',
-        filename: 'PRD_REVIEW.md',
-        timestamp: new Date().toISOString(),
-        passed,
-        legacyMode: true,
-        workspaceDir: this.getWorkspaceDir(workspaceOptions),
-      },
-    };
+    return this.createActionOutput(fullReview, {
+      type: 'prd_review',
+      filename: 'PRD_REVIEW.md',
+      passed,
+      legacyMode: true,
+      workspaceDir: this.getWorkspaceDir(workspaceOptions),
+    });
   }
 
   /**
    * Build expected outline from PRD template
    */
   private buildExpectedOutline(): string {
-    return this.extractOutline(PRD_TEMPLATE);
+    return this.extractOutlineFromContent(PRD_TEMPLATE);
   }
 
   /**
    * Extract outline from PRD content
    */
-  private extractOutline(prdContent: string): string {
-    const lines = prdContent.split('\n');
-    const outline: string[] = [];
-    
-    for (const line of lines) {
-      // Match ## X. Title format
-      const match = line.match(/^##\s+(\d+)\.\s+(.+)$/);
-      if (match) {
-        outline.push(line);
-      }
-    }
-
-    return outline.join('\n') || '## 0. 基本信息\n## 1. 背景与目标\n## 2. 范围\n## 3. 用户与场景\n## 4. 核心流程\n## 5. 功能与交互\n## 6. 业务规则与数据口径\n## 7. 权限与安全\n## 8. 异常与边界\n## 9. 埋点与观测\n## 10. 验收标准\n## 11. 角色关注块（按需展开）';
+  private extractOutlineFromContent(prdContent: string): string {
+    const outline = extractOutline(prdContent);
+    return outline || '## 0. 基本信息\n## 1. 背景与目标\n## 2. 范围\n## 3. 用户与场景\n## 4. 核心流程\n## 5. 功能与交互\n## 6. 业务规则与数据口径\n## 7. 权限与安全\n## 8. 异常与边界\n## 9. 埋点与观测\n## 10. 验收标准\n## 11. 角色关注块（按需展开）';
   }
 }
 

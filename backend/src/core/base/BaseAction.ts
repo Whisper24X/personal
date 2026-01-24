@@ -10,7 +10,7 @@
 import { IActionOutput, ActionStatus } from '@mind2build/shared';
 import { WorkspaceManager, WorkspaceOptions } from '../../utils/WorkspaceManager';
 import { Context } from '../context/Context';
-import { logger } from '../../utils';
+import { logger, loadPrompt } from '../../utils';
 import {
   ExecutorMode,
   ExecutorOptions,
@@ -18,6 +18,17 @@ import {
   CLIProviderConfig,
 } from '../../executors/types';
 import { CLIExecutor } from '../../executors/CLIExecutor';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+// Handler types for mode encapsulation
+import type {
+  ReviewOptions,
+  ReviewResult,
+  ImproveOptions,
+  ImproveResult,
+  WriteOptions,
+  WriteResult,
+} from '../../utils/document/types';
 
 export abstract class BaseAction {
   name: string;
@@ -38,6 +49,9 @@ export abstract class BaseAction {
 
   // Role instance (set by Role.setActions)
   protected role?: any;
+
+  // Handler cache for lazy initialization
+  private _handlerCache: Map<string, any> = new Map();
 
   constructor(name?: string, description?: string) {
     this.name = name || this.constructor.name;
@@ -592,6 +606,287 @@ export abstract class BaseAction {
     filter?: (filename: string) => boolean
   ): Promise<string[]> {
     return WorkspaceManager.listFiles(options, filter);
+  }
+
+  // ============================================
+  // 通用工具方法（减少子类重复代码）
+  // ============================================
+
+  /**
+   * 验证并构建 WorkspaceOptions
+   * 从 options 和 context 中提取 applicationId/projectId/version
+   * @param options 可选的部分 WorkspaceOptions
+   * @param documentType 可选的文档类型覆盖
+   * @throws Error 如果缺少必需参数 applicationId 或 projectId
+   * @returns 完整的 WorkspaceOptions
+   */
+  protected validateWorkspaceOptions(
+    options?: Partial<WorkspaceOptions>,
+    documentType?: string
+  ): WorkspaceOptions {
+    const applicationId = options?.applicationId || (this.context?.get('applicationId') as string | undefined);
+    const projectId = options?.projectId || (this.context?.get('projectId') as string | undefined);
+    const version = options?.version || (this.context?.get('version') as number | undefined) || 1;
+
+    if (!applicationId) {
+      throw new Error(`applicationId is required for ${this.name} action.`);
+    }
+    if (!projectId) {
+      throw new Error(`projectId is required for ${this.name} action.`);
+    }
+
+    return {
+      applicationId,
+      projectId,
+      version,
+      documentType: documentType || options?.documentType,
+      workspacePath: options?.workspacePath,
+    };
+  }
+
+  /**
+   * 加载系统提示词（带用户定制支持）
+   * @param domain 域，如 'prd', 'design', 'test', 'mrd'
+   * @param promptType 提示词类型，如 'system_prompt', 'review_system_prompt'
+   * @param defaultPrompt 默认提示词（当数据库中没有定制时使用）
+   * @returns 系统提示词
+   */
+  protected async loadSystemPrompt(
+    domain: string,
+    promptType: string,
+    defaultPrompt: string
+  ): Promise<string> {
+    const userId = this.context?.get('userId');
+    return loadPrompt(userId, domain, promptType, defaultPrompt);
+  }
+
+  /**
+   * 从 workspace 读取指定类型的文档
+   * @param filename 文件名，如 'PRD.md', 'DESIGN.md'
+   * @param options workspace 选项
+   * @param documentType 覆盖文档类型（可选）
+   * @returns 文档内容，如果文件不存在或读取失败则返回空字符串
+   */
+  protected async loadDocumentFromWorkspace(
+    filename: string,
+    options: WorkspaceOptions,
+    documentType?: string
+  ): Promise<string> {
+    try {
+      const content = await this.readWorkspaceFile(filename, {
+        ...options,
+        documentType: documentType || options.documentType,
+      });
+      if (content) {
+        logger.info(`${this.name}: Loaded ${filename} from workspace`, {
+          contentLength: content.length,
+        });
+        return content;
+      }
+    } catch (error: any) {
+      logger.warn(`${this.name}: Failed to read ${filename} from workspace`, {
+        error: error.message,
+      });
+    }
+    return '';
+  }
+
+  /**
+   * 从 workspace 读取所有代码文件
+   * 支持的文件扩展名：.ts, .js, .tsx, .jsx, .py, .java, .go, .rs, .cpp, .c
+   * @param options workspace 选项
+   * @returns 合并后的代码内容，每个文件以 "// File: filename" 开头
+   */
+  protected async loadCodeFilesFromWorkspace(
+    options: WorkspaceOptions
+  ): Promise<string> {
+    const codeFileExtensions = ['.ts', '.js', '.tsx', '.jsx', '.py', '.java', '.go', '.rs', '.cpp', '.c'];
+    
+    try {
+      const workspaceDir = this.getWorkspaceDir({
+        ...options,
+        documentType: 'CODE',
+      });
+
+      // 检查目录是否存在
+      try {
+        await fs.access(workspaceDir);
+      } catch {
+        logger.warn(`${this.name}: Code workspace directory does not exist`, {
+          workspaceDir,
+        });
+        return '';
+      }
+
+      const entries = await fs.readdir(workspaceDir, { withFileTypes: true });
+      const codeEntries = entries
+        .filter(entry => entry.isFile() && codeFileExtensions.some(ext => entry.name.endsWith(ext)))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      const codeFiles: string[] = [];
+      for (const entry of codeEntries) {
+        const filePath = path.join(workspaceDir, entry.name);
+        const content = await fs.readFile(filePath, 'utf-8');
+        codeFiles.push(`// File: ${entry.name}\n${content}`);
+      }
+
+      const mergedCode = codeFiles.join('\n\n---\n\n');
+      
+      if (codeEntries.length > 0) {
+        logger.info(`${this.name}: Read ${codeEntries.length} code files from workspace`, {
+          workspaceDir,
+          fileCount: codeEntries.length,
+          totalLength: mergedCode.length,
+        });
+      }
+      
+      return mergedCode;
+    } catch (error: any) {
+      logger.warn(`${this.name}: Failed to read code files from workspace`, {
+        error: error.message,
+      });
+      return '';
+    }
+  }
+
+  /**
+   * 创建标准化的 Action 输出
+   * 自动添加 timestamp 字段
+   * @param content 输出内容
+   * @param data 输出数据，必须包含 type 和 filename
+   * @returns 标准化的 IActionOutput
+   */
+  protected createActionOutput(
+    content: string,
+    data: {
+      type: string;
+      filename: string;
+      workspaceDir?: string;
+      passed?: boolean;
+      [key: string]: any;
+    }
+  ): IActionOutput {
+    return {
+      content,
+      data: {
+        ...data,
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
+  // ============================================
+  // Handler 模式封装方法（统一 CLI/LLM 模式处理）
+  // ============================================
+
+  /**
+   * 获取 Handler 选项，自动添加 useFilePath
+   * 根据当前执行模式自动设置 useFilePath 参数
+   * @param options 原始选项
+   * @returns 带有 useFilePath 的选项
+   */
+  protected getHandlerOptions<T extends WorkspaceOptions>(options: T): T & { useFilePath: boolean } {
+    return {
+      ...options,
+      useFilePath: this.isCLIMode(),
+    };
+  }
+
+  /**
+   * 获取缓存的 Handler 实例
+   * 使用 Map 管理多个 handler 实例的缓存，支持延迟初始化
+   * @param key 缓存键名，如 'review', 'improve', 'write'
+   * @param initializer Handler 初始化函数
+   * @returns Handler 实例
+   */
+  protected async getCachedHandler<T>(
+    key: string,
+    initializer: () => Promise<T>
+  ): Promise<T> {
+    if (this._handlerCache.has(key)) {
+      return this._handlerCache.get(key) as T;
+    }
+    const handler = await initializer();
+    this._handlerCache.set(key, handler);
+    return handler;
+  }
+
+  /**
+   * 执行 Review Handler 并创建标准输出
+   * 封装 DocumentReviewHandler 的执行流程
+   * @param handler ReviewHandler 实例
+   * @param content 文档内容
+   * @param options Review 选项
+   * @param outputConfig 输出配置
+   * @returns 标准化的 Action 输出
+   */
+  protected async executeReviewHandler(
+    handler: { execute: (content: string, options: ReviewOptions) => Promise<ReviewResult> },
+    content: string,
+    options: ReviewOptions,
+    outputConfig: { type: string; filename: string; [key: string]: any }
+  ): Promise<IActionOutput> {
+    const handlerOptions = this.getHandlerOptions(options);
+    const { reviewResult, passed } = await handler.execute(content, handlerOptions);
+    
+    return this.createActionOutput(reviewResult, {
+      ...outputConfig,
+      passed,
+      workspaceDir: this.getWorkspaceDir(options),
+    });
+  }
+
+  /**
+   * 执行 Improve Handler 并创建标准输出
+   * 封装 DocumentImproveHandler 的执行流程
+   * @param handler ImproveHandler 实例
+   * @param input 输入内容
+   * @param options Improve 选项
+   * @param outputConfig 输出配置
+   * @returns 标准化的 Action 输出
+   */
+  protected async executeImproveHandler(
+    handler: { execute: (input: string, options: ImproveOptions) => Promise<ImproveResult> },
+    input: string,
+    options: ImproveOptions,
+    outputConfig: { type: string; filename: string; documentType: string; [key: string]: any }
+  ): Promise<IActionOutput> {
+    const handlerOptions = this.getHandlerOptions(options);
+    const result = await handler.execute(input, handlerOptions);
+    
+    return this.createActionOutput(result.content, {
+      ...outputConfig,
+      improvedSectionCount: result.improvedSectionCount,
+      totalSectionCount: result.totalSectionCount,
+      hasImprovement: result.improvedSectionCount > 0,
+      needsReReview: result.needsReReview,
+      workspaceDir: this.getWorkspaceDir(options),
+    });
+  }
+
+  /**
+   * 执行 Write Handler 并创建标准输出
+   * 封装 DocumentWriteHandler 的执行流程
+   * @param handler WriteHandler 实例
+   * @param input 输入内容
+   * @param options Write 选项
+   * @param outputConfig 输出配置
+   * @returns 标准化的 Action 输出
+   */
+  protected async executeWriteHandler(
+    handler: { execute: (input: string, options: WriteOptions) => Promise<WriteResult> },
+    input: string,
+    options: WriteOptions,
+    outputConfig: { type: string; [key: string]: any }
+  ): Promise<IActionOutput> {
+    const handlerOptions = this.getHandlerOptions(options);
+    const result = await handler.execute(input, handlerOptions);
+    
+    return this.createActionOutput(result.content, {
+      ...outputConfig,
+      filename: result.filename,
+      workspaceDir: result.workspaceDir,
+    });
   }
 
   /**

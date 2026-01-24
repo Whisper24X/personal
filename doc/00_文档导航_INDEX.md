@@ -301,11 +301,12 @@
 
 ## 📝 文档维护
 
-- **当前版本**: v1.5
-- **最后更新**: 2026-01-21
+- **当前版本**: v1.6
+- **最后更新**: 2026-01-25
 - **维护状态**: 活跃维护中
 
 ### 更新日志
+- 2026-01-25: 新增CLI知识库设计方案文档（31），提供基于CLI模式的知识库实现方案，支持通过CLI工具读取和分析历史代码和文档，为MRD/PRD生成提供上下文，无需依赖RAG向量数据库
 - 2026-01-21: 全面更新文档与代码同步：
   - 更新行动系统设计文档（07），添加 12 个新 Actions（WriteTestPlan、TestabilityReview、TestCaseReview、TestReview、ImproveTest、AutomationPlanning、AutomationExecution、CoverageQualityCheck、QAConclusion、RunCode、FixBug、ImproveDesign），移除不存在的 GenerateTask，更新 ImproveDocument 为独立的 ImprovePRD/ImproveMRD/ImproveDesign
   - 更新角色系统设计文档（06），完善 QAEngineer 角色的 9 步 QA 工作流说明

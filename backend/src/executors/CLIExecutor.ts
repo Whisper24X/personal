@@ -8,6 +8,10 @@
 import { IExecutor, ExecutorMode, ExecutorOptions, CLIProviderType, CLIProviderConfig } from './types';
 import { CLIProviderFactory } from './cli/CLIProviderFactory';
 import { logger } from '../utils/logger';
+import { v4 as uuidv4 } from 'uuid';
+
+// 全局执行计数器，用于诊断重复执行
+let globalExecutionCounter = 0;
 
 /**
  * CLI 执行器配置
@@ -64,15 +68,26 @@ export class CLIExecutor implements IExecutor {
     const startTime = Date.now();
     const providerType = this.config.providerType || 'cursor';
 
+    // 诊断信息：生成唯一执行ID和获取调用栈
+    const executionId = uuidv4().substring(0, 8);
+    globalExecutionCounter++;
+    const callStack = new Error().stack?.split('\n').slice(2, 8).join('\n') || 'unknown';
+
     const logContext = {
       mode: 'cli',
       provider: providerType,
       workDir,
       promptLength: prompt.length,
       hasSystemPrompt: !!options?.systemPrompt,
+      executionId,
+      globalExecutionCount: globalExecutionCounter,
     };
 
     logger.info('CLIExecutor: Starting execution', logContext);
+    logger.debug('CLIExecutor: Call stack for diagnostic', {
+      executionId,
+      callStack,
+    });
 
     try {
       // 获取 CLI 提供商
@@ -120,6 +135,12 @@ export class CLIExecutor implements IExecutor {
         });
       }
 
+      logger.debug('CLIExecutor: Execution finished', {
+        executionId,
+        globalExecutionCount: globalExecutionCounter,
+        success: result.exitCode === 0,
+      });
+
       return result.output;
     } catch (error: any) {
       const executionTime = Date.now() - startTime;
@@ -128,6 +149,7 @@ export class CLIExecutor implements IExecutor {
         ...logContext,
         executionTimeMs: executionTime,
         error: error.message,
+        callStack,
       });
 
       throw error;

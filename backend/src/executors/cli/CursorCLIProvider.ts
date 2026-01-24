@@ -9,6 +9,10 @@ import { BaseCLIProvider } from './ICLIProvider';
 import { CLIProviderConfig, CLIExecutionResult } from '../types';
 import { executeCommandSimple, CommandExecutorError } from '../../utils/commandExecutor';
 import { logger } from '../../utils/logger';
+import { v4 as uuidv4 } from 'uuid';
+
+// 全局 cursor-agent 调用计数器，用于诊断重复执行
+let globalCursorAgentCallCounter = 0;
 
 /**
  * Cursor CLI 默认配置
@@ -42,6 +46,11 @@ export class CursorCLIProvider extends BaseCLIProvider {
     const model = mergedConfig.model || 'composer-1';
     const timeout = mergedConfig.timeout || 3600000;
 
+    // 诊断信息：生成唯一调用ID和获取调用栈
+    const callId = uuidv4().substring(0, 8);
+    globalCursorAgentCallCounter++;
+    const callStack = new Error().stack?.split('\n').slice(2, 8).join('\n') || 'unknown';
+
     // 构建命令
     const escapedPrompt = this.escapePrompt(prompt);
     const fullCommand = `${command} --model ${model} --print "${escapedPrompt}"`;
@@ -52,6 +61,13 @@ export class CursorCLIProvider extends BaseCLIProvider {
       workDir,
       timeout,
       promptLength: prompt.length,
+      callId,
+      globalCallCount: globalCursorAgentCallCounter,
+    });
+
+    logger.debug('CursorCLIProvider: Call stack for diagnostic', {
+      callId,
+      callStack,
     });
 
     try {
@@ -66,6 +82,8 @@ export class CursorCLIProvider extends BaseCLIProvider {
       logger.info('CursorCLIProvider: Command completed successfully', {
         outputLength: output.length,
         executionTimeMs: executionTime,
+        callId,
+        globalCallCount: globalCursorAgentCallCounter,
       });
 
       return {
@@ -83,6 +101,9 @@ export class CursorCLIProvider extends BaseCLIProvider {
         executionTimeMs: executionTime,
         stdout: execError.stdout?.substring(0, 500),
         stderr: execError.stderr?.substring(0, 500),
+        callId,
+        globalCallCount: globalCursorAgentCallCounter,
+        callStack,
       });
 
       // 即使命令失败，也返回已有的输出
