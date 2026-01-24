@@ -13,7 +13,7 @@ import {
 } from '../prompts/mrd';
 import { logger, loadPrompt } from '../utils';
 // Review和ImproveDocument已移除，由角色通过消息机制管理
-import { StepwiseDocumentGenerator } from '../utils/StepwiseDocumentGenerator';
+import { StepwiseDocumentGenerator } from '../utils/stepwise';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -202,6 +202,8 @@ export class WriteMRD extends BaseAction {
   /**
    * Generate Market Research Document step by step
    * Uses the generic StepwiseDocumentGenerator
+   * 
+   * CLI模式下会自动跳过分章节生成，直接生成完整文档到主文件
    */
   private async generateStepwise(input: string, options?: WriteMRDOptions): Promise<IActionOutput> {
     // 确保使用MRD目录
@@ -215,9 +217,21 @@ export class WriteMRD extends BaseAction {
     // Get role from context (if available)
     const role = (this as any).role?.profile || undefined;
 
+    // 获取当前执行模式
+    const executorMode = this.getExecutorMode();
+
+    logger.info('WriteMRD: Creating StepwiseDocumentGenerator', {
+      executorMode,
+      workspaceDir,
+      applicationId: options?.applicationId,
+      projectId: options?.projectId,
+    });
+
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
       buildOutlinePrompt: buildMRDOutlinePrompt,
       buildSectionPrompt: buildMRDSectionPrompt,
+      // CLI模式下用于生成完整文档的提示词
+      buildFullDocumentPrompt: (userIdea: string) => buildMRDPrompt(userIdea, options?.relevantChunks),
       systemPrompt: systemPrompt,
       // Review 由角色通过 MRDReview action 统一处理
       documentTitle: 'Market Research Document (MRD)',
@@ -237,6 +251,9 @@ export class WriteMRD extends BaseAction {
       projectId: options?.projectId || (this.context?.get('projectId') as string | undefined),
       version: options?.version,
       role,
+      // CLI模式配置：传递执行模式，CLI模式下跳过分章节生成
+      executorMode: executorMode,
+      skipStepwiseInCLI: true, // CLI模式下直接生成完整文档
     });
 
     return await generator.generate(input);

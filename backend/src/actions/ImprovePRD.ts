@@ -12,6 +12,11 @@ import {
 } from '../prompts/prd';
 import { logger, loadPrompt, WorkspaceOptions } from '../utils';
 import { parseSectionsFromContent, Section } from '../utils/sectionParser';
+import {
+  buildCLISaveInstruction,
+  isCLISummaryOutput,
+  tryReadActualDocumentFromWorkspace,
+} from '../utils/stepwise';
 
 export interface ImprovePRDOptions extends WorkspaceOptions {
   reviewReport?: string; // 审查报告内容，如果不提供则从workspace读取
@@ -210,7 +215,9 @@ export class ImprovePRD extends BaseAction {
   }
 
   /**
-   * 改进PRD文档 - 采用分章节改进方式避免 LLM 输出被截断
+   * 改进PRD文档
+   * - LLM模式：采用分章节改进方式避免 LLM 输出被截断
+   * - CLI模式：直接整体改进，不分章节
    * 返回改进后的内容和改进统计信息
    */
   private async improvePRD(
@@ -227,7 +234,73 @@ export class ImprovePRD extends BaseAction {
       PRD_IMPROVE_SYSTEM_PROMPT
     );
 
-    // 解析 PRD 中的各个章节
+    // CLI模式下直接整体改进，不分章节
+    const isCLIMode = this.isCLIMode();
+    
+    if (isCLIMode) {
+      logger.info('ImprovePRD: CLI mode detected, using full document improvement', {
+        prdLength: currentPRD.length,
+        reviewLength: reviewReport.length,
+      });
+      
+      let prompt = buildPRDImprovePrompt(currentPRD, reviewReport);
+      
+      // CLI 模式下，在 prompt 中指定文件保存路径和限制指令
+      const savePath = `${this.getWorkspaceDir(workspaceOptions)}/PRD.md`;
+      const saveInstruction = buildCLISaveInstruction(savePath, '改进后的文档');
+      prompt += saveInstruction;
+      
+      logger.info('ImprovePRD: Added CLI save path instruction', { savePath });
+      
+      let cliOutput = await this.aask(prompt, [systemPrompt]);
+      
+      // 检查CLI输出是否为操作总结（而非实际改进后的文档）
+      let content: string;
+      if (isCLISummaryOutput(cliOutput)) {
+        logger.info('ImprovePRD: CLI output appears to be a summary, reading actual file from workspace', {
+          cliOutputLength: cliOutput.length,
+          cliOutputPreview: cliOutput.substring(0, 200),
+        });
+        
+        // 尝试从workspace读取CLI实际改进的文件
+        const workspaceDir = this.getWorkspaceDir(workspaceOptions);
+        const actualContent = await tryReadActualDocumentFromWorkspace(workspaceDir, {
+          mainFileName: 'PRD.md',
+          filePattern: 'prd',
+        });
+        
+        if (actualContent) {
+          content = actualContent;
+          logger.info('ImprovePRD: Successfully read actual improved document from workspace', {
+            actualContentLength: actualContent.length,
+          });
+        } else {
+          // 如果找不到实际文件，返回原PRD内容
+          logger.warn('ImprovePRD: Could not find actual improved document in workspace, keeping original', {
+            originalLength: currentPRD.length,
+          });
+          content = currentPRD;
+        }
+      } else {
+        content = cliOutput;
+      }
+      
+      // 清理可能的代码块标记
+      content = this.cleanCodeBlockMarkers(content);
+      
+      logger.info('ImprovePRD: Full document improvement completed (CLI mode)', {
+        originalLength: currentPRD.length,
+        improvedLength: content.length,
+      });
+      
+      return {
+        content,
+        improvedSectionCount: 1, // 整体改进视为改进了一个
+        totalSectionCount: 1,
+      };
+    }
+
+    // LLM模式：解析 PRD 中的各个章节，分章节改进
     const sections = parseSectionsFromContent(currentPRD);
     
     if (sections.length === 0) {
@@ -560,6 +633,7 @@ export class ImprovePRD extends BaseAction {
     
     return result;
   }
+
 }
 
 export default ImprovePRD;

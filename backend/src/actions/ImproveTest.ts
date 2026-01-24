@@ -11,6 +11,11 @@ import {
 } from '../prompts/test';
 import { logger, loadPrompt, WorkspaceOptions } from '../utils';
 import { WorkspaceManager } from '../utils/WorkspaceManager';
+import {
+  buildCLISaveInstruction,
+  isCLISummaryOutput,
+  tryReadActualDocumentFromWorkspace,
+} from '../utils/stepwise';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -164,14 +169,17 @@ export class ImproveTest extends BaseAction {
         cleanTestCases,
         reviewReport,
         prd,
-        code
+        code,
+        workspaceOptions
       );
 
       // Step 6: 确保改进后的文档不包含审查报告部分（再次移除，以防LLM在改进时添加了审查报告）
       improvedTestCases = this.removeReviewReport(improvedTestCases);
 
-      // Step 7: 保存改进后的文档
-      await this.saveToWorkspace('TEST.md', improvedTestCases, workspaceOptions);
+      // Step 7: 保存改进后的文档（只有当内容不是CLI总结时才保存）
+      if (!isCLISummaryOutput(improvedTestCases)) {
+        await this.saveToWorkspace('TEST.md', improvedTestCases, workspaceOptions);
+      }
 
       logger.info('ImproveTest: Test cases improved and saved', {
         improvedLength: improvedTestCases.length,
@@ -249,7 +257,8 @@ export class ImproveTest extends BaseAction {
     currentTestCases: string,
     reviewReport: string,
     prd?: string,
-    code?: string
+    code?: string,
+    workspaceOptions?: WorkspaceOptions
   ): Promise<string> {
     // Load system prompt from database or use default
     const userId = this.context?.get('userId');
@@ -261,16 +270,57 @@ export class ImproveTest extends BaseAction {
     );
 
     // 构建改进提示词
-    const prompt = buildTestImprovePrompt(currentTestCases, reviewReport, prd, code);
+    let prompt = buildTestImprovePrompt(currentTestCases, reviewReport, prd, code);
 
-    // 调用LLM改进文档
-    const improvedTestCases = await this.aask(prompt, [systemPrompt]);
+    // CLI 模式处理
+    const isCLIMode = this.isCLIMode();
+
+    // CLI 模式下，在 prompt 中指定文件保存路径和限制指令
+    if (isCLIMode && workspaceOptions?.applicationId) {
+      const savePath = `${this.getWorkspaceDir(workspaceOptions)}/TEST.md`;
+      const saveInstruction = buildCLISaveInstruction(savePath, '改进后的测试用例文档');
+      prompt += saveInstruction;
+      
+      logger.info('ImproveTest: Added CLI save path instruction', { savePath });
+    }
+
+    // 调用LLM/CLI改进文档
+    const cliOutput = await this.aask(prompt, [systemPrompt]);
+    
+    if (isCLIMode && isCLISummaryOutput(cliOutput)) {
+      logger.info('ImproveTest: CLI output appears to be a summary, reading actual file from workspace', {
+        cliOutputLength: cliOutput.length,
+        cliOutputPreview: cliOutput.substring(0, 200),
+      });
+      
+      // 尝试从workspace读取CLI实际改进的文件
+      if (workspaceOptions) {
+        const workspaceDir = this.getWorkspaceDir(workspaceOptions);
+        const actualContent = await tryReadActualDocumentFromWorkspace(workspaceDir, {
+          mainFileName: 'TEST.md',
+          filePattern: 'test',
+        });
+        
+        if (actualContent) {
+          logger.info('ImproveTest: Successfully read actual improved document from workspace', {
+            actualContentLength: actualContent.length,
+          });
+          return actualContent;
+        }
+      }
+      
+      // 如果找不到实际文件，返回原测试用例内容
+      logger.warn('ImproveTest: Could not find actual improved document in workspace, keeping original', {
+        originalLength: currentTestCases.length,
+      });
+      return currentTestCases;
+    }
 
     logger.info('ImproveTest: Test cases improved by LLM', {
-      improvedLength: improvedTestCases.length,
+      improvedLength: cliOutput.length,
     });
 
-    return improvedTestCases;
+    return cliOutput;
   }
 
   /**

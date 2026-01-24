@@ -83,8 +83,8 @@ export const MRD_SYSTEM_PROMPT = `你是一个专业的 MRD（Market Requirement
 
 export const MRD_TEMPLATE = `# MRD：[产品/功能名称]
 
-> **创建时间**：YYYY-MM-DD
-> **状态**：草稿
+> 创建时间：YYYY-MM-DD
+> 状态：草稿
 
 ---
 
@@ -470,8 +470,8 @@ ${outline}
 \`\`\`markdown
 # MRD 审查报告
 
-> **审查时间**：YYYY-MM-DD
-> **审查结论**：通过 / 需要改进
+> 审查时间：YYYY-MM-DD
+> 审查结论：通过 / 需要改进
 
 ---
 

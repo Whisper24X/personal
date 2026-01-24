@@ -13,7 +13,7 @@ import { extractSectionContent, replaceSectionContent, getAvailableSectionNumber
 import { logger } from '../utils';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { getWorkspaceDir } from '../utils/StepwiseDocumentGenerator';
+import { getWorkspaceDir } from '../utils/stepwise';
 import {
   loadSectionConversationHistory,
   addMessageToSectionConversation,

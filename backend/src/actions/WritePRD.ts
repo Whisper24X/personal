@@ -27,7 +27,7 @@ import {
 } from '../prompts/prd';
 import { logger, loadPrompt } from '../utils';
 // Review和ImproveDocument已移除，由角色通过消息机制管理
-import { StepwiseDocumentGenerator } from '../utils/StepwiseDocumentGenerator';
+import { StepwiseDocumentGenerator } from '../utils/stepwise';
 import { WorkspaceManager } from '../utils/WorkspaceManager';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -309,6 +309,8 @@ export class WritePRD extends BaseAction {
    * 分步骤生成 PRD
    * 使用通用的 StepwiseDocumentGenerator
    * 只负责分章节生成，不做审核和合并（由 PRDReview 负责）
+   * 
+   * CLI模式下会自动跳过分章节生成，直接生成完整文档到主文件
    */
   private async generateStepwise(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
     // 确保使用PRD目录
@@ -321,9 +323,21 @@ export class WritePRD extends BaseAction {
     // Get role from context (if available)
     const role = (this as any).role?.profile || undefined;
 
+    // 获取当前执行模式
+    const executorMode = this.getExecutorMode();
+
+    logger.info('WritePRD: Creating StepwiseDocumentGenerator', {
+      executorMode,
+      workspaceDir,
+      applicationId: options?.applicationId,
+      projectId: options?.projectId,
+    });
+
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
       buildOutlinePrompt: buildPRDOutlinePrompt,
       buildSectionPrompt: buildPRDSectionPrompt,
+      // CLI模式下用于生成完整文档的提示词
+      buildFullDocumentPrompt: buildPRDPrompt,
       // 不需要 buildSectionReviewPrompt 和 reviewSystemPrompt，因为跳过审核步骤
       systemPrompt: systemPrompt,
       documentTitle: '产品需求文档（PRD）',
@@ -352,9 +366,12 @@ export class WritePRD extends BaseAction {
       applicationId: options?.applicationId,
       projectId: options?.projectId || (this.context?.get('projectId') as string | undefined),
       role,
-      // 跳过审核和合并步骤，由 PRDReview 负责后续处理
+      // 跳过审核和合并步骤，由 PRDReview 负责后续处理（仅LLM模式）
       skipReview: true,
       skipMerge: true,
+      // CLI模式配置：传递执行模式，CLI模式下跳过分章节生成
+      executorMode: executorMode,
+      skipStepwiseInCLI: true, // CLI模式下直接生成完整文档
     });
 
     return await generator.generate(input);

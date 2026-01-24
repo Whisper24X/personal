@@ -13,7 +13,7 @@ import {
 } from '../prompts/design';
 import { logger, WorkspaceOptions, loadPrompt } from '../utils';
 // Review和ImproveDocument已移除，由角色通过消息机制管理
-import { StepwiseDocumentGenerator } from '../utils/StepwiseDocumentGenerator';
+import { StepwiseDocumentGenerator } from '../utils/stepwise';
 
 export interface WriteDesignOptions extends WorkspaceOptions {
   // 继承WorkspaceOptions的所有选项

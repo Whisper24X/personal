@@ -10,6 +10,11 @@ import {
   buildDesignImprovePrompt,
 } from '../prompts/design';
 import { logger, loadPrompt, WorkspaceOptions } from '../utils';
+import {
+  buildCLISaveInstruction,
+  isCLISummaryOutput,
+  tryReadActualDocumentFromWorkspace,
+} from '../utils/stepwise';
 
 export interface ImproveDesignOptions extends WorkspaceOptions {
   reviewReport?: string; // 审查报告内容，如果不提供则从workspace读取
@@ -102,22 +107,26 @@ export class ImproveDesign extends BaseAction {
       const cleanDesign = this.removeReviewReport(currentDesign);
       
       // Step 4: 根据审查报告改进文档
-      let improvedDesign = await this.improveDesign(
-        cleanDesign,
-        reviewReport
-      );
-
-      // Step 5: 确保改进后的文档不包含审查报告部分（再次移除，以防LLM在改进时添加了审查报告）
-      improvedDesign = this.removeReviewReport(improvedDesign);
-
-      // Step 6: 保存改进后的文档
-      await this.saveToWorkspace('DESIGN.md', improvedDesign, {
+      const workspaceOpts: WorkspaceOptions = {
         applicationId,
         projectId,
         version,
         documentType: 'DESIGN',
         workspacePath: options?.workspacePath,
-      });
+      };
+      let improvedDesign = await this.improveDesign(
+        cleanDesign,
+        reviewReport,
+        workspaceOpts
+      );
+
+      // Step 5: 确保改进后的文档不包含审查报告部分（再次移除，以防LLM在改进时添加了审查报告）
+      improvedDesign = this.removeReviewReport(improvedDesign);
+
+      // Step 6: 保存改进后的文档（只有当内容不是CLI总结时才保存）
+      if (!isCLISummaryOutput(improvedDesign)) {
+        await this.saveToWorkspace('DESIGN.md', improvedDesign, workspaceOpts);
+      }
 
       logger.info('ImproveDesign: Design improved and saved', {
         improvedLength: improvedDesign.length,
@@ -181,7 +190,8 @@ export class ImproveDesign extends BaseAction {
    */
   private async improveDesign(
     currentDesign: string,
-    reviewReport: string
+    reviewReport: string,
+    workspaceOptions?: WorkspaceOptions
   ): Promise<string> {
     // Load system prompt from database or use default
     const userId = this.context?.get('userId');
@@ -193,16 +203,57 @@ export class ImproveDesign extends BaseAction {
     );
 
     // 构建改进提示词
-    const prompt = buildDesignImprovePrompt(currentDesign, reviewReport);
+    let prompt = buildDesignImprovePrompt(currentDesign, reviewReport);
 
-    // 调用LLM改进文档
-    const improvedDesign = await this.aask(prompt, [systemPrompt]);
+    // CLI 模式处理
+    const isCLIMode = this.isCLIMode();
+
+    // CLI 模式下，在 prompt 中指定文件保存路径和限制指令
+    if (isCLIMode && workspaceOptions?.applicationId) {
+      const savePath = `${this.getWorkspaceDir(workspaceOptions)}/DESIGN.md`;
+      const saveInstruction = buildCLISaveInstruction(savePath, '改进后的设计文档');
+      prompt += saveInstruction;
+      
+      logger.info('ImproveDesign: Added CLI save path instruction', { savePath });
+    }
+
+    // 调用LLM/CLI改进文档
+    const cliOutput = await this.aask(prompt, [systemPrompt]);
+    
+    if (isCLIMode && isCLISummaryOutput(cliOutput)) {
+      logger.info('ImproveDesign: CLI output appears to be a summary, reading actual file from workspace', {
+        cliOutputLength: cliOutput.length,
+        cliOutputPreview: cliOutput.substring(0, 200),
+      });
+      
+      // 尝试从workspace读取CLI实际改进的文件
+      if (workspaceOptions) {
+        const workspaceDir = this.getWorkspaceDir(workspaceOptions);
+        const actualContent = await tryReadActualDocumentFromWorkspace(workspaceDir, {
+          mainFileName: 'DESIGN.md',
+          filePattern: 'design',
+        });
+        
+        if (actualContent) {
+          logger.info('ImproveDesign: Successfully read actual improved document from workspace', {
+            actualContentLength: actualContent.length,
+          });
+          return actualContent;
+        }
+      }
+      
+      // 如果找不到实际文件，返回原设计内容
+      logger.warn('ImproveDesign: Could not find actual improved document in workspace, keeping original', {
+        originalLength: currentDesign.length,
+      });
+      return currentDesign;
+    }
 
     logger.info('ImproveDesign: Design improved by LLM', {
-      improvedLength: improvedDesign.length,
+      improvedLength: cliOutput.length,
     });
 
-    return improvedDesign;
+    return cliOutput;
   }
 
   /**

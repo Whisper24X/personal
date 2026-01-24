@@ -586,7 +586,7 @@ export class PRDController {
       const applicationId = project.application_id || project.id;
       const projectId = project.id;
       const version = prd.version || 1;
-      const { getWorkspaceDir } = await import('../../utils/StepwiseDocumentGenerator');
+      const { getWorkspaceDir } = await import('../../utils/stepwise');
       const workspaceDir = getWorkspaceDir('PRD', {
         applicationId,
         projectId,

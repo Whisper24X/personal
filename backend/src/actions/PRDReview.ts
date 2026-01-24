@@ -19,6 +19,7 @@ import {
   buildPRDFullReviewPrompt,
 } from '../prompts/prd';
 import { logger, loadPrompt, WorkspaceOptions } from '../utils';
+import { buildCLISaveInstruction } from '../utils/stepwise';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -67,15 +68,44 @@ export class PRDReview extends BaseAction {
       workspacePath: options?.workspacePath,
     };
 
+    // 检查是否为CLI模式
+    const isCLIMode = this.isCLIMode();
+
     logger.info('PRDReview: Starting PRD review workflow', {
       applicationId,
       projectId,
       version,
       hasOutline: !!options?.outline,
       skipSectionReview: options?.skipSectionReview,
+      executorMode: isCLIMode ? 'cli' : 'llm',
     });
 
     try {
+      // CLI模式下直接审核完整文档，不分章节
+      if (isCLIMode) {
+        logger.info('PRDReview: CLI mode detected, using full document review', {
+          applicationId,
+          projectId,
+        });
+
+        // 读取完整的 PRD.md
+        let actualPRDContent = prdContent;
+        if (!prdContent || prdContent.trim().length < 100) {
+          const prdFromWorkspace = await this.readWorkspaceFile('PRD.md', workspaceOptions);
+          if (prdFromWorkspace) {
+            actualPRDContent = prdFromWorkspace;
+          }
+        }
+
+        if (!actualPRDContent || actualPRDContent.trim().length === 0) {
+          throw new Error('Cannot find PRD content for review. Please generate PRD first.');
+        }
+
+        // CLI模式：直接审核完整文档
+        return await this.reviewFullDocumentOnly(actualPRDContent, options, workspaceOptions);
+      }
+
+      // LLM模式：尝试读取章节文件进行分章节审核
       // Step 1: 读取章节文件
       const sectionFiles = await this.readSectionFiles(workspaceOptions);
       
@@ -353,7 +383,7 @@ export class PRDReview extends BaseAction {
   private async reviewFullDocument(
     prdContent: string,
     outline: string,
-    _options: WorkspaceOptions
+    workspaceOptions: WorkspaceOptions
   ): Promise<string> {
     const userId = this.context?.get('userId');
     const systemPrompt = await loadPrompt(userId, 'prd', 'review_system_prompt', PRD_REVIEW_SYSTEM_PROMPT);
@@ -363,7 +393,18 @@ export class PRDReview extends BaseAction {
     });
 
     // 使用专门的整体审核提示词，侧重于跨章节一致性和整体连贯性
-    const prompt = buildPRDFullReviewPrompt(prdContent, outline);
+    let prompt = buildPRDFullReviewPrompt(prdContent, outline);
+    
+    // CLI 模式下，在 prompt 中指定文件保存路径和限制指令
+    const isCLIMode = this.isCLIMode();
+    if (isCLIMode && workspaceOptions.applicationId) {
+      const savePath = `${this.getWorkspaceDir(workspaceOptions)}/PRD_REVIEW.md`;
+      const saveInstruction = buildCLISaveInstruction(savePath, '审核报告');
+      prompt += saveInstruction;
+      
+      logger.info('PRDReview: Added CLI save path instruction', { savePath });
+    }
+    
     const reviewResult = await this.aask(prompt, [systemPrompt]);
 
     logger.info('PRDReview: Full document review completed', {

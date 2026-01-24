@@ -10,6 +10,11 @@ import {
   buildMRDImprovePrompt,
 } from '../prompts/mrd';
 import { logger, loadPrompt, WorkspaceOptions } from '../utils';
+import {
+  buildCLISaveInstruction,
+  isCLISummaryOutput,
+  tryReadActualDocumentFromWorkspace,
+} from '../utils/stepwise';
 
 export interface ImproveMRDOptions extends WorkspaceOptions {
   reviewReport?: string; // Review report content, if not provided, will be read from workspace
@@ -101,9 +106,17 @@ export class ImproveMRD extends BaseAction {
       const cleanMRD = this.removeReviewReport(currentMRD);
 
       // Step 4: Improve document based on review report
+      const workspaceOptions: WorkspaceOptions = {
+        applicationId,
+        projectId,
+        version,
+        documentType: 'MRD',
+        workspacePath: options?.workspacePath,
+      };
       let improvedMRD = await this.improveMRD(
         cleanMRD,
-        reviewReport
+        reviewReport,
+        workspaceOptions
       );
 
       // Step 5: Ensure improved document does not contain review report section (remove again, in case LLM added review report during improvement)
@@ -177,10 +190,13 @@ export class ImproveMRD extends BaseAction {
 
   /**
    * Improve MRD document
+   * - LLM模式：直接使用LLM输出
+   * - CLI模式：检查是否为操作总结，如果是则从workspace读取实际文件
    */
   private async improveMRD(
     currentMRD: string,
-    reviewReport: string
+    reviewReport: string,
+    workspaceOptions?: WorkspaceOptions
   ): Promise<string> {
     // Load system prompt from database or use default
     const userId = this.context?.get('userId');
@@ -192,16 +208,55 @@ export class ImproveMRD extends BaseAction {
     );
 
     // Build improvement prompt
-    const prompt = buildMRDImprovePrompt(currentMRD, reviewReport);
+    let prompt = buildMRDImprovePrompt(currentMRD, reviewReport);
 
-    // Call LLM to improve document
-    const improvedMRD = await this.aask(prompt, [systemPrompt]);
+    // CLI模式下检查输出是否为操作总结
+    const isCLIMode = this.isCLIMode();
+    
+    // CLI 模式下，在 prompt 中指定文件保存路径和限制指令
+    if (isCLIMode && workspaceOptions) {
+      const savePath = `${this.getWorkspaceDir(workspaceOptions)}/MRD.md`;
+      const saveInstruction = buildCLISaveInstruction(savePath, '改进后的文档');
+      prompt += saveInstruction;
+      
+      logger.info('ImproveMRD: Added CLI save path instruction', { savePath });
+    }
+
+    // Call LLM/CLI to improve document
+    const cliOutput = await this.aask(prompt, [systemPrompt]);
+    
+    if (isCLIMode && isCLISummaryOutput(cliOutput)) {
+      logger.info('ImproveMRD: CLI output appears to be a summary, reading actual file from workspace', {
+        cliOutputLength: cliOutput.length,
+        cliOutputPreview: cliOutput.substring(0, 200),
+      });
+      
+      // 尝试从workspace读取CLI实际改进的文件
+      const workspaceDir = this.getWorkspaceDir(workspaceOptions);
+      const actualContent = await tryReadActualDocumentFromWorkspace(workspaceDir, {
+        mainFileName: 'MRD.md',
+        filePattern: 'mrd',
+      });
+      
+      if (actualContent) {
+        logger.info('ImproveMRD: Successfully read actual improved document from workspace', {
+          actualContentLength: actualContent.length,
+        });
+        return actualContent;
+      } else {
+        // 如果找不到实际文件，返回原MRD内容
+        logger.warn('ImproveMRD: Could not find actual improved document in workspace, keeping original', {
+          originalLength: currentMRD.length,
+        });
+        return currentMRD;
+      }
+    }
 
     logger.info('ImproveMRD: MRD improved by LLM', {
-      improvedLength: improvedMRD.length,
+      improvedLength: cliOutput.length,
     });
 
-    return improvedMRD;
+    return cliOutput;
   }
 
   /**
@@ -256,6 +311,7 @@ export class ImproveMRD extends BaseAction {
 
     return result;
   }
+
 }
 
 export default ImproveMRD;

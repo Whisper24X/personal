@@ -7,6 +7,11 @@ import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { WorkspaceOptions, logger, loadPrompt } from '../utils';
 import {
+  buildCLISaveInstruction,
+  isCLISummaryOutput,
+  tryReadActualReviewFromWorkspace,
+} from '../utils/stepwise';
+import {
   TESTABILITY_REVIEW_SYSTEM_PROMPT,
   buildTestabilityReviewPrompt,
 } from '../prompts/test';
@@ -83,7 +88,7 @@ export class TestabilityReview extends BaseAction {
       }
 
       // Build prompt
-      const prompt = buildTestabilityReviewPrompt(prd, code);
+      let prompt = buildTestabilityReviewPrompt(prd, code);
 
       // Load system prompt from database or use default
       const userId = this.context?.get('userId');
@@ -94,15 +99,59 @@ export class TestabilityReview extends BaseAction {
         TESTABILITY_REVIEW_SYSTEM_PROMPT
       );
 
-      // Call LLM to generate testability review
-      const content = await this.aask(prompt, [systemPrompt]);
-
-      // Save to workspace
+      // CLI 模式处理
+      const isCLIMode = this.isCLIMode();
       const workspaceOptions: WorkspaceOptions = {
         ...options,
         documentType: 'TEST',
       };
-      await this.saveToWorkspace('TESTABILITY_REVIEW.md', content, workspaceOptions);
+
+      // CLI 模式下，在 prompt 中指定文件保存路径和限制指令
+      if (isCLIMode && options?.applicationId) {
+        const savePath = `${this.getWorkspaceDir(workspaceOptions)}/TESTABILITY_REVIEW.md`;
+        const saveInstruction = buildCLISaveInstruction(savePath, '可测试性审核报告');
+        prompt += saveInstruction;
+        
+        logger.info('TestabilityReview: Added CLI save path instruction', { savePath });
+      }
+
+      // Call LLM/CLI to generate testability review
+      const cliOutput = await this.aask(prompt, [systemPrompt]);
+      
+      let content: string;
+      
+      if (isCLIMode && isCLISummaryOutput(cliOutput)) {
+        logger.info('TestabilityReview: CLI output appears to be a summary, reading actual review from workspace', {
+          cliOutputLength: cliOutput.length,
+          cliOutputPreview: cliOutput.substring(0, 200),
+        });
+        
+        // 尝试从workspace读取CLI实际生成的审核结果
+        const workspaceDir = this.getWorkspaceDir(workspaceOptions);
+        const actualReview = await tryReadActualReviewFromWorkspace(workspaceDir, {
+          reviewFileName: 'TESTABILITY_REVIEW.md',
+          filePattern: 'testability_review',
+        });
+        
+        if (actualReview) {
+          content = actualReview;
+          logger.info('TestabilityReview: Successfully read actual review from workspace', {
+            actualReviewLength: actualReview.length,
+          });
+        } else {
+          logger.warn('TestabilityReview: Could not find actual review in workspace, using CLI output', {
+            cliOutputLength: cliOutput.length,
+          });
+          content = cliOutput;
+        }
+      } else {
+        content = cliOutput;
+      }
+
+      // Save to workspace (只有当内容不是CLI总结时才保存)
+      if (!isCLISummaryOutput(content)) {
+        await this.saveToWorkspace('TESTABILITY_REVIEW.md', content, workspaceOptions);
+      }
 
       logger.info('TestabilityReview: Testability review completed', {
         contentLength: content.length,

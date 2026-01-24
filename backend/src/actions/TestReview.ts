@@ -11,6 +11,11 @@ import {
 } from '../prompts/test';
 import { logger, loadPrompt, WorkspaceOptions } from '../utils';
 import { WorkspaceManager } from '../utils/WorkspaceManager';
+import {
+  buildCLISaveInstruction,
+  isCLISummaryOutput,
+  tryReadActualReviewFromWorkspace,
+} from '../utils/stepwise';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -121,29 +126,71 @@ export class TestReview extends BaseAction {
     });
 
     try {
-      const prompt = buildTestReviewPrompt(actualTestCasesContent, prd, code);
+      let prompt = buildTestReviewPrompt(actualTestCasesContent, prd, code);
 
       // Load system prompt from database or use default
       const userId = this.context?.get('userId');
       const systemPrompt = await loadPrompt(userId, 'test', 'review_system_prompt', TEST_REVIEW_SYSTEM_PROMPT);
 
-      // Call LLM with system message and prompt
-      const reviewResult = await this.aask(prompt, [systemPrompt]);
+      // CLI 模式处理
+      const isCLIMode = this.isCLIMode();
+      const workspaceOptions: WorkspaceOptions = {
+        applicationId: applicationId || '',
+        projectId,
+        version,
+        documentType: 'TEST',
+        workspacePath: options?.workspacePath,
+      };
+
+      // CLI 模式下，在 prompt 中指定文件保存路径和限制指令
+      if (isCLIMode && applicationId && projectId) {
+        const savePath = `${this.getWorkspaceDir(workspaceOptions)}/TEST_REVIEW.md`;
+        const saveInstruction = buildCLISaveInstruction(savePath, '审核报告');
+        prompt += saveInstruction;
+        
+        logger.info('TestReview: Added CLI save path instruction', { savePath });
+      }
+
+      // Call LLM/CLI with system message and prompt
+      const cliOutput = await this.aask(prompt, [systemPrompt]);
+      
+      let reviewResult: string;
+      
+      if (isCLIMode && isCLISummaryOutput(cliOutput)) {
+        logger.info('TestReview: CLI output appears to be a summary, reading actual review from workspace', {
+          cliOutputLength: cliOutput.length,
+          cliOutputPreview: cliOutput.substring(0, 200),
+        });
+        
+        // 尝试从workspace读取CLI实际生成的审核报告
+        const workspaceDir = this.getWorkspaceDir(workspaceOptions);
+        const actualReview = await tryReadActualReviewFromWorkspace(workspaceDir, {
+          reviewFileName: 'TEST_REVIEW.md',
+          filePattern: 'test_review',
+        });
+        
+        if (actualReview) {
+          reviewResult = actualReview;
+          logger.info('TestReview: Successfully read actual review report from workspace', {
+            actualReviewLength: actualReview.length,
+          });
+        } else {
+          logger.warn('TestReview: Could not find actual review in workspace, using CLI output', {
+            cliOutputLength: cliOutput.length,
+          });
+          reviewResult = cliOutput;
+        }
+      } else {
+        reviewResult = cliOutput;
+      }
 
       logger.info('TestReview: Review completed', {
         reviewLength: reviewResult.length,
       });
 
       // Save review report to workspace if workspace options are provided
-      if (applicationId && projectId) {
-        const workspaceOptions: WorkspaceOptions = {
-          applicationId,
-          projectId,
-          version,
-          documentType: 'TEST',
-          workspacePath: options?.workspacePath,
-        };
-
+      // 只有当内容不是CLI总结时才保存
+      if (applicationId && projectId && !isCLISummaryOutput(reviewResult)) {
         await this.saveToWorkspace('TEST_REVIEW.md', reviewResult, workspaceOptions);
         logger.info('TestReview: Saved review report to workspace', {
           filename: 'TEST_REVIEW.md',

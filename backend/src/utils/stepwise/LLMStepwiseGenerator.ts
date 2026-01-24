@@ -1,94 +1,19 @@
 /**
- * StepwiseDocumentGenerator
- * 通用的分步骤文档生成工具类
- * 支持：目录生成 -> 章节生成 -> 合并 -> 审查
+ * LLMStepwiseGenerator
+ * LLM 分步骤文档生成器
+ * 支持：目录生成 -> 章节生成 -> 审核 -> 合并
  */
 
-import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import { logger } from './logger';
-import * as fs from 'fs/promises';
-import * as fsSync from 'fs';
-import * as path from 'path';
-import { WorkspaceManager } from './WorkspaceManager';
+import { logger } from '../logger';
+import { BaseGenerator } from './BaseGenerator';
+import { StepState, Section } from './types';
 
 /**
- * Step state enum for logging purposes
+ * LLM Stepwise Document Generator
+ * Generates documents in steps: outline -> sections -> review -> merge
  */
-enum StepState {
-  PENDING = 'pending',
-  RUNNING = 'running',
-  COMPLETED = 'completed',
-  FAILED = 'failed',
-}
-
-export interface Section {
-  number: number;
-  title: string;
-}
-
-export interface StepwiseGenerationConfig {
-  // Prompt 构建函数
-  buildOutlinePrompt: (input: string) => string;
-  buildSectionPrompt: (input: string, outline: string, sectionNumber: number, sectionTitle: string) => string;
-  buildSectionReviewPrompt?: (
-    sectionContent: string,
-    sectionNumber: number,
-    sectionTitle: string,
-    outline: string
-  ) => string;
-  systemPrompt: string;
-  reviewSystemPrompt?: string;
-
-  // 文档元信息
-  documentTitle: string; // 如 "产品需求文档（PRD）"
-  documentType: string; // 如 "PRD"
-  mainFileName: string; // 如 "PRD.md"
-  reviewTitle?: string;
-
-  // 默认章节（当无法解析目录时使用）
-  defaultSections: Section[];
-
-  // 章节过滤器（可选，用于跳过可选章节等）
-  sectionFilter?: (sections: Section[]) => Section[];
-
-  // Workspace 配置
-  workspaceDir: string;
-  applicationId?: string;
-  projectId?: string;
-  /** @deprecated 版本控制已改用 git，此参数被忽略 */
-  version?: number;
-
-  // 角色名称（可选，用于日志）
-  role?: string;
-
-  // 步骤控制（可选，用于跳过特定步骤）
-  skipReview?: boolean; // 是否跳过章节审核步骤
-  skipMerge?: boolean; // 是否跳过合并步骤
-}
-
-export class StepwiseDocumentGenerator {
-  private action: BaseAction;
-  private config: StepwiseGenerationConfig;
-  private abortController?: AbortController;
-  private isCancelled: boolean = false;
-
-  constructor(action: BaseAction, config: StepwiseGenerationConfig) {
-    this.action = action;
-    this.config = config;
-    this.abortController = new AbortController();
-  }
-
-  /**
-   * 获取日志上下文信息（角色和action名称）
-   */
-  private getLogContext(): { role?: string; actionName?: string } {
-    return {
-      role: this.config.role,
-      actionName: this.action.name,
-    };
-  }
-
+export class LLMStepwiseGenerator extends BaseGenerator {
   /**
    * 执行分步骤生成
    */
@@ -98,7 +23,8 @@ export class StepwiseDocumentGenerator {
     
     const startTime = Date.now();
     const logContext = this.getLogContext();
-    logger.info('StepwiseDocumentGenerator: Starting stepwise generation', {
+    
+    logger.info('LLMStepwiseGenerator: Starting stepwise generation', {
       ...logContext,
       documentType: this.config.documentType,
       documentTitle: this.config.documentTitle,
@@ -110,25 +36,17 @@ export class StepwiseDocumentGenerator {
 
     try {
       // Step 0: 初始化工作空间（克隆或拉取最新模板）
-      // 这一步确保在写入任何文件之前，ainative-workspace 模板项目是最新的
-      if (this.config.applicationId && this.config.projectId) {
-        logger.info('StepwiseDocumentGenerator: Step 0 - Initializing workspace (clone or pull template)', logContext);
-        await WorkspaceManager.initWorkspace({
-          applicationId: this.config.applicationId,
-          projectId: this.config.projectId,
-          documentType: this.config.documentType,
-        });
-        logger.info('StepwiseDocumentGenerator: Workspace initialized successfully', logContext);
-      }
+      await this.initWorkspace();
+      
       // Step 1: 生成目录
       const step1Start = Date.now();
-      logger.info('StepwiseDocumentGenerator: Step 1/7 - Generating outline', logContext);
+      logger.info('LLMStepwiseGenerator: Step 1/5 - Generating outline', logContext);
       await this.checkCancellation();
       await this.setStepState('outline', StepState.RUNNING);
       const outline = await this.generateOutline(input);
       await this.saveToWorkspace('00-outline.md', outline);
       await this.setStepState('outline', StepState.COMPLETED);
-      logger.info('StepwiseDocumentGenerator: Step 1/5 completed - Outline generated', {
+      logger.info('LLMStepwiseGenerator: Step 1/5 completed - Outline generated', {
         ...logContext,
         outlineLength: outline.length,
         duration: `${Date.now() - step1Start}ms`,
@@ -139,7 +57,7 @@ export class StepwiseDocumentGenerator {
 
       // Step 2: 解析章节列表
       const step2Start = Date.now();
-      logger.info('StepwiseDocumentGenerator: Step 2/5 - Parsing sections', logContext);
+      logger.info('LLMStepwiseGenerator: Step 2/5 - Parsing sections', logContext);
       await this.checkCancellation();
       await this.setStepState('parse-sections', StepState.RUNNING);
       const parsedSections = this.parseSections(outline);
@@ -149,7 +67,7 @@ export class StepwiseDocumentGenerator {
         const filteredSections = this.config.sectionFilter(parsedSections);
         if (filteredSections.length === 0) {
           // 如果过滤后为空，使用默认章节而不是原始解析的章节
-          logger.warn('StepwiseDocumentGenerator: Section filter removed all sections, using default sections', {
+          logger.warn('LLMStepwiseGenerator: Section filter removed all sections, using default sections', {
             ...logContext,
             parsedCount: parsedSections.length,
             defaultCount: this.config.defaultSections.length,
@@ -159,7 +77,7 @@ export class StepwiseDocumentGenerator {
           sections = filteredSections;
         }
       }
-      logger.info('StepwiseDocumentGenerator: Step 2/5 completed - Sections parsed', {
+      logger.info('LLMStepwiseGenerator: Step 2/5 completed - Sections parsed', {
         ...logContext,
         sectionCount: sections.length,
         sections: sections.map(s => `${s.number}. ${s.title}`),
@@ -171,7 +89,7 @@ export class StepwiseDocumentGenerator {
 
       // Step 3: 按章节生成内容
       const step3Start = Date.now();
-      logger.info('StepwiseDocumentGenerator: Step 3/5 - Generating section contents', {
+      logger.info('LLMStepwiseGenerator: Step 3/5 - Generating section contents', {
         ...logContext,
         sectionCount: sections.length,
       });
@@ -179,7 +97,7 @@ export class StepwiseDocumentGenerator {
       await this.setStepState('generate-sections', StepState.RUNNING);
       const sectionContents = await this.generateSections(input, outline, sections);
       await this.setStepState('generate-sections', StepState.COMPLETED);
-      logger.info('StepwiseDocumentGenerator: Step 3/5 completed - All sections generated', {
+      logger.info('LLMStepwiseGenerator: Step 3/5 completed - All sections generated', {
         ...logContext,
         sectionCount: sectionContents.length,
         totalSectionsLength: sectionContents.reduce((sum, content) => sum + content.length, 0),
@@ -194,13 +112,13 @@ export class StepwiseDocumentGenerator {
       let reviewDocument: string | undefined;
       if (!this.config.skipReview) {
         const step4Start = Date.now();
-        logger.info('StepwiseDocumentGenerator: Step 4/5 - Reviewing sections', logContext);
+        logger.info('LLMStepwiseGenerator: Step 4/5 - Reviewing sections', logContext);
         await this.checkCancellation();
         await this.setStepState('review-sections', StepState.RUNNING);
         sectionReviews = await this.reviewSections(sectionContents, sections, outline);
         reviewDocument = await this.generateReviewDocument(sectionReviews, sections);
         await this.setStepState('review-sections', StepState.COMPLETED);
-        logger.info('StepwiseDocumentGenerator: Step 4/5 completed - Section reviews generated', {
+        logger.info('LLMStepwiseGenerator: Step 4/5 completed - Section reviews generated', {
           ...logContext,
           sectionCount: sectionContents.length,
           reviewSectionCount: sectionReviews.length,
@@ -211,7 +129,7 @@ export class StepwiseDocumentGenerator {
         // Check cancellation after Step 4
         await this.checkCancellation();
       } else {
-        logger.info('StepwiseDocumentGenerator: Step 4/5 - Skipping section reviews (skipReview=true)', logContext);
+        logger.info('LLMStepwiseGenerator: Step 4/5 - Skipping section reviews (skipReview=true)', logContext);
         await this.setStepState('review-sections', StepState.COMPLETED);
       }
 
@@ -219,20 +137,20 @@ export class StepwiseDocumentGenerator {
       let mergedContent = '';
       if (!this.config.skipMerge) {
         const step5Start = Date.now();
-        logger.info('StepwiseDocumentGenerator: Step 5/5 - Merging sections', logContext);
+        logger.info('LLMStepwiseGenerator: Step 5/5 - Merging sections', logContext);
         await this.checkCancellation();
         await this.setStepState('merge', StepState.RUNNING);
         mergedContent = this.mergeSections(outline, sectionContents, sections);
         await this.saveToWorkspace(this.config.mainFileName, mergedContent);
         await this.setStepState('merge', StepState.COMPLETED);
-        logger.info('StepwiseDocumentGenerator: Step 5/5 completed - Sections merged', {
+        logger.info('LLMStepwiseGenerator: Step 5/5 completed - Sections merged', {
           ...logContext,
           totalLength: mergedContent.length,
           sectionCount: sections.length,
           duration: `${Date.now() - step5Start}ms`,
         });
       } else {
-        logger.info('StepwiseDocumentGenerator: Step 5/5 - Skipping merge (skipMerge=true)', logContext);
+        logger.info('LLMStepwiseGenerator: Step 5/5 - Skipping merge (skipMerge=true)', logContext);
         await this.setStepState('merge', StepState.COMPLETED);
       }
 
@@ -247,7 +165,7 @@ export class StepwiseDocumentGenerator {
           content: sectionContents[index] || '',
         }));
         
-        logger.info('StepwiseDocumentGenerator: Stepwise generation completed (skipMerge mode)', {
+        logger.info('LLMStepwiseGenerator: Stepwise generation completed (skipMerge mode)', {
           ...logContext,
           sectionCount: sections.length,
           workspaceDir: this.config.workspaceDir,
@@ -274,7 +192,7 @@ export class StepwiseDocumentGenerator {
         };
       }
 
-      logger.info('StepwiseDocumentGenerator: Stepwise generation completed', {
+      logger.info('LLMStepwiseGenerator: Stepwise generation completed', {
         ...logContext,
         finalContentLength: mergedContent.length,
         sectionCount: sections.length,
@@ -291,17 +209,17 @@ export class StepwiseDocumentGenerator {
       try {
         allContent = await this.readMainFileFromWorkspace();
         if (!allContent || allContent.trim().length === 0) {
-          logger.warn('StepwiseDocumentGenerator: Workspace content is empty, using merged content', logContext);
+          logger.warn('LLMStepwiseGenerator: Workspace content is empty, using merged content', logContext);
           allContent = mergedContent;
         }
         // 确保读取的是完整的PRD内容，而不是其他文件（如review文件）
-        logger.info('StepwiseDocumentGenerator: Returning complete PRD content', {
+        logger.info('LLMStepwiseGenerator: Returning complete PRD content', {
           ...logContext,
           contentLength: allContent.length,
           isCompletePRD: true,
         });
       } catch (error: any) {
-        logger.warn('StepwiseDocumentGenerator: Failed to read from workspace, using merged content', {
+        logger.warn('LLMStepwiseGenerator: Failed to read from workspace, using merged content', {
           ...logContext,
           error: error.message,
         });
@@ -323,7 +241,7 @@ export class StepwiseDocumentGenerator {
         },
       };
     } catch (error: any) {
-      logger.error('StepwiseDocumentGenerator: Stepwise generation failed', {
+      logger.error('LLMStepwiseGenerator: Stepwise generation failed', {
         ...logContext,
         error: error.message,
         stack: error.stack,
@@ -337,7 +255,7 @@ export class StepwiseDocumentGenerator {
    */
   private async generateOutline(input: string): Promise<string> {
     const logContext = this.getLogContext();
-    logger.info('StepwiseDocumentGenerator: Step 1 - Generating outline', logContext);
+    logger.info('LLMStepwiseGenerator: Generating outline', logContext);
     
     // Check cancellation before LLM call
     await this.checkCancellation();
@@ -349,7 +267,7 @@ export class StepwiseDocumentGenerator {
     // Check cancellation after LLM call
     await this.checkCancellation();
 
-    logger.info('StepwiseDocumentGenerator: Outline generated', {
+    logger.info('LLMStepwiseGenerator: Outline generated', {
       ...logContext,
       outlineLength: outline.length,
     });
@@ -396,12 +314,12 @@ export class StepwiseDocumentGenerator {
 
     // 如果解析出的章节数量不足（少于默认章节的 70%），使用默认章节
     if (sections.length === 0) {
-      logger.warn('StepwiseDocumentGenerator: No sections parsed, using default sections', logContext);
+      logger.warn('LLMStepwiseGenerator: No sections parsed, using default sections', logContext);
       return this.config.defaultSections;
     }
 
     if (sections.length < minSectionThreshold) {
-      logger.warn('StepwiseDocumentGenerator: Parsed sections count is too low, using default sections', {
+      logger.warn('LLMStepwiseGenerator: Parsed sections count is too low, using default sections', {
         ...logContext,
         parsedCount: sections.length,
         defaultCount: defaultSectionCount,
@@ -414,7 +332,7 @@ export class StepwiseDocumentGenerator {
     // 按章节编号排序，确保顺序正确
     sections.sort((a, b) => a.number - b.number);
 
-    logger.info('StepwiseDocumentGenerator: Sections parsed successfully', {
+    logger.info('LLMStepwiseGenerator: Sections parsed successfully', {
       ...logContext,
       parsedCount: sections.length,
       defaultCount: defaultSectionCount,
@@ -441,7 +359,7 @@ export class StepwiseDocumentGenerator {
     const originalMaxTokens = llm?.config?.maxTokens;
     const maxTokensPerSection = parseInt(process.env.MAX_TOKENS_PER_SECTION || '32000');
 
-    logger.info('StepwiseDocumentGenerator: Starting section generation', {
+    logger.info('LLMStepwiseGenerator: Starting section generation', {
       ...logContext,
       totalSections: sections.length,
       sections: sections.map(s => `${s.number}. ${s.title}`),
@@ -455,7 +373,7 @@ export class StepwiseDocumentGenerator {
       const sectionStartTime = Date.now();
       const stepId = `section-${section.number}`;
 
-      logger.info(`StepwiseDocumentGenerator: Generating section ${i + 1}/${sections.length} - ${section.number}. ${section.title}`, {
+      logger.info(`LLMStepwiseGenerator: Generating section ${i + 1}/${sections.length} - ${section.number}. ${section.title}`, {
         ...logContext,
         sectionNumber: section.number,
         sectionTitle: section.title,
@@ -516,7 +434,7 @@ export class StepwiseDocumentGenerator {
         await this.checkCancellation();
 
         const sectionDuration = Date.now() - sectionStartTime;
-        logger.info(`StepwiseDocumentGenerator: Section ${section.number} generated successfully`, {
+        logger.info(`LLMStepwiseGenerator: Section ${section.number} generated successfully`, {
           ...logContext,
           sectionNumber: section.number,
           sectionTitle: section.title,
@@ -532,7 +450,7 @@ export class StepwiseDocumentGenerator {
       } catch (error: any) {
         // If this is a cancellation error, re-throw it to stop the generation
         if (error.message?.includes('cancelled') || error.message?.includes('Operation cancelled')) {
-          logger.info(`StepwiseDocumentGenerator: Section generation cancelled at section ${section.number}`, {
+          logger.info(`LLMStepwiseGenerator: Section generation cancelled at section ${section.number}`, {
             ...logContext,
             sectionNumber: section.number,
             sectionTitle: section.title,
@@ -542,7 +460,7 @@ export class StepwiseDocumentGenerator {
         
         await this.setStepState(stepId, StepState.FAILED);
         const sectionDuration = Date.now() - sectionStartTime;
-        logger.error(`StepwiseDocumentGenerator: Failed to generate section ${section.number}`, {
+        logger.error(`LLMStepwiseGenerator: Failed to generate section ${section.number}`, {
           ...logContext,
           sectionNumber: section.number,
           sectionTitle: section.title,
@@ -554,7 +472,7 @@ export class StepwiseDocumentGenerator {
         // 如果某个章节生成失败，使用占位符
         const errorContent = `## ${section.number}. ${section.title}\n\n[生成失败: ${error.message}]`;
         sectionContents.push(errorContent);
-        logger.warn(`StepwiseDocumentGenerator: Using error placeholder for section ${section.number}`, {
+        logger.warn(`LLMStepwiseGenerator: Using error placeholder for section ${section.number}`, {
           ...logContext,
           placeholderLength: errorContent.length,
         });
@@ -567,7 +485,7 @@ export class StepwiseDocumentGenerator {
     }
 
     const totalSectionsDuration = Date.now() - sectionsStartTime;
-    logger.info('StepwiseDocumentGenerator: All sections generation completed', {
+    logger.info('LLMStepwiseGenerator: All sections generation completed', {
       ...logContext,
       totalSections: sections.length,
       successfulSections: sectionContents.filter(c => !c.includes('[生成失败]')).length,
@@ -596,7 +514,7 @@ export class StepwiseDocumentGenerator {
 
     // 如果没有配置章节审核提示词，跳过审核
     if (!this.config.buildSectionReviewPrompt) {
-      logger.warn('StepwiseDocumentGenerator: buildSectionReviewPrompt not configured, skipping section reviews', logContext);
+      logger.warn('LLMStepwiseGenerator: buildSectionReviewPrompt not configured, skipping section reviews', logContext);
       return sectionReviews;
     }
 
@@ -610,7 +528,7 @@ export class StepwiseDocumentGenerator {
       const sectionContent = sectionContents[i] || '';
 
       // Log review start
-      logger.info(`StepwiseDocumentGenerator: Starting review for section ${section.number}`, {
+      logger.info(`LLMStepwiseGenerator: Starting review for section ${section.number}`, {
         ...logContext,
         sectionNumber: section.number,
         sectionTitle: section.title,
@@ -658,7 +576,7 @@ export class StepwiseDocumentGenerator {
         // Check cancellation after saving review file
         await this.checkCancellation();
 
-        logger.info(`StepwiseDocumentGenerator: Section ${section.number} reviewed successfully`, {
+        logger.info(`LLMStepwiseGenerator: Section ${section.number} reviewed successfully`, {
           ...logContext,
           sectionNumber: section.number,
           sectionTitle: section.title,
@@ -672,7 +590,7 @@ export class StepwiseDocumentGenerator {
       } catch (error: any) {
         // If this is a cancellation error, re-throw it to stop the generation
         if (error.message?.includes('cancelled') || error.message?.includes('Operation cancelled')) {
-          logger.info(`StepwiseDocumentGenerator: Section review cancelled at section ${section.number}`, {
+          logger.info(`LLMStepwiseGenerator: Section review cancelled at section ${section.number}`, {
             ...logContext,
             sectionNumber: section.number,
             sectionTitle: section.title,
@@ -680,7 +598,7 @@ export class StepwiseDocumentGenerator {
           throw error; // Re-throw to stop the entire generation
         }
         
-        logger.error(`StepwiseDocumentGenerator: Failed to review section ${section.number}`, {
+        logger.error(`LLMStepwiseGenerator: Failed to review section ${section.number}`, {
           ...logContext,
           sectionNumber: section.number,
           sectionTitle: section.title,
@@ -737,7 +655,7 @@ export class StepwiseDocumentGenerator {
     await this.saveToWorkspace(reviewFileName, reviewReportContent);
 
     const logContext = this.getLogContext();
-    logger.info('StepwiseDocumentGenerator: Review document generated', {
+    logger.info('LLMStepwiseGenerator: Review document generated', {
       ...logContext,
       reviewFileName,
       reviewReportLength: reviewReportContent.length,
@@ -748,7 +666,7 @@ export class StepwiseDocumentGenerator {
   }
 
   /**
-   * Step 7: 合并章节内容
+   * Step 6: 合并章节内容
    * 简化版：直接追加每个章节的内容，不进行复杂的格式处理
    */
   private mergeSections(_outline: string, sectionContents: string[], sections: Section[]): string {
@@ -758,7 +676,7 @@ export class StepwiseDocumentGenerator {
     // 添加文档标题
     mergedParts.push(`# ${this.config.documentTitle}`);
 
-    logger.info('StepwiseDocumentGenerator: Starting merge sections (simple append mode)', {
+    logger.info('LLMStepwiseGenerator: Starting merge sections (simple append mode)', {
       ...logContext,
       sectionsCount: sections.length,
       sectionContentsCount: sectionContents.length,
@@ -773,7 +691,7 @@ export class StepwiseDocumentGenerator {
       // 如果没有内容，使用占位符
       if (!content || content.trim() === '') {
         content = `## ${section.number}. ${section.title}\n\n[待补充]`;
-        logger.warn('StepwiseDocumentGenerator: Section content is empty, using placeholder', {
+        logger.warn('LLMStepwiseGenerator: Section content is empty, using placeholder', {
           ...logContext,
           sectionNumber: section.number,
           sectionTitle: section.title,
@@ -786,7 +704,7 @@ export class StepwiseDocumentGenerator {
       // 直接追加章节内容
       mergedParts.push(content);
 
-      logger.debug?.('StepwiseDocumentGenerator: Appended section', {
+      logger.debug?.('LLMStepwiseGenerator: Appended section', {
         ...logContext,
         sectionNumber: section.number,
         sectionTitle: section.title,
@@ -796,7 +714,7 @@ export class StepwiseDocumentGenerator {
 
     // 使用双换行符连接所有部分
     const result = mergedParts.join('\n\n');
-    logger.info('StepwiseDocumentGenerator: Merge sections completed', {
+    logger.info('LLMStepwiseGenerator: Merge sections completed', {
       ...logContext,
       totalLength: result.length,
       partsCount: mergedParts.length,
@@ -804,270 +722,4 @@ export class StepwiseDocumentGenerator {
 
     return result;
   }
-
-  /**
-   * 保存文件到 workspace
-   */
-  private async saveToWorkspace(filePath: string, content: string): Promise<void> {
-    try {
-      const fullPath = path.join(this.config.workspaceDir, filePath);
-      const dir = path.dirname(fullPath);
-      const logContext = this.getLogContext();
-
-      await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(fullPath, content, 'utf-8');
-
-      logger.info('StepwiseDocumentGenerator: Saved file to workspace', {
-        ...logContext,
-        filePath: fullPath,
-        contentLength: content.length,
-      });
-    } catch (error: any) {
-      const logContext = this.getLogContext();
-      logger.error('StepwiseDocumentGenerator: Failed to save file to workspace', {
-        ...logContext,
-        filePath,
-        error: error.message,
-      });
-    }
-  }
-
-  /**
-   * 读取 workspace 中的主文件内容（PRD.md）
-   */
-  private async readMainFileFromWorkspace(): Promise<string> {
-    try {
-      const logContext = this.getLogContext();
-      // 检查目录是否存在
-      try {
-        await fs.access(this.config.workspaceDir);
-      } catch {
-        logger.warn('StepwiseDocumentGenerator: Workspace directory does not exist', {
-          ...logContext,
-          workspaceDir: this.config.workspaceDir,
-        });
-        return '';
-      }
-
-      // 直接读取主文件（PRD.md）
-      // 确保返回的是完整的PRD内容，而不是监控检测信息或其他文件
-      const mainFilePath = path.join(this.config.workspaceDir, this.config.mainFileName);
-      try {
-        const content = await fs.readFile(mainFilePath, 'utf-8');
-        logger.info('StepwiseDocumentGenerator: Read main file from workspace', {
-          ...logContext,
-          mainFileName: this.config.mainFileName,
-          contentLength: content.length,
-          isCompletePRD: true,
-        });
-        // 确保返回的是完整的PRD内容
-        return content;
-      } catch (error: any) {
-        logger.warn('StepwiseDocumentGenerator: Main file not found, trying to read all files', {
-          ...logContext,
-          mainFileName: this.config.mainFileName,
-          error: error.message,
-        });
-        // 如果主文件不存在，尝试读取所有文件（向后兼容）
-        // 注意：readAllFromWorkspace会排除review文件，只返回PRD相关文件
-        return await this.readAllFromWorkspace();
-      }
-    } catch (error: any) {
-      const logContext = this.getLogContext();
-      logger.error('StepwiseDocumentGenerator: Failed to read main file from workspace', {
-        ...logContext,
-        error: error.message,
-        workspaceDir: this.config.workspaceDir,
-        mainFileName: this.config.mainFileName,
-      });
-      return '';
-    }
-  }
-
-  /**
-   * 读取 workspace 中的所有文件内容（向后兼容方法）
-   */
-  private async readAllFromWorkspace(): Promise<string> {
-    try {
-      const logContext = this.getLogContext();
-      // 检查目录是否存在
-      try {
-        await fs.access(this.config.workspaceDir);
-      } catch {
-        logger.warn('StepwiseDocumentGenerator: Workspace directory does not exist', {
-          ...logContext,
-          workspaceDir: this.config.workspaceDir,
-        });
-        return '';
-      }
-
-      const files: string[] = [];
-      const entries = await fs.readdir(this.config.workspaceDir, { withFileTypes: true });
-
-      // 按文件名排序（确保顺序：outline -> sections -> main）
-      // 排除review文件和其他非PRD文件，确保只返回完整的PRD内容，而不是监控检测信息
-      const sortedEntries = entries
-        .filter(entry => {
-          // 只包含PRD相关文件，排除review文件和其他非PRD文件
-          if (!entry.isFile() || !entry.name.endsWith('.md')) return false;
-          // 排除review文件
-          if (entry.name.includes('review') || entry.name.includes('Review')) return false;
-          // 排除final文件
-          if (entry.name.endsWith('-final.md')) return false;
-          return true;
-        })
-        .sort((a, b) => {
-          if (a.name === '00-outline.md') return -1;
-          if (b.name === '00-outline.md') return 1;
-          // 主文件优先
-          if (a.name === this.config.mainFileName) return -1;
-          if (b.name === this.config.mainFileName) return 1;
-          return a.name.localeCompare(b.name);
-        });
-
-      for (const entry of sortedEntries) {
-        const filePath = path.join(this.config.workspaceDir, entry.name);
-        const content = await fs.readFile(filePath, 'utf-8');
-        if (content.startsWith('#')) {
-          files.push(content);
-        } else {
-          files.push(`# ${entry.name.replace('.md', '')}\n\n${content}`);
-        }
-      }
-
-      return files.join('\n\n---\n\n');
-    } catch (error: any) {
-      const logContext = this.getLogContext();
-      logger.error('StepwiseDocumentGenerator: Failed to read files from workspace', {
-        ...logContext,
-        error: error.message,
-        workspaceDir: this.config.workspaceDir,
-      });
-      return '';
-    }
-  }
-
-  /**
-   * Reset generator state
-   * Called during rollback to stop ongoing operations
-   */
-  async reset(abortSignal?: AbortSignal): Promise<void> {
-    const logContext = this.getLogContext();
-    logger.info('StepwiseDocumentGenerator: Resetting generator', {
-      ...logContext,
-      documentType: this.config.documentType,
-      projectId: this.config.projectId,
-    });
-
-    // Set cancellation flag
-    this.isCancelled = true;
-
-    // Abort ongoing operations
-    if (this.abortController) {
-      this.abortController.abort();
-    }
-
-    if (abortSignal?.aborted) {
-      logger.info('StepwiseDocumentGenerator: Already aborted via signal', logContext);
-      return;
-    }
-
-    // Create new AbortController for future operations
-    this.abortController = new AbortController();
-    // Keep isCancelled = true until generate() is called again
-    // This ensures checkCancellation() will throw if called after reset
-
-    logger.info('StepwiseDocumentGenerator: Reset completed', logContext);
-  }
-
-  /**
-   * Check if operation should be cancelled
-   */
-  private async checkCancellation(): Promise<void> {
-    const logContext = this.getLogContext();
-    
-    // Check local cancellation flag
-    if (this.isCancelled) {
-      logger.info('StepwiseDocumentGenerator: Operation cancelled (local flag)', logContext);
-      throw new Error('StepwiseDocumentGenerator: Operation cancelled');
-    }
-    
-    // Check local abortController
-    if (this.abortController?.signal.aborted) {
-      logger.info('StepwiseDocumentGenerator: Operation cancelled (local abortController)', logContext);
-      throw new Error('StepwiseDocumentGenerator: Operation cancelled');
-    }
-    
-    // Check Action's abortSignal (from StateManager)
-    // This is the critical check - when reset-workflow is called, StateManager aborts its controller
-    // and the Action's abortSignal is set from that controller
-    const actionAbortSignal = (this.action as any).abortSignal;
-    if (actionAbortSignal?.aborted) {
-      logger.info('StepwiseDocumentGenerator: Operation cancelled via Action abortSignal', {
-        ...logContext,
-        actionAbortSignalAborted: true,
-      });
-      throw new Error('StepwiseDocumentGenerator: Operation cancelled via Action abortSignal');
-    }
-    
-    }
-
-  /**
-   * Set step state (for logging purposes)
-   */
-  private async setStepState(stepId: string, status: StepState): Promise<void> {
-    const logContext = this.getLogContext();
-    logger.debug('StepwiseDocumentGenerator: Step state changed', {
-      ...logContext,
-      stepId,
-      status,
-    });
-  }
-}
-
-/**
- * 获取工作目录路径的通用函数
- * 新的目录结构：workspace/{applicationId}/{projectId}/ainative-workspace/docs/{documentType}/
- * applicationId 和 projectId 必须提供，不能使用 'default'，以防止不同应用/项目互相覆盖文件
- */
-export function getWorkspaceDir(
-  documentType: string,
-  options?: {
-    applicationId?: string;
-    projectId?: string;
-    /** @deprecated 版本控制已改用 git，此参数被忽略 */
-    version?: number;
-    /** @deprecated 使用环境变量 WORKSPACE_PATH 代替 */
-    workspacePath?: string;
-  }
-): string {
-  const possibleRoots = [
-    path.resolve(__dirname, '../../'),
-    path.resolve(__dirname, '../../../'),
-    process.cwd(),
-  ];
-
-  let projectRoot = possibleRoots[0];
-  for (const root of possibleRoots) {
-    if (fsSync.existsSync(path.join(root, 'pnpm-workspace.yaml')) ||
-      fsSync.existsSync(path.join(root, 'package.json'))) {
-      projectRoot = root;
-      break;
-    }
-  }
-
-  const workspaceRoot = process.env.WORKSPACE_PATH || path.join(projectRoot, 'workspace');
-  
-  // applicationId 必须提供，不能使用 'default'
-  if (!options?.applicationId) {
-    throw new Error('applicationId is required for workspace directory. Cannot use "default" to prevent file conflicts between different applications.');
-  }
-  // projectId 必须提供，不能使用 'default'
-  if (!options?.projectId) {
-    throw new Error('projectId is required for workspace directory. Cannot use "default" to prevent file conflicts between different projects.');
-  }
-  const applicationId = options.applicationId;
-  const projectId = options.projectId;
-  // 新的目录结构：workspace/{applicationId}/{projectId}/ainative-workspace/docs/{documentType}/
-  return path.join(workspaceRoot, applicationId, projectId, 'ainative-workspace', 'docs', documentType.toLowerCase());
 }
