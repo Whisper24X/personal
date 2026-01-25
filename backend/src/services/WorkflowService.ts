@@ -2,7 +2,7 @@
  * Workflow Service
  * Provides workflow configuration and management services
  * 
- * Schema V2: Default workflow configuration is embedded in this file
+ * Schema V2: Default workflow configuration is imported from defaultWorkflowConfig.ts
  */
 
 import { ApplicationWorkflowRepository, WorkflowConfig } from '../database/repositories/ApplicationWorkflowRepository';
@@ -11,67 +11,11 @@ import { RoleDefinitionRepository } from '../database/repositories/RoleDefinitio
 import { ActionDefinitionRepository } from '../database/repositories/ActionDefinitionRepository';
 import { logger } from '../utils';
 
-/**
- * Default workflow configuration
- * Used when creating new applications without a specific workflow
- * Exported for use by other modules
- * 
- * 配置与角色定义保持一致：
- * - Salesperson: WriteMRD -> MRDReview -> ImproveMRD
- * - ProductManager: WritePRD -> PRDReview -> ImprovePRD
- * - Architect: WriteDesign -> DesignReview -> ImproveDesign
- * - ProjectManager: BreakdownTasks
- * - Engineer: WriteCode
- * - QAEngineer: TestabilityReview -> WriteTestPlan -> WriteTest -> TestCaseReview
- */
-export function getDefaultWorkflowConfig(): WorkflowConfig {
-  return {
-    roles: [
-      {
-        profile: 'Salesperson',
-        name: 'Salesperson',
-        order: 0,
-        actions: ['WriteMRD', 'MRDReview', 'ImproveMRD'],
-        watch_actions: ['User'],
-      },
-      {
-        profile: 'ProductManager',
-        name: 'Product Manager',
-        order: 1,
-        actions: ['WritePRD', 'PRDReview', 'ImprovePRD'],
-        watch_actions: ['WriteMRD', 'ImproveMRD'],
-      },
-      {
-        profile: 'Architect',
-        name: 'Architect',
-        order: 2,
-        actions: ['WriteDesign', 'DesignReview', 'ImproveDesign'],
-        watch_actions: ['WritePRD', 'ImprovePRD'],
-      },
-      {
-        profile: 'ProjectManager',
-        name: 'Project Manager',
-        order: 3,
-        actions: ['BreakdownTasks'],
-        watch_actions: ['WritePRD', 'WriteDesign'],
-      },
-      {
-        profile: 'Engineer',
-        name: 'Engineer',
-        order: 4,
-        actions: ['WriteCode'],
-        watch_actions: ['WritePRD', 'WriteDesign', 'BreakdownTasks'],
-      },
-      {
-        profile: 'QAEngineer',
-        name: 'QA Engineer',
-        order: 5,
-        actions: ['TestabilityReview', 'WriteTestPlan', 'WriteTest', 'TestCaseReview'],
-        watch_actions: ['WritePRD', 'WriteCode'],
-      },
-    ],
-  };
-}
+// Import from single source of truth
+import { getDefaultWorkflowConfig } from './defaultWorkflowConfig';
+
+// Re-export for backward compatibility
+export { getDefaultWorkflowConfig };
 
 export class WorkflowService {
   private workflowRepo: ApplicationWorkflowRepository;

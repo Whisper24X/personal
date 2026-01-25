@@ -588,7 +588,9 @@ export abstract class BaseAction {
     content: string,
     options?: WorkspaceOptions
   ): Promise<void> {
-    return WorkspaceManager.saveToWorkspace(filePath, content, options);
+    // 使用 validateWorkspaceOptions 确保从 context 中获取必要的 ID
+    const validatedOptions = this.validateWorkspaceOptions(options, options?.documentType);
+    return WorkspaceManager.saveToWorkspace(filePath, content, validatedOptions);
   }
 
   /**
@@ -600,7 +602,9 @@ export abstract class BaseAction {
     files: Array<{ path: string; content: string }>,
     options?: WorkspaceOptions
   ): Promise<void> {
-    return WorkspaceManager.saveFilesToWorkspace(files, options);
+    // 使用 validateWorkspaceOptions 确保从 context 中获取必要的 ID
+    const validatedOptions = this.validateWorkspaceOptions(options, options?.documentType);
+    return WorkspaceManager.saveFilesToWorkspace(files, validatedOptions);
   }
 
   /**
