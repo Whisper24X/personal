@@ -96,7 +96,7 @@
                 </div>
 
                 <!-- Content Display -->
-                <el-scrollbar :max-height="viewMode === 'preview' ? '200px' : '400px'" class="content-scrollbar">
+                <el-scrollbar :max-height="viewMode === 'preview' ? '200px' : undefined" class="content-scrollbar">
                     <div class="content-display">
                         <!-- File content view/edit -->
                         <div v-if="selectedFileIndex >= 0 && hasFiles && roleInfo.action !== 'WritePRD'"
@@ -313,7 +313,7 @@ const emit = defineEmits<{
     (e: 'action', action: string, modifiedContent?: string): void;
 }>();
 
-const viewMode = ref<'preview' | 'full'>('preview');
+const viewMode = ref<'preview' | 'full'>('full');
 const isEditing = ref(false);
 const editedContent = ref('');
 const editedFiles = ref<Map<string, string>>(new Map());

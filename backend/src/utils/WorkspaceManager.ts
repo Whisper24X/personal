@@ -171,6 +171,60 @@ export class WorkspaceManager {
   }
 
   /**
+   * 从 workspace 路径解析出 WorkspaceOptions
+   * 统一的路径解析方法，供各处调用
+   * 
+   * 支持的路径格式：
+   * - 带版本: workspace/{applicationId}/{projectId}/versions/{versionId}/ainative-workspace/docs/{documentType}
+   * - 无版本: workspace/{applicationId}/{projectId}/ainative-workspace/docs/{documentType}
+   * 
+   * @param workspacePath 要解析的路径
+   * @param defaultDocumentType 默认文档类型（如果路径中没有）
+   * @returns 解析出的 WorkspaceOptions，如果无法解析则返回 undefined
+   */
+  static parseWorkspacePath(workspacePath: string, defaultDocumentType?: string): WorkspaceOptions | undefined {
+    if (!workspacePath) return undefined;
+
+    const pathParts = workspacePath.split(path.sep).filter(p => p);
+    
+    // 查找关键目录标识
+    const workspaceRootIndex = pathParts.findIndex(p => p === 'workspace');
+    const versionsIndex = pathParts.findIndex(p => p === VERSIONS_DIR_NAME);
+    const docsIndex = pathParts.findIndex(p => p === 'docs');
+    
+    if (workspaceRootIndex === -1) {
+      return undefined;
+    }
+    
+    // 提取 applicationId 和 projectId
+    const applicationId = pathParts[workspaceRootIndex + 1];
+    const projectId = pathParts[workspaceRootIndex + 2];
+    
+    if (!applicationId || !projectId) {
+      return undefined;
+    }
+    
+    // 提取 versionId（如果存在 versions 目录）
+    let versionId: string | undefined;
+    if (versionsIndex !== -1 && versionsIndex === workspaceRootIndex + 3) {
+      versionId = pathParts[versionsIndex + 1];
+    }
+    
+    // 提取 documentType（从 docs 目录后面）
+    let documentType: string | undefined;
+    if (docsIndex !== -1 && docsIndex < pathParts.length - 1) {
+      documentType = pathParts[docsIndex + 1];
+    }
+    
+    return {
+      applicationId,
+      projectId,
+      versionId,
+      documentType: documentType || defaultDocumentType,
+    };
+  }
+
+  /**
    * 获取版本目录的父目录路径
    * 目录结构：workspace/{applicationId}/{projectId}/versions
    */
