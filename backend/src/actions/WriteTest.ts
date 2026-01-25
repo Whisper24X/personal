@@ -188,7 +188,9 @@ ${code}
     code: string,
     options?: WriteTestOptions
   ): Promise<IActionOutput> {
-    const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'TEST' });
+    // 使用 validateWorkspaceOptions 统一获取路径参数
+    const workspaceOptions = this.validateWorkspaceOptions(options, 'TEST');
+    const workspaceDir = this.getWorkspaceDir(workspaceOptions);
 
     // Load system prompts from database or use defaults
     const systemPrompt = await this.loadSystemPrompt('test', 'system_prompt', TEST_SYSTEM_PROMPT);
@@ -210,9 +212,7 @@ ${code}
       documentType: 'TEST',
       mainFileName: 'TEST.md',
       workspaceDir,
-      applicationId: options?.applicationId,
-      projectId: options?.projectId || (this.context?.get('projectId') as string | undefined),
-      version: options?.version,
+      ...workspaceOptions,
       role,
       prd,
       code,

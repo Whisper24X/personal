@@ -16,12 +16,17 @@ import {
 import { logger } from '../../utils';
 import { ProjectRepository } from '../../database/repositories/ProjectRepository';
 import { WorkflowService, getDefaultWorkflowConfig } from '../../services/WorkflowService';
-import { GitService } from '../../services/GitService';
 import { WorkflowConfig } from '../../database/repositories/ApplicationWorkflowRepository';
-import { WorkspaceManager } from '../../utils/WorkspaceManager';
 
-// Map to track running executors by projectId
+// Map to track running executors by projectId:versionId
 const runningExecutors: Map<string, WorkflowExecutor> = new Map();
+
+/**
+ * Get executor key from projectId and versionId
+ */
+function getExecutorKey(projectId: string, versionId: string): string {
+  return `${projectId}:${versionId}`;
+}
 
 export class WorkflowExecutionController {
   private static executionService = new WorkflowExecutionService();
@@ -30,15 +35,16 @@ export class WorkflowExecutionController {
   );
   private static projectRepository = new ProjectRepository();
   private static workflowService = new WorkflowService();
-  private static gitService = new GitService();
 
   /**
    * Get workflow execution state
    * GET /api/workflow/:projectId/state
+   * Query: versionId (required)
    */
   static async getState(req: Request, res: Response) {
     try {
       const { projectId } = req.params;
+      const { versionId } = req.query;
 
       if (!projectId) {
         return res.status(400).json({
@@ -47,7 +53,14 @@ export class WorkflowExecutionController {
         });
       }
 
-      const state = await WorkflowExecutionController.executionService.getCurrentState(projectId);
+      if (!versionId || typeof versionId !== 'string') {
+        return res.status(400).json({
+          success: false,
+          error: 'Version ID is required',
+        });
+      }
+
+      const state = await WorkflowExecutionController.executionService.getCurrentState(projectId, versionId);
 
       if (!state) {
         return res.status(404).json({
@@ -64,6 +77,7 @@ export class WorkflowExecutionController {
       logger.error('WorkflowExecutionController: Failed to get state', {
         error: error.message,
         projectId: req.params.projectId,
+        versionId: req.query.versionId,
       });
       return res.status(500).json({
         success: false,
@@ -76,10 +90,12 @@ export class WorkflowExecutionController {
   /**
    * Get workflow execution details (full record)
    * GET /api/workflow/:projectId/execution
+   * Query: versionId (required)
    */
   static async getExecution(req: Request, res: Response) {
     try {
       const { projectId } = req.params;
+      const { versionId } = req.query;
 
       if (!projectId) {
         return res.status(400).json({
@@ -88,7 +104,14 @@ export class WorkflowExecutionController {
         });
       }
 
-      const execution = await WorkflowExecutionController.executionService.getExecution(projectId);
+      if (!versionId || typeof versionId !== 'string') {
+        return res.status(400).json({
+          success: false,
+          error: 'Version ID is required',
+        });
+      }
+
+      const execution = await WorkflowExecutionController.executionService.getExecution(projectId, versionId);
 
       if (!execution) {
         return res.status(404).json({
@@ -105,6 +128,7 @@ export class WorkflowExecutionController {
       logger.error('WorkflowExecutionController: Failed to get execution', {
         error: error.message,
         projectId: req.params.projectId,
+        versionId: req.query.versionId,
       });
       return res.status(500).json({
         success: false,
@@ -117,13 +141,13 @@ export class WorkflowExecutionController {
   /**
    * Start workflow execution
    * POST /api/workflow/:projectId/start
-   * Body: { currentPosition?: { roleIndex: number, actionIndex: number } }
+   * Body: { versionId: string, currentPosition?: { roleIndex: number, actionIndex: number } }
    * Automatically initializes workflow if not exists
    */
   static async start(req: Request, res: Response) {
     try {
       const { projectId } = req.params;
-      const { currentPosition } = req.body;  // Optional: start from specific position
+      const { versionId, currentPosition } = req.body;
 
       if (!projectId) {
         return res.status(400).json({
@@ -132,14 +156,21 @@ export class WorkflowExecutionController {
         });
       }
 
+      if (!versionId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Version ID is required',
+        });
+      }
+
       // Stop any running executor first (important for reset + start flow)
-      WorkflowExecutionController._stopBackgroundExecution(projectId);
+      WorkflowExecutionController._stopBackgroundExecution(projectId, versionId);
 
       // Check if execution exists, if not, auto-initialize
-      let execution = await WorkflowExecutionController.executionService.getExecution(projectId);
+      let execution = await WorkflowExecutionController.executionService.getExecution(projectId, versionId);
       
       if (!execution) {
-        logger.info('WorkflowExecutionController: No execution found, auto-initializing', { projectId });
+        logger.info('WorkflowExecutionController: No execution found, auto-initializing', { projectId, versionId });
         
         // Get project to find application_id
         const project = await WorkflowExecutionController.projectRepository.findById(projectId);
@@ -148,15 +179,6 @@ export class WorkflowExecutionController {
             success: false,
             error: 'Project not found',
           });
-        }
-
-        // Prepare Git repository if configured
-        if (project.git_repo_url && project.application_id) {
-          await WorkflowExecutionController.prepareGitRepository(
-            project.git_repo_url,
-            project.application_id,
-            projectId
-          );
         }
 
         // Get workflow config from application or use default
@@ -169,6 +191,7 @@ export class WorkflowExecutionController {
               workflowConfig = appWorkflow.workflow_config;
               logger.info('WorkflowExecutionController: Using application workflow config', {
                 projectId,
+                versionId,
                 applicationId: project.application_id,
                 workflowId: appWorkflow.id,
               });
@@ -176,6 +199,7 @@ export class WorkflowExecutionController {
           } catch (workflowError: any) {
             logger.warn('WorkflowExecutionController: Failed to get application workflow, using default', {
               projectId,
+              versionId,
               applicationId: project.application_id,
               error: workflowError.message,
             });
@@ -183,23 +207,25 @@ export class WorkflowExecutionController {
         }
 
         // Initialize execution
-        execution = await WorkflowExecutionController.executionService.initialize(projectId, workflowConfig);
+        execution = await WorkflowExecutionController.executionService.initialize(projectId, versionId, workflowConfig);
         logger.info('WorkflowExecutionController: Workflow initialized', {
           projectId,
+          versionId,
           executionId: execution.id,
         });
       }
 
       // Now start the workflow (state transition), optionally from a specific position
-      execution = await WorkflowExecutionController.executionService.start(projectId, currentPosition);
+      execution = await WorkflowExecutionController.executionService.start(projectId, versionId, currentPosition);
 
       logger.info('WorkflowExecutionController: Workflow started', {
         projectId,
+        versionId,
         currentPosition: execution.currentPosition,
       });
 
       // Start execution in background (non-blocking)
-      WorkflowExecutionController.startBackgroundExecution(projectId);
+      WorkflowExecutionController.startBackgroundExecution(projectId, versionId);
 
       return res.json({
         success: true,
@@ -214,6 +240,7 @@ export class WorkflowExecutionController {
       logger.error('WorkflowExecutionController: Failed to start workflow', {
         error: error.message,
         projectId: req.params.projectId,
+        versionId: req.body.versionId,
       });
 
       const statusCode = error.message.includes('Cannot start') ? 400 : 500;
@@ -228,10 +255,12 @@ export class WorkflowExecutionController {
   /**
    * Confirm and proceed to next step
    * POST /api/workflow/:projectId/confirm
+   * Body: { versionId: string }
    */
   static async confirm(req: Request, res: Response) {
     try {
       const { projectId } = req.params;
+      const { versionId } = req.body;
 
       if (!projectId) {
         return res.status(400).json({
@@ -240,10 +269,17 @@ export class WorkflowExecutionController {
         });
       }
 
-      const execution = await WorkflowExecutionController.executionService.confirm(projectId);
+      if (!versionId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Version ID is required',
+        });
+      }
+
+      const execution = await WorkflowExecutionController.executionService.confirm(projectId, versionId);
 
       // Continue execution in background after confirmation
-      WorkflowExecutionController.startBackgroundExecution(projectId);
+      WorkflowExecutionController.startBackgroundExecution(projectId, versionId);
 
       return res.json({
         success: true,
@@ -258,6 +294,7 @@ export class WorkflowExecutionController {
       logger.error('WorkflowExecutionController: Failed to confirm', {
         error: error.message,
         projectId: req.params.projectId,
+        versionId: req.body.versionId,
       });
 
       const statusCode = error.message.includes('not waiting') ? 400 : 500;
@@ -272,17 +309,24 @@ export class WorkflowExecutionController {
   /**
    * Reset workflow to a specific role
    * POST /api/workflow/:projectId/reset
-   * Body: { targetRole: string }
+   * Body: { versionId: string, targetRole: string }
    */
   static async reset(req: Request, res: Response) {
     try {
       const { projectId } = req.params;
-      const { targetRole } = req.body;
+      const { versionId, targetRole } = req.body;
 
       if (!projectId) {
         return res.status(400).json({
           success: false,
           error: 'Project ID is required',
+        });
+      }
+
+      if (!versionId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Version ID is required',
         });
       }
 
@@ -294,9 +338,9 @@ export class WorkflowExecutionController {
       }
 
       // Stop any running executor first to prevent it from continuing
-      WorkflowExecutionController._stopBackgroundExecution(projectId);
+      WorkflowExecutionController._stopBackgroundExecution(projectId, versionId);
 
-      const execution = await WorkflowExecutionController.executionService.reset(projectId, targetRole);
+      const execution = await WorkflowExecutionController.executionService.reset(projectId, versionId, targetRole);
 
       return res.json({
         success: true,
@@ -311,6 +355,7 @@ export class WorkflowExecutionController {
       logger.error('WorkflowExecutionController: Failed to reset workflow', {
         error: error.message,
         projectId: req.params.projectId,
+        versionId: req.body.versionId,
         targetRole: req.body.targetRole,
       });
 
@@ -326,10 +371,12 @@ export class WorkflowExecutionController {
   /**
    * Pause workflow execution
    * POST /api/workflow/:projectId/pause
+   * Body: { versionId: string }
    */
   static async pause(req: Request, res: Response) {
     try {
       const { projectId } = req.params;
+      const { versionId } = req.body;
 
       if (!projectId) {
         return res.status(400).json({
@@ -338,7 +385,14 @@ export class WorkflowExecutionController {
         });
       }
 
-      const execution = await WorkflowExecutionController.executionService.pause(projectId);
+      if (!versionId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Version ID is required',
+        });
+      }
+
+      const execution = await WorkflowExecutionController.executionService.pause(projectId, versionId);
 
       return res.json({
         success: true,
@@ -352,6 +406,7 @@ export class WorkflowExecutionController {
       logger.error('WorkflowExecutionController: Failed to pause workflow', {
         error: error.message,
         projectId: req.params.projectId,
+        versionId: req.body.versionId,
       });
 
       const statusCode = error.message.includes('Cannot pause') ? 400 : 500;
@@ -366,10 +421,12 @@ export class WorkflowExecutionController {
   /**
    * Resume workflow execution
    * POST /api/workflow/:projectId/resume
+   * Body: { versionId: string }
    */
   static async resume(req: Request, res: Response) {
     try {
       const { projectId } = req.params;
+      const { versionId } = req.body;
 
       if (!projectId) {
         return res.status(400).json({
@@ -378,7 +435,14 @@ export class WorkflowExecutionController {
         });
       }
 
-      const execution = await WorkflowExecutionController.executionService.resume(projectId);
+      if (!versionId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Version ID is required',
+        });
+      }
+
+      const execution = await WorkflowExecutionController.executionService.resume(projectId, versionId);
 
       return res.json({
         success: true,
@@ -393,6 +457,7 @@ export class WorkflowExecutionController {
       logger.error('WorkflowExecutionController: Failed to resume workflow', {
         error: error.message,
         projectId: req.params.projectId,
+        versionId: req.body.versionId,
       });
 
       const statusCode = error.message.includes('not paused') ? 400 : 500;
@@ -407,10 +472,12 @@ export class WorkflowExecutionController {
   /**
    * Retry failed workflow
    * POST /api/workflow/:projectId/retry
+   * Body: { versionId: string }
    */
   static async retry(req: Request, res: Response) {
     try {
       const { projectId } = req.params;
+      const { versionId } = req.body;
 
       if (!projectId) {
         return res.status(400).json({
@@ -419,7 +486,14 @@ export class WorkflowExecutionController {
         });
       }
 
-      const execution = await WorkflowExecutionController.executionService.retry(projectId);
+      if (!versionId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Version ID is required',
+        });
+      }
+
+      const execution = await WorkflowExecutionController.executionService.retry(projectId, versionId);
 
       return res.json({
         success: true,
@@ -434,6 +508,7 @@ export class WorkflowExecutionController {
       logger.error('WorkflowExecutionController: Failed to retry workflow', {
         error: error.message,
         projectId: req.params.projectId,
+        versionId: req.body.versionId,
       });
 
       const statusCode = error.message.includes('not failed') ? 400 : 500;
@@ -448,10 +523,12 @@ export class WorkflowExecutionController {
   /**
    * Recover workflow (for page refresh, service restart, etc.)
    * POST /api/workflow/:projectId/recover
+   * Body: { versionId: string }
    */
   static async recover(req: Request, res: Response) {
     try {
       const { projectId } = req.params;
+      const { versionId } = req.body;
 
       if (!projectId) {
         return res.status(400).json({
@@ -460,7 +537,14 @@ export class WorkflowExecutionController {
         });
       }
 
-      const result = await WorkflowExecutionController.recoveryService.recover(projectId);
+      if (!versionId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Version ID is required',
+        });
+      }
+
+      const result = await WorkflowExecutionController.recoveryService.recover(projectId, versionId);
 
       return res.json({
         success: true,
@@ -470,6 +554,7 @@ export class WorkflowExecutionController {
       logger.error('WorkflowExecutionController: Failed to recover workflow', {
         error: error.message,
         projectId: req.params.projectId,
+        versionId: req.body.versionId,
       });
 
       return res.status(500).json({
@@ -483,10 +568,12 @@ export class WorkflowExecutionController {
   /**
    * Get recovery status (check if recovery is needed)
    * GET /api/workflow/:projectId/recovery-status
+   * Query: versionId (required)
    */
   static async getRecoveryStatus(req: Request, res: Response) {
     try {
       const { projectId } = req.params;
+      const { versionId } = req.query;
 
       if (!projectId) {
         return res.status(400).json({
@@ -495,7 +582,14 @@ export class WorkflowExecutionController {
         });
       }
 
-      const status = await WorkflowExecutionController.recoveryService.getRecoveryStatus(projectId);
+      if (!versionId || typeof versionId !== 'string') {
+        return res.status(400).json({
+          success: false,
+          error: 'Version ID is required',
+        });
+      }
+
+      const status = await WorkflowExecutionController.recoveryService.getRecoveryStatus(projectId, versionId);
 
       return res.json({
         success: true,
@@ -505,6 +599,7 @@ export class WorkflowExecutionController {
       logger.error('WorkflowExecutionController: Failed to get recovery status', {
         error: error.message,
         projectId: req.params.projectId,
+        versionId: req.query.versionId,
       });
 
       return res.status(500).json({
@@ -518,10 +613,12 @@ export class WorkflowExecutionController {
   /**
    * Delete workflow execution
    * DELETE /api/workflow/:projectId
+   * Query: versionId (required)
    */
   static async delete(req: Request, res: Response) {
     try {
       const { projectId } = req.params;
+      const { versionId } = req.query;
 
       if (!projectId) {
         return res.status(400).json({
@@ -530,7 +627,14 @@ export class WorkflowExecutionController {
         });
       }
 
-      const deleted = await WorkflowExecutionController.executionService.delete(projectId);
+      if (!versionId || typeof versionId !== 'string') {
+        return res.status(400).json({
+          success: false,
+          error: 'Version ID is required',
+        });
+      }
+
+      const deleted = await WorkflowExecutionController.executionService.delete(projectId, versionId);
 
       if (!deleted) {
         return res.status(404).json({
@@ -547,6 +651,7 @@ export class WorkflowExecutionController {
       logger.error('WorkflowExecutionController: Failed to delete workflow', {
         error: error.message,
         projectId: req.params.projectId,
+        versionId: req.query.versionId,
       });
 
       return res.status(500).json({
@@ -599,31 +704,34 @@ export class WorkflowExecutionController {
    * Start background execution for a workflow
    * This runs asynchronously and doesn't block the API response
    */
-  private static startBackgroundExecution(projectId: string): void {
+  private static startBackgroundExecution(projectId: string, versionId: string): void {
+    const key = getExecutorKey(projectId, versionId);
+
     // Check if already executing
-    if (runningExecutors.has(projectId)) {
-      logger.info('WorkflowExecutionController: Executor already running', { projectId });
+    if (runningExecutors.has(key)) {
+      logger.info('WorkflowExecutionController: Executor already running', { projectId, versionId });
       return;
     }
 
     // Create new executor
     const executor = new WorkflowExecutor();
-    runningExecutors.set(projectId, executor);
+    runningExecutors.set(key, executor);
 
     // Start execution in background
-    executor.execute(projectId)
+    executor.execute(projectId, versionId)
       .then(() => {
-        logger.info('WorkflowExecutionController: Background execution completed', { projectId });
+        logger.info('WorkflowExecutionController: Background execution completed', { projectId, versionId });
       })
       .catch((error: any) => {
         logger.error('WorkflowExecutionController: Background execution failed', {
           projectId,
+          versionId,
           error: error.message,
         });
       })
       .finally(() => {
         // Clean up executor reference
-        runningExecutors.delete(projectId);
+        runningExecutors.delete(key);
       });
   }
 
@@ -631,80 +739,13 @@ export class WorkflowExecutionController {
    * Stop background execution for a workflow (used when pausing/resetting)
    * Note: Prefixed with underscore as it's available for future use
    */
-  static _stopBackgroundExecution(projectId: string): void {
-    const executor = runningExecutors.get(projectId);
+  static _stopBackgroundExecution(projectId: string, versionId: string): void {
+    const key = getExecutorKey(projectId, versionId);
+    const executor = runningExecutors.get(key);
     if (executor) {
       executor.stop();
-      runningExecutors.delete(projectId);
-      logger.info('WorkflowExecutionController: Background execution stopped', { projectId });
-    }
-  }
-
-  /**
-   * Prepare Git repository for a project
-   * - Clone if not exists
-   * - Pull main branch if exists
-   * - Create project branch
-   */
-  private static async prepareGitRepository(
-    gitRepoUrl: string,
-    applicationId: string,
-    projectId: string
-  ): Promise<void> {
-    try {
-      // Get workspace path for the project
-      const workspacePath = WorkspaceManager.getProjectWorkspacePath({
-        applicationId,
-        projectId,
-      });
-
-      logger.info('WorkflowExecutionController: Preparing Git repository', {
-        projectId,
-        gitRepoUrl,
-        workspacePath,
-      });
-
-      // Prepare the repository (clone or pull)
-      const prepareResult = await WorkflowExecutionController.gitService.prepareRepository({
-        gitRepoUrl,
-        workspacePath,
-        projectId,
-      });
-
-      if (!prepareResult.success) {
-        logger.warn('WorkflowExecutionController: Git repository preparation failed', {
-          projectId,
-          message: prepareResult.message,
-        });
-        // Don't throw - allow workflow to continue even if Git fails
-        return;
-      }
-
-      // Create project branch
-      const branchResult = await WorkflowExecutionController.gitService.createProjectBranch(
-        workspacePath,
-        projectId
-      );
-
-      if (!branchResult.success) {
-        logger.warn('WorkflowExecutionController: Git branch creation failed', {
-          projectId,
-          message: branchResult.message,
-        });
-        // Don't throw - allow workflow to continue even if branch creation fails
-        return;
-      }
-
-      logger.info('WorkflowExecutionController: Git repository prepared successfully', {
-        projectId,
-        branchName: branchResult.branchName,
-      });
-    } catch (error: any) {
-      // Log error but don't fail the workflow
-      logger.error('WorkflowExecutionController: Git preparation error', {
-        projectId,
-        error: error.message,
-      });
+      runningExecutors.delete(key);
+      logger.info('WorkflowExecutionController: Background execution stopped', { projectId, versionId });
     }
   }
 }

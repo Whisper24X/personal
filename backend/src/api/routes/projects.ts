@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { ProjectController } from '../controllers/ProjectController';
+import { ProjectVersionController } from '../controllers/ProjectVersionController';
 import { PRDController } from '../controllers/PRDController';
 import { MRDController } from '../controllers/MRDController';
 import { KnowledgeBaseController } from '../controllers/KnowledgeBaseController';
@@ -43,6 +44,16 @@ router.get('/:id/documents', ProjectController.getDocuments);
 router.get('/:id/download/code', ProjectController.downloadCode);
 router.get('/:id/download/docs', ProjectController.downloadDocs);
 router.get('/:id/download/:zipPath(*)', ProjectController.downloadZip);
+
+// Version management routes (must come before generic /:id)
+router.post('/:id/versions', ProjectVersionController.create);
+router.get('/:id/versions', ProjectVersionController.list);
+router.get('/:id/versions/active', ProjectVersionController.getActive);
+router.get('/:id/versions/:versionId', ProjectVersionController.getById);
+router.put('/:id/versions/:versionId', ProjectVersionController.update);
+router.delete('/:id/versions/:versionId', ProjectVersionController.delete);
+router.post('/:id/versions/:versionId/activate', ProjectVersionController.activate);
+router.get('/:id/branches', ProjectVersionController.getBranches);
 
 // Generic project routes (must come after more specific routes)
 router.get('/:id', ProjectController.getStatus);

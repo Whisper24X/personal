@@ -49,8 +49,7 @@ export interface StepwiseGenerationConfig {
   workspaceDir: string;
   applicationId?: string;
   projectId?: string;
-  /** @deprecated 版本控制已改用 git，此参数被忽略 */
-  version?: number;
+  versionId?: string;  // 版本ID，用于定位版本工作空间
 
   // 角色名称（可选，用于日志）
   role?: string;

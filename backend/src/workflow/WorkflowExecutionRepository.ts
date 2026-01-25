@@ -23,12 +23,39 @@ import { v4 as uuidv4 } from 'uuid';
 
 export class WorkflowExecutionRepository {
   /**
-   * Find workflow execution by project ID
+   * Find workflow execution by project ID and version ID
+   * This is the primary lookup method
+   */
+  async findByProjectAndVersion(projectId: string, versionId: string): Promise<WorkflowExecution | null> {
+    try {
+      const result = await query<WorkflowExecutionRow>(
+        `SELECT * FROM workflow_executions WHERE project_id = $1 AND version_id = $2`,
+        [projectId, versionId]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      return rowToWorkflowExecution(result.rows[0]);
+    } catch (error: any) {
+      logger.error('WorkflowExecutionRepository: Failed to find by project and version', {
+        projectId,
+        versionId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Find workflow execution by project ID (returns first found, deprecated)
+   * @deprecated Use findByProjectAndVersion instead
    */
   async findByProjectId(projectId: string): Promise<WorkflowExecution | null> {
     try {
       const result = await query<WorkflowExecutionRow>(
-        `SELECT * FROM workflow_executions WHERE project_id = $1`,
+        `SELECT * FROM workflow_executions WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
         [projectId]
       );
 
@@ -100,13 +127,14 @@ export class WorkflowExecutionRepository {
 
       const result = await query<WorkflowExecutionRow>(
         `INSERT INTO workflow_executions (
-          id, project_id, workflow_snapshot, state, current_position,
+          id, project_id, version_id, workflow_snapshot, state, current_position,
           steps, pending_confirmation, last_error, execution_context, version
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING *`,
         [
           id,
           options.projectId,
+          options.versionId,
           JSON.stringify(options.workflowConfig),
           WorkflowState.INITIALIZED,
           null,
@@ -121,24 +149,27 @@ export class WorkflowExecutionRepository {
       logger.info('WorkflowExecutionRepository: Created workflow execution', {
         id,
         projectId: options.projectId,
+        versionId: options.versionId,
         stepsCount: steps.length,
       });
 
       return rowToWorkflowExecution(result.rows[0]);
     } catch (error: any) {
-      // Handle unique constraint violation (project already has execution)
+      // Handle unique constraint violation (project+version already has execution)
       if (error.code === '23505') {
-        logger.warn('WorkflowExecutionRepository: Workflow execution already exists for project', {
+        logger.warn('WorkflowExecutionRepository: Workflow execution already exists for project+version', {
           projectId: options.projectId,
+          versionId: options.versionId,
         });
         // Return existing one
-        const existing = await this.findByProjectId(options.projectId);
+        const existing = await this.findByProjectAndVersion(options.projectId, options.versionId);
         if (existing) {
           return existing;
         }
       }
       logger.error('WorkflowExecutionRepository: Failed to create', {
         projectId: options.projectId,
+        versionId: options.versionId,
         error: error.message,
       });
       throw error;
@@ -202,6 +233,7 @@ export class WorkflowExecutionRepository {
    */
   async updateFields(
     projectId: string,
+    versionId: string,
     fields: Partial<{
       state: WorkflowState;
       currentPosition: CurrentPosition | null;
@@ -242,16 +274,17 @@ export class WorkflowExecutionRepository {
       }
 
       if (setClauses.length === 0) {
-        return await this.findByProjectId(projectId);
+        return await this.findByProjectAndVersion(projectId, versionId);
       }
 
       setClauses.push(`version = version + 1`);
       setClauses.push(`updated_at = NOW()`);
 
       values.push(projectId);
+      values.push(versionId);
 
       const result = await query<WorkflowExecutionRow>(
-        `UPDATE workflow_executions SET ${setClauses.join(', ')} WHERE project_id = $${paramIndex} RETURNING *`,
+        `UPDATE workflow_executions SET ${setClauses.join(', ')} WHERE project_id = $${paramIndex} AND version_id = $${paramIndex + 1} RETURNING *`,
         values
       );
 
@@ -263,6 +296,7 @@ export class WorkflowExecutionRepository {
     } catch (error: any) {
       logger.error('WorkflowExecutionRepository: Failed to update fields', {
         projectId,
+        versionId,
         error: error.message,
       });
       throw error;
@@ -270,7 +304,29 @@ export class WorkflowExecutionRepository {
   }
 
   /**
-   * Delete workflow execution by project ID
+   * Delete workflow execution by project ID and version ID
+   */
+  async deleteByProjectAndVersion(projectId: string, versionId: string): Promise<boolean> {
+    try {
+      const result = await query(
+        `DELETE FROM workflow_executions WHERE project_id = $1 AND version_id = $2`,
+        [projectId, versionId]
+      );
+
+      return (result.rowCount ?? 0) > 0;
+    } catch (error: any) {
+      logger.error('WorkflowExecutionRepository: Failed to delete', {
+        projectId,
+        versionId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Delete workflow execution by project ID (deletes all versions)
+   * @deprecated Use deleteByProjectAndVersion for specific version deletion
    */
   async deleteByProjectId(projectId: string): Promise<boolean> {
     try {
@@ -290,19 +346,21 @@ export class WorkflowExecutionRepository {
   }
 
   /**
-   * Get or create workflow execution for a project
+   * Get or create workflow execution for a project and version
    */
   async getOrCreate(
     projectId: string,
+    versionId: string,
     workflowConfig: WorkflowConfig
   ): Promise<WorkflowExecution> {
-    const existing = await this.findByProjectId(projectId);
+    const existing = await this.findByProjectAndVersion(projectId, versionId);
     if (existing) {
       return existing;
     }
 
     return await this.create({
       projectId,
+      versionId,
       workflowConfig,
     });
   }
@@ -311,7 +369,7 @@ export class WorkflowExecutionRepository {
    * Reset workflow execution to a specific role
    * This is an atomic operation that resets all steps from the target role onwards
    */
-  async resetToRole(projectId: string, targetRole: string): Promise<WorkflowExecution | null> {
+  async resetToRole(projectId: string, versionId: string, targetRole: string): Promise<WorkflowExecution | null> {
     const client = await getClient();
 
     try {
@@ -319,8 +377,8 @@ export class WorkflowExecutionRepository {
 
       // Get current execution
       const getResult = await client.query<WorkflowExecutionRow>(
-        `SELECT * FROM workflow_executions WHERE project_id = $1 FOR UPDATE`,
-        [projectId]
+        `SELECT * FROM workflow_executions WHERE project_id = $1 AND version_id = $2 FOR UPDATE`,
+        [projectId, versionId]
       );
 
       if (getResult.rows.length === 0) {
@@ -397,13 +455,14 @@ export class WorkflowExecutionRepository {
           last_error = NULL,
           version = version + 1,
           updated_at = NOW()
-        WHERE project_id = $4
+        WHERE project_id = $4 AND version_id = $5
         RETURNING *`,
         [
           WorkflowState.INITIALIZED,
           JSON.stringify({ roleIndex: targetRoleIndex, actionIndex: 0 }),
           JSON.stringify(updatedSteps),
           projectId,
+          versionId,
         ]
       );
 
@@ -411,6 +470,7 @@ export class WorkflowExecutionRepository {
 
       logger.info('WorkflowExecutionRepository: Reset workflow to role completed', {
         projectId,
+        versionId,
         targetRole,
         targetRoleIndex,
         resetStepsCount: resetCount,
@@ -422,6 +482,7 @@ export class WorkflowExecutionRepository {
       await client.query('ROLLBACK');
       logger.error('WorkflowExecutionRepository: Failed to reset to role', {
         projectId,
+        versionId,
         targetRole,
         error: error.message,
       });

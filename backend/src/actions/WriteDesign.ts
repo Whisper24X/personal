@@ -116,8 +116,9 @@ export class WriteDesign extends BaseAction {
    * 使用通用的 StepwiseDocumentGenerator（仅LLM模式）
    */
   private async generateStepwise(input: string, options?: WriteDesignOptions): Promise<IActionOutput> {
-    // 确保使用DESIGN目录
-    const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'DESIGN' });
+    // 使用 validateWorkspaceOptions 统一获取路径参数
+    const workspaceOptions = this.validateWorkspaceOptions(options, 'DESIGN');
+    const workspaceDir = this.getWorkspaceDir(workspaceOptions);
 
     // Load system prompt from database or use default
     const systemPrompt = await this.loadSystemPrompt('design', 'system_prompt', DESIGN_SYSTEM_PROMPT);
@@ -131,8 +132,7 @@ export class WriteDesign extends BaseAction {
     logger.info('WriteDesign: Creating StepwiseDocumentGenerator', {
       executorMode,
       workspaceDir,
-      applicationId: options?.applicationId,
-      projectId: options?.projectId,
+      ...workspaceOptions,
     });
 
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
@@ -158,9 +158,7 @@ export class WriteDesign extends BaseAction {
         { number: 12, title: '未来演进方向' },
       ],
       workspaceDir,
-      applicationId: options?.applicationId,
-      projectId: options?.projectId || (this.context?.get('projectId') as string | undefined),
-      version: options?.version,
+      ...workspaceOptions,
       role,
       executorMode: executorMode,
       skipStepwiseInCLI: true,

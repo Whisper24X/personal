@@ -11,6 +11,7 @@ export const MESSAGE_ROUTE_TO_SELF = '<self>';
 
 export const ACTION_WRITE_MRD = 'WriteMRD';
 export const ACTION_WRITE_PRD = 'WritePRD';
+export const ACTION_IMPROVE_PRD = 'ImprovePRD';
 export const ACTION_WRITE_DESIGN = 'WriteDesign';
 export const ACTION_WRITE_CODE = 'WriteCode';
 export const ACTION_WRITE_TEST = 'WriteTest';

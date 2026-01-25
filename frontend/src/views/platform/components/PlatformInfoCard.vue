@@ -9,25 +9,32 @@
           <span class="label">平台名称:</span>
           <span class="value">{{ platformName }}</span>
         </div>
-        <el-dropdown trigger="click" @command="handleDownloadCommand">
-          <el-button type="primary" size="small">
-            <el-icon class="el-icon--left"><Download /></el-icon>
-            下载
-            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="code">
-                <el-icon><FolderOpened /></el-icon>
-                下载代码
-              </el-dropdown-item>
-              <el-dropdown-item command="docs">
-                <el-icon><Document /></el-icon>
-                下载文档
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        <div class="actions-row">
+          <VersionSelector
+            v-if="platformId"
+            :platform-id="platformId"
+            @version-changed="handleVersionChanged"
+          />
+          <el-dropdown trigger="click" @command="handleDownloadCommand">
+            <el-button type="primary" size="small">
+              <el-icon class="el-icon--left"><Download /></el-icon>
+              下载
+              <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="code">
+                  <el-icon><FolderOpened /></el-icon>
+                  下载代码
+                </el-dropdown-item>
+                <el-dropdown-item command="docs">
+                  <el-icon><Document /></el-icon>
+                  下载文档
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
       </div>
     </div>
     <el-divider v-if="userIdea" />
@@ -47,8 +54,10 @@
 
 <script setup lang="ts">
 import { Monitor, Document, Edit, Download, ArrowDown, FolderOpened } from '@element-plus/icons-vue';
+import VersionSelector from './VersionSelector.vue';
 
 defineProps<{
+  platformId?: string;
   platformName: string;
   userIdea?: string;
 }>();
@@ -56,6 +65,7 @@ defineProps<{
 const emit = defineEmits<{
   'download-code': [];
   'download-docs': [];
+  'version-changed': [version: any];
 }>();
 
 function handleDownloadCommand(command: string) {
@@ -64,6 +74,10 @@ function handleDownloadCommand(command: string) {
   } else if (command === 'docs') {
     emit('download-docs');
   }
+}
+
+function handleVersionChanged(version: any) {
+  emit('version-changed', version);
 }
 </script>
 
@@ -83,6 +97,12 @@ function handleDownloadCommand(command: string) {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+}
+
+.actions-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .info-item {

@@ -5,12 +5,11 @@
 
 import {
   IRoleConfig,
-  ACTION_WRITE_CODE,
   ACTION_WRITE_PRD,
+  ACTION_IMPROVE_PRD,
 } from '@mind2build/shared';
 import { Role } from './Role';
 import { Context } from '../core/context/Context';
-import { TestabilityReview } from '../actions/TestabilityReview';
 import { WriteTestPlan } from '../actions/WriteTestPlan';
 import { WriteTest } from '../actions/WriteTest';
 import { TestCaseReview } from '../actions/TestCaseReview';
@@ -20,22 +19,21 @@ export class QAEngineer extends Role {
     const config: IRoleConfig = {
       name,
       profile: 'QAEngineer',
-      goal: 'Execute QA workflow from testability review to test case review, ensuring quality and functional correctness',
-      constraints: 'Focus on code quality, functional correctness, comprehensive test coverage, and systematic QA process. Execute QA workflow in order: testability review -> test plan -> test cases -> test case review',
-      description: 'Experienced QA engineer who executes QA workflow including testability review, test planning, and test case design',
+      goal: 'Execute QA workflow from test planning to test case review, ensuring quality and functional correctness',
+      constraints: 'Focus on code quality, functional correctness, comprehensive test coverage, and systematic QA process. Execute QA workflow in order: test plan -> test cases -> test case review',
+      description: 'Experienced QA engineer who executes QA workflow including test planning and test case design',
     };
 
     super(config, context);
 
-    // Watch for PRD and code completion (from ProductManager and Engineer)
-    this.watch([ACTION_WRITE_PRD, ACTION_WRITE_CODE]);
+    // Watch for PRD completion (from ProductManager) - moved before Engineer in workflow
+    this.watch([ACTION_WRITE_PRD, ACTION_IMPROVE_PRD]);
 
-    // Set actions in order: 4-step QA workflow
+    // Set actions in order: 3-step QA workflow
     this.setActions([
-      new TestabilityReview(), // Step 1: 需求可测性检查
-      new WriteTestPlan(), // Step 2: 制定测试计划
-      new WriteTest(), // Step 3: 测试用例生成
-      new TestCaseReview(), // Step 4: 用例评审与补充
+      new WriteTestPlan(), // Step 1: 制定测试计划
+      new WriteTest(), // Step 2: 测试用例生成
+      new TestCaseReview(), // Step 3: 用例评审与补充
     ]);
   }
 }

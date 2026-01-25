@@ -41,7 +41,8 @@
             v-for="platform in platforms"
             :key="platform.id"
             :platform="platform"
-            @view="goToWorkflow"
+            @view="goToVersions"
+            @knowledge="goToKnowledgeBase"
             @edit="openEditDialog"
             @delete="handleDelete"
           />
@@ -159,8 +160,12 @@ function openEditDialog(id: string) {
   showEditDialog.value = true;
 }
 
-function goToWorkflow(id: string) {
-  router.push(`/platform/${id}/workflow`);
+function goToVersions(id: string) {
+  router.push(`/platform/${id}/versions`);
+}
+
+function goToKnowledgeBase(id: string) {
+  router.push(`/platform/${id}/knowledge-base`);
 }
 
 function goToWorkflowManagement() {

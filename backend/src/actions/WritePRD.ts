@@ -42,9 +42,8 @@ export interface WritePRDOptions {
   useStepwiseGeneration?: boolean; // 是否使用分步骤生成
   applicationId?: string; // 应用ID，用于文件夹命名
   projectId?: string; // 项目ID，用于文件夹命名
+  versionId?: string; // 版本ID，用于定位版本工作空间
   includeOptionalSections?: boolean; // 是否包含可选章节（如第 11 章角色关注块）
-  /** @deprecated 版本控制已改用 git，此参数被忽略 */
-  version?: number;
 }
 
 export class WritePRD extends BaseAction {
@@ -311,8 +310,9 @@ export class WritePRD extends BaseAction {
    * CLI模式下会自动跳过分章节生成，直接生成完整文档到主文件
    */
   private async generateStepwise(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
-    // 确保使用PRD目录
-    const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'PRD' });
+    // 使用 validateWorkspaceOptions 统一获取路径参数
+    const workspaceOptions = this.validateWorkspaceOptions(options, 'PRD');
+    const workspaceDir = this.getWorkspaceDir(workspaceOptions);
 
     // Load system prompt from database or use default
     const systemPrompt = await this.loadSystemPrompt('prd', 'system_prompt', PRD_SYSTEM_PROMPT);
@@ -326,8 +326,7 @@ export class WritePRD extends BaseAction {
     logger.info('WritePRD: Creating StepwiseDocumentGenerator', {
       executorMode,
       workspaceDir,
-      applicationId: options?.applicationId,
-      projectId: options?.projectId,
+      ...workspaceOptions,
     });
 
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
@@ -360,8 +359,7 @@ export class WritePRD extends BaseAction {
         return sections.filter((section) => section.number !== 11);
       },
       workspaceDir,
-      applicationId: options?.applicationId,
-      projectId: options?.projectId || (this.context?.get('projectId') as string | undefined),
+      ...workspaceOptions,
       role,
       // 跳过审核和合并步骤，由 PRDReview 负责后续处理（仅LLM模式）
       skipReview: true,

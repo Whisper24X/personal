@@ -475,18 +475,21 @@ export abstract class BaseAction {
 
   /**
    * 获取默认工作目录
+   * 优先使用版本化路径（如果有 versionId）
    */
   protected getDefaultWorkDir(): string | undefined {
     // 尝试从 context 获取
     if (this.context) {
       const applicationId = this.context.get('applicationId') as string | undefined;
       const projectId = this.context.get('projectId') as string | undefined;
+      const versionId = this.context.get('versionId') as string | undefined;
       
-      if (applicationId && projectId) {
+      if (applicationId && projectId && versionId) {
         try {
           return WorkspaceManager.getProjectWorkspacePath({
             applicationId,
             projectId,
+            versionId,
           });
         } catch {
           // 忽略错误
@@ -677,10 +680,10 @@ export abstract class BaseAction {
 
   /**
    * 验证并构建 WorkspaceOptions
-   * 从 options 和 context 中提取 applicationId/projectId/version
+   * 从 options 和 context 中提取 applicationId/projectId/versionId
    * @param options 可选的部分 WorkspaceOptions
    * @param documentType 可选的文档类型覆盖
-   * @throws Error 如果缺少必需参数 applicationId 或 projectId
+   * @throws Error 如果缺少必需参数 applicationId、projectId 或 versionId
    * @returns 完整的 WorkspaceOptions
    */
   protected validateWorkspaceOptions(
@@ -689,7 +692,7 @@ export abstract class BaseAction {
   ): WorkspaceOptions {
     const applicationId = options?.applicationId || (this.context?.get('applicationId') as string | undefined);
     const projectId = options?.projectId || (this.context?.get('projectId') as string | undefined);
-    const version = options?.version || (this.context?.get('version') as number | undefined) || 1;
+    const versionId = options?.versionId || (this.context?.get('versionId') as string | undefined);
 
     if (!applicationId) {
       throw new Error(`applicationId is required for ${this.name} action.`);
@@ -697,14 +700,27 @@ export abstract class BaseAction {
     if (!projectId) {
       throw new Error(`projectId is required for ${this.name} action.`);
     }
+    if (!versionId) {
+      throw new Error(`versionId is required for ${this.name} action.`);
+    }
 
     return {
       applicationId,
       projectId,
-      version,
+      versionId,
       documentType: documentType || options?.documentType,
-      workspacePath: options?.workspacePath,
     };
+  }
+
+  /**
+   * 获取版本化的工作空间目录
+   * 自动从 context 获取 applicationId, projectId, versionId
+   * @param documentType 文档类型，如 'MRD', 'PRD', 'DESIGN', 'TEST'
+   * @returns 完整的工作空间目录路径
+   */
+  protected getVersionedWorkspaceDir(documentType: string): string {
+    const options = this.validateWorkspaceOptions(undefined, documentType);
+    return this.getWorkspaceDir(options);
   }
 
   /**

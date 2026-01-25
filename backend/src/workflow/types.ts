@@ -82,6 +82,7 @@ export interface WorkflowError {
 export interface WorkflowExecution {
   id: string;
   projectId: string;
+  versionId: string;  // 关联的项目版本ID
   workflowSnapshot: WorkflowConfig;
   state: WorkflowState;
   currentPosition: CurrentPosition | null;
@@ -100,6 +101,7 @@ export interface WorkflowExecution {
 export interface WorkflowExecutionRow {
   id: string;
   project_id: string;
+  version_id: string;  // 关联的项目版本ID
   workflow_snapshot: WorkflowConfig;
   state: string;
   current_position: CurrentPosition | null;
@@ -174,6 +176,7 @@ export interface RecoveryResult {
  */
 export interface CreateWorkflowExecutionOptions {
   projectId: string;
+  versionId: string;  // 必需：关联的项目版本ID
   workflowConfig: WorkflowConfig;
 }
 
@@ -210,6 +213,7 @@ export function rowToWorkflowExecution(row: WorkflowExecutionRow): WorkflowExecu
   return {
     id: row.id,
     projectId: row.project_id,
+    versionId: row.version_id,
     workflowSnapshot: row.workflow_snapshot,
     state: row.state as WorkflowState,
     currentPosition: row.current_position,
@@ -230,6 +234,7 @@ export function workflowExecutionToRowParams(exec: WorkflowExecution): any[] {
   return [
     exec.id,
     exec.projectId,
+    exec.versionId,
     JSON.stringify(exec.workflowSnapshot),
     exec.state,
     exec.currentPosition ? JSON.stringify(exec.currentPosition) : null,

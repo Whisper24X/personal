@@ -12,6 +12,7 @@ export interface Project {
   user_id: string;
   application_id?: string;
   name: string;
+  name_alias?: string;  // English alias for Git branch names
   idea: string;
   description?: string;
   workspace_path?: string;
@@ -39,7 +40,8 @@ export class ProjectRepository {
   async create(data: {
     userId: string;
     name: string;
-    idea: string;
+    nameAlias?: string;
+    idea?: string;
     description?: string;
     budget?: number;
     applicationId?: string;
@@ -49,17 +51,18 @@ export class ProjectRepository {
   }): Promise<Project> {
     const result = await query<Project>(
       `INSERT INTO projects (
-        user_id, application_id, name, idea, description, 
+        user_id, application_id, name, name_alias, idea, description, 
         budget, status, progress, total_cost,
         workspace_path, git_repo_url,
         team_status, team_config, team_state, metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING *`,
       [
         data.userId,
         data.applicationId || null,
         data.name,
-        data.idea,
+        data.nameAlias || null,
+        data.idea || null,
         data.description || null,
         data.budget || 10.0,
         ProjectStatus.PENDING,
@@ -233,6 +236,21 @@ export class ProjectRepository {
        WHERE id = $2 
        RETURNING *`,
       [workspacePath, id]
+    );
+    
+    return result.rows[0];
+  }
+
+  /**
+   * Update name alias (English name for Git branch)
+   */
+  async updateNameAlias(id: string, nameAlias: string): Promise<Project> {
+    const result = await query<Project>(
+      `UPDATE projects 
+       SET name_alias = $1, updated_at = NOW() 
+       WHERE id = $2 
+       RETURNING *`,
+      [nameAlias, id]
     );
     
     return result.rows[0];

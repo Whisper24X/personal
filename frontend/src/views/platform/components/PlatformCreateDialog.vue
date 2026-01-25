@@ -22,23 +22,6 @@
         />
       </el-form-item>
 
-      <el-form-item label="平台想法" prop="idea" required>
-        <el-input
-          v-model="formData.idea"
-          type="textarea"
-          :rows="5"
-          placeholder="详细描述您的平台想法..."
-          show-word-limit
-          :maxlength="2000"
-        />
-        <template #extra>
-          <el-text type="info" size="small">
-            <el-icon><InfoFilled /></el-icon>
-            请具体说明功能、目标用户和需求
-          </el-text>
-        </template>
-      </el-form-item>
-
       <el-form-item label="附加说明" prop="description">
         <el-input
           v-model="formData.description"
@@ -63,6 +46,21 @@
           <el-text type="info" size="small">
             <el-icon><Refresh /></el-icon>
             执行迭代次数
+          </el-text>
+        </template>
+      </el-form-item>
+
+      <el-form-item label="Git 仓库地址" prop="gitRepoUrl">
+        <el-input
+          v-model="formData.gitRepoUrl"
+          placeholder="https://github.com/user/repo.git"
+          :prefix-icon="Link"
+          clearable
+        />
+        <template #extra>
+          <el-text type="info" size="small">
+            <el-icon><InfoFilled /></el-icon>
+            可选，关联代码仓库用于版本管理
           </el-text>
         </template>
       </el-form-item>
@@ -103,7 +101,8 @@ import {
   Edit, 
   InfoFilled, 
   Refresh, 
-  MagicStick
+  MagicStick,
+  Link
 } from '@element-plus/icons-vue';
 
 const router = useRouter();
@@ -138,9 +137,9 @@ const formRef = ref<FormInstance>();
 
 const formData = reactive({
   name: '',
-  idea: '',
   description: '',
   nRound: 5,
+  gitRepoUrl: '',
 });
 
 const rules = reactive<FormRules>({
@@ -148,17 +147,20 @@ const rules = reactive<FormRules>({
     { required: true, message: '请输入平台名称', trigger: 'blur' },
     { min: 3, max: 100, message: '长度应在 3 到 100 个字符之间', trigger: 'blur' }
   ],
-  idea: [
-    { required: true, message: '请描述您的平台想法', trigger: 'blur' },
-    { min: 10, message: '请提供更多细节（至少 10 个字符）', trigger: 'blur' }
+  gitRepoUrl: [
+    { 
+      pattern: /^(https?:\/\/)?([\w.-]+)(\/[\w.-]*)*\.git$|^git@[\w.-]+:[\w./-]+\.git$|^$/,
+      message: '请输入有效的 Git 仓库地址',
+      trigger: 'blur'
+    }
   ],
 });
 
 function resetForm() {
   formData.name = '';
-  formData.idea = '';
   formData.description = '';
   formData.nRound = 5;
+  formData.gitRepoUrl = '';
   formRef.value?.clearValidate();
 }
 
@@ -175,19 +177,19 @@ async function handleSubmit() {
       try {
         const platform = await platformStore.createPlatform({
           name: formData.name,
-          idea: formData.idea,
           description: formData.description || undefined,
           nRound: formData.nRound,
           businessLineId: props.businessLineId,
+          gitRepoUrl: formData.gitRepoUrl || undefined,
         });
         
-        ElMessage.success('平台创建成功！');
+        ElMessage.success('平台创建成功！请先创建版本。');
         emit('created');
         handleClose();
         
-        // 跳转到工作流看板页面
+        // 跳转到版本管理页面
         if (platform?.id) {
-          router.push(`/platform/${platform.id}/workflow`);
+          router.push(`/platform/${platform.id}/versions`);
         }
       } catch (err: any) {
         console.error('Failed to create platform:', err);

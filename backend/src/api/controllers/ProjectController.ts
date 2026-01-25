@@ -8,10 +8,12 @@ import { ProjectRepository, MessageRepository, DocumentRepository } from '../../
 import { Context } from '../../core/context/Context';
 import { Team } from '../../orchestration/Team';
 // Role imports removed - now using RoleActionFactory for dynamic role instantiation
-import { logger } from '../../utils';
+import { logger, WorkspaceManager } from '../../utils';
 import { ProjectStatus } from '@mind2build/shared';
 import { WorkflowService } from '../../services/WorkflowService';
 import { RoleActionFactory } from '../../services/RoleActionFactory';
+import { createLLM } from '../../providers/llm/factory';
+import { LLMConfigRepository } from '../../database/repositories/LLMConfigRepository';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -23,6 +25,65 @@ const documentRepo = new DocumentRepository();
 // Default user UUID (created during database migration)
 const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
+/**
+ * Check if a string contains Chinese characters
+ */
+function containsChinese(str: string): boolean {
+  return /[\u4e00-\u9fa5]/.test(str);
+}
+
+/**
+ * Translate project name to English alias using LLM
+ * Returns the original name formatted as slug if translation fails or no Chinese
+ */
+async function translateToAlias(name: string): Promise<string> {
+  // If no Chinese, just convert to slug format
+  if (!containsChinese(name)) {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .replace(/-+/g, '-');
+  }
+
+  try {
+    const llmConfigRepo = new LLMConfigRepository();
+    // Use findActive with DEFAULT_USER_ID to get the active LLM config
+    const configRow = await llmConfigRepo.findActive(DEFAULT_USER_ID);
+    if (!configRow) {
+      logger.warn('No LLM config found for translation, using original name');
+      return name
+        .toLowerCase()
+        .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    }
+
+    // Convert database row to ILLMConfig format
+    const config = llmConfigRepo.toILLMConfig(configRow);
+    const llm = createLLM(config);
+    const result = await llm.aask(
+      `Translate the following project name to English, output ONLY lowercase words separated by hyphens (like "user-management-system"), no explanation or other text:\n\n${name}`,
+      ['You are a translator. Output only the translation in slug format (lowercase-with-hyphens), nothing else.']
+    );
+
+    const alias = result
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .replace(/-+/g, '-');
+
+    logger.info('Translated project name to alias', { name, alias });
+    return alias;
+  } catch (error: any) {
+    logger.warn('Failed to translate project name, using original', { name, error: error.message });
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+}
+
 export class ProjectController {
   /**
    * Create a new project
@@ -32,9 +93,9 @@ export class ProjectController {
       const { name, idea, description, investment, nRound, applicationId, gitRepoUrl } = req.body;
       const userId = (req as any).userId || DEFAULT_USER_ID; // From auth middleware
 
-      if (!name || !idea) {
+      if (!name) {
         return res.status(400).json({
-          error: 'Missing required fields: name, idea',
+          error: 'Missing required field: name',
         });
       }
 
@@ -49,10 +110,14 @@ export class ProjectController {
         });
       }
 
+      // Generate English alias for Git branch names
+      const nameAlias = await translateToAlias(name);
+
       // Create project in database
       const project = await projectRepo.create({
         userId,
         name,
+        nameAlias,
         idea,
         description,
         budget: investment || 10.0,  // V2: renamed from investment to budget
@@ -60,13 +125,19 @@ export class ProjectController {
         gitRepoUrl,
       });
 
-      logger.info(`Project created: ${project.id}`, { gitRepoUrl: gitRepoUrl || 'none' });
+      logger.info(`Project created: ${project.id}`, { 
+        gitRepoUrl: gitRepoUrl || 'none',
+        nameAlias,
+      });
+
+      // Note: Version must be created manually through the version management page
 
       return res.status(201).json({
         success: true,
         project: {
           id: project.id,
           name: project.name,
+          nameAlias: project.name_alias,
           status: project.status,
           createdAt: project.created_at,
         },

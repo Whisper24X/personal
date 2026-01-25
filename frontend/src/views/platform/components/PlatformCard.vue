@@ -37,8 +37,12 @@
 
     <div class="card-actions">
       <el-button type="primary" @click="$emit('view', platform.id)">
-        <el-icon><View /></el-icon>
-        {{ isCompleted ? '查看详情' : '执行/查看' }}
+        <el-icon><Collection /></el-icon>
+        版本管理
+      </el-button>
+      <el-button @click="$emit('knowledge', platform.id)">
+        <el-icon><Document /></el-icon>
+        知识库
       </el-button>
       <el-button @click="$emit('edit', platform.id)">
         <el-icon><Edit /></el-icon>
@@ -54,7 +58,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Monitor, Clock, TrendCharts, View, Edit, Delete } from '@element-plus/icons-vue';
+import { Monitor, Clock, TrendCharts, Collection, Document, Edit, Delete } from '@element-plus/icons-vue';
 
 interface Props {
   platform: {
@@ -72,11 +76,10 @@ const props = defineProps<Props>();
 
 defineEmits<{
   'view': [id: string];
+  'knowledge': [id: string];
   'edit': [id: string];
   'delete': [id: string];
 }>();
-
-const isCompleted = computed(() => props.platform.status === 'completed');
 
 const statusType = computed(() => {
   switch (props.platform.status) {

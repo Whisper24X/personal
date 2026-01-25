@@ -15,6 +15,7 @@ import WorkflowManagement from '../views/businessLine/WorkflowManagement.vue';
 import PlatformList from '../views/platform/PlatformList.vue';
 import PlatformWorkflow from '../views/platform/PlatformWorkflow.vue';
 import PlatformDetail from '../views/platform/PlatformDetail.vue';
+import PlatformVersions from '../views/platform/PlatformVersions.vue';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -46,6 +47,12 @@ const router = createRouter({
     },
     
     // ==================== 平台相关路由 ====================
+    {
+      path: '/platform/:id/versions',
+      name: 'PlatformVersions',
+      component: PlatformVersions,
+      props: true,
+    },
     {
       path: '/platform/:id/workflow',
       name: 'PlatformWorkflow',

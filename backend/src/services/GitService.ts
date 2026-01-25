@@ -426,6 +426,270 @@ export class GitService {
       };
     }
   }
+
+  // ============================================================================
+  // Version Branch Operations
+  // ============================================================================
+
+  /**
+   * Create a new branch for a version
+   * Creates from current HEAD and optionally checks out to it
+   */
+  async createBranch(
+    workspacePath: string,
+    branchName: string,
+    checkout: boolean = true
+  ): Promise<GitOperationResult> {
+    logger.info('GitService: Creating branch', {
+      branchName,
+      workspacePath,
+      checkout,
+    });
+
+    try {
+      // Check if branch already exists locally
+      const localExists = await this.branchExistsLocally(workspacePath, branchName);
+      
+      if (localExists) {
+        logger.info('GitService: Branch already exists locally', { branchName });
+        if (checkout) {
+          return await this.checkoutBranch(workspacePath, branchName);
+        }
+        return {
+          success: true,
+          message: `Branch ${branchName} already exists`,
+          branchName,
+        };
+      }
+
+      // Check if branch exists on remote
+      const remoteExists = await this.branchExistsRemotely(workspacePath, branchName);
+
+      if (remoteExists) {
+        // Create local branch tracking remote
+        logger.info('GitService: Remote branch exists, creating local tracking branch', {
+          branchName,
+        });
+        await execAsync(`git checkout -b "${branchName}" "origin/${branchName}"`, {
+          cwd: workspacePath,
+          timeout: 30000,
+        });
+      } else {
+        // Create new branch
+        if (checkout) {
+          await execAsync(`git checkout -b "${branchName}"`, {
+            cwd: workspacePath,
+            timeout: 30000,
+          });
+        } else {
+          await execAsync(`git branch "${branchName}"`, {
+            cwd: workspacePath,
+            timeout: 30000,
+          });
+        }
+      }
+
+      logger.info('GitService: Branch created successfully', {
+        branchName,
+      });
+
+      return {
+        success: true,
+        message: `Branch ${branchName} created successfully`,
+        branchName,
+      };
+    } catch (error: any) {
+      logger.error('GitService: Failed to create branch', {
+        branchName,
+        error: error.message,
+      });
+      return {
+        success: false,
+        message: `Failed to create branch: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * Checkout to a specific branch
+   */
+  async checkoutBranch(workspacePath: string, branchName: string): Promise<GitOperationResult> {
+    logger.info('GitService: Checking out branch', {
+      branchName,
+      workspacePath,
+    });
+
+    try {
+      // First, try to checkout directly
+      try {
+        await execAsync(`git checkout "${branchName}"`, {
+          cwd: workspacePath,
+          timeout: 30000,
+        });
+      } catch (checkoutError: any) {
+        // If local branch doesn't exist, check if remote branch exists
+        const remoteExists = await this.branchExistsRemotely(workspacePath, branchName);
+        
+        if (remoteExists) {
+          // Fetch and create local tracking branch
+          await execAsync('git fetch origin', {
+            cwd: workspacePath,
+            timeout: this.gitTimeout,
+          });
+          await execAsync(`git checkout -b "${branchName}" "origin/${branchName}"`, {
+            cwd: workspacePath,
+            timeout: 30000,
+          });
+        } else {
+          throw new Error(`Branch ${branchName} does not exist locally or remotely`);
+        }
+      }
+
+      logger.info('GitService: Checked out branch successfully', {
+        branchName,
+      });
+
+      return {
+        success: true,
+        message: `Checked out to ${branchName}`,
+        branchName,
+      };
+    } catch (error: any) {
+      logger.error('GitService: Failed to checkout branch', {
+        branchName,
+        error: error.message,
+      });
+      return {
+        success: false,
+        message: `Failed to checkout branch: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * List all branches (local and remote)
+   */
+  async listBranches(workspacePath: string): Promise<{ local: string[]; remote: string[]; current: string | null }> {
+    try {
+      // Get local branches
+      const { stdout: localOutput } = await execAsync('git branch --format="%(refname:short)"', {
+        cwd: workspacePath,
+        timeout: 10000,
+      });
+      const localBranches = localOutput.trim().split('\n').filter(b => b.trim());
+
+      // Get remote branches
+      const { stdout: remoteOutput } = await execAsync('git branch -r --format="%(refname:short)"', {
+        cwd: workspacePath,
+        timeout: 10000,
+      });
+      const remoteBranches = remoteOutput.trim().split('\n')
+        .filter(b => b.trim() && !b.includes('HEAD'))
+        .map(b => b.replace('origin/', ''));
+
+      // Get current branch
+      const current = await this.getCurrentBranch(workspacePath);
+
+      return {
+        local: localBranches,
+        remote: remoteBranches,
+        current,
+      };
+    } catch (error: any) {
+      logger.error('GitService: Failed to list branches', {
+        error: error.message,
+      });
+      return {
+        local: [],
+        remote: [],
+        current: null,
+      };
+    }
+  }
+
+  /**
+   * Delete a branch (local only, optionally remote)
+   */
+  async deleteBranch(
+    workspacePath: string,
+    branchName: string,
+    deleteRemote: boolean = false
+  ): Promise<GitOperationResult> {
+    logger.info('GitService: Deleting branch', {
+      branchName,
+      deleteRemote,
+    });
+
+    try {
+      // Cannot delete current branch
+      const currentBranch = await this.getCurrentBranch(workspacePath);
+      if (currentBranch === branchName) {
+        return {
+          success: false,
+          message: `Cannot delete the currently checked out branch: ${branchName}`,
+        };
+      }
+
+      // Delete local branch
+      await execAsync(`git branch -D "${branchName}"`, {
+        cwd: workspacePath,
+        timeout: 30000,
+      });
+
+      // Optionally delete remote branch
+      if (deleteRemote) {
+        try {
+          await execAsync(`git push origin --delete "${branchName}"`, {
+            cwd: workspacePath,
+            timeout: this.gitTimeout,
+          });
+        } catch (remoteError: any) {
+          logger.warn('GitService: Failed to delete remote branch (may not exist)', {
+            branchName,
+            error: remoteError.message,
+          });
+        }
+      }
+
+      logger.info('GitService: Branch deleted successfully', {
+        branchName,
+      });
+
+      return {
+        success: true,
+        message: `Branch ${branchName} deleted successfully`,
+      };
+    } catch (error: any) {
+      logger.error('GitService: Failed to delete branch', {
+        branchName,
+        error: error.message,
+      });
+      return {
+        success: false,
+        message: `Failed to delete branch: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * Generate a branch name from project alias and version
+   * Uses the English alias (name_alias) for Git branch compatibility
+   * 
+   * @param nameAlias - The English alias of the project (from projects.name_alias)
+   * @param versionName - The version name (e.g., "v1.0")
+   * @returns Branch name in format: {alias}/{version}
+   */
+  generateVersionBranchName(nameAlias: string, versionName: string): string {
+    // Convert alias to slug format (should already be in English)
+    const projectSlug = nameAlias
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .replace(/-+/g, '-')
+      .substring(0, 50);
+    
+    return `${projectSlug}/${versionName}`;
+  }
 }
 
 export default GitService;

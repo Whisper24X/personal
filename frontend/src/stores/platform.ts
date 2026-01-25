@@ -17,6 +17,18 @@ export interface Platform {
   completedAt?: string;
 }
 
+export interface PlatformVersion {
+  id: string;
+  projectId: string;
+  versionName: string;
+  description?: string;
+  branchName: string;
+  isActive: boolean;
+  workspacePath?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export const usePlatformStore = defineStore('platform', () => {
   // 状态
   const platforms = ref<Platform[]>([]);
@@ -25,12 +37,17 @@ export const usePlatformStore = defineStore('platform', () => {
   const documents = ref<any[]>([]);
   const loading = ref(false);
   const error = ref<string | null>(null);
+  
+  // 版本相关状态
+  const activeVersion = ref<PlatformVersion | null>(null);
+  const versions = ref<PlatformVersion[]>([]);
 
   // 计算属性
   const platformCount = computed(() => platforms.value.length);
   const completedCount = computed(
     () => platforms.value.filter((p) => p.status === 'completed').length
   );
+  const activeVersionId = computed(() => activeVersion.value?.id || null);
 
   // 操作方法
   async function fetchPlatforms() {
@@ -48,11 +65,12 @@ export const usePlatformStore = defineStore('platform', () => {
 
   async function createPlatform(data: {
     name: string;
-    idea: string;
+    idea?: string;
     description?: string;
     investment?: number;
     nRound?: number;
     businessLineId?: string;
+    gitRepoUrl?: string;
   }) {
     loading.value = true;
     error.value = null;
@@ -130,6 +148,75 @@ export const usePlatformStore = defineStore('platform', () => {
     }
   }
 
+  // ==================== 版本管理方法 ====================
+
+  /**
+   * 获取平台所有版本
+   */
+  async function fetchVersions(platformId: string) {
+    try {
+      const response = await apiClient.getPlatformVersions(platformId) as any;
+      versions.value = response.versions || [];
+      
+      // 设置当前活动版本
+      const active = versions.value.find(v => v.isActive);
+      if (active) {
+        activeVersion.value = active;
+      }
+      
+      return versions.value;
+    } catch (err: any) {
+      error.value = err.message || '获取版本列表失败';
+      return [];
+    }
+  }
+
+  /**
+   * 获取当前活动版本
+   */
+  async function fetchActiveVersion(platformId: string) {
+    try {
+      const response = await apiClient.getActivePlatformVersion(platformId) as any;
+      if (response.version) {
+        activeVersion.value = response.version;
+      }
+      return activeVersion.value;
+    } catch (err: any) {
+      error.value = err.message || '获取活动版本失败';
+      return null;
+    }
+  }
+
+  /**
+   * 设置活动版本
+   */
+  function setActiveVersion(version: PlatformVersion | null) {
+    activeVersion.value = version;
+  }
+
+  /**
+   * 激活指定版本
+   */
+  async function activateVersion(platformId: string, versionId: string) {
+    try {
+      await apiClient.activatePlatformVersion(platformId, versionId);
+      // 刷新版本列表以获取最新状态
+      await fetchVersions(platformId);
+      return activeVersion.value;
+    } catch (err: any) {
+      error.value = err.message || '激活版本失败';
+      throw err;
+    }
+  }
+
+  /**
+   * 清除版本状态（切换平台时调用）
+   */
+  function clearVersionState() {
+    activeVersion.value = null;
+    versions.value = [];
+  }
+
   return {
     // 状态
     platforms,
@@ -138,9 +225,13 @@ export const usePlatformStore = defineStore('platform', () => {
     documents,
     loading,
     error,
+    // 版本相关状态
+    activeVersion,
+    versions,
     // 计算属性
     platformCount,
     completedCount,
+    activeVersionId,
     // 操作方法
     fetchPlatforms,
     createPlatform,
@@ -148,5 +239,11 @@ export const usePlatformStore = defineStore('platform', () => {
     fetchPlatform,
     fetchMessages,
     fetchDocuments,
+    // 版本管理方法
+    fetchVersions,
+    fetchActiveVersion,
+    setActiveVersion,
+    activateVersion,
+    clearVersionState,
   };
 });

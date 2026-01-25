@@ -38,9 +38,17 @@ export class WorkflowExecutionService {
   // ===== Query Methods =====
 
   /**
-   * Get workflow execution by project ID
+   * Get workflow execution by project ID and version ID
    */
-  async getExecution(projectId: string): Promise<WorkflowExecution | null> {
+  async getExecution(projectId: string, versionId: string): Promise<WorkflowExecution | null> {
+    return this.repository.findByProjectAndVersion(projectId, versionId);
+  }
+
+  /**
+   * Get workflow execution by project ID (deprecated, returns first found)
+   * @deprecated Use getExecution(projectId, versionId) instead
+   */
+  async getExecutionByProjectId(projectId: string): Promise<WorkflowExecution | null> {
     return this.repository.findByProjectId(projectId);
   }
 
@@ -54,8 +62,8 @@ export class WorkflowExecutionService {
   /**
    * Get current workflow state (formatted for API response)
    */
-  async getCurrentState(projectId: string): Promise<WorkflowCurrentState | null> {
-    const exec = await this.getExecution(projectId);
+  async getCurrentState(projectId: string, versionId: string): Promise<WorkflowCurrentState | null> {
+    const exec = await this.getExecution(projectId, versionId);
     if (!exec) {
       return null;
     }
@@ -80,18 +88,20 @@ export class WorkflowExecutionService {
   // ===== Lifecycle Methods =====
 
   /**
-   * Initialize a new workflow execution for a project
+   * Initialize a new workflow execution for a project version
    */
   async initialize(
     projectId: string,
+    versionId: string,
     workflowConfig: WorkflowConfig
   ): Promise<WorkflowExecution> {
-    logger.info('WorkflowExecutionService: Initializing workflow', { projectId });
+    logger.info('WorkflowExecutionService: Initializing workflow', { projectId, versionId });
 
-    const execution = await this.repository.getOrCreate(projectId, workflowConfig);
+    const execution = await this.repository.getOrCreate(projectId, versionId, workflowConfig);
 
     logger.info('WorkflowExecutionService: Workflow initialized', {
       projectId,
+      versionId,
       executionId: execution.id,
       stepsCount: execution.steps.length,
       state: execution.state,
@@ -103,12 +113,13 @@ export class WorkflowExecutionService {
   /**
    * Start workflow execution
    * @param projectId - Project ID
+   * @param versionId - Version ID
    * @param startPosition - Optional: start from specific position (e.g., from reset)
    */
-  async start(projectId: string, startPosition?: CurrentPosition): Promise<WorkflowExecution> {
-    const exec = await this.getExecution(projectId);
+  async start(projectId: string, versionId: string, startPosition?: CurrentPosition): Promise<WorkflowExecution> {
+    const exec = await this.getExecution(projectId, versionId);
     if (!exec) {
-      throw new Error(`Workflow execution not found for project ${projectId}`);
+      throw new Error(`Workflow execution not found for project ${projectId} version ${versionId}`);
     }
 
     if (!WorkflowStateMachine.canTransition(exec.state, WorkflowState.RUNNING)) {
@@ -159,10 +170,10 @@ export class WorkflowExecutionService {
   /**
    * Mark a step as started
    */
-  async onStepStart(projectId: string, role: string, action: string): Promise<void> {
-    const exec = await this.getExecution(projectId);
+  async onStepStart(projectId: string, versionId: string, role: string, action: string): Promise<void> {
+    const exec = await this.getExecution(projectId, versionId);
     if (!exec) {
-      throw new Error(`Workflow execution not found for project ${projectId}`);
+      throw new Error(`Workflow execution not found for project ${projectId} version ${versionId}`);
     }
 
     const updatedExec = this.cloneExecution(exec);
@@ -213,13 +224,14 @@ export class WorkflowExecutionService {
    */
   async onStepComplete(
     projectId: string,
+    versionId: string,
     role: string,
     action: string,
     output?: StepOutput
   ): Promise<StepCompleteResult> {
-    const exec = await this.getExecution(projectId);
+    const exec = await this.getExecution(projectId, versionId);
     if (!exec) {
-      throw new Error(`Workflow execution not found for project ${projectId}`);
+      throw new Error(`Workflow execution not found for project ${projectId} version ${versionId}`);
     }
 
     const updatedExec = this.cloneExecution(exec);
@@ -307,13 +319,14 @@ export class WorkflowExecutionService {
    */
   async onStepFail(
     projectId: string,
+    versionId: string,
     role: string,
     action: string,
     error: Error
   ): Promise<StepFailResult> {
-    const exec = await this.getExecution(projectId);
+    const exec = await this.getExecution(projectId, versionId);
     if (!exec) {
-      throw new Error(`Workflow execution not found for project ${projectId}`);
+      throw new Error(`Workflow execution not found for project ${projectId} version ${versionId}`);
     }
 
     const updatedExec = this.cloneExecution(exec);
@@ -373,10 +386,10 @@ export class WorkflowExecutionService {
   /**
    * Confirm and proceed to next step
    */
-  async confirm(projectId: string): Promise<WorkflowExecution> {
-    const exec = await this.getExecution(projectId);
+  async confirm(projectId: string, versionId: string): Promise<WorkflowExecution> {
+    const exec = await this.getExecution(projectId, versionId);
     if (!exec) {
-      throw new Error(`Workflow execution not found for project ${projectId}`);
+      throw new Error(`Workflow execution not found for project ${projectId} version ${versionId}`);
     }
 
     if (exec.state !== WorkflowState.WAITING_CONFIRMATION) {
@@ -417,14 +430,15 @@ export class WorkflowExecutionService {
   /**
    * Reset workflow to a specific role
    */
-  async reset(projectId: string, targetRole: string): Promise<WorkflowExecution> {
-    const result = await this.repository.resetToRole(projectId, targetRole);
+  async reset(projectId: string, versionId: string, targetRole: string): Promise<WorkflowExecution> {
+    const result = await this.repository.resetToRole(projectId, versionId, targetRole);
     if (!result) {
-      throw new Error(`Workflow execution not found for project ${projectId}`);
+      throw new Error(`Workflow execution not found for project ${projectId} version ${versionId}`);
     }
 
     logger.info('WorkflowExecutionService: Workflow reset', {
       projectId,
+      versionId,
       targetRole,
     });
 
@@ -434,10 +448,10 @@ export class WorkflowExecutionService {
   /**
    * Pause workflow execution
    */
-  async pause(projectId: string): Promise<WorkflowExecution> {
-    const exec = await this.getExecution(projectId);
+  async pause(projectId: string, versionId: string): Promise<WorkflowExecution> {
+    const exec = await this.getExecution(projectId, versionId);
     if (!exec) {
-      throw new Error(`Workflow execution not found for project ${projectId}`);
+      throw new Error(`Workflow execution not found for project ${projectId} version ${versionId}`);
     }
 
     if (!WorkflowStateMachine.canTransition(exec.state, WorkflowState.PAUSED)) {
@@ -465,10 +479,10 @@ export class WorkflowExecutionService {
   /**
    * Resume workflow execution
    */
-  async resume(projectId: string): Promise<WorkflowExecution> {
-    const exec = await this.getExecution(projectId);
+  async resume(projectId: string, versionId: string): Promise<WorkflowExecution> {
+    const exec = await this.getExecution(projectId, versionId);
     if (!exec) {
-      throw new Error(`Workflow execution not found for project ${projectId}`);
+      throw new Error(`Workflow execution not found for project ${projectId} version ${versionId}`);
     }
 
     if (exec.state !== WorkflowState.PAUSED) {
@@ -496,10 +510,10 @@ export class WorkflowExecutionService {
   /**
    * Retry failed workflow
    */
-  async retry(projectId: string): Promise<WorkflowExecution> {
-    const exec = await this.getExecution(projectId);
+  async retry(projectId: string, versionId: string): Promise<WorkflowExecution> {
+    const exec = await this.getExecution(projectId, versionId);
     if (!exec) {
-      throw new Error(`Workflow execution not found for project ${projectId}`);
+      throw new Error(`Workflow execution not found for project ${projectId} version ${versionId}`);
     }
 
     if (exec.state !== WorkflowState.FAILED) {
@@ -548,11 +562,12 @@ export class WorkflowExecutionService {
    */
   async updateContext(
     projectId: string,
+    versionId: string,
     context: Record<string, any>
   ): Promise<void> {
-    const exec = await this.getExecution(projectId);
+    const exec = await this.getExecution(projectId, versionId);
     if (!exec) {
-      throw new Error(`Workflow execution not found for project ${projectId}`);
+      throw new Error(`Workflow execution not found for project ${projectId} version ${versionId}`);
     }
 
     const updatedExec = this.cloneExecution(exec);
@@ -570,8 +585,8 @@ export class WorkflowExecutionService {
   /**
    * Get execution context
    */
-  async getContext(projectId: string): Promise<Record<string, any>> {
-    const exec = await this.getExecution(projectId);
+  async getContext(projectId: string, versionId: string): Promise<Record<string, any>> {
+    const exec = await this.getExecution(projectId, versionId);
     return exec?.executionContext ?? {};
   }
 
@@ -580,7 +595,15 @@ export class WorkflowExecutionService {
   /**
    * Delete workflow execution
    */
-  async delete(projectId: string): Promise<boolean> {
+  async delete(projectId: string, versionId: string): Promise<boolean> {
+    return this.repository.deleteByProjectAndVersion(projectId, versionId);
+  }
+
+  /**
+   * Delete all workflow executions for a project
+   * @deprecated Use delete(projectId, versionId) for specific version
+   */
+  async deleteAllByProjectId(projectId: string): Promise<boolean> {
     return this.repository.deleteByProjectId(projectId);
   }
 

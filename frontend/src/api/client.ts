@@ -135,11 +135,12 @@ class APIClient {
   // 创建平台
   async createPlatform(data: {
     name: string;
-    idea: string;
+    idea?: string;
     description?: string;
     investment?: number;
     nRound?: number;
     applicationId?: string;
+    gitRepoUrl?: string;
   }) {
     return this.client.post('/projects', data);
   }
@@ -172,6 +173,85 @@ class APIClient {
   // 获取平台文档
   async getPlatformDocuments(id: string) {
     return this.client.get(`/projects/${id}/documents`);
+  }
+
+  // ==================== 平台版本 API 端点 ====================
+
+  /**
+   * 创建平台版本
+   * @param platformId 平台ID
+   * @param data 版本数据
+   */
+  async createPlatformVersion(platformId: string, data: {
+    versionName: string;
+    idea: string;
+    description?: string;
+  }) {
+    return this.client.post(`/projects/${platformId}/versions`, data);
+  }
+
+  /**
+   * 获取平台所有版本
+   * @param platformId 平台ID
+   */
+  async getPlatformVersions(platformId: string) {
+    return this.client.get(`/projects/${platformId}/versions`);
+  }
+
+  /**
+   * 获取平台当前激活版本
+   * @param platformId 平台ID
+   */
+  async getActivePlatformVersion(platformId: string) {
+    return this.client.get(`/projects/${platformId}/versions/active`);
+  }
+
+  /**
+   * 获取单个版本详情
+   * @param platformId 平台ID
+   * @param versionId 版本ID
+   */
+  async getPlatformVersion(platformId: string, versionId: string) {
+    return this.client.get(`/projects/${platformId}/versions/${versionId}`);
+  }
+
+  /**
+   * 更新版本信息
+   * @param platformId 平台ID
+   * @param versionId 版本ID
+   * @param data 更新数据
+   */
+  async updatePlatformVersion(platformId: string, versionId: string, data: {
+    description?: string;
+    metadata?: Record<string, any>;
+  }) {
+    return this.client.put(`/projects/${platformId}/versions/${versionId}`, data);
+  }
+
+  /**
+   * 删除版本
+   * @param platformId 平台ID
+   * @param versionId 版本ID
+   */
+  async deletePlatformVersion(platformId: string, versionId: string) {
+    return this.client.delete(`/projects/${platformId}/versions/${versionId}`);
+  }
+
+  /**
+   * 激活版本（切换到该版本的 Git 分支）
+   * @param platformId 平台ID
+   * @param versionId 版本ID
+   */
+  async activatePlatformVersion(platformId: string, versionId: string) {
+    return this.client.post(`/projects/${platformId}/versions/${versionId}/activate`);
+  }
+
+  /**
+   * 获取平台 Git 分支信息
+   * @param platformId 平台ID
+   */
+  async getPlatformBranches(platformId: string) {
+    return this.client.get(`/projects/${platformId}/branches`);
   }
 
   // 兼容旧的项目 API（保持向后兼容）
@@ -463,79 +543,104 @@ class APIClient {
   /**
    * 获取工作流执行状态
    * 返回当前状态、运行位置、步骤列表、待确认信息等
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
    */
-  async getWorkflowState(projectId: string) {
-    return this.client.get(`/workflow/${projectId}/state`);
+  async getWorkflowState(projectId: string, versionId: string) {
+    return this.client.get(`/workflow/${projectId}/state`, {
+      params: { versionId },
+    });
   }
 
   /**
    * 获取工作流执行完整记录
    * 包含工作流配置快照和所有执行详情
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
    */
-  async getWorkflowExecution(projectId: string) {
-    return this.client.get(`/workflow/${projectId}/execution`);
+  async getWorkflowExecution(projectId: string, versionId: string) {
+    return this.client.get(`/workflow/${projectId}/execution`, {
+      params: { versionId },
+    });
   }
 
   /**
    * 启动工作流执行
    * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
    * @param currentPosition 可选：从指定位置开始执行（用于 reset 后启动）
    */
-  async startWorkflow(projectId: string, currentPosition?: { roleIndex: number; actionIndex: number }) {
-    return this.client.post(`/workflow/${projectId}/start`, { currentPosition });
+  async startWorkflow(projectId: string, versionId: string, currentPosition?: { roleIndex: number; actionIndex: number }) {
+    return this.client.post(`/workflow/${projectId}/start`, { versionId, currentPosition });
   }
 
   /**
    * 确认并继续执行下一步
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
    */
-  async confirmWorkflow(projectId: string) {
-    return this.client.post(`/workflow/${projectId}/confirm`);
+  async confirmWorkflow(projectId: string, versionId: string) {
+    return this.client.post(`/workflow/${projectId}/confirm`, { versionId });
   }
 
   /**
    * 重置工作流到指定角色
    * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
    * @param targetRole 目标角色名称（该角色及下游角色将被重置）
    */
-  async resetWorkflow(projectId: string, targetRole: string) {
+  async resetWorkflow(projectId: string, versionId: string, targetRole: string) {
     return this.client.post(`/workflow/${projectId}/reset`, {
+      versionId,
       targetRole,
     });
   }
 
   /**
    * 暂停工作流执行
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
    */
-  async pauseWorkflow(projectId: string) {
-    return this.client.post(`/workflow/${projectId}/pause`);
+  async pauseWorkflow(projectId: string, versionId: string) {
+    return this.client.post(`/workflow/${projectId}/pause`, { versionId });
   }
 
   /**
    * 恢复已暂停的工作流
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
    */
-  async resumeWorkflow(projectId: string) {
-    return this.client.post(`/workflow/${projectId}/resume`);
+  async resumeWorkflow(projectId: string, versionId: string) {
+    return this.client.post(`/workflow/${projectId}/resume`, { versionId });
   }
 
   /**
    * 重试失败的工作流
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
    */
-  async retryWorkflow(projectId: string) {
-    return this.client.post(`/workflow/${projectId}/retry`);
+  async retryWorkflow(projectId: string, versionId: string) {
+    return this.client.post(`/workflow/${projectId}/retry`, { versionId });
   }
 
   /**
    * 恢复工作流状态（用于页面刷新、服务重启等场景）
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
    */
-  async recoverWorkflow(projectId: string) {
-    return this.client.post(`/workflow/${projectId}/recover`);
+  async recoverWorkflow(projectId: string, versionId: string) {
+    return this.client.post(`/workflow/${projectId}/recover`, { versionId });
   }
 
   /**
    * 获取恢复状态（检查是否需要恢复）
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
    */
-  async getWorkflowRecoveryStatus(projectId: string) {
-    return this.client.get(`/workflow/${projectId}/recovery-status`);
+  async getWorkflowRecoveryStatus(projectId: string, versionId: string) {
+    return this.client.get(`/workflow/${projectId}/recovery-status`, {
+      params: { versionId },
+    });
   }
 
   // Download workspace code (full ainative-workspace directory)

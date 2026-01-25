@@ -4,7 +4,6 @@
  */
 
 import { query } from '../client';
-import { logger } from '../../utils';
 
 export interface WorkflowConfig {
   roles: Array<{
@@ -109,9 +108,6 @@ export class ApplicationWorkflowRepository {
       ]
     );
 
-    // Update application_roles and application_actions tables
-    await this.updateWorkflowAssociations(result.rows[0].id, data.applicationId, data.workflowConfig);
-
     return result.rows[0];
   }
 
@@ -185,13 +181,7 @@ export class ApplicationWorkflowRepository {
       values
     );
 
-    const updated = result.rows[0];
-    if (updated && data.workflowConfig) {
-      // Update associations
-      await this.updateWorkflowAssociations(id, applicationId, data.workflowConfig);
-    }
-
-    return updated || null;
+    return result.rows[0] || null;
   }
 
   /**
@@ -211,10 +201,6 @@ export class ApplicationWorkflowRepository {
     if (existing.is_default) {
       throw new Error('Cannot delete default workflow');
     }
-
-    // Delete associations first
-    await query(`DELETE FROM application_roles WHERE workflow_id = $1`, [id]);
-    await query(`DELETE FROM application_actions WHERE workflow_id = $1`, [id]);
 
     const result = await query(
       `DELETE FROM application_workflows WHERE id = $1 AND application_id = $2`,
@@ -244,39 +230,5 @@ export class ApplicationWorkflowRepository {
     );
 
     return result.rowCount > 0;
-  }
-
-  /**
-   * Update workflow associations (application_roles and application_actions)
-   */
-  private async updateWorkflowAssociations(
-    workflowId: string,
-    applicationId: string,
-    config: WorkflowConfig
-  ): Promise<void> {
-    // Delete existing associations
-    await query(`DELETE FROM application_roles WHERE workflow_id = $1`, [workflowId]);
-    await query(`DELETE FROM application_actions WHERE workflow_id = $1`, [workflowId]);
-
-    // Insert role associations
-    for (const role of config.roles) {
-      await query(
-        `INSERT INTO application_roles (application_id, role_profile, workflow_id, "order")
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (application_id, workflow_id, role_profile) 
-         DO UPDATE SET "order" = EXCLUDED."order"`,
-        [applicationId, role.profile, workflowId, role.order]
-      );
-
-      // Insert action associations
-      for (const actionName of role.actions) {
-        await query(
-          `INSERT INTO application_actions (application_id, action_name, role_profile, workflow_id)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (application_id, workflow_id, role_profile, action_name) DO NOTHING`,
-          [applicationId, actionName, role.profile, workflowId]
-        );
-      }
-    }
   }
 }

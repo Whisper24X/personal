@@ -28,6 +28,9 @@ export { ActionDefinitionRepository } from './ActionDefinitionRepository';
 export { ApplicationRepository } from './ApplicationRepository';
 export { ApplicationWorkflowRepository } from './ApplicationWorkflowRepository';
 
+// Project version repository
+export { ProjectVersionRepository } from './ProjectVersionRepository';
+
 // Deprecated: These are kept for backward compatibility but redirect to LLMConfigRepository
 // export { ProviderConfigRepository } from './ProviderConfigRepository';
 // export { RoleLLMConfigRepository } from './RoleLLMConfigRepository';

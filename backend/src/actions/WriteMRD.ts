@@ -25,7 +25,7 @@ export interface WriteMRDOptions {
   useStepwiseGeneration?: boolean; // 是否使用分步骤生成
   applicationId?: string; // 应用ID，用于文件夹命名
   projectId?: string; // 项目ID，用于文件夹命名
-  version?: number; // 版本号，用于文件夹命名
+  versionId?: string; // 版本ID，用于定位版本工作空间
   workspacePath?: string; // workspace 路径，默认 ./workspace
 }
 
@@ -206,9 +206,9 @@ export class WriteMRD extends BaseAction {
    * CLI模式下会自动跳过分章节生成，直接生成完整文档到主文件
    */
   private async generateStepwise(input: string, options?: WriteMRDOptions): Promise<IActionOutput> {
-    // 确保使用MRD目录
-    const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'MRD' });
-    // 移除对Review和ImproveDocument的直接调用，改为通过角色管理
+    // 使用 validateWorkspaceOptions 统一获取路径参数
+    const workspaceOptions = this.validateWorkspaceOptions(options, 'MRD');
+    const workspaceDir = this.getWorkspaceDir(workspaceOptions);
 
     // Load system prompt from database or use default
     const userId = this.context?.get('userId');
@@ -223,8 +223,7 @@ export class WriteMRD extends BaseAction {
     logger.info('WriteMRD: Creating StepwiseDocumentGenerator', {
       executorMode,
       workspaceDir,
-      applicationId: options?.applicationId,
-      projectId: options?.projectId,
+      ...workspaceOptions,
     });
 
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
@@ -247,9 +246,7 @@ export class WriteMRD extends BaseAction {
         { number: 7, title: '备注' },
       ],
       workspaceDir,
-      applicationId: options?.applicationId,
-      projectId: options?.projectId || (this.context?.get('projectId') as string | undefined),
-      version: options?.version,
+      ...workspaceOptions,
       role,
       // CLI模式配置：传递执行模式，CLI模式下跳过分章节生成
       executorMode: executorMode,

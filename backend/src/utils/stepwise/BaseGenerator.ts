@@ -8,7 +8,6 @@ import { IActionOutput } from '@mind2build/shared';
 import { logger } from '../logger';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { WorkspaceManager } from '../WorkspaceManager';
 import { StepState, StepwiseGenerationConfig, LogContext } from './types';
 
 /**
@@ -120,18 +119,19 @@ export abstract class BaseGenerator {
   }
 
   /**
-   * Initialize workspace (clone or pull latest template)
+   * Ensure workspace directory exists
+   * Note: Workspace initialization (clone/pull) is done during version creation,
+   * here we only ensure the output directory exists
    */
   protected async initWorkspace(): Promise<void> {
-    if (this.config.applicationId && this.config.projectId) {
+    if (this.config.workspaceDir) {
       const logContext = this.getLogContext();
-      logger.info('BaseGenerator: Initializing workspace (clone or pull template)', logContext);
-      await WorkspaceManager.initWorkspace({
-        applicationId: this.config.applicationId,
-        projectId: this.config.projectId,
-        documentType: this.config.documentType,
+      logger.info('BaseGenerator: Ensuring workspace directory exists', {
+        ...logContext,
+        workspaceDir: this.config.workspaceDir,
       });
-      logger.info('BaseGenerator: Workspace initialized successfully', logContext);
+      await fs.mkdir(this.config.workspaceDir, { recursive: true });
+      logger.info('BaseGenerator: Workspace directory ready', logContext);
     }
   }
 

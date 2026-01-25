@@ -40,10 +40,10 @@ export class WorkflowRecoveryService {
    * Call this on page refresh, service restart, or any time you need to ensure correct state
    * This operation is idempotent - safe to call multiple times
    */
-  async recover(projectId: string): Promise<RecoveryResult> {
-    logger.info('WorkflowRecoveryService: Starting recovery', { projectId });
+  async recover(projectId: string, versionId: string): Promise<RecoveryResult> {
+    logger.info('WorkflowRecoveryService: Starting recovery', { projectId, versionId });
 
-    const exec = await this.executionService.getExecution(projectId);
+    const exec = await this.executionService.getExecution(projectId, versionId);
 
     if (!exec) {
       logger.info('WorkflowRecoveryService: No execution found', { projectId });
@@ -59,10 +59,11 @@ export class WorkflowRecoveryService {
     if (validationErrors.length > 0) {
       logger.warn('WorkflowRecoveryService: State validation errors', {
         projectId,
+        versionId,
         errors: validationErrors,
       });
       // Attempt to fix state inconsistencies
-      const fixResult = await this.attemptStateFix(projectId, exec, validationErrors);
+      const fixResult = await this.attemptStateFix(projectId, versionId, exec, validationErrors);
       if (fixResult) {
         return fixResult;
       }
@@ -78,7 +79,7 @@ export class WorkflowRecoveryService {
         };
 
       case WorkflowState.RUNNING:
-        return await this.recoverRunningState(projectId, exec);
+        return await this.recoverRunningState(projectId, versionId, exec);
 
       case WorkflowState.WAITING_CONFIRMATION:
         return {
@@ -128,6 +129,7 @@ export class WorkflowRecoveryService {
    */
   private async recoverRunningState(
     projectId: string,
+    versionId: string,
     exec: WorkflowExecution
   ): Promise<RecoveryResult> {
     // Check if there's a step in RUNNING state
@@ -140,6 +142,7 @@ export class WorkflowRecoveryService {
       if (isStale) {
         logger.warn('WorkflowRecoveryService: Found stale running step', {
           projectId,
+          versionId,
           role: runningStep.role,
           action: runningStep.action,
           startedAt: runningStep.startedAt,
@@ -149,6 +152,7 @@ export class WorkflowRecoveryService {
         try {
           await this.executionService.onStepFail(
             projectId,
+            versionId,
             runningStep.role,
             runningStep.action,
             new Error('Step was interrupted (stale detection)')
@@ -218,6 +222,7 @@ export class WorkflowRecoveryService {
    */
   private async attemptStateFix(
     projectId: string,
+    versionId: string,
     exec: WorkflowExecution,
     errors: string[]
   ): Promise<RecoveryResult | null> {
@@ -225,7 +230,7 @@ export class WorkflowRecoveryService {
     for (const error of errors) {
       if (error.includes('Multiple steps in RUNNING state')) {
         // Clear all but one running step
-        logger.info('WorkflowRecoveryService: Fixing multiple running steps', { projectId });
+        logger.info('WorkflowRecoveryService: Fixing multiple running steps', { projectId, versionId });
         
         const runningSteps = exec.steps.filter(s => s.state === StepState.RUNNING);
         if (runningSteps.length > 1) {
@@ -233,6 +238,7 @@ export class WorkflowRecoveryService {
           for (let i = 1; i < runningSteps.length; i++) {
             await this.executionService.onStepFail(
               projectId,
+              versionId,
               runningSteps[i].role,
               runningSteps[i].action,
               new Error('Duplicate running step detected')
@@ -249,7 +255,7 @@ export class WorkflowRecoveryService {
 
       if (error.includes('WAITING_CONFIRMATION state but pendingConfirmation is null')) {
         // Find the last completed step and set it as pending confirmation
-        logger.info('WorkflowRecoveryService: Fixing missing pending confirmation', { projectId });
+        logger.info('WorkflowRecoveryService: Fixing missing pending confirmation', { projectId, versionId });
         
         const lastCompleted = [...exec.steps]
           .reverse()
@@ -259,6 +265,7 @@ export class WorkflowRecoveryService {
           // Create a minimal pending confirmation
           await this.executionService.onStepComplete(
             projectId,
+            versionId,
             lastCompleted.role,
             lastCompleted.action,
             {
@@ -328,22 +335,25 @@ export class WorkflowRecoveryService {
       });
 
       for (const exec of activeExecutions) {
+        const key = `${exec.projectId}:${exec.versionId}`;
         try {
-          const result = await this.recover(exec.projectId);
-          results.set(exec.projectId, result);
+          const result = await this.recover(exec.projectId, exec.versionId);
+          results.set(key, result);
 
           logger.info('WorkflowRecoveryService: Recovered workflow', {
             projectId: exec.projectId,
+            versionId: exec.versionId,
             status: result.status,
             action: result.action,
           });
         } catch (error: any) {
           logger.error('WorkflowRecoveryService: Failed to recover workflow', {
             projectId: exec.projectId,
+            versionId: exec.versionId,
             error: error.message,
           });
 
-          results.set(exec.projectId, {
+          results.set(key, {
             status: 'failed',
             message: `Recovery failed: ${error.message}`,
           });
@@ -362,12 +372,12 @@ export class WorkflowRecoveryService {
    * Get recovery status for a project without performing recovery
    * Useful for checking if recovery is needed
    */
-  async getRecoveryStatus(projectId: string): Promise<{
+  async getRecoveryStatus(projectId: string, versionId: string): Promise<{
     needsRecovery: boolean;
     state: WorkflowState | null;
     issues: string[];
   }> {
-    const exec = await this.executionService.getExecution(projectId);
+    const exec = await this.executionService.getExecution(projectId, versionId);
 
     if (!exec) {
       return {
@@ -404,16 +414,18 @@ export class WorkflowRecoveryService {
    */
   async forceRecovery(
     projectId: string,
+    versionId: string,
     action: 'reset_to_role' | 'mark_completed' | 'mark_failed' | 'clear_pending',
     options?: { targetRole?: string; error?: string }
   ): Promise<RecoveryResult> {
     logger.info('WorkflowRecoveryService: Force recovery requested', {
       projectId,
+      versionId,
       action,
       options,
     });
 
-    const exec = await this.executionService.getExecution(projectId);
+    const exec = await this.executionService.getExecution(projectId, versionId);
     if (!exec) {
       return {
         status: 'not_found',
@@ -430,7 +442,7 @@ export class WorkflowRecoveryService {
               message: 'Target role is required for reset_to_role action',
             };
           }
-          await this.executionService.reset(projectId, options.targetRole);
+          await this.executionService.reset(projectId, versionId, options.targetRole);
           return {
             status: 'recovered',
             message: `Workflow reset to role: ${options.targetRole}`,
@@ -457,7 +469,7 @@ export class WorkflowRecoveryService {
 
         case 'clear_pending':
           // Clear pending confirmation
-          await this.executionService.confirm(projectId);
+          await this.executionService.confirm(projectId, versionId);
           return {
             status: 'recovered',
             message: 'Pending confirmation cleared',

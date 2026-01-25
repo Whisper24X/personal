@@ -2,7 +2,8 @@
  * WorkspaceManager
  * 统一管理文件写入workspace的逻辑
  * 
- * 目录结构：workspace/{applicationId}/{projectId}/ainative-workspace
+ * 目录结构（带版本）：workspace/{applicationId}/{projectId}/versions/{versionId}/ainative-workspace
+ * 目录结构（无版本）：workspace/{applicationId}/{projectId}/ainative-workspace
  * - ainative-workspace 是通过 git clone 的模板项目
  * - 所有文档都写在 ainative-workspace/docs 目录中
  */
@@ -16,10 +17,12 @@ import { logger } from './logger';
 // 模板仓库地址
 const TEMPLATE_REPO = 'git@gitlab.yc345.tv:frontend/ainative-workspace.git';
 const WORKSPACE_DIR_NAME = 'ainative-workspace';
+const VERSIONS_DIR_NAME = 'versions';
 
 export interface WorkspaceOptions {
   applicationId?: string;
   projectId?: string;
+  versionId?: string; // 版本ID，用于创建版本化的工作空间目录
   documentType?: string; // MRD, PRD, DESIGN 等，用于在 docs 目录下创建子目录
   /** @deprecated 版本控制已改用 git，此参数被忽略 */
   version?: number;
@@ -138,7 +141,8 @@ export class WorkspaceManager {
 
   /**
    * 获取项目工作目录路径（包含 ainative-workspace）
-   * 目录结构：workspace/{applicationId}/{projectId}/ainative-workspace
+   * 目录结构（带版本）：workspace/{applicationId}/{projectId}/versions/{versionId}/ainative-workspace
+   * 目录结构（无版本）：workspace/{applicationId}/{projectId}/ainative-workspace
    */
   static getProjectWorkspacePath(options: WorkspaceOptions): string {
     if (!options?.applicationId) {
@@ -149,7 +153,150 @@ export class WorkspaceManager {
     }
 
     const workspaceRoot = this.getWorkspaceRoot();
+    
+    // 如果指定了版本ID，则使用版本化的目录结构
+    if (options.versionId) {
+      return path.join(
+        workspaceRoot, 
+        options.applicationId, 
+        options.projectId, 
+        VERSIONS_DIR_NAME,
+        options.versionId,
+        WORKSPACE_DIR_NAME
+      );
+    }
+    
+    // 兼容旧的目录结构（无版本）
     return path.join(workspaceRoot, options.applicationId, options.projectId, WORKSPACE_DIR_NAME);
+  }
+
+  /**
+   * 获取版本目录的父目录路径
+   * 目录结构：workspace/{applicationId}/{projectId}/versions
+   */
+  static getVersionsDir(options: WorkspaceOptions): string {
+    if (!options?.applicationId) {
+      throw new Error('applicationId is required for versions directory.');
+    }
+    if (!options?.projectId) {
+      throw new Error('projectId is required for versions directory.');
+    }
+
+    const workspaceRoot = this.getWorkspaceRoot();
+    return path.join(workspaceRoot, options.applicationId, options.projectId, VERSIONS_DIR_NAME);
+  }
+
+  /**
+   * 列出项目的所有版本目录
+   */
+  static async listVersionDirs(options: WorkspaceOptions): Promise<string[]> {
+    const versionsDir = this.getVersionsDir(options);
+    
+    try {
+      await fs.access(versionsDir);
+      const entries = await fs.readdir(versionsDir, { withFileTypes: true });
+      return entries
+        .filter(entry => entry.isDirectory())
+        .map(entry => entry.name);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * 检查版本工作空间是否存在
+   */
+  static versionWorkspaceExists(options: WorkspaceOptions): boolean {
+    if (!options.versionId) {
+      return false;
+    }
+    const workspacePath = this.getProjectWorkspacePath(options);
+    return fsSync.existsSync(workspacePath);
+  }
+
+  /**
+   * 从源目录复制工作空间到目标版本目录
+   * 用于从主工作空间或其他版本创建新版本
+   */
+  static async copyWorkspaceToVersion(
+    sourceOptions: WorkspaceOptions,
+    targetVersionId: string
+  ): Promise<string> {
+    const sourcePath = this.getProjectWorkspacePath(sourceOptions);
+    const targetOptions = { ...sourceOptions, versionId: targetVersionId };
+    const targetPath = this.getProjectWorkspacePath(targetOptions);
+    const targetParent = path.dirname(targetPath);
+
+    // 确保源目录存在
+    if (!fsSync.existsSync(sourcePath)) {
+      throw new Error(`Source workspace does not exist: ${sourcePath}`);
+    }
+
+    // 确保目标父目录存在
+    await fs.mkdir(targetParent, { recursive: true });
+
+    // 如果目标已存在，删除它
+    if (fsSync.existsSync(targetPath)) {
+      await fs.rm(targetPath, { recursive: true, force: true });
+    }
+
+    // 复制目录
+    await this.copyDirectory(sourcePath, targetPath);
+
+    logger.info('WorkspaceManager: Copied workspace to version', {
+      sourcePath,
+      targetPath,
+      versionId: targetVersionId,
+    });
+
+    return targetPath;
+  }
+
+  /**
+   * 递归复制目录
+   */
+  private static async copyDirectory(src: string, dest: string): Promise<void> {
+    await fs.mkdir(dest, { recursive: true });
+    const entries = await fs.readdir(src, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
+
+      if (entry.isDirectory()) {
+        await this.copyDirectory(srcPath, destPath);
+      } else {
+        await fs.copyFile(srcPath, destPath);
+      }
+    }
+  }
+
+  /**
+   * 删除版本工作空间
+   */
+  static async deleteVersionWorkspace(options: WorkspaceOptions): Promise<boolean> {
+    if (!options.versionId) {
+      throw new Error('versionId is required to delete version workspace.');
+    }
+
+    const workspacePath = this.getProjectWorkspacePath(options);
+
+    try {
+      if (fsSync.existsSync(workspacePath)) {
+        await fs.rm(workspacePath, { recursive: true, force: true });
+        logger.info('WorkspaceManager: Deleted version workspace', {
+          workspacePath,
+          versionId: options.versionId,
+        });
+      }
+      return true;
+    } catch (error: any) {
+      logger.error('WorkspaceManager: Failed to delete version workspace', {
+        workspacePath,
+        error: error.message,
+      });
+      return false;
+    }
   }
 
   /**

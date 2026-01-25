@@ -15,6 +15,7 @@ import { RoleActionFactory } from '../services/RoleActionFactory';
 import { Context } from '../core/context/Context';
 import { Message } from '../core/message/Message';
 import { ProjectRepository } from '../database/repositories/ProjectRepository';
+import { ProjectVersionRepository } from '../database/repositories/ProjectVersionRepository';
 import { MessageRepository } from '../database/repositories/MessageRepository';
 import { DocumentArchiveService } from '../services/DocumentArchiveService';
 import { WorkspaceManager } from '../utils/WorkspaceManager';
@@ -44,6 +45,7 @@ const DEFAULT_CONFIG: WorkflowExecutorConfig = {
 export class WorkflowExecutor {
   private executionService: WorkflowExecutionService;
   private projectRepository: ProjectRepository;
+  private versionRepository: ProjectVersionRepository;
   private messageRepository: MessageRepository;
   private config: WorkflowExecutorConfig;
   private messageHandler?: WorkflowMessageHandler;
@@ -53,6 +55,7 @@ export class WorkflowExecutor {
   constructor(config?: WorkflowExecutorConfig) {
     this.executionService = new WorkflowExecutionService();
     this.projectRepository = new ProjectRepository();
+    this.versionRepository = new ProjectVersionRepository();
     this.messageRepository = new MessageRepository();
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
@@ -92,9 +95,9 @@ export class WorkflowExecutor {
    * Execute workflow from current position
    * This is the main entry point for starting/continuing execution
    */
-  async execute(projectId: string): Promise<void> {
+  async execute(projectId: string, versionId: string): Promise<void> {
     if (this.isExecuting) {
-      logger.warn('WorkflowExecutor: Already executing', { projectId });
+      logger.warn('WorkflowExecutor: Already executing', { projectId, versionId });
       return;
     }
 
@@ -102,7 +105,7 @@ export class WorkflowExecutor {
     this.shouldStop = false;
 
     try {
-      await this.executeLoop(projectId);
+      await this.executeLoop(projectId, versionId);
     } finally {
       this.isExecuting = false;
     }
@@ -111,38 +114,39 @@ export class WorkflowExecutor {
   /**
    * Main execution loop
    */
-  private async executeLoop(projectId: string): Promise<void> {
+  private async executeLoop(projectId: string, versionId: string): Promise<void> {
     while (!this.shouldStop) {
       // Get current state
-      const state = await this.executionService.getCurrentState(projectId);
+      const state = await this.executionService.getCurrentState(projectId, versionId);
       
       if (!state) {
-        logger.error('WorkflowExecutor: Workflow execution not found', { projectId });
+        logger.error('WorkflowExecutor: Workflow execution not found', { projectId, versionId });
         break;
       }
 
       // Check if we should continue based on state
       if (state.state === WorkflowState.COMPLETED) {
-        logger.info('WorkflowExecutor: Workflow completed', { projectId });
+        logger.info('WorkflowExecutor: Workflow completed', { projectId, versionId });
         
         // 归档所有文档（工作流完全完成后执行）
-        await this.archiveDocumentsOnComplete(projectId);
+        await this.archiveDocumentsOnComplete(projectId, versionId);
         
-        this.sendMessage('completed', { projectId });
+        this.sendMessage('completed', { projectId, versionId });
         break;
       }
 
       if (state.state === WorkflowState.FAILED) {
-        logger.info('WorkflowExecutor: Workflow failed', { projectId });
+        logger.info('WorkflowExecutor: Workflow failed', { projectId, versionId });
         this.sendMessage('error', { 
           message: state.lastError?.message || 'Workflow execution failed',
           projectId,
+          versionId,
         });
         break;
       }
 
       if (state.state === WorkflowState.WAITING_CONFIRMATION) {
-        logger.info('WorkflowExecutor: Waiting for confirmation', { projectId });
+        logger.info('WorkflowExecutor: Waiting for confirmation', { projectId, versionId });
         this.sendMessage('confirmation_required', {
           role: state.pendingConfirmation?.role,
           action: state.pendingConfirmation?.action,
@@ -154,13 +158,14 @@ export class WorkflowExecutor {
       }
 
       if (state.state === WorkflowState.PAUSED) {
-        logger.info('WorkflowExecutor: Workflow paused', { projectId });
+        logger.info('WorkflowExecutor: Workflow paused', { projectId, versionId });
         break;
       }
 
       if (state.state !== WorkflowState.RUNNING) {
         logger.warn('WorkflowExecutor: Unexpected state', { 
-          projectId, 
+          projectId,
+          versionId,
           state: state.state,
         });
         break;
@@ -170,13 +175,14 @@ export class WorkflowExecutor {
       const { currentRole, currentAction } = state;
       
       if (!currentRole || !currentAction) {
-        logger.error('WorkflowExecutor: No current step to execute', { projectId });
+        logger.error('WorkflowExecutor: No current step to execute', { projectId, versionId });
         break;
       }
 
       // Execute the current step
       logger.info('WorkflowExecutor: Executing step', { 
-        projectId, 
+        projectId,
+        versionId,
         role: currentRole, 
         action: currentAction,
       });
@@ -187,10 +193,11 @@ export class WorkflowExecutor {
       });
 
       try {
-        await this.executeStep(projectId, currentRole, currentAction);
+        await this.executeStep(projectId, versionId, currentRole, currentAction);
       } catch (error: any) {
         logger.error('WorkflowExecutor: Step execution error', {
           projectId,
+          versionId,
           role: currentRole,
           action: currentAction,
           error: error.message,
@@ -198,11 +205,12 @@ export class WorkflowExecutor {
 
         // Step failure is already handled by onStepFail
         // Check if we should retry
-        const newState = await this.executionService.getCurrentState(projectId);
+        const newState = await this.executionService.getCurrentState(projectId, versionId);
         if (newState?.state === WorkflowState.FAILED) {
           this.sendMessage('error', { 
             message: error.message,
             projectId,
+            versionId,
           });
           break;
         }
@@ -210,7 +218,7 @@ export class WorkflowExecutor {
       }
     }
 
-    logger.info('WorkflowExecutor: Execution loop ended', { projectId });
+    logger.info('WorkflowExecutor: Execution loop ended', { projectId, versionId });
   }
 
   /**
@@ -218,11 +226,12 @@ export class WorkflowExecutor {
    */
   private async executeStep(
     projectId: string,
+    versionId: string,
     role: string,
     action: string
   ): Promise<void> {
     // Mark step as started
-    await this.executionService.onStepStart(projectId, role, action);
+    await this.executionService.onStepStart(projectId, versionId, role, action);
 
     // Get project info for context
     const project = await this.projectRepository.findById(projectId);
@@ -230,9 +239,16 @@ export class WorkflowExecutor {
       throw new Error(`Project not found: ${projectId}`);
     }
 
+    // Get version info for idea
+    const version = await this.versionRepository.findById(versionId);
+    if (!version) {
+      throw new Error(`Version not found: ${versionId}`);
+    }
+
     // Create context
     const context = new Context(undefined, project.budget || 10.0);
     context.set('projectId', projectId);
+    context.set('versionId', versionId);  // Add versionId to context
     if (project.application_id) {
       context.set('applicationId', project.application_id);
     }
@@ -241,9 +257,9 @@ export class WorkflowExecutor {
     }
 
     // Get workflow config for role actions
-    const execution = await this.executionService.getExecution(projectId);
+    const execution = await this.executionService.getExecution(projectId, versionId);
     if (!execution) {
-      throw new Error(`Workflow execution not found: ${projectId}`);
+      throw new Error(`Workflow execution not found: ${projectId} version ${versionId}`);
     }
 
     // Find role config in workflow snapshot
@@ -276,9 +292,9 @@ export class WorkflowExecutor {
     await this.loadRelevantMessages(projectId, roleInstance, action);
 
     // For the first action (WriteMRD), add user idea as initial input
-    if (action === 'WriteMRD' && project.idea) {
+    if (action === 'WriteMRD' && version.idea) {
       const userMessage = new Message({
-        content: project.idea,
+        content: version.idea,
         role: 'User',
         causeBy: 'User',
         sentFrom: 'User',
@@ -287,7 +303,8 @@ export class WorkflowExecutor {
       roleInstance.putMessage(userMessage);
       logger.info('WorkflowExecutor: Added user idea as initial message', {
         projectId,
-        ideaLength: project.idea.length,
+        versionId,
+        ideaLength: version.idea.length,
       });
     }
 
@@ -327,6 +344,7 @@ export class WorkflowExecutor {
     // Mark step as completed
     const { needsConfirmation, isCompleted } = await this.executionService.onStepComplete(
       projectId,
+      versionId,
       role,
       action,
       output
@@ -334,6 +352,7 @@ export class WorkflowExecutor {
 
     logger.info('WorkflowExecutor: Step completed', {
       projectId,
+      versionId,
       role,
       action,
       needsConfirmation,
@@ -430,29 +449,30 @@ export class WorkflowExecutor {
    * 归档所有文档（工作流完全完成后执行）
    * 将 docs/ 中的 MRD、PRD、Design 文档归档到 docs-archive/
    */
-  private async archiveDocumentsOnComplete(projectId: string): Promise<void> {
+  private async archiveDocumentsOnComplete(projectId: string, versionId: string): Promise<void> {
     try {
       // 获取项目信息
       const project = await this.projectRepository.findById(projectId);
       if (!project) {
-        logger.warn('WorkflowExecutor: Project not found for archiving', { projectId });
+        logger.warn('WorkflowExecutor: Project not found for archiving', { projectId, versionId });
         return;
       }
 
-      // 获取 ainative-workspace 路径
+      // 获取版本化的 ainative-workspace 路径
       const workspacePath = WorkspaceManager.getProjectWorkspacePath({
         applicationId: project.application_id,
         projectId: projectId,
+        versionId: versionId,
       });
-      const ainativeWorkspacePath = `${workspacePath}/ainative-workspace`;
 
       // 执行归档
       const archiveService = new DocumentArchiveService();
-      const results = await archiveService.archiveAllDocuments(ainativeWorkspacePath);
+      const results = await archiveService.archiveAllDocuments(workspacePath);
 
       if (results.length > 0) {
         logger.info('WorkflowExecutor: Documents archived on workflow completion', {
           projectId,
+          versionId,
           archivedCount: results.length,
           docTypes: results.map(r => r.docType),
           versions: results.map(r => r.versionDir),
@@ -461,6 +481,7 @@ export class WorkflowExecutor {
         // 发送归档完成消息
         this.sendMessage('documents_archived', {
           projectId,
+          versionId,
           archives: results.map(r => ({
             docType: r.docType,
             version: r.versionDir,
@@ -468,12 +489,13 @@ export class WorkflowExecutor {
           })),
         });
       } else {
-        logger.info('WorkflowExecutor: No documents to archive', { projectId });
+        logger.info('WorkflowExecutor: No documents to archive', { projectId, versionId });
       }
     } catch (error: any) {
       // 归档失败不应该影响工作流完成状态
       logger.error('WorkflowExecutor: Failed to archive documents', {
         projectId,
+        versionId,
         error: error.message,
       });
     }

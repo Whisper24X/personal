@@ -2,8 +2,8 @@
   <div class="platform-workflow">
     <PlatformWorkflowHeader @back="handleBack" />
 
-    <PlatformInfoCard :platform-name="platformName" :user-idea="userIdea" 
-      @download-code="handleDownloadCode" @download-docs="handleDownloadDocs" />
+    <PlatformInfoCard :platform-id="platformId" :platform-name="platformName" :user-idea="userIdea" 
+      @download-code="handleDownloadCode" @download-docs="handleDownloadDocs" @version-changed="handleVersionChanged" />
 
     <WorkflowKanban :workflow-kanban="workflowKanban" :is-running="isRunning" :running-role="runningRole"
       :current-action="currentAction" :current-stage-name="currentStageName" :resetting-roles="resettingRoles"
@@ -50,6 +50,7 @@ import PlatformInfoCard from './components/PlatformInfoCard.vue';
 import apiClient from '../../api/client';
 import { createPolling, type PollingResult } from '../../utils/polling';
 import { useRoleActionStore } from '../../stores/roleAction';
+import { usePlatformStore } from '../../stores/platform';
 import { getStageName, getStageTagType as getStageColor } from '../../config/stageConfig';
 import { handleApiError } from '../../utils/errorHandler';
 import type { WorkflowAction } from '../project/components/ActionCard.vue';
@@ -58,6 +59,7 @@ import type { WorkflowRoleColumn } from '../project/components/KanbanColumn.vue'
 const route = useRoute();
 const router = useRouter();
 const roleActionStore = useRoleActionStore();
+const platformStore = usePlatformStore();
 
 // Platform Info
 const platformId = ref(route.params.id as string || '');
@@ -98,6 +100,9 @@ const contentDialogTimestamp = ref('');
 const workflowStructure = ref<Record<string, string[]>>({});
 const workflowLoading = ref(false);
 const workflowItems = ref<any[]>([]);
+
+// Version ID from store
+const versionId = computed(() => platformStore.activeVersionId);
 
 // Computed kanban board data
 const workflowKanban = computed<WorkflowRoleColumn[]>(() => {
@@ -212,11 +217,11 @@ let pollingController: PollingResult | null = null;
 
 // Load workflow information from API
 async function loadWorkflowInfo() {
-  if (!platformId.value) return;
+  if (!platformId.value || !versionId.value) return;
 
   try {
     workflowLoading.value = true;
-    const response = await apiClient.getWorkflowExecution(platformId.value) as any;
+    const response = await apiClient.getWorkflowExecution(platformId.value, versionId.value) as any;
 
     if (response && response.success && response.data) {
       const execution = response.data;
@@ -387,10 +392,10 @@ function processWorkflowState(stateData: any, showMessages: boolean = false) {
 }
 
 async function loadRunningInfo() {
-  if (!platformId.value) return;
+  if (!platformId.value || !versionId.value) return;
 
   try {
-    const response = await apiClient.getWorkflowState(platformId.value) as any;
+    const response = await apiClient.getWorkflowState(platformId.value, versionId.value) as any;
     if (response?.success && response.data) {
       processWorkflowState(response.data);
     }
@@ -414,9 +419,17 @@ onMounted(async () => {
     } catch (err: any) {
       console.warn('Failed to load platform info:', err);
     }
+
+    // Fetch active version - required for all workflow operations
+    await platformStore.fetchActiveVersion(platformId.value);
+    
+    if (!versionId.value) {
+      ElMessage.error('未找到活动版本，请先创建版本');
+      return;
+    }
   }
 
-  if (platformId.value) {
+  if (platformId.value && versionId.value) {
     await loadRunningInfo();
   }
 
@@ -441,10 +454,15 @@ watch(currentStep, (newStep) => {
 }, { immediate: true });
 
 async function startWorkflowSession() {
+  if (!versionId.value) {
+    console.warn('No active version, cannot start workflow');
+    return;
+  }
+
   try {
     if (isCompleted.value) {
       await loadWorkflowInfo();
-      startPolling(platformId.value);
+      startPolling(platformId.value, versionId.value);
       return;
     }
 
@@ -455,7 +473,7 @@ async function startWorkflowSession() {
 
     // 1. 先启动工作流（会自动创建执行记录）
     try {
-      await apiClient.startWorkflow(platformId.value);
+      await apiClient.startWorkflow(platformId.value, versionId.value);
       console.log('Workflow started successfully');
     } catch (error: any) {
       console.warn('Start workflow warning:', error.message);
@@ -464,7 +482,7 @@ async function startWorkflowSession() {
     // 2. 后加载工作流信息（此时记录已存在）
     await loadWorkflowInfo();
 
-    startPolling(platformId.value);
+    startPolling(platformId.value, versionId.value);
   } catch (error: any) {
     handleApiError(error, '启动会话失败');
     isRunning.value = false;
@@ -477,7 +495,7 @@ function getPollingInterval(): number {
   return 5000;
 }
 
-function startPolling(platformIdToUse: string) {
+function startPolling(platformIdToUse: string, versionIdToUse: string) {
   try {
     if (pollingController) {
       pollingController.stop();
@@ -488,7 +506,7 @@ function startPolling(platformIdToUse: string) {
 
     pollingController = createPolling(
       async () => {
-        const response = await apiClient.getWorkflowState(platformIdToUse) as any;
+        const response = await apiClient.getWorkflowState(platformIdToUse, versionIdToUse) as any;
         return response;
       },
       (data: any) => {
@@ -530,7 +548,7 @@ async function handleUserAction(action: string, modifiedContent?: string) {
     completedSteps.value.push(step);
 
     try {
-      await apiClient.confirmWorkflow(platformId.value);
+      await apiClient.confirmWorkflow(platformId.value, versionId.value!);
       console.log('Workflow confirmation sent successfully');
     } catch (error: any) {
       console.error('Failed to send confirmation:', error);
@@ -732,12 +750,12 @@ function cleanup() {
 }
 
 async function checkForStaleActions(stateData?: any) {
-  if (!platformId.value) return;
+  if (!platformId.value || !versionId.value) return;
 
   try {
     let data = stateData;
     if (!data) {
-      const response = await apiClient.getWorkflowState(platformId.value) as any;
+      const response = await apiClient.getWorkflowState(platformId.value, versionId.value) as any;
       if (!response || !response.success) return;
       data = response.data;
     }
@@ -755,13 +773,13 @@ async function checkForStaleActions(stateData?: any) {
 }
 
 async function handleRecover() {
-  if (!platformId.value || recovering.value) return;
+  if (!platformId.value || !versionId.value || recovering.value) return;
 
   try {
     recovering.value = true;
     ElMessage.info('正在恢复工作流...');
 
-    const response = await apiClient.recoverWorkflow(platformId.value) as any;
+    const response = await apiClient.recoverWorkflow(platformId.value, versionId.value) as any;
 
     if (response && response.success) {
       const result = response.data;
@@ -781,9 +799,22 @@ async function handleRecover() {
   }
 }
 
+async function handleVersionChanged(version: any) {
+  if (!version) return;
+  
+  // Update the active version in store
+  platformStore.setActiveVersion(version);
+  
+  ElMessage.info(`已切换到版本: ${version.versionName}`);
+  
+  // Reload workflow info for the new version
+  await loadWorkflowInfo();
+  await loadRunningInfo();
+}
+
 async function handleResetRole(role: string) {
-  if (!platformId.value) {
-    ElMessage.error('平台ID不存在');
+  if (!platformId.value || !versionId.value) {
+    ElMessage.error('平台ID或版本ID不存在');
     return;
   }
 
@@ -799,7 +830,7 @@ async function handleResetRole(role: string) {
     );
 
     resettingRoles.value.add(role);
-    await apiClient.resetWorkflow(platformId.value, role);
+    await apiClient.resetWorkflow(platformId.value, versionId.value, role);
     ElMessage.success(`已重置到 ${getRoleDisplayName(role)}，请点击"开始执行"按钮继续`);
     setTimeout(() => {
       window.location.reload();
