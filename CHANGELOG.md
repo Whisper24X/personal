@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added ✨
+
+#### Frontend Features
+- **Business Line Management** - Organize projects by business lines (applications)
+- **Platform Management** - Manage platforms within business lines
+- **Workflow Kanban View** - Visual workflow execution with kanban board
+- **Knowledge Base UI** - Manage and search knowledge base documents
+- **System Configuration Panel** - Unified configuration interface for LLM, Roles, and Prompts
+- **Dashboard Statistics** - Overview of business lines, platforms, and completion status
+
+#### Backend Services
+- **WorkflowService** - Workflow configuration and management service
+- **RAGService** - Enhanced RAG with Qdrant vector search, rerank, and hybrid search
+- **EmbeddingService** - Vector embedding generation service
+- **QdrantService** - Qdrant vector database integration
+- **RerankService** - Result reranking for improved relevance
+- **RoleActionFactory** - Dynamic role and action factory from database
+- **RoleActionService** - Role and action management service
+- **SectionAdjustService** - PRD/MRD section adjustment with conversation history
+- **StagehandService** - Stagehand integration service
+- **DocumentArchiveService** - Document archiving service
+- **GitService** - Git repository management service
+
+#### Executors
+- **LLMExecutor** - LLM-based action execution
+- **CLIExecutor** - CLI-based execution with support for Aider and Cursor providers
+
+#### API Enhancements
+- **Application Management API** - Full CRUD for applications (business lines)
+- **Application Workflow API** - Workflow management per application
+- **Workflow Execution API** - Complete workflow lifecycle management (start, pause, resume, reset, recover)
+- **Knowledge Base API** - Document management and search
+- **Knowledge Upload API** - File upload for knowledge base
+- **Configuration API** - LLM, Role LLM, and Prompt configuration management
+- **Role Action Management API** - Role and action metadata management
+
+#### Database Schema V2
+- **Unified LLM Configs** - Single table for all LLM configurations (provider and role-specific)
+- **Application Workflows** - Workflow configuration per application
+- **Workflow Executions** - Workflow execution state management
+- **Knowledge Base Table** - Database-backed knowledge base
+- **Section Conversations** - Conversation history for section adjustments
+
+### Changed
+
+- **Database Schema** - Migrated to Schema V2 with simplified structure
+- **State Management** - Unified state management through StateManager
+- **Workflow Execution** - New workflow execution engine with state persistence
+- **Frontend Architecture** - Reorganized views by business domain (businessLine, platform, knowledge, config)
+
+### Technical Details
+
+- **9 Roles**: Salesperson, ProductManager, Architect, ProjectManager, Engineer, QAEngineer, AutomationEngineer, TeamLeader, DataAnalyst
+- **30 Actions**: Complete action set covering document writing, review, improvement, code execution, QA workflows
+- **Multiple LLM Providers**: OpenAI, ZhipuAI, Ark (Doubao), DeepSeek, Cursor Agent
+- **Vector Search**: Qdrant integration with embedding and rerank support
+- **Workflow Engine**: Stateful workflow execution with recovery and rollback support
+
 ## [1.4.0] - 2026-01-15
 
 ### Added ✨

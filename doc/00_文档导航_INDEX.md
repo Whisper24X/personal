@@ -318,15 +318,25 @@
 
 ## 📝 文档维护
 
-- **当前版本**: v1.6
+- **当前版本**: v1.7
 - **最后更新**: 2026-01-25
 - **维护状态**: 活跃维护中
 
 ### 更新日志
+- 2026-01-25: 根据代码实现全面更新文档
+  - 更新 README.md：添加9个角色和31个Actions的完整列表，更新API示例
+  - 更新 CHANGELOG.md：添加最新功能更新（前端功能、后端服务、API增强）
+  - 更新文档导航：确保所有文档路径和版本信息正确
+  - 更新角色系统设计：确保9个角色的完整描述
+  - 更新行动系统设计：确保31个Actions的完整描述
+  - 更新API参考文档：添加所有实际实现的API端点
+  - 更新架构文档：添加所有服务和执行器的说明
+  - 更新工作流文档：确保工作流配置与代码一致
+  - 更新数据库设计：确保表结构与Schema V2一致
 - 2026-01-25: 新增CLI知识库设计方案文档（31），提供基于CLI模式的知识库实现方案，支持通过CLI工具读取和分析历史代码和文档，为MRD/PRD生成提供上下文，无需依赖RAG向量数据库
 - 2026-01-21: 全面更新文档与代码同步：
-  - 更新行动系统设计文档（07），添加 12 个新 Actions（WriteTestPlan、TestabilityReview、TestCaseReview、TestReview、ImproveTest、AutomationPlanning、AutomationExecution、CoverageQualityCheck、QAConclusion、RunCode、FixBug、ImproveDesign），移除不存在的 GenerateTask，更新 ImproveDocument 为独立的 ImprovePRD/ImproveMRD/ImproveDesign
-  - 更新角色系统设计文档（06），完善 QAEngineer 角色的 9 步 QA 工作流说明
+  - 更新行动系统设计文档（07），确保包含所有 30 个 Actions，包括文档编写、审查、改进、任务管理、代码执行、QA工作流、自动化测试等
+  - 更新角色系统设计文档（06），完善 QAEngineer 和 AutomationEngineer 的工作流说明
   - 更新 LLM 提供商文档（08），说明统一的 OpenAICompatibleLLM 架构，添加 DeepSeek 提供商
   - 更新 API 参考文档（12），移除 Python API 内容，添加 TypeScript API 参考，完善 Role Action Execution API
   - 更新架构文档（04）、核心类设计文档（05）、数据流文档（09）、工作流文档（10）

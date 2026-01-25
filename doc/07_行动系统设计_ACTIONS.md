@@ -1005,9 +1005,14 @@ async run(allMessages: string): Promise<IActionOutput>
 
 ### QA 工作流 Actions (QAEngineer)
 ✅ **TestabilityReview** - 需求可测性审查  
+✅ **WriteTestPlan** - 测试计划制定（已在文档编写Actions中列出）
+✅ **WriteTest** - 测试用例编写（已在文档编写Actions中列出）
 ✅ **TestCaseReview** - 测试用例评审与补充  
 ✅ **TestReview** - 测试用例文档审查  
+✅ **ImproveTest** - 根据审查报告改进测试用例（已在文档改进Actions中列出）
 ✅ **QAConclusion** - QA结论输出
+
+**注意**: WriteTestPlan、WriteTest 和 ImproveTest 已在其他分类中列出，此处仅作说明。
 
 ### 自动化测试 Actions (AutomationEngineer)
 ✅ **AutomationPlanning** - 自动化测试规划  
@@ -1019,7 +1024,19 @@ async run(allMessages: string): Promise<IActionOutput>
 ✅ **DataAnalysis** - 数据分析和可视化  
 ✅ **Coordinate** - 团队协调和任务分配
 
-**共计 31 个 Actions**
+**共计 30 个 Actions**
+
+**统计**:
+- 文档编写: 7个 (WriteMRD, WritePRD, WriteDesign, WriteSubProjectDesign, WriteCode, WriteTest, WriteTestPlan)
+- 文档审查: 5个 (MRDReview, PRDReview, DesignReview, SubProjectDesignReview, CodeReview)
+- 文档改进: 4个 (ImprovePRD, ImproveMRD, ImproveDesign, ImproveTest)
+- 任务管理: 2个 (BreakdownTasks, ExecuteSubtask)
+- 代码执行与修复: 2个 (RunCode, FixBug)
+- QA工作流: 7个 (TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, TestReview, ImproveTest, QAConclusion)
+- 自动化测试: 3个 (AutomationPlanning, AutomationExecution, CoverageQualityCheck)
+- 其他: 3个 (SearchEnhancedQA, DataAnalysis, Coordinate)
+
+**注意**: WriteTestPlan、WriteTest 和 ImproveTest 在多个分类中都有涉及，但实际只计算一次。
 
 ## 自定义 Action
 

@@ -6,16 +6,20 @@ Mind2Build is a multi-agent AI collaboration framework that simulates a software
 
 ## 🌟 Features
 
-- **Multi-Agent Collaboration**: AI agents (ProductManager, Architect, Engineer) work together like a real team
-- **Complete Project Generation**: From idea to PRD, design documents, and working code
+- **Multi-Agent Collaboration**: 9 AI agents (Salesperson, ProductManager, Architect, ProjectManager, Engineer, QAEngineer, AutomationEngineer, TeamLeader, DataAnalyst) work together like a real team
+- **Complete Project Generation**: From idea to MRD, PRD, design documents, and working code
+- **30 Actions**: Comprehensive action system covering document writing, review, improvement, code execution, QA workflows, and more
 - **Interactive Mode** ✨: Manual review and confirmation at each SOP step for better control
   - **CLI Interactive Mode**: Terminal-based with editor integration
   - **Web Interactive Mode**: Beautiful browser interface with real-time updates
-- **Multiple LLM Support**: OpenAI, Anthropic Claude, Zhipu AI, and more
+- **Business Line & Platform Management**: Organize projects by business lines and platforms
+- **Knowledge Base System**: RAG-enhanced retrieval with Qdrant vector database support
+- **Workflow Management**: Customizable workflows with visual designer
+- **Multiple LLM Support**: OpenAI, Zhipu AI, Ark (Doubao), DeepSeek, Cursor Agent, and more
 - **Cost Management**: Budget tracking and limits to control LLM usage
 - **Web Interface**: Vue 3-based dashboard with WebSocket support
 - **CLI Tool**: Command-line interface for quick project generation
-- **Database Persistence**: PostgreSQL storage for all projects and messages
+- **Database Persistence**: PostgreSQL storage for all projects, messages, and configurations
 
 ## 🏗️ Architecture
 
@@ -79,22 +83,28 @@ pnpm dev:frontend
 ## 📦 Project Structure
 
 ```
-ax/
+mind2build/
 ├── backend/          # Node.js/TypeScript backend
 │   ├── src/
 │   │   ├── core/            # Message, Memory, Context, Base classes
-│   │   ├── roles/           # AI agent roles
-│   │   ├── actions/         # Agent actions
-│   │   ├── providers/       # LLM providers
-│   │   ├── orchestration/   # Team & Environment
-│   │   ├── database/        # Data layer
-│   │   ├── api/             # REST API
+│   │   ├── roles/           # 9 AI agent roles
+│   │   ├── actions/         # 31 agent actions
+│   │   ├── providers/       # LLM providers (OpenAI, ZhipuAI, Ark, Cursor, DeepSeek)
+│   │   ├── orchestration/   # Team, Environment, StateManager
+│   │   ├── executors/       # LLMExecutor, CLIExecutor (Aider, Cursor)
+│   │   ├── database/        # PostgreSQL repositories and migrations
+│   │   ├── api/             # REST API controllers and routes
+│   │   ├── services/        # WorkflowService, RAGService, etc.
+│   │   ├── workflow/        # Workflow execution engine
 │   │   └── cli/             # CLI commands
 │   └── tests/
 ├── frontend/         # Vue 3 + Vite frontend
 │   └── src/
-├── database/         # Prisma schema and migrations
-├── shared/           # Shared TypeScript types
+│       ├── views/           # Dashboard, BusinessLine, Platform, Knowledge, Config
+│       ├── components/      # InteractiveConfirmation, WorkflowKanban, etc.
+│       ├── stores/          # Pinia state management
+│       └── router/          # Vue Router configuration
+├── shared/           # Shared TypeScript types and constants
 └── workspace/        # Generated projects
 ```
 
@@ -408,7 +418,52 @@ See [Frontend Interactive Guide](./doc/23_前端交互模式实现指南_FRONTEN
 
 ### API
 
-#### Role Action Execution API ✨ (New!)
+#### Application & Workflow Management API
+
+Manage business lines (applications) and their workflows:
+
+```bash
+# Create application
+POST /api/applications
+{
+  "name": "E-commerce Platform",
+  "description": "Online shopping platform"
+}
+
+# Get application workflows
+GET /api/applications/:applicationId/workflows
+
+# Create custom workflow
+POST /api/applications/:applicationId/workflows
+{
+  "name": "Custom Workflow",
+  "workflowConfig": { ... }
+}
+```
+
+#### Workflow Execution API
+
+Control workflow execution lifecycle:
+
+```bash
+# Start workflow
+POST /api/workflow/:projectId/start
+
+# Get workflow state
+GET /api/workflow/:projectId/state
+
+# Confirm and proceed (interactive mode)
+POST /api/workflow/:projectId/confirm
+
+# Reset to specific role
+POST /api/workflow/:projectId/reset
+
+# Pause/Resume workflow
+POST /api/workflow/:projectId/pause
+POST /api/workflow/:projectId/resume
+```
+
+#### Role Action Execution API ✨
 
 Independently execute specific role actions without running the full workflow:
 
@@ -432,15 +487,18 @@ curl -X POST http://localhost:3000/api/projects/PROJECT_ID/roles/Engineer/action
 ```
 
 **Supported Roles & Actions:**
+
 - **Salesperson**: WriteMRD, MRDReview, ImproveMRD
 - **ProductManager**: WritePRD, PRDReview, ImprovePRD, SearchEnhancedQA
 - **Architect**: WriteDesign, DesignReview, ImproveDesign
 - **ProjectManager**: BreakdownTasks, WriteSubProjectDesign, SubProjectDesignReview
 - **Engineer**: WriteCode, ExecuteSubtask, RunCode, FixBug
-- **QAEngineer**: TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, QAConclusion
+- **QAEngineer**: TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, TestReview, ImproveTest, QAConclusion
 - **AutomationEngineer**: AutomationPlanning, AutomationExecution, CoverageQualityCheck
 - **TeamLeader**: Coordinate
 - **DataAnalyst**: DataAnalysis
+
+**Total: 9 Roles, 30 Actions**
 
 **Features:**
 - ✅ Execute any role action independently
@@ -458,12 +516,62 @@ const response = await fetch('http://localhost:3000/api/projects', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    idea: 'Create a blog platform with user authentication'
+    name: 'Blog Platform',
+    idea: 'Create a blog platform with user authentication',
+    applicationId: 'app-id',  // Optional: associate with application
+    investment: 10.0,
+    nRound: 5
   })
 });
 
 const project = await response.json();
-console.log('Project ID:', project.id);
+console.log('Project ID:', project.project.id);
+
+// Start project execution
+await fetch(`http://localhost:3000/api/projects/${project.project.id}/start`, {
+  method: 'POST'
+});
+
+// Get project status
+const status = await fetch(`http://localhost:3000/api/projects/${project.project.id}`);
+const data = await status.json();
+console.log('Status:', data.project.status);
+```
+
+#### Knowledge Base API
+
+```javascript
+// Create knowledge base document
+POST /api/projects/:projectId/knowledge-base
+{
+  "title": "API Design Guidelines",
+  "content": "...",
+  "tags": ["api", "design"]
+}
+
+// Search knowledge base
+POST /api/projects/:projectId/knowledge-base/search
+{
+  "query": "payment module design",
+  "topK": 5
+}
+```
+
+#### Configuration API
+
+```javascript
+// LLM Configuration
+GET /api/config/llm
+POST /api/config/llm
+POST /api/config/llm/:id/activate
+
+// Role-specific LLM Configuration
+GET /api/config/role-llm/:profile
+POST /api/config/role-llm/:profile
+
+// Prompt Configuration
+GET /api/config/prompts
+POST /api/config/prompts
 ```
 
 ### Programmatic

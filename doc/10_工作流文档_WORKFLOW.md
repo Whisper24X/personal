@@ -79,31 +79,74 @@ project-repo/
 
 ## 2. 标准软件开发流程
 
+### 2.1 默认工作流配置
+
+系统默认工作流配置（定义在 `WorkflowService.getDefaultWorkflowConfig()`）：
+
 ```
-用户需求 + Git仓库地址
+用户需求
   ↓
-Git仓库初始化（git clone 或 git init）
+Salesperson (Order: 0)
+  ├─ WriteMRD → 保存到 MRD/ 目录
+  ├─ MRDReview → 审查MRD
+  └─ ImproveMRD → 改进MRD
   ↓
-检查版本并创建分支（如 v1, v2...）
+ProductManager (Order: 1)
+  ├─ WritePRD → 保存到 PRD/ 目录
+  ├─ PRDReview → 审查PRD
+  └─ ImprovePRD → 改进PRD
   ↓
-Salesperson(WriteMRD) → 保存到 MRD/ 目录
+Architect (Order: 2)
+  ├─ WriteDesign → 保存到 DESIGN/ 目录
+  ├─ DesignReview → 审查设计
+  └─ ImproveDesign → 改进设计
   ↓
-ProductManager(WritePRD) → 保存到 PRD/ 目录
+ProjectManager (Order: 3)
+  └─ BreakdownTasks → 保存到 TASKS/ 目录
   ↓
-Architect(WriteDesign) → 保存到 DESIGN/ 目录
+Engineer (Order: 4)
+  └─ WriteCode → 保存到 CODE/ 目录
   ↓
-Engineer(WriteCode) → 保存到 CODE/ 目录
-  ↓
-QAEngineer(完整QA工作流) → 保存到 TEST/ 目录
+QAEngineer (Order: 5)
+  ├─ TestabilityReview → 可测性审查
+  ├─ WriteTestPlan → 测试计划
+  ├─ WriteTest → 测试用例
+  └─ TestCaseReview → 用例评审
   ↓
 提交到Git仓库（git commit + git push）
   ↓
 输出项目（Git仓库地址和版本分支）
 ```
 
-## 2.1 QA 工作流（9 步 QA 流程）
+### 2.2 工作流配置结构
 
-QAEngineer 角色实现了完整的质量保证工作流，包含 8 个 Actions，按顺序执行：
+工作流配置存储在 `application_workflows` 表中，结构如下：
+
+```typescript
+interface WorkflowConfig {
+  roles: Array<{
+    profile: string;        // 角色类型（如 'ProductManager'）
+    name: string;           // 显示名称（如 'Product Manager'）
+    order: number;          // 执行顺序（0, 1, 2...）
+    actions: string[];      // Actions列表（按顺序执行）
+    watch_actions: string[]; // 监听的Actions（触发条件）
+  }>;
+}
+```
+
+### 2.3 工作流执行机制
+
+- **顺序执行**: 根据 `order` 字段顺序执行角色
+- **Action顺序**: 每个角色内的Actions按数组顺序执行（BY_ORDER模式）
+- **触发条件**: 角色通过 `watch_actions` 监听前序角色的Actions完成事件
+- **状态管理**: 通过 `StateManager` 统一管理执行状态
+- **恢复支持**: 支持中断后恢复执行
+
+## 2.1 QA 工作流
+
+### QAEngineer 工作流（4步测试设计流程）
+
+QAEngineer 角色实现了测试设计工作流，包含 4 个 Actions，按顺序执行：
 
 ```
 PRD + 代码
@@ -116,18 +159,32 @@ Step 3: WriteTest（测试用例生成）
   ↓ 输出: TEST.md
 Step 4: TestCaseReview（用例评审与补充）
   ↓ 输出: TEST_CASES_REVIEWED.md
-Step 5: AutomationPlanning（自动化测试规划）
+```
+
+### AutomationEngineer 工作流（3步自动化测试流程）
+
+AutomationEngineer 角色实现了自动化测试工作流，包含 3 个 Actions：
+
+```
+测试用例（来自QAEngineer）
+  ↓
+Step 1: AutomationPlanning（自动化测试规划）
   ↓ 输出: AUTOMATION_PLAN.md
-Step 6: AutomationExecution（自动化测试执行）
+Step 2: AutomationExecution（自动化测试执行）
   ↓ 输出: tests/automated_tests.md
-Step 7: CoverageQualityCheck（覆盖率与质量检查）
+Step 3: CoverageQualityCheck（覆盖率与质量检查）
   ↓ 输出: COVERAGE_REPORT.md, QUALITY_CHECK.md
-Step 8: QAConclusion（QA 结论）
+  ↓
+QAConclusion（QAEngineer执行，综合所有结果）
   ↓ 输出: QA_CONCLUSION.md
 最终结论: 通过(pass) / 阻断(block) / 需修改(needs_modification)
 ```
 
+**注意**: QAConclusion 由 QAEngineer 执行，需要等待 AutomationEngineer 完成 CoverageQualityCheck。
+
 ### QA 工作流详解
+
+**QAEngineer 工作流**:
 
 | 步骤 | Action | 说明 | 输入 | 输出 |
 |------|--------|------|------|------|
@@ -135,18 +192,26 @@ Step 8: QAConclusion（QA 结论）
 | 2 | WriteTestPlan | 基于可测性审查制定测试计划 | PRD, 代码, 可测性报告 | 测试计划 |
 | 3 | WriteTest | 生成测试用例 | PRD, 代码 | 测试用例文档 |
 | 4 | TestCaseReview | 补充边界、异常、负面测试 | 测试用例, PRD, 代码 | 审查后的测试用例 |
-| 5 | AutomationPlanning | 评估自动化可行性 | 测试用例, 代码 | 自动化计划 |
-| 6 | AutomationExecution | 执行自动化测试 | 自动化计划 | 执行结果 |
-| 7 | CoverageQualityCheck | 分析覆盖率和质量 | 测试用例, 代码, 执行结果 | 覆盖率和质量报告 |
-| 8 | QAConclusion | 综合所有结果给出结论 | 所有测试文档 | QA 结论报告 |
+
+**AutomationEngineer 工作流**:
+
+| 步骤 | Action | 说明 | 输入 | 输出 |
+|------|--------|------|------|------|
+| 1 | AutomationPlanning | 评估自动化可行性 | 测试用例（TestCaseReview完成） | 自动化计划 |
+| 2 | AutomationExecution | 执行自动化测试 | 自动化计划 | 执行结果 |
+| 3 | CoverageQualityCheck | 分析覆盖率和质量 | 测试用例, 代码, 执行结果 | 覆盖率和质量报告 |
+
+**QAEngineer 最终步骤**:
+
+| 步骤 | Action | 说明 | 输入 | 输出 |
+|------|--------|------|------|------|
+| 5 | QAConclusion | 综合所有结果给出结论 | 所有测试文档（包括覆盖率报告） | QA 结论报告 |
 
 ### QA 工作流触发条件
 
-QAEngineer 监听以下 Actions 完成事件：
-- `ACTION_WRITE_PRD` - ProductManager 完成 PRD
-- `ACTION_WRITE_CODE` - Engineer 完成代码
-
-当两者都完成时，QAEngineer 开始执行完整的 9 步 QA 工作流。
+- **QAEngineer**: 监听 `ACTION_WRITE_PRD` 和 `ACTION_WRITE_CODE`，当两者都完成时开始执行
+- **AutomationEngineer**: 监听 `ACTION_TEST_CASE_REVIEW`，等待 QAEngineer 完成测试用例评审后开始执行
+- **QAConclusion**: QAEngineer 监听 `ACTION_COVERAGE_QUALITY_CHECK`，等待 AutomationEngineer 完成覆盖率检查后执行
 
 ## 3. 数据分析流程
 
