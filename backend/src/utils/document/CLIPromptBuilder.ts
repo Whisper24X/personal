@@ -24,6 +24,8 @@ export interface CLIPromptConfig {
   taskPoints?: string[];
   /** 系统提示词（可选，用于添加额外上下文） */
   systemContext?: string;
+  /** 是否包含知识输入引用（默认 true） */
+  includeKnowledgeInput?: boolean;
 }
 
 /**
@@ -178,6 +180,45 @@ export function getCLIIOConfig(
 }
 
 /**
+ * CLI模式知识输入引用
+ * 指示 CLI 参考工作目录中的历史文档、代码和业务知识
+ */
+export const CLI_KNOWLEDGE_INPUT_REFERENCE = `
+【重要：知识输入】
+请参考工作目录中的以下内容作为知识输入（这些是重要依据）：
+
+1. 归档历史文档：docs-archive/mrd/, docs-archive/prd/
+   - 已归档的历史版本，了解产品演进历史
+
+2. 业务知识库：docs/business-knowledge/
+   - 业务方上传的产品规范、业务流程等知识文档
+   - 这些是重要的业务背景和约束条件
+
+3. 当前文档：docs/mrd/, docs/prd/, docs/design/, docs/test/
+   - 当前正在生成的文档
+
+4. 开发规范：docs/dev-spec/
+   - 各子项目的开发规范和架构说明
+
+5. 代码实现：
+   - ainative-app/src/: 移动端代码实现
+   - ainative-backend/: 后端 API 和业务逻辑
+   - ainative-shadow/src/: 管理后台功能
+   - ainative-pc/src/: PC端代码实现
+
+【功能冲突检测与标注 - 必须执行】
+在生成文档时，必须：
+1. 分析上述代码目录中已实现的功能
+2. 如果新需求的功能已经实现，在文档中用 ✅ 标注"已实现"
+3. 如果新需求与现有实现存在冲突，用 ⚠️ 标注并说明：
+   - 冲突点描述
+   - 影响范围
+   - 需要修改的现有功能
+   - 建议解决方案
+4. 在文档末尾添加"功能实现状态总结"章节
+`;
+
+/**
  * 构建CLI模式通用Prompt
  * 只传递文件夹路径，不传递文件内容
  * 
@@ -197,7 +238,13 @@ export function buildCLIModePrompt(config: CLIPromptConfig): string {
     ? `\n\n【背景信息】\n${config.systemContext}`
     : '';
 
-  return `【任务】${config.taskDescription}
+  // 默认包含知识输入引用，除非显式设置为 false
+  const knowledgeInputStr = config.includeKnowledgeInput !== false
+    ? CLI_KNOWLEDGE_INPUT_REFERENCE
+    : '';
+
+  return `${knowledgeInputStr}
+【任务】${config.taskDescription}
 
 【输入位置】
 - 文件夹：${config.inputDir}
@@ -209,9 +256,11 @@ ${taskPointsStr}${systemContextStr}
 
 【执行要求】
 1. 从输入文件夹读取指定文件的完整内容
-2. 根据输入内容执行${config.taskDescription}
-3. 将结果保存到输出位置
-4. 禁止创建任何其他文件
+2. 参考知识输入中的历史文档和代码实现
+3. 执行功能冲突检测，标注已实现功能和冲突点
+4. 根据输入内容执行${config.taskDescription}
+5. 将结果保存到输出位置
+6. 禁止创建任何其他文件
 
 【严格文件操作限制 - 必须遵守】
 
