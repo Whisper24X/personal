@@ -11,7 +11,7 @@ import { logger } from '../../utils';
 
 const applicationRepo = new ApplicationRepository();
 const projectRepo = new ProjectRepository();
-const DEFAULT_USER_ID = '302769d6-247d-43db-a005-0519712255fb';
+const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 export class ApplicationController {
   /**

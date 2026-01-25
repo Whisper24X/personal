@@ -80,7 +80,9 @@ export class DocumentImproveHandler {
 
       if (!currentDocument) {
         throw new Error(
-          `Cannot find ${this.config.documentType} document in workspace. Please generate it first.`
+          `Cannot find ${this.config.documentType} document in workspace (${workspaceDir}/${this.config.mainFileName}). ` +
+          `This usually means the Write action failed to save the document or returned empty content. ` +
+          `Please check if CLI properly generated and saved the file, or try regenerating the document.`
         );
       }
 

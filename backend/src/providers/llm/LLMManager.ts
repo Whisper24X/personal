@@ -14,12 +14,12 @@
 import { ILLMConfig, LLMProvider } from '@mind2build/shared';
 import { BaseLLM } from './BaseLLM';
 import { createLLM } from './factory';
-import { LLMConfigRepository, RoleLLMConfigRepository } from '../../database';
+import { LLMConfigRepository } from '../../database';
 import { CostManager } from '../../core/context/CostManager';
 import { logger } from '../../utils/logger';
 
 // Default user ID for system-level operations
-const DEFAULT_USER_ID = '302769d6-247d-43db-a005-0519712255fb';
+const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 // Configuration cache settings
 const CONFIG_CACHE_TTL = 60000; // 1 minute
@@ -54,7 +54,6 @@ export class LLMManager {
   // Repositories
   // ============================================
   private llmConfigRepo = new LLMConfigRepository();
-  private roleLLMConfigRepo = new RoleLLMConfigRepository();
 
   private constructor() {}
 
@@ -244,7 +243,7 @@ export class LLMManager {
 
     // Try to load role-specific config from database
     try {
-      const roleConfig = await this.roleLLMConfigRepo.findByProfile(targetUserId, roleProfile);
+      const roleConfig = await this.llmConfigRepo.findByRole(targetUserId, roleProfile);
 
       if (roleConfig) {
         const llmConfig: ILLMConfig = {
@@ -346,9 +345,9 @@ export class LLMManager {
     try {
       const configs = await this.llmConfigRepo.findByUserId(targetUserId);
       
-      // Filter out configs without valid API keys
+      // Filter out configs without valid API keys (Schema V2: api_key field)
       const validConfigs = configs
-        .filter(c => c.provider_api_key && c.provider_api_key.trim() !== '')
+        .filter(c => c.api_key && c.api_key.trim() !== '')
         .map(c => this.llmConfigRepo.toILLMConfig(c));
       
       logger.debug(`LLMManager: Found ${validConfigs.length} available LLM configs for user ${targetUserId}`, {

@@ -47,7 +47,7 @@ export class RoleActionExecutionController {
       }
 
       // Step 3: Create context with project configuration
-      const context = new Context(undefined, project.investment || 10.0);
+      const context = new Context(undefined, project.budget || 10.0);
       context.set('projectId', projectId);
       if (project.application_id) {
         context.set('applicationId', project.application_id);

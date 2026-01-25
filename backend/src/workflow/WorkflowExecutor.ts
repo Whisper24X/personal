@@ -16,6 +16,8 @@ import { Context } from '../core/context/Context';
 import { Message } from '../core/message/Message';
 import { ProjectRepository } from '../database/repositories/ProjectRepository';
 import { MessageRepository } from '../database/repositories/MessageRepository';
+import { DocumentArchiveService } from '../services/DocumentArchiveService';
+import { WorkspaceManager } from '../utils/WorkspaceManager';
 import { logger } from '../utils';
 
 /**
@@ -122,6 +124,10 @@ export class WorkflowExecutor {
       // Check if we should continue based on state
       if (state.state === WorkflowState.COMPLETED) {
         logger.info('WorkflowExecutor: Workflow completed', { projectId });
+        
+        // 归档所有文档（工作流完全完成后执行）
+        await this.archiveDocumentsOnComplete(projectId);
+        
         this.sendMessage('completed', { projectId });
         break;
       }
@@ -225,7 +231,7 @@ export class WorkflowExecutor {
     }
 
     // Create context
-    const context = new Context(undefined, project.investment || 10.0);
+    const context = new Context(undefined, project.budget || 10.0);
     context.set('projectId', projectId);
     if (project.application_id) {
       context.set('applicationId', project.application_id);
@@ -418,6 +424,59 @@ export class WorkflowExecutor {
     };
 
     return relevantMap[actionName] || [];
+  }
+
+  /**
+   * 归档所有文档（工作流完全完成后执行）
+   * 将 docs/ 中的 MRD、PRD、Design 文档归档到 docs-archive/
+   */
+  private async archiveDocumentsOnComplete(projectId: string): Promise<void> {
+    try {
+      // 获取项目信息
+      const project = await this.projectRepository.findById(projectId);
+      if (!project) {
+        logger.warn('WorkflowExecutor: Project not found for archiving', { projectId });
+        return;
+      }
+
+      // 获取 ainative-workspace 路径
+      const workspacePath = WorkspaceManager.getProjectWorkspacePath({
+        applicationId: project.application_id,
+        projectId: projectId,
+      });
+      const ainativeWorkspacePath = `${workspacePath}/ainative-workspace`;
+
+      // 执行归档
+      const archiveService = new DocumentArchiveService();
+      const results = await archiveService.archiveAllDocuments(ainativeWorkspacePath);
+
+      if (results.length > 0) {
+        logger.info('WorkflowExecutor: Documents archived on workflow completion', {
+          projectId,
+          archivedCount: results.length,
+          docTypes: results.map(r => r.docType),
+          versions: results.map(r => r.versionDir),
+        });
+
+        // 发送归档完成消息
+        this.sendMessage('documents_archived', {
+          projectId,
+          archives: results.map(r => ({
+            docType: r.docType,
+            version: r.versionDir,
+            fileCount: r.files.length,
+          })),
+        });
+      } else {
+        logger.info('WorkflowExecutor: No documents to archive', { projectId });
+      }
+    } catch (error: any) {
+      // 归档失败不应该影响工作流完成状态
+      logger.error('WorkflowExecutor: Failed to archive documents', {
+        projectId,
+        error: error.message,
+      });
+    }
   }
 }
 

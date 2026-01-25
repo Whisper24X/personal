@@ -1,32 +1,24 @@
 /**
- * Role LLM Config Repository
- * Data access layer for role-specific LLM configurations
+ * Role LLM Config Repository (Backward Compatibility)
+ * Schema V2: Merged into unified LLMConfigRepository
+ * @deprecated Use LLMConfigRepository instead
  */
 
-import { query } from '../client';
-import { logger } from '../../utils';
+import { LLMConfigRepository, LLMConfig } from './LLMConfigRepository';
 import { LLMProvider } from '@mind2build/shared';
 
-export interface RoleLLMConfig {
-  id: string;
-  user_id: string;
-  role_profile: string;
-  provider: LLMProvider;
-  api_key: string | null;
-  base_url: string | null;
-  model: string;
-  temperature: number | null;
-  max_tokens: number | null;
-  repository: string | null;
-  branch_name: string | null;
-  auto_create_pr: boolean;
-  created_at: Date;
-  updated_at: Date;
-}
+// Re-export for backward compatibility
+export type RoleLLMConfig = LLMConfig;
 
 export class RoleLLMConfigRepository {
+  private llmConfigRepo: LLMConfigRepository;
+
+  constructor() {
+    this.llmConfigRepo = new LLMConfigRepository();
+  }
+
   /**
-   * Create or update role LLM configuration
+   * @deprecated Use LLMConfigRepository.upsertRole instead
    */
   async upsert(data: {
     userId: string;
@@ -40,99 +32,30 @@ export class RoleLLMConfigRepository {
     repository?: string;
     branchName?: string;
     autoCreatePr?: boolean;
-  }): Promise<RoleLLMConfig> {
-    const now = new Date();
-    
-    const result = await query<RoleLLMConfig>(
-      `INSERT INTO role_llm_configs (
-        user_id, role_profile, provider, api_key, base_url, model,
-        temperature, max_tokens, repository, branch_name, auto_create_pr,
-        created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-      ON CONFLICT (user_id, role_profile) 
-      DO UPDATE SET
-        provider = EXCLUDED.provider,
-        api_key = EXCLUDED.api_key,
-        base_url = EXCLUDED.base_url,
-        model = EXCLUDED.model,
-        temperature = EXCLUDED.temperature,
-        max_tokens = EXCLUDED.max_tokens,
-        repository = EXCLUDED.repository,
-        branch_name = EXCLUDED.branch_name,
-        auto_create_pr = EXCLUDED.auto_create_pr,
-        updated_at = EXCLUDED.updated_at
-      RETURNING *`,
-      [
-        data.userId,
-        data.roleProfile,
-        data.provider,
-        data.apiKey || null,
-        data.baseURL || null,
-        data.model,
-        data.temperature !== undefined ? data.temperature : null,
-        data.maxTokens !== undefined ? data.maxTokens : null,
-        data.repository || null,
-        data.branchName || null,
-        data.autoCreatePr !== undefined ? data.autoCreatePr : true,
-        now,
-        now,
-      ]
-    );
-
-    logger.info('RoleLLMConfigRepository: Configuration upserted', {
-      userId: data.userId,
-      roleProfile: data.roleProfile,
-      provider: data.provider,
-    });
-
-    return result.rows[0];
+  }): Promise<LLMConfig> {
+    return this.llmConfigRepo.upsertRole(data);
   }
 
   /**
-   * Get all role LLM configurations for a user
+   * @deprecated Use LLMConfigRepository.findRoleConfigs instead
    */
-  async findByUserId(userId: string): Promise<RoleLLMConfig[]> {
-    const result = await query<RoleLLMConfig>(
-      `SELECT * FROM role_llm_configs 
-       WHERE user_id = $1 
-       ORDER BY role_profile`,
-      [userId]
-    );
-
-    return result.rows;
+  async findByUserId(userId: string): Promise<LLMConfig[]> {
+    return this.llmConfigRepo.findRoleConfigs(userId);
   }
 
   /**
-   * Get role LLM configuration by profile
+   * @deprecated Use LLMConfigRepository.findByRole instead
    */
-  async findByProfile(userId: string, roleProfile: string): Promise<RoleLLMConfig | null> {
-    const result = await query<RoleLLMConfig>(
-      `SELECT * FROM role_llm_configs 
-       WHERE user_id = $1 AND role_profile = $2`,
-      [userId, roleProfile]
-    );
-
-    return result.rows[0] || null;
+  async findByProfile(userId: string, roleProfile: string): Promise<LLMConfig | null> {
+    return this.llmConfigRepo.findByRole(userId, roleProfile);
   }
 
   /**
-   * Delete role LLM configuration
+   * @deprecated Use LLMConfigRepository.deleteRoleConfig instead
    */
   async delete(userId: string, roleProfile: string): Promise<boolean> {
-    const result = await query<RoleLLMConfig>(
-      `DELETE FROM role_llm_configs 
-       WHERE user_id = $1 AND role_profile = $2
-       RETURNING *`,
-      [userId, roleProfile]
-    );
-
-    logger.info('RoleLLMConfigRepository: Configuration deleted', {
-      userId,
-      roleProfile,
-      deleted: result.rows.length > 0,
-    });
-
-    return result.rows.length > 0;
+    return this.llmConfigRepo.deleteRoleConfig(userId, roleProfile);
   }
 }
 
+export default RoleLLMConfigRepository;

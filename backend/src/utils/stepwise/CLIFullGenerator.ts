@@ -120,7 +120,22 @@ export class CLIFullGenerator extends BaseGenerator {
       cleanedContent = cleanedContent.replace(/^```(?:markdown|md|text)?\s*\n?/i, '');
       cleanedContent = cleanedContent.replace(/\n?```\s*$/, '');
 
-      // Step 5: 保存到主文件（如果内容看起来是有效文档）
+      // Step 5: 最终内容验证 - 确保生成的文档不是空的或长度不足
+      // 有效的文档应该至少有100个字符
+      if (!cleanedContent || cleanedContent.trim().length < 100) {
+        logger.error('CLIFullGenerator: Generated content is empty or too short', {
+          ...logContext,
+          contentLength: cleanedContent?.length || 0,
+          expectedFile: `${this.config.workspaceDir}/${this.config.mainFileName}`,
+        });
+        throw new Error(
+          `文档生成失败: 生成的内容为空或长度不足 (${cleanedContent?.length || 0} 字符)。` +
+          `预期文件: ${this.config.workspaceDir}/${this.config.mainFileName}。` +
+          `请检查 CLI 是否正确生成并保存了文档。`
+        );
+      }
+
+      // Step 6: 保存到主文件（如果内容看起来是有效文档）
       // 只有当内容不是CLI总结时才保存
       if (!this.isCLISummaryOutput(cleanedContent)) {
         await this.saveToWorkspace(this.config.mainFileName, cleanedContent);
@@ -162,9 +177,13 @@ export class CLIFullGenerator extends BaseGenerator {
   /**
    * 检查输出是否为CLI操作总结（而非实际文档内容）
    * CLI工具通常返回操作总结，而不是实际的文档内容
+   * 
+   * 注意：空输出或极短输出也被视为需要从workspace读取的情况
    */
   private isCLISummaryOutput(output: string): boolean {
-    if (!output || output.trim().length === 0) return false;
+    // 空输出或极短输出视为需要从workspace读取
+    // 有效的文档应该至少有100个字符（标题+一些内容）
+    if (!output || output.trim().length < 100) return true;
     
     const trimmed = output.trim();
     

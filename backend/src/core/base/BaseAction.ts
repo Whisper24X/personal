@@ -511,6 +511,69 @@ export abstract class BaseAction {
     return this.getExecutorMode() === 'llm';
   }
 
+  // ============================================
+  // CLI 知识输入支持方法
+  // 简化后直接利用 Cursor CLI 的原生上下文能力
+  // ============================================
+
+  /**
+   * 构建知识输入引用指令
+   * 指示 CLI 参考工作目录中的历史文档和代码
+   * 
+   * 使用方式：在 prompt 中包含此引用，CLI 会自动读取相关文件
+   * 
+   * @returns 知识输入引用文本
+   */
+  protected buildKnowledgeInputReference(): string {
+    return `
+【重要：知识输入】
+请参考工作目录中的以下内容作为知识输入（这些是重要依据）：
+
+1. 归档历史文档：docs-archive/mrd/, docs-archive/prd/
+   - 已归档的历史版本，了解产品演进历史
+
+2. 业务知识库：docs/business-knowledge/
+   - 业务方上传的产品规范、业务流程等知识文档
+   - 这些是重要的业务背景和约束条件
+
+3. 当前文档：docs/mrd/, docs/prd/
+   - 当前正在生成的文档
+
+4. 开发规范：docs/dev-spec/
+   - 各子项目的开发规范和架构说明
+
+5. 代码实现：
+   - ainative-app/src/: 移动端代码实现
+   - ainative-backend/: 后端 API 和业务逻辑
+   - ainative-shadow/src/: 管理后台功能
+   - ainative-pc/src/: PC端代码实现
+
+【功能冲突检测】
+如果发现新需求/功能与现有实现存在冲突，请明确指出：
+- 冲突点描述
+- 影响范围
+- 需要修改的现有功能
+- 建议解决方案
+`;
+  }
+
+  /**
+   * 构建带知识输入的完整 prompt
+   * 
+   * @param basePrompt 基础 prompt
+   * @param includeKnowledgeInput 是否包含知识输入引用（默认 true）
+   * @returns 完整的 prompt
+   */
+  protected buildPromptWithKnowledgeInput(
+    basePrompt: string,
+    includeKnowledgeInput: boolean = true
+  ): string {
+    if (!includeKnowledgeInput || !this.isCLIMode()) {
+      return basePrompt;
+    }
+    return `${this.buildKnowledgeInputReference()}\n\n${basePrompt}`;
+  }
+
   /**
    * 保存文件到workspace（统一方法）
    * @param filePath 相对路径

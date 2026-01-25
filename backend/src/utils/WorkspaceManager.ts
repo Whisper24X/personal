@@ -189,6 +189,35 @@ export class WorkspaceManager {
   }
 
   /**
+   * 检查是否是用户自定义的Git仓库（非模板仓库）
+   * 通过检查远程URL来判断
+   */
+  static isUserRepository(options: WorkspaceOptions): boolean {
+    const projectWorkspace = this.getProjectWorkspacePath(options);
+    const gitDir = path.join(projectWorkspace, '.git');
+    
+    if (!fsSync.existsSync(gitDir)) {
+      return false;
+    }
+
+    try {
+      // 获取远程URL
+      const remoteUrl = execSync('git remote get-url origin', {
+        cwd: projectWorkspace,
+        stdio: 'pipe',
+        encoding: 'utf-8',
+      }).trim();
+
+      // 如果远程URL不是模板仓库，则认为是用户仓库
+      const isTemplate = remoteUrl.includes('ainative-workspace');
+      return !isTemplate;
+    } catch {
+      // 如果无法获取远程URL，假设不是用户仓库
+      return false;
+    }
+  }
+
+  /**
    * 克隆模板项目到工作目录
    * 如果目录已存在且包含 .git，则跳过克隆
    */
@@ -234,9 +263,16 @@ export class WorkspaceManager {
 
   /**
    * 拉取最新的模板更新
+   * 如果是用户自定义仓库，则跳过此操作
    */
   static async pullTemplate(options: WorkspaceOptions): Promise<void> {
     const projectWorkspace = this.getProjectWorkspacePath(options);
+
+    // 如果是用户仓库，跳过模板操作
+    if (this.isUserRepository(options)) {
+      logger.info('WorkspaceManager: Skipping template pull for user repository', { projectWorkspace });
+      return;
+    }
 
     if (!this.isTemplateCloned(options)) {
       // 如果没有克隆，先克隆
@@ -265,10 +301,18 @@ export class WorkspaceManager {
   /**
    * 初始化工作空间
    * 确保模板项目已克隆并拉取最新更新，创建必要的目录结构
+   * 如果是用户自定义的Git仓库，则跳过模板操作
    */
   static async initWorkspace(options: WorkspaceOptions): Promise<string> {
-    // 克隆或拉取最新模板项目（pullTemplate 内部会处理：未克隆则克隆，已克隆则 pull）
-    await this.pullTemplate(options);
+    // 检查是否是用户自定义的Git仓库
+    if (this.isUserRepository(options)) {
+      logger.info('WorkspaceManager: User repository detected, skipping template operations', {
+        projectWorkspace: this.getProjectWorkspacePath(options),
+      });
+    } else {
+      // 克隆或拉取最新模板项目（pullTemplate 内部会处理：未克隆则克隆，已克隆则 pull）
+      await this.pullTemplate(options);
+    }
 
     // 清理 CLI 误创建的无效文件（包含中文、Mermaid 语法等）
     await this.cleanInvalidFiles(options);
@@ -280,6 +324,7 @@ export class WorkspaceManager {
     logger.info('WorkspaceManager: Workspace initialized', {
       projectWorkspace: this.getProjectWorkspacePath(options),
       docsDir,
+      isUserRepository: this.isUserRepository(options),
     });
 
     return docsDir;

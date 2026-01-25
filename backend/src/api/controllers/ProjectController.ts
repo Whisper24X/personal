@@ -21,7 +21,7 @@ const documentRepo = new DocumentRepository();
 // const projectManager = new ProjectManager(); // Unused for now
 
 // Default user UUID (created during database migration)
-const DEFAULT_USER_ID = '302769d6-247d-43db-a005-0519712255fb';
+const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 export class ProjectController {
   /**
@@ -29,7 +29,7 @@ export class ProjectController {
    */
   static async create(req: Request, res: Response) {
     try {
-      const { name, idea, description, investment, nRound, applicationId } = req.body;
+      const { name, idea, description, investment, nRound, applicationId, gitRepoUrl } = req.body;
       const userId = (req as any).userId || DEFAULT_USER_ID; // From auth middleware
 
       if (!name || !idea) {
@@ -55,12 +55,12 @@ export class ProjectController {
         name,
         idea,
         description,
-        investment: investment || 10.0,
-        nRound: nRound || 5,
+        budget: investment || 10.0,  // V2: renamed from investment to budget
         applicationId,
+        gitRepoUrl,
       });
 
-      logger.info(`Project created: ${project.id}`);
+      logger.info(`Project created: ${project.id}`, { gitRepoUrl: gitRepoUrl || 'none' });
 
       return res.status(201).json({
         success: true,
@@ -101,7 +101,7 @@ export class ProjectController {
 
       // Start execution in background
       const userId = (req as any).userId || DEFAULT_USER_ID;
-      ProjectController.executeProject(id, project.idea, project.investment, project.n_round || 1, userId)
+      ProjectController.executeProject(id, project.idea, project.budget, 1, userId)
         .catch((error) => {
           logger.error(`Project ${id} execution failed:`, error);
         });
@@ -286,7 +286,7 @@ export class ProjectController {
           idea: project.idea,
           progress: project.progress || 0,
           totalCost: parseFloat(project.total_cost?.toString() || '0'),
-          investment: parseFloat(project.investment?.toString() || '10'),
+          budget: parseFloat(project.budget?.toString() || '10'),
           messageCount,
           createdAt: project.created_at,
           completedAt: project.completed_at,

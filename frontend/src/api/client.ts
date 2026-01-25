@@ -607,6 +607,50 @@ class APIClient {
     });
   }
 
+  // ==================== 知识库文件上传 API 端点 ====================
+
+  /**
+   * 上传知识库文件
+   * @param projectId 项目ID
+   * @param file 要上传的文件
+   */
+  async uploadKnowledgeFile(projectId: string, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    return this.client.post(`/projects/${projectId}/knowledge/upload`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  }
+
+  /**
+   * 获取已上传的知识库文件列表
+   * @param projectId 项目ID
+   */
+  async getKnowledgeFiles(projectId: string) {
+    return this.client.get(`/projects/${projectId}/knowledge/files`);
+  }
+
+  /**
+   * 获取知识库文件内容
+   * @param projectId 项目ID
+   * @param filename 文件名
+   */
+  async getKnowledgeFile(projectId: string, filename: string) {
+    return this.client.get(`/projects/${projectId}/knowledge/files/${encodeURIComponent(filename)}`);
+  }
+
+  /**
+   * 删除知识库文件
+   * @param projectId 项目ID
+   * @param filename 文件名
+   */
+  async deleteKnowledgeFile(projectId: string, filename: string) {
+    return this.client.delete(`/projects/${projectId}/knowledge/files/${encodeURIComponent(filename)}`);
+  }
+
   // Generic GET method for custom endpoints
   async get(url: string, config?: any) {
     return this.client.get(url, config);

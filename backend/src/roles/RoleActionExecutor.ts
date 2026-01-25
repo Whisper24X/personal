@@ -242,13 +242,20 @@ export class RoleActionExecutor {
     /**
      * Find document content from news or memory for Improve actions
      * Same logic as prepareReviewInput, used as fallback when workspace file is empty
+     * 
+     * 使用反向查找，返回最后一个匹配的消息（通常有内容）
+     * 当有多个同名消息时，第一个可能是空的，最后一个通常是有内容的
      */
     private findDocumentFromMessages(writeActionName: string): string | undefined {
-        const docMessage = this.rc.news.find((msg) => msg.causeBy === writeActionName);
-        if (docMessage) {
+        // 使用 filter + 取最后一个，而不是 find（取第一个）
+        // 这样当有多个同名消息时，返回最后一个（通常有内容）
+        const matchingMessages = this.rc.news.filter((msg) => msg.causeBy === writeActionName);
+        if (matchingMessages.length > 0) {
+            const docMessage = matchingMessages[matchingMessages.length - 1];
             logger.info(`${this.profile} Improve: Found document content from news for fallback`, {
                 writeActionName,
                 docLength: docMessage.content.length,
+                matchCount: matchingMessages.length,
             });
             return docMessage.content;
         }

@@ -223,6 +223,38 @@ export const MRD_TEMPLATE = `# MRD：[产品/功能名称]
 **文档结束**
 `;
 
+/**
+ * 知识输入引用（CLI 模式使用）
+ * 指示 CLI 参考工作目录中的历史文档和代码
+ */
+export const KNOWLEDGE_INPUT_REFERENCE = `
+【重要：知识输入】
+请参考以下目录中的历史文档和代码作为知识输入（这些是重要依据）：
+
+1. 归档历史文档（docs-archive/）：
+   - docs-archive/prd/: 历史 PRD 文档版本（了解产品功能范围和设计）
+   - docs-archive/mrd/: 历史 MRD 文档版本（了解已分析的需求）
+
+2. 业务知识库（docs/business-knowledge/）：
+   - 业务方上传的产品规范、业务流程等知识文档
+   - 这些是重要的业务背景和约束条件
+
+3. 代码实现：
+   - ainative-app/src/: 移动端代码实现
+   - ainative-backend/: 后端 API 和业务逻辑
+   - ainative-shadow/src/: 管理后台功能
+   - ainative-pc/src/: PC端代码实现
+
+4. 开发规范（docs/dev-spec/）：
+   - 各子项目的开发规范和架构说明
+
+【功能冲突检测】
+如果新需求与现有功能存在冲突，请在文档中明确指出：
+- 冲突点描述
+- 影响范围
+- 建议解决方案
+`;
+
 export function buildMRDPrompt(userIdea: string, relevantChunks?: string): string {
     const ragContext = relevantChunks
         ? `\n\n## 研究上下文（由系统自动提供）\n\n**知识库检索结果**：\n${relevantChunks}\n\n请参考上述知识库信息，结合当前需求生成新的MRD文档。`
@@ -267,6 +299,61 @@ ${MRD_TEMPLATE}
 - 文档标题和元数据
 - 7 个完整章节（## 1. 到 ## 7.）
 - Sources 章节（必需）
+- 文档结束标记
+`;
+}
+
+/**
+ * 构建带知识输入引用的 MRD Prompt（CLI 模式使用）
+ * 包含对历史文档和代码的引用指令
+ * 
+ * @param userIdea 用户需求描述
+ * @returns 带知识输入引用的完整 prompt
+ */
+export function buildMRDPromptWithKnowledge(userIdea: string): string {
+    return `${KNOWLEDGE_INPUT_REFERENCE}
+
+请帮我生成一份 MRD 文档。
+
+## 用户需求
+
+**需求描述**：
+${userIdea}
+
+## 生成要求
+
+1. **理解需求**：仔细阅读用户提供的需求描述
+2. **参考知识输入**：参考上述目录中的历史文档和代码，了解现有功能和设计
+3. **功能冲突检测**：如果新需求与现有功能冲突，请明确指出
+4. **规划结构**：按照 7 章结构规划内容
+5. **逐章生成**：按顺序生成每一章，确保字数和质量要求
+6. **重点检查**：确保"明确不做的范围"至少 3 项
+7. **补充 Sources**：列出所有研究来源
+
+## 文档模板（严格遵循）
+
+${MRD_TEMPLATE}
+
+## 硬性要求
+
+- 输出完整 Markdown 文档，必须包含所有 7 章
+- 总长度：2000-4000 字（不要过短或过长）
+- 不保留任何占位符（如"[描述]"、"[功能1]"等需替换为实际内容）
+- 章节编号和标题必须与模板完全一致
+- 每个章节都要包含充分的内容和具体的细节
+- "明确不做的范围"至少 3 项，每项说明原因，使用 ❌ 符号
+- 至少 1 个可量化的成功标准（包含基线和目标值）
+- 至少 2 个典型使用场景
+- 重点关注业务价值、市场分析和用户需求，不涉及技术实现细节
+- 如果发现与现有功能的冲突，必须在文档中明确说明
+
+## 输出格式
+
+严格按照模板格式输出，包含：
+- 文档标题和元数据
+- 7 个完整章节（## 1. 到 ## 7.）
+- Sources 章节（必需）
+- 功能冲突说明（如有）
 - 文档结束标记
 `;
 }
@@ -742,7 +829,9 @@ ${reviewReport}
 export default {
     MRD_SYSTEM_PROMPT,
     MRD_TEMPLATE,
+    KNOWLEDGE_INPUT_REFERENCE,
     buildMRDPrompt,
+    buildMRDPromptWithKnowledge,
     buildMRDOutlinePrompt,
     buildMRDSectionPrompt,
     MRD_REVIEW_SYSTEM_PROMPT,

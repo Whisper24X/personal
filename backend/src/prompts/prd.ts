@@ -347,6 +347,42 @@ flowchart TD
 </details>
 `;
 
+/**
+ * 知识输入引用（CLI 模式使用）
+ * 指示 CLI 参考工作目录中的历史文档和代码
+ */
+export const KNOWLEDGE_INPUT_REFERENCE_PRD = `
+【重要：知识输入】
+请参考以下目录中的历史文档和代码作为知识输入（这些是重要依据）：
+
+1. 归档历史文档（docs-archive/）：
+   - docs-archive/prd/: 历史 PRD 文档版本（保持一致性）
+   - docs-archive/mrd/: 历史 MRD 文档版本
+
+2. 当前 MRD 文档：
+   - docs/mrd/: 当前正在生成的 MRD 文档
+
+3. 业务知识库（docs/business-knowledge/）：
+   - 业务方上传的产品规范、业务流程等知识文档
+   - 这些是重要的业务背景和约束条件
+
+4. 代码实现：
+   - ainative-app/src/: 移动端代码实现（了解现有功能）
+   - ainative-backend/: 后端 API 和业务逻辑（了解接口规范）
+   - ainative-shadow/src/: 管理后台功能（了解管理功能）
+   - ainative-pc/src/: PC端代码实现
+
+5. 开发规范（docs/dev-spec/）：
+   - 各子项目的开发规范和架构说明
+
+【功能冲突检测】
+如果新功能与现有实现存在冲突，请在 PRD 中明确指出：
+- 冲突点描述
+- 需要修改的现有功能
+- 兼容性考虑
+- 建议解决方案
+`;
+
 export function buildPRDPrompt(input: string): string {
   return `基于以下市场研究文档（MRD），生成一份【研发与交互可直接执行】的产品需求文档（PRD）：
 
@@ -372,6 +408,46 @@ ${PRD_TEMPLATE}
 - 不保留任何占位符或空表格/空清单
 - 章节编号和标题必须与模板完全一致
 - 10.1 验收标准必须使用可测试语句（Given/When/Then 或等价形式）
+`;
+}
+
+/**
+ * 构建带知识输入引用的 PRD Prompt（CLI 模式使用）
+ * 包含对历史文档和代码的引用指令
+ * 
+ * @param input MRD 内容
+ * @returns 带知识输入引用的完整 prompt
+ */
+export function buildPRDPromptWithKnowledge(input: string): string {
+  return `${KNOWLEDGE_INPUT_REFERENCE_PRD}
+
+基于以下市场研究文档（MRD），生成一份【研发与交互可直接执行】的产品需求文档（PRD）：
+
+【市场研究文档（MRD）】
+${input}
+
+【PRD 模板格式（必须严格遵循）】
+${PRD_TEMPLATE}
+
+生成要求：
+1. **严格遵循 PRD 模板结构**：主干 0-10 章必须齐全；第 11 章按需可选但如出现标题必须一致；不要新增无关的 \`##\` 级章节（模板内角色关注块除外）
+2. **参考知识输入**：参考上述目录中的历史文档和代码，了解现有功能和设计
+3. **功能冲突检测**：如果新功能与现有实现冲突，请明确指出并提供解决方案
+4. **填充模板中的所有表格、清单、流程图**，不得留空或仅保留表头
+5. **不得出现占位符或未完成标记**（如 \`<...>\`/TBD/TODO/待补充）
+6. **信息不足必须写入「2.3 约束与假设」**，说明假设、影响与兜底
+7. **4.3 必须提供 Mermaid 流程图**，且与 4.1/4.2 的文字流程一致
+8. **5.3 关键页面说明按"用户动作 -> 系统反馈"展开**，覆盖入口、前置、输入校验、请求、成功/失败、异常、埋点/日志，并覆盖页面状态
+9. **6-10 章节必须可验证**：规则、权限、安全、异常、埋点、验收、上线回滚可测试/可观测
+10. 避免模糊表述；如需合理推断，明确标注为假设
+
+硬性要求：
+- 输出完整 Markdown PRD，必须包含模板主干章节（0-10章）
+- 内容不少于 3000 字
+- 不保留任何占位符或空表格/空清单
+- 章节编号和标题必须与模板完全一致
+- 10.1 验收标准必须使用可测试语句（Given/When/Then 或等价形式）
+- 如果发现与现有功能的冲突，必须在「2.3 约束与假设」或相关章节中明确说明
 `;
 }
 
@@ -1051,7 +1127,9 @@ ${outline}
 export default {
   PRD_SYSTEM_PROMPT,
   PRD_TEMPLATE,
+  KNOWLEDGE_INPUT_REFERENCE_PRD,
   buildPRDPrompt,
+  buildPRDPromptWithKnowledge,
   buildPRDUpdatePrompt,
   buildPRDUpdateWithRAGPrompt,
   buildPRDWithRAGPrompt,

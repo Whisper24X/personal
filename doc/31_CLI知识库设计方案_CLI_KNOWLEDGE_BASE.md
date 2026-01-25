@@ -1,8 +1,9 @@
 # CLI知识库设计方案
 
-**文档版本**: 1.0  
+**文档版本**: 2.0  
 **创建日期**: 2026-01-25  
-**文档状态**: 方案设计  
+**更新日期**: 2026-01-25  
+**文档状态**: 已实现  
 **相关文档**: 
   - `30_Cursor_CLI迁移方案_CURSOR_CLI_MIGRATION.md`
   - `29_PRD生成文档_PRD_GENERATION.md`
@@ -10,7 +11,137 @@
 
 ---
 
-## 1. 概述
+## ⚠️ 重要更新：简化后的推荐方式
+
+### 推荐方式：直接使用 Cursor CLI 原生上下文能力
+
+**简化后的架构直接利用 Cursor CLI 的原生上下文能力**，无需复杂的知识库封装层。
+
+#### 核心思路
+
+1. **在 prompt 中明确指定参考目录**：CLI 会自动读取这些目录中的文件
+2. **使用 `docs-archive/` 存放历史文档**：区分当前文档和历史文档
+3. **添加功能冲突检测指令**：让 CLI 自动识别并报告冲突
+
+#### 使用方式
+
+**方式一：使用预定义的 prompt 函数**
+
+```typescript
+import { buildMRDPromptWithKnowledge } from '../prompts/mrd';
+import { buildPRDPromptWithKnowledge } from '../prompts/prd';
+
+// MRD 生成（包含知识输入引用和冲突检测）
+const mrdPrompt = buildMRDPromptWithKnowledge(userIdea);
+
+// PRD 生成（包含知识输入引用和冲突检测）
+const prdPrompt = buildPRDPromptWithKnowledge(mrdContent);
+
+await this.executeCLI(mrdPrompt, { workDir: ainativeWorkspace });
+```
+
+**方式二：使用 BaseAction 辅助方法**
+
+```typescript
+// 在 Action 中使用
+const prompt = `
+${this.buildKnowledgeInputReference()}
+
+请基于 MRD 生成 PRD 文档。
+${mrdContent}
+`;
+
+await this.executeCLI(prompt, { workDir: ainativeWorkspace });
+```
+
+**方式三：直接在 prompt 中引用目录**
+
+```typescript
+const prompt = `
+【重要：知识输入】
+请参考以下目录中的历史文档和代码作为知识输入：
+1. 归档历史文档：docs-archive/mrd/, docs-archive/prd/
+2. 当前文档：docs/mrd/, docs/prd/
+3. 代码实现：ainative-app/src/, ainative-backend/, ainative-shadow/src/
+
+【功能冲突检测】
+如果发现与现有功能冲突，请明确指出冲突点和建议解决方案。
+
+请基于 MRD 生成 PRD 文档。
+${mrdContent}
+`;
+```
+
+#### 工作目录结构
+
+```
+ainative-workspace/
+├── docs/                    # 当前正在生成的文档
+│   ├── mrd/                 # 当前 MRD
+│   └── prd/                 # 当前 PRD
+├── docs-archive/            # 归档的历史文档
+│   ├── mrd/
+│   │   ├── v1-2026-01-20/   # MRD 版本1
+│   │   └── v2-2026-01-25/   # MRD 版本2
+│   └── prd/
+│       └── v1-2026-01-21/   # PRD 版本1
+├── ainative-app/            # 移动端代码
+├── ainative-backend/        # 后端代码
+├── ainative-pc/             # PC端代码
+└── ainative-shadow/         # 管理后台代码
+```
+
+#### 文档归档机制
+
+文档归档只在**整个工作流完全执行完成后**触发：
+
+```
+MRD → PRD → Design → Code → Test → 工作流完成 → 【归档所有文档】
+```
+
+归档服务：`DocumentArchiveService`
+
+```typescript
+import { documentArchiveService } from '../services/DocumentArchiveService';
+
+// 归档单个文档
+await documentArchiveService.archiveDocument(workspacePath, 'mrd');
+
+// 归档所有文档（工作流完成后调用）
+await documentArchiveService.archiveAllDocuments(workspacePath);
+```
+
+#### 核心收益
+
+- **简化架构**：减少 CLI 调用次数（4次 → 1次）
+- **知识输入完整**：历史文档 + 代码 + 开发规范
+- **冲突检测**：自动识别新功能与现有功能的冲突
+- **易于维护**：无需维护复杂的知识库索引和检索逻辑
+
+---
+
+## 高级功能：CLI 知识库封装层
+
+> ⚠️ 以下内容描述的是**可选的高级功能**。
+> 
+> 仅在以下特殊场景中使用：
+> - 跨项目知识检索
+> - 超大项目（> 500 文件）需要预筛选
+> - 需要精细控制上下文内容和优先级
+
+---
+
+## 原有设计原则（高级功能）
+
+**CLI模式和LLM模式的知识库使用策略**
+
+- ✅ **CLI模式**：推荐使用简化方式（直接在 prompt 中引用目录），高级场景使用 CLI 知识库封装
+- ✅ **LLM模式**：继续使用RAG，不使用CLI知识库
+- ✅ **模式分离**：CLI模式和LLM模式的知识库使用策略完全分离
+
+---
+
+## 1. 概述（高级功能）
 
 ### 1.1 背景
 
@@ -30,7 +161,8 @@ CLI工具（如Cursor CLI）具备强大的代码和文档理解能力，可以�
 1. **知识库能力**：通过CLI工具读取和分析历史代码和文档，为MRD、PRD生成提供输入
 2. **文档管理**：支持新增和补充更多业务文档（需求文档、设计文档、代码文档等）
 3. **通用封装**：封装成一套通用能力，可以被各种Action复用
-4. **CLI驱动**：不使用RAG，完全依赖CLI工具的文件读取和分析能力
+4. **CLI驱动**：**CLI模式下完全使用CLI知识库（完全集成），不再使用RAG流程**，完全依赖CLI工具的文件读取和分析能力
+5. **模式分离**：CLI模式使用CLI知识库，LLM模式继续使用RAG
 
 ### 1.3 核心优势
 
@@ -940,7 +1072,606 @@ export const cliKnowledgeBaseService = new CLIKnowledgeBaseService();
 
 ---
 
-## 6. 使用示例
+## 6. 与当前流程集成
+
+### 6.1 当前流程分析
+
+#### 6.1.1 现有RAG流程
+
+当前系统在生成MRD和PRD时，使用RAG（Retrieval-Augmented Generation）流程：
+
+**PRD生成流程（当前）**：
+```
+1. API Controller (PRDController.generatePRD)
+   ↓
+2. RAGService.searchSimilarPRDsByApplication (检索相似PRD)
+   ↓
+3. 合并检索结果 (combinePRDResults)
+   ↓
+4. WritePRD.run(input, { useRAG: true, relevantChunks })
+   ↓
+5. buildPRDWithRAGPrompt (构建包含RAG上下文的Prompt)
+   ↓
+6. LLM生成PRD
+```
+
+**MRD生成流程（当前）**：
+```
+1. API Controller (MRDController.generateMRD)
+   ↓
+2. RAGService.searchSimilarMRDs (检索相似MRD)
+   ↓
+3. WriteMRD.run(input, { useRAG: true, relevantChunks })
+   ↓
+4. buildMRDPrompt (构建包含RAG上下文的Prompt)
+   ↓
+5. LLM生成MRD
+```
+
+#### 6.1.2 集成点识别
+
+CLI知识库可以在以下位置无缝替换RAG：
+
+1. **API Controller层**：替换RAGService调用
+2. **Action层**：替换`relevantChunks`参数来源
+3. **Prompt构建层**：保持相同的Prompt格式，只改变上下文来源
+
+#### 6.1.3 模式分离原则 ⚠️
+
+**重要原则**：CLI模式和LLM模式的知识库使用策略不同
+
+- **CLI模式**：
+  - ✅ **必须使用CLI知识库（完全集成）**，不使用RAG
+  - ✅ CLI工具可以直接读取文件系统，无需向量数据库
+  - ✅ 利用CLI工具的代码和文档理解能力
+  - ✅ 在Action层自动集成，无需API层改动
+  
+- **LLM模式**：
+  - ✅ **继续使用RAG**，不使用CLI知识库
+  - ✅ 保持现有RAG流程不变
+  - ✅ 向后兼容，不影响现有功能
+
+### 6.2 集成方案：完全集成（仅在CLI模式下生效）⭐
+
+**核心思路**：在Action层直接集成CLI知识库，**仅在CLI模式下自动使用**，LLM模式继续使用RAG
+
+**优点**：
+- ✅ 更深度集成
+- ✅ CLI模式下自动启用，无需API层改动
+- ✅ LLM模式保持RAG流程不变，向后兼容
+- ✅ 模式分离清晰，易于维护
+
+**重要说明**：
+- ⚠️ **仅在CLI模式下生效**：LLM模式不调用此方法
+- ✅ **LLM模式继续使用RAG**：保持现有RAG流程不变
+
+**实现步骤**：
+
+**步骤1：创建CLI知识库服务（供BaseAction使用）**
+
+```typescript
+// backend/src/services/CLIKnowledgeBaseService.ts
+import { CLIExecutor } from '../executors/CLIExecutor';
+import { KnowledgeBaseManager } from '../utils/knowledge/KnowledgeBaseManager';
+import { WorkspaceManager } from '../utils/WorkspaceManager';
+
+export class CLIKnowledgeBaseService {
+  private managers: Map<string, KnowledgeBaseManager> = new Map();
+
+  /**
+   * 获取知识库管理器
+   */
+  getManager(applicationId: string, projectId: string): KnowledgeBaseManager {
+    const key = `${applicationId}:${projectId}`;
+    
+    if (!this.managers.has(key)) {
+      const workspacePath = WorkspaceManager.getProjectWorkspacePath({
+        applicationId,
+        projectId,
+      });
+      
+      const cliExecutor = new CLIExecutor({
+        defaultWorkDir: workspacePath,
+      });
+      
+      const manager = new KnowledgeBaseManager(cliExecutor, workspacePath);
+      this.managers.set(key, manager);
+    }
+    
+    return this.managers.get(key)!;
+  }
+}
+
+// 单例实例
+export const cliKnowledgeBaseService = new CLIKnowledgeBaseService();
+```
+
+**步骤2：在BaseAction中添加知识库支持**
+
+```typescript
+// backend/src/core/base/BaseAction.ts
+import { cliKnowledgeBaseService } from '../services/CLIKnowledgeBaseService';
+
+export abstract class BaseAction {
+  // ... 现有代码 ...
+
+  /**
+   * 获取知识库上下文（仅在CLI模式下使用CLI知识库）
+   * ⚠️ 重要：仅在CLI模式下生效，LLM模式不调用此方法
+   * LLM模式继续使用RAG（在Controller层处理）
+   */
+  protected async getKnowledgeBaseContext(
+    query: string,
+    documentTypes: string[],
+    options?: { maxTokens?: number; maxResults?: number }
+  ): Promise<string | null> {
+    // ⚠️ 仅在CLI模式下使用CLI知识库
+    // LLM模式不调用此方法，继续使用RAG（在Controller层处理）
+    if (!this.isCLIMode()) {
+      return null; // LLM模式不在这里处理，继续使用RAG
+    }
+
+    const workspaceOptions = this.getWorkspaceOptions();
+    if (!workspaceOptions?.applicationId || !workspaceOptions?.projectId) {
+      return null;
+    }
+
+    try {
+      const manager = cliKnowledgeBaseService.getManager(
+        workspaceOptions.applicationId,
+        workspaceOptions.projectId
+      );
+
+      const retrievalQuery = {
+        keywords: this.extractKeywords(query),
+        types: documentTypes as any[],
+        applicationId: workspaceOptions.applicationId,
+        projectId: workspaceOptions.projectId,
+        maxResults: options?.maxResults || 5,
+      };
+
+      const context = await manager.buildContext(retrievalQuery, {
+        maxTokens: options?.maxTokens || 8000,
+        includeMetadata: true,
+      });
+
+      return context;
+    } catch (error) {
+      logger.warn('BaseAction: Failed to get knowledge base context', {
+        error: error.message,
+      });
+      return null;
+    }
+  }
+
+  /**
+   * 提取关键词
+   */
+  private extractKeywords(text: string): string[] {
+    const words = text.split(/\s+/).filter(w => w.length > 2);
+    return words.slice(0, 10);
+  }
+}
+```
+
+**步骤3：在WritePRD中集成（仅在CLI模式下生效）**
+
+```typescript
+// backend/src/actions/WritePRD.ts
+export class WritePRD extends BaseAction {
+  async run(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
+    // ... 现有代码 ...
+
+    const isCLIMode = this.isCLIMode();
+
+    // ✅ CLI模式：自动获取CLI知识库上下文（完全集成）
+    // ⚠️ 仅在CLI模式下生效，LLM模式不执行此逻辑
+    if (isCLIMode && mode === 'new') {
+      // 获取CLI知识库上下文
+      const kbContext = await this.getKnowledgeBaseContext(
+        input || mrdContent,
+        ['MRD', 'PRD', 'DESIGN'],
+        { maxTokens: 8000, maxResults: 5 }
+      );
+
+      // 如果有上下文，添加到输入中
+      const enhancedInput = kbContext
+        ? `${mrdContent}\n\n【参考文档】\n${kbContext}`
+        : mrdContent;
+
+      // 使用增强的输入执行CLI生成
+      const handler = await this.getCachedHandler('write', () => this.createWriteHandler());
+      return await this.executeWriteHandler(handler, enhancedInput, workspaceOptions, {
+        type: 'prd',
+        mode,
+      });
+    }
+
+    // ✅ LLM模式：继续使用RAG（在Controller层处理，这里保持不变）
+    // ... LLM模式代码保持不变，继续使用原有RAG流程 ...
+  }
+}
+```
+
+**步骤4：在WriteMRD中集成（仅在CLI模式下生效）**
+
+```typescript
+// backend/src/actions/WriteMRD.ts
+export class WriteMRD extends BaseAction {
+  async run(userIdea: string, options?: WriteMRDOptions): Promise<IActionOutput> {
+    // ... 现有代码 ...
+
+    const isCLIMode = this.isCLIMode();
+
+    // ✅ CLI模式：自动获取CLI知识库上下文（完全集成）
+    // ⚠️ 仅在CLI模式下生效，LLM模式不执行此逻辑
+    if (isCLIMode && mode === 'new') {
+      const kbContext = await this.getKnowledgeBaseContext(
+        userIdea,
+        ['BUSINESS', 'PRD', 'CODE'],
+        { maxTokens: 10000, maxResults: 5 }
+      );
+
+      const enhancedInput = kbContext
+        ? `${userIdea}\n\n【参考文档】\n${kbContext}`
+        : userIdea;
+
+      // 执行CLI生成
+      // ... CLI生成逻辑 ...
+    }
+
+    // ✅ LLM模式：继续使用RAG（在Controller层处理，这里保持不变）
+    // ... LLM模式代码保持不变，继续使用原有RAG流程 ...
+  }
+}
+```
+
+### 6.3 配置说明
+
+**完全集成配置**：
+
+完全集成在Action层自动处理，**无需额外配置**。CLI模式下自动使用CLI知识库，LLM模式继续使用RAG。
+
+**环境变量配置**（可选，用于控制CLI模式是否启用知识库）：
+
+```env
+# .env
+# CLI模式下启用CLI知识库（完全集成）
+# 默认启用，设置为false可禁用
+ENABLE_CLI_KNOWLEDGE_BASE_IN_CLI_MODE=true
+```
+
+**重要说明**：
+- ⚠️ **CLI模式下**：自动使用CLI知识库，不使用RAG
+- ✅ **LLM模式下**：继续使用RAG，不调用CLI知识库
+- ✅ **无需Controller层改动**：在Action层自动处理
+
+**在Action中的使用**（自动处理）：
+
+```typescript
+// WritePRD.ts - 完全集成
+export class WritePRD extends BaseAction {
+  async run(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
+    const isCLIMode = this.isCLIMode();
+
+    // CLI模式：自动获取CLI知识库上下文
+    if (isCLIMode && mode === 'new') {
+      // getKnowledgeBaseContext 自动调用，无需手动处理
+      // ... CLI生成逻辑 ...
+    }
+
+    // LLM模式：继续使用RAG（在Controller层处理）
+    // ... LLM模式代码保持不变 ...
+  }
+}
+```
+
+**在Controller中的使用**（LLM模式继续使用RAG）：
+
+```typescript
+// PRDController.ts - LLM模式继续使用RAG
+export class PRDController {
+  static async generatePRD(req: Request, res: Response) {
+    const { useCLI = false, useRAG = false } = req.body;
+
+    // CLI模式：在Action层自动处理，无需Controller层改动
+    if (useCLI) {
+      const result = await writePRDAction.run(requirements, {
+        mode: 'new',
+        applicationId,
+        projectId: id,
+      });
+      // 会自动在Action层获取CLI知识库上下文
+      return res.json({ success: true, prd: result.content });
+    }
+
+    // LLM模式：继续使用RAG（原有逻辑）
+    if (useRAG) {
+      await ensureRAGServiceInitialized();
+      let searchResults: any[] = [];
+      
+      if (applicationId) {
+        searchResults = await ragService.searchSimilarPRDsByApplication(
+          applicationId,
+          requirements,
+          5
+        );
+      }
+      
+      if (searchResults.length === 0) {
+        searchResults = await ragService.searchSimilarPRDs(id, requirements, 3);
+      }
+
+      const relevantChunks = searchResults.length > 0
+        ? ragService.combinePRDResults(searchResults)
+        : null;
+
+      const result = await writePRDAction.run(requirements, {
+        mode: 'new',
+        useRAG: true,
+        relevantChunks, // RAG检索结果
+        applicationId,
+        projectId: id,
+      });
+      
+      return res.json({ success: true, prd: result.content });
+    }
+
+    // 标准生成（不使用知识库）
+    // ...
+  }
+}
+```
+
+### 6.4 快速集成检查清单
+
+- [ ] 创建`CLIKnowledgeBaseService`服务类
+- [ ] 在`BaseAction`中添加`getKnowledgeBaseContext`方法（仅在CLI模式下生效）
+- [ ] 修改`WritePRD.run`，在CLI模式下自动获取CLI知识库上下文
+- [ ] 修改`WriteMRD.run`，在CLI模式下自动获取CLI知识库上下文
+- [ ] 确保LLM模式继续使用RAG（Controller层保持不变）
+- [ ] 测试CLI模式下的知识库集成
+- [ ] 测试LLM模式下的RAG流程（确保不受影响）
+- [ ] 添加配置开关（可选）
+
+### 6.5 集成示例：完整流程
+
+#### 6.5.1 PRD生成完整流程（集成后）
+
+**CLI模式流程**（完全集成，不使用RAG）：
+```
+1. 用户请求生成PRD（useCLI=true）
+   ↓
+2. PRDController.generatePRD
+   ↓
+3. CLI模式检测：useCLI=true
+   ↓
+4. WritePRD.run(input) - 在Action层自动处理
+   ↓
+5. BaseAction.getKnowledgeBaseContext() - 自动获取CLI知识库上下文
+   ├─ 成功 → 返回上下文
+   └─ 失败 → 标准生成（不回退到RAG）
+   ↓
+6. CLI模式执行 → 使用CLI生成（上下文已包含）
+   ↓
+7. 保存PRD到workspace
+   ↓
+8. 返回结果
+```
+
+**LLM模式流程**（继续使用RAG，完全集成不生效）：
+```
+1. 用户请求生成PRD（useCLI=false, useRAG=true）
+   ↓
+2. PRDController.generatePRD
+   ↓
+3. LLM模式检测：useCLI=false
+   ↓
+4. RAG检索（继续使用RAG，完全集成不生效）
+   ├─ RAG成功 → 使用RAG上下文
+   └─ RAG失败 → 标准生成
+   ↓
+5. WritePRD.run(input, { relevantChunks, useRAG=true })
+   ↓
+6. LLM模式执行 → buildPRDWithRAGPrompt → LLM生成
+   ↓
+7. 保存PRD到workspace
+   ↓
+8. 返回结果
+```
+
+#### 6.5.2 代码示例：完全集成（仅在CLI模式下生效）
+
+**在Action层自动处理，Controller层无需改动**：
+
+```typescript
+// WritePRD.ts - 完全集成（仅在CLI模式下生效）
+export class WritePRD extends BaseAction {
+  async run(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
+    const mode = options?.mode || 'new';
+    const workspaceOptions = this.validateWorkspaceOptions(options, 'PRD');
+    const { applicationId, projectId } = workspaceOptions;
+    const isCLIMode = this.isCLIMode();
+
+    // ✅ CLI模式：自动获取CLI知识库上下文
+    if (isCLIMode && mode === 'new') {
+      // getKnowledgeBaseContext 自动调用
+      const kbContext = await this.getKnowledgeBaseContext(
+        input || mrdContent,
+        ['MRD', 'PRD', 'DESIGN'],
+        { maxTokens: 8000, maxResults: 5 }
+      );
+
+      const enhancedInput = kbContext
+        ? `${mrdContent}\n\n【参考文档】\n${kbContext}`
+        : mrdContent;
+
+      const handler = await this.getCachedHandler('write', () => this.createWriteHandler());
+      return await this.executeWriteHandler(handler, enhancedInput, workspaceOptions, {
+        type: 'prd',
+        mode,
+      });
+    }
+
+    // ✅ LLM模式：继续使用RAG（Controller层处理，这里保持不变）
+    // ... LLM模式代码保持不变，继续使用原有RAG流程 ...
+  }
+}
+```
+
+**Controller层（LLM模式继续使用RAG）**：
+
+```typescript
+// PRDController.ts - LLM模式继续使用RAG
+export class PRDController {
+  static async generatePRD(req: Request, res: Response) {
+    const { id } = req.params;
+    const { requirements, useRAG = false, useCLI = false, mode = 'new' } = req.body;
+
+    const project = await projectRepo.findById(id);
+    const applicationId = project.application_id;
+    let prdContent: string;
+
+    if (mode === 'update') {
+      // Update模式逻辑（保持不变）
+      // ...
+    } else {
+      // New模式
+      
+      // ✅ CLI模式：在Action层自动处理，Controller层无需改动
+      if (useCLI) {
+        const latestPRD = await documentRepo.findLatestPRD(id);
+        const nextVersion = latestPRD ? (latestPRD.version || 1) + 1 : 1;
+        
+        // 会自动在Action层获取CLI知识库上下文
+        const result = await writePRDAction.run(requirements, {
+          mode: 'new',
+          applicationId,
+          projectId: id,
+          version: nextVersion,
+        });
+        prdContent = result.content;
+      } 
+      // ✅ LLM模式：继续使用RAG（完全集成不生效）
+      else if (useRAG) {
+        // 继续使用原有RAG流程
+        await ensureRAGServiceInitialized();
+        let searchResults: any[] = [];
+
+        if (applicationId) {
+          searchResults = await ragService.searchSimilarPRDsByApplication(
+            applicationId,
+            requirements,
+            5
+          );
+        }
+
+        if (searchResults.length === 0) {
+          searchResults = await ragService.searchSimilarPRDs(id, requirements, 3);
+        }
+
+        const relevantChunks = searchResults.length > 0
+          ? ragService.combinePRDResults(searchResults)
+          : null;
+
+        const latestPRD = await documentRepo.findLatestPRD(id);
+        const nextVersion = latestPRD ? (latestPRD.version || 1) + 1 : 1;
+        
+        const result = await writePRDAction.run(requirements, {
+          mode: 'new',
+          useRAG: true,
+          relevantChunks, // RAG检索结果
+          applicationId,
+          projectId: id,
+          version: nextVersion,
+        });
+        prdContent = result.content;
+      } else {
+        // 标准生成（不使用知识库）
+        const latestPRD = await documentRepo.findLatestPRD(id);
+        const nextVersion = latestPRD ? (latestPRD.version || 1) + 1 : 1;
+        const result = await writePRDAction.run(requirements, {
+          mode: 'new',
+          applicationId,
+          projectId: id,
+          version: nextVersion,
+        });
+        prdContent = result.content;
+      }
+    }
+
+    // 保存PRD版本
+    // ... 保存逻辑 ...
+
+    return res.json({
+      success: true,
+      prd: prdContent,
+      // ...
+    });
+  }
+}
+```
+
+### 6.6 迁移建议
+
+#### 6.6.1 渐进式迁移策略
+
+1. **阶段1：实现完全集成（3-5天）**
+   - 创建`CLIKnowledgeBaseService`服务类
+   - 在`BaseAction`中实现`getKnowledgeBaseContext`方法
+   - 在`WritePRD`和`WriteMRD`中集成
+   - 确保仅在CLI模式下生效
+   - 验证CLI模式下的知识库功能
+
+2. **阶段2：测试和优化（2-3周）**
+   - 测试CLI模式下的知识库集成
+   - 确保LLM模式继续使用RAG（不受影响）
+   - 收集性能和准确性数据
+   - 优化CLI知识库性能
+
+3. **阶段3：生产验证（1-2周）**
+   - 在部分项目上启用
+   - 监控错误率和用户反馈
+   - 验证LLM模式RAG流程不受影响
+
+4. **阶段4：全面启用（1周）**
+   - 所有项目启用
+   - 监控系统稳定性
+   - 文档更新
+
+#### 6.6.2 回滚方案
+
+如果CLI知识库出现问题，可以快速回滚：
+
+**禁用CLI知识库**：
+```typescript
+// 通过环境变量禁用CLI知识库
+ENABLE_CLI_KNOWLEDGE_BASE_IN_CLI_MODE=false
+
+// 或者在BaseAction.getKnowledgeBaseContext中直接返回null
+// CLI模式会回退到标准生成（不使用知识库）
+```
+
+**LLM模式不受影响**：
+- LLM模式继续使用RAG，不受影响
+- 无需回滚操作
+
+#### 6.6.3 重要原则总结
+
+⚠️ **CLI模式（完全集成）**：
+- ✅ **必须使用CLI知识库**（自动处理）
+- ❌ **不使用RAG**
+- ✅ CLI知识库失败时，直接标准生成（不回退到RAG）
+- ✅ 在Action层自动处理，无需Controller层改动
+
+✅ **LLM模式**：
+- ✅ **继续使用RAG**（完全集成不生效）
+- ✅ 保持现有RAG流程不变
+- ✅ 向后兼容，不影响现有功能
+
+---
+
+## 7. 使用示例
 
 ### 6.1 添加业务文档
 
@@ -1051,7 +1782,7 @@ async function retrieveRelatedCode(
 
 ---
 
-## 7. 配置和扩展
+## 8. 配置和扩展
 
 ### 7.1 配置选项
 
@@ -1144,7 +1875,7 @@ export interface DocumentAnalysis {
 
 ---
 
-## 8. 性能优化
+## 9. 性能优化
 
 ### 8.1 索引缓存
 
@@ -1362,15 +2093,30 @@ describe('CLI Knowledge Base Integration', () => {
 - ✅ **智能检索**：CLI工具具备强大的代码和文档理解能力
 - ✅ **统一接口**：与现有CLI模式保持一致
 - ✅ **易于扩展**：支持自定义检索策略和分析器
+- ✅ **模式分离**：CLI模式和LLM模式的知识库使用策略清晰分离
 
-### 12.2 注意事项
+### 12.2 重要原则
+
+⚠️ **CLI模式（完全集成）**：
+- CLI模式必须使用CLI知识库（自动处理）
+- CLI模式不使用RAG
+- CLI知识库失败时，直接标准生成（不回退到RAG）
+- 在Action层自动处理，无需Controller层改动
+
+✅ **LLM模式**：
+- LLM模式继续使用RAG（完全集成不生效）
+- 保持现有RAG流程不变
+- 向后兼容，不影响现有功能
+
+### 12.3 注意事项
 
 - ⚠️ CLI执行时间可能较长，需要合理设置超时
 - ⚠️ 需要定期更新索引以保持准确性
 - ⚠️ 大量文档时需要考虑性能优化
 - ⚠️ 需要处理CLI执行失败的情况
+- ⚠️ **CLI模式下必须确保CLI知识库可用，否则只能标准生成（不回退到RAG）**
 
-### 12.3 后续优化
+### 12.4 后续优化
 
 - 支持增量索引更新
 - 实现文档版本管理
@@ -1380,7 +2126,22 @@ describe('CLI Knowledge Base Integration', () => {
 
 ---
 
-**文档版本**: 1.0  
+**文档版本**: 1.4  
 **创建日期**: 2026-01-25  
-**文档状态**: 方案设计完成，待实施  
+**最后更新**: 2026-01-25  
+**文档状态**: 方案设计完成，包含集成指南  
 **下一步**: 技术评审，开始实施阶段1
+
+### 更新日志
+- 2026-01-25: **重要更新** - 移除方案A，只保留完全集成方案：
+  - 移除方案A（最小改动集成）的所有内容
+  - 完全集成方案仅在CLI模式下生效，LLM模式不调用
+  - LLM模式继续使用RAG，保持现有流程不变
+  - 更新所有代码示例和检查清单
+  - 简化配置说明（完全集成无需额外配置）
+- 2026-01-25: **重要更新** - 明确CLI模式下不再使用RAG流程：
+  - CLI模式下必须使用CLI知识库，不使用RAG
+  - LLM模式下可以选择使用CLI知识库或RAG（优先CLI知识库）
+  - 更新所有代码示例，明确模式分离
+  - 更新配置说明和迁移建议
+- 2026-01-25: 新增"6. 与当前流程集成"章节，详细说明如何快速简易地集成CLI知识库到MRD和PRD生成流程中，包括两种集成方案（最小改动集成和完全集成）、配置开关、迁移建议和完整代码示例

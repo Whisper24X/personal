@@ -15,9 +15,10 @@ import {
 } from '../../workflow';
 import { logger } from '../../utils';
 import { ProjectRepository } from '../../database/repositories/ProjectRepository';
-import { WorkflowService } from '../../services/WorkflowService';
+import { WorkflowService, getDefaultWorkflowConfig } from '../../services/WorkflowService';
+import { GitService } from '../../services/GitService';
 import { WorkflowConfig } from '../../database/repositories/ApplicationWorkflowRepository';
-import { getDefaultWorkflowConfig } from '../../database/migrations/init_role_action_definitions';
+import { WorkspaceManager } from '../../utils/WorkspaceManager';
 
 // Map to track running executors by projectId
 const runningExecutors: Map<string, WorkflowExecutor> = new Map();
@@ -29,6 +30,7 @@ export class WorkflowExecutionController {
   );
   private static projectRepository = new ProjectRepository();
   private static workflowService = new WorkflowService();
+  private static gitService = new GitService();
 
   /**
    * Get workflow execution state
@@ -146,6 +148,15 @@ export class WorkflowExecutionController {
             success: false,
             error: 'Project not found',
           });
+        }
+
+        // Prepare Git repository if configured
+        if (project.git_repo_url && project.application_id) {
+          await WorkflowExecutionController.prepareGitRepository(
+            project.git_repo_url,
+            project.application_id,
+            projectId
+          );
         }
 
         // Get workflow config from application or use default
@@ -626,6 +637,74 @@ export class WorkflowExecutionController {
       executor.stop();
       runningExecutors.delete(projectId);
       logger.info('WorkflowExecutionController: Background execution stopped', { projectId });
+    }
+  }
+
+  /**
+   * Prepare Git repository for a project
+   * - Clone if not exists
+   * - Pull main branch if exists
+   * - Create project branch
+   */
+  private static async prepareGitRepository(
+    gitRepoUrl: string,
+    applicationId: string,
+    projectId: string
+  ): Promise<void> {
+    try {
+      // Get workspace path for the project
+      const workspacePath = WorkspaceManager.getProjectWorkspacePath({
+        applicationId,
+        projectId,
+      });
+
+      logger.info('WorkflowExecutionController: Preparing Git repository', {
+        projectId,
+        gitRepoUrl,
+        workspacePath,
+      });
+
+      // Prepare the repository (clone or pull)
+      const prepareResult = await WorkflowExecutionController.gitService.prepareRepository({
+        gitRepoUrl,
+        workspacePath,
+        projectId,
+      });
+
+      if (!prepareResult.success) {
+        logger.warn('WorkflowExecutionController: Git repository preparation failed', {
+          projectId,
+          message: prepareResult.message,
+        });
+        // Don't throw - allow workflow to continue even if Git fails
+        return;
+      }
+
+      // Create project branch
+      const branchResult = await WorkflowExecutionController.gitService.createProjectBranch(
+        workspacePath,
+        projectId
+      );
+
+      if (!branchResult.success) {
+        logger.warn('WorkflowExecutionController: Git branch creation failed', {
+          projectId,
+          message: branchResult.message,
+        });
+        // Don't throw - allow workflow to continue even if branch creation fails
+        return;
+      }
+
+      logger.info('WorkflowExecutionController: Git repository prepared successfully', {
+        projectId,
+        branchName: branchResult.branchName,
+      });
+    } catch (error: any) {
+      // Log error but don't fail the workflow
+      logger.error('WorkflowExecutionController: Git preparation error', {
+        projectId,
+        error: error.message,
+      });
     }
   }
 }
