@@ -146,6 +146,15 @@ export const CLI_IO_CONFIGS: Record<string, DocumentIOConfig> = {
     outputFileName: 'TEST.md',
   },
 
+  // Test Plan 相关
+  write_test_plan: {
+    documentType: 'TEST_PLAN',
+    inputDirRelative: 'prd',
+    inputFileNames: ['PRD.md'],
+    outputDirRelative: 'test',
+    outputFileName: 'TEST_PLAN.md',
+  },
+
   // Testability 相关
   review_testability: {
     documentType: 'TESTABILITY',

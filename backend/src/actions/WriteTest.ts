@@ -4,11 +4,14 @@
  *
  * 工作流程：
  * 1) CLI模式：使用 DocumentWriteHandler 直接生成（只传PRD文件夹路径）
+ *    - CLI工具从 prd 目录读取 PRD.md 作为输入
+ *    - 生成 TEST.md 到 test 目录
  * 2) LLM模式：
  *    - 从 workspace 读取 PRD.md 和代码文件（优先 workspace，失败或不存在则回退到 input）
  *    - 支持 new 和 update 模式
+ *    - 可选启用分步骤生成（useStepwiseGeneration）
  *    - 调用 LLM 生成测试用例
- * 3) 保存到 workspace/TEST/TEST.md
+ * 3) 保存到 workspace/test/TEST.md
  */
 
 import { BaseAction } from '../core/base/BaseAction';
@@ -30,23 +33,26 @@ import {
   DOCUMENT_CONFIGS,
   WriteConfig,
 } from '../utils/document';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 export interface WriteTestOptions extends WorkspaceOptions {
   mode?: 'new' | 'update';
   historyTest?: string; // 历史测试用例（用于 update 模式）
-  useStepwiseGeneration?: boolean; // 是否使用分步骤生成
+  useStepwiseGeneration?: boolean; // 是否使用分步骤生成（仅LLM模式）
 }
 
 export class WriteTest extends BaseAction {
   constructor() {
     super(
       'WriteTest',
-      'Write test cases. Based on code implementation, write comprehensive test cases including unit tests and integration tests'
+      'Write test cases. Based on PRD and code implementation, write comprehensive test cases including unit tests and integration tests'
     );
   }
 
   /**
    * 创建 WriteHandler
+   * CLI模式下使用文件路径而非内容进行生成
    */
   private async createWriteHandler(): Promise<DocumentWriteHandler> {
     const systemPrompt = await this.loadSystemPrompt('test', 'system_prompt', TEST_SYSTEM_PROMPT);
@@ -80,8 +86,8 @@ export class WriteTest extends BaseAction {
     });
 
     try {
-      // CLI模式：使用 BaseAction 封装的执行方法
-      // 不使用 StepwiseDocumentGenerator
+      // CLI模式：使用 DocumentWriteHandler（只传文件路径，不传内容）
+      // CLI工具会从 prd 目录读取 PRD.md 作为输入
       if (isCLIMode && mode === 'new') {
         const handler = await this.getCachedHandler('write', () => this.createWriteHandler());
         return await this.executeWriteHandler(handler, '', workspaceOptions, {
@@ -110,11 +116,17 @@ export class WriteTest extends BaseAction {
         }
       }
 
+      // LLM模式下代码是可选的，如果没有代码就只基于PRD生成
       if (!code || code.trim() === '') {
-        throw new Error('Code implementation not found. Please provide code in input or ensure code files exist in workspace.');
+        if (prd) {
+          logger.info('WriteTest: No code found, generating test cases based on PRD only');
+          code = ''; // 空代码，仅基于PRD生成
+        } else {
+          throw new Error('Neither code nor PRD found. Please provide PRD in workspace or code in input.');
+        }
       }
 
-      // 如果启用分步骤生成且是新模式，使用分步骤生成
+      // 如果启用分步骤生成且是新模式且有PRD，使用分步骤生成
       if (useStepwise && mode === 'new' && prd) {
         return await this.generateStepwise(prd, code, options);
       }
@@ -164,7 +176,25 @@ ${code}
         workspaceDir: this.getWorkspaceDir(workspaceOptions),
       });
 
-      return this.createActionOutput(content, {
+      // 尝试从 workspace 读取 TEST.md 主文件内容，如果失败则返回当前内容
+      let finalContent = content;
+      try {
+        const workspaceDir = this.getWorkspaceDir(workspaceOptions);
+        const mainFilePath = path.join(workspaceDir, 'TEST.md');
+        const mainFileContent = await fs.readFile(mainFilePath, 'utf-8');
+        if (mainFileContent && mainFileContent.length > 0) {
+          finalContent = mainFileContent;
+          logger.info('WriteTest: Loaded TEST.md from workspace', {
+            contentLength: finalContent.length,
+          });
+        }
+      } catch (error: any) {
+        logger.debug('WriteTest: TEST.md not found in workspace, using direct content', {
+          error: error.message,
+        });
+      }
+
+      return this.createActionOutput(finalContent, {
         type: 'test',
         filename: 'TEST.md',
         mode,
