@@ -79,63 +79,7 @@ module.exports = {
         'workspace',
         'temp',
       ],
-    },
-    {
-      name: 'mind2build-frontend',
-      script: 'pnpm',
-      args: 'dev:frontend',
-      cwd: process.cwd(),
-      instances: 1,
-      exec_mode: 'fork',
-      watch: false,
-      max_memory_restart: '500M',
-
-      // Environment variables
-      env: {
-        NODE_ENV: 'development',
-        PORT: 5173,
-        BACKEND_URL: 'http://localhost:3000',
-      },
-      env_development: {
-        NODE_ENV: 'development',
-        PORT: 5173,
-        BACKEND_URL: 'http://localhost:3000',
-      },
-      env_production: {
-        NODE_ENV: 'production',
-        PORT: 5173,
-        BACKEND_URL: 'http://localhost:3000',
-      },
-
-      // Logging configuration
-      error_file: './logs/pm2-frontend-error.log',
-      out_file: './logs/pm2-frontend-out.log',
-      log_file: './logs/pm2-frontend-combined.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      time: true,
-      merge_logs: true,
-
-      // Restart strategy
-      autorestart: true,
-      max_restarts: 10,
-      min_uptime: '10s',
-      restart_delay: 4000,
-      exp_backoff_restart_delay: 100,
-
-      // Process management
-      kill_timeout: 3000,
-
-      // Advanced options
-      ignore_watch: [
-        'node_modules',
-        'logs',
-        'dist',
-        '.git',
-        'backend',
-        'workspace',
-        'temp',
-      ],
-    },
+    }
   ],
 };
 
