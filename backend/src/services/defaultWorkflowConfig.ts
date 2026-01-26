@@ -149,6 +149,7 @@ export const actionDefinitions: ActionDefinition[] = [
 
   // Execution
   { name: 'RunCode', display_name: '运行代码', description: '执行代码运行', class_name: 'RunCode', category: 'execution' },
+  { name: 'Deploy', display_name: '部署', description: '部署应用程序', class_name: 'Deploy', category: 'execution' },
   { name: 'ExecuteSubtask', display_name: '执行子任务', description: '执行分解的子任务', class_name: 'ExecuteSubtask', category: 'execution' },
   { name: 'AutomationExecution', display_name: '自动化执行', description: '执行自动化任务', class_name: 'AutomationExecution', category: 'execution' },
 
@@ -216,7 +217,7 @@ export const defaultWorkflowConfig: WorkflowConfig = {
       profile: 'Engineer',
       name: 'Engineer',
       order: 5,
-      actions: ['WriteCode'],
+      actions: ['WriteCode', 'Deploy'],
       watch_actions: ['WritePRD', 'WriteDesign', 'BreakdownTasks'],
     },
     {
