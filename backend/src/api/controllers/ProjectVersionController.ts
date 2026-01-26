@@ -7,14 +7,18 @@
  */
 
 import { Request, Response } from 'express';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { ProjectVersionRepository } from '../../database/repositories/ProjectVersionRepository';
 import { ProjectRepository } from '../../database/repositories/ProjectRepository';
+import { KnowledgeBaseRepository } from '../../database/repositories/KnowledgeBaseRepository';
 import { GitService } from '../../services/GitService';
 import { WorkspaceManager, WorkspaceOptions } from '../../utils/WorkspaceManager';
 import { logger } from '../../utils';
 
 const versionRepo = new ProjectVersionRepository();
 const projectRepo = new ProjectRepository();
+const knowledgeRepo = new KnowledgeBaseRepository();
 const gitService = new GitService();
 
 /**
@@ -157,6 +161,17 @@ export class ProjectVersionController {
                 versionId: version.id,
               });
             }
+          }
+
+          // Inject knowledge base documents to version workspace
+          try {
+            await ProjectVersionController.injectKnowledgeBase(projectId, versionWorkspacePath);
+          } catch (kbError: any) {
+            logger.warn('ProjectVersionController: Failed to inject knowledge base', {
+              versionId: version.id,
+              error: kbError.message,
+            });
+            // Don't fail version creation if knowledge injection fails
           }
         } catch (workspaceError: any) {
           logger.warn('ProjectVersionController: Failed to create version workspace', {
@@ -576,6 +591,62 @@ export class ProjectVersionController {
         message: error.message,
       });
     }
+  }
+
+  /**
+   * Inject knowledge base documents from database to version workspace
+   * Creates docs/business-knowledge/*.md files
+   * 
+   * @param projectId Project ID to get knowledge documents for
+   * @param versionWorkspacePath Path to the version workspace directory
+   */
+  private static async injectKnowledgeBase(
+    projectId: string,
+    versionWorkspacePath: string
+  ): Promise<void> {
+    // Get all active knowledge documents for the project
+    const documents = await knowledgeRepo.findByProjectId(projectId);
+    
+    if (documents.length === 0) {
+      logger.info('ProjectVersionController: No knowledge documents to inject', { projectId });
+      return;
+    }
+
+    // Create business-knowledge directory
+    const knowledgeDir = path.join(versionWorkspacePath, 'docs', 'business-knowledge');
+    await fs.mkdir(knowledgeDir, { recursive: true });
+
+    // Write each document as a markdown file
+    for (const doc of documents) {
+      // Sanitize filename (remove invalid characters, limit length)
+      const safeTitle = doc.title
+        .replace(/[<>:"/\\|?*]/g, '_')  // Replace invalid chars
+        .replace(/\s+/g, '_')           // Replace spaces
+        .substring(0, 100);             // Limit length
+      
+      const filename = `${safeTitle}.md`;
+      const filePath = path.join(knowledgeDir, filename);
+
+      // Build file content with metadata header
+      const content = `---
+title: ${doc.title}
+description: ${doc.description || ''}
+tags: ${(doc.tags || []).join(', ')}
+created_at: ${doc.created_at}
+updated_at: ${doc.updated_at}
+---
+
+${doc.content}
+`;
+
+      await fs.writeFile(filePath, content, 'utf-8');
+    }
+
+    logger.info('ProjectVersionController: Knowledge base injected', {
+      projectId,
+      documentCount: documents.length,
+      knowledgeDir,
+    });
   }
 }
 
