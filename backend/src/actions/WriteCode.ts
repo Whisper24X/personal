@@ -5,7 +5,7 @@
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import { logger, WorkspaceOptions, executeCommandSimple, CommandExecutorError, WorkspaceManager } from '../utils';
+import { logger, WorkspaceOptions, WorkspaceManager } from '../utils';
 import { getApplyCommand, getCheckCommand } from '../prompts/code';
 import * as fs from 'fs/promises';
 
@@ -52,32 +52,32 @@ export class WriteCode extends BaseAction {
           workDir,
         });
         
-        try {
-          const debugCommand = 'cursor-agent --model composer-1 --print "在当前目录下生成一个writeCodeTest.txt文档，内容为 我是编写代码调试"';
-          const debugOutput = await executeCommandSimple(debugCommand, {
-            cwd: workDir,
-            timeout: 300000, // 5分钟超时
-          });
-          
-          logger.info('WriteCode: Debug command completed', {
-            outputLength: debugOutput.length,
-          });
-          
-          return {
-            content: `# WriteCode Debug Mode\n\n## Debug Command Executed\n\`\`\`\n${debugCommand}\n\`\`\`\n\n## Output:\n\`\`\`\n${debugOutput}\n\`\`\``,
-            data: {
-              type: 'debug',
-              workspaceDir: workDir,
-              debugOutput,
-              timestamp: new Date().toISOString(),
-            },
-          };
-        } catch (error: any) {
+        const debugPrompt = '在当前目录下生成一个writeCodeTest.txt文档，内容为 我是编写代码调试';
+        const debugResult = await this.runCLICommand(debugPrompt, workDir, {
+          timeout: 300000, // 5分钟超时
+        });
+        
+        if (debugResult.exitCode !== 0) {
           logger.error('WriteCode: Debug command failed', {
-            message: error.message,
+            exitCode: debugResult.exitCode,
+            stderr: debugResult.stderr,
           });
-          throw error;
+          throw new Error(`Debug command failed with exit code ${debugResult.exitCode}`);
         }
+        
+        logger.info('WriteCode: Debug command completed', {
+          outputLength: debugResult.output.length,
+        });
+        
+        return {
+          content: `# WriteCode Debug Mode\n\n## Debug Prompt\n\`\`\`\n${debugPrompt}\n\`\`\`\n\n## Output:\n\`\`\`\n${debugResult.output}\n\`\`\``,
+          data: {
+            type: 'debug',
+            workspaceDir: workDir,
+            debugOutput: debugResult.output,
+            timestamp: new Date().toISOString(),
+          },
+        };
       }
       
       // 从 prompts/code.ts 获取命令提示词
@@ -105,26 +105,23 @@ export class WriteCode extends BaseAction {
         });
         
         // 1. 执行 apply 命令
-        let applyOutput = '';
-        try {
-          const command = `cursor-agent --model composer-1 --print "${applyCommand}"`;
-          applyOutput = await executeCommandSimple(command, {
-            cwd: workDir,
-            timeout: 3600000, // 60分钟超时
-          });
+        const applyResult = await this.runCLICommand(applyCommand, workDir, {
+          timeout: 3600000, // 60分钟超时
+          abortSignal: this.abortSignal,
+        });
+        
+        const applyOutput = applyResult.output;
+        if (applyResult.exitCode === 0) {
           logger.info(`WriteCode: Apply command completed (iteration ${retryCount})`, {
             outputLength: applyOutput.length,
             output: applyOutput.length > 0 ? applyOutput : '(empty output)',
           });
-        } catch (execError) {
-          const error = execError as CommandExecutorError;
+        } else {
           logger.warn(`WriteCode: Apply command failed (iteration ${retryCount})`, { 
-            message: error.message,
-            exitCode: error.exitCode,
-            stdout: error.stdout || '(empty)',
-            stderr: error.stderr || '(empty)',
+            exitCode: applyResult.exitCode,
+            stdout: applyOutput || '(empty)',
+            stderr: applyResult.stderr || '(empty)',
           });
-          applyOutput = error.stdout || '';
         }
         
         allOutputs.push(`=== Iteration ${retryCount} - Apply ===\n${applyOutput}`);
@@ -134,32 +131,23 @@ export class WriteCode extends BaseAction {
           command: checkCommand,
         });
         
-        let checkOutput = '';
-        try {
-          const command = `cursor-agent --model composer-1 --print "${checkCommand}"`;
-          checkOutput = await executeCommandSimple(command, {
-            cwd: workDir,
-            timeout: 300000, // 5分钟超时（检查命令应该很快）
-            abortSignal: this.abortSignal, // 传递取消信号
-          });
+        const checkResult = await this.runCLICommand(checkCommand, workDir, {
+          timeout: 300000, // 5分钟超时（检查命令应该很快）
+          abortSignal: this.abortSignal,
+        });
+        
+        const checkOutput = checkResult.output;
+        if (checkResult.exitCode === 0) {
           logger.info(`WriteCode: Check command completed (iteration ${retryCount})`, {
             outputLength: checkOutput.length,
             output: checkOutput.substring(0, 200), // 记录前200字符
           });
-        } catch (execError) {
-          const error = execError as CommandExecutorError;
-          // 如果是取消错误，向上抛出
-          if (error.message?.includes('cancelled')) {
-            logger.info(`WriteCode: Check command cancelled (iteration ${retryCount})`);
-            throw error;
-          }
+        } else {
           logger.warn(`WriteCode: Check command failed (iteration ${retryCount})`, { 
-            message: error.message,
-            exitCode: error.exitCode,
-            stdout: error.stdout || '(empty)',
-            stderr: error.stderr || '(empty)',
+            exitCode: checkResult.exitCode,
+            stdout: checkOutput || '(empty)',
+            stderr: checkResult.stderr || '(empty)',
           });
-          checkOutput = error.stdout || '';
         }
         
         allOutputs.push(`=== Iteration ${retryCount} - Check ===\n${checkOutput}`);

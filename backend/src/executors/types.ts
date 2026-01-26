@@ -83,6 +83,8 @@ export interface CLIProviderConfig {
   timeout?: number;
   /** 环境变量 */
   env?: Record<string, string>;
+  /** AbortSignal 用于取消执行 */
+  abortSignal?: AbortSignal;
 }
 
 /**

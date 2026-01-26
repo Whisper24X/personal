@@ -5,7 +5,7 @@
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import { logger, WorkspaceOptions, executeCommandSimple, WorkspaceManager } from '../utils';
+import { logger, WorkspaceOptions, WorkspaceManager } from '../utils';
 import * as fs from 'fs/promises';
 
 export interface DeployOptions extends WorkspaceOptions {
@@ -49,32 +49,33 @@ export class Deploy extends BaseAction {
         workDir,
       });
       
-      try {
-        const deployCommand = 'cursor-agent --model composer-1 --print "在当前目录下生成一个deployTest.txt文档，内容为 我是部署调试"';
-        const deployOutput = await executeCommandSimple(deployCommand, {
-          cwd: workDir,
-          timeout: 300000, // 5分钟超时
-        });
-        
-        logger.info('Deploy: Deploy command completed', {
-          outputLength: deployOutput.length,
-        });
-        
-        return {
-          content: `# Deploy Completed\n\n## Deploy Command Executed\n\`\`\`\n${deployCommand}\n\`\`\`\n\n## Output:\n\`\`\`\n${deployOutput}\n\`\`\``,
-          data: {
-            type: 'deploy',
-            workspaceDir: workDir,
-            deployOutput,
-            timestamp: new Date().toISOString(),
-          },
-        };
-      } catch (error: any) {
+      const deployPrompt = '在当前目录下生成一个deployTest.txt文档，内容为 我是部署调试';
+      const deployResult = await this.runCLICommand(deployPrompt, workDir, {
+        timeout: 300000, // 5分钟超时
+        abortSignal: this.abortSignal,
+      });
+      
+      if (deployResult.exitCode !== 0) {
         logger.error('Deploy: Deploy command failed', {
-          message: error.message,
+          exitCode: deployResult.exitCode,
+          stderr: deployResult.stderr,
         });
-        throw error;
+        throw new Error(`Deploy command failed with exit code ${deployResult.exitCode}`);
       }
+      
+      logger.info('Deploy: Deploy command completed', {
+        outputLength: deployResult.output.length,
+      });
+      
+      return {
+        content: `# Deploy Completed\n\n## Deploy Prompt\n\`\`\`\n${deployPrompt}\n\`\`\`\n\n## Output:\n\`\`\`\n${deployResult.output}\n\`\`\``,
+        data: {
+          type: 'deploy',
+          workspaceDir: workDir,
+          deployOutput: deployResult.output,
+          timestamp: new Date().toISOString(),
+        },
+      };
     } catch (error: any) {
       logger.error('Deploy: Failed to deploy using Cursor CLI', {
         message: error.message,

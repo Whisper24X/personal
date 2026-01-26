@@ -6,7 +6,7 @@
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { buildCursorCLICodeReviewPrompt } from '../prompts/code';
-import { logger, WorkspaceOptions, executeCommandSimple, CommandExecutorError } from '../utils';
+import { logger, WorkspaceOptions } from '../utils';
 import * as fs from 'fs/promises';
 
 export interface CodeReviewOptions extends WorkspaceOptions {
@@ -53,9 +53,6 @@ export class CodeReview extends BaseAction {
         promptLength: reviewPrompt.length,
       });
       
-      // 执行代码审查命令
-      const command = `cursor-agent --model composer-1 --print "${reviewPrompt}"`;
-      
       logger.info('CodeReview: Executing Cursor CLI review command', { 
         cwd: workDir,
       });
@@ -63,28 +60,22 @@ export class CodeReview extends BaseAction {
       // 检查是否被取消
       this.checkCancellation();
       
-      let reviewOutput = '';
-      try {
-        reviewOutput = await executeCommandSimple(command, {
-          cwd: workDir,
-          timeout: 600000, // 10分钟超时（代码审查应该较快）
-          abortSignal: this.abortSignal, // 传递取消信号
-        });
+      // 执行代码审查命令
+      const reviewResult = await this.runCLICommand(reviewPrompt, workDir, {
+        timeout: 600000, // 10分钟超时（代码审查应该较快）
+        abortSignal: this.abortSignal,
+      });
+      
+      const reviewOutput = reviewResult.output;
+      if (reviewResult.exitCode === 0) {
         logger.info('CodeReview: Review command completed', {
           outputLength: reviewOutput.length,
         });
-      } catch (execError) {
-        const error = execError as CommandExecutorError;
-        // 如果是取消错误，向上抛出
-        if (error.message?.includes('cancelled')) {
-          logger.info('CodeReview: Review command cancelled');
-          throw error;
-        }
+      } else {
         logger.warn('CodeReview: Review command failed', { 
-          message: error.message,
-          exitCode: error.exitCode,
+          exitCode: reviewResult.exitCode,
+          stderr: reviewResult.stderr,
         });
-        reviewOutput = error.stdout || '';
       }
       
       logger.info('CodeReview: Code review completed', {

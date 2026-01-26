@@ -16,8 +16,10 @@ import {
   ExecutorOptions,
   CLIProviderType,
   CLIProviderConfig,
+  CLIExecutionResult,
 } from '../../executors/types';
 import { CLIExecutor } from '../../executors/CLIExecutor';
+import { CLIProviderFactory } from '../../executors/cli/CLIProviderFactory';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 // Handler types for mode encapsulation
@@ -512,6 +514,45 @@ export abstract class BaseAction {
    */
   protected isLLMMode(): boolean {
     return this.getExecutorMode() === 'llm';
+  }
+
+  /**
+   * 运行 CLI 命令（使用配置的提供商和模型）
+   * 统一的 CLI 执行方法，自动从环境变量读取角色级别或全局配置
+   * 返回完整的执行结果，包括 exitCode、stderr 等信息
+   * 
+   * @param prompt 提示词
+   * @param workDir 工作目录
+   * @param options 执行选项
+   * @returns CLI 执行结果（包含 output、exitCode、executionTime、stderr）
+   */
+  protected async runCLICommand(
+    prompt: string,
+    workDir: string,
+    options?: { timeout?: number; abortSignal?: AbortSignal }
+  ): Promise<CLIExecutionResult> {
+    const cliConfig = this.getCLIConfig();
+    
+    logger.info('BaseAction.runCLICommand: Executing CLI command', {
+      action: this.name,
+      provider: cliConfig.provider,
+      model: cliConfig.config?.model,
+      workDir,
+      promptLength: prompt.length,
+      hasAbortSignal: !!options?.abortSignal,
+    });
+    
+    const provider = CLIProviderFactory.createProvider(cliConfig.provider, {
+      ...cliConfig.config,
+      timeout: options?.timeout,
+      abortSignal: options?.abortSignal,
+    });
+    
+    return provider.execute(prompt, workDir, {
+      ...cliConfig.config,
+      timeout: options?.timeout,
+      abortSignal: options?.abortSignal,
+    });
   }
 
   // ============================================

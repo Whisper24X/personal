@@ -65,6 +65,7 @@ export class AiderCLIProvider extends BaseCLIProvider {
           ...process.env,
           ...mergedConfig.env,
         },
+        abortSignal: mergedConfig.abortSignal,
       });
 
       const executionTime = Date.now() - startTime;

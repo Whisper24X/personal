@@ -935,6 +935,42 @@ ${code}
 }
 
 /**
+ * 构建 Cursor CLI 代码审查提示词
+ * 用于 CLI 模式下的代码审查，CLI 会自动读取当前目录下的代码文件
+ * @returns Cursor CLI 代码审查提示词
+ */
+export function buildCursorCLICodeReviewPrompt(): string {
+  return `请审查当前项目目录下的代码，并提供详细的代码审查报告。
+
+【审查要求】
+1. 代码质量审查：
+   - 代码结构和组织
+   - 命名规范
+   - 代码可读性
+   - 错误处理
+
+2. 技术审查：
+   - 是否符合最佳实践
+   - 性能优化建议
+   - 安全性检查
+   - 代码风格一致性
+
+3. 功能审查：
+   - 代码逻辑正确性
+   - 边界条件处理
+   - 异常情况处理
+
+4. 输出格式：
+   - 总体评价
+   - 优点总结
+   - 问题列表（按优先级排序）
+   - 改进建议（包含具体代码修改建议）
+   - 综合评分（1-10分）
+
+请开始进行代码审查。`;
+}
+
+/**
  * 获取 apply 命令提示词
  * 用于执行 openspec-apply 命令并完成所有任务
  * @returns apply 命令提示词
@@ -962,6 +998,7 @@ export default {
     buildCodeCompletenessCheckPrompt,
     buildCodeCompletionPrompt,
     buildCodeReviewPrompt,
+    buildCursorCLICodeReviewPrompt,
     getApplyCommand,
     getCheckCommand,
     checkCodeCompleteness,

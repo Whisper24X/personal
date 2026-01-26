@@ -75,6 +75,7 @@ export class CursorCLIProvider extends BaseCLIProvider {
         cwd: workDir,
         timeout,
         env: mergedConfig.env,
+        abortSignal: mergedConfig.abortSignal,
       });
 
       const executionTime = Date.now() - startTime;
