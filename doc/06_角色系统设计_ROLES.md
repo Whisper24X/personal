@@ -1,8 +1,8 @@
 # 即思即成（Mind2Build）角色系统设计文档
 
-**文档版本**: v1.8  
+**文档版本**: v1.9  
 **创建日期**: 2025-12-24
-**最后更新**: 2026-01-26（更新为9个角色，验证所有角色的Actions列表和监听机制，更新AutomationEngineer的Actions）
+**最后更新**: 2026-01-26（修正QAEngineer和AutomationEngineer的Actions列表，QAEngineer包含3个Actions，AutomationEngineer包含4个Actions包括QAConclusion）
 
 ## Role类实现架构
 
@@ -395,7 +395,6 @@ QAEngineer 实现测试设计工作流，包含以下 5 个 Actions（按顺序�
 | 2 | WriteTestPlan | 制定测试计划 | TEST_PLAN.md |
 | 3 | WriteTest | 测试用例生成 | TEST.md |
 | 4 | TestCaseReview | 用例评审与补充 | TEST_CASES_REVIEWED.md |
-| 5 | QAConclusion | 给出 QA 结论 | QA_CONCLUSION.md |
 
 **工作流程详解**:
 
@@ -508,7 +507,7 @@ QAEngineer                           AutomationEngineer
     │                                      ├─ CoverageQualityCheck
     │                                      ├─ QAConclusion
     │                                      │
-    └─ (QAEngineer 的 QAConclusion 已移除，由 AutomationEngineer 统一处理)
+    └─ QAConclusion 由 AutomationEngineer 处理
 ```
 
 ### 6. TeamLeader (团队领导)
@@ -611,7 +610,7 @@ class DataAnalyst extends Role {
   
 ✅ **QAEngineer** - 测试设计工作流执行
   - 监听: `ACTION_WRITE_PRD`, `ACTION_WRITE_CODE`, `ACTION_COVERAGE_QUALITY_CHECK` actions
-  - Actions: TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, QAConclusion
+  - Actions: WriteTestPlan, WriteTest, TestCaseReview
   - 特殊: 使用 BY_ORDER 模式按顺序执行 5 步测试设计工作流
 
 ✅ **AutomationEngineer** - 自动化测试工作流执行

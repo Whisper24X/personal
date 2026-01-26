@@ -1,8 +1,8 @@
 # mind2build API 参考文档
 
-**文档版本**: v1.4  
+**文档版本**: v1.5  
 **创建日期**: 2025-12-24
-**最后更新**: 2026-01-26（添加 MRD 管理 API、项目版本管理 API、Git 分支管理 API，更新所有控制器端点）
+**最后更新**: 2026-01-26（添加章节对话历史API，更新所有15个控制器的API端点，添加章节对话历史功能说明）
 
 ---
 
@@ -354,14 +354,86 @@
 
 **POST** `/api/projects/:id/sections/:sectionNumber/adjust`
 
-从工作区直接调整PRD章节。
+从工作区直接调整PRD章节。调整时会自动保存对话历史。
 
 **请求体**:
 ```json
 {
-  "instruction": "调整指令"
+  "instruction": "调整指令",
+  "documentType": "PRD",
+  "version": 1
 }
 ```
+
+**响应**:
+```json
+{
+  "success": true,
+  "section": {
+    "sectionNumber": 1,
+    "content": "调整后的章节内容",
+    "conversationHistory": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "调整指令",
+          "timestamp": "2026-01-26T00:00:00Z"
+        },
+        {
+          "role": "assistant",
+          "content": "调整后的章节内容",
+          "timestamp": "2026-01-26T00:00:01Z"
+        }
+      ]
+    }
+  }
+}
+```
+
+#### 获取章节对话历史
+
+**GET** `/api/projects/:id/sections/:sectionNumber/conversation`
+
+获取PRD/MRD指定章节的对话历史记录。该功能用于跟踪章节的迭代优化过程，支持多轮对话和内容调整。
+
+**查询参数**:
+- `documentType`: 文档类型，可选值：`PRD`、`MRD`、`DESIGN`（默认：`PRD`）
+- `version`: 版本号（默认：1）
+
+**响应**:
+```json
+{
+  "success": true,
+  "conversation": {
+    "sectionNumber": 1,
+    "documentType": "PRD",
+    "version": 1,
+    "messages": [
+      {
+        "role": "user",
+        "content": "用户反馈：这个章节需要更详细的说明",
+        "timestamp": "2026-01-26T10:00:00Z"
+      },
+      {
+        "role": "assistant",
+        "content": "已更新章节内容，添加了更详细的说明...",
+        "timestamp": "2026-01-26T10:00:05Z"
+      }
+    ],
+    "lastUpdated": "2026-01-26T10:00:05Z"
+  }
+}
+```
+
+**功能说明**:
+- 章节对话历史功能用于记录PRD/MRD章节的迭代优化过程
+- 每次调用`/sections/:sectionNumber/adjust` API时，会自动保存用户反馈和AI响应到对话历史
+- 对话历史可用于：
+  - 了解章节的修改历程
+  - 为后续调整提供上下文
+  - 支持多轮迭代优化
+  - 追踪用户反馈和AI响应的对应关系
+- 对话历史存储在`section_conversations`数据库表中
 
 #### 改进 PRD
 

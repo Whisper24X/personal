@@ -5,6 +5,28 @@ All notable changes to Mind2Build will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-01-26
+
+### Documentation 📝
+
+- **Comprehensive Documentation Update** - Updated all documentation to reflect current code implementation
+  - Updated README.md: Fixed role Actions lists, added complete Services and API controllers lists, added section conversation history feature description
+  - Updated doc/00_文档导航_INDEX.md: Updated version to v2.0, added section conversation history feature description
+  - Updated doc/12_API参考文档_API.md: Added section conversation history API endpoint documentation
+  - Updated doc/04_系统架构文档_ARCHITECTURE.md: Added section conversation history data flow and service descriptions
+  - Updated doc/06_角色系统设计_ROLES.md: Corrected QAEngineer (3 Actions) and AutomationEngineer (4 Actions including QAConclusion) workflows
+  - Updated doc/07_行动系统设计_ACTIONS.md: Confirmed 30 Actions complete list, clarified QAConclusion belongs to AutomationEngineer
+  - Updated doc/18_数据库设计_DATABASE.md: Added detailed section_conversations table documentation, updated table count to 20
+  - Updated backend/README.md: Added Services list and section conversation history feature description
+  - Updated doc/10_工作流文档_WORKFLOW.md: Corrected QAEngineer workflow to 3 steps, AutomationEngineer to 4 steps
+  - Updated doc/13_配置管理_CONFIG.md: Added section conversation history configuration documentation
+  - All documentation now accurately reflects current code implementation
+
+### Changed
+
+- **Documentation Versioning** - Updated all documentation version numbers and dates
+- **Role Actions Clarification** - QAEngineer has 3 Actions, AutomationEngineer has 4 Actions (including QAConclusion)
+
 ## [1.5.0] - 2026-01-26
 
 ### Added ✨

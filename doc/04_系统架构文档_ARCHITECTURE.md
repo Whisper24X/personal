@@ -2,9 +2,9 @@
 
 **Slogan**: 让所思，即所得
 
-**文档版本**: v1.6  
+**文档版本**: v1.7  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-26（更新服务列表为10个Service，添加执行器说明，更新数据库Schema V2，添加Git服务说明）
+**最后更新**: 2026-01-26（添加章节对话历史功能说明，更新SectionAdjustService描述，添加章节对话历史数据流）
 
 ---
 
@@ -214,6 +214,52 @@ sequenceDiagram
 ```
 
 ### 2.3 数据流架构
+
+#### 2.3.1 章节对话历史数据流
+
+章节对话历史功能用于记录PRD/MRD章节的迭代优化过程，支持多轮对话和内容调整。
+
+**数据流**:
+```mermaid
+sequenceDiagram
+    participant User as 用户
+    participant API as API接口
+    participant Service as SectionAdjustService
+    participant Repo as SectionConversationRepository
+    participant DB as 数据库
+    participant LLM as LLM
+    
+    User->>API: POST /sections/:sectionNumber/adjust
+    API->>Service: adjustSection(userFeedback)
+    Service->>Repo: loadSectionConversationHistory()
+    Repo->>DB: SELECT from section_conversations
+    DB-->>Repo: conversation history
+    Repo-->>Service: history
+    
+    Service->>LLM: 调用LLM调整章节
+    LLM-->>Service: 调整后的内容
+    
+    Service->>Repo: addMessageToSectionConversation(user)
+    Repo->>DB: UPDATE section_conversations
+    Service->>Repo: addMessageToSectionConversation(assistant)
+    Repo->>DB: UPDATE section_conversations
+    
+    Service-->>API: 返回调整结果和对话历史
+    API-->>User: 响应
+    
+    User->>API: GET /sections/:sectionNumber/conversation
+    API->>Repo: findBySection()
+    Repo->>DB: SELECT from section_conversations
+    DB-->>Repo: conversation
+    Repo-->>API: conversation
+    API-->>User: 返回对话历史
+```
+
+**关键特性**:
+- 每次章节调整自动保存对话历史
+- 支持按文档类型（PRD/MRD/DESIGN）和版本号查询
+- 对话历史用于为后续调整提供上下文
+- 支持多轮迭代优化，追踪用户反馈和AI响应的对应关系
 
 ```mermaid
 graph LR
@@ -856,9 +902,17 @@ class CostManager {
 - **主要方法**: `getRoles()`, `getActions()`, `getRolesAndActions()`
 
 **7. SectionAdjustService** - 章节调整服务
-- **功能**: PRD/MRD章节调整、对话历史管理、Workspace集成
+- **功能**: PRD/MRD章节调整、对话历史管理、Workspace集成、章节迭代优化
 - **位置**: `backend/src/services/SectionAdjustService.ts`
 - **主要方法**: `adjustSection()`, `getConversationHistory()`
+- **章节对话历史功能**:
+  - 记录PRD/MRD章节的迭代优化过程
+  - 支持多轮对话和内容调整
+  - 自动保存用户反馈和AI响应到数据库
+  - 提供对话历史查询API，用于了解章节修改历程
+  - 对话历史存储在`section_conversations`表中
+  - 支持按文档类型（PRD/MRD/DESIGN）和版本号查询
+  - 为后续调整提供上下文，支持多轮迭代优化
 
 **8. StagehandService** - Stagehand集成服务
 - **功能**: Stagehand API集成、代码生成和执行、浏览器自动化操作

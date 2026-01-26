@@ -1,8 +1,8 @@
 # mind2build 配置管理文档
 
-**文档版本**: v1.3  
+**文档版本**: v1.4  
 **创建日期**: 2025-12-24
-**最后更新**: 2026-01-26（更新Git配置说明，添加版本分支命名规则）
+**最后更新**: 2026-01-26（添加章节对话历史配置说明，更新Git配置说明）
 
 ## 1. 配置文件结构
 
@@ -180,6 +180,38 @@ interface CostConfig {
   defaultBudget: number;  // 默认预算（默认: 10.0）
   warningThreshold: number;  // 警告阈值（默认: 0.8）
 }
+```
+
+### 1.8 章节对话历史配置
+
+章节对话历史功能用于记录PRD/MRD/DESIGN文档章节的迭代优化过程。
+
+**数据库配置**:
+- 对话历史存储在 `section_conversations` 表中
+- 自动管理，无需手动配置
+
+**API配置**:
+- 通过 `SectionAdjustService` 自动保存对话历史
+- 通过 `GET /api/projects/:id/sections/:sectionNumber/conversation` 查询对话历史
+
+**功能特性**:
+- 自动保存：每次调用章节调整API时自动保存用户反馈和AI响应
+- 版本管理：支持按文档版本号查询对话历史
+- 多文档类型：支持PRD、MRD、DESIGN三种文档类型
+- 上下文提供：为后续调整提供历史上下文
+
+**使用示例**:
+```typescript
+// 调整章节时自动保存对话历史
+POST /api/projects/:id/sections/:sectionNumber/adjust
+{
+  "instruction": "用户反馈内容",
+  "documentType": "PRD",
+  "version": 1
+}
+
+// 查询对话历史
+GET /api/projects/:id/sections/:sectionNumber/conversation?documentType=PRD&version=1
 ```
 
 ## 2. 环境变量

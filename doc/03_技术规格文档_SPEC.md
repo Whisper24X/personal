@@ -3,9 +3,9 @@
 > AI 辅助工程 · 规格说明文档  
 > 用于在人与 AI 协作编码前，对齐目标、边界与工程决策  
 
-**文档版本**: v1.4  
+**文档版本**: v1.5  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-26
+**最后更新**: 2026-01-26（更新QAEngineer和AutomationEngineer的Actions列表，确认30个Actions和9个角色）
 **规格状态**: ✅ Frozen（已冻结，可进入实现阶段）
 
 ---
@@ -58,6 +58,8 @@
 - ✅ 知识库系统（RAG检索、代码仓库关联、多源知识整合）
 - ✅ 工作流编排系统（多角色串联、输入输出映射、可视化设计器）
 - ✅ 角色独立调试系统（调试接口、单元测试框架、性能监控）
+- ✅ 章节对话历史系统（PRD/MRD章节迭代优化、对话历史管理）
+- ✅ 10个核心服务（WorkflowService, RAGService, GitService, DocumentArchiveService, RoleActionService, EmbeddingService, QdrantService, RerankService, SectionAdjustService, StagehandService）
 
 #### 角色实现层（共9个角色）
 - ✅ Salesperson（销售）- 需求收集和市场调研
@@ -65,8 +67,8 @@
 - ✅ Architect（架构师）- 系统设计
 - ✅ ProjectManager（项目经理）- 任务拆分和规划
 - ✅ Engineer（工程师）- 代码实现
-- ✅ QAEngineer（QA工程师）- 测试设计工作流（3步）
-- ✅ AutomationEngineer（自动化工程师）- 自动化测试工作流（4步）
+- ✅ QAEngineer（QA工程师）- 测试设计工作流（3步：WriteTestPlan, WriteTest, TestCaseReview）
+- ✅ AutomationEngineer（自动化工程师）- 自动化测试工作流（4步：AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion）
 - ✅ TeamLeader（团队领导）- 协调和决策
 - ✅ DataAnalyst（数据分析师）- 数据分析和可视化
 
