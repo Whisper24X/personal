@@ -1,8 +1,8 @@
 # mind2build 实现示例文档
 
-**文档版本**: v1.1  
+**文档版本**: v1.2  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-21
+**最后更新**: 2026-01-26（更新Actions数量为30个，拆分QA工作流）
 
 ---
 
@@ -719,7 +719,7 @@ vim .env
 **Q: 生成的代码质量不理想怎么办？**
 - 使用更强大的模型（如 GPT-4、GLM-4）
 - 提供更详细的需求描述
-- 启用QAEngineer的完整9步QA工作流
+- 启用QAEngineer（3步测试设计）和AutomationEngineer（4步自动化测试）的完整QA工作流
 - 使用增量模式逐步优化
 - 使用RunCode和FixBug Actions进行代码验证和修复
 
@@ -733,7 +733,7 @@ vim .env
 - 更新CLI命令从Python CLI改为pnpm CLI
 - 更新LLM提供商配置方式（从YAML改为.env）
 - 更新项目结构示例（从Python项目结构改为TypeScript项目结构）
-- 更新角色和Actions示例，反映当前实现（31个Actions，完整QA工作流等）
+- 更新角色和Actions示例，反映当前实现（30个Actions，QAEngineer和AutomationEngineer分离的QA工作流等）
 - 更新工作流示例，反映TypeScript实现
 
 ---

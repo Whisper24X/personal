@@ -15,6 +15,7 @@ Mind2Build is a multi-agent AI collaboration framework that simulates a software
 - **Business Line & Platform Management**: Organize projects by business lines and platforms
 - **Knowledge Base System**: RAG-enhanced retrieval with Qdrant vector database support
 - **Workflow Management**: Customizable workflows with visual designer
+- **Git Repository Integration**: Automatic Git repository management with version branch support
 - **Multiple LLM Support**: OpenAI, Zhipu AI, Ark (Doubao), DeepSeek, Cursor Agent, and more
 - **Cost Management**: Budget tracking and limits to control LLM usage
 - **Web Interface**: Vue 3-based dashboard with WebSocket support
@@ -88,13 +89,13 @@ mind2build/
 │   ├── src/
 │   │   ├── core/            # Message, Memory, Context, Base classes
 │   │   ├── roles/           # 9 AI agent roles
-│   │   ├── actions/         # 31 agent actions
+│   │   ├── actions/         # 30 agent actions
 │   │   ├── providers/       # LLM providers (OpenAI, ZhipuAI, Ark, Cursor, DeepSeek)
 │   │   ├── orchestration/   # Team, Environment, StateManager
 │   │   ├── executors/       # LLMExecutor, CLIExecutor (Aider, Cursor)
 │   │   ├── database/        # PostgreSQL repositories and migrations
 │   │   ├── api/             # REST API controllers and routes
-│   │   ├── services/        # WorkflowService, RAGService, etc.
+│   │   ├── services/        # WorkflowService, RAGService, GitService, etc.
 │   │   ├── workflow/        # Workflow execution engine
 │   │   └── cli/             # CLI commands
 │   └── tests/
@@ -520,12 +521,23 @@ const response = await fetch('http://localhost:3000/api/projects', {
     idea: 'Create a blog platform with user authentication',
     applicationId: 'app-id',  // Optional: associate with application
     investment: 10.0,
-    nRound: 5
+    nRound: 5,
+    gitRepositoryUrl: 'https://github.com/user/blog-platform.git'  // Optional: Git repository URL
   })
 });
 
 const project = await response.json();
 console.log('Project ID:', project.project.id);
+
+// Create a project version (with Git branch)
+await fetch(`http://localhost:3000/api/projects/${project.project.id}/versions`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    name: 'v1.0',
+    description: 'Initial version'
+  })
+});
 
 // Start project execution
 await fetch(`http://localhost:3000/api/projects/${project.project.id}/start`, {
@@ -572,6 +584,31 @@ POST /api/config/role-llm/:profile
 // Prompt Configuration
 GET /api/config/prompts
 POST /api/config/prompts
+
+// Role and Action Metadata
+GET /api/config/roles
+GET /api/config/actions
+GET /api/config/roles-actions
+```
+
+#### Project Version & Git Management API
+
+```javascript
+// Create project version (automatically creates Git branch)
+POST /api/projects/:projectId/versions
+{
+  "name": "v1.0",
+  "description": "Initial version"
+}
+
+// List project versions
+GET /api/projects/:projectId/versions
+
+// Get Git branches
+GET /api/projects/:projectId/branches
+
+// Activate a version
+POST /api/projects/:projectId/versions/:versionId/activate
 ```
 
 ### Programmatic

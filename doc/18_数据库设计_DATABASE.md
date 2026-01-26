@@ -1,8 +1,8 @@
 # Mind2Build 数据库设计文档 V2
 
-**文档版本**: v2.0  
+**文档版本**: v2.1  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-25  
+**最后更新**: 2026-01-26（添加project_versions表说明，更新Git相关字段说明）  
 **数据库类型**: PostgreSQL  
 **主键类型**: UUID (使用 `uuid_generate_v4()`)
 
@@ -30,13 +30,14 @@
 - **审计追踪**: 记录创建和更新时间
 - **软删除**: 重要数据不物理删除
 
-### 1.2 核心实体（18 张表）
+### 1.2 核心实体（共18张表，包含project_versions和role_llm_configs）
 
 | 实体 | 说明 | 优先级 |
 |------|------|--------|
 | users | 用户信息 | P0 |
 | applications | 应用/业务线 | P0 |
 | projects | 项目信息（合并 teams） | P0 |
+| project_versions | 项目版本（Git分支管理） | P0 |
 | roles | 角色运行实例 | P0 |
 | messages | 消息记录 | P0 |
 | action_logs | 行动执行日志 | P1 |
@@ -45,6 +46,7 @@
 | memories | 长期记忆 | P2 |
 | embeddings | 向量嵌入 | P2 |
 | llm_configs | 统一 LLM 配置 | P1 |
+| role_llm_configs | 角色特定LLM配置 | P1 |
 | prompt_configs | Prompt 配置 | P1 |
 | knowledge_base | 知识库 | P1 |
 | section_conversations | 章节对话 | P1 |
@@ -171,8 +173,50 @@ CREATE TABLE projects (
 - `team_status`: idle, running, stopped
 - `team_config`: 团队配置（JSON）
 - `team_state`: 团队运行时状态（JSON）
+- `git_repo_url`: Git仓库URL，如果提供则自动管理版本分支
 
-### 3.4 roles (角色运行实例表)
+### 3.4 project_versions (项目版本表)
+
+```sql
+CREATE TABLE project_versions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    
+    -- 版本信息
+    version_name VARCHAR(50) NOT NULL,        -- 如 v1.0, v1.1, v2.0
+    description TEXT,                         -- 版本描述
+    idea TEXT,                               -- 版本需求描述
+    
+    -- Git 分支信息
+    branch_name VARCHAR(200) NOT NULL,        -- 自动生成: {project-slug}/{version}
+    workspace_path VARCHAR(500),              -- 版本工作空间路径
+    
+    -- 状态
+    is_active BOOLEAN DEFAULT false,          -- 是否为当前激活版本
+    
+    -- 元数据
+    metadata JSONB DEFAULT '{}',
+    
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    deleted_at TIMESTAMP,
+    
+    -- 约束：同一项目下版本名唯一
+    UNIQUE(project_id, version_name),
+    -- 约束：同一项目下分支名唯一
+    UNIQUE(project_id, branch_name)
+);
+```
+
+**字段说明**:
+- `version_name`: 版本名称，如 v1.0, v2.0
+- `branch_name`: Git分支名，格式: `{project-slug}/{version}`（如：`my-project/v1.0`）
+- `is_active`: 是否为当前激活版本，每个项目只能有一个激活版本
+- `workspace_path`: 版本对应的工作空间路径
+
+**触发器**: 自动确保每个项目只有一个激活版本
+
+### 3.5 roles (角色运行实例表)
 
 ```sql
 CREATE TABLE roles (
@@ -204,7 +248,7 @@ CREATE TABLE roles (
 - `react_mode`: react, by_order, plan_and_act
 - `state`: 序列化的 RoleContext 数据
 
-### 3.5 messages (消息记录表)
+### 3.6 messages (消息记录表)
 
 ```sql
 CREATE TABLE messages (
@@ -227,7 +271,7 @@ CREATE TABLE messages (
 );
 ```
 
-### 3.6 action_logs (行动执行日志表)
+### 3.7 action_logs (行动执行日志表)
 
 ```sql
 CREATE TABLE action_logs (
@@ -249,7 +293,7 @@ CREATE TABLE action_logs (
 );
 ```
 
-### 3.7 documents (文档表)
+### 3.8 documents (文档表)
 
 ```sql
 CREATE TABLE documents (
@@ -271,7 +315,7 @@ CREATE TABLE documents (
 );
 ```
 
-### 3.8 cost_records (成本记录表)
+### 3.9 cost_records (成本记录表)
 
 ```sql
 CREATE TABLE cost_records (
@@ -291,7 +335,7 @@ CREATE TABLE cost_records (
 );
 ```
 
-### 3.9 memories (长期记忆表)
+### 3.10 memories (长期记忆表)
 
 ```sql
 CREATE TABLE memories (
@@ -307,7 +351,7 @@ CREATE TABLE memories (
 );
 ```
 
-### 3.10 embeddings (向量嵌入表)
+### 3.11 embeddings (向量嵌入表)
 
 ```sql
 CREATE TABLE embeddings (
@@ -321,7 +365,7 @@ CREATE TABLE embeddings (
 );
 ```
 
-### 3.11 llm_configs (统一 LLM 配置表)
+### 3.12 llm_configs (统一 LLM 配置表)
 
 ```sql
 CREATE TABLE llm_configs (
@@ -357,7 +401,36 @@ CREATE TABLE llm_configs (
 2. `config_scope='provider' AND is_active=true` - 提供商默认配置
 3. 环境变量默认值
 
-### 3.12 prompt_configs (Prompt 配置表)
+### 3.13 role_llm_configs (角色特定LLM配置表)
+
+```sql
+CREATE TABLE role_llm_configs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    role_profile VARCHAR(100) NOT NULL UNIQUE,  -- 角色类型
+    
+    provider VARCHAR(50) NOT NULL,
+    model VARCHAR(100) NOT NULL,
+    api_key VARCHAR(500),
+    base_url VARCHAR(500),
+    temperature DECIMAL(3, 2) DEFAULT 0.7,
+    max_tokens INTEGER DEFAULT 8000,
+    
+    -- Cursor Agent 专用字段
+    repository VARCHAR(500),
+    branch_name VARCHAR(200),
+    auto_create_pr BOOLEAN DEFAULT false,
+    
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+**字段说明**:
+- `role_profile`: 角色类型（ProductManager, Architect等），唯一约束
+- 其他字段与 `llm_configs` 表相同
+- 优先级高于系统默认LLM配置
+
+### 3.14 prompt_configs (Prompt 配置表)
 
 ```sql
 CREATE TABLE prompt_configs (
@@ -379,7 +452,7 @@ CREATE TABLE prompt_configs (
 );
 ```
 
-### 3.13 knowledge_base (知识库表)
+### 3.15 knowledge_base (知识库表)
 
 ```sql
 CREATE TABLE knowledge_base (
@@ -402,7 +475,7 @@ CREATE TABLE knowledge_base (
 );
 ```
 
-### 3.14 section_conversations (章节对话表)
+### 3.16 section_conversations (章节对话表)
 
 ```sql
 CREATE TABLE section_conversations (
@@ -423,7 +496,7 @@ CREATE TABLE section_conversations (
 );
 ```
 
-### 3.15 role_definitions (角色元定义表)
+### 3.17 role_definitions (角色元定义表)
 
 ```sql
 CREATE TABLE role_definitions (
@@ -446,7 +519,7 @@ CREATE TABLE role_definitions (
 );
 ```
 
-### 3.16 action_definitions (Action 元定义表)
+### 3.18 action_definitions (Action 元定义表)
 
 ```sql
 CREATE TABLE action_definitions (
@@ -466,7 +539,7 @@ CREATE TABLE action_definitions (
 );
 ```
 
-### 3.17 application_workflows (应用工作流配置表)
+### 3.19 application_workflows (应用工作流配置表)
 
 ```sql
 CREATE TABLE application_workflows (
@@ -499,7 +572,7 @@ CREATE TABLE application_workflows (
 }
 ```
 
-### 3.18 workflow_executions (工作流执行实例表)
+### 3.20 workflow_executions (工作流执行实例表)
 
 ```sql
 CREATE TABLE workflow_executions (

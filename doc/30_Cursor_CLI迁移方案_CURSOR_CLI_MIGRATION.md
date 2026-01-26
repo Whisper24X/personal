@@ -2,8 +2,9 @@
 
 ## 文档信息
 
-- **文档版本**: 1.0
+- **文档版本**: 1.1
 - **创建日期**: 2026-01-23
+- **最后更新**: 2026-01-26（更新Actions数量为30个）
 - **文档状态**: 方案设计
 - **相关文档**: 
   - `06_角色系统设计_ROLES.md`
@@ -107,7 +108,7 @@ const output = await executeCommandSimple(command, {
 - DataAnalyst → DataAnalysis
 - TeamLeader → Coordinate
 
-**Action列表** (共31个，已迁移2个，待迁移29个):
+**Action列表** (共30个，已迁移2个，待迁移28个):
 - WriteMRD, MRDReview, ImproveMRD
 - WritePRD, PRDReview, ImprovePRD
 - WriteDesign, DesignReview, ImproveDesign

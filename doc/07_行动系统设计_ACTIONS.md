@@ -1,8 +1,8 @@
 # mind2build 行动系统设计文档
 
-**文档版本**: v1.7  
+**文档版本**: v1.8  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-23（移除外层超时机制，超时由各个 Action 自行处理）
+**最后更新**: 2026-01-26（确认30个Actions完整列表，更新AutomationEngineer的QAConclusion Action）
 
 ## Action执行机制
 
@@ -1010,7 +1010,6 @@ async run(allMessages: string): Promise<IActionOutput>
 ✅ **TestCaseReview** - 测试用例评审与补充  
 ✅ **TestReview** - 测试用例文档审查  
 ✅ **ImproveTest** - 根据审查报告改进测试用例（已在文档改进Actions中列出）
-✅ **QAConclusion** - QA结论输出
 
 **注意**: WriteTestPlan、WriteTest 和 ImproveTest 已在其他分类中列出，此处仅作说明。
 
@@ -1018,6 +1017,7 @@ async run(allMessages: string): Promise<IActionOutput>
 ✅ **AutomationPlanning** - 自动化测试规划  
 ✅ **AutomationExecution** - 自动化测试执行  
 ✅ **CoverageQualityCheck** - 测试覆盖率与质量检查  
+✅ **QAConclusion** - QA结论输出（综合所有测试结果和覆盖率报告）  
 
 ### 其他 Actions
 ✅ **SearchEnhancedQA** - 增强搜索和问答  
@@ -1032,11 +1032,11 @@ async run(allMessages: string): Promise<IActionOutput>
 - 文档改进: 4个 (ImprovePRD, ImproveMRD, ImproveDesign, ImproveTest)
 - 任务管理: 2个 (BreakdownTasks, ExecuteSubtask)
 - 代码执行与修复: 2个 (RunCode, FixBug)
-- QA工作流: 7个 (TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, TestReview, ImproveTest, QAConclusion)
-- 自动化测试: 3个 (AutomationPlanning, AutomationExecution, CoverageQualityCheck)
+- QA工作流: 6个 (TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, TestReview, ImproveTest)
+- 自动化测试: 4个 (AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion)
 - 其他: 3个 (SearchEnhancedQA, DataAnalysis, Coordinate)
 
-**注意**: WriteTestPlan、WriteTest 和 ImproveTest 在多个分类中都有涉及，但实际只计算一次。
+**注意**: WriteTestPlan、WriteTest 和 ImproveTest 在多个分类中都有涉及，但实际只计算一次。QAConclusion属于AutomationEngineer角色，不属于QAEngineer。
 
 ## 自定义 Action
 

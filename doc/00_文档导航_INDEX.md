@@ -61,13 +61,8 @@
 - Context 上下文管理
 
 #### 6. [角色系统设计](./06_角色系统设计_ROLES.md)
-- Salesperson（销售）- 需求收集与需求说明
-- ProductManager（产品经理）
-- Architect（架构师）
-- Engineer（工程师）
-- QA Engineer（QA 工程师）
-- Project Manager（项目经理）
-- Data Analyst（数据分析师）
+- **共9个角色**：Salesperson（销售）、ProductManager（产品经理）、Architect（架构师）、ProjectManager（项目经理）、Engineer（工程师）、QAEngineer（QA工程师）、AutomationEngineer（自动化工程师）、TeamLeader（团队领导）、DataAnalyst（数据分析师）
+- 每个角色的职责、Actions列表和监听机制
 - 自定义角色开发指南
 
 #### 7. [行动系统设计](./07_行动系统设计_ACTIONS.md)
@@ -134,7 +129,7 @@
 - Phase 8-10: 测试与文档
 
 #### 12. [API 参考文档](./12_API参考文档_API.md)
-- REST API（项目管理、应用管理、交互式会话、Git仓库管理）
+- REST API（15个控制器）：项目管理、应用管理、工作流执行、MRD管理、PRD管理、项目版本管理、Git分支管理、交互式会话、知识库、配置管理、角色Action执行
 - WebSocket API（实时通信）
 - 工作流 API（创建、执行、调整顺序、更新映射）
 - 知识库 API（关联、检索、更新）
@@ -184,6 +179,7 @@
 ### 八、数据持久化
 
 #### 18. [数据库设计](./18_数据库设计_DATABASE.md)
+- **Schema V2**：18张表（包含project_versions和role_llm_configs）
 - 数据库表结构设计（PostgreSQL）
 - ER 图与关系设计
 - 索引与性能优化
@@ -318,17 +314,32 @@
 
 ## 📝 文档维护
 
-- **当前版本**: v1.7
-- **最后更新**: 2026-01-25
+- **当前版本**: v1.9
+- **最后更新**: 2026-01-26
 - **维护状态**: 活跃维护中
 
 ### 更新日志
+- 2026-01-26: 全面更新文档以反映最新代码实现：
+  - 更新CHANGELOG.md：去除Unreleased部分，转换为日期版本（v1.5.0 - 2026-01-26）
+  - 更新README.md：添加Git仓库管理功能说明，更新API示例
+  - 更新API参考文档：添加MRD管理API和项目版本管理API
+  - 更新角色系统设计：确认9个角色，更新AutomationEngineer的Actions（包含QAConclusion）
+  - 更新行动系统设计：确认30个Actions完整列表，修正QAConclusion归属
+  - 更新系统架构文档：更新为10个Service，添加执行器说明，更新数据库Schema V2
+  - 更新工作流文档：补充Git仓库管理流程，更新默认工作流配置
+  - 更新数据库设计：添加project_versions和role_llm_configs表说明
+  - 更新文档导航：更新版本号和日期
+
+- 2026-01-26: 全面更新文档，修正QAEngineer和AutomationEngineer的工作流描述
+  - 更新doc/01_项目需求文档.md、doc/03_技术规格文档_SPEC.md、doc/25_项目介绍与使用指南.md：拆分QAEngineer（3步）和AutomationEngineer（4步）
+  - 更新doc/02_产品需求文档_PRD.md、doc/12_API参考文档_API.md：更新角色Actions列表
+  - 更新doc/14_开发指南_DEVELOPMENT.md、doc/16_实现示例_EXAMPLES.md、doc/24_设计方案_DESIGN.md、doc/30_Cursor_CLI迁移方案_CURSOR_CLI_MIGRATION.md、doc/11_任务拆解文档_TASKS.md、doc/27_详细任务清单与执行明细.md、doc/17_AI协作指南_AGENT.md：将31个Actions更新为30个，拆分9步QA流程
 - 2026-01-25: 根据代码实现全面更新文档
-  - 更新 README.md：添加9个角色和31个Actions的完整列表，更新API示例
+  - 更新 README.md：添加9个角色和30个Actions的完整列表，更新API示例
   - 更新 CHANGELOG.md：添加最新功能更新（前端功能、后端服务、API增强）
   - 更新文档导航：确保所有文档路径和版本信息正确
   - 更新角色系统设计：确保9个角色的完整描述
-  - 更新行动系统设计：确保31个Actions的完整描述
+  - 更新行动系统设计：确保30个Actions的完整描述
   - 更新API参考文档：添加所有实际实现的API端点
   - 更新架构文档：添加所有服务和执行器的说明
   - 更新工作流文档：确保工作流配置与代码一致

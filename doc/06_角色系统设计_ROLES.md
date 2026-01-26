@@ -1,8 +1,8 @@
 # 即思即成（Mind2Build）角色系统设计文档
 
-**文档版本**: v1.7  
+**文档版本**: v1.8  
 **创建日期**: 2025-12-24
-**最后更新**: 2026-01-22（拆分QAEngineer和AutomationEngineer角色，添加配置驱动的角色注册机制）
+**最后更新**: 2026-01-26（更新为9个角色，验证所有角色的Actions列表和监听机制，更新AutomationEngineer的Actions）
 
 ## Role类实现架构
 
@@ -443,23 +443,24 @@ QAEngineer 实现测试设计工作流，包含以下 5 个 Actions（按顺序�
 class AutomationEngineer extends Role {
     name = "AutomationEngineer"
     profile = "AutomationEngineer"
-    goal = "Execute automation test workflow including planning, execution and coverage quality check"
-    constraints = "Focus on automation feasibility assessment, technology selection, test execution and coverage analysis. Execute automation workflow in order: automation planning -> automation execution -> coverage quality check"
-    description = "Experienced automation engineer who handles automation test planning, execution and coverage quality analysis"
+    goal = "Execute automation test workflow including planning, execution, coverage quality check and final QA conclusion"
+    constraints = "Focus on automation feasibility assessment, technology selection, test execution, coverage analysis and QA conclusion. Execute automation workflow in order: automation planning -> automation execution -> coverage quality check -> QA conclusion"
+    description = "Experienced automation engineer who handles automation test planning, execution, coverage quality analysis and final QA conclusion"
     // 监听: ACTION_TEST_CASE_REVIEW action（来自 QAEngineer）
-    // Actions: AutomationPlanning, AutomationExecution, CoverageQualityCheck
+    // Actions: AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion
 }
 ```
 
-**3 步自动化测试工作流**:
+**4 步自动化测试工作流**:
 
-AutomationEngineer 实现自动化测试工作流，包含以下 3 个 Actions（按顺序执行）：
+AutomationEngineer 实现自动化测试工作流，包含以下 4 个 Actions（按顺序执行）：
 
 | 步骤 | Action | 说明 | 输出文件 |
 |------|--------|------|----------|
 | 1 | AutomationPlanning | 自动化测试拆解与评估 | AUTOMATION_PLAN.md |
 | 2 | AutomationExecution | 自动化用例实现与执行 | tests/automated_tests.md |
 | 3 | CoverageQualityCheck | 测试覆盖率与质量自检 | COVERAGE_REPORT.md, QUALITY_CHECK.md |
+| 4 | QAConclusion | 给出 QA 结论 | QA_CONCLUSION.md |
 
 **工作流程详解**:
 
@@ -478,16 +479,21 @@ AutomationEngineer 实现自动化测试工作流，包含以下 3 个 Actions�
    - 进行质量自评
    - 生成覆盖率报告和质量检查报告
 
+4. **QAConclusion（QA 结论）**
+   - 综合所有测试结果和覆盖率报告
+   - 给出最终 QA 结论（通过/阻断/需修改）
+
 **监听机制**:
 - 监听 `ACTION_TEST_CASE_REVIEW` action（来自 QAEngineer）
 - 等待 QAEngineer 完成测试用例评审后触发
-- 使用 BY_ORDER 模式按顺序执行所有 3 个 Actions
+- 使用 BY_ORDER 模式按顺序执行所有 4 个 Actions
 
 **输出产物**:
 - 自动化测试计划（AUTOMATION_PLAN.md）
 - 自动化测试结果（tests/automated_tests.md）
 - 覆盖率报告（COVERAGE_REPORT.md）
 - 质量检查报告（QUALITY_CHECK.md）
+- QA 结论报告（QA_CONCLUSION.md）
 
 **与 QAEngineer 的协作**:
 ```
@@ -500,8 +506,9 @@ QAEngineer                           AutomationEngineer
     │                                      ├─ AutomationPlanning
     │                                      ├─ AutomationExecution
     │                                      ├─ CoverageQualityCheck
-    ├─ QAConclusion ◄──────────────────────┘
-    │
+    │                                      ├─ QAConclusion
+    │                                      │
+    └─ (QAEngineer 的 QAConclusion 已移除，由 AutomationEngineer 统一处理)
 ```
 
 ### 6. TeamLeader (团队领导)
@@ -578,7 +585,7 @@ class DataAnalyst extends Role {
 
 ---
 
-## 已实现角色列表
+## 已实现角色列表（共9个角色）
 
 ✅ **Salesperson** - 需求收集、市场调研和业务分析，生成市场研究文档（MRD）
   - 监听: `'User'` 消息类型
@@ -609,8 +616,8 @@ class DataAnalyst extends Role {
 
 ✅ **AutomationEngineer** - 自动化测试工作流执行
   - 监听: `ACTION_TEST_CASE_REVIEW` action
-  - Actions: AutomationPlanning, AutomationExecution, CoverageQualityCheck
-  - 特殊: 使用 BY_ORDER 模式按顺序执行 3 步自动化测试工作流
+  - Actions: AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion
+  - 特殊: 使用 BY_ORDER 模式按顺序执行 4 步自动化测试工作流
   
 ✅ **TeamLeader** - 团队协调和任务分配
   - 监听: 无（不 watch 任何 action）

@@ -1,8 +1,8 @@
 # Mind2Build 设计方案文档
 
-**文档版本**: v1.1  
+**文档版本**: v1.2  
 **创建日期**: 2025-12-25  
-**最后更新**: 2026-01-21  
+**最后更新**: 2026-01-26（拆分QAEngineer和AutomationEngineer的工作流Actions）  
 **项目名称**: Mind2Build (即思即成)
 
 ---
@@ -358,12 +358,12 @@ abstract class BaseAction {
 - 输出: 测试代码
 - 使用角色: QAEngineer
 
-**QA工作流Actions**（9步QA流程）:
-- TestabilityReview: 需求可测性审查
+**QA工作流Actions**（QAEngineer - 3步测试设计流程）:
 - WriteTestPlan: 制定测试计划
 - WriteTest: 编写测试用例
 - TestCaseReview: 用例评审与补充
-- ImproveTest: 改进测试用例
+
+**自动化测试Actions**（AutomationEngineer - 4步自动化测试流程）:
 - AutomationPlanning: 自动化测试规划
 - AutomationExecution: 自动化测试执行
 - CoverageQualityCheck: 覆盖率与质量检查

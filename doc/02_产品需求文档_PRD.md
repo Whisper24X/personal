@@ -4,9 +4,9 @@
 
 ## 文档信息
 - **产品名称**: 即思即成（Mind2Build）- 多代理协作框架
-- **文档版本**: v1.3
+- **文档版本**: v1.4
 - **创建日期**: 2025-12-24
-- **最后更新**: 2026-01-21
+- **最后更新**: 2026-01-26
 - **产品经理**: AI Product Team
 - **目标版本**: Mind2Build 1.2
 
@@ -37,7 +37,7 @@
 系统支持多种 AI 角色，每个角色有独特的职责、行为模式和工作流程。系统提供快速上手的能力，同时支持用户自主定制新角色和对应的工作流，满足不同场景和领域的个性化需求。
 
 #### 核心特性
-- **开箱即用**: 内置7个标准角色（Salesperson、ProductManager、Architect、ProjectManager、Engineer、QAEngineer、TeamLeader），覆盖软件开发的完整流程
+- **开箱即用**: 内置9个标准角色（Salesperson、ProductManager、Architect、ProjectManager、Engineer、QAEngineer、AutomationEngineer、TeamLeader、DataAnalyst），覆盖软件开发的完整流程
 - **快速定制**: 提供简洁的角色定义接口，5分钟内即可创建并部署一个新角色
 - **工作流编排**: 支持可视化工作流设计，灵活配置角色间的协作关系和执行顺序
 - **模板库**: 提供丰富的角色模板和工作流模板，覆盖常见业务场景
@@ -215,7 +215,8 @@ graph TB
 | Architect | Architect | 系统设计、架构规划 | 监听 WritePRD action | WriteDesign, DesignReview, ImproveDesign | PRD文档 | 设计文档 |
 | ProjectManager | ProjectManager | 任务拆分、子项目设计 | 监听 WritePRD 和 WriteDesign actions | BreakdownTasks, WriteSubProjectDesign, SubProjectDesignReview | PRD和设计文档 | 任务拆分文档、子项目设计 |
 | Engineer | Engineer | 代码实现、执行和修复 | 监听 WritePRD, WriteDesign, BreakdownTasks actions | WriteCode, ExecuteSubtask, RunCode, FixBug | 设计文档、任务拆分 | TypeScript/JavaScript源代码 |
-| QA Engineer | QAEngineer | 完整 QA 工作流执行 | 监听 WritePRD 和 WriteCode actions | TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion | PRD和代码 | 测试计划、测试用例、QA结论报告 |
+| QA Engineer | QAEngineer | 测试设计工作流（3步） | 监听 WritePRD 和 ImprovePRD actions | WriteTestPlan, WriteTest, TestCaseReview | PRD文档 | 测试计划、测试用例 |
+| Automation Engineer | AutomationEngineer | 自动化测试工作流（4步） | 监听 TestCaseReview action | AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion | 测试用例 | 自动化测试报告、覆盖率报告、QA结论报告 |
 | Team Leader | TeamLeader | 协调、决策 | 监听所有广播消息 | Coordinate | 所有消息历史 | 协调结果和任务分配 |
 
 #### 角色定制能力
@@ -1126,12 +1127,11 @@ RoleActionExecutor为某些actions提供特殊的输入准备逻辑：
 | TestabilityReview | 需求可测性审查 | PRD、代码 | 可测性审查报告 | QA Engineer | ✅ 已实现 |
 | WriteTestPlan | 制定测试计划 | PRD、代码、可测性报告 | 测试计划 | QA Engineer | ✅ 已实现 |
 | WriteTest | 编写测试用例 | PRD、代码 | 测试用例文档 | QA Engineer | ✅ 已实现 |
-| TestCaseReview | 用例评审与补充 | 测试用例 | 审查后的测试用例 | QA Engineer | ✅ 已实现 |
-| ImproveTest | 改进测试用例 | 审查报告 | 改进后的测试用例 | QA Engineer | ✅ 已实现 |
-| AutomationPlanning | 自动化测试规划 | 测试用例、代码 | 自动化计划 | QA Engineer | ✅ 已实现 |
-| AutomationExecution | 自动化测试执行 | 自动化计划 | 执行结果 | QA Engineer | ✅ 已实现 |
-| CoverageQualityCheck | 覆盖率与质量检查 | 测试用例、代码 | 覆盖率和质量报告 | QA Engineer | ✅ 已实现 |
-| QAConclusion | QA结论 | 所有测试文档 | QA结论报告 | QA Engineer | ✅ 已实现 |
+| TestCaseReview | 用例评审与补充 | 测试用例 | 审查后的测试用例 | QAEngineer | ✅ 已实现 |
+| AutomationPlanning | 自动化测试规划 | 测试用例、代码 | 自动化计划 | AutomationEngineer | ✅ 已实现 |
+| AutomationExecution | 自动化测试执行 | 自动化计划 | 执行结果 | AutomationEngineer | ✅ 已实现 |
+| CoverageQualityCheck | 覆盖率与质量检查 | 测试用例、代码 | 覆盖率和质量报告 | AutomationEngineer | ✅ 已实现 |
+| QAConclusion | QA结论 | 所有测试文档 | QA结论报告 | AutomationEngineer | ✅ 已实现 |
 
 **其他 Actions**:
 | Action | 功能 | 输入 | 输出 | 使用角色 | 状态 |
@@ -1164,9 +1164,23 @@ RoleActionExecutor为某些actions提供特殊的输入准备逻辑：
 
 #### 核心特性
 - **Git仓库管理**: 每个项目使用独立的Git仓库，所有文档（MRD、PRD、系统设计文档等）和代码都存储在Git仓库中
-- **版本分支管理**: 根据版本号创建不同的Git分支（`v1`, `v2`, `v3`...），支持版本隔离和管理
+- **版本分支管理**: 根据版本号创建不同的Git分支，版本分支命名规则为 `{alias}/{version}`（如：`my-project/v1.0`），支持版本隔离和管理
+- **项目分支管理**: 支持创建项目特定分支，命名规则为 `project/{projectId}`
+- **GitService功能**: 提供11个Git操作方法
+  - `prepareRepository()` - 准备仓库（克隆或拉取）
+  - `cloneRepository()` - 克隆远程仓库
+  - `pullRepository()` - 拉取最新更改
+  - `createBranch()` - 创建版本分支
+  - `checkoutBranch()` - 切换分支
+  - `listBranches()` - 列出所有分支
+  - `deleteBranch()` - 删除分支
+  - `commitChanges()` - 提交更改
+  - `pushChanges()` - 推送更改
+  - `generateVersionBranchName()` - 生成版本分支名
+  - `createProjectBranch()` - 创建项目分支
 - **自动初始化**: 项目初始化时自动拉取Git仓库（如果提供仓库地址），或创建新的Git仓库
 - **自动提交**: 生成的文档和代码自动提交到对应版本分支
+- **超时配置**: Git操作超时时间为5分钟（300000毫秒）
 
 #### 用户故事
 
@@ -1191,7 +1205,9 @@ RoleActionExecutor为某些actions提供特殊的输入准备逻辑：
   - ✅ 如果提供仓库地址，系统自动执行 `git clone` 拉取仓库
   - ✅ 如果仓库中已有文档或代码，系统根据版本号创建新分支（如 `v2`, `v3`）
   - ✅ 所有生成的文档和代码自动提交到对应版本分支
-  - ✅ 支持版本分支管理（`v1`, `v2`, `v3`...）
+  - ✅ 支持版本分支管理（版本分支命名规则：`{alias}/{version}`，如 `my-project/v1.0`）
+  - ✅ 支持项目分支管理（项目分支命名规则：`project/{projectId}`）
+  - ✅ GitService提供完整的Git操作功能（克隆、拉取、分支创建、切换、提交、推送等11个方法）
 - **优先级**: P0
 
 **US-2.7.4 作为开发者，我想要项目文档和代码存储在Git仓库中**
@@ -1336,7 +1352,7 @@ llm:
 - ✅ OpenAI 集成
 
 ### 里程碑 M2: 稳定版本 (当前)
-- ✅ 完整角色系统（7个角色）
+- ✅ 完整角色系统（9个角色）
 - ✅ 角色定制能力（快速创建和部署自定义角色）
 - ✅ 角色独立调试能力（独立运行、测试、调试工具）
 - ✅ 工作流定制能力（可视化工作流设计器）

@@ -2,9 +2,9 @@
 
 **Slogan**: 让所思，即所得
 
-**文档版本**: v1.5  
+**文档版本**: v1.6  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-21（更新 QA 工作流、LLM 提供商架构、Actions 列表）
+**最后更新**: 2026-01-26（更新服务列表为10个Service，添加执行器说明，更新数据库Schema V2，添加Git服务说明）
 
 ---
 
@@ -822,70 +822,72 @@ class CostManager {
 
 ### 3.6 服务层 (Service Layer)
 
-#### 3.6.1 核心服务列表
+#### 3.6.1 核心服务列表（共10个服务）
 
-**WorkflowService** - 工作流配置和管理服务
-- 管理工作流配置（创建、更新、删除）
-- 获取默认工作流
-- 工作流配置验证
-- 位置: `backend/src/services/WorkflowService.ts`
+**1. WorkflowService** - 工作流配置和管理服务
+- **功能**: 管理工作流配置（创建、更新、删除）、获取默认工作流、工作流配置验证、应用工作流管理
+- **位置**: `backend/src/services/WorkflowService.ts`
+- **主要方法**: `getOrCreateDefaultWorkflow()`, `validateWorkflowConfig()`, `getWorkflows()`, `createWorkflow()`, `updateWorkflow()`
 
-**RAGService** - 检索增强生成服务
-- Qdrant向量数据库集成
-- 向量搜索和语义检索
-- Rerank结果重排序
-- 混合搜索（关键词+向量）
-- 自动文档索引
-- 位置: `backend/src/services/RAGService.ts`
+**2. RAGService** - 检索增强生成服务
+- **功能**: Qdrant向量数据库集成、向量搜索和语义检索、Rerank结果重排序、混合搜索（关键词+向量）、自动文档索引、知识库检索
+- **位置**: `backend/src/services/RAGService.ts`
+- **主要方法**: `search()`, `indexDocuments()`, `initialize()`
+- **依赖**: EmbeddingService, QdrantService, RerankService
 
-**EmbeddingService** - 向量嵌入生成服务
-- 支持多种embedding提供商（OpenAI, ZhipuAI, ARK）
-- 文本向量化
-- 批量处理
-- 位置: `backend/src/services/EmbeddingService.ts`
+**3. EmbeddingService** - 向量嵌入生成服务
+- **功能**: 支持多种embedding提供商（OpenAI, ZhipuAI, ARK）、文本向量化、批量处理
+- **位置**: `backend/src/services/EmbeddingService.ts`
+- **主要方法**: `generateEmbedding()`, `generateEmbeddings()`
 
-**QdrantService** - Qdrant向量数据库服务
-- 集合管理
-- 向量存储和检索
-- 批量操作
-- 位置: `backend/src/services/QdrantService.ts`
+**4. QdrantService** - Qdrant向量数据库服务
+- **功能**: 集合管理、向量存储和检索、批量操作
+- **位置**: `backend/src/services/QdrantService.ts`
+- **主要方法**: `upsert()`, `search()`, `delete()`, `createCollection()`
 
-**RerankService** - 结果重排序服务
-- 交叉编码器重排序
-- 提升检索结果相关性
-- 位置: `backend/src/services/RerankService.ts`
+**5. RerankService** - 结果重排序服务
+- **功能**: 交叉编码器重排序、提升检索结果相关性
+- **位置**: `backend/src/services/RerankService.ts`
+- **主要方法**: `rerank()`
 
-**RoleActionFactory** - 角色和Action工厂
-- 从数据库动态创建角色实例
-- 从数据库动态创建Action实例
-- 支持角色特定配置
-- 位置: `backend/src/services/RoleActionFactory.ts`
+**6. RoleActionService** - 角色Action管理服务
+- **功能**: 角色和Action元数据管理、角色Action关联查询、角色和Action定义查询
+- **位置**: `backend/src/services/RoleActionService.ts`
+- **主要方法**: `getRoles()`, `getActions()`, `getRolesAndActions()`
 
-**RoleActionService** - 角色Action管理服务
-- 角色和Action元数据管理
-- 角色Action关联查询
-- 位置: `backend/src/services/RoleActionService.ts`
+**7. SectionAdjustService** - 章节调整服务
+- **功能**: PRD/MRD章节调整、对话历史管理、Workspace集成
+- **位置**: `backend/src/services/SectionAdjustService.ts`
+- **主要方法**: `adjustSection()`, `getConversationHistory()`
 
-**SectionAdjustService** - 章节调整服务
-- PRD/MRD章节调整
-- 对话历史管理
-- Workspace集成
-- 位置: `backend/src/services/SectionAdjustService.ts`
+**8. StagehandService** - Stagehand集成服务
+- **功能**: Stagehand API集成、代码生成和执行、浏览器自动化操作
+- **位置**: `backend/src/services/StagehandService.ts`
+- **主要方法**: `execute()`, `screenshot()`
 
-**StagehandService** - Stagehand集成服务
-- Stagehand API集成
-- 代码生成和执行
-- 位置: `backend/src/services/StagehandService.ts`
+**9. DocumentArchiveService** - 文档归档服务
+- **功能**: 文档归档和版本管理、文档恢复
+- **位置**: `backend/src/services/DocumentArchiveService.ts`
+- **主要方法**: `archive()`, `restore()`
 
-**DocumentArchiveService** - 文档归档服务
-- 文档归档和版本管理
-- 位置: `backend/src/services/DocumentArchiveService.ts`
-
-**GitService** - Git仓库管理服务
-- Git仓库初始化
-- 版本分支管理
-- 提交和推送
-- 位置: `backend/src/services/GitService.ts`
+**10. GitService** - Git仓库管理服务
+- **功能**: Git仓库操作（克隆、拉取、分支管理、版本分支创建、提交、推送）
+- **位置**: `backend/src/services/GitService.ts`
+- **主要方法**: 
+  - `prepareRepository()` - 准备仓库（克隆或拉取）
+  - `cloneRepository()` - 克隆远程仓库
+  - `pullRepository()` - 拉取最新更改
+  - `createBranch()` - 创建版本分支
+  - `checkoutBranch()` - 切换分支
+  - `listBranches()` - 列出所有分支
+  - `deleteBranch()` - 删除分支
+  - `commitChanges()` - 提交更改
+  - `pushChanges()` - 推送更改
+  - `generateVersionBranchName()` - 生成版本分支名
+- **分支命名规则**: 
+  - 版本分支: `{alias}/{version}` (如: `my-project/v1.0`)
+  - 项目分支: `project/{projectId}`
+- **超时配置**: Git操作超时时间为5分钟（300000毫秒）
 
 #### 3.6.2 知识库系统 (Knowledge Base System)
 
@@ -1105,14 +1107,29 @@ class Terminal:
 
 **数据库类型**: PostgreSQL v14+
 
+**Schema版本**: Schema V2（统一简化的数据库结构）
+
 **设计原则**:
 - **可扩展性**: 支持水平扩展和分表
 - **性能优化**: 合理的索引和分区策略
 - **数据完整性**: 外键约束和数据验证
 - **审计追踪**: 记录创建和更新时间
 - **软删除**: 重要数据不物理删除
+- **统一配置**: LLM配置统一存储在`llm_configs`表中（系统默认和角色特定）
 
-### 4.2 核心表结构
+### 4.2 Schema V2 核心表结构（共18张表）
+
+**表分类**:
+1. **用户和应用**: users, applications
+2. **项目和版本**: projects, project_versions
+3. **角色和动作**: roles, actions, role_definitions, action_definitions
+4. **消息和文档**: messages, documents
+5. **工作流**: application_workflows, workflow_executions
+6. **配置**: llm_configs, role_llm_configs, prompt_configs
+7. **知识库**: knowledge_base, section_conversations
+8. **成本**: cost_records
+
+### 4.3 核心表结构
 
 #### 4.2.1 用户相关表
 
@@ -1168,18 +1185,48 @@ CREATE TABLE projects (
 );
 ```
 
-**teams (团队表)**:
+**projects (项目表 - Schema V2)**:
 ```sql
-CREATE TABLE teams (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+CREATE TABLE projects (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    investment DECIMAL(10, 2) DEFAULT 10.0,
-    status VARCHAR(50) DEFAULT 'idle',
-    config JSONB DEFAULT '{}',
-    state JSONB DEFAULT '{}',  -- 序列化的团队状态
+    application_id UUID REFERENCES applications(id) ON DELETE SET NULL,
+    name VARCHAR(200) NOT NULL,
+    idea TEXT NOT NULL,
+    description TEXT,
+    workspace_path VARCHAR(500),
+    git_repo_url VARCHAR(500),
+    status VARCHAR(20) DEFAULT 'pending',
+    progress INT DEFAULT 0,
+    budget DECIMAL(10,2) DEFAULT 10.0,
+    total_cost DECIMAL(10,2) DEFAULT 0.0,
+    team_status VARCHAR(20) DEFAULT 'idle',
+    team_config JSONB DEFAULT '{}',
+    team_state JSONB DEFAULT '{}',
+    metadata JSONB DEFAULT '{}',
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP DEFAULT NOW(),
+    deleted_at TIMESTAMP
+);
+```
+
+**project_versions (项目版本表)**:
+```sql
+CREATE TABLE project_versions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    idea TEXT,
+    branch_name VARCHAR(255),
+    workspace_path VARCHAR(500),
+    is_active BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    deleted_at TIMESTAMP,
+    UNIQUE(project_id, name)
 );
 ```
 

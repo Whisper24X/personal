@@ -2,58 +2,171 @@
 
 **Slogan**: 让所思，即所得
 
-**文档版本**: v1.5  
+**文档版本**: v1.6  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-23（移除外层超时机制，超时由各个 Action 自行处理）
+**最后更新**: 2026-01-26（补充Git仓库管理流程，更新默认工作流配置，验证角色顺序和Actions列表）
 
 ## 1. 项目初始化与Git管理流程
 
-### 1.1 Git仓库初始化流程
+### 1.1 GitService 功能概述
 
-系统使用Git来管理每个项目，所有文档（MRD、PRD、系统设计文档等）和代码都存储在Git仓库中。
+系统通过 `GitService` 提供完整的Git仓库管理功能，支持项目创建、版本管理和分支操作。
 
-**初始化流程**:
+**GitService 主要方法**（共11个）:
+
+1. **prepareRepository()** - 准备仓库（克隆或拉取）
+   - 如果目录不存在或不是Git仓库：克隆远程仓库
+   - 如果目录存在且是Git仓库：切换到main/master分支并拉取最新更改
+
+2. **cloneRepository()** - 克隆远程仓库
+   - 支持SSH和HTTPS协议
+   - 超时时间：5分钟（300000毫秒）
+
+3. **pullRepository()** - 拉取最新更改
+   - 自动检测main或master分支
+   - 先fetch再pull，确保获取最新状态
+
+4. **createProjectBranch()** - 创建项目分支
+   - 分支命名规则：`project/{projectId}`
+   - 自动处理本地和远程分支的创建
+
+5. **createBranch()** - 创建版本分支
+   - 分支命名规则：`{alias}/{version}`（如：`my-project/v1.0`）
+   - 支持从当前HEAD创建或从远程分支创建
+
+6. **checkoutBranch()** - 切换分支
+   - 自动处理本地和远程分支的切换
+   - 如果本地不存在，自动从远程创建跟踪分支
+
+7. **listBranches()** - 列出所有分支
+   - 返回本地分支、远程分支和当前分支
+
+8. **deleteBranch()** - 删除分支
+   - 支持删除本地分支和远程分支
+   - 不能删除当前正在使用的分支
+
+9. **commitChanges()** - 提交更改
+   - 自动添加所有更改
+   - 检查是否有更改再提交
+
+10. **pushChanges()** - 推送更改
+    - 推送到远程仓库
+    - 支持设置上游分支
+
+11. **generateVersionBranchName()** - 生成版本分支名
+    - 格式：`{alias}/{version}`
+    - 自动转换为Git兼容的分支名格式
+
+### 1.2 项目创建时的Git初始化流程
+
+**流程说明**:
 ```
-用户提供项目需求
+用户创建项目（提供gitRepositoryUrl）
   ↓
-检查是否提供Git仓库地址
+GitService.prepareRepository()
   ↓
-├─ 是 → 执行 git clone <repository_url>
-│        ↓
-│      检查仓库中是否已有文档或代码
-│        ↓
-│      ├─ 有 → 根据版本号创建新分支（v2, v3...）
-│      └─ 无 → 在 main 分支开始工作
+├─ 目录不存在或不是Git仓库
+│   → GitService.cloneRepository()
+│   → 克隆远程仓库到workspace路径
 │
-└─ 否 → 创建新的Git仓库
-         ↓
-       初始化仓库（git init）
-         ↓
-       创建初始提交
+└─ 目录存在且是Git仓库
+    → GitService.pullRepository()
+    → 切换到main/master分支
+    → 拉取最新更改
+  ↓
+项目创建完成，Git仓库准备就绪
 ```
 
-**版本分支管理**:
-- 每个版本对应一个Git分支：`v1`, `v2`, `v3`...
-- 主分支（`main`）存储最新稳定版本
-- 如果检测到已有文档或代码，自动创建新版本分支
-- 所有文档和代码提交到对应版本分支
+**代码位置**: `backend/src/api/controllers/ProjectController.ts` - `create()` 方法
 
-**Git操作示例**:
-```bash
-# 初始化项目时
-git clone https://github.com/user/project.git
-cd project
+### 1.3 版本创建时的分支管理流程
 
-# 检查是否存在已有版本
-git branch -a | grep "v[0-9]"
+**流程说明**:
+```
+用户创建项目版本
+  ↓
+检查项目是否关联Git仓库
+  ↓
+├─ 是 → GitService.prepareRepository()
+│        → 克隆或拉取仓库
+│        ↓
+│       GitService.generateVersionBranchName()
+│        → 生成分支名：{alias}/{version}
+│        ↓
+│       GitService.createBranch()
+│        → 创建版本分支并checkout
+│        ↓
+│       版本分支准备就绪
+│
+└─ 否 → 使用模板工作区
+         → 创建版本工作区
+```
 
-# 如果存在v1分支，创建v2分支
-git checkout -b v2
+**版本分支命名规则**:
+- 格式：`{projectAlias}/{versionName}`
+- 示例：`my-todo-app/v1.0`, `blog-platform/v2.1`
+- 项目别名（name_alias）必须是英文，用于Git分支兼容性
 
-# 生成文档和代码后，提交到版本分支
-git add .
-git commit -m "feat: 生成v2版本文档和代码"
-git push origin v2
+**代码位置**: `backend/src/api/controllers/ProjectVersionController.ts` - `create()` 方法
+
+### 1.4 工作流执行时的Git操作
+
+**当前实现**:
+- 工作流执行时，所有文档和代码保存到workspace
+- Git提交和推送操作由用户手动执行（未来可扩展为自动提交）
+
+**未来扩展**:
+- 每个角色完成Action后自动提交
+- 工作流完成后自动推送到远程仓库
+- 支持配置自动提交消息模板
+
+### 1.5 Git操作与工作流执行的集成点
+
+**集成位置**:
+
+1. **项目创建时** (`ProjectController.create()`):
+   - 如果提供 `gitRepositoryUrl`，调用 `GitService.prepareRepository()`
+
+2. **版本创建时** (`ProjectVersionController.create()`):
+   - 如果项目关联Git仓库，调用 `GitService.createBranch()` 创建版本分支
+
+3. **版本激活时** (`ProjectVersionController.activate()`):
+   - 如果项目关联Git仓库，调用 `GitService.checkoutBranch()` 切换到版本分支
+
+4. **获取分支列表** (`ProjectVersionController.getBranches()`):
+   - 调用 `GitService.listBranches()` 获取所有分支信息
+
+### 1.6 Git操作错误处理和回退机制
+
+**错误处理**:
+- Git操作失败时，记录错误日志但不中断项目创建
+- 如果Git操作失败，回退到使用模板工作区
+- 提供友好的错误提示信息
+
+**超时配置**:
+- Git操作超时时间：5分钟（300000毫秒）
+- 分支操作超时时间：30秒（30000毫秒）
+- 可通过环境变量配置（未来扩展）
+
+### 1.7 项目文档和代码存储结构
+
+所有项目内容存储在Git仓库中，目录结构如下：
+
+```
+project-repo/
+├── MRD/                    # 需求说明文档
+│   └── MRD.md
+├── PRD/                    # 产品需求文档
+│   └── PRD.md
+├── DESIGN/                 # 系统设计文档
+│   └── DESIGN.md
+├── CODE/                   # 源代码
+│   ├── src/
+│   ├── package.json
+│   └── ...
+├── TEST/                   # 测试代码
+│   └── tests/
+└── README.md               # 项目说明
 ```
 
 ### 1.2 项目文档和代码存储结构
@@ -81,7 +194,7 @@ project-repo/
 
 ### 2.1 默认工作流配置
 
-系统默认工作流配置（定义在 `WorkflowService.getDefaultWorkflowConfig()`）：
+系统默认工作流配置（定义在 `backend/src/services/defaultWorkflowConfig.ts`）：
 
 ```
 用户需求
@@ -96,27 +209,45 @@ ProductManager (Order: 1)
   ├─ PRDReview → 审查PRD
   └─ ImprovePRD → 改进PRD
   ↓
-Architect (Order: 2)
-  ├─ WriteDesign → 保存到 DESIGN/ 目录
-  ├─ DesignReview → 审查设计
-  └─ ImproveDesign → 改进设计
-  ↓
-ProjectManager (Order: 3)
-  └─ BreakdownTasks → 保存到 TASKS/ 目录
-  ↓
-Engineer (Order: 4)
-  └─ WriteCode → 保存到 CODE/ 目录
-  ↓
-QAEngineer (Order: 5)
-  ├─ TestabilityReview → 可测性审查
+QAEngineer (Order: 2)
   ├─ WriteTestPlan → 测试计划
   ├─ WriteTest → 测试用例
   └─ TestCaseReview → 用例评审
   ↓
-提交到Git仓库（git commit + git push）
+Architect (Order: 3)
+  ├─ WriteDesign → 保存到 DESIGN/ 目录
+  ├─ DesignReview → 审查设计
+  └─ ImproveDesign → 改进设计
+  ↓
+ProjectManager (Order: 4)
+  └─ BreakdownTasks → 保存到 TASKS/ 目录
+  ↓
+Engineer (Order: 5)
+  └─ WriteCode → 保存到 CODE/ 目录
+  ↓
+AutomationEngineer (Order: 6)
+  ├─ AutomationPlanning → 自动化测试规划
+  ├─ AutomationExecution → 自动化测试执行
+  ├─ CoverageQualityCheck → 覆盖率与质量检查
+  └─ QAConclusion → QA结论
+  ↓
+工作流完成
+  ↓
+（可选）提交到Git仓库（git commit + git push）
   ↓
 输出项目（Git仓库地址和版本分支）
 ```
+
+**角色顺序说明**:
+- **Order 0**: Salesperson - 需求收集和市场调研
+- **Order 1**: ProductManager - 产品需求文档
+- **Order 2**: QAEngineer - 测试计划（与Architect并行，但先执行）
+- **Order 3**: Architect - 系统设计
+- **Order 4**: ProjectManager - 任务拆分
+- **Order 5**: Engineer - 代码实现
+- **Order 6**: AutomationEngineer - 自动化测试和QA结论
+
+**注意**: QAEngineer在Architect之前执行，这样可以提前进行可测性审查。
 
 ### 2.2 工作流配置结构
 
@@ -161,9 +292,9 @@ Step 4: TestCaseReview（用例评审与补充）
   ↓ 输出: TEST_CASES_REVIEWED.md
 ```
 
-### AutomationEngineer 工作流（3步自动化测试流程）
+### AutomationEngineer 工作流（4步自动化测试流程）
 
-AutomationEngineer 角色实现了自动化测试工作流，包含 3 个 Actions：
+AutomationEngineer 角色实现了自动化测试工作流，包含 4 个 Actions：
 
 ```
 测试用例（来自QAEngineer）
@@ -174,13 +305,12 @@ Step 2: AutomationExecution（自动化测试执行）
   ↓ 输出: tests/automated_tests.md
 Step 3: CoverageQualityCheck（覆盖率与质量检查）
   ↓ 输出: COVERAGE_REPORT.md, QUALITY_CHECK.md
-  ↓
-QAConclusion（QAEngineer执行，综合所有结果）
+Step 4: QAConclusion（QA结论）
   ↓ 输出: QA_CONCLUSION.md
 最终结论: 通过(pass) / 阻断(block) / 需修改(needs_modification)
 ```
 
-**注意**: QAConclusion 由 QAEngineer 执行，需要等待 AutomationEngineer 完成 CoverageQualityCheck。
+**注意**: QAConclusion 由 AutomationEngineer 执行，综合所有测试结果和覆盖率报告给出最终QA结论。
 
 ### QA 工作流详解
 

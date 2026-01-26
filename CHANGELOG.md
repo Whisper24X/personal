@@ -5,7 +5,7 @@ All notable changes to Mind2Build will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.5.0] - 2026-01-26
 
 ### Added ✨
 
@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SectionAdjustService** - PRD/MRD section adjustment with conversation history
 - **StagehandService** - Stagehand integration service
 - **DocumentArchiveService** - Document archiving service
-- **GitService** - Git repository management service
+- **GitService** - Git repository management service with branch management and version control
 
 #### Executors
 - **LLMExecutor** - LLM-based action execution
@@ -42,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Knowledge Upload API** - File upload for knowledge base
 - **Configuration API** - LLM, Role LLM, and Prompt configuration management
 - **Role Action Management API** - Role and action metadata management
+- **Project Version API** - Version management with Git branch integration
 
 #### Database Schema V2
 - **Unified LLM Configs** - Single table for all LLM configurations (provider and role-specific)
@@ -49,6 +50,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Workflow Executions** - Workflow execution state management
 - **Knowledge Base Table** - Database-backed knowledge base
 - **Section Conversations** - Conversation history for section adjustments
+- **Project Versions** - Version management with Git branch tracking
+
+#### Git Repository Management
+- **GitService Integration** - Complete Git repository operations for project workspaces
+- **Version Branch Management** - Automatic branch creation for project versions (format: `{alias}/{version}`)
+- **Project Branch Management** - Project-specific branch creation (format: `project/{projectId}`)
+- **Repository Preparation** - Automatic clone or pull operations for existing repositories
+- **Branch Operations** - Create, checkout, list, and delete branch operations
+- **Git Workflow Integration** - Seamless integration with workflow execution
 
 ### Changed
 
@@ -56,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **State Management** - Unified state management through StateManager
 - **Workflow Execution** - New workflow execution engine with state persistence
 - **Frontend Architecture** - Reorganized views by business domain (businessLine, platform, knowledge, config)
+- **Git Integration** - Projects now support Git repository association and version branch management
 
 ### Technical Details
 
@@ -64,6 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Multiple LLM Providers**: OpenAI, ZhipuAI, Ark (Doubao), DeepSeek, Cursor Agent
 - **Vector Search**: Qdrant integration with embedding and rerank support
 - **Workflow Engine**: Stateful workflow execution with recovery and rollback support
+- **Git Operations**: 11 Git service methods for complete repository management
 
 ## [1.4.0] - 2026-01-15
 

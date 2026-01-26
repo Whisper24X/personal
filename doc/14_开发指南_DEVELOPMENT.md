@@ -1,8 +1,8 @@
 # mind2build 开发指南
 
-**文档版本**: v1.2  
+**文档版本**: v1.3  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-22（添加扩展开发章节）
+**最后更新**: 2026-01-26（更新Actions数量为30个）
 
 ## 1. 开发环境搭建
 
@@ -141,7 +141,7 @@ describe('Role', () => {
 testflow/
 ├── backend/              # 后端服务（Node.js/TypeScript）
 │   ├── src/
-│   │   ├── actions/      # 行动实现（31个Actions）
+│   │   ├── actions/      # 行动实现（30个Actions）
 │   │   ├── roles/        # 角色实现
 │   │   ├── providers/    # LLM 提供商
 │   │   ├── core/         # 核心基础设施

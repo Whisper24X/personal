@@ -1,8 +1,8 @@
 # mind2build API 参考文档
 
-**文档版本**: v1.3  
+**文档版本**: v1.4  
 **创建日期**: 2025-12-24
-**最后更新**: 2026-01-21（添加 Role Action Execution API，更新为 TypeScript API 参考）
+**最后更新**: 2026-01-26（添加 MRD 管理 API、项目版本管理 API、Git 分支管理 API，更新所有控制器端点）
 
 ---
 
@@ -355,6 +355,303 @@
 **POST** `/api/projects/:id/sections/:sectionNumber/adjust`
 
 从工作区直接调整PRD章节。
+
+**请求体**:
+```json
+{
+  "instruction": "调整指令"
+}
+```
+
+#### 改进 PRD
+
+**POST** `/api/projects/:id/prds/:prdId/improve`
+
+根据审查报告改进PRD文档。
+
+**请求体**:
+```json
+{
+  "reviewContent": "审查报告内容"
+}
+```
+
+### 1.4.1 MRD 管理 API
+
+#### 生成 MRD
+
+**POST** `/api/projects/:id/mrd`
+
+为项目生成MRD（市场需求文档）文档。
+
+**请求体**:
+```json
+{
+  "requirement": "需求描述"
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "mrd": {
+    "id": "MRD UUID",
+    "content": "MRD文档内容",
+    "createdAt": "2025-12-25T00:00:00Z"
+  }
+}
+```
+
+#### 获取 MRD 列表
+
+**GET** `/api/projects/:id/mrds`
+
+获取项目的所有MRD版本。
+
+**响应**:
+```json
+{
+  "success": true,
+  "mrds": [
+    {
+      "id": "MRD UUID",
+      "version": 1,
+      "createdAt": "2025-12-25T00:00:00Z"
+    }
+  ]
+}
+```
+
+#### 获取特定 MRD
+
+**GET** `/api/projects/:id/mrds/:mrdId`
+
+获取特定版本的MRD内容。
+
+**响应**:
+```json
+{
+  "success": true,
+  "mrd": {
+    "id": "MRD UUID",
+    "content": "MRD文档内容",
+    "version": 1,
+    "createdAt": "2025-12-25T00:00:00Z"
+  }
+}
+```
+
+#### 调整 MRD 章节
+
+**POST** `/api/projects/:id/mrds/:mrdId/adjust-section`
+
+调整MRD的特定章节。
+
+**请求体**:
+```json
+{
+  "sectionNumber": 1,
+  "instruction": "调整指令"
+}
+```
+
+#### 审查 MRD
+
+**POST** `/api/projects/:id/mrds/:mrdId/review`
+
+审查MRD文档。
+
+**响应**:
+```json
+{
+  "success": true,
+  "review": {
+    "content": "审查报告内容",
+    "createdAt": "2025-12-25T00:00:00Z"
+  }
+}
+```
+
+#### 改进 MRD
+
+**POST** `/api/projects/:id/mrds/:mrdId/improve`
+
+根据审查报告改进MRD文档。
+
+**请求体**:
+```json
+{
+  "reviewContent": "审查报告内容"
+}
+```
+
+### 1.3.1 项目版本管理 API
+
+#### 创建项目版本
+
+**POST** `/api/projects/:id/versions`
+
+为项目创建新版本。如果项目关联了Git仓库，会自动创建版本分支。
+
+**请求体**:
+```json
+{
+  "name": "v1.0",
+  "description": "初始版本",
+  "idea": "版本需求描述（可选）"
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "version": {
+    "id": "版本UUID",
+    "name": "v1.0",
+    "description": "初始版本",
+    "branchName": "my-project/v1.0",
+    "isActive": false,
+    "createdAt": "2025-12-25T00:00:00Z"
+  }
+}
+```
+
+**Git分支说明**:
+- 如果项目关联了Git仓库，系统会自动创建版本分支
+- 分支命名规则：`{projectAlias}/{versionName}`（如：`my-project/v1.0`）
+- 分支创建后会自动checkout到该分支
+
+#### 获取项目版本列表
+
+**GET** `/api/projects/:id/versions`
+
+获取项目的所有版本列表。
+
+**响应**:
+```json
+{
+  "success": true,
+  "versions": [
+    {
+      "id": "版本UUID",
+      "name": "v1.0",
+      "description": "初始版本",
+      "branchName": "my-project/v1.0",
+      "isActive": true,
+      "createdAt": "2025-12-25T00:00:00Z"
+    }
+  ]
+}
+```
+
+#### 获取活跃版本
+
+**GET** `/api/projects/:id/versions/active`
+
+获取项目的当前活跃版本。
+
+**响应**:
+```json
+{
+  "success": true,
+  "version": {
+    "id": "版本UUID",
+    "name": "v1.0",
+    "isActive": true
+  }
+}
+```
+
+#### 获取版本详情
+
+**GET** `/api/projects/:id/versions/:versionId`
+
+获取特定版本的详细信息。
+
+**响应**:
+```json
+{
+  "success": true,
+  "version": {
+    "id": "版本UUID",
+    "name": "v1.0",
+    "description": "初始版本",
+    "idea": "版本需求描述",
+    "branchName": "my-project/v1.0",
+    "isActive": true,
+    "workspacePath": "/path/to/workspace",
+    "createdAt": "2025-12-25T00:00:00Z",
+    "updatedAt": "2025-12-25T00:00:00Z"
+  }
+}
+```
+
+#### 更新版本
+
+**PUT** `/api/projects/:id/versions/:versionId`
+
+更新版本信息。
+
+**请求体**:
+```json
+{
+  "name": "v1.1",
+  "description": "更新后的描述"
+}
+```
+
+#### 删除版本
+
+**DELETE** `/api/projects/:id/versions/:versionId`
+
+删除项目版本（软删除）。
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Version deleted successfully"
+}
+```
+
+#### 激活版本
+
+**POST** `/api/projects/:id/versions/:versionId/activate`
+
+激活指定版本。如果项目关联了Git仓库，会自动checkout到对应的分支。
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Version activated successfully",
+  "version": {
+    "id": "版本UUID",
+    "name": "v1.0",
+    "isActive": true
+  }
+}
+```
+
+#### 获取Git分支列表
+
+**GET** `/api/projects/:id/branches`
+
+获取项目Git仓库的所有分支列表（仅当项目关联了Git仓库时可用）。
+
+**响应**:
+```json
+{
+  "success": true,
+  "branches": {
+    "local": ["main", "my-project/v1.0", "my-project/v2.0"],
+    "remote": ["main", "my-project/v1.0"],
+    "current": "my-project/v1.0"
+  }
+}
+```
 
 ### 1.5 应用管理 API
 
@@ -1563,7 +1860,8 @@ ws.on('error', (error) => {
 | Architect | WriteDesign, DesignReview, ImproveDesign |
 | ProjectManager | BreakdownTasks, WriteSubProjectDesign, SubProjectDesignReview |
 | Engineer | WriteCode, ExecuteSubtask, RunCode, FixBug |
-| QAEngineer | TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion |
+| QAEngineer | WriteTestPlan, WriteTest, TestCaseReview |
+| AutomationEngineer | AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion |
 | TeamLeader | Coordinate |
 | DataAnalyst | DataAnalysis |
 
