@@ -378,25 +378,8 @@ export class ProjectController {
    */
   private static findProjectInWorkspace(projectId: string): { name?: string; idea?: string; applicationId?: string; createdAt?: Date } | null {
     try {
-      // Calculate workspace root
-      const possibleRoots = [
-        path.resolve(__dirname, '../../../'),
-        path.resolve(__dirname, '../../../../'),
-        process.cwd(),
-      ];
-
-      let projectRoot = possibleRoots[0];
-      for (const root of possibleRoots) {
-        if (
-          fs.existsSync(path.join(root, 'pnpm-workspace.yaml')) ||
-          fs.existsSync(path.join(root, 'package.json'))
-        ) {
-          projectRoot = root;
-          break;
-        }
-      }
-
-      const workspaceRoot = process.env.WORKSPACE_PATH || path.join(projectRoot, 'workspace');
+      // 统一使用 WorkspaceManager 获取 workspace 根目录（绝对路径）
+      const workspaceRoot = WorkspaceManager.getWorkspaceRoot();
 
       if (!fs.existsSync(workspaceRoot)) {
         return null;

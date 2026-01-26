@@ -57,10 +57,18 @@ export class WorkspaceManager {
   }
 
   /**
-   * 获取 workspace 根目录
+   * 获取 workspace 根目录（绝对路径）
+   * 统一的 workspace 根目录获取方法，所有需要获取 workspace 路径的地方都应该调用此方法
+   * 始终返回绝对路径，避免 CLI 执行时路径解析错误
    */
-  private static getWorkspaceRoot(): string {
-    return process.env.WORKSPACE_PATH || path.join(this.getProjectRoot(), 'workspace');
+  static getWorkspaceRoot(): string {
+    const workspacePath = process.env.WORKSPACE_PATH;
+    if (workspacePath) {
+      // 如果设置了 WORKSPACE_PATH，使用 path.resolve 确保是绝对路径
+      // 相对路径会相对于项目根目录解析
+      return path.resolve(this.getProjectRoot(), workspacePath);
+    }
+    return path.join(this.getProjectRoot(), 'workspace');
   }
 
   // ============================================
