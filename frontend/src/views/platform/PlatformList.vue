@@ -36,17 +36,55 @@
           :action-handler="() => showCreateDialog = true"
         />
 
-        <div v-else class="platforms-grid">
-          <PlatformCard
-            v-for="platform in platforms"
-            :key="platform.id"
-            :platform="platform"
-            @view="goToVersions"
-            @knowledge="goToKnowledgeBase"
-            @edit="openEditDialog"
-            @delete="handleDelete"
-          />
-        </div>
+        <el-table
+          v-else
+          :data="platforms"
+          stripe
+          style="width: 100%"
+        >
+          <el-table-column prop="name" label="名称" min-width="200">
+            <template #default="{ row }">
+              <el-icon style="margin-right: 8px; vertical-align: middle;">
+                <Monitor />
+              </el-icon>
+              <span>{{ row.name }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" label="状态" width="120">
+            <template #default="{ row }">
+              <el-tag :type="getStatusType(row.status)" size="small">
+                {{ getStatusText(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="createdAt" label="创建时间" width="180">
+            <template #default="{ row }">
+              {{ formatDate(row.createdAt || row.created_at) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" min-width="300" fixed="right">
+            <template #default="{ row }">
+              <div class="action-buttons">
+                <el-button type="primary" size="small" @click="goToVersions(row.id)">
+                  <el-icon><Collection /></el-icon>
+                  版本管理
+                </el-button>
+                <el-button size="small" @click="goToKnowledgeBase(row.id)">
+                  <el-icon><Document /></el-icon>
+                  知识库
+                </el-button>
+                <el-button size="small" @click="openEditDialog(row.id)">
+                  <el-icon><Edit /></el-icon>
+                  编辑
+                </el-button>
+                <el-button type="danger" plain size="small" @click="handleDelete(row.id)">
+                  <el-icon><Delete /></el-icon>
+                  删除
+                </el-button>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
       </el-card>
     </div>
 
@@ -76,10 +114,9 @@ import { apiClient } from '../../api/client';
 import PageHeader from '../../components/common/PageHeader.vue';
 import CardHeader from '../../components/common/CardHeader.vue';
 import EmptyState from '../../components/common/EmptyState.vue';
-import PlatformCard from './components/PlatformCard.vue';
 import PlatformCreateDialog from './components/PlatformCreateDialog.vue';
 import PlatformEditDialog from './components/PlatformEditDialog.vue';
-import { Plus, Setting } from '@element-plus/icons-vue';
+import { Plus, Setting, Monitor, Collection, Document, Edit, Delete } from '@element-plus/icons-vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -168,6 +205,40 @@ function goToKnowledgeBase(id: string) {
   router.push(`/platform/${id}/knowledge-base`);
 }
 
+function getStatusType(status?: string): string {
+  switch (status) {
+    case 'completed':
+      return 'success';
+    case 'running':
+      return 'warning';
+    case 'failed':
+      return 'danger';
+    default:
+      return 'info';
+  }
+}
+
+function getStatusText(status?: string): string {
+  switch (status) {
+    case 'completed':
+      return '已完成';
+    case 'running':
+      return '进行中';
+    case 'failed':
+      return '失败';
+    case 'pending':
+      return '待执行';
+    default:
+      return '未知';
+  }
+}
+
+function formatDate(dateStr?: string): string {
+  if (!dateStr) return '-';
+  const date = new Date(dateStr);
+  return date.toLocaleString('zh-CN');
+}
+
 function goToWorkflowManagement() {
   router.push(`/business-line/${businessLineId.value}/workflows`);
 }
@@ -208,9 +279,9 @@ async function handleDelete(id: string) {
   margin-bottom: 24px;
 }
 
-.platforms-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 </style>
