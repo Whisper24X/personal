@@ -18,7 +18,6 @@ export interface SectionConversation {
   document_id?: string;
   section_number: number;
   document_type: string;
-  application_id?: string;
   version: number;
   messages: ConversationMessage[];
   created_at: Date;
@@ -34,7 +33,6 @@ export class SectionConversationRepository {
     sectionNumber: number;
     documentType: 'PRD' | 'MRD' | 'DESIGN';
     documentId?: string;
-    applicationId?: string;
     version?: number;
   }): Promise<SectionConversation> {
     try {
@@ -56,15 +54,14 @@ export class SectionConversationRepository {
       const result = await query<SectionConversation>(
         `INSERT INTO section_conversations (
           project_id, document_id, section_number, document_type, 
-          application_id, version, messages
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+          version, messages
+        ) VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING *`,
         [
           data.projectId,
           data.documentId || null,
           data.sectionNumber,
           data.documentType,
-          data.applicationId || null,
           version,
           JSON.stringify([]),
         ]

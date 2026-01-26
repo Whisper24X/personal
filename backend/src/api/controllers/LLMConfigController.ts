@@ -7,13 +7,12 @@
  */
 
 import { Request, Response } from 'express';
-import { LLMConfigRepository, LLMModelRepository } from '../../database';
+import { LLMConfigRepository } from '../../database';
 import { logger } from '../../utils';
 import { llmManager } from '../../providers/llm/LLMManager';
 import { LLMProvider } from '@mind2build/shared';
 
 const llmConfigRepo = new LLMConfigRepository();
-const llmModelRepo = new LLMModelRepository();
 const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 export class LLMConfigController {
@@ -519,39 +518,15 @@ export class LLMConfigController {
   /**
    * Get all LLM models grouped by provider
    * GET /api/config/llm/models
+   * Returns distinct models from user configurations
    */
   static async listModels(_req: Request, res: Response) {
     try {
-      const modelsGrouped = await llmModelRepo.findAllGrouped();
-
-      // Transform to match frontend expected format
-      const formatted: Record<string, Array<{
-        id: string;
-        provider: string;
-        modelName: string;
-        displayName: string | null;
-        isDefault: boolean;
-        sortOrder: number;
-        createdAt: Date;
-        updatedAt: Date;
-      }>> = {};
-
-      for (const [provider, models] of Object.entries(modelsGrouped)) {
-        formatted[provider] = models.map((model) => ({
-          id: model.id,
-          provider: model.provider,
-          modelName: model.model_name,
-          displayName: model.display_name,
-          isDefault: model.is_default,
-          sortOrder: model.sort_order,
-          createdAt: model.created_at,
-          updatedAt: model.updated_at,
-        }));
-      }
+      const modelsGrouped = await llmConfigRepo.getModelsGroupedByProvider();
 
       return res.json({
         success: true,
-        models: formatted,
+        models: modelsGrouped,
       });
     } catch (error: any) {
       logger.error('LLMConfigController: Failed to list models:', error);
@@ -565,6 +540,7 @@ export class LLMConfigController {
   /**
    * Get LLM models by provider
    * GET /api/config/llm/models/:provider
+   * Returns distinct models for a specific provider from user configurations
    */
   static async listModelsByProvider(req: Request, res: Response) {
     try {
@@ -576,230 +552,16 @@ export class LLMConfigController {
         });
       }
 
-      const models = await llmModelRepo.findByProvider(provider);
+      const models = await llmConfigRepo.getModelsByProvider(provider);
 
       return res.json({
         success: true,
-        models: models.map((model) => ({
-          id: model.id,
-          provider: model.provider,
-          modelName: model.model_name,
-          displayName: model.display_name,
-          isDefault: model.is_default,
-          sortOrder: model.sort_order,
-          createdAt: model.created_at,
-          updatedAt: model.updated_at,
-        })),
+        models,
       });
     } catch (error: any) {
       logger.error('LLMConfigController: Failed to list models by provider:', error);
       return res.status(500).json({
         error: 'Failed to list LLM models by provider',
-        message: error.message,
-      });
-    }
-  }
-
-  /**
-   * Create a new LLM model
-   * POST /api/config/llm/models
-   */
-  static async createModel(req: Request, res: Response) {
-    try {
-      const { provider, modelName, displayName, isDefault, sortOrder } = req.body;
-
-      if (!provider || !modelName) {
-        return res.status(400).json({
-          error: 'Missing required fields: provider and modelName',
-        });
-      }
-
-      // Validate provider
-      const validProviders = ['openai', 'anthropic', 'gemini', 'zhipuai', 'qianfan', 'dashscope', 'ollama', 'ark', 'cursor', 'deepseek'];
-      if (!validProviders.includes(provider)) {
-        return res.status(400).json({
-          error: 'Invalid provider',
-        });
-      }
-
-      const model = await llmModelRepo.create({
-        provider,
-        modelName,
-        displayName,
-        isDefault: isDefault !== undefined ? Boolean(isDefault) : undefined,
-        sortOrder: sortOrder !== undefined ? parseInt(sortOrder, 10) : undefined,
-      });
-
-      logger.info('LLMConfigController: Model created', {
-        provider,
-        modelName,
-        id: model.id,
-      });
-
-      return res.json({
-        success: true,
-        model: {
-          id: model.id,
-          provider: model.provider,
-          modelName: model.model_name,
-          displayName: model.display_name,
-          isDefault: model.is_default,
-          sortOrder: model.sort_order,
-          createdAt: model.created_at,
-          updatedAt: model.updated_at,
-        },
-      });
-    } catch (error: any) {
-      logger.error('LLMConfigController: Failed to create model:', error);
-      
-      // Handle unique constraint violation
-      if (error.code === '23505') {
-        return res.status(409).json({
-          error: 'Model already exists',
-          message: `Model ${req.body.modelName} already exists for provider ${req.body.provider}`,
-        });
-      }
-
-      return res.status(500).json({
-        error: 'Failed to create LLM model',
-        message: error.message,
-      });
-    }
-  }
-
-  /**
-   * Update an LLM model
-   * PUT /api/config/llm/models/:id
-   */
-  static async updateModel(req: Request, res: Response) {
-    try {
-      const { id } = req.params;
-      const { displayName, isDefault, sortOrder } = req.body;
-
-      if (!id) {
-        return res.status(400).json({
-          error: 'Model ID is required',
-        });
-      }
-
-      const model = await llmModelRepo.update(id, {
-        displayName,
-        isDefault: isDefault !== undefined ? Boolean(isDefault) : undefined,
-        sortOrder: sortOrder !== undefined ? parseInt(sortOrder, 10) : undefined,
-      });
-
-      logger.info('LLMConfigController: Model updated', {
-        id,
-        provider: model.provider,
-        modelName: model.model_name,
-      });
-
-      return res.json({
-        success: true,
-        model: {
-          id: model.id,
-          provider: model.provider,
-          modelName: model.model_name,
-          displayName: model.display_name,
-          isDefault: model.is_default,
-          sortOrder: model.sort_order,
-          createdAt: model.created_at,
-          updatedAt: model.updated_at,
-        },
-      });
-    } catch (error: any) {
-      logger.error('LLMConfigController: Failed to update model:', error);
-      
-      if (error.message === 'LLM model not found') {
-        return res.status(404).json({
-          error: 'Model not found',
-          message: error.message,
-        });
-      }
-
-      return res.status(500).json({
-        error: 'Failed to update LLM model',
-        message: error.message,
-      });
-    }
-  }
-
-  /**
-   * Update sort order for multiple models
-   * PUT /api/config/llm/models/sort
-   */
-  static async updateModelSortOrder(req: Request, res: Response) {
-    try {
-      const { updates } = req.body;
-
-      if (!Array.isArray(updates) || updates.length === 0) {
-        return res.status(400).json({
-          error: 'Updates array is required and must not be empty',
-        });
-      }
-
-      // Validate updates format
-      for (const update of updates) {
-        if (!update.id || typeof update.sortOrder !== 'number') {
-          return res.status(400).json({
-            error: 'Each update must have id and sortOrder (number)',
-          });
-        }
-      }
-
-      await llmModelRepo.updateSortOrder(updates);
-
-      logger.info('LLMConfigController: Model sort order updated', {
-        count: updates.length,
-      });
-
-      return res.json({
-        success: true,
-        message: 'Sort order updated successfully',
-      });
-    } catch (error: any) {
-      logger.error('LLMConfigController: Failed to update sort order:', error);
-      return res.status(500).json({
-        error: 'Failed to update sort order',
-        message: error.message,
-      });
-    }
-  }
-
-  /**
-   * Delete an LLM model
-   * DELETE /api/config/llm/models/:id
-   */
-  static async deleteModel(req: Request, res: Response) {
-    try {
-      const { id } = req.params;
-
-      if (!id) {
-        return res.status(400).json({
-          error: 'Model ID is required',
-        });
-      }
-
-      await llmModelRepo.delete(id);
-
-      logger.info('LLMConfigController: Model deleted', { id });
-
-      return res.json({
-        success: true,
-        message: 'Model deleted successfully',
-      });
-    } catch (error: any) {
-      logger.error('LLMConfigController: Failed to delete model:', error);
-      
-      if (error.message === 'LLM model not found') {
-        return res.status(404).json({
-          error: 'Model not found',
-          message: error.message,
-        });
-      }
-
-      return res.status(500).json({
-        error: 'Failed to delete LLM model',
         message: error.message,
       });
     }

@@ -1,8 +1,8 @@
 /**
- * Migration Script: Run Schema V2
- * Drops all existing tables and creates new schema
+ * Migration Script: Initialize Database Schema
+ * Executes the complete schema from ainative.sql
  * 
- * Usage: npx ts-node src/database/migrations/run_schema_v2.ts
+ * Usage: npx tsx src/database/migrations/run_schema_v2.ts
  */
 
 import { Pool } from 'pg';
@@ -18,30 +18,21 @@ async function runMigration() {
     connectionString: process.env.DATABASE_URL,
   });
 
-  console.log('🚀 Starting Schema V2 Migration...');
+  console.log('🚀 Starting Database Schema Initialization...');
   console.log(`📍 Database: ${process.env.DATABASE_URL?.split('@')[1] || 'unknown'}`);
 
   try {
-    // Step 1: Drop and recreate public schema
-    console.log('\n📦 Step 1: Dropping all existing tables...');
-    await pool.query(`
-      DROP SCHEMA public CASCADE;
-      CREATE SCHEMA public;
-      GRANT ALL ON SCHEMA public TO postgres;
-      GRANT ALL ON SCHEMA public TO public;
-    `);
-    console.log('✅ All tables dropped');
-
-    // Step 2: Read and execute schema file
-    console.log('\n📦 Step 2: Creating new schema...');
-    const schemaPath = path.join(__dirname, '000_schema_v2.sql');
+    // Step 1: Read and execute schema file
+    // The ainative.sql file already contains DROP TABLE statements
+    console.log('\n📦 Step 1: Executing schema from ainative.sql...');
+    const schemaPath = path.join(__dirname, 'ainative.sql');
     const schemaSql = fs.readFileSync(schemaPath, 'utf-8');
     
     await pool.query(schemaSql);
-    console.log('✅ New schema created successfully');
+    console.log('✅ Schema executed successfully');
 
-    // Step 3: Verify tables
-    console.log('\n📦 Step 3: Verifying tables...');
+    // Step 2: Verify tables
+    console.log('\n📦 Step 2: Verifying tables...');
     const result = await pool.query(`
       SELECT table_name 
       FROM information_schema.tables 
@@ -50,17 +41,20 @@ async function runMigration() {
       ORDER BY table_name;
     `);
     
-    console.log(`✅ Created ${result.rows.length} tables:`);
+    console.log(`✅ Found ${result.rows.length} tables:`);
     result.rows.forEach((row, i) => {
       console.log(`   ${i + 1}. ${row.table_name}`);
     });
 
-    console.log('\n🎉 Schema V2 Migration completed successfully!');
+    console.log('\n🎉 Database Schema Initialization completed successfully!');
 
   } catch (error: any) {
     console.error('\n❌ Migration failed:', error.message);
     if (error.position) {
       console.error(`   Position: ${error.position}`);
+    }
+    if (error.detail) {
+      console.error(`   Detail: ${error.detail}`);
     }
     process.exit(1);
   } finally {

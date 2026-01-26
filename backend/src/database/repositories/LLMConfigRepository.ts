@@ -381,6 +381,54 @@ export class LLMConfigRepository {
       autoCreatePr: row.auto_create_pr,
     };
   }
+
+  /**
+   * Get all distinct provider/model combinations from llm_configs
+   * Returns models that users have actually configured
+   */
+  async getDistinctModels(): Promise<{ provider: string; model: string }[]> {
+    const result = await query<{ provider: string; model: string }>(
+      `SELECT DISTINCT provider, model 
+       FROM llm_configs 
+       WHERE deleted_at IS NULL
+       ORDER BY provider, model`
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get distinct models grouped by provider
+   * Returns a map of provider -> model names
+   */
+  async getModelsGroupedByProvider(): Promise<Record<string, string[]>> {
+    const models = await this.getDistinctModels();
+    const grouped: Record<string, string[]> = {};
+
+    for (const { provider, model } of models) {
+      if (!grouped[provider]) {
+        grouped[provider] = [];
+      }
+      if (!grouped[provider].includes(model)) {
+        grouped[provider].push(model);
+      }
+    }
+
+    return grouped;
+  }
+
+  /**
+   * Get distinct models for a specific provider
+   */
+  async getModelsByProvider(provider: string): Promise<string[]> {
+    const result = await query<{ model: string }>(
+      `SELECT DISTINCT model 
+       FROM llm_configs 
+       WHERE provider = $1 AND deleted_at IS NULL
+       ORDER BY model`,
+      [provider]
+    );
+    return result.rows.map(row => row.model);
+  }
 }
 
 export default LLMConfigRepository;
