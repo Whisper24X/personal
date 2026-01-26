@@ -18,6 +18,25 @@ const projectRepo = new ProjectRepository();
 // 知识库存储目录（相对于 ainative-workspace/docs/）
 const KNOWLEDGE_DIR = 'business-knowledge';
 
+/**
+ * 修复 multer 上传文件时中文文件名乱码问题
+ * multer 默认将 UTF-8 编码的文件名按 Latin-1 解析，导致中文乱码
+ * 此函数将 Latin-1 字符串转换回 UTF-8
+ */
+function decodeFilename(filename: string): string {
+  try {
+    // 尝试将 Latin-1 编码的字符串转换为 UTF-8
+    const decoded = Buffer.from(filename, 'latin1').toString('utf8');
+    // 验证转换是否成功（如果原本就是 ASCII，则保持不变）
+    if (decoded !== filename && /[\u4e00-\u9fa5]/.test(decoded)) {
+      return decoded;
+    }
+    return filename;
+  } catch {
+    return filename;
+  }
+}
+
 export class KnowledgeUploadController {
   /**
    * Upload a knowledge file
@@ -64,7 +83,8 @@ export class KnowledgeUploadController {
       await fs.mkdir(knowledgeDir, { recursive: true });
 
       // Generate unique filename if file already exists
-      let filename = file.originalname;
+      // 解码文件名，修复中文乱码问题
+      let filename = decodeFilename(file.originalname);
       let filePath = path.join(knowledgeDir, filename);
       let counter = 1;
 
@@ -89,7 +109,7 @@ export class KnowledgeUploadController {
         success: true,
         file: {
           name: filename,
-          originalName: file.originalname,
+          originalName: decodeFilename(file.originalname),
           path: `docs/${KNOWLEDGE_DIR}/${filename}`,
           size: file.size,
           uploadTime: new Date().toISOString(),
