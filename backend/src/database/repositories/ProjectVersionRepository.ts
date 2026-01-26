@@ -3,7 +3,7 @@
  * Data access layer for project versions using native PostgreSQL
  */
 
-import { query, transaction } from '../client';
+import { query } from '../client';
 import { logger } from '../../utils';
 
 export interface ProjectVersion {

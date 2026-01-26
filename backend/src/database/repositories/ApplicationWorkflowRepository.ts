@@ -206,7 +206,7 @@ export class ApplicationWorkflowRepository {
       `DELETE FROM application_workflows WHERE id = $1 AND application_id = $2`,
       [id, applicationId]
     );
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   /**
@@ -229,6 +229,6 @@ export class ApplicationWorkflowRepository {
       [workflowId, applicationId]
     );
 
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 }

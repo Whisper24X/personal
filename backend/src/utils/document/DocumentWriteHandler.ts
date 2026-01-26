@@ -144,7 +144,7 @@ export class DocumentWriteHandler {
    */
   private async writeWithContent(
     input: string,
-    workspaceDir: string,
+    _workspaceDir: string,
     options: WriteOptions
   ): Promise<string> {
     logger.info('DocumentWriteHandler: Writing with content (LLM mode)', {

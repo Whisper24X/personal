@@ -249,51 +249,6 @@ export class DocumentReviewHandler {
     return processResult.content;
   }
 
-  /**
-   * 获取文档目录
-   * 优先使用options中的outline，否则从workspace读取或提取
-   * 
-   * @param workspaceDir workspace目录
-   * @param options 选项
-   * @returns 目录内容
-   */
-  private async getOutline(
-    _workspaceDir: string,
-    options: ReviewOptions
-  ): Promise<string> {
-    // 如果options中有outline，直接使用
-    if (options.outline && options.outline.trim().length > 0) {
-      return options.outline;
-    }
-
-    // 尝试从workspace读取目录文件
-    try {
-      const outlineFromWorkspace = await (this.action as any).readWorkspaceFile(
-        '00-outline.md',
-        options
-      );
-      if (outlineFromWorkspace && outlineFromWorkspace.trim().length > 0) {
-        return outlineFromWorkspace;
-      }
-    } catch {
-      // 忽略错误
-    }
-
-    // 尝试读取主文档并提取目录
-    try {
-      const mainDoc = await (this.action as any).readWorkspaceFile(
-        this.config.mainFileName,
-        options
-      );
-      if (mainDoc) {
-        return this.extractOutlineFromContent(mainDoc);
-      }
-    } catch {
-      // 忽略错误
-    }
-
-    return '';
-  }
 
   /**
    * 从文档内容中提取目录
