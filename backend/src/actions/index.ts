@@ -33,6 +33,7 @@ export { ExecuteSubtask } from './ExecuteSubtask';
 // Code Execution and Bug Fix Actions
 export { RunCode } from './RunCode';
 export { FixBug } from './FixBug';
+export { Deploy } from './Deploy';
 
 // QA Actions
 export { TestabilityReview } from './TestabilityReview';
@@ -69,6 +70,7 @@ import { BreakdownTasks } from './BreakdownTasks';
 import { ExecuteSubtask } from './ExecuteSubtask';
 import { RunCode } from './RunCode';
 import { FixBug } from './FixBug';
+import { Deploy } from './Deploy';
 import { TestabilityReview } from './TestabilityReview';
 import { TestCaseReview } from './TestCaseReview';
 import { TestReview } from './TestReview';
@@ -114,6 +116,7 @@ export const ACTION_REGISTRY: Record<string, new () => BaseAction> = {
   // Code Execution and Bug Fix Actions
   RunCode,
   FixBug,
+  Deploy,
   // QA Actions
   TestabilityReview,
   TestCaseReview,

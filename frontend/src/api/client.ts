@@ -465,6 +465,41 @@ class APIClient {
     return this.client.post('/config/llm/providers', data);
   }
 
+  // LLM Model Registry API 端点 (全局模型管理)
+  async getLLMModels() {
+    return this.client.get('/config/llm/models');
+  }
+
+  async getLLMModelsByProvider(provider: string) {
+    return this.client.get(`/config/llm/models/${provider}`);
+  }
+
+  async createLLMModel(data: {
+    provider: string;
+    modelName: string;
+    displayName?: string;
+    isDefault?: boolean;
+    sortOrder?: number;
+  }) {
+    return this.client.post('/config/llm/models', data);
+  }
+
+  async updateLLMModel(id: string, data: {
+    displayName?: string;
+    isDefault?: boolean;
+    sortOrder?: number;
+  }) {
+    return this.client.put(`/config/llm/models/${id}`, data);
+  }
+
+  async deleteLLMModel(id: string) {
+    return this.client.delete(`/config/llm/models/${id}`);
+  }
+
+  async updateLLMModelSortOrder(updates: { id: string; sortOrder: number }[]) {
+    return this.client.put('/config/llm/models/sort', { updates });
+  }
+
   // Role LLM Config API 端点
   async getRoleLLMConfigs() {
     return this.client.get('/config/role-llm');

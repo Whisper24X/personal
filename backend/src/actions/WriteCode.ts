@@ -6,7 +6,7 @@
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { logger, WorkspaceOptions, executeCommandSimple, CommandExecutorError, WorkspaceManager } from '../utils';
-import { buildCursorCLIPrompt } from '../prompts/code';
+import { getApplyCommand, getCheckCommand } from '../prompts/code';
 import * as fs from 'fs/promises';
 
 export interface WriteCodeOptions extends WorkspaceOptions {
@@ -45,18 +45,44 @@ export class WriteCode extends BaseAction {
         workDir,
       });
       
-      // 构建强约束提示词
-      const systemPrompt = buildCursorCLIPrompt();
+      // 调试模式检查
+      const isDebugMode = process.env.WRITE_CODE_DEBUG === 'true';
+      if (isDebugMode) {
+        logger.info('WriteCode: Debug mode enabled, executing debug command', {
+          workDir,
+        });
+        
+        try {
+          const debugCommand = 'cursor-agent --model composer-1 --print "在当前目录下生成一个writeCodeTest.txt文档，内容为 我是编写代码调试"';
+          const debugOutput = await executeCommandSimple(debugCommand, {
+            cwd: workDir,
+            timeout: 300000, // 5分钟超时
+          });
+          
+          logger.info('WriteCode: Debug command completed', {
+            outputLength: debugOutput.length,
+          });
+          
+          return {
+            content: `# WriteCode Debug Mode\n\n## Debug Command Executed\n\`\`\`\n${debugCommand}\n\`\`\`\n\n## Output:\n\`\`\`\n${debugOutput}\n\`\`\``,
+            data: {
+              type: 'debug',
+              workspaceDir: workDir,
+              debugOutput,
+              timestamp: new Date().toISOString(),
+            },
+          };
+        } catch (error: any) {
+          logger.error('WriteCode: Debug command failed', {
+            message: error.message,
+          });
+          throw error;
+        }
+      }
       
-      logger.info('WriteCode: Using strong constraint prompt for Cursor CLI', {
-        promptLength: systemPrompt.length,
-        constraintType: 'Cursor CLI Code Generation',
-      });
-      
-      // 定义命令
-      const applyCommand = "执行/openspec-apply命令，并且自动执行所有必要的构建命令（如make api、make wire、npm run generate等），不要只生成代码就停止，必须完成所有任务直到tasks.md中的任务全部标记为完成。";
-
-      const checkCommand = "在openspec目录下changes目录内查找tasks.md,告诉我里面的任务是否全部执行完成,给我返回:已完成、未完成或未找到，不要返回具体原因。如果文件不存在或无法找到，返回未找到。";
+      // 从 prompts/code.ts 获取命令提示词
+      const applyCommand = getApplyCommand();
+      const checkCommand = getCheckCommand();
       
       // 循环执行，直到任务完成
       const maxRetries = 10; // 最大重试次数
@@ -70,6 +96,8 @@ export class WriteCode extends BaseAction {
       });
       
       while (!isCompleted && retryCount < maxRetries) {
+        // 检查是否被取消
+        this.checkCancellation();
         retryCount++;
         
         logger.info(`WriteCode: Iteration ${retryCount}/${maxRetries} - Executing apply command`, {
@@ -112,6 +140,7 @@ export class WriteCode extends BaseAction {
           checkOutput = await executeCommandSimple(command, {
             cwd: workDir,
             timeout: 300000, // 5分钟超时（检查命令应该很快）
+            abortSignal: this.abortSignal, // 传递取消信号
           });
           logger.info(`WriteCode: Check command completed (iteration ${retryCount})`, {
             outputLength: checkOutput.length,
@@ -119,6 +148,11 @@ export class WriteCode extends BaseAction {
           });
         } catch (execError) {
           const error = execError as CommandExecutorError;
+          // 如果是取消错误，向上抛出
+          if (error.message?.includes('cancelled')) {
+            logger.info(`WriteCode: Check command cancelled (iteration ${retryCount})`);
+            throw error;
+          }
           logger.warn(`WriteCode: Check command failed (iteration ${retryCount})`, { 
             message: error.message,
             exitCode: error.exitCode,
@@ -130,28 +164,73 @@ export class WriteCode extends BaseAction {
         
         allOutputs.push(`=== Iteration ${retryCount} - Check ===\n${checkOutput}`);
         
-        // 3. 判断是否完成
-        // 先检查是否返回"未找到"，如果是则抛出错误
-        if (checkOutput.includes('未找到')) {
-          const errorMessage = `WriteCode: Task file not found. Check command returned "未找到". Output: ${checkOutput.substring(0, 500)}`;
-          logger.error(errorMessage, {
-            iteration: retryCount,
-            checkOutput: checkOutput.substring(0, 500),
-          });
-          throw new Error(errorMessage);
-        }
-        
-        // 检查输出中是否包含"已完成"
-        if (checkOutput.includes('已完成')) {
-          isCompleted = true;
-          logger.info(`WriteCode: Tasks completed successfully (iteration ${retryCount})`, {
-            totalIterations: retryCount,
-          });
-        } else {
-          logger.warn(`WriteCode: Tasks not completed yet (iteration ${retryCount})`, {
+        // 3. 判断是否完成 - 解析JSON响应
+        try {
+          // 尝试从输出中提取JSON
+          const jsonMatch = checkOutput.match(/\{[\s\S]*"result"[\s\S]*\}/);
+          if (!jsonMatch) {
+            logger.warn(`WriteCode: Unable to parse JSON from check output (iteration ${retryCount})`, {
+              checkOutput: checkOutput.substring(0, 200),
+            });
+            // 回退到旧的文本匹配方式
+            if (checkOutput.includes('未找到')) {
+              const errorMessage = `WriteCode: Task file not found. Check command returned "未找到". Output: ${checkOutput.substring(0, 500)}`;
+              logger.error(errorMessage, {
+                iteration: retryCount,
+                checkOutput: checkOutput.substring(0, 500),
+              });
+              throw new Error(errorMessage);
+            } else if (checkOutput.includes('已完成')) {
+              isCompleted = true;
+            }
+          } else {
+            const checkResult = JSON.parse(jsonMatch[0]);
+            const result = checkResult.result;
+            const reason = checkResult.reason || '';
+            
+            logger.info(`WriteCode: Check result parsed (iteration ${retryCount})`, {
+              result,
+              reason,
+            });
+            
+            if (result === '未找到') {
+              const errorMessage = `WriteCode: Task file not found. Reason: ${reason}`;
+              logger.error(errorMessage, {
+                iteration: retryCount,
+                result,
+                reason,
+              });
+              throw new Error(errorMessage);
+            } else if (result === '已完成') {
+              isCompleted = true;
+              logger.info(`WriteCode: Tasks completed successfully (iteration ${retryCount})`, {
+                totalIterations: retryCount,
+                reason,
+              });
+            } else {
+              logger.warn(`WriteCode: Tasks not completed yet (iteration ${retryCount})`, {
+                result,
+                reason,
+                willRetry: retryCount < maxRetries,
+              });
+            }
+          }
+        } catch (parseError: any) {
+          logger.warn(`WriteCode: Failed to parse check output as JSON (iteration ${retryCount})`, {
+            error: parseError.message,
             checkOutput: checkOutput.substring(0, 200),
-            willRetry: retryCount < maxRetries,
           });
+          // 回退到旧的文本匹配方式
+          if (checkOutput.includes('未找到')) {
+            const errorMessage = `WriteCode: Task file not found. Check command returned "未找到". Output: ${checkOutput.substring(0, 500)}`;
+            logger.error(errorMessage, {
+              iteration: retryCount,
+              checkOutput: checkOutput.substring(0, 500),
+            });
+            throw new Error(errorMessage);
+          } else if (checkOutput.includes('已完成')) {
+            isCompleted = true;
+          }
         }
       }
       
