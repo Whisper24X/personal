@@ -60,17 +60,26 @@ export class CodeReview extends BaseAction {
         cwd: workDir,
       });
       
+      // 检查是否被取消
+      this.checkCancellation();
+      
       let reviewOutput = '';
       try {
         reviewOutput = await executeCommandSimple(command, {
           cwd: workDir,
           timeout: 600000, // 10分钟超时（代码审查应该较快）
+          abortSignal: this.abortSignal, // 传递取消信号
         });
         logger.info('CodeReview: Review command completed', {
           outputLength: reviewOutput.length,
         });
       } catch (execError) {
         const error = execError as CommandExecutorError;
+        // 如果是取消错误，向上抛出
+        if (error.message?.includes('cancelled')) {
+          logger.info('CodeReview: Review command cancelled');
+          throw error;
+        }
         logger.warn('CodeReview: Review command failed', { 
           message: error.message,
           exitCode: error.exitCode,

@@ -118,7 +118,7 @@ interface EngineerTestRequest {
     prd?: string;
     design?: string;
     taskBreakdown?: string;
-    action?: 'WriteCode' | 'ExecuteSubtask';
+    action?: 'WriteCode' | 'ExecuteSubtask' | 'Deploy';
     workspaceOptions?: {
         applicationId?: string;
         projectId?: string;
@@ -253,9 +253,14 @@ export async function testWriteCode(req: Request, res: Response) {
 
         engineer['rc'].todo = writeCodeAction;
 
-        // Mock extractWorkspaceOptions if workspaceOptions provided
+        // Set workspaceOptions in context if provided
         if (workspaceOptions) {
-            engineer['extractWorkspaceOptions'] = () => workspaceOptions;
+            if (workspaceOptions.applicationId) {
+                context.set('applicationId', workspaceOptions.applicationId);
+            }
+            if (workspaceOptions.projectId) {
+                context.set('projectId', workspaceOptions.projectId);
+            }
         }
 
         // Execute action
@@ -502,9 +507,9 @@ export async function testCustom(req: Request, res: Response) {
         } = req.body as EngineerTestRequest;
 
         // Validate action
-        if (!action || !['WriteCode', 'ExecuteSubtask'].includes(action)) {
+        if (!action || !['WriteCode', 'ExecuteSubtask', 'Deploy'].includes(action)) {
             return res.status(400).json({
-                error: 'action must be either "WriteCode" or "ExecuteSubtask"',
+                error: 'action must be either "WriteCode", "ExecuteSubtask", or "Deploy"',
             });
         }
 
@@ -646,6 +651,138 @@ export async function testCustom(req: Request, res: Response) {
         logger.error('EngineerTestController: Custom test failed:', error);
         return res.status(500).json({
             error: 'Failed to test Engineer',
+            message: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        });
+    }
+}
+
+/**
+ * Test Engineer role with Deploy action
+ * POST /api/test/engineer/deploy
+ */
+export async function testDeploy(req: Request, res: Response) {
+    try {
+        const {
+            design: providedDesign,
+            workspaceOptions,
+            llmConfig,
+        } = req.body as EngineerTestRequest;
+
+        // Determine applicationId, projectId from workspaceOptions
+        if (!workspaceOptions?.applicationId) {
+            return res.status(400).json({
+                error: 'applicationId is required in workspaceOptions. Cannot use "default" to prevent file conflicts between different applications.',
+            });
+        }
+        if (!workspaceOptions?.projectId) {
+            return res.status(400).json({
+                error: 'projectId is required in workspaceOptions. Cannot use "default" to prevent file conflicts between different projects.',
+            });
+        }
+        const applicationId = workspaceOptions.applicationId;
+        const projectId = workspaceOptions.projectId;
+
+        // Load design from workspace if not provided in request
+        let design = providedDesign;
+
+        if (!design) {
+            const workspaceDocs = await loadDocumentsFromWorkspace(applicationId, projectId);
+            design = workspaceDocs.design;
+        }
+
+        // Design is not strictly required for Deploy, but use a default message if not provided
+        if (!design) {
+            design = '执行部署操作';
+        }
+
+        // Create context
+        const context = new Context();
+
+        // Set userId in context (only if valid UUID)
+        const userId = getValidUserId((req as any).userId);
+        if (userId) {
+            context.set('userId', userId);
+        }
+
+        // If provided LLM config, set it as fallback (will be overridden by database config if exists)
+        if (llmConfig) {
+            const fallbackLLM = createLLM({
+                provider: (llmConfig.provider || 'zhipuai') as any,
+                apiKey: llmConfig.apiKey || '',
+                model: llmConfig.model || 'glm-4',
+                baseURL: llmConfig.baseURL,
+            });
+            fallbackLLM.costManager = context.costManager;
+            context.llm = fallbackLLM;
+        }
+
+        // Create Engineer instance - it will automatically load LLM config from database
+        const engineer = new Engineer(context);
+
+        // Wait for database config to load
+        if (engineer['llmLoadPromise']) {
+            await engineer['llmLoadPromise'];
+        }
+
+        // Add Design message if provided
+        if (design) {
+            const designMessage = new Message({
+                content: design,
+                role: 'Architect',
+                causeBy: ACTION_WRITE_DESIGN,
+                sentFrom: 'Architect',
+            });
+            engineer['rc'].memory.add(designMessage);
+        }
+
+        // Set Deploy as todo action
+        const deployAction = engineer.actions.find(a => a.name === 'Deploy');
+        if (!deployAction) {
+            return res.status(500).json({
+                error: 'Deploy action not found',
+            });
+        }
+
+        engineer['rc'].todo = deployAction;
+
+        // Set workspaceOptions in context if provided
+        if (workspaceOptions) {
+            if (workspaceOptions.applicationId) {
+                context.set('applicationId', workspaceOptions.applicationId);
+            }
+            if (workspaceOptions.projectId) {
+                context.set('projectId', workspaceOptions.projectId);
+            }
+        }
+
+        // Execute action
+        logger.info('EngineerTestController: Executing Deploy action');
+        const result = await engineer.act();
+
+        if (!result) {
+            return res.status(200).json({
+                success: true,
+                message: 'No result returned',
+                result: null,
+            });
+        }
+
+        return res.json({
+            success: true,
+            result: {
+                content: result.content,
+                role: result.role,
+                causeBy: result.causeBy,
+                sentFrom: result.sentFrom,
+                instructContent: result.instructContent,
+                messageId: result.id,
+            },
+        });
+    } catch (error: any) {
+        logger.error('EngineerTestController: Deploy test failed:', error);
+        return res.status(500).json({
+            error: 'Failed to test Deploy',
             message: error.message,
             stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
         });

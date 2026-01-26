@@ -66,6 +66,9 @@ export class BreakdownTasks extends BaseAction {
       });
       
       while (!isCompleted && retryCount < maxRetries) {
+        // 检查是否被取消
+        this.checkCancellation();
+        
         retryCount++;
         
         logger.info(`BreakdownTasks: Iteration ${retryCount}/${maxRetries} - Executing propose command`, {
@@ -82,6 +85,7 @@ export class BreakdownTasks extends BaseAction {
           const contextOutput = await executeCommandSimple(command, {
             cwd: workDir,
             timeout: 1800000, // 30分钟超时
+            abortSignal: this.abortSignal, // 传递取消信号
           });
           logger.info(`BreakdownTasks: Context command completed (iteration ${retryCount})`, {
             outputLength: contextOutput.length,
@@ -90,6 +94,11 @@ export class BreakdownTasks extends BaseAction {
           allOutputs.push(`=== Iteration ${retryCount} - Context ===\n${contextOutput}`);
         } catch (execError) {
           const error = execError as CommandExecutorError;
+          // 如果是取消错误，向上抛出
+          if (error.message?.includes('cancelled')) {
+            logger.info(`BreakdownTasks: Context command cancelled (iteration ${retryCount})`);
+            throw error;
+          }
           logger.warn(`BreakdownTasks: Context command failed (iteration ${retryCount})`, { 
             message: error.message,
             exitCode: error.exitCode,
@@ -99,6 +108,9 @@ export class BreakdownTasks extends BaseAction {
           allOutputs.push(`=== Iteration ${retryCount} - Context (FAILED) ===\n${error.stdout || ''}`);
         }
 
+        // 检查是否被取消
+        this.checkCancellation();
+
         // 2. 执行创建提案命令
         let proposeOutput = '';
         try {
@@ -106,6 +118,7 @@ export class BreakdownTasks extends BaseAction {
           proposeOutput = await executeCommandSimple(command, {
             cwd: workDir,
             timeout: 3600000, // 60分钟超时
+            abortSignal: this.abortSignal, // 传递取消信号
           });
           logger.info(`BreakdownTasks: Propose command completed (iteration ${retryCount})`, {
             outputLength: proposeOutput.length,
@@ -113,6 +126,11 @@ export class BreakdownTasks extends BaseAction {
           });
         } catch (execError) {
           const error = execError as CommandExecutorError;
+          // 如果是取消错误，向上抛出
+          if (error.message?.includes('cancelled')) {
+            logger.info(`BreakdownTasks: Propose command cancelled (iteration ${retryCount})`);
+            throw error;
+          }
           logger.warn(`BreakdownTasks: Propose command failed (iteration ${retryCount})`, { 
             message: error.message,
             exitCode: error.exitCode,
@@ -123,6 +141,9 @@ export class BreakdownTasks extends BaseAction {
         }
         
         allOutputs.push(`=== Iteration ${retryCount} - Propose ===\n${proposeOutput}`);
+        
+        // 检查是否被取消
+        this.checkCancellation();
         
         // 3. 执行检查命令
         logger.info(`BreakdownTasks: Iteration ${retryCount}/${maxRetries} - Executing check command`, {
@@ -135,6 +156,7 @@ export class BreakdownTasks extends BaseAction {
           checkOutput = await executeCommandSimple(command, {
             cwd: workDir,
             timeout: 300000, // 5分钟超时（检查命令应该很快）
+            abortSignal: this.abortSignal, // 传递取消信号
           });
           logger.info(`BreakdownTasks: Check command completed (iteration ${retryCount})`, {
             outputLength: checkOutput.length,
@@ -142,6 +164,11 @@ export class BreakdownTasks extends BaseAction {
           });
         } catch (execError) {
           const error = execError as CommandExecutorError;
+          // 如果是取消错误，向上抛出
+          if (error.message?.includes('cancelled')) {
+            logger.info(`BreakdownTasks: Check command cancelled (iteration ${retryCount})`);
+            throw error;
+          }
           logger.warn(`BreakdownTasks: Check command failed (iteration ${retryCount})`, { 
             message: error.message,
             exitCode: error.exitCode,
@@ -151,7 +178,7 @@ export class BreakdownTasks extends BaseAction {
         
         allOutputs.push(`=== Iteration ${retryCount} - Check ===\n${checkOutput}`);
         
-        // 3. 判断是否完成
+        // 4. 判断是否完成
         // 检查输出中是否包含"SUCCESS"
         if (checkOutput.includes('SUCCESS')) {
           isCompleted = true;

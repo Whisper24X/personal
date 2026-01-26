@@ -935,99 +935,21 @@ ${code}
 }
 
 /**
- * 构建 Cursor CLI 专用的代码审查提示词
- * 用于通过 cursor-agent 命令行工具进行代码审查
- * @returns Cursor CLI 代码审查提示词
+ * 获取 apply 命令提示词
+ * 用于执行 openspec-apply 命令并完成所有任务
+ * @returns apply 命令提示词
  */
-export function buildCursorCLICodeReviewPrompt(): string {
-    return `
-# 代码审查任务
-
-## 核心要求
-
-1. **审查 CODE 目录下的所有代码**
-   - 检查代码质量、可读性、可维护性
-   - 检查是否符合 DESIGN 文档的要求
-   - 检查是否满足 TASK_BREAKDOWN.md 中的任务要求
-   - 识别潜在的问题和改进点
-
-2. **审查重点**
-   - 代码完整性：是否有 TODO、占位符、未实现的功能
-   - 功能正确性：是否实现了所有要求的功能
-   - 代码规范：命名、格式、注释是否规范
-   - 错误处理：是否有适当的错误处理
-   - 性能问题：是否有明显的性能问题
-   - 安全问题：是否有安全隐患
-
-3. **输出要求**
-   - 列出发现的所有问题
-   - 按严重程度分类（严重、中等、轻微）
-   - 提供具体的改进建议
-   - 如果代码质量良好，明确说明
-
-4. **审查标准**
-   - 代码必须完整可运行
-   - 必须符合 DESIGN 文档
-   - 必须实现所有任务要求
-   - 不允许有占位符或未完成的代码
-
-现在开始审查 CODE 目录下的代码。
-`.trim();
+export function getApplyCommand(): string {
+    return "执行/openspec-apply命令，并且自动执行所有必要的构建命令（如make api、make wire、npm run generate等），不要只生成代码就停止，必须完成所有任务直到tasks.md中的任务全部标记为完成。如果遇到模版页面如\"最好用的 uniapp 开发模板\"、\"专注企业级 AI 原生协作\"、\"企业级 AI 原生工作空间\"等页面需要改成本次tasks.md对应页面不能有模版页面相关数据";
 }
 
 /**
- * 构建 Cursor CLI 专用的强约束代码生成提示词
- * 用于通过 cursor-agent 命令行工具生成代码
- * @returns Cursor CLI 强约束提示词
+ * 获取 check 命令提示词
+ * 用于检查 tasks.md 文件中的任务是否全部完成
+ * @returns check 命令提示词
  */
-export function buildCursorCLIPrompt(): string {
-    return `
-# 代码生成任务
-
-## 核心要求
-
-1. **严格按照文档生成代码**
-   - 仔细阅读 DESIGN/DESIGN.md、PRD/PRD.md、TASK/TASK_BREAKDOWN.md
-   - TASK_BREAKDOWN.md 中定义了所有需要实现的任务
-   - 只实现文档中明确要求的功能，不要添加任何额外功能
-   - 不要推断、补充或扩展文档中未提及的内容
-
-2. **功能必须完整**
-   - 实现 TASK_BREAKDOWN.md 中列出的所有任务
-   - 每个任务的验收标准必须全部满足
-   - 不允许使用 TODO、FIXME、...、占位符、伪代码
-   - 不允许空函数、空类或未实现的方法
-   - 每个文件必须是完整的、可运行的代码
-
-3. **目录结构要求**
-   - 所有代码生成到 CODE/ 目录下
-   - 前端代码：CODE/frontend/src/...
-   - 后端代码：CODE/backend/src/...
-   - 配置文件：CODE/frontend/package.json、CODE/backend/package.json 等
-
-4. **技术栈限制**
-   - 只使用 DESIGN 文档中明确声明的技术和库
-   - 数据库默认使用 PostgreSQL
-   - 不要引入文档中未提及的依赖
-
-## 实现步骤
-
-1. 阅读全部文档，理解需求和设计
-2. 按照 TASK_BREAKDOWN.md 的任务列表逐个实现
-3. 确保每个任务的所有验收标准都满足
-4. 生成完整的前后端代码和配置文件
-5. 确保代码可以直接运行（npm install && npm run dev）
-
-## 重要提醒
-
-- ✅ 功能完整：实现所有任务，不遗漏
-- ✅ 严格遵守文档：不添加文档外的功能
-- ✅ 代码可运行：不使用占位符，直接可用
-- ❌ 不要自由发挥：只做文档要求的事
-- ❌ 不要简化：所有功能都要完整实现
-
-现在开始生成代码。
-`.trim();
+export function getCheckCommand(): string {
+    return "查找 openspec/changes/ 目录下子文件夹中的 tasks.md 文件（路径模式为 openspec/changes/*/tasks.md），检查里面的任务是否全部执行完成。请以JSON格式返回，包含：result字段（值为：已完成、未完成或未找到）和reason字段（说明具体原因）。例如：{\"result\": \"已完成\", \"reason\": \"所有任务都已标记为完成\"} 或 {\"result\": \"未完成\", \"reason\": \"还有3个任务未完成\"} 或 {\"result\": \"未找到\", \"reason\": \"文件不存在或无法找到\"}。只返回JSON格式，不要返回其他内容。";
 }
 
 export default {
@@ -1040,8 +962,8 @@ export default {
     buildCodeCompletenessCheckPrompt,
     buildCodeCompletionPrompt,
     buildCodeReviewPrompt,
-    buildCursorCLIPrompt,
-    buildCursorCLICodeReviewPrompt,
+    getApplyCommand,
+    getCheckCommand,
     checkCodeCompleteness,
     checkFrontendBackendCompleteness,
     extractFileListFromDesign,
