@@ -8,6 +8,10 @@ import { Context } from '../core/context/Context';
 // Export Role base class
 export { Role } from './Role';
 
+// Export Role configurations
+export { RoleExecutorConfig } from './RoleExecutorConfig';
+export { RoleLLMConfig } from './RoleLLMConfig';
+
 // Export all role implementations
 export { Salesperson } from './Salesperson';
 export { ProductManager } from './ProductManager';

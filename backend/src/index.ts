@@ -7,6 +7,7 @@ export * from './core';
 export * from './roles';
 export * from './actions';
 export * from './providers';
+export * from './executors';
 // export * from './orchestration'; // Conflicts with roles/ProjectManager
 export { Environment, Team } from './orchestration';
 export { ProjectManager as OrchestrationProjectManager } from './orchestration/ProjectManager';
