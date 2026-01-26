@@ -6,7 +6,7 @@
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import { logger, SubtaskManager, WorkspaceOptions } from '../utils';
+import { logger, WorkspaceOptions } from '../utils';
 
 export interface ExecuteSubtaskOptions extends WorkspaceOptions {
   taskId: string; // 要执行的任务ID
@@ -34,24 +34,8 @@ export class ExecuteSubtask extends BaseAction {
     });
 
     try {
-      // 标记任务为进行中
-      if (options?.applicationId && options?.version) {
-        const subtaskManager = new SubtaskManager();
-        const loaded = await subtaskManager.loadFromWorkspace({
-          applicationId: options.applicationId,
-          version: options.version,
-          documentType: 'TASKS',
-        });
-
-        if (loaded) {
-          subtaskManager.markTaskInProgress(options.taskId);
-          await subtaskManager.saveToWorkspace({
-            applicationId: options.applicationId,
-            version: options.version,
-            documentType: 'TASKS',
-          });
-        }
-      }
+      // TODO: 任务状态管理功能待实现（SubtaskManager 需要添加持久化方法）
+      // 目前 SubtaskManager 只是一个解析器，不支持状态管理
 
       // 构建任务执行的prompt
       // 将任务描述转换为设计文档格式，供WriteCode使用
@@ -90,24 +74,7 @@ export class ExecuteSubtask extends BaseAction {
         error: error.message,
       });
 
-      // 更新子任务状态为失败
-      if (options?.applicationId && options?.version) {
-        const subtaskManager = new SubtaskManager();
-        const loaded = await subtaskManager.loadFromWorkspace({
-          applicationId: options.applicationId,
-          version: options.version,
-          documentType: 'TASKS',
-        });
-
-        if (loaded) {
-          subtaskManager.markTaskFailed(options.taskId, error.message);
-          await subtaskManager.saveToWorkspace({
-            applicationId: options.applicationId,
-            version: options.version,
-            documentType: 'TASKS',
-          });
-        }
-      }
+      // TODO: 任务失败状态更新功能待实现
 
       throw error;
     }

@@ -224,7 +224,7 @@ export class RAGService {
       if (!documentMap.has(docId)) {
         // Get full document content
         const doc = await this.documentRepo.findById(docId);
-        if (!doc || doc.type !== 'PRD') continue;
+        if (!doc || doc.doc_type !== 'PRD') continue;
 
         const relevantChunks = findSimilarChunks(doc.content, query, 3);
 
@@ -331,7 +331,7 @@ export class RAGService {
           
           if (!documentMap.has(docId)) {
             const doc = await this.documentRepo.findById(docId);
-            if (!doc || doc.type !== 'PRD') continue;
+            if (!doc || doc.doc_type !== 'PRD') continue;
 
             const relevantChunks = findSimilarChunks(doc.content, query, 3);
 
@@ -418,7 +418,7 @@ export class RAGService {
           
           if (!documentMap.has(docId)) {
             const doc = await this.documentRepo.findById(docId);
-            if (!doc || doc.type !== 'MRD') continue;
+            if (!doc || doc.doc_type !== 'MRD') continue;
 
             const relevantChunks = findSimilarChunks(doc.content, query, 3);
 
@@ -509,7 +509,7 @@ export class RAGService {
           
           if (!documentMap.has(docId)) {
             const doc = await this.documentRepo.findById(docId);
-            if (!doc || doc.type !== 'MRD') continue;
+            if (!doc || doc.doc_type !== 'MRD') continue;
 
             const relevantChunks = findSimilarChunks(doc.content, query, 3);
 
@@ -815,11 +815,12 @@ export class RAGService {
       const combined = new Map<string, any>();
       
       for (const [id, result] of vectorMap) {
-        const keywordResult = keywordMap.get(id);
+        const idStr = String(id);
+        const keywordResult = keywordMap.get(idStr);
         const combinedScore = keywordResult
           ? 0.6 * result.score + 0.4 * keywordResult.score
           : result.score;
-        combined.set(id, { ...result, score: combinedScore });
+        combined.set(idStr, { ...result, score: combinedScore });
       }
 
       // Add keyword-only results

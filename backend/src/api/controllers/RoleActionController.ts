@@ -19,30 +19,6 @@ export class RoleActionController {
     private static actionDefRepo = new ActionDefinitionRepository();
 
     /**
-     * Get display name for action from database or fallback
-     */
-    private static async getActionDisplayName(actionName: string): Promise<string> {
-        try {
-            const actionDef = await RoleActionController.actionDefRepo.findByName(actionName);
-            return actionDef?.display_name || actionName;
-        } catch {
-            return actionName;
-        }
-    }
-
-    /**
-     * Get display name for role from database or fallback
-     */
-    private static async getRoleDisplayName(profile: string): Promise<string> {
-        try {
-            const roleDef = await RoleActionController.roleDefRepo.findByProfile(profile);
-            return roleDef?.display_name || profile;
-        } catch {
-            return profile;
-        }
-    }
-
-    /**
      * Get all roles metadata
      * GET /api/config/roles
      */

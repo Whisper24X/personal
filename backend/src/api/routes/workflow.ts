@@ -3,10 +3,10 @@
  * API routes for the new unified workflow state management system
  */
 
-import { Router } from 'express';
+import { Router, type Router as RouterType } from 'express';
 import { WorkflowExecutionController } from '../controllers/WorkflowExecutionController';
 
-const router = Router();
+const router: RouterType = Router();
 
 /**
  * Workflow Execution Routes

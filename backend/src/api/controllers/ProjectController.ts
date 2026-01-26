@@ -90,7 +90,7 @@ export class ProjectController {
    */
   static async create(req: Request, res: Response) {
     try {
-      const { name, idea, description, investment, nRound, applicationId, gitRepoUrl } = req.body;
+      const { name, idea, description, investment, nRound: _nRound, applicationId, gitRepoUrl } = req.body;
       const userId = (req as any).userId || DEFAULT_USER_ID; // From auth middleware
 
       if (!name) {
@@ -720,6 +720,8 @@ export class ProjectController {
         applicationId: project.application_id,
         zipPath,
       });
+      // File is being streamed, no explicit return needed
+      return;
     } catch (error: any) {
       logger.error('API: Error downloading workspace code', error);
       return res.status(500).json({
@@ -852,6 +854,8 @@ export class ProjectController {
         openspecExists,
         zipPath,
       });
+      // File is being streamed, no explicit return needed
+      return;
     } catch (error: any) {
       logger.error('API: Error downloading workspace docs', error);
       return res.status(500).json({

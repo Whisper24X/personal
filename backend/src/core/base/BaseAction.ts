@@ -36,8 +36,10 @@ export abstract class BaseAction {
   name: string;
   description?: string;
 
-  // Action status is now managed by StateManager (database-only)
-  // Removed in-memory status field - status is read from database via StateManager
+  // Action status - used for in-memory tracking during execution
+  // Note: Primary status management is handled by StateManager (database)
+  // This field is used for quick status checks during workflow execution
+  status?: ActionStatus;
 
   // Custom LLM instance (only for role-specific config or special scenarios)
   // If not set, LLM is dynamically obtained from Context
@@ -781,7 +783,8 @@ export abstract class BaseAction {
     defaultPrompt: string
   ): Promise<string> {
     const userId = this.context?.get('userId');
-    return loadPrompt(userId, domain, promptType, defaultPrompt);
+    // Cast domain to PromptType - valid values are: 'mrd', 'prd', 'design', 'code', 'test', 'task'
+    return loadPrompt(userId, domain as any, promptType, defaultPrompt);
   }
 
   /**

@@ -1527,7 +1527,7 @@ export function buildTestSectionPrompt(
   prd: string,
   code: string,
   outline: string,
-  sectionNumber: number,
+  _sectionNumber: number,
   sectionTitle: string,
   sectionDescription?: string
 ): string {
@@ -1594,7 +1594,7 @@ ${sectionDescription || '[简要描述该功能模块的功能和用途]'}
  */
 export function buildTestSectionReviewPrompt(
   sectionContent: string,
-  sectionNumber: number,
+  _sectionNumber: number,
   sectionTitle: string,
   outline: string,
   prd?: string,
@@ -1669,7 +1669,7 @@ ${sectionDescription ? `[检查是否覆盖了功能模块描述中的所有核�
 export function buildTestSectionImprovePrompt(
   sectionContent: string,
   reviewReport: string,
-  sectionNumber: number,
+  _sectionNumber: number,
   sectionTitle: string,
   outline: string,
   prd?: string,

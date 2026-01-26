@@ -215,6 +215,7 @@ import {
   Check,
   Delete,
   Link,
+  Edit,
 } from '@element-plus/icons-vue';
 
 interface Version {

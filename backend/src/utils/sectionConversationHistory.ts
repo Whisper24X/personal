@@ -4,7 +4,7 @@
  */
 
 import { logger } from './index';
-import { SectionConversationRepository, type ConversationMessage, type SectionConversation } from '../database/repositories/SectionConversationRepository';
+import { SectionConversationRepository, type ConversationMessage } from '../database/repositories/SectionConversationRepository';
 
 export interface SectionConversationHistory {
   sectionNumber: number;

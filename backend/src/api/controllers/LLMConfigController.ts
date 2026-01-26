@@ -520,7 +520,7 @@ export class LLMConfigController {
    * Get all LLM models grouped by provider
    * GET /api/config/llm/models
    */
-  static async listModels(req: Request, res: Response) {
+  static async listModels(_req: Request, res: Response) {
     try {
       const modelsGrouped = await llmModelRepo.findAllGrouped();
 

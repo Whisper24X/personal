@@ -115,8 +115,6 @@ export class MRDController {
 
           if (searchResults.length > 0) {
             const relevantChunks = ragService.combineMRDResults(searchResults);
-            // Get next version number
-            const nextVersion = (latestMRD.version || 1) + 1;
             const result = await writeMRDAction.run(requirements, {
               mode: 'update',
               useRAG: true,
@@ -124,29 +122,27 @@ export class MRDController {
               historyMRD: latestMRD.content,
               applicationId,
               projectId,
-              version: nextVersion,
+              // version property deprecated, using versionId in WorkspaceOptions
             });
             mrdContent = result.content;
           } else {
             // Standard update mode without RAG
-            const nextVersion = (latestMRD.version || 1) + 1;
             const result = await writeMRDAction.run(requirements, {
               mode: 'update',
               historyMRD: latestMRD.content,
               applicationId,
               projectId,
-              version: nextVersion,
+              // version property deprecated, using versionId in WorkspaceOptions
             });
             mrdContent = result.content;
           }
         } else {
           // Standard update mode
-          const nextVersion = (latestMRD.version || 1) + 1;
           const result = await writeMRDAction.run(requirements, {
             mode: 'update',
             historyMRD: latestMRD.content,
             applicationId,
-            version: nextVersion,
+            // version property deprecated, using versionId in WorkspaceOptions
           });
           mrdContent = result.content;
         }
@@ -176,38 +172,31 @@ export class MRDController {
 
           if (searchResults.length > 0) {
             const relevantChunks = ragService.combineMRDResults(searchResults);
-            // Get next version number (will be created in createMRDVersion)
-            const latestMRD = await documentRepo.findLatestMRD(id);
-            const nextVersion = latestMRD ? (latestMRD.version || 1) + 1 : 1;
             const result = await writeMRDAction.run(requirements, {
               mode: 'new',
               useRAG: true,
               relevantChunks,
               applicationId,
               projectId,
-              version: nextVersion,
+              // version property deprecated, using versionId in WorkspaceOptions
             });
             mrdContent = result.content;
           } else {
             // Standard new mode
-            const latestMRD = await documentRepo.findLatestMRD(id);
-            const nextVersion = latestMRD ? (latestMRD.version || 1) + 1 : 1;
             const result = await writeMRDAction.run(requirements, {
               mode: 'new',
               applicationId,
               projectId,
-              version: nextVersion,
+              // version property deprecated, using versionId in WorkspaceOptions
             });
             mrdContent = result.content;
           }
         } else {
           // Standard new mode
-          const latestMRD = await documentRepo.findLatestMRD(id);
-          const nextVersion = latestMRD ? (latestMRD.version || 1) + 1 : 1;
           const result = await writeMRDAction.run(requirements, {
             mode: 'new',
             applicationId,
-            version: nextVersion,
+            // version property deprecated, using versionId in WorkspaceOptions
           });
           mrdContent = result.content;
         }
@@ -639,9 +628,6 @@ export class MRDController {
       });
 
       // Create a new MRD version with improved content
-      // Calculate next version number based on current MRD version
-      const nextVersion = mrd.version ? mrd.version + 1 : 1;
-
       // Save improved MRD to database
       const savedDoc = await documentRepo.create({
         projectId: id,
@@ -650,7 +636,7 @@ export class MRDController {
         content: result.content,
         metadata: {
           applicationId: appId,
-          version: nextVersion,
+          // version property deprecated, using versionId in WorkspaceOptions
           improved: true,
           originalLength: result.data?.originalLength,
           improvedLength: result.content.length,
