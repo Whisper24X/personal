@@ -61,9 +61,23 @@ export abstract class BaseCLIProvider implements ICLIProvider {
 
   /**
    * 转义命令中的特殊字符
+   * 用于在 shell 双引号字符串中安全传递 prompt
+   * 
+   * Shell 双引号内需要转义的字符：
+   * - 反斜杠 \ -> \\（必须先转义）
+   * - 双引号 " -> \"
+   * - 美元符号 $ -> \$（防止变量展开）
+   * - 反引号 ` -> \`（防止命令替换）
+   * - 换行符 \n -> \\n（转为字面量，避免 shell 解析中断）
+   * - 回车符 \r -> \\r
    */
   protected escapePrompt(prompt: string): string {
-    // 转义双引号和反斜杠
-    return prompt.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return prompt
+      .replace(/\\/g, '\\\\')      // 反斜杠必须先转义
+      .replace(/"/g, '\\"')        // 双引号
+      .replace(/\$/g, '\\$')       // 美元符号（防止变量展开）
+      .replace(/`/g, '\\`')        // 反引号（防止命令替换）
+      .replace(/\n/g, '\\n')       // 换行符（关键：避免 shell 解析中断）
+      .replace(/\r/g, '\\r');      // 回车符
   }
 }
