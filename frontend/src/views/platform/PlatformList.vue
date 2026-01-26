@@ -104,7 +104,7 @@ async function fetchPlatforms() {
     platforms.value = response.projects || response.platforms || [];
   } catch (err: any) {
     error.value = err.message || '获取平台列表失败';
-    ElMessage.error(error.value);
+    ElMessage.error(error.value || '获取平台列表失败');
   } finally {
     loading.value = false;
   }

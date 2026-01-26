@@ -268,9 +268,9 @@ export default { components: { ConfirmationHeader } };
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import {
-    Check, Edit, Refresh, DArrowRight, CloseBold, Close, Clock,
-    Document, DocumentCopy, FolderOpened, Operation, InfoFilled,
-    UserFilled, SetUp, Cpu, Download, User,
+    Check, Edit, Refresh, DArrowRight, CloseBold, Close,
+    Document, DocumentCopy, FolderOpened, InfoFilled,
+    UserFilled, SetUp, Cpu, Download,
 } from '@element-plus/icons-vue';
 import SectionAdjuster from '../../../components/SectionAdjuster.vue';
 import apiClient from '../../../api/client';

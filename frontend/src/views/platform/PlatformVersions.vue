@@ -201,7 +201,6 @@ import {
   Delete,
   Edit,
   Link,
-  InfoFilled
 } from '@element-plus/icons-vue';
 
 interface Version {

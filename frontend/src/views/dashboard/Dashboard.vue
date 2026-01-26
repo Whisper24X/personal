@@ -94,7 +94,7 @@
               </div>
               <p class="bl-desc">{{ bl.description || '暂无描述' }}</p>
               <div class="bl-stats">
-                <el-tag size="small">{{ bl.platformCount || bl.projectCount || 0 }} 个平台</el-tag>
+                <el-tag size="small">{{ bl.platformCount || 0 }} 个平台</el-tag>
               </div>
             </el-card>
           </div>
@@ -105,7 +105,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onActivated, onUnmounted } from 'vue';
+import { onMounted, onActivated, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { usePlatformStore } from '../../stores/platform';
 import { useBusinessLineStore } from '../../stores/businessLine';
