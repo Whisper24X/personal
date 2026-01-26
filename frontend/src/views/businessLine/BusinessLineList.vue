@@ -31,16 +31,50 @@
                     :action-handler="() => showCreateDialog = true"
                 />
 
-                <div v-else class="business-lines-grid">
-                    <BusinessLineCard
-                        v-for="bl in businessLines"
-                        :key="bl.id"
-                        :business-line="bl"
-                        @view-platforms="viewPlatforms"
-                        @edit="openEditDialog"
-                        @delete="handleDelete"
-                    />
-                </div>
+                <el-table
+                    v-else
+                    :data="businessLines"
+                    stripe
+                    style="width: 100%"
+                >
+                    <el-table-column prop="name" label="名称" min-width="200">
+                        <template #default="{ row }">
+                            <el-icon style="margin-right: 8px; vertical-align: middle;">
+                                <Box />
+                            </el-icon>
+                            <span>{{ row.name }}</span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="description" label="描述" min-width="250" show-overflow-tooltip />
+                    <el-table-column prop="platformCount" label="平台数" width="100" align="center">
+                        <template #default="{ row }">
+                            {{ row.platformCount || row.projectCount || 0 }}
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="createdAt" label="创建时间" width="180">
+                        <template #default="{ row }">
+                            {{ formatDate(row.createdAt) }}
+                        </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="250" fixed="right">
+                        <template #default="{ row }">
+                            <div class="action-buttons">
+                                <el-button type="primary" size="small" @click="viewPlatforms(row.id)">
+                                    <el-icon><Monitor /></el-icon>
+                                    查看平台
+                                </el-button>
+                                <el-button size="small" @click="openEditDialog(row.id)">
+                                    <el-icon><Edit /></el-icon>
+                                    编辑
+                                </el-button>
+                                <el-button type="danger" plain size="small" @click="handleDelete(row.id)">
+                                    <el-icon><Delete /></el-icon>
+                                    删除
+                                </el-button>
+                            </div>
+                        </template>
+                    </el-table-column>
+                </el-table>
             </el-card>
         </div>
 
@@ -68,10 +102,9 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import PageHeader from '../../components/common/PageHeader.vue';
 import CardHeader from '../../components/common/CardHeader.vue';
 import EmptyState from '../../components/common/EmptyState.vue';
-import BusinessLineCard from './components/BusinessLineCard.vue';
 import BusinessLineCreateDialog from './components/BusinessLineCreateDialog.vue';
 import BusinessLineEditDialog from './components/BusinessLineEditDialog.vue';
-import { Plus } from '@element-plus/icons-vue';
+import { Plus, Box, Monitor, Edit, Delete } from '@element-plus/icons-vue';
 
 const router = useRouter();
 const businessLineStore = useBusinessLineStore();
@@ -96,6 +129,11 @@ function onUpdated() {
 function openEditDialog(id: string) {
     editingId.value = id;
     showEditDialog.value = true;
+}
+
+function formatDate(dateStr: string): string {
+    const date = new Date(dateStr);
+    return date.toLocaleString('zh-CN');
 }
 
 function viewPlatforms(id: string) {
@@ -137,9 +175,9 @@ async function handleDelete(id: string) {
     margin-bottom: 24px;
 }
 
-.business-lines-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 20px;
+.action-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 </style>

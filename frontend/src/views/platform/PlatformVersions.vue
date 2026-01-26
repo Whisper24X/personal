@@ -51,68 +51,84 @@
         </el-button>
       </el-empty>
 
-      <!-- Version cards -->
-      <div v-else class="version-grid">
-        <el-card
-          v-for="version in versions"
-          :key="version.id"
-          class="version-card"
-          :class="{ 'is-active': version.isActive }"
-          shadow="hover"
-        >
-          <template #header>
-            <div class="card-header">
-              <div class="version-title">
-                <el-icon class="version-icon"><Collection /></el-icon>
-                <span class="version-name">{{ version.versionName }}</span>
-                <el-tag v-if="version.isActive" size="small" type="success">当前激活</el-tag>
-              </div>
-              <el-dropdown trigger="click" @command="(cmd: string) => handleVersionAction(cmd, version)">
-                <el-button :icon="MoreFilled" text />
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item 
-                      v-if="!version.isActive" 
-                      command="activate"
-                    >
-                      <el-icon><Check /></el-icon>
-                      设为当前版本
-                    </el-dropdown-item>
-                    <el-dropdown-item command="delete" divided>
-                      <el-icon><Delete /></el-icon>
-                      删除版本
-                    </el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
+      <!-- Version table -->
+      <el-table
+        v-else
+        :data="versions"
+        stripe
+        style="width: 100%"
+      >
+        <el-table-column prop="versionName" label="版本名称" min-width="200">
+          <template #default="{ row }">
+            <el-icon style="margin-right: 8px; vertical-align: middle;">
+              <Collection />
+            </el-icon>
+            <span>{{ row.versionName }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="isActive" label="状态" width="120" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.isActive" type="success" size="small">当前激活</el-tag>
+            <span v-else style="color: var(--el-text-color-placeholder)">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="idea" label="想法" min-width="250" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.idea || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="progress" label="进度" width="100" align="center">
+          <template #default="{ row }">
+            {{ row.progress || 0 }}%
+          </template>
+        </el-table-column>
+        <el-table-column prop="description" label="描述" min-width="250" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.description || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="branchName" label="分支名" min-width="200">
+          <template #default="{ row }">
+            <el-text type="info" size="small">{{ row.branchName }}</el-text>
+          </template>
+        </el-table-column>
+        <el-table-column prop="createdAt" label="创建时间" width="180">
+          <template #default="{ row }">
+            {{ formatDate(row.createdAt) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" min-width="250" fixed="right">
+          <template #default="{ row }">
+            <div class="action-buttons">
+              <el-button 
+                v-if="!row.isActive" 
+                size="small" 
+                @click="activateVersion(row)"
+              >
+                <el-icon><Check /></el-icon>
+                设为当前版本
+              </el-button>
+              <el-button 
+                type="primary" 
+                size="small" 
+                @click="enterWorkflow(row)"
+              >
+                <el-icon><VideoPlay /></el-icon>
+                进入工作流
+              </el-button>
+              <el-button 
+                type="danger" 
+                plain 
+                size="small" 
+                @click="deleteVersion(row)"
+              >
+                <el-icon><Delete /></el-icon>
+                删除
+              </el-button>
             </div>
           </template>
-
-          <div class="card-body">
-            <p v-if="version.description" class="version-desc">{{ version.description }}</p>
-            <p v-else class="version-desc empty">暂无描述</p>
-            
-            <el-descriptions :column="1" size="small" class="version-info">
-              <el-descriptions-item label="分支名">
-                <el-text type="info" size="small">{{ version.branchName }}</el-text>
-              </el-descriptions-item>
-              <el-descriptions-item label="创建时间">
-                <el-text type="info" size="small">{{ formatDate(version.createdAt) }}</el-text>
-              </el-descriptions-item>
-            </el-descriptions>
-          </div>
-
-          <template #footer>
-            <el-button 
-              type="primary" 
-              :icon="VideoPlay"
-              @click="enterWorkflow(version)"
-            >
-              进入工作流
-            </el-button>
-          </template>
-        </el-card>
-      </div>
+        </el-table-column>
+      </el-table>
     </div>
 
     <!-- Create version dialog -->
@@ -196,10 +212,8 @@ import {
   Plus,
   Collection,
   VideoPlay,
-  MoreFilled,
   Check,
   Delete,
-  Edit,
   Link,
 } from '@element-plus/icons-vue';
 
@@ -209,6 +223,7 @@ interface Version {
   versionName: string;
   description?: string;
   idea?: string;
+  progress?: number;
   branchName: string;
   isActive: boolean;
   workspacePath?: string;
@@ -298,13 +313,6 @@ function handleBack() {
   }
 }
 
-async function handleVersionAction(command: string, version: Version) {
-  if (command === 'activate') {
-    await activateVersion(version);
-  } else if (command === 'delete') {
-    await deleteVersion(version);
-  }
-}
 
 async function activateVersion(version: Version) {
   try {
@@ -447,73 +455,10 @@ function formatDate(dateStr?: string): string {
   gap: 4px;
 }
 
-.version-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 20px;
-  margin-top: 20px;
-}
-
-.version-card {
-  transition: all 0.3s ease;
-}
-
-.version-card.is-active {
-  border-color: var(--el-color-success);
-}
-
-.version-card :deep(.el-card__header) {
-  padding: 16px 20px;
-}
-
-.version-card :deep(.el-card__body) {
-  padding: 16px 20px;
-}
-
-.version-card :deep(.el-card__footer) {
-  padding: 12px 20px;
-  border-top: 1px solid var(--el-border-color-lighter);
-}
-
-.card-header {
+.action-buttons {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.version-title {
-  display: flex;
-  align-items: center;
   gap: 8px;
-}
-
-.version-icon {
-  font-size: 18px;
-  color: var(--el-color-primary);
-}
-
-.version-name {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.card-body {
-  min-height: 100px;
-}
-
-.version-desc {
-  color: var(--el-text-color-regular);
-  margin: 0 0 12px 0;
-  line-height: 1.6;
-}
-
-.version-desc.empty {
-  color: var(--el-text-color-placeholder);
-  font-style: italic;
-}
-
-.version-info {
-  margin-top: 12px;
+  flex-wrap: wrap;
 }
 
 .dialog-footer {
