@@ -82,23 +82,36 @@ subtree-pull-$(call _name,$(1)):
 	fi
 endef
 
-# 生成 subtree-push 目标: subtree-push-{name}
+# 生成 subtree-push 目标: subtree-push-{name} [branch]
+# 用法: make subtree-push-backend feature/xxx
+# 自定义分支必须以 feature/ 开头
 define _gen_push
 subtree-push-$(call _name,$(1)):
 	$(_check_env)
-	@echo "$(C_BLUE)推送 $(call _prefix,$(1))...$(C_RESET)"
-	@OUT=$$$$(git subtree push --prefix=$(call _prefix,$(1)) $(call _repo,$(1)) $(call _branch,$(1)) 2>&1); \
-	CODE=$$$$?; \
-	if echo "$$$$OUT" | grep -q "Everything up-to-date"; then \
+	@PUSH_BRANCH="$(filter-out subtree-push-$(call _name,$(1)),$(MAKECMDGOALS))"; \
+	PUSH_BRANCH=$${PUSH_BRANCH:-$(call _branch,$(1))}; \
+	if [ "$$PUSH_BRANCH" != "$(call _branch,$(1))" ] && ! echo "$$PUSH_BRANCH" | grep -q "^feature/"; then \
+		echo "$(C_RED)错误: 自定义分支必须以 feature/ 开头$(C_RESET)"; \
+		echo "$(C_YELLOW)示例: make subtree-push-$(call _name,$(1)) feature/xxx$(C_RESET)"; \
+		exit 1; \
+	fi; \
+	echo "$(C_BLUE)推送 $(call _prefix,$(1)) -> $$PUSH_BRANCH...$(C_RESET)"; \
+	OUT=$$(git subtree push --prefix=$(call _prefix,$(1)) $(call _repo,$(1)) $$PUSH_BRANCH 2>&1); \
+	CODE=$$?; \
+	if echo "$$OUT" | grep -q "Everything up-to-date"; then \
 		echo "$(C_YELLOW)$(call _prefix,$(1)) 无变更$(C_RESET)"; \
-	elif [ $$$$CODE -ne 0 ]; then \
-		echo "$$$$OUT"; \
+	elif [ $$CODE -ne 0 ]; then \
+		echo "$$OUT"; \
 		echo "$(C_RED)推送失败，请先执行: make subtree-pull-$(call _name,$(1))$(C_RESET)"; \
 		exit 1; \
 	else \
-		echo "$(C_GREEN)✓ $(call _prefix,$(1)) 已推送$(C_RESET)"; \
+		echo "$(C_GREEN)✓ $(call _prefix,$(1)) 已推送到 $$PUSH_BRANCH$(C_RESET)"; \
 	fi
 endef
+
+# 允许任意分支名作为目标（避免 make 报错）
+%:
+	@:
 
 # 生成 subtree-add 目标: subtree-add-{name}
 define _gen_add
@@ -238,6 +251,10 @@ help:
 		echo "  $(C_GREEN)make subtree-pull-$(call _name,$(s))$(C_RESET)  拉取 $(call _prefix,$(s))";)
 	@$(foreach s,$(SUBTREES), \
 		echo "  $(C_GREEN)make subtree-push-$(call _name,$(s))$(C_RESET)  推送 $(call _prefix,$(s))";)
+	@echo ""
+	@echo ""
+	@echo "$(C_YELLOW)推送到指定分支$(C_RESET)"
+	@echo "  $(C_GREEN)make subtree-push-backend feature/xxx$(C_RESET)  推送到 feature 分支"
 	@echo ""
 	@echo "$(C_YELLOW)沙箱环境$(C_RESET)"
 	@echo "  $(C_GREEN)make sandbox$(C_RESET)           启动沙箱"
