@@ -470,7 +470,8 @@ export class WorkflowExecutor {
       WriteTest: ['WritePRD', 'WriteCode'],
       WriteTestPlan: ['WritePRD', 'WriteCode'],
       TestabilityReview: ['WritePRD', 'WriteCode'],
-      TestCaseReview: ['WriteTest', 'WriteTestPlan'],
+      TestReview: ['WriteTest', 'WriteTestPlan'],
+      ImproveTest: ['TestReview', 'WriteTest'],
       
       // MRD is the first step, needs User input
       WriteMRD: ['User'],

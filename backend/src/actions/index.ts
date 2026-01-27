@@ -37,7 +37,6 @@ export { Deploy } from './Deploy';
 
 // QA Actions
 export { TestabilityReview } from './TestabilityReview';
-export { TestCaseReview } from './TestCaseReview';
 export { TestReview } from './TestReview';
 export { ImproveTest } from './ImproveTest';
 export { AutomationPlanning } from './AutomationPlanning';
@@ -72,7 +71,6 @@ import { RunCode } from './RunCode';
 import { FixBug } from './FixBug';
 import { Deploy } from './Deploy';
 import { TestabilityReview } from './TestabilityReview';
-import { TestCaseReview } from './TestCaseReview';
 import { TestReview } from './TestReview';
 import { ImproveTest } from './ImproveTest';
 import { AutomationPlanning } from './AutomationPlanning';
@@ -119,7 +117,6 @@ export const ACTION_REGISTRY: Record<string, new () => BaseAction> = {
   Deploy,
   // QA Actions
   TestabilityReview,
-  TestCaseReview,
   TestReview,
   ImproveTest,
   AutomationPlanning,
