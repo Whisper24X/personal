@@ -52,7 +52,13 @@ export class BreakdownTasks extends BaseAction {
       const contextCommand = `请阅读 openspec/project.md，帮我补充完善关于当前项目、技术栈和开发规范等内容，参考 ../docs/design/DESIGN.md、../docs/prd/PRD.md、../AGENTS.md 这三个文档，用中文完善`;
 
       // 指令2: 创建openSpec变更提案
-      const proposeCommand = `创建openSpec变更提案 1. 读取并分析以下文档：- ../docs/prd/PRD.md（产品需求文档）- ../docs/design/DESIGN.md（系统设计文档）- ../AGENTS.md（项目代理和开发指南）,用中文完善`;
+      const proposeCommand = `创建openSpec变更提案 1. 读取并分析以下文档：- ../docs/prd/PRD.md（产品需求文档）- ../docs/design/DESIGN.md（系统设计文档）- ../AGENTS.md（项目代理和开发指南）,用中文完善
+
+重要要求：
+- 任务清单只包含开发实现相关的任务（数据库设计、后端实现、前端实现等）
+- 不要生成"测试与验证"章节
+- 不要生成"文档与部署"章节
+- 任务清单应该以开发实现为核心，聚焦于代码开发任务`;
       
       // 指令3: 检查openSpec变更提案
       const checkCommand = `执行指令openspec-validate 检查变更提案的格式、结构是否符合 OpenSpec 规范（避免格式错误）,符合规范返回：SUCCESS，不符合返回: FAIL`;
