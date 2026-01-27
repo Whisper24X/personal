@@ -62,7 +62,7 @@ export async function saveSectionConversationHistory(
   documentType: 'PRD' | 'MRD' | 'DESIGN',
   history: SectionConversationHistory,
   documentId?: string,
-  applicationId?: string,
+  _applicationId?: string, // Kept for API compatibility, not used in database
   version: number = 1
 ): Promise<void> {
   try {
@@ -71,7 +71,6 @@ export async function saveSectionConversationHistory(
       sectionNumber,
       documentType,
       documentId,
-      applicationId,
       version,
     });
     

@@ -647,6 +647,7 @@ export class ProjectController {
   static async downloadCode(req: Request, res: Response) {
     try {
       const { id: projectId } = req.params;
+      const { versionId } = req.query;
 
       // Get project to find applicationId
       const project = await projectRepo.findById(projectId);
@@ -670,6 +671,7 @@ export class ProjectController {
       const workspacePath = WorkspaceManager.getProjectWorkspacePath({
         applicationId: project.application_id,
         projectId: projectId,
+        versionId: versionId as string | undefined,
       });
 
       // Check if workspace exists
@@ -737,6 +739,7 @@ export class ProjectController {
   static async downloadDocs(req: Request, res: Response) {
     try {
       const { id: projectId } = req.params;
+      const { versionId } = req.query;
 
       // Get project to find applicationId
       const project = await projectRepo.findById(projectId);
@@ -760,6 +763,7 @@ export class ProjectController {
       const workspacePath = WorkspaceManager.getProjectWorkspacePath({
         applicationId: project.application_id,
         projectId: projectId,
+        versionId: versionId as string | undefined,
       });
 
       // Check if workspace exists
