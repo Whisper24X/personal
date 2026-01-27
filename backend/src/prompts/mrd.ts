@@ -2,6 +2,18 @@
  * 市场研究文档（MRD - Market Research Document）提示词
  */
 
+import {
+  StructuredKnowledgeContext,
+  formatStructuredKnowledge,
+  isKnowledgeContextEmpty,
+  STRUCTURED_KNOWLEDGE_INSTRUCTION,
+  MRD_KNOWLEDGE_REQUIREMENTS,
+} from './knowledge';
+
+// 重新导出类型供外部使用
+export type { StructuredKnowledgeContext };
+export { formatStructuredKnowledge, isKnowledgeContextEmpty };
+
 export const MRD_SYSTEM_PROMPT = `你是一个专业的 MRD（Market Requirements Document，市场需求文档）撰写助手。你的任务是帮助非技术同事将产品想法转化为工程团队可评估的需求文档。
 
 ## 核心原则
@@ -255,9 +267,31 @@ export const KNOWLEDGE_INPUT_REFERENCE = `
 - 建议解决方案
 `;
 
-export function buildMRDPrompt(userIdea: string, relevantChunks?: string): string {
-    const ragContext = relevantChunks
-        ? `\n\n## 研究上下文（由系统自动提供）\n\n**知识库检索结果**：\n${relevantChunks}\n\n请参考上述知识库信息，结合当前需求生成新的MRD文档。`
+/**
+ * 构建 MRD 生成提示词
+ * @param userIdea 用户需求描述
+ * @param relevantChunksOrContext RAG 检索到的相关文档片段（字符串）或结构化知识上下文
+ * @returns MRD 生成提示词
+ */
+export function buildMRDPrompt(
+    userIdea: string, 
+    relevantChunksOrContext?: string | StructuredKnowledgeContext
+): string {
+    let knowledgeSection = '';
+    
+    if (relevantChunksOrContext) {
+        if (typeof relevantChunksOrContext === 'string') {
+            // 兼容旧版本：简单字符串形式的 RAG 结果
+            knowledgeSection = `\n\n## 研究上下文（由系统自动提供）\n\n**知识库检索结果**：\n${relevantChunksOrContext}\n\n请参考上述知识库信息，结合当前需求生成新的MRD文档。`;
+        } else if (!isKnowledgeContextEmpty(relevantChunksOrContext)) {
+            // 新版本：结构化知识上下文
+            const formattedKnowledge = formatStructuredKnowledge(relevantChunksOrContext);
+            knowledgeSection = `\n\n${STRUCTURED_KNOWLEDGE_INSTRUCTION}\n\n${formattedKnowledge}`;
+        }
+    }
+
+    const knowledgeRequirements = knowledgeSection 
+        ? `\n\n${MRD_KNOWLEDGE_REQUIREMENTS}`
         : '';
 
     return `请帮我生成一份 MRD 文档。
@@ -266,7 +300,7 @@ export function buildMRDPrompt(userIdea: string, relevantChunks?: string): strin
 
 **需求描述**：
 ${userIdea}
-${ragContext}
+${knowledgeSection}
 
 ## 生成要求
 
@@ -275,6 +309,7 @@ ${ragContext}
 3. **逐章生成**：按顺序生成每一章，确保字数和质量要求
 4. **重点检查**：确保"明确不做的范围"至少 3 项
 5. **补充 Sources**：列出所有研究来源
+${knowledgeRequirements}
 
 ## 文档模板（严格遵循）
 
@@ -292,6 +327,7 @@ ${MRD_TEMPLATE}
 - 至少 2 个典型使用场景
 - 重点关注业务价值、市场分析和用户需求，不涉及技术实现细节
 - 如果有联网研究或知识库来源，必须在 Sources 章节列出
+- 如果使用了知识库内容，需标注来源：> 📚 来源：[知识类型] - 文档名称
 
 ## 输出格式
 
@@ -400,15 +436,40 @@ ${userIdea}
 
 /**
  * 生成市场研究文档单个章节的提示词
+ * @param input 需求背景
+ * @param outline MRD 目录
+ * @param sectionNumber 章节编号
+ * @param sectionTitle 章节标题
+ * @param knowledgeContext 可选的结构化知识上下文
+ * @returns 章节生成提示词
  */
 export function buildMRDSectionPrompt(
     input: string,
     outline: string,
     sectionNumber: number,
-    sectionTitle: string
+    sectionTitle: string,
+    knowledgeContext?: StructuredKnowledgeContext
 ): string {
     // 根据章节号提供具体的生成指导
     const sectionGuidance = getSectionGuidance(sectionNumber);
+    
+    // 格式化知识上下文
+    let knowledgeSection = '';
+    if (knowledgeContext && !isKnowledgeContextEmpty(knowledgeContext)) {
+        const formattedKnowledge = formatStructuredKnowledge(knowledgeContext);
+        knowledgeSection = `
+${STRUCTURED_KNOWLEDGE_INSTRUCTION}
+
+${formattedKnowledge}
+
+【知识使用要求】
+- 必须使用术语词典中的标准术语
+- 必须检查历史文档避免重复定义
+- 必须遵守业务规则和技术约束
+- 如有冲突，在章节内容中说明
+- 引用知识库内容时标注来源：> 📚 来源：[知识类型] - 文档名称
+`;
+    }
 
     return `基于以下需求信息和 MRD 目录，生成第 ${sectionNumber} 章「${sectionTitle}」的详细内容：
 
@@ -417,6 +478,7 @@ ${input}
 
 【MRD 目录】
 ${outline}
+${knowledgeSection}
 
 【目标章节】
 ## ${sectionNumber}. ${sectionTitle}
@@ -429,6 +491,7 @@ ${sectionGuidance}
 3. 内容要详细、具体、充实，避免空洞和占位符
 4. 内容要面向产品经理和业务团队，确保可直接使用
 5. 重点关注业务价值、市场分析和用户需求，不涉及技术实现细节
+${knowledgeContext ? '6. 必须参考知识库内容，确保与现有知识一致' : ''}
 
 输出要求：
 - 只输出第 ${sectionNumber} 章的内容（包含章节标题 ## ${sectionNumber}. ${sectionTitle}）
@@ -436,6 +499,7 @@ ${sectionGuidance}
 - 使用 Markdown 格式
 - 不保留任何占位符（如"[描述]"、"[功能1]"等）
 - 章节编号和标题必须与模板完全一致
+${knowledgeContext ? '- 引用知识库内容时需标注来源' : ''}
 `;
 }
 
@@ -839,5 +903,8 @@ export default {
     buildMRDSectionReviewPrompt,
     MRD_IMPROVE_SYSTEM_PROMPT,
     buildMRDImprovePrompt,
+    // 新增：结构化知识相关导出
+    formatStructuredKnowledge,
+    isKnowledgeContextEmpty,
 };
 

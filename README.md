@@ -14,6 +14,7 @@ Mind2Build is a multi-agent AI collaboration framework that simulates a software
   - **Web Interactive Mode**: Beautiful browser interface with real-time updates
 - **Business Line & Platform Management**: Organize projects by business lines and platforms
 - **Knowledge Base System**: RAG-enhanced retrieval with Qdrant vector database support
+- **Section Conversation History**: Track and manage conversation history for document sections (PRD/MRD) to enable iterative refinement
 - **Workflow Management**: Customizable workflows with visual designer
 - **Git Repository Integration**: Automatic Git repository management with version branch support
 - **Multiple LLM Support**: OpenAI, Zhipu AI, Ark (Doubao), DeepSeek, Cursor Agent, and more
@@ -94,8 +95,8 @@ mind2build/
 │   │   ├── orchestration/   # Team, Environment, StateManager
 │   │   ├── executors/       # LLMExecutor, CLIExecutor (Aider, Cursor)
 │   │   ├── database/        # PostgreSQL repositories and migrations
-│   │   ├── api/             # REST API controllers and routes
-│   │   ├── services/        # WorkflowService, RAGService, GitService, etc.
+│   │   ├── api/             # 15 REST API controllers: ApplicationController, ApplicationWorkflowController, EngineerTestController, KnowledgeBaseController, KnowledgeUploadController, LLMConfigController, MRDController, PRDController, ProjectController, ProjectVersionController, PromptConfigController, RoleActionController, RoleActionExecutionController, RoleLLMConfigController, WorkflowExecutionController
+│   │   ├── services/        # 10 Services: WorkflowService, RAGService, GitService, DocumentArchiveService, RoleActionService, EmbeddingService, QdrantService, RerankService, SectionAdjustService, StagehandService
 │   │   ├── workflow/        # Workflow execution engine
 │   │   └── cli/             # CLI commands
 │   └── tests/
@@ -494,8 +495,8 @@ curl -X POST http://localhost:3000/api/projects/PROJECT_ID/roles/Engineer/action
 - **Architect**: WriteDesign, DesignReview, ImproveDesign
 - **ProjectManager**: BreakdownTasks, WriteSubProjectDesign, SubProjectDesignReview
 - **Engineer**: WriteCode, ExecuteSubtask, RunCode, FixBug
-- **QAEngineer**: TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, TestReview, ImproveTest, QAConclusion
-- **AutomationEngineer**: AutomationPlanning, AutomationExecution, CoverageQualityCheck
+- **QAEngineer**: TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, TestReview, ImproveTest
+- **AutomationEngineer**: AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion
 - **TeamLeader**: Coordinate
 - **DataAnalyst**: DataAnalysis
 

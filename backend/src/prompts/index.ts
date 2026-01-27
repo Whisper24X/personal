@@ -8,3 +8,7 @@ export * from './design';
 export * from './code';
 export * from './test';
 export * from './task';
+
+// 知识库优化相关模块
+export * from './knowledge';
+export * from './reviewWithKnowledge';

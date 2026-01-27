@@ -1,15 +1,16 @@
-# Cursor CLI 迁移方案
+# 双模式执行器设计文档
 
 ## 文档信息
 
-- **文档版本**: 1.1
+- **文档版本**: 2.0
 - **创建日期**: 2026-01-23
-- **最后更新**: 2026-01-26（更新Actions数量为30个）
-- **文档状态**: 方案设计
+- **最后更新**: 2026-01-26（更新为双模式设计文档，反映当前实现）
+- **文档状态**: 已实现
 - **相关文档**: 
   - `06_角色系统设计_ROLES.md`
   - `07_行动系统设计_ACTIONS.md`
   - `08_LLM提供商集成_PROVIDERS.md`
+  - `31_CLI知识库设计方案_CLI_KNOWLEDGE_BASE.md`
 
 ---
 
@@ -17,168 +18,783 @@
 
 ### 1.1 背景
 
-当前系统实现中，大部分角色和Action通过LLM API（如智谱AI、OpenAI等）来完成文档生成、代码生成等任务。Engineer角色和WriteCode Action已经成功迁移到使用Cursor CLI（`cursor-agent`命令）来执行代码生成任务。
+系统已实现双模式执行器架构，支持两种执行模式：
 
-为了统一执行方式，提高一致性和可维护性，需要将所有角色和Action的执行方式统一迁移到Cursor CLI。
+- **LLM模式**（默认）：使用大模型API执行任务，支持多种LLM提供商（OpenAI、Zhipu AI、DeepSeek等），通过RAG（Retrieval-Augmented Generation）检索历史文档作为上下文
+- **CLI模式**：使用命令行工具执行任务，支持Cursor CLI、Aider等工具，直接利用CLI工具的原生上下文能力访问文件系统和代码库
+
+两种模式可以根据场景灵活选择，实现优势互补。系统通过统一的执行器接口（`IExecutor`）抽象两种模式，Action层无需关心具体执行方式，只需调用统一的`execute()`方法。
 
 ### 1.2 目标
 
-- **统一执行方式**: 所有角色和Action都通过CLI工具执行，默认使用Cursor CLI，不再依赖外部LLM API
-- **提高一致性**: 统一的执行接口和错误处理机制
-- **简化架构**: 减少对多个LLM提供商的依赖，降低配置复杂度
-- **保持兼容**: 确保现有功能不受影响，平滑迁移
-- **本地开发支持**: 支持本地开发调试模式，无需容器化
-- **角色自定义CLI**: 每个角色可以配置使用不同的CLI工具（Cursor、Aider、Cline等）
+双模式设计的目标：
 
-### 1.3 参考实现
+- **灵活选择**: 根据场景选择最适合的执行模式（LLM模式或CLI模式）
+- **优势互补**: LLM模式提供快速响应和成本控制，CLI模式提供完整代码理解和高质量文档生成
+- **统一接口**: 通过统一的执行器接口，Action层代码无需修改即可切换模式
+- **向后兼容**: 默认使用LLM模式，保持现有功能不受影响
+- **配置灵活**: 支持全局配置、角色级配置、环境变量配置等多种配置方式
+- **知识库分离**: CLI模式使用目录引用方式，LLM模式继续使用RAG，两种模式的知识库策略完全分离
 
-当前已有两个Action成功使用Cursor CLI：
-- **WriteCode**: 使用`cursor-agent --model composer-1 --print`执行代码生成
-- **BreakdownTasks**: 使用Cursor CLI创建openSpec变更提案
+### 1.3 已实现功能
 
-这两个实现为其他Action的迁移提供了参考模式。
+当前系统已完整实现双模式架构：
+
+- ✅ **执行器系统**: `LLMExecutor`、`CLIExecutor`、`ExecutorFactory`
+- ✅ **CLI提供商系统**: `CursorCLIProvider`、`AiderCLIProvider`、`CLIProviderFactory`
+- ✅ **角色配置系统**: `RoleExecutorConfig`，支持数据库、环境变量、默认配置三级优先级
+- ✅ **BaseAction双模式支持**: 统一的`execute()`方法，自动根据配置选择执行模式
+- ✅ **文档处理Handler**: `DocumentWriteHandler`、`DocumentReviewHandler`、`DocumentImproveHandler`均支持双模式
+- ✅ **知识库系统**: CLI模式使用目录引用，LLM模式使用RAG，完全分离
+- ✅ **30个Action**: 所有Action均支持双模式执行
 
 ---
 
-## 2. 当前架构分析
+## 2. 双模式架构设计
+
+### 2.0 架构概览
+
+系统采用双模式执行器架构，通过统一的执行器接口抽象两种执行模式：
+
+```mermaid
+graph TB
+    subgraph ActionLayer[Action Layer]
+        A[BaseAction.execute]
+    end
+    
+    subgraph ExecutorLayer[Executor Layer]
+        B[ExecutorFactory]
+        C[LLMExecutor]
+        D[CLIExecutor]
+    end
+    
+    subgraph ProviderLayer[Provider Layer]
+        E[LLM API]
+        F[CursorCLIProvider]
+        G[AiderCLIProvider]
+    end
+    
+    subgraph KnowledgeLayer[Knowledge Base Layer]
+        H[RAG Service<br/>Qdrant Vector DB]
+        I[Directory Reference<br/>File System]
+    end
+    
+    A -->|根据配置选择| B
+    B -->|mode=llm| C
+    B -->|mode=cli| D
+    C -->|调用| E
+    D -->|使用| F
+    D -->|使用| G
+    C -.->|LLM模式| H
+    D -.->|CLI模式| I
+    
+    style C fill:#e1f5ff
+    style D fill:#fff4e1
+    style H fill:#e1f5ff
+    style I fill:#fff4e1
+```
+
+### 2.0.1 执行流程
+
+```mermaid
+sequenceDiagram
+    participant Action as BaseAction
+    participant Factory as ExecutorFactory
+    participant LLMExec as LLMExecutor
+    participant CLIExec as CLIExecutor
+    participant LLM as LLM API
+    participant CLI as CLI Tool
+    
+    Action->>Action: execute(prompt, options)
+    Action->>Action: getExecutorMode()
+    
+    alt LLM Mode
+        Action->>Factory: getExecutor('llm', context)
+        Factory->>LLMExec: getLLMExecutor(context)
+        Action->>LLMExec: execute(prompt, options)
+        LLMExec->>LLM: aask(prompt, systemPrompt)
+        LLM-->>LLMExec: result
+        LLMExec-->>Action: result
+    else CLI Mode
+        Action->>Factory: getExecutor('cli', context)
+        Factory->>CLIExec: getCLIExecutor(context)
+        Action->>CLIExec: execute(prompt, options)
+        CLIExec->>CLI: execute command
+        CLI-->>CLIExec: result
+        CLIExec-->>Action: result
+    end
+```
+
+### 2.0.2 模式选择决策流程
+
+```mermaid
+flowchart TD
+    Start[Action执行] --> CheckRole{检查角色配置}
+    CheckRole -->|有配置| UseRole[使用角色配置]
+    CheckRole -->|无配置| CheckEnv{检查环境变量}
+    CheckEnv -->|ROLE_*_EXECUTOR_MODE| UseRoleEnv[使用角色环境变量]
+    CheckEnv -->|DEFAULT_EXECUTOR_MODE| UseGlobalEnv[使用全局环境变量]
+    CheckEnv -->|无配置| UseDefault[使用默认: LLM模式]
+    
+    UseRole --> Mode{执行模式}
+    UseRoleEnv --> Mode
+    UseGlobalEnv --> Mode
+    UseDefault --> Mode
+    
+    Mode -->|llm| LLMMode[LLM模式<br/>使用LLMExecutor]
+    Mode -->|cli| CLIMode[CLI模式<br/>使用CLIExecutor]
+    
+    LLMMode --> LLMExec[调用LLM API<br/>使用RAG知识库]
+    CLIMode --> CLIExec[调用CLI工具<br/>使用目录引用知识库]
+    
+    style LLMMode fill:#e1f5ff
+    style CLIMode fill:#fff4e1
+```
+
+---
 
 ### 2.1 当前实现方式
 
-#### 2.1.1 LLM API方式（待迁移）
+系统已实现双模式执行器架构，支持两种执行模式：
 
-大部分Action通过`BaseAction.aask()`方法调用LLM：
+#### 2.1.1 LLM模式（默认）
+
+使用大模型API执行任务，通过统一的`LLMExecutor`执行器：
 
 ```typescript
-// 示例：WritePRD.ts
-const systemPrompt = await loadPrompt(userId, 'prd', 'system_prompt', PRD_SYSTEM_PROMPT);
-const prdContent = await this.aask(prompt, [systemPrompt]);
+// BaseAction.execute() 自动选择执行模式
+protected async execute(prompt: string, options?: ExecutorOptions): Promise<string> {
+  const mode = this.getExecutorMode();
+  if (mode === 'cli') {
+    return await this.executeCLI(prompt, options);
+  } else {
+    return await this.executeLLM(prompt, options);
+  }
+}
+
+// LLM模式执行
+protected async executeLLM(prompt: string, options?: ExecutorOptions): Promise<string> {
+  const currentLLM = this.llm;
+  const systemMsgs = options?.systemPrompt ? [options.systemPrompt] : undefined;
+  return await currentLLM.aask(prompt, systemMsgs, this.abortSignal);
+}
 ```
 
 **特点**:
 - 通过`BaseAction.llm`获取LLM实例（来自Context或角色特定配置）
-- 使用`aask()`或`acompletion()`方法调用LLM
-- 依赖LLMManager管理多个LLM提供商
+- 使用`LLMExecutor`统一封装LLM调用
+- 支持多种LLM提供商（OpenAI、Zhipu AI、DeepSeek等）
+- 使用RAG（Retrieval-Augmented Generation）检索历史文档作为上下文
 - 需要配置API密钥、模型参数等
 
-#### 2.1.2 Cursor CLI方式（已实现）
+#### 2.1.2 CLI模式
 
-Engineer和WriteCode使用Cursor CLI：
+使用命令行工具执行任务，通过统一的`CLIExecutor`执行器：
 
 ```typescript
-// 示例：WriteCode.ts
-const command = `cursor-agent --model composer-1 --print "${applyCommand}"`;
-const output = await executeCommandSimple(command, {
-  cwd: workDir,
-  timeout: 3600000, // 60分钟超时
-});
+// CLI模式执行
+protected async executeCLI(prompt: string, options?: ExecutorOptions): Promise<string> {
+  const workDir = options?.workDir || this.getDefaultWorkDir();
+  const cliConfig = this.getCLIConfig();
+  const executor = new CLIExecutor({
+    providerType: cliConfig.provider,
+    providerConfig: cliConfig.config,
+    defaultWorkDir: workDir,
+  });
+  return await executor.execute(prompt, {
+    ...options,
+    workDir,
+    abortSignal: this.abortSignal,
+  });
+}
 ```
 
 **特点**:
-- 使用`executeCommandSimple()`执行shell命令
-- 通过`cursor-agent`命令行工具执行
-- 支持循环重试机制
+- 使用`CLIExecutor`统一封装CLI调用
+- 支持多种CLI提供商（Cursor CLI、Aider等）
+- 直接利用CLI工具的原生上下文能力访问文件系统
+- 使用目录引用方式提供知识库上下文，无需向量数据库
 - 工作目录隔离（每个项目独立workspace）
 
 ### 2.2 架构对比
 
-| 维度 | LLM API方式 | Cursor CLI方式 |
-|------|------------|---------------|
+| 维度 | LLM模式 | CLI模式 |
+|------|---------|---------|
 | **执行方式** | HTTP API调用 | Shell命令执行 |
-| **依赖管理** | 需要多个LLM提供商配置 | 只需Cursor CLI工具 |
-| **错误处理** | API错误、超时等 | 命令执行错误、超时 |
-| **工作目录** | 无固定工作目录 | 基于workspace的固定目录 |
-| **重试机制** | 由LLM提供商处理 | 自定义循环重试 |
-| **成本控制** | 按token计费 | Cursor CLI使用限制 |
+| **执行器** | LLMExecutor | CLIExecutor |
+| **知识库** | RAG（向量数据库） | 目录引用（文件系统） |
+| **上下文长度** | 受模型token限制 | 无限制（可读取完整文件） |
+| **代码理解** | 有限 | 强大（CLI工具原生能力） |
+| **响应速度** | 秒级 | 分钟级 |
+| **成本** | 按token计费 | CLI工具使用限制 |
+| **依赖** | API密钥 | 本地CLI工具 |
+| **适用场景** | 简单文档、快速原型 | 复杂代码理解、大型项目 |
 
-### 2.3 当前角色和Action清单
+### 2.3 模式优劣对比
 
-#### 2.3.1 已使用Cursor CLI的角色/Action
+#### LLM模式优势
 
-- ✅ **Engineer** → WriteCode
-- ✅ **ProjectManager** → BreakdownTasks
+- ✅ **API调用灵活**：支持多种LLM提供商（OpenAI、Zhipu、DeepSeek等）
+- ✅ **成本可控**：按token计费，可精确控制成本
+- ✅ **无需本地工具**：只需API密钥即可使用
+- ✅ **响应速度快**：API调用通常秒级返回
+- ✅ **支持流式输出**：可实时获取生成内容
+- ✅ **模型选择灵活**：可根据需求选择不同能力的模型
 
-#### 2.3.2 待迁移的角色/Action
+#### LLM模式劣势
 
-**角色列表**:
-- ProductManager → WritePRD, PRDReview, ImprovePRD
-- Architect → WriteDesign, DesignReview, ImproveDesign
-- Salesperson → WriteMRD, MRDReview, ImproveMRD
-- QAEngineer → WriteTest, TestReview, TestCaseReview, etc.
-- AutomationEngineer → AutomationPlanning, AutomationExecution
-- DataAnalyst → DataAnalysis
-- TeamLeader → Coordinate
+- ❌ **上下文长度限制**：受模型最大token限制
+- ❌ **代码理解能力有限**：难以理解复杂代码结构
+- ❌ **需要向量数据库**：RAG需要Qdrant等向量数据库，增加系统复杂度
+- ❌ **知识库依赖RAG检索**：检索精度可能有限
+- ❌ **无法直接访问文件系统**：需要预先准备上下文
+- ❌ **对长文档处理能力有限**：可能需要分块处理
 
-**Action列表** (共30个，已迁移2个，待迁移28个):
-- WriteMRD, MRDReview, ImproveMRD
-- WritePRD, PRDReview, ImprovePRD
-- WriteDesign, DesignReview, ImproveDesign
-- BreakdownTasks ✅
-- WriteCode ✅
-- WriteTest, TestReview, TestCaseReview, ImproveTest
-- CodeReview
-- RunCode
-- FixBug
-- SearchEnhancedQA, QAConclusion
-- TestabilityReview, CoverageQualityCheck
-- AutomationPlanning, AutomationExecution
-- DataAnalysis
-- Coordinate
-- ExecuteSubtask
-- WriteTestPlan
-- WriteSubProjectDesign, SubProjectDesignReview
+#### CLI模式优势
+
+- ✅ **完整代码理解**：CLI工具具备强大的代码分析能力
+- ✅ **文件系统直接访问**：可读取完整文件不受限制
+- ✅ **无需向量数据库**：知识库使用简化（目录引用）
+- ✅ **知识库简化**：直接利用CLI工具的原生上下文能力
+- ✅ **支持大项目**：可处理大型代码库和文档
+- ✅ **功能冲突检测**：可自动识别新需求与现有实现的冲突
+- ✅ **文档生成质量高**：基于完整上下文生成更准确的文档
+
+#### CLI模式劣势
+
+- ❌ **依赖本地工具**：需要安装Cursor CLI等工具
+- ❌ **执行时间较长**：CLI工具执行可能需要数分钟到数十分钟
+- ❌ **资源消耗较大**：需要更多CPU和内存资源
+- ❌ **工具可用性要求**：需要确保CLI工具在环境中可用
+- ❌ **成本可能较高**：Cursor CLI可能有使用限制
+- ❌ **调试困难**：CLI执行过程不如API调用透明
+
+#### 使用场景建议
+
+**推荐使用LLM模式**：
+- 简单文档生成
+- 快速原型开发
+- 成本敏感场景
+- 无本地工具环境
+- 需要快速响应的场景
+
+**推荐使用CLI模式**：
+- 复杂代码理解
+- 大型项目文档生成
+- 高质量文档生成需求
+- 需要冲突检测的场景
+- 已有完整代码库的项目
+
+### 2.4 支持双模式的角色和Action
+
+所有30个Action均支持双模式执行，包括：
+
+**文档生成类**：
+- WriteMRD, WritePRD, WriteDesign, WriteTest, WriteTestPlan, WriteSubProjectDesign
+
+**文档审查类**：
+- MRDReview, PRDReview, DesignReview, TestReview, TestCaseReview, SubProjectDesignReview
+
+**文档改进类**：
+- ImproveMRD, ImprovePRD, ImproveDesign, ImproveTest
+
+**代码相关**：
+- WriteCode, CodeReview, RunCode, FixBug
+
+**任务管理**：
+- BreakdownTasks, ExecuteSubtask, Coordinate
+
+**测试相关**：
+- TestabilityReview, CoverageQualityCheck, AutomationPlanning, AutomationExecution
+
+**其他**：
+- SearchEnhancedQA, QAConclusion, DataAnalysis
 
 ---
 
-## 3. 目标架构设计
+## 3. 核心组件设计
 
-### 3.1 分层架构设计（支持容器化）
+### 3.1 执行器架构
 
+系统通过统一的执行器接口抽象两种执行模式，Action层无需关心具体实现细节。
+
+#### 3.1.1 执行器接口
+
+**文件**: `backend/src/executors/types.ts`
+
+```typescript
+/**
+ * 执行模式类型
+ * - llm: 使用大模型 API 执行
+ * - cli: 使用命令行工具执行（如 Cursor CLI, Aider）
+ */
+export type ExecutorMode = 'llm' | 'cli';
+
+/**
+ * 执行器选项
+ */
+export interface ExecutorOptions {
+  /** 系统提示词 */
+  systemPrompt?: string;
+  /** 工作目录 */
+  workDir?: string;
+  /** 超时时间（毫秒） */
+  timeout?: number;
+  /** 输出文件路径（CLI 模式下指定输出文件） */
+  outputFile?: string;
+  /** 环境变量 */
+  env?: Record<string, string>;
+  /** AbortSignal 用于取消执行 */
+  abortSignal?: AbortSignal;
+}
+
+/**
+ * 执行器接口
+ */
+export interface IExecutor {
+  /**
+   * 执行提示词
+   * @param prompt 提示词内容
+   * @param options 执行选项
+   * @returns 执行结果字符串
+   */
+  execute(prompt: string, options?: ExecutorOptions): Promise<string>;
+
+  /**
+   * 获取执行模式
+   */
+  getMode(): ExecutorMode;
+}
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         API Gateway Layer                                 │
-│  (HTTP API, WebSocket, 工作流编排接口)                                    │
-└──────────────────────────────┬──────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                      Workflow Orchestration Layer                        │
-│  - WorkflowExecutor (工作流执行器)                                       │
-│  - WorkflowExecutionService (状态管理服务)                              │
-│  - 工作流调度和协调                                                      │
-└──────────────────────────────┬──────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                      Workflow Container Layer                            │
-│  ┌──────────────────────────────────────────────────────────────────┐   │
-│  │  Container 1: Project A Workflow                                 │   │
-│  │  ┌──────────────────────────────────────────────────────────┐   │   │
-│  │  │  Role Layer (ProductManager, Architect, etc.)            │   │   │
-│  │  │  └─► Action Layer (WritePRD, WriteDesign, etc.)          │   │   │
-│  │  │      └─► CursorCLIExecutor                                │   │   │
-│  │  │          └─► Workspace (独立文件系统)                    │   │   │
-│  │  └──────────────────────────────────────────────────────────┘   │   │
-│  │  State: workflow_executions (project_id = A)                   │   │
-│  └──────────────────────────────────────────────────────────────────┘   │
-│                                                                           │
-│  ┌──────────────────────────────────────────────────────────────────┐   │
-│  │  Container 2: Project B Workflow                                 │   │
-│  │  ┌──────────────────────────────────────────────────────────┐   │   │
-│  │  │  Role Layer + Action Layer + CursorCLIExecutor          │   │   │
-│  │  │      └─► Workspace (独立文件系统)                        │   │   │
-│  │  └──────────────────────────────────────────────────────────┘   │   │
-│  │  State: workflow_executions (project_id = B)                   │   │
-│  └──────────────────────────────────────────────────────────────────┘   │
-└──────────────────────────────┬──────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                      Infrastructure Layer                                 │
-│  - PostgreSQL (状态持久化)                                                │
-│  - File System / Object Storage (Workspace存储)                         │
-│  - Cursor CLI Tool (cursor-agent)                                        │
-└─────────────────────────────────────────────────────────────────────────┘
+
+#### 3.1.2 LLMExecutor（LLM执行器）
+
+**文件**: `backend/src/executors/LLMExecutor.ts`
+
+LLM执行器封装LLM API调用，提供统一的执行接口：
+
+```typescript
+export class LLMExecutor implements IExecutor {
+  private context: LLMExecutorContext;
+
+  constructor(context: LLMExecutorContext) {
+    this.context = context;
+  }
+
+  getMode(): ExecutorMode {
+    return 'llm';
+  }
+
+  async execute(prompt: string, options?: ExecutorOptions): Promise<string> {
+    const { llm, abortSignal } = this.context;
+
+    if (!llm) {
+      throw new Error('LLMExecutor: LLM instance not available');
+    }
+
+    if (options?.systemPrompt) {
+      // 使用 aask 方法（带系统提示词）
+      return await llm.aask(prompt, [options.systemPrompt], abortSignal);
+    } else {
+      // 使用 aask 方法（不带系统提示词）
+      return await llm.aask(prompt, undefined, abortSignal);
+    }
+  }
+}
 ```
+
+**特点**:
+- 封装LLM API调用逻辑
+- 支持系统提示词
+- 支持取消信号（AbortSignal）
+- 统一的错误处理和日志记录
+
+#### 3.1.3 CLIExecutor（CLI执行器）
+
+**文件**: `backend/src/executors/CLIExecutor.ts`
+
+CLI执行器封装CLI工具调用，支持多种CLI提供商：
+
+```typescript
+export class CLIExecutor implements IExecutor {
+  private config: CLIExecutorConfig;
+
+  constructor(config?: CLIExecutorConfig) {
+    this.config = {
+      providerType: config?.providerType || CLIProviderFactory.getDefaultProviderType(),
+      maxRetries: config?.maxRetries || 0,
+      ...config,
+    };
+  }
+
+  getMode(): ExecutorMode {
+    return 'cli';
+  }
+
+  async execute(prompt: string, options?: ExecutorOptions): Promise<string> {
+    const workDir = options?.workDir || this.config.defaultWorkDir;
+
+    if (!workDir) {
+      throw new Error('CLIExecutor: workDir is required for CLI execution');
+    }
+
+    // 获取 CLI 提供商
+    const provider = CLIProviderFactory.getProvider(
+      this.config.providerType,
+      this.config.providerConfig
+    );
+
+    // 构建完整提示词（包含系统提示词）
+    let fullPrompt = prompt;
+    if (options?.systemPrompt) {
+      fullPrompt = `${options.systemPrompt}\n\n## 任务\n\n${prompt}`;
+    }
+
+    // 执行命令
+    const result = await provider.execute(fullPrompt, workDir, {
+      timeout: options?.timeout || this.config.providerConfig?.timeout,
+      env: options?.env,
+    });
+
+    return result.output;
+  }
+
+  /**
+   * 带重试的执行
+   */
+  async executeWithRetry(
+    prompt: string,
+    checkPrompt: string,
+    options?: ExecutorOptions & { maxRetries?: number; isComplete?: (output: string) => boolean }
+  ): Promise<{ output: string; iterations: number; isCompleted: boolean }> {
+    // 实现重试逻辑
+  }
+}
+```
+
+**特点**:
+- 支持多种CLI提供商（Cursor、Aider等）
+- 自动构建完整提示词（包含系统提示词）
+- 支持重试机制
+- 统一的工作目录管理
+
+#### 3.1.4 ExecutorFactory（执行器工厂）
+
+**文件**: `backend/src/executors/ExecutorFactory.ts`
+
+执行器工厂根据配置创建对应的执行器实例：
+
+```typescript
+export class ExecutorFactory {
+  /** 缓存的 LLM 执行器 */
+  private static llmExecutorCache: WeakMap<any, LLMExecutor> = new WeakMap();
+
+  /**
+   * 获取执行器
+   * @param mode 执行模式
+   * @param context 执行器上下文
+   */
+  static getExecutor(mode: ExecutorMode, context: ExecutorContext): IExecutor {
+    if (mode === 'llm') {
+      return this.getLLMExecutor(context);
+    } else {
+      return this.getCLIExecutor(context);
+    }
+  }
+
+  /**
+   * 获取 LLM 执行器（带缓存）
+   */
+  static getLLMExecutor(context: ExecutorContext): LLMExecutor {
+    if (!context.llm) {
+      throw new Error('ExecutorFactory: LLM instance is required for LLM mode');
+    }
+
+    // 检查缓存
+    let executor = this.llmExecutorCache.get(context.llm);
+    if (executor) {
+      return executor;
+    }
+
+    // 创建新实例
+    const llmContext: LLMExecutorContext = {
+      llm: context.llm,
+      abortSignal: context.abortSignal,
+    };
+
+    executor = new LLMExecutor(llmContext);
+    this.llmExecutorCache.set(context.llm, executor);
+    return executor;
+  }
+
+  /**
+   * 获取 CLI 执行器
+   */
+  static getCLIExecutor(context: ExecutorContext): CLIExecutor {
+    const config: CLIExecutorConfig = {
+      providerType: context.cliProvider,
+      providerConfig: context.cliConfig,
+      defaultWorkDir: context.workDir,
+    };
+
+    return new CLIExecutor(config);
+  }
+
+  /**
+   * 获取默认执行模式
+   * 从环境变量读取，默认为 llm
+   */
+  static getDefaultMode(): ExecutorMode {
+    const envMode = process.env.DEFAULT_EXECUTOR_MODE;
+    if (envMode === 'cli' || envMode === 'llm') {
+      return envMode;
+    }
+    return 'llm';
+  }
+}
+```
+
+**特点**:
+- 统一的执行器创建接口
+- LLM执行器缓存机制
+- 支持默认模式配置
+- 根据角色配置自动选择模式
+
+### 3.2 CLI提供商系统
+
+CLI提供商系统抽象了不同CLI工具的实现细节，支持Cursor CLI、Aider等多种工具。
+
+#### 3.2.1 CLI提供商接口
+
+**文件**: `backend/src/executors/types.ts`
+
+```typescript
+/**
+ * CLI 提供商类型
+ */
+export type CLIProviderType = 'cursor' | 'aider' | 'cline' | 'custom';
+
+/**
+ * CLI 提供商配置
+ */
+export interface CLIProviderConfig {
+  /** 提供商类型 */
+  type: CLIProviderType;
+  /** CLI 命令（如 'cursor-agent', 'aider'） */
+  command?: string;
+  /** 模型名称（如 'composer-1'） */
+  model?: string;
+  /** 额外参数 */
+  args?: string[];
+  /** 超时时间（毫秒） */
+  timeout?: number;
+  /** 环境变量 */
+  env?: Record<string, string>;
+  /** AbortSignal 用于取消执行 */
+  abortSignal?: AbortSignal;
+}
+
+/**
+ * CLI 执行结果
+ */
+export interface CLIExecutionResult {
+  /** 输出内容 */
+  output: string;
+  /** 退出码 */
+  exitCode: number;
+  /** 执行时间（毫秒） */
+  executionTime: number;
+  /** 标准错误输出 */
+  stderr?: string;
+}
+
+/**
+ * CLI 提供商接口
+ */
+export interface ICLIProvider {
+  /**
+   * 执行 CLI 命令
+   * @param prompt 提示词
+   * @param workDir 工作目录
+   * @param config 配置选项
+   */
+  execute(prompt: string, workDir: string, config?: Partial<CLIProviderConfig>): Promise<CLIExecutionResult>;
+
+  /**
+   * 检查 CLI 工具是否可用
+   */
+  checkAvailability(): Promise<boolean>;
+
+  /**
+   * 获取 CLI 工具版本
+   */
+  getVersion(): Promise<string>;
+
+  /**
+   * 获取提供商类型
+   */
+  getType(): CLIProviderType;
+}
+```
+
+#### 3.2.2 CursorCLIProvider
+
+**文件**: `backend/src/executors/cli/CursorCLIProvider.ts`
+
+Cursor CLI提供商实现：
+
+```typescript
+export class CursorCLIProvider extends BaseCLIProvider {
+  constructor(defaultConfig?: Partial<CLIProviderConfig>) {
+    super('cursor', {
+      command: 'cursor-agent',
+      model: 'composer-1',
+      timeout: 3600000, // 60 分钟
+      ...defaultConfig,
+    });
+  }
+
+  async execute(
+    prompt: string,
+    workDir: string,
+    config?: Partial<CLIProviderConfig>
+  ): Promise<CLIExecutionResult> {
+    const mergedConfig = this.mergeConfig(config);
+    const command = mergedConfig.command || 'cursor-agent';
+    const model = mergedConfig.model || 'composer-1';
+    const timeout = mergedConfig.timeout || 3600000;
+
+    // 构建命令
+    const escapedPrompt = this.escapePrompt(prompt);
+    const fullCommand = `${command} --model ${model} --print "${escapedPrompt}"`;
+
+    const output = await executeCommandSimple(fullCommand, {
+      cwd: workDir,
+      timeout,
+      env: mergedConfig.env,
+      abortSignal: mergedConfig.abortSignal,
+    });
+
+    return {
+      output,
+      exitCode: 0,
+      executionTime: Date.now() - startTime,
+    };
+  }
+
+  async checkAvailability(): Promise<boolean> {
+    try {
+      await executeCommandSimple('cursor-agent --version', {
+        timeout: 10000,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+```
+
+**特点**:
+- 使用`cursor-agent`命令执行
+- 支持模型选择（默认`composer-1`）
+- 自动转义提示词中的特殊字符
+- 支持超时和取消信号
+
+#### 3.2.3 AiderCLIProvider
+
+**文件**: `backend/src/executors/cli/AiderCLIProvider.ts`
+
+Aider CLI提供商实现：
+
+```typescript
+export class AiderCLIProvider extends BaseCLIProvider {
+  constructor(defaultConfig?: Partial<CLIProviderConfig>) {
+    super('aider', {
+      command: 'aider',
+      timeout: 3600000,
+      ...defaultConfig,
+    });
+  }
+
+  async execute(
+    prompt: string,
+    workDir: string,
+    config?: Partial<CLIProviderConfig>
+  ): Promise<CLIExecutionResult> {
+    // Aider特定的执行逻辑
+  }
+}
+```
+
+#### 3.2.4 CLIProviderFactory
+
+**文件**: `backend/src/executors/cli/CLIProviderFactory.ts`
+
+CLI提供商工厂管理和创建CLI提供商实例：
+
+```typescript
+export class CLIProviderFactory {
+  /** 已注册的提供商 */
+  private static providers: Map<CLIProviderType, ICLIProvider> = new Map();
+
+  /**
+   * 初始化默认提供商
+   */
+  private static initialize(): void {
+    if (this.initialized) return;
+
+    // 注册默认提供商
+    this.providers.set('cursor', new CursorCLIProvider());
+    this.providers.set('aider', new AiderCLIProvider());
+
+    this.initialized = true;
+  }
+
+  /**
+   * 获取 CLI 提供商
+   * @param type 提供商类型
+   * @param config 可选配置（用于创建新实例）
+   */
+  static getProvider(
+    type: CLIProviderType = 'cursor',
+    config?: Partial<CLIProviderConfig>
+  ): ICLIProvider {
+    this.initialize();
+
+    // 如果提供了配置，创建新实例
+    if (config) {
+      return this.createProvider(type, config);
+    }
+
+    // 返回缓存的实例
+    const provider = this.providers.get(type);
+    if (!provider) {
+      throw new Error(`CLI provider '${type}' not found`);
+    }
+
+    return provider;
+  }
+
+  /**
+   * 获取默认提供商类型
+   * 从环境变量读取，默认为 cursor
+   */
+  static getDefaultProviderType(): CLIProviderType {
+    const envProvider = process.env.DEFAULT_CLI_PROVIDER;
+    if (envProvider && ['cursor', 'aider', 'cline', 'custom'].includes(envProvider)) {
+      return envProvider as CLIProviderType;
+    }
+    return 'cursor';
+  }
+}
+```
+
+**特点**:
+- 单例模式管理提供商实例
+- 支持动态注册自定义提供商
+- 支持从环境变量读取默认提供商
+- 自动初始化默认提供商
 
 ### 3.2 容器化架构设计
 
@@ -518,20 +1134,34 @@ export type CursorCLIOptions = CLIExecutorOptions;
 export type CursorCLIResult = CLIExecutorResult;
 ```
 
-#### 3.4.3 角色CLI配置
+#### 3.3.1 RoleExecutorConfig（角色执行器配置）
 
-**文件**: `backend/src/roles/RoleCLIConfig.ts`
+**文件**: `backend/src/roles/RoleExecutorConfig.ts`
+
+角色执行器配置管理角色的执行模式（LLM或CLI）和CLI提供商配置，支持三级优先级：数据库配置 > 环境变量 > 默认配置。
 
 ```typescript
-export interface RoleCLIConfig {
-  provider?: CLIProviderType;  // CLI提供商类型
-  providerConfig?: CLIProviderConfig; // 提供商特定配置
+/**
+ * 角色执行器配置数据
+ */
+export interface RoleExecutorConfigData {
+  /** 执行模式 */
+  mode?: ExecutorMode;
+  /** CLI 提供商类型 */
+  cliProvider?: CLIProviderType;
+  /** CLI 提供商配置 */
+  cliConfig?: Partial<CLIProviderConfig>;
 }
 
-export class RoleCLIConfig {
+/**
+ * 角色执行器配置类
+ */
+export class RoleExecutorConfig {
   private profile: string;
   private context: Context;
-  private cachedConfig?: RoleCLIConfig;
+  private cachedConfig?: RoleExecutorConfigData;
+  private initialized: boolean = false;
+  private loadPromise?: Promise<void>;
 
   constructor(profile: string, context: Context) {
     this.profile = profile;
@@ -539,52 +1169,97 @@ export class RoleCLIConfig {
   }
 
   /**
-   * 获取角色的CLI配置
+   * 开始异步加载配置
+   */
+  startLoading(): Promise<void> {
+    if (!this.loadPromise) {
+      this.loadPromise = this.loadConfig();
+    }
+    return this.loadPromise;
+  }
+
+  /**
+   * 获取执行器配置
    * 优先级: 数据库配置 > 环境变量 > 默认配置
    */
-  async getConfig(): Promise<RoleCLIConfig> {
+  async getConfig(): Promise<RoleExecutorConfigData> {
+    if (this.loadPromise) {
+      await this.loadPromise;
+    }
+
     if (this.cachedConfig) {
       return this.cachedConfig;
     }
 
-    // 1. 尝试从数据库加载
-    const dbConfig = await this.loadFromDatabase();
-    if (dbConfig) {
-      this.cachedConfig = dbConfig;
-      return dbConfig;
+    await this.loadConfig();
+    return this.cachedConfig!;
+  }
+
+  /**
+   * 获取执行模式
+   */
+  async getMode(): Promise<ExecutorMode> {
+    const config = await this.getConfig();
+    return config.mode || 'llm';
+  }
+
+  /**
+   * 同步获取执行模式
+   */
+  getModeSync(): ExecutorMode {
+    return this.cachedConfig?.mode || this.getEnvMode() || 'llm';
+  }
+
+  /**
+   * 获取 CLI 提供商类型
+   */
+  async getCLIProvider(): Promise<CLIProviderType | undefined> {
+    const config = await this.getConfig();
+    return config.cliProvider;
+  }
+
+  /**
+   * 从环境变量加载配置
+   */
+  private loadFromEnv(): RoleExecutorConfigData {
+    const profileUpper = this.profile.toUpperCase();
+
+    // 执行模式
+    const mode = this.getEnvMode();
+
+    // CLI 提供商
+    const cliProviderEnv = process.env[`ROLE_${profileUpper}_CLI_PROVIDER`];
+    const cliProvider = this.isValidCLIProvider(cliProviderEnv) ? cliProviderEnv : undefined;
+
+    // CLI 模型
+    const cliModel = process.env[`ROLE_${profileUpper}_CLI_MODEL`];
+
+    const config: RoleExecutorConfigData = {};
+
+    if (mode) {
+      config.mode = mode;
     }
 
-    // 2. 从环境变量加载（格式: ROLE_{PROFILE}_CLI_PROVIDER=cursor）
-    const envProvider = process.env[`ROLE_${this.profile.toUpperCase()}_CLI_PROVIDER`];
-    if (envProvider) {
-      this.cachedConfig = {
-        provider: envProvider as CLIProviderType,
+    if (cliProvider) {
+      config.cliProvider = cliProvider;
+    }
+
+    if (cliModel) {
+      config.cliConfig = {
+        model: cliModel,
       };
-      return this.cachedConfig;
     }
 
-    // 3. 使用默认配置（Cursor CLI）
-    this.cachedConfig = {
-      provider: 'cursor',
+    return config;
+  }
+
+  /**
+   * 获取默认配置
+   */
+  private getDefaultConfig(): RoleExecutorConfigData {
+    return {
+      mode: 'llm', // 默认使用 LLM 模式，保持向后兼容
     };
-    return this.cachedConfig;
-  }
-
-  /**
-   * 从数据库加载配置
-   */
-  private async loadFromDatabase(): Promise<RoleCLIConfig | null> {
-    // TODO: 实现数据库查询逻辑
-    // 查询 role_definitions 表的 metadata 字段中的 cli_config
-    return null;
-  }
-
-  /**
-   * 更新角色的CLI配置
-   */
-  async updateConfig(config: RoleCLIConfig): Promise<void> {
-    // TODO: 实现数据库更新逻辑
-    this.cachedConfig = config;
   }
 }
 ```
@@ -674,98 +1349,119 @@ export class WorkflowContainer {
 }
 ```
 
-#### 3.4.5 BaseAction改造
+### 3.4 BaseAction双模式支持
 
-移除LLM相关方法，添加CLI支持（支持角色自定义CLI）：
+BaseAction提供了统一的执行接口，自动根据配置选择LLM模式或CLI模式执行。
 
 **文件**: `backend/src/core/base/BaseAction.ts`
 
 ```typescript
-import { CLIExecutor, CLIExecutorOptions, CLIExecutorResult } from '../utils/CLIExecutor';
-import { RoleCLIConfig } from '../roles/RoleCLIConfig';
+import { ExecutorMode, ExecutorOptions } from '../../executors/types';
+import { CLIExecutor } from '../../executors/CLIExecutor';
 
 export abstract class BaseAction {
-  // 移除: protected async aask(...) [标记为deprecated]
-  // 移除: protected async acompletion(...) [标记为deprecated]
-  // 移除: protected get llm() [标记为deprecated]
-  
   /**
-   * 获取角色的CLI配置
+   * 统一执行入口
+   * 根据配置自动选择 LLM 或 CLI 模式执行
    */
-  protected async getCLIConfig(): Promise<RoleCLIConfig> {
-    const role = (this as any).role;
-    if (role && typeof role.getCLIConfig === 'function') {
-      return await role.getCLIConfig();
+  protected async execute(prompt: string, options?: ExecutorOptions): Promise<string> {
+    const mode = this.getExecutorMode();
+
+    if (mode === 'cli') {
+      return await this.executeCLI(prompt, options);
+    } else {
+      return await this.executeLLM(prompt, options);
     }
+  }
+
+  /**
+   * 使用 LLM 模式执行
+   */
+  protected async executeLLM(prompt: string, options?: ExecutorOptions): Promise<string> {
+    const currentLLM = this.llm;
+    if (!currentLLM) {
+      throw new Error('LLM not available: Context not set for action');
+    }
+
+    const systemMsgs = options?.systemPrompt ? [options.systemPrompt] : undefined;
+    return await currentLLM.aask(prompt, systemMsgs, this.abortSignal);
+  }
+
+  /**
+   * 使用 CLI 模式执行
+   */
+  protected async executeCLI(prompt: string, options?: ExecutorOptions): Promise<string> {
+    const workDir = options?.workDir || this.getDefaultWorkDir();
     
-    // 默认使用Cursor CLI
-    return {
-      provider: 'cursor',
-    };
-  }
+    if (!workDir) {
+      throw new Error('BaseAction: workDir is required for CLI mode execution');
+    }
 
-  /**
-   * 执行CLI命令（自动使用角色配置的CLI提供商）
-   */
-  protected async executeCLI(
-    command: string,
-    options?: CLIExecutorOptions
-  ): Promise<string> {
-    const cliConfig = await this.getCLIConfig();
-    const workspacePath = options?.workDir || this.getWorkspaceDir(options);
-    
-    return CLIExecutor.execute(command, {
-      workDir: workspacePath,
-      provider: cliConfig.provider,
-      providerConfig: cliConfig.providerConfig,
+    const cliConfig = this.getCLIConfig();
+    const executor = new CLIExecutor({
+      providerType: cliConfig.provider,
+      providerConfig: cliConfig.config,
+      defaultWorkDir: workDir,
+    });
+
+    return await executor.execute(prompt, {
       ...options,
+      workDir,
+      abortSignal: this.abortSignal,
     });
   }
 
   /**
-   * 执行带重试的CLI命令
+   * 获取当前执行模式
+   * 优先级: 角色配置 > 环境变量 > 默认(llm)
    */
-  protected async executeCLIWithRetry(
-    command: string,
-    checkCommand: string,
-    options?: CLIExecutorOptions
-  ): Promise<CLIExecutorResult> {
-    const cliConfig = await this.getCLIConfig();
-    const workspacePath = options?.workDir || this.getWorkspaceDir(options);
-    
-    return CLIExecutor.executeWithRetry(command, checkCommand, {
-      workDir: workspacePath,
-      provider: cliConfig.provider,
-      providerConfig: cliConfig.providerConfig,
-      ...options,
-    });
+  protected getExecutorMode(): ExecutorMode {
+    // 1. 检查角色配置
+    const roleConfig = this.role?.getExecutorConfig?.();
+    if (roleConfig) {
+      const modeSync = roleConfig.getModeSync?.();
+      if (modeSync) {
+        return modeSync;
+      }
+    }
+
+    // 2. 检查角色特定的环境变量
+    const roleProfile = this.role?.profile;
+    if (roleProfile) {
+      const roleEnvMode = process.env[`ROLE_${roleProfile.toUpperCase()}_EXECUTOR_MODE`];
+      if (roleEnvMode === 'cli' || roleEnvMode === 'llm') {
+        return roleEnvMode;
+      }
+    }
+
+    // 3. 检查全局环境变量
+    const envMode = process.env.DEFAULT_EXECUTOR_MODE;
+    if (envMode === 'cli' || envMode === 'llm') {
+      return envMode;
+    }
+
+    // 4. 默认使用 LLM 模式
+    return 'llm';
   }
 
   /**
-   * 向后兼容：executeCursorCLI（使用默认Cursor CLI）
+   * 构建知识输入引用指令（CLI模式）
+   * 指示 CLI 参考工作目录中的历史文档和代码
    */
-  protected async executeCursorCLI(
-    command: string,
-    options?: CLIExecutorOptions
-  ): Promise<string> {
-    return this.executeCLI(command, {
-      ...options,
-      provider: 'cursor',
-    });
-  }
+  protected buildKnowledgeInputReference(): string {
+    return `
+【重要：知识输入】
+请参考工作目录中的以下内容作为知识输入（这些是重要依据）：
 
-  /**
-   * 向后兼容：executeCursorCLIWithRetry
-   */
-  protected async executeCursorCLIWithRetry(
-    command: string,
-    checkCommand: string,
-    options?: CLIExecutorOptions
-  ): Promise<CLIExecutorResult> {
-    return this.executeCLIWithRetry(command, checkCommand, {
-      ...options,
-      provider: 'cursor',
-    });
+1. 归档历史文档：docs-archive/mrd/, docs-archive/prd/
+2. 业务知识库：docs/business-knowledge/
+3. 当前文档：docs/mrd/, docs/prd/
+4. 开发规范：docs/dev-spec/
+5. 代码实现：ainative-app/src/, ainative-backend/, ainative-shadow/src/, ainative-pc/src/
+
+【功能冲突检测】
+如果发现新需求/功能与现有实现存在冲突，请明确指出冲突点和建议解决方案。
+`;
   }
 }
 ```
@@ -846,9 +1542,199 @@ const command = `${systemPrompt}\n\n## 任务\n\n${prompt}\n\n请生成完整的
 const result = await this.executeCursorCLI(command, options);
 ```
 
-### 3.5 工作目录和状态管理
+### 3.5 文档处理Handler双模式支持
 
-#### 3.4.1 Workspace管理（容器化）
+文档处理Handler提供了统一的文档生成、审查和改进流程，支持双模式执行。
+
+#### 3.5.1 DocumentWriteHandler
+
+**文件**: `backend/src/utils/document/DocumentWriteHandler.ts`
+
+文档生成处理器，支持LLM模式和CLI模式：
+
+```typescript
+export class DocumentWriteHandler {
+  private action: BaseAction;
+  private config: WriteConfig;
+  private cliHandler: CLIModeHandler;
+
+  /**
+   * 执行文档生成
+   * 根据模式自动选择使用 LLM 分步骤生成或 CLI 完整文档生成
+   */
+  async execute(input: string, options: WriteOptions): Promise<WriteResult> {
+    const isCLIMode = this.cliHandler.isCLIMode();
+
+    if (isCLIMode) {
+      // CLI模式：使用文件路径，生成完整文档
+      return await this.writeWithCLI(options);
+    } else {
+      // LLM模式：使用文件内容，分步骤生成
+      return await this.writeWithLLM(input, options);
+    }
+  }
+}
+```
+
+#### 3.5.2 DocumentReviewHandler
+
+**文件**: `backend/src/utils/document/DocumentReviewHandler.ts`
+
+文档审查处理器，支持双模式：
+
+```typescript
+export class DocumentReviewHandler {
+  /**
+   * 执行文档审核
+   * CLI模式：使用文件路径进行审核
+   * LLM模式：使用文件内容进行审核
+   */
+  async execute(content: string, options: ReviewOptions): Promise<ReviewResult> {
+    const isCLIMode = this.cliHandler.isCLIMode();
+
+    if (isCLIMode || options.useFilePath) {
+      // CLI模式：使用文件路径进行审核
+      return await this.reviewWithFilePath(workspaceDir, options);
+    } else {
+      // LLM模式：使用文件内容进行审核
+      return await this.reviewWithContent(content, workspaceDir, options);
+    }
+  }
+}
+```
+
+#### 3.5.3 DocumentImproveHandler
+
+**文件**: `backend/src/utils/document/DocumentImproveHandler.ts`
+
+文档改进处理器，支持双模式：
+
+```typescript
+export class DocumentImproveHandler {
+  /**
+   * 执行文档改进
+   * CLI模式：使用文件路径输入，整体改进
+   * LLM模式：使用文件内容输入，支持分章节改进
+   */
+  async execute(input: string, options: ImproveOptions): Promise<ImproveResult> {
+    const isCLIMode = this.cliHandler.isCLIMode();
+
+    if (isCLIMode) {
+      // CLI模式：整体改进
+      return await this.improveWithCLI(options);
+    } else {
+      // LLM模式：分章节改进
+      return await this.improveWithLLM(input, options);
+    }
+  }
+}
+```
+
+### 3.6 知识库系统（双模式分离）
+
+双模式架构中，知识库的使用策略完全分离：
+
+#### 3.6.1 CLI模式知识库
+
+CLI模式使用简化的知识库方式，直接利用CLI工具的原生上下文能力：
+
+**核心思路**：
+- 在prompt中明确指定参考目录，CLI会自动读取这些目录中的文件
+- 使用`docs-archive/`存放历史文档，区分当前文档和历史文档
+- 添加功能冲突检测指令，让CLI自动识别并报告冲突
+
+**知识输入引用协议**：
+
+**文件**: `backend/src/utils/document/CLIPromptBuilder.ts`
+
+```typescript
+export const CLI_KNOWLEDGE_INPUT_REFERENCE = `
+【核心原则 - 必须遵守】
+你生成的 MRD / PRD 内容，必须严格基于工作目录中的已有文档与代码实现。
+
+【强制知识输入范围（按优先级）】
+1. 归档历史文档：docs-archive/mrd/, docs-archive/prd/
+2. 业务知识库：docs/business-knowledge/
+3. 当前文档：docs/mrd/, docs/prd/, docs/design/, docs/test/
+4. 开发与架构规范：docs/dev-spec/
+5. 代码实现：ainative-app/src/, ainative-backend/, ainative-shadow/src/, ainative-pc/src/
+
+【功能实现状态检测 - 必须执行】
+- ✅ 已实现功能清单
+- ⚠️ 存在冲突的需求与处理建议
+- 🕳️ 信息缺失或需要补充决策的点
+`;
+```
+
+**BaseAction支持方法**：
+
+```typescript
+protected buildKnowledgeInputReference(): string {
+  // 返回知识输入引用文本
+}
+
+protected buildPromptWithKnowledgeInput(
+  basePrompt: string,
+  includeKnowledgeInput: boolean = true
+): string {
+  if (!includeKnowledgeInput || !this.isCLIMode()) {
+    return basePrompt;
+  }
+  return `${this.buildKnowledgeInputReference()}\n\n${basePrompt}`;
+}
+```
+
+**工作目录结构**：
+
+```
+workspace/
+├── docs/                    # 当前正在生成的文档
+│   ├── mrd/
+│   └── prd/
+├── docs-archive/            # 归档的历史文档
+│   ├── mrd/
+│   └── prd/
+├── docs/business-knowledge/ # 业务知识库
+├── docs/dev-spec/           # 开发规范
+├── ainative-app/src/        # 移动端代码
+├── ainative-backend/        # 后端代码
+├── ainative-pc/src/         # PC端代码
+└── ainative-shadow/src/     # 管理后台代码
+```
+
+#### 3.6.2 LLM模式知识库
+
+LLM模式继续使用RAG（Retrieval-Augmented Generation）：
+
+**RAG流程**：
+1. 使用`RAGService`检索相似文档
+2. 从Qdrant向量数据库获取相关chunks
+3. 将检索结果作为上下文传递给LLM
+4. LLM基于上下文生成文档
+
+**特点**：
+- 使用向量数据库（Qdrant）进行语义检索
+- 支持相似度检索和相关性排序
+- 保持现有RAG流程不变
+- 向后兼容，不影响现有功能
+
+#### 3.6.3 模式分离原则
+
+**重要原则**：CLI模式和LLM模式的知识库使用策略完全分离
+
+- **CLI模式**：
+  - ✅ 必须使用CLI知识库（目录引用），不使用RAG
+  - ✅ CLI工具可以直接读取文件系统，无需向量数据库
+  - ✅ 利用CLI工具的代码和文档理解能力
+
+- **LLM模式**：
+  - ✅ 继续使用RAG，不使用CLI知识库
+  - ✅ 保持现有RAG流程不变
+  - ✅ 向后兼容，不影响现有功能
+
+### 3.7 工作目录和状态管理
+
+#### 3.7.1 Workspace管理
 
 每个工作流容器有独立的workspace卷：
 
@@ -986,7 +1872,130 @@ export class WorkflowContainerManager {
 
 ---
 
-## 4. 本地开发模式
+## 4. 配置管理
+
+双模式执行器支持灵活的配置方式，配置优先级：数据库配置 > 环境变量 > 默认配置。
+
+### 4.1 环境变量配置
+
+#### 4.1.1 全局配置
+
+```env
+# 全局默认执行模式（llm 或 cli）
+DEFAULT_EXECUTOR_MODE=llm
+
+# 默认CLI提供商（cursor, aider, cline）
+DEFAULT_CLI_PROVIDER=cursor
+```
+
+#### 4.1.2 角色级配置
+
+```env
+# 角色特定执行模式
+ROLE_PRODUCTMANAGER_EXECUTOR_MODE=cli
+ROLE_ARCHITECT_EXECUTOR_MODE=cli
+ROLE_ENGINEER_EXECUTOR_MODE=cli
+
+# 角色CLI提供商
+ROLE_PRODUCTMANAGER_CLI_PROVIDER=cursor
+ROLE_ARCHITECT_CLI_PROVIDER=aider
+ROLE_ENGINEER_CLI_PROVIDER=cursor
+
+# 角色CLI模型
+ROLE_PRODUCTMANAGER_CLI_MODEL=composer-1
+ROLE_ARCHITECT_CLI_MODEL=gpt-4
+```
+
+#### 4.1.3 配置优先级
+
+1. **数据库配置**：`role_definitions`表的`metadata.executor_config`字段
+2. **环境变量**：`ROLE_{PROFILE}_EXECUTOR_MODE`等
+3. **默认配置**：LLM模式（`llm`）
+
+### 4.2 数据库配置
+
+#### 4.2.1 角色执行器配置
+
+在`role_definitions`表的`metadata`字段中存储执行器配置：
+
+```sql
+-- 更新角色定义，添加执行器配置
+UPDATE role_definitions 
+SET metadata = jsonb_set(
+  metadata, 
+  '{executor_config}', 
+  '{
+    "mode": "cli",
+    "cliProvider": "cursor",
+    "cliConfig": {
+      "model": "composer-1"
+    }
+  }'::jsonb
+)
+WHERE profile = 'ProductManager';
+```
+
+#### 4.2.2 配置结构
+
+```typescript
+interface RoleExecutorConfigData {
+  mode?: ExecutorMode;              // 'llm' | 'cli'
+  cliProvider?: CLIProviderType;    // 'cursor' | 'aider' | 'cline'
+  cliConfig?: {
+    model?: string;                 // CLI模型名称
+    command?: string;               // CLI命令
+    timeout?: number;               // 超时时间（毫秒）
+    args?: string[];                // 额外参数
+  };
+}
+```
+
+### 4.3 配置示例
+
+#### 4.3.1 全部使用LLM模式（默认）
+
+```env
+# 无需配置，默认使用LLM模式
+```
+
+#### 4.3.2 全部使用CLI模式
+
+```env
+DEFAULT_EXECUTOR_MODE=cli
+DEFAULT_CLI_PROVIDER=cursor
+```
+
+#### 4.3.3 混合模式（不同角色使用不同模式）
+
+```env
+# ProductManager使用CLI模式
+ROLE_PRODUCTMANAGER_EXECUTOR_MODE=cli
+ROLE_PRODUCTMANAGER_CLI_PROVIDER=cursor
+
+# Architect使用CLI模式（Aider）
+ROLE_ARCHITECT_EXECUTOR_MODE=cli
+ROLE_ARCHITECT_CLI_PROVIDER=aider
+
+# QAEngineer使用LLM模式
+ROLE_QAENGINEER_EXECUTOR_MODE=llm
+```
+
+### 4.4 运行时配置检查
+
+```typescript
+// 检查当前执行模式
+const mode = action.getExecutorMode(); // 'llm' | 'cli'
+
+// 检查是否为CLI模式
+const isCLIMode = action.isCLIMode(); // boolean
+
+// 获取CLI配置
+const cliConfig = await action.getCLIConfig();
+```
+
+---
+
+## 5. 本地开发模式
 
 ### 4.1 本地开发环境设置
 
@@ -1421,501 +2430,230 @@ export class WorkflowImporter {
 
 ---
 
-## 6. 迁移方案
+## 6. 实现状态
 
-### 6.1 迁移策略
+### 6.1 已实现功能
 
-采用**渐进式迁移 + 容器化改造**策略：
+双模式执行器架构已完整实现，所有核心组件均已就绪：
 
-#### 阶段0: 基础设施准备（CLI抽象和本地开发支持）
-1. **阶段0.1**: 创建CLI提供商抽象接口（ICLIProvider）
-2. **阶段0.2**: 实现CursorCLIProvider（默认）和其他提供商
-3. **阶段0.3**: 创建CLIExecutor（通用CLI执行器）
-4. **阶段0.4**: 实现RoleCLIConfig（角色CLI配置）
-5. **阶段0.5**: 改造WorkspaceManager支持本地/容器模式
-6. **阶段0.6**: 创建WorkflowContainer和WorkflowContainerManager
-7. **阶段0.7**: 创建Docker镜像和K8s配置
+#### 6.1.1 执行器系统 ✅
 
-#### 阶段1: Action迁移（保持现有架构）
-1. **阶段1.1**: 改造BaseAction，添加Cursor CLI支持
-2. **阶段1.2**: 迁移文档生成类Action（WritePRD, WriteDesign, WriteMRD）
-3. **阶段1.3**: 迁移Review类Action（PRDReview, DesignReview等）
-4. **阶段1.4**: 迁移Improve类Action（ImprovePRD, ImproveDesign等）
-5. **阶段1.5**: 迁移其他Action（测试、自动化、数据分析等）
+- ✅ `IExecutor` 接口：统一的执行器接口
+- ✅ `LLMExecutor`：LLM模式执行器实现
+- ✅ `CLIExecutor`：CLI模式执行器实现
+- ✅ `ExecutorFactory`：执行器工厂，支持缓存和自动选择
 
-#### 阶段2: 容器化迁移
-1. **阶段2.1**: 创建容器入口脚本
-2. **阶段2.2**: 实现工作流导出/导入功能
-3. **阶段2.3**: 迁移单个工作流到容器测试
-4. **阶段2.4**: 批量迁移所有工作流到容器
+#### 6.1.2 CLI提供商系统 ✅
 
-#### 阶段3: 优化和清理
-1. **阶段3.1**: 性能优化和监控
-2. **阶段3.2**: 清理LLM相关代码（可选，保留作为fallback）
-3. **阶段3.3**: 文档更新
+- ✅ `ICLIProvider` 接口：CLI提供商抽象接口
+- ✅ `CursorCLIProvider`：Cursor CLI提供商实现
+- ✅ `AiderCLIProvider`：Aider CLI提供商实现
+- ✅ `CLIProviderFactory`：CLI提供商工厂，支持动态注册
 
-### 6.2 迁移步骤详解
+#### 6.1.3 角色配置系统 ✅
 
-#### 步骤1: 创建CLI提供商抽象（阶段0.1-0.2）
+- ✅ `RoleExecutorConfig`：角色执行器配置管理
+- ✅ 三级配置优先级：数据库 > 环境变量 > 默认
+- ✅ 支持执行模式配置（LLM/CLI）
+- ✅ 支持CLI提供商配置（Cursor/Aider等）
 
-**文件**: `backend/src/utils/cli/CLIProvider.ts`
+#### 6.1.4 BaseAction双模式支持 ✅
 
-实现CLI提供商抽象接口和具体提供商（见3.4.1节）。
+- ✅ 统一的`execute()`方法：自动根据配置选择执行模式
+- ✅ `executeLLM()`：LLM模式执行
+- ✅ `executeCLI()`：CLI模式执行
+- ✅ `getExecutorMode()`：模式获取逻辑
+- ✅ `buildKnowledgeInputReference()`：CLI模式知识库引用
 
-#### 步骤2: 创建CLIExecutor（阶段0.3）
+#### 6.1.5 文档处理Handler ✅
 
-**文件**: `backend/src/utils/CLIExecutor.ts`
+- ✅ `DocumentWriteHandler`：文档生成，支持双模式
+- ✅ `DocumentReviewHandler`：文档审查，支持双模式
+- ✅ `DocumentImproveHandler`：文档改进，支持双模式
+- ✅ `CLIModeHandler`：CLI模式处理器
 
-实现通用CLI执行器（见3.4.2节）。
+#### 6.1.6 知识库系统 ✅
 
-#### 步骤3: 实现RoleCLIConfig（阶段0.4）
+- ✅ CLI模式知识库：目录引用方式，利用CLI工具原生能力
+- ✅ LLM模式知识库：RAG检索，使用Qdrant向量数据库
+- ✅ 模式分离：两种模式的知识库策略完全分离
 
-**文件**: `backend/src/roles/RoleCLIConfig.ts`
+#### 6.1.7 Action支持 ✅
 
-实现角色CLI配置管理（见3.4.3节）。
+所有30个Action均支持双模式执行：
+- ✅ 文档生成类（WriteMRD, WritePRD, WriteDesign等）
+- ✅ 文档审查类（MRDReview, PRDReview, DesignReview等）
+- ✅ 文档改进类（ImproveMRD, ImprovePRD, ImproveDesign等）
+- ✅ 代码相关（WriteCode, CodeReview, RunCode, FixBug）
+- ✅ 任务管理（BreakdownTasks, ExecuteSubtask, Coordinate）
+- ✅ 测试相关（WriteTest, TestReview, TestCaseReview等）
 
-#### 步骤4: 改造WorkspaceManager（阶段0.5）
+### 6.2 支持的CLI提供商
 
-**文件**: `backend/src/utils/CursorCLIExecutor.ts`
+- ✅ **Cursor CLI**：默认提供商，使用`cursor-agent`命令
+- ✅ **Aider**：支持Aider CLI工具
+- ✅ **自定义提供商**：支持注册自定义CLI提供商
 
-实现见3.3.1节。
+### 6.3 已知限制
 
-#### 步骤5: 创建WorkflowContainer（阶段0.6）
+- ⚠️ CLI模式执行时间较长，可能需要数分钟到数十分钟
+- ⚠️ CLI工具需要在环境中可用
+- ⚠️ CLI模式资源消耗较大
+- ⚠️ 调试CLI执行过程不如API调用透明
 
-**文件**: `backend/src/workflow/WorkflowContainer.ts`
+### 6.4 未来改进方向
 
-实现见3.3.2节。
+- 🔄 支持更多CLI提供商（Cline等）
+- 🔄 优化CLI执行性能
+- 🔄 增强CLI执行过程的监控和调试能力
+- 🔄 支持CLI执行结果的流式输出
+- 🔄 优化知识库检索策略
 
-**文件**: `backend/src/utils/WorkspaceManager.ts`
+## 7. 使用示例
 
-添加本地/容器模式支持（见3.4.6节）。
+### 7.1 BaseAction中使用双模式
 
-**文件**: `backend/src/utils/WorkspaceManager.ts`
-
-添加容器路径支持：
-
-```typescript
-export class WorkspaceManager {
-  /**
-   * 获取容器内workspace路径
-   */
-  static getContainerWorkspacePath(options: WorkspaceOptions): string {
-    const containerRoot = process.env.CONTAINER_WORKSPACE_ROOT || '/workspace';
-    return path.join(
-      containerRoot,
-      options.applicationId || 'default',
-      options.projectId || 'default'
-    );
-  }
-
-  /**
-   * 判断是否在容器环境中
-   */
-  static isContainerEnvironment(): boolean {
-    return !!process.env.CONTAINER_WORKSPACE_ROOT;
-  }
-
-  /**
-   * 获取workspace路径（自动判断环境）
-   */
-  static getWorkspacePath(options: WorkspaceOptions): string {
-    if (this.isContainerEnvironment()) {
-      return this.getContainerWorkspacePath(options);
-    }
-    return this.getProjectWorkspacePath(options);
-  }
-}
-```
-
-#### 步骤6: 改造BaseAction（阶段1.1）
-
-**文件**: `backend/src/core/base/BaseAction.ts`
-
-- 保留`aask()`和`acompletion()`方法（标记为deprecated，逐步移除）
-- 添加`executeCursorCLI()`和`executeCursorCLIWithRetry()`方法
-- 更新workspace路径获取逻辑
-
-#### 步骤7: 迁移单个Action示例（阶段1.2）
-
-以WritePRD为例：
-
-**之前**:
-```typescript
-const systemPrompt = await loadPrompt(userId, 'prd', 'system_prompt', PRD_SYSTEM_PROMPT);
-const prompt = buildPRDPrompt(mrdContent);
-const prdContent = await this.aask(prompt, [systemPrompt]);
-```
-
-**之后（使用角色配置的CLI）**:
-```typescript
-const systemPrompt = await loadPrompt(userId, 'prd', 'system_prompt', PRD_SYSTEM_PROMPT);
-const prompt = buildPRDPrompt(mrdContent);
-const command = `${systemPrompt}\n\n## 任务\n\n${prompt}\n\n请生成完整的PRD文档，保存到PRD/PRD.md文件中。`;
-
-const workDir = WorkspaceManager.getWorkspacePath({ ...options, documentType: 'PRD' });
-// executeCLI会自动使用角色配置的CLI提供商（默认Cursor）
-const prdContent = await this.executeCLI(command, {
-  workDir,
-  timeout: 3600000,
-});
-```
-
-#### 步骤8: 创建容器入口（阶段2.1）
-
-**文件**: `backend/src/workflow/container-entry.ts`
-
-实现见4.1.2节。
-
-#### 步骤9: 实现工作流导出/导入（阶段2.2）
-
-**文件**: 
-- `backend/src/workflow/WorkflowExporter.ts`
-- `backend/src/workflow/WorkflowImporter.ts`
-
-实现见4.3节。
-
-#### 步骤10: 更新Role类（阶段1.1）
-
-**文件**: `backend/src/roles/Role.ts`
-
-添加CLI配置支持：
+#### 7.1.1 统一执行接口
 
 ```typescript
-export class Role extends BaseRole {
-  private cliConfig: RoleCLIConfig;
-
-  constructor(config: IRoleConfig, context: Context) {
-    // ... 现有初始化代码
+// BaseAction中的统一执行方法
+export abstract class BaseAction {
+  protected async execute(prompt: string, options?: ExecutorOptions): Promise<string> {
+    const mode = this.getExecutorMode();
     
-    // 初始化CLI配置
-    this.cliConfig = new RoleCLIConfig(this.profile, context);
-  }
-
-  /**
-   * 获取CLI配置
-   */
-  async getCLIConfig(): Promise<RoleCLIConfig> {
-    return await this.cliConfig.getConfig();
+    if (mode === 'cli') {
+      return await this.executeCLI(prompt, options);
+    } else {
+      return await this.executeLLM(prompt, options);
+    }
   }
 }
 ```
 
-**文件**: `backend/src/roles/Role.ts`, `backend/src/roles/RoleLLMConfig.ts`
+#### 7.1.2 Action中使用示例
 
-- 保留`RoleLLMConfig`类（标记为deprecated）
-- 简化Role初始化逻辑，移除LLM配置依赖
-- 添加容器环境检测
-
-### 6.3 迁移检查清单
-
-#### Action迁移检查清单
-
-每个Action迁移时需要检查：
-
-- [ ] 是否移除了`aask()`或`acompletion()`调用（或标记为deprecated）
-- [ ] 是否添加了`executeCLI()`调用（自动使用角色配置的CLI）
-- [ ] 是否正确设置了工作目录（使用`WorkspaceManager.getWorkspacePath()`）
-- [ ] 是否正确处理了超时和错误
-- [ ] 是否需要重试机制（使用`executeCLIWithRetry()`）
-- [ ] 是否支持本地开发模式（无需容器）
-- [ ] 是否更新了单元测试
-- [ ] 是否更新了相关文档
-
-#### 角色CLI配置检查清单
-
-每个角色配置时需要检查：
-
-- [ ] 是否实现了`getCLIConfig()`方法
-- [ ] 是否支持环境变量配置
-- [ ] 是否支持数据库配置
-- [ ] 是否设置了默认CLI提供商（Cursor）
-- [ ] 是否测试了不同CLI提供商的切换
-
-#### 容器化迁移检查清单
-
-每个工作流容器化时需要检查：
-
-- [ ] 是否创建了Docker镜像
-- [ ] 是否配置了K8s Deployment
-- [ ] 是否挂载了workspace卷
-- [ ] 是否配置了环境变量（PROJECT_ID, APPLICATION_ID等）
-- [ ] 是否实现了工作流导出功能
-- [ ] 是否实现了工作流导入功能
-- [ ] 是否测试了容器间迁移
-- [ ] 是否配置了资源限制（CPU/内存）
-- [ ] 是否配置了健康检查
-- [ ] 是否配置了日志收集
-
----
-
-## 7. 具体Action迁移设计
-
-### 5.1 文档生成类Action
-
-#### 5.1.1 WritePRD
-
-**当前实现**: 使用`aask()`调用LLM生成PRD
-
-**迁移后**:
 ```typescript
-async run(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
-  // 1. 准备命令
-  const systemPrompt = await loadPrompt(userId, 'prd', 'system_prompt', PRD_SYSTEM_PROMPT);
-  const prompt = buildPRDPrompt(mrdContent);
-  const command = `${systemPrompt}\n\n## 任务\n\n${prompt}\n\n请生成完整的PRD文档，保存到PRD/PRD.md文件中。`;
-
-  // 2. 执行Cursor CLI
-  const workDir = this.getWorkspaceDir({ ...options, documentType: 'PRD' });
-  const output = await this.executeCursorCLI(command, {
-    workDir,
-    timeout: 3600000,
-  });
-
-  // 3. 读取生成的文件
-  const prdContent = await this.readWorkspaceFile('PRD.md', { ...options, documentType: 'PRD' });
-  
-  return {
-    content: prdContent || output,
-    data: { type: 'prd', ... }
-  };
+// WritePRD.ts - 使用统一执行接口
+export class WritePRD extends BaseAction {
+  async run(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
+    const systemPrompt = await loadPrompt(userId, 'prd', 'system_prompt', PRD_SYSTEM_PROMPT);
+    const prompt = buildPRDPrompt(input);
+    
+    // 统一执行接口，自动根据配置选择LLM或CLI模式
+    const prdContent = await this.execute(prompt, {
+      systemPrompt,
+      workDir: this.getDefaultWorkDir(),
+    });
+    
+    return {
+      content: prdContent,
+      data: { type: 'prd' }
+    };
+  }
 }
 ```
 
-#### 5.1.2 WriteDesign
+### 7.2 CLI模式知识库使用示例
 
-**迁移方式**: 与WritePRD类似，使用Cursor CLI生成设计文档
+#### 7.2.1 使用知识输入引用
 
-#### 5.1.3 WriteMRD
-
-**迁移方式**: 与WritePRD类似，使用Cursor CLI生成MRD文档
-
-### 5.2 Review类Action
-
-#### 5.2.1 PRDReview
-
-**当前实现**: 使用`aask()`调用LLM审核PRD
-
-**迁移后**:
 ```typescript
-async run(prd: string, options?: WorkspaceOptions): Promise<IActionOutput> {
-  // 1. 保存PRD到workspace（如果还没有）
-  await this.saveToWorkspace('PRD.md', prd, { ...options, documentType: 'PRD' });
-
-  // 2. 构建审核命令
-  const reviewPrompt = buildPRDReviewPrompt(prd);
-  const command = `请审核PRD/PRD.md文件，检查其完整性、一致性和质量。\n\n${reviewPrompt}\n\n请生成审核报告，保存到PRD/PRD-review.md文件中。`;
-
-  // 3. 执行Cursor CLI
-  const workDir = this.getWorkspaceDir({ ...options, documentType: 'PRD' });
-  const reviewContent = await this.executeCursorCLI(command, {
-    workDir,
-    timeout: 1800000,
-  });
-
-  // 4. 读取审核结果
-  const reviewResult = await this.readWorkspaceFile('PRD-review.md', { ...options, documentType: 'PRD' });
-  
-  return {
-    content: reviewResult || reviewContent,
-    data: { type: 'review', ... }
-  };
+// WritePRD.ts - CLI模式自动包含知识输入
+export class WritePRD extends BaseAction {
+  async run(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
+    const basePrompt = buildPRDPrompt(input);
+    
+    // CLI模式下自动包含知识输入引用
+    const prompt = this.buildPromptWithKnowledgeInput(basePrompt);
+    
+    const prdContent = await this.execute(prompt, {
+      workDir: this.getDefaultWorkDir(),
+    });
+    
+    return { content: prdContent };
+  }
 }
 ```
 
-### 5.3 Improve类Action
-
-#### 5.3.1 ImprovePRD
-
-**迁移方式**: 结合原始PRD和改进建议，使用Cursor CLI生成改进版本
+#### 7.2.2 手动构建知识输入
 
 ```typescript
-async run(prd: string, review: string, options?: WorkspaceOptions): Promise<IActionOutput> {
-  const improvePrompt = buildPRDImprovePrompt(prd, review);
-  const command = `根据PRD/PRD-review.md中的审核意见，改进PRD/PRD.md文件。\n\n${improvePrompt}\n\n请生成改进后的PRD，保存到PRD/PRD-improved.md文件中。`;
+// 手动构建包含知识输入的prompt
+const knowledgeInput = this.buildKnowledgeInputReference();
+const prompt = `${knowledgeInput}\n\n## 任务\n\n${basePrompt}`;
+```
 
-  const workDir = this.getWorkspaceDir({ ...options, documentType: 'PRD' });
-  const improvedContent = await this.executeCursorCLI(command, {
-    workDir,
-    timeout: 3600000,
-  });
+### 7.3 LLM模式RAG使用示例
 
-  // 读取改进后的PRD
-  const improvedPRD = await this.readWorkspaceFile('PRD-improved.md', { ...options, documentType: 'PRD' });
-  
-  return {
-    content: improvedPRD || improvedContent,
-    data: { type: 'prd', improved: true, ... }
-  };
+#### 7.3.1 在Controller层使用RAG
+
+```typescript
+// PRDController.ts - LLM模式使用RAG
+export class PRDController {
+  async generatePRD(req: Request, res: Response) {
+    const { input, useRAG = true } = req.body;
+    
+    if (useRAG) {
+      // LLM模式：使用RAG检索相似PRD
+      const similarPRDs = await ragService.searchSimilarPRDsByApplication(applicationId);
+      const relevantChunks = combinePRDResults(similarPRDs);
+      
+      const result = await writePRDAction.run(input, {
+        useRAG: true,
+        relevantChunks,
+      });
+      
+      return res.json(result);
+    } else {
+      // 不使用RAG的标准生成
+      const result = await writePRDAction.run(input);
+      return res.json(result);
+    }
+  }
 }
 ```
 
-### 5.4 测试相关Action
+### 7.4 配置切换示例
 
-#### 5.4.1 WriteTest
+#### 7.4.1 通过环境变量切换模式
 
-**迁移方式**: 参考WriteCode的实现，使用Cursor CLI生成测试代码
+```bash
+# 全部使用CLI模式
+export DEFAULT_EXECUTOR_MODE=cli
 
-#### 5.4.2 TestReview
+# 特定角色使用CLI模式
+export ROLE_PRODUCTMANAGER_EXECUTOR_MODE=cli
+export ROLE_ARCHITECT_EXECUTOR_MODE=cli
 
-**迁移方式**: 参考PRDReview的实现，使用Cursor CLI审核测试代码
-
-### 5.5 其他Action
-
-- **CodeReview**: 参考PRDReview
-- **RunCode**: 可能需要保留shell命令执行，但可以使用Cursor CLI来准备和执行
-- **FixBug**: 使用Cursor CLI分析和修复bug
-- **DataAnalysis**: 使用Cursor CLI执行数据分析任务
-
----
-
-## 8. 配置和依赖调整
-
-### 6.1 移除的配置
-
-以下配置项可以移除或标记为可选：
-
-- LLM提供商配置（`LLM_PROVIDER`, `LLM_API_KEY`等）
-- 角色特定的LLM配置
-- LLM模型选择配置
-
-### 6.2 新增的配置
-
-可能需要新增的配置：
-
-```env
-# Cursor CLI配置
-CURSOR_CLI_MODEL=composer-1  # 默认模型
-CURSOR_CLI_TIMEOUT=3600000   # 默认超时（毫秒）
-CURSOR_CLI_MAX_RETRIES=10    # 默认最大重试次数
+# 其他角色使用LLM模式（默认）
 ```
 
-### 6.3 依赖调整
-
-**移除的依赖**:
-- 各种LLM SDK（如果不再需要）
-
-**保留的依赖**:
-- `child_process`（用于执行shell命令）
-- 文件系统操作（`fs/promises`）
-
-### 8.1 本地开发配置
-
-#### 8.1.1 环境变量配置
-
-**本地开发环境变量**:
-
-```env
-# 开发模式标识
-NODE_ENV=development
-LOCAL_DEV=true
-
-# Workspace路径
-WORKSPACE_PATH=./workspace
-
-# 默认CLI提供商
-DEFAULT_CLI_PROVIDER=cursor
-CURSOR_CLI_MODEL=composer-1
-
-# 角色CLI配置（可选）
-ROLE_PRODUCTMANAGER_CLI_PROVIDER=cursor
-ROLE_ARCHITECT_CLI_PROVIDER=aider
-ROLE_ENGINEER_CLI_PROVIDER=cursor
-```
-
-#### 8.1.2 数据库配置
+#### 7.4.2 通过数据库配置切换模式
 
 ```sql
--- 为角色配置CLI提供商
+-- 为ProductManager配置CLI模式
 UPDATE role_definitions 
 SET metadata = jsonb_set(
-  COALESCE(metadata, '{}'), 
-  '{cli_config}', 
-  '{"provider": "cursor", "model": "composer-1"}'
+  metadata, 
+  '{executor_config}', 
+  '{"mode": "cli", "cliProvider": "cursor"}'::jsonb
 )
 WHERE profile = 'ProductManager';
 ```
 
-### 8.2 容器化配置
-
-#### 7.1.1 环境变量配置
-
-**容器环境变量**:
-
-```env
-# 容器标识
-CONTAINER_WORKSPACE_ROOT=/workspace
-PROJECT_ID=${projectId}
-APPLICATION_ID=${applicationId}
-
-# Cursor CLI配置
-CURSOR_CLI_MODEL=composer-1
-CURSOR_CLI_TIMEOUT=3600000
-CURSOR_CLI_MAX_RETRIES=10
-
-# 数据库配置
-DATABASE_URL=postgresql://user:pass@host:5432/dbname
-
-# 日志配置
-LOG_LEVEL=info
-LOG_FORMAT=json
-```
-
-#### 8.2.2 卷挂载配置
-
-```yaml
-# Kubernetes PersistentVolumeClaim
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: workspace-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 50Gi
-```
-
-### 8.3 依赖调整
-
-**新增的依赖**:
-- CLI工具（Cursor CLI、Aider等）- 需要在环境中安装
-
-**移除的依赖**:
-- 各种LLM SDK（如果不再需要）
-
-**保留的依赖**:
-- `child_process`（用于执行shell命令）
-- 文件系统操作（`fs/promises`）
-
----
-
-## 9. 测试策略
-
-### 9.1 单元测试
-
-为每个迁移的Action编写单元测试：
+### 7.5 混合模式使用示例
 
 ```typescript
-describe('WritePRD with Cursor CLI', () => {
-  it('should generate PRD using Cursor CLI', async () => {
-    const action = new WritePRD();
-    const result = await action.run(mrdContent, options);
-    expect(result.content).toContain('产品需求文档');
-  });
-});
+// 不同角色使用不同模式
+// ProductManager使用CLI模式（高质量文档生成）
+ROLE_PRODUCTMANAGER_EXECUTOR_MODE=cli
+
+// QAEngineer使用LLM模式（快速测试生成）
+ROLE_QAENGINEER_EXECUTOR_MODE=llm
+
+// Engineer使用CLI模式（代码理解）
+ROLE_ENGINEER_EXECUTOR_MODE=cli
 ```
-
-### 9.2 集成测试
-
-测试完整的角色工作流：
-
-```typescript
-describe('ProductManager workflow', () => {
-  it('should complete PRD generation workflow', async () => {
-    const pm = new ProductManager(context);
-    // 执行完整工作流
-    const result = await pm.act();
     expect(result).toBeDefined();
   });
 });
@@ -2516,57 +3254,149 @@ spec:
 
 ---
 
-## 16. 总结
+## 8. 模式选择指南
 
-本迁移方案将系统从依赖多个LLM API的统一架构迁移到使用Cursor CLI的统一执行方式，并支持容器化部署和工作流迁移。
+### 8.1 何时选择LLM模式
 
-### 16.1 关键优势
+**推荐场景**：
+- ✅ 简单文档生成任务
+- ✅ 快速原型开发
+- ✅ 成本敏感场景
+- ✅ 无本地CLI工具环境
+- ✅ 需要快速响应的场景
+- ✅ 小型项目或简单需求
 
-**架构优势**:
-- ✅ 统一的执行接口（CLI抽象，默认Cursor CLI）
-- ✅ 清晰的层次架构（API Gateway → Orchestration → Container → Infrastructure）
-- ✅ 容器化支持，每个工作流独立运行
-- ✅ 工作流可移植性，支持完整迁移
-- ✅ **本地开发支持，无需容器即可调试**
+**优势**：
+- 响应速度快（秒级）
+- 成本可控（按token计费）
+- 无需本地工具
+- 支持流式输出
 
-**技术优势**:
-- ✅ 简化的配置管理（无需多个LLM提供商配置）
-- ✅ 更好的工作目录隔离（容器级别隔离）
-- ✅ 一致的错误处理和重试机制
-- ✅ 状态持久化（数据库 + 文件系统）
-- ✅ **角色自定义CLI，灵活切换不同CLI工具**
-- ✅ **CLI提供商抽象，易于扩展**
+**限制**：
+- 上下文长度受限
+- 代码理解能力有限
+- 需要向量数据库（RAG）
 
-**运维优势**:
-- ✅ 资源隔离（每个容器独立资源限制）
-- ✅ 弹性扩展（支持多容器部署）
-- ✅ 故障隔离（单个容器故障不影响其他）
-- ✅ 易于监控和管理
-- ✅ **本地开发快速迭代**
+### 8.2 何时选择CLI模式
 
-### 16.2 注意事项
+**推荐场景**：
+- ✅ 复杂代码理解任务
+- ✅ 大型项目文档生成
+- ✅ 高质量文档生成需求
+- ✅ 需要冲突检测的场景
+- ✅ 已有完整代码库的项目
+- ✅ 需要完整上下文理解
 
-- ⚠️ 需要确保CLI工具在环境中可用（Cursor CLI默认，其他可选）
-- ⚠️ 需要充分测试每个迁移的Action
-- ⚠️ 需要测试工作流迁移功能
-- ⚠️ 需要配置合适的资源限制（容器模式）
-- ⚠️ 需要确保本地开发环境一致性
-- ⚠️ 保留回滚方案以防万一
+**优势**：
+- 完整代码理解能力
+- 文件系统直接访问
+- 无需向量数据库
+- 功能冲突检测
+- 文档生成质量高
 
-### 16.3 下一步行动
+**限制**：
+- 执行时间较长（分钟级）
+- 依赖本地工具
+- 资源消耗较大
 
-1. **技术评审**: 评审架构设计和实施方案
-2. **POC验证**: 
-   - 实现CLI提供商抽象和CLIExecutor
-   - 实现本地开发模式支持
-   - 实现一个角色的CLI配置
-   - 实现一个完整的工作流容器化POC
-3. **制定详细计划**: 根据评审结果制定详细的实施计划
-4. **开始实施**: 按照阶段0开始实施
+### 8.3 混合使用策略
+
+**推荐配置**：
+- **文档生成角色**（ProductManager, Architect）：使用CLI模式，获得高质量文档
+- **测试角色**（QAEngineer）：使用LLM模式，快速生成测试用例
+- **代码角色**（Engineer）：使用CLI模式，完整代码理解
+- **数据分析角色**（DataAnalyst）：根据任务复杂度选择
+
+**配置示例**：
+```env
+# 文档生成使用CLI模式
+ROLE_PRODUCTMANAGER_EXECUTOR_MODE=cli
+ROLE_ARCHITECT_EXECUTOR_MODE=cli
+
+# 测试使用LLM模式
+ROLE_QAENGINEER_EXECUTOR_MODE=llm
+
+# 代码使用CLI模式
+ROLE_ENGINEER_EXECUTOR_MODE=cli
+```
+
+### 8.4 模式切换指南
+
+#### 8.4.1 从LLM模式切换到CLI模式
+
+1. 设置环境变量或数据库配置
+2. 确保CLI工具可用
+3. 重启服务或重新加载配置
+4. 验证执行模式
+
+#### 8.4.2 从CLI模式切换到LLM模式
+
+1. 移除或修改执行模式配置
+2. 确保LLM API配置正确
+3. 重启服务或重新加载配置
+4. 验证执行模式
 
 ---
 
-**文档版本**: 3.0  
-**更新日期**: 2026-01-23  
-**文档状态**: 优化完成（支持本地开发和角色CLI配置），待技术评审  
-**下一步**: 技术评审，POC验证
+## 9. 总结
+
+双模式执行器设计实现了LLM模式和CLI模式的灵活切换，为不同场景提供了最优的执行方式。
+
+### 9.1 核心价值
+
+**灵活选择**：
+- 根据场景选择最适合的执行模式
+- 支持全局配置、角色级配置
+- 运行时动态切换
+
+**优势互补**：
+- LLM模式：快速响应、成本可控
+- CLI模式：完整理解、高质量输出
+- 两种模式相互补充，覆盖不同需求
+
+**统一接口**：
+- Action层代码无需修改即可切换模式
+- 统一的执行器接口抽象
+- 向后兼容，平滑过渡
+
+### 9.2 架构优势
+
+- ✅ **双模式支持**：LLM模式和CLI模式完整实现
+- ✅ **统一接口**：通过`IExecutor`接口抽象两种模式
+- ✅ **灵活配置**：支持数据库、环境变量、默认配置三级优先级
+- ✅ **知识库分离**：CLI模式使用目录引用，LLM模式使用RAG
+- ✅ **向后兼容**：默认使用LLM模式，保持现有功能
+
+### 9.3 技术优势
+
+- ✅ **执行器系统**：`LLMExecutor`、`CLIExecutor`、`ExecutorFactory`
+- ✅ **CLI提供商系统**：支持Cursor、Aider等多种工具
+- ✅ **角色配置系统**：灵活的配置管理机制
+- ✅ **文档处理Handler**：统一的双模式支持
+- ✅ **知识库系统**：模式分离的知识库策略
+
+### 9.4 注意事项
+
+- ⚠️ CLI模式需要确保CLI工具在环境中可用
+- ⚠️ CLI模式执行时间较长，需要合理设置超时
+- ⚠️ CLI模式资源消耗较大，需要合理配置资源限制
+- ⚠️ 两种模式的知识库策略不同，需要正确理解和使用
+- ⚠️ 模式切换需要重启服务或重新加载配置
+
+### 9.5 未来改进
+
+- 🔄 支持更多CLI提供商（Cline等）
+- 🔄 优化CLI执行性能
+- 🔄 增强CLI执行过程的监控和调试能力
+- 🔄 支持CLI执行结果的流式输出
+- 🔄 优化知识库检索策略
+
+---
+
+**文档版本**: 2.0  
+**最后更新**: 2026-01-26  
+**文档状态**: 已实现  
+**相关文档**: 
+- `31_CLI知识库设计方案_CLI_KNOWLEDGE_BASE.md`
+- `06_角色系统设计_ROLES.md`
+- `07_行动系统设计_ACTIONS.md`

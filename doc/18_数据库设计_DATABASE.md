@@ -1,8 +1,8 @@
 # Mind2Build 数据库设计文档 V2
 
-**文档版本**: v2.1  
+**文档版本**: v2.2  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-26（添加project_versions表说明，更新Git相关字段说明）  
+**最后更新**: 2026-01-26（添加section_conversations表详细说明，包括功能、用途、字段说明和索引设计）  
 **数据库类型**: PostgreSQL  
 **主键类型**: UUID (使用 `uuid_generate_v4()`)
 
@@ -30,7 +30,14 @@
 - **审计追踪**: 记录创建和更新时间
 - **软删除**: 重要数据不物理删除
 
-### 1.2 核心实体（共18张表，包含project_versions和role_llm_configs）
+### 1.2 核心实体（共20张表，包含project_versions、role_llm_configs和section_conversations）
+
+**注意**: 实际数据库表数量为20张（从SQL迁移文件统计），包括：
+- 核心业务表：users, applications, projects, project_versions, roles, messages, action_logs, documents, cost_records
+- 知识库表：memories, embeddings, knowledge_base, section_conversations
+- 配置表：llm_configs, role_llm_configs, prompt_configs
+- 元数据表：role_definitions, action_definitions
+- 工作流表：application_workflows, workflow_executions
 
 | 实体 | 说明 | 优先级 |
 |------|------|--------|
@@ -477,6 +484,14 @@ CREATE TABLE knowledge_base (
 
 ### 3.16 section_conversations (章节对话表)
 
+**功能**: 记录PRD/MRD/DESIGN文档章节的迭代优化对话历史，支持多轮对话和内容调整。
+
+**用途**:
+- 跟踪章节的修改历程
+- 为后续调整提供上下文
+- 支持多轮迭代优化
+- 追踪用户反馈和AI响应的对应关系
+
 ```sql
 CREATE TABLE section_conversations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -487,7 +502,7 @@ CREATE TABLE section_conversations (
     section_number INT NOT NULL,
     version INT DEFAULT 1,
     
-    messages JSONB NOT NULL DEFAULT '[]',
+    messages JSONB NOT NULL DEFAULT '[]',  -- 对话消息数组
     
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
@@ -495,6 +510,46 @@ CREATE TABLE section_conversations (
     UNIQUE(project_id, document_type, section_number, version)
 );
 ```
+
+**messages 字段格式**:
+```json
+[
+  {
+    "role": "user",
+    "content": "用户反馈内容",
+    "timestamp": "2026-01-26T10:00:00Z"
+  },
+  {
+    "role": "assistant",
+    "content": "AI响应内容",
+    "timestamp": "2026-01-26T10:00:05Z"
+  }
+]
+```
+
+**字段说明**:
+- `id`: 对话唯一标识（UUID）
+- `project_id`: 所属项目ID（外键关联projects表，级联删除）
+- `document_id`: 关联文档ID（外键关联documents表，可为NULL，级联删除时设为NULL）
+- `document_type`: 文档类型，可选值：`prd`（产品需求文档）、`mrd`（市场需求文档）、`design`（设计文档）
+- `section_number`: 章节编号（从1开始）
+- `version`: 版本号（默认1）
+- `messages`: 对话消息数组（JSON格式），包含用户反馈和AI响应
+- `created_at`: 创建时间
+- `updated_at`: 更新时间
+
+**唯一约束**: `(project_id, document_type, section_number, version)` - 确保同一项目的同一文档类型、章节和版本只能有一条对话记录
+
+**索引**:
+- 主键索引：`id`
+- 唯一索引：`(project_id, document_type, section_number, version)`
+- B-tree索引：`project_id`、`document_id`（用于查询优化）
+
+**使用场景**:
+- PRD/MRD章节调整时自动保存对话历史
+- 通过API查询章节的修改历程
+- 为后续调整提供上下文信息
+- 支持多轮迭代优化
 
 ### 3.17 role_definitions (角色元定义表)
 
@@ -617,6 +672,8 @@ CREATE TABLE workflow_executions (
 | messages | B-tree | project_id, created_at | 时间序列查询 |
 | cost_records | B-tree | project_id, provider | 成本统计 |
 | llm_configs | UNIQUE | user_id, provider, role_profile | 配置唯一性 |
+| section_conversations | UNIQUE | project_id, document_type, section_number, version | 章节对话唯一性 |
+| section_conversations | B-tree | project_id, document_id | 查询优化 |
 
 ---
 

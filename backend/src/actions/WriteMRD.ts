@@ -1,6 +1,8 @@
 /**
  * WriteMRD Action
  * Write Market Research Document (MRD)
+ * 
+ * Enhanced with knowledge integration for improved document generation
  */
 
 import { BaseAction } from '../core/base/BaseAction';
@@ -10,10 +12,12 @@ import {
   buildMRDPrompt,
   buildMRDOutlinePrompt,
   buildMRDSectionPrompt,
+  StructuredKnowledgeContext,
 } from '../prompts/mrd';
 import { logger, loadPrompt } from '../utils';
 // Review和ImproveDocument已移除，由角色通过消息机制管理
 import { StepwiseDocumentGenerator } from '../utils/stepwise';
+import { KnowledgeIntegrationService } from '../services/KnowledgeIntegrationService';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -21,7 +25,9 @@ export interface WriteMRDOptions {
   mode?: 'new' | 'update';
   historyMRD?: string;
   useRAG?: boolean; // 是否使用 RAG 检索
-  relevantChunks?: string; // RAG 检索到的相关文档片段
+  relevantChunks?: string; // RAG 检索到的相关文档片段（旧版兼容）
+  structuredKnowledge?: StructuredKnowledgeContext; // 结构化知识上下文（新版）
+  useKnowledgeIntegration?: boolean; // 是否使用知识整合服务
   useStepwiseGeneration?: boolean; // 是否使用分步骤生成
   applicationId?: string; // 应用ID，用于文件夹命名
   projectId?: string; // 项目ID，用于文件夹命名
@@ -40,14 +46,17 @@ export class WriteMRD extends BaseAction {
   async run(userIdea: string, options?: WriteMRDOptions): Promise<IActionOutput> {
     const mode = options?.mode || 'new';
     const useRAG = options?.useRAG || false;
+    const useKnowledgeIntegration = options?.useKnowledgeIntegration ?? false;
     const useStepwise = options?.useStepwiseGeneration ?? true; // 默认启用分步骤生成
 
     logger.info('WriteMRD: Starting MRD generation', {
       mode,
       useRAG,
+      useKnowledgeIntegration,
       useStepwise,
       hasHistoryMRD: !!options?.historyMRD,
       hasRelevantChunks: !!options?.relevantChunks,
+      hasStructuredKnowledge: !!options?.structuredKnowledge,
       requestTimeout: process.env.REQUEST_TIMEOUT || '300',
       inputLength: userIdea.length,
     });
@@ -57,9 +66,18 @@ export class WriteMRD extends BaseAction {
     }
 
     try {
+      // 如果启用知识整合但没有提供结构化知识，尝试获取
+      let knowledgeContext = options?.structuredKnowledge;
+      if (useKnowledgeIntegration && !knowledgeContext && options?.projectId) {
+        knowledgeContext = await this.getKnowledgeContext(options.projectId, userIdea);
+      }
+
       // 如果启用分步骤生成且是新模式，使用分步骤生成
       if (useStepwise && mode === 'new' && !options?.historyMRD) {
-        return await this.generateStepwise(userIdea, options);
+        return await this.generateStepwise(userIdea, {
+          ...options,
+          structuredKnowledge: knowledgeContext,
+        });
       }
 
       // 否则使用传统的一次性生成
@@ -68,10 +86,14 @@ export class WriteMRD extends BaseAction {
       if (mode === 'update' && options?.historyMRD) {
         // Update mode: use history MRD + new requirements
         // TODO: 实现 buildMRDUpdatePrompt
-        prompt = buildMRDPrompt(userIdea, options.relevantChunks);
+        prompt = buildMRDPrompt(userIdea, knowledgeContext || options.relevantChunks);
         logger.info('WriteMRD: Using update mode with history MRD');
+      } else if (knowledgeContext) {
+        // 使用结构化知识上下文
+        prompt = buildMRDPrompt(userIdea, knowledgeContext);
+        logger.info('WriteMRD: Using structured knowledge context');
       } else if (useRAG && options?.relevantChunks) {
-        // RAG mode: use retrieved chunks + new requirements
+        // RAG mode: use retrieved chunks + new requirements (旧版兼容)
         prompt = buildMRDPrompt(userIdea, options.relevantChunks);
         logger.info('WriteMRD: Using RAG mode with relevant chunks');
       } else {
@@ -200,6 +222,42 @@ export class WriteMRD extends BaseAction {
   }
 
   /**
+   * 获取知识上下文
+   * 使用知识整合服务获取结构化知识
+   */
+  private async getKnowledgeContext(
+    projectId: string,
+    userIdea: string
+  ): Promise<StructuredKnowledgeContext | undefined> {
+    try {
+      const knowledgeService = new KnowledgeIntegrationService();
+      const userId = this.context?.get('userId');
+      await knowledgeService.initialize(userId);
+      
+      const context = await knowledgeService.getMRDDocumentKnowledge(
+        projectId,
+        userIdea,
+        { limitPerType: 3 }
+      );
+      
+      logger.info('WriteMRD: Knowledge context retrieved', {
+        projectId,
+        hasTerminology: context.terminology.length > 0,
+        hasBusinessRules: context.businessRules.length > 0,
+        hasExistingFeatures: context.existingFeatures.length > 0,
+      });
+      
+      return context;
+    } catch (error: any) {
+      logger.warn('WriteMRD: Failed to get knowledge context', {
+        projectId,
+        error: error.message,
+      });
+      return undefined;
+    }
+  }
+
+  /**
    * Generate Market Research Document step by step
    * Uses the generic StepwiseDocumentGenerator
    * 
@@ -220,17 +278,23 @@ export class WriteMRD extends BaseAction {
     // 获取当前执行模式
     const executorMode = this.getExecutorMode();
 
+    // 获取结构化知识上下文
+    const knowledgeContext = options?.structuredKnowledge;
+
     logger.info('WriteMRD: Creating StepwiseDocumentGenerator', {
       executorMode,
       workspaceDir,
+      hasKnowledgeContext: !!knowledgeContext,
       ...workspaceOptions,
     });
 
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
       buildOutlinePrompt: buildMRDOutlinePrompt,
-      buildSectionPrompt: buildMRDSectionPrompt,
+      buildSectionPrompt: (userIdea: string, outline: string, sectionNumber: number, sectionTitle: string) => 
+        buildMRDSectionPrompt(userIdea, outline, sectionNumber, sectionTitle, knowledgeContext),
       // CLI模式下用于生成完整文档的提示词
-      buildFullDocumentPrompt: (userIdea: string) => buildMRDPrompt(userIdea, options?.relevantChunks),
+      buildFullDocumentPrompt: (userIdea: string) => 
+        buildMRDPrompt(userIdea, knowledgeContext || options?.relevantChunks),
       systemPrompt: systemPrompt,
       // Review 由角色通过 MRDReview action 统一处理
       documentTitle: 'Market Research Document (MRD)',

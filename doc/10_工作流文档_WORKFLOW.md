@@ -2,9 +2,9 @@
 
 **Slogan**: 让所思，即所得
 
-**文档版本**: v1.6  
+**文档版本**: v1.7  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-26（补充Git仓库管理流程，更新默认工作流配置，验证角色顺序和Actions列表）
+**最后更新**: 2026-01-26（修正QAEngineer为3步流程，AutomationEngineer为4步流程包含QAConclusion，确认默认工作流配置与代码一致）
 
 ## 1. 项目初始化与Git管理流程
 
@@ -212,7 +212,7 @@ ProductManager (Order: 1)
 QAEngineer (Order: 2)
   ├─ WriteTestPlan → 测试计划
   ├─ WriteTest → 测试用例
-  └─ TestCaseReview → 用例评审
+  └─ TestCaseReview → 用例评审与补充
   ↓
 Architect (Order: 3)
   ├─ WriteDesign → 保存到 DESIGN/ 目录
@@ -275,20 +275,18 @@ interface WorkflowConfig {
 
 ## 2.1 QA 工作流
 
-### QAEngineer 工作流（4步测试设计流程）
+### QAEngineer 工作流（3步测试设计流程）
 
-QAEngineer 角色实现了测试设计工作流，包含 4 个 Actions，按顺序执行：
+QAEngineer 角色实现了测试设计工作流，包含 3 个 Actions，按顺序执行：
 
 ```
 PRD + 代码
   ↓
-Step 1: TestabilityReview（可测性审查）
-  ↓ 输出: TESTABILITY_REVIEW.md
-Step 2: WriteTestPlan（制定测试计划）
+Step 1: WriteTestPlan（制定测试计划）
   ↓ 输出: TEST_PLAN.md
-Step 3: WriteTest（测试用例生成）
+Step 2: WriteTest（测试用例生成）
   ↓ 输出: TEST.md
-Step 4: TestCaseReview（用例评审与补充）
+Step 3: TestCaseReview（用例评审与补充）
   ↓ 输出: TEST_CASES_REVIEWED.md
 ```
 
@@ -318,10 +316,9 @@ Step 4: QAConclusion（QA结论）
 
 | 步骤 | Action | 说明 | 输入 | 输出 |
 |------|--------|------|------|------|
-| 1 | TestabilityReview | 审查 PRD 和代码的可测性 | PRD, 代码 | 可测性审查报告 |
-| 2 | WriteTestPlan | 基于可测性审查制定测试计划 | PRD, 代码, 可测性报告 | 测试计划 |
-| 3 | WriteTest | 生成测试用例 | PRD, 代码 | 测试用例文档 |
-| 4 | TestCaseReview | 补充边界、异常、负面测试 | 测试用例, PRD, 代码 | 审查后的测试用例 |
+| 1 | WriteTestPlan | 制定测试计划 | PRD, 代码 | 测试计划 |
+| 2 | WriteTest | 生成测试用例 | PRD, 代码 | 测试用例文档 |
+| 3 | TestCaseReview | 补充边界、异常、负面测试 | 测试用例, PRD, 代码 | 审查后的测试用例 |
 
 **AutomationEngineer 工作流**:
 
@@ -330,18 +327,12 @@ Step 4: QAConclusion（QA结论）
 | 1 | AutomationPlanning | 评估自动化可行性 | 测试用例（TestCaseReview完成） | 自动化计划 |
 | 2 | AutomationExecution | 执行自动化测试 | 自动化计划 | 执行结果 |
 | 3 | CoverageQualityCheck | 分析覆盖率和质量 | 测试用例, 代码, 执行结果 | 覆盖率和质量报告 |
-
-**QAEngineer 最终步骤**:
-
-| 步骤 | Action | 说明 | 输入 | 输出 |
-|------|--------|------|------|------|
-| 5 | QAConclusion | 综合所有结果给出结论 | 所有测试文档（包括覆盖率报告） | QA 结论报告 |
+| 4 | QAConclusion | 综合所有结果给出结论 | 所有测试文档（包括覆盖率报告） | QA 结论报告 |
 
 ### QA 工作流触发条件
 
-- **QAEngineer**: 监听 `ACTION_WRITE_PRD` 和 `ACTION_WRITE_CODE`，当两者都完成时开始执行
-- **AutomationEngineer**: 监听 `ACTION_TEST_CASE_REVIEW`，等待 QAEngineer 完成测试用例评审后开始执行
-- **QAConclusion**: QAEngineer 监听 `ACTION_COVERAGE_QUALITY_CHECK`，等待 AutomationEngineer 完成覆盖率检查后执行
+- **QAEngineer**: 监听 `ACTION_WRITE_PRD` 和 `ACTION_IMPROVE_PRD`，当PRD完成时开始执行（3步测试设计流程）
+- **AutomationEngineer**: 监听 `ACTION_TEST_CASE_REVIEW`，等待 QAEngineer 完成测试用例评审后开始执行（4步自动化测试流程，包括QAConclusion）
 
 ## 3. 数据分析流程
 
