@@ -111,25 +111,28 @@ export class DocumentWriteHandler {
     // 清理代码块标记
     const content = cleanCodeBlockMarkers(processResult.content);
 
-    // 保存文档（如果需要）
-    // 关键逻辑：如果内容是从workspace读取的（isReadFromWorkspace=true），
-    // 说明CLI工具已经保存了文件，不需要再次保存，避免冗余操作
-    if (!processResult.isReadFromWorkspace && this.cliHandler.shouldSaveToWorkspace(content)) {
-      await (this.action as any).saveToWorkspace(
-        this.config.mainFileName,
-        content,
-        { documentType: this.config.documentType }
-      );
-      logger.info('DocumentWriteHandler: Saved document to workspace', {
-        documentType: this.config.documentType,
-        filename: this.config.mainFileName,
-      });
-    } else if (processResult.isReadFromWorkspace) {
-      logger.info('DocumentWriteHandler: Skipping save - CLI already saved the file', {
-        documentType: this.config.documentType,
-        filename: this.config.mainFileName,
-      });
+    // 检查是否应该保存
+    const saveCheck = this.cliHandler.checkShouldSaveContent(
+      content,
+      processResult.isReadFromWorkspace,
+      'DocumentWriteHandler',
+      this.config.mainFileName
+    );
+
+    if (!saveCheck.shouldSave) {
+      return content;
     }
+
+    // 保存文档
+    await (this.action as any).saveToWorkspace(
+      this.config.mainFileName,
+      content,
+      { documentType: this.config.documentType }
+    );
+    logger.info('DocumentWriteHandler: Saved document to workspace', {
+      documentType: this.config.documentType,
+      filename: this.config.mainFileName,
+    });
 
     return content;
   }

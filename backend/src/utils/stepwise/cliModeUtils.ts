@@ -143,68 +143,22 @@ export async function tryReadActualDocumentFromWorkspace(
         });
         return content;
       }
-    }
-
-    // 查找其他可能的文档文件（按修改时间排序，最新的优先）
-    const fileStats = await Promise.all(
-      documentFiles
-        .filter(name => name !== mainFileName)
-        .map(async (name) => {
-          const filePath = path.join(workspaceDir, name);
-          const stat = await fs.stat(filePath);
-          return { name, filePath, mtime: stat.mtime };
-        })
-    );
-
-    // 按修改时间降序排序
-    fileStats.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
-
-    // 尝试读取最新的文件
-    for (const fileStat of fileStats) {
-      const content = await fs.readFile(fileStat.filePath, 'utf-8');
       
-      // 检查内容是否为有效文档
-      if (content && !isCLISummaryOutput(content) && content.length > minDocumentLength) {
-        logger.info('cliModeUtils: Found actual document in workspace', {
-          filename: fileStat.name,
-          contentLength: content.length,
-        });
-        return content;
-      }
+      // 主文件是摘要或无效，返回null（不应该读取其他文件）
+      logger.warn('cliModeUtils: Main file exists but content is invalid (summary or empty)', {
+        mainFileName,
+        contentLength: content?.length || 0,
+        isSummary: content ? isCLISummaryOutput(content) : false,
+      });
+      return null;
     }
 
-    // 如果指定了文件模式，也检查父目录
-    if (filePattern) {
-      const parentDir = path.dirname(workspaceDir);
-      try {
-        await fs.access(parentDir);
-        const parentEntries = await fs.readdir(parentDir, { withFileTypes: true });
-        
-        const parentDocFiles = parentEntries
-          .filter(entry => {
-            if (!entry.isFile() || !entry.name.endsWith('.md')) return false;
-            // 只查找包含指定模式的文件
-            return entry.name.toLowerCase().includes(filePattern.toLowerCase());
-          })
-          .map(entry => entry.name);
-
-        for (const fileName of parentDocFiles) {
-          const filePath = path.join(parentDir, fileName);
-          const content = await fs.readFile(filePath, 'utf-8');
-          
-          if (content && !isCLISummaryOutput(content) && content.length > minDocumentLength) {
-            logger.info('cliModeUtils: Found actual document in parent directory', {
-              filename: fileName,
-              contentLength: content.length,
-            });
-            return content;
-          }
-        }
-      } catch {
-        // 父目录不存在或无法访问，忽略
-      }
-    }
-
+    // 主文件不存在，返回null（不读取其他文件，避免误读）
+    logger.warn('cliModeUtils: Main file not found in workspace', {
+      workspaceDir,
+      mainFileName,
+      availableFiles: documentFiles,
+    });
     return null;
   } catch (error: any) {
     logger.error('cliModeUtils: Failed to read actual document from workspace', {

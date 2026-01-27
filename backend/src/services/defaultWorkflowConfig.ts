@@ -154,7 +154,7 @@ export const actionDefinitions: ActionDefinition[] = [
   { name: 'AutomationExecution', display_name: '自动化执行', description: '执行自动化任务', class_name: 'AutomationExecution', category: 'execution' },
 
   // Planning & Analysis
-  { name: 'BreakdownTasks', display_name: '任务分解', description: '将大任务分解为子任务', class_name: 'BreakdownTasks', category: 'planning' },
+  { name: 'BreakdownTasks', display_name: '任务分解', description: '将大任务分解为子任务并评估故事点', class_name: 'BreakdownTasks', category: 'planning' },
   { name: 'AutomationPlanning', display_name: '自动化规划', description: '规划自动化方案', class_name: 'AutomationPlanning', category: 'planning' },
   { name: 'Coordinate', display_name: '协调', description: '协调团队工作', class_name: 'Coordinate', category: 'planning' },
   { name: 'DataAnalysis', display_name: '数据分析', description: '分析数据生成报告', class_name: 'DataAnalysis', category: 'analysis' },
