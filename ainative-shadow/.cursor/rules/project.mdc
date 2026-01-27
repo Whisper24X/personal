@@ -1,0 +1,8 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+中文返回
+使用VUE3加TS UI库使用element-plus
+表格使用CommonTable 实现
