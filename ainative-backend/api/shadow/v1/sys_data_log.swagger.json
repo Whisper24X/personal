@@ -1,0 +1,172 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "shadow/v1/sys_data_log.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "SysDataLog"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/shadow/v1/sys_data_log/list": {
+      "post": {
+        "summary": "系统-数据日志-列表数据查询",
+        "operationId": "SysDataLog_GetSysDataLogList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetSysDataLogListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetSysDataLogListReq"
+            }
+          }
+        ],
+        "tags": [
+          "SysDataLog"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1GetSysDataLogListReply": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总数"
+        },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1SysDataLogInfo"
+          },
+          "title": "列表数据"
+        }
+      },
+      "title": "响应-系统-数据日志-列表数据查询"
+    },
+    "v1GetSysDataLogListReq": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页码"
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页数"
+        },
+        "module": {
+          "type": "string",
+          "title": "模块:优惠券；合同模版；订单；"
+        },
+        "operatorId": {
+          "type": "string",
+          "title": "操作对象ID"
+        }
+      },
+      "title": "请求-系统-数据日志-列表数据查询"
+    },
+    "v1SysDataLogInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "主键ID（UUID自动生成）"
+        },
+        "operationType": {
+          "type": "string",
+          "title": "操作类型"
+        },
+        "operatorId": {
+          "type": "string",
+          "title": "操作数据Id"
+        },
+        "oldData": {
+          "type": "string",
+          "title": "旧数据"
+        },
+        "newData": {
+          "type": "string",
+          "title": "新数据"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedBy": {
+          "type": "string",
+          "title": "操作人"
+        },
+        "updatedByName": {
+          "type": "string",
+          "title": "操作人名称"
+        },
+        "module": {
+          "type": "string",
+          "title": "功能模块"
+        },
+        "remark": {
+          "type": "string",
+          "title": "备注"
+        }
+      },
+      "title": "系统-数据日志信息"
+    }
+  }
+}

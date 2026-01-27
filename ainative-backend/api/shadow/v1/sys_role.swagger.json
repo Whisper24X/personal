@@ -1,0 +1,453 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "shadow/v1/sys_role.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "SysRole"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/shadow/v1/sysRole/del": {
+      "post": {
+        "summary": "角色-删除角色",
+        "operationId": "SysRole_SysRoleDel",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SysRoleDelResp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SysRoleDelReq"
+            }
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SysRole"
+        ]
+      }
+    },
+    "/yanxue/shadow/v1/sysRole/list": {
+      "get": {
+        "summary": "角色-列表",
+        "operationId": "SysRole_SysRoleList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SysRoleListResp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "page",
+            "description": "页码",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "pageSize",
+            "description": "每页数量",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "name",
+            "description": "角色名称",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "dataPermission",
+            "description": "数据权限  全部数据:all  本部门数据:dept  本部门及以下数据:deptAndBelow  仅本人数据:self",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "status",
+            "description": "状态:-1=禁用,1=启用",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SysRole"
+        ]
+      }
+    },
+    "/yanxue/shadow/v1/sysRole/select": {
+      "get": {
+        "summary": "角色-下拉选择列表",
+        "operationId": "SysRole_SysRoleSelect",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SysRoleSelectResp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "dataPermission",
+            "description": "数据权限  全部数据:all  本部门数据:dept  本部门及以下数据:deptAndBelow  仅本人数据:self",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "status",
+            "description": "状态:-1=禁用,1=启用",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SysRole"
+        ]
+      }
+    },
+    "/yanxue/shadow/v1/sysRole/status": {
+      "post": {
+        "summary": "角色-修改状态",
+        "operationId": "SysRole_SysRoleStatus",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SysRoleStatusResp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SysRoleStatusReq"
+            }
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SysRole"
+        ]
+      }
+    },
+    "/yanxue/shadow/v1/sysRole/store": {
+      "post": {
+        "summary": "角色-保存角色",
+        "operationId": "SysRole_SysRoleStore",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SysRoleStoreResp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SysRoleStoreReq"
+            }
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SysRole"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1SysRoleDelReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id"
+        }
+      },
+      "title": "角色-删除角色-请求",
+      "required": [
+        "id"
+      ]
+    },
+    "v1SysRoleDelResp": {
+      "type": "object",
+      "title": "角色-删除角色-响应"
+    },
+    "v1SysRoleInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "角色Id"
+        },
+        "name": {
+          "type": "string",
+          "title": "角色名称"
+        },
+        "remark": {
+          "type": "string",
+          "title": "备注"
+        },
+        "dataPermission": {
+          "type": "string",
+          "title": "数据权限  全部数据:all  本部门数据:dept  本部门及以下数据:deptAndBelow  仅本人数据:self"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态:-1=禁用,1=启用"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        },
+        "permissionIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "菜单角色集合"
+        }
+      },
+      "title": "角色-信息"
+    },
+    "v1SysRoleListResp": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总数"
+        },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1SysRoleInfo"
+          },
+          "title": "列表"
+        }
+      },
+      "title": "角色-列表-响应"
+    },
+    "v1SysRoleSelectResp": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1SysRoleInfo"
+          },
+          "title": "列表"
+        }
+      },
+      "title": "角色-下拉选择列表-响应"
+    },
+    "v1SysRoleStatusReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "角色Id"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态:-1=禁用,1=启用"
+        }
+      },
+      "title": "角色-修改状态-请求",
+      "required": [
+        "id",
+        "status"
+      ]
+    },
+    "v1SysRoleStatusResp": {
+      "type": "object",
+      "title": "角色-修改状态-响应"
+    },
+    "v1SysRoleStoreReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "角色Id"
+        },
+        "name": {
+          "type": "string",
+          "title": "角色名称"
+        },
+        "remark": {
+          "type": "string",
+          "title": "备注"
+        },
+        "dataPermission": {
+          "type": "string",
+          "title": "数据权限  全部数据:all  本部门数据:dept  本部门及以下数据:deptAndBelow  仅本人数据:self"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态:-1=禁用,1=启用"
+        },
+        "permissionIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "菜单角色集合"
+        }
+      },
+      "title": "角色-保存角色-请求",
+      "required": [
+        "name",
+        "remark",
+        "dataPermission",
+        "status",
+        "permissionIds"
+      ]
+    },
+    "v1SysRoleStoreResp": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id"
+        }
+      },
+      "title": "角色-保存角色-响应"
+    }
+  }
+}

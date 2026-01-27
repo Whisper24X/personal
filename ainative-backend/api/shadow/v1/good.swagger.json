@@ -1,0 +1,620 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "shadow/v1/good.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "Good"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/api/shadow/v1/good/create": {
+      "post": {
+        "summary": "商品-创建一条数据",
+        "operationId": "Good_CreateGood",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CreateGoodReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateGoodReq"
+            }
+          }
+        ],
+        "tags": [
+          "Good"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/good/info": {
+      "get": {
+        "summary": "商品-单条数据查询",
+        "operationId": "Good_GetGoodInfo",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/shadowv1GetGoodInfoReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "description": "id",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Good"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/good/list": {
+      "post": {
+        "summary": "商品-列表数据查询",
+        "operationId": "Good_GetGoodList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetGoodListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetGoodListReq"
+            }
+          }
+        ],
+        "tags": [
+          "Good"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/good/update": {
+      "post": {
+        "summary": "商品-更新一条数据",
+        "operationId": "Good_UpdateGood",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UpdateGoodReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UpdateGoodReq"
+            }
+          }
+        ],
+        "tags": [
+          "Good"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/good/updateGoodStatus": {
+      "post": {
+        "summary": "商品-修改商品状态",
+        "operationId": "Good_UpdateGoodStatus",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UpdateGoodStatusReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UpdateGoodStatusReq"
+            }
+          }
+        ],
+        "tags": [
+          "Good"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "shadowv1CourseItem": {
+      "type": "object",
+      "properties": {
+        "courseId": {
+          "type": "string",
+          "title": "课程Id"
+        },
+        "courseName": {
+          "type": "string",
+          "title": "课程名称"
+        },
+        "coursePrice": {
+          "type": "string",
+          "title": "课程价格"
+        },
+        "isAppointment": {
+          "type": "boolean",
+          "title": "是否预约"
+        }
+      }
+    },
+    "shadowv1GetGoodInfoReply": {
+      "type": "object",
+      "properties": {
+        "info": {
+          "$ref": "#/definitions/shadowv1GoodInfo"
+        }
+      },
+      "title": "响应-商品-单条数据查询"
+    },
+    "shadowv1GoodCategory": {
+      "type": "object",
+      "properties": {
+        "categoryId": {
+          "type": "string",
+          "title": "商品类别Id"
+        },
+        "categoryName": {
+          "type": "string",
+          "title": "商品类别名称"
+        },
+        "useTimes": {
+          "type": "integer",
+          "format": "int32",
+          "title": "使用次数"
+        },
+        "alreadyAppointmentUseTimes": {
+          "type": "integer",
+          "format": "int32",
+          "title": "已预约使用次数"
+        },
+        "courses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/shadowv1CourseItem"
+          },
+          "title": "课程列表"
+        }
+      }
+    },
+    "shadowv1GoodContent": {
+      "type": "object",
+      "properties": {
+        "goodCategories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/shadowv1GoodCategory"
+          },
+          "title": "商品类别列表"
+        }
+      }
+    },
+    "shadowv1GoodInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "name": {
+          "type": "string",
+          "title": "名称"
+        },
+        "mainImage": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "主图(多张)"
+        },
+        "detailImages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "详情图(多张)"
+        },
+        "price": {
+          "type": "integer",
+          "format": "int32",
+          "title": "价格：单位分"
+        },
+        "content": {
+          "$ref": "#/definitions/shadowv1GoodContent",
+          "title": "内容"
+        },
+        "sales": {
+          "type": "integer",
+          "format": "int32",
+          "title": "销量"
+        },
+        "status": {
+          "type": "string",
+          "title": "状态"
+        },
+        "appointmentRules": {
+          "type": "string",
+          "title": "预约规则"
+        },
+        "channel": {
+          "type": "string",
+          "title": "渠道"
+        },
+        "channelId": {
+          "type": "string",
+          "title": "渠道Id"
+        },
+        "channelGoodId": {
+          "type": "string",
+          "title": "渠道商品Id"
+        },
+        "platformGoodId": {
+          "type": "string",
+          "title": "平台商品Id"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "开始时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        },
+        "updatedBy": {
+          "type": "string",
+          "title": "操作人"
+        },
+        "updatedByName": {
+          "type": "string",
+          "title": "操作人名称"
+        },
+        "isPushAppointmentInfo": {
+          "type": "boolean",
+          "title": "是否推送预约信息"
+        },
+        "goodType": {
+          "type": "string",
+          "title": "商品类型：单日营：single；多日营：multi"
+        },
+        "label": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "商品标签"
+        },
+        "purchaseAgreementName": {
+          "type": "string",
+          "title": "购买协议名称"
+        },
+        "purchaseAgreementLink": {
+          "type": "string",
+          "title": "购买协议链接"
+        }
+      },
+      "title": "商品信息"
+    },
+    "v1CreateGoodReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        }
+      },
+      "title": "响应-商品-创建一条数据"
+    },
+    "v1CreateGoodReq": {
+      "type": "object",
+      "properties": {
+        "platformGoodId": {
+          "type": "string",
+          "title": "平台商品Id"
+        },
+        "mainImages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "主图(多张)"
+        },
+        "detailImages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "详情图(多张)"
+        },
+        "price": {
+          "type": "integer",
+          "format": "int32",
+          "title": "售价：单位分"
+        },
+        "content": {
+          "$ref": "#/definitions/shadowv1GoodContent",
+          "title": "内容"
+        },
+        "appointmentRules": {
+          "type": "string",
+          "title": "预约规则"
+        },
+        "channelId": {
+          "type": "string",
+          "title": "渠道Id"
+        },
+        "channelGoodId": {
+          "type": "string",
+          "title": "渠道商品Id"
+        },
+        "isPushAppointmentInfo": {
+          "type": "boolean",
+          "title": "是否推送预约信息"
+        },
+        "label": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "商品标签"
+        },
+        "purchaseAgreementName": {
+          "type": "string",
+          "title": "购买协议名称"
+        },
+        "purchaseAgreementLink": {
+          "type": "string",
+          "title": "购买协议链接"
+        }
+      },
+      "title": "请求-商品-创建一条数据"
+    },
+    "v1GetGoodListReply": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总数"
+        },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/shadowv1GoodInfo"
+          },
+          "title": "列表数据"
+        }
+      },
+      "title": "响应-商品-列表数据查询"
+    },
+    "v1GetGoodListReq": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页码"
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页数"
+        },
+        "platformGoodId": {
+          "type": "string",
+          "title": "平台商品Id"
+        },
+        "channelName": {
+          "type": "string",
+          "title": "渠道名称"
+        },
+        "goodName": {
+          "type": "string",
+          "title": "商品名称"
+        },
+        "status": {
+          "type": "string",
+          "title": "状态:delete:删除；putOn:上架；putOff:下架；pending:待上架"
+        }
+      },
+      "title": "请求-商品-列表数据查询"
+    },
+    "v1UpdateGoodReply": {
+      "type": "object",
+      "properties": {
+        "isSucceed": {
+          "type": "boolean",
+          "title": "是否成功"
+        }
+      },
+      "title": "响应-商品-更新一条数据"
+    },
+    "v1UpdateGoodReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "platformGoodId": {
+          "type": "string",
+          "title": "平台商品Id"
+        },
+        "mainImages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "主图(多张)"
+        },
+        "detailImages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "详情图(多张)"
+        },
+        "price": {
+          "type": "integer",
+          "format": "int32",
+          "title": "售价：单位分"
+        },
+        "content": {
+          "$ref": "#/definitions/shadowv1GoodContent",
+          "title": "内容"
+        },
+        "appointmentRules": {
+          "type": "string",
+          "title": "预约规则"
+        },
+        "channelId": {
+          "type": "string",
+          "title": "渠道Id"
+        },
+        "channelGoodId": {
+          "type": "string",
+          "title": "渠道商品Id"
+        },
+        "isPushAppointmentInfo": {
+          "type": "boolean",
+          "title": "是否推送预约信息"
+        },
+        "label": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "商品标签"
+        },
+        "purchaseAgreementName": {
+          "type": "string",
+          "title": "购买协议名称"
+        },
+        "purchaseAgreementLink": {
+          "type": "string",
+          "title": "购买协议链接"
+        }
+      },
+      "title": "请求-商品-更新一条数据"
+    },
+    "v1UpdateGoodStatusReply": {
+      "type": "object",
+      "properties": {
+        "isSucceed": {
+          "type": "boolean",
+          "title": "是否成功"
+        }
+      },
+      "title": "响应-商品-修改商品状态"
+    },
+    "v1UpdateGoodStatusReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "status": {
+          "type": "string",
+          "title": "状态:delete:删除；putOn:上架；putOff:下架；pending:待上架"
+        }
+      },
+      "title": "请求-商品-修改商品状态"
+    }
+  }
+}

@@ -1,0 +1,422 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "shadow/v1/evaluation_template.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "EvaluationTemplate"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/api/shadow/v1/evaluation_template/create": {
+      "post": {
+        "summary": "评价模版-创建一条数据",
+        "operationId": "EvaluationTemplate_CreateEvaluationTemplate",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CreateEvaluationTemplateReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateEvaluationTemplateReq"
+            }
+          }
+        ],
+        "tags": [
+          "EvaluationTemplate"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/evaluation_template/delete": {
+      "post": {
+        "summary": "评价模版-删除多条数据",
+        "operationId": "EvaluationTemplate_DeleteEvaluationTemplate",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1DeleteEvaluationTemplateReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1DeleteEvaluationTemplateReq"
+            }
+          }
+        ],
+        "tags": [
+          "EvaluationTemplate"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/evaluation_template/info": {
+      "get": {
+        "summary": "评价模版-单条数据查询",
+        "operationId": "EvaluationTemplate_GetEvaluationTemplateInfo",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/shadowv1GetEvaluationTemplateInfoReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "description": "id",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "EvaluationTemplate"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/evaluation_template/list": {
+      "post": {
+        "summary": "评价模版-列表数据查询",
+        "operationId": "EvaluationTemplate_GetEvaluationTemplateList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetEvaluationTemplateListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetEvaluationTemplateListReq"
+            }
+          }
+        ],
+        "tags": [
+          "EvaluationTemplate"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/evaluation_template/update": {
+      "post": {
+        "summary": "评价模版-更新一条数据",
+        "operationId": "EvaluationTemplate_UpdateEvaluationTemplate",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UpdateEvaluationTemplateReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UpdateEvaluationTemplateReq"
+            }
+          }
+        ],
+        "tags": [
+          "EvaluationTemplate"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "shadowv1EvaluationTemplateInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "templateName": {
+          "type": "string",
+          "title": "模版名称"
+        },
+        "evaluationObject": {
+          "type": "string",
+          "title": "评价对象"
+        },
+        "business": {
+          "type": "string",
+          "title": "所属业务"
+        },
+        "evaluationDimension": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "评价维度"
+        },
+        "evaluationLabel": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "评价标签"
+        },
+        "tips": {
+          "type": "string",
+          "title": "温馨提示"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        },
+        "updatedBy": {
+          "type": "string",
+          "title": "操作人"
+        },
+        "updatedByName": {
+          "type": "string",
+          "title": "操作人名称"
+        }
+      },
+      "title": "评价模版信息"
+    },
+    "shadowv1GetEvaluationTemplateInfoReply": {
+      "type": "object",
+      "properties": {
+        "info": {
+          "$ref": "#/definitions/shadowv1EvaluationTemplateInfo"
+        }
+      },
+      "title": "响应-评价模版-单条数据查询"
+    },
+    "v1CreateEvaluationTemplateReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        }
+      },
+      "title": "响应-评价模版-创建一条数据"
+    },
+    "v1CreateEvaluationTemplateReq": {
+      "type": "object",
+      "properties": {
+        "templateName": {
+          "type": "string",
+          "title": "模版名称"
+        },
+        "evaluationObject": {
+          "type": "string",
+          "title": "评价对象"
+        },
+        "business": {
+          "type": "string",
+          "title": "所属业务"
+        },
+        "evaluationDimension": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "评价维度"
+        },
+        "evaluationLabel": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "评价标签"
+        },
+        "tips": {
+          "type": "string",
+          "title": "温馨提示"
+        }
+      },
+      "title": "请求-评价模版-创建一条数据"
+    },
+    "v1DeleteEvaluationTemplateReply": {
+      "type": "object",
+      "title": "响应-评价模版-删除一条数据"
+    },
+    "v1DeleteEvaluationTemplateReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        }
+      },
+      "title": "请求-评价模版-删除一条数据"
+    },
+    "v1GetEvaluationTemplateListReply": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总数"
+        },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/shadowv1EvaluationTemplateInfo"
+          },
+          "title": "列表数据"
+        }
+      },
+      "title": "响应-评价模版-列表数据查询"
+    },
+    "v1GetEvaluationTemplateListReq": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页码"
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页数"
+        },
+        "templateName": {
+          "type": "string",
+          "title": "模版名称"
+        }
+      },
+      "title": "请求-评价模版-列表数据查询"
+    },
+    "v1UpdateEvaluationTemplateReply": {
+      "type": "object",
+      "title": "响应-评价模版-更新一条数据"
+    },
+    "v1UpdateEvaluationTemplateReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "templateName": {
+          "type": "string",
+          "title": "模版名称"
+        },
+        "evaluationObject": {
+          "type": "string",
+          "title": "评价对象"
+        },
+        "business": {
+          "type": "string",
+          "title": "所属业务"
+        },
+        "evaluationDimension": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "评价维度"
+        },
+        "evaluationLabel": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "评价标签"
+        },
+        "tips": {
+          "type": "string",
+          "title": "温馨提示"
+        }
+      },
+      "title": "请求-评价模版-更新一条数据"
+    }
+  }
+}

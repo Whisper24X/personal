@@ -1,0 +1,358 @@
+syntax = "proto3";
+
+package shadow.v1;
+
+import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+import "validate/validate.proto";
+
+option go_package = "gitlab.yc345.tv/backend/yanxue/api/shadow/v1;v1";
+
+//课程-预约
+service CourseAppointment {
+  // 课程-预约
+  rpc CreateCourseAppointment(CreateCourseAppointmentReq) returns (CreateCourseAppointmentReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/course_appointment/create"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  //课程-预约-更新一条数据
+  rpc UpdateCourseAppointment(UpdateCourseAppointmentReq) returns (UpdateCourseAppointmentReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/course_appointment/update"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  //课程-预约-取消预约
+  rpc CancelCourseAppointment(CancelCourseAppointmentReq) returns (CancelCourseAppointmentReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/course_appointment/cancel"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  //课程-预约-删除多条数据
+  rpc DeleteCourseAppointment(DeleteCourseAppointmentReq) returns (DeleteCourseAppointmentReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/course_appointment/delete"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  //课程-预约-单条数据查询
+  rpc GetCourseAppointmentInfo(GetCourseAppointmentInfoReq) returns (GetCourseAppointmentInfoReply) {
+    option (google.api.http) = {get: "/yanxue/api/shadow/v1/course_appointment/info"};
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  //课程-预约-列表数据查询
+  rpc GetCourseAppointmentList(GetCourseAppointmentListReq) returns (GetCourseAppointmentListReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/course_appointment/list"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  // 课程-预约-列表数据导出
+  rpc ExportCourseAppointmentList(ExportCourseAppointmentListReq) returns (ExportCourseAppointmentListReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/course_appointment/export"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  // 课程-预约-完成脚本
+  rpc FinishCourseAppointment(FinishCourseAppointmentReq) returns (FinishCourseAppointmentReply) {}
+
+  // 获取合同字段信息
+  rpc GetContractFieldInfo(GetContractFieldInfoReq) returns (GetContractFieldInfoReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/course_appointment/getContractFieldInfo"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  // 飞书通知预约情况
+  rpc FeiShuReportAppointmentSituation(FeiShuReportAppointmentSituationReq) returns (FeiShuReportAppointmentSituationReply) {}
+}
+
+message FeiShuReportAppointmentSituationReq {}
+
+message FeiShuReportAppointmentSituationReply {}
+
+message GetContractFieldInfoReq {
+  string id = 1; // 课程预约记录ID
+}
+
+message GetContractFieldInfoReply {
+  string parentName = 1; // 家长姓名
+  string parentPhone = 2; // 家长手机号
+  string childName = 3; // 孩子姓名
+  string childId = 4; // 孩子身份证号
+  string activityStartDate = 5; // 活动开始日期
+  string activityEndDate = 6; // 活动结束日期
+  string cost = 7; // 活动费用
+  string costCapital = 8; // 活动费用大写
+  string payEndDate = 9; // 付款截止日期
+}
+
+//课程-预约信息
+message CourseAppointmentInfo {
+  string id = 1; // id
+  string orderId = 2; // 订单id
+  string goodId = 3; // 商品id
+  string courseId = 4; // 课程id
+  string date = 5; // 预约日期
+  string period = 6; // 预约时段
+  string studentName = 7; // 学生-名称
+  string studentIdentityCard = 8; // 学生-身份证
+  string studentSex = 9; // 学生-性别(男M,女F)
+  int32 studentAge = 10; // 学生-年龄
+  string parentName = 11; // 家长-姓名
+  string parentPhone = 12; // 家长-手机号
+  string parentAccompany = 13; // 家长-是否陪同 yes 是 no 否 unknown 未知
+  string verificationCode = 14; // 核销卷码
+  string status = 15; // 状态  cancel 取消预约 success 已预约 completed 已完成
+  string createdAt = 16; // 创建时间
+  string updatedAt = 17; // 更新时间
+  string updatedBy = 18; // 更新人
+  string updatedByName = 19; // 更新人名称
+  string goodName = 20; // 商品名称
+  string courseName = 21; // 课程名称
+  string contractStatus = 22; // 合同状态：pending:待推送；pushed:已推送
+  string channelName = 23; // 渠道名称
+  string orderNumber = 24; // 订单编号
+  string parentRemark = 25; // 家长备注
+  string businessRemark = 26; // 业务备注
+  int64 orderPrice = 27; // 订单金额
+  bool isPushContractRequired = 28; // 是否需要推送合同
+}
+
+// 请求--课程-预约
+message CreateCourseAppointmentReq {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {
+      required: [
+        "orderId",
+        "courseId",
+        "date",
+        "studentName",
+        "studentSex",
+        "studentAge",
+        "parentName",
+        "parentPhone",
+        "parentAccompany"
+      ]
+    }
+  };
+  string orderId = 1 [(validate.rules).string = {min_len: 1}]; // 订单id
+  string categoryId = 2 [(validate.rules).string = {min_len: 1}]; // 课程分类id
+  string courseId = 3 [(validate.rules).string = {min_len: 1}]; // 课程id
+  string date = 4 [(validate.rules).string = {min_len: 1}]; // 预约日期
+  string period = 5; // 预约时段（多日营不需要这个字段）
+  string studentName = 6 [(validate.rules).string = {min_len: 1}]; // 学生-名称
+  string studentIdentityCard = 7; // 学生-身份证
+  string studentSex = 8 [(validate.rules).string = {min_len: 1}]; // 学生-性别(男M,女F)
+  int32 studentAge = 9 [(validate.rules).int32 = {
+    gt: 0
+    lt: 100
+  }]; // 学生-年龄
+  string parentName = 10 [(validate.rules).string = {min_len: 1}]; // 家长-姓名
+  string parentPhone = 11 [(validate.rules).string = {min_len: 1}]; // 家长-手机号
+  string parentAccompany = 12 [(validate.rules).string = {min_len: 1}]; // 家长-是否陪同 yes 是 no 否 unknown 未知
+  string verificationCode = 13; // 核销卷码
+  string businessRemark = 14; // 业务备注
+}
+
+// 响应--课程-预约
+message CreateCourseAppointmentReply {
+  string id = 1; // id
+}
+
+//请求-课程-预约-更新一条数据
+message UpdateCourseAppointmentReq {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {
+      required: [
+        "id",
+        "date",
+        "studentName",
+        "studentSex",
+        "studentAge",
+        "parentName",
+        "parentPhone",
+        "parentAccompany"
+      ]
+    }
+  };
+  string id = 1 [(validate.rules).string.min_len = 1]; // id
+  string date = 2 [(validate.rules).string.min_len = 1]; // 预约日期
+  string period = 3; // 预约时段
+  string studentName = 4 [(validate.rules).string.min_len = 1]; // 学生-名称
+  string studentIdentityCard = 5; // 学生-身份证
+  string studentSex = 6 [(validate.rules).string.min_len = 1]; // 学生-性别(男M,女F)
+  int32 studentAge = 7 [(validate.rules).int32 = {
+    gte: 1
+    lte: 100
+  }]; // 学生-年龄
+  string parentName = 8 [(validate.rules).string.min_len = 1]; // 家长-姓名
+  string parentPhone = 9 [(validate.rules).string.min_len = 1]; // 家长-手机号
+  string parentAccompany = 10 [(validate.rules).string.min_len = 1]; // 家长-是否陪同 yes 是 no 否 unknown 未知
+  string businessRemark = 11; // 业务备注
+}
+
+//响应-课程-预约-更新一条数据
+message UpdateCourseAppointmentReply {}
+
+//请求-课程-预约-取消预约
+message CancelCourseAppointmentReq {
+  string id = 1 [(validate.rules).string.min_len = 1]; // id
+}
+
+//响应-课程-预约-取消预约
+message CancelCourseAppointmentReply {}
+
+//请求-课程-预约-删除多条数据
+message DeleteCourseAppointmentReq {
+  repeated string ids = 1 [(validate.rules).repeated.min_items = 1]; // id集合
+}
+
+//响应-课程-预约-删除多条数据
+message DeleteCourseAppointmentReply {}
+
+//请求-课程-预约-单条数据查询
+message GetCourseAppointmentInfoReq {
+  string id = 1 [(validate.rules).string.min_len = 1]; // id
+}
+
+//响应-课程-预约-单条数据查询
+message GetCourseAppointmentInfoReply {
+  CourseAppointmentInfo info = 1;
+}
+
+//请求-课程-预约-列表数据查询
+message GetCourseAppointmentListReq {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {
+      required: [
+        "page",
+        "pageSize"
+      ]
+    }
+  };
+  int32 page = 1 [(validate.rules).int32.gt = 0]; //页码
+  int32 pageSize = 2 [(validate.rules).int32.gt = 0]; //页数
+  string courseId = 3; // 课程id
+  string startDate = 4; // 开始日期
+  string endDate = 5; // 结束日期
+  string studentName = 6; // 学生-名称
+  string parentName = 7; // 家长-姓名
+  string parentPhone = 8; // 家长-手机号
+  string status = 9; // 状态  cancel 取消预约 success 已预约 completed 已完成
+  string contractStatus = 10; // 合同状态：pending:待推送；pushed:已推送
+  string orderNumber = 11; // 订单编号
+}
+
+//响应-课程-预约-列表数据查询
+message GetCourseAppointmentListReply {
+  int32 total = 1; //总数
+  repeated CourseAppointmentInfo list = 2; // 列表数据
+}
+
+//请求-课程-预约-列表数据导出
+message ExportCourseAppointmentListReq {
+  string courseId = 3; // 课程id
+  string startDate = 4; // 开始日期
+  string endDate = 5; // 结束日期
+  string studentName = 6; // 学生-名称
+  string parentName = 7; // 家长-姓名
+  string parentPhone = 8; // 家长-手机号
+  string status = 9; // 状态  cancel 取消预约 success 已预约 completed 已完成
+}
+
+//响应-课程-预约-列表数据导出
+message ExportCourseAppointmentListReply {
+  string downloadUrl = 1; // 下载地址
+}
+
+//请求-课程-预约-完成脚本
+message FinishCourseAppointmentReq {}
+
+//响应-课程-预约-完成脚本
+message FinishCourseAppointmentReply {
+  repeated string ids = 1; // 课程预约ID集合
+}

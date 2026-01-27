@@ -1,0 +1,183 @@
+yc:
+  redis:
+    yanxue:
+      name: yanxue
+      addr: redis-cnlfge3g6jppurhnz.redis.ivolces.com:6379
+      username:
+      password: Yangcong345
+      db: 1
+      readTimeout: 3 #读超时时间，默认3秒，-1表示取消读超时
+      writeTimeout:
+      keyPrefix:
+      maxLatency:  #执行时间，超出后会执行 LatencyHookFn 函数
+      poolFIFO: True # 连接池的类型。FIFO 池为 true，LIFO 池为 false; 请注意，与 lifo 相比，fifo 的开销更高
+      poolSize: 10 # 最大套接字连接数。
+      poolTimeout: 5 # 如果所有连接都忙，则客户端在返回错误之前等待连接的时间。
+      minIdleConns: 0 # 建立新连接缓慢时有用的最小空闲连接数。
+      idleTimeout:  # 客户端关闭空闲连接的时间。应该小于服务器的超时时间。
+      maxConnAge:  # 客户端退出（关闭）连接的连接年龄。默认是不关闭老化的连接。
+  pg:
+    yanxue:
+      name: yanxue
+      host: postgresc73845d136f9.rds-pg.ivolces.com
+      port: 5432
+      user: yanxue
+      password: United_yan
+      db: yanxue
+      sslMode: disable
+      maxIdleConns: 5
+      maxOpenConns: 10
+      connMaxLifetime: 60s
+      debug: false
+      singularTable: true
+      disableMetric: false
+      slowThreshold: 0.5s
+  nacos:
+    host: ${NACOS_SD_HOST}
+    port: ${NACOS_SD_PORT}
+    username: ${NACOS_SD_ACCOUNT}
+    password: ${NACOS_SD_PASSWD}
+  cronTasks:
+    tasks:
+      syncContractStatus:
+        name: syncContractStatus
+        cron: "0 */10 * * * *"
+        mode: default
+        notify:
+          type: NONE
+          feiShu:
+            url: ""
+            title: 定时同步合同状态
+      finishCourseAppointment:
+        name: finishCourseAppointment
+        cron: "0 */5 * * * *"
+        mode: default
+        notify:
+          type: NONE
+          feiShu:
+            url: ""
+            title: 定时完成课程预约
+      feiShuReportAppointmentSituation:
+        name: feiShuReportAppointmentSituation
+        cron: "0 0 10,20 * * *"
+        mode: default
+        notify:
+          type: NONE
+          feiShu:
+            url: ""
+            title: 定时飞书通知预约情况
+      syncOrderRefundStatus:
+        name: syncOrderRefundStatus
+        cron: "0 */30 * * * *"
+        mode: default
+        notify:
+          type: NONE
+          feiShu:
+            url: ""
+            title: 同步订单退款状态
+      syncWeiDianOrder:
+        name: syncWeiDianOrder
+        cron: "0 0 0,8-23 * * ?"
+        mode: default
+        notify:
+          type: NONE
+          feiShu:
+            url: ""
+            title: 同步微店订单
+      closeExpiredOrders:
+        name: closeExpiredOrders
+        cron: "0 */10 * * * *"  # 每10分钟执行一次
+        mode: default
+        notify:
+          type: NONE
+          feiShu:
+            url: ""
+            title: 关闭超时未支付订单
+      syncWechatPayOrderStatus:
+        name: syncWechatPayOrderStatus
+        cron: "*/30 * * * * *"  # 每30秒执行一次
+        mode: default
+        notify:
+          type: NONE
+          feiShu:
+            url: ""
+            title: 同步微信支付订单状态
+      expireUserCoupons:
+        name: expireUserCoupons
+        cron: "0 */10 * * * *"  # 每10分钟执行一次
+        mode: default
+        notify:
+          type: NONE
+          feiShu:
+            url: ""
+            title: 过期用户优惠券状态更新
+      syncWechatPayBill:
+        name: syncWechatPayBill
+        cron: "0 0 11 * * ?"  # 每天11点执行一次
+        mode: default
+        notify:
+          type: NONE
+          feiShu:
+            url: ""
+            title: 同步微信支付账单
+      syncWechatPayBillPlatformFee:
+        name: syncWechatPayBillPlatformFee
+        cron: "0 0 12 * * ?"  # 每天12点执行一次
+        mode: default
+        notify:
+          type: NONE
+          feiShu:
+            url: ""
+            title: 同步微信支付账单手续费
+      syncDouYinSettleInfo:
+        name: syncDouYinSettleInfo
+        cron: "0 0 2 * * ?"  # 每天2点执行一次
+        mode: default
+        notify:
+          type: NONE
+          feiShu:
+            url: ""
+            title: 同步抖音分账信息
+  eSign:
+    appID: "5111995692"
+    appSecret: "e9dd1b7fe7e62f657290489dd1431987"
+    baseURL: "https://openapi.esign.cn"
+    sealID: "364bcee1-ace7-42af-8f21-09b03a6b93e9"
+    psnID: "2a0249650c7a4bb09d8b27a7c3a417ef"
+    orgID: "296785b4f9d548df935bc363625dd323"
+  feiShu:
+    createCourseAppointment:
+      url: https://open.feishu.cn/open-apis/bot/v2/hook/09205973-169e-4924-a3f3-ed5c3a1c1cfc
+      sign: 0uz0AOZapztt4dsgM0joT
+    scanCodeForGrabTicketNotify:
+      url: https://open.feishu.cn/open-apis/bot/v2/hook/2938b7be-670a-4681-88a7-eea49f1ae5ca
+      sign: UyH4co0G7UYpRJJWfJH2Jc
+    miniProgramPayOrderNotify:
+      url: https://open.feishu.cn/open-apis/bot/v2/hook/39d99d2a-2773-420a-8558-4152eec2233e
+      sign: knkHWzdcPEpBOBgSZRQOOb
+ratelimit:
+  window: 10
+  bucket: 100
+  cpuThreshold: 800
+xcx:
+  appID: wx003545950d54d0e3
+  appSecret: a30e5741d83fd792182fc29664803055
+  templateId: 
+    test: xxxxxxxxxx #测试
+officialAccount:
+  appID: wxd70d973f2295310d
+  appSecret: 12051163f3406ff207f5dea3c0396516
+  token: trip
+  aesKey: B8IS21TXV1jndfeunDt1MO7lDzdgiN9WbvHsghis9bU
+  templateId:
+    orderRefundSuccess: l7YX-zRvczdi0BQaixueqGQ7vY2qsYBMgC-fC-K4yAs
+    orderPaySuccess: p85zoK3_h-lUSEVBcA_w_y5c-42_3PDnosCHGXlZVLg
+    appointmentReminder: aZoohEn1ZVGhRc3ld9y_KVXlLL4i3s1gQf-Z6xPeP-g
+wechatPay:
+  mchID: "1727881826" #商户号
+  mchApiV3Key: bdfe280b85e24ab88e1fcd4b41a5a866 #商户APIv3密钥
+  wxCertPath: /src/configs/1727881826_cert/apiclient_cert.pem #商户证书路径
+  wxKeyPath: /src/configs/1727881826_cert/apiclient_key.pem #商户私钥路径
+  serialNo: 1A08562A4E7FB032871BF2D284BE8D3FEF0B6B63 #商户证书序列号
+  payNotifyURL: https://trip-api.yangcong345.com/yanxue/wechat/v1/order/wechatPayPaidNotify #支付回调地址
+  refundNotifyURL: https://trip-api.yangcong345.com/yanxue/wechat/v1/order/wechatPayRefundNotify #退款回调地址

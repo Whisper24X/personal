@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package shadow.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "gitlab.yc345.tv/backend/yanxue/api/shadow/v1;v1";
+
+//用户优惠券记录表
+service UserCoupon {
+  //用户优惠券记录表-列表数据查询
+  rpc GetUserCouponList(GetUserCouponListReq) returns (GetUserCouponListReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/user_coupon/list"
+      body: "*"
+    };
+  }
+
+  //过期用户优惠券状态更新
+  rpc ExpireUserCoupons(ExpireUserCouponsReq) returns (ExpireUserCouponsReply) {}
+}
+
+//用户优惠券记录表信息
+message UserCouponInfo {
+  string id = 1; // id
+  string userId = 2; // 用户ID
+  string couponId = 3; // 优惠券ID
+  string couponName = 4; // 优惠券名称
+  string status = 5; // 状态：已核销:used；未核销:unUsed；已过期:expired；
+  string ph = 6; // 手机号
+  string pushType = 7; // 推送方式
+  string claimTime = 8; // 领取时间
+  string expireTime = 9; // 过期时间
+  string orderNumber = 10; // 订单编号
+  string useTime = 11; // 使用时间
+  string createdAt = 12; // 创建时间
+  string updatedAt = 13; // 更新时间
+}
+
+//请求-用户优惠券记录表-列表数据查询
+message GetUserCouponListReq {
+  int32 page = 1; //页码
+  int32 pageSize = 2; //页数
+  string status = 3; // 状态
+  string couponName = 4; // 优惠券名称
+  string phone = 5; // 手机号
+  string claimStartTime = 6; // 领取开始时间
+  string claimEndTime = 7; // 领取结束时间
+  string expireTimeStartTime = 8; // 过期开始时间
+  string expireTimeEndTime = 9; // 过期结束时间
+}
+
+//响应-用户优惠券记录表-列表数据查询
+message GetUserCouponListReply {
+  int32 total = 1; //总数
+  repeated UserCouponInfo list = 2; // 列表数据
+}
+
+//请求-过期用户优惠券状态更新
+message ExpireUserCouponsReq {}
+
+//响应-过期用户优惠券状态更新
+message ExpireUserCouponsReply {}

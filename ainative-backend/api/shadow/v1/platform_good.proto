@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+package shadow.v1;
+
+import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+import "validate/validate.proto";
+
+option go_package = "gitlab.yc345.tv/backend/yanxue/api/shadow/v1;v1";
+
+//平台商品
+service PlatformGood {
+  //平台商品-创建一条数据
+  rpc CreatePlatformGood(CreatePlatformGoodReq) returns (CreatePlatformGoodReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/platformGood/create"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  //平台商品-更新一条数据
+  rpc UpdatePlatformGood(UpdatePlatformGoodReq) returns (UpdatePlatformGoodReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/platformGood/update"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  //平台商品-列表数据查询
+  rpc GetPlatformGoodList(GetPlatformGoodListReq) returns (GetPlatformGoodListReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/platformGood/list"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+}
+
+//平台商品信息
+message PlatformGoodInfo {
+  string id = 1; // id
+  string name = 2; // 名称
+  int32 sales = 3; // 销量
+  string createdAt = 4; // 创建时间
+  string updatedAt = 5; // 更新时间
+  string updatedBy = 6; // 操作人
+  string updatedByName = 7; // 操作人名称
+  string goodType = 8; // 商品类型：单日营：single；多日营：multi
+}
+
+//请求-平台商品-创建一条数据
+message CreatePlatformGoodReq {
+  string name = 1; // 商品名称
+  string goodType = 2; // 商品类型：单日营：single；多日营：multi
+}
+
+//响应-平台商品-创建一条数据
+message CreatePlatformGoodReply {
+  string id = 1; // id
+}
+
+//请求-平台商品-更新一条数据
+message UpdatePlatformGoodReq {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {
+      required: ["id"]
+    }
+  };
+  string id = 1 [(validate.rules).string = {min_len: 1}]; // id
+  string name = 2; // 商品名称
+}
+
+//响应-平台商品-更新一条数据
+message UpdatePlatformGoodReply {}
+
+//请求-平台商品-列表数据查询
+message GetPlatformGoodListReq {
+  string name = 1; // 名称
+  int32 page = 2; // 页码
+  int32 pageSize = 3; // 每页数量
+}
+
+//响应-平台商品-列表数据查询
+message GetPlatformGoodListReply {
+  int32 total = 1; // 总数
+  repeated PlatformGoodInfo list = 2; // 列表数据
+}
