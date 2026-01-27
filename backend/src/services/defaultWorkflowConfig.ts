@@ -136,7 +136,6 @@ export const actionDefinitions: ActionDefinition[] = [
   { name: 'DesignReview', display_name: '设计评审', description: '评审系统设计文档', class_name: 'DesignReview', category: 'review' },
   { name: 'CodeReview', display_name: '代码评审', description: '评审代码质量', class_name: 'CodeReview', category: 'review' },
   { name: 'TestReview', display_name: '测试评审', description: '评审测试用例', class_name: 'TestReview', category: 'review' },
-  { name: 'TestCaseReview', display_name: '测试用例评审', description: '评审测试用例详情', class_name: 'TestCaseReview', category: 'review' },
   { name: 'TestabilityReview', display_name: '可测试性评审', description: '评审代码可测试性', class_name: 'TestabilityReview', category: 'review' },
   { name: 'SubProjectDesignReview', display_name: '子项目设计评审', description: '评审子项目设计', class_name: 'SubProjectDesignReview', category: 'review' },
 
@@ -170,7 +169,7 @@ export const actionDefinitions: ActionDefinition[] = [
  * 配置与角色定义保持一致：
  * - Salesperson: WriteMRD -> MRDReview -> ImproveMRD
  * - ProductManager: WritePRD -> PRDReview -> ImprovePRD
- * - QAEngineer: WriteTestPlan -> WriteTest -> TestCaseReview
+ * - QAEngineer: WriteTestPlan -> WriteTest -> TestReview -> ImproveTest
  * - Architect: WriteDesign -> DesignReview -> ImproveDesign
  * - ProjectManager: BreakdownTasks
  * - Engineer: WriteCode
@@ -196,7 +195,7 @@ export const defaultWorkflowConfig: WorkflowConfig = {
       profile: 'QAEngineer',
       name: 'QA Engineer',
       order: 2,
-      actions: ['WriteTestPlan', 'WriteTest', 'TestCaseReview'],
+      actions: ['WriteTestPlan', 'WriteTest', 'TestReview', 'ImproveTest'],
       watch_actions: ['WritePRD', 'ImprovePRD'],
     },
     {
@@ -225,7 +224,7 @@ export const defaultWorkflowConfig: WorkflowConfig = {
       name: 'Automation Engineer',
       order: 6,
       actions: ['AutomationPlanning', 'AutomationExecution', 'CoverageQualityCheck', 'QAConclusion'],
-      watch_actions: ['TestCaseReview'],
+      watch_actions: ['ImproveTest'],
     },
   ],
 };
