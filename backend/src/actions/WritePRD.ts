@@ -11,6 +11,8 @@
  * 3) 加载系统提示词：生成用 system_prompt
  * 4) 调用模型生成 PRD 各章节内容，保存到 workspace/PRD/ 目录
  * 5) 返回章节文件列表信息，由 PRDReview 负责后续的审核和合并
+ * 
+ * Enhanced with knowledge integration for improved document generation
  */
 
 import { BaseAction } from '../core/base/BaseAction';
@@ -23,6 +25,7 @@ import {
   buildPRDWithRAGPrompt,
   buildPRDOutlinePrompt,
   buildPRDSectionPrompt,
+  StructuredKnowledgeContext,
 } from '../prompts/prd';
 import { logger } from '../utils';
 import { StepwiseDocumentGenerator } from '../utils/stepwise';
@@ -31,14 +34,17 @@ import {
   DOCUMENT_CONFIGS,
   WriteConfig,
 } from '../utils/document';
+import { KnowledgeIntegrationService } from '../services/KnowledgeIntegrationService';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
 export interface WritePRDOptions {
   mode?: 'new' | 'update';
   historyPRD?: string;
-  relevantChunks?: string;
+  relevantChunks?: string; // RAG 检索到的相关文档片段（旧版兼容）
+  structuredKnowledge?: StructuredKnowledgeContext; // 结构化知识上下文（新版）
   useRAG?: boolean;
+  useKnowledgeIntegration?: boolean; // 是否使用知识整合服务
   useStepwiseGeneration?: boolean; // 是否使用分步骤生成
   applicationId?: string; // 应用ID，用于文件夹命名
   projectId?: string; // 项目ID，用于文件夹命名
@@ -69,6 +75,7 @@ export class WritePRD extends BaseAction {
   async run(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
     const mode = options?.mode || 'new';
     const useRAG = options?.useRAG || false;
+    const useKnowledgeIntegration = options?.useKnowledgeIntegration ?? false;
     const useStepwise = options?.useStepwiseGeneration ?? true; // 默认启用分步骤生成
 
     // 使用 BaseAction 提供的验证方法
@@ -82,10 +89,12 @@ export class WritePRD extends BaseAction {
       projectId,
       mode,
       useRAG,
+      useKnowledgeIntegration,
       useStepwise,
       isCLIMode,
       hasHistoryPRD: !!options?.historyPRD,
       hasRelevantChunks: !!options?.relevantChunks,
+      hasStructuredKnowledge: !!options?.structuredKnowledge,
       inputLength: input.length,
     });
 
@@ -111,6 +120,12 @@ export class WritePRD extends BaseAction {
         });
       }
 
+      // 如果启用知识整合但没有提供结构化知识，尝试获取
+      let knowledgeContext = options?.structuredKnowledge;
+      if (useKnowledgeIntegration && !knowledgeContext && projectId) {
+        knowledgeContext = await this.getKnowledgeContext(projectId, mrdContent);
+      }
+
       const ragQuery = input && input.trim().length > 0 ? input : mrdContent;
       const stepwiseInput = useRAG && options?.relevantChunks
         ? `${mrdContent}\n\n【相关历史PRD参考信息】\n${options.relevantChunks}`
@@ -118,7 +133,10 @@ export class WritePRD extends BaseAction {
 
       // LLM模式：如果启用分步骤生成且是新模式，使用分步骤生成
       if (useStepwise && mode === 'new' && !options?.historyPRD) {
-        return await this.generateStepwise(stepwiseInput, options);
+        return await this.generateStepwise(stepwiseInput, {
+          ...options,
+          structuredKnowledge: knowledgeContext,
+        });
       }
 
       // 否则使用传统的一次性生成
@@ -138,9 +156,13 @@ export class WritePRD extends BaseAction {
           prompt = buildPRDUpdatePrompt(options.historyPRD, mrdContent);
           logger.info('WritePRD: Using update mode with history PRD');
         }
+      } else if (knowledgeContext) {
+        // 使用结构化知识上下文
+        prompt = buildPRDPrompt(mrdContent, knowledgeContext);
+        logger.info('WritePRD: Using structured knowledge context');
       } else if (useRAG) {
         if (options?.relevantChunks) {
-          // RAG mode: use retrieved chunks + new requirements
+          // RAG mode: use retrieved chunks + new requirements (旧版兼容)
           prompt = buildPRDWithRAGPrompt(ragQuery, options.relevantChunks, mrdContent);
           logger.info('WritePRD: Using RAG mode with relevant chunks');
         } else {
@@ -303,6 +325,43 @@ export class WritePRD extends BaseAction {
   }
 
   /**
+   * 获取知识上下文
+   * 使用知识整合服务获取结构化知识
+   */
+  private async getKnowledgeContext(
+    projectId: string,
+    mrdContent: string
+  ): Promise<StructuredKnowledgeContext | undefined> {
+    try {
+      const knowledgeService = new KnowledgeIntegrationService();
+      const userId = this.context?.get('userId');
+      await knowledgeService.initialize(userId);
+      
+      const context = await knowledgeService.getPRDDocumentKnowledge(
+        projectId,
+        mrdContent,
+        { limitPerType: 3 }
+      );
+      
+      logger.info('WritePRD: Knowledge context retrieved', {
+        projectId,
+        hasTerminology: context.terminology.length > 0,
+        hasBusinessRules: context.businessRules.length > 0,
+        hasExistingFeatures: context.existingFeatures.length > 0,
+        hasHistoryPRD: context.historyPRD.length > 0,
+      });
+      
+      return context;
+    } catch (error: any) {
+      logger.warn('WritePRD: Failed to get knowledge context', {
+        projectId,
+        error: error.message,
+      });
+      return undefined;
+    }
+  }
+
+  /**
    * 分步骤生成 PRD
    * 使用通用的 StepwiseDocumentGenerator
    * 只负责分章节生成，不做审核和合并（由 PRDReview 负责）
@@ -323,17 +382,23 @@ export class WritePRD extends BaseAction {
     // 获取当前执行模式
     const executorMode = this.getExecutorMode();
 
+    // 获取结构化知识上下文
+    const knowledgeContext = options?.structuredKnowledge;
+
     logger.info('WritePRD: Creating StepwiseDocumentGenerator', {
       executorMode,
       workspaceDir,
+      hasKnowledgeContext: !!knowledgeContext,
       ...workspaceOptions,
     });
 
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
       buildOutlinePrompt: buildPRDOutlinePrompt,
-      buildSectionPrompt: buildPRDSectionPrompt,
+      buildSectionPrompt: (mrdContent: string, outline: string, sectionNumber: number, sectionTitle: string) =>
+        buildPRDSectionPrompt(mrdContent, outline, sectionNumber, sectionTitle, knowledgeContext),
       // CLI模式下用于生成完整文档的提示词
-      buildFullDocumentPrompt: buildPRDPrompt,
+      buildFullDocumentPrompt: (mrdContent: string) => 
+        buildPRDPrompt(mrdContent, knowledgeContext),
       // 不需要 buildSectionReviewPrompt 和 reviewSystemPrompt，因为跳过审核步骤
       systemPrompt: systemPrompt,
       documentTitle: '产品需求文档（PRD）',

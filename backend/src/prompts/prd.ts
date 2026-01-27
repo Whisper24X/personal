@@ -2,6 +2,18 @@
  * PRD（产品需求文档）提示词 - 研发&交互可执行增强版
  */
 
+import {
+  StructuredKnowledgeContext,
+  formatStructuredKnowledge,
+  isKnowledgeContextEmpty,
+  STRUCTURED_KNOWLEDGE_INSTRUCTION,
+  PRD_KNOWLEDGE_REQUIREMENTS,
+} from './knowledge';
+
+// 重新导出类型供外部使用
+export type { StructuredKnowledgeContext };
+export { formatStructuredKnowledge, isKnowledgeContextEmpty };
+
 export const PRD_SYSTEM_PROMPT = `
 你是一位资深产品经理，长期与前端、后端、测试、交互设计师协作，
 擅长输出「研发可直接执行」的产品需求文档（PRD）。
@@ -383,11 +395,41 @@ export const KNOWLEDGE_INPUT_REFERENCE_PRD = `
 - 建议解决方案
 `;
 
-export function buildPRDPrompt(input: string): string {
+/**
+ * 构建 PRD 生成提示词
+ * @param input MRD 内容
+ * @param knowledgeContext 可选的结构化知识上下文
+ * @returns PRD 生成提示词
+ */
+export function buildPRDPrompt(
+  input: string,
+  knowledgeContext?: StructuredKnowledgeContext
+): string {
+  // 格式化知识上下文
+  let knowledgeSection = '';
+  let knowledgeRequirements = '';
+  if (knowledgeContext && !isKnowledgeContextEmpty(knowledgeContext)) {
+    const formattedKnowledge = formatStructuredKnowledge(knowledgeContext);
+    knowledgeSection = `
+
+${STRUCTURED_KNOWLEDGE_INSTRUCTION}
+
+${formattedKnowledge}
+`;
+    knowledgeRequirements = `
+9. **参考知识库内容**：确保与术语词典、业务规则、历史PRD保持一致
+${PRD_KNOWLEDGE_REQUIREMENTS}`;
+  }
+
+  const sourceNote = knowledgeSection 
+    ? '\n- 引用知识库内容时需标注来源：> 📚 来源：[知识类型] - 文档名称' 
+    : '';
+
   return `基于以下市场研究文档（MRD），生成一份【研发与交互可直接执行】的产品需求文档（PRD）：
 
 【市场研究文档（MRD）】
 ${input}
+${knowledgeSection}
 
 【PRD 模板格式（必须严格遵循）】
 ${PRD_TEMPLATE}
@@ -400,14 +442,14 @@ ${PRD_TEMPLATE}
 5. **4.3 必须提供 Mermaid 流程图**，且与 4.1/4.2 的文字流程一致
 6. **5.3 关键页面说明按“用户动作 -> 系统反馈”展开**，覆盖入口、前置、输入校验、请求、成功/失败、异常、埋点/日志，并覆盖页面状态
 7. **6-10 章节必须可验证**：规则、权限、安全、异常、埋点、验收、上线回滚可测试/可观测
-8. 避免模糊表述；如需合理推断，明确标注为假设
+8. 避免模糊表述；如需合理推断，明确标注为假设${knowledgeRequirements}
 
 硬性要求：
 - 输出完整 Markdown PRD，必须包含模板主干章节（0-10章）
 - 内容不少于 3000 字
 - 不保留任何占位符或空表格/空清单
 - 章节编号和标题必须与模板完全一致
-- 10.1 验收标准必须使用可测试语句（Given/When/Then 或等价形式）
+- 10.1 验收标准必须使用可测试语句（Given/When/Then 或等价形式）${sourceNote}
 `;
 }
 
@@ -591,14 +633,42 @@ ${PRD_TEMPLATE}
 
 /**
  * 生成单个章节的详细内容
+ * @param input MRD 内容
+ * @param outline PRD 目录
+ * @param sectionNumber 章节编号
+ * @param sectionTitle 章节标题
+ * @param knowledgeContext 可选的结构化知识上下文
+ * @returns 章节生成提示词
  */
 export function buildPRDSectionPrompt(
   input: string,
   outline: string,
   sectionNumber: number,
-  sectionTitle: string
+  sectionTitle: string,
+  knowledgeContext?: StructuredKnowledgeContext
 ): string {
   const sectionTemplate = extractSectionTemplate(PRD_TEMPLATE, sectionNumber);
+
+  // 格式化知识上下文
+  let knowledgeSection = '';
+  if (knowledgeContext && !isKnowledgeContextEmpty(knowledgeContext)) {
+    const formattedKnowledge = formatStructuredKnowledge(knowledgeContext);
+    knowledgeSection = `
+${STRUCTURED_KNOWLEDGE_INSTRUCTION}
+
+${formattedKnowledge}
+
+【知识使用要求】
+- 必须使用术语词典中的标准术语
+- 必须检查历史PRD避免重复定义
+- 必须遵守业务规则和技术约束
+- 如有冲突，在章节内容中说明
+- 引用知识库内容时标注来源：> 📚 来源：[知识类型] - 文档名称
+`;
+  }
+
+  const knowledgeRequirement = knowledgeContext ? '\n7. 必须参考知识库内容，确保与现有知识一致' : '';
+  const sourceNote = knowledgeContext ? '\n- 引用知识库内容时需标注来源' : '';
 
   return `基于以下市场研究文档（MRD）和 PRD 目录，生成第 ${sectionNumber} 章「${sectionTitle}」的详细内容：
 
@@ -607,6 +677,7 @@ ${input}
 
 【PRD 目录】
 ${outline}
+${knowledgeSection}
 
 【PRD 模板（目标章节，必须严格对齐结构与格式）】
 ${sectionTemplate || '（未找到模板章节，请严格对齐既定模板结构）'}
@@ -620,13 +691,13 @@ ${sectionTemplate || '（未找到模板章节，请严格对齐既定模板结�
 3. 内容要详细、具体、可执行，避免空洞和占位符
 4. 若章节涉及流程/功能/规则/验收，请补齐触发条件、前置条件、主流程、异常流程、边界条件、验收标准
 5. 若章节为 2.3，必须写明假设及其影响；若章节为 4.3，必须输出 Mermaid 流程图
-6. 内容要面向研发和测试团队，确保可直接使用
+6. 内容要面向研发和测试团队，确保可直接使用${knowledgeRequirement}
 
 输出要求：
 - 只输出第 ${sectionNumber} 章的内容（包含章节标题）
 - 内容要充实，不少于 500 字
 - 使用 Markdown 格式
- - 不保留任何占位符或空表格/空清单
+- 不保留任何占位符或空表格/空清单${sourceNote}
 `;
 }
 
@@ -1143,4 +1214,7 @@ export default {
   PRD_IMPROVE_SYSTEM_PROMPT,
   buildPRDImprovePrompt,
   buildPRDSectionImprovePrompt,
+  // 新增：结构化知识相关导出
+  formatStructuredKnowledge,
+  isKnowledgeContextEmpty,
 };
