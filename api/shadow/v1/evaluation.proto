@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package shadow.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "gitlab.yc345.tv/backend/yanxue/api/shadow/v1;v1";
+
+//评价表
+service Evaluation {
+  //评价表-列表数据查询
+  rpc GetEvaluationList(GetEvaluationListReq) returns (GetEvaluationListReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/evaluation/list"
+      body: "*"
+    };
+  }
+  //评价表-导出评价列表
+  rpc ExportEvaluationList(ExportEvaluationListReq) returns (ExportEvaluationListReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/evaluation/export"
+      body: "*"
+    };
+  }
+}
+
+message ExportEvaluationListReq {
+  string startTime = 1; //开始时间
+  string endTime = 2; //结束时间
+  string phone = 3; // 联系方式
+  string parentName = 4; // 家长姓名
+  string childName = 5; // 孩子姓名
+  string courseName = 6; // 课程名称
+}
+
+message ExportEvaluationListReply {
+  string DownloadUrl = 1; // 下载地址
+}
+
+//评价表信息
+message EvaluationInfo {
+  string id = 1; // id
+  string appointmentId = 2; // 预约编号
+  string parentName = 3; // 家长姓名
+  string phone = 4; // 联系方式
+  string childName = 5; // 孩子姓名
+  string courseName = 6; // 课程名称
+  string courseTime = 7; // 上课时间
+  int32 totalScore = 8; // 总评分
+  repeated string dimensionScore = 9; // 维度评分
+  string feedBack = 10; // 反馈内容
+  repeated string feedBackImage = 11; // 反馈图片
+  repeated string evaluationLabel = 12; // 快速标签
+  string createdAt = 13; // 创建时间
+  string updatedAt = 14; // 更新时间
+}
+
+//请求-评价表-列表数据查询
+message GetEvaluationListReq {
+  int32 page = 1; //页码
+  int32 pageSize = 2; //页数
+  string startTime = 3; //开始时间
+  string endTime = 4; //结束时间
+  string phone = 5; // 联系方式
+  string parentName = 6; // 家长姓名
+  string childName = 7; // 孩子姓名
+  string courseName = 8; // 课程名称
+}
+
+//响应-评价表-列表数据查询
+message GetEvaluationListReply {
+  int32 total = 1; //总数
+  repeated EvaluationInfo list = 2; // 列表数据
+}

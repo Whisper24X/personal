@@ -1,0 +1,260 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "wechat/v1/good.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "Good"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/wechat/v1/good/info": {
+      "get": {
+        "summary": "渠道商品表-单条数据查询",
+        "operationId": "Good_GetGoodInfo",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/wechatv1GetGoodInfoReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "description": "id",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Good"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "wechatv1CourseItem": {
+      "type": "object",
+      "properties": {
+        "courseId": {
+          "type": "string",
+          "title": "课程Id"
+        },
+        "courseName": {
+          "type": "string",
+          "title": "课程名称"
+        },
+        "coursePrice": {
+          "type": "string",
+          "title": "课程价格"
+        },
+        "isAppointment": {
+          "type": "boolean",
+          "title": "是否预约"
+        },
+        "courseType": {
+          "type": "string",
+          "title": "课程类型：single:单日营；multi:多日营"
+        },
+        "isPushContractRequired": {
+          "type": "boolean",
+          "title": "是否需要推送合同"
+        }
+      },
+      "title": "课程"
+    },
+    "wechatv1GetGoodInfoReply": {
+      "type": "object",
+      "properties": {
+        "info": {
+          "$ref": "#/definitions/wechatv1GoodInfo"
+        }
+      },
+      "title": "响应-渠道商品表-单条数据查询"
+    },
+    "wechatv1GoodCategory": {
+      "type": "object",
+      "properties": {
+        "categoryId": {
+          "type": "string",
+          "title": "商品类别Id"
+        },
+        "categoryName": {
+          "type": "string",
+          "title": "商品类别名称"
+        },
+        "useTimes": {
+          "type": "integer",
+          "format": "int32",
+          "title": "使用次数"
+        },
+        "alreadyAppointmentUseTimes": {
+          "type": "integer",
+          "format": "int32",
+          "title": "已预约使用次数"
+        },
+        "courses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/wechatv1CourseItem"
+          },
+          "title": "课程列表"
+        }
+      },
+      "title": "商品类别"
+    },
+    "wechatv1GoodContent": {
+      "type": "object",
+      "properties": {
+        "goodCategories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/wechatv1GoodCategory"
+          },
+          "title": "商品类别列表"
+        }
+      },
+      "title": "商品内容"
+    },
+    "wechatv1GoodInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "name": {
+          "type": "string",
+          "title": "名称"
+        },
+        "mainImage": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "主图(多张)"
+        },
+        "detailImages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "详情图(多张)"
+        },
+        "price": {
+          "type": "integer",
+          "format": "int32",
+          "title": "价格：单位分"
+        },
+        "content": {
+          "$ref": "#/definitions/wechatv1GoodContent",
+          "title": "内容"
+        },
+        "status": {
+          "type": "string",
+          "title": "状态 putOff下架 putOn上架 pending待上架 delete删除"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "开始时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        },
+        "appointmentRules": {
+          "type": "string",
+          "title": "预约规则"
+        },
+        "channelId": {
+          "type": "string",
+          "title": "渠道Id"
+        },
+        "channelGoodId": {
+          "type": "string",
+          "title": "渠道商品Id"
+        },
+        "platformGoodId": {
+          "type": "string",
+          "title": "平台商品Id"
+        },
+        "isPushAppointmentInfo": {
+          "type": "boolean",
+          "title": "是否推送预约信息"
+        },
+        "goodType": {
+          "type": "string",
+          "title": "商品类型：单日营：single；多日营：multi"
+        },
+        "maxDiscountAmount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "最大优惠金额"
+        },
+        "label": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "商品标签"
+        },
+        "purchaseAgreementName": {
+          "type": "string",
+          "title": "购买协议名称"
+        },
+        "purchaseAgreementLink": {
+          "type": "string",
+          "title": "购买协议链接"
+        }
+      },
+      "title": "商品信息"
+    }
+  }
+}

@@ -1,0 +1,442 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "shadow/v1/sub_order.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "SubOrder"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/api/shadow/v1/order/exportSubOrderList": {
+      "post": {
+        "summary": "订单-导出子订单信息",
+        "operationId": "SubOrder_ExportSubOrderList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ExportSubOrderListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1ExportSubOrderListReq"
+            }
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SubOrder"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/sub_order/list": {
+      "post": {
+        "summary": "子订单-列表数据查询",
+        "operationId": "SubOrder_GetSubOrderList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetSubOrderListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetSubOrderListReq"
+            }
+          }
+        ],
+        "tags": [
+          "SubOrder"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1ExportSubOrderListReply": {
+      "type": "object",
+      "properties": {
+        "downloadUrl": {
+          "type": "string",
+          "title": "下载链接"
+        }
+      },
+      "title": "响应-导出子订单信息"
+    },
+    "v1ExportSubOrderListReq": {
+      "type": "object",
+      "properties": {
+        "goodName": {
+          "type": "string",
+          "title": "商品名称"
+        },
+        "channelId": {
+          "type": "string",
+          "title": "渠道ID"
+        },
+        "paymentTimeStart": {
+          "type": "string",
+          "title": "支付开始时间"
+        },
+        "paymentTimeEnd": {
+          "type": "string",
+          "title": "支付结束时间"
+        },
+        "orderStatus": {
+          "type": "string",
+          "title": "订单状态"
+        },
+        "orderNumber": {
+          "type": "string",
+          "title": "订单编号"
+        },
+        "phone": {
+          "type": "string",
+          "title": "手机号"
+        },
+        "serviceStatus": {
+          "type": "string",
+          "title": "服务状态：pending待预约 success已预约 completed已完成"
+        },
+        "goodType": {
+          "type": "string",
+          "title": "商品类型：single:单日营；multi：多日营"
+        },
+        "refundTimeStart": {
+          "type": "string",
+          "title": "退款开始时间"
+        },
+        "refundTimeEnd": {
+          "type": "string",
+          "title": "退款结束时间"
+        },
+        "parentOrderId": {
+          "type": "string",
+          "title": "父订单Id"
+        },
+        "campTimeStart": {
+          "type": "string",
+          "title": "参营开始时间"
+        },
+        "campTimeEnd": {
+          "type": "string",
+          "title": "参营结束时间"
+        }
+      },
+      "title": "请求-导出子订单信息"
+    },
+    "v1GetSubOrderListReply": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总数"
+        },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1SubOrderInfo"
+          },
+          "title": "列表数据"
+        }
+      },
+      "title": "响应-订单-列表数据查询"
+    },
+    "v1GetSubOrderListReq": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页码"
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页数"
+        },
+        "goodName": {
+          "type": "string",
+          "title": "商品名称"
+        },
+        "channelId": {
+          "type": "string",
+          "title": "渠道ID"
+        },
+        "paymentTimeStart": {
+          "type": "string",
+          "title": "支付开始时间"
+        },
+        "paymentTimeEnd": {
+          "type": "string",
+          "title": "支付结束时间"
+        },
+        "orderStatus": {
+          "type": "string",
+          "title": "订单状态"
+        },
+        "orderNumber": {
+          "type": "string",
+          "title": "订单编号"
+        },
+        "phone": {
+          "type": "string",
+          "title": "手机号"
+        },
+        "serviceStatus": {
+          "type": "string",
+          "title": "服务状态：pending待预约 success已预约 completed已完成"
+        },
+        "goodType": {
+          "type": "string",
+          "title": "商品类型：single:单日营；multi：多日营"
+        },
+        "refundTimeStart": {
+          "type": "string",
+          "title": "退款开始时间"
+        },
+        "refundTimeEnd": {
+          "type": "string",
+          "title": "退款结束时间"
+        },
+        "parentOrderId": {
+          "type": "string",
+          "title": "父订单Id"
+        },
+        "campTimeStart": {
+          "type": "string",
+          "title": "参营开始时间"
+        },
+        "campTimeEnd": {
+          "type": "string",
+          "title": "参营结束时间"
+        }
+      },
+      "title": "请求-订单-列表数据查询"
+    },
+    "v1SubOrderInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "channelId": {
+          "type": "string",
+          "title": "渠道ID"
+        },
+        "goodId": {
+          "type": "string",
+          "title": "商品 Id"
+        },
+        "channelGoodId": {
+          "type": "string",
+          "title": "渠道商品Id"
+        },
+        "orderNumber": {
+          "type": "string",
+          "title": "订单编号"
+        },
+        "orderPrice": {
+          "type": "integer",
+          "format": "int32",
+          "title": "订单金额"
+        },
+        "paymentTime": {
+          "type": "string",
+          "title": "支付时间"
+        },
+        "phone": {
+          "type": "string",
+          "title": "联系方式"
+        },
+        "status": {
+          "type": "string",
+          "title": "订单状态 pending待预约 success已预约 completed已完成 refunded已退款 pendingPayment待付款 closed已关闭"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        },
+        "updatedBy": {
+          "type": "string",
+          "title": "操作人"
+        },
+        "goodName": {
+          "type": "string",
+          "title": "商品名称"
+        },
+        "channelName": {
+          "type": "string",
+          "title": "渠道名称"
+        },
+        "discountAmount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "优惠金额"
+        },
+        "updatedByName": {
+          "type": "string",
+          "title": "操作人名称"
+        },
+        "payId": {
+          "type": "string",
+          "title": "支付订单号"
+        },
+        "refundId": {
+          "type": "string",
+          "title": "退款订单号"
+        },
+        "refundReason": {
+          "type": "string",
+          "title": "退款原因"
+        },
+        "refundAmount": {
+          "type": "number",
+          "format": "float",
+          "title": "退款金额"
+        },
+        "parentRemark": {
+          "type": "string",
+          "title": "家长备注"
+        },
+        "refundTime": {
+          "type": "string",
+          "title": "退款时间"
+        },
+        "goodType": {
+          "type": "string",
+          "title": "商品类型"
+        },
+        "platformFee": {
+          "type": "integer",
+          "format": "int32",
+          "title": "平台手续费：单位分"
+        },
+        "serviceStatus": {
+          "type": "string",
+          "title": "服务状态：pending待预约 success已预约 completed已完成"
+        },
+        "talentUid": {
+          "type": "string",
+          "title": "达人ID"
+        },
+        "talentName": {
+          "type": "string",
+          "title": "达人名称"
+        },
+        "talentCommission": {
+          "type": "integer",
+          "format": "int32",
+          "title": "达人佣金：单位分"
+        },
+        "receiptAmount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "实收金额：单位分"
+        },
+        "parentOrderId": {
+          "type": "string",
+          "title": "父订单Id"
+        },
+        "campTime": {
+          "type": "string",
+          "title": "参营时间"
+        },
+        "platformDiscountAmount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "平台优惠金额：单位分"
+        },
+        "paymentDiscountAmount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "支付优惠金额：单位分"
+        },
+        "shopDiscountAmount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "店铺优惠金额：单位分"
+        },
+        "actualInsured": {
+          "type": "integer",
+          "format": "int32",
+          "title": "保险费：单位分"
+        }
+      },
+      "title": "订单信息"
+    }
+  }
+}

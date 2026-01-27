@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package wechat.v1;
+
+import "google/api/annotations.proto";
+import "validate/validate.proto";
+
+option go_package = "gitlab.yc345.tv/backend/yanxue/api/wechat/v1;v1";
+
+//渠道商品表
+service Good {
+  //渠道商品表-单条数据查询
+  rpc GetGoodInfo(GetGoodInfoReq) returns (GetGoodInfoReply) {
+    option (google.api.http) = {get: "/yanxue/wechat/v1/good/info"};
+  }
+}
+
+//商品信息
+message GoodInfo {
+  string id = 1; // id
+  string name = 2; // 名称
+  repeated string mainImage = 3; // 主图(多张)
+  repeated string detailImages = 4; // 详情图(多张)
+  int32 price = 5; // 价格：单位分
+  GoodContent content = 6; // 内容
+  string status = 7; // 状态 putOff下架 putOn上架 pending待上架 delete删除
+  string createdAt = 8; // 开始时间
+  string updatedAt = 9; // 更新时间
+  string appointmentRules = 11; // 预约规则
+  string channelId = 12; // 渠道Id
+  string channelGoodId = 13; // 渠道商品Id
+  string platformGoodId = 14; // 平台商品Id
+  bool isPushAppointmentInfo = 15; // 是否推送预约信息
+  string goodType = 16; // 商品类型：单日营：single；多日营：multi
+  int32 maxDiscountAmount = 17; // 最大优惠金额
+  repeated string label = 18; // 商品标签
+  string purchaseAgreementName = 19; // 购买协议名称
+  string purchaseAgreementLink = 20; // 购买协议链接
+}
+
+// 课程
+message CourseItem {
+  string courseId = 1; // 课程Id
+  string courseName = 2; // 课程名称
+  string coursePrice = 3; // 课程价格
+  bool isAppointment = 4; // 是否预约
+  string courseType = 5; // 课程类型：single:单日营；multi:多日营
+  bool isPushContractRequired = 6; // 是否需要推送合同
+}
+
+// 商品类别
+message GoodCategory {
+  string categoryId = 1; // 商品类别Id
+  string categoryName = 2; // 商品类别名称
+  int32 useTimes = 3; // 使用次数
+  int32 alreadyAppointmentUseTimes = 4; // 已预约使用次数
+  repeated CourseItem courses = 5; // 课程列表
+}
+
+// 商品内容
+message GoodContent {
+  repeated GoodCategory goodCategories = 1; // 商品类别列表
+}
+
+//请求-渠道商品表-单条数据查询
+message GetGoodInfoReq {
+  string id = 1 [(validate.rules).string = {min_len: 1}]; // id
+}
+
+//响应-渠道商品表-单条数据查询
+message GetGoodInfoReply {
+  GoodInfo info = 1;
+}

@@ -1,0 +1,124 @@
+syntax = "proto3";
+
+package shadow.v1;
+
+import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+
+option go_package = "gitlab.yc345.tv/backend/yanxue/api/shadow/v1;v1";
+
+//子订单
+service SubOrder {
+  //子订单-列表数据查询
+  rpc GetSubOrderList(GetSubOrderListReq) returns (GetSubOrderListReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/sub_order/list"
+      body: "*"
+    };
+  }
+  // 订单-导出子订单信息
+  rpc ExportSubOrderList(ExportSubOrderListReq) returns (ExportSubOrderListReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/exportSubOrderList"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+}
+
+// 请求-导出子订单信息
+message ExportSubOrderListReq {
+  string goodName = 1; // 商品名称
+  string channelId = 2; // 渠道ID
+  string paymentTimeStart = 3; // 支付开始时间
+  string paymentTimeEnd = 4; // 支付结束时间
+  string orderStatus = 5; // 订单状态
+  string orderNumber = 6; // 订单编号
+  string phone = 7; // 手机号
+  string serviceStatus = 8; // 服务状态：pending待预约 success已预约 completed已完成
+  string goodType = 9; // 商品类型：single:单日营；multi：多日营
+  string refundTimeStart = 10; // 退款开始时间
+  string refundTimeEnd = 11; // 退款结束时间
+  string parentOrderId = 12; // 父订单Id
+  string campTimeStart = 13; // 参营开始时间
+  string campTimeEnd = 14; // 参营结束时间
+}
+
+// 响应-导出子订单信息
+message ExportSubOrderListReply {
+  string downloadUrl = 1; // 下载链接
+}
+
+//订单信息
+message SubOrderInfo {
+  string id = 1; // id
+  string channelId = 2; // 渠道ID
+  string goodId = 3; // 商品 Id
+  string channelGoodId = 4; // 渠道商品Id
+  string orderNumber = 5; // 订单编号
+  int32 orderPrice = 6; // 订单金额
+  string paymentTime = 7; // 支付时间
+  string phone = 8; // 联系方式
+  string status = 9; // 订单状态 pending待预约 success已预约 completed已完成 refunded已退款 pendingPayment待付款 closed已关闭
+  string createdAt = 10; // 创建时间
+  string updatedAt = 11; // 更新时间
+  string updatedBy = 12; // 操作人
+  string goodName = 13; // 商品名称
+  string channelName = 14; // 渠道名称
+  int32 discountAmount = 15; // 优惠金额
+  string updatedByName = 16; // 操作人名称
+  string payId = 17; // 支付订单号
+  string refundId = 18; // 退款订单号
+  string refundReason = 19; // 退款原因
+  float refundAmount = 20; // 退款金额
+  string parentRemark = 21; // 家长备注
+  string refundTime = 22; // 退款时间
+  string goodType = 23; // 商品类型
+  int32 platformFee = 24; // 平台手续费：单位分
+  string serviceStatus = 25; // 服务状态：pending待预约 success已预约 completed已完成
+  string talentUid = 26; // 达人ID
+  string talentName = 27; // 达人名称
+  int32 talentCommission = 28; // 达人佣金：单位分
+  int32 receiptAmount = 29; // 实收金额：单位分
+  string parentOrderId = 30; // 父订单Id
+  string campTime = 31; // 参营时间
+  int32 platformDiscountAmount = 32; // 平台优惠金额：单位分
+  int32 paymentDiscountAmount = 33; // 支付优惠金额：单位分
+  int32 shopDiscountAmount = 34; // 店铺优惠金额：单位分
+  int32 actualInsured = 35; // 保险费：单位分
+}
+
+//请求-订单-列表数据查询
+message GetSubOrderListReq {
+  int32 page = 1; //页码
+  int32 pageSize = 2; //页数
+  string goodName = 3; // 商品名称
+  string channelId = 4; // 渠道ID
+  string paymentTimeStart = 5; // 支付开始时间
+  string paymentTimeEnd = 6; // 支付结束时间
+  string orderStatus = 7; // 订单状态
+  string orderNumber = 8; // 订单编号
+  string phone = 9; // 手机号
+  string serviceStatus = 10; // 服务状态：pending待预约 success已预约 completed已完成
+  string goodType = 11; // 商品类型：single:单日营；multi：多日营
+  string refundTimeStart = 12; // 退款开始时间
+  string refundTimeEnd = 13; // 退款结束时间
+  string parentOrderId = 14; // 父订单Id
+  string campTimeStart = 15; // 参营开始时间
+  string campTimeEnd = 16; // 参营结束时间
+}
+
+//响应-订单-列表数据查询
+message GetSubOrderListReply {
+  int32 total = 1; // 总数
+  repeated SubOrderInfo list = 2; // 列表数据
+}
