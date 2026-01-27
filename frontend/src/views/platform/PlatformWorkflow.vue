@@ -578,8 +578,38 @@ async function handleUserAction(action: string, modifiedContent?: string) {
         break;
 
       case 'regenerate':
-        ElMessage.info('重新生成中...');
-        showConfirmationDialog.value = false;
+        // 调用与重置按钮相同的接口
+        if (!platformId.value || !versionId.value) {
+          ElMessage.error('平台ID或版本ID不存在');
+          return;
+        }
+
+        if (!currentStep.value || !currentStep.value.role) {
+          ElMessage.error('当前步骤信息不存在');
+          return;
+        }
+
+        try {
+          const role = currentStep.value.role;
+          resettingRoles.value.add(role);
+          await apiClient.resetWorkflow(platformId.value, versionId.value, role);
+          ElMessage.success(`已重置到 ${getRoleDisplayName(role)}，请点击"开始执行"按钮继续`);
+          showConfirmationDialog.value = false;
+          currentStep.value = null;
+          
+          // 刷新页面以更新工作流状态
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        } catch (error: any) {
+          console.error('Failed to reset workflow:', error);
+          ElMessage.error('重置失败: ' + (error.message || '未知错误'));
+        } finally {
+          const role = currentStep.value?.role;
+          if (role) {
+            resettingRoles.value.delete(role);
+          }
+        }
         break;
 
       case 'skip':
@@ -648,7 +678,7 @@ function downloadPlatform() {
   }
 
   try {
-    apiClient.downloadWorkspaceCode(platformId.value);
+    apiClient.downloadWorkspaceCode(platformId.value, versionId.value);
     ElMessage.success('正在下载平台文件...');
   } catch (error: any) {
     ElMessage.error('下载失败: ' + (error.message || '未知错误'));
@@ -676,7 +706,7 @@ function handleDownloadCode() {
   }
 
   try {
-    apiClient.downloadWorkspaceCode(platformId.value);
+    apiClient.downloadWorkspaceCode(platformId.value, versionId.value);
     ElMessage.success('正在下载全部代码...');
   } catch (error: any) {
     ElMessage.error('下载失败: ' + (error.message || '未知错误'));
@@ -690,7 +720,7 @@ function handleDownloadDocs() {
   }
 
   try {
-    apiClient.downloadWorkspaceDocs(platformId.value);
+    apiClient.downloadWorkspaceDocs(platformId.value, versionId.value);
     ElMessage.success('正在下载文档...');
   } catch (error: any) {
     ElMessage.error('下载失败: ' + (error.message || '未知错误'));

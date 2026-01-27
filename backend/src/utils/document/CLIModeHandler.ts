@@ -100,23 +100,17 @@ export class CLIModeHandler {
       };
     }
 
-    // 检查是否为CLI总结输出
-    if (!isCLISummaryOutput(output)) {
-      // 输出不是总结，是实际内容（CLI直接返回了文档内容）
-      return {
-        content: output,
-        isReadFromWorkspace: false,
-      };
-    }
-
-    logger.info('CLIModeHandler: CLI output appears to be a summary, reading actual file from workspace', {
+    // CLI模式：记录CLI返回的内容到日志（仅用于调试）
+    // CLI返回的内容不作为文档内容使用，只用于日志记录
+    logger.info('CLIModeHandler: CLI output received (for logging only)', {
       documentType: this.config.documentType,
       type,
       outputLength: output.length,
       outputPreview: output.substring(0, 200),
+      isSummary: isCLISummaryOutput(output),
     });
 
-    // 根据类型读取实际文件
+    // CLI模式下，必须从workspace读取文件，不使用CLI返回的内容
     let actualContent: string | null = null;
 
     if (type === 'document') {
@@ -132,7 +126,7 @@ export class CLIModeHandler {
     }
 
     if (actualContent) {
-      logger.info('CLIModeHandler: Successfully read actual content from workspace (CLI already saved file)', {
+      logger.info('CLIModeHandler: Successfully read actual content from workspace', {
         documentType: this.config.documentType,
         type,
         actualContentLength: actualContent.length,
@@ -144,17 +138,21 @@ export class CLIModeHandler {
       };
     }
 
-    // 如果找不到实际文件，使用回退内容或原输出
-    logger.warn('CLIModeHandler: Could not find actual content in workspace', {
+    // CLI模式下找不到文件，抛出错误（不使用fallback或CLI输出）
+    const expectedFile = type === 'document' ? this.config.mainFileName : this.config.reviewFileName;
+    logger.error('CLIModeHandler: Failed to find actual content in workspace', {
       documentType: this.config.documentType,
       type,
+      workspaceDir,
+      expectedFile,
       hasFallback: !!fallbackContent,
     });
-    
-    return {
-      content: fallbackContent || output,
-      isReadFromWorkspace: false,
-    };
+
+    throw new Error(
+      `CLI模式失败: 找不到${this.config.documentType}文档文件。` +
+      `预期文件: ${workspaceDir}/${expectedFile}。` +
+      `CLI工具可能未能正确保存文件。`
+    );
   }
 
   /**
@@ -166,6 +164,50 @@ export class CLIModeHandler {
    */
   shouldSaveToWorkspace(content: string): boolean {
     return !isCLISummaryOutput(content);
+  }
+
+  /**
+   * 检查是否应该保存内容到workspace
+   * 封装CLI模式下的保存逻辑判断
+   * 
+   * @param content 要保存的内容
+   * @param isReadFromWorkspace 内容是否从workspace读取
+   * @param handlerName Handler名称（用于日志）
+   * @param filename 文件名（用于日志）
+   * @returns 保存检查结果
+   */
+  checkShouldSaveContent(
+    content: string,
+    isReadFromWorkspace: boolean,
+    handlerName: string,
+    filename: string
+  ): { shouldSave: boolean; reason?: string } {
+    // 如果内容是从workspace读取的，说明CLI工具已经保存了文件，不需要再次保存
+    if (isReadFromWorkspace) {
+      logger.info(`${handlerName}: Skipping save - CLI already saved the file`, {
+        documentType: this.config.documentType,
+        filename,
+      });
+      return { shouldSave: false, reason: 'already_saved_by_cli' };
+    }
+
+    // CLI模式下，如果内容不是从workspace读取的，不应该保存
+    // CLI返回的内容只用于日志记录，不作为文档内容使用
+    if (this.isCLIMode()) {
+      logger.warn(`${handlerName}: CLI mode - Content not read from workspace, skipping save`, {
+        documentType: this.config.documentType,
+        filename,
+        contentLength: content.length,
+      });
+      return { shouldSave: false, reason: 'cli_mode_no_workspace_content' };
+    }
+
+    // LLM模式下，检查内容是否为CLI总结
+    if (!this.shouldSaveToWorkspace(content)) {
+      return { shouldSave: false, reason: 'cli_summary_output' };
+    }
+
+    return { shouldSave: true };
   }
 
   /**

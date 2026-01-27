@@ -578,17 +578,20 @@ export class DocumentImproveHandler {
     options: ImproveOptions,
     isReadFromWorkspace: boolean = false
   ): Promise<void> {
-    // 如果内容是从workspace读取的，说明CLI工具已经保存了文件，不需要再次保存
-    if (isReadFromWorkspace) {
-      logger.info('DocumentImproveHandler: Skipping save - CLI already saved the file', {
-        documentType: this.config.documentType,
-        filename: this.config.mainFileName,
-      });
+    // 检查是否应该保存
+    const saveCheck = this.cliHandler.checkShouldSaveContent(
+      content,
+      isReadFromWorkspace,
+      'DocumentImproveHandler',
+      this.config.mainFileName
+    );
+
+    if (!saveCheck.shouldSave) {
       return;
     }
 
-    // 只有当内容不是CLI总结时才保存
-    if (options.applicationId && this.cliHandler.shouldSaveToWorkspace(content)) {
+    // 保存改进后的文档
+    if (options.applicationId) {
       await (this.action as any).saveToWorkspace(
         this.config.mainFileName,
         content,
