@@ -54,7 +54,7 @@ const router = createRouter({
       props: true,
     },
     {
-      path: '/platform/:id/workflow',
+      path: '/platform/:id/workflow/:versionId',
       name: 'PlatformWorkflow',
       component: PlatformWorkflow,
       props: true,

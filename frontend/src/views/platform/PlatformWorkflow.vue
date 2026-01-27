@@ -50,7 +50,6 @@ import PlatformInfoCard from './components/PlatformInfoCard.vue';
 import apiClient from '../../api/client';
 import { createPolling, type PollingResult } from '../../utils/polling';
 import { useRoleActionStore } from '../../stores/roleAction';
-import { usePlatformStore } from '../../stores/platform';
 import { getStageName, getStageTagType as getStageColor } from '../../config/stageConfig';
 import { handleApiError } from '../../utils/errorHandler';
 import type { WorkflowAction } from '../project/components/ActionCard.vue';
@@ -59,7 +58,6 @@ import type { WorkflowRoleColumn } from '../project/components/KanbanColumn.vue'
 const route = useRoute();
 const router = useRouter();
 const roleActionStore = useRoleActionStore();
-const platformStore = usePlatformStore();
 
 // Platform Info
 const platformId = ref(route.params.id as string || '');
@@ -101,8 +99,8 @@ const workflowStructure = ref<Record<string, string[]>>({});
 const workflowLoading = ref(false);
 const workflowItems = ref<any[]>([]);
 
-// Version ID from store
-const versionId = computed(() => platformStore.activeVersionId);
+// Version ID from route params (required)
+const versionId = computed(() => route.params.versionId as string);
 
 // Computed kanban board data
 const workflowKanban = computed<WorkflowRoleColumn[]>(() => {
@@ -405,6 +403,13 @@ async function loadRunningInfo() {
 }
 
 onMounted(async () => {
+  // 检查必需的 versionId 路由参数
+  if (!versionId.value) {
+    ElMessage.error('未指定版本，请从版本列表进入');
+    router.push(`/platform/${platformId.value}/versions`);
+    return;
+  }
+
   await roleActionStore.fetchRolesAndActions();
 
   if (platformId.value) {
@@ -413,19 +418,23 @@ onMounted(async () => {
       const platform = response.platform || response.project || response;
       if (platform) {
         platformName.value = platform.name || 'Untitled Platform';
-        userIdea.value = platform.idea || '';
         businessLineId.value = platform.applicationId || platform.application_id || '';
       }
     } catch (err: any) {
       console.warn('Failed to load platform info:', err);
     }
 
-    // Fetch active version - required for all workflow operations
-    await platformStore.fetchActiveVersion(platformId.value);
-    
-    if (!versionId.value) {
-      ElMessage.error('未找到活动版本，请先创建版本');
-      return;
+    // 获取版本详情以获取版本的 idea
+    if (versionId.value) {
+      try {
+        const versionResponse = await apiClient.getPlatformVersion(platformId.value, versionId.value) as any;
+        const version = versionResponse.version;
+        if (version && version.idea) {
+          userIdea.value = version.idea;
+        }
+      } catch (err: any) {
+        console.warn('Failed to load version info:', err);
+      }
     }
   }
 
@@ -802,14 +811,23 @@ async function handleRecover() {
 async function handleVersionChanged(version: any) {
   if (!version) return;
   
-  // Update the active version in store
-  platformStore.setActiveVersion(version);
-  
   ElMessage.info(`已切换到版本: ${version.versionName}`);
+  
+  // 重置状态
+  completedSteps.value = [];
+  workflowItems.value = [];
+  workflowStructure.value = {};
+  isCompleted.value = false;
+  isRunning.value = false;
+  currentStep.value = null;
+  showConfirmationDialog.value = false;
   
   // Reload workflow info for the new version
   await loadWorkflowInfo();
   await loadRunningInfo();
+  
+  // Restart polling for the new version
+  startWorkflowSession();
 }
 
 async function handleResetRole(role: string) {
