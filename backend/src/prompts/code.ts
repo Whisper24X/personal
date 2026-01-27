@@ -1201,7 +1201,7 @@ export function buildOpenSpecApplyPrompt(): string {
 
 ### 核心原则：只有完全完成才能打勾 ✓
 
-**任务标记只有两种状态：**
+**任务标记有三种状态：**
 
 #### 1. 未完成（包括未开始、进行中、部分完成）
 \`\`\`
@@ -1218,7 +1218,7 @@ export function buildOpenSpecApplyPrompt(): string {
 - \`- [ ] 2.1 设计任务数据模型 📝 SQL文件已创建，表结构待验证和迁移\`
 - \`- [ ] 3.1 实现任务发布功能 📝 接口已创建，业务逻辑实现中\`
 
-#### 2. 完全完成（真正完成）
+#### 2. 完全完成（代码已实现）
 \`\`\`
 - [x] 任务名称 ✅ 已完整实现
 \`\`\`
@@ -1236,6 +1236,28 @@ export function buildOpenSpecApplyPrompt(): string {
 - \`- [x] 2.2 实现 CalculatorEngine.ts 计算引擎核心逻辑 ✅ 已完整实现\`（引擎所有方法都已实现，包含错误处理）
 - \`- [x] 3.2 创建计算器页面 src/pages/calculator/index.vue ✅ 已完整实现\`（页面包含完整UI和业务逻辑）
 - \`- [x] 4.8 配置路由（在 src/router/index.ts 中添加） ✅ 已完整实现\`（路由已添加且测试可访问）
+
+#### 3. 需要人工执行或非必须任务
+\`\`\`
+- [x] 任务名称 ⚠️ 需要人工执行/验证
+- [x] 任务名称 ⚠️ 当前版本不需要
+- [x] 任务名称 ⚠️ 可选任务
+\`\`\`
+
+**使用场景**：
+- 手动测试（需要真实浏览器/设备环境）
+- 部署操作（需要服务器权限）
+- 埋点验证（需要真实SDK和数据平台）
+- 代码审查、QA测试、性能测试等
+- 当前版本不需要的功能（如：支付宝小程序版本测试）
+- 可选任务（如：后续优化）
+
+**示例**：
+- \`- [x] 3.5.1 手动测试：H5版本功能测试 ⚠️ 需要人工在真实浏览器中测试\`
+- \`- [x] 4.11 验证埋点事件上报 ⚠️ 需要集成真实SDK后人工验证\`
+- \`- [x] 7.3 部署测试环境 ⚠️ 需要人工部署到测试服务器\`
+- \`- [x] 3.5.3 支付宝小程序版本功能测试 ⚠️ 当前版本不需要\`
+- \`- [x] 8.1 性能优化 ⚠️ 可选任务\`
 
 **未完成示例（必须保持 [ ]）**：
 - \`- [ ] 2.2 实现 CalculatorEngine.ts 计算引擎核心逻辑 📝 文件已创建，方法待实现\`
@@ -1318,6 +1340,138 @@ export function getCheckCommand(): string {
     return "查找 openspec/changes/ 目录下子文件夹中的 tasks.md 文件（路径模式为 openspec/changes/*/tasks.md），检查里面的任务是否全部执行完成。请以JSON格式返回，包含：result字段（值为：已完成、未完成或未找到）和reason字段（说明具体原因）。例如：{\"result\": \"已完成\", \"reason\": \"所有任务都已标记为完成\"} 或 {\"result\": \"未完成\", \"reason\": \"还有3个任务未完成\"} 或 {\"result\": \"未找到\", \"reason\": \"文件不存在或无法找到\"}。只返回JSON格式，不要返回其他内容。";
 }
 
+/**
+ * 获取 deploy 命令提示词
+ * 用于执行部署命令并等待服务启动
+ * @returns deploy 命令提示词
+ */
+export function getDeployCommand(): string {
+    return `执行 make sandbox 命令，确保服务完全启动并可访问。
+
+## 执行步骤
+
+1. **执行部署命令**
+   - 先执行 make sandbox-stop 停止可能存在的服务（无论服务是否在运行都执行此命令）
+   - 等待停止命令执行完成
+   - 然后执行 make sandbox 启动服务
+   - 如果遇到任何部署错误，必须分析并解决问题，重新执行直到成功
+   - 不要在遇到错误时停止，必须想办法解决问题
+
+2. **等待服务完全启动**
+   需要分析日志输出，判断服务是否真正启动完成：
+   - 观察日志输出，识别服务启动的关键标志（如 dev server ready、服务启动成功等信息）
+   - 不要仅看到容器启动的消息就认为服务完成，需要等到实际的应用服务器启动并输出访问地址
+   - 判断标准：当日志中出现明确的访问地址（如 Local、Network 等）且服务器显示 ready 状态时，才算真正启动完成
+   - 如果日志输出停止且没有错误信息，可以尝试访问服务地址验证是否可用
+   
+   注意：不同项目的日志格式不同，需要根据实际输出灵活判断，关键是确保应用服务器已完全启动并可以对外提供服务。
+
+3. **提取访问地址**
+   从 make sandbox 输出中提取所有访问地址，包括：
+   - 统一入口
+   - 后端 API
+   - 管理后台
+   - 移动端 H5
+   - PC 端
+
+4. **生成部署文档**
+   在 ../docs/deploy 目录下创建 deploy.md 文件，内容格式：
+
+\`\`\`markdown
+# 部署信息
+
+部署时间: [当前时间]
+环境: Sandbox
+
+## 访问地址
+
+- 统一入口: http://localhost:8080/
+- 后端 API: http://localhost:8080/api/
+- 管理后台: http://localhost:8080/shadow/
+- 移动端 H5: http://localhost:8080/app/
+- PC 端: http://localhost:8080/pc/
+
+## 状态
+
+✅ 服务运行中
+\`\`\`
+
+## 重要提醒
+
+- 遇到部署问题时，必须分析错误原因并解决，不要直接放弃
+- 必须等到 vite dev server 完全启动（看到 "ready in XXXms."）才能继续
+- 确保提取的地址信息完整准确
+- deploy.md 文件必须创建成功`;
+}
+
+/**
+ * 获取 deploy check 命令提示词
+ * 用于检查部署是否成功，并验证服务可访问性
+ * @returns deploy check 命令提示词
+ */
+export function getDeployCheckCommand(): string {
+    return `检查部署状态和服务可访问性。
+
+## 检查项目
+
+1. **检查 deploy.md 文件**
+   - 查找 ../docs/deploy/deploy.md 文件是否存在
+   - 文件内容是否包含完整的访问地址信息
+
+2. **验证服务可访问性**
+   - 从 deploy.md 中读取所有访问地址（统一入口、后端 API、管理后台、移动端 H5、PC 端）
+   - 使用 curl 或其他方式访问以下关键地址，确认能够正常响应：
+     * 统一入口 - 验证主页面是否可访问
+     * 后端 API - 验证 API 是否响应
+     * 移动端 H5 - 验证页面是否可加载
+   - 每个地址都需要实际访问，验证返回状态码为 200 或正常的 HTML/JSON 响应
+   - 注意：必须使用 deploy.md 中实际记录的地址，不要使用任何硬编码的地址
+
+3. **返回检查结果**
+   以 JSON 格式返回，包含：
+   - result 字段：值为 "已完成"、"未完成" 或 "未找到"
+   - reason 字段：说明具体原因和检查结果
+   - details 字段（可选）：包含各个地址的访问测试结果
+
+## 示例返回
+
+成功：
+\`\`\`json
+{
+  "result": "已完成",
+  "reason": "deploy.md 已创建，所有关键服务均可正常访问",
+  "details": {
+    "统一入口": "✅ 200 OK",
+    "后端API": "✅ 200 OK",
+    "移动端H5": "✅ 200 OK"
+  }
+}
+\`\`\`
+
+失败：
+\`\`\`json
+{
+  "result": "未完成",
+  "reason": "服务未完全启动或部分地址无法访问",
+  "details": {
+    "统一入口": "✅ 200 OK",
+    "后端API": "❌ Connection refused",
+    "移动端H5": "❌ 404 Not Found"
+  }
+}
+\`\`\`
+
+未找到：
+\`\`\`json
+{
+  "result": "未找到",
+  "reason": "deploy.md 文件不存在"
+}
+\`\`\`
+
+只返回 JSON 格式，不要返回其他内容。`;
+}
+
 export default {
     CODE_SYSTEM_PROMPT,
     CODE_COMPLETENESS_CHECK_SYSTEM_PROMPT,
@@ -1332,6 +1486,8 @@ export default {
     buildOpenSpecApplyPrompt,
     getApplyCommand,
     getCheckCommand,
+    getDeployCommand,
+    getDeployCheckCommand,
     checkCodeCompleteness,
     checkFrontendBackendCompleteness,
     extractFileListFromDesign,
