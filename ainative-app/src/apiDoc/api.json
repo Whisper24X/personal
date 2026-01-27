@@ -1,0 +1,2164 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "yanxue",
+    "description": "",
+    "version": "1.0.0"
+  },
+  "tags": [
+    {
+      "name": "Course"
+    },
+    {
+      "name": "Evaluation"
+    },
+    {
+      "name": "EvaluationTemplate"
+    },
+    {
+      "name": "Order"
+    },
+    {
+      "name": "User"
+    },
+    {
+      "name": "UserBindStudent"
+    }
+  ],
+  "paths": {
+    "/yanxue/wechat/v1/course/appointment/cancel": {
+      "post": {
+        "summary": "课程-取消预约",
+        "deprecated": false,
+        "description": "",
+        "operationId": "Course_CancelCourseAppointment",
+        "tags": ["Course"],
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "TOKEN",
+            "required": true,
+            "example": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/wechatv1CancelCourseAppointmentReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wechatv1CancelCourseAppointmentReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/course/appointment/create": {
+      "post": {
+        "summary": "课程-预约",
+        "deprecated": false,
+        "description": "",
+        "operationId": "Course_CreateCourseAppointment",
+        "tags": ["Course"],
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "TOKEN",
+            "required": true,
+            "example": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/wechatv1CreateCourseAppointmentReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wechatv1CreateCourseAppointmentReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/course/appointment/info": {
+      "get": {
+        "summary": "课程-查询课程预约记录信息",
+        "deprecated": false,
+        "description": "",
+        "operationId": "Course_GetCourseAppointmentInfo",
+        "tags": ["Course"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "description": "id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "TOKEN",
+            "required": true,
+            "example": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wechatv1GetCourseAppointmentInfoReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/course/appointment/record": {
+      "get": {
+        "summary": "课程-查询课程预约记录列表",
+        "deprecated": false,
+        "description": "",
+        "operationId": "Course_GetCourseAppointmentList",
+        "tags": ["Course"],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "页码",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "每页条数",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "状态  cancel 取消预约 success 已预约 completed 已完成",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "TOKEN",
+            "required": true,
+            "example": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wechatv1GetCourseAppointmentListReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/course/appointment/update": {
+      "post": {
+        "summary": "课程-更新预约",
+        "deprecated": false,
+        "description": "",
+        "operationId": "Course_UpdateCourseAppointment",
+        "tags": ["Course"],
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "TOKEN",
+            "required": true,
+            "example": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/wechatv1UpdateCourseAppointmentReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wechatv1UpdateCourseAppointmentReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/course/stock/selector": {
+      "get": {
+        "summary": "课程-通过课程查询可以预约的日期和时间段",
+        "deprecated": false,
+        "description": "",
+        "operationId": "Course_GetCourseStockSelector",
+        "tags": ["Course"],
+        "parameters": [
+          {
+            "name": "courseId",
+            "in": "query",
+            "description": "课程Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "description": "开始日期 格式：2025-01-01",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "description": "结束日期 格式：2025-02-01",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "TOKEN",
+            "required": true,
+            "example": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wechatv1GetCourseStockSelectorReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/evaluation/create": {
+      "post": {
+        "summary": "评价表-创建一条数据",
+        "deprecated": false,
+        "description": "",
+        "operationId": "Evaluation_CreateEvaluation",
+        "tags": ["Evaluation"],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/v1CreateEvaluationReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1CreateEvaluationReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/evaluation_template/info": {
+      "get": {
+        "summary": "评价模版-查询评价模版详情",
+        "deprecated": false,
+        "description": "",
+        "operationId": "EvaluationTemplate_GetEvaluationTemplateInfo",
+        "tags": ["EvaluationTemplate"],
+        "parameters": [
+          {
+            "name": "templateName",
+            "in": "query",
+            "description": "模版名称",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wechatv1GetEvaluationTemplateInfoReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/order/good/info": {
+      "post": {
+        "summary": "订单-获取订单商品详情",
+        "deprecated": false,
+        "description": "",
+        "operationId": "Order_GetOrderGoodInfo",
+        "tags": ["Order"],
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "TOKEN",
+            "required": true,
+            "example": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/wechatv1GetOrderGoodInfoReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wechatv1GetOrderGoodInfoReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/order/list": {
+      "post": {
+        "summary": "订单-获取用户订单列表",
+        "deprecated": false,
+        "description": "",
+        "operationId": "Order_GetOrderList",
+        "tags": ["Order"],
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "TOKEN",
+            "required": true,
+            "example": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/wechatv1GetOrderListReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wechatv1GetOrderListReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/auth/login_xcx": {
+      "post": {
+        "summary": "User-登录(小程序)",
+        "deprecated": false,
+        "description": "",
+        "operationId": "User_AuthLoginXcx",
+        "tags": ["User"],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/v1AuthLoginXcxReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1AuthLoginXcxReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/auth/phone_login": {
+      "post": {
+        "summary": "User-手机号-登录",
+        "deprecated": false,
+        "description": "",
+        "operationId": "User_AuthPhoneLogin",
+        "tags": ["User"],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/v1AuthPhoneLoginReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1AuthPhoneLoginReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/auth/sms_code": {
+      "post": {
+        "summary": "User-手机号-发送手机验证码",
+        "deprecated": false,
+        "description": "",
+        "operationId": "User_AuthSendPhoneSmsCode",
+        "tags": ["User"],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/v1AuthSendPhoneSmsCodeReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1AuthSendPhoneSmsCodeReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/user/info": {
+      "get": {
+        "summary": "User-获取用户信息",
+        "deprecated": false,
+        "description": "",
+        "operationId": "User_UserGetInfo",
+        "tags": ["User"],
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "TOKEN",
+            "required": true,
+            "example": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1UserGetInfoReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/user_wx/update": {
+      "post": {
+        "summary": "User-更新微信用户信息",
+        "deprecated": false,
+        "description": "",
+        "operationId": "User_UpdateUserWx",
+        "tags": ["User"],
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "TOKEN",
+            "required": true,
+            "example": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/v1UpdateUserWxReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1UpdateUserWxReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/user_bind_student/create": {
+      "post": {
+        "summary": "用户绑定学生-创建一条数据",
+        "deprecated": false,
+        "description": "",
+        "operationId": "UserBindStudent_StoreUserBindStudent",
+        "tags": ["UserBindStudent"],
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "TOKEN",
+            "required": true,
+            "example": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/v1StoreUserBindStudentReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/v1StoreUserBindStudentReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/user_bind_student/delete": {
+      "post": {
+        "summary": "用户绑定学生-删除多条数据",
+        "deprecated": false,
+        "description": "",
+        "operationId": "UserBindStudent_DeleteUserBindStudent",
+        "tags": ["UserBindStudent"],
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "TOKEN",
+            "required": true,
+            "example": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/wechatv1DeleteUserBindStudentReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wechatv1DeleteUserBindStudentReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/user_bind_student/info": {
+      "post": {
+        "summary": "用户绑定学生-单条数据查询",
+        "deprecated": false,
+        "description": "",
+        "operationId": "UserBindStudent_GetUserBindStudentInfo",
+        "tags": ["UserBindStudent"],
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "TOKEN",
+            "required": true,
+            "example": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/wechatv1GetUserBindStudentInfoReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wechatv1GetUserBindStudentInfoReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/yanxue/wechat/v1/user_bind_student/list": {
+      "post": {
+        "summary": "用户绑定学生-列表数据查询",
+        "deprecated": false,
+        "description": "",
+        "operationId": "UserBindStudent_GetUserBindStudentList",
+        "tags": ["UserBindStudent"],
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "TOKEN",
+            "required": true,
+            "example": "",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/wechatv1GetUserBindStudentListReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/wechatv1GetUserBindStudentListReply"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rpcStatus"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "protobufAny": {
+        "type": "object",
+        "properties": {
+          "@type": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "rpcStatus": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/protobufAny"
+            }
+          }
+        }
+      },
+      "v1StoreUserBindStudentReply": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "id"
+          }
+        },
+        "title": "响应-用户绑定学生-创建一条数据"
+      },
+      "wechatv1CourseItem": {
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "string",
+            "title": "课程Id"
+          },
+          "courseName": {
+            "type": "string",
+            "title": "课程名称"
+          },
+          "coursePrice": {
+            "type": "string",
+            "title": "课程价格"
+          },
+          "isAppointment": {
+            "type": "boolean",
+            "title": "是否预约"
+          }
+        },
+        "title": "课程"
+      },
+      "v1CreateEvaluationReply": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "id"
+          }
+        },
+        "title": "响应-评价表-创建一条数据"
+      },
+      "wechatv1EvaluationTemplateInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "id"
+          },
+          "templateName": {
+            "type": "string",
+            "title": "模版名称"
+          },
+          "evaluationObject": {
+            "type": "string",
+            "title": "评价对象"
+          },
+          "business": {
+            "type": "string",
+            "title": "所属业务"
+          },
+          "evaluationDimension": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "title": "评价维度"
+          },
+          "evaluationLabel": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "title": "评价标签"
+          },
+          "tips": {
+            "type": "string",
+            "title": "温馨提示"
+          }
+        },
+        "title": "评价模版信息"
+      },
+      "v1StoreUserBindStudentReq": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "id"
+          },
+          "studentName": {
+            "type": "string",
+            "title": "学生-名称"
+          },
+          "studentIdentityCard": {
+            "type": "string",
+            "title": "学生-身份证"
+          },
+          "studentSex": {
+            "type": "string",
+            "title": "学生-性别 男M 女F"
+          },
+          "studentAge": {
+            "type": "integer",
+            "format": "int32",
+            "title": "学生-年龄"
+          }
+        },
+        "title": "请求-用户绑定学生-创建一条数据",
+        "required": ["studentName", "studentIdentityCard", "studentSex", "studentAge"]
+      },
+      "v1CreateEvaluationReq": {
+        "type": "object",
+        "properties": {
+          "appointmentId": {
+            "type": "string",
+            "title": "预约编号"
+          },
+          "parentName": {
+            "type": "string",
+            "title": "家长姓名"
+          },
+          "phone": {
+            "type": "string",
+            "title": "联系方式"
+          },
+          "childName": {
+            "type": "string",
+            "title": "孩子姓名"
+          },
+          "courseName": {
+            "type": "string",
+            "title": "课程名称"
+          },
+          "courseTime": {
+            "type": "string",
+            "title": "上课时间"
+          },
+          "totalScore": {
+            "type": "integer",
+            "format": "int32",
+            "title": "总评分"
+          },
+          "dimensionScore": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "title": "维度评分：每一行是\"教学水平:5\"这样的格式"
+          },
+          "feedBack": {
+            "type": "string",
+            "title": "反馈内容"
+          },
+          "feedBackImage": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "title": "反馈图片"
+          },
+          "evaluationLabel": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "title": "快速标签"
+          }
+        },
+        "title": "请求-评价表-创建一条数据"
+      },
+      "wechatv1GetEvaluationTemplateInfoReply": {
+        "type": "object",
+        "properties": {
+          "info": {
+            "$ref": "#/components/schemas/wechatv1EvaluationTemplateInfo"
+          }
+        },
+        "title": "响应-评价模版-单条数据查询"
+      },
+      "wechatv1DeleteUserBindStudentReply": {
+        "type": "object",
+        "title": "响应-用户绑定学生-删除多条数据",
+        "properties": {}
+      },
+      "wechatv1GoodCategory": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string",
+            "title": "商品类别Id"
+          },
+          "categoryName": {
+            "type": "string",
+            "title": "商品类别名称"
+          },
+          "useTimes": {
+            "type": "integer",
+            "format": "int32",
+            "title": "使用次数"
+          },
+          "courses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/wechatv1CourseItem"
+            },
+            "title": "课程列表"
+          }
+        },
+        "title": "商品类别"
+      },
+      "wechatv1GetOrderListReply": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "title": "总数"
+          },
+          "orderList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/wechatv1OrderInfo"
+            },
+            "title": "订单列表"
+          }
+        }
+      },
+      "wechatv1CourseAppointmentInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "id"
+          },
+          "orderId": {
+            "type": "string",
+            "title": "订单id"
+          },
+          "goodId": {
+            "type": "string",
+            "title": "商品id"
+          },
+          "categoryId": {
+            "type": "string",
+            "title": "课程分类id"
+          },
+          "courseId": {
+            "type": "string",
+            "title": "课程id"
+          },
+          "date": {
+            "type": "string",
+            "title": "预约日期"
+          },
+          "period": {
+            "type": "string",
+            "title": "预约时段"
+          },
+          "studentName": {
+            "type": "string",
+            "title": "学生-名称"
+          },
+          "studentIdentityCard": {
+            "type": "string",
+            "title": "学生-身份证"
+          },
+          "studentSex": {
+            "type": "string",
+            "title": "学生-性别(男M,女F)"
+          },
+          "studentAge": {
+            "type": "integer",
+            "format": "int32",
+            "title": "学生-年龄"
+          },
+          "parentName": {
+            "type": "string",
+            "title": "家长-姓名"
+          },
+          "parentPhone": {
+            "type": "string",
+            "title": "家长-手机号"
+          },
+          "parentAccompany": {
+            "type": "string",
+            "title": "家长-是否陪同 yes 是 no 否 unknown 未知"
+          },
+          "verificationCode": {
+            "type": "string",
+            "title": "核销卷码"
+          },
+          "status": {
+            "type": "string",
+            "title": "状态  cancel 取消预约 success 已预约 completed 已完成"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "创建时间"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "更新时间"
+          },
+          "goodName": {
+            "type": "string",
+            "title": "商品名称"
+          },
+          "courseName": {
+            "type": "string",
+            "title": "课程名称"
+          },
+          "parentRemark": {
+            "type": "string",
+            "title": "家长备注"
+          }
+        },
+        "title": "课程-预约信息"
+      },
+      "wechatv1CancelCourseAppointmentReply": {
+        "type": "object",
+        "title": "响应--课程-取消预约",
+        "properties": {}
+      },
+      "wechatv1ChannelInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "id"
+          },
+          "name": {
+            "type": "string",
+            "title": "名称"
+          },
+          "verificationCodeType": {
+            "type": "string",
+            "title": "渠道卷码类型none:无卷码required:必须optional:可有可无"
+          }
+        },
+        "title": "渠道信息"
+      },
+      "wechatv1GetOrderGoodInfoReply": {
+        "type": "object",
+        "properties": {
+          "orderInfo": {
+            "$ref": "#/components/schemas/wechatv1OrderInfo"
+          },
+          "goodInfo": {
+            "$ref": "#/components/schemas/wechatv1GoodInfo"
+          },
+          "channelInfo": {
+            "$ref": "#/components/schemas/wechatv1ChannelInfo"
+          }
+        }
+      },
+      "v1AuthPhoneLoginReply": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "$ref": "#/components/schemas/v1Token"
+          }
+        },
+        "title": "响应-手机号注册并登录"
+      },
+      "wechatv1DeleteUserBindStudentReq": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "id"
+          }
+        },
+        "title": "请求-用户绑定学生-删除多条数据",
+        "required": ["id"]
+      },
+      "wechatv1GoodContent": {
+        "type": "object",
+        "properties": {
+          "goodCategories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/wechatv1GoodCategory"
+            },
+            "title": "商品类别列表"
+          }
+        },
+        "title": "商品内容"
+      },
+      "wechatv1GetOrderListReq": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int32",
+            "title": "页码"
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int32",
+            "title": "页数"
+          },
+          "status": {
+            "type": "string",
+            "title": "订单状态 pending待预约 success已预约 completed已完成 refunded已退款"
+          }
+        },
+        "required": ["page", "pageSize"]
+      },
+      "wechatv1CourseStockSelectorItem": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "日期 格式：2025-01-01"
+          },
+          "period": {
+            "type": "string",
+            "title": "时间段 格式：10:00-12:00"
+          },
+          "stock": {
+            "type": "integer",
+            "format": "int32",
+            "title": "库存"
+          },
+          "stockRemain": {
+            "type": "integer",
+            "format": "int32",
+            "title": "剩余库存"
+          }
+        },
+        "title": "课程库存-通过课程查询可以预约的日期和时间段"
+      },
+      "wechatv1CancelCourseAppointmentReq": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "id"
+          }
+        },
+        "title": "请求--课程-取消预约"
+      },
+      "wechatv1GetOrderGoodInfoReq": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "id"
+          }
+        },
+        "required": ["id"]
+      },
+      "v1AuthLoginXcxReply": {
+        "type": "object",
+        "properties": {
+          "userWxId": {
+            "type": "string",
+            "title": "用户微信ID"
+          },
+          "token": {
+            "$ref": "#/components/schemas/v1Token"
+          }
+        }
+      },
+      "v1AuthPhoneLoginReq": {
+        "type": "object",
+        "properties": {
+          "smsCodeId": {
+            "type": "string",
+            "title": "短信验证码Id"
+          },
+          "smsCode": {
+            "type": "string",
+            "title": "短信验证码"
+          }
+        },
+        "title": "请求-手机号注册并登录",
+        "required": ["smsCode"]
+      },
+      "wechatv1GetUserBindStudentListReply": {
+        "type": "object",
+        "properties": {
+          "list": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/wechatv1UserBindStudentInfo"
+            },
+            "title": "列表数据"
+          }
+        },
+        "title": "响应-用户绑定学生-列表数据查询"
+      },
+      "wechatv1GoodInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "id"
+          },
+          "name": {
+            "type": "string",
+            "title": "名称"
+          },
+          "mainImage": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "title": "主图(多张)"
+          },
+          "detailImages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "title": "详情图(多张)"
+          },
+          "price": {
+            "type": "number",
+            "format": "double",
+            "title": "价格"
+          },
+          "content": {
+            "$ref": "#/components/schemas/wechatv1GoodContent"
+          },
+          "status": {
+            "type": "string",
+            "title": "状态 putOff下架 putOn上架 pending待上架 delete删除"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "开始时间"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "更新时间"
+          },
+          "appointmentRules": {
+            "type": "string",
+            "title": "预约规则"
+          },
+          "channelId": {
+            "type": "string",
+            "title": "渠道Id"
+          },
+          "channelGoodId": {
+            "type": "string",
+            "title": "渠道商品Id"
+          },
+          "platformGoodId": {
+            "type": "string",
+            "title": "平台商品Id"
+          }
+        },
+        "title": "商品信息"
+      },
+      "wechatv1OrderInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "id"
+          },
+          "orderNumber": {
+            "type": "string",
+            "title": "订单编号"
+          },
+          "goodId": {
+            "type": "string",
+            "title": "商品 Id"
+          },
+          "goodName": {
+            "type": "string",
+            "title": "商品名称"
+          },
+          "channelId": {
+            "type": "string",
+            "title": "渠道Id"
+          },
+          "channelName": {
+            "type": "string",
+            "title": "渠道名称"
+          },
+          "orderPrice": {
+            "type": "number",
+            "format": "float",
+            "title": "订单金额"
+          },
+          "phone": {
+            "type": "string",
+            "title": "联系方式(手机号)"
+          },
+          "paymentTime": {
+            "type": "string",
+            "title": "支付时间"
+          },
+          "status": {
+            "type": "string",
+            "title": "订单状态 pending待预约 success已预约 completed已完成 refunded已退款"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "开始时间"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "更新时间"
+          }
+        },
+        "title": "订单信息"
+      },
+      "wechatv1GetCourseAppointmentListReply": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "title": "总条数"
+          },
+          "list": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/wechatv1CourseAppointmentInfo"
+            },
+            "title": "课程预约记录"
+          }
+        },
+        "title": "响应--课程-查询课程预约记录"
+      },
+      "wechatv1GetUserBindStudentInfoReply": {
+        "type": "object",
+        "properties": {
+          "info": {
+            "$ref": "#/components/schemas/wechatv1UserBindStudentInfo"
+          }
+        },
+        "title": "响应-用户绑定学生-单条数据查询"
+      },
+      "wechatv1CreateCourseAppointmentReply": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "id"
+          }
+        },
+        "title": "响应--课程-预约"
+      },
+      "v1AuthLoginXcxReq": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "微信code"
+          }
+        },
+        "required": ["code"]
+      },
+      "v1AuthSendPhoneSmsCodeReply": {
+        "type": "object",
+        "properties": {
+          "smsCodeId": {
+            "type": "string",
+            "title": "短信验证码ID"
+          }
+        }
+      },
+      "wechatv1GetUserBindStudentListReq": {
+        "type": "object",
+        "title": "请求-用户绑定学生-列表数据查询",
+        "properties": {}
+      },
+      "wechatv1GetCourseStockSelectorReply": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/wechatv1CourseStockSelectorItem"
+            },
+            "title": "日期和时间段"
+          }
+        },
+        "title": "响应--通过课程查询可以预约的日期和时间段"
+      },
+      "wechatv1GetUserBindStudentInfoReq": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "id"
+          }
+        },
+        "title": "请求-用户绑定学生-单条数据查询",
+        "required": ["id"]
+      },
+      "wechatv1CreateCourseAppointmentReq": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "title": "订单id"
+          },
+          "categoryId": {
+            "type": "string",
+            "title": "课程分类id"
+          },
+          "courseId": {
+            "type": "string",
+            "title": "课程id"
+          },
+          "date": {
+            "type": "string",
+            "title": "预约日期"
+          },
+          "period": {
+            "type": "string",
+            "title": "预约时段"
+          },
+          "studentName": {
+            "type": "string",
+            "title": "学生-名称"
+          },
+          "studentIdentityCard": {
+            "type": "string",
+            "title": "学生-身份证"
+          },
+          "studentSex": {
+            "type": "string",
+            "title": "学生-性别(男M,女F)"
+          },
+          "studentAge": {
+            "type": "integer",
+            "format": "int32",
+            "title": "学生-年龄"
+          },
+          "parentName": {
+            "type": "string",
+            "title": "家长-姓名"
+          },
+          "parentPhone": {
+            "type": "string",
+            "title": "家长-手机号"
+          },
+          "parentAccompany": {
+            "type": "string",
+            "title": "家长-是否陪同 yes 是 no 否 unknown 未知"
+          },
+          "verificationCode": {
+            "type": "string",
+            "title": "核销卷码"
+          },
+          "parentRemark": {
+            "type": "string",
+            "title": "家长备注"
+          }
+        },
+        "title": "请求--课程-预约",
+        "required": [
+          "orderId",
+          "courseId",
+          "date",
+          "period",
+          "studentName",
+          "studentIdentityCard",
+          "studentSex",
+          "studentAge",
+          "parentName",
+          "parentPhone",
+          "parentAccompany"
+        ]
+      },
+      "v1AuthSendPhoneSmsCodeReq": {
+        "type": "object",
+        "properties": {
+          "userWxId": {
+            "type": "string",
+            "title": "用户微信ID"
+          },
+          "countryCode": {
+            "type": "string",
+            "title": "国家码"
+          },
+          "phone": {
+            "type": "string",
+            "title": "手机号"
+          }
+        },
+        "required": ["userWxId", "countryCode", "phone"]
+      },
+      "wechatv1UserBindStudentInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "id"
+          },
+          "studentIdentityCard": {
+            "type": "string",
+            "title": "学生-身份证"
+          },
+          "studentName": {
+            "type": "string",
+            "title": "学生-名称"
+          },
+          "studentSex": {
+            "type": "string",
+            "title": "学生-性别 男M 女F"
+          },
+          "studentAge": {
+            "type": "integer",
+            "format": "int32",
+            "title": "学生-年龄 1-100"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "创建时间"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "更新时间"
+          }
+        },
+        "title": "用户绑定学生信息"
+      },
+      "wechatv1GetCourseAppointmentInfoReply": {
+        "type": "object",
+        "properties": {
+          "info": {
+            "$ref": "#/components/schemas/wechatv1CourseAppointmentInfo"
+          }
+        }
+      },
+      "v1UpdateUserWxReply": {
+        "type": "object",
+        "title": "响应-更新微信用户信息",
+        "properties": {}
+      },
+      "v1UpdateUserWxReq": {
+        "type": "object",
+        "properties": {
+          "userWxId": {
+            "type": "string",
+            "title": "用户微信ID"
+          },
+          "nickname": {
+            "type": "string",
+            "title": "昵称"
+          },
+          "sex": {
+            "type": "integer",
+            "format": "int32",
+            "title": "性别"
+          },
+          "province": {
+            "type": "string",
+            "title": "省份"
+          },
+          "city": {
+            "type": "string",
+            "title": "城市"
+          },
+          "country": {
+            "type": "string",
+            "title": "国家"
+          },
+          "headimgurl": {
+            "type": "string",
+            "title": "头像"
+          }
+        },
+        "title": "请求-更新微信用户信息"
+      },
+      "wechatv1UpdateCourseAppointmentReply": {
+        "type": "object",
+        "title": "响应--课程-更新预约",
+        "properties": {}
+      },
+      "v1UserGetInfoReply": {
+        "type": "object",
+        "properties": {
+          "userInfo": {
+            "$ref": "#/components/schemas/wechatv1UserInfo"
+          }
+        },
+        "title": "响应-获取用户信息"
+      },
+      "v1UserAppointmentInfo": {
+        "type": "object",
+        "properties": {
+          "parentName": {
+            "type": "string",
+            "title": "用户名称"
+          },
+          "parentPhone": {
+            "type": "string",
+            "title": "用户手机号"
+          },
+          "parentAccompany": {
+            "type": "string",
+            "title": "家长是否陪同"
+          }
+        },
+        "title": "用户预约信息"
+      },
+      "wechatv1UpdateCourseAppointmentReq": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "id"
+          },
+          "date": {
+            "type": "string",
+            "title": "预约日期"
+          },
+          "period": {
+            "type": "string",
+            "title": "预约时段"
+          },
+          "studentName": {
+            "type": "string",
+            "title": "学生-名称"
+          },
+          "studentIdentityCard": {
+            "type": "string",
+            "title": "学生-身份证"
+          },
+          "studentSex": {
+            "type": "string",
+            "title": "学生-性别(男M,女F)"
+          },
+          "studentAge": {
+            "type": "integer",
+            "format": "int32",
+            "title": "学生-年龄"
+          },
+          "parentName": {
+            "type": "string",
+            "title": "家长-姓名"
+          },
+          "parentPhone": {
+            "type": "string",
+            "title": "家长-手机号"
+          },
+          "parentAccompany": {
+            "type": "string",
+            "title": "家长-是否陪同 yes 是 no 否 unknown 未知"
+          },
+          "verificationCode": {
+            "type": "string",
+            "title": "核销卷码"
+          },
+          "parentRemark": {
+            "type": "string",
+            "title": "家长备注"
+          }
+        },
+        "title": "请求--课程-更新预约"
+      },
+      "wechatv1UserInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "id"
+          },
+          "phone": {
+            "type": "string",
+            "title": "手机号"
+          },
+          "nickname": {
+            "type": "string",
+            "title": "昵称"
+          },
+          "avatar": {
+            "type": "string",
+            "title": "头像"
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "title": "-1=禁用 1=开启"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "创建时间"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "更新时间"
+          },
+          "userWxInfo": {
+            "$ref": "#/components/schemas/wechatv1UserWxInfo"
+          },
+          "userAppointmentInfo": {
+            "$ref": "#/components/schemas/v1UserAppointmentInfo"
+          }
+        },
+        "title": "用户信息"
+      },
+      "v1Token": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "expiredAt": {
+            "type": "string",
+            "format": "int64",
+            "title": "过期时间"
+          },
+          "refreshAt": {
+            "type": "string",
+            "format": "int64",
+            "title": "刷新时间"
+          }
+        }
+      },
+      "wechatv1UserWxInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "id"
+          },
+          "unionid": {
+            "type": "string",
+            "title": "unionid"
+          },
+          "offiaccountOpenId": {
+            "type": "string",
+            "title": "公众号openid"
+          },
+          "offiaccountFollow": {
+            "type": "boolean",
+            "title": "公众号是否关注"
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "title": "-1=禁用 1=开启"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "创建时间"
+          },
+          "updatedAt": {
+            "type": "string",
+            "title": "更新时间"
+          },
+          "nickname": {
+            "type": "string",
+            "title": "昵称"
+          },
+          "sex": {
+            "type": "integer",
+            "format": "int32",
+            "title": "性别"
+          },
+          "province": {
+            "type": "string",
+            "title": "省份"
+          },
+          "city": {
+            "type": "string",
+            "title": "城市"
+          },
+          "country": {
+            "type": "string",
+            "title": "国家"
+          },
+          "headimgurl": {
+            "type": "string",
+            "title": "头像"
+          }
+        },
+        "title": "用户-微信信息"
+      }
+    },
+    "securitySchemes": {}
+  },
+  "servers": [],
+  "security": []
+}

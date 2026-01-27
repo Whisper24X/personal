@@ -1,0 +1,21 @@
+# dependencies
+.DS_Store
+node_modules
+node_modules/*
+dist/
+key/
+.swc/
+ui_bak/
+
+# Log files
+yarn-debug.log*
+yarn-error.log*
+npm-debug.log*
+.pnpm-error.log*
+.pnpm-debug.log
+project.private.config.json
+
+# Editor directories and files
+.idea
+*.idea
+*.vscode

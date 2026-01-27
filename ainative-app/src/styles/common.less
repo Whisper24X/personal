@@ -1,0 +1,240 @@
+@import "./mixins.less";
+
+// 重置样式
+page {
+  font-size: 28rpx;
+  line-height: 1.5;
+  color: #333;
+  background-color: #f7f7f9;
+  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
+  font-family:
+    PingFangSC, PingFangSC-Regular, PingFangTC-Regular, AlibabaPuHuiTi_2_55_Regular,
+    SourceHanSansCN-Regular, "HarmonyOS Sans SC Regular", "Helvetica Neue", Helvetica, Arial,
+    "Microsoft Yahei", "Hiragino Sans GB", "Heiti SC", sans-serif;
+}
+
+// 去除默认边距
+view,
+text,
+navigator,
+input,
+textarea,
+image,
+button {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+view,
+scroll-view {
+  //隐藏滚动条
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+// 去除按钮默认样式
+button {
+  background-color: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  line-height: inherit;
+  border-radius: 0;
+
+  &::after {
+    border: none;
+  }
+}
+
+// 安全区适配
+.safe-bottom {
+  .safe-area-inset-bottom();
+}
+
+// 1px 边框
+.hairline-top {
+  .hairline(top, #eee);
+}
+
+.hairline-bottom {
+  .hairline(bottom, #eee);
+}
+
+.hairline-left {
+  .hairline(left, #eee);
+}
+
+.hairline-right {
+  .hairline(right, #eee);
+}
+
+.hairline-all {
+  .hairline(border, #eee);
+}
+
+// 文本省略
+.ellipsis {
+  .ellipsis();
+}
+
+.ellipsis-2 {
+  .multi-ellipsis(2);
+}
+
+.ellipsis-3 {
+  .multi-ellipsis(3);
+}
+
+// 常用 flex 布局
+.flex {
+  display: flex;
+}
+
+.flex-column {
+  display: flex;
+  flex-direction: column;
+}
+
+.flex-center {
+  .flex-center();
+}
+
+.flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.flex-around {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+// 常用间距
+.m-10 {
+  margin: 10rpx;
+}
+
+.m-20 {
+  margin: 20rpx;
+}
+
+.m-30 {
+  margin: 30rpx;
+}
+
+.mt-10 {
+  margin-top: 10rpx;
+}
+
+.mt-20 {
+  margin-top: 20rpx;
+}
+
+.mt-30 {
+  margin-top: 30rpx;
+}
+
+.mb-10 {
+  margin-bottom: 10rpx;
+}
+
+.mb-20 {
+  margin-bottom: 20rpx;
+}
+
+.mb-30 {
+  margin-bottom: 30rpx;
+}
+
+.ml-10 {
+  margin-left: 10rpx;
+}
+
+.ml-20 {
+  margin-left: 20rpx;
+}
+
+.ml-30 {
+  margin-left: 30rpx;
+}
+
+.mr-10 {
+  margin-right: 10rpx;
+}
+
+.mr-20 {
+  margin-right: 20rpx;
+}
+
+.mr-30 {
+  margin-right: 30rpx;
+}
+
+.p-10 {
+  padding: 10rpx;
+}
+
+.p-20 {
+  padding: 20rpx;
+}
+
+.p-30 {
+  padding: 30rpx;
+}
+
+.pt-10 {
+  padding-top: 10rpx;
+}
+
+.pt-20 {
+  padding-top: 20rpx;
+}
+
+.pt-30 {
+  padding-top: 30rpx;
+}
+
+.pb-10 {
+  padding-bottom: 10rpx;
+}
+
+.pb-20 {
+  padding-bottom: 20rpx;
+}
+
+.pb-30 {
+  padding-bottom: 30rpx;
+}
+
+.pl-10 {
+  padding-left: 10rpx;
+}
+
+.pl-20 {
+  padding-left: 20rpx;
+}
+
+.pl-30 {
+  padding-left: 30rpx;
+}
+
+.pr-10 {
+  padding-right: 10rpx;
+}
+
+.pr-20 {
+  padding-right: 20rpx;
+}
+
+.pr-30 {
+  padding-right: 30rpx;
+}
