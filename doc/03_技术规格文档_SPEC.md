@@ -3,9 +3,9 @@
 > AI 辅助工程 · 规格说明文档  
 > 用于在人与 AI 协作编码前，对齐目标、边界与工程决策  
 
-**文档版本**: v1.3  
+**文档版本**: v1.5  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-21
+**最后更新**: 2026-01-26（更新QAEngineer和AutomationEngineer的Actions列表，确认30个Actions和9个角色）
 **规格状态**: ✅ Frozen（已冻结，可进入实现阶段）
 
 ---
@@ -58,18 +58,21 @@
 - ✅ 知识库系统（RAG检索、代码仓库关联、多源知识整合）
 - ✅ 工作流编排系统（多角色串联、输入输出映射、可视化设计器）
 - ✅ 角色独立调试系统（调试接口、单元测试框架、性能监控）
+- ✅ 章节对话历史系统（PRD/MRD章节迭代优化、对话历史管理）
+- ✅ 10个核心服务（WorkflowService, RAGService, GitService, DocumentArchiveService, RoleActionService, EmbeddingService, QdrantService, RerankService, SectionAdjustService, StagehandService）
 
-#### 角色实现层
+#### 角色实现层（共9个角色）
 - ✅ Salesperson（销售）- 需求收集和市场调研
 - ✅ ProductManager（产品经理）- PRD编写
 - ✅ Architect（架构师）- 系统设计
 - ✅ ProjectManager（项目经理）- 任务拆分和规划
 - ✅ Engineer（工程师）- 代码实现
-- ✅ QA Engineer（QA工程师）- 测试编写
+- ✅ QAEngineer（QA工程师）- 测试设计工作流（3步：WriteTestPlan, WriteTest, TestCaseReview）
+- ✅ AutomationEngineer（自动化工程师）- 自动化测试工作流（4步：AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion）
 - ✅ TeamLeader（团队领导）- 协调和决策
 - ✅ DataAnalyst（数据分析师）- 数据分析和可视化
 
-#### 行动实现层（共 31 个 Actions）
+#### 行动实现层（共 30 个 Actions）
 
 **文档编写 Actions**:
 - ✅ WriteMRD（编写市场研究文档）
@@ -101,10 +104,16 @@
 - ✅ RunCode（代码执行）
 - ✅ FixBug（Bug修复）
 
-**QA 工作流 Actions**:
-- ✅ TestabilityReview（需求可测性审查）
+**QA 工作流 Actions（QAEngineer）**:
+- ✅ WriteTestPlan（测试计划制定）
+- ✅ WriteTest（测试用例编写）
 - ✅ TestCaseReview（测试用例评审）
+
+**其他QA相关 Actions**:
+- ✅ TestabilityReview（需求可测性审查）
 - ✅ TestReview（测试文档审查）
+
+**自动化测试 Actions（AutomationEngineer）**:
 - ✅ AutomationPlanning（自动化测试规划）
 - ✅ AutomationExecution（自动化测试执行）
 - ✅ CoverageQualityCheck（覆盖率与质量检查）
@@ -980,5 +989,6 @@ stateDiagram-v2
 | 2025-12-24 | 1.0 | 初始版本创建 | AI Team |
 | 2026-01-07 | 1.2 | 添加知识库系统、工作流编排系统、角色独立调试系统规格 | AI Team |
 | 2026-01-21 | 1.3 | 更新 Actions 列表（添加 QA 工作流 Actions、RunCode、FixBug、ImproveDesign），更新 LLM 提供商架构说明（统一 OpenAICompatibleLLM、添加 DeepSeek） | AI Team |
+| 2026-01-26 | 1.4 | 更新Actions数量为30个，拆分QAEngineer和AutomationEngineer角色，添加AutomationEngineer到角色实现层 | AI Team |
 
 ---

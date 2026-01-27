@@ -1,15 +1,16 @@
 /**
  * Role LLM Config Controller
  * Handles role-specific LLM configuration-related HTTP requests
+ * Schema V2: Uses unified LLMConfigRepository
  */
 
 import { Request, Response } from 'express';
-import { RoleLLMConfigRepository } from '../../database';
+import { LLMConfigRepository } from '../../database';
 import { logger } from '../../utils';
 import { LLMProvider } from '@mind2build/shared';
 
-const roleLLMConfigRepo = new RoleLLMConfigRepository();
-const DEFAULT_USER_ID = '302769d6-247d-43db-a005-0519712255fb';
+const llmConfigRepo = new LLMConfigRepository();
+const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 export class RoleLLMConfigController {
   /**
@@ -20,22 +21,24 @@ export class RoleLLMConfigController {
     try {
       const userId = (req as any).userId || DEFAULT_USER_ID;
 
-      const configs = await roleLLMConfigRepo.findByUserId(userId);
+      const configs = await llmConfigRepo.findRoleConfigs(userId);
 
       // Convert to map format for frontend
       const configsMap: Record<string, any> = {};
       configs.forEach((config) => {
-        configsMap[config.role_profile] = {
-          provider: config.provider,
-          apiKey: config.api_key,
-          baseURL: config.base_url,
-          model: config.model,
-          temperature: config.temperature,
-          maxTokens: config.max_tokens,
-          repository: config.repository,
-          branchName: config.branch_name,
-          autoCreatePr: config.auto_create_pr,
-        };
+        if (config.role_profile) {
+          configsMap[config.role_profile] = {
+            provider: config.provider,
+            apiKey: config.api_key,
+            baseURL: config.base_url,
+            model: config.model,
+            temperature: config.temperature,
+            maxTokens: config.max_tokens,
+            repository: config.repository,
+            branchName: config.branch_name,
+            autoCreatePr: config.auto_create_pr,
+          };
+        }
       });
 
       return res.json({
@@ -60,7 +63,7 @@ export class RoleLLMConfigController {
       const userId = (req as any).userId || DEFAULT_USER_ID;
       const { profile } = req.params;
 
-      const config = await roleLLMConfigRepo.findByProfile(userId, profile);
+      const config = await llmConfigRepo.findByRole(userId, profile);
 
       if (!config) {
         return res.status(404).json({
@@ -143,7 +146,7 @@ export class RoleLLMConfigController {
         });
       }
 
-      const config = await roleLLMConfigRepo.upsert({
+      const config = await llmConfigRepo.upsertRole({
         userId,
         roleProfile: profile,
         provider: provider as LLMProvider,
@@ -195,7 +198,7 @@ export class RoleLLMConfigController {
       const userId = (req as any).userId || DEFAULT_USER_ID;
       const { profile } = req.params;
 
-      const deleted = await roleLLMConfigRepo.delete(userId, profile);
+      const deleted = await llmConfigRepo.deleteRoleConfig(userId, profile);
 
       if (!deleted) {
         return res.status(404).json({
@@ -221,4 +224,3 @@ export class RoleLLMConfigController {
     }
   }
 }
-

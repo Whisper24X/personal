@@ -6,7 +6,7 @@
  */
 
 import * as path from 'path';
-import { WorkspaceOptions } from '../utils';
+import { WorkspaceOptions, WorkspaceManager } from '../utils';
 import { RoleContext } from '../core/context/RoleContext';
 import { Context } from '../core/context/Context';
 
@@ -54,6 +54,7 @@ export class RoleWorkspaceExtractor {
         return {
           applicationId: data.applicationId,
           projectId: data.projectId,
+          versionId: data.versionId,  // 提取 versionId
           documentType: this.getDocumentTypeForAction(actionName || ''),
         };
       }
@@ -65,31 +66,21 @@ export class RoleWorkspaceExtractor {
 
   /**
    * Parse workspace directory path
-   * 新格式: workspace/{applicationId}/{projectId}/ainative-workspace/docs/{documentType}
+   * 使用 WorkspaceManager 的统一解析方法
+   * 
+   * 支持格式:
+   * - 带版本: workspace/{applicationId}/{projectId}/versions/{versionId}/ainative-workspace/docs/{documentType}
+   * - 无版本: workspace/{applicationId}/{projectId}/ainative-workspace/docs/{documentType}
    */
   private parseWorkspaceDir(workspaceDir: string, actionName?: string): WorkspaceOptions | undefined {
-    const pathParts = workspaceDir.split(path.sep).filter((p: string) => p);
+    // 使用 WorkspaceManager 的统一解析方法
+    const options = WorkspaceManager.parseWorkspacePath(
+      workspaceDir, 
+      this.getDocumentTypeForAction(actionName || '')
+    );
     
-    // 查找 ainative-workspace 标识
-    const workspaceIndex = pathParts.findIndex((p: string) => p === 'ainative-workspace');
-
-    if (workspaceIndex !== -1) {
-      // 新格式: workspace/{applicationId}/{projectId}/ainative-workspace/docs/{documentType}
-      if (workspaceIndex >= 2) {
-        const workspaceRootIndex = pathParts.findIndex((p: string) => p === 'workspace');
-        if (workspaceRootIndex !== -1 && workspaceRootIndex < workspaceIndex - 2) {
-          return {
-            applicationId: pathParts[workspaceRootIndex + 1],
-            projectId: pathParts[workspaceRootIndex + 2],
-            documentType: pathParts[workspaceIndex + 2] || this.getDocumentTypeForAction(actionName || ''),
-          };
-        }
-        return {
-          applicationId: pathParts[workspaceIndex - 2],
-          projectId: pathParts[workspaceIndex - 1],
-          documentType: pathParts[workspaceIndex + 2] || this.getDocumentTypeForAction(actionName || ''),
-        };
-      }
+    if (options) {
+      return options;
     }
 
     // 尝试解析旧格式以保持向后兼容
@@ -130,11 +121,13 @@ export class RoleWorkspaceExtractor {
   private extractFromContext(actionName?: string): WorkspaceOptions | undefined {
     const applicationId = this.context?.get('applicationId');
     const projectId = this.context?.get('projectId');
+    const versionId = this.context?.get('versionId');  // 提取 versionId
     
     if (applicationId && projectId) {
       return {
         applicationId: applicationId as string,
         projectId: projectId as string,
+        versionId: versionId as string | undefined,  // 包含 versionId
         documentType: this.getDocumentTypeForAction(actionName || ''),
       };
     }

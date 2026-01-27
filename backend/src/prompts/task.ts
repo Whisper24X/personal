@@ -189,3 +189,133 @@ ${taskBreakdown}
 `;
 }
 
+// ==================== 子项目设计提示词 ====================
+
+/**
+ * 子项目设计系统提示词
+ * 
+ * 用于指导 AI 如何生成子项目设计文档。
+ * 
+ * @usedBy WriteSubProjectDesign Action
+ */
+export const SUB_PROJECT_DESIGN_SYSTEM_PROMPT = `
+你是一位资深系统架构师，
+拥有丰富的软件系统设计和技术架构经验。
+
+你的职责包括：
+- 基于任务拆分和系统设计，生成详细的子项目设计文档
+- 定义清晰的技术架构和模块划分
+- 设计合理的API接口和数据模型
+- 考虑系统的可扩展性、可维护性和安全性
+
+你必须遵循以下原则：
+- 设计文档要清晰、完整、可执行
+- 技术选型要有据可依
+- 接口设计要符合RESTful规范
+- 数据模型要考虑扩展性
+`;
+
+/**
+ * 构建子项目设计提示词
+ * 
+ * @param taskBreakdown - 任务拆分文档内容
+ * @param design - 系统设计文档内容
+ * @returns 子项目设计的用户提示词
+ * @usedBy WriteSubProjectDesign Action
+ */
+export function buildSubProjectDesignPrompt(taskBreakdown: string, design: string): string {
+  return `
+你将基于以下【任务拆分文档】和【系统设计文档】生成子项目设计文档。
+
+【任务拆分文档】
+${taskBreakdown}
+
+【系统设计文档】
+${design}
+
+【输出要求】
+请生成完整的子项目设计文档，包括：
+1. 子项目概述 - 项目背景、目标、范围
+2. 技术架构设计 - 整体架构、技术栈选型
+3. API接口设计 - 接口列表、请求/响应格式
+4. 数据模型设计 - 数据库表结构、字段说明
+5. 前端组件设计 - 页面结构、组件划分
+6. 依赖关系说明 - 模块依赖、外部服务依赖
+7. 开发指南 - 开发环境配置、代码规范
+
+请使用Markdown格式输出，确保内容详细、具体、可执行。
+`;
+}
+
+/**
+ * 子项目设计审查系统提示词
+ * 
+ * 用于指导 AI 如何审查子项目设计文档。
+ * 
+ * @usedBy SubProjectDesignReview Action
+ */
+export const SUB_PROJECT_DESIGN_REVIEW_SYSTEM_PROMPT = `
+你是一位资深技术评审专家，
+拥有丰富的代码审查和设计审查经验。
+
+你的职责包括：
+- 审查子项目设计文档的完整性和质量
+- 识别设计中的问题和风险
+- 提出改进建议和优化方案
+- 确保设计符合最佳实践
+
+审查要点：
+- 架构设计是否合理
+- 接口设计是否清晰完整
+- 数据模型是否规范
+- 是否考虑了扩展性和安全性
+`;
+
+/**
+ * 构建子项目设计审查提示词
+ * 
+ * @param designContent - 子项目设计文档内容
+ * @param outline - 文档大纲
+ * @returns 子项目设计审查的用户提示词
+ * @usedBy SubProjectDesignReview Action
+ */
+export function buildSubProjectDesignReviewPrompt(designContent: string, outline: string): string {
+  return `
+请审查以下【子项目设计文档】，评估其完整性和质量。
+
+【文档大纲】
+${outline}
+
+【子项目设计文档】
+${designContent}
+
+【审查要求】
+请从以下方面进行审查：
+
+1. 完整性检查：
+   - 是否包含所有必需章节
+   - 每个章节内容是否完整
+
+2. 技术设计审查：
+   - 架构设计是否合理
+   - 技术选型是否恰当
+   - 是否考虑了扩展性
+
+3. 接口设计审查：
+   - API设计是否符合RESTful规范
+   - 请求/响应格式是否清晰
+   - 错误处理是否完善
+
+4. 数据模型审查：
+   - 表结构设计是否合理
+   - 字段定义是否完整
+   - 是否考虑了数据一致性
+
+5. 问题与建议：
+   - 列出发现的问题（按严重程度分类）
+   - 提出具体的改进建议
+
+请使用Markdown格式输出审查报告。
+`;
+}
+

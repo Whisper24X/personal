@@ -1,11 +1,13 @@
 /**
  * Initialize LLM Configs from Environment Variables
  * Reads existing .env configuration and writes to database
+ * 
+ * Schema V2: Uses unified LLMConfigRepository
  */
 
 import * as dotenv from 'dotenv';
 import * as path from 'path';
-import { LLMConfigRepository, ProviderConfigRepository } from '../repositories';
+import { LLMConfigRepository } from '../repositories';
 import { connectDatabase, disconnectDatabase, query } from '../client';
 import { logger } from '../../utils';
 import { LLMProvider } from '@mind2build/shared';
@@ -13,7 +15,7 @@ import { LLMProvider } from '@mind2build/shared';
 // Load .env file from project root
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
-const DEFAULT_USER_ID = '302769d6-247d-43db-a005-0519712255fb';
+const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 const ACTIVE_PROVIDER = (process.env.LLM_PROVIDER || 'zhipuai') as LLMProvider;
 
 async function ensureDefaultUser(): Promise<string> {
@@ -87,7 +89,6 @@ async function initLLMConfigs() {
     const actualUserId = await ensureDefaultUser();
 
     const llmConfigRepo = new LLMConfigRepository();
-    const providerConfigRepo = new ProviderConfigRepository();
 
     // Define all provider configurations from environment
     const configs: ProviderConfig[] = [
@@ -162,24 +163,8 @@ async function initLLMConfigs() {
       try {
         const isActive = config.provider === ACTIVE_PROVIDER;
         
-        // Step 1: Save provider config (API Key, Base URL, and Model) separately
-        if (config.apiKey || config.baseURL || config.model || config.provider === 'ollama') {
-          try {
-            await providerConfigRepo.upsert({
-              userId: actualUserId,
-              provider: config.provider,
-              apiKey: config.apiKey || '',
-              baseURL: config.baseURL,
-              model: config.model,
-            });
-            logger.info(`   ✅ Provider config saved: ${config.provider}`);
-          } catch (error: any) {
-            logger.warn(`   ⚠️  Failed to save provider config for ${config.provider}:`, error.message);
-          }
-        }
-        
-        // Step 2: Save model config (Model, Temperature, Max Tokens)
-        const savedConfig = await llmConfigRepo.upsert({
+        // Save provider config with model settings (Schema V2: unified table)
+        const savedConfig = await llmConfigRepo.upsertProvider({
           userId: actualUserId,
           provider: config.provider,
           model: config.model,

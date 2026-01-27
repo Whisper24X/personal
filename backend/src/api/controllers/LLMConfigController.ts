@@ -3,17 +3,17 @@
  * Handles LLM configuration-related HTTP requests
  * 
  * Uses LLMManager for centralized LLM configuration management.
+ * Schema V2: Uses unified LLMConfigRepository
  */
 
 import { Request, Response } from 'express';
-import { LLMConfigRepository, ProviderConfigRepository } from '../../database';
+import { LLMConfigRepository } from '../../database';
 import { logger } from '../../utils';
 import { llmManager } from '../../providers/llm/LLMManager';
 import { LLMProvider } from '@mind2build/shared';
 
 const llmConfigRepo = new LLMConfigRepository();
-const providerConfigRepo = new ProviderConfigRepository();
-const DEFAULT_USER_ID = '302769d6-247d-43db-a005-0519712255fb';
+const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 export class LLMConfigController {
   /**
@@ -28,21 +28,20 @@ export class LLMConfigController {
 
       return res.json({
         success: true,
-        configs: configs.map((config) => {
-          const llmConfig = llmConfigRepo.toILLMConfig(config);
-          return {
-            id: config.id,
-            provider: config.provider,
-            model: config.model,
-            baseURL: llmConfig.baseURL,
-            temperature: config.temperature,
-            maxTokens: config.max_tokens,
-            isActive: config.is_active,
-            createdAt: config.created_at,
-            updatedAt: config.updated_at,
-            // Don't expose API key in list
-          };
-        }),
+        configs: configs.map((config) => ({
+          id: config.id,
+          configScope: config.config_scope,
+          provider: config.provider,
+          roleProfile: config.role_profile,
+          model: config.model,
+          baseURL: config.base_url,
+          temperature: config.temperature,
+          maxTokens: config.max_tokens,
+          isActive: config.is_active,
+          createdAt: config.created_at,
+          updatedAt: config.updated_at,
+          // Don't expose API key in list
+        })),
       });
     } catch (error: any) {
       logger.error('LLMConfigController: Failed to list configs:', error);
@@ -70,14 +69,14 @@ export class LLMConfigController {
         });
       }
 
-      const llmConfig = llmConfigRepo.toILLMConfig(config);
       return res.json({
         success: true,
         config: {
           id: config.id,
+          configScope: config.config_scope,
           provider: config.provider,
-          apiKey: llmConfig.apiKey, // Include API key for active config
-          baseURL: llmConfig.baseURL,
+          apiKey: config.api_key,
+          baseURL: config.base_url,
           model: config.model,
           temperature: config.temperature,
           maxTokens: config.max_tokens,
@@ -122,6 +121,7 @@ export class LLMConfigController {
         success: true,
         config: {
           id: config.id,
+          configScope: config.config_scope,
           provider: config.provider,
           apiKey: config.api_key,
           baseURL: config.base_url,
@@ -163,19 +163,11 @@ export class LLMConfigController {
         });
       }
 
-      // If apiKey or baseURL provided, update provider config separately
-      if (apiKey !== undefined || baseURL !== undefined) {
-        await providerConfigRepo.upsert({
-          userId,
-          provider: provider as LLMProvider,
-          apiKey,
-          baseURL,
-        });
-      }
-
-      const config = await llmConfigRepo.upsert({
+      const config = await llmConfigRepo.upsertProvider({
         userId,
         provider: provider as LLMProvider,
+        apiKey,
+        baseURL,
         model,
         temperature: temperature !== undefined ? parseFloat(temperature) : undefined,
         maxTokens: maxTokens !== undefined ? parseInt(maxTokens, 10) : undefined,
@@ -191,17 +183,14 @@ export class LLMConfigController {
       // Refresh LLM manager to use new config immediately
       await llmManager.refresh(userId);
 
-      // Fetch the config again to get provider config values
-      const fullConfig = await llmConfigRepo.findByProvider(userId, config.provider);
-      const llmConfig = fullConfig ? llmConfigRepo.toILLMConfig(fullConfig) : null;
-
       return res.json({
         success: true,
         config: {
           id: config.id,
+          configScope: config.config_scope,
           provider: config.provider,
-          apiKey: llmConfig?.apiKey || '',
-          baseURL: llmConfig?.baseURL,
+          apiKey: config.api_key,
+          baseURL: config.base_url,
           model: config.model,
           temperature: config.temperature,
           maxTokens: config.max_tokens,
@@ -237,18 +226,15 @@ export class LLMConfigController {
 
       // Refresh LLM manager to use new config immediately
       await llmManager.refresh(userId);
-
-      // Fetch the config again to get provider config values
-      const fullConfig = await llmConfigRepo.findByProvider(userId, config.provider);
-      const llmConfig = fullConfig ? llmConfigRepo.toILLMConfig(fullConfig) : null;
       
       return res.json({
         success: true,
         config: {
           id: config.id,
+          configScope: config.config_scope,
           provider: config.provider,
-          apiKey: llmConfig?.apiKey || '',
-          baseURL: llmConfig?.baseURL,
+          apiKey: config.api_key,
+          baseURL: config.base_url,
           model: config.model,
           temperature: config.temperature,
           maxTokens: config.max_tokens,
@@ -303,16 +289,18 @@ export class LLMConfigController {
     try {
       const userId = (req as any).userId || DEFAULT_USER_ID;
 
-      const providerConfigs = await providerConfigRepo.findByUserId(userId);
+      const providerConfigs = await llmConfigRepo.findProviderConfigs(userId);
 
       return res.json({
         success: true,
         providers: providerConfigs.map((config) => ({
+          id: config.id,
           provider: config.provider,
           apiKey: config.api_key,
           hasApiKey: !!config.api_key,
           baseURL: config.base_url,
           model: config.model,
+          isActive: config.is_active,
           createdAt: config.created_at,
           updatedAt: config.updated_at,
         })),
@@ -341,7 +329,7 @@ export class LLMConfigController {
         });
       }
 
-      const config = await providerConfigRepo.findByProvider(userId, provider as LLMProvider);
+      const config = await llmConfigRepo.findByProvider(userId, provider as LLMProvider);
 
       if (!config) {
         return res.status(404).json({
@@ -352,10 +340,12 @@ export class LLMConfigController {
       return res.json({
         success: true,
         provider: {
+          id: config.id,
           provider: config.provider,
           apiKey: config.api_key,
           baseURL: config.base_url,
           model: config.model,
+          isActive: config.is_active,
           createdAt: config.created_at,
           updatedAt: config.updated_at,
         },
@@ -390,12 +380,12 @@ export class LLMConfigController {
         });
       }
 
-      const config = await providerConfigRepo.upsert({
+      const config = await llmConfigRepo.upsertProvider({
         userId,
         provider: provider as LLMProvider,
         apiKey,
         baseURL,
-        model,
+        model: model || 'default',
       });
 
       logger.info(`LLMConfigController: Provider configuration upserted`, {
@@ -409,10 +399,12 @@ export class LLMConfigController {
       return res.json({
         success: true,
         provider: {
+          id: config.id,
           provider: config.provider,
           apiKey: config.api_key,
           baseURL: config.base_url,
           model: config.model,
+          isActive: config.is_active,
           createdAt: config.created_at,
           updatedAt: config.updated_at,
         },
@@ -425,5 +417,153 @@ export class LLMConfigController {
       });
     }
   }
-}
 
+  /**
+   * Get role-specific LLM configurations
+   * GET /api/config/llm/roles
+   */
+  static async listRoleConfigs(req: Request, res: Response) {
+    try {
+      const userId = (req as any).userId || DEFAULT_USER_ID;
+
+      const roleConfigs = await llmConfigRepo.findRoleConfigs(userId);
+
+      return res.json({
+        success: true,
+        roleConfigs: roleConfigs.map((config) => ({
+          id: config.id,
+          roleProfile: config.role_profile,
+          provider: config.provider,
+          model: config.model,
+          baseURL: config.base_url,
+          temperature: config.temperature,
+          maxTokens: config.max_tokens,
+          repository: config.repository,
+          branchName: config.branch_name,
+          autoCreatePr: config.auto_create_pr,
+          createdAt: config.created_at,
+          updatedAt: config.updated_at,
+        })),
+      });
+    } catch (error: any) {
+      logger.error('LLMConfigController: Failed to list role configs:', error);
+      return res.status(500).json({
+        error: 'Failed to list role configurations',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Upsert role-specific LLM configuration
+   * POST /api/config/llm/roles
+   */
+  static async upsertRoleConfig(req: Request, res: Response) {
+    try {
+      const userId = (req as any).userId || DEFAULT_USER_ID;
+      const { roleProfile, provider, apiKey, baseURL, model, temperature, maxTokens, repository, branchName, autoCreatePr } = req.body;
+
+      if (!roleProfile || !provider || !model) {
+        return res.status(400).json({
+          error: 'Missing required fields: roleProfile, provider, and model',
+        });
+      }
+
+      const config = await llmConfigRepo.upsertRole({
+        userId,
+        roleProfile,
+        provider: provider as LLMProvider,
+        apiKey,
+        baseURL,
+        model,
+        temperature: temperature !== undefined ? parseFloat(temperature) : undefined,
+        maxTokens: maxTokens !== undefined ? parseInt(maxTokens, 10) : undefined,
+        repository,
+        branchName,
+        autoCreatePr: autoCreatePr !== undefined ? Boolean(autoCreatePr) : undefined,
+      });
+
+      logger.info(`LLMConfigController: Role configuration upserted`, {
+        userId,
+        roleProfile,
+        provider,
+      });
+
+      return res.json({
+        success: true,
+        roleConfig: {
+          id: config.id,
+          roleProfile: config.role_profile,
+          provider: config.provider,
+          model: config.model,
+          baseURL: config.base_url,
+          temperature: config.temperature,
+          maxTokens: config.max_tokens,
+          repository: config.repository,
+          branchName: config.branch_name,
+          autoCreatePr: config.auto_create_pr,
+          createdAt: config.created_at,
+          updatedAt: config.updated_at,
+        },
+      });
+    } catch (error: any) {
+      logger.error('LLMConfigController: Failed to upsert role config:', error);
+      return res.status(500).json({
+        error: 'Failed to save role configuration',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Get all LLM models grouped by provider
+   * GET /api/config/llm/models
+   * Returns distinct models from user configurations
+   */
+  static async listModels(_req: Request, res: Response) {
+    try {
+      const modelsGrouped = await llmConfigRepo.getModelsGroupedByProvider();
+
+      return res.json({
+        success: true,
+        models: modelsGrouped,
+      });
+    } catch (error: any) {
+      logger.error('LLMConfigController: Failed to list models:', error);
+      return res.status(500).json({
+        error: 'Failed to list LLM models',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Get LLM models by provider
+   * GET /api/config/llm/models/:provider
+   * Returns distinct models for a specific provider from user configurations
+   */
+  static async listModelsByProvider(req: Request, res: Response) {
+    try {
+      const { provider } = req.params;
+
+      if (!provider) {
+        return res.status(400).json({
+          error: 'Provider parameter is required',
+        });
+      }
+
+      const models = await llmConfigRepo.getModelsByProvider(provider);
+
+      return res.json({
+        success: true,
+        models,
+      });
+    } catch (error: any) {
+      logger.error('LLMConfigController: Failed to list models by provider:', error);
+      return res.status(500).json({
+        error: 'Failed to list LLM models by provider',
+        message: error.message,
+      });
+    }
+  }
+}

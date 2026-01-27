@@ -7,17 +7,13 @@ import { Request, Response } from 'express';
 import { ProjectRepository, MessageRepository, DocumentRepository } from '../../database';
 import { Context } from '../../core/context/Context';
 import { Team } from '../../orchestration/Team';
-import { Salesperson } from '../../roles/Salesperson';
-import { ProductManager } from '../../roles/ProductManager';
-import { Architect } from '../../roles/Architect';
-import { ProjectManager as ProjectManagerRole } from '../../roles/ProjectManager';
-import { Engineer } from '../../roles/Engineer';
-import { QAEngineer } from '../../roles/QAEngineer';
-// import { ProjectManager } from '../../orchestration/ProjectManager'; // Unused
-import { logger } from '../../utils';
+// Role imports removed - now using RoleActionFactory for dynamic role instantiation
+import { logger, WorkspaceManager } from '../../utils';
 import { ProjectStatus } from '@mind2build/shared';
 import { WorkflowService } from '../../services/WorkflowService';
 import { RoleActionFactory } from '../../services/RoleActionFactory';
+import { createLLM } from '../../providers/llm/factory';
+import { LLMConfigRepository } from '../../database/repositories/LLMConfigRepository';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -27,7 +23,66 @@ const documentRepo = new DocumentRepository();
 // const projectManager = new ProjectManager(); // Unused for now
 
 // Default user UUID (created during database migration)
-const DEFAULT_USER_ID = '302769d6-247d-43db-a005-0519712255fb';
+const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
+
+/**
+ * Check if a string contains Chinese characters
+ */
+function containsChinese(str: string): boolean {
+  return /[\u4e00-\u9fa5]/.test(str);
+}
+
+/**
+ * Translate project name to English alias using LLM
+ * Returns the original name formatted as slug if translation fails or no Chinese
+ */
+async function translateToAlias(name: string): Promise<string> {
+  // If no Chinese, just convert to slug format
+  if (!containsChinese(name)) {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .replace(/-+/g, '-');
+  }
+
+  try {
+    const llmConfigRepo = new LLMConfigRepository();
+    // Use findActive with DEFAULT_USER_ID to get the active LLM config
+    const configRow = await llmConfigRepo.findActive(DEFAULT_USER_ID);
+    if (!configRow) {
+      logger.warn('No LLM config found for translation, using original name');
+      return name
+        .toLowerCase()
+        .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    }
+
+    // Convert database row to ILLMConfig format
+    const config = llmConfigRepo.toILLMConfig(configRow);
+    const llm = createLLM(config);
+    const result = await llm.aask(
+      `Translate the following project name to English, output ONLY lowercase words separated by hyphens (like "user-management-system"), no explanation or other text:\n\n${name}`,
+      ['You are a translator. Output only the translation in slug format (lowercase-with-hyphens), nothing else.']
+    );
+
+    const alias = result
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .replace(/-+/g, '-');
+
+    logger.info('Translated project name to alias', { name, alias });
+    return alias;
+  } catch (error: any) {
+    logger.warn('Failed to translate project name, using original', { name, error: error.message });
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+}
 
 export class ProjectController {
   /**
@@ -35,12 +90,12 @@ export class ProjectController {
    */
   static async create(req: Request, res: Response) {
     try {
-      const { name, idea, description, investment, nRound, applicationId } = req.body;
+      const { name, idea, description, investment, nRound: _nRound, applicationId, gitRepoUrl } = req.body;
       const userId = (req as any).userId || DEFAULT_USER_ID; // From auth middleware
 
-      if (!name || !idea) {
+      if (!name) {
         return res.status(400).json({
-          error: 'Missing required fields: name, idea',
+          error: 'Missing required field: name',
         });
       }
 
@@ -55,24 +110,34 @@ export class ProjectController {
         });
       }
 
+      // Generate English alias for Git branch names
+      const nameAlias = await translateToAlias(name);
+
       // Create project in database
       const project = await projectRepo.create({
         userId,
         name,
+        nameAlias,
         idea,
         description,
-        investment: investment || 10.0,
-        nRound: nRound || 5,
+        budget: investment || 10.0,  // V2: renamed from investment to budget
         applicationId,
+        gitRepoUrl,
       });
 
-      logger.info(`Project created: ${project.id}`);
+      logger.info(`Project created: ${project.id}`, { 
+        gitRepoUrl: gitRepoUrl || 'none',
+        nameAlias,
+      });
+
+      // Note: Version must be created manually through the version management page
 
       return res.status(201).json({
         success: true,
         project: {
           id: project.id,
           name: project.name,
+          nameAlias: project.name_alias,
           status: project.status,
           createdAt: project.created_at,
         },
@@ -107,7 +172,7 @@ export class ProjectController {
 
       // Start execution in background
       const userId = (req as any).userId || DEFAULT_USER_ID;
-      ProjectController.executeProject(id, project.idea, project.investment, project.n_round || 1, userId)
+      ProjectController.executeProject(id, project.idea, project.budget, 1, userId)
         .catch((error) => {
           logger.error(`Project ${id} execution failed:`, error);
         });
@@ -165,17 +230,9 @@ export class ProjectController {
           workflowName: workflow.name,
         });
       } else {
-        // No application ID, use default hardcoded workflow
-        logger.info(`Project ${projectId} has no application_id, using default hardcoded workflow`);
-        team = new Team(ctx);
-        team.hire([
-          new Salesperson(ctx),
-          new ProductManager(ctx),
-          new Architect(ctx),
-          new ProjectManagerRole(ctx),
-          new Engineer(ctx),
-          new QAEngineer(ctx),
-        ]);
+        // No application ID, use default team from factory
+        logger.info(`Project ${projectId} has no application_id, using default team from registry`);
+        team = RoleActionFactory.createDefaultTeam(ctx);
       }
 
       // Set investment
@@ -300,7 +357,7 @@ export class ProjectController {
           idea: project.idea,
           progress: project.progress || 0,
           totalCost: parseFloat(project.total_cost?.toString() || '0'),
-          investment: parseFloat(project.investment?.toString() || '10'),
+          budget: parseFloat(project.budget?.toString() || '10'),
           messageCount,
           createdAt: project.created_at,
           completedAt: project.completed_at,
@@ -321,25 +378,8 @@ export class ProjectController {
    */
   private static findProjectInWorkspace(projectId: string): { name?: string; idea?: string; applicationId?: string; createdAt?: Date } | null {
     try {
-      // Calculate workspace root
-      const possibleRoots = [
-        path.resolve(__dirname, '../../../'),
-        path.resolve(__dirname, '../../../../'),
-        process.cwd(),
-      ];
-
-      let projectRoot = possibleRoots[0];
-      for (const root of possibleRoots) {
-        if (
-          fs.existsSync(path.join(root, 'pnpm-workspace.yaml')) ||
-          fs.existsSync(path.join(root, 'package.json'))
-        ) {
-          projectRoot = root;
-          break;
-        }
-      }
-
-      const workspaceRoot = process.env.WORKSPACE_PATH || path.join(projectRoot, 'workspace');
+      // 统一使用 WorkspaceManager 获取 workspace 根目录（绝对路径）
+      const workspaceRoot = WorkspaceManager.getWorkspaceRoot();
 
       if (!fs.existsSync(workspaceRoot)) {
         return null;
@@ -596,6 +636,230 @@ export class ProjectController {
       return res.status(500).json({
         error: 'Failed to download zip',
         message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Download workspace code (full ainative-workspace directory)
+   * GET /api/projects/:id/download/code
+   */
+  static async downloadCode(req: Request, res: Response) {
+    try {
+      const { id: projectId } = req.params;
+
+      // Get project to find applicationId
+      const project = await projectRepo.findById(projectId);
+
+      if (!project) {
+        return res.status(404).json({
+          error: 'Project not found',
+        });
+      }
+
+      if (!project.application_id) {
+        return res.status(400).json({
+          error: 'Project does not have an associated application',
+        });
+      }
+
+      const { WorkspaceManager } = await import('../../utils/WorkspaceManager');
+      const { createZipFromDirectory } = await import('../../utils/zipUtils');
+
+      // Get workspace path
+      const workspacePath = WorkspaceManager.getProjectWorkspacePath({
+        applicationId: project.application_id,
+        projectId: projectId,
+      });
+
+      // Check if workspace exists
+      if (!fs.existsSync(workspacePath)) {
+        return res.status(404).json({
+          error: 'Workspace not found',
+          message: '工作区目录不存在，可能还未生成代码',
+        });
+      }
+
+      // Create temp directory for zip
+      const tempDir = path.join(process.cwd(), 'temp');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      // Generate zip file with clean filename
+      // Format: 项目名称-全部代码-YYYYMMDD-HHMMSS.zip
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
+      const safeProjectName = (project.name || 'project').replace(/[<>:"/\\|?*\s]/g, '_').slice(0, 50);
+      const zipFileName = `${safeProjectName}-全部代码-${dateStr}-${timeStr}.zip`;
+      const zipPath = path.join(tempDir, zipFileName);
+
+      await createZipFromDirectory(workspacePath, zipPath, { includeRoot: true });
+
+      // Send file
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(zipFileName)}`);
+
+      const fileStream = fs.createReadStream(zipPath);
+      fileStream.pipe(res);
+
+      // Clean up zip file after sending (with delay to ensure stream completes)
+      fileStream.on('close', () => {
+        setTimeout(() => {
+          try {
+            fs.unlinkSync(zipPath);
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+        }, 5000);
+      });
+
+      logger.info(`API: Downloaded workspace code for project ${projectId}`, {
+        projectId,
+        applicationId: project.application_id,
+        zipPath,
+      });
+      // File is being streamed, no explicit return needed
+      return;
+    } catch (error: any) {
+      logger.error('API: Error downloading workspace code', error);
+      return res.status(500).json({
+        error: error.message || 'Failed to download workspace code',
+      });
+    }
+  }
+
+  /**
+   * Download workspace docs (docs and openspec directories)
+   * GET /api/projects/:id/download/docs
+   */
+  static async downloadDocs(req: Request, res: Response) {
+    try {
+      const { id: projectId } = req.params;
+
+      // Get project to find applicationId
+      const project = await projectRepo.findById(projectId);
+
+      if (!project) {
+        return res.status(404).json({
+          error: 'Project not found',
+        });
+      }
+
+      if (!project.application_id) {
+        return res.status(400).json({
+          error: 'Project does not have an associated application',
+        });
+      }
+
+      const { WorkspaceManager } = await import('../../utils/WorkspaceManager');
+      const archiver = (await import('archiver')).default;
+
+      // Get workspace path
+      const workspacePath = WorkspaceManager.getProjectWorkspacePath({
+        applicationId: project.application_id,
+        projectId: projectId,
+      });
+
+      // Check if workspace exists
+      if (!fs.existsSync(workspacePath)) {
+        return res.status(404).json({
+          error: 'Workspace not found',
+          message: '工作区目录不存在，可能还未生成文档',
+        });
+      }
+
+      const docsPath = path.join(workspacePath, 'docs');
+      const openspecPath = path.join(workspacePath, 'openspec');
+
+      // Check if at least one directory exists
+      const docsExists = fs.existsSync(docsPath);
+      const openspecExists = fs.existsSync(openspecPath);
+
+      if (!docsExists && !openspecExists) {
+        return res.status(404).json({
+          error: 'No documents found',
+          message: 'docs 和 openspec 目录均不存在',
+        });
+      }
+
+      // Create temp directory for zip
+      const tempDir = path.join(process.cwd(), 'temp');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      // Generate zip file with clean filename
+      // Format: 项目名称-文档-YYYYMMDD-HHMMSS.zip
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
+      const safeProjectName = (project.name || 'project').replace(/[<>:"/\\|?*\s]/g, '_').slice(0, 50);
+      const zipFileName = `${safeProjectName}-文档-${dateStr}-${timeStr}.zip`;
+      const zipPath = path.join(tempDir, zipFileName);
+
+      // Create zip with both directories
+      await new Promise<void>((resolve, reject) => {
+        const output = fs.createWriteStream(zipPath);
+        const archive = archiver('zip', {
+          zlib: { level: 9 },
+        });
+
+        output.on('close', () => {
+          resolve();
+        });
+
+        archive.on('error', (err: Error) => {
+          reject(err);
+        });
+
+        archive.pipe(output);
+
+        // Add docs directory if exists
+        if (docsExists) {
+          archive.directory(docsPath, 'docs');
+        }
+
+        // Add openspec directory if exists
+        if (openspecExists) {
+          archive.directory(openspecPath, 'openspec');
+        }
+
+        archive.finalize();
+      });
+
+      // Send file
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(zipFileName)}`);
+
+      const fileStream = fs.createReadStream(zipPath);
+      fileStream.pipe(res);
+
+      // Clean up zip file after sending (with delay to ensure stream completes)
+      fileStream.on('close', () => {
+        setTimeout(() => {
+          try {
+            fs.unlinkSync(zipPath);
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+        }, 5000);
+      });
+
+      logger.info(`API: Downloaded workspace docs for project ${projectId}`, {
+        projectId,
+        applicationId: project.application_id,
+        docsExists,
+        openspecExists,
+        zipPath,
+      });
+      // File is being streamed, no explicit return needed
+      return;
+    } catch (error: any) {
+      logger.error('API: Error downloading workspace docs', error);
+      return res.status(500).json({
+        error: error.message || 'Failed to download workspace docs',
       });
     }
   }

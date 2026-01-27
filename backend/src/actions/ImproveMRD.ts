@@ -1,6 +1,8 @@
 /**
  * ImproveMRD Action
  * Improves Market Research Document (MRD) based on review reports
+ * 
+ * 使用 DocumentImproveHandler 统一处理 CLI 和 LLM 双模式逻辑
  */
 
 import { BaseAction } from '../core/base/BaseAction';
@@ -9,7 +11,12 @@ import {
   MRD_IMPROVE_SYSTEM_PROMPT,
   buildMRDImprovePrompt,
 } from '../prompts/mrd';
-import { logger, loadPrompt, WorkspaceOptions } from '../utils';
+import { logger, WorkspaceOptions } from '../utils';
+import {
+  DocumentImproveHandler,
+  DOCUMENT_CONFIGS,
+  ImproveConfig,
+} from '../utils/document';
 
 export interface ImproveMRDOptions extends WorkspaceOptions {
   reviewReport?: string; // Review report content, if not provided, will be read from workspace
@@ -20,118 +27,50 @@ export class ImproveMRD extends BaseAction {
     super('ImproveMRD', 'Improve Market Research Document (MRD) based on review reports');
   }
 
+  /**
+   * 创建 ImproveHandler
+   */
+  private async createImproveHandler(): Promise<DocumentImproveHandler> {
+    const systemPrompt = await this.loadSystemPrompt('mrd', 'improve_system_prompt', MRD_IMPROVE_SYSTEM_PROMPT);
+
+    const config: ImproveConfig = {
+      ...DOCUMENT_CONFIGS.MRD,
+      buildImprovePrompt: buildMRDImprovePrompt,
+      systemPrompt,
+      reviewReportPattern: /#\s*市场研究文档\s*审查报告/,
+    };
+
+    return new DocumentImproveHandler(this, config);
+  }
+
   async run(
     input: string, // Review report content or MRD content
     options?: ImproveMRDOptions
   ): Promise<IActionOutput> {
-    // Try to get applicationId from options or context
-    let applicationId = options?.applicationId;
-    if (!applicationId) {
-      // Try to get from context
-      applicationId = this.context?.get('applicationId') as string | undefined;
-    }
-
-    if (!applicationId) {
-      throw new Error('applicationId is required for ImproveMRD action. Please provide it in options or context.');
-    }
-
-    const projectId = options?.projectId || (this.context?.get('projectId') as string | undefined);
-    const version = options?.version || (this.context?.get('version') as number | undefined) || 1;
+    // 使用 BaseAction 提供的验证方法
+    const workspaceOptions = this.validateWorkspaceOptions(options, 'MRD');
+    const { applicationId, projectId, version } = workspaceOptions;
 
     logger.info('ImproveMRD: Starting MRD improvement', {
       applicationId,
+      projectId,
       version,
       hasReviewReport: !!options?.reviewReport,
       inputLength: input.length,
+      isCLIMode: this.isCLIMode(),
     });
 
     try {
-      // Step 1: Read current MRD document
-      const currentMRD = await this.readWorkspaceFile('MRD.md', {
-        applicationId,
-        projectId,
-        version,
+      // 使用缓存的 handler 和封装的执行方法
+      const handler = await this.getCachedHandler('improve', () => this.createImproveHandler());
+      return await this.executeImproveHandler(handler, input, {
+        ...workspaceOptions,
+        reviewReport: options?.reviewReport,
+      }, {
+        type: 'mrd_improved',
         documentType: 'MRD',
-        workspacePath: options?.workspacePath,
+        filename: 'MRD.md',
       });
-
-      if (!currentMRD) {
-        throw new Error(
-          'Cannot find MRD document in workspace. Please generate it first.'
-        );
-      }
-
-      // Step 2: Read review report
-      // If input itself is review report content, use input first
-      let reviewReport = options?.reviewReport;
-
-      // If review report is not provided, try to read from workspace
-      if (!reviewReport) {
-        // Check if input looks like a review report (contains "审查报告" or "改进建议" keywords)
-        if (input && (input.includes('审查报告') || input.includes('改进建议'))) {
-          reviewReport = input;
-          logger.info('ImproveMRD: Using input as review report', {
-            inputLength: input.length,
-          });
-        } else {
-          // Read review report from workspace
-          const reportFromWorkspace = await this.readReviewReport({
-            applicationId,
-            projectId,
-            version,
-            documentType: 'MRD',
-            workspacePath: options?.workspacePath,
-          });
-          reviewReport = reportFromWorkspace || undefined;
-        }
-      }
-
-      if (!reviewReport) {
-        throw new Error(
-          'Cannot find review report for MRD. Please provide review report as input or run MRDReview first.'
-        );
-      }
-
-      logger.info('ImproveMRD: Loaded documents', {
-        mrdLength: currentMRD.length,
-        reviewReportLength: reviewReport.length,
-      });
-
-      // Step 3: Remove review report section from current document (if exists), keep only original document content
-      const cleanMRD = this.removeReviewReport(currentMRD);
-
-      // Step 4: Improve document based on review report
-      let improvedMRD = await this.improveMRD(
-        cleanMRD,
-        reviewReport
-      );
-
-      // Step 5: Ensure improved document does not contain review report section (remove again, in case LLM added review report during improvement)
-      improvedMRD = this.removeReviewReport(improvedMRD);
-
-      // Step 6: Save improved document
-      await this.saveToWorkspace('MRD.md', improvedMRD, {
-        applicationId,
-        projectId,
-        version,
-        documentType: 'MRD',
-        workspacePath: options?.workspacePath,
-      });
-
-      logger.info('ImproveMRD: MRD improved and saved', {
-        improvedLength: improvedMRD.length,
-      });
-
-      return {
-        content: improvedMRD,
-        data: {
-          type: 'mrd_improved',
-          documentType: 'MRD',
-          timestamp: new Date().toISOString(),
-          originalLength: currentMRD.length,
-          improvedLength: improvedMRD.length,
-        },
-      };
     } catch (error: any) {
       logger.error('ImproveMRD: Failed to improve MRD', {
         error: error.message,
@@ -140,123 +79,6 @@ export class ImproveMRD extends BaseAction {
       throw error;
     }
   }
-
-  /**
-   * Read review report
-   */
-  private async readReviewReport(
-    options: any
-  ): Promise<string | null> {
-    // Try to read review report file
-    let reviewReport = await this.readWorkspaceFile('MRD_REVIEW.md', options);
-
-    // If review report file is not found, try to extract from the end of main document (some review reports are appended at the end of document)
-    if (!reviewReport) {
-      const mainDocument = await this.readWorkspaceFile('MRD.md', options);
-      if (mainDocument) {
-        // Try to extract review report section (usually at the end of document, separated by "---", then starts with review report title)
-        const reviewPattern = /---\s*\n\s*#\s*市场研究文档\s*审查报告[\s\S]*$/;
-        const simplePattern = /#\s*市场研究文档\s*审查报告[\s\S]*$/;
-
-        const reviewMatch = mainDocument.match(reviewPattern);
-        if (reviewMatch) {
-          // Remove leading "---" separator
-          reviewReport = reviewMatch[0].replace(/^---\s*\n\s*/, '');
-        } else {
-          // If separator is not found, try to match review report title directly
-          const simpleMatch = mainDocument.match(simplePattern);
-          if (simpleMatch) {
-            reviewReport = simpleMatch[0];
-          }
-        }
-      }
-    }
-
-    return reviewReport;
-  }
-
-  /**
-   * Improve MRD document
-   */
-  private async improveMRD(
-    currentMRD: string,
-    reviewReport: string
-  ): Promise<string> {
-    // Load system prompt from database or use default
-    const userId = this.context?.get('userId');
-    const systemPrompt = await loadPrompt(
-      userId,
-      'mrd',
-      'improve_system_prompt',
-      MRD_IMPROVE_SYSTEM_PROMPT
-    );
-
-    // Build improvement prompt
-    const prompt = buildMRDImprovePrompt(currentMRD, reviewReport);
-
-    // Call LLM to improve document
-    const improvedMRD = await this.aask(prompt, [systemPrompt]);
-
-    logger.info('ImproveMRD: MRD improved by LLM', {
-      improvedLength: improvedMRD.length,
-    });
-
-    return improvedMRD;
-  }
-
-  /**
-   * Remove review report section from document
-   * Note: Only remove review report title and content after it, preserve other --- separators in document
-   */
-  private removeReviewReport(document: string): string {
-    // Define review report title pattern (match # 市场研究文档 审查报告 or # 市场研究文档审查报告)
-    const reviewTitlePattern = /#\s*市场研究文档\s*审查报告/;
-
-    // Find the position of review report title
-    const titleMatchIndex = document.search(reviewTitlePattern);
-
-    if (titleMatchIndex === -1) {
-      // If review report title is not found, return original document
-      return document;
-    }
-
-    // Get content before review report title
-    let beforeTitle = document.substring(0, titleMatchIndex);
-
-    // Only remove the "---" separator that is immediately before the review report title (if exists)
-    // Do not remove other --- separators in the document, as they may be separators between sections
-    // Only check if the last few lines are --- separator
-    const lines = beforeTitle.split('\n');
-
-    // Check from back to front, only remove empty lines and --- separator that are immediately before the title
-    let trimEnd = lines.length;
-    for (let i = lines.length - 1; i >= 0 && i >= lines.length - 5; i--) {
-      const line = lines[i].trim();
-      if (line === '') {
-        // Empty line, continue checking
-        trimEnd = i;
-      } else if (line === '---') {
-        // Found adjacent separator, remove it and subsequent empty lines
-        trimEnd = i;
-        break;
-      } else {
-        // Encountered non-empty, non-separator line, stop checking
-        break;
-      }
-    }
-
-    // Return processed content
-    const result = lines.slice(0, trimEnd).join('\n').trim();
-
-    logger.info('ImproveMRD: Removed review report from document', {
-      originalLength: document.length,
-      resultLength: result.length,
-      removedFromIndex: titleMatchIndex,
-    });
-
-    return result;
-  }
 }
 
 export default ImproveMRD;
-

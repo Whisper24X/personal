@@ -2,6 +2,18 @@
  * PRD（产品需求文档）提示词 - 研发&交互可执行增强版
  */
 
+import {
+  StructuredKnowledgeContext,
+  formatStructuredKnowledge,
+  isKnowledgeContextEmpty,
+  STRUCTURED_KNOWLEDGE_INSTRUCTION,
+  PRD_KNOWLEDGE_REQUIREMENTS,
+} from './knowledge';
+
+// 重新导出类型供外部使用
+export type { StructuredKnowledgeContext };
+export { formatStructuredKnowledge, isKnowledgeContextEmpty };
+
 export const PRD_SYSTEM_PROMPT = `
 你是一位资深产品经理，长期与前端、后端、测试、交互设计师协作，
 擅长输出「研发可直接执行」的产品需求文档（PRD）。
@@ -347,11 +359,77 @@ flowchart TD
 </details>
 `;
 
-export function buildPRDPrompt(input: string): string {
+/**
+ * 知识输入引用（CLI 模式使用）
+ * 指示 CLI 参考工作目录中的历史文档和代码
+ */
+export const KNOWLEDGE_INPUT_REFERENCE_PRD = `
+【重要：知识输入】
+请参考以下目录中的历史文档和代码作为知识输入（这些是重要依据）：
+
+1. 归档历史文档（docs-archive/）：
+   - docs-archive/prd/: 历史 PRD 文档版本（保持一致性）
+   - docs-archive/mrd/: 历史 MRD 文档版本
+
+2. 当前 MRD 文档：
+   - docs/mrd/: 当前正在生成的 MRD 文档
+
+3. 业务知识库（docs/business-knowledge/）：
+   - 业务方上传的产品规范、业务流程等知识文档
+   - 这些是重要的业务背景和约束条件
+
+4. 代码实现：
+   - ainative-app/src/: 移动端代码实现（了解现有功能）
+   - ainative-backend/: 后端 API 和业务逻辑（了解接口规范）
+   - ainative-shadow/src/: 管理后台功能（了解管理功能）
+   - ainative-pc/src/: PC端代码实现
+
+5. 开发规范（docs/dev-spec/）：
+   - 各子项目的开发规范和架构说明
+
+【功能冲突检测】
+如果新功能与现有实现存在冲突，请在 PRD 中明确指出：
+- 冲突点描述
+- 需要修改的现有功能
+- 兼容性考虑
+- 建议解决方案
+`;
+
+/**
+ * 构建 PRD 生成提示词
+ * @param input MRD 内容
+ * @param knowledgeContext 可选的结构化知识上下文
+ * @returns PRD 生成提示词
+ */
+export function buildPRDPrompt(
+  input: string,
+  knowledgeContext?: StructuredKnowledgeContext
+): string {
+  // 格式化知识上下文
+  let knowledgeSection = '';
+  let knowledgeRequirements = '';
+  if (knowledgeContext && !isKnowledgeContextEmpty(knowledgeContext)) {
+    const formattedKnowledge = formatStructuredKnowledge(knowledgeContext);
+    knowledgeSection = `
+
+${STRUCTURED_KNOWLEDGE_INSTRUCTION}
+
+${formattedKnowledge}
+`;
+    knowledgeRequirements = `
+9. **参考知识库内容**：确保与术语词典、业务规则、历史PRD保持一致
+${PRD_KNOWLEDGE_REQUIREMENTS}`;
+  }
+
+  const sourceNote = knowledgeSection 
+    ? '\n- 引用知识库内容时需标注来源：> 📚 来源：[知识类型] - 文档名称' 
+    : '';
+
   return `基于以下市场研究文档（MRD），生成一份【研发与交互可直接执行】的产品需求文档（PRD）：
 
 【市场研究文档（MRD）】
 ${input}
+${knowledgeSection}
 
 【PRD 模板格式（必须严格遵循）】
 ${PRD_TEMPLATE}
@@ -364,7 +442,46 @@ ${PRD_TEMPLATE}
 5. **4.3 必须提供 Mermaid 流程图**，且与 4.1/4.2 的文字流程一致
 6. **5.3 关键页面说明按“用户动作 -> 系统反馈”展开**，覆盖入口、前置、输入校验、请求、成功/失败、异常、埋点/日志，并覆盖页面状态
 7. **6-10 章节必须可验证**：规则、权限、安全、异常、埋点、验收、上线回滚可测试/可观测
-8. 避免模糊表述；如需合理推断，明确标注为假设
+8. 避免模糊表述；如需合理推断，明确标注为假设${knowledgeRequirements}
+
+硬性要求：
+- 输出完整 Markdown PRD，必须包含模板主干章节（0-10章）
+- 内容不少于 3000 字
+- 不保留任何占位符或空表格/空清单
+- 章节编号和标题必须与模板完全一致
+- 10.1 验收标准必须使用可测试语句（Given/When/Then 或等价形式）${sourceNote}
+`;
+}
+
+/**
+ * 构建带知识输入引用的 PRD Prompt（CLI 模式使用）
+ * 包含对历史文档和代码的引用指令
+ * 
+ * @param input MRD 内容
+ * @returns 带知识输入引用的完整 prompt
+ */
+export function buildPRDPromptWithKnowledge(input: string): string {
+  return `${KNOWLEDGE_INPUT_REFERENCE_PRD}
+
+基于以下市场研究文档（MRD），生成一份【研发与交互可直接执行】的产品需求文档（PRD）：
+
+【市场研究文档（MRD）】
+${input}
+
+【PRD 模板格式（必须严格遵循）】
+${PRD_TEMPLATE}
+
+生成要求：
+1. **严格遵循 PRD 模板结构**：主干 0-10 章必须齐全；第 11 章按需可选但如出现标题必须一致；不要新增无关的 \`##\` 级章节（模板内角色关注块除外）
+2. **参考知识输入**：参考上述目录中的历史文档和代码，了解现有功能和设计
+3. **功能冲突检测**：如果新功能与现有实现冲突，请明确指出并提供解决方案
+4. **填充模板中的所有表格、清单、流程图**，不得留空或仅保留表头
+5. **不得出现占位符或未完成标记**（如 \`<...>\`/TBD/TODO/待补充）
+6. **信息不足必须写入「2.3 约束与假设」**，说明假设、影响与兜底
+7. **4.3 必须提供 Mermaid 流程图**，且与 4.1/4.2 的文字流程一致
+8. **5.3 关键页面说明按"用户动作 -> 系统反馈"展开**，覆盖入口、前置、输入校验、请求、成功/失败、异常、埋点/日志，并覆盖页面状态
+9. **6-10 章节必须可验证**：规则、权限、安全、异常、埋点、验收、上线回滚可测试/可观测
+10. 避免模糊表述；如需合理推断，明确标注为假设
 
 硬性要求：
 - 输出完整 Markdown PRD，必须包含模板主干章节（0-10章）
@@ -372,6 +489,7 @@ ${PRD_TEMPLATE}
 - 不保留任何占位符或空表格/空清单
 - 章节编号和标题必须与模板完全一致
 - 10.1 验收标准必须使用可测试语句（Given/When/Then 或等价形式）
+- 如果发现与现有功能的冲突，必须在「2.3 约束与假设」或相关章节中明确说明
 `;
 }
 
@@ -515,14 +633,42 @@ ${PRD_TEMPLATE}
 
 /**
  * 生成单个章节的详细内容
+ * @param input MRD 内容
+ * @param outline PRD 目录
+ * @param sectionNumber 章节编号
+ * @param sectionTitle 章节标题
+ * @param knowledgeContext 可选的结构化知识上下文
+ * @returns 章节生成提示词
  */
 export function buildPRDSectionPrompt(
   input: string,
   outline: string,
   sectionNumber: number,
-  sectionTitle: string
+  sectionTitle: string,
+  knowledgeContext?: StructuredKnowledgeContext
 ): string {
   const sectionTemplate = extractSectionTemplate(PRD_TEMPLATE, sectionNumber);
+
+  // 格式化知识上下文
+  let knowledgeSection = '';
+  if (knowledgeContext && !isKnowledgeContextEmpty(knowledgeContext)) {
+    const formattedKnowledge = formatStructuredKnowledge(knowledgeContext);
+    knowledgeSection = `
+${STRUCTURED_KNOWLEDGE_INSTRUCTION}
+
+${formattedKnowledge}
+
+【知识使用要求】
+- 必须使用术语词典中的标准术语
+- 必须检查历史PRD避免重复定义
+- 必须遵守业务规则和技术约束
+- 如有冲突，在章节内容中说明
+- 引用知识库内容时标注来源：> 📚 来源：[知识类型] - 文档名称
+`;
+  }
+
+  const knowledgeRequirement = knowledgeContext ? '\n7. 必须参考知识库内容，确保与现有知识一致' : '';
+  const sourceNote = knowledgeContext ? '\n- 引用知识库内容时需标注来源' : '';
 
   return `基于以下市场研究文档（MRD）和 PRD 目录，生成第 ${sectionNumber} 章「${sectionTitle}」的详细内容：
 
@@ -531,6 +677,7 @@ ${input}
 
 【PRD 目录】
 ${outline}
+${knowledgeSection}
 
 【PRD 模板（目标章节，必须严格对齐结构与格式）】
 ${sectionTemplate || '（未找到模板章节，请严格对齐既定模板结构）'}
@@ -544,13 +691,13 @@ ${sectionTemplate || '（未找到模板章节，请严格对齐既定模板结�
 3. 内容要详细、具体、可执行，避免空洞和占位符
 4. 若章节涉及流程/功能/规则/验收，请补齐触发条件、前置条件、主流程、异常流程、边界条件、验收标准
 5. 若章节为 2.3，必须写明假设及其影响；若章节为 4.3，必须输出 Mermaid 流程图
-6. 内容要面向研发和测试团队，确保可直接使用
+6. 内容要面向研发和测试团队，确保可直接使用${knowledgeRequirement}
 
 输出要求：
 - 只输出第 ${sectionNumber} 章的内容（包含章节标题）
 - 内容要充实，不少于 500 字
 - 使用 Markdown 格式
- - 不保留任何占位符或空表格/空清单
+- 不保留任何占位符或空表格/空清单${sourceNote}
 `;
 }
 
@@ -1051,7 +1198,9 @@ ${outline}
 export default {
   PRD_SYSTEM_PROMPT,
   PRD_TEMPLATE,
+  KNOWLEDGE_INPUT_REFERENCE_PRD,
   buildPRDPrompt,
+  buildPRDPromptWithKnowledge,
   buildPRDUpdatePrompt,
   buildPRDUpdateWithRAGPrompt,
   buildPRDWithRAGPrompt,
@@ -1065,4 +1214,7 @@ export default {
   PRD_IMPROVE_SYSTEM_PROMPT,
   buildPRDImprovePrompt,
   buildPRDSectionImprovePrompt,
+  // 新增：结构化知识相关导出
+  formatStructuredKnowledge,
+  isKnowledgeContextEmpty,
 };

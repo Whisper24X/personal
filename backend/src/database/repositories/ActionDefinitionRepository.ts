@@ -4,7 +4,6 @@
  */
 
 import { query } from '../client';
-import { logger } from '../../utils';
 
 export interface ActionDefinition {
   id: string;
@@ -179,7 +178,7 @@ export class ActionDefinitionRepository {
        WHERE name = $1`,
       [name]
     );
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   /**
@@ -187,6 +186,6 @@ export class ActionDefinitionRepository {
    */
   async hardDelete(name: string): Promise<boolean> {
     const result = await query(`DELETE FROM action_definitions WHERE name = $1`, [name]);
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 }

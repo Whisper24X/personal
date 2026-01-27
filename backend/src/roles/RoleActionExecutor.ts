@@ -22,6 +22,7 @@ export class RoleActionExecutor {
         'WriteTest',
         'WriteTestPlan',
         'ExecuteSubtask',
+        'Deploy',
         'ImprovePRD',
         'ImproveMRD',
         'ImproveDesign',
@@ -240,6 +241,39 @@ export class RoleActionExecutor {
     }
 
     /**
+     * Find document content from news or memory for Improve actions
+     * Same logic as prepareReviewInput, used as fallback when workspace file is empty
+     * 
+     * 使用反向查找，返回最后一个匹配的消息（通常有内容）
+     * 当有多个同名消息时，第一个可能是空的，最后一个通常是有内容的
+     */
+    private findDocumentFromMessages(writeActionName: string): string | undefined {
+        // 使用 filter + 取最后一个，而不是 find（取第一个）
+        // 这样当有多个同名消息时，返回最后一个（通常有内容）
+        const matchingMessages = this.rc.news.filter((msg) => msg.causeBy === writeActionName);
+        if (matchingMessages.length > 0) {
+            const docMessage = matchingMessages[matchingMessages.length - 1];
+            logger.info(`${this.profile} Improve: Found document content from news for fallback`, {
+                writeActionName,
+                docLength: docMessage.content.length,
+                matchCount: matchingMessages.length,
+            });
+            return docMessage.content;
+        }
+
+        const docMessages = this.rc.memory.getByAction(writeActionName);
+        if (docMessages.length > 0) {
+            logger.info(`${this.profile} Improve: Found document content from memory for fallback`, {
+                writeActionName,
+                docLength: docMessages[docMessages.length - 1].content.length,
+            });
+            return docMessages[docMessages.length - 1].content;
+        }
+
+        return undefined;
+    }
+
+    /**
      * Execute action with appropriate parameters
      */
     private async executeAction(
@@ -248,22 +282,6 @@ export class RoleActionExecutor {
         workspaceOptions: WorkspaceOptions | undefined
     ): Promise<any> {
         const actionStartTime = Date.now();
-
-        // Set abortSignal from StateManager if available
-        try {
-            const context = (action as any).context;
-            if (context) {
-                const stateManager = context.get?.('stateManager');
-                if (stateManager && typeof stateManager.getAbortSignal === 'function') {
-                    const abortSignal = stateManager.getAbortSignal();
-                    action.setAbortSignal(abortSignal);
-                }
-            }
-        } catch (error: any) {
-            logger.warn(`${this.profile} RoleActionExecutor: Failed to set abortSignal for action ${action.name}`, {
-                error: error.message,
-            });
-        }
 
         try {
             let result;
@@ -307,6 +325,24 @@ export class RoleActionExecutor {
         const actionName = action.name;
 
         switch (actionName) {
+            // Improve actions: pass documentContent for fallback when workspace file is empty
+            case 'ImprovePRD':
+                return await (action as any).run(input, {
+                    ...workspaceOptions,
+                    documentContent: this.findDocumentFromMessages('WritePRD'),
+                });
+            case 'ImproveMRD':
+                return await (action as any).run(input, {
+                    ...workspaceOptions,
+                    documentContent: this.findDocumentFromMessages('WriteMRD'),
+                });
+            case 'ImproveDesign':
+                return await (action as any).run(input, {
+                    ...workspaceOptions,
+                    documentContent: this.findDocumentFromMessages('WriteDesign'),
+                });
+
+            // Other actions with options
             case 'WriteMRD':
             case 'WritePRD':
             case 'WriteDesign':
@@ -314,9 +350,7 @@ export class RoleActionExecutor {
             case 'WriteTest':
             case 'WriteTestPlan':
             case 'ExecuteSubtask':
-            case 'ImprovePRD':
-            case 'ImproveMRD':
-            case 'ImproveDesign':
+            case 'Deploy':
             case 'MRDReview':
             case 'PRDReview':
             case 'DesignReview':

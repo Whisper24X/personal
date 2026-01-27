@@ -3,15 +3,16 @@
  * Generates Product Requirements Document from user idea
  *
  * 工作流程：
- * 1) 从 workspace 读取 MRD.md（需要 applicationId；失败或不存在则回退到 input）。
- * 2) 构造生成输入：RAG 模式下合并 MRD + 检索片段，否则仅使用 MRD。
- * 3) 选择生成路径：
- *    - 新建且启用分步：走 StepwiseDocumentGenerator（目录 -> 章节生成）。
- *    - 其他情况：走一次性生成（new/update、RAG/标准 prompt）。
- * 4) 加载系统提示词：生成用 system_prompt。
- * 5) 调用模型生成 PRD 各章节内容，保存到 workspace/PRD/ 目录。
- * 6) 返回章节文件列表信息，由 PRDReview 负责后续的审核和合并。
- * 7) 处理超时与错误：超时抛出更友好的提示，其余错误直接上抛。
+ * 1) CLI模式：使用 DocumentWriteHandler 直接生成（只传MRD文件夹路径）
+ * 2) LLM模式：
+ *    - 从 workspace 读取 MRD.md（需要 applicationId；失败或不存在则回退到 input）
+ *    - 构造生成输入：RAG 模式下合并 MRD + 检索片段，否则仅使用 MRD
+ *    - 选择生成路径：新建且启用分步走 StepwiseDocumentGenerator，其他走一次性生成
+ * 3) 加载系统提示词：生成用 system_prompt
+ * 4) 调用模型生成 PRD 各章节内容，保存到 workspace/PRD/ 目录
+ * 5) 返回章节文件列表信息，由 PRDReview 负责后续的审核和合并
+ * 
+ * Enhanced with knowledge integration for improved document generation
  */
 
 import { BaseAction } from '../core/base/BaseAction';
@@ -24,25 +25,31 @@ import {
   buildPRDWithRAGPrompt,
   buildPRDOutlinePrompt,
   buildPRDSectionPrompt,
+  StructuredKnowledgeContext,
 } from '../prompts/prd';
-import { logger, loadPrompt } from '../utils';
-// Review和ImproveDocument已移除，由角色通过消息机制管理
-import { StepwiseDocumentGenerator } from '../utils/StepwiseDocumentGenerator';
-import { WorkspaceManager } from '../utils/WorkspaceManager';
+import { logger } from '../utils';
+import { StepwiseDocumentGenerator } from '../utils/stepwise';
+import {
+  DocumentWriteHandler,
+  DOCUMENT_CONFIGS,
+  WriteConfig,
+} from '../utils/document';
+import { KnowledgeIntegrationService } from '../services/KnowledgeIntegrationService';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
 export interface WritePRDOptions {
   mode?: 'new' | 'update';
   historyPRD?: string;
-  relevantChunks?: string;
+  relevantChunks?: string; // RAG 检索到的相关文档片段（旧版兼容）
+  structuredKnowledge?: StructuredKnowledgeContext; // 结构化知识上下文（新版）
   useRAG?: boolean;
+  useKnowledgeIntegration?: boolean; // 是否使用知识整合服务
   useStepwiseGeneration?: boolean; // 是否使用分步骤生成
   applicationId?: string; // 应用ID，用于文件夹命名
   projectId?: string; // 项目ID，用于文件夹命名
+  versionId?: string; // 版本ID，用于定位版本工作空间
   includeOptionalSections?: boolean; // 是否包含可选章节（如第 11 章角色关注块）
-  /** @deprecated 版本控制已改用 git，此参数被忽略 */
-  version?: number;
 }
 
 export class WritePRD extends BaseAction {
@@ -50,73 +57,86 @@ export class WritePRD extends BaseAction {
     super('WritePRD', 'Generate Product Requirements Document from user idea');
   }
 
+  /**
+   * 创建 WriteHandler
+   */
+  private async createWriteHandler(): Promise<DocumentWriteHandler> {
+    const systemPrompt = await this.loadSystemPrompt('prd', 'system_prompt', PRD_SYSTEM_PROMPT);
+
+    const config: WriteConfig = {
+      ...DOCUMENT_CONFIGS.PRD,
+      buildWritePrompt: buildPRDPrompt,
+      systemPrompt,
+    };
+
+    return new DocumentWriteHandler(this, config);
+  }
+
   async run(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
     const mode = options?.mode || 'new';
     const useRAG = options?.useRAG || false;
+    const useKnowledgeIntegration = options?.useKnowledgeIntegration ?? false;
     const useStepwise = options?.useStepwiseGeneration ?? true; // 默认启用分步骤生成
 
-    // 优先从 workspace 读取 MRD.md 文件作为输入
-    let mrdContent = input;
+    // 使用 BaseAction 提供的验证方法
+    const workspaceOptions = this.validateWorkspaceOptions(options, 'PRD');
+    const { applicationId, projectId } = workspaceOptions;
+
+    const isCLIMode = this.isCLIMode();
+
+    logger.info('WritePRD: Starting PRD generation', {
+      applicationId,
+      projectId,
+      mode,
+      useRAG,
+      useKnowledgeIntegration,
+      useStepwise,
+      isCLIMode,
+      hasHistoryPRD: !!options?.historyPRD,
+      hasRelevantChunks: !!options?.relevantChunks,
+      hasStructuredKnowledge: !!options?.structuredKnowledge,
+      inputLength: input.length,
+    });
+
     try {
-      // applicationId 和 projectId 必须提供，不能使用 'default'
-      const applicationId = options?.applicationId || (this.context?.get('applicationId') as string | undefined);
-      const projectId = options?.projectId || (this.context?.get('projectId') as string | undefined);
-      if (!applicationId) {
-        throw new Error('applicationId is required for WritePRD action. Cannot use "default" to prevent file conflicts between different applications.');
-      }
-      if (!projectId) {
-        throw new Error('projectId is required for WritePRD action. Cannot use "default" to prevent file conflicts between different projects.');
+      // CLI模式：使用 BaseAction 封装的执行方法
+      // 不使用 StepwiseDocumentGenerator
+      if (isCLIMode && mode === 'new' && !options?.historyPRD) {
+        const handler = await this.getCachedHandler('write', () => this.createWriteHandler());
+        return await this.executeWriteHandler(handler, '', workspaceOptions, {
+          type: 'prd',
+          mode,
+        });
       }
 
-      const mrdFromWorkspace = await WorkspaceManager.readFile('MRD.md', {
-        applicationId,
-        projectId,
-        documentType: 'MRD',
-      });
-
+      // LLM模式：从 workspace 读取 MRD.md 文件作为输入
+      let mrdContent = input;
+      const mrdFromWorkspace = await this.loadDocumentFromWorkspace('MRD.md', workspaceOptions, 'MRD');
       if (mrdFromWorkspace) {
         mrdContent = mrdFromWorkspace;
-        logger.info('WritePRD: Loaded MRD content from workspace', {
-          applicationId,
-          projectId,
-          contentLength: mrdContent.length,
-        });
       } else {
         logger.info('WritePRD: MRD.md not found in workspace, using input from message', {
           inputLength: input.length,
         });
       }
-    } catch (error: any) {
-      logger.warn('WritePRD: Failed to read MRD.md from workspace, using input from message', {
-        error: error.message,
-        inputLength: input.length,
-      });
-      // 如果读取失败，使用传入的 input
-    }
 
-    logger.info('WritePRD: Starting PRD generation', {
-      applicationId: options?.applicationId || (this.context?.get('applicationId') as string | undefined),
-      projectId: options?.projectId || (this.context?.get('projectId') as string | undefined),
-      mode,
-      useRAG,
-      useStepwise,
-      hasHistoryPRD: !!options?.historyPRD,
-      hasRelevantChunks: !!options?.relevantChunks,
-      requestTimeout: process.env.REQUEST_TIMEOUT || '300',
-      inputLength: input.length,
-      mrdContentLength: mrdContent.length,
-      usingWorkspaceMRD: mrdContent !== input,
-    });
+      // 如果启用知识整合但没有提供结构化知识，尝试获取
+      let knowledgeContext = options?.structuredKnowledge;
+      if (useKnowledgeIntegration && !knowledgeContext && projectId) {
+        knowledgeContext = await this.getKnowledgeContext(projectId, mrdContent);
+      }
 
-    try {
       const ragQuery = input && input.trim().length > 0 ? input : mrdContent;
       const stepwiseInput = useRAG && options?.relevantChunks
         ? `${mrdContent}\n\n【相关历史PRD参考信息】\n${options.relevantChunks}`
         : mrdContent;
 
-      // 如果启用分步骤生成且是新模式，使用分步骤生成
+      // LLM模式：如果启用分步骤生成且是新模式，使用分步骤生成
       if (useStepwise && mode === 'new' && !options?.historyPRD) {
-        return await this.generateStepwise(stepwiseInput, options);
+        return await this.generateStepwise(stepwiseInput, {
+          ...options,
+          structuredKnowledge: knowledgeContext,
+        });
       }
 
       // 否则使用传统的一次性生成
@@ -136,9 +156,13 @@ export class WritePRD extends BaseAction {
           prompt = buildPRDUpdatePrompt(options.historyPRD, mrdContent);
           logger.info('WritePRD: Using update mode with history PRD');
         }
+      } else if (knowledgeContext) {
+        // 使用结构化知识上下文
+        prompt = buildPRDPrompt(mrdContent, knowledgeContext);
+        logger.info('WritePRD: Using structured knowledge context');
       } else if (useRAG) {
         if (options?.relevantChunks) {
-          // RAG mode: use retrieved chunks + new requirements
+          // RAG mode: use retrieved chunks + new requirements (旧版兼容)
           prompt = buildPRDWithRAGPrompt(ragQuery, options.relevantChunks, mrdContent);
           logger.info('WritePRD: Using RAG mode with relevant chunks');
         } else {
@@ -152,8 +176,7 @@ export class WritePRD extends BaseAction {
       }
 
       // Load system prompt from database or use default
-      const userId = this.context?.get('userId');
-      const systemPrompt = await loadPrompt(userId, 'prd', 'system_prompt', PRD_SYSTEM_PROMPT);
+      const systemPrompt = await this.loadSystemPrompt('prd', 'system_prompt', PRD_SYSTEM_PROMPT);
 
       // Call LLM with system message and prompt
       const prdContent = await this.aask(prompt, [systemPrompt]);
@@ -190,16 +213,12 @@ export class WritePRD extends BaseAction {
       }
 
       // 确保返回的是完整的PRD内容，而不是监控检测信息
-      return {
-        content: finalContent,
-        data: {
-          type: 'prd',
-          filename: 'PRD.md',
-          timestamp: new Date().toISOString(),
-          mode,
-          workspaceDir: this.getWorkspaceDir({ ...options, documentType: 'PRD' }),
-        },
-      };
+      return this.createActionOutput(finalContent, {
+        type: 'prd',
+        filename: 'PRD.md',
+        mode,
+        workspaceDir: this.getWorkspaceDir(workspaceOptions),
+      });
     } catch (error: any) {
       const isTimeout = error.message?.includes('timeout') || error.message?.includes('exceeded');
 
@@ -306,25 +325,80 @@ export class WritePRD extends BaseAction {
   }
 
   /**
+   * 获取知识上下文
+   * 使用知识整合服务获取结构化知识
+   */
+  private async getKnowledgeContext(
+    projectId: string,
+    mrdContent: string
+  ): Promise<StructuredKnowledgeContext | undefined> {
+    try {
+      const knowledgeService = new KnowledgeIntegrationService();
+      const userId = this.context?.get('userId');
+      await knowledgeService.initialize(userId);
+      
+      const context = await knowledgeService.getPRDDocumentKnowledge(
+        projectId,
+        mrdContent,
+        { limitPerType: 3 }
+      );
+      
+      logger.info('WritePRD: Knowledge context retrieved', {
+        projectId,
+        hasTerminology: context.terminology.length > 0,
+        hasBusinessRules: context.businessRules.length > 0,
+        hasExistingFeatures: context.existingFeatures.length > 0,
+        hasHistoryPRD: context.historyPRD.length > 0,
+      });
+      
+      return context;
+    } catch (error: any) {
+      logger.warn('WritePRD: Failed to get knowledge context', {
+        projectId,
+        error: error.message,
+      });
+      return undefined;
+    }
+  }
+
+  /**
    * 分步骤生成 PRD
    * 使用通用的 StepwiseDocumentGenerator
    * 只负责分章节生成，不做审核和合并（由 PRDReview 负责）
+   * 
+   * CLI模式下会自动跳过分章节生成，直接生成完整文档到主文件
    */
   private async generateStepwise(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
-    // 确保使用PRD目录
-    const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'PRD' });
+    // 使用 validateWorkspaceOptions 统一获取路径参数
+    const workspaceOptions = this.validateWorkspaceOptions(options, 'PRD');
+    const workspaceDir = this.getWorkspaceDir(workspaceOptions);
 
     // Load system prompt from database or use default
-    const userId = this.context?.get('userId');
-    const systemPrompt = await loadPrompt(userId, 'prd', 'system_prompt', PRD_SYSTEM_PROMPT);
+    const systemPrompt = await this.loadSystemPrompt('prd', 'system_prompt', PRD_SYSTEM_PROMPT);
 
-    // Get StateManager and role from context (if available)
-    const stateManager = this.context?.get('stateManager') as any;
+    // Get role from context (if available)
     const role = (this as any).role?.profile || undefined;
+
+    // 获取当前执行模式
+    const executorMode = this.getExecutorMode();
+
+    // 获取结构化知识上下文
+    const knowledgeContext = options?.structuredKnowledge;
+
+    logger.info('WritePRD: Creating StepwiseDocumentGenerator', {
+      executorMode,
+      workspaceDir,
+      hasKnowledgeContext: !!knowledgeContext,
+      ...workspaceOptions,
+    });
 
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
       buildOutlinePrompt: buildPRDOutlinePrompt,
-      buildSectionPrompt: buildPRDSectionPrompt,
+      buildSectionPrompt: (mrdContent: string, outline: string, sectionNumber: number, sectionTitle: string) =>
+        buildPRDSectionPrompt(mrdContent, outline, sectionNumber, sectionTitle, knowledgeContext),
+      // CLI模式下用于生成完整文档的提示词
+      buildFullDocumentPrompt: (mrdContent: string) => 
+        buildPRDPrompt(mrdContent, knowledgeContext),
       // 不需要 buildSectionReviewPrompt 和 reviewSystemPrompt，因为跳过审核步骤
       systemPrompt: systemPrompt,
       documentTitle: '产品需求文档（PRD）',
@@ -350,13 +424,14 @@ export class WritePRD extends BaseAction {
         return sections.filter((section) => section.number !== 11);
       },
       workspaceDir,
-      applicationId: options?.applicationId,
-      projectId: options?.projectId || (this.context?.get('projectId') as string | undefined),
-      stateManager,
+      ...workspaceOptions,
       role,
-      // 跳过审核和合并步骤，由 PRDReview 负责后续处理
+      // 跳过审核和合并步骤，由 PRDReview 负责后续处理（仅LLM模式）
       skipReview: true,
       skipMerge: true,
+      // CLI模式配置：传递执行模式，CLI模式下跳过分章节生成
+      executorMode: executorMode,
+      skipStepwiseInCLI: true, // CLI模式下直接生成完整文档
     });
 
     return await generator.generate(input);

@@ -4,7 +4,6 @@
  */
 
 import { query } from '../client';
-import { logger } from '../../utils';
 
 export interface RoleDefinition {
   id: string;
@@ -184,7 +183,7 @@ export class RoleDefinitionRepository {
        WHERE profile = $1`,
       [profile]
     );
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   /**
@@ -192,6 +191,6 @@ export class RoleDefinitionRepository {
    */
   async hardDelete(profile: string): Promise<boolean> {
     const result = await query(`DELETE FROM role_definitions WHERE profile = $1`, [profile]);
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 }

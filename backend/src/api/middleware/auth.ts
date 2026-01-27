@@ -10,7 +10,7 @@ import { logger } from '../../utils';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
 // Default user UUID (created during database migration)
-const DEFAULT_USER_ID = '302769d6-247d-43db-a005-0519712255fb';
+const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 export interface AuthRequest extends Request {
   userId?: string;

@@ -74,6 +74,8 @@ export interface CommandExecutorOptions {
   shell?: boolean;
   /** 环境变量 */
   env?: NodeJS.ProcessEnv;
+  /** 取消信号，用于中止正在执行的命令 */
+  abortSignal?: AbortSignal;
 }
 
 export interface CommandExecutorResult {
@@ -115,7 +117,20 @@ export async function executeCommand(
     timeout = 300000, // 默认5分钟
     shell = true,
     env = process.env,
+    abortSignal,
   } = options;
+
+  // 检查是否已经被取消
+  if (abortSignal?.aborted) {
+    const error = new CommandExecutorError(
+      'Command execution was cancelled before start',
+      '',
+      '',
+      -1
+    );
+    logger.info('CommandExecutor: Command cancelled before start');
+    throw error;
+  }
 
   return new Promise((resolve, reject) => {
     // 注册清理函数（只注册一次）
@@ -160,6 +175,34 @@ export async function executeCommand(
 
     let stdout = '';
     let stderr = '';
+    let isAborted = false;
+
+    // 监听取消信号
+    const abortHandler = () => {
+      if (isAborted) return;
+      isAborted = true;
+      
+      logger.info('CommandExecutor: Received abort signal, killing process');
+      child.kill('SIGTERM');
+      
+      // 从跟踪集合中移除
+      runningProcesses.delete(child);
+      logger.debug('CommandExecutor: Process removed from tracking (abort)', {
+        totalProcesses: runningProcesses.size,
+      });
+      
+      const error = new CommandExecutorError(
+        'Command execution was cancelled',
+        stdout,
+        stderr,
+        -1
+      );
+      reject(error);
+    };
+
+    if (abortSignal) {
+      abortSignal.addEventListener('abort', abortHandler, { once: true });
+    }
 
     // 收集标准输出
     child.stdout?.on('data', (data) => {
@@ -179,6 +222,16 @@ export async function executeCommand(
     let timeoutHandle: NodeJS.Timeout | null = null;
     if (timeout > 0) {
       timeoutHandle = setTimeout(() => {
+        // 如果已经被取消，不需要再处理
+        if (isAborted) {
+          return;
+        }
+
+        // 移除 abort 监听器
+        if (abortSignal) {
+          abortSignal.removeEventListener('abort', abortHandler);
+        }
+
         child.kill('SIGTERM');
         // 从跟踪集合中移除
         runningProcesses.delete(child);
@@ -205,6 +258,16 @@ export async function executeCommand(
     child.on('close', (code) => {
       if (timeoutHandle) {
         clearTimeout(timeoutHandle);
+      }
+
+      // 移除 abort 监听器
+      if (abortSignal) {
+        abortSignal.removeEventListener('abort', abortHandler);
+      }
+
+      // 如果已经被取消，不需要再处理
+      if (isAborted) {
+        return;
       }
 
       // 从跟踪集合中移除
@@ -242,6 +305,16 @@ export async function executeCommand(
     child.on('error', (err) => {
       if (timeoutHandle) {
         clearTimeout(timeoutHandle);
+      }
+
+      // 移除 abort 监听器
+      if (abortSignal) {
+        abortSignal.removeEventListener('abort', abortHandler);
+      }
+
+      // 如果已经被取消，不需要再处理
+      if (isAborted) {
+        return;
       }
       
       // 从跟踪集合中移除

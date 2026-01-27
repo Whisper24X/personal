@@ -1,6 +1,8 @@
 /**
  * Role Action Controller
  * Handles role and action metadata-related HTTP requests
+ * 
+ * Uses RoleActionFactory for dynamic role/action instantiation
  */
 
 import { Request, Response } from 'express';
@@ -9,94 +11,7 @@ import { logger } from '../../utils';
 import { RoleActionService } from '../../services/RoleActionService';
 import { RoleDefinitionRepository } from '../../database/repositories/RoleDefinitionRepository';
 import { ActionDefinitionRepository } from '../../database/repositories/ActionDefinitionRepository';
-import {
-  Salesperson,
-  ProductManager,
-  Architect,
-  ProjectManager,
-  Engineer,
-  QAEngineer,
-  TeamLeader,
-  DataAnalyst,
-} from '../../roles';
-import {
-  WriteMRD,
-  WritePRD,
-  WriteDesign,
-  WriteSubProjectDesign,
-  WriteCode,
-  WriteTest,
-  MRDReview,
-  PRDReview,
-  DesignReview,
-  SubProjectDesignReview,
-  CodeReview,
-  ImprovePRD,
-  ImproveMRD,
-  BreakdownTasks,
-  ExecuteSubtask,
-  RunCode,
-  FixBug,
-  SearchEnhancedQA,
-  DataAnalysis,
-  Coordinate,
-} from '../../actions';
-
-/**
- * Action display names mapping (Chinese)
- */
-const ACTION_DISPLAY_NAMES: Record<string, string> = {
-  // Salesperson actions
-  WriteMRD: '编写MRD',
-  MRDReview: 'MRD审查',
-  ImproveMRD: '改进MRD',
-
-  // ProductManager actions
-  WritePRD: '编写PRD',
-  PRDReview: 'PRD审查',
-  ImprovePRD: '改进PRD',
-  SearchEnhancedQA: 'RAG增强',
-
-  // Architect actions
-  WriteDesign: '编写设计文档',
-  DesignReview: '设计审查',
-  ImproveDesign: '改进设计',
-
-  // ProjectManager actions
-  BreakdownTasks: '任务拆分',
-  WriteSubProjectDesign: '子项目设计',
-  SubProjectDesignReview: '子项目设计审查',
-  CodeReview: '代码审查',
-
-  // Engineer actions
-  WriteCode: '编写代码',
-  ExecuteSubtask: '执行子任务',
-  RunCode: '运行代码',
-  FixBug: '修复Bug',
-
-  // QAEngineer actions
-  WriteTest: '编写测试',
-
-  // TeamLeader actions
-  Coordinate: '协调工作',
-
-  // DataAnalyst actions
-  DataAnalysis: '数据分析',
-};
-
-/**
- * Role display names mapping (Chinese)
- */
-const ROLE_DISPLAY_NAMES: Record<string, string> = {
-  Salesperson: '销售',
-  ProductManager: '产品经理',
-  Architect: '架构师',
-  ProjectManager: '项目经理',
-  Engineer: '工程师',
-  QAEngineer: 'QA工程师',
-  TeamLeader: '团队领导',
-  DataAnalyst: '数据分析师',
-};
+import { RoleActionFactory } from '../../services/RoleActionFactory';
 
 export class RoleActionController {
     private static roleActionService = new RoleActionService();
@@ -114,24 +29,15 @@ export class RoleActionController {
                 const rolesMetadata = await RoleActionController.roleActionService.getAllRoles();
                 
                 // If we have roles from database, enrich with actions from code instances
-                // (since role-action associations are in workflow configs, not role definitions)
                 if (rolesMetadata.length > 0) {
                     const context = new Context();
-                    const roleInstances = [
-                        new Salesperson(context),
-                        new ProductManager(context),
-                        new Architect(context),
-                        new ProjectManager(context),
-                        new Engineer(context),
-                        new QAEngineer(context),
-                        new TeamLeader(context),
-                        new DataAnalyst(context),
-                    ];
-
-                    // Map role instances by profile
+                    const roleInstances = RoleActionFactory.createAllRoleInstances(context);
                     const roleInstanceMap = new Map(roleInstances.map(r => [r.profile, r]));
 
-                    // Enrich roles with actions from code instances
+                    // Get action definitions for display names
+                    const actionDefs = await RoleActionController.actionDefRepo.findActive();
+                    const actionDisplayNames = new Map(actionDefs.map(a => [a.name, a.display_name || a.name]));
+
                     const enrichedRoles = rolesMetadata.map((roleMeta) => {
                         const roleInstance = roleInstanceMap.get(roleMeta.profile);
                         if (roleInstance) {
@@ -140,7 +46,7 @@ export class RoleActionController {
                                 actions: roleInstance.actions.map((action) => ({
                                     name: action.name,
                                     description: action.description,
-                                    displayName: ACTION_DISPLAY_NAMES[action.name] || action.name,
+                                    displayName: actionDisplayNames.get(action.name) || action.name,
                                 })),
                             };
                         }
@@ -156,45 +62,48 @@ export class RoleActionController {
                 logger.warn('RoleActionController: Failed to get roles from database, falling back to code:', dbError.message);
             }
 
-            // Fallback to code-based approach
+            // Fallback to code-based approach using factory
             const context = new Context();
-            const roles = [
-                new Salesperson(context),
-                new ProductManager(context),
-                new Architect(context),
-                new ProjectManager(context),
-                new Engineer(context),
-                new QAEngineer(context),
-                new TeamLeader(context),
-                new DataAnalyst(context),
-            ];
+            const roles = RoleActionFactory.createAllRoleInstances(context);
+
+            // Try to get display names from database
+            let roleDefs: any[] = [];
+            let actionDefs: any[] = [];
+            try {
+                roleDefs = await RoleActionController.roleDefRepo.findActive();
+                actionDefs = await RoleActionController.actionDefRepo.findActive();
+            } catch {
+                // Ignore errors
+            }
+            const roleDisplayNames = new Map(roleDefs.map(r => [r.profile, r.display_name || r.profile]));
+            const actionDisplayNames = new Map(actionDefs.map(a => [a.name, a.display_name || a.name]));
 
             const rolesMetadata = roles.map((role) => ({
                 profile: role.profile,
                 name: role.name,
-                displayName: ROLE_DISPLAY_NAMES[role.profile] || role.profile,
+                displayName: roleDisplayNames.get(role.profile) || role.profile,
                 goal: role.goal,
                 constraints: role.constraints,
                 description: role.description,
                 actions: role.actions.map((action) => ({
                     name: action.name,
                     description: action.description,
-                    displayName: ACTION_DISPLAY_NAMES[action.name] || action.name,
+                    displayName: actionDisplayNames.get(action.name) || action.name,
                 })),
             }));
 
-      return res.json({
-        success: true,
-        roles: rolesMetadata,
-      });
-    } catch (error: any) {
-      logger.error('RoleActionController: Failed to get roles:', error);
-      return res.status(500).json({
-        error: 'Failed to get roles',
-        message: error.message,
-      });
+            return res.json({
+                success: true,
+                roles: rolesMetadata,
+            });
+        } catch (error: any) {
+            logger.error('RoleActionController: Failed to get roles:', error);
+            return res.status(500).json({
+                error: 'Failed to get roles',
+                message: error.message,
+            });
+        }
     }
-  }
 
     /**
      * Get all actions metadata
@@ -216,104 +125,64 @@ export class RoleActionController {
                 logger.warn('RoleActionController: Failed to get actions from database, falling back to code:', dbError.message);
             }
 
-            // Fallback to code-based approach
-            const actionClasses = [
-                WriteMRD,
-                WritePRD,
-                WriteDesign,
-                WriteSubProjectDesign,
-                WriteCode,
-                WriteTest,
-                MRDReview,
-                PRDReview,
-                DesignReview,
-                SubProjectDesignReview,
-                CodeReview,
-                ImprovePRD,
-                ImproveMRD,
-                BreakdownTasks,
-                ExecuteSubtask,
-                RunCode,
-                FixBug,
-                SearchEnhancedQA,
-                DataAnalysis,
-                Coordinate,
-            ];
+            // Fallback to code-based approach using factory
+            const actionInstances = RoleActionFactory.createAllActionInstances();
+            
+            // Try to get display names from database
+            let actionDefs: any[] = [];
+            try {
+                actionDefs = await RoleActionController.actionDefRepo.findActive();
+            } catch {
+                // Ignore errors
+            }
+            const actionDisplayNames = new Map(actionDefs.map(a => [a.name, a.display_name || a.name]));
 
-            const actionsMetadata: Array<{ name: string; description: string; displayName: string }> = [];
-            const errors: string[] = [];
+            const actionsMetadata = actionInstances.map(action => ({
+                name: action.name,
+                description: action.description,
+                displayName: actionDisplayNames.get(action.name) || action.name,
+            }));
 
-      for (const ActionClass of actionClasses) {
-        try {
-          const action = new ActionClass();
-          if (action.name && action.description) {
-            actionsMetadata.push({
-              name: action.name,
-              description: action.description,
-              displayName: ACTION_DISPLAY_NAMES[action.name] || action.name,
-            });
-          }
-        } catch (error: any) {
-          const errorMsg = `Failed to instantiate ${ActionClass.name}: ${error.message}`;
-          logger.warn('RoleActionController: ' + errorMsg);
-          errors.push(errorMsg);
-        }
-      }
+            // Also collect actions from roles to ensure completeness
+            const context = new Context();
+            const roles = RoleActionFactory.createAllRoleInstances(context);
+            const roleActionsMap = new Map<string, { name: string; description: string; displayName: string }>();
 
-      // Also collect actions from roles to ensure completeness
-      try {
-        const context = new Context();
-        const roles = [
-          new Salesperson(context),
-          new ProductManager(context),
-          new Architect(context),
-          new ProjectManager(context),
-          new Engineer(context),
-          new QAEngineer(context),
-          new TeamLeader(context),
-          new DataAnalyst(context),
-        ];
-
-                const roleActionsMap = new Map<string, { name: string; description: string; displayName: string }>();
-                roles.forEach((role) => {
-                    role.actions.forEach((action) => {
-                        if (action.name && action.description && !roleActionsMap.has(action.name)) {
-                            roleActionsMap.set(action.name, {
-                                name: action.name,
-                                description: action.description,
-                                displayName: ACTION_DISPLAY_NAMES[action.name] || action.name,
-                            });
-                        }
-                    });
-                });
-
-                roleActionsMap.forEach((actionMeta, name) => {
-                    const existing = actionsMetadata.find((a) => a.name === name);
-                    if (!existing) {
-                        actionsMetadata.push(actionMeta);
+            roles.forEach((role) => {
+                role.actions.forEach((action) => {
+                    if (action.name && action.description && !roleActionsMap.has(action.name)) {
+                        roleActionsMap.set(action.name, {
+                            name: action.name,
+                            description: action.description,
+                            displayName: actionDisplayNames.get(action.name) || action.name,
+                        });
                     }
                 });
-            } catch (error: any) {
-                logger.warn('RoleActionController: Failed to collect actions from roles:', error);
-                errors.push(`Failed to collect actions from roles: ${error.message}`);
-            }
+            });
+
+            // Merge role actions with action instances
+            roleActionsMap.forEach((actionMeta, name) => {
+                const existing = actionsMetadata.find((a) => a.name === name);
+                if (!existing) {
+                    actionsMetadata.push(actionMeta);
+                }
+            });
 
             actionsMetadata.sort((a, b) => a.name.localeCompare(b.name));
 
-      return res.json({
-        success: true,
-        actions: actionsMetadata,
-        total: actionsMetadata.length,
-        ...(errors.length > 0 && { warnings: errors }),
-      });
-    } catch (error: any) {
-      logger.error('RoleActionController: Failed to get actions:', error);
-      return res.status(500).json({
-        error: 'Failed to get actions',
-        message: error.message,
-      });
+            return res.json({
+                success: true,
+                actions: actionsMetadata,
+                total: actionsMetadata.length,
+            });
+        } catch (error: any) {
+            logger.error('RoleActionController: Failed to get actions:', error);
+            return res.status(500).json({
+                error: 'Failed to get actions',
+                message: error.message,
+            });
+        }
     }
-  }
 
     /**
      * Get roles and actions metadata together
@@ -328,22 +197,13 @@ export class RoleActionController {
                 // Enrich roles with actions from code instances
                 if (roles.length > 0) {
                     const context = new Context();
-                    const roleInstances = [
-                        new Salesperson(context),
-                        new ProductManager(context),
-                        new Architect(context),
-                        new ProjectManager(context),
-                        new Engineer(context),
-                        new QAEngineer(context),
-                        new TeamLeader(context),
-                        new DataAnalyst(context),
-                    ];
-
+                    const roleInstances = RoleActionFactory.createAllRoleInstances(context);
                     const roleInstanceMap = new Map(roleInstances.map(r => [r.profile, r]));
                     
-                    // Get full role definitions from database to extract metadata
+                    // Get full definitions from database
                     const roleDefs = await RoleActionController.roleDefRepo.findActive();
                     const actionDefs = await RoleActionController.actionDefRepo.findActive();
+                    const actionDisplayNames = new Map(actionDefs.map(a => [a.name, a.display_name || a.name]));
                     
                     const enrichedRoles = roles.map((roleMeta) => {
                         const roleDef = roleDefs.find(r => r.profile === roleMeta.profile);
@@ -360,7 +220,7 @@ export class RoleActionController {
                             enrichedRole.actions = roleInstance.actions.map((action) => ({
                                 name: action.name,
                                 description: action.description,
-                                displayName: ACTION_DISPLAY_NAMES[action.name] || action.name,
+                                displayName: actionDisplayNames.get(action.name) || action.name,
                             }));
                         }
                         
@@ -387,18 +247,9 @@ export class RoleActionController {
                 logger.warn('RoleActionController: Failed to get roles and actions from database, falling back to code:', dbError.message);
             }
 
-            // Fallback to code-based approach
+            // Fallback to code-based approach using factory
             const context = new Context();
-            const roles = [
-                new Salesperson(context),
-                new ProductManager(context),
-                new Architect(context),
-                new ProjectManager(context),
-                new Engineer(context),
-                new QAEngineer(context),
-                new TeamLeader(context),
-                new DataAnalyst(context),
-            ];
+            const roles = RoleActionFactory.createAllRoleInstances(context);
 
             // Try to get metadata from database even in fallback mode
             let roleDefs: any[] = [];
@@ -406,16 +257,18 @@ export class RoleActionController {
             try {
                 roleDefs = await RoleActionController.roleDefRepo.findActive();
                 actionDefs = await RoleActionController.actionDefRepo.findActive();
-            } catch (e) {
-                // Ignore errors, use empty arrays
+            } catch {
+                // Ignore errors
             }
+            const roleDisplayNames = new Map(roleDefs.map(r => [r.profile, r.display_name || r.profile]));
+            const actionDisplayNames = new Map(actionDefs.map(a => [a.name, a.display_name || a.name]));
 
             const rolesMetadata = roles.map((role) => {
                 const roleDef = roleDefs.find(r => r.profile === role.profile);
                 return {
                     profile: role.profile,
                     name: role.name,
-                    displayName: ROLE_DISPLAY_NAMES[role.profile] || role.profile,
+                    displayName: roleDisplayNames.get(role.profile) || role.profile,
                     goal: role.goal,
                     constraints: role.constraints,
                     description: role.description,
@@ -425,62 +278,39 @@ export class RoleActionController {
                     actions: role.actions.map((action) => ({
                         name: action.name,
                         description: action.description,
-                        displayName: ACTION_DISPLAY_NAMES[action.name] || action.name,
+                        displayName: actionDisplayNames.get(action.name) || action.name,
                     })),
                 };
             });
 
-            const actionClasses = [
-                WriteMRD,
-                WritePRD,
-                WriteDesign,
-                WriteSubProjectDesign,
-                WriteCode,
-                WriteTest,
-                MRDReview,
-                PRDReview,
-                DesignReview,
-                SubProjectDesignReview,
-                CodeReview,
-                ImprovePRD,
-                BreakdownTasks,
-                ExecuteSubtask,
-                RunCode,
-                FixBug,
-                SearchEnhancedQA,
-                DataAnalysis,
-                Coordinate,
-            ];
+            // Get actions from factory
+            const actionInstances = RoleActionFactory.createAllActionInstances();
+            const actionsMetadata: any[] = [];
+            const roleActionsMap = new Map<string, any>();
 
-            const actionsMetadata: Array<{ name: string; description: string; displayName: string }> = [];
-            const roleActionsMap = new Map<string, { name: string; description: string; displayName: string }>();
-
+            // Collect from roles
             roles.forEach((role) => {
                 role.actions.forEach((action) => {
                     if (action.name && action.description && !roleActionsMap.has(action.name)) {
                         roleActionsMap.set(action.name, {
                             name: action.name,
                             description: action.description,
-                            displayName: ACTION_DISPLAY_NAMES[action.name] || action.name,
+                            displayName: actionDisplayNames.get(action.name) || action.name,
                         });
                     }
                 });
             });
 
-            for (const ActionClass of actionClasses) {
-                try {
-                    const action = new ActionClass();
-                    if (action.name && action.description && !roleActionsMap.has(action.name)) {
-                        roleActionsMap.set(action.name, {
-                            name: action.name,
-                            description: action.description,
-                            displayName: ACTION_DISPLAY_NAMES[action.name] || action.name,
-                        });
-                    }
-                } catch (error: any) {
-                    logger.warn(`RoleActionController: Failed to instantiate ${ActionClass.name}:`, error);
+            // Collect from action instances
+            actionInstances.forEach((action) => {
+                if (action.name && action.description && !roleActionsMap.has(action.name)) {
+                    roleActionsMap.set(action.name, {
+                        name: action.name,
+                        description: action.description,
+                        displayName: actionDisplayNames.get(action.name) || action.name,
+                    });
                 }
-            }
+            });
 
             roleActionsMap.forEach((meta) => {
                 const actionDef = actionDefs.find(a => a.name === meta.name);
@@ -536,7 +366,16 @@ export class RoleActionController {
                 });
             }
 
-            // Check if role already exists
+            // Check if role class exists in registry
+            if (!RoleActionFactory.hasRoleProfile(profile)) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Role class not found',
+                    message: `Role class '${profile}' is not registered. Available: ${RoleActionFactory.getAvailableRoleProfiles().join(', ')}`,
+                });
+            }
+
+            // Check if role already exists in database
             const existing = await RoleActionController.roleDefRepo.findByProfile(profile);
             if (existing) {
                 return res.status(400).json({
@@ -546,7 +385,7 @@ export class RoleActionController {
                 });
             }
 
-            // Validate input_schema and output_schema if provided
+            // Validate schemas if provided
             if (input_schema && typeof input_schema !== 'object') {
                 return res.status(400).json({
                     success: false,
@@ -565,29 +404,21 @@ export class RoleActionController {
 
             // Validate default_actions if provided
             if (default_actions && Array.isArray(default_actions) && default_actions.length > 0) {
-                const actionDefs = await RoleActionController.actionDefRepo.findByNames(default_actions);
-                const validActions = new Set(actionDefs.map((a) => a.name));
-                const invalidActions = default_actions.filter((a) => !validActions.has(a));
+                const invalidActions = default_actions.filter(a => !RoleActionFactory.hasActionName(a));
                 if (invalidActions.length > 0) {
                     return res.status(400).json({
                         success: false,
                         error: 'Invalid default_actions',
-                        message: `Actions not found: ${invalidActions.join(', ')}`,
+                        message: `Actions not found in registry: ${invalidActions.join(', ')}`,
                     });
                 }
             }
 
             // Build metadata
             const metadata: Record<string, any> = {};
-            if (input_schema) {
-                metadata.input_schema = input_schema;
-            }
-            if (output_schema) {
-                metadata.output_schema = output_schema;
-            }
-            if (default_actions && Array.isArray(default_actions)) {
-                metadata.default_actions = default_actions;
-            }
+            if (input_schema) metadata.input_schema = input_schema;
+            if (output_schema) metadata.output_schema = output_schema;
+            if (default_actions && Array.isArray(default_actions)) metadata.default_actions = default_actions;
 
             // Create role definition
             const role = await RoleActionController.roleDefRepo.create({
@@ -657,7 +488,16 @@ export class RoleActionController {
                 });
             }
 
-            // Check if action already exists
+            // Check if action class exists in registry
+            if (!RoleActionFactory.hasActionName(name)) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Action class not found',
+                    message: `Action class '${name}' is not registered. Available: ${RoleActionFactory.getAvailableActionNames().join(', ')}`,
+                });
+            }
+
+            // Check if action already exists in database
             const existing = await RoleActionController.actionDefRepo.findByName(name);
             if (existing) {
                 return res.status(400).json({
@@ -667,7 +507,7 @@ export class RoleActionController {
                 });
             }
 
-            // Validate input_schema and output_schema if provided
+            // Validate schemas if provided
             if (input_schema && typeof input_schema !== 'object') {
                 return res.status(400).json({
                     success: false,
@@ -686,29 +526,21 @@ export class RoleActionController {
 
             // Validate compatible_roles if provided
             if (compatible_roles && Array.isArray(compatible_roles) && compatible_roles.length > 0) {
-                const roleDefs = await RoleActionController.roleDefRepo.findByProfiles(compatible_roles);
-                const validRoles = new Set(roleDefs.map((r) => r.profile));
-                const invalidRoles = compatible_roles.filter((r) => !validRoles.has(r));
+                const invalidRoles = compatible_roles.filter(r => !RoleActionFactory.hasRoleProfile(r));
                 if (invalidRoles.length > 0) {
                     return res.status(400).json({
                         success: false,
                         error: 'Invalid compatible_roles',
-                        message: `Roles not found: ${invalidRoles.join(', ')}`,
+                        message: `Roles not found in registry: ${invalidRoles.join(', ')}`,
                     });
                 }
             }
 
             // Build metadata
             const metadata: Record<string, any> = {};
-            if (input_schema) {
-                metadata.input_schema = input_schema;
-            }
-            if (output_schema) {
-                metadata.output_schema = output_schema;
-            }
-            if (compatible_roles && Array.isArray(compatible_roles)) {
-                metadata.compatible_roles = compatible_roles;
-            }
+            if (input_schema) metadata.input_schema = input_schema;
+            if (output_schema) metadata.output_schema = output_schema;
+            if (compatible_roles && Array.isArray(compatible_roles)) metadata.compatible_roles = compatible_roles;
 
             // Create action definition
             const action = await RoleActionController.actionDefRepo.create({

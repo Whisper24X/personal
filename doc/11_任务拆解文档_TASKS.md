@@ -3,9 +3,9 @@
 > AI 可执行任务拆解文档  
 > 基于技术规格文档，用于指导 AI 逐步、可控地完成实现
 
-**文档版本**: v1.1  
+**文档版本**: v1.2  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-21  
+**最后更新**: 2026-01-26（更新Actions数量为30个，拆分QA工作流）  
 **依赖文档**: `03_技术规格文档_SPEC.md`, `04_系统架构文档_ARCHITECTURE.md`
 
 ---
@@ -863,7 +863,7 @@ class WritePRD(Action):
 
 ### T5-5: 实现其他 Actions
 
-**任务目标**: 实现所有31个Actions（文档编写、审查、改进、任务管理、代码执行与修复、QA工作流等）
+**任务目标**: 实现所有30个Actions（文档编写、审查、改进、任务管理、代码执行与修复、QA工作流等）
 
 **前置条件**: T5-4
 
@@ -887,7 +887,7 @@ class WritePRD(Action):
 - `backend/src/actions/QAConclusion.ts`
 - 以及其他Actions
 
-**注意**: 已移除 `GenerateTask` Action，已添加完整的QA工作流Actions（9步QA流程）
+**注意**: 已移除 `GenerateTask` Action。QA工作流已拆分为QAEngineer（3步测试设计流程：WriteTestPlan, WriteTest, TestCaseReview）和AutomationEngineer（4步自动化测试流程：AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion）
 
 **完成判定标准**:
 - [x] 所有核心 Action 实现完成

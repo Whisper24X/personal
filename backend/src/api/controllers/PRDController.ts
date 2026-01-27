@@ -111,8 +111,6 @@ export class PRDController {
 
           if (searchResults.length > 0) {
             const relevantChunks = ragService.combinePRDResults(searchResults);
-            // Get next version number
-            const nextVersion = (latestPRD.version || 1) + 1;
             const result = await writePRDAction.run(requirements, {
               mode: 'update',
               useRAG: true,
@@ -120,29 +118,27 @@ export class PRDController {
               historyPRD: latestPRD.content,
               applicationId,
               projectId,
-              version: nextVersion,
+              // version property deprecated, using versionId in WorkspaceOptions
             });
             prdContent = result.content;
           } else {
             // Fallback to standard update mode if no similar PRDs found
-            const nextVersion = (latestPRD.version || 1) + 1;
             const result = await writePRDAction.run(requirements, {
               mode: 'update',
               historyPRD: latestPRD.content,
               applicationId,
               projectId,
-              version: nextVersion,
+              // version property deprecated, using versionId in WorkspaceOptions
             });
             prdContent = result.content;
           }
         } else {
           // Standard update mode: use latest PRD directly
-          const nextVersion = (latestPRD.version || 1) + 1;
           const result = await writePRDAction.run(requirements, {
             mode: 'update',
             historyPRD: latestPRD.content,
             applicationId,
-            version: nextVersion,
+            // version property deprecated, using versionId in WorkspaceOptions
           });
           prdContent = result.content;
         }
@@ -172,38 +168,31 @@ export class PRDController {
 
           if (searchResults.length > 0) {
             const relevantChunks = ragService.combinePRDResults(searchResults);
-            // Get next version number (will be created in createPRDVersion)
-            const latestPRD = await documentRepo.findLatestPRD(id);
-            const nextVersion = latestPRD ? (latestPRD.version || 1) + 1 : 1;
             const result = await writePRDAction.run(requirements, {
               mode: 'new',
               useRAG: true,
               relevantChunks,
               applicationId,
               projectId,
-              version: nextVersion,
+              // version property deprecated, using versionId in WorkspaceOptions
             });
             prdContent = result.content;
           } else {
             // Standard new mode
-            const latestPRD = await documentRepo.findLatestPRD(id);
-            const nextVersion = latestPRD ? (latestPRD.version || 1) + 1 : 1;
             const result = await writePRDAction.run(requirements, {
               mode: 'new',
               applicationId,
               projectId,
-              version: nextVersion,
+              // version property deprecated, using versionId in WorkspaceOptions
             });
             prdContent = result.content;
           }
         } else {
           // Standard new mode
-          const latestPRD = await documentRepo.findLatestPRD(id);
-          const nextVersion = latestPRD ? (latestPRD.version || 1) + 1 : 1;
           const result = await writePRDAction.run(requirements, {
             mode: 'new',
             applicationId,
-            version: nextVersion,
+            // version property deprecated, using versionId in WorkspaceOptions
           });
           prdContent = result.content;
         }
@@ -586,7 +575,7 @@ export class PRDController {
       const applicationId = project.application_id || project.id;
       const projectId = project.id;
       const version = prd.version || 1;
-      const { getWorkspaceDir } = await import('../../utils/StepwiseDocumentGenerator');
+      const { getWorkspaceDir } = await import('../../utils/stepwise');
       const workspaceDir = getWorkspaceDir('PRD', {
         applicationId,
         projectId,
@@ -820,9 +809,6 @@ export class PRDController {
         project = null;
       }
 
-      const { SectionAdjustService } = await import('../../services/SectionAdjustService');
-      const sectionAdjustService = new SectionAdjustService();
-      
       // Determine applicationId
       let appId = applicationId as string | undefined;
       if (!appId || appId === 'default') {

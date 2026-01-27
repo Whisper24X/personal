@@ -18,11 +18,11 @@
             </el-icon>
             控制面板
           </el-menu-item>
-          <el-menu-item index="/config/llm">
+          <el-menu-item index="/config">
             <el-icon>
               <Setting />
             </el-icon>
-            LLM 配置
+            系统配置
           </el-menu-item>
         </el-menu>
       </div>

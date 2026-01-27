@@ -1,6 +1,10 @@
 /**
  * WriteDesign Action
  * Generates System Design Document from PRD
+ * 
+ * 工作流程：
+ * 1) CLI模式：使用 DocumentWriteHandler 直接生成（只传PRD文件夹路径）
+ * 2) LLM模式：使用 StepwiseDocumentGenerator 分步生成或一次性生成
  */
 
 import { BaseAction } from '../core/base/BaseAction';
@@ -11,9 +15,13 @@ import {
   buildDesignOutlinePrompt,
   buildDesignSectionPrompt,
 } from '../prompts/design';
-import { logger, WorkspaceOptions, loadPrompt } from '../utils';
-// Review和ImproveDocument已移除，由角色通过消息机制管理
-import { StepwiseDocumentGenerator } from '../utils/StepwiseDocumentGenerator';
+import { logger, WorkspaceOptions } from '../utils';
+import { StepwiseDocumentGenerator } from '../utils/stepwise';
+import {
+  DocumentWriteHandler,
+  DOCUMENT_CONFIGS,
+  WriteConfig,
+} from '../utils/document';
 
 export interface WriteDesignOptions extends WorkspaceOptions {
   // 继承WorkspaceOptions的所有选项
@@ -25,35 +33,63 @@ export class WriteDesign extends BaseAction {
     super('WriteDesign', 'Generate System Design Document from PRD');
   }
 
+  /**
+   * 创建 WriteHandler
+   */
+  private async createWriteHandler(): Promise<DocumentWriteHandler> {
+    const systemPrompt = await this.loadSystemPrompt('design', 'system_prompt', DESIGN_SYSTEM_PROMPT);
+
+    const config: WriteConfig = {
+      ...DOCUMENT_CONFIGS.DESIGN,
+      buildWritePrompt: buildDesignPrompt,
+      systemPrompt,
+    };
+
+    return new DocumentWriteHandler(this, config);
+  }
+
   async run(prd: string, options?: WriteDesignOptions): Promise<IActionOutput> {
     const useStepwise = options?.useStepwiseGeneration ?? true; // 默认启用分步骤生成
 
+    // 使用 BaseAction 提供的验证方法
+    const workspaceOptions = this.validateWorkspaceOptions(options, 'DESIGN');
+    const { applicationId, projectId } = workspaceOptions;
+
+    const isCLIMode = this.isCLIMode();
+
     logger.info('WriteDesign: Starting design generation', {
+      applicationId,
+      projectId,
       useStepwise,
+      isCLIMode,
       prdLength: prd.length,
     });
 
     try {
-      // 如果启用分步骤生成，使用分步骤生成
+      // CLI模式：使用 BaseAction 封装的执行方法
+      // 不使用 StepwiseDocumentGenerator
+      if (isCLIMode) {
+        const handler = await this.getCachedHandler('write', () => this.createWriteHandler());
+        return await this.executeWriteHandler(handler, '', workspaceOptions, {
+          type: 'design',
+        });
+      }
+
+      // LLM模式：如果启用分步骤生成，使用分步骤生成
       if (useStepwise) {
         return await this.generateStepwise(prd, options);
       }
 
-      // 否则使用传统的一次性生成
+      // LLM模式：否则使用传统的一次性生成
       const prompt = buildDesignPrompt(prd);
       
       // Load system prompt from database or use default
-      const userId = this.context?.get('userId');
-      const systemPrompt = await loadPrompt(userId, 'design', 'system_prompt', DESIGN_SYSTEM_PROMPT);
+      const systemPrompt = await this.loadSystemPrompt('design', 'system_prompt', DESIGN_SYSTEM_PROMPT);
       
       // Call LLM with system message and prompt
       const designContent = await this.aask(prompt, [systemPrompt]);
       
       // 保存到workspace
-      const workspaceOptions: WorkspaceOptions = {
-        ...options,
-        documentType: 'DESIGN',
-      };
       await this.saveToWorkspace('DESIGN.md', designContent, workspaceOptions);
       
       logger.info('WriteDesign: Design generation completed', {
@@ -61,43 +97,49 @@ export class WriteDesign extends BaseAction {
         workspaceDir: this.getWorkspaceDir(workspaceOptions),
       });
       
-      return {
-        content: designContent,
-        data: {
-          type: 'design',
-          filename: 'DESIGN.md',
-          timestamp: new Date().toISOString(),
-          workspaceDir: this.getWorkspaceDir(workspaceOptions),
-        },
-      };
+      return this.createActionOutput(designContent, {
+        type: 'design',
+        filename: 'DESIGN.md',
+        workspaceDir: this.getWorkspaceDir(workspaceOptions),
+      });
     } catch (error: any) {
-      logger.error('WriteDesign: Failed to generate design', error);
+      logger.error('WriteDesign: Failed to generate design', {
+        error: error.message,
+        stack: error.stack,
+      });
       throw error;
     }
   }
 
   /**
    * 分步骤生成设计文档
-   * 使用通用的 StepwiseDocumentGenerator
+   * 使用通用的 StepwiseDocumentGenerator（仅LLM模式）
    */
   private async generateStepwise(input: string, options?: WriteDesignOptions): Promise<IActionOutput> {
-    // 确保使用DESIGN目录
-    const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'DESIGN' });
-    // 移除对Review和ImproveDocument的直接调用，改为通过角色管理
+    // 使用 validateWorkspaceOptions 统一获取路径参数
+    const workspaceOptions = this.validateWorkspaceOptions(options, 'DESIGN');
+    const workspaceDir = this.getWorkspaceDir(workspaceOptions);
 
     // Load system prompt from database or use default
-    const userId = this.context?.get('userId');
-    const systemPrompt = await loadPrompt(userId, 'design', 'system_prompt', DESIGN_SYSTEM_PROMPT);
+    const systemPrompt = await this.loadSystemPrompt('design', 'system_prompt', DESIGN_SYSTEM_PROMPT);
 
-    // Get StateManager and role from context (if available)
-    const stateManager = this.context?.get('stateManager') as any;
+    // Get role from context (if available)
     const role = (this as any).role?.profile || undefined;
+
+    // 获取当前执行模式
+    const executorMode = this.getExecutorMode();
+
+    logger.info('WriteDesign: Creating StepwiseDocumentGenerator', {
+      executorMode,
+      workspaceDir,
+      ...workspaceOptions,
+    });
 
     const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
       buildOutlinePrompt: buildDesignOutlinePrompt,
       buildSectionPrompt: buildDesignSectionPrompt,
+      buildFullDocumentPrompt: buildDesignPrompt,
       systemPrompt: systemPrompt,
-      // Review 由角色通过 DesignReview action 统一处理
       documentTitle: '系统设计文档',
       documentType: 'DESIGN',
       mainFileName: 'DESIGN.md',
@@ -116,11 +158,10 @@ export class WriteDesign extends BaseAction {
         { number: 12, title: '未来演进方向' },
       ],
       workspaceDir,
-      applicationId: options?.applicationId,
-      projectId: options?.projectId || (this.context?.get('projectId') as string | undefined),
-      version: options?.version,
-      stateManager,
+      ...workspaceOptions,
       role,
+      executorMode: executorMode,
+      skipStepwiseInCLI: true,
     });
 
     return await generator.generate(input);
@@ -128,4 +169,3 @@ export class WriteDesign extends BaseAction {
 }
 
 export default WriteDesign;
-

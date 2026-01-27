@@ -14,6 +14,70 @@
       </template>
     </PageHeader>
 
+    <!-- 业务知识库上传区域 -->
+    <el-card class="upload-card">
+      <template #header>
+        <CardHeader title="业务知识库" :icon="Upload" :badge="knowledgeFiles.length">
+          <template #extra>
+            <el-text type="info" size="small">
+              上传的文档会作为 AI 生成 MRD/PRD 时的知识输入
+            </el-text>
+          </template>
+        </CardHeader>
+      </template>
+
+      <el-upload
+        drag
+        :action="`${apiBaseUrl}/projects/${projectId}/knowledge/upload`"
+        accept=".md"
+        :show-file-list="false"
+        :on-success="handleUploadSuccess"
+        :on-error="handleUploadError"
+        :before-upload="beforeUpload"
+      >
+        <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+        <div class="el-upload__text">
+          将 Markdown 文件拖到此处，或<em>点击上传</em>
+        </div>
+        <template #tip>
+          <div class="el-upload__tip">
+            仅支持 .md 文件，单文件最大 5MB
+          </div>
+        </template>
+      </el-upload>
+
+      <!-- 已上传的知识文件列表 -->
+      <div v-if="knowledgeFiles.length > 0" class="knowledge-files-list">
+        <el-divider content-position="left">已上传的知识文档</el-divider>
+        <el-table :data="knowledgeFiles" style="width: 100%" size="small">
+          <el-table-column prop="name" label="文件名" min-width="200">
+            <template #default="{ row }">
+              <el-link type="primary" @click="viewKnowledgeFile(row)">
+                {{ row.name }}
+              </el-link>
+            </template>
+          </el-table-column>
+          <el-table-column prop="size" label="大小" width="100">
+            <template #default="{ row }">
+              {{ formatFileSize(row.size) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="modifiedTime" label="上传时间" width="180">
+            <template #default="{ row }">
+              {{ formatDate(row.modifiedTime) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="100" fixed="right">
+            <template #default="{ row }">
+              <el-button type="danger" link size="small" @click="handleDeleteKnowledgeFile(row)">
+                删除
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-card>
+
     <!-- 搜索栏 -->
     <el-card class="search-card">
       <el-input
@@ -195,14 +259,13 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus';
+import { ElMessage, ElMessageBox, FormInstance, FormRules, UploadRawFile } from 'element-plus';
 import {
   Plus,
   Search,
   Collection,
-  View,
-  Edit,
-  Delete,
+  Upload,
+  UploadFilled,
 } from '@element-plus/icons-vue';
 import { apiClient } from '../../api/client';
 import PageHeader from '../../components/common/PageHeader.vue';
@@ -215,6 +278,10 @@ const router = useRouter();
 
 const projectId = route.params.id as string;
 const projectName = ref<string>('');
+const apiBaseUrl = import.meta.env.VITE_API_URL;
+
+// 知识库文件列表
+const knowledgeFiles = ref<any[]>([]);
 
 const documents = ref<any[]>([]);
 const searchResults = ref<any[]>([]);
@@ -260,6 +327,7 @@ const availableTags = computed(() => {
 onMounted(async () => {
   await fetchProjectInfo();
   await fetchDocuments();
+  await fetchKnowledgeFiles();
 });
 
 async function fetchProjectInfo() {
@@ -423,6 +491,90 @@ function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
   return date.toLocaleString('zh-CN');
 }
+
+// ==================== 知识库文件上传相关方法 ====================
+
+async function fetchKnowledgeFiles() {
+  try {
+    const response = await apiClient.getKnowledgeFiles(projectId) as any;
+    knowledgeFiles.value = response.files || [];
+  } catch (err: any) {
+    console.error('Failed to fetch knowledge files:', err);
+  }
+}
+
+function beforeUpload(file: UploadRawFile) {
+  const isMd = file.name.endsWith('.md');
+  const isLt5M = file.size / 1024 / 1024 < 5;
+
+  if (!isMd) {
+    ElMessage.error('只能上传 Markdown (.md) 文件！');
+    return false;
+  }
+  if (!isLt5M) {
+    ElMessage.error('文件大小不能超过 5MB！');
+    return false;
+  }
+  return true;
+}
+
+function handleUploadSuccess(response: any) {
+  if (response.success) {
+    ElMessage.success(`文件 "${response.file.name}" 上传成功`);
+    fetchKnowledgeFiles();
+  } else {
+    ElMessage.error(response.message || '上传失败');
+  }
+}
+
+function handleUploadError(error: any) {
+  console.error('Upload error:', error);
+  ElMessage.error('上传失败，请重试');
+}
+
+async function viewKnowledgeFile(file: any) {
+  try {
+    const response = await apiClient.getKnowledgeFile(projectId, file.name) as any;
+    viewingDoc.value = {
+      title: response.file.name,
+      content: response.file.content,
+      createdAt: response.file.modifiedTime,
+    };
+    showViewDialog.value = true;
+  } catch (err: any) {
+    ElMessage.error(err.message || '获取文件内容失败');
+  }
+}
+
+async function handleDeleteKnowledgeFile(file: any) {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除文件 "${file.name}" 吗？此操作不可恢复。`,
+      '确认删除',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+
+    await apiClient.deleteKnowledgeFile(projectId, file.name);
+    ElMessage.success('删除成功');
+    await fetchKnowledgeFiles();
+  } catch (err: any) {
+    if (err !== 'cancel') {
+      ElMessage.error(err.message || '删除失败');
+    }
+  }
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
 </script>
 
 <style scoped>
@@ -456,6 +608,18 @@ function formatDate(dateStr: string): string {
 
 .project-info {
   font-size: 12px;
+}
+
+.upload-card {
+  margin-bottom: 20px;
+}
+
+.upload-card :deep(.el-upload-dragger) {
+  padding: 20px;
+}
+
+.knowledge-files-list {
+  margin-top: 20px;
 }
 
 .search-card {

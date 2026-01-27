@@ -2,9 +2,9 @@
 
 **Slogan**: 让所思，即所得
 
-**文档版本**: v1.5  
+**文档版本**: v1.7  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-21（更新 QA 工作流、LLM 提供商架构、Actions 列表）
+**最后更新**: 2026-01-26（添加章节对话历史功能说明，更新SectionAdjustService描述，添加章节对话历史数据流）
 
 ---
 
@@ -214,6 +214,52 @@ sequenceDiagram
 ```
 
 ### 2.3 数据流架构
+
+#### 2.3.1 章节对话历史数据流
+
+章节对话历史功能用于记录PRD/MRD章节的迭代优化过程，支持多轮对话和内容调整。
+
+**数据流**:
+```mermaid
+sequenceDiagram
+    participant User as 用户
+    participant API as API接口
+    participant Service as SectionAdjustService
+    participant Repo as SectionConversationRepository
+    participant DB as 数据库
+    participant LLM as LLM
+    
+    User->>API: POST /sections/:sectionNumber/adjust
+    API->>Service: adjustSection(userFeedback)
+    Service->>Repo: loadSectionConversationHistory()
+    Repo->>DB: SELECT from section_conversations
+    DB-->>Repo: conversation history
+    Repo-->>Service: history
+    
+    Service->>LLM: 调用LLM调整章节
+    LLM-->>Service: 调整后的内容
+    
+    Service->>Repo: addMessageToSectionConversation(user)
+    Repo->>DB: UPDATE section_conversations
+    Service->>Repo: addMessageToSectionConversation(assistant)
+    Repo->>DB: UPDATE section_conversations
+    
+    Service-->>API: 返回调整结果和对话历史
+    API-->>User: 响应
+    
+    User->>API: GET /sections/:sectionNumber/conversation
+    API->>Repo: findBySection()
+    Repo->>DB: SELECT from section_conversations
+    DB-->>Repo: conversation
+    Repo-->>API: conversation
+    API-->>User: 返回对话历史
+```
+
+**关键特性**:
+- 每次章节调整自动保存对话历史
+- 支持按文档类型（PRD/MRD/DESIGN）和版本号查询
+- 对话历史用于为后续调整提供上下文
+- 支持多轮迭代优化，追踪用户反馈和AI响应的对应关系
 
 ```mermaid
 graph LR
@@ -701,9 +747,30 @@ interface WorkflowStep {
 - **映射编辑**: 可视化编辑数据映射
 - **验证提示**: 实时验证工作流完整性
 
-### 3.5 编排层 (Orchestration Layer)
+### 3.9 编排层 (Orchestration Layer)
 
-#### 3.5.1 Environment (环境)
+#### 3.9.1 StateManager (状态管理器)
+
+**职责**: 统一的状态管理入口
+
+**核心功能**:
+- 数据库作为单一数据源
+- 状态读写统一入口
+- 状态同步机制
+- 回滚支持
+- 位置: `backend/src/orchestration/StateManager.ts`
+
+**关键方法**:
+```typescript
+class StateManager {
+  async getState(projectId: string): Promise<WorkflowState>;
+  async updateState(projectId: string, state: Partial<WorkflowState>): Promise<void>;
+  async resetState(projectId: string, roleProfile?: string): Promise<void>;
+  async syncRoleContext(projectId: string, roleProfile: string): Promise<void>;
+}
+```
+
+#### 3.9.2 Environment (环境)
 
 **职责**:
 - 容器：管理多个 Role 实例
@@ -743,7 +810,7 @@ class Environment {
 - **非交互模式**: 角色并行执行（`Promise.allSettled`）
 - **交互模式**: 角色顺序执行，每个角色执行后等待用户确认
 
-#### 3.4.2 Team (团队)
+#### 3.9.3 Team (团队)
 
 **职责**:
 - 高层封装：提供简单的 API 接口
@@ -799,9 +866,84 @@ class CostManager {
 }
 ```
 
-### 3.6 知识库系统 (Knowledge Base System)
+### 3.6 服务层 (Service Layer)
 
-#### 3.6.1 知识库架构
+#### 3.6.1 核心服务列表（共10个服务）
+
+**1. WorkflowService** - 工作流配置和管理服务
+- **功能**: 管理工作流配置（创建、更新、删除）、获取默认工作流、工作流配置验证、应用工作流管理
+- **位置**: `backend/src/services/WorkflowService.ts`
+- **主要方法**: `getOrCreateDefaultWorkflow()`, `validateWorkflowConfig()`, `getWorkflows()`, `createWorkflow()`, `updateWorkflow()`
+
+**2. RAGService** - 检索增强生成服务
+- **功能**: Qdrant向量数据库集成、向量搜索和语义检索、Rerank结果重排序、混合搜索（关键词+向量）、自动文档索引、知识库检索
+- **位置**: `backend/src/services/RAGService.ts`
+- **主要方法**: `search()`, `indexDocuments()`, `initialize()`
+- **依赖**: EmbeddingService, QdrantService, RerankService
+
+**3. EmbeddingService** - 向量嵌入生成服务
+- **功能**: 支持多种embedding提供商（OpenAI, ZhipuAI, ARK）、文本向量化、批量处理
+- **位置**: `backend/src/services/EmbeddingService.ts`
+- **主要方法**: `generateEmbedding()`, `generateEmbeddings()`
+
+**4. QdrantService** - Qdrant向量数据库服务
+- **功能**: 集合管理、向量存储和检索、批量操作
+- **位置**: `backend/src/services/QdrantService.ts`
+- **主要方法**: `upsert()`, `search()`, `delete()`, `createCollection()`
+
+**5. RerankService** - 结果重排序服务
+- **功能**: 交叉编码器重排序、提升检索结果相关性
+- **位置**: `backend/src/services/RerankService.ts`
+- **主要方法**: `rerank()`
+
+**6. RoleActionService** - 角色Action管理服务
+- **功能**: 角色和Action元数据管理、角色Action关联查询、角色和Action定义查询
+- **位置**: `backend/src/services/RoleActionService.ts`
+- **主要方法**: `getRoles()`, `getActions()`, `getRolesAndActions()`
+
+**7. SectionAdjustService** - 章节调整服务
+- **功能**: PRD/MRD章节调整、对话历史管理、Workspace集成、章节迭代优化
+- **位置**: `backend/src/services/SectionAdjustService.ts`
+- **主要方法**: `adjustSection()`, `getConversationHistory()`
+- **章节对话历史功能**:
+  - 记录PRD/MRD章节的迭代优化过程
+  - 支持多轮对话和内容调整
+  - 自动保存用户反馈和AI响应到数据库
+  - 提供对话历史查询API，用于了解章节修改历程
+  - 对话历史存储在`section_conversations`表中
+  - 支持按文档类型（PRD/MRD/DESIGN）和版本号查询
+  - 为后续调整提供上下文，支持多轮迭代优化
+
+**8. StagehandService** - Stagehand集成服务
+- **功能**: Stagehand API集成、代码生成和执行、浏览器自动化操作
+- **位置**: `backend/src/services/StagehandService.ts`
+- **主要方法**: `execute()`, `screenshot()`
+
+**9. DocumentArchiveService** - 文档归档服务
+- **功能**: 文档归档和版本管理、文档恢复
+- **位置**: `backend/src/services/DocumentArchiveService.ts`
+- **主要方法**: `archive()`, `restore()`
+
+**10. GitService** - Git仓库管理服务
+- **功能**: Git仓库操作（克隆、拉取、分支管理、版本分支创建、提交、推送）
+- **位置**: `backend/src/services/GitService.ts`
+- **主要方法**: 
+  - `prepareRepository()` - 准备仓库（克隆或拉取）
+  - `cloneRepository()` - 克隆远程仓库
+  - `pullRepository()` - 拉取最新更改
+  - `createBranch()` - 创建版本分支
+  - `checkoutBranch()` - 切换分支
+  - `listBranches()` - 列出所有分支
+  - `deleteBranch()` - 删除分支
+  - `commitChanges()` - 提交更改
+  - `pushChanges()` - 推送更改
+  - `generateVersionBranchName()` - 生成版本分支名
+- **分支命名规则**: 
+  - 版本分支: `{alias}/{version}` (如: `my-project/v1.0`)
+  - 项目分支: `project/{projectId}`
+- **超时配置**: Git操作超时时间为5分钟（300000毫秒）
+
+#### 3.6.2 知识库系统 (Knowledge Base System)
 
 **设计目标**: 通过RAG技术为角色提供上下文知识支持，确保完整迭代产出
 
@@ -810,10 +952,11 @@ class CostManager {
 class KnowledgeBase {
     applicationId: string;
     version: string;
-    documents: DocumentRepository;      // 文档知识库
-    codeRepositories: CodeRepository[]; // 代码仓库
-    apiDocs: APIDocument[];             // API文档库
-    vectorStore: VectorStore;            // 向量数据库
+    documents: DocumentRepository;      // 文档知识库（数据库存储）
+    knowledgeFiles: FileStorage;        // 知识文件（文件存储，CLI输入）
+    vectorStore: QdrantService;         // 向量数据库（Qdrant）
+    embeddingService: EmbeddingService; // 向量嵌入服务
+    rerankService: RerankService;       // 重排序服务
     retrievalConfig: RetrievalConfig;   // 检索配置
 }
 ```
@@ -860,9 +1003,42 @@ graph LR
 - 支持回滚到历史版本
 - 支持版本差异对比
 
-### 3.7 提供商层 (Provider Layer)
+### 3.7 执行器层 (Executor Layer)
 
-#### 3.5.1 LLM 抽象层
+#### 3.7.1 LLMExecutor
+
+**职责**: 基于LLM的Action执行
+
+**核心功能**:
+- LLM调用封装
+- Token使用统计
+- 错误处理和重试
+- 超时控制
+- 位置: `backend/src/executors/LLMExecutor.ts`
+
+#### 3.7.2 CLIExecutor
+
+**职责**: 基于CLI工具的Action执行
+
+**支持的CLI提供商**:
+- **AiderCLIProvider**: Aider CLI集成
+- **CursorCLIProvider**: Cursor Agent CLI集成
+
+**核心功能**:
+- CLI命令执行
+- 输出解析
+- 错误处理
+- 超时控制
+- 位置: `backend/src/executors/CLIExecutor.ts`
+
+**CLI提供商工厂**:
+- 动态创建CLI提供商实例
+- 支持多种CLI工具
+- 位置: `backend/src/executors/cli/CLIProviderFactory.ts`
+
+### 3.8 提供商层 (Provider Layer)
+
+#### 3.8.1 LLM 抽象层
 
 **设计模式**: 工厂模式 + 策略模式
 
@@ -923,7 +1099,7 @@ abstract class BaseLLM {
 }
 ```
 
-#### 3.5.2 多 LLM 支持
+#### 3.8.2 多 LLM 支持
 
 **支持的提供商**:
 
@@ -945,7 +1121,7 @@ abstract class BaseLLM {
 - 配置包含：`provider`, `model`, `apiKey`, `baseURL`, `temperature`, `maxTokens` 等
 - 配置优先级：角色特定配置 > 系统默认配置
 
-#### 3.5.3 工具层
+#### 3.8.3 工具层
 
 **Browser** (浏览器工具):
 ```python
@@ -985,14 +1161,29 @@ class Terminal:
 
 **数据库类型**: PostgreSQL v14+
 
+**Schema版本**: Schema V2（统一简化的数据库结构）
+
 **设计原则**:
 - **可扩展性**: 支持水平扩展和分表
 - **性能优化**: 合理的索引和分区策略
 - **数据完整性**: 外键约束和数据验证
 - **审计追踪**: 记录创建和更新时间
 - **软删除**: 重要数据不物理删除
+- **统一配置**: LLM配置统一存储在`llm_configs`表中（系统默认和角色特定）
 
-### 4.2 核心表结构
+### 4.2 Schema V2 核心表结构（共18张表）
+
+**表分类**:
+1. **用户和应用**: users, applications
+2. **项目和版本**: projects, project_versions
+3. **角色和动作**: roles, actions, role_definitions, action_definitions
+4. **消息和文档**: messages, documents
+5. **工作流**: application_workflows, workflow_executions
+6. **配置**: llm_configs, role_llm_configs, prompt_configs
+7. **知识库**: knowledge_base, section_conversations
+8. **成本**: cost_records
+
+### 4.3 核心表结构
 
 #### 4.2.1 用户相关表
 
@@ -1048,18 +1239,48 @@ CREATE TABLE projects (
 );
 ```
 
-**teams (团队表)**:
+**projects (项目表 - Schema V2)**:
 ```sql
-CREATE TABLE teams (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+CREATE TABLE projects (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    investment DECIMAL(10, 2) DEFAULT 10.0,
-    status VARCHAR(50) DEFAULT 'idle',
-    config JSONB DEFAULT '{}',
-    state JSONB DEFAULT '{}',  -- 序列化的团队状态
+    application_id UUID REFERENCES applications(id) ON DELETE SET NULL,
+    name VARCHAR(200) NOT NULL,
+    idea TEXT NOT NULL,
+    description TEXT,
+    workspace_path VARCHAR(500),
+    git_repo_url VARCHAR(500),
+    status VARCHAR(20) DEFAULT 'pending',
+    progress INT DEFAULT 0,
+    budget DECIMAL(10,2) DEFAULT 10.0,
+    total_cost DECIMAL(10,2) DEFAULT 0.0,
+    team_status VARCHAR(20) DEFAULT 'idle',
+    team_config JSONB DEFAULT '{}',
+    team_state JSONB DEFAULT '{}',
+    metadata JSONB DEFAULT '{}',
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP DEFAULT NOW(),
+    deleted_at TIMESTAMP
+);
+```
+
+**project_versions (项目版本表)**:
+```sql
+CREATE TABLE project_versions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    idea TEXT,
+    branch_name VARCHAR(255),
+    workspace_path VARCHAR(500),
+    is_active BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    deleted_at TIMESTAMP,
+    UNIQUE(project_id, name)
 );
 ```
 

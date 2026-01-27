@@ -3,9 +3,9 @@
 > AI 工作方式与边界协议  
 > 用于约束 AI 行为，防止过度推断与失控生成
 
-**文档版本**: v1.1  
+**文档版本**: v1.2  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-21  
+**最后更新**: 2026-01-26（更新QA工作流描述）  
 **适用项目**: mind2build 多代理协作框架  
 **协议状态**: ✅ 生效中
 
@@ -543,7 +543,7 @@ fix: correct message routing logic
 docs: update API reference
 test: add unit tests for Role class
 feat: add DeepSeek LLM provider support
-feat: add QA workflow actions (9-step process)
+feat: add QA workflow actions (QAEngineer 3-step + AutomationEngineer 4-step)
 
 # ❌ 错误的提交信息
 update code

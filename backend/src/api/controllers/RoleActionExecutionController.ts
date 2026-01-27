@@ -47,7 +47,7 @@ export class RoleActionExecutionController {
       }
 
       // Step 3: Create context with project configuration
-      const context = new Context(undefined, project.investment || 10.0);
+      const context = new Context(undefined, project.budget || 10.0);
       context.set('projectId', projectId);
       if (project.application_id) {
         context.set('applicationId', project.application_id);
@@ -60,8 +60,8 @@ export class RoleActionExecutionController {
       const role = RoleActionFactory.createRoleFromDefinition(roleProfile, context);
 
       // Wait for LLM config to load (if applicable)
-      if (role['llmLoadPromise']) {
-        await role['llmLoadPromise'];
+      if ((role as any).llmLoadPromise) {
+        await (role as any).llmLoadPromise;
       }
 
       // Step 5: Validate action exists for this role
@@ -120,21 +120,9 @@ export class RoleActionExecutionController {
       // Step 9: Set action as todo
       role['rc'].todo = targetAction;
 
-      // Step 10: Execute action with timeout
-      const ACTION_TIMEOUT_MS = process.env.ACTION_TIMEOUT_MINUTES
-        ? parseInt(process.env.ACTION_TIMEOUT_MINUTES, 10) * 60 * 1000
-        : 10 * 60 * 1000; // Default 10 minutes
-
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          reject(new Error(`Action ${actionName} execution timeout after ${ACTION_TIMEOUT_MS}ms`));
-        }, ACTION_TIMEOUT_MS);
-      });
-
-      const actionPromise = role.act();
-
-      logger.info(`RoleActionExecutionController: Starting action execution for ${actionName} (timeout: ${ACTION_TIMEOUT_MS}ms)`);
-      const message = await Promise.race([actionPromise, timeoutPromise]);
+      // Step 10: Execute action (timeout handled by individual actions)
+      logger.info(`RoleActionExecutionController: Starting action execution for ${actionName}`);
+      const message = await role.act();
 
       if (!message) {
         return res.status(500).json({
@@ -219,7 +207,7 @@ export class RoleActionExecutionController {
         for (const dbMessage of messages) {
           const message = new Message({
             content: dbMessage.content,
-            role: dbMessage.role,
+            role: dbMessage.role_type,
             causeBy: dbMessage.cause_by,
             sentFrom: dbMessage.sent_from,
           });
@@ -235,7 +223,7 @@ export class RoleActionExecutionController {
         if (relevantMessageTypes.includes(dbMessage.cause_by)) {
           const message = new Message({
             content: dbMessage.content,
-            role: dbMessage.role,
+            role: dbMessage.role_type,
             causeBy: dbMessage.cause_by,
             sentFrom: dbMessage.sent_from,
           });

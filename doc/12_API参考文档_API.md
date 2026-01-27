@@ -1,8 +1,8 @@
 # mind2build API 参考文档
 
-**文档版本**: v1.3  
+**文档版本**: v1.5  
 **创建日期**: 2025-12-24
-**最后更新**: 2026-01-21（添加 Role Action Execution API，更新为 TypeScript API 参考）
+**最后更新**: 2026-01-26（添加章节对话历史API，更新所有15个控制器的API端点，添加章节对话历史功能说明）
 
 ---
 
@@ -354,7 +354,376 @@
 
 **POST** `/api/projects/:id/sections/:sectionNumber/adjust`
 
-从工作区直接调整PRD章节。
+从工作区直接调整PRD章节。调整时会自动保存对话历史。
+
+**请求体**:
+```json
+{
+  "instruction": "调整指令",
+  "documentType": "PRD",
+  "version": 1
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "section": {
+    "sectionNumber": 1,
+    "content": "调整后的章节内容",
+    "conversationHistory": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "调整指令",
+          "timestamp": "2026-01-26T00:00:00Z"
+        },
+        {
+          "role": "assistant",
+          "content": "调整后的章节内容",
+          "timestamp": "2026-01-26T00:00:01Z"
+        }
+      ]
+    }
+  }
+}
+```
+
+#### 获取章节对话历史
+
+**GET** `/api/projects/:id/sections/:sectionNumber/conversation`
+
+获取PRD/MRD指定章节的对话历史记录。该功能用于跟踪章节的迭代优化过程，支持多轮对话和内容调整。
+
+**查询参数**:
+- `documentType`: 文档类型，可选值：`PRD`、`MRD`、`DESIGN`（默认：`PRD`）
+- `version`: 版本号（默认：1）
+
+**响应**:
+```json
+{
+  "success": true,
+  "conversation": {
+    "sectionNumber": 1,
+    "documentType": "PRD",
+    "version": 1,
+    "messages": [
+      {
+        "role": "user",
+        "content": "用户反馈：这个章节需要更详细的说明",
+        "timestamp": "2026-01-26T10:00:00Z"
+      },
+      {
+        "role": "assistant",
+        "content": "已更新章节内容，添加了更详细的说明...",
+        "timestamp": "2026-01-26T10:00:05Z"
+      }
+    ],
+    "lastUpdated": "2026-01-26T10:00:05Z"
+  }
+}
+```
+
+**功能说明**:
+- 章节对话历史功能用于记录PRD/MRD章节的迭代优化过程
+- 每次调用`/sections/:sectionNumber/adjust` API时，会自动保存用户反馈和AI响应到对话历史
+- 对话历史可用于：
+  - 了解章节的修改历程
+  - 为后续调整提供上下文
+  - 支持多轮迭代优化
+  - 追踪用户反馈和AI响应的对应关系
+- 对话历史存储在`section_conversations`数据库表中
+
+#### 改进 PRD
+
+**POST** `/api/projects/:id/prds/:prdId/improve`
+
+根据审查报告改进PRD文档。
+
+**请求体**:
+```json
+{
+  "reviewContent": "审查报告内容"
+}
+```
+
+### 1.4.1 MRD 管理 API
+
+#### 生成 MRD
+
+**POST** `/api/projects/:id/mrd`
+
+为项目生成MRD（市场需求文档）文档。
+
+**请求体**:
+```json
+{
+  "requirement": "需求描述"
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "mrd": {
+    "id": "MRD UUID",
+    "content": "MRD文档内容",
+    "createdAt": "2025-12-25T00:00:00Z"
+  }
+}
+```
+
+#### 获取 MRD 列表
+
+**GET** `/api/projects/:id/mrds`
+
+获取项目的所有MRD版本。
+
+**响应**:
+```json
+{
+  "success": true,
+  "mrds": [
+    {
+      "id": "MRD UUID",
+      "version": 1,
+      "createdAt": "2025-12-25T00:00:00Z"
+    }
+  ]
+}
+```
+
+#### 获取特定 MRD
+
+**GET** `/api/projects/:id/mrds/:mrdId`
+
+获取特定版本的MRD内容。
+
+**响应**:
+```json
+{
+  "success": true,
+  "mrd": {
+    "id": "MRD UUID",
+    "content": "MRD文档内容",
+    "version": 1,
+    "createdAt": "2025-12-25T00:00:00Z"
+  }
+}
+```
+
+#### 调整 MRD 章节
+
+**POST** `/api/projects/:id/mrds/:mrdId/adjust-section`
+
+调整MRD的特定章节。
+
+**请求体**:
+```json
+{
+  "sectionNumber": 1,
+  "instruction": "调整指令"
+}
+```
+
+#### 审查 MRD
+
+**POST** `/api/projects/:id/mrds/:mrdId/review`
+
+审查MRD文档。
+
+**响应**:
+```json
+{
+  "success": true,
+  "review": {
+    "content": "审查报告内容",
+    "createdAt": "2025-12-25T00:00:00Z"
+  }
+}
+```
+
+#### 改进 MRD
+
+**POST** `/api/projects/:id/mrds/:mrdId/improve`
+
+根据审查报告改进MRD文档。
+
+**请求体**:
+```json
+{
+  "reviewContent": "审查报告内容"
+}
+```
+
+### 1.3.1 项目版本管理 API
+
+#### 创建项目版本
+
+**POST** `/api/projects/:id/versions`
+
+为项目创建新版本。如果项目关联了Git仓库，会自动创建版本分支。
+
+**请求体**:
+```json
+{
+  "name": "v1.0",
+  "description": "初始版本",
+  "idea": "版本需求描述（可选）"
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "version": {
+    "id": "版本UUID",
+    "name": "v1.0",
+    "description": "初始版本",
+    "branchName": "my-project/v1.0",
+    "isActive": false,
+    "createdAt": "2025-12-25T00:00:00Z"
+  }
+}
+```
+
+**Git分支说明**:
+- 如果项目关联了Git仓库，系统会自动创建版本分支
+- 分支命名规则：`{projectAlias}/{versionName}`（如：`my-project/v1.0`）
+- 分支创建后会自动checkout到该分支
+
+#### 获取项目版本列表
+
+**GET** `/api/projects/:id/versions`
+
+获取项目的所有版本列表。
+
+**响应**:
+```json
+{
+  "success": true,
+  "versions": [
+    {
+      "id": "版本UUID",
+      "name": "v1.0",
+      "description": "初始版本",
+      "branchName": "my-project/v1.0",
+      "isActive": true,
+      "createdAt": "2025-12-25T00:00:00Z"
+    }
+  ]
+}
+```
+
+#### 获取活跃版本
+
+**GET** `/api/projects/:id/versions/active`
+
+获取项目的当前活跃版本。
+
+**响应**:
+```json
+{
+  "success": true,
+  "version": {
+    "id": "版本UUID",
+    "name": "v1.0",
+    "isActive": true
+  }
+}
+```
+
+#### 获取版本详情
+
+**GET** `/api/projects/:id/versions/:versionId`
+
+获取特定版本的详细信息。
+
+**响应**:
+```json
+{
+  "success": true,
+  "version": {
+    "id": "版本UUID",
+    "name": "v1.0",
+    "description": "初始版本",
+    "idea": "版本需求描述",
+    "branchName": "my-project/v1.0",
+    "isActive": true,
+    "workspacePath": "/path/to/workspace",
+    "createdAt": "2025-12-25T00:00:00Z",
+    "updatedAt": "2025-12-25T00:00:00Z"
+  }
+}
+```
+
+#### 更新版本
+
+**PUT** `/api/projects/:id/versions/:versionId`
+
+更新版本信息。
+
+**请求体**:
+```json
+{
+  "name": "v1.1",
+  "description": "更新后的描述"
+}
+```
+
+#### 删除版本
+
+**DELETE** `/api/projects/:id/versions/:versionId`
+
+删除项目版本（软删除）。
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Version deleted successfully"
+}
+```
+
+#### 激活版本
+
+**POST** `/api/projects/:id/versions/:versionId/activate`
+
+激活指定版本。如果项目关联了Git仓库，会自动checkout到对应的分支。
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "Version activated successfully",
+  "version": {
+    "id": "版本UUID",
+    "name": "v1.0",
+    "isActive": true
+  }
+}
+```
+
+#### 获取Git分支列表
+
+**GET** `/api/projects/:id/branches`
+
+获取项目Git仓库的所有分支列表（仅当项目关联了Git仓库时可用）。
+
+**响应**:
+```json
+{
+  "success": true,
+  "branches": {
+    "local": ["main", "my-project/v1.0", "my-project/v2.0"],
+    "remote": ["main", "my-project/v1.0"],
+    "current": "my-project/v1.0"
+  }
+}
+```
 
 ### 1.5 应用管理 API
 
@@ -362,7 +731,7 @@
 
 **POST** `/api/applications`
 
-创建新应用（应用用于组织相关项目）。
+创建新应用（应用用于组织相关项目）。创建后会自动创建默认工作流。
 
 **请求体**:
 ```json
@@ -390,6 +759,21 @@
 **GET** `/api/applications`
 
 获取用户的所有应用列表。
+
+**响应**:
+```json
+{
+  "success": true,
+  "applications": [
+    {
+      "id": "应用UUID",
+      "name": "应用名称",
+      "description": "应用描述",
+      "createdAt": "2025-12-25T00:00:00Z"
+    }
+  ]
+}
+```
 
 #### 获取应用详情
 
@@ -423,6 +807,79 @@
 **GET** `/api/applications/:id/projects`
 
 获取应用下的所有项目。
+
+### 1.5.1 应用工作流管理 API
+
+#### 获取应用的工作流列表
+
+**GET** `/api/applications/:applicationId/workflows`
+
+获取应用的所有工作流配置。
+
+**响应**:
+```json
+{
+  "success": true,
+  "workflows": [
+    {
+      "id": "工作流UUID",
+      "name": "默认工作流",
+      "description": "标准软件开发流程",
+      "isDefault": true,
+      "workflowConfig": { ... }
+    }
+  ]
+}
+```
+
+#### 获取默认工作流
+
+**GET** `/api/applications/:applicationId/workflows/default`
+
+获取应用的默认工作流配置。
+
+#### 创建工作流
+
+**POST** `/api/applications/:applicationId/workflows`
+
+为应用创建新的工作流配置。
+
+**请求体**:
+```json
+{
+  "name": "自定义工作流",
+  "description": "工作流描述",
+  "workflowConfig": {
+    "roles": [
+      {
+        "profile": "Salesperson",
+        "name": "Salesperson",
+        "order": 0,
+        "actions": ["WriteMRD", "MRDReview", "ImproveMRD"],
+        "watch_actions": ["User"]
+      }
+    ]
+  }
+}
+```
+
+#### 更新工作流
+
+**PUT** `/api/applications/:applicationId/workflows/:workflowId`
+
+更新工作流配置。
+
+#### 删除工作流
+
+**DELETE** `/api/applications/:applicationId/workflows/:workflowId`
+
+删除工作流配置。
+
+#### 设置默认工作流
+
+**POST** `/api/applications/:applicationId/workflows/:workflowId/set-default`
+
+将指定工作流设置为应用的默认工作流。
 
 ### 1.6 交互式会话 API
 
@@ -609,11 +1066,61 @@ ws.on('error', (error) => {
 
 **GET** `/api/config/llm`
 
+获取所有LLM配置（包括提供商和角色特定配置）。
+
+**响应**:
+```json
+{
+  "success": true,
+  "configs": [
+    {
+      "id": "配置UUID",
+      "configScope": "provider",
+      "provider": "zhipuai",
+      "model": "glm-4-flash",
+      "isActive": true
+    }
+  ]
+}
+```
+
 **获取激活的 LLM 配置**
 
 **GET** `/api/config/llm/active`
 
+获取当前激活的LLM配置。
+
+**获取所有提供商列表**
+
+**GET** `/api/config/llm/providers`
+
+获取所有可用的LLM提供商列表。
+
 **获取特定提供商的配置**
+
+**GET** `/api/config/llm/providers/:provider`
+
+获取特定提供商的配置详情。
+
+**创建或更新提供商配置**
+
+**POST** `/api/config/llm/providers`
+
+创建或更新LLM提供商配置。
+
+**请求体**:
+```json
+{
+  "provider": "zhipuai",
+  "apiKey": "API密钥",
+  "model": "glm-4-flash",
+  "baseURL": "https://open.bigmodel.cn/api/paas/v4",
+  "temperature": 0.7,
+  "maxTokens": 8000
+}
+```
+
+**获取特定提供商的配置（兼容接口）**
 
 **GET** `/api/config/llm/:provider`
 
@@ -621,10 +1128,14 @@ ws.on('error', (error) => {
 
 **POST** `/api/config/llm`
 
+创建或更新LLM配置（支持提供商和角色特定配置）。
+
 **请求体**:
 ```json
 {
+  "configScope": "provider",  // provider 或 role
   "provider": "zhipuai",
+  "roleProfile": "ProductManager",  // 角色特定配置时必需
   "apiKey": "API密钥",
   "model": "glm-4-flash",
   "baseURL": "https://open.bigmodel.cn/api/paas/v4",
@@ -636,9 +1147,13 @@ ws.on('error', (error) => {
 
 **POST** `/api/config/llm/:id/activate`
 
+激活指定的LLM配置（同一提供商只能有一个激活配置）。
+
 **删除 LLM 配置**
 
 **DELETE** `/api/config/llm/:id`
+
+删除LLM配置。
 
 #### 角色 LLM 配置
 
@@ -646,19 +1161,25 @@ ws.on('error', (error) => {
 
 **GET** `/api/config/role-llm`
 
+获取所有角色的LLM配置。
+
 **获取特定角色的配置**
 
 **GET** `/api/config/role-llm/:profile`
+
+获取特定角色的LLM配置（如 ProductManager, Architect）。
 
 **创建或更新角色配置**
 
 **POST** `/api/config/role-llm/:profile`
 
+为特定角色创建或更新LLM配置。
+
 **请求体**:
 ```json
 {
-  "llmConfigId": "LLM配置ID",
-  "model": "glm-4-flash"
+  "llmConfigId": "LLM配置ID",  // 引用已存在的LLM配置
+  "model": "glm-4-flash"  // 可选，覆盖模型
 }
 ```
 
@@ -666,27 +1187,53 @@ ws.on('error', (error) => {
 
 **DELETE** `/api/config/role-llm/:profile`
 
+删除角色的LLM配置。
+
 #### Prompt 配置
 
 **获取所有 Prompt 配置**
 
 **GET** `/api/config/prompts`
 
+获取所有Prompt配置。
+
 **获取分组后的 Prompt 配置**
 
 **GET** `/api/config/prompts/grouped`
+
+按类型分组获取Prompt配置。
+
+**响应**:
+```json
+{
+  "success": true,
+  "grouped": {
+    "prd": {
+      "write_prd": { ... },
+      "review_prd": { ... }
+    },
+    "mrd": { ... }
+  }
+}
+```
 
 **获取特定类型的 Prompt**
 
 **GET** `/api/config/prompts/:type`
 
+获取特定类型的所有Prompt（如 prd, mrd, design）。
+
 **获取特定 Prompt**
 
 **GET** `/api/config/prompts/:type/:key`
 
+获取特定类型的特定Prompt（如 prd/write_prd）。
+
 **创建或更新 Prompt**
 
 **POST** `/api/config/prompts`
+
+创建或更新Prompt配置。
 
 **请求体**:
 ```json
@@ -694,7 +1241,8 @@ ws.on('error', (error) => {
   "type": "prd",
   "key": "write_prd",
   "content": "Prompt内容",
-  "metadata": {}
+  "description": "Prompt描述（可选）",
+  "isActive": true
 }
 ```
 
@@ -702,45 +1250,55 @@ ws.on('error', (error) => {
 
 **DELETE** `/api/config/prompts/:type/:key`
 
+删除Prompt配置。
+
+#### 角色和Action元数据管理
+
+**获取所有角色**
+
+**GET** `/api/config/roles`
+
+获取所有已定义的角色元数据。
+
+**创建角色**
+
+**POST** `/api/config/roles`
+
+创建新的角色定义（通常通过数据库迁移完成）。
+
+**获取所有Actions**
+
+**GET** `/api/config/actions`
+
+获取所有已定义的Action元数据。
+
+**创建Action**
+
+**POST** `/api/config/actions`
+
+创建新的Action定义（通常通过数据库迁移完成）。
+
+**获取角色和Actions关联**
+
+**GET** `/api/config/roles-actions`
+
+获取角色和Actions的关联关系。
+
 ### 1.9 知识库 API
 
-#### 关联知识库
+#### 创建知识库文档
 
 **POST** `/api/projects/:projectId/knowledge-base`
 
-为项目关联知识库和代码仓库。
+为项目创建知识库文档（数据库存储）。
 
 **请求体**:
 ```json
 {
-  "documents": [
-    {
-      "name": "技术规范",
-      "path": "./knowledge/tech-specs",
-      "type": "markdown"
-    }
-  ],
-  "codeRepository": {
-    "name": "参考代码仓库",
-    "type": "git",
-    "url": "https://github.com/company/repo",
-    "branch": "main",
-    "languages": ["typescript", "javascript"],
-    "extractPatterns": true,
-    "sync": true
-  },
-  "apis": [
-    {
-      "name": "支付API",
-      "path": "./knowledge/api/payment.yaml",
-      "type": "openapi"
-    }
-  ],
-  "retrieval": {
-    "topK": 5,
-    "threshold": 0.7,
-    "rerank": true
-  }
+  "title": "API设计规范",
+  "content": "文档内容...",
+  "description": "API设计最佳实践",
+  "tags": ["api", "design", "best-practices"]
 }
 ```
 
@@ -748,24 +1306,64 @@ ws.on('error', (error) => {
 ```json
 {
   "success": true,
-  "message": "Knowledge base associated successfully"
+  "document": {
+    "id": "文档UUID",
+    "title": "API设计规范",
+    "createdAt": "2025-12-25T00:00:00Z"
+  }
 }
 ```
 
-#### 检索知识库
+#### 获取知识库文档列表
 
-**POST** `/api/knowledge-base/search`
+**GET** `/api/projects/:projectId/knowledge-base`
 
-检索知识库中的相关内容。
+获取项目的所有知识库文档。
+
+**查询参数**:
+- `tags`: 按标签过滤（逗号分隔）
+- `limit`: 返回数量限制
+- `offset`: 偏移量
+
+#### 获取知识库文档详情
+
+**GET** `/api/projects/:projectId/knowledge-base/:docId`
+
+获取特定知识库文档的详情。
+
+#### 更新知识库文档
+
+**PUT** `/api/projects/:projectId/knowledge-base/:docId`
+
+更新知识库文档内容。
 
 **请求体**:
 ```json
 {
-  "applicationId": "ecommerce-app",
+  "title": "更新的标题",
+  "content": "更新的内容",
+  "tags": ["updated", "tags"]
+}
+```
+
+#### 删除知识库文档
+
+**DELETE** `/api/projects/:projectId/knowledge-base/:docId`
+
+删除知识库文档（软删除）。
+
+#### 搜索知识库
+
+**POST** `/api/projects/:projectId/knowledge-base/search`
+
+在项目的知识库中搜索相关内容（支持向量搜索）。
+
+**请求体**:
+```json
+{
   "query": "支付模块设计",
   "topK": 5,
-  "documentTypes": ["PRD", "DESIGN"],
-  "includeCode": true
+  "tags": ["api", "design"]  // 可选
 }
 ```
 
@@ -775,55 +1373,173 @@ ws.on('error', (error) => {
   "success": true,
   "results": [
     {
-      "type": "document",
-      "source": "PRD",
+      "id": "文档UUID",
+      "title": "支付API设计",
       "content": "相关文档片段...",
       "score": 0.85,
-      "metadata": {
-        "filename": "PRD.md",
-        "version": 1
-      }
-    },
-    {
-      "type": "code",
-      "source": "codeRepository",
-      "content": "相关代码片段...",
-      "score": 0.78,
-      "metadata": {
-        "file": "src/payment.ts",
-        "line": 10
-      }
+      "tags": ["api", "payment"]
     }
   ]
 }
 ```
 
-#### 更新知识库
+### 1.9.1 知识库文件上传 API（CLI知识输入）
 
-**POST** `/api/projects/:projectId/knowledge-base/update`
+#### 上传知识文件
 
-手动更新知识库（将项目产出添加到知识库）。
+**POST** `/api/projects/:projectId/knowledge/upload`
 
-**请求体**:
-```json
-{
-  "documentType": "PRD",
-  "content": "PRD文档内容...",
-  "autoIndex": true
-}
-```
+上传Markdown文件到项目的知识库（文件存储，用于CLI知识输入）。
+
+**Content-Type**: `multipart/form-data`
+
+**请求参数**:
+- `file`: Markdown文件（.md格式，最大5MB）
 
 **响应**:
 ```json
 {
   "success": true,
-  "message": "Knowledge base updated successfully"
+  "filename": "api-design.md",
+  "size": 1024,
+  "uploadedAt": "2025-12-25T00:00:00Z"
 }
 ```
 
-### 1.10 工作流 API
+#### 获取知识文件列表
 
-#### 创建工作流
+**GET** `/api/projects/:projectId/knowledge/files`
+
+获取项目上传的所有知识文件列表。
+
+#### 获取知识文件内容
+
+**GET** `/api/projects/:projectId/knowledge/files/:filename`
+
+获取特定知识文件的内容。
+
+#### 删除知识文件
+
+**DELETE** `/api/projects/:projectId/knowledge/files/:filename`
+
+删除知识文件。
+
+### 1.10 工作流执行 API
+
+工作流执行API用于控制项目的工作流执行生命周期。
+
+#### 获取活跃工作流（管理员）
+
+**GET** `/api/workflow/active`
+
+获取所有正在执行的工作流（管理员功能）。
+
+#### 获取工作流状态
+
+**GET** `/api/workflow/:projectId/state`
+
+获取项目当前的工作流执行状态。
+
+**响应**:
+```json
+{
+  "success": true,
+  "state": {
+    "status": "running",
+    "currentRole": "ProductManager",
+    "currentAction": "WritePRD",
+    "completedSteps": [...],
+    "pendingConfirmation": null
+  }
+}
+```
+
+#### 获取工作流执行记录
+
+**GET** `/api/workflow/:projectId/execution`
+
+获取完整的工作流执行记录。
+
+#### 检查恢复状态
+
+**GET** `/api/workflow/:projectId/recovery-status`
+
+检查工作流是否需要恢复（如中断后）。
+
+#### 启动工作流
+
+**POST** `/api/workflow/:projectId/start`
+
+启动项目的工作流执行。
+
+**请求体**:
+```json
+{
+  "workflowConfig": { ... }  // 可选，使用应用默认工作流
+}
+```
+
+#### 确认并继续
+
+**POST** `/api/workflow/:projectId/confirm`
+
+在交互模式下确认当前步骤并继续执行。
+
+**请求体**:
+```json
+{
+  "action": "continue",  // continue, edit, regenerate, skip
+  "modifiedContent": "修改后的内容（可选）"
+}
+```
+
+#### 重置到指定角色
+
+**POST** `/api/workflow/:projectId/reset`
+
+重置工作流到指定的角色，重新执行。
+
+**请求体**:
+```json
+{
+  "roleProfile": "ProductManager",
+  "actionName": "WritePRD"  // 可选
+}
+```
+
+#### 暂停工作流
+
+**POST** `/api/workflow/:projectId/pause`
+
+暂停正在执行的工作流。
+
+#### 恢复工作流
+
+**POST** `/api/workflow/:projectId/resume`
+
+恢复已暂停的工作流。
+
+#### 重试失败的工作流
+
+**POST** `/api/workflow/:projectId/retry`
+
+重试失败的工作流步骤。
+
+#### 触发恢复
+
+**POST** `/api/workflow/:projectId/recover`
+
+手动触发工作流恢复流程。
+
+#### 删除工作流执行
+
+**DELETE** `/api/workflow/:projectId`
+
+删除项目的工作流执行记录。
+
+### 1.10.1 工作流配置 API（已废弃，使用应用工作流API）
+
+#### 创建工作流（已废弃）
 
 **POST** `/api/v1/workflow/create`
 
@@ -1216,7 +1932,8 @@ ws.on('error', (error) => {
 | Architect | WriteDesign, DesignReview, ImproveDesign |
 | ProjectManager | BreakdownTasks, WriteSubProjectDesign, SubProjectDesignReview |
 | Engineer | WriteCode, ExecuteSubtask, RunCode, FixBug |
-| QAEngineer | TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion |
+| QAEngineer | WriteTestPlan, WriteTest, TestCaseReview |
+| AutomationEngineer | AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion |
 | TeamLeader | Coordinate |
 | DataAnalyst | DataAnalysis |
 

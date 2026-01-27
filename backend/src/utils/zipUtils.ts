@@ -190,30 +190,6 @@ export async function createWorkspaceZip(
 }
 
 /**
- * Copy directory recursively
- */
-function copyDirectoryRecursive(src: string, dest: string): void {
-  if (!fs.existsSync(src)) {
-    return;
-  }
-
-  fs.mkdirSync(dest, { recursive: true });
-  
-  const entries = fs.readdirSync(src, { withFileTypes: true });
-  
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-    
-    if (entry.isDirectory()) {
-      copyDirectoryRecursive(srcPath, destPath);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-    }
-  }
-}
-
-/**
  * Create a zip archive from generated code files
  * @param files Array of code files
  * @param options Workspace options

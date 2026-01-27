@@ -6,16 +6,22 @@ Mind2Build is a multi-agent AI collaboration framework that simulates a software
 
 ## 🌟 Features
 
-- **Multi-Agent Collaboration**: AI agents (ProductManager, Architect, Engineer) work together like a real team
-- **Complete Project Generation**: From idea to PRD, design documents, and working code
+- **Multi-Agent Collaboration**: 9 AI agents (Salesperson, ProductManager, Architect, ProjectManager, Engineer, QAEngineer, AutomationEngineer, TeamLeader, DataAnalyst) work together like a real team
+- **Complete Project Generation**: From idea to MRD, PRD, design documents, and working code
+- **30 Actions**: Comprehensive action system covering document writing, review, improvement, code execution, QA workflows, and more
 - **Interactive Mode** ✨: Manual review and confirmation at each SOP step for better control
   - **CLI Interactive Mode**: Terminal-based with editor integration
   - **Web Interactive Mode**: Beautiful browser interface with real-time updates
-- **Multiple LLM Support**: OpenAI, Anthropic Claude, Zhipu AI, and more
+- **Business Line & Platform Management**: Organize projects by business lines and platforms
+- **Knowledge Base System**: RAG-enhanced retrieval with Qdrant vector database support
+- **Section Conversation History**: Track and manage conversation history for document sections (PRD/MRD) to enable iterative refinement
+- **Workflow Management**: Customizable workflows with visual designer
+- **Git Repository Integration**: Automatic Git repository management with version branch support
+- **Multiple LLM Support**: OpenAI, Zhipu AI, Ark (Doubao), DeepSeek, Cursor Agent, and more
 - **Cost Management**: Budget tracking and limits to control LLM usage
 - **Web Interface**: Vue 3-based dashboard with WebSocket support
 - **CLI Tool**: Command-line interface for quick project generation
-- **Database Persistence**: PostgreSQL storage for all projects and messages
+- **Database Persistence**: PostgreSQL storage for all projects, messages, and configurations
 
 ## 🏗️ Architecture
 
@@ -79,24 +85,147 @@ pnpm dev:frontend
 ## 📦 Project Structure
 
 ```
-ax/
+mind2build/
 ├── backend/          # Node.js/TypeScript backend
 │   ├── src/
 │   │   ├── core/            # Message, Memory, Context, Base classes
-│   │   ├── roles/           # AI agent roles
-│   │   ├── actions/         # Agent actions
-│   │   ├── providers/       # LLM providers
-│   │   ├── orchestration/   # Team & Environment
-│   │   ├── database/        # Data layer
-│   │   ├── api/             # REST API
+│   │   ├── roles/           # 9 AI agent roles
+│   │   ├── actions/         # 30 agent actions
+│   │   ├── providers/       # LLM providers (OpenAI, ZhipuAI, Ark, Cursor, DeepSeek)
+│   │   ├── orchestration/   # Team, Environment, StateManager
+│   │   ├── executors/       # LLMExecutor, CLIExecutor (Aider, Cursor)
+│   │   ├── database/        # PostgreSQL repositories and migrations
+│   │   ├── api/             # 15 REST API controllers: ApplicationController, ApplicationWorkflowController, EngineerTestController, KnowledgeBaseController, KnowledgeUploadController, LLMConfigController, MRDController, PRDController, ProjectController, ProjectVersionController, PromptConfigController, RoleActionController, RoleActionExecutionController, RoleLLMConfigController, WorkflowExecutionController
+│   │   ├── services/        # 10 Services: WorkflowService, RAGService, GitService, DocumentArchiveService, RoleActionService, EmbeddingService, QdrantService, RerankService, SectionAdjustService, StagehandService
+│   │   ├── workflow/        # Workflow execution engine
 │   │   └── cli/             # CLI commands
 │   └── tests/
 ├── frontend/         # Vue 3 + Vite frontend
 │   └── src/
-├── database/         # Prisma schema and migrations
-├── shared/           # Shared TypeScript types
+│       ├── views/           # Dashboard, BusinessLine, Platform, Knowledge, Config
+│       ├── components/      # InteractiveConfirmation, WorkflowKanban, etc.
+│       ├── stores/          # Pinia state management
+│       └── router/          # Vue Router configuration
+├── shared/           # Shared TypeScript types and constants
 └── workspace/        # Generated projects
 ```
+
+## 🔌 扩展开发 - 创建新角色和 Action
+
+系统采用配置驱动的动态加载架构，添加新角色或 Action 只需修改少量文件，无需改动核心业务代码。
+
+### 创建新角色 (Role)
+
+**步骤 1**: 创建角色类文件 `backend/src/roles/NewRole.ts`
+
+```typescript
+import { IRoleConfig, ACTION_SOME_TRIGGER } from '@mind2build/shared';
+import { Role } from './Role';
+import { Context } from '../core/context/Context';
+import { SomeAction } from '../actions/SomeAction';
+
+export class NewRole extends Role {
+  constructor(context: Context, name: string = 'NewRole') {
+    const config: IRoleConfig = {
+      name,
+      profile: 'NewRole',           // 角色唯一标识
+      goal: '角色目标描述',
+      constraints: '角色约束条件',
+      description: '角色详细描述',
+    };
+    super(config, context);
+    
+    // 设置监听的 action（触发条件）
+    this.watch([ACTION_SOME_TRIGGER]);
+    
+    // 设置角色执行的 actions
+    this.setActions([
+      new SomeAction(),
+    ]);
+  }
+}
+
+export default NewRole;
+```
+
+**步骤 2**: 注册到 `backend/src/roles/index.ts`
+
+```typescript
+// 添加 export
+export { NewRole } from './NewRole';
+
+// 在 ROLE_REGISTRY 中添加
+export const ROLE_REGISTRY = {
+  // ... 现有角色
+  NewRole,  // 添加新角色
+};
+```
+
+**步骤 3**: 运行数据库迁移添加角色定义
+
+```bash
+# 创建迁移脚本或直接运行初始化
+cd backend
+npx ts-node --transpile-only src/database/migrations/init_role_action_definitions.ts
+```
+
+### 创建新 Action
+
+**步骤 1**: 创建 Action 类文件 `backend/src/actions/NewAction.ts`
+
+```typescript
+import { BaseAction } from '../core/base/BaseAction';
+import { Message } from '../core/message/Message';
+
+export class NewAction extends BaseAction {
+  name = 'NewAction';
+  description = 'Action 描述';
+
+  async run(context: string, options?: any): Promise<Message> {
+    // 实现 Action 逻辑
+    const result = await this.aask(context, [
+      { role: 'system', content: 'System prompt here' }
+    ]);
+    
+    return new Message({
+      content: result,
+      role: this.role?.profile || 'Assistant',
+      causeBy: this.name,
+    });
+  }
+}
+```
+
+**步骤 2**: 注册到 `backend/src/actions/index.ts`
+
+```typescript
+// 添加 export
+export { NewAction } from './NewAction';
+
+// 在 ACTION_REGISTRY 中添加
+export const ACTION_REGISTRY = {
+  // ... 现有 actions
+  NewAction,  // 添加新 action
+};
+```
+
+**步骤 3**: 运行数据库迁移添加 Action 定义
+
+```bash
+cd backend
+npx ts-node --transpile-only src/database/migrations/init_role_action_definitions.ts
+```
+
+### 更新默认工作流
+
+修改 `backend/src/database/migrations/init_role_action_definitions.ts` 中的 `getDefaultWorkflowConfig()` 函数，将新角色添加到默认工作流中。
+
+### 架构优势
+
+- **核心文件零修改**: Controller、Service 等核心业务文件无需改动
+- **集中注册**: 角色和 Action 的类映射集中在 `index.ts`
+- **数据库驱动**: 元数据（显示名称、描述等）从数据库读取
+- **动态加载**: 工作流配置从 `system_default_workflow_templates` 表读取
 
 ## 🛠️ Development
 
@@ -291,7 +420,52 @@ See [Frontend Interactive Guide](./doc/23_前端交互模式实现指南_FRONTEN
 
 ### API
 
-#### Role Action Execution API ✨ (New!)
+#### Application & Workflow Management API
+
+Manage business lines (applications) and their workflows:
+
+```bash
+# Create application
+POST /api/applications
+{
+  "name": "E-commerce Platform",
+  "description": "Online shopping platform"
+}
+
+# Get application workflows
+GET /api/applications/:applicationId/workflows
+
+# Create custom workflow
+POST /api/applications/:applicationId/workflows
+{
+  "name": "Custom Workflow",
+  "workflowConfig": { ... }
+}
+```
+
+#### Workflow Execution API
+
+Control workflow execution lifecycle:
+
+```bash
+# Start workflow
+POST /api/workflow/:projectId/start
+
+# Get workflow state
+GET /api/workflow/:projectId/state
+
+# Confirm and proceed (interactive mode)
+POST /api/workflow/:projectId/confirm
+
+# Reset to specific role
+POST /api/workflow/:projectId/reset
+
+# Pause/Resume workflow
+POST /api/workflow/:projectId/pause
+POST /api/workflow/:projectId/resume
+```
+
+#### Role Action Execution API ✨
 
 Independently execute specific role actions without running the full workflow:
 
@@ -315,21 +489,25 @@ curl -X POST http://localhost:3000/api/projects/PROJECT_ID/roles/Engineer/action
 ```
 
 **Supported Roles & Actions:**
+
 - **Salesperson**: WriteMRD, MRDReview, ImproveMRD
 - **ProductManager**: WritePRD, PRDReview, ImprovePRD, SearchEnhancedQA
 - **Architect**: WriteDesign, DesignReview, ImproveDesign
 - **ProjectManager**: BreakdownTasks, WriteSubProjectDesign, SubProjectDesignReview
 - **Engineer**: WriteCode, ExecuteSubtask, RunCode, FixBug
-- **QAEngineer**: WriteTest, WriteTestPlan, TestabilityReview, TestCaseReview, TestReview, ImproveTest, AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion
+- **QAEngineer**: TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, TestReview, ImproveTest
+- **AutomationEngineer**: AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion
 - **TeamLeader**: Coordinate
 - **DataAnalyst**: DataAnalysis
+
+**Total: 9 Roles, 30 Actions**
 
 **Features:**
 - ✅ Execute any role action independently
 - ✅ Flexible input methods (custom input, context messages, auto-load from history)
 - ✅ Automatic context loading based on action requirements
 - ✅ Workspace options for document organization
-- ✅ Complete error handling and timeout control
+- ✅ Complete error handling (timeout handled by individual actions)
 - ✅ Results automatically saved to project history
 
 #### Standard API
@@ -340,12 +518,98 @@ const response = await fetch('http://localhost:3000/api/projects', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    idea: 'Create a blog platform with user authentication'
+    name: 'Blog Platform',
+    idea: 'Create a blog platform with user authentication',
+    applicationId: 'app-id',  // Optional: associate with application
+    investment: 10.0,
+    nRound: 5,
+    gitRepositoryUrl: 'https://github.com/user/blog-platform.git'  // Optional: Git repository URL
   })
 });
 
 const project = await response.json();
-console.log('Project ID:', project.id);
+console.log('Project ID:', project.project.id);
+
+// Create a project version (with Git branch)
+await fetch(`http://localhost:3000/api/projects/${project.project.id}/versions`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    name: 'v1.0',
+    description: 'Initial version'
+  })
+});
+
+// Start project execution
+await fetch(`http://localhost:3000/api/projects/${project.project.id}/start`, {
+  method: 'POST'
+});
+
+// Get project status
+const status = await fetch(`http://localhost:3000/api/projects/${project.project.id}`);
+const data = await status.json();
+console.log('Status:', data.project.status);
+```
+
+#### Knowledge Base API
+
+```javascript
+// Create knowledge base document
+POST /api/projects/:projectId/knowledge-base
+{
+  "title": "API Design Guidelines",
+  "content": "...",
+  "tags": ["api", "design"]
+}
+
+// Search knowledge base
+POST /api/projects/:projectId/knowledge-base/search
+{
+  "query": "payment module design",
+  "topK": 5
+}
+```
+
+#### Configuration API
+
+```javascript
+// LLM Configuration
+GET /api/config/llm
+POST /api/config/llm
+POST /api/config/llm/:id/activate
+
+// Role-specific LLM Configuration
+GET /api/config/role-llm/:profile
+POST /api/config/role-llm/:profile
+
+// Prompt Configuration
+GET /api/config/prompts
+POST /api/config/prompts
+
+// Role and Action Metadata
+GET /api/config/roles
+GET /api/config/actions
+GET /api/config/roles-actions
+```
+
+#### Project Version & Git Management API
+
+```javascript
+// Create project version (automatically creates Git branch)
+POST /api/projects/:projectId/versions
+{
+  "name": "v1.0",
+  "description": "Initial version"
+}
+
+// List project versions
+GET /api/projects/:projectId/versions
+
+// Get Git branches
+GET /api/projects/:projectId/branches
+
+// Activate a version
+POST /api/projects/:projectId/versions/:versionId/activate
 ```
 
 ### Programmatic

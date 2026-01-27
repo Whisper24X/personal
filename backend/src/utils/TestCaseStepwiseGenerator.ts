@@ -8,10 +8,17 @@ import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { logger } from './logger';
 import * as fs from 'fs/promises';
-import * as fsSync from 'fs';
 import * as path from 'path';
-import { StateManager } from '../orchestration/StateManager';
-import { StepState } from '../orchestration/StepStateTracker';
+
+/**
+ * Step state enum for logging purposes
+ */
+enum StepState {
+  PENDING = 'pending',
+  RUNNING = 'running',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+}
 
 export interface TestModule {
   number: number;
@@ -64,9 +71,8 @@ export interface TestCaseStepwiseConfig {
   projectId?: string;
   version?: number;
 
-  // StateManager配置（可选，用于步骤状态管理）
-  stateManager?: StateManager;
-  role?: string; // 角色名称，用于步骤状态管理
+  // 角色名称（可选，用于日志）
+  role?: string;
 
   // PRD 和代码内容
   prd: string;
@@ -355,11 +361,10 @@ export class TestCaseStepwiseGenerator {
    * Step 3: 按功能模块生成测试用例
    */
   private async generateModules(
-    outline: string,
+    _outline: string,
     modules: TestModule[]
   ): Promise<string[]> {
     const moduleContents: string[] = [];
-    const modulesStartTime = Date.now();
     const logContext = this.getLogContext();
 
     logger.info('TestCaseStepwiseGenerator: Starting module generation', {
@@ -392,7 +397,7 @@ export class TestCaseStepwiseGenerator {
         const modulePrompt = this.config.buildSectionPrompt(
           this.config.prd,
           this.config.code,
-          outline,
+          _outline,
           module.number,
           module.title,
           module.description
@@ -650,7 +655,7 @@ export class TestCaseStepwiseGenerator {
    * Step 6: 合并所有功能模块的测试用例
    */
   private mergeModules(
-    outline: string,
+    _outline: string,
     moduleContents: string[],
     modules: TestModule[]
   ): string {
@@ -670,7 +675,7 @@ export class TestCaseStepwiseGenerator {
     parts.push('\n---\n');
 
     // 添加每个功能模块的测试用例
-    modules.forEach((module, index) => {
+    modules.forEach((_module, index) => {
       const content = moduleContents[index];
       if (content && content.trim().length > 0) {
         parts.push(content);
@@ -699,27 +704,14 @@ export class TestCaseStepwiseGenerator {
   }
 
   /**
-   * 设置步骤状态
+   * 设置步骤状态 (用于日志记录)
    */
   private async setStepState(stepId: string, state: StepState): Promise<void> {
-    if (this.config.stateManager && this.config.role) {
-      try {
-        await this.config.stateManager.setStepState(
-          this.config.role,
-          this.config.applicationId || '',
-          this.config.projectId || '',
-          stepId,
-          state
-        );
-      } catch (error: any) {
-        logger.warn('TestCaseStepwiseGenerator: Failed to set step state', {
-          role: this.config.role,
-          stepId,
-          state,
-          error: error.message,
-        });
-      }
-    }
+    logger.debug('TestCaseStepwiseGenerator: Step state changed', {
+      role: this.config.role,
+      stepId,
+      state,
+    });
   }
 
   /**

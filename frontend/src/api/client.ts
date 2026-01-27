@@ -52,8 +52,10 @@ class APIClient {
     );
   }
 
-  // 应用 API 端点
-  async createApplication(data: {
+  // ==================== 业务线 API 端点（原应用 API）====================
+  
+  // 创建业务线
+  async createBusinessLine(data: {
     name: string;
     description?: string;
     metadata?: Record<string, any>;
@@ -61,15 +63,18 @@ class APIClient {
     return this.client.post('/applications', data);
   }
 
-  async getApplications() {
+  // 获取业务线列表
+  async getBusinessLines() {
     return this.client.get('/applications');
   }
 
-  async getApplication(id: string) {
+  // 获取单个业务线
+  async getBusinessLine(id: string) {
     return this.client.get(`/applications/${id}`);
   }
 
-  async updateApplication(id: string, data: {
+  // 更新业务线
+  async updateBusinessLine(id: string, data: {
     name?: string;
     description?: string;
     metadata?: Record<string, any>;
@@ -77,15 +82,179 @@ class APIClient {
     return this.client.put(`/applications/${id}`, data);
   }
 
-  async deleteApplication(id: string) {
+  // 删除业务线
+  async deleteBusinessLine(id: string) {
     return this.client.delete(`/applications/${id}`);
   }
 
-  async getApplicationProjects(id: string) {
+  // 获取业务线下的平台列表
+  async getBusinessLinePlatforms(id: string) {
     return this.client.get(`/applications/${id}/projects`);
   }
 
-  // 项目 API 端点
+  // 获取业务线工作流列表
+  async getBusinessLineWorkflows(businessLineId: string) {
+    return this.client.get(`/applications/${businessLineId}/workflows`);
+  }
+
+  // 兼容旧的应用 API（保持向后兼容）
+  async createApplication(data: {
+    name: string;
+    description?: string;
+    metadata?: Record<string, any>;
+  }) {
+    return this.createBusinessLine(data);
+  }
+
+  async getApplications() {
+    return this.getBusinessLines();
+  }
+
+  async getApplication(id: string) {
+    return this.getBusinessLine(id);
+  }
+
+  async updateApplication(id: string, data: {
+    name?: string;
+    description?: string;
+    metadata?: Record<string, any>;
+  }) {
+    return this.updateBusinessLine(id, data);
+  }
+
+  async deleteApplication(id: string) {
+    return this.deleteBusinessLine(id);
+  }
+
+  async getApplicationProjects(id: string) {
+    return this.getBusinessLinePlatforms(id);
+  }
+
+  // ==================== 平台 API 端点（原项目 API）====================
+  
+  // 创建平台
+  async createPlatform(data: {
+    name: string;
+    idea?: string;
+    description?: string;
+    investment?: number;
+    nRound?: number;
+    applicationId?: string;
+    gitRepoUrl?: string;
+  }) {
+    return this.client.post('/projects', data);
+  }
+
+  // 启动平台
+  async startPlatform(id: string) {
+    return this.client.post(`/projects/${id}/start`);
+  }
+
+  // 获取单个平台
+  async getPlatform(id: string) {
+    return this.client.get(`/projects/${id}`);
+  }
+
+  // 删除平台
+  async deletePlatform(id: string) {
+    return this.client.delete(`/projects/${id}`);
+  }
+
+  // 获取平台列表
+  async getPlatforms(limit?: number) {
+    return this.client.get('/projects', { params: { limit } });
+  }
+
+  // 获取平台消息
+  async getPlatformMessages(id: string, limit?: number) {
+    return this.client.get(`/projects/${id}/messages`, { params: { limit } });
+  }
+
+  // 获取平台文档
+  async getPlatformDocuments(id: string) {
+    return this.client.get(`/projects/${id}/documents`);
+  }
+
+  // ==================== 平台版本 API 端点 ====================
+
+  /**
+   * 创建平台版本
+   * @param platformId 平台ID
+   * @param data 版本数据
+   */
+  async createPlatformVersion(platformId: string, data: {
+    versionName: string;
+    idea: string;
+    description?: string;
+  }) {
+    return this.client.post(`/projects/${platformId}/versions`, data);
+  }
+
+  /**
+   * 获取平台所有版本
+   * @param platformId 平台ID
+   */
+  async getPlatformVersions(platformId: string) {
+    return this.client.get(`/projects/${platformId}/versions`);
+  }
+
+  /**
+   * 获取平台当前激活版本
+   * @param platformId 平台ID
+   */
+  async getActivePlatformVersion(platformId: string) {
+    return this.client.get(`/projects/${platformId}/versions/active`);
+  }
+
+  /**
+   * 获取单个版本详情
+   * @param platformId 平台ID
+   * @param versionId 版本ID
+   */
+  async getPlatformVersion(platformId: string, versionId: string) {
+    return this.client.get(`/projects/${platformId}/versions/${versionId}`);
+  }
+
+  /**
+   * 更新版本信息
+   * @param platformId 平台ID
+   * @param versionId 版本ID
+   * @param data 更新数据
+   */
+  async updatePlatformVersion(platformId: string, versionId: string, data: {
+    description?: string;
+    metadata?: Record<string, any>;
+  }) {
+    return this.client.put(`/projects/${platformId}/versions/${versionId}`, data);
+  }
+
+  /**
+   * 删除版本
+   * @param platformId 平台ID
+   * @param versionId 版本ID
+   */
+  async deletePlatformVersion(platformId: string, versionId: string) {
+    return this.client.delete(`/projects/${platformId}/versions/${versionId}`);
+  }
+
+  /**
+   * 激活版本（切换到该版本的 Git 分支）
+   * @param platformId 平台ID
+   * @param versionId 版本ID
+   */
+  async activatePlatformVersion(platformId: string, versionId: string) {
+    return this.client.post(`/projects/${platformId}/versions/${versionId}/activate`);
+  }
+
+  /**
+   * 获取平台 Git 分支信息
+   * @param platformId 平台ID
+   */
+  async getPlatformBranches(platformId: string) {
+    return this.client.get(`/projects/${platformId}/branches`);
+  }
+
+  // 兼容旧的项目 API（保持向后兼容）
   async createProject(data: {
     name: string;
     idea: string;
@@ -94,31 +263,31 @@ class APIClient {
     nRound?: number;
     applicationId?: string;
   }) {
-    return this.client.post('/projects', data);
+    return this.createPlatform(data);
   }
 
   async startProject(id: string) {
-    return this.client.post(`/projects/${id}/start`);
+    return this.startPlatform(id);
   }
 
   async getProject(id: string) {
-    return this.client.get(`/projects/${id}`);
+    return this.getPlatform(id);
   }
 
   async deleteProject(id: string) {
-    return this.client.delete(`/projects/${id}`);
+    return this.deletePlatform(id);
   }
 
   async getProjects(limit?: number) {
-    return this.client.get('/projects', { params: { limit } });
+    return this.getPlatforms(limit);
   }
 
   async getProjectMessages(id: string, limit?: number) {
-    return this.client.get(`/projects/${id}/messages`, { params: { limit } });
+    return this.getPlatformMessages(id, limit);
   }
 
   async getProjectDocuments(id: string) {
-    return this.client.get(`/projects/${id}/documents`);
+    return this.getPlatformDocuments(id);
   }
 
   // PRD API 端点
@@ -296,6 +465,41 @@ class APIClient {
     return this.client.post('/config/llm/providers', data);
   }
 
+  // LLM Model Registry API 端点 (全局模型管理)
+  async getLLMModels() {
+    return this.client.get('/config/llm/models');
+  }
+
+  async getLLMModelsByProvider(provider: string) {
+    return this.client.get(`/config/llm/models/${provider}`);
+  }
+
+  async createLLMModel(data: {
+    provider: string;
+    modelName: string;
+    displayName?: string;
+    isDefault?: boolean;
+    sortOrder?: number;
+  }) {
+    return this.client.post('/config/llm/models', data);
+  }
+
+  async updateLLMModel(id: string, data: {
+    displayName?: string;
+    isDefault?: boolean;
+    sortOrder?: number;
+  }) {
+    return this.client.put(`/config/llm/models/${id}`, data);
+  }
+
+  async deleteLLMModel(id: string) {
+    return this.client.delete(`/config/llm/models/${id}`);
+  }
+
+  async updateLLMModelSortOrder(updates: { id: string; sortOrder: number }[]) {
+    return this.client.put('/config/llm/models/sort', { updates });
+  }
+
   // Role LLM Config API 端点
   async getRoleLLMConfigs() {
     return this.client.get('/config/role-llm');
@@ -369,58 +573,114 @@ class APIClient {
     document.body.removeChild(link);
   }
 
-  // Interactive session API endpoints (polling mode)
-  async pollInteractiveMessages(projectId: string, lastMessageId?: string | null) {
-    const params: Record<string, string> = {};
-    if (lastMessageId) {
-      params.lastMessageId = lastMessageId;
-    }
-    return this.client.get(`/interactive/${projectId}/poll`, { params });
-  }
+  // ==================== 工作流 API 端点 ====================
 
-  async sendInteractiveAction(projectId: string, action: string, modifiedContent?: string) {
-    return this.client.post(`/interactive/${projectId}/action`, {
-      action,
-      modifiedContent,
+  /**
+   * 获取工作流执行状态
+   * 返回当前状态、运行位置、步骤列表、待确认信息等
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
+   */
+  async getWorkflowState(projectId: string, versionId: string) {
+    return this.client.get(`/workflow/${projectId}/state`, {
+      params: { versionId },
     });
   }
 
   /**
-   * Confirm role completion and allow proceeding to next role
-   * This endpoint clears the confirmation status in database
+   * 获取工作流执行完整记录
+   * 包含工作流配置快照和所有执行详情
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
    */
-  async confirmRoleCompletion(projectId: string, action: string, modifiedContent?: string) {
-    return this.client.post(`/interactive/${projectId}/confirm`, {
-      action,
-      modifiedContent,
+  async getWorkflowExecution(projectId: string, versionId: string) {
+    return this.client.get(`/workflow/${projectId}/execution`, {
+      params: { versionId },
     });
   }
 
-  // Get workflow information (all roles and their actions)
-  async getInteractiveWorkflow(projectId: string) {
-    return this.client.get(`/interactive/${projectId}/workflow`);
+  /**
+   * 启动工作流执行
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
+   * @param currentPosition 可选：从指定位置开始执行（用于 reset 后启动）
+   */
+  async startWorkflow(projectId: string, versionId: string, currentPosition?: { roleIndex: number; actionIndex: number }) {
+    return this.client.post(`/workflow/${projectId}/start`, { versionId, currentPosition });
   }
 
-  // Get current running role and action
-  async getInteractiveRunning(projectId: string) {
-    return this.client.get(`/interactive/${projectId}/running`);
+  /**
+   * 确认并继续执行下一步
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
+   */
+  async confirmWorkflow(projectId: string, versionId: string) {
+    return this.client.post(`/workflow/${projectId}/confirm`, { versionId });
   }
 
-  // Reset workflow from a specific role (reset that role and all downstream roles)
-  async resetInteractiveWorkflow(projectId: string, role: string) {
-    return this.client.post(`/interactive/${projectId}/reset-workflow`, {
-      role,
+  /**
+   * 重置工作流到指定角色
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
+   * @param targetRole 目标角色名称（该角色及下游角色将被重置）
+   */
+  async resetWorkflow(projectId: string, versionId: string, targetRole: string) {
+    return this.client.post(`/workflow/${projectId}/reset`, {
+      versionId,
+      targetRole,
     });
   }
 
-  // Recover from stale or failed actions
-  async recoverFromStaleActions(projectId: string) {
-    return this.client.post(`/interactive/${projectId}/recover`);
+  /**
+   * 暂停工作流执行
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
+   */
+  async pauseWorkflow(projectId: string, versionId: string) {
+    return this.client.post(`/workflow/${projectId}/pause`, { versionId });
+  }
+
+  /**
+   * 恢复已暂停的工作流
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
+   */
+  async resumeWorkflow(projectId: string, versionId: string) {
+    return this.client.post(`/workflow/${projectId}/resume`, { versionId });
+  }
+
+  /**
+   * 重试失败的工作流
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
+   */
+  async retryWorkflow(projectId: string, versionId: string) {
+    return this.client.post(`/workflow/${projectId}/retry`, { versionId });
+  }
+
+  /**
+   * 恢复工作流状态（用于页面刷新、服务重启等场景）
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
+   */
+  async recoverWorkflow(projectId: string, versionId: string) {
+    return this.client.post(`/workflow/${projectId}/recover`, { versionId });
+  }
+
+  /**
+   * 获取恢复状态（检查是否需要恢复）
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
+   */
+  async getWorkflowRecoveryStatus(projectId: string, versionId: string) {
+    return this.client.get(`/workflow/${projectId}/recovery-status`, {
+      params: { versionId },
+    });
   }
 
   // Download workspace code (full ainative-workspace directory)
   downloadWorkspaceCode(projectId: string) {
-    const url = `${API_BASE_URL}/interactive/${projectId}/download/code`;
+    const url = `${API_BASE_URL}/projects/${projectId}/download/code`;
     
     // Create a temporary link and trigger download
     const link = document.createElement('a');
@@ -433,7 +693,7 @@ class APIClient {
 
   // Download workspace docs (docs and openspec directories)
   downloadWorkspaceDocs(projectId: string) {
-    const url = `${API_BASE_URL}/interactive/${projectId}/download/docs`;
+    const url = `${API_BASE_URL}/projects/${projectId}/download/docs`;
     
     // Create a temporary link and trigger download
     const link = document.createElement('a');
@@ -485,6 +745,50 @@ class APIClient {
       query,
       limit,
     });
+  }
+
+  // ==================== 知识库文件上传 API 端点 ====================
+
+  /**
+   * 上传知识库文件
+   * @param projectId 项目ID
+   * @param file 要上传的文件
+   */
+  async uploadKnowledgeFile(projectId: string, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    return this.client.post(`/projects/${projectId}/knowledge/upload`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  }
+
+  /**
+   * 获取已上传的知识库文件列表
+   * @param projectId 项目ID
+   */
+  async getKnowledgeFiles(projectId: string) {
+    return this.client.get(`/projects/${projectId}/knowledge/files`);
+  }
+
+  /**
+   * 获取知识库文件内容
+   * @param projectId 项目ID
+   * @param filename 文件名
+   */
+  async getKnowledgeFile(projectId: string, filename: string) {
+    return this.client.get(`/projects/${projectId}/knowledge/files/${encodeURIComponent(filename)}`);
+  }
+
+  /**
+   * 删除知识库文件
+   * @param projectId 项目ID
+   * @param filename 文件名
+   */
+  async deleteKnowledgeFile(projectId: string, filename: string) {
+    return this.client.delete(`/projects/${projectId}/knowledge/files/${encodeURIComponent(filename)}`);
   }
 
   // Generic GET method for custom endpoints

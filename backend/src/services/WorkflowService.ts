@@ -1,71 +1,21 @@
 /**
  * Workflow Service
  * Provides workflow configuration and management services
+ * 
+ * Schema V2: Default workflow configuration is imported from defaultWorkflowConfig.ts
  */
 
 import { ApplicationWorkflowRepository, WorkflowConfig } from '../database/repositories/ApplicationWorkflowRepository';
-import { SystemDefaultWorkflowTemplateRepository } from '../database/repositories/SystemDefaultWorkflowTemplateRepository';
 import { ApplicationRepository } from '../database/repositories/ApplicationRepository';
 import { RoleDefinitionRepository } from '../database/repositories/RoleDefinitionRepository';
 import { ActionDefinitionRepository } from '../database/repositories/ActionDefinitionRepository';
 import { logger } from '../utils';
 
-// 默认工作流配置（与init_role_action_definitions.ts中的配置保持一致）
-const DEFAULT_WORKFLOW_CONFIG: WorkflowConfig = {
-  roles: [
-    {
-      profile: 'Salesperson',
-      name: 'Salesperson',
-      order: 0,
-      actions: ['WriteMRD', 'MRDReview', 'ImproveMRD'],
-      watch_actions: ['User'],
-    },
-    {
-      profile: 'ProductManager',
-      name: 'ProductManager',
-      order: 1,
-      actions: ['WritePRD', 'PRDReview', 'ImprovePRD'],
-      watch_actions: ['WriteMRD'],
-    },
-    {
-      profile: 'Architect',
-      name: 'Architect',
-      order: 2,
-      actions: ['WriteDesign', 'DesignReview', 'ImproveDesign'],
-      watch_actions: ['WritePRD'],
-    },
-    {
-      profile: 'ProjectManager',
-      name: 'ProjectManager',
-      order: 3,
-      actions: ['BreakdownTasks'],
-      watch_actions: ['WritePRD'],
-    },
-    {
-      profile: 'Engineer',
-      name: 'Engineer',
-      order: 4,
-      actions: ['WriteCode'],
-      watch_actions: ['WritePRD', 'WriteDesign', 'BreakdownTasks'],
-    },
-    {
-      profile: 'QAEngineer',
-      name: 'QAEngineer',
-      order: 5,
-      actions: [
-        'TestabilityReview',
-        'WriteTestPlan',
-        'WriteTest',
-        'TestCaseReview',
-        'AutomationPlanning',
-        'AutomationExecution',
-        'CoverageQualityCheck',
-        'QAConclusion',
-      ],
-      watch_actions: ['WritePRD', 'WriteCode'],
-    },
-  ],
-};
+// Import from single source of truth
+import { getDefaultWorkflowConfig } from './defaultWorkflowConfig';
+
+// Re-export for backward compatibility
+export { getDefaultWorkflowConfig };
 
 export class WorkflowService {
   private workflowRepo: ApplicationWorkflowRepository;
@@ -186,7 +136,7 @@ export class WorkflowService {
   private validateDataMappings(config: WorkflowConfig): void {
     // Create a map of role indices by order for quick lookup
     const roleMap = new Map<number, { profile: string; order: number }>();
-    config.roles.forEach((role, index) => {
+    config.roles.forEach((role, _index) => {
       roleMap.set(role.order, { profile: role.profile, order: role.order });
     });
 
@@ -389,23 +339,9 @@ export class WorkflowService {
       // No default workflow exists, create one
       logger.info(`WorkflowService: No default workflow found for application ${applicationId}, creating default workflow`);
       
-      // Load default workflow config from database
-      let defaultConfig: WorkflowConfig;
-      try {
-        const templateRepo = new SystemDefaultWorkflowTemplateRepository();
-        const template = await templateRepo.findActive();
-        
-        if (template && template.workflow_config) {
-          defaultConfig = template.workflow_config;
-          logger.info(`WorkflowService: Using default workflow template from database`);
-        } else {
-          throw new Error('No active default workflow template found in database');
-        }
-      } catch (templateError: any) {
-        // Fallback to hardcoded config (with warning)
-        logger.warn(`WorkflowService: Failed to load default template from database, using hardcoded config:`, templateError.message);
-        defaultConfig = DEFAULT_WORKFLOW_CONFIG; // 保留作为fallback
-      }
+      // Use default workflow config
+      const defaultConfig: WorkflowConfig = getDefaultWorkflowConfig();
+      logger.info(`WorkflowService: Using default workflow config`);
       
       try {
         workflow = await this.workflowRepo.create({

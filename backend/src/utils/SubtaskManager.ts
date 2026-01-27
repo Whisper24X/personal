@@ -28,14 +28,12 @@ export interface TaskBreakdown {
 
 export class SubtaskManager {
   private tasks: Map<string, Subtask> = new Map();
-  private breakdownContent: string = '';
 
   /**
    * 解析任务拆分文档
    * @param taskBreakdownContent 任务拆分文档内容
    */
   parseTaskBreakdown(taskBreakdownContent: string): TaskBreakdown {
-    this.breakdownContent = taskBreakdownContent;
     this.tasks.clear();
 
     // 解析项目信息

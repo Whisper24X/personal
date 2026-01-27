@@ -1,8 +1,8 @@
 # mind2build 配置管理文档
 
-**文档版本**: v1.2  
+**文档版本**: v1.4  
 **创建日期**: 2025-12-24
-**最后更新**: 2026-01-21（更新LLM提供商配置，添加DeepSeek）
+**最后更新**: 2026-01-26（添加章节对话历史配置说明，更新Git配置说明）
 
 ## 1. 配置文件结构
 
@@ -129,13 +129,48 @@ interface WorkspaceConfig {
 
 ### 1.6 Git 配置
 
+**GitService配置**:
+- Git操作通过`GitService`统一管理
+- 支持项目创建时的Git仓库初始化
+- 支持版本分支的自动创建和管理
+
+**版本分支命名规则**:
+- 格式：`{projectAlias}/{versionName}`
+- 示例：`my-todo-app/v1.0`, `blog-platform/v2.1`
+- 项目别名（name_alias）必须是英文，用于Git分支兼容性
+
+**项目分支命名规则**:
+- 格式：`project/{projectId}`
+- 用于项目特定的分支管理
+
+**Git操作超时配置**:
+- Git操作超时时间：5分钟（300000毫秒）
+- 分支操作超时时间：30秒（30000毫秒）
+
+**GitService主要方法**:
 ```typescript
-interface GitConfig {
-  enabled: boolean;  // 是否启用Git管理
-  autoInit: boolean;  // 自动初始化Git仓库
-  autoCommit: boolean;  // 自动提交到Git仓库
-  branchPrefix: string;  // 版本分支前缀（默认 "v"）
+interface GitService {
+  prepareRepository(repoUrl: string, workspacePath: string): Promise<void>;
+  cloneRepository(repoUrl: string, targetPath: string): Promise<void>;
+  pullRepository(workspacePath: string): Promise<void>;
+  createBranch(workspacePath: string, branchName: string, fromBranch?: string): Promise<void>;
+  checkoutBranch(workspacePath: string, branchName: string): Promise<void>;
+  listBranches(workspacePath: string): Promise<{local: string[], remote: string[], current: string}>;
+  deleteBranch(workspacePath: string, branchName: string, remote?: boolean): Promise<void>;
+  commitChanges(workspacePath: string, message: string): Promise<void>;
+  pushChanges(workspacePath: string, branchName: string, remote?: string): Promise<void>;
+  generateVersionBranchName(alias: string, version: string): string;
+  createProjectBranch(workspacePath: string, projectId: string): Promise<void>;
 }
+```
+
+**环境变量配置**（可选）:
+```bash
+# Git操作超时时间（毫秒，默认300000）
+GIT_OPERATION_TIMEOUT=300000
+
+# 分支操作超时时间（毫秒，默认30000）
+GIT_BRANCH_TIMEOUT=30000
 ```
 
 ### 1.7 成本配置
@@ -145,6 +180,38 @@ interface CostConfig {
   defaultBudget: number;  // 默认预算（默认: 10.0）
   warningThreshold: number;  // 警告阈值（默认: 0.8）
 }
+```
+
+### 1.8 章节对话历史配置
+
+章节对话历史功能用于记录PRD/MRD/DESIGN文档章节的迭代优化过程。
+
+**数据库配置**:
+- 对话历史存储在 `section_conversations` 表中
+- 自动管理，无需手动配置
+
+**API配置**:
+- 通过 `SectionAdjustService` 自动保存对话历史
+- 通过 `GET /api/projects/:id/sections/:sectionNumber/conversation` 查询对话历史
+
+**功能特性**:
+- 自动保存：每次调用章节调整API时自动保存用户反馈和AI响应
+- 版本管理：支持按文档版本号查询对话历史
+- 多文档类型：支持PRD、MRD、DESIGN三种文档类型
+- 上下文提供：为后续调整提供历史上下文
+
+**使用示例**:
+```typescript
+// 调整章节时自动保存对话历史
+POST /api/projects/:id/sections/:sectionNumber/adjust
+{
+  "instruction": "用户反馈内容",
+  "documentType": "PRD",
+  "version": 1
+}
+
+// 查询对话历史
+GET /api/projects/:id/sections/:sectionNumber/conversation?documentType=PRD&version=1
 ```
 
 ## 2. 环境变量

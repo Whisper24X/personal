@@ -23,7 +23,7 @@ export class QAConclusion extends BaseAction {
     );
   }
 
-  async run(input: string, options?: QAConclusionOptions): Promise<IActionOutput> {
+  async run(_input: string, options?: QAConclusionOptions): Promise<IActionOutput> {
     logger.info('QAConclusion: Starting QA conclusion generation');
 
     try {

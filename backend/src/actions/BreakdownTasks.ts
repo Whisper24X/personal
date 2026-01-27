@@ -5,7 +5,7 @@
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import { logger, WorkspaceOptions, executeCommandSimple, CommandExecutorError, WorkspaceManager } from '../utils';
+import { logger, WorkspaceOptions, WorkspaceManager } from '../utils';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -18,11 +18,13 @@ export class BreakdownTasks extends BaseAction {
     super('BreakdownTasks', 'Create openSpec change proposal based on PRD and DESIGN');
   }
 
-  async run(_prd: string, options?: BreakdownTasksOptions): Promise<IActionOutput> {
+  async run(prd: string, design: string, options?: BreakdownTasksOptions): Promise<IActionOutput> {
     logger.info('BreakdownTasks: Starting openSpec proposal creation using Cursor CLI', {
       applicationId: options?.applicationId,
       projectId: options?.projectId,
       version: options?.version,
+      prdLength: prd?.length || 0,
+      designLength: design?.length || 0,
     });
     
     try {
@@ -115,6 +117,9 @@ export class BreakdownTasks extends BaseAction {
       });
       
       while (!isCompleted && retryCount < maxRetries) {
+        // 检查是否被取消
+        this.checkCancellation();
+        
         retryCount++;
         
         logger.info(`BreakdownTasks: Iteration ${retryCount}/${maxRetries} - Executing propose command`, {
@@ -126,76 +131,75 @@ export class BreakdownTasks extends BaseAction {
           commandLength: contextCommand.length,
         });
         
-        try {
-          const command = `cursor-agent --model composer-1 --print "${contextCommand}"`;
-          const contextOutput = await executeCommandSimple(command, {
-            cwd: workDir,
-            timeout: 1800000, // 30分钟超时
-          });
+        const contextResult = await this.runCLICommand(contextCommand, workDir, {
+          timeout: 1800000, // 30分钟超时
+          abortSignal: this.abortSignal,
+        });
+        
+        if (contextResult.exitCode === 0) {
           logger.info(`BreakdownTasks: Context command completed (iteration ${retryCount})`, {
-            outputLength: contextOutput.length,
-            output: contextOutput.length > 0 ? contextOutput.substring(0, 200) : '(empty output)',
+            outputLength: contextResult.output.length,
+            output: contextResult.output.length > 0 ? contextResult.output.substring(0, 200) : '(empty output)',
           });
-          allOutputs.push(`=== Iteration ${retryCount} - Context ===\n${contextOutput}`);
-        } catch (execError) {
-          const error = execError as CommandExecutorError;
+          allOutputs.push(`=== Iteration ${retryCount} - Context ===\n${contextResult.output}`);
+        } else {
           logger.warn(`BreakdownTasks: Context command failed (iteration ${retryCount})`, { 
-            message: error.message,
-            exitCode: error.exitCode,
-            stdout: error.stdout || '(empty)',
-            stderr: error.stderr || '(empty)',
+            exitCode: contextResult.exitCode,
+            stdout: contextResult.output || '(empty)',
+            stderr: contextResult.stderr || '(empty)',
           });
-          allOutputs.push(`=== Iteration ${retryCount} - Context (FAILED) ===\n${error.stdout || ''}`);
+          allOutputs.push(`=== Iteration ${retryCount} - Context (FAILED) ===\n${contextResult.output || ''}`);
         }
 
+        // 检查是否被取消
+        this.checkCancellation();
+
         // 2. 执行创建提案命令
-        let proposeOutput = '';
-        try {
-          const command = `cursor-agent --model composer-1 --print "${proposeCommand}"`;
-          proposeOutput = await executeCommandSimple(command, {
-            cwd: workDir,
-            timeout: 3600000, // 60分钟超时
-          });
+        const proposeResult = await this.runCLICommand(proposeCommand, workDir, {
+          timeout: 3600000, // 60分钟超时
+          abortSignal: this.abortSignal,
+        });
+        
+        const proposeOutput = proposeResult.output;
+        if (proposeResult.exitCode === 0) {
           logger.info(`BreakdownTasks: Propose command completed (iteration ${retryCount})`, {
             outputLength: proposeOutput.length,
             output: proposeOutput.length > 0 ? proposeOutput : '(empty output)',
           });
-        } catch (execError) {
-          const error = execError as CommandExecutorError;
+        } else {
           logger.warn(`BreakdownTasks: Propose command failed (iteration ${retryCount})`, { 
-            message: error.message,
-            exitCode: error.exitCode,
-            stdout: error.stdout || '(empty)',
-            stderr: error.stderr || '(empty)',
+            exitCode: proposeResult.exitCode,
+            stdout: proposeOutput || '(empty)',
+            stderr: proposeResult.stderr || '(empty)',
           });
-          proposeOutput = error.stdout || '';
         }
         
         allOutputs.push(`=== Iteration ${retryCount} - Propose ===\n${proposeOutput}`);
+        
+        // 检查是否被取消
+        this.checkCancellation();
         
         // 3. 执行检查命令
         logger.info(`BreakdownTasks: Iteration ${retryCount}/${maxRetries} - Executing check command`, {
           commandLength: checkCommand.length,
         });
         
-        let checkOutput = '';
-        try {
-          const command = `cursor-agent --model composer-1 --print "${checkCommand}"`;
-          checkOutput = await executeCommandSimple(command, {
-            cwd: workDir,
-            timeout: 300000, // 5分钟超时（检查命令应该很快）
-          });
+        const checkResult = await this.runCLICommand(checkCommand, workDir, {
+          timeout: 300000, // 5分钟超时（检查命令应该很快）
+          abortSignal: this.abortSignal,
+        });
+        
+        const checkOutput = checkResult.output;
+        if (checkResult.exitCode === 0) {
           logger.info(`BreakdownTasks: Check command completed (iteration ${retryCount})`, {
             outputLength: checkOutput.length,
             output: checkOutput.substring(0, 200), // 记录前200字符
           });
-        } catch (execError) {
-          const error = execError as CommandExecutorError;
+        } else {
           logger.warn(`BreakdownTasks: Check command failed (iteration ${retryCount})`, { 
-            message: error.message,
-            exitCode: error.exitCode,
+            exitCode: checkResult.exitCode,
+            stderr: checkResult.stderr,
           });
-          checkOutput = error.stdout || '';
         }
         
         allOutputs.push(`=== Iteration ${retryCount} - Check ===\n${checkOutput}`);

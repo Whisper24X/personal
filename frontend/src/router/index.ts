@@ -4,93 +4,107 @@
 
 import { createRouter, createWebHistory } from 'vue-router';
 import Dashboard from '../views/dashboard/Dashboard.vue';
-import ProjectCreate from '../views/project/ProjectCreate.vue';
-import ProjectDetail from '../views/project/ProjectDetail.vue';
-import ProjectInteractive from '../views/project/ProjectInteractive.vue';
-import ApplicationList from '../views/application/ApplicationList.vue';
-import ApplicationDetail from '../views/application/ApplicationDetail.vue';
-import WorkflowManagement from '../views/application/WorkflowManagement.vue';
-import LLMConfig from '../views/config/LLMConfig.vue';
-import RoleLLMConfig from '../views/config/RoleLLMConfig.vue';
-import PromptConfig from '../views/config/PromptConfig.vue';
+import SystemConfig from '../views/config/SystemConfig.vue';
 import KnowledgeBase from '../views/knowledge/KnowledgeBase.vue';
+
+// 业务线相关组件
+import BusinessLineList from '../views/businessLine/BusinessLineList.vue';
+import WorkflowManagement from '../views/businessLine/WorkflowManagement.vue';
+
+// 平台相关组件
+import PlatformList from '../views/platform/PlatformList.vue';
+import PlatformWorkflow from '../views/platform/PlatformWorkflow.vue';
+import PlatformDetail from '../views/platform/PlatformDetail.vue';
+import PlatformVersions from '../views/platform/PlatformVersions.vue';
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    // 首页
     {
       path: '/',
       name: 'Dashboard',
       component: Dashboard,
     },
+    
+    // ==================== 业务线相关路由 ====================
     {
-      path: '/applications',
-      name: 'ApplicationList',
-      component: ApplicationList,
+      path: '/business-lines',
+      name: 'BusinessLineList',
+      component: BusinessLineList,
     },
     {
-      path: '/application/:id',
-      name: 'ApplicationDetail',
-      component: ApplicationDetail,
+      path: '/business-line/:id/platforms',
+      name: 'PlatformList',
+      component: PlatformList,
       props: true,
     },
     {
-      path: '/application/:id/workflows',
+      path: '/business-line/:id/workflows',
       name: 'WorkflowManagement',
       component: WorkflowManagement,
       props: true,
     },
+    
+    // ==================== 平台相关路由 ====================
     {
-      path: '/create',
-      name: 'ProjectCreate',
-      component: ProjectCreate,
-    },
-    {
-      path: '/project/interactive',
-      name: 'ProjectInteractive',
-      component: ProjectInteractive,
-    },
-    {
-      path: '/project/:id',
-      name: 'ProjectDetail',
-      component: ProjectDetail,
+      path: '/platform/:id/versions',
+      name: 'PlatformVersions',
+      component: PlatformVersions,
       props: true,
     },
     {
-      path: '/project/:id/knowledge-base',
+      path: '/platform/:id/workflow/:versionId',
+      name: 'PlatformWorkflow',
+      component: PlatformWorkflow,
+      props: true,
+    },
+    {
+      path: '/platform/:id',
+      name: 'PlatformDetail',
+      component: PlatformDetail,
+      props: true,
+    },
+    {
+      path: '/platform/:id/knowledge-base',
       name: 'KnowledgeBase',
       component: KnowledgeBase,
       props: true,
     },
+    
+    // ==================== 配置相关路由 ====================
+    // 统一配置页面（支持 tab 参数：llm, roles, prompts）
+    {
+      path: '/config',
+      name: 'SystemConfig',
+      component: SystemConfig,
+    },
+    // 兼容旧路由，重定向到新的统一配置页面
     {
       path: '/config/llm',
-      name: 'LLMConfig',
-      component: LLMConfig,
+      redirect: '/config?tab=llm',
     },
     {
       path: '/config/role-llm',
-      name: 'RoleLLMConfig',
-      component: RoleLLMConfig,
+      redirect: '/config?tab=roles',
     },
     {
       path: '/config/prompts',
-      name: 'PromptConfig',
-      component: PromptConfig,
+      redirect: '/config?tab=prompts',
     },
   ],
 });
 
-// Add navigation guard to refresh project list when returning from interactive page
+// Add navigation guard to refresh platform list when returning from workflow page
 router.afterEach((to, from) => {
-  // If navigating from interactive page to dashboard or application detail, refresh data
-  if (from.name === 'ProjectInteractive' && (to.name === 'Dashboard' || to.name === 'ApplicationDetail')) {
+  // If navigating from workflow page to dashboard or platform list, refresh data
+  if (from.name === 'PlatformWorkflow' && (to.name === 'Dashboard' || to.name === 'PlatformList')) {
     // Use nextTick to ensure component is mounted before refreshing
     setTimeout(() => {
       // Trigger refresh by dispatching a custom event
-      window.dispatchEvent(new CustomEvent('refresh-project-list'));
+      window.dispatchEvent(new CustomEvent('refresh-platform-list'));
     }, 100);
   }
 });
 
 export default router;
-

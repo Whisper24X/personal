@@ -7,6 +7,7 @@ import { Router } from 'express';
 import {
   testWriteCode,
   testExecuteSubtask,
+  testDeploy,
   getEngineerInfo,
   testCustom,
 } from '../controllers/EngineerTestController';
@@ -25,6 +26,9 @@ router.post('/engineer/write-code', testWriteCode);
 
 // Test ExecuteSubtask action
 router.post('/engineer/execute-subtask', testExecuteSubtask);
+
+// Test Deploy action
+router.post('/engineer/deploy', testDeploy);
 
 // Test custom scenario
 router.post('/engineer/custom', testCustom);

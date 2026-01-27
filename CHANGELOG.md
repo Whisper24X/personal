@@ -5,7 +5,99 @@ All notable changes to Mind2Build will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.6.0] - 2026-01-26
+
+### Documentation 📝
+
+- **Comprehensive Documentation Update** - Updated all documentation to reflect current code implementation
+  - Updated README.md: Fixed role Actions lists, added complete Services and API controllers lists, added section conversation history feature description
+  - Updated doc/00_文档导航_INDEX.md: Updated version to v2.0, added section conversation history feature description
+  - Updated doc/12_API参考文档_API.md: Added section conversation history API endpoint documentation
+  - Updated doc/04_系统架构文档_ARCHITECTURE.md: Added section conversation history data flow and service descriptions
+  - Updated doc/06_角色系统设计_ROLES.md: Corrected QAEngineer (3 Actions) and AutomationEngineer (4 Actions including QAConclusion) workflows
+  - Updated doc/07_行动系统设计_ACTIONS.md: Confirmed 30 Actions complete list, clarified QAConclusion belongs to AutomationEngineer
+  - Updated doc/18_数据库设计_DATABASE.md: Added detailed section_conversations table documentation, updated table count to 20
+  - Updated backend/README.md: Added Services list and section conversation history feature description
+  - Updated doc/10_工作流文档_WORKFLOW.md: Corrected QAEngineer workflow to 3 steps, AutomationEngineer to 4 steps
+  - Updated doc/13_配置管理_CONFIG.md: Added section conversation history configuration documentation
+  - All documentation now accurately reflects current code implementation
+
+### Changed
+
+- **Documentation Versioning** - Updated all documentation version numbers and dates
+- **Role Actions Clarification** - QAEngineer has 3 Actions, AutomationEngineer has 4 Actions (including QAConclusion)
+
+## [1.5.0] - 2026-01-26
+
+### Added ✨
+
+#### Frontend Features
+- **Business Line Management** - Organize projects by business lines (applications)
+- **Platform Management** - Manage platforms within business lines
+- **Workflow Kanban View** - Visual workflow execution with kanban board
+- **Knowledge Base UI** - Manage and search knowledge base documents
+- **System Configuration Panel** - Unified configuration interface for LLM, Roles, and Prompts
+- **Dashboard Statistics** - Overview of business lines, platforms, and completion status
+
+#### Backend Services
+- **WorkflowService** - Workflow configuration and management service
+- **RAGService** - Enhanced RAG with Qdrant vector search, rerank, and hybrid search
+- **EmbeddingService** - Vector embedding generation service
+- **QdrantService** - Qdrant vector database integration
+- **RerankService** - Result reranking for improved relevance
+- **RoleActionFactory** - Dynamic role and action factory from database
+- **RoleActionService** - Role and action management service
+- **SectionAdjustService** - PRD/MRD section adjustment with conversation history
+- **StagehandService** - Stagehand integration service
+- **DocumentArchiveService** - Document archiving service
+- **GitService** - Git repository management service with branch management and version control
+
+#### Executors
+- **LLMExecutor** - LLM-based action execution
+- **CLIExecutor** - CLI-based execution with support for Aider and Cursor providers
+
+#### API Enhancements
+- **Application Management API** - Full CRUD for applications (business lines)
+- **Application Workflow API** - Workflow management per application
+- **Workflow Execution API** - Complete workflow lifecycle management (start, pause, resume, reset, recover)
+- **Knowledge Base API** - Document management and search
+- **Knowledge Upload API** - File upload for knowledge base
+- **Configuration API** - LLM, Role LLM, and Prompt configuration management
+- **Role Action Management API** - Role and action metadata management
+- **Project Version API** - Version management with Git branch integration
+
+#### Database Schema V2
+- **Unified LLM Configs** - Single table for all LLM configurations (provider and role-specific)
+- **Application Workflows** - Workflow configuration per application
+- **Workflow Executions** - Workflow execution state management
+- **Knowledge Base Table** - Database-backed knowledge base
+- **Section Conversations** - Conversation history for section adjustments
+- **Project Versions** - Version management with Git branch tracking
+
+#### Git Repository Management
+- **GitService Integration** - Complete Git repository operations for project workspaces
+- **Version Branch Management** - Automatic branch creation for project versions (format: `{alias}/{version}`)
+- **Project Branch Management** - Project-specific branch creation (format: `project/{projectId}`)
+- **Repository Preparation** - Automatic clone or pull operations for existing repositories
+- **Branch Operations** - Create, checkout, list, and delete branch operations
+- **Git Workflow Integration** - Seamless integration with workflow execution
+
+### Changed
+
+- **Database Schema** - Migrated to Schema V2 with simplified structure
+- **State Management** - Unified state management through StateManager
+- **Workflow Execution** - New workflow execution engine with state persistence
+- **Frontend Architecture** - Reorganized views by business domain (businessLine, platform, knowledge, config)
+- **Git Integration** - Projects now support Git repository association and version branch management
+
+### Technical Details
+
+- **9 Roles**: Salesperson, ProductManager, Architect, ProjectManager, Engineer, QAEngineer, AutomationEngineer, TeamLeader, DataAnalyst
+- **30 Actions**: Complete action set covering document writing, review, improvement, code execution, QA workflows
+- **Multiple LLM Providers**: OpenAI, ZhipuAI, Ark (Doubao), DeepSeek, Cursor Agent
+- **Vector Search**: Qdrant integration with embedding and rerank support
+- **Workflow Engine**: Stateful workflow execution with recovery and rollback support
+- **Git Operations**: 11 Git service methods for complete repository management
 
 ## [1.4.0] - 2026-01-15
 

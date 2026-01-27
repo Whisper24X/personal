@@ -4,7 +4,8 @@
 
 export * from './logger';
 export * from './config';
-export * from './StepwiseDocumentGenerator';
+export * from './stepwise';
+export * from './document';
 export * from './InteractiveHandler';
 export * from './WorkspaceManager';
 export * from './SubtaskManager';

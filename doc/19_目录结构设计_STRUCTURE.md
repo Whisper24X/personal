@@ -2,9 +2,9 @@
 
 **Slogan**: 让所思，即所得
 
-**文档版本**: v1.1  
+**文档版本**: v1.2  
 **创建日期**: 2025-12-25  
-**最后更新**: 2026-01-21
+**最后更新**: 2026-01-26（添加services和executors目录说明，更新GitService位置）
 
 ---
 
@@ -173,13 +173,36 @@ backend/
 │   ├── orchestration/           # 编排层
 │   │   ├── Environment.ts       # 环境管理
 │   │   ├── Team.ts              # 团队管理
-│   │   ├── Workflow.ts          # 工作流引擎
+│   │   ├── ProjectManager.ts    # 项目管理器（文件系统操作）
 │   │   └── index.ts
-│   ├── project/                 # 项目管理
-│   │   ├── ProjectManager.ts    # 项目管理器
-│   │   ├── FileManager.ts       # 文件管理
-│   │   ├── GitManager.ts        # Git 管理
+│   ├── services/                 # 服务层（10个Service）
+│   │   ├── WorkflowService.ts   # 工作流配置和管理
+│   │   ├── RAGService.ts        # RAG检索增强生成
+│   │   ├── EmbeddingService.ts  # 向量嵌入生成
+│   │   ├── QdrantService.ts     # Qdrant向量数据库
+│   │   ├── RerankService.ts     # 结果重排序
+│   │   ├── RoleActionService.ts # 角色Action管理
+│   │   ├── SectionAdjustService.ts # PRD/MRD章节调整
+│   │   ├── StagehandService.ts  # Stagehand集成
+│   │   ├── DocumentArchiveService.ts # 文档归档
+│   │   ├── GitService.ts        # Git仓库管理
+│   │   └── defaultWorkflowConfig.ts # 默认工作流配置
+│   ├── executors/               # 执行器层
+│   │   ├── LLMExecutor.ts       # LLM执行器
+│   │   ├── CLIExecutor.ts       # CLI执行器
+│   │   ├── ExecutorFactory.ts   # 执行器工厂
+│   │   ├── cli/                 # CLI提供商
+│   │   │   ├── AiderCLIProvider.ts
+│   │   │   ├── CursorCLIProvider.ts
+│   │   │   ├── CLIProviderFactory.ts
+│   │   │   └── ICLIProvider.ts
 │   │   └── index.ts
+│   ├── workflow/                # 工作流执行引擎
+│   │   ├── WorkflowExecutor.ts  # 工作流执行器
+│   │   ├── WorkflowExecutionService.ts # 工作流执行服务
+│   │   ├── WorkflowStateMachine.ts # 工作流状态机
+│   │   ├── WorkflowRecoveryService.ts # 工作流恢复服务
+│   │   └── types.ts
 │   ├── api/                     # API 层
 │   │   ├── routes/              # 路由定义
 │   │   │   ├── project.ts       # 项目相关路由
@@ -344,7 +367,46 @@ export class WritePRD extends Action {
 **关键类**:
 - `Environment`: 角色容器，消息路由
 - `Team`: 团队管理，预算控制
-- `Workflow`: 工作流引擎，SOP 执行
+- `ProjectManager`: 项目管理器（文件系统操作）
+
+#### 2.2.6 服务层（services/）
+
+**职责**: 提供业务服务功能
+
+**关键服务**（共10个）:
+- `WorkflowService`: 工作流配置和管理
+- `RAGService`: RAG检索增强生成
+- `EmbeddingService`: 向量嵌入生成
+- `QdrantService`: Qdrant向量数据库集成
+- `RerankService`: 结果重排序
+- `RoleActionService`: 角色Action管理
+- `SectionAdjustService`: PRD/MRD章节调整
+- `StagehandService`: Stagehand集成
+- `DocumentArchiveService`: 文档归档
+- `GitService`: Git仓库管理（11个Git操作方法）
+
+#### 2.2.7 执行器层（executors/）
+
+**职责**: 提供Action执行能力
+
+**关键执行器**:
+- `LLMExecutor`: LLM执行器，用于LLM-based Actions
+- `CLIExecutor`: CLI执行器，用于CLI-based Actions（支持Aider和Cursor）
+- `ExecutorFactory`: 执行器工厂，根据Action类型选择合适的执行器
+
+**CLI提供商**:
+- `AiderCLIProvider`: Aider CLI集成
+- `CursorCLIProvider`: Cursor Agent CLI集成
+
+#### 2.2.8 工作流层（workflow/）
+
+**职责**: 工作流执行引擎
+
+**关键类**:
+- `WorkflowExecutor`: 工作流执行器
+- `WorkflowExecutionService`: 工作流执行服务
+- `WorkflowStateMachine`: 工作流状态机
+- `WorkflowRecoveryService`: 工作流恢复服务
 
 ---
 
@@ -399,22 +461,25 @@ frontend/
 │   │   ├── TeamManage.vue       # 团队管理
 │   │   ├── Settings.vue         # 设置
 │   │   └── About.vue            # 关于
-│   ├── router/                  # 路由配置
-│   │   ├── index.ts             # 路由主文件
-│   │   ├── routes.ts            # 路由定义
-│   │   └── guards.ts            # 路由守卫
-│   ├── stores/                  # 状态管理（Pinia）
-│   │   ├── project.ts           # 项目状态
-│   │   ├── team.ts              # 团队状态
-│   │   ├── user.ts              # 用户状态
-│   │   ├── message.ts           # 消息状态
-│   │   └── index.ts
-│   ├── api/                     # API 调用
-│   │   ├── request.ts           # Axios 封装
-│   │   ├── project.api.ts       # 项目 API
-│   │   ├── team.api.ts          # 团队 API
-│   │   ├── role.api.ts          # 角色 API
-│   │   └── index.ts
+│   ├── router/                   # 路由配置
+│   │   └── index.ts              # 路由主文件
+│   ├── stores/                   # 状态管理（Pinia）
+│   │   ├── businessLine.ts       # 业务线状态
+│   │   ├── platform.ts           # 平台状态
+│   │   └── roleAction.ts         # 角色Action状态
+│   ├── api/                      # API 调用
+│   │   └── client.ts             # API客户端
+│   ├── components/                # 组件
+│   │   └── common/               # 通用组件
+│   │       ├── CardHeader.vue
+│   │       ├── EmptyState.vue
+│   │       ├── PageHeader.vue
+│   │       └── StatCard.vue
+│   ├── config/                   # 配置
+│   │   └── stageConfig.ts        # 阶段配置
+│   └── utils/                     # 工具函数
+│       ├── errorHandler.ts       # 错误处理
+│       └── polling.ts           # 轮询工具
 │   ├── composables/             # 组合式函数
 │   │   ├── useProject.ts        # 项目相关逻辑
 │   │   ├── useTeam.ts           # 团队相关逻辑

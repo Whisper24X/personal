@@ -1,6 +1,7 @@
 /**
  * Message Repository
  * Data access layer for messages using native PostgreSQL
+ * Schema V2: role_id renamed to role_profile for clarity
  */
 
 import { query } from '../client';
@@ -10,7 +11,7 @@ import { logger } from '../../utils';
 export interface DBMessage {
   id: string;
   project_id: string;
-  role_id?: string;
+  role_profile?: string;  // Changed from role_id
   message_uuid: string;
   content: string;
   instruct_content?: any;
@@ -30,26 +31,22 @@ export class MessageRepository {
    * @param roleProfile - Optional role profile (if not provided, uses message.sentFrom)
    */
   async save(projectId: string, message: Message, roleProfile?: string): Promise<DBMessage> {
-    // role_id now stores the profile (role type) directly
-    // If roleProfile not provided, use message.sentFrom (which is already the profile)
-    // For user messages (sentFrom === 'User'), role_id should be 'user'
+    // Determine role_profile: use provided value, or derive from message.sentFrom
     let finalRoleProfile: string = roleProfile || '';
     if (!finalRoleProfile && message.sentFrom) {
-      // Use sentFrom as profile, but set to 'user' for user messages
       if (message.sentFrom === 'User' || message.sentFrom === 'user') {
         finalRoleProfile = 'user';
       } else {
         finalRoleProfile = message.sentFrom;
       }
     }
-    // If still empty, default to 'user'
     if (!finalRoleProfile) {
       finalRoleProfile = 'user';
     }
 
     const result = await query<DBMessage>(
       `INSERT INTO messages (
-        project_id, role_id, message_uuid, content, instruct_content,
+        project_id, role_profile, message_uuid, content, instruct_content,
         role_type, cause_by, sent_from, send_to, metadata
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *`,
@@ -76,8 +73,6 @@ export class MessageRepository {
   async saveMany(projectId: string, messages: Message[]): Promise<number> {
     if (messages.length === 0) return 0;
     
-    // role_id now stores the profile directly, so we can use sentFrom directly
-    // No need for database lookups anymore
     const values: any[] = [];
     const placeholders: string[] = [];
     let paramIndex = 1;
@@ -87,15 +82,15 @@ export class MessageRepository {
         `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8}, $${paramIndex + 9})`
       );
       
-      // Determine role_id: use sentFrom as profile, 'user' for user messages
-      let roleId: string = 'user';
+      // Determine role_profile
+      let roleProfile: string = 'user';
       if (msg.sentFrom && msg.sentFrom !== 'User' && msg.sentFrom !== 'user') {
-        roleId = msg.sentFrom;
+        roleProfile = msg.sentFrom;
       }
       
       values.push(
         projectId,
-        roleId,
+        roleProfile,
         msg.id,
         msg.content,
         msg.instructContent ? JSON.stringify(msg.instructContent) : null,
@@ -111,28 +106,23 @@ export class MessageRepository {
     
     const sql = `
       INSERT INTO messages (
-        project_id, role_id, message_uuid, content, instruct_content,
+        project_id, role_profile, message_uuid, content, instruct_content,
         role_type, cause_by, sent_from, send_to, metadata
       ) VALUES ${placeholders.join(', ')}
     `;
     
     try {
       const result = await query(sql, values);
-      logger.info(`Successfully saved ${result.rowCount || 0} messages to database`, {
+      logger.debug(`MessageRepository: Saved ${result.rowCount || 0} messages`, {
         projectId,
         messageCount: messages.length,
-        roleProfilesResolved: messages.filter(msg => msg.sentFrom && msg.sentFrom !== 'User' && msg.sentFrom !== 'user').length,
       });
       return result.rowCount || 0;
     } catch (error: any) {
-      // Log detailed error information
-      logger.error('Failed to save messages:', {
+      logger.error('MessageRepository: Failed to save messages', {
         projectId,
         messageCount: messages.length,
         error: error.message,
-        stack: error.stack,
-        sql: sql.substring(0, 200) + '...',
-        valuesCount: values.length,
       });
       throw error;
     }
@@ -154,13 +144,13 @@ export class MessageRepository {
   }
 
   /**
-   * Find messages by role profile (role_id now stores profile string)
-   * @param roleProfile - Role profile (e.g., 'ProductManager', 'Architect')
+   * Find messages by role profile
+   * @param roleProfile - Role profile (e.g., 'ProductManager', 'Architect', 'user')
    */
-  async findByRoleId(roleProfile: string, limit: number = 50): Promise<DBMessage[]> {
+  async findByRoleProfile(roleProfile: string, limit: number = 50): Promise<DBMessage[]> {
     const result = await query<DBMessage>(
       `SELECT * FROM messages 
-       WHERE role_id = $1 
+       WHERE role_profile = $1 
        ORDER BY created_at DESC 
        LIMIT $2`,
       [roleProfile, limit]
@@ -185,12 +175,44 @@ export class MessageRepository {
    * Get message count for project
    */
   async countByProject(projectId: string): Promise<number> {
-    const result = await query(
+    const result = await query<{ count: string }>(
       `SELECT COUNT(*) as count FROM messages WHERE project_id = $1`,
       [projectId]
     );
     
     return parseInt(result.rows[0].count);
+  }
+
+  /**
+   * Find messages by project and role profile
+   */
+  async findByProjectAndRole(projectId: string, roleProfile: string, limit: number = 50): Promise<DBMessage[]> {
+    const result = await query<DBMessage>(
+      `SELECT * FROM messages 
+       WHERE project_id = $1 AND role_profile = $2
+       ORDER BY created_at ASC 
+       LIMIT $3`,
+      [projectId, roleProfile, limit]
+    );
+    
+    return result.rows;
+  }
+
+  /**
+   * Delete messages by project ID
+   */
+  async deleteByProjectId(projectId: string): Promise<number> {
+    const result = await query(
+      `DELETE FROM messages WHERE project_id = $1`,
+      [projectId]
+    );
+    
+    return result.rowCount || 0;
+  }
+
+  // Backward compatibility alias
+  async findByRoleId(roleProfile: string, limit: number = 50): Promise<DBMessage[]> {
+    return this.findByRoleProfile(roleProfile, limit);
   }
 }
 

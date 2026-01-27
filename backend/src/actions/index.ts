@@ -1,7 +1,9 @@
 /**
  * Agent Actions
- * Exports all action implementations
+ * Exports all action implementations and action registry
  */
+
+import { BaseAction } from '../core/base/BaseAction';
 
 // Document Writing Actions
 export { WriteMRD } from './WriteMRD';
@@ -22,6 +24,7 @@ export { CodeReview } from './CodeReview';
 // Document Improvement Actions
 export { ImprovePRD } from './ImprovePRD';
 export { ImproveMRD } from './ImproveMRD';
+export { ImproveDesign } from './ImproveDesign';
 
 // Task Management Actions
 export { BreakdownTasks } from './BreakdownTasks';
@@ -30,6 +33,7 @@ export { ExecuteSubtask } from './ExecuteSubtask';
 // Code Execution and Bug Fix Actions
 export { RunCode } from './RunCode';
 export { FixBug } from './FixBug';
+export { Deploy } from './Deploy';
 
 // QA Actions
 export { TestabilityReview } from './TestabilityReview';
@@ -45,3 +49,85 @@ export { QAConclusion } from './QAConclusion';
 export { SearchEnhancedQA } from './SearchEnhancedQA';
 export { DataAnalysis } from './DataAnalysis';
 export { Coordinate } from './Coordinate';
+
+// Import for registry
+import { WriteMRD } from './WriteMRD';
+import { WritePRD } from './WritePRD';
+import { WriteDesign } from './WriteDesign';
+import { WriteSubProjectDesign } from './WriteSubProjectDesign';
+import { WriteCode } from './WriteCode';
+import { WriteTest } from './WriteTest';
+import { WriteTestPlan } from './WriteTestPlan';
+import { MRDReview } from './MRDReview';
+import { PRDReview } from './PRDReview';
+import { DesignReview } from './DesignReview';
+import { SubProjectDesignReview } from './SubProjectDesignReview';
+import { CodeReview } from './CodeReview';
+import { ImprovePRD } from './ImprovePRD';
+import { ImproveMRD } from './ImproveMRD';
+import { ImproveDesign } from './ImproveDesign';
+import { BreakdownTasks } from './BreakdownTasks';
+import { ExecuteSubtask } from './ExecuteSubtask';
+import { RunCode } from './RunCode';
+import { FixBug } from './FixBug';
+import { Deploy } from './Deploy';
+import { TestabilityReview } from './TestabilityReview';
+import { TestCaseReview } from './TestCaseReview';
+import { TestReview } from './TestReview';
+import { ImproveTest } from './ImproveTest';
+import { AutomationPlanning } from './AutomationPlanning';
+import { AutomationExecution } from './AutomationExecution';
+import { CoverageQualityCheck } from './CoverageQualityCheck';
+import { QAConclusion } from './QAConclusion';
+import { SearchEnhancedQA } from './SearchEnhancedQA';
+import { DataAnalysis } from './DataAnalysis';
+import { Coordinate } from './Coordinate';
+
+/**
+ * Action Registry - Central registry for all action classes
+ * When adding a new action:
+ * 1. Create the action file (e.g., NewAction.ts)
+ * 2. Add export above
+ * 3. Add to this registry
+ * 4. Run database migration to add action definition
+ */
+export const ACTION_REGISTRY: Record<string, new () => BaseAction> = {
+  // Document Writing Actions
+  WriteMRD,
+  WritePRD,
+  WriteDesign,
+  WriteSubProjectDesign,
+  WriteCode,
+  WriteTest,
+  WriteTestPlan,
+  // Document Review Actions
+  MRDReview,
+  PRDReview,
+  DesignReview,
+  SubProjectDesignReview,
+  CodeReview,
+  // Document Improvement Actions
+  ImprovePRD,
+  ImproveMRD,
+  ImproveDesign,
+  // Task Management Actions
+  BreakdownTasks,
+  ExecuteSubtask,
+  // Code Execution and Bug Fix Actions
+  RunCode,
+  FixBug,
+  Deploy,
+  // QA Actions
+  TestabilityReview,
+  TestCaseReview,
+  TestReview,
+  ImproveTest,
+  AutomationPlanning,
+  AutomationExecution,
+  CoverageQualityCheck,
+  QAConclusion,
+  // Other Actions
+  SearchEnhancedQA,
+  DataAnalysis,
+  Coordinate,
+};

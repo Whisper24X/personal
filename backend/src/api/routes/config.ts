@@ -21,6 +21,9 @@ router.get('/llm/active', LLMConfigController.getActive);
 router.get('/llm/providers', LLMConfigController.listProviders);
 router.get('/llm/providers/:provider', LLMConfigController.getProvider);
 router.post('/llm/providers', LLMConfigController.upsertProvider);
+// Model list routes (read-only, derived from llm_configs) - must be before /llm/:provider
+router.get('/llm/models', LLMConfigController.listModels);
+router.get('/llm/models/:provider', LLMConfigController.listModelsByProvider);
 // Parameter routes must be after specific routes
 router.get('/llm/:provider', LLMConfigController.getByProvider);
 router.post('/llm', LLMConfigController.upsert);

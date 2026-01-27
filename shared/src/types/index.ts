@@ -168,9 +168,7 @@ export interface IAppConfig {
       origin: string[];
     };
   };
-  workspace: {
-    path: string;
-  };
+  // workspace 配置已移除，统一使用 WorkspaceManager.getWorkspaceRoot() 获取路径
   limits: {
     maxBudget: number;
     maxRetry: number;

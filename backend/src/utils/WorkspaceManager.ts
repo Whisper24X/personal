@@ -2,7 +2,8 @@
  * WorkspaceManager
  * 统一管理文件写入workspace的逻辑
  * 
- * 目录结构：workspace/{applicationId}/{projectId}/ainative-workspace
+ * 目录结构（带版本）：workspace/{applicationId}/{projectId}/versions/{versionId}/ainative-workspace
+ * 目录结构（无版本）：workspace/{applicationId}/{projectId}/ainative-workspace
  * - ainative-workspace 是通过 git clone 的模板项目
  * - 所有文档都写在 ainative-workspace/docs 目录中
  */
@@ -16,10 +17,12 @@ import { logger } from './logger';
 // 模板仓库地址
 const TEMPLATE_REPO = 'git@gitlab.yc345.tv:frontend/ainative-workspace.git';
 const WORKSPACE_DIR_NAME = 'ainative-workspace';
+const VERSIONS_DIR_NAME = 'versions';
 
 export interface WorkspaceOptions {
   applicationId?: string;
   projectId?: string;
+  versionId?: string; // 版本ID，用于创建版本化的工作空间目录
   documentType?: string; // MRD, PRD, DESIGN 等，用于在 docs 目录下创建子目录
   /** @deprecated 版本控制已改用 git，此参数被忽略 */
   version?: number;
@@ -54,15 +57,100 @@ export class WorkspaceManager {
   }
 
   /**
-   * 获取 workspace 根目录
+   * 获取 workspace 根目录（绝对路径）
+   * 统一的 workspace 根目录获取方法，所有需要获取 workspace 路径的地方都应该调用此方法
+   * 始终返回绝对路径，避免 CLI 执行时路径解析错误
    */
-  private static getWorkspaceRoot(): string {
-    return process.env.WORKSPACE_PATH || path.join(this.getProjectRoot(), 'workspace');
+  static getWorkspaceRoot(): string {
+    const workspacePath = process.env.WORKSPACE_PATH;
+    if (workspacePath) {
+      // 如果设置了 WORKSPACE_PATH，使用 path.resolve 确保是绝对路径
+      // 相对路径会相对于项目根目录解析
+      return path.resolve(this.getProjectRoot(), workspacePath);
+    }
+    return path.join(this.getProjectRoot(), 'workspace');
+  }
+
+  // ============================================
+  // 环境检测方法
+  // ============================================
+
+  /**
+   * 判断是否在容器环境中
+   * 通过检查 CONTAINER_WORKSPACE_ROOT 环境变量判断
+   */
+  static isContainerEnvironment(): boolean {
+    return !!process.env.CONTAINER_WORKSPACE_ROOT;
+  }
+
+  /**
+   * 判断是否为本地开发模式
+   */
+  static isLocalDevelopmentMode(): boolean {
+    return process.env.NODE_ENV === 'development' ||
+           process.env.LOCAL_DEV === 'true' ||
+           !this.isContainerEnvironment();
+  }
+
+  /**
+   * 获取容器内 workspace 路径
+   * 用于容器化部署场景
+   */
+  static getContainerWorkspacePath(options: WorkspaceOptions): string {
+    const containerWorkspaceRoot = process.env.CONTAINER_WORKSPACE_ROOT || '/workspace';
+    return path.join(
+      containerWorkspaceRoot,
+      options.applicationId || 'default',
+      options.projectId || 'default'
+    );
+  }
+
+  /**
+   * 获取 workspace 路径（自动判断环境）
+   * 容器环境使用容器路径，本地环境使用本地路径
+   */
+  static getWorkspacePath(options: WorkspaceOptions): string {
+    if (this.isContainerEnvironment()) {
+      return this.getContainerWorkspacePath(options);
+    }
+    return this.getProjectWorkspacePath(options);
+  }
+
+  /**
+   * 获取本地开发 workspace 路径
+   */
+  static getLocalWorkspacePath(options: WorkspaceOptions): string {
+    const projectRoot = this.getProjectRoot();
+    return path.join(
+      projectRoot,
+      'workspace',
+      options.applicationId || 'default',
+      options.projectId || 'default'
+    );
+  }
+
+  /**
+   * 初始化容器 workspace
+   * 确保所有必要的目录结构存在
+   */
+  static async initializeContainerWorkspace(options: WorkspaceOptions): Promise<void> {
+    const workspacePath = this.getContainerWorkspacePath(options);
+    const directories = ['MRD', 'PRD', 'DESIGN', 'CODE', 'TEST', 'docs'];
+
+    for (const dir of directories) {
+      await fs.mkdir(path.join(workspacePath, dir), { recursive: true });
+    }
+
+    logger.info('WorkspaceManager: Container workspace initialized', {
+      workspacePath,
+      directories,
+    });
   }
 
   /**
    * 获取项目工作目录路径（包含 ainative-workspace）
-   * 目录结构：workspace/{applicationId}/{projectId}/ainative-workspace
+   * 目录结构（带版本）：workspace/{applicationId}/{projectId}/versions/{versionId}/ainative-workspace
+   * 目录结构（无版本）：workspace/{applicationId}/{projectId}/ainative-workspace
    */
   static getProjectWorkspacePath(options: WorkspaceOptions): string {
     if (!options?.applicationId) {
@@ -73,7 +161,204 @@ export class WorkspaceManager {
     }
 
     const workspaceRoot = this.getWorkspaceRoot();
+    
+    // 如果指定了版本ID，则使用版本化的目录结构
+    if (options.versionId) {
+      return path.join(
+        workspaceRoot, 
+        options.applicationId, 
+        options.projectId, 
+        VERSIONS_DIR_NAME,
+        options.versionId,
+        WORKSPACE_DIR_NAME
+      );
+    }
+    
+    // 兼容旧的目录结构（无版本）
     return path.join(workspaceRoot, options.applicationId, options.projectId, WORKSPACE_DIR_NAME);
+  }
+
+  /**
+   * 从 workspace 路径解析出 WorkspaceOptions
+   * 统一的路径解析方法，供各处调用
+   * 
+   * 支持的路径格式：
+   * - 带版本: workspace/{applicationId}/{projectId}/versions/{versionId}/ainative-workspace/docs/{documentType}
+   * - 无版本: workspace/{applicationId}/{projectId}/ainative-workspace/docs/{documentType}
+   * 
+   * @param workspacePath 要解析的路径
+   * @param defaultDocumentType 默认文档类型（如果路径中没有）
+   * @returns 解析出的 WorkspaceOptions，如果无法解析则返回 undefined
+   */
+  static parseWorkspacePath(workspacePath: string, defaultDocumentType?: string): WorkspaceOptions | undefined {
+    if (!workspacePath) return undefined;
+
+    const pathParts = workspacePath.split(path.sep).filter(p => p);
+    
+    // 查找关键目录标识
+    const workspaceRootIndex = pathParts.findIndex(p => p === 'workspace');
+    const versionsIndex = pathParts.findIndex(p => p === VERSIONS_DIR_NAME);
+    const docsIndex = pathParts.findIndex(p => p === 'docs');
+    
+    if (workspaceRootIndex === -1) {
+      return undefined;
+    }
+    
+    // 提取 applicationId 和 projectId
+    const applicationId = pathParts[workspaceRootIndex + 1];
+    const projectId = pathParts[workspaceRootIndex + 2];
+    
+    if (!applicationId || !projectId) {
+      return undefined;
+    }
+    
+    // 提取 versionId（如果存在 versions 目录）
+    let versionId: string | undefined;
+    if (versionsIndex !== -1 && versionsIndex === workspaceRootIndex + 3) {
+      versionId = pathParts[versionsIndex + 1];
+    }
+    
+    // 提取 documentType（从 docs 目录后面）
+    let documentType: string | undefined;
+    if (docsIndex !== -1 && docsIndex < pathParts.length - 1) {
+      documentType = pathParts[docsIndex + 1];
+    }
+    
+    return {
+      applicationId,
+      projectId,
+      versionId,
+      documentType: documentType || defaultDocumentType,
+    };
+  }
+
+  /**
+   * 获取版本目录的父目录路径
+   * 目录结构：workspace/{applicationId}/{projectId}/versions
+   */
+  static getVersionsDir(options: WorkspaceOptions): string {
+    if (!options?.applicationId) {
+      throw new Error('applicationId is required for versions directory.');
+    }
+    if (!options?.projectId) {
+      throw new Error('projectId is required for versions directory.');
+    }
+
+    const workspaceRoot = this.getWorkspaceRoot();
+    return path.join(workspaceRoot, options.applicationId, options.projectId, VERSIONS_DIR_NAME);
+  }
+
+  /**
+   * 列出项目的所有版本目录
+   */
+  static async listVersionDirs(options: WorkspaceOptions): Promise<string[]> {
+    const versionsDir = this.getVersionsDir(options);
+    
+    try {
+      await fs.access(versionsDir);
+      const entries = await fs.readdir(versionsDir, { withFileTypes: true });
+      return entries
+        .filter(entry => entry.isDirectory())
+        .map(entry => entry.name);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * 检查版本工作空间是否存在
+   */
+  static versionWorkspaceExists(options: WorkspaceOptions): boolean {
+    if (!options.versionId) {
+      return false;
+    }
+    const workspacePath = this.getProjectWorkspacePath(options);
+    return fsSync.existsSync(workspacePath);
+  }
+
+  /**
+   * 从源目录复制工作空间到目标版本目录
+   * 用于从主工作空间或其他版本创建新版本
+   */
+  static async copyWorkspaceToVersion(
+    sourceOptions: WorkspaceOptions,
+    targetVersionId: string
+  ): Promise<string> {
+    const sourcePath = this.getProjectWorkspacePath(sourceOptions);
+    const targetOptions = { ...sourceOptions, versionId: targetVersionId };
+    const targetPath = this.getProjectWorkspacePath(targetOptions);
+    const targetParent = path.dirname(targetPath);
+
+    // 确保源目录存在
+    if (!fsSync.existsSync(sourcePath)) {
+      throw new Error(`Source workspace does not exist: ${sourcePath}`);
+    }
+
+    // 确保目标父目录存在
+    await fs.mkdir(targetParent, { recursive: true });
+
+    // 如果目标已存在，删除它
+    if (fsSync.existsSync(targetPath)) {
+      await fs.rm(targetPath, { recursive: true, force: true });
+    }
+
+    // 复制目录
+    await this.copyDirectory(sourcePath, targetPath);
+
+    logger.info('WorkspaceManager: Copied workspace to version', {
+      sourcePath,
+      targetPath,
+      versionId: targetVersionId,
+    });
+
+    return targetPath;
+  }
+
+  /**
+   * 递归复制目录
+   */
+  private static async copyDirectory(src: string, dest: string): Promise<void> {
+    await fs.mkdir(dest, { recursive: true });
+    const entries = await fs.readdir(src, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
+
+      if (entry.isDirectory()) {
+        await this.copyDirectory(srcPath, destPath);
+      } else {
+        await fs.copyFile(srcPath, destPath);
+      }
+    }
+  }
+
+  /**
+   * 删除版本工作空间
+   */
+  static async deleteVersionWorkspace(options: WorkspaceOptions): Promise<boolean> {
+    if (!options.versionId) {
+      throw new Error('versionId is required to delete version workspace.');
+    }
+
+    const workspacePath = this.getProjectWorkspacePath(options);
+
+    try {
+      if (fsSync.existsSync(workspacePath)) {
+        await fs.rm(workspacePath, { recursive: true, force: true });
+        logger.info('WorkspaceManager: Deleted version workspace', {
+          workspacePath,
+          versionId: options.versionId,
+        });
+      }
+      return true;
+    } catch (error: any) {
+      logger.error('WorkspaceManager: Failed to delete version workspace', {
+        workspacePath,
+        error: error.message,
+      });
+      return false;
+    }
   }
 
   /**
@@ -110,6 +395,35 @@ export class WorkspaceManager {
     const projectWorkspace = this.getProjectWorkspacePath(options);
     const gitDir = path.join(projectWorkspace, '.git');
     return fsSync.existsSync(gitDir);
+  }
+
+  /**
+   * 检查是否是用户自定义的Git仓库（非模板仓库）
+   * 通过检查远程URL来判断
+   */
+  static isUserRepository(options: WorkspaceOptions): boolean {
+    const projectWorkspace = this.getProjectWorkspacePath(options);
+    const gitDir = path.join(projectWorkspace, '.git');
+    
+    if (!fsSync.existsSync(gitDir)) {
+      return false;
+    }
+
+    try {
+      // 获取远程URL
+      const remoteUrl = execSync('git remote get-url origin', {
+        cwd: projectWorkspace,
+        stdio: 'pipe',
+        encoding: 'utf-8',
+      }).trim();
+
+      // 如果远程URL不是模板仓库，则认为是用户仓库
+      const isTemplate = remoteUrl.includes('ainative-workspace');
+      return !isTemplate;
+    } catch {
+      // 如果无法获取远程URL，假设不是用户仓库
+      return false;
+    }
   }
 
   /**
@@ -158,9 +472,16 @@ export class WorkspaceManager {
 
   /**
    * 拉取最新的模板更新
+   * 如果是用户自定义仓库，则跳过此操作
    */
   static async pullTemplate(options: WorkspaceOptions): Promise<void> {
     const projectWorkspace = this.getProjectWorkspacePath(options);
+
+    // 如果是用户仓库，跳过模板操作
+    if (this.isUserRepository(options)) {
+      logger.info('WorkspaceManager: Skipping template pull for user repository', { projectWorkspace });
+      return;
+    }
 
     if (!this.isTemplateCloned(options)) {
       // 如果没有克隆，先克隆
@@ -189,10 +510,21 @@ export class WorkspaceManager {
   /**
    * 初始化工作空间
    * 确保模板项目已克隆并拉取最新更新，创建必要的目录结构
+   * 如果是用户自定义的Git仓库，则跳过模板操作
    */
   static async initWorkspace(options: WorkspaceOptions): Promise<string> {
-    // 克隆或拉取最新模板项目（pullTemplate 内部会处理：未克隆则克隆，已克隆则 pull）
-    await this.pullTemplate(options);
+    // 检查是否是用户自定义的Git仓库
+    if (this.isUserRepository(options)) {
+      logger.info('WorkspaceManager: User repository detected, skipping template operations', {
+        projectWorkspace: this.getProjectWorkspacePath(options),
+      });
+    } else {
+      // 克隆或拉取最新模板项目（pullTemplate 内部会处理：未克隆则克隆，已克隆则 pull）
+      await this.pullTemplate(options);
+    }
+
+    // 清理 CLI 误创建的无效文件（包含中文、Mermaid 语法等）
+    await this.cleanInvalidFiles(options);
 
     // 确保 docs 目录存在
     const docsDir = this.getDocsDir(options);
@@ -201,6 +533,7 @@ export class WorkspaceManager {
     logger.info('WorkspaceManager: Workspace initialized', {
       projectWorkspace: this.getProjectWorkspacePath(options),
       docsDir,
+      isUserRepository: this.isUserRepository(options),
     });
 
     return docsDir;
@@ -598,5 +931,96 @@ export class WorkspaceManager {
       });
       throw error;
     }
+  }
+
+  // ============================================
+  // 清理无效文件方法
+  // ============================================
+
+  /**
+   * 清理 workspace 根目录下的无效文件
+   * CLI 可能误创建包含中文、特殊字符的文件，需要定期清理
+   * @param options workspace选项
+   * @returns 删除的文件数量
+   */
+  static async cleanInvalidFiles(options: WorkspaceOptions): Promise<number> {
+    const projectWorkspace = this.getProjectWorkspacePath(options);
+
+    try {
+      // 检查目录是否存在
+      try {
+        await fs.access(projectWorkspace);
+      } catch {
+        return 0;
+      }
+
+      const entries = await fs.readdir(projectWorkspace, { withFileTypes: true });
+      let cleanedCount = 0;
+
+      for (const entry of entries) {
+        // 只处理文件，不处理目录
+        if (!entry.isFile()) continue;
+
+        // 检查文件名是否无效
+        if (this.isInvalidFileName(entry.name)) {
+          const filePath = path.join(projectWorkspace, entry.name);
+          await fs.unlink(filePath);
+          cleanedCount++;
+          logger.info('WorkspaceManager: Cleaned invalid file', {
+            filename: entry.name,
+            projectWorkspace,
+          });
+        }
+      }
+
+      if (cleanedCount > 0) {
+        logger.info('WorkspaceManager: Cleaned invalid files', {
+          cleanedCount,
+          projectWorkspace,
+        });
+      }
+
+      return cleanedCount;
+    } catch (error: any) {
+      logger.warn('WorkspaceManager: Failed to clean invalid files', {
+        error: error.message,
+        projectWorkspace,
+      });
+      return 0;
+    }
+  }
+
+  /**
+   * 检查文件名是否无效（应该被清理）
+   * @param filename 文件名
+   * @returns 是否是无效文件名
+   */
+  private static isInvalidFileName(filename: string): boolean {
+    // 白名单：合法的文件名模式
+    const validPatterns = [
+      /^\./, // 隐藏文件（.gitignore 等）
+      /^[A-Za-z0-9_-]+\.(md|json|yaml|yml|toml|txt|sh|js|ts|cjs|mjs)$/, // 常规文件
+      /^Makefile$/, // Makefile
+      /^README/, // README 文件
+      /^AGENTS/, // AGENTS 文件
+      /^LICENSE/, // LICENSE 文件
+      /^CHANGELOG/, // CHANGELOG 文件
+    ];
+
+    // 如果匹配任何白名单模式，则是合法文件
+    if (validPatterns.some(pattern => pattern.test(filename))) {
+      return false;
+    }
+
+    // 无效文件特征
+    const invalidPatterns = [
+      /[\u4e00-\u9fa5]/, // 包含中文字符
+      /：/, // 包含全角冒号
+      /[\[\]{}()]/, // 包含 Mermaid 语法括号
+      /-->/, // 包含 Mermaid 箭头
+    ];
+
+    // 如果匹配任何无效模式，则需要清理
+    return invalidPatterns.some(pattern => pattern.test(filename));
   }
 }
