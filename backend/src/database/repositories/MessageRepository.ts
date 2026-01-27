@@ -11,6 +11,7 @@ import { logger } from '../../utils';
 export interface DBMessage {
   id: string;
   project_id: string;
+  version_id?: string;  // Added for version isolation
   role_profile?: string;  // Changed from role_id
   message_uuid: string;
   content: string;
@@ -29,8 +30,9 @@ export class MessageRepository {
    * @param projectId - Project ID
    * @param message - Message to save
    * @param roleProfile - Optional role profile (if not provided, uses message.sentFrom)
+   * @param versionId - Optional version ID for version isolation
    */
-  async save(projectId: string, message: Message, roleProfile?: string): Promise<DBMessage> {
+  async save(projectId: string, message: Message, roleProfile?: string, versionId?: string): Promise<DBMessage> {
     // Determine role_profile: use provided value, or derive from message.sentFrom
     let finalRoleProfile: string = roleProfile || '';
     if (!finalRoleProfile && message.sentFrom) {
@@ -46,12 +48,13 @@ export class MessageRepository {
 
     const result = await query<DBMessage>(
       `INSERT INTO messages (
-        project_id, role_profile, message_uuid, content, instruct_content,
+        project_id, version_id, role_profile, message_uuid, content, instruct_content,
         role_type, cause_by, sent_from, send_to, metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *`,
       [
         projectId,
+        versionId || null,
         finalRoleProfile,
         message.id,
         message.content,
@@ -65,67 +68,6 @@ export class MessageRepository {
     );
     
     return result.rows[0];
-  }
-
-  /**
-   * Save multiple messages
-   */
-  async saveMany(projectId: string, messages: Message[]): Promise<number> {
-    if (messages.length === 0) return 0;
-    
-    const values: any[] = [];
-    const placeholders: string[] = [];
-    let paramIndex = 1;
-    
-    messages.forEach((msg) => {
-      placeholders.push(
-        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8}, $${paramIndex + 9})`
-      );
-      
-      // Determine role_profile
-      let roleProfile: string = 'user';
-      if (msg.sentFrom && msg.sentFrom !== 'User' && msg.sentFrom !== 'user') {
-        roleProfile = msg.sentFrom;
-      }
-      
-      values.push(
-        projectId,
-        roleProfile,
-        msg.id,
-        msg.content,
-        msg.instructContent ? JSON.stringify(msg.instructContent) : null,
-        msg.role,
-        msg.causeBy,
-        msg.sentFrom,
-        JSON.stringify(Array.from(msg.sendTo)),
-        JSON.stringify(msg.metadata)
-      );
-      
-      paramIndex += 10;
-    });
-    
-    const sql = `
-      INSERT INTO messages (
-        project_id, role_profile, message_uuid, content, instruct_content,
-        role_type, cause_by, sent_from, send_to, metadata
-      ) VALUES ${placeholders.join(', ')}
-    `;
-    
-    try {
-      const result = await query(sql, values);
-      logger.debug(`MessageRepository: Saved ${result.rowCount || 0} messages`, {
-        projectId,
-        messageCount: messages.length,
-      });
-      return result.rowCount || 0;
-    } catch (error: any) {
-      logger.error('MessageRepository: Failed to save messages', {
-        projectId,
-        messageCount: messages.length,
-        error: error.message,
-      });
-      throw error;
-    }
   }
 
   /**
@@ -208,6 +150,54 @@ export class MessageRepository {
     );
     
     return result.rowCount || 0;
+  }
+
+  /**
+   * Find messages by project and version with deduplication
+   * Uses DISTINCT ON to get only the latest message for each role_profile + cause_by combination
+   * This prevents duplicate messages when workflows are retried or resumed
+   * 
+   * @param projectId - Project ID
+   * @param versionId - Version ID for isolation
+   * @param limit - Maximum number of messages to return (default 100)
+   * @returns Deduplicated list of messages, one per role_profile + cause_by combination
+   */
+  async findByVersionWithDedup(projectId: string, versionId: string, limit: number = 100): Promise<DBMessage[]> {
+    const result = await query<DBMessage>(
+      `SELECT DISTINCT ON (role_profile, cause_by) *
+       FROM messages 
+       WHERE project_id = $1 AND version_id = $2
+       ORDER BY role_profile, cause_by, created_at DESC
+       LIMIT $3`,
+      [projectId, versionId, limit]
+    );
+    
+    logger.debug(`MessageRepository: findByVersionWithDedup returned ${result.rows.length} messages`, {
+      projectId,
+      versionId,
+      messageCount: result.rows.length,
+    });
+    
+    return result.rows;
+  }
+
+  /**
+   * Find messages by project and version (without deduplication)
+   * 
+   * @param projectId - Project ID
+   * @param versionId - Version ID for isolation
+   * @param limit - Maximum number of messages to return (default 100)
+   */
+  async findByProjectAndVersion(projectId: string, versionId: string, limit: number = 100): Promise<DBMessage[]> {
+    const result = await query<DBMessage>(
+      `SELECT * FROM messages 
+       WHERE project_id = $1 AND version_id = $2
+       ORDER BY created_at ASC 
+       LIMIT $3`,
+      [projectId, versionId, limit]
+    );
+    
+    return result.rows;
   }
 
   // Backward compatibility alias

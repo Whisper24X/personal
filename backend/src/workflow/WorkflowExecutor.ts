@@ -314,8 +314,8 @@ export class WorkflowExecutor {
       targetAction.setAbortSignal(this.abortController.signal);
     }
 
-    // Load relevant messages from project history
-    await this.loadRelevantMessages(projectId, roleInstance, action);
+    // Load relevant messages from project history (with version isolation and deduplication)
+    await this.loadRelevantMessages(projectId, versionId, roleInstance, action);
 
     // For the first action (WriteMRD), add user idea as initial input
     if (action === 'WriteMRD' && version.idea) {
@@ -353,10 +353,11 @@ export class WorkflowExecutor {
       throw new Error(`Action ${action} produced no output`);
     }
 
-    // Save message to project history
-    await this.messageRepository.save(projectId, result);
+    // Save message to project history (with versionId for isolation)
+    await this.messageRepository.save(projectId, result, undefined, versionId);
     logger.info('WorkflowExecutor: Saved message to history', {
       projectId,
+      versionId,
       messageId: result.id,
     });
 
@@ -388,17 +389,26 @@ export class WorkflowExecutor {
 
   /**
    * Load relevant messages from project history
+   * Uses version isolation and role_profile + cause_by deduplication to prevent duplicate messages
+   * 
+   * @param projectId - Project ID
+   * @param versionId - Version ID for isolation
+   * @param role - Role instance to load messages into
+   * @param actionName - Action name to determine relevant message types
    */
   private async loadRelevantMessages(
     projectId: string,
+    versionId: string,
     role: any,
     actionName: string
   ): Promise<void> {
     try {
-      const messages = await this.messageRepository.findByProjectId(projectId);
+      // Use findByVersionWithDedup for version isolation and deduplication
+      // This ensures only one message per role_profile + cause_by combination is loaded
+      const messages = await this.messageRepository.findByVersionWithDedup(projectId, versionId);
 
       if (messages.length === 0) {
-        logger.info('WorkflowExecutor: No messages in project history', { projectId });
+        logger.info('WorkflowExecutor: No messages in project history', { projectId, versionId });
         return;
       }
 
@@ -422,14 +432,17 @@ export class WorkflowExecutor {
         }
       }
 
-      logger.info('WorkflowExecutor: Loaded messages from history', {
+      logger.info('WorkflowExecutor: Loaded messages from history (deduplicated)', {
         projectId,
+        versionId,
         loadedCount,
         totalMessages: messages.length,
+        relevantTypes,
       });
     } catch (error: any) {
       logger.warn('WorkflowExecutor: Failed to load messages', {
         projectId,
+        versionId,
         error: error.message,
       });
     }

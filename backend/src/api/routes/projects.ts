@@ -38,7 +38,6 @@ router.get('/', ProjectController.list);
 router.post('/', ProjectController.create);
 
 // More specific routes with additional path segments (must come before generic /:id)
-router.post('/:id/start', ProjectController.start);
 router.get('/:id/messages', ProjectController.getMessages);
 router.get('/:id/documents', ProjectController.getDocuments);
 router.get('/:id/download/code', ProjectController.downloadCode);
