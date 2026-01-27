@@ -91,7 +91,6 @@ export async function tryReadActualDocumentFromWorkspace(
 ): Promise<string | null> {
   const {
     mainFileName,
-    filePattern,
     excludePatterns = DEFAULT_EXCLUDE_PATTERNS,
     minDocumentLength = 500,
   } = options;
@@ -135,8 +134,8 @@ export async function tryReadActualDocumentFromWorkspace(
       const mainFilePath = path.join(workspaceDir, mainFileName);
       const content = await fs.readFile(mainFilePath, 'utf-8');
       
-      // 检查主文件内容是否为有效文档（不是 CLI 总结）
-      if (content && !isCLISummaryOutput(content)) {
+      // 检查主文件内容是否为有效文档（不是 CLI 总结，且长度足够）
+      if (content && !isCLISummaryOutput(content) && content.length >= minDocumentLength) {
         logger.info('cliModeUtils: Found valid content in main file', {
           mainFileName,
           contentLength: content.length,
