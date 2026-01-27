@@ -1,0 +1,76 @@
+# Dependencies
+node_modules/
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated files
+generated/
+
+# Workspace - generated projects
+workspace/*
+!workspace/.gitkeep
+backend/workspace/*
+backend/workspace_bak/*
+
+!backend/workspace/.gitkeep
+frontend/workspace/*
+!frontend/workspace/.gitkeep
+
+# Prisma
+*.db-journal
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Debug
+.pnp.*
+.yarn/
+
+# Misc
+.cache/
+.turbo/
+
+docs/
