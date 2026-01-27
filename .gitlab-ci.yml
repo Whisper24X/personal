@@ -1,0 +1,103 @@
+# 定义项目构建或部署过程中使用的环境变量
+variables:
+  DOCKER_REGISTRY: docker.yc345.tv
+  NAMESPACE: backsys
+
+cache:
+  untracked: true
+  paths:
+    - node_modules/
+
+before_script:
+  - git config --global http.https://github.com.proxy http://10.8.8.7:8118 && git config --global https.https://github.com.proxy http://10.8.8.7:8118
+
+stages:
+  - build_test
+  - build_stage
+  - build_master
+
+【测试环境】镜像构建:
+  stage: build_test
+  tags:
+    - ops
+  only:
+    - develop
+  script:
+    - nvm use v14.17.4
+    - npm install --verbose --registry=https://registry.npm.taobao.org --no-optional
+    - npm run build:test
+    - ls -al
+    - docker login --username=$DOCKER_USERNAME $DOCKER_REGISTRY -p $DOCKER_PASSWORD
+    - docker build -t $DOCKER_REGISTRY/$NAMESPACE/$CI_PROJECT_NAME:$CI_COMMIT_SHORT_SHA .
+    - docker push $DOCKER_REGISTRY/$NAMESPACE/$CI_PROJECT_NAME:$CI_COMMIT_SHORT_SHA
+    - kubectl config set-cluster test-cluster --server=https://10.8.8.92:6443 --insecure-skip-tls-verify=true
+    - kubectl config set-credentials gitlab-ci --token=$KUBE_TOKEN_TEST
+    - kubectl config set-context testenv --cluster=test-cluster --user=gitlab-ci && kubectl config use-context testenv
+    - kubectl -n $NAMESPACE set image deployment $CI_PROJECT_NAME $CI_PROJECT_NAME=$DOCKER_REGISTRY/$NAMESPACE/$CI_PROJECT_NAME:$CI_COMMIT_SHORT_SHA --record
+    - kubectl -n $NAMESPACE rollout status deployment $CI_PROJECT_NAME
+
+# 【预发布】镜像构建:
+#   stage: build_stage
+#   tags:
+#     - ops
+#   only:
+#     - /^.*_stage[0-9]*$/
+#   script:
+#     - nvm use v14.17.4
+#     - npm install --verbose --registry=https://registry.npm.taobao.org --no-optional
+#     - npm run build:stage
+#     - docker login --username=$DOCKER_USERNAME $DOCKER_REGISTRY -p $DOCKER_PASSWORD
+#     - docker build -t $DOCKER_REGISTRY/$NAMESPACE/$CI_PROJECT_NAME:${CI_BUILD_REF_NAME} .
+#     - docker push $DOCKER_REGISTRY/$NAMESPACE/$CI_PROJECT_NAME:${CI_BUILD_REF_NAME}
+#     - kubectl config set-cluster stage-cluster --server=https://47.95.10.6:6443 --insecure-skip-tls-verify=true
+#     - kubectl config set-credentials gitlab-ci --token=$KUBE_TOKEN_STAGE
+#     - kubectl config set-context stagenv --cluster=stage-cluster --user=gitlab-ci && kubectl config use-context stagenv
+#     - kubectl -n $NAMESPACE set image deployment $CI_PROJECT_NAME $CI_PROJECT_NAME=$DOCKER_REGISTRY/$NAMESPACE/$CI_PROJECT_NAME:${CI_BUILD_REF_NAME} --record
+#     - kubectl -n $NAMESPACE rollout status deploy $CI_PROJECT_NAME
+
+【预发布-火山云】镜像构建:
+  stage: build_stage
+  only:
+    - /^.*_stage[0-9]*$/
+  tags:
+    - ops
+  script:
+    - nvm use v14.17.4
+    - npm install --verbose --registry=https://npm.yc345.tv/ --no-optional
+    - npm run build:stage
+    - docker login --username=$DOCKER_USERNAME $DOCKER_REGISTRY -p $DOCKER_PASSWORD
+    - docker build -t $DOCKER_REGISTRY/$NAMESPACE/$CI_PROJECT_NAME:$CI_COMMIT_SHORT_SHA .
+    - docker push $DOCKER_REGISTRY/$NAMESPACE/$CI_PROJECT_NAME:$CI_COMMIT_SHORT_SHA
+    - kubectl config set-cluster stage-cluster --server=$KUBE_HOST_STAGE_VOLCENGINE --insecure-skip-tls-verify=true
+    - kubectl config set-credentials gitlab-ci --token=$KUBE_TOKEN_STAGE_VOLCENGINE
+    - kubectl config set-context stagenv --cluster=stage-cluster --user=gitlab-ci && kubectl config use-context stagenv
+    - kubectl -n $NAMESPACE set image deployment $CI_PROJECT_NAME $CI_PROJECT_NAME=$DOCKER_REGISTRY/$NAMESPACE/$CI_PROJECT_NAME:$CI_COMMIT_SHORT_SHA --record
+    - kubectl -n $NAMESPACE rollout status deployment $CI_PROJECT_NAME
+
+# 【正式环境】镜像构建:
+#   stage: build_master
+#   tags:
+#     - ops
+#   only:
+#     - /^v\d+(?:\.\d+){2}$/
+#   script:
+#     - nvm use v14.17.4
+#     - npm install --verbose --registry=https://registry.npm.taobao.org --no-optional
+#     - npm run build:prod
+#     - docker login --username=$DOCKER_USERNAME $DOCKER_REGISTRY -p $DOCKER_PASSWORD
+#     - docker build -t $DOCKER_REGISTRY/$NAMESPACE/$CI_PROJECT_NAME:${CI_BUILD_REF_NAME} .
+#     - docker push $DOCKER_REGISTRY/$NAMESPACE/$CI_PROJECT_NAME:${CI_BUILD_REF_NAME}
+
+【正式环境-火山云】镜像构建:
+  stage: build_master
+  only:
+    - /^v\d+(?:\.\d+){2}$/
+  tags:
+    - ops
+  script:
+    - nvm use v14.17.4
+    - npm install --verbose --registry=https://registry.npm.taobao.org --no-optional
+    - npm run build:prod
+    - docker login --username=$DOCKER_USERNAME $DOCKER_REGISTRY -p $DOCKER_PASSWORD
+    - docker build -t $DOCKER_REGISTRY/$NAMESPACE/$CI_PROJECT_NAME:${CI_BUILD_REF_NAME} .
+    - docker push $DOCKER_REGISTRY/$NAMESPACE/$CI_PROJECT_NAME:${CI_BUILD_REF_NAME}
