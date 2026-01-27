@@ -7,10 +7,8 @@
  */
 
 import { Context } from '../core/context/Context';
-import { Team } from '../orchestration/Team';
 import { Role } from '../roles/Role';
 import { BaseAction } from '../core/base/BaseAction';
-import { WorkflowConfig } from '../database/repositories/ApplicationWorkflowRepository';
 import { logger } from '../utils';
 
 // Import registries from centralized locations
@@ -99,63 +97,6 @@ export class RoleActionFactory {
         return null;
       }
     }).filter((action): action is BaseAction => action !== null);
-  }
-
-  /**
-   * Create a Team from workflow configuration
-   */
-  static createTeamFromWorkflow(
-    workflowConfig: WorkflowConfig,
-    context: Context
-  ): Team {
-    const team = new Team(context, false);
-
-    // Sort roles by order
-    const sortedRoles = [...workflowConfig.roles].sort((a, b) => a.order - b.order);
-
-    // Create and hire roles
-    const roleInstances = sortedRoles.map((roleConfig) => {
-      const role = this.createRoleFromDefinition(
-        roleConfig.profile,
-        context,
-        roleConfig.name,
-        roleConfig.actions,
-        roleConfig.watch_actions
-      );
-
-      // Apply role-specific config if provided
-      if (roleConfig.config) {
-        // Apply config to role (if role supports it)
-        // This could be extended to support role-specific configurations
-        logger.debug(`Applying config to role ${roleConfig.profile}:`, roleConfig.config);
-      }
-
-      return role;
-    });
-
-    team.hire(roleInstances);
-
-    logger.info(`Created team with ${roleInstances.length} roles from workflow config`, {
-      roles: roleInstances.map((r) => r.profile),
-    });
-
-    return team;
-  }
-
-  /**
-   * Create a default team with all registered roles
-   * Used as fallback when no workflow configuration is available
-   */
-  static createDefaultTeam(context: Context): Team {
-    const team = new Team(context, false);
-    const roles = this.createAllRoleInstances(context);
-    team.hire(roles);
-    
-    logger.info(`Created default team with ${roles.length} roles from registry`, {
-      roles: roles.map((r) => r.profile),
-    });
-    
-    return team;
   }
 
   /**

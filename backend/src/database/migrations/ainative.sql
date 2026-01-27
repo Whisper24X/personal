@@ -315,6 +315,7 @@ DROP TABLE IF EXISTS "public"."messages";
 CREATE TABLE "public"."messages" (
     "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
     "project_id" uuid NOT NULL,
+    "version_id" uuid,
     "message_uuid" uuid NOT NULL,
     "role_profile" varchar(100),
     "content" text NOT NULL,
@@ -328,9 +329,14 @@ CREATE TABLE "public"."messages" (
     PRIMARY KEY ("id")
 );
 
+-- Index for version isolation and deduplication queries
+CREATE INDEX idx_messages_version ON public.messages USING btree (project_id, version_id);
+CREATE INDEX idx_messages_dedup ON public.messages USING btree (project_id, version_id, role_profile, cause_by, created_at DESC);
+
 -- Column Comment
 COMMENT ON COLUMN "public"."messages"."id" IS '消息唯一标识（UUID）';
 COMMENT ON COLUMN "public"."messages"."project_id" IS '所属项目ID（外键关联projects表）';
+COMMENT ON COLUMN "public"."messages"."version_id" IS '关联的项目版本ID（外键关联project_versions表，用于消息隔离）';
 COMMENT ON COLUMN "public"."messages"."message_uuid" IS '消息业务 UUID（用于业务逻辑关联）';
 COMMENT ON COLUMN "public"."messages"."role_profile" IS '发送者角色类型，user 表示用户消息';
 COMMENT ON COLUMN "public"."messages"."content" IS '消息内容';
