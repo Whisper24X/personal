@@ -206,8 +206,8 @@ export async function testWriteCode(req: Request, res: Response) {
 
         // Wait for database config to load (Role.ts loads it asynchronously)
         // The Role's loadRoleLLMFromDatabase will override context.llm if database config exists
-        if (engineer['llmLoadPromise']) {
-            await engineer['llmLoadPromise'];
+        if ((engineer as any).llmLoadPromise) {
+            await (engineer as any).llmLoadPromise;
         }
 
         // Add PRD message if provided
@@ -378,8 +378,8 @@ export async function testExecuteSubtask(req: Request, res: Response) {
 
         // Wait for database config to load (Role.ts loads it asynchronously)
         // The Role's loadRoleLLMFromDatabase will override context.llm if database config exists
-        if (engineer['llmLoadPromise']) {
-            await engineer['llmLoadPromise'];
+        if ((engineer as any).llmLoadPromise) {
+            await (engineer as any).llmLoadPromise;
         }
 
         // Add PRD message if provided
@@ -581,8 +581,8 @@ export async function testCustom(req: Request, res: Response) {
 
         // Wait for database config to load (Role.ts loads it asynchronously)
         // The Role's loadRoleLLMFromDatabase will override context.llm if database config exists
-        if (engineer['llmLoadPromise']) {
-            await engineer['llmLoadPromise'];
+        if ((engineer as any).llmLoadPromise) {
+            await (engineer as any).llmLoadPromise;
         }
 
         // Add messages to memory
@@ -721,8 +721,8 @@ export async function testDeploy(req: Request, res: Response) {
         const engineer = new Engineer(context);
 
         // Wait for database config to load
-        if (engineer['llmLoadPromise']) {
-            await engineer['llmLoadPromise'];
+        if ((engineer as any).llmLoadPromise) {
+            await (engineer as any).llmLoadPromise;
         }
 
         // Add Design message if provided

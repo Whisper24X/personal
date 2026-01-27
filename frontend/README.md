@@ -33,10 +33,19 @@ pnpm preview
 src/
 ├── api/           # API client and services
 ├── assets/        # Static assets
-├── components/    # Reusable components
+├── components/    # Reusable components (InteractiveConfirmation, WorkflowKanban, etc.)
+│   └── common/    # Common components (CardHeader, EmptyState, PageHeader, StatCard)
 ├── router/        # Vue Router configuration
-├── stores/        # Pinia stores
+├── stores/        # Pinia stores (project, workflow, knowledge, config)
 ├── views/         # Page components
+│   ├── businessLine/  # Business line management views
+│   ├── platform/      # Platform management views
+│   ├── knowledge/     # Knowledge base views
+│   ├── config/        # Configuration views
+│   ├── dashboard/    # Dashboard views
+│   └── project/       # Project management views
+├── utils/         # Utility functions (errorHandler, polling)
+├── config/        # Configuration files
 ├── App.vue        # Root component
 ├── main.ts        # Application entry point
 └── style.css      # Global styles
@@ -44,13 +53,18 @@ src/
 
 ## Features
 
-- ✅ Project dashboard
-- ✅ Create new projects
+- ✅ Project dashboard with statistics
+- ✅ Business line and platform management
+- ✅ Create new projects with interactive mode support
 - ✅ View project details and progress
-- ✅ Real-time status updates
-- ✅ View generated documents
+- ✅ Real-time status updates via WebSocket
+- ✅ View generated documents (MRD, PRD, Design, Code)
 - ✅ Message flow visualization
-- ✅ Cost tracking
+- ✅ Cost tracking and budget management
+- ✅ Workflow kanban view
+- ✅ Knowledge base management UI
+- ✅ System configuration panel (LLM, Roles, Prompts)
+- ✅ Interactive confirmation component for workflow steps
 
 ## Environment Variables
 

@@ -39,9 +39,7 @@ export const config: IAppConfig = {
       origin: (process.env.ALLOWED_ORIGINS || 'http://localhost:5173').split(','),
     },
   },
-  workspace: {
-    path: process.env.WORKSPACE_PATH || './workspace',
-  },
+  // workspace 配置已移除，统一使用 WorkspaceManager.getWorkspaceRoot() 获取路径
   limits: {
     maxBudget: parseFloat(process.env.MAX_BUDGET || '10.0'),
     maxRetry: parseInt(process.env.MAX_RETRY || '3'),

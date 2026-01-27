@@ -1,8 +1,8 @@
 # mind2build 行动系统设计文档
 
-**文档版本**: v1.8  
+**文档版本**: v1.9  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-26（确认30个Actions完整列表，更新AutomationEngineer的QAConclusion Action）
+**最后更新**: 2026-01-26（确认30个Actions完整列表，明确QAConclusion归属AutomationEngineer，更新Actions归属角色说明）
 
 ## Action执行机制
 
@@ -1036,7 +1036,11 @@ async run(allMessages: string): Promise<IActionOutput>
 - 自动化测试: 4个 (AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion)
 - 其他: 3个 (SearchEnhancedQA, DataAnalysis, Coordinate)
 
-**注意**: WriteTestPlan、WriteTest 和 ImproveTest 在多个分类中都有涉及，但实际只计算一次。QAConclusion属于AutomationEngineer角色，不属于QAEngineer。
+**注意**: 
+- WriteTestPlan、WriteTest 和 ImproveTest 在多个分类中都有涉及，但实际只计算一次
+- **QAConclusion属于AutomationEngineer角色，不属于QAEngineer**
+- QAEngineer包含3个Actions：WriteTestPlan, WriteTest, TestCaseReview
+- AutomationEngineer包含4个Actions：AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion
 
 ## 自定义 Action
 

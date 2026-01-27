@@ -60,8 +60,8 @@ export class RoleActionExecutionController {
       const role = RoleActionFactory.createRoleFromDefinition(roleProfile, context);
 
       // Wait for LLM config to load (if applicable)
-      if (role['llmLoadPromise']) {
-        await role['llmLoadPromise'];
+      if ((role as any).llmLoadPromise) {
+        await (role as any).llmLoadPromise;
       }
 
       // Step 5: Validate action exists for this role
@@ -207,7 +207,7 @@ export class RoleActionExecutionController {
         for (const dbMessage of messages) {
           const message = new Message({
             content: dbMessage.content,
-            role: dbMessage.role,
+            role: dbMessage.role_type,
             causeBy: dbMessage.cause_by,
             sentFrom: dbMessage.sent_from,
           });
@@ -223,7 +223,7 @@ export class RoleActionExecutionController {
         if (relevantMessageTypes.includes(dbMessage.cause_by)) {
           const message = new Message({
             content: dbMessage.content,
-            role: dbMessage.role,
+            role: dbMessage.role_type,
             causeBy: dbMessage.cause_by,
             sentFrom: dbMessage.sent_from,
           });

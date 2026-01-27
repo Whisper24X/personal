@@ -215,7 +215,7 @@ export class DocumentArchiveService {
    */
   private async getFilesToArchive(
     sourceDir: string,
-    docType: ArchiveDocumentType
+    _docType: ArchiveDocumentType
   ): Promise<string[]> {
     const files: string[] = [];
 

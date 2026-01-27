@@ -7,7 +7,7 @@
     >
       <el-button :loading="loading" class="version-button">
         <el-icon class="version-icon"><Collection /></el-icon>
-        <span class="version-name">{{ activeVersion?.versionName || '无版本' }}</span>
+        <span class="version-name">{{ displayVersion?.versionName || '无版本' }}</span>
         <el-icon class="el-icon--right"><ArrowDown /></el-icon>
       </el-button>
       <template #dropdown>
@@ -16,12 +16,12 @@
             v-for="version in versions"
             :key="version.id"
             :command="version.id"
-            :class="{ 'is-active': version.isActive }"
+            :class="{ 'is-active': version.id === currentVersionId }"
           >
             <div class="version-item">
-              <el-icon v-if="version.isActive" class="active-icon"><Check /></el-icon>
+              <el-icon v-if="version.id === currentVersionId" class="active-icon"><Check /></el-icon>
               <span class="version-item-name">{{ version.versionName }}</span>
-              <el-tag v-if="version.isActive" size="small" type="success">当前</el-tag>
+              <el-tag v-if="version.id === currentVersionId" size="small" type="success">当前</el-tag>
             </div>
           </el-dropdown-item>
           <el-dropdown-item divided command="__create__">
@@ -103,10 +103,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, FormInstance, FormRules } from 'element-plus';
 import { apiClient } from '../../../api/client';
-import { usePlatformStore } from '../../../stores/platform';
 import { 
   Collection, 
   ArrowDown, 
@@ -115,7 +115,8 @@ import {
   Edit
 } from '@element-plus/icons-vue';
 
-const platformStore = usePlatformStore();
+const route = useRoute();
+const router = useRouter();
 
 interface Version {
   id: string;
@@ -140,6 +141,17 @@ const emit = defineEmits<{
 const loading = ref(false);
 const versions = ref<Version[]>([]);
 const activeVersion = ref<Version | null>(null);
+
+// 当前显示的版本：工作流页面使用路由参数，其他页面使用激活版本
+const currentVersionId = computed(() => 
+  (route.params.versionId as string) || activeVersion.value?.id
+);
+const displayVersion = computed(() => 
+  versions.value.find(v => v.id === currentVersionId.value) || activeVersion.value
+);
+
+// 检查当前是否在工作流页面
+const isInWorkflowPage = computed(() => route.name === 'PlatformWorkflow');
 
 const showCreateDialog = ref(false);
 const createLoading = ref(false);
@@ -178,9 +190,6 @@ async function fetchVersions() {
     const response = await apiClient.getPlatformVersions(props.platformId) as any;
     versions.value = response.versions || [];
     activeVersion.value = versions.value.find((v: Version) => v.isActive) || null;
-    
-    // Sync with store
-    platformStore.setActiveVersion(activeVersion.value);
   } catch (error: any) {
     console.error('Failed to fetch versions:', error);
   } finally {
@@ -196,17 +205,29 @@ async function handleVersionSelect(command: string) {
 
   // Find the selected version
   const selectedVersion = versions.value.find(v => v.id === command);
-  if (!selectedVersion || selectedVersion.isActive) {
+  if (!selectedVersion) {
     return;
   }
 
-  // Activate the version
+  // 如果选择的是当前版本，不做任何操作
+  if (command === currentVersionId.value) {
+    return;
+  }
+
+  // 在工作流页面：通过路由切换版本
+  if (isInWorkflowPage.value) {
+    router.replace(`/platform/${props.platformId}/workflow/${command}`);
+    emit('version-changed', selectedVersion);
+    return;
+  }
+
+  // 其他页面：保持原有激活逻辑
   loading.value = true;
   try {
     await apiClient.activatePlatformVersion(props.platformId, command);
     ElMessage.success(`已切换到版本 ${selectedVersion.versionName}`);
     
-    // Refresh versions (this also updates the store)
+    // Refresh versions
     await fetchVersions();
     
     // Emit change event

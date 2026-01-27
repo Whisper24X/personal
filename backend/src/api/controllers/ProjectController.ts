@@ -90,7 +90,7 @@ export class ProjectController {
    */
   static async create(req: Request, res: Response) {
     try {
-      const { name, idea, description, investment, nRound, applicationId, gitRepoUrl } = req.body;
+      const { name, idea, description, investment, nRound: _nRound, applicationId, gitRepoUrl } = req.body;
       const userId = (req as any).userId || DEFAULT_USER_ID; // From auth middleware
 
       if (!name) {
@@ -378,25 +378,8 @@ export class ProjectController {
    */
   private static findProjectInWorkspace(projectId: string): { name?: string; idea?: string; applicationId?: string; createdAt?: Date } | null {
     try {
-      // Calculate workspace root
-      const possibleRoots = [
-        path.resolve(__dirname, '../../../'),
-        path.resolve(__dirname, '../../../../'),
-        process.cwd(),
-      ];
-
-      let projectRoot = possibleRoots[0];
-      for (const root of possibleRoots) {
-        if (
-          fs.existsSync(path.join(root, 'pnpm-workspace.yaml')) ||
-          fs.existsSync(path.join(root, 'package.json'))
-        ) {
-          projectRoot = root;
-          break;
-        }
-      }
-
-      const workspaceRoot = process.env.WORKSPACE_PATH || path.join(projectRoot, 'workspace');
+      // 统一使用 WorkspaceManager 获取 workspace 根目录（绝对路径）
+      const workspaceRoot = WorkspaceManager.getWorkspaceRoot();
 
       if (!fs.existsSync(workspaceRoot)) {
         return null;
@@ -737,6 +720,8 @@ export class ProjectController {
         applicationId: project.application_id,
         zipPath,
       });
+      // File is being streamed, no explicit return needed
+      return;
     } catch (error: any) {
       logger.error('API: Error downloading workspace code', error);
       return res.status(500).json({
@@ -869,6 +854,8 @@ export class ProjectController {
         openspecExists,
         zipPath,
       });
+      // File is being streamed, no explicit return needed
+      return;
     } catch (error: any) {
       logger.error('API: Error downloading workspace docs', error);
       return res.status(500).json({

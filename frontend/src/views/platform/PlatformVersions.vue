@@ -51,13 +51,20 @@
         </el-button>
       </el-empty>
 
-      <!-- Version table -->
-      <el-table
-        v-else
-        :data="versions"
-        stripe
-        style="width: 100%"
-      >
+      <!-- Table toolbar -->
+      <template v-else>
+        <div class="table-toolbar">
+          <el-button type="primary" :icon="Plus" @click="showCreateDialog = true">
+            新增版本
+          </el-button>
+        </div>
+
+        <!-- Version table -->
+        <el-table
+          :data="versions"
+          stripe
+          style="width: 100%"
+        >
         <el-table-column prop="versionName" label="版本名称" min-width="200">
           <template #default="{ row }">
             <el-icon style="margin-right: 8px; vertical-align: middle;">
@@ -129,6 +136,7 @@
           </template>
         </el-table-column>
       </el-table>
+      </template>
     </div>
 
     <!-- Create version dialog -->
@@ -206,7 +214,6 @@ import { ref, reactive, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus';
 import { apiClient } from '../../api/client';
-import { usePlatformStore } from '../../stores/platform';
 import PageHeader from '../../components/common/PageHeader.vue';
 import {
   Plus,
@@ -215,6 +222,7 @@ import {
   Check,
   Delete,
   Link,
+  Edit,
 } from '@element-plus/icons-vue';
 
 interface Version {
@@ -241,7 +249,6 @@ interface Platform {
 
 const route = useRoute();
 const router = useRouter();
-const platformStore = usePlatformStore();
 
 const platformId = route.params.id as string;
 
@@ -354,23 +361,8 @@ async function deleteVersion(version: Version) {
 }
 
 function enterWorkflow(version: Version) {
-  // Set active version in store before navigating
-  platformStore.setActiveVersion(version);
-  
-  // If not active, activate it first
-  if (!version.isActive) {
-    apiClient.activatePlatformVersion(platformId, version.id)
-      .then(() => {
-        router.push(`/platform/${platformId}/workflow`);
-      })
-      .catch((err: any) => {
-        console.error('Failed to activate version:', err);
-        // Still navigate even if activation fails
-        router.push(`/platform/${platformId}/workflow`);
-      });
-  } else {
-    router.push(`/platform/${platformId}/workflow`);
-  }
+  // 直接导航到带版本ID的路由，不再激活版本
+  router.push(`/platform/${platformId}/workflow/${version.id}`);
 }
 
 function resetCreateForm() {
@@ -459,6 +451,12 @@ function formatDate(dateStr?: string): string {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.table-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
 }
 
 .dialog-footer {

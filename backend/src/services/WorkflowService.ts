@@ -136,7 +136,7 @@ export class WorkflowService {
   private validateDataMappings(config: WorkflowConfig): void {
     // Create a map of role indices by order for quick lookup
     const roleMap = new Map<number, { profile: string; order: number }>();
-    config.roles.forEach((role, index) => {
+    config.roles.forEach((role, _index) => {
       roleMap.set(role.order, { profile: role.profile, order: role.order });
     });
 

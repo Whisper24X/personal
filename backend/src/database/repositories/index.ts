@@ -14,7 +14,6 @@ export { ActionLogRepository, ActionLogRepository as ActionRepository } from './
 
 // Configuration repositories
 export { LLMConfigRepository } from './LLMConfigRepository';
-export { LLMModelRepository } from './LLMModelRepository';
 export { PromptConfigRepository } from './PromptConfigRepository';
 
 // Knowledge and conversation repositories

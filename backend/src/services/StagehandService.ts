@@ -23,7 +23,6 @@ export interface TestExecutionResult {
 
 export class StagehandService {
   private initialized: boolean = false;
-  private userId?: string;
   private stagehandInstance: any = null; // Stagehand instance (if available)
   private stagehandAvailable: boolean = false; // Whether Stagehand is available
 
@@ -52,7 +51,8 @@ export class StagehandService {
     }
 
     try {
-      this.userId = userId;
+      // userId parameter is kept for future session management
+      void userId;
       
       // Try to load Stagehand if available
       // Check if alpha version is installed, otherwise use stable version
@@ -441,7 +441,6 @@ export class StagehandService {
       }
       
       this.initialized = false;
-      this.userId = undefined;
       this.stagehandInstance = null;
       this.stagehandAvailable = false;
       logger.info('StagehandService: Cleanup completed');

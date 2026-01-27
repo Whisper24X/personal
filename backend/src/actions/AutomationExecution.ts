@@ -36,7 +36,7 @@ export class AutomationExecution extends BaseAction {
     );
   }
 
-  async run(input: string, options?: AutomationExecutionOptions): Promise<IActionOutput> {
+  async run(_input: string, options?: AutomationExecutionOptions): Promise<IActionOutput> {
     logger.info('AutomationExecution: Starting automation execution from test scripts');
 
     const workspaceOptions: WorkspaceOptions = {
@@ -412,7 +412,7 @@ export class AutomationExecution extends BaseAction {
           error: success ? undefined : (result.stderr || result.stdout || '执行失败'),
           steps: testSteps.length > 0 ? testSteps : undefined,
           logs: logs.length > 0 ? logs : undefined,
-          exitCode: result.exitCode,
+          exitCode: result.exitCode ?? undefined,
         });
 
         logger.info('AutomationExecution: Script execution completed', {
@@ -490,141 +490,6 @@ export class AutomationExecution extends BaseAction {
   }
 
   /**
-   * Parse test cases from automation plan markdown (deprecated, kept for compatibility)
-   */
-  private parseTestCasesFromPlan(plan: string): any[] {
-    const testCases: any[] = [];
-    const lines = plan.split('\n');
-
-    let currentTestCase: Partial<TestCase> | null = null;
-    let inTestCase = false;
-    let inSteps = false;
-    let currentSteps: string[] = [];
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-
-      // Detect test case header (### or ## followed by test case name)
-      if (line.match(/^#{2,3}\s+.+测试用例|^#{2,3}\s+测试用例|^#{2,3}\s+TC\d+|^#{2,3}\s+Test Case/i)) {
-        // Save previous test case if exists
-        if (currentTestCase && currentTestCase.name) {
-          testCases.push({
-            name: currentTestCase.name,
-            description: currentTestCase.description || '',
-            steps: currentSteps.length > 0 ? currentSteps : ['执行测试用例'],
-            expectedResult: currentTestCase.expectedResult,
-          });
-        }
-
-        // Start new test case
-        currentTestCase = {
-          name: line.replace(/^#+\s+/, '').trim(),
-          description: '',
-        };
-        currentSteps = [];
-        inTestCase = true;
-        inSteps = false;
-        continue;
-      }
-
-      // Detect steps section
-      if (line.match(/步骤|Steps|操作步骤/i) && currentTestCase) {
-        inSteps = true;
-        continue;
-      }
-
-      // Collect steps
-      if (inSteps && currentTestCase && (line.startsWith('-') || line.startsWith('*') || /^\d+\./.test(line))) {
-        const step = line.replace(/^[-*]\s+/, '').replace(/^\d+\.\s+/, '').trim();
-        if (step) {
-          currentSteps.push(step);
-        }
-        continue;
-      }
-
-      // Collect description
-      if (inTestCase && currentTestCase && !inSteps && line && !line.startsWith('#')) {
-        if (!currentTestCase.description) {
-          currentTestCase.description = line;
-        } else {
-          currentTestCase.description += ' ' + line;
-        }
-      }
-
-      // Detect expected result
-      if (line.match(/预期结果|Expected Result|期望结果/i) && currentTestCase) {
-        const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
-        if (nextLine && !nextLine.startsWith('#')) {
-          currentTestCase.expectedResult = nextLine;
-          i++; // Skip next line
-        }
-      }
-    }
-
-    // Save last test case
-    if (currentTestCase && currentTestCase.name) {
-      testCases.push({
-        name: currentTestCase.name,
-        description: currentTestCase.description || '',
-        steps: currentSteps.length > 0 ? currentSteps : ['执行测试用例'],
-        expectedResult: currentTestCase.expectedResult,
-      });
-    }
-
-    // If no structured test cases found, try to extract from natural language
-    if (testCases.length === 0) {
-      logger.info('AutomationExecution: No structured test cases found, attempting natural language parsing');
-      // Create a single test case from the plan
-      testCases.push({
-        name: '自动化测试执行',
-        description: plan.substring(0, 200),
-        steps: this.extractStepsFromText(plan),
-      });
-    }
-
-    return testCases;
-  }
-
-  /**
-   * Extract steps from natural language text
-   */
-  private extractStepsFromText(text: string): string[] {
-    const steps: string[] = [];
-    const lines = text.split('\n');
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (
-        trimmed &&
-        (trimmed.startsWith('-') ||
-          trimmed.startsWith('*') ||
-          /^\d+\./.test(trimmed) ||
-          trimmed.match(/步骤|step/i))
-      ) {
-        const step = trimmed
-          .replace(/^[-*]\s+/, '')
-          .replace(/^\d+\.\s+/, '')
-          .replace(/^步骤\d*[：:]\s*/i, '')
-          .replace(/^step\s*\d*[：:]\s*/i, '')
-          .trim();
-        if (step && step.length > 5) {
-          steps.push(step);
-        }
-      }
-    }
-
-    return steps.length > 0 ? steps : ['执行自动化测试计划'];
-  }
-
-  /**
-   * Extract URL from automation plan if mentioned
-   */
-  private extractUrlFromPlan(plan: string): string | undefined {
-    const urlMatch = plan.match(/https?:\/\/[^\s\)]+/i);
-    return urlMatch ? urlMatch[0] : undefined;
-  }
-
-  /**
    * Generate execution summary
    */
   private generateExecutionSummary(results: TestScriptResult[]): any {
@@ -676,7 +541,6 @@ export class AutomationExecution extends BaseAction {
   private generateHTMLReport(summary: any, results: TestScriptResult[]): string {
     const executionTime = new Date().toLocaleString('zh-CN');
     const successRate = parseFloat(summary.successRate);
-    const successColor = successRate >= 80 ? '#28a745' : successRate >= 50 ? '#ffc107' : '#dc3545';
 
     let html = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -915,7 +779,7 @@ export class AutomationExecution extends BaseAction {
                         <div class="steps-details">
                             <strong>测试步骤 (${result.steps.length} 步):</strong>
                             <ol>`;
-        result.steps.forEach((step, index) => {
+        result.steps.forEach((step, _index) => {
           html += `<li>${this.escapeHtml(step)}</li>`;
         });
         html += `

@@ -1,8 +1,8 @@
 # PRD 生成文档
 
-**文档版本**: v1.1  
+**文档版本**: v1.2  
 **创建日期**: 2026-01-19  
-**最后更新**: 2026-01-21  
+**最后更新**: 2026-01-26（添加章节对话历史功能说明）
 **适用范围**: Mind2Build 当前主干
 
 ---
@@ -108,9 +108,17 @@ workspace/{applicationId}/{projectId}/ainative-workspace/docs/prd/
 
 ### 7.3 章节级调整
 
-- `GET /api/projects/:id/prds/:prdId/sections`
-- `POST /api/projects/:id/prds/:prdId/sections/:sectionNumber/adjust`
-- `POST /api/projects/:id/sections/:sectionNumber/adjust`（交互式会话）
+- `GET /api/projects/:id/prds/:prdId/sections` - 获取PRD所有章节
+- `POST /api/projects/:id/prds/:prdId/sections/:sectionNumber/adjust` - 调整PRD特定章节
+- `POST /api/projects/:id/sections/:sectionNumber/adjust` - 从工作区调整章节（交互式会话）
+- `GET /api/projects/:id/sections/:sectionNumber/conversation` - 获取章节对话历史
+
+**章节对话历史功能**:
+- 每次调用章节调整API时，自动保存用户反馈和AI响应到对话历史
+- 对话历史存储在`section_conversations`数据库表中
+- 支持按文档类型（PRD/MRD/DESIGN）和版本号查询
+- 为后续调整提供上下文，支持多轮迭代优化
+- 通过`SectionAdjustService`和`SectionConversationRepository`管理
 
 ## 8. 配置与性能
 

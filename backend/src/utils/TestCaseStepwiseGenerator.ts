@@ -8,7 +8,6 @@ import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { logger } from './logger';
 import * as fs from 'fs/promises';
-import * as fsSync from 'fs';
 import * as path from 'path';
 
 /**
@@ -362,11 +361,10 @@ export class TestCaseStepwiseGenerator {
    * Step 3: 按功能模块生成测试用例
    */
   private async generateModules(
-    outline: string,
+    _outline: string,
     modules: TestModule[]
   ): Promise<string[]> {
     const moduleContents: string[] = [];
-    const modulesStartTime = Date.now();
     const logContext = this.getLogContext();
 
     logger.info('TestCaseStepwiseGenerator: Starting module generation', {
@@ -399,7 +397,7 @@ export class TestCaseStepwiseGenerator {
         const modulePrompt = this.config.buildSectionPrompt(
           this.config.prd,
           this.config.code,
-          outline,
+          _outline,
           module.number,
           module.title,
           module.description
@@ -657,7 +655,7 @@ export class TestCaseStepwiseGenerator {
    * Step 6: 合并所有功能模块的测试用例
    */
   private mergeModules(
-    outline: string,
+    _outline: string,
     moduleContents: string[],
     modules: TestModule[]
   ): string {
@@ -677,7 +675,7 @@ export class TestCaseStepwiseGenerator {
     parts.push('\n---\n');
 
     // 添加每个功能模块的测试用例
-    modules.forEach((module, index) => {
+    modules.forEach((_module, index) => {
       const content = moduleContents[index];
       if (content && content.trim().length > 0) {
         parts.push(content);

@@ -21,6 +21,7 @@ export const ACTION_SEARCH_ENHANCED_QA = 'SearchEnhancedQA';
 export const ACTION_DATA_ANALYSIS = 'DataAnalysis';
 export const ACTION_COORDINATE = 'Coordinate';
 export const ACTION_RUN_CODE = 'RunCode';
+export const ACTION_DEPLOY = 'Deploy';
 export const ACTION_BREAKDOWN_TASKS = 'BreakdownTasks';
 export const ACTION_WRITE_SUB_PROJECT_DESIGN = 'WriteSubProjectDesign';
 export const ACTION_GENERATE_TASK = 'GenerateTask';

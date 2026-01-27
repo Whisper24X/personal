@@ -34,10 +34,6 @@ export interface WorkflowExecutorConfig {
   autoConfirm?: boolean;
 }
 
-const DEFAULT_CONFIG: WorkflowExecutorConfig = {
-  autoConfirm: false,
-};
-
 /**
  * WorkflowExecutor class
  * Manages the execution loop for a workflow
@@ -47,18 +43,17 @@ export class WorkflowExecutor {
   private projectRepository: ProjectRepository;
   private versionRepository: ProjectVersionRepository;
   private messageRepository: MessageRepository;
-  private config: WorkflowExecutorConfig;
   private messageHandler?: WorkflowMessageHandler;
   private isExecuting: boolean = false;
   private shouldStop: boolean = false;
   private abortController?: AbortController;
 
-  constructor(config?: WorkflowExecutorConfig) {
+  constructor(_config?: WorkflowExecutorConfig) {
     this.executionService = new WorkflowExecutionService();
     this.projectRepository = new ProjectRepository();
     this.versionRepository = new ProjectVersionRepository();
     this.messageRepository = new MessageRepository();
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    // Config is currently unused but parameter is kept for future use
   }
 
   /**

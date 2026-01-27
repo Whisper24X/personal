@@ -2,6 +2,8 @@
  * RAG Service
  * Provides Retrieval-Augmented Generation capabilities for PRD and MRD documents
  * Uses Qdrant vector database for semantic search with Rerank and hybrid query support
+ * 
+ * Enhanced with knowledge categorization for structured knowledge retrieval
  */
 
 import { DocumentRepository } from '../database/repositories/DocumentRepository';
@@ -11,6 +13,13 @@ import { QdrantService } from './QdrantService';
 import { RerankService } from './RerankService';
 import { extractKeywords, findSimilarChunks } from '../utils/textSimilarity';
 import { logger } from '../utils';
+import { 
+  KnowledgeType,
+  KnowledgeChunk, 
+  StructuredKnowledgeContext,
+  createEmptyKnowledgeContext,
+  categorizeKnowledgeChunks,
+} from '../prompts/knowledge';
 
 export interface PRDSearchResult {
   documentId: string;
@@ -224,7 +233,7 @@ export class RAGService {
       if (!documentMap.has(docId)) {
         // Get full document content
         const doc = await this.documentRepo.findById(docId);
-        if (!doc || doc.type !== 'PRD') continue;
+        if (!doc || doc.doc_type !== 'PRD') continue;
 
         const relevantChunks = findSimilarChunks(doc.content, query, 3);
 
@@ -331,7 +340,7 @@ export class RAGService {
           
           if (!documentMap.has(docId)) {
             const doc = await this.documentRepo.findById(docId);
-            if (!doc || doc.type !== 'PRD') continue;
+            if (!doc || doc.doc_type !== 'PRD') continue;
 
             const relevantChunks = findSimilarChunks(doc.content, query, 3);
 
@@ -418,7 +427,7 @@ export class RAGService {
           
           if (!documentMap.has(docId)) {
             const doc = await this.documentRepo.findById(docId);
-            if (!doc || doc.type !== 'MRD') continue;
+            if (!doc || doc.doc_type !== 'MRD') continue;
 
             const relevantChunks = findSimilarChunks(doc.content, query, 3);
 
@@ -509,7 +518,7 @@ export class RAGService {
           
           if (!documentMap.has(docId)) {
             const doc = await this.documentRepo.findById(docId);
-            if (!doc || doc.type !== 'MRD') continue;
+            if (!doc || doc.doc_type !== 'MRD') continue;
 
             const relevantChunks = findSimilarChunks(doc.content, query, 3);
 
@@ -815,11 +824,12 @@ export class RAGService {
       const combined = new Map<string, any>();
       
       for (const [id, result] of vectorMap) {
-        const keywordResult = keywordMap.get(id);
+        const idStr = String(id);
+        const keywordResult = keywordMap.get(idStr);
         const combinedScore = keywordResult
           ? 0.6 * result.score + 0.4 * keywordResult.score
           : result.score;
-        combined.set(id, { ...result, score: combinedScore });
+        combined.set(idStr, { ...result, score: combinedScore });
       }
 
       // Add keyword-only results
@@ -928,6 +938,265 @@ export class RAGService {
 
     return matchCount / keywordList.length;
   }
+
+  // ===============================================
+  // 知识分类检索能力 - Knowledge Categorization
+  // ===============================================
+
+  /**
+   * 按知识类型检索知识库
+   * @param projectId 项目ID
+   * @param query 查询文本
+   * @param knowledgeType 知识类型
+   * @param limit 返回数量限制
+   * @returns 分类后的知识片段
+   */
+  async searchByKnowledgeType(
+    projectId: string,
+    query: string,
+    knowledgeType: KnowledgeType,
+    limit: number = 5
+  ): Promise<KnowledgeChunk[]> {
+    try {
+      logger.info('RAGService: Searching by knowledge type', {
+        projectId,
+        knowledgeType,
+        queryLength: query.length,
+        limit,
+      });
+
+      // 根据知识类型搜索不同来源
+      let results: KnowledgeChunk[] = [];
+
+      switch (knowledgeType) {
+        case KnowledgeType.HISTORY_PRD:
+          results = await this.searchHistoryPRDs(projectId, query, limit);
+          break;
+        case KnowledgeType.HISTORY_MRD:
+          results = await this.searchHistoryMRDs(projectId, query, limit);
+          break;
+        case KnowledgeType.BUSINESS_RULES:
+        case KnowledgeType.TERMINOLOGY:
+        case KnowledgeType.TECH_CONSTRAINTS:
+        case KnowledgeType.FEATURE_LIST:
+        case KnowledgeType.COMPETITOR_ANALYSIS:
+        case KnowledgeType.DEV_SPEC:
+          results = await this.searchKnowledgeBaseByType(projectId, query, knowledgeType, limit);
+          break;
+        default:
+          logger.warn('RAGService: Unknown knowledge type', { knowledgeType });
+      }
+
+      return results;
+    } catch (error: any) {
+      logger.error('RAGService: Failed to search by knowledge type', {
+        projectId,
+        knowledgeType,
+        error: error.message,
+      });
+      return [];
+    }
+  }
+
+  /**
+   * 检索历史PRD并转换为知识片段
+   */
+  private async searchHistoryPRDs(
+    projectId: string,
+    query: string,
+    limit: number
+  ): Promise<KnowledgeChunk[]> {
+    const prdResults = await this.searchSimilarPRDs(projectId, query, limit);
+    
+    return prdResults.flatMap(result => 
+      result.relevantChunks.map(chunk => ({
+        content: chunk.chunk,
+        type: KnowledgeType.HISTORY_PRD,
+        sourceDocumentId: result.documentId,
+        sourceTitle: `PRD v${result.version}`,
+        similarity: chunk.similarity,
+      }))
+    );
+  }
+
+  /**
+   * 检索历史MRD并转换为知识片段
+   */
+  private async searchHistoryMRDs(
+    projectId: string,
+    query: string,
+    limit: number
+  ): Promise<KnowledgeChunk[]> {
+    const mrdResults = await this.searchSimilarMRDs(projectId, query, limit);
+    
+    return mrdResults.flatMap(result => 
+      result.relevantChunks.map(chunk => ({
+        content: chunk.chunk,
+        type: KnowledgeType.HISTORY_MRD,
+        sourceDocumentId: result.documentId,
+        sourceTitle: `MRD v${result.version}`,
+        similarity: chunk.similarity,
+      }))
+    );
+  }
+
+  /**
+   * 按知识类型检索知识库文档
+   */
+  private async searchKnowledgeBaseByType(
+    projectId: string,
+    query: string,
+    knowledgeType: KnowledgeType,
+    limit: number
+  ): Promise<KnowledgeChunk[]> {
+    const kbResults = await this.searchKnowledgeBase(projectId, query, limit * 2);
+    
+    // 根据知识类型过滤和标记结果
+    // Note: KNOWLEDGE_TYPE_LABELS and KNOWLEDGE_TYPE_PATHS can be used for 
+    // more advanced filtering based on document paths in future enhancements
+    
+    // 过滤：如果文档标题或内容包含相关关键词
+    const filteredResults = kbResults.filter(result => {
+      const titleLower = result.title.toLowerCase();
+      const contentLower = result.content.toLowerCase();
+      
+      // 简单的关键词匹配来判断知识类型
+      switch (knowledgeType) {
+        case KnowledgeType.BUSINESS_RULES:
+          return titleLower.includes('规则') || titleLower.includes('rule') ||
+                 contentLower.includes('业务规则') || contentLower.includes('business rule');
+        case KnowledgeType.TERMINOLOGY:
+          return titleLower.includes('术语') || titleLower.includes('词典') ||
+                 titleLower.includes('glossary') || titleLower.includes('terminology');
+        case KnowledgeType.TECH_CONSTRAINTS:
+          return titleLower.includes('约束') || titleLower.includes('技术') ||
+                 titleLower.includes('constraint') || titleLower.includes('technical');
+        case KnowledgeType.FEATURE_LIST:
+          return titleLower.includes('功能') || titleLower.includes('feature') ||
+                 titleLower.includes('清单') || titleLower.includes('list');
+        case KnowledgeType.COMPETITOR_ANALYSIS:
+          return titleLower.includes('竞品') || titleLower.includes('competitor') ||
+                 titleLower.includes('分析') || titleLower.includes('analysis');
+        case KnowledgeType.DEV_SPEC:
+          return titleLower.includes('规范') || titleLower.includes('spec') ||
+                 titleLower.includes('开发') || titleLower.includes('development');
+        default:
+          return true; // 不过滤
+      }
+    });
+
+    // 如果过滤后没有结果，返回所有结果（带标记）
+    const resultsToUse = filteredResults.length > 0 ? filteredResults : kbResults;
+
+    return resultsToUse.slice(0, limit).flatMap(result =>
+      result.relevantChunks.map(chunk => ({
+        content: chunk.chunk,
+        type: knowledgeType,
+        sourceDocumentId: result.documentId,
+        sourceTitle: result.title,
+        similarity: chunk.similarity,
+      }))
+    );
+  }
+
+  /**
+   * 获取结构化知识上下文
+   * 按多种知识类型并行检索，返回分类整理后的知识上下文
+   * 
+   * @param projectId 项目ID
+   * @param query 查询文本
+   * @param knowledgeTypes 需要检索的知识类型数组
+   * @param limitPerType 每种类型的返回数量限制
+   * @returns 结构化知识上下文
+   */
+  async getStructuredKnowledgeContext(
+    projectId: string,
+    query: string,
+    knowledgeTypes: KnowledgeType[],
+    limitPerType: number = 3
+  ): Promise<StructuredKnowledgeContext> {
+    try {
+      logger.info('RAGService: Getting structured knowledge context', {
+        projectId,
+        knowledgeTypes,
+        queryLength: query.length,
+        limitPerType,
+      });
+
+      // 并行检索所有知识类型
+      const searchPromises = knowledgeTypes.map(type =>
+        this.searchByKnowledgeType(projectId, query, type, limitPerType)
+      );
+
+      const results = await Promise.all(searchPromises);
+      
+      // 合并所有结果
+      const allChunks: KnowledgeChunk[] = results.flat();
+      
+      // 分类整理
+      const context = categorizeKnowledgeChunks(allChunks);
+
+      logger.info('RAGService: Structured knowledge context retrieved', {
+        projectId,
+        totalChunks: allChunks.length,
+        terminologyCount: context.terminology.length,
+        businessRulesCount: context.businessRules.length,
+        existingFeaturesCount: context.existingFeatures.length,
+        techConstraintsCount: context.techConstraints.length,
+        competitorsCount: context.competitors.length,
+        historyPRDCount: context.historyPRD.length,
+        historyMRDCount: context.historyMRD.length,
+        devSpecCount: context.devSpec.length,
+      });
+
+      return context;
+    } catch (error: any) {
+      logger.error('RAGService: Failed to get structured knowledge context', {
+        projectId,
+        error: error.message,
+      });
+      return createEmptyKnowledgeContext();
+    }
+  }
+
+  /**
+   * Combine knowledge base search results into a single context string
+   */
+  combineKnowledgeBaseResults(results: KnowledgeBaseSearchResult[]): string {
+    if (results.length === 0) {
+      return '';
+    }
+
+    const combined: string[] = [];
+
+    for (const result of results) {
+      combined.push(`## ${result.title} (Similarity: ${result.similarity.toFixed(3)})`);
+      combined.push('');
+
+      if (result.relevantChunks.length > 0) {
+        combined.push('### Relevant Sections:');
+        for (const chunk of result.relevantChunks) {
+          combined.push(chunk.chunk);
+          combined.push('');
+        }
+      } else {
+        const preview = result.content.substring(0, 1000);
+        combined.push(preview);
+        if (result.content.length > 1000) {
+          combined.push('...');
+        }
+        combined.push('');
+      }
+
+      combined.push('---');
+      combined.push('');
+    }
+
+    return combined.join('\n');
+  }
 }
 
 export default RAGService;
+
+// 导出知识分类相关类型
+export { KnowledgeType, KnowledgeChunk, StructuredKnowledgeContext };

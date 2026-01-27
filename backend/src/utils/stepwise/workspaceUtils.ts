@@ -4,12 +4,14 @@
  */
 
 import * as path from 'path';
-import * as fsSync from 'fs';
+import { WorkspaceManager } from '../WorkspaceManager';
 
 /**
  * 获取工作目录路径的通用函数
  * 新的目录结构：workspace/{applicationId}/{projectId}/ainative-workspace/docs/{documentType}/
  * applicationId 和 projectId 必须提供，不能使用 'default'，以防止不同应用/项目互相覆盖文件
+ * 
+ * @deprecated 推荐使用 WorkspaceManager.getDocsDir() 代替
  */
 export function getWorkspaceDir(
   documentType: string,
@@ -22,22 +24,8 @@ export function getWorkspaceDir(
     workspacePath?: string;
   }
 ): string {
-  const possibleRoots = [
-    path.resolve(__dirname, '../../../'),
-    path.resolve(__dirname, '../../../../'),
-    process.cwd(),
-  ];
-
-  let projectRoot = possibleRoots[0];
-  for (const root of possibleRoots) {
-    if (fsSync.existsSync(path.join(root, 'pnpm-workspace.yaml')) ||
-      fsSync.existsSync(path.join(root, 'package.json'))) {
-      projectRoot = root;
-      break;
-    }
-  }
-
-  const workspaceRoot = process.env.WORKSPACE_PATH || path.join(projectRoot, 'workspace');
+  // 统一使用 WorkspaceManager 获取 workspace 根目录（绝对路径）
+  const workspaceRoot = WorkspaceManager.getWorkspaceRoot();
   
   // applicationId 必须提供，不能使用 'default'
   if (!options?.applicationId) {
