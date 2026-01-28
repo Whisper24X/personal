@@ -8,6 +8,8 @@
 import { BaseCLIProvider } from './ICLIProvider';
 import { CLIProviderConfig, CLIExecutionResult } from '../types';
 import { executeCommandSimple, CommandExecutorError } from '../../utils/commandExecutor';
+import { executeCommandStream, createProgressHandler } from '../../utils/streamCommandExecutor';
+import { CLIConfigUtil } from '../../utils/cliConfigUtil';
 import { logger } from '../../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -28,7 +30,45 @@ const CURSOR_DEFAULT_CONFIG: Partial<CLIProviderConfig> = {
  */
 export class CursorCLIProvider extends BaseCLIProvider {
   constructor(defaultConfig?: Partial<CLIProviderConfig>) {
-    super('cursor', { ...CURSOR_DEFAULT_CONFIG, ...defaultConfig });
+    // 从环境变量加载全局配置
+    const globalConfig = CLIConfigUtil.loadGlobalConfig();
+    const globalCLIConfig = CLIConfigUtil.toCLIProviderConfig(globalConfig, 'cursor');
+    
+    super('cursor', { 
+      ...CURSOR_DEFAULT_CONFIG, 
+      ...globalCLIConfig,
+      ...defaultConfig 
+    });
+  }
+
+  /**
+   * 获取要使用的 API key
+   * 优先级：config.apiKey > config.apiKeys[config.apiKeyIndex] > process.env.CURSOR_API_KEY
+   */
+  private getApiKey(config: Partial<CLIProviderConfig>): string | undefined {
+    // 优先级 1: 直接指定的 apiKey
+    if (config.apiKey) {
+      return config.apiKey;
+    }
+
+    // 优先级 2: 从 apiKeys 数组中选取
+    if (config.apiKeys && config.apiKeys.length > 0) {
+      const index = config.apiKeyIndex ?? 0;
+      if (index >= 0 && index < config.apiKeys.length) {
+        return config.apiKeys[index];
+      }
+      // 如果索引无效，使用第一个
+      if (config.apiKeys.length > 0) {
+        logger.warn('CursorCLIProvider: Invalid apiKeyIndex, using first apiKey', {
+          apiKeyIndex: config.apiKeyIndex,
+          apiKeysCount: config.apiKeys.length,
+        });
+        return config.apiKeys[0];
+      }
+    }
+
+    // 优先级 3: 环境变量
+    return process.env.CURSOR_API_KEY;
   }
 
   /**
@@ -51,9 +91,39 @@ export class CursorCLIProvider extends BaseCLIProvider {
     globalCursorAgentCallCounter++;
     const callStack = new Error().stack?.split('\n').slice(2, 8).join('\n') || 'unknown';
 
+    // 获取要使用的 API key
+    const apiKey = this.getApiKey(mergedConfig);
+
+    // 从配置中获取流式进度跟踪设置
+    const enableStreamProgress = mergedConfig.enableStreamProgress ?? false;
+    const outputFormat = mergedConfig.outputFormat || 'text';
+    const streamPartialOutput = mergedConfig.streamPartialOutput ?? false;
+
     // 构建命令
     const escapedPrompt = this.escapePrompt(prompt);
-    const fullCommand = `${command} --model ${model} --print "${escapedPrompt}"`;
+    let fullCommand = `${command} --model ${model}`;
+    
+    // 如果配置了 API key，添加 --api-key 参数
+    if (apiKey) {
+      // 转义 API key 中的特殊字符（主要是双引号和反斜杠）
+      const escapedApiKey = apiKey.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      fullCommand += ` --api-key "${escapedApiKey}"`;
+    } else {
+      fullCommand += ` --api-key ${process.env.CURSOR_API_KEY}`;
+      logger.warn(`CursorCLIProvider: No API key provided, using process.env.CURSOR_API_KEY: ${process.env.CURSOR_API_KEY}`);
+    }
+    
+    // 添加输出格式参数
+    if (enableStreamProgress && outputFormat === 'stream-json') {
+      fullCommand += ` --print --output-format stream-json`;
+      if (streamPartialOutput) {
+        fullCommand += ` --stream-partial-output`;
+      }
+    } else {
+      fullCommand += ` --print`;
+    }
+    
+    fullCommand += ` "${escapedPrompt}"`;
 
     logger.info('CursorCLIProvider: Executing command', {
       command: command,
@@ -61,6 +131,12 @@ export class CursorCLIProvider extends BaseCLIProvider {
       workDir,
       timeout,
       promptLength: prompt.length,
+      hasApiKey: !!apiKey,
+      apiKeyIndex: mergedConfig.apiKeyIndex,
+      apiKeysCount: mergedConfig.apiKeys?.length,
+      enableStreamProgress,
+      outputFormat,
+      streamPartialOutput,
       callId,
       globalCallCount: globalCursorAgentCallCounter,
     });
@@ -71,12 +147,29 @@ export class CursorCLIProvider extends BaseCLIProvider {
     });
 
     try {
-      const output = await executeCommandSimple(fullCommand, {
-        cwd: workDir,
-        timeout,
-        env: mergedConfig.env,
-        abortSignal: mergedConfig.abortSignal,
-      });
+      let output: string;
+      
+      // 根据配置选择执行方式
+      if (enableStreamProgress && outputFormat === 'stream-json') {
+        // 使用流式执行
+        const progressHandler = createProgressHandler(callId, logger);
+        const result = await executeCommandStream(fullCommand, {
+          cwd: workDir,
+          timeout,
+          env: mergedConfig.env,
+          abortSignal: mergedConfig.abortSignal,
+          onProgress: progressHandler,
+        });
+        output = result.stdout;
+      } else {
+        // 使用原有执行方式
+        output = await executeCommandSimple(fullCommand, {
+          cwd: workDir,
+          timeout,
+          env: mergedConfig.env,
+          abortSignal: mergedConfig.abortSignal,
+        });
+      }
 
       const executionTime = Date.now() - startTime;
 
@@ -95,6 +188,43 @@ export class CursorCLIProvider extends BaseCLIProvider {
     } catch (error) {
       const executionTime = Date.now() - startTime;
       const execError = error as CommandExecutorError;
+
+      // 如果流式执行失败，尝试回退到普通执行
+      if (enableStreamProgress && outputFormat === 'stream-json') {
+        logger.warn('CursorCLIProvider: Stream execution failed, falling back to simple execution', {
+          message: execError.message,
+          exitCode: execError.exitCode,
+          callId,
+        });
+        
+        try {
+          // 重新构建命令（不使用流式格式）
+          const fallbackCommand = fullCommand.replace('--output-format stream-json', '').replace('--stream-partial-output', '').trim();
+          const fallbackOutput = await executeCommandSimple(fallbackCommand, {
+            cwd: workDir,
+            timeout,
+            env: mergedConfig.env,
+            abortSignal: mergedConfig.abortSignal,
+          });
+          
+          logger.info('CursorCLIProvider: Fallback execution succeeded', {
+            callId,
+            outputLength: fallbackOutput.length,
+          });
+          
+          return {
+            output: fallbackOutput,
+            exitCode: 0,
+            executionTime: Date.now() - startTime,
+          };
+        } catch (fallbackError) {
+          // 回退也失败，使用原始错误
+          logger.error('CursorCLIProvider: Fallback execution also failed', {
+            callId,
+            fallbackError: (fallbackError as Error).message,
+          });
+        }
+      }
 
       logger.warn('CursorCLIProvider: Command failed', {
         message: execError.message,

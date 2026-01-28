@@ -68,6 +68,38 @@ export interface IExecutor {
 }
 
 /**
+ * Stream JSON 事件类型
+ */
+export interface StreamJSONEvent {
+  type: 'system' | 'assistant' | 'tool_call' | 'result';
+  subtype?: 'init' | 'started' | 'completed';
+  model?: string;
+  message?: {
+    content: Array<{ text: string }>;
+  };
+  tool_call?: {
+    writeToolCall?: {
+      args: { path: string };
+      result?: {
+        success?: {
+          linesCreated?: number;
+          fileSize?: number;
+        };
+      };
+    };
+    readToolCall?: {
+      args: { path: string };
+      result?: {
+        success?: {
+          totalLines?: number;
+        };
+      };
+    };
+  };
+  duration_ms?: number;
+}
+
+/**
  * CLI 提供商配置
  */
 export interface CLIProviderConfig {
@@ -85,6 +117,18 @@ export interface CLIProviderConfig {
   env?: Record<string, string>;
   /** AbortSignal 用于取消执行 */
   abortSignal?: AbortSignal;
+  /** 多个 API key 数组 */
+  apiKeys?: string[];
+  /** 当前使用的 API key（直接指定 key 值） */
+  apiKey?: string;
+  /** 当前使用的 API key 索引（用于从 apiKeys 数组中选择） */
+  apiKeyIndex?: number;
+  /** 是否启用流式进度跟踪 */
+  enableStreamProgress?: boolean;
+  /** 输出格式 */
+  outputFormat?: 'text' | 'json' | 'stream-json';
+  /** 是否启用增量流式传输 */
+  streamPartialOutput?: boolean;
 }
 
 /**
@@ -149,4 +193,39 @@ export interface LLMExecutorContext {
   llm: any;
   /** AbortSignal */
   abortSignal?: AbortSignal;
+}
+
+/**
+ * CLI 模型降级策略接口
+ */
+export interface ICLIModelFallbackStrategy {
+  /**
+   * 判断是否需要降级
+   * @param originalConfig 原始配置
+   * @param error 执行错误
+   * @param result 执行结果（如果有）
+   */
+  shouldFallback(
+    originalConfig: Partial<CLIProviderConfig>,
+    error: any,
+    result?: CLIExecutionResult
+  ): boolean;
+
+  /**
+   * 获取降级配置
+   * @param originalConfig 原始配置
+   */
+  getFallbackConfig(
+    originalConfig: Partial<CLIProviderConfig>
+  ): Partial<CLIProviderConfig>;
+
+  /**
+   * 判断错误是否与模型不可用相关
+   * @param error 执行错误
+   * @param result 执行结果（如果有）
+   */
+  isModelUnavailableError(
+    error: any,
+    result?: CLIExecutionResult
+  ): boolean;
 }

@@ -20,6 +20,7 @@ import {
 } from '../../executors/types';
 import { CLIExecutor } from '../../executors/CLIExecutor';
 import { CLIProviderFactory } from '../../executors/cli/CLIProviderFactory';
+import { createDefaultFallbackStrategy } from '../../executors/cli/CLIModelFallbackStrategy';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 // Handler types for mode encapsulation
@@ -355,6 +356,7 @@ export abstract class BaseAction {
 
   /**
    * 使用 CLI 模式执行
+   * 模型降级能力由CLIExecutor提供
    */
   protected async executeCLI(prompt: string, options?: ExecutorOptions): Promise<string> {
     const workDir = options?.workDir || this.getDefaultWorkDir();
@@ -364,10 +366,28 @@ export abstract class BaseAction {
     }
 
     const cliConfig = this.getCLIConfig();
+    const roleProfile = this.role?.profile;
+    
+    const logContext = this.getLogContext();
+    
+    logger.info('BaseAction: executeCLI starting', {
+      ...logContext,
+      provider: cliConfig.provider,
+      model: cliConfig.config?.model,
+      workDir,
+      promptLength: prompt.length,
+    });
+
+    // 创建降级策略（如果角色配置了角色级别的CLI模型）
+    const fallbackStrategy = roleProfile 
+      ? createDefaultFallbackStrategy(roleProfile)
+      : null;
+
     const executor = new CLIExecutor({
       providerType: cliConfig.provider,
       providerConfig: cliConfig.config,
       defaultWorkDir: workDir,
+      fallbackStrategy,
     });
 
     return await executor.execute(prompt, {
@@ -379,6 +399,7 @@ export abstract class BaseAction {
 
   /**
    * 使用 CLI 模式执行带重试
+   * 模型降级能力由CLIExecutor提供
    */
   protected async executeCLIWithRetry(
     prompt: string,
@@ -392,10 +413,18 @@ export abstract class BaseAction {
     }
 
     const cliConfig = this.getCLIConfig();
+    const roleProfile = this.role?.profile;
+    
+    // 创建降级策略（如果角色配置了角色级别的CLI模型）
+    const fallbackStrategy = roleProfile 
+      ? createDefaultFallbackStrategy(roleProfile)
+      : null;
+
     const executor = new CLIExecutor({
       providerType: cliConfig.provider,
       providerConfig: cliConfig.config,
       defaultWorkDir: workDir,
+      fallbackStrategy,
     });
 
     return await executor.executeWithRetry(prompt, checkPrompt, {
@@ -439,6 +468,34 @@ export abstract class BaseAction {
   }
 
   /**
+   * 从环境变量收集多个 API key
+   * 支持格式：CURSOR_API_KEY_0, CURSOR_API_KEY_1, CURSOR_API_KEY_2 等
+   */
+  private collectApiKeysFromEnv(prefix: string = 'CURSOR_API_KEY'): string[] {
+    const apiKeys: string[] = [];
+    let index = 0;
+    
+    // 收集所有 CURSOR_API_KEY_N 格式的环境变量
+    while (true) {
+      const envKey = `${prefix}_${index}`;
+      const apiKey = process.env[envKey];
+      if (apiKey) {
+        apiKeys.push(apiKey);
+        index++;
+      } else {
+        break;
+      }
+    }
+    
+    // 如果没有找到带索引的，检查是否有默认的 CURSOR_API_KEY
+    if (apiKeys.length === 0 && process.env[prefix]) {
+      apiKeys.push(process.env[prefix]);
+    }
+    
+    return apiKeys;
+  }
+
+  /**
    * 获取 CLI 配置
    */
   protected getCLIConfig(): { provider: CLIProviderType; config?: Partial<CLIProviderConfig> } {
@@ -447,9 +504,27 @@ export abstract class BaseAction {
     if (roleConfig) {
       const configSync = roleConfig.getConfigSync?.();
       if (configSync?.cliProvider) {
+        // 如果角色配置中没有 apiKeys，尝试从环境变量补充
+        const cliConfig = configSync.cliConfig || {};
+        if (!cliConfig.apiKeys && !cliConfig.apiKey) {
+          const apiKeys = this.collectApiKeysFromEnv();
+          if (apiKeys.length > 0) {
+            const apiKeyIndex = process.env.CURSOR_API_KEY_INDEX 
+              ? parseInt(process.env.CURSOR_API_KEY_INDEX, 10) 
+              : 0;
+            return {
+              provider: configSync.cliProvider,
+              config: {
+                ...cliConfig,
+                apiKeys,
+                apiKeyIndex: isNaN(apiKeyIndex) ? 0 : apiKeyIndex,
+              },
+            };
+          }
+        }
         return {
           provider: configSync.cliProvider,
-          config: configSync.cliConfig,
+          config: cliConfig,
         };
       }
     }
@@ -460,9 +535,22 @@ export abstract class BaseAction {
       const providerEnv = process.env[`ROLE_${roleProfile.toUpperCase()}_CLI_PROVIDER`];
       if (providerEnv && ['cursor', 'aider', 'cline', 'custom'].includes(providerEnv)) {
         const modelEnv = process.env[`ROLE_${roleProfile.toUpperCase()}_CLI_MODEL`];
+        const apiKeys = this.collectApiKeysFromEnv(`ROLE_${roleProfile.toUpperCase()}_CLI_API_KEY`);
+        const apiKeyIndexEnv = process.env[`ROLE_${roleProfile.toUpperCase()}_CLI_API_KEY_INDEX`];
+        const apiKeyIndex = apiKeyIndexEnv ? parseInt(apiKeyIndexEnv, 10) : 0;
+        
+        const config: Partial<CLIProviderConfig> = {};
+        if (modelEnv) {
+          config.model = modelEnv;
+        }
+        if (apiKeys.length > 0) {
+          config.apiKeys = apiKeys;
+          config.apiKeyIndex = isNaN(apiKeyIndex) ? 0 : apiKeyIndex;
+        }
+        
         return {
           provider: providerEnv as CLIProviderType,
-          config: modelEnv ? { model: modelEnv } : undefined,
+          config: Object.keys(config).length > 0 ? config : undefined,
         };
       }
     }
@@ -470,12 +558,25 @@ export abstract class BaseAction {
     // 全局默认
     const defaultProvider = process.env.DEFAULT_CLI_PROVIDER;
     const defaultModel = process.env.CURSOR_CLI_MODEL;
+    const apiKeys = this.collectApiKeysFromEnv();
+    const apiKeyIndexEnv = process.env.CURSOR_API_KEY_INDEX;
+    const apiKeyIndex = apiKeyIndexEnv ? parseInt(apiKeyIndexEnv, 10) : 0;
+    
+    const config: Partial<CLIProviderConfig> = {};
+    if (defaultModel) {
+      config.model = defaultModel;
+    }
+    if (apiKeys.length > 0) {
+      config.apiKeys = apiKeys;
+      config.apiKeyIndex = isNaN(apiKeyIndex) ? 0 : apiKeyIndex;
+    }
     
     return {
       provider: (defaultProvider as CLIProviderType) || 'cursor',
-      config: defaultModel ? { model: defaultModel } : undefined,
+      config: Object.keys(config).length > 0 ? config : undefined,
     };
   }
+
 
   /**
    * 获取默认工作目录

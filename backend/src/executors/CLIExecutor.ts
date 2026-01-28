@@ -5,7 +5,7 @@
  * 使用命令行工具（如 Cursor CLI, Aider）执行任务
  */
 
-import { IExecutor, ExecutorMode, ExecutorOptions, CLIProviderType, CLIProviderConfig } from './types';
+import { IExecutor, ExecutorMode, ExecutorOptions, CLIProviderType, CLIProviderConfig, ICLIModelFallbackStrategy, CLIExecutionResult } from './types';
 import { CLIProviderFactory } from './cli/CLIProviderFactory';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
@@ -25,6 +25,8 @@ export interface CLIExecutorConfig {
   defaultWorkDir?: string;
   /** 最大重试次数 */
   maxRetries?: number;
+  /** 模型降级策略 */
+  fallbackStrategy?: ICLIModelFallbackStrategy | null;
 }
 
 /**
@@ -120,6 +122,95 @@ export class CLIExecutor implements IExecutor {
 
       const executionTime = Date.now() - startTime;
 
+      // 如果退出码非零，尝试降级
+      if (result.exitCode !== 0 && this.config.fallbackStrategy) {
+        const originalConfig = this.config.providerConfig || {};
+        const shouldFallback = this.config.fallbackStrategy.shouldFallback(
+          originalConfig,
+          new Error(`Command exited with code ${result.exitCode}`),
+          result
+        );
+
+        if (shouldFallback) {
+          const fallbackConfig = this.config.fallbackStrategy.getFallbackConfig(originalConfig);
+          const originalModel = originalConfig.model;
+          const fallbackModel = fallbackConfig.model;
+
+          logger.warn('CLIExecutor: Command exited with non-zero code, attempting model fallback', {
+            ...logContext,
+            exitCode: result.exitCode,
+            originalModel,
+            fallbackModel,
+            executionTimeMs: executionTime,
+            stderr: result.stderr?.substring(0, 500),
+          });
+
+          try {
+            // 使用降级配置创建新的提供商
+            const fallbackProvider = CLIProviderFactory.getProvider(
+              providerType,
+              fallbackConfig
+            );
+
+            // 构建完整提示词（与之前相同）
+            let fullPromptForFallback = prompt;
+            if (options?.systemPrompt) {
+              fullPromptForFallback = `${options.systemPrompt}\n\n## 任务\n\n${prompt}`;
+            }
+
+            if (options?.outputFile) {
+              fullPromptForFallback += `\n\n请将结果保存到 ${options.outputFile} 文件中。`;
+            }
+
+            // 使用降级配置执行
+            const fallbackResult = await fallbackProvider.execute(fullPromptForFallback, workDir, {
+              timeout: options?.timeout || fallbackConfig.timeout || this.config.providerConfig?.timeout,
+              env: options?.env,
+            });
+
+            // 再次检查取消信号
+            if (options?.abortSignal?.aborted) {
+              throw new Error('CLIExecutor: Execution was cancelled');
+            }
+
+            const fallbackExecutionTime = Date.now() - startTime;
+
+            if (fallbackResult.exitCode === 0) {
+              logger.info('CLIExecutor: Model fallback succeeded', {
+                ...logContext,
+                originalModel,
+                fallbackModel,
+                executionTimeMs: fallbackExecutionTime,
+                outputLength: fallbackResult.output.length,
+              });
+
+              return fallbackResult.output;
+            } else {
+              logger.warn('CLIExecutor: Model fallback also exited with non-zero code', {
+                ...logContext,
+                originalModel,
+                fallbackModel,
+                exitCode: fallbackResult.exitCode,
+                executionTimeMs: fallbackExecutionTime,
+                stderr: fallbackResult.stderr?.substring(0, 500),
+              });
+              // 继续使用原始结果
+            }
+          } catch (fallbackError: any) {
+            const fallbackExecutionTime = Date.now() - startTime;
+
+            logger.error('CLIExecutor: Model fallback failed', {
+              ...logContext,
+              originalModel,
+              fallbackModel: fallbackConfig.model,
+              fallbackError: fallbackError.message,
+              executionTimeMs: fallbackExecutionTime,
+            });
+            // 继续使用原始结果
+          }
+        }
+      }
+
       if (result.exitCode !== 0) {
         logger.warn('CLIExecutor: Command exited with non-zero code', {
           ...logContext,
@@ -145,11 +236,91 @@ export class CLIExecutor implements IExecutor {
     } catch (error: any) {
       const executionTime = Date.now() - startTime;
 
+      // 尝试模型降级
+      if (this.config.fallbackStrategy) {
+        const originalConfig = this.config.providerConfig || {};
+        const shouldFallback = this.config.fallbackStrategy.shouldFallback(
+          originalConfig,
+          error,
+          undefined // 这里没有result，因为是在catch块中
+        );
+
+        if (shouldFallback) {
+          const fallbackConfig = this.config.fallbackStrategy.getFallbackConfig(originalConfig);
+          const originalModel = originalConfig.model;
+          const fallbackModel = fallbackConfig.model;
+
+          logger.warn('CLIExecutor: Execution failed, attempting model fallback', {
+            ...logContext,
+            originalModel,
+            fallbackModel,
+            error: error.message,
+            executionTimeMs: executionTime,
+          });
+
+          try {
+            // 使用降级配置创建新的提供商
+            const fallbackProvider = CLIProviderFactory.getProvider(
+              providerType,
+              fallbackConfig
+            );
+
+            // 构建完整提示词（与之前相同）
+            let fullPrompt = prompt;
+            if (options?.systemPrompt) {
+              fullPrompt = `${options.systemPrompt}\n\n## 任务\n\n${prompt}`;
+            }
+
+            if (options?.outputFile) {
+              fullPrompt += `\n\n请将结果保存到 ${options.outputFile} 文件中。`;
+            }
+
+            // 使用降级配置执行
+            const fallbackResult = await fallbackProvider.execute(fullPrompt, workDir, {
+              timeout: options?.timeout || fallbackConfig.timeout || this.config.providerConfig?.timeout,
+              env: options?.env,
+            });
+
+            // 再次检查取消信号
+            if (options?.abortSignal?.aborted) {
+              throw new Error('CLIExecutor: Execution was cancelled');
+            }
+
+            const fallbackExecutionTime = Date.now() - startTime;
+
+            logger.info('CLIExecutor: Model fallback succeeded', {
+              ...logContext,
+              originalModel,
+              fallbackModel,
+              executionTimeMs: fallbackExecutionTime,
+              outputLength: fallbackResult.output.length,
+            });
+
+            return fallbackResult.output;
+          } catch (fallbackError: any) {
+            const fallbackExecutionTime = Date.now() - startTime;
+
+            logger.error('CLIExecutor: Model fallback also failed', {
+              ...logContext,
+              originalModel,
+              fallbackModel,
+              originalError: error.message,
+              fallbackError: fallbackError.message,
+              executionTimeMs: fallbackExecutionTime,
+            });
+
+            // 如果降级也失败，抛出原始错误
+            throw error;
+          }
+        }
+      }
+
       logger.error('CLIExecutor: Execution failed', {
         ...logContext,
         executionTimeMs: executionTime,
         error: error.message,
         callStack,
+        hasFallbackStrategy: !!this.config.fallbackStrategy,
       });
 
       throw error;
