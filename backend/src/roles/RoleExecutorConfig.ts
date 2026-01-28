@@ -186,6 +186,34 @@ export class RoleExecutorConfig {
   }
 
   /**
+   * 从环境变量收集多个 API key
+   * 支持格式：ROLE_{PROFILE}_CLI_API_KEY_0, ROLE_{PROFILE}_CLI_API_KEY_1 等
+   */
+  private collectApiKeysFromEnv(prefix: string): string[] {
+    const apiKeys: string[] = [];
+    let index = 0;
+    
+    // 收集所有 {PREFIX}_N 格式的环境变量
+    while (true) {
+      const envKey = `${prefix}_${index}`;
+      const apiKey = process.env[envKey];
+      if (apiKey) {
+        apiKeys.push(apiKey);
+        index++;
+      } else {
+        break;
+      }
+    }
+    
+    // 如果没有找到带索引的，检查是否有默认的 {PREFIX}
+    if (apiKeys.length === 0 && process.env[prefix]) {
+      apiKeys.push(process.env[prefix]);
+    }
+    
+    return apiKeys;
+  }
+
+  /**
    * 从环境变量加载配置
    */
   private loadFromEnv(): RoleExecutorConfigData {
@@ -201,6 +229,12 @@ export class RoleExecutorConfig {
     // CLI 模型
     const cliModel = process.env[`ROLE_${profileUpper}_CLI_MODEL`];
 
+    // 收集多个 API key
+    const apiKeyPrefix = `ROLE_${profileUpper}_CLI_API_KEY`;
+    const apiKeys = this.collectApiKeysFromEnv(apiKeyPrefix);
+    const apiKeyIndexEnv = process.env[`${apiKeyPrefix}_INDEX`];
+    const apiKeyIndex = apiKeyIndexEnv ? parseInt(apiKeyIndexEnv, 10) : 0;
+
     // 构建配置
     const config: RoleExecutorConfigData = {};
 
@@ -212,10 +246,17 @@ export class RoleExecutorConfig {
       config.cliProvider = cliProvider;
     }
 
-    if (cliModel) {
-      config.cliConfig = {
-        model: cliModel,
-      };
+    if (cliModel || apiKeys.length > 0) {
+      config.cliConfig = {};
+      
+      if (cliModel) {
+        config.cliConfig.model = cliModel;
+      }
+      
+      if (apiKeys.length > 0) {
+        config.cliConfig.apiKeys = apiKeys;
+        config.cliConfig.apiKeyIndex = isNaN(apiKeyIndex) ? 0 : apiKeyIndex;
+      }
     }
 
     return config;
