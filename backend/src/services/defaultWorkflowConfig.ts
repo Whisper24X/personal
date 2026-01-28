@@ -128,7 +128,13 @@ export const actionDefinitions: ActionDefinition[] = [
   { name: 'WriteCode', display_name: '编写代码', description: '实现代码', class_name: 'WriteCode', category: 'document_writing' },
   { name: 'WriteTest', display_name: '编写测试', description: '编写测试用例和代码', class_name: 'WriteTest', category: 'document_writing' },
   { name: 'WriteTestPlan', display_name: '编写测试计划', description: '编写测试计划文档', class_name: 'WriteTestPlan', category: 'document_writing' },
-  { name: 'WriteSubProjectDesign', display_name: '编写子项目设计', description: '编写子项目设计文档', class_name: 'WriteSubProjectDesign', category: 'document_writing' },
+  {
+    name: 'WriteSubProjectDesign',
+    display_name: '编写子项目设计',
+    description: '编写子项目设计文档',
+    class_name: 'WriteSubProjectDesign',
+    category: 'document_writing',
+  },
 
   // Reviews
   { name: 'MRDReview', display_name: 'MRD评审', description: '评审市场需求文档', class_name: 'MRDReview', category: 'review' },
@@ -137,7 +143,13 @@ export const actionDefinitions: ActionDefinition[] = [
   { name: 'CodeReview', display_name: '代码评审', description: '评审代码质量', class_name: 'CodeReview', category: 'review' },
   { name: 'TestReview', display_name: '测试评审', description: '评审测试用例', class_name: 'TestReview', category: 'review' },
   { name: 'TestabilityReview', display_name: '可测试性评审', description: '评审代码可测试性', class_name: 'TestabilityReview', category: 'review' },
-  { name: 'SubProjectDesignReview', display_name: '子项目设计评审', description: '评审子项目设计', class_name: 'SubProjectDesignReview', category: 'review' },
+  {
+    name: 'SubProjectDesignReview',
+    display_name: '子项目设计评审',
+    description: '评审子项目设计',
+    class_name: 'SubProjectDesignReview',
+    category: 'review',
+  },
 
   // Improvements
   { name: 'ImproveMRD', display_name: '改进MRD', description: '根据反馈改进MRD', class_name: 'ImproveMRD', category: 'improvement' },
@@ -150,28 +162,76 @@ export const actionDefinitions: ActionDefinition[] = [
   { name: 'RunCode', display_name: '运行代码', description: '执行代码运行', class_name: 'RunCode', category: 'execution' },
   { name: 'Deploy', display_name: '部署', description: '部署应用程序', class_name: 'Deploy', category: 'execution' },
   { name: 'ExecuteSubtask', display_name: '执行子任务', description: '执行分解的子任务', class_name: 'ExecuteSubtask', category: 'execution' },
-  { name: 'AutomationExecution', display_name: '自动化执行', description: '执行自动化任务', class_name: 'AutomationExecution', category: 'execution' },
+  {
+    name: 'AutomationExecution',
+    display_name: '自动化执行',
+    description: '执行自动化任务',
+    class_name: 'AutomationExecution',
+    category: 'execution',
+  },
 
   // Planning & Analysis
-  { name: 'BreakdownTasks', display_name: '任务分解', description: '将大任务分解为子任务并评估故事点', class_name: 'BreakdownTasks', category: 'planning' },
   { name: 'AutomationPlanning', display_name: '自动化规划', description: '规划自动化方案', class_name: 'AutomationPlanning', category: 'planning' },
+
+  // OpenSpec Actions
+  {
+    name: 'FillProjectContext',
+    display_name: '填充项目上下文',
+    description: '基于PRD和设计文档填充项目上下文',
+    class_name: 'FillProjectContext',
+    category: 'planning',
+  },
+  {
+    name: 'CreateOpenSpecProposal',
+    display_name: '创建变更提案',
+    description: '创建OpenSpec变更提案',
+    class_name: 'CreateOpenSpecProposal',
+    category: 'planning',
+  },
+  {
+    name: 'ValidateOpenSpecProposal',
+    display_name: '验证变更提案',
+    description: '验证OpenSpec变更提案格式',
+    class_name: 'ValidateOpenSpecProposal',
+    category: 'planning',
+  },
+  {
+    name: 'EstimateStoryPoints',
+    display_name: '故事点评估',
+    description: '为任务添加故事点评估',
+    class_name: 'EstimateStoryPoints',
+    category: 'planning',
+  },
+  {
+    name: 'ValidateStoryPointEstimates',
+    display_name: '验证故事点评估',
+    description: '验证故事点评估完整性',
+    class_name: 'ValidateStoryPointEstimates',
+    category: 'planning',
+  },
   { name: 'Coordinate', display_name: '协调', description: '协调团队工作', class_name: 'Coordinate', category: 'planning' },
   { name: 'DataAnalysis', display_name: '数据分析', description: '分析数据生成报告', class_name: 'DataAnalysis', category: 'analysis' },
   { name: 'SearchEnhancedQA', display_name: '搜索增强QA', description: '基于搜索的问答', class_name: 'SearchEnhancedQA', category: 'analysis' },
   { name: 'QAConclusion', display_name: 'QA结论', description: '生成QA结论报告', class_name: 'QAConclusion', category: 'analysis' },
-  { name: 'CoverageQualityCheck', display_name: '覆盖率检查', description: '检查测试覆盖率', class_name: 'CoverageQualityCheck', category: 'analysis' },
+  {
+    name: 'CoverageQualityCheck',
+    display_name: '覆盖率检查',
+    description: '检查测试覆盖率',
+    class_name: 'CoverageQualityCheck',
+    category: 'analysis',
+  },
 ];
 
 /**
  * Default workflow configuration
  * Single source of truth - used by both runtime and migration
- * 
+ *
  * 配置与角色定义保持一致：
  * - Salesperson: WriteMRD -> MRDReview -> ImproveMRD
  * - ProductManager: WritePRD -> PRDReview -> ImprovePRD
  * - QAEngineer: WriteTestPlan -> WriteTest -> TestReview -> ImproveTest
  * - Architect: WriteDesign -> DesignReview -> ImproveDesign
- * - ProjectManager: BreakdownTasks
+ * - ProjectManager: FillProjectContext -> CreateOpenSpecProposal -> ValidateOpenSpecProposal -> EstimateStoryPoints -> ValidateStoryPointEstimates
  * - Engineer: WriteCode
  * - AutomationEngineer: AutomationPlanning -> AutomationExecution -> CoverageQualityCheck -> QAConclusion
  */
@@ -209,7 +269,7 @@ export const defaultWorkflowConfig: WorkflowConfig = {
       profile: 'ProjectManager',
       name: 'Project Manager',
       order: 4,
-      actions: ['BreakdownTasks'],
+      actions: ['FillProjectContext', 'CreateOpenSpecProposal', 'ValidateOpenSpecProposal', 'EstimateStoryPoints', 'ValidateStoryPointEstimates'],
       watch_actions: ['WritePRD', 'WriteDesign'],
     },
     {
@@ -217,7 +277,7 @@ export const defaultWorkflowConfig: WorkflowConfig = {
       name: 'Engineer',
       order: 5,
       actions: ['WriteCode', 'Deploy'],
-      watch_actions: ['WritePRD', 'WriteDesign', 'BreakdownTasks'],
+      watch_actions: ['WritePRD', 'WriteDesign', 'ValidateStoryPointEstimates'],
     },
     {
       profile: 'AutomationEngineer',

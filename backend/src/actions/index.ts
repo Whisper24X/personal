@@ -27,8 +27,14 @@ export { ImproveMRD } from './ImproveMRD';
 export { ImproveDesign } from './ImproveDesign';
 
 // Task Management Actions
-export { BreakdownTasks } from './BreakdownTasks';
 export { ExecuteSubtask } from './ExecuteSubtask';
+
+// OpenSpec Actions
+export { FillProjectContext } from './FillProjectContext';
+export { CreateOpenSpecProposal } from './CreateOpenSpecProposal';
+export { ValidateOpenSpecProposal } from './ValidateOpenSpecProposal';
+export { EstimateStoryPoints } from './EstimateStoryPoints';
+export { ValidateStoryPointEstimates } from './ValidateStoryPointEstimates';
 
 // Code Execution and Bug Fix Actions
 export { RunCode } from './RunCode';
@@ -65,8 +71,12 @@ import { CodeReview } from './CodeReview';
 import { ImprovePRD } from './ImprovePRD';
 import { ImproveMRD } from './ImproveMRD';
 import { ImproveDesign } from './ImproveDesign';
-import { BreakdownTasks } from './BreakdownTasks';
 import { ExecuteSubtask } from './ExecuteSubtask';
+import { FillProjectContext } from './FillProjectContext';
+import { CreateOpenSpecProposal } from './CreateOpenSpecProposal';
+import { ValidateOpenSpecProposal } from './ValidateOpenSpecProposal';
+import { EstimateStoryPoints } from './EstimateStoryPoints';
+import { ValidateStoryPointEstimates } from './ValidateStoryPointEstimates';
 import { RunCode } from './RunCode';
 import { FixBug } from './FixBug';
 import { Deploy } from './Deploy';
@@ -109,8 +119,13 @@ export const ACTION_REGISTRY: Record<string, new () => BaseAction> = {
   ImproveMRD,
   ImproveDesign,
   // Task Management Actions
-  BreakdownTasks,
   ExecuteSubtask,
+  // OpenSpec Actions
+  FillProjectContext,
+  CreateOpenSpecProposal,
+  ValidateOpenSpecProposal,
+  EstimateStoryPoints,
+  ValidateStoryPointEstimates,
   // Code Execution and Bug Fix Actions
   RunCode,
   FixBug,
