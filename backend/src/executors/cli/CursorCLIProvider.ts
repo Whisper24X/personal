@@ -191,6 +191,13 @@ export class CursorCLIProvider extends BaseCLIProvider {
 
       // 如果流式执行失败，尝试回退到普通执行
       if (enableStreamProgress && outputFormat === 'stream-json') {
+        // 中文友好输出
+        console.warn('⚠️ 流式执行失败，正在回退到普通模式...');
+        if (execError.stderr) {
+          console.warn(`错误信息: ${execError.stderr.substring(0, 200)}`);
+        }
+        
+        // 结构化日志（用于日志文件）
         logger.warn('CursorCLIProvider: Stream execution failed, falling back to simple execution', {
           message: execError.message,
           exitCode: execError.exitCode,
@@ -207,6 +214,10 @@ export class CursorCLIProvider extends BaseCLIProvider {
             abortSignal: mergedConfig.abortSignal,
           });
           
+          // 中文友好输出
+          console.log('✅ 回退执行成功');
+          
+          // 结构化日志（用于日志文件）
           logger.info('CursorCLIProvider: Fallback execution succeeded', {
             callId,
             outputLength: fallbackOutput.length,
@@ -219,6 +230,19 @@ export class CursorCLIProvider extends BaseCLIProvider {
           };
         } catch (fallbackError) {
           // 回退也失败，使用原始错误
+          const fallbackExecError = fallbackError as CommandExecutorError;
+          
+          // 中文友好输出
+          console.error('❌ 回退执行也失败');
+          console.error(`退出码: ${fallbackExecError.exitCode || execError.exitCode || 1}`);
+          console.error(`错误详情: ${(fallbackError as Error).message}`);
+          if (fallbackExecError.stderr) {
+            console.error(`stderr: ${fallbackExecError.stderr.substring(0, 500)}`);
+          } else if (execError.stderr) {
+            console.error(`stderr: ${execError.stderr.substring(0, 500)}`);
+          }
+          
+          // 结构化日志（用于日志文件）
           logger.error('CursorCLIProvider: Fallback execution also failed', {
             callId,
             fallbackError: (fallbackError as Error).message,
@@ -226,6 +250,19 @@ export class CursorCLIProvider extends BaseCLIProvider {
         }
       }
 
+      // 中文友好输出
+      const executionTimeSeconds = Math.round(executionTime / 1000);
+      console.error('❌ 命令执行失败');
+      console.error(`退出码: ${execError.exitCode || 1}`);
+      console.error(`执行耗时: ${executionTimeSeconds}s`);
+      if (execError.stderr) {
+        console.error(`stderr: ${execError.stderr.substring(0, 500)}`);
+      }
+      if (execError.message) {
+        console.error(`错误详情: ${execError.message}`);
+      }
+
+      // 结构化日志（用于日志文件）
       logger.warn('CursorCLIProvider: Command failed', {
         message: execError.message,
         exitCode: execError.exitCode,
