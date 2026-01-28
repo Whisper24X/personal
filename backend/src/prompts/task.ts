@@ -1,6 +1,6 @@
 /**
  * 任务拆分提示词
- * 
+ *
  * 本文件包含任务拆分相关的提示词模板和函数。
  * ProjectManager 角色使用这些提示词来：
  * 1. 基于 PRD 文档进行任务拆分（BreakdownTasks）
@@ -8,13 +8,13 @@
 
 /**
  * 任务拆分系统提示词
- * 
+ *
  * 用于指导 AI 如何将 PRD 文档拆分为最小颗粒度的任务。
  * 每个任务应该：
  * - 可在 1-3 天内完成
  * - 可独立完成、可测试、可交付
  * - 明确标注任务类型（前端/后端）
- * 
+ *
  * @usedBy BreakdownTasks Action
  */
 export const TASK_BREAKDOWN_SYSTEM_PROMPT = `
@@ -39,11 +39,11 @@ export const TASK_BREAKDOWN_SYSTEM_PROMPT = `
 
 /**
  * 任务拆分文档模板
- * 
+ *
  * 定义了任务拆分文档的标准格式，包括：
  * - 项目概述
  * - 任务列表（每个任务包含类型、优先级、工时、依赖、描述、输入输出、验收标准等）
- * 
+ *
  * @usedBy BreakdownTasks Action
  */
 export const TASK_BREAKDOWN_TEMPLATE = `
@@ -82,9 +82,9 @@ export const TASK_BREAKDOWN_TEMPLATE = `
 
 /**
  * 构建任务拆分提示词
- * 
+ *
  * 基于 PRD 文档生成任务拆分的用户提示词。
- * 
+ *
  * @param prd - 产品需求文档（PRD）内容
  * @returns 任务拆分的用户提示词
  * @usedBy BreakdownTasks Action
@@ -134,7 +134,7 @@ ${prd}
 
 /**
  * 任务生成系统提示词
- * 
+ *
  * @deprecated GenerateTask Action 已移除，此提示词不再使用
  * 用于指导 AI 如何基于任务拆分文档生成详细的开发任务说明。
  * 为每个任务提供：
@@ -158,9 +158,9 @@ export const TASK_GENERATION_SYSTEM_PROMPT = `
 
 /**
  * 构建任务生成提示词
- * 
+ *
  * @deprecated GenerateTask Action 已移除，此函数不再使用
- * 
+ *
  * @param taskBreakdown - 任务拆分文档内容
  * @returns 任务生成的用户提示词
  */
@@ -189,13 +189,135 @@ ${taskBreakdown}
 `;
 }
 
+// ==================== OpenSpec 提示词 ====================
+
+/**
+ * 项目上下文填充路径配置
+ */
+export interface FillProjectContextPaths {
+  projectMdPath: string; // openspec/project.md 路径
+  designPath: string; // DESIGN.md 路径
+  prdPath: string; // PRD.md 路径
+  agentsPath: string; // AGENTS.md 路径
+}
+
+/**
+ * 构建项目上下文填充提示词
+ * @param paths 文档路径配置
+ * @returns 项目上下文填充提示词
+ * @usedBy FillProjectContext Action
+ */
+export function buildFillProjectContextPrompt(paths: FillProjectContextPaths): string {
+  return `请阅读 ${paths.projectMdPath}，帮我补充完善关于当前项目、技术栈和开发规范等内容，参考 ${paths.designPath}、${paths.prdPath}、${paths.agentsPath} 这三个文档，用中文完善`;
+}
+
+/**
+ * OpenSpec 变更提案路径配置
+ */
+export interface OpenSpecProposalPaths {
+  prdPath: string; // PRD.md 路径
+  designPath: string; // DESIGN.md 路径
+  agentsPath: string; // AGENTS.md 路径
+}
+
+/**
+ * 构建 OpenSpec 变更提案创建提示词
+ * @param paths 文档路径配置
+ * @returns OpenSpec 变更提案创建提示词
+ * @usedBy CreateOpenSpecProposal Action
+ */
+export function buildCreateOpenSpecProposalPrompt(paths: OpenSpecProposalPaths): string {
+  return `创建openSpec变更提案 
+1. 读取并分析以下文档：
+   - ${paths.prdPath}（产品需求文档）
+   - ${paths.designPath}（系统设计文档）
+   - ${paths.agentsPath}（项目代理和开发指南）
+用中文完善
+
+重要要求：
+- 任务清单只包含开发实现相关的任务（数据库设计、后端实现、前端实现等）
+- 不要生成"测试与验证"章节
+- 不要生成"文档与部署"章节
+- 任务清单应该以开发实现为核心，聚焦于代码开发任务`;
+}
+
+/**
+ * OpenSpec 变更提案验证提示词（不涉及路径，保持常量）
+ * @usedBy ValidateOpenSpecProposal Action
+ */
+export const VALIDATE_OPENSPEC_PROPOSAL_PROMPT = `执行指令openspec-validate 检查变更提案的格式、结构是否符合 OpenSpec 规范（避免格式错误）,符合规范返回：SUCCESS，不符合返回: FAIL`;
+
+/**
+ * 故事点评估路径配置
+ */
+export interface EstimateStoryPointsPaths {
+  tasksFile: string; // 任务文件路径（如 openspec/changes/xxx/tasks.md）
+  estimationBasePath: string; // 故事点评估基准文档路径
+}
+
+/**
+ * 构建故事点评估提示词
+ * @param paths 文件路径配置
+ * @returns 故事点评估提示词
+ * @usedBy EstimateStoryPoints Action
+ */
+export function buildEstimateStoryPointsPrompt(paths: EstimateStoryPointsPaths): string {
+  const outputFile = paths.tasksFile.replace('tasks.md', 'tasks-with-estimates.md');
+
+  return `请执行以下任务：
+
+1. 读取文件 ${paths.tasksFile}（任务列表）
+2. 读取文件 ${paths.estimationBasePath}（故事点评估基准）
+3. 在同一目录下创建 ${paths.tasksFile} 的副本，命名为 ${outputFile}
+4. 分析副本文档中每个任务的复杂度（参考评估基准）：
+   - 接口数量
+   - UI页面数
+   - 业务逻辑复杂度
+   - 数据表数量
+   - 状态管理复杂度
+5. 对比评估基准中的示例（3个故事点的应用更新功能作为基准点）
+6. 为副本文档中的每个任务添加故事点评估（只能使用：1、2、3、5、8）
+7. 在每个任务描述后添加故事点标记，格式：**故事点: X**
+8. 确保所有任务都有故事点评估，不要遗漏任何任务
+
+注意：
+- 严格按照评估基准文档中的标准进行评估
+- 如果任务超过8个故事点，标注并建议拆分
+- 用中文完成所有内容`;
+}
+
+/**
+ * 构建故事点评估验证提示词
+ * @param estimatesFile 带故事点评估的任务文件路径
+ * @returns 故事点评估验证提示词
+ * @usedBy ValidateStoryPointEstimates Action
+ */
+export function buildValidateStoryPointEstimatesPrompt(estimatesFile: string): string {
+  return `检查文件 ${estimatesFile}：
+
+1. 统计文档中的任务总数
+2. 统计包含"**故事点: X**"标记的任务数量（X必须是1、2、3、5、8中的一个）
+3. 检查是否所有任务都有故事点评估
+
+请以JSON格式返回，只返回JSON，不要返回其他内容：
+{
+  "result": "SUCCESS" 或 "INCOMPLETE",
+  "totalTasks": N,
+  "estimatedTasks": M,
+  "reason": "说明具体原因"
+}
+
+如果所有任务都有评估，返回 SUCCESS
+如果有任务未评估，返回 INCOMPLETE`;
+}
+
 // ==================== 子项目设计提示词 ====================
 
 /**
  * 子项目设计系统提示词
- * 
+ *
  * 用于指导 AI 如何生成子项目设计文档。
- * 
+ *
  * @usedBy WriteSubProjectDesign Action
  */
 export const SUB_PROJECT_DESIGN_SYSTEM_PROMPT = `
@@ -217,7 +339,7 @@ export const SUB_PROJECT_DESIGN_SYSTEM_PROMPT = `
 
 /**
  * 构建子项目设计提示词
- * 
+ *
  * @param taskBreakdown - 任务拆分文档内容
  * @param design - 系统设计文档内容
  * @returns 子项目设计的用户提示词
@@ -249,9 +371,9 @@ ${design}
 
 /**
  * 子项目设计审查系统提示词
- * 
+ *
  * 用于指导 AI 如何审查子项目设计文档。
- * 
+ *
  * @usedBy SubProjectDesignReview Action
  */
 export const SUB_PROJECT_DESIGN_REVIEW_SYSTEM_PROMPT = `
@@ -273,7 +395,7 @@ export const SUB_PROJECT_DESIGN_REVIEW_SYSTEM_PROMPT = `
 
 /**
  * 构建子项目设计审查提示词
- * 
+ *
  * @param designContent - 子项目设计文档内容
  * @param outline - 文档大纲
  * @returns 子项目设计审查的用户提示词
@@ -318,4 +440,3 @@ ${designContent}
 请使用Markdown格式输出审查报告。
 `;
 }
-
