@@ -75,10 +75,12 @@ interface ProgressTracker {
   toolCount: number;
   startTime: number;
   model?: string;
+  isStarted: boolean; // 标记是否已输出启动消息
 }
 
 /**
  * 创建进度事件处理器
+ * 提供中文友好的实时控制台输出，同时保持结构化日志输出
  */
 export function createProgressHandler(
   callId: string,
@@ -88,14 +90,24 @@ export function createProgressHandler(
     accumulatedText: '',
     toolCount: 0,
     startTime: Date.now(),
+    isStarted: false,
   };
 
   return (event: StreamJSONEvent) => {
     try {
+      // 输出启动消息（仅第一次）
+      if (!tracker.isStarted) {
+        console.log('🚀 开始流式处理...');
+        tracker.isStarted = true;
+      }
+
       switch (event.type) {
         case 'system':
           if (event.subtype === 'init' && event.model) {
             tracker.model = event.model;
+            // 中文友好输出
+            console.log(`🤖 使用模型: ${event.model}`);
+            // 结构化日志（用于日志文件）
             log.info('CursorCLIProvider: Stream progress - system.init', {
               callId,
               model: event.model,
@@ -109,6 +121,9 @@ export function createProgressHandler(
               .map(c => c.text || '')
               .join('');
             tracker.accumulatedText += text;
+            // 实时更新累积文本长度显示（使用 \r 覆盖当前行）
+            process.stdout.write(`\r📝 生成中: ${tracker.accumulatedText.length} 字符`);
+            // 结构化日志（用于日志文件）
             log.debug('CursorCLIProvider: Stream progress - assistant', {
               callId,
               textLength: text.length,
@@ -122,19 +137,30 @@ export function createProgressHandler(
             tracker.toolCount++;
             const toolCall = event.tool_call;
             
+            // 先输出换行符，确保新消息在新行显示
+            console.log('');
+            
             if (toolCall?.writeToolCall) {
+              const path = toolCall.writeToolCall.args.path;
+              // 中文友好输出
+              console.log(`🔧 工具 #${tracker.toolCount}: 创建 ${path}`);
+              // 结构化日志（用于日志文件）
               log.info('CursorCLIProvider: Stream progress - tool_call.started', {
                 callId,
                 toolNumber: tracker.toolCount,
                 type: 'write',
-                path: toolCall.writeToolCall.args.path,
+                path,
               });
             } else if (toolCall?.readToolCall) {
+              const path = toolCall.readToolCall.args.path;
+              // 中文友好输出
+              console.log(`📖 工具 #${tracker.toolCount}: 读取 ${path}`);
+              // 结构化日志（用于日志文件）
               log.info('CursorCLIProvider: Stream progress - tool_call.started', {
                 callId,
                 toolNumber: tracker.toolCount,
                 type: 'read',
-                path: toolCall.readToolCall.args.path,
+                path,
               });
             }
           } else if (event.subtype === 'completed') {
@@ -142,20 +168,29 @@ export function createProgressHandler(
             
             if (toolCall?.writeToolCall?.result?.success) {
               const result = toolCall.writeToolCall.result.success;
+              const lines = result.linesCreated || 0;
+              const size = result.fileSize || 0;
+              // 中文友好输出
+              console.log(`   ✅ 已创建 ${lines} 行 (${size} 字节)`);
+              // 结构化日志（用于日志文件）
               log.info('CursorCLIProvider: Stream progress - tool_call.completed', {
                 callId,
                 toolNumber: tracker.toolCount,
                 type: 'write',
-                linesCreated: result.linesCreated,
-                fileSize: result.fileSize,
+                linesCreated: lines,
+                fileSize: size,
               });
             } else if (toolCall?.readToolCall?.result?.success) {
               const result = toolCall.readToolCall.result.success;
+              const lines = result.totalLines || 0;
+              // 中文友好输出
+              console.log(`   ✅ 已读取 ${lines} 行`);
+              // 结构化日志（用于日志文件）
               log.info('CursorCLIProvider: Stream progress - tool_call.completed', {
                 callId,
                 toolNumber: tracker.toolCount,
                 type: 'read',
-                totalLines: result.totalLines,
+                totalLines: lines,
               });
             }
           }
@@ -163,11 +198,20 @@ export function createProgressHandler(
 
         case 'result':
           const duration = event.duration_ms || 0;
-          const totalTime = Date.now() - tracker.startTime;
+          const totalTime = Math.round((Date.now() - tracker.startTime) / 1000); // 转换为秒
+          const durationSeconds = Math.round(duration / 1000); // 转换为秒
+          
+          // 先输出换行符，确保统计信息在新行显示
+          console.log('\n');
+          // 中文友好输出
+          console.log(`🎯 完成,耗时 ${durationSeconds}s (总计 ${totalTime}s)`);
+          console.log(`📊 最终统计: ${tracker.toolCount} 个工具,生成 ${tracker.accumulatedText.length} 字符`);
+          
+          // 结构化日志（用于日志文件）
           log.info('CursorCLIProvider: Stream progress - result', {
             callId,
             durationMs: duration,
-            totalTimeMs: totalTime,
+            totalTimeMs: Date.now() - tracker.startTime,
             toolCount: tracker.toolCount,
             accumulatedTextLength: tracker.accumulatedText.length,
             model: tracker.model,
