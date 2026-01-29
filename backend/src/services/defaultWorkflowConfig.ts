@@ -129,13 +129,6 @@ export const actionDefinitions: ActionDefinition[] = [
   { name: 'WriteTest', display_name: '编写测试', description: '编写测试用例和代码', class_name: 'WriteTest', category: 'document_writing' },
   { name: 'WriteTestPlan', display_name: '编写测试计划', description: '编写测试计划文档', class_name: 'WriteTestPlan', category: 'document_writing' },
   {
-    name: 'WriteSubProjectDesign',
-    display_name: '编写子项目设计',
-    description: '编写子项目设计文档',
-    class_name: 'WriteSubProjectDesign',
-    category: 'document_writing',
-  },
-  {
     name: 'GeneratePrototype',
     display_name: '生成原型',
     description: '基于PRD生成高保真HTML原型',
@@ -147,27 +140,16 @@ export const actionDefinitions: ActionDefinition[] = [
   { name: 'MRDReview', display_name: 'MRD评审', description: '评审市场需求文档', class_name: 'MRDReview', category: 'review' },
   { name: 'PRDReview', display_name: 'PRD评审', description: '评审产品需求文档', class_name: 'PRDReview', category: 'review' },
   { name: 'DesignReview', display_name: '设计评审', description: '评审系统设计文档', class_name: 'DesignReview', category: 'review' },
-  { name: 'CodeReview', display_name: '代码评审', description: '评审代码质量', class_name: 'CodeReview', category: 'review' },
   { name: 'TestReview', display_name: '测试评审', description: '评审测试用例', class_name: 'TestReview', category: 'review' },
-  { name: 'TestabilityReview', display_name: '可测试性评审', description: '评审代码可测试性', class_name: 'TestabilityReview', category: 'review' },
-  {
-    name: 'SubProjectDesignReview',
-    display_name: '子项目设计评审',
-    description: '评审子项目设计',
-    class_name: 'SubProjectDesignReview',
-    category: 'review',
-  },
 
   // Improvements
   { name: 'ImproveMRD', display_name: '改进MRD', description: '根据反馈改进MRD', class_name: 'ImproveMRD', category: 'improvement' },
   { name: 'ImprovePRD', display_name: '改进PRD', description: '根据反馈改进PRD', class_name: 'ImprovePRD', category: 'improvement' },
   { name: 'ImproveDesign', display_name: '改进设计', description: '根据反馈改进设计', class_name: 'ImproveDesign', category: 'improvement' },
   { name: 'ImproveTest', display_name: '改进测试', description: '根据反馈改进测试', class_name: 'ImproveTest', category: 'improvement' },
-  { name: 'FixBug', display_name: '修复Bug', description: '修复代码缺陷', class_name: 'FixBug', category: 'improvement' },
   { name: 'ImproveCode', display_name: '改进代码', description: '基于QA反馈和用户建议改进代码质量', class_name: 'ImproveCode', category: 'improvement' },
 
   // Execution
-  { name: 'RunCode', display_name: '运行代码', description: '执行代码运行', class_name: 'RunCode', category: 'execution' },
   { name: 'Deploy', display_name: '部署', description: '部署应用程序', class_name: 'Deploy', category: 'execution' },
   { name: 'ExecuteSubtask', display_name: '执行子任务', description: '执行分解的子任务', class_name: 'ExecuteSubtask', category: 'execution' },
   {
@@ -219,7 +201,6 @@ export const actionDefinitions: ActionDefinition[] = [
   },
   { name: 'Coordinate', display_name: '协调', description: '协调团队工作', class_name: 'Coordinate', category: 'planning' },
   { name: 'DataAnalysis', display_name: '数据分析', description: '分析数据生成报告', class_name: 'DataAnalysis', category: 'analysis' },
-  { name: 'SearchEnhancedQA', display_name: '搜索增强QA', description: '基于搜索的问答', class_name: 'SearchEnhancedQA', category: 'analysis' },
   { name: 'QAConclusion', display_name: 'QA结论', description: '生成QA结论报告', class_name: 'QAConclusion', category: 'analysis' },
   {
     name: 'CoverageQualityCheck',

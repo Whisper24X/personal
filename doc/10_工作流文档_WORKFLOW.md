@@ -527,7 +527,7 @@ class AgileRole(Role):
         elif development:
             self.rc.todo = WriteCode()
         elif review:
-            self.rc.todo = CodeReview()
+            # CodeReview已移除，代码审查由其他机制处理
         return True
 ```
 
@@ -670,7 +670,7 @@ class AgileRole(Role):
 | WriteCode | check 命令 | 5 分钟 | 任务完成检查 |
 | BreakdownTasks | propose 命令 | 60 分钟 | OpenSpec 任务拆分 |
 | BreakdownTasks | context 命令 | 30 分钟 | 上下文准备 |
-| CodeReview | 代码审查 | 10 分钟 | 代码审查分析 |
+| TestReview | 测试审查 | 10 分钟 | 测试用例审查分析 |
 | LLM 请求 | aask 调用 | REQUEST_TIMEOUT | 默认 300 秒 |
 
 ### 11.3 配置说明

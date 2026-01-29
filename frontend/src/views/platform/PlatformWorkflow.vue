@@ -272,9 +272,9 @@ async function loadWorkflowInfo() {
     } else {
       workflowStructure.value = {
         Salesperson: ['WriteMRD'],
-        ProductManager: ['WritePRD', 'SearchEnhancedQA'],
+        ProductManager: ['WritePRD'],
         Architect: ['WriteDesign'],
-        ProjectManager: ['BreakdownTasks', 'WriteSubProjectDesign', 'GenerateTask'],
+        ProjectManager: ['BreakdownTasks', 'GenerateTask'],
         Engineer: ['WriteCode', 'ExecuteSubtask'],
         QAEngineer: ['WriteTest'],
       };

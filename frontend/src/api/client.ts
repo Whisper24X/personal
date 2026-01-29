@@ -578,6 +578,11 @@ class APIClient {
     return this.client.delete(`/config/prompts/${type}/${key}`);
   }
 
+  // Migration API endpoints
+  async migrateWorkflowConfig() {
+    return this.client.post('/config/migrate-workflow');
+  }
+
   // Download zip archive
   async downloadZip(projectId: string, zipPath: string) {
     // Encode the zip path for URL

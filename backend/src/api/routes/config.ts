@@ -7,6 +7,7 @@ import { LLMConfigController } from '../controllers/LLMConfigController';
 import { RoleLLMConfigController } from '../controllers/RoleLLMConfigController';
 import { PromptConfigController } from '../controllers/PromptConfigController';
 import { RoleActionController } from '../controllers/RoleActionController';
+import { MigrationController } from '../controllers/MigrationController';
 // import { authMiddleware } from '../middleware/auth'; // Unused
 
 const router: Router = Router();
@@ -50,6 +51,9 @@ router.post('/roles', RoleActionController.createRole);
 router.get('/actions', RoleActionController.getActions);
 router.post('/actions', RoleActionController.createAction);
 router.get('/roles-actions', RoleActionController.getRolesAndActions);
+
+// Migration routes
+router.post('/migrate-workflow', MigrationController.migrate);
 
 export default router;
 

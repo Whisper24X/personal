@@ -1,8 +1,8 @@
 # 即思即成（Mind2Build）角色系统设计文档
 
-**文档版本**: v1.9  
+**文档版本**: v2.0  
 **创建日期**: 2025-12-24
-**最后更新**: 2026-01-26（修正QAEngineer和AutomationEngineer的Actions列表，QAEngineer包含3个Actions，AutomationEngineer包含4个Actions包括QAConclusion）
+**最后更新**: 2026-01-29（移除7个未使用的Action：SubProjectDesignReview, CodeReview, WriteSubProjectDesign, TestabilityReview, RunCode, FixBug, SearchEnhancedQA）
 
 ## Role类实现架构
 
@@ -20,18 +20,18 @@ Role类采用模块化设计，将职责分离到不同的组件中：
   - `WriteTest`: 自动从memory中获取PRD文档，组合PRD和代码作为输入
   - `MRDReview/PRDReview`: 从news或memory中查找对应的文档内容
   - `ImprovePRD/ImproveMRD/ImproveDesign`: 从news或memory中查找审查报告
-  - `WriteTestPlan/TestabilityReview`: 自动从memory中获取PRD和代码
+  - `WriteTestPlan`: 自动从memory中获取PRD和代码
 - 序列继续处理（BY_ORDER模式）：自动处理action序列的执行和状态清理
 - 状态管理：action执行时设置为RUNNING，完成后设置为COMPLETED，失败时设置为FAILED
 
 **支持的Actions（带workspace options）**:
 ```typescript
 const ACTIONS_WITH_OPTIONS = [
-  'WriteMRD', 'WritePRD', 'WriteDesign', 'WriteSubProjectDesign',
+  'WriteMRD', 'WritePRD', 'WriteDesign',
   'BreakdownTasks', 'WriteCode', 'WriteTest', 'WriteTestPlan',
   'ExecuteSubtask', 'ImprovePRD', 'ImproveMRD', 'ImproveDesign', 'ImproveTest',
-  'MRDReview', 'PRDReview', 'DesignReview', 'SubProjectDesignReview',
-  'TestabilityReview', 'TestCaseReview', 'TestReview',
+  'MRDReview', 'PRDReview', 'DesignReview',
+  'TestCaseReview', 'TestReview',
   'AutomationPlanning', 'AutomationExecution', 'CoverageQualityCheck', 'QAConclusion'
 ];
 ```
@@ -100,12 +100,10 @@ const DOCUMENT_TYPE_MAP = {
   WriteMRD: 'MRD',
   WritePRD: 'PRD',
   WriteDesign: 'DESIGN',
-  WriteSubProjectDesign: 'DESIGN',
   BreakdownTasks: 'TASKS',
   WriteCode: 'CODE',
   WriteTest: 'TEST',
   WriteTestPlan: 'TEST',
-  TestabilityReview: 'TEST',
   TestCaseReview: 'TEST',
   TestReview: 'TEST',
   ImproveTest: 'TEST',
@@ -225,8 +223,7 @@ class ProductManager extends Role {
 **工作流程**:
 1. 监听 Salesperson 的 WriteMRD action 输出（`watch([ACTION_WRITE_MRD])`）
 2. 接收市场研究文档（MRD）
-3. 使用 RAG 检索历史 PRD 文档（如可用，通过 SearchEnhancedQA）
-4. 基于 MRD 和历史 PRD 编写产品需求文档 PRD（WritePRD）
+3. 基于 MRD 编写产品需求文档 PRD（WritePRD）
 5. 发布 PRD 给 Architect（通过 WritePRD action 输出）
 
 **监听机制**:
@@ -280,27 +277,13 @@ class ProjectManager extends Role {
 
 **工作流程**:
 1. 监听 ProductManager 的 WritePRD 和 Architect 的 WriteDesign actions（`watch([ACTION_WRITE_PRD, ACTION_WRITE_DESIGN])`）
-2. 等待 PRD 和系统设计文档都完成后，进行任务拆分（BreakdownTasks）
-   - 需要同时获取 PRD 和 Design 文档内容
-   - 优先从 `rc.news` 中查找，如果不存在则从 `rc.memory` 中查找
-   - 基于 PRD 和设计文档进行拆分
-   - 确保任务符合最小颗粒度（1-3天可完成）
-   - 识别任务依赖关系
-   - 定义任务优先级和验收标准
-   - 需要 workspaceOptions（applicationId 和 version）来组织工作区文件结构
-3. 生成子项目设计（WriteSubProjectDesign）
-   - 基于任务拆分文档（BreakdownTasks）和设计文档（WriteDesign）
-   - 优先从 `rc.news` 中查找，如果不存在则从 `rc.memory` 中查找
-   - 将相关任务组织成子项目
-   - 为每个子项目提供详细技术设计
-   - 定义子项目间的接口和依赖
-   - 需要 workspaceOptions 来组织工作区文件结构
-4. 生成详细任务说明（GenerateTask）
-   - 基于任务拆分文档（BreakdownTasks），可选子项目设计（WriteSubProjectDesign）
-   - 优先从 `rc.news` 中查找，如果不存在则从 `rc.memory` 中查找
-   - 为工程师提供清晰的任务描述
-   - 包含技术实现指导和代码示例
-   - 需要 workspaceOptions 来组织工作区文件结构
+2. 等待 PRD 和系统设计文档都完成后，执行OpenSpec工作流：
+   - FillProjectContext: 填充项目上下文
+   - CreateOpenSpecProposal: 创建变更提案
+   - ValidateOpenSpecProposal: 验证变更提案
+   - EstimateStoryPoints: 故事点评估
+   - ValidateStoryPointEstimates: 验证故事点评估
+   - 需要 workspaceOptions（applicationId 和 projectId）来组织工作区文件结构
 
 **特殊处理**:
 - BreakdownTasks 需要同时等待 PRD 和 Design 都完成
@@ -498,10 +481,10 @@ AutomationEngineer 实现自动化测试工作流，包含以下 4 个 Actions�
 ```
 QAEngineer                           AutomationEngineer
     │                                      │
-    ├─ TestabilityReview                   │
     ├─ WriteTestPlan                       │
     ├─ WriteTest                           │
-    ├─ TestCaseReview ─────────────────────┤
+    ├─ TestReview                          │
+    ├─ ImproveTest ────────────────────────┤
     │                                      ├─ AutomationPlanning
     │                                      ├─ AutomationExecution
     │                                      ├─ CoverageQualityCheck
@@ -592,26 +575,26 @@ class DataAnalyst extends Role {
   
 ✅ **ProductManager** - 基于 MRD 编写 PRD 和产品规划
   - 监听: `ACTION_WRITE_MRD` action
-  - Actions: WritePRD, PRDReview, ImprovePRD, SearchEnhancedQA
+  - Actions: WritePRD, PRDReview, ImprovePRD, GeneratePrototype
   
 ✅ **Architect** - 系统架构设计
   - 监听: `ACTION_WRITE_PRD` action
   - Actions: WriteDesign, DesignReview, ImproveDesign
   
-✅ **ProjectManager** - 任务拆分、子项目设计
+✅ **ProjectManager** - 任务拆分和OpenSpec工作流
   - 监听: `ACTION_WRITE_PRD`, `ACTION_WRITE_DESIGN` actions
-  - Actions: BreakdownTasks, WriteSubProjectDesign, SubProjectDesignReview
-  - 特殊: 重写 `act()` 方法处理不同 action 的输入需求
+  - Actions: FillProjectContext, CreateOpenSpecProposal, ValidateOpenSpecProposal, EstimateStoryPoints, ValidateStoryPointEstimates
+  - 特殊: 重写 `act()` 和 `think()` 方法处理OpenSpec工作流
   
 ✅ **Engineer** - 代码实现
   - 监听: `ACTION_WRITE_PRD`, `ACTION_WRITE_DESIGN`, `ACTION_BREAKDOWN_TASKS` actions
-  - Actions: WriteCode, ExecuteSubtask, RunCode, FixBug
+  - Actions: WriteCode, Deploy
   - 特殊: 重写 `act()` 方法，支持自动代码生成模式（`ENGINEER_AUTO_CODE`）
   
 ✅ **QAEngineer** - 测试设计工作流执行
-  - 监听: `ACTION_WRITE_PRD`, `ACTION_WRITE_CODE`, `ACTION_COVERAGE_QUALITY_CHECK` actions
-  - Actions: WriteTestPlan, WriteTest, TestCaseReview
-  - 特殊: 使用 BY_ORDER 模式按顺序执行 5 步测试设计工作流
+  - 监听: `ACTION_WRITE_PRD`, `ACTION_IMPROVE_PRD` actions
+  - Actions: WriteTestPlan, WriteTest, TestReview, ImproveTest
+  - 特殊: 使用 BY_ORDER 模式按顺序执行 4 步测试设计工作流
 
 ✅ **AutomationEngineer** - 自动化测试工作流执行
   - 监听: `ACTION_TEST_CASE_REVIEW` action
