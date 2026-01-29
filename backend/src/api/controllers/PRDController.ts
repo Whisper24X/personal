@@ -8,11 +8,14 @@ import { DocumentRepository } from '../../database/repositories/DocumentReposito
 import { ProjectRepository } from '../../database/repositories/ProjectRepository';
 import { WritePRD } from '../../actions/WritePRD';
 import { ImprovePRD } from '../../actions/ImprovePRD';
+import { GeneratePrototype } from '../../actions/GeneratePrototype';
 import { Context } from '../../core/context/Context';
 import { RAGService } from '../../services/RAGService';
 import { SectionAdjustService } from '../../services/SectionAdjustService';
 import { WorkspaceManager } from '../../utils/WorkspaceManager';
 import { logger } from '../../utils';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 const documentRepo = new DocumentRepository();
 const projectRepo = new ProjectRepository();
@@ -921,6 +924,321 @@ export class PRDController {
       logger.error('PRDController: Failed to improve PRD:', error);
       return res.status(500).json({
         error: 'Failed to improve PRD',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Get prototype files for a PRD
+   * GET /api/projects/:id/prds/:prdId/prototype
+   */
+  static async getPrototype(req: Request, res: Response) {
+    try {
+      const { id, prdId } = req.params;
+
+      // Verify project exists
+      const project = await projectRepo.findById(id);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      // Verify PRD exists
+      const prd = await documentRepo.findPRDById(prdId);
+      if (!prd || prd.project_id !== id) {
+        return res.status(404).json({ error: 'PRD not found' });
+      }
+
+      const applicationId = project.application_id || project.id;
+      const projectId = project.id;
+
+      // Try to read prototype files from workspace
+      const prototypeDir = path.join(
+        WorkspaceManager.getWorkspaceRoot(),
+        applicationId,
+        projectId,
+        'ainative-workspace',
+        'docs',
+        'prototype'
+      );
+
+      try {
+        const files = await fs.readdir(prototypeDir);
+        const htmlFiles = files.filter(f => f.endsWith('.html'));
+
+        if (htmlFiles.length === 0) {
+          return res.json({
+            success: true,
+            prototype: {
+              exists: false,
+              files: [],
+            },
+          });
+        }
+
+        // Read file contents
+        const fileContents = await Promise.all(
+          htmlFiles.map(async (filename) => {
+            const filePath = path.join(prototypeDir, filename);
+            const content = await fs.readFile(filePath, 'utf-8');
+            return {
+              filename,
+              content,
+              size: content.length,
+            };
+          })
+        );
+
+        return res.json({
+          success: true,
+          prototype: {
+            exists: true,
+            files: fileContents,
+            mainFile: fileContents.find(f => f.filename === 'index.html')?.filename || fileContents[0]?.filename,
+          },
+        });
+      } catch (error: any) {
+        // Prototype directory doesn't exist or can't be read
+        logger.debug('PRDController: Prototype directory not found', {
+          prototypeDir,
+          error: error.message,
+        });
+        return res.json({
+          success: true,
+          prototype: {
+            exists: false,
+            files: [],
+          },
+        });
+      }
+    } catch (error: any) {
+      logger.error('PRDController: Failed to get prototype:', error);
+      return res.status(500).json({
+        error: 'Failed to get prototype',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Get a specific prototype file
+   * GET /api/projects/:id/prds/:prdId/prototype/:filename
+   */
+  static async getPrototypeFile(req: Request, res: Response) {
+    try {
+      const { id, prdId, filename } = req.params;
+
+      // Verify project exists
+      const project = await projectRepo.findById(id);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      // Verify PRD exists
+      const prd = await documentRepo.findPRDById(prdId);
+      if (!prd || prd.project_id !== id) {
+        return res.status(404).json({ error: 'PRD not found' });
+      }
+
+      // Security: prevent path traversal
+      if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+        return res.status(400).json({ error: 'Invalid filename' });
+      }
+
+      const applicationId = project.application_id || project.id;
+      const projectId = project.id;
+
+      const filePath = path.join(
+        WorkspaceManager.getWorkspaceRoot(),
+        applicationId,
+        projectId,
+        'ainative-workspace',
+        'docs',
+        'prototype',
+        filename
+      );
+
+      try {
+        const content = await fs.readFile(filePath, 'utf-8');
+
+        // Set appropriate Content-Type
+        const contentType = filename.endsWith('.html')
+          ? 'text/html'
+          : filename.endsWith('.css')
+          ? 'text/css'
+          : filename.endsWith('.js')
+          ? 'application/javascript'
+          : 'text/plain';
+
+        res.setHeader('Content-Type', contentType);
+        return res.send(content);
+      } catch (error: any) {
+        if ((error as any).code === 'ENOENT') {
+          return res.status(404).json({ error: 'Prototype file not found' });
+        }
+        throw error;
+      }
+    } catch (error: any) {
+      logger.error('PRDController: Failed to get prototype file:', error);
+      return res.status(500).json({
+        error: 'Failed to get prototype file',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Preview prototype HTML (returns main HTML file for iframe embedding)
+   * GET /api/projects/:id/prds/:prdId/prototype/preview
+   */
+  static async previewPrototype(req: Request, res: Response) {
+    try {
+      const { id, prdId } = req.params;
+
+      // Verify project exists
+      const project = await projectRepo.findById(id);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      // Verify PRD exists
+      const prd = await documentRepo.findPRDById(prdId);
+      if (!prd || prd.project_id !== id) {
+        return res.status(404).json({ error: 'PRD not found' });
+      }
+
+      const applicationId = project.application_id || project.id;
+      const projectId = project.id;
+
+      // Try to get prototype files list first
+      const prototypeDir = path.join(
+        WorkspaceManager.getWorkspaceRoot(),
+        applicationId,
+        projectId,
+        'ainative-workspace',
+        'docs',
+        'prototype'
+      );
+
+      let mainFile = 'index.html';
+      try {
+        const files = await fs.readdir(prototypeDir);
+        const indexFile = files.find(f => f === 'index.html');
+        if (indexFile) {
+          mainFile = indexFile;
+        } else if (files.length > 0) {
+          // Use first HTML file if index.html doesn't exist
+          const htmlFile = files.find(f => f.endsWith('.html'));
+          if (htmlFile) {
+            mainFile = htmlFile;
+          }
+        }
+      } catch (error: any) {
+        logger.debug('PRDController: Prototype directory not found, trying direct file access');
+      }
+
+      const filePath = path.join(prototypeDir, mainFile);
+
+      try {
+        const content = await fs.readFile(filePath, 'utf-8');
+        
+        // Set Content-Type to HTML for iframe embedding
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        // Allow iframe embedding (optional, for security you might want to restrict)
+        res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+        return res.send(content);
+      } catch (error: any) {
+        if ((error as any).code === 'ENOENT') {
+          return res.status(404).json({ error: 'Prototype file not found. Please generate the prototype first.' });
+        }
+        throw error;
+      }
+    } catch (error: any) {
+      logger.error('PRDController: Failed to preview prototype:', error);
+      return res.status(500).json({
+        error: 'Failed to preview prototype',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Generate prototype for a PRD
+   * POST /api/projects/:id/prds/:prdId/prototype/generate
+   */
+  static async generatePrototype(req: Request, res: Response) {
+    try {
+      const { id, prdId } = req.params;
+
+      // Verify project exists
+      const project = await projectRepo.findById(id);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      // Verify PRD exists
+      const prd = await documentRepo.findPRDById(prdId);
+      if (!prd || prd.project_id !== id) {
+        return res.status(404).json({ error: 'PRD not found' });
+      }
+
+      logger.info(`PRDController: Generating prototype for PRD ${prdId}`, {
+        projectId: id,
+        prdId,
+        applicationId: project.application_id,
+      });
+
+      // Create context and GeneratePrototype action
+      const ctx = new Context();
+      const generatePrototypeAction = new GeneratePrototype();
+      generatePrototypeAction.setLLM(ctx.llm);
+
+      const applicationId = project.application_id || project.id;
+      const projectId = project.id;
+
+      // Get PRD content
+      let prdContent = prd.content;
+
+      // Try to read from workspace first
+      try {
+        const workspaceContent = await WorkspaceManager.readFile('PRD.md', {
+          applicationId,
+          projectId,
+          documentType: 'PRD',
+        });
+        if (workspaceContent) {
+          prdContent = workspaceContent;
+        }
+      } catch (error: any) {
+        logger.debug('PRDController: Failed to read PRD from workspace, using database content');
+      }
+
+      // Generate prototype
+      const result = await generatePrototypeAction.run(prdContent, {
+        applicationId,
+        projectId,
+        documentType: 'PROTOTYPE',
+      });
+
+      logger.info(`PRDController: Prototype generated successfully`, {
+        projectId: id,
+        prdId,
+        fileCount: result.data?.files?.length || 0,
+      });
+
+      return res.json({
+        success: true,
+        prototype: {
+          files: result.data?.files || [],
+          mainFile: result.data?.mainFile,
+          workspaceDir: result.data?.workspaceDir,
+        },
+        message: result.content,
+      });
+    } catch (error: any) {
+      logger.error('PRDController: Failed to generate prototype:', error);
+      return res.status(500).json({
+        error: 'Failed to generate prototype',
         message: error.message,
       });
     }

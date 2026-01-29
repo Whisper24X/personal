@@ -338,6 +338,21 @@ class APIClient {
     );
   }
 
+  // Prototype API 端点
+  async getPrototype(projectId: string, prdId: string) {
+    return this.client.get(`/projects/${projectId}/prds/${prdId}/prototype`);
+  }
+
+  async getPrototypeFile(projectId: string, prdId: string, filename: string) {
+    return this.client.get(`/projects/${projectId}/prds/${prdId}/prototype/${filename}`, {
+      responseType: 'text',
+    });
+  }
+
+  async generatePrototype(projectId: string, prdId: string) {
+    return this.client.post(`/projects/${projectId}/prds/${prdId}/prototype/generate`);
+  }
+
   // MRD API 端点
   async generateMRD(projectId: string, data: {
     requirements: string;

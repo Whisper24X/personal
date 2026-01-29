@@ -82,15 +82,27 @@ async function seedData() {
     const appId = appResult.rows[0]?.id || '00000000-0000-0000-0000-000000000002';
     console.log(`✅ Default application ensured: ${appId}`);
 
-    // Step 5: Create default workflow
-    console.log('\n📦 Step 5: Creating default workflow...');
-    await pool.query(
+    // Step 5: Create or update default workflow
+    console.log('\n📦 Step 5: Creating or updating default workflow...');
+    const workflowResult = await pool.query(
       `INSERT INTO application_workflows (id, application_id, name, description, is_default, workflow_config)
        VALUES ('00000000-0000-0000-0000-000000000003', $1, '默认工作流', '系统默认工作流配置', true, $2)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (id) DO UPDATE SET
+         workflow_config = EXCLUDED.workflow_config,
+         updated_at = NOW()
+       RETURNING id`,
       [appId, JSON.stringify(defaultWorkflowConfig)]
     );
-    console.log('✅ Default workflow created');
+    
+    // Also update any other default workflows to ensure consistency
+    await pool.query(
+      `UPDATE application_workflows 
+       SET workflow_config = $1, updated_at = NOW()
+       WHERE is_default = true AND id != '00000000-0000-0000-0000-000000000003'`,
+      [JSON.stringify(defaultWorkflowConfig)]
+    );
+    
+    console.log('✅ Default workflow created or updated');
 
     // Step 6: Verify data
     console.log('\n📦 Step 6: Verifying seed data...');
