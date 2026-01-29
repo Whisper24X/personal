@@ -78,314 +78,176 @@ export const MRD_SECTION_KNOWLEDGE_MAP: SectionKnowledgeMapping[] = [
   {
     sectionNumber: 1, // 背景与问题定义
     sectionTitle: '背景与问题定义',
-    knowledgeTypes: [
-      KnowledgeType.HISTORY_MRD,
-      KnowledgeType.COMPETITOR_ANALYSIS,
-      KnowledgeType.BUSINESS_RULES,
-    ],
-    searchQueries: [
-      '类似问题的历史分析',
-      '竞品功能对比',
-      '行业背景和趋势',
-    ],
-    validationRules: [
-      '问题定义不得与历史MRD冲突',
-      '行业背景信息需有来源支撑',
-    ],
+    knowledgeTypes: [KnowledgeType.HISTORY_MRD, KnowledgeType.COMPETITOR_ANALYSIS, KnowledgeType.BUSINESS_RULES],
+    searchQueries: ['类似问题的历史分析', '竞品功能对比', '行业背景和趋势'],
+    validationRules: ['问题定义不得与历史MRD冲突', '行业背景信息需有来源支撑'],
   },
   {
     sectionNumber: 2, // 目标用户和使用场景
     sectionTitle: '目标用户和使用场景',
-    knowledgeTypes: [
-      KnowledgeType.HISTORY_PRD,
-      KnowledgeType.HISTORY_MRD,
-      KnowledgeType.TERMINOLOGY,
-    ],
-    searchQueries: [
-      '现有用户画像',
-      '历史使用场景',
-      '用户诉求分析',
-    ],
-    validationRules: [
-      '用户角色定义需与历史文档一致',
-      '使用场景不得与现有功能冲突',
-    ],
+    knowledgeTypes: [KnowledgeType.HISTORY_PRD, KnowledgeType.HISTORY_MRD, KnowledgeType.TERMINOLOGY],
+    searchQueries: ['现有用户画像', '历史使用场景', '用户诉求分析'],
+    validationRules: ['用户角色定义需与历史文档一致', '使用场景不得与现有功能冲突'],
   },
   {
     sectionNumber: 3, // 需求目标与成功标准
     sectionTitle: '需求目标与成功标准',
-    knowledgeTypes: [
-      KnowledgeType.BUSINESS_RULES,
-      KnowledgeType.HISTORY_MRD,
-    ],
-    searchQueries: [
-      '业务目标定义',
-      '成功标准参考',
-      '量化指标基线',
-    ],
-    validationRules: [
-      '成功标准需可量化',
-      '目标不得与业务规则冲突',
-    ],
+    knowledgeTypes: [KnowledgeType.BUSINESS_RULES, KnowledgeType.HISTORY_MRD],
+    searchQueries: ['业务目标定义', '成功标准参考', '量化指标基线'],
+    validationRules: ['成功标准需可量化', '目标不得与业务规则冲突'],
   },
   {
     sectionNumber: 4, // 核心需求范围
     sectionTitle: '核心需求范围',
-    knowledgeTypes: [
-      KnowledgeType.HISTORY_PRD,
-      KnowledgeType.BUSINESS_RULES,
-      KnowledgeType.FEATURE_LIST,
-      KnowledgeType.TERMINOLOGY,
-    ],
-    searchQueries: [
-      '现有功能列表',
-      '业务规则约束',
-      '功能优先级参考',
-    ],
-    validationRules: [
-      '新功能不得与现有功能重复',
-      '必须符合业务规则',
-      '不做范围需明确说明原因',
-    ],
+    knowledgeTypes: [KnowledgeType.HISTORY_PRD, KnowledgeType.BUSINESS_RULES, KnowledgeType.FEATURE_LIST, KnowledgeType.TERMINOLOGY],
+    searchQueries: ['现有功能列表', '业务规则约束', '功能优先级参考'],
+    validationRules: ['新功能不得与现有功能重复', '必须符合业务规则', '不做范围需明确说明原因'],
   },
   {
     sectionNumber: 5, // 关键约束
     sectionTitle: '关键约束',
-    knowledgeTypes: [
-      KnowledgeType.TECH_CONSTRAINTS,
-      KnowledgeType.BUSINESS_RULES,
-      KnowledgeType.DEV_SPEC,
-    ],
-    searchQueries: [
-      '技术架构约束',
-      '性能要求基线',
-      '合规要求',
-    ],
-    validationRules: [
-      '技术约束需与开发规范一致',
-      '超出约束的需求需标记为「待确认」',
-    ],
+    knowledgeTypes: [KnowledgeType.TECH_CONSTRAINTS, KnowledgeType.BUSINESS_RULES, KnowledgeType.DEV_SPEC],
+    searchQueries: ['技术架构约束', '性能要求基线', '合规要求'],
+    validationRules: ['技术约束需与开发规范一致', '超出约束的需求需标记为「待确认」'],
   },
   {
     sectionNumber: 6, // 不确定的点和风险
     sectionTitle: '不确定的点和风险',
-    knowledgeTypes: [
-      KnowledgeType.HISTORY_MRD,
-      KnowledgeType.TECH_CONSTRAINTS,
-    ],
-    searchQueries: [
-      '历史风险案例',
-      '技术风险点',
-    ],
-    validationRules: [
-      '风险需有应对措施',
-      '不确定点需指定确认时间',
-    ],
+    knowledgeTypes: [KnowledgeType.HISTORY_MRD, KnowledgeType.TECH_CONSTRAINTS],
+    searchQueries: ['历史风险案例', '技术风险点'],
+    validationRules: ['风险需有应对措施', '不确定点需指定确认时间'],
   },
   {
     sectionNumber: 7, // 备注
     sectionTitle: '备注',
-    knowledgeTypes: [
-      KnowledgeType.COMPETITOR_ANALYSIS,
-      KnowledgeType.TECH_CONSTRAINTS,
-      KnowledgeType.HISTORY_MRD,
-    ],
-    searchQueries: [
-      '竞品功能分析',
-      '技术方案参考',
-      '工程评估参考',
-    ],
-    validationRules: [
-      '竞品信息需有来源',
-      '技术参考需与约束一致',
-    ],
+    knowledgeTypes: [KnowledgeType.COMPETITOR_ANALYSIS, KnowledgeType.TECH_CONSTRAINTS, KnowledgeType.HISTORY_MRD],
+    searchQueries: ['竞品功能分析', '技术方案参考', '工程评估参考'],
+    validationRules: ['竞品信息需有来源', '技术参考需与约束一致'],
   },
 ];
 
 /**
- * PRD 章节-知识映射关系
+ * PRD 章节-知识映射关系（对应新模板 0-16 章）
  */
 export const PRD_SECTION_KNOWLEDGE_MAP: SectionKnowledgeMapping[] = [
   {
-    sectionNumber: 0, // 基本信息
-    sectionTitle: '基本信息',
-    knowledgeTypes: [
-      KnowledgeType.HISTORY_PRD,
-    ],
-    searchQueries: [
-      'PRD编号规范',
-      '负责人分配',
-    ],
-    validationRules: [
-      'PRD编号需唯一',
-    ],
+    sectionNumber: 0, // 生成说明
+    sectionTitle: '生成说明（给 PRD Agent）',
+    knowledgeTypes: [KnowledgeType.HISTORY_MRD],
+    searchQueries: ['MRD摘要', 'PRD生成要求'],
+    validationRules: ['MRD来源需明确'],
   },
   {
-    sectionNumber: 1, // 背景与目标
-    sectionTitle: '背景与目标',
-    knowledgeTypes: [
-      KnowledgeType.HISTORY_MRD,
-      KnowledgeType.BUSINESS_RULES,
-    ],
-    searchQueries: [
-      '业务背景',
-      '目标定义参考',
-    ],
-    validationRules: [
-      '目标需可量化',
-      '背景需与MRD一致',
-    ],
+    sectionNumber: 1, // 文档信息
+    sectionTitle: '文档信息',
+    knowledgeTypes: [KnowledgeType.HISTORY_PRD],
+    searchQueries: ['PRD编号规范', '负责人分配'],
+    validationRules: ['PRD编号需唯一'],
   },
   {
-    sectionNumber: 2, // 范围
-    sectionTitle: '范围',
-    knowledgeTypes: [
-      KnowledgeType.HISTORY_PRD,
-      KnowledgeType.FEATURE_LIST,
-      KnowledgeType.BUSINESS_RULES,
-    ],
-    searchQueries: [
-      '现有功能范围',
-      '业务约束',
-    ],
-    validationRules: [
-      '需求范围不得与现有功能冲突',
-      '约束假设需明确影响',
-    ],
+    sectionNumber: 2, // MRD 摘要与需求背景
+    sectionTitle: 'MRD 摘要与需求背景',
+    knowledgeTypes: [KnowledgeType.HISTORY_MRD, KnowledgeType.BUSINESS_RULES],
+    searchQueries: ['业务背景', '问题定义参考'],
+    validationRules: ['背景需与MRD一致', '关键假设需可验证'],
   },
   {
-    sectionNumber: 3, // 用户与场景
-    sectionTitle: '用户与场景',
-    knowledgeTypes: [
-      KnowledgeType.HISTORY_PRD,
-      KnowledgeType.TERMINOLOGY,
-    ],
-    searchQueries: [
-      '用户角色定义',
-      '使用场景参考',
-    ],
-    validationRules: [
-      '用户角色需与历史定义一致',
-      '场景需覆盖核心使用情况',
-    ],
+    sectionNumber: 3, // 目标与成功标准
+    sectionTitle: '目标与成功标准（KPI）',
+    knowledgeTypes: [KnowledgeType.HISTORY_PRD, KnowledgeType.BUSINESS_RULES],
+    searchQueries: ['目标定义参考', 'KPI基线'],
+    validationRules: ['目标需可量化', '成功指标需可观测'],
   },
   {
-    sectionNumber: 4, // 核心流程
-    sectionTitle: '核心流程',
-    knowledgeTypes: [
-      KnowledgeType.HISTORY_PRD,
-      KnowledgeType.BUSINESS_RULES,
-      KnowledgeType.TECH_CONSTRAINTS,
-    ],
-    searchQueries: [
-      '现有流程定义',
-      '业务流程规则',
-    ],
-    validationRules: [
-      '流程需与业务规则一致',
-      '分支回退需完整覆盖',
-    ],
+    sectionNumber: 4, // 用户体验与交互设计要求
+    sectionTitle: '用户体验与交互设计要求（Experience Spec）',
+    knowledgeTypes: [KnowledgeType.HISTORY_PRD, KnowledgeType.DEV_SPEC],
+    searchQueries: ['体验规范', 'UX指标参考'],
+    validationRules: ['体验目标需明确', '强制原则需可验证'],
   },
   {
-    sectionNumber: 5, // 功能与交互
-    sectionTitle: '功能与交互',
-    knowledgeTypes: [
-      KnowledgeType.HISTORY_PRD,
-      KnowledgeType.FEATURE_LIST,
-      KnowledgeType.DEV_SPEC,
-    ],
-    searchQueries: [
-      '现有功能列表',
-      '交互规范',
-    ],
-    validationRules: [
-      '功能不得与现有功能重复',
-      '交互需覆盖所有状态',
-    ],
+    sectionNumber: 5, // 需求范围与优先级
+    sectionTitle: '需求范围与优先级',
+    knowledgeTypes: [KnowledgeType.HISTORY_PRD, KnowledgeType.FEATURE_LIST, KnowledgeType.BUSINESS_RULES],
+    searchQueries: ['现有功能范围', '业务约束'],
+    validationRules: ['需求范围不得与现有功能冲突', 'Out of Scope需明确'],
   },
   {
-    sectionNumber: 6, // 业务规则与数据口径
-    sectionTitle: '业务规则与数据口径',
-    knowledgeTypes: [
-      KnowledgeType.BUSINESS_RULES,
-      KnowledgeType.TERMINOLOGY,
-      KnowledgeType.HISTORY_PRD,
-    ],
-    searchQueries: [
-      '业务规则定义',
-      '术语词典',
-      '数据口径规范',
-    ],
-    validationRules: [
-      '术语需与词典一致',
-      '规则需可实现可测试',
-    ],
+    sectionNumber: 6, // 用户、角色与使用场景
+    sectionTitle: '用户、角色与使用场景',
+    knowledgeTypes: [KnowledgeType.HISTORY_PRD, KnowledgeType.TERMINOLOGY],
+    searchQueries: ['用户角色定义', '使用场景参考'],
+    validationRules: ['用户角色需与历史定义一致', '场景需可验收'],
   },
   {
-    sectionNumber: 7, // 权限与安全
-    sectionTitle: '权限与安全',
-    knowledgeTypes: [
-      KnowledgeType.TECH_CONSTRAINTS,
-      KnowledgeType.BUSINESS_RULES,
-      KnowledgeType.DEV_SPEC,
-    ],
-    searchQueries: [
-      '权限模型',
-      '安全规范',
-    ],
-    validationRules: [
-      '权限矩阵需覆盖所有角色',
-      '安全策略需与开发规范一致',
-    ],
+    sectionNumber: 7, // 端到端关键流程
+    sectionTitle: '端到端关键流程（Key Flow）',
+    knowledgeTypes: [KnowledgeType.HISTORY_PRD, KnowledgeType.BUSINESS_RULES, KnowledgeType.TECH_CONSTRAINTS],
+    searchQueries: ['现有流程定义', '业务流程规则'],
+    validationRules: ['主路径需完整', '结果定义需明确'],
   },
   {
-    sectionNumber: 8, // 异常与边界
-    sectionTitle: '异常与边界',
-    knowledgeTypes: [
-      KnowledgeType.TECH_CONSTRAINTS,
-      KnowledgeType.HISTORY_PRD,
-    ],
-    searchQueries: [
-      '异常处理规范',
-      '边界条件参考',
-    ],
-    validationRules: [
-      '异常场景需覆盖常见情况',
-      '边界条件需有处理策略',
-    ],
+    sectionNumber: 8, // 功能需求
+    sectionTitle: '功能需求（AI-friendly 强结构）',
+    knowledgeTypes: [KnowledgeType.HISTORY_PRD, KnowledgeType.FEATURE_LIST, KnowledgeType.DEV_SPEC],
+    searchQueries: ['现有功能列表', '功能规格参考'],
+    validationRules: ['功能不得与现有功能重复', 'P0功能需满足A-E五项要求'],
   },
   {
-    sectionNumber: 9, // 埋点与观测
-    sectionTitle: '埋点与观测',
-    knowledgeTypes: [
-      KnowledgeType.DEV_SPEC,
-      KnowledgeType.HISTORY_PRD,
-    ],
-    searchQueries: [
-      '埋点规范',
-      '指标定义',
-    ],
-    validationRules: [
-      '埋点需覆盖主链路',
-      '指标需可观测',
-    ],
+    sectionNumber: 9, // 数据与埋点
+    sectionTitle: '数据与埋点（可观测）',
+    knowledgeTypes: [KnowledgeType.DEV_SPEC, KnowledgeType.HISTORY_PRD],
+    searchQueries: ['埋点规范', '指标定义'],
+    validationRules: ['埋点需覆盖主链路', 'KPI与事件需映射'],
   },
   {
-    sectionNumber: 10, // 验收标准
-    sectionTitle: '验收标准',
-    knowledgeTypes: [
-      KnowledgeType.HISTORY_PRD,
-      KnowledgeType.TECH_CONSTRAINTS,
-      KnowledgeType.BUSINESS_RULES,
-    ],
-    searchQueries: [
-      '验收标准参考',
-      '性能指标基线',
-    ],
-    validationRules: [
-      '验收标准需可测试',
-      '非功能指标需明确',
-    ],
+    sectionNumber: 10, // 非功能性需求
+    sectionTitle: '非功能性需求（体验相关）',
+    knowledgeTypes: [KnowledgeType.TECH_CONSTRAINTS, KnowledgeType.DEV_SPEC],
+    searchQueries: ['性能指标基线', '稳定性要求'],
+    validationRules: ['性能要求需量化', '可恢复性需明确'],
+  },
+  {
+    sectionNumber: 11, // 依赖与影响范围
+    sectionTitle: '依赖与影响范围',
+    knowledgeTypes: [KnowledgeType.TECH_CONSTRAINTS, KnowledgeType.HISTORY_PRD],
+    searchQueries: ['外部依赖', '影响评估'],
+    validationRules: ['依赖方需明确', '影响评估需完整'],
+  },
+  {
+    sectionNumber: 12, // 风险与应对
+    sectionTitle: '风险与应对',
+    knowledgeTypes: [KnowledgeType.HISTORY_PRD, KnowledgeType.BUSINESS_RULES],
+    searchQueries: ['风险评估', '应对策略'],
+    validationRules: ['风险需评估概率和影响', '应对策略需可执行'],
+  },
+  {
+    sectionNumber: 13, // 发布、灰度与回滚
+    sectionTitle: '发布、灰度与回滚',
+    knowledgeTypes: [KnowledgeType.DEV_SPEC, KnowledgeType.TECH_CONSTRAINTS],
+    searchQueries: ['发布规范', '灰度策略'],
+    validationRules: ['灰度节奏需明确', '回滚阈值需可执行'],
+  },
+  {
+    sectionNumber: 14, // 验收与 Go / No-Go
+    sectionTitle: '验收与 Go / No-Go',
+    knowledgeTypes: [KnowledgeType.HISTORY_PRD, KnowledgeType.TECH_CONSTRAINTS, KnowledgeType.BUSINESS_RULES],
+    searchQueries: ['验收标准参考', 'Go/No-Go条件'],
+    validationRules: ['验收标准需可测试', 'Go/No-Go条件需可执行'],
+  },
+  {
+    sectionNumber: 15, // 开放问题
+    sectionTitle: '开放问题（唯一允许 TBD 的位置）',
+    knowledgeTypes: [KnowledgeType.HISTORY_PRD],
+    searchQueries: ['待确认问题', '决策记录'],
+    validationRules: ['问题需明确Owner和截止时间', '影响需评估'],
+  },
+  {
+    sectionNumber: 16, // 附录
+    sectionTitle: '附录',
+    knowledgeTypes: [KnowledgeType.HISTORY_MRD, KnowledgeType.HISTORY_PRD],
+    searchQueries: ['MRD链接', '原型设计稿'],
+    validationRules: ['相关链接需有效'],
   },
 ];
 
@@ -395,7 +257,7 @@ export const PRD_SECTION_KNOWLEDGE_MAP: SectionKnowledgeMapping[] = [
  * @returns 章节知识映射配置
  */
 export function getMRDSectionMapping(sectionNumber: number): SectionKnowledgeMapping | undefined {
-  return MRD_SECTION_KNOWLEDGE_MAP.find(m => m.sectionNumber === sectionNumber);
+  return MRD_SECTION_KNOWLEDGE_MAP.find((m) => m.sectionNumber === sectionNumber);
 }
 
 /**
@@ -404,7 +266,7 @@ export function getMRDSectionMapping(sectionNumber: number): SectionKnowledgeMap
  * @returns 章节知识映射配置
  */
 export function getPRDSectionMapping(sectionNumber: number): SectionKnowledgeMapping | undefined {
-  return PRD_SECTION_KNOWLEDGE_MAP.find(m => m.sectionNumber === sectionNumber);
+  return PRD_SECTION_KNOWLEDGE_MAP.find((m) => m.sectionNumber === sectionNumber);
 }
 
 /**
@@ -417,7 +279,7 @@ export function getKnowledgePaths(types: KnowledgeType[]): string[] {
   for (const type of types) {
     const typePaths = KNOWLEDGE_TYPE_PATHS[type];
     if (typePaths) {
-      typePaths.forEach(p => paths.add(p));
+      typePaths.forEach((p) => paths.add(p));
     }
   }
   return Array.from(paths);
@@ -429,23 +291,20 @@ export function getKnowledgePaths(types: KnowledgeType[]): string[] {
  * @param userQuery 用户需求描述
  * @returns 检索查询数组
  */
-export function generateSearchQueries(
-  mapping: SectionKnowledgeMapping,
-  userQuery: string
-): string[] {
+export function generateSearchQueries(mapping: SectionKnowledgeMapping, userQuery: string): string[] {
   const queries: string[] = [];
-  
+
   // 添加模板查询（结合用户需求）
   for (const template of mapping.searchQueries) {
     queries.push(`${template} ${userQuery}`);
   }
-  
+
   // 添加知识类型相关查询
   for (const type of mapping.knowledgeTypes) {
     const label = KNOWLEDGE_TYPE_LABELS[type];
     queries.push(`${label} ${userQuery}`);
   }
-  
+
   return queries;
 }
 
@@ -599,7 +458,7 @@ function formatKnowledgeChunk(chunk: KnowledgeChunk): string {
   const label = KNOWLEDGE_TYPE_LABELS[chunk.type] || chunk.type;
   const source = chunk.sourceTitle ? ` - ${chunk.sourceTitle}` : '';
   const similarity = chunk.similarity ? ` (相关度: ${(chunk.similarity * 100).toFixed(1)}%)` : '';
-  
+
   return `> 📚 [${label}]${source}${similarity}
 ${chunk.content}`;
 }
@@ -611,7 +470,7 @@ function formatKnowledgeChunks(chunks: KnowledgeChunk[], title: string): string 
   if (!chunks || chunks.length === 0) {
     return '';
   }
-  
+
   const formattedChunks = chunks.map(formatKnowledgeChunk).join('\n\n');
   return `### ${title}\n\n${formattedChunks}`;
 }
@@ -623,7 +482,7 @@ function formatKnowledgeChunks(chunks: KnowledgeChunk[], title: string): string 
  */
 export function formatStructuredKnowledge(context: StructuredKnowledgeContext): string {
   const sections: string[] = [];
-  
+
   // 按优先级排列知识类型
   const knowledgeSections = [
     { chunks: context.terminology, title: '术语词典' },
@@ -635,18 +494,18 @@ export function formatStructuredKnowledge(context: StructuredKnowledgeContext): 
     { chunks: context.competitors, title: '竞品分析' },
     { chunks: context.devSpec, title: '开发规范' },
   ];
-  
+
   for (const { chunks, title } of knowledgeSections) {
     const formatted = formatKnowledgeChunks(chunks, title);
     if (formatted) {
       sections.push(formatted);
     }
   }
-  
+
   if (sections.length === 0) {
     return '';
   }
-  
+
   return `## 知识库上下文（由系统自动提供）
 
 ${sections.join('\n\n---\n\n')}`;
@@ -671,11 +530,9 @@ export function isKnowledgeContextEmpty(context: StructuredKnowledgeContext): bo
 /**
  * 合并多个知识上下文
  */
-export function mergeKnowledgeContexts(
-  contexts: StructuredKnowledgeContext[]
-): StructuredKnowledgeContext {
+export function mergeKnowledgeContexts(contexts: StructuredKnowledgeContext[]): StructuredKnowledgeContext {
   const merged = createEmptyKnowledgeContext();
-  
+
   for (const ctx of contexts) {
     merged.terminology.push(...ctx.terminology);
     merged.businessRules.push(...ctx.businessRules);
@@ -686,11 +543,11 @@ export function mergeKnowledgeContexts(
     merged.historyMRD.push(...ctx.historyMRD);
     merged.devSpec.push(...ctx.devSpec);
   }
-  
+
   // 去重（基于内容）
   const dedupeChunks = (chunks: KnowledgeChunk[]): KnowledgeChunk[] => {
     const seen = new Set<string>();
-    return chunks.filter(chunk => {
+    return chunks.filter((chunk) => {
       const key = `${chunk.type}:${chunk.content}`;
       if (seen.has(key)) {
         return false;
@@ -699,7 +556,7 @@ export function mergeKnowledgeContexts(
       return true;
     });
   };
-  
+
   merged.terminology = dedupeChunks(merged.terminology);
   merged.businessRules = dedupeChunks(merged.businessRules);
   merged.existingFeatures = dedupeChunks(merged.existingFeatures);
@@ -708,18 +565,16 @@ export function mergeKnowledgeContexts(
   merged.historyPRD = dedupeChunks(merged.historyPRD);
   merged.historyMRD = dedupeChunks(merged.historyMRD);
   merged.devSpec = dedupeChunks(merged.devSpec);
-  
+
   return merged;
 }
 
 /**
  * 将知识片段分类到结构化上下文
  */
-export function categorizeKnowledgeChunks(
-  chunks: KnowledgeChunk[]
-): StructuredKnowledgeContext {
+export function categorizeKnowledgeChunks(chunks: KnowledgeChunk[]): StructuredKnowledgeContext {
   const context = createEmptyKnowledgeContext();
-  
+
   for (const chunk of chunks) {
     switch (chunk.type) {
       case KnowledgeType.TERMINOLOGY:
@@ -751,7 +606,7 @@ export function categorizeKnowledgeChunks(
         context.businessRules.push(chunk);
     }
   }
-  
+
   return context;
 }
 
@@ -772,8 +627,8 @@ export function getKnowledgeContextStats(context: StructuredKnowledgeContext): {
     historyMRD: context.historyMRD.length,
     devSpec: context.devSpec.length,
   };
-  
+
   const totalChunks = Object.values(chunksByType).reduce((sum, count) => sum + count, 0);
-  
+
   return { totalChunks, chunksByType };
 }

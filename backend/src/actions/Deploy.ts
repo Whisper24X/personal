@@ -45,8 +45,9 @@ export class Deploy extends BaseAction {
         workDir,
       });
       
-      // 调试模式检查（共用 WRITE_CODE_DEBUG）
-      const isDebugMode = process.env.WRITE_CODE_DEBUG === 'true';
+
+      // 调试模式检查
+      const isDebugMode = process.env.DEPLOY_DEBUG === 'true';
       if (isDebugMode) {
         logger.info('Deploy: Debug mode enabled, executing debug command', {
           workDir,

@@ -172,6 +172,15 @@ export const CLI_IO_CONFIGS: Record<string, DocumentIOConfig> = {
     outputDirRelative: 'test',
     outputFileName: 'TEST_CASE_REVIEW.md',
   },
+
+  // Prototype 相关
+  write_prototype: {
+    documentType: 'PROTOTYPE',
+    inputDirRelative: 'prd',
+    inputFileNames: ['PRD.md'],
+    outputDirRelative: 'prototype',
+    outputFileName: 'index.html',
+  },
 };
 
 /**

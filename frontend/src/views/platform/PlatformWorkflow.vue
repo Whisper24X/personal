@@ -547,7 +547,7 @@ async function handleUserAction(action: string, modifiedContent?: string) {
     const step = {
       ...currentStep.value,
       userAction: action,
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: new Date().toISOString(),
       content: modifiedContent || currentStep.value.content,
       outputFiles: currentStep.value.outputFiles || [],
       zipPath: currentStep.value.instructContent?.zipPath,

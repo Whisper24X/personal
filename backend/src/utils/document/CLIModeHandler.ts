@@ -114,9 +114,21 @@ export class CLIModeHandler {
     let actualContent: string | null = null;
 
     if (type === 'document') {
+      logger.info('CLIModeHandler: Attempting to read document from workspace', {
+        documentType: this.config.documentType,
+        workspaceDir,
+        mainFileName: this.config.mainFileName,
+      });
+      
       actualContent = await tryReadActualDocumentFromWorkspace(workspaceDir, {
         mainFileName: this.config.mainFileName,
         filePattern: this.config.documentType.toLowerCase(),
+      });
+      
+      logger.info('CLIModeHandler: Document read result', {
+        documentType: this.config.documentType,
+        found: !!actualContent,
+        contentLength: actualContent?.length || 0,
       });
     } else if (type === 'review') {
       actualContent = await tryReadActualReviewFromWorkspace(workspaceDir, {
