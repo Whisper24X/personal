@@ -353,6 +353,11 @@ class APIClient {
     return this.client.post(`/projects/${projectId}/prds/${prdId}/prototype/generate`);
   }
 
+  // Version-based prototype preview (no database query)
+  getPrototypePreviewUrl(projectId: string, versionId: string): string {
+    return `/api/projects/${projectId}/versions/${versionId}/prototype/preview`;
+  }
+
   // MRD API 端点
   async generateMRD(projectId: string, data: {
     requirements: string;

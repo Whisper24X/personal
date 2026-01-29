@@ -257,66 +257,165 @@ export class PRDController {
   /**
    * List all PRDs for a project
    * GET /api/projects/:id/prds
+   * 不查询数据库，直接扫描workspace目录，返回版本列表和预览URL
    */
   static async listPRDs(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const includeDeleted = req.query.includeDeleted === 'true';
 
-      // Verify project exists
+      // 获取项目信息（仅用于获取applicationId，不查询PRD记录）
       const project = await projectRepo.findById(id);
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
 
-      const prds = await documentRepo.findPRDsByProject(id, includeDeleted);
+      const applicationId = project.application_id || project.id;
+      const projectId = project.id;
 
-      // 为每个 PRD 尝试从 workspace 读取 PRD.md 文件
+      // 扫描workspace版本目录
+      const versionIds = await WorkspaceManager.listVersionDirs({
+        applicationId,
+        projectId,
+      });
+
+      // 对每个版本，检查prototype文件并返回预览URL
       const prdList = await Promise.all(
-        prds.map(async (prd) => {
-          let content = prd.content;
-
-          // 优先从 workspace 读取 PRD.md 文件
+        versionIds.map(async (versionId) => {
           try {
-            const metadata = prd.metadata as any;
-            const applicationId = metadata?.applicationId || project.application_id || project.id;
-            const projectId = project.id;
-
-            const workspaceContent = await WorkspaceManager.readFile('PRD.md', {
+            // 构建prototype目录路径
+            const prototypeDir = path.join(
+              WorkspaceManager.getWorkspaceRoot(),
               applicationId,
               projectId,
-              documentType: 'PRD',
-            });
+              'versions',
+              versionId,
+              'ainative-workspace',
+              'docs',
+              'prototype'
+            );
 
-            if (workspaceContent) {
-              content = workspaceContent;
+            // 检查prototype目录是否存在
+            try {
+              await fs.access(prototypeDir);
+              const files = await fs.readdir(prototypeDir);
+              const htmlFiles = files.filter(f => f.endsWith('.html'));
+
+              if (htmlFiles.length === 0) {
+                return null;
+              }
+
+              // 返回版本信息和预览URL
+              return {
+                versionId,
+                hasPrototype: true,
+                previewUrl: `/api/projects/${projectId}/versions/${versionId}/prototype/preview`,
+              };
+            } catch {
+              // 目录不存在，跳过该版本
+              return null;
             }
           } catch (error: any) {
-            // 如果读取失败，使用数据库中的内容
-            logger.debug(`PRDController: Failed to read PRD.md from workspace for PRD ${prd.id}, using database content`);
+            logger.warn(`PRDController: Failed to check prototype for version ${versionId}`, {
+              error: error.message,
+            });
+            return null;
           }
-
-          return {
-            id: prd.id,
-            version: prd.version || 1,
-            filename: prd.filename,
-            content: content,
-            isDeleted: prd.is_deleted || false,
-            deletedAt: prd.deleted_at,
-            parentId: prd.parent_id,
-            createdAt: prd.created_at,
-          };
         })
       );
 
+      // 过滤掉null值（没有prototype的版本）
+      const validPrds = prdList.filter(prd => prd !== null);
+
       return res.json({
         success: true,
-        prds: prdList,
+        prds: validPrds,
       });
     } catch (error: any) {
       logger.error('PRDController: Failed to list PRDs:', error);
       return res.status(500).json({
         error: 'Failed to list PRDs',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Preview prototype HTML by version ID (returns runnable preview page for iframe)
+   * GET /api/projects/:id/versions/:versionId/prototype/preview
+   * 不查询数据库，直接通过版本ID返回可在iframe中预览的HTML页面
+   */
+  static async previewPrototypeByVersion(req: Request, res: Response) {
+    try {
+      const { id, versionId } = req.params;
+
+      // 获取项目信息（仅用于获取applicationId）
+      const project = await projectRepo.findById(id);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      const applicationId = project.application_id || project.id;
+      const projectId = project.id;
+
+      // 构建prototype文件路径
+      const prototypeDir = path.join(
+        WorkspaceManager.getWorkspaceRoot(),
+        applicationId,
+        projectId,
+        'versions',
+        versionId,
+        'ainative-workspace',
+        'docs',
+        'prototype'
+      );
+
+      // 检查prototype目录是否存在
+      try {
+        await fs.access(prototypeDir);
+      } catch {
+        return res.status(404).json({ 
+          error: 'Prototype not found',
+          message: `Prototype directory does not exist for version ${versionId}`,
+        });
+      }
+
+      // 查找index.html文件（优先）或其他HTML文件
+      const files = await fs.readdir(prototypeDir);
+      const htmlFiles = files.filter(f => f.endsWith('.html'));
+      
+      if (htmlFiles.length === 0) {
+        return res.status(404).json({ 
+          error: 'Prototype file not found',
+          message: 'No HTML files found in prototype directory',
+        });
+      }
+
+      // 优先使用index.html，否则使用第一个HTML文件
+      const mainFile = htmlFiles.includes('index.html') 
+        ? 'index.html' 
+        : htmlFiles[0];
+      
+      const filePath = path.join(prototypeDir, mainFile);
+
+      try {
+        const content = await fs.readFile(filePath, 'utf-8');
+        
+        // 设置Content-Type为text/html，让浏览器直接渲染
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        // 允许在iframe中嵌入（移除X-Frame-Options限制，使用CSP允许所有来源）
+        res.removeHeader('X-Frame-Options');
+        res.setHeader('Content-Security-Policy', "frame-ancestors *");
+        return res.send(content);
+      } catch (error: any) {
+        if ((error as any).code === 'ENOENT') {
+          return res.status(404).json({ error: 'Prototype file not found' });
+        }
+        throw error;
+      }
+    } catch (error: any) {
+      logger.error('PRDController: Failed to preview prototype by version:', error);
+      return res.status(500).json({
+        error: 'Failed to preview prototype',
         message: error.message,
       });
     }

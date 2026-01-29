@@ -137,13 +137,14 @@
                         
                         <!-- 右侧：原型预览 -->
                         <el-col :span="12">
-                            <PrototypePreview
-                                v-if="projectId && (prdId || currentPrdId)"
-                                :project-id="projectId"
-                                :prd-id="prdId || currentPrdId"
+                            <VersionPrototypePreview
+                                v-if="projectId && prototypePreviewUrl"
+                                :preview-url="prototypePreviewUrl"
                                 :auto-load="true"
-                                @prototype-generated="handlePrototypeGenerated"
                             />
+                            <div v-else-if="projectId" class="empty-prototype">
+                                <el-empty description="正在加载原型预览..." />
+                            </div>
                         </el-col>
                     </el-row>
                 </div>
@@ -329,6 +330,7 @@ import {
 } from '@element-plus/icons-vue';
 import SectionAdjuster from '../../../components/SectionAdjuster.vue';
 import PrototypePreview from './PrototypePreview.vue';
+import VersionPrototypePreview from './VersionPrototypePreview.vue';
 import apiClient from '../../../api/client';
 import { useRoleActionStore } from '../../../stores/roleAction';
 
@@ -379,6 +381,7 @@ const selectedFileIndex = ref<number>(-1);
 const prdContent = ref<string>('');
 const prdLoading = ref(false);
 const currentPrdId = ref<string>('');
+const prototypePreviewUrl = ref<string>('');
 
 const roleActionStore = useRoleActionStore();
 
@@ -589,45 +592,57 @@ function handlePrototypeGenerated() {
 async function loadPRDContent() {
     if (!props.projectId) return;
     
-    // 如果没有prdId，尝试获取最新的PRD
-    let targetPrdId = props.prdId;
-    if (!targetPrdId) {
-        try {
-            const prdsResponse: any = await apiClient.getPRDs(props.projectId, false);
-            if (prdsResponse.prds && prdsResponse.prds.length > 0) {
-                targetPrdId = prdsResponse.prds[0].id;
-            }
-        } catch (error: any) {
-            console.error('Failed to get latest PRD:', error);
-            return;
-        }
-    }
-    
-    if (!targetPrdId) {
-        console.warn('No PRD ID available');
-        return;
-    }
-    
-    // Avoid reloading if already loaded
-    if (currentPrdId.value === targetPrdId && prdContent.value) {
-        return;
-    }
-    
-    currentPrdId.value = targetPrdId;
     prdLoading.value = true;
     
     try {
-        const response: any = await apiClient.getPRD(props.projectId, targetPrdId);
-        prdContent.value = response.content || response.prd?.content || '';
+        // 获取版本列表（现在getPRDs返回的是版本列表）
+        const prdsResponse: any = await apiClient.getPRDs(props.projectId, false);
         
-        // If editing PRD content, sync editedContent
-        if (isEditing.value && isPrototypeAction.value) {
-            editedContent.value = prdContent.value;
+        if (prdsResponse.prds && prdsResponse.prds.length > 0) {
+            // 获取第一个有prototype的版本的预览URL
+            const firstVersionWithPrototype = prdsResponse.prds.find((p: any) => p.hasPrototype && p.previewUrl);
+            if (firstVersionWithPrototype) {
+                prototypePreviewUrl.value = firstVersionWithPrototype.previewUrl;
+            } else {
+                prototypePreviewUrl.value = '';
+            }
+        } else {
+            prototypePreviewUrl.value = '';
+        }
+        
+        // 如果没有prdId，尝试获取最新的PRD（兼容旧逻辑）
+        let targetPrdId = props.prdId;
+        if (!targetPrdId && prdsResponse.prds && prdsResponse.prds.length > 0) {
+            // 旧API格式：prds[0].id，新API格式：prds[0].versionId
+            targetPrdId = prdsResponse.prds[0].id || prdsResponse.prds[0].versionId;
+        }
+        
+        if (targetPrdId) {
+            // Avoid reloading if already loaded
+            if (currentPrdId.value === targetPrdId && prdContent.value) {
+                return;
+            }
+            
+            currentPrdId.value = targetPrdId;
+            
+            try {
+                const response: any = await apiClient.getPRD(props.projectId, targetPrdId);
+                prdContent.value = response.content || response.prd?.content || '';
+                
+                // If editing PRD content, sync editedContent
+                if (isEditing.value && isPrototypeAction.value) {
+                    editedContent.value = prdContent.value;
+                }
+            } catch (error: any) {
+                console.warn('Failed to load PRD content (may be using version-based API):', error);
+                // 如果获取PRD内容失败，可能是新API格式，不显示错误
+            }
         }
     } catch (error: any) {
-        console.error('Failed to load PRD:', error);
-        ElMessage.warning('加载PRD内容失败');
+        console.error('Failed to load PRD list:', error);
+        ElMessage.warning('加载PRD列表失败');
         prdContent.value = '';
+        prototypePreviewUrl.value = '';
     } finally {
         prdLoading.value = false;
     }

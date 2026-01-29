@@ -74,6 +74,8 @@ router.get('/:id/prds/:prdId/prototype', PRDController.getPrototype);
 router.get('/:id/prds/:prdId/prototype/preview', PRDController.previewPrototype);
 router.get('/:id/prds/:prdId/prototype/:filename', PRDController.getPrototypeFile);
 router.post('/:id/prds/:prdId/prototype/generate', PRDController.generatePrototype);
+// Version-based prototype preview (no database query)
+router.get('/:id/versions/:versionId/prototype/preview', PRDController.previewPrototypeByVersion);
 
 // MRD management routes
 router.post('/:id/mrd', MRDController.generateMRD);
