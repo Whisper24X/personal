@@ -84,7 +84,7 @@ async function seedData() {
 
     // Step 5: Create or update default workflow
     console.log('\n📦 Step 5: Creating or updating default workflow...');
-    const workflowResult = await pool.query(
+    await pool.query(
       `INSERT INTO application_workflows (id, application_id, name, description, is_default, workflow_config)
        VALUES ('00000000-0000-0000-0000-000000000003', $1, '默认工作流', '系统默认工作流配置', true, $2)
        ON CONFLICT (id) DO UPDATE SET

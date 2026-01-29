@@ -6,7 +6,6 @@
  */
 
 import { ICLIModelFallbackStrategy, CLIProviderConfig, CLIExecutionResult } from '../types';
-import { logger } from '../../utils/logger';
 
 /**
  * 默认CLI模型降级策略

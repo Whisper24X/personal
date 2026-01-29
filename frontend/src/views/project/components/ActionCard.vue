@@ -90,7 +90,7 @@
       <el-icon>
         <Timer />
       </el-icon>
-      <span>{{ action.timestamp }}</span>
+      <span>{{ formatTimestamp(action.timestamp) }}</span>
     </div>
   </div>
 </template>
@@ -98,6 +98,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { Loading, Document, FolderOpened, DocumentCopy, Download, Timer } from '@element-plus/icons-vue';
+import { formatToChinaTime } from '../../../utils/dateUtils';
 
 export interface WorkflowAction {
   name: string;
@@ -173,6 +174,10 @@ function getUserActionText(action: string): string {
     skip: '→ 已跳过',
   };
   return textMap[action] || action;
+}
+
+function formatTimestamp(timestamp: string | undefined): string {
+  return formatToChinaTime(timestamp);
 }
 </script>
 
