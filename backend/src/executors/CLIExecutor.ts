@@ -5,7 +5,7 @@
  * 使用命令行工具（如 Cursor CLI, Aider）执行任务
  */
 
-import { IExecutor, ExecutorMode, ExecutorOptions, CLIProviderType, CLIProviderConfig, ICLIModelFallbackStrategy, CLIExecutionResult } from './types';
+import { IExecutor, ExecutorMode, ExecutorOptions, CLIProviderType, CLIProviderConfig, ICLIModelFallbackStrategy } from './types';
 import { CLIProviderFactory } from './cli/CLIProviderFactory';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';

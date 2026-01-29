@@ -329,7 +329,6 @@ import {
     UserFilled, SetUp, Cpu, Download,
 } from '@element-plus/icons-vue';
 import SectionAdjuster from '../../../components/SectionAdjuster.vue';
-import PrototypePreview from './PrototypePreview.vue';
 import VersionPrototypePreview from './VersionPrototypePreview.vue';
 import apiClient from '../../../api/client';
 import { useRoleActionStore } from '../../../stores/roleAction';
@@ -441,7 +440,7 @@ watch(() => props.roleInfo.action, (action) => {
 }, { immediate: true });
 
 // Watch for GeneratePrototype action and load PRD content
-watch(() => [props.prdId, isPrototypeAction, props.roleInfo.content], ([newPrdId, isPrototype, content]) => {
+watch(() => [props.prdId, isPrototypeAction, props.roleInfo.content], ([, isPrototype, content]) => {
     if (isPrototype) {
         // 优先使用 props.roleInfo.content（即 pendingConfirmation.content）
         if (content && typeof content === 'string' && content.trim().length > 0) {
@@ -591,10 +590,6 @@ function saveEdit() {
 
 function handleAction(action: string) {
     emit('action', action);
-}
-
-function handlePrototypeGenerated() {
-    ElMessage.success('原型已生成');
 }
 
 // Load PRD content for GeneratePrototype action
