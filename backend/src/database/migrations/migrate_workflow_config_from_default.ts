@@ -265,11 +265,7 @@ function mapSteps(
   const newSteps: StepStatus[] = [];
 
   // Build index maps
-  const oldIndexMaps = buildIndexMaps(oldConfig);
   const newIndexMaps = buildIndexMaps(newConfig);
-
-  // Create mapping: old role+action -> new role+action
-  const actionMapping = new Map<string, { role: string; action: string }>();
 
   // Build role and action mappings
   const oldRoleMap = new Map<string, WorkflowRole>();
@@ -280,7 +276,6 @@ function mapSteps(
 
   // Process each old step
   for (const oldStep of oldSteps) {
-    const oldRole = oldRoleMap.get(oldStep.role);
     const newRole = newRoleMap.get(oldStep.role);
 
     // If role was removed, skip the step
@@ -370,7 +365,6 @@ function updateCurrentPosition(
     return null;
   }
 
-  const oldIndexMaps = buildIndexMaps(oldConfig);
   const newIndexMaps = buildIndexMaps(newConfig);
 
   // Find the step that currentPosition points to in old config

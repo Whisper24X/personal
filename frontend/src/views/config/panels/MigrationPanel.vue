@@ -189,7 +189,7 @@ async function handleMigrate() {
     error.value = null;
     result.value = null;
 
-    const response = await apiClient.migrateWorkflowConfig();
+    const response = (await apiClient.migrateWorkflowConfig()) as any;
 
     if (response.success) {
       result.value = response;
