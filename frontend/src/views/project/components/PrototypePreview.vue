@@ -39,7 +39,6 @@
       </div>
       <iframe
         v-else
-        ref="previewIframe"
         :srcdoc="prototypeContent"
         class="preview-iframe"
         frameborder="0"
@@ -66,7 +65,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { View, Refresh, FullScreen, Close } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import apiClient from '@/api/client';
@@ -91,11 +90,6 @@ const files = ref<Array<{ filename: string; content: string; size: number }>>([]
 const selectedFile = ref<string>('');
 const prototypeContent = ref<string>('');
 const isFullscreen = ref(false);
-const previewIframe = ref<HTMLIFrameElement | null>(null);
-
-const mainFile = computed(() => {
-  return files.value.find(f => f.filename === 'index.html') || files.value[0];
-});
 
 onMounted(() => {
   if (props.autoLoad) {
@@ -114,7 +108,14 @@ async function loadPrototype() {
   error.value = null;
 
   try {
-    const response = await apiClient.getPrototype(props.projectId, props.prdId);
+    const response = await apiClient.getPrototype(props.projectId, props.prdId) as unknown as {
+      success: boolean;
+      prototype?: {
+        exists: boolean;
+        files?: Array<{ filename: string; content: string; size: number }>;
+        mainFile?: string;
+      };
+    };
     
     if (response.success && response.prototype?.exists) {
       files.value = response.prototype.files || [];
@@ -129,8 +130,9 @@ async function loadPrototype() {
       prototypeContent.value = '';
     }
   } catch (err: any) {
-    error.value = err.message || '加载原型失败';
-    ElMessage.error(error.value);
+    const errorMessage = err.message || '加载原型失败';
+    error.value = errorMessage;
+    ElMessage.error(errorMessage);
   } finally {
     loading.value = false;
   }
@@ -143,12 +145,13 @@ async function loadFileContent(filename: string) {
       prototypeContent.value = file.content;
     } else {
       // Fallback: fetch from API
-      const content = await apiClient.getPrototypeFile(props.projectId, props.prdId, filename);
+      const content = await apiClient.getPrototypeFile(props.projectId, props.prdId, filename) as unknown as string;
       prototypeContent.value = content;
     }
   } catch (err: any) {
-    error.value = `加载文件 ${filename} 失败: ${err.message}`;
-    ElMessage.error(error.value);
+    const errorMessage = `加载文件 ${filename} 失败: ${err.message}`;
+    error.value = errorMessage;
+    ElMessage.error(errorMessage);
   }
 }
 
@@ -169,7 +172,11 @@ async function generatePrototype() {
   error.value = null;
 
   try {
-    const response = await apiClient.generatePrototype(props.projectId, props.prdId);
+    const response = await apiClient.generatePrototype(props.projectId, props.prdId) as unknown as {
+      success: boolean;
+      error?: string;
+      message?: string;
+    };
     
     if (response.success) {
       ElMessage.success('原型生成成功');
@@ -180,8 +187,9 @@ async function generatePrototype() {
       throw new Error(response.error || '生成原型失败');
     }
   } catch (err: any) {
-    error.value = err.message || '生成原型失败';
-    ElMessage.error(error.value);
+    const errorMessage = err.message || '生成原型失败';
+    error.value = errorMessage;
+    ElMessage.error(errorMessage);
   } finally {
     loading.value = false;
   }

@@ -13,7 +13,7 @@
             <el-tag type="success" size="small">已完成</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="时间" v-if="timestamp">
-            {{ timestamp }}
+            {{ formatTimestamp(timestamp) }}
           </el-descriptions-item>
         </el-descriptions>
       </div>
@@ -30,6 +30,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { formatToChinaTime } from '../../../utils/dateUtils';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -58,6 +59,10 @@ const title = computed(() => {
   }
   return '查看内容';
 });
+
+function formatTimestamp(timestamp: string | undefined): string {
+  return formatToChinaTime(timestamp);
+}
 </script>
 
 <style scoped>

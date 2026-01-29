@@ -86,7 +86,7 @@ export class CLIConfigUtil {
     }
     
     if (process.env[`${prefix}_API_KEY_INDEX`]) {
-      config.apiKeyIndex = parseInt(process.env[`${prefix}_API_KEY_INDEX`], 10);
+      config.apiKeyIndex = parseInt(process.env[`${prefix}_API_KEY_INDEX`]!, 10);
     }
     
     return config;
