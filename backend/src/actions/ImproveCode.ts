@@ -74,7 +74,7 @@ export class ImproveCode extends BaseAction {
         });
         
         return {
-          content: `# ImproveCode Debug Mode\n\n## Debug Prompt\n\`\`\`\n${debugPrompt}\n\`\`\`\n\n## Output:\n\`\`\`\n${debugResult.output}\n\`\`\``,
+          content: `# ImproveCode 调试模式\n\n## 调试提示词\n\`\`\`\n${debugPrompt}\n\`\`\`\n\n## 输出结果:\n\`\`\`\n${debugResult.output}\n\`\`\``,
           data: {
             type: 'debug',
             workspaceDir: workDir,
@@ -91,7 +91,7 @@ export class ImproveCode extends BaseAction {
           improveFilePath,
         });
         return {
-          content: `# ImproveCode - Skipped\n\nNo improvement file found at \`docs/code/ImproveCode.md\`.\n\nThis is normal for the first execution. The action will only run when QA testing discovers issues.\n\n## How it works:\n\n1. QA testing identifies bugs or improvement opportunities\n2. System generates \`docs/code/ImproveCode.md\` with issue details\n3. ImproveCode action reads the file and performs improvements\n4. After successful improvements, the file is deleted\n5. Process repeats if new issues are found\n\nCurrent status: ✅ No improvements needed`,
+          content: `# 代码改进 - 已跳过\n\n未找到改进文件 \`docs/code/ImproveCode.md\`。\n\n这是正常现象，首次执行时不会运行。只有在 QA 测试发现问题后才会执行。\n\n## 工作流程：\n\n1. QA 测试识别 Bug 或改进机会\n2. 系统生成 \`docs/code/ImproveCode.md\` 文件，包含问题详情\n3. ImproveCode 读取文件并执行代码改进\n4. 改进成功后删除该文件\n5. 如果发现新问题，重复上述流程\n\n当前状态: ✅ 无需改进`,
           data: {
             type: 'skipped',
             reason: 'no_improvement_file',
@@ -179,7 +179,7 @@ export class ImproveCode extends BaseAction {
       });
       
       return {
-        content: `# Code Improvement ${isCompleted ? 'Completed' : 'Incomplete'}\n\n## Status: ${isCompleted ? '✅ All improvements completed successfully' : '❌ Max retries reached, some issues may remain'}\n\n## Total Iterations: ${retryCount}\n\n## Cursor CLI Output:\n\n${stdout}`,
+        content: `# 代码改进${isCompleted ? '已完成' : '未完成'}\n\n## 状态: ${isCompleted ? '✅ 所有改进已成功完成' : '❌ 已达最大重试次数，可能仍有未解决的问题'}\n\n## 执行次数: ${retryCount}\n\n## Cursor CLI 输出:\n\n${stdout}`,
         data: {
           type: 'improve_code',
           workspaceDir: workDir,
