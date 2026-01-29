@@ -74,14 +74,23 @@
 - WriteDesign（编写设计）
 - DesignReview（设计文档审查）
 - BreakdownTasks（任务拆分）
-- WriteSubProjectDesign（子项目设计）
-- SubProjectDesignReview（子项目设计审查）
-- GenerateTask（生成任务说明）
+- FillProjectContext（填充项目上下文）
+- CreateOpenSpecProposal（创建变更提案）
+- ValidateOpenSpecProposal（验证变更提案）
+- EstimateStoryPoints（故事点评估）
+- ValidateStoryPointEstimates（验证故事点评估）
+- GeneratePrototype（生成原型）
 - WriteCode（编写代码）
 - ExecuteSubtask（执行子任务）
-- CodeReview（代码审查）
+- Deploy（部署）
 - WriteTest（编写测试）
-- SearchEnhancedQA（增强搜索问答）
+- WriteTestPlan（编写测试计划）
+- TestReview（测试审查）
+- ImproveTest（改进测试）
+- AutomationPlanning（自动化规划）
+- AutomationExecution（自动化执行）
+- CoverageQualityCheck（覆盖率检查）
+- QAConclusion（QA结论）
 - DataAnalysis（数据分析）
 - Coordinate（协调任务）
 - 自定义 Action 开发指南
@@ -377,9 +386,9 @@
   - 更新架构文档（04）、核心类设计文档（05）、数据流文档（09）、工作流文档（10）
 - 2026-01-07: 根据PRD、架构文档、技术规格文档更新所有相关文档，添加知识库系统（RAG检索、代码仓库关联）、多角色串联工作流（输入输出映射）、角色独立调试能力等新功能说明
 - 2026-01-06: 根据实际代码实现全面更新文档导航、项目需求文档、产品需求文档和技术规格文档，修正技术栈（Node.js + TypeScript + Vue 3），更新角色和Actions列表，添加交互模式和Web UI说明，更新LLM提供商状态
-- 2025-12-25: 根据代码实现更新角色系统设计文档，详细说明每个角色的监听机制、Actions 和工作流程，移除不存在的 CodeReview action，添加各角色的实际监听目标和约束条件
-- 2025-12-25: 根据代码实现全面更新文档，修正技术栈描述（Node.js + TypeScript，而非 Python），更新 Actions 列表（WriteMRD, MRDReview, DesignReview, SubProjectDesignReview, ExecuteSubtask），添加 WebSocket API 文档，更新 LLM 提供商状态（OpenAI, ZhipuAI, Ark, Cursor）
-- 2025-12-25: 根据代码实现更新文档，添加 ProjectManager 角色和新增 Actions（BreakdownTasks, WriteSubProjectDesign, CodeReview）的完整描述
+- 2026-01-29: 移除7个未使用的Action（SubProjectDesignReview, CodeReview, WriteSubProjectDesign, TestabilityReview, RunCode, FixBug, SearchEnhancedQA），移除CLI工具，更新所有相关文档
+- 2025-12-25: 根据代码实现更新角色系统设计文档，详细说明每个角色的监听机制、Actions 和工作流程，添加各角色的实际监听目标和约束条件
+- 2025-12-25: 根据代码实现全面更新文档，修正技术栈描述（Node.js + TypeScript，而非 Python），更新 Actions 列表，添加 WebSocket API 文档，更新 LLM 提供商状态（OpenAI, ZhipuAI, Ark, Cursor）
 - 2025-12-25: 新增项目介绍与使用指南(25)、设计方案文档(24)
 - 2025-12-24: 初始版本创建，完整文档结构建立
 

@@ -367,8 +367,8 @@ graph TB
 - `backend/src/utils/InteractiveHandler.ts` - 交互处理器
 - `backend/src/orchestration/Environment.ts` - 环境管理（包含交互逻辑）
 - `backend/src/orchestration/Team.ts` - 团队协调（交互模式配置）
-- `backend/src/cli/commands/generate.ts` - CLI 命令
-- `backend/src/cli/index.ts` - CLI 参数定义
+
+**注意**: CLI工具已移除，交互模式通过API接口使用。
 
 ## 未来规划
 

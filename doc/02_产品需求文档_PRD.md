@@ -121,7 +121,7 @@ Role类采用模块化设计，将职责分离到不同的组件中，提供清�
        - `MRDReview/PRDReview`: 从news或memory中查找对应的文档内容
        - `ImprovePRD/ImproveMRD`: 从news或memory中查找审查报告
        - `BreakdownTasks`: 从memory中获取WritePRD和WriteDesign的消息
-       - `GenerateTask`: 从memory中获取BreakdownTasks和WriteSubProjectDesign的消息
+       - `GenerateTask`: 从memory中获取BreakdownTasks的消息
      - 序列继续处理（BY_ORDER模式）：action执行完成后，如果还有更多actions，清除todo但保留news供下一个action使用
      - 状态管理：action执行前设置为RUNNING，成功完成设置为COMPLETED，失败设置为FAILED（不清理news，允许重试）
 
@@ -211,11 +211,11 @@ graph TB
 | 角色 | 默认名称 | 核心职责 | 监听机制 | 主要 Actions | 输入 | 输出 |
 |------|---------|---------|---------|-------------|------|------|
 | Salesperson | Salesperson | 需求收集、市场调研、业务分析 | 监听 User 消息 | WriteMRD, MRDReview, ImproveMRD | 用户原始需求 | 市场研究文档（MRD） |
-| ProductManager | ProductManager | PRD编写、需求分析 | 监听 WriteMRD action | WritePRD, PRDReview, ImprovePRD, SearchEnhancedQA | 市场研究文档（MRD） | PRD文档 |
+| ProductManager | ProductManager | PRD编写、需求分析 | 监听 WriteMRD action | WritePRD, PRDReview, ImprovePRD, GeneratePrototype | 市场研究文档（MRD） | PRD文档 |
 | Architect | Architect | 系统设计、架构规划 | 监听 WritePRD action | WriteDesign, DesignReview, ImproveDesign | PRD文档 | 设计文档 |
-| ProjectManager | ProjectManager | 任务拆分、子项目设计 | 监听 WritePRD 和 WriteDesign actions | BreakdownTasks, WriteSubProjectDesign, SubProjectDesignReview | PRD和设计文档 | 任务拆分文档、子项目设计 |
-| Engineer | Engineer | 代码实现、执行和修复 | 监听 WritePRD, WriteDesign, BreakdownTasks actions | WriteCode, ExecuteSubtask, RunCode, FixBug | 设计文档、任务拆分 | TypeScript/JavaScript源代码 |
-| QA Engineer | QAEngineer | 测试设计工作流（3步） | 监听 WritePRD 和 ImprovePRD actions | WriteTestPlan, WriteTest, TestCaseReview | PRD文档 | 测试计划、测试用例 |
+| ProjectManager | ProjectManager | 任务拆分和OpenSpec工作流 | 监听 WritePRD 和 WriteDesign actions | FillProjectContext, CreateOpenSpecProposal, ValidateOpenSpecProposal, EstimateStoryPoints, ValidateStoryPointEstimates | PRD和设计文档 | 任务拆分文档 |
+| Engineer | Engineer | 代码实现和部署 | 监听 WritePRD, WriteDesign, ValidateStoryPointEstimates actions | WriteCode, Deploy | 设计文档、任务拆分 | TypeScript/JavaScript源代码 |
+| QA Engineer | QAEngineer | 测试设计工作流（4步） | 监听 WritePRD 和 ImprovePRD actions | WriteTestPlan, WriteTest, TestReview, ImproveTest | PRD文档 | 测试计划、测试用例 |
 | Automation Engineer | AutomationEngineer | 自动化测试工作流（4步） | 监听 TestCaseReview action | AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion | 测试用例 | 自动化测试报告、覆盖率报告、QA结论报告 |
 | Team Leader | TeamLeader | 协调、决策 | 监听所有广播消息 | Coordinate | 所有消息历史 | 协调结果和任务分配 |
 
@@ -355,7 +355,7 @@ mode: debug
 options:
   breakpoints:
     - WritePRD
-    - SearchEnhancedQA
+    # SearchEnhancedQA已移除
   verbose: true
   logLevel: debug
   saveLogs: true
@@ -1059,11 +1059,11 @@ graph LR
 
 **1. 支持Workspace Options的Actions**
 以下actions支持workspace options参数（applicationId, projectId, version等）：
-- `WriteMRD`, `WritePRD`, `WriteDesign`, `WriteSubProjectDesign`
+- `WriteMRD`, `WritePRD`, `WriteDesign`
 - `BreakdownTasks`, `WriteCode`, `WriteTest`, `WriteTestPlan`, `ExecuteSubtask`
 - `ImprovePRD`, `ImproveMRD`, `ImproveDesign`, `ImproveTest`
-- `MRDReview`, `PRDReview`, `DesignReview`, `SubProjectDesignReview`
-- `TestabilityReview`, `TestCaseReview`, `AutomationPlanning`, `AutomationExecution`
+- `MRDReview`, `PRDReview`, `DesignReview`
+- `TestCaseReview`, `TestReview`, `AutomationPlanning`, `AutomationExecution`
 - `CoverageQualityCheck`, `QAConclusion`
 
 这些actions在执行时会自动从消息中提取workspace选项，如果找不到则从context中获取。
@@ -1074,7 +1074,7 @@ RoleActionExecutor为某些actions提供特殊的输入准备逻辑：
 - **MRDReview/PRDReview**: 从news或memory中查找对应的文档内容
 - **ImprovePRD/ImproveMRD/ImproveDesign**: 从news或memory中查找审查报告
 - **BreakdownTasks**: 从memory中获取WritePRD和WriteDesign的消息
-- **WriteTestPlan/TestabilityReview**: 自动从memory中获取PRD和代码
+- **WriteTestPlan**: 自动从memory中获取PRD和代码
 
 **3. 序列继续处理（BY_ORDER模式）**
 在BY_ORDER模式下，当action执行完成后：
@@ -1109,25 +1109,24 @@ RoleActionExecutor为某些actions提供特殊的输入准备逻辑：
 | Action | 功能 | 输入 | 输出 | 使用角色 | 状态 |
 |--------|------|------|------|---------|------|
 | BreakdownTasks | 任务拆分 | PRD和设计文档 | 任务拆分文档 | ProjectManager | ✅ 已实现 |
-| WriteSubProjectDesign | 子项目设计 | 任务拆分和设计文档 | 子项目设计文档 | ProjectManager | ✅ 已实现 |
-| SubProjectDesignReview | 子项目设计审查 | 子项目设计文档 | 审查报告 | ProjectManager | ✅ 已实现 |
-
 **代码实现 Actions**:
 | Action | 功能 | 输入 | 输出 | 使用角色 | 状态 |
 |--------|------|------|------|---------|------|
 | WriteCode | 编写代码 | 设计文档 | TypeScript/JavaScript代码 | Engineer | ✅ 已实现 |
-| ExecuteSubtask | 执行子任务 | 任务描述、设计文档 | 代码实现结果 | Engineer | ✅ 已实现 |
-| CodeReview | 代码审查 | 代码、任务描述 | 审查报告 | ProjectManager | ✅ 已实现 |
-| RunCode | 代码执行 | 代码 | 执行结果 | Engineer | ✅ 已实现 |
-| FixBug | Bug修复 | Bug描述、错误报告 | 修复后代码 | Engineer | ✅ 已实现 |
+| ExecuteSubtask | 执行子任务 | 任务描述、设计文档 | 代码实现结果 | Engineer | ✅ 已实现（测试用） |
+| Deploy | 部署应用 | 代码 | 部署结果 | Engineer | ✅ 已实现 |
 
-**QA 工作流 Actions**（共 8 个，按顺序执行）:
+**QA 工作流 Actions**（QAEngineer，共 4 个，按顺序执行）:
 | Action | 功能 | 输入 | 输出 | 使用角色 | 状态 |
 |--------|------|------|------|---------|------|
-| TestabilityReview | 需求可测性审查 | PRD、代码 | 可测性审查报告 | QA Engineer | ✅ 已实现 |
-| WriteTestPlan | 制定测试计划 | PRD、代码、可测性报告 | 测试计划 | QA Engineer | ✅ 已实现 |
-| WriteTest | 编写测试用例 | PRD、代码 | 测试用例文档 | QA Engineer | ✅ 已实现 |
-| TestCaseReview | 用例评审与补充 | 测试用例 | 审查后的测试用例 | QAEngineer | ✅ 已实现 |
+| WriteTestPlan | 制定测试计划 | PRD、代码 | 测试计划 | QAEngineer | ✅ 已实现 |
+| WriteTest | 编写测试用例 | PRD、代码 | 测试用例文档 | QAEngineer | ✅ 已实现 |
+| TestReview | 测试用例审查 | 测试用例 | 审查报告 | QAEngineer | ✅ 已实现 |
+| ImproveTest | 改进测试用例 | 审查报告、测试用例 | 改进后的测试用例 | QAEngineer | ✅ 已实现 |
+
+**自动化测试 Actions**（AutomationEngineer，共 4 个，按顺序执行）:
+| Action | 功能 | 输入 | 输出 | 使用角色 | 状态 |
+|--------|------|------|------|---------|------|
 | AutomationPlanning | 自动化测试规划 | 测试用例、代码 | 自动化计划 | AutomationEngineer | ✅ 已实现 |
 | AutomationExecution | 自动化测试执行 | 自动化计划 | 执行结果 | AutomationEngineer | ✅ 已实现 |
 | CoverageQualityCheck | 覆盖率与质量检查 | 测试用例、代码 | 覆盖率和质量报告 | AutomationEngineer | ✅ 已实现 |
@@ -1136,9 +1135,11 @@ RoleActionExecutor为某些actions提供特殊的输入准备逻辑：
 **其他 Actions**:
 | Action | 功能 | 输入 | 输出 | 使用角色 | 状态 |
 |--------|------|------|------|---------|------|
-| SearchEnhancedQA | 增强搜索 | 问题 | 答案+引用 | ProductManager | ✅ 已实现 |
 | DataAnalysis | 数据分析 | 数据或需求 | 分析代码和结果 | DataAnalyst | ✅ 已实现 |
 | Coordinate | 协调任务 | 任务和上下文 | 协调结果 | TeamLeader | ✅ 已实现 |
+
+**已移除的Actions**（2026-01-29）:
+- SubProjectDesignReview, CodeReview, WriteSubProjectDesign, TestabilityReview, RunCode, FixBug, SearchEnhancedQA
 
 ### 2.7 工具集成 [P1 - 重要功能]
 
@@ -1152,7 +1153,7 @@ RoleActionExecutor为某些actions提供特殊的输入准备逻辑：
 | Browser | 网页访问、搜索 | ProductManager | P1 |
 | Editor | 文件读写、编辑 | All | P0 |
 | Terminal | 命令执行 | Architect, Engineer | P1 |
-| SearchEnhancedQA | 智能搜索问答 | ProductManager | P1 |
+# SearchEnhancedQA已移除（2026-01-29）
 | RoleDebugger | 角色独立调试工具 | All | P0 |
 | RoleTester | 角色单元测试框架 | All | P0 |
 | RoleMonitor | 角色性能监控 | All | P1 |
