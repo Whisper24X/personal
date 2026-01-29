@@ -40,6 +40,7 @@ export { ValidateStoryPointEstimates } from './ValidateStoryPointEstimates';
 // Code Execution and Bug Fix Actions
 export { RunCode } from './RunCode';
 export { FixBug } from './FixBug';
+export { ImproveCode } from './ImproveCode';
 export { Deploy } from './Deploy';
 
 // QA Actions
@@ -81,6 +82,7 @@ import { EstimateStoryPoints } from './EstimateStoryPoints';
 import { ValidateStoryPointEstimates } from './ValidateStoryPointEstimates';
 import { RunCode } from './RunCode';
 import { FixBug } from './FixBug';
+import { ImproveCode } from './ImproveCode';
 import { Deploy } from './Deploy';
 import { TestabilityReview } from './TestabilityReview';
 import { TestReview } from './TestReview';
@@ -132,6 +134,7 @@ export const ACTION_REGISTRY: Record<string, new () => BaseAction> = {
   // Code Execution and Bug Fix Actions
   RunCode,
   FixBug,
+  ImproveCode,
   Deploy,
   // QA Actions
   TestabilityReview,

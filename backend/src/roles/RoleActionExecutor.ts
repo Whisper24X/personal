@@ -23,6 +23,7 @@ export class RoleActionExecutor {
         'WriteTestPlan',
         'ExecuteSubtask',
         'Deploy',
+        'ImproveCode',
         'ImprovePRD',
         'ImproveMRD',
         'ImproveDesign',
@@ -351,6 +352,7 @@ export class RoleActionExecutor {
             case 'WriteTestPlan':
             case 'ExecuteSubtask':
             case 'Deploy':
+            case 'ImproveCode':
             case 'MRDReview':
             case 'PRDReview':
             case 'DesignReview':

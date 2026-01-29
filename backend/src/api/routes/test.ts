@@ -8,6 +8,7 @@ import {
   testWriteCode,
   testExecuteSubtask,
   testDeploy,
+  testImproveCode,
   getEngineerInfo,
   testCustom,
 } from '../controllers/EngineerTestController';
@@ -29,6 +30,9 @@ router.post('/engineer/execute-subtask', testExecuteSubtask);
 
 // Test Deploy action
 router.post('/engineer/deploy', testDeploy);
+
+// Test ImproveCode action
+router.post('/engineer/improve-code', testImproveCode);
 
 // Test custom scenario
 router.post('/engineer/custom', testCustom);

@@ -164,6 +164,7 @@ export const actionDefinitions: ActionDefinition[] = [
   { name: 'ImproveDesign', display_name: '改进设计', description: '根据反馈改进设计', class_name: 'ImproveDesign', category: 'improvement' },
   { name: 'ImproveTest', display_name: '改进测试', description: '根据反馈改进测试', class_name: 'ImproveTest', category: 'improvement' },
   { name: 'FixBug', display_name: '修复Bug', description: '修复代码缺陷', class_name: 'FixBug', category: 'improvement' },
+  { name: 'ImproveCode', display_name: '改进代码', description: '基于QA反馈和用户建议改进代码质量', class_name: 'ImproveCode', category: 'improvement' },
 
   // Execution
   { name: 'RunCode', display_name: '运行代码', description: '执行代码运行', class_name: 'RunCode', category: 'execution' },
@@ -283,7 +284,7 @@ export const defaultWorkflowConfig: WorkflowConfig = {
       profile: 'Engineer',
       name: 'Engineer',
       order: 5,
-      actions: ['WriteCode', 'Deploy'],
+      actions: ['WriteCode', 'ImproveCode', 'Deploy'],
       watch_actions: ['WritePRD', 'WriteDesign', 'ValidateStoryPointEstimates'],
     },
     {
