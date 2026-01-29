@@ -469,7 +469,6 @@ export class WorkflowExecutor {
       // Test needs PRD and Code
       WriteTest: ['WritePRD', 'WriteCode'],
       WriteTestPlan: ['WritePRD', 'WriteCode'],
-      TestabilityReview: ['WritePRD', 'WriteCode'],
       TestReview: ['WriteTest', 'WriteTestPlan'],
       ImproveTest: ['TestReview', 'WriteTest'],
       

@@ -15,7 +15,6 @@ export class RoleWorkspaceExtractor {
     WriteMRD: 'MRD',
     WritePRD: 'PRD',
     WriteDesign: 'DESIGN',
-    WriteSubProjectDesign: 'DESIGN',
     BreakdownTasks: 'TASKS',
     WriteCode: 'CODE',
     WriteTest: 'TEST',

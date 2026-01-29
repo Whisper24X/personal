@@ -1928,11 +1928,11 @@ ws.on('error', (error) => {
 | 角色 | 支持的 Actions |
 |------|---------------|
 | Salesperson | WriteMRD, MRDReview, ImproveMRD |
-| ProductManager | WritePRD, PRDReview, ImprovePRD, SearchEnhancedQA |
+| ProductManager | WritePRD, PRDReview, ImprovePRD, GeneratePrototype |
 | Architect | WriteDesign, DesignReview, ImproveDesign |
-| ProjectManager | BreakdownTasks, WriteSubProjectDesign, SubProjectDesignReview |
-| Engineer | WriteCode, ExecuteSubtask, RunCode, FixBug |
-| QAEngineer | WriteTestPlan, WriteTest, TestCaseReview |
+| ProjectManager | FillProjectContext, CreateOpenSpecProposal, ValidateOpenSpecProposal, EstimateStoryPoints, ValidateStoryPointEstimates |
+| Engineer | WriteCode, Deploy |
+| QAEngineer | WriteTestPlan, WriteTest, TestReview, ImproveTest |
 | AutomationEngineer | AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion |
 | TeamLeader | Coordinate |
 | DataAnalyst | DataAnalysis |

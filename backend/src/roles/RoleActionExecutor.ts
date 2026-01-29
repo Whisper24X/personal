@@ -16,7 +16,6 @@ export class RoleActionExecutor {
         'WriteMRD',
         'WritePRD',
         'WriteDesign',
-        'WriteSubProjectDesign',
         'BreakdownTasks',
         'WriteCode',
         'WriteTest',
@@ -30,8 +29,6 @@ export class RoleActionExecutor {
         'MRDReview',
         'PRDReview',
         'DesignReview',
-        'SubProjectDesignReview',
-        'TestabilityReview',
         'TestCaseReview',
         'TestReview',
         'ImproveTest',
@@ -133,7 +130,6 @@ export class RoleActionExecutor {
         // Special handling for different action types
         switch (action.name) {
             case 'WriteTest':
-            case 'TestabilityReview':
             case 'WriteTestPlan':
                 return this.prepareWriteTestInput(context);
 
@@ -356,8 +352,6 @@ export class RoleActionExecutor {
             case 'MRDReview':
             case 'PRDReview':
             case 'DesignReview':
-            case 'SubProjectDesignReview':
-            case 'TestabilityReview':
             case 'TestCaseReview':
             case 'TestReview':
             case 'ImproveTest':
@@ -366,9 +360,6 @@ export class RoleActionExecutor {
             case 'CoverageQualityCheck':
             case 'QAConclusion':
                 return await (action as any).run(input, workspaceOptions);
-
-            case 'WriteSubProjectDesign':
-                return await (action as any).run(input, undefined, workspaceOptions);
 
             case 'BreakdownTasks':
                 return await this.runBreakdownTasks(action, workspaceOptions);

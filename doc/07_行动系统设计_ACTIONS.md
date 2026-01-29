@@ -1,8 +1,8 @@
 # mind2build 行动系统设计文档
 
-**文档版本**: v1.9  
+**文档版本**: v2.0  
 **创建日期**: 2025-12-24  
-**最后更新**: 2026-01-26（确认30个Actions完整列表，明确QAConclusion归属AutomationEngineer，更新Actions归属角色说明）
+**最后更新**: 2026-01-29（移除7个未使用的Action：SubProjectDesignReview, CodeReview, WriteSubProjectDesign, TestabilityReview, RunCode, FixBug, SearchEnhancedQA，当前共26个Actions）
 
 ## Action执行机制
 
@@ -13,11 +13,11 @@ Role类使用`RoleActionExecutor`来处理action的执行逻辑，提供以下�
 #### 1. 支持Workspace Options的Actions
 
 以下actions支持workspace options参数（applicationId, projectId, version等）：
-- `WriteMRD`, `WritePRD`, `WriteDesign`, `WriteSubProjectDesign`
+- `WriteMRD`, `WritePRD`, `WriteDesign`
 - `BreakdownTasks`, `WriteCode`, `WriteTest`, `ExecuteSubtask`
 - `ImprovePRD`, `ImproveMRD`, `ImproveDesign`, `ImproveTest`
-- `MRDReview`, `PRDReview`, `DesignReview`, `SubProjectDesignReview`
-- `WriteTestPlan`, `TestabilityReview`, `TestCaseReview`, `TestReview`
+- `MRDReview`, `PRDReview`, `DesignReview`
+- `WriteTestPlan`, `TestCaseReview`, `TestReview`
 - `AutomationPlanning`, `AutomationExecution`, `CoverageQualityCheck`, `QAConclusion`
 
 这些actions在执行时会自动从消息中提取workspace options，如果找不到则从context中获取。
@@ -50,7 +50,7 @@ RoleActionExecutor为某些actions提供特殊的输入准备逻辑：
 - 如果news中找不到，从`rc.memory`中查找
 - 如果都找不到，返回空字符串（action会尝试从workspace读取）
 
-**WriteTestPlan / TestabilityReview / TestCaseReview**:
+**WriteTestPlan / TestCaseReview**:
 - 自动从memory中查找PRD和代码消息
 - 组合PRD和代码内容作为输入
 
@@ -87,7 +87,6 @@ RoleActionExecutor为某些actions提供特殊的输入准备逻辑：
 | WriteCode (check) | 5 分钟 | cursor-agent check 命令执行 |
 | BreakdownTasks | 60 分钟 | cursor-agent propose 命令执行 |
 | BreakdownTasks (context) | 30 分钟 | cursor-agent context 命令执行 |
-| CodeReview | 10 分钟 | 代码审查 |
 | 其他 Action | 由 LLM 请求超时控制 | 参考 `REQUEST_TIMEOUT` 环境变量 |
 
 **实现说明**：
@@ -491,134 +490,7 @@ async run(prd: string, design: string, options?: BreakdownTasksOptions): Promise
 
 **使用角色**: ProjectManager
 
-### 11. WriteSubProjectDesign
-
-**功能**: 基于任务拆分生成子项目设计文档
-
-**接口**:
-```typescript
-async run(taskBreakdown: string, design: string, options?: WriteSubProjectDesignOptions): Promise<IActionOutput>
-```
-
-**输入**:
-- `taskBreakdown: string` - 任务拆分文档内容
-- `design: string` - 系统设计文档内容
-- `options?: WriteSubProjectDesignOptions` - 可选配置
-  - `autoReview?: boolean` - 是否自动审查（默认 true）
-  - `autoImprove?: boolean` - 是否自动改进（默认 true）
-  - `applicationId?: string` - 应用ID（必须提供）
-  - `projectId?: string` - 项目ID
-  - `version?: number` - 版本号
-  - `workspacePath?: string` - workspace 路径
-
-**输出**: 
-- `content: string` - 子项目设计文档内容
-- `data: object` - 包含类型、文件名、时间戳、工作区目录等信息
-
-**关键特性**:
-- 将相关任务组织成子项目
-- 为每个子项目提供详细技术设计
-- 定义子项目间的接口和依赖关系
-- 确保子项目可独立开发和测试
-- 支持自动审查和改进（默认启用）
-- 自动保存到 workspace（DESIGN 目录）
-
-**使用角色**: ProjectManager
-
-### 12. SubProjectDesignReview
-
-**功能**: 审查子项目设计文档
-
-**输入**: 子项目设计文档内容
-
-**输出**: 审查报告和改进建议
-
-**使用角色**: ProjectManager
-
-### 13. CodeReview
-
-**功能**: 代码审查和反馈
-
-**输入**: 代码内容、任务描述，可选设计文档
-
-**输出**: 代码审查报告（CODE_REVIEW.md）
-
-**关键特性**:
-- 代码质量审查（结构、命名、可读性）
-- 技术审查（设计规范、性能、安全性）
-- 功能审查（任务完成度、边界处理）
-- 提供改进建议和代码示例
-- 评分（1-10分）
-
-**使用角色**: ProjectManager
-
-### 14. RunCode
-
-**功能**: 执行代码并返回执行结果
-
-**接口**:
-```typescript
-async run(code: string, options?: RunCodeOptions): Promise<IActionOutput>
-```
-
-**输入**:
-- `code: string` - 要执行的代码内容
-- `options?: RunCodeOptions` - 可选配置
-  - `language?: string` - 编程语言（如 'typescript', 'javascript', 'python'）
-  - `entryPoint?: string` - 入口文件路径
-  - `command?: string` - 自定义执行命令
-  - `timeout?: number` - 执行超时时间（毫秒，默认 30000）
-  - `applicationId?: string` - 应用ID
-  - `projectId?: string` - 项目ID
-  - `version?: number` - 版本号
-
-**输出**: 
-- `content: string` - 执行结果
-- `data: object` - 包含类型、语言、入口点、时间戳等信息
-
-**关键特性**:
-- 支持多种编程语言（TypeScript、JavaScript、Python 等）
-- 支持自定义执行命令
-- 支持超时控制
-- 捕获执行输出和错误
-
-**使用角色**: Engineer
-
-**注意**: 此 Action 目前提供基础框架，实际代码执行需要根据运行环境实现。
-
-### 15. FixBug
-
-**功能**: 根据错误报告或测试失败报告修复代码中的 Bug
-
-**接口**:
-```typescript
-async run(bugDescription: string, options?: FixBugOptions): Promise<IActionOutput>
-```
-
-**输入**:
-- `bugDescription: string` - Bug 描述
-- `options?: FixBugOptions` - 可选配置
-  - `errorReport?: string` - 错误报告内容
-  - `testFailureReport?: string` - 测试失败报告内容
-  - `codeContext?: string` - 相关代码上下文
-  - `applicationId?: string` - 应用ID
-  - `projectId?: string` - 项目ID
-  - `version?: number` - 版本号
-
-**输出**: 
-- `content: string` - Bug 修复结果，包含修复说明和修复后的代码
-- `data: object` - 包含类型、时间戳等信息
-
-**关键特性**:
-- 分析错误报告或测试失败报告
-- 识别 Bug 的根本原因
-- 提供修复方案和修复后的代码
-- 确保修复符合设计规范和最佳实践
-- 自动保存修复报告到 workspace（BUG_FIX.md）
-
-**使用角色**: Engineer
-
-### 16. WriteTest
+### 11. WriteTest
 
 **功能**: 编写测试用例
 
@@ -649,7 +521,7 @@ async run(input: string, options?: WriteTestOptions): Promise<IActionOutput>
 
 **使用角色**: QAEngineer
 
-### 17. WriteTestPlan
+### 12. WriteTestPlan
 
 **功能**: 制定综合测试计划
 
@@ -674,32 +546,7 @@ async run(input: string, options?: WriteTestPlanOptions): Promise<IActionOutput>
 
 **使用角色**: QAEngineer
 
-### 18. TestabilityReview
-
-**功能**: 审查 PRD 和代码的可测性
-
-**接口**:
-```typescript
-async run(input: string, options?: TestabilityReviewOptions): Promise<IActionOutput>
-```
-
-**输入**:
-- `input: string` - PRD 和代码内容
-- `options?: TestabilityReviewOptions` - 可选配置（继承 WorkspaceOptions）
-
-**输出**: 
-- `content: string` - 可测性审查报告
-- `data: object` - 包含类型、文件名、时间戳、工作区目录等信息
-
-**关键特性**:
-- 识别难以测试或无法测试的需求
-- 分析代码的可测性
-- 提供改进建议
-- 自动保存到 workspace（TEST 目录，文件名 TESTABILITY_REVIEW.md）
-
-**使用角色**: QAEngineer
-
-### 19. TestCaseReview
+### 13. TestCaseReview
 
 **功能**: 审查测试用例并补充边界、异常和负面测试用例
 
@@ -726,7 +573,7 @@ async run(input: string, options?: TestCaseReviewOptions): Promise<IActionOutput
 
 **使用角色**: QAEngineer
 
-### 20. TestReview
+### 14. TestReview
 
 **功能**: 审查测试用例文档的完整性和质量
 
@@ -752,7 +599,7 @@ async run(testCasesContent: string, options?: TestReviewOptions): Promise<IActio
 
 **使用角色**: QAEngineer
 
-### 21. ImproveTest
+### 15. ImproveTest
 
 **功能**: 根据审查报告改进测试用例文档
 
@@ -783,7 +630,7 @@ async run(input: string, options?: ImproveTestOptions): Promise<IActionOutput>
 
 **使用角色**: QAEngineer
 
-### 22. AutomationPlanning
+### 16. AutomationPlanning
 
 **功能**: 评估测试用例的自动化可行性并制定自动化计划
 
@@ -811,7 +658,7 @@ async run(input: string, options?: AutomationPlanningOptions): Promise<IActionOu
 
 **使用角色**: AutomationEngineer
 
-### 23. AutomationExecution
+### 17. AutomationExecution
 
 **功能**: 实现和执行自动化测试用例
 
@@ -837,7 +684,7 @@ async run(input: string, options?: AutomationExecutionOptions): Promise<IActionO
 
 **注意**: 当前实现为占位符，延迟 1 秒后跳过执行。实际的自动化测试执行需要根据项目技术栈实现。
 
-### 24. CoverageQualityCheck
+### 18. CoverageQualityCheck
 
 **功能**: 检查测试覆盖率并进行质量自评
 
@@ -864,7 +711,7 @@ async run(input: string, options?: CoverageQualityCheckOptions): Promise<IAction
 
 **使用角色**: AutomationEngineer
 
-### 25. QAConclusion
+### 19. QAConclusion
 
 **功能**: 基于所有测试结果给出最终 QA 结论（通过/阻断/需修改）
 
@@ -898,33 +745,7 @@ async run(input: string, options?: QAConclusionOptions): Promise<IActionOutput>
 
 **使用角色**: QAEngineer
 
-### 26. SearchEnhancedQA
-
-**功能**: 增强搜索和问答（用于市场调研和需求验证）
-
-**接口**:
-```typescript
-async run(question: string): Promise<IActionOutput>
-```
-
-**输入**:
-- `question: string` - 搜索问题（必须提供）
-
-**输出**: 
-- `content: string` - 答案内容
-- `data: object` - 包含类型、问题、时间戳等信息
-
-**关键特性**:
-- 智能搜索和分析
-- 答案增强（提供详细分析）
-- 市场趋势分析
-- 竞品对比分析
-- 可行性评估
-- 引用来源追踪
-
-**使用角色**: ProductManager
-
-### 27. DataAnalysis
+### 20. DataAnalysis
 
 **功能**: 数据分析和可视化
 
@@ -934,7 +755,7 @@ async run(question: string): Promise<IActionOutput>
 
 **使用角色**: DataAnalyst
 
-### 28. Coordinate
+### 21. Coordinate
 
 **功能**: 协调团队工作和制定决策
 
@@ -977,17 +798,15 @@ async run(allMessages: string): Promise<IActionOutput>
 ✅ **WriteMRD** - 市场研究文档编写  
 ✅ **WritePRD** - PRD文档编写  
 ✅ **WriteDesign** - 系统设计文档编写  
-✅ **WriteSubProjectDesign** - 子项目设计  
 ✅ **WriteCode** - 代码编写  
 ✅ **WriteTest** - 测试用例编写  
 ✅ **WriteTestPlan** - 测试计划制定  
+✅ **GeneratePrototype** - 生成原型
 
 ### 文档审查 Actions
 ✅ **MRDReview** - MRD文档审查  
 ✅ **PRDReview** - PRD文档审查  
 ✅ **DesignReview** - 设计文档审查  
-✅ **SubProjectDesignReview** - 子项目设计审查  
-✅ **CodeReview** - 代码审查  
 
 ### 文档改进 Actions
 ✅ **ImprovePRD** - 根据审查报告改进PRD文档  
@@ -999,12 +818,17 @@ async run(allMessages: string): Promise<IActionOutput>
 ✅ **BreakdownTasks** - 任务拆分  
 ✅ **ExecuteSubtask** - 子任务执行  
 
-### 代码执行与修复 Actions
-✅ **RunCode** - 代码执行  
-✅ **FixBug** - Bug修复  
+### OpenSpec Actions (ProjectManager)
+✅ **FillProjectContext** - 填充项目上下文  
+✅ **CreateOpenSpecProposal** - 创建变更提案  
+✅ **ValidateOpenSpecProposal** - 验证变更提案  
+✅ **EstimateStoryPoints** - 故事点评估  
+✅ **ValidateStoryPointEstimates** - 验证故事点评估  
+
+### 代码执行 Actions
+✅ **Deploy** - 部署应用程序
 
 ### QA 工作流 Actions (QAEngineer)
-✅ **TestabilityReview** - 需求可测性审查  
 ✅ **WriteTestPlan** - 测试计划制定（已在文档编写Actions中列出）
 ✅ **WriteTest** - 测试用例编写（已在文档编写Actions中列出）
 ✅ **TestCaseReview** - 测试用例评审与补充  
@@ -1020,21 +844,21 @@ async run(allMessages: string): Promise<IActionOutput>
 ✅ **QAConclusion** - QA结论输出（综合所有测试结果和覆盖率报告）  
 
 ### 其他 Actions
-✅ **SearchEnhancedQA** - 增强搜索和问答  
 ✅ **DataAnalysis** - 数据分析和可视化  
 ✅ **Coordinate** - 团队协调和任务分配
 
-**共计 30 个 Actions**
+**共计 26 个 Actions**
 
 **统计**:
-- 文档编写: 7个 (WriteMRD, WritePRD, WriteDesign, WriteSubProjectDesign, WriteCode, WriteTest, WriteTestPlan)
-- 文档审查: 5个 (MRDReview, PRDReview, DesignReview, SubProjectDesignReview, CodeReview)
+- 文档编写: 7个 (WriteMRD, WritePRD, WriteDesign, WriteCode, WriteTest, WriteTestPlan, GeneratePrototype)
+- 文档审查: 3个 (MRDReview, PRDReview, DesignReview)
 - 文档改进: 4个 (ImprovePRD, ImproveMRD, ImproveDesign, ImproveTest)
 - 任务管理: 2个 (BreakdownTasks, ExecuteSubtask)
-- 代码执行与修复: 2个 (RunCode, FixBug)
-- QA工作流: 6个 (TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, TestReview, ImproveTest)
+- OpenSpec: 5个 (FillProjectContext, CreateOpenSpecProposal, ValidateOpenSpecProposal, EstimateStoryPoints, ValidateStoryPointEstimates)
+- 代码执行: 1个 (Deploy)
+- QA工作流: 5个 (WriteTestPlan, WriteTest, TestCaseReview, TestReview, ImproveTest)
 - 自动化测试: 4个 (AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion)
-- 其他: 3个 (SearchEnhancedQA, DataAnalysis, Coordinate)
+- 其他: 2个 (DataAnalysis, Coordinate)
 
 **注意**: 
 - WriteTestPlan、WriteTest 和 ImproveTest 在多个分类中都有涉及，但实际只计算一次
@@ -1100,10 +924,10 @@ export { CustomAction } from './CustomAction';
 // 在 ACTION_REGISTRY 中添加（这是唯一需要修改的代码文件）
 export const ACTION_REGISTRY: Record<string, new () => BaseAction> = {
   // 文档编写 Actions
-  WriteMRD, WritePRD, WriteDesign, WriteSubProjectDesign,
-  WriteCode, WriteTest, WriteTestPlan,
+  WriteMRD, WritePRD, WriteDesign,
+  WriteCode, WriteTest, WriteTestPlan, GeneratePrototype,
   // 文档审查 Actions
-  MRDReview, PRDReview, DesignReview, SubProjectDesignReview, CodeReview,
+  MRDReview, PRDReview, DesignReview,
   // ... 其他 Actions
   CustomAction,  // 添加新 Action
 };
