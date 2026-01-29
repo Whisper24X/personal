@@ -58,6 +58,13 @@ export const DOCUMENT_CONFIGS: Record<string, CLIModeConfig> = {
     fileDescription: '可测试性文档',
     reviewDescription: '可测试性审核报告',
   },
+  PROTOTYPE: {
+    documentType: 'PROTOTYPE',
+    mainFileName: 'index.html',
+    reviewFileName: 'PROTOTYPE_REVIEW.md',
+    fileDescription: '高保真HTML原型',
+    reviewDescription: '原型审核报告',
+  },
 };
 
 /**

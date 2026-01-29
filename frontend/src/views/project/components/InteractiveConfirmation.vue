@@ -95,50 +95,106 @@
                     </div>
                 </div>
 
-                <!-- Content Display -->
-                <el-scrollbar :max-height="viewMode === 'preview' ? '200px' : undefined" class="content-scrollbar">
-                    <div class="content-display">
-                        <!-- File content view/edit -->
-                        <div v-if="selectedFileIndex >= 0 && hasFiles && roleInfo.action !== 'WritePRD'"
-                            class="file-content-editor">
-                            <div class="file-header">
-                                <span class="file-path">{{ getFilePath(roleInfo.outputFiles![selectedFileIndex]) }}</span>
-                                <el-button v-if="!isEditing" size="small" type="primary" :icon="Edit"
-                                    @click="startEditFile(selectedFileIndex)">
-                                    编辑文件
-                                </el-button>
+                <!-- GeneratePrototype: 左右分栏布局 -->
+                <div v-if="isPrototypeAction" class="prototype-layout">
+                    <el-row :gutter="20">
+                        <!-- 左侧：PRD内容 -->
+                        <el-col :span="12">
+                            <div class="prd-content-section">
+                                <div class="section-header">
+                                    <h4>
+                                        <el-icon><Document /></el-icon>
+                                        PRD内容
+                                    </h4>
+                                    <el-button-group size="small">
+                                        <el-button :type="viewMode === 'preview' ? 'primary' : ''" @click="viewMode = 'preview'">
+                                            预览
+                                        </el-button>
+                                        <el-button :type="viewMode === 'full' ? 'primary' : ''" @click="viewMode = 'full'">
+                                            完整内容
+                                        </el-button>
+                                    </el-button-group>
+                                </div>
+                                <el-scrollbar class="prd-scrollbar">
+                                    <div v-if="prdLoading" class="loading-container">
+                                        <el-skeleton :rows="5" animated />
+                                    </div>
+                                    <div v-else-if="!prdContent" class="empty-container">
+                                        <el-empty description="PRD内容未找到" />
+                                    </div>
+                                    <div v-else class="prd-content-display">
+                                        <el-input v-if="isEditing" v-model="editedContent" type="textarea"
+                                            :rows="viewMode === 'preview' ? 15 : 25" placeholder="编辑PRD内容..." />
+                                        <pre v-else class="content-text">{{ displayPRDContent }}</pre>
+                                    </div>
+                                </el-scrollbar>
+                                <div v-if="viewMode === 'preview' && prdContent && prdContent.length > 1000"
+                                    class="preview-notice">
+                                    <el-alert title="这是内容预览，点击'完整内容'查看全部" type="info" :closable="false" show-icon />
+                                </div>
                             </div>
-                            <el-input v-if="isEditing && selectedFileIndex >= 0"
-                                :model-value="getCurrentFileEditedContent()"
-                                @update:model-value="updateCurrentFileContent" type="textarea"
-                                :rows="viewMode === 'preview' ? 10 : 20" placeholder="编辑文件内容..." />
-                            <pre v-else class="content-text file-content">{{ getFileContent(selectedFileIndex) }}</pre>
-                        </div>
-                        <!-- Main content view/edit -->
-                        <div v-else>
-                            <el-input v-if="isEditing && !isIdle" v-model="editedContent" type="textarea"
-                                :rows="viewMode === 'preview' ? 10 : 20" placeholder="编辑内容..." />
-                            <div v-else-if="isIdle" class="idle-content">
-                                <el-alert type="info" :closable="false" show-icon>
-                                    <template #title>
-                                        <div class="idle-message">{{ displayContent }}</div>
-                                    </template>
-                                </el-alert>
+                        </el-col>
+                        
+                        <!-- 右侧：原型预览 -->
+                        <el-col :span="12">
+                            <VersionPrototypePreview
+                                v-if="projectId && prototypePreviewUrl"
+                                :preview-url="prototypePreviewUrl"
+                                :auto-load="true"
+                            />
+                            <div v-else-if="projectId" class="empty-prototype">
+                                <el-empty description="正在加载原型预览..." />
                             </div>
-                            <pre v-else class="content-text">{{ displayContent }}</pre>
-                        </div>
-                    </div>
-                </el-scrollbar>
-
-                <div v-if="viewMode === 'preview' && roleInfo.content && roleInfo.content.length > 500"
-                    class="preview-notice">
-                    <el-alert title="这是内容预览，点击'完整内容'查看全部" type="info" :closable="false" show-icon />
+                        </el-col>
+                    </el-row>
                 </div>
 
-                <!-- Section adjustment -->
-                <SectionAdjuster v-if="hasSectionedContent" :content="roleInfo.content" :document-type="documentType"
-                    :action="roleInfo.action" :project-id="projectId || ''" :document-id="prdId || ''"
-                    @section-adjusted="handleSectionAdjusted" />
+                <!-- 非GeneratePrototype: 原有内容显示 -->
+                <template v-else>
+                    <el-scrollbar :max-height="viewMode === 'preview' ? '200px' : undefined" class="content-scrollbar">
+                        <div class="content-display">
+                            <!-- File content view/edit -->
+                            <div v-if="selectedFileIndex >= 0 && hasFiles && roleInfo.action !== 'WritePRD'"
+                                class="file-content-editor">
+                                <div class="file-header">
+                                    <span class="file-path">{{ getFilePath(roleInfo.outputFiles![selectedFileIndex]) }}</span>
+                                    <el-button v-if="!isEditing" size="small" type="primary" :icon="Edit"
+                                        @click="startEditFile(selectedFileIndex)">
+                                        编辑文件
+                                    </el-button>
+                                </div>
+                                <el-input v-if="isEditing && selectedFileIndex >= 0"
+                                    :model-value="getCurrentFileEditedContent()"
+                                    @update:model-value="updateCurrentFileContent" type="textarea"
+                                    :rows="viewMode === 'preview' ? 10 : 20" placeholder="编辑文件内容..." />
+                                <pre v-else class="content-text file-content">{{ getFileContent(selectedFileIndex) }}</pre>
+                            </div>
+                            <!-- Main content view/edit -->
+                            <div v-else>
+                                <el-input v-if="isEditing && !isIdle" v-model="editedContent" type="textarea"
+                                    :rows="viewMode === 'preview' ? 10 : 20" placeholder="编辑内容..." />
+                                <div v-else-if="isIdle" class="idle-content">
+                                    <el-alert type="info" :closable="false" show-icon>
+                                        <template #title>
+                                            <div class="idle-message">{{ displayContent }}</div>
+                                        </template>
+                                    </el-alert>
+                                </div>
+                                <pre v-else class="content-text">{{ displayContent }}</pre>
+                            </div>
+                        </div>
+                    </el-scrollbar>
+
+                    <div v-if="viewMode === 'preview' && roleInfo.content && roleInfo.content.length > 500"
+                        class="preview-notice">
+                        <el-alert title="这是内容预览，点击'完整内容'查看全部" type="info" :closable="false" show-icon />
+                    </div>
+
+                    <!-- Section adjustment -->
+                    <SectionAdjuster v-if="hasSectionedContent" :content="roleInfo.content" :document-type="documentType"
+                        :action="roleInfo.action" :project-id="projectId || ''" :document-id="prdId || ''"
+                        @section-adjusted="handleSectionAdjusted" />
+                </template>
             </div>
 
             <el-divider />
@@ -273,6 +329,8 @@ import {
     UserFilled, SetUp, Cpu, Download,
 } from '@element-plus/icons-vue';
 import SectionAdjuster from '../../../components/SectionAdjuster.vue';
+import PrototypePreview from './PrototypePreview.vue';
+import VersionPrototypePreview from './VersionPrototypePreview.vue';
 import apiClient from '../../../api/client';
 import { useRoleActionStore } from '../../../stores/roleAction';
 
@@ -319,6 +377,12 @@ const editedContent = ref('');
 const editedFiles = ref<Map<string, string>>(new Map());
 const selectedFileIndex = ref<number>(-1);
 
+// PRD content state for GeneratePrototype action
+const prdContent = ref<string>('');
+const prdLoading = ref(false);
+const currentPrdId = ref<string>('');
+const prototypePreviewUrl = ref<string>('');
+
 const roleActionStore = useRoleActionStore();
 
 // Computed properties
@@ -343,10 +407,22 @@ const hasSectionedContent = computed(() => {
     return hasSectionMarkers || (isDocumentType && content.length > 100);
 });
 
+const isPrototypeAction = computed(() => {
+    return props.roleInfo.action === 'GeneratePrototype';
+});
+
 const displayContent = computed(() => {
     const content = props.roleInfo.content || '';
     if (viewMode.value === 'preview' && content.length > 500) {
         return content.substring(0, 500) + '\n...\n\n[查看完整内容]';
+    }
+    return content;
+});
+
+const displayPRDContent = computed(() => {
+    const content = prdContent.value || '';
+    if (viewMode.value === 'preview' && content.length > 1000) {
+        return content.substring(0, 1000) + '\n...\n\n[查看完整内容]';
     }
     return content;
 });
@@ -361,6 +437,22 @@ watch(() => props.roleInfo.outputFiles, (files) => {
 watch(() => props.roleInfo.action, (action) => {
     if (action === 'WritePRD' && selectedFileIndex.value >= 0) {
         selectedFileIndex.value = -1;
+    }
+}, { immediate: true });
+
+// Watch for GeneratePrototype action and load PRD content
+watch(() => [props.prdId, isPrototypeAction, props.roleInfo.content], ([newPrdId, isPrototype, content]) => {
+    if (isPrototype) {
+        // 优先使用 props.roleInfo.content（即 pendingConfirmation.content）
+        if (content && typeof content === 'string' && content.trim().length > 0) {
+            prdContent.value = content;
+            prdLoading.value = false;
+            // 仍然需要加载原型预览URL
+            loadPrototypePreviewUrl();
+        } else {
+            // 如果 content 为空，才通过 API 获取
+            loadPRDContent();
+        }
     }
 }, { immediate: true });
 
@@ -443,7 +535,12 @@ function handleSectionAdjusted(sectionNumber: number) {
 // Action handlers
 function startEdit() {
     isEditing.value = true;
-    editedContent.value = props.roleInfo.content || '';
+    // For GeneratePrototype, edit PRD content; otherwise edit action output
+    if (isPrototypeAction.value) {
+        editedContent.value = prdContent.value || '';
+    } else {
+        editedContent.value = props.roleInfo.content || '';
+    }
     viewMode.value = 'full';
     if (props.roleInfo.outputFiles) {
         props.roleInfo.outputFiles.forEach(file => {
@@ -477,6 +574,9 @@ function saveEdit() {
     }
 
     isEditing.value = false;
+    
+    // For GeneratePrototype, save PRD content separately if needed
+    // For now, save as action output content
     let modifiedContent = editedContent.value || props.roleInfo.content || '';
 
     if (editedFiles.value.size > 0 && props.roleInfo.outputFiles) {
@@ -491,6 +591,103 @@ function saveEdit() {
 
 function handleAction(action: string) {
     emit('action', action);
+}
+
+function handlePrototypeGenerated() {
+    ElMessage.success('原型已生成');
+}
+
+// Load PRD content for GeneratePrototype action
+async function loadPRDContent() {
+    // 优先使用 props.roleInfo.content（即 pendingConfirmation.content）
+    if (props.roleInfo.content && typeof props.roleInfo.content === 'string' && props.roleInfo.content.trim().length > 0) {
+        prdContent.value = props.roleInfo.content;
+        prdLoading.value = false;
+        // 仍然需要加载原型预览URL
+        loadPrototypePreviewUrl();
+        return;
+    }
+    
+    if (!props.projectId) return;
+    
+    prdLoading.value = true;
+    
+    try {
+        // 获取版本列表（现在getPRDs返回的是版本列表）
+        const prdsResponse: any = await apiClient.getPRDs(props.projectId, false);
+        
+        if (prdsResponse.prds && prdsResponse.prds.length > 0) {
+            // 获取第一个有prototype的版本的预览URL
+            const firstVersionWithPrototype = prdsResponse.prds.find((p: any) => p.hasPrototype && p.previewUrl);
+            if (firstVersionWithPrototype) {
+                prototypePreviewUrl.value = firstVersionWithPrototype.previewUrl;
+            } else {
+                prototypePreviewUrl.value = '';
+            }
+        } else {
+            prototypePreviewUrl.value = '';
+        }
+        
+        // 如果没有prdId，尝试获取最新的PRD（兼容旧逻辑）
+        let targetPrdId = props.prdId;
+        if (!targetPrdId && prdsResponse.prds && prdsResponse.prds.length > 0) {
+            // 旧API格式：prds[0].id，新API格式：prds[0].versionId
+            targetPrdId = prdsResponse.prds[0].id || prdsResponse.prds[0].versionId;
+        }
+        
+        if (targetPrdId) {
+            // Avoid reloading if already loaded
+            if (currentPrdId.value === targetPrdId && prdContent.value) {
+                return;
+            }
+            
+            currentPrdId.value = targetPrdId;
+            
+            try {
+                const response: any = await apiClient.getPRD(props.projectId, targetPrdId);
+                prdContent.value = response.content || response.prd?.content || '';
+                
+                // If editing PRD content, sync editedContent
+                if (isEditing.value && isPrototypeAction.value) {
+                    editedContent.value = prdContent.value;
+                }
+            } catch (error: any) {
+                console.warn('Failed to load PRD content (may be using version-based API):', error);
+                // 如果获取PRD内容失败，可能是新API格式，不显示错误
+            }
+        }
+    } catch (error: any) {
+        console.error('Failed to load PRD list:', error);
+        ElMessage.warning('加载PRD列表失败');
+        prdContent.value = '';
+        prototypePreviewUrl.value = '';
+    } finally {
+        prdLoading.value = false;
+    }
+}
+
+// Load prototype preview URL separately
+async function loadPrototypePreviewUrl() {
+    if (!props.projectId) return;
+    
+    try {
+        const prdsResponse: any = await apiClient.getPRDs(props.projectId, false);
+        
+        if (prdsResponse.prds && prdsResponse.prds.length > 0) {
+            // 获取第一个有prototype的版本的预览URL
+            const firstVersionWithPrototype = prdsResponse.prds.find((p: any) => p.hasPrototype && p.previewUrl);
+            if (firstVersionWithPrototype) {
+                prototypePreviewUrl.value = firstVersionWithPrototype.previewUrl;
+            } else {
+                prototypePreviewUrl.value = '';
+            }
+        } else {
+            prototypePreviewUrl.value = '';
+        }
+    } catch (error: any) {
+        console.error('Failed to load prototype preview URL:', error);
+        prototypePreviewUrl.value = '';
+    }
 }
 
 async function confirmQuit() {
@@ -775,6 +972,70 @@ onUnmounted(() => {
     margin: 4px 0;
 }
 
+/* Prototype layout styles */
+.prototype-layout {
+    margin-top: 16px;
+}
+
+.prd-content-section {
+    border: 1px solid var(--el-border-color);
+    border-radius: 4px;
+    padding: 16px;
+    height: 600px;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--el-bg-color-page);
+}
+
+.prd-content-section .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--el-border-color);
+}
+
+.prd-content-section .section-header h4 {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.prd-scrollbar {
+    flex: 1;
+    min-height: 0;
+    background: var(--el-bg-color);
+    border-radius: 4px;
+    padding: 12px;
+}
+
+.prd-content-display {
+    height: 100%;
+}
+
+.prd-content-display .content-text {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--el-text-color-primary);
+}
+
+.loading-container,
+.empty-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 40px;
+}
+
 @media (max-width: 768px) {
     .action-buttons .el-button {
         flex: 1 1 100%;
@@ -785,6 +1046,10 @@ onUnmounted(() => {
         flex-direction: column;
         gap: 12px;
         align-items: flex-start;
+    }
+
+    .prototype-layout .el-col {
+        margin-bottom: 16px;
     }
 }
 </style>

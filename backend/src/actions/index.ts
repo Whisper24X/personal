@@ -13,6 +13,7 @@ export { WriteSubProjectDesign } from './WriteSubProjectDesign';
 export { WriteCode } from './WriteCode';
 export { WriteTest } from './WriteTest';
 export { WriteTestPlan } from './WriteTestPlan';
+export { GeneratePrototype } from './GeneratePrototype';
 
 // Document Review Actions
 export { MRDReview } from './MRDReview';
@@ -63,6 +64,7 @@ import { WriteSubProjectDesign } from './WriteSubProjectDesign';
 import { WriteCode } from './WriteCode';
 import { WriteTest } from './WriteTest';
 import { WriteTestPlan } from './WriteTestPlan';
+import { GeneratePrototype } from './GeneratePrototype';
 import { MRDReview } from './MRDReview';
 import { PRDReview } from './PRDReview';
 import { DesignReview } from './DesignReview';
@@ -108,6 +110,7 @@ export const ACTION_REGISTRY: Record<string, new () => BaseAction> = {
   WriteCode,
   WriteTest,
   WriteTestPlan,
+  GeneratePrototype,
   // Document Review Actions
   MRDReview,
   PRDReview,
