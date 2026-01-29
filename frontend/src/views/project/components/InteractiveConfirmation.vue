@@ -441,9 +441,18 @@ watch(() => props.roleInfo.action, (action) => {
 }, { immediate: true });
 
 // Watch for GeneratePrototype action and load PRD content
-watch(() => [props.prdId, isPrototypeAction], ([newPrdId, isPrototype]) => {
+watch(() => [props.prdId, isPrototypeAction, props.roleInfo.content], ([newPrdId, isPrototype, content]) => {
     if (isPrototype) {
-        loadPRDContent();
+        // 优先使用 props.roleInfo.content（即 pendingConfirmation.content）
+        if (content && typeof content === 'string' && content.trim().length > 0) {
+            prdContent.value = content;
+            prdLoading.value = false;
+            // 仍然需要加载原型预览URL
+            loadPrototypePreviewUrl();
+        } else {
+            // 如果 content 为空，才通过 API 获取
+            loadPRDContent();
+        }
     }
 }, { immediate: true });
 
@@ -590,6 +599,15 @@ function handlePrototypeGenerated() {
 
 // Load PRD content for GeneratePrototype action
 async function loadPRDContent() {
+    // 优先使用 props.roleInfo.content（即 pendingConfirmation.content）
+    if (props.roleInfo.content && typeof props.roleInfo.content === 'string' && props.roleInfo.content.trim().length > 0) {
+        prdContent.value = props.roleInfo.content;
+        prdLoading.value = false;
+        // 仍然需要加载原型预览URL
+        loadPrototypePreviewUrl();
+        return;
+    }
+    
     if (!props.projectId) return;
     
     prdLoading.value = true;
@@ -645,6 +663,30 @@ async function loadPRDContent() {
         prototypePreviewUrl.value = '';
     } finally {
         prdLoading.value = false;
+    }
+}
+
+// Load prototype preview URL separately
+async function loadPrototypePreviewUrl() {
+    if (!props.projectId) return;
+    
+    try {
+        const prdsResponse: any = await apiClient.getPRDs(props.projectId, false);
+        
+        if (prdsResponse.prds && prdsResponse.prds.length > 0) {
+            // 获取第一个有prototype的版本的预览URL
+            const firstVersionWithPrototype = prdsResponse.prds.find((p: any) => p.hasPrototype && p.previewUrl);
+            if (firstVersionWithPrototype) {
+                prototypePreviewUrl.value = firstVersionWithPrototype.previewUrl;
+            } else {
+                prototypePreviewUrl.value = '';
+            }
+        } else {
+            prototypePreviewUrl.value = '';
+        }
+    } catch (error: any) {
+        console.error('Failed to load prototype preview URL:', error);
+        prototypePreviewUrl.value = '';
     }
 }
 
