@@ -95,6 +95,9 @@ export async function tryReadActualDocumentFromWorkspace(
     minDocumentLength = 500,
   } = options;
 
+  // 对于 HTML 文件，降低最小长度要求（因为可能是空 HTML 模板）
+  const actualMinLength = mainFileName.endsWith('.html') ? 100 : minDocumentLength;
+
   try {
     // 检查 workspace 目录是否存在
     try {
@@ -106,13 +109,57 @@ export async function tryReadActualDocumentFromWorkspace(
       return null;
     }
 
-    // 读取目录中的所有 md 文件
+    // 首先尝试直接读取主文件（无论扩展名）
+    const mainFilePath = path.join(workspaceDir, mainFileName);
+    const isHtmlFile = mainFileName.endsWith('.html');
+    
+    try {
+      const content = await fs.readFile(mainFilePath, 'utf-8');
+      
+      // 对于HTML文件，只要文件存在就直接返回，跳过所有验证
+      if (isHtmlFile && content) {
+        logger.info('cliModeUtils: Found HTML file, returning directly without validation', {
+          mainFileName,
+          contentLength: content.length,
+        });
+        return content;
+      }
+      
+      // 对于非HTML文件，检查内容是否为有效文档（不是 CLI 总结，且长度足够）
+      if (content && !isCLISummaryOutput(content) && content.length >= actualMinLength) {
+        logger.info('cliModeUtils: Found valid content in main file', {
+          mainFileName,
+          contentLength: content.length,
+          minLength: actualMinLength,
+        });
+        return content;
+      }
+      
+      // 主文件是摘要或无效，返回null（不应该读取其他文件）
+      logger.warn('cliModeUtils: Main file exists but content is invalid (summary or empty)', {
+        mainFileName,
+        contentLength: content?.length || 0,
+        isSummary: content ? isCLISummaryOutput(content) : false,
+      });
+      return null;
+    } catch (error: any) {
+      // 文件不存在，继续查找
+      if (error.code !== 'ENOENT') {
+        logger.warn('cliModeUtils: Failed to read main file', {
+          mainFileName,
+          error: error.message,
+        });
+      }
+    }
+
+    // 如果主文件不存在或无效，根据扩展名查找同类型文件
+    const mainFileExt = path.extname(mainFileName);
     const entries = await fs.readdir(workspaceDir, { withFileTypes: true });
     
-    // 筛选 md 文件，排除指定模式的文件
+    // 筛选与主文件相同扩展名的文件，排除指定模式的文件
     const documentFiles = entries
       .filter(entry => {
-        if (!entry.isFile() || !entry.name.endsWith('.md')) return false;
+        if (!entry.isFile() || !entry.name.endsWith(mainFileExt)) return false;
         // 排除指定模式的文件
         for (const pattern of excludePatterns) {
           if (entry.name.includes(pattern)) return false;
@@ -127,35 +174,50 @@ export async function tryReadActualDocumentFromWorkspace(
       workspaceDir,
       files: documentFiles,
       mainFileName,
+      expectedExtension: mainFileExt,
     });
 
-    // 优先读取主文件
-    if (documentFiles.includes(mainFileName)) {
-      const mainFilePath = path.join(workspaceDir, mainFileName);
-      const content = await fs.readFile(mainFilePath, 'utf-8');
+    // 如果找到文件，读取第一个（按文件名排序，确保一致性）
+    if (documentFiles.length > 0) {
+      // 优先选择与主文件名最接近的文件
+      const sortedFiles = documentFiles.sort((a, b) => {
+        // 如果文件名包含主文件名（不含扩展名），优先选择
+        const mainNameWithoutExt = path.basename(mainFileName, mainFileExt);
+        const aMatches = a.includes(mainNameWithoutExt);
+        const bMatches = b.includes(mainNameWithoutExt);
+        if (aMatches && !bMatches) return -1;
+        if (!aMatches && bMatches) return 1;
+        return a.localeCompare(b);
+      });
+
+      const filePath = path.join(workspaceDir, sortedFiles[0]);
+      const content = await fs.readFile(filePath, 'utf-8');
       
-      // 检查主文件内容是否为有效文档（不是 CLI 总结，且长度足够）
-      if (content && !isCLISummaryOutput(content) && content.length >= minDocumentLength) {
-        logger.info('cliModeUtils: Found valid content in main file', {
-          mainFileName,
+      // 对于HTML文件，只要文件存在就直接返回，跳过所有验证
+      if (isHtmlFile && content) {
+        logger.info('cliModeUtils: Found HTML file in workspace, returning directly without validation', {
+          fileName: sortedFiles[0],
           contentLength: content.length,
         });
         return content;
       }
       
-      // 主文件是摘要或无效，返回null（不应该读取其他文件）
-      logger.warn('cliModeUtils: Main file exists but content is invalid (summary or empty)', {
-        mainFileName,
-        contentLength: content?.length || 0,
-        isSummary: content ? isCLISummaryOutput(content) : false,
-      });
-      return null;
+      // 对于非HTML文件，检查内容是否为有效文档
+      if (content && !isCLISummaryOutput(content) && content.length >= actualMinLength) {
+        logger.info('cliModeUtils: Found valid content in workspace file', {
+          fileName: sortedFiles[0],
+          contentLength: content.length,
+          minLength: actualMinLength,
+        });
+        return content;
+      }
     }
 
     // 主文件不存在，返回null（不读取其他文件，避免误读）
     logger.warn('cliModeUtils: Main file not found in workspace', {
       workspaceDir,
       mainFileName,
+      expectedExtension: mainFileExt,
       availableFiles: documentFiles,
     });
     return null;

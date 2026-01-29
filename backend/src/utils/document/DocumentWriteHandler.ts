@@ -90,6 +90,7 @@ export class DocumentWriteHandler {
     logger.info('DocumentWriteHandler: Writing with file path only (CLI mode)', {
       documentType: this.config.documentType,
       workspaceDir,
+      mainFileName: this.config.mainFileName,
     });
 
     // 获取生成要点
@@ -107,6 +108,13 @@ export class DocumentWriteHandler {
       workspaceDir,
       'document'
     );
+
+    logger.info('DocumentWriteHandler: Process output result', {
+      documentType: this.config.documentType,
+      contentLength: processResult.content.length,
+      isReadFromWorkspace: processResult.isReadFromWorkspace,
+      workspaceDir,
+    });
 
     // 清理代码块标记
     const content = cleanCodeBlockMarkers(processResult.content);

@@ -135,6 +135,13 @@ export const actionDefinitions: ActionDefinition[] = [
     class_name: 'WriteSubProjectDesign',
     category: 'document_writing',
   },
+  {
+    name: 'GeneratePrototype',
+    display_name: '生成原型',
+    description: '基于PRD生成高保真HTML原型',
+    class_name: 'GeneratePrototype',
+    category: 'document_writing',
+  },
 
   // Reviews
   { name: 'MRDReview', display_name: 'MRD评审', description: '评审市场需求文档', class_name: 'MRDReview', category: 'review' },
@@ -228,7 +235,7 @@ export const actionDefinitions: ActionDefinition[] = [
  *
  * 配置与角色定义保持一致：
  * - Salesperson: WriteMRD -> MRDReview -> ImproveMRD
- * - ProductManager: WritePRD -> PRDReview -> ImprovePRD
+ * - ProductManager: WritePRD -> PRDReview -> ImprovePRD -> GeneratePrototype
  * - QAEngineer: WriteTestPlan -> WriteTest -> TestReview -> ImproveTest
  * - Architect: WriteDesign -> DesignReview -> ImproveDesign
  * - ProjectManager: FillProjectContext -> CreateOpenSpecProposal -> ValidateOpenSpecProposal -> EstimateStoryPoints -> ValidateStoryPointEstimates
@@ -248,7 +255,7 @@ export const defaultWorkflowConfig: WorkflowConfig = {
       profile: 'ProductManager',
       name: 'Product Manager',
       order: 1,
-      actions: ['WritePRD', 'PRDReview', 'ImprovePRD'],
+      actions: ['WritePRD', 'PRDReview', 'ImprovePRD', 'GeneratePrototype'],
       watch_actions: ['WriteMRD', 'ImproveMRD'],
     },
     {

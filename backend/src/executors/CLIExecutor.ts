@@ -116,8 +116,18 @@ export class CLIExecutor implements IExecutor {
       });
 
       // 再次检查取消信号
-      if (options?.abortSignal?.aborted) {
+      // 如果命令已经成功执行（exitCode: 0），即使信号被取消，也返回成功结果
+      // 只有在命令失败且信号被取消时，才抛出取消错误
+      if (options?.abortSignal?.aborted && result.exitCode !== 0) {
         throw new Error('CLIExecutor: Execution was cancelled');
+      }
+      
+      // 如果命令成功但信号被取消，记录警告但不抛出错误
+      if (options?.abortSignal?.aborted && result.exitCode === 0) {
+        logger.warn('CLIExecutor: Command completed successfully but abort signal was set', {
+          ...logContext,
+          exitCode: result.exitCode,
+        });
       }
 
       const executionTime = Date.now() - startTime;
@@ -169,8 +179,18 @@ export class CLIExecutor implements IExecutor {
             });
 
             // 再次检查取消信号
-            if (options?.abortSignal?.aborted) {
+            // 如果命令已经成功执行（exitCode: 0），即使信号被取消，也返回成功结果
+            if (options?.abortSignal?.aborted && fallbackResult.exitCode !== 0) {
               throw new Error('CLIExecutor: Execution was cancelled');
+            }
+            
+            // 如果命令成功但信号被取消，记录警告但不抛出错误
+            if (options?.abortSignal?.aborted && fallbackResult.exitCode === 0) {
+              logger.warn('CLIExecutor: Fallback command completed successfully but abort signal was set', {
+                ...logContext,
+                exitCode: fallbackResult.exitCode,
+                fallbackModel,
+              });
             }
 
             const fallbackExecutionTime = Date.now() - startTime;
@@ -282,8 +302,18 @@ export class CLIExecutor implements IExecutor {
             });
 
             // 再次检查取消信号
-            if (options?.abortSignal?.aborted) {
+            // 如果命令已经成功执行（exitCode: 0），即使信号被取消，也返回成功结果
+            if (options?.abortSignal?.aborted && fallbackResult.exitCode !== 0) {
               throw new Error('CLIExecutor: Execution was cancelled');
+            }
+            
+            // 如果命令成功但信号被取消，记录警告但不抛出错误
+            if (options?.abortSignal?.aborted && fallbackResult.exitCode === 0) {
+              logger.warn('CLIExecutor: Fallback command completed successfully but abort signal was set', {
+                ...logContext,
+                exitCode: fallbackResult.exitCode,
+                fallbackModel,
+              });
             }
 
             const fallbackExecutionTime = Date.now() - startTime;
