@@ -5,26 +5,15 @@
  * 工作流程：
  * 1) CLI模式：使用 DocumentReviewHandler 直接审核完整文档
  * 2) LLM模式：分章节审核，合并后进行整体审核
- * 
+ *
  * 使用 DocumentReviewHandler 统一处理 CLI 模式逻辑
  */
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import {
-  PRD_REVIEW_SYSTEM_PROMPT,
-  PRD_TEMPLATE,
-  buildPRDSectionReviewPrompt,
-  buildPRDFullReviewPrompt,
-} from '../prompts/prd';
+import { PRD_REVIEW_SYSTEM_PROMPT, PRD_TEMPLATE, buildPRDSectionReviewPrompt, buildPRDFullReviewPrompt } from '../prompts/prd';
 import { logger, WorkspaceOptions } from '../utils';
-import {
-  DocumentReviewHandler,
-  DOCUMENT_CONFIGS,
-  ReviewConfig,
-  isReviewPassed,
-  extractOutline,
-} from '../utils/document';
+import { DocumentReviewHandler, DOCUMENT_CONFIGS, ReviewConfig, isReviewPassed, extractOutline } from '../utils/document';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -89,19 +78,24 @@ export class PRDReview extends BaseAction {
       // CLI模式：使用 BaseAction 封装的执行方法
       if (isCLIMode) {
         const handler = await this.getCachedHandler('review', () => this.createReviewHandler());
-        return await this.executeReviewHandler(handler, prdContent, {
-          ...workspaceOptions,
-          outline: options?.outline,
-        }, {
-          type: 'prd_review',
-          filename: 'PRD_REVIEW.md',
-        });
+        return await this.executeReviewHandler(
+          handler,
+          prdContent,
+          {
+            ...workspaceOptions,
+            outline: options?.outline,
+          },
+          {
+            type: 'prd_review',
+            filename: 'PRD_REVIEW.md',
+          }
+        );
       }
 
       // LLM模式：尝试读取章节文件进行分章节审核
       // Step 1: 读取章节文件
       const sectionFiles = await this.readSectionFiles(workspaceOptions);
-      
+
       if (sectionFiles.length === 0) {
         // 如果没有章节文件，尝试读取完整的 PRD.md（向后兼容）
         let actualPRDContent = prdContent;
@@ -123,11 +117,11 @@ export class PRDReview extends BaseAction {
       // Step 2: 读取或生成目录
       const outline = options?.outline?.trim()
         ? options.outline
-        : await this.readOutlineFromWorkspace(workspaceOptions) || this.buildExpectedOutline();
+        : (await this.readOutlineFromWorkspace(workspaceOptions)) || this.buildExpectedOutline();
 
       logger.info('PRDReview: Found section files', {
         sectionCount: sectionFiles.length,
-        sections: sectionFiles.map(s => `${s.number}. ${s.title}`),
+        sections: sectionFiles.map((s) => `${s.number}. ${s.title}`),
         outlineLength: outline.length,
       });
 
@@ -137,7 +131,7 @@ export class PRDReview extends BaseAction {
         sectionReviews = await this.reviewSections(sectionFiles, outline, workspaceOptions);
         logger.info('PRDReview: Section reviews completed', {
           reviewedCount: sectionReviews.length,
-          passedCount: sectionReviews.filter(r => r.passed).length,
+          passedCount: sectionReviews.filter((r) => r.passed).length,
         });
       }
 
@@ -168,7 +162,7 @@ export class PRDReview extends BaseAction {
         filename: 'PRD_REVIEW.md',
         passed,
         sectionReviewCount: sectionReviews.length,
-        sectionPassedCount: sectionReviews.filter(r => r.passed).length,
+        sectionPassedCount: sectionReviews.filter((r) => r.passed).length,
         workspaceDir: this.getWorkspaceDir(workspaceOptions),
       });
     } catch (error: any) {
@@ -196,16 +190,16 @@ export class PRDReview extends BaseAction {
 
     try {
       const entries = await fs.readdir(workspaceDir, { withFileTypes: true });
-      
+
       // 筛选章节文件（格式：XX-section-Y.md）
       const sectionEntries = entries
-        .filter(entry => entry.isFile() && /^\d+-section-\d+\.md$/.test(entry.name))
+        .filter((entry) => entry.isFile() && /^\d+-section-\d+\.md$/.test(entry.name))
         .sort((a, b) => a.name.localeCompare(b.name));
 
       for (const entry of sectionEntries) {
         const filePath = path.join(workspaceDir, entry.name);
         const content = await fs.readFile(filePath, 'utf-8');
-        
+
         // 解析文件名获取章节编号
         const match = entry.name.match(/^\d+-section-(\d+)\.md$/);
         if (match) {
@@ -257,11 +251,7 @@ export class PRDReview extends BaseAction {
   /**
    * 分章节审核
    */
-  private async reviewSections(
-    sections: SectionFile[],
-    outline: string,
-    options: WorkspaceOptions
-  ): Promise<SectionReview[]> {
+  private async reviewSections(sections: SectionFile[], outline: string, options: WorkspaceOptions): Promise<SectionReview[]> {
     const reviews: SectionReview[] = [];
     const systemPrompt = await this.loadSystemPrompt('prd', 'review_system_prompt', PRD_REVIEW_SYSTEM_PROMPT);
 
@@ -269,7 +259,7 @@ export class PRDReview extends BaseAction {
       // 检查是否已存在审核文件，如果存在则跳过审核
       const reviewFilename = `${String(section.number).padStart(2, '0')}-section-${section.number}-review.md`;
       const existingReview = await this.readWorkspaceFile(reviewFilename, options);
-      
+
       if (existingReview && existingReview.trim().length > 0) {
         // 已存在审核文件，直接使用已有的审核结果
         const passed = this.isSectionPassed(existingReview);
@@ -296,12 +286,7 @@ export class PRDReview extends BaseAction {
       });
 
       try {
-        const prompt = buildPRDSectionReviewPrompt(
-          section.content,
-          section.number,
-          section.title,
-          outline
-        );
+        const prompt = buildPRDSectionReviewPrompt(section.content, section.number, section.title, outline);
 
         const reviewResult = await this.aask(prompt, [systemPrompt]);
         const passed = this.isSectionPassed(reviewResult);
@@ -326,7 +311,7 @@ export class PRDReview extends BaseAction {
           sectionNumber: section.number,
           error: error.message,
         });
-        
+
         reviews.push({
           number: section.number,
           title: section.title,
@@ -354,11 +339,11 @@ export class PRDReview extends BaseAction {
     // 添加各章节内容
     for (const section of sortedSections) {
       let content = section.content.trim();
-      
+
       // 清理可能的代码块标记
       content = content.replace(/^```(?:markdown|md|text)?\s*\n?/i, '');
       content = content.replace(/\n?```\s*$/, '');
-      
+
       parts.push(content);
     }
 
@@ -368,11 +353,7 @@ export class PRDReview extends BaseAction {
   /**
    * 审核完整文档（使用专门的整体审核提示词，侧重跨章节一致性）
    */
-  private async reviewFullDocument(
-    prdContent: string,
-    outline: string,
-    _workspaceOptions: WorkspaceOptions
-  ): Promise<string> {
+  private async reviewFullDocument(prdContent: string, outline: string, _workspaceOptions: WorkspaceOptions): Promise<string> {
     const systemPrompt = await this.loadSystemPrompt('prd', 'review_system_prompt', PRD_REVIEW_SYSTEM_PROMPT);
 
     logger.info('PRDReview: Reviewing full document (cross-section consistency check)', {
@@ -402,23 +383,23 @@ export class PRDReview extends BaseAction {
     // 分章节审核结果摘要
     if (sectionReviews.length > 0) {
       parts.push('## 一、分章节审核摘要\n');
-      
-      const passedCount = sectionReviews.filter(r => r.passed).length;
+
+      const passedCount = sectionReviews.filter((r) => r.passed).length;
       const totalCount = sectionReviews.length;
-      
+
       parts.push(`| 章节 | 标题 | 审核结果 |`);
       parts.push(`|------|------|----------|`);
-      
+
       for (const review of sectionReviews) {
         const status = review.passed ? '✅ 通过' : '❌ 需改进';
         parts.push(`| ${review.number} | ${review.title} | ${status} |`);
       }
-      
-      parts.push(`\n**章节审核通过率**: ${passedCount}/${totalCount} (${Math.round(passedCount / totalCount * 100)}%)\n`);
+
+      parts.push(`\n**章节审核通过率**: ${passedCount}/${totalCount} (${Math.round((passedCount / totalCount) * 100)}%)\n`);
 
       // 添加各章节的详细审核结果
       parts.push('## 二、分章节详细审核结果\n');
-      
+
       for (const review of sectionReviews) {
         parts.push(`### 章节 ${review.number}. ${review.title}\n`);
         parts.push(review.review);
@@ -472,12 +453,10 @@ export class PRDReview extends BaseAction {
       contentLength: prdContent.length,
     });
 
-    const outline = options?.outline?.trim()
-      ? options.outline
-      : this.buildExpectedOutline();
+    const outline = options?.outline?.trim() ? options.outline : this.buildExpectedOutline();
 
     const fullReview = await this.reviewFullDocument(prdContent, outline, workspaceOptions);
-    
+
     // 保存审核报告
     await this.saveToWorkspace('PRD_REVIEW.md', fullReview, workspaceOptions);
 
@@ -504,7 +483,10 @@ export class PRDReview extends BaseAction {
    */
   private extractOutlineFromContent(prdContent: string): string {
     const outline = extractOutline(prdContent);
-    return outline || '## 0. 基本信息\n## 1. 背景与目标\n## 2. 范围\n## 3. 用户与场景\n## 4. 核心流程\n## 5. 功能与交互\n## 6. 业务规则与数据口径\n## 7. 权限与安全\n## 8. 异常与边界\n## 9. 埋点与观测\n## 10. 验收标准\n## 11. 角色关注块（按需展开）';
+    return (
+      outline ||
+      '## 0. 生成说明（给 PRD Agent）\n## 1. 文档信息\n## 2. MRD 摘要与需求背景\n## 3. 目标与成功标准（KPI）\n## 4. 用户体验与交互设计要求（Experience Spec）\n## 5. 需求范围与优先级\n## 6. 用户、角色与使用场景\n## 7. 端到端关键流程（Key Flow）\n## 8. 功能需求（AI-friendly 强结构）\n## 9. 数据与埋点（可观测）\n## 10. 非功能性需求（体验相关）\n## 11. 依赖与影响范围\n## 12. 风险与应对\n## 13. 发布、灰度与回滚\n## 14. 验收与 Go / No-Go\n## 15. 开放问题（唯一允许 TBD 的位置）\n## 16. 附录'
+    );
   }
 }
 

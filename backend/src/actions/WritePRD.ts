@@ -11,7 +11,7 @@
  * 3) 加载系统提示词：生成用 system_prompt
  * 4) 调用模型生成 PRD 各章节内容，保存到 workspace/PRD/ 目录
  * 5) 返回章节文件列表信息，由 PRDReview 负责后续的审核和合并
- * 
+ *
  * Enhanced with knowledge integration for improved document generation
  */
 
@@ -29,11 +29,7 @@ import {
 } from '../prompts/prd';
 import { logger } from '../utils';
 import { StepwiseDocumentGenerator } from '../utils/stepwise';
-import {
-  DocumentWriteHandler,
-  DOCUMENT_CONFIGS,
-  WriteConfig,
-} from '../utils/document';
+import { DocumentWriteHandler, DOCUMENT_CONFIGS, WriteConfig } from '../utils/document';
 import { KnowledgeIntegrationService } from '../services/KnowledgeIntegrationService';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -127,9 +123,7 @@ export class WritePRD extends BaseAction {
       }
 
       const ragQuery = input && input.trim().length > 0 ? input : mrdContent;
-      const stepwiseInput = useRAG && options?.relevantChunks
-        ? `${mrdContent}\n\n【相关历史PRD参考信息】\n${options.relevantChunks}`
-        : mrdContent;
+      const stepwiseInput = useRAG && options?.relevantChunks ? `${mrdContent}\n\n【相关历史PRD参考信息】\n${options.relevantChunks}` : mrdContent;
 
       // LLM模式：如果启用分步骤生成且是新模式，使用分步骤生成
       if (useStepwise && mode === 'new' && !options?.historyPRD) {
@@ -144,12 +138,7 @@ export class WritePRD extends BaseAction {
 
       if (mode === 'update' && options?.historyPRD) {
         if (useRAG && options?.relevantChunks) {
-          prompt = buildPRDUpdateWithRAGPrompt(
-            options.historyPRD,
-            options.relevantChunks,
-            mrdContent,
-            ragQuery
-          );
+          prompt = buildPRDUpdateWithRAGPrompt(options.historyPRD, options.relevantChunks, mrdContent, ragQuery);
           logger.info('WritePRD: Using update mode with RAG context');
         } else {
           // Update mode: use history PRD + new requirements
@@ -234,11 +223,11 @@ export class WritePRD extends BaseAction {
       if (isTimeout) {
         const timeoutError = new Error(
           `PRD 生成超时。当前超时设置: ${process.env.REQUEST_TIMEOUT || '300'}秒。\n` +
-          `建议解决方案：\n` +
-          `1. 在项目根目录的 .env 文件中设置 REQUEST_TIMEOUT=600（10分钟）或更高\n` +
-          `2. 重启后端服务使配置生效\n` +
-          `3. 如果问题持续，可以尝试分段生成 PRD 或简化需求描述\n\n` +
-          `原始错误: ${error.message}`
+            `建议解决方案：\n` +
+            `1. 在项目根目录的 .env 文件中设置 REQUEST_TIMEOUT=600（10分钟）或更高\n` +
+            `2. 重启后端服务使配置生效\n` +
+            `3. 如果问题持续，可以尝试分段生成 PRD 或简化需求描述\n\n` +
+            `原始错误: ${error.message}`
         );
         timeoutError.name = 'PRDGenerationTimeoutError';
         throw timeoutError;
@@ -247,8 +236,6 @@ export class WritePRD extends BaseAction {
       throw error;
     }
   }
-
-
 
   /**
    * 读取 workspace 中的所有文件内容
@@ -275,7 +262,7 @@ export class WritePRD extends BaseAction {
       // 按文件名排序（确保顺序：outline -> sections -> PRD）
       // 排除review文件和其他非PRD文件，确保只返回完整的PRD内容，而不是监控检测信息
       const sortedEntries = entries
-        .filter(entry => {
+        .filter((entry) => {
           // 只包含PRD相关文件，排除review文件和其他非PRD文件
           if (!entry.isFile() || !entry.name.endsWith('.md')) return false;
           // 排除review文件
@@ -328,21 +315,14 @@ export class WritePRD extends BaseAction {
    * 获取知识上下文
    * 使用知识整合服务获取结构化知识
    */
-  private async getKnowledgeContext(
-    projectId: string,
-    mrdContent: string
-  ): Promise<StructuredKnowledgeContext | undefined> {
+  private async getKnowledgeContext(projectId: string, mrdContent: string): Promise<StructuredKnowledgeContext | undefined> {
     try {
       const knowledgeService = new KnowledgeIntegrationService();
       const userId = this.context?.get('userId');
       await knowledgeService.initialize(userId);
-      
-      const context = await knowledgeService.getPRDDocumentKnowledge(
-        projectId,
-        mrdContent,
-        { limitPerType: 3 }
-      );
-      
+
+      const context = await knowledgeService.getPRDDocumentKnowledge(projectId, mrdContent, { limitPerType: 3 });
+
       logger.info('WritePRD: Knowledge context retrieved', {
         projectId,
         hasTerminology: context.terminology.length > 0,
@@ -350,7 +330,7 @@ export class WritePRD extends BaseAction {
         hasExistingFeatures: context.existingFeatures.length > 0,
         hasHistoryPRD: context.historyPRD.length > 0,
       });
-      
+
       return context;
     } catch (error: any) {
       logger.warn('WritePRD: Failed to get knowledge context', {
@@ -365,7 +345,7 @@ export class WritePRD extends BaseAction {
    * 分步骤生成 PRD
    * 使用通用的 StepwiseDocumentGenerator
    * 只负责分章节生成，不做审核和合并（由 PRDReview 负责）
-   * 
+   *
    * CLI模式下会自动跳过分章节生成，直接生成完整文档到主文件
    */
   private async generateStepwise(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
@@ -397,31 +377,34 @@ export class WritePRD extends BaseAction {
       buildSectionPrompt: (mrdContent: string, outline: string, sectionNumber: number, sectionTitle: string) =>
         buildPRDSectionPrompt(mrdContent, outline, sectionNumber, sectionTitle, knowledgeContext),
       // CLI模式下用于生成完整文档的提示词
-      buildFullDocumentPrompt: (mrdContent: string) => 
-        buildPRDPrompt(mrdContent, knowledgeContext),
+      buildFullDocumentPrompt: (mrdContent: string) => buildPRDPrompt(mrdContent, knowledgeContext),
       // 不需要 buildSectionReviewPrompt 和 reviewSystemPrompt，因为跳过审核步骤
       systemPrompt: systemPrompt,
       documentTitle: '产品需求文档（PRD）',
       documentType: 'PRD',
       mainFileName: 'PRD.md',
       defaultSections: [
-        { number: 0, title: '基本信息' },
-        { number: 1, title: '背景与目标' },
-        { number: 2, title: '范围' },
-        { number: 3, title: '用户与场景' },
-        { number: 4, title: '核心流程' },
-        { number: 5, title: '功能与交互' },
-        { number: 6, title: '业务规则与数据口径' },
-        { number: 7, title: '权限与安全' },
-        { number: 8, title: '异常与边界' },
-        { number: 9, title: '埋点与观测' },
-        { number: 10, title: '验收标准' },
+        { number: 0, title: '生成说明（给 PRD Agent）' },
+        { number: 1, title: '文档信息' },
+        { number: 2, title: 'MRD 摘要与需求背景' },
+        { number: 3, title: '目标与成功标准（KPI）' },
+        { number: 4, title: '用户体验与交互设计要求（Experience Spec）' },
+        { number: 5, title: '需求范围与优先级' },
+        { number: 6, title: '用户、角色与使用场景' },
+        { number: 7, title: '端到端关键流程（Key Flow）' },
+        { number: 8, title: '功能需求（AI-friendly 强结构）' },
+        { number: 9, title: '数据与埋点（可观测）' },
+        { number: 10, title: '非功能性需求（体验相关）' },
+        { number: 11, title: '依赖与影响范围' },
+        { number: 12, title: '风险与应对' },
+        { number: 13, title: '发布、灰度与回滚' },
+        { number: 14, title: '验收与 Go / No-Go' },
+        { number: 15, title: '开放问题（唯一允许 TBD 的位置）' },
+        { number: 16, title: '附录' },
       ],
       sectionFilter: (sections) => {
-        if (options?.includeOptionalSections) {
-          return sections;
-        }
-        return sections.filter((section) => section.number !== 11);
+        // 所有章节都是必需的，不再过滤
+        return sections;
       },
       workspaceDir,
       ...workspaceOptions,
@@ -437,15 +420,11 @@ export class WritePRD extends BaseAction {
     return await generator.generate(input);
   }
 
-
   /**
    * Build PRD with history context
    * Helper method for generating PRD based on historical PRD
    */
-  async buildPRDWithHistory(
-    newRequirements: string,
-    historyPRD: string
-  ): Promise<IActionOutput> {
+  async buildPRDWithHistory(newRequirements: string, historyPRD: string): Promise<IActionOutput> {
     return this.run(newRequirements, {
       mode: 'update',
       historyPRD,
