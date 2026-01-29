@@ -796,7 +796,6 @@ export async function testDeploy(req: Request, res: Response) {
 export async function testImproveCode(req: Request, res: Response) {
     try {
         const {
-            design: providedDesign,
             workspaceOptions,
             llmConfig,
         } = req.body as EngineerTestRequest;
@@ -816,20 +815,37 @@ export async function testImproveCode(req: Request, res: Response) {
         const applicationId = workspaceOptions.applicationId;
         const projectId = workspaceOptions.projectId;
 
-        // Use default message if design not provided
-        const design = providedDesign || '执行代码改进';
-
         // Create context
         const context = new Context(undefined, 10.0);
         context.set('applicationId', applicationId);
         context.set('projectId', projectId);
 
-        // Create Engineer with ImproveCode action
+        // Set userId in context (only if valid UUID)
+        const userId = getValidUserId((req as any).userId);
+        if (userId) {
+            context.set('userId', userId);
+        }
+
+        // If provided LLM config, set it as fallback (will be overridden by database config if exists)
+        if (llmConfig) {
+            const fallbackLLM = createLLM({
+                provider: (llmConfig.provider || 'zhipuai') as any,
+                apiKey: llmConfig.apiKey || '',
+                model: llmConfig.model || 'glm-4',
+                baseURL: llmConfig.baseURL,
+            });
+            fallbackLLM.costManager = context.costManager;
+            context.llm = fallbackLLM;
+        }
+
+        // Create Engineer instance - it will automatically load LLM config from database
+        // Priority: database config > provided llmConfig > default context.llm
         const engineer = new Engineer(context);
 
-        // Configure LLM if provided
-        if (llmConfig) {
-            await configureLLM(engineer, llmConfig);
+        // Wait for database config to load (Role.ts loads it asynchronously)
+        // The Role's loadRoleLLMFromDatabase will override context.llm if database config exists
+        if ((engineer as any).llmConfig?.llmLoadPromise) {
+            await (engineer as any).llmConfig.llmLoadPromise;
         }
 
         // Find ImproveCode action
