@@ -1396,7 +1396,7 @@ export function getDeployCommand(): string {
    - 只记录实际存在的服务，不要添加项目中不存在的服务
 
 4. **生成部署文档**
-   在 ../docs/deploy 目录下创建 deploy.md 文件，动态生成内容：
+   在 docs/deploy 目录下创建 deploy.md 文件，动态生成内容：
    
    - 包含部署时间、环境信息
    - 访问地址部分：列出实际识别到的所有服务及其地址
@@ -1438,7 +1438,7 @@ export function getDeployCheckCommand(): string {
 ## 检查项目
 
 1. **检查 deploy.md 文件**
-   - 查找 ../docs/deploy/deploy.md 文件是否存在
+   - 查找 docs/deploy/deploy.md 文件是否存在
    - 文件内容是否包含完整的访问地址信息
 
 2. **验证服务可访问性**
