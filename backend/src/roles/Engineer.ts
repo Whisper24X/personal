@@ -7,6 +7,7 @@ import { IRoleConfig, ACTION_WRITE_DESIGN, ACTION_WRITE_PRD, ACTION_BREAKDOWN_TA
 import { Role } from './Role';
 import { Context } from '../core/context/Context';
 import { WriteCode } from '../actions/WriteCode';
+import { ImproveCode } from '../actions/ImproveCode';
 import { Deploy } from '../actions/Deploy';
 
 export class Engineer extends Role {
@@ -24,8 +25,8 @@ export class Engineer extends Role {
     // 监听 ProductManager 和 Architect 的输出
     this.watch([ACTION_WRITE_PRD, ACTION_WRITE_DESIGN, ACTION_BREAKDOWN_TASKS]);
 
-    // 设置 WriteCode action
-    this.setActions([new WriteCode(), new Deploy()]);
+    // 设置 actions: WriteCode -> ImproveCode -> Deploy
+    this.setActions([new WriteCode(), new ImproveCode(), new Deploy()]);
   }
 }
 

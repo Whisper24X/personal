@@ -19,6 +19,9 @@
       <el-tab-pane label="提示词" name="prompts">
         <PromptConfigPanel />
       </el-tab-pane>
+      <el-tab-pane label="数据迁移" name="migration">
+        <MigrationPanel />
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -31,6 +34,7 @@ import LLMConfigPanel from './panels/LLMConfigPanel.vue';
 import ModelManagePanel from './panels/ModelManagePanel.vue';
 import RoleConfigPanel from './panels/RoleConfigPanel.vue';
 import PromptConfigPanel from './panels/PromptConfigPanel.vue';
+import MigrationPanel from './panels/MigrationPanel.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -40,7 +44,7 @@ const activeTab = ref('llm');
 // 从 URL query 参数初始化 tab
 onMounted(() => {
   const tab = route.query.tab as string;
-  if (tab && ['llm', 'models', 'roles', 'prompts'].includes(tab)) {
+  if (tab && ['llm', 'models', 'roles', 'prompts', 'migration'].includes(tab)) {
     activeTab.value = tab;
   }
 });

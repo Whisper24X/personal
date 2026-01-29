@@ -1396,7 +1396,7 @@ export function getDeployCommand(): string {
    - 只记录实际存在的服务，不要添加项目中不存在的服务
 
 4. **生成部署文档**
-   在 ../docs/deploy 目录下创建 deploy.md 文件，动态生成内容：
+   在 docs/deploy 目录下创建 deploy.md 文件，动态生成内容：
    
    - 包含部署时间、环境信息
    - 访问地址部分：列出实际识别到的所有服务及其地址
@@ -1438,7 +1438,7 @@ export function getDeployCheckCommand(): string {
 ## 检查项目
 
 1. **检查 deploy.md 文件**
-   - 查找 ../docs/deploy/deploy.md 文件是否存在
+   - 查找 docs/deploy/deploy.md 文件是否存在
    - 文件内容是否包含完整的访问地址信息
 
 2. **验证服务可访问性**
@@ -1506,6 +1506,52 @@ export function getDeployCheckCommand(): string {
 只返回 JSON 格式，不要返回其他内容。`;
 }
 
+/**
+ * 获取代码改进命令提示词
+ */
+export function getImproveCommand(): string {
+    return `请执行以下代码改进任务：
+
+1. **读取改进文件**
+   - 文件路径: docs/code/ImproveCode.md
+   - 该文件包含 QA 测试报告、Bug 清单和用户改进建议
+
+2. **分析问题**
+   - 仔细阅读文件中的所有问题描述
+   - 识别问题的根本原因和优先级
+   - 理解用户的改进建议
+
+3. **执行改进**
+   - 修复所有发现的 Bug（功能缺陷）
+   - 优化代码性能（响应速度、资源使用）
+   - 改进代码质量（可读性、可维护性）
+   - 提升用户体验（交互、界面、反馈）
+   - 确保符合最佳实践和编码规范
+
+4. **问题标记机制（重要）**
+   - 每解决一个问题后，在 ImproveCode.md 中对应问题后添加 ✅ 已解决 标记
+   - 例如：
+     \`\`\`markdown
+     ### Bug 1: 登录失败处理不正确 ✅ 已解决
+     - 已修复错误处理逻辑
+     \`\`\`
+   - 这样避免下次循环重复执行已解决的问题
+
+5. **完成确认**
+   - 确保所有改进都已成功实现
+   - 验证改进没有引入新问题
+   - 保持代码风格一致性
+   - **只有当所有问题都标记为 ✅ 已解决 后，才删除 docs/code/ImproveCode.md 文件**
+
+**重要提示**：
+- cursor-agent -p 是无状态的，每次执行都是全新上下文
+- 必须通过标记已解决问题来避免重复执行
+- 如果所有问题都已解决 → 删除 ImproveCode.md 文件
+- 如果还有未解决问题 → 保留 ImproveCode.md 文件，系统会再次执行改进
+
+请开始执行全面的代码改进任务。`;
+}
+
 export default {
     CODE_SYSTEM_PROMPT,
     CODE_COMPLETENESS_CHECK_SYSTEM_PROMPT,
@@ -1522,6 +1568,7 @@ export default {
     getCheckCommand,
     getDeployCommand,
     getDeployCheckCommand,
+    getImproveCommand,
     checkCodeCompleteness,
     checkFrontendBackendCompleteness,
     extractFileListFromDesign,

@@ -789,3 +789,116 @@ export async function testDeploy(req: Request, res: Response) {
     }
 }
 
+/**
+ * Test Engineer role with ImproveCode action
+ * POST /api/test/engineer/improve-code
+ */
+export async function testImproveCode(req: Request, res: Response) {
+    try {
+        const {
+            workspaceOptions,
+            llmConfig,
+        } = req.body as EngineerTestRequest;
+
+        // Validate required parameters
+        if (!workspaceOptions?.applicationId) {
+            return res.status(400).json({
+                error: 'applicationId is required in workspaceOptions',
+            });
+        }
+        if (!workspaceOptions?.projectId) {
+            return res.status(400).json({
+                error: 'projectId is required in workspaceOptions',
+            });
+        }
+
+        const applicationId = workspaceOptions.applicationId;
+        const projectId = workspaceOptions.projectId;
+
+        // Create context
+        const context = new Context(undefined, 10.0);
+        context.set('applicationId', applicationId);
+        context.set('projectId', projectId);
+
+        // Set userId in context (only if valid UUID)
+        const userId = getValidUserId((req as any).userId);
+        if (userId) {
+            context.set('userId', userId);
+        }
+
+        // If provided LLM config, set it as fallback (will be overridden by database config if exists)
+        if (llmConfig) {
+            const fallbackLLM = createLLM({
+                provider: (llmConfig.provider || 'zhipuai') as any,
+                apiKey: llmConfig.apiKey || '',
+                model: llmConfig.model || 'glm-4',
+                baseURL: llmConfig.baseURL,
+            });
+            fallbackLLM.costManager = context.costManager;
+            context.llm = fallbackLLM;
+        }
+
+        // Create Engineer instance - it will automatically load LLM config from database
+        // Priority: database config > provided llmConfig > default context.llm
+        const engineer = new Engineer(context);
+
+        // Wait for database config to load (Role.ts loads it asynchronously)
+        // The Role's loadRoleLLMFromDatabase will override context.llm if database config exists
+        if ((engineer as any).llmConfig?.llmLoadPromise) {
+            await (engineer as any).llmConfig.llmLoadPromise;
+        }
+
+        // Find ImproveCode action
+        const improveCodeAction = engineer.actions.find(a => a.name === 'ImproveCode');
+        if (!improveCodeAction) {
+            return res.status(500).json({
+                error: 'ImproveCode action not found in Engineer role',
+            });
+        }
+
+        engineer['rc'].todo = improveCodeAction;
+
+        // Mock extractWorkspaceOptions
+        if (workspaceOptions) {
+            if (workspaceOptions.applicationId) {
+                context.set('applicationId', workspaceOptions.applicationId);
+            }
+            if (workspaceOptions.projectId) {
+                context.set('projectId', workspaceOptions.projectId);
+            }
+        }
+
+        // Execute action
+        logger.info('EngineerTestController: Executing ImproveCode action');
+        const result = await engineer.act();
+
+        if (!result) {
+            return res.status(200).json({
+                success: true,
+                message: 'No result returned',
+                result: null,
+            });
+        }
+
+        return res.json({
+            success: true,
+            action: 'ImproveCode',
+            result: {
+                content: result.content,
+                role: result.role,
+                causeBy: result.causeBy,
+                sentFrom: result.sentFrom,
+                instructContent: result.instructContent,
+                messageId: result.id,
+            },
+        });
+    } catch (error: any) {
+        logger.error('EngineerTestController: testImproveCode failed:', error);
+        return res.status(500).json({
+            error: 'Failed to test ImproveCode',
+            message: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        });
+    }
+}
+

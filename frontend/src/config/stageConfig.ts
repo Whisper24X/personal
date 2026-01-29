@@ -38,7 +38,6 @@ export const ACTION_STAGE_MAP: Record<string, Record<string, string>> = {
   },
   ProjectManager: {
     BreakdownTasks: '任务拆分阶段',
-    WriteSubProjectDesign: '任务拆分阶段',
     GenerateTask: '任务拆分阶段',
   },
   Engineer: {
@@ -47,7 +46,6 @@ export const ACTION_STAGE_MAP: Record<string, Record<string, string>> = {
   },
   QAEngineer: {
     WriteTest: '测试编写阶段',
-    CodeReview: '测试编写阶段',
   },
 };
 

@@ -253,7 +253,6 @@ export class RoleActionExecutionController {
       WritePRD: ['WriteMRD', 'UserInput'],
       PRDReview: ['WritePRD'],
       ImprovePRD: ['WritePRD', 'PRDReview'],
-      SearchEnhancedQA: ['WritePRD', 'UserInput'],
 
       // Architect actions
       WriteDesign: ['WritePRD'],
@@ -262,19 +261,14 @@ export class RoleActionExecutionController {
 
       // Project Manager actions
       BreakdownTasks: ['WritePRD', 'WriteDesign'],
-      WriteSubProjectDesign: ['WritePRD', 'WriteDesign', 'BreakdownTasks'],
-      SubProjectDesignReview: ['WriteSubProjectDesign'],
 
       // Engineer actions
       WriteCode: ['WritePRD', 'WriteDesign', 'BreakdownTasks'],
-      ExecuteSubtask: ['WritePRD', 'WriteDesign', 'BreakdownTasks', 'WriteSubProjectDesign'],
-      RunCode: ['WriteCode'],
-      FixBug: ['WriteCode', 'WriteTest'],
+      ExecuteSubtask: ['WritePRD', 'WriteDesign', 'BreakdownTasks'],
 
       // QA Engineer actions
       WriteTest: ['WritePRD', 'WriteCode'],
       WriteTestPlan: ['WritePRD', 'WriteCode'],
-      TestabilityReview: ['WritePRD', 'WriteDesign'],
       TestCaseReview: ['WriteTest', 'WriteTestPlan'],
       TestReview: ['WriteTest'],
       ImproveTest: ['WriteTest', 'TestReview'],

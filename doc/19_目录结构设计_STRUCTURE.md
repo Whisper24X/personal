@@ -145,15 +145,13 @@ backend/
 │   │   ├── WriteDesign.ts            # 编写设计
 │   │   ├── WriteCode.ts              # 编写代码
 │   │   ├── WriteTest.ts              # 编写测试
-│   │   ├── SearchEnhancedQA.ts       # 增强搜索问答
 │   │   ├── DataAnalysis.ts           # 数据分析
 │   │   ├── Coordinate.ts             # 协调任务
 │   │   ├── BreakdownTasks.ts         # 任务拆分
-│   │   ├── WriteSubProjectDesign.ts  # 子项目设计
-│   │   ├── GenerateTask.ts           # 生成任务说明
-│   │   ├── CodeReview.ts              # 代码审查
+│   │   ├── GeneratePrototype.ts      # 生成原型
 │   │   └── index.ts
-│   │   # 注意: FixBug.ts (修复Bug) 计划在未来版本中实现
+│   │   # 已移除: SubProjectDesignReview, CodeReview, WriteSubProjectDesign,
+│   │   # TestabilityReview, RunCode, FixBug, SearchEnhancedQA
 │   ├── providers/               # 提供商层
 │   │   ├── llm/                 # LLM 提供商
 │   │   │   ├── BaseLLM.ts       # LLM 基类

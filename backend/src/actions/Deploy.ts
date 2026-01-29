@@ -53,7 +53,7 @@ export class Deploy extends BaseAction {
           workDir,
         });
         
-        const debugPrompt = '在当前目录下生成一个deployTest.txt文档，内容为 我是部署调试';
+        const debugPrompt = '在 docs/deploy 目录下创建 deployTest.txt文档，内容为 我是部署调试';
         const debugResult = await this.runCLICommand(debugPrompt, workDir, {
           timeout: 300000, // 5分钟超时
         });

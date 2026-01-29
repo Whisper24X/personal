@@ -70,8 +70,8 @@ graph TB
         DocActions[文档Actions<br/>WriteMRD/WritePRD/WriteDesign]
         ReviewActions[审查Actions<br/>MRDReview/PRDReview/DesignReview]
         ImproveActions[改进Actions<br/>ImprovePRD/ImproveMRD/ImproveDesign]
-        CodeActions[代码Actions<br/>WriteCode/ExecuteSubtask/RunCode/FixBug]
-        QAActions[QA Actions<br/>TestabilityReview/WriteTestPlan/WriteTest<br/>TestCaseReview/AutomationPlanning/QAConclusion]
+        CodeActions[代码Actions<br/>WriteCode/Deploy]
+        QAActions[QA Actions<br/>WriteTestPlan/WriteTest/TestReview<br/>ImproveTest/AutomationPlanning/QAConclusion]
     end
     
     subgraph InfraLayer[基础设施层]
@@ -512,7 +512,7 @@ while actions_taken < max_react_loop:
 **2. BY_ORDER 模式** (按顺序执行，默认模式)
 ```typescript
 // 按照 actions 列表顺序依次执行
-this.setActions([new WritePRD(), new SearchEnhancedQA()]);
+this.setActions([new WritePRD(), new PRDReview(), new ImprovePRD()]);
 this.rc.reactMode = RoleReactMode.BY_ORDER;
 // 每次 think() 会选择下一个未执行的 Action
 ```
@@ -551,7 +551,7 @@ class ProductManager extends Role {
         this.watch([ACTION_WRITE_MRD]);
         
         // 设置 Actions
-        this.setActions([new WritePRD(), new SearchEnhancedQA()]);
+        this.setActions([new WritePRD(), new PRDReview(), new ImprovePRD()]);
     }
 }
 ```
