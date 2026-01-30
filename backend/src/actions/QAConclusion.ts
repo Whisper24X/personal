@@ -31,7 +31,7 @@ export class QAConclusion extends BaseAction {
       let testabilityReview = '';
       let testPlan = '';
       let testCases = '';
-      let testCasesReviewed = '';
+      let testReview = '';
       let automationPlan = '';
       let automationExecution = '';
       let coverageReport = '';
@@ -44,7 +44,7 @@ export class QAConclusion extends BaseAction {
           { name: 'TESTABILITY_REVIEW.md', var: 'testabilityReview' },
           { name: 'TEST_PLAN.md', var: 'testPlan' },
           { name: 'TEST.md', var: 'testCases' },
-          { name: 'TEST_CASES_REVIEWED.md', var: 'testCasesReviewed' },
+          { name: 'TEST_REVIEW.md', var: 'testReview' },
           { name: 'AUTOMATION_PLAN.md', var: 'automationPlan' },
           { name: 'tests/automated_tests.md', var: 'automationExecution' },
           { name: 'COVERAGE_REPORT.md', var: 'coverageReport' },
@@ -91,7 +91,7 @@ export class QAConclusion extends BaseAction {
         testabilityReview,
         testPlan,
         testCases,
-        testCasesReviewed,
+        testReview,
         automationPlan,
         automationExecution,
         coverageReport,

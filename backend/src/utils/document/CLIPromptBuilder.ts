@@ -164,14 +164,6 @@ export const CLI_IO_CONFIGS: Record<string, DocumentIOConfig> = {
     outputFileName: 'TESTABILITY_REVIEW.md',
   },
 
-  // TestCase 相关
-  review_testcase: {
-    documentType: 'TEST_CASE',
-    inputDirRelative: 'test',
-    inputFileNames: ['TEST.md'],
-    outputDirRelative: 'test',
-    outputFileName: 'TEST_CASE_REVIEW.md',
-  },
 
   // Prototype 相关
   write_prototype: {
@@ -478,8 +470,6 @@ function getDocumentTypeDescription(documentType: string): string {
     PRD: '产品需求文档（PRD）',
     DESIGN: '系统设计文档',
     TEST: '测试文档',
-    TEST_CASE: '测试用例文档',
-    TESTABILITY: '可测试性文档',
     CODE: '代码',
   };
   return descriptions[documentType.toUpperCase()] || documentType;

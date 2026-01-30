@@ -269,8 +269,7 @@ export class RoleActionExecutionController {
       // QA Engineer actions
       WriteTest: ['WritePRD', 'WriteCode'],
       WriteTestPlan: ['WritePRD', 'WriteCode'],
-      TestCaseReview: ['WriteTest', 'WriteTestPlan'],
-      TestReview: ['WriteTest'],
+      TestReview: ['WriteTest', 'WriteTestPlan'],
       ImproveTest: ['WriteTest', 'TestReview'],
       AutomationPlanning: ['WriteTest', 'WriteTestPlan'],
       AutomationExecution: ['WriteTest', 'AutomationPlanning'],
