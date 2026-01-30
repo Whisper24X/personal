@@ -1483,6 +1483,7 @@ export function getDeployCheckCommand(): string {
      * "未找到" - deploy.md 文件不存在
    - reason 字段：说明具体原因和检查结果
    - details 字段：包含每个服务的访问测试结果（状态码、响应信息等）
+   - error_logs 字段：如果存在启动失败的服务，从 deploy.md 中提取并包含该服务的错误日志
    
    **判断标准（必须严格执行）：**
    - "启动失败"或"未启动"的服务必须导致结果为"未完成"
@@ -1518,15 +1519,18 @@ export function getDeployCheckCommand(): string {
 }
 \`\`\`
 
-失败（存在启动失败或未启动的服务，必须判定为未完成）：
+失败（存在启动失败或未启动的服务，必须判定为未完成，并包含错误日志）：
 \`\`\`json
 {
   "result": "未完成",
   "reason": "存在启动失败的服务：后端API",
   "details": {
     "统一入口": "✅ 200 OK",
-    "后端API": "❌ 启动失败（查看 deploy.md 中的错误日志）",
+    "后端API": "❌ 启动失败",
     "管理后台": "✅ 200 OK"
+  },
+  "error_logs": {
+    "后端API": "Error: Cannot find module 'xxx'\\n    at Function.Module._resolveFilename...\\n[deploy.md 中记录的完整错误日志]"
   }
 }
 \`\`\`
