@@ -19,6 +19,10 @@ import { ProjectVersionRepository } from '../database/repositories/ProjectVersio
 import { MessageRepository } from '../database/repositories/MessageRepository';
 import { DocumentArchiveService } from '../services/DocumentArchiveService';
 import { WorkspaceManager } from '../utils/WorkspaceManager';
+import { RoleCompletionService } from './RoleCompletionService';
+import { GitCommitOnRoleCompleteHandler } from './handlers/GitCommitOnRoleCompleteHandler';
+import { WorkflowStartupService } from './WorkflowStartupService';
+import { EnsureWorkspaceHandler } from './handlers/EnsureWorkspaceHandler';
 import { logger } from '../utils';
 
 /**
@@ -43,6 +47,8 @@ export class WorkflowExecutor {
   private projectRepository: ProjectRepository;
   private versionRepository: ProjectVersionRepository;
   private messageRepository: MessageRepository;
+  private roleCompletionService: RoleCompletionService;
+  private workflowStartupService: WorkflowStartupService;
   private messageHandler?: WorkflowMessageHandler;
   private isExecuting: boolean = false;
   private shouldStop: boolean = false;
@@ -53,6 +59,15 @@ export class WorkflowExecutor {
     this.projectRepository = new ProjectRepository();
     this.versionRepository = new ProjectVersionRepository();
     this.messageRepository = new MessageRepository();
+    
+    // Initialize role completion service and register handlers
+    this.roleCompletionService = new RoleCompletionService();
+    this.roleCompletionService.register(new GitCommitOnRoleCompleteHandler());
+    
+    // Initialize workflow startup service and register handlers
+    this.workflowStartupService = new WorkflowStartupService();
+    this.workflowStartupService.register(new EnsureWorkspaceHandler());
+    
     // Config is currently unused but parameter is kept for future use
   }
 
@@ -110,6 +125,9 @@ export class WorkflowExecutor {
     this.abortController = new AbortController();
 
     try {
+      // Execute workflow startup hooks (e.g., ensure workspace exists)
+      await this.executeWorkflowStartupHooks(projectId, versionId);
+      
       await this.executeLoop(projectId, versionId);
     } finally {
       this.isExecuting = false;
@@ -240,6 +258,50 @@ export class WorkflowExecutor {
     }
 
     logger.info('WorkflowExecutor: Execution loop ended', { projectId, versionId });
+  }
+
+  /**
+   * Execute workflow startup hooks before workflow execution begins
+   * This handles operations like ensuring workspace exists
+   */
+  private async executeWorkflowStartupHooks(projectId: string, versionId: string): Promise<void> {
+    try {
+      // Get project and version info for context
+      const project = await this.projectRepository.findById(projectId);
+      if (!project) {
+        logger.warn('WorkflowExecutor: Project not found for startup hooks', { projectId });
+        return;
+      }
+
+      const version = await this.versionRepository.findById(versionId);
+      if (!version) {
+        logger.warn('WorkflowExecutor: Version not found for startup hooks', { versionId });
+        return;
+      }
+
+      // Get workspace path
+      const workspacePath = WorkspaceManager.getProjectWorkspacePath({
+        applicationId: project.application_id,
+        projectId,
+        versionId,
+      });
+
+      // Execute startup handlers
+      await this.workflowStartupService.onWorkflowStart({
+        projectId,
+        versionId,
+        project,
+        version,
+        workspacePath,
+      });
+    } catch (error: any) {
+      // Startup hooks failure shouldn't stop workflow execution
+      logger.error('WorkflowExecutor: Workflow startup hooks failed', {
+        projectId,
+        versionId,
+        error: error.message,
+      });
+    }
   }
 
   /**
@@ -385,6 +447,64 @@ export class WorkflowExecutor {
       needsConfirmation,
       isCompleted,
     });
+  }
+
+  /**
+   * Handle role confirmation - called after user confirms a role completion
+   * This triggers role completion handlers (e.g., git commit)
+   * @param projectId - Project ID
+   * @param versionId - Version ID
+   * @param role - Role that was confirmed
+   * @param action - Action that was confirmed
+   */
+  async onRoleConfirmed(
+    projectId: string,
+    versionId: string,
+    role: string,
+    action: string
+  ): Promise<void> {
+    try {
+      // Get project info
+      const project = await this.projectRepository.findById(projectId);
+      if (!project) {
+        logger.warn('WorkflowExecutor: Project not found for role confirmation', { projectId });
+        return;
+      }
+
+      // Get version info
+      const version = await this.versionRepository.findById(versionId);
+      if (!version) {
+        logger.warn('WorkflowExecutor: Version not found for role confirmation', { versionId });
+        return;
+      }
+
+      // Get workspace path
+      const workspacePath = WorkspaceManager.getProjectWorkspacePath({
+        applicationId: project.application_id,
+        projectId,
+        versionId,
+      });
+
+      // Execute role completion handlers
+      await this.roleCompletionService.onRoleComplete({
+        projectId,
+        versionId,
+        role,
+        action,
+        project,
+        version,
+        workspacePath,
+      });
+    } catch (error: any) {
+      // Role completion handlers failure shouldn't stop confirmation process
+      logger.error('WorkflowExecutor: Role confirmation handler failed', {
+        projectId,
+        versionId,
+        role,
+        action,
+        error: error.message,
+      });
+    }
   }
 
   /**

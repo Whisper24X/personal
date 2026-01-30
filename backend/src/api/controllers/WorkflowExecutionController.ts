@@ -276,7 +276,34 @@ export class WorkflowExecutionController {
         });
       }
 
+      // Get execution before confirm to preserve pendingConfirmation info
+      // (confirm() will clear pendingConfirmation)
+      const execBeforeConfirm = await WorkflowExecutionController.executionService.getExecution(
+        projectId,
+        versionId
+      );
+      const confirmedRole = execBeforeConfirm?.pendingConfirmation?.role;
+      const confirmedAction = execBeforeConfirm?.pendingConfirmation?.action;
+
+      // Confirm the workflow
       const execution = await WorkflowExecutionController.executionService.confirm(projectId, versionId);
+
+      // If a role was confirmed, trigger role completion handlers (e.g., git commit)
+      if (confirmedRole && confirmedAction) {
+        const executor = new WorkflowExecutor();
+        try {
+          await executor.onRoleConfirmed(projectId, versionId, confirmedRole, confirmedAction);
+        } catch (error: any) {
+          // Git commit failure shouldn't prevent confirmation process
+          logger.error('WorkflowExecutionController: Role confirmation handler failed', {
+            projectId,
+            versionId,
+            role: confirmedRole,
+            action: confirmedAction,
+            error: error.message,
+          });
+        }
+      }
 
       // Continue execution in background after confirmation
       WorkflowExecutionController.startBackgroundExecution(projectId, versionId);

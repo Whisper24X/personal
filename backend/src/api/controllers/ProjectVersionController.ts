@@ -144,6 +144,21 @@ export class ProjectVersionController {
                   versionId: version.id,
                   branchName,
                 });
+
+                // Push branch to remote with upstream tracking
+                const pushResult = await gitService.pushChanges(versionWorkspacePath, branchName);
+                if (pushResult.success) {
+                  logger.info('ProjectVersionController: Pushed version branch to remote', {
+                    versionId: version.id,
+                    branchName,
+                  });
+                } else {
+                  logger.warn('ProjectVersionController: Failed to push version branch to remote', {
+                    versionId: version.id,
+                    branchName,
+                    error: pushResult.message,
+                  });
+                }
               }
             }
           } else {

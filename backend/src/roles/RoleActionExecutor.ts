@@ -29,7 +29,6 @@ export class RoleActionExecutor {
         'MRDReview',
         'PRDReview',
         'DesignReview',
-        'TestCaseReview',
         'TestReview',
         'ImproveTest',
         'AutomationPlanning',
@@ -133,7 +132,6 @@ export class RoleActionExecutor {
             case 'WriteTestPlan':
                 return this.prepareWriteTestInput(context);
 
-            case 'TestCaseReview':
             case 'TestReview':
             case 'AutomationPlanning':
             case 'AutomationExecution':
@@ -352,7 +350,6 @@ export class RoleActionExecutor {
             case 'MRDReview':
             case 'PRDReview':
             case 'DesignReview':
-            case 'TestCaseReview':
             case 'TestReview':
             case 'ImproveTest':
             case 'AutomationPlanning':
