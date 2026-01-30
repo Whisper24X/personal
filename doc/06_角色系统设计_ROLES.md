@@ -31,7 +31,7 @@ const ACTIONS_WITH_OPTIONS = [
   'BreakdownTasks', 'WriteCode', 'WriteTest', 'WriteTestPlan',
   'ExecuteSubtask', 'ImprovePRD', 'ImproveMRD', 'ImproveDesign', 'ImproveTest',
   'MRDReview', 'PRDReview', 'DesignReview',
-  'TestCaseReview', 'TestReview',
+  'TestReview',
   'AutomationPlanning', 'AutomationExecution', 'CoverageQualityCheck', 'QAConclusion'
 ];
 ```
@@ -104,7 +104,6 @@ const DOCUMENT_TYPE_MAP = {
   WriteCode: 'CODE',
   WriteTest: 'TEST',
   WriteTestPlan: 'TEST',
-  TestCaseReview: 'TEST',
   TestReview: 'TEST',
   ImproveTest: 'TEST',
   AutomationPlanning: 'TEST',
@@ -364,7 +363,7 @@ class QAEngineer extends Role {
     constraints = "Focus on code quality, functional correctness, comprehensive test coverage, and systematic QA process. Execute QA workflow in order: testability review -> test plan -> test cases -> test case review -> QA conclusion"
     description = "Experienced QA engineer who executes QA workflow including testability review, test planning, test case design, and final QA conclusion"
     // 监听: ACTION_WRITE_PRD, ACTION_WRITE_CODE, ACTION_COVERAGE_QUALITY_CHECK actions
-    // Actions: TestabilityReview, WriteTestPlan, WriteTest, TestCaseReview, QAConclusion
+    // Actions: TestabilityReview, WriteTestPlan, WriteTest, TestReview, ImproveTest
 }
 ```
 
@@ -377,7 +376,7 @@ QAEngineer 实现测试设计工作流，包含以下 5 个 Actions（按顺序�
 | 1 | TestabilityReview | 需求可测性检查 | TESTABILITY_REVIEW.md |
 | 2 | WriteTestPlan | 制定测试计划 | TEST_PLAN.md |
 | 3 | WriteTest | 测试用例生成 | TEST.md |
-| 4 | TestCaseReview | 用例评审与补充 | TEST_CASES_REVIEWED.md |
+| 4 | TestReview | 测试用例评审 | TEST_REVIEW.md |
 
 **工作流程详解**:
 
@@ -395,9 +394,9 @@ QAEngineer 实现测试设计工作流，包含以下 5 个 Actions（按顺序�
    - 基于 PRD 和代码生成测试用例
    - 包含单元测试和集成测试
 
-4. **TestCaseReview（用例评审与补充）**
-   - 审查测试用例的完整性
-   - 补充边界条件、异常情况、负面测试用例
+4. **TestReview（测试用例评审）**
+   - 审查测试用例文档的完整性和质量
+   - 评估测试用例的覆盖度和可执行性
 
 5. **QAConclusion（QA 结论）**
    - 综合所有测试结果（包括 AutomationEngineer 的覆盖率报告）
@@ -413,7 +412,7 @@ QAEngineer 实现测试设计工作流，包含以下 5 个 Actions（按顺序�
 - 可测性审查报告（TESTABILITY_REVIEW.md）
 - 测试计划（TEST_PLAN.md）
 - 测试用例文档（TEST.md）
-- 审查后的测试用例（TEST_CASES_REVIEWED.md）
+- 测试评审报告（TEST_REVIEW.md）
 - QA 结论报告（QA_CONCLUSION.md）
 
 ### 5.1 Automation Engineer (自动化工程师)
@@ -428,7 +427,7 @@ class AutomationEngineer extends Role {
     goal = "Execute automation test workflow including planning, execution, coverage quality check and final QA conclusion"
     constraints = "Focus on automation feasibility assessment, technology selection, test execution, coverage analysis and QA conclusion. Execute automation workflow in order: automation planning -> automation execution -> coverage quality check -> QA conclusion"
     description = "Experienced automation engineer who handles automation test planning, execution, coverage quality analysis and final QA conclusion"
-    // 监听: ACTION_TEST_CASE_REVIEW action（来自 QAEngineer）
+    // 监听: ACTION_TEST_REVIEW action（来自 QAEngineer）
     // Actions: AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion
 }
 ```
@@ -466,7 +465,7 @@ AutomationEngineer 实现自动化测试工作流，包含以下 4 个 Actions�
    - 给出最终 QA 结论（通过/阻断/需修改）
 
 **监听机制**:
-- 监听 `ACTION_TEST_CASE_REVIEW` action（来自 QAEngineer）
+- 监听 `ACTION_TEST_REVIEW` action（来自 QAEngineer）
 - 等待 QAEngineer 完成测试用例评审后触发
 - 使用 BY_ORDER 模式按顺序执行所有 4 个 Actions
 
@@ -597,7 +596,7 @@ class DataAnalyst extends Role {
   - 特殊: 使用 BY_ORDER 模式按顺序执行 4 步测试设计工作流
 
 ✅ **AutomationEngineer** - 自动化测试工作流执行
-  - 监听: `ACTION_TEST_CASE_REVIEW` action
+  - 监听: `ACTION_TEST_REVIEW` action
   - Actions: AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion
   - 特殊: 使用 BY_ORDER 模式按顺序执行 4 步自动化测试工作流
   

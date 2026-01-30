@@ -70,7 +70,8 @@ COMMENT ON COLUMN "public"."action_logs"."duration_ms" IS '执行时长（毫秒
 COMMENT ON COLUMN "public"."action_logs"."error_message" IS '错误信息（如果执行失败）';
 COMMENT ON COLUMN "public"."action_logs"."created_at" IS '创建时间';
 
-DROP TABLE IF EXISTS "public"."application_workflows";
+-- NOTE: application_workflows depends on applications, so drop it before applications
+DROP TABLE IF EXISTS "public"."application_workflows" CASCADE;
 -- This script only contains the table creation statements and does not fully represent the table in the database. Do not use it as a backup.
 
 -- Table Definition
@@ -96,7 +97,9 @@ COMMENT ON COLUMN "public"."application_workflows"."workflow_config" IS '工作�
 COMMENT ON COLUMN "public"."application_workflows"."created_at" IS '创建时间';
 COMMENT ON COLUMN "public"."application_workflows"."updated_at" IS '更新时间';
 
-DROP TABLE IF EXISTS "public"."applications";
+-- NOTE: applications is referenced by projects and application_workflows
+-- Drop dependent tables first, or use CASCADE
+DROP TABLE IF EXISTS "public"."applications" CASCADE;
 -- This script only contains the table creation statements and does not fully represent the table in the database. Do not use it as a backup.
 
 -- Table Definition
@@ -378,7 +381,8 @@ COMMENT ON COLUMN "public"."project_versions"."metadata" IS '版本元数据（J
 COMMENT ON COLUMN "public"."project_versions"."created_at" IS '创建时间';
 COMMENT ON COLUMN "public"."project_versions"."updated_at" IS '更新时间';
 
-DROP TABLE IF EXISTS "public"."projects";
+-- NOTE: projects references applications, so drop it before applications or use CASCADE
+DROP TABLE IF EXISTS "public"."projects" CASCADE;
 -- This script only contains the table creation statements and does not fully represent the table in the database. Do not use it as a backup.
 
 -- Table Definition
@@ -634,7 +638,8 @@ INSERT INTO "public"."action_definitions" ("id", "name", "display_name", "descri
 ('02fccfa5-6204-4dff-936c-9d106628237b', 'TestabilityReview', '可测试性评审', '评审代码可测试性', 'TestabilityReview', 'review', 't', '{}', '2026-01-26 14:31:04.807144', '2026-01-26 14:31:04.807144'),
 ('04585970-a2a6-467a-a04a-9c4250c93cd9', 'ImproveDesign', '改进设计', '根据反馈改进设计', 'ImproveDesign', 'improvement', 't', '{}', '2026-01-26 14:31:05.03042', '2026-01-26 14:31:05.03042'),
 ('04d9e383-0b0f-4cb8-9233-67c385f8c2f8', 'WriteDesign', '编写设计文档', '编写系统设计文档', 'WriteDesign', 'document_writing', 't', '{}', '2026-01-26 14:31:04.19363', '2026-01-26 14:31:04.19363'),
-('1cdf0583-75ba-4e99-ba3f-a4d292f3e893', 'TestCaseReview', '测试用例评审', '评审测试用例详情', 'TestCaseReview', 'review', 't', '{}', '2026-01-26 14:31:04.753606', '2026-01-26 14:31:04.753606'),
+-- NOTE: TestCaseReview action has been deprecated and replaced by TestReview
+-- ('1cdf0583-75ba-4e99-ba3f-a4d292f3e893', 'TestCaseReview', '测试用例评审', '评审测试用例详情', 'TestCaseReview', 'review', 't', '{}', '2026-01-26 14:31:04.753606', '2026-01-26 14:31:04.753606'),
 ('25075d62-1ec1-4653-95ba-e07d3df61126', 'BreakdownTasks', '任务分解', '将大任务分解为子任务', 'BreakdownTasks', 'planning', 't', '{}', '2026-01-26 14:31:05.829996', '2026-01-26 14:31:05.829996'),
 ('2f4bab19-4e56-49f9-a417-b8770099f618', 'RunCode', '运行代码', '执行代码运行', 'RunCode', 'execution', 't', '{}', '2026-01-26 14:31:05.401633', '2026-01-26 14:31:05.401633'),
 ('309ed3a5-9153-4472-a4c9-b1468e0bd27a', 'AutomationPlanning', '自动化规划', '规划自动化方案', 'AutomationPlanning', 'planning', 't', '{}', '2026-01-26 14:31:05.895992', '2026-01-26 14:31:05.895992'),

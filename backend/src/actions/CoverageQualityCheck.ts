@@ -39,7 +39,7 @@ export class CoverageQualityCheck extends BaseAction {
       if (options) {
         // Read test cases
         try {
-          const reviewedTestCases = await this.readWorkspaceFile('TEST_CASES_REVIEWED.md', {
+          const reviewedTestCases = await this.readWorkspaceFile('TEST_REVIEW.md', {
             ...options,
             documentType: 'TEST',
           });
