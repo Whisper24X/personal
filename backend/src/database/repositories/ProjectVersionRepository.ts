@@ -282,6 +282,19 @@ export class ProjectVersionRepository {
 
     return parseInt(result.rows[0]?.count || '0', 10) > 0;
   }
+
+  /**
+   * Check if a branch name exists for a project
+   */
+  async existsByProjectAndBranch(projectId: string, branchName: string): Promise<boolean> {
+    const result = await query<{ count: string }>(
+      `SELECT COUNT(*) as count FROM project_versions 
+       WHERE project_id = $1 AND branch_name = $2`,
+      [projectId, branchName]
+    );
+
+    return parseInt(result.rows[0]?.count || '0', 10) > 0;
+  }
 }
 
 export default ProjectVersionRepository;
