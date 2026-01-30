@@ -17,7 +17,7 @@ Role类使用`RoleActionExecutor`来处理action的执行逻辑，提供以下�
 - `BreakdownTasks`, `WriteCode`, `WriteTest`, `ExecuteSubtask`
 - `ImprovePRD`, `ImproveMRD`, `ImproveDesign`, `ImproveTest`
 - `MRDReview`, `PRDReview`, `DesignReview`
-- `WriteTestPlan`, `TestCaseReview`, `TestReview`
+- `WriteTestPlan`, `TestReview`
 - `AutomationPlanning`, `AutomationExecution`, `CoverageQualityCheck`, `QAConclusion`
 
 这些actions在执行时会自动从消息中提取workspace options，如果找不到则从context中获取。
@@ -50,7 +50,7 @@ RoleActionExecutor为某些actions提供特殊的输入准备逻辑：
 - 如果news中找不到，从`rc.memory`中查找
 - 如果都找不到，返回空字符串（action会尝试从workspace读取）
 
-**WriteTestPlan / TestCaseReview**:
+**WriteTestPlan**:
 - 自动从memory中查找PRD和代码消息
 - 组合PRD和代码内容作为输入
 
@@ -546,34 +546,7 @@ async run(input: string, options?: WriteTestPlanOptions): Promise<IActionOutput>
 
 **使用角色**: QAEngineer
 
-### 13. TestCaseReview
-
-**功能**: 审查测试用例并补充边界、异常和负面测试用例
-
-**接口**:
-```typescript
-async run(input: string, options?: TestCaseReviewOptions): Promise<IActionOutput>
-```
-
-**输入**:
-- `input: string` - 测试用例内容（如未提供，从 workspace 读取 TEST.md）
-- `options?: TestCaseReviewOptions` - 可选配置（继承 WorkspaceOptions）
-
-**输出**: 
-- `content: string` - 审查后的测试用例
-- `data: object` - 包含类型、文件名、时间戳、工作区目录等信息
-
-**关键特性**:
-- 从 workspace 读取测试用例（TEST.md）
-- 从 workspace 读取 PRD 和代码作为参考
-- 补充边界条件测试用例
-- 补充异常情况测试用例
-- 补充负面测试用例
-- 自动保存到 workspace（TEST 目录，文件名 TEST_CASES_REVIEWED.md）
-
-**使用角色**: QAEngineer
-
-### 14. TestReview
+### 13. TestReview
 
 **功能**: 审查测试用例文档的完整性和质量
 
@@ -648,7 +621,7 @@ async run(input: string, options?: AutomationPlanningOptions): Promise<IActionOu
 - `data: object` - 包含类型、文件名、时间戳、工作区目录等信息
 
 **关键特性**:
-- 优先从 workspace 读取审查后的测试用例（TEST_CASES_REVIEWED.md）
+- 优先从 workspace 读取测试评审报告（TEST_REVIEW.md）
 - 回退到原始测试用例（TEST.md）
 - 从 workspace 读取代码作为参考
 - 评估每个测试用例的自动化可行性
@@ -702,7 +675,7 @@ async run(input: string, options?: CoverageQualityCheckOptions): Promise<IAction
 - `data: object` - 包含类型、文件名、时间戳、工作区目录等信息
 
 **关键特性**:
-- 从 workspace 读取测试用例（优先 TEST_CASES_REVIEWED.md，回退到 TEST.md）
+- 从 workspace 读取测试用例（优先 TEST_REVIEW.md，回退到 TEST.md）
 - 从 workspace 读取代码
 - 尝试读取测试执行结果（如已执行自动化测试）
 - 分析测试覆盖率
@@ -733,7 +706,7 @@ async run(input: string, options?: QAConclusionOptions): Promise<IActionOutput>
   - TESTABILITY_REVIEW.md - 可测性审查
   - TEST_PLAN.md - 测试计划
   - TEST.md - 测试用例
-  - TEST_CASES_REVIEWED.md - 审查后的测试用例
+  - TEST_REVIEW.md - 测试评审报告
   - AUTOMATION_PLAN.md - 自动化计划
   - tests/automated_tests.md - 自动化执行结果
   - COVERAGE_REPORT.md - 覆盖率报告
@@ -831,7 +804,6 @@ async run(allMessages: string): Promise<IActionOutput>
 ### QA 工作流 Actions (QAEngineer)
 ✅ **WriteTestPlan** - 测试计划制定（已在文档编写Actions中列出）
 ✅ **WriteTest** - 测试用例编写（已在文档编写Actions中列出）
-✅ **TestCaseReview** - 测试用例评审与补充  
 ✅ **TestReview** - 测试用例文档审查  
 ✅ **ImproveTest** - 根据审查报告改进测试用例（已在文档改进Actions中列出）
 
@@ -856,14 +828,14 @@ async run(allMessages: string): Promise<IActionOutput>
 - 任务管理: 2个 (BreakdownTasks, ExecuteSubtask)
 - OpenSpec: 5个 (FillProjectContext, CreateOpenSpecProposal, ValidateOpenSpecProposal, EstimateStoryPoints, ValidateStoryPointEstimates)
 - 代码执行: 1个 (Deploy)
-- QA工作流: 5个 (WriteTestPlan, WriteTest, TestCaseReview, TestReview, ImproveTest)
+- QA工作流: 4个 (WriteTestPlan, WriteTest, TestReview, ImproveTest)
 - 自动化测试: 4个 (AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion)
 - 其他: 2个 (DataAnalysis, Coordinate)
 
 **注意**: 
 - WriteTestPlan、WriteTest 和 ImproveTest 在多个分类中都有涉及，但实际只计算一次
 - **QAConclusion属于AutomationEngineer角色，不属于QAEngineer**
-- QAEngineer包含3个Actions：WriteTestPlan, WriteTest, TestCaseReview
+- QAEngineer包含4个Actions：WriteTestPlan, WriteTest, TestReview, ImproveTest
 - AutomationEngineer包含4个Actions：AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion
 
 ## 自定义 Action

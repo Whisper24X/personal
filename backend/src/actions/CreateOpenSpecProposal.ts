@@ -43,6 +43,11 @@ export class CreateOpenSpecProposal extends BaseAction {
         prdPath: '../docs/prd/PRD.md',
         designPath: '../docs/design/DESIGN.md',
         agentsPath: '../AGENTS.md',
+        devSpecPath: '../docs/dev-spec',
+        // 模板代码路径
+        appTemplatePath: '../ainative-app',
+        backendTemplatePath: '../ainative-backend',
+        shadowTemplatePath: '../ainative-shadow',
       };
 
       // 构建提示词

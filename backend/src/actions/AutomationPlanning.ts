@@ -45,7 +45,7 @@ export class AutomationPlanning extends BaseAction {
       if (options) {
         // Try to read reviewed test cases first, fallback to original test cases
         try {
-          const reviewedTestCases = await this.readWorkspaceFile('TEST_CASES_REVIEWED.md', {
+          const reviewedTestCases = await this.readWorkspaceFile('TEST_REVIEW.md', {
             ...options,
             documentType: 'TEST',
           });

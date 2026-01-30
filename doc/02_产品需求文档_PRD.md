@@ -216,7 +216,7 @@ graph TB
 | ProjectManager | ProjectManager | 任务拆分和OpenSpec工作流 | 监听 WritePRD 和 WriteDesign actions | FillProjectContext, CreateOpenSpecProposal, ValidateOpenSpecProposal, EstimateStoryPoints, ValidateStoryPointEstimates | PRD和设计文档 | 任务拆分文档 |
 | Engineer | Engineer | 代码实现和部署 | 监听 WritePRD, WriteDesign, ValidateStoryPointEstimates actions | WriteCode, Deploy | 设计文档、任务拆分 | TypeScript/JavaScript源代码 |
 | QA Engineer | QAEngineer | 测试设计工作流（4步） | 监听 WritePRD 和 ImprovePRD actions | WriteTestPlan, WriteTest, TestReview, ImproveTest | PRD文档 | 测试计划、测试用例 |
-| Automation Engineer | AutomationEngineer | 自动化测试工作流（4步） | 监听 TestCaseReview action | AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion | 测试用例 | 自动化测试报告、覆盖率报告、QA结论报告 |
+| Automation Engineer | AutomationEngineer | 自动化测试工作流（4步） | 监听 TestReview action | AutomationPlanning, AutomationExecution, CoverageQualityCheck, QAConclusion | 测试用例 | 自动化测试报告、覆盖率报告、QA结论报告 |
 | Team Leader | TeamLeader | 协调、决策 | 监听所有广播消息 | Coordinate | 所有消息历史 | 协调结果和任务分配 |
 
 #### 角色定制能力
@@ -1063,7 +1063,7 @@ graph LR
 - `BreakdownTasks`, `WriteCode`, `WriteTest`, `WriteTestPlan`, `ExecuteSubtask`
 - `ImprovePRD`, `ImproveMRD`, `ImproveDesign`, `ImproveTest`
 - `MRDReview`, `PRDReview`, `DesignReview`
-- `TestCaseReview`, `TestReview`, `AutomationPlanning`, `AutomationExecution`
+- `TestReview`, `AutomationPlanning`, `AutomationExecution`
 - `CoverageQualityCheck`, `QAConclusion`
 
 这些actions在执行时会自动从消息中提取workspace选项，如果找不到则从context中获取。
