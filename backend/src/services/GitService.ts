@@ -166,6 +166,63 @@ export class GitService {
   }
 
   /**
+   * Pull latest changes from a specific branch
+   */
+  async pullBranch(workspacePath: string, branchName: string, projectId: string): Promise<GitOperationResult> {
+    logger.info('GitService: Pulling latest changes from branch', {
+      projectId,
+      branchName,
+      workspacePath,
+    });
+
+    try {
+      // First, fetch to get the latest remote state
+      await execAsync('git fetch origin', {
+        cwd: workspacePath,
+        timeout: this.gitTimeout,
+      });
+
+      // Checkout the branch if not already on it
+      const currentBranch = await this.getCurrentBranch(workspacePath);
+      if (currentBranch !== branchName) {
+        const checkoutResult = await this.checkoutBranch(workspacePath, branchName);
+        if (!checkoutResult.success) {
+          return {
+            success: false,
+            message: `Failed to checkout branch: ${checkoutResult.message}`,
+          };
+        }
+      }
+
+      // Pull latest changes from the branch
+      await execAsync(`git pull origin "${branchName}"`, {
+        cwd: workspacePath,
+        timeout: this.gitTimeout,
+      });
+
+      logger.info('GitService: Pull completed successfully', {
+        projectId,
+        branchName,
+      });
+
+      return {
+        success: true,
+        message: `Pulled latest changes from ${branchName}`,
+      };
+    } catch (error: any) {
+      logger.error('GitService: Pull branch failed', {
+        projectId,
+        branchName,
+        error: error.message,
+      });
+      return {
+        success: false,
+        message: `Pull branch failed: ${error.message}`,
+      };
+    }
+  }
+
+  /**
    * Pull latest changes from main branch
    */
   async pullRepository(workspacePath: string, projectId: string): Promise<GitOperationResult> {
@@ -313,7 +370,7 @@ export class GitService {
   /**
    * Check if a branch exists locally
    */
-  private async branchExistsLocally(workspacePath: string, branchName: string): Promise<boolean> {
+  async branchExistsLocally(workspacePath: string, branchName: string): Promise<boolean> {
     try {
       await execAsync(`git show-ref --verify --quiet refs/heads/${branchName}`, {
         cwd: workspacePath,
@@ -328,7 +385,7 @@ export class GitService {
   /**
    * Check if a branch exists on remote
    */
-  private async branchExistsRemotely(workspacePath: string, branchName: string): Promise<boolean> {
+  async branchExistsRemotely(workspacePath: string, branchName: string): Promise<boolean> {
     try {
       const { stdout } = await execAsync(`git ls-remote --heads origin "${branchName}"`, {
         cwd: workspacePath,
