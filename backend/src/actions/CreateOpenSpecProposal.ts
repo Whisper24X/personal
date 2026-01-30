@@ -48,6 +48,9 @@ export class CreateOpenSpecProposal extends BaseAction {
         appTemplatePath: '../ainative-app',
         backendTemplatePath: '../ainative-backend',
         shadowTemplatePath: '../ainative-shadow',
+        // Docker 沙箱环境配置
+        sandboxPath: '../sandbox',
+        makefilePath: '../Makefile',
       };
 
       // 构建提示词
@@ -83,10 +86,12 @@ export class CreateOpenSpecProposal extends BaseAction {
           timestamp: new Date().toISOString(),
         },
       };
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
       logger.error('CreateOpenSpecProposal: Failed to create proposal', {
-        message: error.message,
-        stack: error.stack,
+        message: errorMessage,
+        stack: errorStack,
       });
       throw error;
     }

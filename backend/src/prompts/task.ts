@@ -223,6 +223,9 @@ export interface OpenSpecProposalPaths {
   appTemplatePath: string; // ainative-app 模板代码
   backendTemplatePath: string; // ainative-backend 模板代码
   shadowTemplatePath: string; // ainative-shadow 模板代码
+  // Docker 沙箱环境路径
+  sandboxPath: string; // Docker 沙箱环境配置路径
+  makefilePath: string; // Makefile 路径（包含沙箱命令）
 }
 
 /**
@@ -244,6 +247,10 @@ export function buildCreateOpenSpecProposalPrompt(paths: OpenSpecProposalPaths):
    - ${paths.backendTemplatePath}（后端服务模板代码）
    - ${paths.shadowTemplatePath}（前端管理后台模板代码）
 
+3. 了解 Docker 沙箱开发环境：
+   - ${paths.makefilePath}（沙箱管理命令，使用 make sandbox 启动沙箱）
+   - ${paths.sandboxPath}（Docker 配置和启动脚本）
+
 用中文完善
 
 重要要求：
@@ -252,7 +259,15 @@ export function buildCreateOpenSpecProposalPrompt(paths: OpenSpecProposalPaths):
 - 不要生成"文档与部署"章节
 - 任务清单应该以开发实现为核心，聚焦于代码开发任务
 - 必须参考开发规范文档（dev-spec），确保生成的代码符合项目技术规范
-- 必须参考模板代码，了解项目现有的代码结构和实现模式`;
+- 必须参考模板代码，了解项目现有的代码结构和实现模式
+
+Docker 沙箱环境要求：
+- 数据库表创建、数据库迁移等操作必须在 Docker 沙箱环境中运行
+- 使用 make sandbox 启动沙箱容器，使用 make sandbox-shell 进入沙箱执行命令
+- 沙箱环境已预装 PostgreSQL、Redis、Go、Node.js、Nginx 等开发工具
+- 数据库连接信息参考 sandbox/Dockerfile 中的环境变量配置（DB_HOST=localhost, DB_PORT=5432, DB_USER=postgres, DB_PASSWORD=123456）
+- 沙箱首次启动会自动初始化 PostgreSQL 数据库并运行 init.sql 脚本
+- 所有数据库操作都应在容器内执行，不要在宿主机直接操作数据库`;
 }
 
 /**
