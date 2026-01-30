@@ -218,6 +218,11 @@ export interface OpenSpecProposalPaths {
   prdPath: string; // PRD.md 路径
   designPath: string; // DESIGN.md 路径
   agentsPath: string; // AGENTS.md 路径
+  devSpecPath: string; // dev-spec 目录路径（开发规范文档）
+  // 模板代码路径
+  appTemplatePath: string; // ainative-app 模板代码
+  backendTemplatePath: string; // ainative-backend 模板代码
+  shadowTemplatePath: string; // ainative-shadow 模板代码
 }
 
 /**
@@ -232,13 +237,22 @@ export function buildCreateOpenSpecProposalPrompt(paths: OpenSpecProposalPaths):
    - ${paths.prdPath}（产品需求文档）
    - ${paths.designPath}（系统设计文档）
    - ${paths.agentsPath}（项目代理和开发指南）
+   - ${paths.devSpecPath}（开发规范文档，必须参考）
+
+2. 参考以下模板代码（了解项目代码结构和实现方式）：
+   - ${paths.appTemplatePath}（移动端应用模板代码）
+   - ${paths.backendTemplatePath}（后端服务模板代码）
+   - ${paths.shadowTemplatePath}（前端管理后台模板代码）
+
 用中文完善
 
 重要要求：
 - 任务清单只包含开发实现相关的任务（数据库设计、后端实现、前端实现等）
 - 不要生成"测试与验证"章节
 - 不要生成"文档与部署"章节
-- 任务清单应该以开发实现为核心，聚焦于代码开发任务`;
+- 任务清单应该以开发实现为核心，聚焦于代码开发任务
+- 必须参考开发规范文档（dev-spec），确保生成的代码符合项目技术规范
+- 必须参考模板代码，了解项目现有的代码结构和实现模式`;
 }
 
 /**
