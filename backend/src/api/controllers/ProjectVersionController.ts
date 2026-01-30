@@ -81,6 +81,15 @@ export class ProjectVersionController {
         versionName
       );
 
+      // Check if branch name already exists
+      const branchExists = await versionRepo.existsByProjectAndBranch(projectId, branchName);
+      if (branchExists) {
+        return res.status(409).json({
+          error: 'Branch name already exists',
+          message: `分支 "${branchName}" 已存在，请使用不同的版本名称`,
+        });
+      }
+
       // Create version in database
       const version = await versionRepo.create({
         projectId,
