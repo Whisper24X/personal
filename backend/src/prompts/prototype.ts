@@ -16,14 +16,16 @@ export const PROTOTYPE_SYSTEM_PROMPT = `
 - 必须完整实现PRD中描述的所有页面和功能模块
 - 界面设计要美观、专业，符合现代Web应用的设计标准
 - 交互元素要可点击、可操作（表单可填写、按钮可点击等）
-- 使用内联样式或CDN引入CSS框架，确保原型可以独立运行
+- 使用纯原生HTML/CSS/JavaScript实现，不使用任何外部框架或组件库
+- 所有代码必须完全内联，确保原型可以独立运行，无需网络连接
 - 代码要清晰、结构良好，便于后续开发参考
 
 重要：必须只生成一个HTML文件，命名为index.html。所有CSS和JavaScript代码都必须内联在这个HTML文件中。
 - 如果PRD包含多个页面，使用JavaScript实现单页应用（SPA）效果，在同一个HTML文件中通过JavaScript切换显示不同页面内容
-- 所有CSS样式必须使用 <style> 标签内联，或通过CDN引入
-- 所有JavaScript代码必须使用 <script> 标签内联，或通过CDN引入
-- 确保HTML文件可以直接在浏览器中打开并正常运行
+- 所有CSS样式必须使用 <style> 标签内联在 <head> 中，禁止使用外部CSS文件或CDN
+- 所有JavaScript代码必须使用 <script> 标签内联在 <body> 末尾，禁止使用外部JS文件或CDN
+- 禁止引入任何外部框架（如Vue、React、jQuery等）或组件库（如Element Plus、Vant等）
+- 确保HTML文件可以直接在浏览器中打开并正常运行，无需任何外部依赖
 `;
 
 export function buildPrototypePrompt(prd: string): string {
@@ -53,8 +55,9 @@ ${prd}
    - 列表支持空态、加载态、异常态
    - 支持 toast、dialog、drawer
 5. 组件要求：必须使用一致的 Design System（按钮/表单/表格/标签/卡片/分页/导航栏）
-   - PC端：使用 Element Plus 组件库（通过CDN引入）
-   - 移动端：使用 Vant 组件库（通过CDN引入）
+   - 使用纯原生HTML/CSS/JavaScript实现所有组件，不使用任何外部组件库
+   - 所有组件样式和交互逻辑必须完全内联在HTML文件中
+   - 确保组件在不同设备上（PC端/移动端）都能正常显示和交互
 6. 文案要求：使用真实中文业务文案，不要用 lorem ipsum
 7. 可用性要求：
    - 信息层级清晰，避免拥挤
@@ -92,9 +95,10 @@ ${prd}
 具体要求：
 1. **单一文件**：只生成一个完整的HTML文件，包含 <!DOCTYPE html> 声明和完整的 <html> 结构
 2. **代码内联**：
-   - 所有CSS样式必须使用 <style> 标签内联在HTML的 <head> 中，或通过CDN引入
-   - 所有JavaScript代码必须使用 <script> 标签内联在HTML的 <body> 末尾，或通过CDN引入
-   - 确保HTML文件是自包含的，可以直接在浏览器中打开并正常运行
+   - 所有CSS样式必须使用 <style> 标签内联在HTML的 <head> 中，禁止使用外部CSS文件或CDN
+   - 所有JavaScript代码必须使用 <script> 标签内联在HTML的 <body> 末尾，禁止使用外部JS文件或CDN
+   - 禁止引入任何外部框架、组件库或CDN资源
+   - 确保HTML文件是完全自包含的，可以直接在浏览器中打开并正常运行，无需网络连接
 3. **多页面处理**：如果PRD包含多个页面，使用JavaScript实现单页应用（SPA）效果：
    - 在同一个HTML文件中通过JavaScript切换显示不同页面内容
    - 使用路由逻辑或页面切换函数实现页面间的导航

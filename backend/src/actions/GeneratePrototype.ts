@@ -248,20 +248,32 @@ export class GeneratePrototype extends BaseAction {
     // 7. 清理多余的空行和空白字符
     cleanedContent = cleanedContent.trim();
 
-    // 8. 检查是否已经是完整的HTML
+    // 8. 清理外部依赖（CDN、外部资源等）
+    cleanedContent = this.cleanExternalDependencies(cleanedContent);
+
+    // 9. 验证HTML完整性
+    const validationResult = this.validateHTML(cleanedContent);
+    if (!validationResult.isValid) {
+      logger.warn('GeneratePrototype: HTML validation failed', {
+        errors: validationResult.errors,
+        preview: cleanedContent.substring(0, 200),
+      });
+    }
+
+    // 10. 检查是否已经是完整的HTML
     if (cleanedContent.includes('<!DOCTYPE html>') || 
         (cleanedContent.includes('<html') && cleanedContent.includes('</html>'))) {
       return [{ filename: 'index.html', content: cleanedContent }];
     }
 
-    // 9. 如果仍然不是完整HTML，尝试包装
+    // 11. 如果仍然不是完整HTML，尝试包装
     // 但先检查是否包含HTML标签内容
     if (cleanedContent.includes('<body') || cleanedContent.includes('<div') || cleanedContent.includes('<main')) {
       const wrappedContent = this.wrapAsCompleteHTML(cleanedContent);
       return [{ filename: 'index.html', content: wrappedContent }];
     }
 
-    // 10. 如果完全没有HTML内容，记录警告并返回空HTML
+    // 12. 如果完全没有HTML内容，记录警告并返回空HTML
     logger.warn('GeneratePrototype: No valid HTML content found in LLM response', {
       contentLength: htmlContent.length,
       cleanedLength: cleanedContent.length,
@@ -308,32 +320,94 @@ export class GeneratePrototype extends BaseAction {
   }
 
   /**
-   * 将内容包装成完整的HTML文件
-   * 确保包含必要的CDN资源和基础样式，支持交互功能
+   * 清理HTML中的外部依赖（CDN、外部资源等）
+   * 移除所有外部script和link标签
    */
-  private wrapAsCompleteHTML(content: string): string {
-    // 如果已经是完整的HTML，直接返回
-    if (content.includes('<!DOCTYPE html>') || (content.includes('<html') && content.includes('</html>'))) {
-      return content;
+  private cleanExternalDependencies(htmlContent: string): string {
+    let cleaned = htmlContent;
+
+    // 移除所有外部script标签（src属性指向外部URL的）
+    cleaned = cleaned.replace(/<script\s+[^>]*src\s*=\s*["'](https?:\/\/|\/\/)[^"']+["'][^>]*>[\s\S]*?<\/script>/gi, '');
+    
+    // 移除所有外部link标签（href属性指向外部URL的CSS）
+    cleaned = cleaned.replace(/<link\s+[^>]*href\s*=\s*["'](https?:\/\/|\/\/)[^"']+["'][^>]*>/gi, '');
+    
+    // 移除所有外部样式表引用（@import url(...)）
+    cleaned = cleaned.replace(/@import\s+url\(["']?(https?:\/\/|\/\/)[^"')]+["']?\)\s*;?/gi, '');
+    
+    // 移除注释中的CDN引用提示
+    cleaned = cleaned.replace(/<!--\s*(Element Plus|Vue|Vant|CDN|unpkg|jsdelivr)[^>]*-->/gi, '');
+
+    return cleaned;
+  }
+
+  /**
+   * 验证HTML的完整性和自包含性
+   */
+  private validateHTML(htmlContent: string): { isValid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    // 检查是否包含DOCTYPE声明
+    if (!htmlContent.includes('<!DOCTYPE')) {
+      errors.push('缺少DOCTYPE声明');
     }
 
-    // 否则包装成完整的HTML，包含必要的CDN资源和基础样式
+    // 检查是否包含html标签
+    if (!htmlContent.includes('<html')) {
+      errors.push('缺少<html>标签');
+    }
+
+    // 检查是否包含head标签
+    if (!htmlContent.includes('<head')) {
+      errors.push('缺少<head>标签');
+    }
+
+    // 检查是否包含body标签
+    if (!htmlContent.includes('<body')) {
+      errors.push('缺少<body>标签');
+    }
+
+    // 检查是否有外部script引用
+    const externalScriptPattern = /<script\s+[^>]*src\s*=\s*["'](https?:\/\/|\/\/)[^"']+["']/gi;
+    if (externalScriptPattern.test(htmlContent)) {
+      errors.push('检测到外部script引用，应使用内联script');
+    }
+
+    // 检查是否有外部link引用
+    const externalLinkPattern = /<link\s+[^>]*href\s*=\s*["'](https?:\/\/|\/\/)[^"']+["']/gi;
+    if (externalLinkPattern.test(htmlContent)) {
+      errors.push('检测到外部link引用，应使用内联style');
+    }
+
+    // 检查是否有外部样式表导入
+    const externalImportPattern = /@import\s+url\(["']?(https?:\/\/|\/\/)/gi;
+    if (externalImportPattern.test(htmlContent)) {
+      errors.push('检测到外部样式表导入，应使用内联样式');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+    };
+  }
+
+  /**
+   * 将内容包装成完整的HTML文件
+   * 确保包含必要的基础样式，完全自包含，无外部依赖
+   */
+  private wrapAsCompleteHTML(content: string): string {
+    // 如果已经是完整的HTML，先清理外部依赖，然后返回
+    if (content.includes('<!DOCTYPE html>') || (content.includes('<html') && content.includes('</html>'))) {
+      return this.cleanExternalDependencies(content);
+    }
+
+    // 否则包装成完整的HTML，只包含基础样式，不引入任何外部资源
     return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>产品原型</title>
-    <!-- Element Plus CSS (PC端) -->
-    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
-    <!-- Vue 3 -->
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <!-- Element Plus JS (PC端) -->
-    <script src="https://unpkg.com/element-plus/dist/index.full.js"></script>
-    <!-- Vant CSS (移动端，可选) -->
-    <link rel="stylesheet" href="https://unpkg.com/vant@latest/lib/index.css">
-    <!-- Vant JS (移动端，可选) -->
-    <script src="https://unpkg.com/vant@latest/lib/vant.min.js"></script>
     <style>
         * {
             box-sizing: border-box;
