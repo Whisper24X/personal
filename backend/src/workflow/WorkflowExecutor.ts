@@ -23,6 +23,7 @@ import { RoleCompletionService } from './RoleCompletionService';
 import { GitCommitOnRoleCompleteHandler } from './handlers/GitCommitOnRoleCompleteHandler';
 import { WorkflowStartupService } from './WorkflowStartupService';
 import { EnsureWorkspaceHandler } from './handlers/EnsureWorkspaceHandler';
+import { actionRelevanceMap } from '../../../config/defaultWorkflowConfig';
 import { logger } from '../utils';
 
 /**
@@ -379,21 +380,34 @@ export class WorkflowExecutor {
     // Load relevant messages from project history (with version isolation and deduplication)
     await this.loadRelevantMessages(projectId, versionId, roleInstance, action);
 
-    // For the first action (WriteMRD), add user idea as initial input
-    if (action === 'WriteMRD' && version.idea) {
-      const userMessage = new Message({
-        content: version.idea,
-        role: 'User',
-        causeBy: 'User',
-        sentFrom: 'User',
-      });
-      roleInstance['rc'].memory.add(userMessage);
-      roleInstance.putMessage(userMessage);
-      logger.info('WorkflowExecutor: Added user idea as initial message', {
-        projectId,
-        versionId,
-        ideaLength: version.idea.length,
-      });
+    // For the first action in the workflow (order 0, action index 0), add user idea as initial input
+    // This is more flexible than hardcoding 'WriteMRD' - it works regardless of which action is first
+    const execution = await this.executionService.getExecution(projectId, versionId);
+    if (execution && execution.workflowSnapshot) {
+      const sortedRoles = [...execution.workflowSnapshot.roles].sort((a, b) => a.order - b.order);
+      const firstRole = sortedRoles[0];
+      const isFirstAction = firstRole && 
+                           firstRole.profile === role && 
+                           firstRole.actions && 
+                           firstRole.actions[0] === action;
+      
+      if (isFirstAction && version.idea) {
+        const userMessage = new Message({
+          content: version.idea,
+          role: 'User',
+          causeBy: 'UserInput',
+          sentFrom: 'User',
+        });
+        roleInstance['rc'].memory.add(userMessage);
+        roleInstance.putMessage(userMessage);
+        logger.info('WorkflowExecutor: Added user idea as initial message for first action', {
+          projectId,
+          versionId,
+          role,
+          action,
+          ideaLength: version.idea.length,
+        });
+      }
     }
 
     // Call observe() to move buffered messages to rc.news
@@ -570,38 +584,16 @@ export class WorkflowExecutor {
 
   /**
    * Get relevant message types for an action
+   * Uses centralized configuration from defaultWorkflowConfig.ts
    */
   private getRelevantMessageTypes(actionName: string): string[] {
-    const relevantMap: Record<string, string[]> = {
-      // PRD needs MRD output
-      WritePRD: ['WriteMRD', 'MRDReview', 'ImproveMRD', 'User'],
-      PRDReview: ['WritePRD'],
-      ImprovePRD: ['PRDReview', 'WritePRD'],
-      
-      // Design needs PRD
-      WriteDesign: ['WritePRD', 'PRDReview', 'ImprovePRD'],
-      DesignReview: ['WriteDesign'],
-      ImproveDesign: ['DesignReview', 'WriteDesign'],
-      
-      // Code needs PRD and Design
-      WriteCode: ['WritePRD', 'WriteDesign', 'BreakdownTasks'],
-      
-      // Test needs PRD and Code
-      WriteTest: ['WritePRD', 'WriteCode'],
-      WriteTestPlan: ['WritePRD', 'WriteCode'],
-      TestReview: ['WriteTest', 'WriteTestPlan'],
-      ImproveTest: ['TestReview', 'WriteTest'],
-      
-      // MRD is the first step, needs User input
-      WriteMRD: ['User'],
-      MRDReview: ['WriteMRD'],
-      ImproveMRD: ['MRDReview', 'WriteMRD'],
-      
-      // Task breakdown needs PRD
-      BreakdownTasks: ['WritePRD', 'WriteDesign'],
-    };
-
-    return relevantMap[actionName] || [];
+    // Use centralized actionRelevanceMap from defaultWorkflowConfig.ts
+    // This ensures consistency across the codebase and automatic updates when config changes
+    const relevantTypes = actionRelevanceMap[actionName] || [];
+    
+    // Handle special case: 'User' should be mapped to 'UserInput' for consistency
+    // Some actions may reference 'User' in watch_actions, but messages use 'UserInput' as causeBy
+    return relevantTypes.map(type => type === 'User' ? 'UserInput' : type);
   }
 
   /**
