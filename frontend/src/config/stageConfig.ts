@@ -37,8 +37,11 @@ export const ACTION_STAGE_MAP: Record<string, Record<string, string>> = {
     WriteDesign: '系统设计阶段',
   },
   ProjectManager: {
-    BreakdownTasks: '任务拆分阶段',
-    GenerateTask: '任务拆分阶段',
+    FillProjectContext: '任务拆分阶段',
+    CreateOpenSpecProposal: '任务拆分阶段',
+    ValidateOpenSpecProposal: '任务拆分阶段',
+    EstimateStoryPoints: '任务拆分阶段',
+    ValidateStoryPointEstimates: '任务拆分阶段',
   },
   Engineer: {
     WriteCode: '代码实现阶段',

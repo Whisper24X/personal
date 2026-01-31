@@ -3,7 +3,7 @@
  * 使用Cursor CLI执行代码生成
  */
 
-import { IRoleConfig, ACTION_WRITE_DESIGN, ACTION_WRITE_PRD, ACTION_BREAKDOWN_TASKS } from '@mind2build/shared';
+import { IRoleConfig, ACTION_WRITE_DESIGN, ACTION_WRITE_PRD } from '@mind2build/shared';
 import { Role } from './Role';
 import { Context } from '../core/context/Context';
 import { WriteCode } from '../actions/WriteCode';
@@ -22,8 +22,9 @@ export class Engineer extends Role {
 
     super(config, context);
 
-    // 监听 ProductManager 和 Architect 的输出
-    this.watch([ACTION_WRITE_PRD, ACTION_WRITE_DESIGN, ACTION_BREAKDOWN_TASKS]);
+    // 监听 ProductManager 和 Architect 的输出，以及 ProjectManager 的 ValidateStoryPointEstimates
+    // Note: Using string literal 'ValidateStoryPointEstimates' instead of deprecated ACTION_BREAKDOWN_TASKS
+    this.watch([ACTION_WRITE_PRD, ACTION_WRITE_DESIGN, 'ValidateStoryPointEstimates']);
 
     // 设置 actions: WriteCode -> ImproveCode -> Deploy
     this.setActions([new WriteCode(), new ImproveCode(), new Deploy()]);

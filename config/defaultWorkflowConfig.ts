@@ -458,3 +458,53 @@ export const deprecatedActionMappings: Record<string, string | null> = {
   // If an action was completely removed, set value to null
   // The migration script will handle null values appropriately
 };
+
+/**
+ * Action to document type mapping
+ * 
+ * Defines which document type directory each action should use in the workspace.
+ * Used by RoleWorkspaceExtractor to determine the correct document type for file paths.
+ * 
+ * Key: action name
+ * Value: document type directory name (e.g., 'MRD', 'PRD', 'DESIGN', 'CODE', 'TEST')
+ */
+export const actionDocumentTypeMap: Record<string, string> = {
+  // Document Writing Actions
+  WriteMRD: 'MRD',
+  WritePRD: 'PRD',
+  WriteDesign: 'DESIGN',
+  WriteCode: 'CODE',
+  WriteTest: 'TEST',
+  WriteTestPlan: 'TEST',
+  GeneratePrototype: 'PROTOTYPE',
+  
+  // Review Actions (use same document type as their corresponding Write action)
+  MRDReview: 'MRD',
+  PRDReview: 'PRD',
+  DesignReview: 'DESIGN',
+  TestReview: 'TEST',
+  
+  // Improvement Actions (use same document type as their corresponding Write action)
+  ImproveMRD: 'MRD',
+  ImprovePRD: 'PRD',
+  ImproveDesign: 'DESIGN',
+  ImproveTest: 'TEST',
+  ImproveCode: 'CODE',
+  
+  // Execution Actions
+  ExecuteSubtask: 'CODE',
+  Deploy: 'CODE',
+  AutomationExecution: 'TEST',
+  
+  // Planning Actions (use appropriate document types)
+  FillProjectContext: 'TASKS',
+  CreateOpenSpecProposal: 'TASKS',
+  ValidateOpenSpecProposal: 'TASKS',
+  EstimateStoryPoints: 'TASKS',
+  ValidateStoryPointEstimates: 'TASKS',
+  AutomationPlanning: 'TEST',
+  
+  // Analysis Actions
+  CoverageQualityCheck: 'TEST',
+  QAConclusion: 'TEST',
+};
