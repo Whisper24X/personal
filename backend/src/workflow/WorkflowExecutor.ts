@@ -382,7 +382,7 @@ export class WorkflowExecutor {
 
     // For the first action in the workflow (order 0, action index 0), add user idea as initial input
     // This is more flexible than hardcoding 'WriteMRD' - it works regardless of which action is first
-    const execution = await this.executionService.getExecution(projectId, versionId);
+    // Reuse execution variable already declared above
     if (execution && execution.workflowSnapshot) {
       const sortedRoles = [...execution.workflowSnapshot.roles].sort((a, b) => a.order - b.order);
       const firstRole = sortedRoles[0];
