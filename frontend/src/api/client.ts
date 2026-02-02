@@ -284,6 +284,7 @@ class APIClient {
     investment?: number;
     nRound?: number;
     applicationId?: string;
+    cliApiKey: string;
   }) {
     return this.createPlatform(data);
   }
