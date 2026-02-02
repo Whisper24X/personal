@@ -199,6 +199,22 @@
 
             <el-divider />
 
+            <!-- Deploy Failed Alert -->
+            <el-alert
+                v-if="isDeployFailed"
+                type="error"
+                :closable="false"
+                show-icon
+                title="部署失败"
+                style="margin-bottom: 16px;">
+                <template #default>
+                    <div class="deploy-failed-message">
+                        <p>部署未完成，无法继续执行后续步骤。</p>
+                        <p>请点击"编辑内容"按钮，填写需要改进的代码问题描述，保存后系统将自动改进代码并重新部署。</p>
+                    </div>
+                </template>
+            </el-alert>
+
             <!-- Actions Section -->
             <div class="actions-section">
                 <h4 class="actions-title">
@@ -208,7 +224,7 @@
 
                 <div class="action-buttons">
                     <el-button v-if="!isEditing" type="success" size="large" :icon="Check"
-                        @click="handleAction('continue')" :loading="loading">
+                        @click="handleAction('continue')" :loading="loading" :disabled="isDeployFailed">
                         <div class="button-content">
                             <span class="shortcut">C</span>
                             <span>{{ isIdle ? '继续下一步' : '确认继续' }}</span>
@@ -347,6 +363,8 @@ interface RoleInfo {
         zipPath?: string;
         autoCodeEnabled?: boolean;
         type?: string;
+        deployFailed?: boolean;
+        isCompleted?: boolean;
     };
     retryCount?: number;
 }
@@ -355,6 +373,7 @@ interface Props {
     roleInfo: RoleInfo;
     loading?: boolean;
     projectId?: string;
+    versionId?: string;
     prdId?: string;
     hideCard?: boolean;
 }
@@ -362,6 +381,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
     loading: false,
     projectId: '',
+    versionId: '',
     prdId: '',
     hideCard: false,
 });
@@ -389,6 +409,12 @@ const zipPath = computed(() => props.roleInfo.instructContent?.zipPath);
 const zipType = computed(() => props.roleInfo.instructContent?.type || 'code_zip');
 const isIdle = computed(() => props.roleInfo.action === 'idle');
 const hasFiles = computed(() => props.roleInfo.outputFiles && props.roleInfo.outputFiles.length > 0);
+
+// 检测部署失败状态：deployFailed 标记或 Deploy action 的 isCompleted 为 false
+const isDeployFailed = computed(() => {
+    return props.roleInfo.instructContent?.deployFailed === true ||
+           (props.roleInfo.action === 'Deploy' && props.roleInfo.instructContent?.isCompleted === false);
+});
 
 const documentType = computed(() => {
     const action = props.roleInfo.action;
@@ -557,7 +583,7 @@ function cancelEdit() {
     selectedFileIndex.value = -1;
 }
 
-function saveEdit() {
+async function saveEdit() {
     if (selectedFileIndex.value >= 0 && hasFiles.value && props.roleInfo.outputFiles) {
         const file = props.roleInfo.outputFiles[selectedFileIndex.value];
         if (typeof file !== 'string') {
@@ -583,6 +609,18 @@ function saveEdit() {
             .map(([path, content]) => `\n\n===== FILE: ${path} =====\n${content}\n===== END FILE =====`)
             .join('');
         modifiedContent += filesSummary;
+    }
+
+    // 如果是部署失败的情况，保存改进建议到 docs/code/ImproveCode.md
+    if (isDeployFailed.value && props.projectId && props.versionId) {
+        try {
+            await apiClient.saveImproveSuggestion(props.projectId, props.versionId, modifiedContent);
+            ElMessage.success('改进建议已保存，系统将在下次执行时改进代码');
+        } catch (error: any) {
+            console.error('Failed to save improve suggestion:', error);
+            ElMessage.error('保存改进建议失败: ' + (error.message || '未知错误'));
+            return;
+        }
     }
 
     emit('action', 'edit', modifiedContent);
@@ -965,6 +1003,11 @@ onUnmounted(() => {
 
 .error-message p {
     margin: 4px 0;
+}
+
+.deploy-failed-message p {
+    margin: 4px 0;
+    color: var(--el-color-danger);
 }
 
 /* Prototype layout styles */

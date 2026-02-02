@@ -8,6 +8,7 @@ import { IActionOutput } from '@mind2build/shared';
 import { logger, WorkspaceOptions, WorkspaceManager } from '../utils';
 import { getApplyCommand, getCheckCommand } from '../prompts/code';
 import * as fs from 'fs/promises';
+import * as path from 'path';
 
 export interface WriteCodeOptions extends WorkspaceOptions {
   // 继承WorkspaceOptions的所有选项
@@ -75,6 +76,25 @@ export class WriteCode extends BaseAction {
             type: 'debug',
             workspaceDir: workDir,
             debugOutput: debugResult.output,
+            timestamp: new Date().toISOString(),
+          },
+        };
+      }
+      
+      // 检查是否存在改进文件，如果存在则跳过 WriteCode（进入代码改进流程）
+      const improveFilePath = path.join(workDir, 'docs/code/ImproveCode.md');
+      const improveFileExists = await this.checkFileExists(improveFilePath);
+      if (improveFileExists) {
+        logger.info('WriteCode: ImproveCode.md exists, skipping WriteCode execution', {
+          improveFilePath,
+        });
+        return {
+          content: `# 代码生成 - 已跳过\n\n检测到改进文件 \`docs/code/ImproveCode.md\` 存在，跳过代码生成，直接进入代码改进阶段。\n\n这是正常现象，表示需要先执行代码改进。`,
+          data: {
+            type: 'skipped',
+            reason: 'improve_file_exists',
+            filePath: improveFilePath,
+            workspaceDir: workDir,
             timestamp: new Date().toISOString(),
           },
         };
@@ -259,6 +279,17 @@ export class WriteCode extends BaseAction {
     }
   }
 
+  /**
+   * 检查文件是否存在
+   */
+  private async checkFileExists(filePath: string): Promise<boolean> {
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 }
 
 export default WriteCode;

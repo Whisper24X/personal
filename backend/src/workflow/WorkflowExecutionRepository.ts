@@ -388,6 +388,12 @@ export class WorkflowExecutionRepository {
 
       const row = getResult.rows[0];
       const steps: StepStatus[] = row.steps || [];
+      const executionContext: Record<string, any> = row.execution_context || {};
+
+      // 清除 deployFailed 状态（重置时应该清除之前的部署失败状态）
+      if (executionContext.deployFailed !== undefined) {
+        delete executionContext.deployFailed;
+      }
 
       // Find target role index
       const targetStep = steps.find(s => s.role === targetRole);
@@ -453,14 +459,16 @@ export class WorkflowExecutionRepository {
           steps = $3,
           pending_confirmation = NULL,
           last_error = NULL,
+          execution_context = $4,
           version = version + 1,
           updated_at = NOW()
-        WHERE project_id = $4 AND version_id = $5
+        WHERE project_id = $5 AND version_id = $6
         RETURNING *`,
         [
           WorkflowState.INITIALIZED,
           JSON.stringify({ roleIndex: targetRoleIndex, actionIndex: 0 }),
           JSON.stringify(updatedSteps),
+          JSON.stringify(executionContext),
           projectId,
           versionId,
         ]

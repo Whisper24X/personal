@@ -699,6 +699,76 @@ export class ProjectController {
       });
     }
   }
+
+  /**
+   * Save improve suggestion to docs/code/ImproveCode.md
+   * POST /api/projects/:id/versions/:versionId/improve-suggestion
+   * Body: { content: string }
+   */
+  static async saveImproveSuggestion(req: Request, res: Response) {
+    try {
+      const { id: projectId, versionId } = req.params;
+      const { content } = req.body;
+
+      if (!projectId || !versionId) {
+        return res.status(400).json({
+          error: 'Project ID and Version ID are required',
+        });
+      }
+
+      if (!content || typeof content !== 'string') {
+        return res.status(400).json({
+          error: 'Content is required and must be a string',
+        });
+      }
+
+      // 获取项目信息
+      const project = await projectRepo.findById(projectId);
+      if (!project) {
+        return res.status(404).json({
+          error: 'Project not found',
+        });
+      }
+
+      // 获取 workspace 路径
+      const workspacePath = WorkspaceManager.getProjectWorkspacePath({
+        applicationId: project.application_id,
+        projectId,
+        versionId,
+      });
+
+      // 确保目录存在
+      const improveDir = path.join(workspacePath, 'docs/code');
+      if (!fs.existsSync(improveDir)) {
+        fs.mkdirSync(improveDir, { recursive: true });
+      }
+
+      // 写入文件
+      const improveFilePath = path.join(improveDir, 'ImproveCode.md');
+      fs.writeFileSync(improveFilePath, content, 'utf-8');
+
+      logger.info('API: Saved improve suggestion', {
+        projectId,
+        versionId,
+        filePath: improveFilePath,
+        contentLength: content.length,
+      });
+
+      return res.json({
+        success: true,
+        message: 'Improve suggestion saved successfully',
+        filePath: 'docs/code/ImproveCode.md',
+      });
+    } catch (error: any) {
+      logger.error('API: Error saving improve suggestion', {
+        error: error.message,
+        stack: error.stack,
+      });
+      return res.status(500).json({
+        error: error.message || 'Failed to save improve suggestion',
+      });
+    }
+  }
 }
 
 export default ProjectController;
