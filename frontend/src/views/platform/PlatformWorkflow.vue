@@ -270,13 +270,15 @@ async function loadWorkflowInfo() {
       });
       workflowStructure.value = structure;
     } else {
+      // Fallback workflow structure matching defaultWorkflowConfig.ts
       workflowStructure.value = {
-        Salesperson: ['WriteMRD'],
-        ProductManager: ['WritePRD'],
-        Architect: ['WriteDesign'],
-        ProjectManager: ['BreakdownTasks', 'GenerateTask'],
-        Engineer: ['WriteCode', 'ExecuteSubtask'],
-        QAEngineer: ['WriteTest'],
+        Salesperson: ['WriteMRD', 'MRDReview', 'ImproveMRD'],
+        ProductManager: ['WritePRD', 'PRDReview', 'ImprovePRD', 'GeneratePrototype'],
+        QAEngineer: ['WriteTestPlan', 'WriteTest', 'TestReview', 'ImproveTest'],
+        Architect: ['WriteDesign', 'DesignReview', 'ImproveDesign'],
+        ProjectManager: ['FillProjectContext', 'CreateOpenSpecProposal', 'ValidateOpenSpecProposal', 'EstimateStoryPoints', 'ValidateStoryPointEstimates'],
+        Engineer: ['WriteCode', 'ImproveCode', 'Deploy'],
+        AutomationEngineer: ['AutomationPlanning', 'AutomationExecution', 'CoverageQualityCheck', 'QAConclusion'],
       };
     }
   } finally {

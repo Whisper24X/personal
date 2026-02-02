@@ -7,7 +7,7 @@ import { Request, Response } from 'express';
 import { Engineer } from '../../roles/Engineer';
 import { Context } from '../../core/context/Context';
 import { Message } from '../../core/message/Message';
-import { ACTION_WRITE_PRD, ACTION_WRITE_DESIGN, ACTION_BREAKDOWN_TASKS } from '@mind2build/shared';
+import { ACTION_WRITE_PRD, ACTION_WRITE_DESIGN } from '@mind2build/shared';
 import { logger, WorkspaceManager } from '../../utils';
 import { createLLM } from '../../providers/llm/factory';
 
@@ -232,13 +232,13 @@ export async function testWriteCode(req: Request, res: Response) {
             engineer['rc'].memory.add(designMessage);
         }
 
-        // Add BreakdownTasks message if provided
+        // Add ValidateStoryPointEstimates message if provided (replaces deprecated BreakdownTasks)
         if (taskBreakdown) {
             const breakdownMessage = new Message({
                 content: taskBreakdown,
-                role: 'Architect',
-                causeBy: ACTION_BREAKDOWN_TASKS,
-                sentFrom: 'Architect',
+                role: 'ProjectManager',
+                causeBy: 'ValidateStoryPointEstimates',
+                sentFrom: 'ProjectManager',
             });
             engineer['rc'].memory.add(breakdownMessage);
         }
@@ -404,12 +404,12 @@ export async function testExecuteSubtask(req: Request, res: Response) {
             engineer['rc'].memory.add(designMessage);
         }
 
-        // Add BreakdownTasks message
+        // Add ValidateStoryPointEstimates message (replaces deprecated BreakdownTasks)
         const breakdownMessage = new Message({
             content: taskBreakdown,
-            role: 'Architect',
-            causeBy: ACTION_BREAKDOWN_TASKS,
-            sentFrom: 'Architect',
+            role: 'ProjectManager',
+            causeBy: 'ValidateStoryPointEstimates',
+            sentFrom: 'ProjectManager',
         });
         engineer['rc'].memory.add(breakdownMessage);
 
@@ -609,9 +609,9 @@ export async function testCustom(req: Request, res: Response) {
         if (taskBreakdown) {
             const breakdownMessage = new Message({
                 content: taskBreakdown,
-                role: 'Architect',
-                causeBy: ACTION_BREAKDOWN_TASKS,
-                sentFrom: 'Architect',
+                role: 'ProjectManager',
+                causeBy: 'ValidateStoryPointEstimates',
+                sentFrom: 'ProjectManager',
             });
             engineer['rc'].memory.add(breakdownMessage);
         }

@@ -12,7 +12,7 @@ import { ActionDefinitionRepository } from '../database/repositories/ActionDefin
 import { logger } from '../utils';
 
 // Import from single source of truth
-import { getDefaultWorkflowConfig } from './defaultWorkflowConfig';
+import { getDefaultWorkflowConfig } from '../../../config/defaultWorkflowConfig';
 
 // Re-export for backward compatibility
 export { getDefaultWorkflowConfig };

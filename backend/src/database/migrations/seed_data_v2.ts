@@ -10,7 +10,7 @@ import * as path from 'path';
 import * as dotenv from 'dotenv';
 
 // Import from single source of truth
-import { roleDefinitions, actionDefinitions, defaultWorkflowConfig } from '../../services/defaultWorkflowConfig';
+import { roleDefinitions, actionDefinitions, defaultWorkflowConfig } from '../../../../config/defaultWorkflowConfig';
 
 // Load environment variables
 dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });

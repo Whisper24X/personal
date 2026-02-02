@@ -9,17 +9,9 @@ import * as path from 'path';
 import { WorkspaceOptions, WorkspaceManager } from '../utils';
 import { RoleContext } from '../core/context/RoleContext';
 import { Context } from '../core/context/Context';
+import { actionDocumentTypeMap } from '../../../config/defaultWorkflowConfig';
 
 export class RoleWorkspaceExtractor {
-  private static readonly DOCUMENT_TYPE_MAP: Record<string, string> = {
-    WriteMRD: 'MRD',
-    WritePRD: 'PRD',
-    WriteDesign: 'DESIGN',
-    BreakdownTasks: 'TASKS',
-    WriteCode: 'CODE',
-    WriteTest: 'TEST',
-    ExecuteSubtask: 'CODE',
-  };
 
   constructor(
     private rc: RoleContext,
@@ -136,8 +128,9 @@ export class RoleWorkspaceExtractor {
 
   /**
    * Get document type for action
+   * Uses centralized configuration from defaultWorkflowConfig.ts
    */
   private getDocumentTypeForAction(actionName: string): string {
-    return RoleWorkspaceExtractor.DOCUMENT_TYPE_MAP[actionName] || 'DOCS';
+    return actionDocumentTypeMap[actionName] || 'DOCS';
   }
 }
