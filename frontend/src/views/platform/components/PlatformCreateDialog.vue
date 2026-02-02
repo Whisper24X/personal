@@ -65,6 +65,34 @@
         </template>
       </el-form-item>
 
+      <el-form-item label="CLI API Key" prop="cliApiKey" required>
+        <el-input
+          v-model="formData.cliApiKey"
+          :type="showPassword ? 'text' : 'password'"
+          placeholder="请输入 CLI API Key"
+          :prefix-icon="Key"
+        >
+          <template #suffix>
+            <el-button
+              link
+              type="primary"
+              @click="toggleShowPassword"
+            >
+              <el-icon>
+                <View v-if="showPassword" />
+                <Hide v-else />
+              </el-icon>
+            </el-button>
+          </template>
+        </el-input>
+        <template #extra>
+          <el-text type="info" size="small">
+            <el-icon><InfoFilled /></el-icon>
+            必填，该平台的所有版本在执行 CLI 操作时将使用此 API Key
+          </el-text>
+        </template>
+      </el-form-item>
+
       <el-alert
         v-if="error"
         :title="error"
@@ -102,7 +130,10 @@ import {
   InfoFilled, 
   Refresh, 
   MagicStick,
-  Link
+  Link,
+  Key,
+  View,
+  Hide
 } from '@element-plus/icons-vue';
 
 const router = useRouter();
@@ -118,6 +149,7 @@ const emit = defineEmits<{
 }>();
 
 const visible = ref(props.modelValue);
+const showPassword = ref(false);
 
 watch(() => props.modelValue, (val) => {
   visible.value = val;
@@ -140,6 +172,7 @@ const formData = reactive({
   description: '',
   nRound: 5,
   gitRepoUrl: '',
+  cliApiKey: '',
 });
 
 const rules = reactive<FormRules>({
@@ -154,13 +187,23 @@ const rules = reactive<FormRules>({
       trigger: 'blur'
     }
   ],
+  cliApiKey: [
+    { required: true, message: '请输入 CLI API Key', trigger: 'blur' },
+    { min: 10, message: 'API Key 长度至少为 10 个字符', trigger: 'blur' }
+  ],
 });
+
+function toggleShowPassword() {
+  showPassword.value = !showPassword.value;
+}
 
 function resetForm() {
   formData.name = '';
   formData.description = '';
   formData.nRound = 5;
   formData.gitRepoUrl = '';
+  formData.cliApiKey = '';
+  showPassword.value = false;
   formRef.value?.clearValidate();
 }
 
@@ -181,6 +224,7 @@ async function handleSubmit() {
           nRound: formData.nRound,
           businessLineId: props.businessLineId,
           gitRepoUrl: formData.gitRepoUrl || undefined,
+          cliApiKey: formData.cliApiKey.trim(),
         });
         
         ElMessage.success('平台创建成功！请先创建版本。');

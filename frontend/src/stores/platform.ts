@@ -71,6 +71,7 @@ export const usePlatformStore = defineStore('platform', () => {
     nRound?: number;
     businessLineId?: string;
     gitRepoUrl?: string;
+    cliApiKey: string;
   }) {
     loading.value = true;
     error.value = null;

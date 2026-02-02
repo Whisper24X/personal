@@ -141,6 +141,7 @@ class APIClient {
     nRound?: number;
     applicationId?: string;
     gitRepoUrl?: string;
+    cliApiKey: string;
   }) {
     return this.client.post('/projects', data);
   }
@@ -173,6 +174,16 @@ class APIClient {
   // 获取平台文档
   async getPlatformDocuments(id: string) {
     return this.client.get(`/projects/${id}/documents`);
+  }
+
+  // 更新平台CLI API key
+  async updatePlatformCliApiKey(platformId: string, apiKey: string | null) {
+    return this.client.put(`/projects/${platformId}/cli-api-key`, { apiKey });
+  }
+
+  // 获取平台CLI API key状态
+  async getPlatformCliApiKey(platformId: string) {
+    return this.client.get(`/projects/${platformId}/cli-api-key`);
   }
 
   // ==================== 平台版本 API 端点 ====================

@@ -26,6 +26,7 @@ export interface Project {
   team_config: any;
   team_state: any;
   metadata: any;
+  cli_api_key?: string;
   started_at?: Date;
   completed_at?: Date;
   created_at: Date;
@@ -48,14 +49,15 @@ export class ProjectRepository {
     gitRepoUrl?: string;
     workspacePath?: string;
     teamConfig?: any;
+    cliApiKey?: string;
   }): Promise<Project> {
     const result = await query<Project>(
       `INSERT INTO projects (
         user_id, application_id, name, name_alias, idea, description, 
         budget, status, progress, total_cost,
-        workspace_path, git_repo_url,
+        workspace_path, git_repo_url, cli_api_key,
         team_status, team_config, team_state, metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       RETURNING *`,
       [
         data.userId,
@@ -70,6 +72,7 @@ export class ProjectRepository {
         0.0,
         data.workspacePath || null,
         data.gitRepoUrl || null,
+        data.cliApiKey || null,
         'idle', // team_status
         JSON.stringify(data.teamConfig || {}),
         JSON.stringify({}),
@@ -299,6 +302,41 @@ export class ProjectRepository {
     );
     
     return result.rows[0];
+  }
+
+  /**
+   * Update CLI API key for a project
+   */
+  async updateCliApiKey(projectId: string, apiKey: string | null): Promise<Project> {
+    const result = await query<Project>(
+      `UPDATE projects 
+       SET cli_api_key = $1, updated_at = NOW() 
+       WHERE id = $2 
+       RETURNING *`,
+      [apiKey || null, projectId]
+    );
+    
+    if (result.rows.length === 0) {
+      throw new Error(`Project not found: ${projectId}`);
+    }
+    
+    return result.rows[0];
+  }
+
+  /**
+   * Get CLI API key for a project
+   */
+  async getCliApiKey(projectId: string): Promise<string | null> {
+    const result = await query<{ cli_api_key: string | null }>(
+      `SELECT cli_api_key FROM projects WHERE id = $1 AND deleted_at IS NULL`,
+      [projectId]
+    );
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+    
+    return result.rows[0].cli_api_key || null;
   }
 
   /**
