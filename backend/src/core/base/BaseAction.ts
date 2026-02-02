@@ -21,6 +21,7 @@ import {
 import { CLIExecutor } from '../../executors/CLIExecutor';
 import { CLIProviderFactory } from '../../executors/cli/CLIProviderFactory';
 import { createDefaultFallbackStrategy } from '../../executors/cli/CLIModelFallbackStrategy';
+import { ProjectRepository } from '../../database/repositories/ProjectRepository';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 // Handler types for mode encapsulation
@@ -365,7 +366,7 @@ export abstract class BaseAction {
       throw new Error('BaseAction: workDir is required for CLI mode execution');
     }
 
-    const cliConfig = this.getCLIConfig();
+    const cliConfig = await this.getCLIConfig();
     const roleProfile = this.role?.profile;
     
     const logContext = this.getLogContext();
@@ -412,7 +413,7 @@ export abstract class BaseAction {
       throw new Error('BaseAction: workDir is required for CLI mode execution');
     }
 
-    const cliConfig = this.getCLIConfig();
+    const cliConfig = await this.getCLIConfig();
     const roleProfile = this.role?.profile;
     
     // 创建降级策略（如果角色配置了角色级别的CLI模型）
@@ -497,9 +498,37 @@ export abstract class BaseAction {
 
   /**
    * 获取 CLI 配置
+   * 优先级：平台绑定的API key > 角色配置 > 环境变量
    */
-  protected getCLIConfig(): { provider: CLIProviderType; config?: Partial<CLIProviderConfig> } {
-    // 从角色配置获取
+  protected async getCLIConfig(): Promise<{ provider: CLIProviderType; config?: Partial<CLIProviderConfig> }> {
+    // 优先级1: 检查平台绑定的API key
+    const projectId = this.context?.get('projectId') as string | undefined;
+    if (projectId) {
+      try {
+        const projectRepo = new ProjectRepository();
+        const platformApiKey = await projectRepo.getCliApiKey(projectId);
+        
+        if (platformApiKey) {
+          // 如果平台配置了API key，优先使用
+          const roleConfig = this.role?.getExecutorConfig?.();
+          const configSync = roleConfig?.getConfigSync?.();
+          const cliProvider = configSync?.cliProvider || (process.env.DEFAULT_CLI_PROVIDER as CLIProviderType) || 'cursor';
+          
+          return {
+            provider: cliProvider,
+            config: {
+              ...(configSync?.cliConfig || {}),
+              apiKey: platformApiKey, // 使用平台API key，优先级最高
+            },
+          };
+        }
+      } catch (error: any) {
+        // 如果查询失败，继续使用其他优先级
+        // 不抛出错误，允许fallback到其他配置
+      }
+    }
+
+    // 优先级2: 从角色配置获取
     const roleConfig = this.role?.getExecutorConfig?.();
     if (roleConfig) {
       const configSync = roleConfig.getConfigSync?.();
@@ -634,7 +663,7 @@ export abstract class BaseAction {
     workDir: string,
     options?: { timeout?: number; abortSignal?: AbortSignal }
   ): Promise<CLIExecutionResult> {
-    const cliConfig = this.getCLIConfig();
+    const cliConfig = await this.getCLIConfig();
     
     logger.info('BaseAction.runCLICommand: Executing CLI command', {
       action: this.name,

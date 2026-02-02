@@ -68925,3 +68925,7 @@ CREATE INDEX idx_workflow_executions_project ON public.workflow_executions USING
 CREATE INDEX idx_workflow_executions_version ON public.workflow_executions USING btree (version_id);
 CREATE INDEX idx_workflow_executions_state ON public.workflow_executions USING btree (state);
 CREATE INDEX idx_workflow_executions_updated ON public.workflow_executions USING btree (updated_at DESC);
+
+-- Add cli_api_key column to projects table for platform-specific CLI API key configuration
+ALTER TABLE "public"."projects" ADD COLUMN IF NOT EXISTS "cli_api_key" VARCHAR(500);
+COMMENT ON COLUMN "public"."projects"."cli_api_key" IS 'CLI API密钥，用于该平台所有版本的CLI操作（可选，未配置时使用环境变量）';
