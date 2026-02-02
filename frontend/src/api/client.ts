@@ -247,6 +247,17 @@ class APIClient {
   }
 
   /**
+   * 保存改进建议到 docs/code/ImproveCode.md
+   * 用于部署失败后用户编辑内容，供 ImproveCode action 读取并改进代码
+   * @param projectId 项目ID
+   * @param versionId 版本ID
+   * @param content 改进建议内容
+   */
+  async saveImproveSuggestion(projectId: string, versionId: string, content: string) {
+    return this.client.post(`/projects/${projectId}/versions/${versionId}/improve-suggestion`, { content });
+  }
+
+  /**
    * 获取平台 Git 分支信息
    * @param platformId 平台ID
    */

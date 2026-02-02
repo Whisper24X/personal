@@ -52,6 +52,7 @@ router.get('/:id/versions/:versionId', ProjectVersionController.getById);
 router.put('/:id/versions/:versionId', ProjectVersionController.update);
 router.delete('/:id/versions/:versionId', ProjectVersionController.delete);
 router.post('/:id/versions/:versionId/activate', ProjectVersionController.activate);
+router.post('/:id/versions/:versionId/improve-suggestion', ProjectController.saveImproveSuggestion);
 router.get('/:id/branches', ProjectVersionController.getBranches);
 
 // Generic project routes (must come after more specific routes)

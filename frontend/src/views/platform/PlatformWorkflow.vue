@@ -23,7 +23,7 @@
       width="80%" :close-on-click-modal="false" :close-on-press-escape="false" :show-close="false" destroy-on-close>
       <div v-if="currentStep">
         <InteractiveConfirmation :role-info="currentStep" :loading="actionLoading" :project-id="platformId"
-          :hide-card="true" @action="handleUserAction" />
+          :version-id="versionId" :hide-card="true" @action="handleUserAction" />
       </div>
     </el-dialog>
 
@@ -343,7 +343,10 @@ function processWorkflowState(stateData: any, showMessages: boolean = false) {
       action: pendingConfirmation.action,
       content: pendingConfirmation.content,
       outputFiles: pendingConfirmation.outputFiles || [],
-      instructContent: pendingConfirmation.instructContent || {},
+      instructContent: {
+        ...(pendingConfirmation.instructContent || {}),
+        deployFailed: pendingConfirmation.deployFailed || stateData.deployFailed || false,
+      },
       retryCount: 0,
     };
 
@@ -557,6 +560,27 @@ async function handleUserAction(action: string, modifiedContent?: string) {
     };
 
     completedSteps.value.push(step);
+
+    // 部署失败的编辑操作：直接重置到 Engineer 角色，不调用 confirmWorkflow
+    if (action === 'edit' && currentStep.value?.instructContent?.deployFailed) {
+      try {
+        await apiClient.resetWorkflow(platformId.value, versionId.value!, 'Engineer');
+        ElMessage.success('改进建议已保存，正在重新执行工程师角色...');
+        showConfirmationDialog.value = false;
+        currentStep.value = null;
+        
+        // 刷新页面以更新工作流状态
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      } catch (error: any) {
+        console.error('Failed to reset workflow:', error);
+        ElMessage.error('重置失败: ' + (error.message || '未知错误'));
+      } finally {
+        actionLoading.value = false;
+      }
+      return;
+    }
 
     try {
       await apiClient.confirmWorkflow(platformId.value, versionId.value!);
