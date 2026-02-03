@@ -151,6 +151,59 @@ export class GeneratePrototype extends BaseAction {
     }
 
     try {
+      // 检查 Prototype 文件是否已存在（仅在 new 模式下）
+      if (mode === 'new') {
+        const projectRootDir = WorkspaceManager.getProjectWorkspacePath(workspaceOptions);
+        const prototypeFilePath = path.join(projectRootDir, 'docs', 'prototype', 'index.html');
+
+        try {
+          const stats = await fs.stat(prototypeFilePath);
+          if (stats.isFile() && stats.size > 100) {
+            // 文件存在且有内容，读取并返回
+            const existingContent = await fs.readFile(prototypeFilePath, 'utf-8');
+            logger.info('GeneratePrototype: Prototype file already exists, skipping generation', {
+              filePath: prototypeFilePath,
+              fileSize: stats.size,
+              contentLength: existingContent.length,
+            });
+
+            // 读取 PRD 内容作为 action output
+            let prdContent = '';
+            try {
+              prdContent = await this.loadDocumentFromWorkspace('PRD.md', workspaceOptions, 'PRD');
+            } catch (error: unknown) {
+              const err = error as Error;
+              logger.warn('GeneratePrototype: Failed to load PRD content for output', {
+                error: err.message,
+              });
+            }
+
+            const files = [
+              {
+                path: prototypeFilePath,
+                content: existingContent,
+                type: 'html',
+              },
+            ];
+
+            return this.createActionOutput(prdContent, {
+              type: 'prototype',
+              mode,
+              filename: 'index.html',
+              workspaceDir: projectRootDir,
+              files,
+              skipped: true,
+              reason: 'Prototype file already exists',
+            });
+          }
+        } catch (error) {
+          // 文件不存在或读取失败，继续生成
+          logger.info('GeneratePrototype: Prototype file does not exist or is invalid, will generate', {
+            filePath: prototypeFilePath,
+          });
+        }
+      }
+
       const handler = await this.getCachedHandler('write', () => this.createWriteHandler(workspaceOptions));
       const handlerOptions = this.getHandlerOptions(workspaceOptions);
       const result = await handler.execute('', handlerOptions);

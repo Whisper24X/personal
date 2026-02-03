@@ -152,6 +152,39 @@ export class WriteDesign extends BaseAction {
     }
 
     try {
+      // 检查 DESIGN 文件是否已存在（仅在 new 模式下）
+      if (mode === 'new') {
+        const projectRootDir = WorkspaceManager.getProjectWorkspacePath(workspaceOptions);
+        const designFilePath = path.join(projectRootDir, 'docs', 'design', 'DESIGN.md');
+
+        try {
+          const stats = await fs.stat(designFilePath);
+          if (stats.isFile() && stats.size > 100) {
+            // 文件存在且有内容，读取并返回
+            const existingContent = await fs.readFile(designFilePath, 'utf-8');
+            logger.info('WriteDesign: DESIGN file already exists, skipping generation', {
+              filePath: designFilePath,
+              fileSize: stats.size,
+              contentLength: existingContent.length,
+            });
+
+            return this.createActionOutput(existingContent, {
+              type: 'design',
+              mode,
+              filename: 'DESIGN.md',
+              workspaceDir: projectRootDir,
+              skipped: true,
+              reason: 'DESIGN file already exists',
+            });
+          }
+        } catch (error) {
+          // 文件不存在或读取失败，继续生成
+          logger.info('WriteDesign: DESIGN file does not exist or is invalid, will generate', {
+            filePath: designFilePath,
+          });
+        }
+      }
+
       const handler = await this.getCachedHandler('write', () => this.createWriteHandler(workspaceOptions));
       const result = await this.executeWriteHandler(handler, '', workspaceOptions, {
         type: 'design',

@@ -161,6 +161,39 @@ export class WriteTest extends BaseAction {
     }
 
     try {
+      // 检查 TEST 文件是否已存在（仅在 new 模式下）
+      if (mode === 'new') {
+        const projectRootDir = WorkspaceManager.getProjectWorkspacePath(workspaceOptions);
+        const testFilePath = path.join(projectRootDir, 'docs', 'test', 'TEST.md');
+
+        try {
+          const stats = await fs.stat(testFilePath);
+          if (stats.isFile() && stats.size > 100) {
+            // 文件存在且有内容，读取并返回
+            const existingContent = await fs.readFile(testFilePath, 'utf-8');
+            logger.info('WriteTest: TEST file already exists, skipping generation', {
+              filePath: testFilePath,
+              fileSize: stats.size,
+              contentLength: existingContent.length,
+            });
+
+            return this.createActionOutput(existingContent, {
+              type: 'test',
+              mode,
+              filename: 'TEST.md',
+              workspaceDir: projectRootDir,
+              skipped: true,
+              reason: 'TEST file already exists',
+            });
+          }
+        } catch (error) {
+          // 文件不存在或读取失败，继续生成
+          logger.info('WriteTest: TEST file does not exist or is invalid, will generate', {
+            filePath: testFilePath,
+          });
+        }
+      }
+
       const handler = await this.getCachedHandler('write', () => this.createWriteHandler(workspaceOptions));
       const result = await this.executeWriteHandler(handler, '', workspaceOptions, {
         type: 'test',

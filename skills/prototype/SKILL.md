@@ -1,383 +1,243 @@
 ---
 name: prototype
-description: Creates minimal working prototypes for quick idea validation. Single-file when possible, includes test data, ready to demo immediately. Use when user says "prototype", "MVP", "proof of concept", "quick demo".
-priority: MEDIUM
-conflicts_with: [browser-app-creator]
-use_when:
-  - User wants to VALIDATE AN IDEA quickly
-  - User needs a PROOF OF CONCEPT
-  - User wants MINIMAL implementation
-  - User doesn't care about polish or production-readiness
-  - User says "prototype", "MVP", "quick", "test"
-avoid_when:
-  - User wants a COMPLETE application
-  - User wants ADHD optimization
-  - User wants production-ready code
+description: Creates single-file HTML prototypes in /docs/prototype/. Uses Vue3 + Element Plus via CDN, applies project design tokens (colors, spacing from ainative-shadow/app). Outputs standalone index.html with no build needed. Use when user says "prototype", "demo", "mockup", "quick validation", "visualize idea", or needs UI preview.
 ---
 
-# Rapid Prototyper
+# 单文件原型生成器
 
-## Purpose
+生成独立的 HTML 原型文件，双击即可演示，样式参考项目设计系统。
 
-Fast validation through working prototypes. Creates complete, runnable code to test ideas before committing to full implementation:
+## 核心特性
 
-1. Recalls your preferred tech stack from memory
-2. Generates minimal but complete code
-3. Makes it runnable immediately
-4. Gets you visual feedback fast
-5. Saves validated patterns for production
+- **单文件输出**: `docs/prototype/{feature}/index.html`
+- **零依赖**: CDN 引入 Vue3/Element Plus，无需 npm install
+- **样式一致**: 自动应用项目设计标准（颜色/字体/间距）
+- **立即可用**: 双击打开或本地服务器预览
 
-**For ADHD users**: Immediate gratification - working prototype in minutes, not hours.
-**For aphantasia**: Concrete, visual results instead of abstract descriptions.
-**For all users**: Validate before investing - fail fast, learn fast.
+---
 
-## Activation Triggers
+## 快速生成流程
 
-- User says: "prototype this", "quick demo", "proof of concept", "MVP"
-- User asks: "can we build", "is it possible to", "how would we"
-- User mentions: "try out", "experiment with", "test the idea"
-- Before major feature: proactive offer to prototype first
+### 1. 确定原型类型
 
-## Core Workflow
+**管理后台** (ainative-shadow 风格):
 
-### 1. Understand Requirements
+- 数据列表、表单、仪表盘、统计卡片
+- 使用 Element Plus 组件
+- PC 端布局（最大宽度 1200px）
 
-Extract key information:
+**移动端** (ainative-app 风格):
 
-```javascript
-{
-  feature: "User authentication",
-  purpose: "Validate JWT flow works",
-  constraints: ["Must work offline", "No external dependencies"],
-  success_criteria: ["Login form", "Token storage", "Protected route"]
+- 商品列表、表单、详情页、搜索
+- 原生 HTML + Vue3
+- 移动端优化（最大宽度 750px）
+
+### 2. 应用设计标准
+
+自动应用项目 Design Tokens：
+
+```css
+:root {
+  --primary-color: #1890ff;
+  --success-color: #52c41a;
+  --warning-color: #faad14;
+  --error-color: #ff4d4f;
+  --text-color: #333333;
+  --text-secondary: #666666;
+  --bg-color: #f5f5f5;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --border-radius: 8px;
+  --box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 ```
 
-### 2. Recall Tech Stack
+### 3. 生成原型文件
 
-Query context-manager:
+**输出位置**: `docs/prototype/{feature-name}/index.html`
 
-```bash
-search memories:
-- Type: DECISION, PREFERENCE
-- Tags: tech-stack, framework, library
-- Project: current project
-```
-
-**Example recall**:
-
-```
-Found preferences:
-- Frontend: React + Vite
-- Styling: Tailwind CSS
-- State: Zustand
-- Backend: Node.js + Express
-- Database: PostgreSQL (but skip for prototype)
-```
-
-### 3. Design Minimal Implementation
-
-**Prototype scope**:
-
-- ✅ Core feature working
-- ✅ Visual interface (if UI feature)
-- ✅ Basic validation
-- ✅ Happy path functional
-- ❌ Error handling (minimal)
-- ❌ Edge cases (skip for speed)
-- ❌ Styling polish (functional only)
-- ❌ Optimization (prototype first)
-
-**Example**: Auth prototype scope
-
-```
-✅ Include:
-- Login form
-- Token storage in localStorage
-- Protected route example
-- Basic validation
-
-❌ Skip:
-- Password hashing (use fake tokens)
-- Refresh tokens
-- Remember me
-- Password reset
-- Email verification
-```
-
-### 4. Generate Prototype
-
-**Structure**:
-
-```
-prototype-{feature}-{timestamp}/
-├── README.md              # How to run
-├── package.json           # Dependencies
-├── index.html             # Entry point
-├── src/
-│   ├── App.jsx           # Main component
-│   ├── components/       # Feature components
-│   └── utils/            # Helper functions
-└── server.js             # If backend needed
-```
-
-**Example: Auth Prototype**
-
-`package.json`:
-
-```json
-{
-  "name": "auth-prototype",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build"
-  },
-  "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^6.20.0",
-    "zustand": "^4.4.7"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.2.1",
-    "vite": "^5.0.8"
-  }
-}
-```
-
-`src/App.jsx`:
-
-```javascript
-import { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useAuthStore } from './store';
-
-function LoginForm() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const login = useAuthStore((state) => state.login);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    // Prototype: Accept any credentials
-    if (email && password) {
-      login({ email, token: 'fake-jwt-token' });
-    }
-  };
-
-  return (
-    <div style={{ maxWidth: 400, margin: '100px auto' }}>
-      <h1>Login</h1>
-      <form onSubmit={handleSubmit}>
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email"
-          style={{ display: 'block', width: '100%', margin: '10px 0', padding: 8 }}
-        />
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
-          style={{ display: 'block', width: '100%', margin: '10px 0', padding: 8 }}
-        />
-        <button type="submit" style={{ padding: '10px 20px' }}>
-          Login
-        </button>
-      </form>
-    </div>
-  );
-}
-
-function Dashboard() {
-  const { user, logout } = useAuthStore();
-
-  return (
-    <div style={{ maxWidth: 800, margin: '50px auto' }}>
-      <h1>Dashboard</h1>
-      <p>Welcome, {user.email}!</p>
-      <p>Token: {user.token}</p>
-      <button onClick={logout} style={{ padding: '10px 20px' }}>
-        Logout
-      </button>
-    </div>
-  );
-}
-
-function ProtectedRoute({ children }) {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  return isAuthenticated ? children : <Navigate to="/login" />;
-}
-
-export default function App() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<LoginForm />} />
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/" element={<Navigate to="/dashboard" />} />
-      </Routes>
-    </BrowserRouter>
-  );
-}
-```
-
-`src/store.js`:
-
-```javascript
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-
-export const useAuthStore = create(
-  persist(
-    (set) => ({
-      user: null,
-      isAuthenticated: false,
-      login: (user) => set({ user, isAuthenticated: true }),
-      logout: () => set({ user: null, isAuthenticated: false }),
-    }),
-    {
-      name: 'auth-storage',
-    }
-  )
-);
-```
-
-`README.md`:
-
-````markdown
-# Auth Prototype
-
-Quick prototype to validate JWT authentication flow.
-
-## Run
-
-```bash
-npm install
-npm run dev
-```
-````
-
-Open http://localhost:5173
-
-## Test
-
-1. Go to /login
-2. Enter any email and password
-3. Click Login
-4. Should redirect to /dashboard
-5. Refresh page - should stay logged in
-6. Click Logout - should return to /login
-
-## Notes
-
-- Uses fake tokens (no real JWT validation)
-- No password hashing
-- Minimal styling
-- No error handling
-
-## Next Steps if Validated
-
-1. Implement real JWT signing/verification
-2. Add password hashing with bcrypt
-3. Add proper error handling
-4. Add refresh token flow
-5. Add validation and security measures
-
-````
-
-### 5. Save to Artifacts
-
-```bash
-# Save complete prototype
-# Linux/macOS: ~/.claude-artifacts/prototypes/auth-{timestamp}/
-# Windows: %USERPROFILE%\.claude-artifacts\prototypes\auth-{timestamp}\
-~/.claude-artifacts/prototypes/auth-{timestamp}/
-````
-
-### 6. Present to User
-
-```
-✅ Auth prototype ready!
-
-📁 Location (Linux/macOS): ~/.claude-artifacts/prototypes/auth-20251017/
-📁 Location (Windows): %USERPROFILE%\.claude-artifacts\prototypes\auth-20251017\
-
-🚀 To run:
-cd ~/.claude-artifacts/prototypes/auth-20251017
-# Windows: cd %USERPROFILE%\.claude-artifacts\prototypes\auth-20251017
-npm install
-npm run dev
-
-🎯 Test flow:
-1. Visit http://localhost:5173/login
-2. Enter any email/password
-3. Click Login → Redirects to Dashboard
-4. Refresh → Stays logged in
-5. Click Logout → Returns to Login
-
-✅ Validates:
-- JWT token flow works
-- Protected routes work
-- State persistence works
-- React Router integration works
-
-❌ Not included (yet):
-- Real JWT validation
-- Password hashing
-- Error handling
-- Production security
-
-**Does this validate what you needed?**
-- If yes: I'll build production version
-- If no: What needs adjusting?
-```
-
-## Prototype Templates
-
-### Single-File HTML App
-
-For quick UI demos:
+**文件结构**:
 
 ```html
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
+  <head>
+    <!-- CDN 依赖 -->
+    <!-- 设计标准 CSS -->
+  </head>
+  <body>
+    <!--
+    原型说明注释：
+    - 功能描述
+    - 使用方法
+    - 原型限制
+    - 下一步计划
+  -->
+
+    <div id="app">
+      <!-- 原型标记 -->
+      <div class="prototype-badge">🚧 原型</div>
+
+      <!-- 页面内容 -->
+    </div>
+
+    <!-- Vue3 + 业务逻辑 -->
+  </body>
+</html>
+```
+
+---
+
+## 基础模板
+
+### 管理后台模板
+
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <title>Prototype</title>
-    <script src="https://unpkg.com/vue@3"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>原型 - 功能名称</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
     <style>
+      :root {
+        --primary-color: #1890ff;
+        --text-color: #333333;
+        --bg-color: #f5f5f5;
+        --spacing-lg: 24px;
+        --border-radius: 8px;
+        --box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
       body {
-        font-family: sans-serif;
-        max-width: 800px;
-        margin: 50px auto;
+        font-family: -apple-system, sans-serif;
+        background: var(--bg-color);
+      }
+      #app {
+        padding: var(--spacing-lg);
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      .prototype-badge {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        background: #faad14;
+        color: white;
+        padding: 8px 16px;
+        border-radius: var(--border-radius);
+        font-weight: 600;
+        z-index: 9999;
       }
     </style>
   </head>
   <body>
     <div id="app">
-      <h1>{{ title }}</h1>
-      <button @click="count++">Count: {{ count }}</button>
+      <div class="prototype-badge">🚧 原型</div>
+      <el-card>
+        <template #header><span>{{ title }}</span></template>
+        <!-- 内容 -->
+      </el-card>
     </div>
 
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/element-plus"></script>
     <script>
-      const { createApp } = Vue;
+      const { createApp, ref } = Vue;
       createApp({
-        data() {
-          return {
-            title: 'Quick Prototype',
-            count: 0,
-          };
+        setup() {
+          const title = ref('原型标题');
+          return { title };
+        },
+      })
+        .use(ElementPlus)
+        .mount('#app');
+    </script>
+  </body>
+</html>
+```
+
+### 移动端模板
+
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>原型 - 功能名称</title>
+    <style>
+      :root {
+        --primary-color: #1890ff;
+        --text-color: #333333;
+        --bg-color: #f5f5f5;
+        --spacing-md: 12px;
+        --border-radius: 8px;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+      body {
+        font-family: -apple-system, sans-serif;
+        background: var(--bg-color);
+        max-width: 750px;
+        margin: 0 auto;
+      }
+      .navbar {
+        position: sticky;
+        top: 0;
+        background: white;
+        padding: var(--spacing-md);
+        display: flex;
+        align-items: center;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+      }
+      .navbar-title {
+        flex: 1;
+        font-size: 16px;
+        font-weight: 600;
+        text-align: center;
+      }
+      .prototype-badge {
+        position: fixed;
+        bottom: 10px;
+        right: 10px;
+        background: #faad14;
+        color: white;
+        padding: 6px 12px;
+        border-radius: var(--border-radius);
+        font-size: 12px;
+        font-weight: 600;
+        z-index: 9999;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="prototype-badge">🚧 原型</div>
+      <div class="navbar">
+        <span>←</span>
+        <div class="navbar-title">{{ title }}</div>
+        <div style="width: 20px;"></div>
+      </div>
+      <!-- 内容 -->
+    </div>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script>
+      const { createApp, ref } = Vue;
+      createApp({
+        setup() {
+          const title = ref('页面标题');
+          return { title };
         },
       }).mount('#app');
     </script>
@@ -385,271 +245,240 @@ For quick UI demos:
 </html>
 ```
 
-**When to use**: UI-only features, visual concepts, no build step needed
+---
 
-### React + Vite
+## 常用功能片段
 
-For complex UI with state management:
-
-```bash
-npm create vite@latest prototype-name -- --template react
-cd prototype-name
-npm install
-# Add feature code
-npm run dev
-```
-
-**When to use**: Multi-component features, routing, state management
-
-### Node.js Script
-
-For backend/API prototypes:
+### 数据加载
 
 ```javascript
-// prototype.js
-import express from 'express';
+const loading = ref(false);
+const data = ref([]);
 
-const app = express();
-app.use(express.json());
-
-app.post('/api/users', (req, res) => {
-  // Prototype logic
-  res.json({ success: true, user: req.body });
-});
-
-app.listen(3000, () => {
-  console.log('Prototype running on http://localhost:3000');
-});
-```
-
-**When to use**: API endpoints, data processing, backend logic
-
-### Python Script
-
-For data analysis/processing:
-
-```python
-# prototype.py
-def process_data(data):
-    # Prototype logic
-    return [item * 2 for item in data]
-
-if __name__ == '__main__':
-    sample = [1, 2, 3, 4, 5]
-    result = process_data(sample)
-    print(f"Input: {sample}")
-    print(f"Output: {result}")
-```
-
-**When to use**: Data processing, algorithms, automation
-
-## Context Integration
-
-### Recall Preferences
-
-Before creating prototype:
-
-```javascript
-// Query context-manager
-const techStack = searchMemories({
-  type: 'DECISION',
-  tags: ['tech-stack', 'framework'],
-  project: currentProject,
-});
-
-const preferences = searchMemories({
-  type: 'PREFERENCE',
-  tags: ['coding-style', 'libraries'],
-  project: currentProject,
-});
-
-// Apply to prototype
-const config = {
-  framework: techStack.frontend || 'React',
-  styling: techStack.styling || 'inline-styles',
-  state: techStack.state || 'useState',
-  build: techStack.build || 'Vite',
+const fetchData = async () => {
+  loading.value = true;
+  await new Promise((resolve) => setTimeout(resolve, 500)); // 模拟延迟
+  data.value = mockData;
+  loading.value = false;
 };
 ```
 
-### Save Validated Patterns
-
-After user validates prototype:
-
-```bash
-User: "This works perfectly! Build the production version"
-
-# Save pattern as PROCEDURE
-remember: Authentication flow pattern
-Type: PROCEDURE
-Tags: auth, jwt, react-router, zustand
-Content: Validated pattern for JWT auth:
-- Zustand store with persist middleware
-- React Router protected routes
-- Token in localStorage
-- Login/logout flow
-Works well, use for production
-```
-
-### Learn from Iterations
-
-Track what gets changed:
+### 表单验证
 
 ```javascript
-// If user asks for modifications
-'Can you add password validation?';
-'Make the form prettier';
-'Add loading state';
-
-// Track patterns
-if (commonRequest) {
-  saveMemory({
-    type: 'PREFERENCE',
-    content: 'User commonly requests password validation in prototypes',
-    tags: ['prototyping', 'validation'],
-  });
-
-  // Auto-include in future prototypes
-}
+const validateForm = () => {
+  if (!formData.name.trim()) {
+    alert('请输入名称');
+    return false;
+  }
+  return true;
+};
 ```
 
-## Integration with Other Skills
+### 数据持久化
 
-### Context Manager
+```javascript
+// 保存
+localStorage.setItem('key', JSON.stringify(data.value));
 
-Recalls tech stack:
-
-```
-Query for DECISION with tags: [tech-stack, framework]
-Query for PREFERENCE with tags: [libraries, tools]
-Apply to prototype generation
-```
-
-Saves validated patterns:
-
-```
-After user validates prototype
-Save pattern as PROCEDURE
-Tag with feature name and tech stack
+// 读取
+const saved = localStorage.getItem('key');
+if (saved) data.value = JSON.parse(saved);
 ```
 
-### Rapid Production Build
+### 分页逻辑
 
-After validation:
+```javascript
+const pagination = reactive({ page: 1, pageSize: 10, total: 0 });
 
-```
-User: "Build it properly"
-→ Use validated prototype as reference
-→ Add error handling
-→ Add tests (via testing-builder)
-→ Add proper styling
-→ Add security measures
-→ Create production version
+const getPageData = () => {
+  const start = (pagination.page - 1) * pagination.pageSize;
+  const end = start + pagination.pageSize;
+  return allData.slice(start, end);
+};
 ```
 
-### Browser App Creator
+---
 
-For standalone tools:
+## 原型标记规范
 
-```
-If prototype should be standalone tool:
-→ Invoke browser-app-creator
-→ Convert prototype to polished single-file app
-→ Save to artifacts/browser-apps/
-```
-
-## Success Patterns
-
-### Quick Validation (5 minutes)
-
-**Scope**: Single feature, visual feedback
-**Deliverable**: Working demo
-**Example**: "Does this button style work?"
+### 顶部注释
 
 ```html
-<!DOCTYPE html>
-<html>
-  <body>
-    <button style="background: #3b82f6; color: white; padding: 12px 24px; border: none; border-radius: 8px; font-size: 16px; cursor: pointer;">
-      Click Me
-    </button>
-  </body>
-</html>
+<!--
+  原型名称: 用户列表
+  创建时间: 2026-02-03
+  
+  功能说明:
+  - 用户列表展示
+  - 搜索筛选
+  - CRUD 操作
+  
+  如何使用:
+  1. 双击打开或使用本地服务器
+  2. 测试核心功能
+  
+  原型限制:
+  - 使用模拟数据
+  - 未实现真实 API
+  - 简化的错误处理
+  
+  下一步:
+  1. 在项目中创建正式组件
+  2. 对接后端 API
+  3. 完善验证和错误处理
+-->
 ```
 
-### Feature Prototype (15-30 minutes)
+### 视觉徽章
 
-**Scope**: Complete feature with interactions
-**Deliverable**: Multi-file app
-**Example**: "User authentication flow"
+```html
+<div class="prototype-badge">🚧 原型演示</div>
+```
 
-See full auth prototype above.
+---
 
-### Architecture Validation (30-60 minutes)
+## CDN 资源
 
-**Scope**: System design, integration points
-**Deliverable**: Working system with multiple components
-**Example**: "Microservices communication pattern"
+```html
+<!-- Vue 3 -->
+<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+<!-- Element Plus (管理后台) -->
+<link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+<script src="https://unpkg.com/element-plus"></script>
+
+<!-- ECharts (图表，可选) -->
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+```
+
+---
+
+## 常见组件
+
+### Element Plus 表格
+
+```html
+<el-table :data="tableData" border>
+  <el-table-column prop="id" label="ID" width="80" />
+  <el-table-column prop="name" label="名称" />
+  <el-table-column label="操作" width="150">
+    <template #default="{ row }">
+      <el-button link type="primary" size="small">编辑</el-button>
+    </template>
+  </el-table-column>
+</el-table>
+```
+
+### Element Plus 表单
+
+```html
+<el-form :model="formData" label-width="80px">
+  <el-form-item label="名称">
+    <el-input v-model="formData.name" />
+  </el-form-item>
+  <el-form-item>
+    <el-button type="primary" @click="handleSubmit">提交</el-button>
+  </el-form-item>
+</el-form>
+```
+
+### 移动端列表
+
+```html
+<div class="card-list">
+  <div class="card-item" v-for="item in list" :key="item.id">
+    <div class="card-title">{{ item.title }}</div>
+    <div class="card-desc">{{ item.desc }}</div>
+  </div>
+</div>
+
+<style>
+  .card-list {
+    padding: 12px;
+  }
+  .card-item {
+    background: white;
+    padding: 12px;
+    margin-bottom: 12px;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  }
+</style>
+```
+
+---
+
+## 打开方式
+
+**直接打开**: 双击 `index.html` 文件
+
+**本地服务器** (推荐):
+
+```bash
+# Python
+python -m http.server 8000
+
+# Node.js
+npx serve .
+
+# 访问: http://localhost:8000/docs/prototype/xxx/
+```
+
+---
+
+## 开发检查清单
+
+生成原型前确认：
+
+- [ ] 确定类型（管理后台/移动端）
+- [ ] 选择合适的基础模板
+- [ ] 应用项目设计标准
+
+生成原型后确认：
+
+- [ ] 单个 HTML 文件
+- [ ] 包含顶部功能说明注释
+- [ ] 包含原型标记徽章
+- [ ] 核心功能可演示
+- [ ] 保存到 `docs/prototype/{feature}/index.html`
+
+---
+
+## 完整示例
+
+详细示例请查看：
+
+- **管理后台**: [shadow-examples.md](references/shadow-examples.md)
+  - 用户列表（搜索、CRUD、分页）
+  - 数据仪表盘（统计卡片、图表）
+- **移动端**: [app-examples.md](references/app-examples.md)
+  - 商品列表（搜索、筛选、加载更多）
+  - 表单提交（头像上传、验证）
+- **快速参考**: [common-prototypes.md](references/common-prototypes.md)
+  - 快速模板
+  - 代码片段
+  - 常见问题
+
+---
+
+## 快速参考
+
+### 占位图
 
 ```javascript
-// api-gateway.js
-// orchestrator.js
-// user-service.js
-// Complete working system
+const placeholder = (w, h, text) => `https://via.placeholder.com/${w}x${h}/409EFF/FFFFFF?text=${text}`;
 ```
 
-## Prototype Checklist
+### 模拟延迟
 
-Before generating:
-✅ Requirements clear
-✅ Tech stack recalled
-✅ Scope defined (minimal but complete)
-✅ Success criteria established
+```javascript
+const delay = (ms = 500) => new Promise((resolve) => setTimeout(resolve, ms));
+```
 
-While generating:
-✅ Focus on happy path
-✅ Make it runnable immediately
-✅ Include clear instructions
-✅ Use simple, obvious code
+### 项目颜色
 
-After generating:
-✅ Test that it runs
-✅ Verify success criteria met
-✅ Provide clear next steps
-✅ Ask for validation
-
-## Quick Reference
-
-### When to Prototype
-
-| Situation                | Prototype?                        |
-| ------------------------ | --------------------------------- |
-| New feature idea         | ✅ Yes - validate before building |
-| Bug fix                  | ❌ No - fix directly              |
-| Refactoring              | ✅ Yes - test new pattern         |
-| UI tweak                 | ✅ Yes - visual confirmation      |
-| Performance optimization | ❌ No - measure first             |
-| New technology           | ✅ Yes - learn by doing           |
-
-### Trigger Phrases
-
-- "prototype this"
-- "quick demo"
-- "proof of concept"
-- "can we build"
-- "how would we"
-- "test the idea"
-
-### File Locations
-
-- **Prototypes**: `~/.claude-artifacts/prototypes/` (Linux/macOS) or `%USERPROFILE%\.claude-artifacts\prototypes\` (Windows)
-- **Validated patterns**: `~/.claude-memories/procedures/` (Linux/macOS) or `%USERPROFILE%\.claude-memories\procedures\` (Windows) - tagged "prototype-validated"
-
-### Success Criteria
-
-✅ Prototype runs immediately (no setup friction)
-✅ Visually demonstrates the concept
-✅ Tests core functionality
-✅ Takes <30 minutes to create
-✅ Clear README with instructions
-✅ User can validate yes/no quickly
+```
+主色: #1890ff   成功: #52c41a
+警告: #faad14   错误: #ff4d4f
+```

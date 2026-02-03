@@ -158,6 +158,39 @@ export class WritePRD extends BaseAction {
     }
 
     try {
+      // 检查 PRD 文件是否已存在（仅在 new 模式下）
+      if (mode === 'new') {
+        const projectRootDir = WorkspaceManager.getProjectWorkspacePath(workspaceOptions);
+        const prdFilePath = path.join(projectRootDir, 'docs', 'prd', 'PRD.md');
+
+        try {
+          const stats = await fs.stat(prdFilePath);
+          if (stats.isFile() && stats.size > 100) {
+            // 文件存在且有内容，读取并返回
+            const existingContent = await fs.readFile(prdFilePath, 'utf-8');
+            logger.info('WritePRD: PRD file already exists, skipping generation', {
+              filePath: prdFilePath,
+              fileSize: stats.size,
+              contentLength: existingContent.length,
+            });
+
+            return this.createActionOutput(existingContent, {
+              type: 'prd',
+              mode,
+              filename: 'PRD.md',
+              workspaceDir: projectRootDir,
+              skipped: true,
+              reason: 'PRD file already exists',
+            });
+          }
+        } catch (error) {
+          // 文件不存在或读取失败，继续生成
+          logger.info('WritePRD: PRD file does not exist or is invalid, will generate', {
+            filePath: prdFilePath,
+          });
+        }
+      }
+
       const handler = await this.getCachedHandler('write', () => this.createWriteHandler(workspaceOptions));
       const result = await this.executeWriteHandler(handler, '', workspaceOptions, {
         type: 'prd',
