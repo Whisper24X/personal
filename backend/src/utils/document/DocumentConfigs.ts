@@ -37,13 +37,6 @@ export const DOCUMENT_CONFIGS: Record<string, CLIModeConfig> = {
     fileDescription: '测试文档',
     reviewDescription: '测试审核报告',
   },
-  TEST_CASE: {
-    documentType: 'TEST_CASE',
-    mainFileName: 'TEST_CASE.md',
-    reviewFileName: 'TEST_CASE_REVIEW.md',
-    fileDescription: '测试用例文档',
-    reviewDescription: '测试用例审核报告',
-  },
   TEST_PLAN: {
     documentType: 'TEST_PLAN',
     mainFileName: 'TEST_PLAN.md',

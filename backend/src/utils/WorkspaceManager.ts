@@ -1,7 +1,7 @@
 /**
  * WorkspaceManager
  * 统一管理文件写入workspace的逻辑
- * 
+ *
  * 目录结构（带版本）：workspace/{applicationId}/{projectId}/versions/{versionId}/ainative-workspace
  * 目录结构（无版本）：workspace/{applicationId}/{projectId}/ainative-workspace
  * - ainative-workspace 是通过 git clone 的模板项目
@@ -45,10 +45,7 @@ export class WorkspaceManager {
     // 查找包含 pnpm-workspace.yaml 或 package.json 的目录作为项目根目录
     let projectRoot = possibleRoots[0]; // 默认使用第一个
     for (const root of possibleRoots) {
-      if (
-        fsSync.existsSync(path.join(root, 'pnpm-workspace.yaml')) ||
-        fsSync.existsSync(path.join(root, 'package.json'))
-      ) {
+      if (fsSync.existsSync(path.join(root, 'pnpm-workspace.yaml')) || fsSync.existsSync(path.join(root, 'package.json'))) {
         projectRoot = root;
         break;
       }
@@ -87,9 +84,7 @@ export class WorkspaceManager {
    * 判断是否为本地开发模式
    */
   static isLocalDevelopmentMode(): boolean {
-    return process.env.NODE_ENV === 'development' ||
-           process.env.LOCAL_DEV === 'true' ||
-           !this.isContainerEnvironment();
+    return process.env.NODE_ENV === 'development' || process.env.LOCAL_DEV === 'true' || !this.isContainerEnvironment();
   }
 
   /**
@@ -98,11 +93,7 @@ export class WorkspaceManager {
    */
   static getContainerWorkspacePath(options: WorkspaceOptions): string {
     const containerWorkspaceRoot = process.env.CONTAINER_WORKSPACE_ROOT || '/workspace';
-    return path.join(
-      containerWorkspaceRoot,
-      options.applicationId || 'default',
-      options.projectId || 'default'
-    );
+    return path.join(containerWorkspaceRoot, options.applicationId || 'default', options.projectId || 'default');
   }
 
   /**
@@ -121,12 +112,7 @@ export class WorkspaceManager {
    */
   static getLocalWorkspacePath(options: WorkspaceOptions): string {
     const projectRoot = this.getProjectRoot();
-    return path.join(
-      projectRoot,
-      'workspace',
-      options.applicationId || 'default',
-      options.projectId || 'default'
-    );
+    return path.join(projectRoot, 'workspace', options.applicationId || 'default', options.projectId || 'default');
   }
 
   /**
@@ -161,19 +147,12 @@ export class WorkspaceManager {
     }
 
     const workspaceRoot = this.getWorkspaceRoot();
-    
+
     // 如果指定了版本ID，则使用版本化的目录结构
     if (options.versionId) {
-      return path.join(
-        workspaceRoot, 
-        options.applicationId, 
-        options.projectId, 
-        VERSIONS_DIR_NAME,
-        options.versionId,
-        WORKSPACE_DIR_NAME
-      );
+      return path.join(workspaceRoot, options.applicationId, options.projectId, VERSIONS_DIR_NAME, options.versionId, WORKSPACE_DIR_NAME);
     }
-    
+
     // 兼容旧的目录结构（无版本）
     return path.join(workspaceRoot, options.applicationId, options.projectId, WORKSPACE_DIR_NAME);
   }
@@ -181,11 +160,11 @@ export class WorkspaceManager {
   /**
    * 从 workspace 路径解析出 WorkspaceOptions
    * 统一的路径解析方法，供各处调用
-   * 
+   *
    * 支持的路径格式：
    * - 带版本: workspace/{applicationId}/{projectId}/versions/{versionId}/ainative-workspace/docs/{documentType}
    * - 无版本: workspace/{applicationId}/{projectId}/ainative-workspace/docs/{documentType}
-   * 
+   *
    * @param workspacePath 要解析的路径
    * @param defaultDocumentType 默认文档类型（如果路径中没有）
    * @returns 解析出的 WorkspaceOptions，如果无法解析则返回 undefined
@@ -193,37 +172,37 @@ export class WorkspaceManager {
   static parseWorkspacePath(workspacePath: string, defaultDocumentType?: string): WorkspaceOptions | undefined {
     if (!workspacePath) return undefined;
 
-    const pathParts = workspacePath.split(path.sep).filter(p => p);
-    
+    const pathParts = workspacePath.split(path.sep).filter((p) => p);
+
     // 查找关键目录标识
-    const workspaceRootIndex = pathParts.findIndex(p => p === 'workspace');
-    const versionsIndex = pathParts.findIndex(p => p === VERSIONS_DIR_NAME);
-    const docsIndex = pathParts.findIndex(p => p === 'docs');
-    
+    const workspaceRootIndex = pathParts.findIndex((p) => p === 'workspace');
+    const versionsIndex = pathParts.findIndex((p) => p === VERSIONS_DIR_NAME);
+    const docsIndex = pathParts.findIndex((p) => p === 'docs');
+
     if (workspaceRootIndex === -1) {
       return undefined;
     }
-    
+
     // 提取 applicationId 和 projectId
     const applicationId = pathParts[workspaceRootIndex + 1];
     const projectId = pathParts[workspaceRootIndex + 2];
-    
+
     if (!applicationId || !projectId) {
       return undefined;
     }
-    
+
     // 提取 versionId（如果存在 versions 目录）
     let versionId: string | undefined;
     if (versionsIndex !== -1 && versionsIndex === workspaceRootIndex + 3) {
       versionId = pathParts[versionsIndex + 1];
     }
-    
+
     // 提取 documentType（从 docs 目录后面）
     let documentType: string | undefined;
     if (docsIndex !== -1 && docsIndex < pathParts.length - 1) {
       documentType = pathParts[docsIndex + 1];
     }
-    
+
     return {
       applicationId,
       projectId,
@@ -253,13 +232,11 @@ export class WorkspaceManager {
    */
   static async listVersionDirs(options: WorkspaceOptions): Promise<string[]> {
     const versionsDir = this.getVersionsDir(options);
-    
+
     try {
       await fs.access(versionsDir);
       const entries = await fs.readdir(versionsDir, { withFileTypes: true });
-      return entries
-        .filter(entry => entry.isDirectory())
-        .map(entry => entry.name);
+      return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
     } catch {
       return [];
     }
@@ -280,10 +257,7 @@ export class WorkspaceManager {
    * 从源目录复制工作空间到目标版本目录
    * 用于从主工作空间或其他版本创建新版本
    */
-  static async copyWorkspaceToVersion(
-    sourceOptions: WorkspaceOptions,
-    targetVersionId: string
-  ): Promise<string> {
+  static async copyWorkspaceToVersion(sourceOptions: WorkspaceOptions, targetVersionId: string): Promise<string> {
     const sourcePath = this.getProjectWorkspacePath(sourceOptions);
     const targetOptions = { ...sourceOptions, versionId: targetVersionId };
     const targetPath = this.getProjectWorkspacePath(targetOptions);
@@ -368,12 +342,12 @@ export class WorkspaceManager {
   static getDocsDir(options: WorkspaceOptions): string {
     const projectWorkspace = this.getProjectWorkspacePath(options);
     const docsPath = path.join(projectWorkspace, 'docs');
-    
+
     // 如果指定了文档类型，则在 docs 下创建子目录
     if (options.documentType) {
       return path.join(docsPath, options.documentType.toLowerCase());
     }
-    
+
     return docsPath;
   }
 
@@ -404,7 +378,7 @@ export class WorkspaceManager {
   static isUserRepository(options: WorkspaceOptions): boolean {
     const projectWorkspace = this.getProjectWorkspacePath(options);
     const gitDir = path.join(projectWorkspace, '.git');
-    
+
     if (!fsSync.existsSync(gitDir)) {
       return false;
     }
@@ -449,13 +423,14 @@ export class WorkspaceManager {
         await fs.rm(projectWorkspace, { recursive: true, force: true });
       }
 
-      // 执行 git clone
+      // 执行 git clone（指定 master 分支）
       logger.info('WorkspaceManager: Cloning template repository', {
         repo: TEMPLATE_REPO,
         targetDir: projectWorkspace,
+        branch: 'master',
       });
 
-      execSync(`git clone ${TEMPLATE_REPO} ${WORKSPACE_DIR_NAME}`, {
+      execSync(`git clone -b master ${TEMPLATE_REPO} ${WORKSPACE_DIR_NAME}`, {
         cwd: parentDir,
         stdio: 'pipe',
       });
@@ -490,9 +465,12 @@ export class WorkspaceManager {
     }
 
     try {
-      logger.info('WorkspaceManager: Pulling latest template updates', { projectWorkspace });
+      logger.info('WorkspaceManager: Pulling latest template updates', {
+        projectWorkspace,
+        branch: 'master',
+      });
 
-      execSync('git pull origin main', {
+      execSync('git pull origin master', {
         cwd: projectWorkspace,
         stdio: 'pipe',
       });
@@ -545,11 +523,7 @@ export class WorkspaceManager {
    * @param content 文件内容
    * @param options workspace选项
    */
-  static async saveToWorkspace(
-    filePath: string,
-    content: string,
-    options?: WorkspaceOptions
-  ): Promise<void> {
+  static async saveToWorkspace(filePath: string, content: string, options?: WorkspaceOptions): Promise<void> {
     if (!options) {
       throw new Error('WorkspaceOptions is required for saveToWorkspace.');
     }
@@ -586,10 +560,7 @@ export class WorkspaceManager {
    * @param files 文件数组，每个文件包含path和content
    * @param options workspace选项
    */
-  static async saveFilesToWorkspace(
-    files: Array<{ path: string; content: string }>,
-    options?: WorkspaceOptions
-  ): Promise<void> {
+  static async saveFilesToWorkspace(files: Array<{ path: string; content: string }>, options?: WorkspaceOptions): Promise<void> {
     if (!options) {
       throw new Error('WorkspaceOptions is required for saveFilesToWorkspace.');
     }
@@ -635,10 +606,7 @@ export class WorkspaceManager {
    * @param options workspace选项
    * @param filter 可选的文件过滤函数
    */
-  static async readAllFromWorkspace(
-    options?: WorkspaceOptions,
-    filter?: (filename: string) => boolean
-  ): Promise<string> {
+  static async readAllFromWorkspace(options?: WorkspaceOptions, filter?: (filename: string) => boolean): Promise<string> {
     if (!options) {
       throw new Error('WorkspaceOptions is required for readAllFromWorkspace.');
     }
@@ -666,9 +634,7 @@ export class WorkspaceManager {
       });
 
       // 按文件名排序
-      const sortedEntries = filteredEntries.sort((a, b) =>
-        a.name.localeCompare(b.name)
-      );
+      const sortedEntries = filteredEntries.sort((a, b) => a.name.localeCompare(b.name));
 
       for (const entry of sortedEntries) {
         const filePath = path.join(docsDir, entry.name);
@@ -703,10 +669,7 @@ export class WorkspaceManager {
    * @param filePath 相对路径（相对于 docs 目录）
    * @param options workspace选项
    */
-  static async fileExists(
-    filePath: string,
-    options?: WorkspaceOptions
-  ): Promise<boolean> {
+  static async fileExists(filePath: string, options?: WorkspaceOptions): Promise<boolean> {
     if (!options) {
       throw new Error('WorkspaceOptions is required for fileExists.');
     }
@@ -725,10 +688,7 @@ export class WorkspaceManager {
    * @param filePath 相对路径（相对于 docs 目录）
    * @param options workspace选项
    */
-  static async readFile(
-    filePath: string,
-    options?: WorkspaceOptions
-  ): Promise<string | null> {
+  static async readFile(filePath: string, options?: WorkspaceOptions): Promise<string | null> {
     if (!options) {
       throw new Error('WorkspaceOptions is required for readFile.');
     }
@@ -759,10 +719,7 @@ export class WorkspaceManager {
    * @param options workspace选项
    * @returns 是否成功删除
    */
-  static async deleteFile(
-    filePath: string,
-    options?: WorkspaceOptions
-  ): Promise<boolean> {
+  static async deleteFile(filePath: string, options?: WorkspaceOptions): Promise<boolean> {
     if (!options) {
       throw new Error('WorkspaceOptions is required for deleteFile.');
     }
@@ -796,10 +753,7 @@ export class WorkspaceManager {
    * @param options workspace选项
    * @returns 删除的文件数量
    */
-  static async deleteFilesByPattern(
-    pattern: RegExp,
-    options?: WorkspaceOptions
-  ): Promise<number> {
+  static async deleteFilesByPattern(pattern: RegExp, options?: WorkspaceOptions): Promise<number> {
     if (!options) {
       throw new Error('WorkspaceOptions is required for deleteFilesByPattern.');
     }
@@ -815,9 +769,7 @@ export class WorkspaceManager {
       }
 
       const entries = await fs.readdir(docsDir, { withFileTypes: true });
-      const filesToDelete = entries.filter(
-        (entry) => entry.isFile() && pattern.test(entry.name)
-      );
+      const filesToDelete = entries.filter((entry) => entry.isFile() && pattern.test(entry.name));
 
       let deletedCount = 0;
       for (const entry of filesToDelete) {
@@ -850,10 +802,7 @@ export class WorkspaceManager {
    * @param filter 可选的文件过滤函数
    * @returns 文件名数组
    */
-  static async listFiles(
-    options?: WorkspaceOptions,
-    filter?: (filename: string) => boolean
-  ): Promise<string[]> {
+  static async listFiles(options?: WorkspaceOptions, filter?: (filename: string) => boolean): Promise<string[]> {
     if (!options) {
       throw new Error('WorkspaceOptions is required for listFiles.');
     }
@@ -868,9 +817,7 @@ export class WorkspaceManager {
       }
 
       const entries = await fs.readdir(docsDir, { withFileTypes: true });
-      const files = entries
-        .filter((entry) => entry.isFile())
-        .map((entry) => entry.name);
+      const files = entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
 
       if (filter) {
         return files.filter(filter);
@@ -900,11 +847,7 @@ export class WorkspaceManager {
    * @param content 文件内容
    * @param options workspace选项
    */
-  static async saveToSrc(
-    filePath: string,
-    content: string,
-    options: WorkspaceOptions
-  ): Promise<void> {
+  static async saveToSrc(filePath: string, content: string, options: WorkspaceOptions): Promise<void> {
     try {
       // 确保工作空间已初始化
       await this.initWorkspace(options);
@@ -1008,7 +951,7 @@ export class WorkspaceManager {
     ];
 
     // 如果匹配任何白名单模式，则是合法文件
-    if (validPatterns.some(pattern => pattern.test(filename))) {
+    if (validPatterns.some((pattern) => pattern.test(filename))) {
       return false;
     }
 
@@ -1016,11 +959,12 @@ export class WorkspaceManager {
     const invalidPatterns = [
       /[\u4e00-\u9fa5]/, // 包含中文字符
       /：/, // 包含全角冒号
-      /[\[\]{}()]/, // 包含 Mermaid 语法括号
+      /[[\]{}()]/, // 包含 Mermaid 语法括号
+      // eslint-disable-next-line no-useless-escape
       /-->/, // 包含 Mermaid 箭头
     ];
 
     // 如果匹配任何无效模式，则需要清理
-    return invalidPatterns.some(pattern => pattern.test(filename));
+    return invalidPatterns.some((pattern) => pattern.test(filename));
   }
 }

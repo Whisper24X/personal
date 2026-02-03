@@ -10,6 +10,7 @@ import { logger } from '../../utils';
 import { ProjectRepository } from '../../database/repositories/ProjectRepository';
 import { MessageRepository } from '../../database/repositories/MessageRepository';
 import { RoleActionFactory } from '../../services/RoleActionFactory';
+import { actionRelevanceMap } from '../../../../config/defaultWorkflowConfig';
 
 export class RoleActionExecutionController {
   /**
@@ -245,50 +246,9 @@ export class RoleActionExecutionController {
 
   /**
    * Get relevant message types (causeBy) for a specific action
+   * Uses centralized configuration from defaultWorkflowConfig.ts
    */
   private static getRelevantMessageTypes(actionName: string): string[] {
-    // Define which message types are relevant for each action
-    const relevanceMap: Record<string, string[]> = {
-      // Product Manager actions
-      WritePRD: ['WriteMRD', 'UserInput'],
-      PRDReview: ['WritePRD'],
-      ImprovePRD: ['WritePRD', 'PRDReview'],
-
-      // Architect actions
-      WriteDesign: ['WritePRD'],
-      DesignReview: ['WriteDesign'],
-      ImproveDesign: ['WriteDesign', 'DesignReview'],
-
-      // Project Manager actions
-      BreakdownTasks: ['WritePRD', 'WriteDesign'],
-
-      // Engineer actions
-      WriteCode: ['WritePRD', 'WriteDesign', 'BreakdownTasks'],
-      ExecuteSubtask: ['WritePRD', 'WriteDesign', 'BreakdownTasks'],
-
-      // QA Engineer actions
-      WriteTest: ['WritePRD', 'WriteCode'],
-      WriteTestPlan: ['WritePRD', 'WriteCode'],
-      TestCaseReview: ['WriteTest', 'WriteTestPlan'],
-      TestReview: ['WriteTest'],
-      ImproveTest: ['WriteTest', 'TestReview'],
-      AutomationPlanning: ['WriteTest', 'WriteTestPlan'],
-      AutomationExecution: ['WriteTest', 'AutomationPlanning'],
-      CoverageQualityCheck: ['WriteTest', 'AutomationExecution'],
-      QAConclusion: ['WriteTest', 'CoverageQualityCheck'],
-
-      // Salesperson actions
-      WriteMRD: ['UserInput'],
-      MRDReview: ['WriteMRD'],
-      ImproveMRD: ['WriteMRD', 'MRDReview'],
-
-      // Team Leader actions
-      Coordinate: [], // Will load all messages
-
-      // Data Analyst actions
-      DataAnalysis: ['UserInput'],
-    };
-
-    return relevanceMap[actionName] || [];
+    return actionRelevanceMap[actionName] || [];
   }
 }

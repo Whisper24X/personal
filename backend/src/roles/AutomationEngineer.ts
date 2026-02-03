@@ -5,7 +5,7 @@
 
 import {
   IRoleConfig,
-  ACTION_TEST_CASE_REVIEW,
+  ACTION_TEST_REVIEW,
 } from '@mind2build/shared';
 import { Role } from './Role';
 import { Context } from '../core/context/Context';
@@ -26,8 +26,8 @@ export class AutomationEngineer extends Role {
 
     super(config, context);
 
-    // Watch for test case review completion (from QAEngineer)
-    this.watch([ACTION_TEST_CASE_REVIEW]);
+    // Watch for test review completion (from QAEngineer)
+    this.watch([ACTION_TEST_REVIEW]);
 
     // Set actions in order: 4-step automation workflow
     this.setActions([

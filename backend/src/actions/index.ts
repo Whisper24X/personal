@@ -47,7 +47,6 @@ export { CoverageQualityCheck } from './CoverageQualityCheck';
 export { QAConclusion } from './QAConclusion';
 
 // Other Actions
-export { DataAnalysis } from './DataAnalysis';
 export { Coordinate } from './Coordinate';
 
 // Import for registry
@@ -78,7 +77,6 @@ import { AutomationPlanning } from './AutomationPlanning';
 import { AutomationExecution } from './AutomationExecution';
 import { CoverageQualityCheck } from './CoverageQualityCheck';
 import { QAConclusion } from './QAConclusion';
-import { DataAnalysis } from './DataAnalysis';
 import { Coordinate } from './Coordinate';
 
 /**
@@ -125,6 +123,5 @@ export const ACTION_REGISTRY: Record<string, new () => BaseAction> = {
   CoverageQualityCheck,
   QAConclusion,
   // Other Actions
-  DataAnalysis,
   Coordinate,
 };

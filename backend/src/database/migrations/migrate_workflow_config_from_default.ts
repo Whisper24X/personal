@@ -7,6 +7,10 @@
  * - workflow_executions.workflow_snapshot: Update snapshot to standard config
  * - workflow_executions.steps: Intelligently map steps based on changes
  * - workflow_executions.current_position: Adjust position if needed
+ * - roles.actions_list: Update from workflow config (runtime data)
+ * - roles.watch_actions: Update from workflow config (runtime data)
+ * - action_logs.action_type: Update deprecated action names to new names (historical data)
+ * - messages.cause_by: Update deprecated action names to new names (historical data)
  *
  * Usage: pnpm exec tsx src/database/migrations/migrate_workflow_config_from_default.ts
  */
@@ -14,7 +18,7 @@
 import { Pool } from 'pg';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
-import { defaultWorkflowConfig } from '../../services/defaultWorkflowConfig';
+import { defaultWorkflowConfig, deprecatedActionMappings } from '../../../../config/defaultWorkflowConfig';
 import { WorkflowConfig } from '../../database/repositories/ApplicationWorkflowRepository';
 import { StepStatus, CurrentPosition, StepState } from '../../workflow/types';
 
@@ -60,6 +64,11 @@ export interface MigrationResult {
   snapshotsUpdated: number;
   stepsUpdated: number;
   positionsUpdated: number;
+  rolesUpdated: number;
+  deprecatedActionsInLogs: number;
+  deprecatedActionsInMessages: number;
+  actionLogsUpdated: number;
+  messagesUpdated: number;
   workflowDiffs: Array<{ id: string; name: string; diff: ConfigDiff }>;
   error?: string;
 }
@@ -201,6 +210,7 @@ function updateWorkflowConfig(standard: WorkflowConfig, current: WorkflowConfig)
     const currentRole = currentRoleMap.get(standardRole.profile);
     const updatedRole: WorkflowRole = {
       profile: standardRole.profile,
+      name: standardRole.name, // Set default name from standard config
       order: standardRole.order,
       actions: [...standardRole.actions], // Use standard actions
       watch_actions: standardRole.watch_actions ? [...standardRole.watch_actions] : undefined,
@@ -461,6 +471,11 @@ export async function migrateWorkflowConfigs(): Promise<MigrationResult> {
   let snapshotUpdatedCount = 0;
   let stepsUpdatedCount = 0;
   let positionUpdatedCount = 0;
+  let rolesUpdatedCount = 0;
+  let deprecatedActionsInLogsCount = 0;
+  let deprecatedActionsInMessagesCount = 0;
+  let actionLogsUpdatedCount = 0;
+  let messagesUpdatedCount = 0;
   const workflowDiffs: Array<{ id: string; name: string; diff: ConfigDiff }> = [];
 
   console.log('🚀 Starting Migration: Migrate workflow configs from defaultWorkflowConfig.ts...');
@@ -613,7 +628,213 @@ export async function migrateWorkflowConfigs(): Promise<MigrationResult> {
       }
     }
 
+    // Step 6: Migrate roles table
+    console.log('\n📦 Step 6: Migrating roles table...');
+    
+    // Get all standard action names for validation
+    const allStandardActions = new Set<string>();
+    standardConfig.roles.forEach(role => {
+      role.actions.forEach(action => allStandardActions.add(action));
+    });
+
+    // Query all projects with their workflow configs
+    const projectsResult = await pool.query<{
+      id: string;
+      application_id: string | null;
+    }>('SELECT id, application_id FROM projects WHERE deleted_at IS NULL');
+
+    const projects = projectsResult.rows;
+    console.log(`✅ Found ${projects.length} project(s)`);
+
+    // Create a map of application_id -> workflow_config
+    const appWorkflowMap = new Map<string, WorkflowConfig>();
+    workflows.forEach(wf => {
+      appWorkflowMap.set(wf.application_id, wf.workflow_config);
+    });
+
+    // Create a map of project_id -> workflow_config from executions
+    const executionWorkflowMap = new Map<string, WorkflowConfig>();
+    executions.forEach(exec => {
+      if (exec.workflow_snapshot && exec.workflow_snapshot.roles) {
+        executionWorkflowMap.set(exec.project_id, exec.workflow_snapshot);
+      }
+    });
+
+    // Update roles for each project
+    for (const project of projects) {
+      // Get workflow config: priority: execution snapshot > application workflow > standard config
+      let workflowConfig: WorkflowConfig = standardConfig;
+      
+      if (executionWorkflowMap.has(project.id)) {
+        workflowConfig = executionWorkflowMap.get(project.id)!;
+      } else if (project.application_id && appWorkflowMap.has(project.application_id)) {
+        workflowConfig = appWorkflowMap.get(project.application_id)!;
+      }
+
+      // Create a map of profile -> role config
+      const roleConfigMap = new Map<string, { actions: string[]; watch_actions?: string[] }>();
+      workflowConfig.roles.forEach(role => {
+        roleConfigMap.set(role.profile, {
+          actions: role.actions,
+          watch_actions: role.watch_actions,
+        });
+      });
+
+      // Query roles for this project
+      const rolesResult = await pool.query<{
+        id: string;
+        profile: string;
+        actions_list: any;
+        watch_actions: any;
+      }>('SELECT id, profile, actions_list, watch_actions FROM roles WHERE project_id = $1', [project.id]);
+
+      // Update each role
+      for (const role of rolesResult.rows) {
+        const config = roleConfigMap.get(role.profile);
+        if (!config) {
+          // Role profile not in workflow config, skip
+          continue;
+        }
+
+        const currentActionsList = Array.isArray(role.actions_list) 
+          ? role.actions_list 
+          : (typeof role.actions_list === 'string' ? JSON.parse(role.actions_list) : []);
+        const currentWatchActions = Array.isArray(role.watch_actions)
+          ? role.watch_actions
+          : (typeof role.watch_actions === 'string' ? JSON.parse(role.watch_actions) : []);
+
+        const newActionsList = JSON.stringify(config.actions);
+        const newWatchActions = JSON.stringify(config.watch_actions || []);
+
+        // Check if update is needed
+        const actionsChanged = JSON.stringify(currentActionsList.sort()) !== JSON.stringify(config.actions.sort());
+        const watchActionsChanged = JSON.stringify(currentWatchActions.sort()) !== JSON.stringify((config.watch_actions || []).sort());
+
+        if (actionsChanged || watchActionsChanged) {
+          await pool.query(
+            `UPDATE roles 
+             SET actions_list = $1, watch_actions = $2, updated_at = NOW()
+             WHERE id = $3`,
+            [newActionsList, newWatchActions, role.id]
+          );
+          rolesUpdatedCount++;
+        }
+      }
+    }
+
+    console.log(`✅ Updated ${rolesUpdatedCount} role(s) in roles table`);
+
     // Commit transaction
+    await pool.query('COMMIT');
+
+    // Step 7: Update deprecated actions in action_logs
+    console.log('\n📦 Step 7: Updating deprecated actions in action_logs...');
+    
+    // Start a new transaction for updating action_logs
+    await pool.query('BEGIN');
+    
+    // Get all deprecated actions that need to be updated
+    const deprecatedActionNamesForLogs = Object.keys(deprecatedActionMappings);
+    if (deprecatedActionNamesForLogs.length > 0) {
+      // Query deprecated actions
+      const deprecatedActionsResult = await pool.query<{
+        action_type: string;
+        count: string;
+      }>(
+        `SELECT action_type, COUNT(*) as count 
+         FROM action_logs 
+         WHERE action_type = ANY($1)
+         GROUP BY action_type`,
+        [deprecatedActionNamesForLogs]
+      );
+
+      deprecatedActionsInLogsCount = deprecatedActionsResult.rows.reduce((sum, row) => sum + parseInt(row.count), 0);
+      
+      if (deprecatedActionsResult.rows.length > 0) {
+        console.log(`⚠️  Found deprecated actions in action_logs:`);
+        
+        // Update each deprecated action
+        for (const row of deprecatedActionsResult.rows) {
+          const deprecatedAction = row.action_type;
+          const newAction = deprecatedActionMappings[deprecatedAction];
+          
+          if (newAction) {
+            // Map to new action
+            const updateResult = await pool.query(
+              `UPDATE action_logs 
+               SET action_type = $1 
+               WHERE action_type = $2`,
+              [newAction, deprecatedAction]
+            );
+            actionLogsUpdatedCount += updateResult.rowCount || 0;
+            console.log(`   ✅ Updated ${updateResult.rowCount || 0} record(s): ${deprecatedAction} -> ${newAction}`);
+          } else {
+            // Action was removed without replacement, keep as is (historical data)
+            console.log(`   ⚠️  ${deprecatedAction}: ${row.count} record(s) (no replacement, keeping as is)`);
+          }
+        }
+      } else {
+        console.log(`✅ No deprecated actions found in action_logs`);
+      }
+    } else {
+      console.log(`✅ No deprecated action mappings defined`);
+    }
+    
+    await pool.query('COMMIT');
+
+    // Step 8: Update deprecated actions in messages
+    console.log('\n📦 Step 8: Updating deprecated actions in messages...');
+    
+    // Start a new transaction for updating messages
+    await pool.query('BEGIN');
+    
+    // Get all deprecated actions that need to be updated
+    const deprecatedActionNamesForMessages = Object.keys(deprecatedActionMappings);
+    if (deprecatedActionNamesForMessages.length > 0) {
+      // Query deprecated actions (exclude 'User' and 'UserInput' which are not actions)
+      const deprecatedMessagesResult = await pool.query<{
+        cause_by: string;
+        count: string;
+      }>(
+        `SELECT cause_by, COUNT(*) as count 
+         FROM messages 
+         WHERE cause_by = ANY($1)
+         GROUP BY cause_by`,
+        [deprecatedActionNamesForMessages]
+      );
+
+      deprecatedActionsInMessagesCount = deprecatedMessagesResult.rows.reduce((sum, row) => sum + parseInt(row.count), 0);
+      
+      if (deprecatedMessagesResult.rows.length > 0) {
+        console.log(`⚠️  Found deprecated actions in messages:`);
+        
+        // Update each deprecated action
+        for (const row of deprecatedMessagesResult.rows) {
+          const deprecatedAction = row.cause_by;
+          const newAction = deprecatedActionMappings[deprecatedAction];
+          
+          if (newAction) {
+            // Map to new action
+            const updateResult = await pool.query(
+              `UPDATE messages 
+               SET cause_by = $1 
+               WHERE cause_by = $2`,
+              [newAction, deprecatedAction]
+            );
+            messagesUpdatedCount += updateResult.rowCount || 0;
+            console.log(`   ✅ Updated ${updateResult.rowCount || 0} record(s): ${deprecatedAction} -> ${newAction}`);
+          } else {
+            // Action was removed without replacement, keep as is (historical data)
+            console.log(`   ⚠️  ${deprecatedAction}: ${row.count} record(s) (no replacement, keeping as is)`);
+          }
+        }
+      } else {
+        console.log(`✅ No deprecated actions found in messages`);
+      }
+    } else {
+      console.log(`✅ No deprecated action mappings defined`);
+    }
+    
     await pool.query('COMMIT');
 
     console.log(`\n✅ Migration completed successfully!`);
@@ -624,6 +845,11 @@ export async function migrateWorkflowConfigs(): Promise<MigrationResult> {
     console.log(`   - Snapshots updated: ${snapshotUpdatedCount}`);
     console.log(`   - Steps arrays updated: ${stepsUpdatedCount}`);
     console.log(`   - Current positions updated: ${positionUpdatedCount}`);
+    console.log(`   - Roles updated: ${rolesUpdatedCount}`);
+    console.log(`   - Deprecated actions found in action_logs: ${deprecatedActionsInLogsCount}`);
+    console.log(`   - Action logs updated: ${actionLogsUpdatedCount}`);
+    console.log(`   - Deprecated actions found in messages: ${deprecatedActionsInMessagesCount}`);
+    console.log(`   - Messages updated: ${messagesUpdatedCount}`);
 
     // Step 6: Show summary of changes
     if (workflowDiffs.length > 0) {
@@ -659,8 +885,8 @@ export async function migrateWorkflowConfigs(): Promise<MigrationResult> {
       });
     }
 
-    // Step 7: Verify migration
-    console.log('\n📦 Step 7: Verifying migration...');
+    // Step 9: Verify migration
+    console.log('\n📦 Step 9: Verifying migration...');
     const verifyWorkflowsResult = await pool.query<{
       id: string;
       name: string;
@@ -688,6 +914,11 @@ export async function migrateWorkflowConfigs(): Promise<MigrationResult> {
       snapshotsUpdated: snapshotUpdatedCount,
       stepsUpdated: stepsUpdatedCount,
       positionsUpdated: positionUpdatedCount,
+      rolesUpdated: rolesUpdatedCount,
+      deprecatedActionsInLogs: deprecatedActionsInLogsCount,
+      deprecatedActionsInMessages: deprecatedActionsInMessagesCount,
+      actionLogsUpdated: actionLogsUpdatedCount,
+      messagesUpdated: messagesUpdatedCount,
       workflowDiffs,
     };
   } catch (error: any) {
@@ -715,6 +946,11 @@ export async function migrateWorkflowConfigs(): Promise<MigrationResult> {
       snapshotsUpdated: snapshotUpdatedCount,
       stepsUpdated: stepsUpdatedCount,
       positionsUpdated: positionUpdatedCount,
+      rolesUpdated: rolesUpdatedCount,
+      deprecatedActionsInLogs: deprecatedActionsInLogsCount,
+      deprecatedActionsInMessages: deprecatedActionsInMessagesCount,
+      actionLogsUpdated: actionLogsUpdatedCount,
+      messagesUpdated: messagesUpdatedCount,
       workflowDiffs,
       error: errorMessage,
     };

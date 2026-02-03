@@ -44,6 +44,10 @@ router.get('/:id/download/code', ProjectController.downloadCode);
 router.get('/:id/download/docs', ProjectController.downloadDocs);
 router.get('/:id/download/:zipPath(*)', ProjectController.downloadZip);
 
+// CLI API key management routes (must come before generic /:id)
+router.put('/:id/cli-api-key', ProjectController.updateCliApiKey);
+router.get('/:id/cli-api-key', ProjectController.getCliApiKey);
+
 // Version management routes (must come before generic /:id)
 router.post('/:id/versions', ProjectVersionController.create);
 router.get('/:id/versions', ProjectVersionController.list);
@@ -52,6 +56,7 @@ router.get('/:id/versions/:versionId', ProjectVersionController.getById);
 router.put('/:id/versions/:versionId', ProjectVersionController.update);
 router.delete('/:id/versions/:versionId', ProjectVersionController.delete);
 router.post('/:id/versions/:versionId/activate', ProjectVersionController.activate);
+router.post('/:id/versions/:versionId/improve-suggestion', ProjectController.saveImproveSuggestion);
 router.get('/:id/branches', ProjectVersionController.getBranches);
 
 // Generic project routes (must come after more specific routes)

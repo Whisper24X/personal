@@ -82,6 +82,7 @@ export class WorkflowExecutionService {
       pendingConfirmation: exec.pendingConfirmation,
       lastError: exec.lastError,
       progress,
+      deployFailed: exec.executionContext?.deployFailed ?? false,
     };
   }
 
@@ -194,6 +195,19 @@ export class WorkflowExecutionService {
     step.state = StepState.RUNNING;
     step.startedAt = new Date().toISOString();
 
+    // 当开始执行 Deploy action 时，清除之前的 deployFailed 状态
+    // 这样重试 Deploy 时不会因为之前的失败状态影响确认按钮
+    if (action === 'Deploy') {
+      updatedExec.executionContext = {
+        ...updatedExec.executionContext,
+        deployFailed: false,
+      };
+      logger.info('WorkflowExecutionService: Cleared deployFailed on Deploy start', {
+        projectId,
+        versionId,
+      });
+    }
+
     // Update current position
     updatedExec.currentPosition = {
       roleIndex: step.roleIndex,
@@ -247,6 +261,21 @@ export class WorkflowExecutionService {
     step.retryCount = 0; // Reset retry count on success
     step.error = undefined;
 
+    // 检测 Deploy action 结果，更新 deployFailed 状态
+    if (action === 'Deploy' && output?.instructContent?.isCompleted !== undefined) {
+      const deployFailed = output.instructContent.isCompleted === false;
+      updatedExec.executionContext = {
+        ...updatedExec.executionContext,
+        deployFailed,
+      };
+      logger.info('WorkflowExecutionService: Deploy status updated', {
+        projectId,
+        versionId,
+        deployFailed,
+        isCompleted: output.instructContent.isCompleted,
+      });
+    }
+
     let needsConfirmation = false;
     let isCompleted = false;
 
@@ -276,6 +305,7 @@ export class WorkflowExecutionService {
               outputFiles: output.outputFiles,
               instructContent: output.instructContent,
               createdAt: new Date().toISOString(),
+              deployFailed: updatedExec.executionContext?.deployFailed ?? false,
             }
           : null;
         needsConfirmation = true;
@@ -284,6 +314,7 @@ export class WorkflowExecutionService {
           projectId,
           role,
           action,
+          deployFailed: updatedExec.executionContext?.deployFailed ?? false,
         });
       }
     } else {

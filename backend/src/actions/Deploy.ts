@@ -76,6 +76,28 @@ export class Deploy extends BaseAction {
             type: 'debug',
             workspaceDir: workDir,
             debugOutput: debugResult.output,
+            isCompleted: true,  // 调试模式视为成功
+            timestamp: new Date().toISOString(),
+          },
+        };
+      }
+      
+      // 模拟部署失败的调试模式
+      const isDebugFailMode = process.env.DEPLOY_DEBUG_FAIL === 'true';
+      if (isDebugFailMode) {
+        logger.info('Deploy: Debug FAIL mode enabled, simulating deployment failure', {
+          workDir,
+        });
+        
+        // 模拟部署失败：返回 isCompleted: false
+        return {
+          content: `# Deploy Debug FAIL Mode\n\n## Status: ❌ Simulated deployment failure\n\n模拟部署失败，用于测试部署失败后的确认按钮禁用逻辑。\n\n设置 \`DEPLOY_DEBUG_FAIL=false\` 或移除该环境变量以恢复正常部署。`,
+          data: {
+            type: 'deploy',
+            workspaceDir: workDir,
+            cursorOutput: 'Simulated deployment failure for testing',
+            isCompleted: false,  // 关键：模拟部署失败
+            totalIterations: 1,
             timestamp: new Date().toISOString(),
           },
         };

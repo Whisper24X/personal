@@ -84,12 +84,19 @@ export class ProjectController {
    */
   static async create(req: Request, res: Response) {
     try {
-      const { name, idea, description, investment, nRound: _nRound, applicationId, gitRepoUrl } = req.body;
+      const { name, idea, description, investment, nRound: _nRound, applicationId, gitRepoUrl, cliApiKey } = req.body;
       const userId = (req as any).userId || DEFAULT_USER_ID; // From auth middleware
 
       if (!name) {
         return res.status(400).json({
           error: 'Missing required field: name',
+        });
+      }
+
+      if (!cliApiKey || typeof cliApiKey !== 'string' || cliApiKey.trim().length === 0) {
+        return res.status(400).json({
+          error: 'Missing required field: cliApiKey',
+          message: 'CLI API Key 是必填字段，请提供有效的 API Key',
         });
       }
 
@@ -117,6 +124,7 @@ export class ProjectController {
         budget: investment || 10.0,  // V2: renamed from investment to budget
         applicationId,
         gitRepoUrl,
+        cliApiKey: cliApiKey.trim(),
       });
 
       logger.info(`Project created: ${project.id}`, { 
@@ -696,6 +704,151 @@ export class ProjectController {
       logger.error('API: Error downloading workspace docs', error);
       return res.status(500).json({
         error: error.message || 'Failed to download workspace docs',
+      });
+    }
+  }
+
+  /**
+   * Save improve suggestion to docs/code/ImproveCode.md
+   * POST /api/projects/:id/versions/:versionId/improve-suggestion
+   * Body: { content: string }
+   */
+  static async saveImproveSuggestion(req: Request, res: Response) {
+    try {
+      const { id: projectId, versionId } = req.params;
+      const { content } = req.body;
+
+      if (!projectId || !versionId) {
+        return res.status(400).json({
+          error: 'Project ID and Version ID are required',
+        });
+      }
+
+      if (!content || typeof content !== 'string') {
+        return res.status(400).json({
+          error: 'Content is required and must be a string',
+        });
+      }
+
+      // 获取项目信息
+      const project = await projectRepo.findById(projectId);
+      if (!project) {
+        return res.status(404).json({
+          error: 'Project not found',
+        });
+      }
+
+      // 获取 workspace 路径
+      const workspacePath = WorkspaceManager.getProjectWorkspacePath({
+        applicationId: project.application_id,
+        projectId,
+        versionId,
+      });
+
+      // 确保目录存在
+      const improveDir = path.join(workspacePath, 'docs/code');
+      if (!fs.existsSync(improveDir)) {
+        fs.mkdirSync(improveDir, { recursive: true });
+      }
+
+      // 写入文件
+      const improveFilePath = path.join(improveDir, 'ImproveCode.md');
+      fs.writeFileSync(improveFilePath, content, 'utf-8');
+
+      logger.info('API: Saved improve suggestion', {
+        projectId,
+        versionId,
+        filePath: improveFilePath,
+        contentLength: content.length,
+      });
+
+      return res.json({
+        success: true,
+        message: 'Improve suggestion saved successfully',
+        filePath: 'docs/code/ImproveCode.md',
+      });
+    } catch (error: any) {
+      logger.error('API: Error saving improve suggestion', {
+        error: error.message,
+        stack: error.stack,
+      });
+      return res.status(500).json({
+        error: error.message || 'Failed to save improve suggestion',
+      });
+    }
+  }
+
+  /**
+   * Update CLI API key for a project
+   * PUT /api/projects/:id/cli-api-key
+   */
+  static async updateCliApiKey(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { apiKey } = req.body;
+
+      const project = await projectRepo.findById(id);
+      if (!project) {
+        return res.status(404).json({
+          error: 'Project not found',
+          message: `Project with ID ${id} does not exist`,
+        });
+      }
+
+      // Update API key (can be null to clear it)
+      const updatedProject = await projectRepo.updateCliApiKey(id, apiKey || null);
+
+      logger.info(`Updated CLI API key for project ${id}`, {
+        projectId: id,
+        hasApiKey: !!updatedProject.cli_api_key,
+      });
+
+      return res.json({
+        success: true,
+        message: apiKey ? 'CLI API key updated successfully' : 'CLI API key cleared successfully',
+        project: {
+          id: updatedProject.id,
+          cliApiKey: updatedProject.cli_api_key ? '***' : null, // Don't return full key for security
+        },
+      });
+    } catch (error: any) {
+      logger.error('Failed to update CLI API key:', error);
+      return res.status(500).json({
+        error: 'Failed to update CLI API key',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Get CLI API key for a project
+   * GET /api/projects/:id/cli-api-key
+   */
+  static async getCliApiKey(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+
+      const project = await projectRepo.findById(id);
+      if (!project) {
+        return res.status(404).json({
+          error: 'Project not found',
+          message: `Project with ID ${id} does not exist`,
+        });
+      }
+
+      const apiKey = await projectRepo.getCliApiKey(id);
+
+      return res.json({
+        success: true,
+        hasApiKey: !!apiKey,
+        // Return masked key for display (first 8 chars + ***)
+        maskedKey: apiKey ? `${apiKey.substring(0, 8)}***` : null,
+      });
+    } catch (error: any) {
+      logger.error('Failed to get CLI API key:', error);
+      return res.status(500).json({
+        error: 'Failed to get CLI API key',
+        message: error.message,
       });
     }
   }

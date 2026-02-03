@@ -423,7 +423,6 @@ export class CLIModeHandler {
       PRD: '产品需求文档（PRD）',
       DESIGN: '系统设计文档',
       TEST: '测试文档',
-      TEST_CASE: '测试用例文档',
       TESTABILITY: '可测试性文档',
       CODE: '代码',
     };

@@ -60,12 +60,7 @@ export interface ImproveConfig extends CLIModeConfig {
   /** 构建改进提示词的函数 */
   buildImprovePrompt: (document: string, reviewReport: string) => string;
   /** 构建分章节改进提示词的函数（LLM模式，可选） */
-  buildSectionImprovePrompt?: (
-    sectionContent: string,
-    sectionNumber: number,
-    sectionTitle: string,
-    sectionReview: string
-  ) => string;
+  buildSectionImprovePrompt?: (sectionContent: string, sectionNumber: number, sectionTitle: string, sectionReview: string) => string;
   /** 系统提示词 */
   systemPrompt: string;
   /** 审查报告匹配模式 */
@@ -122,6 +117,8 @@ export interface WriteConfig extends CLIModeConfig {
   buildWritePrompt: (input: string) => string;
   /** 系统提示词 */
   systemPrompt: string;
+  /** CLI模式下是否使用 buildWritePrompt 而不是默认的 CLI prompt builder（可选，默认 false） */
+  useCustomCLIPrompt?: boolean;
 }
 
 /**

@@ -141,6 +141,7 @@ class APIClient {
     nRound?: number;
     applicationId?: string;
     gitRepoUrl?: string;
+    cliApiKey: string;
   }) {
     return this.client.post('/projects', data);
   }
@@ -173,6 +174,16 @@ class APIClient {
   // 获取平台文档
   async getPlatformDocuments(id: string) {
     return this.client.get(`/projects/${id}/documents`);
+  }
+
+  // 更新平台CLI API key
+  async updatePlatformCliApiKey(platformId: string, apiKey: string | null) {
+    return this.client.put(`/projects/${platformId}/cli-api-key`, { apiKey });
+  }
+
+  // 获取平台CLI API key状态
+  async getPlatformCliApiKey(platformId: string) {
+    return this.client.get(`/projects/${platformId}/cli-api-key`);
   }
 
   // ==================== 平台版本 API 端点 ====================
@@ -247,6 +258,17 @@ class APIClient {
   }
 
   /**
+   * 保存改进建议到 docs/code/ImproveCode.md
+   * 用于部署失败后用户编辑内容，供 ImproveCode action 读取并改进代码
+   * @param projectId 项目ID
+   * @param versionId 版本ID
+   * @param content 改进建议内容
+   */
+  async saveImproveSuggestion(projectId: string, versionId: string, content: string) {
+    return this.client.post(`/projects/${projectId}/versions/${versionId}/improve-suggestion`, { content });
+  }
+
+  /**
    * 获取平台 Git 分支信息
    * @param platformId 平台ID
    */
@@ -262,6 +284,7 @@ class APIClient {
     investment?: number;
     nRound?: number;
     applicationId?: string;
+    cliApiKey: string;
   }) {
     return this.createPlatform(data);
   }

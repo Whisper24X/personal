@@ -10,32 +10,18 @@ import { RoleContext } from '../core/context/RoleContext';
 import { WorkspaceOptions } from '../utils';
 import { logger } from '../utils';
 import { RoleWorkspaceExtractor } from './RoleWorkspaceExtractor';
+import { actionsWithWorkspaceOptions, actionDependencies } from '../../../config/defaultWorkflowConfig';
 
 export class RoleActionExecutor {
-    private static readonly ACTIONS_WITH_OPTIONS = [
-        'WriteMRD',
-        'WritePRD',
-        'WriteDesign',
-        'BreakdownTasks',
-        'WriteCode',
-        'WriteTest',
-        'WriteTestPlan',
-        'ExecuteSubtask',
-        'Deploy',
-        'ImproveCode',
-        'ImprovePRD',
-        'ImproveMRD',
-        'ImproveDesign',
-        'MRDReview',
-        'PRDReview',
-        'DesignReview',
-        'TestReview',
-        'ImproveTest',
-        'AutomationPlanning',
-        'AutomationExecution',
-        'CoverageQualityCheck',
-        'QAConclusion',
-    ];
+    /**
+     * Actions that accept workspace options parameter
+     * 
+     * This list is imported from defaultWorkflowConfig.ts to ensure centralized
+     * configuration management. If a new action needs workspace options support,
+     * it must be added to actionsWithWorkspaceOptions in defaultWorkflowConfig.ts
+     * AND handled in the runActionWithOptions switch statement below.
+     */
+    private static readonly ACTIONS_WITH_OPTIONS = new Set(actionsWithWorkspaceOptions);
 
     constructor(
         private profile: string,
@@ -122,46 +108,39 @@ export class RoleActionExecutor {
 
     /**
      * Prepare action input based on action type
+     * 
+     * Uses centralized actionDependencies configuration from defaultWorkflowConfig.ts
+     * to determine input preparation requirements dynamically.
      */
     private prepareActionInput(action: BaseAction): string {
         const context = this.rc.news.map((msg) => msg.content).join('\n\n');
+        const actionName = action.name;
+        const dependencies = actionDependencies[actionName];
 
-        // Special handling for different action types
-        switch (action.name) {
-            case 'WriteTest':
-            case 'WriteTestPlan':
-                return this.prepareWriteTestInput(context);
-
-            case 'TestReview':
-            case 'AutomationPlanning':
-            case 'AutomationExecution':
-            case 'CoverageQualityCheck':
-            case 'QAConclusion':
-                // These actions will read from workspace, so pass context as fallback
-                return context;
-
-            case 'ImproveTest':
-                // ImproveTest will read from workspace, but can also accept review report as input
-                return this.prepareImproveInput('TestReview', 'test review report');
-
-            case 'MRDReview':
-                return this.prepareReviewInput('WriteMRD', 'MRD');
-
-            case 'PRDReview':
-                return this.prepareReviewInput('WritePRD', 'PRD');
-
-            case 'ImprovePRD':
-                return this.prepareImproveInput('PRDReview', 'PRD review report');
-
-            case 'ImproveMRD':
-                return this.prepareImproveInput('MRDReview', 'MRD review report');
-
-            case 'ImproveDesign':
-                return this.prepareImproveInput('DesignReview', 'Design review report');
-
-            default:
-                return context;
+        // Actions that read from workspace - pass context as fallback
+        const workspaceReadActions = ['TestReview', 'AutomationPlanning', 'AutomationExecution', 'CoverageQualityCheck', 'QAConclusion'];
+        if (workspaceReadActions.includes(actionName)) {
+            return context;
         }
+
+        // Actions that depend on WritePRD for document content
+        if (actionName === 'WriteTest' || actionName === 'WriteTestPlan') {
+            return this.prepareWriteTestInput(context);
+        }
+
+        // Actions with dependencies defined in actionDependencies config
+        if (dependencies) {
+            if (dependencies.reviewAction) {
+                // Improve actions depend on review actions
+                return this.prepareImproveInput(dependencies.reviewAction, dependencies.documentType || 'review report');
+            } else if (dependencies.documentAction) {
+                // Review actions depend on document actions
+                return this.prepareReviewInput(dependencies.documentAction, dependencies.documentType || 'document');
+            }
+        }
+
+        // Default: return context
+        return context;
     }
 
     /**
@@ -311,6 +290,11 @@ export class RoleActionExecutor {
 
     /**
      * Run action with workspace options
+     * 
+     * NOTE: This method contains hardcoded action names because different actions
+     * have different signatures and parameter requirements. This is intentional
+     * business logic. If new actions need workspace options support, they must be
+     * added to ACTIONS_WITH_OPTIONS and handled here.
      */
     private async runActionWithOptions(
         action: BaseAction,
@@ -321,21 +305,23 @@ export class RoleActionExecutor {
 
         switch (actionName) {
             // Improve actions: pass documentContent for fallback when workspace file is empty
+            // Use actionDependencies config to dynamically determine document action
             case 'ImprovePRD':
-                return await (action as any).run(input, {
-                    ...workspaceOptions,
-                    documentContent: this.findDocumentFromMessages('WritePRD'),
-                });
             case 'ImproveMRD':
+            case 'ImproveDesign': {
+                // For Improve actions, we need the original Write action (not the Review action)
+                // Map Improve actions to their corresponding Write actions
+                const improveToWriteMap: Record<string, string> = {
+                    'ImprovePRD': 'WritePRD',
+                    'ImproveMRD': 'WriteMRD',
+                    'ImproveDesign': 'WriteDesign',
+                };
+                const writeAction = improveToWriteMap[actionName];
                 return await (action as any).run(input, {
                     ...workspaceOptions,
-                    documentContent: this.findDocumentFromMessages('WriteMRD'),
+                    documentContent: writeAction ? this.findDocumentFromMessages(writeAction) : undefined,
                 });
-            case 'ImproveDesign':
-                return await (action as any).run(input, {
-                    ...workspaceOptions,
-                    documentContent: this.findDocumentFromMessages('WriteDesign'),
-                });
+            }
 
             // Other actions with options
             case 'WriteMRD':
@@ -344,6 +330,7 @@ export class RoleActionExecutor {
             case 'WriteCode':
             case 'WriteTest':
             case 'WriteTestPlan':
+            case 'GeneratePrototype':
             case 'ExecuteSubtask':
             case 'Deploy':
             case 'ImproveCode':
@@ -358,30 +345,17 @@ export class RoleActionExecutor {
             case 'QAConclusion':
                 return await (action as any).run(input, workspaceOptions);
 
-            case 'BreakdownTasks':
-                return await this.runBreakdownTasks(action, workspaceOptions);
-
             default:
                 return await action.run(input);
         }
     }
 
     /**
-     * Run BreakdownTasks action
-     */
-    private async runBreakdownTasks(action: BaseAction, workspaceOptions: WorkspaceOptions | undefined): Promise<any> {
-        const prdMessages = this.rc.memory.getByAction('WritePRD');
-        const designMessages = this.rc.memory.getByAction('WriteDesign');
-        const prd = prdMessages.length > 0 ? prdMessages[prdMessages.length - 1].content : '';
-        const design = designMessages.length > 0 ? designMessages[designMessages.length - 1].content : '';
-        return await (action as any).run(prd, design, workspaceOptions);
-    }
-
-    /**
      * Check if action accepts options parameter
+     * Uses centralized configuration from defaultWorkflowConfig.ts
      */
     private actionAcceptsOptions(actionName: string): boolean {
-        return RoleActionExecutor.ACTIONS_WITH_OPTIONS.includes(actionName);
+        return RoleActionExecutor.ACTIONS_WITH_OPTIONS.has(actionName);
     }
 
     /**

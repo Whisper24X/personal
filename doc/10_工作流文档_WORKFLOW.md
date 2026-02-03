@@ -212,7 +212,7 @@ ProductManager (Order: 1)
 QAEngineer (Order: 2)
   ├─ WriteTestPlan → 测试计划
   ├─ WriteTest → 测试用例
-  └─ TestCaseReview → 用例评审与补充
+  └─ TestReview → 测试用例评审
   ↓
 Architect (Order: 3)
   ├─ WriteDesign → 保存到 DESIGN/ 目录
@@ -286,8 +286,8 @@ Step 1: WriteTestPlan（制定测试计划）
   ↓ 输出: TEST_PLAN.md
 Step 2: WriteTest（测试用例生成）
   ↓ 输出: TEST.md
-Step 3: TestCaseReview（用例评审与补充）
-  ↓ 输出: TEST_CASES_REVIEWED.md
+Step 3: TestReview（测试用例评审）
+  ↓ 输出: TEST_REVIEW.md
 ```
 
 ### AutomationEngineer 工作流（4步自动化测试流程）
@@ -318,13 +318,13 @@ Step 4: QAConclusion（QA结论）
 |------|--------|------|------|------|
 | 1 | WriteTestPlan | 制定测试计划 | PRD, 代码 | 测试计划 |
 | 2 | WriteTest | 生成测试用例 | PRD, 代码 | 测试用例文档 |
-| 3 | TestCaseReview | 补充边界、异常、负面测试 | 测试用例, PRD, 代码 | 审查后的测试用例 |
+| 3 | TestReview | 评审测试用例质量和完整性 | 测试用例, PRD, 代码 | 测试评审报告 |
 
 **AutomationEngineer 工作流**:
 
 | 步骤 | Action | 说明 | 输入 | 输出 |
 |------|--------|------|------|------|
-| 1 | AutomationPlanning | 评估自动化可行性 | 测试用例（TestCaseReview完成） | 自动化计划 |
+| 1 | AutomationPlanning | 评估自动化可行性 | 测试用例（TestReview完成） | 自动化计划 |
 | 2 | AutomationExecution | 执行自动化测试 | 自动化计划 | 执行结果 |
 | 3 | CoverageQualityCheck | 分析覆盖率和质量 | 测试用例, 代码, 执行结果 | 覆盖率和质量报告 |
 | 4 | QAConclusion | 综合所有结果给出结论 | 所有测试文档（包括覆盖率报告） | QA 结论报告 |
@@ -332,7 +332,7 @@ Step 4: QAConclusion（QA结论）
 ### QA 工作流触发条件
 
 - **QAEngineer**: 监听 `ACTION_WRITE_PRD` 和 `ACTION_IMPROVE_PRD`，当PRD完成时开始执行（3步测试设计流程）
-- **AutomationEngineer**: 监听 `ACTION_TEST_CASE_REVIEW`，等待 QAEngineer 完成测试用例评审后开始执行（4步自动化测试流程，包括QAConclusion）
+- **AutomationEngineer**: 监听 `ACTION_TEST_REVIEW`，等待 QAEngineer 完成测试用例评审后开始执行（4步自动化测试流程，包括QAConclusion）
 
 ## 3. 数据分析流程
 

@@ -114,7 +114,39 @@
         </template>
         <p>管理该平台相关的知识文档，用于增强AI生成效果。</p>
       </el-card>
+
+      <!-- CLI API Key Configuration -->
+      <el-card class="api-key-card">
+        <template #header>
+          <div class="card-header">
+            <span>CLI API Key 配置</span>
+            <el-button type="primary" size="small" @click="showApiKeyDialog = true">
+              <el-icon><Key /></el-icon>
+              配置 API Key
+            </el-button>
+          </div>
+        </template>
+        <div class="api-key-content">
+          <p>为该平台配置专用的 CLI API Key，该平台的所有版本在执行 CLI 操作时将优先使用此 Key。</p>
+          <div v-if="apiKeyStatus" class="api-key-status">
+            <el-tag :type="apiKeyStatus.hasApiKey ? 'success' : 'info'" size="large">
+              <el-icon style="margin-right: 4px;">
+                <Key v-if="apiKeyStatus.hasApiKey" />
+                <InfoFilled v-else />
+              </el-icon>
+              {{ apiKeyStatus.hasApiKey ? `已配置 (${apiKeyStatus.maskedKey})` : '未配置（使用环境变量）' }}
+            </el-tag>
+          </div>
+        </div>
+      </el-card>
     </div>
+
+    <!-- API Key Dialog -->
+    <PlatformApiKeyDialog
+      v-model="showApiKeyDialog"
+      :platform-id="platformId"
+      @updated="handleApiKeyUpdated"
+    />
   </div>
 </template>
 
@@ -125,7 +157,8 @@ import { usePlatformStore } from '../../stores/platform';
 import { storeToRefs } from 'pinia';
 import { apiClient } from '../../api/client';
 import PageHeader from '../../components/common/PageHeader.vue';
-import { VideoPlay, FolderOpened, Document } from '@element-plus/icons-vue';
+import PlatformApiKeyDialog from './components/PlatformApiKeyDialog.vue';
+import { VideoPlay, FolderOpened, Document, Key, InfoFilled } from '@element-plus/icons-vue';
 import MarkdownIt from 'markdown-it';
 
 const md = new MarkdownIt({
@@ -141,6 +174,14 @@ const { currentPlatform, messages, documents, loading, error } = storeToRefs(pla
 
 const platformId = route.params.id as string;
 const businessLineId = ref('');
+const showApiKeyDialog = ref(false);
+
+interface ApiKeyStatus {
+  hasApiKey: boolean;
+  maskedKey: string | null;
+}
+
+const apiKeyStatus = ref<ApiKeyStatus | null>(null);
 
 const isCompleted = computed(() => currentPlatform.value?.status === 'completed');
 
@@ -167,11 +208,29 @@ onMounted(async () => {
   await platformStore.fetchPlatform(platformId);
   await platformStore.fetchMessages(platformId);
   await platformStore.fetchDocuments(platformId);
+  await loadApiKeyStatus();
   
   if (currentPlatform.value) {
     businessLineId.value = currentPlatform.value.applicationId || currentPlatform.value.application_id || '';
   }
 });
+
+async function loadApiKeyStatus() {
+  try {
+    const response = await apiClient.getPlatformCliApiKey(platformId) as any;
+    apiKeyStatus.value = {
+      hasApiKey: response.hasApiKey || false,
+      maskedKey: response.maskedKey || null,
+    };
+  } catch (err: any) {
+    console.error('Failed to load API key status:', err);
+    // Don't show error to user, just log it
+  }
+}
+
+function handleApiKeyUpdated() {
+  loadApiKeyStatus();
+}
 
 function handleBack() {
   if (businessLineId.value) {
@@ -273,8 +332,19 @@ function formatDate(dateStr?: string): string {
 .stats-card,
 .messages-card,
 .documents-card,
-.kb-card {
+.kb-card,
+.api-key-card {
   margin-bottom: 20px;
+}
+
+.api-key-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.api-key-status {
+  margin-top: 8px;
 }
 
 .card-header {

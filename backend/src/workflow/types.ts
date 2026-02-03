@@ -65,6 +65,7 @@ export interface PendingConfirmation {
   outputFiles: string[];     // 输出文件列表
   instructContent?: any;     // 结构化输出内容
   createdAt: string;         // 创建时间 (ISO string)
+  deployFailed?: boolean;    // 是否处于部署失败状态（用于禁用确认按钮）
 }
 
 /**
@@ -131,6 +132,7 @@ export interface WorkflowCurrentState {
     total: number;
     percentage: number;
   };
+  deployFailed?: boolean;    // 是否处于部署失败状态
 }
 
 /**

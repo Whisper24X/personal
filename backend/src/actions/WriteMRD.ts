@@ -1,325 +1,192 @@
 /**
  * WriteMRD Action
- * Write Market Research Document (MRD)
- * 
- * Enhanced with knowledge integration for improved document generation
+ * Generates Market Research Document (MRD)
+ *
+ * 工作流程：
+ * 1) CLI模式：使用 DocumentWriteHandler 直接生成（只传MRD文件夹路径）
+ *    - CLI工具无需读取输入文件
+ *    - 生成 MRD.md 到 mrd 目录
  */
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import {
-  MRD_SYSTEM_PROMPT,
-  buildMRDPrompt,
-  buildMRDOutlinePrompt,
-  buildMRDSectionPrompt,
-  StructuredKnowledgeContext,
-} from '../prompts/mrd';
-import { logger, loadPrompt } from '../utils';
-// Review和ImproveDocument已移除，由角色通过消息机制管理
-import { StepwiseDocumentGenerator } from '../utils/stepwise';
-import { KnowledgeIntegrationService } from '../services/KnowledgeIntegrationService';
+import { logger, WorkspaceOptions, WorkspaceManager } from '../utils';
+import { DocumentWriteHandler, DOCUMENT_CONFIGS, WriteConfig } from '../utils/document';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
-export interface WriteMRDOptions {
+export interface WriteMRDOptions extends WorkspaceOptions {
   mode?: 'new' | 'update';
   historyMRD?: string;
-  useRAG?: boolean; // 是否使用 RAG 检索
-  relevantChunks?: string; // RAG 检索到的相关文档片段（旧版兼容）
-  structuredKnowledge?: StructuredKnowledgeContext; // 结构化知识上下文（新版）
-  useKnowledgeIntegration?: boolean; // 是否使用知识整合服务
-  useStepwiseGeneration?: boolean; // 是否使用分步骤生成
-  applicationId?: string; // 应用ID，用于文件夹命名
-  projectId?: string; // 项目ID，用于文件夹命名
-  versionId?: string; // 版本ID，用于定位版本工作空间
-  workspacePath?: string; // workspace 路径，默认 ./workspace
+  relevantChunks?: string;
+  structuredKnowledge?: unknown;
+  useRAG?: boolean;
+  useKnowledgeIntegration?: boolean;
+  useStepwiseGeneration?: boolean;
+  includeOptionalSections?: boolean;
 }
 
 export class WriteMRD extends BaseAction {
   constructor() {
-    super(
-      'WriteMRD',
-      'Write Market Research Document: Analyze user requirements, conduct market research and business analysis, and output detailed Market Research Document (MRD)'
-    );
+    super('WriteMRD', 'Generate Market Research Document (MRD) from user requirements');
   }
 
-  async run(userIdea: string, options?: WriteMRDOptions): Promise<IActionOutput> {
+  /**
+   * 验证 MRD 内容
+   * @param content MRD 内容
+   * @param minLength 最小长度要求（默认 50 字符）
+   * @throws Error 如果内容无效
+   */
+  private validateMRDContent(content: string, minLength = 50): void {
+    if (!content || content.trim().length === 0) {
+      throw new Error('MRD content is empty');
+    }
+    if (content.length < minLength) {
+      throw new Error(`MRD content too short (${content.length} chars). Expected at least ${minLength} chars.`);
+    }
+    logger.info('WriteMRD: MRD content validation passed', {
+      contentLength: content.length,
+      minLength,
+    });
+  }
+
+  /**
+   * 确保输出目录存在
+   * @param dirPath 目录路径
+   */
+  private async ensureOutputDirectory(dirPath: string): Promise<void> {
+    await fs.mkdir(dirPath, { recursive: true });
+    logger.info('WriteMRD: Output directory ensured', { dirPath });
+  }
+
+  /**
+   * 构建 MRD 生成 prompt
+   * @param userInput 用户输入的任务信息
+   * @param outputPath MRD 输出路径（相对于项目根目录）
+   */
+  private buildMRDPrompt(userInput: string, outputPath?: string): string {
+    return `需求：${userInput},使用 mrd 技能生成 MRD，输出文件保存到 ${outputPath}`;
+  }
+
+  /**
+   * 创建 WriteHandler
+   * CLI模式下使用文件路径而非内容进行生成
+   */
+  private async createWriteHandler(options: WriteMRDOptions, userInput: string): Promise<DocumentWriteHandler> {
+    const projectRootDir = WorkspaceManager.getProjectWorkspacePath(options);
+    // 强制使用 docs 根目录，避免 documentType=MRD 时落到 docs/mrd
+    const docsDir = path.join(projectRootDir, 'docs');
+
+    // MRD 文件在 docs/mrd 目录
+    const outputFilePath = path.join(docsDir, 'mrd', 'MRD.md');
+    const mrdDir = path.dirname(outputFilePath);
+
+    // 确保 MRD 输出目录存在
+    await this.ensureOutputDirectory(mrdDir);
+
+    // 计算相对路径用于提示词
+    const outputRelativePath = path.relative(projectRootDir, outputFilePath);
+
+    logger.info('WriteMRD: Creating WriteHandler', {
+      projectRootDir,
+      docsDir,
+      outputFilePath,
+      outputRelativePath,
+      userInputLength: userInput.length,
+    });
+
+    const config: WriteConfig = {
+      ...DOCUMENT_CONFIGS.MRD,
+      systemPrompt: '',
+      buildWritePrompt: (_input: string) => this.buildMRDPrompt(userInput, outputRelativePath),
+      useCustomCLIPrompt: true, // 👈 启用自定义 CLI prompt，使用 buildWritePrompt
+    };
+
+    return new DocumentWriteHandler(this, config);
+  }
+
+  async run(input: string, options?: WriteMRDOptions): Promise<IActionOutput> {
     const mode = options?.mode || 'new';
-    const useRAG = options?.useRAG || false;
-    const useKnowledgeIntegration = options?.useKnowledgeIntegration ?? false;
-    const useStepwise = options?.useStepwiseGeneration ?? true; // 默认启用分步骤生成
+
+    // 使用 BaseAction 提供的验证方法
+    const workspaceOptions = this.validateWorkspaceOptions(options, 'MRD');
+    const { applicationId, projectId } = workspaceOptions;
+
+    const isCLIMode = this.isCLIMode();
 
     logger.info('WriteMRD: Starting MRD generation', {
+      applicationId,
+      projectId,
       mode,
-      useRAG,
-      useKnowledgeIntegration,
-      useStepwise,
-      hasHistoryMRD: !!options?.historyMRD,
-      hasRelevantChunks: !!options?.relevantChunks,
-      hasStructuredKnowledge: !!options?.structuredKnowledge,
-      requestTimeout: process.env.REQUEST_TIMEOUT || '300',
-      inputLength: userIdea.length,
+      isCLIMode,
+      inputLength: input.length,
     });
 
-    if (!userIdea || userIdea.trim() === '') {
-      throw new Error('User requirements not found');
+    if (!isCLIMode) {
+      throw new Error('WriteMRD supports CLI mode only. Please set executor mode to cli.');
     }
 
     try {
-      // 如果启用知识整合但没有提供结构化知识，尝试获取
-      let knowledgeContext = options?.structuredKnowledge;
-      if (useKnowledgeIntegration && !knowledgeContext && options?.projectId) {
-        knowledgeContext = await this.getKnowledgeContext(options.projectId, userIdea);
-      }
+      // 检查 MRD 文件是否已存在（仅在 new 模式下）
+      if (mode === 'new') {
+        const projectRootDir = WorkspaceManager.getProjectWorkspacePath(workspaceOptions);
+        const mrdFilePath = path.join(projectRootDir, 'docs', 'mrd', 'MRD.md');
 
-      // 如果启用分步骤生成且是新模式，使用分步骤生成
-      if (useStepwise && mode === 'new' && !options?.historyMRD) {
-        return await this.generateStepwise(userIdea, {
-          ...options,
-          structuredKnowledge: knowledgeContext,
-        });
-      }
+        try {
+          const stats = await fs.stat(mrdFilePath);
+          if (stats.isFile() && stats.size > 100) {
+            // 文件存在且有内容，读取并返回
+            const existingContent = await fs.readFile(mrdFilePath, 'utf-8');
+            logger.info('WriteMRD: MRD file already exists, skipping generation', {
+              filePath: mrdFilePath,
+              fileSize: stats.size,
+              contentLength: existingContent.length,
+            });
 
-      // 否则使用传统的一次性生成
-      let prompt: string;
-
-      if (mode === 'update' && options?.historyMRD) {
-        // Update mode: use history MRD + new requirements
-        // TODO: 实现 buildMRDUpdatePrompt
-        prompt = buildMRDPrompt(userIdea, knowledgeContext || options.relevantChunks);
-        logger.info('WriteMRD: Using update mode with history MRD');
-      } else if (knowledgeContext) {
-        // 使用结构化知识上下文
-        prompt = buildMRDPrompt(userIdea, knowledgeContext);
-        logger.info('WriteMRD: Using structured knowledge context');
-      } else if (useRAG && options?.relevantChunks) {
-        // RAG mode: use retrieved chunks + new requirements (旧版兼容)
-        prompt = buildMRDPrompt(userIdea, options.relevantChunks);
-        logger.info('WriteMRD: Using RAG mode with relevant chunks');
-      } else {
-        // New mode: standard MRD generation
-        prompt = buildMRDPrompt(userIdea);
-        logger.info('WriteMRD: Using new mode');
-      }
-
-      // Load system prompt from database or use default
-      const userId = this.context?.get('userId');
-      const systemPrompt = await loadPrompt(userId, 'mrd', 'system_prompt', MRD_SYSTEM_PROMPT);
-
-      const content = await this.aask(prompt, [systemPrompt]);
-
-      // 保存到 workspace，确保使用MRD目录
-      await this.saveToWorkspace('MRD.md', content, { ...options, documentType: 'MRD' });
-
-      logger.info('WriteMRD: MRD generation completed', {
-        mode,
-        contentLength: content.length,
-        workspaceDir: this.getWorkspaceDir({ ...options, documentType: 'MRD' }),
-      });
-
-      // 尝试从 workspace 读取 MRD.md 主文件内容，如果失败则返回当前内容
-      let finalContent = content;
-      try {
-        const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'MRD' });
-        const mainFilePath = path.join(workspaceDir, 'MRD.md');
-        const mainFileContent = await fs.readFile(mainFilePath, 'utf-8');
-        if (mainFileContent && mainFileContent.length > 0) {
-          finalContent = mainFileContent;
-          logger.info('WriteMRD: Loaded MRD.md from workspace', {
-            contentLength: finalContent.length,
+            return this.createActionOutput(existingContent, {
+              type: 'mrd',
+              mode,
+              filename: 'MRD.md',
+              workspaceDir: projectRootDir,
+              skipped: true,
+              reason: 'MRD file already exists',
+            });
+          }
+        } catch (error) {
+          // 文件不存在或读取失败，继续生成
+          logger.info('WriteMRD: MRD file does not exist or is invalid, will generate', {
+            filePath: mrdFilePath,
           });
         }
-      } catch (error: any) {
-        logger.debug('WriteMRD: MRD.md not found in workspace, using direct content', {
-          error: error.message,
-        });
-        // 如果主文件不存在，使用当前生成的内容
       }
 
-      return {
-        content: finalContent,
-        data: {
-          type: 'mrd',
-          filename: 'MRD.md',
-          timestamp: new Date().toISOString(),
-          mode,
-          workspaceDir: this.getWorkspaceDir({ ...options, documentType: 'MRD' }),
-        },
-      };
-    } catch (error: any) {
-      const isTimeout = error.message?.includes('timeout') || error.message?.includes('exceeded');
-
-      logger.error('WriteMRD: Failed to generate MRD', {
+      const handler = await this.getCachedHandler('write', () => this.createWriteHandler(workspaceOptions, input));
+      const result = await this.executeWriteHandler(handler, input, workspaceOptions, {
+        type: 'mrd',
         mode,
-        error: error.message,
-        isTimeout,
-        requestTimeout: process.env.REQUEST_TIMEOUT || '300',
-        stack: error.stack,
       });
 
-      if (isTimeout) {
-        const timeoutError = new Error(
-          `MRD generation timeout. Current timeout setting: ${process.env.REQUEST_TIMEOUT || '300'} seconds.\n` +
-          `Suggested solutions:\n` +
-          `1. Set REQUEST_TIMEOUT=600 (10 minutes) or higher in the .env file in the project root directory\n` +
-          `2. Restart the backend service to apply the configuration\n` +
-          `3. If the problem persists, try generating in segments or simplifying the requirement description\n\n` +
-          `Original error: ${error.message}`
-        );
-        timeoutError.name = 'MRDGenerationTimeoutError';
-        throw timeoutError;
+      // 验证生成的 MRD 内容
+      if (result.content) {
+        this.validateMRDContent(result.content);
+        logger.info('WriteMRD: MRD generation completed successfully', {
+          contentLength: result.content.length,
+          workspaceDir: result.data?.workspaceDir,
+        });
+      } else {
+        logger.warn('WriteMRD: No content returned from handler');
       }
 
+      return result;
+    } catch (error: unknown) {
+      const err = error as Error;
+      logger.error('WriteMRD: Failed to generate MRD', {
+        error: err.message,
+        stack: err.stack,
+      });
       throw error;
     }
-  }
-
-  /**
-   * Read all file contents from workspace
-   */
-  protected async readAllFromWorkspace(options?: WriteMRDOptions): Promise<string> {
-    try {
-      const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'MRD' });
-
-      try {
-        await fs.access(workspaceDir);
-      } catch {
-        logger.warn('WriteMRD: Workspace directory does not exist', {
-          workspaceDir,
-        });
-        return '';
-      }
-
-      const files: string[] = [];
-      const entries = await fs.readdir(workspaceDir, { withFileTypes: true });
-
-      const sortedEntries = entries
-        .filter(entry => entry.isFile() && entry.name.endsWith('.md') && !entry.name.endsWith('-final.md'))
-        .sort((a, b) => {
-          if (a.name === '00-outline.md') return -1;
-          if (b.name === '00-outline.md') return 1;
-          return a.name.localeCompare(b.name);
-        });
-
-      for (const entry of sortedEntries) {
-        const filePath = path.join(workspaceDir, entry.name);
-        const content = await fs.readFile(filePath, 'utf-8');
-        if (content.startsWith('#')) {
-          files.push(content);
-        } else {
-          files.push(`# ${entry.name.replace('.md', '')}\n\n${content}`);
-        }
-      }
-
-      return files.join('\n\n---\n\n');
-    } catch (error: any) {
-      logger.error('WriteMRD: Failed to read files from workspace', {
-        error: error.message,
-        workspaceDir: this.getWorkspaceDir({ ...options, documentType: 'MRD' }),
-      });
-      return '';
-    }
-  }
-
-  /**
-   * 获取知识上下文
-   * 使用知识整合服务获取结构化知识
-   */
-  private async getKnowledgeContext(
-    projectId: string,
-    userIdea: string
-  ): Promise<StructuredKnowledgeContext | undefined> {
-    try {
-      const knowledgeService = new KnowledgeIntegrationService();
-      const userId = this.context?.get('userId');
-      await knowledgeService.initialize(userId);
-      
-      const context = await knowledgeService.getMRDDocumentKnowledge(
-        projectId,
-        userIdea,
-        { limitPerType: 3 }
-      );
-      
-      logger.info('WriteMRD: Knowledge context retrieved', {
-        projectId,
-        hasTerminology: context.terminology.length > 0,
-        hasBusinessRules: context.businessRules.length > 0,
-        hasExistingFeatures: context.existingFeatures.length > 0,
-      });
-      
-      return context;
-    } catch (error: any) {
-      logger.warn('WriteMRD: Failed to get knowledge context', {
-        projectId,
-        error: error.message,
-      });
-      return undefined;
-    }
-  }
-
-  /**
-   * Generate Market Research Document step by step
-   * Uses the generic StepwiseDocumentGenerator
-   * 
-   * CLI模式下会自动跳过分章节生成，直接生成完整文档到主文件
-   */
-  private async generateStepwise(input: string, options?: WriteMRDOptions): Promise<IActionOutput> {
-    // 使用 validateWorkspaceOptions 统一获取路径参数
-    const workspaceOptions = this.validateWorkspaceOptions(options, 'MRD');
-    const workspaceDir = this.getWorkspaceDir(workspaceOptions);
-
-    // Load system prompt from database or use default
-    const userId = this.context?.get('userId');
-    const systemPrompt = await loadPrompt(userId, 'mrd', 'system_prompt', MRD_SYSTEM_PROMPT);
-
-    // Get role from context (if available)
-    const role = (this as any).role?.profile || undefined;
-
-    // 获取当前执行模式
-    const executorMode = this.getExecutorMode();
-
-    // 获取结构化知识上下文
-    const knowledgeContext = options?.structuredKnowledge;
-
-    logger.info('WriteMRD: Creating StepwiseDocumentGenerator', {
-      executorMode,
-      workspaceDir,
-      hasKnowledgeContext: !!knowledgeContext,
-      ...workspaceOptions,
-    });
-
-    const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
-      buildOutlinePrompt: buildMRDOutlinePrompt,
-      buildSectionPrompt: (userIdea: string, outline: string, sectionNumber: number, sectionTitle: string) => 
-        buildMRDSectionPrompt(userIdea, outline, sectionNumber, sectionTitle, knowledgeContext),
-      // CLI模式下用于生成完整文档的提示词
-      buildFullDocumentPrompt: (userIdea: string) => 
-        buildMRDPrompt(userIdea, knowledgeContext || options?.relevantChunks),
-      systemPrompt: systemPrompt,
-      // Review 由角色通过 MRDReview action 统一处理
-      documentTitle: 'Market Research Document (MRD)',
-      documentType: 'MRD',
-      mainFileName: 'MRD.md',
-      defaultSections: [
-        { number: 1, title: '背景与问题定义' },
-        { number: 2, title: '目标用户和使用场景' },
-        { number: 3, title: '需求目标与成功标准' },
-        { number: 4, title: '核心需求范围' },
-        { number: 5, title: '关键约束' },
-        { number: 6, title: '不确定的点和风险' },
-        { number: 7, title: '备注' },
-      ],
-      workspaceDir,
-      ...workspaceOptions,
-      role,
-      // CLI模式配置：传递执行模式，CLI模式下跳过分章节生成
-      executorMode: executorMode,
-      skipStepwiseInCLI: true, // CLI模式下直接生成完整文档
-    });
-
-    return await generator.generate(input);
   }
 }
 
 export default WriteMRD;
-
