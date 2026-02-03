@@ -1,68 +1,136 @@
 /**
  * WritePRD Action
- * Generates Product Requirements Document from user idea
+ * Generates Product Requirements Document from MRD
  *
  * 工作流程：
  * 1) CLI模式：使用 DocumentWriteHandler 直接生成（只传MRD文件夹路径）
- * 2) LLM模式：
- *    - 从 workspace 读取 MRD.md（需要 applicationId；失败或不存在则回退到 input）
- *    - 构造生成输入：RAG 模式下合并 MRD + 检索片段，否则仅使用 MRD
- *    - 选择生成路径：新建且启用分步走 StepwiseDocumentGenerator，其他走一次性生成
- * 3) 加载系统提示词：生成用 system_prompt
- * 4) 调用模型生成 PRD 各章节内容，保存到 workspace/PRD/ 目录
- * 5) 返回章节文件列表信息，由 PRDReview 负责后续的审核和合并
- *
- * Enhanced with knowledge integration for improved document generation
+ *    - CLI工具从 mrd 目录读取 MRD.md 作为输入
+ *    - 生成 PRD.md 到 prd 目录
  */
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import {
-  PRD_SYSTEM_PROMPT,
-  buildPRDPrompt,
-  buildPRDUpdatePrompt,
-  buildPRDUpdateWithRAGPrompt,
-  buildPRDWithRAGPrompt,
-  buildPRDOutlinePrompt,
-  buildPRDSectionPrompt,
-  StructuredKnowledgeContext,
-} from '../prompts/prd';
-import { logger } from '../utils';
-import { StepwiseDocumentGenerator } from '../utils/stepwise';
+import { PRD_SYSTEM_PROMPT } from '../prompts/prd';
+import { logger, WorkspaceOptions, WorkspaceManager } from '../utils';
 import { DocumentWriteHandler, DOCUMENT_CONFIGS, WriteConfig } from '../utils/document';
-import { KnowledgeIntegrationService } from '../services/KnowledgeIntegrationService';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
-export interface WritePRDOptions {
+export interface WritePRDOptions extends WorkspaceOptions {
   mode?: 'new' | 'update';
   historyPRD?: string;
-  relevantChunks?: string; // RAG 检索到的相关文档片段（旧版兼容）
-  structuredKnowledge?: StructuredKnowledgeContext; // 结构化知识上下文（新版）
+  relevantChunks?: string;
+  structuredKnowledge?: unknown;
   useRAG?: boolean;
-  useKnowledgeIntegration?: boolean; // 是否使用知识整合服务
-  useStepwiseGeneration?: boolean; // 是否使用分步骤生成
-  applicationId?: string; // 应用ID，用于文件夹命名
-  projectId?: string; // 项目ID，用于文件夹命名
-  versionId?: string; // 版本ID，用于定位版本工作空间
-  includeOptionalSections?: boolean; // 是否包含可选章节（如第 11 章角色关注块）
+  useKnowledgeIntegration?: boolean;
+  useStepwiseGeneration?: boolean;
+  includeOptionalSections?: boolean;
 }
 
 export class WritePRD extends BaseAction {
   constructor() {
-    super('WritePRD', 'Generate Product Requirements Document from user idea');
+    super('WritePRD', 'Generate Product Requirements Document from MRD');
+  }
+
+  /**
+   * 验证 MRD 文件是否存在
+   * @param mrdFilePath MRD 文件路径
+   * @throws Error 如果 MRD 文件不存在
+   */
+  private async validateMRDFile(mrdFilePath: string): Promise<void> {
+    try {
+      await fs.access(mrdFilePath);
+      const stats = await fs.stat(mrdFilePath);
+      if (stats.size === 0) {
+        throw new Error(`MRD file is empty at ${mrdFilePath}`);
+      }
+      logger.info('WritePRD: MRD file validation passed', {
+        mrdFilePath,
+        fileSize: stats.size,
+      });
+    } catch (error: unknown) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code === 'ENOENT') {
+        throw new Error(`MRD file not found at ${mrdFilePath}. Please generate MRD first.`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * 验证 PRD 内容
+   * @param content PRD 内容
+   * @param minLength 最小长度要求（默认 50 字符）
+   * @throws Error 如果内容无效
+   */
+  private validatePRDContent(content: string, minLength = 50): void {
+    if (!content || content.trim().length === 0) {
+      throw new Error('PRD content is empty');
+    }
+    if (content.length < minLength) {
+      throw new Error(`PRD content too short (${content.length} chars). Expected at least ${minLength} chars.`);
+    }
+    logger.info('WritePRD: PRD content validation passed', {
+      contentLength: content.length,
+      minLength,
+    });
+  }
+
+  /**
+   * 确保输出目录存在
+   * @param dirPath 目录路径
+   */
+  private async ensureOutputDirectory(dirPath: string): Promise<void> {
+    await fs.mkdir(dirPath, { recursive: true });
+    logger.info('WritePRD: Output directory ensured', { dirPath });
+  }
+
+  /**
+   * 构建 PRD 生成 prompt
+   * @param mrdRelativePath MRD 文件路径（相对于项目根目录）
+   * @param outputPath PRD 输出路径（相对于项目根目录）
+   */
+  private buildPRDPrompt(mrdRelativePath: string, outputPath?: string): string {
+    return `使用 prd 技能生成 PRD，MRD 文件路径为 ${mrdRelativePath}，输出文件保存到 ${outputPath}`;
   }
 
   /**
    * 创建 WriteHandler
+   * CLI模式下使用文件路径而非内容进行生成
    */
-  private async createWriteHandler(): Promise<DocumentWriteHandler> {
-    const systemPrompt = await this.loadSystemPrompt('prd', 'system_prompt', PRD_SYSTEM_PROMPT);
+  private async createWriteHandler(options: WritePRDOptions): Promise<DocumentWriteHandler> {
+    const projectRootDir = WorkspaceManager.getProjectWorkspacePath(options);
+    // 强制使用 docs 根目录，避免 documentType=PRD 时落到 docs/prd
+    const docsDir = path.join(projectRootDir, 'docs');
+
+    // MRD 文件在 docs/mrd 目录，PRD 文件在 docs/prd 目录
+    const mrdFilePath = path.join(docsDir, 'mrd', 'MRD.md');
+    const outputFilePath = path.join(docsDir, 'prd', 'PRD.md');
+    const prdDir = path.dirname(outputFilePath);
+
+    // 校验 MRD 文件是否存在
+    await this.validateMRDFile(mrdFilePath);
+
+    // 确保 PRD 输出目录存在
+    await this.ensureOutputDirectory(prdDir);
+
+    // 计算相对路径用于提示词
+    const mrdRelativePath = path.relative(projectRootDir, mrdFilePath);
+    const outputRelativePath = path.relative(projectRootDir, outputFilePath);
+
+    logger.info('WritePRD: Creating WriteHandler', {
+      projectRootDir,
+      docsDir,
+      mrdFilePath,
+      outputFilePath,
+      mrdRelativePath,
+      outputRelativePath,
+    });
 
     const config: WriteConfig = {
       ...DOCUMENT_CONFIGS.PRD,
-      buildWritePrompt: buildPRDPrompt,
-      systemPrompt,
+      systemPrompt: PRD_SYSTEM_PROMPT,
+      buildWritePrompt: (_input: string) => this.buildPRDPrompt(mrdRelativePath, outputRelativePath),
     };
 
     return new DocumentWriteHandler(this, config);
@@ -70,9 +138,6 @@ export class WritePRD extends BaseAction {
 
   async run(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
     const mode = options?.mode || 'new';
-    const useRAG = options?.useRAG || false;
-    const useKnowledgeIntegration = options?.useKnowledgeIntegration ?? false;
-    const useStepwise = options?.useStepwiseGeneration ?? true; // 默认启用分步骤生成
 
     // 使用 BaseAction 提供的验证方法
     const workspaceOptions = this.validateWorkspaceOptions(options, 'PRD');
@@ -84,351 +149,41 @@ export class WritePRD extends BaseAction {
       applicationId,
       projectId,
       mode,
-      useRAG,
-      useKnowledgeIntegration,
-      useStepwise,
       isCLIMode,
-      hasHistoryPRD: !!options?.historyPRD,
-      hasRelevantChunks: !!options?.relevantChunks,
-      hasStructuredKnowledge: !!options?.structuredKnowledge,
       inputLength: input.length,
     });
 
+    if (!isCLIMode) {
+      throw new Error('WritePRD supports CLI mode only. Please set executor mode to cli.');
+    }
+
     try {
-      // CLI模式：使用 BaseAction 封装的执行方法
-      // 不使用 StepwiseDocumentGenerator
-      if (isCLIMode && mode === 'new' && !options?.historyPRD) {
-        const handler = await this.getCachedHandler('write', () => this.createWriteHandler());
-        return await this.executeWriteHandler(handler, '', workspaceOptions, {
-          type: 'prd',
-          mode,
-        });
-      }
-
-      // LLM模式：从 workspace 读取 MRD.md 文件作为输入
-      let mrdContent = input;
-      const mrdFromWorkspace = await this.loadDocumentFromWorkspace('MRD.md', workspaceOptions, 'MRD');
-      if (mrdFromWorkspace) {
-        mrdContent = mrdFromWorkspace;
-      } else {
-        logger.info('WritePRD: MRD.md not found in workspace, using input from message', {
-          inputLength: input.length,
-        });
-      }
-
-      // 如果启用知识整合但没有提供结构化知识，尝试获取
-      let knowledgeContext = options?.structuredKnowledge;
-      if (useKnowledgeIntegration && !knowledgeContext && projectId) {
-        knowledgeContext = await this.getKnowledgeContext(projectId, mrdContent);
-      }
-
-      const ragQuery = input && input.trim().length > 0 ? input : mrdContent;
-      const stepwiseInput = useRAG && options?.relevantChunks ? `${mrdContent}\n\n【相关历史PRD参考信息】\n${options.relevantChunks}` : mrdContent;
-
-      // LLM模式：如果启用分步骤生成且是新模式，使用分步骤生成
-      if (useStepwise && mode === 'new' && !options?.historyPRD) {
-        return await this.generateStepwise(stepwiseInput, {
-          ...options,
-          structuredKnowledge: knowledgeContext,
-        });
-      }
-
-      // 否则使用传统的一次性生成
-      let prompt: string;
-
-      if (mode === 'update' && options?.historyPRD) {
-        if (useRAG && options?.relevantChunks) {
-          prompt = buildPRDUpdateWithRAGPrompt(options.historyPRD, options.relevantChunks, mrdContent, ragQuery);
-          logger.info('WritePRD: Using update mode with RAG context');
-        } else {
-          // Update mode: use history PRD + new requirements
-          prompt = buildPRDUpdatePrompt(options.historyPRD, mrdContent);
-          logger.info('WritePRD: Using update mode with history PRD');
-        }
-      } else if (knowledgeContext) {
-        // 使用结构化知识上下文
-        prompt = buildPRDPrompt(mrdContent, knowledgeContext);
-        logger.info('WritePRD: Using structured knowledge context');
-      } else if (useRAG) {
-        if (options?.relevantChunks) {
-          // RAG mode: use retrieved chunks + new requirements (旧版兼容)
-          prompt = buildPRDWithRAGPrompt(ragQuery, options.relevantChunks, mrdContent);
-          logger.info('WritePRD: Using RAG mode with relevant chunks');
-        } else {
-          logger.warn('WritePRD: RAG enabled but no relevant chunks provided, falling back to standard generation');
-          prompt = buildPRDPrompt(mrdContent);
-        }
-      } else {
-        // New mode: standard PRD generation (使用从 workspace 读取的 MRD 内容)
-        prompt = buildPRDPrompt(mrdContent);
-        logger.info('WritePRD: Using new mode with MRD from workspace');
-      }
-
-      // Load system prompt from database or use default
-      const systemPrompt = await this.loadSystemPrompt('prd', 'system_prompt', PRD_SYSTEM_PROMPT);
-
-      // Call LLM with system message and prompt
-      const prdContent = await this.aask(prompt, [systemPrompt]);
-
-      // 保存到 workspace，确保使用PRD目录
-      await this.saveToWorkspace('PRD.md', prdContent, { ...options, documentType: 'PRD' });
-
-      logger.info('WritePRD: PRD generation completed', {
-        mode,
-        contentLength: prdContent.length,
-        workspaceDir: this.getWorkspaceDir({ ...options, documentType: 'PRD' }),
-      });
-
-      // 尝试从 workspace 读取 PRD.md 主文件内容，如果失败则返回当前内容
-      // 确保返回的是完整的PRD内容，而不是监控检测信息
-      let finalContent = prdContent;
-      try {
-        const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'PRD' });
-        const mainFilePath = path.join(workspaceDir, 'PRD.md');
-        const mainFileContent = await fs.readFile(mainFilePath, 'utf-8');
-        if (mainFileContent && mainFileContent.length > 0) {
-          // 确保读取的是完整的PRD内容，而不是其他文件（如review文件）
-          finalContent = mainFileContent;
-          logger.info('WritePRD: Loaded PRD.md from workspace', {
-            contentLength: finalContent.length,
-            isCompletePRD: true,
-          });
-        }
-      } catch (error: any) {
-        logger.debug('WritePRD: PRD.md not found in workspace, using direct content', {
-          error: error.message,
-        });
-        // 如果主文件不存在，使用当前生成的内容
-      }
-
-      // 确保返回的是完整的PRD内容，而不是监控检测信息
-      return this.createActionOutput(finalContent, {
+      const handler = await this.getCachedHandler('write', () => this.createWriteHandler(workspaceOptions));
+      const result = await this.executeWriteHandler(handler, '', workspaceOptions, {
         type: 'prd',
-        filename: 'PRD.md',
         mode,
-        workspaceDir: this.getWorkspaceDir(workspaceOptions),
-      });
-    } catch (error: any) {
-      const isTimeout = error.message?.includes('timeout') || error.message?.includes('exceeded');
-
-      logger.error('WritePRD: Failed to generate PRD', {
-        mode,
-        error: error.message,
-        isTimeout,
-        requestTimeout: process.env.REQUEST_TIMEOUT || '300',
-        stack: error.stack,
       });
 
-      // 如果是超时错误，提供更友好的错误信息
-      if (isTimeout) {
-        const timeoutError = new Error(
-          `PRD 生成超时。当前超时设置: ${process.env.REQUEST_TIMEOUT || '300'}秒。\n` +
-            `建议解决方案：\n` +
-            `1. 在项目根目录的 .env 文件中设置 REQUEST_TIMEOUT=600（10分钟）或更高\n` +
-            `2. 重启后端服务使配置生效\n` +
-            `3. 如果问题持续，可以尝试分段生成 PRD 或简化需求描述\n\n` +
-            `原始错误: ${error.message}`
-        );
-        timeoutError.name = 'PRDGenerationTimeoutError';
-        throw timeoutError;
+      // 验证生成的 PRD 内容
+      if (result.content) {
+        this.validatePRDContent(result.content);
+        logger.info('WritePRD: PRD generation completed successfully', {
+          contentLength: result.content.length,
+          workspaceDir: result.data?.workspaceDir,
+        });
+      } else {
+        logger.warn('WritePRD: No content returned from handler');
       }
 
+      return result;
+    } catch (error: unknown) {
+      const err = error as Error;
+      logger.error('WritePRD: Failed to generate PRD', {
+        error: err.message,
+        stack: err.stack,
+      });
       throw error;
     }
-  }
-
-  /**
-   * 读取 workspace 中的所有文件内容
-   */
-  protected async readAllFromWorkspace(options?: WritePRDOptions): Promise<string> {
-    try {
-      const workspaceDir = this.getWorkspaceDir({ ...options, documentType: 'PRD' });
-
-      // 检查目录是否存在
-      try {
-        await fs.access(workspaceDir);
-      } catch {
-        logger.warn('WritePRD: Workspace directory does not exist', {
-          workspaceDir,
-        });
-        return ''; // 如果目录不存在，返回空字符串
-      }
-
-      const files: string[] = [];
-
-      // 读取目录中的所有文件
-      const entries = await fs.readdir(workspaceDir, { withFileTypes: true });
-
-      // 按文件名排序（确保顺序：outline -> sections -> PRD）
-      // 排除review文件和其他非PRD文件，确保只返回完整的PRD内容，而不是监控检测信息
-      const sortedEntries = entries
-        .filter((entry) => {
-          // 只包含PRD相关文件，排除review文件和其他非PRD文件
-          if (!entry.isFile() || !entry.name.endsWith('.md')) return false;
-          // 排除review文件
-          if (entry.name.includes('review') || entry.name.includes('Review')) return false;
-          // 排除final文件
-          if (entry.name.endsWith('-final.md')) return false;
-          return true;
-        })
-        .sort((a, b) => {
-          // 特殊排序：00-outline.md 在最前
-          if (a.name === '00-outline.md') return -1;
-          if (b.name === '00-outline.md') return 1;
-          // 主文件（PRD.md）优先
-          if (a.name === 'PRD.md') return -1;
-          if (b.name === 'PRD.md') return 1;
-          return a.name.localeCompare(b.name);
-        });
-
-      for (const entry of sortedEntries) {
-        const filePath = path.join(workspaceDir, entry.name);
-        const content = await fs.readFile(filePath, 'utf-8');
-        // 如果文件已经有标题，不重复添加
-        if (content.startsWith('#')) {
-          files.push(content);
-        } else {
-          files.push(`# ${entry.name.replace('.md', '')}\n\n${content}`);
-        }
-      }
-
-      const mergedContent = files.join('\n\n---\n\n');
-
-      logger.info('WritePRD: Read all files from workspace', {
-        workspaceDir,
-        fileCount: sortedEntries.length,
-        totalLength: mergedContent.length,
-      });
-
-      return mergedContent;
-    } catch (error: any) {
-      logger.error('WritePRD: Failed to read files from workspace', {
-        error: error.message,
-        workspaceDir: this.getWorkspaceDir({ ...options, documentType: 'PRD' }),
-      });
-      // 如果读取失败，返回空字符串而不是抛出错误
-      return '';
-    }
-  }
-
-  /**
-   * 获取知识上下文
-   * 使用知识整合服务获取结构化知识
-   */
-  private async getKnowledgeContext(projectId: string, mrdContent: string): Promise<StructuredKnowledgeContext | undefined> {
-    try {
-      const knowledgeService = new KnowledgeIntegrationService();
-      const userId = this.context?.get('userId');
-      await knowledgeService.initialize(userId);
-
-      const context = await knowledgeService.getPRDDocumentKnowledge(projectId, mrdContent, { limitPerType: 3 });
-
-      logger.info('WritePRD: Knowledge context retrieved', {
-        projectId,
-        hasTerminology: context.terminology.length > 0,
-        hasBusinessRules: context.businessRules.length > 0,
-        hasExistingFeatures: context.existingFeatures.length > 0,
-        hasHistoryPRD: context.historyPRD.length > 0,
-      });
-
-      return context;
-    } catch (error: any) {
-      logger.warn('WritePRD: Failed to get knowledge context', {
-        projectId,
-        error: error.message,
-      });
-      return undefined;
-    }
-  }
-
-  /**
-   * 分步骤生成 PRD
-   * 使用通用的 StepwiseDocumentGenerator
-   * 只负责分章节生成，不做审核和合并（由 PRDReview 负责）
-   *
-   * CLI模式下会自动跳过分章节生成，直接生成完整文档到主文件
-   */
-  private async generateStepwise(input: string, options?: WritePRDOptions): Promise<IActionOutput> {
-    // 使用 validateWorkspaceOptions 统一获取路径参数
-    const workspaceOptions = this.validateWorkspaceOptions(options, 'PRD');
-    const workspaceDir = this.getWorkspaceDir(workspaceOptions);
-
-    // Load system prompt from database or use default
-    const systemPrompt = await this.loadSystemPrompt('prd', 'system_prompt', PRD_SYSTEM_PROMPT);
-
-    // Get role from context (if available)
-    const role = (this as any).role?.profile || undefined;
-
-    // 获取当前执行模式
-    const executorMode = this.getExecutorMode();
-
-    // 获取结构化知识上下文
-    const knowledgeContext = options?.structuredKnowledge;
-
-    logger.info('WritePRD: Creating StepwiseDocumentGenerator', {
-      executorMode,
-      workspaceDir,
-      hasKnowledgeContext: !!knowledgeContext,
-      ...workspaceOptions,
-    });
-
-    const generator = new StepwiseDocumentGenerator(this as unknown as BaseAction, {
-      buildOutlinePrompt: buildPRDOutlinePrompt,
-      buildSectionPrompt: (mrdContent: string, outline: string, sectionNumber: number, sectionTitle: string) =>
-        buildPRDSectionPrompt(mrdContent, outline, sectionNumber, sectionTitle, knowledgeContext),
-      // CLI模式下用于生成完整文档的提示词
-      buildFullDocumentPrompt: (mrdContent: string) => buildPRDPrompt(mrdContent, knowledgeContext),
-      // 不需要 buildSectionReviewPrompt 和 reviewSystemPrompt，因为跳过审核步骤
-      systemPrompt: systemPrompt,
-      documentTitle: '产品需求文档（PRD）',
-      documentType: 'PRD',
-      mainFileName: 'PRD.md',
-      defaultSections: [
-        { number: 0, title: '生成说明（给 PRD Agent）' },
-        { number: 1, title: '文档信息' },
-        { number: 2, title: 'MRD 摘要与需求背景' },
-        { number: 3, title: '目标与成功标准（KPI）' },
-        { number: 4, title: '用户体验与交互设计要求（Experience Spec）' },
-        { number: 5, title: '需求范围与优先级' },
-        { number: 6, title: '用户、角色与使用场景' },
-        { number: 7, title: '端到端关键流程（Key Flow）' },
-        { number: 8, title: '功能需求（AI-friendly 强结构）' },
-        { number: 9, title: '数据与埋点（可观测）' },
-        { number: 10, title: '非功能性需求（体验相关）' },
-        { number: 11, title: '依赖与影响范围' },
-        { number: 12, title: '风险与应对' },
-        { number: 13, title: '发布、灰度与回滚' },
-        { number: 14, title: '验收与 Go / No-Go' },
-        { number: 15, title: '开放问题（唯一允许 TBD 的位置）' },
-        { number: 16, title: '附录' },
-      ],
-      sectionFilter: (sections) => {
-        // 所有章节都是必需的，不再过滤
-        return sections;
-      },
-      workspaceDir,
-      ...workspaceOptions,
-      role,
-      // 跳过审核和合并步骤，由 PRDReview 负责后续处理（仅LLM模式）
-      skipReview: true,
-      skipMerge: true,
-      // CLI模式配置：传递执行模式，CLI模式下跳过分章节生成
-      executorMode: executorMode,
-      skipStepwiseInCLI: true, // CLI模式下直接生成完整文档
-    });
-
-    return await generator.generate(input);
-  }
-
-  /**
-   * Build PRD with history context
-   * Helper method for generating PRD based on historical PRD
-   */
-  async buildPRDWithHistory(newRequirements: string, historyPRD: string): Promise<IActionOutput> {
-    return this.run(newRequirements, {
-      mode: 'update',
-      historyPRD,
-    });
   }
 }
 
