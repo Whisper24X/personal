@@ -960,6 +960,7 @@ export class WorkspaceManager {
       /[\u4e00-\u9fa5]/, // 包含中文字符
       /：/, // 包含全角冒号
       /[[\]{}()]/, // 包含 Mermaid 语法括号
+      // eslint-disable-next-line no-useless-escape
       /-->/, // 包含 Mermaid 箭头
     ];
 
