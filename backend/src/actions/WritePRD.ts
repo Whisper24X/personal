@@ -10,7 +10,6 @@
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import { PRD_SYSTEM_PROMPT } from '../prompts/prd';
 import { logger, WorkspaceOptions, WorkspaceManager } from '../utils';
 import { DocumentWriteHandler, DOCUMENT_CONFIGS, WriteConfig } from '../utils/document';
 import * as fs from 'fs/promises';
@@ -129,8 +128,9 @@ export class WritePRD extends BaseAction {
 
     const config: WriteConfig = {
       ...DOCUMENT_CONFIGS.PRD,
-      systemPrompt: PRD_SYSTEM_PROMPT,
+      systemPrompt: '',
       buildWritePrompt: (_input: string) => this.buildPRDPrompt(mrdRelativePath, outputRelativePath),
+      useCustomCLIPrompt: true, // 👈 启用自定义 CLI prompt，使用 buildWritePrompt
     };
 
     return new DocumentWriteHandler(this, config);

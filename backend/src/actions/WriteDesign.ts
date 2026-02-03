@@ -10,7 +10,6 @@
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import { DESIGN_SYSTEM_PROMPT } from '../prompts/design';
 import { logger, WorkspaceOptions, WorkspaceManager } from '../utils';
 import { DocumentWriteHandler, DOCUMENT_CONFIGS, WriteConfig } from '../utils/document';
 import * as fs from 'fs/promises';
@@ -123,8 +122,9 @@ export class WriteDesign extends BaseAction {
 
     const config: WriteConfig = {
       ...DOCUMENT_CONFIGS.DESIGN,
-      systemPrompt: DESIGN_SYSTEM_PROMPT,
+      systemPrompt: '',
       buildWritePrompt: (_input: string) => this.buildDesignPrompt(prdRelativePath, outputRelativePath),
+      useCustomCLIPrompt: true, // 👈 启用自定义 CLI prompt，使用 buildWritePrompt
     };
 
     return new DocumentWriteHandler(this, config);

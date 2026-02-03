@@ -10,7 +10,6 @@
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import { MRD_SYSTEM_PROMPT } from '../prompts/mrd';
 import { logger, WorkspaceOptions, WorkspaceManager } from '../utils';
 import { DocumentWriteHandler, DOCUMENT_CONFIGS, WriteConfig } from '../utils/document';
 import * as fs from 'fs/promises';
@@ -62,17 +61,18 @@ export class WriteMRD extends BaseAction {
 
   /**
    * 构建 MRD 生成 prompt
+   * @param userInput 用户输入的任务信息
    * @param outputPath MRD 输出路径（相对于项目根目录）
    */
-  private buildMRDPrompt(outputPath?: string): string {
-    return `使用 mrd 技能生成 MRD，输出文件保存到 ${outputPath}`;
+  private buildMRDPrompt(userInput: string, outputPath?: string): string {
+    return `需求：${userInput},使用 mrd 技能生成 MRD，输出文件保存到 ${outputPath}`;
   }
 
   /**
    * 创建 WriteHandler
    * CLI模式下使用文件路径而非内容进行生成
    */
-  private async createWriteHandler(options: WriteMRDOptions): Promise<DocumentWriteHandler> {
+  private async createWriteHandler(options: WriteMRDOptions, userInput: string): Promise<DocumentWriteHandler> {
     const projectRootDir = WorkspaceManager.getProjectWorkspacePath(options);
     // 强制使用 docs 根目录，避免 documentType=MRD 时落到 docs/mrd
     const docsDir = path.join(projectRootDir, 'docs');
@@ -92,12 +92,14 @@ export class WriteMRD extends BaseAction {
       docsDir,
       outputFilePath,
       outputRelativePath,
+      userInputLength: userInput.length,
     });
 
     const config: WriteConfig = {
       ...DOCUMENT_CONFIGS.MRD,
-      systemPrompt: MRD_SYSTEM_PROMPT,
-      buildWritePrompt: (_input: string) => this.buildMRDPrompt(outputRelativePath),
+      systemPrompt: '',
+      buildWritePrompt: (_input: string) => this.buildMRDPrompt(userInput, outputRelativePath),
+      useCustomCLIPrompt: true, // 👈 启用自定义 CLI prompt，使用 buildWritePrompt
     };
 
     return new DocumentWriteHandler(this, config);
@@ -125,8 +127,8 @@ export class WriteMRD extends BaseAction {
     }
 
     try {
-      const handler = await this.getCachedHandler('write', () => this.createWriteHandler(workspaceOptions));
-      const result = await this.executeWriteHandler(handler, '', workspaceOptions, {
+      const handler = await this.getCachedHandler('write', () => this.createWriteHandler(workspaceOptions, input));
+      const result = await this.executeWriteHandler(handler, input, workspaceOptions, {
         type: 'mrd',
         mode,
       });

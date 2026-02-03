@@ -1,33 +1,22 @@
 /**
  * GeneratePrototype Action
  * Generates high-fidelity HTML prototype from PRD
- * 
+ *
  * 工作流程：
- * 1) 从workspace读取PRD.md文件
- * 2) 使用LLM生成HTML原型代码（单一HTML文件，所有代码内联）
- * 3) 保存原型文件到workspace的docs/prototype/目录
- * 4) 返回原型文件信息和预览URL
- * 
- * 重要：只生成一个index.html文件，所有CSS和JavaScript代码都内联在这个文件中
+ * 1) CLI模式：使用 DocumentWriteHandler 直接生成（只传PRD文件夹路径）
+ *    - CLI工具从 prd 目录读取 PRD.md 作为输入
+ *    - 生成 index.html 到 prototype 目录
  */
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import {
-  PROTOTYPE_SYSTEM_PROMPT,
-  buildPrototypePrompt,
-} from '../prompts/prototype';
-import { logger, WorkspaceOptions } from '../utils';
-import {
-  DocumentWriteHandler,
-  DOCUMENT_CONFIGS,
-  WriteConfig,
-} from '../utils/document';
+import { logger, WorkspaceOptions, WorkspaceManager } from '../utils';
+import { DocumentWriteHandler, DOCUMENT_CONFIGS, WriteConfig } from '../utils/document';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
 export interface GeneratePrototypeOptions extends WorkspaceOptions {
-  prdContent?: string; // 可选：直接传入PRD内容，否则从workspace读取
+  mode?: 'new' | 'update';
 }
 
 export class GeneratePrototype extends BaseAction {
@@ -36,21 +25,113 @@ export class GeneratePrototype extends BaseAction {
   }
 
   /**
-   * 创建 WriteHandler（用于CLI模式）
+   * 验证 PRD 文件是否存在
+   * @param prdFilePath PRD 文件路径
+   * @throws Error 如果 PRD 文件不存在
    */
-  private async createWriteHandler(): Promise<DocumentWriteHandler> {
-    const systemPrompt = await this.loadSystemPrompt('prototype', 'system_prompt', PROTOTYPE_SYSTEM_PROMPT);
+  private async validatePRDFile(prdFilePath: string): Promise<void> {
+    try {
+      await fs.access(prdFilePath);
+      const stats = await fs.stat(prdFilePath);
+      if (stats.size === 0) {
+        throw new Error(`PRD file is empty at ${prdFilePath}`);
+      }
+      logger.info('GeneratePrototype: PRD file validation passed', {
+        prdFilePath,
+        fileSize: stats.size,
+      });
+    } catch (error: unknown) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code === 'ENOENT') {
+        throw new Error(`PRD file not found at ${prdFilePath}. Please generate PRD first.`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * 验证 Prototype 内容
+   * @param content Prototype 内容
+   * @param minLength 最小长度要求（默认 50 字符）
+   * @throws Error 如果内容无效
+   */
+  private validatePrototypeContent(content: string, minLength = 50): void {
+    if (!content || content.trim().length === 0) {
+      throw new Error('Prototype content is empty');
+    }
+    if (content.length < minLength) {
+      throw new Error(`Prototype content too short (${content.length} chars). Expected at least ${minLength} chars.`);
+    }
+    logger.info('GeneratePrototype: Prototype content validation passed', {
+      contentLength: content.length,
+      minLength,
+    });
+  }
+
+  /**
+   * 确保输出目录存在
+   * @param dirPath 目录路径
+   */
+  private async ensureOutputDirectory(dirPath: string): Promise<void> {
+    await fs.mkdir(dirPath, { recursive: true });
+    logger.info('GeneratePrototype: Output directory ensured', { dirPath });
+  }
+
+  /**
+   * 构建 Prototype 生成 prompt
+   * @param prdRelativePath PRD 文件路径（相对于项目根目录）
+   * @param outputPath Prototype 输出路径（相对于项目根目录）
+   */
+  private buildPrototypePrompt(prdRelativePath: string, outputPath?: string): string {
+    return `使用 prototype 技能生成高保真原型，PRD 文件路径为 ${prdRelativePath}，输出文件保存到 ${outputPath}`;
+  }
+
+  /**
+   * 创建 WriteHandler
+   * CLI模式下使用文件路径而非内容进行生成
+   */
+  private async createWriteHandler(options: GeneratePrototypeOptions): Promise<DocumentWriteHandler> {
+    const projectRootDir = WorkspaceManager.getProjectWorkspacePath(options);
+    // 强制使用 docs 根目录，避免 documentType=PROTOTYPE 时落到 docs/prototype
+    const docsDir = path.join(projectRootDir, 'docs');
+
+    // PRD 文件在 docs/prd 目录，原型文件在 docs/prototype 目录
+    const prdFilePath = path.join(docsDir, 'prd', 'PRD.md');
+    const outputFilePath = path.join(docsDir, 'prototype', 'index.html');
+    const prototypeDir = path.dirname(outputFilePath);
+
+    // 校验 PRD 文件是否存在
+    await this.validatePRDFile(prdFilePath);
+
+    // 确保原型输出目录存在
+    await this.ensureOutputDirectory(prototypeDir);
+
+    // 计算相对路径用于提示词
+    const prdRelativePath = path.relative(projectRootDir, prdFilePath);
+    const outputRelativePath = path.relative(projectRootDir, outputFilePath);
+
+    logger.info('GeneratePrototype: Creating WriteHandler', {
+      projectRootDir,
+      docsDir,
+      prdFilePath,
+      outputFilePath,
+      prdRelativePath,
+      outputRelativePath,
+    });
 
     const config: WriteConfig = {
       ...DOCUMENT_CONFIGS.PROTOTYPE,
-      buildWritePrompt: buildPrototypePrompt,
-      systemPrompt,
+      systemPrompt: '',
+      buildWritePrompt: (_input: string) => this.buildPrototypePrompt(prdRelativePath, outputRelativePath),
+      useCustomCLIPrompt: true, // 👈 启用自定义 CLI prompt，使用 buildWritePrompt
     };
 
     return new DocumentWriteHandler(this, config);
   }
 
   async run(input: string, options?: GeneratePrototypeOptions): Promise<IActionOutput> {
+    const mode = options?.mode || 'new';
+
     // 使用 BaseAction 提供的验证方法
     const workspaceOptions = this.validateWorkspaceOptions(options, 'PROTOTYPE');
     const { applicationId, projectId } = workspaceOptions;
@@ -60,416 +141,68 @@ export class GeneratePrototype extends BaseAction {
     logger.info('GeneratePrototype: Starting prototype generation', {
       applicationId,
       projectId,
-      hasInput: !!input,
-      hasPrdContent: !!options?.prdContent,
+      mode,
       isCLIMode,
+      inputLength: input.length,
     });
 
+    if (!isCLIMode) {
+      throw new Error('GeneratePrototype supports CLI mode only. Please set executor mode to cli.');
+    }
+
     try {
-      // CLI模式：使用 BaseAction 封装的执行方法
-      if (isCLIMode) {
-        const handler = await this.getCachedHandler('write', () => this.createWriteHandler());
-        
-        // 记录 workspaceDir 用于调试
-        const workspaceDir = this.getWorkspaceDir(workspaceOptions);
-        logger.info('GeneratePrototype: CLI mode - workspaceDir', {
-          workspaceDir,
-          documentType: workspaceOptions.documentType,
+      const handler = await this.getCachedHandler('write', () => this.createWriteHandler(workspaceOptions));
+      const handlerOptions = this.getHandlerOptions(workspaceOptions);
+      const result = await handler.execute('', handlerOptions);
+
+      // 验证生成的 Prototype 内容
+      if (result.content) {
+        this.validatePrototypeContent(result.content);
+        logger.info('GeneratePrototype: Prototype generation completed successfully', {
+          contentLength: result.content.length,
+          workspaceDir: result.workspaceDir,
         });
-        
-        const result = await this.executeWriteHandler(handler, '', workspaceOptions, {
-          type: 'prototype',
-          filename: 'index.html',
+      } else {
+        logger.warn('GeneratePrototype: No content returned from handler');
+      }
+
+      // 读取 PRD 内容作为 action output（用于前端展示）
+      let prdContent = '';
+      try {
+        prdContent = await this.loadDocumentFromWorkspace('PRD.md', workspaceOptions, 'PRD');
+      } catch (error: unknown) {
+        const err = error as Error;
+        logger.warn('GeneratePrototype: Failed to load PRD content for output', {
+          error: err.message,
         });
-        
-        // 验证文件是否真的存在
-        const { WorkspaceManager } = await import('../utils/WorkspaceManager');
-        const projectWorkspace = WorkspaceManager.getProjectWorkspacePath(workspaceOptions);
-        const prototypeDir = path.join(projectWorkspace, 'docs', 'prototype');
-        const indexHtmlPath = path.join(prototypeDir, 'index.html');
-        
-        try {
-          const fileStats = await fs.stat(indexHtmlPath);
-          logger.info('GeneratePrototype: Verified prototype file exists', {
-            path: indexHtmlPath,
-            size: fileStats.size,
-          });
-        } catch (error: any) {
-          logger.error('GeneratePrototype: Prototype file not found after generation', {
-            path: indexHtmlPath,
-            error: error.message,
-          });
-          // 不抛出错误，让流程继续，但记录警告
-        }
-        
-        // CLI模式下，需要读取PRD内容作为返回的content
-        let prdContent = '';
-        try {
-          prdContent = await this.loadDocumentFromWorkspace('PRD.md', workspaceOptions, 'PRD') || '';
-        } catch (error: any) {
-          logger.warn('GeneratePrototype: Failed to load PRD content for CLI mode', {
-            error: error.message,
-          });
-        }
-        
-        // 构建files数组，与LLM模式保持一致
-        const files = [{
+      }
+
+      const projectWorkspace = WorkspaceManager.getProjectWorkspacePath(workspaceOptions);
+      const prototypeDir = path.join(projectWorkspace, 'docs', 'prototype');
+      const indexHtmlPath = path.join(prototypeDir, 'index.html');
+      const files = [
+        {
           filename: 'index.html',
           path: indexHtmlPath,
-        }];
-        
-        // 更新返回的content为PRD内容，并包含files信息
-        return this.createActionOutput(
-          prdContent || result.content,
-          {
-            ...result.data,
-            type: 'prototype',
-            filename: 'index.html',
-            files: files,
-            mainFile: 'index.html',
-            workspaceDir: workspaceDir,
-          }
-        );
-      }
+        },
+      ];
 
-      // LLM模式：继续使用现有逻辑
-      // 1. 获取PRD内容
-      let prdContent = options?.prdContent || input;
-      
-      // 如果未提供PRD内容，尝试从workspace读取
-      if (!prdContent || prdContent.trim().length === 0) {
-        const prdFromWorkspace = await this.loadDocumentFromWorkspace('PRD.md', workspaceOptions, 'PRD');
-        if (prdFromWorkspace) {
-          prdContent = prdFromWorkspace;
-        } else {
-          throw new Error('PRD content not found. Please provide PRD content or ensure PRD.md exists in workspace.');
-        }
-      }
-
-      logger.info('GeneratePrototype: PRD content loaded', {
-        prdLength: prdContent.length,
+      return this.createActionOutput(prdContent || result.content, {
+        type: 'prototype',
+        mode,
+        filename: 'index.html',
+        files,
+        mainFile: 'index.html',
+        workspaceDir: result.workspaceDir,
       });
-
-      // 2. 加载系统提示词
-      const systemPrompt = await this.loadSystemPrompt('prototype', 'system_prompt', PROTOTYPE_SYSTEM_PROMPT);
-
-      // 3. 构建生成提示词
-      const prompt = buildPrototypePrompt(prdContent);
-
-      // 4. 调用LLM生成HTML原型
-      logger.info('GeneratePrototype: Calling LLM to generate prototype');
-      const htmlContent = await this.aask(prompt, [systemPrompt]);
-
-      // 5. 解析HTML内容，确保只生成一个index.html文件
-      const prototypeFiles = this.parsePrototypeFiles(htmlContent);
-
-      // 6. 保存到workspace
-      const savedFiles = await this.savePrototypeFiles(prototypeFiles, workspaceOptions);
-
-      logger.info('GeneratePrototype: Prototype generation completed', {
-        fileCount: savedFiles.length,
-        files: savedFiles.map(f => f.filename),
-        workspaceDir: this.getWorkspaceDir(workspaceOptions),
-      });
-
-      // 7. 返回结果（应该只有一个index.html文件）
-      // 注意：content 返回 PRD 内容，而不是生成完成的提示信息
-      const mainFile = savedFiles.find(f => f.filename === 'index.html')?.filename || savedFiles[0]?.filename || 'index.html';
-      return this.createActionOutput(
-        prdContent, // 返回PRD内容，供前端显示
-        {
-          type: 'prototype',
-          filename: mainFile,
-          files: savedFiles,
-          mainFile: mainFile,
-          workspaceDir: this.getWorkspaceDir(workspaceOptions),
-        }
-      );
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as Error;
       logger.error('GeneratePrototype: Failed to generate prototype', {
-        error: error.message,
-        stack: error.stack,
+        error: err.message,
+        stack: err.stack,
       });
       throw error;
     }
-  }
-
-  /**
-   * 解析HTML内容，确保只生成一个index.html文件
-   * 所有代码（HTML/CSS/JS）都必须在同一个HTML文件中
-   */
-  private parsePrototypeFiles(htmlContent: string): Array<{ filename: string; content: string }> {
-    let cleanedContent = htmlContent.trim();
-
-    // 1. 清理JSON格式的流式输出数据（如果存在）
-    // 移除类似 {"type":"thinking",...} 或 {"type":"assistant",...} 的JSON行
-    cleanedContent = cleanedContent.replace(/\{[\s\S]*?"type"\s*:\s*"(thinking|assistant|user|tool_call)"[\s\S]*?\}\s*/g, '');
-    
-    // 2. 提取markdown代码块中的HTML（```html ... ``` 或 ``` ... ```）
-    const codeBlockPattern = /```(?:html)?\s*\n([\s\S]*?)\n```/gi;
-    const codeBlockMatches = Array.from(cleanedContent.matchAll(codeBlockPattern));
-    if (codeBlockMatches.length > 0) {
-      // 使用最后一个代码块（通常是完整的HTML）
-      cleanedContent = codeBlockMatches[codeBlockMatches.length - 1][1];
-    }
-
-    // 3. 提取tool_call中的streamContent（如果存在）
-    const toolCallPattern = /"streamContent"\s*:\s*"([\s\S]*?)"/g;
-    const toolCallMatches = Array.from(cleanedContent.matchAll(toolCallPattern));
-    if (toolCallMatches.length > 0) {
-      // 合并所有tool_call中的内容
-      cleanedContent = toolCallMatches.map(m => m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"')).join('\n');
-    }
-
-    // 4. 移除可能存在的代码块标记（如 ```html 或 ```）
-    cleanedContent = cleanedContent.replace(/^```(?:html)?\s*\n?/i, '');
-    cleanedContent = cleanedContent.replace(/\n?```\s*$/i, '');
-
-    // 5. 移除markdown格式的说明文字（以#开头的标题行等，但保留HTML注释）
-    // 只移除不在HTML标签内的markdown标题
-    cleanedContent = cleanedContent.replace(/^#{1,6}\s+.*$/gm, '');
-    cleanedContent = cleanedContent.replace(/^##\s+.*$/gm, '');
-    
-    // 6. 查找并提取完整的HTML代码
-    // 优先查找完整的HTML文档结构
-    const htmlDocPattern = /<!DOCTYPE\s+html>[\s\S]*?<\/html>/i;
-    const htmlDocMatch = cleanedContent.match(htmlDocPattern);
-    if (htmlDocMatch) {
-      cleanedContent = htmlDocMatch[0];
-    } else {
-      // 如果没有完整的HTML文档，查找HTML标签
-      const htmlTagPattern = /<html[\s\S]*?<\/html>/i;
-      const htmlTagMatch = cleanedContent.match(htmlTagPattern);
-      if (htmlTagMatch) {
-        cleanedContent = htmlTagMatch[0];
-      }
-    }
-
-    // 7. 清理多余的空行和空白字符
-    cleanedContent = cleanedContent.trim();
-
-    // 8. 清理外部依赖（CDN、外部资源等）
-    cleanedContent = this.cleanExternalDependencies(cleanedContent);
-
-    // 9. 验证HTML完整性
-    const validationResult = this.validateHTML(cleanedContent);
-    if (!validationResult.isValid) {
-      logger.warn('GeneratePrototype: HTML validation failed', {
-        errors: validationResult.errors,
-        preview: cleanedContent.substring(0, 200),
-      });
-    }
-
-    // 10. 检查是否已经是完整的HTML
-    if (cleanedContent.includes('<!DOCTYPE html>') || 
-        (cleanedContent.includes('<html') && cleanedContent.includes('</html>'))) {
-      return [{ filename: 'index.html', content: cleanedContent }];
-    }
-
-    // 11. 如果仍然不是完整HTML，尝试包装
-    // 但先检查是否包含HTML标签内容
-    if (cleanedContent.includes('<body') || cleanedContent.includes('<div') || cleanedContent.includes('<main')) {
-      const wrappedContent = this.wrapAsCompleteHTML(cleanedContent);
-      return [{ filename: 'index.html', content: wrappedContent }];
-    }
-
-    // 12. 如果完全没有HTML内容，记录警告并返回空HTML
-    logger.warn('GeneratePrototype: No valid HTML content found in LLM response', {
-      contentLength: htmlContent.length,
-      cleanedLength: cleanedContent.length,
-      preview: cleanedContent.substring(0, 200),
-    });
-
-    // 返回一个基本的错误提示页面
-    const errorHTML = `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>原型生成错误</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-            background: #f5f5f5;
-        }
-        .error-container {
-            text-align: center;
-            padding: 40px;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        h1 { color: #EF4444; margin-bottom: 16px; }
-        p { color: #666; line-height: 1.6; }
-    </style>
-</head>
-<body>
-    <div class="error-container">
-        <h1>原型生成失败</h1>
-        <p>未能从LLM响应中提取有效的HTML代码。请检查提示词配置或重试。</p>
-    </div>
-</body>
-</html>`;
-    
-    return [{ filename: 'index.html', content: errorHTML }];
-  }
-
-  /**
-   * 清理HTML中的外部依赖（CDN、外部资源等）
-   * 移除所有外部script和link标签
-   */
-  private cleanExternalDependencies(htmlContent: string): string {
-    let cleaned = htmlContent;
-
-    // 移除所有外部script标签（src属性指向外部URL的）
-    cleaned = cleaned.replace(/<script\s+[^>]*src\s*=\s*["'](https?:\/\/|\/\/)[^"']+["'][^>]*>[\s\S]*?<\/script>/gi, '');
-    
-    // 移除所有外部link标签（href属性指向外部URL的CSS）
-    cleaned = cleaned.replace(/<link\s+[^>]*href\s*=\s*["'](https?:\/\/|\/\/)[^"']+["'][^>]*>/gi, '');
-    
-    // 移除所有外部样式表引用（@import url(...)）
-    cleaned = cleaned.replace(/@import\s+url\(["']?(https?:\/\/|\/\/)[^"')]+["']?\)\s*;?/gi, '');
-    
-    // 移除注释中的CDN引用提示
-    cleaned = cleaned.replace(/<!--\s*(Element Plus|Vue|Vant|CDN|unpkg|jsdelivr)[^>]*-->/gi, '');
-
-    return cleaned;
-  }
-
-  /**
-   * 验证HTML的完整性和自包含性
-   */
-  private validateHTML(htmlContent: string): { isValid: boolean; errors: string[] } {
-    const errors: string[] = [];
-
-    // 检查是否包含DOCTYPE声明
-    if (!htmlContent.includes('<!DOCTYPE')) {
-      errors.push('缺少DOCTYPE声明');
-    }
-
-    // 检查是否包含html标签
-    if (!htmlContent.includes('<html')) {
-      errors.push('缺少<html>标签');
-    }
-
-    // 检查是否包含head标签
-    if (!htmlContent.includes('<head')) {
-      errors.push('缺少<head>标签');
-    }
-
-    // 检查是否包含body标签
-    if (!htmlContent.includes('<body')) {
-      errors.push('缺少<body>标签');
-    }
-
-    // 检查是否有外部script引用
-    const externalScriptPattern = /<script\s+[^>]*src\s*=\s*["'](https?:\/\/|\/\/)[^"']+["']/gi;
-    if (externalScriptPattern.test(htmlContent)) {
-      errors.push('检测到外部script引用，应使用内联script');
-    }
-
-    // 检查是否有外部link引用
-    const externalLinkPattern = /<link\s+[^>]*href\s*=\s*["'](https?:\/\/|\/\/)[^"']+["']/gi;
-    if (externalLinkPattern.test(htmlContent)) {
-      errors.push('检测到外部link引用，应使用内联style');
-    }
-
-    // 检查是否有外部样式表导入
-    const externalImportPattern = /@import\s+url\(["']?(https?:\/\/|\/\/)/gi;
-    if (externalImportPattern.test(htmlContent)) {
-      errors.push('检测到外部样式表导入，应使用内联样式');
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-    };
-  }
-
-  /**
-   * 将内容包装成完整的HTML文件
-   * 确保包含必要的基础样式，完全自包含，无外部依赖
-   */
-  private wrapAsCompleteHTML(content: string): string {
-    // 如果已经是完整的HTML，先清理外部依赖，然后返回
-    if (content.includes('<!DOCTYPE html>') || (content.includes('<html') && content.includes('</html>'))) {
-      return this.cleanExternalDependencies(content);
-    }
-
-    // 否则包装成完整的HTML，只包含基础样式，不引入任何外部资源
-    return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>产品原型</title>
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Inter', sans-serif;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-        }
-        /* 基础间距体系（8px） */
-        :root {
-            --spacing-xs: 4px;
-            --spacing-sm: 8px;
-            --spacing-md: 16px;
-            --spacing-lg: 24px;
-            --spacing-xl: 32px;
-            /* 颜色规范 */
-            --color-primary: #3B82F6;
-            --color-success: #10B981;
-            --color-warning: #F59E0B;
-            --color-error: #EF4444;
-            /* 圆角 */
-            --border-radius: 12px;
-        }
-    </style>
-</head>
-<body>
-${content}
-</body>
-</html>`;
-  }
-
-  /**
-   * 保存原型文件到workspace
-   */
-  private async savePrototypeFiles(
-    files: Array<{ filename: string; content: string }>,
-    options: WorkspaceOptions
-  ): Promise<Array<{ filename: string; path: string }>> {
-    // 使用 getProjectWorkspacePath 获取项目工作空间路径
-    // 然后在其下的 docs/prototype 目录保存文件
-    const { WorkspaceManager } = await import('../utils/WorkspaceManager');
-    const projectWorkspace = WorkspaceManager.getProjectWorkspacePath(options);
-    const prototypeDir = path.join(projectWorkspace, 'docs', 'prototype');
-
-    // 确保目录存在
-    await fs.mkdir(prototypeDir, { recursive: true });
-
-    const savedFiles: Array<{ filename: string; path: string }> = [];
-
-    for (const file of files) {
-      const filePath = path.join(prototypeDir, file.filename);
-      await fs.writeFile(filePath, file.content, 'utf-8');
-      savedFiles.push({
-        filename: file.filename,
-        path: filePath,
-      });
-    }
-
-    return savedFiles;
   }
 }
 
