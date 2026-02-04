@@ -26,7 +26,7 @@ export class WriteCode extends BaseAction {
       projectId: options?.projectId,
       version: options?.version,
     });
-    
+
     try {
       // 验证必需参数
       if (!options?.applicationId) {
@@ -35,29 +35,29 @@ export class WriteCode extends BaseAction {
       if (!options?.projectId) {
         throw new Error('WriteCode: projectId is required in options');
       }
-      
+
       // 直接获取工作空间根目录 (ainative-workspace) - 代码将在此目录下生成
       const workDir = WorkspaceManager.getProjectWorkspacePath(options);
-      
+
       // 确保工作目录存在
       await fs.mkdir(workDir, { recursive: true });
-      
-      logger.info('WriteCode: Workspace directory prepared', { 
+
+      logger.info('WriteCode: Workspace directory prepared', {
         workDir,
       });
-      
+
       // 调试模式检查
       const isDebugMode = process.env.WRITE_CODE_DEBUG === 'true';
       if (isDebugMode) {
         logger.info('WriteCode: Debug mode enabled, executing debug command', {
           workDir,
         });
-        
+
         const debugPrompt = '在当前目录下生成一个writeCodeTest.txt文档，内容为 我是编写代码调试';
         const debugResult = await this.runCLICommand(debugPrompt, workDir, {
           timeout: 300000, // 5分钟超时
         });
-        
+
         if (debugResult.exitCode !== 0) {
           logger.error('WriteCode: Debug command failed', {
             exitCode: debugResult.exitCode,
@@ -65,11 +65,11 @@ export class WriteCode extends BaseAction {
           });
           throw new Error(`Debug command failed with exit code ${debugResult.exitCode}`);
         }
-        
+
         logger.info('WriteCode: Debug command completed', {
           outputLength: debugResult.output.length,
         });
-        
+
         return {
           content: `# WriteCode Debug Mode\n\n## Debug Prompt\n\`\`\`\n${debugPrompt}\n\`\`\`\n\n## Output:\n\`\`\`\n${debugResult.output}\n\`\`\``,
           data: {
@@ -80,7 +80,7 @@ export class WriteCode extends BaseAction {
           },
         };
       }
-      
+
       // 检查是否存在改进文件，如果存在则跳过 WriteCode（进入代码改进流程）
       const improveFilePath = path.join(workDir, 'docs/code/ImproveCode.md');
       const improveFileExists = await this.checkFileExists(improveFilePath);
@@ -99,37 +99,37 @@ export class WriteCode extends BaseAction {
           },
         };
       }
-      
+
       // 从 prompts/code.ts 获取命令提示词
       const applyCommand = getApplyCommand();
       const checkCommand = getCheckCommand();
-      
+
       // 循环执行，直到任务完成
       const maxRetries = 10; // 最大重试次数
       let isCompleted = false;
       let retryCount = 0;
-      let allOutputs: string[] = [];
-      
-      logger.info('WriteCode: Starting code generation loop', { 
+      const allOutputs: string[] = [];
+
+      logger.info('WriteCode: Starting code generation loop', {
         cwd: workDir,
         maxRetries,
       });
-      
+
       while (!isCompleted && retryCount < maxRetries) {
         // 检查是否被取消
         this.checkCancellation();
         retryCount++;
-        
+
         logger.info(`WriteCode: Iteration ${retryCount}/${maxRetries} - Executing apply command`, {
           command: applyCommand,
         });
-        
+
         // 1. 执行 apply 命令
         const applyResult = await this.runCLICommand(applyCommand, workDir, {
           timeout: 3600000, // 60分钟超时
           abortSignal: this.abortSignal,
         });
-        
+
         const applyOutput = applyResult.output;
         if (applyResult.exitCode === 0) {
           logger.info(`WriteCode: Apply command completed (iteration ${retryCount})`, {
@@ -137,25 +137,25 @@ export class WriteCode extends BaseAction {
             output: applyOutput.length > 0 ? applyOutput : '(empty output)',
           });
         } else {
-          logger.warn(`WriteCode: Apply command failed (iteration ${retryCount})`, { 
+          logger.warn(`WriteCode: Apply command failed (iteration ${retryCount})`, {
             exitCode: applyResult.exitCode,
             stdout: applyOutput || '(empty)',
             stderr: applyResult.stderr || '(empty)',
           });
         }
-        
+
         allOutputs.push(`=== Iteration ${retryCount} - Apply ===\n${applyOutput}`);
-        
+
         // 2. 执行 check 命令
         logger.info(`WriteCode: Iteration ${retryCount}/${maxRetries} - Executing check command`, {
           command: checkCommand,
         });
-        
+
         const checkResult = await this.runCLICommand(checkCommand, workDir, {
           timeout: 300000, // 5分钟超时（检查命令应该很快）
           abortSignal: this.abortSignal,
         });
-        
+
         const checkOutput = checkResult.output;
         if (checkResult.exitCode === 0) {
           logger.info(`WriteCode: Check command completed (iteration ${retryCount})`, {
@@ -163,24 +163,48 @@ export class WriteCode extends BaseAction {
             output: checkOutput.substring(0, 200), // 记录前200字符
           });
         } else {
-          logger.warn(`WriteCode: Check command failed (iteration ${retryCount})`, { 
+          logger.warn(`WriteCode: Check command failed (iteration ${retryCount})`, {
             exitCode: checkResult.exitCode,
             stdout: checkOutput || '(empty)',
             stderr: checkResult.stderr || '(empty)',
           });
         }
-        
+
         allOutputs.push(`=== Iteration ${retryCount} - Check ===\n${checkOutput}`);
-        
-        // 3. 判断是否完成 - 解析JSON响应
+
+        // 3. 判断是否完成 - 解析固定两行文本格式
         try {
-          // 尝试从输出中提取JSON
-          const jsonMatch = checkOutput.match(/\{[\s\S]*"result"[\s\S]*\}/);
-          if (!jsonMatch) {
-            logger.warn(`WriteCode: Unable to parse JSON from check output (iteration ${retryCount})`, {
-              checkOutput: checkOutput.substring(0, 200),
+          // 从输出中提取有效内容（跳过前面的系统消息等）
+          // Cursor CLI 可能输出多行 JSON，我们需要找到实际的结果部分
+          const lines = checkOutput.split('\n');
+
+          // 查找包含状态的行（已完成、未完成、未找到）
+          let statusLine = '';
+          let reasonLine = '';
+          let foundStatus = false;
+
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+
+            // 检查是否是状态行
+            if (line === '已完成' || line === '未完成' || line === '未找到') {
+              statusLine = line;
+              // 下一行是原因（如果存在）
+              if (i + 1 < lines.length) {
+                reasonLine = lines[i + 1].trim();
+              }
+              foundStatus = true;
+              break;
+            }
+          }
+
+          if (!foundStatus) {
+            logger.warn(`WriteCode: Unable to find status in check output (iteration ${retryCount})`, {
+              checkOutput: checkOutput.substring(0, 500),
+              outputLines: lines.slice(0, 10).map((line) => line.substring(0, 100)),
             });
-            // 回退到旧的文本匹配方式
+
+            // 回退到文本包含检查
             if (checkOutput.includes('未找到')) {
               const errorMessage = `WriteCode: Task file not found. Check command returned "未找到". Output: ${checkOutput.substring(0, 500)}`;
               logger.error(errorMessage, {
@@ -190,45 +214,53 @@ export class WriteCode extends BaseAction {
               throw new Error(errorMessage);
             } else if (checkOutput.includes('已完成')) {
               isCompleted = true;
+              logger.info(`WriteCode: Tasks completed (found by fallback text search) (iteration ${retryCount})`);
+            } else {
+              logger.warn(`WriteCode: Could not determine completion status (iteration ${retryCount})`, {
+                willRetry: retryCount < maxRetries,
+              });
             }
           } else {
-            const checkResult = JSON.parse(jsonMatch[0]);
-            const result = checkResult.result;
-            const reason = checkResult.reason || '';
-            
+            // 成功解析状态
             logger.info(`WriteCode: Check result parsed (iteration ${retryCount})`, {
-              result,
-              reason,
+              status: statusLine,
+              reason: reasonLine,
             });
-            
-            if (result === '未找到') {
-              const errorMessage = `WriteCode: Task file not found. Reason: ${reason}`;
+
+            if (statusLine === '未找到') {
+              const errorMessage = `WriteCode: Task file not found. Reason: ${reasonLine}`;
               logger.error(errorMessage, {
                 iteration: retryCount,
-                result,
-                reason,
+                status: statusLine,
+                reason: reasonLine,
               });
               throw new Error(errorMessage);
-            } else if (result === '已完成') {
+            } else if (statusLine === '已完成') {
               isCompleted = true;
               logger.info(`WriteCode: Tasks completed successfully (iteration ${retryCount})`, {
                 totalIterations: retryCount,
-                reason,
+                reason: reasonLine,
               });
-            } else {
+            } else if (statusLine === '未完成') {
               logger.warn(`WriteCode: Tasks not completed yet (iteration ${retryCount})`, {
-                result,
-                reason,
+                status: statusLine,
+                reason: reasonLine,
                 willRetry: retryCount < maxRetries,
               });
             }
           }
-        } catch (parseError: any) {
-          logger.warn(`WriteCode: Failed to parse check output as JSON (iteration ${retryCount})`, {
-            error: parseError.message,
-            checkOutput: checkOutput.substring(0, 200),
+        } catch (parseError) {
+          const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+          logger.error(`WriteCode: Failed to parse check output (iteration ${retryCount})`, {
+            error: errorMessage,
+            checkOutput: checkOutput.substring(0, 500),
+            outputLines: checkOutput
+              .split('\n')
+              .slice(0, 10)
+              .map((line) => line.substring(0, 100)),
           });
-          // 回退到旧的文本匹配方式
+
+          // 回退到文本包含检查
           if (checkOutput.includes('未找到')) {
             const errorMessage = `WriteCode: Task file not found. Check command returned "未找到". Output: ${checkOutput.substring(0, 500)}`;
             logger.error(errorMessage, {
@@ -238,26 +270,27 @@ export class WriteCode extends BaseAction {
             throw new Error(errorMessage);
           } else if (checkOutput.includes('已完成')) {
             isCompleted = true;
+            logger.info(`WriteCode: Tasks completed (found by fallback text search) (iteration ${retryCount})`);
           }
         }
       }
-      
+
       // 汇总输出
       const stdout = allOutputs.join('\n\n');
-      
+
       if (!isCompleted) {
         logger.error('WriteCode: Max retries reached, tasks still not completed', {
           maxRetries,
           totalIterations: retryCount,
         });
       }
-      
+
       logger.info('WriteCode: Code generation loop completed', {
         isCompleted,
         totalIterations: retryCount,
         workDir,
       });
-      
+
       return {
         content: `# Code Generation ${isCompleted ? 'Completed' : 'Incomplete'}\n\n## Status: ${isCompleted ? '✅ All tasks completed' : '❌ Max retries reached'}\n\n## Total Iterations: ${retryCount}\n\n## Cursor CLI Output:\n\n${stdout}`,
         data: {
@@ -269,11 +302,13 @@ export class WriteCode extends BaseAction {
           timestamp: new Date().toISOString(),
         },
       };
-    } catch (error: any) {
+    } catch (error) {
       // 避免循环引用导致JSON序列化失败
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
       logger.error('WriteCode: Failed to generate code using Cursor CLI', {
-        message: error.message,
-        stack: error.stack,
+        message: errorMessage,
+        stack: errorStack,
       });
       throw error;
     }
@@ -293,4 +328,3 @@ export class WriteCode extends BaseAction {
 }
 
 export default WriteCode;
-

@@ -97,7 +97,7 @@ Step 5：生成后自检
  * @returns 代码生成提示词
  */
 export function buildCodePrompt(design: string): string {
-    return `━━━━━━━━━━━━━━━━━━━━━━
+  return `━━━━━━━━━━━━━━━━━━━━━━
   【强制实现规则】
   ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -134,107 +134,109 @@ export function buildCodePrompt(design: string): string {
  * @param prd 产品需求文档（PRD），可选
  * @param taskBreakdown 任务拆分文档（TASK_BREAKDOWN.md），可选
  */
-export function buildCodePromptWithStandardDocs(
-    design: string,
-    prd?: string,
-    taskBreakdown?: string
-): string {
-    let prompt = `# 代码生成标准文档（强约束）\n\n`;
+export function buildCodePromptWithStandardDocs(design: string, prd?: string, taskBreakdown?: string): string {
+  let prompt = `# 代码生成标准文档（强约束）\n\n`;
 
-    prompt += `【文档优先级（不可违反）】\n`;
-    prompt += `1. DESIGN.md（最高）\n`;
-    prompt += `2. TASK_BREAKDOWN.md\n`;
-    prompt += `3. PRD\n\n`;
+  prompt += `【文档优先级（不可违反）】\n`;
+  prompt += `1. DESIGN.md（最高）\n`;
+  prompt += `2. TASK_BREAKDOWN.md\n`;
+  prompt += `3. PRD\n\n`;
 
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+  prompt += `【1. 系统设计文档（DESIGN.md）】\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  prompt += `${design} \n\n`;
+
+  if (taskBreakdown) {
     prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-    prompt += `【1. 系统设计文档（DESIGN.md）】\n`;
+    prompt += `【2. 任务拆分文档（TASK_BREAKDOWN.md）】\n`;
     prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    prompt += `${design} \n\n`;
+    prompt += `${taskBreakdown} \n\n`;
+  }
 
-    if (taskBreakdown) {
-        prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-        prompt += `【2. 任务拆分文档（TASK_BREAKDOWN.md）】\n`;
-        prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-        prompt += `${taskBreakdown} \n\n`;
-    }
-
-    if (prd) {
-        prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-        prompt += `【3. 产品需求文档（PRD）】\n`;
-        prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-        prompt += `${prd} \n\n`;
-    }
-
+  if (prd) {
     prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-    prompt += `【实现铁律】\n`;
+    prompt += `【3. 产品需求文档（PRD）】\n`;
     prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    prompt += `- 所有代码必须以 DESIGN.md 为准\n`;
-    prompt += `- TASK / PRD 只能作为补充，不得覆盖 DESIGN\n`;
-    prompt += `- 任意冲突必须终止生成\n`;
-    prompt += `- 禁止任何形式的自由发挥\n\n`;
+    prompt += `${prd} \n\n`;
+  }
 
-    // 提取前后端文件清单，明确要求生成
-    const { frontendFiles, backendFiles, configFiles } = extractFileListFromDesign(design);
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+  prompt += `【实现铁律】\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  prompt += `- 所有代码必须以 DESIGN.md 为准\n`;
+  prompt += `- TASK / PRD 只能作为补充，不得覆盖 DESIGN\n`;
+  prompt += `- 任意冲突必须终止生成\n`;
+  prompt += `- 禁止任何形式的自由发挥\n\n`;
 
-    prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-    prompt += `【必须生成的代码范围】\n`;
-    prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  // 提取前后端文件清单，明确要求生成
+  const { frontendFiles, backendFiles, configFiles } = extractFileListFromDesign(design);
 
-    if (frontendFiles.length > 0) {
-        prompt += `** 前端代码（必须生成）：**\n`;
-        prompt += `DESIGN文档要求生成以下前端文件（共${frontendFiles.length} 个）：\n`;
-        prompt += frontendFiles.slice(0, 10).map(f => `- ${f} `).join('\n');
-        if (frontendFiles.length > 10) {
-            prompt += `\n... 还有 ${frontendFiles.length - 10} 个前端文件\n`;
-        }
-        prompt += `\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+  prompt += `【必须生成的代码范围】\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+  if (frontendFiles.length > 0) {
+    prompt += `** 前端代码（必须生成）：**\n`;
+    prompt += `DESIGN文档要求生成以下前端文件（共${frontendFiles.length} 个）：\n`;
+    prompt += frontendFiles
+      .slice(0, 10)
+      .map((f) => `- ${f} `)
+      .join('\n');
+    if (frontendFiles.length > 10) {
+      prompt += `\n... 还有 ${frontendFiles.length - 10} 个前端文件\n`;
     }
+    prompt += `\n`;
+  }
 
-    if (backendFiles.length > 0) {
-        prompt += `** 后端代码（必须生成）：**\n`;
-        prompt += `DESIGN文档要求生成以下后端文件（共${backendFiles.length} 个）：\n`;
-        prompt += backendFiles.slice(0, 10).map(f => `- ${f} `).join('\n');
-        if (backendFiles.length > 10) {
-            prompt += `\n... 还有 ${backendFiles.length - 10} 个后端文件\n`;
-        }
-        prompt += `\n`;
+  if (backendFiles.length > 0) {
+    prompt += `** 后端代码（必须生成）：**\n`;
+    prompt += `DESIGN文档要求生成以下后端文件（共${backendFiles.length} 个）：\n`;
+    prompt += backendFiles
+      .slice(0, 10)
+      .map((f) => `- ${f} `)
+      .join('\n');
+    if (backendFiles.length > 10) {
+      prompt += `\n... 还有 ${backendFiles.length - 10} 个后端文件\n`;
     }
+    prompt += `\n`;
+  }
 
-    if (configFiles.length > 0) {
-        prompt += `** 配置文件（必须生成）：**\n`;
-        prompt += configFiles.map(f => `- ${f} `).join('\n');
-        prompt += `\n\n`;
-    }
+  if (configFiles.length > 0) {
+    prompt += `** 配置文件（必须生成）：**\n`;
+    prompt += configFiles.map((f) => `- ${f} `).join('\n');
+    prompt += `\n\n`;
+  }
 
-    prompt += `** 重要要求：**\n`;
-    prompt += `1. 必须同时生成前端代码和后端代码，不能只生成其中一种\n`;
-    prompt += `2. 前端代码必须包含所有页面组件、通用组件、API文件、工具函数等\n`;
-    prompt += `3. 后端代码必须包含所有模型、控制器、路由、中间件等\n`;
-    prompt += `4. 必须生成所有配置文件（package.json、tsconfig.json等）\n`;
-    prompt += `5. 如果DESIGN文档中同时包含前端和后端设计，你必须生成完整的全栈代码\n\n`;
+  prompt += `** 重要要求：**\n`;
+  prompt += `1. 必须同时生成前端代码和后端代码，不能只生成其中一种\n`;
+  prompt += `2. 前端代码必须包含所有页面组件、通用组件、API文件、工具函数等\n`;
+  prompt += `3. 后端代码必须包含所有模型、控制器、路由、中间件等\n`;
+  prompt += `4. 必须生成所有配置文件（package.json、tsconfig.json等）\n`;
+  prompt += `5. 如果DESIGN文档中同时包含前端和后端设计，你必须生成完整的全栈代码\n\n`;
 
-    prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-    prompt += `【目录结构要求（强制）】\n`;
-    prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    prompt += `**前端代码目录要求：**\n`;
-    prompt += `- 所有前端文件必须生成到 frontend/ 目录下\n`;
-    prompt += `- 前端文件路径格式：frontend/src/views/xxx.vue、frontend/src/components/xxx.vue 等\n`;
-    prompt += `- 前端配置文件路径格式：frontend/package.json、frontend/tsconfig.json 等\n\n`;
-    prompt += `**后端代码目录要求：**\n`;
-    prompt += `- 所有后端文件必须生成到 backend/ 目录下\n`;
-    prompt += `- 后端文件路径格式：backend/src/models/xxx.ts、backend/src/controllers/xxx.ts 等\n`;
-    prompt += `- 后端配置文件路径格式：backend/package.json、backend/tsconfig.json 等\n\n`;
-    prompt += `**示例：**\n`;
-    prompt += `- 前端组件：frontend/src/components/Button.vue ✅\n`;
-    prompt += `- 前端页面：frontend/src/views/Home.vue ✅\n`;
-    prompt += `- 后端模型：backend/src/models/User.ts ✅\n`;
-    prompt += `- 后端控制器：backend/src/controllers/UserController.ts ✅\n`;
-    prompt += `- ❌ 错误示例：src/views/Home.vue（缺少 frontend/ 前缀）\n`;
-    prompt += `- ❌ 错误示例：src/models/User.ts（缺少 backend/ 前缀）\n\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+  prompt += `【目录结构要求（强制）】\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  prompt += `**前端代码目录要求：**\n`;
+  prompt += `- 所有前端文件必须生成到 frontend/ 目录下\n`;
+  prompt += `- 前端文件路径格式：frontend/src/views/xxx.vue、frontend/src/components/xxx.vue 等\n`;
+  prompt += `- 前端配置文件路径格式：frontend/package.json、frontend/tsconfig.json 等\n\n`;
+  prompt += `**后端代码目录要求：**\n`;
+  prompt += `- 所有后端文件必须生成到 backend/ 目录下\n`;
+  prompt += `- 后端文件路径格式：backend/src/models/xxx.ts、backend/src/controllers/xxx.ts 等\n`;
+  prompt += `- 后端配置文件路径格式：backend/package.json、backend/tsconfig.json 等\n\n`;
+  prompt += `**示例：**\n`;
+  prompt += `- 前端组件：frontend/src/components/Button.vue ✅\n`;
+  prompt += `- 前端页面：frontend/src/views/Home.vue ✅\n`;
+  prompt += `- 后端模型：backend/src/models/User.ts ✅\n`;
+  prompt += `- 后端控制器：backend/src/controllers/UserController.ts ✅\n`;
+  prompt += `- ❌ 错误示例：src/views/Home.vue（缺少 frontend/ 前缀）\n`;
+  prompt += `- ❌ 错误示例：src/models/User.ts（缺少 backend/ 前缀）\n\n`;
 
-    prompt += `如无法 100% 确定实现方式，请返回错误。\n`;
+  prompt += `如无法 100% 确定实现方式，请返回错误。\n`;
 
-    return prompt;
+  return prompt;
 }
 
 /**
@@ -243,122 +245,122 @@ export function buildCodePromptWithStandardDocs(
  * @param taskBreakdownContent 任务拆分文档内容，可选
  */
 export function buildTaskDescriptionPrompt(
-    task: {
-        id: string;
-        name: string;
-        type: string;
-        priority: string;
-        estimatedHours: number;
-        dependencies?: string[];
-        description: string;
-        inputs?: string[];
-        outputs?: string[];
-        acceptanceCriteria?: string[];
-        technicalPoints?: string[];
-    },
-    _taskBreakdownContent?: string
+  task: {
+    id: string;
+    name: string;
+    type: string;
+    priority: string;
+    estimatedHours: number;
+    dependencies?: string[];
+    description: string;
+    inputs?: string[];
+    outputs?: string[];
+    acceptanceCriteria?: string[];
+    technicalPoints?: string[];
+  },
+  _taskBreakdownContent?: string
 ): string {
-    let prompt = `# 任务执行指令\n\n`;
+  let prompt = `# 任务执行指令\n\n`;
 
-    prompt += `【重要】此任务来源于 TASK_BREAKDOWN.md，不得偏离任务定义。\n\n`;
+  prompt += `【重要】此任务来源于 TASK_BREAKDOWN.md，不得偏离任务定义。\n\n`;
 
-    prompt += `任务ID：${task.id}\n`;
-    prompt += `任务名称：${task.name}\n`;
-    prompt += `任务类型：${task.type}\n`;
-    prompt += `优先级：${task.priority}\n`;
-    prompt += `预估工时：${task.estimatedHours} 小时\n\n`;
+  prompt += `任务ID：${task.id}\n`;
+  prompt += `任务名称：${task.name}\n`;
+  prompt += `任务类型：${task.type}\n`;
+  prompt += `优先级：${task.priority}\n`;
+  prompt += `预估工时：${task.estimatedHours} 小时\n\n`;
 
-    if (task.dependencies?.length) {
-        prompt += `依赖任务：${task.dependencies.join(', ')}\n\n`;
-    }
+  if (task.dependencies?.length) {
+    prompt += `依赖任务：${task.dependencies.join(', ')}\n\n`;
+  }
 
-    prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-    prompt += `【任务描述】\n`;
-    prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-    prompt += `${task.description}\n\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+  prompt += `【任务描述】\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+  prompt += `${task.description}\n\n`;
 
-    if (task.acceptanceCriteria?.length) {
-        prompt += `【验收标准】\n`;
-        prompt += task.acceptanceCriteria.map(c => `- ${c}`).join('\n');
-        prompt += `\n\n`;
-    }
+  if (task.acceptanceCriteria?.length) {
+    prompt += `【验收标准】\n`;
+    prompt += task.acceptanceCriteria.map((c) => `- ${c}`).join('\n');
+    prompt += `\n\n`;
+  }
 
-    if (task.technicalPoints?.length) {
-        prompt += `【技术要点】\n`;
-        prompt += task.technicalPoints.map(t => `- ${t}`).join('\n');
-        prompt += `\n\n`;
-    }
+  if (task.technicalPoints?.length) {
+    prompt += `【技术要点】\n`;
+    prompt += task.technicalPoints.map((t) => `- ${t}`).join('\n');
+    prompt += `\n\n`;
+  }
 
-    prompt += `必须确保：\n`;
-    prompt += `- 不超出 DESIGN 定义范围\n`;
-    prompt += `- 不引入额外依赖\n`;
-    prompt += `- 满足所有验收标准\n\n`;
+  prompt += `必须确保：\n`;
+  prompt += `- 不超出 DESIGN 定义范围\n`;
+  prompt += `- 不引入额外依赖\n`;
+  prompt += `- 满足所有验收标准\n\n`;
 
-    prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-    prompt += `【目录结构要求（强制）】\n`;
-    prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    prompt += `**前端代码目录要求：**\n`;
-    prompt += `- 所有前端文件必须生成到 frontend/ 目录下\n`;
-    prompt += `- 前端文件路径格式：frontend/src/views/xxx.vue、frontend/src/components/xxx.vue 等\n\n`;
-    prompt += `**后端代码目录要求：**\n`;
-    prompt += `- 所有后端文件必须生成到 backend/ 目录下\n`;
-    prompt += `- 后端文件路径格式：backend/src/models/xxx.ts、backend/src/controllers/xxx.ts 等\n\n`;
-    prompt += `**输出格式：**\n`;
-    prompt += `===== FILE: <路径> =====\n`;
-    prompt += `<完整代码内容>\n`;
-    prompt += `===== END FILE =====\n\n`;
-    prompt += `**重要：前端文件路径必须以 frontend/ 开头，后端文件路径必须以 backend/ 开头！**\n\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+  prompt += `【目录结构要求（强制）】\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  prompt += `**前端代码目录要求：**\n`;
+  prompt += `- 所有前端文件必须生成到 frontend/ 目录下\n`;
+  prompt += `- 前端文件路径格式：frontend/src/views/xxx.vue、frontend/src/components/xxx.vue 等\n\n`;
+  prompt += `**后端代码目录要求：**\n`;
+  prompt += `- 所有后端文件必须生成到 backend/ 目录下\n`;
+  prompt += `- 后端文件路径格式：backend/src/models/xxx.ts、backend/src/controllers/xxx.ts 等\n\n`;
+  prompt += `**输出格式：**\n`;
+  prompt += `===== FILE: <路径> =====\n`;
+  prompt += `<完整代码内容>\n`;
+  prompt += `===== END FILE =====\n\n`;
+  prompt += `**重要：前端文件路径必须以 frontend/ 开头，后端文件路径必须以 backend/ 开头！**\n\n`;
 
-    return prompt;
+  return prompt;
 }
 
 export function parseCodeFiles(codeOutput: string): Array<{ path: string; content: string }> {
-    const files: Array<{ path: string; content: string }> = [];
+  const files: Array<{ path: string; content: string }> = [];
 
-    // 匹配模式：===== FILE: path =====
-    const filePattern = /={5,}\s*FILE:\s*(.+?)\s*={5,}\n([\s\S]*?)={5,}\s*END FILE\s*={5,}/gi;
+  // 匹配模式：===== FILE: path =====
+  const filePattern = /={5,}\s*FILE:\s*(.+?)\s*={5,}\n([\s\S]*?)={5,}\s*END FILE\s*={5,}/gi;
 
-    let match;
-    while ((match = filePattern.exec(codeOutput)) !== null) {
-        files.push({
-            path: match[1].trim(),
-            content: match[2].trim(),
-        });
+  let match;
+  while ((match = filePattern.exec(codeOutput)) !== null) {
+    files.push({
+      path: match[1].trim(),
+      content: match[2].trim(),
+    });
+  }
+
+  // 备用方案：如果没有找到文件标记，尝试检测代码块
+  if (files.length === 0) {
+    const codeBlockPattern = /```(\w+)?\n([\s\S]*?)```/g;
+    let blockMatch;
+    let index = 0;
+
+    while ((blockMatch = codeBlockPattern.exec(codeOutput)) !== null) {
+      const language = blockMatch[1] || 'txt';
+      const content = blockMatch[2].trim();
+
+      files.push({
+        path: `file_${index}.${getExtensionForLanguage(language)}`,
+        content: content,
+      });
+
+      index++;
     }
+  }
 
-    // 备用方案：如果没有找到文件标记，尝试检测代码块
-    if (files.length === 0) {
-        const codeBlockPattern = /```(\w+)?\n([\s\S]*?)```/g;
-        let blockMatch;
-        let index = 0;
-
-        while ((blockMatch = codeBlockPattern.exec(codeOutput)) !== null) {
-            const language = blockMatch[1] || 'txt';
-            const content = blockMatch[2].trim();
-
-            files.push({
-                path: `file_${index}.${getExtensionForLanguage(language)}`,
-                content: content,
-            });
-
-            index++;
-        }
-    }
-
-    return files;
+  return files;
 }
 
 function getExtensionForLanguage(language: string): string {
-    const extensions: Record<string, string> = {
-        typescript: 'ts',
-        javascript: 'js',
-        html: 'html',
-        css: 'css',
-        json: 'json',
-        markdown: 'md',
-    };
+  const extensions: Record<string, string> = {
+    typescript: 'ts',
+    javascript: 'js',
+    html: 'html',
+    css: 'css',
+    json: 'json',
+    markdown: 'md',
+  };
 
-    return extensions[language.toLowerCase()] || 'js';
+  return extensions[language.toLowerCase()] || 'js';
 }
 
 /**
@@ -388,16 +390,14 @@ export const CODE_COMPLETENESS_CHECK_SYSTEM_PROMPT = `
  * @param codeFiles 生成的代码文件列表
  * @param design 设计文档
  */
-export function buildCodeCompletenessCheckPrompt(
-    codeFiles: Array<{ path: string; content: string }>,
-    design: string
-): string {
-    const filesSummary = codeFiles.map(f => `文件: ${f.path}\n长度: ${f.content.length} 字符`).join('\n');
-    const sampleFiles = codeFiles.slice(0, 3).map(f =>
-        `\n===== ${f.path} =====\n${f.content.substring(0, 500)}${f.content.length > 500 ? '...' : ''}\n`
-    ).join('\n');
+export function buildCodeCompletenessCheckPrompt(codeFiles: Array<{ path: string; content: string }>, design: string): string {
+  const filesSummary = codeFiles.map((f) => `文件: ${f.path}\n长度: ${f.content.length} 字符`).join('\n');
+  const sampleFiles = codeFiles
+    .slice(0, 3)
+    .map((f) => `\n===== ${f.path} =====\n${f.content.substring(0, 500)}${f.content.length > 500 ? '...' : ''}\n`)
+    .join('\n');
 
-    return `
+  return `
 请检测以下生成的代码是否完整：
 
 【生成的文件列表】
@@ -430,121 +430,119 @@ ${design.substring(0, 1000)}${design.length > 1000 ? '...' : ''}
  * @param taskBreakdown 任务拆分文档（可选）
  */
 export function buildCodeCompletionPrompt(
-    existingFiles: Array<{ path: string; content: string }>,
-    issues: string[],
-    design: string,
-    prd?: string,
-    taskBreakdown?: string
+  existingFiles: Array<{ path: string; content: string }>,
+  issues: string[],
+  design: string,
+  prd?: string,
+  taskBreakdown?: string
 ): string {
-    const existingFilesContent = existingFiles.map(f =>
-        `===== FILE: ${f.path} =====\n${f.content}\n===== END FILE =====`
-    ).join('\n\n');
+  const existingFilesContent = existingFiles.map((f) => `===== FILE: ${f.path} =====\n${f.content}\n===== END FILE =====`).join('\n\n');
 
-    let prompt = `# 代码补充任务（多轮对话）\n\n`;
-    prompt += `**重要：这是多轮对话的补充阶段。你需要基于已有代码进行补充和完善，而不是重新生成所有代码。**\n\n`;
+  let prompt = `# 代码补充任务（多轮对话）\n\n`;
+  prompt += `**重要：这是多轮对话的补充阶段。你需要基于已有代码进行补充和完善，而不是重新生成所有代码。**\n\n`;
 
-    prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-    prompt += `【已生成的代码文件】\n`;
-    prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    prompt += `以下代码已经生成，请基于这些代码进行补充：\n\n`;
-    prompt += `${existingFilesContent}\n\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+  prompt += `【已生成的代码文件】\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  prompt += `以下代码已经生成，请基于这些代码进行补充：\n\n`;
+  prompt += `${existingFilesContent}\n\n`;
 
-    prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-    prompt += `【检测到的不完整问题】\n`;
-    prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    prompt += issues.map(i => `- ${i}`).join('\n');
-    prompt += `\n\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+  prompt += `【检测到的不完整问题】\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  prompt += issues.map((i) => `- ${i}`).join('\n');
+  prompt += `\n\n`;
 
-    prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-    prompt += `【补充要求】\n`;
-    prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    prompt += `1. **保留已有代码**：不要删除或重写已生成的代码，只补充缺失的部分\n`;
-    prompt += `2. **修复不完整标记**：\n`;
-    prompt += `   - 移除所有 TODO、FIXME、XXX、HACK 等标记\n`;
-    prompt += `   - 移除所有占位符 "..."（包括注释中的占位符和代码中的占位符）\n`;
-    prompt += `   - 实现所有空函数体和空类\n`;
-    prompt += `   - 确保所有代码都是完整可运行的实现，不要留下任何占位符\n`;
-    prompt += `3. **补充缺失实现**：实现所有未完成的函数、类和方法\n`;
-    prompt += `4. **保持一致性**：确保补充的代码与已有代码风格一致\n`;
-    prompt += `5. **完整性检查**：确保所有代码都可以直接运行\n`;
-    prompt += `6. **前后端完整性**：必须确保前端代码和后端代码都完整生成\n`;
-    prompt += `7. **目录结构**：前端代码必须在 frontend/ 目录下，后端代码必须在 backend/ 目录下\n\n`;
-    prompt += `**特别强调：**\n`;
-    prompt += `- 如果检测到注释中有 "// ..." 这样的占位符，你必须将其替换为完整的代码实现\n`;
-    prompt += `- 如果检测到代码中有独立的 "..." 占位符，你必须将其替换为完整的代码实现\n`;
-    prompt += `- 不要使用任何形式的占位符，所有代码都必须是完整可运行的\n\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+  prompt += `【补充要求】\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  prompt += `1. **保留已有代码**：不要删除或重写已生成的代码，只补充缺失的部分\n`;
+  prompt += `2. **修复不完整标记**：\n`;
+  prompt += `   - 移除所有 TODO、FIXME、XXX、HACK 等标记\n`;
+  prompt += `   - 移除所有占位符 "..."（包括注释中的占位符和代码中的占位符）\n`;
+  prompt += `   - 实现所有空函数体和空类\n`;
+  prompt += `   - 确保所有代码都是完整可运行的实现，不要留下任何占位符\n`;
+  prompt += `3. **补充缺失实现**：实现所有未完成的函数、类和方法\n`;
+  prompt += `4. **保持一致性**：确保补充的代码与已有代码风格一致\n`;
+  prompt += `5. **完整性检查**：确保所有代码都可以直接运行\n`;
+  prompt += `6. **前后端完整性**：必须确保前端代码和后端代码都完整生成\n`;
+  prompt += `7. **目录结构**：前端代码必须在 frontend/ 目录下，后端代码必须在 backend/ 目录下\n\n`;
+  prompt += `**特别强调：**\n`;
+  prompt += `- 如果检测到注释中有 "// ..." 这样的占位符，你必须将其替换为完整的代码实现\n`;
+  prompt += `- 如果检测到代码中有独立的 "..." 占位符，你必须将其替换为完整的代码实现\n`;
+  prompt += `- 不要使用任何形式的占位符，所有代码都必须是完整可运行的\n\n`;
 
-    // 检查缺失的文件类型
-    const hasFrontendFiles = existingFiles.some(f =>
-        f.path.includes('.vue') ||
-        f.path.includes('frontend') ||
-        f.path.includes('src/views') ||
-        f.path.includes('src/components')
-    );
-    const hasBackendFiles = existingFiles.some(f =>
-        f.path.includes('backend') ||
-        f.path.includes('src/models') ||
-        f.path.includes('src/controllers') ||
-        f.path.includes('src/routes')
-    );
+  // 检查缺失的文件类型
+  const hasFrontendFiles = existingFiles.some(
+    (f) => f.path.includes('.vue') || f.path.includes('frontend') || f.path.includes('src/views') || f.path.includes('src/components')
+  );
+  const hasBackendFiles = existingFiles.some(
+    (f) => f.path.includes('backend') || f.path.includes('src/models') || f.path.includes('src/controllers') || f.path.includes('src/routes')
+  );
 
-    // 从DESIGN文档提取文件清单
-    const { frontendFiles, backendFiles } = extractFileListFromDesign(design);
+  // 从DESIGN文档提取文件清单
+  const { frontendFiles, backendFiles } = extractFileListFromDesign(design);
 
-    if (frontendFiles.length > 0 && !hasFrontendFiles) {
-        prompt += `**⚠️ 重要：检测到未生成前端代码！**\n`;
-        prompt += `DESIGN文档要求生成前端代码，但当前没有生成任何前端文件。\n`;
-        prompt += `你必须立即生成所有前端代码文件，包括：\n`;
-        prompt += frontendFiles.slice(0, 5).map(f => `- frontend/${f.replace(/^frontend\//, '')}`).join('\n');
-        if (frontendFiles.length > 5) {
-            prompt += `\n... 以及所有其他前端文件\n`;
-        }
-        prompt += `\n**重要：所有前端文件路径必须以 frontend/ 开头！**\n\n`;
+  if (frontendFiles.length > 0 && !hasFrontendFiles) {
+    prompt += `**⚠️ 重要：检测到未生成前端代码！**\n`;
+    prompt += `DESIGN文档要求生成前端代码，但当前没有生成任何前端文件。\n`;
+    prompt += `你必须立即生成所有前端代码文件，包括：\n`;
+    prompt += frontendFiles
+      .slice(0, 5)
+      .map((f) => `- frontend/${f.replace(/^frontend\//, '')}`)
+      .join('\n');
+    if (frontendFiles.length > 5) {
+      prompt += `\n... 以及所有其他前端文件\n`;
     }
+    prompt += `\n**重要：所有前端文件路径必须以 frontend/ 开头！**\n\n`;
+  }
 
-    if (backendFiles.length > 0 && !hasBackendFiles) {
-        prompt += `**⚠️ 重要：检测到未生成后端代码！**\n`;
-        prompt += `DESIGN文档要求生成后端代码，但当前没有生成任何后端文件。\n`;
-        prompt += `你必须立即生成所有后端代码文件，包括：\n`;
-        prompt += backendFiles.slice(0, 5).map(f => `- backend/${f.replace(/^backend\//, '')}`).join('\n');
-        if (backendFiles.length > 5) {
-            prompt += `\n... 以及所有其他后端文件\n`;
-        }
-        prompt += `\n**重要：所有后端文件路径必须以 backend/ 开头！**\n\n`;
+  if (backendFiles.length > 0 && !hasBackendFiles) {
+    prompt += `**⚠️ 重要：检测到未生成后端代码！**\n`;
+    prompt += `DESIGN文档要求生成后端代码，但当前没有生成任何后端文件。\n`;
+    prompt += `你必须立即生成所有后端代码文件，包括：\n`;
+    prompt += backendFiles
+      .slice(0, 5)
+      .map((f) => `- backend/${f.replace(/^backend\//, '')}`)
+      .join('\n');
+    if (backendFiles.length > 5) {
+      prompt += `\n... 以及所有其他后端文件\n`;
     }
+    prompt += `\n**重要：所有后端文件路径必须以 backend/ 开头！**\n\n`;
+  }
 
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+  prompt += `【设计文档参考】\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  prompt += `${design.substring(0, 2000)}${design.length > 2000 ? '...' : ''}\n\n`;
+
+  if (prd) {
     prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-    prompt += `【设计文档参考】\n`;
+    prompt += `【PRD参考】\n`;
     prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    prompt += `${design.substring(0, 2000)}${design.length > 2000 ? '...' : ''}\n\n`;
+    prompt += `${prd.substring(0, 1000)}${prd.length > 1000 ? '...' : ''}\n\n`;
+  }
 
-    if (prd) {
-        prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-        prompt += `【PRD参考】\n`;
-        prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-        prompt += `${prd.substring(0, 1000)}${prd.length > 1000 ? '...' : ''}\n\n`;
-    }
-
-    if (taskBreakdown) {
-        prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-        prompt += `【任务拆分参考】\n`;
-        prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-        prompt += `${taskBreakdown.substring(0, 1000)}${taskBreakdown.length > 1000 ? '...' : ''}\n\n`;
-    }
-
+  if (taskBreakdown) {
     prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-    prompt += `【输出要求】\n`;
+    prompt += `【任务拆分参考】\n`;
     prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    prompt += `请输出完整的代码文件（包括已生成和补充的部分），使用以下格式：\n\n`;
-    prompt += `===== FILE: <路径> =====\n`;
-    prompt += `<完整代码内容>\n`;
-    prompt += `===== END FILE =====\n\n`;
-    prompt += `**注意：**\n`;
-    prompt += `- 对于已存在的文件，请输出完整的文件内容（包含原有代码和补充代码）\n`;
-    prompt += `- **前端文件路径必须以 frontend/ 开头**\n`;
-    prompt += `- **后端文件路径必须以 backend/ 开头**\n`;
+    prompt += `${taskBreakdown.substring(0, 1000)}${taskBreakdown.length > 1000 ? '...' : ''}\n\n`;
+  }
 
-    return prompt;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+  prompt += `【输出要求】\n`;
+  prompt += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  prompt += `请输出完整的代码文件（包括已生成和补充的部分），使用以下格式：\n\n`;
+  prompt += `===== FILE: <路径> =====\n`;
+  prompt += `<完整代码内容>\n`;
+  prompt += `===== END FILE =====\n\n`;
+  prompt += `**注意：**\n`;
+  prompt += `- 对于已存在的文件，请输出完整的文件内容（包含原有代码和补充代码）\n`;
+  prompt += `- **前端文件路径必须以 frontend/ 开头**\n`;
+  prompt += `- **后端文件路径必须以 backend/ 开头**\n`;
+
+  return prompt;
 }
 
 /**
@@ -553,91 +551,84 @@ export function buildCodeCompletionPrompt(
  * @returns 前后端文件清单
  */
 export function extractFileListFromDesign(design: string): {
-    frontendFiles: string[];
-    backendFiles: string[];
-    configFiles: string[];
+  frontendFiles: string[];
+  backendFiles: string[];
+  configFiles: string[];
 } {
-    const frontendFiles: string[] = [];
-    const backendFiles: string[] = [];
-    const configFiles: string[] = [];
+  const frontendFiles: string[] = [];
+  const backendFiles: string[] = [];
+  const configFiles: string[] = [];
 
-    // 提取前端文件清单（从"### 3.4 文件清单"或"### 4.4 前端文件清单"等章节）
-    const frontendSectionMatch = design.match(/##\s*[34]\.\s*前端[^#]*(?:文件清单|工程结构)[\s\S]*?(?=##|$)/i);
-    if (frontendSectionMatch) {
-        const frontendSection = frontendSectionMatch[0];
-        // 提取代码块中的文件路径
-        const codeBlockMatch = frontendSection.match(/```[\s\S]*?```/g);
-        if (codeBlockMatch) {
-            codeBlockMatch.forEach(block => {
-                const filePaths = block.match(/(?:src\/|public\/|\.\/)?[\w\/\-\.]+\.(vue|ts|js|tsx|jsx|json|html|css|scss)/gi);
-                if (filePaths) {
-                    frontendFiles.push(...filePaths.map(p => p.trim()));
-                }
-            });
+  // 提取前端文件清单（从"### 3.4 文件清单"或"### 4.4 前端文件清单"等章节）
+  const frontendSectionMatch = design.match(/##\s*[34]\.\s*前端[^#]*(?:文件清单|工程结构)[\s\S]*?(?=##|$)/i);
+  if (frontendSectionMatch) {
+    const frontendSection = frontendSectionMatch[0];
+    // 提取代码块中的文件路径
+    const codeBlockMatch = frontendSection.match(/```[\s\S]*?```/g);
+    if (codeBlockMatch) {
+      codeBlockMatch.forEach((block) => {
+        const filePaths = block.match(/(?:src\/|public\/|\.\/)?[\w/\-.]+\.(vue|ts|js|tsx|jsx|json|html|css|scss)/gi);
+        if (filePaths) {
+          frontendFiles.push(...filePaths.map((p) => p.trim()));
         }
-        // 提取列表中的文件
-        const listItems = frontendSection.match(/-.*?`([^`]+)`/g);
-        if (listItems) {
-            listItems.forEach(item => {
-                const filePath = item.match(/`([^`]+)`/)?.[1];
-                if (filePath && !frontendFiles.includes(filePath)) {
-                    frontendFiles.push(filePath);
-                }
-            });
-        }
+      });
     }
-
-    // 提取后端文件清单（从"### 4.3 代码结构"或"### 4.4 文件清单"等章节）
-    const backendSectionMatch = design.match(/##\s*4\.\s*后端[^#]*(?:代码结构|文件清单)[\s\S]*?(?=##|$)/i);
-    if (backendSectionMatch) {
-        const backendSection = backendSectionMatch[0];
-        // 提取代码块中的文件路径
-        const codeBlockMatch = backendSection.match(/```[\s\S]*?```/g);
-        if (codeBlockMatch) {
-            codeBlockMatch.forEach(block => {
-                const filePaths = block.match(/(?:src\/|\.\/)?[\w\/\-\.]+\.(ts|js|json)/gi);
-                if (filePaths) {
-                    backendFiles.push(...filePaths.map(p => p.trim()));
-                }
-            });
+    // 提取列表中的文件
+    const listItems = frontendSection.match(/-.*?`([^`]+)`/g);
+    if (listItems) {
+      listItems.forEach((item) => {
+        const filePath = item.match(/`([^`]+)`/)?.[1];
+        if (filePath && !frontendFiles.includes(filePath)) {
+          frontendFiles.push(filePath);
         }
-        // 提取列表中的文件
-        const listItems = backendSection.match(/-.*?`([^`]+)`/g);
-        if (listItems) {
-            listItems.forEach(item => {
-                const filePath = item.match(/`([^`]+)`/)?.[1];
-                if (filePath && !backendFiles.includes(filePath)) {
-                    backendFiles.push(filePath);
-                }
-            });
-        }
+      });
     }
+  }
 
-    // 提取配置文件
-    const configPatterns = [
-        /package\.json/gi,
-        /tsconfig\.json/gi,
-        /vite\.config\.(ts|js)/gi,
-        /\.env/gi,
-        /\.gitignore/gi,
-        /README\.md/gi,
-    ];
-    configPatterns.forEach(pattern => {
-        const matches = design.match(pattern);
-        if (matches) {
-            matches.forEach(match => {
-                if (!configFiles.includes(match)) {
-                    configFiles.push(match);
-                }
-            });
+  // 提取后端文件清单（从"### 4.3 代码结构"或"### 4.4 文件清单"等章节）
+  const backendSectionMatch = design.match(/##\s*4\.\s*后端[^#]*(?:代码结构|文件清单)[\s\S]*?(?=##|$)/i);
+  if (backendSectionMatch) {
+    const backendSection = backendSectionMatch[0];
+    // 提取代码块中的文件路径
+    const codeBlockMatch = backendSection.match(/```[\s\S]*?```/g);
+    if (codeBlockMatch) {
+      codeBlockMatch.forEach((block) => {
+        const filePaths = block.match(/(?:src\/|\.\/)?[\w/\-.]+\.(ts|js|json)/gi);
+        if (filePaths) {
+          backendFiles.push(...filePaths.map((p) => p.trim()));
         }
-    });
+      });
+    }
+    // 提取列表中的文件
+    const listItems = backendSection.match(/-.*?`([^`]+)`/g);
+    if (listItems) {
+      listItems.forEach((item) => {
+        const filePath = item.match(/`([^`]+)`/)?.[1];
+        if (filePath && !backendFiles.includes(filePath)) {
+          backendFiles.push(filePath);
+        }
+      });
+    }
+  }
 
-    return {
-        frontendFiles: [...new Set(frontendFiles)],
-        backendFiles: [...new Set(backendFiles)],
-        configFiles: [...new Set(configFiles)],
-    };
+  // 提取配置文件
+  const configPatterns = [/package\.json/gi, /tsconfig\.json/gi, /vite\.config\.(ts|js)/gi, /\.env/gi, /\.gitignore/gi, /README\.md/gi];
+  configPatterns.forEach((pattern) => {
+    const matches = design.match(pattern);
+    if (matches) {
+      matches.forEach((match) => {
+        if (!configFiles.includes(match)) {
+          configFiles.push(match);
+        }
+      });
+    }
+  });
+
+  return {
+    frontendFiles: [...new Set(frontendFiles)],
+    backendFiles: [...new Set(backendFiles)],
+    configFiles: [...new Set(configFiles)],
+  };
 }
 
 /**
@@ -646,109 +637,114 @@ export function extractFileListFromDesign(design: string): {
  * @returns 检测结果
  */
 export function checkCodeCompleteness(codeContent: string): {
-    isComplete: boolean;
-    issues: string[];
+  isComplete: boolean;
+  issues: string[];
 } {
-    const issues: string[] = [];
+  const issues: string[] = [];
 
-    // 更精确的不完整标记检测
-    const incompletePatterns = [
-        /\bTODO\b/i,
-        /\bFIXME\b/i,
-        /\bXXX\b/i,
-        /\bHACK\b/i,
-        /placeholder/i,
-        /伪代码/i,
-        /待实现/i,
-        /未实现/i,
-        /not implemented/i,
-        /coming soon/i,
-        // 移除对注释中 ... 的检测，因为可能是正常的说明性注释
-        // /\/\*\s*\.\.\.\s*\*\//, // 注释中的 ...
-        /\{\s*\.\.\.\s*\}/, // 对象字面量中的 ...
-        /function\s+\w+\s*\(\s*\)\s*\{\s*\}/, // 空函数体
-        /class\s+\w+\s*\{\s*\}/, // 空类
-    ];
+  // 更精确的不完整标记检测
+  const incompletePatterns = [
+    /\bTODO\b/i,
+    /\bFIXME\b/i,
+    /\bXXX\b/i,
+    /\bHACK\b/i,
+    /placeholder/i,
+    /伪代码/i,
+    /待实现/i,
+    /未实现/i,
+    /not implemented/i,
+    /coming soon/i,
+    // 移除对注释中 ... 的检测，因为可能是正常的说明性注释
+    // /\/\*\s*\.\.\.\s*\*\//, // 注释中的 ...
+    /\{\s*\.\.\.\s*\}/, // 对象字面量中的 ...
+    /function\s+\w+\s*\(\s*\)\s*\{\s*\}/, // 空函数体
+    /class\s+\w+\s*\{\s*\}/, // 空类
+  ];
 
-    for (const pattern of incompletePatterns) {
-        const matches = codeContent.match(pattern);
-        if (matches) {
-            issues.push(`发现不完整标记: ${pattern.toString()}`);
-        }
+  for (const pattern of incompletePatterns) {
+    const matches = codeContent.match(pattern);
+    if (matches) {
+      issues.push(`发现不完整标记: ${pattern.toString()}`);
     }
+  }
 
-    // 检测注释中的 ... 占位符（如 // ... 其他导入）
-    // 但排除明显的说明性注释（如 "// ... 其他导入"、"// ... 其他代码" 等）
-    const commentEllipsisPattern = /\/\/\s*\.\.\.\s*[^\n]*/g;
-    const commentEllipsisMatches = codeContent.match(commentEllipsisPattern);
-    if (commentEllipsisMatches) {
-        // 过滤掉说明性注释，只保留可能是占位符的注释
-        const realPlaceholders = commentEllipsisMatches.filter(match => {
-            const text = match.toLowerCase();
-            // 如果注释包含明确的说明性文字，可能是正常的说明，不算占位符
-            const isDescriptive = /其他|其他代码|其他导入|其他配置|其他设置|其他选项|其他参数|其他方法|其他函数|其他类|其他组件|其他文件|省略|省略部分|省略代码|省略导入|省略配置|省略设置|省略选项|省略参数|省略方法|省略函数|省略类|省略组件|省略文件/.test(text);
-            // 如果只是单纯的 "// ..." 或 "// ... "，可能是占位符
-            return !isDescriptive && text.trim().length <= 10;
-        });
+  // 检测注释中的 ... 占位符（如 // ... 其他导入）
+  // 但排除明显的说明性注释（如 "// ... 其他导入"、"// ... 其他代码" 等）
+  const commentEllipsisPattern = /\/\/\s*\.\.\.\s*[^\n]*/g;
+  const commentEllipsisMatches = codeContent.match(commentEllipsisPattern);
+  if (commentEllipsisMatches) {
+    // 过滤掉说明性注释，只保留可能是占位符的注释
+    const realPlaceholders = commentEllipsisMatches.filter((match) => {
+      const text = match.toLowerCase();
+      // 如果注释包含明确的说明性文字，可能是正常的说明，不算占位符
+      const isDescriptive =
+        /其他|其他代码|其他导入|其他配置|其他设置|其他选项|其他参数|其他方法|其他函数|其他类|其他组件|其他文件|省略|省略部分|省略代码|省略导入|省略配置|省略设置|省略选项|省略参数|省略方法|省略函数|省略类|省略组件|省略文件/.test(
+          text
+        );
+      // 如果只是单纯的 "// ..." 或 "// ... "，可能是占位符
+      return !isDescriptive && text.trim().length <= 10;
+    });
 
-        if (realPlaceholders.length > 0) {
-            issues.push(`发现注释中的占位符 ... (${realPlaceholders.length}处): ${realPlaceholders.slice(0, 3).join(', ')}`);
-        }
+    if (realPlaceholders.length > 0) {
+      issues.push(`发现注释中的占位符 ... (${realPlaceholders.length}处): ${realPlaceholders.slice(0, 3).join(', ')}`);
     }
+  }
 
-    // 检测独立的 ...（占位符），但不包括扩展运算符
-    // 扩展运算符通常在特定上下文中：...obj, [...arr], {...obj}
-    // 独立的 ... 通常是占位符
-    const standaloneEllipsisPattern = /(?:^|\s|\(|\[|,|;)\s*\.\.\.\s*(?:$|\s|\)|\]|,|;)/gm;
-    const standaloneEllipsisMatches = codeContent.match(standaloneEllipsisPattern);
-    if (standaloneEllipsisMatches) {
-        // 过滤掉可能是扩展运算符的情况和注释中的情况
-        const realPlaceholders = standaloneEllipsisMatches.filter(match => {
-            const matchIndex = codeContent.indexOf(match);
-            // 检查是否在注释中（单行注释或多行注释）
-            const beforeMatch = codeContent.substring(Math.max(0, matchIndex - 100), matchIndex);
-            if (/\/\/[^\n]*$/.test(beforeMatch.split('\n').pop() || '') || /\/\*[\s\S]*$/.test(beforeMatch)) {
-                return false; // 已经在注释检测中处理
-            }
+  // 检测独立的 ...（占位符），但不包括扩展运算符
+  // 扩展运算符通常在特定上下文中：...obj, [...arr], {...obj}
+  // 独立的 ... 通常是占位符
+  const standaloneEllipsisPattern = /(?:^|\s|\(|\[|,|;)\s*\.\.\.\s*(?:$|\s|\)|\]|,|;)/gm;
+  const standaloneEllipsisMatches = codeContent.match(standaloneEllipsisPattern);
+  if (standaloneEllipsisMatches) {
+    // 过滤掉可能是扩展运算符的情况和注释中的情况
+    const realPlaceholders = standaloneEllipsisMatches.filter((match) => {
+      const matchIndex = codeContent.indexOf(match);
+      // 检查是否在注释中（单行注释或多行注释）
+      const beforeMatch = codeContent.substring(Math.max(0, matchIndex - 100), matchIndex);
+      if (/\/\/[^\n]*$/.test(beforeMatch.split('\n').pop() || '') || /\/\*[\s\S]*$/.test(beforeMatch)) {
+        return false; // 已经在注释检测中处理
+      }
 
-            // 检查前后文，排除扩展运算符的情况
-            const afterMatch = codeContent.substring(matchIndex + match.length, Math.min(codeContent.length, matchIndex + match.length + 20));
+      // 检查前后文，排除扩展运算符的情况
+      const afterMatch = codeContent.substring(matchIndex + match.length, Math.min(codeContent.length, matchIndex + match.length + 20));
 
-            // 如果前后有变量名、对象属性等，可能是扩展运算符，跳过
-            if (/\w+\s*\.\.\./.test(beforeMatch + match) || /\.\.\.\s*\w+/.test(match + afterMatch)) {
-                return false;
-            }
-            // 如果是在数组或对象字面量中，可能是扩展运算符
-            if (/\[.*\.\.\./.test(beforeMatch + match) || /\{.*\.\.\./.test(beforeMatch + match)) {
-                return false;
-            }
-            return true;
-        });
+      // 如果前后有变量名、对象属性等，可能是扩展运算符，跳过
+      if (/\w+\s*\.\.\./.test(beforeMatch + match) || /\.\.\.\s*\w+/.test(match + afterMatch)) {
+        return false;
+      }
+      // 如果是在数组或对象字面量中，可能是扩展运算符
+      if (/\[.*\.\.\./.test(beforeMatch + match) || /\{.*\.\.\./.test(beforeMatch + match)) {
+        return false;
+      }
+      return true;
+    });
 
-        if (realPlaceholders.length > 0) {
-            issues.push(`发现占位符 ... (${realPlaceholders.length}处)`);
-        }
+    if (realPlaceholders.length > 0) {
+      issues.push(`发现占位符 ... (${realPlaceholders.length}处)`);
     }
+  }
 
-    // 检查是否有未实现的函数（只有声明没有实现）
-    const functionDeclarations = codeContent.match(/(?:function|const|let|var)\s+(\w+)\s*[=:]?\s*\([^)]*\)\s*\{?\s*$/gm);
-    if (functionDeclarations) {
-        for (const decl of functionDeclarations) {
-            // 检查是否有对应的实现
-            const funcName = decl.match(/(?:function|const|let|var)\s+(\w+)/)?.[1];
-            if (funcName) {
-                const implementation = codeContent.match(new RegExp(`(?:function|const|let|var)\\s+${funcName}\\s*[=:]?\\s*\\([^)]*\\)\\s*\\{[\\s\\S]{10,}`, 'm'));
-                if (!implementation) {
-                    issues.push(`函数 ${funcName} 可能未实现`);
-                }
-            }
+  // 检查是否有未实现的函数（只有声明没有实现）
+  const functionDeclarations = codeContent.match(/(?:function|const|let|var)\s+(\w+)\s*[=:]?\s*\([^)]*\)\s*\{?\s*$/gm);
+  if (functionDeclarations) {
+    for (const decl of functionDeclarations) {
+      // 检查是否有对应的实现
+      const funcName = decl.match(/(?:function|const|let|var)\s+(\w+)/)?.[1];
+      if (funcName) {
+        const implementation = codeContent.match(
+          new RegExp(`(?:function|const|let|var)\\s+${funcName}\\s*[=:]?\\s*\\([^)]*\\)\\s*\\{[\\s\\S]{10,}`, 'm')
+        );
+        if (!implementation) {
+          issues.push(`函数 ${funcName} 可能未实现`);
         }
+      }
     }
+  }
 
-    return {
-        isComplete: issues.length === 0,
-        issues,
-    };
+  return {
+    isComplete: issues.length === 0,
+    issues,
+  };
 }
 
 /**
@@ -758,113 +754,114 @@ export function checkCodeCompleteness(codeContent: string): {
  * @returns 检测结果
  */
 export function checkFrontendBackendCompleteness(
-    generatedFiles: Array<{ path: string; content: string }>,
-    design: string
+  generatedFiles: Array<{ path: string; content: string }>,
+  design: string
 ): {
-    isComplete: boolean;
-    issues: string[];
-    frontendMissing: string[];
-    backendMissing: string[];
-    configMissing: string[];
+  isComplete: boolean;
+  issues: string[];
+  frontendMissing: string[];
+  backendMissing: string[];
+  configMissing: string[];
 } {
-    const issues: string[] = [];
-    const generatedPaths = generatedFiles.map(f => f.path.toLowerCase());
+  const issues: string[] = [];
+  const generatedPaths = generatedFiles.map((f) => f.path.toLowerCase());
 
-    // 从DESIGN文档提取文件清单
-    const { frontendFiles, backendFiles, configFiles } = extractFileListFromDesign(design);
+  // 从DESIGN文档提取文件清单
+  const { frontendFiles, backendFiles, configFiles } = extractFileListFromDesign(design);
 
-    // 检查前端文件
-    const frontendMissing: string[] = [];
-    frontendFiles.forEach(file => {
-        const normalizedFile = file.toLowerCase().replace(/^src\//, '').replace(/^\.\//, '');
-        const found = generatedPaths.some(path =>
-            path.includes(normalizedFile) ||
-            path.endsWith(normalizedFile) ||
-            normalizedFile.includes(path.split('/').pop() || '')
-        );
-        if (!found) {
-            frontendMissing.push(file);
-        }
-    });
-
-    // 检查后端文件
-    const backendMissing: string[] = [];
-    backendFiles.forEach(file => {
-        const normalizedFile = file.toLowerCase().replace(/^src\//, '').replace(/^\.\//, '');
-        const found = generatedPaths.some(path =>
-            path.includes(normalizedFile) ||
-            path.endsWith(normalizedFile) ||
-            normalizedFile.includes(path.split('/').pop() || '')
-        );
-        if (!found) {
-            backendMissing.push(file);
-        }
-    });
-
-    // 检查配置文件
-    const configMissing: string[] = [];
-    configFiles.forEach(file => {
-        const normalizedFile = file.toLowerCase();
-        const found = generatedPaths.some(path =>
-            path.includes(normalizedFile) ||
-            path.endsWith(normalizedFile)
-        );
-        if (!found) {
-            configMissing.push(file);
-        }
-    });
-
-    // 生成问题列表
-    if (frontendMissing.length > 0) {
-        issues.push(`前端缺失文件 (${frontendMissing.length}个): ${frontendMissing.slice(0, 5).join(', ')}${frontendMissing.length > 5 ? '...' : ''}`);
-    }
-    if (backendMissing.length > 0) {
-        issues.push(`后端缺失文件 (${backendMissing.length}个): ${backendMissing.slice(0, 5).join(', ')}${backendMissing.length > 5 ? '...' : ''}`);
-    }
-    if (configMissing.length > 0) {
-        issues.push(`配置文件缺失 (${configMissing.length}个): ${configMissing.join(', ')}`);
-    }
-
-    // 检查是否有前端代码（优先检查 frontend/ 前缀）
-    const hasFrontend = generatedPaths.some(path =>
-        path.startsWith('frontend/') ||
-        path.includes('frontend/') ||
-        (path.includes('.vue') && path.includes('frontend')) ||
-        path.includes('src/views') ||
-        path.includes('src/components')
+  // 检查前端文件
+  const frontendMissing: string[] = [];
+  frontendFiles.forEach((file) => {
+    const normalizedFile = file
+      .toLowerCase()
+      .replace(/^src\//, '')
+      .replace(/^\.\//, '');
+    const found = generatedPaths.some(
+      (path) => path.includes(normalizedFile) || path.endsWith(normalizedFile) || normalizedFile.includes(path.split('/').pop() || '')
     );
+    if (!found) {
+      frontendMissing.push(file);
+    }
+  });
 
-    // 检查是否有后端代码（优先检查 backend/ 前缀）
-    const hasBackend = generatedPaths.some(path =>
-        path.startsWith('backend/') ||
-        path.includes('backend/') ||
-        (path.includes('backend') && (path.includes('.ts') || path.includes('.js'))) ||
-        path.includes('src/models') ||
-        path.includes('src/controllers') ||
-        path.includes('src/routes')
+  // 检查后端文件
+  const backendMissing: string[] = [];
+  backendFiles.forEach((file) => {
+    const normalizedFile = file
+      .toLowerCase()
+      .replace(/^src\//, '')
+      .replace(/^\.\//, '');
+    const found = generatedPaths.some(
+      (path) => path.includes(normalizedFile) || path.endsWith(normalizedFile) || normalizedFile.includes(path.split('/').pop() || '')
     );
-
-    if (!hasFrontend && frontendFiles.length > 0) {
-        issues.push('未生成任何前端代码文件');
+    if (!found) {
+      backendMissing.push(file);
     }
-    if (!hasBackend && backendFiles.length > 0) {
-        issues.push('未生成任何后端代码文件');
-    }
+  });
 
-    return {
-        isComplete: issues.length === 0,
-        issues,
-        frontendMissing,
-        backendMissing,
-        configMissing,
-    };
+  // 检查配置文件
+  const configMissing: string[] = [];
+  configFiles.forEach((file) => {
+    const normalizedFile = file.toLowerCase();
+    const found = generatedPaths.some((path) => path.includes(normalizedFile) || path.endsWith(normalizedFile));
+    if (!found) {
+      configMissing.push(file);
+    }
+  });
+
+  // 生成问题列表
+  if (frontendMissing.length > 0) {
+    issues.push(`前端缺失文件 (${frontendMissing.length}个): ${frontendMissing.slice(0, 5).join(', ')}${frontendMissing.length > 5 ? '...' : ''}`);
+  }
+  if (backendMissing.length > 0) {
+    issues.push(`后端缺失文件 (${backendMissing.length}个): ${backendMissing.slice(0, 5).join(', ')}${backendMissing.length > 5 ? '...' : ''}`);
+  }
+  if (configMissing.length > 0) {
+    issues.push(`配置文件缺失 (${configMissing.length}个): ${configMissing.join(', ')}`);
+  }
+
+  // 检查是否有前端代码（优先检查 frontend/ 前缀）
+  const hasFrontend = generatedPaths.some(
+    (path) =>
+      path.startsWith('frontend/') ||
+      path.includes('frontend/') ||
+      (path.includes('.vue') && path.includes('frontend')) ||
+      path.includes('src/views') ||
+      path.includes('src/components')
+  );
+
+  // 检查是否有后端代码（优先检查 backend/ 前缀）
+  const hasBackend = generatedPaths.some(
+    (path) =>
+      path.startsWith('backend/') ||
+      path.includes('backend/') ||
+      (path.includes('backend') && (path.includes('.ts') || path.includes('.js'))) ||
+      path.includes('src/models') ||
+      path.includes('src/controllers') ||
+      path.includes('src/routes')
+  );
+
+  if (!hasFrontend && frontendFiles.length > 0) {
+    issues.push('未生成任何前端代码文件');
+  }
+  if (!hasBackend && backendFiles.length > 0) {
+    issues.push('未生成任何后端代码文件');
+  }
+
+  return {
+    isComplete: issues.length === 0,
+    issues,
+    frontendMissing,
+    backendMissing,
+    configMissing,
+  };
 }
 
 /**
  * 代码审查系统提示词
- * 
+ *
  * 用于指导 AI 如何审查代码质量、可读性、可维护性等。
- * 
+ *
  * @usedBy CodeReview Action
  */
 export const CODE_REVIEW_SYSTEM_PROMPT = `
@@ -886,7 +883,7 @@ export const CODE_REVIEW_SYSTEM_PROMPT = `
 
 /**
  * 构建代码审查提示词
- * 
+ *
  * @param code - 待审查的代码内容
  * @param taskDescription - 任务描述
  * @param design - 设计文档（可选）
@@ -1054,11 +1051,11 @@ export function buildOpenSpecApplyPrompt(): string {
  * @returns apply 命令提示词
  */
 export function getApplyCommand(): string {
-    // 支持通过环境变量切换到简化版（用于调试）
-    if (process.env.USE_SIMPLE_APPLY_PROMPT === 'true') {
-        return "执行/openspec-apply命令，并且自动执行所有必要的构建命令（如make api、make wire、npm run generate等），不要只生成代码就停止，必须完成所有任务直到tasks.md中的任务全部标记为完成。如果遇到模版页面如\"最好用的 uniapp 开发模板\"、\"专注企业级 AI 原生协作\"、\"企业级 AI 原生工作空间\"等页面需要改成本次tasks.md对应页面不能有模版页面相关数据";
-    }
-    return buildOpenSpecApplyPrompt();
+  // 支持通过环境变量切换到简化版（用于调试）
+  if (process.env.USE_SIMPLE_APPLY_PROMPT === 'true') {
+    return '执行/openspec-apply命令，并且自动执行所有必要的构建命令（如make api、make wire、npm run generate等），不要只生成代码就停止，必须完成所有任务直到tasks.md中的任务全部标记为完成。如果遇到模版页面如"最好用的 uniapp 开发模板"、"专注企业级 AI 原生协作"、"企业级 AI 原生工作空间"等页面需要改成本次tasks.md对应页面不能有模版页面相关数据';
+  }
+  return buildOpenSpecApplyPrompt();
 }
 
 /**
@@ -1067,7 +1064,43 @@ export function getApplyCommand(): string {
  * @returns check 命令提示词
  */
 export function getCheckCommand(): string {
-    return "查找 openspec/changes/ 目录下子文件夹中的 tasks.md 文件（路径模式为 openspec/changes/*/tasks.md），检查里面的任务是否全部执行完成。请以JSON格式返回，包含：result字段（值为：已完成、未完成或未找到）和reason字段（说明具体原因）。例如：{\"result\": \"已完成\", \"reason\": \"所有任务都已标记为完成\"} 或 {\"result\": \"未完成\", \"reason\": \"还有3个任务未完成\"} 或 {\"result\": \"未找到\", \"reason\": \"文件不存在或无法找到\"}。只返回JSON格式，不要返回其他内容。";
+  return `查找 openspec/changes/ 目录下子文件夹中的 tasks.md 文件（路径模式为 openspec/changes/*/tasks.md），检查里面的任务是否全部执行完成。
+
+## 重要：输出格式要求（严格遵守）
+
+你的最终输出必须**严格按照以下格式**，固定为两行：
+
+第一行：状态（只能是以下三个值之一，不要有任何其他文字）
+- 已完成
+- 未完成  
+- 未找到
+
+第二行：具体原因说明
+
+## 输出示例
+
+示例1（任务已完成）：
+已完成
+所有任务都已标记为完成
+
+示例2（任务未完成）：
+未完成
+还有3个任务未完成：任务1、任务2、任务3
+
+示例3（文件未找到）：
+未找到
+openspec/changes/ 目录不存在或未找到 tasks.md 文件
+
+## 检查步骤
+1. 使用 glob 或 find 命令查找 openspec/changes/*/tasks.md 文件
+2. 如果文件不存在，输出"未找到"和具体原因
+3. 如果文件存在，读取文件内容，检查任务完成状态
+4. 根据任务完成情况输出"已完成"或"未完成"及具体原因
+
+## 再次强调
+- 第一行只能是：已完成、未完成、未找到（三选一）
+- 第二行是原因说明
+- 不要输出其他格式，不要使用 JSON，不要添加额外的说明文字`;
 }
 
 /**
@@ -1076,7 +1109,7 @@ export function getCheckCommand(): string {
  * @returns deploy 命令提示词
  */
 export function getDeployCommand(): string {
-    return `执行 make sandbox 命令，确保服务完全启动并可访问。
+  return `执行 make sandbox 命令，确保服务完全启动并可访问。
 
 ## 执行步骤
 
@@ -1153,7 +1186,7 @@ export function getDeployCommand(): string {
  * @returns deploy check 命令提示词
  */
 export function getDeployCheckCommand(): string {
-    return `检查部署状态和服务可访问性。
+  return `检查部署状态和服务可访问性。
 
 ## 检查项目
 
@@ -1261,7 +1294,7 @@ export function getDeployCheckCommand(): string {
  * 获取代码改进命令提示词
  */
 export function getImproveCommand(): string {
-    return `请执行以下代码改进任务：
+  return `请执行以下代码改进任务：
 
 1. **读取改进文件**
    - 文件路径: docs/code/ImproveCode.md
@@ -1310,24 +1343,24 @@ export function getImproveCommand(): string {
 }
 
 export default {
-    CODE_SYSTEM_PROMPT,
-    CODE_COMPLETENESS_CHECK_SYSTEM_PROMPT,
-    CODE_REVIEW_SYSTEM_PROMPT,
-    buildCodePrompt,
-    buildCodePromptWithStandardDocs,
-    buildTaskDescriptionPrompt,
-    buildCodeCompletenessCheckPrompt,
-    buildCodeCompletionPrompt,
-    buildCodeReviewPrompt,
-    buildCursorCLICodeReviewPrompt,
-    buildOpenSpecApplyPrompt,
-    getApplyCommand,
-    getCheckCommand,
-    getDeployCommand,
-    getDeployCheckCommand,
-    getImproveCommand,
-    checkCodeCompleteness,
-    checkFrontendBackendCompleteness,
-    extractFileListFromDesign,
-    parseCodeFiles,
+  CODE_SYSTEM_PROMPT,
+  CODE_COMPLETENESS_CHECK_SYSTEM_PROMPT,
+  CODE_REVIEW_SYSTEM_PROMPT,
+  buildCodePrompt,
+  buildCodePromptWithStandardDocs,
+  buildTaskDescriptionPrompt,
+  buildCodeCompletenessCheckPrompt,
+  buildCodeCompletionPrompt,
+  buildCodeReviewPrompt,
+  buildCursorCLICodeReviewPrompt,
+  buildOpenSpecApplyPrompt,
+  getApplyCommand,
+  getCheckCommand,
+  getDeployCommand,
+  getDeployCheckCommand,
+  getImproveCommand,
+  checkCodeCompleteness,
+  checkFrontendBackendCompleteness,
+  extractFileListFromDesign,
+  parseCodeFiles,
 };
