@@ -16,7 +16,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>原型 - 用户列表管理</title>
   
-  <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.5.6/dist/index.css">
   
   <style>
     :root {
@@ -235,14 +235,14 @@
     </el-dialog>
   </div>
 
-  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-  <script src="https://unpkg.com/element-plus"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/element-plus@2.5.6/dist/index.full.min.js"></script>
   
   <script>
     const { createApp, ref, reactive, onMounted } = Vue;
     const { ElMessage, ElMessageBox } = ElementPlus;
 
-    createApp({
+    const app = createApp({
       setup() {
         // 搜索表单
         const searchForm = reactive({
@@ -447,7 +447,14 @@
           fetchData
         };
       }
-    }).use(ElementPlus).mount('#app');
+    });
+    
+    // 配置 Element Plus 中文语言包
+    app.use(ElementPlus, {
+      locale: ElementPlus.lang?.zhCn || {},
+    });
+    
+    app.mount('#app');
   </script>
 </body>
 </html>
@@ -467,7 +474,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>原型 - 数据仪表盘</title>
   
-  <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.5.6/dist/index.css">
   
   <style>
     :root {
@@ -604,9 +611,9 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-  <script src="https://unpkg.com/element-plus"></script>
-  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/element-plus@2.5.6/dist/index.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
   
   <script>
     const { createApp, ref, onMounted } = Vue;
@@ -713,7 +720,14 @@
           pieChart
         };
       }
-    }).use(ElementPlus).mount('#app');
+    });
+    
+    // 配置 Element Plus 中文语言包
+    app.use(ElementPlus, {
+      locale: ElementPlus.lang?.zhCn || {},
+    });
+    
+    app.mount('#app');
   </script>
 </body>
 </html>

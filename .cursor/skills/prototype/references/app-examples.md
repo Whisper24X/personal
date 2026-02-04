@@ -340,7 +340,7 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.prod.js"></script>
   
   <script>
     const { createApp, ref, onMounted } = Vue;
@@ -815,7 +815,7 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.prod.js"></script>
   
   <script>
     const { createApp, ref, reactive } = Vue;
