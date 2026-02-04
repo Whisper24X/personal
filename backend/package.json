@@ -23,6 +23,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@browserbasehq/stagehand": "alpha",
     "@langchain/community": "^1.1.1",
     "@langchain/core": "^1.1.8",
     "@mind2build/shared": "workspace:*",

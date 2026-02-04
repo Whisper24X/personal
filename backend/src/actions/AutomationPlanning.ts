@@ -4,13 +4,11 @@
  * Uses Stagehand to validate automation feasibility and generate automation scripts
  */
 
+import * as path from 'path';
+import * as fs from 'fs/promises';
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import { WorkspaceOptions, logger, loadPrompt } from '../utils';
-import {
-  AUTOMATION_PLANNING_SYSTEM_PROMPT,
-  buildAutomationPlanningPrompt,
-} from '../prompts/test';
+import { WorkspaceOptions, logger } from '../utils';
 import { StagehandService } from '../services/StagehandService';
 
 export interface AutomationPlanningOptions extends WorkspaceOptions {
@@ -33,14 +31,9 @@ export class AutomationPlanning extends BaseAction {
   async run(input: string, options?: AutomationPlanningOptions): Promise<IActionOutput> {
     logger.info('AutomationPlanning: Starting automation planning');
 
-    if (!input || input.trim() === '') {
-      throw new Error('Input content not found');
-    }
-
     try {
       // Read test cases from workspace
       let testCases = '';
-      let code = '';
 
       if (options) {
         // Try to read reviewed test cases first, fallback to original test cases
@@ -76,31 +69,6 @@ export class AutomationPlanning extends BaseAction {
               error: error.message,
             });
           }
-        }
-
-        // Read code from workspace
-        try {
-          const codeFromWorkspace = await this.readAllFromWorkspace(
-            {
-              ...options,
-              documentType: 'CODE',
-            },
-            (filename: string) => {
-              return (
-                filename.endsWith('.ts') ||
-                filename.endsWith('.js') ||
-                filename.endsWith('.py') ||
-                filename.endsWith('.java')
-              );
-            }
-          );
-          if (codeFromWorkspace) {
-            code = codeFromWorkspace;
-          }
-        } catch (error: any) {
-          logger.warn('AutomationPlanning: Failed to read code from workspace', {
-            error: error.message,
-          });
         }
       }
 
@@ -141,14 +109,13 @@ export class AutomationPlanning extends BaseAction {
           });
 
           if (sampleTestCases.length > 0) {
-            stagehandValidationResults = await this.validateWithStagehand(
-              sampleTestCases,
-              testUrl
-            );
-            stagehandScriptFiles = await this.generateStagehandScripts(sampleTestCases, testUrl);
-            logger.info('AutomationPlanning: Generated Stagehand scripts', {
+            const { report, passedCases } = await this.validateWithStagehand(sampleTestCases, testUrl);
+            stagehandValidationResults = report;
+            stagehandScriptFiles = await this.generateStagehandScripts(passedCases, testUrl);
+            logger.info('AutomationPlanning: Generated Stagehand scripts (passed cases only)', {
+              passedCount: passedCases.length,
               scriptsCount: stagehandScriptFiles.length,
-              scriptIds: stagehandScriptFiles.map(s => s.id),
+              scriptIds: stagehandScriptFiles.map((s) => s.id),
             });
           } else {
             logger.warn('AutomationPlanning: No sample test cases extracted, skipping Stagehand script generation', {
@@ -169,46 +136,39 @@ export class AutomationPlanning extends BaseAction {
             // Ignore cleanup errors
           }
         }
+      } else {
+        // 可选改进：未启用 Stagehand 时仍生成脚本（不做第一步验证），便于无浏览器环境也能产出 auto/*.ts
+        const sampleTestCases = this.extractSampleTestCases(testCases, 50);
+        const testUrl = options?.testUrl || this.extractUrlFromTestCases(testCases);
+        const passedCases = sampleTestCases.filter((tc) => tc.steps && tc.steps.length > 0);
+        if (passedCases.length > 0) {
+          stagehandScriptFiles = await this.generateStagehandScripts(passedCases, testUrl);
+          logger.info('AutomationPlanning: Generated Stagehand scripts without validation (browser disabled)', {
+            sampleCount: sampleTestCases.length,
+            withStepsCount: passedCases.length,
+            scriptsCount: stagehandScriptFiles.length,
+          });
+        } else {
+          logger.warn('AutomationPlanning: No test cases with steps extracted, skipping script generation', {
+            sampleCount: sampleTestCases.length,
+          });
+        }
       }
 
-      // Build prompt with Stagehand validation results if available
-      // Add validation results and script summary to test cases if available
-      let enhancedTestCases = testCases;
-      if (stagehandValidationResults) {
-        enhancedTestCases += `\n\n## Stagehand 自动化可行性验证结果\n\n${stagehandValidationResults}`;
-      }
-      if (stagehandScriptFiles.length > 0) {
-        enhancedTestCases += `\n\n## 已生成的自动化测试脚本\n\n已生成 ${stagehandScriptFiles.length} 个自动化测试脚本文件：\n${stagehandScriptFiles.map(s => `- ${s.filename} (${s.id})`).join('\n')}`;
-      }
-      
-      const prompt = buildAutomationPlanningPrompt(
-        enhancedTestCases,
-        code
-      );
-
-      // Load system prompt from database or use default
-      const userId = this.context?.get('userId');
-      const systemPrompt = await loadPrompt(
-        userId,
-        'test',
-        'automation_planning_system_prompt',
-        AUTOMATION_PLANNING_SYSTEM_PROMPT
-      );
-
-      // Call LLM to generate automation plan
-      const content = await this.aask(prompt, [systemPrompt]);
-
-      // Save to workspace
       const workspaceOptions: WorkspaceOptions = {
         ...options,
         documentType: 'TEST',
       };
-      await this.saveToWorkspace('AUTOMATION_PLAN.md', content, workspaceOptions);
 
-      logger.info('AutomationPlanning: Automation planning completed', {
-        contentLength: content.length,
-        workspaceDir: this.getWorkspaceDir(workspaceOptions),
-      });
+      // Ensure docs/test/auto exists so AutomationExecution can run even when 0 scripts
+      try {
+        const docsTestDir = this.getWorkspaceDir(workspaceOptions);
+        const autoDir = path.join(docsTestDir, 'auto');
+        await fs.mkdir(autoDir, { recursive: true });
+        logger.debug('AutomationPlanning: Ensured auto directory exists', { autoDir });
+      } catch (mkdirError: any) {
+        logger.warn('AutomationPlanning: Failed to ensure auto directory', { error: mkdirError.message });
+      }
 
       // Save Stagehand scripts if generated (one file per test case)
       if (stagehandScriptFiles.length > 0) {
@@ -253,11 +213,19 @@ export class AutomationPlanning extends BaseAction {
         });
       }
 
+      const summary =
+        stagehandScriptFiles.length > 0
+          ? `已筛选并生成 ${stagehandScriptFiles.length} 个 Stagehand 自动化脚本`
+          : useStagehand
+            ? stagehandValidationResults
+              ? '已筛选可自动化用例，无可通过验证的用例，未生成脚本'
+              : 'Stagehand 验证未完成或失败，未生成脚本'
+            : '未启用 Stagehand，未生成脚本';
+
       return {
-        content: content,
+        content: summary,
         data: {
           type: 'automation_plan',
-          filename: 'AUTOMATION_PLAN.md',
           timestamp: new Date().toISOString(),
           workspaceDir: this.getWorkspaceDir(workspaceOptions),
           stagehandUsed: useStagehand,
@@ -267,7 +235,7 @@ export class AutomationPlanning extends BaseAction {
       };
     } catch (error: any) {
       logger.error('AutomationPlanning: Failed to create automation plan', error);
-      
+
       // Ensure cleanup on error
       try {
         if (this.stagehandService.isInitialized) {
@@ -276,7 +244,7 @@ export class AutomationPlanning extends BaseAction {
       } catch (closeError: any) {
         // Ignore cleanup errors
       }
-      
+
       throw error;
     }
   }
@@ -287,32 +255,33 @@ export class AutomationPlanning extends BaseAction {
    */
   private extractSampleTestCases(testCases: string, maxCount?: number): Array<{ id: string; name: string; steps: string[] }> {
     const samples: Array<{ id: string; name: string; steps: string[] }> = [];
-    
-    // Preprocess: Extract content from markdown code blocks if present
+
+    // Preprocess: avoid code block extraction when content is already a full document (starts with #)
+    // so we don't truncate at the first inner ``` and lose the test case section
     let processedContent = testCases;
-    
-    // Check if content is wrapped in markdown code blocks (```markdown ... ```)
-    // Try multiple patterns to match code blocks robustly
-    let codeBlockMatch = testCases.match(/```(?:markdown)?\s*\n([\s\S]*?)\n```/);
-    if (!codeBlockMatch) {
-      // Try without newline before closing ```
-      codeBlockMatch = testCases.match(/```(?:markdown)?\s*\n([\s\S]*?)```/);
+    let usedCodeBlock = false;
+    const trimmedInput = testCases.trim();
+    if (!trimmedInput.match(/^#+\s/m)) {
+      let codeBlockMatch = testCases.match(/```(?:markdown)?\s*\n([\s\S]*?)\n```/);
+      if (!codeBlockMatch) {
+        codeBlockMatch = testCases.match(/```(?:markdown)?\s*\n([\s\S]*?)```/);
+      }
+      if (!codeBlockMatch) {
+        codeBlockMatch = testCases.match(/```(?:markdown)?\s*\n([\s\S]*)$/);
+      }
+      if (codeBlockMatch && codeBlockMatch[1]) {
+        processedContent = codeBlockMatch[1].trim();
+        usedCodeBlock = true;
+        logger.info('AutomationPlanning: Extracted content from markdown code block', {
+          originalLength: testCases.length,
+          extractedLength: processedContent.length,
+        });
+      }
+    } else {
+      logger.debug('AutomationPlanning: Content starts with #, skipping code block extraction');
     }
-    if (!codeBlockMatch) {
-      // Try matching until end of string
-      codeBlockMatch = testCases.match(/```(?:markdown)?\s*\n([\s\S]*)$/);
-    }
-    
-    if (codeBlockMatch && codeBlockMatch[1]) {
-      processedContent = codeBlockMatch[1].trim();
-      logger.info('AutomationPlanning: Extracted content from markdown code block', {
-        originalLength: testCases.length,
-        extractedLength: processedContent.length,
-      });
-    }
-    
-    // Remove leading explanatory text (lines that don't contain test case markers)
-    // Find the first occurrence of a test case header or section marker
+
+    // Remove leading explanatory text: find first #### 测试用例 / #### TC-xxx / #### Test Case
     const firstTestCaseIndex = processedContent.search(/####\s+(测试用例\d+|TC-[\dA-Z-]+|Test Case)/i);
     if (firstTestCaseIndex > 0) {
       processedContent = processedContent.substring(firstTestCaseIndex);
@@ -320,21 +289,43 @@ export class AutomationPlanning extends BaseAction {
         removedLength: firstTestCaseIndex,
       });
     } else if (firstTestCaseIndex === -1) {
-      // If no test case header found, try to find section headers that might contain test cases
-      const sectionMatch = processedContent.match(/##\s+功能模块[\s\S]*?(####\s+(测试用例\d+|TC-[\dA-Z-]+|Test Case))/i);
+      logger.info('AutomationPlanning: No #### test case header found, trying section fallbacks');
+      // Fallbacks for common TEST doc structures: ## 功能模块, ## 第二部分：测试用例, ### 模块1
+      const headerRe = /####\s+(测试用例\d+|TC-[\dA-Z-]+|Test Case)/i;
+      let sectionMatch = processedContent.match(/##\s+功能模块[\s\S]*?(####\s+(测试用例\d+|TC-[\dA-Z-]+|Test Case))/i);
       if (sectionMatch && sectionMatch.index !== undefined) {
         processedContent = processedContent.substring(sectionMatch.index);
-        logger.debug('AutomationPlanning: Found test cases in section, removed leading text');
+        logger.info('AutomationPlanning: Fallback matched ## 功能模块');
+      } else {
+        sectionMatch = processedContent.match(/##\s+第二部分[：:]?\s*测试用例[\s\S]*?(####\s+(测试用例\d+|TC-[\dA-Z-]+|Test Case))/i);
+        if (sectionMatch && sectionMatch.index !== undefined) {
+          processedContent = processedContent.substring(sectionMatch.index);
+          logger.info('AutomationPlanning: Fallback matched ## 第二部分：测试用例');
+        } else {
+          sectionMatch = processedContent.match(/(###\s+模块\d+[\s\S]*?)(####\s+(测试用例\d+|TC-[\dA-Z-]+|Test Case))/i);
+          if (sectionMatch && sectionMatch.index !== undefined && sectionMatch[1] !== undefined) {
+            const caseStart = sectionMatch.index + sectionMatch[1].length;
+            processedContent = processedContent.substring(caseStart);
+            logger.info('AutomationPlanning: Fallback matched ### 模块N, jumped to first ####');
+          }
+        }
+      }
+      const hasHeaderAfterFallback = processedContent.substring(0, 500).search(headerRe) !== -1;
+      if (!hasHeaderAfterFallback) {
+        logger.warn('AutomationPlanning: No test case header found after fallbacks', {
+          firstTestCaseIndex: -1,
+          hasPart2: processedContent.includes('第二部分'),
+          hasTC001: processedContent.includes('TC-001'),
+        });
       }
     }
-    
-    // Log processed content for debugging
+
     logger.info('AutomationPlanning: Processed content for extraction', {
       processedLength: processedContent.length,
       first100Chars: processedContent.substring(0, 100),
-      hasCodeBlock: !!codeBlockMatch,
+      usedCodeBlock,
     });
-    
+
     const lines = processedContent.split('\n');
 
     let currentTestCase: { id: string; name: string; steps: string[] } | null = null;
@@ -365,7 +356,7 @@ export class AutomationPlanning extends BaseAction {
             samples.push(currentTestCase);
           }
         }
-        
+
         // Check if we've reached max count
         if (maxCount && samples.length >= maxCount) {
           break;
@@ -390,33 +381,42 @@ export class AutomationPlanning extends BaseAction {
         }
       }
 
-      // Detect steps section - match "测试步骤" or "**测试步骤**" or "- **测试步骤**："
-      if (trimmed.match(/测试步骤|Steps|操作步骤/i) && currentTestCase) {
+      // Detect steps section - "测试步骤" / "Steps" / "操作步骤" or BDD-style "When" / "当" / "操作"
+      if (trimmed.match(/测试步骤|Steps|操作步骤|\*\*When\*\*|\*\*当\*\*|^When\s*[：:]|\*\*操作\*\*|^操作\s*[：:]/i) && currentTestCase) {
         inSteps = true;
         inExpectedResults = false;
         continue;
       }
 
-      // Reset inSteps when we encounter "预期结果" section
-      if (trimmed.match(/预期结果|Expected Result|Expected Results/i) && currentTestCase) {
+      // Reset inSteps when we encounter "预期结果" or BDD "Then" section
+      if (trimmed.match(/预期结果|Expected Result|Expected Results|\*\*Then\*\*|\*\*那么\*\*|^Then\s*[：:]|^那么\s*[：:]/i) && currentTestCase) {
         inSteps = false;
         inExpectedResults = true;
         continue;
       }
 
-      // Collect steps - only collect numbered steps (1., 2., etc.) to avoid collecting expected results
-      // Also handle steps that might be indented (e.g., "  1. step")
+      // Collect steps: numbered "1. step" or bullet "- step" / "* step" (BDD When list)
       if (inSteps && !inExpectedResults && currentTestCase) {
-        // Match numbered steps: "1. step" or "  1. step" (with optional indentation)
-        // Also handle markdown list format: "- 1. step" or "* 1. step"
+        // Match numbered steps: "1. step" or "  - 1. step"
         const stepMatch = trimmed.match(/^[\s\-*]*\d+\.\s+(.+)$/);
         if (stepMatch) {
           const step = stepMatch[1].trim();
-          // More lenient filtering: accept steps with length >= 3 (instead of 5)
-          // Exclude lines that are clearly not steps (like "**预期结果**")
           if (step && step.length >= 3 && !step.match(/^\*\*.*\*\*$/) && !step.includes('预期结果')) {
             currentTestCase.steps.push(step);
             logger.debug('AutomationPlanning: Extracted test step', {
+              testCaseId: currentTestCase.id || 'unknown',
+              step: step.substring(0, 50),
+            });
+          }
+          continue;
+        }
+        // Match bullet list (BDD When style): "- 用户点击..." or "* 打开页面"
+        const bulletMatch = trimmed.match(/^\s*[-*]\s+(.+)$/);
+        if (bulletMatch) {
+          const step = bulletMatch[1].trim();
+          if (step && step.length >= 2 && !step.match(/^\*\*.*\*\*$/) && !step.includes('预期结果')) {
+            currentTestCase.steps.push(step);
+            logger.debug('AutomationPlanning: Extracted test step (bullet)', {
               testCaseId: currentTestCase.id || 'unknown',
               step: step.substring(0, 50),
             });
@@ -446,13 +446,21 @@ export class AutomationPlanning extends BaseAction {
     }
 
     // Log extraction results
-    logger.info('AutomationPlanning: Test case extraction completed', {
+    const logPayload: Record<string, unknown> = {
       extractedCount: samples.length,
       maxCount: maxCount || 'unlimited',
-      testCaseIds: samples.map(tc => tc.id),
-      testCaseNames: samples.map(tc => tc.name.substring(0, 30)),
-      stepsCounts: samples.map(tc => tc.steps.length),
-    });
+      testCaseIds: samples.map((tc) => tc.id),
+      testCaseNames: samples.map((tc) => tc.name.substring(0, 30)),
+      stepsCounts: samples.map((tc) => tc.steps.length),
+    };
+    if (samples.length === 0) {
+      logPayload.diagnostic = {
+        processedLength: processedContent.length,
+        hasPart2: processedContent.includes('第二部分'),
+        hasTC001: processedContent.includes('TC-001'),
+      };
+    }
+    logger.info('AutomationPlanning: Test case extraction completed', logPayload);
 
     return samples;
   }
@@ -461,18 +469,23 @@ export class AutomationPlanning extends BaseAction {
    * Extract URL from test cases if mentioned
    */
   private extractUrlFromTestCases(testCases: string): string | undefined {
-    const urlMatch = testCases.match(/https?:\/\/[^\s\)]+/i);
+    const urlMatch = testCases.match(/https?:\/\/[^\s)]+/i);
     return urlMatch ? urlMatch[0] : undefined;
   }
 
   /**
-   * Validate test cases using Stagehand
+   * Validate test cases using Stagehand.
+   * Returns a text report and the list of cases that passed (first step executed successfully).
    */
   private async validateWithStagehand(
     testCases: Array<{ id: string; name: string; steps: string[] }>,
     url?: string
-  ): Promise<string> {
+  ): Promise<{
+    report: string;
+    passedCases: Array<{ id: string; name: string; steps: string[] }>;
+  }> {
     const results: string[] = [];
+    const passedCases: Array<{ id: string; name: string; steps: string[] }> = [];
 
     results.push('## Stagehand 自动化可行性验证结果\n\n');
     results.push('以下测试用例已通过 Stagehand 实际验证：\n\n');
@@ -488,6 +501,7 @@ export class AutomationPlanning extends BaseAction {
           const firstStep = testCase.steps[0];
           try {
             await this.stagehandService.act(firstStep, url);
+            passedCases.push(testCase);
             results.push(`### ${testCase.name}\n`);
             results.push(`- **状态**: ✅ 已验证可行\n`);
             results.push(`- **验证步骤**: ${firstStep}\n`);
@@ -511,7 +525,38 @@ export class AutomationPlanning extends BaseAction {
       }
     }
 
-    return results.join('');
+    return { report: results.join(''), passedCases };
+  }
+
+  /**
+   * Build a safe script filename from test case id and name for better distinction in auto/*.ts.
+   * Format: {id}-{sanitizedName}.ts, e.g. TC-001-用户注册-手机号注册成功.ts
+   */
+  private toSafeScriptFilename(id: string, name: string): string {
+    const safeId = id.replace(/[^a-zA-Z0-9-_]/g, '_');
+    if (!name || !name.trim()) {
+      return `${safeId}.ts`;
+    }
+    let part = name.trim();
+    // Strip leading "TC-xxx：" or "TC-xxx:" to avoid duplication in filename
+    part = part.replace(/^\s*TC-[\dA-Z-]+[：:]\s*/i, '').trim();
+    if (!part) {
+      return `${safeId}.ts`;
+    }
+    // Replace illegal filename chars and normalize spaces to single hyphen
+    part = part
+      .replace(/[\\/:*?"<>|]/g, '-')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    if (!part) {
+      return `${safeId}.ts`;
+    }
+    const maxNameLen = 56;
+    if (part.length > maxNameLen) {
+      part = part.slice(0, maxNameLen).replace(/-+$/, '');
+    }
+    return `${safeId}-${part}.ts`;
   }
 
   /**
@@ -524,6 +569,7 @@ export class AutomationPlanning extends BaseAction {
     url?: string
   ): Promise<Array<{ id: string; filename: string; content: string }>> {
     const scriptFiles: Array<{ id: string; filename: string; content: string }> = [];
+    const usedFilenames = new Set<string>();
 
     try {
       for (const testCase of testCases) {
@@ -535,11 +581,19 @@ export class AutomationPlanning extends BaseAction {
           }
 
           const scriptId = testCase.id || `TC-${String(scriptFiles.length + 1).padStart(3, '0')}`;
-          const safeId = scriptId.replace(/[^a-zA-Z0-9-_]/g, '_'); // Sanitize ID for filename
-          const filename = `${safeId}.ts`;
+          let filename = this.toSafeScriptFilename(scriptId, testCase.name);
+          if (usedFilenames.has(filename)) {
+            let suffix = 2;
+            while (usedFilenames.has(filename)) {
+              const base = filename.replace(/\.ts$/, '');
+              filename = `${base}_${suffix}.ts`;
+              suffix += 1;
+            }
+          }
+          usedFilenames.add(filename);
           const safeName = (testCase.name || 'Unknown').replace(/'/g, "\\'").replace(/\n/g, ' ');
-          const safeSteps = (testCase.steps || []).filter(step => step && step.trim());
-          
+          const safeSteps = (testCase.steps || []).filter((step) => step && step.trim());
+
           logger.info('AutomationPlanning: Generating script for test case', {
             testCaseId: scriptId,
             testCaseName: safeName,
@@ -550,30 +604,35 @@ export class AutomationPlanning extends BaseAction {
           // 严格按照测试用例的步骤顺序生成脚本代码
           // 每个步骤都必须按照测试用例中的描述执行，不能省略或修改
           // 每个步骤都有详细的注释说明其目的和操作
-          const stepsCode = safeSteps.length > 0 
-            ? safeSteps.map((step, index) => {
-                // 转义特殊字符，确保字符串安全
-                const escapedStep = step.replace(/'/g, "\\'").replace(/\n/g, ' ').replace(/\r/g, '').trim();
-                // 确保步骤不为空
-                if (!escapedStep || escapedStep.length === 0) {
-                  logger.warn('AutomationPlanning: Empty step found, skipping', {
-                    testCaseId: scriptId,
-                    stepIndex: index + 1,
-                  });
-                  return `    // 步骤 ${index + 1}: [空步骤，已跳过]`;
-                }
-                // 严格按照步骤顺序生成，每个步骤都有注释
-                return `    // 步骤 ${index + 1}/${safeSteps.length}: ${escapedStep}\n    await stagehandService.act('${escapedStep}');\n    console.log('步骤 ${index + 1} 执行完成: ${escapedStep}');`;
-              }).join('\n\n')
-            : '    // 暂无测试步骤';
-          
+          const stepsCode =
+            safeSteps.length > 0
+              ? safeSteps
+                  .map((step, index) => {
+                    // 转义特殊字符，确保字符串安全
+                    const escapedStep = step.replace(/'/g, "\\'").replace(/\n/g, ' ').replace(/\r/g, '').trim();
+                    // 确保步骤不为空
+                    if (!escapedStep || escapedStep.length === 0) {
+                      logger.warn('AutomationPlanning: Empty step found, skipping', {
+                        testCaseId: scriptId,
+                        stepIndex: index + 1,
+                      });
+                      return `    // 步骤 ${index + 1}: [空步骤，已跳过]`;
+                    }
+                    // 严格按照步骤顺序生成，每个步骤都有注释
+                    return `    // 步骤 ${index + 1}/${safeSteps.length}: ${escapedStep}\n    await stagehandService.act('${escapedStep}');\n    console.log('步骤 ${index + 1} 执行完成: ${escapedStep}');`;
+                  })
+                  .join('\n\n')
+              : '    // 暂无测试步骤';
+
           const scriptContent = `/**
  * Stagehand 自动化测试脚本
  * 测试用例编号: ${scriptId}
  * 测试用例名称: ${safeName}
  * 由 AutomationPlanning 自动生成
  * 生成时间: ${new Date().toLocaleString('zh-CN')}
- * 
+ *
+ * 框架规范：本脚本必须且仅使用 Stagehand 自动化测试框架编写，不得混用其他自动化库。
+ *
  * 重要说明：
  * - 本脚本严格按照测试用例的步骤顺序生成
  * - 每个步骤都按照测试用例中的描述执行，不能省略或修改

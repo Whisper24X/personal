@@ -53,25 +53,33 @@ export class StagehandService {
     try {
       // userId parameter is kept for future session management
       void userId;
-      
+
       // Try to load Stagehand if available
       // Check if alpha version is installed, otherwise use stable version
       let stagehandModule: any = null;
       let Stagehand: any = null;
       let stagehandVersion = 'unknown';
-      
+
       try {
         // Dynamic import to avoid breaking if Stagehand is not installed
-        // Use type assertion to avoid TypeScript errors when package is not installed
-        stagehandModule = await import('@browserbasehq/stagehand' as any);
+        try {
+          stagehandModule = await import('@browserbasehq/stagehand' as any);
+        } catch (firstError: any) {
+          const msg = firstError?.message || '';
+          if (msg.includes('Did you mean to import') || msg.includes('dist/index.js')) {
+            stagehandModule = await import('@browserbasehq/stagehand/dist/index.js' as any);
+          } else {
+            throw firstError;
+          }
+        }
         Stagehand = stagehandModule.Stagehand || stagehandModule.default;
-        
+
         // Check version from package.json to determine if alpha version is installed
         // Try multiple possible paths to find the package.json
         try {
           const fs = await import('fs/promises');
           const path = await import('path');
-          
+
           // Try different possible paths
           const possiblePaths = [
             // From backend directory
@@ -82,7 +90,7 @@ export class StagehandService {
             path.resolve(process.cwd(), 'node_modules/@browserbasehq/stagehand/package.json'),
             path.resolve(process.cwd(), 'backend/node_modules/@browserbasehq/stagehand/package.json'),
           ];
-          
+
           let packageJson: any = null;
           for (const packagePath of possiblePaths) {
             try {
@@ -93,7 +101,7 @@ export class StagehandService {
               continue;
             }
           }
-          
+
           if (packageJson) {
             const version = packageJson.version || '';
             if (version.includes('alpha')) {
@@ -128,18 +136,15 @@ export class StagehandService {
         this.initialized = true;
         return;
       }
-      
+
       try {
-        const openaiModule = await import('openai');
-        const OpenAI = openaiModule.default;
-        
         // Determine which LLM provider to use
         // Priority: OPENAI_API_KEY > ZHIPUAI_API_KEY
         let apiKey: string | undefined;
         let baseURL: string | undefined;
         let modelName: string;
         let provider: string;
-        
+
         if (process.env.OPENAI_API_KEY) {
           // Use OpenAI
           apiKey = process.env.OPENAI_API_KEY;
@@ -162,99 +167,36 @@ export class StagehandService {
           provider = 'openai';
           logger.warn('StagehandService: No API key found, using default OpenAI config (may fail)');
         }
-        
-        // Create OpenAI client for custom LLM provider
-        // Stagehand alpha version supports OpenAI-compatible APIs through llmClient or modelClientOptions
-        const llmClient = apiKey ? new OpenAI({
-          apiKey: apiKey,
-          baseURL: baseURL,
-        }) : undefined;
-        
-        // Initialize Stagehand instance
-        // Use LOCAL environment for local browser automation
-        // Set env to "BROWSERBASE" if using Browserbase cloud service
+
+        // 必须让 Stagehand 内部创建带 getLanguageModel() 的 client，否则 agent 会报 MissingLLMConfigurationError。
+        // CustomOpenAIClient 无 getLanguageModel()，不能用于 act()。故不传 llmClient，改用 openai/模型名 + modelClientOptions。
+        if (apiKey) {
+          process.env.OPENAI_API_KEY = apiKey;
+          if (baseURL) process.env.OPENAI_BASE_URL = baseURL;
+        }
+
+        // Stagehand 的 provider/model 格式会走 AISdkClient（有 getLanguageModel），兼容自定义 baseURL
+        const stagehandModelName = modelName.includes('/') ? modelName : `openai/${modelName}`;
+
         const stagehandConfig: any = {
           env: process.env.STAGEHAND_ENV || 'LOCAL',
-          modelName: modelName,
+          modelName: stagehandModelName,
           localBrowserLaunchOptions: {
             headless: process.env.STAGEHAND_HEADLESS !== 'false',
           },
         };
-        
-        // Configure LLM client for Stagehand
-        // According to Stagehand alpha documentation, use CustomOpenAIClient for OpenAI-compatible APIs
-        if (apiKey && llmClient) {
-          try {
-            // Import CustomOpenAIClient from Stagehand (it's exported from the main package)
-            // CustomOpenAIClient is the recommended way to use custom OpenAI-compatible APIs
-            const { CustomOpenAIClient } = stagehandModule as any;
-            
-            if (CustomOpenAIClient) {
-              // Use CustomOpenAIClient wrapper for OpenAI-compatible APIs (like ZhipuAI)
-              stagehandConfig.llmClient = new CustomOpenAIClient({
-                modelName: modelName,
-                client: llmClient,
-              });
-              logger.info('StagehandService: Using CustomOpenAIClient wrapper', { 
-                provider, 
-                model: modelName,
-                baseURL: baseURL || 'default'
-              });
-            } else {
-              // Fallback: use llmClient directly if CustomOpenAIClient not available
-              stagehandConfig.llmClient = llmClient;
-              logger.warn('StagehandService: CustomOpenAIClient not found, using OpenAI client directly', { 
-                provider, 
-                model: modelName 
-              });
-            }
-          } catch (clientError: any) {
-            // If CustomOpenAIClient not available, use direct client
-            stagehandConfig.llmClient = llmClient;
-            logger.warn('StagehandService: Failed to create CustomOpenAIClient, using OpenAI client directly', { 
-              error: clientError.message,
-              provider, 
-              model: modelName 
-            });
-          }
-          
-          // Also set modelClientOptions as an additional way to configure LLM
-          // This ensures the agent can access the LLM configuration
-          stagehandConfig.modelClientOptions = {
-            apiKey: apiKey,
-            baseURL: baseURL,
-          };
-          
-          // Also set environment variables as additional fallback
-          // This ensures compatibility even if llmClient approach doesn't work
-          process.env.OPENAI_API_KEY = apiKey;
-          if (baseURL) {
-            process.env.OPENAI_BASE_URL = baseURL;
-          }
-        } else if (apiKey) {
-          // If no llmClient but we have apiKey, use modelClientOptions and environment variables
-          stagehandConfig.modelClientOptions = {
-            apiKey: apiKey,
-            baseURL: baseURL,
-          };
-          process.env.OPENAI_API_KEY = apiKey;
-          if (baseURL) {
-            process.env.OPENAI_BASE_URL = baseURL;
-          }
-          logger.info('StagehandService: Using modelClientOptions and environment variables for LLM configuration', { 
-            provider, 
-            model: modelName 
-          });
+        if (apiKey) {
+          stagehandConfig.modelClientOptions = { apiKey, baseURL };
         }
-        
+
         this.stagehandInstance = new Stagehand(stagehandConfig);
         await this.stagehandInstance.init();
         this.stagehandAvailable = true;
-        logger.info('StagehandService: Initialized with Stagehand framework', { 
-          userId, 
+        logger.info('StagehandService: Initialized with Stagehand framework', {
+          userId,
           provider,
           model: modelName,
-          stagehandVersion 
+          stagehandVersion,
         });
       } catch (importError: any) {
         // Stagehand not available, use placeholder mode
@@ -264,7 +206,7 @@ export class StagehandService {
           reason: importError.message,
         });
       }
-      
+
       this.initialized = true;
     } catch (error: any) {
       logger.error('StagehandService: Failed to initialize', { error: error.message });
@@ -292,14 +234,14 @@ export class StagehandService {
 
     try {
       logger.info('StagehandService: Executing action', { instruction, url });
-      
+
       if (this.stagehandAvailable && this.stagehandInstance) {
         // Use real Stagehand agent to execute the action
         try {
           // Get agent with model configuration if needed
           // The llmClient should be inherited from Stagehand instance, but we can also pass model config
           const agent = this.stagehandInstance.agent();
-          
+
           // Navigate to URL first if provided
           if (url) {
             const pages = this.stagehandInstance.context?.pages();
@@ -308,14 +250,14 @@ export class StagehandService {
               logger.info('StagehandService: Navigated to URL', { url });
             }
           }
-          
+
           // Execute the instruction using Stagehand agent
           // The agent should use the llmClient configured during Stagehand initialization
           await agent.execute({
             instruction: instruction,
             maxSteps: 10, // Limit steps to prevent infinite loops
           });
-          
+
           logger.info('StagehandService: Action completed via Stagehand agent', { instruction });
         } catch (agentError: any) {
           logger.error('StagehandService: Stagehand agent execution failed', {
@@ -427,7 +369,7 @@ export class StagehandService {
 
     try {
       logger.info('StagehandService: Closing and cleaning up resources');
-      
+
       // Cleanup Stagehand instance if available
       if (this.stagehandInstance && this.stagehandAvailable) {
         try {
@@ -439,7 +381,7 @@ export class StagehandService {
           });
         }
       }
-      
+
       this.initialized = false;
       this.stagehandInstance = null;
       this.stagehandAvailable = false;
@@ -450,4 +392,3 @@ export class StagehandService {
     }
   }
 }
-

@@ -6,10 +6,7 @@
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { WorkspaceOptions, logger, loadPrompt } from '../utils';
-import {
-  COVERAGE_QUALITY_CHECK_SYSTEM_PROMPT,
-  buildCoverageQualityCheckPrompt,
-} from '../prompts/test';
+import { COVERAGE_QUALITY_CHECK_SYSTEM_PROMPT, buildCoverageQualityCheckPrompt } from '../prompts/test';
 
 export interface CoverageQualityCheckOptions extends WorkspaceOptions {
   // Inherits all options from WorkspaceOptions
@@ -17,10 +14,7 @@ export interface CoverageQualityCheckOptions extends WorkspaceOptions {
 
 export class CoverageQualityCheck extends BaseAction {
   constructor() {
-    super(
-      'CoverageQualityCheck',
-      'Check test coverage and perform quality self-assessment'
-    );
+    super('CoverageQualityCheck', 'Check test coverage and perform quality self-assessment');
   }
 
   async run(input: string, options?: CoverageQualityCheckOptions): Promise<IActionOutput> {
@@ -68,12 +62,7 @@ export class CoverageQualityCheck extends BaseAction {
               documentType: 'CODE',
             },
             (filename: string) => {
-              return (
-                filename.endsWith('.ts') ||
-                filename.endsWith('.js') ||
-                filename.endsWith('.py') ||
-                filename.endsWith('.java')
-              );
+              return filename.endsWith('.ts') || filename.endsWith('.js') || filename.endsWith('.py') || filename.endsWith('.java');
             }
           );
           if (codeFromWorkspace) {
@@ -115,37 +104,25 @@ export class CoverageQualityCheck extends BaseAction {
 
       // Load system prompt from database or use default
       const userId = this.context?.get('userId');
-      const systemPrompt = await loadPrompt(
-        userId,
-        'test',
-        'coverage_quality_check_system_prompt',
-        COVERAGE_QUALITY_CHECK_SYSTEM_PROMPT
-      );
+      const systemPrompt = await loadPrompt(userId, 'test', 'coverage_quality_check_system_prompt', COVERAGE_QUALITY_CHECK_SYSTEM_PROMPT);
 
-      // Call LLM to generate coverage and quality report
+      // Call LLM to generate coverage and quality report.
+      // Output is for API return only; do not write to any file (no COVERAGE_REPORT.md / 测试覆盖率与质量评估报告.md).
       const content = await this.aask(prompt, [systemPrompt]);
 
-      // Save reports to workspace
       const workspaceOptions: WorkspaceOptions = {
         ...options,
         documentType: 'TEST',
       };
 
-      // Save coverage report and quality check report
-      // The LLM output should contain both reports, we'll save them separately
-      await this.saveToWorkspace('COVERAGE_REPORT.md', content, workspaceOptions);
-      await this.saveToWorkspace('QUALITY_CHECK.md', content, workspaceOptions);
-
       logger.info('CoverageQualityCheck: Coverage and quality check completed', {
         contentLength: content.length,
-        workspaceDir: this.getWorkspaceDir(workspaceOptions),
       });
 
       return {
         content: content,
         data: {
           type: 'coverage_quality_check',
-          filename: 'COVERAGE_REPORT.md',
           timestamp: new Date().toISOString(),
           workspaceDir: this.getWorkspaceDir(workspaceOptions),
         },

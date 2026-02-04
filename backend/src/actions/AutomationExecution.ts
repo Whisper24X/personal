@@ -30,10 +30,7 @@ interface TestScriptResult {
 
 export class AutomationExecution extends BaseAction {
   constructor() {
-    super(
-      'AutomationExecution',
-      'Execute TypeScript test scripts from test/auto directory and generate HTML/JSON reports'
-    );
+    super('AutomationExecution', 'Execute TypeScript test scripts from test/auto directory and generate HTML/JSON reports');
   }
 
   async run(_input: string, options?: AutomationExecutionOptions): Promise<IActionOutput> {
@@ -48,21 +45,12 @@ export class AutomationExecution extends BaseAction {
     const reportDir = path.join(workspaceDir, 'report');
 
     try {
-      // Check if auto directory exists
+      // Ensure auto directory exists (create if missing so we can continue to "no scripts" flow)
       try {
         await fs.access(autoDir);
       } catch {
-        logger.warn('AutomationExecution: auto directory does not exist', { autoDir });
-        return {
-          content: '未找到测试脚本目录（test/auto），请先运行 AutomationPlanning 生成测试脚本',
-          data: {
-            type: 'automation_execution',
-            skipped: true,
-            reason: 'auto directory not found',
-            timestamp: new Date().toISOString(),
-            workspaceDir,
-          },
-        };
+        logger.info('AutomationExecution: auto directory does not exist, creating', { autoDir });
+        await fs.mkdir(autoDir, { recursive: true });
       }
 
       // Read all TypeScript files from auto directory
@@ -72,11 +60,11 @@ export class AutomationExecution extends BaseAction {
           autoDir,
           workspaceDir,
         });
-        
+
         // Even if no scripts found, generate an empty report to indicate execution was attempted
         const emptyResults: TestScriptResult[] = [];
         const emptySummary = this.generateExecutionSummary(emptyResults);
-        
+
         // Generate and save empty reports
         try {
           const emptyJsonReport = this.generateJSONReport(emptySummary, emptyResults);
@@ -89,7 +77,7 @@ export class AutomationExecution extends BaseAction {
             error: error.message,
           });
         }
-        
+
         try {
           const emptyHtmlReport = this.generateHTMLReport(emptySummary, emptyResults);
           await this.saveToWorkspace('report/automation_report.html', emptyHtmlReport, workspaceOptions);
@@ -101,7 +89,7 @@ export class AutomationExecution extends BaseAction {
             error: error.message,
           });
         }
-        
+
         return {
           content: 'test/auto 目录中未找到测试脚本文件，已生成空报告。请先运行 AutomationPlanning 生成测试脚本后重新执行。',
           data: {
@@ -117,7 +105,7 @@ export class AutomationExecution extends BaseAction {
 
       logger.info('AutomationExecution: Found test scripts', {
         scriptCount: scriptFiles.length,
-        scripts: scriptFiles.map(f => path.basename(f)),
+        scripts: scriptFiles.map((f) => path.basename(f)),
       });
 
       // Execute all test scripts
@@ -130,8 +118,8 @@ export class AutomationExecution extends BaseAction {
         results = await this.executeTestScripts(scriptFiles, autoDir);
         logger.info('AutomationExecution: Script execution completed', {
           resultsCount: results.length,
-          successCount: results.filter(r => r.success).length,
-          failedCount: results.filter(r => !r.success).length,
+          successCount: results.filter((r) => r.success).length,
+          failedCount: results.filter((r) => !r.success).length,
         });
       } catch (error: any) {
         logger.error('AutomationExecution: Failed to execute test scripts', {
@@ -166,12 +154,16 @@ export class AutomationExecution extends BaseAction {
           stack: error.stack,
         });
         // Create a minimal JSON report if generation fails
-        jsonReport = JSON.stringify({
-          summary,
-          results: [],
-          error: 'Failed to generate report: ' + error.message,
-          timestamp: new Date().toISOString(),
-        }, null, 2);
+        jsonReport = JSON.stringify(
+          {
+            summary,
+            results: [],
+            error: 'Failed to generate report: ' + error.message,
+            timestamp: new Date().toISOString(),
+          },
+          null,
+          2
+        );
       }
 
       // Save JSON report
@@ -282,17 +274,17 @@ export class AutomationExecution extends BaseAction {
       const entries = await fs.readdir(autoDir, { withFileTypes: true });
       logger.info('AutomationExecution: Found entries in auto directory', {
         totalEntries: entries.length,
-        entryNames: entries.map(e => e.name),
+        entryNames: entries.map((e) => e.name),
       });
-      
+
       const scriptFiles = entries
-        .filter(entry => entry.isFile() && entry.name.endsWith('.ts'))
-        .map(entry => path.join(autoDir, entry.name))
+        .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
+        .map((entry) => path.join(autoDir, entry.name))
         .sort();
 
       logger.info('AutomationExecution: Filtered TypeScript script files', {
         scriptCount: scriptFiles.length,
-        scriptFiles: scriptFiles.map(f => path.basename(f)),
+        scriptFiles: scriptFiles.map((f) => path.basename(f)),
       });
 
       return scriptFiles;
@@ -321,16 +313,16 @@ export class AutomationExecution extends BaseAction {
       const scriptFile = scriptFiles[i];
       const startTime = Date.now();
       const scriptName = path.basename(scriptFile);
-      
+
       // Extract test case ID and name from script file
       const testCaseId = scriptName.replace('.ts', '');
       let testCaseName = testCaseId;
-      let testSteps: string[] = [];
+      const testSteps: string[] = [];
 
       try {
         // Read script content to extract test case name and steps
         const scriptContent = await fs.readFile(scriptFile, 'utf-8');
-        
+
         // Extract test case name
         const nameMatch = scriptContent.match(/测试用例名称[：:]\s*(.+)/);
         if (nameMatch) {
@@ -359,23 +351,41 @@ export class AutomationExecution extends BaseAction {
 
       try {
         // Execute script using tsx
-        // Set NODE_PATH to include backend/src so scripts can import StagehandService
-        const backendSrcPath = path.resolve(process.cwd(), 'backend/src');
-        const nodePath = process.env.NODE_PATH 
-          ? `${process.env.NODE_PATH}:${backendSrcPath}`
-          : backendSrcPath;
-        
-        const result = await executeCommand(
-          `tsx ${scriptName}`,
-          {
-            cwd,
-            timeout: 300000, // 5 minutes timeout per script
-            env: {
-              ...process.env,
-              NODE_PATH: nodePath,
-            },
-          }
-        );
+        // Set NODE_PATH to include backend/src so scripts can import StagehandService.
+        // Use __dirname so path is correct regardless of process.cwd() (e.g. when run from workspace).
+        const backendSrcPath = path.resolve(__dirname, '..');
+        const nodePath = process.env.NODE_PATH ? `${process.env.NODE_PATH}:${backendSrcPath}` : backendSrcPath;
+        // Explicitly pass LLM/Stagehand env so tsx child gets same config as backend (e.g. ZhipuAI)
+        const scriptEnv: NodeJS.ProcessEnv = {
+          ...process.env,
+          NODE_PATH: nodePath,
+        };
+        const llmEnvKeys = [
+          'OPENAI_API_KEY',
+          'OPENAI_BASE_URL',
+          'OPENAI_MODEL',
+          'ZHIPUAI_API_KEY',
+          'ZHIPUAI_BASE_URL',
+          'ZHIPUAI_MODEL',
+          'STAGEHAND_MODEL',
+          'STAGEHAND_ENV',
+          'STAGEHAND_HEADLESS',
+          'ENABLE_BROWSER',
+        ];
+        for (const key of llmEnvKeys) {
+          if (process.env[key] != null) scriptEnv[key] = process.env[key];
+        }
+        // Stagehand 内部只认 OPENAI_API_KEY，子进程用智谱时需映射，否则报 MissingLLMConfigurationError 导致浏览器闪退
+        if (!scriptEnv.OPENAI_API_KEY && scriptEnv.ZHIPUAI_API_KEY) {
+          scriptEnv.OPENAI_API_KEY = scriptEnv.ZHIPUAI_API_KEY;
+          scriptEnv.OPENAI_BASE_URL = scriptEnv.ZHIPUAI_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
+          scriptEnv.OPENAI_MODEL = scriptEnv.STAGEHAND_MODEL || scriptEnv.ZHIPUAI_MODEL || 'glm-4-flash';
+        }
+        const result = await executeCommand(`tsx ${scriptName}`, {
+          cwd,
+          timeout: 300000, // 5 minutes timeout per script
+          env: scriptEnv,
+        });
 
         const executionTime = Date.now() - startTime;
         const success = result.exitCode === 0;
@@ -384,20 +394,20 @@ export class AutomationExecution extends BaseAction {
         const logs: string[] = [];
         const stdoutLines = result.stdout ? result.stdout.split('\n') : [];
         const stderrLines = result.stderr ? result.stderr.split('\n') : [];
-        
+
         // Combine outputs (stdout first, then stderr if any)
         if (stdoutLines.length > 0) {
-          logs.push(...stdoutLines.filter(line => line.trim()));
+          logs.push(...stdoutLines.filter((line) => line.trim()));
         }
         if (stderrLines.length > 0 && result.stderr !== result.stdout) {
-          logs.push(...stderrLines.filter(line => line.trim()));
+          logs.push(...stderrLines.filter((line) => line.trim()));
         }
 
         // If no logs but we have output, use it
         if (logs.length === 0 && (result.stdout || result.stderr)) {
           const allOutput = (result.stdout || '') + (result.stderr || '');
           if (allOutput.trim()) {
-            logs.push(...allOutput.split('\n').filter(line => line.trim()));
+            logs.push(...allOutput.split('\n').filter((line) => line.trim()));
           }
         }
 
@@ -409,7 +419,7 @@ export class AutomationExecution extends BaseAction {
           executionTime,
           timestamp: new Date().toISOString(),
           output: result.stdout || undefined,
-          error: success ? undefined : (result.stderr || result.stdout || '执行失败'),
+          error: success ? undefined : result.stderr || result.stdout || '执行失败',
           steps: testSteps.length > 0 ? testSteps : undefined,
           logs: logs.length > 0 ? logs : undefined,
           exitCode: result.exitCode ?? undefined,
@@ -423,29 +433,29 @@ export class AutomationExecution extends BaseAction {
         });
       } catch (error: any) {
         const executionTime = Date.now() - startTime;
-        
+
         // Try to extract error details from CommandExecutorError
         let errorMessage = error.message || 'Script execution failed';
-        let errorLogs: string[] = [];
+        const errorLogs: string[] = [];
         let errorOutput = '';
         let errorStderr = '';
-        
+
         // Check if error has stdout/stderr properties (from CommandExecutorError)
         if (error.stdout || error.stderr) {
           errorOutput = error.stdout || '';
           errorStderr = error.stderr || '';
-          
+
           // Combine stdout and stderr for logs
           const stdoutLines = errorOutput ? errorOutput.split('\n') : [];
           const stderrLines = errorStderr ? errorStderr.split('\n') : [];
-          
+
           if (stdoutLines.length > 0) {
-            errorLogs.push(...stdoutLines.filter(line => line.trim()));
+            errorLogs.push(...stdoutLines.filter((line) => line.trim()));
           }
           if (stderrLines.length > 0 && errorStderr !== errorOutput) {
-            errorLogs.push(...stderrLines.filter(line => line.trim()));
+            errorLogs.push(...stderrLines.filter((line) => line.trim()));
           }
-          
+
           // Use the most detailed error message
           if (errorLogs.length > 0) {
             errorMessage = errorLogs.join('\n');
@@ -455,7 +465,7 @@ export class AutomationExecution extends BaseAction {
             errorMessage = errorOutput;
           }
         }
-        
+
         results.push({
           testCaseId,
           testCaseName,
@@ -482,8 +492,8 @@ export class AutomationExecution extends BaseAction {
     logger.info('AutomationExecution: Completed executing all test scripts', {
       totalScripts: scriptFiles.length,
       resultsCount: results.length,
-      successCount: results.filter(r => r.success).length,
-      failedCount: results.filter(r => !r.success).length,
+      successCount: results.filter((r) => r.success).length,
+      failedCount: results.filter((r) => !r.success).length,
     });
 
     return results;
@@ -515,7 +525,7 @@ export class AutomationExecution extends BaseAction {
     return JSON.stringify(
       {
         summary,
-        results: results.map(r => ({
+        results: results.map((r) => ({
           testCaseId: r.testCaseId,
           testCaseName: r.testCaseName,
           scriptFile: r.scriptFile,
@@ -760,7 +770,7 @@ export class AutomationExecution extends BaseAction {
     for (const result of results) {
       const statusClass = result.success ? 'status-pass' : 'status-fail';
       const statusText = result.success ? '✅ 通过' : '❌ 失败';
-      
+
       html += `
                 <tr>
                     <td><strong>${this.escapeHtml(result.testCaseId)}</strong></td>
@@ -850,12 +860,7 @@ export class AutomationExecution extends BaseAction {
    */
   private escapeHtml(text: string): string {
     if (!text) return '';
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
   }
 
   /**
