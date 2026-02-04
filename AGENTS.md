@@ -2,7 +2,23 @@
 
 Monorepo 全栈应用：移动端 + 管理后台 + Go 后端。
 
-## 开发指南
+## 🤖 AI 开发指南
+
+**如果你是 AI Agent,请优先阅读**:
+- **[AI 开发入口指南](docs/dev-spec/AI-GUIDE.md)** - AI 工作流快速开始
+- **[AI 工作流详细指南](docs/dev-spec/AI-WORKFLOW-GUIDE.md)** - 完整的 AI 开发流程
+
+### 可用 AI Skills
+
+| Skill | 用途 |
+|-------|------|
+| [创建小程序页面](.cursor/skills/create-ainative-app-page/SKILL.md) | 在 ainative-app 中创建新页面 |
+| [创建管理后台页面](.cursor/skills/create-ainative-shadow-page/SKILL.md) | 在 ainative-shadow 中创建新页面 |
+| [创建后端 API](.cursor/skills/create-ainative-backend-api/SKILL.md) | 在 ainative-backend 中创建新接口 |
+| [调试项目问题](.cursor/skills/debug-ainative-projects/SKILL.md) | 问题排查和调试 |
+| [代码规范检查](.cursor/skills/code-review-ainative/SKILL.md) | 代码质量检查和优化 |
+
+## 📚 人工开发指南
 
 | 子项目 | 入口 |
 |--------|------|
