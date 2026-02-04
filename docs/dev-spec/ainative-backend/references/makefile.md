@@ -123,6 +123,8 @@ make build
 
 ### 代码质量
 
+详细使用规范参考: [代码检查规范](./code-check.md)
+
 #### `make lint`
 
 运行 golangci-lint 代码检查:
@@ -153,6 +155,12 @@ make gci
 
 ```bash
 make buf
+```
+
+#### 提交前完整检查
+
+```bash
+make gci && make wire && make lint && make gosec && make build
 ```
 
 ### 文档和测试
@@ -192,6 +200,20 @@ make errcode
 ```bash
 make sqldump TABLES=sys_admin
 ```
+
+#### `make sqlimport`
+
+导入 SQL 文件到数据库:
+
+```bash
+# 导入单个文件
+make sqlimport ./doc/sql/init.sql
+
+# 导入目录下所有 SQL 文件
+make sqlimport ./doc/sql/migrations/
+```
+
+详细使用规范参考: [SQL 导入规范](./sql-import.md)
 
 #### `make sqltopb`
 

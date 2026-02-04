@@ -41,7 +41,7 @@ import "google/api/annotations.proto";
 import "protoc-gen-openapiv2/options/annotations.proto";
 import "validate/validate.proto";
 
-option go_package = "gitlab.yc345.tv/ainative/ainative-backend/api/shadow/v1;v1";
+option go_package = "gitlab.yc345.tv/backend/ainative-backend/api/shadow/v1;v1";
 
 // 变量的命名一律使用小驼峰命名法，例如：firstName、lastName等。
 // 后缀定义:请求req,响应reply

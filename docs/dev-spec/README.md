@@ -10,8 +10,7 @@ AI 助手在此项目工作的快速入口。文档按渐进式披露组织：�
 
 | 子项目 | 类型 | 技术栈 | 开发指南 |
 |--------|------|--------|----------|
-| **ainative-app** | 跨平台移动端 | uni-app + Vue3 + TypeScript + UnoCSS | [README](docs/dev-spec/ainative-app/README.md) |
-| **ainative-pc** | PC 端 Web | Vue3 + Vite + TypeScript + Pinia | [README](docs/dev-spec/ainative-pc/README.md) |
+| **ainative-app** | 移动端应用 | Taro 3.6.23 + Vue3 + Webpack5 | [README](docs/dev-spec/ainative-app/README.md) |
 | **ainative-shadow** | 管理后台 | Vue3 + Element Plus + Tailwind CSS | [README](docs/dev-spec/ainative-shadow/README.md) |
 | **ainative-backend** | Go 后端服务 | Kratos + GORM + Protobuf | [README](docs/dev-spec/ainative-backend/README.md) |
 
@@ -22,9 +21,11 @@ AI 助手在此项目工作的快速入口。文档按渐进式披露组织：�
 ### ainative-app（移动端）
 ```bash
 cd ainative-app
-pnpm install && pnpm dev        # H5 开发
-pnpm dev:mp                     # 微信小程序
-pnpm lint:fix                   # 代码修复
+pnpm install                    # 安装依赖
+pnpm dev:weapp                  # 微信小程序开发
+pnpm dev:h5                     # H5 开发
+pnpm build:weapp:production     # 构建微信小程序
+pnpm ci:weapp:upload:production # CI 上传
 ```
 
 ### ainative-shadow（管理后台）
@@ -33,14 +34,6 @@ cd ainative-shadow
 pnpm install && pnpm dev        # 开发服务
 pnpm build                      # 生产构建
 pnpm fix                        # 代码修复
-```
-
-### ainative-pc（PC 端）
-```bash
-cd ainative-pc
-pnpm install && pnpm dev        # 开发服务
-pnpm build                      # 生产构建
-pnpm test:unit                  # 单元测试
 ```
 
 ### ainative-backend（后端）
@@ -61,8 +54,7 @@ make wire && make build         # 依赖注入和构建
 | 任务场景 | 推荐阅读 |
 |----------|----------|
 | 了解整体架构和约定 | [openspec/project.md](openspec/project.md) |
-| 开发移动端页面/功能 | [ainative-app 指南](docs/dev-spec/ainative-app/README.md) |
-| 开发 PC 端页面/功能 | [ainative-pc 指南](docs/dev-spec/ainative-pc/README.md) |
+| 开发移动端小程序/H5 | [ainative-app 指南](docs/dev-spec/ainative-app/README.md) |
 | 开发管理后台页面 | [ainative-shadow 指南](docs/dev-spec/ainative-shadow/README.md) |
 | 开发后端接口/业务逻辑 | [ainative-backend 指南](docs/dev-spec/ainative-backend/README.md) |
 | 需要创建变更提案 | [openspec/AGENTS.md](openspec/AGENTS.md) |
@@ -72,25 +64,11 @@ make wire && make build         # 依赖注入和构建
 <details>
 <summary><b>ainative-app 参考文档</b></summary>
 
-- [项目概览](docs/dev-spec/ainative-app/references/project-overview.md)
-- [开发流程](docs/dev-spec/ainative-app/references/development-workflow.md)
-- [uni-app 约定](docs/dev-spec/ainative-app/references/uni-app-patterns.md)
-- [Vue3 + TypeScript 规范](docs/dev-spec/ainative-app/references/vue-typescript-patterns.md)
-- [API 与 HTTP 规范](docs/dev-spec/ainative-app/references/api-http-patterns.md)
-- [样式与 CSS 规范](docs/dev-spec/ainative-app/references/styling-css-patterns.md)
-
-</details>
-
-<details>
-<summary><b>ainative-pc 参考文档</b></summary>
-
-- [项目概览](docs/dev-spec/ainative-pc/references/project-overview.md)
-- [开发流程](docs/dev-spec/ainative-pc/references/development-workflow.md)
-- [目录结构](docs/dev-spec/ainative-pc/references/directory-structure.md)
-- [路由与状态规范](docs/dev-spec/ainative-pc/references/routing-state.md)
-- [API 与数据访问规范](docs/dev-spec/ainative-pc/references/api-patterns.md)
-- [样式与资源规范](docs/dev-spec/ainative-pc/references/styling-assets.md)
-- [测试规范](docs/dev-spec/ainative-pc/references/testing.md)
+- [项目概览](docs/dev-spec/ainative-app/README.md)
+- [更新日志](docs/dev-spec/ainative-app/CHANGELOG.md) ⭐ 最新版本 v1.0.0
+- [API 请求规范](docs/dev-spec/ainative-app/references/api-request.md)
+- [组件使用文档](docs/dev-spec/ainative-app/references/components.md)
+- [数据采集规范](docs/dev-spec/ainative-app/references/analytics.md)
 
 </details>
 

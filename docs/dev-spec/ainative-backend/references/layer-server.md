@@ -30,10 +30,10 @@ import (
     "github.com/go-kratos/kratos/v2/middleware/ratelimit"
     "github.com/go-kratos/kratos/v2/middleware/tracing"
     "github.com/go-kratos/kratos/v2/transport/http"
-    appV1 "gitlab.yc345.tv/ainative/ainative-backend/api/app/v1"
-    shadowV1 "gitlab.yc345.tv/ainative/ainative-backend/api/shadow/v1"
-    "gitlab.yc345.tv/ainative/ainative-backend/internal/conf"
-    "gitlab.yc345.tv/ainative/ainative-backend/internal/service"
+    appV1 "gitlab.yc345.tv/backend/ainative-backend/api/app/v1"
+    shadowV1 "gitlab.yc345.tv/backend/ainative-backend/api/shadow/v1"
+    "gitlab.yc345.tv/backend/ainative-backend/internal/conf"
+    "gitlab.yc345.tv/backend/ainative-backend/internal/service"
     // ... 其他 import
 )
 
@@ -216,7 +216,7 @@ package server
 
 import (
     "github.com/robfig/cron/v3"
-    "gitlab.yc345.tv/ainative/ainative-backend/internal/service"
+    "gitlab.yc345.tv/backend/ainative-backend/internal/service"
 )
 
 func NewCronServer(

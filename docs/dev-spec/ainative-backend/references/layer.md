@@ -93,7 +93,7 @@ l.Errorf("error: %v", err)
 使用项目定义的错误码:
 
 ```go
-import "gitlab.yc345.tv/ainative/ainative-backend/internal/data/errorx"
+import "gitlab.yc345.tv/backend/ainative-backend/internal/data/errorx"
 
 // 返回错误
 return nil, errorx.TokenExpired.Err()

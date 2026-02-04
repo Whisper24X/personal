@@ -1,60 +1,485 @@
-# ainative-app 开发指南
+# ainative-app 移动端开发指南
 
-本指南是 ainative-app 的入口索引，覆盖快速启动、目录概览与关键约定。更详细的实现规范请阅读 `references/` 目录中的文档。
+本文档提供 Taro + Vue3 跨端应用开发流程概览和规范索引。详细规范请参阅
+[`docs/dev-spec/ainative-app/references/`](docs/dev-spec/ainative-app/references/) 目录下的对应文档。
 
-## 项目特点
-- 基于 uniapp + Vue3 + TypeScript + Vite5 + UnoCSS 的跨平台框架
-- 支持 H5、小程序、APP 多平台开发
-- 内置约定式路由、layout 布局、请求封装、登录拦截、自定义 tabbar 等能力
-- 无需依赖 HBuilderX，支持命令行开发
+---
+
+## 项目概览
+
+`ainative-app` 是一个基于 Taro + Vue3 的跨端移动应用模版，支持微信小程序、H5、支付宝小程序等多端运行。
+
+### 技术栈
+
+| 技术 | 版本 | 说明 |
+|------|------|------|
+| Taro | 3.6.23 | 跨端开发框架 |
+| Vue | 3.3.4 | 前端框架 |
+| TypeScript | 5.4.5 | 类型系统 |
+| Pinia | 2.1.7 | 状态管理 |
+| Less | 4.2.0 | CSS 预处理器 |
+| Webpack | 5.78.0 | 构建工具 |
+
+---
+
+## 最近更新
+
+### v1.0.0 (2026-01-28)
+
+**核心依赖升级**
+- Taro 框架降级至 3.6.23（提供更好的稳定性）
+- 构建工具切换至 Webpack 5（替代 Vite）
+- Pinia 升级至 2.1.7
+- Vue 升级至 3.3.4
+
+**配置优化**
+- 新增 H5 legacy 支持，提升浏览器兼容性
+- 优化 pxtransform 转换规则，适配 Taro 3 的转换机制
+- 调整开发服务器配置（端口 8200）
+
+**应用初始化重构**
+- 简化路由守卫初始化流程，直接在 `app.ts` 中集成
+- 优化数据采集初始化，自动从 store 获取用户信息
+- 全局注册 `v-track` 和 `v-track-view` 埋点指令
+
+**组件样式调整**
+- 移除所有组件的 `scoped` 样式属性，统一样式管理
+
+---
 
 ## 快速开始
-1. 安装依赖：`pnpm install`
-2. 启动开发：
-   - H5：`pnpm dev` 或 `pnpm dev:h5`
-   - 微信小程序：`pnpm dev:mp`
-   - 支付宝小程序（含钉钉）：`pnpm dev:mp-alipay`
-   - APP：`pnpm dev:app`
 
-## 常用命令
-- 代码检查：`pnpm lint`
-- 自动修复：`pnpm lint:fix`
-- 类型检查：`pnpm type-check`
-- 构建产物：
-  - H5：`pnpm build:h5`
-  - 微信小程序：`pnpm build:mp`
-  - 支付宝小程序：`pnpm build:mp-alipay`
-  - APP：`pnpm build:app`
+### 环境准备
 
-## 核心配置文件
-- [package.json](mdc:package.json) - 项目依赖和脚本配置
-- [vite.config.ts](mdc:vite.config.ts) - Vite 构建配置
-- [pages.config.ts](mdc:pages.config.ts) - 页面路由配置
-- [manifest.config.ts](mdc:manifest.config.ts) - 应用清单配置
-- [uno.config.ts](mdc:uno.config.ts) - UnoCSS 配置
+```bash
+# 安装依赖
+cd ainative-app
+pnpm install
 
-## 主要目录结构
-- `src/pages/` - 页面文件
-- `src/components/` - 全局组件
-- `src/layouts/` - 布局文件
-- `src/api/` - API 接口定义
-- `src/http/` - HTTP 请求封装
-- `src/store/` - 状态管理
-- `src/tabbar/` - 底部导航栏
-- `src/App.ku.vue` - 全局根组件（类似 App.vue 的 template 入口）
+# 启动微信小程序开发
+pnpm dev:weapp
 
-## 关键约定速览
-- 页面放在 `src/pages/`，使用约定式路由，页面配置通过 `definePage` 宏生成到 `pages.json`
-- 组件分为全局组件（`src/components/`）与局部组件（`src/pages/**/components/`）
-- 状态管理使用 Pinia，Store 放在 `src/store/`
-- 请求与接口定义在 `src/http/` 与 `src/api/`
-- 样式优先使用 UnoCSS，必要时配合 SCSS + scoped
+# 启动 H5 开发
+pnpm dev:h5
+```
 
-## 规范与参考文档
-以下文档位于 `docs/dev-spec/ainative-app/references/`，请按需阅读：
-- [项目概览](references/project-overview.md)
-- [开发流程](references/development-workflow.md)
-- [uni-app 约定](references/uni-app-patterns.md)
-- [Vue3 + TypeScript 规范](references/vue-typescript-patterns.md)
-- [API 与 HTTP 规范](references/api-http-patterns.md)
-- [样式与 CSS 规范](references/styling-css-patterns.md)
+### 微信开发者工具
+
+1. 使用微信开发者工具打开 `ainative-app/dist` 目录
+2. 如首次使用，需配置 AppID
+
+### 开发流程
+
+```mermaid
+graph LR
+    A[1. 需求分析] --> B[2. 定义 API]
+    B --> C[3. 页面开发]
+    C --> D[4. 组件调用]
+    D --> E[5. 状态管理]
+    E --> F[6. 测试验证]
+    F --> G[7. 构建发布]
+```
+
+---
+
+## 项目结构
+
+```
+ainative-app/
+├── config/                    # Taro 构建配置
+│   ├── index.ts              # 主配置（Webpack 5）
+│   ├── dev.ts                # 开发环境配置
+│   └── prod.ts               # 生产环境配置
+├── src/
+│   ├── api/                  # API 接口层
+│   │   ├── request.ts        # 请求封装
+│   │   └── example/          # API 示例
+│   ├── components/           # 通用组件库
+│   │   ├── NavBar/           # 自定义导航栏
+│   │   ├── TabBar/           # 自定义 TabBar
+│   │   ├── TabBarLayout/     # TabBar 布局容器
+│   │   ├── Loading/          # 加载组件
+│   │   ├── Modal/            # 模态框组件
+│   │   ├── EmptyState/       # 空状态组件
+│   │   ├── Toast/            # 提示组件
+│   │   └── Ui/               # UI 基础组件
+│   ├── config/               # 环境配置
+│   │   └── env.ts            # 多环境配置
+│   ├── pages/                # 页面组件
+│   │   ├── index/            # 首页
+│   │   └── user/             # 用户相关页面
+│   ├── store/                # 状态管理
+│   │   ├── userStore.ts      # 用户状态
+│   │   ├── configStore.ts    # 全局配置
+│   │   └── tabBarStore.ts    # TabBar 状态
+│   ├── styles/               # 样式系统
+│   │   ├── variables.less    # 设计变量
+│   │   ├── common.less       # 通用样式
+│   │   ├── mixins.less       # Less Mixins
+│   │   └── platform.less     # 平台特定样式
+│   ├── types/                # 类型定义
+│   ├── utils/                # 工具方法库
+│   │   ├── analytics.ts      # 数据采集
+│   │   ├── routerGuard.ts    # 路由守卫
+│   │   ├── upload/           # 文件上传
+│   │   ├── formatDate.ts     # 日期格式化
+│   │   ├── formatPrice.ts    # 价格格式化
+│   │   └── statusBar.ts      # 状态栏适配
+│   ├── app.ts                # 应用入口
+│   ├── app.config.ts         # 路由配置
+│   └── app.less              # 全局样式
+├── types/                    # 全局类型声明
+├── .env.*                    # 环境变量
+├── ci.config.js              # CI 配置
+└── package.json
+```
+
+---
+
+## 核心功能
+
+### 1. 网络请求
+
+基于 Taro.request 封装的请求层，支持：
+
+- Token 自动注入
+- 401 自动跳转登录（带防抖）
+- 白名单机制
+- 统一错误处理
+
+```typescript
+import { get, post } from "@/api/request"
+
+// GET 请求
+const data = await get<UserInfo>("/api/v1/user/info")
+
+// POST 请求
+const result = await post("/api/v1/user/update", { name: "新名称" })
+```
+
+→ 详见 [API 请求规范](references/api-request.md)
+
+### 2. 状态管理
+
+使用 Pinia + pinia-plugin-persistedstate：
+
+```typescript
+import { useUserStore } from "@/store/userStore"
+
+const userStore = useUserStore()
+
+// 读取状态
+console.log(userStore.isLoggedIn)
+
+// 修改状态
+userStore.setToken("xxx")
+userStore.setUserInfo({ nickname: "用户" })
+```
+
+**Taro 存储适配**：Pinia 已配置使用 Taro 的 `getStorageSync` 和 `setStorageSync` 进行数据持久化，确保跨端兼容。
+
+→ 详见 [状态管理规范](references/state-management.md)
+
+### 3. 路由守卫
+
+自动拦截需要登录的页面：
+
+```typescript
+// 在 src/utils/routerGuard.ts 中配置需要登录的页面
+const authPages = [
+  "/pages/user/profile/index"
+]
+```
+
+**自动初始化**：路由守卫已在 `app.ts` 中自动初始化，无需手动调用。
+
+→ 详见 [路由守卫规范](references/router-guard.md)
+
+### 4. 数据采集
+
+Vue 指令和方法调用两种方式：
+
+```vue
+<!-- 点击埋点 -->
+<button v-track="{ event: 'click_button', params: { id: 1 } }">按钮</button>
+
+<!-- 曝光埋点 -->
+<view v-track-view="{ event: 'view_card', params: { id: 1 } }">卡片</view>
+```
+
+```typescript
+import { track, trackPageView } from "@/utils/analytics"
+
+// 手动埋点
+track("custom_event", { key: "value" })
+```
+
+**全局指令**：`v-track` 和 `v-track-view` 已在应用启动时全局注册，可直接在模板中使用。
+
+→ 详见 [数据采集规范](references/analytics.md)
+
+### 5. 文件上传
+
+支持图片压缩、格式转换、并发控制：
+
+```typescript
+import { handleTaroFileUpload } from "@/utils/upload"
+
+const result = await handleTaroFileUpload({
+  tempFilePath: "/path/to/file",
+  shouldCompress: true,
+  maxSize: 1024 * 1024,
+  getToken: async () => "your-upload-token"
+})
+```
+
+→ 详见 [文件上传规范](references/file-upload.md)
+
+---
+
+## 组件库
+
+### 布局组件
+
+| 组件 | 说明 | 使用场景 |
+|------|------|----------|
+| NavBar | 自定义导航栏 | 页面顶部导航 |
+| TabBar | 自定义 TabBar | 底部导航 |
+| TabBarLayout | TabBar 布局容器 | TabBar 页面布局 |
+| StatusBar | 状态栏适配 | 全面屏适配 |
+
+### 反馈组件
+
+| 组件 | 说明 | 使用场景 |
+|------|------|----------|
+| Loading | 加载组件 | 数据加载中 |
+| Modal | 模态框 | 弹窗确认 |
+| Toast | 提示组件 | 操作反馈 |
+| EmptyState | 空状态 | 无数据展示 |
+
+### UI 基础组件
+
+| 组件 | 说明 | 使用场景 |
+|------|------|----------|
+| UiButton | 按钮组件 | 各类按钮操作 |
+
+→ 详见 [组件使用文档](references/components.md)
+
+---
+
+## 样式系统
+
+### 设计变量
+
+```less
+@import "@/styles/variables.less";
+
+// 颜色
+@primary-color: #1890ff;
+@text-color: #333333;
+@text-color-secondary: #666666;
+
+// 间距
+@spacing-xs: 8rpx;
+@spacing-sm: 16rpx;
+@spacing-md: 24rpx;
+@spacing-lg: 32rpx;
+@spacing-xl: 48rpx;
+
+// 字体
+@font-size-sm: 24rpx;
+@font-size-md: 28rpx;
+@font-size-lg: 32rpx;
+```
+
+### Mixins
+
+```less
+@import "@/styles/mixins.less";
+
+// 单行文本省略
+.text-ellipsis();
+
+// 多行文本省略
+.multi-line-ellipsis(2);
+
+// 安全区底部适配
+.safe-area-bottom();
+
+// 1px 边框
+.border-1px(@color, @direction);
+```
+
+→ 详见 [样式开发规范](references/style-guide.md)
+
+---
+
+## 多端构建
+
+### 微信小程序
+
+```bash
+# 开发
+pnpm dev:weapp
+
+# 构建
+pnpm build:weapp
+
+# CI 上传
+pnpm ci:weapp:upload:production
+```
+
+### H5
+
+```bash
+# 开发
+pnpm dev:h5
+
+# 构建
+pnpm build:h5
+```
+
+**H5 特性**：
+- 开发服务器端口：8200
+- 浏览器路由模式
+- Legacy 支持，兼容旧版浏览器
+- 自动 px 转 rem（基于 750 设计稿）
+
+### 支付宝小程序
+
+```bash
+# 开发
+pnpm dev:alipay
+
+# 构建
+pnpm build:alipay
+```
+
+---
+
+## 环境配置
+
+### 构建工具
+
+项目使用 **Webpack 5** 作为构建工具，配置位于 `config/index.ts`：
+
+```typescript
+// 基础配置
+const config: UserConfigExport = {
+  projectName: "ainative-app",
+  designWidth: 750,
+  framework: "vue3",
+  compiler: "webpack5",  // 使用 Webpack 5
+  // ...
+}
+```
+
+**关键特性**：
+- 支持多端构建（微信小程序、H5、支付宝小程序等）
+- 内置路径别名配置（`@/` 指向 `src/`）
+- 自动 px 转换（小程序使用 rpx，H5 使用 rem）
+- 支持 Less 预处理器
+
+### 环境变量
+
+```env
+# .env.development
+TARO_APP_API_BASE_URL=http://localhost:8000
+TARO_APP_ENV=development
+
+# .env.production
+TARO_APP_API_BASE_URL=https://api.example.com
+TARO_APP_ENV=production
+```
+
+### CI 配置
+
+修改 `ci.config.js`：
+
+```javascript
+module.exports = {
+  WEAPP_APPID: "your-weapp-appid",
+  WEAPP_PRIVATE_KEY_PATH: "key/private.key",
+  WEAPP_VERSION: "1.0.0",
+  WEAPP_DESC: "生产环境版本"
+}
+```
+
+→ 详见 [环境配置规范](references/environment.md)
+
+---
+
+## 开发规范
+
+### 代码规范
+
+- 使用 TypeScript 严格模式
+- 遵循 Vue 3 Composition API 风格
+- 组件文件使用 PascalCase 命名
+- 工具函数使用 camelCase 命名
+
+### Git 提交规范
+
+```bash
+# 功能
+feat: 新增登录功能
+
+# 修复
+fix: 修复按钮点击问题
+
+# 样式
+style: 调整首页布局
+
+# 重构
+refactor: 重构请求封装
+```
+
+### 检查清单
+
+开发完成后确认：
+
+- [ ] TypeScript 类型完整
+- [ ] 错误处理完善
+- [ ] 多端兼容测试
+- [ ] `pnpm lint` 无错误
+- [ ] 构建成功
+
+---
+
+## 常见问题
+
+### 1. 为什么使用 Taro 3.6.23 而不是最新版本？
+
+Taro 3.6.23 经过长期验证，提供了更好的稳定性和生态兼容性。对于生产环境，稳定性优先于新特性。
+
+### 2. Webpack 5 vs Vite
+
+项目使用 Webpack 5 作为构建工具，原因：
+- 更成熟的跨端构建方案
+- 更好的小程序平台支持
+- 丰富的插件生态
+
+### 3. 微信开发者工具报错
+
+确保使用最新版微信开发者工具，并正确配置 AppID。
+
+### 4. H5 跨域问题
+
+开发环境配置代理（`config/dev.ts`），生产环境配置 nginx 或 CDN。
+
+### 5. 样式不生效
+
+- 小程序：使用 `rpx` 单位
+- H5：自动转换为 `rem`
+- 检查是否正确导入 `variables.less`
+- 确认设计稿宽度为 750px
+
+---
+
+## 快速链接
+
+- [完整更新日志](CHANGELOG.md)
+- [Taro 官方文档](https://taro-docs.jd.com/)
+- [Vue 3 文档](https://cn.vuejs.org/)
+- [Pinia 文档](https://pinia.vuejs.org/zh/)
+- [微信小程序文档](https://developers.weixin.qq.com/miniprogram/dev/framework/)

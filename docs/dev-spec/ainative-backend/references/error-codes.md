@@ -89,7 +89,7 @@ var (
 ### 基本使用
 
 ```go
-import "gitlab.yc345.tv/ainative/ainative-backend/internal/data/errorx"
+import "gitlab.yc345.tv/backend/ainative-backend/internal/data/errorx"
 
 // 直接返回错误
 return nil, errorx.AccountNotExist.Err()

@@ -97,6 +97,12 @@ COMMENT ON COLUMN table_name.name IS '名称';
 COMMENT ON COLUMN table_name.status IS '状态: -1=禁用, 1=启用';
 ```
 
+## 初始化数据管理
+
+开发新功能时涉及菜单、权限、角色等数据，需要同步到 `doc/sql/` 目录。
+
+详细规范参考: [SQL 导入规范](./sql-import.md)
+
 ## 现有表列表
 
 | 表名 | 说明 |
@@ -104,10 +110,10 @@ COMMENT ON COLUMN table_name.status IS '状态: -1=禁用, 1=启用';
 | sys_admin | 系统管理员 |
 | sys_role | 系统角色 |
 | sys_dept | 系统部门 |
-| sys_permission | 系统权限 |
+| sys_menu | 系统菜单权限 |
 | sys_admin_role | 管理员-角色关联 |
 | sys_admin_dept | 管理员-部门关联 |
-| sys_role_permission | 角色-权限关联 |
+| sys_role_menu | 角色-菜单权限关联 |
 | sys_operation_log | 操作日志 |
 | sys_data_log | 数据变更日志 |
 | user | 用户 |

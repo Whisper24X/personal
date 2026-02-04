@@ -137,6 +137,8 @@ make build
 | 文档 | 说明 |
 |-----|------|
 | [数据库设计](docs/dev-spec/ainative-backend/references/database.md) | 表命名、字段规范、敏感数据处理 |
+| [SQL 导入规范](docs/dev-spec/ainative-backend/references/sql-import.md) | 菜单/权限等初始化数据同步 |
+| [代码检查规范](docs/dev-spec/ainative-backend/references/code-check.md) | wire/lint/gosec 等检查流程 |
 | [分层编码](docs/dev-spec/ainative-backend/references/layer.md) | 分层概述、依赖方向、通用规范 |
 | [错误码规范](docs/dev-spec/ainative-backend/references/error-codes.md) | 错误码定义、使用方式、国际化 |
 
@@ -165,8 +167,19 @@ make build
 - [ ] Proto 文件参数校验规则完整
 - [ ] 所有层的 Provider 已注册到 ProviderSet
 - [ ] Server 层已注册新服务
-- [ ] `make wire` 执行成功
-- [ ] `make lint` 无错误
+- [ ] 初始化数据已同步（菜单、权限等）→ [SQL 导入规范](docs/dev-spec/ainative-backend/references/sql-import.md)
+
+### 提交前必须执行 → [代码检查规范](docs/dev-spec/ainative-backend/references/code-check.md)
+
+```bash
+make gci && make wire && make lint && make gosec && make build
+```
+
+- [ ] `make gci` - Import 格式化
+- [ ] `make wire` - 依赖注入检查
+- [ ] `make lint` - 代码规范检查
+- [ ] `make gosec` - 安全检查
+- [ ] `make build` - 编译成功
 - [ ] 接口测试通过
 
 ### 生成代码注意事项

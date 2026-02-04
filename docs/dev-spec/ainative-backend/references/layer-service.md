@@ -41,8 +41,8 @@ import (
     "context"
 
     "github.com/go-kratos/kratos/v2/log"
-    pb "gitlab.yc345.tv/ainative/ainative-backend/api/shadow/v1"
-    "gitlab.yc345.tv/ainative/ainative-backend/internal/biz"
+    pb "gitlab.yc345.tv/backend/ainative-backend/api/shadow/v1"
+    "gitlab.yc345.tv/backend/ainative-backend/internal/biz"
 )
 
 // NewShadowV1ProductService 创建 Service
@@ -166,7 +166,7 @@ s.log.Errorf("处理失败: %v", err)
 从 context 获取元数据:
 
 ```go
-import "gitlab.yc345.tv/ainative/ainative-backend/internal/pkg/meta"
+import "gitlab.yc345.tv/backend/ainative-backend/internal/pkg/meta"
 
 func (s *ShadowV1ProductService) ProductStore(ctx context.Context, req *pb.ProductStoreReq) (*pb.ProductStoreReply, error) {
     // 获取当前登录用户

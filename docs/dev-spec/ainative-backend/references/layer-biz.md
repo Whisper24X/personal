@@ -43,9 +43,9 @@ package biz
 import (
     "context"
     "github.com/google/wire"
-    pb "gitlab.yc345.tv/ainative/ainative-backend/api/shadow/v1"
-    "gitlab.yc345.tv/ainative/ainative-backend/internal/data/gorm/ainative_backend_model"
-    "gitlab.yc345.tv/ainative/ainative-backend/internal/data/gorm/ainative_backend_repo"
+    pb "gitlab.yc345.tv/backend/ainative-backend/api/shadow/v1"
+    "gitlab.yc345.tv/backend/ainative-backend/internal/data/gorm/ainative_backend_model"
+    "gitlab.yc345.tv/backend/ainative-backend/internal/data/gorm/ainative_backend_repo"
 )
 
 var ProviderSet = wire.NewSet(
@@ -128,8 +128,8 @@ package biz
 
 import (
     "context"
-    pb "gitlab.yc345.tv/ainative/ainative-backend/api/shadow/v1"
-    "gitlab.yc345.tv/ainative/ainative-backend/internal/data/errorx"
+    pb "gitlab.yc345.tv/backend/ainative-backend/api/shadow/v1"
+    "gitlab.yc345.tv/backend/ainative-backend/internal/data/errorx"
     "gitlab.yc345.tv/backend/orm-gen/v2/condition"
 )
 
@@ -309,7 +309,7 @@ func (p *ShadowV1ProductUseCase) UpdateStock(ctx context.Context, productId stri
 使用项目定义的错误码:
 
 ```go
-import "gitlab.yc345.tv/ainative/ainative-backend/internal/data/errorx"
+import "gitlab.yc345.tv/backend/ainative-backend/internal/data/errorx"
 
 // 返回错误
 return nil, errorx.DataNotFound.Err()

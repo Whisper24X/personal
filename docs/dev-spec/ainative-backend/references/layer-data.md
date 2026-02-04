@@ -106,14 +106,14 @@ import (
     "context"
 
     "github.com/go-kratos/kratos/v2/log"
-    pb "gitlab.yc345.tv/ainative/ainative-backend/api/shadow/v1"
-    "gitlab.yc345.tv/ainative/ainative-backend/internal/biz"
-    "gitlab.yc345.tv/ainative/ainative-backend/internal/conf"
-    "gitlab.yc345.tv/ainative/ainative-backend/internal/data/errorx"
-    "gitlab.yc345.tv/ainative/ainative-backend/internal/data/gorm/ainative_backend_dao"
-    "gitlab.yc345.tv/ainative/ainative-backend/internal/data/gorm/ainative_backend_model"
-    "gitlab.yc345.tv/ainative/ainative-backend/internal/data/gorm/ainative_backend_repo"
-    "gitlab.yc345.tv/ainative/ainative-backend/internal/pkg/util/timeutil"
+    pb "gitlab.yc345.tv/backend/ainative-backend/api/shadow/v1"
+    "gitlab.yc345.tv/backend/ainative-backend/internal/biz"
+    "gitlab.yc345.tv/backend/ainative-backend/internal/conf"
+    "gitlab.yc345.tv/backend/ainative-backend/internal/data/errorx"
+    "gitlab.yc345.tv/backend/ainative-backend/internal/data/gorm/ainative_backend_dao"
+    "gitlab.yc345.tv/backend/ainative-backend/internal/data/gorm/ainative_backend_model"
+    "gitlab.yc345.tv/backend/ainative-backend/internal/data/gorm/ainative_backend_repo"
+    "gitlab.yc345.tv/backend/ainative-backend/internal/pkg/util/timeutil"
 )
 
 // 编译时接口检查
@@ -363,7 +363,7 @@ func (c *CommonRepo) Transaction(ctx context.Context, fn func(tx *ainative_backe
 ```go
 package errorx
 
-import "gitlab.yc345.tv/ainative/ainative-backend/internal/pkg/errx"
+import "gitlab.yc345.tv/backend/ainative-backend/internal/pkg/errx"
 
 var Manager = errx.NewManager()
 
