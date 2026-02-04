@@ -2,21 +2,21 @@
  * Workflow Execution Controller
  * HTTP API for workflow execution management
  * Provides unified endpoints for workflow state management
- * 
+ *
  * Default workflow configuration is loaded from database with fallback to migration config
  */
 
 import { Request, Response } from 'express';
-import {
-  WorkflowExecutionService,
-  WorkflowRecoveryService,
-  WorkflowState,
-  WorkflowExecutor,
-} from '../../workflow';
-import { logger } from '../../utils';
+import * as path from 'path';
+import * as fs from 'fs/promises';
+import { WorkflowExecutionService, WorkflowRecoveryService, WorkflowState, WorkflowExecutor } from '../../workflow';
+import { logger, WorkspaceManager } from '../../utils';
 import { ProjectRepository } from '../../database/repositories/ProjectRepository';
+import { MessageRepository } from '../../database/repositories/MessageRepository';
 import { WorkflowService, getDefaultWorkflowConfig } from '../../services/WorkflowService';
 import { WorkflowConfig } from '../../database/repositories/ApplicationWorkflowRepository';
+import { CLIExecutor } from '../../executors/CLIExecutor';
+import { Message } from '../../core/message/Message';
 
 // Map to track running executors by projectId:versionId
 const runningExecutors: Map<string, WorkflowExecutor> = new Map();
@@ -30,11 +30,10 @@ function getExecutorKey(projectId: string, versionId: string): string {
 
 export class WorkflowExecutionController {
   private static executionService = new WorkflowExecutionService();
-  private static recoveryService = new WorkflowRecoveryService(
-    WorkflowExecutionController.executionService
-  );
+  private static recoveryService = new WorkflowRecoveryService(WorkflowExecutionController.executionService);
   private static projectRepository = new ProjectRepository();
   private static workflowService = new WorkflowService();
+  private static messageRepository = new MessageRepository();
 
   /**
    * Get workflow execution state
@@ -168,10 +167,10 @@ export class WorkflowExecutionController {
 
       // Check if execution exists, if not, auto-initialize
       let execution = await WorkflowExecutionController.executionService.getExecution(projectId, versionId);
-      
+
       if (!execution) {
         logger.info('WorkflowExecutionController: No execution found, auto-initializing', { projectId, versionId });
-        
+
         // Get project to find application_id
         const project = await WorkflowExecutionController.projectRepository.findById(projectId);
         if (!project) {
@@ -183,7 +182,7 @@ export class WorkflowExecutionController {
 
         // Get workflow config from application or use default
         let workflowConfig: WorkflowConfig = getDefaultWorkflowConfig();
-        
+
         if (project.application_id) {
           try {
             const appWorkflow = await WorkflowExecutionController.workflowService.getOrCreateDefaultWorkflow(project.application_id);
@@ -278,10 +277,7 @@ export class WorkflowExecutionController {
 
       // Get execution before confirm to preserve pendingConfirmation info
       // (confirm() will clear pendingConfirmation)
-      const execBeforeConfirm = await WorkflowExecutionController.executionService.getExecution(
-        projectId,
-        versionId
-      );
+      const execBeforeConfirm = await WorkflowExecutionController.executionService.getExecution(projectId, versionId);
       const confirmedRole = execBeforeConfirm?.pendingConfirmation?.role;
       const confirmedAction = execBeforeConfirm?.pendingConfirmation?.action;
 
@@ -331,6 +327,210 @@ export class WorkflowExecutionController {
         message: error.message,
       });
     }
+  }
+
+  /**
+   * CLI edit pending confirmation content
+   * POST /api/workflow/:projectId/pending-confirmation/cli-edit
+   * Body: { versionId: string, message: string }
+   */
+  static async cliEditPendingConfirmation(req: Request, res: Response) {
+    try {
+      const { projectId } = req.params;
+      const { versionId, message, scope } = req.body;
+
+      if (!projectId) {
+        return res.status(400).json({ success: false, error: 'Project ID is required' });
+      }
+      if (!versionId || typeof versionId !== 'string') {
+        return res.status(400).json({ success: false, error: 'Version ID is required' });
+      }
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({ success: false, error: 'Message is required' });
+      }
+
+      const execution = await WorkflowExecutionController.executionService.getExecution(projectId, versionId);
+      if (!execution) {
+        return res.status(404).json({ success: false, error: 'Workflow execution not found' });
+      }
+
+      const editScope: 'pending' | 'last_completed' = scope === 'last_completed' ? 'last_completed' : 'pending';
+
+      let role: string | undefined;
+      let action: string | undefined;
+
+      if (editScope === 'pending') {
+        if (execution.state !== WorkflowState.WAITING_CONFIRMATION || !execution.pendingConfirmation) {
+          return res.status(400).json({
+            success: false,
+            error: 'Workflow is not waiting for confirmation',
+          });
+        }
+        role = execution.pendingConfirmation.role;
+        action = execution.pendingConfirmation.action;
+      } else {
+        const lastCompleted = WorkflowExecutionController._getLastCompletedStep(execution);
+        if (!lastCompleted) {
+          return res.status(400).json({
+            success: false,
+            error: '未找到已完成的步骤，无法修改',
+          });
+        }
+        role = lastCompleted.role;
+        action = lastCompleted.action;
+      }
+
+      const targetFiles = WorkflowExecutionController._getTargetFilesForRole(execution, role);
+      if (targetFiles.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: `当前角色无可通过 CLI 修改的产物: ${role}`,
+        });
+      }
+
+      const project = await WorkflowExecutionController.projectRepository.findById(projectId);
+      if (!project) {
+        return res.status(404).json({ success: false, error: 'Project not found' });
+      }
+
+      const applicationId = project.application_id || project.id;
+      const workspaceDir = WorkspaceManager.getProjectWorkspacePath({
+        applicationId,
+        projectId,
+        versionId,
+      });
+      const targetFilePaths = targetFiles.map((file) => path.join(workspaceDir, file.relativePath));
+      const prompt = [
+        '你需要根据用户要求修改以下文件内容：',
+        ...targetFilePaths,
+        `修改要求：${message}`,
+        '要求：只修改以上文件，保持其它内容不变。',
+      ].join('\n');
+
+      const executor = new CLIExecutor();
+      const cliOutput = await executor.execute(prompt, { workDir: workspaceDir });
+      logger.info('WorkflowExecutionController: CLI execution output', {
+        projectId,
+        versionId,
+        outputPreview: cliOutput.substring(0, 500),
+      });
+
+      const updatedFiles: Array<{ action: string; content: string; path: string }> = [];
+      for (const file of targetFiles) {
+        const filePath = path.join(workspaceDir, file.relativePath);
+        try {
+          const content = await fs.readFile(filePath, 'utf-8');
+          updatedFiles.push({ action: file.action, content, path: filePath });
+        } catch (readError: any) {
+          logger.warn('WorkflowExecutionController: Failed to read updated file', {
+            projectId,
+            versionId,
+            filePath,
+            error: readError.message,
+          });
+        }
+      }
+
+      const currentActionFile = updatedFiles.find((file) => file.action === action);
+      const displayContent = currentActionFile?.content || updatedFiles[0]?.content || '';
+
+      if (displayContent && editScope === 'pending') {
+        await WorkflowExecutionController.executionService.updatePendingConfirmationContent(projectId, versionId, displayContent);
+      }
+
+      for (const file of updatedFiles) {
+        const msg = new Message({
+          content: file.content,
+          role: role || 'assistant',
+          causeBy: file.action,
+          sentFrom: role || 'assistant',
+        });
+        await WorkflowExecutionController.messageRepository.save(projectId, msg, role || undefined, versionId);
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          content: displayContent,
+          updatedFiles: updatedFiles.map((file) => ({
+            action: file.action,
+            path: file.path,
+          })),
+          cliOutput,
+        },
+      });
+    } catch (error: any) {
+      logger.error('WorkflowExecutionController: CLI edit failed', {
+        error: error.message,
+        projectId: req.params.projectId,
+        versionId: req.body?.versionId,
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to edit pending confirmation via CLI',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * Map action to target file path
+   */
+  private static _getTargetFilePath(action: string): string | null {
+    const map: Record<string, string> = {
+      WriteMRD: path.join('docs', 'mrd', 'MRD.md'),
+      MRDReview: path.join('docs', 'mrd', 'MRD_REVIEW.md'),
+      ImproveMRD: path.join('docs', 'mrd', 'MRD.md'),
+      WritePRD: path.join('docs', 'prd', 'PRD.md'),
+      PRDReview: path.join('docs', 'prd', 'PRD_REVIEW.md'),
+      ImprovePRD: path.join('docs', 'prd', 'PRD.md'),
+      GeneratePrototype: path.join('docs', 'prototype', 'index.html'),
+      WriteDesign: path.join('docs', 'design', 'DESIGN.md'),
+      DesignReview: path.join('docs', 'design', 'DESIGN_REVIEW.md'),
+      ImproveDesign: path.join('docs', 'design', 'DESIGN.md'),
+      WriteTestPlan: path.join('docs', 'test', 'TEST_PLAN.md'),
+      WriteTest: path.join('docs', 'test', 'TEST.md'),
+      TestReview: path.join('docs', 'test', 'TEST_REVIEW.md'),
+      ImproveTest: path.join('docs', 'test', 'TEST.md'),
+    };
+    return map[action] || null;
+  }
+
+  private static _getTargetFilesForRole(
+    execution: { workflowSnapshot?: { roles?: Array<{ profile: string; actions: string[] }> } },
+    role?: string
+  ): Array<{ action: string; relativePath: string }> {
+    if (!role || !execution.workflowSnapshot?.roles) {
+      return [];
+    }
+    const roleConfig = execution.workflowSnapshot.roles.find((r) => r.profile === role);
+    if (!roleConfig || !roleConfig.actions) {
+      return [];
+    }
+    const files: Array<{ action: string; relativePath: string }> = [];
+    for (const actionName of roleConfig.actions) {
+      const relativePath = WorkflowExecutionController._getTargetFilePath(actionName);
+      if (relativePath) {
+        files.push({ action: actionName, relativePath });
+      }
+    }
+    return files;
+  }
+
+  private static _getLastCompletedStep(execution: {
+    steps?: Array<{ role: string; action: string; state: string; completedAt?: string }>;
+  }): { role: string; action: string } | null {
+    if (!execution.steps || execution.steps.length === 0) {
+      return null;
+    }
+    const completed = execution.steps.filter((step) => step.state === 'completed');
+    if (completed.length === 0) return null;
+    completed.sort((a, b) => {
+      const aTime = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+      const bTime = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+      return bTime - aTime;
+    });
+    return { role: completed[0].role, action: completed[0].action };
   }
 
   /**
@@ -695,22 +895,18 @@ export class WorkflowExecutionController {
    */
   static async getActiveWorkflows(_req: Request, res: Response) {
     try {
-      const activeStates = [
-        WorkflowState.RUNNING,
-        WorkflowState.WAITING_CONFIRMATION,
-        WorkflowState.PAUSED,
-      ];
+      const activeStates = [WorkflowState.RUNNING, WorkflowState.WAITING_CONFIRMATION, WorkflowState.PAUSED];
 
       const executions = await WorkflowExecutionController.executionService.findByStates(activeStates);
 
       return res.json({
         success: true,
-        data: executions.map(exec => ({
+        data: executions.map((exec) => ({
           id: exec.id,
           projectId: exec.projectId,
           state: exec.state,
           currentPosition: exec.currentPosition,
-          progress: exec.steps.filter(s => s.state === 'completed').length / exec.steps.length * 100,
+          progress: (exec.steps.filter((s) => s.state === 'completed').length / exec.steps.length) * 100,
           updatedAt: exec.updatedAt,
         })),
       });
@@ -745,7 +941,8 @@ export class WorkflowExecutionController {
     runningExecutors.set(key, executor);
 
     // Start execution in background
-    executor.execute(projectId, versionId)
+    executor
+      .execute(projectId, versionId)
       .then(() => {
         logger.info('WorkflowExecutionController: Background execution completed', { projectId, versionId });
       })
