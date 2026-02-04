@@ -6,10 +6,7 @@
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { WorkspaceOptions, logger, loadPrompt } from '../utils';
-import {
-  QA_CONCLUSION_SYSTEM_PROMPT,
-  buildQAConclusionPrompt,
-} from '../prompts/test';
+import { QA_CONCLUSION_SYSTEM_PROMPT, buildQAConclusionPrompt } from '../prompts/test';
 
 export interface QAConclusionOptions extends WorkspaceOptions {
   // Inherits all options from WorkspaceOptions
@@ -17,10 +14,7 @@ export interface QAConclusionOptions extends WorkspaceOptions {
 
 export class QAConclusion extends BaseAction {
   constructor() {
-    super(
-      'QAConclusion',
-      'Provide final QA conclusion (pass/block/needs modification) based on all test results'
-    );
+    super('QAConclusion', 'Provide final QA conclusion (pass/block/needs modification) based on all test results');
   }
 
   async run(_input: string, options?: QAConclusionOptions): Promise<IActionOutput> {
@@ -28,14 +22,14 @@ export class QAConclusion extends BaseAction {
 
     try {
       // Read all test documents from workspace
-      let testabilityReview = '';
-      let testPlan = '';
-      let testCases = '';
-      let testReview = '';
-      let automationPlan = '';
-      let automationExecution = '';
-      let coverageReport = '';
-      let qualityCheck = '';
+      const testabilityReview = '';
+      const testPlan = '';
+      const testCases = '';
+      const testReview = '';
+      const automationPlan = '';
+      const automationExecution = '';
+      const coverageReport = '';
+      const qualityCheck = '';
       let prd = '';
 
       if (options) {
@@ -101,36 +95,27 @@ export class QAConclusion extends BaseAction {
 
       // Load system prompt from database or use default
       const userId = this.context?.get('userId');
-      const systemPrompt = await loadPrompt(
-        userId,
-        'test',
-        'qa_conclusion_system_prompt',
-        QA_CONCLUSION_SYSTEM_PROMPT
-      );
+      const systemPrompt = await loadPrompt(userId, 'test', 'qa_conclusion_system_prompt', QA_CONCLUSION_SYSTEM_PROMPT);
 
       // Call LLM to generate QA conclusion
       const content = await this.aask(prompt, [systemPrompt]);
 
-      // Save to workspace
       const workspaceOptions: WorkspaceOptions = {
         ...options,
         documentType: 'TEST',
       };
-      await this.saveToWorkspace('QA_CONCLUSION.md', content, workspaceOptions);
 
       logger.info('QAConclusion: QA conclusion generation completed', {
         contentLength: content.length,
-        workspaceDir: this.getWorkspaceDir(workspaceOptions),
       });
 
       return {
         content: content,
         data: {
           type: 'qa_conclusion',
-          filename: 'QA_CONCLUSION.md',
           timestamp: new Date().toISOString(),
           workspaceDir: this.getWorkspaceDir(workspaceOptions),
-          conclusion: this.extractConclusion(content), // Extract conclusion status
+          conclusion: this.extractConclusion(content),
         },
       };
     } catch (error: any) {
