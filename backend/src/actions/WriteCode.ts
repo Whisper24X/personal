@@ -6,7 +6,6 @@
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { logger, WorkspaceOptions, WorkspaceManager } from '../utils';
-import { getApplyCommand, getCheckCommand } from '../prompts/code';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -101,8 +100,12 @@ export class WriteCode extends BaseAction {
       }
 
       // 从 prompts/code.ts 获取命令提示词
-      const applyCommand = getApplyCommand();
-      const checkCommand = getCheckCommand();
+      // 这些提示词对应于独立的 Cursor Skills（无状态执行工具）：
+      // - getApplyCommand() → skills/code-task-apply/SKILL.md
+      // - getCheckCommand() → skills/code-task-check/SKILL.md
+      // 循环控制由此编排层（WriteCode.ts）负责，符合 Tool Design 最佳实践
+      const applyCommand = '使用 code-task-apply 技能生成代码'; // Skill: code-task-apply
+      const checkCommand = '使用 code-task-check 技能检查任务状态'; // Skill: code-task-check
 
       // 循环执行，直到任务完成
       const maxRetries = 10; // 最大重试次数
