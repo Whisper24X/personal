@@ -13,14 +13,14 @@ import { logger } from '../utils';
 function stripJsonMarkdown(text: string): string {
   if (typeof text !== 'string') return text;
   let cleaned = text.trim();
-  
+
   // 1. 尝试匹配各种 markdown 代码块格式（支持前后有文本）
   const codeBlockPatterns = [
-    /```(?:json)?\s*\n([\s\S]*?)\n```/g,  // 标准格式
-    /```(?:json)?\s*([\s\S]*?)```/g,      // 无换行
+    /```(?:json)?\s*\n([\s\S]*?)\n```/g, // 标准格式
+    /```(?:json)?\s*([\s\S]*?)```/g, // 无换行
     /```(?:json)?\s*\n?([\s\S]*?)\n?```/g, // 灵活换行
   ];
-  
+
   for (const pattern of codeBlockPatterns) {
     const matches = [...cleaned.matchAll(pattern)];
     if (matches.length > 0) {
@@ -32,7 +32,7 @@ function stripJsonMarkdown(text: string): string {
       }
     }
   }
-  
+
   // 2. 如果清理后仍包含 markdown 标记，尝试提取第一个 JSON 对象
   if (cleaned.includes('```') || cleaned.includes('`')) {
     // 尝试提取 {...} 或 [...] 格式的 JSON
@@ -47,10 +47,10 @@ function stripJsonMarkdown(text: string): string {
       }
     }
   }
-  
+
   // 3. 清理可能的尾随 markdown 标记
   cleaned = cleaned.replace(/^`+|`+$/g, '').trim();
-  
+
   return cleaned || text.trim(); // 如果清理后为空，返回原文本
 }
 
@@ -66,13 +66,13 @@ function wrapOpenAIClientForZod(client: any): any {
         ...client.chat.completions,
         create: async (params: any, options?: any) => {
           const response = await create.call(client.chat.completions, params, options);
-          
+
           // 清理 content 字段
           const content = response?.choices?.[0]?.message?.content;
           if (typeof content === 'string' && content.length > 0) {
             const originalContent = content;
             const cleanedContent = stripJsonMarkdown(content);
-            
+
             // 仅在内容发生变化时记录（避免日志过多）
             if (cleanedContent !== originalContent) {
               logger.debug('StagehandService: Cleaned markdown from LLM response', {
@@ -82,10 +82,10 @@ function wrapOpenAIClientForZod(client: any): any {
                 cleanedPreview: cleanedContent.substring(0, 100),
               });
             }
-            
+
             response.choices[0].message.content = cleanedContent;
           }
-          
+
           return response;
         },
       },
@@ -288,9 +288,7 @@ export class StagehandService {
         logger.info('StagehandService: Browser launch configuration', {
           headless: isHeadless,
           mode: isHeadless ? '无头模式（HEADLESS - 不可见）' : '有头模式（HEADED - 可见）',
-          message: isHeadless
-            ? '⚠️ 浏览器将在后台运行，用户无法看到操作过程'
-            : '✅ 浏览器窗口将可见，用户可以观察自动化操作',
+          message: isHeadless ? '⚠️ 浏览器将在后台运行，用户无法看到操作过程' : '✅ 浏览器窗口将可见，用户可以观察自动化操作',
           envVar: process.env.STAGEHAND_HEADLESS || 'undefined (default: false)',
         });
 
@@ -353,30 +351,148 @@ export class StagehandService {
       if (this.stagehandAvailable && this.stagehandInstance) {
         // 与用户可运行示例一致：直接调用 stagehand.act()，使用初始化时的 CustomOpenAIClient
         try {
-          if (url) {
-            const pages = this.stagehandInstance.context?.pages();
-            if (pages && pages.length > 0) {
-              logger.info('StagehandService: Navigating to URL', { url });
-              await pages[0].goto(url, { waitUntil: 'networkidle0' });
-              logger.info('StagehandService: Successfully navigated to URL', { url });
+          // 记录当前页面状态（如果有页面）
+          const pages = this.stagehandInstance.context?.pages();
+          if (pages && pages.length > 0) {
+            const currentPage = pages[0];
+            try {
+              const currentUrl = currentPage.url();
+              logger.info('StagehandService: Current page URL before action', {
+                url: currentUrl,
+                instruction,
+                targetUrl: url,
+              });
+            } catch (urlError: any) {
+              logger.debug('StagehandService: Could not get current URL', {
+                error: urlError.message,
+              });
             }
           }
 
-          // 如果指令不是简单的导航操作，执行 act
-          // 对于纯导航操作（如"打开页面"），URL 导航已经完成，可以跳过 act
-          if (instruction && !(url && (instruction === '打开页面' || instruction.toLowerCase().includes('navigate') || instruction.toLowerCase().includes('goto')))) {
+          // 处理 URL 导航
+          if (url) {
+            if (pages && pages.length > 0) {
+              // 页面存在，手动导航
+              logger.info('StagehandService: Navigating to URL via page.goto()', { url });
+              try {
+                await pages[0].goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                // 导航后等待页面稳定
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+
+                // 验证导航后的页面 URL
+                const finalUrl = pages[0].url();
+                logger.info('StagehandService: Successfully navigated to URL', {
+                  targetUrl: url,
+                  finalUrl,
+                  urlMatches: finalUrl.includes(url) || url.includes(finalUrl),
+                });
+
+                // 如果 URL 不匹配，记录警告（可能是页面自动跳转）
+                if (!finalUrl.includes(url) && !url.includes(finalUrl)) {
+                  logger.warn('StagehandService: Page URL does not match target URL after navigation', {
+                    targetUrl: url,
+                    finalUrl,
+                    message: 'Page may have auto-redirected (e.g., due to login state)',
+                  });
+                }
+              } catch (navError: any) {
+                logger.warn('StagehandService: Page.goto() failed, trying Stagehand act() for navigation', {
+                  url,
+                  error: navError.message,
+                });
+                // 如果手动导航失败，使用 Stagehand act() 处理 URL
+                await this.stagehandInstance.act(`打开页面 ${url}`);
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+
+                // 验证导航后的页面 URL
+                const finalUrl = pages[0].url();
+                logger.info('StagehandService: Navigated via Stagehand act()', {
+                  targetUrl: url,
+                  finalUrl,
+                });
+              }
+            } else {
+              // 页面不存在，使用 Stagehand act() 处理 URL（Stagehand 会自动创建页面并导航）
+              logger.info('StagehandService: No pages available, using Stagehand act() for navigation', { url });
+              const navInstruction = `打开页面 ${url}`;
+              await this.stagehandInstance.act(navInstruction);
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+
+              // 验证导航后的页面 URL
+              const newPages = this.stagehandInstance.context?.pages();
+              if (newPages && newPages.length > 0) {
+                const finalUrl = newPages[0].url();
+                logger.info('StagehandService: Navigated via Stagehand act()', {
+                  targetUrl: url,
+                  finalUrl,
+                });
+              }
+            }
+          }
+
+          // 执行指令（对于非纯导航操作）
+          // 如果 instruction 是纯导航操作（如"打开页面"），且已经完成导航，可以跳过
+          const isPureNavigation =
+            instruction === '打开页面' ||
+            instruction.toLowerCase().includes('navigate') ||
+            instruction.toLowerCase().includes('goto') ||
+            (url && instruction.trim() === '');
+
+          if (instruction && !isPureNavigation) {
+            // 在执行操作前，再次记录页面状态
+            const currentPages = this.stagehandInstance.context?.pages();
+            if (currentPages && currentPages.length > 0) {
+              try {
+                const currentUrl = currentPages[0].url();
+                logger.info('StagehandService: Executing action via Stagehand act()', {
+                  instruction,
+                  currentUrl,
+                });
+              } catch (urlError: any) {
+                logger.info('StagehandService: Executing action via Stagehand act()', {
+                  instruction,
+                });
+              }
+            } else {
+              logger.info('StagehandService: Executing action via Stagehand act()', {
+                instruction,
+              });
+            }
+
             await this.stagehandInstance.act(instruction);
-            logger.info('StagehandService: Action completed via Stagehand act', { instruction });
-          } else if (url) {
-            logger.info('StagehandService: Navigation completed', { url });
+
+            // 执行后记录页面状态
+            const afterPages = this.stagehandInstance.context?.pages();
+            if (afterPages && afterPages.length > 0) {
+              try {
+                const afterUrl = afterPages[0].url();
+                logger.info('StagehandService: Action completed via Stagehand act()', {
+                  instruction,
+                  finalUrl: afterUrl,
+                });
+              } catch (urlError: any) {
+                logger.info('StagehandService: Action completed via Stagehand act()', {
+                  instruction,
+                });
+              }
+            } else {
+              logger.info('StagehandService: Action completed via Stagehand act()', {
+                instruction,
+              });
+            }
+          } else if (url && isPureNavigation) {
+            logger.info('StagehandService: Pure navigation completed, skipping act()', { url });
+          } else if (!instruction && url) {
+            logger.info('StagehandService: Navigation-only action completed', { url });
           }
         } catch (actError: any) {
           logger.error('StagehandService: Stagehand act failed', {
             instruction,
+            url,
             error: actError.message,
+            errorStack: actError.stack,
           });
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          logger.warn('StagehandService: Fell back to placeholder mode', { instruction });
+          throw actError; // 重新抛出错误，让上层处理
         }
       } else {
         // Placeholder mode: simulate action execution
@@ -500,6 +616,79 @@ export class StagehandService {
     if (!this.initialized || process.env.ENABLE_BROWSER !== 'true') return null;
     const pages = this.stagehandInstance?.context?.pages?.();
     return pages && pages.length > 0 ? pages[0] : null;
+  }
+
+  /**
+   * Clear browser state (cookies, localStorage, sessionStorage)
+   * This ensures each test case starts from a clean state
+   */
+  async clearBrowserState(): Promise<void> {
+    if (!this.initialized || process.env.ENABLE_BROWSER !== 'true') {
+      logger.debug('StagehandService: Browser disabled, skipping state clear');
+      return;
+    }
+
+    if (!this.stagehandAvailable || !this.stagehandInstance) {
+      logger.debug('StagehandService: Stagehand not available, skipping state clear');
+      return;
+    }
+
+    try {
+      const pages = this.stagehandInstance.context?.pages();
+      if (pages && pages.length > 0) {
+        const page = pages[0];
+        const currentUrl = page.url();
+
+        // Clear cookies
+        try {
+          const context = page.context();
+          await context.clearCookies();
+          logger.info('StagehandService: Cleared cookies', { url: currentUrl });
+        } catch (cookieError: any) {
+          logger.warn('StagehandService: Failed to clear cookies', {
+            error: cookieError.message,
+            url: currentUrl,
+          });
+        }
+
+        // Clear localStorage and sessionStorage
+        try {
+          // Use string-based evaluate to avoid TypeScript type checking issues
+          // The code runs in browser context where localStorage/sessionStorage are available
+          await page.evaluate(`
+            try {
+              if (typeof localStorage !== 'undefined' && localStorage) {
+                localStorage.clear();
+              }
+            } catch (e) {
+              // Ignore errors
+            }
+            try {
+              if (typeof sessionStorage !== 'undefined' && sessionStorage) {
+                sessionStorage.clear();
+              }
+            } catch (e) {
+              // Ignore errors
+            }
+          `);
+          logger.info('StagehandService: Cleared localStorage and sessionStorage', { url: currentUrl });
+        } catch (storageError: any) {
+          logger.warn('StagehandService: Failed to clear storage', {
+            error: storageError.message,
+            url: currentUrl,
+          });
+        }
+
+        logger.info('StagehandService: Browser state cleared successfully', { url: currentUrl });
+      } else {
+        logger.debug('StagehandService: No pages available, skipping state clear');
+      }
+    } catch (error: any) {
+      logger.warn('StagehandService: Failed to clear browser state', {
+        error: error.message,
+        errorStack: error.stack,
+      });
+    }
   }
 
   /**

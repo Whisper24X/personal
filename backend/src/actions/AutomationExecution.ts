@@ -171,10 +171,10 @@ class StepRunner {
     const url = urlMatch ? urlMatch[1] : undefined;
     // 如果包含 URL，使用导航指令；否则使用原始指令
     // 对于导航操作，Stagehand 只需要 URL，指令可以简化
-    const instruction = url 
-      ? (step.toLowerCase().includes('打开') || step.toLowerCase().includes('navigate') || step.toLowerCase().includes('goto')
-          ? '打开页面' 
-          : step.replace(/\s*https?:\/\/[^\s]+/gi, '').trim() || '打开页面')
+    const instruction = url
+      ? step.toLowerCase().includes('打开') || step.toLowerCase().includes('navigate') || step.toLowerCase().includes('goto')
+        ? '打开页面'
+        : step.replace(/\s*https?:\/\/[^\s]+/gi, '').trim() || '打开页面'
       : step;
 
     logger.info('StepRunner: Executing step', {
@@ -223,7 +223,7 @@ class StepRunner {
     } catch (error: any) {
       const executionTime = Date.now() - startTime;
       const errorType = this.classifyError(error);
-      
+
       logger.error('StepRunner: Step execution failed', {
         stepIndex,
         step,
@@ -285,12 +285,7 @@ class ResultCollector {
   /**
    * 收集测试用例结果
    */
-  collectTestCaseResult(
-    testCaseId: string,
-    testCaseName: string,
-    jsonFile: string,
-    allStepResults: StepExecutionResult[]
-  ): TestCaseExecutionResult {
+  collectTestCaseResult(testCaseId: string, testCaseName: string, jsonFile: string, allStepResults: StepExecutionResult[]): TestCaseExecutionResult {
     const totalExecutionTime = allStepResults.reduce((sum, r) => sum + r.executionTime, 0);
     const success = allStepResults.every((r) => r.status === 'passed');
     const firstFailedStep = allStepResults.find((r) => r.status === 'failed');
@@ -689,7 +684,6 @@ export class AutomationExecution extends BaseAction {
     }
   }
 
-
   /**
    * Find all JSON test case files in the auto directory
    */
@@ -726,11 +720,7 @@ export class AutomationExecution extends BaseAction {
   /**
    * Execute all test case JSON files and collect results
    */
-  private async executeTestCaseFiles(
-    jsonFiles: string[],
-    cwd: string,
-    options?: AutomationExecutionOptions
-  ): Promise<TestCaseExecutionResult[]> {
+  private async executeTestCaseFiles(jsonFiles: string[], cwd: string, options?: AutomationExecutionOptions): Promise<TestCaseExecutionResult[]> {
     const results: TestCaseExecutionResult[] = [];
 
     logger.info('AutomationExecution: Starting to execute test case JSON files', {
@@ -747,6 +737,23 @@ export class AutomationExecution extends BaseAction {
       const testCaseId = fileName.replace('.json', '');
       let testCaseName = testCaseId;
       let testCase: TestCaseJSON | null = null;
+
+      // Clear browser state before executing each test case
+      // This ensures each test case starts from a clean state (no cookies, no localStorage)
+      try {
+        await this.stagehandService.clearBrowserState();
+        logger.info('AutomationExecution: Cleared browser state before test case', {
+          testCaseId,
+          jsonFile: fileName,
+        });
+      } catch (clearError: any) {
+        logger.warn('AutomationExecution: Failed to clear browser state before test case', {
+          testCaseId,
+          jsonFile: fileName,
+          error: clearError.message,
+        });
+        // Continue execution even if clearing fails
+      }
 
       try {
         // Read and parse JSON file
@@ -797,12 +804,7 @@ export class AutomationExecution extends BaseAction {
         }
 
         // Collect test case result
-        const testCaseResult = this.resultCollector.collectTestCaseResult(
-          testCaseId,
-          testCaseName,
-          jsonFile,
-          stepResults
-        );
+        const testCaseResult = this.resultCollector.collectTestCaseResult(testCaseId, testCaseName, jsonFile, stepResults);
 
         // Generate updated JSON with results
         const updatedJSON = this.resultCollector.generateResultJSON(testCase, stepResults);
@@ -1160,9 +1162,7 @@ export class AutomationExecution extends BaseAction {
         result.steps.forEach((stepResult) => {
           const stepStatusClass = stepResult.status === 'passed' ? 'status-pass' : 'status-fail';
           const stepStatusText = stepResult.status === 'passed' ? '✅ 成功' : '❌ 失败';
-          const stepTime = stepResult.executionTime
-            ? `${(stepResult.executionTime / 1000).toFixed(2)}s`
-            : 'N/A';
+          const stepTime = stepResult.executionTime ? `${(stepResult.executionTime / 1000).toFixed(2)}s` : 'N/A';
           html += `
                                     <tr>
                                         <td style="padding: 8px; border: 1px solid #cce5ff;">${stepResult.stepIndex + 1}</td>
@@ -1222,5 +1222,4 @@ export class AutomationExecution extends BaseAction {
     if (!text) return '';
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
   }
-
 }

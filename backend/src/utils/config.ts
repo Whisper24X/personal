@@ -36,10 +36,7 @@ export const config: IAppConfig = {
   server: {
     port: parseInt(process.env.BACKEND_PORT || '3000'),
     cors: {
-      origin: (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:5174')
-        .split(',')
-        .map((o) => o.trim())
-        .filter(Boolean),
+      origin: (process.env.ALLOWED_ORIGINS || 'http://localhost:5173').split(','),
     },
   },
   // workspace 配置已移除，统一使用 WorkspaceManager.getWorkspaceRoot() 获取路径
