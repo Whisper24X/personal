@@ -189,6 +189,84 @@ subtree-list:
 		echo "";)
 
 # ==============================================================================
+# 小程序 CI
+# ==============================================================================
+
+.PHONY: app-preview app-upload app-upload-test app-upload-stage app-upload-prod app-check app-check-key
+
+## 生成小程序预览二维码
+app-preview:
+	@echo "$(C_BLUE)生成小程序预览二维码...$(C_RESET)"
+	@cd ainative-app && pnpm ci:weapp:preview
+	@echo "$(C_GREEN)✓ 预览二维码已生成$(C_RESET)"
+
+## 上传小程序到微信后台（测试环境）
+app-upload-test:
+	@echo "$(C_BLUE)上传测试环境小程序...$(C_RESET)"
+	@cd ainative-app && pnpm ci:weapp:upload:test
+	@echo "$(C_GREEN)✓ 测试环境已上传，请在微信后台设置体验版$(C_RESET)"
+
+## 上传小程序到微信后台（预发布环境）
+app-upload-stage:
+	@echo "$(C_BLUE)上传预发布环境小程序...$(C_RESET)"
+	@cd ainative-app && pnpm ci:weapp:upload:stage
+	@echo "$(C_GREEN)✓ 预发布环境已上传，请在微信后台设置体验版$(C_RESET)"
+
+## 上传小程序到微信后台（生产环境）
+app-upload-prod:
+	@echo "$(C_BLUE)上传生产环境小程序...$(C_RESET)"
+	@cd ainative-app && pnpm ci:weapp:upload:production
+	@echo "$(C_GREEN)✓ 生产环境已上传，请在微信后台设置体验版$(C_RESET)"
+
+## 上传小程序（默认测试环境）
+app-upload: app-upload-test
+
+## 全面检查小程序 CI 环境
+app-check:
+	@./scripts/check-app-ci.sh
+
+## 检查小程序私钥配置
+app-check-key:
+	@echo "$(C_CYAN)检查小程序私钥配置...$(C_RESET)"
+	@echo ""
+	@if [ ! -f "ainative-app/ci.test.config.js" ]; then \
+		echo "$(C_RED)✗ 缺少测试环境配置: ainative-app/ci.test.config.js$(C_RESET)"; \
+	else \
+		echo "$(C_GREEN)✓ 测试环境配置存在$(C_RESET)"; \
+		APPID=$$(grep WEAPP_APPID ainative-app/ci.test.config.js | cut -d'"' -f2); \
+		KEY_PATH=$$(grep WEAPP_PRIVATE_KEY_PATH ainative-app/ci.test.config.js | cut -d'"' -f2); \
+		echo "  AppID: $$APPID"; \
+		echo "  私钥路径: $$KEY_PATH"; \
+		if [ -f "ainative-app/$$KEY_PATH" ]; then \
+			echo "  $(C_GREEN)✓ 私钥文件存在$(C_RESET)"; \
+		else \
+			echo "  $(C_RED)✗ 私钥文件不存在$(C_RESET)"; \
+		fi; \
+	fi
+	@echo ""
+	@if [ ! -f "ainative-app/ci.config.js" ]; then \
+		echo "$(C_RED)✗ 缺少生产环境配置: ainative-app/ci.config.js$(C_RESET)"; \
+	else \
+		echo "$(C_GREEN)✓ 生产环境配置存在$(C_RESET)"; \
+		APPID=$$(grep WEAPP_APPID ainative-app/ci.config.js | cut -d'"' -f2); \
+		KEY_PATH=$$(grep WEAPP_PRIVATE_KEY_PATH ainative-app/ci.config.js | cut -d'"' -f2); \
+		echo "  AppID: $$APPID"; \
+		echo "  私钥路径: $$KEY_PATH"; \
+		if [ -f "ainative-app/$$KEY_PATH" ]; then \
+			echo "  $(C_GREEN)✓ 私钥文件存在$(C_RESET)"; \
+		else \
+			echo "  $(C_RED)✗ 私钥文件不存在$(C_RESET)"; \
+		fi; \
+	fi
+	@echo ""
+	@echo "$(C_YELLOW)私钥获取方式：$(C_RESET)"
+	@echo "  1. 登录微信公众平台: https://mp.weixin.qq.com/"
+	@echo "  2. 进入"开发" -> "开发设置" -> "小程序代码上传""
+	@echo "  3. 生成并下载代码上传密钥"
+	@echo "  4. 将密钥文件放到 ainative-app/key/ 目录"
+	@echo ""
+
+# ==============================================================================
 # 沙箱环境
 # ==============================================================================
 
@@ -255,6 +333,14 @@ help:
 	@echo ""
 	@echo "$(C_YELLOW)推送到指定分支$(C_RESET)"
 	@echo "  $(C_GREEN)make subtree-push-backend feature/xxx$(C_RESET)  推送到 feature 分支"
+	@echo ""
+	@echo "$(C_YELLOW)小程序 CI$(C_RESET)"
+	@echo "  $(C_GREEN)make app-preview$(C_RESET)       生成预览二维码"
+	@echo "  $(C_GREEN)make app-upload-test$(C_RESET)   上传测试环境"
+	@echo "  $(C_GREEN)make app-upload-stage$(C_RESET)  上传预发布环境"
+	@echo "  $(C_GREEN)make app-upload-prod$(C_RESET)   上传生产环境"
+	@echo "  $(C_GREEN)make app-check$(C_RESET)         全面检查 CI 环境"
+	@echo "  $(C_GREEN)make app-check-key$(C_RESET)     检查私钥配置"
 	@echo ""
 	@echo "$(C_YELLOW)沙箱环境$(C_RESET)"
 	@echo "  $(C_GREEN)make sandbox$(C_RESET)           启动沙箱"
