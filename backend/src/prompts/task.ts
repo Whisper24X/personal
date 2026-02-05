@@ -277,6 +277,27 @@ Docker 沙箱环境要求：
 export const VALIDATE_OPENSPEC_PROPOSAL_PROMPT = `执行指令openspec-validate 检查变更提案的格式、结构是否符合 OpenSpec 规范（避免格式错误）,符合规范返回：SUCCESS，不符合返回: FAIL`;
 
 /**
+ * 构建 OpenSpec 内容审查提示词
+ * @param skillPath openspec-validator skill 文件路径
+ * @returns OpenSpec 内容审查提示词
+ * @usedBy ValidateOpenSpecContent Action
+ */
+export function buildValidateOpenSpecContentPrompt(skillPath: string): string {
+  return `请阅读并执行技能文件 ${skillPath} 中定义的审查流程：
+
+1. 定位当前工作的 openspec 变更目录
+2. 收集 PRD 和 design.md 作为基准文档
+3. 遍历审查所有 openspec 规范文件：
+   - 冲突检查：与 PRD/design 不一致的内容
+   - 缺失检查：PRD/design 中有但规范中缺失的内容
+   - 错误检查：规范内部的逻辑错误
+4. 自动修正发现的问题
+5. 生成详细的审查报告
+
+按照技能文件中的【修改原则】和【输出格式】执行。`;
+}
+
+/**
  * 故事点评估路径配置
  */
 export interface EstimateStoryPointsPaths {

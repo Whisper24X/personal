@@ -31,8 +31,10 @@ export { ExecuteSubtask } from './ExecuteSubtask';
 export { FillProjectContext } from './FillProjectContext';
 export { CreateOpenSpecProposal } from './CreateOpenSpecProposal';
 export { ValidateOpenSpecProposal } from './ValidateOpenSpecProposal';
+export { ValidateOpenSpecContent } from './ValidateOpenSpecContent';
 export { EstimateStoryPoints } from './EstimateStoryPoints';
 export { ValidateStoryPointEstimates } from './ValidateStoryPointEstimates';
+export { ExecuteProjectManagement } from './ExecuteProjectManagement';
 
 // Code Execution and Bug Fix Actions
 export { ImproveCode } from './ImproveCode';
@@ -67,8 +69,10 @@ import { ExecuteSubtask } from './ExecuteSubtask';
 import { FillProjectContext } from './FillProjectContext';
 import { CreateOpenSpecProposal } from './CreateOpenSpecProposal';
 import { ValidateOpenSpecProposal } from './ValidateOpenSpecProposal';
+import { ValidateOpenSpecContent } from './ValidateOpenSpecContent';
 import { EstimateStoryPoints } from './EstimateStoryPoints';
 import { ValidateStoryPointEstimates } from './ValidateStoryPointEstimates';
+import { ExecuteProjectManagement } from './ExecuteProjectManagement';
 import { ImproveCode } from './ImproveCode';
 import { Deploy } from './Deploy';
 import { TestReview } from './TestReview';
@@ -110,8 +114,10 @@ export const ACTION_REGISTRY: Record<string, new () => BaseAction> = {
   FillProjectContext,
   CreateOpenSpecProposal,
   ValidateOpenSpecProposal,
+  ValidateOpenSpecContent,
   EstimateStoryPoints,
   ValidateStoryPointEstimates,
+  ExecuteProjectManagement,
   // Code Improvement Actions
   ImproveCode,
   Deploy,
