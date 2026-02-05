@@ -48,6 +48,7 @@ ls -la .cursor/skills/
 @.cursor/skills/create-ainative-backend-api/SKILL.md
 @.cursor/skills/debug-ainative-projects/SKILL.md
 @.cursor/skills/code-review-ainative/SKILL.md
+@.cursor/skills/app-preview/SKILL.md
 ```
 
 ### 或者使用相对路径:
@@ -58,9 +59,12 @@ ls -la .cursor/skills/
 @create-ainative-backend-api
 @debug-ainative-projects
 @code-review-ainative
+@app-preview
 ```
 
 ## 📋 Skills 列表
+
+### 开发相关 Skills
 
 | Skill 名称 | 路径 | 用途 |
 |-----------|------|------|
@@ -69,6 +73,15 @@ ls -la .cursor/skills/
 | 创建后端 API | `.cursor/skills/create-ainative-backend-api/SKILL.md` | 在 Go 后端创建新接口 |
 | 调试项目问题 | `.cursor/skills/debug-ainative-projects/SKILL.md` | 全栈调试指南 |
 | 代码规范检查 | `.cursor/skills/code-review-ainative/SKILL.md` | 代码质量检查和修复 |
+
+### 部署相关 Skills
+
+| Skill 名称 | 路径 | 用途 |
+|-----------|------|------|
+| 小程序构建部署 | `.cursor/skills/app-build-deploy/SKILL.md` | ainative-app 编译打包部署 |
+| 后端构建部署 | `.cursor/skills/backend-build-deploy/SKILL.md` | ainative-backend Go 服务构建部署 |
+| 管理后台构建部署 | `.cursor/skills/shadow-build-deploy/SKILL.md` | ainative-shadow 管理后台构建部署 |
+| 生成小程序体验版 | `.cursor/skills/app-preview/SKILL.md` | 生成小程序体验版供测试验证 |
 
 ## 💡 备份位置
 
