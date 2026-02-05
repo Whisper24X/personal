@@ -37,6 +37,33 @@ export class WorkflowExecutionController {
   private static messageRepository = new MessageRepository();
 
   /**
+   * Run hooks before workflow start
+   */
+  private static async _runBeforeStartHooks(projectId: string, versionId: string, applicationId: string): Promise<void> {
+    const versionWorkspacePath = WorkspaceManager.getProjectWorkspacePath({
+      applicationId,
+      projectId,
+      versionId,
+    });
+
+    const cursorDir = path.join(versionWorkspacePath, '.cursor');
+    const targetSkillsDir = path.join(cursorDir, 'skills');
+    const sourceSkillsDir = path.join(WorkspaceManager.getProjectRootPath(), 'skills');
+
+    await fs.access(sourceSkillsDir);
+    await fs.rm(targetSkillsDir, { recursive: true, force: true });
+    await fs.mkdir(cursorDir, { recursive: true });
+    await fs.cp(sourceSkillsDir, targetSkillsDir, { recursive: true });
+
+    logger.info('WorkflowExecutionController: Pre-start hooks completed', {
+      projectId,
+      versionId,
+      sourceSkillsDir,
+      targetSkillsDir,
+    });
+  }
+
+  /**
    * Get workflow execution state
    * GET /api/workflow/:projectId/state
    * Query: versionId (required)
@@ -186,20 +213,19 @@ export class WorkflowExecutionController {
       // Stop any running executor first (important for reset + start flow)
       WorkflowExecutionController._stopBackgroundExecution(projectId, versionId);
 
+      const project = await WorkflowExecutionController.projectRepository.findById(projectId);
+      if (!project) {
+        return res.status(404).json({
+          success: false,
+          error: 'Project not found',
+        });
+      }
+
       // Check if execution exists, if not, auto-initialize
       let execution = await WorkflowExecutionController.executionService.getExecution(projectId, versionId);
 
       if (!execution) {
         logger.info('WorkflowExecutionController: No execution found, auto-initializing', { projectId, versionId });
-
-        // Get project to find application_id
-        const project = await WorkflowExecutionController.projectRepository.findById(projectId);
-        if (!project) {
-          return res.status(404).json({
-            success: false,
-            error: 'Project not found',
-          });
-        }
 
         // Get workflow config from application or use default
         let workflowConfig: WorkflowConfig = getDefaultWorkflowConfig();
@@ -235,6 +261,10 @@ export class WorkflowExecutionController {
           executionId: execution.id,
         });
       }
+
+      // Pre-start hooks (e.g., sync skills to version workspace)
+      const applicationId = project.application_id || project.id;
+      await WorkflowExecutionController._runBeforeStartHooks(projectId, versionId, applicationId);
 
       // Now start the workflow (state transition), optionally from a specific position
       execution = await WorkflowExecutionController.executionService.start(projectId, versionId, currentPosition);

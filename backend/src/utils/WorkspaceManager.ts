@@ -54,6 +54,13 @@ export class WorkspaceManager {
   }
 
   /**
+   * 获取项目根目录（公开方法）
+   */
+  static getProjectRootPath(): string {
+    return this.getProjectRoot();
+  }
+
+  /**
    * 获取 workspace 根目录（绝对路径）
    * 统一的 workspace 根目录获取方法，所有需要获取 workspace 路径的地方都应该调用此方法
    * 始终返回绝对路径，避免 CLI 执行时路径解析错误
