@@ -20,12 +20,57 @@ import { Message } from '../../core/message/Message';
 
 // Map to track running executors by projectId:versionId
 const runningExecutors: Map<string, WorkflowExecutor> = new Map();
+const cliLogStreams: Map<string, Set<Response>> = new Map();
 
 /**
  * Get executor key from projectId and versionId
  */
 function getExecutorKey(projectId: string, versionId: string): string {
   return `${projectId}:${versionId}`;
+}
+
+function getStreamKey(projectId: string, versionId: string): string {
+  return `${projectId}:${versionId}`;
+}
+
+function pushCliLog(projectId: string, versionId: string, payload: { type: string; message: string; ts: string }) {
+  const key = getStreamKey(projectId, versionId);
+  const streams = cliLogStreams.get(key);
+  if (!streams || streams.size === 0) return;
+  const data = `data: ${JSON.stringify(payload)}\n\n`;
+  streams.forEach((res) => {
+    res.write(data);
+  });
+}
+
+function streamEventToText(event: {
+  type?: string;
+  message?: { content?: Array<{ text?: string }> };
+  tool_call?: { writeToolCall?: { args: { path: string } }; readToolCall?: { args: { path: string } } };
+  subtype?: string;
+  model?: string;
+}): string | null {
+  if (event.type === 'assistant' && event.message?.content) {
+    return event.message.content.map((c) => c.text || '').join('');
+  }
+  if (event.type === 'tool_call' && event.subtype === 'started') {
+    if (event.tool_call?.writeToolCall) {
+      return `🔧 写入: ${event.tool_call.writeToolCall.args.path}`;
+    }
+    if (event.tool_call?.readToolCall) {
+      return `📖 读取: ${event.tool_call.readToolCall.args.path}`;
+    }
+  }
+  if (event.type === 'tool_call' && event.subtype === 'completed') {
+    return '✅ 工具调用完成';
+  }
+  if (event.type === 'system' && event.subtype === 'init' && event.model) {
+    return `🤖 模型: ${event.model}`;
+  }
+  if (event.type === 'result') {
+    return '✅ 执行完成';
+  }
+  return null;
 }
 
 export class WorkflowExecutionController {
@@ -72,16 +117,17 @@ export class WorkflowExecutionController {
         success: true,
         data: state,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('WorkflowExecutionController: Failed to get state', {
-        error: error.message,
+        error: errorMessage,
         projectId: req.params.projectId,
         versionId: req.query.versionId,
       });
       return res.status(500).json({
         success: false,
         error: 'Failed to get workflow state',
-        message: error.message,
+        message: errorMessage,
       });
     }
   }
@@ -123,18 +169,58 @@ export class WorkflowExecutionController {
         success: true,
         data: execution,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('WorkflowExecutionController: Failed to get execution', {
-        error: error.message,
+        error: errorMessage,
         projectId: req.params.projectId,
         versionId: req.query.versionId,
       });
       return res.status(500).json({
         success: false,
         error: 'Failed to get workflow execution',
-        message: error.message,
+        message: errorMessage,
       });
     }
+  }
+
+  /**
+   * Stream CLI logs (SSE)
+   * GET /api/workflow/:projectId/cli-logs/stream?versionId=...
+   */
+  static async cliLogStream(req: Request, res: Response) {
+    const { projectId } = req.params;
+    const { versionId } = req.query;
+
+    if (!projectId || !versionId || typeof versionId !== 'string') {
+      return res.status(400).json({ success: false, error: 'Project ID and versionId are required' });
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    const key = getStreamKey(projectId, versionId);
+    if (!cliLogStreams.has(key)) {
+      cliLogStreams.set(key, new Set());
+    }
+    cliLogStreams.get(key)!.add(res);
+
+    const heartbeat = setInterval(() => {
+      res.write(':\n\n');
+    }, 15000);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      const set = cliLogStreams.get(key);
+      if (set) {
+        set.delete(res);
+        if (set.size === 0) {
+          cliLogStreams.delete(key);
+        }
+      }
+    });
   }
 
   /**
@@ -195,12 +281,13 @@ export class WorkflowExecutionController {
                 workflowId: appWorkflow.id,
               });
             }
-          } catch (workflowError: any) {
+          } catch (workflowError: unknown) {
+            const errorMessage = workflowError instanceof Error ? workflowError.message : String(workflowError);
             logger.warn('WorkflowExecutionController: Failed to get application workflow, using default', {
               projectId,
               versionId,
               applicationId: project.application_id,
-              error: workflowError.message,
+              error: errorMessage,
             });
           }
         }
@@ -235,18 +322,19 @@ export class WorkflowExecutionController {
           message: 'Workflow started',
         },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('WorkflowExecutionController: Failed to start workflow', {
-        error: error.message,
+        error: errorMessage,
         projectId: req.params.projectId,
         versionId: req.body.versionId,
       });
 
-      const statusCode = error.message.includes('Cannot start') ? 400 : 500;
+      const statusCode = errorMessage.includes('Cannot start') ? 400 : 500;
       return res.status(statusCode).json({
         success: false,
         error: 'Failed to start workflow',
-        message: error.message,
+        message: errorMessage,
       });
     }
   }
@@ -289,14 +377,15 @@ export class WorkflowExecutionController {
         const executor = new WorkflowExecutor();
         try {
           await executor.onRoleConfirmed(projectId, versionId, confirmedRole, confirmedAction);
-        } catch (error: any) {
+        } catch (error: unknown) {
           // Git commit failure shouldn't prevent confirmation process
+          const errorMessage = error instanceof Error ? error.message : String(error);
           logger.error('WorkflowExecutionController: Role confirmation handler failed', {
             projectId,
             versionId,
             role: confirmedRole,
             action: confirmedAction,
-            error: error.message,
+            error: errorMessage,
           });
         }
       }
@@ -313,18 +402,19 @@ export class WorkflowExecutionController {
           message: 'Confirmation received, workflow continuing',
         },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('WorkflowExecutionController: Failed to confirm', {
-        error: error.message,
+        error: errorMessage,
         projectId: req.params.projectId,
         versionId: req.body.versionId,
       });
 
-      const statusCode = error.message.includes('not waiting') ? 400 : 500;
+      const statusCode = errorMessage.includes('not waiting') ? 400 : 500;
       return res.status(statusCode).json({
         success: false,
         error: 'Failed to confirm workflow',
-        message: error.message,
+        message: errorMessage,
       });
     }
   }
@@ -380,14 +470,6 @@ export class WorkflowExecutionController {
         action = lastCompleted.action;
       }
 
-      const targetFiles = WorkflowExecutionController._getTargetFilesForRole(execution, role);
-      if (targetFiles.length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: `当前角色无可通过 CLI 修改的产物: ${role}`,
-        });
-      }
-
       const project = await WorkflowExecutionController.projectRepository.findById(projectId);
       if (!project) {
         return res.status(404).json({ success: false, error: 'Project not found' });
@@ -399,6 +481,13 @@ export class WorkflowExecutionController {
         projectId,
         versionId,
       });
+      const targetFiles = await WorkflowExecutionController._getTargetFilesForRole(execution, role, workspaceDir);
+      if (targetFiles.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: `当前角色无可通过 CLI 修改的产物: ${role}`,
+        });
+      }
       const targetFilePaths = targetFiles.map((file) => path.join(workspaceDir, file.relativePath));
       const prompt = [
         '你需要根据用户要求修改以下文件内容：',
@@ -407,8 +496,26 @@ export class WorkflowExecutionController {
         '要求：只修改以上文件，保持其它内容不变。',
       ].join('\n');
 
+      pushCliLog(projectId, versionId, { type: 'input', message, ts: new Date().toISOString() });
+
       const executor = new CLIExecutor();
-      const cliOutput = await executor.execute(prompt, { workDir: workspaceDir });
+      const cliOutput = await executor.execute(prompt, {
+        workDir: workspaceDir,
+        enableStreamProgress: true,
+        onProgress: (event) => {
+          const text = streamEventToText(event);
+          if (text) {
+            pushCliLog(projectId, versionId, { type: 'output', message: text, ts: new Date().toISOString() });
+          }
+        },
+      });
+      if (cliOutput) {
+        pushCliLog(projectId, versionId, {
+          type: 'output',
+          message: cliOutput.substring(0, 500),
+          ts: new Date().toISOString(),
+        });
+      }
       logger.info('WorkflowExecutionController: CLI execution output', {
         projectId,
         versionId,
@@ -421,12 +528,13 @@ export class WorkflowExecutionController {
         try {
           const content = await fs.readFile(filePath, 'utf-8');
           updatedFiles.push({ action: file.action, content, path: filePath });
-        } catch (readError: any) {
+        } catch (readError: unknown) {
+          const errorMessage = readError instanceof Error ? readError.message : String(readError);
           logger.warn('WorkflowExecutionController: Failed to read updated file', {
             projectId,
             versionId,
             filePath,
-            error: readError.message,
+            error: errorMessage,
           });
         }
       }
@@ -448,6 +556,8 @@ export class WorkflowExecutionController {
         await WorkflowExecutionController.messageRepository.save(projectId, msg, role || undefined, versionId);
       }
 
+      pushCliLog(projectId, versionId, { type: 'status', message: 'done', ts: new Date().toISOString() });
+
       return res.json({
         success: true,
         data: {
@@ -459,16 +569,22 @@ export class WorkflowExecutionController {
           cliOutput,
         },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      pushCliLog(req.params.projectId, req.body?.versionId, {
+        type: 'error',
+        message: errorMessage || 'CLI error',
+        ts: new Date().toISOString(),
+      });
       logger.error('WorkflowExecutionController: CLI edit failed', {
-        error: error.message,
+        error: errorMessage,
         projectId: req.params.projectId,
         versionId: req.body?.versionId,
       });
       return res.status(500).json({
         success: false,
         error: 'Failed to edit pending confirmation via CLI',
-        message: error.message,
+        message: errorMessage,
       });
     }
   }
@@ -496,10 +612,11 @@ export class WorkflowExecutionController {
     return map[action] || null;
   }
 
-  private static _getTargetFilesForRole(
+  private static async _getTargetFilesForRole(
     execution: { workflowSnapshot?: { roles?: Array<{ profile: string; actions: string[] }> } },
-    role?: string
-  ): Array<{ action: string; relativePath: string }> {
+    role: string | undefined,
+    workspaceDir: string
+  ): Promise<Array<{ action: string; relativePath: string }>> {
     if (!role || !execution.workflowSnapshot?.roles) {
       return [];
     }
@@ -509,12 +626,141 @@ export class WorkflowExecutionController {
     }
     const files: Array<{ action: string; relativePath: string }> = [];
     for (const actionName of roleConfig.actions) {
-      const relativePath = WorkflowExecutionController._getTargetFilePath(actionName);
-      if (relativePath) {
+      const actionFiles = await WorkflowExecutionController._getTargetFilesForAction(actionName, workspaceDir);
+      for (const relativePath of actionFiles) {
         files.push({ action: actionName, relativePath });
       }
     }
     return files;
+  }
+
+  private static async _getTargetFilesForAction(action: string, workspaceDir: string): Promise<string[]> {
+    const directPath = WorkflowExecutionController._getTargetFilePath(action);
+    if (directPath) {
+      const existing = await WorkflowExecutionController._filterExistingFiles(workspaceDir, [directPath]);
+      return existing;
+    }
+    if (action === 'FillProjectContext') {
+      return WorkflowExecutionController._filterExistingFiles(workspaceDir, [path.join('openspec', 'project.md')]);
+    }
+    if (action === 'CreateOpenSpecProposal' || action === 'ValidateOpenSpecProposal') {
+      const changeDir = await WorkflowExecutionController._findLatestChangeDir(workspaceDir);
+      if (!changeDir) {
+        return [];
+      }
+      const baseFiles = [path.join(changeDir, 'proposal.md'), path.join(changeDir, 'tasks.md'), path.join(changeDir, 'design.md')];
+      const existingBaseFiles = await WorkflowExecutionController._filterExistingFiles(workspaceDir, baseFiles);
+      const specsDirAbs = path.join(workspaceDir, changeDir, 'specs');
+      const specsDirRel = path.join(changeDir, 'specs');
+      const specFiles = await WorkflowExecutionController._collectSpecFiles(specsDirAbs, specsDirRel);
+      return [...existingBaseFiles, ...specFiles];
+    }
+    if (action === 'EstimateStoryPoints' || action === 'ValidateStoryPointEstimates') {
+      const tasksFile = await WorkflowExecutionController._findLatestTasksFile(workspaceDir);
+      if (!tasksFile) {
+        return [];
+      }
+      const estimatesFile = tasksFile.replace('tasks.md', 'tasks-with-estimates.md');
+      const existing = await WorkflowExecutionController._filterExistingFiles(workspaceDir, [estimatesFile]);
+      if (existing.length > 0) {
+        return existing;
+      }
+      return WorkflowExecutionController._filterExistingFiles(workspaceDir, [tasksFile]);
+    }
+    return [];
+  }
+
+  private static async _filterExistingFiles(workspaceDir: string, relativePaths: string[]): Promise<string[]> {
+    const results: string[] = [];
+    for (const relPath of relativePaths) {
+      try {
+        await fs.access(path.join(workspaceDir, relPath));
+        results.push(relPath);
+      } catch {
+        continue;
+      }
+    }
+    return results;
+  }
+
+  private static async _findLatestChangeDir(workspaceDir: string): Promise<string | null> {
+    const changesDir = path.join(workspaceDir, 'openspec', 'changes');
+    try {
+      const entries = await fs.readdir(changesDir, { withFileTypes: true });
+      const dirs = entries.filter((entry) => entry.isDirectory());
+      if (dirs.length === 0) {
+        return null;
+      }
+      const dirsWithMtime: Array<{ name: string; mtime: number }> = [];
+      for (const dir of dirs) {
+        try {
+          const stats = await fs.stat(path.join(changesDir, dir.name));
+          dirsWithMtime.push({ name: dir.name, mtime: stats.mtime.getTime() });
+        } catch {
+          continue;
+        }
+      }
+      if (dirsWithMtime.length === 0) {
+        return null;
+      }
+      dirsWithMtime.sort((a, b) => b.mtime - a.mtime);
+      return path.join('openspec', 'changes', dirsWithMtime[0].name);
+    } catch {
+      return null;
+    }
+  }
+
+  private static async _findLatestTasksFile(workspaceDir: string): Promise<string | null> {
+    const changesDir = path.join(workspaceDir, 'openspec', 'changes');
+    try {
+      const entries = await fs.readdir(changesDir, { withFileTypes: true });
+      const dirs = entries.filter((entry) => entry.isDirectory());
+      if (dirs.length === 0) {
+        return null;
+      }
+      const tasksFiles: Array<{ path: string; mtime: number }> = [];
+      for (const dir of dirs) {
+        const relPath = path.join('openspec', 'changes', dir.name, 'tasks.md');
+        const fullPath = path.join(workspaceDir, relPath);
+        try {
+          const stats = await fs.stat(fullPath);
+          if (stats.isFile()) {
+            tasksFiles.push({ path: relPath, mtime: stats.mtime.getTime() });
+          }
+        } catch {
+          continue;
+        }
+      }
+      if (tasksFiles.length === 0) {
+        return null;
+      }
+      tasksFiles.sort((a, b) => b.mtime - a.mtime);
+      return tasksFiles[0].path;
+    } catch {
+      return null;
+    }
+  }
+
+  private static async _collectSpecFiles(dirAbs: string, dirRel: string): Promise<string[]> {
+    try {
+      const entries = await fs.readdir(dirAbs, { withFileTypes: true });
+      const files: string[] = [];
+      for (const entry of entries) {
+        const absPath = path.join(dirAbs, entry.name);
+        const relPath = path.join(dirRel, entry.name);
+        if (entry.isDirectory()) {
+          const nested = await WorkflowExecutionController._collectSpecFiles(absPath, relPath);
+          files.push(...nested);
+          continue;
+        }
+        if (entry.isFile() && entry.name === 'spec.md') {
+          files.push(relPath);
+        }
+      }
+      return files;
+    } catch {
+      return [];
+    }
   }
 
   private static _getLastCompletedStep(execution: {
@@ -578,19 +824,20 @@ export class WorkflowExecutionController {
           message: `Workflow reset to role: ${targetRole}`,
         },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('WorkflowExecutionController: Failed to reset workflow', {
-        error: error.message,
+        error: errorMessage,
         projectId: req.params.projectId,
         versionId: req.body.versionId,
         targetRole: req.body.targetRole,
       });
 
-      const statusCode = error.message.includes('not found') ? 404 : 500;
+      const statusCode = errorMessage.includes('not found') ? 404 : 500;
       return res.status(statusCode).json({
         success: false,
         error: 'Failed to reset workflow',
-        message: error.message,
+        message: errorMessage,
       });
     }
   }
@@ -629,18 +876,19 @@ export class WorkflowExecutionController {
           message: 'Workflow paused',
         },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('WorkflowExecutionController: Failed to pause workflow', {
-        error: error.message,
+        error: errorMessage,
         projectId: req.params.projectId,
         versionId: req.body.versionId,
       });
 
-      const statusCode = error.message.includes('Cannot pause') ? 400 : 500;
+      const statusCode = errorMessage.includes('Cannot pause') ? 400 : 500;
       return res.status(statusCode).json({
         success: false,
         error: 'Failed to pause workflow',
-        message: error.message,
+        message: errorMessage,
       });
     }
   }
@@ -680,18 +928,19 @@ export class WorkflowExecutionController {
           message: 'Workflow resumed',
         },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('WorkflowExecutionController: Failed to resume workflow', {
-        error: error.message,
+        error: errorMessage,
         projectId: req.params.projectId,
         versionId: req.body.versionId,
       });
 
-      const statusCode = error.message.includes('not paused') ? 400 : 500;
+      const statusCode = errorMessage.includes('not paused') ? 400 : 500;
       return res.status(statusCode).json({
         success: false,
         error: 'Failed to resume workflow',
-        message: error.message,
+        message: errorMessage,
       });
     }
   }
@@ -731,18 +980,19 @@ export class WorkflowExecutionController {
           message: 'Workflow retry initiated',
         },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('WorkflowExecutionController: Failed to retry workflow', {
-        error: error.message,
+        error: errorMessage,
         projectId: req.params.projectId,
         versionId: req.body.versionId,
       });
 
-      const statusCode = error.message.includes('not failed') ? 400 : 500;
+      const statusCode = errorMessage.includes('not failed') ? 400 : 500;
       return res.status(statusCode).json({
         success: false,
         error: 'Failed to retry workflow',
-        message: error.message,
+        message: errorMessage,
       });
     }
   }
@@ -777,9 +1027,10 @@ export class WorkflowExecutionController {
         success: true,
         data: result,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('WorkflowExecutionController: Failed to recover workflow', {
-        error: error.message,
+        error: errorMessage,
         projectId: req.params.projectId,
         versionId: req.body.versionId,
       });
@@ -787,7 +1038,7 @@ export class WorkflowExecutionController {
       return res.status(500).json({
         success: false,
         error: 'Failed to recover workflow',
-        message: error.message,
+        message: errorMessage,
       });
     }
   }
@@ -822,9 +1073,10 @@ export class WorkflowExecutionController {
         success: true,
         data: status,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('WorkflowExecutionController: Failed to get recovery status', {
-        error: error.message,
+        error: errorMessage,
         projectId: req.params.projectId,
         versionId: req.query.versionId,
       });
@@ -832,7 +1084,7 @@ export class WorkflowExecutionController {
       return res.status(500).json({
         success: false,
         error: 'Failed to get recovery status',
-        message: error.message,
+        message: errorMessage,
       });
     }
   }
@@ -874,9 +1126,10 @@ export class WorkflowExecutionController {
         success: true,
         message: 'Workflow execution deleted',
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('WorkflowExecutionController: Failed to delete workflow', {
-        error: error.message,
+        error: errorMessage,
         projectId: req.params.projectId,
         versionId: req.query.versionId,
       });
@@ -884,7 +1137,7 @@ export class WorkflowExecutionController {
       return res.status(500).json({
         success: false,
         error: 'Failed to delete workflow execution',
-        message: error.message,
+        message: errorMessage,
       });
     }
   }
@@ -910,15 +1163,16 @@ export class WorkflowExecutionController {
           updatedAt: exec.updatedAt,
         })),
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('WorkflowExecutionController: Failed to get active workflows', {
-        error: error.message,
+        error: errorMessage,
       });
 
       return res.status(500).json({
         success: false,
         error: 'Failed to get active workflows',
-        message: error.message,
+        message: errorMessage,
       });
     }
   }
@@ -946,11 +1200,12 @@ export class WorkflowExecutionController {
       .then(() => {
         logger.info('WorkflowExecutionController: Background execution completed', { projectId, versionId });
       })
-      .catch((error: any) => {
+      .catch((error: unknown) => {
+        const errorMessage = error instanceof Error ? error.message : String(error);
         logger.error('WorkflowExecutionController: Background execution failed', {
           projectId,
           versionId,
-          error: error.message,
+          error: errorMessage,
         });
       })
       .finally(() => {

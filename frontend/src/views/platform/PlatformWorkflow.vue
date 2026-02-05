@@ -56,9 +56,9 @@
             </div>
           </div>
           <div v-else class="log-empty">暂无对话记录</div>
-          <el-input v-model="cliMessage" type="textarea" :rows="3" placeholder="请输入修改要求，例如：请补充功能边界条件..." />
+          <el-input v-model="cliMessage" type="textarea" :rows="3" placeholder="请输入修改要求，例如：请补充功能边界条件..." :disabled="cliSending" />
           <div class="cli-actions">
-            <el-button type="primary" :loading="cliSending" @click="sendCliMessage">发送</el-button>
+            <el-button type="primary" :loading="cliSending" :disabled="cliSending" @click="sendCliMessage">发送</el-button>
           </div>
         </el-card>
 
@@ -83,7 +83,7 @@
                 type="success"
                 size="small"
                 :loading="actionLoading"
-                :disabled="currentStep?.instructContent?.deployFailed"
+                :disabled="cliSending || currentStep?.instructContent?.deployFailed"
                 @click="handleUserAction('continue')"
               >
                 确认继续
@@ -169,6 +169,7 @@ const cliSending = ref(false);
 const cliHistory = ref<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
 
 const runtimeLogs = ref<Array<{ title: string; time: string; content?: string }>>([]);
+const cliLogSource = ref<EventSource | null>(null);
 
 const recentLogs = computed(() => {
   const completedLogs = completedSteps.value
@@ -559,10 +560,40 @@ onMounted(async () => {
   }, 30000);
 
   startWorkflowSession();
+
+  if (platformId.value && versionId.value) {
+    const apiUrl = (import.meta as any).env?.VITE_API_URL || '';
+    const baseUrl = apiUrl.replace(/\/$/, '');
+    const streamUrl = `${baseUrl}/workflow/${platformId.value}/cli-logs/stream?versionId=${versionId.value}`;
+    cliLogSource.value = new EventSource(streamUrl);
+    cliLogSource.value.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        runtimeLogs.value.push({
+          title: `CLI ${data.type}`,
+          time: data.ts || new Date().toISOString(),
+          content: data.message,
+        });
+      } catch (error) {
+        console.error('Failed to parse CLI log event:', error);
+      }
+    };
+    cliLogSource.value.onerror = () => {
+      runtimeLogs.value.push({
+        title: 'CLI error',
+        time: new Date().toISOString(),
+        content: 'CLI 日志流已断开',
+      });
+    };
+  }
 });
 
 onUnmounted(() => {
   cleanup();
+  if (cliLogSource.value) {
+    cliLogSource.value.close();
+    cliLogSource.value = null;
+  }
 });
 
 async function startWorkflowSession() {
@@ -761,6 +792,12 @@ async function sendCliMessage() {
   }
   const message = cliMessage.value.trim();
   cliHistory.value.push({ role: 'user', content: message });
+  runtimeLogs.value.push({
+    title: 'CLI input',
+    time: new Date().toISOString(),
+    content: message,
+  });
+  cliMessage.value = '';
   cliSending.value = true;
   try {
     const scope = currentStep.value ? 'pending' : 'last_completed';
@@ -771,14 +808,6 @@ async function sendCliMessage() {
     });
     const response: any = await apiClient.editWorkflowDraftByCLI(platformId.value, versionId.value!, message, scope);
     const updatedContent = response?.data?.content || response?.content;
-    const cliOutput = response?.data?.cliOutput;
-    if (cliOutput) {
-      runtimeLogs.value.push({
-        title: 'CLI 执行输出',
-        time: new Date().toISOString(),
-        content: cliOutput.length > 500 ? cliOutput.substring(0, 500) + '...' : cliOutput,
-      });
-    }
     if (updatedContent) {
       if (currentStep.value) {
         currentStep.value = {

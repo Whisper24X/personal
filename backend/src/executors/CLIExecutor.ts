@@ -1,7 +1,7 @@
 /**
  * CLI Executor
  * CLI 执行器实现
- * 
+ *
  * 使用命令行工具（如 Cursor CLI, Aider）执行任务
  */
 
@@ -93,10 +93,7 @@ export class CLIExecutor implements IExecutor {
 
     try {
       // 获取 CLI 提供商
-      const provider = CLIProviderFactory.getProvider(
-        providerType,
-        this.config.providerConfig
-      );
+      const provider = CLIProviderFactory.getProvider(providerType, this.config.providerConfig);
 
       // 构建完整提示词（包含系统提示词）
       let fullPrompt = prompt;
@@ -113,6 +110,10 @@ export class CLIExecutor implements IExecutor {
       const result = await provider.execute(fullPrompt, workDir, {
         timeout: options?.timeout || this.config.providerConfig?.timeout,
         env: options?.env,
+        enableStreamProgress: options?.enableStreamProgress,
+        outputFormat: options?.enableStreamProgress ? 'stream-json' : undefined,
+        streamPartialOutput: options?.enableStreamProgress ? true : undefined,
+        onProgress: options?.onProgress,
       });
 
       // 再次检查取消信号
@@ -121,7 +122,7 @@ export class CLIExecutor implements IExecutor {
       if (options?.abortSignal?.aborted && result.exitCode !== 0) {
         throw new Error('CLIExecutor: Execution was cancelled');
       }
-      
+
       // 如果命令成功但信号被取消，记录警告但不抛出错误
       if (options?.abortSignal?.aborted && result.exitCode === 0) {
         logger.warn('CLIExecutor: Command completed successfully but abort signal was set', {
@@ -157,10 +158,7 @@ export class CLIExecutor implements IExecutor {
 
           try {
             // 使用降级配置创建新的提供商
-            const fallbackProvider = CLIProviderFactory.getProvider(
-              providerType,
-              fallbackConfig
-            );
+            const fallbackProvider = CLIProviderFactory.getProvider(providerType, fallbackConfig);
 
             // 构建完整提示词（与之前相同）
             let fullPromptForFallback = prompt;
@@ -176,6 +174,10 @@ export class CLIExecutor implements IExecutor {
             const fallbackResult = await fallbackProvider.execute(fullPromptForFallback, workDir, {
               timeout: options?.timeout || fallbackConfig.timeout || this.config.providerConfig?.timeout,
               env: options?.env,
+              enableStreamProgress: options?.enableStreamProgress,
+              outputFormat: options?.enableStreamProgress ? 'stream-json' : undefined,
+              streamPartialOutput: options?.enableStreamProgress ? true : undefined,
+              onProgress: options?.onProgress,
             });
 
             // 再次检查取消信号
@@ -183,7 +185,7 @@ export class CLIExecutor implements IExecutor {
             if (options?.abortSignal?.aborted && fallbackResult.exitCode !== 0) {
               throw new Error('CLIExecutor: Execution was cancelled');
             }
-            
+
             // 如果命令成功但信号被取消，记录警告但不抛出错误
             if (options?.abortSignal?.aborted && fallbackResult.exitCode === 0) {
               logger.warn('CLIExecutor: Fallback command completed successfully but abort signal was set', {
@@ -216,14 +218,15 @@ export class CLIExecutor implements IExecutor {
               });
               // 继续使用原始结果
             }
-          } catch (fallbackError: any) {
+          } catch (fallbackError: unknown) {
             const fallbackExecutionTime = Date.now() - startTime;
+            const errorMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
 
             logger.error('CLIExecutor: Model fallback failed', {
               ...logContext,
               originalModel,
               fallbackModel: fallbackConfig.model,
-              fallbackError: fallbackError.message,
+              fallbackError: errorMessage,
               executionTimeMs: fallbackExecutionTime,
             });
             // 继续使用原始结果
@@ -253,8 +256,9 @@ export class CLIExecutor implements IExecutor {
       });
 
       return result.output;
-    } catch (error: any) {
+    } catch (error: unknown) {
       const executionTime = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : String(error);
 
       // 尝试模型降级
       if (this.config.fallbackStrategy) {
@@ -274,16 +278,13 @@ export class CLIExecutor implements IExecutor {
             ...logContext,
             originalModel,
             fallbackModel,
-            error: error.message,
+            error: errorMessage,
             executionTimeMs: executionTime,
           });
 
           try {
             // 使用降级配置创建新的提供商
-            const fallbackProvider = CLIProviderFactory.getProvider(
-              providerType,
-              fallbackConfig
-            );
+            const fallbackProvider = CLIProviderFactory.getProvider(providerType, fallbackConfig);
 
             // 构建完整提示词（与之前相同）
             let fullPrompt = prompt;
@@ -306,7 +307,7 @@ export class CLIExecutor implements IExecutor {
             if (options?.abortSignal?.aborted && fallbackResult.exitCode !== 0) {
               throw new Error('CLIExecutor: Execution was cancelled');
             }
-            
+
             // 如果命令成功但信号被取消，记录警告但不抛出错误
             if (options?.abortSignal?.aborted && fallbackResult.exitCode === 0) {
               logger.warn('CLIExecutor: Fallback command completed successfully but abort signal was set', {
@@ -327,15 +328,16 @@ export class CLIExecutor implements IExecutor {
             });
 
             return fallbackResult.output;
-          } catch (fallbackError: any) {
+          } catch (fallbackError: unknown) {
             const fallbackExecutionTime = Date.now() - startTime;
+            const fallbackErrorMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
 
             logger.error('CLIExecutor: Model fallback also failed', {
               ...logContext,
               originalModel,
               fallbackModel,
-              originalError: error.message,
-              fallbackError: fallbackError.message,
+              originalError: errorMessage,
+              fallbackError: fallbackErrorMessage,
               executionTimeMs: fallbackExecutionTime,
             });
 
@@ -348,7 +350,7 @@ export class CLIExecutor implements IExecutor {
       logger.error('CLIExecutor: Execution failed', {
         ...logContext,
         executionTimeMs: executionTime,
-        error: error.message,
+        error: errorMessage,
         callStack,
         hasFallbackStrategy: !!this.config.fallbackStrategy,
       });

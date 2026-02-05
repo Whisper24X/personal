@@ -32,6 +32,7 @@ router.get('/active', WorkflowExecutionController.getActiveWorkflows);
 router.get('/:projectId/state', WorkflowExecutionController.getState);
 router.get('/:projectId/execution', WorkflowExecutionController.getExecution);
 router.get('/:projectId/recovery-status', WorkflowExecutionController.getRecoveryStatus);
+router.get('/:projectId/cli-logs/stream', WorkflowExecutionController.cliLogStream);
 
 // Lifecycle routes
 router.post('/:projectId/start', WorkflowExecutionController.start);
