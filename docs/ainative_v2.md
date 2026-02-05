@@ -1,0 +1,37 @@
+AI native v2
+- AI native  2.0 需求设计 3
+- AI native  2.0 架构设计+框架搭建 2
+- AI native  2.0 功能开发
+  - AI native  2.0 -全局配置 3
+    - 流水线模板(默认模板)
+    - Skills 3
+      - skills市场
+      - skills 增删改查
+    - Mcp 3
+      - mcp 市场
+      - mcp 增删改查
+  - AI native  2.0 -业务线 1
+    - 业务线增删改查
+  - AI native  2.0 -项目 6
+    - 项目的增删改查(项目名称,Git 地址)1
+    - 项目配置 2
+      - Agent cli 的配置
+      - Skills 添加
+      - mcps 添加
+    - 知识库 3
+      - 非 RAG 知识库
+  - AI native  2.0 -任务(需求) 10
+    - 任务详情
+    - 任务完成通知
+    - 文件预览
+    - 部署预览
+    - Git处理  worktree  ???
+    - 容器隔离问题 (sandbox) ???
+  - AI native  2.0 -任务流水线 5
+    - 任务节点
+    - 流水线代码编辑(待定)
+  - AI native  2.0 -Agent Cli 3
+    - Agent cli 对话与展示
+    - Codex 
+    - Cursor agent
+    - Claude code

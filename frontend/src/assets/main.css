@@ -1,35 +1,48 @@
-@import './base.css';
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@source "../**/*.{vue,js,ts,jsx,tsx,html}";
+@import 'tailwindcss';
+@import './theme.css';
 
-#app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  font-weight: normal;
-}
+@custom-variant dark (&:is(.dark *));
 
-a,
-.green {
-  text-decoration: none;
-  color: hsla(160, 100%, 37%, 1);
-  transition: 0.4s;
-  padding: 3px;
-}
+@plugin 'tailwindcss-animate';
+@plugin '@tailwindcss/typography';
 
-@media (hover: hover) {
-  a:hover {
-    background-color: hsla(160, 100%, 37%, 0.2);
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-}
 
-@media (min-width: 1024px) {
+  html {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+  }
+
   body {
-    display: flex;
-    place-items: center;
+    @apply min-h-screen bg-background text-foreground antialiased;
+    letter-spacing: var(--tracking-normal);
   }
 
-  #app {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    padding: 0 2rem;
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family: var(--font-mono);
+  }
+
+  input,
+  select,
+  textarea {
+    @apply bg-background text-foreground border-border outline-ring/50;
+  }
+
+  button {
+    @apply border-border outline-ring/50;
+  }
+}
+
+@layer utilities {
+  .container {
+    @apply mx-auto max-w-6xl px-5 md:px-8;
   }
 }
