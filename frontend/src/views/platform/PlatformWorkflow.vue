@@ -2,46 +2,156 @@
   <div class="platform-workflow">
     <PlatformWorkflowHeader @back="handleBack" />
 
-    <PlatformInfoCard :platform-id="platformId" :platform-name="platformName" :user-idea="userIdea" 
-      @download-code="handleDownloadCode" @download-docs="handleDownloadDocs" @version-changed="handleVersionChanged" />
+    <PlatformInfoCard
+      :platform-id="platformId"
+      :platform-name="platformName"
+      :user-idea="userIdea"
+      @download-code="handleDownloadCode"
+      @download-docs="handleDownloadDocs"
+      @version-changed="handleVersionChanged"
+    />
 
-    <WorkflowKanban :workflow-kanban="workflowKanban" :is-running="isRunning" :running-role="runningRole"
-      :current-action="currentAction" :current-stage-name="currentStageName" :resetting-roles="resettingRoles"
-      :get-role-display-name="getRoleDisplayName" :get-role-description="getRoleDescription"
-      :get-action-display-name="getActionDisplayName" :get-action-description="getActionDescription"
-      :get-stage-tag-type="getStageTagType" :show-recover-button="showRecoverButton" :recovering="recovering"
-      @reset-role="handleResetRole" @recover="handleRecover"
-      @show-confirmation="showConfirmationDialog = true" @view-content="openContentDialog"
-      @download-zip="downloadZip" />
+    <div class="workflow-content">
+      <div class="content-left">
+        <WorkflowNodes
+          :workflow-kanban="workflowKanban"
+          :is-running="isRunning"
+          :running-role="runningRole"
+          :current-action="currentAction"
+          :get-role-display-name="getRoleDisplayName"
+          :get-action-display-name="getActionDisplayName"
+          :show-recover-button="showRecoverButton"
+          :recovering="recovering"
+          @reset-role="handleResetRole"
+          @recover="handleRecover"
+          @view-content="openContentDialog"
+        />
 
-    <CompletionCard v-if="isCompleted" :completed-steps="completedSteps" :start-time="startTime"
-      @view-project="viewPlatform" @download-project="downloadPlatform" />
+        <el-card class="left-panel log-panel">
+          <template #header>
+            <div class="panel-header">
+              <div class="panel-title">工作流日志</div>
+              <div class="panel-actions">
+                <el-select v-model="logFilter" size="small" class="log-filter" placeholder="筛选">
+                  <el-option label="全部" value="all" />
+                  <el-option label="仅 CLI" value="cli" />
+                  <el-option label="仅状态" value="status" />
+                  <el-option label="仅错误" value="error" />
+                </el-select>
+                <div class="log-toggle">
+                  <span>自动滚动</span>
+                  <el-switch v-model="autoScroll" size="small" />
+                </div>
+                <el-button size="small" @click="copyVisibleLogs">复制日志</el-button>
+                <el-button size="small" plain @click="clearRuntimeLogs">清空日志</el-button>
+              </div>
+            </div>
+          </template>
+          <div ref="logListRef" class="log-list">
+            <div v-if="filteredLogs.length === 0" class="log-empty">暂无日志</div>
+            <div v-for="log in filteredLogs" :id="`log-${log.id}`" :key="log.id" class="log-item" :class="`log-type-${log.type}`">
+              <div class="log-badge">{{ logBadgeText(log) }}</div>
+              <div class="log-title">{{ log.title }}</div>
+              <div class="log-time">{{ log.time }}</div>
+              <div v-if="log.content" class="log-content">{{ log.content }}</div>
+            </div>
+          </div>
+        </el-card>
 
-    <!-- Confirmation Dialog -->
-    <el-dialog v-model="showConfirmationDialog"
-      :title="currentStep ? `${getRoleDisplayName(currentStep.role)} - ${getActionDisplayName(currentStep.action)}` : '确认操作'"
-      width="80%" :close-on-click-modal="false" :close-on-press-escape="false" :show-close="false" destroy-on-close>
-      <div v-if="currentStep">
-        <InteractiveConfirmation :role-info="currentStep" :loading="actionLoading" :project-id="platformId"
-          :version-id="versionId" :hide-card="true" @action="handleUserAction" />
+        <el-card class="left-panel cli-panel">
+          <template #header>
+            <div class="panel-header">
+              <div class="panel-title">CLI 对话修改</div>
+            </div>
+          </template>
+          <div v-if="cliHistory.length > 0" class="cli-chat-history">
+            <div v-for="(msg, idx) in cliHistory" :key="idx" :class="['cli-message', msg.role]" @click="scrollToLog(msg.logId)">
+              <div class="cli-role">{{ msg.role === 'user' ? '你' : 'CLI' }}</div>
+              <div class="cli-content">{{ msg.content }}</div>
+            </div>
+          </div>
+          <div v-else class="log-empty">暂无对话记录</div>
+          <div v-if="cliSending" class="cli-status">正在执行中，请稍候…</div>
+          <el-input
+            v-model="cliMessage"
+            type="textarea"
+            :rows="3"
+            placeholder="请输入修改要求，例如：请补充功能边界条件..."
+            :disabled="cliSending"
+            @keydown="handleCliKeydown"
+          />
+          <div class="cli-actions">
+            <el-button type="primary" :loading="cliSending" :disabled="cliSending" @click="sendCliMessage">发送</el-button>
+          </div>
+        </el-card>
+
+        <CompletionCard
+          v-if="isCompleted"
+          :completed-steps="completedSteps"
+          :start-time="startTime"
+          @view-project="viewPlatform"
+          @download-project="downloadPlatform"
+        />
       </div>
-    </el-dialog>
+      <div class="content-right">
+        <el-card class="confirmation-panel">
+          <template #header>
+            <div class="panel-header">
+              <div class="panel-title">
+                <span>确认展示区</span>
+                <el-tag v-if="currentStep" type="warning" effect="dark">等待确认</el-tag>
+              </div>
+              <el-button
+                v-if="currentStep"
+                type="success"
+                size="small"
+                :loading="actionLoading"
+                :disabled="cliSending || currentStep?.instructContent?.deployFailed"
+                @click="handleUserAction('continue')"
+              >
+                确认继续
+              </el-button>
+            </div>
+          </template>
+
+          <div v-if="currentStep">
+            <InteractiveConfirmation
+              :role-info="currentStep"
+              :loading="actionLoading"
+              :project-id="platformId"
+              :version-id="versionId"
+              :hide-card="true"
+              :hide-header="true"
+              :hide-continue="true"
+              @action="handleUserAction"
+            />
+          </div>
+
+          <el-empty v-else description="暂无等待确认的节点" />
+        </el-card>
+      </div>
+    </div>
 
     <!-- Content View Dialog -->
-    <ContentDialog v-model="showContentDialog" :role="contentDialogRole" :action="contentDialogAction"
-      :content="contentDialogContent" :timestamp="contentDialogTimestamp"
+    <ContentDialog
+      v-model="showContentDialog"
+      :role="contentDialogRole"
+      :action="contentDialogAction"
+      :content="contentDialogContent"
+      :timestamp="contentDialogTimestamp"
       :role-display-name="contentDialogRole ? getRoleDisplayName(contentDialogRole) : ''"
-      :action-display-name="contentDialogAction ? getActionDisplayName(contentDialogAction) : ''" />
+      :action-display-name="contentDialogAction ? getActionDisplayName(contentDialogAction) : ''"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 // Import shared components from project folder
 import InteractiveConfirmation from '../project/components/InteractiveConfirmation.vue';
-import WorkflowKanban from '../project/components/WorkflowKanban.vue';
+import WorkflowNodes from '../project/components/WorkflowNodes.vue';
 import CompletionCard from '../project/components/CompletionCard.vue';
 import ContentDialog from '../project/components/ContentDialog.vue';
 // Import platform-specific components
@@ -50,7 +160,7 @@ import PlatformInfoCard from './components/PlatformInfoCard.vue';
 import apiClient from '../../api/client';
 import { createPolling, type PollingResult } from '../../utils/polling';
 import { useRoleActionStore } from '../../stores/roleAction';
-import { getStageName, getStageTagType as getStageColor } from '../../config/stageConfig';
+import { getStageName } from '../../config/stageConfig';
 import { handleApiError } from '../../utils/errorHandler';
 import type { WorkflowAction } from '../project/components/ActionCard.vue';
 import type { WorkflowRoleColumn } from '../project/components/KanbanColumn.vue';
@@ -60,7 +170,7 @@ const router = useRouter();
 const roleActionStore = useRoleActionStore();
 
 // Platform Info
-const platformId = ref(route.params.id as string || '');
+const platformId = ref((route.params.id as string) || '');
 const platformName = ref('未命名平台');
 const userIdea = ref('');
 const businessLineId = ref('');
@@ -77,7 +187,47 @@ const startTime = ref(Date.now());
 // Steps
 const completedSteps = ref<any[]>([]);
 const currentStep = ref<any>(null);
-const showConfirmationDialog = ref(false);
+const cliMessage = ref('');
+const cliSending = ref(false);
+const cliHistory = ref<Array<{ role: 'user' | 'assistant'; content: string; logId?: string }>>([]);
+
+type LogType = 'input' | 'output' | 'status' | 'error' | 'info';
+type LogSource = 'cli' | 'workflow';
+type LogItem = { id: string; title: string; time: string; content?: string; type: LogType; source: LogSource };
+const runtimeLogs = ref<LogItem[]>([]);
+const cliLogInterval = ref<number | null>(null);
+const lastCliLogTs = ref<string>('');
+const logIdCounter = ref(0);
+const logListRef = ref<HTMLElement | null>(null);
+const logFilter = ref<'all' | 'cli' | 'status' | 'error'>('all');
+const autoScroll = ref(true);
+
+const allLogs = computed<LogItem[]>(() => {
+  const completedLogs: LogItem[] = completedSteps.value.map((step: any) => ({
+    id: `completed-${step.role}-${step.action}-${step.timestamp || step.completedAt || ''}`,
+    title: `${getRoleDisplayName(step.role)} - ${getActionDisplayName(step.action)}`,
+    time: step.timestamp || step.completedAt || '',
+    content: step.userAction ? `操作: ${step.userAction}` : undefined,
+    type: 'status',
+    source: 'workflow',
+  }));
+  const combined = [...runtimeLogs.value, ...completedLogs];
+  return combined.sort((a, b) => {
+    const aTime = Date.parse(a.time || '') || 0;
+    const bTime = Date.parse(b.time || '') || 0;
+    return aTime - bTime;
+  });
+});
+
+const filteredLogs = computed(() => {
+  const logs = allLogs.value.filter((log) => {
+    if (logFilter.value === 'cli') return log.source === 'cli';
+    if (logFilter.value === 'status') return log.type === 'status';
+    if (logFilter.value === 'error') return log.type === 'error';
+    return true;
+  });
+  return logs.slice(-200);
+});
 
 // Reset state
 const resettingRoles = ref<Set<string>>(new Set());
@@ -111,13 +261,13 @@ const workflowKanban = computed<WorkflowRoleColumn[]>(() => {
   }
 
   const completedMap = new Map<string, any>();
-  completedSteps.value.forEach(step => {
+  completedSteps.value.forEach((step) => {
     const key = `${step.role}-${step.action}`;
     completedMap.set(key, step);
   });
 
   const workflowItemsMap = new Map<string, any>();
-  workflowItems.value.forEach(item => {
+  workflowItems.value.forEach((item) => {
     if (item.role && item.action) {
       const key = `${item.role}-${item.action}`;
       workflowItemsMap.set(key, item);
@@ -125,7 +275,7 @@ const workflowKanban = computed<WorkflowRoleColumn[]>(() => {
   });
 
   Object.entries(workflowStructure.value).forEach(([role, actions]) => {
-    const roleActions: WorkflowAction[] = actions.map(actionName => {
+    const roleActions: WorkflowAction[] = actions.map((actionName) => {
       const key = `${role}-${actionName}`;
       const completedStep = completedMap.get(key);
       const workflowItem = workflowItemsMap.get(key);
@@ -188,10 +338,11 @@ const workflowKanban = computed<WorkflowRoleColumn[]>(() => {
       };
     });
 
-    const completedCount = roleActions.filter(a => a.status === 'completed').length;
-    const isActive = runningRole.value === role ||
+    const completedCount = roleActions.filter((a) => a.status === 'completed').length;
+    const isActive =
+      runningRole.value === role ||
       (currentStep.value && currentStep.value.role === role) ||
-      roleActions.some(a => a.status === 'running' || a.status === 'waiting');
+      roleActions.some((a) => a.status === 'running' || a.status === 'waiting');
 
     const currentStepForRole = currentStep.value && currentStep.value.role === role ? currentStep.value : undefined;
     const runningActionForRole = runningRole.value === role && currentAction.value ? currentAction.value : undefined;
@@ -219,11 +370,11 @@ async function loadWorkflowInfo() {
 
   try {
     workflowLoading.value = true;
-    const response = await apiClient.getWorkflowExecution(platformId.value, versionId.value) as any;
+    const response = (await apiClient.getWorkflowExecution(platformId.value, versionId.value)) as any;
 
     if (response && response.success && response.data) {
       const execution = response.data;
-      
+
       if (execution.workflowSnapshot && execution.workflowSnapshot.roles) {
         const structure: Record<string, string[]> = {};
         const sortedRoles = [...execution.workflowSnapshot.roles].sort((a: any, b: any) => a.order - b.order);
@@ -244,7 +395,7 @@ async function loadWorkflowInfo() {
         }));
 
         const completedItems = execution.steps.filter((step: any) => step.state === 'completed');
-        const existingKeys = new Set(completedSteps.value.map(s => `${s.role}-${s.action}`));
+        const existingKeys = new Set(completedSteps.value.map((s) => `${s.role}-${s.action}`));
         const newSteps = completedItems
           .filter((step: any) => step.role && step.action && !existingKeys.has(`${step.role}-${step.action}`))
           .map((step: any) => ({
@@ -276,7 +427,13 @@ async function loadWorkflowInfo() {
         ProductManager: ['WritePRD', 'PRDReview', 'ImprovePRD', 'GeneratePrototype'],
         QAEngineer: ['WriteTestPlan', 'WriteTest', 'TestReview', 'ImproveTest'],
         Architect: ['WriteDesign', 'DesignReview', 'ImproveDesign'],
-        ProjectManager: ['FillProjectContext', 'CreateOpenSpecProposal', 'ValidateOpenSpecProposal', 'EstimateStoryPoints', 'ValidateStoryPointEstimates'],
+        ProjectManager: [
+          'FillProjectContext',
+          'CreateOpenSpecProposal',
+          'ValidateOpenSpecProposal',
+          'EstimateStoryPoints',
+          'ValidateStoryPointEstimates',
+        ],
         Engineer: ['WriteCode', 'ImproveCode', 'Deploy'],
         AutomationEngineer: ['AutomationPlanning', 'AutomationExecution', 'CoverageQualityCheck', 'QAConclusion'],
       };
@@ -305,7 +462,7 @@ function processWorkflowState(stateData: any, showMessages: boolean = false) {
     }));
 
     const completedItems = stateData.steps.filter((step: any) => step.state === 'completed');
-    const existingKeys = new Set(completedSteps.value.map(s => `${s.role}-${s.action}`));
+    const existingKeys = new Set(completedSteps.value.map((s) => `${s.role}-${s.action}`));
     const newSteps = completedItems
       .filter((step: any) => step.role && step.action && !existingKeys.has(`${step.role}-${step.action}`))
       .map((step: any) => ({
@@ -357,7 +514,7 @@ function processWorkflowState(stateData: any, showMessages: boolean = false) {
     if (roleToShow && actionToShow) {
       currentStageName.value = getStageName(roleToShow, actionToShow);
     }
-    showConfirmationDialog.value = true;
+    // Right panel will display confirmation content
 
     if (showMessages && stateChanged) {
       const actionName = roleActionStore.getActionDisplayName(actionToShow) || actionToShow;
@@ -367,14 +524,12 @@ function processWorkflowState(stateData: any, showMessages: boolean = false) {
     isRunning.value = false;
     isCompleted.value = true;
     currentStep.value = null;
-    showConfirmationDialog.value = false;
     if (showMessages && stateChanged) {
       ElMessage.success('平台生成完成！');
     }
   } else if (currentWorkflowState === 'failed') {
     isRunning.value = false;
     currentStep.value = null;
-    showConfirmationDialog.value = false;
     showRecoverButton.value = true;
     if (showMessages && stateChanged) {
       ElMessage.error('工作流执行失败，请尝试恢复');
@@ -382,11 +537,9 @@ function processWorkflowState(stateData: any, showMessages: boolean = false) {
   } else if (currentWorkflowState === 'running') {
     isRunning.value = true;
     currentStep.value = null;
-    showConfirmationDialog.value = false;
   } else {
     isRunning.value = false;
     currentStep.value = null;
-    showConfirmationDialog.value = false;
   }
 
   previousWorkflowState = currentWorkflowState;
@@ -394,11 +547,32 @@ function processWorkflowState(stateData: any, showMessages: boolean = false) {
   checkForStaleActions(stateData);
 }
 
+function pushRuntimeLog(payload: { title: string; content?: string; type?: LogType; source?: LogSource }) {
+  const id = `rt-${++logIdCounter.value}`;
+  runtimeLogs.value.push({
+    id,
+    title: payload.title,
+    time: new Date().toISOString(),
+    content: payload.content,
+    type: payload.type || 'info',
+    source: payload.source || 'workflow',
+  });
+  return id;
+}
+
+function logBadgeText(log: LogItem) {
+  if (log.type === 'input') return 'IN';
+  if (log.type === 'output') return 'OUT';
+  if (log.type === 'error') return 'ERR';
+  if (log.type === 'status') return 'STA';
+  return 'INFO';
+}
+
 async function loadRunningInfo() {
   if (!platformId.value || !versionId.value) return;
 
   try {
-    const response = await apiClient.getWorkflowState(platformId.value, versionId.value) as any;
+    const response = (await apiClient.getWorkflowState(platformId.value, versionId.value)) as any;
     if (response?.success && response.data) {
       processWorkflowState(response.data);
     }
@@ -419,7 +593,7 @@ onMounted(async () => {
 
   if (platformId.value) {
     try {
-      const response = await apiClient.getPlatform(platformId.value) as any;
+      const response = (await apiClient.getPlatform(platformId.value)) as any;
       const platform = response.platform || response.project || response;
       if (platform) {
         platformName.value = platform.name || 'Untitled Platform';
@@ -432,7 +606,7 @@ onMounted(async () => {
     // 获取版本详情以获取版本的 idea
     if (versionId.value) {
       try {
-        const versionResponse = await apiClient.getPlatformVersion(platformId.value, versionId.value) as any;
+        const versionResponse = (await apiClient.getPlatformVersion(platformId.value, versionId.value)) as any;
         const version = versionResponse.version;
         if (version && version.idea) {
           userIdea.value = version.idea;
@@ -453,19 +627,22 @@ onMounted(async () => {
   }, 30000);
 
   startWorkflowSession();
+
+  if (platformId.value && versionId.value) {
+    await pollCliLogs();
+    cliLogInterval.value = window.setInterval(() => {
+      pollCliLogs();
+    }, 5000);
+  }
 });
 
 onUnmounted(() => {
   cleanup();
-});
-
-watch(currentStep, (newStep) => {
-  if (newStep) {
-    showConfirmationDialog.value = true;
-  } else {
-    showConfirmationDialog.value = false;
+  if (cliLogInterval.value) {
+    clearInterval(cliLogInterval.value);
+    cliLogInterval.value = null;
   }
-}, { immediate: true });
+});
 
 async function startWorkflowSession() {
   if (!versionId.value) {
@@ -505,7 +682,7 @@ async function startWorkflowSession() {
 
 function getPollingInterval(): number {
   if (isRunning.value) return 1000;
-  if (showConfirmationDialog.value) return 3000;
+  if (currentStep.value) return 3000;
   return 5000;
 }
 
@@ -520,7 +697,7 @@ function startPolling(platformIdToUse: string, versionIdToUse: string) {
 
     pollingController = createPolling(
       async () => {
-        const response = await apiClient.getWorkflowState(platformIdToUse, versionIdToUse) as any;
+        const response = (await apiClient.getWorkflowState(platformIdToUse, versionIdToUse)) as any;
         return response;
       },
       (data: any) => {
@@ -566,9 +743,8 @@ async function handleUserAction(action: string, modifiedContent?: string) {
       try {
         await apiClient.resetWorkflow(platformId.value, versionId.value!, 'Engineer');
         ElMessage.success('改进建议已保存，正在重新执行工程师角色...');
-        showConfirmationDialog.value = false;
         currentStep.value = null;
-        
+
         // 刷新页面以更新工作流状态
         setTimeout(() => {
           window.location.reload();
@@ -596,7 +772,6 @@ async function handleUserAction(action: string, modifiedContent?: string) {
       case 'continue':
       case 'edit':
         ElMessage.success('已确认，等待下一步...');
-        showConfirmationDialog.value = false;
         currentStep.value = null;
         isRunning.value = true;
         runningRole.value = '';
@@ -620,9 +795,8 @@ async function handleUserAction(action: string, modifiedContent?: string) {
           resettingRoles.value.add(role);
           await apiClient.resetWorkflow(platformId.value, versionId.value, role);
           ElMessage.success(`已重置到 ${getRoleDisplayName(role)}，请点击"开始执行"按钮继续`);
-          showConfirmationDialog.value = false;
           currentStep.value = null;
-          
+
           // 刷新页面以更新工作流状态
           setTimeout(() => {
             window.location.reload();
@@ -640,7 +814,6 @@ async function handleUserAction(action: string, modifiedContent?: string) {
 
       case 'skip':
         ElMessage.warning('已跳过当前步骤');
-        showConfirmationDialog.value = false;
         currentStep.value = null;
         isRunning.value = true;
         break;
@@ -656,6 +829,162 @@ async function handleUserAction(action: string, modifiedContent?: string) {
   }
 }
 
+async function sendCliMessage() {
+  if (!cliMessage.value.trim()) {
+    ElMessage.warning('请输入修改要求');
+    return;
+  }
+  if (!platformId.value || !versionId.value) {
+    ElMessage.warning('平台ID或版本ID不存在');
+    return;
+  }
+  const message = cliMessage.value.trim();
+  const inputLogId = pushRuntimeLog({
+    title: 'CLI input',
+    content: message,
+    type: 'input',
+    source: 'cli',
+  });
+  cliHistory.value.push({ role: 'user', content: message, logId: inputLogId });
+  cliMessage.value = '';
+  cliSending.value = true;
+  try {
+    const scope = currentStep.value ? 'pending' : 'last_completed';
+    pushRuntimeLog({
+      title: 'CLI 执行开始',
+      content: scope === 'pending' ? '修改等待确认角色产物' : '修改最近完成角色产物',
+      type: 'status',
+      source: 'cli',
+    });
+    const response: any = await apiClient.editWorkflowDraftByCLI(platformId.value, versionId.value!, message, scope);
+    const updatedContent = response?.data?.content || response?.content;
+    if (updatedContent) {
+      if (currentStep.value) {
+        currentStep.value = {
+          ...currentStep.value,
+          content: updatedContent,
+        };
+      }
+    }
+    cliHistory.value.push({ role: 'assistant', content: '已保存草稿并更新内容。' });
+    ElMessage.success('草稿已更新');
+    cliMessage.value = '';
+  } catch (error: any) {
+    console.error('Failed to edit via CLI:', error);
+    ElMessage.error('CLI 修改失败: ' + (error.message || '未知错误'));
+  } finally {
+    cliSending.value = false;
+  }
+}
+
+async function pollCliLogs() {
+  if (!platformId.value || !versionId.value) return;
+  try {
+    const response: any = await apiClient.getCliLogs(platformId.value, versionId.value, lastCliLogTs.value || undefined);
+    let logs = response?.data || response?.data?.data;
+    if (response?.success && Array.isArray(logs)) {
+      logs.forEach((item: any) => {
+        runtimeLogs.value.push({
+          id: `cli-${++logIdCounter.value}`,
+          title: `CLI ${item.type}`,
+          time: item.ts || new Date().toISOString(),
+          content: item.message,
+          type: (item.type as LogType) || 'info',
+          source: 'cli',
+        });
+        if (!lastCliLogTs.value || new Date(item.ts).getTime() > new Date(lastCliLogTs.value).getTime()) {
+          lastCliLogTs.value = item.ts;
+        }
+      });
+      return;
+    }
+
+    if (businessLineId.value) {
+      const fallbackResp: any = await apiClient.getCliLogs(businessLineId.value, versionId.value, lastCliLogTs.value || undefined);
+      const fallbackLogs = fallbackResp?.data || fallbackResp?.data?.data;
+      if (fallbackResp?.success && Array.isArray(fallbackLogs)) {
+        fallbackLogs.forEach((item: any) => {
+          runtimeLogs.value.push({
+            id: `cli-${++logIdCounter.value}`,
+            title: `CLI ${item.type}`,
+            time: item.ts || new Date().toISOString(),
+            content: item.message,
+            type: (item.type as LogType) || 'info',
+            source: 'cli',
+          });
+          if (!lastCliLogTs.value || new Date(item.ts).getTime() > new Date(lastCliLogTs.value).getTime()) {
+            lastCliLogTs.value = item.ts;
+          }
+        });
+      }
+    }
+  } catch (error) {
+    runtimeLogs.value.push({
+      id: `cli-${++logIdCounter.value}`,
+      title: 'CLI error',
+      time: new Date().toISOString(),
+      content: 'CLI 日志轮询失败',
+      type: 'error',
+      source: 'cli',
+    });
+  }
+}
+
+function handleCliKeydown(event: KeyboardEvent) {
+  if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+    event.preventDefault();
+    if (!cliSending.value) {
+      sendCliMessage();
+    }
+  }
+}
+
+function scrollToLog(logId?: string) {
+  if (!logId) return;
+  const element = document.getElementById(`log-${logId}`);
+  if (element) {
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+function clearRuntimeLogs() {
+  runtimeLogs.value = [];
+  ElMessage.success('已清空日志');
+}
+
+function copyVisibleLogs() {
+  const text = filteredLogs.value
+    .map((log) => `[${log.time}] [${log.source}/${log.type}] ${log.title}${log.content ? ` - ${log.content}` : ''}`)
+    .join('\n');
+  if (!text) {
+    ElMessage.warning('暂无可复制日志');
+    return;
+  }
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text);
+    ElMessage.success('日志已复制');
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textarea);
+  ElMessage.success('日志已复制');
+}
+
+watch(
+  () => filteredLogs.value.length,
+  async () => {
+    if (!autoScroll.value) return;
+    await nextTick();
+    if (logListRef.value) {
+      logListRef.value.scrollTop = logListRef.value.scrollHeight;
+    }
+  }
+);
+
 async function handleQuit() {
   isRunning.value = false;
   ElMessage.info('已保存进度并退出');
@@ -667,18 +996,6 @@ async function handleQuit() {
       router.push('/business-lines');
     }
   }, 1000);
-}
-
-function getStageTagType(): 'success' | 'warning' | 'info' | 'danger' {
-  return getStageColor(currentStageName.value);
-}
-
-function getRoleDescription(role: string): string {
-  return roleActionStore.getRoleDescription(role);
-}
-
-function getActionDescription(action: string): string {
-  return roleActionStore.getActionDescription(action);
 }
 
 function getRoleDisplayName(role: string): string {
@@ -706,20 +1023,6 @@ function downloadPlatform() {
   try {
     apiClient.downloadWorkspaceCode(platformId.value, versionId.value);
     ElMessage.success('正在下载平台文件...');
-  } catch (error: any) {
-    ElMessage.error('下载失败: ' + (error.message || '未知错误'));
-  }
-}
-
-async function downloadZip(zipPath: string) {
-  if (!zipPath || !platformId.value) {
-    ElMessage.error('压缩包路径或平台ID不存在');
-    return;
-  }
-
-  try {
-    await apiClient.downloadZip(platformId.value, zipPath);
-    ElMessage.success('压缩包下载已开始');
   } catch (error: any) {
     ElMessage.error('下载失败: ' + (error.message || '未知错误'));
   }
@@ -759,7 +1062,7 @@ function openContentDialog(action: WorkflowAction) {
     roleForAction = action.stepData.role;
   } else {
     for (const column of workflowKanban.value) {
-      if (column.actions.some(a => a.name === action.name)) {
+      if (column.actions.some((a) => a.name === action.name)) {
         roleForAction = column.role;
         break;
       }
@@ -776,15 +1079,11 @@ function openContentDialog(action: WorkflowAction) {
 async function handleBack() {
   if (isRunning.value) {
     try {
-      await ElMessageBox.confirm(
-        '平台还在生成中，确定要离开吗？进度将被保存。',
-        '确认离开',
-        {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning',
-        }
-      );
+      await ElMessageBox.confirm('平台还在生成中，确定要离开吗？进度将被保存。', '确认离开', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      });
       cleanup();
       if (businessLineId.value) {
         router.push(`/business-line/${businessLineId.value}/platforms`);
@@ -820,16 +1119,14 @@ async function checkForStaleActions(stateData?: any) {
   try {
     let data = stateData;
     if (!data) {
-      const response = await apiClient.getWorkflowState(platformId.value, versionId.value) as any;
+      const response = (await apiClient.getWorkflowState(platformId.value, versionId.value)) as any;
       if (!response || !response.success) return;
       data = response.data;
     }
 
     const steps = data.steps || [];
     const isWorkflowFailed = data.state === 'failed';
-    const hasFailedSteps = steps.some((step: any) =>
-      step.state === 'failed' && (step.retryCount || 0) < 3
-    );
+    const hasFailedSteps = steps.some((step: any) => step.state === 'failed' && (step.retryCount || 0) < 3);
 
     showRecoverButton.value = isWorkflowFailed || hasFailedSteps;
   } catch (error) {
@@ -844,7 +1141,7 @@ async function handleRecover() {
     recovering.value = true;
     ElMessage.info('正在恢复工作流...');
 
-    const response = await apiClient.recoverWorkflow(platformId.value, versionId.value) as any;
+    const response = (await apiClient.recoverWorkflow(platformId.value, versionId.value)) as any;
 
     if (response && response.success) {
       const result = response.data;
@@ -866,9 +1163,9 @@ async function handleRecover() {
 
 async function handleVersionChanged(version: any) {
   if (!version) return;
-  
+
   ElMessage.info(`已切换到版本: ${version.versionName}`);
-  
+
   // 重置状态
   completedSteps.value = [];
   workflowItems.value = [];
@@ -876,12 +1173,11 @@ async function handleVersionChanged(version: any) {
   isCompleted.value = false;
   isRunning.value = false;
   currentStep.value = null;
-  showConfirmationDialog.value = false;
-  
+
   // Reload workflow info for the new version
   await loadWorkflowInfo();
   await loadRunningInfo();
-  
+
   // Restart polling for the new version
   startWorkflowSession();
 }
@@ -923,5 +1219,202 @@ async function handleResetRole(role: string) {
 <style scoped>
 .platform-workflow {
   width: 100%;
+}
+
+.workflow-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.content-left {
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.left-panel {
+  width: 100%;
+}
+
+.confirmation-panel {
+  position: sticky;
+  top: 20px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.log-filter {
+  width: 110px;
+}
+
+.log-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #606266;
+}
+
+.log-panel :deep(.el-card__body) {
+  padding: 12px;
+}
+
+.log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.log-item {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f5f7fa;
+  border: 1px solid #e4e7ed;
+  position: relative;
+}
+
+.log-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #e4e7ed;
+  color: #606266;
+}
+
+.log-type-input .log-badge {
+  background: #d9ecff;
+  color: #409eff;
+}
+
+.log-type-output .log-badge {
+  background: #f0f9eb;
+  color: #67c23a;
+}
+
+.log-type-error .log-badge {
+  background: #fde2e2;
+  color: #f56c6c;
+}
+
+.log-type-status .log-badge {
+  background: #faecd8;
+  color: #e6a23c;
+}
+
+.log-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: #303133;
+}
+
+.log-time {
+  font-size: 11px;
+  color: #909399;
+}
+
+.log-empty {
+  font-size: 12px;
+  color: #909399;
+}
+
+.log-content {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #606266;
+  white-space: pre-wrap;
+}
+
+.cli-chat-history {
+  max-height: 200px;
+  overflow-y: auto;
+  background: #f5f7fa;
+  border-radius: 4px;
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+.cli-message {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+.cli-message:last-child {
+  margin-bottom: 0;
+}
+
+.cli-message.user .cli-role {
+  color: #409eff;
+}
+
+.cli-message.assistant .cli-role {
+  color: #67c23a;
+}
+
+.cli-role {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cli-content {
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: #606266;
+}
+
+.cli-status {
+  font-size: 12px;
+  color: #e6a23c;
+  margin-bottom: 6px;
+}
+
+.cli-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.cli-panel {
+  flex: 1;
+}
+
+@media (max-width: 1200px) {
+  .workflow-content {
+    grid-template-columns: 1fr;
+  }
+
+  .confirmation-panel {
+    position: static;
+  }
 }
 </style>

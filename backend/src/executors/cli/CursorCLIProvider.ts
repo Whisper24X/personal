@@ -1,7 +1,7 @@
 /**
  * Cursor CLI Provider
  * Cursor CLI 提供商实现
- * 
+ *
  * 使用 cursor-agent 命令行工具执行任务
  */
 
@@ -33,11 +33,11 @@ export class CursorCLIProvider extends BaseCLIProvider {
     // 从环境变量加载全局配置
     const globalConfig = CLIConfigUtil.loadGlobalConfig();
     const globalCLIConfig = CLIConfigUtil.toCLIProviderConfig(globalConfig, 'cursor');
-    
-    super('cursor', { 
-      ...CURSOR_DEFAULT_CONFIG, 
+
+    super('cursor', {
+      ...CURSOR_DEFAULT_CONFIG,
       ...globalCLIConfig,
-      ...defaultConfig 
+      ...defaultConfig,
     });
   }
 
@@ -74,11 +74,7 @@ export class CursorCLIProvider extends BaseCLIProvider {
   /**
    * 执行 Cursor CLI 命令
    */
-  async execute(
-    prompt: string,
-    workDir: string,
-    config?: Partial<CLIProviderConfig>
-  ): Promise<CLIExecutionResult> {
+  async execute(prompt: string, workDir: string, config?: Partial<CLIProviderConfig>): Promise<CLIExecutionResult> {
     const mergedConfig = this.mergeConfig(config);
     const startTime = Date.now();
 
@@ -98,11 +94,12 @@ export class CursorCLIProvider extends BaseCLIProvider {
     const enableStreamProgress = mergedConfig.enableStreamProgress ?? false;
     const outputFormat = mergedConfig.outputFormat || 'text';
     const streamPartialOutput = mergedConfig.streamPartialOutput ?? false;
+    const onProgress = mergedConfig.onProgress;
 
     // 构建命令
     const escapedPrompt = this.escapePrompt(prompt);
     let fullCommand = `${command} --model ${model}`;
-    
+
     // 如果配置了 API key，添加 --api-key 参数
     if (apiKey) {
       // 转义 API key 中的特殊字符（主要是双引号和反斜杠）
@@ -112,7 +109,7 @@ export class CursorCLIProvider extends BaseCLIProvider {
       fullCommand += ` --api-key ${process.env.CURSOR_API_KEY}`;
       logger.warn(`CursorCLIProvider: No API key provided, using process.env.CURSOR_API_KEY: ${process.env.CURSOR_API_KEY}`);
     }
-    
+
     // 添加输出格式参数
     if (enableStreamProgress && outputFormat === 'stream-json') {
       fullCommand += ` --print --output-format stream-json`;
@@ -122,7 +119,7 @@ export class CursorCLIProvider extends BaseCLIProvider {
     } else {
       fullCommand += ` --print`;
     }
-    
+
     fullCommand += ` "${escapedPrompt}"`;
 
     logger.info('CursorCLIProvider: Executing command', {
@@ -148,11 +145,11 @@ export class CursorCLIProvider extends BaseCLIProvider {
 
     try {
       let output: string;
-      
+
       // 根据配置选择执行方式
       if (enableStreamProgress && outputFormat === 'stream-json') {
         // 使用流式执行
-        const progressHandler = createProgressHandler(callId, logger);
+        const progressHandler = createProgressHandler(callId, logger, onProgress);
         const result = await executeCommandStream(fullCommand, {
           cwd: workDir,
           timeout,
@@ -192,18 +189,18 @@ export class CursorCLIProvider extends BaseCLIProvider {
       // 如果流式执行失败，尝试回退到普通执行
       if (enableStreamProgress && outputFormat === 'stream-json') {
         // 中文友好输出
-        console.warn('⚠️ 流式执行失败，正在回退到普通模式...');
+        logger.warn('⚠️ 流式执行失败，正在回退到普通模式...');
         if (execError.stderr) {
-          console.warn(`错误信息: ${execError.stderr.substring(0, 200)}`);
+          logger.warn(`错误信息: ${execError.stderr.substring(0, 200)}`);
         }
-        
+
         // 结构化日志（用于日志文件）
         logger.warn('CursorCLIProvider: Stream execution failed, falling back to simple execution', {
           message: execError.message,
           exitCode: execError.exitCode,
           callId,
         });
-        
+
         try {
           // 重新构建命令（不使用流式格式）
           const fallbackCommand = fullCommand.replace('--output-format stream-json', '').replace('--stream-partial-output', '').trim();
@@ -213,16 +210,16 @@ export class CursorCLIProvider extends BaseCLIProvider {
             env: mergedConfig.env,
             abortSignal: mergedConfig.abortSignal,
           });
-          
+
           // 中文友好输出
-          console.log('✅ 回退执行成功');
-          
+          logger.info('✅ 回退执行成功');
+
           // 结构化日志（用于日志文件）
           logger.info('CursorCLIProvider: Fallback execution succeeded', {
             callId,
             outputLength: fallbackOutput.length,
           });
-          
+
           return {
             output: fallbackOutput,
             exitCode: 0,
@@ -231,17 +228,17 @@ export class CursorCLIProvider extends BaseCLIProvider {
         } catch (fallbackError) {
           // 回退也失败，使用原始错误
           const fallbackExecError = fallbackError as CommandExecutorError;
-          
+
           // 中文友好输出
-          console.error('❌ 回退执行也失败');
-          console.error(`退出码: ${fallbackExecError.exitCode || execError.exitCode || 1}`);
-          console.error(`错误详情: ${(fallbackError as Error).message}`);
+          logger.error('❌ 回退执行也失败');
+          logger.error(`退出码: ${fallbackExecError.exitCode || execError.exitCode || 1}`);
+          logger.error(`错误详情: ${(fallbackError as Error).message}`);
           if (fallbackExecError.stderr) {
-            console.error(`stderr: ${fallbackExecError.stderr.substring(0, 500)}`);
+            logger.error(`stderr: ${fallbackExecError.stderr.substring(0, 500)}`);
           } else if (execError.stderr) {
-            console.error(`stderr: ${execError.stderr.substring(0, 500)}`);
+            logger.error(`stderr: ${execError.stderr.substring(0, 500)}`);
           }
-          
+
           // 结构化日志（用于日志文件）
           logger.error('CursorCLIProvider: Fallback execution also failed', {
             callId,
@@ -252,14 +249,14 @@ export class CursorCLIProvider extends BaseCLIProvider {
 
       // 中文友好输出
       const executionTimeSeconds = Math.round(executionTime / 1000);
-      console.error('❌ 命令执行失败');
-      console.error(`退出码: ${execError.exitCode || 1}`);
-      console.error(`执行耗时: ${executionTimeSeconds}s`);
+      logger.error('❌ 命令执行失败');
+      logger.error(`退出码: ${execError.exitCode || 1}`);
+      logger.error(`执行耗时: ${executionTimeSeconds}s`);
       if (execError.stderr) {
-        console.error(`stderr: ${execError.stderr.substring(0, 500)}`);
+        logger.error(`stderr: ${execError.stderr.substring(0, 500)}`);
       }
       if (execError.message) {
-        console.error(`错误详情: ${execError.message}`);
+        logger.error(`错误详情: ${execError.message}`);
       }
 
       // 结构化日志（用于日志文件）

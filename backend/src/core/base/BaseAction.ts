@@ -1,7 +1,7 @@
 /**
  * Base Action class
  * Abstract interface for all actions that agents can perform
- * 
+ *
  * 支持两种执行模式：
  * - LLM 模式：使用大模型 API 执行（默认，向后兼容）
  * - CLI 模式：使用命令行工具执行（如 Cursor CLI, Aider）
@@ -11,28 +11,16 @@ import { IActionOutput, ActionStatus } from '@mind2build/shared';
 import { WorkspaceManager, WorkspaceOptions } from '../../utils/WorkspaceManager';
 import { Context } from '../context/Context';
 import { logger, loadPrompt } from '../../utils';
-import {
-  ExecutorMode,
-  ExecutorOptions,
-  CLIProviderType,
-  CLIProviderConfig,
-  CLIExecutionResult,
-} from '../../executors/types';
+import { ExecutorMode, ExecutorOptions, CLIProviderType, CLIProviderConfig, CLIExecutionResult, StreamJSONEvent } from '../../executors/types';
 import { CLIExecutor } from '../../executors/CLIExecutor';
 import { CLIProviderFactory } from '../../executors/cli/CLIProviderFactory';
 import { createDefaultFallbackStrategy } from '../../executors/cli/CLIModelFallbackStrategy';
 import { ProjectRepository } from '../../database/repositories/ProjectRepository';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { cliLogStreamService } from '../../services/CliLogStreamService';
 // Handler types for mode encapsulation
-import type {
-  ReviewOptions,
-  ReviewResult,
-  ImproveOptions,
-  ImproveResult,
-  WriteOptions,
-  WriteResult,
-} from '../../utils/document/types';
+import type { ReviewOptions, ReviewResult, ImproveOptions, ImproveResult, WriteOptions, WriteResult } from '../../utils/document/types';
 
 export abstract class BaseAction {
   name: string;
@@ -46,7 +34,7 @@ export abstract class BaseAction {
   // Custom LLM instance (only for role-specific config or special scenarios)
   // If not set, LLM is dynamically obtained from Context
   protected _customLLM?: any;
-  
+
   // Context instance will be injected by Role
   protected context?: Context;
 
@@ -58,6 +46,7 @@ export abstract class BaseAction {
 
   // Handler cache for lazy initialization
   private _handlerCache: Map<string, any> = new Map();
+  private _cliLogMissingWarned: boolean = false;
 
   constructor(name?: string, description?: string) {
     this.name = name || this.constructor.name;
@@ -98,7 +87,7 @@ export abstract class BaseAction {
     const startTime = Date.now();
     const actionName = this.name;
     const logContext = this.getLogContext();
-    
+
     // Log action start
     logger.info(`Action [${actionName}]: Starting execution`, {
       ...logContext,
@@ -111,11 +100,11 @@ export abstract class BaseAction {
     try {
       // Execute the actual run method
       const result = await this.run(...args);
-      
+
       // Calculate execution time
       const executionTime = Date.now() - startTime;
       const logContext = this.getLogContext();
-      
+
       // Log success
       logger.info(`Action [${actionName}]: Execution completed successfully`, {
         ...logContext,
@@ -130,7 +119,7 @@ export abstract class BaseAction {
       // Calculate execution time
       const executionTime = Date.now() - startTime;
       const logContext = this.getLogContext();
-      
+
       // Log failure
       logger.error(`Action [${actionName}]: Execution failed`, {
         ...logContext,
@@ -139,7 +128,7 @@ export abstract class BaseAction {
         error: error.message,
         errorStack: error.stack,
       });
-      
+
       throw error;
     }
   }
@@ -152,9 +141,9 @@ export abstract class BaseAction {
       if (arg === null || arg === undefined) {
         return arg;
       }
-      
+
       const argType = typeof arg;
-      
+
       // For strings, show length and preview
       if (argType === 'string') {
         const length = arg.length;
@@ -165,7 +154,7 @@ export abstract class BaseAction {
           preview: preview.substring(0, 100),
         };
       }
-      
+
       // For objects, show keys and basic info
       if (argType === 'object' && !Array.isArray(arg)) {
         const keys = Object.keys(arg);
@@ -175,7 +164,7 @@ export abstract class BaseAction {
           keysCount: keys.length,
         };
       }
-      
+
       // For arrays, show length
       if (Array.isArray(arg)) {
         return {
@@ -183,7 +172,7 @@ export abstract class BaseAction {
           length: arg.length,
         };
       }
-      
+
       // For other types, return as is
       return {
         type: argType,
@@ -242,6 +231,31 @@ export abstract class BaseAction {
     };
   }
 
+  private getCliLogContext(): { projectId?: string; versionId?: string; prefix: string } {
+    const logContext = this.getLogContext();
+    const projectId = this.context?.get?.('projectId') as string | undefined;
+    const versionId = this.context?.get?.('versionId') as string | undefined;
+    const roleLabel = logContext.role ? `${logContext.role}/` : '';
+    const prefix = `[${roleLabel}${logContext.action}]`;
+    return { projectId, versionId, prefix };
+  }
+
+  private pushCliLog(projectId: string | undefined, versionId: string | undefined, payload: { type: string; message: string; ts: string }): void {
+    if (!projectId || !versionId) {
+      if (!this._cliLogMissingWarned) {
+        this._cliLogMissingWarned = true;
+        logger.warn('BaseAction: Missing projectId/versionId, CLI logs will not be streamed', {
+          hasProjectId: !!projectId,
+          hasVersionId: !!versionId,
+          action: this.name,
+          role: (this as any).role?.profile,
+        });
+      }
+      return;
+    }
+    cliLogStreamService.push(projectId, versionId, payload);
+  }
+
   /**
    * Helper method to call LLM with a prompt
    * 支持双模式：根据配置自动选择 LLM 或 CLI 模式执行
@@ -266,9 +280,8 @@ export abstract class BaseAction {
     this.checkCancellation();
 
     // 从 messages 提取 prompt 和 system message
-    const systemMsg = messages.find(m => m.role === 'system')?.content;
-    const userMsg = messages.find(m => m.role === 'user')?.content || 
-                   messages[messages.length - 1]?.content || '';
+    const systemMsg = messages.find((m) => m.role === 'system')?.content;
+    const userMsg = messages.find((m) => m.role === 'user')?.content || messages[messages.length - 1]?.content || '';
 
     const content = await this.execute(userMsg, {
       systemPrompt: systemMsg,
@@ -289,7 +302,7 @@ export abstract class BaseAction {
   /**
    * 统一执行入口
    * 根据配置自动选择 LLM 或 CLI 模式执行
-   * 
+   *
    * @param prompt 提示词
    * @param options 执行选项
    * @returns 执行结果
@@ -335,6 +348,7 @@ export abstract class BaseAction {
     }
 
     const logContext = this.getLogContext();
+    const { projectId, versionId, prefix } = this.getCliLogContext();
     const systemMsgs = options?.systemPrompt ? [options.systemPrompt] : undefined;
 
     logger.info('BaseAction: executeLLM calling LLM API', {
@@ -343,16 +357,45 @@ export abstract class BaseAction {
       hasSystemPrompt: !!options?.systemPrompt,
     });
 
-    const result = await currentLLM.aask(prompt, systemMsgs, this.abortSignal);
-
-    this.checkCancellation();
-
-    logger.info('BaseAction: executeLLM completed', {
-      ...logContext,
-      resultLength: result.length,
+    this.pushCliLog(projectId, versionId, {
+      type: 'status',
+      message: `${prefix} LLM start`,
+      ts: new Date().toISOString(),
     });
 
-    return result;
+    try {
+      const result = await currentLLM.aask(prompt, systemMsgs, this.abortSignal);
+
+      this.checkCancellation();
+
+      logger.info('BaseAction: executeLLM completed', {
+        ...logContext,
+        resultLength: result.length,
+      });
+
+      this.pushCliLog(projectId, versionId, {
+        type: 'status',
+        message: `${prefix} LLM done`,
+        ts: new Date().toISOString(),
+      });
+
+      if (result) {
+        this.pushCliLog(projectId, versionId, {
+          type: 'output',
+          message: `${prefix} ${result.substring(0, 500)}`,
+          ts: new Date().toISOString(),
+        });
+      }
+
+      return result;
+    } catch (error: any) {
+      this.pushCliLog(projectId, versionId, {
+        type: 'error',
+        message: `${prefix} LLM error: ${error.message || 'unknown error'}`,
+        ts: new Date().toISOString(),
+      });
+      throw error;
+    }
   }
 
   /**
@@ -361,16 +404,17 @@ export abstract class BaseAction {
    */
   protected async executeCLI(prompt: string, options?: ExecutorOptions): Promise<string> {
     const workDir = options?.workDir || this.getDefaultWorkDir();
-    
+
     if (!workDir) {
       throw new Error('BaseAction: workDir is required for CLI mode execution');
     }
 
     const cliConfig = await this.getCLIConfig();
     const roleProfile = this.role?.profile;
-    
+
     const logContext = this.getLogContext();
-    
+    const { projectId, versionId, prefix } = this.getCliLogContext();
+
     logger.info('BaseAction: executeCLI starting', {
       ...logContext,
       provider: cliConfig.provider,
@@ -379,10 +423,14 @@ export abstract class BaseAction {
       promptLength: prompt.length,
     });
 
+    this.pushCliLog(projectId, versionId, {
+      type: 'status',
+      message: `${prefix} CLI start`,
+      ts: new Date().toISOString(),
+    });
+
     // 创建降级策略（如果角色配置了角色级别的CLI模型）
-    const fallbackStrategy = roleProfile 
-      ? createDefaultFallbackStrategy(roleProfile)
-      : null;
+    const fallbackStrategy = roleProfile ? createDefaultFallbackStrategy(roleProfile) : null;
 
     const executor = new CLIExecutor({
       providerType: cliConfig.provider,
@@ -391,11 +439,43 @@ export abstract class BaseAction {
       fallbackStrategy,
     });
 
-    return await executor.execute(prompt, {
-      ...options,
-      workDir,
-      abortSignal: this.abortSignal,
-    });
+    const upstreamOnProgress = options?.onProgress;
+    const onProgress = (event: StreamJSONEvent) => {
+      const text = cliLogStreamService.formatStreamEvent(event);
+      if (text) {
+        this.pushCliLog(projectId, versionId, {
+          type: 'output',
+          message: `${prefix} ${text}`,
+          ts: new Date().toISOString(),
+        });
+      }
+      if (upstreamOnProgress) {
+        upstreamOnProgress(event);
+      }
+    };
+
+    try {
+      const output = await executor.execute(prompt, {
+        ...options,
+        workDir,
+        abortSignal: this.abortSignal,
+        enableStreamProgress: true,
+        onProgress,
+      });
+      this.pushCliLog(projectId, versionId, {
+        type: 'status',
+        message: `${prefix} CLI done`,
+        ts: new Date().toISOString(),
+      });
+      return output;
+    } catch (error: any) {
+      this.pushCliLog(projectId, versionId, {
+        type: 'error',
+        message: `${prefix} CLI error: ${error.message || 'unknown error'}`,
+        ts: new Date().toISOString(),
+      });
+      throw error;
+    }
   }
 
   /**
@@ -408,18 +488,17 @@ export abstract class BaseAction {
     options?: ExecutorOptions & { maxRetries?: number; isComplete?: (output: string) => boolean }
   ): Promise<{ output: string; iterations: number; isCompleted: boolean }> {
     const workDir = options?.workDir || this.getDefaultWorkDir();
-    
+
     if (!workDir) {
       throw new Error('BaseAction: workDir is required for CLI mode execution');
     }
 
     const cliConfig = await this.getCLIConfig();
     const roleProfile = this.role?.profile;
-    
+    const { projectId, versionId, prefix } = this.getCliLogContext();
+
     // 创建降级策略（如果角色配置了角色级别的CLI模型）
-    const fallbackStrategy = roleProfile 
-      ? createDefaultFallbackStrategy(roleProfile)
-      : null;
+    const fallbackStrategy = roleProfile ? createDefaultFallbackStrategy(roleProfile) : null;
 
     const executor = new CLIExecutor({
       providerType: cliConfig.provider,
@@ -428,11 +507,49 @@ export abstract class BaseAction {
       fallbackStrategy,
     });
 
-    return await executor.executeWithRetry(prompt, checkPrompt, {
-      ...options,
-      workDir,
-      abortSignal: this.abortSignal,
+    const upstreamOnProgress = options?.onProgress;
+    const onProgress = (event: StreamJSONEvent) => {
+      const text = cliLogStreamService.formatStreamEvent(event);
+      if (text) {
+        this.pushCliLog(projectId, versionId, {
+          type: 'output',
+          message: `${prefix} ${text}`,
+          ts: new Date().toISOString(),
+        });
+      }
+      if (upstreamOnProgress) {
+        upstreamOnProgress(event);
+      }
+    };
+
+    this.pushCliLog(projectId, versionId, {
+      type: 'status',
+      message: `${prefix} CLI start`,
+      ts: new Date().toISOString(),
     });
+
+    try {
+      const result = await executor.executeWithRetry(prompt, checkPrompt, {
+        ...options,
+        workDir,
+        abortSignal: this.abortSignal,
+        enableStreamProgress: true,
+        onProgress,
+      });
+      this.pushCliLog(projectId, versionId, {
+        type: 'status',
+        message: `${prefix} CLI done`,
+        ts: new Date().toISOString(),
+      });
+      return result;
+    } catch (error: any) {
+      this.pushCliLog(projectId, versionId, {
+        type: 'error',
+        message: `${prefix} CLI error: ${error.message || 'unknown error'}`,
+        ts: new Date().toISOString(),
+      });
+      throw error;
+    }
   }
 
   /**
@@ -453,15 +570,21 @@ export abstract class BaseAction {
     const roleProfile = this.role?.profile;
     if (roleProfile) {
       const roleEnvMode = process.env[`ROLE_${roleProfile.toUpperCase()}_EXECUTOR_MODE`];
-      if (roleEnvMode === 'cli' || roleEnvMode === 'llm') {
-        return roleEnvMode;
+      if (roleEnvMode === 'cli') {
+        return 'cli';
+      }
+      if (roleEnvMode === 'llm') {
+        return 'llm';
       }
     }
 
     // 3. 检查全局环境变量
     const envMode = process.env.DEFAULT_EXECUTOR_MODE;
-    if (envMode === 'cli' || envMode === 'llm') {
-      return envMode;
+    if (envMode === 'cli') {
+      return 'cli';
+    }
+    if (envMode === 'llm') {
+      return 'llm';
     }
 
     // 4. 默认 LLM 模式（保持向后兼容）
@@ -475,24 +598,25 @@ export abstract class BaseAction {
   private collectApiKeysFromEnv(prefix: string = 'CURSOR_API_KEY'): string[] {
     const apiKeys: string[] = [];
     let index = 0;
-    
+
     // 收集所有 CURSOR_API_KEY_N 格式的环境变量
-    while (true) {
+    let hasMoreKeys = true;
+    while (hasMoreKeys) {
       const envKey = `${prefix}_${index}`;
       const apiKey = process.env[envKey];
       if (apiKey) {
         apiKeys.push(apiKey);
         index++;
       } else {
-        break;
+        hasMoreKeys = false;
       }
     }
-    
+
     // 如果没有找到带索引的，检查是否有默认的 CURSOR_API_KEY
     if (apiKeys.length === 0 && process.env[prefix]) {
       apiKeys.push(process.env[prefix]);
     }
-    
+
     return apiKeys;
   }
 
@@ -507,13 +631,13 @@ export abstract class BaseAction {
       try {
         const projectRepo = new ProjectRepository();
         const platformApiKey = await projectRepo.getCliApiKey(projectId);
-        
+
         if (platformApiKey) {
           // 如果平台配置了API key，优先使用
           const roleConfig = this.role?.getExecutorConfig?.();
           const configSync = roleConfig?.getConfigSync?.();
           const cliProvider = configSync?.cliProvider || (process.env.DEFAULT_CLI_PROVIDER as CLIProviderType) || 'cursor';
-          
+
           return {
             provider: cliProvider,
             config: {
@@ -538,9 +662,7 @@ export abstract class BaseAction {
         if (!cliConfig.apiKeys && !cliConfig.apiKey) {
           const apiKeys = this.collectApiKeysFromEnv();
           if (apiKeys.length > 0) {
-            const apiKeyIndex = process.env.CURSOR_API_KEY_INDEX 
-              ? parseInt(process.env.CURSOR_API_KEY_INDEX, 10) 
-              : 0;
+            const apiKeyIndex = process.env.CURSOR_API_KEY_INDEX ? parseInt(process.env.CURSOR_API_KEY_INDEX, 10) : 0;
             return {
               provider: configSync.cliProvider,
               config: {
@@ -567,7 +689,7 @@ export abstract class BaseAction {
         const apiKeys = this.collectApiKeysFromEnv(`ROLE_${roleProfile.toUpperCase()}_CLI_API_KEY`);
         const apiKeyIndexEnv = process.env[`ROLE_${roleProfile.toUpperCase()}_CLI_API_KEY_INDEX`];
         const apiKeyIndex = apiKeyIndexEnv ? parseInt(apiKeyIndexEnv, 10) : 0;
-        
+
         const config: Partial<CLIProviderConfig> = {};
         if (modelEnv) {
           config.model = modelEnv;
@@ -576,7 +698,7 @@ export abstract class BaseAction {
           config.apiKeys = apiKeys;
           config.apiKeyIndex = isNaN(apiKeyIndex) ? 0 : apiKeyIndex;
         }
-        
+
         return {
           provider: providerEnv as CLIProviderType,
           config: Object.keys(config).length > 0 ? config : undefined,
@@ -590,7 +712,7 @@ export abstract class BaseAction {
     const apiKeys = this.collectApiKeysFromEnv();
     const apiKeyIndexEnv = process.env.CURSOR_API_KEY_INDEX;
     const apiKeyIndex = apiKeyIndexEnv ? parseInt(apiKeyIndexEnv, 10) : 0;
-    
+
     const config: Partial<CLIProviderConfig> = {};
     if (defaultModel) {
       config.model = defaultModel;
@@ -599,13 +721,12 @@ export abstract class BaseAction {
       config.apiKeys = apiKeys;
       config.apiKeyIndex = isNaN(apiKeyIndex) ? 0 : apiKeyIndex;
     }
-    
+
     return {
       provider: (defaultProvider as CLIProviderType) || 'cursor',
       config: Object.keys(config).length > 0 ? config : undefined,
     };
   }
-
 
   /**
    * 获取默认工作目录
@@ -617,7 +738,7 @@ export abstract class BaseAction {
       const applicationId = this.context.get('applicationId') as string | undefined;
       const projectId = this.context.get('projectId') as string | undefined;
       const versionId = this.context.get('versionId') as string | undefined;
-      
+
       if (applicationId && projectId && versionId) {
         try {
           return WorkspaceManager.getProjectWorkspacePath({
@@ -630,7 +751,7 @@ export abstract class BaseAction {
         }
       }
     }
-    
+
     return undefined;
   }
 
@@ -652,7 +773,7 @@ export abstract class BaseAction {
    * 运行 CLI 命令（使用配置的提供商和模型）
    * 统一的 CLI 执行方法，自动从环境变量读取角色级别或全局配置
    * 返回完整的执行结果，包括 exitCode、stderr 等信息
-   * 
+   *
    * @param prompt 提示词
    * @param workDir 工作目录
    * @param options 执行选项
@@ -664,7 +785,7 @@ export abstract class BaseAction {
     options?: { timeout?: number; abortSignal?: AbortSignal }
   ): Promise<CLIExecutionResult> {
     const cliConfig = await this.getCLIConfig();
-    
+
     logger.info('BaseAction.runCLICommand: Executing CLI command', {
       action: this.name,
       provider: cliConfig.provider,
@@ -673,13 +794,13 @@ export abstract class BaseAction {
       promptLength: prompt.length,
       hasAbortSignal: !!options?.abortSignal,
     });
-    
+
     const provider = CLIProviderFactory.createProvider(cliConfig.provider, {
       ...cliConfig.config,
       timeout: options?.timeout,
       abortSignal: options?.abortSignal,
     });
-    
+
     return provider.execute(prompt, workDir, {
       ...cliConfig.config,
       timeout: options?.timeout,
@@ -695,9 +816,9 @@ export abstract class BaseAction {
   /**
    * 构建知识输入引用指令
    * 指示 CLI 参考工作目录中的历史文档和代码
-   * 
+   *
    * 使用方式：在 prompt 中包含此引用，CLI 会自动读取相关文件
-   * 
+   *
    * @returns 知识输入引用文本
    */
   protected buildKnowledgeInputReference(): string {
@@ -735,15 +856,12 @@ export abstract class BaseAction {
 
   /**
    * 构建带知识输入的完整 prompt
-   * 
+   *
    * @param basePrompt 基础 prompt
    * @param includeKnowledgeInput 是否包含知识输入引用（默认 true）
    * @returns 完整的 prompt
    */
-  protected buildPromptWithKnowledgeInput(
-    basePrompt: string,
-    includeKnowledgeInput: boolean = true
-  ): string {
+  protected buildPromptWithKnowledgeInput(basePrompt: string, includeKnowledgeInput: boolean = true): string {
     if (!includeKnowledgeInput || !this.isCLIMode()) {
       return basePrompt;
     }
@@ -756,11 +874,7 @@ export abstract class BaseAction {
    * @param content 文件内容
    * @param options workspace选项
    */
-  protected async saveToWorkspace(
-    filePath: string,
-    content: string,
-    options?: WorkspaceOptions
-  ): Promise<void> {
+  protected async saveToWorkspace(filePath: string, content: string, options?: WorkspaceOptions): Promise<void> {
     // 使用 validateWorkspaceOptions 确保从 context 中获取必要的 ID
     const validatedOptions = this.validateWorkspaceOptions(options, options?.documentType);
     return WorkspaceManager.saveToWorkspace(filePath, content, validatedOptions);
@@ -771,10 +885,7 @@ export abstract class BaseAction {
    * @param files 文件数组
    * @param options workspace选项
    */
-  protected async saveFilesToWorkspace(
-    files: Array<{ path: string; content: string }>,
-    options?: WorkspaceOptions
-  ): Promise<void> {
+  protected async saveFilesToWorkspace(files: Array<{ path: string; content: string }>, options?: WorkspaceOptions): Promise<void> {
     // 使用 validateWorkspaceOptions 确保从 context 中获取必要的 ID
     const validatedOptions = this.validateWorkspaceOptions(options, options?.documentType);
     return WorkspaceManager.saveFilesToWorkspace(files, validatedOptions);
@@ -793,10 +904,7 @@ export abstract class BaseAction {
    * @param filePath 相对路径
    * @param options workspace选项
    */
-  protected async readWorkspaceFile(
-    filePath: string,
-    options?: WorkspaceOptions
-  ): Promise<string | null> {
+  protected async readWorkspaceFile(filePath: string, options?: WorkspaceOptions): Promise<string | null> {
     return WorkspaceManager.readFile(filePath, options);
   }
 
@@ -805,10 +913,7 @@ export abstract class BaseAction {
    * @param options workspace选项
    * @param filter 可选的文件过滤函数
    */
-  protected async readAllFromWorkspace(
-    options?: WorkspaceOptions,
-    filter?: (filename: string) => boolean
-  ): Promise<string> {
+  protected async readAllFromWorkspace(options?: WorkspaceOptions, filter?: (filename: string) => boolean): Promise<string> {
     return WorkspaceManager.readAllFromWorkspace(options, filter);
   }
 
@@ -818,10 +923,7 @@ export abstract class BaseAction {
    * @param options workspace选项
    * @returns 是否成功删除
    */
-  protected async deleteWorkspaceFile(
-    filePath: string,
-    options?: WorkspaceOptions
-  ): Promise<boolean> {
+  protected async deleteWorkspaceFile(filePath: string, options?: WorkspaceOptions): Promise<boolean> {
     return WorkspaceManager.deleteFile(filePath, options);
   }
 
@@ -831,10 +933,7 @@ export abstract class BaseAction {
    * @param options workspace选项
    * @returns 删除的文件数量
    */
-  protected async deleteWorkspaceFilesByPattern(
-    pattern: RegExp,
-    options?: WorkspaceOptions
-  ): Promise<number> {
+  protected async deleteWorkspaceFilesByPattern(pattern: RegExp, options?: WorkspaceOptions): Promise<number> {
     return WorkspaceManager.deleteFilesByPattern(pattern, options);
   }
 
@@ -844,10 +943,7 @@ export abstract class BaseAction {
    * @param filter 可选的文件过滤函数
    * @returns 文件名数组
    */
-  protected async listWorkspaceFiles(
-    options?: WorkspaceOptions,
-    filter?: (filename: string) => boolean
-  ): Promise<string[]> {
+  protected async listWorkspaceFiles(options?: WorkspaceOptions, filter?: (filename: string) => boolean): Promise<string[]> {
     return WorkspaceManager.listFiles(options, filter);
   }
 
@@ -863,10 +959,7 @@ export abstract class BaseAction {
    * @throws Error 如果缺少必需参数 applicationId、projectId 或 versionId
    * @returns 完整的 WorkspaceOptions
    */
-  protected validateWorkspaceOptions(
-    options?: Partial<WorkspaceOptions>,
-    documentType?: string
-  ): WorkspaceOptions {
+  protected validateWorkspaceOptions(options?: Partial<WorkspaceOptions>, documentType?: string): WorkspaceOptions {
     const applicationId = options?.applicationId || (this.context?.get('applicationId') as string | undefined);
     const projectId = options?.projectId || (this.context?.get('projectId') as string | undefined);
     const versionId = options?.versionId || (this.context?.get('versionId') as string | undefined);
@@ -907,11 +1000,7 @@ export abstract class BaseAction {
    * @param defaultPrompt 默认提示词（当数据库中没有定制时使用）
    * @returns 系统提示词
    */
-  protected async loadSystemPrompt(
-    domain: string,
-    promptType: string,
-    defaultPrompt: string
-  ): Promise<string> {
+  protected async loadSystemPrompt(domain: string, promptType: string, defaultPrompt: string): Promise<string> {
     const userId = this.context?.get('userId');
     // Cast domain to PromptType - valid values are: 'mrd', 'prd', 'design', 'code', 'test', 'task'
     return loadPrompt(userId, domain as any, promptType, defaultPrompt);
@@ -924,11 +1013,7 @@ export abstract class BaseAction {
    * @param documentType 覆盖文档类型（可选）
    * @returns 文档内容，如果文件不存在或读取失败则返回空字符串
    */
-  protected async loadDocumentFromWorkspace(
-    filename: string,
-    options: WorkspaceOptions,
-    documentType?: string
-  ): Promise<string> {
+  protected async loadDocumentFromWorkspace(filename: string, options: WorkspaceOptions, documentType?: string): Promise<string> {
     try {
       const content = await this.readWorkspaceFile(filename, {
         ...options,
@@ -954,11 +1039,9 @@ export abstract class BaseAction {
    * @param options workspace 选项
    * @returns 合并后的代码内容，每个文件以 "// File: filename" 开头
    */
-  protected async loadCodeFilesFromWorkspace(
-    options: WorkspaceOptions
-  ): Promise<string> {
+  protected async loadCodeFilesFromWorkspace(options: WorkspaceOptions): Promise<string> {
     const codeFileExtensions = ['.ts', '.js', '.tsx', '.jsx', '.py', '.java', '.go', '.rs', '.cpp', '.c'];
-    
+
     try {
       const workspaceDir = this.getWorkspaceDir({
         ...options,
@@ -977,7 +1060,7 @@ export abstract class BaseAction {
 
       const entries = await fs.readdir(workspaceDir, { withFileTypes: true });
       const codeEntries = entries
-        .filter(entry => entry.isFile() && codeFileExtensions.some(ext => entry.name.endsWith(ext)))
+        .filter((entry) => entry.isFile() && codeFileExtensions.some((ext) => entry.name.endsWith(ext)))
         .sort((a, b) => a.name.localeCompare(b.name));
 
       const codeFiles: string[] = [];
@@ -988,7 +1071,7 @@ export abstract class BaseAction {
       }
 
       const mergedCode = codeFiles.join('\n\n---\n\n');
-      
+
       if (codeEntries.length > 0) {
         logger.info(`${this.name}: Read ${codeEntries.length} code files from workspace`, {
           workspaceDir,
@@ -996,7 +1079,7 @@ export abstract class BaseAction {
           totalLength: mergedCode.length,
         });
       }
-      
+
       return mergedCode;
     } catch (error: any) {
       logger.warn(`${this.name}: Failed to read code files from workspace`, {
@@ -1056,10 +1139,7 @@ export abstract class BaseAction {
    * @param initializer Handler 初始化函数
    * @returns Handler 实例
    */
-  protected async getCachedHandler<T>(
-    key: string,
-    initializer: () => Promise<T>
-  ): Promise<T> {
+  protected async getCachedHandler<T>(key: string, initializer: () => Promise<T>): Promise<T> {
     if (this._handlerCache.has(key)) {
       return this._handlerCache.get(key) as T;
     }
@@ -1085,7 +1165,7 @@ export abstract class BaseAction {
   ): Promise<IActionOutput> {
     const handlerOptions = this.getHandlerOptions(options);
     const { reviewResult, passed } = await handler.execute(content, handlerOptions);
-    
+
     return this.createActionOutput(reviewResult, {
       ...outputConfig,
       passed,
@@ -1110,7 +1190,7 @@ export abstract class BaseAction {
   ): Promise<IActionOutput> {
     const handlerOptions = this.getHandlerOptions(options);
     const result = await handler.execute(input, handlerOptions);
-    
+
     return this.createActionOutput(result.content, {
       ...outputConfig,
       improvedSectionCount: result.improvedSectionCount,
@@ -1138,7 +1218,7 @@ export abstract class BaseAction {
   ): Promise<IActionOutput> {
     const handlerOptions = this.getHandlerOptions(options);
     const result = await handler.execute(input, handlerOptions);
-    
+
     return this.createActionOutput(result.content, {
       ...outputConfig,
       filename: result.filename,
@@ -1167,4 +1247,3 @@ export abstract class BaseAction {
 }
 
 export default BaseAction;
-

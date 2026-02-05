@@ -68,9 +68,7 @@ export class WorkflowExecutionService {
       return null;
     }
 
-    const currentStep = exec.currentPosition
-      ? WorkflowStateMachine.getStepByPosition(exec, exec.currentPosition)
-      : null;
+    const currentStep = exec.currentPosition ? WorkflowStateMachine.getStepByPosition(exec, exec.currentPosition) : null;
 
     const progress = WorkflowStateMachine.calculateProgress(exec);
 
@@ -91,11 +89,7 @@ export class WorkflowExecutionService {
   /**
    * Initialize a new workflow execution for a project version
    */
-  async initialize(
-    projectId: string,
-    versionId: string,
-    workflowConfig: WorkflowConfig
-  ): Promise<WorkflowExecution> {
+  async initialize(projectId: string, versionId: string, workflowConfig: WorkflowConfig): Promise<WorkflowExecution> {
     logger.info('WorkflowExecutionService: Initializing workflow', { projectId, versionId });
 
     const execution = await this.repository.getOrCreate(projectId, versionId, workflowConfig);
@@ -130,16 +124,13 @@ export class WorkflowExecutionService {
     // Update execution
     const updatedExec = this.cloneExecution(exec);
     updatedExec.state = WorkflowState.RUNNING;
-    
+
     // Use provided position, or existing position (from reset), or default to {0, 0}
-    updatedExec.currentPosition = startPosition 
-      ?? exec.currentPosition 
-      ?? { roleIndex: 0, actionIndex: 0 };
+    updatedExec.currentPosition = startPosition ?? exec.currentPosition ?? { roleIndex: 0, actionIndex: 0 };
 
     // Find the step at current position and set it to running
     const targetStep = updatedExec.steps.find(
-      s => s.roleIndex === updatedExec.currentPosition!.roleIndex 
-        && s.actionIndex === updatedExec.currentPosition!.actionIndex
+      (s) => s.roleIndex === updatedExec.currentPosition!.roleIndex && s.actionIndex === updatedExec.currentPosition!.actionIndex
     );
     if (targetStep) {
       targetStep.state = StepState.RUNNING;
@@ -151,12 +142,7 @@ export class WorkflowExecutionService {
 
     const result = await this.repository.update(updatedExec);
 
-    WorkflowStateMachine.logTransition(
-      projectId,
-      exec.state,
-      WorkflowState.RUNNING,
-      'start'
-    );
+    WorkflowStateMachine.logTransition(projectId, exec.state, WorkflowState.RUNNING, 'start');
 
     logger.info('WorkflowExecutionService: Workflow started', {
       projectId,
@@ -180,14 +166,14 @@ export class WorkflowExecutionService {
     const updatedExec = this.cloneExecution(exec);
 
     // Clear all running states (ensure only one step runs at a time)
-    updatedExec.steps.forEach(s => {
+    updatedExec.steps.forEach((s) => {
       if (s.state === StepState.RUNNING) {
         s.state = StepState.PENDING;
       }
     });
 
     // Find and update the target step
-    const step = updatedExec.steps.find(s => s.role === role && s.action === action);
+    const step = updatedExec.steps.find((s) => s.role === role && s.action === action);
     if (!step) {
       throw new Error(`Step not found: ${role}/${action}`);
     }
@@ -236,13 +222,7 @@ export class WorkflowExecutionService {
   /**
    * Mark a step as completed
    */
-  async onStepComplete(
-    projectId: string,
-    versionId: string,
-    role: string,
-    action: string,
-    output?: StepOutput
-  ): Promise<StepCompleteResult> {
+  async onStepComplete(projectId: string, versionId: string, role: string, action: string, output?: StepOutput): Promise<StepCompleteResult> {
     const exec = await this.getExecution(projectId, versionId);
     if (!exec) {
       throw new Error(`Workflow execution not found for project ${projectId} version ${versionId}`);
@@ -251,7 +231,7 @@ export class WorkflowExecutionService {
     const updatedExec = this.cloneExecution(exec);
 
     // Find and update the step
-    const step = updatedExec.steps.find(s => s.role === role && s.action === action);
+    const step = updatedExec.steps.find((s) => s.role === role && s.action === action);
     if (!step) {
       throw new Error(`Step not found: ${role}/${action}`);
     }
@@ -319,9 +299,7 @@ export class WorkflowExecutionService {
       }
     } else {
       // Continue with next action in same role
-      const nextAction = updatedExec.steps.find(
-        s => s.role === role && s.actionIndex === step.actionIndex + 1
-      );
+      const nextAction = updatedExec.steps.find((s) => s.role === role && s.actionIndex === step.actionIndex + 1);
       if (nextAction) {
         updatedExec.currentPosition = {
           roleIndex: nextAction.roleIndex,
@@ -348,13 +326,7 @@ export class WorkflowExecutionService {
   /**
    * Mark a step as failed
    */
-  async onStepFail(
-    projectId: string,
-    versionId: string,
-    role: string,
-    action: string,
-    error: Error
-  ): Promise<StepFailResult> {
+  async onStepFail(projectId: string, versionId: string, role: string, action: string, error: Error): Promise<StepFailResult> {
     const exec = await this.getExecution(projectId, versionId);
     if (!exec) {
       throw new Error(`Workflow execution not found for project ${projectId} version ${versionId}`);
@@ -363,7 +335,7 @@ export class WorkflowExecutionService {
     const updatedExec = this.cloneExecution(exec);
 
     // Find and update the step
-    const step = updatedExec.steps.find(s => s.role === role && s.action === action);
+    const step = updatedExec.steps.find((s) => s.role === role && s.action === action);
     if (!step) {
       throw new Error(`Step not found: ${role}/${action}`);
     }
@@ -415,6 +387,39 @@ export class WorkflowExecutionService {
   // ===== User Action Methods =====
 
   /**
+   * Update pending confirmation content (draft edit)
+   */
+  async updatePendingConfirmationContent(projectId: string, versionId: string, content: string): Promise<WorkflowExecution> {
+    const exec = await this.getExecution(projectId, versionId);
+    if (!exec) {
+      throw new Error(`Workflow execution not found for project ${projectId} version ${versionId}`);
+    }
+
+    if (exec.state !== WorkflowState.WAITING_CONFIRMATION || !exec.pendingConfirmation) {
+      throw new Error(`Workflow is not waiting for confirmation. Current state: ${exec.state}`);
+    }
+
+    const updatedExec = this.cloneExecution(exec);
+    const existing = updatedExec.pendingConfirmation;
+    if (!existing?.role || !existing?.action) {
+      throw new Error('Pending confirmation is missing role or action');
+    }
+    updatedExec.pendingConfirmation = {
+      role: existing.role,
+      action: existing.action,
+      content,
+      outputFiles: existing.outputFiles,
+      instructContent: existing.instructContent,
+      createdAt: new Date().toISOString(),
+      deployFailed: existing.deployFailed,
+    };
+    updatedExec.version += 1;
+    updatedExec.updatedAt = new Date().toISOString();
+
+    return await this.repository.update(updatedExec);
+  }
+
+  /**
    * Confirm and proceed to next step
    */
   async confirm(projectId: string, versionId: string): Promise<WorkflowExecution> {
@@ -446,12 +451,7 @@ export class WorkflowExecutionService {
 
     const result = await this.repository.update(updatedExec);
 
-    WorkflowStateMachine.logTransition(
-      projectId,
-      exec.state,
-      WorkflowState.RUNNING,
-      'confirm'
-    );
+    WorkflowStateMachine.logTransition(projectId, exec.state, WorkflowState.RUNNING, 'confirm');
 
     logger.info('WorkflowExecutionService: Workflow confirmed', { projectId });
 
@@ -497,12 +497,7 @@ export class WorkflowExecutionService {
 
     const result = await this.repository.update(updatedExec);
 
-    WorkflowStateMachine.logTransition(
-      projectId,
-      exec.state,
-      WorkflowState.PAUSED,
-      'pause'
-    );
+    WorkflowStateMachine.logTransition(projectId, exec.state, WorkflowState.PAUSED, 'pause');
 
     return result;
   }
@@ -528,12 +523,7 @@ export class WorkflowExecutionService {
 
     const result = await this.repository.update(updatedExec);
 
-    WorkflowStateMachine.logTransition(
-      projectId,
-      exec.state,
-      WorkflowState.RUNNING,
-      'resume'
-    );
+    WorkflowStateMachine.logTransition(projectId, exec.state, WorkflowState.RUNNING, 'resume');
 
     return result;
   }
@@ -554,7 +544,7 @@ export class WorkflowExecutionService {
     const updatedExec = this.cloneExecution(exec);
 
     // Find the failed step and reset it
-    const failedStep = updatedExec.steps.find(s => s.state === StepState.FAILED);
+    const failedStep = updatedExec.steps.find((s) => s.state === StepState.FAILED);
     if (failedStep) {
       failedStep.state = StepState.PENDING;
       failedStep.retryCount = 0;
@@ -574,12 +564,7 @@ export class WorkflowExecutionService {
 
     const result = await this.repository.update(updatedExec);
 
-    WorkflowStateMachine.logTransition(
-      projectId,
-      exec.state,
-      WorkflowState.RUNNING,
-      'retry'
-    );
+    WorkflowStateMachine.logTransition(projectId, exec.state, WorkflowState.RUNNING, 'retry');
 
     logger.info('WorkflowExecutionService: Workflow retry', { projectId });
 
@@ -591,11 +576,7 @@ export class WorkflowExecutionService {
   /**
    * Update execution context
    */
-  async updateContext(
-    projectId: string,
-    versionId: string,
-    context: Record<string, any>
-  ): Promise<void> {
+  async updateContext(projectId: string, versionId: string, context: Record<string, any>): Promise<void> {
     const exec = await this.getExecution(projectId, versionId);
     if (!exec) {
       throw new Error(`Workflow execution not found for project ${projectId} version ${versionId}`);
@@ -647,7 +628,7 @@ export class WorkflowExecutionService {
     return {
       ...exec,
       currentPosition: exec.currentPosition ? { ...exec.currentPosition } : null,
-      steps: exec.steps.map(s => ({ ...s })),
+      steps: exec.steps.map((s) => ({ ...s })),
       pendingConfirmation: exec.pendingConfirmation ? { ...exec.pendingConfirmation } : null,
       lastError: exec.lastError ? { ...exec.lastError } : null,
       executionContext: { ...exec.executionContext },
