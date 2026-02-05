@@ -1,25 +1,18 @@
 /**
  * Project Manager Role
  * Manages project tasks breakdown using OpenSpec workflow
+ * Uses skills-based approach with a single action that executes complete workflow
  */
 
 import { IRoleConfig, ACTION_WRITE_PRD, ACTION_WRITE_DESIGN, ActionStatus, RoleStatus } from '@mind2build/shared';
 import { Role } from './Role';
 import { Context } from '../core/context/Context';
-import { FillProjectContext } from '../actions/FillProjectContext';
-import { CreateOpenSpecProposal } from '../actions/CreateOpenSpecProposal';
-import { ValidateOpenSpecProposal } from '../actions/ValidateOpenSpecProposal';
-import { EstimateStoryPoints } from '../actions/EstimateStoryPoints';
-import { ValidateStoryPointEstimates } from '../actions/ValidateStoryPointEstimates';
+import { ExecuteProjectManagement } from '../actions/ExecuteProjectManagement';
 import { Message } from '../core/message/Message';
 import { logger } from '../utils';
 
 // Action name constants
-const ACTION_FILL_PROJECT_CONTEXT = 'FillProjectContext';
-const ACTION_CREATE_OPENSPEC_PROPOSAL = 'CreateOpenSpecProposal';
-const ACTION_VALIDATE_OPENSPEC_PROPOSAL = 'ValidateOpenSpecProposal';
-const ACTION_ESTIMATE_STORY_POINTS = 'EstimateStoryPoints';
-const ACTION_VALIDATE_STORY_POINT_ESTIMATES = 'ValidateStoryPointEstimates';
+const ACTION_EXECUTE_PROJECT_MANAGEMENT = 'ExecuteProjectManagement';
 
 export class ProjectManager extends Role {
   constructor(context: Context, name: string = 'ProjectManager') {
@@ -29,32 +22,21 @@ export class ProjectManager extends Role {
       goal: 'Break down projects into minimal granularity tasks with story point estimates',
       constraints:
         'Ensure tasks are minimal granularity, independent, testable, and deliverable. Provide clear task descriptions and acceptance criteria.',
-      description: 'Experienced project manager who specializes in task breakdown and project planning using OpenSpec workflow',
+      description: 'Project manager who executes complete project management workflow using skills',
     };
 
     super(config, context);
 
-    // Watch for PRD and Design completion to trigger task breakdown
+    // Watch for PRD and Design completion to trigger project management workflow
     this.watch([ACTION_WRITE_PRD, ACTION_WRITE_DESIGN]);
 
-    // Set actions - 5 independent actions in execution order
-    this.setActions([
-      new FillProjectContext(),
-      new CreateOpenSpecProposal(),
-      new ValidateOpenSpecProposal(),
-      new EstimateStoryPoints(),
-      new ValidateStoryPointEstimates(),
-    ]);
+    // Set single action that executes the complete workflow via skill
+    this.setActions([new ExecuteProjectManagement()]);
   }
 
   /**
-   * Determine the next action to execute based on current state.
-   * Actions are executed in order:
-   * 1. FillProjectContext
-   * 2. CreateOpenSpecProposal
-   * 3. ValidateOpenSpecProposal
-   * 4. EstimateStoryPoints
-   * 5. ValidateStoryPointEstimates
+   * Determine if we should execute the project management workflow.
+   * Executes when both PRD and Design are available and workflow hasn't run yet.
    */
   async think(): Promise<boolean> {
     if (this.rc.todo !== null) {
@@ -67,6 +49,10 @@ export class ProjectManager extends Role {
     const designMessage = this.findLatestMessage(ACTION_WRITE_DESIGN);
 
     if (!prdMessage || !designMessage) {
+      logger.debug(`${this.profile} think: Waiting for PRD and Design`, {
+        hasPRD: !!prdMessage,
+        hasDesign: !!designMessage,
+      });
       return false;
     }
 
@@ -96,55 +82,25 @@ export class ProjectManager extends Role {
       return false;
     }
 
-    // Determine which action to execute next based on completed actions
-    const nextAction = this.determineNextAction();
-    if (!nextAction) {
-      logger.info(`${this.profile} think: All actions completed`);
+    // Check if workflow has already been executed
+    const completedMessages = this.rc.memory.getByAction(ACTION_EXECUTE_PROJECT_MANAGEMENT);
+    if (completedMessages.length > 0) {
+      logger.info(`${this.profile} think: Project management workflow already executed`);
       return false;
     }
 
-    this.rc.todo = nextAction;
-    (this.rc.todo as any).status = ActionStatus.PENDING;
+    // Set the action to execute
+    this.rc.todo = this.actions[0];
+    this.rc.todo.status = ActionStatus.PENDING;
     this.rc.status = RoleStatus.PENDING;
 
-    logger.info(`${this.profile} think: Selected next action`, {
-      actionName: nextAction.name,
-    });
+    logger.info(`${this.profile} think: Ready to execute project management workflow`);
 
     return true;
   }
 
   /**
-   * Determine the next action to execute based on completed actions in memory
-   */
-  private determineNextAction() {
-    // Define the action sequence
-    const actionSequence = [
-      ACTION_FILL_PROJECT_CONTEXT,
-      ACTION_CREATE_OPENSPEC_PROPOSAL,
-      ACTION_VALIDATE_OPENSPEC_PROPOSAL,
-      ACTION_ESTIMATE_STORY_POINTS,
-      ACTION_VALIDATE_STORY_POINT_ESTIMATES,
-    ];
-
-    // Find the first action that hasn't been completed
-    for (const actionName of actionSequence) {
-      const completedMessages = this.rc.memory.getByAction(actionName);
-      const hasCompleted = completedMessages.length > 0;
-
-      if (!hasCompleted) {
-        const action = this.actions.find((a) => a.name === actionName);
-        if (action) {
-          return action;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Execute the current action
+   * Execute the project management workflow
    */
   async act(): Promise<Message | null> {
     if (!this.rc.todo) {
@@ -152,14 +108,13 @@ export class ProjectManager extends Role {
     }
 
     const action = this.rc.todo;
-    logger.info(`${this.profile} executing action: ${action.name}`);
+    logger.info(`${this.profile} executing workflow: ${action.name}`);
 
     try {
       // Get workspace options
       const workspaceOptions = this.extractWorkspaceOptions();
 
-      // All OpenSpec actions only need workspace options
-      logger.info(`${this.profile} ${action.name}: Executing with workspace options`, {
+      logger.info(`${this.profile} ${action.name}: Executing complete workflow`, {
         hasWorkspaceOptions: !!workspaceOptions,
         applicationId: workspaceOptions?.applicationId,
         projectId: workspaceOptions?.projectId,
@@ -176,8 +131,8 @@ export class ProjectManager extends Role {
         instructContent: result.data,
       });
 
-      logger.info(`${this.profile} completed action: ${action.name}`, {
-        passed: result.data?.passed,
+      logger.info(`${this.profile} completed workflow: ${action.name}`, {
+        success: result.data?.success,
         type: result.data?.type,
       });
 
@@ -186,7 +141,7 @@ export class ProjectManager extends Role {
 
       return message;
     } catch (error: any) {
-      logger.error(`${this.profile} action failed:`, error);
+      logger.error(`${this.profile} workflow failed:`, error);
       this.rc.todo = null;
       throw error;
     }
