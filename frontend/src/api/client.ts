@@ -659,6 +659,18 @@ class APIClient {
   }
 
   /**
+   * 获取 CLI 日志（心跳轮询）
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
+   * @param afterTs 可选：仅返回该时间之后的日志
+   */
+  async getCliLogs(projectId: string, versionId: string, afterTs?: string) {
+    return this.client.get(`/workflow/${projectId}/cli-logs`, {
+      params: { versionId, afterTs },
+    });
+  }
+
+  /**
    * 重置工作流到指定角色
    * @param projectId 项目ID
    * @param versionId 版本ID（必需）

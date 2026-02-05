@@ -17,60 +17,16 @@ import { WorkflowService, getDefaultWorkflowConfig } from '../../services/Workfl
 import { WorkflowConfig } from '../../database/repositories/ApplicationWorkflowRepository';
 import { CLIExecutor } from '../../executors/CLIExecutor';
 import { Message } from '../../core/message/Message';
+import { cliLogStreamService } from '../../services/CliLogStreamService';
 
 // Map to track running executors by projectId:versionId
 const runningExecutors: Map<string, WorkflowExecutor> = new Map();
-const cliLogStreams: Map<string, Set<Response>> = new Map();
 
 /**
  * Get executor key from projectId and versionId
  */
 function getExecutorKey(projectId: string, versionId: string): string {
   return `${projectId}:${versionId}`;
-}
-
-function getStreamKey(projectId: string, versionId: string): string {
-  return `${projectId}:${versionId}`;
-}
-
-function pushCliLog(projectId: string, versionId: string, payload: { type: string; message: string; ts: string }) {
-  const key = getStreamKey(projectId, versionId);
-  const streams = cliLogStreams.get(key);
-  if (!streams || streams.size === 0) return;
-  const data = `data: ${JSON.stringify(payload)}\n\n`;
-  streams.forEach((res) => {
-    res.write(data);
-  });
-}
-
-function streamEventToText(event: {
-  type?: string;
-  message?: { content?: Array<{ text?: string }> };
-  tool_call?: { writeToolCall?: { args: { path: string } }; readToolCall?: { args: { path: string } } };
-  subtype?: string;
-  model?: string;
-}): string | null {
-  if (event.type === 'assistant' && event.message?.content) {
-    return event.message.content.map((c) => c.text || '').join('');
-  }
-  if (event.type === 'tool_call' && event.subtype === 'started') {
-    if (event.tool_call?.writeToolCall) {
-      return `🔧 写入: ${event.tool_call.writeToolCall.args.path}`;
-    }
-    if (event.tool_call?.readToolCall) {
-      return `📖 读取: ${event.tool_call.readToolCall.args.path}`;
-    }
-  }
-  if (event.type === 'tool_call' && event.subtype === 'completed') {
-    return '✅ 工具调用完成';
-  }
-  if (event.type === 'system' && event.subtype === 'init' && event.model) {
-    return `🤖 模型: ${event.model}`;
-  }
-  if (event.type === 'result') {
-    return '✅ 执行完成';
-  }
-  return null;
 }
 
 export class WorkflowExecutionController {
@@ -185,42 +141,21 @@ export class WorkflowExecutionController {
   }
 
   /**
-   * Stream CLI logs (SSE)
-   * GET /api/workflow/:projectId/cli-logs/stream?versionId=...
+   * CLI logs heartbeat polling
+   * GET /api/workflow/:projectId/cli-logs?versionId=...&afterTs=...
    */
-  static async cliLogStream(req: Request, res: Response) {
+  static async cliLogStream(req: Request, res: Response): Promise<void> {
     const { projectId } = req.params;
     const { versionId } = req.query;
 
     if (!projectId || !versionId || typeof versionId !== 'string') {
-      return res.status(400).json({ success: false, error: 'Project ID and versionId are required' });
+      res.status(400).json({ success: false, error: 'Project ID and versionId are required' });
+      return;
     }
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders?.();
-
-    const key = getStreamKey(projectId, versionId);
-    if (!cliLogStreams.has(key)) {
-      cliLogStreams.set(key, new Set());
-    }
-    cliLogStreams.get(key)!.add(res);
-
-    const heartbeat = setInterval(() => {
-      res.write(':\n\n');
-    }, 15000);
-
-    req.on('close', () => {
-      clearInterval(heartbeat);
-      const set = cliLogStreams.get(key);
-      if (set) {
-        set.delete(res);
-        if (set.size === 0) {
-          cliLogStreams.delete(key);
-        }
-      }
-    });
+    const afterTs = typeof req.query.afterTs === 'string' ? req.query.afterTs : undefined;
+    const logs = cliLogStreamService.getLogs(projectId, versionId, afterTs);
+    res.json({ success: true, data: logs });
   }
 
   /**
@@ -496,21 +431,21 @@ export class WorkflowExecutionController {
         '要求：只修改以上文件，保持其它内容不变。',
       ].join('\n');
 
-      pushCliLog(projectId, versionId, { type: 'input', message, ts: new Date().toISOString() });
+      cliLogStreamService.push(projectId, versionId, { type: 'input', message, ts: new Date().toISOString() });
 
       const executor = new CLIExecutor();
       const cliOutput = await executor.execute(prompt, {
         workDir: workspaceDir,
         enableStreamProgress: true,
         onProgress: (event) => {
-          const text = streamEventToText(event);
+          const text = cliLogStreamService.formatStreamEvent(event);
           if (text) {
-            pushCliLog(projectId, versionId, { type: 'output', message: text, ts: new Date().toISOString() });
+            cliLogStreamService.push(projectId, versionId, { type: 'output', message: text, ts: new Date().toISOString() });
           }
         },
       });
       if (cliOutput) {
-        pushCliLog(projectId, versionId, {
+        cliLogStreamService.push(projectId, versionId, {
           type: 'output',
           message: cliOutput.substring(0, 500),
           ts: new Date().toISOString(),
@@ -556,7 +491,7 @@ export class WorkflowExecutionController {
         await WorkflowExecutionController.messageRepository.save(projectId, msg, role || undefined, versionId);
       }
 
-      pushCliLog(projectId, versionId, { type: 'status', message: 'done', ts: new Date().toISOString() });
+      cliLogStreamService.push(projectId, versionId, { type: 'status', message: 'done', ts: new Date().toISOString() });
 
       return res.json({
         success: true,
@@ -571,11 +506,13 @@ export class WorkflowExecutionController {
       });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      pushCliLog(req.params.projectId, req.body?.versionId, {
-        type: 'error',
-        message: errorMessage || 'CLI error',
-        ts: new Date().toISOString(),
-      });
+      if (req.params.projectId && req.body?.versionId) {
+        cliLogStreamService.push(req.params.projectId, req.body.versionId, {
+          type: 'error',
+          message: errorMessage || 'CLI error',
+          ts: new Date().toISOString(),
+        });
+      }
       logger.error('WorkflowExecutionController: CLI edit failed', {
         error: errorMessage,
         projectId: req.params.projectId,

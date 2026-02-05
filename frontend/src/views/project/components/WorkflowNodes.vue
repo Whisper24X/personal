@@ -35,11 +35,15 @@
 
     <div class="nodes-wrapper">
       <div v-for="roleGroup in roleGroups" :key="roleGroup.role" class="role-row">
-        <div class="role-node" :class="{ 'role-node-active': isRoleActive(roleGroup) }">
+        <div class="role-node" :class="{ 'role-node-active': isRoleActive(roleGroup) }" @click="toggleRole(roleGroup)">
           <div class="role-name">{{ getRoleDisplayName(roleGroup.role) || roleGroup.role }}</div>
           <el-tag size="small" :type="getRoleTagType(roleGroup)">{{ roleGroup.completedCount }}/{{ roleGroup.totalCount }}</el-tag>
+          <el-icon class="role-toggle" :class="{ 'role-toggle-collapsed': isCollapsed(roleGroup.role) }">
+            <ArrowDown />
+          </el-icon>
         </div>
-        <div class="action-row">
+        <div v-if="isCollapsed(roleGroup.role)" class="role-collapsed-hint">已完成，点击展开</div>
+        <div v-else class="action-row">
           <div
             v-for="action in roleGroup.actions"
             :key="`${roleGroup.role}-${action.name}`"
@@ -48,6 +52,7 @@
             @click="handleActionClick(roleGroup.role, action)"
           >
             <span class="action-name">{{ getActionDisplayName(action.name) || action.name }}</span>
+            <span v-if="action.status === 'running'" class="action-hint">运行中</span>
           </div>
         </div>
       </div>
@@ -56,7 +61,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Operation, Refresh, ArrowDown } from '@element-plus/icons-vue';
 import type { WorkflowRoleColumn } from './KanbanColumn.vue';
 import type { WorkflowAction } from './ActionCard.vue';
@@ -101,9 +106,36 @@ const statusText = computed(() => {
   return '等待中';
 });
 
+const collapsedRoles = ref<Set<string>>(new Set());
+
+watch(
+  () => props.workflowKanban,
+  (next) => {
+    next.forEach((group) => {
+      const isCompleted = group.completedCount > 0 && group.completedCount === group.totalCount;
+      const isActive = group.role === props.runningRole || group.actions.some((a) => a.status === 'running' || a.status === 'waiting');
+      if (isCompleted && !isActive && !collapsedRoles.value.has(group.role)) {
+        collapsedRoles.value.add(group.role);
+      }
+    });
+  },
+  { immediate: true, deep: true }
+);
+
 function handleActionClick(_role: string, action: WorkflowAction) {
   if (action.status === 'completed' && action.content) {
     emit('view-content', action);
+  }
+}
+
+function toggleRole(group: { role: string; completedCount: number; totalCount: number }) {
+  if (collapsedRoles.value.has(group.role)) {
+    collapsedRoles.value.delete(group.role);
+    return;
+  }
+  const isCompleted = group.completedCount > 0 && group.completedCount === group.totalCount;
+  if (isCompleted) {
+    collapsedRoles.value.add(group.role);
   }
 }
 
@@ -116,6 +148,10 @@ function getRoleTagType(group: { completedCount: number; totalCount: number }): 
 function isRoleActive(group: { role: string; actions: WorkflowAction[] }): boolean {
   if (props.runningRole === group.role) return true;
   return group.actions.some((action) => action.status === 'running' || action.status === 'waiting');
+}
+
+function isCollapsed(role: string) {
+  return collapsedRoles.value.has(role);
 }
 </script>
 
@@ -170,6 +206,7 @@ function isRoleActive(group: { role: string; actions: WorkflowAction[] }): boole
   font-size: 12px;
   color: #303133;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  cursor: pointer;
 }
 
 .role-node-active {
@@ -179,6 +216,22 @@ function isRoleActive(group: { role: string; actions: WorkflowAction[] }): boole
 
 .role-name {
   font-weight: 600;
+}
+
+.role-toggle {
+  font-size: 12px;
+  color: #909399;
+  transition: transform 0.2s ease;
+}
+
+.role-toggle-collapsed {
+  transform: rotate(-90deg);
+}
+
+.role-collapsed-hint {
+  font-size: 12px;
+  color: #909399;
+  padding-left: 6px;
 }
 
 .action-row {
@@ -196,6 +249,9 @@ function isRoleActive(group: { role: string; actions: WorkflowAction[] }): boole
   color: #606266;
   cursor: pointer;
   transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .action-node:hover {
@@ -219,5 +275,13 @@ function isRoleActive(group: { role: string; actions: WorkflowAction[] }): boole
 
 .action-active {
   box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.2);
+}
+
+.action-hint {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #fde2e2;
+  color: #f56c6c;
 }
 </style>
