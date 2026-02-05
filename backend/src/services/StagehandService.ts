@@ -6,6 +6,93 @@
 
 import { logger } from '../utils';
 
+/**
+ * 去掉 content 中的 ```json ... ``` 或 ``` ... ``` 包裹，避免 Stagehand Zod 校验失败。
+ * 增强版：支持多种 markdown 代码块格式，并尝试提取 JSON 对象。
+ */
+function stripJsonMarkdown(text: string): string {
+  if (typeof text !== 'string') return text;
+  let cleaned = text.trim();
+  
+  // 1. 尝试匹配各种 markdown 代码块格式（支持前后有文本）
+  const codeBlockPatterns = [
+    /```(?:json)?\s*\n([\s\S]*?)\n```/g,  // 标准格式
+    /```(?:json)?\s*([\s\S]*?)```/g,      // 无换行
+    /```(?:json)?\s*\n?([\s\S]*?)\n?```/g, // 灵活换行
+  ];
+  
+  for (const pattern of codeBlockPatterns) {
+    const matches = [...cleaned.matchAll(pattern)];
+    if (matches.length > 0) {
+      // 取最后一个匹配（通常是最完整的）
+      const lastMatch = matches[matches.length - 1];
+      if (lastMatch[1]) {
+        cleaned = lastMatch[1].trim();
+        break;
+      }
+    }
+  }
+  
+  // 2. 如果清理后仍包含 markdown 标记，尝试提取第一个 JSON 对象
+  if (cleaned.includes('```') || cleaned.includes('`')) {
+    // 尝试提取 {...} 或 [...] 格式的 JSON
+    const jsonObjectMatch = /(\{[\s\S]*\}|\[[\s\S]*\])/.exec(cleaned);
+    if (jsonObjectMatch && jsonObjectMatch[1]) {
+      try {
+        // 验证是否为有效 JSON
+        JSON.parse(jsonObjectMatch[1]);
+        cleaned = jsonObjectMatch[1].trim();
+      } catch {
+        // 不是有效 JSON，继续使用原逻辑
+      }
+    }
+  }
+  
+  // 3. 清理可能的尾随 markdown 标记
+  cleaned = cleaned.replace(/^`+|`+$/g, '').trim();
+  
+  return cleaned || text.trim(); // 如果清理后为空，返回原文本
+}
+
+/** 包装 OpenAI 客户端：对响应中的 message.content 做 stripJsonMarkdown，再交给 Stagehand 做 Zod 校验 */
+function wrapOpenAIClientForZod(client: any): any {
+  const create = client.chat?.completions?.create;
+  if (typeof create !== 'function') return client;
+  return {
+    ...client,
+    chat: {
+      ...client.chat,
+      completions: {
+        ...client.chat.completions,
+        create: async (params: any, options?: any) => {
+          const response = await create.call(client.chat.completions, params, options);
+          
+          // 清理 content 字段
+          const content = response?.choices?.[0]?.message?.content;
+          if (typeof content === 'string' && content.length > 0) {
+            const originalContent = content;
+            const cleanedContent = stripJsonMarkdown(content);
+            
+            // 仅在内容发生变化时记录（避免日志过多）
+            if (cleanedContent !== originalContent) {
+              logger.debug('StagehandService: Cleaned markdown from LLM response', {
+                originalLength: originalContent.length,
+                cleanedLength: cleanedContent.length,
+                originalPreview: originalContent.substring(0, 100),
+                cleanedPreview: cleanedContent.substring(0, 100),
+              });
+            }
+            
+            response.choices[0].message.content = cleanedContent;
+          }
+          
+          return response;
+        },
+      },
+    },
+  };
+}
+
 export interface TestCase {
   name: string;
   description?: string;
@@ -152,10 +239,10 @@ export class StagehandService {
           modelName = process.env.STAGEHAND_MODEL || process.env.OPENAI_MODEL || 'gpt-4o';
           provider = 'openai';
           logger.info('StagehandService: Using OpenAI provider', { model: modelName });
-        } else if (process.env.ZHIPUAI_API_KEY) {
-          // Use ZhipuAI (OpenAI-compatible)
-          apiKey = process.env.ZHIPUAI_API_KEY;
-          baseURL = process.env.ZHIPUAI_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
+        } else if (process.env.ZHIPUAI_API_KEY || process.env.ZHIPU_API_KEY) {
+          // Use ZhipuAI (OpenAI-compatible)，支持 ZHIPUAI_* 与 ZHIPU_API_KEY（与用户示例一致）
+          apiKey = process.env.ZHIPUAI_API_KEY || process.env.ZHIPU_API_KEY;
+          baseURL = process.env.ZHIPUAI_BASE_URL || process.env.ZHIPU_API_BASE || 'https://open.bigmodel.cn/api/paas/v4';
           modelName = process.env.STAGEHAND_MODEL || process.env.ZHIPUAI_MODEL || 'glm-4-flash';
           provider = 'zhipuai';
           logger.info('StagehandService: Using ZhipuAI provider', { model: modelName, baseURL });
@@ -168,26 +255,54 @@ export class StagehandService {
           logger.warn('StagehandService: No API key found, using default OpenAI config (may fail)');
         }
 
-        // 必须让 Stagehand 内部创建带 getLanguageModel() 的 client，否则 agent 会报 MissingLLMConfigurationError。
-        // CustomOpenAIClient 无 getLanguageModel()，不能用于 act()。故不传 llmClient，改用 openai/模型名 + modelClientOptions。
-        if (apiKey) {
-          process.env.OPENAI_API_KEY = apiKey;
-          if (baseURL) process.env.OPENAI_BASE_URL = baseURL;
-        }
+        // 与用户可运行示例一致：使用 CustomOpenAIClient + openai 包（智谱兼容 OpenAI API）
+        const normalizedBaseURL = baseURL?.replace(/\/+$/, '') || baseURL;
+        const { CustomOpenAIClient } = stagehandModule as any;
+        const OpenAI = (await import('openai')).default;
 
-        // Stagehand 的 provider/model 格式会走 AISdkClient（有 getLanguageModel），兼容自定义 baseURL
-        const stagehandModelName = modelName.includes('/') ? modelName : `openai/${modelName}`;
+        const rawClient = new OpenAI({
+          apiKey: apiKey,
+          baseURL: normalizedBaseURL,
+        });
+
+        // 包装 client：智谱有时在 content 外包裹 ```json ... ```，导致 Stagehand 的 Zod 校验失败，此处统一剥掉
+        const openaiClient = wrapOpenAIClientForZod(rawClient);
+
+        const llmClient = new CustomOpenAIClient({
+          modelName: modelName,
+          client: openaiClient,
+        });
+
+        logger.info('StagehandService: Created CustomOpenAIClient for LLM', {
+          provider,
+          model: modelName,
+          baseURL: normalizedBaseURL,
+        });
+
+        // verbose: 0=仅错误 1=info 2=debug(含完整 LLM 请求/可访问性树)。默认 0 减少刷屏日志
+        const verboseRaw = process.env.STAGEHAND_VERBOSE;
+        const verbose = verboseRaw === '2' ? 2 : verboseRaw === '1' ? 1 : 0;
+
+        // 检查浏览器模式配置
+        const isHeadless = process.env.STAGEHAND_HEADLESS === 'true';
+        logger.info('StagehandService: Browser launch configuration', {
+          headless: isHeadless,
+          mode: isHeadless ? '无头模式（HEADLESS - 不可见）' : '有头模式（HEADED - 可见）',
+          message: isHeadless
+            ? '⚠️ 浏览器将在后台运行，用户无法看到操作过程'
+            : '✅ 浏览器窗口将可见，用户可以观察自动化操作',
+          envVar: process.env.STAGEHAND_HEADLESS || 'undefined (default: false)',
+        });
 
         const stagehandConfig: any = {
           env: process.env.STAGEHAND_ENV || 'LOCAL',
-          modelName: stagehandModelName,
+          llmClient: llmClient,
+          verbose,
           localBrowserLaunchOptions: {
-            headless: process.env.STAGEHAND_HEADLESS !== 'false',
+            // 默认有头模式；仅当 STAGEHAND_HEADLESS=true 时为无头
+            headless: isHeadless,
           },
         };
-        if (apiKey) {
-          stagehandConfig.modelClientOptions = { apiKey, baseURL };
-        }
 
         this.stagehandInstance = new Stagehand(stagehandConfig);
         await this.stagehandInstance.init();
@@ -236,35 +351,30 @@ export class StagehandService {
       logger.info('StagehandService: Executing action', { instruction, url });
 
       if (this.stagehandAvailable && this.stagehandInstance) {
-        // Use real Stagehand agent to execute the action
+        // 与用户可运行示例一致：直接调用 stagehand.act()，使用初始化时的 CustomOpenAIClient
         try {
-          // Get agent with model configuration if needed
-          // The llmClient should be inherited from Stagehand instance, but we can also pass model config
-          const agent = this.stagehandInstance.agent();
-
-          // Navigate to URL first if provided
           if (url) {
             const pages = this.stagehandInstance.context?.pages();
             if (pages && pages.length > 0) {
-              await pages[0].goto(url);
-              logger.info('StagehandService: Navigated to URL', { url });
+              logger.info('StagehandService: Navigating to URL', { url });
+              await pages[0].goto(url, { waitUntil: 'networkidle0' });
+              logger.info('StagehandService: Successfully navigated to URL', { url });
             }
           }
 
-          // Execute the instruction using Stagehand agent
-          // The agent should use the llmClient configured during Stagehand initialization
-          await agent.execute({
-            instruction: instruction,
-            maxSteps: 10, // Limit steps to prevent infinite loops
-          });
-
-          logger.info('StagehandService: Action completed via Stagehand agent', { instruction });
-        } catch (agentError: any) {
-          logger.error('StagehandService: Stagehand agent execution failed', {
+          // 如果指令不是简单的导航操作，执行 act
+          // 对于纯导航操作（如"打开页面"），URL 导航已经完成，可以跳过 act
+          if (instruction && !(url && (instruction === '打开页面' || instruction.toLowerCase().includes('navigate') || instruction.toLowerCase().includes('goto')))) {
+            await this.stagehandInstance.act(instruction);
+            logger.info('StagehandService: Action completed via Stagehand act', { instruction });
+          } else if (url) {
+            logger.info('StagehandService: Navigation completed', { url });
+          }
+        } catch (actError: any) {
+          logger.error('StagehandService: Stagehand act failed', {
             instruction,
-            error: agentError.message,
+            error: actError.message,
           });
-          // Fall back to placeholder if agent fails
           await new Promise((resolve) => setTimeout(resolve, 100));
           logger.warn('StagehandService: Fell back to placeholder mode', { instruction });
         }
@@ -279,6 +389,28 @@ export class StagehandService {
         error: error.message,
       });
       throw new Error(`Failed to execute action "${instruction}": ${error.message}`);
+    }
+  }
+
+  /**
+   * 在 act 之后调用，用于观察页面状态、判断上一步 act 是否执行完成
+   * @param instruction 可选，观察指令（如「确认当前操作已完成」）；不传则使用默认观察
+   */
+  async observe(instruction?: string): Promise<void> {
+    if (!this.initialized) return;
+    if (process.env.ENABLE_BROWSER !== 'true') return;
+
+    if (this.stagehandAvailable && this.stagehandInstance) {
+      try {
+        if (typeof this.stagehandInstance.observe === 'function') {
+          await this.stagehandInstance.observe(instruction ?? '确认当前页面状态');
+          logger.debug('StagehandService: Observe completed', { instruction: instruction ?? '(default)' });
+        }
+      } catch (err: any) {
+        logger.warn('StagehandService: Observe failed (non-fatal)', { error: err?.message });
+      }
+    } else {
+      await new Promise((r) => setTimeout(r, 200));
     }
   }
 
@@ -357,6 +489,17 @@ export class StagehandService {
     });
 
     return results;
+  }
+
+  /**
+   * Get the current Playwright page for assertions and network listening.
+   * Used by generated scripts to satisfy skill: 必含关键接口监听、必含流程结果验证.
+   * @returns The first page from Stagehand context, or null if browser disabled / not ready
+   */
+  async getPage(): Promise<any> {
+    if (!this.initialized || process.env.ENABLE_BROWSER !== 'true') return null;
+    const pages = this.stagehandInstance?.context?.pages?.();
+    return pages && pages.length > 0 ? pages[0] : null;
   }
 
   /**

@@ -16,7 +16,21 @@ const port = config.server.port;
 
 // Middleware
 app.use(helmet());
-app.use(cors({ origin: config.server.cors.origin }));
+const allowedOrigins = config.server.cors.origin;
+app.use(
+  cors({
+    origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
+      // 无 origin（如 Postman、同源）直接放行
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      // 开发环境：允许任意 localhost 端口
+      if (process.env.NODE_ENV !== 'production' && /^https?:\/\/localhost(:\d+)?$/.test(origin))
+        return cb(null, true);
+      cb(null, false);
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

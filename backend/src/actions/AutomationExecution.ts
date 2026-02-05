@@ -1,40 +1,441 @@
 /**
  * AutomationExecution Action
- * Executes TypeScript test scripts from test/auto directory and generates HTML/JSON reports
+ * Executes JSON format test cases from test/auto directory and generates HTML/JSON reports
+ * Architecture: Step Runner + Result Collector + Stability Middleware
  */
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import { WorkspaceOptions, logger, executeCommand } from '../utils';
+import { WorkspaceOptions, logger } from '../utils';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { StagehandService } from '../services/StagehandService';
 
 export interface AutomationExecutionOptions extends WorkspaceOptions {
   // Inherits all options from WorkspaceOptions
   testUrl?: string; // Optional URL to test against
+  /** Step execution timeout in ms (default: 30000) */
+  stepTimeoutMs?: number;
+  /** Maximum retry count for failed steps (default: 2) */
+  maxRetryCount?: number;
+  /** Wait time before step execution in ms (default: 500) */
+  waitBeforeMs?: number;
+  /** Wait time after step execution in ms (default: 500) */
+  waitAfterMs?: number;
+  /** Continue execution on step error (default: false) */
+  continueOnError?: boolean;
+  /** 执行完成后保持浏览器打开的毫秒数（默认：5000ms） */
+  keepBrowserOpenMs?: number;
+  /** 是否显示浏览器窗口（默认：true，强制有头模式） */
+  showBrowserWindow?: boolean;
 }
 
-interface TestScriptResult {
+interface TestCaseJSON {
+  testCase: string;
+  status: 'pending' | 'passed' | 'failed' | 'running';
+  steps: Array<{
+    step: string;
+    status: 'pending' | 'passed' | 'failed' | 'running';
+    error?: string;
+    screenshot?: string;
+    executionTime?: number;
+  }>;
+  duration: number;
+}
+
+interface StepExecutionResult {
+  stepIndex: number;
+  step: string;
+  status: 'passed' | 'failed';
+  executionTime: number;
+  error?: string;
+  errorType?: 'initialization' | 'execution' | 'timeout' | 'zod_validation' | 'browser' | 'unknown';
+  screenshot?: string;
+  retryCount?: number;
+  timestamp: string;
+}
+
+interface TestCaseExecutionResult {
   testCaseId: string;
   testCaseName: string;
-  scriptFile: string;
+  jsonFile: string;
   success: boolean;
   executionTime: number;
   timestamp: string;
-  output?: string;
+  steps: StepExecutionResult[];
   error?: string;
-  steps?: string[]; // 测试步骤列表
-  logs?: string[]; // 执行日志（按时间顺序）
-  exitCode?: number; // 退出码
+}
+
+interface StepRunnerOptions {
+  timeoutMs?: number;
+  retryCount?: number;
+  waitBeforeMs?: number;
+  waitAfterMs?: number;
+  continueOnError?: boolean;
+}
+
+interface RetryOptions {
+  maxRetries?: number;
+  retryDelayMs?: number;
+  shouldRetry?: (error: Error) => boolean;
+}
+
+/**
+ * Stability Middleware - 稳定性中间件
+ * 提供等待、重试、超时控制等功能
+ */
+class StabilityMiddleware {
+  /**
+   * 带重试的执行
+   */
+  async withRetry<T>(fn: () => Promise<T>, options?: RetryOptions): Promise<T> {
+    const maxRetries = options?.maxRetries ?? 2;
+    const retryDelayMs = options?.retryDelayMs ?? 1000;
+    const shouldRetry = options?.shouldRetry ?? (() => true);
+
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error: any) {
+        lastError = error;
+        if (attempt < maxRetries && shouldRetry(error)) {
+          logger.info('StabilityMiddleware: Retrying after error', {
+            attempt: attempt + 1,
+            maxRetries,
+            error: error.message,
+          });
+          await this.withWait(() => Promise.resolve(), retryDelayMs);
+        } else {
+          throw error;
+        }
+      }
+    }
+    throw lastError || new Error('Retry failed');
+  }
+
+  /**
+   * 带超时的执行
+   */
+  async withTimeout<T>(fn: () => Promise<T>, timeoutMs: number): Promise<T> {
+    return Promise.race([
+      fn(),
+      new Promise<T>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error(`Execution timeout after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  }
+
+  /**
+   * 带等待的执行
+   */
+  async withWait(fn: () => Promise<void>, waitMs?: number): Promise<void> {
+    if (waitMs && waitMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+    await fn();
+  }
+
+  /**
+   * 判断是否应该在错误后继续执行
+   */
+  shouldContinueOnError(_error: Error, _stepIndex: number, options?: { continueOnError?: boolean }): boolean {
+    return options?.continueOnError === true;
+  }
+}
+
+/**
+ * Step Runner - 步骤执行器
+ * 负责执行单个测试步骤，集成稳定性中间件
+ */
+class StepRunner {
+  constructor(
+    private stagehandService: StagehandService,
+    private stabilityMiddleware: StabilityMiddleware
+  ) {}
+
+  /**
+   * 执行单个步骤
+   */
+  async runStep(step: string, stepIndex: number, options?: StepRunnerOptions): Promise<StepExecutionResult> {
+    const startTime = Date.now();
+    const timeoutMs = options?.timeoutMs ?? 30000;
+    const retryCount = options?.retryCount ?? 2;
+    const waitBeforeMs = options?.waitBeforeMs ?? 500;
+    const waitAfterMs = options?.waitAfterMs ?? 500;
+
+    // 提取步骤中的 URL（如果存在）
+    const urlMatch = step.match(/(https?:\/\/[^\s]+)/i);
+    const url = urlMatch ? urlMatch[1] : undefined;
+    // 如果包含 URL，使用导航指令；否则使用原始指令
+    // 对于导航操作，Stagehand 只需要 URL，指令可以简化
+    const instruction = url 
+      ? (step.toLowerCase().includes('打开') || step.toLowerCase().includes('navigate') || step.toLowerCase().includes('goto')
+          ? '打开页面' 
+          : step.replace(/\s*https?:\/\/[^\s]+/gi, '').trim() || '打开页面')
+      : step;
+
+    logger.info('StepRunner: Executing step', {
+      stepIndex,
+      step,
+      instruction,
+      url,
+      timeoutMs,
+      retryCount,
+    });
+
+    try {
+      // 执行前等待
+      await this.stabilityMiddleware.withWait(() => Promise.resolve(), waitBeforeMs);
+
+      // 带超时和重试的执行
+      await this.stabilityMiddleware.withRetry(
+        () =>
+          this.stabilityMiddleware.withTimeout(async () => {
+            // 如果步骤包含 URL，将 URL 作为单独参数传递
+            await this.stagehandService.act(instruction || step, url);
+          }, timeoutMs),
+        {
+          maxRetries: retryCount,
+          retryDelayMs: 1000,
+        }
+      );
+
+      // 执行后等待
+      await this.stabilityMiddleware.withWait(() => Promise.resolve(), waitAfterMs);
+
+      const executionTime = Date.now() - startTime;
+      logger.info('StepRunner: Step executed successfully', {
+        stepIndex,
+        step,
+        executionTime,
+      });
+
+      return {
+        stepIndex,
+        step,
+        status: 'passed',
+        executionTime,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      const executionTime = Date.now() - startTime;
+      const errorType = this.classifyError(error);
+      
+      logger.error('StepRunner: Step execution failed', {
+        stepIndex,
+        step,
+        error: error.message,
+        errorType,
+        executionTime,
+      });
+
+      return {
+        stepIndex,
+        step,
+        status: 'failed',
+        executionTime,
+        error: error.message,
+        errorType,
+        retryCount,
+        timestamp: new Date().toISOString(),
+      };
+    }
+  }
+
+  /**
+   * 分类错误类型
+   */
+  private classifyError(error: Error): 'initialization' | 'execution' | 'timeout' | 'zod_validation' | 'browser' | 'unknown' {
+    const errorMessage = error.message.toLowerCase();
+    if (errorMessage.includes('timeout')) {
+      return 'timeout';
+    }
+    if (errorMessage.includes('zod') || errorMessage.includes('validation')) {
+      return 'zod_validation';
+    }
+    if (errorMessage.includes('browser') || errorMessage.includes('page') || errorMessage.includes('element')) {
+      return 'browser';
+    }
+    if (errorMessage.includes('initialization') || errorMessage.includes('init')) {
+      return 'initialization';
+    }
+    return 'unknown';
+  }
+}
+
+/**
+ * Result Collector - 结果收集器
+ * 负责收集执行结果并更新 JSON 文件
+ */
+class ResultCollector {
+  /**
+   * 收集步骤结果
+   */
+  collectStepResult(stepResult: StepExecutionResult): void {
+    logger.debug('ResultCollector: Collected step result', {
+      stepIndex: stepResult.stepIndex,
+      status: stepResult.status,
+      executionTime: stepResult.executionTime,
+    });
+  }
+
+  /**
+   * 收集测试用例结果
+   */
+  collectTestCaseResult(
+    testCaseId: string,
+    testCaseName: string,
+    jsonFile: string,
+    allStepResults: StepExecutionResult[]
+  ): TestCaseExecutionResult {
+    const totalExecutionTime = allStepResults.reduce((sum, r) => sum + r.executionTime, 0);
+    const success = allStepResults.every((r) => r.status === 'passed');
+    const firstFailedStep = allStepResults.find((r) => r.status === 'failed');
+
+    return {
+      testCaseId,
+      testCaseName,
+      jsonFile,
+      success,
+      executionTime: totalExecutionTime,
+      timestamp: new Date().toISOString(),
+      steps: allStepResults,
+      error: firstFailedStep?.error,
+    };
+  }
+
+  /**
+   * 生成结果 JSON 字符串
+   */
+  generateResultJSON(testCase: TestCaseJSON, stepResults: StepExecutionResult[]): string {
+    const totalDuration = stepResults.reduce((sum, r) => sum + r.executionTime, 0) / 1000; // 转换为秒
+    const allPassed = stepResults.every((r) => r.status === 'passed');
+    const overallStatus: 'passed' | 'failed' = allPassed ? 'passed' : 'failed';
+
+    const updatedSteps: Array<{
+      step: string;
+      status: 'pending' | 'passed' | 'failed' | 'running';
+      error?: string;
+      screenshot?: string;
+      executionTime?: number;
+    }> = testCase.steps.map((step, index) => {
+      const result = stepResults.find((r) => r.stepIndex === index);
+      if (result) {
+        return {
+          step: step.step,
+          status: (result.status === 'passed' ? 'passed' : 'failed') as 'pending' | 'passed' | 'failed' | 'running',
+          ...(result.error && { error: result.error }),
+          ...(result.screenshot && { screenshot: result.screenshot }),
+          executionTime: result.executionTime / 1000, // 转换为秒
+        };
+      }
+      return step;
+    });
+
+    const resultJSON: TestCaseJSON = {
+      testCase: testCase.testCase,
+      status: overallStatus as 'pending' | 'passed' | 'failed' | 'running',
+      steps: updatedSteps,
+      duration: totalDuration,
+    };
+
+    return JSON.stringify(resultJSON, null, 2);
+  }
+
+  /**
+   * 更新 JSON 文件
+   */
+  async updateJSONFile(jsonFile: string, resultJSON: string): Promise<void> {
+    try {
+      await fs.writeFile(jsonFile, resultJSON, 'utf-8');
+      logger.info('ResultCollector: Updated JSON file', {
+        jsonFile: path.basename(jsonFile),
+      });
+    } catch (error: any) {
+      logger.error('ResultCollector: Failed to update JSON file', {
+        jsonFile,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
 }
 
 export class AutomationExecution extends BaseAction {
+  private stagehandService: StagehandService;
+  private stabilityMiddleware: StabilityMiddleware;
+  private stepRunner: StepRunner;
+  private resultCollector: ResultCollector;
+
   constructor() {
-    super('AutomationExecution', 'Execute TypeScript test scripts from test/auto directory and generate HTML/JSON reports');
+    super('AutomationExecution', 'Execute JSON format test cases from test/auto directory and generate HTML/JSON reports');
+    this.stagehandService = new StagehandService();
+    this.stabilityMiddleware = new StabilityMiddleware();
+    this.stepRunner = new StepRunner(this.stagehandService, this.stabilityMiddleware);
+    this.resultCollector = new ResultCollector();
+  }
+
+  /**
+   * Check Stagehand environment status before execution
+   * Validates browser automation configuration and API keys
+   */
+  private checkStagehandEnvironment(): void {
+    const envStatus = {
+      browserEnabled: process.env.ENABLE_BROWSER === 'true',
+      hasOpenAIApiKey: !!process.env.OPENAI_API_KEY,
+      hasZhipuAIApiKey: !!process.env.ZHIPUAI_API_KEY || !!process.env.ZHIPU_API_KEY,
+      stagehandModel: process.env.STAGEHAND_MODEL || process.env.OPENAI_MODEL || process.env.ZHIPUAI_MODEL || 'not set',
+      stagehandEnv: process.env.STAGEHAND_ENV || 'LOCAL',
+      stagehandHeadless: process.env.STAGEHAND_HEADLESS === 'true',
+      stagehandVerbose: process.env.STAGEHAND_VERBOSE || '0',
+    };
+
+    logger.info('AutomationExecution: Stagehand environment check', envStatus);
+
+    // Warn if browser automation is disabled
+    if (!envStatus.browserEnabled) {
+      logger.warn('AutomationExecution: Browser automation is disabled (ENABLE_BROWSER !== true). Scripts may run in placeholder mode.');
+    }
+
+    // Warn if no API key is configured
+    if (!envStatus.hasOpenAIApiKey && !envStatus.hasZhipuAIApiKey) {
+      logger.warn('AutomationExecution: No LLM API key found (OPENAI_API_KEY or ZHIPUAI_API_KEY). Stagehand may fail to initialize.');
+    }
+
+    // Log configuration summary
+    const apiProvider = envStatus.hasOpenAIApiKey ? 'OpenAI' : envStatus.hasZhipuAIApiKey ? 'ZhipuAI' : 'None';
+    logger.info('AutomationExecution: Stagehand configuration summary', {
+      apiProvider,
+      model: envStatus.stagehandModel,
+      environment: envStatus.stagehandEnv,
+      headless: envStatus.stagehandHeadless,
+      verbose: envStatus.stagehandVerbose,
+    });
   }
 
   async run(_input: string, options?: AutomationExecutionOptions): Promise<IActionOutput> {
-    logger.info('AutomationExecution: Starting automation execution from test scripts');
+    logger.info('AutomationExecution: Starting automation execution from JSON test case files');
+
+    // 强制开启浏览器有头模式（确保用户能看到浏览器窗口）
+    const wasHeadless = process.env.STAGEHAND_HEADLESS === 'true';
+    if (wasHeadless) {
+      logger.warn('AutomationExecution: STAGEHAND_HEADLESS was set to true, forcing headless=false for visible browser window');
+    }
+    // 如果用户没有明确禁用浏览器窗口，强制设置为有头模式
+    if (options?.showBrowserWindow !== false) {
+      process.env.STAGEHAND_HEADLESS = 'false'; // 强制有头模式
+      logger.info('AutomationExecution: Browser will run in HEADED mode (visible window)', {
+        previousHeadless: wasHeadless,
+        currentHeadless: false,
+        message: '浏览器窗口将可见，请观察执行过程',
+      });
+    }
+
+    // Check Stagehand environment status before execution
+    this.checkStagehandEnvironment();
 
     const workspaceOptions: WorkspaceOptions = {
       ...options,
@@ -53,16 +454,16 @@ export class AutomationExecution extends BaseAction {
         await fs.mkdir(autoDir, { recursive: true });
       }
 
-      // Read all TypeScript files from auto directory
-      const scriptFiles = await this.findTestScripts(autoDir);
-      if (scriptFiles.length === 0) {
-        logger.warn('AutomationExecution: No test scripts found in auto directory', {
+      // Read all JSON test case files from auto directory
+      const testCaseFiles = await this.findTestCaseFiles(autoDir);
+      if (testCaseFiles.length === 0) {
+        logger.warn('AutomationExecution: No test case JSON files found in auto directory', {
           autoDir,
           workspaceDir,
         });
 
         // Even if no scripts found, generate an empty report to indicate execution was attempted
-        const emptyResults: TestScriptResult[] = [];
+        const emptyResults: TestCaseExecutionResult[] = [];
         const emptySummary = this.generateExecutionSummary(emptyResults);
 
         // Generate and save empty reports
@@ -91,11 +492,11 @@ export class AutomationExecution extends BaseAction {
         }
 
         return {
-          content: 'test/auto 目录中未找到测试脚本文件，已生成空报告。请先运行 AutomationPlanning 生成测试脚本后重新执行。',
+          content: 'test/auto 目录中未找到测试用例 JSON 文件，已生成空报告。请先运行 AutomationPlanning 生成测试用例 JSON 文件后重新执行。',
           data: {
             type: 'automation_execution',
             skipped: true,
-            reason: 'No test scripts found',
+            reason: 'No test case JSON files found',
             timestamp: new Date().toISOString(),
             workspaceDir,
             reportDir,
@@ -103,31 +504,54 @@ export class AutomationExecution extends BaseAction {
         };
       }
 
-      logger.info('AutomationExecution: Found test scripts', {
-        scriptCount: scriptFiles.length,
-        scripts: scriptFiles.map((f) => path.basename(f)),
+      logger.info('AutomationExecution: Found test case JSON files', {
+        fileCount: testCaseFiles.length,
+        files: testCaseFiles.map((f) => path.basename(f)),
       });
 
-      // Execute all test scripts
-      let results: TestScriptResult[] = [];
+      // Initialize Stagehand service
+      await this.stagehandService.initialize();
+
+      // Execute all test case files
+      let results: TestCaseExecutionResult[] = [];
       try {
-        logger.info('AutomationExecution: Starting script execution', {
-          scriptCount: scriptFiles.length,
-          cwd: autoDir,
+        logger.info('AutomationExecution: Starting test case execution', {
+          fileCount: testCaseFiles.length,
+          autoDir,
         });
-        results = await this.executeTestScripts(scriptFiles, autoDir);
-        logger.info('AutomationExecution: Script execution completed', {
+        results = await this.executeTestCaseFiles(testCaseFiles, autoDir, options);
+        logger.info('AutomationExecution: Test case execution completed', {
           resultsCount: results.length,
           successCount: results.filter((r) => r.success).length,
           failedCount: results.filter((r) => !r.success).length,
         });
       } catch (error: any) {
-        logger.error('AutomationExecution: Failed to execute test scripts', {
+        logger.error('AutomationExecution: Failed to execute test cases', {
           error: error.message,
           stack: error.stack,
         });
         // Even if execution fails, create empty results to generate report
         results = [];
+      } finally {
+        // 延迟关闭浏览器，让用户有时间观察
+        const keepOpenMs = options?.keepBrowserOpenMs ?? 5000;
+        if (keepOpenMs > 0) {
+          logger.info(`AutomationExecution: Keeping browser open for ${keepOpenMs}ms for observation`, {
+            keepOpenMs,
+            message: `浏览器将在 ${(keepOpenMs / 1000).toFixed(1)} 秒后关闭，请观察执行结果`,
+          });
+          await new Promise((resolve) => setTimeout(resolve, keepOpenMs));
+        }
+
+        // Cleanup Stagehand service
+        try {
+          await this.stagehandService.close();
+          logger.info('AutomationExecution: Stagehand service closed successfully');
+        } catch (closeError: any) {
+          logger.warn('AutomationExecution: Failed to close Stagehand service', {
+            error: closeError.message,
+          });
+        }
       }
 
       // Generate execution summary (always generate, even if no results)
@@ -265,10 +689,11 @@ export class AutomationExecution extends BaseAction {
     }
   }
 
+
   /**
-   * Find all TypeScript test scripts in the auto directory
+   * Find all JSON test case files in the auto directory
    */
-  private async findTestScripts(autoDir: string): Promise<string[]> {
+  private async findTestCaseFiles(autoDir: string): Promise<string[]> {
     try {
       logger.info('AutomationExecution: Reading auto directory', { autoDir });
       const entries = await fs.readdir(autoDir, { withFileTypes: true });
@@ -277,17 +702,17 @@ export class AutomationExecution extends BaseAction {
         entryNames: entries.map((e) => e.name),
       });
 
-      const scriptFiles = entries
-        .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
+      const jsonFiles = entries
+        .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
         .map((entry) => path.join(autoDir, entry.name))
         .sort();
 
-      logger.info('AutomationExecution: Filtered TypeScript script files', {
-        scriptCount: scriptFiles.length,
-        scriptFiles: scriptFiles.map((f) => path.basename(f)),
+      logger.info('AutomationExecution: Filtered JSON test case files', {
+        fileCount: jsonFiles.length,
+        files: jsonFiles.map((f) => path.basename(f)),
       });
 
-      return scriptFiles;
+      return jsonFiles;
     } catch (error: any) {
       logger.error('AutomationExecution: Failed to read auto directory', {
         error: error.message,
@@ -299,198 +724,126 @@ export class AutomationExecution extends BaseAction {
   }
 
   /**
-   * Execute all test scripts and collect results
+   * Execute all test case JSON files and collect results
    */
-  private async executeTestScripts(scriptFiles: string[], cwd: string): Promise<TestScriptResult[]> {
-    const results: TestScriptResult[] = [];
+  private async executeTestCaseFiles(
+    jsonFiles: string[],
+    cwd: string,
+    options?: AutomationExecutionOptions
+  ): Promise<TestCaseExecutionResult[]> {
+    const results: TestCaseExecutionResult[] = [];
 
-    logger.info('AutomationExecution: Starting to execute test scripts', {
-      totalScripts: scriptFiles.length,
+    logger.info('AutomationExecution: Starting to execute test case JSON files', {
+      totalFiles: jsonFiles.length,
       cwd,
     });
 
-    for (let i = 0; i < scriptFiles.length; i++) {
-      const scriptFile = scriptFiles[i];
+    for (let i = 0; i < jsonFiles.length; i++) {
+      const jsonFile = jsonFiles[i];
       const startTime = Date.now();
-      const scriptName = path.basename(scriptFile);
+      const fileName = path.basename(jsonFile);
 
-      // Extract test case ID and name from script file
-      const testCaseId = scriptName.replace('.ts', '');
+      // Extract test case ID from file name (e.g., TC-001-xxx.json -> TC-001-xxx)
+      const testCaseId = fileName.replace('.json', '');
       let testCaseName = testCaseId;
-      const testSteps: string[] = [];
+      let testCase: TestCaseJSON | null = null;
 
       try {
-        // Read script content to extract test case name and steps
-        const scriptContent = await fs.readFile(scriptFile, 'utf-8');
+        // Read and parse JSON file
+        const jsonContent = await fs.readFile(jsonFile, 'utf-8');
+        testCase = JSON.parse(jsonContent) as TestCaseJSON;
+        testCaseName = testCase.testCase || testCaseId;
 
-        // Extract test case name
-        const nameMatch = scriptContent.match(/测试用例名称[：:]\s*(.+)/);
-        if (nameMatch) {
-          testCaseName = nameMatch[1].trim();
-        }
-
-        // Extract test steps from script (look for stagehandService.act calls)
-        const stepMatches = scriptContent.matchAll(/stagehandService\.act\(['"](.+?)['"]/g);
-        for (const match of stepMatches) {
-          if (match[1] && !match[1].includes('导航到页面')) {
-            testSteps.push(match[1].trim());
-          }
-        }
-      } catch (error: any) {
-        logger.warn('AutomationExecution: Failed to read script file for extraction', {
-          scriptFile,
-          error: error.message,
+        logger.info('AutomationExecution: Executing test case', {
+          jsonFile: fileName,
+          testCaseId,
+          testCaseName,
+          stepsCount: testCase.steps.length,
         });
-      }
 
-      logger.info('AutomationExecution: Executing test script', {
-        scriptFile: scriptName,
-        testCaseId,
-        stepsCount: testSteps.length,
-      });
-
-      try {
-        // Execute script using tsx
-        // Set NODE_PATH to include backend/src so scripts can import StagehandService.
-        // Use __dirname so path is correct regardless of process.cwd() (e.g. when run from workspace).
-        const backendSrcPath = path.resolve(__dirname, '..');
-        const nodePath = process.env.NODE_PATH ? `${process.env.NODE_PATH}:${backendSrcPath}` : backendSrcPath;
-        // Explicitly pass LLM/Stagehand env so tsx child gets same config as backend (e.g. ZhipuAI)
-        const scriptEnv: NodeJS.ProcessEnv = {
-          ...process.env,
-          NODE_PATH: nodePath,
+        // Execute all steps using StepRunner
+        const stepResults: StepExecutionResult[] = [];
+        const stepRunnerOptions: StepRunnerOptions = {
+          timeoutMs: options?.stepTimeoutMs,
+          retryCount: options?.maxRetryCount,
+          waitBeforeMs: options?.waitBeforeMs,
+          waitAfterMs: options?.waitAfterMs,
+          continueOnError: options?.continueOnError,
         };
-        const llmEnvKeys = [
-          'OPENAI_API_KEY',
-          'OPENAI_BASE_URL',
-          'OPENAI_MODEL',
-          'ZHIPUAI_API_KEY',
-          'ZHIPUAI_BASE_URL',
-          'ZHIPUAI_MODEL',
-          'STAGEHAND_MODEL',
-          'STAGEHAND_ENV',
-          'STAGEHAND_HEADLESS',
-          'ENABLE_BROWSER',
-        ];
-        for (const key of llmEnvKeys) {
-          if (process.env[key] != null) scriptEnv[key] = process.env[key];
-        }
-        // Stagehand 内部只认 OPENAI_API_KEY，子进程用智谱时需映射，否则报 MissingLLMConfigurationError 导致浏览器闪退
-        if (!scriptEnv.OPENAI_API_KEY && scriptEnv.ZHIPUAI_API_KEY) {
-          scriptEnv.OPENAI_API_KEY = scriptEnv.ZHIPUAI_API_KEY;
-          scriptEnv.OPENAI_BASE_URL = scriptEnv.ZHIPUAI_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
-          scriptEnv.OPENAI_MODEL = scriptEnv.STAGEHAND_MODEL || scriptEnv.ZHIPUAI_MODEL || 'glm-4-flash';
-        }
-        const result = await executeCommand(`tsx ${scriptName}`, {
-          cwd,
-          timeout: 300000, // 5 minutes timeout per script
-          env: scriptEnv,
-        });
 
-        const executionTime = Date.now() - startTime;
-        const success = result.exitCode === 0;
+        for (let stepIndex = 0; stepIndex < testCase.steps.length; stepIndex++) {
+          const step = testCase.steps[stepIndex];
+          const stepText = step.step;
 
-        // Parse logs from output - combine stdout and stderr, preserve order
-        const logs: string[] = [];
-        const stdoutLines = result.stdout ? result.stdout.split('\n') : [];
-        const stderrLines = result.stderr ? result.stderr.split('\n') : [];
+          // Update step status to running
+          testCase.steps[stepIndex].status = 'running';
 
-        // Combine outputs (stdout first, then stderr if any)
-        if (stdoutLines.length > 0) {
-          logs.push(...stdoutLines.filter((line) => line.trim()));
-        }
-        if (stderrLines.length > 0 && result.stderr !== result.stdout) {
-          logs.push(...stderrLines.filter((line) => line.trim()));
-        }
+          // Execute step
+          const stepResult = await this.stepRunner.runStep(stepText, stepIndex, stepRunnerOptions);
+          stepResults.push(stepResult);
 
-        // If no logs but we have output, use it
-        if (logs.length === 0 && (result.stdout || result.stderr)) {
-          const allOutput = (result.stdout || '') + (result.stderr || '');
-          if (allOutput.trim()) {
-            logs.push(...allOutput.split('\n').filter((line) => line.trim()));
+          // Collect step result
+          this.resultCollector.collectStepResult(stepResult);
+
+          // Check if we should continue on error
+          if (stepResult.status === 'failed' && !options?.continueOnError) {
+            logger.warn('AutomationExecution: Step failed, stopping execution', {
+              testCaseId,
+              stepIndex,
+              step: stepText,
+            });
+            break;
           }
         }
 
-        results.push({
+        // Collect test case result
+        const testCaseResult = this.resultCollector.collectTestCaseResult(
           testCaseId,
           testCaseName,
-          scriptFile: scriptName,
-          success,
-          executionTime,
-          timestamp: new Date().toISOString(),
-          output: result.stdout || undefined,
-          error: success ? undefined : result.stderr || result.stdout || '执行失败',
-          steps: testSteps.length > 0 ? testSteps : undefined,
-          logs: logs.length > 0 ? logs : undefined,
-          exitCode: result.exitCode ?? undefined,
-        });
+          jsonFile,
+          stepResults
+        );
 
-        logger.info('AutomationExecution: Script execution completed', {
-          scriptFile: scriptName,
-          success,
-          executionTime,
-          logsCount: logs.length,
+        // Generate updated JSON with results
+        const updatedJSON = this.resultCollector.generateResultJSON(testCase, stepResults);
+
+        // Update JSON file with results
+        await this.resultCollector.updateJSONFile(jsonFile, updatedJSON);
+
+        results.push(testCaseResult);
+
+        logger.info('AutomationExecution: Test case execution completed', {
+          jsonFile: fileName,
+          testCaseId,
+          success: testCaseResult.success,
+          executionTime: testCaseResult.executionTime,
+          stepsPassed: stepResults.filter((r) => r.status === 'passed').length,
+          stepsFailed: stepResults.filter((r) => r.status === 'failed').length,
         });
       } catch (error: any) {
         const executionTime = Date.now() - startTime;
-
-        // Try to extract error details from CommandExecutorError
-        let errorMessage = error.message || 'Script execution failed';
-        const errorLogs: string[] = [];
-        let errorOutput = '';
-        let errorStderr = '';
-
-        // Check if error has stdout/stderr properties (from CommandExecutorError)
-        if (error.stdout || error.stderr) {
-          errorOutput = error.stdout || '';
-          errorStderr = error.stderr || '';
-
-          // Combine stdout and stderr for logs
-          const stdoutLines = errorOutput ? errorOutput.split('\n') : [];
-          const stderrLines = errorStderr ? errorStderr.split('\n') : [];
-
-          if (stdoutLines.length > 0) {
-            errorLogs.push(...stdoutLines.filter((line) => line.trim()));
-          }
-          if (stderrLines.length > 0 && errorStderr !== errorOutput) {
-            errorLogs.push(...stderrLines.filter((line) => line.trim()));
-          }
-
-          // Use the most detailed error message
-          if (errorLogs.length > 0) {
-            errorMessage = errorLogs.join('\n');
-          } else if (errorStderr) {
-            errorMessage = errorStderr;
-          } else if (errorOutput) {
-            errorMessage = errorOutput;
-          }
-        }
+        logger.error('AutomationExecution: Failed to execute test case', {
+          jsonFile: fileName,
+          testCaseId,
+          error: error.message,
+          executionTime,
+        });
 
         results.push({
           testCaseId,
           testCaseName,
-          scriptFile: scriptName,
+          jsonFile,
           success: false,
           executionTime,
           timestamp: new Date().toISOString(),
-          error: errorMessage,
-          output: errorOutput || undefined,
-          steps: testSteps.length > 0 ? testSteps : undefined,
-          logs: errorLogs.length > 0 ? errorLogs : undefined,
-          exitCode: error.exitCode || 1,
-        });
-
-        logger.error('AutomationExecution: Script execution failed', {
-          scriptFile: scriptName,
-          error: errorMessage,
-          logsCount: errorLogs.length,
-          exitCode: error.exitCode,
+          steps: [],
+          error: error.message,
         });
       }
     }
 
-    logger.info('AutomationExecution: Completed executing all test scripts', {
-      totalScripts: scriptFiles.length,
+    logger.info('AutomationExecution: Completed executing all test case JSON files', {
+      totalFiles: jsonFiles.length,
       resultsCount: results.length,
       successCount: results.filter((r) => r.success).length,
       failedCount: results.filter((r) => !r.success).length,
@@ -502,7 +855,7 @@ export class AutomationExecution extends BaseAction {
   /**
    * Generate execution summary
    */
-  private generateExecutionSummary(results: TestScriptResult[]): any {
+  private generateExecutionSummary(results: TestCaseExecutionResult[]): any {
     const total = results.length;
     const passed = results.filter((r) => r.success).length;
     const failed = total - passed;
@@ -521,22 +874,28 @@ export class AutomationExecution extends BaseAction {
   /**
    * Generate JSON report
    */
-  private generateJSONReport(summary: any, results: TestScriptResult[]): string {
+  private generateJSONReport(summary: any, results: TestCaseExecutionResult[]): string {
     return JSON.stringify(
       {
         summary,
         results: results.map((r) => ({
           testCaseId: r.testCaseId,
           testCaseName: r.testCaseName,
-          scriptFile: r.scriptFile,
+          jsonFile: r.jsonFile,
           success: r.success,
           executionTime: r.executionTime,
           timestamp: r.timestamp,
-          exitCode: r.exitCode,
-          steps: r.steps || [],
-          logs: r.logs || [],
-          output: r.output,
           error: r.error,
+          steps: r.steps.map((s) => ({
+            stepIndex: s.stepIndex,
+            step: s.step,
+            status: s.status,
+            executionTime: s.executionTime,
+            error: s.error,
+            errorType: s.errorType,
+            retryCount: s.retryCount,
+            timestamp: s.timestamp,
+          })),
         })),
         timestamp: new Date().toISOString(),
       },
@@ -548,7 +907,7 @@ export class AutomationExecution extends BaseAction {
   /**
    * Generate HTML report
    */
-  private generateHTMLReport(summary: any, results: TestScriptResult[]): string {
+  private generateHTMLReport(summary: any, results: TestCaseExecutionResult[]): string {
     const executionTime = new Date().toLocaleString('zh-CN');
     const successRate = parseFloat(summary.successRate);
 
@@ -759,7 +1118,7 @@ export class AutomationExecution extends BaseAction {
                 <tr>
                     <th>测试用例编号</th>
                     <th>测试用例名称</th>
-                    <th>脚本文件</th>
+                    <th>JSON文件</th>
                     <th>状态</th>
                     <th>执行时间</th>
                     <th>时间戳</th>
@@ -775,43 +1134,58 @@ export class AutomationExecution extends BaseAction {
                 <tr>
                     <td><strong>${this.escapeHtml(result.testCaseId)}</strong></td>
                     <td>${this.escapeHtml(result.testCaseName)}</td>
-                    <td><code>${this.escapeHtml(result.scriptFile)}</code></td>
+                    <td><code>${this.escapeHtml(result.jsonFile)}</code></td>
                     <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                     <td>${(result.executionTime / 1000).toFixed(2)}s</td>
                     <td>${new Date(result.timestamp).toLocaleString('zh-CN')}</td>
                 </tr>`;
 
-      // Show test steps if available
+      // Show step-level execution details if available
       if (result.steps && result.steps.length > 0) {
         html += `
                 <tr>
                     <td colspan="6">
-                        <div class="steps-details">
-                            <strong>测试步骤 (${result.steps.length} 步):</strong>
-                            <ol>`;
-        result.steps.forEach((step, _index) => {
-          html += `<li>${this.escapeHtml(step)}</li>`;
+                        <div class="steps-details" style="background: #f0f8ff; border-left: 4px solid #0066cc;">
+                            <strong>步骤执行详情:</strong>
+                            <table style="width: 100%; margin-top: 10px; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="background: #e6f2ff;">
+                                        <th style="padding: 8px; text-align: left; border: 1px solid #cce5ff;">步骤</th>
+                                        <th style="padding: 8px; text-align: left; border: 1px solid #cce5ff;">指令</th>
+                                        <th style="padding: 8px; text-align: center; border: 1px solid #cce5ff;">状态</th>
+                                        <th style="padding: 8px; text-align: right; border: 1px solid #cce5ff;">执行时间</th>
+                                    </tr>
+                                </thead>
+                                <tbody>`;
+        result.steps.forEach((stepResult) => {
+          const stepStatusClass = stepResult.status === 'passed' ? 'status-pass' : 'status-fail';
+          const stepStatusText = stepResult.status === 'passed' ? '✅ 成功' : '❌ 失败';
+          const stepTime = stepResult.executionTime
+            ? `${(stepResult.executionTime / 1000).toFixed(2)}s`
+            : 'N/A';
+          html += `
+                                    <tr>
+                                        <td style="padding: 8px; border: 1px solid #cce5ff;">${stepResult.stepIndex + 1}</td>
+                                        <td style="padding: 8px; border: 1px solid #cce5ff;">${this.escapeHtml(stepResult.step)}</td>
+                                        <td style="padding: 8px; text-align: center; border: 1px solid #cce5ff;">
+                                            <span class="status-badge ${stepStatusClass}">${stepStatusText}</span>
+                                        </td>
+                                        <td style="padding: 8px; text-align: right; border: 1px solid #cce5ff;">${stepTime}</td>
+                                    </tr>`;
+          if (stepResult.error) {
+            html += `
+                                    <tr>
+                                        <td colspan="4" style="padding: 8px; border: 1px solid #cce5ff; background: #fff3cd;">
+                                            <strong>错误:</strong> ${this.escapeHtml(stepResult.error)}
+                                            ${stepResult.errorType ? `<br><strong>错误类型:</strong> ${this.escapeHtml(stepResult.errorType)}` : ''}
+                                            ${stepResult.retryCount !== undefined ? `<br><strong>重试次数:</strong> ${stepResult.retryCount}` : ''}
+                                        </td>
+                                    </tr>`;
+          }
         });
         html += `
-                            </ol>
-                        </div>
-                    </td>
-                </tr>`;
-      }
-
-      // Show execution logs (always show if available, even if test passed)
-      if (result.logs && result.logs.length > 0) {
-        html += `
-                <tr>
-                    <td colspan="6">
-                        <div class="logs-details">
-                            <strong>执行日志 (${result.logs.length} 条):</strong><br>`;
-        result.logs.forEach((log, index) => {
-          const logClass = this.getLogClass(log);
-          const timestamp = `[${index + 1}]`;
-          html += `<div class="log-line ${logClass}">${timestamp} ${this.escapeHtml(log)}</div>`;
-        });
-        html += `
+                                </tbody>
+                            </table>
                         </div>
                     </td>
                 </tr>`;
@@ -825,20 +1199,6 @@ export class AutomationExecution extends BaseAction {
                         <div class="error-details">
                             <strong>❌ 错误信息:</strong><br>
                             ${this.escapeHtml(result.error)}
-                            ${result.exitCode !== undefined ? `<br><br><strong>退出码:</strong> ${result.exitCode}` : ''}
-                        </div>
-                    </td>
-                </tr>`;
-      }
-
-      // Show output if available and different from logs (for debugging)
-      if (result.output && result.output.trim() && (!result.logs || result.output.trim() !== result.logs.join('\n').trim())) {
-        html += `
-                <tr>
-                    <td colspan="6">
-                        <div class="output-details">
-                            <strong>📋 标准输出:</strong><br>
-                            ${this.escapeHtml(result.output)}
                         </div>
                     </td>
                 </tr>`;
@@ -863,20 +1223,4 @@ export class AutomationExecution extends BaseAction {
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
   }
 
-  /**
-   * Determine log line CSS class based on content
-   */
-  private getLogClass(log: string): string {
-    const lowerLog = log.toLowerCase();
-    if (lowerLog.includes('error') || lowerLog.includes('失败') || lowerLog.includes('failed')) {
-      return 'log-error';
-    }
-    if (lowerLog.includes('success') || lowerLog.includes('成功') || lowerLog.includes('passed')) {
-      return 'log-success';
-    }
-    if (lowerLog.includes('info') || lowerLog.includes('初始化') || lowerLog.includes('initialized')) {
-      return 'log-info';
-    }
-    return '';
-  }
 }
