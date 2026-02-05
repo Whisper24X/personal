@@ -175,105 +175,98 @@ export class WriteCode extends BaseAction {
 
         allOutputs.push(`=== Iteration ${retryCount} - Check ===\n${checkOutput}`);
 
-        // 3. 判断是否完成 - 解析固定两行文本格式
-        try {
-          // 从输出中提取有效内容（跳过前面的系统消息等）
-          // Cursor CLI 可能输出多行 JSON，我们需要找到实际的结果部分
-          const lines = checkOutput.split('\n');
+        // 3. 判断是否完成 - 读取结果文件 docs/code/taskResult.md
+        const resultFilePath = path.join(workDir, 'docs/code/taskResult.md');
 
-          // 查找包含状态的行（已完成、未完成、未找到）
-          let statusLine = '';
-          let reasonLine = '';
+        try {
+          // 尝试读取结果文件
+          const resultContent = await fs.readFile(resultFilePath, 'utf-8');
+          const lines = resultContent.split('\n').map((l) => l.trim());
+          const statusLine = lines[0] || '';
+          const reasonLine = lines[1] || '';
+
+          logger.info(`WriteCode: Read result file (iteration ${retryCount})`, {
+            resultFilePath,
+            status: statusLine,
+            reason: reasonLine,
+          });
+
+          // 根据状态判断
+          if (statusLine === '未找到') {
+            const errorMessage = `WriteCode: Task file not found. Reason: ${reasonLine}`;
+            logger.error(errorMessage, {
+              iteration: retryCount,
+              status: statusLine,
+              reason: reasonLine,
+            });
+            throw new Error(errorMessage);
+          } else if (statusLine === '已完成') {
+            isCompleted = true;
+            logger.info(`WriteCode: Tasks completed successfully (iteration ${retryCount})`, {
+              totalIterations: retryCount,
+              reason: reasonLine,
+            });
+          } else if (statusLine === '未完成') {
+            logger.warn(`WriteCode: Tasks not completed yet (iteration ${retryCount})`, {
+              status: statusLine,
+              reason: reasonLine,
+              willRetry: retryCount < maxRetries,
+            });
+          } else {
+            // 状态不符合预期，记录警告但继续
+            logger.warn(`WriteCode: Unexpected status in result file (iteration ${retryCount})`, {
+              status: statusLine,
+              reason: reasonLine,
+              willRetry: retryCount < maxRetries,
+            });
+          }
+        } catch (readError) {
+          // 文件不存在或读取失败，回退到输出解析
+          const readErrorMessage = readError instanceof Error ? readError.message : String(readError);
+
+          // 检查是否是文件不存在错误
+          const isFileNotFound = readError instanceof Error && 'code' in readError && (readError as NodeJS.ErrnoException).code === 'ENOENT';
+
+          if (isFileNotFound) {
+            logger.warn(`WriteCode: Result file not found, falling back to output parsing (iteration ${retryCount})`, {
+              resultFilePath,
+            });
+          } else {
+            logger.warn(`WriteCode: Failed to read result file, falling back to output parsing (iteration ${retryCount})`, {
+              resultFilePath,
+              error: readErrorMessage,
+            });
+          }
+
+          // 回退到输出解析（兼容旧逻辑）
+          const outputLines = checkOutput.split('\n');
           let foundStatus = false;
 
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
-
-            // 检查是否是状态行
+          for (let i = 0; i < outputLines.length; i++) {
+            const line = outputLines[i].trim();
             if (line === '已完成' || line === '未完成' || line === '未找到') {
-              statusLine = line;
-              // 下一行是原因（如果存在）
-              if (i + 1 < lines.length) {
-                reasonLine = lines[i + 1].trim();
-              }
+              const statusLine = line;
+              const reasonLine = i + 1 < outputLines.length ? outputLines[i + 1].trim() : '';
               foundStatus = true;
+
+              if (statusLine === '未找到') {
+                throw new Error(`WriteCode: Task file not found. Reason: ${reasonLine}`);
+              } else if (statusLine === '已完成') {
+                isCompleted = true;
+                logger.info(`WriteCode: Tasks completed (fallback parsing) (iteration ${retryCount})`);
+              }
               break;
             }
           }
 
           if (!foundStatus) {
-            logger.warn(`WriteCode: Unable to find status in check output (iteration ${retryCount})`, {
-              checkOutput: checkOutput.substring(0, 500),
-              outputLines: lines.slice(0, 10).map((line) => line.substring(0, 100)),
-            });
-
-            // 回退到文本包含检查
+            // 最后回退：文本包含检查
             if (checkOutput.includes('未找到')) {
-              const errorMessage = `WriteCode: Task file not found. Check command returned "未找到". Output: ${checkOutput.substring(0, 500)}`;
-              logger.error(errorMessage, {
-                iteration: retryCount,
-                checkOutput: checkOutput.substring(0, 500),
-              });
-              throw new Error(errorMessage);
+              throw new Error(`WriteCode: Task file not found. Output: ${checkOutput.substring(0, 500)}`);
             } else if (checkOutput.includes('已完成')) {
               isCompleted = true;
-              logger.info(`WriteCode: Tasks completed (found by fallback text search) (iteration ${retryCount})`);
-            } else {
-              logger.warn(`WriteCode: Could not determine completion status (iteration ${retryCount})`, {
-                willRetry: retryCount < maxRetries,
-              });
+              logger.info(`WriteCode: Tasks completed (text search fallback) (iteration ${retryCount})`);
             }
-          } else {
-            // 成功解析状态
-            logger.info(`WriteCode: Check result parsed (iteration ${retryCount})`, {
-              status: statusLine,
-              reason: reasonLine,
-            });
-
-            if (statusLine === '未找到') {
-              const errorMessage = `WriteCode: Task file not found. Reason: ${reasonLine}`;
-              logger.error(errorMessage, {
-                iteration: retryCount,
-                status: statusLine,
-                reason: reasonLine,
-              });
-              throw new Error(errorMessage);
-            } else if (statusLine === '已完成') {
-              isCompleted = true;
-              logger.info(`WriteCode: Tasks completed successfully (iteration ${retryCount})`, {
-                totalIterations: retryCount,
-                reason: reasonLine,
-              });
-            } else if (statusLine === '未完成') {
-              logger.warn(`WriteCode: Tasks not completed yet (iteration ${retryCount})`, {
-                status: statusLine,
-                reason: reasonLine,
-                willRetry: retryCount < maxRetries,
-              });
-            }
-          }
-        } catch (parseError) {
-          const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
-          logger.error(`WriteCode: Failed to parse check output (iteration ${retryCount})`, {
-            error: errorMessage,
-            checkOutput: checkOutput.substring(0, 500),
-            outputLines: checkOutput
-              .split('\n')
-              .slice(0, 10)
-              .map((line) => line.substring(0, 100)),
-          });
-
-          // 回退到文本包含检查
-          if (checkOutput.includes('未找到')) {
-            const errorMessage = `WriteCode: Task file not found. Check command returned "未找到". Output: ${checkOutput.substring(0, 500)}`;
-            logger.error(errorMessage, {
-              iteration: retryCount,
-              checkOutput: checkOutput.substring(0, 500),
-            });
-            throw new Error(errorMessage);
-          } else if (checkOutput.includes('已完成')) {
-            isCompleted = true;
-            logger.info(`WriteCode: Tasks completed (found by fallback text search) (iteration ${retryCount})`);
           }
         }
       }
