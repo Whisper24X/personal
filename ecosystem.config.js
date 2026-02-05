@@ -79,6 +79,23 @@ module.exports = {
         'workspace',
         'temp',
       ],
+    },
+    {
+      name: 'log-cleanup',
+      script: './scripts/log-manager.js',
+      cwd: process.cwd(),
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: false,
+      cron_restart: '0 * * * *', // 每小时运行一次
+      watch: false,
+      
+      // Logging configuration
+      error_file: './logs/log-cleanup-error.log',
+      out_file: './logs/log-cleanup-out.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      time: true,
+      merge_logs: true,
     }
   ],
 };
