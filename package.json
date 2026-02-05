@@ -30,6 +30,9 @@
     "pm2:logs": "pm2 logs",
     "pm2:monit": "pm2 monit",
     "pm2:status": "pm2 status",
+    "logs:cleanup": "node scripts/log-manager.js",
+    "logs:size": "du -sh logs/ backend/logs/ frontend/logs/ 2>/dev/null | sort -hr || echo 'No logs directories found'",
+    "logs:setup-cron": "./scripts/setup-log-cleanup-cron.sh",
     "prepare": "husky"
   },
   "engines": {
