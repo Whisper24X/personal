@@ -51,7 +51,7 @@ import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { miniProgramOrderRefund } from '../../service'
 import type { OrderItem } from '../../service.type'
-import { formatMoney } from '@/utils/money'
+import { formatMoney, yuanToCents } from '@/utils/money'
 
 const props = defineProps({
   visible: {
@@ -99,9 +99,9 @@ const validateRefundAmount = (_rule: any, value: any, callback: any) => {
     callback(new Error('退款金额必须大于0'))
     return
   }
-  // 将用户输入的元金额与订单金额（已转为元）进行比较
-  const orderPriceInYuan = form.orderPrice / 100
-  if (amount > orderPriceInYuan) {
+  // 使用工具函数进行整数运算，避免浮点数精度问题
+  const refundAmountInCents = yuanToCents(amount)
+  if (refundAmountInCents > form.orderPrice) {
     callback(new Error('退款金额不得大于实付金额'))
     return
   }
@@ -151,10 +151,10 @@ const handleSubmit = async () => {
   try {
     await formRef.value.validate()
     loading.value = true
-    
-    // 将用户输入的退款金额从元转换为分（提交给后端）
-    const refundAmountInCents = Math.round(Number.parseFloat(form.refundAmount) * 100)
-    
+
+    // 使用工具函数将元转换为分，避免浮点数精度问题
+    const refundAmountInCents = yuanToCents(form.refundAmount)
+
     await miniProgramOrderRefund({
       orderId: form.id,
       payId: form.payId,

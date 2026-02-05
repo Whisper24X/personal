@@ -119,6 +119,18 @@
       <el-table-column type="selection" width="55" align="center" />
 
       <el-table-column
+        prop="id"
+        label="预约编号"
+        min-width="100"
+        align="center"
+      />
+      <el-table-column
+        prop="orderId"
+        label="订单编号"
+        min-width="120"
+        align="center"
+      />
+      <el-table-column
         prop="orderNumber"
         label="渠道订单编号"
         min-width="120"
@@ -130,23 +142,12 @@
         min-width="120"
         align="center"
       />
-
       <el-table-column
         prop="courseName"
         label="课程名称"
         min-width="150"
         align="center"
       />
-      <el-table-column
-        prop="orderPrice"
-        label="课程金额"
-        min-width="100"
-        align="center"
-      >
-        <template #default="{ row }">
-          {{ row.orderPrice ? `¥${row.orderPrice}` : '-' }}
-        </template>
-      </el-table-column>
       <el-table-column
         prop="date"
         label="课程日期"
@@ -244,17 +245,15 @@
         </template>
       </el-table-column>
       <el-table-column
-        prop="id"
-        label="预约编号"
+        prop="orderPrice"
+        label="课程金额"
         min-width="100"
         align="center"
-      />
-      <el-table-column
-        prop="orderId"
-        label="订单编号"
-        min-width="120"
-        align="center"
-      />
+      >
+        <template #default="{ row }">
+          {{ row.orderPrice ? `¥${row.orderPrice}` : '-' }}
+        </template>
+      </el-table-column>
       <el-table-column
         prop="createdAt"
         label="创建时间"
@@ -281,7 +280,6 @@
         min-width="100"
         align="center"
       />
-
       <el-table-column
         prop="status"
         label="状态"
