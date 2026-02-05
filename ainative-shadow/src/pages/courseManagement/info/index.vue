@@ -226,7 +226,7 @@ import {
   COURSE_TYPE_OPTIONS,
 } from './service.type'
 import { formatDateTime } from '@/utils/date'
-import { formatMoney } from '@/utils/money'
+import { formatMoney, yuanToCents, centsToYuanNumber } from '@/utils/money'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -301,7 +301,7 @@ const handleEdit = async (row: CourseInfo) => {
     courseType: courseInfo.courseType, // 老数据默认为单日
     mainImage: courseInfo.mainImage,
     detailImages: courseInfo.detailImages,
-    price: courseInfo.price / 100, // 将分转换为元用于显示
+    price: centsToYuanNumber(courseInfo.price), // 使用工具函数将分转换为元
     isPushContractRequired: courseInfo.isPushContractRequired ?? false, // 老数据默认为不需要推送合同
   })
 }
@@ -310,10 +310,10 @@ const handleSubmit = async (
   formData: CreateCourseRequest | UpdateCourseRequest,
 ) => {
   try {
-    // 将元转换为分
+    // 使用工具函数将元转换为分
     const submitData = {
       ...formData,
-      price: Math.round(formData.price * 100),
+      price: yuanToCents(formData.price),
     }
     
     if (dialogTitle.value === '新增课程') {
