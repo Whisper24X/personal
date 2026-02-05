@@ -21,12 +21,18 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# 容器配置
-CONTAINER_NAME="ainative-workspace-sandbox"
+# 加载 .env 配置文件（如果存在）
+if [[ -f "$SCRIPT_DIR/.env" ]]; then
+    # shellcheck source=/dev/null
+    source "$SCRIPT_DIR/.env"
+fi
+
+# 容器配置（优先级：命令行环境变量 > .env 文件 > 默认值）
+CONTAINER_NAME="${SANDBOX_NAME:-ainative-workspace-sandbox}"
 IMAGE_NAME="${CONTAINER_NAME}:latest"
-NGINX_PORT=8080
-MEMORY_LIMIT=8g
-MEMORY_RESERVATION=2g
+NGINX_PORT="${SANDBOX_PORT:-8080}"
+MEMORY_LIMIT="${SANDBOX_MEMORY:-8g}"
+MEMORY_RESERVATION="${SANDBOX_MEMORY_MIN:-2g}"
 
 # 命名卷（基于容器名生成）
 VOLUME_GO_MOD="${CONTAINER_NAME}-go-mod-cache"
@@ -110,7 +116,6 @@ cmd_start() {
         --memory="${MEMORY_LIMIT}" --memory-reservation="${MEMORY_RESERVATION}" \
         -v "$PROJECT_ROOT/ainative-backend:/workspace/ainative-backend" \
         -v "$PROJECT_ROOT/ainative-shadow:/workspace/ainative-shadow" \
-        -v "$PROJECT_ROOT/ainative-pc:/workspace/ainative-pc" \
         -v "$PROJECT_ROOT/ainative-app:/workspace/ainative-app" \
         -v "$VOLUME_GO_MOD:/go/pkg/mod" \
         -v "$VOLUME_PNPM:/root/.local/share/pnpm/store" \
@@ -170,7 +175,6 @@ cmd_logs() {
 
 cmd_info() {
     echo ""
-    echo -e "${CYAN}============================================================${NC}"
     echo -e "${CYAN}  AINative Workspace - All-in-One Sandbox${NC}"
     echo -e "${CYAN}============================================================${NC}"
     echo ""
@@ -188,13 +192,11 @@ cmd_info() {
     echo "  后端 API:    http://localhost:${NGINX_PORT}/api/"
     echo "  管理后台:    http://localhost:${NGINX_PORT}/shadow/"
     echo "  移动端 H5:   http://localhost:${NGINX_PORT}/app/"
-    echo "  PC 端:       http://localhost:${NGINX_PORT}/pc/"
     echo ""
     echo "常用命令:"
     echo "  进入沙箱:     ./sandbox/sandbox.sh shell"
     echo "  查看状态:     ./sandbox/sandbox.sh status"
-    echo "  查看日志:     ./sandbox/sandbox.sh logs backend"
-    echo ""
+    echo "  查看日志:     ./sandbox/sandbox.sh logs [backend|shadow|app]"
 }
 
 cmd_status() {
@@ -260,11 +262,22 @@ cmd_help() {
     echo "  restart            重启沙箱容器"
     echo "  shell              进入沙箱 Shell"
     echo "  status             查看服务状态"
-    echo "  logs [service]     查看日志（backend/shadow/pc/app）"
+    echo "  logs [service]     查看日志（backend/shadow/app）"
     echo "  info               显示沙箱信息"
     echo "  exec <cmd>         在沙箱内执行命令"
     echo "  clean              清理沙箱（删除容器和数据）"
     echo "  help               显示帮助信息"
+    echo ""
+    echo "配置方式（优先级从高到低）:"
+    echo "  1. 命令行环境变量:  SANDBOX_PORT=8081 ./sandbox/sandbox.sh start"
+    echo "  2. .env 配置文件:   vim sandbox/.env"
+    echo "  3. 默认值"
+    echo ""
+    echo "可配置项:"
+    echo "  SANDBOX_NAME       容器名称（默认: ainative-workspace-sandbox）"
+    echo "  SANDBOX_PORT       Nginx 端口（默认: 8080）"
+    echo "  SANDBOX_MEMORY     内存限制（默认: 8g）"
+    echo "  SANDBOX_MEMORY_MIN 内存预留（默认: 2g）"
     echo ""
 }
 
