@@ -131,14 +131,14 @@ export const roleDefinitions: RoleDefinition[] = [
     class_name: 'Engineer',
   },
 
-  // Order 6: AutomationEngineer - Automation testing and QA
+  // Order 6: AutomationEngineer - Automation testing (planning + execution only)
   {
     profile: 'AutomationEngineer',
     name: 'Automation Engineer',
     display_name: '自动化工程师',
-    goal: '规划自动化测试方案，执行自动化测试，检查测试覆盖率，生成QA结论报告',
-    constraints: '自动化方案需可维护、可扩展；测试执行需稳定可靠；覆盖率检查需客观准确；QA结论需基于实际测试结果',
-    description: '负责自动化测试和质量保证。监听QAEngineer的测试改进输出，规划自动化测试方案，执行自动化测试，检查测试覆盖率，生成QA结论报告。确保自动化测试有效，质量评估准确。',
+    goal: '规划自动化测试方案并执行自动化测试',
+    constraints: '自动化方案需可维护、可扩展；测试执行需稳定可靠',
+    description: '负责自动化测试。监听QAEngineer的测试改进输出，规划自动化测试方案并执行自动化测试。',
     class_name: 'AutomationEngineer',
   },
 
@@ -247,7 +247,7 @@ export const actionDefinitions: ActionDefinition[] = [
  * 3. Architect: WriteDesign -> DesignReview -> ImproveDesign
  * 4. ProjectManager: ExecuteProjectManagement (完整项目管理流程：填充上下文 -> 创建提案 -> 验证格式 -> 审查内容 -> 评估故事点 -> 验证评估)
  * 5. Engineer: WriteCode -> ImproveCode -> Deploy
- * 6. AutomationEngineer: AutomationPlanning -> AutomationExecution -> CoverageQualityCheck -> QAConclusion
+ * 6. AutomationEngineer: AutomationPlanning -> AutomationExecution
  */
 export const defaultWorkflowConfig: WorkflowConfig = {
   roles: [
@@ -297,7 +297,7 @@ export const defaultWorkflowConfig: WorkflowConfig = {
       profile: 'AutomationEngineer',
       name: 'Automation Engineer',
       order: 6,
-      actions: ['AutomationPlanning', 'AutomationExecution', 'CoverageQualityCheck', 'QAConclusion'],
+      actions: ['AutomationPlanning', 'AutomationExecution'],
       watch_actions: ['ImproveTest'],
     },
   ],
@@ -354,8 +354,6 @@ export const actionsWithWorkspaceOptions: string[] = [
   // Automation actions
   'AutomationPlanning',
   'AutomationExecution',
-  'CoverageQualityCheck',
-  'QAConclusion',
   
   // Project Management actions
   'ExecuteProjectManagement',
@@ -423,8 +421,6 @@ export const actionRelevanceMap: Record<string, string[]> = {
   // Automation Engineer actions (order 6, watch: ImproveTest)
   AutomationPlanning: ['ImproveTest'],
   AutomationExecution: ['AutomationPlanning'],
-  CoverageQualityCheck: ['AutomationExecution'],
-  QAConclusion: ['CoverageQualityCheck'],
 };
 
 /**
@@ -520,8 +516,4 @@ export const actionDocumentTypeMap: Record<string, string> = {
   EstimateStoryPoints: 'TASKS',
   ValidateStoryPointEstimates: 'TASKS',
   AutomationPlanning: 'TEST',
-  
-  // Analysis Actions
-  CoverageQualityCheck: 'TEST',
-  QAConclusion: 'TEST',
 };

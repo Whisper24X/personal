@@ -1,56 +1,329 @@
 ---
+
 name: automation-test
-description: 当用户或工作流需要自动化测试规划、自动化脚本生成、自动化执行、覆盖率与质量检查或 QA 结论时使用此 skill。指导 Agent 何时触发、如何配合后端 AutomationEngineer 四步流程。
+description: 当用户或工作流需要自动化测试规划、自动化脚本生成或自动化执行时使用此 skill。指导 Agent 何时触发、如何配合后端 AutomationEngineer 两步流程，并内置 Act 执行正确性验证与断言生成规范。
+------------------------------------------------------------------------------------------------------------------------------------------
+
+# 自动化测试流程与规范（增强版）
+
+基于 TEST.md（或 TEST_REVIEW.md）执行自动化测试规划与执行，由后端 AutomationEngineer 角色按固定两步顺序执行。
+
+在两步流程基础上，**Stagehand Act 执行验证 + Assertion 生成 Skills 体系**确保自动化脚本具备可执行性与结果可信度。
+
 ---
 
-# 自动化测试流程与规范
-
-基于 TEST.md（或 TEST_REVIEW.md）执行自动化测试规划、脚本生成、执行、覆盖率检查与 QA 结论，由后端 AutomationEngineer 角色按固定四步顺序执行。
-
-## 执行前必读（强制）
+# 执行前必读（强制）
 
 **前置条件**：
 
-1. **TEST.md 已存在**：自动化测试以测试用例文档为输入，必须先有 `docs/test/TEST.md`（由 test skill 或 WriteTest 生成）。若有 `TEST_REVIEW.md`，后端会优先使用评审后的版本。
-2. **执行主体**：自动化测试由后端 **AutomationEngineer** 四步流程执行，本 skill 用于指导 Agent 何时触发、如何配合、如何回答用户关于自动化测试的问题。
-3. **触发方式**：工作流在 QAEngineer 完成 TestReview 后自动触发 AutomationEngineer；或通过 API 调用对应角色/动作执行。Agent 若在对话中被要求“做自动化测试”，应说明需通过工作流或 API 执行，并确认 TEST.md 已就绪。
+1. **TEST.md 已存在**
+   自动化测试以测试用例文档为输入，必须先有 `docs/test/TEST.md`。
+   若存在 `TEST_REVIEW.md`，优先使用评审版本。
 
-## 自动化测试流程（四步顺序）
+2. **执行主体**
+   自动化测试由后端 **AutomationEngineer 两步流程**执行。
+   本 skill 指导 Agent：
 
-| 步骤   | 动作                 | 输入                     | 输出                                                 |
-| ------ | -------------------- | ------------------------ | ---------------------------------------------------- |
-| Step 1 | AutomationPlanning   | TEST.md / TEST_REVIEW.md | `auto/*.ts`（仅对通过 Stagehand 验证的用例生成脚本） |
-| Step 2 | AutomationExecution  | auto/\*.ts 脚本          | 执行报告（通过/失败、日志）                          |
-| Step 3 | CoverageQualityCheck | 测试用例与执行结果       | 覆盖率与质量自检（仅内存/API，不落盘）               |
-| Step 4 | QAConclusion         | 上述所有产出             | 通过 / 阻断 / 需修改 结论（仅内存/API，不落盘）      |
+   * 何时触发自动化
+   * 如何生成脚本
+   * 如何验证 act 正确性
+   * 如何生成断言
 
-流程不可跳步、不可逆序；由 AutomationEngineer 在单次运行中依次执行上述四步。
+3. **触发方式**
 
-## 与工作流的衔接
+   * TestReview 后自动触发
+   * 或 API 调用 AutomationEngineer
+   * Agent 对话触发需确认 TEST.md 已就绪
 
-- **自动触发**：工作流配置中，在 TestReview 完成后会触发 AutomationEngineer，无需手动传入测试用例内容；后端从当前 workspace 的 `docs/test/` 下读取 TEST.md（或 TEST_REVIEW.md）。
-- **API 触发**：可通过项目/版本维度的 API 触发工作流或单独执行 AutomationPlanning 等动作，需携带正确的 applicationId、projectId、versionId（或等价 workspace 信息）。
-- **Agent 指引**：当用户问“如何做自动化测试”或“自动化测试流程”时，Agent 应依据本 skill 回答前置条件（TEST.md 已就绪）、四步流程与产物位置，并提示通过工作流或 API 执行。
+---
 
-## 输出与位置
+# 自动化测试两步流程（不可变）
 
-脚本类产出在当前版本 workspace 的 **docs/test/** 目录下（与 TEST.md 同目录）：
+| Step | 动作                 | 输入                       | 输出       |
+| ---- | -------------------- | ------------------------ | ---------- |
+| 1    | AutomationPlanning   | TEST.md / TEST_REVIEW.md | `auto/*.ts` |
+| 2    | AutomationExecution  | auto/*.ts                | 执行报告   |
 
-| 产出           | 路径/说明                                                              |
-| -------------- | ---------------------------------------------------------------------- |
-| Stagehand 脚本 | `auto/*.ts`（仅对通过 Stagehand 验证的用例生成，每个用例一个脚本文件） |
-| 执行报告       | 由 AutomationExecution 写入，具体文件名见后端实现                      |
+---
 
-覆盖率与质量自检、QA 结论由 CoverageQualityCheck / QAConclusion 在内存中生成并随 API 返回，不再写入 COVERAGE_REPORT.md、QUALITY_CHECK.md、QA_CONCLUSION.md。
+# 🔧 Step 1 增强：AutomationPlanning Skills 体系
 
-**脚本规范**：`auto/*.ts` 必须且仅使用 Stagehand 自动化测试框架编写，由 AutomationPlanning 统一生成，不得手写非 Stagehand 实现。
+脚本生成不再直接从 TEST.md → 代码，而必须经过 Skills Pipeline。
 
-## 注意事项
+---
 
-- **ENABLE_BROWSER**：若需使用 Stagehand 生成/执行浏览器自动化脚本，需设置环境变量 `ENABLE_BROWSER=true`，并确保运行环境具备浏览器与 Stagehand 依赖。
-- **Stagehand**：Step 1 在启用 Stagehand 时会从 TEST.md 解析用例、用 Stagehand 验证第一步可行性，仅对通过验证的用例生成 `auto/*.ts`；脚本必须且仅使用 Stagehand 框架。若未启用或验证失败，不生成脚本。
-- **其他角色与 action**：本 skill 仅描述自动化测试流程，不改变 WriteTest、TestReview、Engineer 等其它角色与动作的行为；自动化测试与功能测试用例编写（test skill）互为上下游，不互相覆盖。
+## Skills Pipeline（强制执行）
 
-## 参考
+```
+1️⃣ Test Intent Parsing
+2️⃣ Page Observation
+3️⃣ Action Generation
+4️⃣ Action Validation
+5️⃣ Assertion Generation
+6️⃣ Network Assertion
+7️⃣ DOM Change Detection
+8️⃣ Script Assembly
+```
 
-- 四步流程与每步输入输出的详细列表见 [automation-flow.md](references/automation-flow.md)。
+---
+
+## Skill 1：Test Intent Parsing
+
+解析测试目标：
+
+**输入**
+
+```
+用户登录成功
+```
+
+**输出**
+
+```
+Actions:
+- 输入账号
+- 输入密码
+- 点击登录
+
+Expected:
+- 跳转首页
+- 显示用户信息
+```
+
+---
+
+## Skill 2：Page Observation
+
+通过 Stagehand：
+
+```ts
+stagehand.observe("Describe login page structure")
+```
+
+输出：
+
+* 输入框
+* 按钮
+* 可交互元素
+
+用于避免 act 定位错误。
+
+---
+
+## Skill 3：Action Generation（Act 生成）
+
+生成标准 act：
+
+```ts
+await stagehand.act("Type username 'testuser'");
+await stagehand.act("Type password '******'");
+await stagehand.act("Click Login button");
+```
+
+---
+
+### Act 生成规则（强制）
+
+1. 一步一 act
+2. 必须包含 UI 语义定位
+3. 禁止模糊描述：
+
+❌ Click button
+✅ Click "Login" button in form footer
+
+---
+
+## Skill 4：Action Validation（Act 正确性验证）
+
+用于判断 act 是否执行成功。
+
+---
+
+### 验证维度
+
+| 类型           | 验证方式          |
+| ------------ | ------------- |
+| Selector 唯一性 | matched count |
+| 点击成功         | 按钮状态变化        |
+| 输入成功         | value 校验      |
+| 请求触发         | network 监听    |
+| 页面变化         | DOM diff      |
+
+---
+
+### 自动生成验证代码
+
+```ts
+await expect(button).toBeDisabled();
+await expect(input).toHaveValue('testuser');
+```
+
+---
+
+## Skill 5：Assertion Generation（断言生成）
+
+每个 act 必须配断言。
+
+---
+
+### 断言五分类
+
+| 类型    | 示例        |
+| ----- | --------- |
+| UI 文案 | 登录成功      |
+| URL   | /home     |
+| 元素状态  | avatar 显示 |
+| 接口    | login 200 |
+| 业务    | 用户态存在     |
+
+---
+
+### 示例代码
+
+```ts
+await expect(page).toHaveURL(/home/);
+await expect(page.locator('.avatar')).toBeVisible();
+```
+
+---
+
+## Skill 6：Network Assertion
+
+监听关键接口：
+
+```ts
+page.on('response', res => {
+  if (res.url().includes('/login')) {
+    expect(res.status()).toBe(200);
+  }
+});
+```
+
+---
+
+## Skill 7：DOM Change Detection
+
+判断 act 是否引发页面变化：
+
+```ts
+const before = await page.content();
+await stagehand.act("Click Submit");
+const after = await page.content();
+```
+
+---
+
+## Skill 8：Script Assembly
+
+组装完整脚本：
+
+```
+Navigation
+Actions
+Assertions
+Network checks
+```
+
+---
+
+# 生成脚本强制规范（新增）
+
+---
+
+## 规则 1：Act 必须配 Assert
+
+```
+Each act must have at least one assertion.
+```
+
+---
+
+## 规则 2：关键流程双断言
+
+```
+UI + API assertions required.
+```
+
+---
+
+## 规则 3：禁止连续 act
+
+```
+act → assert → act → assert
+```
+
+---
+
+# Step 2：AutomationExecution（不变）
+
+执行：
+
+```
+auto/*.ts
+```
+
+输出：
+
+* pass / fail
+* 日志
+* trace / video（若启用）
+
+---
+
+# 输出与位置（不变）
+
+```
+docs/test/
+ ├── TEST.md
+ ├── auto/
+ │    ├── login.spec.ts
+ │    ├── order.spec.ts
+```
+
+---
+
+# 脚本规范（强化）
+
+必须满足：
+
+1. 仅使用 Stagehand
+2. 必含 act + assert
+3. 必含关键接口监听
+4. 必含流程结果验证
+
+---
+
+# 环境要求（不变）
+
+```
+ENABLE_BROWSER=true
+```
+
+需具备：
+
+* 浏览器
+* Stagehand
+* Playwright 依赖
+
+---
+
+# 与其它 Skills 边界
+
+| Skill           | 关系           |
+| --------------- | ------------ |
+| test            | 上游生成 TEST.md |
+| test-review     | 评审用例         |
+| automation-test | 自动化执行        |
+| engineer        | 不参与          |
+
+---
+
+# 参考
+
+详见：
+
+```
+references/automation-flow.md
+```
+
+---
