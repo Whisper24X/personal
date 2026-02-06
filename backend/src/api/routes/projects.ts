@@ -44,10 +44,6 @@ router.get('/:id/download/code', ProjectController.downloadCode);
 router.get('/:id/download/docs', ProjectController.downloadDocs);
 router.get('/:id/download/:zipPath(*)', ProjectController.downloadZip);
 
-// CLI API key management routes (must come before generic /:id)
-router.put('/:id/cli-api-key', ProjectController.updateCliApiKey);
-router.get('/:id/cli-api-key', ProjectController.getCliApiKey);
-
 // Version management routes (must come before generic /:id)
 router.post('/:id/versions', ProjectVersionController.create);
 router.get('/:id/versions', ProjectVersionController.list);
@@ -56,8 +52,13 @@ router.get('/:id/versions/:versionId', ProjectVersionController.getById);
 router.put('/:id/versions/:versionId', ProjectVersionController.update);
 router.delete('/:id/versions/:versionId', ProjectVersionController.delete);
 router.post('/:id/versions/:versionId/activate', ProjectVersionController.activate);
-router.post('/:id/versions/:versionId/improve-suggestion', ProjectController.saveImproveSuggestion);
 router.get('/:id/branches', ProjectVersionController.getBranches);
+
+// Version review routes (must come before generic /:id)
+router.post('/:id/versions/:versionId/review/start', ProjectVersionController.startReview);
+router.get('/:id/versions/:versionId/review/status', ProjectVersionController.getReviewStatus);
+router.post('/:id/versions/:versionId/review/answer', ProjectVersionController.submitAnswer);
+router.post('/:id/versions/:versionId/review/continue', ProjectVersionController.continueReview);
 
 // Generic project routes (must come after more specific routes)
 router.get('/:id', ProjectController.getStatus);
@@ -79,8 +80,6 @@ router.get('/:id/prds/:prdId/prototype', PRDController.getPrototype);
 router.get('/:id/prds/:prdId/prototype/preview', PRDController.previewPrototype);
 router.get('/:id/prds/:prdId/prototype/:filename', PRDController.getPrototypeFile);
 router.post('/:id/prds/:prdId/prototype/generate', PRDController.generatePrototype);
-// Version-based prototype preview (no database query)
-router.get('/:id/versions/:versionId/prototype/preview', PRDController.previewPrototypeByVersion);
 
 // MRD management routes
 router.post('/:id/mrd', MRDController.generateMRD);
@@ -108,4 +107,3 @@ router.delete('/:id/knowledge/files/:filename', KnowledgeUploadController.delete
 router.post('/:projectId/roles/:roleProfile/actions/:actionName/execute', RoleActionExecutionController.execute);
 
 export default router;
-
