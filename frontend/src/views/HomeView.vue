@@ -37,7 +37,7 @@
             <p class="text-xs text-muted-foreground">Today</p>
           </div>
           <button
-            class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:-translate-y-0.5 hover:shadow-md"
+            class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
             type="button"
           >
             Add Task

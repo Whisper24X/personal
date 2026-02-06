@@ -6,7 +6,7 @@
 随着 AI Agent 技术的成熟，研发团队需要一个统一平台来管理和执行 Agent 驱动的任务，避免各团队重复建设、能力分散。
 
 ### 1.2 目标
-建设 AINative 平台，通过 Agent CLI 执行任务，实现"任务-项目-流水线-知识"的统一管理与可观测。
+建设 AINative 平台，通过 Agent 执行器（集成 Codex/Cursor/Claude 等外部 Agent CLI）执行任务，实现"任务-项目-工作流-知识"的统一管理与可观测。
 
 ### 1.3 核心价值
 | 价值维度 | 描述 | 量化目标 |
@@ -15,18 +15,32 @@
 | 质量保障 | 提升执行质量与可追溯性 | 任务成功率 > 90% |
 | 能力复用 | 统一多 Agent 能力的复用与治理 | Skills/MCP 复用率 > 60% |
 
+### 1.4 术语与边界（结合当前仓库）
+| 术语 | 含义 | 边界说明 |
+|------|------|---------|
+| AINative Web UI | 平台的 Web 管理端 | 对应 `frontend/`（Vue 3 + Vite） |
+| AINative API | 平台对外 API 服务 | 对应 `backend/`（NestJS + TypeORM） |
+| AINative CLI | 平台命令行客户端（可选） | 用于触发/查看任务等；本仓库暂未实现独立 CLI（可后续补齐） |
+| Agent（外部） | Codex / Cursor Agent / Claude Code 等 | 可能以 CLI/SDK 形式存在，平台通过“适配层 + 执行器”调用 |
+| Agent 执行器（Runner/Executor） | 平台侧执行运行时 | 负责创建 worktree/sandbox、拉起外部 Agent、采集日志/产物并回传 |
+| Skill | 可复用能力模块 | 形态可为脚本/流程片段/模板；需支持版本与权限治理 |
+| MCP | 外部工具/协议的集成能力 | 形态可为连接器（HTTP/DB/CI 等）；需密钥与权限治理 |
+| 任务（Task） | 可执行需求单元 | 归属项目；由工作流模板实例化后执行 |
+| 工作流模板（WorkflowTemplate） | 可复用编排蓝图 | 定义工作节点类型、依赖关系、输入输出；发布后可被任务引用 |
+| 产物（Artifact） | 任务执行产生的可交付内容 | 如 diff、文件包、报告、预览链接等；受权限与生命周期控制 |
+
 ## 2. 目标用户与核心场景
 
 ### 2.1 用户角色
 | 角色 | 职责 | 核心诉求 |
 |------|------|---------|
 | 研发人员 | 创建并执行任务，查看日志与产物 | 快速完成任务、清晰的执行反馈 |
-| 项目负责人 | 配置项目、管理任务、调优流水线 | 项目进度可控、资源合理分配 |
+| 项目负责人 | 配置项目、管理任务、调优工作流 | 项目进度可控、资源合理分配 |
 | 平台管理员 | 配置全局模板、Skills/MCP 市场、权限与审计 | 平台稳定、安全合规 |
 
 ### 2.2 用户故事
 **US-001 研发人员创建任务**
-> 作为研发人员，我希望选择流水线模板并填写验收标准来创建任务，以便 Agent 能明确产出目标。
+> 作为研发人员，我希望选择工作流模板并填写验收标准来创建任务，以便 Agent 能明确产出目标。
 > - 验收标准：任务创建后状态为 Draft，包含模板快照和验收 Checklist。
 
 **US-002 研发人员查看执行结果**
@@ -42,8 +56,8 @@
 flowchart LR
   A[创建业务线与项目] --> B[配置 Agent/Skills/MCP]
   B --> C[创建任务]
-  C --> D[选择流水线模板]
-  D --> E[Agent CLI 执行]
+  C --> D[选择工作流模板]
+  D --> E[Agent 执行器执行]
   E --> F[产物与预览]
   F --> G[通知完成]
 ```
@@ -53,13 +67,16 @@ flowchart LR
 ### 3.1 MVP 范围
 | 模块 | 功能点 | 优先级 |
 |------|--------|--------|
-| 全局配置 | 流水线模板、Skills/MCP 市场与管理 | P0 |
+| 全局配置 | 工作流模板（默认模板）管理 | P0 |
+| Skills | Skills 市场与管理（安装、版本、启用） | P1 |
+| MCP | MCP 市场与管理（安装、配置、密钥） | P1 |
 | 业务线 | 增删改查与项目归属 | P0 |
 | 用户管理 | 增删改查、业务线归属、项目权限 | P0 |
 | 项目 | 增删改查、Git 地址、项目配置（Agent/Skills/MCP）、知识库（非 RAG） | P0 |
-| 任务 | 详情、通知、文件预览、部署预览 | P0 |
-| 流水线 | 节点与依赖、基础可视化编辑 | P0 |
-| Agent CLI | 对话展示、统一入口、支持 Codex/Cursor/Claude | P0 |
+| 任务 | 创建/详情/执行（手动触发） | P0 |
+| 任务体验 | 通知、文件预览、部署预览 | P1 |
+| 工作流 | 工作节点与依赖、基础可视化编辑 | P0 |
+| Agent 集成与执行器 | 对话展示、统一入口、支持 Codex/Cursor/Claude | P0 |
 | 执行与调度 | 触发、队列、并发、重试与超时 | P1 |
 | 运行时与资源 | 环境规格、隔离与配额 | P1 |
 | 权限与身份 | 登录/认证、RBAC、审计日志 | P0 |
@@ -85,8 +102,8 @@ flowchart LR
 | 业务线管理 | 高 | 高 | 低 | 业务组织模型基础能力 |
 | 用户管理与权限 | 高 | 中 | 中 | 需明确 RBAC 与审计边界 |
 | 项目管理与配置 | 高 | 高 | 低 | 与 Git 和 Agent 关联清晰 |
-| 任务与流水线 | 高 | 中 | 中 | 需明确状态机与重试策略 |
-| Agent CLI 统一入口 | 高 | 中 | 高 | 多 Agent 适配需规范接口 |
+| 任务与工作流 | 高 | 中 | 中 | 需明确状态机与重试策略 |
+| Agent 集成/执行器统一入口 | 高 | 中 | 高 | 多 Agent 适配需规范接口 |
 | 执行与调度 | 高 | 中 | 中 | 需要队列与并发治理策略 |
 | 运行时与资源隔离 | 高 | 中 | 高 | 容器化可落地，需成本评估 |
 | 可观测性与监控 | 高 | 中 | 中 | 依赖日志与指标体系建设 |
@@ -99,9 +116,9 @@ gantt
     title AINative MVP 落地计划
     dateFormat  YYYY-MM-DD
     section 第一阶段
-    项目/任务/流水线核心闭环    :a1, 2025-01-01, 30d
-    Agent CLI 基础集成          :a2, after a1, 20d
-    基础权限与认证              :a3, 2025-01-01, 25d
+    项目/任务/工作流核心闭环    :a1, 2026-02-05, 30d
+    Agent 集成基础能力          :a2, after a1, 20d
+    基础权限与认证              :a3, 2026-02-05, 25d
     section 第二阶段
     调度与队列                  :b1, after a2, 20d
     监控与可观测                :b2, after b1, 15d
@@ -115,16 +132,16 @@ gantt
 ### 4.3 阶段交付目标
 | 阶段 | 核心交付 | 验收标准 |
 |------|---------|---------|
-| 第一阶段 | 项目/任务/流水线/Agent CLI 核心闭环 + 基础权限 | 能完成一个完整任务的创建→执行→产出流程 |
+| 第一阶段 | 项目/任务/工作流/Agent 执行器核心闭环 + 基础权限 | 能完成一个完整任务的创建→执行→产出流程 |
 | 第二阶段 | 调度、监控、产物与版本、通知与审计 | 支持并发任务调度，执行过程可观测 |
-| 第三阶段 | 市场生态（Skills/MCP）与更高级编排 | Skills/MCP 可安装复用，流水线支持复杂 DAG |
+| 第三阶段 | 市场生态（Skills/MCP）与更高级编排 | Skills/MCP 可安装复用，工作流支持复杂 DAG |
 
 ## 5. 模块关联关系
 ### 5.1 关系说明（文本版）
 - 业务线包含多个项目，用户归属业务线。
-- 项目绑定 Git 地址、配置 Agent CLI、Skills/MCP 与知识库。
-- 任务归属项目，选择流水线模板并由 Agent CLI 执行。
-- 流水线由多个节点组成，节点调用 Skills/MCP 或 Agent。
+- 项目绑定 Git 地址、配置 Agent 执行器（Agent 集成）、Skills/MCP 与知识库。
+- 任务归属项目，选择工作流模板并由 Agent 执行器执行。
+- 工作流由多个工作节点组成，工作节点调用 Skills/MCP 或 Agent。
 - 执行产生产物与日志，进入可观测与通知模块。
 - 权限体系贯穿业务线、项目与任务的访问与执行。
 
@@ -134,12 +151,14 @@ flowchart LR
   BL["业务线"] --> P["项目"]
   U["用户"] --> BL
   P --> T["任务"]
-  T --> PL["流水线"]
-  PL --> N["节点"]
-  N --> A["Agent CLI"]
-  N --> S["Skills"]
-  N --> M["MCP"]
-  T --> ART["产物/日志"]
+  T --> WT["工作流模板"]
+  T --> WR["工作流实例 (WorkflowRun)"]
+  WT --> WR
+  WR --> NR["工作节点实例 (WorkNodeRun)"]
+  NR --> A["Agent 执行器"]
+  NR --> S["Skills"]
+  NR --> M["MCP"]
+  NR --> ART["产物/日志"]
   ART --> OBS["可观测/通知"]
   U --> R["权限/RBAC"]
   R --> P
@@ -156,12 +175,12 @@ flowchart TB
 
   subgraph API["API层"]
     API1["用户/业务线/项目/任务 API"]
-    API2["流水线/Skills/MCP API"]
+    API2["工作流/Skills/MCP API"]
     API3["监控/审计/通知 API"]
   end
 
   subgraph CORE["核心服务层"]
-    CORE1["任务与流水线编排"]
+    CORE1["任务与工作流编排"]
     CORE2["Agent 适配层"]
     CORE3["调度与队列"]
     CORE4["权限与审计"]
@@ -169,7 +188,7 @@ flowchart TB
   end
 
   subgraph RUNTIME["执行与运行时"]
-    RT1["Agent CLI 执行器"]
+    RT1["Agent 执行器 (Runner)"]
     RT2["Sandbox/容器"]
   end
 
@@ -224,7 +243,7 @@ flowchart TB
   2. 项目管理：CRUD（项目名称、Git 地址、默认分支）；项目归属业务线。
   3. 项目成员与权限：项目级成员管理（依赖 7.1 的 RBAC）。
   4. 项目配置（建议按“配置项组”呈现，降低理解成本）
-     - Agent CLI 配置：使用哪种 Agent（Codex/Cursor/Claude）、运行模式（本地/远程）、权限开关（网络/文件系统）。
+     - Agent 执行器配置：选择 Agent 适配器（Codex/Cursor/Claude）、运行模式（本地/远程）、权限开关（网络/文件系统）。
      - Skills/MCP 白名单：项目允许使用哪些 Skills/MCP（绑定版本）。
      - 资源与并发策略：并发上限、优先级（默认继承全局）。
   5. 知识库（非 RAG）：文档上传/分类/版本；可绑定到项目或任务（用于执行上下文）。
@@ -235,43 +254,46 @@ flowchart TB
 
 ### 7.3 资产与市场域（Template/Skills/MCP）
 - 目标：沉淀可复用能力（模板、技能、外部工具连接），降低重复劳动并实现治理。
-- 核心对象：流水线模板（PipelineTemplate）、Skill、MCP Connector、版本（Version）。
+- 核心对象：工作流模板（WorkflowTemplate）、Skill、MCP Connector、版本（Version）。
 - MVP 功能
-  1. 流水线模板：全局模板 CRUD、启用/禁用、版本；项目选择可用模板集合。
+  1. 工作流模板：全局模板 CRUD、启用/禁用、版本；项目选择可用模板集合。
   2. Skills 市场：浏览/搜索/详情；安装到项目（绑定版本）；项目内启用/禁用。
   3. MCP 市场：浏览/搜索/详情；安装到项目并配置参数（含密钥）。
 - 关键规则与边界
   - 版本锁定：任务运行时必须记录使用的模板/Skill/MCP 版本，保证可复现与可回滚。
   - 使用授权：成员是否能执行某个 Skill/MCP 需要与项目权限联动（避免越权使用高风险工具）。
-- 依赖：项目域（7.2）、权限域（7.1）、密钥管理（见第 10 节安全要求）。
+- 依赖：项目域（7.2）、权限域（7.1）、密钥管理（见第 12.1 节安全要求）。
 - 产出：可复用资产目录；项目安装清单（含版本）。
 
-### 7.4 任务与流水线域（Task/Pipeline）
-- 目标：把“需求”变成可执行的流水线实例，并能追踪每一步结果与责任边界。
-- 核心对象：任务（Task）、流水线实例（PipelineRun）、节点实例（NodeRun）、输入输出（IO）、执行记录（RunLog）。
+### 7.4 任务与工作流域（Task/Workflow）
+- 目标：把“需求”变成可执行的工作流实例，并能追踪每一步结果与责任边界。
+- 核心对象：任务（Task）、工作流实例（WorkflowRun）、工作节点实例（WorkNodeRun）、输入输出（IO）、执行记录（RunLog）。
+- 名词澄清
+  - 工作流模板（WorkflowTemplate）用于“设计/发布”；工作流实例（WorkflowRun）用于“一次运行/追踪执行历史”。
+  - 工作节点（模板级定义）描述“做什么”；工作节点实例（WorkNodeRun）记录“做得怎么样”（状态/日志/输入输出/产物）。
 - MVP 功能
   1. 任务管理
      - 创建任务：标题、描述、验收标准、关联项目、选择模板、可选分支/环境
-     - 查询与详情：状态、节点拓扑、日志、产物、执行历史
-  2. 流水线实例化
-     - 从模板生成一次运行实例（PipelineRun）
-     - 节点依赖与执行顺序（DAG）
-     - 节点级输入输出传递（至少支持“产物链接/变量”两类）
-  3. 节点类型（建议 MVP 最少落地 2 类，便于形成闭环）
-     - Agent 执行节点：基于对话/指令执行
-     - Skill 执行节点：复用脚本/流程片段
-     - MCP 调用节点：调用外部工具/服务（可选）
-     - 人工确认节点：发布/合并前拦截（可选）
+     - 查询与详情：状态、工作节点拓扑、日志、产物、执行历史
+  2. 工作流实例化
+     - 从模板生成一次运行实例（WorkflowRun）
+     - 工作节点依赖与执行顺序（DAG）
+     - 工作节点级输入输出传递（至少支持“产物链接/变量”两类）
+  3. 工作节点类型（建议 MVP 最少落地 2 类，便于形成闭环）
+     - Agent 执行工作节点：基于对话/指令执行
+     - Skill 执行工作节点：复用脚本/流程片段
+     - MCP 调用工作节点：调用外部工具/服务（可选）
+     - 人工确认工作节点：发布/合并前拦截（可选）
   4. 任务操作：执行、取消、重试（更细状态见第 8 节）。
-  5. 流水线模板编辑（基础）：节点增删改、依赖关系编辑、模板版本发布。
+  5. 工作流模板编辑（基础）：工作节点增删改、依赖关系编辑、模板版本发布。
 - 关键规则与边界
-  - 节点输入输出必须规范化（字段名、类型、是否敏感），否则编排与复用会失控。
+  - 工作节点输入输出必须规范化（字段名、类型、是否敏感），否则编排与复用会失控。
   - 任务“验收标准”建议作为结构化字段（可选：Checklist），便于 Agent 更稳定地产出结果。
 - 依赖：项目域（7.2）、资产域（7.3）、执行与调度（7.5）、可观测与产物（7.6）。
-- 产出：可追踪的执行链路（任务→流水线→节点→日志/产物）。
+- 产出：可追踪的执行链路（任务→工作流→工作节点→日志/产物）。
 
 ### 7.5 执行与调度域（Scheduler/Runtime/Git/Sandbox）
-- 目标：可靠、可控地运行流水线节点，解决并发、隔离、成本与安全问题。
+- 目标：可靠、可控地运行工作节点，解决并发、隔离、成本与安全问题。
 - 核心对象：执行请求（ExecutionRequest）、队列（Queue）、执行器（Executor）、运行环境（Runtime）、worktree、资源配额（Quota）。
 - MVP 功能
   1. 触发方式：手动触发（必须）；定时/事件触发（可选）。
@@ -298,7 +320,7 @@ flowchart TB
 - 目标：让任务结果“看得见、拿得到、追得回”，并及时通知相关人。
 - 核心对象：日志流（LogStream）、指标（Metrics）、产物（Artifact）、预览链接（PreviewLink）、通知事件（NotificationEvent）。
 - MVP 功能
-  1. 日志：流式输出、按节点聚合、支持检索与下载。
+  1. 日志：流式输出、按工作节点聚合、支持检索与下载。
   2. 产物
      - 文件产物：压缩包/目录/关键文件
      - 代码变更：diff、提交信息
@@ -321,17 +343,22 @@ flowchart TB
 | FR-002 | 用户 CRUD + 禁用/启用 | P0 | FR-001 | 1 |
 | FR-003 | 业务线 CRUD + 负责人 | P0 | FR-001 | 1 |
 | FR-004 | 项目 CRUD（含 Git 地址/默认分支/归属业务线） | P0 | FR-003 | 1 |
-| FR-005 | 项目成员与角色授权 | P1 | FR-002, FR-004 | 1 |
+| FR-005 | 项目成员与角色授权 | P0 | FR-002, FR-004 | 1 |
 | FR-006 | 项目配置（Agent/Skills/MCP/资源与并发策略） | P0 | FR-004 | 1 |
-| FR-007 | 流水线模板 CRUD + 版本 + 项目选择 | P0 | FR-004 | 1 |
+| FR-007 | 工作流模板 CRUD + 版本 + 项目选择 | P0 | FR-004 | 1 |
 | FR-008 | 任务创建（选择模板，填写验收标准） | P0 | FR-004, FR-007 | 1 |
 | FR-009 | 任务触发执行（手动）+ 取消/重试 | P0 | FR-008 | 1 |
-| FR-010 | 节点执行（至少支持 Agent 节点与日志流式展示） | P0 | FR-009 | 1 |
+| FR-010 | 工作节点执行（至少支持 Agent 工作节点与日志流式展示） | P0 | FR-009 | 1 |
 | FR-011 | 产物列表 + 文件预览（diff/文件树） | P1 | FR-010 | 2 |
 | FR-012 | 通知（成功/失败/超时） | P1 | FR-010 | 2 |
 | FR-013 | 队列与并发（基础：全局+项目上限） | P1 | FR-009 | 2 |
 | FR-014 | sandbox/worktree（基础隔离 + 清理策略） | P1 | FR-010 | 2 |
 | FR-015 | 审计日志（关键操作/访问/执行） | P2 | FR-001 | 2 |
+| FR-016 | 可观测性（基础指标/检索/告警占位） | P1 | FR-010, FR-013 | 2 |
+| FR-017 | Skills 市场（浏览/安装/版本锁定/启用禁用） | P1 | FR-004, FR-006 | 3 |
+| FR-018 | MCP 市场（浏览/安装/配置/密钥） | P1 | FR-004, FR-006 | 3 |
+| FR-019 | 知识库（文档上传/版本/绑定项目或任务） | P1 | FR-004 | 3 |
+| FR-020 | 工作流可视化编辑（增强：校验/拖拽/模板发布） | P1 | FR-007 | 3 |
 
 **依赖关系图：**
 ```mermaid
@@ -342,16 +369,24 @@ flowchart LR
     FR002 --> FR005[FR-005 成员授权]
     FR004 --> FR005
     FR004 --> FR006[FR-006 项目配置]
-    FR004 --> FR007[FR-007 流水线模板]
+    FR004 --> FR007[FR-007 工作流模板]
     FR004 --> FR008[FR-008 任务创建]
     FR007 --> FR008
     FR008 --> FR009[FR-009 任务执行]
-    FR009 --> FR010[FR-010 节点执行]
+    FR009 --> FR010[FR-010 工作节点执行]
     FR010 --> FR011[FR-011 产物预览]
     FR010 --> FR012[FR-012 通知]
     FR009 --> FR013[FR-013 队列并发]
     FR010 --> FR014[FR-014 sandbox]
     FR001 --> FR015[FR-015 审计日志]
+    FR010 --> FR016[FR-016 可观测性]
+    FR013 --> FR016
+    FR004 --> FR017[FR-017 Skills 市场]
+    FR006 --> FR017
+    FR004 --> FR018[FR-018 MCP 市场]
+    FR006 --> FR018
+    FR004 --> FR019[FR-019 知识库]
+    FR007 --> FR020[FR-020 工作流编辑增强]
 ```
 
 ## 8. 状态机与错误分类
@@ -377,30 +412,32 @@ stateDiagram-v2
     Paused --> Canceled: 取消
 ```
 
+> 说明：Paused / WaitingInput 为可选扩展状态，用于“人工确认工作节点 / 需要用户补充输入”的交互式工作流；如 MVP 不做人工交互，可先不实现这两种状态。
+
 | 状态 | 触发事件 | 守卫条件 | 副作用 |
 |------|---------|---------|--------|
-| Draft → Ready | 用户提交 | 必填字段完整、模板有效 | 生成流水线实例 |
+| Draft → Ready | 用户提交 | 必填字段完整、模板有效 | 生成工作流实例 |
 | Ready → Queued | 系统调度 | 无阻塞依赖 | 加入执行队列 |
 | Queued → Running | 调度器分配 | 资源可用、并发未满 | 创建 sandbox/worktree |
-| Running → Succeeded | 所有节点成功 | 无 | 发送成功通知、归档产物 |
-| Running → Failed | 任一节点失败 | 重试次数耗尽 | 发送失败通知、保留现场 |
+| Running → Succeeded | 所有工作节点成功 | 无 | 发送成功通知、归档产物 |
+| Running → Failed | 任一工作节点失败 | 重试次数耗尽 | 发送失败通知、保留现场 |
 | Running → Timeout | 超时触发 | 超过配置时限 | 强制终止、发送通知 |
 
-### 8.2 流水线/节点状态机
+### 8.2 工作流/工作节点状态机
 ```mermaid
 stateDiagram-v2
     direction LR
     [*] --> NotStarted
     NotStarted --> Running: 开始执行
-    Running --> Succeeded: 全部节点成功
-    Running --> Failed: 存在节点失败
+    Running --> Succeeded: 全部工作节点成功
+    Running --> Failed: 存在工作节点失败
     Running --> Canceled: 用户取消
 ```
 
-**节点状态：**
+**工作节点状态：**
 | 状态 | 说明 |
 |------|------|
-| Pending | 等待前置节点完成 |
+| Pending | 等待前置工作节点完成 |
 | Running | 正在执行 |
 | Succeeded | 执行成功 |
 | Failed | 执行失败 |
@@ -422,42 +459,57 @@ stateDiagram-v2
 | 未知错误 | UNKNOWN_ | 否 | 记录详细日志、告警 |
 
 ## 9. 数据模型
+> 说明：当前 `backend/` 主要是 NestJS boilerplate（已包含 user/role/status/session/file 等基础实体）。
+> 本节的 BusinessLine/Project/Task/Workflow 等实体为 AINative 目标模型，需要在后续阶段新增实现。
 
 ### 9.1 ER 图
 ```mermaid
 erDiagram
     User ||--o{ Membership : has
+    Role ||--o{ User : role
+    Status ||--o{ User : status
     User }o--|| BusinessLine : belongs_to
     BusinessLine ||--o{ Project : contains
     Project ||--o{ Membership : has
     Project ||--o{ Task : contains
     Project ||--o{ ProjectConfig : has
     Project ||--o{ KnowledgeDoc : has
-    Task ||--|| PipelineRun : creates
-    Task }o--|| PipelineTemplate : uses
-    PipelineRun ||--o{ NodeRun : contains
-    NodeRun ||--o{ Artifact : produces
-    NodeRun ||--o{ LogStream : generates
+    Task ||--o{ WorkflowRun : runs
+    Task }o--|| WorkflowTemplate : uses
+    WorkflowRun ||--o{ WorkNodeRun : contains
+    WorkNodeRun ||--o{ Artifact : produces
+    WorkNodeRun ||--o{ LogStream : generates
     Skill ||--o{ ProjectSkill : installed_in
     Project ||--o{ ProjectSkill : has
     MCP ||--o{ ProjectMCP : installed_in
     Project ||--o{ ProjectMCP : has
 
     User {
-        uuid id PK
-        string username UK
+        int id PK
         string email UK
         string password_hash
-        enum status
+        int role_id FK
+        int status_id FK
         uuid business_line_id FK
         timestamp created_at
         timestamp updated_at
+        timestamp deleted_at
+    }
+
+    Role {
+        int id PK
+        string name
+    }
+
+    Status {
+        int id PK
+        string name
     }
 
     BusinessLine {
         uuid id PK
         string name
-        uuid owner_id FK
+        int owner_id FK
         timestamp created_at
         timestamp updated_at
     }
@@ -468,6 +520,44 @@ erDiagram
         uuid business_line_id FK
         string git_url
         string default_branch
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    Membership {
+        uuid id PK
+        int user_id FK
+        uuid project_id FK
+        string role
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    ProjectConfig {
+        uuid id PK
+        uuid project_id FK
+        jsonb config
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    KnowledgeDoc {
+        uuid id PK
+        uuid project_id FK
+        string name
+        string storage_key
+        int size
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    WorkflowTemplate {
+        uuid id PK
+        string name
+        text description
+        jsonb definition
+        int version
+        boolean enabled
         timestamp created_at
         timestamp updated_at
     }
@@ -485,18 +575,19 @@ erDiagram
         timestamp updated_at
     }
 
-    PipelineRun {
+    WorkflowRun {
         uuid id PK
         uuid task_id FK
+        int attempt
         jsonb template_snapshot
         enum status
         timestamp started_at
         timestamp finished_at
     }
 
-    NodeRun {
+    WorkNodeRun {
         uuid id PK
-        uuid pipeline_run_id FK
+        uuid workflow_run_id FK
         string node_type
         enum status
         jsonb input
@@ -507,67 +598,117 @@ erDiagram
 
     Artifact {
         uuid id PK
-        uuid node_run_id FK
+        uuid work_node_run_id FK
         string type
-        string s3_key
+        string storage_key
         int size
         timestamp created_at
         timestamp expires_at
+    }
+
+    LogStream {
+        uuid id PK
+        uuid work_node_run_id FK
+        string level
+        text message
+        timestamp created_at
+    }
+
+    Skill {
+        uuid id PK
+        string name
+        int version
+        boolean enabled
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    ProjectSkill {
+        uuid id PK
+        uuid project_id FK
+        uuid skill_id FK
+        int skill_version
+        boolean enabled
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    MCP {
+        uuid id PK
+        string name
+        int version
+        boolean enabled
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    ProjectMCP {
+        uuid id PK
+        uuid project_id FK
+        uuid mcp_id FK
+        jsonb config
+        boolean enabled
+        timestamp created_at
+        timestamp updated_at
     }
 ```
 
 ### 9.2 TypeORM 实体定义示例
 
-**用户实体：**
+**用户实体（基于当前 backend 模板，含 AINative 扩展点）：**
+> 说明：`backend/` 已存在 `UserEntity`（本文仅摘录关键字段与新增扩展点，完整实现以仓库代码为准）。
 ```typescript
-// src/modules/user/entities/user.entity.ts
+// backend/src/users/infrastructure/persistence/relational/entities/user.entity.ts
 
-@Entity('users')
-export class User {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+@Entity({ name: 'user' })
+export class UserEntity extends EntityRelationalHelper {
+  @PrimaryGeneratedColumn()
+  id: number;
 
-  @Column({ unique: true })
-  username: string;
+  @Column({ type: String, unique: true, nullable: true })
+  email: string | null;
 
-  @Column({ unique: true })
-  email: string;
+  @ManyToOne(() => RoleEntity, { eager: true })
+  role?: RoleEntity | null;
 
-  @Column({ name: 'password_hash' })
-  passwordHash: string;
+  @ManyToOne(() => StatusEntity, { eager: true })
+  status?: StatusEntity;
 
-  @Column({ type: 'enum', enum: UserStatus, default: UserStatus.ACTIVE })
-  status: UserStatus;
-
-  @ManyToOne(() => BusinessLine)
+  // AINative 扩展：用户归属业务线（MVP 可先允许为空）
+  @ManyToOne(() => BusinessLineEntity, { nullable: true })
   @JoinColumn({ name: 'business_line_id' })
-  businessLine: BusinessLine;
+  businessLine?: BusinessLineEntity | null;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn()
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn()
   updatedAt: Date;
+
+  @DeleteDateColumn()
+  deletedAt: Date;
 }
 ```
 
 **任务实体：**
 ```typescript
-// src/modules/task/entities/task.entity.ts
+// backend/src/tasks/infrastructure/persistence/relational/entities/task.entity.ts
 
 export enum TaskStatus {
   DRAFT = 'draft',
   READY = 'ready',
   QUEUED = 'queued',
   RUNNING = 'running',
+  PAUSED = 'paused',
+  WAITING_INPUT = 'waiting_input',
   SUCCEEDED = 'succeeded',
   FAILED = 'failed',
   TIMEOUT = 'timeout',
   CANCELED = 'canceled',
 }
 
-@Entity('tasks')
-export class Task {
+@Entity({ name: 'task' })
+export class TaskEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -575,32 +716,32 @@ export class Task {
   title: string;
 
   @Column('text', { nullable: true })
-  description: string;
+  description: string | null;
 
-  @Column('jsonb', { name: 'acceptance_criteria', default: [] })
+  @Column('jsonb', { default: [] })
   acceptanceCriteria: string[];
 
   @Column({ type: 'enum', enum: TaskStatus, default: TaskStatus.DRAFT })
   status: TaskStatus;
 
   @Column({ nullable: true })
-  branch: string;
+  branch: string | null;
 
   @ManyToOne(() => Project, (project) => project.tasks, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'project_id' })
+  @JoinColumn()
   project: Project;
 
-  @ManyToOne(() => PipelineTemplate)
-  @JoinColumn({ name: 'template_id' })
-  template: PipelineTemplate;
+  @ManyToOne(() => WorkflowTemplate)
+  @JoinColumn()
+  template: WorkflowTemplate;
 
-  @OneToOne(() => PipelineRun, (run) => run.task, { cascade: true })
-  pipelineRun: PipelineRun;
+  @OneToMany(() => WorkflowRun, (run) => run.task, { cascade: true })
+  workflowRuns: WorkflowRun[];
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn()
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn()
   updatedAt: Date;
 }
 ```
@@ -608,29 +749,32 @@ export class Task {
 ### 9.3 核心实体字段说明
 | 实体 | 核心字段 | PostgreSQL 索引 |
 |------|---------|----------------|
-| User | id, username, email, status, business_line_id | `UNIQUE(username)`, `UNIQUE(email)` |
+| User | id, email, role_id, status_id, business_line_id | `UNIQUE(email)`, `INDEX(business_line_id)` |
 | Project | id, name, business_line_id, git_url | `INDEX(business_line_id)`, `INDEX(name)` |
 | Task | id, project_id, status, created_at | `INDEX(project_id, status)`, `INDEX(created_at DESC)` |
-| PipelineRun | id, task_id, status | `UNIQUE(task_id)`, `INDEX(status)` |
-| NodeRun | id, pipeline_run_id, status | `INDEX(pipeline_run_id)`, `INDEX(status)` |
-| Artifact | id, node_run_id, type, expires_at | `INDEX(node_run_id)`, `INDEX(expires_at)` |
+| WorkflowRun | id, task_id, attempt, status | `UNIQUE(task_id, attempt)`, `INDEX(task_id)`, `INDEX(status)` |
+| WorkNodeRun | id, workflow_run_id, status | `INDEX(workflow_run_id)`, `INDEX(status)` |
+| Artifact | id, work_node_run_id, type, expires_at | `INDEX(work_node_run_id)`, `INDEX(expires_at)` |
 
 ### 9.4 数据库迁移
 
 使用 TypeORM 迁移管理数据库变更：
 
 ```bash
+# 在 backend/ 目录下执行
+cd backend
+
 # 生成迁移
-pnpm --filter backend typeorm migration:generate -n CreateTaskTable
+npm run migration:generate -- -n CreateTaskTable
 
 # 运行迁移
-pnpm --filter backend typeorm migration:run
+npm run migration:run
 
 # 回滚迁移
-pnpm --filter backend typeorm migration:revert
+npm run migration:revert
 ```
 
-### 9.3 权限矩阵
+### 9.5 权限矩阵
 | 权限范围 | 平台管理员 | 业务线负责人 | 项目负责人 | 成员 | 访客 |
 |---------|-----------|-------------|-----------|------|------|
 | 全局配置/市场 | ✅ | ❌ | ❌ | ❌ | ❌ |
@@ -647,7 +791,7 @@ pnpm --filter backend typeorm migration:revert
 
 ### 10.1 技术选型（基于当前项目）
 
-本项目采用 **Monorepo** 架构，前后端分离，技术栈如下：
+本项目为 **Monorepo-style** 目录结构（`frontend/` + `backend/`），前后端分离（当前依赖安装与脚本运行按目录独立进行），技术栈如下：
 
 #### 前端技术栈
 | 类别 | 技术 | 版本 | 说明 |
@@ -676,11 +820,15 @@ pnpm --filter backend typeorm migration:revert
 | 邮件 | Nodemailer | - | 通知邮件发送 |
 | 国际化 | nestjs-i18n | - | 多语言支持 |
 
+#### 现有代码可复用点（结合当前仓库）
+- `backend/` 已包含基础模块：认证（`backend/src/auth`）、用户（`backend/src/users`）、角色/状态（`backend/src/roles`、`backend/src/statuses`）、会话（`backend/src/session`）、邮件（`backend/src/mail`、`backend/src/mailer`）、文件存储（`backend/src/files`）。
+- 对应需求映射：FR-001/FR-002 可直接在现有实现上扩展；产物/附件能力可复用 Files 模块的 S3 上传与预签名 URL；通知可复用 Mail/Mailer。
+
 #### 基础设施
 | 类别 | 技术 | 说明 |
 |------|------|------|
 | 容器化 | Docker + Docker Compose | 开发与部署环境一致 |
-| 包管理 | pnpm | Monorepo 工作空间支持 |
+| 包管理 | pnpm（frontend）/ npm（backend，现状） | 当前按目录独立安装依赖；可后续统一为 pnpm workspace |
 | Git Hooks | Husky + Commitlint | 提交规范与自动检查 |
 | 代码生成 | Hygen | 模块/组件脚手架 |
 
@@ -689,24 +837,24 @@ pnpm --filter backend typeorm migration:revert
 flowchart TB
     subgraph Client["客户端"]
         Web["Web App (Vue 3)"]
-        CLI["Agent CLI"]
+        CLI["AINative CLI (可选)"]
     end
 
     subgraph Gateway["API 网关层"]
         API["NestJS API Server"]
-        WS["WebSocket (日志流)"]
+        SSE["SSE (日志流)"]
     end
 
     subgraph Services["核心服务"]
         Auth["认证服务 (Passport/JWT)"]
         Task["任务服务"]
-        Pipeline["流水线服务"]
+        Workflow["工作流服务"]
         Agent["Agent 适配服务"]
         Artifact["产物服务"]
     end
 
     subgraph Runtime["执行运行时"]
-        Executor["任务执行器"]
+        Executor["Agent 执行器 (Runner/Executor)"]
         Sandbox["Sandbox/容器"]
         Worktree["Git Worktree"]
     end
@@ -719,10 +867,11 @@ flowchart TB
 
     Web --> API
     CLI --> API
-    Web --> WS
+    Web --> SSE
+    SSE --> API
     API --> Auth
     API --> Task
-    API --> Pipeline
+    API --> Workflow
     API --> Agent
     API --> Artifact
     Task --> Executor
@@ -730,12 +879,115 @@ flowchart TB
     Executor --> Worktree
     Agent --> Sandbox
     Task --> PG
-    Pipeline --> PG
+    Workflow --> PG
     Artifact --> S3
     Executor --> Redis
 ```
 
+> 说明：Redis 在当前 `backend/docker-compose.yaml` 中为可选项（默认注释），主要用于队列/缓存（第二阶段能力）。
+
+### 10.2.1 执行拓扑与进程边界（API vs Runner）
+本项目的核心难点不在 CRUD，而在“长时间运行的任务执行”如何与 API 服务解耦。建议在架构上明确两类进程（或服务）：
+
+| 模块/能力 | 建议归属 | 主要职责 | 备注 |
+|---|---|---|---|
+| 认证/RBAC/审计 | API Server | 登录、鉴权、授权、审计落库 | 当前 `backend/` 已具备雏形 |
+| 业务元数据（业务线/项目/任务/模板） | API Server | CRUD、状态机流转、权限校验 | 任务执行只写“请求”，不做重活 |
+| 调度与队列 | API Server（+ Redis 可选） | 入队、并发控制、重试/超时策略 | MVP 可先不引入 Redis，后续再加 |
+| Agent 执行器（Runner/Executor） | Runner | 创建 sandbox/worktree、拉起外部 Agent CLI、采集日志/产物 | **长耗时/高资源消耗**，应与 API 解耦 |
+| Agent 适配层（Codex/Cursor/Claude） | Runner | 将不同 Agent 的调用方式统一为一个接口 | 可与 Runner 同进程/同容器 |
+| 产物上传与预览 | Runner（上传）+ API（鉴权/签名） | Runner 产出并上传；API 负责权限与下载签名 | 可复用 `backend/src/files` |
+| 日志流（SSE） | API Server | 向 Web 推送任务日志/状态 | 多实例时需要跨进程日志通道（后续） |
+
+MVP 的折中方案（可行，但要写清楚限制）：
+- 第一阶段可以先把 Runner 以内嵌模块的形式跑在 API 进程里（便于快速 demo），但需要明确限制：
+  - API 进程会被长任务占用（影响 P99）
+  - 无法水平扩展
+  - 多任务并发/隔离能力有限
+
+### 10.2.2 部署架构（建议输出多套方案）
+#### 方案 A（第一阶段 Demo）：单体 API + 内嵌 Runner
+适用于快速验证闭环（创建任务 → 执行 → 产物/日志），不建议长期演进使用。
+
+```mermaid
+flowchart TB
+  subgraph DevHost["开发机/单机"]
+    FE["frontend (Vite)"]
+    API["backend (NestJS)\nAPI + Runner(内嵌)"]
+    PG["PostgreSQL (docker)"]
+    Mail["Maildev (docker)"]
+    FS["File Driver: local 或 S3"]
+  end
+
+  FE --> API
+  API --> PG
+  API --> Mail
+  API --> FS
+  API --> Git["Git Remote / Repo Access"]
+  API --> AgentCLI["外部 Agent CLI (Codex/Cursor/Claude)"]
+```
+
+#### 方案 B（推荐演进）：API + Runner Worker（可选 Redis）
+适用于并发、隔离、稳定性要求更高的场景；与“第二阶段调度/队列”天然对齐。
+
+```mermaid
+flowchart TB
+  subgraph Runtime["运行环境 (Docker/K8s)"]
+    FE["frontend (Vite build)"]
+    API["API Server (NestJS)"]
+    Runner["Runner Worker\n(Executor + Agent adapters)"]
+    PG["PostgreSQL"]
+    Redis["Redis (可选)"]
+    FS["S3/MinIO 或 local driver"]
+  end
+
+  FE --> API
+  API --> PG
+  API --> Redis
+  Runner --> Redis
+  Runner --> PG
+  Runner --> FS
+  Runner --> Git["Git Remote / Repo Access"]
+  Runner --> AgentCLI["外部 Agent CLI (Codex/Cursor/Claude)"]
+  API --> FS
+```
+
+#### 方案 C（最快落地）：AINative CLI 拉取任务，在开发机执行（Pull Runner）
+适用于“任务执行依赖本地代码仓库/本地凭据”的场景：平台负责任务管理、权限、产物汇总；执行由运行在开发机的 AINative CLI 完成。
+
+```mermaid
+flowchart TB
+  subgraph DevHost["开发机"]
+    Repo["项目代码仓库"]
+    AINCLI["AINative CLI\n(Pull Runner)"]
+    AgentCLI["外部 Agent CLI\n(Codex/Cursor/Claude)"]
+  end
+
+  subgraph Platform["平台 (Server)"]
+    FE["Web UI"]
+    API["API Server (NestJS)"]
+    PG["PostgreSQL"]
+    FS["S3/MinIO 或 local driver"]
+  end
+
+  FE --> API
+  AINCLI -->|"pull task + upload logs/artifacts"| API
+  API --> PG
+  API --> FS
+  AINCLI --> Repo
+  AINCLI --> AgentCLI
+```
+
+### 10.2.3 推荐路线（结合当前仓库现状）
+- 第一阶段（建议二选一，取决于你的执行场景）：
+  - 方案 A：更像“平台托管执行”，便于统一治理，但需要平台侧拿到 Git/密钥/运行环境。
+  - 方案 C：更像“Agent CLI 作为执行工作节点”，最快落地，天然利用开发机上的仓库与凭据。
+  - 无论选哪种，都建议把 Runner 接口、日志通道、产物上传接口先抽象出来，方便第二阶段迁移。
+- 第二阶段：引入 Redis 队列与独立 Runner Worker（方案 B），把长任务完全从 API 进程剥离出来，并补齐并发、重试、资源配额等治理能力。
+
 ### 10.3 Agent 适配层设计
+> 说明：当前仓库尚未实现独立的 Agent 模块与 Runner Worker；本节为 AINative 规划设计（建议新增 `backend/src/agent` 等模块）。
+> 第一阶段可先用“内嵌 Runner”跑通闭环，第二阶段再拆分为独立 Worker（见 10.2.3）。
 
 基于 NestJS 的模块化架构，Agent 适配层采用**策略模式**实现：
 
@@ -767,7 +1019,7 @@ flowchart TB
 
 **统一接口定义（TypeScript）：**
 ```typescript
-// src/modules/agent/interfaces/agent-executor.interface.ts
+// backend/src/agent/interfaces/agent-executor.interface.ts
 
 export interface ExecuteRequest {
   prompt: string;                    // 执行指令
@@ -801,7 +1053,7 @@ export interface AgentPermissions {
 
 **NestJS 模块结构：**
 ```typescript
-// src/modules/agent/agent.module.ts
+// backend/src/agent/agent.module.ts
 
 @Module({
   imports: [ConfigModule, HttpModule],
@@ -818,14 +1070,16 @@ export class AgentModule {}
 ```
 
 ### 10.4 数据库设计
+> 说明：当前 `backend/` 仅包含 user/role/status/session/file 等基础实体；Task/Project/Workflow 等实体为 AINative 新增设计。
+> 下面代码片段为建议实现方式与目录位置示例。
 
 基于 TypeORM 的实体定义示例：
 
 ```typescript
-// src/modules/task/entities/task.entity.ts
+// backend/src/tasks/infrastructure/persistence/relational/entities/task.entity.ts
 
-@Entity('tasks')
-export class Task {
+@Entity({ name: 'task' })
+export class TaskEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -833,7 +1087,7 @@ export class Task {
   title: string;
 
   @Column('text', { nullable: true })
-  description: string;
+  description: string | null;
 
   @Column('jsonb', { default: [] })
   acceptanceCriteria: string[];
@@ -846,30 +1100,30 @@ export class Task {
   status: TaskStatus;
 
   @Column({ nullable: true })
-  branch: string;
+  branch: string | null;
 
   @ManyToOne(() => Project, (project) => project.tasks)
-  @JoinColumn({ name: 'project_id' })
+  @JoinColumn()
   project: Project;
 
-  @ManyToOne(() => PipelineTemplate)
-  @JoinColumn({ name: 'template_id' })
-  template: PipelineTemplate;
+  @ManyToOne(() => WorkflowTemplate)
+  @JoinColumn()
+  template: WorkflowTemplate;
 
-  @OneToOne(() => PipelineRun, (run) => run.task)
-  pipelineRun: PipelineRun;
+  @OneToMany(() => WorkflowRun, (run) => run.task)
+  workflowRuns: WorkflowRun[];
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn()
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn()
   updatedAt: Date;
 }
 ```
 
 ### 10.5 前端架构
 
-基于 Vue 3 的模块化目录结构：
+建议演进为如下模块化目录结构（当前 `frontend/src/` 仍是脚手架模板结构）：
 
 ```
 frontend/src/
@@ -884,14 +1138,14 @@ frontend/src/
 ├── composables/                 # 组合式函数
 │   ├── useAuth.ts
 │   ├── useTask.ts
-│   └── useWebSocket.ts
+│   └── useTaskStream.ts
 ├── layouts/                     # 布局组件
 │   └── AppShell.vue
 ├── modules/                     # 功能模块
 │   ├── auth/                   # 认证模块
 │   ├── project/                # 项目管理
 │   ├── task/                   # 任务管理
-│   ├── pipeline/               # 流水线
+│   ├── workflow/               # 工作流
 │   └── settings/               # 设置
 ├── router/                      # 路由配置
 ├── stores/                      # Pinia 状态
@@ -909,7 +1163,7 @@ frontend/src/
 
 **后端实现（NestJS）：**
 ```typescript
-// src/modules/task/task.controller.ts
+// backend/src/tasks/task.controller.ts
 
 @Controller('tasks')
 export class TaskController {
@@ -928,14 +1182,17 @@ export class TaskController {
 
 **前端实现（Vue 3）：**
 ```typescript
-// src/composables/useTaskStream.ts
+// frontend/src/composables/useTaskStream.ts
 
 export function useTaskStream(taskId: string) {
   const logs = ref<LogEntry[]>([]);
   const status = ref<TaskStatus>('pending');
 
   const connect = () => {
-    const eventSource = new EventSource(`/api/v1/tasks/${taskId}/stream`);
+    // Web UI 建议使用 Cookie 认证；跨域时需要后端开启 CORS credentials 支持
+    const eventSource = new EventSource(`/api/v1/tasks/${taskId}/stream`, {
+      withCredentials: true,
+    });
 
     eventSource.addEventListener('log', (e) => {
       logs.value.push(JSON.parse(e.data));
@@ -957,6 +1214,7 @@ export function useTaskStream(taskId: string) {
 ```
 
 ## 11. API 设计
+> 说明：当前 `backend/` 已实现认证/用户/文件等基础能力；本章的 business-lines/projects/tasks/workflows 等接口为 AINative 目标 API 设计，需要后续新增控制器与服务实现。
 
 ### 11.1 RESTful 资源路径
 
@@ -964,7 +1222,7 @@ export function useTaskStream(taskId: string) {
 
 | 模块 | 方法 | 路径 | 说明 |
 |------|------|------|------|
-| **认证** | POST | /api/v1/auth/login | 用户登录 |
+| **认证** | POST | /api/v1/auth/email/login | 用户登录（账号密码） |
 | | POST | /api/v1/auth/logout | 用户登出 |
 | | GET | /api/v1/auth/me | 获取当前用户 |
 | **用户** | GET | /api/v1/users | 用户列表 |
@@ -993,16 +1251,29 @@ export function useTaskStream(taskId: string) {
 | | POST | /api/v1/tasks/:id/cancel | 取消执行 |
 | | POST | /api/v1/tasks/:id/retry | 重试执行 |
 | | GET | /api/v1/tasks/:id/stream | 日志流（SSE） |
-| **流水线** | GET | /api/v1/tasks/:id/pipeline | 流水线详情 |
-| | GET | /api/v1/pipeline-runs/:id/nodes | 节点列表 |
-| | GET | /api/v1/nodes/:id/logs | 节点日志 |
+| **工作流** | GET | /api/v1/tasks/:id/workflow-runs | 执行历史（WorkflowRun 列表） |
+| | GET | /api/v1/workflow-runs/:id | 某次运行详情（状态/拓扑/汇总） |
+| | GET | /api/v1/workflow-runs/:id/work-node-runs | 工作节点实例列表（WorkNodeRun） |
+| | GET | /api/v1/work-node-runs/:id/logs | 工作节点日志 |
 | **产物** | GET | /api/v1/tasks/:id/artifacts | 产物列表 |
 | | GET | /api/v1/artifacts/:id | 产物详情 |
 | | GET | /api/v1/artifacts/:id/download | 产物下载（预签名 URL） |
-| **模板** | GET | /api/v1/pipeline-templates | 模板列表 |
-| | POST | /api/v1/pipeline-templates | 创建模板 |
-| | GET | /api/v1/pipeline-templates/:id | 模板详情 |
-| | PATCH | /api/v1/pipeline-templates/:id | 更新模板 |
+| **模板** | GET | /api/v1/workflow-templates | 模板列表 |
+| | POST | /api/v1/workflow-templates | 创建模板 |
+| | GET | /api/v1/workflow-templates/:id | 模板详情 |
+| | PATCH | /api/v1/workflow-templates/:id | 更新模板 |
+| **Skills** | GET | /api/v1/skills | Skills 列表（市场） |
+| | GET | /api/v1/skills/:id | Skill 详情 |
+| | POST | /api/v1/projects/:id/skills | 项目安装 Skill（绑定版本） |
+| | PATCH | /api/v1/projects/:id/skills/:skillId | 启用/禁用/变更版本 |
+| **MCP** | GET | /api/v1/mcps | MCP 列表（市场） |
+| | GET | /api/v1/mcps/:id | MCP 详情 |
+| | POST | /api/v1/projects/:id/mcps | 项目安装 MCP（绑定版本） |
+| | PATCH | /api/v1/projects/:id/mcps/:mcpId | 更新配置（含密钥引用） |
+| **知识库** | GET | /api/v1/projects/:id/knowledge-docs | 文档列表 |
+| | POST | /api/v1/projects/:id/knowledge-docs | 上传文档/创建记录 |
+| | GET | /api/v1/knowledge-docs/:id | 文档详情 |
+| | GET | /api/v1/knowledge-docs/:id/download | 下载（预签名 URL） |
 
 ### 11.2 认证方式
 
@@ -1010,17 +1281,17 @@ export function useTaskStream(taskId: string) {
 
 | 场景 | 认证方式 | 说明 |
 |------|---------|------|
-| Web UI | Cookie Session + JWT | HttpOnly Cookie 存储 Token |
+| Web UI | JWT（Bearer 或 Cookie） | 当前 `backend/` 登录接口返回 token/refreshToken；如需原生 EventSource（SSE）携带认证信息，建议改为 HttpOnly Cookie |
 | API 调用 | Bearer Token | Authorization: Bearer {token} |
 | CLI/自动化 | API Key | X-API-Key: {key} |
 
 **JWT Payload 结构：**
 ```typescript
 interface JwtPayload {
-  sub: string;           // 用户 ID
-  username: string;
+  sub: number;           // 用户 ID（当前 backend 模板为 number）
+  email?: string;
   roles: string[];       // 角色列表
-  businessLineId: string;
+  businessLineId?: string;
   iat: number;           // 签发时间
   exp: number;           // 过期时间
 }
@@ -1030,7 +1301,7 @@ interface JwtPayload {
 
 **创建任务 DTO：**
 ```typescript
-// src/modules/task/dto/create-task.dto.ts
+// backend/src/tasks/dto/create-task.dto.ts
 
 export class CreateTaskDto {
   @IsString()
@@ -1056,9 +1327,9 @@ export class CreateTaskDto {
 ```
 
 **请求示例：**
-```json
-POST /api/v1/projects/proj_001/tasks
-Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+```http
+POST /api/v1/projects/3fa85f64-5717-4562-b3fc-2c963f66afa6/tasks
+Authorization: Bearer <jwt>
 Content-Type: application/json
 
 {
@@ -1069,7 +1340,7 @@ Content-Type: application/json
     "返回 JWT Token",
     "Token 有效期 24 小时"
   ],
-  "templateId": "tpl_001",
+  "templateId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
   "branch": "feature/login"
 }
 ```
@@ -1077,41 +1348,43 @@ Content-Type: application/json
 **响应示例：**
 ```json
 {
-  "id": "task_001",
+  "id": "c56a4180-65aa-42ec-a945-5fd21dec0538",
   "title": "实现用户登录功能",
   "status": "draft",
   "project": {
-    "id": "proj_001",
+    "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
     "name": "AINative"
   },
   "template": {
-    "id": "tpl_001",
+    "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
     "name": "标准开发流程"
   },
-  "createdAt": "2025-01-15T10:30:00Z"
+  "createdAt": "2026-02-05T10:30:00Z"
 }
 ```
 
 **任务执行日志流（SSE）：**
+> 注意：浏览器原生 `EventSource` 无法设置 `Authorization` Header。
+> - Web UI：建议使用 HttpOnly Cookie 维持登录态，SSE 自动携带 Cookie。
+> - CLI/自动化：可用 Bearer Token（如 curl）读取 `text/event-stream`。
 ```
-GET /api/v1/tasks/task_001/stream
+GET /api/v1/tasks/c56a4180-65aa-42ec-a945-5fd21dec0538/stream
 Accept: text/event-stream
-Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 
 event: status
-data: {"status": "running", "nodeId": "node_001", "nodeName": "代码分析"}
+data: {"status": "running", "workNodeRunId": "wnr_001", "workNodeName": "代码分析"}
 
 event: log
-data: {"nodeId": "node_001", "level": "info", "message": "Analyzing requirements...", "timestamp": "2025-01-15T10:31:00Z"}
+data: {"workNodeRunId": "wnr_001", "level": "info", "message": "Analyzing requirements...", "timestamp": "2026-02-05T10:31:00Z"}
 
 event: log
-data: {"nodeId": "node_001", "level": "info", "message": "Generating code...", "timestamp": "2025-01-15T10:31:05Z"}
+data: {"workNodeRunId": "wnr_001", "level": "info", "message": "Generating code...", "timestamp": "2026-02-05T10:31:05Z"}
 
 event: artifact
 data: {"type": "file", "path": "src/auth/login.ts", "action": "created"}
 
 event: status
-data: {"status": "succeeded", "nodeId": "node_001"}
+data: {"status": "succeeded", "workNodeRunId": "wnr_001"}
 
 event: done
 data: {"status": "succeeded", "duration": 120, "artifactCount": 3}
@@ -1122,7 +1395,7 @@ data: {"status": "succeeded", "duration": 120, "artifactCount": 3}
 统一的错误响应结构：
 
 ```typescript
-// src/common/filters/http-exception.filter.ts
+// backend/src/common/filters/http-exception.filter.ts
 
 interface ErrorResponse {
   statusCode: number;
@@ -1141,17 +1414,18 @@ interface ErrorResponse {
   "error": "Forbidden",
   "message": "您没有权限执行此任务",
   "code": "AUTH_003",
-  "timestamp": "2025-01-15T10:30:00Z",
-  "path": "/api/v1/tasks/task_001/execute"
+  "timestamp": "2026-02-05T10:30:00Z",
+  "path": "/api/v1/tasks/c56a4180-65aa-42ec-a945-5fd21dec0538/execute"
 }
 ```
 
 ### 11.5 Swagger 文档
 
-API 文档通过 `@nestjs/swagger` 自动生成，访问地址：`/api/docs`
+API 文档通过 `@nestjs/swagger` 自动生成。
+当前 `backend/` 现状访问地址：`/docs`（未启用 useGlobalPrefix）。如需挂载到全局前缀下，可使用 `/api/docs`（`useGlobalPrefix: true`）。
 
 ```typescript
-// src/main.ts
+// backend/src/main.ts
 
 const config = new DocumentBuilder()
   .setTitle('AINative API')
@@ -1165,7 +1439,8 @@ const config = new DocumentBuilder()
   .build();
 
 const document = SwaggerModule.createDocument(app, config);
-SwaggerModule.setup('api/docs', app, document);
+SwaggerModule.setup('docs', app, document); // => /docs
+// 如需挂载到全局前缀（/api/docs），可启用：SwaggerModule.setup('docs', app, document, { useGlobalPrefix: true });
 ```
 
 ## 12. 非功能需求
@@ -1175,8 +1450,8 @@ SwaggerModule.setup('api/docs', app, document);
 |------|------|---------|
 | 身份认证 | 所有 API 需认证 | Passport + JWT，NestJS Guards |
 | 权限控制 | 基于 RBAC 的细粒度控制 | 自定义装饰器 + Guards |
-| 数据隔离 | 项目间数据隔离 | TypeORM 全局 Scope + 行级过滤 |
-| 密钥管理 | Git Token、API Key 等敏感信息 | bcryptjs 加密 + 环境变量 |
+| 数据隔离 | 项目间数据隔离 | Guard 鉴权 + Repository/Service 层显式注入 projectId/businessLineId 过滤（基于 Membership） |
+| 密钥管理 | Git Token、API Key 等敏感信息 | 加密存储（AES-256-GCM/信封加密）；主密钥来自环境变量或 KMS；密码仍用 bcrypt |
 | 执行隔离 | 任务执行环境隔离 | Docker 容器 + 网络策略 |
 | 日志脱敏 | 敏感信息不落日志 | NestJS Interceptor + 正则过滤 |
 | 审计追踪 | 关键操作可追溯 | TypeORM Subscriber + 审计表 |
@@ -1184,7 +1459,7 @@ SwaggerModule.setup('api/docs', app, document);
 
 **权限守卫示例：**
 ```typescript
-// src/common/guards/roles.guard.ts
+// backend/src/roles/roles.guard.ts
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -1222,7 +1497,7 @@ async executeTask(@Param('id') id: string) { ... }
 ### 12.3 可扩展性
 - **Skills/MCP 插件化**：基于 NestJS 动态模块，支持运行时加载
 - **Agent 适配层**：策略模式，新增 Agent 只需实现 `IAgentExecutor` 接口
-- **流水线节点类型**：工厂模式，支持自定义节点处理器
+- **工作节点类型**：工厂模式，支持自定义工作节点处理器
 - **存储后端**：S3 兼容接口，可切换 MinIO/阿里云 OSS 等
 
 ### 12.4 可观测性
@@ -1230,7 +1505,7 @@ async executeTask(@Param('id') id: string) { ... }
 基于 NestJS 生态的监控方案：
 
 ```typescript
-// src/common/interceptors/logging.interceptor.ts
+// backend/src/common/interceptors/logging.interceptor.ts
 
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
@@ -1254,8 +1529,9 @@ export class LoggingInterceptor implements NestInterceptor {
 ```
 
 **健康检查端点：**
+> 说明：当前 `backend/` 依赖中尚未引入 `@nestjs/terminus` 与 Redis 客户端；如启用健康检查与 Redis 队列，需要补齐依赖与模块。
 ```typescript
-// src/health/health.controller.ts
+// backend/src/health/health.controller.ts
 
 @Controller('health')
 export class HealthController {
@@ -1293,6 +1569,8 @@ export class HealthController {
 |--------|---------|-----------|---------|
 | Git 认证方式 | 项目配置 | 第一阶段启动前 | SSH Key / HTTP Token / OAuth |
 | 容器 vs 进程隔离 | 执行运行时 | 第一阶段启动前 | K8s Pod / Docker / gVisor / 进程 |
+| 执行器部署形态 | 执行运行时 | 第一阶段启动前 | 平台托管 Runner（方案 A/B） / AINative CLI Pull Runner（方案 C） |
+| SSE 鉴权方式 | 可观测性/前端 | 第一阶段启动前 | Cookie 登录态 / fetch 流式读取（携带 Bearer Token） |
 | 日志存储方案 | 可观测性 | 第二阶段启动前 | Loki / ES / ClickHouse |
 | 多业务线归属 | 权限模型 | 第三阶段启动前 | 单归属 / 多归属 |
 
@@ -1333,3 +1611,54 @@ export class HealthController {
 - 通过安全扫描（SAST/DAST）
 - 权限控制测试通过
 - 敏感信息无泄露
+
+### 14.4 第一阶段实施拆解（结合当前仓库）
+本节用于把“文档 → 代码落地”拆成可执行的工程任务，并尽量复用当前 `backend/` 模板已有模块。
+
+#### 14.4.1 后端（backend/）拆解
+**可直接复用/在现有模块上扩展：**
+- 认证与用户（FR-001/FR-002）：复用 `backend/src/auth`、`backend/src/users`、`backend/src/roles`、`backend/src/session`。
+  - 建议补充：用户归属业务线字段（`business_line_id`）与相应 DTO/接口（见第 9 节数据模型）。
+- 文件与产物底座：复用 `backend/src/files` 的 local/S3 driver，把“Artifact（业务产物）”作为业务表，引用 `FileEntity` 或直接记录文件 key。
+  - 目标：支持产物列表、下载（预签名 URL）与权限校验。
+- 通知邮件：复用 `backend/src/mail`、`backend/src/mailer`，用于任务完成/失败通知（FR-012）。
+
+**需要新增的业务模块（建议按依赖顺序）：**
+1) 业务线（FR-003）
+   - 新增 `BusinessLinesModule`（实体/CRUD/权限：管理员或业务线负责人）
+   - 数据模型：BusinessLine(id uuid, name, owner_id, timestamps)
+2) 项目（FR-004/FR-006）
+   - 新增 `ProjectsModule`（实体/CRUD）
+   - ProjectConfig：建议先用 `jsonb` 保存项目配置快照（Agent 适配器选择、资源/并发策略、允许的 Skills/MCP 列表）
+3) 项目成员与项目角色（FR-005）
+   - 新增 `MembershipsModule` 或 `ProjectMembersModule`
+   - 注意：当前 `RoleEntity/RoleEnum` 是平台级（admin/user），项目级角色建议独立建表或独立枚举（owner/maintainer/developer/viewer）
+4) 工作流模板（FR-007）
+   - 新增 `WorkflowTemplatesModule`
+   - MVP 推荐：模板内容用 `jsonb` 保存 DAG 工作节点与依赖（避免 DSL 过早复杂化）
+5) 任务与执行记录（FR-008/FR-009/FR-010）
+   - 新增 `TasksModule`、`WorkflowRunsModule`、`WorkNodeRunsModule`
+   - 任务创建时保存模板快照（保证可复现）
+   - 任务执行：第一阶段可先“同步/内嵌 Runner”（见 10.2.3），第二阶段迁移到 Worker + 队列
+6) 日志流（SSE）
+   - 新增 `GET /api/v1/tasks/:id/stream`
+   - 第一阶段允许进程内 EventBus；第二阶段需跨进程日志通道（Redis PubSub/DB tail/日志系统）
+
+#### 14.4.2 前端（frontend/）拆解
+- 路由与页面（P0）
+  - 登录页（对接 `/api/v1/auth/email/login`）
+  - 项目列表/项目详情（含配置入口）
+  - 任务列表/任务详情（含执行按钮、状态、日志流、产物列表）
+- 日志流（P1）
+  - Web 使用 SSE 展示 WorkNodeRun 日志
+  - 认证方式需与后端一致：若用原生 `EventSource`，建议后端提供 Cookie 登录态（见第 11 节说明）
+
+#### 14.4.3 基础设施（docker-compose）建议
+- 保持 `backend/docker-compose.yaml` 现状用于第一阶段开发（Postgres + Maildev + API）。
+- 第二阶段再启用 Redis（当前已预留）与独立 Runner Worker 服务。
+
+#### 14.4.4 第一阶段“可演示闭环”定义
+- 能在 Web UI 创建一个项目并绑定 Git 地址
+- 能创建一个任务（选择模板 + 填写验收标准）
+- 点击执行后看到：状态流转 + 实时日志 + 至少 1 个产物（如 diff 或压缩包）
+- 执行完成后可触发通知（邮件或 Webhook 任一）
