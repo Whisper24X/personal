@@ -22,6 +22,12 @@ const mobileNavOpen = ref(false)
 const isDesktop = ref(false)
 const settingsModalOpen = ref(false)
 const menuCollapsed = ref(false)
+const projectTooltipVisible = ref(false)
+const projectTooltipText = ref('')
+const projectTooltipStyle = ref({
+  left: '0px',
+  top: '0px',
+})
 
 const projectItems: ProjectItem[] = [
   { id: 'demo-ainative', name: 'AI Native', to: '/projects/demo-ainative', short: 'AIN' },
@@ -91,6 +97,28 @@ const toggleMenuCollapsed = () => {
   menuCollapsed.value = !menuCollapsed.value
 }
 
+const showProjectTooltip = (event: MouseEvent | FocusEvent, name: string) => {
+  const target = event.currentTarget as HTMLElement | null
+  if (!target) return
+
+  const rect = target.getBoundingClientRect()
+  projectTooltipText.value = name
+  projectTooltipStyle.value = {
+    left: `${rect.right + 10}px`,
+    top: `${rect.top + rect.height / 2}px`,
+  }
+  projectTooltipVisible.value = true
+}
+
+const hideProjectTooltip = () => {
+  projectTooltipVisible.value = false
+}
+
+const showMenuTooltip = (event: MouseEvent | FocusEvent, label: string) => {
+  if (!sidebarCollapsed.value) return
+  showProjectTooltip(event, label)
+}
+
 const openSettingsModal = () => {
   settingsModalOpen.value = true
   mobileNavOpen.value = false
@@ -102,10 +130,15 @@ const onKeydown = (event: KeyboardEvent) => {
   mobileNavOpen.value = false
 }
 
+const onWindowGeometryChange = () => {
+  hideProjectTooltip()
+}
+
 watch(
   () => route.fullPath,
   () => {
     mobileNavOpen.value = false
+    hideProjectTooltip()
   },
 )
 
@@ -139,10 +172,14 @@ onMounted(() => {
   desktopMediaQuery.addEventListener('change', syncDesktop)
 
   window.addEventListener('keydown', onKeydown)
+  window.addEventListener('scroll', onWindowGeometryChange, true)
+  window.addEventListener('resize', onWindowGeometryChange)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('scroll', onWindowGeometryChange, true)
+  window.removeEventListener('resize', onWindowGeometryChange)
   desktopMediaQuery?.removeEventListener('change', syncDesktop)
   document.body.style.overflow = previousBodyOverflow
 })
@@ -175,7 +212,7 @@ onBeforeUnmount(() => {
         class="fixed inset-y-0 left-0 z-50 flex border-r border-sidebar-border bg-sidebar/95 backdrop-blur transition-[width,transform] duration-200 2xl:static 2xl:translate-x-0"
         :class="[mobileNavOpen ? 'translate-x-0' : '-translate-x-full', sidebarCollapsed ? 'w-[9.25rem]' : 'w-[19rem]']"
       >
-        <div class="flex h-full min-h-0 w-[5.25rem] flex-col items-center border-r border-sidebar-border px-2">
+        <div class="relative z-20 flex h-full min-h-0 w-[5.25rem] flex-col items-center border-r border-sidebar-border px-2">
           <div class="flex h-16 items-center justify-center border-b border-sidebar-border">
             <RouterLink
               to="/dashboard"
@@ -186,29 +223,23 @@ onBeforeUnmount(() => {
             </RouterLink>
           </div>
 
-          <div class="w-full flex-1 overflow-y-auto overflow-x-visible py-3">
+          <div class="w-full flex-1 overflow-y-auto overflow-x-hidden py-3">
             <div class="flex flex-col items-center gap-2.5">
-              <div
+              <RouterLink
                 v-for="item in projectItems"
                 :key="item.id"
-                class="group relative"
-              >
-                <RouterLink
                 :to="item.to"
                 class="flex h-12 w-12 items-center justify-center rounded-2xl border text-[11px] font-bold tracking-wider transition-all"
                 :class="projectItemClass(item.to)"
                 :aria-label="item.name"
                 :title="item.name"
+                @mouseenter="showProjectTooltip($event, item.name)"
+                @mouseleave="hideProjectTooltip"
+                @focus="showProjectTooltip($event, item.name)"
+                @blur="hideProjectTooltip"
               >
                 {{ projectShortLabel(item.short) }}
               </RouterLink>
-
-                <span
-                  class="pointer-events-none absolute left-[calc(100%+0.55rem)] top-1/2 z-40 -translate-y-1/2 whitespace-nowrap rounded-md border border-sidebar-border bg-sidebar px-2 py-1 text-[11px] font-medium text-sidebar-foreground opacity-0 shadow-sm transition duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-                >
-                  {{ item.name }}
-                </span>
-              </div>
             </div>
           </div>
 
@@ -229,7 +260,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div class="flex min-h-0 flex-col transition-[width] duration-200" :class="sidebarCollapsed ? 'w-16' : 'w-[13.75rem]'">
+        <div class="relative z-10 flex min-h-0 flex-col transition-[width] duration-200" :class="sidebarCollapsed ? 'w-16' : 'w-[13.75rem]'">
           <div class="relative flex h-16 items-center border-b border-sidebar-border px-2" :class="sidebarCollapsed ? 'justify-center' : 'justify-center px-3'">
             <div
               class="inline-flex h-11 cursor-pointer items-center rounded-xl text-sidebar-foreground transition-colors select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
@@ -272,7 +303,7 @@ onBeforeUnmount(() => {
             </button>
           </div>
 
-          <nav class="flex-1 overflow-y-auto overflow-x-visible p-2">
+          <nav class="flex-1 overflow-y-auto overflow-x-hidden p-2">
             <div class="space-y-1">
               <RouterLink
                 v-for="item in menuItems"
@@ -281,6 +312,10 @@ onBeforeUnmount(() => {
                 class="group relative flex min-h-11 items-center rounded-xl text-sm font-medium transition"
                 :class="[menuItemClass(item.to), sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-3']"
                 :title="sidebarCollapsed ? item.label : undefined"
+                @mouseenter="showMenuTooltip($event, item.label)"
+                @mouseleave="hideProjectTooltip"
+                @focus="showMenuTooltip($event, item.label)"
+                @blur="hideProjectTooltip"
               >
                 <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sidebar-border/70 bg-sidebar-accent/35">
                   <svg
@@ -299,13 +334,6 @@ onBeforeUnmount(() => {
                   </svg>
                 </span>
                 <span v-if="!sidebarCollapsed">{{ item.label }}</span>
-
-                <span
-                  v-if="sidebarCollapsed"
-                  class="pointer-events-none absolute left-[calc(100%+0.55rem)] top-1/2 z-40 -translate-y-1/2 whitespace-nowrap rounded-md border border-sidebar-border bg-sidebar px-2 py-1 text-[11px] font-medium text-sidebar-foreground opacity-0 shadow-sm transition duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-                >
-                  {{ item.label }}
-                </span>
               </RouterLink>
             </div>
           </nav>
@@ -382,6 +410,14 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+
+    <span
+      v-show="projectTooltipVisible"
+      class="pointer-events-none fixed z-[85] -translate-y-1/2 whitespace-nowrap rounded-md border border-sidebar-border bg-sidebar px-2 py-1 text-[11px] font-medium text-sidebar-foreground shadow-lg transition-opacity duration-150"
+      :style="projectTooltipStyle"
+    >
+      {{ projectTooltipText }}
+    </span>
 
     <SettingsModal v-model:open="settingsModalOpen" />
   </div>
