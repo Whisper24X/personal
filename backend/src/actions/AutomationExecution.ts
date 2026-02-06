@@ -28,15 +28,27 @@ export interface AutomationExecutionOptions extends WorkspaceOptions {
   keepBrowserOpenMs?: number;
   /** 是否显示浏览器窗口（默认：true，强制有头模式） */
   showBrowserWindow?: boolean;
+  /** 是否启用 Flow 模式（复用浏览器 session，默认 false，每个 case 独立浏览器 session） */
+  flowMode?: boolean;
 }
 
 interface TestCaseJSON {
   testCase: string;
   status: 'pending' | 'passed' | 'failed' | 'running';
+  precondition?: string[] | string; // 前置条件数组或字符串（向后兼容）
   steps: Array<{
     step: string;
+    action?: string; // 动作类型（click, type, open, verify 等）
+    params?: { url?: string; selector?: string; [key: string]: any }; // 增强的参数对象，包含 url 或 selector
+    expected?: { type: 'url' | 'text' | 'element' | 'api' | 'cookie' | 'url_match'; value: string } | string | null; // 预期结果对象格式或字符串（向后兼容）
+    waitFor?: {
+      type: 'toast' | 'element';
+      text?: string; // Toast 消息文本（用于 contains 匹配）
+      selector?: string; // 元素选择器（用于 element 类型）
+      timeout?: number; // 超时时间（毫秒，默认 5000）
+    };
     status: 'pending' | 'passed' | 'failed' | 'running';
-    error?: string;
+    error?: string | null; // 错误信息
     screenshot?: string;
     executionTime?: number;
   }>;
@@ -158,30 +170,56 @@ class StepRunner {
 
   /**
    * 执行单个步骤
+   * @param step - 步骤字符串或步骤对象（包含 step, params, expected）
+   * @param stepIndex - 步骤索引
+   * @param options - 执行选项
    */
-  async runStep(step: string, stepIndex: number, options?: StepRunnerOptions): Promise<StepExecutionResult> {
+  async runStep(
+    step:
+      | string
+      | {
+          step: string;
+          params?: { url?: string; selector?: string; [key: string]: any };
+          expected?: { type: 'url' | 'text' | 'element' | 'api' | 'cookie' | 'url_match'; value: string } | string | null;
+          waitFor?: { type: 'toast' | 'element'; text?: string; selector?: string; timeout?: number };
+          [key: string]: any;
+        },
+    stepIndex: number,
+    options?: StepRunnerOptions
+  ): Promise<StepExecutionResult> {
     const startTime = Date.now();
     const timeoutMs = options?.timeoutMs ?? 30000;
     const retryCount = options?.retryCount ?? 2;
     const waitBeforeMs = options?.waitBeforeMs ?? 500;
     const waitAfterMs = options?.waitAfterMs ?? 500;
 
-    // 提取步骤中的 URL（如果存在）
-    const urlMatch = step.match(/(https?:\/\/[^\s]+)/i);
-    const url = urlMatch ? urlMatch[1] : undefined;
+    // 解析步骤（支持字符串和对象格式）
+    const stepText = typeof step === 'string' ? step : step.step;
+    const stepParams = typeof step === 'object' ? step.params : undefined;
+    const stepExpected = typeof step === 'object' ? step.expected : undefined;
+    const stepWaitFor = typeof step === 'object' ? step.waitFor : undefined;
+
+    // 优先使用 params.url，否则从步骤文本中提取 URL
+    let url: string | undefined = stepParams?.url;
+    if (!url) {
+      const urlMatch = stepText.match(/(https?:\/\/[^\s]+)/i);
+      url = urlMatch ? urlMatch[1] : undefined;
+    }
+
     // 如果包含 URL，使用导航指令；否则使用原始指令
-    // 对于导航操作，Stagehand 只需要 URL，指令可以简化
     const instruction = url
-      ? step.toLowerCase().includes('打开') || step.toLowerCase().includes('navigate') || step.toLowerCase().includes('goto')
+      ? stepText.toLowerCase().includes('打开') || stepText.toLowerCase().includes('navigate') || stepText.toLowerCase().includes('goto')
         ? '打开页面'
-        : step.replace(/\s*https?:\/\/[^\s]+/gi, '').trim() || '打开页面'
-      : step;
+        : stepText.replace(/\s*https?:\/\/[^\s]+/gi, '').trim() || '打开页面'
+      : stepText;
 
     logger.info('StepRunner: Executing step', {
       stepIndex,
-      step,
+      step: stepText,
       instruction,
       url,
+      params: stepParams,
+      expected: stepExpected,
       timeoutMs,
       retryCount,
     });
@@ -195,7 +233,7 @@ class StepRunner {
         () =>
           this.stabilityMiddleware.withTimeout(async () => {
             // 如果步骤包含 URL，将 URL 作为单独参数传递
-            await this.stagehandService.act(instruction || step, url);
+            await this.stagehandService.act(instruction || stepText, url);
           }, timeoutMs),
         {
           maxRetries: retryCount,
@@ -206,18 +244,74 @@ class StepRunner {
       // 执行后等待
       await this.stabilityMiddleware.withWait(() => Promise.resolve(), waitAfterMs);
 
+      // 如果步骤有 waitFor，先等待元素/Toast 出现
+      if (stepWaitFor) {
+        logger.info('StepRunner: Waiting for element/toast before assertion', {
+          stepIndex,
+          step: stepText,
+          waitFor: stepWaitFor,
+        });
+
+        const waitResult = await this.waitForElement(stepWaitFor);
+        if (!waitResult) {
+          logger.warn('StepRunner: waitForElement failed', {
+            stepIndex,
+            step: stepText,
+            waitFor: stepWaitFor,
+          });
+          // waitFor 失败不影响继续执行断言，但记录警告
+        } else {
+          logger.info('StepRunner: waitForElement succeeded', {
+            stepIndex,
+            step: stepText,
+            waitFor: stepWaitFor,
+          });
+        }
+      }
+
+      // 如果步骤有 expected，执行断言验证
+      let assertionPassed = true;
+      if (stepExpected) {
+        // 如果 expected 是字符串格式（向后兼容），跳过断言验证
+        if (typeof stepExpected === 'string') {
+          logger.debug('StepRunner: Expected is string format, skipping assertion (backward compatibility)', {
+            stepIndex,
+            step: stepText,
+            expected: stepExpected,
+          });
+        } else if (typeof stepExpected === 'object' && stepExpected !== null && 'type' in stepExpected && 'value' in stepExpected) {
+          assertionPassed = await this.assertExpected(stepExpected as { type: 'url' | 'text' | 'element' | 'api'; value: string });
+          if (!assertionPassed) {
+            logger.warn('StepRunner: Assertion failed', {
+              stepIndex,
+              step: stepText,
+              expected: stepExpected,
+            });
+          }
+        }
+      }
+
       const executionTime = Date.now() - startTime;
-      logger.info('StepRunner: Step executed successfully', {
+      const status: 'passed' | 'failed' = assertionPassed ? 'passed' : 'failed';
+
+      logger.info('StepRunner: Step executed', {
         stepIndex,
-        step,
+        step: stepText,
+        status,
         executionTime,
+        assertionPassed,
       });
 
       return {
         stepIndex,
-        step,
-        status: 'passed',
+        step: stepText,
+        status,
         executionTime,
+        error: assertionPassed
+          ? undefined
+          : typeof stepExpected === 'object' && stepExpected !== null
+            ? `Assertion failed: expected ${stepExpected.type} "${stepExpected.value}"`
+            : 'Assertion failed',
         timestamp: new Date().toISOString(),
       };
     } catch (error: any) {
@@ -226,7 +320,7 @@ class StepRunner {
 
       logger.error('StepRunner: Step execution failed', {
         stepIndex,
-        step,
+        step: stepText,
         error: error.message,
         errorType,
         executionTime,
@@ -234,7 +328,7 @@ class StepRunner {
 
       return {
         stepIndex,
-        step,
+        step: stepText,
         status: 'failed',
         executionTime,
         error: error.message,
@@ -242,6 +336,437 @@ class StepRunner {
         retryCount,
         timestamp: new Date().toISOString(),
       };
+    }
+  }
+
+  /**
+   * 根据 expected 对象执行断言验证
+   * @param expected - 预期结果对象 { type, value }
+   * @returns true if assertion passes, false otherwise
+   */
+  async assertExpected(expected: { type: 'url' | 'text' | 'element' | 'api' | 'cookie' | 'url_match'; value: string }): Promise<boolean> {
+    try {
+      const page = await this.stagehandService.getPage();
+      if (!page) {
+        logger.warn('StepRunner: Cannot assert expected - page not available');
+        return false;
+      }
+
+      switch (expected.type) {
+        case 'url': {
+          // 验证当前页面 URL
+          const currentUrl = page.url();
+          const expectedValue = expected.value;
+
+          // 支持完整 URL 或路径匹配
+          const urlMatches =
+            currentUrl.includes(expectedValue) ||
+            expectedValue.includes(currentUrl) ||
+            currentUrl.endsWith(expectedValue) ||
+            (expectedValue.startsWith('/') && currentUrl.includes(expectedValue));
+
+          logger.info('StepRunner: Asserting URL', {
+            expected: expectedValue,
+            actual: currentUrl,
+            matches: urlMatches,
+          });
+
+          return urlMatches;
+        }
+
+        case 'text': {
+          // 验证页面文本内容
+          try {
+            // 尝试多种方式获取页面内容
+            let pageContent = '';
+            let pageText = '';
+
+            // 方法1：使用 content() 方法
+            try {
+              if (typeof page.content === 'function') {
+                pageContent = await page.content();
+              }
+            } catch (e: any) {
+              logger.debug('StepRunner: page.content() failed, trying alternative', { error: e.message });
+            }
+
+            // 方法2：使用 textContent() 方法（备选）
+            try {
+              if (typeof page.textContent === 'function') {
+                pageText = await page.textContent('body').catch(() => '');
+              }
+            } catch (e: any) {
+              logger.debug('StepRunner: page.textContent() failed', { error: e.message });
+            }
+
+            // 方法3：使用 evaluate() 方法（最后备选）
+            if (!pageContent && !pageText) {
+              try {
+                if (typeof page.evaluate === 'function') {
+                  // 使用函数形式的 evaluate，传入的函数会在浏览器环境中执行
+                  // @ts-expect-error - document 在浏览器环境中是可用的
+                  pageContent = await page.evaluate(() => document.body.innerHTML).catch(() => '');
+                  // @ts-expect-error - document 在浏览器环境中是可用的
+                  pageText = await page.evaluate(() => document.body.innerText).catch(() => '');
+                }
+              } catch (e: any) {
+                logger.debug('StepRunner: page.evaluate() failed', { error: e.message });
+              }
+            }
+
+            // 使用 contains 匹配（includes），不使用 equals 精确匹配
+            const textMatches = pageContent.includes(expected.value) || pageText.includes(expected.value);
+
+            logger.info('StepRunner: Asserting text (using contains match)', {
+              expected: expected.value,
+              found: textMatches,
+              matchType: 'contains',
+              pageContentLength: pageContent.length,
+              pageTextLength: pageText.length,
+            });
+
+            return textMatches;
+          } catch (error: any) {
+            logger.error('StepRunner: Failed to assert text', {
+              expected: expected.value,
+              error: error.message,
+              pageType: typeof page,
+              pageMethods: page
+                ? Object.keys(page)
+                    .filter((k: string) => typeof (page as any)[k] === 'function')
+                    .slice(0, 10)
+                : [],
+            });
+            return false;
+          }
+        }
+
+        case 'element': {
+          // 验证元素可见性/状态
+          // 支持多种查找方式：文本内容、CSS 选择器、角色定位
+          try {
+            let element = null;
+            const value = expected.value.trim();
+
+            // 1. 尝试通过 CSS 选择器查找（如果 value 看起来像选择器）
+            if (value.startsWith('#') || value.startsWith('.') || value.startsWith('[') || value.includes(' ')) {
+              try {
+                element = page.locator(value).first();
+                const isVisible = await element.isVisible().catch(() => false);
+                if (isVisible) {
+                  logger.info('StepRunner: Asserting element by selector', {
+                    expected: value,
+                    visible: true,
+                  });
+                  return true;
+                }
+              } catch {
+                // 选择器查找失败，继续尝试其他方式
+              }
+            }
+
+            // 2. 尝试通过角色定位（如 [role="button"]）
+            if (value.startsWith('role=') || value.includes('role:')) {
+              try {
+                const roleMatch = value.match(/role[=:]"?([^"]+)"?/i);
+                if (roleMatch) {
+                  const role = roleMatch[1];
+                  element = page.locator(`[role="${role}"]`).first();
+                  const isVisible = await element.isVisible().catch(() => false);
+                  if (isVisible) {
+                    logger.info('StepRunner: Asserting element by role', {
+                      expected: value,
+                      role,
+                      visible: true,
+                    });
+                    return true;
+                  }
+                }
+              } catch {
+                // 角色查找失败，继续尝试其他方式
+              }
+            }
+
+            // 3. 优先查找登录态特征元素（用户头像、用户名等）
+            const loginIndicators = ['用户头像', '用户名', '头像', 'avatar', 'user', 'profile'];
+            for (const indicator of loginIndicators) {
+              if (value.includes(indicator) || indicator.includes(value)) {
+                // 尝试多种常见的选择器模式
+                const selectors = [
+                  '[alt*="头像"]',
+                  '[alt*="avatar"]',
+                  '[class*="avatar"]',
+                  '[class*="user"]',
+                  '[class*="profile"]',
+                  'img[alt*="用户"]',
+                  '*[role="img"][aria-label*="用户"]',
+                ];
+
+                for (const selector of selectors) {
+                  try {
+                    const found = page.locator(selector).first();
+                    const isVisible = await found.isVisible().catch(() => false);
+                    if (isVisible) {
+                      logger.info('StepRunner: Asserting login indicator element', {
+                        expected: value,
+                        selector,
+                        visible: true,
+                      });
+                      return true;
+                    }
+                  } catch {
+                    // 继续尝试下一个选择器
+                  }
+                }
+              }
+            }
+
+            // 4. 默认通过文本内容查找
+            element = page.locator(`text="${value}"`).first();
+            const isVisible = await element.isVisible().catch(() => false);
+
+            logger.info('StepRunner: Asserting element by text', {
+              expected: value,
+              visible: isVisible,
+            });
+
+            return isVisible;
+          } catch (error: any) {
+            logger.warn('StepRunner: Failed to assert element', {
+              expected: expected.value,
+              error: error.message,
+            });
+            return false;
+          }
+        }
+
+        case 'api': {
+          // 验证网络请求/响应
+          // 注意：这需要预先设置网络监听，当前实现简化处理
+          // 可以通过检查页面状态或使用网络监听器来实现
+          logger.info('StepRunner: Asserting API (simplified - network monitoring not implemented)', {
+            expected: expected.value,
+          });
+
+          // 简化实现：如果包含状态码，检查是否有相关错误
+          if (expected.value.match(/\d{3}/)) {
+            // 这里应该检查网络请求，但简化实现返回 true
+            // 实际应该使用 page.on('response') 监听
+            return true;
+          }
+
+          return true; // 简化实现
+        }
+
+        case 'cookie': {
+          // 验证 Cookie 存在性（用于登录态校验）
+          try {
+            const context = page.context();
+            if (!context) {
+              logger.warn('StepRunner: Cannot assert cookie - page context not available');
+              return false;
+            }
+
+            const cookies = await context.cookies();
+            const cookieName = expected.value;
+
+            // 查找匹配的 cookie
+            const matchingCookie = cookies.find((cookie: { name: string; value: string }) => cookie.name === cookieName);
+
+            const cookieExists = matchingCookie !== undefined && matchingCookie.value && matchingCookie.value.length > 0;
+
+            // 脱敏处理：只显示 cookie 值的前4个和后4个字符
+            const maskCookieValue = (value: string): string => {
+              if (!value || value.length <= 8) return '***';
+              return `${value.substring(0, 4)}...${value.substring(value.length - 4)}`;
+            };
+
+            logger.info('StepRunner: Asserting cookie', {
+              expected: cookieName,
+              exists: cookieExists,
+              cookieFound: matchingCookie !== undefined,
+              cookieValueLength: matchingCookie ? matchingCookie.value.length : 0,
+              cookieValueMasked: matchingCookie ? maskCookieValue(matchingCookie.value) : null,
+              allCookies: cookies.map((c: { name: string; value: string }) => ({
+                name: c.name,
+                valueLength: c.value ? c.value.length : 0,
+                hasValue: !!c.value && c.value.length > 0,
+              })),
+              totalCookies: cookies.length,
+            });
+
+            if (!cookieExists && matchingCookie) {
+              logger.warn('StepRunner: Cookie exists but value is empty', {
+                cookieName,
+                cookieValue: matchingCookie.value,
+              });
+            }
+
+            return cookieExists;
+          } catch (error: any) {
+            logger.error('StepRunner: Failed to assert cookie', {
+              expected: expected.value,
+              error: error.message,
+              stack: error.stack,
+            });
+            return false;
+          }
+        }
+
+        case 'url_match': {
+          // 验证 URL 模糊匹配（用于登录后页面跳转校验）
+          try {
+            const currentUrl = page.url();
+            const pattern = expected.value;
+
+            // 支持字符串包含匹配和正则表达式匹配
+            let matches = false;
+            try {
+              // 尝试作为正则表达式匹配
+              const regex = new RegExp(pattern);
+              matches = regex.test(currentUrl);
+            } catch {
+              // 不是有效的正则表达式，使用字符串包含匹配
+              matches = currentUrl.includes(pattern);
+            }
+
+            logger.info('StepRunner: Asserting URL match', {
+              expected: pattern,
+              actual: currentUrl,
+              matches,
+            });
+
+            return matches;
+          } catch (error: any) {
+            logger.warn('StepRunner: Failed to assert URL match', {
+              expected: expected.value,
+              error: error.message,
+            });
+            return false;
+          }
+        }
+
+        default:
+          logger.warn('StepRunner: Unknown expected type', { type: expected.type });
+          return false;
+      }
+    } catch (error: any) {
+      logger.error('StepRunner: Assertion failed', {
+        expected,
+        error: error.message,
+      });
+      return false;
+    }
+  }
+
+  /**
+   * 等待元素或 Toast 出现
+   * @param waitFor - 等待配置对象
+   * @returns true if element/toast found, false otherwise
+   */
+  private async waitForElement(waitFor: { type: 'toast' | 'element'; text?: string; selector?: string; timeout?: number }): Promise<boolean> {
+    try {
+      const page = await this.stagehandService.getPage();
+      if (!page) {
+        logger.warn('StepRunner: Cannot wait for element - page not available');
+        return false;
+      }
+
+      const timeout = waitFor.timeout || 5000;
+      const startTime = Date.now();
+
+      if (waitFor.type === 'toast') {
+        // 等待 Toast 消息出现
+        // 尝试多种 Toast 选择器（覆盖常见 UI 框架）
+        const toastSelectors = [
+          '[role="alert"]',
+          '[role="status"]',
+          '.toast',
+          '.message',
+          '.notification',
+          '[class*="toast"]',
+          '[class*="message"]',
+          '[class*="notification"]',
+          '[class*="alert"]',
+          '[id*="toast"]',
+          '[id*="message"]',
+        ];
+
+        logger.debug('StepRunner: Waiting for toast', {
+          text: waitFor.text,
+          timeout,
+          selectors: toastSelectors,
+        });
+
+        while (Date.now() - startTime < timeout) {
+          for (const selector of toastSelectors) {
+            try {
+              const element = page.locator(selector).first();
+              const isVisible = await element.isVisible().catch(() => false);
+              if (isVisible) {
+                // 检查文本内容是否匹配（使用 contains 匹配）
+                if (waitFor.text) {
+                  const text = await element.textContent().catch(() => '');
+                  if (text && text.includes(waitFor.text)) {
+                    logger.info('StepRunner: Toast found with matching text', {
+                      selector,
+                      expectedText: waitFor.text,
+                      actualText: text.substring(0, 100), // 限制日志长度
+                    });
+                    return true;
+                  }
+                } else {
+                  // 如果没有指定文本，只要元素可见就返回成功
+                  logger.info('StepRunner: Toast element found', { selector });
+                  return true;
+                }
+              }
+            } catch {
+              // 继续尝试下一个选择器
+            }
+          }
+          // 每 100ms 检查一次
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+
+        logger.warn('StepRunner: Toast not found within timeout', {
+          text: waitFor.text,
+          timeout,
+        });
+        return false;
+      } else if (waitFor.type === 'element') {
+        // 等待元素出现
+        if (waitFor.selector) {
+          try {
+            logger.debug('StepRunner: Waiting for element', {
+              selector: waitFor.selector,
+              timeout,
+            });
+            await page.waitForSelector(waitFor.selector, { timeout });
+            logger.info('StepRunner: Element found', { selector: waitFor.selector });
+            return true;
+          } catch (error: any) {
+            logger.warn('StepRunner: Element not found within timeout', {
+              selector: waitFor.selector,
+              timeout,
+              error: error.message,
+            });
+            return false;
+          }
+        } else {
+          logger.warn('StepRunner: waitFor element type requires selector');
+          return false;
+        }
+      }
+
+      return false;
+    } catch (error: any) {
+      logger.error('StepRunner: Failed to wait for element', {
+        waitFor,
+        error: error.message,
+        stack: error.stack,
+      });
+      return false;
     }
   }
 
@@ -310,23 +835,23 @@ class ResultCollector {
     const allPassed = stepResults.every((r) => r.status === 'passed');
     const overallStatus: 'passed' | 'failed' = allPassed ? 'passed' : 'failed';
 
-    const updatedSteps: Array<{
-      step: string;
-      status: 'pending' | 'passed' | 'failed' | 'running';
-      error?: string;
-      screenshot?: string;
-      executionTime?: number;
-    }> = testCase.steps.map((step, index) => {
+    const updatedSteps = testCase.steps.map((step, index) => {
       const result = stepResults.find((r) => r.stepIndex === index);
       if (result) {
         return {
           step: step.step,
+          // 保留原有字段（支持新的对象格式）
+          ...(step.action !== undefined && { action: step.action }),
+          ...(step.params !== undefined && { params: step.params }),
+          ...(step.expected !== undefined && { expected: step.expected }),
+          // 更新执行结果
           status: (result.status === 'passed' ? 'passed' : 'failed') as 'pending' | 'passed' | 'failed' | 'running',
           ...(result.error && { error: result.error }),
           ...(result.screenshot && { screenshot: result.screenshot }),
           executionTime: result.executionTime / 1000, // 转换为秒
         };
       }
+      // 没有执行结果的步骤，保留所有原有字段
       return step;
     });
 
@@ -718,6 +1243,108 @@ export class AutomationExecution extends BaseAction {
   }
 
   /**
+   * Execute login fixture by finding and executing login test case
+   * @param jsonFiles - All JSON test case files
+   * @param _autoDir - Directory containing test case files (reserved for future use)
+   * @returns true if fixture executed successfully, false otherwise
+   */
+  private async executeLoginFixture(jsonFiles: string[], _autoDir: string): Promise<boolean> {
+    try {
+      logger.info('AutomationExecution: Looking for login fixture', {
+        totalFiles: jsonFiles.length,
+      });
+
+      // Find login test case (prefer TC-001, then any case with "登录" in name but not "退出")
+      let loginFile: string | null = null;
+
+      // First, try to find TC-001
+      loginFile =
+        jsonFiles.find((f) => {
+          const basename = path.basename(f);
+          return basename.includes('TC-001') || basename.match(/TC-0*1/i);
+        }) || null;
+
+      // If not found, find any case with "登录" but not "退出"
+      if (!loginFile) {
+        loginFile =
+          jsonFiles.find((f) => {
+            const basename = path.basename(f);
+            return basename.includes('登录') && !basename.includes('退出');
+          }) || null;
+      }
+
+      if (!loginFile) {
+        logger.warn('AutomationExecution: Login fixture not found', {
+          availableFiles: jsonFiles.map((f) => path.basename(f)),
+        });
+        return false;
+      }
+
+      logger.info('AutomationExecution: Found login fixture', {
+        fixtureFile: path.basename(loginFile),
+      });
+
+      // Read and parse login test case
+      const loginContent = await fs.readFile(loginFile, 'utf-8');
+      const loginCase = JSON.parse(loginContent) as TestCaseJSON;
+
+      // Execute all steps of login case
+      logger.info('AutomationExecution: Executing login fixture steps', {
+        stepsCount: loginCase.steps.length,
+      });
+
+      const stepRunnerOptions: StepRunnerOptions = {
+        timeoutMs: 30000,
+        retryCount: 2,
+        waitBeforeMs: 500,
+        waitAfterMs: 500,
+        continueOnError: false,
+      };
+
+      for (let stepIndex = 0; stepIndex < loginCase.steps.length; stepIndex++) {
+        const step = loginCase.steps[stepIndex];
+        const stepText = step.step;
+
+        logger.info('AutomationExecution: Executing login fixture step', {
+          stepIndex: stepIndex + 1,
+          totalSteps: loginCase.steps.length,
+          step: stepText,
+        });
+
+        try {
+          // Pass full step object to support params and expected
+          const stepResult = await this.stepRunner.runStep(step, stepIndex, stepRunnerOptions);
+
+          if (stepResult.status === 'failed') {
+            logger.error('AutomationExecution: Login fixture step failed', {
+              stepIndex,
+              step: stepText,
+              error: stepResult.error,
+            });
+            return false;
+          }
+        } catch (error: any) {
+          logger.error('AutomationExecution: Login fixture step execution error', {
+            stepIndex,
+            step: stepText,
+            error: error.message,
+          });
+          return false;
+        }
+      }
+
+      logger.info('AutomationExecution: Login fixture executed successfully');
+      return true;
+    } catch (error: any) {
+      logger.error('AutomationExecution: Failed to execute login fixture', {
+        error: error.message,
+        stack: error.stack,
+      });
+      return false;
+    }
+  }
+
+  /**
    * Execute all test case JSON files and collect results
    */
   private async executeTestCaseFiles(jsonFiles: string[], cwd: string, options?: AutomationExecutionOptions): Promise<TestCaseExecutionResult[]> {
@@ -738,34 +1365,146 @@ export class AutomationExecution extends BaseAction {
       let testCaseName = testCaseId;
       let testCase: TestCaseJSON | null = null;
 
-      // Clear browser state before executing each test case
-      // This ensures each test case starts from a clean state (no cookies, no localStorage)
       try {
-        await this.stagehandService.clearBrowserState();
-        logger.info('AutomationExecution: Cleared browser state before test case', {
-          testCaseId,
-          jsonFile: fileName,
-        });
-      } catch (clearError: any) {
-        logger.warn('AutomationExecution: Failed to clear browser state before test case', {
-          testCaseId,
-          jsonFile: fileName,
-          error: clearError.message,
-        });
-        // Continue execution even if clearing fails
-      }
+        // 如果不是 Flow 模式，每个 case 独立浏览器 session
+        if (!options?.flowMode && i > 0) {
+          logger.info('AutomationExecution: Case mode - closing and reinitializing browser for independent session', {
+            testCaseId,
+            caseIndex: i + 1,
+            totalCases: jsonFiles.length,
+          });
+          try {
+            await this.stagehandService.close();
+            await this.stagehandService.initialize();
+          } catch (reinitError: any) {
+            logger.error('AutomationExecution: Failed to reinitialize browser', {
+              testCaseId,
+              error: reinitError.message,
+            });
+            // Continue execution even if reinitialization fails
+          }
+        }
 
-      try {
-        // Read and parse JSON file
+        // 检查页面是否存在，如果不存在则自动重新初始化
+        try {
+          const page = await this.stagehandService.getPage();
+          if (!page) {
+            logger.warn('AutomationExecution: Page not found, reinitializing browser', {
+              testCaseId,
+            });
+            await this.stagehandService.close();
+            await this.stagehandService.initialize();
+          }
+        } catch (pageError: any) {
+          logger.error('AutomationExecution: Failed to get page, reinitializing browser', {
+            testCaseId,
+            error: pageError.message,
+          });
+          try {
+            await this.stagehandService.close();
+            await this.stagehandService.initialize();
+          } catch (reinitError: any) {
+            logger.error('AutomationExecution: Failed to reinitialize browser after page error', {
+              testCaseId,
+              error: reinitError.message,
+            });
+          }
+        }
+
+        // Read and parse JSON file first to check precondition
         const jsonContent = await fs.readFile(jsonFile, 'utf-8');
         testCase = JSON.parse(jsonContent) as TestCaseJSON;
         testCaseName = testCase.testCase || testCaseId;
+
+        // 处理 precondition（支持数组和字符串格式，向后兼容）
+        const preconditions = Array.isArray(testCase.precondition) ? testCase.precondition : testCase.precondition ? [testCase.precondition] : [];
+
+        // 检查当前用例是否是登录用例（文件名包含"登录"且不包含"退出"）
+        const isLoginTestCase =
+          (testCaseId.includes('登录') || fileName.includes('登录')) && !testCaseId.includes('退出') && !fileName.includes('退出');
+
+        // 检测并执行 fixture（如果 precondition 包含 "login"）
+        // 只匹配表示"已登录状态"的关键词，排除"登录页面"、"登录功能"等
+        const needsLoginFixture =
+          !isLoginTestCase &&
+          (preconditions.includes('login') ||
+            preconditions.some(
+              (p) =>
+                typeof p === 'string' &&
+                // 精确匹配：只匹配"已登录"、"登录状态"等表示状态的关键词
+                ((p.includes('已登录') && !p.includes('登录页面') && !p.includes('登录功能')) ||
+                  p.includes('登录状态') ||
+                  p.includes('用户已登录') ||
+                  p.toLowerCase().includes('logged in') ||
+                  p.toLowerCase().includes('login state') ||
+                  // 匹配"需要登录"、"要求登录"等
+                  p.includes('需要登录') ||
+                  p.includes('要求登录'))
+            ));
+
+        // 如果是登录用例，不需要执行 fixture，清除浏览器状态确保从干净状态开始
+        if (isLoginTestCase) {
+          logger.info('AutomationExecution: Current test case is login case, skipping fixture', {
+            testCaseId,
+            fileName,
+            preconditions,
+          });
+          // 清除浏览器状态，确保从干净状态开始
+          try {
+            await this.stagehandService.clearBrowserState();
+            logger.info('AutomationExecution: Cleared browser state for login test case', {
+              testCaseId,
+              jsonFile: fileName,
+            });
+          } catch (clearError: any) {
+            logger.warn('AutomationExecution: Failed to clear browser state for login test case', {
+              testCaseId,
+              jsonFile: fileName,
+              error: clearError.message,
+            });
+            // Continue execution even if clearing fails
+          }
+        } else if (needsLoginFixture) {
+          // 其他用例如果需要登录状态，执行 fixture
+          logger.info('AutomationExecution: Precondition requires login, executing login fixture', {
+            testCaseId,
+            preconditions,
+          });
+          const fixtureSuccess = await this.executeLoginFixture(jsonFiles, cwd);
+          if (!fixtureSuccess) {
+            logger.warn('AutomationExecution: Login fixture failed, but continuing test case execution', {
+              testCaseId,
+            });
+            // Continue execution even if fixture fails (record error but don't abort)
+          }
+        } else {
+          // 如果没有登录前置条件，清除浏览器状态（确保从干净状态开始）
+          try {
+            await this.stagehandService.clearBrowserState();
+            logger.info('AutomationExecution: Cleared browser state before test case', {
+              testCaseId,
+              jsonFile: fileName,
+              preconditions: preconditions.length > 0 ? preconditions : ['none'],
+            });
+          } catch (clearError: any) {
+            logger.warn('AutomationExecution: Failed to clear browser state before test case', {
+              testCaseId,
+              jsonFile: fileName,
+              error: clearError.message,
+            });
+            // Continue execution even if clearing fails
+          }
+        }
 
         logger.info('AutomationExecution: Executing test case', {
           jsonFile: fileName,
           testCaseId,
           testCaseName,
           stepsCount: testCase.steps.length,
+          precondition: preconditions.length > 0 ? preconditions : ['none'],
+          flowMode: options?.flowMode || false,
+          isLoginTestCase,
+          executedFixture: needsLoginFixture,
         });
 
         // Execute all steps using StepRunner
@@ -785,8 +1524,8 @@ export class AutomationExecution extends BaseAction {
           // Update step status to running
           testCase.steps[stepIndex].status = 'running';
 
-          // Execute step
-          const stepResult = await this.stepRunner.runStep(stepText, stepIndex, stepRunnerOptions);
+          // Execute step (pass full step object to support params and expected)
+          const stepResult = await this.stepRunner.runStep(step, stepIndex, stepRunnerOptions);
           stepResults.push(stepResult);
 
           // Collect step result

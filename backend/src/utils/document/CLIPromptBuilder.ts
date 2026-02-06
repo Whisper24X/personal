@@ -1,7 +1,7 @@
 /**
  * CLIPromptBuilder
  * CLI模式专用Prompt构建器
- * 
+ *
  * CLI模式下只传递输入/输出文件夹路径，不传递文件内容
  * 让CLI工具自行读取文件内容并执行操作
  */
@@ -57,7 +57,7 @@ export const CLI_IO_CONFIGS: Record<string, DocumentIOConfig> = {
   // MRD 相关
   write_mrd: {
     documentType: 'MRD',
-    inputDirRelative: '',  // 无输入目录，从用户输入生成
+    inputDirRelative: '', // 无输入目录，从用户输入生成
     inputFileNames: [],
     outputDirRelative: 'mrd',
     outputFileName: 'MRD.md',
@@ -164,6 +164,14 @@ export const CLI_IO_CONFIGS: Record<string, DocumentIOConfig> = {
     outputFileName: 'TESTABILITY_REVIEW.md',
   },
 
+  // Automation Planning 相关（生成自动化测试 JSON 文件）
+  write_automation_test: {
+    documentType: 'TEST',
+    inputDirRelative: 'test',
+    inputFileNames: ['TEST.md', 'TEST_REVIEW.md'], // 优先 TEST_REVIEW.md，回退到 TEST.md
+    outputDirRelative: 'test/auto',
+    outputFileName: '*.json', // 多个 JSON 文件（每个测试用例一个）
+  },
 
   // Prototype 相关
   write_prototype: {
@@ -181,10 +189,7 @@ export const CLI_IO_CONFIGS: Record<string, DocumentIOConfig> = {
  * @param documentType 文档类型
  * @returns IO配置
  */
-export function getCLIIOConfig(
-  operationType: DocumentOperationType,
-  documentType: string
-): DocumentIOConfig | undefined {
+export function getCLIIOConfig(operationType: DocumentOperationType, documentType: string): DocumentIOConfig | undefined {
   const key = `${operationType}_${documentType.toLowerCase()}`;
   return CLI_IO_CONFIGS[key];
 }
@@ -278,31 +283,23 @@ export const CLI_KNOWLEDGE_INPUT_REFERENCE = `
 - 🕳️ 信息缺失或需要补充决策的点
 `;
 
-
 /**
  * 构建CLI模式通用Prompt
  * 只传递文件夹路径，不传递文件内容
- * 
+ *
  * @param config Prompt配置
  * @returns CLI模式Prompt字符串
  */
 export function buildCLIModePrompt(config: CLIPromptConfig): string {
-  const inputFilesStr = config.inputFileNames.length > 0
-    ? config.inputFileNames.join(', ')
-    : '（无需读取输入文件）';
+  const inputFilesStr = config.inputFileNames.length > 0 ? config.inputFileNames.join(', ') : '（无需读取输入文件）';
 
-  const taskPointsStr = config.taskPoints && config.taskPoints.length > 0
-    ? `\n\n【任务要点】\n${config.taskPoints.map((p, i) => `${i + 1}. ${p}`).join('\n')}`
-    : '';
+  const taskPointsStr =
+    config.taskPoints && config.taskPoints.length > 0 ? `\n\n【任务要点】\n${config.taskPoints.map((p, i) => `${i + 1}. ${p}`).join('\n')}` : '';
 
-  const systemContextStr = config.systemContext
-    ? `\n\n【背景信息】\n${config.systemContext}`
-    : '';
+  const systemContextStr = config.systemContext ? `\n\n【背景信息】\n${config.systemContext}` : '';
 
   // 默认包含知识输入引用，除非显式设置为 false
-  const knowledgeInputStr = config.includeKnowledgeInput !== false
-    ? CLI_KNOWLEDGE_INPUT_REFERENCE
-    : '';
+  const knowledgeInputStr = config.includeKnowledgeInput !== false ? CLI_KNOWLEDGE_INPUT_REFERENCE : '';
 
   return `${knowledgeInputStr}
 【任务】${config.taskDescription}
@@ -344,25 +341,19 @@ ${taskPointsStr}${systemContextStr}
 
 /**
  * 构建CLI模式Review Prompt
- * 
+ *
  * @param workspaceDir workspace根目录
  * @param documentType 文档类型
  * @param taskPoints 审核要点
  * @returns CLI模式Review Prompt
  */
-export function buildCLIReviewPrompt(
-  workspaceDir: string,
-  documentType: string,
-  taskPoints?: string[]
-): string {
+export function buildCLIReviewPrompt(workspaceDir: string, documentType: string, taskPoints?: string[]): string {
   const config = getCLIIOConfig('review', documentType);
   if (!config) {
     throw new Error(`Unknown document type for review: ${documentType}`);
   }
 
-  const inputDir = config.inputDirRelative
-    ? `${workspaceDir}/${config.inputDirRelative}`
-    : workspaceDir;
+  const inputDir = config.inputDirRelative ? `${workspaceDir}/${config.inputDirRelative}` : workspaceDir;
   const outputDir = `${workspaceDir}/${config.outputDirRelative}`;
 
   const defaultTaskPoints = [
@@ -384,17 +375,13 @@ export function buildCLIReviewPrompt(
 
 /**
  * 构建CLI模式Improve Prompt
- * 
+ *
  * @param workspaceDir workspace根目录
  * @param documentType 文档类型
  * @param taskPoints 改进要点
  * @returns CLI模式Improve Prompt
  */
-export function buildCLIImprovePrompt(
-  workspaceDir: string,
-  documentType: string,
-  taskPoints?: string[]
-): string {
+export function buildCLIImprovePrompt(workspaceDir: string, documentType: string, taskPoints?: string[]): string {
   const config = getCLIIOConfig('improve', documentType);
   if (!config) {
     throw new Error(`Unknown document type for improve: ${documentType}`);
@@ -403,12 +390,7 @@ export function buildCLIImprovePrompt(
   const inputDir = `${workspaceDir}/${config.inputDirRelative}`;
   const outputDir = `${workspaceDir}/${config.outputDirRelative}`;
 
-  const defaultTaskPoints = [
-    '分析审核报告中的P0和P1问题',
-    '针对性改进文档内容',
-    '保持文档结构不变',
-    '确保改进后无占位符和模糊描述',
-  ];
+  const defaultTaskPoints = ['分析审核报告中的P0和P1问题', '针对性改进文档内容', '保持文档结构不变', '确保改进后无占位符和模糊描述'];
 
   return buildCLIModePrompt({
     inputDir,
@@ -422,32 +404,22 @@ export function buildCLIImprovePrompt(
 
 /**
  * 构建CLI模式Write Prompt
- * 
+ *
  * @param workspaceDir workspace根目录
  * @param documentType 文档类型
  * @param taskPoints 生成要点
  * @returns CLI模式Write Prompt
  */
-export function buildCLIWritePrompt(
-  workspaceDir: string,
-  documentType: string,
-  taskPoints?: string[]
-): string {
+export function buildCLIWritePrompt(workspaceDir: string, documentType: string, taskPoints?: string[]): string {
   const config = getCLIIOConfig('write', documentType);
   if (!config) {
     throw new Error(`Unknown document type for write: ${documentType}`);
   }
 
-  const inputDir = config.inputDirRelative
-    ? `${workspaceDir}/${config.inputDirRelative}`
-    : workspaceDir;
+  const inputDir = config.inputDirRelative ? `${workspaceDir}/${config.inputDirRelative}` : workspaceDir;
   const outputDir = `${workspaceDir}/${config.outputDirRelative}`;
 
-  const defaultTaskPoints = [
-    '严格按照模板格式输出',
-    '不保留任何占位符',
-    '内容要详细、具体、充实',
-  ];
+  const defaultTaskPoints = ['严格按照模板格式输出', '不保留任何占位符', '内容要详细、具体、充实'];
 
   return buildCLIModePrompt({
     inputDir,
@@ -478,7 +450,7 @@ function getDocumentTypeDescription(documentType: string): string {
 /**
  * 从workspace路径解析基础目录
  * 用于构建CLI模式的输入输出路径
- * 
+ *
  * @param workspaceDir 完整的workspace目录路径（包含documentType）
  * @returns 基础workspace目录（不包含documentType）
  */
@@ -486,7 +458,7 @@ export function getBaseWorkspaceDir(workspaceDir: string): string {
   // 路径格式：workspace/{appId}/{projectId}/ainative-workspace/docs/{documentType}
   // 需要返回：workspace/{appId}/{projectId}/ainative-workspace/docs
   const parts = workspaceDir.split('/');
-  const docsIndex = parts.findIndex(p => p === 'docs');
+  const docsIndex = parts.findIndex((p) => p === 'docs');
   if (docsIndex !== -1 && docsIndex < parts.length - 1) {
     // 移除最后一个部分（documentType）
     return parts.slice(0, -1).join('/');

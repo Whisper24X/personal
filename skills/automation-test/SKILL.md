@@ -1,329 +1,217 @@
 ---
-
 name: automation-test
 description: 当用户或工作流需要自动化测试规划、自动化脚本生成或自动化执行时使用此 skill。指导 Agent 何时触发、如何配合后端 AutomationEngineer 两步流程，并内置 Act 执行正确性验证与断言生成规范。
-------------------------------------------------------------------------------------------------------------------------------------------
+---
 
-# 自动化测试流程与规范（增强版）
+# 自动化测试流程与规范
 
 基于 TEST.md（或 TEST_REVIEW.md）执行自动化测试规划与执行，由后端 AutomationEngineer 角色按固定两步顺序执行。
 
-在两步流程基础上，**Stagehand Act 执行验证 + Assertion 生成 Skills 体系**确保自动化脚本具备可执行性与结果可信度。
+## ⚠️ 执行前必读（强制）
 
----
+**在生成任何 JSON 文件之前，必须先执行以下步骤：**
 
-# 执行前必读（强制）
+1. **读取模板文件**：使用 Read 工具读取 [automation-json-template.json](references/automation-json-template.json)
+2. **理解模板结构**：模板包含完整的 JSON 格式规范，输出必须严格遵循此结构
+3. **按模板格式输出**：每个测试用例必须使用模板中的 JSON 格式
 
-**前置条件**：
+## 输出规范（强制）
 
-1. **TEST.md 已存在**
-   自动化测试以测试用例文档为输入，必须先有 `docs/test/TEST.md`。
-   若存在 `TEST_REVIEW.md`，优先使用评审版本。
+> **重要**：以下规范必须严格遵守，不可违反。
 
-2. **执行主体**
-   自动化测试由后端 **AutomationEngineer 两步流程**执行。
-   本 skill 指导 Agent：
+| 项目           | 规范                                                                                          |
+| -------------- | --------------------------------------------------------------------------------------------- |
+| **输出文件名** | `TC-XXX-用例名称.json`（必须使用此命名格式，如 TC-001-用户登录-正确账号密码登录成功.json）    |
+| **文件数量**   | 每个测试用例生成一个独立的 JSON 文件                                                          |
+| **JSON 格式**  | 必须严格按照 [automation-json-template.json](references/automation-json-template.json) 的格式 |
+| **字段完整性** | 所有必需字段必须存在，不得省略或使用占位符                                                    |
 
-   * 何时触发自动化
-   * 如何生成脚本
-   * 如何验证 act 正确性
-   * 如何生成断言
+## JSON 文件结构（必须严格遵循）
 
-3. **触发方式**
+输出的 JSON 文件必须包含以下字段，格式必须与模板一致：
 
-   * TestReview 后自动触发
-   * 或 API 调用 AutomationEngineer
-   * Agent 对话触发需确认 TEST.md 已就绪
-
----
-
-# 自动化测试两步流程（不可变）
-
-| Step | 动作                 | 输入                       | 输出       |
-| ---- | -------------------- | ------------------------ | ---------- |
-| 1    | AutomationPlanning   | TEST.md / TEST_REVIEW.md | `auto/*.ts` |
-| 2    | AutomationExecution  | auto/*.ts                | 执行报告   |
-
----
-
-# 🔧 Step 1 增强：AutomationPlanning Skills 体系
-
-脚本生成不再直接从 TEST.md → 代码，而必须经过 Skills Pipeline。
-
----
-
-## Skills Pipeline（强制执行）
-
-```
-1️⃣ Test Intent Parsing
-2️⃣ Page Observation
-3️⃣ Action Generation
-4️⃣ Action Validation
-5️⃣ Assertion Generation
-6️⃣ Network Assertion
-7️⃣ DOM Change Detection
-8️⃣ Script Assembly
+```json
+{
+  "testCase": "TC-XXX：用例名称 - 场景描述",
+  "status": "pending",
+  "precondition": ["前置条件1"],
+  "steps": [
+    {
+      "step": "步骤描述",
+      "action": "open|click|type|verify|hover",
+      "params": { "url" 或 "selector" },
+      "expected": { "type": "url|text|element|api|cookie|url_match", "value": "值" } 或 null,
+      "status": "pending",
+      "error": null
+    }
+  ],
+  "duration": 0
+}
 ```
 
----
+## 断言类型规范（重要）
 
-## Skill 1：Test Intent Parsing
+### 支持的断言类型
 
-解析测试目标：
+| 类型        | 说明             | 使用场景                            | 示例                                             |
+| ----------- | ---------------- | ----------------------------------- | ------------------------------------------------ |
+| `cookie`    | 验证 Cookie 存在 | **登录态校验（推荐）**              | `{ "type": "cookie", "value": "token" }`         |
+| `element`   | 验证元素可见性   | **登录态校验（备选）**、UI 元素验证 | `{ "type": "element", "value": "用户头像" }`     |
+| `url_match` | URL 模糊匹配     | 登录后页面跳转校验                  | `{ "type": "url_match", "value": "/dashboard" }` |
+| `url`       | URL 精确匹配     | 页面跳转验证（不推荐用于登录）      | `{ "type": "url", "value": "/home" }`            |
+| `text`      | 文本内容验证     | 页面文本、提示信息验证              | `{ "type": "text", "value": "登录成功" }`        |
+| `api`       | API 响应验证     | 接口调用结果验证                    | `{ "type": "api", "value": "200" }`              |
 
-**输入**
+### ⚠️ 登录成功断言规则（强制）
 
-```
-用户登录成功
-```
+**禁止使用固定 URL 断言**（如 `/home`、`/dashboard`），因为：
 
-**输出**
+- 不同环境 URL 可能不同
+- 登录后可能跳转到不同页面
+- URL 可能包含动态参数
 
-```
-Actions:
-- 输入账号
-- 输入密码
-- 点击登录
+**必须使用登录态特征校验**，优先级顺序：
 
-Expected:
-- 跳转首页
-- 显示用户信息
-```
+1. **优先使用 `cookie` 断言**（最可靠）
 
----
+   ```json
+   {
+     "expected": {
+       "type": "cookie",
+       "value": "token"
+     }
+   }
+   ```
 
-## Skill 2：Page Observation
+2. **备选使用 `element` 断言**（验证登录态 UI 元素）
 
-通过 Stagehand：
+   ```json
+   {
+     "expected": {
+       "type": "element",
+       "value": "用户头像"
+     }
+   }
+   ```
 
-```ts
-stagehand.observe("Describe login page structure")
-```
+   或
 
-输出：
+   ```json
+   {
+     "expected": {
+       "type": "element",
+       "value": "用户名"
+     }
+   }
+   ```
 
-* 输入框
-* 按钮
-* 可交互元素
+3. **最后使用 `url_match` 断言**（模糊匹配 URL）
+   ```json
+   {
+     "expected": {
+       "type": "url_match",
+       "value": "/dashboard"
+     }
+   }
+   ```
 
-用于避免 act 定位错误。
+### Element 断言增强功能
 
----
+`element` 类型支持多种查找方式：
 
-## Skill 3：Action Generation（Act 生成）
+- **文本内容查找**：`{ "type": "element", "value": "用户头像" }`
+- **CSS 选择器**：`{ "type": "element", "value": ".user-avatar" }`
+- **角色定位**：`{ "type": "element", "value": "role=button" }`
+- **登录态特征元素**：自动识别用户头像、用户名等元素
 
-生成标准 act：
+### Toast 断言规则（强制）
 
-```ts
-await stagehand.act("Type username 'testuser'");
-await stagehand.act("Type password '******'");
-await stagehand.act("Click Login button");
-```
+**Toast 消息断言必须遵循以下规则：**
 
----
+1. **Toast 不作为唯一成功断言**
+   - Toast 消息可能短暂显示，不能作为唯一的成功判断依据
+   - 必须搭配登录态校验（cookie 或 element）
 
-### Act 生成规则（强制）
+2. **必须搭配登录态校验**
+   - 登录成功场景：Toast + Cookie 断言
+   - 示例：
+     ```json
+     {
+       "step": "用户点击登录按钮",
+       "action": "click",
+       "params": {
+         "selector": "登录按钮"
+       },
+       "expected": {
+         "type": "cookie",
+         "value": "token"
+       },
+       "waitFor": {
+         "type": "toast",
+         "text": "登录成功",
+         "timeout": 5000
+       },
+       "status": "pending",
+       "error": null
+     }
+     ```
 
-1. 一步一 act
-2. 必须包含 UI 语义定位
-3. 禁止模糊描述：
+3. **文本断言使用 contains**
+   - 文本匹配使用包含匹配（contains），不使用精确匹配（equals）
+   - 已自动实现：使用 `includes()` 方法进行文本匹配
 
-❌ Click button
-✅ Click "Login" button in form footer
+4. **必须增加 waitForElement**
+   - Toast 消息需要等待元素出现后再断言
+   - 在断言前自动添加等待逻辑
+   - `waitFor` 字段支持：
+     - `type`: `"toast"` 或 `"element"`
+     - `text`: Toast 消息文本（用于 contains 匹配）
+     - `selector`: 元素选择器（用于 element 类型）
+     - `timeout`: 超时时间（毫秒，默认 5000）
 
----
+## 自动化测试两步流程（不可变）
 
-## Skill 4：Action Validation（Act 正确性验证）
+| Step | 动作                | 输入                     | 输出          |
+| ---- | ------------------- | ------------------------ | ------------- |
+| 1    | AutomationPlanning  | TEST.md / TEST_REVIEW.md | `auto/*.json` |
+| 2    | AutomationExecution | auto/\*.json             | 执行报告      |
 
-用于判断 act 是否执行成功。
+## 使用场景
 
----
+当用户有以下需求时启用：
 
-### 验证维度
+- 自动化测试规划
+- 自动化脚本生成
+- 自动化执行
+- 端到端业务流程测试
+- 登录后多业务操作
+- 跨模块流程验证
 
-| 类型           | 验证方式          |
-| ------------ | ------------- |
-| Selector 唯一性 | matched count |
-| 点击成功         | 按钮状态变化        |
-| 输入成功         | value 校验      |
-| 请求触发         | network 监听    |
-| 页面变化         | DOM diff      |
+## E2E 标准流程模型
 
----
-
-### 自动生成验证代码
-
-```ts
-await expect(button).toBeDisabled();
-await expect(input).toHaveValue('testuser');
-```
-
----
-
-## Skill 5：Assertion Generation（断言生成）
-
-每个 act 必须配断言。
-
----
-
-### 断言五分类
-
-| 类型    | 示例        |
-| ----- | --------- |
-| UI 文案 | 登录成功      |
-| URL   | /home     |
-| 元素状态  | avatar 显示 |
-| 接口    | login 200 |
-| 业务    | 用户态存在     |
-
----
-
-### 示例代码
-
-```ts
-await expect(page).toHaveURL(/home/);
-await expect(page.locator('.avatar')).toBeVisible();
-```
-
----
-
-## Skill 6：Network Assertion
-
-监听关键接口：
-
-```ts
-page.on('response', res => {
-  if (res.url().includes('/login')) {
-    expect(res.status()).toBe(200);
-  }
-});
-```
-
----
-
-## Skill 7：DOM Change Detection
-
-判断 act 是否引发页面变化：
-
-```ts
-const before = await page.content();
-await stagehand.act("Click Submit");
-const after = await page.content();
-```
-
----
-
-## Skill 8：Script Assembly
-
-组装完整脚本：
-
-```
-Navigation
-Actions
-Assertions
-Network checks
+```text
+启动浏览器
+   ↓
+登录系统
+   ↓
+执行业务场景
+   ↓
+数据校验
+   ↓
+退出登录
+   ↓
+关闭浏览器
 ```
 
----
+## 禁止事项
 
-# 生成脚本强制规范（新增）
+以下行为是禁止的，违反将导致输出无效：
 
----
-
-## 规则 1：Act 必须配 Assert
-
-```
-Each act must have at least one assertion.
-```
-
----
-
-## 规则 2：关键流程双断言
-
-```
-UI + API assertions required.
-```
-
----
-
-## 规则 3：禁止连续 act
-
-```
-act → assert → act → assert
-```
-
----
-
-# Step 2：AutomationExecution（不变）
-
-执行：
-
-```
-auto/*.ts
-```
-
-输出：
-
-* pass / fail
-* 日志
-* trace / video（若启用）
-
----
-
-# 输出与位置（不变）
-
-```
-docs/test/
- ├── TEST.md
- ├── auto/
- │    ├── login.spec.ts
- │    ├── order.spec.ts
-```
-
----
-
-# 脚本规范（强化）
-
-必须满足：
-
-1. 仅使用 Stagehand
-2. 必含 act + assert
-3. 必含关键接口监听
-4. 必含流程结果验证
-
----
-
-# 环境要求（不变）
-
-```
-ENABLE_BROWSER=true
-```
-
-需具备：
-
-* 浏览器
-* Stagehand
-* Playwright 依赖
-
----
-
-# 与其它 Skills 边界
-
-| Skill           | 关系           |
-| --------------- | ------------ |
-| test            | 上游生成 TEST.md |
-| test-review     | 评审用例         |
-| automation-test | 自动化执行        |
-| engineer        | 不参与          |
-
----
-
-# 参考
-
-详见：
-
-```
-references/automation-flow.md
-```
-
----
+1. ❌ 不读取模板文件就直接生成 JSON
+2. ❌ 使用与模板不一致的 JSON 格式
+3. ❌ 省略必需字段（testCase、status、steps）
+4. ❌ 使用非标准的 action 值（必须是 open/click/type/verify/hover）
+5. ❌ 文件名不符合 TC-XXX-用例名称.json 格式
+6. ❌ 多个测试用例合并到一个 JSON 文件
+7. ❌ **登录成功断言使用固定 URL**（如 `/home`、`/dashboard`），必须使用 `cookie` 或 `element` 断言
+8. ❌ 使用不支持的断言类型（必须是 url、text、element、api、cookie、url_match 之一）
