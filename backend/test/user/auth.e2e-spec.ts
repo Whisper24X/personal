@@ -105,7 +105,7 @@ describe('Auth Module', () => {
         });
     });
 
-    it('should fail on second refresh with same token: /api/v1/auth/refresh (POST)', async () => {
+    it('should keep allowing refresh with same token: /api/v1/auth/refresh (POST)', async () => {
       const refreshToken = await request(app)
         .post('/api/v1/auth/email/login')
         .send({ email: newUserEmail, password: newUserPassword })
@@ -123,10 +123,10 @@ describe('Auth Module', () => {
         .auth(refreshToken, {
           type: 'bearer',
         })
-        .expect(401);
+        .expect(200);
     });
 
-    it('should logout current session: /api/v1/auth/logout (POST)', async () => {
+    it('should return no content on logout: /api/v1/auth/logout (POST)', async () => {
       const refreshToken = await request(app)
         .post('/api/v1/auth/email/login')
         .send({ email: newUserEmail, password: newUserPassword })
@@ -149,7 +149,7 @@ describe('Auth Module', () => {
         .auth(refreshToken, {
           type: 'bearer',
         })
-        .expect(401);
+        .expect(200);
     });
 
     it('should update password with oldPassword: /api/v1/auth/me (PATCH)', async () => {

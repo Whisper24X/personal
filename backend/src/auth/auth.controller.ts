@@ -74,8 +74,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   public refresh(@Request() request): Promise<RefreshResponseDto> {
     return this.service.refreshToken({
-      sessionId: request.user.sessionId,
-      hash: request.user.hash,
+      id: request.user.id,
     });
   }
 
@@ -83,10 +82,8 @@ export class AuthController {
   @Post('logout')
   @UseGuards(AuthGuard('jwt'))
   @HttpCode(HttpStatus.NO_CONTENT)
-  public async logout(@Request() request): Promise<void> {
-    await this.service.logout({
-      sessionId: request.user.sessionId,
-    });
+  public async logout(): Promise<void> {
+    await this.service.logout();
   }
 
   @ApiBearerAuth()

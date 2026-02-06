@@ -5,8 +5,6 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import ms from 'ms';
-import crypto from 'crypto';
-import { randomStringGenerator } from '@nestjs/common/utils/random-string-generator.util';
 import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcryptjs';
 import { AuthEmailLoginDto } from './dto/auth-email-login.dto';
@@ -19,8 +17,6 @@ import { JwtRefreshPayloadType } from './strategies/types/jwt-refresh-payload.ty
 import { JwtPayloadType } from './strategies/types/jwt-payload.type';
 import { UsersService } from '../users/users.service';
 import { AllConfigType } from '../config/config.type';
-import { Session } from '../session/domain/session';
-import { SessionService } from '../session/session.service';
 import { User } from '../users/domain/user';
 
 @Injectable()
@@ -28,7 +24,6 @@ export class AuthService {
   constructor(
     private jwtService: JwtService,
     private usersService: UsersService,
-    private sessionService: SessionService,
     private configService: ConfigService<AllConfigType>,
   ) {}
 
@@ -67,20 +62,8 @@ export class AuthService {
       });
     }
 
-    const hash = crypto
-      .createHash('sha256')
-      .update(randomStringGenerator())
-      .digest('hex');
-
-    const session = await this.sessionService.create({
-      user,
-      hash,
-    });
-
     const { token, refreshToken, tokenExpires } = await this.getTokensData({
       id: user.id,
-      sessionId: session.id,
-      hash,
     });
 
     return {
@@ -148,11 +131,6 @@ export class AuthService {
             oldPassword: 'incorrectOldPassword',
           },
         });
-      } else {
-        await this.sessionService.deleteByUserIdWithExclude({
-          userId: currentUser.id,
-          excludeSessionId: userJwtPayload.sessionId,
-        });
       }
     }
 
@@ -177,37 +155,16 @@ export class AuthService {
   }
 
   async refreshToken(
-    data: Pick<JwtRefreshPayloadType, 'sessionId' | 'hash'>,
+    data: Pick<JwtRefreshPayloadType, 'id'>,
   ): Promise<Omit<LoginResponseDto, 'user'>> {
-    const session = await this.sessionService.findById(data.sessionId);
-
-    if (!session) {
-      throw new UnauthorizedException();
-    }
-
-    if (session.hash !== data.hash) {
-      throw new UnauthorizedException();
-    }
-
-    const hash = crypto
-      .createHash('sha256')
-      .update(randomStringGenerator())
-      .digest('hex');
-
-    const user = await this.usersService.findById(session.user.id);
+    const user = await this.usersService.findById(data.id);
 
     if (!user) {
       throw new UnauthorizedException();
     }
 
-    await this.sessionService.update(session.id, {
-      hash,
-    });
-
     const { token, refreshToken, tokenExpires } = await this.getTokensData({
-      id: session.user.id,
-      sessionId: session.id,
-      hash,
+      id: user.id,
     });
 
     return {
@@ -221,15 +178,11 @@ export class AuthService {
     await this.usersService.remove(user.id);
   }
 
-  async logout(data: Pick<JwtRefreshPayloadType, 'sessionId'>) {
-    return this.sessionService.deleteById(data.sessionId);
+  logout(): Promise<void> {
+    return;
   }
 
-  private async getTokensData(data: {
-    id: User['id'];
-    sessionId: Session['id'];
-    hash: Session['hash'];
-  }) {
+  private async getTokensData(data: { id: User['id'] }) {
     const tokenExpiresIn = this.configService.getOrThrow('auth.expires', {
       infer: true,
     });
@@ -240,7 +193,6 @@ export class AuthService {
       await this.jwtService.signAsync(
         {
           id: data.id,
-          sessionId: data.sessionId,
         },
         {
           secret: this.configService.getOrThrow('auth.secret', { infer: true }),
@@ -249,8 +201,7 @@ export class AuthService {
       ),
       await this.jwtService.signAsync(
         {
-          sessionId: data.sessionId,
-          hash: data.hash,
+          id: data.id,
         },
         {
           secret: this.configService.getOrThrow('auth.refreshSecret', {

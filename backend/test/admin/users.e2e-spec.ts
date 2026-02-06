@@ -129,7 +129,6 @@ describe('Users Module', () => {
           .send()
           .expect(({ body }) => {
             expect(body.data[0].email).toBeDefined();
-            expect(body.data[0].hash).not.toBeDefined();
             expect(body.data[0].password).not.toBeDefined();
           });
       });
