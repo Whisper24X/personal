@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
 import type { MenuItem, ProjectItem } from '@/hooks/core/useLayout'
+import logoImage from '@/assets/images/logo.svg'
 
 const props = defineProps<{
   mobileNavOpen: boolean
@@ -32,10 +33,10 @@ const props = defineProps<{
       <div class="flex h-16 items-center justify-center border-b border-sidebar-border">
         <RouterLink
           to="/dashboard"
-          class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-xs font-semibold text-primary-foreground shadow-sm"
+          class="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl shadow-sm"
           aria-label="打开仪表盘"
         >
-          AI
+          <img :src="logoImage" alt="AINative Logo" class="h-full w-full object-cover" />
         </RouterLink>
       </div>
 

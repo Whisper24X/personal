@@ -283,13 +283,6 @@ export const useLayout = () => {
     if (!targetLine) return
 
     targetLine.projects = targetLine.projects.filter((project) => project.id !== payload.projectId)
-
-    if (targetLine.projects.length === 0 && activeBusinessLineId.value === targetLine.id) {
-      const fallbackLine = businessLines.value.find((line) => line.projects.length > 0)
-      if (fallbackLine) {
-        activeBusinessLineId.value = fallbackLine.id
-      }
-    }
   }
 
   const openSettingsModal = () => {

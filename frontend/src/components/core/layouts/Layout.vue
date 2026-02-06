@@ -33,6 +33,9 @@ const {
   showMenuTooltip,
   openBusinessLineModal,
   selectBusinessLine,
+  createProject,
+  updateProject,
+  deleteProject,
   openSettingsModal,
 } = useLayout()
 </script>
@@ -111,9 +114,13 @@ const {
     <BusinessLineModal
       :open="businessLineModalOpen"
       :lines="businessLineItems"
+      :projects="projectItems"
       :active-business-line-id="activeBusinessLineId"
       @update:open="setBusinessLineModalOpen"
-      @select="selectBusinessLine"
+      @select-line="selectBusinessLine"
+      @create-project="createProject"
+      @update-project="updateProject"
+      @delete-project="deleteProject"
     />
   </div>
 </template>
