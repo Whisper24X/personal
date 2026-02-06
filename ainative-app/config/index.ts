@@ -32,7 +32,8 @@ export default defineConfig<"vite">(async (merge, { command, mode }) => {
       privateKeyPath: ciConfig["WEAPP_PRIVATE_KEY_PATH"] || "key/private.key"
     },
     version: ciConfig["WEAPP_VERSION"] || "1.0.0",
-    desc: ciConfig["WEAPP_DESC"] || `${env}环境构建版本`
+    desc: ciConfig["WEAPP_DESC"] || `${env}环境构建版本`,
+    qrcodeOutputDest: path.resolve(__dirname, "../qrcode/preview.png")
     // hooks: {
     //   beforePreview: (config) => {
     //     console.log("预览前配置:", JSON.stringify(config, null, 2))

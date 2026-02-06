@@ -73,9 +73,14 @@ if [ ! -f "$PG_DATA/PG_VERSION" ]; then
     
     su -s /bin/sh postgres -c "psql -c \"ALTER USER ${DB_USER:-postgres} WITH PASSWORD '${DB_PASSWORD:-123456}';\""
     
+    # 创建业务数据库
+    echo "[INIT] Creating database ${DB_NAME:-postgres}..."
+    su -s /bin/sh postgres -c "psql -c \"CREATE DATABASE ${DB_NAME:-postgres} OWNER ${DB_USER:-postgres};\"" 2>/dev/null || echo "[INFO] Database already exists"
+    echo "[INIT] Database ${DB_NAME:-postgres} ready"
+    
     if [ -f "/workspace/ainative-backend/doc/sql/init.sql" ]; then
         echo "[INIT] Running init.sql..."
-        su -s /bin/sh postgres -c "psql -f /workspace/ainative-backend/doc/sql/init.sql"
+        su -s /bin/sh postgres -c "psql -d ${DB_NAME:-postgres} -f /workspace/ainative-backend/doc/sql/init.sql"
     fi
     
     su -s /bin/sh postgres -c "pg_ctl -D $PG_DATA stop"
@@ -94,14 +99,15 @@ echo ""
 echo "============================================================"
 echo "  Infrastructure"
 echo "============================================================"
-echo "  Nginx:       :8080 (gateway)"
+echo "  Nginx:       :8080 (gateway, 主机端口: \${SANDBOX_PORT:-8070})"
 echo "  PostgreSQL:  :${DB_PORT:-5432} (${DB_USER:-postgres})"
 echo "  Redis:       :${REDIS_PORT:-6379}"
 echo ""
-echo "  http://localhost:8080/"
-echo "  http://localhost:8080/api/"
-echo "  http://localhost:8080/shadow/"
-echo "  http://localhost:8080/app/"
+echo "  访问地址（通过主机端口访问）："
+echo "  http://localhost:\${SANDBOX_PORT:-8070}/"
+echo "  http://localhost:\${SANDBOX_PORT:-8070}/api/"
+echo "  http://localhost:\${SANDBOX_PORT:-8070}/shadow/"
+echo "  http://localhost:\${SANDBOX_PORT:-8070}/app/"
 echo ""
 echo "============================================================"
 echo ""

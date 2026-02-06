@@ -16,6 +16,7 @@ RUN apk add --no-cache \
     redis \
     nodejs npm \
     tzdata \
+    build-base librdkafka-dev \
     && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
 
@@ -27,7 +28,7 @@ ENV TZ=Asia/Shanghai \
     GO_ENV=development \
     GOPROXY=https://goproxy.cn,direct \
     GOPRIVATE=gitlab.yc345.tv \
-    CGO_ENABLED=0 \
+    CGO_ENABLED=1 \
     NODE_ENV=development \
     DB_HOST=localhost \
     DB_PORT=5432 \
@@ -67,8 +68,17 @@ RUN sed -i 's/^bind .*/bind 0.0.0.0/' /etc/redis.conf \
 # ============================================================
 
 COPY nginx.conf /etc/nginx/nginx.conf
+COPY app-qrcode.nginx.conf /etc/nginx/app-qrcode.conf
 COPY supervisord.conf /etc/supervisord.conf
 RUN mkdir -p /var/log/nginx /run/nginx /etc/supervisor.d /var/log/supervisor
+
+# ============================================================
+# 小程序二维码页面
+# ============================================================
+
+COPY app-qrcode-page.html /tmp/app-qrcode-page.html
+RUN mkdir -p /workspace/ainative-app-qrcode && \
+    cp /tmp/app-qrcode-page.html /workspace/ainative-app-qrcode/index.html
 
 # ============================================================
 # 启动脚本
