@@ -5,6 +5,7 @@ import type { MenuItem, ProjectItem } from '@/hooks/core/useLayout'
 const props = defineProps<{
   mobileNavOpen: boolean
   sidebarCollapsed: boolean
+  currentBusinessLineName: string
   projectItems: ProjectItem[]
   menuItems: MenuItem[]
   projectItemClass: (to: string) => string
@@ -16,6 +17,7 @@ const props = defineProps<{
   showProjectTooltip: (event: MouseEvent | FocusEvent, name: string) => void
   showMenuTooltip: (event: MouseEvent | FocusEvent, label: string) => void
   hideProjectTooltip: () => void
+  openBusinessLineModal: () => void
   openSettingsModal: () => void
 }>()
 </script>
@@ -58,12 +60,18 @@ const props = defineProps<{
       </div>
 
       <div class="w-full space-y-2 border-t border-sidebar-border py-2">
-        <RouterLink
-          to="/projects"
-          class="flex h-9 w-full items-center justify-center rounded-lg border border-sidebar-border/70 bg-sidebar-accent/40 px-2 text-[11px] font-semibold text-sidebar-foreground/80 transition hover:bg-sidebar-accent"
+        <button
+          type="button"
+          class="flex w-full items-center justify-center rounded-lg border border-sidebar-border/70 bg-sidebar-accent/40 px-1 py-1.5 text-[10px] font-semibold leading-tight text-sidebar-foreground/80 transition hover:bg-sidebar-accent"
+          :title="`当前业务线：${props.currentBusinessLineName}`"
+          @mouseenter="props.showProjectTooltip($event, props.currentBusinessLineName)"
+          @mouseleave="props.hideProjectTooltip"
+          @focus="props.showProjectTooltip($event, props.currentBusinessLineName)"
+          @blur="props.hideProjectTooltip"
+          @click="props.openBusinessLineModal"
         >
-          项目
-        </RouterLink>
+          <span class="block text-center">{{ props.currentBusinessLineName }}</span>
+        </button>
         <button
           type="button"
           class="flex h-9 w-full items-center justify-center rounded-lg border border-transparent px-2 text-[11px] font-semibold text-sidebar-foreground/70 transition hover:bg-sidebar-accent hover:text-sidebar-foreground"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusinessLineModal from '@/components/business/settings/BusinessLineModal.vue'
 import SettingsModal from '@/components/business/settings/SettingsModal.vue'
 import HeaderBar from '@/components/core/layouts/Header.vue'
 import SideNav from '@/components/core/layouts/Sidebar.vue'
@@ -8,6 +9,10 @@ const {
   mobileNavOpen,
   sidebarCollapsed,
   settingsModalOpen,
+  businessLineModalOpen,
+  businessLineItems,
+  activeBusinessLineId,
+  currentBusinessLineName,
   projectTooltipVisible,
   projectTooltipText,
   projectTooltipStyle,
@@ -20,11 +25,14 @@ const {
   projectShortLabel,
   menuIconFor,
   setMobileNavOpen,
+  setBusinessLineModalOpen,
   toggleMobileNav,
   toggleMenuCollapsed,
   showProjectTooltip,
   hideProjectTooltip,
   showMenuTooltip,
+  openBusinessLineModal,
+  selectBusinessLine,
   openSettingsModal,
 } = useLayout()
 </script>
@@ -54,6 +62,7 @@ const {
       <SideNav
         :mobile-nav-open="mobileNavOpen"
         :sidebar-collapsed="sidebarCollapsed"
+        :current-business-line-name="currentBusinessLineName"
         :project-items="projectItems"
         :menu-items="menuItems"
         :project-item-class="projectItemClass"
@@ -65,10 +74,11 @@ const {
         :show-project-tooltip="showProjectTooltip"
         :show-menu-tooltip="showMenuTooltip"
         :hide-project-tooltip="hideProjectTooltip"
+        :open-business-line-modal="openBusinessLineModal"
         :open-settings-modal="openSettingsModal"
       />
 
-      <div class="flex min-h-screen min-w-0 flex-1 p-2 xl:p-3">
+      <div class="flex min-h-screen min-w-0 flex-1 px-1.5 pb-0 pt-0 xl:px-2 xl:pb-0 xl:pt-0">
         <div
           class="app-surface flex min-h-[calc(100vh-1rem)] flex-1 flex-col overflow-hidden xl:min-h-[calc(100vh-1.5rem)]"
         >
@@ -97,5 +107,13 @@ const {
     </span>
 
     <SettingsModal v-model:open="settingsModalOpen" />
+
+    <BusinessLineModal
+      :open="businessLineModalOpen"
+      :lines="businessLineItems"
+      :active-business-line-id="activeBusinessLineId"
+      @update:open="setBusinessLineModalOpen"
+      @select="selectBusinessLine"
+    />
   </div>
 </template>

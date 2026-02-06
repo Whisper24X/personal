@@ -6,15 +6,11 @@ import { useAuth } from '@/hooks'
 type SettingsSectionId =
   | 'account'
   | 'general'
-  | 'sound'
   | 'notification'
-  | 'editor'
   | 'agent-cli'
-  | 'git'
   | 'workflow'
   | 'mcp'
   | 'skills'
-  | 'data'
   | 'about'
 
 type SettingsSection = {
@@ -35,15 +31,11 @@ const emit = defineEmits<{
 const sections: SettingsSection[] = [
   { id: 'account', label: '账号', hint: '登录状态与身份信息', badge: 'AC' },
   { id: 'general', label: '通用', hint: '界面偏好与默认行为', badge: 'GN' },
-  { id: 'sound', label: '提示音', hint: '任务提示与音量', badge: 'SD' },
-  { id: 'notification', label: '通知', hint: '桌面与邮件提醒', badge: 'NT' },
-  { id: 'editor', label: '编辑器', hint: '编码体验参数', badge: 'ED' },
+  { id: 'notification', label: '通知', hint: '通知方式与提示音', badge: 'NT' },
   { id: 'agent-cli', label: 'Agent CLI', hint: '执行引擎与审批模式', badge: 'CL' },
-  { id: 'git', label: 'Git', hint: '分支与提交策略', badge: 'GT' },
   { id: 'workflow', label: '工作流', hint: '模板与节点规则', badge: 'WF' },
   { id: 'mcp', label: 'MCP', hint: '服务连接与发现', badge: 'MP' },
   { id: 'skills', label: 'Skills', hint: '技能能力开关', badge: 'SK' },
-  { id: 'data', label: '数据', hint: '缓存、日志与保留策略', badge: 'DT' },
   { id: 'about', label: '关于', hint: '版本与许可证信息', badge: 'AB' },
 ]
 
@@ -59,17 +51,12 @@ const state = reactive({
   soundVolume: 65,
   desktopNotify: true,
   emailNotify: false,
-  editorFontSize: 14,
-  editorWordWrap: true,
   agentModel: 'GPT-5.3-Codex',
   agentApprovalMode: '按需申请',
-  gitDefaultBranch: 'main',
-  gitAutoFetch: true,
   workflowTemplate: 'Default Runner',
   workflowNeedApproval: true,
   mcpAutoConnect: true,
   skillsAutoUpdate: false,
-  dataRetentionDays: 30,
 })
 
 const activeConfig = computed<SettingsSection>(() => {
@@ -132,7 +119,7 @@ onBeforeUnmount(() => {
         class="relative z-10 flex h-[min(720px,90vh)] w-full max-w-6xl overflow-hidden rounded-3xl border border-border bg-background shadow-2xl"
       >
         <aside class="flex w-64 min-h-0 flex-col border-r border-border bg-muted/30">
-          <div class="border-b border-border px-4 py-4">
+          <div class="flex h-24 items-center border-b border-border px-4">
             <div class="inline-flex items-center gap-2 rounded-2xl bg-card px-3 py-2 shadow-sm">
               <span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-xs font-semibold text-primary-foreground">AI</span>
               <div>
@@ -164,7 +151,7 @@ onBeforeUnmount(() => {
         </aside>
 
         <div class="flex min-h-0 flex-1 flex-col">
-          <header class="flex items-start justify-between gap-3 border-b border-border px-6 py-5">
+          <header class="flex h-24 items-center justify-between gap-3 border-b border-border px-6">
             <div>
               <h2 id="settings-modal-title" class="text-xl font-semibold tracking-tight">{{ activeConfig.label }}</h2>
               <p class="mt-1 text-sm text-muted-foreground">{{ activeConfig.hint }}</p>
@@ -247,21 +234,16 @@ onBeforeUnmount(() => {
               </article>
             </div>
 
-            <div v-else-if="activeSection === 'sound'" class="space-y-4">
-              <article class="panel-card p-4">
+            <div v-else-if="activeSection === 'notification'" class="space-y-4">
+              <article class="panel-card space-y-3 p-4">
                 <label class="flex items-center justify-between text-sm font-semibold">
                   启用提示音
                   <input v-model="state.soundEnabled" type="checkbox" class="h-4 w-4" />
                 </label>
-                <label class="mt-4 block space-y-1">
-                  <span class="text-xs text-muted-foreground">音量（{{ state.soundVolume }}%）</span>
+                <label class="block space-y-1">
+                  <span class="text-xs text-muted-foreground">提示音音量（{{ state.soundVolume }}%）</span>
                   <input v-model.number="state.soundVolume" type="range" min="0" max="100" class="w-full" />
                 </label>
-              </article>
-            </div>
-
-            <div v-else-if="activeSection === 'notification'" class="space-y-4">
-              <article class="panel-card space-y-3 p-4">
                 <label class="flex items-center justify-between text-sm">
                   桌面通知
                   <input v-model="state.desktopNotify" type="checkbox" class="h-4 w-4" />
@@ -269,19 +251,6 @@ onBeforeUnmount(() => {
                 <label class="flex items-center justify-between text-sm">
                   邮件通知
                   <input v-model="state.emailNotify" type="checkbox" class="h-4 w-4" />
-                </label>
-              </article>
-            </div>
-
-            <div v-else-if="activeSection === 'editor'" class="space-y-4">
-              <article class="panel-card p-4">
-                <label class="block space-y-1">
-                  <span class="text-xs text-muted-foreground">字体大小</span>
-                  <input v-model.number="state.editorFontSize" type="number" min="12" max="22" class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm" />
-                </label>
-                <label class="mt-4 flex items-center justify-between text-sm">
-                  自动换行
-                  <input v-model="state.editorWordWrap" type="checkbox" class="h-4 w-4" />
                 </label>
               </article>
             </div>
@@ -303,23 +272,6 @@ onBeforeUnmount(() => {
                     <option>只读模式</option>
                     <option>完全放行</option>
                   </select>
-                </label>
-              </article>
-            </div>
-
-            <div v-else-if="activeSection === 'git'" class="space-y-4">
-              <article class="panel-card p-4">
-                <label class="block space-y-1">
-                  <span class="text-xs text-muted-foreground">默认分支</span>
-                  <input
-                    v-model="state.gitDefaultBranch"
-                    class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
-                    type="text"
-                  />
-                </label>
-                <label class="mt-4 flex items-center justify-between text-sm">
-                  自动拉取远程变更
-                  <input v-model="state.gitAutoFetch" type="checkbox" class="h-4 w-4" />
                 </label>
               </article>
             </div>
@@ -357,29 +309,6 @@ onBeforeUnmount(() => {
                   <input v-model="state.skillsAutoUpdate" type="checkbox" class="h-4 w-4" />
                 </label>
                 <p class="mt-3 text-xs text-muted-foreground">当前工作区已加载 12 个技能包。</p>
-              </article>
-            </div>
-
-            <div v-else-if="activeSection === 'data'" class="space-y-4">
-              <article class="panel-card p-4">
-                <label class="block space-y-1">
-                  <span class="text-xs text-muted-foreground">日志保留天数</span>
-                  <input
-                    v-model.number="state.dataRetentionDays"
-                    type="number"
-                    min="1"
-                    max="365"
-                    class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
-                  />
-                </label>
-                <div class="mt-4 flex gap-2">
-                  <button class="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-background px-4 text-sm transition hover:shadow-md" type="button">
-                    清理缓存
-                  </button>
-                  <button class="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-background px-4 text-sm transition hover:shadow-md" type="button">
-                    导出日志
-                  </button>
-                </div>
               </article>
             </div>
 

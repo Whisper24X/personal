@@ -9,6 +9,20 @@ export type ProjectItem = {
   short: string
 }
 
+export type BusinessLineItem = {
+  id: string
+  name: string
+  owner: string
+  projectCount: number
+}
+
+type BusinessLine = {
+  id: string
+  name: string
+  owner: string
+  projects: ProjectItem[]
+}
+
 export type MenuItem = {
   id: 'dashboard' | 'tasks' | 'kanban' | 'automations' | 'skills' | 'mcp'
   label: string
@@ -21,6 +35,7 @@ export const useLayout = () => {
   const mobileNavOpen = ref(false)
   const isDesktop = ref(false)
   const settingsModalOpen = ref(false)
+  const businessLineModalOpen = ref(false)
   const menuCollapsed = ref(false)
   const projectTooltipVisible = ref(false)
   const projectTooltipText = ref('')
@@ -29,11 +44,46 @@ export const useLayout = () => {
     top: '0px',
   })
 
-  const projectItems: ProjectItem[] = [
-    { id: 'demo-ainative', name: 'AI Native', to: '/projects/demo-ainative', short: 'AIN' },
-    { id: 'runner-sandbox', name: 'Runner Sandbox', to: '/projects/runner-sandbox', short: 'RUN' },
-    { id: 'studio-core', name: 'Studio Core', to: '/projects/studio-core', short: 'STD' },
-  ]
+  const businessLines = ref<BusinessLine[]>([
+    {
+      id: 'bl-platform',
+      name: '平台研发线',
+      owner: '张敏',
+      projects: [
+        { id: 'demo-ainative', name: 'AI Native', to: '/projects/demo-ainative', short: 'AIN' },
+        { id: 'studio-core', name: 'Studio Core', to: '/projects/studio-core', short: 'STD' },
+      ],
+    },
+    {
+      id: 'bl-growth',
+      name: '增长业务线',
+      owner: '李博',
+      projects: [{ id: 'runner-sandbox', name: 'Runner Sandbox', to: '/projects/runner-sandbox', short: 'RUN' }],
+    },
+  ])
+
+  const activeBusinessLineId = ref(businessLines.value[0]?.id ?? '')
+
+  const currentBusinessLine = computed(() => {
+    return businessLines.value.find((line) => line.id === activeBusinessLineId.value) ?? businessLines.value[0]
+  })
+
+  const businessLineItems = computed<BusinessLineItem[]>(() => {
+    return businessLines.value.map((line) => ({
+      id: line.id,
+      name: line.name,
+      owner: line.owner,
+      projectCount: line.projects.length,
+    }))
+  })
+
+  const currentBusinessLineName = computed(() => {
+    return currentBusinessLine.value?.name ?? '未分组业务线'
+  })
+
+  const projectItems = computed<ProjectItem[]>(() => {
+    return currentBusinessLine.value?.projects ?? []
+  })
 
   const menuItems: MenuItem[] = [
     { id: 'dashboard', label: '仪表盘', to: '/dashboard' },
@@ -96,6 +146,10 @@ export const useLayout = () => {
     mobileNavOpen.value = open
   }
 
+  const setBusinessLineModalOpen = (open: boolean) => {
+    businessLineModalOpen.value = open
+  }
+
   const toggleMobileNav = () => {
     mobileNavOpen.value = !mobileNavOpen.value
   }
@@ -126,6 +180,118 @@ export const useLayout = () => {
     showProjectTooltip(event, label)
   }
 
+  const findBusinessLineByProjectId = (projectId: string) => {
+    return businessLines.value.find((line) => line.projects.some((project) => project.id === projectId))
+  }
+
+  const getProjectIdFromRoute = () => {
+    if (route.name !== 'project-detail') return ''
+
+    const routeProjectId = route.params.id
+    if (typeof routeProjectId === 'string') return routeProjectId
+    if (Array.isArray(routeProjectId)) return routeProjectId[0] ?? ''
+
+    return ''
+  }
+
+  const syncBusinessLineFromRoute = () => {
+    const projectId = getProjectIdFromRoute()
+    if (!projectId) return
+
+    const matchedBusinessLine = findBusinessLineByProjectId(projectId)
+    if (!matchedBusinessLine) return
+    activeBusinessLineId.value = matchedBusinessLine.id
+  }
+
+  const normalizeProjectShort = (short: string, projectName: string) => {
+    const source = short.trim() || projectName.trim()
+    return source.slice(0, 4).toUpperCase()
+  }
+
+  const normalizeProjectId = (name: string) => {
+    const normalized = name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+/, '')
+      .replace(/-+$/, '')
+
+    if (normalized) return normalized
+    return `project-${Date.now().toString(36)}`
+  }
+
+  const ensureUniqueProjectId = (candidateId: string) => {
+    let uniqueId = candidateId
+    let suffix = 1
+
+    while (businessLines.value.some((line) => line.projects.some((project) => project.id === uniqueId))) {
+      uniqueId = `${candidateId}-${suffix}`
+      suffix += 1
+    }
+
+    return uniqueId
+  }
+
+  const openBusinessLineModal = () => {
+    businessLineModalOpen.value = true
+    mobileNavOpen.value = false
+    hideProjectTooltip()
+  }
+
+  const selectBusinessLine = (businessLineId: string) => {
+    const matchedBusinessLine = businessLines.value.find((line) => line.id === businessLineId)
+    if (!matchedBusinessLine) return
+
+    activeBusinessLineId.value = matchedBusinessLine.id
+    hideProjectTooltip()
+  }
+
+  const createProject = (payload: { businessLineId: string; name: string; short: string }) => {
+    const targetLine = businessLines.value.find((line) => line.id === payload.businessLineId)
+    if (!targetLine) return
+
+    const projectName = payload.name.trim()
+    if (!projectName) return
+
+    const projectId = ensureUniqueProjectId(normalizeProjectId(projectName))
+    const projectShort = normalizeProjectShort(payload.short, projectName)
+
+    targetLine.projects.push({
+      id: projectId,
+      name: projectName,
+      to: `/projects/${projectId}`,
+      short: projectShort,
+    })
+  }
+
+  const updateProject = (payload: { businessLineId: string; projectId: string; name: string; short: string }) => {
+    const targetLine = businessLines.value.find((line) => line.id === payload.businessLineId)
+    if (!targetLine) return
+
+    const targetProject = targetLine.projects.find((project) => project.id === payload.projectId)
+    if (!targetProject) return
+
+    const projectName = payload.name.trim()
+    if (!projectName) return
+
+    targetProject.name = projectName
+    targetProject.short = normalizeProjectShort(payload.short, projectName)
+  }
+
+  const deleteProject = (payload: { businessLineId: string; projectId: string }) => {
+    const targetLine = businessLines.value.find((line) => line.id === payload.businessLineId)
+    if (!targetLine) return
+
+    targetLine.projects = targetLine.projects.filter((project) => project.id !== payload.projectId)
+
+    if (targetLine.projects.length === 0 && activeBusinessLineId.value === targetLine.id) {
+      const fallbackLine = businessLines.value.find((line) => line.projects.length > 0)
+      if (fallbackLine) {
+        activeBusinessLineId.value = fallbackLine.id
+      }
+    }
+  }
+
   const openSettingsModal = () => {
     settingsModalOpen.value = true
     mobileNavOpen.value = false
@@ -146,6 +312,7 @@ export const useLayout = () => {
     () => {
       mobileNavOpen.value = false
       hideProjectTooltip()
+      syncBusinessLineFromRoute()
     },
   )
 
@@ -174,6 +341,8 @@ export const useLayout = () => {
     const savedTheme = localStorage.getItem(STORAGE_KEYS.theme)
     document.documentElement.classList.toggle('dark', savedTheme === 'dark')
 
+    syncBusinessLineFromRoute()
+
     desktopMediaQuery = window.matchMedia('(min-width: 1100px)')
     syncDesktop()
     desktopMediaQuery.addEventListener('change', syncDesktop)
@@ -195,6 +364,10 @@ export const useLayout = () => {
     mobileNavOpen,
     sidebarCollapsed,
     settingsModalOpen,
+    businessLineModalOpen,
+    businessLineItems,
+    activeBusinessLineId,
+    currentBusinessLineName,
     projectTooltipVisible,
     projectTooltipText,
     projectTooltipStyle,
@@ -207,11 +380,17 @@ export const useLayout = () => {
     projectShortLabel,
     menuIconFor,
     setMobileNavOpen,
+    setBusinessLineModalOpen,
     toggleMobileNav,
     toggleMenuCollapsed,
     showProjectTooltip,
     hideProjectTooltip,
     showMenuTooltip,
+    openBusinessLineModal,
+    selectBusinessLine,
+    createProject,
+    updateProject,
+    deleteProject,
     openSettingsModal,
   }
 }
