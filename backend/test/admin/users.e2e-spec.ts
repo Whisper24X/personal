@@ -1,7 +1,5 @@
 import { APP_URL, ADMIN_EMAIL, ADMIN_PASSWORD } from '../utils/constants';
 import request from 'supertest';
-import { RoleEnum } from '../../src/roles/roles.enum';
-import { StatusEnum } from '../../src/statuses/statuses.enum';
 
 describe('Users Module', () => {
   const app = APP_URL;
@@ -98,12 +96,6 @@ describe('Users Module', () => {
             password: newUserByAdminPassword,
             firstName: `UserByAdmin${Date.now()}`,
             lastName: 'E2E',
-            role: {
-              id: RoleEnum.user,
-            },
-            status: {
-              id: StatusEnum.active,
-            },
           })
           .expect(201);
       });
@@ -136,7 +128,6 @@ describe('Users Module', () => {
           .expect(200)
           .send()
           .expect(({ body }) => {
-            expect(body.data[0].provider).toBeDefined();
             expect(body.data[0].email).toBeDefined();
             expect(body.data[0].hash).not.toBeDefined();
             expect(body.data[0].password).not.toBeDefined();

@@ -91,4 +91,4 @@ export class User extends EntityRelationalHelper {
 
 Previous: [Auth](auth.md)
 
-Next: [File uploading](file-uploading.md)
+Next: [Tests](tests.md)

@@ -26,7 +26,6 @@ export class UsersRelationalRepository implements UserRepository {
   }
 
   async findManyWithPagination({
-    filterOptions,
     sortOptions,
     paginationOptions,
   }: {
@@ -35,11 +34,6 @@ export class UsersRelationalRepository implements UserRepository {
     paginationOptions: IPaginationOptions;
   }): Promise<User[]> {
     const where: FindOptionsWhere<UserEntity> = {};
-    if (filterOptions?.roles?.length) {
-      where.role = filterOptions.roles.map((role) => ({
-        id: Number(role.id),
-      }));
-    }
 
     const entities = await this.usersRepository.find({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
@@ -78,22 +72,6 @@ export class UsersRelationalRepository implements UserRepository {
 
     const entity = await this.usersRepository.findOne({
       where: { email },
-    });
-
-    return entity ? UserMapper.toDomain(entity) : null;
-  }
-
-  async findBySocialIdAndProvider({
-    socialId,
-    provider,
-  }: {
-    socialId: User['socialId'];
-    provider: User['provider'];
-  }): Promise<NullableType<User>> {
-    if (!socialId || !provider) return null;
-
-    const entity = await this.usersRepository.findOne({
-      where: { socialId, provider },
     });
 
     return entity ? UserMapper.toDomain(entity) : null;

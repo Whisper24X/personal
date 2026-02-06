@@ -29,24 +29,24 @@ const props = defineProps<{
     class="fixed inset-y-0 left-0 z-50 flex border-r border-sidebar-border bg-sidebar/95 backdrop-blur transition-[width,transform] duration-200 2xl:static 2xl:translate-x-0"
     :class="[props.mobileNavOpen ? 'translate-x-0' : '-translate-x-full', props.sidebarCollapsed ? 'w-[9.25rem]' : 'w-[19rem]']"
   >
-    <div class="relative z-20 flex h-full min-h-0 w-[5.25rem] flex-col items-center border-r border-sidebar-border px-2">
-      <div class="flex h-16 items-center justify-center border-b border-sidebar-border">
+    <div class="relative z-20 flex h-full min-h-0 w-[5.25rem] flex-col items-center border-r border-sidebar-border px-1">
+      <div class="flex h-16 w-full items-center justify-center border-b border-sidebar-border">
         <RouterLink
           to="/dashboard"
-          class="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl shadow-sm"
+          class="inline-flex h-10 w-[3.75rem] items-center justify-center overflow-hidden rounded-xl shadow-sm"
           aria-label="打开仪表盘"
         >
-          <img :src="logoImage" alt="AINative Logo" class="h-full w-full object-cover" />
+          <img :src="logoImage" alt="AINative Logo" class="h-full w-full object-contain" />
         </RouterLink>
       </div>
 
-      <div class="w-full flex-1 overflow-y-auto overflow-x-hidden py-3">
-        <div class="flex flex-col items-center gap-2.5">
+      <div class="w-full flex-1 overflow-y-auto overflow-x-hidden py-2">
+        <div class="flex flex-col items-center gap-1">
           <RouterLink
             v-for="item in props.projectItems"
             :key="item.id"
             :to="item.to"
-            class="flex h-12 w-12 items-center justify-center rounded-2xl border text-[11px] font-bold tracking-wider transition-all"
+            class="flex h-11 w-[3.75rem] items-center justify-center rounded-lg border text-[11px] font-bold tracking-wider transition-all"
             :class="props.projectItemClass(item.to)"
             :aria-label="item.name"
             :title="item.name"

@@ -6,7 +6,6 @@
 - [E2E Tests](#e2e-tests)
 - [Tests in Docker](#tests-in-docker)
   - [For relational database](#for-relational-database)
-  - [For document database](#for-document-database)
 
 ## Unit Tests
 
@@ -28,14 +27,8 @@ npm run test:e2e
 npm run test:e2e:relational:docker
 ```
 
-### For document database
-
-```bash
-npm run test:e2e:document:docker
-```
-
 ---
 
-Previous: [File uploading](file-uploading.md)
+Previous: [Serialization](serialization.md)
 
 Next: [Benchmarking](benchmarking.md)

@@ -13,7 +13,6 @@ describe('Auth', () => {
         .expect(({ body }) => {
           expect(body.token).toBeDefined();
           expect(body.user.email).toBeDefined();
-          expect(body.user.role).toBeDefined();
         });
     });
   });
