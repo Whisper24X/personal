@@ -1,49 +1,20 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 fade-up">
     <section class="space-y-2">
-      <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-        Settings
-      </p>
-      <h1 class="text-3xl font-semibold tracking-tight">Workspace Preferences</h1>
-      <p class="max-w-2xl text-sm text-muted-foreground">
-        Control theme, density, and collaboration defaults for this workspace.
+      <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">关于</p>
+      <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">产品说明</h1>
+      <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+        AI Native 是面向工程团队的任务执行控制台，聚合项目管理、任务编排、日志追踪与自动化能力。
       </p>
     </section>
 
-    <section class="grid gap-4 md:grid-cols-2">
-      <div class="rounded-2xl border border-border bg-card p-5 shadow-sm">
-        <p class="text-sm font-semibold">Appearance</p>
-        <p class="mt-2 text-xs text-muted-foreground">
-          Set base theme, accent color, and default typography scale.
-        </p>
-        <div class="mt-4 flex gap-2">
-          <button
-            class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
-            type="button"
-          >
-            Light
-          </button>
-          <button
-            class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
-            type="button"
-          >
-            Dark
-          </button>
-        </div>
-      </div>
-
-      <div class="rounded-2xl border border-border bg-card p-5 shadow-sm">
-        <p class="text-sm font-semibold">Collaboration</p>
-        <p class="mt-2 text-xs text-muted-foreground">
-          Enable presence indicators and shared cursors in review sessions.
-        </p>
-        <div class="mt-4 flex items-center justify-between">
-          <span class="text-xs text-muted-foreground">Presence</span>
-          <span class="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary">
-            Enabled
-          </span>
-        </div>
-      </div>
+    <section class="panel-card p-5">
+      <p class="text-sm font-semibold">核心能力</p>
+      <ul class="mt-3 space-y-2 text-sm text-muted-foreground">
+        <li>项目维度的上下文隔离与权限控制</li>
+        <li>任务执行全链路可视化（状态、日志、产物）</li>
+        <li>可扩展的技能与 MCP 工具接入</li>
+      </ul>
     </section>
   </div>
 </template>

@@ -10,7 +10,7 @@ const tab = ref<TabKey>('overview')
 
 const project = computed(() => ({
   id: projectId.value,
-  name: projectId.value === 'demo-ainative' ? 'AINative Demo' : 'Project',
+  name: projectId.value === 'demo-ainative' ? 'AINative 示例项目' : '业务项目',
   repoUrl:
     projectId.value === 'demo-ainative'
       ? 'git@example.com:platform/ainative.git'
@@ -26,19 +26,17 @@ const tabClass = (key: TabKey) =>
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 fade-up">
     <section class="space-y-2">
       <div class="flex items-center gap-2 text-xs text-muted-foreground">
-        <RouterLink to="/projects" class="hover:text-foreground hover:underline">
-          Projects
-        </RouterLink>
+        <RouterLink to="/projects" class="hover:text-foreground hover:underline">项目列表</RouterLink>
         <span>/</span>
         <span class="font-mono">{{ project.id }}</span>
       </div>
 
       <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div class="space-y-1">
-          <h1 class="text-3xl font-semibold tracking-tight">{{ project.name }}</h1>
+          <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">{{ project.name }}</h1>
           <p class="text-sm text-muted-foreground">
             <span class="font-mono text-xs">{{ project.repoUrl }}</span>
             <span class="mx-2">•</span>
@@ -46,7 +44,7 @@ const tabClass = (key: TabKey) =>
               {{ project.defaultBranch }}
             </span>
             <span class="mx-2">•</span>
-            <span>Updated {{ project.updatedAt }}</span>
+            <span>更新于 {{ project.updatedAt }}</span>
           </p>
         </div>
 
@@ -55,26 +53,26 @@ const tabClass = (key: TabKey) =>
             class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground shadow-sm transition hover:shadow-md"
             type="button"
           >
-            Edit Config
+            编辑配置
           </button>
           <RouterLink
             to="/tasks"
             class="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition hover:shadow-md"
           >
-            New Task
+            新建任务
           </RouterLink>
         </div>
       </div>
     </section>
 
-    <section class="flex flex-wrap gap-2 rounded-2xl border border-border bg-card p-2 shadow-sm">
+    <section class="panel-card flex flex-wrap gap-2 p-2">
       <button
         class="rounded-xl px-4 py-2 text-sm font-semibold transition"
         :class="tabClass('overview')"
         type="button"
         @click="tab = 'overview'"
       >
-        Overview
+        概览
       </button>
       <button
         class="rounded-xl px-4 py-2 text-sm font-semibold transition"
@@ -82,7 +80,7 @@ const tabClass = (key: TabKey) =>
         type="button"
         @click="tab = 'tasks'"
       >
-        Tasks
+        任务
       </button>
       <button
         class="rounded-xl px-4 py-2 text-sm font-semibold transition"
@@ -90,40 +88,40 @@ const tabClass = (key: TabKey) =>
         type="button"
         @click="tab = 'config'"
       >
-        Config
+        配置
       </button>
     </section>
 
     <section v-if="tab === 'overview'" class="space-y-6">
       <div class="grid gap-4 md:grid-cols-3">
-        <div class="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <p class="text-xs text-muted-foreground">Total tasks</p>
+        <div class="panel-card p-4">
+          <p class="text-xs text-muted-foreground">任务总数</p>
           <p class="mt-2 text-2xl font-semibold">24</p>
-          <p class="mt-3 text-xs text-muted-foreground">Across all templates</p>
+          <p class="mt-3 text-xs text-muted-foreground">覆盖全部执行模板</p>
         </div>
-        <div class="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <p class="text-xs text-muted-foreground">Running</p>
+        <div class="panel-card p-4">
+          <p class="text-xs text-muted-foreground">运行中</p>
           <p class="mt-2 text-2xl font-semibold">2</p>
-          <p class="mt-3 text-xs text-muted-foreground">Log streaming enabled</p>
+          <p class="mt-3 text-xs text-muted-foreground">实时日志已开启</p>
         </div>
-        <div class="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <p class="text-xs text-muted-foreground">Last run</p>
-          <p class="mt-2 text-2xl font-semibold">12m ago</p>
-          <p class="mt-3 text-xs text-muted-foreground">Task t-004</p>
+        <div class="panel-card p-4">
+          <p class="text-xs text-muted-foreground">最近一次运行</p>
+          <p class="mt-2 text-2xl font-semibold">12 分钟前</p>
+          <p class="mt-3 text-xs text-muted-foreground">任务 t-004</p>
         </div>
       </div>
 
-      <div class="rounded-2xl border border-border bg-card p-5 shadow-sm">
+      <div class="panel-card p-5">
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-sm font-semibold">Recent tasks</p>
-            <p class="text-xs text-muted-foreground">Latest activity in this project</p>
+            <p class="text-sm font-semibold">最近任务</p>
+            <p class="text-xs text-muted-foreground">该项目的近期执行活动</p>
           </div>
           <RouterLink
             to="/tasks"
             class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
           >
-            View all
+            查看全部
           </RouterLink>
         </div>
         <div class="mt-4 space-y-2 text-sm">
@@ -131,54 +129,50 @@ const tabClass = (key: TabKey) =>
             to="/tasks/t-004"
             class="flex items-center justify-between rounded-xl border border-border bg-background/70 px-4 py-3 hover:bg-background"
           >
-            <span class="font-semibold">Upload artifact preview page</span>
-            <span class="text-xs text-muted-foreground">SUCCESS</span>
+            <span class="font-semibold">上传产物预览页面</span>
+            <span class="text-xs text-muted-foreground">成功</span>
           </RouterLink>
           <RouterLink
             to="/tasks/t-002"
             class="flex items-center justify-between rounded-xl border border-border bg-background/70 px-4 py-3 hover:bg-background"
           >
-            <span class="font-semibold">Run agent to generate API stubs</span>
-            <span class="text-xs text-muted-foreground">RUNNING</span>
+            <span class="font-semibold">运行 Agent 生成 API 桩代码</span>
+            <span class="text-xs text-muted-foreground">运行中</span>
           </RouterLink>
           <RouterLink
             to="/tasks/t-001"
             class="flex items-center justify-between rounded-xl border border-border bg-background/70 px-4 py-3 hover:bg-background"
           >
-            <span class="font-semibold">Create workflow template for MVP</span>
-            <span class="text-xs text-muted-foreground">DRAFT</span>
+            <span class="font-semibold">创建 MVP 工作流模板</span>
+            <span class="text-xs text-muted-foreground">草稿</span>
           </RouterLink>
         </div>
       </div>
     </section>
 
     <section v-else-if="tab === 'tasks'" class="space-y-4">
-      <div class="rounded-2xl border border-border bg-card p-5 shadow-sm">
-        <p class="text-sm font-semibold">Tasks</p>
-        <p class="mt-1 text-sm text-muted-foreground">
-          Embedded task list filtered by this project (MVP can link to global list).
-        </p>
+      <div class="panel-card p-5">
+        <p class="text-sm font-semibold">任务视图</p>
+        <p class="mt-1 text-sm text-muted-foreground">这里可嵌入该项目的任务列表，MVP 阶段先跳转到全局任务页。</p>
         <div class="mt-4">
           <RouterLink
             to="/tasks"
             class="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:shadow-md"
           >
-            Go to Tasks
+            前往任务页
           </RouterLink>
         </div>
       </div>
     </section>
 
     <section v-else class="space-y-4">
-      <div class="rounded-2xl border border-border bg-card p-5 shadow-sm">
-        <p class="text-sm font-semibold">Project Config (MVP)</p>
-        <p class="mt-1 text-sm text-muted-foreground">
-          Repo binding and default execution settings. (API wiring later.)
-        </p>
+      <div class="panel-card p-5">
+        <p class="text-sm font-semibold">项目配置（MVP）</p>
+        <p class="mt-1 text-sm text-muted-foreground">仓库绑定与默认执行参数配置，后续可接 API 持久化。</p>
 
         <form class="mt-6 grid gap-4 md:grid-cols-2">
           <label class="space-y-2 md:col-span-2">
-            <span class="text-xs font-semibold text-muted-foreground">Repository URL</span>
+            <span class="text-xs font-semibold text-muted-foreground">仓库地址</span>
             <input
               class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground shadow-sm outline-none ring-offset-background transition focus:ring-2 focus:ring-ring"
               :value="project.repoUrl"
@@ -187,7 +181,7 @@ const tabClass = (key: TabKey) =>
           </label>
 
           <label class="space-y-2">
-            <span class="text-xs font-semibold text-muted-foreground">Default branch</span>
+            <span class="text-xs font-semibold text-muted-foreground">默认分支</span>
             <input
               class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground shadow-sm outline-none ring-offset-background transition focus:ring-2 focus:ring-ring"
               :value="project.defaultBranch"
@@ -196,7 +190,7 @@ const tabClass = (key: TabKey) =>
           </label>
 
           <label class="space-y-2">
-            <span class="text-xs font-semibold text-muted-foreground">Allowed agents</span>
+            <span class="text-xs font-semibold text-muted-foreground">允许 Agent</span>
             <select
               class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground shadow-sm outline-none ring-offset-background transition focus:ring-2 focus:ring-ring"
             >
@@ -211,13 +205,13 @@ const tabClass = (key: TabKey) =>
               class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground shadow-sm transition hover:shadow-md"
               type="button"
             >
-              Reset
+              重置
             </button>
             <button
               class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition hover:shadow-md"
               type="button"
             >
-              Save
+              保存
             </button>
           </div>
         </form>

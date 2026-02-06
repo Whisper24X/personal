@@ -6,29 +6,24 @@ import { RouterLink } from 'vue-router'
   <div class="min-h-screen bg-background text-foreground">
     <div class="mx-auto flex min-h-screen max-w-xl items-center px-5 py-10">
       <div class="w-full space-y-4 rounded-2xl border border-border bg-card p-8 shadow-sm">
-        <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-          404
-        </p>
-        <h1 class="text-3xl font-semibold tracking-tight">Page not found</h1>
-        <p class="text-sm text-muted-foreground">
-          The page you’re looking for doesn’t exist or was moved.
-        </p>
+        <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">404</p>
+        <h1 class="text-3xl font-semibold tracking-tight">页面不存在</h1>
+        <p class="text-sm text-muted-foreground">你访问的页面不存在，或已被移动到其他位置。</p>
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
           <RouterLink
-            to="/projects"
+            to="/dashboard"
             class="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition hover:shadow-md"
           >
-            Go to Projects
+            返回仪表盘
           </RouterLink>
           <RouterLink
             to="/login"
             class="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground shadow-sm transition hover:shadow-md"
           >
-            Sign in
+            去登录
           </RouterLink>
         </div>
       </div>
     </div>
   </div>
 </template>
-

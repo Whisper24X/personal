@@ -13,6 +13,10 @@
     @apply border-border outline-ring/50;
   }
 
+  :root {
+    --grid-line: color-mix(in oklab, var(--border) 65%, transparent);
+  }
+
   html {
     @apply bg-background text-foreground;
     font-family: var(--font-sans);
@@ -21,6 +25,17 @@
   body {
     @apply min-h-screen bg-background text-foreground antialiased;
     letter-spacing: var(--tracking-normal);
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+      radial-gradient(circle at 18% 12%, color-mix(in oklab, var(--primary) 10%, transparent) 0%, transparent 44%),
+      radial-gradient(circle at 86% 76%, color-mix(in oklab, var(--secondary) 12%, transparent) 0%, transparent 48%);
+    background-size:
+      40px 40px,
+      40px 40px,
+      100% 100%,
+      100% 100%;
+    background-attachment: fixed;
   }
 
   code,
@@ -37,12 +52,41 @@
   }
 
   button {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring/50 cursor-pointer;
   }
 }
 
 @layer utilities {
   .container {
     @apply mx-auto max-w-6xl px-5 md:px-8;
+  }
+
+  .app-surface {
+    @apply rounded-2xl border border-border bg-background shadow-sm;
+  }
+
+  .panel-card {
+    @apply rounded-2xl border border-border bg-card shadow-sm;
+  }
+
+  .fade-up {
+    animation: fade-up 240ms ease-out;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-up {
+    animation-duration: 1ms;
+  }
+}
+
+@keyframes fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
