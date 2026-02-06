@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { RouterView, useRoute } from 'vue-router'
-import AppShell from '@/layouts/AppShell.vue'
+import AppLayout from '@/components/core/layouts/Layout.vue'
 
 const route = useRoute()
 </script>
 
 <template>
-  <AppShell v-if="route.meta.layout !== 'auth'">
+  <AppLayout v-if="route.meta.layout !== 'auth'">
     <RouterView />
-  </AppShell>
+  </AppLayout>
 
   <RouterView v-else />
 </template>

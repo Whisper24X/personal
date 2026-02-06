@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useAuth } from '@/hooks'
 
 type SettingsSectionId =
   | 'account'
@@ -47,6 +48,7 @@ const sections: SettingsSection[] = [
 ]
 
 const activeSection = ref<SettingsSectionId>('account')
+const { logout } = useAuth()
 
 const state = reactive({
   accountName: 'fuzhifei',
@@ -76,6 +78,11 @@ const activeConfig = computed<SettingsSection>(() => {
 
 const closeModal = () => {
   emit('update:open', false)
+}
+
+const onLogout = () => {
+  logout()
+  closeModal()
 }
 
 const onKeydown = (event: KeyboardEvent) => {
@@ -217,7 +224,7 @@ onBeforeUnmount(() => {
                 <RouterLink
                   to="/login"
                   class="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
-                  @click="closeModal"
+                  @click="onLogout"
                 >
                   退出登录
                 </RouterLink>

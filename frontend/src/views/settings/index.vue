@@ -1,8 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useAuth } from '@/hooks'
 
 const density = ref<'comfortable' | 'compact'>('comfortable')
+const { logout } = useAuth()
+
+const onLogout = () => {
+  logout()
+}
 </script>
 
 <template>
@@ -57,6 +63,7 @@ const density = ref<'comfortable' | 'compact'>('comfortable')
         <RouterLink
           to="/login"
           class="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
+          @click="onLogout"
         >
           退出登录
         </RouterLink>

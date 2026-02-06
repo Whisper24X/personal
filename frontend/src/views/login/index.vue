@@ -1,25 +1,26 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuth } from '@/hooks'
 
 const router = useRouter()
+const route = useRoute()
+const { login, loading: isLoading, error } = useAuth()
 
 const email = ref('demo@example.com')
 const password = ref('password')
-const isLoading = ref(false)
-const error = ref<string | null>(null)
 
 const onSubmit = async () => {
-  error.value = null
-  isLoading.value = true
   try {
-    // MVP: 演示登录。后续可接 `/api/v1/auth/email/login`。
-    await new Promise((resolve) => setTimeout(resolve, 400))
-    await router.push('/dashboard')
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : '登录失败'
-  } finally {
-    isLoading.value = false
+    await login({
+      email: email.value,
+      password: password.value,
+    })
+
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard'
+    await router.push(redirect)
+  } catch (exception) {
+    void exception
   }
 }
 </script>
