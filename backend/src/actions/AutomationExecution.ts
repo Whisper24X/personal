@@ -6,10 +6,12 @@
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import { WorkspaceOptions, logger } from '../utils';
+import { WorkspaceOptions, logger, WorkspaceManager } from '../utils';
 import * as fs from 'fs/promises';
+import { existsSync } from 'fs';
 import * as path from 'path';
-import { StagehandService } from '../services/StagehandService';
+import { spawnSync } from 'child_process';
+import { PlaceholderBrowserService } from '../services/PlaceholderBrowserService';
 
 export interface AutomationExecutionOptions extends WorkspaceOptions {
   // Inherits all options from WorkspaceOptions
@@ -164,7 +166,7 @@ class StabilityMiddleware {
  */
 class StepRunner {
   constructor(
-    private stagehandService: StagehandService,
+    private browserService: PlaceholderBrowserService,
     private stabilityMiddleware: StabilityMiddleware
   ) {}
 
@@ -233,7 +235,7 @@ class StepRunner {
         () =>
           this.stabilityMiddleware.withTimeout(async () => {
             // 如果步骤包含 URL，将 URL 作为单独参数传递
-            await this.stagehandService.act(instruction || stepText, url);
+            await this.browserService.act(instruction || stepText, url);
           }, timeoutMs),
         {
           maxRetries: retryCount,
@@ -346,7 +348,7 @@ class StepRunner {
    */
   async assertExpected(expected: { type: 'url' | 'text' | 'element' | 'api' | 'cookie' | 'url_match'; value: string }): Promise<boolean> {
     try {
-      const page = await this.stagehandService.getPage();
+      const page = await this.browserService.getPage();
       if (!page) {
         logger.warn('StepRunner: Cannot assert expected - page not available');
         return false;
@@ -666,7 +668,7 @@ class StepRunner {
    */
   private async waitForElement(waitFor: { type: 'toast' | 'element'; text?: string; selector?: string; timeout?: number }): Promise<boolean> {
     try {
-      const page = await this.stagehandService.getPage();
+      const page = await this.browserService.getPage();
       if (!page) {
         logger.warn('StepRunner: Cannot wait for element - page not available');
         return false;
@@ -885,77 +887,21 @@ class ResultCollector {
 }
 
 export class AutomationExecution extends BaseAction {
-  private stagehandService: StagehandService;
+  private browserService: PlaceholderBrowserService;
   private stabilityMiddleware: StabilityMiddleware;
   private stepRunner: StepRunner;
   private resultCollector: ResultCollector;
 
   constructor() {
     super('AutomationExecution', 'Execute JSON format test cases from test/auto directory and generate HTML/JSON reports');
-    this.stagehandService = new StagehandService();
+    this.browserService = new PlaceholderBrowserService();
     this.stabilityMiddleware = new StabilityMiddleware();
-    this.stepRunner = new StepRunner(this.stagehandService, this.stabilityMiddleware);
+    this.stepRunner = new StepRunner(this.browserService, this.stabilityMiddleware);
     this.resultCollector = new ResultCollector();
   }
 
-  /**
-   * Check Stagehand environment status before execution
-   * Validates browser automation configuration and API keys
-   */
-  private checkStagehandEnvironment(): void {
-    const envStatus = {
-      browserEnabled: process.env.ENABLE_BROWSER === 'true',
-      hasOpenAIApiKey: !!process.env.OPENAI_API_KEY,
-      hasZhipuAIApiKey: !!process.env.ZHIPUAI_API_KEY || !!process.env.ZHIPU_API_KEY,
-      stagehandModel: process.env.STAGEHAND_MODEL || process.env.OPENAI_MODEL || process.env.ZHIPUAI_MODEL || 'not set',
-      stagehandEnv: process.env.STAGEHAND_ENV || 'LOCAL',
-      stagehandHeadless: process.env.STAGEHAND_HEADLESS === 'true',
-      stagehandVerbose: process.env.STAGEHAND_VERBOSE || '0',
-    };
-
-    logger.info('AutomationExecution: Stagehand environment check', envStatus);
-
-    // Warn if browser automation is disabled
-    if (!envStatus.browserEnabled) {
-      logger.warn('AutomationExecution: Browser automation is disabled (ENABLE_BROWSER !== true). Scripts may run in placeholder mode.');
-    }
-
-    // Warn if no API key is configured
-    if (!envStatus.hasOpenAIApiKey && !envStatus.hasZhipuAIApiKey) {
-      logger.warn('AutomationExecution: No LLM API key found (OPENAI_API_KEY or ZHIPUAI_API_KEY). Stagehand may fail to initialize.');
-    }
-
-    // Log configuration summary
-    const apiProvider = envStatus.hasOpenAIApiKey ? 'OpenAI' : envStatus.hasZhipuAIApiKey ? 'ZhipuAI' : 'None';
-    logger.info('AutomationExecution: Stagehand configuration summary', {
-      apiProvider,
-      model: envStatus.stagehandModel,
-      environment: envStatus.stagehandEnv,
-      headless: envStatus.stagehandHeadless,
-      verbose: envStatus.stagehandVerbose,
-    });
-  }
-
   async run(_input: string, options?: AutomationExecutionOptions): Promise<IActionOutput> {
-    logger.info('AutomationExecution: Starting automation execution from JSON test case files');
-
-    // 强制开启浏览器有头模式（确保用户能看到浏览器窗口）
-    const wasHeadless = process.env.STAGEHAND_HEADLESS === 'true';
-    if (wasHeadless) {
-      logger.warn('AutomationExecution: STAGEHAND_HEADLESS was set to true, forcing headless=false for visible browser window');
-    }
-    // 如果用户没有明确禁用浏览器窗口，强制设置为有头模式
-    if (options?.showBrowserWindow !== false) {
-      process.env.STAGEHAND_HEADLESS = 'false'; // 强制有头模式
-      logger.info('AutomationExecution: Browser will run in HEADED mode (visible window)', {
-        previousHeadless: wasHeadless,
-        currentHeadless: false,
-        message: '浏览器窗口将可见，请观察执行过程',
-      });
-    }
-
-    // Check Stagehand environment status before execution
-    this.checkStagehandEnvironment();
+    logger.info('AutomationExecution: Starting automation execution from JSON test case files (placeholder mode, no browser)');
 
     const workspaceOptions: WorkspaceOptions = {
       ...options,
@@ -974,10 +920,9 @@ export class AutomationExecution extends BaseAction {
         await fs.mkdir(autoDir, { recursive: true });
       }
 
-      // Read all JSON test case files from auto directory
       const testCaseFiles = await this.findTestCaseFiles(autoDir);
       if (testCaseFiles.length === 0) {
-        logger.warn('AutomationExecution: No test case JSON files found in auto directory', {
+        logger.warn('AutomationExecution: No Playwright script files (.js/.ts) found in auto directory', {
           autoDir,
           workspaceDir,
         });
@@ -1012,11 +957,11 @@ export class AutomationExecution extends BaseAction {
         }
 
         return {
-          content: 'test/auto 目录中未找到测试用例 JSON 文件，已生成空报告。请先运行 AutomationPlanning 生成测试用例 JSON 文件后重新执行。',
+          content: 'docs/test/auto 目录中未找到 Playwright 脚本（.js/.ts）。请先运行 AutomationPlanning（CLI 模式）生成脚本后重新执行。',
           data: {
             type: 'automation_execution',
             skipped: true,
-            reason: 'No test case JSON files found',
+            reason: 'No Playwright script files found',
             timestamp: new Date().toISOString(),
             workspaceDir,
             reportDir,
@@ -1024,20 +969,23 @@ export class AutomationExecution extends BaseAction {
         };
       }
 
-      logger.info('AutomationExecution: Found test case JSON files', {
+      logger.info('AutomationExecution: Found Playwright script files', {
         fileCount: testCaseFiles.length,
         files: testCaseFiles.map((f) => path.basename(f)),
       });
 
-      // Initialize Stagehand service
-      await this.stagehandService.initialize();
+      const isScriptMode = testCaseFiles.every((f) => f.endsWith('.js') || f.endsWith('.ts'));
 
-      // Execute all test case files
+      if (!isScriptMode) {
+        await this.browserService.initialize();
+      }
+
       let results: TestCaseExecutionResult[] = [];
       try {
         logger.info('AutomationExecution: Starting test case execution', {
           fileCount: testCaseFiles.length,
           autoDir,
+          scriptMode: isScriptMode,
         });
         results = await this.executeTestCaseFiles(testCaseFiles, autoDir, options);
         logger.info('AutomationExecution: Test case execution completed', {
@@ -1053,24 +1001,23 @@ export class AutomationExecution extends BaseAction {
         // Even if execution fails, create empty results to generate report
         results = [];
       } finally {
-        // 延迟关闭浏览器，让用户有时间观察
-        const keepOpenMs = options?.keepBrowserOpenMs ?? 5000;
-        if (keepOpenMs > 0) {
-          logger.info(`AutomationExecution: Keeping browser open for ${keepOpenMs}ms for observation`, {
-            keepOpenMs,
-            message: `浏览器将在 ${(keepOpenMs / 1000).toFixed(1)} 秒后关闭，请观察执行结果`,
-          });
-          await new Promise((resolve) => setTimeout(resolve, keepOpenMs));
-        }
-
-        // Cleanup Stagehand service
-        try {
-          await this.stagehandService.close();
-          logger.info('AutomationExecution: Stagehand service closed successfully');
-        } catch (closeError: any) {
-          logger.warn('AutomationExecution: Failed to close Stagehand service', {
-            error: closeError.message,
-          });
+        if (isScriptMode) {
+          // Script mode: no shared browser to close
+        } else {
+          const keepOpenMs = options?.keepBrowserOpenMs ?? 5000;
+          if (keepOpenMs > 0) {
+            logger.info(`AutomationExecution: Keeping browser open for ${keepOpenMs}ms for observation`, {
+              keepOpenMs,
+              message: `浏览器将在 ${(keepOpenMs / 1000).toFixed(1)} 秒后关闭，请观察执行结果`,
+            });
+            await new Promise((resolve) => setTimeout(resolve, keepOpenMs));
+          }
+          try {
+            await this.browserService.close();
+            logger.debug('AutomationExecution: Browser service closed');
+          } catch (closeError: any) {
+            logger.warn('AutomationExecution: Failed to close browser service', { error: closeError.message });
+          }
         }
       }
 
@@ -1210,7 +1157,7 @@ export class AutomationExecution extends BaseAction {
   }
 
   /**
-   * Find all JSON test case files in the auto directory
+   * Find all Playwright script files (.js / .ts) in the auto directory
    */
   private async findTestCaseFiles(autoDir: string): Promise<string[]> {
     try {
@@ -1221,17 +1168,17 @@ export class AutomationExecution extends BaseAction {
         entryNames: entries.map((e) => e.name),
       });
 
-      const jsonFiles = entries
-        .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+      const scriptFiles = entries
+        .filter((entry) => entry.isFile() && (entry.name.endsWith('.js') || entry.name.endsWith('.ts')))
         .map((entry) => path.join(autoDir, entry.name))
         .sort();
 
-      logger.info('AutomationExecution: Filtered JSON test case files', {
-        fileCount: jsonFiles.length,
-        files: jsonFiles.map((f) => path.basename(f)),
+      logger.info('AutomationExecution: Filtered Playwright script files', {
+        fileCount: scriptFiles.length,
+        files: scriptFiles.map((f) => path.basename(f)),
       });
 
-      return jsonFiles;
+      return scriptFiles;
     } catch (error: any) {
       logger.error('AutomationExecution: Failed to read auto directory', {
         error: error.message,
@@ -1240,6 +1187,36 @@ export class AutomationExecution extends BaseAction {
       });
       return [];
     }
+  }
+
+  /**
+   * Resolve playwright-skill run.js path and skill directory (cwd for execution)
+   */
+  private getPlaywrightRunJsPath(): { runJsPath: string; skillDir: string } | null {
+    const projectRoot = WorkspaceManager.getProjectRootPath();
+    const runJsPath = path.join(projectRoot, 'skills', 'playwright-skill', 'skills', 'playwright-skill', 'run.js');
+    const skillDir = path.dirname(runJsPath);
+    if (!existsSync(runJsPath)) {
+      logger.warn('AutomationExecution: playwright-skill run.js not found', { runJsPath });
+      return null;
+    }
+    return { runJsPath, skillDir };
+  }
+
+  /**
+   * Execute a single Playwright script via run.js and return result
+   */
+  private runPlaywrightScript(scriptPath: string, skillDir: string, runJsPath: string): { exitCode: number; stdout: string; stderr: string } {
+    const result = spawnSync('node', [runJsPath, scriptPath], {
+      cwd: skillDir,
+      encoding: 'utf-8',
+      timeout: 120000,
+    });
+    return {
+      exitCode: result.status ?? -1,
+      stdout: (result.stdout ?? '') as string,
+      stderr: (result.stderr ?? '') as string,
+    };
   }
 
   /**
@@ -1345,10 +1322,59 @@ export class AutomationExecution extends BaseAction {
   }
 
   /**
-   * Execute all test case JSON files and collect results
+   * Execute all test case files: Playwright scripts (.js/.ts) via run.js, or legacy JSON (not used when only scripts exist)
    */
   private async executeTestCaseFiles(jsonFiles: string[], cwd: string, options?: AutomationExecutionOptions): Promise<TestCaseExecutionResult[]> {
     const results: TestCaseExecutionResult[] = [];
+    const isScriptMode = jsonFiles.length > 0 && jsonFiles.every((f) => f.endsWith('.js') || f.endsWith('.ts'));
+
+    if (isScriptMode) {
+      const runPath = this.getPlaywrightRunJsPath();
+      if (!runPath) {
+        logger.error('AutomationExecution: playwright-skill run.js not found, cannot execute scripts');
+        return jsonFiles.map((f) => ({
+          testCaseId: path.basename(f).replace(/\.(js|ts)$/, ''),
+          testCaseName: path.basename(f),
+          jsonFile: path.basename(f),
+          success: false,
+          executionTime: 0,
+          timestamp: new Date().toISOString(),
+          steps: [],
+          error: 'playwright-skill run.js not found',
+        }));
+      }
+      logger.info('AutomationExecution: Executing Playwright scripts via run.js', {
+        totalFiles: jsonFiles.length,
+        skillDir: runPath.skillDir,
+      });
+      for (const scriptFile of jsonFiles) {
+        const startTime = Date.now();
+        const fileName = path.basename(scriptFile);
+        const testCaseId = fileName.replace(/\.(js|ts)$/, '');
+        const { exitCode, stderr } = this.runPlaywrightScript(scriptFile, runPath.skillDir, runPath.runJsPath);
+        const executionTime = Date.now() - startTime;
+        const success = exitCode === 0;
+        if (!success) {
+          logger.warn('AutomationExecution: Script failed', { fileName, exitCode, stderr: stderr.slice(0, 500) });
+        }
+        results.push({
+          testCaseId,
+          testCaseName: testCaseId,
+          jsonFile: fileName,
+          success,
+          executionTime,
+          timestamp: new Date().toISOString(),
+          steps: [],
+          error: success ? undefined : stderr?.trim() || `exit code ${exitCode}`,
+        });
+      }
+      logger.info('AutomationExecution: Completed executing Playwright scripts', {
+        totalFiles: jsonFiles.length,
+        successCount: results.filter((r) => r.success).length,
+        failedCount: results.filter((r) => !r.success).length,
+      });
+      return results;
+    }
 
     logger.info('AutomationExecution: Starting to execute test case JSON files', {
       totalFiles: jsonFiles.length,
@@ -1360,13 +1386,11 @@ export class AutomationExecution extends BaseAction {
       const startTime = Date.now();
       const fileName = path.basename(jsonFile);
 
-      // Extract test case ID from file name (e.g., TC-001-xxx.json -> TC-001-xxx)
       const testCaseId = fileName.replace('.json', '');
       let testCaseName = testCaseId;
       let testCase: TestCaseJSON | null = null;
 
       try {
-        // 如果不是 Flow 模式，每个 case 独立浏览器 session
         if (!options?.flowMode && i > 0) {
           logger.info('AutomationExecution: Case mode - closing and reinitializing browser for independent session', {
             testCaseId,
@@ -1374,8 +1398,8 @@ export class AutomationExecution extends BaseAction {
             totalCases: jsonFiles.length,
           });
           try {
-            await this.stagehandService.close();
-            await this.stagehandService.initialize();
+            await this.browserService.close();
+            await this.browserService.initialize();
           } catch (reinitError: any) {
             logger.error('AutomationExecution: Failed to reinitialize browser', {
               testCaseId,
@@ -1387,13 +1411,13 @@ export class AutomationExecution extends BaseAction {
 
         // 检查页面是否存在，如果不存在则自动重新初始化
         try {
-          const page = await this.stagehandService.getPage();
+          const page = await this.browserService.getPage();
           if (!page) {
             logger.warn('AutomationExecution: Page not found, reinitializing browser', {
               testCaseId,
             });
-            await this.stagehandService.close();
-            await this.stagehandService.initialize();
+            await this.browserService.close();
+            await this.browserService.initialize();
           }
         } catch (pageError: any) {
           logger.error('AutomationExecution: Failed to get page, reinitializing browser', {
@@ -1401,8 +1425,8 @@ export class AutomationExecution extends BaseAction {
             error: pageError.message,
           });
           try {
-            await this.stagehandService.close();
-            await this.stagehandService.initialize();
+            await this.browserService.close();
+            await this.browserService.initialize();
           } catch (reinitError: any) {
             logger.error('AutomationExecution: Failed to reinitialize browser after page error', {
               testCaseId,
@@ -1451,7 +1475,7 @@ export class AutomationExecution extends BaseAction {
           });
           // 清除浏览器状态，确保从干净状态开始
           try {
-            await this.stagehandService.clearBrowserState();
+            await this.browserService.clearBrowserState();
             logger.info('AutomationExecution: Cleared browser state for login test case', {
               testCaseId,
               jsonFile: fileName,
@@ -1480,7 +1504,7 @@ export class AutomationExecution extends BaseAction {
         } else {
           // 如果没有登录前置条件，清除浏览器状态（确保从干净状态开始）
           try {
-            await this.stagehandService.clearBrowserState();
+            await this.browserService.clearBrowserState();
             logger.info('AutomationExecution: Cleared browser state before test case', {
               testCaseId,
               jsonFile: fileName,
