@@ -68783,7 +68783,7 @@ ALTER TABLE "public"."knowledge_base" ADD FOREIGN KEY ("project_id") REFERENCES 
 
 
 -- Comments
-COMMENT ON TABLE "public"."knowledge_base" IS '知识库文档表（用于 RAG 检索）';
+COMMENT ON TABLE "public"."knowledge_base" IS '知识库文档表';
 
 
 -- Indices

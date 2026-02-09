@@ -1,49 +1,122 @@
 ---
 name: version-review
-description: Conducts a 5-round interactive review of version ideas to check consistency with system core logic. Uses knowledge base (business rules, historical PRD/MRD, terminology, tech constraints) to generate targeted questions via Cursor CLI tools. Supports frontend API interaction mode with state machine management. Use when reviewing version ideas, checking version consistency, or when the user asks for version review or validation.
+description: 进行 5 轮交互式版本评审，检查版本想法与系统核心逻辑的一致性。基于知识库（业务规则、历史 PRD/MRD、术语、技术约束）通过 Cursor CLI 生成针对性问题。支持前端 API 交互与状态机管理。适用于版本评审、版本一致性检查或用户要求版本验证时。
 ---
 
-# Version Review
+# 版本评审
 
-Conducts a structured 5-round review process to validate version ideas against system knowledge base and identify potential conflicts or inconsistencies.
+通过结构化的 5 轮评审流程，对照系统知识库校验版本想法，识别潜在冲突或不一致。
 
-**Important**:
+**重要说明**：
 
-- Question and document generation uses **Cursor CLI tools** (works in any environment)
-- User interaction is handled through **frontend API endpoints** with polling mechanism
-- Review state is managed by a state machine and persisted in database
+- 问题与文档生成使用 **Cursor CLI 工具**（任意环境可用）
+- 用户交互通过 **前端 API 接口** + 轮询机制完成
+- 评审状态由状态机管理并持久化到数据库
 
-## Quick Start
+## 输出规范（强制）
 
-When conducting a version review:
+> **重要**：以下规范必须严格遵守，不可违反。
 
-1. Frontend calls `POST /api/projects/:id/versions/:versionId/review/start` to start the review
-2. Frontend polls `GET /api/projects/:id/versions/:versionId/review/status` to check status
-3. When status is `waiting_answer`, frontend displays question and waits for user input
-4. Frontend calls `POST /api/projects/:id/versions/:versionId/review/answer` to submit answer
-5. System automatically generates next question or review document
-6. Repeat steps 2-5 until all 5 rounds are completed
+| 项目           | 规范                                                                             |
+| -------------- | -------------------------------------------------------------------------------- |
+| **输出文件名** | `VERSION_REVIEW.md`（必须使用此文件名，不可使用其他名称如"版本评审.md"）         |
+| **文件数量**   | 只生成 1 个文件，禁止创建额外的说明文件或拆分文件                                |
+| **文档结构**   | 必须严格按照文档结构模板（版本信息、问答记录、评审结论、冲突分析、建议、行动项） |
+| **问答轮数**   | 必须完成全部 5 轮问答，禁止跳过任何一轮                                          |
+| **知识引用**   | 问题中引用知识库内容时，必须使用格式：> 📚 来源：[知识类型] - 文档名称           |
 
-## Review Process
+## 快速开始
 
-### Prerequisites
+进行版本评审时：
 
-- **Version idea**: User's description of what they want to build
-- **Project ID**: To retrieve relevant knowledge base content
-- **Knowledge base**: Should contain business rules, historical PRD/MRD, terminology, and tech constraints
+1. 前端调用 `POST /api/projects/:id/versions/:versionId/review/start` 启动评审
+2. 前端轮询 `GET /api/projects/:id/versions/:versionId/review/status` 获取状态
+3. 当状态为 `waiting_answer` 时，前端展示问题并等待用户输入
+4. 前端调用 `POST /api/projects/:id/versions/:versionId/review/answer` 提交回答
+5. 系统自动生成下一题或评审文档
+6. 重复步骤 2-5，直到 5 轮结束
 
-### State Machine
+## 评审流程
 
-The review process uses a state machine with the following states:
+### Step 0: 前置条件检查
 
-- `pending`: Review not started
-- `generating_question`: Generating question via Cursor CLI
-- `waiting_answer`: Question generated, waiting for user answer
-- `generating_document`: All questions completed, generating review document
-- `completed`: Review completed, document generated
-- `failed`: Error occurred during review
+在开始评审前，确认以下前置条件：
 
-State transitions:
+- **版本想法**：用户描述要做的内容
+- **项目 ID**：用于检索知识库
+- **知识库**：包含业务规则、历史 PRD/MRD、术语与技术约束
+
+### Step 1: 知识库检索
+
+在评审开始前，必须检索结构化知识上下文。使用 CLI 工具在指定目录中搜索相关内容。
+
+**检索的知识类型**：
+
+1. **业务规则**（`BUSINESS_RULES`）：
+   - 检索与版本想法相关的业务规则
+   - 确保版本想法符合现有业务规则
+   - 识别潜在的业务规则冲突
+
+2. **历史 PRD**（`HISTORY_PRD`）：
+   - 检索类似功能的 PRD 文档
+   - 检查功能重复或冲突
+   - 参考现有功能的实现方式
+
+3. **历史 MRD**（`HISTORY_MRD`）：
+   - 检索相关的历史市场研究
+   - 参考类似需求的分析
+
+4. **术语定义**（`TERMINOLOGY`）：
+   - 检索相关术语的标准定义
+   - 确保使用统一的术语表达
+   - 必须使用知识库中的标准术语，不得自创同义词
+
+5. **技术约束**（`TECH_CONSTRAINTS`）：
+   - 检索技术架构约束和性能要求
+   - 确保版本想法在技术边界内
+
+6. **开发规范**（`DEV_SPEC`）：
+   - 检索开发规范和技术标准
+   - 确保符合开发规范要求
+
+**每轮评审的知识映射**：
+
+| 评审轮次                    | 主要知识类型               | 辅助知识类型                |
+| --------------------------- | -------------------------- | --------------------------- |
+| 第 1 轮：业务规则冲突检查   | BUSINESS_RULES             | TERMINOLOGY                 |
+| 第 2 轮：功能冲突检查       | HISTORY_PRD, FEATURE_LIST  | BUSINESS_RULES, TERMINOLOGY |
+| 第 3 轮：术语一致性检查     | TERMINOLOGY                | HISTORY_PRD, BUSINESS_RULES |
+| 第 4 轮：数据模型一致性检查 | TECH_CONSTRAINTS, DEV_SPEC | BUSINESS_RULES, HISTORY_PRD |
+| 第 5 轮：最终确认           | 前四轮所有知识 + 全部 Q&A  | -                           |
+
+**检索方式**：
+
+- 使用 CLI 工具在指定目录中搜索相关内容
+- 对于每轮评审，优先检索对应的主要知识类型
+- 检索上限：每类最多 3 条（控制上下文规模）
+
+**知识库使用要求**：
+
+- 在问题中引用知识库内容时，使用格式：> 📚 来源：[知识类型] - 文档名称
+- 如发现冲突，必须在问题中明确指出：
+  - 冲突点描述
+  - 影响范围
+  - 建议的解决方案
+- 必须使用知识库中的术语定义，保持术语一致性
+- 必须检查与现有功能的功能冲突，明确新功能与现有功能的关系
+
+### 状态机
+
+评审过程使用状态机，包含以下状态：
+
+- `pending`：未开始
+- `generating_question`：通过 Cursor CLI 生成问题
+- `waiting_answer`：问题已生成，等待用户回答
+- `generating_document`：问题完成，生成评审文档
+- `completed`：评审完成，文档已生成
+- `failed`：评审过程发生错误
+
+状态流转：
 
 ```
 pending → generating_question → waiting_answer → generating_question → ... → generating_document → completed
@@ -51,250 +124,384 @@ pending → generating_question → waiting_answer → generating_question → .
                                                                                  failed
 ```
 
-### 5-Round Review Structure
+### Step 2-6: 5 轮评审执行
 
-Execute these rounds **in order**, using previous answers to inform subsequent questions:
+必须**按顺序**执行，并使用前一轮回答影响下一轮问题：
 
-#### Round 1: Business Rules Conflict Check
+#### Step 2: 第 1 轮 - 业务规则冲突检查
 
-**Knowledge sources**: Business rules (`BUSINESS_RULES`)
+**知识来源**：业务规则（`BUSINESS_RULES`）
 
-**Focus**:
+**关注点**：
 
-- Check if version idea conflicts with existing business rules
-- Identify specific conflicting rules
-- Ask if adjustments are needed to comply with rules
+- 版本想法是否与现有业务规则冲突
+- 识别具体冲突规则
+- 是否需要调整以符合规则
 
-**Question generation**:
+**问题生成要求**：
 
-```
-Based on the version idea and business rules knowledge, generate a question that:
-1. Points out potentially conflicting business rules
-2. Asks if the user needs to adjust their idea to comply
-3. Provides specific conflict examples (if any)
-```
+- 必须引用业务规则知识库内容（使用 📚 来源格式）
+- 指出可能冲突的业务规则
+- 询问是否需要调整想法以符合规则
+- 如有冲突，提供具体冲突示例
 
-#### Round 2: Feature Conflict Check
+> 详细问题模板见下方"问题生成规范"章节
 
-**Knowledge sources**: Historical PRD, feature lists (`HISTORY_PRD`, `FEATURE_LIST`)
+#### Step 3: 第 2 轮 - 功能冲突检查
 
-**Focus**:
+**知识来源**：历史 PRD、功能清单（`HISTORY_PRD`、`FEATURE_LIST`）
 
-- Check if version idea duplicates or conflicts with existing features
-- Identify overlapping functionality
-- Ask if feature scope needs adjustment
+**关注点**：
 
-**Question generation**:
+- 版本想法是否与现有功能重复或冲突
+- 识别功能重叠点
+- 是否需要调整功能范围
 
-```
-Based on the version idea, knowledge base, and previous Q&A, generate a question that:
-1. Points out potentially duplicate or conflicting features
-2. Asks if feature scope needs adjustment
-3. Provides specific feature comparisons (if any)
-```
+**问题生成要求**：
 
-#### Round 3: Terminology Consistency Check
+- 必须引用历史 PRD 知识库内容（使用 📚 来源格式）
+- 必须包含前一轮 Q&A 上下文
+- 指出可能重复或冲突的功能
+- 询问是否需要调整功能范围
+- 如有冲突，提供具体功能对比
 
-**Knowledge sources**: Terminology dictionary (`TERMINOLOGY`)
+> 详细问题模板见下方"问题生成规范"章节
 
-**Focus**:
+#### Step 4: 第 3 轮 - 术语一致性检查
 
-- Check if terms used in version idea match system definitions
-- List potentially inconsistent terms
-- Ask if terminology needs to be unified
+**知识来源**：术语词典（`TERMINOLOGY`）
 
-**Question generation**:
+**关注点**：
 
-```
-Based on the version idea, knowledge base, and previous Q&A, generate a question that:
-1. Lists potentially inconsistent terms
-2. Asks if terminology usage needs to be unified
-3. Provides standard definitions from terminology dictionary (if available)
-```
+- 版本想法中的术语是否符合系统定义
+- 列出可能不一致的术语
+- 是否需要统一术语
 
-#### Round 4: Data Model Consistency Check
+**问题生成要求**：
 
-**Knowledge sources**: Tech constraints, dev specs (`TECH_CONSTRAINTS`, `DEV_SPEC`)
+- 必须引用术语词典知识库内容（使用 📚 来源格式）
+- 必须包含前序 Q&A 上下文
+- 列出可能不一致的术语
+- 询问是否需要统一术语使用
+- 如有不一致，给出术语词典中的标准定义
 
-**Focus**:
+> 详细问题模板见下方"问题生成规范"章节
 
-- Check if version idea involves data model changes
-- Identify potential technical constraints
-- Ask if requirements need adjustment to comply with tech specs
+#### Step 5: 第 4 轮 - 数据模型一致性检查
 
-**Question generation**:
+**知识来源**：技术约束与开发规范（`TECH_CONSTRAINTS`、`DEV_SPEC`）
 
-```
-Based on the version idea, knowledge base, and previous Q&A, generate a question that:
-1. Points out potential data model changes
-2. Points out potential technical constraints
-3. Asks if requirements need adjustment to comply with tech specs
-```
+**关注点**：
 
-#### Round 5: Final Confirmation
+- 版本想法是否涉及数据模型变更
+- 识别潜在技术约束
+- 是否需要调整需求以符合技术规范
 
-**Knowledge sources**: All previous rounds' knowledge and answers
+**问题生成要求**：
 
-**Focus**:
+- 必须引用技术约束和开发规范知识库内容（使用 📚 来源格式）
+- 必须包含前序 Q&A 上下文
+- 指出潜在的数据模型变更
+- 指出潜在的技术约束
+- 询问是否需要调整需求以符合技术规范
 
-- Summarize key points from previous discussions
-- Ask if version idea needs adjustment based on review
-- If adjustment needed, ask for specific direction
+> 详细问题模板见下方"问题生成规范"章节
 
-**Question generation**:
+#### Step 6: 第 5 轮 - 最终确认
 
-```
-Based on the version idea, knowledge base, and all previous Q&A, generate a question that:
-1. Summarizes key points from previous discussions
-2. Asks if version idea needs adjustment based on review results
-3. If adjustment needed, asks for specific adjustment direction
-```
+**知识来源**：前四轮的所有知识与回答
 
-## Knowledge Context Retrieval
+**关注点**：
 
-Before starting the review, retrieve structured knowledge context:
+- 汇总前序讨论要点
+- 基于评审结果确认是否需要调整版本想法
+- 如需调整，明确调整方向
 
-**Required knowledge types**:
+**问题生成要求**：
 
-- `BUSINESS_RULES` - Business logic and compliance requirements
-- `HISTORY_PRD` - Existing features and consistency
-- `HISTORY_MRD` - Historical market research
-- `TERMINOLOGY` - Unified term definitions
-- `TECH_CONSTRAINTS` - Performance limits and architecture boundaries
-- `DEV_SPEC` - Development specifications
+- 必须汇总前四轮的所有讨论要点
+- 基于评审结果询问是否需要调整版本想法
+- 如需调整，询问具体调整方向
+- 确保问题涵盖所有前序发现的冲突点
 
-**Retrieval limit**: 3 items per knowledge type (to keep context manageable)
+> 详细问题模板见下方"问题生成规范"章节
 
-## Question Generation Guidelines
+### Step 7: 评审文档生成
 
-### Principles
+## 问题生成规范
 
-1. **Knowledge-driven**: Base questions on actual knowledge base content, not assumptions
-2. **Specific and actionable**: Questions should be concrete, not abstract
-3. **Focus on conflicts**: Prioritize identifying inconsistencies and conflicts
-4. **Clear suggestions**: Provide explicit modification recommendations
+### 原则
 
-### Question Format
+1. **知识驱动**：问题必须基于真实知识库内容，不做臆测
+2. **具体可执行**：问题要具体，不要抽象
+3. **聚焦冲突**：优先识别不一致与冲突
+4. **明确建议**：给出清晰的修改建议
+5. **引用规范**：引用知识库内容时必须使用标准格式
 
-Each question should:
+### 问题格式
 
-- Be direct and clear
-- Reference specific knowledge base content when relevant
-- Include context from previous rounds (for rounds 2-5)
-- Be answerable with a brief response
+每个问题应当：
 
-### Example Question Structure
+- 直截了当、清晰明确
+- **必须引用具体知识库内容**，使用格式：> 📚 来源：[知识类型] - 文档名称
+- 第 2-6 轮需包含前序 Q&A 上下文
+- 可用简短回答回应
+- 明确指出冲突点或潜在问题
+
+### 知识库引用格式
+
+在问题中引用知识库内容时，必须遵循以下格式：
 
 ```
-[Context from knowledge base]
+> 📚 来源：[知识类型] - 文档名称
 
-Your version idea mentions [specific aspect].
-According to our [knowledge type], we have [specific rule/feature/term]:
-- [Specific item 1]
-- [Specific item 2]
-
-Does this conflict with your idea? Do you need to adjust [specific aspect]?
+[引用的具体内容]
 ```
 
-## Review Document Generation
+**示例**：
 
-After completing all 5 rounds, generate a review document with:
+```
+> 📚 来源：BUSINESS_RULES - 用户权限管理规范
 
-### Document Structure
+根据业务规则，用户权限分为管理员、编辑者、查看者三个角色。管理员拥有所有权限，编辑者可以创建和修改内容，查看者只能查看内容。
+
+你的版本想法中提到"允许所有用户编辑内容"，这是否与上述业务规则冲突？是否需要调整权限设计？
+```
+
+### 每轮评审的问题模板
+
+#### Step 2: 第 1 轮问题模板
+
+```
+> 📚 来源：BUSINESS_RULES - [具体文档名称]
+
+[引用相关的业务规则内容]
+
+你的版本想法提到 [具体点]。
+根据上述业务规则，我们有如下要求：
+- [具体规则 1]
+- [具体规则 2]
+
+这是否与您的想法冲突？是否需要调整 [具体点] 以符合业务规则？
+```
+
+#### Step 3: 第 2 轮问题模板
+
+```
+> 📚 来源：HISTORY_PRD - [具体文档名称]
+
+[引用相关的历史 PRD 内容]
+
+基于前一轮的讨论 [简要总结前一轮要点]，你的版本想法提到 [具体功能点]。
+根据历史 PRD，我们已有类似功能：
+- [功能 1]
+- [功能 2]
+
+这是否存在功能重复或冲突？是否需要调整功能范围？
+```
+
+#### Step 4: 第 3 轮问题模板
+
+```
+> 📚 来源：TERMINOLOGY - [具体文档名称]
+
+[引用相关的术语定义]
+
+基于前序讨论 [简要总结前序要点]，你的版本想法中使用了以下术语：
+- [术语 1]
+- [术语 2]
+
+根据术语词典，标准定义如下：
+- [术语 1]：[标准定义]
+- [术语 2]：[标准定义]
+
+是否需要统一术语使用？是否存在术语不一致的情况？
+```
+
+#### Step 5: 第 4 轮问题模板
+
+```
+> 📚 来源：TECH_CONSTRAINTS - [具体文档名称]
+> 📚 来源：DEV_SPEC - [具体文档名称]
+
+[引用相关的技术约束和开发规范]
+
+基于前序讨论 [简要总结前序要点]，你的版本想法涉及以下技术方面：
+- [技术点 1]
+- [技术点 2]
+
+根据技术约束和开发规范：
+- [约束 1]
+- [约束 2]
+
+是否需要调整需求以符合技术规范？是否存在技术实现风险？
+```
+
+#### Step 6: 第 5 轮问题模板
+
+```
+基于前四轮的评审，我们讨论了以下要点：
+
+1. [第 1 轮要点总结]
+2. [第 2 轮要点总结]
+3. [第 3 轮要点总结]
+4. [第 4 轮要点总结]
+
+根据以上评审结果，是否需要根据评审结果调整版本想法？
+如需调整，请说明具体的调整方向。
+```
+
+### Step 7: 评审文档生成
+
+完成 5 轮后生成评审文档，包含：
+
+### 文档结构
 
 ```markdown
-# Version Review: [Version Name]
+# 版本评审：[版本名称]
 
-## Version Information
+## 版本信息
 
-- Version Name: [name]
-- Version Idea: [idea]
-- Review Date: [date]
+- 版本名称：[name]
+- 版本想法：[idea]
+- 评审日期：[date]
 
-## Q&A Record
+## 问答记录
 
-### Round 1: Business Rules Conflict Check
+### 第 1 轮：业务规则冲突检查
 
-**Question:** [question]
-**Answer:** [answer]
+**问题：** [question]
+**回答：** [answer]
 
-### Round 2: Feature Conflict Check
+### 第 2 轮：功能冲突检查
 
-**Question:** [question]
-**Answer:** [answer]
+**问题：** [question]
+**回答：** [answer]
 
-### Round 3: Terminology Consistency Check
+### 第 3 轮：术语一致性检查
 
-**Question:** [question]
-**Answer:** [answer]
+**问题：** [question]
+**回答：** [answer]
 
-### Round 4: Data Model Consistency Check
+### 第 4 轮：数据模型一致性检查
 
-**Question:** [question]
-**Answer:** [answer]
+**问题：** [question]
+**回答：** [answer]
 
-### Round 5: Final Confirmation
+### 第 5 轮：最终确认
 
-**Question:** [question]
-**Answer:** [answer]
+**问题：** [question]
+**回答：** [answer]
 
-## Review Summary
+## 评审结论
 
-### Conflict Analysis
+### 冲突分析
 
-[Analysis based on Q&A and knowledge base]
+[基于 Q&A 与知识库的分析]
 
-### Recommendations
+### 建议
 
-[Specific recommendations for each conflict]
+[针对每项冲突的具体建议]
 
-### Action Items
+### 行动项
 
 - [ ] Action item 1
 - [ ] Action item 2
 ```
 
-## API Integration
+## 检查清单
 
-### Endpoints
+在完成评审后，必须检查以下项目：
 
-1. **Start Review**: `POST /api/projects/:id/versions/:versionId/review/start`
-   - Initializes review state and generates first question
-   - Returns: `{ status: "generating_question", currentRound: 1 }`
+### 评审流程检查
 
-2. **Get Status**: `GET /api/projects/:id/versions/:versionId/review/status`
-   - Returns current review state, current question, and Q&A history
-   - Frontend should poll this endpoint periodically
+- [ ] 已完成全部 5 轮问答，未跳过任何一轮
+- [ ] 每轮问题都基于真实知识库内容，未使用臆测内容
+- [ ] 每轮问题都正确引用了知识库内容（使用 📚 来源格式）
+- [ ] 第 2-6 轮问题都包含了前序 Q&A 上下文
+- [ ] 所有问题都聚焦于识别冲突和不一致
 
-3. **Submit Answer**: `POST /api/projects/:id/versions/:versionId/review/answer`
-   - Submits user answer and automatically generates next question
-   - Returns: `{ status: "generating_question", currentRound: N }`
+### 知识库检索检查
 
-4. **Continue Review**: `POST /api/projects/:id/versions/:versionId/review/continue`
-   - Manually trigger next question generation (usually not needed)
+- [ ] 已检索所有必需的知识类型（BUSINESS_RULES、HISTORY_PRD、HISTORY_MRD、TERMINOLOGY、TECH_CONSTRAINTS、DEV_SPEC）
+- [ ] 每类知识检索数量不超过 3 条
+- [ ] 每轮评审使用了对应的主要知识类型
+- [ ] 知识库引用格式正确（> 📚 来源：[知识类型] - 文档名称）
 
-### Frontend Flow
+### 评审文档检查
 
-1. Call `startReview` to initialize
-2. Poll `getStatus` every 2 seconds
-3. When status is `waiting_answer`, display question and wait for user input
-4. Call `submitAnswer` with user's answer
-5. Continue polling until status is `completed` or `failed`
+- [ ] 文档文件名为 `VERSION_REVIEW.md`
+- [ ] 文档结构完整（版本信息、问答记录、评审结论、冲突分析、建议、行动项）
+- [ ] 所有 5 轮问答记录完整
+- [ ] 冲突分析基于 Q&A 和知识库内容
+- [ ] 建议具体可执行
+- [ ] 行动项明确清晰
+- [ ] 无占位符或空泛描述
 
-## Error Handling
+### 问题质量检查
 
-- **Knowledge retrieval failure**: Continue with empty knowledge context, use default question templates
-- **Question generation failure**: Use fallback question: "请检查版本想法在[question type]方面是否存在问题？"
-- **State persistence failure**: Log error and return error status to frontend
-- **Document generation failure**: Set status to `failed` and return error message
+- [ ] 问题直截了当、清晰明确
+- [ ] 问题具体可执行，非抽象描述
+- [ ] 问题聚焦冲突识别
+- [ ] 问题包含明确的修改建议
+- [ ] 问题可用简短回答回应
 
-## Integration Notes
+## API 集成
 
-This skill is designed to work with:
+### 接口
 
-- `RAGService` for knowledge retrieval
-- `CLIExecutor` for question and document generation via Cursor CLI
-- `ProjectVersionRepository` for state persistence in database metadata
-- Frontend API endpoints for user interaction
+1. **启动评审**：`POST /api/projects/:id/versions/:versionId/review/start`
+   - 初始化评审状态并生成第一题
+   - 返回：`{ status: "generating_question", currentRound: 1 }`
 
-The review process is **asynchronous** - question generation and document generation happen asynchronously, requiring frontend polling.
+2. **获取状态**：`GET /api/projects/:id/versions/:versionId/review/status`
+   - 返回当前评审状态、当前问题、历史 Q&A
+   - 前端需定期轮询
+
+3. **提交回答**：`POST /api/projects/:id/versions/:versionId/review/answer`
+   - 提交用户回答并自动生成下一题
+   - 返回：`{ status: "generating_question", currentRound: N }`
+
+4. **继续评审**：`POST /api/projects/:id/versions/:versionId/review/continue`
+   - 手动触发下一题生成（通常不需要）
+
+### 前端流程
+
+1. 调用 `startReview` 初始化
+2. 每 2 秒轮询 `getStatus`
+3. 当状态为 `waiting_answer`，展示问题并等待输入
+4. 调用 `submitAnswer` 提交回答
+5. 继续轮询，直到状态为 `completed` 或 `failed`
+
+## 禁止事项
+
+以下行为是禁止的，违反将导致输出无效：
+
+1. ❌ 使用非 `VERSION_REVIEW.md` 的文件名（如"版本评审.md"、"评审文档.md"等）
+2. ❌ 创建多个文件（如一个说明文件+一个评审文档）
+3. ❌ 跳过任何一轮评审（必须完成全部 5 轮问答）
+4. ❌ 使用非标准格式的问题（问题必须引用知识库内容）
+5. ❌ 在问题中使用臆测内容而非真实知识库内容
+6. ❌ 省略知识库引用格式（必须使用 > 📚 来源：[知识类型] - 文档名称）
+7. ❌ 在评审文档中使用占位符或空泛描述
+8. ❌ 省略文档结构中的任何章节（版本信息、问答记录、评审结论、冲突分析、建议、行动项）
+9. ❌ 第 2-6 轮问题不包含前序 Q&A 上下文
+10. ❌ 使用知识库外的术语定义（必须使用知识库中的标准术语）
+
+## 错误处理
+
+- **知识检索失败**：使用空知识上下文继续，采用默认问题模板
+- **问题生成失败**：使用兜底问题：“请检查版本想法在[question type]方面是否存在问题？”
+- **状态持久化失败**：记录错误并返回错误状态给前端
+- **文档生成失败**：将状态置为 `failed` 并返回错误信息
+
+## 集成说明
+
+本技能与以下组件配合：
+
+- `RAGService`：知识检索
+- `CLIExecutor`：通过 Cursor CLI 生成问题与文档
+- `ProjectVersionRepository`：评审状态持久化到数据库元数据
+- 前端 API：用户交互
+
+评审过程为**异步**：问题与文档异步生成，需要前端轮询。

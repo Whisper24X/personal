@@ -18,10 +18,6 @@ import * as path from 'path';
 export interface WriteMRDOptions extends WorkspaceOptions {
   mode?: 'new' | 'update';
   historyMRD?: string;
-  relevantChunks?: string;
-  structuredKnowledge?: unknown;
-  useRAG?: boolean;
-  useKnowledgeIntegration?: boolean;
   useStepwiseGeneration?: boolean;
   includeOptionalSections?: boolean;
 }

@@ -10,29 +10,12 @@ import { WriteMRD } from '../../actions/WriteMRD';
 import { ImproveMRD } from '../../actions/ImproveMRD';
 import { MRDReview } from '../../actions/MRDReview';
 import { Context } from '../../core/context/Context';
-import { RAGService } from '../../services/RAGService';
 import { SectionAdjustService } from '../../services/SectionAdjustService';
 import { WorkspaceManager } from '../../utils/WorkspaceManager';
 import { logger } from '../../utils';
 
 const documentRepo = new DocumentRepository();
 const projectRepo = new ProjectRepository();
-const ragService = new RAGService();
-
-// Initialize RAG service (lazy initialization)
-let ragServiceInitialized = false;
-async function ensureRAGServiceInitialized() {
-  if (!ragServiceInitialized) {
-    try {
-      await ragService.initialize();
-      ragServiceInitialized = true;
-    } catch (error: any) {
-      logger.warn('MRDController: Failed to initialize RAG service', {
-        error: error.message,
-      });
-    }
-  }
-}
 
 export class MRDController {
   /**
@@ -42,7 +25,7 @@ export class MRDController {
   static async generateMRD(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { requirements, mode = 'new', useRAG = false } = req.body;
+      const { requirements, mode = 'new' } = req.body;
 
       if (!requirements || typeof requirements !== 'string') {
         return res.status(400).json({
@@ -58,7 +41,6 @@ export class MRDController {
 
       logger.info(`MRDController: Generating MRD for project ${id}`, {
         mode,
-        useRAG,
         applicationId: project.application_id,
         requirementsLength: requirements.length,
       });
@@ -76,9 +58,8 @@ export class MRDController {
       writeMRDAction.setLLM(ctx.llm);
       writeMRDAction.setContext(ctx);
 
-      // Get application ID and project ID for workspace directory
+      // Get application ID for workspace directory
       const applicationId = project.application_id || project.id;
-      const projectId = project.id;
       let mrdContent: string;
       let parentId: string | undefined;
 
@@ -94,112 +75,23 @@ export class MRDController {
 
         parentId = latestMRD.id;
 
-        if (useRAG) {
-          // RAG mode: search for similar MRDs and extract relevant chunks
-          // If project belongs to an application, search across all projects in the application
-          let searchResults: any[] = [];
-
-          if (project.application_id) {
-            // Search across all projects in the application
-            searchResults = await ragService.searchSimilarMRDsByApplication(
-              project.application_id,
-              requirements,
-              5
-            );
-          }
-
-          // If no results from application search, try project-level search
-          if (searchResults.length === 0) {
-            searchResults = await ragService.searchSimilarMRDs(id, requirements, 3);
-          }
-
-          if (searchResults.length > 0) {
-            const relevantChunks = ragService.combineMRDResults(searchResults);
-            const result = await writeMRDAction.run(requirements, {
-              mode: 'update',
-              useRAG: true,
-              relevantChunks,
-              historyMRD: latestMRD.content,
-              applicationId,
-              projectId,
-              // version property deprecated, using versionId in WorkspaceOptions
-            });
-            mrdContent = result.content;
-          } else {
-            // Standard update mode without RAG
-            const result = await writeMRDAction.run(requirements, {
-              mode: 'update',
-              historyMRD: latestMRD.content,
-              applicationId,
-              projectId,
-              // version property deprecated, using versionId in WorkspaceOptions
-            });
-            mrdContent = result.content;
-          }
-        } else {
-          // Standard update mode
-          const result = await writeMRDAction.run(requirements, {
-            mode: 'update',
-            historyMRD: latestMRD.content,
-            applicationId,
-            // version property deprecated, using versionId in WorkspaceOptions
-          });
-          mrdContent = result.content;
-        }
+        // Standard update mode
+        const result = await writeMRDAction.run(requirements, {
+          mode: 'update',
+          historyMRD: latestMRD.content,
+          applicationId,
+          // version property deprecated, using versionId in WorkspaceOptions
+        });
+        mrdContent = result.content;
       } else {
         // New mode: generate new MRD
-        if (useRAG) {
-          // Ensure RAG service is initialized
-          await ensureRAGServiceInitialized();
-
-          // RAG mode: search for similar MRDs even in new mode
-          // If project belongs to an application, search across all projects in the application
-          let searchResults: any[] = [];
-
-          if (project.application_id) {
-            // Search across all projects in the application
-            searchResults = await ragService.searchSimilarMRDsByApplication(
-              project.application_id,
-              requirements,
-              5
-            );
-          }
-
-          // If no results from application search, try project-level search
-          if (searchResults.length === 0) {
-            searchResults = await ragService.searchSimilarMRDs(id, requirements, 3);
-          }
-
-          if (searchResults.length > 0) {
-            const relevantChunks = ragService.combineMRDResults(searchResults);
-            const result = await writeMRDAction.run(requirements, {
-              mode: 'new',
-              useRAG: true,
-              relevantChunks,
-              applicationId,
-              projectId,
-              // version property deprecated, using versionId in WorkspaceOptions
-            });
-            mrdContent = result.content;
-          } else {
-            // Standard new mode
-            const result = await writeMRDAction.run(requirements, {
-              mode: 'new',
-              applicationId,
-              projectId,
-              // version property deprecated, using versionId in WorkspaceOptions
-            });
-            mrdContent = result.content;
-          }
-        } else {
-          // Standard new mode
-          const result = await writeMRDAction.run(requirements, {
-            mode: 'new',
-            applicationId,
-            // version property deprecated, using versionId in WorkspaceOptions
-          });
-          mrdContent = result.content;
-        }
+        // Standard new mode
+        const result = await writeMRDAction.run(requirements, {
+          mode: 'new',
+          applicationId,
+          // version property deprecated, using versionId in WorkspaceOptions
+        });
+        mrdContent = result.content;
       }
 
       // Get version number for metadata
@@ -217,7 +109,6 @@ export class MRDController {
         content: mrdContent,
         metadata: {
           mode,
-          useRAG,
           applicationId,
           version: versionNumber,
         },
@@ -226,23 +117,6 @@ export class MRDController {
       // If update mode, set parent relationship
       if (parentId) {
         await documentRepo.updateParent(savedDoc.id, parentId);
-      }
-
-      // Index document to Qdrant for vector search
-      try {
-        await ensureRAGServiceInitialized();
-        await ragService.indexDocuments([{
-          id: savedDoc.id,
-          content: mrdContent,
-          type: 'MRD',
-          projectId: id,
-          version: savedDoc.version,
-        }]);
-      } catch (error: any) {
-        logger.warn('MRDController: Failed to index document to Qdrant', {
-          error: error.message,
-          documentId: savedDoc.id,
-        });
       }
 
       logger.info(`MRDController: MRD generated and saved for project ${id}`, {
@@ -679,4 +553,3 @@ export class MRDController {
 }
 
 export default MRDController;
-
