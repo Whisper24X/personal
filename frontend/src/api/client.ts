@@ -281,6 +281,43 @@ class APIClient {
     return this.client.get(`/projects/${platformId}/branches`);
   }
 
+  /**
+   * 启动版本审查
+   * @param platformId 平台ID
+   * @param versionId 版本ID
+   */
+  async startVersionReview(platformId: string, versionId: string) {
+    return this.client.post(`/projects/${platformId}/versions/${versionId}/review/start`);
+  }
+
+  /**
+   * 获取版本审查状态
+   * @param platformId 平台ID
+   * @param versionId 版本ID
+   */
+  async getVersionReviewStatus(platformId: string, versionId: string) {
+    return this.client.get(`/projects/${platformId}/versions/${versionId}/review/status`);
+  }
+
+  /**
+   * 提交版本审查答案
+   * @param platformId 平台ID
+   * @param versionId 版本ID
+   * @param answer 用户答案
+   */
+  async submitVersionReviewAnswer(platformId: string, versionId: string, answer: string) {
+    return this.client.post(`/projects/${platformId}/versions/${versionId}/review/answer`, { answer });
+  }
+
+  /**
+   * 继续版本审查
+   * @param platformId 平台ID
+   * @param versionId 版本ID
+   */
+  async continueVersionReview(platformId: string, versionId: string) {
+    return this.client.post(`/projects/${platformId}/versions/${versionId}/review/continue`);
+  }
+
   // 兼容旧的项目 API（保持向后兼容）
   async createProject(data: {
     name: string;

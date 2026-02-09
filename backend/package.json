@@ -20,12 +20,10 @@
     "db:init-llm": "tsx src/database/migrations/init_llm_configs.ts",
     "db:init-prompts": "tsx src/database/migrations/init_prompt_configs.ts",
     "db:init-roles-actions": "tsx src/database/migrations/init_role_action_definitions.ts",
-    "run-auto-test": "node scripts/run-stagehand-test.js",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.89",
-    "@browserbasehq/stagehand": "alpha",
     "@langchain/community": "^1.1.1",
     "@langchain/core": "^1.1.8",
     "@mind2build/shared": "workspace:*",
