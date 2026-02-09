@@ -1,64 +1,58 @@
 /**
  * AutomationPlanning Action
  * Evaluates which test cases can be automated and creates an automation plan
- * Uses Stagehand to validate automation feasibility and generate JSON format test case files
+ * Generates JSON format test case files for automation execution
  */
 
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import { WorkspaceOptions, logger } from '../utils';
-import { StagehandService } from '../services/StagehandService';
-import { MCPService } from '../services/MCPService';
+import { WorkspaceOptions, logger, WorkspaceManager } from '../utils';
+import { buildCLIModePrompt } from '../utils/document/CLIPromptBuilder';
 
 export interface AutomationPlanningOptions extends WorkspaceOptions {
   // Inherits all options from WorkspaceOptions
-  testUrl?: string; // Optional URL to test against for feasibility validation
-  useStagehand?: boolean; // Whether to use Stagehand for validation (default: true if ENABLE_BROWSER=true)
-  /** Per-step validation timeout in ms; env STAGEHAND_VALIDATION_TIMEOUT_MS as fallback. Default 45000. */
-  stagehandValidationTimeoutMs?: number;
-  /** Skip browser validation and generate JSON files for all extracted cases; env SKIP_STAGEHAND_VALIDATION=true as fallback. */
-  skipStagehandValidation?: boolean;
-  /** Enable MCP validation after JSON generation (default: false, JSON files don't need code validation) */
+  testUrl?: string; // Optional URL to test against
+  /** Enable MCP validation after JSON generation (default: false) */
   enableMCPValidation?: boolean;
-  /** Enable MCP auto-fix for detected issues (default: false, JSON files don't need code validation) */
+  /** Enable MCP auto-fix for detected issues (default: false) */
   enableMCPAutoFix?: boolean;
   /** Maximum number of fix attempts per JSON file (default: 1) */
   mcpMaxFixAttempts?: number;
-  /** Skip expected results validation (default: false) */
-  skipExpectedResultsValidation?: boolean;
-  /** Overall validation timeout in ms (default: 600000 = 10 minutes) */
-  validationOverallTimeoutMs?: number;
 }
 
 export class AutomationPlanning extends BaseAction {
-  private stagehandService: StagehandService;
-  private mcpService?: MCPService;
-
   constructor() {
     super(
       'AutomationPlanning',
       'Evaluate test cases for automation feasibility and create an automation plan with priorities and technology choices'
     );
-    this.stagehandService = new StagehandService();
-  }
-
-  /**
-   * Initialize MCP service if context is available
-   */
-  private initializeMCPService(): void {
-    if (this.context && !this.mcpService) {
-      this.mcpService = new MCPService(this.context);
-      logger.info('AutomationPlanning: MCP service initialized');
-    }
   }
 
   async run(input: string, options?: AutomationPlanningOptions): Promise<IActionOutput> {
+    const isCLIMode = this.isCLIMode();
+
     logger.info('========================================');
-    logger.info('AutomationPlanning: Starting automation planning');
+    logger.info('AutomationPlanning: Starting automation planning', {
+      isCLIMode,
+      executorMode: this.getExecutorMode(),
+    });
     logger.info('========================================');
 
+    if (isCLIMode) {
+      // CLI 模式：使用 Cursor CLI 按 playwright-skill 约定生成 Playwright 脚本到 docs/test/auto
+      return await this.runCLIMode(input, options);
+    } else {
+      // LLM 模式：保持现有的文本解析逻辑
+      return await this.runLLMMode(input, options);
+    }
+  }
+
+  /**
+   * LLM 模式：使用文本解析逻辑生成 JSON 文件
+   */
+  private async runLLMMode(input: string, options?: AutomationPlanningOptions): Promise<IActionOutput> {
     try {
       // Read test cases from workspace
       let testCases = '';
@@ -109,71 +103,29 @@ export class AutomationPlanning extends BaseAction {
         throw new Error('Test cases not found for automation planning');
       }
 
-      // Use Stagehand to validate automation feasibility if enabled
-      let stagehandValidationResults = '';
-      let stagehandScriptFiles: Array<{ id: string; filename: string; content: string }> = [];
-      const useStagehand = options?.useStagehand !== false && process.env.ENABLE_BROWSER === 'true';
+      // Generate JSON files from test cases (no browser validation)
+      let validationResults = '';
+      let jsonScriptFiles: Array<{ id: string; filename: string; content: string }> = [];
+      const sampleTestCases = this.extractSampleTestCases(testCases, 50);
+      const testUrl = options?.testUrl || this.extractUrlFromTestCases(testCases);
+      const passedCases = sampleTestCases.filter((tc) => tc.steps && tc.steps.length > 0);
 
-      logger.info('AutomationPlanning: Stagehand configuration', {
-        useStagehand,
-        enableBrowser: process.env.ENABLE_BROWSER,
-        useStagehandOption: options?.useStagehand,
-      });
-
-      if (useStagehand) {
-        // ========== 统一逻辑：直接生成 JSON 文件，不进行验证 ==========
-        logger.info('========================================');
-        logger.info('AutomationPlanning: NEW LOGIC - Generating JSON files directly without validation');
-        logger.info('========================================');
-        const sampleTestCases = this.extractSampleTestCases(testCases, 50);
-        const testUrl = options?.testUrl || this.extractUrlFromTestCases(testCases);
-
-        logger.info('AutomationPlanning: Extracted test cases for script generation', {
-          sampleTestCasesCount: sampleTestCases.length,
+      if (passedCases.length > 0) {
+        logger.info('AutomationPlanning: Generating JSON files from test cases', {
+          sampleCount: sampleTestCases.length,
+          withStepsCount: passedCases.length,
           testUrl,
-          testCasesLength: testCases.length,
         });
-
-        if (sampleTestCases.length > 0) {
-          logger.info('AutomationPlanning: [STEP 1/3] Starting generateStagehandScripts', {
-            testCasesCount: sampleTestCases.length,
-            testUrl,
-          });
-          stagehandScriptFiles = await this.generateStagehandScripts(sampleTestCases, testUrl, options);
-          logger.info('AutomationPlanning: [STEP 2/3] generateStagehandScripts completed successfully', {
-            jsonFilesCount: stagehandScriptFiles.length,
-            testCaseIds: stagehandScriptFiles.map((s) => s.id),
-            filenames: stagehandScriptFiles.map((s) => s.filename),
-            isArray: Array.isArray(stagehandScriptFiles),
-            hasContent: stagehandScriptFiles.length > 0 ? stagehandScriptFiles[0].content?.length > 0 : false,
-          });
-          stagehandValidationResults = '## Stagehand 验证\n\n已跳过浏览器验证，为所有提取的用例生成 JSON 文件。';
-          logger.info('AutomationPlanning: [STEP 3/3] JSON generation summary', {
-            jsonFilesCount: stagehandScriptFiles.length,
-            testCaseIds: stagehandScriptFiles.map((s) => s.id),
-          });
-        } else {
-          logger.warn('AutomationPlanning: No sample test cases extracted, skipping JSON generation', {
-            testCasesLength: testCases.length,
-          });
-        }
+        jsonScriptFiles = await this.generateStagehandScripts(passedCases, testUrl, options);
+        validationResults = '## 自动化用例生成\n\n已为提取的用例生成 JSON 文件。';
+        logger.info('AutomationPlanning: JSON generation completed', {
+          jsonFilesCount: jsonScriptFiles.length,
+          testCaseIds: jsonScriptFiles.map((s) => s.id),
+        });
       } else {
-        // 可选改进：未启用 Stagehand 时仍生成 JSON（不做第一步验证），便于无浏览器环境也能产出 auto/*.json
-        const sampleTestCases = this.extractSampleTestCases(testCases, 50);
-        const testUrl = options?.testUrl || this.extractUrlFromTestCases(testCases);
-        const passedCases = sampleTestCases.filter((tc) => tc.steps && tc.steps.length > 0);
-        if (passedCases.length > 0) {
-          stagehandScriptFiles = await this.generateStagehandScripts(passedCases, testUrl, options);
-          logger.info('AutomationPlanning: Generated JSON files without validation (browser disabled)', {
-            sampleCount: sampleTestCases.length,
-            withStepsCount: passedCases.length,
-            jsonFilesCount: stagehandScriptFiles.length,
-          });
-        } else {
-          logger.warn('AutomationPlanning: No test cases with steps extracted, skipping JSON generation', {
-            sampleCount: sampleTestCases.length,
-          });
-        }
+        logger.warn('AutomationPlanning: No test cases with steps extracted, skipping JSON generation', {
+          sampleCount: sampleTestCases.length,
+        });
       }
 
       const workspaceOptions: WorkspaceOptions = {
@@ -193,23 +145,21 @@ export class AutomationPlanning extends BaseAction {
 
       // Save JSON files if generated (one file per test case)
       logger.info('AutomationPlanning: Checking if JSON files need to be saved', {
-        jsonFilesCount: stagehandScriptFiles.length,
-        useStagehand,
-        isArray: Array.isArray(stagehandScriptFiles),
-        jsonFilesDefined: stagehandScriptFiles !== undefined && stagehandScriptFiles !== null,
+        jsonFilesCount: jsonScriptFiles.length,
+        isArray: Array.isArray(jsonScriptFiles),
       });
-      if (stagehandScriptFiles && stagehandScriptFiles.length > 0) {
+      if (jsonScriptFiles && jsonScriptFiles.length > 0) {
         const workspaceDir = this.getWorkspaceDir(workspaceOptions);
         const expectedAutoDir = path.join(workspaceDir, 'auto');
         logger.info('AutomationPlanning: Starting to save JSON files', {
-          jsonFilesCount: stagehandScriptFiles.length,
+          jsonFilesCount: jsonScriptFiles.length,
           workspaceDir,
           expectedAutoDir,
           documentType: workspaceOptions.documentType,
         });
         try {
           const savedFiles: string[] = [];
-          for (const scriptFile of stagehandScriptFiles) {
+          for (const scriptFile of jsonScriptFiles) {
             const scriptPath = `auto/${scriptFile.filename}`;
             const expectedFullPath = path.join(workspaceDir, scriptPath);
             try {
@@ -240,7 +190,7 @@ export class AutomationPlanning extends BaseAction {
           }
           if (savedFiles.length > 0) {
             logger.info('AutomationPlanning: Saved JSON files successfully', {
-              jsonFilesCount: stagehandScriptFiles.length,
+              jsonFilesCount: jsonScriptFiles.length,
               savedCount: savedFiles.length,
               jsonFiles: savedFiles,
               workspaceDir,
@@ -249,7 +199,7 @@ export class AutomationPlanning extends BaseAction {
             });
           } else {
             logger.warn('AutomationPlanning: No JSON files were saved successfully', {
-              attemptedCount: stagehandScriptFiles.length,
+              attemptedCount: jsonScriptFiles.length,
               workspaceDir,
               expectedAutoDir,
             });
@@ -265,33 +215,23 @@ export class AutomationPlanning extends BaseAction {
         }
       } else {
         logger.warn('AutomationPlanning: No JSON files to save', {
-          useStagehand,
-          jsonFilesCount: stagehandScriptFiles?.length || 0,
-          isArray: Array.isArray(stagehandScriptFiles),
-          jsonFilesDefined: stagehandScriptFiles !== undefined && stagehandScriptFiles !== null,
-          reason: !stagehandScriptFiles ? 'stagehandScriptFiles is null/undefined' : 
-                  stagehandScriptFiles.length === 0 ? 'stagehandScriptFiles.length is 0' : 'unknown',
+          jsonFilesCount: jsonScriptFiles?.length || 0,
+          isArray: Array.isArray(jsonScriptFiles),
+          reason: !jsonScriptFiles ? 'jsonScriptFiles is null/undefined' : jsonScriptFiles.length === 0 ? 'jsonScriptFiles.length is 0' : 'unknown',
         });
       }
 
       logger.info('AutomationPlanning: Preparing final summary', {
-        jsonFilesCount: stagehandScriptFiles.length,
-        useStagehand,
-        hasValidationResults: !!stagehandValidationResults,
+        jsonFilesCount: jsonScriptFiles.length,
+        hasValidationResults: !!validationResults,
       });
 
       const summary =
-        stagehandScriptFiles.length > 0
-          ? `已筛选并生成 ${stagehandScriptFiles.length} 个 JSON 格式测试用例文件`
-          : useStagehand
-            ? stagehandValidationResults
-              ? '已筛选可自动化用例，无可通过验证的用例，未生成 JSON 文件'
-              : 'Stagehand 验证未完成或失败，未生成 JSON 文件'
-            : '未启用 Stagehand，未生成 JSON 文件';
+        jsonScriptFiles.length > 0 ? `已筛选并生成 ${jsonScriptFiles.length} 个 JSON 格式测试用例文件` : validationResults || '未生成 JSON 文件';
 
       logger.info('AutomationPlanning: Automation planning completed', {
         summary,
-        jsonFilesCount: stagehandScriptFiles.length,
+        jsonFilesCount: jsonScriptFiles.length,
         workspaceDir: this.getWorkspaceDir(workspaceOptions),
       });
 
@@ -301,9 +241,8 @@ export class AutomationPlanning extends BaseAction {
           type: 'automation_plan',
           timestamp: new Date().toISOString(),
           workspaceDir: this.getWorkspaceDir(workspaceOptions),
-          stagehandUsed: useStagehand,
-          jsonFilesGenerated: stagehandScriptFiles.length > 0,
-          jsonFilesCount: stagehandScriptFiles.length,
+          jsonFilesGenerated: jsonScriptFiles.length > 0,
+          jsonFilesCount: jsonScriptFiles.length,
         },
       };
     } catch (error: any) {
@@ -315,26 +254,217 @@ export class AutomationPlanning extends BaseAction {
       });
       logger.error('========================================');
 
-      // Ensure cleanup on error
-      try {
-        if (this.stagehandService.isInitialized) {
-          await this.stagehandService.close();
-        }
-      } catch (closeError: any) {
-        logger.warn('AutomationPlanning: Failed to cleanup Stagehand service on error', {
-          error: closeError.message,
-        });
-      }
+      throw error;
+    }
+  }
+
+  /**
+   * CLI 模式：使用 CLI 工具生成 JSON 文件
+   */
+  private async runCLIMode(_input: string, options?: AutomationPlanningOptions): Promise<IActionOutput> {
+    const workspaceOptions = this.validateWorkspaceOptions(options, 'TEST');
+    const workspaceDir = this.getWorkspaceDir(workspaceOptions);
+
+    logger.info('AutomationPlanning: Running in CLI mode', {
+      workspaceDir,
+      executorMode: this.getExecutorMode(),
+    });
+
+    try {
+      // 确保 auto 目录存在（docs/test/auto）
+      const autoDir = path.join(workspaceDir, 'auto');
+      await fs.mkdir(autoDir, { recursive: true });
+      logger.debug('AutomationPlanning: Ensured auto directory exists', { autoDir });
+
+      const prompt = this.buildCLIPrompt(workspaceDir, options);
+      const systemPrompt = await this.buildCLISystemPrompt();
+
+      logger.info('AutomationPlanning: Executing CLI tool', {
+        promptLength: prompt.length,
+        systemPromptLength: systemPrompt.length,
+        workspaceDir,
+      });
+
+      const output = await this.execute(prompt, {
+        workDir: workspaceDir,
+        systemPrompt,
+      });
+
+      logger.info('AutomationPlanning: CLI tool execution completed', { outputLength: output.length });
+
+      const scriptFiles = await this.readGeneratedScriptFiles(workspaceDir);
+
+      logger.info('AutomationPlanning: CLI mode completed', {
+        scriptFilesCount: scriptFiles.length,
+        scriptFiles: scriptFiles.map((f) => f.filename),
+      });
+
+      const summary =
+        scriptFiles.length > 0
+          ? `已通过 Cursor CLI 按 playwright-skill 约定生成 ${scriptFiles.length} 个 Playwright 脚本到 docs/test/auto`
+          : 'CLI 工具执行完成，但未在 docs/test/auto 中找到生成的 .js 脚本';
+
+      return {
+        content: summary,
+        data: {
+          type: 'automation_plan',
+          timestamp: new Date().toISOString(),
+          workspaceDir,
+          scriptFilesGenerated: scriptFiles.length > 0,
+          scriptFilesCount: scriptFiles.length,
+          scriptFiles: scriptFiles.map((f) => ({ id: f.id, filename: f.filename })),
+          jsonFilesGenerated: scriptFiles.length > 0,
+          jsonFilesCount: scriptFiles.length,
+          jsonFiles: scriptFiles.map((f) => ({ id: f.id, filename: f.filename })),
+          cliMode: true,
+        },
+      };
+    } catch (error: any) {
+      logger.error('AutomationPlanning: CLI mode failed', {
+        error: error.message,
+        stack: error.stack,
+        workspaceDir,
+      });
 
       throw error;
     }
   }
 
   /**
-   * Extract sample test cases for Stagehand validation
+   * 加载 playwright-skill 内容用于 CLI 模式（生成 Playwright 脚本）
+   */
+  private async loadPlaywrightSkillForCLI(): Promise<string> {
+    const projectRoot = WorkspaceManager.getProjectRootPath();
+    const skillPath = path.join(projectRoot, 'skills', 'playwright-skill', 'skills', 'playwright-skill', 'SKILL.md');
+
+    try {
+      const skillContent = await fs.readFile(skillPath, 'utf-8');
+      // 限制总长度，避免 prompt 过长；保留 CRITICAL WORKFLOW、Execution Pattern、Common Patterns 等
+      return skillContent.length > 4000 ? skillContent.slice(0, 4000) + '\n\n...' : skillContent;
+    } catch (error) {
+      logger.warn('AutomationPlanning: Failed to load playwright-skill', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return '';
+    }
+  }
+
+  /**
+   * 构建 CLI 模式的系统提示词（Playwright 脚本生成）
+   */
+  private async buildCLISystemPrompt(): Promise<string> {
+    const skillContent = await this.loadPlaywrightSkillForCLI();
+
+    return `你是一个专业的自动化测试工程师。你的任务是根据测试用例文档，按 playwright-skill 的约定生成 **Playwright JavaScript 脚本**，并保存到 **docs/test/auto** 目录。
+
+## 输出要求
+
+- 生成物：每个测试用例对应一个 **.js** 文件（Playwright 脚本），不要生成 JSON。
+- 输出目录：**所有脚本必须写入 docs/test/auto**（相对当前 workspace 的 docs/test/auto），不要写入 /tmp 或其它目录。
+- 遵循 playwright-skill 约定：
+  - 使用 \`const { chromium } = require('playwright')\`，脚本内使用 \`(async () => { ... })()\` 等自执行异步函数。
+  - URL 使用顶部常量（如 \`const TARGET_URL = '...'\`）参数化，便于配置。
+  - 默认 \`headless: false\`，除非用户明确要求无头模式。
+  - 每个脚本自包含：打开页面、执行步骤、断言、关闭浏览器。
+
+## playwright-skill 参考
+
+${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本，每个用例一个独立 .js 文件。'}
+
+## 文件命名
+
+- 格式：\`playwright-test-TC-XXX-用例简述.js\`（例如 \`playwright-test-TC-001-用户登录-正确账号密码登录成功.js\`）。
+- 从 TEST.md / TEST_REVIEW.md 解析每个用例的编号与名称，为每个用例生成一个脚本文件。`;
+  }
+
+  /**
+   * 读取 CLI 生成的 Playwright 脚本文件（.js / .ts）
+   */
+  private async readGeneratedScriptFiles(workspaceDir: string): Promise<Array<{ id: string; filename: string }>> {
+    const autoDir = path.join(workspaceDir, 'auto');
+    const scriptFiles: Array<{ id: string; filename: string }> = [];
+
+    try {
+      logger.info('AutomationPlanning: Reading generated script files', { autoDir });
+
+      try {
+        await fs.access(autoDir);
+      } catch {
+        logger.warn('AutomationPlanning: Auto directory does not exist', { autoDir });
+        return scriptFiles;
+      }
+
+      const entries = await fs.readdir(autoDir, { withFileTypes: true });
+      const scriptEntries = entries.filter((entry) => entry.isFile() && (entry.name.endsWith('.js') || entry.name.endsWith('.ts')));
+
+      logger.info('AutomationPlanning: Found script files', {
+        totalFiles: entries.length,
+        scriptCount: scriptEntries.length,
+        scriptNames: scriptEntries.map((e) => e.name),
+      });
+
+      for (const entry of scriptEntries) {
+        const baseName = entry.name.replace(/\.(js|ts)$/, '');
+        // 从 playwright-test-TC-001-xxx 或 TC-001-xxx 提取 id
+        const idMatch = baseName.match(/^(?:playwright-test-)?(TC-[\dA-Z-]+)/i) || [null, baseName];
+        const id = idMatch[1] || baseName;
+
+        scriptFiles.push({
+          id,
+          filename: entry.name,
+        });
+      }
+
+      return scriptFiles.sort((a, b) => a.filename.localeCompare(b.filename));
+    } catch (error: any) {
+      logger.error('AutomationPlanning: Failed to read generated script files', {
+        error: error.message,
+        stack: error.stack,
+        autoDir,
+      });
+      return scriptFiles;
+    }
+  }
+
+  /**
+   * 构建 CLI 模式的 Prompt（Playwright 脚本生成到 docs/test/auto）
+   */
+  private buildCLIPrompt(workspaceDir: string, options?: AutomationPlanningOptions): string {
+    const baseWorkspaceDir = workspaceDir.replace(/\/docs\/test$/, '');
+    const inputDir = `${baseWorkspaceDir}/docs/test`;
+    const outputDir = `${baseWorkspaceDir}/docs/test/auto`;
+
+    const testUrl = options?.testUrl || '';
+
+    const taskPoints = [
+      '从输入文件夹 docs/test 读取 TEST.md 或 TEST_REVIEW.md（优先 TEST_REVIEW.md）',
+      '解析测试用例，提取每个用例的编号、名称、前置条件、测试步骤、预期结果',
+      '按 playwright-skill 约定为每个测试用例生成一个 Playwright JavaScript 脚本（.js）',
+      '脚本须自包含：require("playwright")、TARGET_URL 常量、headless: false、步骤与断言、browser.close()',
+      '文件命名：playwright-test-TC-XXX-用例简述.js（例如 playwright-test-TC-001-用户登录-正确账号密码登录成功.js）',
+      '**所有脚本必须保存到输出目录 docs/test/auto**，不要写入 /tmp 或其它路径',
+    ];
+
+    return buildCLIModePrompt({
+      inputDir,
+      outputDir,
+      inputFileNames: ['TEST.md', 'TEST_REVIEW.md'],
+      outputFileName: 'playwright-test-*.js',
+      taskDescription: '使用 playwright-skill 约定，根据测试用例文档生成 Playwright 自动化测试脚本到 docs/test/auto',
+      taskPoints,
+      systemContext: testUrl ? `测试目标 URL: ${testUrl}` : undefined,
+      includeKnowledgeInput: true,
+    });
+  }
+
+  /**
+   * Extract sample test cases for JSON generation
    * Now extracts ALL test cases, not just a sample
    */
-  private extractSampleTestCases(testCases: string, maxCount?: number): Array<{ id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string }> {
+  private extractSampleTestCases(
+    testCases: string,
+    maxCount?: number
+  ): Array<{ id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string }> {
     const samples: Array<{ id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string }> = [];
 
     // Preprocess: avoid code block extraction when content is already a full document (starts with #)
@@ -468,7 +598,10 @@ export class AutomationPlanning extends BaseAction {
       if (currentTestCase) {
         // Table format: "| 前置条件 | 用户已登录系统 |"
         if (trimmed.startsWith('|') && trimmed.includes('前置条件')) {
-          const parts = trimmed.split('|').map((p) => p.trim()).filter((p) => p);
+          const parts = trimmed
+            .split('|')
+            .map((p) => p.trim())
+            .filter((p) => p);
           const preconditionIndex = parts.findIndex((p) => p.includes('前置条件'));
           if (preconditionIndex >= 0 && preconditionIndex + 1 < parts.length) {
             currentTestCase.precondition = parts[preconditionIndex + 1].trim();
@@ -602,449 +735,6 @@ export class AutomationPlanning extends BaseAction {
   }
 
   /**
-   * Validate test cases using Stagehand.
-   * Returns a text report and the list of cases that passed (first step executed successfully).
-   * Cases are validated in order: before validating case N, all steps of cases 0..N-1 are run
-   * in the same session so that dependent cases (e.g. logout after login) see the correct page state.
-   * Each step is run with a timeout to avoid hanging on failing steps (e.g. Zod retries).
-   */
-  private async validateWithStagehand(
-    testCases: Array<{ id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string }>,
-    url?: string,
-    planningOptions?: AutomationPlanningOptions
-  ): Promise<{
-    report: string;
-    passedCases: Array<{ id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string }>;
-  }> {
-    const results: string[] = [];
-    const passedCases: Array<{ id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string }> = [];
-    const timeoutMs =
-      planningOptions?.stagehandValidationTimeoutMs ??
-      parseInt(process.env.STAGEHAND_VALIDATION_TIMEOUT_MS || '45000', 10);
-    const overallTimeoutMs =
-      planningOptions?.validationOverallTimeoutMs ??
-      parseInt(process.env.VALIDATION_OVERALL_TIMEOUT_MS || '600000', 10); // 10分钟
-    const skipExpectedResultsValidation = planningOptions?.skipExpectedResultsValidation === true;
-
-    // 检查浏览器页面是否可用
-    const initialPage = await this.stagehandService.getPage();
-    if (!initialPage) {
-      logger.warn('AutomationPlanning: Browser page not available, skipping validation', {
-        totalCases: testCases.length,
-      });
-      // 返回所有用例（假设都可通过），避免阻塞流程
-      return {
-        report: '## Stagehand 自动化可行性验证结果\n\n浏览器不可用，跳过验证。所有用例将生成脚本。\n',
-        passedCases: testCases,
-      };
-    }
-
-    const runAct = async (instruction: string, navUrl?: string): Promise<void> => {
-      await Promise.race([
-        this.stagehandService.act(instruction, navUrl),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`Validation timeout (${timeoutMs}ms)`)), timeoutMs)
-        ),
-      ]);
-    };
-
-    results.push('## Stagehand 自动化可行性验证结果\n\n');
-    results.push('以下测试用例已通过 Stagehand 实际验证：\n\n');
-
-    // 总体超时控制
-    const validationStartTime = Date.now();
-
-    for (let i = 0; i < testCases.length; i++) {
-      // 检查总体超时
-      const elapsedTime = Date.now() - validationStartTime;
-      if (elapsedTime > overallTimeoutMs) {
-        logger.warn('AutomationPlanning: Overall validation timeout reached', {
-          elapsedTimeMs: elapsedTime,
-          timeoutMs: overallTimeoutMs,
-          completedCases: i,
-          totalCases: testCases.length,
-        });
-        results.push(`\n⚠️ 验证超时（${Math.round(elapsedTime / 1000)}秒），已完成的 ${i} 个用例将生成脚本。\n`);
-        break;
-      }
-
-      // 检查浏览器状态（每个用例验证前检查）
-      const currentPage = await this.stagehandService.getPage();
-      if (!currentPage) {
-        logger.warn('AutomationPlanning: Browser page became unavailable during validation', {
-          completedCases: i,
-          totalCases: testCases.length,
-          elapsedTimeMs: elapsedTime,
-        });
-        results.push(`\n⚠️ 浏览器不可用，已完成的 ${i} 个用例将生成脚本。\n`);
-        break;
-      }
-
-      // 添加进度日志（每5个用例或最后一个用例）
-      if (i % 5 === 0 || i === testCases.length - 1) {
-        const progress = ((i + 1) / testCases.length * 100).toFixed(1);
-        const avgTimePerCase = i > 0 ? elapsedTime / (i + 1) : elapsedTime;
-        const estimatedRemaining = Math.round((testCases.length - i - 1) * avgTimePerCase / 1000);
-        logger.info('AutomationPlanning: Validation progress', {
-          completed: i + 1,
-          total: testCases.length,
-          progress: `${progress}%`,
-          elapsedTimeMs: elapsedTime,
-          estimatedRemainingSeconds: estimatedRemaining,
-        });
-      }
-
-      const testCase = testCases[i];
-      try {
-        logger.info('AutomationPlanning: Validating test case with Stagehand', {
-          testCase: testCase.name,
-          index: i + 1,
-          total: testCases.length,
-          elapsedTimeMs: elapsedTime,
-        });
-
-        if (testCase.steps.length === 0) {
-          results.push(`### ${testCase.name}\n`);
-          results.push(`- **状态**: ⚠️ 无步骤，跳过验证\n\n`);
-          continue;
-        }
-
-        const firstStep = testCase.steps[0];
-        try {
-          logger.info('AutomationPlanning: Executing all steps for validation', {
-            testCase: testCase.name,
-            stepsCount: testCase.steps.length,
-          });
-
-          // 在执行步骤前再次检查浏览器状态
-          const pageBeforeSteps = await this.stagehandService.getPage();
-          if (!pageBeforeSteps) {
-            logger.warn('AutomationPlanning: Browser not available before step execution, skipping', {
-              testCase: testCase.name,
-              index: i + 1,
-            });
-            // 标记为通过（基于前置检测），但不执行步骤
-            passedCases.push(testCase);
-            results.push(`### ${testCase.name}\n`);
-            results.push(`- **状态**: ⚠️ 浏览器不可用，跳过步骤执行\n\n`);
-            continue;
-          }
-
-          if (i === 0) {
-            // First case: navigate to url and run all steps to validate complete flow
-            await runAct(firstStep, url);
-            // Execute remaining steps of first case
-            for (let k = 1; k < testCase.steps.length; k++) {
-              // 检查浏览器状态（每个步骤前检查）
-              const pageBeforeStep = await this.stagehandService.getPage();
-              if (!pageBeforeStep) {
-                logger.warn('AutomationPlanning: Browser became unavailable during step execution', {
-                  testCase: testCase.name,
-                  stepIndex: k + 1,
-                });
-                break;
-              }
-              logger.info('AutomationPlanning: Executing step', {
-                testCase: testCase.name,
-                stepIndex: k + 1,
-                step: testCase.steps[k],
-              });
-              await runAct(testCase.steps[k]);
-            }
-          } else {
-            // Run all steps of prior cases in order (same session), then validate current case's complete flow
-            for (let j = 0; j < i; j++) {
-              const prior = testCases[j];
-              for (let k = 0; k < prior.steps.length; k++) {
-                // 检查浏览器状态（每个步骤前检查）
-                const pageBeforePriorStep = await this.stagehandService.getPage();
-                if (!pageBeforePriorStep) {
-                  logger.warn('AutomationPlanning: Browser became unavailable during prior case step execution', {
-                    priorCase: prior.name,
-                    stepIndex: k + 1,
-                  });
-                  throw new Error('Browser became unavailable during validation');
-                }
-                const navUrl = j === 0 && k === 0 ? url : undefined;
-                await runAct(prior.steps[k], navUrl);
-              }
-            }
-            // Execute all steps of current case (not just first step)
-            await runAct(firstStep);
-            for (let k = 1; k < testCase.steps.length; k++) {
-              // 检查浏览器状态（每个步骤前检查）
-              const pageBeforeStep = await this.stagehandService.getPage();
-              if (!pageBeforeStep) {
-                logger.warn('AutomationPlanning: Browser became unavailable during step execution', {
-                  testCase: testCase.name,
-                  stepIndex: k + 1,
-                });
-                break;
-              }
-              logger.info('AutomationPlanning: Executing step', {
-                testCase: testCase.name,
-                stepIndex: k + 1,
-                step: testCase.steps[k],
-              });
-              
-              try {
-                await runAct(testCase.steps[k]);
-                
-                // 执行步骤后检查页面状态，避免跳转到错误页面（如 nginx 404）
-                const pageAfterStep = await this.stagehandService.getPage();
-                if (pageAfterStep) {
-                  const currentUrlAfterStep = typeof pageAfterStep.url === 'function' ? pageAfterStep.url() : pageAfterStep.url || '';
-                  if (currentUrlAfterStep && (currentUrlAfterStep.includes('nginx') || currentUrlAfterStep.includes('404') || currentUrlAfterStep.includes('error'))) {
-                    logger.warn('AutomationPlanning: Page shows error after step execution', {
-                      testCase: testCase.name,
-                      stepIndex: k + 1,
-                      step: testCase.steps[k],
-                      currentUrl: currentUrlAfterStep,
-                    });
-                    // 不抛出错误，继续执行，但记录警告
-                  } else {
-                    logger.debug('AutomationPlanning: Page state after step', {
-                      testCase: testCase.name,
-                      stepIndex: k + 1,
-                      currentUrl: currentUrlAfterStep,
-                    });
-                  }
-                }
-              } catch (stepError: any) {
-                logger.error('AutomationPlanning: Step execution failed', {
-                  testCase: testCase.name,
-                  stepIndex: k + 1,
-                  step: testCase.steps[k],
-                  error: stepError.message,
-                });
-                // 检查是否是页面跳转错误
-                const pageAfterError = await this.stagehandService.getPage();
-                if (pageAfterError) {
-                  const errorUrl = typeof pageAfterError.url === 'function' ? pageAfterError.url() : pageAfterError.url || '';
-                  logger.error('AutomationPlanning: Page URL after step error', {
-                    testCase: testCase.name,
-                    stepIndex: k + 1,
-                    url: errorUrl,
-                  });
-                }
-                throw stepError; // 重新抛出错误
-              }
-            }
-          }
-
-          logger.info('AutomationPlanning: All steps executed successfully', {
-            testCase: testCase.name,
-            stepsCount: testCase.steps.length,
-          });
-          
-          // 执行完所有步骤后，再次检查最终页面状态
-          const finalPage = await this.stagehandService.getPage();
-          if (finalPage) {
-            const finalUrl = typeof finalPage.url === 'function' ? finalPage.url() : finalPage.url || '';
-            logger.info('AutomationPlanning: Final page state after all steps', {
-              testCase: testCase.name,
-              finalUrl,
-              isErrorPage: finalUrl.includes('nginx') || finalUrl.includes('404') || finalUrl.includes('error'),
-            });
-          }
-
-          // 验证预期结果
-          const expectedResults = testCase.expectedResults || [];
-          const validationResults: string[] = [];
-          let allExpectedResultsPassed = true;
-
-          if (expectedResults.length > 0 && !skipExpectedResultsValidation) {
-            logger.info('AutomationPlanning: Validating expected results', {
-              testCase: testCase.name,
-              expectedResultsCount: expectedResults.length,
-            });
-
-            const page = await this.stagehandService.getPage();
-            // 如果页面不可用，跳过预期结果验证
-            if (!page) {
-              logger.warn('AutomationPlanning: Page not available, skipping expected result validation', {
-                testCase: testCase.name,
-                expectedResultsCount: expectedResults.length,
-              });
-              validationResults.push('⚠️ 页面不可用，跳过预期结果验证');
-            } else if (typeof page.content === 'function' && typeof page.textContent === 'function') {
-              try {
-                const pageContent = await page.content();
-                const pageText = (await page.textContent('body')) || '';
-                const currentUrl = typeof page.url === 'function' ? page.url() : page.url || '';
-
-                for (let erIdx = 0; erIdx < expectedResults.length; erIdx++) {
-                  const er = expectedResults[erIdx];
-                  let passed = false;
-                  let detail = '';
-
-                  // 根据预期结果类型进行验证
-                  if (er.includes('提示') || er.includes('显示') || er.includes('出现')) {
-                    const keywords = er.replace(/提示[：:]|显示[：:]|出现[：:]/g, '').trim();
-                    passed = pageText.includes(keywords) || pageContent.includes(keywords);
-                    detail = passed ? `找到提示: "${keywords}"` : `未找到提示: "${keywords}"`;
-                  } else if (er.includes('URL') || er.includes('地址') || er.includes('跳转') || er.includes('页面')) {
-                    if (er.includes('登录页') || er.includes('login')) {
-                      passed = currentUrl.includes('/login');
-                      detail = `当前 URL: ${currentUrl}`;
-                    } else {
-                      passed = currentUrl && currentUrl !== 'about:blank';
-                      detail = `当前 URL: ${currentUrl}`;
-                    }
-                  } else if (er.includes('状态') || er.includes('已登录') || er.includes('可访问')) {
-                    // 使用 observe 进行语义验证（仅在页面可用时）
-                    const pageForObserve = await this.stagehandService.getPage();
-                    if (!pageForObserve) {
-                      logger.warn('AutomationPlanning: Page not available for observe, skipping validation', {
-                        testCase: testCase.name,
-                        expectedResultIndex: erIdx + 1,
-                        expectedResult: er,
-                      });
-                      passed = false;
-                      detail = '页面不可用，跳过验证';
-                    } else {
-                      try {
-                        await this.stagehandService.observe(`验证${er}`);
-                        passed = true;
-                        detail = '通过 observe 验证';
-                      } catch {
-                        passed = false;
-                        detail = 'observe 验证失败';
-                      }
-                    }
-                  } else {
-                    // 通用：尝试在页面文本中查找关键词
-                    const keywords = er.split(/[，,。.；;]/)[0].trim();
-                    passed = pageText.includes(keywords) || pageContent.includes(keywords);
-                    detail = passed ? `找到关键词: "${keywords}"` : `未找到关键词: "${keywords}"`;
-                  }
-
-                  if (!passed) {
-                    allExpectedResultsPassed = false;
-                  }
-
-                  const statusIcon = passed ? '✅' : '❌';
-                  validationResults.push(`  ${statusIcon} 预期结果 ${erIdx + 1}: ${er} - ${detail}`);
-                  logger.info('AutomationPlanning: Expected result validation', {
-                    testCase: testCase.name,
-                    expectedResultIndex: erIdx + 1,
-                    expectedResult: er,
-                    passed,
-                    detail,
-                  });
-                }
-              } catch (validationError: any) {
-                logger.warn('AutomationPlanning: Failed to validate expected results', {
-                  testCase: testCase.name,
-                  error: validationError.message,
-                  stack: validationError.stack,
-                });
-                validationResults.push(`  ⚠️ 预期结果验证出错: ${validationError.message}`);
-                allExpectedResultsPassed = false;
-              }
-            } else {
-              // Page 对象不可用或方法不存在，检查是否可以继续使用 observe
-              const pageForObserve = await this.stagehandService.getPage();
-              if (!pageForObserve) {
-                logger.warn('AutomationPlanning: Page not available, skipping all observe validations', {
-                  testCase: testCase.name,
-                  expectedResultsCount: expectedResults.length,
-                });
-                validationResults.push('⚠️ 页面不可用，跳过所有预期结果验证');
-                allExpectedResultsPassed = false;
-              } else {
-                // Page 对象存在但方法不可用，使用 observe 进行语义验证
-                logger.warn('AutomationPlanning: Page object methods missing, using observe for validation', {
-                  testCase: testCase.name,
-                  hasPage: !!page,
-                  pageType: page ? typeof page : 'null',
-                  hasContent: page ? typeof page.content : 'N/A',
-                  hasTextContent: page ? typeof page.textContent : 'N/A',
-                });
-                
-                // 使用 observe 验证预期结果
-                for (let erIdx = 0; erIdx < expectedResults.length; erIdx++) {
-                  const er = expectedResults[erIdx];
-                  // 再次检查页面是否可用（可能在循环中页面被关闭）
-                  const currentPage = await this.stagehandService.getPage();
-                  if (!currentPage) {
-                    logger.warn('AutomationPlanning: Page became unavailable during validation, skipping remaining validations', {
-                      testCase: testCase.name,
-                      expectedResultIndex: erIdx + 1,
-                      totalExpectedResults: expectedResults.length,
-                    });
-                    validationResults.push(`  ⚠️ 预期结果 ${erIdx + 1}/${expectedResults.length}: ${er} - 页面不可用，跳过验证`);
-                    allExpectedResultsPassed = false;
-                    break; // 跳出循环，不再执行剩余的验证
-                  }
-                  
-                  try {
-                    await this.stagehandService.observe(`验证预期结果：${er}`);
-                    validationResults.push(`  ✅ 预期结果 ${erIdx + 1}: ${er} - 通过 observe 验证`);
-                    logger.info('AutomationPlanning: Expected result validated via observe', {
-                      testCase: testCase.name,
-                      expectedResultIndex: erIdx + 1,
-                      expectedResult: er,
-                    });
-                  } catch (observeError: any) {
-                    validationResults.push(`  ⚠️ 预期结果 ${erIdx + 1}: ${er} - observe 验证失败: ${observeError.message}`);
-                    allExpectedResultsPassed = false;
-                    logger.warn('AutomationPlanning: Expected result observe validation failed', {
-                      testCase: testCase.name,
-                      expectedResultIndex: erIdx + 1,
-                      expectedResult: er,
-                      error: observeError.message,
-                    });
-                  }
-                }
-              }
-            }
-          }
-
-          // 只有步骤执行成功且预期结果验证通过（或没有预期结果）才标记为通过
-          if (allExpectedResultsPassed || expectedResults.length === 0) {
-            passedCases.push(testCase);
-            results.push(`### ${testCase.name}\n`);
-            results.push(`- **状态**: ✅ 已验证可行\n`);
-            results.push(`- **验证步骤**: 已执行全部 ${testCase.steps.length} 个步骤\n`);
-            if (expectedResults.length > 0) {
-              results.push(`- **预期结果验证**: ✅ 全部通过 (${expectedResults.length} 项)\n`);
-              results.push(`- **验证详情**:\n${validationResults.join('\n')}\n`);
-            }
-            results.push(`- **说明**: 该测试用例可以通过 Stagehand 自动化执行\n\n`);
-          } else {
-            // 步骤执行成功但预期结果验证失败
-            results.push(`### ${testCase.name}\n`);
-            results.push(`- **状态**: ⚠️ 步骤执行成功，但预期结果验证未完全通过\n`);
-            results.push(`- **验证步骤**: 已执行全部 ${testCase.steps.length} 个步骤\n`);
-            results.push(`- **预期结果验证**: ❌ 部分失败\n`);
-            results.push(`- **验证详情**:\n${validationResults.join('\n')}\n`);
-            results.push(`- **建议**: 检查预期结果是否正确，或调整验证逻辑\n\n`);
-            // 仍然加入 passedCases，因为步骤执行成功了
-            passedCases.push(testCase);
-          }
-        } catch (error: any) {
-          results.push(`### ${testCase.name}\n`);
-          results.push(`- **状态**: ⚠️ 需要调整\n`);
-          results.push(`- **验证步骤**: ${firstStep}\n`);
-          results.push(`- **说明**: ${error.message}\n`);
-          results.push(`- **建议**: 可能需要调整操作步骤或使用更精确的选择器\n\n`);
-        }
-      } catch (error: any) {
-        logger.warn('AutomationPlanning: Test case validation failed', {
-          testCase: testCase.name,
-          error: error.message,
-        });
-        results.push(`### ${testCase.name}\n`);
-        results.push(`- **状态**: ❌ 验证失败\n`);
-        results.push(`- **错误**: ${error.message}\n\n`);
-      }
-    }
-
-    return { report: results.join(''), passedCases };
-  }
-
-  /**
    * Build a safe script filename from test case id and name for better distinction in auto/*.json.
    * Format: {id}-{sanitizedName}.json, e.g. TC-001-用户注册-手机号注册成功.json
    */
@@ -1076,38 +766,229 @@ export class AutomationPlanning extends BaseAction {
   }
 
   /**
-   * Load automation-test skill content for script header (SKILL.md + automation-flow.md).
-   * Returns excerpts for injection; on missing file or error returns empty strings.
+   * Parse step text to extract action type and params
+   * Uses keyword matching to identify action types and extract URL/selector
+   * @param stepText - The step description text
+   * @returns Object with action type and params (url or selector)
    */
-  private async loadAutomationSkillContent(): Promise<{ skillExcerpt: string; flowExcerpt: string }> {
-    const projectRoot = path.resolve(__dirname, '../../..');
-    const skillPath = path.join(projectRoot, 'skills', 'automation-test', 'SKILL.md');
-    const flowPath = path.join(projectRoot, 'skills', 'automation-test', 'references', 'automation-flow.md');
-    let skillExcerpt = '';
-    let flowExcerpt = '';
+  private parseStepAction(stepText: string): { action: string; params: { url?: string; selector?: string; [key: string]: any } } {
+    const lowerStep = stepText.toLowerCase();
 
-    try {
-      const skillRaw = await fs.readFile(skillPath, 'utf-8').catch(() => '');
-      const scriptNormSection = skillRaw.match(/#\s*脚本规范[^#]*?(?=\n#|$)/s);
-      if (scriptNormSection) {
-        skillExcerpt = scriptNormSection[0].replace(/#\s*脚本规范[^\n]*\n\n?/, '').trim();
-        if (skillExcerpt.length > 400) skillExcerpt = skillExcerpt.slice(0, 400) + '...';
+    // Extract URL if present
+    const urlMatch = stepText.match(/(https?:\/\/[^\s]+)/i);
+    const url = urlMatch ? urlMatch[1] : undefined;
+
+    // Extract selector based on keywords
+    let selector: string | undefined = undefined;
+
+    // Match action types based on keywords
+    if (lowerStep.includes('点击') || lowerStep.includes('click')) {
+      // Extract button/element name for selector
+      const buttonMatch = stepText.match(/点击["']?([^"'\s]+(?:按钮|button))["']?/i) || stepText.match(/click\s+["']?([^"'\s]+)["']?/i);
+      if (buttonMatch) {
+        selector = buttonMatch[1];
+      } else {
+        // Try to extract common button names
+        const commonButtons = ['登录', '退出', '提交', '确认', '取消', '保存'];
+        for (const btn of commonButtons) {
+          if (stepText.includes(btn)) {
+            selector = `${btn}按钮`;
+            break;
+          }
+        }
       }
-      if (!skillExcerpt) {
-        skillExcerpt = '1. 仅使用 Stagehand\n2. 必含 act + assert\n3. 必含关键接口监听\n4. 必含流程结果验证';
-      }
-    } catch {
-      skillExcerpt = '1. 仅使用 Stagehand\n2. 必含 act + assert\n3. 必含关键接口监听\n4. 必含流程结果验证';
+      return { action: 'click', params: selector ? { selector } : {} };
     }
 
-    try {
-      const flowRaw = await fs.readFile(flowPath, 'utf-8').catch(() => '');
-      flowExcerpt = flowRaw.trim().split('\n').slice(0, 3).join(' ').slice(0, 120) || 'AutomationPlanning -> AutomationExecution';
-    } catch {
-      flowExcerpt = 'AutomationPlanning -> AutomationExecution';
+    if (lowerStep.includes('输入') || lowerStep.includes('type') || lowerStep.includes('输入框')) {
+      // Extract input field name for selector
+      const inputMatch = stepText.match(/(?:在)?([^输入框]+)(?:输入框|输入)/i) || stepText.match(/type\s+["']?([^"'\s]+)["']?/i);
+      if (inputMatch) {
+        selector = inputMatch[1].trim();
+      } else {
+        // Try to extract common input names
+        const commonInputs = ['账号', '密码', '用户名', '邮箱', '手机号'];
+        for (const inp of commonInputs) {
+          if (stepText.includes(inp)) {
+            selector = `${inp}输入框`;
+            break;
+          }
+        }
+      }
+      return { action: 'type', params: selector ? { selector } : {} };
     }
 
-    return { skillExcerpt, flowExcerpt };
+    if (lowerStep.includes('打开') || lowerStep.includes('open') || lowerStep.includes('导航') || lowerStep.includes('navigate')) {
+      return { action: 'open', params: url ? { url } : {} };
+    }
+
+    if (lowerStep.includes('验证') || lowerStep.includes('verify') || lowerStep.includes('检查') || lowerStep.includes('check')) {
+      // Extract element name for verification
+      const verifyMatch = stepText.match(/验证["']?([^"'\s]+)["']?/i) || stepText.match(/verify\s+["']?([^"'\s]+)["']?/i);
+      if (verifyMatch) {
+        selector = verifyMatch[1];
+      }
+      return { action: 'verify', params: selector ? { selector } : {} };
+    }
+
+    if (lowerStep.includes('悬停') || lowerStep.includes('hover')) {
+      // Extract element name for hover
+      const hoverMatch = stepText.match(/悬停在["']?([^"'\s]+)["']?/i) || stepText.match(/hover\s+["']?([^"'\s]+)["']?/i);
+      if (hoverMatch) {
+        selector = hoverMatch[1];
+      }
+      return { action: 'hover', params: selector ? { selector } : {} };
+    }
+
+    // Default to unknown if no match
+    return { action: 'unknown', params: url ? { url } : {} };
+  }
+
+  /**
+   * Parse expected result string to extract type and value
+   * @param expectedText - The expected result text
+   * @returns Object with type and value, or null if cannot parse
+   */
+  private parseExpectedResult(expectedText: string): { type: 'url' | 'text' | 'element' | 'api' | 'cookie' | 'url_match'; value: string } | null {
+    if (!expectedText || !expectedText.trim()) {
+      return null;
+    }
+
+    const lowerText = expectedText.toLowerCase();
+
+    // Cookie type: contains keywords like "cookie", "token", "登录态", "认证", "session"
+    // 优先识别登录态特征校验
+    if (
+      lowerText.includes('cookie') ||
+      lowerText.includes('token') ||
+      lowerText.includes('登录态') ||
+      lowerText.includes('认证') ||
+      lowerText.includes('session') ||
+      lowerText.includes('auth')
+    ) {
+      // 提取 cookie 名称（如 token、auth_token 等）
+      const cookieNameMatch =
+        expectedText.match(/(?:cookie|token|session|auth)[\s:：=]+([a-zA-Z_][a-zA-Z0-9_]*)/i) ||
+        expectedText.match(/([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:cookie|token|session)/i);
+      const value = cookieNameMatch ? cookieNameMatch[1] : lowerText.includes('token') ? 'token' : 'auth_token';
+      return { type: 'cookie', value };
+    }
+
+    // URL match type: contains keywords like "包含", "匹配", "模糊", "url_match"
+    // 用于登录后页面跳转的模糊匹配
+    if (lowerText.includes('url_match') || lowerText.includes('url匹配') || lowerText.includes('模糊匹配') || lowerText.includes('包含路径')) {
+      // Extract URL pattern
+      const urlMatch = expectedText.match(/(https?:\/\/[^\s]+)/i) || expectedText.match(/(\/[^\s]+)/i) || expectedText.match(/([^\s]+)/);
+      const value = urlMatch ? urlMatch[1] : expectedText.trim();
+      return { type: 'url_match', value };
+    }
+
+    // URL type: contains keywords like "跳转", "url", "地址", "跳转到"
+    // 注意：登录相关预期优先使用 cookie 或 url_match，避免使用固定 URL
+    if (
+      lowerText.includes('跳转') ||
+      lowerText.includes('url') ||
+      lowerText.includes('地址') ||
+      lowerText.includes('跳转到') ||
+      lowerText.includes('redirect') ||
+      lowerText.includes('navigate')
+    ) {
+      // 如果是登录相关，优先使用 url_match 而不是固定 url
+      if (lowerText.includes('登录') || lowerText.includes('login')) {
+        const urlMatch = expectedText.match(/(https?:\/\/[^\s]+)/i) || expectedText.match(/(\/[^\s]+)/i);
+        const value = urlMatch ? urlMatch[1] : expectedText.trim();
+        return { type: 'url_match', value };
+      }
+
+      // Extract URL path or full URL
+      const urlMatch = expectedText.match(/(https?:\/\/[^\s]+)/i) || expectedText.match(/(\/[^\s]+)/i);
+      const value = urlMatch ? urlMatch[1] : expectedText.trim();
+      return { type: 'url', value };
+    }
+
+    // API type: contains keywords like "接口", "请求", "响应", "api"
+    if (
+      lowerText.includes('接口') ||
+      lowerText.includes('请求') ||
+      lowerText.includes('响应') ||
+      lowerText.includes('api') ||
+      lowerText.includes('request') ||
+      lowerText.includes('response')
+    ) {
+      // Extract API endpoint or status code
+      const apiMatch =
+        expectedText.match(/(\d{3})/i) || // HTTP status code
+        expectedText.match(/(\/api\/[^\s]+)/i) || // API endpoint
+        expectedText.match(/([A-Z]+\s+[^\s]+)/i); // HTTP method + endpoint
+      const value = apiMatch ? apiMatch[1] : expectedText.trim();
+      return { type: 'api', value };
+    }
+
+    // Element type: contains keywords like "元素", "按钮", "输入框", "显示", "头像", "用户名"
+    // 优先识别登录态特征元素（用户头像、用户名等）
+    if (
+      lowerText.includes('头像') ||
+      lowerText.includes('avatar') ||
+      lowerText.includes('用户名') ||
+      lowerText.includes('user') ||
+      lowerText.includes('profile') ||
+      lowerText.includes('用户信息')
+    ) {
+      // 登录态特征元素
+      const elementMatch =
+        expectedText.match(/["']?([^"'\s]*(?:头像|用户名|avatar|user|profile))["']?/i) ||
+        expectedText.match(/(显示|出现|可见)[^，。；]*(?:头像|用户名)/i);
+      const value = elementMatch ? elementMatch[1] || elementMatch[0] : lowerText.includes('头像') ? '用户头像' : '用户名';
+      return { type: 'element', value };
+    }
+
+    if (
+      lowerText.includes('元素') ||
+      lowerText.includes('按钮') ||
+      lowerText.includes('输入框') ||
+      lowerText.includes('element') ||
+      lowerText.includes('button') ||
+      lowerText.includes('input') ||
+      lowerText.includes('显示') ||
+      lowerText.includes('出现') ||
+      lowerText.includes('可见')
+    ) {
+      // Extract element name or description
+      const elementMatch = expectedText.match(/["']?([^"'\s]+(?:按钮|输入框|元素))["']?/i) || expectedText.match(/(显示|出现|可见)[^，。；]*/i);
+      const value = elementMatch ? elementMatch[1] || elementMatch[0] : expectedText.trim();
+      return { type: 'element', value };
+    }
+
+    // Toast/Text type: 检测 Toast 消息或文本提示
+    // 如果是登录相关的 Toast，生成组合断言（Toast waitFor + Cookie expected）
+    if (
+      lowerText.includes('toast') ||
+      lowerText.includes('提示') ||
+      lowerText.includes('消息') ||
+      lowerText.includes('成功') ||
+      lowerText.includes('失败') ||
+      lowerText.includes('错误') ||
+      lowerText.includes('通知') ||
+      lowerText.includes('notification') ||
+      lowerText.includes('alert')
+    ) {
+      // 提取 Toast 文本内容
+      const toastTextMatch = expectedText.match(/["']([^"']+)["']/) || expectedText.match(/(提示|消息|成功|失败|错误)[：:：]?\s*([^，。；\n]+)/i);
+      const toastText = toastTextMatch ? toastTextMatch[2] || toastTextMatch[1] || expectedText.trim() : expectedText.trim();
+
+      // 如果是登录相关，返回特殊标记，后续处理会生成组合断言
+      if (lowerText.includes('登录') || lowerText.includes('login')) {
+        // 返回一个特殊对象，标记需要组合断言
+        return { type: 'toast_with_login', value: toastText } as any;
+      }
+
+      // 其他 Toast 消息，返回 text 类型
+      return { type: 'text', value: toastText };
+    }
+
+    // Text type: default for other cases (contains "显示", "提示", "文案", "文本")
+    // This is the fallback type
+    return { type: 'text', value: expectedText.trim() };
   }
 
   /**
@@ -1163,16 +1044,48 @@ export class AutomationPlanning extends BaseAction {
           const precondition = (testCase.precondition || '').trim();
 
           // 查找前置用例：如果前置条件包含"登录"或"已登录"，找到登录用例（TC-001）
+          // 注意：不能将当前用例自己作为前置条件用例
+          // 更严格的匹配：只匹配明确的"已登录"或"登录状态"，排除"登录页面"等不相关的前置条件
           let prerequisiteCase: { id: string; name: string; steps: string[] } | null = null;
-          if (precondition && (precondition.includes('登录') || precondition.includes('已登录'))) {
-            // 查找 TC-001（登录用例）
-            prerequisiteCase = testCases.find((tc) => tc.id === 'TC-001' || tc.name.includes('登录')) || null;
+          const hasPrerequisiteKeyword =
+            precondition &&
+            (precondition.includes('已登录') ||
+              precondition.includes('登录状态') ||
+              precondition.includes('用户已登录') ||
+              precondition.includes('logged in') ||
+              precondition.includes('login state'));
+
+          // 添加调试日志
+          logger.info('AutomationPlanning: Checking prerequisite logic', {
+            testCaseId: scriptId,
+            testCaseName: safeName,
+            precondition,
+            hasPrerequisiteKeyword: !!hasPrerequisiteKeyword,
+          });
+
+          if (hasPrerequisiteKeyword) {
+            // 查找 TC-001（登录用例），但排除当前用例本身
+            // 更精确的匹配：优先匹配 TC-001，其次匹配名称包含"登录"但不包含"退出"的用例
+            prerequisiteCase =
+              testCases.find((tc) => {
+                if (tc.id === scriptId) return false; // 排除当前用例
+                if (tc.id === 'TC-001') return true; // 优先匹配 TC-001
+                // 匹配名称包含"登录"但不包含"退出"的用例
+                return tc.name.includes('登录') && !tc.name.includes('退出');
+              }) || null;
             if (prerequisiteCase) {
               logger.info('AutomationPlanning: Found prerequisite case for precondition', {
                 testCaseId: scriptId,
                 precondition,
                 prerequisiteCaseId: prerequisiteCase.id,
+                prerequisiteCaseName: prerequisiteCase.name,
                 prerequisiteStepsCount: prerequisiteCase.steps.length,
+              });
+            } else {
+              logger.warn('AutomationPlanning: No prerequisite case found despite keyword match', {
+                testCaseId: scriptId,
+                precondition,
+                availableTestCaseIds: testCases.map((tc) => tc.id),
               });
             }
           }
@@ -1188,36 +1101,77 @@ export class AutomationPlanning extends BaseAction {
             hasPrerequisite: !!prerequisiteCase,
           });
 
-          // 构建步骤数组：包含前置条件步骤（如果有）和测试用例步骤
-          const allSteps: Array<{ step: string; status: string }> = [];
+          // 构建步骤数组：只包含当前测试用例的步骤（不再合并前置条件步骤）
+          const allSteps: Array<{
+            step: string;
+            action: string;
+            params: { url?: string; selector?: string; [key: string]: any };
+            expected: { type: 'url' | 'text' | 'element' | 'api' | 'cookie' | 'url_match'; value: string } | null;
+            status: string;
+            error: null;
+          }> = [];
 
-          // 添加前置条件步骤（如果有）
-          if (prerequisiteCase && prerequisiteCase.steps.length > 0) {
-            const prerequisiteSteps = prerequisiteCase.steps.filter((step) => step && step.trim());
-            logger.info('AutomationPlanning: Adding prerequisite steps to JSON', {
-              testCaseId: scriptId,
-              prerequisiteCaseId: prerequisiteCase.id,
-              prerequisiteStepsCount: prerequisiteSteps.length,
-            });
-            for (const step of prerequisiteSteps) {
-              const trimmedStep = step.trim();
-              if (trimmedStep) {
-                allSteps.push({
-                  step: trimmedStep,
-                  status: 'pending',
-                });
+          // 添加测试用例步骤（不再添加前置条件步骤）
+          const totalStepsCount = safeSteps.length;
+          for (let i = 0; i < safeSteps.length; i++) {
+            const step = safeSteps[i];
+            const trimmedStep = step.trim();
+            if (trimmedStep) {
+              const { action, params } = this.parseStepAction(trimmedStep);
+              const isLastStep = i === totalStepsCount - 1;
+
+              // 最后一个步骤包含预期结果（解析为对象格式）
+              let expected: { type: 'url' | 'text' | 'element' | 'api' | 'cookie' | 'url_match'; value: string } | null = null;
+              let waitFor: { type: 'toast' | 'element'; text?: string; selector?: string; timeout?: number } | undefined = undefined;
+
+              if (isLastStep && expectedResults.length > 0) {
+                const parsedResult = this.parseExpectedResult(expectedResults.join('；'));
+
+                // 检查是否是 Toast + 登录的组合断言
+                if (parsedResult && (parsedResult as any).type === 'toast_with_login') {
+                  // 生成组合断言：Toast waitFor + Cookie expected
+                  waitFor = {
+                    type: 'toast',
+                    text: parsedResult.value,
+                    timeout: 5000,
+                  };
+                  expected = {
+                    type: 'cookie',
+                    value: 'token',
+                  };
+                } else {
+                  expected = parsedResult;
+                }
               }
+
+              allSteps.push({
+                step: trimmedStep,
+                action,
+                params,
+                expected,
+                ...(waitFor && { waitFor }),
+                status: 'pending',
+                error: null,
+              });
             }
           }
 
-          // 添加测试用例步骤
-          for (const step of safeSteps) {
-            const trimmedStep = step.trim();
-            if (trimmedStep) {
-              allSteps.push({
-                step: trimmedStep,
-                status: 'pending',
-              });
+          // 转换 precondition 为数组格式
+          // 如果包含"登录"关键词，转换为 ["login"]
+          let preconditionArray: string[] | undefined = undefined;
+          if (precondition) {
+            const lowerPrecondition = precondition.toLowerCase();
+            if (
+              lowerPrecondition.includes('已登录') ||
+              lowerPrecondition.includes('登录状态') ||
+              lowerPrecondition.includes('用户已登录') ||
+              lowerPrecondition.includes('logged in') ||
+              lowerPrecondition.includes('login state')
+            ) {
+              preconditionArray = ['login'];
+            } else {
+              // 保留原始前置条件作为数组元素
+              preconditionArray = [precondition];
             }
           }
 
@@ -1225,6 +1179,7 @@ export class AutomationPlanning extends BaseAction {
           const testCaseJSON = {
             testCase: safeName,
             status: 'pending',
+            precondition: preconditionArray, // 改为数组格式
             steps: allSteps,
             duration: 0,
           };
