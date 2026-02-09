@@ -273,28 +273,23 @@ export const KNOWLEDGE_INPUT_REFERENCE = `
  * @param relevantChunksOrContext RAG 检索到的相关文档片段（字符串）或结构化知识上下文
  * @returns MRD 生成提示词
  */
-export function buildMRDPrompt(
-    userIdea: string, 
-    relevantChunksOrContext?: string | StructuredKnowledgeContext
-): string {
-    let knowledgeSection = '';
-    
-    if (relevantChunksOrContext) {
-        if (typeof relevantChunksOrContext === 'string') {
-            // 兼容旧版本：简单字符串形式的 RAG 结果
-            knowledgeSection = `\n\n## 研究上下文（由系统自动提供）\n\n**知识库检索结果**：\n${relevantChunksOrContext}\n\n请参考上述知识库信息，结合当前需求生成新的MRD文档。`;
-        } else if (!isKnowledgeContextEmpty(relevantChunksOrContext)) {
-            // 新版本：结构化知识上下文
-            const formattedKnowledge = formatStructuredKnowledge(relevantChunksOrContext);
-            knowledgeSection = `\n\n${STRUCTURED_KNOWLEDGE_INSTRUCTION}\n\n${formattedKnowledge}`;
-        }
+export function buildMRDPrompt(userIdea: string, relevantChunksOrContext?: string | StructuredKnowledgeContext): string {
+  let knowledgeSection = '';
+
+  if (relevantChunksOrContext) {
+    if (typeof relevantChunksOrContext === 'string') {
+      // 兼容旧版本：简单字符串形式的 RAG 结果
+      knowledgeSection = `\n\n## 研究上下文（由系统自动提供）\n\n**知识库检索结果**：\n${relevantChunksOrContext}\n\n请参考上述知识库信息，结合当前需求生成新的MRD文档。`;
+    } else if (!isKnowledgeContextEmpty(relevantChunksOrContext)) {
+      // 新版本：结构化知识上下文
+      const formattedKnowledge = formatStructuredKnowledge(relevantChunksOrContext);
+      knowledgeSection = `\n\n${STRUCTURED_KNOWLEDGE_INSTRUCTION}\n\n${formattedKnowledge}`;
     }
+  }
 
-    const knowledgeRequirements = knowledgeSection 
-        ? `\n\n${MRD_KNOWLEDGE_REQUIREMENTS}`
-        : '';
+  const knowledgeRequirements = knowledgeSection ? `\n\n${MRD_KNOWLEDGE_REQUIREMENTS}` : '';
 
-    return `请帮我生成一份 MRD 文档。
+  return `请帮我生成一份 MRD 文档。
 
 ## 用户需求
 
@@ -341,13 +336,13 @@ ${MRD_TEMPLATE}
 
 /**
  * 构建带知识输入引用的 MRD Prompt（CLI 模式使用）
- * 包含对历史文档和代码的引用指令
- * 
+ * 包含对历史文档和代码的引用指令，以及知识库检索要求
+ *
  * @param userIdea 用户需求描述
  * @returns 带知识输入引用的完整 prompt
  */
 export function buildMRDPromptWithKnowledge(userIdea: string): string {
-    return `${KNOWLEDGE_INPUT_REFERENCE}
+  return `${KNOWLEDGE_INPUT_REFERENCE}
 
 请帮我生成一份 MRD 文档。
 
@@ -356,15 +351,58 @@ export function buildMRDPromptWithKnowledge(userIdea: string): string {
 **需求描述**：
 ${userIdea}
 
+## 知识库检索要求
+
+在生成每个章节前，必须先检索对应的知识库内容：
+
+### 章节知识映射
+
+- **第1章（背景与问题定义）**：检索历史MRD、竞品分析、业务规则
+  - 目录：docs-archive/mrd/, docs/business-knowledge/
+  - 查询：类似问题的历史分析、竞品功能对比、行业背景和趋势
+
+- **第2章（目标用户和场景）**：检索历史PRD、历史MRD、术语定义
+  - 目录：docs-archive/prd/, docs-archive/mrd/, docs/business-knowledge/
+  - 查询：现有用户画像、历史使用场景、用户诉求分析
+
+- **第3章（目标与成功标准）**：检索业务规则、历史MRD
+  - 目录：docs/business-knowledge/, docs-archive/mrd/
+  - 查询：业务目标定义、成功标准参考、量化指标基线
+
+- **第4章（核心需求范围）**：检索历史PRD、业务规则、功能清单、术语定义
+  - 目录：docs-archive/prd/, docs/business-knowledge/
+  - 查询：现有功能列表、业务规则约束、功能优先级参考
+
+- **第5章（关键约束）**：检索技术约束、业务规则、开发规范
+  - 目录：docs/dev-spec/, docs/business-knowledge/
+  - 查询：技术架构约束、性能要求基线、合规要求
+
+- **第6章（不确定点和风险）**：检索历史MRD、技术约束
+  - 目录：docs-archive/mrd/, docs/dev-spec/
+  - 查询：历史风险案例、技术风险点
+
+- **第7章（备注）**：检索竞品分析、技术约束、历史MRD
+  - 目录：docs-archive/mrd/, docs/dev-spec/
+  - 查询：竞品功能分析、技术方案参考、工程评估参考
+
+### 知识库使用规范
+
+1. **必须使用知识库中的术语定义**：核心概念需与术语词典保持一致
+2. **必须检查与现有功能的冲突**：对照现有功能列表，明确新功能与现有功能的关系
+3. **必须遵守业务规则和技术约束**：业务规则直接引用，不得自行推断
+4. **引用格式**：在文档中引用知识库内容时，使用格式：> 📚 来源：[知识类型] - 文档名称
+5. **冲突处理**：如发现冲突，必须在第6章"不确定点和风险"中说明冲突点和影响范围
+
 ## 生成要求
 
 1. **理解需求**：仔细阅读用户提供的需求描述
-2. **参考知识输入**：参考上述目录中的历史文档和代码，了解现有功能和设计
-3. **功能冲突检测**：如果新需求与现有功能冲突，请明确指出
-4. **规划结构**：按照 7 章结构规划内容
-5. **逐章生成**：按顺序生成每一章，确保字数和质量要求
-6. **重点检查**：确保"明确不做的范围"至少 3 项
-7. **补充 Sources**：列出所有研究来源
+2. **检索知识库**：按照上述章节知识映射检索相关知识库内容
+3. **参考知识输入**：参考上述目录中的历史文档和代码，了解现有功能和设计
+4. **功能冲突检测**：如果新需求与现有功能冲突，请明确指出
+5. **规划结构**：按照 7 章结构规划内容
+6. **逐章生成**：按顺序生成每一章，确保字数和质量要求
+7. **重点检查**：确保"明确不做的范围"至少 3 项
+8. **补充 Sources**：列出所有研究来源
 
 ## 文档模板（严格遵循）
 
@@ -398,7 +436,7 @@ ${MRD_TEMPLATE}
  * 生成市场研究文档目录的提示词
  */
 export function buildMRDOutlinePrompt(userIdea: string): string {
-    return `基于以下用户需求，生成市场研究文档（MRD）的目录结构：
+  return `基于以下用户需求，生成市场研究文档（MRD）的目录结构：
 
 【用户需求】
 ${userIdea}
@@ -444,20 +482,20 @@ ${userIdea}
  * @returns 章节生成提示词
  */
 export function buildMRDSectionPrompt(
-    input: string,
-    outline: string,
-    sectionNumber: number,
-    sectionTitle: string,
-    knowledgeContext?: StructuredKnowledgeContext
+  input: string,
+  outline: string,
+  sectionNumber: number,
+  sectionTitle: string,
+  knowledgeContext?: StructuredKnowledgeContext
 ): string {
-    // 根据章节号提供具体的生成指导
-    const sectionGuidance = getSectionGuidance(sectionNumber);
-    
-    // 格式化知识上下文
-    let knowledgeSection = '';
-    if (knowledgeContext && !isKnowledgeContextEmpty(knowledgeContext)) {
-        const formattedKnowledge = formatStructuredKnowledge(knowledgeContext);
-        knowledgeSection = `
+  // 根据章节号提供具体的生成指导
+  const sectionGuidance = getSectionGuidance(sectionNumber);
+
+  // 格式化知识上下文
+  let knowledgeSection = '';
+  if (knowledgeContext && !isKnowledgeContextEmpty(knowledgeContext)) {
+    const formattedKnowledge = formatStructuredKnowledge(knowledgeContext);
+    knowledgeSection = `
 ${STRUCTURED_KNOWLEDGE_INSTRUCTION}
 
 ${formattedKnowledge}
@@ -469,9 +507,9 @@ ${formattedKnowledge}
 - 如有冲突，在章节内容中说明
 - 引用知识库内容时标注来源：> 📚 来源：[知识类型] - 文档名称
 `;
-    }
+  }
 
-    return `基于以下需求信息和 MRD 目录，生成第 ${sectionNumber} 章「${sectionTitle}」的详细内容：
+  return `基于以下需求信息和 MRD 目录，生成第 ${sectionNumber} 章「${sectionTitle}」的详细内容：
 
 【需求背景】
 ${input}
@@ -507,36 +545,36 @@ ${knowledgeContext ? '- 引用知识库内容时需标注来源' : ''}
  * 获取章节生成指导
  */
 function getSectionGuidance(sectionNumber: number): string {
-    const guidance: Record<number, string> = {
-        1: `**第 1 章生成要点**（200-400字）：
+  const guidance: Record<number, string> = {
+    1: `**第 1 章生成要点**（200-400字）：
 - 核心问题：要解决的核心痛点（2-3 个要点）
 - 行业背景：基于研究补充的行业背景或竞品动态（1-2 个要点，可选）
 - 不解决的后果：对用户和业务的影响`,
-        2: `**第 2 章生成要点**（200-400字）：
+    2: `**第 2 章生成要点**（200-400字）：
 - 目标用户：主要用户、用户规模、核心诉求
 - 典型场景：2-3 个场景，每个包含触发条件、用户目标、当前痛点`,
-        3: `**第 3 章生成要点**（200-300字）：
+    3: `**第 3 章生成要点**（200-300字）：
 - 业务目标：1-2 个主要目标
 - 成功标准：可量化的指标（效率/质量/业务），至少 1 个包含基线和目标值`,
-        4: `**第 4 章生成要点**（300-500字）⚠️ 重点：
+    4: `**第 4 章生成要点**（300-500字）⚠️ 重点：
 - 4.1 核心功能需求：P0 功能 2-5 个，P1 功能 0-3 个
 - 4.2 明确不做的范围：至少 3 项，每项说明原因，使用 ❌ 符号`,
-        5: `**第 5 章生成要点**（200-300字）：
+    5: `**第 5 章生成要点**（200-300字）：
 - 时间约束：项目周期、上线日期
 - 技术约束：兼容性、性能要求
 - 成本约束：人力、资金预算
 - 合规约束：法律法规、安全要求（如有）
 - 待确认约束：需要进一步确认的约束`,
-        6: `**第 6 章生成要点**（200-300字）：
+    6: `**第 6 章生成要点**（200-300字）：
 - 需要确认的问题：1-3 个问题，包含影响范围和确认时间
 - 已识别的风险：技术/进度/业务风险，包含应对措施`,
-        7: `**第 7 章生成要点**（200-400字）：
+    7: `**第 7 章生成要点**（200-400字）：
 - 竞品与参考：1-3 个主要竞品，包含核心功能、优劣势、参考链接
 - 技术参考：技术方案、开源项目、最佳实践（如有）
 - 工程评估辅助信息：数据实体、核心流程、复杂度评估、依赖系统`,
-    };
+  };
 
-    return guidance[sectionNumber] || '';
+  return guidance[sectionNumber] || '';
 }
 
 /**
@@ -584,7 +622,7 @@ export const MRD_REVIEW_SYSTEM_PROMPT = `你是一位资深的 MRD（Market Requ
 5. 审查结论`;
 
 export function buildMRDReviewPrompt(mrdContent: string, outline: string): string {
-    return `请审查以下 MRD（市场需求文档）的质量：
+  return `请审查以下 MRD（市场需求文档）的质量：
 
 【MRD 文档】
 ${mrdContent}
@@ -715,12 +753,7 @@ ${outline}
 /**
  * 审核单个章节的提示词
  */
-export function buildMRDSectionReviewPrompt(
-  sectionContent: string,
-  sectionNumber: number,
-  sectionTitle: string,
-  outline: string
-): string {
+export function buildMRDSectionReviewPrompt(sectionContent: string, sectionNumber: number, sectionTitle: string, outline: string): string {
   return `请审查以下市场研究文档（MRD）章节的质量：
 
 【章节内容】
@@ -811,11 +844,8 @@ export const MRD_IMPROVE_SYSTEM_PROMPT = `你是一位资深的 MRD（Market Req
 - 对于模糊的内容，提供更具体的描述和细节
 - 对于空洞的内容，补充实际案例和数据`;
 
-export function buildMRDImprovePrompt(
-    mrdContent: string,
-    reviewReport: string
-): string {
-    return `请根据以下审查报告的建议，改进和完善 MRD（市场需求文档）：
+export function buildMRDImprovePrompt(mrdContent: string, reviewReport: string): string {
+  return `请根据以下审查报告的建议，改进和完善 MRD（市场需求文档）：
 
 【当前 MRD 文档】
 ${mrdContent}
@@ -891,20 +921,19 @@ ${reviewReport}
 }
 
 export default {
-    MRD_SYSTEM_PROMPT,
-    MRD_TEMPLATE,
-    KNOWLEDGE_INPUT_REFERENCE,
-    buildMRDPrompt,
-    buildMRDPromptWithKnowledge,
-    buildMRDOutlinePrompt,
-    buildMRDSectionPrompt,
-    MRD_REVIEW_SYSTEM_PROMPT,
-    buildMRDReviewPrompt,
-    buildMRDSectionReviewPrompt,
-    MRD_IMPROVE_SYSTEM_PROMPT,
-    buildMRDImprovePrompt,
-    // 新增：结构化知识相关导出
-    formatStructuredKnowledge,
-    isKnowledgeContextEmpty,
+  MRD_SYSTEM_PROMPT,
+  MRD_TEMPLATE,
+  KNOWLEDGE_INPUT_REFERENCE,
+  buildMRDPrompt,
+  buildMRDPromptWithKnowledge,
+  buildMRDOutlinePrompt,
+  buildMRDSectionPrompt,
+  MRD_REVIEW_SYSTEM_PROMPT,
+  buildMRDReviewPrompt,
+  buildMRDSectionReviewPrompt,
+  MRD_IMPROVE_SYSTEM_PROMPT,
+  buildMRDImprovePrompt,
+  // 新增：结构化知识相关导出
+  formatStructuredKnowledge,
+  isKnowledgeContextEmpty,
 };
-

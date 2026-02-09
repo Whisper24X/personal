@@ -13,7 +13,7 @@ Mind2Build is a multi-agent AI collaboration framework that simulates a software
   - **CLI Interactive Mode**: Terminal-based with editor integration
   - **Web Interactive Mode**: Beautiful browser interface with real-time updates
 - **Business Line & Platform Management**: Organize projects by business lines and platforms
-- **Knowledge Base System**: RAG-enhanced retrieval with Qdrant vector database support
+- **Knowledge Base System**: Document management with keyword search
 - **Section Conversation History**: Track and manage conversation history for document sections (PRD/MRD) to enable iterative refinement
 - **Workflow Management**: Customizable workflows with visual designer
 - **Git Repository Integration**: Automatic Git repository management with version branch support
@@ -96,7 +96,7 @@ mind2build/
 │   │   ├── executors/       # LLMExecutor, CLIExecutor (Aider, Cursor)
 │   │   ├── database/        # PostgreSQL repositories and migrations
 │   │   ├── api/             # 15 REST API controllers: ApplicationController, ApplicationWorkflowController, EngineerTestController, KnowledgeBaseController, KnowledgeUploadController, LLMConfigController, MRDController, PRDController, ProjectController, ProjectVersionController, PromptConfigController, RoleActionController, RoleActionExecutionController, RoleLLMConfigController, WorkflowExecutionController
-│   │   ├── services/        # 10 Services: WorkflowService, RAGService, GitService, DocumentArchiveService, RoleActionService, EmbeddingService, QdrantService, RerankService, SectionAdjustService, StagehandService
+│   │   ├── services/        # 10 Services: WorkflowService, GitService, DocumentArchiveService, RoleActionFactory, RoleActionService, SectionAdjustService, StagehandService, VersionReviewService, MCPService, CliLogStreamService
 │   │   ├── workflow/        # Workflow execution engine
 │   │   └── cli/             # CLI commands
 │   └── tests/
@@ -128,20 +128,18 @@ export class NewRole extends Role {
   constructor(context: Context, name: string = 'NewRole') {
     const config: IRoleConfig = {
       name,
-      profile: 'NewRole',           // 角色唯一标识
+      profile: 'NewRole', // 角色唯一标识
       goal: '角色目标描述',
       constraints: '角色约束条件',
       description: '角色详细描述',
     };
     super(config, context);
-    
+
     // 设置监听的 action（触发条件）
     this.watch([ACTION_SOME_TRIGGER]);
-    
+
     // 设置角色执行的 actions
-    this.setActions([
-      new SomeAction(),
-    ]);
+    this.setActions([new SomeAction()]);
   }
 }
 
@@ -157,7 +155,7 @@ export { NewRole } from './NewRole';
 // 在 ROLE_REGISTRY 中添加
 export const ROLE_REGISTRY = {
   // ... 现有角色
-  NewRole,  // 添加新角色
+  NewRole, // 添加新角色
 };
 ```
 
@@ -183,10 +181,8 @@ export class NewAction extends BaseAction {
 
   async run(context: string, options?: any): Promise<Message> {
     // 实现 Action 逻辑
-    const result = await this.aask(context, [
-      { role: 'system', content: 'System prompt here' }
-    ]);
-    
+    const result = await this.aask(context, [{ role: 'system', content: 'System prompt here' }]);
+
     return new Message({
       content: result,
       role: this.role?.profile || 'Assistant',
@@ -205,7 +201,7 @@ export { NewAction } from './NewAction';
 // 在 ACTION_REGISTRY 中添加
 export const ACTION_REGISTRY = {
   // ... 现有 actions
-  NewAction,  // 添加新 action
+  NewAction, // 添加新 action
 };
 ```
 
@@ -289,6 +285,7 @@ pm2 save
 ```
 
 **PM2 Configuration Features:**
+
 - ✅ Automatic restart on crash
 - ✅ Memory limit monitoring (1GB backend, 500MB frontend)
 - ✅ Log rotation and management
@@ -299,15 +296,18 @@ pm2 save
 ## 📚 Documentation
 
 ### Getting Started
+
 - [Quick Start Guide](./QUICKSTART.md)
 - [CLI Interactive Mode Guide](./doc/22_交互模式使用指南_INTERACTIVE.md) ✨
 - [Web Interactive Mode Guide](./doc/23_前端交互模式实现指南_FRONTEND_INTERACTIVE.md) ✨
 
 ### Implementation Summaries
+
 - [Backend Interactive Implementation](./INTERACTIVE_MODE_IMPLEMENTATION.md)
 - [Frontend Interactive Implementation](./FRONTEND_INTERACTIVE_IMPLEMENTATION.md)
 
 ### Technical Documentation
+
 - [Implementation Plan](./mind2build-implementation.plan.md)
 - [Architecture](./doc/04_系统架构文档_ARCHITECTURE.md)
 - [Database Design](./doc/18_数据库设计_DATABASE.md)
@@ -374,6 +374,7 @@ Generated files:
 ```
 
 **Interactive Mode Commands:**
+
 - `c` / `continue` - Accept and continue
 - `e` / `edit` - Open editor to modify
 - `r` / `regenerate` - Regenerate current output
@@ -410,6 +411,7 @@ Access the web interface at `http://localhost:5173`:
    - Review project details
 
 **Features**:
+
 - 🎨 Beautiful visual interface
 - ⚡ Real-time WebSocket updates
 - ⌨️ Keyboard shortcuts
@@ -503,6 +505,7 @@ curl -X POST http://localhost:3000/api/projects/PROJECT_ID/roles/Engineer/action
 **Total: 9 Roles, 30 Actions**
 
 **Features:**
+
 - ✅ Execute any role action independently
 - ✅ Flexible input methods (custom input, context messages, auto-load from history)
 - ✅ Automatic context loading based on action requirements
@@ -520,11 +523,11 @@ const response = await fetch('http://localhost:3000/api/projects', {
   body: JSON.stringify({
     name: 'Blog Platform',
     idea: 'Create a blog platform with user authentication',
-    applicationId: 'app-id',  // Optional: associate with application
+    applicationId: 'app-id', // Optional: associate with application
     investment: 10.0,
     nRound: 5,
-    gitRepositoryUrl: 'https://github.com/user/blog-platform.git'  // Optional: Git repository URL
-  })
+    gitRepositoryUrl: 'https://github.com/user/blog-platform.git', // Optional: Git repository URL
+  }),
 });
 
 const project = await response.json();
@@ -536,13 +539,13 @@ await fetch(`http://localhost:3000/api/projects/${project.project.id}/versions`,
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
     name: 'v1.0',
-    description: 'Initial version'
-  })
+    description: 'Initial version',
+  }),
 });
 
 // Start project execution
 await fetch(`http://localhost:3000/api/projects/${project.project.id}/start`, {
-  method: 'POST'
+  method: 'POST',
 });
 
 // Get project status
@@ -620,11 +623,7 @@ import { Team, ProductManager, Architect, Engineer, Context } from 'mind2build';
 const ctx = new Context();
 const team = new Team(ctx);
 
-team.hire([
-  new ProductManager(),
-  new Architect(),
-  new Engineer()
-]);
+team.hire([new ProductManager(), new Architect(), new Engineer()]);
 
 team.invest(10.0); // $10 budget
 
@@ -671,4 +670,3 @@ MIT License - see LICENSE file for details
 ## 📧 Contact
 
 For questions and support, please open an issue on GitHub.
-
