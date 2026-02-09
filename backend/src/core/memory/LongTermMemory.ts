@@ -1,7 +1,7 @@
 /**
  * Long Term Memory
  * Persistent storage for important messages
- * TODO: Implement vector database integration for semantic search
+ * TODO: Implement persistent storage integration for semantic search
  */
 
 import { Memory } from './Memory';
@@ -21,11 +21,10 @@ export class LongTermMemory extends Memory {
 
   /**
    * Retrieve semantically similar messages
-   * TODO: Implement with vector embeddings
+   * TODO: Improve with more robust search strategy
    */
   async retrieveSimilar(query: string, k: number = 5): Promise<Message[]> {
     // Placeholder: Simple keyword search
-    // In future, use vector similarity search
     const results = this.searchByContent(query);
     return results.slice(0, k);
   }
@@ -41,4 +40,3 @@ export class LongTermMemory extends Memory {
 }
 
 export default LongTermMemory;
-

@@ -120,6 +120,39 @@ export class KnowledgeBaseRepository {
   }
 
   /**
+   * Search knowledge base documents by keyword (title/description/content)
+   */
+  async searchByQuery(projectId: string, queryText: string, limit: number = 10): Promise<KnowledgeBaseDocument[]> {
+    try {
+      const safeLimit = Math.max(1, Math.min(limit, 50));
+      const likeQuery = `%${queryText}%`;
+      const result = await query<KnowledgeBaseDocument>(
+        `SELECT * FROM knowledge_base
+         WHERE project_id = $1
+         AND deleted_at IS NULL
+         AND is_active = TRUE
+         AND (
+           title ILIKE $2
+           OR description ILIKE $2
+           OR content ILIKE $2
+         )
+         ORDER BY created_at DESC
+         LIMIT $3`,
+        [projectId, likeQuery, safeLimit]
+      );
+
+      return result.rows;
+    } catch (error: any) {
+      logger.error('KnowledgeBaseRepository: Failed to search documents', {
+        error: error.message,
+        projectId,
+        queryText,
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Update a knowledge base document
    */
   async update(
@@ -251,4 +284,3 @@ export class KnowledgeBaseRepository {
     }
   }
 }
-

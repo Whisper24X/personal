@@ -18,7 +18,7 @@ src/
 ├── api/                # REST API routes and controllers
 │   ├── controllers/    # 15 API controllers
 │   └── routes/         # API route definitions
-├── services/           # 10 Services (WorkflowService, RAGService, GitService, etc.)
+├── services/           # 10 Services (WorkflowService, GitService, RoleActionService, etc.)
 ├── workflow/           # Workflow execution engine
 ├── cli/                # Command-line interface
 ├── utils/              # Utility functions (sectionConversationHistory, etc.)
@@ -69,6 +69,7 @@ pnpm cli list
 ## API Usage
 
 Start the server:
+
 ```bash
 pnpm dev
 ```
@@ -89,6 +90,7 @@ Access at: `http://localhost:3000`
 ## Configuration
 
 Edit `.env` file:
+
 ```env
 LLM_PROVIDER=zhipuai
 ZHIPUAI_API_KEY=your-api-key
@@ -117,7 +119,7 @@ The backend follows a layered architecture:
 3. **Action Layer** - 30 concrete actions
 4. **Role Layer** - 9 AI agent roles
 5. **Orchestration Layer** - Team, Environment, StateManager
-6. **Service Layer** - 10 services (WorkflowService, RAGService, GitService, etc.)
+6. **Service Layer** - 10 services (WorkflowService, GitService, RoleActionService, etc.)
 7. **Interface Layer** - 15 API controllers and CLI
 
 ## Services
@@ -125,15 +127,15 @@ The backend follows a layered architecture:
 The backend includes 10 core services:
 
 1. **WorkflowService** - Workflow configuration and management
-2. **RAGService** - RAG with Qdrant vector search, rerank, and hybrid search
-3. **EmbeddingService** - Vector embedding generation
-4. **QdrantService** - Qdrant vector database integration
-5. **RerankService** - Result reranking for improved relevance
-6. **RoleActionService** - Role and action management
-7. **SectionAdjustService** - PRD/MRD section adjustment with conversation history
-8. **StagehandService** - Stagehand integration
-9. **DocumentArchiveService** - Document archiving
-10. **GitService** - Git repository management with branch and version control
+2. **GitService** - Git repository management with branch and version control
+3. **DocumentArchiveService** - Document archiving
+4. **RoleActionFactory** - Role/action factory and wiring
+5. **RoleActionService** - Role and action management
+6. **SectionAdjustService** - PRD/MRD section adjustment with conversation history
+7. **StagehandService** - Stagehand integration
+8. **VersionReviewService** - Version review and comparison
+9. **MCPService** - MCP integration service
+10. **CliLogStreamService** - CLI log streaming service
 
 ## Features
 
@@ -148,6 +150,7 @@ The backend supports section conversation history for PRD/MRD documents:
 - **Repository**: `SectionConversationRepository` - Data access layer
 
 **Use Cases**:
+
 - Track section modification history
 - Provide context for subsequent adjustments
 - Support multi-round iterative optimization
@@ -168,4 +171,3 @@ The backend supports section conversation history for PRD/MRD documents:
 ## License
 
 MIT
-

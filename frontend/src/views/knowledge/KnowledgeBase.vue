@@ -2,9 +2,7 @@
   <div class="knowledge-base">
     <PageHeader title="知识库管理" :back-handler="goBack">
       <template #extra>
-        <el-text type="info" size="small" class="project-info">
-          项目: {{ projectName }}
-        </el-text>
+        <el-text type="info" size="small" class="project-info"> 项目: {{ projectName }} </el-text>
       </template>
       <template #right>
         <el-button type="primary" @click="showCreateDialog = true">
@@ -19,9 +17,7 @@
       <template #header>
         <CardHeader title="业务知识库" :icon="Upload" :badge="knowledgeFiles.length">
           <template #extra>
-            <el-text type="info" size="small">
-              上传的文档会作为 AI 生成 MRD/PRD 时的知识输入
-            </el-text>
+            <el-text type="info" size="small"> 上传的文档会作为 AI 生成 MRD/PRD 时的知识输入 </el-text>
           </template>
         </CardHeader>
       </template>
@@ -36,13 +32,9 @@
         :before-upload="beforeUpload"
       >
         <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-        <div class="el-upload__text">
-          将 Markdown 文件拖到此处，或<em>点击上传</em>
-        </div>
+        <div class="el-upload__text">将 Markdown 文件拖到此处，或<em>点击上传</em></div>
         <template #tip>
-          <div class="el-upload__tip">
-            仅支持 .md 文件，单文件最大 5MB
-          </div>
+          <div class="el-upload__tip">仅支持 .md 文件，单文件最大 5MB</div>
         </template>
       </el-upload>
 
@@ -69,9 +61,7 @@
           </el-table-column>
           <el-table-column label="操作" width="100" fixed="right">
             <template #default="{ row }">
-              <el-button type="danger" link size="small" @click="handleDeleteKnowledgeFile(row)">
-                删除
-              </el-button>
+              <el-button type="danger" link size="small" @click="handleDeleteKnowledgeFile(row)"> 删除 </el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -80,20 +70,12 @@
 
     <!-- 搜索栏 -->
     <el-card class="search-card">
-      <el-input
-        v-model="searchQuery"
-        placeholder="搜索知识库文档..."
-        clearable
-        @input="handleSearch"
-        @clear="handleSearchClear"
-      >
+      <el-input v-model="searchQuery" placeholder="搜索知识库文档..." clearable @input="handleSearch" @clear="handleSearchClear">
         <template #prefix>
           <el-icon><Search /></el-icon>
         </template>
         <template #append>
-          <el-button :icon="Search" @click="handleSearch" :loading="searching">
-            搜索
-          </el-button>
+          <el-button :icon="Search" :loading="searching" @click="handleSearch"> 搜索 </el-button>
         </template>
       </el-input>
     </el-card>
@@ -109,20 +91,13 @@
         description="暂无知识库文档"
         :image-size="100"
         action-text="添加第一个文档"
-        :action-handler="() => showCreateDialog = true"
+        :action-handler="() => (showCreateDialog = true)"
       />
 
       <el-loading v-if="loading" />
 
       <div v-else class="documents-list">
-        <DocumentCard
-          v-for="doc in documents"
-          :key="doc.id"
-          :document="doc"
-          @view="viewDocument"
-          @edit="editDocument"
-          @delete="handleDelete"
-        />
+        <DocumentCard v-for="doc in documents" :key="doc.id" :document="doc" @view="viewDocument" @edit="editDocument" @delete="handleDelete" />
       </div>
     </el-card>
 
@@ -133,115 +108,65 @@
       </template>
 
       <div class="search-results-list">
-        <el-card
-          v-for="result in searchResults"
-          :key="result.id"
-          shadow="hover"
-          class="search-result-item"
-        >
+        <el-card v-for="result in searchResults" :key="result.id" shadow="hover" class="search-result-item">
           <div class="result-header">
             <h4 class="result-title">{{ result.title }}</h4>
-            <el-tag type="success" size="small">
-              相似度: {{ (result.similarity * 100).toFixed(1) }}%
-            </el-tag>
           </div>
-          <div v-if="result.relevantChunks && result.relevantChunks.length > 0" class="result-chunks">
-            <div
-              v-for="(chunk, index) in result.relevantChunks"
-              :key="index"
-              class="chunk-item"
-            >
-              <el-text size="small">{{ chunk.chunk }}</el-text>
-            </div>
+          <div class="result-preview">
+            <el-text size="small">
+              {{ result.description || result.preview || '暂无内容预览' }}
+            </el-text>
           </div>
           <div class="result-actions">
-            <el-button type="primary" link @click="viewSearchResult(result)">
-              查看完整文档
-            </el-button>
+            <el-button type="primary" link @click="viewSearchResult(result)"> 查看完整文档 </el-button>
           </div>
         </el-card>
       </div>
     </el-card>
 
     <!-- 创建/编辑对话框 -->
-    <el-dialog
-      v-model="showCreateDialog"
-      :title="editingDoc ? '编辑文档' : '添加文档'"
-      width="80%"
-      :close-on-click-modal="false"
-    >
-      <el-form :model="form" :rules="rules" ref="formRef" label-width="100px">
+    <el-dialog v-model="showCreateDialog" :title="editingDoc ? '编辑文档' : '添加文档'" width="80%" :close-on-click-modal="false">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="标题" prop="title">
           <el-input v-model="form.title" placeholder="请输入文档标题" />
         </el-form-item>
         <el-form-item label="描述" prop="description">
-          <el-input
-            v-model="form.description"
-            type="textarea"
-            :rows="2"
-            placeholder="请输入文档描述（可选）"
-          />
+          <el-input v-model="form.description" type="textarea" :rows="2" placeholder="请输入文档描述（可选）" />
         </el-form-item>
         <el-form-item label="标签" prop="tags">
-          <el-select
-            v-model="form.tags"
-            multiple
-            filterable
-            allow-create
-            default-first-option
-            placeholder="选择或输入标签"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="tag in availableTags"
-              :key="tag"
-              :label="tag"
-              :value="tag"
-            />
+          <el-select v-model="form.tags" multiple filterable allow-create default-first-option placeholder="选择或输入标签" style="width: 100%">
+            <el-option v-for="tag in availableTags" :key="tag" :label="tag" :value="tag" />
           </el-select>
         </el-form-item>
         <el-form-item label="内容" prop="content">
-          <el-input
-            v-model="form.content"
-            type="textarea"
-            :rows="15"
-            placeholder="请输入文档内容"
-          />
+          <el-input v-model="form.content" type="textarea" :rows="15" placeholder="请输入文档内容" />
         </el-form-item>
         <el-form-item v-if="editingDoc" label="状态">
-          <el-switch
-            v-model="form.isActive"
-            active-text="激活"
-            inactive-text="停用"
-          />
+          <el-switch v-model="form.isActive" active-text="激活" inactive-text="停用" />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showCreateDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit" :loading="saving">
+        <el-button type="primary" :loading="saving" @click="handleSubmit">
           {{ editingDoc ? '更新' : '创建' }}
         </el-button>
       </template>
     </el-dialog>
 
     <!-- 查看文档对话框 -->
-    <el-dialog
-      v-model="showViewDialog"
-      title="查看文档"
-      width="80%"
-    >
+    <el-dialog v-model="showViewDialog" title="查看文档" width="80%">
       <div v-if="viewingDoc" class="view-content">
         <h2>{{ viewingDoc.title }}</h2>
         <el-text v-if="viewingDoc.description" type="info" class="view-description">
           {{ viewingDoc.description }}
         </el-text>
         <div class="view-meta">
-          <el-tag v-if="viewingDoc.tags && viewingDoc.tags.length > 0" v-for="tag in viewingDoc.tags" :key="tag" size="small" class="tag-item">
-            {{ tag }}
-          </el-tag>
-          <el-text type="info" size="small">
-            创建时间: {{ formatDate(viewingDoc.createdAt) }}
-          </el-text>
+          <template v-if="viewingDoc.tags && viewingDoc.tags.length > 0">
+            <el-tag v-for="tag in viewingDoc.tags" :key="tag" size="small" class="tag-item">
+              {{ tag }}
+            </el-tag>
+          </template>
+          <el-text type="info" size="small"> 创建时间: {{ formatDate(viewingDoc.createdAt) }} </el-text>
         </div>
         <el-divider />
         <div class="view-body">
@@ -260,13 +185,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, FormInstance, FormRules, UploadRawFile } from 'element-plus';
-import {
-  Plus,
-  Search,
-  Collection,
-  Upload,
-  UploadFilled,
-} from '@element-plus/icons-vue';
+import { Plus, Search, Collection, Upload, UploadFilled } from '@element-plus/icons-vue';
 import { apiClient } from '../../api/client';
 import PageHeader from '../../components/common/PageHeader.vue';
 import CardHeader from '../../components/common/CardHeader.vue';
@@ -306,17 +225,13 @@ const form = ref({
 const formRef = ref<FormInstance>();
 
 const rules: FormRules = {
-  title: [
-    { required: true, message: '请输入文档标题', trigger: 'blur' },
-  ],
-  content: [
-    { required: true, message: '请输入文档内容', trigger: 'blur' },
-  ],
+  title: [{ required: true, message: '请输入文档标题', trigger: 'blur' }],
+  content: [{ required: true, message: '请输入文档内容', trigger: 'blur' }],
 };
 
 const availableTags = computed(() => {
   const tags = new Set<string>();
-  documents.value.forEach(doc => {
+  documents.value.forEach((doc) => {
     if (doc.tags && Array.isArray(doc.tags)) {
       doc.tags.forEach((tag: string) => tags.add(tag));
     }
@@ -332,7 +247,7 @@ onMounted(async () => {
 
 async function fetchProjectInfo() {
   try {
-    const response = await apiClient.getProject(projectId) as any;
+    const response = (await apiClient.getProject(projectId)) as any;
     projectName.value = response.project?.name || response.name || '未知项目';
   } catch (err: any) {
     console.error('Failed to fetch project info:', err);
@@ -342,7 +257,7 @@ async function fetchProjectInfo() {
 async function fetchDocuments() {
   loading.value = true;
   try {
-    const response = await apiClient.getKnowledgeBases(projectId) as any;
+    const response = (await apiClient.getKnowledgeBases(projectId)) as any;
     documents.value = response.documents || [];
   } catch (err: any) {
     ElMessage.error(err.message || '获取知识库文档失败');
@@ -359,7 +274,7 @@ async function handleSearch() {
 
   searching.value = true;
   try {
-    const response = await apiClient.searchKnowledgeBase(projectId, searchQuery.value, 10) as any;
+    const response = (await apiClient.searchKnowledgeBase(projectId, searchQuery.value, 10)) as any;
     searchResults.value = response.results || [];
     if (searchResults.value.length === 0) {
       ElMessage.info('未找到相关文档');
@@ -383,16 +298,19 @@ function viewDocument(doc: any) {
 
 function viewSearchResult(result: any) {
   // 从文档列表中找到完整文档
-  const doc = documents.value.find(d => d.id === result.id);
+  const doc = documents.value.find((d) => d.id === result.id);
   if (doc) {
     viewDocument(doc);
   } else {
     // 如果不在列表中，获取完整文档
-    apiClient.getKnowledgeBase(projectId, result.id).then((response: any) => {
-      viewDocument(response.document);
-    }).catch((err: any) => {
-      ElMessage.error(err.message || '获取文档失败');
-    });
+    apiClient
+      .getKnowledgeBase(projectId, result.id)
+      .then((response: any) => {
+        viewDocument(response.document);
+      })
+      .catch((err: any) => {
+        ElMessage.error(err.message || '获取文档失败');
+      });
   }
 }
 
@@ -462,15 +380,11 @@ async function handleSubmit() {
 
 async function handleDelete(doc: any) {
   try {
-    await ElMessageBox.confirm(
-      `确定要删除文档"${doc.title}"吗？此操作不可恢复。`,
-      '确认删除',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }
-    );
+    await ElMessageBox.confirm(`确定要删除文档"${doc.title}"吗？此操作不可恢复。`, '确认删除', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    });
 
     await apiClient.deleteKnowledgeBase(projectId, doc.id);
     ElMessage.success('删除成功');
@@ -496,7 +410,7 @@ function formatDate(dateStr: string): string {
 
 async function fetchKnowledgeFiles() {
   try {
-    const response = await apiClient.getKnowledgeFiles(projectId) as any;
+    const response = (await apiClient.getKnowledgeFiles(projectId)) as any;
     knowledgeFiles.value = response.files || [];
   } catch (err: any) {
     console.error('Failed to fetch knowledge files:', err);
@@ -534,7 +448,7 @@ function handleUploadError(error: any) {
 
 async function viewKnowledgeFile(file: any) {
   try {
-    const response = await apiClient.getKnowledgeFile(projectId, file.name) as any;
+    const response = (await apiClient.getKnowledgeFile(projectId, file.name)) as any;
     viewingDoc.value = {
       title: response.file.name,
       content: response.file.content,
@@ -548,15 +462,11 @@ async function viewKnowledgeFile(file: any) {
 
 async function handleDeleteKnowledgeFile(file: any) {
   try {
-    await ElMessageBox.confirm(
-      `确定要删除文件 "${file.name}" 吗？此操作不可恢复。`,
-      '确认删除',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }
-    );
+    await ElMessageBox.confirm(`确定要删除文件 "${file.name}" 吗？此操作不可恢复。`, '确认删除', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    });
 
     await apiClient.deleteKnowledgeFile(projectId, file.name);
     ElMessage.success('删除成功');
@@ -631,7 +541,6 @@ function formatFileSize(bytes: number): string {
   margin-bottom: 20px;
 }
 
-
 .card-title {
   font-size: 18px;
   font-weight: 600;
@@ -646,7 +555,6 @@ function formatFileSize(bytes: number): string {
   gap: 16px;
 }
 
-
 .search-results-list {
   display: flex;
   flex-direction: column;
@@ -654,7 +562,7 @@ function formatFileSize(bytes: number): string {
 }
 
 .search-result-item {
-  border-left: 4px solid #409EFF;
+  border-left: 4px solid #409eff;
 }
 
 .result-header {
@@ -670,15 +578,13 @@ function formatFileSize(bytes: number): string {
   margin: 0;
 }
 
-.result-chunks {
+.result-preview {
   margin: 12px 0;
-}
-
-.chunk-item {
   padding: 8px;
-  margin-bottom: 8px;
   background-color: #f5f7fa;
   border-radius: 4px;
+  color: #606266;
+  line-height: 1.6;
 }
 
 .result-actions {
@@ -725,4 +631,3 @@ function formatFileSize(bytes: number): string {
   overflow-y: auto;
 }
 </style>
-

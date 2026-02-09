@@ -6,27 +6,13 @@
 import { Request, Response } from 'express';
 import { KnowledgeBaseRepository } from '../../database/repositories/KnowledgeBaseRepository';
 import { ProjectRepository } from '../../database/repositories/ProjectRepository';
-import { RAGService } from '../../services/RAGService';
+import { WorkspaceManager } from '../../utils/WorkspaceManager';
+import { CLIKnowledgeSearchService } from '../../services/CLIKnowledgeSearchService';
 import { logger } from '../../utils';
 
 const knowledgeBaseRepo = new KnowledgeBaseRepository();
 const projectRepo = new ProjectRepository();
-const ragService = new RAGService();
-
-// Initialize RAG service (lazy initialization)
-let ragServiceInitialized = false;
-async function ensureRAGServiceInitialized() {
-  if (!ragServiceInitialized) {
-    try {
-      await ragService.initialize();
-      ragServiceInitialized = true;
-    } catch (error: any) {
-      logger.warn('KnowledgeBaseController: Failed to initialize RAG service', {
-        error: error.message,
-      });
-    }
-  }
-}
+const cliSearchService = new CLIKnowledgeSearchService();
 
 export class KnowledgeBaseController {
   /**
@@ -60,23 +46,6 @@ export class KnowledgeBaseController {
         metadata,
         createdBy: (req as any).userId || undefined,
       });
-
-      // Index to Qdrant for vector search
-      try {
-        await ensureRAGServiceInitialized();
-        await ragService.indexDocuments([{
-          id: document.id,
-          content: document.content,
-          type: 'KNOWLEDGE_BASE',
-          projectId: id,
-          title: document.title,
-        }]);
-      } catch (error: any) {
-        logger.warn('KnowledgeBaseController: Failed to index document to Qdrant', {
-          error: error.message,
-          documentId: document.id,
-        });
-      }
 
       logger.info('KnowledgeBaseController: Knowledge base document created', {
         projectId: id,
@@ -122,14 +91,11 @@ export class KnowledgeBaseController {
         return res.status(404).json({ error: 'Project not found' });
       }
 
-      const documents = await knowledgeBaseRepo.findByProjectId(
-        id,
-        includeInactive === 'true'
-      );
+      const documents = await knowledgeBaseRepo.findByProjectId(id, includeInactive === 'true');
 
       return res.json({
         success: true,
-        documents: documents.map(doc => ({
+        documents: documents.map((doc) => ({
           id: doc.id,
           title: doc.title,
           content: doc.content,
@@ -228,25 +194,6 @@ export class KnowledgeBaseController {
         isActive,
       });
 
-      // Re-index to Qdrant if content changed
-      if (content !== undefined && content !== existingDoc.content) {
-        try {
-          await ensureRAGServiceInitialized();
-          await ragService.indexDocuments([{
-            id: document.id,
-            content: document.content,
-            type: 'KNOWLEDGE_BASE',
-            projectId: id,
-            title: document.title,
-          }]);
-        } catch (error: any) {
-          logger.warn('KnowledgeBaseController: Failed to re-index document to Qdrant', {
-            error: error.message,
-            documentId: document.id,
-          });
-        }
-      }
-
       logger.info('KnowledgeBaseController: Knowledge base document updated', {
         projectId: id,
         documentId: document.id,
@@ -298,7 +245,6 @@ export class KnowledgeBaseController {
       // Delete document
       await knowledgeBaseRepo.delete(docId);
 
-      // Remove from Qdrant (optional, can be done via cleanup job)
       // For now, we'll just mark it as deleted in the database
 
       logger.info('KnowledgeBaseController: Knowledge base document deleted', {
@@ -322,11 +268,14 @@ export class KnowledgeBaseController {
   /**
    * Search knowledge base documents
    * POST /api/projects/:id/knowledge-base/search
+   *
+   * Supports both CLI mode (file system search) and database mode (legacy)
+   * @param useCLI - If true, use CLI mode to search file system; if false, use database search (default: true)
    */
   static async search(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { query, limit = 5 } = req.body;
+      const { query, limit = 5, useCLI = true } = req.body;
 
       if (!query || typeof query !== 'string') {
         return res.status(400).json({
@@ -340,21 +289,63 @@ export class KnowledgeBaseController {
         return res.status(404).json({ error: 'Project not found' });
       }
 
-      // Ensure RAG service is initialized
-      await ensureRAGServiceInitialized();
+      const limitNumber = Number(limit) || 5;
 
-      // Search using RAG service
-      const results = await ragService.searchKnowledgeBase(id, query, limit);
+      // CLI mode: search file system
+      if (useCLI) {
+        try {
+          // Get workspace path (already includes ainative-workspace)
+          const workspacePath = WorkspaceManager.getProjectWorkspacePath({
+            applicationId: project.application_id,
+            projectId: id,
+          });
+
+          // Search using CLI
+          const cliResults = await cliSearchService.search({
+            workspacePath,
+            query,
+            limit: limitNumber,
+            directories: ['docs/business-knowledge/'],
+          });
+
+          // Convert CLI results to API response format
+          return res.json({
+            success: true,
+            query,
+            mode: 'CLI',
+            results: cliResults.map((result) => ({
+              file: result.file,
+              title: result.metadata?.title || result.file.split('/').pop()?.replace('.md', '') || 'Untitled',
+              description: result.metadata?.tags?.join(', ') || '',
+              preview: result.content.slice(0, 240),
+              tags: result.metadata?.tags || [],
+              relevance: result.relevance,
+            })),
+          });
+        } catch (cliError: any) {
+          logger.warn('KnowledgeBaseController: CLI search failed, falling back to database search', {
+            error: cliError.message,
+            projectId: id,
+          });
+          // Fallback to database search if CLI search fails
+        }
+      }
+
+      // Database mode: legacy search (fallback or explicit request)
+      const results = await knowledgeBaseRepo.searchByQuery(id, query, limitNumber);
 
       return res.json({
         success: true,
         query,
-        results: results.map(result => ({
-          id: result.documentId,
-          title: result.title,
-          content: result.content,
-          similarity: result.similarity,
-          relevantChunks: result.relevantChunks,
+        mode: 'database',
+        results: results.map((doc) => ({
+          id: doc.id,
+          title: doc.title,
+          description: doc.description,
+          preview: doc.content ? doc.content.slice(0, 240) : '',
+          tags: doc.tags,
+          createdAt: doc.created_at,
+          updatedAt: doc.updated_at,
         })),
       });
     } catch (error: any) {
@@ -366,4 +357,3 @@ export class KnowledgeBaseController {
     }
   }
 }
-
