@@ -18,10 +18,6 @@ import * as path from 'path';
 export interface WritePRDOptions extends WorkspaceOptions {
   mode?: 'new' | 'update';
   historyPRD?: string;
-  relevantChunks?: string;
-  structuredKnowledge?: unknown;
-  useRAG?: boolean;
-  useKnowledgeIntegration?: boolean;
   useStepwiseGeneration?: boolean;
   includeOptionalSections?: boolean;
 }

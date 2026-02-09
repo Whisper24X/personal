@@ -361,7 +361,6 @@ class APIClient {
     data: {
       requirements: string;
       mode?: 'new' | 'update';
-      useRAG?: boolean;
     }
   ) {
     return this.client.post(`/projects/${projectId}/prd`, data);
@@ -424,7 +423,6 @@ class APIClient {
     data: {
       requirements: string;
       mode?: 'new' | 'update';
-      useRAG?: boolean;
     }
   ) {
     return this.client.post(`/projects/${projectId}/mrd`, data);
