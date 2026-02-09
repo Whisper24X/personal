@@ -26,7 +26,7 @@
 | Skill | 可复用能力模块 | 形态可为脚本/流程片段/模板；需支持版本与权限治理 |
 | MCP | 外部工具/协议的集成能力 | 形态可为连接器（HTTP/DB/CI 等）；需密钥与权限治理 |
 | 任务（Task） | 可执行需求单元 | 归属项目；由工作流模板实例化后执行 |
-| 工作流模板（WorkflowTemplate） | 可复用编排蓝图 | 定义工作节点类型、依赖关系、输入输出；发布后可被任务引用 |
+| 工作流模板（WorkflowTemplate） | 可复用编排蓝图 | 定义工作节点类型、串行顺序（`node_order`）、输入输出；发布后可被任务引用 |
 | 产物（Artifact） | 任务执行产生的可交付内容 | 如 diff、文件包、报告、预览链接等；受权限与生命周期控制 |
 
 ## 2. 目标用户与核心场景
@@ -36,7 +36,7 @@
 |------|------|---------|
 | 研发人员 | 创建并执行任务，查看日志与产物 | 快速完成任务、清晰的执行反馈 |
 | 项目负责人 | 配置项目、管理任务、调优工作流 | 项目进度可控、资源合理分配 |
-| 平台管理员 | 配置全局模板、Skills/MCP 市场、权限与审计 | 平台稳定、安全合规 |
+| 平台管理员 | 配置全局模板、Skills/MCP 市场、权限治理 | 平台稳定、安全合规 |
 
 ### 2.2 用户故事
 **US-001 研发人员创建任务**
@@ -68,18 +68,18 @@ flowchart LR
 | 模块 | 功能点 | 优先级 |
 |------|--------|--------|
 | 全局配置 | 工作流模板（默认模板）管理 | P0 |
-| Skills | Skills 市场与管理（安装、版本、启用） | P1 |
-| MCP | MCP 市场与管理（安装、配置、密钥） | P1 |
+| Skills | Skills 市场与管理（浏览、读取、版本治理） | P1 |
+| MCP | MCP 市场与管理（浏览、读取、配置、密钥） | P1 |
 | 业务线 | 增删改查与项目归属 | P0 |
 | 用户管理 | 增删改查、业务线成员管理、项目权限 | P0 |
-| 项目 | 增删改查、Git 地址、项目配置（Agent/Skills/MCP）、知识库（非 RAG） | P0 |
+| 项目 | 增删改查、Git 地址、项目配置（Agent/Skills/MCP）、项目上下文读取（非 RAG） | P0 |
 | 任务 | 创建/详情/执行（手动触发） | P0 |
 | 任务体验 | 通知、文件预览、部署预览 | P1 |
-| 工作流 | 工作节点与依赖、基础可视化编辑 | P0 |
+| 工作流 | 工作节点串行编排、基础可视化编辑 | P0 |
 | Agent 集成与执行器 | 对话展示、统一入口、支持 Codex/Cursor/Claude | P0 |
-| 执行与调度 | 触发、队列、并发、重试与超时 | P1 |
+| 执行与调度 | 触发、队列、并发与超时保护 | P1 |
 | 运行时与资源 | 环境规格、隔离与配额 | P1 |
-| 权限与身份 | 登录/认证、RBAC、审计日志 | P0 |
+| 权限与身份 | 登录/认证、RBAC | P0 |
 | 可观测性 | 状态、指标、告警、结构化日志 | P1 |
 | 产物与版本 | 存储、生命周期、版本回溯 | P1 |
 | API 与 UI | 核心 API 列表与关键页面 | P0 |
@@ -87,7 +87,7 @@ flowchart LR
 ### 3.2 非范围（明确排除）
 | 排除项 | 原因 | 后续规划 |
 |--------|------|---------|
-| 深度 RAG 知识库 | 技术复杂度高，MVP 先用简单文档管理 | Phase 2 |
+| 深度 RAG 知识增强 | 技术复杂度高，MVP 先采用项目上下文读取 | Phase 2 |
 | 高复杂度编排 DSL | 用户学习成本高，先用可视化编辑 | Phase 3 |
 | 全自动 CI/CD 替代 | 定位不同，AINative 聚焦 Agent 任务 | 不规划 |
 
@@ -100,9 +100,9 @@ flowchart LR
 |------|-----------|---------|---------|------|
 | 全局配置（模板/市场） | 高 | 高 | 低 | 常见后台配置能力 |
 | 业务线管理 | 高 | 高 | 低 | 业务组织模型基础能力 |
-| 用户管理与权限 | 高 | 中 | 中 | 需明确 RBAC 与审计边界 |
+| 用户管理与权限 | 高 | 中 | 中 | 需明确 RBAC 边界 |
 | 项目管理与配置 | 高 | 高 | 低 | 与 Git 和 Agent 关联清晰 |
-| 任务与工作流 | 高 | 中 | 中 | 需明确状态机与重试策略 |
+| 任务与工作流 | 高 | 中 | 中 | 需明确状态机与重新执行策略 |
 | Agent 集成/执行器统一入口 | 高 | 中 | 高 | 多 Agent 适配需规范接口 |
 | 执行与调度 | 高 | 中 | 中 | 需要队列与并发治理策略 |
 | 运行时与资源隔离 | 高 | 中 | 高 | 容器化可落地，需成本评估 |
@@ -116,14 +116,14 @@ gantt
     title AINative MVP 落地计划
     dateFormat  YYYY-MM-DD
     section 第一阶段
-    项目/任务/工作流核心闭环    :a1, 2026-02-05, 30d
+    项目/任务/工作流核心闭环    :a1, 2026-02-10, 30d
     Agent 集成基础能力          :a2, after a1, 20d
-    基础权限与认证              :a3, 2026-02-05, 25d
+    基础权限与认证              :a3, 2026-02-10, 25d
     section 第二阶段
     调度与队列                  :b1, after a2, 20d
     监控与可观测                :b2, after b1, 15d
     产物与版本管理              :b3, after b1, 15d
-    通知与审计                  :b4, after b2, 10d
+    通知能力                    :b4, after b2, 10d
     section 第三阶段
     Skills/MCP 市场             :c1, after b4, 25d
     高级编排能力                :c2, after c1, 20d
@@ -133,14 +133,14 @@ gantt
 | 阶段 | 核心交付 | 验收标准 |
 |------|---------|---------|
 | 第一阶段 | 项目/任务/工作流/Agent 执行器核心闭环 + 基础权限 | 能完成一个完整任务的创建→执行→产出流程 |
-| 第二阶段 | 调度、监控、产物与版本、通知与审计 | 支持并发任务调度，执行过程可观测 |
-| 第三阶段 | 市场生态（Skills/MCP）与更高级编排 | Skills/MCP 可安装复用，工作流支持复杂 DAG |
+| 第二阶段 | 调度、监控、产物与版本、通知 | 支持并发任务调度，执行过程可观测 |
+| 第三阶段 | 市场生态（Skills/MCP）与更高级编排 | Skills/MCP 可读取复用，工作流支持更复杂串行编排 |
 
 ## 5. 模块关联关系
 ### 5.1 关系说明（文本版）
 - 用户通过 `business_line_members` 关联业务线（多对多），通过 `project_members` 关联项目（多对多）。
 - 业务线包含多个项目；业务线 owner/admin 对其下所有项目有隐式访问权。
-- 项目绑定 Git 地址、配置 Agent 执行器（Agent 集成）、Skills/MCP 与知识库。
+- 项目绑定 Git 地址、配置 Agent 执行器（Agent 集成），并从项目读取 Skills/MCP/知识文档上下文。
 - 任务归属项目，选择工作流模板；创建时从模板快照生成 N 个有序任务节点（TaskNode）。
 - 任务节点（TaskNode）同时承载"节点定义"与"执行状态/结果"，不再维护独立的 WorkflowRun / WorkNodeRun 中间层。
 - 任务状态由其所有 TaskNode 的状态聚合计算得出。
@@ -176,14 +176,14 @@ flowchart TB
   subgraph API["API层"]
     API1["用户/业务线/项目/任务 API"]
     API2["工作流/Skills/MCP API"]
-    API3["监控/审计/通知 API"]
+    API3["监控/通知 API"]
   end
 
   subgraph CORE["核心服务层"]
     CORE1["任务与工作流编排"]
     CORE2["Agent 适配层"]
     CORE3["调度与队列"]
-    CORE4["权限与审计"]
+    CORE4["权限服务"]
     CORE5["产物与版本管理"]
   end
 
@@ -216,26 +216,24 @@ flowchart TB
 ## 7. 功能需求（更清晰拆解）
 本节把平台能力按“域/模块”拆解，并用统一结构描述：目标 / 核心对象 / MVP 功能 / 关键规则与边界 / 依赖 / 产出。
 
-### 7.1 身份与权限域（Auth/RBAC/Audit）
-- 目标：保证平台访问安全、权限可控、操作可追溯。
+### 7.1 身份与权限域（Auth/RBAC）
+- 目标：保证平台访问安全、权限可控。
 - 核心对象
-  - 用户（User）：账号、状态、`is_admin` 标记平台管理员
+  - 用户（User）：`uuid` 主键、`username/password/salt`、`nickname/avatar`、`status`、`is_admin`
   - 业务线成员（BusinessLineMember）：用户-业务线-角色绑定（owner/admin/member）
   - 项目成员（ProjectMember）：用户-项目-角色绑定（owner/maintainer/developer/viewer）
-  - 审计日志（AuditLog）
 - MVP 功能
   1. 登录/认证：账号登录（可扩展 SSO/LDAP），发放 Token/Session。
   2. 用户管理：新增/编辑/禁用/删除（删除建议软删除）。
   3. 业务线成员管理：添加/移除/变更角色；用户可归属多条业务线。
   4. 项目权限：项目成员管理（添加/移除/变更角色）；添加项目成员时校验用户为对应业务线成员或平台管理员。
-  5. 审计日志：记录关键资源（项目、任务、配置、密钥、执行、产物）的操作与访问。
 - 权限继承规则
   - 平台管理员（`is_admin=true`）：拥有全部权限。
   - 业务线 owner/admin：对其下所有项目有隐式访问权，无需逐个加入 `project_members`。
   - 业务线 member：仅表示有资格被加入该业务线下的项目，需显式添加到 `project_members`。
   - 默认最小权限：未授权用户不可见/不可执行；权限变更可追踪。
 - 依赖：无（基础域，其他模块全部依赖）。
-- 产出：用户/角色/授权数据；审计事件流。
+- 产出：用户/角色/授权数据。
 
 ### 7.2 组织与项目域（BusinessLine/Project）
 - 目标：为任务执行提供组织结构、代码入口与项目级配置。
@@ -246,26 +244,26 @@ flowchart TB
   3. 项目成员与权限：项目级成员管理（依赖 7.1 的 RBAC）。
   4. 项目配置（建议按“配置项组”呈现，降低理解成本）
      - Agent 执行器配置：选择 Agent 适配器（Codex/Cursor/Claude）、运行模式（本地/远程）、权限开关（网络/文件系统）。
-     - Skills/MCP 白名单：项目允许使用哪些 Skills/MCP（绑定版本）。
+     - Skills/MCP 白名单：通过 `projects.config_json` 声明可用 Skills/MCP 与版本约束（不再维护项目安装表）。
      - 资源与并发策略：并发上限、优先级（默认继承全局）。
-  5. 知识库（非 RAG）：文档上传/分类/版本；可绑定到项目或任务（用于执行上下文）。
+  5. 项目上下文读取（非 RAG）：从项目仓库读取文档/配置（如 README、`docs/`、SPEC）作为执行上下文。
 - 关键规则与边界
   - Git 地址与认证方式必须明确（HTTP(S)/SSH、Token/Key 存储策略）；建议 MVP 先支持一种稳定方案。
 - 依赖：身份与权限域（7.1）。
-- 产出：项目配置快照（用于任务执行时可复现）；知识库文档元数据。
+- 产出：项目配置快照（用于任务执行时可复现）；项目上下文快照（来源路径/版本）；任务工具版本快照来源。
 
 ### 7.3 资产与市场域（Template/Skills/MCP）
 - 目标：沉淀可复用能力（模板、技能、外部工具连接），降低重复劳动并实现治理。
 - 核心对象：工作流模板（WorkflowTemplate）、Skill、MCP Connector、版本（Version）。
 - MVP 功能
   1. 工作流模板：全局模板 CRUD、启用/禁用、版本；项目选择可用模板集合。
-  2. Skills 市场：浏览/搜索/详情；安装到项目（绑定版本）；项目内启用/禁用。
-  3. MCP 市场：浏览/搜索/详情；安装到项目并配置参数（含密钥）。
+  2. Skills 市场：浏览/搜索/详情；执行时按项目配置或项目仓库声明读取可用 Skills。
+  3. MCP 市场：浏览/搜索/详情；执行时按项目配置读取可用 MCP 与参数（含密钥引用）。
 - 关键规则与边界
-  - 版本锁定：任务运行时必须记录使用的模板/Skill/MCP 版本，保证可复现与可回滚。
+  - 版本锁定：任务运行时必须记录使用的模板/Skill/MCP 版本快照（如 `workflow_template_version`、`tool_versions_snapshot`），保证可复现与可回滚。
   - 使用授权：成员是否能执行某个 Skill/MCP 需要与项目权限联动（避免越权使用高风险工具）。
 - 依赖：项目域（7.2）、权限域（7.1）、密钥管理（见第 12.1 节安全要求）。
-- 产出：可复用资产目录；项目安装清单（含版本）。
+- 产出：可复用资产目录；项目读取到的能力清单（来自项目配置/仓库）。
 
 ### 7.4 任务与工作流域（Task/TaskNode）
 - 目标：把"需求"变成可执行的任务节点序列，并能追踪每一步结果与责任边界。
@@ -287,7 +285,7 @@ flowchart TB
      - Skill 执行节点：复用脚本/流程片段
      - MCP 调用节点：调用外部工具/服务（可选）
      - 人工确认节点：发布/合并前拦截（可选）
-  4. 任务操作：执行、取消、审批、重新执行（更细状态见第 8 节）。
+  4. 任务操作：执行、审批、重新执行（更细状态见第 8 节）。
   5. 工作流模板编辑（基础）：节点增删改、顺序编辑、模板版本发布。
 - 关键规则与边界
   - 节点输入输出必须规范化（字段名、类型、是否敏感），否则编排与复用会失控。
@@ -305,7 +303,7 @@ flowchart TB
      - 全局并发上限
      - 项目级并发上限
      - 优先级（紧急/普通/低）与排队策略
-     - 取消与超时
+     - 超时保护
   3. 运行时与隔离
      - 任务级 sandbox（容器/隔离目录）
      - 资源配额：CPU/内存/磁盘/运行超时
@@ -314,7 +312,7 @@ flowchart TB
      - 每次任务创建独立 worktree
      - 记录 branch/commit 信息
      - 清理策略：成功自动清理；失败保留一段时间用于排障
-  5. 失败处理：按错误类型重试；超时标记；回滚（MVP 可先做“停止并保留现场”）。
+  5. 异常处理：记录错误并进入 `in_review`；超时进入 `in_review`；支持人工触发重新执行（MVP 可先做“停止并保留现场”）。
 - 关键规则与边界
   - sandbox 安全边界必须明确：若不能完全隔离网络/文件系统，需要明确限制并在 UI 提示风险。
 - 依赖：项目配置（7.2）、权限（7.1）、Agent 适配（与第 6 节架构一致）。
@@ -333,7 +331,7 @@ flowchart TB
      - 文件预览：diff、文件树
      - 部署预览：产出预览链接/环境地址（可选）
   4. 指标：成功率、耗时、队列长度、资源使用（MVP 可先做基础指标）。
-  5. 通知：成功/失败/超时/需人工介入；支持邮件/IM/Webhook；支持去重与频率限制。
+  5. 通知：`done` / `in_review`（需人工介入）；支持邮件/IM/Webhook；支持去重与频率限制。
 - 关键规则与边界
   - 产物生命周期（保留期/清理策略/访问控制/是否加密）需要在项目或全局可配置。
 - 依赖：执行与调度（7.5）、权限（7.1）、数据层（日志/产物存储）。
@@ -351,17 +349,16 @@ flowchart TB
 | FR-006 | 项目配置（Agent/Skills/MCP/资源与并发策略） | P0 | FR-004 | 1 |
 | FR-007 | 工作流模板 CRUD + 版本 + 项目选择 | P0 | FR-004 | 1 |
 | FR-008 | 任务创建（选择模板，填写验收标准） | P0 | FR-004, FR-007 | 1 |
-| FR-009 | 任务触发执行（手动）+ 取消/重试 | P0 | FR-008 | 1 |
+| FR-009 | 任务触发执行（手动）+ 重新执行 | P0 | FR-008 | 1 |
 | FR-010 | 工作节点执行（至少支持 Agent 工作节点与日志流式展示） | P0 | FR-009 | 1 |
 | FR-011 | 产物列表 + 文件预览（diff/文件树） | P1 | FR-010 | 2 |
-| FR-012 | 通知（成功/失败/超时） | P1 | FR-010 | 2 |
+| FR-012 | 通知（`done` / `in_review`） | P1 | FR-010 | 2 |
 | FR-013 | 队列与并发（基础：全局+项目上限） | P1 | FR-009 | 2 |
 | FR-014 | sandbox/worktree（基础隔离 + 清理策略） | P1 | FR-010 | 2 |
-| FR-015 | 审计日志（关键操作/访问/执行） | P2 | FR-001 | 2 |
 | FR-016 | 可观测性（基础指标/检索/告警占位） | P1 | FR-010, FR-013 | 2 |
-| FR-017 | Skills 市场（浏览/安装/版本锁定/启用禁用） | P1 | FR-004, FR-006 | 3 |
-| FR-018 | MCP 市场（浏览/安装/配置/密钥） | P1 | FR-004, FR-006 | 3 |
-| FR-019 | 知识库（文档上传/版本/绑定项目或任务） | P1 | FR-004 | 3 |
+| FR-017 | Skills 市场（浏览/读取/版本锁定，按项目配置生效） | P1 | FR-004, FR-006 | 3 |
+| FR-018 | MCP 市场（浏览/读取/配置，按项目配置生效） | P1 | FR-004, FR-006 | 3 |
+| FR-019 | 项目上下文读取（从项目仓库读取文档/配置用于任务上下文） | P1 | FR-004 | 3 |
 | FR-020 | 工作流可视化编辑（增强：校验/拖拽/模板发布） | P1 | FR-007 | 3 |
 
 **依赖关系图：**
@@ -382,14 +379,13 @@ flowchart LR
     FR010 --> FR012[FR-012 通知]
     FR009 --> FR013[FR-013 队列并发]
     FR010 --> FR014[FR-014 sandbox]
-    FR001 --> FR015[FR-015 审计日志]
     FR010 --> FR016[FR-016 可观测性]
     FR013 --> FR016
     FR004 --> FR017[FR-017 Skills 市场]
     FR006 --> FR017
     FR004 --> FR018[FR-018 MCP 市场]
     FR006 --> FR018
-    FR004 --> FR019[FR-019 知识库]
+    FR004 --> FR019[FR-019 项目上下文读取]
     FR007 --> FR020[FR-020 工作流编辑增强]
 ```
 
@@ -516,23 +512,22 @@ erDiagram
     Project ||--o{ ProjectMember : has
     User ||--o{ ProjectMember : has
     Project ||--o{ Task : contains
-    Project ||--o{ KnowledgeDoc : has
     Task }o--o| WorkflowTemplate : uses
     Task ||--o{ TaskNode : contains
     TaskNode ||--o{ Artifact : produces
     TaskNode }o--o| AgentToolConfig : uses
     WorkflowTemplate ||--o{ WorkflowTemplateNode : contains
     WorkflowTemplateNode }o--o| AgentToolConfig : uses
-    Skill ||--o{ ProjectSkill : installed_in
-    Project ||--o{ ProjectSkill : has
-    MCP ||--o{ ProjectMCP : installed_in
-    Project ||--o{ ProjectMCP : has
 
     User {
-        int id PK
-        string email UK
-        string password_hash
+        uuid id PK
+        string username
+        string password
+        string salt
+        string nickname
+        string avatar
         boolean is_admin
+        int status
         timestamp created_at
         timestamp updated_at
         timestamp deleted_at
@@ -554,6 +549,7 @@ erDiagram
         string git_url
         string default_branch
         string description
+        jsonb config_json
         timestamp created_at
         timestamp updated_at
         timestamp deleted_at
@@ -562,7 +558,7 @@ erDiagram
     ProjectMember {
         uuid id PK
         uuid project_id FK
-        int user_id FK
+        uuid user_id FK
         enum role
         timestamp created_at
         timestamp updated_at
@@ -571,7 +567,7 @@ erDiagram
     BusinessLineMember {
         uuid id PK
         uuid business_line_id FK
-        int user_id FK
+        uuid user_id FK
         enum role
         timestamp created_at
         timestamp updated_at
@@ -585,6 +581,7 @@ erDiagram
         uuid project_id FK
         int version
         boolean enabled
+        timestamp published_at
         timestamp created_at
         timestamp updated_at
     }
@@ -620,13 +617,16 @@ erDiagram
         uuid project_id FK
         string title
         text description
+        jsonb acceptance_criteria
         uuid workflow_template_id FK
+        int workflow_template_version
+        jsonb tool_versions_snapshot
         enum task_mode
         enum status
         string git_branch
         string git_base_branch
         string git_worktree_path
-        int creator_id FK
+        uuid creator_id FK
         timestamp started_at
         timestamp completed_at
         timestamp created_at
@@ -664,34 +664,12 @@ erDiagram
         timestamp expires_at
     }
 
-    KnowledgeDoc {
-        uuid id PK
-        uuid project_id FK
-        string name
-        string storage_key
-        bigint size_bytes
-        string mime_type
-        int version
-        timestamp created_at
-        timestamp updated_at
-    }
-
     Skill {
         uuid id PK
-        string name UK
+        string name
         text description
         int version
         jsonb definition
-        boolean enabled
-        timestamp created_at
-        timestamp updated_at
-    }
-
-    ProjectSkill {
-        uuid id PK
-        uuid project_id FK
-        uuid skill_id FK
-        int skill_version
         boolean enabled
         timestamp created_at
         timestamp updated_at
@@ -699,7 +677,7 @@ erDiagram
 
     MCP {
         uuid id PK
-        string name UK
+        string name
         text description
         int version
         jsonb definition
@@ -708,15 +686,6 @@ erDiagram
         timestamp updated_at
     }
 
-    ProjectMCP {
-        uuid id PK
-        uuid project_id FK
-        uuid mcp_id FK
-        jsonb config
-        boolean enabled
-        timestamp created_at
-        timestamp updated_at
-    }
 ```
 
 ### 9.2 完整 PostgreSQL DDL
@@ -725,7 +694,25 @@ erDiagram
 
 ```sql
 -- =====================================================
--- 1) 业务线
+-- 1) 用户（与现有系统对齐）
+-- =====================================================
+CREATE TABLE "public"."user" (
+    "id" uuid NOT NULL DEFAULT gen_random_uuid(),
+    "username" varchar NOT NULL,
+    "password" varchar,
+    "salt" varchar NOT NULL,
+    "nickname" varchar,
+    "avatar" varchar,
+    "is_admin" boolean,
+    "status" int4 NOT NULL DEFAULT 1,
+    "created_at" timestamptz NOT NULL,
+    "updated_at" timestamptz NOT NULL,
+    "deleted_at" timestamptz,
+    PRIMARY KEY ("id")
+);
+
+-- =====================================================
+-- 2) 业务线
 -- =====================================================
 CREATE TABLE business_lines (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -740,7 +727,7 @@ CREATE UNIQUE INDEX uniq_business_lines_name
   ON business_lines(name) WHERE deleted_at IS NULL;
 
 -- =====================================================
--- 2) 项目
+-- 3) 项目
 -- =====================================================
 CREATE TABLE projects (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -749,6 +736,7 @@ CREATE TABLE projects (
   git_url VARCHAR(500),
   default_branch VARCHAR(100) DEFAULT 'main',
   description TEXT,
+  config_json JSONB NOT NULL DEFAULT '{}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   deleted_at TIMESTAMPTZ
@@ -760,12 +748,12 @@ CREATE UNIQUE INDEX uniq_projects_git_url
   ON projects(git_url) WHERE git_url IS NOT NULL AND deleted_at IS NULL;
 
 -- =====================================================
--- 3) 项目成员
+-- 4) 项目成员
 -- =====================================================
 CREATE TABLE project_members (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  user_id INT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
   role VARCHAR(20) NOT NULL
     CHECK (role IN ('owner', 'maintainer', 'developer', 'viewer')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -776,12 +764,12 @@ CREATE TABLE project_members (
 CREATE INDEX idx_project_members_user ON project_members(user_id);
 
 -- =====================================================
--- 4) 业务线成员
+-- 5) 业务线成员
 -- =====================================================
 CREATE TABLE business_line_members (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   business_line_id UUID NOT NULL REFERENCES business_lines(id) ON DELETE CASCADE,
-  user_id INT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
   role VARCHAR(20) NOT NULL
     CHECK (role IN ('owner', 'admin', 'member')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -792,7 +780,7 @@ CREATE TABLE business_line_members (
 CREATE INDEX idx_bl_members_user ON business_line_members(user_id);
 
 -- =====================================================
--- 5) Agent 工具配置
+-- 6) Agent 工具配置
 -- =====================================================
 CREATE TABLE agent_tool_configs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -815,7 +803,7 @@ CREATE UNIQUE INDEX uniq_agent_tool_config_default
 CREATE INDEX idx_agent_tool_configs_tool ON agent_tool_configs(tool_id);
 
 -- =====================================================
--- 6) 工作流模板（任务创建时的快照来源）
+-- 7) 工作流模板（任务创建时的快照来源）
 -- =====================================================
 CREATE TABLE workflow_templates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -826,17 +814,20 @@ CREATE TABLE workflow_templates (
   project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
   version INT NOT NULL DEFAULT 1,
   enabled BOOLEAN NOT NULL DEFAULT true,
+  published_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE UNIQUE INDEX uniq_global_template_name
-  ON workflow_templates(name) WHERE scope = 'global';
+  ON workflow_templates(name, version) WHERE scope = 'global';
 CREATE UNIQUE INDEX uniq_project_template_name
-  ON workflow_templates(project_id, name) WHERE scope = 'project';
+  ON workflow_templates(project_id, name, version) WHERE scope = 'project';
+CREATE INDEX idx_workflow_templates_scope_name_enabled
+  ON workflow_templates(scope, name, enabled);
 
 -- =====================================================
--- 7) 工作流模板节点
+-- 8) 工作流模板节点
 -- =====================================================
 CREATE TABLE workflow_template_nodes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -861,7 +852,7 @@ CREATE TABLE workflow_template_nodes (
 CREATE INDEX idx_wf_template_nodes_template ON workflow_template_nodes(template_id);
 
 -- =====================================================
--- 8) 任务（吸收原 WorkflowRun，成为执行实例）
+-- 9) 任务（吸收原 WorkflowRun，成为执行实例）
 -- =====================================================
 CREATE TABLE tasks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -869,7 +860,11 @@ CREATE TABLE tasks (
   title VARCHAR(500) NOT NULL,
   description TEXT,
 
+  acceptance_criteria JSONB NOT NULL DEFAULT '{}',
+
   workflow_template_id UUID REFERENCES workflow_templates(id) ON DELETE SET NULL,
+  workflow_template_version INT,
+  tool_versions_snapshot JSONB NOT NULL DEFAULT '{}',
 
   task_mode VARCHAR(20) NOT NULL DEFAULT 'workflow'
     CHECK (task_mode IN ('conversation', 'workflow')),
@@ -880,7 +875,7 @@ CREATE TABLE tasks (
   git_base_branch VARCHAR(200),
   git_worktree_path VARCHAR(500),
 
-  creator_id INT NOT NULL REFERENCES "user"(id),
+  creator_id UUID NOT NULL REFERENCES "user"(id),
 
   -- 以下字段由 task_nodes 聚合计算
   started_at TIMESTAMPTZ,
@@ -903,7 +898,7 @@ CREATE UNIQUE INDEX uniq_tasks_project_git_branch
   WHERE git_branch IS NOT NULL;
 
 -- =====================================================
--- 9) 任务节点（核心：节点定义 + 执行状态 + 执行结果）
+-- 10) 任务节点（核心：节点定义 + 执行状态 + 执行结果）
 -- =====================================================
 CREATE TABLE task_nodes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -947,7 +942,7 @@ CREATE UNIQUE INDEX uniq_task_nodes_single_in_progress
   WHERE status = 'in_progress';
 
 -- =====================================================
--- 10) 产物
+-- 11) 产物
 -- =====================================================
 CREATE TABLE artifacts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -968,28 +963,11 @@ CREATE INDEX idx_artifacts_expires ON artifacts(expires_at)
   WHERE expires_at IS NOT NULL;
 
 -- =====================================================
--- 11) 知识库文档
--- =====================================================
-CREATE TABLE knowledge_docs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  name VARCHAR(500) NOT NULL,
-  storage_key VARCHAR(500) NOT NULL,
-  size_bytes BIGINT,
-  mime_type VARCHAR(100),
-  version INT NOT NULL DEFAULT 1,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_knowledge_docs_project ON knowledge_docs(project_id);
-
--- =====================================================
 -- 12) Skills 市场
 -- =====================================================
 CREATE TABLE skills (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name VARCHAR(200) NOT NULL UNIQUE,
+  name VARCHAR(200) NOT NULL,
   description TEXT,
   version INT NOT NULL DEFAULT 1,
   definition JSONB NOT NULL,
@@ -998,23 +976,17 @@ CREATE TABLE skills (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE project_skills (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  skill_id UUID NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
-  skill_version INT NOT NULL,
-  enabled BOOLEAN NOT NULL DEFAULT true,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (project_id, skill_id)
-);
+CREATE UNIQUE INDEX uniq_skills_name_version
+  ON skills(name, version);
+CREATE INDEX idx_skills_name_enabled
+  ON skills(name, enabled);
 
 -- =====================================================
 -- 13) MCP 市场
 -- =====================================================
 CREATE TABLE mcps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name VARCHAR(200) NOT NULL UNIQUE,
+  name VARCHAR(200) NOT NULL,
   description TEXT,
   version INT NOT NULL DEFAULT 1,
   definition JSONB NOT NULL,
@@ -1023,34 +995,14 @@ CREATE TABLE mcps (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE project_mcps (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  mcp_id UUID NOT NULL REFERENCES mcps(id) ON DELETE CASCADE,
-  config JSONB DEFAULT '{}',
-  enabled BOOLEAN NOT NULL DEFAULT true,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (project_id, mcp_id)
-);
+CREATE UNIQUE INDEX uniq_mcps_name_version
+  ON mcps(name, version);
+CREATE INDEX idx_mcps_name_enabled
+  ON mcps(name, enabled);
 
 -- =====================================================
--- 14) 审计日志
+-- 14) 其他扩展表（预留）
 -- =====================================================
-CREATE TABLE audit_logs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id INT REFERENCES "user"(id) ON DELETE SET NULL,
-  action VARCHAR(50) NOT NULL,
-  resource_type VARCHAR(50) NOT NULL,
-  resource_id VARCHAR(100) NOT NULL,
-  detail JSONB DEFAULT '{}',
-  ip_address VARCHAR(45),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_audit_logs_user ON audit_logs(user_id);
-CREATE INDEX idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
-CREATE INDEX idx_audit_logs_created ON audit_logs(created_at DESC);
 ```
 
 ### 9.3 Task 聚合更新逻辑
@@ -1170,14 +1122,17 @@ LIMIT 1;
 
 | 实体 | 核心字段 | PostgreSQL 索引 |
 |------|---------|----------------|
-| User | id, email, is_admin | `UNIQUE(email)` |
+| User | id(uuid), username, status, is_admin | `PRIMARY KEY(id)` |
 | BusinessLine | id, name | `UNIQUE(name) WHERE deleted_at IS NULL` |
-| Project | id, name, business_line_id, git_url | `INDEX(business_line_id)`, `UNIQUE(git_url)` |
+| Project | id, name, business_line_id, git_url, config_json | `INDEX(business_line_id)`, `UNIQUE(git_url)` |
 | ProjectMember | id, project_id, user_id, role | `UNIQUE(project_id, user_id)`, `INDEX(user_id)` |
 | BusinessLineMember | id, business_line_id, user_id, role | `UNIQUE(business_line_id, user_id)`, `INDEX(user_id)` |
-| Task | id, project_id, status, creator_id | `INDEX(project_id, status)`, `INDEX(created_at DESC)` |
+| WorkflowTemplate | id, scope, name, version, enabled | `UNIQUE(name,version)@global`, `UNIQUE(project_id,name,version)@project`, `INDEX(scope,name,enabled)` |
+| Task | id, project_id, status, creator_id, workflow_template_version | `INDEX(project_id, status)`, `INDEX(created_at DESC)` |
 | TaskNode | id, task_id, node_order, status | `UNIQUE(task_id, node_order)`, `UNIQUE(task_id) WHERE status='in_progress'` |
 | Artifact | id, task_node_id, type | `INDEX(task_node_id)`, `INDEX(expires_at)` |
+| Skill | id, name, version, enabled | `UNIQUE(name,version)`, `INDEX(name,enabled)` |
+| MCP | id, name, version, enabled | `UNIQUE(name,version)`, `INDEX(name,enabled)` |
 
 ### 9.8 数据库迁移
 
@@ -1209,7 +1164,6 @@ npm run migration:revert
 | 任务创建/执行 | ✅ | ✅(所属BL) | ✅(所属BL) | ❌ | ✅ | ✅ | ✅ | ❌ |
 | 产物查看 | ✅ | ✅(所属BL) | ✅(所属BL) | ❌ | ✅ | ✅ | ✅ | ✅ |
 | 用户管理 | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 审计日志查看 | ✅ | ✅(所属BL) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 > **权限继承**：BL owner/admin 对其业务线下所有项目拥有隐式权限，无需逐个加入 `project_members`。BL member 仅表示有资格被加入该 BL 下的项目。
 
@@ -1317,9 +1271,9 @@ flowchart TB
 
 | 模块/能力 | 建议归属 | 主要职责 | 备注 |
 |---|---|---|---|
-| 认证/RBAC/审计 | API Server | 登录、鉴权、授权、审计落库 | 当前 `backend/` 已具备雏形 |
+| 认证/RBAC | API Server | 登录、鉴权、授权 | 当前 `backend/` 已具备雏形 |
 | 业务元数据（业务线/项目/任务/模板） | API Server | CRUD、状态机流转、权限校验 | 任务执行只写“请求”，不做重活 |
-| 调度与队列 | API Server（+ Redis 可选） | 入队、并发控制、重试/超时策略 | MVP 可先不引入 Redis，后续再加 |
+| 调度与队列 | API Server（+ Redis 可选） | 入队、并发控制、重新执行/超时策略 | MVP 可先不引入 Redis，后续再加 |
 | Agent 执行器（Runner/Executor） | Runner | 创建 sandbox/worktree、拉起外部 Agent CLI、采集日志/产物 | **长耗时/高资源消耗**，应与 API 解耦 |
 | Agent 适配层（Codex/Cursor/Claude） | Runner | 将不同 Agent 的调用方式统一为一个接口 | 可与 Runner 同进程/同容器 |
 | 产物上传与预览 | Runner（上传）+ API（鉴权/签名） | Runner 产出并上传；API 负责权限与下载签名 | 可复用 `backend/src/files` |
@@ -1409,7 +1363,7 @@ flowchart TB
   - 方案 A：更像“平台托管执行”，便于统一治理，但需要平台侧拿到 Git/密钥/运行环境。
   - 方案 C：更像“Agent CLI 作为执行工作节点”，最快落地，天然利用开发机上的仓库与凭据。
   - 无论选哪种，都建议把 Runner 接口、日志通道、产物上传接口先抽象出来，方便第二阶段迁移。
-- 第二阶段：引入 Redis 队列与独立 Runner Worker（方案 B），把长任务完全从 API 进程剥离出来，并补齐并发、重试、资源配额等治理能力。
+- 第二阶段：引入 Redis 队列与独立 Runner Worker（方案 B），把长任务完全从 API 进程剥离出来，并补齐并发、重新执行、资源配额等治理能力。
 
 ### 10.3 Agent 适配层设计
 > 说明：当前仓库尚未实现独立的 Agent 模块与 Runner Worker；本节为 AINative 规划设计（建议新增 `backend/src/agent` 等模块）。
@@ -1456,7 +1410,7 @@ export interface ExecuteRequest {
 }
 
 export interface ExecuteResult {
-  status: 'done' | 'failed' | 'timeout';
+  status: 'done' | 'in_review';
   output: string;                    // 执行输出
   artifacts: ArtifactRef[];          // 产物引用
   metrics: ExecutionMetrics;         // 执行指标
@@ -1465,7 +1419,6 @@ export interface ExecuteResult {
 export interface IAgentExecutor {
   execute(request: ExecuteRequest): Promise<ExecuteResult>;
   streamOutput(callback: (chunk: string) => void): void;
-  cancel(): Promise<void>;
   getStatus(): Promise<AgentStatus>;
 }
 
@@ -1508,9 +1461,9 @@ export class AgentModule {}
 | `createTask(dto)` | 创建任务（todo 状态），同时生成 TaskNode |
 | `createTaskNodesFromTemplate(taskId, workflowTemplateId)` | 从工作流模板创建节点 |
 | `createConversationNode(taskId, prompt, config)` | 创建单节点（conversation 模式） |
-| `startNextTaskNode(taskId)` | 调度下一个 pending 节点 |
+| `startNextTaskNode(taskId)` | 调度下一个 todo 节点 |
 | `completeTaskNode(nodeId, result)` | 节点执行完成 |
-| `markTaskNodeReview(nodeId, error)` | 节点执行异常，进入 review |
+| `markTaskNodeReview(nodeId, error)` | 节点执行异常，进入 in_review |
 | `approveTaskNode(nodeId)` | 审批通过 |
 | `rerunTaskNode(nodeId, sessionId)` | 重新执行 in_review 节点 |
 | `syncTaskStatus(taskId)` | 聚合更新 task 状态和指标 |
@@ -1685,7 +1638,7 @@ export function useTaskStream(taskId: string) {
 
 | 模块 | 方法 | 路径 | 说明 |
 |------|------|------|------|
-| **认证** | POST | /api/v1/auth/email/login | 用户登录（账号密码） |
+| **认证** | POST | /api/v1/auth/login | 用户登录（账号密码） |
 | | POST | /api/v1/auth/logout | 用户登出 |
 | | GET | /api/v1/auth/me | 获取当前用户 |
 | **用户** | GET | /api/v1/users | 用户列表 |
@@ -1697,6 +1650,7 @@ export function useTaskStream(taskId: string) {
 | | POST | /api/v1/business-lines | 创建业务线 |
 | | GET | /api/v1/business-lines/:id | 业务线详情 |
 | | PATCH | /api/v1/business-lines/:id | 更新业务线 |
+| | DELETE | /api/v1/business-lines/:id | 删除业务线 |
 | **项目** | GET | /api/v1/projects | 项目列表 |
 | | POST | /api/v1/projects | 创建项目 |
 | | GET | /api/v1/projects/:id | 项目详情 |
@@ -1706,18 +1660,19 @@ export function useTaskStream(taskId: string) {
 | | PUT | /api/v1/projects/:id/config | 更新项目配置 |
 | | GET | /api/v1/projects/:id/members | 项目成员列表 |
 | | POST | /api/v1/projects/:id/members | 添加成员 |
+| | PATCH | /api/v1/projects/:id/members/:userId | 更新成员角色 |
+| | DELETE | /api/v1/projects/:id/members/:userId | 移除成员 |
 | **任务** | GET | /api/v1/projects/:projectId/tasks | 任务列表 |
 | | POST | /api/v1/projects/:projectId/tasks | 创建任务 |
 | | GET | /api/v1/tasks/:id | 任务详情 |
 | | PATCH | /api/v1/tasks/:id | 更新任务 |
 | | POST | /api/v1/tasks/:id/execute | 触发执行 |
-| | POST | /api/v1/tasks/:id/cancel | 取消执行 |
 | | GET | /api/v1/tasks/:id/stream | 日志流（SSE） |
 | **任务节点** | GET | /api/v1/tasks/:id/nodes | 任务节点列表 |
 | | GET | /api/v1/task-nodes/:id | 节点详情 |
 | | GET | /api/v1/tasks/:id/current-node | 当前活跃节点 |
 | | POST | /api/v1/task-nodes/:id/approve | 审批通过节点 |
-| | POST | /api/v1/task-nodes/:id/rerun | 重新执行 review 节点 |
+| | POST | /api/v1/task-nodes/:id/rerun | 重新执行 in_review 节点 |
 | | GET | /api/v1/task-nodes/:id/logs | 节点日志 |
 | **产物** | GET | /api/v1/tasks/:id/artifacts | 产物列表 |
 | | GET | /api/v1/artifacts/:id | 产物详情 |
@@ -1726,18 +1681,13 @@ export function useTaskStream(taskId: string) {
 | | POST | /api/v1/workflow-templates | 创建模板 |
 | | GET | /api/v1/workflow-templates/:id | 模板详情 |
 | | PATCH | /api/v1/workflow-templates/:id | 更新模板 |
+| | POST | /api/v1/workflow-templates/:id/publish | 发布新版本 |
+| | DELETE | /api/v1/workflow-templates/:id | 删除模板 |
 | **Skills** | GET | /api/v1/skills | Skills 列表（市场） |
 | | GET | /api/v1/skills/:id | Skill 详情 |
-| | POST | /api/v1/projects/:id/skills | 项目安装 Skill（绑定版本） |
-| | PATCH | /api/v1/projects/:id/skills/:skillId | 启用/禁用/变更版本 |
 | **MCP** | GET | /api/v1/mcps | MCP 列表（市场） |
 | | GET | /api/v1/mcps/:id | MCP 详情 |
-| | POST | /api/v1/projects/:id/mcps | 项目安装 MCP（绑定版本） |
-| | PATCH | /api/v1/projects/:id/mcps/:mcpId | 更新配置（含密钥引用） |
-| **知识库** | GET | /api/v1/projects/:id/knowledge-docs | 文档列表 |
-| | POST | /api/v1/projects/:id/knowledge-docs | 上传文档/创建记录 |
-| | GET | /api/v1/knowledge-docs/:id | 文档详情 |
-| | GET | /api/v1/knowledge-docs/:id/download | 下载（预签名 URL） |
+| **项目上下文** | GET | /api/v1/projects/:id/context | 读取项目上下文（README、`docs/`、SPEC 等） |
 
 ### 11.2 认证方式
 
@@ -1747,13 +1697,13 @@ export function useTaskStream(taskId: string) {
 |------|---------|------|
 | Web UI | JWT（Bearer 或 Cookie） | 当前 `backend/` 登录接口返回 token/refreshToken；如需原生 EventSource（SSE）携带认证信息，建议改为 HttpOnly Cookie |
 | API 调用 | Bearer Token | Authorization: Bearer {token} |
-| CLI/自动化 | API Key | X-API-Key: {key} |
+| CLI/自动化 | Bearer Token | Authorization: Bearer {token} |
 
 **JWT Payload 结构：**
 ```typescript
 interface JwtPayload {
-  sub: number;           // 用户 ID（当前 backend 模板为 number）
-  email?: string;
+  sub: string;           // 用户 ID（uuid）
+  username?: string;
   roles: string[];       // 角色列表
   businessLineId?: string;
   iat: number;           // 签发时间
@@ -1776,6 +1726,10 @@ export class CreateTaskDto {
   @IsOptional()
   description?: string;
 
+  @IsObject()
+  @IsOptional()
+  acceptanceCriteria?: Record<string, any>; // 验收标准/Checklist
+
   @IsUUID()
   workflowTemplateId: string;
 
@@ -1794,6 +1748,10 @@ Content-Type: application/json
 {
   "title": "实现用户登录功能",
   "description": "基于 JWT 实现用户登录",
+  "acceptanceCriteria": {
+    "checklist": ["登录成功返回 token", "失败时返回明确错误"],
+    "definitionOfDone": "接口联调通过并可演示"
+  },
   "workflowTemplateId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
   "gitBranch": "feature/login"
 }
@@ -1813,7 +1771,7 @@ Content-Type: application/json
     "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
     "name": "标准开发流程"
   },
-  "createdAt": "2026-02-05T10:30:00Z"
+  "createdAt": "2026-02-10T10:30:00Z"
 }
 ```
 
@@ -1829,10 +1787,10 @@ event: status
 data: {"status": "in_progress", "taskNodeId": "tn_001", "taskNodeName": "代码分析"}
 
 event: log
-data: {"taskNodeId": "tn_001", "level": "info", "message": "Analyzing requirements...", "timestamp": "2026-02-05T10:31:00Z"}
+data: {"taskNodeId": "tn_001", "level": "info", "message": "Analyzing requirements...", "timestamp": "2026-02-10T10:31:00Z"}
 
 event: log
-data: {"taskNodeId": "tn_001", "level": "info", "message": "Generating code...", "timestamp": "2026-02-05T10:31:05Z"}
+data: {"taskNodeId": "tn_001", "level": "info", "message": "Generating code...", "timestamp": "2026-02-10T10:31:05Z"}
 
 event: artifact
 data: {"type": "file", "path": "src/auth/login.ts", "action": "created"}
@@ -1868,7 +1826,7 @@ interface ErrorResponse {
   "error": "Forbidden",
   "message": "您没有权限执行此任务",
   "code": "AUTH_003",
-  "timestamp": "2026-02-05T10:30:00Z",
+  "timestamp": "2026-02-10T10:30:00Z",
   "path": "/api/v1/tasks/c56a4180-65aa-42ec-a945-5fd21dec0538/execute"
 }
 ```
@@ -1905,10 +1863,9 @@ SwaggerModule.setup('docs', app, document); // => /docs
 | 身份认证 | 所有 API 需认证 | Passport + JWT，NestJS Guards |
 | 权限控制 | 基于 RBAC 的细粒度控制 | 自定义装饰器 + Guards |
 | 数据隔离 | 项目间数据隔离 | Guard 鉴权 + Repository/Service 层显式注入 projectId/businessLineId 过滤（基于 Membership） |
-| 密钥管理 | Git Token、API Key 等敏感信息 | 加密存储（AES-256-GCM/信封加密）；主密钥来自环境变量或 KMS；密码仍用 bcrypt |
+| 密钥管理 | Git Token 等敏感信息 | 加密存储（AES-256-GCM/信封加密）；主密钥来自环境变量或 KMS；密码仍用 bcrypt |
 | 执行隔离 | 任务执行环境隔离 | Docker 容器 + 网络策略 |
 | 日志脱敏 | 敏感信息不落日志 | NestJS Interceptor + 正则过滤 |
-| 审计追踪 | 关键操作可追溯 | TypeORM Subscriber + 审计表 |
 | 输入验证 | 防止注入攻击 | class-validator + ValidationPipe |
 
 **权限守卫示例：**
@@ -2015,18 +1972,17 @@ export class HealthController {
 | 容器隔离成本过高 | 中 | 高 | 高 | 按需扩缩 + 资源池化 + 轻量级隔离方案 | TBD |
 | 多 Agent 接口不统一 | 高 | 中 | 高 | 定义标准接口 + 适配层抽象 + 版本兼容 | TBD |
 | 产物存储成本增长 | 中 | 高 | 中 | 生命周期管理 + 自动清理 + 分级存储 | TBD |
-| Agent 执行不稳定 | 高 | 中 | 高 | 重试机制 + 超时控制 + 降级策略 | TBD |
+| Agent 执行不稳定 | 高 | 中 | 高 | 超时控制 + 人工介入（`in_review`）+ 重新执行 | TBD |
 | 权限模型复杂度 | 中 | 中 | 中 | MVP 简化模型 + 渐进增强 | TBD |
 
 ### 13.2 待定项（需进一步讨论）
-| 待定项 | 影响范围 | 决策时间点 | 备选方案 |
+| 待定项 | 影响范围 | 决策时间点 | 当前建议 |
 |--------|---------|-----------|---------|
-| Git 认证方式 | 项目配置 | 第一阶段启动前 | SSH Key / HTTP Token / OAuth |
-| 容器 vs 进程隔离 | 执行运行时 | 第一阶段启动前 | K8s Pod / Docker / gVisor / 进程 |
-| 执行器部署形态 | 执行运行时 | 第一阶段启动前 | 平台托管 Runner（方案 A/B） / AINative CLI Pull Runner（方案 C） |
-| SSE 鉴权方式 | 可观测性/前端 | 第一阶段启动前 | Cookie 登录态 / fetch 流式读取（携带 Bearer Token） |
-| 日志存储方案 | 可观测性 | 第二阶段启动前 | Loki / ES / ClickHouse |
-| ~~多业务线归属~~ | 权限模型 | 已支持 | 通过 `business_line_members` 实现多对多 |
+| Git 认证方式 | 项目配置 | 2026-02-12 前 | MVP 先采用 HTTP Token（加密存储），后续补 SSH Key/OAuth |
+| 容器 vs 进程隔离 | 执行运行时 | 2026-02-12 前 | MVP 先用隔离目录 + 权限收敛，第二阶段演进容器化 |
+| 执行器部署形态 | 执行运行时 | 2026-02-12 前 | MVP 采用方案 A（内嵌 Runner），第二阶段迁移方案 B |
+| SSE 鉴权方式 | 可观测性/前端 | 2026-02-12 前 | Web 采用 HttpOnly Cookie；CLI 采用 Bearer Token |
+| 日志存储方案 | 可观测性 | 第二阶段启动前 | 第一阶段进程内 + DB 持久化，第二阶段评估 Loki/ES/ClickHouse |
 
 ## 14. 交付物与里程碑
 
@@ -2072,10 +2028,10 @@ export class HealthController {
 #### 14.4.1 后端（backend/）拆解
 **可直接复用/在现有模块上扩展：**
 - 认证与用户（FR-001/FR-002）：复用 `backend/src/auth`、`backend/src/users`、`backend/src/roles`、`backend/src/session`。
-  - 建议补充：用户表增加 `is_admin` 字段；通过 `business_line_members` 管理用户与业务线的多对多关系（见第 9 节数据模型）。
+  - 数据模型建议对齐：用户主键使用 `uuid`，并包含 `username/password/salt/nickname/avatar/is_admin/status` 字段；通过 `business_line_members` 管理用户与业务线的多对多关系（见第 9 节数据模型）。
 - 文件与产物底座：复用 `backend/src/files` 的 local/S3 driver，把“Artifact（业务产物）”作为业务表，引用 `FileEntity` 或直接记录文件 key。
   - 目标：支持产物列表、下载（预签名 URL）与权限校验。
-- 通知邮件：复用 `backend/src/mail`、`backend/src/mailer`，用于任务完成/失败通知（FR-012）。
+- 通知邮件：复用 `backend/src/mail`、`backend/src/mailer`，用于任务 `done` / `in_review` 通知（FR-012）。
 
 **需要新增的业务模块（建议按依赖顺序）：**
 1) 业务线（FR-003）
@@ -2085,16 +2041,16 @@ export class HealthController {
    - 数据模型：BusinessLineMember(id uuid, business_line_id, user_id, role, timestamps)
 2) 项目（FR-004/FR-006）
    - 新增 `ProjectsModule`（实体/CRUD）
-   - ProjectConfig：建议先用 `jsonb` 保存项目配置快照（Agent 适配器选择、资源/并发策略、允许的 Skills/MCP 列表）
+   - ProjectConfig：在 `projects.config_json` 中保存项目配置快照（Agent 适配器选择、资源/并发策略、允许的 Skills/MCP 列表）
 3) 项目成员与项目角色（FR-005）
    - 新增 `MembershipsModule` 或 `ProjectMembersModule`
    - 注意：当前 `RoleEntity/RoleEnum` 是平台级（admin/user），项目级角色建议独立建表或独立枚举（owner/maintainer/developer/viewer）
 4) 工作流模板（FR-007）
    - 新增 `WorkflowTemplatesModule`
-   - MVP 推荐：模板内容用 `jsonb` 保存 DAG 工作节点与依赖（避免 DSL 过早复杂化）
+   - MVP 推荐：模板内容用 `jsonb` 保存有序工作节点（基于 `node_order` 的串行编排，避免 DSL 过早复杂化）
 5) 任务与任务节点（FR-008/FR-009/FR-010）
    - 新增 `TasksModule`、`TaskNodesModule`（去除 WorkflowRunsModule / WorkNodeRunsModule）
-   - 任务创建时从工作流模板生成 TaskNode
+   - 任务创建时从工作流模板生成 TaskNode，并写入 `acceptance_criteria` 与模板/工具版本快照
    - TaskNode 同时承载节点定义与执行状态/结果（见第 9 节数据模型）
    - 任务状态由 TaskNode 聚合计算（见第 8.3 节聚合规则）
    - 任务执行：第一阶段可先"同步/内嵌 Runner"（见 10.2.3），第二阶段迁移到 Worker + 队列
@@ -2104,7 +2060,7 @@ export class HealthController {
 
 #### 14.4.2 前端（frontend/）拆解
 - 路由与页面（P0）
-  - 登录页（对接 `/api/v1/auth/email/login`）
+  - 登录页（对接 `/api/v1/auth/login`）
   - 项目列表/项目详情（含配置入口）
   - 任务列表/任务详情（含执行按钮、状态、日志流、产物列表）
 - 日志流（P1）
