@@ -1,7 +1,7 @@
 /**
  * ProjectVersion Controller
  * Handles project version-related HTTP requests
- * 
+ *
  * 版本工作空间目录结构：
  * workspace/{applicationId}/{projectId}/versions/{versionId}/ainative-workspace
  */
@@ -15,6 +15,7 @@ import { KnowledgeBaseRepository } from '../../database/repositories/KnowledgeBa
 import { GitService } from '../../services/GitService';
 import { WorkspaceManager, WorkspaceOptions } from '../../utils/WorkspaceManager';
 import { logger } from '../../utils';
+import { VersionReviewService } from '../../services/VersionReviewService';
 
 const versionRepo = new ProjectVersionRepository();
 const projectRepo = new ProjectRepository();
@@ -77,7 +78,7 @@ export class ProjectVersionController {
 
       // Generate branch name using name_alias (English alias for Git compatibility)
       const branchName = gitService.generateVersionBranchName(
-        project.name_alias || project.name,  // Fallback to name if alias not set
+        project.name_alias || project.name, // Fallback to name if alias not set
         versionName
       );
 
@@ -123,7 +124,7 @@ export class ProjectVersionController {
               workspacePath: versionWorkspacePath,
               projectId: project.id,
             });
-            
+
             if (prepareResult.success) {
               logger.info('ProjectVersionController: Cloned user repo to version workspace', {
                 versionId: version.id,
@@ -211,6 +212,15 @@ export class ProjectVersionController {
         projectId,
         versionName,
         branchName,
+      });
+
+      // 异步触发版本审查（如果启用）
+      ProjectVersionController.triggerVersionReview(project, version, idea).catch((error: any) => {
+        logger.error('ProjectVersionController: Version review failed', {
+          versionId: version.id,
+          projectId,
+          error: error.message,
+        });
       });
 
       return res.status(201).json({
@@ -518,7 +528,7 @@ export class ProjectVersionController {
         const versionWorkspacePath = WorkspaceManager.getProjectWorkspacePath({
           applicationId: project.application_id,
           projectId: project.id,
-          versionId,  // Use version-specific workspace path
+          versionId, // Use version-specific workspace path
         });
 
         // Check if version workspace exists and is a git repo
@@ -620,17 +630,14 @@ export class ProjectVersionController {
   /**
    * Inject knowledge base documents from database to version workspace
    * Creates docs/business-knowledge/*.md files
-   * 
+   *
    * @param projectId Project ID to get knowledge documents for
    * @param versionWorkspacePath Path to the version workspace directory
    */
-  private static async injectKnowledgeBase(
-    projectId: string,
-    versionWorkspacePath: string
-  ): Promise<void> {
+  private static async injectKnowledgeBase(projectId: string, versionWorkspacePath: string): Promise<void> {
     // Get all active knowledge documents for the project
     const documents = await knowledgeRepo.findByProjectId(projectId);
-    
+
     if (documents.length === 0) {
       logger.info('ProjectVersionController: No knowledge documents to inject', { projectId });
       return;
@@ -644,10 +651,10 @@ export class ProjectVersionController {
     for (const doc of documents) {
       // Sanitize filename (remove invalid characters, limit length)
       const safeTitle = doc.title
-        .replace(/[<>:"/\\|?*]/g, '_')  // Replace invalid chars
-        .replace(/\s+/g, '_')           // Replace spaces
-        .substring(0, 100);             // Limit length
-      
+        .replace(/[<>:"/\\|?*]/g, '_') // Replace invalid chars
+        .replace(/\s+/g, '_') // Replace spaces
+        .substring(0, 100); // Limit length
+
       const filename = `${safeTitle}.md`;
       const filePath = path.join(knowledgeDir, filename);
 
@@ -670,6 +677,307 @@ ${doc.content}
       projectId,
       documentCount: documents.length,
       knowledgeDir,
+    });
+  }
+
+  /**
+   * 启动版本审查
+   * POST /api/projects/:id/versions/:versionId/review/start
+   */
+  static async startReview(req: Request, res: Response) {
+    try {
+      const { id: projectId, versionId } = req.params;
+
+      // 获取项目
+      const project = await projectRepo.findById(projectId);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      // 获取版本
+      const version = await versionRepo.findById(versionId);
+      if (!version) {
+        return res.status(404).json({ error: 'Version not found' });
+      }
+
+      // 检查版本是否属于该项目
+      if (version.project_id !== projectId) {
+        return res.status(400).json({ error: 'Version does not belong to the project' });
+      }
+
+      // 检查是否有应用ID
+      if (!project.application_id) {
+        return res.status(400).json({
+          error: 'Application ID not found',
+          message: '无法启动版本审查：项目缺少应用ID',
+        });
+      }
+
+      // 检查是否禁用版本审查功能
+      const disableReview = process.env.ENABLE_VERSION_REVIEW === 'false';
+      if (disableReview) {
+        return res.status(400).json({
+          error: 'Version review is disabled',
+          message: '版本审查功能已禁用',
+        });
+      }
+
+      // 检查是否有版本想法
+      if (!version.idea) {
+        return res.status(400).json({
+          error: 'Version idea not found',
+          message: '版本缺少想法描述，无法启动审查',
+        });
+      }
+
+      // 启动审查
+      const reviewService = new VersionReviewService();
+      await reviewService.startReview({
+        projectId: project.id,
+        versionId: version.id,
+        versionName: version.version_name,
+        userIdea: version.idea,
+        applicationId: project.application_id,
+      });
+
+      return res.json({
+        success: true,
+        data: {
+          status: 'generating_question',
+          currentRound: 1,
+          message: '审查已启动，正在生成第一轮问题...',
+        },
+      });
+    } catch (error: any) {
+      logger.error('ProjectVersionController: Failed to start review:', error);
+      return res.status(500).json({
+        error: 'Failed to start review',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * 获取版本审查状态
+   * GET /api/projects/:id/versions/:versionId/review/status
+   */
+  static async getReviewStatus(req: Request, res: Response) {
+    try {
+      const { id: projectId, versionId } = req.params;
+
+      // 获取项目
+      const project = await projectRepo.findById(projectId);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      // 获取版本
+      const version = await versionRepo.findById(versionId);
+      if (!version) {
+        return res.status(404).json({ error: 'Version not found' });
+      }
+
+      // 检查版本是否属于该项目
+      if (version.project_id !== projectId) {
+        return res.status(400).json({ error: 'Version does not belong to the project' });
+      }
+
+      // 获取审查状态
+      const reviewService = new VersionReviewService();
+      const state = await reviewService.getReviewStatus(versionId);
+
+      if (!state) {
+        return res.json({
+          success: true,
+          data: {
+            status: 'pending',
+            currentRound: 0,
+            totalRounds: 5,
+            currentQuestion: null,
+            questionsAndAnswers: [],
+            reviewDocumentPath: null,
+          },
+        });
+      }
+
+      // 获取当前问题（如果有）
+      const currentQuestion =
+        state.reviewStatus === 'waiting_answer' && state.questionsAndAnswers.length > 0
+          ? {
+              question: state.questionsAndAnswers[state.questionsAndAnswers.length - 1].question,
+              questionType: state.questionsAndAnswers[state.questionsAndAnswers.length - 1].questionType,
+            }
+          : null;
+
+      return res.json({
+        success: true,
+        data: {
+          status: state.reviewStatus,
+          currentRound: state.currentRound,
+          totalRounds: 5,
+          currentQuestion,
+          questionsAndAnswers: state.questionsAndAnswers,
+          reviewDocumentPath: state.reviewDocumentPath || null,
+          error: state.error || null,
+        },
+      });
+    } catch (error: any) {
+      logger.error('ProjectVersionController: Failed to get review status:', error);
+      return res.status(500).json({
+        error: 'Failed to get review status',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * 提交答案
+   * POST /api/projects/:id/versions/:versionId/review/answer
+   */
+  static async submitAnswer(req: Request, res: Response) {
+    try {
+      const { id: projectId, versionId } = req.params;
+      const { answer } = req.body;
+
+      if (!answer || typeof answer !== 'string') {
+        return res.status(400).json({
+          error: 'Missing or invalid answer field',
+          message: '请提供答案内容',
+        });
+      }
+
+      // 获取项目
+      const project = await projectRepo.findById(projectId);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      // 获取版本
+      const version = await versionRepo.findById(versionId);
+      if (!version) {
+        return res.status(404).json({ error: 'Version not found' });
+      }
+
+      // 检查版本是否属于该项目
+      if (version.project_id !== projectId) {
+        return res.status(400).json({ error: 'Version does not belong to the project' });
+      }
+
+      // 检查是否有应用ID
+      if (!project.application_id) {
+        return res.status(400).json({
+          error: 'Application ID not found',
+          message: '无法提交答案：项目缺少应用ID',
+        });
+      }
+
+      // 检查版本想法
+      if (!version.idea) {
+        return res.status(400).json({
+          error: 'Version idea not found',
+          message: '版本缺少想法描述',
+        });
+      }
+
+      // 提交答案
+      const reviewService = new VersionReviewService();
+      await reviewService.submitAnswer(versionId, answer, project.id, version.idea, project.application_id);
+
+      // 获取更新后的状态
+      const state = await reviewService.getReviewStatus(versionId);
+
+      return res.json({
+        success: true,
+        data: {
+          status: state?.reviewStatus || 'generating_question',
+          currentRound: state?.currentRound || 0,
+          message: state?.currentRound === 5 ? '答案已提交，正在生成审查文档...' : '答案已提交，正在生成下一轮问题...',
+        },
+      });
+    } catch (error: any) {
+      logger.error('ProjectVersionController: Failed to submit answer:', error);
+      return res.status(500).json({
+        error: 'Failed to submit answer',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * 继续审查（可选，用于手动触发下一轮）
+   * POST /api/projects/:id/versions/:versionId/review/continue
+   */
+  static async continueReview(req: Request, res: Response) {
+    try {
+      const { id: projectId, versionId } = req.params;
+
+      // 获取项目
+      const project = await projectRepo.findById(projectId);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      // 获取版本
+      const version = await versionRepo.findById(versionId);
+      if (!version) {
+        return res.status(404).json({ error: 'Version not found' });
+      }
+
+      // 检查版本是否属于该项目
+      if (version.project_id !== projectId) {
+        return res.status(400).json({ error: 'Version does not belong to the project' });
+      }
+
+      // 检查是否有应用ID
+      if (!project.application_id) {
+        return res.status(400).json({
+          error: 'Application ID not found',
+          message: '无法继续审查：项目缺少应用ID',
+        });
+      }
+
+      // 检查版本想法
+      if (!version.idea) {
+        return res.status(400).json({
+          error: 'Version idea not found',
+          message: '版本缺少想法描述',
+        });
+      }
+
+      // 继续审查（生成下一轮问题）
+      const reviewService = new VersionReviewService();
+      await reviewService.generateNextQuestion(versionId, project.id, version.idea, project.application_id);
+
+      // 获取更新后的状态
+      const state = await reviewService.getReviewStatus(versionId);
+
+      return res.json({
+        success: true,
+        data: {
+          status: state?.reviewStatus || 'generating_question',
+          currentRound: state?.currentRound || 0,
+          message: '正在生成下一轮问题...',
+        },
+      });
+    } catch (error: any) {
+      logger.error('ProjectVersionController: Failed to continue review:', error);
+      return res.status(500).json({
+        error: 'Failed to continue review',
+        message: error.message,
+      });
+    }
+  }
+
+  /**
+   * 触发版本审查（已废弃，保留用于向后兼容）
+   * 现在版本审查需要通过 API 端点手动启动
+   * @deprecated
+   */
+  private static async triggerVersionReview(project: any, version: any, _idea: string): Promise<void> {
+    // 不再自动触发，需要前端调用 API 端点启动
+    logger.debug('ProjectVersionController: Version review trigger skipped (use API endpoint instead)', {
+      versionId: version.id,
+      projectId: project.id,
     });
   }
 }

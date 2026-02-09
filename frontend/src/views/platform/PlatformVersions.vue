@@ -7,11 +7,7 @@
 
     <!-- Error state -->
     <div v-else-if="error && !platform" class="error-state">
-      <el-result
-        icon="error"
-        title="加载失败"
-        :sub-title="error"
-      >
+      <el-result icon="error" title="加载失败" :sub-title="error">
         <template #extra>
           <el-button type="primary" @click="handleBack">返回平台列表</el-button>
         </template>
@@ -20,11 +16,7 @@
 
     <!-- Content -->
     <div v-else-if="platform" class="content">
-      <PageHeader
-        :title="platform.name"
-        description="版本管理"
-        :back-handler="handleBack"
-      >
+      <PageHeader :title="platform.name" description="版本管理" :back-handler="handleBack">
         <template #extra>
           <div class="platform-meta">
             <el-tag v-if="platform.gitRepoUrl" type="info">
@@ -35,135 +27,89 @@
           </div>
         </template>
         <template #right>
-          <el-button type="primary" :icon="Plus" @click="showCreateDialog = true">
-            创建版本
-          </el-button>
+          <el-button type="primary" :icon="Plus" @click="showCreateDialog = true"> 创建版本 </el-button>
         </template>
       </PageHeader>
 
       <!-- Empty state -->
-      <el-empty 
-        v-if="versions.length === 0 && !loading" 
-        description="暂无版本，请创建第一个版本"
-      >
-        <el-button type="primary" :icon="Plus" @click="showCreateDialog = true">
-          创建版本
-        </el-button>
+      <el-empty v-if="versions.length === 0 && !loading" description="暂无版本，请创建第一个版本">
+        <el-button type="primary" :icon="Plus" @click="showCreateDialog = true"> 创建版本 </el-button>
       </el-empty>
 
       <!-- Table toolbar -->
       <template v-else>
         <div class="table-toolbar">
-          <el-button type="primary" :icon="Plus" @click="showCreateDialog = true">
-            新增版本
-          </el-button>
+          <el-button type="primary" :icon="Plus" @click="showCreateDialog = true"> 新增版本 </el-button>
         </div>
 
         <!-- Version table -->
-        <el-table
-          :data="versions"
-          stripe
-          style="width: 100%"
-        >
-        <el-table-column prop="versionName" label="版本名称" min-width="200">
-          <template #default="{ row }">
-            <el-icon style="margin-right: 8px; vertical-align: middle;">
-              <Collection />
-            </el-icon>
-            <span>{{ row.versionName }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="isActive" label="状态" width="120" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.isActive" type="success" size="small">当前激活</el-tag>
-            <span v-else style="color: var(--el-text-color-placeholder)">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="idea" label="想法" min-width="250" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ row.idea || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="progress" label="进度" width="100" align="center">
-          <template #default="{ row }">
-            {{ row.progress || 0 }}%
-          </template>
-        </el-table-column>
-        <el-table-column prop="description" label="描述" min-width="250" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ row.description || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="branchName" label="分支名" min-width="200">
-          <template #default="{ row }">
-            <el-text type="info" size="small">{{ row.branchName }}</el-text>
-          </template>
-        </el-table-column>
-        <el-table-column prop="createdAt" label="创建时间" width="180">
-          <template #default="{ row }">
-            {{ formatDate(row.createdAt) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" min-width="250" fixed="right">
-          <template #default="{ row }">
-            <div class="action-buttons">
-              <el-button 
-                v-if="!row.isActive" 
-                size="small" 
-                @click="activateVersion(row)"
-              >
-                <el-icon><Check /></el-icon>
-                设为当前版本
-              </el-button>
-              <el-button 
-                type="primary" 
-                size="small" 
-                @click="enterWorkflow(row)"
-              >
-                <el-icon><VideoPlay /></el-icon>
-                进入工作流
-              </el-button>
-              <el-button 
-                type="danger" 
-                plain 
-                size="small" 
-                @click="deleteVersion(row)"
-              >
-                <el-icon><Delete /></el-icon>
-                删除
-              </el-button>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
+        <el-table :data="versions" stripe style="width: 100%">
+          <el-table-column prop="versionName" label="版本名称" min-width="200">
+            <template #default="{ row }">
+              <el-icon style="margin-right: 8px; vertical-align: middle">
+                <Collection />
+              </el-icon>
+              <span>{{ row.versionName }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="isActive" label="状态" width="120" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.isActive" type="success" size="small">当前激活</el-tag>
+              <span v-else style="color: var(--el-text-color-placeholder)">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="idea" label="想法" min-width="250" show-overflow-tooltip>
+            <template #default="{ row }">
+              {{ row.idea || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="progress" label="进度" width="100" align="center">
+            <template #default="{ row }"> {{ row.progress || 0 }}% </template>
+          </el-table-column>
+          <el-table-column prop="description" label="描述" min-width="250" show-overflow-tooltip>
+            <template #default="{ row }">
+              {{ row.description || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="branchName" label="分支名" min-width="200">
+            <template #default="{ row }">
+              <el-text type="info" size="small">{{ row.branchName }}</el-text>
+            </template>
+          </el-table-column>
+          <el-table-column prop="createdAt" label="创建时间" width="180">
+            <template #default="{ row }">
+              {{ formatDate(row.createdAt) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" min-width="250" fixed="right">
+            <template #default="{ row }">
+              <div class="action-buttons">
+                <el-button v-if="!row.isActive" size="small" @click="activateVersion(row)">
+                  <el-icon><Check /></el-icon>
+                  设为当前版本
+                </el-button>
+                <el-button type="primary" size="small" @click="enterWorkflow(row)">
+                  <el-icon><VideoPlay /></el-icon>
+                  进入工作流
+                </el-button>
+                <el-button type="danger" plain size="small" @click="deleteVersion(row)">
+                  <el-icon><Delete /></el-icon>
+                  删除
+                </el-button>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
       </template>
     </div>
 
     <!-- Create version dialog -->
-    <el-dialog
-      v-model="showCreateDialog"
-      title="创建新版本"
-      width="450px"
-      :close-on-click-modal="false"
-      @close="resetCreateForm"
-    >
-      <el-form
-        ref="createFormRef"
-        :model="createForm"
-        :rules="createRules"
-        label-position="top"
-        @submit.prevent="handleCreate"
-      >
+    <el-dialog v-model="showCreateDialog" title="创建新版本" width="450px" :close-on-click-modal="false" @close="resetCreateForm">
+      <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-position="top" @submit.prevent="handleCreate">
         <el-form-item label="版本名称" prop="versionName" required>
-          <el-input
-            v-model="createForm.versionName"
-            placeholder="例如: v1.0, v2.0"
-            :prefix-icon="Edit"
-          />
+          <el-input v-model="createForm.versionName" placeholder="例如: v1.0, v2.0" :prefix-icon="Edit" />
           <template #extra>
-            <el-text type="info" size="small">
-              将自动创建对应的 Git 分支
-            </el-text>
+            <el-text type="info" size="small"> 将自动创建对应的 Git 分支 </el-text>
           </template>
         </el-form-item>
 
@@ -177,53 +123,36 @@
             :maxlength="2000"
           />
           <template #extra>
-            <el-text type="info" size="small">
-              请具体说明功能、目标用户和需求
-            </el-text>
+            <el-text type="info" size="small"> 请具体说明功能、目标用户和需求 </el-text>
           </template>
         </el-form-item>
 
         <el-form-item label="版本描述" prop="description">
-          <el-input
-            v-model="createForm.description"
-            type="textarea"
-            :rows="3"
-            placeholder="描述此版本的主要变更..."
-          />
+          <el-input v-model="createForm.description" type="textarea" :rows="3" placeholder="描述此版本的主要变更..." />
         </el-form-item>
       </el-form>
 
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="showCreateDialog = false">取消</el-button>
-          <el-button
-            type="primary"
-            :loading="createLoading"
-            @click="handleCreate"
-          >
-            创建
-          </el-button>
+          <el-button type="primary" :loading="createLoading" @click="handleCreate"> 创建 </el-button>
         </div>
       </template>
     </el-dialog>
+
+    <!-- 版本审查对话框 -->
+    <VersionReviewDialog v-model="showReviewDialog" :platform-id="platformId" :version-id="reviewVersionId" @completed="handleReviewCompleted" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus';
 import { apiClient } from '../../api/client';
 import PageHeader from '../../components/common/PageHeader.vue';
-import {
-  Plus,
-  Collection,
-  VideoPlay,
-  Check,
-  Delete,
-  Link,
-  Edit,
-} from '@element-plus/icons-vue';
+import VersionReviewDialog from './components/VersionReviewDialog.vue';
+import { Plus, Collection, VideoPlay, Check, Delete, Link, Edit } from '@element-plus/icons-vue';
 
 interface Version {
   id: string;
@@ -261,6 +190,10 @@ const showCreateDialog = ref(false);
 const createLoading = ref(false);
 const createFormRef = ref<FormInstance>();
 
+// 版本审查对话框
+const showReviewDialog = ref(false);
+const reviewVersionId = ref('');
+
 const createForm = reactive({
   versionName: '',
   idea: '',
@@ -271,11 +204,11 @@ const createRules = reactive<FormRules>({
   versionName: [
     { required: true, message: '请输入版本名称', trigger: 'blur' },
     { pattern: /^[a-zA-Z0-9._-]+$/, message: '版本名称只能包含字母、数字、点、下划线和连字符', trigger: 'blur' },
-    { max: 50, message: '版本名称不能超过50个字符', trigger: 'blur' }
+    { max: 50, message: '版本名称不能超过50个字符', trigger: 'blur' },
   ],
   idea: [
     { required: true, message: '请描述版本想法/需求', trigger: 'blur' },
-    { min: 10, message: '请提供更多细节（至少 10 个字符）', trigger: 'blur' }
+    { min: 10, message: '请提供更多细节（至少 10 个字符）', trigger: 'blur' },
   ],
 });
 
@@ -286,12 +219,12 @@ onMounted(async () => {
 async function loadData() {
   loading.value = true;
   error.value = null;
-  
+
   try {
     // Load platform info
-    const platformResponse = await apiClient.getPlatform(platformId) as any;
+    const platformResponse = (await apiClient.getPlatform(platformId)) as any;
     platform.value = platformResponse.project || platformResponse;
-    
+
     // Load versions
     await fetchVersions();
   } catch (err: any) {
@@ -304,7 +237,7 @@ async function loadData() {
 
 async function fetchVersions() {
   try {
-    const response = await apiClient.getPlatformVersions(platformId) as any;
+    const response = (await apiClient.getPlatformVersions(platformId)) as any;
     versions.value = response.versions || [];
   } catch (err: any) {
     console.error('Failed to fetch versions:', err);
@@ -319,7 +252,6 @@ function handleBack() {
     router.push('/business-lines');
   }
 }
-
 
 async function activateVersion(version: Version) {
   try {
@@ -337,18 +269,14 @@ async function deleteVersion(version: Version) {
     ElMessage.warning('无法删除当前激活的版本');
     return;
   }
-  
+
   try {
-    await ElMessageBox.confirm(
-      `确定要删除版本 "${version.versionName}" 吗？此操作不可恢复。`,
-      '删除版本',
-      {
-        confirmButtonText: '删除',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }
-    );
-    
+    await ElMessageBox.confirm(`确定要删除版本 "${version.versionName}" 吗？此操作不可恢复。`, '删除版本', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    });
+
     await apiClient.deletePlatformVersion(platformId, version.id);
     ElMessage.success(`版本 ${version.versionName} 已删除`);
     await fetchVersions();
@@ -372,6 +300,12 @@ function resetCreateForm() {
   createFormRef.value?.clearValidate();
 }
 
+function handleReviewCompleted() {
+  ElMessage.success('版本审查已完成');
+  // 刷新版本列表
+  fetchVersions();
+}
+
 async function handleCreate() {
   if (!createFormRef.value) return;
 
@@ -379,18 +313,62 @@ async function handleCreate() {
     if (valid) {
       createLoading.value = true;
       try {
-        await apiClient.createPlatformVersion(platformId, {
+        const response = await apiClient.createPlatformVersion(platformId, {
           versionName: createForm.versionName,
           idea: createForm.idea,
           description: createForm.description || undefined,
         });
-        
+
+        console.log('Version created response:', response);
+
         ElMessage.success(`版本 ${createForm.versionName} 创建成功`);
         showCreateDialog.value = false;
         resetCreateForm();
-        
+
         // Refresh versions
         await fetchVersions();
+
+        // 自动启动版本审查
+        const versionId = response?.version?.id;
+        console.log('Version ID from response:', versionId);
+
+        if (versionId) {
+          // 立即显示弹框（显示"等待中"状态）
+          reviewVersionId.value = versionId;
+          console.log('Setting reviewVersionId to:', reviewVersionId.value);
+
+          // 使用 nextTick 确保 versionId 已更新
+          await nextTick();
+
+          console.log('Setting showReviewDialog to true');
+          showReviewDialog.value = true;
+          console.log('showReviewDialog value:', showReviewDialog.value);
+
+          // 然后调用审核启动接口
+          try {
+            console.log('Starting version review for version:', versionId);
+            await apiClient.startVersionReview(platformId, versionId);
+            console.log('Version review started successfully');
+            // API 返回后，弹框会自动开始轮询（通过 watch 机制）
+          } catch (reviewError: any) {
+            // 如果启动失败，关闭弹框并显示错误
+            console.error('Failed to start version review:', reviewError);
+            console.error('Review error status:', reviewError.status);
+            console.error('Review error message:', reviewError.message);
+            console.error('Review error data:', reviewError);
+
+            showReviewDialog.value = false;
+
+            // 如果审查被禁用或缺少必要信息，显示相应的错误提示
+            if (reviewError.status === 400) {
+              ElMessage.warning('版本审查启动失败：' + (reviewError.message || '审查功能已禁用或缺少必要信息'));
+            } else {
+              ElMessage.error('版本审查启动失败：' + (reviewError.message || '未知错误'));
+            }
+          }
+        } else {
+          console.warn('No version ID in response, cannot start review');
+        }
       } catch (err: any) {
         console.error('Failed to create version:', err);
         if (err.status === 409) {

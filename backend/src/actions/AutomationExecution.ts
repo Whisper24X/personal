@@ -6,10 +6,11 @@
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import { WorkspaceOptions, logger } from '../utils';
+import { WorkspaceOptions, logger, WorkspaceManager } from '../utils';
 import * as fs from 'fs/promises';
+import { existsSync } from 'fs';
 import * as path from 'path';
-import { StagehandService } from '../services/StagehandService';
+import { spawnSync } from 'child_process';
 
 export interface AutomationExecutionOptions extends WorkspaceOptions {
   // Inherits all options from WorkspaceOptions
@@ -28,19 +29,8 @@ export interface AutomationExecutionOptions extends WorkspaceOptions {
   keepBrowserOpenMs?: number;
   /** 是否显示浏览器窗口（默认：true，强制有头模式） */
   showBrowserWindow?: boolean;
-}
-
-interface TestCaseJSON {
-  testCase: string;
-  status: 'pending' | 'passed' | 'failed' | 'running';
-  steps: Array<{
-    step: string;
-    status: 'pending' | 'passed' | 'failed' | 'running';
-    error?: string;
-    screenshot?: string;
-    executionTime?: number;
-  }>;
-  duration: number;
+  /** 是否启用 Flow 模式（复用浏览器 session，默认 false，每个 case 独立浏览器 session） */
+  flowMode?: boolean;
 }
 
 interface StepExecutionResult {
@@ -66,371 +56,13 @@ interface TestCaseExecutionResult {
   error?: string;
 }
 
-interface StepRunnerOptions {
-  timeoutMs?: number;
-  retryCount?: number;
-  waitBeforeMs?: number;
-  waitAfterMs?: number;
-  continueOnError?: boolean;
-}
-
-interface RetryOptions {
-  maxRetries?: number;
-  retryDelayMs?: number;
-  shouldRetry?: (error: Error) => boolean;
-}
-
-/**
- * Stability Middleware - 稳定性中间件
- * 提供等待、重试、超时控制等功能
- */
-class StabilityMiddleware {
-  /**
-   * 带重试的执行
-   */
-  async withRetry<T>(fn: () => Promise<T>, options?: RetryOptions): Promise<T> {
-    const maxRetries = options?.maxRetries ?? 2;
-    const retryDelayMs = options?.retryDelayMs ?? 1000;
-    const shouldRetry = options?.shouldRetry ?? (() => true);
-
-    let lastError: Error | undefined;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        return await fn();
-      } catch (error: any) {
-        lastError = error;
-        if (attempt < maxRetries && shouldRetry(error)) {
-          logger.info('StabilityMiddleware: Retrying after error', {
-            attempt: attempt + 1,
-            maxRetries,
-            error: error.message,
-          });
-          await this.withWait(() => Promise.resolve(), retryDelayMs);
-        } else {
-          throw error;
-        }
-      }
-    }
-    throw lastError || new Error('Retry failed');
-  }
-
-  /**
-   * 带超时的执行
-   */
-  async withTimeout<T>(fn: () => Promise<T>, timeoutMs: number): Promise<T> {
-    return Promise.race([
-      fn(),
-      new Promise<T>((_, reject) => {
-        setTimeout(() => {
-          reject(new Error(`Execution timeout after ${timeoutMs}ms`));
-        }, timeoutMs);
-      }),
-    ]);
-  }
-
-  /**
-   * 带等待的执行
-   */
-  async withWait(fn: () => Promise<void>, waitMs?: number): Promise<void> {
-    if (waitMs && waitMs > 0) {
-      await new Promise((resolve) => setTimeout(resolve, waitMs));
-    }
-    await fn();
-  }
-
-  /**
-   * 判断是否应该在错误后继续执行
-   */
-  shouldContinueOnError(_error: Error, _stepIndex: number, options?: { continueOnError?: boolean }): boolean {
-    return options?.continueOnError === true;
-  }
-}
-
-/**
- * Step Runner - 步骤执行器
- * 负责执行单个测试步骤，集成稳定性中间件
- */
-class StepRunner {
-  constructor(
-    private stagehandService: StagehandService,
-    private stabilityMiddleware: StabilityMiddleware
-  ) {}
-
-  /**
-   * 执行单个步骤
-   */
-  async runStep(step: string, stepIndex: number, options?: StepRunnerOptions): Promise<StepExecutionResult> {
-    const startTime = Date.now();
-    const timeoutMs = options?.timeoutMs ?? 30000;
-    const retryCount = options?.retryCount ?? 2;
-    const waitBeforeMs = options?.waitBeforeMs ?? 500;
-    const waitAfterMs = options?.waitAfterMs ?? 500;
-
-    // 提取步骤中的 URL（如果存在）
-    const urlMatch = step.match(/(https?:\/\/[^\s]+)/i);
-    const url = urlMatch ? urlMatch[1] : undefined;
-    // 如果包含 URL，使用导航指令；否则使用原始指令
-    // 对于导航操作，Stagehand 只需要 URL，指令可以简化
-    const instruction = url
-      ? step.toLowerCase().includes('打开') || step.toLowerCase().includes('navigate') || step.toLowerCase().includes('goto')
-        ? '打开页面'
-        : step.replace(/\s*https?:\/\/[^\s]+/gi, '').trim() || '打开页面'
-      : step;
-
-    logger.info('StepRunner: Executing step', {
-      stepIndex,
-      step,
-      instruction,
-      url,
-      timeoutMs,
-      retryCount,
-    });
-
-    try {
-      // 执行前等待
-      await this.stabilityMiddleware.withWait(() => Promise.resolve(), waitBeforeMs);
-
-      // 带超时和重试的执行
-      await this.stabilityMiddleware.withRetry(
-        () =>
-          this.stabilityMiddleware.withTimeout(async () => {
-            // 如果步骤包含 URL，将 URL 作为单独参数传递
-            await this.stagehandService.act(instruction || step, url);
-          }, timeoutMs),
-        {
-          maxRetries: retryCount,
-          retryDelayMs: 1000,
-        }
-      );
-
-      // 执行后等待
-      await this.stabilityMiddleware.withWait(() => Promise.resolve(), waitAfterMs);
-
-      const executionTime = Date.now() - startTime;
-      logger.info('StepRunner: Step executed successfully', {
-        stepIndex,
-        step,
-        executionTime,
-      });
-
-      return {
-        stepIndex,
-        step,
-        status: 'passed',
-        executionTime,
-        timestamp: new Date().toISOString(),
-      };
-    } catch (error: any) {
-      const executionTime = Date.now() - startTime;
-      const errorType = this.classifyError(error);
-
-      logger.error('StepRunner: Step execution failed', {
-        stepIndex,
-        step,
-        error: error.message,
-        errorType,
-        executionTime,
-      });
-
-      return {
-        stepIndex,
-        step,
-        status: 'failed',
-        executionTime,
-        error: error.message,
-        errorType,
-        retryCount,
-        timestamp: new Date().toISOString(),
-      };
-    }
-  }
-
-  /**
-   * 分类错误类型
-   */
-  private classifyError(error: Error): 'initialization' | 'execution' | 'timeout' | 'zod_validation' | 'browser' | 'unknown' {
-    const errorMessage = error.message.toLowerCase();
-    if (errorMessage.includes('timeout')) {
-      return 'timeout';
-    }
-    if (errorMessage.includes('zod') || errorMessage.includes('validation')) {
-      return 'zod_validation';
-    }
-    if (errorMessage.includes('browser') || errorMessage.includes('page') || errorMessage.includes('element')) {
-      return 'browser';
-    }
-    if (errorMessage.includes('initialization') || errorMessage.includes('init')) {
-      return 'initialization';
-    }
-    return 'unknown';
-  }
-}
-
-/**
- * Result Collector - 结果收集器
- * 负责收集执行结果并更新 JSON 文件
- */
-class ResultCollector {
-  /**
-   * 收集步骤结果
-   */
-  collectStepResult(stepResult: StepExecutionResult): void {
-    logger.debug('ResultCollector: Collected step result', {
-      stepIndex: stepResult.stepIndex,
-      status: stepResult.status,
-      executionTime: stepResult.executionTime,
-    });
-  }
-
-  /**
-   * 收集测试用例结果
-   */
-  collectTestCaseResult(testCaseId: string, testCaseName: string, jsonFile: string, allStepResults: StepExecutionResult[]): TestCaseExecutionResult {
-    const totalExecutionTime = allStepResults.reduce((sum, r) => sum + r.executionTime, 0);
-    const success = allStepResults.every((r) => r.status === 'passed');
-    const firstFailedStep = allStepResults.find((r) => r.status === 'failed');
-
-    return {
-      testCaseId,
-      testCaseName,
-      jsonFile,
-      success,
-      executionTime: totalExecutionTime,
-      timestamp: new Date().toISOString(),
-      steps: allStepResults,
-      error: firstFailedStep?.error,
-    };
-  }
-
-  /**
-   * 生成结果 JSON 字符串
-   */
-  generateResultJSON(testCase: TestCaseJSON, stepResults: StepExecutionResult[]): string {
-    const totalDuration = stepResults.reduce((sum, r) => sum + r.executionTime, 0) / 1000; // 转换为秒
-    const allPassed = stepResults.every((r) => r.status === 'passed');
-    const overallStatus: 'passed' | 'failed' = allPassed ? 'passed' : 'failed';
-
-    const updatedSteps: Array<{
-      step: string;
-      status: 'pending' | 'passed' | 'failed' | 'running';
-      error?: string;
-      screenshot?: string;
-      executionTime?: number;
-    }> = testCase.steps.map((step, index) => {
-      const result = stepResults.find((r) => r.stepIndex === index);
-      if (result) {
-        return {
-          step: step.step,
-          status: (result.status === 'passed' ? 'passed' : 'failed') as 'pending' | 'passed' | 'failed' | 'running',
-          ...(result.error && { error: result.error }),
-          ...(result.screenshot && { screenshot: result.screenshot }),
-          executionTime: result.executionTime / 1000, // 转换为秒
-        };
-      }
-      return step;
-    });
-
-    const resultJSON: TestCaseJSON = {
-      testCase: testCase.testCase,
-      status: overallStatus as 'pending' | 'passed' | 'failed' | 'running',
-      steps: updatedSteps,
-      duration: totalDuration,
-    };
-
-    return JSON.stringify(resultJSON, null, 2);
-  }
-
-  /**
-   * 更新 JSON 文件
-   */
-  async updateJSONFile(jsonFile: string, resultJSON: string): Promise<void> {
-    try {
-      await fs.writeFile(jsonFile, resultJSON, 'utf-8');
-      logger.info('ResultCollector: Updated JSON file', {
-        jsonFile: path.basename(jsonFile),
-      });
-    } catch (error: any) {
-      logger.error('ResultCollector: Failed to update JSON file', {
-        jsonFile,
-        error: error.message,
-      });
-      throw error;
-    }
-  }
-}
-
 export class AutomationExecution extends BaseAction {
-  private stagehandService: StagehandService;
-  private stabilityMiddleware: StabilityMiddleware;
-  private stepRunner: StepRunner;
-  private resultCollector: ResultCollector;
-
   constructor() {
-    super('AutomationExecution', 'Execute JSON format test cases from test/auto directory and generate HTML/JSON reports');
-    this.stagehandService = new StagehandService();
-    this.stabilityMiddleware = new StabilityMiddleware();
-    this.stepRunner = new StepRunner(this.stagehandService, this.stabilityMiddleware);
-    this.resultCollector = new ResultCollector();
-  }
-
-  /**
-   * Check Stagehand environment status before execution
-   * Validates browser automation configuration and API keys
-   */
-  private checkStagehandEnvironment(): void {
-    const envStatus = {
-      browserEnabled: process.env.ENABLE_BROWSER === 'true',
-      hasOpenAIApiKey: !!process.env.OPENAI_API_KEY,
-      hasZhipuAIApiKey: !!process.env.ZHIPUAI_API_KEY || !!process.env.ZHIPU_API_KEY,
-      stagehandModel: process.env.STAGEHAND_MODEL || process.env.OPENAI_MODEL || process.env.ZHIPUAI_MODEL || 'not set',
-      stagehandEnv: process.env.STAGEHAND_ENV || 'LOCAL',
-      stagehandHeadless: process.env.STAGEHAND_HEADLESS === 'true',
-      stagehandVerbose: process.env.STAGEHAND_VERBOSE || '0',
-    };
-
-    logger.info('AutomationExecution: Stagehand environment check', envStatus);
-
-    // Warn if browser automation is disabled
-    if (!envStatus.browserEnabled) {
-      logger.warn('AutomationExecution: Browser automation is disabled (ENABLE_BROWSER !== true). Scripts may run in placeholder mode.');
-    }
-
-    // Warn if no API key is configured
-    if (!envStatus.hasOpenAIApiKey && !envStatus.hasZhipuAIApiKey) {
-      logger.warn('AutomationExecution: No LLM API key found (OPENAI_API_KEY or ZHIPUAI_API_KEY). Stagehand may fail to initialize.');
-    }
-
-    // Log configuration summary
-    const apiProvider = envStatus.hasOpenAIApiKey ? 'OpenAI' : envStatus.hasZhipuAIApiKey ? 'ZhipuAI' : 'None';
-    logger.info('AutomationExecution: Stagehand configuration summary', {
-      apiProvider,
-      model: envStatus.stagehandModel,
-      environment: envStatus.stagehandEnv,
-      headless: envStatus.stagehandHeadless,
-      verbose: envStatus.stagehandVerbose,
-    });
+    super('AutomationExecution', 'Execute Playwright scripts from docs/test/auto and generate HTML/JSON reports');
   }
 
   async run(_input: string, options?: AutomationExecutionOptions): Promise<IActionOutput> {
-    logger.info('AutomationExecution: Starting automation execution from JSON test case files');
-
-    // 强制开启浏览器有头模式（确保用户能看到浏览器窗口）
-    const wasHeadless = process.env.STAGEHAND_HEADLESS === 'true';
-    if (wasHeadless) {
-      logger.warn('AutomationExecution: STAGEHAND_HEADLESS was set to true, forcing headless=false for visible browser window');
-    }
-    // 如果用户没有明确禁用浏览器窗口，强制设置为有头模式
-    if (options?.showBrowserWindow !== false) {
-      process.env.STAGEHAND_HEADLESS = 'false'; // 强制有头模式
-      logger.info('AutomationExecution: Browser will run in HEADED mode (visible window)', {
-        previousHeadless: wasHeadless,
-        currentHeadless: false,
-        message: '浏览器窗口将可见，请观察执行过程',
-      });
-    }
-
-    // Check Stagehand environment status before execution
-    this.checkStagehandEnvironment();
+    logger.info('AutomationExecution: Starting automation execution from Playwright scripts in docs/test/auto');
 
     const workspaceOptions: WorkspaceOptions = {
       ...options,
@@ -449,10 +81,9 @@ export class AutomationExecution extends BaseAction {
         await fs.mkdir(autoDir, { recursive: true });
       }
 
-      // Read all JSON test case files from auto directory
       const testCaseFiles = await this.findTestCaseFiles(autoDir);
       if (testCaseFiles.length === 0) {
-        logger.warn('AutomationExecution: No test case JSON files found in auto directory', {
+        logger.warn('AutomationExecution: No Playwright script files (.js/.ts) found in auto directory', {
           autoDir,
           workspaceDir,
         });
@@ -487,11 +118,11 @@ export class AutomationExecution extends BaseAction {
         }
 
         return {
-          content: 'test/auto 目录中未找到测试用例 JSON 文件，已生成空报告。请先运行 AutomationPlanning 生成测试用例 JSON 文件后重新执行。',
+          content: 'docs/test/auto 目录中未找到 Playwright 脚本（.js/.ts）。请先运行 AutomationPlanning（CLI 模式）生成脚本后重新执行。',
           data: {
             type: 'automation_execution',
             skipped: true,
-            reason: 'No test case JSON files found',
+            reason: 'No Playwright script files found',
             timestamp: new Date().toISOString(),
             workspaceDir,
             reportDir,
@@ -499,15 +130,11 @@ export class AutomationExecution extends BaseAction {
         };
       }
 
-      logger.info('AutomationExecution: Found test case JSON files', {
+      logger.info('AutomationExecution: Found Playwright script files', {
         fileCount: testCaseFiles.length,
         files: testCaseFiles.map((f) => path.basename(f)),
       });
 
-      // Initialize Stagehand service
-      await this.stagehandService.initialize();
-
-      // Execute all test case files
       let results: TestCaseExecutionResult[] = [];
       try {
         logger.info('AutomationExecution: Starting test case execution', {
@@ -525,28 +152,7 @@ export class AutomationExecution extends BaseAction {
           error: error.message,
           stack: error.stack,
         });
-        // Even if execution fails, create empty results to generate report
         results = [];
-      } finally {
-        // 延迟关闭浏览器，让用户有时间观察
-        const keepOpenMs = options?.keepBrowserOpenMs ?? 5000;
-        if (keepOpenMs > 0) {
-          logger.info(`AutomationExecution: Keeping browser open for ${keepOpenMs}ms for observation`, {
-            keepOpenMs,
-            message: `浏览器将在 ${(keepOpenMs / 1000).toFixed(1)} 秒后关闭，请观察执行结果`,
-          });
-          await new Promise((resolve) => setTimeout(resolve, keepOpenMs));
-        }
-
-        // Cleanup Stagehand service
-        try {
-          await this.stagehandService.close();
-          logger.info('AutomationExecution: Stagehand service closed successfully');
-        } catch (closeError: any) {
-          logger.warn('AutomationExecution: Failed to close Stagehand service', {
-            error: closeError.message,
-          });
-        }
       }
 
       // Generate execution summary (always generate, even if no results)
@@ -685,7 +291,7 @@ export class AutomationExecution extends BaseAction {
   }
 
   /**
-   * Find all JSON test case files in the auto directory
+   * Find all Playwright script files (.js / .ts) in the auto directory
    */
   private async findTestCaseFiles(autoDir: string): Promise<string[]> {
     try {
@@ -696,17 +302,17 @@ export class AutomationExecution extends BaseAction {
         entryNames: entries.map((e) => e.name),
       });
 
-      const jsonFiles = entries
-        .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+      const scriptFiles = entries
+        .filter((entry) => entry.isFile() && (entry.name.endsWith('.js') || entry.name.endsWith('.ts')))
         .map((entry) => path.join(autoDir, entry.name))
         .sort();
 
-      logger.info('AutomationExecution: Filtered JSON test case files', {
-        fileCount: jsonFiles.length,
-        files: jsonFiles.map((f) => path.basename(f)),
+      logger.info('AutomationExecution: Filtered Playwright script files', {
+        fileCount: scriptFiles.length,
+        files: scriptFiles.map((f) => path.basename(f)),
       });
 
-      return jsonFiles;
+      return scriptFiles;
     } catch (error: any) {
       logger.error('AutomationExecution: Failed to read auto directory', {
         error: error.message,
@@ -718,138 +324,89 @@ export class AutomationExecution extends BaseAction {
   }
 
   /**
-   * Execute all test case JSON files and collect results
+   * Resolve playwright-skill run.js path and skill directory (cwd for execution)
    */
-  private async executeTestCaseFiles(jsonFiles: string[], cwd: string, options?: AutomationExecutionOptions): Promise<TestCaseExecutionResult[]> {
-    const results: TestCaseExecutionResult[] = [];
+  private getPlaywrightRunJsPath(): { runJsPath: string; skillDir: string } | null {
+    const projectRoot = WorkspaceManager.getProjectRootPath();
+    const runJsPath = path.join(projectRoot, 'skills', 'playwright-skill', 'skills', 'playwright-skill', 'run.js');
+    const skillDir = path.dirname(runJsPath);
+    if (!existsSync(runJsPath)) {
+      logger.warn('AutomationExecution: playwright-skill run.js not found', { runJsPath });
+      return null;
+    }
+    return { runJsPath, skillDir };
+  }
 
-    logger.info('AutomationExecution: Starting to execute test case JSON files', {
-      totalFiles: jsonFiles.length,
-      cwd,
+  /**
+   * Execute a single Playwright script via run.js and return result
+   */
+  private runPlaywrightScript(scriptPath: string, skillDir: string, runJsPath: string): { exitCode: number; stdout: string; stderr: string } {
+    const result = spawnSync('node', [runJsPath, scriptPath], {
+      cwd: skillDir,
+      encoding: 'utf-8',
+      timeout: 120000,
     });
+    return {
+      exitCode: result.status ?? -1,
+      stdout: (result.stdout ?? '') as string,
+      stderr: (result.stderr ?? '') as string,
+    };
+  }
 
-    for (let i = 0; i < jsonFiles.length; i++) {
-      const jsonFile = jsonFiles[i];
-      const startTime = Date.now();
-      const fileName = path.basename(jsonFile);
+  /**
+   * Execute all test case files: Playwright scripts (.js/.ts) via run.js
+   */
+  private async executeTestCaseFiles(jsonFiles: string[], _cwd: string, _options?: AutomationExecutionOptions): Promise<TestCaseExecutionResult[]> {
+    const results: TestCaseExecutionResult[] = [];
+    const isScriptMode = jsonFiles.length > 0 && jsonFiles.every((f) => f.endsWith('.js') || f.endsWith('.ts'));
 
-      // Extract test case ID from file name (e.g., TC-001-xxx.json -> TC-001-xxx)
-      const testCaseId = fileName.replace('.json', '');
-      let testCaseName = testCaseId;
-      let testCase: TestCaseJSON | null = null;
-
-      // Clear browser state before executing each test case
-      // This ensures each test case starts from a clean state (no cookies, no localStorage)
-      try {
-        await this.stagehandService.clearBrowserState();
-        logger.info('AutomationExecution: Cleared browser state before test case', {
-          testCaseId,
-          jsonFile: fileName,
-        });
-      } catch (clearError: any) {
-        logger.warn('AutomationExecution: Failed to clear browser state before test case', {
-          testCaseId,
-          jsonFile: fileName,
-          error: clearError.message,
-        });
-        // Continue execution even if clearing fails
+    if (isScriptMode) {
+      const runPath = this.getPlaywrightRunJsPath();
+      if (!runPath) {
+        logger.error('AutomationExecution: playwright-skill run.js not found, cannot execute scripts');
+        return jsonFiles.map((f) => ({
+          testCaseId: path.basename(f).replace(/\.(js|ts)$/, ''),
+          testCaseName: path.basename(f),
+          jsonFile: path.basename(f),
+          success: false,
+          executionTime: 0,
+          timestamp: new Date().toISOString(),
+          steps: [],
+          error: 'playwright-skill run.js not found',
+        }));
       }
-
-      try {
-        // Read and parse JSON file
-        const jsonContent = await fs.readFile(jsonFile, 'utf-8');
-        testCase = JSON.parse(jsonContent) as TestCaseJSON;
-        testCaseName = testCase.testCase || testCaseId;
-
-        logger.info('AutomationExecution: Executing test case', {
-          jsonFile: fileName,
-          testCaseId,
-          testCaseName,
-          stepsCount: testCase.steps.length,
-        });
-
-        // Execute all steps using StepRunner
-        const stepResults: StepExecutionResult[] = [];
-        const stepRunnerOptions: StepRunnerOptions = {
-          timeoutMs: options?.stepTimeoutMs,
-          retryCount: options?.maxRetryCount,
-          waitBeforeMs: options?.waitBeforeMs,
-          waitAfterMs: options?.waitAfterMs,
-          continueOnError: options?.continueOnError,
-        };
-
-        for (let stepIndex = 0; stepIndex < testCase.steps.length; stepIndex++) {
-          const step = testCase.steps[stepIndex];
-          const stepText = step.step;
-
-          // Update step status to running
-          testCase.steps[stepIndex].status = 'running';
-
-          // Execute step
-          const stepResult = await this.stepRunner.runStep(stepText, stepIndex, stepRunnerOptions);
-          stepResults.push(stepResult);
-
-          // Collect step result
-          this.resultCollector.collectStepResult(stepResult);
-
-          // Check if we should continue on error
-          if (stepResult.status === 'failed' && !options?.continueOnError) {
-            logger.warn('AutomationExecution: Step failed, stopping execution', {
-              testCaseId,
-              stepIndex,
-              step: stepText,
-            });
-            break;
-          }
-        }
-
-        // Collect test case result
-        const testCaseResult = this.resultCollector.collectTestCaseResult(testCaseId, testCaseName, jsonFile, stepResults);
-
-        // Generate updated JSON with results
-        const updatedJSON = this.resultCollector.generateResultJSON(testCase, stepResults);
-
-        // Update JSON file with results
-        await this.resultCollector.updateJSONFile(jsonFile, updatedJSON);
-
-        results.push(testCaseResult);
-
-        logger.info('AutomationExecution: Test case execution completed', {
-          jsonFile: fileName,
-          testCaseId,
-          success: testCaseResult.success,
-          executionTime: testCaseResult.executionTime,
-          stepsPassed: stepResults.filter((r) => r.status === 'passed').length,
-          stepsFailed: stepResults.filter((r) => r.status === 'failed').length,
-        });
-      } catch (error: any) {
+      logger.info('AutomationExecution: Executing Playwright scripts via run.js', {
+        totalFiles: jsonFiles.length,
+        skillDir: runPath.skillDir,
+      });
+      for (const scriptFile of jsonFiles) {
+        const startTime = Date.now();
+        const fileName = path.basename(scriptFile);
+        const testCaseId = fileName.replace(/\.(js|ts)$/, '');
+        const { exitCode, stderr } = this.runPlaywrightScript(scriptFile, runPath.skillDir, runPath.runJsPath);
         const executionTime = Date.now() - startTime;
-        logger.error('AutomationExecution: Failed to execute test case', {
-          jsonFile: fileName,
-          testCaseId,
-          error: error.message,
-          executionTime,
-        });
-
+        const success = exitCode === 0;
+        if (!success) {
+          logger.warn('AutomationExecution: Script failed', { fileName, exitCode, stderr: stderr.slice(0, 500) });
+        }
         results.push({
           testCaseId,
-          testCaseName,
-          jsonFile,
-          success: false,
+          testCaseName: testCaseId,
+          jsonFile: fileName,
+          success,
           executionTime,
           timestamp: new Date().toISOString(),
           steps: [],
-          error: error.message,
+          error: success ? undefined : stderr?.trim() || `exit code ${exitCode}`,
         });
       }
+      logger.info('AutomationExecution: Completed executing Playwright scripts', {
+        totalFiles: jsonFiles.length,
+        successCount: results.filter((r) => r.success).length,
+        failedCount: results.filter((r) => !r.success).length,
+      });
+      return results;
     }
-
-    logger.info('AutomationExecution: Completed executing all test case JSON files', {
-      totalFiles: jsonFiles.length,
-      resultsCount: results.length,
-      successCount: results.filter((r) => r.success).length,
-      failedCount: results.filter((r) => !r.success).length,
-    });
 
     return results;
   }
