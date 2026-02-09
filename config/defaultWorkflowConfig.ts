@@ -204,13 +204,6 @@ const EXECUTION_ACTIONS: ActionDefinition[] = [
 const PLANNING_ACTIONS: ActionDefinition[] = [
   { name: 'AutomationPlanning', display_name: '自动化规划', description: '规划自动化方案', class_name: 'AutomationPlanning', category: 'planning' },
   { name: 'ExecuteProjectManagement', display_name: '执行项目管理', description: '执行完整的项目管理流程（填充上下文、创建提案、验证格式、审查内容、评估故事点、验证评估）', class_name: 'ExecuteProjectManagement', category: 'planning' },
-  // Legacy actions - kept for backward compatibility but not used in default workflow
-  { name: 'FillProjectContext', display_name: '填充项目上下文', description: '基于PRD和设计文档填充项目上下文', class_name: 'FillProjectContext', category: 'planning' },
-  { name: 'CreateOpenSpecProposal', display_name: '创建变更提案', description: '创建OpenSpec变更提案', class_name: 'CreateOpenSpecProposal', category: 'planning' },
-  { name: 'ValidateOpenSpecProposal', display_name: '验证变更提案', description: '验证OpenSpec变更提案格式', class_name: 'ValidateOpenSpecProposal', category: 'planning' },
-  { name: 'ValidateOpenSpecContent', display_name: '验证变更内容', description: '验证OpenSpec变更内容一致性', class_name: 'ValidateOpenSpecContent', category: 'planning' },
-  { name: 'EstimateStoryPoints', display_name: '故事点评估', description: '为任务添加故事点评估', class_name: 'EstimateStoryPoints', category: 'planning' },
-  { name: 'ValidateStoryPointEstimates', display_name: '验证故事点评估', description: '验证故事点评估完整性', class_name: 'ValidateStoryPointEstimates', category: 'planning' },
   { name: 'Coordinate', display_name: '协调', description: '协调团队工作', class_name: 'Coordinate', category: 'planning' },
 ];
 
@@ -357,12 +350,6 @@ export const actionsWithWorkspaceOptions: string[] = [
   
   // Project Management actions
   'ExecuteProjectManagement',
-  'FillProjectContext',
-  'CreateOpenSpecProposal',
-  'ValidateOpenSpecProposal',
-  'ValidateOpenSpecContent',
-  'EstimateStoryPoints',
-  'ValidateStoryPointEstimates',
 ];
 
 /**
@@ -405,13 +392,6 @@ export const actionRelevanceMap: Record<string, string[]> = {
 
   // Project Manager actions (order 4, watch: WritePRD, WriteDesign)
   ExecuteProjectManagement: ['ImprovePRD', 'ImproveDesign'],
-  // Legacy actions - kept for backward compatibility
-  FillProjectContext: ['ImprovePRD', 'ImproveDesign'],
-  CreateOpenSpecProposal: ['FillProjectContext'],
-  ValidateOpenSpecProposal: ['CreateOpenSpecProposal'],
-  ValidateOpenSpecContent: ['ValidateOpenSpecProposal'],
-  EstimateStoryPoints: ['ValidateOpenSpecContent'],
-  ValidateStoryPointEstimates: ['EstimateStoryPoints'],
 
   // Engineer actions (order 5, watch: WritePRD, WriteDesign, ExecuteProjectManagement)
   WriteCode: ['ImprovePRD', 'ImproveDesign', 'ExecuteProjectManagement'],
@@ -460,8 +440,16 @@ export const actionDependencies: Record<string, ActionDependency> = {
  * Value: new action name (or null if action was removed without replacement)
  */
 export const deprecatedActionMappings: Record<string, string | null> = {
-  // BreakdownTasks was replaced by OpenSpec actions, map to first replacement action
-  BreakdownTasks: 'FillProjectContext',
+  // BreakdownTasks was replaced by ExecuteProjectManagement
+  BreakdownTasks: 'ExecuteProjectManagement',
+  
+  // Individual OpenSpec actions were consolidated into ExecuteProjectManagement
+  FillProjectContext: 'ExecuteProjectManagement',
+  CreateOpenSpecProposal: 'ExecuteProjectManagement',
+  ValidateOpenSpecProposal: 'ExecuteProjectManagement',
+  ValidateOpenSpecContent: 'ExecuteProjectManagement',
+  EstimateStoryPoints: 'ExecuteProjectManagement',
+  ValidateStoryPointEstimates: 'ExecuteProjectManagement',
   
   // TestCaseReview was renamed to TestReview
   TestCaseReview: 'TestReview',
@@ -509,11 +497,5 @@ export const actionDocumentTypeMap: Record<string, string> = {
   
   // Planning Actions (use appropriate document types)
   ExecuteProjectManagement: 'TASKS',
-  FillProjectContext: 'TASKS',
-  CreateOpenSpecProposal: 'TASKS',
-  ValidateOpenSpecProposal: 'TASKS',
-  ValidateOpenSpecContent: 'TASKS',
-  EstimateStoryPoints: 'TASKS',
-  ValidateStoryPointEstimates: 'TASKS',
   AutomationPlanning: 'TEST',
 };
