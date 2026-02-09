@@ -10,7 +10,6 @@ import { WritePRD } from '../../actions/WritePRD';
 import { ImprovePRD } from '../../actions/ImprovePRD';
 import { GeneratePrototype } from '../../actions/GeneratePrototype';
 import { Context } from '../../core/context/Context';
-import { RAGService } from '../../services/RAGService';
 import { SectionAdjustService } from '../../services/SectionAdjustService';
 import { WorkspaceManager } from '../../utils/WorkspaceManager';
 import { logger } from '../../utils';
@@ -19,22 +18,6 @@ import * as path from 'path';
 
 const documentRepo = new DocumentRepository();
 const projectRepo = new ProjectRepository();
-const ragService = new RAGService();
-
-// Initialize RAG service (lazy initialization)
-let ragServiceInitialized = false;
-async function ensureRAGServiceInitialized() {
-  if (!ragServiceInitialized) {
-    try {
-      await ragService.initialize();
-      ragServiceInitialized = true;
-    } catch (error: any) {
-      logger.warn('PRDController: Failed to initialize RAG service', {
-        error: error.message,
-      });
-    }
-  }
-}
 
 export class PRDController {
   /**
@@ -44,7 +27,7 @@ export class PRDController {
   static async generatePRD(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { requirements, mode = 'new', useRAG = false } = req.body;
+      const { requirements, mode = 'new' } = req.body;
 
       if (!requirements || typeof requirements !== 'string') {
         return res.status(400).json({
@@ -60,7 +43,6 @@ export class PRDController {
 
       logger.info(`PRDController: Generating PRD for project ${id}`, {
         mode,
-        useRAG,
         applicationId: project.application_id,
         requirementsLength: requirements.length,
       });
@@ -90,136 +72,27 @@ export class PRDController {
 
         parentId = latestPRD.id;
 
-        if (useRAG) {
-          // Ensure RAG service is initialized
-          await ensureRAGServiceInitialized();
-
-          // RAG mode: search for similar PRDs and extract relevant chunks
-          // If project belongs to an application, search across all projects in the application
-          let searchResults: any[] = [];
-
-          if (project.application_id) {
-            // Search across all projects in the application
-            searchResults = await ragService.searchSimilarPRDsByApplication(
-              project.application_id,
-              requirements,
-              5
-            );
-          }
-
-          // If no results from application search, try project-level search
-          if (searchResults.length === 0) {
-            searchResults = await ragService.searchSimilarPRDs(id, requirements, 3);
-          }
-
-          if (searchResults.length > 0) {
-            const relevantChunks = ragService.combinePRDResults(searchResults);
-            const result = await writePRDAction.run(requirements, {
-              mode: 'update',
-              useRAG: true,
-              relevantChunks,
-              historyPRD: latestPRD.content,
-              applicationId,
-              projectId,
-              // version property deprecated, using versionId in WorkspaceOptions
-            });
-            prdContent = result.content;
-          } else {
-            // Fallback to standard update mode if no similar PRDs found
-            const result = await writePRDAction.run(requirements, {
-              mode: 'update',
-              historyPRD: latestPRD.content,
-              applicationId,
-              projectId,
-              // version property deprecated, using versionId in WorkspaceOptions
-            });
-            prdContent = result.content;
-          }
-        } else {
-          // Standard update mode: use latest PRD directly
-          const result = await writePRDAction.run(requirements, {
-            mode: 'update',
-            historyPRD: latestPRD.content,
-            applicationId,
-            // version property deprecated, using versionId in WorkspaceOptions
-          });
-          prdContent = result.content;
-        }
+        // Standard update mode: use latest PRD directly
+        const result = await writePRDAction.run(requirements, {
+          mode: 'update',
+          historyPRD: latestPRD.content,
+          applicationId,
+          // version property deprecated, using versionId in WorkspaceOptions
+        });
+        prdContent = result.content;
       } else {
         // New mode: generate new PRD
-        if (useRAG) {
-          // Ensure RAG service is initialized
-          await ensureRAGServiceInitialized();
-
-          // RAG mode: search for similar PRDs even in new mode
-          // If project belongs to an application, search across all projects in the application
-          let searchResults: any[] = [];
-
-          if (project.application_id) {
-            // Search across all projects in the application
-            searchResults = await ragService.searchSimilarPRDsByApplication(
-              project.application_id,
-              requirements,
-              5
-            );
-          }
-
-          // If no results from application search, try project-level search
-          if (searchResults.length === 0) {
-            searchResults = await ragService.searchSimilarPRDs(id, requirements, 3);
-          }
-
-          if (searchResults.length > 0) {
-            const relevantChunks = ragService.combinePRDResults(searchResults);
-            const result = await writePRDAction.run(requirements, {
-              mode: 'new',
-              useRAG: true,
-              relevantChunks,
-              applicationId,
-              projectId,
-              // version property deprecated, using versionId in WorkspaceOptions
-            });
-            prdContent = result.content;
-          } else {
-            // Standard new mode
-            const result = await writePRDAction.run(requirements, {
-              mode: 'new',
-              applicationId,
-              projectId,
-              // version property deprecated, using versionId in WorkspaceOptions
-            });
-            prdContent = result.content;
-          }
-        } else {
-          // Standard new mode
-          const result = await writePRDAction.run(requirements, {
-            mode: 'new',
-            applicationId,
-            // version property deprecated, using versionId in WorkspaceOptions
-          });
-          prdContent = result.content;
-        }
+        // Standard new mode
+        const result = await writePRDAction.run(requirements, {
+          mode: 'new',
+          applicationId,
+          // version property deprecated, using versionId in WorkspaceOptions
+        });
+        prdContent = result.content;
       }
 
       // Save as new PRD version
       const newPRD = await documentRepo.createPRDVersion(id, prdContent, parentId);
-
-      // Index document to Qdrant for vector search
-      try {
-        await ensureRAGServiceInitialized();
-        await ragService.indexDocuments([{
-          id: newPRD.id,
-          content: prdContent,
-          type: 'PRD',
-          projectId: id,
-          version: newPRD.version,
-        }]);
-      } catch (error: any) {
-        logger.warn('PRDController: Failed to index document to Qdrant', {
-          error: error.message,
-          documentId: newPRD.id,
-        });
-      }
 
       // Read all content from workspace (if stepwise generation was used)
       // The content from WritePRD already includes all files merged
@@ -298,7 +171,7 @@ export class PRDController {
             try {
               await fs.access(prototypeDir);
               const files = await fs.readdir(prototypeDir);
-              const htmlFiles = files.filter(f => f.endsWith('.html'));
+              const htmlFiles = files.filter((f) => f.endsWith('.html'));
 
               if (htmlFiles.length === 0) {
                 return null;
@@ -324,7 +197,7 @@ export class PRDController {
       );
 
       // 过滤掉null值（没有prototype的版本）
-      const validPrds = prdList.filter(prd => prd !== null);
+      const validPrds = prdList.filter((prd) => prd !== null);
 
       return res.json({
         success: true,
@@ -373,7 +246,7 @@ export class PRDController {
       try {
         await fs.access(prototypeDir);
       } catch {
-        return res.status(404).json({ 
+        return res.status(404).json({
           error: 'Prototype not found',
           message: `Prototype directory does not exist for version ${versionId}`,
         });
@@ -381,30 +254,28 @@ export class PRDController {
 
       // 查找index.html文件（优先）或其他HTML文件
       const files = await fs.readdir(prototypeDir);
-      const htmlFiles = files.filter(f => f.endsWith('.html'));
-      
+      const htmlFiles = files.filter((f) => f.endsWith('.html'));
+
       if (htmlFiles.length === 0) {
-        return res.status(404).json({ 
+        return res.status(404).json({
           error: 'Prototype file not found',
           message: 'No HTML files found in prototype directory',
         });
       }
 
       // 优先使用index.html，否则使用第一个HTML文件
-      const mainFile = htmlFiles.includes('index.html') 
-        ? 'index.html' 
-        : htmlFiles[0];
-      
+      const mainFile = htmlFiles.includes('index.html') ? 'index.html' : htmlFiles[0];
+
       const filePath = path.join(prototypeDir, mainFile);
 
       try {
         const content = await fs.readFile(filePath, 'utf-8');
-        
+
         // 设置Content-Type为text/html，让浏览器直接渲染
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         // 允许在iframe中嵌入（移除X-Frame-Options限制，使用CSP允许所有来源）
         res.removeHeader('X-Frame-Options');
-        res.setHeader('Content-Security-Policy', "frame-ancestors *");
+        res.setHeader('Content-Security-Policy', 'frame-ancestors *');
         return res.send(content);
       } catch (error: any) {
         if ((error as any).code === 'ENOENT') {
@@ -690,7 +561,7 @@ export class PRDController {
 
       return res.json({
         success: true,
-        sections: sections.map(s => ({
+        sections: sections.map((s) => ({
           number: s.number,
           title: s.title,
           contentPreview: s.content?.substring(0, 200) || '',
@@ -832,14 +703,14 @@ export class PRDController {
 
       // Adjust section directly from workspace
       const sectionAdjustService = new SectionAdjustService();
-      
+
       // Determine applicationId: use provided, project's application_id, or fallback to projectId/sessionId
       // Note: 'default' is not allowed, so we use projectId/sessionId as fallback for interactive sessions
       let appId = applicationId;
       if (!appId || appId === 'default') {
         appId = project?.application_id || project?.id || id;
       }
-      
+
       const ver = version || 1;
 
       // Determine document type for workspace directory
@@ -916,18 +787,13 @@ export class PRDController {
       if (!appId || appId === 'default') {
         appId = project?.application_id || project?.id || id;
       }
-      
+
       const ver = version ? parseInt(version as string) : 1;
       const docType = (documentType === 'MRD' ? 'MRD' : 'PRD') as 'PRD' | 'MRD';
 
       // Load conversation history from database
       const { loadSectionConversationHistory } = await import('../../utils/sectionConversationHistory');
-      const history = await loadSectionConversationHistory(
-        id,
-        sectionNum,
-        docType,
-        ver
-      );
+      const history = await loadSectionConversationHistory(id, sectionNum, docType, ver);
 
       return res.json({
         success: true,
@@ -1052,18 +918,11 @@ export class PRDController {
       const projectId = project.id;
 
       // Try to read prototype files from workspace
-      const prototypeDir = path.join(
-        WorkspaceManager.getWorkspaceRoot(),
-        applicationId,
-        projectId,
-        'ainative-workspace',
-        'docs',
-        'prototype'
-      );
+      const prototypeDir = path.join(WorkspaceManager.getWorkspaceRoot(), applicationId, projectId, 'ainative-workspace', 'docs', 'prototype');
 
       try {
         const files = await fs.readdir(prototypeDir);
-        const htmlFiles = files.filter(f => f.endsWith('.html'));
+        const htmlFiles = files.filter((f) => f.endsWith('.html'));
 
         if (htmlFiles.length === 0) {
           return res.json({
@@ -1093,7 +952,7 @@ export class PRDController {
           prototype: {
             exists: true,
             files: fileContents,
-            mainFile: fileContents.find(f => f.filename === 'index.html')?.filename || fileContents[0]?.filename,
+            mainFile: fileContents.find((f) => f.filename === 'index.html')?.filename || fileContents[0]?.filename,
           },
         });
       } catch (error: any) {
@@ -1147,15 +1006,7 @@ export class PRDController {
       const applicationId = project.application_id || project.id;
       const projectId = project.id;
 
-      const filePath = path.join(
-        WorkspaceManager.getWorkspaceRoot(),
-        applicationId,
-        projectId,
-        'ainative-workspace',
-        'docs',
-        'prototype',
-        filename
-      );
+      const filePath = path.join(WorkspaceManager.getWorkspaceRoot(), applicationId, projectId, 'ainative-workspace', 'docs', 'prototype', filename);
 
       try {
         const content = await fs.readFile(filePath, 'utf-8');
@@ -1164,10 +1015,10 @@ export class PRDController {
         const contentType = filename.endsWith('.html')
           ? 'text/html'
           : filename.endsWith('.css')
-          ? 'text/css'
-          : filename.endsWith('.js')
-          ? 'application/javascript'
-          : 'text/plain';
+            ? 'text/css'
+            : filename.endsWith('.js')
+              ? 'application/javascript'
+              : 'text/plain';
 
         res.setHeader('Content-Type', contentType);
         return res.send(content);
@@ -1210,24 +1061,17 @@ export class PRDController {
       const projectId = project.id;
 
       // Try to get prototype files list first
-      const prototypeDir = path.join(
-        WorkspaceManager.getWorkspaceRoot(),
-        applicationId,
-        projectId,
-        'ainative-workspace',
-        'docs',
-        'prototype'
-      );
+      const prototypeDir = path.join(WorkspaceManager.getWorkspaceRoot(), applicationId, projectId, 'ainative-workspace', 'docs', 'prototype');
 
       let mainFile = 'index.html';
       try {
         const files = await fs.readdir(prototypeDir);
-        const indexFile = files.find(f => f === 'index.html');
+        const indexFile = files.find((f) => f === 'index.html');
         if (indexFile) {
           mainFile = indexFile;
         } else if (files.length > 0) {
           // Use first HTML file if index.html doesn't exist
-          const htmlFile = files.find(f => f.endsWith('.html'));
+          const htmlFile = files.find((f) => f.endsWith('.html'));
           if (htmlFile) {
             mainFile = htmlFile;
           }
@@ -1240,7 +1084,7 @@ export class PRDController {
 
       try {
         const content = await fs.readFile(filePath, 'utf-8');
-        
+
         // Set Content-Type to HTML for iframe embedding
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         // Allow iframe embedding (optional, for security you might want to restrict)
@@ -1342,7 +1186,6 @@ export class PRDController {
       });
     }
   }
-
 }
 
 export default PRDController;

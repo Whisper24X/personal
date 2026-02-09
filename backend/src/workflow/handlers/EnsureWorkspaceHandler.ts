@@ -1,7 +1,7 @@
 /**
  * EnsureWorkspaceHandler
  * Handler that ensures workspace exists before workflow starts
- * 
+ *
  * If workspace folder is missing, this handler will re-clone the repository
  * (either user's custom git repo or template repository)
  */
@@ -51,10 +51,41 @@ export class EnsureWorkspaceHandler implements WorkflowStartupHandler {
         workspacePath,
       });
 
-      // If workspace exists and is a git repository, check if branch exists and pull
+      // Check if workspace is empty
+      const isEmpty = await WorkspaceManager.isWorkspaceEmpty(workspaceOptions);
+      if (isEmpty) {
+        logger.info('EnsureWorkspaceHandler: Workspace is empty, reinitializing', {
+          projectId: project.id,
+          versionId,
+          workspacePath,
+        });
+
+        // Reinitialize workspace using the generic method
+        const reinitResult = await WorkspaceManager.reinitializeWorkspace(
+          workspaceOptions,
+          project.git_repo_url || undefined,
+          context.version?.branch_name
+        );
+
+        if (reinitResult.success) {
+          logger.info('EnsureWorkspaceHandler: Successfully reinitialized workspace', {
+            projectId: project.id,
+            versionId,
+          });
+        } else {
+          logger.warn('EnsureWorkspaceHandler: Failed to reinitialize workspace', {
+            projectId: project.id,
+            versionId,
+            error: reinitResult.message,
+          });
+        }
+        return;
+      }
+
+      // If workspace exists and is not empty, check if branch exists and pull
       if (this.gitService.isGitRepository(workspacePath) && context.version && context.version.branch_name) {
         const branchName = context.version.branch_name;
-        
+
         // Check if branch exists locally or remotely
         const localExists = await this.gitService.branchExistsLocally(workspacePath, branchName);
         const remoteExists = await this.gitService.branchExistsRemotely(workspacePath, branchName);
@@ -68,11 +99,7 @@ export class EnsureWorkspaceHandler implements WorkflowStartupHandler {
             remoteExists,
           });
 
-          const pullResult = await this.gitService.pullBranch(
-            workspacePath,
-            branchName,
-            project.id
-          );
+          const pullResult = await this.gitService.pullBranch(workspacePath, branchName, project.id);
 
           if (pullResult.success) {
             logger.info('EnsureWorkspaceHandler: Successfully pulled latest changes', {
@@ -97,11 +124,7 @@ export class EnsureWorkspaceHandler implements WorkflowStartupHandler {
             branchName,
           });
 
-          const branchResult = await this.gitService.createBranch(
-            workspacePath,
-            branchName,
-            true
-          );
+          const branchResult = await this.gitService.createBranch(workspacePath, branchName, true);
 
           if (branchResult.success) {
             logger.info('EnsureWorkspaceHandler: Created version branch', {
@@ -111,10 +134,7 @@ export class EnsureWorkspaceHandler implements WorkflowStartupHandler {
             });
 
             // Push branch to remote with upstream tracking
-            const pushResult = await this.gitService.pushChanges(
-              workspacePath,
-              branchName
-            );
+            const pushResult = await this.gitService.pushChanges(workspacePath, branchName);
             if (pushResult.success) {
               logger.info('EnsureWorkspaceHandler: Pushed version branch to remote', {
                 projectId: project.id,
@@ -145,7 +165,7 @@ export class EnsureWorkspaceHandler implements WorkflowStartupHandler {
       }
     }
 
-    logger.info('EnsureWorkspaceHandler: Workspace not found, re-cloning', {
+    logger.info('EnsureWorkspaceHandler: Workspace not found, reinitializing', {
       projectId: project.id,
       versionId,
       workspacePath,
@@ -153,79 +173,23 @@ export class EnsureWorkspaceHandler implements WorkflowStartupHandler {
     });
 
     try {
-      // If project has custom git repo, clone from user repository
-      if (project.git_repo_url) {
-        const prepareResult = await this.gitService.prepareRepository({
-          gitRepoUrl: project.git_repo_url,
-          workspacePath,
-          projectId: project.id,
-        });
+      // Use the generic reinitializeWorkspace method
+      const reinitResult = await WorkspaceManager.reinitializeWorkspace(
+        workspaceOptions,
+        project.git_repo_url || undefined,
+        context.version?.branch_name
+      );
 
-        if (prepareResult.success) {
-          logger.info('EnsureWorkspaceHandler: Re-cloned user repository', {
-            projectId: project.id,
-            versionId,
-            gitRepoUrl: project.git_repo_url,
-          });
-
-          // Create version branch if needed
-          if (context.version && context.version.branch_name && this.gitService.isGitRepository(workspacePath)) {
-            const branchResult = await this.gitService.createBranch(
-              workspacePath,
-              context.version.branch_name,
-              true
-            );
-            if (branchResult.success) {
-              logger.info('EnsureWorkspaceHandler: Created version branch', {
-                projectId: project.id,
-                versionId,
-                branchName: context.version.branch_name,
-              });
-
-              // Push branch to remote with upstream tracking
-              const pushResult = await this.gitService.pushChanges(
-                workspacePath,
-                context.version.branch_name
-              );
-              if (pushResult.success) {
-                logger.info('EnsureWorkspaceHandler: Pushed version branch to remote', {
-                  projectId: project.id,
-                  versionId,
-                  branchName: context.version.branch_name,
-                });
-              } else {
-                logger.warn('EnsureWorkspaceHandler: Failed to push version branch to remote', {
-                  projectId: project.id,
-                  versionId,
-                  branchName: context.version.branch_name,
-                  error: pushResult.message,
-                });
-              }
-            } else {
-              logger.warn('EnsureWorkspaceHandler: Failed to create version branch', {
-                projectId: project.id,
-                versionId,
-                branchName: context.version.branch_name,
-                error: branchResult.message,
-              });
-            }
-          }
-        } else {
-          logger.warn('EnsureWorkspaceHandler: Failed to clone user repository, falling back to template', {
-            projectId: project.id,
-            versionId,
-            gitRepoUrl: project.git_repo_url,
-            error: prepareResult.message,
-          });
-          // Fall back to template if user repo clone fails
-          await WorkspaceManager.initWorkspace(workspaceOptions);
-        }
-      } else {
-        // No custom git repo - initialize with template
-        await WorkspaceManager.initWorkspace(workspaceOptions);
-        logger.info('EnsureWorkspaceHandler: Initialized workspace with template', {
+      if (reinitResult.success) {
+        logger.info('EnsureWorkspaceHandler: Successfully reinitialized workspace', {
           projectId: project.id,
           versionId,
+        });
+      } else {
+        logger.warn('EnsureWorkspaceHandler: Failed to reinitialize workspace', {
+          projectId: project.id,
+          versionId,
+          error: reinitResult.message,
         });
       }
     } catch (error: any) {
