@@ -738,8 +738,8 @@ async function handleUserAction(action: string, modifiedContent?: string) {
 
     completedSteps.value.push(step);
 
-    // 部署失败的编辑操作：直接重置到 Engineer 角色，不调用 confirmWorkflow
-    if (action === 'edit' && currentStep.value?.instructContent?.deployFailed) {
+    // 工程师角色的编辑操作：直接重置到 Engineer 角色，不调用 confirmWorkflow
+    if (action === 'edit' && currentStep.value?.role === 'Engineer') {
       try {
         await apiClient.resetWorkflow(platformId.value, versionId.value!, 'Engineer');
         ElMessage.success('改进建议已保存，正在重新执行工程师角色...');
