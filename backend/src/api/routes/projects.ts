@@ -60,6 +60,9 @@ router.get('/:id/versions/:versionId/review/status', ProjectVersionController.ge
 router.post('/:id/versions/:versionId/review/answer', ProjectVersionController.submitAnswer);
 router.post('/:id/versions/:versionId/review/continue', ProjectVersionController.continueReview);
 
+// Version prototype preview route (must come before generic /:id)
+router.get('/:id/versions/:versionId/prototype/preview', PRDController.previewPrototypeByVersion);
+
 // Generic project routes (must come after more specific routes)
 router.get('/:id', ProjectController.getStatus);
 router.delete('/:id', ProjectController.delete);
