@@ -102,9 +102,11 @@ export class WriteCode extends BaseAction {
       // 从 prompts/code.ts 获取命令提示词
       // 这些提示词对应于独立的 Cursor Skills（无状态执行工具）：
       // - getApplyCommand() → skills/code-task-apply/SKILL.md
+      // - getEvaluateCommand() → skills/code-evaluate-completion/SKILL.md
       // - getCheckCommand() → skills/code-task-check/SKILL.md
       // 循环控制由此编排层（WriteCode.ts）负责，符合 Tool Design 最佳实践
       const applyCommand = '使用 code-task-apply 技能生成代码'; // Skill: code-task-apply
+      const evaluateCommand = '使用 code-evaluate-completion 技能评估并修复代码'; // Skill: code-evaluate-completion
       const checkCommand = '使用 code-task-check 技能检查任务状态'; // Skill: code-task-check
 
       // 循环执行，直到任务完成
@@ -149,7 +151,33 @@ export class WriteCode extends BaseAction {
 
         allOutputs.push(`=== Iteration ${retryCount} - Apply ===\n${applyOutput}`);
 
-        // 2. 执行 check 命令
+        // 2. 执行 evaluate 命令（评估代码完整性并修复问题）
+        logger.info(`WriteCode: Iteration ${retryCount}/${maxRetries} - Executing evaluate command`, {
+          command: evaluateCommand,
+        });
+
+        const evaluateResult = await this.runCLICommand(evaluateCommand, workDir, {
+          timeout: 1800000, // 30分钟超时
+          abortSignal: this.abortSignal,
+        });
+
+        const evaluateOutput = evaluateResult.output;
+        if (evaluateResult.exitCode === 0) {
+          logger.info(`WriteCode: Evaluate command completed (iteration ${retryCount})`, {
+            outputLength: evaluateOutput.length,
+            output: evaluateOutput.substring(0, 200), // 记录前200字符
+          });
+        } else {
+          logger.warn(`WriteCode: Evaluate command failed (iteration ${retryCount})`, {
+            exitCode: evaluateResult.exitCode,
+            stdout: evaluateOutput || '(empty)',
+            stderr: evaluateResult.stderr || '(empty)',
+          });
+        }
+
+        allOutputs.push(`=== Iteration ${retryCount} - Evaluate ===\n${evaluateOutput}`);
+
+        // 3. 执行 check 命令
         logger.info(`WriteCode: Iteration ${retryCount}/${maxRetries} - Executing check command`, {
           command: checkCommand,
         });
@@ -175,7 +203,7 @@ export class WriteCode extends BaseAction {
 
         allOutputs.push(`=== Iteration ${retryCount} - Check ===\n${checkOutput}`);
 
-        // 3. 判断是否完成 - 读取结果文件 docs/code/taskResult.md
+        // 4. 判断是否完成 - 读取结果文件 docs/code/taskResult.md
         const resultFilePath = path.join(workDir, 'docs/code/taskResult.md');
 
         try {
