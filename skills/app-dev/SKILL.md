@@ -1,11 +1,11 @@
 ---
 name: app-dev
-description: Guides development for ainative-app mobile application (Taro + Vue3 + Pinia). Supports multi-platform (WeChat, H5, Alipay). Provides 6-step workflow, cross-platform patterns, request encapsulation. Use when developing mobile app, mini-program, cross-platform pages, or user mentions ainative-app, Taro, WeChat mini-program.
+description: Guides development for ainative-app mobile application (Taro + Vue3 + Pinia). Supports WeChat mini-program only. Provides 6-step workflow, request encapsulation, and best practices. Use when developing mobile app, mini-program, or user mentions ainative-app, Taro, WeChat mini-program.
 ---
 
 # ainative-app 移动端开发指南
 
-指导 Taro + Vue3 跨端移动应用开发，遵循项目规范和最佳实践。
+指导 Taro + Vue3 微信小程序开发，遵循项目规范和最佳实践。
 
 ## 技术栈
 
@@ -17,9 +17,7 @@ description: Guides development for ainative-app mobile application (Taro + Vue3
 
 ## 支持平台
 
-- 微信小程序
-- H5
-- 支付宝小程序
+- 微信小程序（当前仅支持此平台）
 
 ## 6 步开发流程
 
@@ -191,7 +189,7 @@ export const useUserStore = defineStore(
 );
 ```
 
-**Taro 存储适配**: 必须使用 `Taro.getStorageSync/setStorageSync`，确保跨端兼容。
+**Taro 存储适配**: 必须使用 `Taro.getStorageSync/setStorageSync`，遵循小程序存储规范。
 
 → 详见 [references/state-management.md](references/state-management.md)
 
@@ -279,12 +277,11 @@ const authPages = ['/pages/user/profile/index'];
 
 ---
 
-## 跨端适配
+## 小程序开发规范
 
 ### 1. 单位使用
 
-- **小程序**: 使用 `rpx`（基于 750 设计稿）
-- **H5**: 自动转换为 `rem`
+- 使用 `rpx`（基于 750 设计稿）
 
 ```less
 .box {
@@ -438,6 +435,5 @@ Taro.removeStorageSync('key');
 - **组件库**: [references/components.md](references/components.md)
 - **状态管理**: [references/state-management.md](references/state-management.md)
 - **样式系统**: [references/style-system.md](references/style-system.md)
-- **跨端适配**: [references/cross-platform.md](references/cross-platform.md)
 
 完整文档：[docs/dev-spec/ainative-app/README.md](../../../docs/dev-spec/ainative-app/README.md)
