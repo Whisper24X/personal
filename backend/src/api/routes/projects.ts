@@ -53,6 +53,7 @@ router.put('/:id/versions/:versionId', ProjectVersionController.update);
 router.delete('/:id/versions/:versionId', ProjectVersionController.delete);
 router.post('/:id/versions/:versionId/activate', ProjectVersionController.activate);
 router.get('/:id/branches', ProjectVersionController.getBranches);
+router.post('/:id/versions/:versionId/improve-suggestion', ProjectController.saveImproveSuggestion);
 
 // Version review routes (must come before generic /:id)
 router.post('/:id/versions/:versionId/review/start', ProjectVersionController.startReview);

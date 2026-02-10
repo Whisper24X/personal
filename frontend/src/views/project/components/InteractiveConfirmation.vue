@@ -246,7 +246,7 @@
           </el-button>
 
           <el-button v-if="!isIdle && isEditing" type="success" size="large" :icon="Check" :loading="loading" @click="saveEdit">
-            保存修改并继续
+            {{ isEngineerRole ? '保存修改并开始优化' : '保存修改并继续' }}
           </el-button>
 
           <el-button v-if="!isIdle && isEditing" size="large" :icon="Close" @click="cancelEdit"> 取消编辑 </el-button>
@@ -437,6 +437,9 @@ const isDeployFailed = computed(() => {
     (props.roleInfo.action === 'Deploy' && props.roleInfo.instructContent?.isCompleted === false)
   );
 });
+
+// 检测是否为工程师角色（用于统一编辑后的优化流程）
+const isEngineerRole = computed(() => props.roleInfo.role === 'Engineer');
 
 const documentType = computed(() => {
   const action = props.roleInfo.action;
@@ -651,8 +654,8 @@ async function saveEdit() {
     modifiedContent += filesSummary;
   }
 
-  // 如果是部署失败的情况，保存改进建议到 docs/code/ImproveCode.md
-  if (isDeployFailed.value && props.projectId && props.versionId) {
+  // 如果是工程师角色（无论部署成功或失败），保存改进建议到 docs/code/ImproveCode.md
+  if (isEngineerRole.value && props.projectId && props.versionId) {
     try {
       await apiClient.saveImproveSuggestion(props.projectId, props.versionId, modifiedContent);
       ElMessage.success('改进建议已保存，系统将在下次执行时改进代码');
