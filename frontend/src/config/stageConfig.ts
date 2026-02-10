@@ -37,11 +37,7 @@ export const ACTION_STAGE_MAP: Record<string, Record<string, string>> = {
     WriteDesign: '系统设计阶段',
   },
   ProjectManager: {
-    FillProjectContext: '任务拆分阶段',
-    CreateOpenSpecProposal: '任务拆分阶段',
-    ValidateOpenSpecProposal: '任务拆分阶段',
-    EstimateStoryPoints: '任务拆分阶段',
-    ValidateStoryPointEstimates: '任务拆分阶段',
+    ExecuteProjectManagement: '任务拆分阶段',
   },
   Engineer: {
     WriteCode: '代码实现阶段',
@@ -54,12 +50,12 @@ export const ACTION_STAGE_MAP: Record<string, Record<string, string>> = {
 
 // Stage name to color mapping
 export const STAGE_COLOR_MAP: Record<string, TagType> = {
-  '市场研究阶段': 'info',
-  '产品需求阶段': 'success',
-  '系统设计阶段': 'warning',
-  '任务拆分阶段': 'warning',
-  '代码实现阶段': 'danger',
-  '测试编写阶段': 'danger',
+  市场研究阶段: 'info',
+  产品需求阶段: 'success',
+  系统设计阶段: 'warning',
+  任务拆分阶段: 'warning',
+  代码实现阶段: 'danger',
+  测试编写阶段: 'danger',
 };
 
 /**
@@ -78,19 +74,19 @@ export function getStageName(role: string, action: string): string {
  */
 export function getStageTagType(stageName: string): TagType {
   if (!stageName) return 'info';
-  
+
   // Check for exact match first
   if (STAGE_COLOR_MAP[stageName]) {
     return STAGE_COLOR_MAP[stageName];
   }
-  
+
   // Fallback to partial match
   for (const [key, color] of Object.entries(STAGE_COLOR_MAP)) {
     if (stageName.includes(key.replace('阶段', ''))) {
       return color;
     }
   }
-  
+
   return 'info';
 }
 

@@ -7,6 +7,11 @@
  * - Updates steps array: Intelligently handles BreakdownTasks steps in different states
  * - Updates currentPosition: Adjusts position if it points to BreakdownTasks
  *
+ * NOTE: This is a historical migration. The individual OpenSpec actions mentioned here
+ * (FillProjectContext, CreateOpenSpecProposal, etc.) have since been consolidated into
+ * a single ExecuteProjectManagement action that uses the project-management skill.
+ * This migration file is kept for historical record only.
+ *
  * Usage: pnpm exec tsx src/database/migrations/update_workflow_executions_breakdown_tasks.ts
  */
 

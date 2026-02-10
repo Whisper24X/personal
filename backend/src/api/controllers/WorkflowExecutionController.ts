@@ -607,32 +607,29 @@ export class WorkflowExecutionController {
       const existing = await WorkflowExecutionController._filterExistingFiles(workspaceDir, [directPath]);
       return existing;
     }
-    if (action === 'FillProjectContext') {
-      return WorkflowExecutionController._filterExistingFiles(workspaceDir, [path.join('openspec', 'project.md')]);
-    }
-    if (action === 'CreateOpenSpecProposal' || action === 'ValidateOpenSpecProposal') {
+    // Note: Individual OpenSpec actions (FillProjectContext, CreateOpenSpecProposal, etc.)
+    // have been replaced by ExecuteProjectManagement which handles all OpenSpec workflow steps
+    if (action === 'ExecuteProjectManagement') {
+      // Collect all OpenSpec-related files
+      const projectMd = path.join('openspec', 'project.md');
       const changeDir = await WorkflowExecutionController._findLatestChangeDir(workspaceDir);
-      if (!changeDir) {
-        return [];
+
+      const files: string[] = [];
+      const projectMdExists = await WorkflowExecutionController._filterExistingFiles(workspaceDir, [projectMd]);
+      files.push(...projectMdExists);
+
+      if (changeDir) {
+        const baseFiles = [path.join(changeDir, 'proposal.md'), path.join(changeDir, 'tasks.md'), path.join(changeDir, 'design.md')];
+        const existingBaseFiles = await WorkflowExecutionController._filterExistingFiles(workspaceDir, baseFiles);
+        files.push(...existingBaseFiles);
+
+        const specsDirAbs = path.join(workspaceDir, changeDir, 'specs');
+        const specsDirRel = path.join(changeDir, 'specs');
+        const specFiles = await WorkflowExecutionController._collectSpecFiles(specsDirAbs, specsDirRel);
+        files.push(...specFiles);
       }
-      const baseFiles = [path.join(changeDir, 'proposal.md'), path.join(changeDir, 'tasks.md'), path.join(changeDir, 'design.md')];
-      const existingBaseFiles = await WorkflowExecutionController._filterExistingFiles(workspaceDir, baseFiles);
-      const specsDirAbs = path.join(workspaceDir, changeDir, 'specs');
-      const specsDirRel = path.join(changeDir, 'specs');
-      const specFiles = await WorkflowExecutionController._collectSpecFiles(specsDirAbs, specsDirRel);
-      return [...existingBaseFiles, ...specFiles];
-    }
-    if (action === 'EstimateStoryPoints' || action === 'ValidateStoryPointEstimates') {
-      const tasksFile = await WorkflowExecutionController._findLatestTasksFile(workspaceDir);
-      if (!tasksFile) {
-        return [];
-      }
-      const estimatesFile = tasksFile.replace('tasks.md', 'tasks-with-estimates.md');
-      const existing = await WorkflowExecutionController._filterExistingFiles(workspaceDir, [estimatesFile]);
-      if (existing.length > 0) {
-        return existing;
-      }
-      return WorkflowExecutionController._filterExistingFiles(workspaceDir, [tasksFile]);
+
+      return files;
     }
     return [];
   }
@@ -672,37 +669,6 @@ export class WorkflowExecutionController {
       }
       dirsWithMtime.sort((a, b) => b.mtime - a.mtime);
       return path.join('openspec', 'changes', dirsWithMtime[0].name);
-    } catch {
-      return null;
-    }
-  }
-
-  private static async _findLatestTasksFile(workspaceDir: string): Promise<string | null> {
-    const changesDir = path.join(workspaceDir, 'openspec', 'changes');
-    try {
-      const entries = await fs.readdir(changesDir, { withFileTypes: true });
-      const dirs = entries.filter((entry) => entry.isDirectory());
-      if (dirs.length === 0) {
-        return null;
-      }
-      const tasksFiles: Array<{ path: string; mtime: number }> = [];
-      for (const dir of dirs) {
-        const relPath = path.join('openspec', 'changes', dir.name, 'tasks.md');
-        const fullPath = path.join(workspaceDir, relPath);
-        try {
-          const stats = await fs.stat(fullPath);
-          if (stats.isFile()) {
-            tasksFiles.push({ path: relPath, mtime: stats.mtime.getTime() });
-          }
-        } catch {
-          continue;
-        }
-      }
-      if (tasksFiles.length === 0) {
-        return null;
-      }
-      tasksFiles.sort((a, b) => b.mtime - a.mtime);
-      return tasksFiles[0].path;
     } catch {
       return null;
     }

@@ -28,12 +28,6 @@ export { ImproveDesign } from './ImproveDesign';
 export { ExecuteSubtask } from './ExecuteSubtask';
 
 // OpenSpec Actions
-export { FillProjectContext } from './FillProjectContext';
-export { CreateOpenSpecProposal } from './CreateOpenSpecProposal';
-export { ValidateOpenSpecProposal } from './ValidateOpenSpecProposal';
-export { ValidateOpenSpecContent } from './ValidateOpenSpecContent';
-export { EstimateStoryPoints } from './EstimateStoryPoints';
-export { ValidateStoryPointEstimates } from './ValidateStoryPointEstimates';
 export { ExecuteProjectManagement } from './ExecuteProjectManagement';
 
 // Code Execution and Bug Fix Actions
@@ -66,12 +60,6 @@ import { ImprovePRD } from './ImprovePRD';
 import { ImproveMRD } from './ImproveMRD';
 import { ImproveDesign } from './ImproveDesign';
 import { ExecuteSubtask } from './ExecuteSubtask';
-import { FillProjectContext } from './FillProjectContext';
-import { CreateOpenSpecProposal } from './CreateOpenSpecProposal';
-import { ValidateOpenSpecProposal } from './ValidateOpenSpecProposal';
-import { ValidateOpenSpecContent } from './ValidateOpenSpecContent';
-import { EstimateStoryPoints } from './EstimateStoryPoints';
-import { ValidateStoryPointEstimates } from './ValidateStoryPointEstimates';
 import { ExecuteProjectManagement } from './ExecuteProjectManagement';
 import { ImproveCode } from './ImproveCode';
 import { Deploy } from './Deploy';
@@ -111,12 +99,6 @@ export const ACTION_REGISTRY: Record<string, new () => BaseAction> = {
   // Task Management Actions
   ExecuteSubtask,
   // OpenSpec Actions
-  FillProjectContext,
-  CreateOpenSpecProposal,
-  ValidateOpenSpecProposal,
-  ValidateOpenSpecContent,
-  EstimateStoryPoints,
-  ValidateStoryPointEstimates,
   ExecuteProjectManagement,
   // Code Improvement Actions
   ImproveCode,
