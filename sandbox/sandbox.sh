@@ -34,6 +34,58 @@ NGINX_PORT="${SANDBOX_PORT:-8080}"
 MEMORY_LIMIT="${SANDBOX_MEMORY:-8g}"
 MEMORY_RESERVATION="${SANDBOX_MEMORY_MIN:-2g}"
 
+# 检测本机 IP
+_detect_local_ip() {
+    local ip=""
+    if [[ "$(uname)" == "Darwin" ]]; then
+        ip=$(ipconfig getifaddr en0 2>/dev/null || true)
+    fi
+    if [[ -z "$ip" ]]; then
+        ip=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
+    fi
+    if [[ -z "$ip" ]]; then
+        ip=$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' || true)
+    fi
+    echo "${ip:-127.0.0.1}"
+}
+LOCAL_IP="$(_detect_local_ip)"
+
+# 根据本机 IP 自动判断环境（SANDBOX_ENV 有值则优先使用）
+_resolve_env() {
+    if [[ -n "${SANDBOX_ENV:-}" ]]; then
+        echo "$SANDBOX_ENV"
+        return
+    fi
+    if [[ -n "${SANDBOX_IP_PRODUCTION:-}" && "$LOCAL_IP" == "$SANDBOX_IP_PRODUCTION" ]]; then
+        echo "production"; return
+    fi
+    if [[ -n "${SANDBOX_IP_STAGE:-}" && "$LOCAL_IP" == "$SANDBOX_IP_STAGE" ]]; then
+        echo "stage"; return
+    fi
+    if [[ -n "${SANDBOX_IP_TEST:-}" && "$LOCAL_IP" == "$SANDBOX_IP_TEST" ]]; then
+        echo "test"; return
+    fi
+    echo "development"
+}
+SANDBOX_ENV="$(_resolve_env)"
+
+# 外部访问基础地址（按环境选择，否则自动拼接 IP:PORT）
+_resolve_base_url() {
+    local url=""
+    case "$SANDBOX_ENV" in
+        development) url="${SANDBOX_BASE_URL_DEVELOPMENT:-}" ;;
+        test)        url="${SANDBOX_BASE_URL_TEST:-}" ;;
+        stage)       url="${SANDBOX_BASE_URL_STAGE:-}" ;;
+        production)  url="${SANDBOX_BASE_URL_PRODUCTION:-}" ;;
+    esac
+    if [[ -n "$url" ]]; then
+        echo "${url%/}"
+        return
+    fi
+    echo "http://${LOCAL_IP}:${NGINX_PORT}"
+}
+SANDBOX_BASE_URL_RESOLVED="$(_resolve_base_url)"
+
 # 命名卷（基于容器名生成）
 VOLUME_GO_MOD="${CONTAINER_NAME}-go-mod-cache"
 VOLUME_PNPM="${CONTAINER_NAME}-pnpm-store"
@@ -276,12 +328,20 @@ cmd_start() {
         docker rm "$CONTAINER_NAME" > /dev/null 2>&1 || true
     fi
     
-    info "启动沙箱容器..."
+    if [[ "$SANDBOX_ENV" == "development" || "$SANDBOX_ENV" == "test" ]]; then
+        info "启动沙箱容器（${SANDBOX_ENV} 环境 - 使用容器内 DB/Redis）..."
+    else
+        info "启动沙箱容器（${SANDBOX_ENV} 环境 - 连接外部 DB/Redis）..."
+    fi
     
     docker run -d \
         --name "$CONTAINER_NAME" \
         --hostname "$CONTAINER_NAME" \
         -p "${NGINX_PORT}:8080" \
+        -e "SANDBOX_ENV=${SANDBOX_ENV}" \
+        -e "GO_ENV=${SANDBOX_ENV}" \
+        -e "SANDBOX_BASE_URL=${SANDBOX_BASE_URL_RESOLVED}" \
+        -e "SANDBOX_PORT=${NGINX_PORT}" \
         --memory="${MEMORY_LIMIT}" --memory-reservation="${MEMORY_RESERVATION}" \
         -v "$PROJECT_ROOT/ainative-backend:/workspace/ainative-backend" \
         -v "$PROJECT_ROOT/ainative-shadow:/workspace/ainative-shadow" \
@@ -355,12 +415,19 @@ cmd_info() {
         return
     fi
     
+    # 显示环境信息
+    if [[ "$SANDBOX_ENV" == "development" || "$SANDBOX_ENV" == "test" ]]; then
+        echo -e "环境: ${GREEN}${SANDBOX_ENV}${NC} (使用容器内 DB/Redis)"
+    else
+        echo -e "环境: ${YELLOW}${SANDBOX_ENV}${NC} (连接外部 DB/Redis)"
+    fi
+    
     echo ""
     echo "访问地址:"
-    echo "  统一入口:    http://localhost:${NGINX_PORT}/"
-    echo "  后端 API:    http://localhost:${NGINX_PORT}/api/"
-    echo "  管理后台:    http://localhost:${NGINX_PORT}/shadow/"
-    echo "  移动端 H5:   http://localhost:${NGINX_PORT}/app/"
+    echo "  统一入口:    ${SANDBOX_BASE_URL_RESOLVED}/"
+    echo "  后端 API:    ${SANDBOX_BASE_URL_RESOLVED}/api/"
+    echo "  管理后台:    ${SANDBOX_BASE_URL_RESOLVED}/shadow/"
+    echo "  移动端 H5:   ${SANDBOX_BASE_URL_RESOLVED}/app/"
     echo ""
     echo "常用命令:"
     echo "  进入沙箱:     ./sandbox/sandbox.sh shell"
@@ -443,10 +510,19 @@ cmd_help() {
     echo "  3. 默认值"
     echo ""
     echo "可配置项:"
-    echo "  SANDBOX_NAME       容器名称（默认: ainative-workspace-sandbox）"
-    echo "  SANDBOX_PORT       Nginx 端口（默认: 8080）"
-    echo "  SANDBOX_MEMORY     内存限制（默认: 8g）"
-    echo "  SANDBOX_MEMORY_MIN 内存预留（默认: 2g）"
+    echo "  SANDBOX_ENV                  运行环境: development|test|stage|production"
+    echo "  SANDBOX_NAME                 容器名称（默认: ainative-workspace-sandbox）"
+    echo "  SANDBOX_BASE_URL_DEVELOPMENT 开发环境访问地址（留空自动检测 IP）"
+    echo "  SANDBOX_BASE_URL_TEST        测试环境访问地址"
+    echo "  SANDBOX_BASE_URL_STAGE       预发环境访问地址"
+    echo "  SANDBOX_BASE_URL_PRODUCTION  生产环境访问地址"
+    echo "  SANDBOX_PORT                 Docker 端口映射（默认: 8080）"
+    echo "  SANDBOX_MEMORY               内存限制（默认: 8g）"
+    echo "  SANDBOX_MEMORY_MIN           内存预留（默认: 2g）"
+    echo ""
+    echo "环境说明:"
+    echo "  development|test   开发/测试 - 启动容器内 PostgreSQL + Redis"
+    echo "  stage|production   线上环境 - 连接外部数据库，不启动容器内 DB/Redis"
     echo ""
 }
 

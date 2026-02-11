@@ -25,6 +25,7 @@ RUN apk add --no-cache \
 # ============================================================
 
 ENV TZ=Asia/Shanghai \
+    SANDBOX_ENV=development \
     GO_ENV=development \
     GOPROXY=https://goproxy.cn,direct \
     GOPRIVATE=gitlab.yc345.tv \
