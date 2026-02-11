@@ -57,10 +57,179 @@ warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error()   { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 
 check_docker() {
-    if ! docker info > /dev/null 2>&1; then
-        error "Docker 未运行，请先启动 Docker Desktop"
+    # 第一步：检查 docker 命令是否存在
+    if ! command -v docker &> /dev/null; then
+        error "Docker 未安装，请先安装 Docker"
         exit 1
     fi
+
+    # 第二步：如果 docker info 正常，直接返回
+    if docker info > /dev/null 2>&1; then
+        return 0
+    fi
+
+    # 第三步：Docker 不可用，尝试诊断和自动修复
+    warn "Docker 未运行，正在诊断..."
+
+    # 检测运行环境（macOS vs Linux）
+    if [[ "$(uname)" == "Darwin" ]]; then
+        error "Docker Desktop 未运行，请先启动 Docker Desktop"
+        exit 1
+    fi
+
+    # Linux 环境：尝试自动修复 Rootless Docker
+    _check_and_fix_rootless_docker
+}
+
+# 诊断和修复 Rootless Docker 环境
+_check_and_fix_rootless_docker() {
+    info "检测到 Linux 环境，诊断 Rootless Docker..."
+
+    local has_fix=false
+    local need_restart=false
+    local diagnostics=()
+
+    # ---- 检查 1: 内核是否支持 user namespaces ----
+    local max_ns
+    max_ns=$(cat /proc/sys/user/max_user_namespaces 2>/dev/null || echo "0")
+    if [[ "$max_ns" -eq 0 ]]; then
+        diagnostics+=("❌ 内核未启用 user namespaces (max_user_namespaces=0)")
+        diagnostics+=("   修复: sudo sysctl -w user.max_user_namespaces=63759")
+        diagnostics+=("   持久化: echo 'user.max_user_namespaces=63759' | sudo tee /etc/sysctl.d/99-userns.conf && sudo sysctl --system")
+    else
+        diagnostics+=("✅ 内核 user namespaces 已启用 (max=$max_ns)")
+    fi
+
+    # ---- 检查 2: /etc/subuid 和 /etc/subgid 配置 ----
+    local current_user
+    current_user=$(whoami)
+    local current_uid
+    current_uid=$(id -u)
+
+    local subuid_ok=false
+    local subgid_ok=false
+
+    if [[ -f /etc/subuid ]]; then
+        # 检查是否有当前用户名或 UID 的条目
+        if grep -qE "^(${current_user}|${current_uid}):" /etc/subuid 2>/dev/null; then
+            subuid_ok=true
+            diagnostics+=("✅ /etc/subuid 配置正常")
+        fi
+    fi
+
+    if [[ -f /etc/subgid ]]; then
+        if grep -qE "^(${current_user}|${current_uid}):" /etc/subgid 2>/dev/null; then
+            subgid_ok=true
+            diagnostics+=("✅ /etc/subgid 配置正常")
+        fi
+    fi
+
+    if ! $subuid_ok || ! $subgid_ok; then
+        diagnostics+=("❌ /etc/subuid 或 /etc/subgid 缺少用户 ${current_user}(${current_uid}) 的条目")
+        diagnostics+=("   修复: sudo bash -c 'echo \"${current_user}:100000:65536\" >> /etc/subuid'")
+        diagnostics+=("         sudo bash -c 'echo \"${current_user}:100000:65536\" >> /etc/subgid'")
+        # 同时添加 UID 格式条目以兼容某些版本的 newuidmap
+        diagnostics+=("         sudo bash -c 'echo \"${current_uid}:100000:65536\" >> /etc/subuid'")
+        diagnostics+=("         sudo bash -c 'echo \"${current_uid}:100000:65536\" >> /etc/subgid'")
+    fi
+
+    # ---- 检查 3: newuidmap / newgidmap 权限 ----
+    local newuidmap_path
+    newuidmap_path=$(command -v newuidmap 2>/dev/null || echo "")
+
+    if [[ -z "$newuidmap_path" ]]; then
+        diagnostics+=("❌ newuidmap 未找到")
+        diagnostics+=("   修复: sudo apt-get install -y uidmap (Debian/Ubuntu)")
+        diagnostics+=("         sudo yum install -y shadow-utils (CentOS/RHEL)")
+    else
+        local owner
+        owner=$(stat -c '%U' "$newuidmap_path" 2>/dev/null || echo "unknown")
+        local perms
+        perms=$(stat -c '%a' "$newuidmap_path" 2>/dev/null || echo "000")
+
+        if [[ "$owner" != "root" ]]; then
+            diagnostics+=("❌ newuidmap ($newuidmap_path) 所属者是 '${owner}'，而非 'root'")
+            diagnostics+=("   setuid 位需要文件归属于 root 才能正常工作")
+            diagnostics+=("   修复: sudo chown root:root ${newuidmap_path}")
+
+            # 检查系统路径是否有正确的 newuidmap
+            if [[ -f /usr/bin/newuidmap ]]; then
+                local sys_owner
+                sys_owner=$(stat -c '%U' /usr/bin/newuidmap 2>/dev/null || echo "unknown")
+                if [[ "$sys_owner" == "root" ]]; then
+                    diagnostics+=("   或者: 使用系统自带的 /usr/bin/newuidmap（已归属 root）")
+                    diagnostics+=("         确保 PATH 中 /usr/bin 优先于 ${newuidmap_path%/*}")
+
+                    # 自动尝试修复：临时把 /usr/bin 放到 PATH 前面
+                    export PATH="/usr/bin:$PATH"
+                    has_fix=true
+                    need_restart=true
+                    diagnostics+=("   🔧 已自动将 /usr/bin 添加到 PATH 前端")
+                fi
+            fi
+        else
+            # 检查 setuid 位
+            if [[ ! -u "$newuidmap_path" ]]; then
+                diagnostics+=("❌ newuidmap ($newuidmap_path) 缺少 setuid 位")
+                diagnostics+=("   修复: sudo chmod u+s ${newuidmap_path}")
+            else
+                diagnostics+=("✅ newuidmap 权限正常 ($newuidmap_path, owner=$owner, perms=$perms)")
+            fi
+        fi
+    fi
+
+    # ---- 检查 4: Docker systemd 服务状态 ----
+    local docker_unit_status=""
+    if systemctl --user is-enabled docker.service &>/dev/null 2>&1; then
+        docker_unit_status=$(systemctl --user status docker.service 2>&1 | tail -5 || true)
+        diagnostics+=("ℹ️  Docker 用户服务状态 (最近日志):")
+        diagnostics+=("   $docker_unit_status")
+    fi
+
+    # ---- 打印诊断结果 ----
+    echo ""
+    echo -e "${CYAN}========== Rootless Docker 诊断报告 ==========${NC}"
+    for line in "${diagnostics[@]}"; do
+        echo -e "  $line"
+    done
+    echo -e "${CYAN}===============================================${NC}"
+    echo ""
+
+    # ---- 自动修复后重试 ----
+    if $has_fix && $need_restart; then
+        info "正在尝试重启 Rootless Docker..."
+        systemctl --user restart docker.service 2>/dev/null || true
+        sleep 3
+
+        if docker info > /dev/null 2>&1; then
+            success "Docker 已成功启动！"
+            return 0
+        fi
+    fi
+
+    # ---- 尝试直接启动 ----
+    info "尝试启动 Docker 服务..."
+    systemctl --user start docker.service 2>/dev/null || true
+    sleep 3
+
+    if docker info > /dev/null 2>&1; then
+        success "Docker 已成功启动！"
+        return 0
+    fi
+
+    # ---- 无法自动修复，给出手动修复指引 ----
+    echo ""
+    error "Docker 无法自动启动，请根据上述诊断报告手动修复"
+    echo ""
+    echo -e "${YELLOW}快速修复脚本:${NC}"
+    echo "  bash $SCRIPT_DIR/setup-rootless-docker.sh"
+    echo ""
+    echo -e "${YELLOW}或手动执行以下步骤:${NC}"
+    echo "  1. 确保 /etc/subuid 和 /etc/subgid 包含当前用户条目"
+    echo "  2. 确保 newuidmap/newgidmap 归属于 root 并有 setuid 位"
+    echo "  3. 重启 Docker: systemctl --user restart docker"
+    echo ""
+    exit 1
 }
 
 is_running() {

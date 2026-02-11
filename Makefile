@@ -270,7 +270,7 @@ app-check-key:
 # 沙箱环境
 # ==============================================================================
 
-.PHONY: sandbox sandbox-build sandbox-stop sandbox-shell sandbox-logs sandbox-clean sandbox-restart sandbox-mirror
+.PHONY: sandbox sandbox-build sandbox-stop sandbox-shell sandbox-logs sandbox-clean sandbox-restart sandbox-mirror sandbox-doctor
 
 SANDBOX := ./sandbox/sandbox.sh
 
@@ -301,6 +301,10 @@ sandbox-clean:
 ## 重启沙箱
 sandbox-restart:
 	@$(SANDBOX) restart
+
+## 诊断 Docker/沙箱环境问题
+sandbox-doctor:
+	@bash ./sandbox/setup-rootless-docker.sh --check
 
 ## 配置 Docker 镜像加速
 sandbox-mirror:
