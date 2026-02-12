@@ -234,7 +234,7 @@ export const useOrderStore = defineStore("order", () => {
 ```
 
 **为什么必须使用 Taro 存储**:
-- ✅ 跨端兼容（小程序、H5）
+- ✅ 小程序环境兼容
 - ✅ 同步读写性能更好
 - ❌ 浏览器 localStorage 在小程序不可用
 

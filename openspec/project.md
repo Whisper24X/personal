@@ -3,8 +3,7 @@
 ## Purpose
 
 AINative Workspace is a monorepo containing a complete full-stack application suite:
-- **ainative-app**: Cross-platform mobile application (H5, WeChat Mini Program, Alipay Mini Program, iOS, Android)
-- **ainative-pc**: Desktop web application (under development)
+- **ainative-app**: WeChat Mini Program application
 - **ainative-shadow**: Admin dashboard web application for system management
 - **ainative-backend**: Go backend service providing APIs for all frontend applications
 
@@ -20,17 +19,8 @@ The project serves as a business application platform with user authentication, 
 - **Styling**: UnoCSS + SCSS
 - **UI Components**: wot-design-uni
 - **Package Manager**: pnpm 10.x
-- **Build Targets**: H5, WeChat/Alipay Mini Programs, Native App
+- **Build Targets**: WeChat Mini Program
 - **Code Quality**: ESLint (uni-helper config), Husky, lint-staged
-
-### ainative-pc (Desktop Web Application)
-- **Framework**: Vue 3.5 + TypeScript 5.9 + Vite 7.x
-- **State Management**: Pinia 3.x
-- **Routing**: Vue Router 4.x
-- **Testing**: Vitest (unit) + Playwright (e2e)
-- **Package Manager**: pnpm
-- **Code Quality**: ESLint + Prettier
-- **Note**: This project is in early development stage
 
 ### ainative-shadow (Admin Dashboard)
 - **Framework**: Vue 3.5 + TypeScript 5.6 + Vite 7.x
@@ -116,11 +106,11 @@ Server → Service → Biz → Data → Database/Cache
 - Use Wire for dependency injection
 
 #### Frontend (Component-Based)
-- **Pages**: `src/pages/` (app) or `src/views/` (shadow, pc)
+- **Pages**: `src/pages/` (app) or `src/views/` (shadow)
 - **Components**: Global in `src/components/`, local in page directories
-- **State**: Pinia stores in `src/store/` (shadow) or `src/stores/` (app, pc)
+- **State**: Pinia stores in `src/store/` (shadow) or `src/stores/` (app)
 - **API**: HTTP layer in `src/http/` or `src/utils/http/`, API definitions in `src/api/`
-- **Routing**: Convention-based (app) or file-based modules (shadow, pc)
+- **Routing**: Convention-based (app) or file-based modules (shadow)
 
 ### Testing Strategy
 
@@ -133,8 +123,7 @@ Server → Service → Biz → Data → Database/Cache
 #### Frontend
 - Type checking: `pnpm type-check`
 - Lint checking: `pnpm lint`
-- Manual testing across target platforms (H5, Mini Programs, App)
-- ainative-pc: Unit tests with Vitest (`pnpm test:unit`), E2E tests with Playwright (`pnpm test:e2e`)
+- Manual testing on WeChat Mini Program
 
 ### Git Workflow
 
@@ -182,7 +171,7 @@ Use `pnpm commit` (shadow) for interactive commit or standard git with proper me
 
 ### Technical Constraints
 - Backend requires Go 1.19+
-- Frontend projects require Node.js 20+ (ainative-pc requires 20.19.0+ or 22.12.0+)
+- Frontend projects require Node.js 20+
 - ainative-app requires pnpm 9+; ainative-shadow requires pnpm 8.8.0+
 - Proto files must be formatted with `buf format`
 - Generated code must not be manually modified
@@ -225,22 +214,10 @@ Use `pnpm commit` (shadow) for interactive commit or standard git with proper me
 
 ### ainative-app
 ```bash
-pnpm dev           # H5 development
-pnpm dev:mp        # WeChat Mini Program
-pnpm dev:app       # Native App
-pnpm build:h5      # Build H5
+pnpm dev:weapp     # WeChat Mini Program development
+pnpm build:weapp   # Build WeChat Mini Program
 pnpm lint:fix      # Fix lint issues
 pnpm type-check    # TypeScript type checking
-```
-
-### ainative-pc
-```bash
-pnpm dev           # Development server
-pnpm build         # Production build
-pnpm test:unit     # Run unit tests (Vitest)
-pnpm test:e2e      # Run e2e tests (Playwright)
-pnpm lint          # Lint and fix
-pnpm format        # Format with Prettier
 ```
 
 ### ainative-shadow

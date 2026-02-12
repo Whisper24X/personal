@@ -18,7 +18,7 @@
 - [ ] 页面路由路径
 - [ ] 是否需要调用后端 API
 - [ ] 是否需要状态管理
-- [ ] 目标平台 (H5/小程序/APP)
+- [ ] 目标平台 (微信小程序)
 
 ### 2. 定义 API 类型 (如需要)
 
@@ -167,9 +167,6 @@ const store = useXxxStore()
 ### 8. 测试验证
 
 ```bash
-# H5 开发
-pnpm dev:h5
-
 # 微信小程序开发
 pnpm dev:weapp
 
@@ -197,19 +194,10 @@ pnpm type-check
 - 使用 TypeScript 定义请求和响应类型
 - 统一错误处理在拦截器中完成
 
-### 跨平台注意事项
-- 使用 Taro 提供的跨平台 API (不要直接使用 wx/my 等平台特定 API)
-- 注意不同平台的样式差异
-- 使用条件编译处理平台差异:
-
-```typescript
-// #ifdef H5
-// H5 特定代码
-// #endif
-
-// #ifdef MP-WEIXIN
-// 微信小程序特定代码
-// #endif
+### 开发注意事项
+- 使用 Taro 提供的 API（不要直接使用 wx 等原生 API）
+- 使用 rpx 单位适配不同屏幕
+- 使用 Taro 组件（view、text、image），避免 HTML 标签（div、span、img）
 ```
 
 ## 常见问题

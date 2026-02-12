@@ -204,8 +204,7 @@ Less 样式开发规范和设计变量使用指南。
 }
 ```
 
-- **小程序**: 直接使用 rpx
-- **H5**: 自动转换为 rem
+小程序中直接使用 rpx 单位。
 
 ### px（特殊情况）
 
@@ -358,19 +357,6 @@ Less 样式开发规范和设计变量使用指南。
 }
 /* #endif */
 
-// 仅 H5
-/* #ifdef H5 */
-.h5-only {
-  background: blue;
-}
-/* #endif */
-
-// 排除某平台
-/* #ifndef H5 */
-.not-h5 {
-  background: green;
-}
-/* #endif */
 ```
 
 ### 平台样式文件
@@ -383,14 +369,6 @@ Less 样式开发规范和设计变量使用指南。
 /* #ifdef WEAPP */
 .page {
   min-height: 100vh;
-}
-/* #endif */
-
-// H5 特定样式
-/* #ifdef H5 */
-.page {
-  max-width: 750px;
-  margin: 0 auto;
 }
 /* #endif */
 ```

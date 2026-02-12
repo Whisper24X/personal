@@ -1,11 +1,11 @@
 ---
 name: app-dev
-description: Guides development for ainative-app mobile application (Taro + Vue3 + Pinia). Supports multi-platform (WeChat, H5, Alipay). Provides 6-step workflow, cross-platform patterns, request encapsulation. Use when developing mobile app, mini-program, cross-platform pages, or user mentions ainative-app, Taro, WeChat mini-program.
+description: Guides development for ainative-app WeChat Mini Program (Taro + Vue3 + Pinia). Provides 6-step workflow, cross-platform patterns, request encapsulation. Use when developing mini-program pages, or user mentions ainative-app, Taro, WeChat mini-program.
 ---
 
-# ainative-app 移动端开发指南
+# ainative-app 小程序开发指南
 
-指导 Taro + Vue3 跨端移动应用开发，遵循项目规范和最佳实践。
+指导 Taro + Vue3 微信小程序开发，遵循项目规范和最佳实践。
 
 ## 技术栈
 
@@ -15,11 +15,9 @@ description: Guides development for ainative-app mobile application (Taro + Vue3
 - **样式**: Less 4.2.0
 - **类型**: TypeScript 5.4.5
 
-## 支持平台
+## 目标平台
 
 - 微信小程序
-- H5
-- 支付宝小程序
 
 ## 6 步开发流程
 
@@ -41,7 +39,6 @@ description: Guides development for ainative-app mobile application (Taro + Vue3
 ### 步骤 1: 需求分析
 
 确认：
-- 支持的平台（微信/H5/支付宝）
 - 是否需要登录权限
 - 是否需要 TabBar
 - 数据埋点需求
@@ -202,15 +199,11 @@ export const useUserStore = defineStore(
 ### 步骤 6: 测试验证
 
 ```bash
-# 微信小程序
+# 微信小程序开发
 pnpm dev:weapp
-
-# H5
-pnpm dev:h5
 
 # 构建
 pnpm build:weapp
-pnpm build:h5
 
 # Lint
 pnpm lint
@@ -218,7 +211,7 @@ pnpm lint
 
 **检查清单**:
 - [ ] TypeScript 无错误
-- [ ] 多端测试通过
+- [ ] 小程序测试通过
 - [ ] 样式适配正常
 - [ ] API 错误处理完善
 - [ ] 埋点数据正确
@@ -288,17 +281,16 @@ const authPages = [
 
 ### 1. 单位使用
 
-- **小程序**: 使用 `rpx`（基于 750 设计稿）
-- **H5**: 自动转换为 `rem`
+使用 `rpx`（基于 750 设计稿）：
 
 ```less
 .box {
   width: 750rpx;   // 全屏宽度
-  height: 100rpx;  // 自动转换
+  height: 100rpx;
 }
 ```
 
-### 2. API 差异
+### 2. API 使用
 
 ```typescript
 import Taro from "@tarojs/taro"
@@ -307,32 +299,6 @@ import Taro from "@tarojs/taro"
 Taro.showToast({ title: "成功" })
 Taro.navigateTo({ url: "/pages/index/index" })
 Taro.request({ url: "..." })
-```
-
-### 3. 平台判断
-
-```typescript
-import Taro from "@tarojs/taro"
-
-if (Taro.getEnv() === Taro.ENV_TYPE.WEAPP) {
-  // 微信小程序特有逻辑
-}
-
-if (Taro.getEnv() === Taro.ENV_TYPE.WEB) {
-  // H5 特有逻辑
-}
-```
-
-### 4. 条件编译（编译时）
-
-```typescript
-// #ifdef WEAPP
-console.log("仅微信小程序")
-// #endif
-
-// #ifdef H5
-console.log("仅 H5")
-// #endif
 ```
 
 ---
@@ -403,9 +369,7 @@ import NavBar from "@/components/NavBar/index.vue"
 
 ```bash
 pnpm dev:weapp          # 微信小程序开发
-pnpm dev:h5             # H5 开发
 pnpm build:weapp        # 微信小程序构建
-pnpm build:h5           # H5 构建
 pnpm lint               # 代码检查
 ```
 

@@ -64,9 +64,9 @@ description: 执行 OpenSpec apply 命令生成代码并完成任务。无状态
 
 #### 1.3 模板替换（如有初始模板）
 
-**检查位置**：`ainative-pc/src/views/`、`ainative-app/src/pages/`、`ainative-shadow/src/views/`
+**检查位置**：`ainative-app/src/pages/`、`ainative-shadow/src/views/`
 
-**初始模板特征**：unibest、菲鸽、AINative Workspace、AINative PC、企业级 AI 原生协作、虚构公司名（天衡集团、星澜零售等）、通用演示描述
+**初始模板特征**：unibest、菲鸽、AINative Workspace、企业级 AI 原生协作、虚构公司名（天衡集团、星澜零售等）、通用演示描述
 
 **替换要求**：
 

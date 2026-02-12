@@ -1,13 +1,13 @@
-# ainative-app 移动端开发指南
+# ainative-app 小程序开发指南
 
-本文档提供 Taro + Vue3 跨端应用开发流程概览和规范索引。详细规范请参阅
+本文档提供 Taro + Vue3 微信小程序开发流程概览和规范索引。详细规范请参阅
 [`docs/dev-spec/ainative-app/references/`](docs/dev-spec/ainative-app/references/) 目录下的对应文档。
 
 ---
 
 ## 项目概览
 
-`ainative-app` 是一个基于 Taro + Vue3 的跨端移动应用模版，支持微信小程序、H5、支付宝小程序等多端运行。
+`ainative-app` 是一个基于 Taro + Vue3 的微信小程序应用。
 
 ### 技术栈
 
@@ -33,9 +33,7 @@
 - Vue 升级至 3.3.4
 
 **配置优化**
-- 新增 H5 legacy 支持，提升浏览器兼容性
 - 优化 pxtransform 转换规则，适配 Taro 3 的转换机制
-- 调整开发服务器配置（端口 8200）
 
 **应用初始化重构**
 - 简化路由守卫初始化流程，直接在 `app.ts` 中集成
@@ -58,9 +56,6 @@ pnpm install
 
 # 启动微信小程序开发
 pnpm dev:weapp
-
-# 启动 H5 开发
-pnpm dev:h5
 ```
 
 ### 微信开发者工具
@@ -314,7 +309,7 @@ const result = await handleTaroFileUpload({
 
 ---
 
-## 多端构建
+## 构建与 CI
 
 ### 微信小程序
 
@@ -329,31 +324,24 @@ pnpm build:weapp
 pnpm ci:weapp:upload:production
 ```
 
-### H5
+### CI 验证（推荐）
+
+小程序验证**不需要 npm run build**，直接使用 make 命令：
 
 ```bash
-# 开发
-pnpm dev:h5
+# 生成预览二维码（扫码立即看效果）
+make app-preview
 
-# 构建
-pnpm build:h5
+# 检查 CI 配置
+make app-check-key
+
+# 上传体验版
+make app-upload-test    # 测试环境
+make app-upload-stage   # 预发布环境
+make app-upload-prod    # 生产环境
 ```
 
-**H5 特性**：
-- 开发服务器端口：8200
-- 浏览器路由模式
-- Legacy 支持，兼容旧版浏览器
-- 自动 px 转 rem（基于 750 设计稿）
-
-### 支付宝小程序
-
-```bash
-# 开发
-pnpm dev:alipay
-
-# 构建
-pnpm build:alipay
-```
+→ 详见 [CI 快速参考](references/ci-quick-reference.md) | [CI 完整指南](references/ci-guide.md) | [二维码页面配置](references/qrcode-page.md)
 
 ---
 
@@ -375,9 +363,9 @@ const config: UserConfigExport = {
 ```
 
 **关键特性**：
-- 支持多端构建（微信小程序、H5、支付宝小程序等）
+- 微信小程序构建
 - 内置路径别名配置（`@/` 指向 `src/`）
-- 自动 px 转换（小程序使用 rpx，H5 使用 rem）
+- 自动 px 转换（rpx 单位）
 - 支持 Less 预处理器
 
 ### 环境变量
@@ -440,7 +428,7 @@ refactor: 重构请求封装
 
 - [ ] TypeScript 类型完整
 - [ ] 错误处理完善
-- [ ] 多端兼容测试
+- [ ] 小程序功能测试
 - [ ] `pnpm lint` 无错误
 - [ ] 构建成功
 
@@ -463,14 +451,9 @@ Taro 3.6.23 经过长期验证，提供了更好的稳定性和生态兼容性�
 
 确保使用最新版微信开发者工具，并正确配置 AppID。
 
-### 4. H5 跨域问题
+### 4. 样式不生效
 
-开发环境配置代理（`config/dev.ts`），生产环境配置 nginx 或 CDN。
-
-### 5. 样式不生效
-
-- 小程序：使用 `rpx` 单位
-- H5：自动转换为 `rem`
+- 使用 `rpx` 单位
 - 检查是否正确导入 `variables.less`
 - 确认设计稿宽度为 750px
 

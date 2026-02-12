@@ -2,7 +2,7 @@
 
 ## 概述
 
-ainative-app 移动端应用开发技能，提供 6 步开发流程和跨端开发最佳实践。
+ainative-app 微信小程序开发技能，提供 6 步开发流程和最佳实践。
 
 ## 技术栈
 
@@ -12,11 +12,9 @@ ainative-app 移动端应用开发技能，提供 6 步开发流程和跨端开�
 - **样式**: Less 4.2.0
 - **类型**: TypeScript 5.4.5
 
-## 支持平台
+## 目标平台
 
 - 微信小程序
-- H5
-- 支付宝小程序
 
 ## 核心特性
 
@@ -63,10 +61,8 @@ app-dev/
 AI Agent 会在以下情况自动使用：
 
 - 开发 ainative-app 页面
-- 创建移动端应用
 - 小程序开发
-- 跨端应用开发
-- 用户提到"移动端"、"小程序"、"Taro"
+- 用户提到"小程序"、"Taro"
 - 用户明确提到 ainative-app
 
 ## 6 步流程
@@ -211,9 +207,7 @@ export const useUserStore = defineStore(
 
 ```bash
 pnpm dev:weapp          # 微信小程序开发
-pnpm dev:h5             # H5 开发
 pnpm build:weapp        # 微信小程序构建
-pnpm build:h5           # H5 构建
 pnpm lint               # 代码检查
 ```
 
@@ -255,7 +249,7 @@ pnpm lint               # 代码检查
 
 | 特性 | app-dev (Taro + Vue3) | shadow-dev (Vue3 + Element Plus) |
 |------|----------------------|----------------------------------|
-| 平台 | 跨端（小程序、H5） | 管理后台（Web） |
+| 平台 | 微信小程序 | 管理后台（Web） |
 | UI库 | 自定义组件 | Element Plus |
 | 单位 | rpx（自动转换） | px/rem |
 | 路由 | Taro 路由 | Vue Router |

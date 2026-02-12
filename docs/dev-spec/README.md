@@ -23,7 +23,6 @@ AI 助手在此项目工作的快速入口。文档按渐进式披露组织：�
 cd ainative-app
 pnpm install                    # 安装依赖
 pnpm dev:weapp                  # 微信小程序开发
-pnpm dev:h5                     # H5 开发
 pnpm build:weapp:production     # 构建微信小程序
 pnpm ci:weapp:upload:production # CI 上传
 ```
@@ -54,7 +53,7 @@ make wire && make build         # 依赖注入和构建
 | 任务场景 | 推荐阅读 |
 |----------|----------|
 | 了解整体架构和约定 | [openspec/project.md](openspec/project.md) |
-| 开发移动端小程序/H5 | [ainative-app 指南](docs/dev-spec/ainative-app/README.md) |
+| 开发微信小程序 | [ainative-app 指南](docs/dev-spec/ainative-app/README.md) |
 | 开发管理后台页面 | [ainative-shadow 指南](docs/dev-spec/ainative-shadow/README.md) |
 | 开发后端接口/业务逻辑 | [ainative-backend 指南](docs/dev-spec/ainative-backend/README.md) |
 | 需要创建变更提案 | [openspec/AGENTS.md](openspec/AGENTS.md) |

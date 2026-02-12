@@ -51,8 +51,10 @@ Monorepo 全栈应用：移动端 + 管理后台 + Go 后端。
 |-------|------|
 | [小程序构建部署](.cursor/skills/app-build-deploy/SKILL.md) | ainative-app 多环境编译打包部署 |
 | [小程序体验版](.cursor/skills/app-preview/SKILL.md) | 生成小程序体验版供测试验证 |
+| [小程序 CI 验证](.cursor/skills/app-ci/SKILL.md) | 小程序 CI 预览二维码、体验版上传、私钥配置、沙箱二维码页面 |
 | [后端构建部署](.cursor/skills/backend-build-deploy/SKILL.md) | ainative-backend Go 服务构建部署 |
 | [管理后台构建部署](.cursor/skills/shadow-build-deploy/SKILL.md) | ainative-shadow 管理后台构建部署 |
+| [沙箱环境管理](.cursor/skills/sandbox-manage/SKILL.md) | 沙箱环境配置、端口映射、多实例、服务架构、故障排查 |
 | [部署环境准备](.cursor/skills/deploy-prepare/SKILL.md) | 部署前环境检查、构建配置验证 |
 | [部署执行](.cursor/skills/deploy-execute/SKILL.md) | 执行 sandbox 部署、监控服务启动 |
 | [部署验证](.cursor/skills/deploy-verify/SKILL.md) | 验证服务状态、可访问性、生成报告 |
@@ -73,7 +75,6 @@ Monorepo 全栈应用：移动端 + 管理后台 + Go 后端。
 | 子项目 | 入口 |
 |--------|------|
 | ainative-app | [开发指南](docs/dev-spec/ainative-app/README.md) |
-| ainative-pc | [开发指南](docs/dev-spec/ainative-pc/README.md) |
 | ainative-shadow | [开发指南](docs/dev-spec/ainative-shadow/README.md) |
 | ainative-backend | [开发指南](docs/dev-spec/ainative-backend/README.md) |
 

@@ -5,7 +5,7 @@ description: ainative-app 小程序编译打包部署。支持多环境（test/s
 
 # ainative-app 小程序构建部署
 
-ainative-app 是基于 Taro + Vue3 的跨平台小程序项目，支持微信、H5、支付宝等多端。
+ainative-app 是基于 Taro + Vue3 的微信小程序项目。
 
 ## 快速开始
 
