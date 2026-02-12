@@ -1,12 +1,6 @@
 # AINative Workspace
 
-Monorepo 全栈应用：移动端 + 管理后台 + Go 后端。
-
-## 🤖 AI 开发指南
-
-**如果你是 AI Agent,请优先阅读**:
-- **[AI 开发入口指南](docs/dev-spec/AI-GUIDE.md)** - AI 工作流快速开始
-- **[AI 工作流详细指南](docs/dev-spec/AI-WORKFLOW-GUIDE.md)** - 完整的 AI 开发流程
+Monorepo 全栈应用：小程序 + 管理后台 + Go 后端。
 
 ### 可用 AI Skills
 
@@ -70,7 +64,7 @@ Monorepo 全栈应用：移动端 + 管理后台 + Go 后端。
 | [代码任务执行](.cursor/skills/code-task-apply/SKILL.md) | 执行 OpenSpec apply 生成代码 |
 | [任务完成检查](.cursor/skills/code-task-check/SKILL.md) | 检查 tasks.md 中的任务完成状态 |
 
-## 📚 人工开发指南
+## 人工开发指南
 
 | 子项目 | 入口 |
 |--------|------|
@@ -78,7 +72,7 @@ Monorepo 全栈应用：移动端 + 管理后台 + Go 后端。
 | ainative-shadow | [开发指南](docs/dev-spec/ainative-shadow/README.md) |
 | ainative-backend | [开发指南](docs/dev-spec/ainative-backend/README.md) |
 
-详细导航见 [docs/dev-spec/readme.md](docs/dev-spec/readme.md)
+详细导航见 [docs/dev-spec/README.md](docs/dev-spec/README.md)
 
 ---
 
