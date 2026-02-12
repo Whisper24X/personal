@@ -122,7 +122,21 @@ description: 执行部署命令并监控部署进度。执行 make sandbox 启�
 所有服务已启动，frontend: http://localhost:5173, backend: http://localhost:3000
 ```
 
-### 示例 - 部署失败
+### 示例 - 部署失败（Docker 配置错误）
+
+```
+部署失败
+Docker 启动失败：Rootless Docker UID/GID 映射配置错误。需要执行以下修复命令（需要 sudo 权限）：
+
+USER_UID=$(id -u)
+sudo bash -c "echo \"${USER_UID}:100000:65536\" >> /etc/subuid"
+sudo bash -c "echo \"${USER_UID}:100000:65536\" >> /etc/subgid"
+systemctl --user restart docker
+
+详细错误信息请查看 deployLog.md
+```
+
+### 示例 - 部署失败（服务启动失败）
 
 ```
 部署失败
@@ -138,19 +152,87 @@ description: 执行部署命令并监控部署进度。执行 make sandbox 启�
 
 ## 错误处理策略
 
-| 错误类型                    | 处理方式                         |
-| --------------------------- | -------------------------------- |
-| 端口被占用 (EADDRINUSE)     | 杀死占用进程后重试               |
-| 依赖缺失 (MODULE_NOT_FOUND) | 执行 `pnpm install` 后重试       |
-| 构建错误                    | 记录错误详情，标记部署失败       |
-| Docker 错误                 | 检查 Docker 服务状态，重启后重试 |
-| 超时（>600s）               | 标记部署超时，记录最后日志       |
+| 错误类型                    | 处理方式                                               |
+| --------------------------- | ------------------------------------------------------ |
+| 端口被占用 (EADDRINUSE)     | 杀死占用进程后重试                                     |
+| 依赖缺失 (MODULE_NOT_FOUND) | 执行 `pnpm install` 后重试                             |
+| 构建错误                    | 记录错误详情，标记部署失败                             |
+| Docker 服务未运行           | 执行 `systemctl --user start docker` 启动后重试        |
+| Docker UID/GID 映射错误     | 提示需要 sudo 权限修复配置，停止部署，记录修复命令     |
+| Docker rootlesskit 权限错误 | 检查 `/etc/subuid` 和 `/etc/subgid` 配置，提供修复指导 |
+| Docker 容器启动失败         | 检查容器日志 (`docker logs`)，记录错误详情             |
+| 超时（>600s）               | 标记部署超时，记录最后日志                             |
+
+**Docker 错误详细处理**：
+
+1. **Docker 服务未运行**
+
+   ```bash
+   systemctl --user start docker
+   # 等待 3-5 秒后验证
+   systemctl --user status docker
+   ```
+
+2. **Rootless Docker UID/GID 映射错误**
+
+   错误特征：
+
+   ```
+   newuidmap: write to uid_map failed: Operation not permitted
+   failed to setup UID/GID map
+   ```
+
+   处理流程：
+   - ❌ **不要自动尝试修复**（需要 sudo 权限）
+   - ✅ 在 `deployResult.md` 中标记"部署失败"
+   - ✅ 在 `deployLog.md` 中记录详细的修复命令：
+
+   ```bash
+   # 修复 Rootless Docker UID/GID 映射配置
+
+   # 1. 获取当前用户 UID
+   USER_UID=$(id -u)
+   echo "当前用户 UID: ${USER_UID}"
+
+   # 2. 检查现有配置
+   echo "=== 当前 /etc/subuid 配置 ==="
+   cat /etc/subuid
+   echo "=== 当前 /etc/subgid 配置 ==="
+   cat /etc/subgid
+
+   # 3. 添加 UID 格式配置（需要 sudo 权限）
+   sudo bash -c "echo \"${USER_UID}:100000:65536\" >> /etc/subuid"
+   sudo bash -c "echo \"${USER_UID}:100000:65536\" >> /etc/subgid"
+
+   # 4. 重启 Docker 服务
+   systemctl --user restart docker
+
+   # 5. 验证 Docker 状态
+   systemctl --user status docker
+   docker ps
+
+   # 6. 重新执行部署
+   make sandbox
+   ```
+
+3. **Docker 容器启动失败**
+   ```bash
+   # 查看容器列表
+   docker ps -a
+   # 查看失败容器的日志
+   docker logs <container_id>
+   ```
 
 ## 重要提醒
 
 1. **必须写入两个文件**：`docs/deploy/deployLog.md`（日志）和 `docs/deploy/deployResult.md`（结果）
-2. **结果文件格式固定**：只有两行，第一行是状态，第二行是原因
+2. **结果文件格式固定**：只有两行，第一行是状态，第二行是原因（Docker 配置问题时可多行提供修复命令）
 3. **确保目录存在**：如果 `docs/deploy/` 目录不存在，需要先创建
 4. **遇到部署问题时**：必须分析错误原因并尝试解决，不要直接放弃
 5. **服务地址准确**：确保提取的地址信息完整准确
 6. **失败服务记录错误日志**：启动失败的服务必须在 deployLog.md 中记录最后 20-30 行关键日志
+7. **Docker 错误特别处理**：
+   - Docker 服务未运行：尝试自动启动
+   - UID/GID 映射错误：不要自动修复，提供详细的修复命令（需要 sudo）
+   - 容器启动失败：记录容器日志，分析失败原因
+8. **不要盲目重试**：Docker 配置错误需要手动修复，自动重试只会浪费时间

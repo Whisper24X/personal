@@ -24,5 +24,7 @@ module.exports = {
     'subject-empty': [2, 'never'],
     'subject-full-stop': [2, 'never', '.'],
     'header-max-length': [2, 'always', 400],
+    // 提交主体大小限制到400字符
+    'subject-max-length': [2, 'always', 400],
   },
 };

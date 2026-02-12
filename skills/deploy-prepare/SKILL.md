@@ -19,7 +19,73 @@ description: 准备部署环境。检查代码完整性、验证构建配置、�
 
 ## 执行步骤
 
-### 1. 代码完整性检查
+### 1. Docker 环境检查（Linux 系统）
+
+**检查项目**：
+
+1. **Docker 服务状态**
+   - 执行 `systemctl --user status docker` 检查 Docker 是否运行
+   - 如果 Docker 未运行，执行 `systemctl --user start docker` 尝试启动
+   - 记录启动结果和错误信息
+
+2. **Rootless Docker UID/GID 映射配置**（仅 Linux）
+
+   检查 `/etc/subuid` 和 `/etc/subgid` 配置：
+
+   ```bash
+   # 检查 subuid 配置
+   cat /etc/subuid
+   # 检查 subgid 配置
+   cat /etc/subgid
+   # 获取当前用户 UID
+   id -u
+   ```
+
+   **配置要求**：
+   - 必须同时存在用户名格式和 UID 格式配置
+   - 示例（假设用户 `master`，UID 为 `1000`）：
+     ```
+     master:100000:65536
+     1000:100000:65536
+     ```
+
+   **常见错误**：
+
+   | 错误现象                                                      | 原因               | 影响            |
+   | ------------------------------------------------------------- | ------------------ | --------------- |
+   | `newuidmap: write to uid_map failed: Operation not permitted` | 缺少 UID 格式配置  | Docker 无法启动 |
+   | `could not find user master in /etc/subuid`                   | 缺少用户名格式配置 | Docker 无法启动 |
+
+3. **修复指导**（如检测到配置问题）
+
+   在 `prepareResult.md` 中提供详细的修复命令：
+
+   ```bash
+   # 1. 获取当前用户 UID
+   USER_UID=$(id -u)
+
+   # 2. 添加 UID 格式配置（需要 sudo 权限）
+   sudo bash -c "echo \"${USER_UID}:100000:65536\" >> /etc/subuid"
+   sudo bash -c "echo \"${USER_UID}:100000:65536\" >> /etc/subgid"
+
+   # 3. 重启 Docker 服务
+   systemctl --user restart docker
+
+   # 4. 验证 Docker 状态
+   systemctl --user status docker
+   docker ps
+   ```
+
+**判定标准**：
+
+| 情况                            | 判定      | 后续处理                  |
+| ------------------------------- | --------- | ------------------------- |
+| Docker 正常运行                 | ✅ 通过   | 继续后续检查              |
+| Docker 未安装                   | ❌ 不通过 | 停止部署，要求安装 Docker |
+| Docker 配置错误（UID/GID 映射） | ⚠️ 需修复 | 提供修复命令，停止部署    |
+| Docker 启动失败（其他原因）     | ❌ 不通过 | 记录错误详情，停止部署    |
+
+### 2. 代码完整性检查
 
 **检查范围**：项目根目录下所有源代码文件
 
@@ -38,7 +104,7 @@ description: 准备部署环境。检查代码完整性、验证构建配置、�
 | 存在 TODO/FIXME 但不影响核心功能 | ⚠️ 警告   |
 | 存在空函数体或未实现的核心功能   | ❌ 不通过 |
 
-### 2. 构建配置验证
+### 3. 构建配置验证
 
 **检查项目**：
 
@@ -61,7 +127,7 @@ description: 准备部署环境。检查代码完整性、验证构建配置、�
    - 检查必要的环境变量是否已设置
    - 不检查敏感信息的具体值，仅检查 key 是否存在
 
-### 3. 部署环境准备
+### 4. 部署环境准备
 
 **执行步骤**：
 
@@ -92,7 +158,29 @@ description: 准备部署环境。检查代码完整性、验证构建配置、�
 代码完整性通过，构建配置验证通过，部署环境已准备就绪
 ```
 
-### 示例 - 未就绪
+### 示例 - 未就绪（Docker 配置问题）
+
+```
+未就绪
+Docker 启动失败：Rootless Docker UID/GID 映射配置不完整。需要执行以下命令修复（需要 sudo 权限）：
+
+# 获取当前用户 UID
+USER_UID=$(id -u)
+
+# 添加 UID 格式配置
+sudo bash -c "echo \"${USER_UID}:100000:65536\" >> /etc/subuid"
+sudo bash -c "echo \"${USER_UID}:100000:65536\" >> /etc/subgid"
+
+# 重启 Docker 服务
+systemctl --user restart docker
+
+# 验证 Docker 状态
+systemctl --user status docker
+
+修复完成后，请重新执行部署。
+```
+
+### 示例 - 未就绪（构建失败）
 
 ```
 未就绪
@@ -109,7 +197,9 @@ description: 准备部署环境。检查代码完整性、验证构建配置、�
 ## 重要提醒
 
 1. **必须写入文件**：结果必须写入 `docs/deploy/prepareResult.md`，不是输出到终端
-2. **文件格式固定**：只有两行，第一行是状态，第二行是原因
+2. **文件格式固定**：只有两行，第一行是状态，第二行是原因（Docker 配置问题时可多行提供修复命令）
 3. **确保目录存在**：如果 `docs/deploy/` 目录不存在，需要先创建
 4. **不执行部署**：此 Skill 仅做检查和准备，不执行实际部署命令（`make sandbox`）
 5. **构建失败不阻塞**：构建失败时记录错误但不终止流程，由 Deploy Action 决定是否继续
+6. **Docker 配置问题优先检查**：Docker 环境问题会导致后续所有步骤失败，必须优先检查和修复
+7. **Linux 系统特别注意**：Rootless Docker 需要正确的 UID/GID 映射配置，这是常见的部署前置问题
