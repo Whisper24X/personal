@@ -31,6 +31,7 @@ const createEvent = (overrides?: Partial<any>) => ({
 const createUser = (overrides?: Partial<any>) => ({
   id: 'user-1',
   username: 'john.doe',
+  email: null,
   ...(overrides ?? {}),
 });
 
@@ -189,7 +190,7 @@ describe('NotificationsService', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('should send email notification when user has email-like username', async () => {
+  it('should send email notification when user email is set', async () => {
     const notificationSettingRepository = {
       findByUserId: jest.fn().mockResolvedValue(
         createSetting({
@@ -210,7 +211,7 @@ describe('NotificationsService', () => {
     const usersService = createUsersService({
       findById: jest.fn().mockResolvedValue(
         createUser({
-          username: 'dev@example.com',
+          email: 'dev@example.com',
         }),
       ),
     });
@@ -261,7 +262,7 @@ describe('NotificationsService', () => {
     const usersService = createUsersService({
       findById: jest.fn().mockResolvedValue(
         createUser({
-          username: 'dev@example.com',
+          email: 'dev@example.com',
         }),
       ),
     });

@@ -2094,6 +2094,6 @@ export class HealthController {
 
 #### 14.4.5 当前实现边界（2026-02）
 - 队列与并发（FR-013）：当前采用 Postgres 协调 + 独立 Worker 进程；API 仅负责入队与查询。未引入 Redis/BullMQ。
-- 通知（FR-012）：已支持 `done` / `in_review` 的 in-app + Webhook + SMTP 邮件（`AINATIVE_SMTP_*`）；当用户 `username` 非邮箱格式时跳过邮件发送。
+- 通知（FR-012）：已支持 `done` / `in_review` 的 in-app + Webhook + SMTP 邮件（`AINATIVE_SMTP_*`）；邮件收件人优先使用用户 `email` 字段，兼容回退到邮箱格式的 `username`。
 - 产物预览（FR-011）：已支持 diff 结构化预览（含变更文件与文件树）与 text/external 模式；大型文本预览按 200KB 截断。
 - sandbox/worktree（FR-014）：继续采用目录级隔离与清理策略，补充路径白名单、权限收敛（0700）与清理二次校验；不宣称容器级强隔离。

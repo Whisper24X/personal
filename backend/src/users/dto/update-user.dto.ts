@@ -4,6 +4,7 @@ import { CreateUserDto } from './create-user.dto';
 import { Transform } from 'class-transformer';
 import {
   IsBoolean,
+  IsEmail,
   IsInt,
   IsOptional,
   IsString,
@@ -18,6 +19,12 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsOptional()
   @IsString()
   username?: string;
+
+  @ApiPropertyOptional({ example: 'john.doe@example.com', type: String })
+  @Transform(lowerCaseTransformer)
+  @IsOptional()
+  @IsEmail()
+  email?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()

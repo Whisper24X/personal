@@ -282,7 +282,10 @@ export class NotificationsService {
   }): Promise<void> {
     try {
       const user = await this.usersService.findById(userId);
-      const recipient = this.resolveRecipientEmail(user?.username ?? null);
+      const recipient = this.resolveRecipientEmail({
+        email: user?.email ?? null,
+        username: user?.username ?? null,
+      });
 
       if (!recipient) {
         return;
@@ -305,7 +308,17 @@ export class NotificationsService {
     }
   }
 
-  private resolveRecipientEmail(username: string | null): string | null {
+  private resolveRecipientEmail({
+    email,
+    username,
+  }: {
+    email: string | null;
+    username: string | null;
+  }): string | null {
+    if (email?.trim()) {
+      return email.trim();
+    }
+
     if (!username) {
       return null;
     }

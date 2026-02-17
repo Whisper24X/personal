@@ -6,6 +6,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import {
   // decorators here
   IsBoolean,
+  IsEmail,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -21,6 +22,16 @@ export class CreateUserDto {
   @IsNotEmpty()
   @IsString()
   username: string;
+
+  @ApiProperty({
+    example: 'john.doe@example.com',
+    type: String,
+    required: false,
+  })
+  @Transform(lowerCaseTransformer)
+  @IsOptional()
+  @IsEmail()
+  email?: string | null;
 
   @ApiProperty()
   @MinLength(6)

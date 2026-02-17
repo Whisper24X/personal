@@ -6,6 +6,7 @@ export class UserMapper {
     const domainEntity = new User();
     domainEntity.id = raw.id;
     domainEntity.username = raw.username;
+    domainEntity.email = raw.email;
     domainEntity.password = raw.password;
     domainEntity.salt = raw.salt;
     domainEntity.nickname = raw.nickname;
@@ -24,6 +25,7 @@ export class UserMapper {
       persistenceEntity.id = domainEntity.id;
     }
     persistenceEntity.username = domainEntity.username;
+    persistenceEntity.email = domainEntity.email;
     persistenceEntity.password = domainEntity.password;
     persistenceEntity.salt = domainEntity.salt;
     persistenceEntity.nickname = domainEntity.nickname;
