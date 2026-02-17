@@ -7,13 +7,17 @@ const router = useRouter()
 const route = useRoute()
 const { login, loading: isLoading, error } = useAuth()
 
-const email = ref('demo@example.com')
-const password = ref('password')
+const username = ref('')
+const password = ref('')
 
 const onSubmit = async () => {
+  if (!username.value.trim() || !password.value.trim()) {
+    return
+  }
+
   try {
     await login({
-      email: email.value,
+      username: username.value.trim(),
       password: password.value,
     })
 
@@ -54,13 +58,13 @@ const onSubmit = async () => {
           @submit.prevent="onSubmit"
         >
           <label class="block space-y-2">
-            <span class="text-xs font-semibold text-muted-foreground">邮箱</span>
+            <span class="text-xs font-semibold text-muted-foreground">用户名</span>
             <input
-              v-model="email"
-              autocomplete="email"
+              v-model="username"
+              autocomplete="username"
               class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground shadow-sm outline-none ring-offset-background transition focus:ring-2 focus:ring-ring"
-              placeholder="you@company.com"
-              type="email"
+              placeholder="输入用户名"
+              type="text"
             />
           </label>
 
@@ -83,7 +87,7 @@ const onSubmit = async () => {
             {{ isLoading ? '登录中...' : '登录' }}
           </button>
 
-          <p class="text-xs text-muted-foreground">提示：这是演示登录页，后续可接入后端认证 API。</p>
+          <p class="text-xs text-muted-foreground">默认使用后端 `/api/v1/auth/login` 接口进行认证。</p>
         </form>
       </div>
     </div>

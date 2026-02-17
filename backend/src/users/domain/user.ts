@@ -1,35 +1,59 @@
 import { Exclude, Expose } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
-const idType = Number;
+const idType = String;
 
 export class User {
   @ApiProperty({
     type: idType,
   })
-  id: number | string;
+  id: string;
 
   @ApiProperty({
     type: String,
-    example: 'john.doe@example.com',
+    example: 'john.doe',
   })
   @Expose({ groups: ['me', 'admin'] })
-  email: string | null;
+  username: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'John Doe',
+    nullable: true,
+    required: false,
+  })
+  @Expose({ groups: ['me', 'admin'] })
+  nickname: string | null;
+
+  @ApiProperty({
+    type: String,
+    example: 'https://example.com/avatar.png',
+    nullable: true,
+    required: false,
+  })
+  @Expose({ groups: ['me', 'admin'] })
+  avatar: string | null;
+
+  @ApiProperty({
+    type: Boolean,
+    default: false,
+  })
+  @Expose({ groups: ['me', 'admin'] })
+  isAdmin: boolean;
+
+  @ApiProperty({
+    type: Number,
+    default: 1,
+    description: '1 means active',
+  })
+  @Expose({ groups: ['me', 'admin'] })
+  status: number;
 
   @Exclude({ toPlainOnly: true })
-  password?: string;
+  password: string;
 
-  @ApiProperty({
-    type: String,
-    example: 'John',
-  })
-  firstName: string | null;
-
-  @ApiProperty({
-    type: String,
-    example: 'Doe',
-  })
-  lastName: string | null;
+  @Exclude({ toPlainOnly: true })
+  salt: string | null;
 
   @ApiProperty()
   createdAt: Date;
@@ -38,5 +62,5 @@ export class User {
   updatedAt: Date;
 
   @ApiProperty()
-  deletedAt: Date;
+  deletedAt: Date | null;
 }

@@ -1,0 +1,12 @@
+{
+  "taskId": "146d4a78-6f4c-43c6-9856-5f89a82e5bbb",
+  "projectId": "7d71769b-aadd-431a-8618-c4dcdfd3a96e",
+  "branch": "project-1771082350565/task-146d4a78",
+  "gitBaseBranch": "main",
+  "worktreePath": "/Users/fuzhifei/code/go/src/gitlab.yc345.tv/frontend/ainative/backend/tmp/worktrees/project-1771082350565-146d4a78-6f4c-43c6-9856-5f89a82e5bbb",
+  "generatedAt": "2026-02-14T15:19:10.702Z",
+  "sandbox": {
+    "type": "directory",
+    "note": "MVP sandbox uses process-local isolated directory."
+  }
+}

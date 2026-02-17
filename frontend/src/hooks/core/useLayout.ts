@@ -1,5 +1,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { businessLinesApi } from '@/api/business-lines'
+import { projectsApi } from '@/api/projects'
+import type { Project } from '@/types/api/projects'
 import { STORAGE_KEYS } from '@/types/common/storage'
 
 export type ProjectItem = {
@@ -24,9 +27,26 @@ type BusinessLine = {
 }
 
 export type MenuItem = {
-  id: 'dashboard' | 'tasks' | 'kanban' | 'automations' | 'skills' | 'mcp'
+  id: 'dashboard' | 'workflow' | 'tasks' | 'kanban' | 'automations' | 'skills' | 'mcp'
   label: string
   to: string
+}
+
+const normalizeProjectShort = (projectName: string) => {
+  return projectName
+    .trim()
+    .replace(/\s+/g, '')
+    .slice(0, 4)
+    .toUpperCase()
+}
+
+const normalizeProjectSlug = (projectName: string) => {
+  return projectName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+/, '')
+    .replace(/-+$/, '')
 }
 
 export const useLayout = () => {
@@ -44,25 +64,108 @@ export const useLayout = () => {
     top: '0px',
   })
 
-  const businessLines = ref<BusinessLine[]>([
-    {
-      id: 'bl-platform',
-      name: '平台研发线',
-      owner: '张敏',
-      projects: [
-        { id: 'demo-ainative', name: 'AI Native', to: '/projects/demo-ainative', short: 'AIN' },
-        { id: 'studio-core', name: 'Studio Core', to: '/projects/studio-core', short: 'STD' },
-      ],
-    },
-    {
-      id: 'bl-growth',
-      name: '增长业务线',
-      owner: '李博',
-      projects: [{ id: 'runner-sandbox', name: 'Runner Sandbox', to: '/projects/runner-sandbox', short: 'RUN' }],
-    },
-  ])
+  const businessLines = ref<BusinessLine[]>([])
+  const activeBusinessLineId = ref('')
 
-  const activeBusinessLineId = ref(businessLines.value[0]?.id ?? '')
+  const menuItems: MenuItem[] = [
+    { id: 'dashboard', label: '仪表盘', to: '/dashboard' },
+    { id: 'workflow', label: '工作流', to: '/workflow' },
+    { id: 'tasks', label: '任务', to: '/tasks' },
+    { id: 'kanban', label: '看板', to: '/kanban' },
+    { id: 'automations', label: '自动化', to: '/automations' },
+    { id: 'skills', label: 'Skills', to: '/skills' },
+    { id: 'mcp', label: 'MCP', to: '/mcp' },
+  ]
+
+  const menuIconPaths: Record<MenuItem['id'], string[]> = {
+    dashboard: ['M3 3h8v8H3z', 'M13 3h8v5h-8z', 'M13 10h8v11h-8z', 'M3 13h8v8H3z'],
+    workflow: ['M4 7h16', 'M4 12h10', 'M4 17h7', 'M16 10l4 2-4 2', 'M13 15l4 2-4 2'],
+    tasks: ['m9 11 2 2 4-4', 'M5 11h.01', 'M5 18h.01', 'm9 18 2 2 4-4', 'M14 11h5', 'M14 18h5', 'M3 6h18'],
+    kanban: ['M4 5h6v14H4z', 'M14 5h6v8h-6z', 'M14 15h6v4h-6z'],
+    automations: ['M12 7v5l3 3', 'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z'],
+    skills: ['M12 3v4', 'M12 17v4', 'M4.93 4.93l2.83 2.83', 'M16.24 16.24l2.83 2.83', 'M3 12h4', 'M17 12h4', 'M4.93 19.07l2.83-2.83', 'M16.24 7.76l2.83-2.83'],
+    mcp: ['M5 3h14a2 2 0 0 1 2 2v3H3V5a2 2 0 0 1 2-2z', 'M3 10h18v4H3z', 'M3 16h18v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M7 6h.01', 'M7 12h.01', 'M7 18h.01'],
+  }
+
+  const mapProjectItem = (project: Project): ProjectItem => ({
+    id: project.id,
+    name: project.name,
+    to: `/projects/${project.id}`,
+    short: normalizeProjectShort(project.name),
+  })
+
+  const findBusinessLineByProjectId = (projectId: string) => {
+    return businessLines.value.find((line) => line.projects.some((project) => project.id === projectId))
+  }
+
+  const getProjectIdFromRoute = () => {
+    if (route.name !== 'project-detail') return ''
+
+    const routeProjectId = route.params.id
+    if (typeof routeProjectId === 'string') return routeProjectId
+    if (Array.isArray(routeProjectId)) return routeProjectId[0] ?? ''
+
+    return ''
+  }
+
+  const syncBusinessLineFromRoute = () => {
+    const projectId = getProjectIdFromRoute()
+    if (!projectId) return
+
+    const matchedBusinessLine = findBusinessLineByProjectId(projectId)
+    if (!matchedBusinessLine) return
+
+    activeBusinessLineId.value = matchedBusinessLine.id
+  }
+
+  const loadLayoutData = async () => {
+    try {
+      const [businessLineResponse, projectResponse] = await Promise.all([
+        businessLinesApi.list({ page: 1, limit: 50 }),
+        projectsApi.list({ page: 1, limit: 50 }),
+      ])
+
+      const lineMap = new Map<string, BusinessLine>()
+
+      for (const line of businessLineResponse.data) {
+        lineMap.set(line.id, {
+          id: line.id,
+          name: line.name,
+          owner: '-',
+          projects: [],
+        })
+      }
+
+      for (const project of projectResponse.data) {
+        const line = lineMap.get(project.businessLineId)
+        if (!line) {
+          continue
+        }
+
+        line.projects.push(mapProjectItem(project))
+      }
+
+      const nextBusinessLines = Array.from(lineMap.values())
+        .map((line) => ({
+          ...line,
+          projects: [...line.projects].sort((left, right) => left.name.localeCompare(right.name)),
+        }))
+        .sort((left, right) => left.name.localeCompare(right.name))
+
+      businessLines.value = nextBusinessLines
+
+      const hasCurrentActive = nextBusinessLines.some((line) => line.id === activeBusinessLineId.value)
+      if (!hasCurrentActive) {
+        activeBusinessLineId.value = nextBusinessLines[0]?.id ?? ''
+      }
+
+      syncBusinessLineFromRoute()
+    } catch (error) {
+      businessLines.value = []
+      activeBusinessLineId.value = ''
+      void error
+    }
+  }
 
   const currentBusinessLine = computed(() => {
     return businessLines.value.find((line) => line.id === activeBusinessLineId.value) ?? businessLines.value[0]
@@ -84,24 +187,6 @@ export const useLayout = () => {
   const projectItems = computed<ProjectItem[]>(() => {
     return currentBusinessLine.value?.projects ?? []
   })
-
-  const menuItems: MenuItem[] = [
-    { id: 'dashboard', label: '仪表盘', to: '/dashboard' },
-    { id: 'tasks', label: '任务', to: '/tasks' },
-    { id: 'kanban', label: '看板', to: '/kanban' },
-    { id: 'automations', label: '自动化', to: '/automations' },
-    { id: 'skills', label: 'Skills', to: '/skills' },
-    { id: 'mcp', label: 'MCP', to: '/mcp' },
-  ]
-
-  const menuIconPaths: Record<MenuItem['id'], string[]> = {
-    dashboard: ['M3 3h8v8H3z', 'M13 3h8v5h-8z', 'M13 10h8v11h-8z', 'M3 13h8v8H3z'],
-    tasks: ['m9 11 2 2 4-4', 'M5 11h.01', 'M5 18h.01', 'm9 18 2 2 4-4', 'M14 11h5', 'M14 18h5', 'M3 6h18'],
-    kanban: ['M4 5h6v14H4z', 'M14 5h6v8h-6z', 'M14 15h6v4h-6z'],
-    automations: ['M12 7v5l3 3', 'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z'],
-    skills: ['M12 3v4', 'M12 17v4', 'M4.93 4.93l2.83 2.83', 'M16.24 16.24l2.83 2.83', 'M3 12h4', 'M17 12h4', 'M4.93 19.07l2.83-2.83', 'M16.24 7.76l2.83-2.83'],
-    mcp: ['M5 3h14a2 2 0 0 1 2 2v3H3V5a2 2 0 0 1 2-2z', 'M3 10h18v4H3z', 'M3 16h18v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M7 6h.01', 'M7 12h.01', 'M7 18h.01'],
-  }
 
   const pageTitle = computed(() => (route.meta.title as string | undefined) ?? '仪表盘')
 
@@ -180,58 +265,6 @@ export const useLayout = () => {
     showProjectTooltip(event, label)
   }
 
-  const findBusinessLineByProjectId = (projectId: string) => {
-    return businessLines.value.find((line) => line.projects.some((project) => project.id === projectId))
-  }
-
-  const getProjectIdFromRoute = () => {
-    if (route.name !== 'project-detail') return ''
-
-    const routeProjectId = route.params.id
-    if (typeof routeProjectId === 'string') return routeProjectId
-    if (Array.isArray(routeProjectId)) return routeProjectId[0] ?? ''
-
-    return ''
-  }
-
-  const syncBusinessLineFromRoute = () => {
-    const projectId = getProjectIdFromRoute()
-    if (!projectId) return
-
-    const matchedBusinessLine = findBusinessLineByProjectId(projectId)
-    if (!matchedBusinessLine) return
-    activeBusinessLineId.value = matchedBusinessLine.id
-  }
-
-  const normalizeProjectShort = (short: string, projectName: string) => {
-    const source = short.trim() || projectName.trim()
-    return source.slice(0, 4).toUpperCase()
-  }
-
-  const normalizeProjectId = (name: string) => {
-    const normalized = name
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+/, '')
-      .replace(/-+$/, '')
-
-    if (normalized) return normalized
-    return `project-${Date.now().toString(36)}`
-  }
-
-  const ensureUniqueProjectId = (candidateId: string) => {
-    let uniqueId = candidateId
-    let suffix = 1
-
-    while (businessLines.value.some((line) => line.projects.some((project) => project.id === uniqueId))) {
-      uniqueId = `${candidateId}-${suffix}`
-      suffix += 1
-    }
-
-    return uniqueId
-  }
-
   const openBusinessLineModal = () => {
     businessLineModalOpen.value = true
     mobileNavOpen.value = false
@@ -246,43 +279,53 @@ export const useLayout = () => {
     hideProjectTooltip()
   }
 
-  const createProject = (payload: { businessLineId: string; name: string; short: string }) => {
-    const targetLine = businessLines.value.find((line) => line.id === payload.businessLineId)
-    if (!targetLine) return
-
+  const createProject = async (payload: { businessLineId: string; name: string; short: string }) => {
     const projectName = payload.name.trim()
     if (!projectName) return
 
-    const projectId = ensureUniqueProjectId(normalizeProjectId(projectName))
-    const projectShort = normalizeProjectShort(payload.short, projectName)
+    const slug = normalizeProjectSlug(projectName) || `project-${Date.now().toString(36)}`
+    const gitUrl = `git@example.com:generated/${slug}.git`
 
-    targetLine.projects.push({
-      id: projectId,
-      name: projectName,
-      to: `/projects/${projectId}`,
-      short: projectShort,
-    })
+    try {
+      await projectsApi.create({
+        businessLineId: payload.businessLineId,
+        name: projectName,
+        gitUrl,
+        defaultBranch: 'main',
+      })
+
+      await loadLayoutData()
+      activeBusinessLineId.value = payload.businessLineId
+    } catch (error) {
+      void error
+    }
   }
 
-  const updateProject = (payload: { businessLineId: string; projectId: string; name: string; short: string }) => {
-    const targetLine = businessLines.value.find((line) => line.id === payload.businessLineId)
-    if (!targetLine) return
-
-    const targetProject = targetLine.projects.find((project) => project.id === payload.projectId)
-    if (!targetProject) return
-
+  const updateProject = async (payload: { businessLineId: string; projectId: string; name: string; short: string }) => {
     const projectName = payload.name.trim()
     if (!projectName) return
 
-    targetProject.name = projectName
-    targetProject.short = normalizeProjectShort(payload.short, projectName)
+    try {
+      await projectsApi.update(payload.projectId, {
+        name: projectName,
+      })
+
+      await loadLayoutData()
+      activeBusinessLineId.value = payload.businessLineId
+      void payload.short
+    } catch (error) {
+      void error
+    }
   }
 
-  const deleteProject = (payload: { businessLineId: string; projectId: string }) => {
-    const targetLine = businessLines.value.find((line) => line.id === payload.businessLineId)
-    if (!targetLine) return
-
-    targetLine.projects = targetLine.projects.filter((project) => project.id !== payload.projectId)
+  const deleteProject = async (payload: { businessLineId: string; projectId: string }) => {
+    try {
+      await projectsApi.remove(payload.projectId)
+      await loadLayoutData()
+      activeBusinessLineId.value = payload.businessLineId
+    } catch (error) {
+      void error
+    }
   }
 
   const openSettingsModal = () => {
@@ -334,7 +377,7 @@ export const useLayout = () => {
     const savedTheme = localStorage.getItem(STORAGE_KEYS.theme)
     document.documentElement.classList.toggle('dark', savedTheme === 'dark')
 
-    syncBusinessLineFromRoute()
+    void loadLayoutData()
 
     desktopMediaQuery = window.matchMedia('(min-width: 1100px)')
     syncDesktop()

@@ -1,37 +1,42 @@
 import request from 'supertest';
-import { APP_URL, TESTER_EMAIL, TESTER_PASSWORD } from '../utils/constants';
+import { APP_URL, TESTER_PASSWORD, TESTER_USERNAME } from '../utils/constants';
 
 describe('Auth Module', () => {
   const app = APP_URL;
-  const newUserFirstName = `Tester${Date.now()}`;
-  const newUserLastName = 'E2E';
-  const newUserEmail = `user.${Date.now()}@example.com`;
+  const newUserNickname = `Tester${Date.now()}`;
+  const newUsername = `user.${Date.now()}`;
   const newUserPassword = 'secret';
 
   describe('Registration', () => {
-    it('should fail with existing email: /api/v1/auth/email/register (POST)', () => {
+    it('should fail with existing username: /api/v1/auth/email/register (POST)', () => {
       return request(app)
         .post('/api/v1/auth/email/register')
         .send({
-          email: TESTER_EMAIL,
+          username: TESTER_USERNAME,
           password: TESTER_PASSWORD,
-          firstName: 'Tester',
-          lastName: 'E2E',
+          nickname: 'Tester E2E',
         })
-        .expect(422)
-        .expect(({ body }) => {
-          expect(body.errors.email).toBeDefined();
-        });
+        .expect(409);
     });
 
     it('should succeed: /api/v1/auth/email/register (POST)', () => {
       return request(app)
         .post('/api/v1/auth/email/register')
         .send({
-          email: newUserEmail,
+          username: newUsername,
           password: newUserPassword,
-          firstName: newUserFirstName,
-          lastName: newUserLastName,
+          nickname: newUserNickname,
+        })
+        .expect(204);
+    });
+
+    it('should succeed: /api/v1/auth/register (POST)', () => {
+      return request(app)
+        .post('/api/v1/auth/register')
+        .send({
+          username: `user.v2.${Date.now()}`,
+          password: newUserPassword,
+          nickname: `TesterV2${Date.now()}`,
         })
         .expect(204);
     });
@@ -41,14 +46,25 @@ describe('Auth Module', () => {
     it('should succeed: /api/v1/auth/email/login (POST)', () => {
       return request(app)
         .post('/api/v1/auth/email/login')
-        .send({ email: newUserEmail, password: newUserPassword })
+        .send({ username: newUsername, password: newUserPassword })
         .expect(200)
         .expect(({ body }) => {
           expect(body.token).toBeDefined();
           expect(body.refreshToken).toBeDefined();
           expect(body.tokenExpires).toBeDefined();
-          expect(body.user.email).toBeDefined();
+          expect(body.user.username).toBeDefined();
           expect(body.user.password).not.toBeDefined();
+        });
+    });
+
+    it('should succeed via /api/v1/auth/login (POST)', () => {
+      return request(app)
+        .post('/api/v1/auth/login')
+        .send({ username: newUsername, password: newUserPassword })
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body.token).toBeDefined();
+          expect(body.user.username).toBeDefined();
         });
     });
   });
@@ -59,7 +75,7 @@ describe('Auth Module', () => {
     beforeAll(async () => {
       await request(app)
         .post('/api/v1/auth/email/login')
-        .send({ email: newUserEmail, password: newUserPassword })
+        .send({ username: newUsername, password: newUserPassword })
         .then(({ body }) => {
           newUserApiToken = body.token;
         });
@@ -73,7 +89,7 @@ describe('Auth Module', () => {
         })
         .expect(200)
         .expect(({ body }) => {
-          expect(body.email).toBeDefined();
+          expect(body.username).toBeDefined();
           expect(body.password).not.toBeDefined();
         });
     });
@@ -81,7 +97,7 @@ describe('Auth Module', () => {
     it('should rotate refresh token: /api/v1/auth/refresh (POST)', async () => {
       let newUserRefreshToken = await request(app)
         .post('/api/v1/auth/email/login')
-        .send({ email: newUserEmail, password: newUserPassword })
+        .send({ username: newUsername, password: newUserPassword })
         .then(({ body }) => body.refreshToken);
 
       newUserRefreshToken = await request(app)
@@ -108,7 +124,7 @@ describe('Auth Module', () => {
     it('should keep allowing refresh with same token: /api/v1/auth/refresh (POST)', async () => {
       const refreshToken = await request(app)
         .post('/api/v1/auth/email/login')
-        .send({ email: newUserEmail, password: newUserPassword })
+        .send({ username: newUsername, password: newUserPassword })
         .then(({ body }) => body.refreshToken);
 
       await request(app)
@@ -129,12 +145,12 @@ describe('Auth Module', () => {
     it('should return no content on logout: /api/v1/auth/logout (POST)', async () => {
       const refreshToken = await request(app)
         .post('/api/v1/auth/email/login')
-        .send({ email: newUserEmail, password: newUserPassword })
+        .send({ username: newUsername, password: newUserPassword })
         .then(({ body }) => body.refreshToken);
 
       const token = await request(app)
         .post('/api/v1/auth/email/login')
-        .send({ email: newUserEmail, password: newUserPassword })
+        .send({ username: newUsername, password: newUserPassword })
         .then(({ body }) => body.token);
 
       await request(app)
@@ -161,7 +177,7 @@ describe('Auth Module', () => {
           type: 'bearer',
         })
         .send({ password: newPassword, oldPassword: 'wrong-password' })
-        .expect(422);
+        .expect(401);
 
       await request(app)
         .patch('/api/v1/auth/me')
@@ -173,7 +189,7 @@ describe('Auth Module', () => {
 
       await request(app)
         .post('/api/v1/auth/email/login')
-        .send({ email: newUserEmail, password: newPassword })
+        .send({ username: newUsername, password: newPassword })
         .expect(200)
         .expect(({ body }) => {
           expect(body.token).toBeDefined();
@@ -188,32 +204,31 @@ describe('Auth Module', () => {
         .expect(200);
     });
 
-    it('should update email directly: /api/v1/auth/me (PATCH)', async () => {
-      const newUserEmail2 = `next.${newUserEmail}`;
+    it('should update username directly: /api/v1/auth/me (PATCH)', async () => {
+      const newUsername2 = `next.${newUsername}`;
 
       await request(app)
         .patch('/api/v1/auth/me')
         .auth(newUserApiToken, {
           type: 'bearer',
         })
-        .send({ email: newUserEmail2 })
+        .send({ username: newUsername2 })
         .expect(200)
         .expect(({ body }) => {
-          expect(body.email).toBe(newUserEmail2);
+          expect(body.username).toBe(newUsername2);
         });
 
       await request(app)
         .post('/api/v1/auth/email/login')
-        .send({ email: newUserEmail2, password: newUserPassword })
+        .send({ username: newUsername2, password: newUserPassword })
         .expect(200);
     });
 
     it('should delete profile: /api/v1/auth/me (DELETE)', async () => {
       const newUser = {
-        email: `remove.${Date.now()}@example.com`,
+        username: `remove.${Date.now()}`,
         password: 'secret',
-        firstName: 'Delete',
-        lastName: 'Me',
+        nickname: 'Delete Me',
       };
 
       await request(app)
@@ -223,7 +238,7 @@ describe('Auth Module', () => {
 
       const token = await request(app)
         .post('/api/v1/auth/email/login')
-        .send({ email: newUser.email, password: newUser.password })
+        .send({ username: newUser.username, password: newUser.password })
         .then(({ body }) => body.token);
 
       await request(app)
@@ -235,8 +250,8 @@ describe('Auth Module', () => {
 
       await request(app)
         .post('/api/v1/auth/email/login')
-        .send({ email: newUser.email, password: newUser.password })
-        .expect(422);
+        .send({ username: newUser.username, password: newUser.password })
+        .expect(404);
     });
   });
 });

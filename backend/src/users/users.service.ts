@@ -1,7 +1,7 @@
 import {
-  HttpStatus,
+  ConflictException,
   Injectable,
-  UnprocessableEntityException,
+  NotFoundException,
 } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { NullableType } from '../utils/types/nullable.type';
@@ -20,37 +20,27 @@ export class UsersService {
     // Do not remove comment below.
     // <creating-property />
 
-    let password: string | undefined = undefined;
+    const existedUser = await this.usersRepository.findByUsername(
+      createUserDto.username,
+    );
 
-    if (createUserDto.password) {
-      const salt = await bcrypt.genSalt();
-      password = await bcrypt.hash(createUserDto.password, salt);
+    if (existedUser) {
+      throw new ConflictException('usernameAlreadyExists');
     }
 
-    let email: string | null = null;
-
-    if (createUserDto.email) {
-      const userObject = await this.usersRepository.findByEmail(
-        createUserDto.email,
-      );
-      if (userObject) {
-        throw new UnprocessableEntityException({
-          status: HttpStatus.UNPROCESSABLE_ENTITY,
-          errors: {
-            email: 'emailAlreadyExists',
-          },
-        });
-      }
-      email = createUserDto.email;
-    }
+    const salt = await bcrypt.genSalt();
+    const password = await bcrypt.hash(createUserDto.password, salt);
 
     return this.usersRepository.create({
       // Do not remove comment below.
       // <creating-property-payload />
-      firstName: createUserDto.firstName,
-      lastName: createUserDto.lastName,
-      email: email,
-      password: password,
+      username: createUserDto.username,
+      password,
+      salt,
+      nickname: createUserDto.nickname ?? null,
+      avatar: createUserDto.avatar ?? null,
+      isAdmin: createUserDto.isAdmin ?? false,
+      status: createUserDto.status ?? 1,
     });
   }
 
@@ -78,8 +68,8 @@ export class UsersService {
     return this.usersRepository.findByIds(ids);
   }
 
-  findByEmail(email: User['email']): Promise<NullableType<User>> {
-    return this.usersRepository.findByEmail(email);
+  findByUsername(username: User['username']): Promise<NullableType<User>> {
+    return this.usersRepository.findByUsername(username);
   }
 
   async update(
@@ -90,45 +80,57 @@ export class UsersService {
     // <updating-property />
 
     let password: string | undefined = undefined;
+    let salt: string | null | undefined = undefined;
 
     if (updateUserDto.password) {
-      const userObject = await this.usersRepository.findById(id);
+      const userObject = await this.findById(id);
 
-      if (userObject && userObject?.password !== updateUserDto.password) {
-        const salt = await bcrypt.genSalt();
-        password = await bcrypt.hash(updateUserDto.password, salt);
+      if (userObject && userObject.password !== updateUserDto.password) {
+        const generatedSalt = await bcrypt.genSalt();
+        password = await bcrypt.hash(updateUserDto.password, generatedSalt);
+        salt = generatedSalt;
       }
     }
 
-    let email: string | null | undefined = undefined;
+    let username: string | undefined = undefined;
 
-    if (updateUserDto.email) {
-      const userObject = await this.usersRepository.findByEmail(
-        updateUserDto.email,
+    if (updateUserDto.username) {
+      const userObject = await this.usersRepository.findByUsername(
+        updateUserDto.username,
       );
 
       if (userObject && userObject.id !== id) {
-        throw new UnprocessableEntityException({
-          status: HttpStatus.UNPROCESSABLE_ENTITY,
-          errors: {
-            email: 'emailAlreadyExists',
-          },
-        });
+        throw new ConflictException('usernameAlreadyExists');
       }
 
-      email = updateUserDto.email;
-    } else if (updateUserDto.email === null) {
-      email = null;
+      username = updateUserDto.username;
     }
 
-    return this.usersRepository.update(id, {
+    const updatedUser = await this.usersRepository.update(id, {
       // Do not remove comment below.
       // <updating-property-payload />
-      firstName: updateUserDto.firstName,
-      lastName: updateUserDto.lastName,
-      email,
+      ...(username !== undefined ? { username } : {}),
+      ...(updateUserDto.nickname !== undefined
+        ? { nickname: updateUserDto.nickname }
+        : {}),
+      ...(updateUserDto.avatar !== undefined
+        ? { avatar: updateUserDto.avatar }
+        : {}),
+      ...(updateUserDto.isAdmin !== undefined
+        ? { isAdmin: updateUserDto.isAdmin }
+        : {}),
+      ...(updateUserDto.status !== undefined
+        ? { status: updateUserDto.status }
+        : {}),
       password,
+      ...(salt !== undefined ? { salt } : {}),
     });
+
+    if (!updatedUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    return updatedUser;
   }
 
   async remove(id: User['id']): Promise<void> {

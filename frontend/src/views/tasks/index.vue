@@ -1,385 +1,450 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { projectsApi } from '@/api/projects'
+import { tasksApi } from '@/api/tasks'
+import { workflowApi } from '@/api/workflow'
+import type { Project } from '@/types/api/projects'
+import type { Task } from '@/types/api/tasks'
+import type { WorkflowTemplate, WorkflowTemplateVersion } from '@/types/api/workflow'
 
-type MessageRole = 'user' | 'assistant'
+const route = useRoute()
+const router = useRouter()
 
-type MessageItem = {
-  id: string
-  role: MessageRole
-  content: string
-  time: string
-}
+const loading = ref(false)
+const submitting = ref(false)
+const errorMessage = ref('')
 
-type SuggestionItem = {
-  id: string
-  title: string
-  detail: string
-}
+const projects = ref<Project[]>([])
+const tasks = ref<Task[]>([])
+const templates = ref<WorkflowTemplate[]>([])
+const templateVersions = ref<WorkflowTemplateVersion[]>([])
 
-const input = ref('')
-const sending = ref(false)
-const viewportRef = ref<HTMLDivElement | null>(null)
-const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const filters = reactive({
+  projectId: '',
+  status: '',
+})
 
-const messages = ref<MessageItem[]>([])
+const createForm = reactive({
+  projectId: '',
+  mode: 'conversation' as 'conversation' | 'workflow',
+  workflowTemplateId: '',
+  workflowTemplateVersion: '' as number | '',
+  title: '',
+  description: '',
+  acceptanceCriteriaText: '',
+  branch: 'main',
+  environment: 'default',
+})
 
-const suggestions: SuggestionItem[] = [
-  {
-    id: 'snake-game',
-    title: 'Build a classic Snake game in this repo.',
-    detail: '生成可运行的游戏页面与基础说明。',
-  },
-  {
-    id: 'one-page-pdf',
-    title: 'Create a one-page $pdf that summarizes this app.',
-    detail: '输出重点结构、模块职责与待办事项。',
-  },
-  {
-    id: 'weekly-pr',
-    title: "Summarize last week's PRs by teammate and theme.",
-    detail: '按成员与主题分组汇总主要改动。',
-  },
+const taskStatusOptions: Array<{ label: string; value: '' | Task['status'] }> = [
+  { label: '全部状态', value: '' },
+  { label: '待执行', value: 'todo' },
+  { label: '执行中', value: 'in_progress' },
+  { label: '待处理', value: 'in_review' },
+  { label: '已完成', value: 'done' },
 ]
 
-const hasConversation = computed(() => messages.value.length > 0)
-
-const roleClass = (role: MessageRole) => {
-  if (role === 'user') {
-    return 'ml-auto max-w-[84%] rounded-2xl bg-primary px-4 py-3 text-primary-foreground'
-  }
-
-  return 'mr-auto max-w-[84%] rounded-2xl border border-border bg-card px-4 py-3 text-foreground'
+const statusLabelMap: Record<Task['status'], string> = {
+  todo: '待执行',
+  in_progress: '执行中',
+  in_review: '待处理',
+  done: '已完成',
 }
 
-const timeLabel = () => {
-  const now = new Date()
-  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+const statusClassMap: Record<Task['status'], string> = {
+  todo: 'bg-muted text-muted-foreground',
+  in_progress: 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
+  in_review: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+  done: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+}
+
+const selectedTemplate = computed(() => {
+  return templates.value.find((template) => template.id === createForm.workflowTemplateId) ?? null
+})
+
+const formatDate = (value?: string) => {
+  if (!value) return '-'
+  const parsedDate = new Date(value)
+  if (Number.isNaN(parsedDate.getTime())) return value
+  return parsedDate.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+const syncFiltersFromQuery = () => {
+  const queryProjectId = typeof route.query.projectId === 'string' ? route.query.projectId : ''
+  if (queryProjectId) {
+    filters.projectId = queryProjectId
+    createForm.projectId = queryProjectId
+  }
+}
+
+const loadTemplateVersions = async (templateId: string) => {
+  if (!templateId) {
+    templateVersions.value = []
+    createForm.workflowTemplateVersion = ''
+    return
+  }
+
+  try {
+    const versions = await workflowApi.versions(templateId)
+    templateVersions.value = versions
+
+    const latestVersion = versions[0]
+    createForm.workflowTemplateVersion = latestVersion ? latestVersion.version : ''
+  } catch (error) {
+    templateVersions.value = []
+    createForm.workflowTemplateVersion = ''
+    errorMessage.value = error instanceof Error ? error.message : '加载模板版本失败'
+  }
+}
+
+const loadTaskList = async () => {
+  try {
+    const response = await tasksApi.list({
+      page: 1,
+      limit: 50,
+      projectId: filters.projectId || undefined,
+      status: filters.status || undefined,
+    })
+
+    tasks.value = response.data
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '加载任务列表失败'
+  }
+}
+
+const loadPageData = async () => {
+  loading.value = true
+  errorMessage.value = ''
+
+  try {
+    const [projectResponse, taskResponse, templateResponse] = await Promise.all([
+      projectsApi.list({ page: 1, limit: 50 }),
+      tasksApi.list({
+        page: 1,
+        limit: 50,
+        projectId: filters.projectId || undefined,
+        status: filters.status || undefined,
+      }),
+      workflowApi.list({ page: 1, limit: 50, isActive: true }),
+    ])
+
+    projects.value = projectResponse.data
+    tasks.value = taskResponse.data
+    templates.value = templateResponse.data
+
+    if (!createForm.projectId) {
+      createForm.projectId = projectResponse.data[0]?.id ?? ''
+    }
+
+    if (createForm.workflowTemplateId) {
+      await loadTemplateVersions(createForm.workflowTemplateId)
+    }
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '加载任务页面失败'
+  } finally {
+    loading.value = false
+  }
+}
+
+const createTask = async () => {
+  if (!createForm.projectId || !createForm.title.trim()) {
+    return
+  }
+
+  if (createForm.mode === 'workflow' && !createForm.workflowTemplateId) {
+    errorMessage.value = '工作流模式下必须选择模板'
+    return
+  }
+
+  submitting.value = true
+  errorMessage.value = ''
+
+  try {
+    const acceptanceCriteria = createForm.acceptanceCriteriaText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+
+    await tasksApi.create({
+      projectId: createForm.projectId,
+      mode: createForm.mode,
+      workflowTemplateId: createForm.workflowTemplateId || undefined,
+      workflowTemplateVersion:
+        createForm.workflowTemplateVersion === '' ? undefined : Number(createForm.workflowTemplateVersion),
+      title: createForm.title.trim(),
+      description: createForm.description.trim() || undefined,
+      acceptanceCriteria: acceptanceCriteria.length > 0 ? acceptanceCriteria : undefined,
+      branch: createForm.branch.trim() || undefined,
+      environment: createForm.environment.trim() || undefined,
+    })
+
+    createForm.title = ''
+    createForm.description = ''
+    createForm.acceptanceCriteriaText = ''
+    createForm.branch = 'main'
+    createForm.environment = 'default'
+
+    await loadTaskList()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '创建任务失败'
+  } finally {
+    submitting.value = false
+  }
 }
 
 watch(
-  () => messages.value.length,
-  async () => {
-    await nextTick()
-    const viewport = viewportRef.value
-    if (!viewport) return
-    viewport.scrollTop = viewport.scrollHeight
+  () => createForm.workflowTemplateId,
+  async (templateId) => {
+    const currentTemplate = templates.value.find((template) => template.id === templateId)
+
+    if (currentTemplate) {
+      createForm.mode = currentTemplate.mode
+    }
+
+    await loadTemplateVersions(templateId)
   },
 )
 
-const applySuggestion = (content: string) => {
-  input.value = content
-  textareaRef.value?.focus()
+watch(
+  () => createForm.mode,
+  (mode) => {
+    if (mode === 'conversation') {
+      createForm.workflowTemplateId = ''
+      createForm.workflowTemplateVersion = ''
+      templateVersions.value = []
+    }
+  },
+)
+
+const applyFilters = async () => {
+  await loadTaskList()
+  await router.replace({
+    query: {
+      ...(filters.projectId ? { projectId: filters.projectId } : {}),
+      ...(filters.status ? { status: filters.status } : {}),
+    },
+  })
 }
 
-const sendMessage = async () => {
-  const content = input.value.trim()
-  if (!content || sending.value) return
-
-  const messageTime = timeLabel()
-  messages.value.push({
-    id: `m-user-${Date.now()}`,
-    role: 'user',
-    content,
-    time: messageTime,
-  })
-  input.value = ''
-
-  sending.value = true
-  await new Promise((resolve) => setTimeout(resolve, 320))
-
-  messages.value.push({
-    id: `m-assistant-${Date.now()}`,
-    role: 'assistant',
-    content: '已记录任务需求。我将开始执行并在这里持续同步关键进度。',
-    time: messageTime,
-  })
-
-  sending.value = false
-}
+onMounted(() => {
+  syncFiltersFromQuery()
+  void loadPageData()
+})
 </script>
 
 <template>
-  <div class="fade-up flex min-h-[calc(100vh-11.5rem)] flex-col">
-    <section class="flex flex-1 flex-col justify-center pb-8">
-      <div class="mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center">
-        <div v-if="!hasConversation" class="mx-auto flex max-w-xl flex-col items-center text-center">
-          <div class="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-card shadow-sm">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="26"
-              height="26"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M4.5 12a3.5 3.5 0 0 1 2.4-3.33A4.5 4.5 0 0 1 15.2 7a4 4 0 1 1 1.94 7.5H7.8A3.3 3.3 0 0 1 4.5 12" />
-              <path d="m10.5 11 1.5 1.5 2.5-2.5" />
-            </svg>
-          </div>
-
-          <h1 class="mt-5 text-4xl font-semibold tracking-tight md:text-5xl">Let's build</h1>
-
-          <button
-            class="mt-2 inline-flex h-11 items-center gap-1 rounded-full px-4 text-3xl font-semibold tracking-tight text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            type="button"
-          >
-            ainative
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
-        </div>
-
-        <article
-          v-else
-          class="mx-auto mt-6 flex w-full max-w-3xl flex-1 flex-col overflow-hidden rounded-3xl border border-border/80 bg-card/90 shadow-sm backdrop-blur"
-        >
-          <header class="border-b border-border px-5 py-4">
-            <p class="text-sm font-semibold">当前会话</p>
-            <p class="mt-1 text-xs text-muted-foreground">项目：AINative 示例项目 · 模式：Codex Runner</p>
-          </header>
-
-          <div ref="viewportRef" class="flex-1 space-y-3 overflow-y-auto px-4 py-4">
-            <div v-for="message in messages" :key="message.id" :class="roleClass(message.role)">
-              <p class="text-sm leading-relaxed">{{ message.content }}</p>
-              <p class="mt-2 text-[11px] opacity-70">{{ message.time }}</p>
-            </div>
-          </div>
-        </article>
-
-        <div class="mx-auto mt-10 w-full max-w-4xl">
-          <div class="mb-3 flex justify-end">
-            <button
-              class="inline-flex h-9 items-center rounded-full px-3 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              type="button"
-            >
-              Explore more
-            </button>
-          </div>
-
-          <div class="grid gap-3 md:grid-cols-3">
-            <button
-              v-for="suggestion in suggestions"
-              :key="suggestion.id"
-              class="group min-h-36 rounded-3xl border border-border bg-card/95 p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              type="button"
-              @click="applySuggestion(suggestion.title)"
-            >
-              <span
-                class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border/80 bg-muted text-muted-foreground transition group-hover:text-foreground"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <rect x="3" y="4" width="18" height="14" rx="2" />
-                  <path d="M8 20h8" />
-                </svg>
-              </span>
-              <p class="mt-3 text-[1.35rem] leading-snug tracking-tight text-foreground">{{ suggestion.title }}</p>
-              <p class="mt-2 text-xs leading-relaxed text-muted-foreground">{{ suggestion.detail }}</p>
-            </button>
-          </div>
-        </div>
-      </div>
+  <div class="space-y-6 fade-up">
+    <section class="space-y-2">
+      <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">任务管理</p>
+      <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">任务列表与创建</h1>
+      <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+        支持选择项目和模板创建任务，并按状态筛选查看执行进展。
+      </p>
     </section>
 
-    <section class="mx-auto w-full max-w-4xl">
-      <form
-        class="rounded-[1.7rem] border border-border bg-card/95 shadow-[0_16px_40px_-24px_hsl(0_0%_0%_/_0.55)] backdrop-blur"
-        @submit.prevent="sendMessage"
-      >
-        <label class="block px-4 pt-4">
-          <span class="sr-only">输入任务消息</span>
-          <textarea
-            ref="textareaRef"
-            v-model="input"
-            rows="3"
-            class="min-h-[88px] w-full resize-y rounded-xl bg-card px-2 py-2 text-base text-foreground outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-            placeholder="Ask Codex anything, @ to add files, / for commands"
+    <section class="panel-card p-5">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p class="text-sm font-semibold">新建任务</p>
+        <div class="flex flex-wrap items-center gap-2">
+          <select
+            v-model="filters.projectId"
+            class="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+          >
+            <option value="">全部项目</option>
+            <option v-for="project in projects" :key="project.id" :value="project.id">
+              {{ project.name }}
+            </option>
+          </select>
+
+          <select
+            v-model="filters.status"
+            class="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+          >
+            <option v-for="option in taskStatusOptions" :key="option.value || 'all'" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+
+          <button
+            class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
+            type="button"
+            @click="applyFilters"
+          >
+            筛选
+          </button>
+        </div>
+      </div>
+
+      <form class="grid gap-3 md:grid-cols-2" @submit.prevent="createTask">
+        <label class="space-y-1">
+          <span class="text-xs font-semibold text-muted-foreground">项目</span>
+          <select
+            v-model="createForm.projectId"
+            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+          >
+            <option v-for="project in projects" :key="project.id" :value="project.id">
+              {{ project.name }}
+            </option>
+          </select>
+        </label>
+
+        <label class="space-y-1">
+          <span class="text-xs font-semibold text-muted-foreground">模式</span>
+          <select
+            v-model="createForm.mode"
+            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+          >
+            <option value="conversation">conversation</option>
+            <option value="workflow">workflow</option>
+          </select>
+        </label>
+
+        <label class="space-y-1 md:col-span-2">
+          <span class="text-xs font-semibold text-muted-foreground">任务标题</span>
+          <input
+            v-model="createForm.title"
+            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+            placeholder="例如：实现项目成员权限校验"
+            type="text"
           />
         </label>
 
-        <div class="mt-2 flex flex-wrap items-center justify-between gap-3 border-t border-border/80 px-4 py-3">
-          <div class="flex flex-wrap items-center gap-2">
-            <button
-              class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              type="button"
-              aria-label="添加文件或命令"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M12 5v14" />
-                <path d="M5 12h14" />
-              </svg>
-            </button>
+        <label class="space-y-1 md:col-span-2">
+          <span class="text-xs font-semibold text-muted-foreground">任务描述</span>
+          <input
+            v-model="createForm.description"
+            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+            type="text"
+          />
+        </label>
 
-            <button
-              class="inline-flex h-10 items-center gap-2 rounded-full border border-border bg-background px-3 text-sm text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              type="button"
+        <template v-if="createForm.mode === 'workflow'">
+          <label class="space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">工作流模板</span>
+            <select
+              v-model="createForm.workflowTemplateId"
+              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
             >
-              GPT-5.3-Codex
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </button>
+              <option value="">请选择模板</option>
+              <option v-for="template in templates" :key="template.id" :value="template.id">
+                {{ template.name }}
+              </option>
+            </select>
+          </label>
 
-            <button
-              class="inline-flex h-10 items-center gap-2 rounded-full border border-border bg-background px-3 text-sm text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              type="button"
+          <label class="space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">模板版本</span>
+            <select
+              v-model="createForm.workflowTemplateVersion"
+              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              :disabled="!selectedTemplate"
             >
-              Extra High
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </button>
-          </div>
+              <option value="">自动选择最新</option>
+              <option v-for="version in templateVersions" :key="version.id" :value="version.version">
+                v{{ version.version }}
+              </option>
+            </select>
+          </label>
+        </template>
 
+        <label class="space-y-1">
+          <span class="text-xs font-semibold text-muted-foreground">分支</span>
+          <input
+            v-model="createForm.branch"
+            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+            type="text"
+          />
+        </label>
+
+        <label class="space-y-1">
+          <span class="text-xs font-semibold text-muted-foreground">环境</span>
+          <input
+            v-model="createForm.environment"
+            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+            type="text"
+          />
+        </label>
+
+        <label class="space-y-1 md:col-span-2">
+          <span class="text-xs font-semibold text-muted-foreground">验收标准（每行一条）</span>
+          <textarea
+            v-model="createForm.acceptanceCriteriaText"
+            class="min-h-24 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+            placeholder="例如：\n- 任务可成功执行\n- 日志流实时可见"
+          />
+        </label>
+
+        <div class="md:col-span-2 flex justify-end">
           <button
-            class="inline-flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-55"
-            :disabled="sending || !input.trim()"
+            class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="submitting"
             type="submit"
-            aria-label="发送任务消息"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="m12 19 0-14" />
-              <path d="m5 12 7-7 7 7" />
-            </svg>
+            {{ submitting ? '创建中...' : '创建任务' }}
           </button>
         </div>
       </form>
 
-      <div class="mt-3 flex flex-wrap items-center justify-between gap-2 px-1 pb-1 text-xs text-muted-foreground">
-        <div class="flex flex-wrap items-center gap-3">
-          <button
-            class="inline-flex h-8 items-center gap-1 rounded-full px-2 transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            type="button"
-          >
-            Local
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
+      <p v-if="errorMessage" class="mt-3 text-sm text-destructive">{{ errorMessage }}</p>
+    </section>
 
-          <button
-            class="inline-flex h-8 items-center gap-1 rounded-full px-2 transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            type="button"
-          >
-            Default permission
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
-        </div>
+    <section class="panel-card overflow-hidden">
+      <div class="border-b border-border px-5 py-4">
+        <p class="text-sm font-semibold">任务列表</p>
+      </div>
 
-        <button
-          class="inline-flex h-8 items-center gap-1 rounded-full px-2 transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          type="button"
-        >
-          v2
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-        </button>
+      <div v-if="loading" class="p-5 text-sm text-muted-foreground">加载中...</div>
+
+      <div v-else class="overflow-x-auto">
+        <table class="w-full min-w-[980px] text-left text-sm">
+          <thead class="border-b border-border bg-background/60">
+            <tr class="text-xs font-semibold text-muted-foreground">
+              <th class="px-5 py-3">任务</th>
+              <th class="px-5 py-3">项目</th>
+              <th class="px-5 py-3">模式</th>
+              <th class="px-5 py-3">状态</th>
+              <th class="px-5 py-3">更新时间</th>
+              <th class="px-5 py-3 text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <tr v-for="task in tasks" :key="task.id" class="transition hover:bg-background/70">
+              <td class="px-5 py-4">
+                <p class="font-semibold">{{ task.title }}</p>
+                <p class="mt-1 font-mono text-xs text-muted-foreground">{{ task.id }}</p>
+              </td>
+              <td class="px-5 py-4 text-muted-foreground">
+                {{ projects.find((project) => project.id === task.projectId)?.name ?? task.projectId }}
+              </td>
+              <td class="px-5 py-4 text-muted-foreground">{{ task.mode }}</td>
+              <td class="px-5 py-4">
+                <span class="inline-flex rounded-full px-2 py-1 text-xs font-semibold" :class="statusClassMap[task.status]">
+                  {{ statusLabelMap[task.status] }}
+                </span>
+              </td>
+              <td class="px-5 py-4 text-muted-foreground">{{ formatDate(task.updatedAt) }}</td>
+              <td class="px-5 py-4 text-right">
+                <RouterLink
+                  :to="`/tasks/${task.id}`"
+                  class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
+                >
+                  详情
+                </RouterLink>
+              </td>
+            </tr>
+
+            <tr v-if="tasks.length === 0">
+              <td class="px-5 py-6 text-sm text-muted-foreground" colspan="6">暂无任务，先创建一条任务开始执行。</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </section>
   </div>

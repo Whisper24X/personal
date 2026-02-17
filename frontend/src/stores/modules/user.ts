@@ -2,12 +2,28 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { authApi } from '@/api/auth'
 import { STORAGE_KEYS } from '@/types/common/storage'
+import type { UserInfo } from '@/types/api/auth'
 
 export type UserProfile = {
   id: string
   name: string
-  email: string
+  username: string
+  avatar?: string | null
   permissions: string[]
+  isAdmin: boolean
+}
+
+const mapUserToProfile = (user: UserInfo): UserProfile => {
+  const allPermissions = ['dashboard:view', 'projects:view', 'tasks:view', 'settings:view']
+
+  return {
+    id: user.id,
+    name: user.nickname?.trim() || user.username,
+    username: user.username,
+    avatar: user.avatar,
+    permissions: user.isAdmin ? allPermissions : ['dashboard:view', 'projects:view', 'tasks:view'],
+    isAdmin: user.isAdmin,
+  }
 }
 
 export const useUserStore = defineStore('user', () => {
@@ -29,8 +45,20 @@ export const useUserStore = defineStore('user', () => {
     return profile.value.permissions.includes(permission)
   }
 
-  const logout = () => {
-    authApi.logout()
+  const loadMe = async () => {
+    if (!token.value) {
+      profile.value = null
+      return null
+    }
+
+    const me = await authApi.me()
+    const mappedProfile = mapUserToProfile(me)
+    setProfile(mappedProfile)
+    return mappedProfile
+  }
+
+  const logout = async () => {
+    await authApi.logout()
     setToken(null)
     setProfile(null)
   }
@@ -42,6 +70,8 @@ export const useUserStore = defineStore('user', () => {
     setToken,
     setProfile,
     hasPermission,
+    loadMe,
     logout,
+    mapUserToProfile,
   }
 })

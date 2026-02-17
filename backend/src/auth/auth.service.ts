@@ -1,8 +1,8 @@
 import {
-  HttpStatus,
+  ConflictException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import ms from 'ms';
 import { JwtService } from '@nestjs/jwt';
@@ -28,24 +28,14 @@ export class AuthService {
   ) {}
 
   async validateLogin(loginDto: AuthEmailLoginDto): Promise<LoginResponseDto> {
-    const user = await this.usersService.findByEmail(loginDto.email);
+    const user = await this.usersService.findByUsername(loginDto.username);
 
     if (!user) {
-      throw new UnprocessableEntityException({
-        status: HttpStatus.UNPROCESSABLE_ENTITY,
-        errors: {
-          email: 'notFound',
-        },
-      });
+      throw new NotFoundException('userNotFound');
     }
 
     if (!user.password) {
-      throw new UnprocessableEntityException({
-        status: HttpStatus.UNPROCESSABLE_ENTITY,
-        errors: {
-          password: 'incorrectPassword',
-        },
-      });
+      throw new UnauthorizedException('incorrectPassword');
     }
 
     const isValidPassword = await bcrypt.compare(
@@ -54,16 +44,13 @@ export class AuthService {
     );
 
     if (!isValidPassword) {
-      throw new UnprocessableEntityException({
-        status: HttpStatus.UNPROCESSABLE_ENTITY,
-        errors: {
-          password: 'incorrectPassword',
-        },
-      });
+      throw new UnauthorizedException('incorrectPassword');
     }
 
     const { token, refreshToken, tokenExpires } = await this.getTokensData({
       id: user.id,
+      username: user.username,
+      isAdmin: user.isAdmin,
     });
 
     return {
@@ -77,46 +64,31 @@ export class AuthService {
   async register(dto: AuthRegisterLoginDto): Promise<void> {
     await this.usersService.create({
       ...dto,
-      email: dto.email,
+      username: dto.username,
     });
   }
 
   async me(userJwtPayload: JwtPayloadType): Promise<NullableType<User>> {
-    return this.usersService.findById(userJwtPayload.id);
+    return this.usersService.findById(userJwtPayload.sub);
   }
 
   async update(
     userJwtPayload: JwtPayloadType,
     userDto: AuthUpdateDto,
   ): Promise<NullableType<User>> {
-    const currentUser = await this.usersService.findById(userJwtPayload.id);
+    const currentUser = await this.usersService.findById(userJwtPayload.sub);
 
     if (!currentUser) {
-      throw new UnprocessableEntityException({
-        status: HttpStatus.UNPROCESSABLE_ENTITY,
-        errors: {
-          user: 'userNotFound',
-        },
-      });
+      throw new NotFoundException('userNotFound');
     }
 
     if (userDto.password) {
       if (!userDto.oldPassword) {
-        throw new UnprocessableEntityException({
-          status: HttpStatus.UNPROCESSABLE_ENTITY,
-          errors: {
-            oldPassword: 'missingOldPassword',
-          },
-        });
+        throw new ConflictException('missingOldPassword');
       }
 
       if (!currentUser.password) {
-        throw new UnprocessableEntityException({
-          status: HttpStatus.UNPROCESSABLE_ENTITY,
-          errors: {
-            oldPassword: 'incorrectOldPassword',
-          },
-        });
+        throw new UnauthorizedException('incorrectOldPassword');
       }
 
       const isValidOldPassword = await bcrypt.compare(
@@ -125,39 +97,31 @@ export class AuthService {
       );
 
       if (!isValidOldPassword) {
-        throw new UnprocessableEntityException({
-          status: HttpStatus.UNPROCESSABLE_ENTITY,
-          errors: {
-            oldPassword: 'incorrectOldPassword',
-          },
-        });
+        throw new UnauthorizedException('incorrectOldPassword');
       }
     }
 
-    if (userDto.email && userDto.email !== currentUser.email) {
-      const userByEmail = await this.usersService.findByEmail(userDto.email);
+    if (userDto.username && userDto.username !== currentUser.username) {
+      const userByUsername = await this.usersService.findByUsername(
+        userDto.username,
+      );
 
-      if (userByEmail && userByEmail.id !== currentUser.id) {
-        throw new UnprocessableEntityException({
-          status: HttpStatus.UNPROCESSABLE_ENTITY,
-          errors: {
-            email: 'emailExists',
-          },
-        });
+      if (userByUsername && userByUsername.id !== currentUser.id) {
+        throw new ConflictException('usernameAlreadyExists');
       }
     }
 
     delete userDto.oldPassword;
 
-    await this.usersService.update(userJwtPayload.id, userDto);
+    await this.usersService.update(userJwtPayload.sub, userDto);
 
-    return this.usersService.findById(userJwtPayload.id);
+    return this.usersService.findById(userJwtPayload.sub);
   }
 
   async refreshToken(
-    data: Pick<JwtRefreshPayloadType, 'id'>,
+    data: Pick<JwtRefreshPayloadType, 'sub'>,
   ): Promise<Omit<LoginResponseDto, 'user'>> {
-    const user = await this.usersService.findById(data.id);
+    const user = await this.usersService.findById(data.sub);
 
     if (!user) {
       throw new UnauthorizedException();
@@ -165,6 +129,8 @@ export class AuthService {
 
     const { token, refreshToken, tokenExpires } = await this.getTokensData({
       id: user.id,
+      username: user.username,
+      isAdmin: user.isAdmin,
     });
 
     return {
@@ -179,10 +145,14 @@ export class AuthService {
   }
 
   logout(): Promise<void> {
-    return;
+    return Promise.resolve();
   }
 
-  private async getTokensData(data: { id: User['id'] }) {
+  private async getTokensData(data: {
+    id: User['id'];
+    username: User['username'];
+    isAdmin: User['isAdmin'];
+  }) {
     const tokenExpiresIn = this.configService.getOrThrow('auth.expires', {
       infer: true,
     });
@@ -192,7 +162,9 @@ export class AuthService {
     const [token, refreshToken] = await Promise.all([
       await this.jwtService.signAsync(
         {
-          id: data.id,
+          sub: data.id,
+          username: data.username,
+          roles: data.isAdmin ? ['admin'] : ['user'],
         },
         {
           secret: this.configService.getOrThrow('auth.secret', { infer: true }),
@@ -201,7 +173,9 @@ export class AuthService {
       ),
       await this.jwtService.signAsync(
         {
-          id: data.id,
+          sub: data.id,
+          username: data.username,
+          roles: data.isAdmin ? ['admin'] : ['user'],
         },
         {
           secret: this.configService.getOrThrow('auth.refreshSecret', {

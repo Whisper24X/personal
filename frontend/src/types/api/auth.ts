@@ -1,15 +1,20 @@
 export type LoginRequest = {
-  email: string
+  username: string
   password: string
 }
 
+export type UserInfo = {
+  id: string
+  username: string
+  nickname?: string | null
+  avatar?: string | null
+  isAdmin: boolean
+  status: number
+}
+
 export type LoginResponse = {
-  accessToken: string
-  refreshToken?: string
-  user: {
-    id: string
-    name: string
-    email: string
-    permissions: string[]
-  }
+  token: string
+  refreshToken: string
+  tokenExpires: number
+  user: UserInfo
 }

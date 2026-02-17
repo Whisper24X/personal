@@ -361,6 +361,8 @@ flowchart TB
 | FR-018 | 项目上下文读取（从项目仓库读取文档/配置用于任务上下文） | P1 | FR-004 | 3 |
 | FR-019 | 工作流可视化编辑（增强：校验/拖拽/模板发布） | P1 | FR-007 | 3 |
 
+> 说明：FR 编号按当前 MVP 范围连续维护（FR-001~FR-019）；Phase 2/3 新增需求从下一个编号继续递增。
+
 **依赖关系图：**
 ```mermaid
 flowchart LR
@@ -1583,10 +1585,10 @@ frontend/src/
 
 @Controller('tasks')
 export class TaskController {
-  @Get(':id/stream')
+  @Get(':taskId/stream')
   @Sse()
-  streamLogs(@Param('id') id: string): Observable<MessageEvent> {
-    return this.taskService.getLogStream(id).pipe(
+  streamLogs(@Param('taskId') taskId: string): Observable<MessageEvent> {
+    return this.taskService.getLogStream(taskId).pipe(
       map((log) => ({
         data: JSON.stringify(log),
         type: log.type, // 'status' | 'log' | 'artifact' | 'done'
@@ -1639,55 +1641,68 @@ export function useTaskStream(taskId: string) {
 | 模块 | 方法 | 路径 | 说明 |
 |------|------|------|------|
 | **认证** | POST | /api/v1/auth/login | 用户登录（账号密码） |
+| | POST | /api/v1/auth/refresh | 刷新 Access Token |
 | | POST | /api/v1/auth/logout | 用户登出 |
 | | GET | /api/v1/auth/me | 获取当前用户 |
 | **用户** | GET | /api/v1/users | 用户列表 |
 | | POST | /api/v1/users | 创建用户 |
-| | GET | /api/v1/users/:id | 用户详情 |
-| | PATCH | /api/v1/users/:id | 更新用户 |
-| | DELETE | /api/v1/users/:id | 删除用户 |
+| | GET | /api/v1/users/:userId | 用户详情 |
+| | PATCH | /api/v1/users/:userId | 更新用户 |
+| | DELETE | /api/v1/users/:userId | 删除用户（软删除） |
 | **业务线** | GET | /api/v1/business-lines | 业务线列表 |
 | | POST | /api/v1/business-lines | 创建业务线 |
-| | GET | /api/v1/business-lines/:id | 业务线详情 |
-| | PATCH | /api/v1/business-lines/:id | 更新业务线 |
-| | DELETE | /api/v1/business-lines/:id | 删除业务线 |
+| | GET | /api/v1/business-lines/:businessLineId | 业务线详情 |
+| | PATCH | /api/v1/business-lines/:businessLineId | 更新业务线 |
+| | DELETE | /api/v1/business-lines/:businessLineId | 删除业务线（软删除） |
+| | GET | /api/v1/business-lines/:businessLineId/members | 业务线成员列表 |
+| | POST | /api/v1/business-lines/:businessLineId/members | 添加业务线成员 |
+| | PATCH | /api/v1/business-lines/:businessLineId/members/:userId | 更新业务线成员角色 |
+| | DELETE | /api/v1/business-lines/:businessLineId/members/:userId | 移除业务线成员 |
 | **项目** | GET | /api/v1/projects | 项目列表 |
 | | POST | /api/v1/projects | 创建项目 |
-| | GET | /api/v1/projects/:id | 项目详情 |
-| | PATCH | /api/v1/projects/:id | 更新项目 |
-| | DELETE | /api/v1/projects/:id | 删除项目 |
-| | GET | /api/v1/projects/:id/config | 获取项目配置 |
-| | PUT | /api/v1/projects/:id/config | 更新项目配置 |
-| | GET | /api/v1/projects/:id/members | 项目成员列表 |
-| | POST | /api/v1/projects/:id/members | 添加成员 |
-| | PATCH | /api/v1/projects/:id/members/:userId | 更新成员角色 |
-| | DELETE | /api/v1/projects/:id/members/:userId | 移除成员 |
+| | GET | /api/v1/projects/:projectId | 项目详情 |
+| | PATCH | /api/v1/projects/:projectId | 更新项目 |
+| | DELETE | /api/v1/projects/:projectId | 删除项目（软删除） |
+| | GET | /api/v1/projects/:projectId/config | 获取项目配置 |
+| | PUT | /api/v1/projects/:projectId/config | 更新项目配置 |
+| | GET | /api/v1/projects/:projectId/members | 项目成员列表 |
+| | POST | /api/v1/projects/:projectId/members | 添加成员 |
+| | PATCH | /api/v1/projects/:projectId/members/:userId | 更新成员角色 |
+| | DELETE | /api/v1/projects/:projectId/members/:userId | 移除成员 |
 | **任务** | GET | /api/v1/projects/:projectId/tasks | 任务列表 |
 | | POST | /api/v1/projects/:projectId/tasks | 创建任务 |
-| | GET | /api/v1/tasks/:id | 任务详情 |
-| | PATCH | /api/v1/tasks/:id | 更新任务 |
-| | POST | /api/v1/tasks/:id/execute | 触发执行 |
-| | GET | /api/v1/tasks/:id/stream | 日志流（SSE） |
-| **任务节点** | GET | /api/v1/tasks/:id/nodes | 任务节点列表 |
-| | GET | /api/v1/task-nodes/:id | 节点详情 |
-| | GET | /api/v1/tasks/:id/current-node | 当前活跃节点 |
-| | POST | /api/v1/task-nodes/:id/approve | 审批通过节点 |
-| | POST | /api/v1/task-nodes/:id/rerun | 重新执行 in_review 节点 |
-| | GET | /api/v1/task-nodes/:id/logs | 节点日志 |
-| **产物** | GET | /api/v1/tasks/:id/artifacts | 产物列表 |
-| | GET | /api/v1/artifacts/:id | 产物详情 |
-| | GET | /api/v1/artifacts/:id/download | 产物下载（预签名 URL） |
+| | GET | /api/v1/tasks/:taskId | 任务详情 |
+| | PATCH | /api/v1/tasks/:taskId | 更新任务 |
+| | POST | /api/v1/tasks/:taskId/executions | 触发执行（命令型接口） |
+| | GET | /api/v1/tasks/:taskId/stream | 日志流（SSE） |
+| **任务节点** | GET | /api/v1/tasks/:taskId/nodes | 任务节点列表 |
+| | GET | /api/v1/task-nodes/:taskNodeId | 节点详情 |
+| | GET | /api/v1/tasks/:taskId/current-node | 当前活跃节点 |
+| | POST | /api/v1/task-nodes/:taskNodeId/approve | 审批通过节点（命令型接口） |
+| | POST | /api/v1/task-nodes/:taskNodeId/rerun | 重新执行 in_review 节点（命令型接口） |
+| | GET | /api/v1/task-nodes/:taskNodeId/logs | 节点日志 |
+| **产物** | GET | /api/v1/tasks/:taskId/artifacts | 产物列表 |
+| | GET | /api/v1/artifacts/:artifactId | 产物详情 |
+| | GET | /api/v1/artifacts/:artifactId/download | 产物下载（预签名 URL） |
 | **模板** | GET | /api/v1/workflow-templates | 模板列表 |
 | | POST | /api/v1/workflow-templates | 创建模板 |
-| | GET | /api/v1/workflow-templates/:id | 模板详情 |
-| | PATCH | /api/v1/workflow-templates/:id | 更新模板 |
-| | POST | /api/v1/workflow-templates/:id/publish | 发布新版本 |
-| | DELETE | /api/v1/workflow-templates/:id | 删除模板 |
+| | GET | /api/v1/workflow-templates/:templateId | 模板详情 |
+| | PATCH | /api/v1/workflow-templates/:templateId | 更新模板 |
+| | DELETE | /api/v1/workflow-templates/:templateId | 删除模板（仅清理未使用模板） |
+| | POST | /api/v1/workflow-templates/:templateId/publish | 发布新版本（命令型接口） |
+| | GET | /api/v1/workflow-templates/:templateId/nodes | 模板节点列表 |
+| | POST | /api/v1/workflow-templates/:templateId/nodes | 新增模板节点 |
+| | PATCH | /api/v1/workflow-template-nodes/:nodeId | 更新模板节点 |
+| | DELETE | /api/v1/workflow-template-nodes/:nodeId | 删除模板节点 |
+| | PUT | /api/v1/workflow-templates/:templateId/nodes/reorder | 模板节点重排（命令型接口） |
 | **Skills** | GET | /api/v1/skills | Skills 列表（市场） |
-| | GET | /api/v1/skills/:id | Skill 详情 |
+| | GET | /api/v1/skills/:skillId | Skill 详情 |
 | **MCP** | GET | /api/v1/mcps | MCP 列表（市场） |
-| | GET | /api/v1/mcps/:id | MCP 详情 |
-| **项目上下文** | GET | /api/v1/projects/:id/context | 读取项目上下文（README、`docs/`、SPEC 等） |
+| | GET | /api/v1/mcps/:mcpId | MCP 详情 |
+| **项目上下文** | GET | /api/v1/projects/:projectId/context | 读取项目上下文（README、`docs/`、SPEC 等） |
+
+> 约定：`/executions`、`/approve`、`/rerun`、`/publish`、`/nodes/reorder` 为命令型接口；其余接口遵循资源 CRUD 语义。
+> 删除语义：`users`/`business-lines`/`projects` 使用软删除（`deleted_at`）；成员关系接口使用硬删除；`workflow-templates` 的 `DELETE` 仅用于清理未使用模板，常规下优先通过 `enabled=false` 禁用。
 
 ### 11.2 认证方式
 
@@ -1827,7 +1842,7 @@ interface ErrorResponse {
   "message": "您没有权限执行此任务",
   "code": "AUTH_003",
   "timestamp": "2026-02-10T10:30:00Z",
-  "path": "/api/v1/tasks/c56a4180-65aa-42ec-a945-5fd21dec0538/execute"
+  "path": "/api/v1/tasks/c56a4180-65aa-42ec-a945-5fd21dec0538/executions"
 }
 ```
 
@@ -1891,8 +1906,8 @@ export class RolesGuard implements CanActivate {
 // 使用方式
 @Roles(Role.ProjectOwner, Role.Admin)
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Post(':id/execute')
-async executeTask(@Param('id') id: string) { ... }
+@Post(':taskId/executions')
+async executeTask(@Param('taskId') taskId: string) { ... }
 ```
 
 ### 12.2 性能指标
@@ -2055,7 +2070,7 @@ export class HealthController {
    - 任务状态由 TaskNode 聚合计算（见第 8.3 节聚合规则）
    - 任务执行：第一阶段可先"同步/内嵌 Runner"（见 10.2.3），第二阶段迁移到 Worker + 队列
 6) 日志流（SSE）
-   - 新增 `GET /api/v1/tasks/:id/stream`
+   - 新增 `GET /api/v1/tasks/:taskId/stream`
    - 第一阶段允许进程内 EventBus；第二阶段需跨进程日志通道（Redis PubSub/DB tail/日志系统）
 
 #### 14.4.2 前端（frontend/）拆解
@@ -2076,3 +2091,9 @@ export class HealthController {
 - 能创建一个任务（选择模板 + 填写验收标准）
 - 点击执行后看到：状态流转 + 实时日志 + 至少 1 个产物（如 diff 或压缩包）
 - 执行完成后可触发通知（邮件或 Webhook 任一）
+
+#### 14.4.5 当前实现边界（2026-02）
+- 队列与并发（FR-013）：当前采用 Postgres 协调 + 独立 Worker 进程；API 仅负责入队与查询。未引入 Redis/BullMQ。
+- 通知（FR-012）：已支持 `done` / `in_review` 的 in-app + Webhook + SMTP 邮件（`AINATIVE_SMTP_*`）；当用户 `username` 非邮箱格式时跳过邮件发送。
+- 产物预览（FR-011）：已支持 diff 结构化预览（含变更文件与文件树）与 text/external 模式；大型文本预览按 200KB 截断。
+- sandbox/worktree（FR-014）：继续采用目录级隔离与清理策略，补充路径白名单、权限收敛（0700）与清理二次校验；不宣称容器级强隔离。

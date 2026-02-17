@@ -10,27 +10,33 @@ import {
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
 
 @Entity({
-  name: 'user',
+  name: 'users',
 })
 export class UserEntity extends EntityRelationalHelper {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-  // For "string | null" we need to use String type.
-  // More info: https://github.com/typeorm/typeorm/issues/2567
-  @Column({ type: String, unique: true, nullable: true })
-  email: string | null;
+  @Index('IDX_users_username')
+  @Column({ type: String, length: 100, unique: true })
+  username: string;
 
-  @Column({ nullable: true })
-  password?: string;
+  @Column({ type: String })
+  password: string;
 
-  @Index()
   @Column({ type: String, nullable: true })
-  firstName: string | null;
+  salt: string | null;
 
-  @Index()
   @Column({ type: String, nullable: true })
-  lastName: string | null;
+  nickname: string | null;
+
+  @Column({ type: String, nullable: true })
+  avatar: string | null;
+
+  @Column({ type: Boolean, default: false })
+  isAdmin: boolean;
+
+  @Column({ type: 'int', default: 1 })
+  status: number;
 
   @CreateDateColumn()
   createdAt: Date;
@@ -39,5 +45,5 @@ export class UserEntity extends EntityRelationalHelper {
   updatedAt: Date;
 
   @DeleteDateColumn()
-  deletedAt: Date;
+  deletedAt: Date | null;
 }

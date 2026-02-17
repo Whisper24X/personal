@@ -15,7 +15,7 @@ export class UserSeedService {
   async run() {
     const countAdmin = await this.repository.count({
       where: {
-        email: 'admin@example.com',
+        username: 'admin',
       },
     });
 
@@ -25,17 +25,20 @@ export class UserSeedService {
 
       await this.repository.save(
         this.repository.create({
-          firstName: 'Super',
-          lastName: 'Admin',
-          email: 'admin@example.com',
+          username: 'admin',
           password,
+          salt,
+          nickname: 'Super Admin',
+          avatar: null,
+          isAdmin: true,
+          status: 1,
         }),
       );
     }
 
     const countUser = await this.repository.count({
       where: {
-        email: 'john.doe@example.com',
+        username: 'john.doe',
       },
     });
 
@@ -45,10 +48,13 @@ export class UserSeedService {
 
       await this.repository.save(
         this.repository.create({
-          firstName: 'John',
-          lastName: 'Doe',
-          email: 'john.doe@example.com',
+          username: 'john.doe',
           password,
+          salt,
+          nickname: 'John Doe',
+          avatar: null,
+          isAdmin: false,
+          status: 1,
         }),
       );
     }

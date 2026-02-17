@@ -7,10 +7,12 @@ import { TypeOrmConfigService } from '../../typeorm-config.service';
 import { UserSeedModule } from './user/user-seed.module';
 import databaseConfig from '../../config/database.config';
 import appConfig from '../../../config/app.config';
+import { BusinessLineSeedModule } from './business-line/business-line-seed.module';
 
 @Module({
   imports: [
     UserSeedModule,
+    BusinessLineSeedModule,
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig, appConfig],

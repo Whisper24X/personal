@@ -14,8 +14,8 @@ export const useAuth = () => {
 
     try {
       const result = await authApi.login(payload)
-      userStore.setToken(result.accessToken)
-      userStore.setProfile(result.user)
+      userStore.setToken(result.token)
+      userStore.setProfile(userStore.mapUserToProfile(result.user))
       return result
     } catch (exception) {
       error.value = exception instanceof Error ? exception.message : '登录失败'
@@ -25,8 +25,8 @@ export const useAuth = () => {
     }
   }
 
-  const logout = () => {
-    userStore.logout()
+  const logout = async () => {
+    await userStore.logout()
   }
 
   return {

@@ -23,7 +23,7 @@ export class JwtRefreshStrategy extends PassportStrategy(
   public validate(
     payload: JwtRefreshPayloadType,
   ): OrNeverType<JwtRefreshPayloadType> {
-    if (!payload.id) {
+    if (!payload.sub) {
       throw new UnauthorizedException();
     }
 

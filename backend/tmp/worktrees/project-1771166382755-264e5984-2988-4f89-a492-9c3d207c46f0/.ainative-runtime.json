@@ -1,0 +1,12 @@
+{
+  "taskId": "264e5984-2988-4f89-a492-9c3d207c46f0",
+  "projectId": "70d97b86-027a-4344-ac34-87882be7dce3",
+  "branch": "project-1771166382755/task-264e5984",
+  "gitBaseBranch": "main",
+  "worktreePath": "/Users/fuzhifei/code/go/src/gitlab.yc345.tv/frontend/ainative/backend/tmp/worktrees/project-1771166382755-264e5984-2988-4f89-a492-9c3d207c46f0",
+  "generatedAt": "2026-02-15T14:39:42.888Z",
+  "sandbox": {
+    "type": "directory",
+    "note": "Fallback to directory sandbox: Cloning into '/Users/fuzhifei/code/go/src/gitlab.yc345.tv/frontend/ainative/backend/tmp/worktrees/.repos/project-1771166382755-70d97b86-027a-4344-ac34-87882be7dce3'...\nConnection closed by 127.0.0.1 port 7890"
+  }
+}

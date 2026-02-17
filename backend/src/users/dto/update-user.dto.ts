@@ -2,26 +2,49 @@ import { PartialType, ApiPropertyOptional } from '@nestjs/swagger';
 import { CreateUserDto } from './create-user.dto';
 
 import { Transform } from 'class-transformer';
-import { IsEmail, IsOptional, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+} from 'class-validator';
 import { lowerCaseTransformer } from '../../utils/transformers/lower-case.transformer';
 
 export class UpdateUserDto extends PartialType(CreateUserDto) {
-  @ApiPropertyOptional({ example: 'test1@example.com', type: String })
+  @ApiPropertyOptional({ example: 'john.doe', type: String })
   @Transform(lowerCaseTransformer)
   @IsOptional()
-  @IsEmail()
-  email?: string | null;
+  @IsString()
+  username?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @MinLength(6)
   password?: string;
 
-  @ApiPropertyOptional({ example: 'John', type: String })
+  @ApiPropertyOptional({ example: 'John Doe', type: String })
   @IsOptional()
-  firstName?: string | null;
+  @IsString()
+  nickname?: string | null;
 
-  @ApiPropertyOptional({ example: 'Doe', type: String })
+  @ApiPropertyOptional({
+    example: 'https://example.com/avatar.png',
+    type: String,
+  })
   @IsOptional()
-  lastName?: string | null;
+  @IsString()
+  avatar?: string | null;
+
+  @ApiPropertyOptional({ example: false, type: Boolean })
+  @IsOptional()
+  @IsBoolean()
+  isAdmin?: boolean;
+
+  @ApiPropertyOptional({ example: 1, type: Number })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  status?: number;
 }

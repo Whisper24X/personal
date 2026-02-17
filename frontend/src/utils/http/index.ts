@@ -26,11 +26,18 @@ const isJsonResponse = (response: Response) => {
   return contentType?.includes('application/json') ?? false
 }
 
+const clearAuthState = () => {
+  const userStore = useUserStore()
+  userStore.setToken(null)
+  userStore.setProfile(null)
+  localStorage.removeItem(STORAGE_KEYS.authToken)
+  localStorage.removeItem(STORAGE_KEYS.refreshToken)
+}
+
 const unwrapResponse = async <T>(response: Response): Promise<T> => {
   if (!response.ok) {
     if (response.status === HTTP_STATUS.unauthorized) {
-      const userStore = useUserStore()
-      userStore.logout()
+      clearAuthState()
     }
 
     let message = `Request failed: ${response.status}`

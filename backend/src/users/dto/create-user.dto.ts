@@ -5,28 +5,49 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 import {
   // decorators here
-  IsEmail,
+  IsBoolean,
+  IsInt,
   IsNotEmpty,
+  IsOptional,
   MinLength,
+  IsString,
+  Min,
 } from 'class-validator';
 import { lowerCaseTransformer } from '../../utils/transformers/lower-case.transformer';
 
 export class CreateUserDto {
-  @ApiProperty({ example: 'test1@example.com', type: String })
+  @ApiProperty({ example: 'john.doe', type: String })
   @Transform(lowerCaseTransformer)
   @IsNotEmpty()
-  @IsEmail()
-  email: string | null;
+  @IsString()
+  username: string;
 
   @ApiProperty()
   @MinLength(6)
-  password?: string;
+  password: string;
 
-  @ApiProperty({ example: 'John', type: String })
-  @IsNotEmpty()
-  firstName: string | null;
+  @ApiProperty({ example: 'John Doe', type: String, required: false })
+  @IsOptional()
+  @IsString()
+  nickname?: string | null;
 
-  @ApiProperty({ example: 'Doe', type: String })
-  @IsNotEmpty()
-  lastName: string | null;
+  @ApiProperty({
+    example: 'https://example.com/avatar.png',
+    type: String,
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  avatar?: string | null;
+
+  @ApiProperty({ example: false, required: false, default: false })
+  @IsOptional()
+  @IsBoolean()
+  isAdmin?: boolean;
+
+  @ApiProperty({ example: 1, required: false, default: 1 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  status?: number;
 }

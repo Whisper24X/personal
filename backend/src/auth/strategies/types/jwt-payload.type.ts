@@ -1,6 +1,8 @@
-import { User } from '../../../users/domain/user';
-
-export type JwtPayloadType = Pick<User, 'id'> & {
+export type JwtPayloadType = {
+  sub: string;
+  username?: string;
+  roles?: string[];
+  businessLineId?: string;
   iat: number;
   exp: number;
 };

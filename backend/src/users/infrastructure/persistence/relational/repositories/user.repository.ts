@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { FindOptionsWhere, Repository, In } from 'typeorm';
+import { FindOptionsWhere, Repository, In, IsNull } from 'typeorm';
 import { UserEntity } from '../entities/user.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { FilterUserDto, SortUserDto } from '../../../../dto/query-user.dto';
@@ -38,7 +38,10 @@ export class UsersRelationalRepository implements UserRepository {
     const entities = await this.usersRepository.find({
       skip: (paginationOptions.page - 1) * paginationOptions.limit,
       take: paginationOptions.limit,
-      where: where,
+      where: {
+        ...where,
+        deletedAt: IsNull(),
+      },
       order: sortOptions?.reduce(
         (accumulator, sort) => ({
           ...accumulator,
@@ -53,7 +56,7 @@ export class UsersRelationalRepository implements UserRepository {
 
   async findById(id: User['id']): Promise<NullableType<User>> {
     const entity = await this.usersRepository.findOne({
-      where: { id: Number(id) },
+      where: { id: String(id), deletedAt: IsNull() },
     });
 
     return entity ? UserMapper.toDomain(entity) : null;
@@ -61,17 +64,22 @@ export class UsersRelationalRepository implements UserRepository {
 
   async findByIds(ids: User['id'][]): Promise<User[]> {
     const entities = await this.usersRepository.find({
-      where: { id: In(ids) },
+      where: {
+        id: In(ids.map((userId) => String(userId))),
+        deletedAt: IsNull(),
+      },
     });
 
     return entities.map((user) => UserMapper.toDomain(user));
   }
 
-  async findByEmail(email: User['email']): Promise<NullableType<User>> {
-    if (!email) return null;
+  async findByUsername(
+    username: User['username'],
+  ): Promise<NullableType<User>> {
+    if (!username) return null;
 
     const entity = await this.usersRepository.findOne({
-      where: { email },
+      where: { username, deletedAt: IsNull() },
     });
 
     return entity ? UserMapper.toDomain(entity) : null;
@@ -79,7 +87,7 @@ export class UsersRelationalRepository implements UserRepository {
 
   async update(id: User['id'], payload: Partial<User>): Promise<User> {
     const entity = await this.usersRepository.findOne({
-      where: { id: Number(id) },
+      where: { id: String(id), deletedAt: IsNull() },
     });
 
     if (!entity) {

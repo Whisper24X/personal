@@ -42,9 +42,26 @@ export class AuthController {
     return this.service.validateLogin(loginDto);
   }
 
+  @Post('login')
+  @ApiOkResponse({
+    type: LoginResponseDto,
+  })
+  @HttpCode(HttpStatus.OK)
+  public loginV2(
+    @Body() loginDto: AuthEmailLoginDto,
+  ): Promise<LoginResponseDto> {
+    return this.service.validateLogin(loginDto);
+  }
+
   @Post('email/register')
   @HttpCode(HttpStatus.NO_CONTENT)
   async register(@Body() createUserDto: AuthRegisterLoginDto): Promise<void> {
+    return this.service.register(createUserDto);
+  }
+
+  @Post('register')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async registerV2(@Body() createUserDto: AuthRegisterLoginDto): Promise<void> {
     return this.service.register(createUserDto);
   }
 
@@ -74,7 +91,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   public refresh(@Request() request): Promise<RefreshResponseDto> {
     return this.service.refreshToken({
-      id: request.user.id,
+      sub: request.user.sub,
     });
   }
 
