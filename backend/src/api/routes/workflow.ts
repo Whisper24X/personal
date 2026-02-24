@@ -10,7 +10,7 @@ const router: RouterType = Router();
 
 /**
  * Workflow Execution Routes
- * 
+ *
  * GET    /api/workflow/active                    - Get all active workflows (admin)
  * GET    /api/workflow/:projectId/state          - Get current workflow state
  * GET    /api/workflow/:projectId/execution      - Get full workflow execution record
@@ -32,10 +32,12 @@ router.get('/active', WorkflowExecutionController.getActiveWorkflows);
 router.get('/:projectId/state', WorkflowExecutionController.getState);
 router.get('/:projectId/execution', WorkflowExecutionController.getExecution);
 router.get('/:projectId/recovery-status', WorkflowExecutionController.getRecoveryStatus);
+router.get('/:projectId/cli-logs', WorkflowExecutionController.cliLogStream);
 
 // Lifecycle routes
 router.post('/:projectId/start', WorkflowExecutionController.start);
 router.post('/:projectId/confirm', WorkflowExecutionController.confirm);
+router.post('/:projectId/pending-confirmation/cli-edit', WorkflowExecutionController.cliEditPendingConfirmation);
 router.post('/:projectId/reset', WorkflowExecutionController.reset);
 router.post('/:projectId/pause', WorkflowExecutionController.pause);
 router.post('/:projectId/resume', WorkflowExecutionController.resume);

@@ -1,7 +1,7 @@
 /**
  * Executor Types
  * 执行器类型定义
- * 
+ *
  * 定义执行器的核心接口和类型，支持 LLM 模式和 CLI 模式的切换
  */
 
@@ -29,6 +29,10 @@ export interface ExecutorOptions {
   timeout?: number;
   /** 输出文件路径（CLI 模式下指定输出文件） */
   outputFile?: string;
+  /** 是否启用流式进度跟踪 */
+  enableStreamProgress?: boolean;
+  /** 流式进度回调 */
+  onProgress?: (event: StreamJSONEvent) => void;
   /** 环境变量 */
   env?: Record<string, string>;
   /** AbortSignal 用于取消执行 */
@@ -46,7 +50,7 @@ export interface ExecutorResult {
   /** 执行模式 */
   mode: ExecutorMode;
   /** 元数据 */
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -129,6 +133,8 @@ export interface CLIProviderConfig {
   outputFormat?: 'text' | 'json' | 'stream-json';
   /** 是否启用增量流式传输 */
   streamPartialOutput?: boolean;
+  /** 流式进度回调 */
+  onProgress?: (event: StreamJSONEvent) => void;
 }
 
 /**
@@ -190,7 +196,7 @@ export interface RoleExecutorConfigData {
  */
 export interface LLMExecutorContext {
   /** LLM 实例 */
-  llm: any;
+  llm: unknown;
   /** AbortSignal */
   abortSignal?: AbortSignal;
 }
@@ -205,27 +211,18 @@ export interface ICLIModelFallbackStrategy {
    * @param error 执行错误
    * @param result 执行结果（如果有）
    */
-  shouldFallback(
-    originalConfig: Partial<CLIProviderConfig>,
-    error: any,
-    result?: CLIExecutionResult
-  ): boolean;
+  shouldFallback(originalConfig: Partial<CLIProviderConfig>, error: unknown, result?: CLIExecutionResult): boolean;
 
   /**
    * 获取降级配置
    * @param originalConfig 原始配置
    */
-  getFallbackConfig(
-    originalConfig: Partial<CLIProviderConfig>
-  ): Partial<CLIProviderConfig>;
+  getFallbackConfig(originalConfig: Partial<CLIProviderConfig>): Partial<CLIProviderConfig>;
 
   /**
    * 判断错误是否与模型不可用相关
    * @param error 执行错误
    * @param result 执行结果（如果有）
    */
-  isModelUnavailableError(
-    error: any,
-    result?: CLIExecutionResult
-  ): boolean;
+  isModelUnavailableError(error: unknown, result?: CLIExecutionResult): boolean;
 }

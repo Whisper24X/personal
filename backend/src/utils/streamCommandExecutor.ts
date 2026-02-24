@@ -1,7 +1,7 @@
 /**
  * Stream Command Executor
  * 流式命令执行器
- * 
+ *
  * 支持流式输出处理和 stream-json 格式解析
  * 实时解析进度事件并记录到日志
  */
@@ -21,17 +21,18 @@ function cleanupAllProcesses() {
     logger.info('StreamCommandExecutor: Cleaning up running processes', {
       count: runningProcesses.size,
     });
-    
+
     for (const child of runningProcesses) {
       try {
         child.kill('SIGTERM');
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
         logger.warn('StreamCommandExecutor: Failed to kill child process', {
-          error: error.message,
+          error: errorMessage,
         });
       }
     }
-    
+
     runningProcesses.clear();
   }
 }
@@ -84,7 +85,8 @@ interface ProgressTracker {
  */
 export function createProgressHandler(
   callId: string,
-  log: winston.Logger = logger
+  log: winston.Logger = logger,
+  onProgress?: (event: StreamJSONEvent) => void
 ): (event: StreamJSONEvent) => void {
   const tracker: ProgressTracker = {
     accumulatedText: '',
@@ -95,9 +97,12 @@ export function createProgressHandler(
 
   return (event: StreamJSONEvent) => {
     try {
+      if (onProgress) {
+        onProgress(event);
+      }
       // 输出启动消息（仅第一次）
       if (!tracker.isStarted) {
-        console.log('🚀 开始流式处理...');
+        log.info('🚀 开始流式处理...');
         tracker.isStarted = true;
       }
 
@@ -106,7 +111,7 @@ export function createProgressHandler(
           if (event.subtype === 'init' && event.model) {
             tracker.model = event.model;
             // 中文友好输出
-            console.log(`🤖 使用模型: ${event.model}`);
+            log.info(`🤖 使用模型: ${event.model}`);
             // 结构化日志（用于日志文件）
             log.info('CursorCLIProvider: Stream progress - system.init', {
               callId,
@@ -117,9 +122,7 @@ export function createProgressHandler(
 
         case 'assistant':
           if (event.message?.content) {
-            const text = event.message.content
-              .map(c => c.text || '')
-              .join('');
+            const text = event.message.content.map((c) => c.text || '').join('');
             tracker.accumulatedText += text;
             // 实时更新累积文本长度显示（使用 \r 覆盖当前行）
             process.stdout.write(`\r📝 生成中: ${tracker.accumulatedText.length} 字符`);
@@ -136,14 +139,14 @@ export function createProgressHandler(
           if (event.subtype === 'started') {
             tracker.toolCount++;
             const toolCall = event.tool_call;
-            
+
             // 先输出换行符，确保新消息在新行显示
-            console.log('');
-            
+            log.info('');
+
             if (toolCall?.writeToolCall) {
               const path = toolCall.writeToolCall.args.path;
               // 中文友好输出
-              console.log(`🔧 工具 #${tracker.toolCount}: 创建 ${path}`);
+              log.info(`🔧 工具 #${tracker.toolCount}: 创建 ${path}`);
               // 结构化日志（用于日志文件）
               log.info('CursorCLIProvider: Stream progress - tool_call.started', {
                 callId,
@@ -154,7 +157,7 @@ export function createProgressHandler(
             } else if (toolCall?.readToolCall) {
               const path = toolCall.readToolCall.args.path;
               // 中文友好输出
-              console.log(`📖 工具 #${tracker.toolCount}: 读取 ${path}`);
+              log.info(`📖 工具 #${tracker.toolCount}: 读取 ${path}`);
               // 结构化日志（用于日志文件）
               log.info('CursorCLIProvider: Stream progress - tool_call.started', {
                 callId,
@@ -165,13 +168,13 @@ export function createProgressHandler(
             }
           } else if (event.subtype === 'completed') {
             const toolCall = event.tool_call;
-            
+
             if (toolCall?.writeToolCall?.result?.success) {
               const result = toolCall.writeToolCall.result.success;
               const lines = result.linesCreated || 0;
               const size = result.fileSize || 0;
               // 中文友好输出
-              console.log(`   ✅ 已创建 ${lines} 行 (${size} 字节)`);
+              log.info(`   ✅ 已创建 ${lines} 行 (${size} 字节)`);
               // 结构化日志（用于日志文件）
               log.info('CursorCLIProvider: Stream progress - tool_call.completed', {
                 callId,
@@ -184,7 +187,7 @@ export function createProgressHandler(
               const result = toolCall.readToolCall.result.success;
               const lines = result.totalLines || 0;
               // 中文友好输出
-              console.log(`   ✅ 已读取 ${lines} 行`);
+              log.info(`   ✅ 已读取 ${lines} 行`);
               // 结构化日志（用于日志文件）
               log.info('CursorCLIProvider: Stream progress - tool_call.completed', {
                 callId,
@@ -196,17 +199,17 @@ export function createProgressHandler(
           }
           break;
 
-        case 'result':
+        case 'result': {
           const duration = event.duration_ms || 0;
           const totalTime = Math.round((Date.now() - tracker.startTime) / 1000); // 转换为秒
           const durationSeconds = Math.round(duration / 1000); // 转换为秒
-          
+
           // 先输出换行符，确保统计信息在新行显示
-          console.log('\n');
+          log.info('Stream progress - result (newline)');
           // 中文友好输出
-          console.log(`🎯 完成,耗时 ${durationSeconds}s (总计 ${totalTime}s)`);
-          console.log(`📊 最终统计: ${tracker.toolCount} 个工具,生成 ${tracker.accumulatedText.length} 字符`);
-          
+          log.info(`🎯 完成,耗时 ${durationSeconds}s (总计 ${totalTime}s)`);
+          log.info(`📊 最终统计: ${tracker.toolCount} 个工具,生成 ${tracker.accumulatedText.length} 字符`);
+
           // 结构化日志（用于日志文件）
           log.info('CursorCLIProvider: Stream progress - result', {
             callId,
@@ -217,11 +220,13 @@ export function createProgressHandler(
             model: tracker.model,
           });
           break;
+        }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       log.warn('StreamCommandExecutor: Error processing progress event', {
         callId,
-        error: error.message,
+        error: errorMessage,
         eventType: event.type,
       });
     }
@@ -239,15 +244,12 @@ export interface StreamCommandExecutorOptions extends CommandExecutorOptions {
 /**
  * 使用spawn异步执行命令（流式模式）
  * 支持 stream-json 格式解析和实时进度跟踪
- * 
+ *
  * @param command 要执行的命令（包含参数）
  * @param options 执行选项
  * @returns Promise<CommandExecutorResult> 命令执行结果
  */
-export async function executeCommandStream(
-  command: string,
-  options: StreamCommandExecutorOptions = {}
-): Promise<CommandExecutorResult> {
+export async function executeCommandStream(command: string, options: StreamCommandExecutorOptions = {}): Promise<CommandExecutorResult> {
   const {
     cwd = process.cwd(),
     timeout = 300000, // 默认5分钟
@@ -259,12 +261,7 @@ export async function executeCommandStream(
 
   // 检查是否已经被取消
   if (abortSignal?.aborted) {
-    const error = new CommandExecutorError(
-      'Command execution was cancelled before start',
-      '',
-      '',
-      -1
-    );
+    const error = new CommandExecutorError('Command execution was cancelled before start', '', '', -1);
     logger.info('StreamCommandExecutor: Command cancelled before start');
     throw error;
   }
@@ -316,21 +313,16 @@ export async function executeCommandStream(
     const abortHandler = () => {
       if (isAborted) return;
       isAborted = true;
-      
+
       logger.info('StreamCommandExecutor: Received abort signal, killing process');
       child.kill('SIGTERM');
-      
+
       runningProcesses.delete(child);
       logger.debug('StreamCommandExecutor: Process removed from tracking (abort)', {
         totalProcesses: runningProcesses.size,
       });
-      
-      const error = new CommandExecutorError(
-        'Command execution was cancelled',
-        stdout,
-        stderr,
-        -1
-      );
+
+      const error = new CommandExecutorError('Command execution was cancelled', stdout, stderr, -1);
       reject(error);
     };
 
@@ -342,12 +334,12 @@ export async function executeCommandStream(
     child.stdout?.on('data', (data) => {
       const chunk = data.toString();
       stdout += chunk;
-      
+
       // 处理行缓冲
       buffer += chunk;
       const lines = buffer.split('\n');
       buffer = lines.pop() || ''; // 保留最后不完整的行
-      
+
       // 逐行解析 JSON
       for (const line of lines) {
         const trimmedLine = line.trim();
@@ -358,11 +350,12 @@ export async function executeCommandStream(
             if (onProgress) {
               onProgress(event);
             }
-          } catch (parseError: any) {
+          } catch (parseError: unknown) {
             // JSON 解析错误，记录警告但不中断执行
+            const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
             logger.debug('StreamCommandExecutor: Failed to parse JSON line', {
               line: trimmedLine.substring(0, 100),
-              error: parseError.message,
+              error: errorMessage,
             });
           }
         }
@@ -393,13 +386,8 @@ export async function executeCommandStream(
         logger.debug('StreamCommandExecutor: Process removed from tracking (timeout)', {
           totalProcesses: runningProcesses.size,
         });
-        
-        const error = new CommandExecutorError(
-          `Command execution timeout (${timeout}ms)`,
-          stdout,
-          stderr,
-          -1
-        );
+
+        const error = new CommandExecutorError(`Command execution timeout (${timeout}ms)`, stdout, stderr, -1);
         logger.warn('StreamCommandExecutor: Command execution timeout', {
           timeout,
           stdoutLength: stdout.length,
@@ -428,8 +416,12 @@ export async function executeCommandStream(
         try {
           const event = JSON.parse(buffer.trim()) as StreamJSONEvent;
           onProgress(event);
-        } catch (parseError) {
+        } catch (parseError: unknown) {
           // 忽略解析错误
+          const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+          logger.debug('StreamCommandExecutor: Failed to parse final buffer', {
+            error: errorMessage,
+          });
         }
       }
 
@@ -453,12 +445,7 @@ export async function executeCommandStream(
       if (code === 0) {
         resolve(result);
       } else {
-        const error = new CommandExecutorError(
-          `Command failed with exit code ${code}`,
-          stdout,
-          stderr,
-          code
-        );
+        const error = new CommandExecutorError(`Command failed with exit code ${code}`, stdout, stderr, code);
         reject(error);
       }
     });
@@ -476,19 +463,14 @@ export async function executeCommandStream(
       if (isAborted) {
         return;
       }
-      
+
       runningProcesses.delete(child);
       logger.debug('StreamCommandExecutor: Process removed from tracking (error)', {
         totalProcesses: runningProcesses.size,
       });
-      
+
       logger.error('StreamCommandExecutor: Command spawn error', { error: err.message });
-      const error = new CommandExecutorError(
-        `Failed to spawn command: ${err.message}`,
-        stdout,
-        stderr,
-        null
-      );
+      const error = new CommandExecutorError(`Failed to spawn command: ${err.message}`, stdout, stderr, null);
       error.originalError = err;
       reject(error);
     });

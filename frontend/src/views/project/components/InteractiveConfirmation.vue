@@ -3,7 +3,7 @@
     <!-- Use dynamic component for conditional card wrapper -->
     <component :is="hideCard ? 'div' : 'el-card'" :class="{ 'confirmation-card': !hideCard }" :shadow="hideCard ? undefined : 'always'">
       <!-- Header section (only as slot when using el-card) -->
-      <template v-if="!hideCard" #header>
+      <template v-if="!hideCard && !hideHeader" #header>
         <ConfirmationHeader
           :role-info="roleInfo"
           :is-idle="isIdle"
@@ -16,7 +16,7 @@
 
       <!-- Header section when not using card -->
       <ConfirmationHeader
-        v-if="hideCard"
+        v-if="hideCard && !hideHeader"
         :role-info="roleInfo"
         :is-idle="isIdle"
         :get-role-icon="getRoleIcon"
@@ -130,17 +130,6 @@
                 <div v-if="viewMode === 'preview' && prdContent && prdContent.length > 1000" class="preview-notice">
                   <el-alert title="这是内容预览，点击'完整内容'查看全部" type="info" :closable="false" show-icon />
                 </div>
-
-                <!-- Section adjustment for PRD content -->
-                <SectionAdjuster
-                  v-if="hasPRDSectionedContent"
-                  :content="prdContent"
-                  document-type="PRD"
-                  :action="roleInfo.action"
-                  :project-id="projectId || ''"
-                  :document-id="prdId || ''"
-                  :on-section-adjusted="handlePRDSectionAdjusted"
-                />
               </div>
             </el-col>
 
@@ -235,7 +224,7 @@
 
         <div class="action-buttons">
           <el-button
-            v-if="!isEditing"
+            v-if="!isEditing && !hideContinue"
             type="success"
             size="large"
             :icon="Check"
@@ -257,7 +246,7 @@
           </el-button>
 
           <el-button v-if="!isIdle && isEditing" type="success" size="large" :icon="Check" :loading="loading" @click="saveEdit">
-            保存修改并继续
+            {{ isEngineerRole ? '保存修改并开始优化' : '保存修改并继续' }}
           </el-button>
 
           <el-button v-if="!isIdle && isEditing" size="large" :icon="Close" @click="cancelEdit"> 取消编辑 </el-button>
@@ -403,6 +392,8 @@ interface Props {
   versionId?: string;
   prdId?: string;
   hideCard?: boolean;
+  hideHeader?: boolean;
+  hideContinue?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -411,6 +402,8 @@ const props = withDefaults(defineProps<Props>(), {
   versionId: '',
   prdId: '',
   hideCard: false,
+  hideHeader: false,
+  hideContinue: false,
 });
 
 const emit = defineEmits<{
@@ -445,12 +438,14 @@ const isDeployFailed = computed(() => {
   );
 });
 
+// 检测是否为工程师角色（用于统一编辑后的优化流程）
+const isEngineerRole = computed(() => props.roleInfo.role === 'Engineer');
+
 const documentType = computed(() => {
   const action = props.roleInfo.action;
   if (action === 'WritePRD') return 'PRD';
   if (action === 'WriteMRD') return 'MRD';
   if (action === 'WriteDesign') return 'DESIGN';
-  if (action === 'GeneratePrototype') return 'PRD';
   return 'OTHER';
 });
 
@@ -460,13 +455,6 @@ const hasSectionedContent = computed(() => {
   const hasSectionMarkers = content.split('\n').some((line) => /^##\s+\d+\.\s+/.test(line.trim()));
   const isDocumentType = ['WritePRD', 'WriteDesign'].includes(props.roleInfo.action);
   return hasSectionMarkers || (isDocumentType && content.length > 100);
-});
-
-const hasPRDSectionedContent = computed(() => {
-  const content = prdContent.value;
-  if (!content || typeof content !== 'string' || !content.trim()) return false;
-  const hasSectionMarkers = content.split('\n').some((line) => /^##\s+\d+\.\s+/.test(line.trim()));
-  return hasSectionMarkers || content.length > 100;
 });
 
 const isPrototypeAction = computed(() => {
@@ -612,26 +600,6 @@ function handleSectionAdjusted(sectionNumber: number) {
   ElMessage.success(`章节 ${sectionNumber} 已调整`);
 }
 
-async function handlePRDSectionAdjusted(sectionNumber: number, _newContent: string) {
-  ElMessage.success(`章节 ${sectionNumber} 已调整`);
-  // Reload PRD content to get the updated full document
-  if (props.projectId && (props.prdId || currentPrdId.value)) {
-    try {
-      const targetPrdId = props.prdId || currentPrdId.value;
-      const response: any = await apiClient.getPRD(props.projectId, targetPrdId);
-      prdContent.value = response.content || response.prd?.content || '';
-
-      // If editing PRD content, sync editedContent
-      if (isEditing.value && isPrototypeAction.value) {
-        editedContent.value = prdContent.value;
-      }
-    } catch (error: any) {
-      console.warn('Failed to reload PRD content after section adjustment:', error);
-      // Still show success message as the adjustment was successful
-    }
-  }
-}
-
 // Action handlers
 function startEdit() {
   isEditing.value = true;
@@ -686,8 +654,8 @@ async function saveEdit() {
     modifiedContent += filesSummary;
   }
 
-  // 如果是部署失败的情况，保存改进建议到 docs/code/ImproveCode.md
-  if (isDeployFailed.value && props.projectId && props.versionId) {
+  // 如果是工程师角色（无论部署成功或失败），保存改进建议到 docs/code/ImproveCode.md
+  if (isEngineerRole.value && props.projectId && props.versionId) {
     try {
       await apiClient.saveImproveSuggestion(props.projectId, props.versionId, modifiedContent);
       ElMessage.success('改进建议已保存，系统将在下次执行时改进代码');

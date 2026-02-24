@@ -13,6 +13,7 @@ import * as fsSync from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { logger } from './logger';
+import { GitService } from '../services/GitService';
 
 // 模板仓库地址
 const TEMPLATE_REPO = 'git@gitlab.yc345.tv:frontend/ainative-workspace.git';
@@ -51,6 +52,13 @@ export class WorkspaceManager {
       }
     }
     return projectRoot;
+  }
+
+  /**
+   * 获取项目根目录（公开方法）
+   */
+  static getProjectRootPath(): string {
+    return this.getProjectRoot();
   }
 
   /**
@@ -251,6 +259,57 @@ export class WorkspaceManager {
     }
     const workspacePath = this.getProjectWorkspacePath(options);
     return fsSync.existsSync(workspacePath);
+  }
+
+  /**
+   * 检查workspace目录是否为空（排除.git、.cursor等隐藏文件/目录）
+   * @param options workspace选项
+   * @returns 如果目录不存在、为空或只包含隐藏文件/目录，返回true；否则返回false
+   */
+  static async isWorkspaceEmpty(options: WorkspaceOptions): Promise<boolean> {
+    const workspacePath = this.getProjectWorkspacePath(options);
+
+    // 如果目录不存在，视为空
+    if (!fsSync.existsSync(workspacePath)) {
+      return true;
+    }
+
+    try {
+      // 读取目录内容
+      const entries = await fs.readdir(workspacePath, { withFileTypes: true });
+
+      // 需要排除的隐藏目录/文件（以.开头）
+      const hiddenPatterns = ['.git', '.cursor', '.DS_Store', '.vscode', '.idea'];
+
+      // 检查是否有任何可见的文件/目录
+      for (const entry of entries) {
+        const name = entry.name;
+
+        // 如果文件名以.开头，检查是否在排除列表中
+        if (name.startsWith('.')) {
+          // 如果不在排除列表中，或者不是常见的隐藏文件，视为可见内容
+          if (!hiddenPatterns.includes(name)) {
+            // 有些隐藏文件可能是用户创建的，视为非空
+            return false;
+          }
+          // 如果在排除列表中，继续检查下一个
+          continue;
+        }
+
+        // 如果文件名不以.开头，肯定是可见内容
+        return false;
+      }
+
+      // 如果所有条目都是隐藏文件/目录，视为空
+      return true;
+    } catch (error: any) {
+      logger.warn('WorkspaceManager: Failed to check if workspace is empty', {
+        workspacePath,
+        error: error.message,
+      });
+      // 如果读取失败，保守地返回false（视为非空）
+      return false;
+    }
   }
 
   /**
@@ -515,6 +574,140 @@ export class WorkspaceManager {
     });
 
     return docsDir;
+  }
+
+  /**
+   * 重新初始化workspace（通用方法）
+   * 删除现有workspace目录并重新初始化，支持用户自定义git仓库和模板仓库两种场景
+   * @param options workspace选项
+   * @param gitRepoUrl 可选的git仓库URL（如果提供，将使用用户仓库；否则使用模板）
+   * @param branchName 可选的分支名称（如果提供，将切换到该分支）
+   * @returns 初始化结果
+   */
+  static async reinitializeWorkspace(
+    options: WorkspaceOptions,
+    gitRepoUrl?: string,
+    branchName?: string
+  ): Promise<{ success: boolean; message: string }> {
+    const workspacePath = this.getProjectWorkspacePath(options);
+
+    logger.info('WorkspaceManager: Reinitializing workspace', {
+      workspacePath,
+      hasGitRepo: !!gitRepoUrl,
+      branchName,
+    });
+
+    try {
+      // 1. 删除现有workspace目录（如果存在）
+      if (fsSync.existsSync(workspacePath)) {
+        logger.info('WorkspaceManager: Deleting existing workspace', { workspacePath });
+        await fs.rm(workspacePath, { recursive: true, force: true });
+      }
+
+      // 2. 根据是否有gitRepoUrl选择初始化方式
+      if (gitRepoUrl) {
+        // 使用用户自定义git仓库
+        const gitService = new GitService();
+        const prepareResult = await gitService.prepareRepository({
+          gitRepoUrl,
+          workspacePath,
+          projectId: options.projectId || 'unknown',
+        });
+
+        if (!prepareResult.success) {
+          logger.warn('WorkspaceManager: Failed to clone user repository, falling back to template', {
+            workspacePath,
+            gitRepoUrl,
+            error: prepareResult.message,
+          });
+          // 如果克隆失败，回退到模板初始化
+          await this.initWorkspace(options);
+        } else {
+          logger.info('WorkspaceManager: Successfully cloned user repository', {
+            workspacePath,
+            gitRepoUrl,
+          });
+
+          // 3. 如果有branchName，切换到对应分支
+          if (branchName && gitService.isGitRepository(workspacePath)) {
+            // 检查分支是否存在
+            const localExists = await gitService.branchExistsLocally(workspacePath, branchName);
+            const remoteExists = await gitService.branchExistsRemotely(workspacePath, branchName);
+
+            if (localExists || remoteExists) {
+              // 分支存在，切换到该分支
+              const checkoutResult = await gitService.checkoutBranch(workspacePath, branchName);
+              if (checkoutResult.success) {
+                logger.info('WorkspaceManager: Successfully checked out branch', {
+                  workspacePath,
+                  branchName,
+                });
+              } else {
+                logger.warn('WorkspaceManager: Failed to checkout branch', {
+                  workspacePath,
+                  branchName,
+                  error: checkoutResult.message,
+                });
+              }
+            } else {
+              // 分支不存在，创建新分支
+              const branchResult = await gitService.createBranch(workspacePath, branchName, true);
+              if (branchResult.success) {
+                logger.info('WorkspaceManager: Successfully created branch', {
+                  workspacePath,
+                  branchName,
+                });
+
+                // 推送分支到远程
+                const pushResult = await gitService.pushChanges(workspacePath, branchName);
+                if (pushResult.success) {
+                  logger.info('WorkspaceManager: Successfully pushed branch to remote', {
+                    workspacePath,
+                    branchName,
+                  });
+                } else {
+                  logger.warn('WorkspaceManager: Failed to push branch to remote', {
+                    workspacePath,
+                    branchName,
+                    error: pushResult.message,
+                  });
+                }
+              } else {
+                logger.warn('WorkspaceManager: Failed to create branch', {
+                  workspacePath,
+                  branchName,
+                  error: branchResult.message,
+                });
+              }
+            }
+          }
+
+          // 确保docs目录存在
+          const docsDir = this.getDocsDir(options);
+          await fs.mkdir(docsDir, { recursive: true });
+        }
+      } else {
+        // 使用模板初始化
+        await this.initWorkspace(options);
+        logger.info('WorkspaceManager: Successfully initialized workspace with template', {
+          workspacePath,
+        });
+      }
+
+      return {
+        success: true,
+        message: 'Workspace reinitialized successfully',
+      };
+    } catch (error: any) {
+      logger.error('WorkspaceManager: Failed to reinitialize workspace', {
+        workspacePath,
+        error: error.message,
+      });
+      return {
+        success: false,
+        message: `Failed to reinitialize workspace: ${error.message}`,
+      };
+    }
   }
 
   /**

@@ -131,14 +131,14 @@ export const roleDefinitions: RoleDefinition[] = [
     class_name: 'Engineer',
   },
 
-  // Order 6: AutomationEngineer - Automation testing and QA
+  // Order 6: AutomationEngineer - Automation testing (planning + execution only)
   {
     profile: 'AutomationEngineer',
     name: 'Automation Engineer',
     display_name: '自动化工程师',
-    goal: '规划自动化测试方案，执行自动化测试，检查测试覆盖率，生成QA结论报告',
-    constraints: '自动化方案需可维护、可扩展；测试执行需稳定可靠；覆盖率检查需客观准确；QA结论需基于实际测试结果',
-    description: '负责自动化测试和质量保证。监听QAEngineer的测试改进输出，规划自动化测试方案，执行自动化测试，检查测试覆盖率，生成QA结论报告。确保自动化测试有效，质量评估准确。',
+    goal: '规划自动化测试方案并执行自动化测试',
+    constraints: '自动化方案需可维护、可扩展；测试执行需稳定可靠',
+    description: '负责自动化测试。监听QAEngineer的测试改进输出，规划自动化测试方案并执行自动化测试。',
     class_name: 'AutomationEngineer',
   },
 
@@ -203,11 +203,7 @@ const EXECUTION_ACTIONS: ActionDefinition[] = [
 // Planning Actions
 const PLANNING_ACTIONS: ActionDefinition[] = [
   { name: 'AutomationPlanning', display_name: '自动化规划', description: '规划自动化方案', class_name: 'AutomationPlanning', category: 'planning' },
-  { name: 'FillProjectContext', display_name: '填充项目上下文', description: '基于PRD和设计文档填充项目上下文', class_name: 'FillProjectContext', category: 'planning' },
-  { name: 'CreateOpenSpecProposal', display_name: '创建变更提案', description: '创建OpenSpec变更提案', class_name: 'CreateOpenSpecProposal', category: 'planning' },
-  { name: 'ValidateOpenSpecProposal', display_name: '验证变更提案', description: '验证OpenSpec变更提案格式', class_name: 'ValidateOpenSpecProposal', category: 'planning' },
-  { name: 'EstimateStoryPoints', display_name: '故事点评估', description: '为任务添加故事点评估', class_name: 'EstimateStoryPoints', category: 'planning' },
-  { name: 'ValidateStoryPointEstimates', display_name: '验证故事点评估', description: '验证故事点评估完整性', class_name: 'ValidateStoryPointEstimates', category: 'planning' },
+  { name: 'ExecuteProjectManagement', display_name: '执行项目管理', description: '执行完整的项目管理流程（填充上下文、创建提案、验证格式、审查内容、评估故事点、验证评估）', class_name: 'ExecuteProjectManagement', category: 'planning' },
   { name: 'Coordinate', display_name: '协调', description: '协调团队工作', class_name: 'Coordinate', category: 'planning' },
 ];
 
@@ -242,9 +238,9 @@ export const actionDefinitions: ActionDefinition[] = [
  * 1. ProductManager: WritePRD -> PRDReview -> ImprovePRD -> GeneratePrototype
  * 2. QAEngineer: WriteTestPlan -> WriteTest -> TestReview -> ImproveTest
  * 3. Architect: WriteDesign -> DesignReview -> ImproveDesign
- * 4. ProjectManager: FillProjectContext -> CreateOpenSpecProposal -> ValidateOpenSpecProposal -> EstimateStoryPoints -> ValidateStoryPointEstimates
+ * 4. ProjectManager: ExecuteProjectManagement (完整项目管理流程：填充上下文 -> 创建提案 -> 验证格式 -> 审查内容 -> 评估故事点 -> 验证评估)
  * 5. Engineer: WriteCode -> ImproveCode -> Deploy
- * 6. AutomationEngineer: AutomationPlanning -> AutomationExecution -> CoverageQualityCheck -> QAConclusion
+ * 6. AutomationEngineer: AutomationPlanning -> AutomationExecution
  */
 export const defaultWorkflowConfig: WorkflowConfig = {
   roles: [
@@ -280,7 +276,7 @@ export const defaultWorkflowConfig: WorkflowConfig = {
       profile: 'ProjectManager',
       name: 'Project Manager',
       order: 4,
-      actions: ['FillProjectContext', 'CreateOpenSpecProposal', 'ValidateOpenSpecProposal', 'EstimateStoryPoints', 'ValidateStoryPointEstimates'],
+      actions: ['ExecuteProjectManagement'],
       watch_actions: ['WritePRD', 'WriteDesign'],
     },
     {
@@ -288,13 +284,13 @@ export const defaultWorkflowConfig: WorkflowConfig = {
       name: 'Engineer',
       order: 5,
       actions: ['WriteCode', 'ImproveCode', 'Deploy'],
-      watch_actions: ['WritePRD', 'WriteDesign', 'ValidateStoryPointEstimates'],
+      watch_actions: ['WritePRD', 'WriteDesign', 'ExecuteProjectManagement'],
     },
     {
       profile: 'AutomationEngineer',
       name: 'Automation Engineer',
       order: 6,
-      actions: ['AutomationPlanning', 'AutomationExecution', 'CoverageQualityCheck', 'QAConclusion'],
+      actions: ['AutomationPlanning', 'AutomationExecution'],
       watch_actions: ['ImproveTest'],
     },
   ],
@@ -351,8 +347,9 @@ export const actionsWithWorkspaceOptions: string[] = [
   // Automation actions
   'AutomationPlanning',
   'AutomationExecution',
-  'CoverageQualityCheck',
-  'QAConclusion',
+  
+  // Project Management actions
+  'ExecuteProjectManagement',
 ];
 
 /**
@@ -394,22 +391,16 @@ export const actionRelevanceMap: Record<string, string[]> = {
   ImproveDesign: ['WriteDesign', 'DesignReview'],
 
   // Project Manager actions (order 4, watch: WritePRD, WriteDesign)
-  FillProjectContext: ['ImprovePRD', 'ImproveDesign'],
-  CreateOpenSpecProposal: ['FillProjectContext'],
-  ValidateOpenSpecProposal: ['CreateOpenSpecProposal'],
-  EstimateStoryPoints: ['ValidateOpenSpecProposal'],
-  ValidateStoryPointEstimates: ['EstimateStoryPoints'],
+  ExecuteProjectManagement: ['ImprovePRD', 'ImproveDesign'],
 
-  // Engineer actions (order 5, watch: WritePRD, WriteDesign, ValidateStoryPointEstimates)
-  WriteCode: ['ImprovePRD', 'ImproveDesign', 'ValidateStoryPointEstimates'],
+  // Engineer actions (order 5, watch: WritePRD, WriteDesign, ExecuteProjectManagement)
+  WriteCode: ['ImprovePRD', 'ImproveDesign', 'ExecuteProjectManagement'],
   ImproveCode: ['WriteCode'],
   Deploy: ['ImproveCode'],
 
   // Automation Engineer actions (order 6, watch: ImproveTest)
   AutomationPlanning: ['ImproveTest'],
   AutomationExecution: ['AutomationPlanning'],
-  CoverageQualityCheck: ['AutomationExecution'],
-  QAConclusion: ['CoverageQualityCheck'],
 };
 
 /**
@@ -449,8 +440,16 @@ export const actionDependencies: Record<string, ActionDependency> = {
  * Value: new action name (or null if action was removed without replacement)
  */
 export const deprecatedActionMappings: Record<string, string | null> = {
-  // BreakdownTasks was replaced by OpenSpec actions, map to first replacement action
-  BreakdownTasks: 'FillProjectContext',
+  // BreakdownTasks was replaced by ExecuteProjectManagement
+  BreakdownTasks: 'ExecuteProjectManagement',
+  
+  // Individual OpenSpec actions were consolidated into ExecuteProjectManagement
+  FillProjectContext: 'ExecuteProjectManagement',
+  CreateOpenSpecProposal: 'ExecuteProjectManagement',
+  ValidateOpenSpecProposal: 'ExecuteProjectManagement',
+  ValidateOpenSpecContent: 'ExecuteProjectManagement',
+  EstimateStoryPoints: 'ExecuteProjectManagement',
+  ValidateStoryPointEstimates: 'ExecuteProjectManagement',
   
   // TestCaseReview was renamed to TestReview
   TestCaseReview: 'TestReview',
@@ -497,14 +496,6 @@ export const actionDocumentTypeMap: Record<string, string> = {
   AutomationExecution: 'TEST',
   
   // Planning Actions (use appropriate document types)
-  FillProjectContext: 'TASKS',
-  CreateOpenSpecProposal: 'TASKS',
-  ValidateOpenSpecProposal: 'TASKS',
-  EstimateStoryPoints: 'TASKS',
-  ValidateStoryPointEstimates: 'TASKS',
+  ExecuteProjectManagement: 'TASKS',
   AutomationPlanning: 'TEST',
-  
-  // Analysis Actions
-  CoverageQualityCheck: 'TEST',
-  QAConclusion: 'TEST',
 };

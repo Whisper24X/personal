@@ -1,40 +1,68 @@
 /**
  * AutomationExecution Action
- * Executes TypeScript test scripts from test/auto directory and generates HTML/JSON reports
+ * Executes JSON format test cases from test/auto directory and generates HTML/JSON reports
+ * Architecture: Step Runner + Result Collector + Stability Middleware
  */
 
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
-import { WorkspaceOptions, logger, executeCommand } from '../utils';
+import { WorkspaceOptions, logger, WorkspaceManager } from '../utils';
 import * as fs from 'fs/promises';
+import { existsSync } from 'fs';
 import * as path from 'path';
+import { spawnSync } from 'child_process';
 
 export interface AutomationExecutionOptions extends WorkspaceOptions {
   // Inherits all options from WorkspaceOptions
   testUrl?: string; // Optional URL to test against
+  /** Step execution timeout in ms (default: 30000) */
+  stepTimeoutMs?: number;
+  /** Maximum retry count for failed steps (default: 2) */
+  maxRetryCount?: number;
+  /** Wait time before step execution in ms (default: 500) */
+  waitBeforeMs?: number;
+  /** Wait time after step execution in ms (default: 500) */
+  waitAfterMs?: number;
+  /** Continue execution on step error (default: false) */
+  continueOnError?: boolean;
+  /** 执行完成后保持浏览器打开的毫秒数（默认：5000ms） */
+  keepBrowserOpenMs?: number;
+  /** 是否显示浏览器窗口（默认：true，强制有头模式） */
+  showBrowserWindow?: boolean;
+  /** 是否启用 Flow 模式（复用浏览器 session，默认 false，每个 case 独立浏览器 session） */
+  flowMode?: boolean;
 }
 
-interface TestScriptResult {
+interface StepExecutionResult {
+  stepIndex: number;
+  step: string;
+  status: 'passed' | 'failed';
+  executionTime: number;
+  error?: string;
+  errorType?: 'initialization' | 'execution' | 'timeout' | 'zod_validation' | 'browser' | 'unknown';
+  screenshot?: string;
+  retryCount?: number;
+  timestamp: string;
+}
+
+interface TestCaseExecutionResult {
   testCaseId: string;
   testCaseName: string;
-  scriptFile: string;
+  jsonFile: string;
   success: boolean;
   executionTime: number;
   timestamp: string;
-  output?: string;
+  steps: StepExecutionResult[];
   error?: string;
-  steps?: string[]; // 测试步骤列表
-  logs?: string[]; // 执行日志（按时间顺序）
-  exitCode?: number; // 退出码
 }
 
 export class AutomationExecution extends BaseAction {
   constructor() {
-    super('AutomationExecution', 'Execute TypeScript test scripts from test/auto directory and generate HTML/JSON reports');
+    super('AutomationExecution', 'Execute Playwright scripts from docs/test/auto and generate HTML/JSON reports');
   }
 
   async run(_input: string, options?: AutomationExecutionOptions): Promise<IActionOutput> {
-    logger.info('AutomationExecution: Starting automation execution from test scripts');
+    logger.info('AutomationExecution: Starting automation execution from Playwright scripts in docs/test/auto');
 
     const workspaceOptions: WorkspaceOptions = {
       ...options,
@@ -53,16 +81,15 @@ export class AutomationExecution extends BaseAction {
         await fs.mkdir(autoDir, { recursive: true });
       }
 
-      // Read all TypeScript files from auto directory
-      const scriptFiles = await this.findTestScripts(autoDir);
-      if (scriptFiles.length === 0) {
-        logger.warn('AutomationExecution: No test scripts found in auto directory', {
+      const testCaseFiles = await this.findTestCaseFiles(autoDir);
+      if (testCaseFiles.length === 0) {
+        logger.warn('AutomationExecution: No Playwright script files (.js/.ts) found in auto directory', {
           autoDir,
           workspaceDir,
         });
 
         // Even if no scripts found, generate an empty report to indicate execution was attempted
-        const emptyResults: TestScriptResult[] = [];
+        const emptyResults: TestCaseExecutionResult[] = [];
         const emptySummary = this.generateExecutionSummary(emptyResults);
 
         // Generate and save empty reports
@@ -91,11 +118,11 @@ export class AutomationExecution extends BaseAction {
         }
 
         return {
-          content: 'test/auto 目录中未找到测试脚本文件，已生成空报告。请先运行 AutomationPlanning 生成测试脚本后重新执行。',
+          content: 'docs/test/auto 目录中未找到 Playwright 脚本（.js/.ts）。请先运行 AutomationPlanning（CLI 模式）生成脚本后重新执行。',
           data: {
             type: 'automation_execution',
             skipped: true,
-            reason: 'No test scripts found',
+            reason: 'No Playwright script files found',
             timestamp: new Date().toISOString(),
             workspaceDir,
             reportDir,
@@ -103,30 +130,28 @@ export class AutomationExecution extends BaseAction {
         };
       }
 
-      logger.info('AutomationExecution: Found test scripts', {
-        scriptCount: scriptFiles.length,
-        scripts: scriptFiles.map((f) => path.basename(f)),
+      logger.info('AutomationExecution: Found Playwright script files', {
+        fileCount: testCaseFiles.length,
+        files: testCaseFiles.map((f) => path.basename(f)),
       });
 
-      // Execute all test scripts
-      let results: TestScriptResult[] = [];
+      let results: TestCaseExecutionResult[] = [];
       try {
-        logger.info('AutomationExecution: Starting script execution', {
-          scriptCount: scriptFiles.length,
-          cwd: autoDir,
+        logger.info('AutomationExecution: Starting test case execution', {
+          fileCount: testCaseFiles.length,
+          autoDir,
         });
-        results = await this.executeTestScripts(scriptFiles, autoDir);
-        logger.info('AutomationExecution: Script execution completed', {
+        results = await this.executeTestCaseFiles(testCaseFiles, autoDir, options);
+        logger.info('AutomationExecution: Test case execution completed', {
           resultsCount: results.length,
           successCount: results.filter((r) => r.success).length,
           failedCount: results.filter((r) => !r.success).length,
         });
       } catch (error: any) {
-        logger.error('AutomationExecution: Failed to execute test scripts', {
+        logger.error('AutomationExecution: Failed to execute test cases', {
           error: error.message,
           stack: error.stack,
         });
-        // Even if execution fails, create empty results to generate report
         results = [];
       }
 
@@ -266,9 +291,9 @@ export class AutomationExecution extends BaseAction {
   }
 
   /**
-   * Find all TypeScript test scripts in the auto directory
+   * Find all Playwright script files (.js / .ts) in the auto directory
    */
-  private async findTestScripts(autoDir: string): Promise<string[]> {
+  private async findTestCaseFiles(autoDir: string): Promise<string[]> {
     try {
       logger.info('AutomationExecution: Reading auto directory', { autoDir });
       const entries = await fs.readdir(autoDir, { withFileTypes: true });
@@ -278,13 +303,13 @@ export class AutomationExecution extends BaseAction {
       });
 
       const scriptFiles = entries
-        .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
+        .filter((entry) => entry.isFile() && (entry.name.endsWith('.js') || entry.name.endsWith('.ts')))
         .map((entry) => path.join(autoDir, entry.name))
         .sort();
 
-      logger.info('AutomationExecution: Filtered TypeScript script files', {
-        scriptCount: scriptFiles.length,
-        scriptFiles: scriptFiles.map((f) => path.basename(f)),
+      logger.info('AutomationExecution: Filtered Playwright script files', {
+        fileCount: scriptFiles.length,
+        files: scriptFiles.map((f) => path.basename(f)),
       });
 
       return scriptFiles;
@@ -299,202 +324,89 @@ export class AutomationExecution extends BaseAction {
   }
 
   /**
-   * Execute all test scripts and collect results
+   * Resolve playwright-skill run.js path and skill directory (cwd for execution)
    */
-  private async executeTestScripts(scriptFiles: string[], cwd: string): Promise<TestScriptResult[]> {
-    const results: TestScriptResult[] = [];
-
-    logger.info('AutomationExecution: Starting to execute test scripts', {
-      totalScripts: scriptFiles.length,
-      cwd,
-    });
-
-    for (let i = 0; i < scriptFiles.length; i++) {
-      const scriptFile = scriptFiles[i];
-      const startTime = Date.now();
-      const scriptName = path.basename(scriptFile);
-
-      // Extract test case ID and name from script file
-      const testCaseId = scriptName.replace('.ts', '');
-      let testCaseName = testCaseId;
-      const testSteps: string[] = [];
-
-      try {
-        // Read script content to extract test case name and steps
-        const scriptContent = await fs.readFile(scriptFile, 'utf-8');
-
-        // Extract test case name
-        const nameMatch = scriptContent.match(/测试用例名称[：:]\s*(.+)/);
-        if (nameMatch) {
-          testCaseName = nameMatch[1].trim();
-        }
-
-        // Extract test steps from script (look for stagehandService.act calls)
-        const stepMatches = scriptContent.matchAll(/stagehandService\.act\(['"](.+?)['"]/g);
-        for (const match of stepMatches) {
-          if (match[1] && !match[1].includes('导航到页面')) {
-            testSteps.push(match[1].trim());
-          }
-        }
-      } catch (error: any) {
-        logger.warn('AutomationExecution: Failed to read script file for extraction', {
-          scriptFile,
-          error: error.message,
-        });
-      }
-
-      logger.info('AutomationExecution: Executing test script', {
-        scriptFile: scriptName,
-        testCaseId,
-        stepsCount: testSteps.length,
-      });
-
-      try {
-        // Execute script using tsx
-        // Set NODE_PATH to include backend/src so scripts can import StagehandService.
-        // Use __dirname so path is correct regardless of process.cwd() (e.g. when run from workspace).
-        const backendSrcPath = path.resolve(__dirname, '..');
-        const nodePath = process.env.NODE_PATH ? `${process.env.NODE_PATH}:${backendSrcPath}` : backendSrcPath;
-        // Explicitly pass LLM/Stagehand env so tsx child gets same config as backend (e.g. ZhipuAI)
-        const scriptEnv: NodeJS.ProcessEnv = {
-          ...process.env,
-          NODE_PATH: nodePath,
-        };
-        const llmEnvKeys = [
-          'OPENAI_API_KEY',
-          'OPENAI_BASE_URL',
-          'OPENAI_MODEL',
-          'ZHIPUAI_API_KEY',
-          'ZHIPUAI_BASE_URL',
-          'ZHIPUAI_MODEL',
-          'STAGEHAND_MODEL',
-          'STAGEHAND_ENV',
-          'STAGEHAND_HEADLESS',
-          'ENABLE_BROWSER',
-        ];
-        for (const key of llmEnvKeys) {
-          if (process.env[key] != null) scriptEnv[key] = process.env[key];
-        }
-        // Stagehand 内部只认 OPENAI_API_KEY，子进程用智谱时需映射，否则报 MissingLLMConfigurationError 导致浏览器闪退
-        if (!scriptEnv.OPENAI_API_KEY && scriptEnv.ZHIPUAI_API_KEY) {
-          scriptEnv.OPENAI_API_KEY = scriptEnv.ZHIPUAI_API_KEY;
-          scriptEnv.OPENAI_BASE_URL = scriptEnv.ZHIPUAI_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
-          scriptEnv.OPENAI_MODEL = scriptEnv.STAGEHAND_MODEL || scriptEnv.ZHIPUAI_MODEL || 'glm-4-flash';
-        }
-        const result = await executeCommand(`tsx ${scriptName}`, {
-          cwd,
-          timeout: 300000, // 5 minutes timeout per script
-          env: scriptEnv,
-        });
-
-        const executionTime = Date.now() - startTime;
-        const success = result.exitCode === 0;
-
-        // Parse logs from output - combine stdout and stderr, preserve order
-        const logs: string[] = [];
-        const stdoutLines = result.stdout ? result.stdout.split('\n') : [];
-        const stderrLines = result.stderr ? result.stderr.split('\n') : [];
-
-        // Combine outputs (stdout first, then stderr if any)
-        if (stdoutLines.length > 0) {
-          logs.push(...stdoutLines.filter((line) => line.trim()));
-        }
-        if (stderrLines.length > 0 && result.stderr !== result.stdout) {
-          logs.push(...stderrLines.filter((line) => line.trim()));
-        }
-
-        // If no logs but we have output, use it
-        if (logs.length === 0 && (result.stdout || result.stderr)) {
-          const allOutput = (result.stdout || '') + (result.stderr || '');
-          if (allOutput.trim()) {
-            logs.push(...allOutput.split('\n').filter((line) => line.trim()));
-          }
-        }
-
-        results.push({
-          testCaseId,
-          testCaseName,
-          scriptFile: scriptName,
-          success,
-          executionTime,
-          timestamp: new Date().toISOString(),
-          output: result.stdout || undefined,
-          error: success ? undefined : result.stderr || result.stdout || '执行失败',
-          steps: testSteps.length > 0 ? testSteps : undefined,
-          logs: logs.length > 0 ? logs : undefined,
-          exitCode: result.exitCode ?? undefined,
-        });
-
-        logger.info('AutomationExecution: Script execution completed', {
-          scriptFile: scriptName,
-          success,
-          executionTime,
-          logsCount: logs.length,
-        });
-      } catch (error: any) {
-        const executionTime = Date.now() - startTime;
-
-        // Try to extract error details from CommandExecutorError
-        let errorMessage = error.message || 'Script execution failed';
-        const errorLogs: string[] = [];
-        let errorOutput = '';
-        let errorStderr = '';
-
-        // Check if error has stdout/stderr properties (from CommandExecutorError)
-        if (error.stdout || error.stderr) {
-          errorOutput = error.stdout || '';
-          errorStderr = error.stderr || '';
-
-          // Combine stdout and stderr for logs
-          const stdoutLines = errorOutput ? errorOutput.split('\n') : [];
-          const stderrLines = errorStderr ? errorStderr.split('\n') : [];
-
-          if (stdoutLines.length > 0) {
-            errorLogs.push(...stdoutLines.filter((line) => line.trim()));
-          }
-          if (stderrLines.length > 0 && errorStderr !== errorOutput) {
-            errorLogs.push(...stderrLines.filter((line) => line.trim()));
-          }
-
-          // Use the most detailed error message
-          if (errorLogs.length > 0) {
-            errorMessage = errorLogs.join('\n');
-          } else if (errorStderr) {
-            errorMessage = errorStderr;
-          } else if (errorOutput) {
-            errorMessage = errorOutput;
-          }
-        }
-
-        results.push({
-          testCaseId,
-          testCaseName,
-          scriptFile: scriptName,
-          success: false,
-          executionTime,
-          timestamp: new Date().toISOString(),
-          error: errorMessage,
-          output: errorOutput || undefined,
-          steps: testSteps.length > 0 ? testSteps : undefined,
-          logs: errorLogs.length > 0 ? errorLogs : undefined,
-          exitCode: error.exitCode || 1,
-        });
-
-        logger.error('AutomationExecution: Script execution failed', {
-          scriptFile: scriptName,
-          error: errorMessage,
-          logsCount: errorLogs.length,
-          exitCode: error.exitCode,
-        });
-      }
+  private getPlaywrightRunJsPath(): { runJsPath: string; skillDir: string } | null {
+    const projectRoot = WorkspaceManager.getProjectRootPath();
+    const runJsPath = path.join(projectRoot, 'skills', 'playwright-skill', 'skills', 'playwright-skill', 'run.js');
+    const skillDir = path.dirname(runJsPath);
+    if (!existsSync(runJsPath)) {
+      logger.warn('AutomationExecution: playwright-skill run.js not found', { runJsPath });
+      return null;
     }
+    return { runJsPath, skillDir };
+  }
 
-    logger.info('AutomationExecution: Completed executing all test scripts', {
-      totalScripts: scriptFiles.length,
-      resultsCount: results.length,
-      successCount: results.filter((r) => r.success).length,
-      failedCount: results.filter((r) => !r.success).length,
+  /**
+   * Execute a single Playwright script via run.js and return result
+   */
+  private runPlaywrightScript(scriptPath: string, skillDir: string, runJsPath: string): { exitCode: number; stdout: string; stderr: string } {
+    const result = spawnSync('node', [runJsPath, scriptPath], {
+      cwd: skillDir,
+      encoding: 'utf-8',
+      timeout: 120000,
     });
+    return {
+      exitCode: result.status ?? -1,
+      stdout: (result.stdout ?? '') as string,
+      stderr: (result.stderr ?? '') as string,
+    };
+  }
+
+  /**
+   * Execute all test case files: Playwright scripts (.js/.ts) via run.js
+   */
+  private async executeTestCaseFiles(jsonFiles: string[], _cwd: string, _options?: AutomationExecutionOptions): Promise<TestCaseExecutionResult[]> {
+    const results: TestCaseExecutionResult[] = [];
+    const isScriptMode = jsonFiles.length > 0 && jsonFiles.every((f) => f.endsWith('.js') || f.endsWith('.ts'));
+
+    if (isScriptMode) {
+      const runPath = this.getPlaywrightRunJsPath();
+      if (!runPath) {
+        logger.error('AutomationExecution: playwright-skill run.js not found, cannot execute scripts');
+        return jsonFiles.map((f) => ({
+          testCaseId: path.basename(f).replace(/\.(js|ts)$/, ''),
+          testCaseName: path.basename(f),
+          jsonFile: path.basename(f),
+          success: false,
+          executionTime: 0,
+          timestamp: new Date().toISOString(),
+          steps: [],
+          error: 'playwright-skill run.js not found',
+        }));
+      }
+      logger.info('AutomationExecution: Executing Playwright scripts via run.js', {
+        totalFiles: jsonFiles.length,
+        skillDir: runPath.skillDir,
+      });
+      for (const scriptFile of jsonFiles) {
+        const startTime = Date.now();
+        const fileName = path.basename(scriptFile);
+        const testCaseId = fileName.replace(/\.(js|ts)$/, '');
+        const { exitCode, stderr } = this.runPlaywrightScript(scriptFile, runPath.skillDir, runPath.runJsPath);
+        const executionTime = Date.now() - startTime;
+        const success = exitCode === 0;
+        if (!success) {
+          logger.warn('AutomationExecution: Script failed', { fileName, exitCode, stderr: stderr.slice(0, 500) });
+        }
+        results.push({
+          testCaseId,
+          testCaseName: testCaseId,
+          jsonFile: fileName,
+          success,
+          executionTime,
+          timestamp: new Date().toISOString(),
+          steps: [],
+          error: success ? undefined : stderr?.trim() || `exit code ${exitCode}`,
+        });
+      }
+      logger.info('AutomationExecution: Completed executing Playwright scripts', {
+        totalFiles: jsonFiles.length,
+        successCount: results.filter((r) => r.success).length,
+        failedCount: results.filter((r) => !r.success).length,
+      });
+      return results;
+    }
 
     return results;
   }
@@ -502,7 +414,7 @@ export class AutomationExecution extends BaseAction {
   /**
    * Generate execution summary
    */
-  private generateExecutionSummary(results: TestScriptResult[]): any {
+  private generateExecutionSummary(results: TestCaseExecutionResult[]): any {
     const total = results.length;
     const passed = results.filter((r) => r.success).length;
     const failed = total - passed;
@@ -521,22 +433,28 @@ export class AutomationExecution extends BaseAction {
   /**
    * Generate JSON report
    */
-  private generateJSONReport(summary: any, results: TestScriptResult[]): string {
+  private generateJSONReport(summary: any, results: TestCaseExecutionResult[]): string {
     return JSON.stringify(
       {
         summary,
         results: results.map((r) => ({
           testCaseId: r.testCaseId,
           testCaseName: r.testCaseName,
-          scriptFile: r.scriptFile,
+          jsonFile: r.jsonFile,
           success: r.success,
           executionTime: r.executionTime,
           timestamp: r.timestamp,
-          exitCode: r.exitCode,
-          steps: r.steps || [],
-          logs: r.logs || [],
-          output: r.output,
           error: r.error,
+          steps: r.steps.map((s) => ({
+            stepIndex: s.stepIndex,
+            step: s.step,
+            status: s.status,
+            executionTime: s.executionTime,
+            error: s.error,
+            errorType: s.errorType,
+            retryCount: s.retryCount,
+            timestamp: s.timestamp,
+          })),
         })),
         timestamp: new Date().toISOString(),
       },
@@ -548,7 +466,7 @@ export class AutomationExecution extends BaseAction {
   /**
    * Generate HTML report
    */
-  private generateHTMLReport(summary: any, results: TestScriptResult[]): string {
+  private generateHTMLReport(summary: any, results: TestCaseExecutionResult[]): string {
     const executionTime = new Date().toLocaleString('zh-CN');
     const successRate = parseFloat(summary.successRate);
 
@@ -759,7 +677,7 @@ export class AutomationExecution extends BaseAction {
                 <tr>
                     <th>测试用例编号</th>
                     <th>测试用例名称</th>
-                    <th>脚本文件</th>
+                    <th>JSON文件</th>
                     <th>状态</th>
                     <th>执行时间</th>
                     <th>时间戳</th>
@@ -775,43 +693,56 @@ export class AutomationExecution extends BaseAction {
                 <tr>
                     <td><strong>${this.escapeHtml(result.testCaseId)}</strong></td>
                     <td>${this.escapeHtml(result.testCaseName)}</td>
-                    <td><code>${this.escapeHtml(result.scriptFile)}</code></td>
+                    <td><code>${this.escapeHtml(result.jsonFile)}</code></td>
                     <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                     <td>${(result.executionTime / 1000).toFixed(2)}s</td>
                     <td>${new Date(result.timestamp).toLocaleString('zh-CN')}</td>
                 </tr>`;
 
-      // Show test steps if available
+      // Show step-level execution details if available
       if (result.steps && result.steps.length > 0) {
         html += `
                 <tr>
                     <td colspan="6">
-                        <div class="steps-details">
-                            <strong>测试步骤 (${result.steps.length} 步):</strong>
-                            <ol>`;
-        result.steps.forEach((step, _index) => {
-          html += `<li>${this.escapeHtml(step)}</li>`;
+                        <div class="steps-details" style="background: #f0f8ff; border-left: 4px solid #0066cc;">
+                            <strong>步骤执行详情:</strong>
+                            <table style="width: 100%; margin-top: 10px; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="background: #e6f2ff;">
+                                        <th style="padding: 8px; text-align: left; border: 1px solid #cce5ff;">步骤</th>
+                                        <th style="padding: 8px; text-align: left; border: 1px solid #cce5ff;">指令</th>
+                                        <th style="padding: 8px; text-align: center; border: 1px solid #cce5ff;">状态</th>
+                                        <th style="padding: 8px; text-align: right; border: 1px solid #cce5ff;">执行时间</th>
+                                    </tr>
+                                </thead>
+                                <tbody>`;
+        result.steps.forEach((stepResult) => {
+          const stepStatusClass = stepResult.status === 'passed' ? 'status-pass' : 'status-fail';
+          const stepStatusText = stepResult.status === 'passed' ? '✅ 成功' : '❌ 失败';
+          const stepTime = stepResult.executionTime ? `${(stepResult.executionTime / 1000).toFixed(2)}s` : 'N/A';
+          html += `
+                                    <tr>
+                                        <td style="padding: 8px; border: 1px solid #cce5ff;">${stepResult.stepIndex + 1}</td>
+                                        <td style="padding: 8px; border: 1px solid #cce5ff;">${this.escapeHtml(stepResult.step)}</td>
+                                        <td style="padding: 8px; text-align: center; border: 1px solid #cce5ff;">
+                                            <span class="status-badge ${stepStatusClass}">${stepStatusText}</span>
+                                        </td>
+                                        <td style="padding: 8px; text-align: right; border: 1px solid #cce5ff;">${stepTime}</td>
+                                    </tr>`;
+          if (stepResult.error) {
+            html += `
+                                    <tr>
+                                        <td colspan="4" style="padding: 8px; border: 1px solid #cce5ff; background: #fff3cd;">
+                                            <strong>错误:</strong> ${this.escapeHtml(stepResult.error)}
+                                            ${stepResult.errorType ? `<br><strong>错误类型:</strong> ${this.escapeHtml(stepResult.errorType)}` : ''}
+                                            ${stepResult.retryCount !== undefined ? `<br><strong>重试次数:</strong> ${stepResult.retryCount}` : ''}
+                                        </td>
+                                    </tr>`;
+          }
         });
         html += `
-                            </ol>
-                        </div>
-                    </td>
-                </tr>`;
-      }
-
-      // Show execution logs (always show if available, even if test passed)
-      if (result.logs && result.logs.length > 0) {
-        html += `
-                <tr>
-                    <td colspan="6">
-                        <div class="logs-details">
-                            <strong>执行日志 (${result.logs.length} 条):</strong><br>`;
-        result.logs.forEach((log, index) => {
-          const logClass = this.getLogClass(log);
-          const timestamp = `[${index + 1}]`;
-          html += `<div class="log-line ${logClass}">${timestamp} ${this.escapeHtml(log)}</div>`;
-        });
-        html += `
+                                </tbody>
+                            </table>
                         </div>
                     </td>
                 </tr>`;
@@ -825,20 +756,6 @@ export class AutomationExecution extends BaseAction {
                         <div class="error-details">
                             <strong>❌ 错误信息:</strong><br>
                             ${this.escapeHtml(result.error)}
-                            ${result.exitCode !== undefined ? `<br><br><strong>退出码:</strong> ${result.exitCode}` : ''}
-                        </div>
-                    </td>
-                </tr>`;
-      }
-
-      // Show output if available and different from logs (for debugging)
-      if (result.output && result.output.trim() && (!result.logs || result.output.trim() !== result.logs.join('\n').trim())) {
-        html += `
-                <tr>
-                    <td colspan="6">
-                        <div class="output-details">
-                            <strong>📋 标准输出:</strong><br>
-                            ${this.escapeHtml(result.output)}
                         </div>
                     </td>
                 </tr>`;
@@ -861,22 +778,5 @@ export class AutomationExecution extends BaseAction {
   private escapeHtml(text: string): string {
     if (!text) return '';
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-  }
-
-  /**
-   * Determine log line CSS class based on content
-   */
-  private getLogClass(log: string): string {
-    const lowerLog = log.toLowerCase();
-    if (lowerLog.includes('error') || lowerLog.includes('失败') || lowerLog.includes('failed')) {
-      return 'log-error';
-    }
-    if (lowerLog.includes('success') || lowerLog.includes('成功') || lowerLog.includes('passed')) {
-      return 'log-success';
-    }
-    if (lowerLog.includes('info') || lowerLog.includes('初始化') || lowerLog.includes('initialized')) {
-      return 'log-info';
-    }
-    return '';
   }
 }

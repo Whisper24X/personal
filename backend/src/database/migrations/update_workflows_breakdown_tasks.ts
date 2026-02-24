@@ -5,6 +5,11 @@
  * - Replaces BreakdownTasks in ProjectManager.actions with 5 new actions
  * - Replaces BreakdownTasks in Engineer.watch_actions with ValidateStoryPointEstimates
  *
+ * NOTE: This is a historical migration. The individual OpenSpec actions mentioned here
+ * (FillProjectContext, CreateOpenSpecProposal, etc.) have since been consolidated into
+ * a single ExecuteProjectManagement action that uses the project-management skill.
+ * This migration file is kept for historical record only.
+ *
  * Usage: pnpm exec tsx src/database/migrations/update_workflows_breakdown_tasks.ts
  */
 

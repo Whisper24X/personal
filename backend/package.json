@@ -23,11 +23,9 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.89",
     "@browserbasehq/stagehand": "alpha",
-    "@langchain/community": "^1.1.1",
-    "@langchain/core": "^1.1.8",
     "@mind2build/shared": "workspace:*",
-    "@qdrant/js-client-rest": "^1.16.2",
     "@types/ws": "^8.18.1",
     "archiver": "^7.0.1",
     "axios": "^1.6.5",
@@ -38,7 +36,6 @@
     "helmet": "^7.1.0",
     "joi": "^17.11.0",
     "jsonwebtoken": "^9.0.2",
-    "langchain": "^1.2.3",
     "multer": "^2.0.2",
     "openai": "^4.24.1",
     "pg": "^8.11.3",

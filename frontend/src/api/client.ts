@@ -53,13 +53,9 @@ class APIClient {
   }
 
   // ==================== 业务线 API 端点（原应用 API）====================
-  
+
   // 创建业务线
-  async createBusinessLine(data: {
-    name: string;
-    description?: string;
-    metadata?: Record<string, any>;
-  }) {
+  async createBusinessLine(data: { name: string; description?: string; metadata?: Record<string, any> }) {
     return this.client.post('/applications', data);
   }
 
@@ -74,11 +70,14 @@ class APIClient {
   }
 
   // 更新业务线
-  async updateBusinessLine(id: string, data: {
-    name?: string;
-    description?: string;
-    metadata?: Record<string, any>;
-  }) {
+  async updateBusinessLine(
+    id: string,
+    data: {
+      name?: string;
+      description?: string;
+      metadata?: Record<string, any>;
+    }
+  ) {
     return this.client.put(`/applications/${id}`, data);
   }
 
@@ -98,11 +97,7 @@ class APIClient {
   }
 
   // 兼容旧的应用 API（保持向后兼容）
-  async createApplication(data: {
-    name: string;
-    description?: string;
-    metadata?: Record<string, any>;
-  }) {
+  async createApplication(data: { name: string; description?: string; metadata?: Record<string, any> }) {
     return this.createBusinessLine(data);
   }
 
@@ -114,11 +109,14 @@ class APIClient {
     return this.getBusinessLine(id);
   }
 
-  async updateApplication(id: string, data: {
-    name?: string;
-    description?: string;
-    metadata?: Record<string, any>;
-  }) {
+  async updateApplication(
+    id: string,
+    data: {
+      name?: string;
+      description?: string;
+      metadata?: Record<string, any>;
+    }
+  ) {
     return this.updateBusinessLine(id, data);
   }
 
@@ -131,7 +129,7 @@ class APIClient {
   }
 
   // ==================== 平台 API 端点（原项目 API）====================
-  
+
   // 创建平台
   async createPlatform(data: {
     name: string;
@@ -193,11 +191,14 @@ class APIClient {
    * @param platformId 平台ID
    * @param data 版本数据
    */
-  async createPlatformVersion(platformId: string, data: {
-    versionName: string;
-    idea: string;
-    description?: string;
-  }) {
+  async createPlatformVersion(
+    platformId: string,
+    data: {
+      versionName: string;
+      idea: string;
+      description?: string;
+    }
+  ) {
     return this.client.post(`/projects/${platformId}/versions`, data);
   }
 
@@ -232,10 +233,14 @@ class APIClient {
    * @param versionId 版本ID
    * @param data 更新数据
    */
-  async updatePlatformVersion(platformId: string, versionId: string, data: {
-    description?: string;
-    metadata?: Record<string, any>;
-  }) {
+  async updatePlatformVersion(
+    platformId: string,
+    versionId: string,
+    data: {
+      description?: string;
+      metadata?: Record<string, any>;
+    }
+  ) {
     return this.client.put(`/projects/${platformId}/versions/${versionId}`, data);
   }
 
@@ -276,6 +281,43 @@ class APIClient {
     return this.client.get(`/projects/${platformId}/branches`);
   }
 
+  /**
+   * 启动版本审查
+   * @param platformId 平台ID
+   * @param versionId 版本ID
+   */
+  async startVersionReview(platformId: string, versionId: string) {
+    return this.client.post(`/projects/${platformId}/versions/${versionId}/review/start`);
+  }
+
+  /**
+   * 获取版本审查状态
+   * @param platformId 平台ID
+   * @param versionId 版本ID
+   */
+  async getVersionReviewStatus(platformId: string, versionId: string) {
+    return this.client.get(`/projects/${platformId}/versions/${versionId}/review/status`);
+  }
+
+  /**
+   * 提交版本审查答案
+   * @param platformId 平台ID
+   * @param versionId 版本ID
+   * @param answer 用户答案
+   */
+  async submitVersionReviewAnswer(platformId: string, versionId: string, answer: string) {
+    return this.client.post(`/projects/${platformId}/versions/${versionId}/review/answer`, { answer });
+  }
+
+  /**
+   * 继续版本审查
+   * @param platformId 平台ID
+   * @param versionId 版本ID
+   */
+  async continueVersionReview(platformId: string, versionId: string) {
+    return this.client.post(`/projects/${platformId}/versions/${versionId}/review/continue`);
+  }
+
   // 兼容旧的项目 API（保持向后兼容）
   async createProject(data: {
     name: string;
@@ -314,18 +356,20 @@ class APIClient {
   }
 
   // PRD API 端点
-  async generatePRD(projectId: string, data: {
-    requirements: string;
-    mode?: 'new' | 'update';
-    useRAG?: boolean;
-  }) {
+  async generatePRD(
+    projectId: string,
+    data: {
+      requirements: string;
+      mode?: 'new' | 'update';
+    }
+  ) {
     return this.client.post(`/projects/${projectId}/prd`, data);
   }
 
   async getPRDs(projectId: string, includeDeleted?: boolean) {
-    const response = await this.client.get(`/projects/${projectId}/prds`, {
+    const response = (await this.client.get(`/projects/${projectId}/prds`, {
       params: { includeDeleted },
-    }) as any;
+    })) as any;
     // Normalize response format
     return {
       prds: response.documents || response.prds || [],
@@ -349,16 +393,8 @@ class APIClient {
     return this.client.get(`/projects/${projectId}/prds/${prdId}/sections`);
   }
 
-  async adjustPRDSection(
-    projectId: string,
-    prdId: string,
-    sectionNumber: number,
-    userRequest: string
-  ) {
-    return this.client.post(
-      `/projects/${projectId}/prds/${prdId}/sections/${sectionNumber}/adjust`,
-      { userRequest }
-    );
+  async adjustPRDSection(projectId: string, prdId: string, sectionNumber: number, userRequest: string) {
+    return this.client.post(`/projects/${projectId}/prds/${prdId}/sections/${sectionNumber}/adjust`, { userRequest });
   }
 
   // Prototype API 端点
@@ -382,16 +418,18 @@ class APIClient {
   }
 
   // MRD API 端点
-  async generateMRD(projectId: string, data: {
-    requirements: string;
-    mode?: 'new' | 'update';
-    useRAG?: boolean;
-  }) {
+  async generateMRD(
+    projectId: string,
+    data: {
+      requirements: string;
+      mode?: 'new' | 'update';
+    }
+  ) {
     return this.client.post(`/projects/${projectId}/mrd`, data);
   }
 
   async getMRDs(projectId: string) {
-    const response = await this.client.get(`/projects/${projectId}/mrds`) as any;
+    const response = (await this.client.get(`/projects/${projectId}/mrds`)) as any;
     // Normalize response format
     return {
       documents: response.documents || [],
@@ -403,18 +441,8 @@ class APIClient {
     return this.client.get(`/projects/${projectId}/mrds/${mrdId}`);
   }
 
-  async adjustMRDSection(
-    projectId: string,
-    mrdId: string,
-    sectionNumber: number,
-    userRequest: string,
-    applicationId?: string,
-    version?: number
-  ) {
-    return this.client.post(
-      `/projects/${projectId}/mrds/${mrdId}/adjust-section`,
-      { sectionNumber, userRequest, applicationId, version }
-    );
+  async adjustMRDSection(projectId: string, mrdId: string, sectionNumber: number, userRequest: string, applicationId?: string, version?: number) {
+    return this.client.post(`/projects/${projectId}/mrds/${mrdId}/adjust-section`, { sectionNumber, userRequest, applicationId, version });
   }
 
   async getSectionConversation(
@@ -424,12 +452,9 @@ class APIClient {
     applicationId?: string,
     version?: number
   ) {
-    return this.client.get(
-      `/projects/${projectId}/sections/${sectionNumber}/conversation`,
-      {
-        params: { documentType, applicationId, version },
-      }
-    );
+    return this.client.get(`/projects/${projectId}/sections/${sectionNumber}/conversation`, {
+      params: { documentType, applicationId, version },
+    });
   }
 
   async reviewMRD(
@@ -481,7 +506,6 @@ class APIClient {
     return this.client.post('/config/llm', data);
   }
 
-
   async activateLLMConfig(id: string) {
     return this.client.post(`/config/llm/${id}/activate`);
   }
@@ -499,12 +523,7 @@ class APIClient {
     return this.client.get(`/config/llm/providers/${provider}`);
   }
 
-  async saveProviderConfig(data: {
-    provider: string;
-    apiKey?: string;
-    baseURL?: string;
-    model?: string;
-  }) {
+  async saveProviderConfig(data: { provider: string; apiKey?: string; baseURL?: string; model?: string }) {
     return this.client.post('/config/llm/providers', data);
   }
 
@@ -517,21 +536,18 @@ class APIClient {
     return this.client.get(`/config/llm/models/${provider}`);
   }
 
-  async createLLMModel(data: {
-    provider: string;
-    modelName: string;
-    displayName?: string;
-    isDefault?: boolean;
-    sortOrder?: number;
-  }) {
+  async createLLMModel(data: { provider: string; modelName: string; displayName?: string; isDefault?: boolean; sortOrder?: number }) {
     return this.client.post('/config/llm/models', data);
   }
 
-  async updateLLMModel(id: string, data: {
-    displayName?: string;
-    isDefault?: boolean;
-    sortOrder?: number;
-  }) {
+  async updateLLMModel(
+    id: string,
+    data: {
+      displayName?: string;
+      isDefault?: boolean;
+      sortOrder?: number;
+    }
+  ) {
     return this.client.put(`/config/llm/models/${id}`, data);
   }
 
@@ -552,17 +568,20 @@ class APIClient {
     return this.client.get(`/config/role-llm/${profile}`);
   }
 
-  async saveRoleLLMConfig(profile: string, data: {
-    provider: string;
-    apiKey?: string;
-    baseURL?: string;
-    model: string;
-    temperature?: number;
-    maxTokens?: number;
-    repository?: string;
-    branchName?: string;
-    autoCreatePr?: boolean;
-  }) {
+  async saveRoleLLMConfig(
+    profile: string,
+    data: {
+      provider: string;
+      apiKey?: string;
+      baseURL?: string;
+      model: string;
+      temperature?: number;
+      maxTokens?: number;
+      repository?: string;
+      branchName?: string;
+      autoCreatePr?: boolean;
+    }
+  ) {
     return this.client.post(`/config/role-llm/${profile}`, data);
   }
 
@@ -587,13 +606,7 @@ class APIClient {
     return this.client.get(`/config/prompts/${type}/${key}`);
   }
 
-  async savePromptConfig(data: {
-    promptType: string;
-    promptKey: string;
-    content: string;
-    description?: string;
-    isActive?: boolean;
-  }) {
+  async savePromptConfig(data: { promptType: string; promptKey: string; content: string; description?: string; isActive?: boolean }) {
     return this.client.post('/config/prompts', data);
   }
 
@@ -667,6 +680,32 @@ class APIClient {
   }
 
   /**
+   * CLI 编辑当前等待确认内容
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
+   * @param message 修改指令
+   */
+  async editWorkflowDraftByCLI(projectId: string, versionId: string, message: string, scope?: 'pending' | 'last_completed') {
+    return this.client.post(`/workflow/${projectId}/pending-confirmation/cli-edit`, {
+      versionId,
+      message,
+      scope,
+    });
+  }
+
+  /**
+   * 获取 CLI 日志（心跳轮询）
+   * @param projectId 项目ID
+   * @param versionId 版本ID（必需）
+   * @param afterTs 可选：仅返回该时间之后的日志
+   */
+  async getCliLogs(projectId: string, versionId: string, afterTs?: string) {
+    return this.client.get(`/workflow/${projectId}/cli-logs`, {
+      params: { versionId, afterTs },
+    });
+  }
+
+  /**
    * 重置工作流到指定角色
    * @param projectId 项目ID
    * @param versionId 版本ID（必需）
@@ -732,7 +771,7 @@ class APIClient {
     if (versionId) {
       url += `?versionId=${versionId}`;
     }
-    
+
     // Create a temporary link and trigger download
     const link = document.createElement('a');
     link.href = url;
@@ -748,7 +787,7 @@ class APIClient {
     if (versionId) {
       url += `?versionId=${versionId}`;
     }
-    
+
     // Create a temporary link and trigger download
     const link = document.createElement('a');
     link.href = url;
@@ -759,13 +798,16 @@ class APIClient {
   }
 
   // Knowledge Base API endpoints
-  async createKnowledgeBase(projectId: string, data: {
-    title: string;
-    content: string;
-    description?: string;
-    tags?: string[];
-    metadata?: Record<string, any>;
-  }) {
+  async createKnowledgeBase(
+    projectId: string,
+    data: {
+      title: string;
+      content: string;
+      description?: string;
+      tags?: string[];
+      metadata?: Record<string, any>;
+    }
+  ) {
     return this.client.post(`/projects/${projectId}/knowledge-base`, data);
   }
 
@@ -779,14 +821,18 @@ class APIClient {
     return this.client.get(`/projects/${projectId}/knowledge-base/${docId}`);
   }
 
-  async updateKnowledgeBase(projectId: string, docId: string, data: {
-    title?: string;
-    content?: string;
-    description?: string;
-    tags?: string[];
-    metadata?: Record<string, any>;
-    isActive?: boolean;
-  }) {
+  async updateKnowledgeBase(
+    projectId: string,
+    docId: string,
+    data: {
+      title?: string;
+      content?: string;
+      description?: string;
+      tags?: string[];
+      metadata?: Record<string, any>;
+      isActive?: boolean;
+    }
+  ) {
     return this.client.put(`/projects/${projectId}/knowledge-base/${docId}`, data);
   }
 
@@ -811,7 +857,7 @@ class APIClient {
   async uploadKnowledgeFile(projectId: string, file: File) {
     const formData = new FormData();
     formData.append('file', file);
-    
+
     return this.client.post(`/projects/${projectId}/knowledge/upload`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
@@ -864,39 +910,46 @@ class APIClient {
     return this.client.get(`/applications/${applicationId}/workflows/default`);
   }
 
-  async createWorkflow(applicationId: string, data: {
-    name: string;
-    description?: string;
-    isDefault?: boolean;
-    workflowConfig: {
-      roles: Array<{
-        profile: string;
-        name?: string;
-        order: number;
-        actions: string[];
-        watch_actions?: string[];
-        config?: Record<string, any>;
-      }>;
-    };
-  }) {
+  async createWorkflow(
+    applicationId: string,
+    data: {
+      name: string;
+      description?: string;
+      isDefault?: boolean;
+      workflowConfig: {
+        roles: Array<{
+          profile: string;
+          name?: string;
+          order: number;
+          actions: string[];
+          watch_actions?: string[];
+          config?: Record<string, any>;
+        }>;
+      };
+    }
+  ) {
     return this.client.post(`/applications/${applicationId}/workflows`, data);
   }
 
-  async updateWorkflow(applicationId: string, workflowId: string, data: {
-    name?: string;
-    description?: string;
-    isDefault?: boolean;
-    workflowConfig?: {
-      roles: Array<{
-        profile: string;
-        name?: string;
-        order: number;
-        actions: string[];
-        watch_actions?: string[];
-        config?: Record<string, any>;
-      }>;
-    };
-  }) {
+  async updateWorkflow(
+    applicationId: string,
+    workflowId: string,
+    data: {
+      name?: string;
+      description?: string;
+      isDefault?: boolean;
+      workflowConfig?: {
+        roles: Array<{
+          profile: string;
+          name?: string;
+          order: number;
+          actions: string[];
+          watch_actions?: string[];
+          config?: Record<string, any>;
+        }>;
+      };
+    }
+  ) {
     return this.client.put(`/applications/${applicationId}/workflows/${workflowId}`, data);
   }
 
@@ -911,4 +964,3 @@ class APIClient {
 
 export const apiClient = new APIClient();
 export default apiClient;
-

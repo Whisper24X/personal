@@ -22,9 +22,9 @@ export class Engineer extends Role {
 
     super(config, context);
 
-    // 监听 ProductManager 和 Architect 的输出，以及 ProjectManager 的 ValidateStoryPointEstimates
-    // Note: Using string literal 'ValidateStoryPointEstimates' instead of deprecated ACTION_BREAKDOWN_TASKS
-    this.watch([ACTION_WRITE_PRD, ACTION_WRITE_DESIGN, 'ValidateStoryPointEstimates']);
+    // 监听 ProductManager 和 Architect 的输出，以及 ProjectManager 的 ExecuteProjectManagement
+    // Note: ExecuteProjectManagement replaces the deprecated individual OpenSpec actions
+    this.watch([ACTION_WRITE_PRD, ACTION_WRITE_DESIGN, 'ExecuteProjectManagement']);
 
     // 设置 actions: WriteCode -> ImproveCode -> Deploy
     this.setActions([new WriteCode(), new ImproveCode(), new Deploy()]);
