@@ -232,17 +232,29 @@ async function fetchReviewStatus() {
   console.log('Fetching review status for version:', props.versionId);
   try {
     loading.value = true;
-    const response = await apiClient.getVersionReviewStatus(props.platformId, props.versionId);
+    const response = (await apiClient.getVersionReviewStatus(props.platformId, props.versionId)) as {
+      success?: boolean;
+      data?: {
+        status?: string;
+        currentRound?: number;
+        totalRounds?: number;
+        currentQuestion?: unknown;
+        questionsAndAnswers?: unknown[];
+        reviewDocumentPath?: string;
+        error?: string;
+      };
+    };
     console.log('Review status response:', response);
 
     if (response.success && response.data) {
-      status.value = response.data.status;
-      currentRound.value = response.data.currentRound || 0;
-      totalRounds.value = response.data.totalRounds || 5;
-      currentQuestion.value = response.data.currentQuestion;
-      questionsAndAnswers.value = response.data.questionsAndAnswers || [];
-      reviewDocumentPath.value = response.data.reviewDocumentPath;
-      error.value = response.data.error;
+      const data = response.data;
+      status.value = (data.status ?? 'pending') as typeof status.value;
+      currentRound.value = data.currentRound || 0;
+      totalRounds.value = data.totalRounds || 5;
+      currentQuestion.value = (data.currentQuestion ?? null) as typeof currentQuestion.value;
+      questionsAndAnswers.value = (data.questionsAndAnswers ?? []) as typeof questionsAndAnswers.value;
+      reviewDocumentPath.value = data.reviewDocumentPath ?? null;
+      error.value = data.error ?? null;
 
       console.log('Review status updated:', {
         status: status.value,

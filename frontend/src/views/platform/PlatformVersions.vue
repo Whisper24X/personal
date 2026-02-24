@@ -313,11 +313,11 @@ async function handleCreate() {
     if (valid) {
       createLoading.value = true;
       try {
-        const response = await apiClient.createPlatformVersion(platformId, {
+        const response = (await apiClient.createPlatformVersion(platformId, {
           versionName: createForm.versionName,
           idea: createForm.idea,
           description: createForm.description || undefined,
-        });
+        })) as { version?: { id: string } };
 
         console.log('Version created response:', response);
 
