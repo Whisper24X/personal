@@ -192,11 +192,19 @@ export interface RoleExecutorConfigData {
 }
 
 /**
+ * LLM 接口（供 LLMExecutor 调用）
+ */
+export interface ILLMForExecutor {
+  aask(prompt: string, systemMsgs?: string[], abortSignal?: AbortSignal): Promise<string>;
+  acompletion(messages: Array<{ role: string; content: string }>, abortSignal?: AbortSignal): Promise<{ content?: string }>;
+}
+
+/**
  * LLM 执行上下文（传递给 LLMExecutor）
  */
 export interface LLMExecutorContext {
   /** LLM 实例 */
-  llm: unknown;
+  llm: ILLMForExecutor;
   /** AbortSignal */
   abortSignal?: AbortSignal;
 }

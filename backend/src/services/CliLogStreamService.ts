@@ -142,7 +142,7 @@ class CliLogStreamService {
     return null;
   }
 
-  getLogs(projectId: string, versionId: string, afterTs?: string): CliLogPayload[] {
+  getLogs(_projectId: string, versionId: string, afterTs?: string): CliLogPayload[] {
     // Collect all logs from buffers that match the versionId
     // This includes both main key (projectId:versionId) and alias keys (e.g., applicationId:versionId)
     const allLogs: CliLogPayload[] = [];
