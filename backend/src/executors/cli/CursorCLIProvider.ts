@@ -120,6 +120,9 @@ export class CursorCLIProvider extends BaseCLIProvider {
       fullCommand += ` --print`;
     }
 
+    // 非交互式执行时跳过 Workspace Trust 确认（cursor-agent 要求 --trust/--yolo/-f）
+    fullCommand += ` --trust`;
+
     fullCommand += ` "${escapedPrompt}"`;
 
     logger.info('CursorCLIProvider: Executing command', {
