@@ -38,7 +38,7 @@
   <head>
     <meta charset="UTF-8" />
     <title>原型 - 简单列表</title>
-    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/element-plus/2.11.4/theme-chalk/index.css" />
     <style>
       :root {
         --primary-color: #1890ff;
@@ -90,8 +90,8 @@
       </el-card>
     </div>
 
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <script src="https://unpkg.com/element-plus"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.22/vue.global.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/element-plus/2.11.4/index.full.js"></script>
 
     <script>
       const { createApp, ref } = Vue;
@@ -298,7 +298,7 @@
       </div>
     </div>
 
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.22/vue.global.js"></script>
     <script>
       const { createApp, ref } = Vue;
       createApp({
@@ -384,6 +384,114 @@
   <input v-model="keyword" placeholder="搜索关键词" class="search-input" @keyup.enter="handleSearch" />
   <button @click="handleSearch" style="padding: 8px 16px; background: #1890ff; color: white; border: none; border-radius: 8px;">搜索</button>
 </div>
+```
+
+---
+
+## 常用功能片段
+
+### 数据加载
+
+```javascript
+const loading = ref(false);
+const data = ref([]);
+
+const fetchData = async () => {
+  loading.value = true;
+  await new Promise((resolve) => setTimeout(resolve, 500)); // 模拟延迟
+  data.value = mockData;
+  loading.value = false;
+};
+```
+
+### 表单验证（基础）
+
+```javascript
+const validateForm = () => {
+  if (!formData.name.trim()) {
+    alert('请输入名称');
+    return false;
+  }
+  return true;
+};
+```
+
+### 数据持久化
+
+```javascript
+// 保存
+localStorage.setItem('key', JSON.stringify(data.value));
+
+// 读取
+const saved = localStorage.getItem('key');
+if (saved) data.value = JSON.parse(saved);
+```
+
+### 分页逻辑
+
+```javascript
+const pagination = reactive({ page: 1, pageSize: 10, total: 0 });
+
+const getPageData = () => {
+  const start = (pagination.page - 1) * pagination.pageSize;
+  const end = start + pagination.pageSize;
+  return allData.slice(start, end);
+};
+```
+
+---
+
+## 常见组件
+
+### Element Plus 表格
+
+```html
+<el-table :data="tableData" border>
+  <el-table-column prop="id" label="ID" width="80" />
+  <el-table-column prop="name" label="名称" />
+  <el-table-column label="操作" width="150">
+    <template #default="{ row }">
+      <el-button link type="primary" size="small">编辑</el-button>
+    </template>
+  </el-table-column>
+</el-table>
+```
+
+### Element Plus 表单
+
+```html
+<el-form :model="formData" label-width="80px">
+  <el-form-item label="名称">
+    <el-input v-model="formData.name" />
+  </el-form-item>
+  <el-form-item>
+    <el-button type="primary" @click="handleSubmit">提交</el-button>
+  </el-form-item>
+</el-form>
+```
+
+### 移动端列表
+
+```html
+<div class="card-list">
+  <div class="card-item" v-for="item in list" :key="item.id">
+    <div class="card-title">{{ item.title }}</div>
+    <div class="card-desc">{{ item.desc }}</div>
+  </div>
+</div>
+
+<style>
+  .card-list {
+    padding: 12px;
+  }
+  .card-item {
+    background: white;
+    padding: 12px;
+    margin-bottom: 12px;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  }
+</style>
 ```
 
 ---
@@ -542,25 +650,34 @@ docs/prototype/
 
 ```html
 <!-- Vue 3 -->
-<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.22/vue.global.js"></script>
 
 <!-- Element Plus（管理后台） -->
-<link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
-<script src="https://unpkg.com/element-plus"></script>
+<link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/element-plus/2.11.4/theme-chalk/index.css" />
+<script src="https://cdn.bootcdn.net/ajax/libs/element-plus/2.11.4/index.full.js"></script>
 
 <!-- ECharts（图表） -->
-<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.6.0/echarts.min.js"></script>
 ```
+
+### 项目颜色（Element Plus 风格）
+
+```
+主色: #409EFF   成功: #67c23a
+警告: #e6a23c   错误: #f56c6c
+```
+
+> 注：token 以项目实际为准，可从 `{root}/src/style.css`、`{root}/src/App.vue` 提取。
 
 ### 项目设计 Tokens
 
 ```css
 :root {
   /* 颜色 */
-  --primary-color: #1890ff;
-  --success-color: #52c41a;
-  --warning-color: #faad14;
-  --error-color: #ff4d4f;
+  --primary-color: #409eff;
+  --success-color: #67c23a;
+  --warning-color: #e6a23c;
+  --error-color: #f56c6c;
 
   /* 文字 */
   --text-color: #333333;
