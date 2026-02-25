@@ -21,20 +21,26 @@ description: 准备部署环境。检查代码完整性、验证构建配置、�
 
 ### 1. Docker 环境检查（Linux 系统）
 
-**检查项目**：
+**检查项目**（必须全部通过）：
 
 1. **Docker 服务状态**
    - 执行 `systemctl status docker` 检查 Docker 是否运行（rootfull 模式，系统级服务）
    - 如果 Docker 未运行，执行 `sudo systemctl start docker` 尝试启动
-   - 记录启动结果和错误信息
+
+2. **Docker 可用性**（关键：sandbox 脚本会执行 `docker info`）
+   - 执行 `docker info` 验证当前用户能否访问 Docker
+   - 若 `docker info` 失败，后续 `make sandbox-stop` 会失败，必须在此阶段发现并处理
 
 **判定标准**：
 
-| 情况                        | 判定      | 后续处理                  |
-| --------------------------- | --------- | ------------------------- |
-| Docker 正常运行             | ✅ 通过   | 继续后续检查              |
-| Docker 未安装               | ❌ 不通过 | 停止部署，要求安装 Docker |
-| Docker 启动失败（其他原因） | ❌ 不通过 | 记录错误详情，停止部署    |
+| 情况                                | 判定      | 后续处理                                       |
+| ----------------------------------- | --------- | ---------------------------------------------- |
+| systemctl 正常且 `docker info` 成功 | ✅ 通过   | 继续后续检查                                   |
+| Docker 未安装                       | ❌ 不通过 | 停止部署，要求安装 Docker                      |
+| systemctl 正常但 `docker info` 失败 | ❌ 不通过 | 当前用户无 Docker 权限，提供加入 docker 组命令 |
+| Docker 启动失败（其他原因）         | ❌ 不通过 | 记录错误详情，停止部署                         |
+
+**禁止**：不得提及 Rootless、setup-rootless-docker.sh 或 subuid/subgid，已切换为 rootfull 模式。
 
 ### 2. 代码完整性检查
 
@@ -109,11 +115,23 @@ description: 准备部署环境。检查代码完整性、验证构建配置、�
 代码完整性通过，构建配置验证通过，部署环境已准备就绪
 ```
 
-### 示例 - 未就绪（Docker 配置问题）
+### 示例 - 未就绪（Docker 服务未运行）
 
 ```
 未就绪
 Docker 启动失败：Docker 服务未运行。请执行 `sudo systemctl start docker` 启动服务后重新执行部署。
+```
+
+### 示例 - 未就绪（Docker 权限问题：systemctl 正常但 docker info 失败）
+
+```
+未就绪
+Docker 在当前用户环境下不可用：systemctl 显示 Docker 服务已运行，但 `docker info` 失败（当前用户无权限访问 Docker socket）。请执行以下命令将当前用户加入 docker 组后重新登录或执行 `newgrp docker`：
+
+sudo usermod -aG docker $USER
+newgrp docker
+
+然后重新执行部署准备。
 ```
 
 ### 示例 - 未就绪（构建失败）
@@ -138,3 +156,4 @@ Docker 启动失败：Docker 服务未运行。请执行 `sudo systemctl start d
 4. **不执行部署**：此 Skill 仅做检查和准备，不执行实际部署命令（`make sandbox`）
 5. **构建失败不阻塞**：构建失败时记录错误但不终止流程，由 Deploy Action 决定是否继续
 6. **Docker 配置问题优先检查**：Docker 环境问题会导致后续所有步骤失败，必须优先检查和修复
+7. **必须验证 docker info**：仅检查 systemctl 不足，`make sandbox-stop` 会调用 sandbox 脚本中的 `docker info`，当前用户必须能执行
