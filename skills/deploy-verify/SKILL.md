@@ -32,7 +32,7 @@ description: 验证部署结果。检查服务状态、验证服务可访问性�
 1. **Docker 服务状态**
 
    ```bash
-   systemctl --user status docker
+   systemctl status docker
    ```
 
    状态判定：
@@ -43,12 +43,10 @@ description: 验证部署结果。检查服务状态、验证服务可访问性�
 2. **Docker 错误日志**（如果 Docker 启动失败）
 
    ```bash
-   journalctl --user -u docker -n 50 --no-pager
+   journalctl -u docker -n 50 --no-pager
    ```
 
    关键错误识别：
-   - `newuidmap: write to uid_map failed: Operation not permitted` → Rootless Docker UID/GID 映射配置错误
-   - `failed to setup UID/GID map` → Rootless Docker UID/GID 映射配置错误
    - `address already in use` → 端口被占用
    - `Cannot connect to the Docker daemon` → Docker 服务未运行
 
@@ -132,18 +130,11 @@ curl -s -o /dev/null -w "%{http_code}" http://[地址]:[端口]
 
 修复命令：
 ```bash
-# 获取当前用户 UID
-USER_UID=$(id -u)
-
-# 添加 UID 格式配置到 /etc/subuid 和 /etc/subgid
-sudo bash -c "echo \"${USER_UID}:100000:65536\" >> /etc/subuid"
-sudo bash -c "echo \"${USER_UID}:100000:65536\" >> /etc/subgid"
-
-# 重启 Docker 服务
-systemctl --user restart docker
+# 启动 Docker 服务
+sudo systemctl start docker
 
 # 验证 Docker 状态
-systemctl --user status docker
+sudo systemctl status docker
 
 # 重新执行部署
 make sandbox
@@ -225,14 +216,14 @@ make sandbox
 ```json
 {
   "result": "未完成",
-  "reason": "存在启动失败的服务：Docker，Rootless Docker UID/GID 映射配置错误，需要手动修复配置文件",
+  "reason": "存在启动失败的服务：Docker，Docker 服务未运行",
   "details": {
-    "Docker": "❌ 启动失败 - newuidmap: write to uid_map failed: Operation not permitted"
+    "Docker": "❌ 启动失败 - Cannot connect to the Docker daemon"
   },
   "error_logs": {
-    "Docker": "2月 11 11:37:24 device-test rootlesskit[1781702]: [rootlesskit:parent] error: failed to setup UID/GID map: newuidmap 1781713 [0 1000 1 1 100000 65536] failed: newuidmap: write to uid_map failed: Operation not permitted\n2月 11 11:37:24 device-test rootlesskit[1781702]: : exit status 1\n2月 11 11:37:24 device-test systemd[608]: docker.service: Main process exited, code=exited, status=1/FAILURE\n2月 11 11:37:24 device-test systemd[608]: docker.service: Failed with result 'exit-code'."
+    "Docker": "[journalctl -u docker 输出的最后 20-30 行]"
   },
-  "fix_commands": "# 修复 Rootless Docker UID/GID 映射配置\nUSER_UID=$(id -u)\nsudo bash -c \"echo \\\"${USER_UID}:100000:65536\\\" >> /etc/subuid\"\nsudo bash -c \"echo \\\"${USER_UID}:100000:65536\\\" >> /etc/subgid\"\nsystemctl --user restart docker\nsystemctl --user status docker"
+  "fix_commands": "sudo systemctl start docker\nsudo systemctl status docker"
 }
 ```
 
@@ -288,4 +279,4 @@ make sandbox
 5. **502 = 失败**：502 Bad Gateway 是后端服务未正常启动的典型表现，绝对不能返回"已完成"
 6. **错误日志必须记录**：启动失败的服务必须在 deploy.md 和 verifyResult.md 中都包含错误日志
 7. **只有 "目录不存在" 的服务可以忽略**：其他所有异常状态都必须导致整体结果为"未完成"
-8. **Docker 错误提供修复命令**：Rootless Docker UID/GID 映射错误时，在 verifyResult.md 中提供完整的修复命令
+8. **Docker 错误提供修复命令**：Docker 启动失败时，在 verifyResult.md 中提供 `sudo systemctl start docker` 等修复命令
