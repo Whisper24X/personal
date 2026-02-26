@@ -1,3 +1,9 @@
+<script setup lang="ts">
+defineOptions({
+  name: 'AboutView',
+})
+</script>
+
 <template>
   <div class="space-y-6 fade-up">
     <section class="space-y-2">

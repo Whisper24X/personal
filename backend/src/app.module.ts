@@ -23,6 +23,7 @@ import { ArtifactsModule } from './artifacts/artifacts.module';
 import { QueueModule } from './queue/queue.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { ProjectContextModule } from './project-context/project-context.module';
+import { AutomationsModule } from './automations/automations.module';
 
 const infrastructureDatabaseModule = TypeOrmModule.forRootAsync({
   useClass: TypeOrmConfigService,
@@ -44,6 +45,7 @@ const infrastructureDatabaseModule = TypeOrmModule.forRootAsync({
     QueueModule,
     ObservabilityModule,
     ProjectContextModule,
+    AutomationsModule,
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig, authConfig, appConfig],

@@ -3,6 +3,10 @@ import { RouterLink } from 'vue-router'
 import type { MenuItem, ProjectItem } from '@/hooks/core/useLayout'
 import logoImage from '@/assets/images/logo.svg'
 
+defineOptions({
+  name: 'AppSidebar',
+})
+
 const props = defineProps<{
   mobileNavOpen: boolean
   sidebarCollapsed: boolean
@@ -19,7 +23,7 @@ const props = defineProps<{
   showMenuTooltip: (event: MouseEvent | FocusEvent, label: string) => void
   hideProjectTooltip: () => void
   openBusinessLineModal: () => void
-  openSettingsModal: () => void
+  openSettingsPage: () => void
 }>()
 </script>
 
@@ -76,7 +80,7 @@ const props = defineProps<{
         <button
           type="button"
           class="flex h-9 w-full items-center justify-center rounded-lg border border-transparent px-2 text-[11px] font-semibold text-sidebar-foreground/70 transition hover:bg-sidebar-accent hover:text-sidebar-foreground"
-          @click="props.openSettingsModal"
+          @click="props.openSettingsPage"
         >
           设置
         </button>

@@ -3,10 +3,31 @@ import type { AppRouteRecord } from '@/types/router/route'
 export const systemRoutes: AppRouteRecord[] = [
   {
     path: '/',
-    redirect: '/dashboard',
+    redirect: '/home',
     meta: {
       title: '首页',
       requiresAuth: true,
+      permissions: ['home:view'],
+    },
+  },
+  {
+    path: '/home',
+    name: 'home',
+    component: () => import('@/views/home/index.vue'),
+    meta: {
+      title: '首页',
+      requiresAuth: true,
+      permissions: ['home:view'],
+    },
+  },
+  {
+    path: '/about',
+    name: 'about',
+    component: () => import('@/views/about/index.vue'),
+    meta: {
+      title: '关于',
+      requiresAuth: true,
+      permissions: ['about:view'],
     },
   },
   {
@@ -16,6 +37,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: '仪表盘',
       requiresAuth: true,
+      permissions: ['dashboard:view'],
     },
   },
   {
@@ -25,6 +47,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: '看板',
       requiresAuth: true,
+      permissions: ['kanban:view'],
     },
   },
   {
@@ -34,6 +57,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: '工作流',
       requiresAuth: true,
+      permissions: ['workflow:view'],
     },
   },
   {
@@ -43,6 +67,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: 'Skill',
       requiresAuth: true,
+      permissions: ['skills:view'],
     },
   },
   {
@@ -52,6 +77,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: 'MCP',
       requiresAuth: true,
+      permissions: ['mcp:view'],
     },
   },
   {
@@ -61,6 +87,17 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: '自动化',
       requiresAuth: true,
+      permissions: ['automations:view'],
+    },
+  },
+  {
+    path: '/business-lines',
+    name: 'business-lines',
+    component: () => import('@/views/business-lines/index.vue'),
+    meta: {
+      title: '业务线',
+      requiresAuth: true,
+      permissions: ['business-lines:view'],
     },
   },
   {
@@ -70,6 +107,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: '项目列表',
       requiresAuth: true,
+      permissions: ['projects:view'],
     },
   },
   {
@@ -79,6 +117,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: '项目详情',
       requiresAuth: true,
+      permissions: ['projects:view'],
     },
   },
   {
@@ -88,6 +127,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: '任务',
       requiresAuth: true,
+      permissions: ['tasks:view'],
     },
   },
   {
@@ -97,6 +137,17 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: '任务详情',
       requiresAuth: true,
+      permissions: ['tasks:view'],
+    },
+  },
+  {
+    path: '/users',
+    name: 'users',
+    component: () => import('@/views/users/index.vue'),
+    meta: {
+      title: '用户管理',
+      requiresAuth: true,
+      permissions: ['users:view'],
     },
   },
   {
@@ -106,6 +157,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: '设置',
       requiresAuth: true,
+      permissions: ['settings:view'],
     },
   },
 ]

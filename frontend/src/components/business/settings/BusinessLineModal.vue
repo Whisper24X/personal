@@ -12,7 +12,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   (event: 'update:open', value: boolean): void
   (event: 'select-line', businessLineId: string): void
-  (event: 'create-project', payload: { businessLineId: string; name: string; short: string }): void
+  (
+    event: 'create-project',
+    payload: { businessLineId: string; name: string; short: string; gitUrl: string },
+  ): void
   (event: 'update-project', payload: { businessLineId: string; projectId: string; name: string; short: string }): void
   (event: 'delete-project', payload: { businessLineId: string; projectId: string }): void
 }>()
@@ -21,6 +24,7 @@ const activeLineId = ref('')
 const projectQuery = ref('')
 const formName = ref('')
 const formShort = ref('')
+const formGitUrl = ref('')
 const editingProjectId = ref('')
 
 const selectedLine = computed(() => {
@@ -45,6 +49,7 @@ const isEditing = computed(() => Boolean(editingProjectId.value))
 const resetProjectForm = () => {
   formName.value = ''
   formShort.value = ''
+  formGitUrl.value = ''
   editingProjectId.value = ''
 }
 
@@ -62,6 +67,7 @@ const startEditProject = (project: ProjectItem) => {
   editingProjectId.value = project.id
   formName.value = project.name
   formShort.value = project.short
+  formGitUrl.value = ''
 }
 
 const cancelEditProject = () => {
@@ -71,6 +77,7 @@ const cancelEditProject = () => {
 const submitProject = () => {
   const businessLineId = activeLineId.value
   const projectName = formName.value.trim()
+  const projectGitUrl = formGitUrl.value.trim()
 
   if (!businessLineId || !projectName) return
 
@@ -85,10 +92,13 @@ const submitProject = () => {
     return
   }
 
+  if (!projectGitUrl) return
+
   emit('create-project', {
     businessLineId,
     name: projectName,
     short: formShort.value,
+    gitUrl: projectGitUrl,
   })
 
   resetProjectForm()
@@ -217,7 +227,7 @@ onBeforeUnmount(() => {
 
             <div class="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
               <section class="panel-card p-4">
-                <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_9rem_auto]">
+                <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_9rem_minmax(0,1fr)_auto]">
                   <label class="space-y-1">
                     <span class="text-xs text-muted-foreground">项目名称</span>
                     <input
@@ -234,6 +244,16 @@ onBeforeUnmount(() => {
                       type="text"
                       class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
                       placeholder="可选"
+                    />
+                  </label>
+                  <label class="space-y-1">
+                    <span class="text-xs text-muted-foreground">Git 仓库地址</span>
+                    <input
+                      v-model="formGitUrl"
+                      type="text"
+                      class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
+                      placeholder="git@gitlab.example.com:group/project.git"
+                      :disabled="isEditing"
                     />
                   </label>
                   <div class="flex items-end gap-2">

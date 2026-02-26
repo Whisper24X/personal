@@ -11,8 +11,15 @@ type RequestConfig = {
   body?: unknown
 }
 
-const buildHeaders = (headers?: Record<string, string>) => {
-  const token = localStorage.getItem(STORAGE_KEYS.authToken)
+type RefreshTokenResponse = {
+  token: string
+  refreshToken: string
+}
+
+let refreshingTokenPromise: Promise<string | null> | null = null
+
+const buildHeaders = (headers?: Record<string, string>, tokenOverride?: string | null) => {
+  const token = tokenOverride ?? localStorage.getItem(STORAGE_KEYS.authToken)
 
   return {
     'Content-Type': 'application/json',
@@ -34,12 +41,49 @@ const clearAuthState = () => {
   localStorage.removeItem(STORAGE_KEYS.refreshToken)
 }
 
+const refreshAccessToken = async (requestUrl: string): Promise<string | null> => {
+  const storedRefreshToken = localStorage.getItem(STORAGE_KEYS.refreshToken)
+  if (!storedRefreshToken) {
+    return null
+  }
+
+  if (!refreshingTokenPromise) {
+    refreshingTokenPromise = (async () => {
+      const refreshUrl = new URL('/api/v1/auth/refresh', requestUrl).toString()
+      const response = await fetch(refreshUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${storedRefreshToken}`,
+        },
+      })
+
+      if (!response.ok || !isJsonResponse(response)) {
+        return null
+      }
+
+      const payload = (await response.json()) as RefreshTokenResponse
+      if (!payload.token || !payload.refreshToken) {
+        return null
+      }
+
+      localStorage.setItem(STORAGE_KEYS.authToken, payload.token)
+      localStorage.setItem(STORAGE_KEYS.refreshToken, payload.refreshToken)
+
+      const userStore = useUserStore()
+      userStore.setToken(payload.token)
+
+      return payload.token
+    })().finally(() => {
+      refreshingTokenPromise = null
+    })
+  }
+
+  return refreshingTokenPromise
+}
+
 const unwrapResponse = async <T>(response: Response): Promise<T> => {
   if (!response.ok) {
-    if (response.status === HTTP_STATUS.unauthorized) {
-      clearAuthState()
-    }
-
     let message = `Request failed: ${response.status}`
     if (isJsonResponse(response)) {
       const body = (await response.json()) as { message?: string }
@@ -59,14 +103,36 @@ const unwrapResponse = async <T>(response: Response): Promise<T> => {
 export const http = {
   async request<T>(url: string, config: RequestConfig = {}) {
     const method = config.method ?? 'GET'
-    const headers = buildHeaders(config.headers)
     const body = config.body === undefined ? undefined : JSON.stringify(config.body)
 
-    const response = await fetch(url, {
-      method,
-      headers,
-      body,
-    })
+    const sendRequest = (tokenOverride?: string | null) => {
+      const headers = buildHeaders(config.headers, tokenOverride)
+      return fetch(url, {
+        method,
+        headers,
+        body,
+      })
+    }
+
+    let response = await sendRequest()
+
+    const shouldTryRefresh =
+      response.status === HTTP_STATUS.unauthorized &&
+      !url.includes('/auth/refresh') &&
+      !url.includes('/auth/login')
+
+    if (shouldTryRefresh) {
+      const refreshedToken = await refreshAccessToken(url)
+      if (refreshedToken) {
+        response = await sendRequest(refreshedToken)
+      } else {
+        clearAuthState()
+      }
+    }
+
+    if (response.status === HTTP_STATUS.unauthorized) {
+      clearAuthState()
+    }
 
     return unwrapResponse<T>(response)
   },

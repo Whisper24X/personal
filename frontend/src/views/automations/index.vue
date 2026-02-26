@@ -1,16 +1,32 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { automationsApi } from '@/api/automations'
 import { notificationsApi } from '@/api/notifications'
 import { observabilityApi } from '@/api/observability'
 import { queueApi } from '@/api/queue'
 import { tasksApi } from '@/api/tasks'
 import { workflowApi } from '@/api/workflow'
+import { useUserStore } from '@/stores/modules/user'
+import type {
+  Automation,
+  AutomationStatus,
+  CreateAutomationPayload,
+  UpdateAutomationPayload,
+} from '@/types/api/automations'
 import type { NotificationEvent, NotificationSetting } from '@/types/api/notifications'
 import type { ObservabilityMetrics } from '@/types/api/observability'
 import type { QueueStats } from '@/types/api/queue'
 import type { Task } from '@/types/api/tasks'
 import type { WorkflowTemplate } from '@/types/api/workflow'
+import { fetchAllPages } from '@/utils/pagination'
+
+defineOptions({
+  name: 'AutomationsView',
+})
+
+const AUTOMATION_PAGE_LIMIT = 20
+const userStore = useUserStore()
 
 const loading = ref(false)
 const markingEventId = ref('')
@@ -24,12 +40,33 @@ const notificationSetting = ref<NotificationSetting | null>(null)
 const queueStats = ref<QueueStats | null>(null)
 const observabilityMetrics = ref<ObservabilityMetrics | null>(null)
 
+const automations = ref<Automation[]>([])
+const automationLoading = ref(false)
+const automationLoadingMore = ref(false)
+const automationSubmitting = ref(false)
+const automationDeletingId = ref('')
+const automationEditingId = ref('')
+const automationKeyword = ref('')
+const automationStatusFilter = ref<'all' | AutomationStatus>('all')
+const automationPage = ref(1)
+const automationHasNextPage = ref(false)
+
+const automationForm = reactive({
+  name: '',
+  prompt: '',
+  rrule: '',
+  cwdsText: '',
+  status: 'active' as AutomationStatus,
+})
+
 const runningTaskCount = computed(() => queueStats.value?.global.running ?? observabilityMetrics.value?.runningTasks ?? 0)
 const queuedTaskCount = computed(() => queueStats.value?.global.queued ?? observabilityMetrics.value?.queueLength ?? 0)
 const inReviewTaskCount = computed(
   () => observabilityMetrics.value?.statusCounts.inReview ?? reviewTasks.value.length,
 )
 const unreadEventCount = computed(() => unreadEvents.value.length)
+const activeAutomationCount = computed(() => automations.value.filter((item) => item.status === 'active').length)
+const canManageAutomations = computed(() => userStore.profile?.isAdmin ?? false)
 
 const saturationRate = computed(() => queueStats.value?.global.saturationRate ?? observabilityMetrics.value?.concurrencyUsage ?? 0)
 const maxConcurrency = computed(() => queueStats.value?.global.maxConcurrency ?? observabilityMetrics.value?.maxConcurrency ?? 0)
@@ -83,6 +120,16 @@ const channelRows = computed(() => {
   ]
 })
 
+const automationStatusLabelMap: Record<AutomationStatus, string> = {
+  active: '运行中',
+  paused: '已暂停',
+}
+
+const automationStatusClassMap: Record<AutomationStatus, string> = {
+  active: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  paused: 'bg-muted text-muted-foreground',
+}
+
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (error instanceof Error && error.message) {
     return error.message
@@ -117,6 +164,163 @@ const formatSeconds = (value: number | null) => {
   return `${minutes}m ${seconds}s`
 }
 
+const resetAutomationForm = () => {
+  automationEditingId.value = ''
+  automationForm.name = ''
+  automationForm.prompt = ''
+  automationForm.rrule = ''
+  automationForm.cwdsText = ''
+  automationForm.status = 'active'
+}
+
+const startEditAutomation = (automation: Automation) => {
+  automationEditingId.value = automation.id
+  automationForm.name = automation.name
+  automationForm.prompt = automation.prompt
+  automationForm.rrule = automation.rrule
+  automationForm.cwdsText = (automation.cwds ?? []).join('\n')
+  automationForm.status = automation.status
+}
+
+const parseCwds = (value: string) => {
+  if (!value.trim()) {
+    return []
+  }
+
+  const parts = value
+    .split(/\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  return Array.from(new Set(parts))
+}
+
+const formatCwds = (cwds?: string[] | null) => {
+  if (!cwds || cwds.length === 0) {
+    return '-'
+  }
+
+  return cwds.join('、')
+}
+
+const loadAutomations = async (reset = true) => {
+  const nextPage = reset ? 1 : automationPage.value + 1
+
+  if (reset) {
+    automationLoading.value = true
+  } else {
+    automationLoadingMore.value = true
+  }
+
+  try {
+    const response = await automationsApi.list({
+      page: nextPage,
+      limit: AUTOMATION_PAGE_LIMIT,
+      keyword: automationKeyword.value.trim() || undefined,
+      status: automationStatusFilter.value === 'all' ? undefined : automationStatusFilter.value,
+    })
+
+    if (reset) {
+      automations.value = response.data
+    } else {
+      const existingIds = new Set(automations.value.map((item) => item.id))
+      automations.value = automations.value.concat(
+        response.data.filter((item) => !existingIds.has(item.id)),
+      )
+    }
+
+    automationPage.value = nextPage
+    automationHasNextPage.value = response.hasNextPage
+  } catch (error) {
+    errorMessage.value = getErrorMessage(error, '加载自动化列表失败')
+  } finally {
+    automationLoading.value = false
+    automationLoadingMore.value = false
+  }
+}
+
+const submitAutomation = async () => {
+  if (!canManageAutomations.value) {
+    errorMessage.value = '仅管理员可管理自动化计划'
+    return
+  }
+
+  if (!automationForm.name.trim() || !automationForm.prompt.trim() || !automationForm.rrule.trim()) {
+    errorMessage.value = '名称、Prompt、RRULE 为必填'
+    return
+  }
+
+  automationSubmitting.value = true
+  errorMessage.value = ''
+
+  const cwds = parseCwds(automationForm.cwdsText)
+  const payloadBase = {
+    name: automationForm.name.trim(),
+    prompt: automationForm.prompt.trim(),
+    rrule: automationForm.rrule.trim(),
+    status: automationForm.status,
+    ...(cwds.length > 0 ? { cwds } : {}),
+  }
+
+  try {
+    if (automationEditingId.value) {
+      const payload: UpdateAutomationPayload = payloadBase
+      await automationsApi.update(automationEditingId.value, payload)
+    } else {
+      const payload: CreateAutomationPayload = payloadBase
+      await automationsApi.create(payload)
+    }
+
+    resetAutomationForm()
+    await loadAutomations(true)
+  } catch (error) {
+    errorMessage.value = getErrorMessage(error, '保存自动化失败')
+  } finally {
+    automationSubmitting.value = false
+  }
+}
+
+const toggleAutomationStatus = async (automation: Automation) => {
+  if (!canManageAutomations.value) {
+    errorMessage.value = '仅管理员可管理自动化计划'
+    return
+  }
+
+  errorMessage.value = ''
+
+  try {
+    await automationsApi.update(automation.id, {
+      status: automation.status === 'active' ? 'paused' : 'active',
+    })
+    await loadAutomations(true)
+  } catch (error) {
+    errorMessage.value = getErrorMessage(error, '更新自动化状态失败')
+  }
+}
+
+const removeAutomation = async (automation: Automation) => {
+  if (!canManageAutomations.value) {
+    errorMessage.value = '仅管理员可管理自动化计划'
+    return
+  }
+
+  if (!window.confirm(`确认删除自动化「${automation.name}」吗？`)) {
+    return
+  }
+
+  automationDeletingId.value = automation.id
+  errorMessage.value = ''
+
+  try {
+    await automationsApi.remove(automation.id)
+    await loadAutomations(true)
+  } catch (error) {
+    errorMessage.value = getErrorMessage(error, '删除自动化失败')
+  } finally {
+    automationDeletingId.value = ''
+  }
+}
+
 const loadMonitoringData = async () => {
   monitoringMessage.value = ''
 
@@ -143,14 +347,14 @@ const loadPageData = async () => {
 
   try {
     const [reviewTaskResponse, templateResponse, settingResponse, unreadEventResponse] = await Promise.all([
-      tasksApi.list({ page: 1, limit: 100, status: 'in_review' }),
-      workflowApi.list({ page: 1, limit: 100, isActive: true }),
+      fetchAllPages((page, limit) => tasksApi.list({ page, limit, status: 'in_review' })),
+      fetchAllPages((page, limit) => workflowApi.list({ page, limit, isActive: true })),
       notificationsApi.setting(),
       notificationsApi.events({ unreadOnly: true, limit: 20 }),
     ])
 
-    reviewTasks.value = reviewTaskResponse.data
-    activeTemplates.value = templateResponse.data
+    reviewTasks.value = reviewTaskResponse
+    activeTemplates.value = templateResponse
     notificationSetting.value = settingResponse
     unreadEvents.value = unreadEventResponse
 
@@ -180,7 +384,7 @@ const markEventRead = async (eventId: string) => {
 }
 
 onMounted(() => {
-  void loadPageData()
+  void Promise.all([loadPageData(), loadAutomations(true)])
 })
 </script>
 
@@ -190,12 +394,219 @@ onMounted(() => {
       <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">自动化</p>
       <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">自动化与调度</h1>
       <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-        对接任务、队列、模板与通知接口，集中查看当前自动化执行态势。
+        对接任务、队列、模板、通知与自动化计划接口，集中查看当前执行态势。
       </p>
       <p v-if="errorMessage" class="text-sm text-destructive">{{ errorMessage }}</p>
     </section>
 
-    <section class="grid gap-4 md:grid-cols-4">
+    <section class="panel-card p-5">
+      <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div class="flex flex-1 flex-wrap items-center gap-2">
+          <input
+            v-model="automationKeyword"
+            class="h-10 min-w-[220px] flex-1 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+            placeholder="搜索自动化名称 / Prompt"
+            type="search"
+          />
+
+          <select
+            v-model="automationStatusFilter"
+            class="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+          >
+            <option value="all">全部状态</option>
+            <option value="active">运行中</option>
+            <option value="paused">已暂停</option>
+          </select>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button
+            class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
+            type="button"
+            @click="loadAutomations(true)"
+          >
+            刷新计划
+          </button>
+          <button
+            class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:shadow-md"
+            type="button"
+            @click="loadAutomations(true)"
+          >
+            搜索
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
+      <article class="panel-card p-5">
+        <div class="mb-4 flex items-center justify-between">
+          <p class="text-sm font-semibold">{{ automationEditingId ? '编辑自动化计划' : '新增自动化计划' }}</p>
+          <button
+            v-if="automationEditingId && canManageAutomations"
+            class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
+            type="button"
+            @click="resetAutomationForm"
+          >
+            取消编辑
+          </button>
+        </div>
+
+        <p
+          v-if="!canManageAutomations"
+          class="mb-3 rounded-lg border border-border bg-background/60 px-3 py-2 text-xs text-muted-foreground"
+        >
+          当前账号仅可查看自动化计划，创建/编辑/启停/删除需要管理员权限。
+        </p>
+
+        <form class="space-y-3" @submit.prevent="submitAutomation">
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">名称</span>
+            <input
+              v-model="automationForm.name"
+              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              :disabled="!canManageAutomations"
+              placeholder="例如：Daily queue digest"
+              type="text"
+            />
+          </label>
+
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">Prompt</span>
+            <textarea
+              v-model="automationForm.prompt"
+              class="min-h-20 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+              :disabled="!canManageAutomations"
+              placeholder="描述自动化执行内容"
+            />
+          </label>
+
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">RRULE</span>
+            <input
+              v-model="automationForm.rrule"
+              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              :disabled="!canManageAutomations"
+              placeholder="FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0"
+              type="text"
+            />
+          </label>
+
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">工作目录（每行一条，可选）</span>
+            <textarea
+              v-model="automationForm.cwdsText"
+              class="min-h-20 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+              :disabled="!canManageAutomations"
+              placeholder="/workspace/ainative/backend"
+            />
+          </label>
+
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">状态</span>
+            <select
+              v-model="automationForm.status"
+              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              :disabled="!canManageAutomations"
+            >
+              <option value="active">运行中</option>
+              <option value="paused">已暂停</option>
+            </select>
+          </label>
+
+          <button
+            class="h-10 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="automationSubmitting || !canManageAutomations"
+            type="submit"
+          >
+            {{ automationSubmitting ? '保存中...' : automationEditingId ? '保存修改' : '创建计划' }}
+          </button>
+        </form>
+      </article>
+
+      <article class="panel-card overflow-hidden">
+        <div class="border-b border-border px-5 py-4">
+          <p class="text-sm font-semibold">自动化计划（已加载 {{ automations.length }} 条，运行中 {{ activeAutomationCount }} 条）</p>
+        </div>
+
+        <div v-if="automationLoading" class="p-5 text-sm text-muted-foreground">加载中...</div>
+
+        <div v-else class="space-y-2 p-4">
+          <div
+            v-for="automation in automations"
+            :key="automation.id"
+            class="rounded-xl border border-border bg-background/60 px-4 py-3"
+          >
+            <div class="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+              <div class="space-y-1">
+                <div class="flex items-center gap-2">
+                  <p class="text-sm font-semibold">{{ automation.name }}</p>
+                  <span
+                    class="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                    :class="automationStatusClassMap[automation.status]"
+                  >
+                    {{ automationStatusLabelMap[automation.status] }}
+                  </span>
+                </div>
+                <p class="text-xs text-muted-foreground">{{ automation.prompt }}</p>
+                <p class="text-xs text-muted-foreground">RRULE：{{ automation.rrule }}</p>
+                <p class="text-xs text-muted-foreground">CWD：{{ formatCwds(automation.cwds) }}</p>
+                <p class="text-xs text-muted-foreground">
+                  最近执行：{{ formatDate(automation.lastRunAt ?? undefined) }} · 下次执行：{{ formatDate(automation.nextRunAt ?? undefined) }}
+                </p>
+              </div>
+
+              <div class="flex flex-wrap justify-end gap-2">
+                <button
+                  class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
+                  :disabled="!canManageAutomations"
+                  type="button"
+                  @click="startEditAutomation(automation)"
+                >
+                  编辑
+                </button>
+                <button
+                  class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
+                  :disabled="!canManageAutomations"
+                  type="button"
+                  @click="toggleAutomationStatus(automation)"
+                >
+                  {{ automation.status === 'active' ? '暂停' : '启用' }}
+                </button>
+                <button
+                  class="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                  :disabled="automationDeletingId === automation.id || !canManageAutomations"
+                  type="button"
+                  @click="removeAutomation(automation)"
+                >
+                  {{ automationDeletingId === automation.id ? '删除中...' : '删除' }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            v-if="automations.length === 0"
+            class="rounded-xl border border-dashed border-border bg-background/30 px-4 py-6 text-center text-sm text-muted-foreground"
+          >
+            暂无自动化计划，请先创建。
+          </div>
+        </div>
+
+        <div v-if="!automationLoading && automationHasNextPage" class="border-t border-border px-5 py-4">
+          <button
+            class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="automationLoadingMore"
+            type="button"
+            @click="loadAutomations(false)"
+          >
+            {{ automationLoadingMore ? '加载中...' : '加载更多计划' }}
+          </button>
+        </div>
+      </article>
+    </section>
+
+    <section class="grid gap-4 md:grid-cols-5">
       <article class="panel-card p-4">
         <p class="text-xs text-muted-foreground">运行中任务</p>
         <p class="mt-2 text-2xl font-semibold">{{ runningTaskCount }}</p>
@@ -211,6 +622,10 @@ onMounted(() => {
       <article class="panel-card p-4">
         <p class="text-xs text-muted-foreground">未读通知</p>
         <p class="mt-2 text-2xl font-semibold">{{ unreadEventCount }}</p>
+      </article>
+      <article class="panel-card p-4">
+        <p class="text-xs text-muted-foreground">运行中计划</p>
+        <p class="mt-2 text-2xl font-semibold">{{ activeAutomationCount }}</p>
       </article>
     </section>
 

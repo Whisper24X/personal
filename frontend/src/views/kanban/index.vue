@@ -5,6 +5,11 @@ import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
 import type { Project } from '@/types/api/projects'
 import type { Task, TaskStatus } from '@/types/api/tasks'
+import { fetchAllPages } from '@/utils/pagination'
+
+defineOptions({
+  name: 'KanbanView',
+})
 
 type KanbanColumnConfig = {
   key: TaskStatus
@@ -122,14 +127,24 @@ const formatDate = (value?: string) => {
   })
 }
 
-const loadTasks = async () => {
-  const taskResponse = await tasksApi.list({
-    page: 1,
-    limit: 200,
-    projectId: filters.projectId || undefined,
-  })
+const uniqueById = <T extends { id: string }>(items: T[]) => {
+  return Array.from(new Map(items.map((item) => [item.id, item])).values())
+}
 
-  tasks.value = taskResponse.data
+const loadAllProjects = async () => {
+  const records = await fetchAllPages((page, limit) => projectsApi.list({ page, limit }))
+  return uniqueById(records)
+}
+
+const loadTasks = async () => {
+  const records = await fetchAllPages((page, limit) =>
+    tasksApi.list({
+      page,
+      limit,
+      projectId: filters.projectId || undefined,
+    }),
+  )
+  tasks.value = uniqueById(records)
 }
 
 const loadPageData = async () => {
@@ -137,17 +152,9 @@ const loadPageData = async () => {
   errorMessage.value = ''
 
   try {
-    const [projectResponse, taskResponse] = await Promise.all([
-      projectsApi.list({ page: 1, limit: 100 }),
-      tasksApi.list({
-        page: 1,
-        limit: 200,
-        projectId: filters.projectId || undefined,
-      }),
-    ])
+    const [projectResponse] = await Promise.all([loadAllProjects(), loadTasks()])
 
-    projects.value = projectResponse.data
-    tasks.value = taskResponse.data
+    projects.value = projectResponse
   } catch (error) {
     errorMessage.value = getErrorMessage(error, '加载看板数据失败')
   } finally {

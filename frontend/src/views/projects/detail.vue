@@ -3,9 +3,12 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
+import { usersApi } from '@/api/users'
 import type { ProjectContext } from '@/types/api/project-context'
 import type { Project, ProjectMember } from '@/types/api/projects'
 import type { Task } from '@/types/api/tasks'
+import type { User } from '@/types/api/users'
+import { fetchAllPages } from '@/utils/pagination'
 
 defineOptions({
   name: 'ProjectsDetailView',
@@ -24,6 +27,7 @@ const project = ref<Project | null>(null)
 const projectMembers = ref<ProjectMember[]>([])
 const recentTasks = ref<Task[]>([])
 const projectContext = ref<ProjectContext | null>(null)
+const users = ref<User[]>([])
 const contextLoading = ref(false)
 const contextErrorMessage = ref('')
 
@@ -109,6 +113,28 @@ const tabClass = (key: TabKey) =>
     ? 'bg-background text-foreground shadow-sm'
     : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'
 
+const userMap = computed(() => {
+  return new Map(users.value.map((user) => [user.id, user]))
+})
+
+const displayUserName = (userId: string) => {
+  const user = userMap.value.get(userId)
+  if (!user) {
+    return userId
+  }
+
+  return user.nickname?.trim() || user.username
+}
+
+const displayUserMeta = (userId: string) => {
+  const user = userMap.value.get(userId)
+  if (!user) {
+    return ''
+  }
+
+  return user.email ?? user.username
+}
+
 const runningTaskCount = computed(() => {
   return recentTasks.value.filter((task) => task.status === 'in_progress').length
 })
@@ -175,6 +201,10 @@ const loadProjectContext = async () => {
   }
 }
 
+const loadUsers = async () => {
+  users.value = await fetchAllPages((page, limit) => usersApi.list({ page, limit }))
+}
+
 const loadProjectData = async () => {
   if (!projectId.value) {
     return
@@ -213,12 +243,19 @@ const createMember = async () => {
     return
   }
 
+  const normalizedUserId = newMemberForm.userId.trim()
+  const duplicatedMember = projectMembers.value.find((member) => member.userId === normalizedUserId)
+  if (duplicatedMember) {
+    errorMessage.value = '该用户已在当前项目成员列表中'
+    return
+  }
+
   creatingMember.value = true
   errorMessage.value = ''
 
   try {
     await projectsApi.addMember(projectId.value, {
-      userId: newMemberForm.userId.trim(),
+      userId: normalizedUserId,
       role: newMemberForm.role,
     })
 
@@ -347,6 +384,9 @@ watch(
 
 onMounted(() => {
   void loadProjectData()
+  void loadUsers().catch((error) => {
+    errorMessage.value = error instanceof Error ? error.message : '加载用户列表失败'
+  })
 })
 </script>
 
@@ -558,9 +598,15 @@ onMounted(() => {
             <input
               v-model="newMemberForm.userId"
               class="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              placeholder="用户 ID（UUID）"
+              list="project-member-user-options"
+              placeholder="输入或选择用户"
               type="text"
             />
+            <datalist id="project-member-user-options">
+              <option v-for="user in users" :key="user.id" :value="user.id">
+                {{ user.nickname?.trim() || user.username }}
+              </option>
+            </datalist>
             <select
               v-model="newMemberForm.role"
               class="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
@@ -578,20 +624,27 @@ onMounted(() => {
               {{ creatingMember ? '添加中...' : '添加成员' }}
             </button>
           </form>
+          <p class="mt-2 text-xs text-muted-foreground">
+            支持输入用户 ID，也可从已加载用户列表中直接选择。
+          </p>
         </div>
 
         <div class="panel-card overflow-hidden">
           <table class="w-full min-w-[680px] text-left text-sm">
             <thead class="border-b border-border bg-background/60">
               <tr class="text-xs font-semibold text-muted-foreground">
-                <th class="px-5 py-3">用户 ID</th>
+                <th class="px-5 py-3">用户</th>
                 <th class="px-5 py-3">角色</th>
                 <th class="px-5 py-3 text-right">操作</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-border">
               <tr v-for="member in projectMembers" :key="member.id" class="transition hover:bg-background/70">
-                <td class="px-5 py-4 font-mono text-xs">{{ member.userId }}</td>
+                <td class="px-5 py-4">
+                  <p class="text-sm font-semibold">{{ displayUserName(member.userId) }}</p>
+                  <p class="mt-1 text-xs text-muted-foreground">{{ displayUserMeta(member.userId) }}</p>
+                  <p class="mt-1 font-mono text-[11px] text-muted-foreground">{{ member.userId }}</p>
+                </td>
                 <td class="px-5 py-4">
                   <select
                     v-model="memberRoleDrafts[member.userId]"

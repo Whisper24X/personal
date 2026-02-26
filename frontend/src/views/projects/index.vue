@@ -4,15 +4,24 @@ import { RouterLink } from 'vue-router'
 import { businessLinesApi, type BusinessLine } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
 import type { Project } from '@/types/api/projects'
+import { fetchAllPages } from '@/utils/pagination'
+
+defineOptions({
+  name: 'ProjectsView',
+})
 
 const loading = ref(false)
+const loadingMore = ref(false)
 const submitting = ref(false)
 const deletingProjectId = ref<string | null>(null)
+const editingProjectId = ref<string | null>(null)
 const query = ref('')
 const errorMessage = ref('')
 
 const businessLines = ref<BusinessLine[]>([])
 const projects = ref<Project[]>([])
+const projectPage = ref(1)
+const projectHasNextPage = ref(false)
 
 const createForm = reactive({
   businessLineId: '',
@@ -41,20 +50,48 @@ const loadData = async () => {
 
   try {
     const [businessLineResponse, projectResponse] = await Promise.all([
-      businessLinesApi.list({ page: 1, limit: 50 }),
+      fetchAllPages((page, limit) => businessLinesApi.list({ page, limit })),
       projectsApi.list({ page: 1, limit: 50 }),
     ])
 
-    businessLines.value = businessLineResponse.data
+    businessLines.value = businessLineResponse
     projects.value = projectResponse.data
+    projectPage.value = 1
+    projectHasNextPage.value = projectResponse.hasNextPage
 
     if (!createForm.businessLineId) {
-      createForm.businessLineId = businessLineResponse.data[0]?.id ?? ''
+      createForm.businessLineId = businessLineResponse[0]?.id ?? ''
     }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '加载项目数据失败'
   } finally {
     loading.value = false
+  }
+}
+
+const loadMoreProjects = async () => {
+  if (loadingMore.value || !projectHasNextPage.value) {
+    return
+  }
+
+  loadingMore.value = true
+  errorMessage.value = ''
+
+  try {
+    const nextPage = projectPage.value + 1
+    const response = await projectsApi.list({ page: nextPage, limit: 50 })
+
+    const existingProjectIds = new Set(projects.value.map((project) => project.id))
+    projects.value = projects.value.concat(
+      response.data.filter((project) => !existingProjectIds.has(project.id)),
+    )
+
+    projectPage.value = nextPage
+    projectHasNextPage.value = response.hasNextPage
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '加载更多项目失败'
+  } finally {
+    loadingMore.value = false
   }
 }
 
@@ -113,14 +150,26 @@ const totalProjectCount = computed(() => {
   return filteredGroups.value.reduce((sum, group) => sum + group.projects.length, 0)
 })
 
-const resetCreateForm = () => {
+const isEditingProject = computed(() => Boolean(editingProjectId.value))
+
+const resetProjectForm = () => {
+  editingProjectId.value = null
   createForm.name = ''
   createForm.description = ''
   createForm.gitUrl = ''
   createForm.defaultBranch = 'main'
 }
 
-const createProject = async () => {
+const startEditProject = (project: Project) => {
+  editingProjectId.value = project.id
+  createForm.businessLineId = project.businessLineId
+  createForm.name = project.name
+  createForm.description = project.description ?? ''
+  createForm.gitUrl = project.gitUrl
+  createForm.defaultBranch = project.defaultBranch
+}
+
+const submitProject = async () => {
   if (!createForm.businessLineId || !createForm.name.trim() || !createForm.gitUrl.trim()) {
     return
   }
@@ -129,18 +178,24 @@ const createProject = async () => {
   errorMessage.value = ''
 
   try {
-    await projectsApi.create({
+    const payload = {
       businessLineId: createForm.businessLineId,
       name: createForm.name.trim(),
       description: createForm.description.trim() || undefined,
       gitUrl: createForm.gitUrl.trim(),
       defaultBranch: createForm.defaultBranch.trim() || 'main',
-    })
+    }
 
-    resetCreateForm()
+    if (editingProjectId.value) {
+      await projectsApi.update(editingProjectId.value, payload)
+    } else {
+      await projectsApi.create(payload)
+    }
+
+    resetProjectForm()
     await loadData()
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '创建项目失败'
+    errorMessage.value = error instanceof Error ? error.message : '保存项目失败'
   } finally {
     submitting.value = false
   }
@@ -156,6 +211,9 @@ const removeProject = async (project: Project) => {
 
   try {
     await projectsApi.remove(project.id)
+    if (editingProjectId.value === project.id) {
+      resetProjectForm()
+    }
     await loadData()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '删除项目失败'
@@ -175,13 +233,13 @@ onMounted(() => {
       <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">组织与项目</p>
       <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">业务线与项目</h1>
       <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-        对接真实接口管理项目，支持创建、查看与删除。项目详情页可继续配置成员与执行参数。
+        对接真实接口管理项目，支持创建、编辑、查看与删除。项目详情页可继续配置成员与执行参数。
       </p>
     </section>
 
     <section class="panel-card p-5">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p class="text-sm font-semibold">新建项目</p>
+        <p class="text-sm font-semibold">{{ isEditingProject ? '编辑项目' : '新建项目' }}</p>
         <label class="relative block">
           <span class="sr-only">搜索项目</span>
           <input
@@ -193,7 +251,7 @@ onMounted(() => {
         </label>
       </div>
 
-      <form class="grid gap-3 md:grid-cols-2" @submit.prevent="createProject">
+      <form class="grid gap-3 md:grid-cols-2" @submit.prevent="submitProject">
         <label class="space-y-1">
           <span class="text-xs font-semibold text-muted-foreground">所属业务线</span>
           <select
@@ -246,11 +304,19 @@ onMounted(() => {
 
         <div class="md:col-span-2 flex justify-end">
           <button
+            v-if="isEditingProject"
+            class="mr-2 h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground shadow-sm transition hover:shadow-md"
+            type="button"
+            @click="resetProjectForm"
+          >
+            取消编辑
+          </button>
+          <button
             class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
             :disabled="submitting"
             type="submit"
           >
-            {{ submitting ? '创建中...' : '创建项目' }}
+            {{ submitting ? '保存中...' : isEditingProject ? '保存修改' : '创建项目' }}
           </button>
         </div>
       </form>
@@ -313,6 +379,13 @@ onMounted(() => {
                       详情
                     </RouterLink>
                     <button
+                      class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
+                      type="button"
+                      @click="startEditProject(project)"
+                    >
+                      编辑
+                    </button>
+                    <button
                       class="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-60"
                       :disabled="deletingProjectId === project.id"
                       type="button"
@@ -329,7 +402,18 @@ onMounted(() => {
       </article>
     </section>
 
-    <section v-else class="panel-card p-8">
+    <section v-if="!loading && filteredGroups.length > 0 && projectHasNextPage" class="panel-card p-4">
+      <button
+        class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+        :disabled="loadingMore"
+        type="button"
+        @click="loadMoreProjects"
+      >
+        {{ loadingMore ? '加载中...' : '加载更多项目' }}
+      </button>
+    </section>
+
+    <section v-if="!loading && filteredGroups.length === 0" class="panel-card p-8">
       <p class="text-sm font-semibold">未找到业务线或项目</p>
       <p class="mt-2 text-sm text-muted-foreground">请调整搜索条件，或创建第一条项目记录。</p>
     </section>

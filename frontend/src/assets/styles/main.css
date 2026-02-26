@@ -17,6 +17,12 @@
     --grid-line: color-mix(in oklab, var(--border) 65%, transparent);
   }
 
+  html[data-ui-density='compact'] {
+    --spacing: 0.22rem;
+    --radius: 0.65rem;
+    --tracking-normal: -0.003em;
+  }
+
   html {
     @apply bg-background text-foreground;
     font-family: var(--font-sans);

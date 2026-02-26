@@ -4,6 +4,35 @@ export type BusinessLine = {
   id: string
   name: string
   description?: string | null
+  createdAt?: string
+  updatedAt?: string
+}
+
+export type BusinessLineMemberRole = 'owner' | 'admin' | 'member'
+
+export type BusinessLineMember = {
+  id: string
+  businessLineId: string
+  userId: string
+  role: BusinessLineMemberRole
+  createdAt?: string
+  updatedAt?: string
+}
+
+export type CreateBusinessLinePayload = {
+  name: string
+  description?: string
+}
+
+export type UpdateBusinessLinePayload = Partial<CreateBusinessLinePayload>
+
+export type CreateBusinessLineMemberPayload = {
+  userId: string
+  role: BusinessLineMemberRole
+}
+
+export type UpdateBusinessLineMemberPayload = {
+  role: BusinessLineMemberRole
 }
 
 export const businessLinesApi = {
@@ -12,5 +41,44 @@ export const businessLinesApi = {
       page: params?.page,
       limit: params?.limit,
     })
+  },
+
+  detail(businessLineId: string) {
+    return apiHttp.get<BusinessLine>(`/business-lines/${businessLineId}`)
+  },
+
+  create(payload: CreateBusinessLinePayload) {
+    return apiHttp.post<BusinessLine>('/business-lines', payload)
+  },
+
+  update(businessLineId: string, payload: UpdateBusinessLinePayload) {
+    return apiHttp.patch<BusinessLine>(`/business-lines/${businessLineId}`, payload)
+  },
+
+  remove(businessLineId: string) {
+    return apiHttp.delete<void>(`/business-lines/${businessLineId}`)
+  },
+
+  listMembers(businessLineId: string) {
+    return apiHttp.get<BusinessLineMember[]>(`/business-lines/${businessLineId}/members`)
+  },
+
+  addMember(businessLineId: string, payload: CreateBusinessLineMemberPayload) {
+    return apiHttp.post<BusinessLineMember>(`/business-lines/${businessLineId}/members`, payload)
+  },
+
+  updateMember(
+    businessLineId: string,
+    userId: string,
+    payload: UpdateBusinessLineMemberPayload,
+  ) {
+    return apiHttp.patch<BusinessLineMember>(
+      `/business-lines/${businessLineId}/members/${userId}`,
+      payload,
+    )
+  },
+
+  removeMember(businessLineId: string, userId: string) {
+    return apiHttp.delete<void>(`/business-lines/${businessLineId}/members/${userId}`)
   },
 }

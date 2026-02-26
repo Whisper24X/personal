@@ -14,14 +14,30 @@ export type UserProfile = {
 }
 
 const mapUserToProfile = (user: UserInfo): UserProfile => {
-  const allPermissions = ['dashboard:view', 'projects:view', 'tasks:view', 'settings:view']
+  const allPermissions = [
+    'home:view',
+    'dashboard:view',
+    'about:view',
+    'kanban:view',
+    'workflow:view',
+    'tasks:view',
+    'projects:view',
+    'business-lines:view',
+    'skills:view',
+    'mcp:view',
+    'automations:view',
+    'settings:view',
+    'users:view',
+  ]
+
+  const defaultPermissions = allPermissions.filter((permission) => permission !== 'users:view')
 
   return {
     id: user.id,
     name: user.nickname?.trim() || user.username,
     username: user.username,
     avatar: user.avatar,
-    permissions: user.isAdmin ? allPermissions : ['dashboard:view', 'projects:view', 'tasks:view'],
+    permissions: user.isAdmin ? allPermissions : defaultPermissions,
     isAdmin: user.isAdmin,
   }
 }

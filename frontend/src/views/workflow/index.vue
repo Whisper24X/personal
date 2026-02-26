@@ -10,6 +10,7 @@ import type {
 } from '@/types/api/workflow'
 
 const loading = ref(false)
+const loadingMore = ref(false)
 const submitting = ref(false)
 const actionTemplateId = ref<string | null>(null)
 const savingEditor = ref(false)
@@ -21,6 +22,8 @@ const versions = ref<WorkflowTemplateVersion[]>([])
 const selectedTemplateId = ref('')
 const editorNodes = ref<WorkflowTemplateNode[]>([])
 const draggingNodeIndex = ref<number | null>(null)
+const templatePage = ref(1)
+const templateHasNextPage = ref(false)
 
 const createForm = reactive({
   name: '',
@@ -129,30 +132,50 @@ const loadTemplateDetail = async (templateId: string) => {
   }
 }
 
-const loadTemplates = async () => {
-  loading.value = true
-  errorMessage.value = ''
-  editorErrorMessage.value = ''
+const loadTemplates = async (reset = true) => {
+  const nextPage = reset ? 1 : templatePage.value + 1
+
+  if (reset) {
+    loading.value = true
+    errorMessage.value = ''
+    editorErrorMessage.value = ''
+  } else {
+    loadingMore.value = true
+  }
 
   try {
-    const response = await workflowApi.list({ page: 1, limit: 50 })
-    templates.value = response.data
+    const response = await workflowApi.list({ page: nextPage, limit: 50 })
 
-    const fallbackTemplateId = response.data[0]?.id ?? ''
-    if (!selectedTemplateId.value || !response.data.some((template) => template.id === selectedTemplateId.value)) {
-      selectedTemplateId.value = fallbackTemplateId
+    if (reset) {
+      templates.value = response.data
+    } else {
+      const existingIds = new Set(templates.value.map((template) => template.id))
+      templates.value = templates.value.concat(
+        response.data.filter((template) => !existingIds.has(template.id)),
+      )
     }
 
-    if (selectedTemplateId.value) {
-      await loadVersions(selectedTemplateId.value)
-    } else {
-      versions.value = []
-      editorNodes.value = []
+    templatePage.value = nextPage
+    templateHasNextPage.value = response.hasNextPage
+
+    if (reset) {
+      const fallbackTemplateId = response.data[0]?.id ?? ''
+      if (!selectedTemplateId.value || !response.data.some((template) => template.id === selectedTemplateId.value)) {
+        selectedTemplateId.value = fallbackTemplateId
+      }
+
+      if (selectedTemplateId.value) {
+        await loadVersions(selectedTemplateId.value)
+      } else {
+        versions.value = []
+        editorNodes.value = []
+      }
     }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '加载工作流模板失败'
   } finally {
     loading.value = false
+    loadingMore.value = false
   }
 }
 
@@ -641,6 +664,17 @@ onMounted(() => {
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <div v-if="!loading && templateHasNextPage" class="border-t border-border px-5 py-4">
+          <button
+            class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="loadingMore"
+            type="button"
+            @click="loadTemplates(false)"
+          >
+            {{ loadingMore ? '加载中...' : '加载更多模板' }}
+          </button>
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 import type {
   LoginRequest,
   LoginResponse,
+  UpdateMePayload,
   UserInfo,
 } from '@/types/api/auth'
 import { STORAGE_KEYS } from '@/types/common/storage'
@@ -21,9 +22,22 @@ export const authApi = {
     return apiHttp.get<UserInfo>('/auth/me')
   },
 
+  async updateMe(payload: UpdateMePayload): Promise<UserInfo> {
+    return apiHttp.patch<UserInfo>('/auth/me', payload)
+  },
+
   async logout(): Promise<void> {
     try {
       await apiHttp.post<void>('/auth/logout')
+    } finally {
+      storage.remove(STORAGE_KEYS.authToken)
+      storage.remove(STORAGE_KEYS.refreshToken)
+    }
+  },
+
+  async deleteMe(): Promise<void> {
+    try {
+      await apiHttp.delete<void>('/auth/me')
     } finally {
       storage.remove(STORAGE_KEYS.authToken)
       storage.remove(STORAGE_KEYS.refreshToken)

@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import BusinessLineModal from '@/components/business/settings/BusinessLineModal.vue'
-import SettingsModal from '@/components/business/settings/SettingsModal.vue'
 import HeaderBar from '@/components/core/layouts/Header.vue'
 import SideNav from '@/components/core/layouts/Sidebar.vue'
 import { useLayout } from '@/hooks/core/useLayout'
 
+defineOptions({
+  name: 'AppLayout',
+})
+
 const {
   mobileNavOpen,
   sidebarCollapsed,
-  settingsModalOpen,
   businessLineModalOpen,
   businessLineItems,
   activeBusinessLineId,
@@ -36,7 +38,7 @@ const {
   createProject,
   updateProject,
   deleteProject,
-  openSettingsModal,
+  openSettingsPage,
 } = useLayout()
 </script>
 
@@ -78,7 +80,7 @@ const {
         :show-menu-tooltip="showMenuTooltip"
         :hide-project-tooltip="hideProjectTooltip"
         :open-business-line-modal="openBusinessLineModal"
-        :open-settings-modal="openSettingsModal"
+        :open-settings-page="openSettingsPage"
       />
 
       <div class="flex min-h-screen min-w-0 flex-1 px-1.5 pb-0 pt-0 xl:px-2 xl:pb-0 xl:pt-0">
@@ -108,8 +110,6 @@ const {
     >
       {{ projectTooltipText }}
     </span>
-
-    <SettingsModal v-model:open="settingsModalOpen" />
 
     <BusinessLineModal
       :open="businessLineModalOpen"

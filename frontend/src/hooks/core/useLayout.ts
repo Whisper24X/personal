@@ -1,9 +1,11 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { businessLinesApi } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
+import { useUserStore } from '@/stores/modules/user'
 import type { Project } from '@/types/api/projects'
 import { STORAGE_KEYS } from '@/types/common/storage'
+import { fetchAllPages } from '@/utils/pagination'
 
 export type ProjectItem = {
   id: string
@@ -27,9 +29,22 @@ type BusinessLine = {
 }
 
 export type MenuItem = {
-  id: 'dashboard' | 'workflow' | 'tasks' | 'kanban' | 'automations' | 'skills' | 'mcp'
+  id:
+    | 'home'
+    | 'dashboard'
+    | 'about'
+    | 'workflow'
+    | 'tasks'
+    | 'kanban'
+    | 'automations'
+    | 'business-lines'
+    | 'projects'
+    | 'users'
+    | 'skills'
+    | 'mcp'
   label: string
   to: string
+  adminOnly?: boolean
 }
 
 const normalizeProjectShort = (projectName: string) => {
@@ -40,21 +55,13 @@ const normalizeProjectShort = (projectName: string) => {
     .toUpperCase()
 }
 
-const normalizeProjectSlug = (projectName: string) => {
-  return projectName
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+/, '')
-    .replace(/-+$/, '')
-}
-
 export const useLayout = () => {
   const route = useRoute()
+  const router = useRouter()
+  const userStore = useUserStore()
 
   const mobileNavOpen = ref(false)
   const isDesktop = ref(false)
-  const settingsModalOpen = ref(false)
   const businessLineModalOpen = ref(false)
   const menuCollapsed = ref(false)
   const projectTooltipVisible = ref(false)
@@ -67,22 +74,42 @@ export const useLayout = () => {
   const businessLines = ref<BusinessLine[]>([])
   const activeBusinessLineId = ref('')
 
-  const menuItems: MenuItem[] = [
+  const baseMenuItems: MenuItem[] = [
+    { id: 'home', label: '首页', to: '/home' },
     { id: 'dashboard', label: '仪表盘', to: '/dashboard' },
+    { id: 'about', label: '关于', to: '/about' },
     { id: 'workflow', label: '工作流', to: '/workflow' },
     { id: 'tasks', label: '任务', to: '/tasks' },
     { id: 'kanban', label: '看板', to: '/kanban' },
     { id: 'automations', label: '自动化', to: '/automations' },
+    { id: 'business-lines', label: '业务线', to: '/business-lines' },
+    { id: 'projects', label: '项目', to: '/projects' },
+    { id: 'users', label: '用户', to: '/users', adminOnly: true },
     { id: 'skills', label: 'Skills', to: '/skills' },
     { id: 'mcp', label: 'MCP', to: '/mcp' },
   ]
 
+  const menuItems = computed<MenuItem[]>(() => {
+    return baseMenuItems.filter((item) => {
+      if (!item.adminOnly) {
+        return true
+      }
+
+      return userStore.profile?.isAdmin ?? false
+    })
+  })
+
   const menuIconPaths: Record<MenuItem['id'], string[]> = {
+    home: ['m3 9 9-7 9 7', 'M9 22V12h6v10', 'M21 22H3'],
     dashboard: ['M3 3h8v8H3z', 'M13 3h8v5h-8z', 'M13 10h8v11h-8z', 'M3 13h8v8H3z'],
+    about: ['M12 16v-4', 'M12 8h.01', 'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z'],
     workflow: ['M4 7h16', 'M4 12h10', 'M4 17h7', 'M16 10l4 2-4 2', 'M13 15l4 2-4 2'],
     tasks: ['m9 11 2 2 4-4', 'M5 11h.01', 'M5 18h.01', 'm9 18 2 2 4-4', 'M14 11h5', 'M14 18h5', 'M3 6h18'],
     kanban: ['M4 5h6v14H4z', 'M14 5h6v8h-6z', 'M14 15h6v4h-6z'],
     automations: ['M12 7v5l3 3', 'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z'],
+    'business-lines': ['M3 21h18', 'M5 21V7l8-4v18', 'M19 21V11l-6-4'],
+    projects: ['M3 7h5l2 2h11v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M3 7V5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2'],
+    users: ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', 'M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8', 'M22 21v-2a4 4 0 0 0-3-3.87', 'M16 3.13a4 4 0 0 1 0 7.75'],
     skills: ['M12 3v4', 'M12 17v4', 'M4.93 4.93l2.83 2.83', 'M16.24 16.24l2.83 2.83', 'M3 12h4', 'M17 12h4', 'M4.93 19.07l2.83-2.83', 'M16.24 7.76l2.83-2.83'],
     mcp: ['M5 3h14a2 2 0 0 1 2 2v3H3V5a2 2 0 0 1 2-2z', 'M3 10h18v4H3z', 'M3 16h18v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M7 6h.01', 'M7 12h.01', 'M7 18h.01'],
   }
@@ -121,13 +148,13 @@ export const useLayout = () => {
   const loadLayoutData = async () => {
     try {
       const [businessLineResponse, projectResponse] = await Promise.all([
-        businessLinesApi.list({ page: 1, limit: 50 }),
-        projectsApi.list({ page: 1, limit: 50 }),
+        fetchAllPages((page, limit) => businessLinesApi.list({ page, limit })),
+        fetchAllPages((page, limit) => projectsApi.list({ page, limit })),
       ])
 
       const lineMap = new Map<string, BusinessLine>()
 
-      for (const line of businessLineResponse.data) {
+      for (const line of businessLineResponse) {
         lineMap.set(line.id, {
           id: line.id,
           name: line.name,
@@ -136,7 +163,7 @@ export const useLayout = () => {
         })
       }
 
-      for (const project of projectResponse.data) {
+      for (const project of projectResponse) {
         const line = lineMap.get(project.businessLineId)
         if (!line) {
           continue
@@ -191,9 +218,13 @@ export const useLayout = () => {
   const pageTitle = computed(() => (route.meta.title as string | undefined) ?? '仪表盘')
 
   const breadcrumbs = computed(() => {
+    if (route.name === 'home') return ['项目菜单', '首页']
     if (route.name === 'dashboard') return ['项目菜单', '仪表盘']
+    if (route.name === 'about') return ['项目菜单', '关于']
     if (route.name === 'kanban') return ['项目菜单', '看板']
     if (route.name === 'workflow') return ['项目菜单', '工作流']
+    if (route.name === 'business-lines') return ['组织管理', '业务线']
+    if (route.name === 'users') return ['工作区', '用户管理']
     if (route.name === 'skills') return ['项目菜单', 'Skills']
     if (route.name === 'mcp') return ['项目菜单', 'MCP']
     if (route.name === 'automations') return ['项目菜单', '自动化']
@@ -279,18 +310,23 @@ export const useLayout = () => {
     hideProjectTooltip()
   }
 
-  const createProject = async (payload: { businessLineId: string; name: string; short: string }) => {
+  const createProject = async (payload: {
+    businessLineId: string
+    name: string
+    short: string
+    gitUrl: string
+  }) => {
     const projectName = payload.name.trim()
+    const projectGitUrl = payload.gitUrl.trim()
+    void payload.short
     if (!projectName) return
-
-    const slug = normalizeProjectSlug(projectName) || `project-${Date.now().toString(36)}`
-    const gitUrl = `git@example.com:generated/${slug}.git`
+    if (!projectGitUrl) return
 
     try {
       await projectsApi.create({
         businessLineId: payload.businessLineId,
         name: projectName,
-        gitUrl,
+        gitUrl: projectGitUrl,
         defaultBranch: 'main',
       })
 
@@ -328,9 +364,10 @@ export const useLayout = () => {
     }
   }
 
-  const openSettingsModal = () => {
-    settingsModalOpen.value = true
+  const openSettingsPage = () => {
     mobileNavOpen.value = false
+    hideProjectTooltip()
+    void router.push('/settings')
   }
 
   const onKeydown = (event: KeyboardEvent) => {
@@ -399,7 +436,6 @@ export const useLayout = () => {
   return {
     mobileNavOpen,
     sidebarCollapsed,
-    settingsModalOpen,
     businessLineModalOpen,
     businessLineItems,
     activeBusinessLineId,
@@ -427,6 +463,6 @@ export const useLayout = () => {
     createProject,
     updateProject,
     deleteProject,
-    openSettingsModal,
+    openSettingsPage,
   }
 }

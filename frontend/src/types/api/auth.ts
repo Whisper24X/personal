@@ -6,6 +6,7 @@ export type LoginRequest = {
 export type UserInfo = {
   id: string
   username: string
+  email?: string | null
   nickname?: string | null
   avatar?: string | null
   isAdmin: boolean
@@ -18,3 +19,12 @@ export type LoginResponse = {
   tokenExpires: number
   user: UserInfo
 }
+
+export type UpdateMePayload = Partial<{
+  username: string
+  email: string
+  nickname: string
+  avatar: string
+  oldPassword: string
+  password: string
+}>

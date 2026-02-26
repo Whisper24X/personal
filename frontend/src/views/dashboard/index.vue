@@ -10,6 +10,11 @@ import type { ObservabilityAlert, ObservabilityMetrics } from '@/types/api/obser
 import type { Project } from '@/types/api/projects'
 import type { QueueStats } from '@/types/api/queue'
 import type { Task } from '@/types/api/tasks'
+import { fetchAllPages } from '@/utils/pagination'
+
+defineOptions({
+  name: 'DashboardView',
+})
 
 const loading = ref(false)
 const errorMessage = ref('')
@@ -64,6 +69,20 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return fallback
 }
 
+const uniqueById = <T extends { id: string }>(items: T[]) => {
+  return Array.from(new Map(items.map((item) => [item.id, item])).values())
+}
+
+const loadAllProjects = async () => {
+  const records = await fetchAllPages((page, limit) => projectsApi.list({ page, limit }))
+  return uniqueById(records)
+}
+
+const loadAllTasks = async () => {
+  const records = await fetchAllPages((page, limit) => tasksApi.list({ page, limit }))
+  return uniqueById(records)
+}
+
 const formatDate = (value?: string) => {
   if (!value) return '-'
   const parsedDate = new Date(value)
@@ -102,13 +121,13 @@ const loadDashboardData = async () => {
 
   try {
     const [projectResponse, taskResponse, unreadEvents] = await Promise.all([
-      projectsApi.list({ page: 1, limit: 50 }),
-      tasksApi.list({ page: 1, limit: 50 }),
+      loadAllProjects(),
+      loadAllTasks(),
       notificationsApi.events({ unreadOnly: true, limit: 100 }),
     ])
 
-    projects.value = projectResponse.data
-    tasks.value = taskResponse.data
+    projects.value = projectResponse
+    tasks.value = taskResponse
     unreadNotifications.value = unreadEvents.length
 
     await loadMonitoringData()

@@ -7,11 +7,17 @@ import { workflowApi } from '@/api/workflow'
 import type { Project } from '@/types/api/projects'
 import type { Task } from '@/types/api/tasks'
 import type { WorkflowTemplate, WorkflowTemplateVersion } from '@/types/api/workflow'
+import { fetchAllPages } from '@/utils/pagination'
+
+defineOptions({
+  name: 'TasksView',
+})
 
 const route = useRoute()
 const router = useRouter()
 
 const loading = ref(false)
+const loadingMore = ref(false)
 const submitting = ref(false)
 const errorMessage = ref('')
 
@@ -19,6 +25,8 @@ const projects = ref<Project[]>([])
 const tasks = ref<Task[]>([])
 const templates = ref<WorkflowTemplate[]>([])
 const templateVersions = ref<WorkflowTemplateVersion[]>([])
+const taskPage = ref(1)
+const taskHasNextPage = ref(false)
 
 const filters = reactive({
   projectId: '',
@@ -78,9 +86,14 @@ const formatDate = (value?: string) => {
 
 const syncFiltersFromQuery = () => {
   const queryProjectId = typeof route.query.projectId === 'string' ? route.query.projectId : ''
+  const queryStatus = typeof route.query.status === 'string' ? route.query.status : ''
   if (queryProjectId) {
     filters.projectId = queryProjectId
     createForm.projectId = queryProjectId
+  }
+
+  if (queryStatus && taskStatusOptions.some((option) => option.value === queryStatus)) {
+    filters.status = queryStatus
   }
 }
 
@@ -104,18 +117,39 @@ const loadTemplateVersions = async (templateId: string) => {
   }
 }
 
-const loadTaskList = async () => {
+const loadTaskList = async (reset = true) => {
+  const nextPage = reset ? 1 : taskPage.value + 1
+
+  if (reset) {
+    loading.value = true
+  } else {
+    loadingMore.value = true
+  }
+
   try {
     const response = await tasksApi.list({
-      page: 1,
+      page: nextPage,
       limit: 50,
       projectId: filters.projectId || undefined,
       status: filters.status || undefined,
     })
 
-    tasks.value = response.data
+    if (reset) {
+      tasks.value = response.data
+    } else {
+      const existingTaskIds = new Set(tasks.value.map((task) => task.id))
+      tasks.value = tasks.value.concat(
+        response.data.filter((task) => !existingTaskIds.has(task.id)),
+      )
+    }
+
+    taskPage.value = nextPage
+    taskHasNextPage.value = response.hasNextPage
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '加载任务列表失败'
+  } finally {
+    loading.value = false
+    loadingMore.value = false
   }
 }
 
@@ -125,22 +159,24 @@ const loadPageData = async () => {
 
   try {
     const [projectResponse, taskResponse, templateResponse] = await Promise.all([
-      projectsApi.list({ page: 1, limit: 50 }),
+      fetchAllPages((page, limit) => projectsApi.list({ page, limit })),
       tasksApi.list({
         page: 1,
         limit: 50,
         projectId: filters.projectId || undefined,
         status: filters.status || undefined,
       }),
-      workflowApi.list({ page: 1, limit: 50, isActive: true }),
+      fetchAllPages((page, limit) => workflowApi.list({ page, limit, isActive: true })),
     ])
 
-    projects.value = projectResponse.data
+    projects.value = projectResponse
     tasks.value = taskResponse.data
-    templates.value = templateResponse.data
+    taskPage.value = 1
+    taskHasNextPage.value = taskResponse.hasNextPage
+    templates.value = templateResponse
 
     if (!createForm.projectId) {
-      createForm.projectId = projectResponse.data[0]?.id ?? ''
+      createForm.projectId = projectResponse[0]?.id ?? ''
     }
 
     if (createForm.workflowTemplateId) {
@@ -224,7 +260,7 @@ watch(
 )
 
 const applyFilters = async () => {
-  await loadTaskList()
+  await loadTaskList(true)
   await router.replace({
     query: {
       ...(filters.projectId ? { projectId: filters.projectId } : {}),
@@ -445,6 +481,17 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div v-if="!loading && taskHasNextPage" class="border-t border-border px-5 py-4">
+        <button
+          class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="loadingMore"
+          type="button"
+          @click="loadTaskList(false)"
+        >
+          {{ loadingMore ? '加载中...' : '加载更多' }}
+        </button>
       </div>
     </section>
   </div>
