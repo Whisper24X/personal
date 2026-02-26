@@ -1,6 +1,6 @@
 ---
 name: deploy-execute
-description: 执行部署命令并监控部署进度。执行 make sandbox 启动服务、监控日志输出、等待服务就绪。无状态执行工具，由 Deploy Action 循环调用。触发场景：(1) 执行 sandbox 部署 (2) 监控服务启动 (3) 记录部署日志
+description: 执行部署命令并监控进度：停止旧服务、运行 make sandbox（或等效命令）、等待服务就绪，输出日志到 deployLog.md 和结果到 deployResult.md。当需要执行 sandbox 部署、监控服务启动或记录部署日志时使用。
 ---
 
 # ExecuteDeployment - 执行部署
@@ -71,45 +71,46 @@ description: 执行部署命令并监控部署进度。执行 make sandbox 启�
 
 ### 3. 输出部署日志
 
-**日志文件** `docs/deploy/deployLog.md` 内容包括：
+**日志文件** `docs/deploy/deployLog.md` 的完整格式见 [templates.md](templates.md)。
 
-```markdown
-# 部署执行日志
+日志内容须包含：部署时间、执行命令、执行耗时、停止服务输出、启动服务输出、服务启动状态表（服务名/状态/访问地址/耗时）、错误记录（如有）。
 
-部署时间: [当前时间]
-执行命令: [实际执行的命令]
-执行耗时: [总耗时]
+**提取访问地址（严格规则）**：
 
-## 执行过程
+访问地址**只能**从以下两个来源提取，**禁止**从任何其他来源推断：
 
-### 停止现有服务
+**来源1：`make sandbox` 命令的终端输出**
 
-[停止命令的输出]
+`sandbox.sh start` 执行结束时会打印如下格式的访问地址：
 
-### 启动服务
-
-[启动命令的输出]
-
-## 服务启动状态
-
-| 服务名称 | 状态   | 访问地址 | 启动耗时 |
-| -------- | ------ | -------- | -------- |
-| [服务1]  | [状态] | [地址]   | [耗时]   |
-
-## 错误记录（如有）
-
-[错误日志内容]
+```
+访问地址:
+  统一入口:    http://localhost:${SANDBOX_PORT}/ 或 http://10.8.8.152:${SANDBOX_PORT}/
+  后端 API:    http://localhost:${SANDBOX_PORT}/api/ 或 http://10.8.8.152:${SANDBOX_PORT}/api/
+  管理后台:    http://localhost:${SANDBOX_PORT}/shadow/ 或 http://10.8.8.152:${SANDBOX_PORT}/shadow/
+  移动端 H5:   http://localhost:${SANDBOX_PORT}/app/ 或 http://10.8.8.152:${SANDBOX_PORT}/app/
 ```
 
-**提取访问地址**：
+直接从这段输出中提取 `http://localhost:[端口]/[路径]` 格式的地址。
 
-分析 `make sandbox` 的输出和项目结构，识别所有可用的服务：
+**来源2：`sandbox/.env` 配置文件**
 
-- 查看日志中出现的访问地址（如 Local、Network 等）
-- 根据项目目录结构识别前端应用（如 backend、shadow、app、pc 等）
-- 提取每个服务的实际访问地址
-- 记录服务启动状态（运行中/未启动/启动失败）
-- **只记录实际存在的服务，不要添加项目中不存在的服务**
+如果命令输出中没有打印访问地址（如容器已在运行时输出跳过了 info），读取 `sandbox/.env` 获取 `SANDBOX_PORT`（默认 `8080`），按以下固定格式构造：
+
+- 统一入口：`http://localhost:${SANDBOX_PORT}/ 或 http://10.8.8.152:${SANDBOX_PORT}/`
+- 后端 API：`http://localhost:${SANDBOX_PORT}/api/ 或 http://10.8.8.152:${SANDBOX_PORT}/`
+- 管理后台：`http://localhost:${SANDBOX_PORT}/shadow/ 或 http://10.8.8.152:${SANDBOX_PORT}/`
+- 移动端 H5：`http://localhost:${SANDBOX_PORT}/app/ 或 http://10.8.8.152:${SANDBOX_PORT}/`
+
+**严格禁止**：
+
+- ❌ 读取任何 nginx 配置文件（`nginx.conf`、`/etc/nginx/` 等）
+- ❌ 使用 nginx `server_name` 中的域名作为访问地址
+- ❌ 执行 `nginx -T`、`hostname` 或任何 OS 网络发现命令
+- ❌ 从项目目录结构或 docs 文档中"推断"访问地址
+- ❌ 使用 `localhost` 以外的主机名（`sandbox/.env` 中未显式配置时）
+
+记录服务启动状态（运行中/未启动/启动失败），只记录实际存在的服务。
 
 ## 结果写入
 
@@ -126,12 +127,7 @@ description: 执行部署命令并监控部署进度。执行 make sandbox 启�
 
 ```
 部署失败
-Docker 启动失败：Rootless Docker UID/GID 映射配置错误。需要执行以下修复命令（需要 sudo 权限）：
-
-USER_UID=$(id -u)
-sudo bash -c "echo \"${USER_UID}:100000:65536\" >> /etc/subuid"
-sudo bash -c "echo \"${USER_UID}:100000:65536\" >> /etc/subgid"
-systemctl --user restart docker
+Docker 启动失败：Docker 服务未运行或配置错误。请执行 `sudo systemctl start docker` 启动服务后重试。
 
 详细错误信息请查看 deployLog.md
 ```
@@ -152,87 +148,29 @@ systemctl --user restart docker
 
 ## 错误处理策略
 
-| 错误类型                    | 处理方式                                               |
-| --------------------------- | ------------------------------------------------------ |
-| 端口被占用 (EADDRINUSE)     | 杀死占用进程后重试                                     |
-| 依赖缺失 (MODULE_NOT_FOUND) | 执行 `pnpm install` 后重试                             |
-| 构建错误                    | 记录错误详情，标记部署失败                             |
-| Docker 服务未运行           | 执行 `systemctl --user start docker` 启动后重试        |
-| Docker UID/GID 映射错误     | 提示需要 sudo 权限修复配置，停止部署，记录修复命令     |
-| Docker rootlesskit 权限错误 | 检查 `/etc/subuid` 和 `/etc/subgid` 配置，提供修复指导 |
-| Docker 容器启动失败         | 检查容器日志 (`docker logs`)，记录错误详情             |
-| 超时（>600s）               | 标记部署超时，记录最后日志                             |
+| 错误类型                    | 处理方式                                      |
+| --------------------------- | --------------------------------------------- |
+| 端口被占用 (EADDRINUSE)     | 杀死占用进程后重试                            |
+| 依赖缺失 (MODULE_NOT_FOUND) | 执行 `pnpm install` 后重试                    |
+| 构建错误                    | 记录错误详情，标记部署失败                    |
+| Docker 服务未运行           | 执行 `sudo systemctl start docker` 启动后重试 |
+| Docker 容器启动失败         | 检查容器日志 (`docker logs`)，记录错误详情    |
+| 超时（>600s）               | 标记部署超时，记录最后日志                    |
 
 **Docker 错误详细处理**：
 
 1. **Docker 服务未运行**
 
    ```bash
-   systemctl --user start docker
+   sudo systemctl start docker
    # 等待 3-5 秒后验证
-   systemctl --user status docker
+   sudo systemctl status docker
    ```
 
-2. **Rootless Docker UID/GID 映射错误**
-
-   错误特征：
-
-   ```
-   newuidmap: write to uid_map failed: Operation not permitted
-   failed to setup UID/GID map
-   ```
-
-   处理流程：
-   - ❌ **不要自动尝试修复**（需要 sudo 权限）
-   - ✅ 在 `deployResult.md` 中标记"部署失败"
-   - ✅ 在 `deployLog.md` 中记录详细的修复命令：
-
-   ```bash
-   # 修复 Rootless Docker UID/GID 映射配置
-
-   # 1. 获取当前用户 UID
-   USER_UID=$(id -u)
-   echo "当前用户 UID: ${USER_UID}"
-
-   # 2. 检查现有配置
-   echo "=== 当前 /etc/subuid 配置 ==="
-   cat /etc/subuid
-   echo "=== 当前 /etc/subgid 配置 ==="
-   cat /etc/subgid
-
-   # 3. 添加 UID 格式配置（需要 sudo 权限）
-   sudo bash -c "echo \"${USER_UID}:100000:65536\" >> /etc/subuid"
-   sudo bash -c "echo \"${USER_UID}:100000:65536\" >> /etc/subgid"
-
-   # 4. 重启 Docker 服务
-   systemctl --user restart docker
-
-   # 5. 验证 Docker 状态
-   systemctl --user status docker
-   docker ps
-
-   # 6. 重新执行部署
-   make sandbox
-   ```
-
-3. **Docker 容器启动失败**
+2. **Docker 容器启动失败**
    ```bash
    # 查看容器列表
    docker ps -a
    # 查看失败容器的日志
    docker logs <container_id>
    ```
-
-## 重要提醒
-
-1. **必须写入两个文件**：`docs/deploy/deployLog.md`（日志）和 `docs/deploy/deployResult.md`（结果）
-2. **结果文件格式固定**：只有两行，第一行是状态，第二行是原因（Docker 配置问题时可多行提供修复命令）
-3. **确保目录存在**：如果 `docs/deploy/` 目录不存在，需要先创建
-4. **遇到部署问题时**：必须分析错误原因并尝试解决，不要直接放弃
-5. **服务地址准确**：确保提取的地址信息完整准确
-6. **失败服务记录错误日志**：启动失败的服务必须在 deployLog.md 中记录最后 20-30 行关键日志
-7. **Docker 错误特别处理**：
-   - Docker 服务未运行：尝试自动启动
-   - UID/GID 映射错误：不要自动修复，提供详细的修复命令（需要 sudo）
-   - 容器启动失败：记录容器日志，分析失败原因
-8. **不要盲目重试**：Docker 配置错误需要手动修复，自动重试只会浪费时间
