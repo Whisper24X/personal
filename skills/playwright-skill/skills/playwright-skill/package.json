@@ -7,7 +7,8 @@
   "scripts": {
     "setup": "npm install && npx playwright install chromium",
     "setup:cn": "npm install --registry=https://registry.npmmirror.com && PLAYWRIGHT_DOWNLOAD_BASE_URL=https://npmmirror.com/mirrors/playwright/ npx playwright install chromium",
-    "install-all-browsers": "npx playwright install chromium firefox webkit"
+    "install-all-browsers": "npx playwright install chromium firefox webkit",
+    "setup:proxy": "node install-chromium-with-proxy.js"
   },
   "keywords": [
     "playwright",
