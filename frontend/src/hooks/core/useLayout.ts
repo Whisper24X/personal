@@ -3,6 +3,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { businessLinesApi } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
 import { useUserStore } from '@/stores/modules/user'
+import {
+  getAvailableSettingsSections,
+  SETTINGS_QUERY_KEY,
+  SETTINGS_SECTION_LABELS,
+  type SettingsSection,
+  resolveAuthorizedSettingsSection,
+} from '@/types/common/settings'
 import type { Project } from '@/types/api/projects'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import { fetchAllPages } from '@/utils/pagination'
@@ -29,22 +36,18 @@ type BusinessLine = {
 }
 
 export type MenuItem = {
-  id:
-    | 'home'
-    | 'dashboard'
-    | 'about'
-    | 'workflow'
-    | 'tasks'
-    | 'kanban'
-    | 'automations'
-    | 'business-lines'
-    | 'projects'
-    | 'users'
-    | 'skills'
-    | 'mcp'
+  id: 'dashboard' | 'workflow' | 'tasks' | 'kanban' | 'automations' | 'skills' | 'mcp'
   label: string
   to: string
   adminOnly?: boolean
+}
+
+const HOME_MENU_ENABLED = false
+
+const normalizeQueryValue = (queryValue: unknown) => {
+  if (typeof queryValue === 'string') return queryValue
+  if (Array.isArray(queryValue)) return queryValue[0] ?? ''
+  return ''
 }
 
 const normalizeProjectShort = (projectName: string) => {
@@ -66,6 +69,8 @@ export const useLayout = () => {
   const menuCollapsed = ref(false)
   const projectTooltipVisible = ref(false)
   const projectTooltipText = ref('')
+  const settingsModalOpen = ref(false)
+  const settingsSection = ref<SettingsSection>('profile')
   const projectTooltipStyle = ref({
     left: '0px',
     top: '0px',
@@ -75,16 +80,11 @@ export const useLayout = () => {
   const activeBusinessLineId = ref('')
 
   const baseMenuItems: MenuItem[] = [
-    { id: 'home', label: '首页', to: '/home' },
     { id: 'dashboard', label: '仪表盘', to: '/dashboard' },
-    { id: 'about', label: '关于', to: '/about' },
     { id: 'workflow', label: '工作流', to: '/workflow' },
     { id: 'tasks', label: '任务', to: '/tasks' },
     { id: 'kanban', label: '看板', to: '/kanban' },
     { id: 'automations', label: '自动化', to: '/automations' },
-    { id: 'business-lines', label: '业务线', to: '/business-lines' },
-    { id: 'projects', label: '项目', to: '/projects' },
-    { id: 'users', label: '用户', to: '/users', adminOnly: true },
     { id: 'skills', label: 'Skills', to: '/skills' },
     { id: 'mcp', label: 'MCP', to: '/mcp' },
   ]
@@ -99,17 +99,21 @@ export const useLayout = () => {
     })
   })
 
+  const availableSettingsSections = computed<SettingsSection[]>(() => {
+    const isAdmin = userStore.profile?.isAdmin ?? false
+    return getAvailableSettingsSections(isAdmin)
+  })
+
+  const defaultSettingsSection = computed<SettingsSection>(() => {
+    return availableSettingsSections.value[0] ?? 'profile'
+  })
+
   const menuIconPaths: Record<MenuItem['id'], string[]> = {
-    home: ['m3 9 9-7 9 7', 'M9 22V12h6v10', 'M21 22H3'],
     dashboard: ['M3 3h8v8H3z', 'M13 3h8v5h-8z', 'M13 10h8v11h-8z', 'M3 13h8v8H3z'],
-    about: ['M12 16v-4', 'M12 8h.01', 'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z'],
     workflow: ['M4 7h16', 'M4 12h10', 'M4 17h7', 'M16 10l4 2-4 2', 'M13 15l4 2-4 2'],
     tasks: ['m9 11 2 2 4-4', 'M5 11h.01', 'M5 18h.01', 'm9 18 2 2 4-4', 'M14 11h5', 'M14 18h5', 'M3 6h18'],
     kanban: ['M4 5h6v14H4z', 'M14 5h6v8h-6z', 'M14 15h6v4h-6z'],
     automations: ['M12 7v5l3 3', 'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z'],
-    'business-lines': ['M3 21h18', 'M5 21V7l8-4v18', 'M19 21V11l-6-4'],
-    projects: ['M3 7h5l2 2h11v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M3 7V5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2'],
-    users: ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', 'M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8', 'M22 21v-2a4 4 0 0 0-3-3.87', 'M16 3.13a4 4 0 0 1 0 7.75'],
     skills: ['M12 3v4', 'M12 17v4', 'M4.93 4.93l2.83 2.83', 'M16.24 16.24l2.83 2.83', 'M3 12h4', 'M17 12h4', 'M4.93 19.07l2.83-2.83', 'M16.24 7.76l2.83-2.83'],
     mcp: ['M5 3h14a2 2 0 0 1 2 2v3H3V5a2 2 0 0 1 2-2z', 'M3 10h18v4H3z', 'M3 16h18v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M7 6h.01', 'M7 12h.01', 'M7 18h.01'],
   }
@@ -215,24 +219,41 @@ export const useLayout = () => {
     return currentBusinessLine.value?.projects ?? []
   })
 
-  const pageTitle = computed(() => (route.meta.title as string | undefined) ?? '仪表盘')
+  const resolveSettingsSection = (candidate: unknown) => {
+    return resolveAuthorizedSettingsSection(
+      normalizeQueryValue(candidate),
+      userStore.profile?.isAdmin ?? false,
+    )
+  }
+
+  const routeSettingsSection = computed(() => {
+    return normalizeQueryValue(route.query[SETTINGS_QUERY_KEY])
+  })
+
+  const pageTitle = computed(() => {
+    if (routeSettingsSection.value) {
+      return '设置'
+    }
+
+    return (route.meta.title as string | undefined) ?? '仪表盘'
+  })
 
   const breadcrumbs = computed(() => {
-    if (route.name === 'home') return ['项目菜单', '首页']
+    if (routeSettingsSection.value) {
+      const section = resolveSettingsSection(routeSettingsSection.value)
+      return ['工作区', '设置', SETTINGS_SECTION_LABELS[section]]
+    }
+
+    if (HOME_MENU_ENABLED && route.name === 'home') return ['项目菜单', '首页']
     if (route.name === 'dashboard') return ['项目菜单', '仪表盘']
-    if (route.name === 'about') return ['项目菜单', '关于']
     if (route.name === 'kanban') return ['项目菜单', '看板']
     if (route.name === 'workflow') return ['项目菜单', '工作流']
-    if (route.name === 'business-lines') return ['组织管理', '业务线']
-    if (route.name === 'users') return ['工作区', '用户管理']
     if (route.name === 'skills') return ['项目菜单', 'Skills']
     if (route.name === 'mcp') return ['项目菜单', 'MCP']
     if (route.name === 'automations') return ['项目菜单', '自动化']
     if (route.name === 'tasks') return ['项目菜单', '任务']
     if (route.name === 'task-detail') return ['项目菜单', '任务', '任务详情']
-    if (route.name === 'projects') return ['项目管理', '项目列表']
     if (route.name === 'project-detail') return ['项目管理', '项目详情']
-    if (route.name === 'settings') return ['工作区', '设置']
     return ['项目菜单']
   })
 
@@ -298,8 +319,18 @@ export const useLayout = () => {
 
   const openBusinessLineModal = () => {
     businessLineModalOpen.value = true
+    settingsModalOpen.value = false
     mobileNavOpen.value = false
     hideProjectTooltip()
+
+    const nextQuery = { ...route.query }
+    if (nextQuery[SETTINGS_QUERY_KEY]) {
+      delete nextQuery[SETTINGS_QUERY_KEY]
+      void router.replace({
+        path: route.path,
+        query: nextQuery,
+      })
+    }
   }
 
   const selectBusinessLine = (businessLineId: string) => {
@@ -364,10 +395,45 @@ export const useLayout = () => {
     }
   }
 
-  const openSettingsPage = () => {
+  const updateSettingsQuery = (section: SettingsSection) => {
+    const currentSection = normalizeQueryValue(route.query[SETTINGS_QUERY_KEY])
+    if (currentSection === section) {
+      return
+    }
+
+    void router.replace({
+      path: route.path,
+      query: {
+        ...route.query,
+        [SETTINGS_QUERY_KEY]: section,
+      },
+    })
+  }
+
+  const openSettings = (section?: SettingsSection) => {
     mobileNavOpen.value = false
     hideProjectTooltip()
-    void router.push('/settings')
+    businessLineModalOpen.value = false
+    settingsSection.value = resolveSettingsSection(section ?? route.query[SETTINGS_QUERY_KEY])
+    settingsModalOpen.value = true
+    updateSettingsQuery(settingsSection.value)
+  }
+
+  const closeSettings = () => {
+    settingsModalOpen.value = false
+    const nextQuery = { ...route.query }
+    delete nextQuery[SETTINGS_QUERY_KEY]
+    void router.replace({
+      path: route.path,
+      query: nextQuery,
+    })
+  }
+
+  const setSettingsSection = (section: SettingsSection) => {
+    const nextSection = resolveSettingsSection(section)
+    settingsSection.value = nextSection
+    settingsModalOpen.value = true
+    updateSettingsQuery(nextSection)
   }
 
   const onKeydown = (event: KeyboardEvent) => {
@@ -388,6 +454,32 @@ export const useLayout = () => {
       syncBusinessLineFromRoute()
     },
   )
+
+  watch(
+    () => route.query[SETTINGS_QUERY_KEY],
+    (sectionQuery) => {
+      const sectionName = normalizeQueryValue(sectionQuery)
+      if (!sectionName) {
+        settingsModalOpen.value = false
+        return
+      }
+
+      const nextSection = resolveSettingsSection(sectionName)
+      settingsSection.value = nextSection
+      settingsModalOpen.value = true
+
+      if (nextSection !== sectionName) {
+        updateSettingsQuery(nextSection)
+      }
+    },
+    { immediate: true },
+  )
+
+  watch(defaultSettingsSection, (nextSection) => {
+    if (!availableSettingsSections.value.includes(settingsSection.value)) {
+      settingsSection.value = nextSection
+    }
+  })
 
   let previousBodyOverflow = ''
   watch(mobileNavOpen, (open) => {
@@ -437,6 +529,9 @@ export const useLayout = () => {
     mobileNavOpen,
     sidebarCollapsed,
     businessLineModalOpen,
+    settingsModalOpen,
+    settingsSection,
+    availableSettingsSections,
     businessLineItems,
     activeBusinessLineId,
     currentBusinessLineName,
@@ -459,10 +554,12 @@ export const useLayout = () => {
     hideProjectTooltip,
     showMenuTooltip,
     openBusinessLineModal,
+    openSettings,
+    closeSettings,
+    setSettingsSection,
     selectBusinessLine,
     createProject,
     updateProject,
     deleteProject,
-    openSettingsPage,
   }
 }

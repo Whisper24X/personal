@@ -2,6 +2,7 @@
 import BusinessLineModal from '@/components/business/settings/BusinessLineModal.vue'
 import HeaderBar from '@/components/core/layouts/Header.vue'
 import SideNav from '@/components/core/layouts/Sidebar.vue'
+import SettingsModal from '@/components/settings/SettingsModal.vue'
 import { useLayout } from '@/hooks/core/useLayout'
 
 defineOptions({
@@ -12,6 +13,9 @@ const {
   mobileNavOpen,
   sidebarCollapsed,
   businessLineModalOpen,
+  settingsModalOpen,
+  settingsSection,
+  availableSettingsSections,
   businessLineItems,
   activeBusinessLineId,
   currentBusinessLineName,
@@ -34,11 +38,13 @@ const {
   hideProjectTooltip,
   showMenuTooltip,
   openBusinessLineModal,
+  openSettings,
+  closeSettings,
+  setSettingsSection,
   selectBusinessLine,
   createProject,
   updateProject,
   deleteProject,
-  openSettingsPage,
 } = useLayout()
 </script>
 
@@ -80,7 +86,7 @@ const {
         :show-menu-tooltip="showMenuTooltip"
         :hide-project-tooltip="hideProjectTooltip"
         :open-business-line-modal="openBusinessLineModal"
-        :open-settings-page="openSettingsPage"
+        :open-settings="openSettings"
       />
 
       <div class="flex min-h-screen min-w-0 flex-1 px-1.5 pb-0 pt-0 xl:px-2 xl:pb-0 xl:pt-0">
@@ -121,6 +127,14 @@ const {
       @create-project="createProject"
       @update-project="updateProject"
       @delete-project="deleteProject"
+    />
+
+    <SettingsModal
+      :open="settingsModalOpen"
+      :active-section="settingsSection"
+      :sections="availableSettingsSections"
+      @update:open="(open) => (open ? openSettings(settingsSection) : closeSettings())"
+      @select-section="setSettingsSection"
     />
   </div>
 </template>

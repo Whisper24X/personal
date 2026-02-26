@@ -291,7 +291,10 @@ onMounted(() => {
           <RouterLink to="/workflow" class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground">
             工作流模板
           </RouterLink>
-          <RouterLink to="/settings" class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground">
+          <RouterLink
+            :to="{ path: '/dashboard', query: { settings: 'profile' } }"
+            class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground"
+          >
             通知设置
           </RouterLink>
         </div>

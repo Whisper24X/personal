@@ -659,7 +659,7 @@ onMounted(() => {
         <div class="flex items-center justify-between">
           <p class="text-sm font-semibold">通知通道状态</p>
           <RouterLink
-            to="/settings"
+            :to="{ path: '/automations', query: { settings: 'profile' } }"
             class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
           >
             前往设置

@@ -23,7 +23,7 @@ const props = defineProps<{
   showMenuTooltip: (event: MouseEvent | FocusEvent, label: string) => void
   hideProjectTooltip: () => void
   openBusinessLineModal: () => void
-  openSettingsPage: () => void
+  openSettings: () => void
 }>()
 </script>
 
@@ -80,7 +80,7 @@ const props = defineProps<{
         <button
           type="button"
           class="flex h-9 w-full items-center justify-center rounded-lg border border-transparent px-2 text-[11px] font-semibold text-sidebar-foreground/70 transition hover:bg-sidebar-accent hover:text-sidebar-foreground"
-          @click="props.openSettingsPage"
+          @click="props.openSettings"
         >
           设置
         </button>
@@ -131,6 +131,9 @@ const props = defineProps<{
       </div>
 
       <nav class="flex-1 overflow-y-auto overflow-x-hidden p-2">
+        <p v-if="!props.sidebarCollapsed" class="mb-2 px-2 text-[10px] font-semibold tracking-[0.08em] text-sidebar-foreground/55">
+          项目导航
+        </p>
         <div class="space-y-1">
           <RouterLink
             v-for="item in props.menuItems"

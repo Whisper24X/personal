@@ -1,33 +1,37 @@
 import type { AppRouteRecord } from '@/types/router/route'
+import { SETTINGS_QUERY_KEY } from '@/types/common/settings'
+
+const toDashboardSettings = (section: string) => ({
+  path: '/dashboard',
+  query: {
+    [SETTINGS_QUERY_KEY]: section,
+  },
+})
 
 export const systemRoutes: AppRouteRecord[] = [
   {
     path: '/',
-    redirect: '/home',
+    redirect: '/dashboard',
     meta: {
-      title: '首页',
+      title: '仪表盘',
       requiresAuth: true,
-      permissions: ['home:view'],
+      permissions: ['dashboard:view'],
     },
   },
   {
     path: '/home',
-    name: 'home',
-    component: () => import('@/views/home/index.vue'),
+    redirect: '/dashboard',
     meta: {
       title: '首页',
       requiresAuth: true,
-      permissions: ['home:view'],
     },
   },
   {
     path: '/about',
-    name: 'about',
-    component: () => import('@/views/about/index.vue'),
+    redirect: toDashboardSettings('about'),
     meta: {
       title: '关于',
       requiresAuth: true,
-      permissions: ['about:view'],
     },
   },
   {
@@ -92,22 +96,18 @@ export const systemRoutes: AppRouteRecord[] = [
   },
   {
     path: '/business-lines',
-    name: 'business-lines',
-    component: () => import('@/views/business-lines/index.vue'),
+    redirect: toDashboardSettings('business-lines'),
     meta: {
       title: '业务线',
       requiresAuth: true,
-      permissions: ['business-lines:view'],
     },
   },
   {
     path: '/projects',
-    name: 'projects',
-    component: () => import('@/views/projects/index.vue'),
+    redirect: toDashboardSettings('projects'),
     meta: {
       title: '项目列表',
       requiresAuth: true,
-      permissions: ['projects:view'],
     },
   },
   {
@@ -142,22 +142,18 @@ export const systemRoutes: AppRouteRecord[] = [
   },
   {
     path: '/users',
-    name: 'users',
-    component: () => import('@/views/users/index.vue'),
+    redirect: toDashboardSettings('users'),
     meta: {
       title: '用户管理',
       requiresAuth: true,
-      permissions: ['users:view'],
     },
   },
   {
     path: '/settings',
-    name: 'settings',
-    component: () => import('@/views/settings/index.vue'),
+    redirect: toDashboardSettings('profile'),
     meta: {
       title: '设置',
       requiresAuth: true,
-      permissions: ['settings:view'],
     },
   },
 ]
