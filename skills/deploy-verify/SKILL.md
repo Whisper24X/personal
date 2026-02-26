@@ -1,6 +1,6 @@
 ---
 name: deploy-verify
-description: 验证部署结果。检查服务状态、验证服务可访问性、生成部署文档。无状态验证工具，由 Deploy Action 循环调用。触发场景：(1) 部署后服务验证 (2) 服务可访问性检查 (3) 生成部署报告
+description: 验证部署结果：检查服务状态与可访问性（curl 验证），生成 deploy.md 和 verifyResult.md（JSON 格式）。当部署执行完成后需要验证服务可用性、生成部署报告时使用。
 ---
 
 # VerifyDeployment - 验证部署
@@ -30,30 +30,9 @@ description: 验证部署结果。检查服务状态、验证服务可访问性�
    - 执行 `docker ps --filter "name=^${SANDBOX_NAME}$" --format "{{.Ports}}"` 确认容器实际映射端口
    - 按固定路径构造地址：`http://localhost:${SANDBOX_PORT}/`、`/api/`、`/shadow/`、`/app/`
 
-> **严格禁止**：读取任何 nginx 配置文件（`nginx.conf`、`/etc/nginx/` 等）、执行 `nginx -T`、使用 nginx `server_name` 中的域名、执行 `hostname` 或任何 OS 网络发现命令。访问地址的主机名**必须**是 `localhost`。
+> 访问地址来源规则与禁止事项见 [deploy-execute/SKILL.md](../deploy-execute/SKILL.md)「提取访问地址」章节。
 
-**Docker 状态检查**（优先级最高）：
-
-1. **Docker 服务状态**
-
-   ```bash
-   systemctl status docker
-   ```
-
-   状态判定：
-   - `active (running)` → ✅ Docker 正常
-   - `inactive (dead)` → ❌ Docker 未启动
-   - `failed` → ❌ Docker 启动失败
-
-2. **Docker 错误日志**（如果 Docker 启动失败）
-
-   ```bash
-   journalctl -u docker -n 50 --no-pager
-   ```
-
-   关键错误识别：
-   - `address already in use` → 端口被占用
-   - `Cannot connect to the Docker daemon` → Docker 服务未运行
+**Docker 状态**：从 `deployResult.md` 或 `deployLog.md` 读取 Docker 状态结论；若文件不存在，执行 `systemctl status docker` 并记录结果（`active(running)` / `inactive` / `failed`）。Docker 失败时执行 `journalctl -u docker -n 50 --no-pager` 获取错误日志。
 
 **服务识别**：
 
@@ -102,78 +81,7 @@ curl -s -o /dev/null -w "%{http_code}" http://[地址]:[端口]
 
 ### 3. 生成部署文档
 
-在 `docs/deploy/deploy.md` 中生成完整的部署文档，内容包括：
-
-```markdown
-# 部署信息
-
-部署时间: [当前时间]
-环境: Sandbox
-
-## Docker 状态
-
-- Docker 服务: [✅ 运行中 / ❌ 启动失败 / ⚠️ 未启动]
-- 检查时间: [时间]
-
-[如果 Docker 启动失败，添加错误日志和修复命令]
-
-## 访问地址
-
-- [服务名称]: [访问地址] [状态标注]
-- [服务名称]: [访问地址] [状态标注]
-
-## 服务状态
-
-### Docker ❌ 启动失败
-
-错误日志：
-```
-
-[最后 20-30 行 journalctl 日志]
-
-````
-
-修复命令：
-```bash
-# 启动 Docker 服务
-sudo systemctl start docker
-
-# 验证 Docker 状态
-sudo systemctl status docker
-
-# 重新执行部署
-make sandbox
-````
-
-### [服务名称] ✅ 运行正常
-
-- 访问地址: [地址]
-- 状态码: 200 OK
-- 响应时间: [时间]
-
-### [服务名称] ❌ 启动失败
-
-- 预期地址: [地址]
-- 错误信息: [错误描述]
-
-错误日志：
-
-```
-
-[最后 20-30 行错误日志内容]
-
-```
-
-## 部署摘要
-
-| 指标     | 结果        |
-| -------- | ----------- |
-| 总服务数 | [数量]      |
-| 正常运行 | [数量]      |
-| 启动失败 | [数量]      |
-| 部署状态 | [成功/失败] |
-
-````
+在 `docs/deploy/deploy.md` 中生成完整的部署文档，文档格式见 [templates.md](templates.md)。
 
 **文档要求**：
 
@@ -186,77 +94,9 @@ make sandbox
 
 ## 结果写入
 
-将结果以 JSON 格式写入 `docs/deploy/verifyResult.md`：
+将结果以 JSON 格式写入 `docs/deploy/verifyResult.md`，包含 `result`、`reason`、`details` 字段（Docker 失败时增加 `fix_commands` 字段，服务失败时增加 `error_logs` 字段）。
 
-### 示例 - 已完成（所有服务正常运行）
-
-```json
-{
-  "result": "已完成",
-  "reason": "deploy.md 已创建，所有服务均正常运行且可访问",
-  "details": {
-    "统一入口": "✅ 200 OK",
-    "后端API": "✅ 200 OK",
-    "管理后台": "✅ 200 OK"
-  }
-}
-````
-
-### 示例 - 未完成（服务返回错误状态码）
-
-```json
-{
-  "result": "未完成",
-  "reason": "后端API返回502错误，服务未正常运行",
-  "details": {
-    "统一入口": "✅ 200 OK",
-    "后端API": "❌ 502 Bad Gateway - 服务未正常启动",
-    "管理后台": "✅ 200 OK"
-  }
-}
-```
-
-### 示例 - 未完成（Docker 启动失败）
-
-```json
-{
-  "result": "未完成",
-  "reason": "存在启动失败的服务：Docker，Docker 服务未运行",
-  "details": {
-    "Docker": "❌ 启动失败 - Cannot connect to the Docker daemon"
-  },
-  "error_logs": {
-    "Docker": "[journalctl -u docker 输出的最后 20-30 行]"
-  },
-  "fix_commands": "sudo systemctl start docker\nsudo systemctl status docker"
-}
-```
-
-### 示例 - 未完成（存在启动失败的服务）
-
-```json
-{
-  "result": "未完成",
-  "reason": "存在启动失败的服务：后端API",
-  "details": {
-    "统一入口": "✅ 200 OK",
-    "后端API": "❌ 启动失败",
-    "管理后台": "✅ 200 OK"
-  },
-  "error_logs": {
-    "后端API": "Error: Cannot find module 'xxx'\n    at Function.Module._resolveFilename...\n[deploy.md 中记录的完整错误日志]"
-  }
-}
-```
-
-### 示例 - 未找到
-
-```json
-{
-  "result": "未找到",
-  "reason": "deploy.md 文件不存在，部署可能未执行"
-}
-```
+JSON 格式示例见 [templates.md](templates.md)。
 
 ## 完成判定标准
 
@@ -274,15 +114,3 @@ make sandbox
 3. 存在"未启动"的服务
 4. 任何"运行中"的服务返回非 2xx 状态码（如 500、502、503、504 等）
 5. 任何服务无法访问（Connection refused/timeout）
-
-## 重要提醒
-
-1. **必须写入两个文件**：`docs/deploy/deploy.md`（部署文档）和 `docs/deploy/verifyResult.md`（验证结果）
-2. **结果文件格式**：JSON 格式，包含 result、reason、details 字段（Docker 失败时增加 fix_commands 字段）
-3. **确保目录存在**：如果 `docs/deploy/` 目录不存在，需要先创建
-4. **Docker 状态优先级最高**：Docker 启动失败会导致所有容器化服务无法启动，必须优先检查
-5. **502 = 失败**：502 Bad Gateway 是后端服务未正常启动的典型表现，绝对不能返回"已完成"
-6. **错误日志必须记录**：启动失败的服务必须在 deploy.md 和 verifyResult.md 中都包含错误日志
-7. **只有 "目录不存在" 的服务可以忽略**：其他所有异常状态都必须导致整体结果为"未完成"
-8. **Docker 错误提供修复命令**：Docker 启动失败时，在 verifyResult.md 中提供 `sudo systemctl start docker` 等修复命令
-9. **访问地址来源唯一**：访问地址只能来自 `deployLog.md` 或 `sandbox/.env` + `docker ps`，主机名必须是 `localhost`，禁止读取 nginx 配置文件或使用 `server_name` 中的域名

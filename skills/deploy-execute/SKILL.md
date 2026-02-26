@@ -1,6 +1,6 @@
 ---
 name: deploy-execute
-description: 执行部署命令并监控部署进度。执行 make sandbox 启动服务、监控日志输出、等待服务就绪。无状态执行工具，由 Deploy Action 循环调用。触发场景：(1) 执行 sandbox 部署 (2) 监控服务启动 (3) 记录部署日志
+description: 执行部署命令并监控进度：停止旧服务、运行 make sandbox（或等效命令）、等待服务就绪，输出日志到 deployLog.md 和结果到 deployResult.md。当需要执行 sandbox 部署、监控服务启动或记录部署日志时使用。
 ---
 
 # ExecuteDeployment - 执行部署
@@ -71,35 +71,9 @@ description: 执行部署命令并监控部署进度。执行 make sandbox 启�
 
 ### 3. 输出部署日志
 
-**日志文件** `docs/deploy/deployLog.md` 内容包括：
+**日志文件** `docs/deploy/deployLog.md` 的完整格式见 [templates.md](templates.md)。
 
-```markdown
-# 部署执行日志
-
-部署时间: [当前时间]
-执行命令: [实际执行的命令]
-执行耗时: [总耗时]
-
-## 执行过程
-
-### 停止现有服务
-
-[停止命令的输出]
-
-### 启动服务
-
-[启动命令的输出]
-
-## 服务启动状态
-
-| 服务名称 | 状态   | 访问地址 | 启动耗时 |
-| -------- | ------ | -------- | -------- |
-| [服务1]  | [状态] | [地址]   | [耗时]   |
-
-## 错误记录（如有）
-
-[错误日志内容]
-```
+日志内容须包含：部署时间、执行命令、执行耗时、停止服务输出、启动服务输出、服务启动状态表（服务名/状态/访问地址/耗时）、错误记录（如有）。
 
 **提取访问地址（严格规则）**：
 
@@ -111,10 +85,10 @@ description: 执行部署命令并监控部署进度。执行 make sandbox 启�
 
 ```
 访问地址:
-  统一入口:    http://localhost:${SANDBOX_PORT}/
-  后端 API:    http://localhost:${SANDBOX_PORT}/api/
-  管理后台:    http://localhost:${SANDBOX_PORT}/shadow/
-  移动端 H5:   http://localhost:${SANDBOX_PORT}/app/
+  统一入口:    http://localhost:${SANDBOX_PORT}/ 或 http://10.8.8.152:${SANDBOX_PORT}/
+  后端 API:    http://localhost:${SANDBOX_PORT}/api/ 或 http://10.8.8.152:${SANDBOX_PORT}/api/
+  管理后台:    http://localhost:${SANDBOX_PORT}/shadow/ 或 http://10.8.8.152:${SANDBOX_PORT}/shadow/
+  移动端 H5:   http://localhost:${SANDBOX_PORT}/app/ 或 http://10.8.8.152:${SANDBOX_PORT}/app/
 ```
 
 直接从这段输出中提取 `http://localhost:[端口]/[路径]` 格式的地址。
@@ -123,10 +97,10 @@ description: 执行部署命令并监控部署进度。执行 make sandbox 启�
 
 如果命令输出中没有打印访问地址（如容器已在运行时输出跳过了 info），读取 `sandbox/.env` 获取 `SANDBOX_PORT`（默认 `8080`），按以下固定格式构造：
 
-- 统一入口：`http://localhost:${SANDBOX_PORT}/`
-- 后端 API：`http://localhost:${SANDBOX_PORT}/api/`
-- 管理后台：`http://localhost:${SANDBOX_PORT}/shadow/`
-- 移动端 H5：`http://localhost:${SANDBOX_PORT}/app/`
+- 统一入口：`http://localhost:${SANDBOX_PORT}/ 或 http://10.8.8.152:${SANDBOX_PORT}/`
+- 后端 API：`http://localhost:${SANDBOX_PORT}/api/ 或 http://10.8.8.152:${SANDBOX_PORT}/`
+- 管理后台：`http://localhost:${SANDBOX_PORT}/shadow/ 或 http://10.8.8.152:${SANDBOX_PORT}/`
+- 移动端 H5：`http://localhost:${SANDBOX_PORT}/app/ 或 http://10.8.8.152:${SANDBOX_PORT}/`
 
 **严格禁止**：
 
@@ -200,16 +174,3 @@ Docker 启动失败：Docker 服务未运行或配置错误。请执行 `sudo sy
    # 查看失败容器的日志
    docker logs <container_id>
    ```
-
-## 重要提醒
-
-1. **必须写入两个文件**：`docs/deploy/deployLog.md`（日志）和 `docs/deploy/deployResult.md`（结果）
-2. **结果文件格式固定**：只有两行，第一行是状态，第二行是原因（Docker 配置问题时可多行提供修复命令）
-3. **确保目录存在**：如果 `docs/deploy/` 目录不存在，需要先创建
-4. **遇到部署问题时**：必须分析错误原因并尝试解决，不要直接放弃
-5. **服务地址准确**：确保提取的地址信息完整准确
-6. **失败服务记录错误日志**：启动失败的服务必须在 deployLog.md 中记录最后 20-30 行关键日志
-7. **Docker 错误特别处理**：
-   - Docker 服务未运行：尝试 `sudo systemctl start docker` 启动后重试
-   - 容器启动失败：记录容器日志，分析失败原因
-8. **不要盲目重试**：Docker 配置错误需要手动修复，自动重试只会浪费时间

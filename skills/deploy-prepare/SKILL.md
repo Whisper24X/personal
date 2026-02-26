@@ -1,6 +1,6 @@
 ---
 name: deploy-prepare
-description: 准备部署环境。检查代码完整性、验证构建配置、准备部署环境。无状态验证工具，由 Deploy Action 调用。触发场景：(1) 部署前环境检查 (2) 构建配置验证 (3) 代码完整性校验
+description: 部署前环境准备：检查 Docker 环境、代码完整性、构建配置，输出结果到 docs/deploy/prepareResult.md。当需要执行部署前检查、验证构建配置或校验代码完整性时使用。
 ---
 
 # PrepareDeployment - 准备部署
@@ -147,13 +147,3 @@ newgrp docker
 检查失败
 无法读取 package.json 文件，项目结构不完整
 ```
-
-## 重要提醒
-
-1. **必须写入文件**：结果必须写入 `docs/deploy/prepareResult.md`，不是输出到终端
-2. **文件格式固定**：只有两行，第一行是状态，第二行是原因（Docker 配置问题时可多行提供修复命令）
-3. **确保目录存在**：如果 `docs/deploy/` 目录不存在，需要先创建
-4. **不执行部署**：此 Skill 仅做检查和准备，不执行实际部署命令（`make sandbox`）
-5. **构建失败不阻塞**：构建失败时记录错误但不终止流程，由 Deploy Action 决定是否继续
-6. **Docker 配置问题优先检查**：Docker 环境问题会导致后续所有步骤失败，必须优先检查和修复
-7. **必须验证 docker info**：仅检查 systemctl 不足，`make sandbox-stop` 会调用 sandbox 脚本中的 `docker info`，当前用户必须能执行
