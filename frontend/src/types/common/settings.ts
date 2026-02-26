@@ -7,7 +7,7 @@ export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]
 export const SETTINGS_SECTION_LABELS: Record<SettingsSection, string> = {
   profile: '个人设置',
   about: '关于',
-  'business-lines': '业务线管理',
+  'business-lines': '业务线',
   projects: '项目管理',
   users: '用户管理',
 }

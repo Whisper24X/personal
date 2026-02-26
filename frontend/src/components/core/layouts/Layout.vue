@@ -49,7 +49,7 @@ const {
 </script>
 
 <template>
-  <div class="relative min-h-screen overflow-hidden bg-sidebar text-foreground">
+  <div class="relative h-[var(--app-viewport-height)] overflow-hidden bg-sidebar text-foreground">
     <a
       class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring"
       href="#main-content"
@@ -62,7 +62,7 @@ const {
       <div class="absolute -bottom-24 right-0 h-96 w-96 rounded-full bg-secondary/14 blur-3xl" />
     </div>
 
-    <div class="relative z-10 flex min-h-screen">
+    <div class="relative z-10 flex h-full min-h-0">
       <div
         v-if="mobileNavOpen"
         aria-hidden="true"
@@ -89,9 +89,9 @@ const {
         :open-settings="openSettings"
       />
 
-      <div class="flex min-h-screen min-w-0 flex-1 px-1.5 pb-0 pt-0 xl:px-2 xl:pb-0 xl:pt-0">
+      <div class="flex h-full min-h-0 min-w-0 flex-1 px-1.5 pb-0 pt-0 xl:px-2 xl:pb-0 xl:pt-0">
         <div
-          class="app-surface flex min-h-[calc(100vh-1rem)] flex-1 flex-col overflow-hidden xl:min-h-[calc(100vh-1.5rem)]"
+          class="app-surface flex h-full min-h-0 flex-1 flex-col overflow-hidden"
         >
           <HeaderBar
             :mobile-nav-open="mobileNavOpen"
@@ -100,7 +100,7 @@ const {
             :toggle-mobile-nav="toggleMobileNav"
           />
 
-          <main id="main-content" class="flex-1 overflow-auto">
+          <main id="main-content" class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
             <div class="container py-6 md:py-8">
               <slot />
             </div>

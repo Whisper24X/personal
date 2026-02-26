@@ -30,7 +30,7 @@ const props = defineProps<{
 <template>
   <aside
     id="workspace-nav"
-    class="fixed inset-y-0 left-0 z-50 flex border-r border-sidebar-border bg-sidebar/95 backdrop-blur transition-[width,transform] duration-200 2xl:static 2xl:translate-x-0"
+    class="fixed inset-y-0 left-0 z-50 flex border-r border-sidebar-border bg-sidebar/95 backdrop-blur transition-[width,transform] duration-200 2xl:static 2xl:h-full 2xl:translate-x-0"
     :class="[props.mobileNavOpen ? 'translate-x-0' : '-translate-x-full', props.sidebarCollapsed ? 'w-[9.25rem]' : 'w-[19rem]']"
   >
     <div class="relative z-20 flex h-full min-h-0 w-[5.25rem] flex-col items-center border-r border-sidebar-border px-1">

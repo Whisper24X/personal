@@ -9,6 +9,13 @@ import {
 import { usersApi } from '@/api/users'
 import type { User } from '@/types/api/users'
 import { fetchAllPages } from '@/utils/pagination'
+import BusinessLineFormModal from '@/views/business-lines/components/BusinessLineFormModal.vue'
+
+defineOptions({
+  name: 'BusinessLinesView',
+})
+
+type BusinessLinesTab = 'lines' | 'members'
 
 const loadingLines = ref(false)
 const loadingMembers = ref(false)
@@ -23,12 +30,13 @@ const lines = ref<BusinessLine[]>([])
 const members = ref<BusinessLineMember[]>([])
 const users = ref<User[]>([])
 const selectedLineId = ref('')
-const editingLineId = ref('')
+const activeTab = ref<BusinessLinesTab>('lines')
 
-const lineForm = reactive({
-  name: '',
-  description: '',
-})
+const lineFormModalOpen = ref(false)
+const lineFormMode = ref<'create' | 'edit'>('create')
+const lineFormInitialName = ref('')
+const lineFormInitialDescription = ref('')
+const editingLineId = ref('')
 
 const memberForm = reactive<{
   userId: string
@@ -48,13 +56,16 @@ const userMap = computed(() => {
   return new Map(users.value.map((user) => [user.id, user]))
 })
 
-const isEditingLine = computed(() => Boolean(editingLineId.value))
-
 const roleOptions: Array<{ label: string; value: BusinessLineMemberRole }> = [
   { label: 'owner', value: 'owner' },
   { label: 'admin', value: 'admin' },
   { label: 'member', value: 'member' },
 ]
+
+const tabClass = (key: BusinessLinesTab) =>
+  key === activeTab.value
+    ? 'bg-background text-foreground shadow-sm'
+    : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'
 
 const formatDate = (value?: string) => {
   if (!value) {
@@ -84,12 +95,6 @@ const displayUserLabel = (userId: string) => {
   return user.nickname?.trim() || user.username
 }
 
-const resetLineForm = () => {
-  editingLineId.value = ''
-  lineForm.name = ''
-  lineForm.description = ''
-}
-
 const normalizeOptionalText = (value: string) => {
   const trimmedValue = value.trim()
   return trimmedValue.length > 0 ? trimmedValue : undefined
@@ -107,11 +112,11 @@ const loadUsers = async () => {
   try {
     users.value = await fetchAllPages((page, limit) => usersApi.list({ page, limit }))
   } catch (error) {
-    void error
+    errorMessage.value = error instanceof Error ? error.message : '加载用户失败'
   }
 }
 
-const loadLines = async () => {
+const loadLines = async (preferredSelectedId?: string) => {
   loadingLines.value = true
   errorMessage.value = ''
 
@@ -120,6 +125,11 @@ const loadLines = async () => {
       businessLinesApi.list({ page, limit }),
     )
     lines.value = response
+
+    if (preferredSelectedId && response.some((line) => line.id === preferredSelectedId)) {
+      selectedLineId.value = preferredSelectedId
+      return
+    }
 
     const hasSelected = response.some((line) => line.id === selectedLineId.value)
     if (!hasSelected) {
@@ -152,40 +162,54 @@ const loadMembers = async () => {
   }
 }
 
-const submitLine = async () => {
-  if (!lineForm.name.trim()) {
-    errorMessage.value = '业务线名称不能为空'
-    return
+const ensureMembersContextLoaded = async () => {
+  if (users.value.length === 0) {
+    await loadUsers()
   }
 
+  await loadMembers()
+}
+
+const openCreateLineModal = () => {
+  lineFormMode.value = 'create'
+  editingLineId.value = ''
+  lineFormInitialName.value = ''
+  lineFormInitialDescription.value = ''
+  lineFormModalOpen.value = true
+}
+
+const openEditLineModal = (line: BusinessLine) => {
+  lineFormMode.value = 'edit'
+  editingLineId.value = line.id
+  lineFormInitialName.value = line.name
+  lineFormInitialDescription.value = line.description ?? ''
+  lineFormModalOpen.value = true
+}
+
+const submitLineForm = async (payload: { name: string; description: string }) => {
   savingLine.value = true
   errorMessage.value = ''
 
-  const payload = {
-    name: lineForm.name.trim(),
-    description: normalizeOptionalText(lineForm.description),
+  const requestPayload = {
+    name: payload.name.trim(),
+    description: normalizeOptionalText(payload.description),
   }
 
   try {
-    if (isEditingLine.value) {
-      await businessLinesApi.update(editingLineId.value, payload)
+    if (lineFormMode.value === 'edit' && editingLineId.value) {
+      await businessLinesApi.update(editingLineId.value, requestPayload)
+      await loadLines(editingLineId.value)
     } else {
-      await businessLinesApi.create(payload)
+      const createdLine = await businessLinesApi.create(requestPayload)
+      await loadLines(createdLine.id)
     }
 
-    resetLineForm()
-    await loadLines()
+    lineFormModalOpen.value = false
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '保存业务线失败'
   } finally {
     savingLine.value = false
   }
-}
-
-const startEditLine = (line: BusinessLine) => {
-  editingLineId.value = line.id
-  lineForm.name = line.name
-  lineForm.description = line.description ?? ''
 }
 
 const removeLine = async (line: BusinessLine) => {
@@ -198,16 +222,24 @@ const removeLine = async (line: BusinessLine) => {
 
   try {
     await businessLinesApi.remove(line.id)
+
     if (selectedLineId.value === line.id) {
       selectedLineId.value = ''
       members.value = []
+      memberRoleDrafts.value = {}
     }
+
     await loadLines()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '删除业务线失败'
   } finally {
     removingLineId.value = ''
   }
+}
+
+const openMembersTabForLine = (line: BusinessLine) => {
+  selectedLineId.value = line.id
+  activeTab.value = 'members'
 }
 
 const addMember = async () => {
@@ -267,14 +299,29 @@ const removeMember = async (member: BusinessLineMember) => {
 }
 
 watch(
+  () => activeTab.value,
+  (tab) => {
+    if (tab !== 'members') {
+      return
+    }
+
+    void ensureMembersContextLoaded()
+  },
+)
+
+watch(
   () => selectedLineId.value,
   () => {
+    if (activeTab.value !== 'members') {
+      return
+    }
+
     void loadMembers()
   },
 )
 
 onMounted(() => {
-  void Promise.all([loadLines(), loadUsers()])
+  void loadLines()
 })
 </script>
 
@@ -282,105 +329,154 @@ onMounted(() => {
   <div class="space-y-6 fade-up">
     <section class="space-y-2">
       <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">组织管理</p>
-      <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">业务线管理</h1>
+      <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">业务线</h1>
       <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
         对接业务线 CRUD 与成员管理接口，支持角色变更和移除。
       </p>
       <p v-if="errorMessage" class="text-sm text-destructive">{{ errorMessage }}</p>
     </section>
 
-    <section class="grid gap-4 xl:grid-cols-2">
-      <article class="panel-card p-5">
-        <div class="mb-4 flex items-center justify-between">
-          <p class="text-sm font-semibold">{{ isEditingLine ? '编辑业务线' : '新增业务线' }}</p>
+    <section class="panel-card flex flex-wrap gap-2 p-2">
+      <button
+        class="rounded-xl px-4 py-2 text-sm font-semibold transition"
+        :class="tabClass('lines')"
+        type="button"
+        @click="activeTab = 'lines'"
+      >
+        业务线列表
+      </button>
+      <button
+        class="rounded-xl px-4 py-2 text-sm font-semibold transition"
+        :class="tabClass('members')"
+        type="button"
+        @click="activeTab = 'members'"
+      >
+        业务线成员
+      </button>
+    </section>
+
+    <section v-if="activeTab === 'lines'" class="panel-card p-5">
+      <div class="mb-4 flex items-center justify-between gap-2">
+        <div>
+          <p class="text-sm font-semibold">业务线列表</p>
+          <p class="text-xs text-muted-foreground">管理业务线基础信息，并可跳转成员管理。</p>
+        </div>
+        <div class="flex items-center gap-2">
           <button
             class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
             type="button"
-            @click="loadLines"
+            @click="loadLines()"
+          >
+            刷新
+          </button>
+          <button
+            class="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:shadow-md"
+            type="button"
+            @click="openCreateLineModal"
+          >
+            创建业务线
+          </button>
+        </div>
+      </div>
+
+      <div class="space-y-2">
+        <div v-if="loadingLines" class="text-sm text-muted-foreground">加载中...</div>
+
+        <button
+          v-for="line in lines"
+          :key="line.id"
+          class="w-full rounded-xl border px-4 py-3 text-left transition"
+          :class="line.id === selectedLineId ? 'border-primary bg-primary/5' : 'border-border bg-background/70 hover:bg-background'"
+          type="button"
+          @click="selectedLineId = line.id"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold">{{ line.name }}</p>
+              <p class="mt-1 text-xs text-muted-foreground">{{ line.description || '暂无描述' }}</p>
+              <p class="mt-1 text-[11px] text-muted-foreground">更新时间：{{ formatDate(line.updatedAt) }}</p>
+            </div>
+            <div class="flex gap-2">
+              <button
+                class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground"
+                type="button"
+                @click.stop="openEditLineModal(line)"
+              >
+                编辑
+              </button>
+              <button
+                class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground"
+                type="button"
+                @click.stop="openMembersTabForLine(line)"
+              >
+                成员
+              </button>
+              <button
+                class="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="removingLineId === line.id"
+                type="button"
+                @click.stop="removeLine(line)"
+              >
+                {{ removingLineId === line.id ? '删除中...' : '删除' }}
+              </button>
+            </div>
+          </div>
+        </button>
+
+        <div
+          v-if="!loadingLines && lines.length === 0"
+          class="rounded-xl border border-dashed border-border bg-background/40 px-4 py-4 text-sm text-muted-foreground"
+        >
+          <p>暂无业务线，请先创建。</p>
+          <button
+            class="mt-3 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+            type="button"
+            @click="openCreateLineModal"
+          >
+            创建业务线
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section v-else class="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
+      <article class="panel-card p-4">
+        <div class="mb-3 flex items-center justify-between">
+          <p class="text-sm font-semibold">业务线</p>
+          <button
+            class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
+            type="button"
+            @click="loadLines()"
           >
             刷新
           </button>
         </div>
 
-        <form class="space-y-3" @submit.prevent="submitLine">
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">名称</span>
-            <input
-              v-model="lineForm.name"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              placeholder="例如：Retail"
-              type="text"
-            />
-          </label>
-
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">描述（可选）</span>
-            <input
-              v-model="lineForm.description"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              placeholder="例如：零售业务线"
-              type="text"
-            />
-          </label>
-
-          <div class="flex justify-end gap-2">
-            <button
-              v-if="isEditingLine"
-              class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
-              type="button"
-              @click="resetLineForm"
-            >
-              取消编辑
-            </button>
-            <button
-              class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="savingLine"
-              type="submit"
-            >
-              {{ savingLine ? '保存中...' : isEditingLine ? '保存修改' : '创建业务线' }}
-            </button>
-          </div>
-        </form>
-
-        <div class="mt-5 space-y-2">
-          <div v-if="loadingLines" class="text-sm text-muted-foreground">加载中...</div>
-
+        <div class="space-y-2">
           <button
             v-for="line in lines"
             :key="line.id"
-            class="w-full rounded-xl border px-4 py-3 text-left transition"
+            class="w-full rounded-xl border px-3 py-3 text-left transition"
             :class="line.id === selectedLineId ? 'border-primary bg-primary/5' : 'border-border bg-background/70 hover:bg-background'"
             type="button"
             @click="selectedLineId = line.id"
           >
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <p class="text-sm font-semibold">{{ line.name }}</p>
-                <p class="mt-1 text-xs text-muted-foreground">{{ line.description || '暂无描述' }}</p>
-                <p class="mt-1 text-[11px] text-muted-foreground">更新时间：{{ formatDate(line.updatedAt) }}</p>
-              </div>
-              <div class="flex gap-2">
-                <button
-                  class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground"
-                  type="button"
-                  @click.stop="startEditLine(line)"
-                >
-                  编辑
-                </button>
-                <button
-                  class="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-60"
-                  :disabled="removingLineId === line.id"
-                  type="button"
-                  @click.stop="removeLine(line)"
-                >
-                  {{ removingLineId === line.id ? '删除中...' : '删除' }}
-                </button>
-              </div>
-            </div>
+            <p class="text-sm font-semibold">{{ line.name }}</p>
+            <p class="mt-1 text-xs text-muted-foreground">{{ line.description || '暂无描述' }}</p>
           </button>
 
-          <div v-if="!loadingLines && lines.length === 0" class="rounded-xl border border-dashed border-border bg-background/40 px-4 py-4 text-sm text-muted-foreground">
-            暂无业务线，请先创建。
+          <div
+            v-if="!loadingLines && lines.length === 0"
+            class="rounded-xl border border-dashed border-border bg-background/40 px-3 py-4 text-sm text-muted-foreground"
+          >
+            <p>暂无业务线，请先创建。</p>
+            <button
+              class="mt-3 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+              type="button"
+              @click="openCreateLineModal"
+            >
+              创建业务线
+            </button>
           </div>
         </div>
       </article>
@@ -493,10 +589,23 @@ onMounted(() => {
           </div>
         </template>
 
-        <div v-else class="rounded-xl border border-dashed border-border bg-background/40 px-4 py-6 text-sm text-muted-foreground">
-          请先在左侧选择一个业务线后再管理成员。
+        <div
+          v-else
+          class="rounded-xl border border-dashed border-border bg-background/40 px-4 py-6 text-sm text-muted-foreground"
+        >
+          请先创建业务线后再管理成员。
         </div>
       </article>
     </section>
+
+    <BusinessLineFormModal
+      :open="lineFormModalOpen"
+      :mode="lineFormMode"
+      :submitting="savingLine"
+      :initial-name="lineFormInitialName"
+      :initial-description="lineFormInitialDescription"
+      @update:open="lineFormModalOpen = $event"
+      @submit="submitLineForm"
+    />
   </div>
 </template>
