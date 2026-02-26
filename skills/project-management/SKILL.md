@@ -1,6 +1,6 @@
 ---
 name: project-management
-description: 基于 PRD 和 Design 文档进行项目管理的完整流程。执行任务拆解、规范验证和故事点估算。触发场景：(1) PRD 和 Design 都已完成 (2) 需要生成 OpenSpec 变更提案 (3) 需要任务拆解和故事点估算 (4) 用户提及项目管理、任务拆解或故事点评估
+description: 基于 PRD 和 Design 文档进行项目管理的完整流程。执行任务拆解、规范验证、故事点估算和 Lint 约束任务生成。触发场景：(1) PRD 和 Design 都已完成 (2) 需要生成 OpenSpec 变更提案 (3) 需要任务拆解和故事点估算 (4) 用户提及项目管理、任务拆解或故事点评估
 ---
 
 # 项目管理完整流程
@@ -9,7 +9,7 @@ description: 基于 PRD 和 Design 文档进行项目管理的完整流程。执
 
 ## 工作流程概览
 
-本技能按顺序执行 6 个步骤：
+本技能按顺序执行 7 个步骤：
 
 ```mermaid
 flowchart TD
@@ -20,6 +20,7 @@ flowchart TD
     step3[Step 3: 验证提案格式]
     step4[Step 4: 验证提案内容]
     step5[Step 5: 估算故事点]
+    step5_5[Step 5.5: 生成 Lint 约束任务]
     step6[Step 6: 验证故事点估算]
 
     start --> step1
@@ -27,7 +28,8 @@ flowchart TD
     step2 --> step3
     step3 --> step4
     step4 --> step5
-    step5 --> step6
+    step5 --> step5_5
+    step5_5 --> step6
     step6 --> end_node
 ```
 
@@ -245,6 +247,7 @@ openspec/changes/add-user-management/
 6. **确保完整性**：
    - 所有任务都有故事点评估
    - 不要遗漏任何任务
+   - **跳过**「Lint 约束」章节中的任务，不为其填写故事点
 
 **注意事项**：
 
@@ -296,9 +299,51 @@ _评估说明：UI模块（L3）= 3，状态管理模块（L2）= 2，前后端�
 
 ---
 
+### Step 5.5: 生成 Lint 约束任务
+
+**目标**：根据 tasks.md 中任务涉及的端（ainative-app / ainative-shadow / ainative-backend），在任务清单末尾追加对应的 lint 约束任务。**核心原则：如果没有修改该端代码，则不生成该端的 lint 任务。** lint 任务不填故事点。
+
+**执行流程**：
+
+1. **读取并分析**：
+   - 读取 `openspec/changes/{变更名称}/tasks.md`
+   - 读取 [references/lint-task-rules.md](references/lint-task-rules.md)（端识别规则、lint 命令、任务格式）
+
+2. **分析任务涉及的端**：扫描 tasks.md 中所有任务描述，**仅当任务涉及修改该端可被 lint 检查的代码时**，才判定涉及该端：
+   - **ainative-app**：涉及新增/修改 app 下 .vue、.ts、.js 等代码
+   - **ainative-shadow**：涉及新增/修改 shadow 下路由、视图、组件等代码
+   - **ainative-backend**：涉及新增/修改 Go 代码（internal/、proto/、\*.go）；**仅 init.sql 或纯 SQL 不生成 backend lint**
+
+3. **追加 Lint 任务**：
+   - 若 tasks.md 已存在「Lint 约束」章节，检查是否已覆盖所有涉及的端；若已覆盖则跳过
+   - 在 tasks.md 末尾新增「## N. Lint 约束」章节（N 为当前最大章节号 + 1）
+   - 仅追加**涉及的端**对应的任务，格式：`- [ ] N.x Lint 约束：{端名} 执行 \`{lint 命令}\` 通过`
+   - **不填故事点**，不添加评估说明
+
+4. **Lint 命令**（从 workspace 根目录执行）：
+   - ainative-app：`cd ainative-app && pnpm lint`
+   - ainative-shadow：`cd ainative-shadow && pnpm lint`
+   - ainative-backend：`cd ainative-backend && make lint`
+
+**验收标准**：
+
+- 涉及的端均有对应的 lint 任务
+- lint 任务无故事点、无评估说明
+- 任务格式与现有任务一致（`- [ ]` 未完成标记）
+
+**输出示例**（仅涉及 ainative-app 时）：
+
+```markdown
+## 4. Lint 约束
+
+- [ ] 4.1 Lint 约束：ainative-app 执行 `cd ainative-app && pnpm lint` 通过
+```
+
+---
+
 ### Step 6: 验证故事点估算
 
-**目标**：确认所有任务都有故事点评估，没有遗漏。
+**目标**：确认所有任务都有故事点评估，没有遗漏。Lint 约束任务不计入故事点验证。
 
 **执行流程**：
 
@@ -306,12 +351,14 @@ _评估说明：UI模块（L3）= 3，状态管理模块（L2）= 2，前后端�
    - 读取 `openspec/changes/{变更名称}/tasks.md`
 
 2. **统计任务信息**：
-   - 统计文档中的任务总数
-   - 统计包含 `**故事点: X**` 标记的任务数量
+   - 统计文档中的任务总数（含 Lint 约束任务）
+   - 统计「Lint 约束」章节中的任务数量，这些任务**无需**故事点
+   - 统计非 Lint 任务中包含 `**故事点: X**` 标记的数量
    - X 必须是基准文档中定义的合法故事点值（0、1、2、3、5、8）
 
 3. **检查完整性**：
-   - 验证是否所有任务都有故事点评估
+   - 验证是否所有**非 Lint** 任务都有故事点评估
+   - Lint 约束任务允许无故事点
    - 检查故事点值是否合法
 
 4. **返回结果**（JSON 格式）：
@@ -346,12 +393,13 @@ _评估说明：UI模块（L3）= 3，状态管理模块（L2）= 2，前后端�
 
 - 只返回 JSON，不要返回其他内容
 - 如果验证失败，需要返回 Step 5 补充评估
+- Lint 约束任务不计入 `estimatedTasks` 的验证（它们无需故事点）
 
 ---
 
 ## 完整流程输出
 
-完成所有 6 个步骤后，输出以下总结：
+完成所有 7 个步骤后，输出以下总结：
 
 ```markdown
 ## 项目管理流程完成
@@ -363,6 +411,7 @@ _评估说明：UI模块（L3）= 3，状态管理模块（L2）= 2，前后端�
 ✅ Step 3: 提案格式验证通过
 ✅ Step 4: 提案内容审查完成（修正 X 处问题）
 ✅ Step 5: 故事点估算完成（共 Y 个任务）
+✅ Step 5.5: Lint 约束任务已生成（涉及 Z 个端）
 ✅ Step 6: 故事点验证通过
 
 ### 输出文件
@@ -371,12 +420,12 @@ _评估说明：UI模块（L3）= 3，状态管理模块（L2）= 2，前后端�
 - `openspec/changes/{变更名称}/proposal.md` - 变更提案
 - `openspec/changes/{变更名称}/design.md` - 技术设计
 - `openspec/changes/{变更名称}/specs/` - 规范文件
-- `openspec/changes/{变更名称}/tasks.md` - 任务清单（包含故事点评估）
+- `openspec/changes/{变更名称}/tasks.md` - 任务清单（包含故事点评估及 Lint 约束任务）
 
 ### 统计信息
 
-- 任务总数：Y 个
-- 总故事点：Z 点
+- 任务总数：Y 个（含 Lint 约束任务）
+- 总故事点：Z 点（不含 Lint 任务）
 - 预估工作量：约 W 人天
 
 ### 下一步行动
@@ -424,10 +473,11 @@ _评估说明：UI模块（L3）= 3，状态管理模块（L2）= 2，前后端�
 
 1. **严格按顺序执行**：每个步骤都有依赖关系，不能跳过或调换顺序
 2. **验证通过才继续**：Step 3 和 Step 6 的验证必须通过才能继续
-3. **保持文件一致性**：修改文件时注意与其他文档的一致性
-4. **使用中文输出**：所有输出文件和描述都使用中文
-5. **引用其他技能**：Step 4 需要调用 `openspec-validator` 技能
-6. **Docker 环境**：数据库相关操作必须在沙箱环境中执行
+3. **Lint 任务**：Step 5.5 根据涉及端生成 lint 约束任务，lint 任务不填故事点
+4. **保持文件一致性**：修改文件时注意与其他文档的一致性
+5. **使用中文输出**：所有输出文件和描述都使用中文
+6. **引用其他技能**：Step 4 需要调用 `openspec-validator` 技能
+7. **Docker 环境**：数据库相关操作必须在沙箱环境中执行
 
 ## 相关技能
 
