@@ -101,15 +101,42 @@ description: 执行部署命令并监控部署进度。执行 make sandbox 启�
 [错误日志内容]
 ```
 
-**提取访问地址**：
+**提取访问地址（严格规则）**：
 
-分析 `make sandbox` 的输出和项目结构，识别所有可用的服务：
+访问地址**只能**从以下两个来源提取，**禁止**从任何其他来源推断：
 
-- 查看日志中出现的访问地址（如 Local、Network 等）
-- 根据项目目录结构识别前端应用（如 backend、shadow、app、pc 等）
-- 提取每个服务的实际访问地址
-- 记录服务启动状态（运行中/未启动/启动失败）
-- **只记录实际存在的服务，不要添加项目中不存在的服务**
+**来源1：`make sandbox` 命令的终端输出**
+
+`sandbox.sh start` 执行结束时会打印如下格式的访问地址：
+
+```
+访问地址:
+  统一入口:    http://localhost:${SANDBOX_PORT}/
+  后端 API:    http://localhost:${SANDBOX_PORT}/api/
+  管理后台:    http://localhost:${SANDBOX_PORT}/shadow/
+  移动端 H5:   http://localhost:${SANDBOX_PORT}/app/
+```
+
+直接从这段输出中提取 `http://localhost:[端口]/[路径]` 格式的地址。
+
+**来源2：`sandbox/.env` 配置文件**
+
+如果命令输出中没有打印访问地址（如容器已在运行时输出跳过了 info），读取 `sandbox/.env` 获取 `SANDBOX_PORT`（默认 `8080`），按以下固定格式构造：
+
+- 统一入口：`http://localhost:${SANDBOX_PORT}/`
+- 后端 API：`http://localhost:${SANDBOX_PORT}/api/`
+- 管理后台：`http://localhost:${SANDBOX_PORT}/shadow/`
+- 移动端 H5：`http://localhost:${SANDBOX_PORT}/app/`
+
+**严格禁止**：
+
+- ❌ 读取任何 nginx 配置文件（`nginx.conf`、`/etc/nginx/` 等）
+- ❌ 使用 nginx `server_name` 中的域名作为访问地址
+- ❌ 执行 `nginx -T`、`hostname` 或任何 OS 网络发现命令
+- ❌ 从项目目录结构或 docs 文档中"推断"访问地址
+- ❌ 使用 `localhost` 以外的主机名（`sandbox/.env` 中未显式配置时）
+
+记录服务启动状态（运行中/未启动/启动失败），只记录实际存在的服务。
 
 ## 结果写入
 

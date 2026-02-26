@@ -25,7 +25,12 @@ description: 验证部署结果。检查服务状态、验证服务可访问性�
 
 1. 读取 `docs/deploy/deployResult.md`，获取部署执行阶段的结果
 2. 读取 `docs/deploy/deployLog.md`，获取服务地址和启动日志
-3. 如果文件不存在，直接检查运行中的进程和端口
+3. 如果以上文件不存在，通过以下**唯一允许的方式**获取访问地址：
+   - 读取 `sandbox/.env` 获取容器名（`SANDBOX_NAME`）和端口（`SANDBOX_PORT`，默认 `8080`）
+   - 执行 `docker ps --filter "name=^${SANDBOX_NAME}$" --format "{{.Ports}}"` 确认容器实际映射端口
+   - 按固定路径构造地址：`http://localhost:${SANDBOX_PORT}/`、`/api/`、`/shadow/`、`/app/`
+
+> **严格禁止**：读取任何 nginx 配置文件（`nginx.conf`、`/etc/nginx/` 等）、执行 `nginx -T`、使用 nginx `server_name` 中的域名、执行 `hostname` 或任何 OS 网络发现命令。访问地址的主机名**必须**是 `localhost`。
 
 **Docker 状态检查**（优先级最高）：
 
@@ -280,3 +285,4 @@ make sandbox
 6. **错误日志必须记录**：启动失败的服务必须在 deploy.md 和 verifyResult.md 中都包含错误日志
 7. **只有 "目录不存在" 的服务可以忽略**：其他所有异常状态都必须导致整体结果为"未完成"
 8. **Docker 错误提供修复命令**：Docker 启动失败时，在 verifyResult.md 中提供 `sudo systemctl start docker` 等修复命令
+9. **访问地址来源唯一**：访问地址只能来自 `deployLog.md` 或 `sandbox/.env` + `docker ps`，主机名必须是 `localhost`，禁止读取 nginx 配置文件或使用 `server_name` 中的域名
