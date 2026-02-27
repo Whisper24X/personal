@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import BusinessLineModal from '@/components/business/settings/BusinessLineModal.vue'
 
 const {
@@ -68,6 +69,7 @@ const buildProps = (canCreateBusinessLine = true, open = true) => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  setActivePinia(createPinia())
 
   businessLinesApi.detail.mockResolvedValue({
     id: 'line-1',
@@ -115,9 +117,11 @@ beforeEach(() => {
 
 describe('BusinessLineModal', () => {
   it('renders left-right layout with 3 tabs by default', async () => {
+    const pinia = createPinia()
     const wrapper = mount(BusinessLineModal, {
       props: buildProps(true),
       global: {
+        plugins: [pinia],
         stubs: {
           teleport: true,
         },
@@ -134,9 +138,11 @@ describe('BusinessLineModal', () => {
   })
 
   it('disables create business line button when user has no permission', async () => {
+    const pinia = createPinia()
     const wrapper = mount(BusinessLineModal, {
       props: buildProps(false),
       global: {
+        plugins: [pinia],
         stubs: {
           teleport: true,
         },
@@ -155,9 +161,11 @@ describe('BusinessLineModal', () => {
   })
 
   it('opens create project modal and submits project payload', async () => {
+    const pinia = createPinia()
     const wrapper = mount(BusinessLineModal, {
       props: buildProps(true, false),
       global: {
+        plugins: [pinia],
         stubs: {
           teleport: true,
         },

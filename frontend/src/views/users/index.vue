@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useMessage } from '@/hooks'
 import { usersApi } from '@/api/users'
 import type { CreateUserPayload, UpdateUserPayload, User } from '@/types/api/users'
+import { toErrorMessage } from '@/utils/http/to-error-message'
 
 const PAGE_LIMIT = 20
 
@@ -10,8 +12,9 @@ const loadingMore = ref(false)
 const submitting = ref(false)
 const deletingUserId = ref<string | null>(null)
 const editingUserId = ref('')
-const errorMessage = ref('')
+const validationMessage = ref('')
 const keyword = ref('')
+const message = useMessage()
 
 const users = ref<User[]>([])
 const page = ref(1)
@@ -111,7 +114,6 @@ const loadUsers = async (reset = true) => {
 
   if (reset) {
     loading.value = true
-    errorMessage.value = ''
   } else {
     loadingMore.value = true
   }
@@ -134,7 +136,7 @@ const loadUsers = async (reset = true) => {
     page.value = currentPage
     hasNextPage.value = response.hasNextPage
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '加载用户列表失败'
+    message.error(toErrorMessage(error, '加载用户列表失败'))
   } finally {
     loading.value = false
     loadingMore.value = false
@@ -143,18 +145,18 @@ const loadUsers = async (reset = true) => {
 
 const submitForm = async () => {
   if (!form.username.trim()) {
-    errorMessage.value = '用户名不能为空'
+    validationMessage.value = '用户名不能为空'
     return
   }
 
   const normalizedPassword = form.password.trim()
   if (!isEditing.value && normalizedPassword.length < 6) {
-    errorMessage.value = '新建用户时密码至少 6 位'
+    validationMessage.value = '新建用户时密码至少 6 位'
     return
   }
 
   submitting.value = true
-  errorMessage.value = ''
+  validationMessage.value = ''
 
   const payloadBase = {
     username: form.username.trim(),
@@ -176,18 +178,20 @@ const submitForm = async () => {
       }
 
       await usersApi.update(editingUserId.value, updatePayload)
+      message.success('保存用户成功')
     } else {
       const createPayload: CreateUserPayload = {
         ...payloadBase,
         password: normalizedPassword,
       }
       await usersApi.create(createPayload)
+      message.success('创建用户成功')
     }
 
     resetForm()
     await loadUsers(true)
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '保存用户失败'
+    message.error(toErrorMessage(error, '保存用户失败'))
   } finally {
     submitting.value = false
   }
@@ -199,13 +203,13 @@ const removeUser = async (user: User) => {
   }
 
   deletingUserId.value = user.id
-  errorMessage.value = ''
 
   try {
     await usersApi.remove(user.id)
     await loadUsers(true)
+    message.success('删除用户成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '删除用户失败'
+    message.error(toErrorMessage(error, '删除用户失败'))
   } finally {
     deletingUserId.value = null
   }
@@ -224,7 +228,7 @@ onMounted(() => {
       <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
         对接 `/api/v1/users`，支持用户新增、编辑、删除，并可按用户名/邮箱快速筛选。
       </p>
-      <p v-if="errorMessage" class="text-sm text-destructive">{{ errorMessage }}</p>
+      <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
     </section>
 
     <section class="panel-card p-5">

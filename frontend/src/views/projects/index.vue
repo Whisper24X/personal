@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useMessage } from '@/hooks'
 import { businessLinesApi, type BusinessLine } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
 import type { Project } from '@/types/api/projects'
+import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
 
 defineOptions({
@@ -16,7 +18,8 @@ const submitting = ref(false)
 const deletingProjectId = ref<string | null>(null)
 const editingProjectId = ref<string | null>(null)
 const query = ref('')
-const errorMessage = ref('')
+const validationMessage = ref('')
+const message = useMessage()
 
 const businessLines = ref<BusinessLine[]>([])
 const projects = ref<Project[]>([])
@@ -46,7 +49,6 @@ const formatDate = (value?: string) => {
 
 const loadData = async () => {
   loading.value = true
-  errorMessage.value = ''
 
   try {
     const [businessLineResponse, projectResponse] = await Promise.all([
@@ -63,7 +65,7 @@ const loadData = async () => {
       createForm.businessLineId = businessLineResponse[0]?.id ?? ''
     }
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '加载项目数据失败'
+    message.error(toErrorMessage(error, '加载项目数据失败'))
   } finally {
     loading.value = false
   }
@@ -75,7 +77,6 @@ const loadMoreProjects = async () => {
   }
 
   loadingMore.value = true
-  errorMessage.value = ''
 
   try {
     const nextPage = projectPage.value + 1
@@ -89,7 +90,7 @@ const loadMoreProjects = async () => {
     projectPage.value = nextPage
     projectHasNextPage.value = response.hasNextPage
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '加载更多项目失败'
+    message.error(toErrorMessage(error, '加载更多项目失败'))
   } finally {
     loadingMore.value = false
   }
@@ -171,11 +172,12 @@ const startEditProject = (project: Project) => {
 
 const submitProject = async () => {
   if (!createForm.businessLineId || !createForm.name.trim() || !createForm.gitUrl.trim()) {
+    validationMessage.value = '所属业务线、项目名称和仓库地址不能为空'
     return
   }
 
   submitting.value = true
-  errorMessage.value = ''
+  validationMessage.value = ''
 
   try {
     const payload = {
@@ -188,14 +190,16 @@ const submitProject = async () => {
 
     if (editingProjectId.value) {
       await projectsApi.update(editingProjectId.value, payload)
+      message.success('保存项目成功')
     } else {
       await projectsApi.create(payload)
+      message.success('创建项目成功')
     }
 
     resetProjectForm()
     await loadData()
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '保存项目失败'
+    message.error(toErrorMessage(error, '保存项目失败'))
   } finally {
     submitting.value = false
   }
@@ -207,7 +211,6 @@ const removeProject = async (project: Project) => {
   }
 
   deletingProjectId.value = project.id
-  errorMessage.value = ''
 
   try {
     await projectsApi.remove(project.id)
@@ -215,8 +218,9 @@ const removeProject = async (project: Project) => {
       resetProjectForm()
     }
     await loadData()
+    message.success('删除项目成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '删除项目失败'
+    message.error(toErrorMessage(error, '删除项目失败'))
   } finally {
     deletingProjectId.value = null
   }
@@ -321,7 +325,7 @@ onMounted(() => {
         </div>
       </form>
 
-      <p v-if="errorMessage" class="mt-3 text-sm text-destructive">{{ errorMessage }}</p>
+      <p v-if="validationMessage" class="mt-3 text-sm text-destructive">{{ validationMessage }}</p>
     </section>
 
     <section class="panel-card border-none bg-transparent p-0 shadow-none">

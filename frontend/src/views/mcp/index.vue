@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useMessage } from '@/hooks'
 import { mcpsApi } from '@/api/mcps'
 import type { CreateMcpPayload, Mcp, UpdateMcpPayload } from '@/types/api/mcps'
+import { toErrorMessage } from '@/utils/http/to-error-message'
 
 const PAGE_LIMIT = 30
 
@@ -10,9 +12,10 @@ const loadingMore = ref(false)
 const submitting = ref(false)
 const deletingMcpId = ref('')
 const editingMcpId = ref('')
-const errorMessage = ref('')
+const validationMessage = ref('')
 const keyword = ref('')
 const enabledOnly = ref(false)
+const message = useMessage()
 
 const mcps = ref<Mcp[]>([])
 const page = ref(1)
@@ -81,7 +84,6 @@ const loadMcps = async (reset = true) => {
 
   if (reset) {
     loading.value = true
-    errorMessage.value = ''
   } else {
     loadingMore.value = true
   }
@@ -106,7 +108,7 @@ const loadMcps = async (reset = true) => {
     page.value = nextPage
     hasNextPage.value = response.hasNextPage
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '加载 MCP 列表失败'
+    message.error(toErrorMessage(error, '加载 MCP 列表失败'))
   } finally {
     loading.value = false
     loadingMore.value = false
@@ -115,24 +117,24 @@ const loadMcps = async (reset = true) => {
 
 const submitMcp = async () => {
   if (!form.name.trim() || !form.version.trim()) {
-    errorMessage.value = '名称和版本不能为空'
+    validationMessage.value = '名称和版本不能为空'
     return
   }
 
   const configSchema = normalizeOptionalObject(form.configSchemaText)
   if (configSchema === null) {
-    errorMessage.value = 'configSchema 必须是合法 JSON 对象'
+    validationMessage.value = 'configSchema 必须是合法 JSON 对象'
     return
   }
 
   const metadataJson = normalizeOptionalObject(form.metadataJsonText)
   if (metadataJson === null) {
-    errorMessage.value = 'metadataJson 必须是合法 JSON 对象'
+    validationMessage.value = 'metadataJson 必须是合法 JSON 对象'
     return
   }
 
   submitting.value = true
-  errorMessage.value = ''
+  validationMessage.value = ''
 
   const payloadBase = {
     name: form.name.trim(),
@@ -149,30 +151,31 @@ const submitMcp = async () => {
     if (editingMcpId.value) {
       const updatePayload: UpdateMcpPayload = payloadBase
       await mcpsApi.update(editingMcpId.value, updatePayload)
+      message.success('保存 MCP 成功')
     } else {
       const createPayload: CreateMcpPayload = payloadBase
       await mcpsApi.create(createPayload)
+      message.success('创建 MCP 成功')
     }
 
     resetForm()
     await loadMcps(true)
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '保存 MCP 失败'
+    message.error(toErrorMessage(error, '保存 MCP 失败'))
   } finally {
     submitting.value = false
   }
 }
 
 const toggleMcpEnabled = async (mcp: Mcp) => {
-  errorMessage.value = ''
-
   try {
     await mcpsApi.update(mcp.id, {
       enabled: !mcp.enabled,
     })
     await loadMcps(true)
+    message.success('更新 MCP 状态成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '更新 MCP 状态失败'
+    message.error(toErrorMessage(error, '更新 MCP 状态失败'))
   }
 }
 
@@ -182,13 +185,13 @@ const removeMcp = async (mcp: Mcp) => {
   }
 
   deletingMcpId.value = mcp.id
-  errorMessage.value = ''
 
   try {
     await mcpsApi.remove(mcp.id)
     await loadMcps(true)
+    message.success('删除 MCP 成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '删除 MCP 失败'
+    message.error(toErrorMessage(error, '删除 MCP 失败'))
   } finally {
     deletingMcpId.value = ''
   }
@@ -207,7 +210,7 @@ onMounted(() => {
       <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
         支持 MCP 连接器的浏览、搜索、新增、编辑、启停与删除。
       </p>
-      <p v-if="errorMessage" class="text-sm text-destructive">{{ errorMessage }}</p>
+      <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
     </section>
 
     <section class="panel-card p-5">

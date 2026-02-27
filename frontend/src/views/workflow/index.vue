@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useMessage } from '@/hooks'
 import { workflowApi } from '@/api/workflow'
 import type {
   WorkflowNodeType,
@@ -8,14 +9,16 @@ import type {
   WorkflowTemplateNode,
   WorkflowTemplateVersion,
 } from '@/types/api/workflow'
+import { toErrorMessage } from '@/utils/http/to-error-message'
 
 const loading = ref(false)
 const loadingMore = ref(false)
 const submitting = ref(false)
 const actionTemplateId = ref<string | null>(null)
 const savingEditor = ref(false)
-const errorMessage = ref('')
-const editorErrorMessage = ref('')
+const validationMessage = ref('')
+const editorValidationMessage = ref('')
+const message = useMessage()
 
 const templates = ref<WorkflowTemplate[]>([])
 const versions = ref<WorkflowTemplateVersion[]>([])
@@ -128,7 +131,7 @@ const loadTemplateDetail = async (templateId: string) => {
       syncEditorNodes(detail)
     }
   } catch (error) {
-    editorErrorMessage.value = error instanceof Error ? error.message : '加载模板详情失败'
+    message.error(toErrorMessage(error, '加载模板详情失败'))
   }
 }
 
@@ -137,8 +140,8 @@ const loadTemplates = async (reset = true) => {
 
   if (reset) {
     loading.value = true
-    errorMessage.value = ''
-    editorErrorMessage.value = ''
+    validationMessage.value = ''
+    editorValidationMessage.value = ''
   } else {
     loadingMore.value = true
   }
@@ -172,7 +175,7 @@ const loadTemplates = async (reset = true) => {
       }
     }
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '加载工作流模板失败'
+    message.error(toErrorMessage(error, '加载工作流模板失败'))
   } finally {
     loading.value = false
     loadingMore.value = false
@@ -181,14 +184,14 @@ const loadTemplates = async (reset = true) => {
 
 const loadVersions = async (templateId: string) => {
   selectedTemplateId.value = templateId
-  editorErrorMessage.value = ''
+  editorValidationMessage.value = ''
 
   try {
     versions.value = await workflowApi.versions(templateId)
     await loadTemplateDetail(templateId)
   } catch (error) {
     versions.value = []
-    editorErrorMessage.value = error instanceof Error ? error.message : '加载模板版本失败'
+    message.error(toErrorMessage(error, '加载模板版本失败'))
   }
 }
 
@@ -260,21 +263,21 @@ const removeCreateNode = (index: number) => {
 
 const createTemplate = async () => {
   if (!createForm.name.trim()) {
-    errorMessage.value = '模板名称不能为空'
+    validationMessage.value = '模板名称不能为空'
     return
   }
 
   ensureCreateNodeShape()
 
   const nodes = normalizeNodes(createForm.nodes)
-  const validationMessage = validateNodes(nodes, createForm.mode)
-  if (validationMessage) {
-    errorMessage.value = validationMessage
+  const nodeValidationMessage = validateNodes(nodes, createForm.mode)
+  if (nodeValidationMessage) {
+    validationMessage.value = nodeValidationMessage
     return
   }
 
   submitting.value = true
-  errorMessage.value = ''
+  validationMessage.value = ''
 
   try {
     await workflowApi.create({
@@ -287,8 +290,9 @@ const createTemplate = async () => {
 
     resetCreateForm()
     await loadTemplates()
+    message.success('创建工作流模板成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '创建工作流模板失败'
+    message.error(toErrorMessage(error, '创建工作流模板失败'))
   } finally {
     submitting.value = false
   }
@@ -296,7 +300,6 @@ const createTemplate = async () => {
 
 const toggleTemplateActive = async (template: WorkflowTemplate) => {
   actionTemplateId.value = template.id
-  errorMessage.value = ''
 
   try {
     await workflowApi.update(template.id, {
@@ -304,8 +307,9 @@ const toggleTemplateActive = async (template: WorkflowTemplate) => {
     })
 
     await loadTemplates()
+    message.success('更新模板状态成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '更新模板状态失败'
+    message.error(toErrorMessage(error, '更新模板状态失败'))
   } finally {
     actionTemplateId.value = null
   }
@@ -313,14 +317,14 @@ const toggleTemplateActive = async (template: WorkflowTemplate) => {
 
 const publishTemplate = async (template: WorkflowTemplate) => {
   actionTemplateId.value = template.id
-  errorMessage.value = ''
 
   try {
     await workflowApi.publish(template.id)
     await loadTemplates()
     await loadVersions(template.id)
+    message.success('发布模板成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '发布模板失败'
+    message.error(toErrorMessage(error, '发布模板失败'))
   } finally {
     actionTemplateId.value = null
   }
@@ -340,7 +344,6 @@ const removeTemplate = async (template: WorkflowTemplate) => {
   }
 
   actionTemplateId.value = template.id
-  errorMessage.value = ''
 
   try {
     await workflowApi.remove(template.id)
@@ -350,8 +353,9 @@ const removeTemplate = async (template: WorkflowTemplate) => {
       editorNodes.value = []
     }
     await loadTemplates()
+    message.success('删除模板成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '删除模板失败'
+    message.error(toErrorMessage(error, '删除模板失败'))
   } finally {
     actionTemplateId.value = null
   }
@@ -437,12 +441,12 @@ const saveEditorNodes = async () => {
   const validationMessage = validateNodes(normalizedNodes, selectedTemplate.value.mode)
 
   if (validationMessage) {
-    editorErrorMessage.value = validationMessage
+    editorValidationMessage.value = validationMessage
     return
   }
 
   savingEditor.value = true
-  editorErrorMessage.value = ''
+  editorValidationMessage.value = ''
 
   try {
     const updatedTemplate = await workflowApi.reorderNodes(selectedTemplate.value.id, {
@@ -452,8 +456,9 @@ const saveEditorNodes = async () => {
     replaceTemplateInList(updatedTemplate)
     syncEditorNodes(updatedTemplate)
     await loadVersions(updatedTemplate.id)
+    message.success('保存节点成功')
   } catch (error) {
-    editorErrorMessage.value = error instanceof Error ? error.message : '保存节点失败'
+    message.error(toErrorMessage(error, '保存节点失败'))
   } finally {
     savingEditor.value = false
   }
@@ -587,7 +592,7 @@ onMounted(() => {
         </div>
       </form>
 
-      <p v-if="errorMessage" class="mt-3 text-sm text-destructive">{{ errorMessage }}</p>
+      <p v-if="validationMessage" class="mt-3 text-sm text-destructive">{{ validationMessage }}</p>
     </section>
 
     <section class="grid gap-6 xl:grid-cols-[2fr_1fr]">
@@ -708,7 +713,7 @@ onMounted(() => {
             </div>
           </div>
 
-          <p v-if="editorErrorMessage" class="mt-3 text-sm text-destructive">{{ editorErrorMessage }}</p>
+          <p v-if="editorValidationMessage" class="mt-3 text-sm text-destructive">{{ editorValidationMessage }}</p>
 
           <template v-if="selectedTemplate">
             <div class="mt-4 space-y-2">

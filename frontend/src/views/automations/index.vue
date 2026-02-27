@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useMessage } from '@/hooks'
 import { automationsApi } from '@/api/automations'
 import { notificationsApi } from '@/api/notifications'
 import { observabilityApi } from '@/api/observability'
@@ -19,6 +20,7 @@ import type { ObservabilityMetrics } from '@/types/api/observability'
 import type { QueueStats } from '@/types/api/queue'
 import type { Task } from '@/types/api/tasks'
 import type { WorkflowTemplate } from '@/types/api/workflow'
+import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
 
 defineOptions({
@@ -30,8 +32,8 @@ const userStore = useUserStore()
 
 const loading = ref(false)
 const markingEventId = ref('')
-const errorMessage = ref('')
-const monitoringMessage = ref('')
+const validationMessage = ref('')
+const message = useMessage()
 
 const reviewTasks = ref<Task[]>([])
 const activeTemplates = ref<WorkflowTemplate[]>([])
@@ -130,14 +132,6 @@ const automationStatusClassMap: Record<AutomationStatus, string> = {
   paused: 'bg-muted text-muted-foreground',
 }
 
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (error instanceof Error && error.message) {
-    return error.message
-  }
-
-  return fallback
-}
-
 const formatDate = (value?: string) => {
   if (!value) return '-'
   const parsedDate = new Date(value)
@@ -232,7 +226,7 @@ const loadAutomations = async (reset = true) => {
     automationPage.value = nextPage
     automationHasNextPage.value = response.hasNextPage
   } catch (error) {
-    errorMessage.value = getErrorMessage(error, '加载自动化列表失败')
+    message.error(toErrorMessage(error, '加载自动化列表失败'))
   } finally {
     automationLoading.value = false
     automationLoadingMore.value = false
@@ -241,17 +235,17 @@ const loadAutomations = async (reset = true) => {
 
 const submitAutomation = async () => {
   if (!canManageAutomations.value) {
-    errorMessage.value = '仅管理员可管理自动化计划'
+    validationMessage.value = '仅管理员可管理自动化计划'
     return
   }
 
   if (!automationForm.name.trim() || !automationForm.prompt.trim() || !automationForm.rrule.trim()) {
-    errorMessage.value = '名称、Prompt、RRULE 为必填'
+    validationMessage.value = '名称、Prompt、RRULE 为必填'
     return
   }
 
   automationSubmitting.value = true
-  errorMessage.value = ''
+  validationMessage.value = ''
 
   const cwds = parseCwds(automationForm.cwdsText)
   const payloadBase = {
@@ -266,15 +260,17 @@ const submitAutomation = async () => {
     if (automationEditingId.value) {
       const payload: UpdateAutomationPayload = payloadBase
       await automationsApi.update(automationEditingId.value, payload)
+      message.success('保存自动化计划成功')
     } else {
       const payload: CreateAutomationPayload = payloadBase
       await automationsApi.create(payload)
+      message.success('创建自动化计划成功')
     }
 
     resetAutomationForm()
     await loadAutomations(true)
   } catch (error) {
-    errorMessage.value = getErrorMessage(error, '保存自动化失败')
+    message.error(toErrorMessage(error, '保存自动化失败'))
   } finally {
     automationSubmitting.value = false
   }
@@ -282,25 +278,24 @@ const submitAutomation = async () => {
 
 const toggleAutomationStatus = async (automation: Automation) => {
   if (!canManageAutomations.value) {
-    errorMessage.value = '仅管理员可管理自动化计划'
+    validationMessage.value = '仅管理员可管理自动化计划'
     return
   }
-
-  errorMessage.value = ''
 
   try {
     await automationsApi.update(automation.id, {
       status: automation.status === 'active' ? 'paused' : 'active',
     })
     await loadAutomations(true)
+    message.success('更新自动化状态成功')
   } catch (error) {
-    errorMessage.value = getErrorMessage(error, '更新自动化状态失败')
+    message.error(toErrorMessage(error, '更新自动化状态失败'))
   }
 }
 
 const removeAutomation = async (automation: Automation) => {
   if (!canManageAutomations.value) {
-    errorMessage.value = '仅管理员可管理自动化计划'
+    validationMessage.value = '仅管理员可管理自动化计划'
     return
   }
 
@@ -309,41 +304,38 @@ const removeAutomation = async (automation: Automation) => {
   }
 
   automationDeletingId.value = automation.id
-  errorMessage.value = ''
 
   try {
     await automationsApi.remove(automation.id)
     await loadAutomations(true)
+    message.success('删除自动化成功')
   } catch (error) {
-    errorMessage.value = getErrorMessage(error, '删除自动化失败')
+    message.error(toErrorMessage(error, '删除自动化失败'))
   } finally {
     automationDeletingId.value = ''
   }
 }
 
 const loadMonitoringData = async () => {
-  monitoringMessage.value = ''
-
   const [queueResult, metricsResult] = await Promise.allSettled([queueApi.stats(), observabilityApi.metrics()])
 
   queueStats.value = queueResult.status === 'fulfilled' ? queueResult.value : null
   observabilityMetrics.value = metricsResult.status === 'fulfilled' ? metricsResult.value : null
 
   if (queueResult.status === 'rejected' && metricsResult.status === 'rejected') {
-    monitoringMessage.value = '调度监控不可用（可能需要管理员权限）'
+    message.error('调度监控不可用（可能需要管理员权限）')
     return
   }
 
   if (queueResult.status === 'rejected') {
-    monitoringMessage.value = getErrorMessage(queueResult.reason, '队列指标加载失败')
+    message.error(toErrorMessage(queueResult.reason, '队列指标加载失败'))
   } else if (metricsResult.status === 'rejected') {
-    monitoringMessage.value = getErrorMessage(metricsResult.reason, '可观测指标加载失败')
+    message.error(toErrorMessage(metricsResult.reason, '可观测指标加载失败'))
   }
 }
 
 const loadPageData = async () => {
   loading.value = true
-  errorMessage.value = ''
 
   try {
     const [reviewTaskResponse, templateResponse, settingResponse, unreadEventResponse] = await Promise.all([
@@ -360,7 +352,7 @@ const loadPageData = async () => {
 
     await loadMonitoringData()
   } catch (error) {
-    errorMessage.value = getErrorMessage(error, '加载自动化页面失败')
+    message.error(toErrorMessage(error, '加载自动化页面失败'))
   } finally {
     loading.value = false
   }
@@ -376,8 +368,9 @@ const markEventRead = async (eventId: string) => {
   try {
     await notificationsApi.markRead(eventId)
     unreadEvents.value = unreadEvents.value.filter((event) => event.id !== eventId)
+    message.success('通知已标记为已读')
   } catch (error) {
-    errorMessage.value = getErrorMessage(error, '标记通知已读失败')
+    message.error(toErrorMessage(error, '标记通知已读失败'))
   } finally {
     markingEventId.value = ''
   }
@@ -396,7 +389,7 @@ onMounted(() => {
       <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
         对接任务、队列、模板、通知与自动化计划接口，集中查看当前执行态势。
       </p>
-      <p v-if="errorMessage" class="text-sm text-destructive">{{ errorMessage }}</p>
+      <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
     </section>
 
     <section class="panel-card p-5">
@@ -652,7 +645,6 @@ onMounted(() => {
           <p>过期租约：{{ staleRunning }}</p>
         </div>
 
-        <p v-if="monitoringMessage" class="mt-3 text-xs text-muted-foreground">{{ monitoringMessage }}</p>
       </article>
 
       <article class="panel-card p-5">

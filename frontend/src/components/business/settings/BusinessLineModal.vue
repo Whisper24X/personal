@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useMessage } from '@/hooks'
 import {
   businessLinesApi,
   type BusinessLine,
@@ -11,6 +12,7 @@ import { usersApi } from '@/api/users'
 import type { BusinessLineItem, ProjectItem } from '@/hooks/core/useLayout'
 import type { Project, ProjectMember } from '@/types/api/projects'
 import type { User } from '@/types/api/users'
+import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
 import BusinessLineFormModal from './modals/BusinessLineFormModal.vue'
 import ConfirmActionModal from './modals/ConfirmActionModal.vue'
@@ -55,10 +57,6 @@ const loadingProjects = ref(false)
 const loadingMembers = ref(false)
 const loadingUsers = ref(false)
 
-const projectError = ref('')
-const memberError = ref('')
-const settingsError = ref('')
-
 const lineFormModalOpen = ref(false)
 const lineFormMode = ref<'create' | 'edit'>('create')
 const lineFormSubmitting = ref(false)
@@ -95,6 +93,7 @@ const removingMemberTarget = ref<BusinessLineMember | null>(null)
 
 const lineDeleteModalOpen = ref(false)
 const deletingLine = ref(false)
+const message = useMessage()
 
 const selectedLine = computed(() => {
   return props.lines.find((line) => line.id === activeLineId.value) ?? null
@@ -181,10 +180,6 @@ const formatDate = (value?: string) => {
     hour: '2-digit',
     minute: '2-digit',
   })
-}
-
-const toErrorMessage = (error: unknown, fallback: string) => {
-  return error instanceof Error ? error.message : fallback
 }
 
 const normalizeOptionalText = (value: string) => {
@@ -285,9 +280,9 @@ const tabClass = (tab: MainTab) => {
 }
 
 const resetTabErrors = () => {
-  projectError.value = ''
-  memberError.value = ''
-  settingsError.value = ''
+  lineFormError.value = ''
+  projectFormError.value = ''
+  memberPermissionModalError.value = ''
 }
 
 const closeModal = () => {
@@ -320,7 +315,7 @@ const loadLineDetail = async (lineId: string) => {
     lineDetail.value = detail
   } catch (error) {
     if (lineId === activeLineId.value) {
-      settingsError.value = toErrorMessage(error, '加载业务线详情失败')
+      message.error(toErrorMessage(error, '加载业务线详情失败'))
     }
   } finally {
     if (lineId === activeLineId.value) {
@@ -356,7 +351,7 @@ const loadLineProjects = async (lineId: string) => {
   } catch (error) {
     if (lineId === activeLineId.value) {
       lineProjects.value = []
-      projectError.value = toErrorMessage(error, '加载项目失败')
+      message.error(toErrorMessage(error, '加载项目失败'))
     }
   } finally {
     if (lineId === activeLineId.value) {
@@ -383,7 +378,7 @@ const loadLineMembers = async (lineId: string) => {
   } catch (error) {
     if (lineId === activeLineId.value) {
       lineMembers.value = []
-      memberError.value = toErrorMessage(error, '加载业务线成员失败')
+      message.error(toErrorMessage(error, '加载业务线成员失败'))
     }
   } finally {
     if (lineId === activeLineId.value) {
@@ -402,7 +397,7 @@ const loadUsers = async () => {
   try {
     users.value = await fetchAllPages((page, limit) => usersApi.list({ page, limit }))
   } catch (error) {
-    memberError.value = toErrorMessage(error, '加载用户列表失败')
+    message.error(toErrorMessage(error, '加载用户列表失败'))
   } finally {
     loadingUsers.value = false
   }
@@ -480,8 +475,9 @@ const submitLineForm = async (payload: { name: string; description: string }) =>
 
     lineFormModalOpen.value = false
     await refreshForCurrentLine({ includeMembers: activeTab.value === 'members' })
+    message.success(lineFormMode.value === 'create' ? '创建业务线成功' : '保存业务线成功')
   } catch (error) {
-    lineFormError.value = toErrorMessage(error, '保存业务线失败')
+    message.error(toErrorMessage(error, '保存业务线失败'))
   } finally {
     lineFormSubmitting.value = false
   }
@@ -550,8 +546,9 @@ const submitProjectForm = async (payload: {
 
     projectFormModalOpen.value = false
     await refreshForCurrentLine({ includeMembers: activeTab.value === 'members' })
+    message.success(projectFormMode.value === 'create' ? '创建项目成功' : '保存项目成功')
   } catch (error) {
-    projectFormError.value = toErrorMessage(error, '保存项目失败')
+    message.error(toErrorMessage(error, '保存项目失败'))
   } finally {
     projectFormSubmitting.value = false
   }
@@ -568,15 +565,15 @@ const confirmDeleteProject = async () => {
   }
 
   deletingProject.value = true
-  projectError.value = ''
 
   try {
     await projectsApi.remove(deletingProjectTarget.value.id)
     projectDeleteModalOpen.value = false
     deletingProjectTarget.value = null
     await refreshForCurrentLine({ includeMembers: activeTab.value === 'members' })
+    message.success('删除项目成功')
   } catch (error) {
-    projectError.value = toErrorMessage(error, '删除项目失败')
+    message.error(toErrorMessage(error, '删除项目失败'))
   } finally {
     deletingProject.value = false
   }
@@ -669,10 +666,10 @@ const openEditMemberModal = async (member: BusinessLineMember) => {
     memberPermissionInitialProjectRoles.value = roleMapResult.projectRoles
 
     if (roleMapResult.failedProjects.length > 0) {
-      memberPermissionModalError.value = `以下项目权限加载失败：${roleMapResult.failedProjects.join('、')}`
+      message.warning(`以下项目权限加载失败：${roleMapResult.failedProjects.join('、')}`)
     }
   } catch (error) {
-    memberPermissionModalError.value = toErrorMessage(error, '加载成员项目权限失败')
+    message.error(toErrorMessage(error, '加载成员项目权限失败'))
   } finally {
     memberPermissionModalPreparing.value = false
   }
@@ -746,7 +743,6 @@ const submitMemberPermission = async (payload: {
 
   memberPermissionModalSubmitting.value = true
   memberPermissionModalError.value = ''
-  memberError.value = ''
 
   try {
     if (memberPermissionModalMode.value === 'create') {
@@ -765,13 +761,14 @@ const submitMemberPermission = async (payload: {
 
     const failedProjects = await syncMemberProjectPermissions(payload.userId, payload.projectRoles)
     if (failedProjects.length > 0) {
-      memberError.value = `部分项目权限更新失败：${failedProjects.join('、')}`
+      message.warning(`部分项目权限更新失败：${failedProjects.join('、')}`)
     }
 
     memberPermissionModalOpen.value = false
     await refreshForCurrentLine({ includeMembers: true })
+    message.success('保存成员权限成功')
   } catch (error) {
-    memberPermissionModalError.value = toErrorMessage(error, '保存成员权限失败')
+    message.error(toErrorMessage(error, '保存成员权限失败'))
   } finally {
     memberPermissionModalSubmitting.value = false
   }
@@ -788,15 +785,15 @@ const confirmRemoveMember = async () => {
   }
 
   removingMember.value = true
-  memberError.value = ''
 
   try {
     await businessLinesApi.removeMember(activeLineId.value, removingMemberTarget.value.userId)
     memberRemoveModalOpen.value = false
     removingMemberTarget.value = null
     await refreshForCurrentLine({ includeMembers: true })
+    message.success('移除成员成功')
   } catch (error) {
-    memberError.value = toErrorMessage(error, '移除成员失败')
+    message.error(toErrorMessage(error, '移除成员失败'))
   } finally {
     removingMember.value = false
   }
@@ -816,7 +813,6 @@ const confirmDeleteLine = async () => {
   }
 
   deletingLine.value = true
-  settingsError.value = ''
   const removedLineId = activeLineId.value
 
   try {
@@ -831,8 +827,9 @@ const confirmDeleteLine = async () => {
     }
 
     await refreshForCurrentLine({ includeMembers: activeTab.value === 'members' })
+    message.success('删除业务线成功')
   } catch (error) {
-    settingsError.value = toErrorMessage(error, '删除业务线失败')
+    message.error(toErrorMessage(error, '删除业务线失败'))
   } finally {
     deletingLine.value = false
   }
@@ -1079,8 +1076,6 @@ onBeforeUnmount(() => {
 
             <div class="min-h-0 flex-1 overflow-y-auto p-4">
               <section v-if="activeTab === 'projects'" class="space-y-4">
-                <p v-if="projectError" class="text-sm text-destructive">{{ projectError }}</p>
-
                 <div class="panel-card flex flex-wrap items-center justify-between gap-2 px-4 py-3">
                   <p class="text-sm font-semibold">项目列表（{{ filteredProjects.length }}）</p>
                   <div class="flex items-center gap-2">
@@ -1156,8 +1151,6 @@ onBeforeUnmount(() => {
               </section>
 
               <section v-else-if="activeTab === 'members'" class="space-y-4">
-                <p v-if="memberError" class="text-sm text-destructive">{{ memberError }}</p>
-
                 <div class="panel-card flex flex-wrap items-center justify-between gap-2 px-4 py-3">
                   <p class="text-sm font-semibold">成员列表（{{ filteredMembers.length }}）</p>
                   <div class="flex items-center gap-2">
@@ -1245,8 +1238,6 @@ onBeforeUnmount(() => {
               </section>
 
               <section v-else class="space-y-4">
-                <p v-if="settingsError" class="text-sm text-destructive">{{ settingsError }}</p>
-
                 <article class="panel-card p-5">
                   <div class="flex items-start justify-between gap-3">
                     <div>

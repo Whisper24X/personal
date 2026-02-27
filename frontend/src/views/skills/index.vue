@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useMessage } from '@/hooks'
 import { skillsApi } from '@/api/skills'
 import type { CreateSkillPayload, Skill, UpdateSkillPayload } from '@/types/api/skills'
+import { toErrorMessage } from '@/utils/http/to-error-message'
 
 const PAGE_LIMIT = 30
 
@@ -10,9 +12,10 @@ const loadingMore = ref(false)
 const submitting = ref(false)
 const deletingSkillId = ref('')
 const editingSkillId = ref('')
-const errorMessage = ref('')
+const validationMessage = ref('')
 const keyword = ref('')
 const enabledOnly = ref(false)
+const message = useMessage()
 
 const skills = ref<Skill[]>([])
 const page = ref(1)
@@ -80,7 +83,6 @@ const loadSkills = async (reset = true) => {
 
   if (reset) {
     loading.value = true
-    errorMessage.value = ''
   } else {
     loadingMore.value = true
   }
@@ -105,7 +107,7 @@ const loadSkills = async (reset = true) => {
     page.value = nextPage
     hasNextPage.value = response.hasNextPage
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '加载 Skills 列表失败'
+    message.error(toErrorMessage(error, '加载 Skills 列表失败'))
   } finally {
     loading.value = false
     loadingMore.value = false
@@ -114,18 +116,18 @@ const loadSkills = async (reset = true) => {
 
 const submitSkill = async () => {
   if (!form.name.trim() || !form.version.trim()) {
-    errorMessage.value = '名称和版本不能为空'
+    validationMessage.value = '名称和版本不能为空'
     return
   }
 
   const metadata = normalizeMetadata(form.metadataJsonText)
   if (metadata === null) {
-    errorMessage.value = 'metadataJson 必须是合法 JSON 对象'
+    validationMessage.value = 'metadataJson 必须是合法 JSON 对象'
     return
   }
 
   submitting.value = true
-  errorMessage.value = ''
+  validationMessage.value = ''
 
   const payloadBase = {
     name: form.name.trim(),
@@ -141,30 +143,31 @@ const submitSkill = async () => {
     if (editingSkillId.value) {
       const updatePayload: UpdateSkillPayload = payloadBase
       await skillsApi.update(editingSkillId.value, updatePayload)
+      message.success('保存 Skill 成功')
     } else {
       const createPayload: CreateSkillPayload = payloadBase
       await skillsApi.create(createPayload)
+      message.success('创建 Skill 成功')
     }
 
     resetForm()
     await loadSkills(true)
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '保存 Skill 失败'
+    message.error(toErrorMessage(error, '保存 Skill 失败'))
   } finally {
     submitting.value = false
   }
 }
 
 const toggleSkillEnabled = async (skill: Skill) => {
-  errorMessage.value = ''
-
   try {
     await skillsApi.update(skill.id, {
       enabled: !skill.enabled,
     })
     await loadSkills(true)
+    message.success('更新 Skill 状态成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '更新 Skill 状态失败'
+    message.error(toErrorMessage(error, '更新 Skill 状态失败'))
   }
 }
 
@@ -174,13 +177,13 @@ const removeSkill = async (skill: Skill) => {
   }
 
   deletingSkillId.value = skill.id
-  errorMessage.value = ''
 
   try {
     await skillsApi.remove(skill.id)
     await loadSkills(true)
+    message.success('删除 Skill 成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '删除 Skill 失败'
+    message.error(toErrorMessage(error, '删除 Skill 失败'))
   } finally {
     deletingSkillId.value = ''
   }
@@ -199,7 +202,7 @@ onMounted(() => {
       <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
         支持 Skills 的浏览、搜索、新增、编辑、启停与删除。
       </p>
-      <p v-if="errorMessage" class="text-sm text-destructive">{{ errorMessage }}</p>
+      <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
     </section>
 
     <section class="panel-card p-5">

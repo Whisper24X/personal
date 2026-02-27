@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { RouterView, useRoute } from 'vue-router'
+import AppMessageHost from '@/components/core/feedback/AppMessageHost.vue'
 import AppLayout from '@/components/core/layouts/Layout.vue'
 
 const route = useRoute()
@@ -11,4 +12,5 @@ const route = useRoute()
   </AppLayout>
 
   <RouterView v-else />
+  <AppMessageHost />
 </template>

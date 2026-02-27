@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import BusinessLinesView from '@/views/business-lines/index.vue'
 
 const { businessLinesApi, usersApi } = vi.hoisted(() => ({
@@ -45,6 +46,7 @@ const lines = [
 
 beforeEach(() => {
   vi.clearAllMocks()
+  setActivePinia(createPinia())
 
   businessLinesApi.list.mockResolvedValue({
     data: lines,
@@ -75,8 +77,10 @@ beforeEach(() => {
 
 describe('BusinessLinesView', () => {
   it('shows lines tab by default and opens create modal', async () => {
+    const pinia = createPinia()
     const wrapper = mount(BusinessLinesView, {
       global: {
+        plugins: [pinia],
         stubs: {
           teleport: true,
         },
@@ -100,8 +104,10 @@ describe('BusinessLinesView', () => {
   })
 
   it('switches to members tab and renders members area', async () => {
+    const pinia = createPinia()
     const wrapper = mount(BusinessLinesView, {
       global: {
+        plugins: [pinia],
         stubs: {
           teleport: true,
         },
@@ -124,8 +130,10 @@ describe('BusinessLinesView', () => {
   })
 
   it('jumps from list row member action to members tab with selected line', async () => {
+    const pinia = createPinia()
     const wrapper = mount(BusinessLinesView, {
       global: {
+        plugins: [pinia],
         stubs: {
           teleport: true,
         },
@@ -147,8 +155,10 @@ describe('BusinessLinesView', () => {
   })
 
   it('opens edit modal with prefilled values', async () => {
+    const pinia = createPinia()
     const wrapper = mount(BusinessLinesView, {
       global: {
+        plugins: [pinia],
         stubs: {
           teleport: true,
         },

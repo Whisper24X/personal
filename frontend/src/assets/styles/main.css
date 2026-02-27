@@ -118,3 +118,125 @@
     transform: translateY(0);
   }
 }
+
+.app-message-host {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 140;
+  width: min(420px, calc(100vw - 1.5rem));
+  pointer-events: none;
+}
+
+.app-message-item {
+  pointer-events: auto;
+  display: flex;
+  gap: 0.75rem;
+  border-radius: 0.875rem;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--card) 88%, transparent);
+  box-shadow: var(--shadow-lg);
+  padding: 0.75rem 0.8rem;
+  align-items: flex-start;
+}
+
+.app-message-item + .app-message-item {
+  margin-top: 0.6rem;
+}
+
+.app-message-icon {
+  flex-shrink: 0;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.55rem;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.75rem;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+.app-message-content {
+  min-width: 0;
+  flex: 1;
+}
+
+.app-message-title {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.app-message-text {
+  margin-top: 0.15rem;
+  font-size: 0.82rem;
+  line-height: 1.25rem;
+  color: var(--muted-foreground);
+  word-break: break-word;
+}
+
+.app-message-close {
+  flex-shrink: 0;
+  width: 1.65rem;
+  height: 1.65rem;
+  border-radius: 0.45rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.app-message-close:hover {
+  border-color: var(--border);
+  color: var(--foreground);
+  background: color-mix(in oklab, var(--accent) 62%, transparent);
+}
+
+.app-message-success .app-message-icon {
+  background: color-mix(in oklab, var(--secondary) 28%, transparent);
+  color: color-mix(in oklab, var(--foreground) 80%, var(--secondary));
+}
+
+.app-message-success .app-message-title {
+  color: color-mix(in oklab, var(--foreground) 78%, var(--secondary));
+}
+
+.app-message-error .app-message-icon {
+  background: color-mix(in oklab, var(--destructive) 22%, transparent);
+  color: var(--destructive);
+}
+
+.app-message-error .app-message-title {
+  color: var(--destructive);
+}
+
+.app-message-warning .app-message-icon {
+  background: color-mix(in oklab, var(--primary) 22%, transparent);
+  color: color-mix(in oklab, var(--foreground) 50%, var(--primary));
+}
+
+.app-message-warning .app-message-title {
+  color: color-mix(in oklab, var(--foreground) 55%, var(--primary));
+}
+
+.app-message-info .app-message-icon {
+  background: color-mix(in oklab, var(--accent) 88%, var(--secondary));
+  color: color-mix(in oklab, var(--foreground) 70%, var(--secondary));
+}
+
+.app-message-info .app-message-title {
+  color: color-mix(in oklab, var(--foreground) 76%, var(--secondary));
+}
+
+.app-message-transition-enter-active,
+.app-message-transition-leave-active {
+  transition: all 180ms ease;
+}
+
+.app-message-transition-enter-from,
+.app-message-transition-leave-to {
+  opacity: 0;
+  transform: translateX(12px) translateY(-4px);
+}

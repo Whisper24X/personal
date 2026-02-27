@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { useMessage } from '@/hooks'
 import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
 import { workflowApi } from '@/api/workflow'
 import type { Project } from '@/types/api/projects'
 import type { Task } from '@/types/api/tasks'
 import type { WorkflowTemplate, WorkflowTemplateVersion } from '@/types/api/workflow'
+import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
 
 defineOptions({
@@ -19,7 +21,8 @@ const router = useRouter()
 const loading = ref(false)
 const loadingMore = ref(false)
 const submitting = ref(false)
-const errorMessage = ref('')
+const validationMessage = ref('')
+const message = useMessage()
 
 const projects = ref<Project[]>([])
 const tasks = ref<Task[]>([])
@@ -113,7 +116,7 @@ const loadTemplateVersions = async (templateId: string) => {
   } catch (error) {
     templateVersions.value = []
     createForm.workflowTemplateVersion = ''
-    errorMessage.value = error instanceof Error ? error.message : '加载模板版本失败'
+    message.error(toErrorMessage(error, '加载模板版本失败'))
   }
 }
 
@@ -146,7 +149,7 @@ const loadTaskList = async (reset = true) => {
     taskPage.value = nextPage
     taskHasNextPage.value = response.hasNextPage
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '加载任务列表失败'
+    message.error(toErrorMessage(error, '加载任务列表失败'))
   } finally {
     loading.value = false
     loadingMore.value = false
@@ -155,7 +158,6 @@ const loadTaskList = async (reset = true) => {
 
 const loadPageData = async () => {
   loading.value = true
-  errorMessage.value = ''
 
   try {
     const [projectResponse, taskResponse, templateResponse] = await Promise.all([
@@ -183,7 +185,7 @@ const loadPageData = async () => {
       await loadTemplateVersions(createForm.workflowTemplateId)
     }
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '加载任务页面失败'
+    message.error(toErrorMessage(error, '加载任务页面失败'))
   } finally {
     loading.value = false
   }
@@ -191,16 +193,17 @@ const loadPageData = async () => {
 
 const createTask = async () => {
   if (!createForm.projectId || !createForm.title.trim()) {
+    validationMessage.value = '项目和任务标题不能为空'
     return
   }
 
   if (createForm.mode === 'workflow' && !createForm.workflowTemplateId) {
-    errorMessage.value = '工作流模式下必须选择模板'
+    validationMessage.value = '工作流模式下必须选择模板'
     return
   }
 
   submitting.value = true
-  errorMessage.value = ''
+  validationMessage.value = ''
 
   try {
     const acceptanceCriteria = createForm.acceptanceCriteriaText
@@ -228,8 +231,9 @@ const createTask = async () => {
     createForm.environment = 'default'
 
     await loadTaskList()
+    message.success('创建任务成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '创建任务失败'
+    message.error(toErrorMessage(error, '创建任务失败'))
   } finally {
     submitting.value = false
   }
@@ -428,7 +432,7 @@ onMounted(() => {
         </div>
       </form>
 
-      <p v-if="errorMessage" class="mt-3 text-sm text-destructive">{{ errorMessage }}</p>
+      <p v-if="validationMessage" class="mt-3 text-sm text-destructive">{{ validationMessage }}</p>
     </section>
 
     <section class="panel-card overflow-hidden">

@@ -3,11 +3,12 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { authApi } from '@/api/auth'
 import { notificationsApi } from '@/api/notifications'
-import { useAuth } from '@/hooks'
+import { useAuth, useMessage } from '@/hooks'
 import { useUserStore } from '@/stores/modules/user'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import type { UserInfo } from '@/types/api/auth'
-import type { NotificationEvent, NotificationSetting } from '@/types/api/notifications'
+import type { NotificationSetting } from '@/types/api/notifications'
+import { toErrorMessage } from '@/utils/http/to-error-message'
 import { storage } from '@/utils/storage'
 
 const router = useRouter()
@@ -43,7 +44,7 @@ const PERSONAL_SETTINGS_TABS: Array<{
   {
     key: 'notifications',
     label: '通知',
-    description: '配置通知渠道并查看通知记录。',
+    description: '配置通知渠道。',
   },
   {
     key: 'account',
@@ -72,8 +73,7 @@ const saving = ref(false)
 const profileSaving = ref(false)
 const passwordSaving = ref(false)
 const deletingAccount = ref(false)
-const errorMessage = ref('')
-const successMessage = ref('')
+const validationMessage = ref('')
 
 const settingForm = reactive({
   emailEnabled: true,
@@ -95,9 +95,8 @@ const passwordForm = reactive({
   confirmPassword: '',
 })
 
-const events = ref<NotificationEvent[]>([])
-
 const { logout } = useAuth()
+const message = useMessage()
 
 const profileDisplayName = computed(() => {
   return profileForm.nickname.trim() || profileForm.username.trim() || '-'
@@ -160,19 +159,6 @@ const applyDensity = (nextDensity: UiDensity) => {
   document.documentElement.setAttribute('data-ui-density', nextDensity)
 }
 
-const formatDate = (value?: string | null) => {
-  if (!value) return '-'
-  const parsedDate = new Date(value)
-  if (Number.isNaN(parsedDate.getTime())) return value
-  return parsedDate.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 const syncSettingForm = (setting: NotificationSetting) => {
   settingForm.emailEnabled = setting.emailEnabled
   settingForm.webhookEnabled = setting.webhookEnabled
@@ -200,20 +186,17 @@ const clearPasswordForm = () => {
 
 const loadPageData = async () => {
   loading.value = true
-  errorMessage.value = ''
 
   try {
-    const [profileResponse, settingResponse, eventResponse] = await Promise.all([
+    const [profileResponse, settingResponse] = await Promise.all([
       authApi.me(),
       notificationsApi.setting(),
-      notificationsApi.events({ limit: 20 }),
     ])
 
     syncProfileForm(profileResponse)
     syncSettingForm(settingResponse)
-    events.value = eventResponse
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '加载设置失败'
+    message.error(toErrorMessage(error, '加载设置失败'))
   } finally {
     loading.value = false
   }
@@ -221,13 +204,12 @@ const loadPageData = async () => {
 
 const saveProfile = async () => {
   if (!profileForm.username.trim()) {
-    errorMessage.value = '用户名不能为空'
+    validationMessage.value = '用户名不能为空'
     return
   }
 
   profileSaving.value = true
-  errorMessage.value = ''
-  successMessage.value = ''
+  validationMessage.value = ''
 
   try {
     const updatedProfile = await authApi.updateMe({
@@ -239,9 +221,9 @@ const saveProfile = async () => {
 
     syncProfileForm(updatedProfile)
     userStore.setProfile(userStore.mapUserToProfile(updatedProfile))
-    successMessage.value = '个人资料已更新'
+    message.success('个人资料已更新')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '保存个人资料失败'
+    message.error(toErrorMessage(error, '保存个人资料失败'))
   } finally {
     profileSaving.value = false
   }
@@ -253,23 +235,22 @@ const savePassword = async () => {
   const confirmPassword = passwordForm.confirmPassword.trim()
 
   if (!oldPassword || !newPassword || !confirmPassword) {
-    errorMessage.value = '请填写旧密码、新密码和确认密码'
+    validationMessage.value = '请填写旧密码、新密码和确认密码'
     return
   }
 
   if (newPassword.length < 6) {
-    errorMessage.value = '新密码至少 6 位'
+    validationMessage.value = '新密码至少 6 位'
     return
   }
 
   if (newPassword !== confirmPassword) {
-    errorMessage.value = '两次输入的新密码不一致'
+    validationMessage.value = '两次输入的新密码不一致'
     return
   }
 
   passwordSaving.value = true
-  errorMessage.value = ''
-  successMessage.value = ''
+  validationMessage.value = ''
 
   try {
     const updatedProfile = await authApi.updateMe({
@@ -280,9 +261,9 @@ const savePassword = async () => {
     syncProfileForm(updatedProfile)
     userStore.setProfile(userStore.mapUserToProfile(updatedProfile))
     clearPasswordForm()
-    successMessage.value = '密码已更新'
+    message.success('密码已更新')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '修改密码失败'
+    message.error(toErrorMessage(error, '修改密码失败'))
   } finally {
     passwordSaving.value = false
   }
@@ -290,13 +271,12 @@ const savePassword = async () => {
 
 const saveNotificationSetting = async () => {
   if (settingForm.webhookEnabled && !settingForm.webhookUrl.trim()) {
-    errorMessage.value = '启用 Webhook 时必须填写回调地址'
+    validationMessage.value = '启用 Webhook 时必须填写回调地址'
     return
   }
 
   saving.value = true
-  errorMessage.value = ''
-  successMessage.value = ''
+  validationMessage.value = ''
 
   try {
     const setting = await notificationsApi.updateSetting({
@@ -307,24 +287,11 @@ const saveNotificationSetting = async () => {
     })
 
     syncSettingForm(setting)
-    successMessage.value = '通知设置已更新'
+    message.success('通知设置已更新')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '保存通知设置失败'
+    message.error(toErrorMessage(error, '保存通知设置失败'))
   } finally {
     saving.value = false
-  }
-}
-
-const markRead = async (event: NotificationEvent) => {
-  if (event.readAt) {
-    return
-  }
-
-  try {
-    await notificationsApi.markRead(event.id)
-    await loadPageData()
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '标记已读失败'
   }
 }
 
@@ -342,16 +309,16 @@ const deleteAccount = async () => {
   }
 
   deletingAccount.value = true
-  errorMessage.value = ''
-  successMessage.value = ''
+  validationMessage.value = ''
 
   try {
     await authApi.deleteMe()
     userStore.setToken(null)
     userStore.setProfile(null)
+    message.success('账号已注销')
     await router.push('/login')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '注销账号失败'
+    message.error(toErrorMessage(error, '注销账号失败'))
   } finally {
     deletingAccount.value = false
   }
@@ -373,8 +340,7 @@ onMounted(() => {
   <div class="space-y-6 fade-up">
     <section class="space-y-2">
       <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">{{ activeTabDescription }}</p>
-      <p v-if="errorMessage" class="text-sm text-destructive">{{ errorMessage }}</p>
-      <p v-if="successMessage" class="text-sm text-emerald-600 dark:text-emerald-300">{{ successMessage }}</p>
+      <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
     </section>
 
     <section v-if="props.showTabNav" class="panel-card p-3 sm:p-4">
@@ -568,51 +534,6 @@ onMounted(() => {
             {{ saving ? '保存中...' : '保存通知设置' }}
           </button>
         </form>
-      </article>
-
-      <article class="panel-card p-5">
-        <div class="flex items-center justify-between">
-          <p class="text-sm font-semibold">通知事件</p>
-          <button
-            class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
-            type="button"
-            @click="loadPageData"
-          >
-            刷新
-          </button>
-        </div>
-
-        <ul class="mt-4 space-y-2">
-          <li
-            v-for="event in events"
-            :key="event.id"
-            class="rounded-xl border border-border bg-background/60 px-4 py-3"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <p class="text-sm font-semibold">{{ event.title }}</p>
-                <p class="mt-1 text-xs text-muted-foreground">{{ event.content }}</p>
-                <p class="mt-1 text-xs text-muted-foreground">{{ formatDate(event.createdAt) }}</p>
-              </div>
-
-              <button
-                class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="Boolean(event.readAt)"
-                type="button"
-                @click="markRead(event)"
-              >
-                {{ event.readAt ? '已读' : '标记已读' }}
-              </button>
-            </div>
-          </li>
-
-          <li
-            v-if="events.length === 0"
-            class="rounded-xl border border-border bg-background/60 px-4 py-3 text-sm text-muted-foreground"
-          >
-            暂无通知事件。
-          </li>
-        </ul>
       </article>
     </section>
 

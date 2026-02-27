@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useMessage } from '@/hooks'
 import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
 import type { Project } from '@/types/api/projects'
 import type { Task, TaskStatus } from '@/types/api/tasks'
 import { fetchAllPages } from '@/utils/pagination'
+import { toErrorMessage } from '@/utils/http/to-error-message'
 
 defineOptions({
   name: 'KanbanView',
@@ -18,7 +20,7 @@ type KanbanColumnConfig = {
 }
 
 const loading = ref(false)
-const errorMessage = ref('')
+const message = useMessage()
 
 const projects = ref<Project[]>([])
 const tasks = ref<Task[]>([])
@@ -107,14 +109,6 @@ const getProjectName = (projectId: string) => {
   return projectNameMap.value.get(projectId) ?? projectId
 }
 
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (error instanceof Error && error.message) {
-    return error.message
-  }
-
-  return fallback
-}
-
 const formatDate = (value?: string) => {
   if (!value) return '-'
   const parsedDate = new Date(value)
@@ -149,14 +143,13 @@ const loadTasks = async () => {
 
 const loadPageData = async () => {
   loading.value = true
-  errorMessage.value = ''
 
   try {
     const [projectResponse] = await Promise.all([loadAllProjects(), loadTasks()])
 
     projects.value = projectResponse
   } catch (error) {
-    errorMessage.value = getErrorMessage(error, '加载看板数据失败')
+    message.error(toErrorMessage(error, '加载看板数据失败'))
   } finally {
     loading.value = false
   }
@@ -164,12 +157,11 @@ const loadPageData = async () => {
 
 const applyFilters = async () => {
   loading.value = true
-  errorMessage.value = ''
 
   try {
     await loadTasks()
   } catch (error) {
-    errorMessage.value = getErrorMessage(error, '筛选任务失败')
+    message.error(toErrorMessage(error, '筛选任务失败'))
   } finally {
     loading.value = false
   }
@@ -194,7 +186,6 @@ onMounted(() => {
       <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
         从任务接口实时聚合状态分布，支持按项目和关键词过滤。
       </p>
-      <p v-if="errorMessage" class="text-sm text-destructive">{{ errorMessage }}</p>
     </section>
 
     <section class="panel-card p-5">

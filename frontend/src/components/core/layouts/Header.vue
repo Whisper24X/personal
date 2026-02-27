@@ -1,10 +1,110 @@
 <script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { notificationsApi } from '@/api/notifications'
+import type { NotificationEvent } from '@/types/api/notifications'
+
 const props = defineProps<{
   mobileNavOpen: boolean
   pageTitle: string
   breadcrumbs: string[]
   toggleMobileNav: () => void
 }>()
+
+const notificationRootRef = ref<HTMLElement | null>(null)
+const notificationOpen = ref(false)
+const notificationLoading = ref(false)
+const notificationError = ref('')
+const notificationEvents = ref<NotificationEvent[]>([])
+
+const unreadCount = computed(() => {
+  return notificationEvents.value.filter((event) => !event.readAt).length
+})
+
+const formatDate = (value: string) => {
+  const parsedDate = new Date(value)
+  if (Number.isNaN(parsedDate.getTime())) {
+    return value
+  }
+
+  return parsedDate.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+const loadNotifications = async () => {
+  notificationLoading.value = true
+  notificationError.value = ''
+
+  try {
+    notificationEvents.value = await notificationsApi.events({ limit: 12 })
+  } catch (error) {
+    notificationError.value = error instanceof Error ? error.message : '加载消息失败'
+  } finally {
+    notificationLoading.value = false
+  }
+}
+
+const toggleNotifications = async () => {
+  const nextOpen = !notificationOpen.value
+  notificationOpen.value = nextOpen
+
+  if (!nextOpen) {
+    return
+  }
+
+  await loadNotifications()
+}
+
+const closeNotifications = () => {
+  notificationOpen.value = false
+}
+
+const markRead = async (event: NotificationEvent) => {
+  if (event.readAt) {
+    return
+  }
+
+  try {
+    await notificationsApi.markRead(event.id)
+    event.readAt = new Date().toISOString()
+  } catch (error) {
+    notificationError.value = error instanceof Error ? error.message : '标记已读失败'
+  }
+}
+
+const onWindowClick = (event: MouseEvent) => {
+  if (!notificationOpen.value) {
+    return
+  }
+
+  const target = event.target as Node | null
+  if (target && notificationRootRef.value?.contains(target)) {
+    return
+  }
+
+  closeNotifications()
+}
+
+const onWindowKeydown = (event: KeyboardEvent) => {
+  if (event.key !== 'Escape') {
+    return
+  }
+
+  closeNotifications()
+}
+
+onMounted(() => {
+  window.addEventListener('click', onWindowClick)
+  window.addEventListener('keydown', onWindowKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('click', onWindowClick)
+  window.removeEventListener('keydown', onWindowKeydown)
+})
 </script>
 
 <template>
@@ -61,6 +161,88 @@ const props = defineProps<{
         <div>
           <p class="text-sm font-semibold leading-none">{{ props.pageTitle }}</p>
           <p class="mt-1 text-xs text-muted-foreground">{{ props.breadcrumbs.join(' / ') }}</p>
+        </div>
+      </div>
+
+      <div ref="notificationRootRef" class="relative">
+        <button
+          class="relative inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-foreground transition hover:shadow-sm"
+          type="button"
+          aria-label="消息中心"
+          :aria-expanded="notificationOpen"
+          aria-haspopup="menu"
+          @click.stop="toggleNotifications"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M10.268 21a2 2 0 0 0 3.464 0" />
+            <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .738-1.674C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" />
+          </svg>
+          <span
+            v-if="unreadCount > 0"
+            class="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold leading-5 text-destructive-foreground"
+          >
+            {{ unreadCount > 99 ? '99+' : unreadCount }}
+          </span>
+        </button>
+
+        <div
+          v-if="notificationOpen"
+          class="absolute right-0 top-12 z-40 w-[min(30rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-border bg-background shadow-xl"
+        >
+          <div class="flex items-center justify-between border-b border-border px-4 py-3">
+            <p class="text-sm font-semibold">消息中心</p>
+            <button
+              class="rounded-md border border-border px-2 py-1 text-xs text-foreground transition hover:bg-muted"
+              type="button"
+              :disabled="notificationLoading"
+              @click="loadNotifications"
+            >
+              {{ notificationLoading ? '刷新中...' : '刷新' }}
+            </button>
+          </div>
+
+          <div class="max-h-96 overflow-auto p-2">
+            <p v-if="notificationError" class="px-2 py-2 text-xs text-destructive">{{ notificationError }}</p>
+
+            <p v-else-if="notificationLoading" class="px-2 py-2 text-xs text-muted-foreground">加载中...</p>
+
+            <ul v-else-if="notificationEvents.length > 0" class="space-y-1">
+              <li
+                v-for="event in notificationEvents"
+                :key="event.id"
+                class="rounded-lg border border-border bg-card/40 px-3 py-2"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="truncate text-sm font-medium">{{ event.title }}</p>
+                    <p class="mt-1 line-clamp-2 text-xs text-muted-foreground">{{ event.content }}</p>
+                    <p class="mt-1 text-[11px] text-muted-foreground">{{ formatDate(event.createdAt) }}</p>
+                  </div>
+                  <button
+                    class="shrink-0 rounded-md border border-border px-2 py-1 text-[11px] transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                    :disabled="Boolean(event.readAt)"
+                    type="button"
+                    @click="markRead(event)"
+                  >
+                    {{ event.readAt ? '已读' : '标记已读' }}
+                  </button>
+                </div>
+              </li>
+            </ul>
+
+            <p v-else class="px-2 py-2 text-xs text-muted-foreground">暂无消息。</p>
+          </div>
         </div>
       </div>
     </div>

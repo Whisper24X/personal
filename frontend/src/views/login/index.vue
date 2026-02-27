@@ -2,10 +2,13 @@
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/hooks'
+import { useMessage } from '@/hooks'
+import { toErrorMessage } from '@/utils/http/to-error-message'
 
 const router = useRouter()
 const route = useRoute()
-const { login, loading: isLoading, error } = useAuth()
+const { login, loading: isLoading } = useAuth()
+const message = useMessage()
 
 const username = ref('')
 const password = ref('')
@@ -24,7 +27,7 @@ const onSubmit = async () => {
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard'
     await router.push(redirect)
   } catch (exception) {
-    void exception
+    message.error(toErrorMessage(exception, '登录失败'))
   }
 }
 </script>
@@ -47,11 +50,6 @@ const onSubmit = async () => {
             </div>
             <h1 class="text-3xl font-semibold tracking-tight">登录</h1>
             <p class="text-sm text-muted-foreground">AI Native 平台：项目、任务、工作流与 Agent 执行控制台。</p>
-          </div>
-
-          <div v-if="error" class="rounded-xl border border-destructive/30 bg-destructive/10 p-4">
-            <p class="text-sm font-semibold text-destructive">无法登录</p>
-            <p class="mt-1 text-sm text-muted-foreground">{{ error }}</p>
           </div>
 
           <form

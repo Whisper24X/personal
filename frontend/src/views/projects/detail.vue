@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import { useMessage } from '@/hooks'
 import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
 import { usersApi } from '@/api/users'
@@ -8,6 +9,7 @@ import type { ProjectContext } from '@/types/api/project-context'
 import type { Project, ProjectMember } from '@/types/api/projects'
 import type { Task } from '@/types/api/tasks'
 import type { User } from '@/types/api/users'
+import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
 
 defineOptions({
@@ -21,7 +23,8 @@ type TabKey = 'overview' | 'context' | 'members' | 'config'
 const tab = ref<TabKey>('overview')
 
 const loading = ref(false)
-const errorMessage = ref('')
+const validationMessage = ref('')
+const message = useMessage()
 
 const project = ref<Project | null>(null)
 const projectMembers = ref<ProjectMember[]>([])
@@ -29,7 +32,6 @@ const recentTasks = ref<Task[]>([])
 const projectContext = ref<ProjectContext | null>(null)
 const users = ref<User[]>([])
 const contextLoading = ref(false)
-const contextErrorMessage = ref('')
 
 const creatingMember = ref(false)
 const updatingMemberId = ref<string | null>(null)
@@ -189,13 +191,12 @@ const loadProjectContext = async () => {
   }
 
   contextLoading.value = true
-  contextErrorMessage.value = ''
 
   try {
     projectContext.value = await projectsApi.context(projectId.value)
   } catch (error) {
     projectContext.value = null
-    contextErrorMessage.value = error instanceof Error ? error.message : '加载项目上下文失败'
+    message.error(toErrorMessage(error, '加载项目上下文失败'))
   } finally {
     contextLoading.value = false
   }
@@ -211,7 +212,7 @@ const loadProjectData = async () => {
   }
 
   loading.value = true
-  errorMessage.value = ''
+  validationMessage.value = ''
 
   try {
     const [projectResponse, memberResponse, taskResponse] = await Promise.all([
@@ -232,7 +233,7 @@ const loadProjectData = async () => {
     syncConfigForm(projectResponse)
     await loadProjectContext()
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '加载项目详情失败'
+    message.error(toErrorMessage(error, '加载项目详情失败'))
   } finally {
     loading.value = false
   }
@@ -246,12 +247,12 @@ const createMember = async () => {
   const normalizedUserId = newMemberForm.userId.trim()
   const duplicatedMember = projectMembers.value.find((member) => member.userId === normalizedUserId)
   if (duplicatedMember) {
-    errorMessage.value = '该用户已在当前项目成员列表中'
+    validationMessage.value = '该用户已在当前项目成员列表中'
     return
   }
 
   creatingMember.value = true
-  errorMessage.value = ''
+  validationMessage.value = ''
 
   try {
     await projectsApi.addMember(projectId.value, {
@@ -262,8 +263,9 @@ const createMember = async () => {
     newMemberForm.userId = ''
     newMemberForm.role = 'developer'
     await loadProjectData()
+    message.success('添加项目成员成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '添加项目成员失败'
+    message.error(toErrorMessage(error, '添加项目成员失败'))
   } finally {
     creatingMember.value = false
   }
@@ -280,7 +282,6 @@ const updateMemberRole = async (member: ProjectMember) => {
   }
 
   updatingMemberId.value = member.userId
-  errorMessage.value = ''
 
   try {
     await projectsApi.updateMember(projectId.value, member.userId, {
@@ -288,8 +289,9 @@ const updateMemberRole = async (member: ProjectMember) => {
     })
 
     await loadProjectData()
+    message.success('更新成员角色成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '更新成员角色失败'
+    message.error(toErrorMessage(error, '更新成员角色失败'))
   } finally {
     updatingMemberId.value = null
   }
@@ -305,13 +307,13 @@ const removeMember = async (member: ProjectMember) => {
   }
 
   removingMemberId.value = member.userId
-  errorMessage.value = ''
 
   try {
     await projectsApi.removeMember(projectId.value, member.userId)
     await loadProjectData()
+    message.success('移除成员成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '移除成员失败'
+    message.error(toErrorMessage(error, '移除成员失败'))
   } finally {
     removingMemberId.value = null
   }
@@ -319,11 +321,12 @@ const removeMember = async (member: ProjectMember) => {
 
 const saveConfig = async () => {
   if (!project.value || !projectId.value || !configForm.name.trim() || !configForm.gitUrl.trim()) {
+    validationMessage.value = '项目名称和仓库地址不能为空'
     return
   }
 
   savingConfig.value = true
-  errorMessage.value = ''
+  validationMessage.value = ''
 
   try {
     const allowedSkills = configForm.skills
@@ -368,8 +371,9 @@ const saveConfig = async () => {
     })
 
     await loadProjectData()
+    message.success('保存项目配置成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '保存项目配置失败'
+    message.error(toErrorMessage(error, '保存项目配置失败'))
   } finally {
     savingConfig.value = false
   }
@@ -385,7 +389,7 @@ watch(
 onMounted(() => {
   void loadProjectData()
   void loadUsers().catch((error) => {
-    errorMessage.value = error instanceof Error ? error.message : '加载用户列表失败'
+    message.error(toErrorMessage(error, '加载用户列表失败'))
   })
 })
 </script>
@@ -421,7 +425,7 @@ onMounted(() => {
         </RouterLink>
       </div>
 
-      <p v-if="errorMessage" class="text-sm text-destructive">{{ errorMessage }}</p>
+      <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
     </section>
 
     <section v-if="loading" class="panel-card p-6 text-sm text-muted-foreground">加载中...</section>
@@ -532,8 +536,6 @@ onMounted(() => {
               {{ contextLoading ? '刷新中...' : '刷新上下文' }}
             </button>
           </div>
-
-          <p v-if="contextErrorMessage" class="mt-3 text-sm text-destructive">{{ contextErrorMessage }}</p>
 
           <div v-if="contextLoading" class="mt-4 text-sm text-muted-foreground">上下文加载中...</div>
 

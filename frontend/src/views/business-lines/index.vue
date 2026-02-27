@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useMessage } from '@/hooks'
 import {
   businessLinesApi,
   type BusinessLine,
@@ -8,6 +9,7 @@ import {
 } from '@/api/business-lines'
 import { usersApi } from '@/api/users'
 import type { User } from '@/types/api/users'
+import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
 import BusinessLineFormModal from '@/views/business-lines/components/BusinessLineFormModal.vue'
 
@@ -24,7 +26,8 @@ const savingMember = ref(false)
 const removingLineId = ref('')
 const updatingMemberUserId = ref('')
 const removingMemberUserId = ref('')
-const errorMessage = ref('')
+const validationMessage = ref('')
+const message = useMessage()
 
 const lines = ref<BusinessLine[]>([])
 const members = ref<BusinessLineMember[]>([])
@@ -112,13 +115,12 @@ const loadUsers = async () => {
   try {
     users.value = await fetchAllPages((page, limit) => usersApi.list({ page, limit }))
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '加载用户失败'
+    message.error(toErrorMessage(error, '加载用户失败'))
   }
 }
 
 const loadLines = async (preferredSelectedId?: string) => {
   loadingLines.value = true
-  errorMessage.value = ''
 
   try {
     const response = await fetchAllPages((page, limit) =>
@@ -136,7 +138,7 @@ const loadLines = async (preferredSelectedId?: string) => {
       selectedLineId.value = response[0]?.id ?? ''
     }
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '加载业务线失败'
+    message.error(toErrorMessage(error, '加载业务线失败'))
   } finally {
     loadingLines.value = false
   }
@@ -156,7 +158,7 @@ const loadMembers = async () => {
     members.value = response
     syncMemberRoleDrafts()
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '加载业务线成员失败'
+    message.error(toErrorMessage(error, '加载业务线成员失败'))
   } finally {
     loadingMembers.value = false
   }
@@ -188,7 +190,7 @@ const openEditLineModal = (line: BusinessLine) => {
 
 const submitLineForm = async (payload: { name: string; description: string }) => {
   savingLine.value = true
-  errorMessage.value = ''
+  validationMessage.value = ''
 
   const requestPayload = {
     name: payload.name.trim(),
@@ -205,8 +207,9 @@ const submitLineForm = async (payload: { name: string; description: string }) =>
     }
 
     lineFormModalOpen.value = false
+    message.success(lineFormMode.value === 'edit' ? '保存业务线成功' : '创建业务线成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '保存业务线失败'
+    message.error(toErrorMessage(error, '保存业务线失败'))
   } finally {
     savingLine.value = false
   }
@@ -218,7 +221,6 @@ const removeLine = async (line: BusinessLine) => {
   }
 
   removingLineId.value = line.id
-  errorMessage.value = ''
 
   try {
     await businessLinesApi.remove(line.id)
@@ -230,8 +232,9 @@ const removeLine = async (line: BusinessLine) => {
     }
 
     await loadLines()
+    message.success('删除业务线成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '删除业务线失败'
+    message.error(toErrorMessage(error, '删除业务线失败'))
   } finally {
     removingLineId.value = ''
   }
@@ -244,12 +247,12 @@ const openMembersTabForLine = (line: BusinessLine) => {
 
 const addMember = async () => {
   if (!selectedLineId.value || !memberForm.userId.trim()) {
-    errorMessage.value = '请先选择业务线并填写用户 ID'
+    validationMessage.value = '请先选择业务线并填写用户 ID'
     return
   }
 
   savingMember.value = true
-  errorMessage.value = ''
+  validationMessage.value = ''
 
   try {
     await businessLinesApi.addMember(selectedLineId.value, {
@@ -259,8 +262,9 @@ const addMember = async () => {
     memberForm.userId = ''
     memberForm.role = 'member'
     await loadMembers()
+    message.success('添加成员成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '添加成员失败'
+    message.error(toErrorMessage(error, '添加成员失败'))
   } finally {
     savingMember.value = false
   }
@@ -270,15 +274,15 @@ const updateMemberRole = async (member: BusinessLineMember) => {
   const nextRole = memberRoleDrafts.value[member.userId] ?? member.role
 
   updatingMemberUserId.value = member.userId
-  errorMessage.value = ''
 
   try {
     await businessLinesApi.updateMember(member.businessLineId, member.userId, {
       role: nextRole,
     })
     await loadMembers()
+    message.success('更新成员角色成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '更新成员角色失败'
+    message.error(toErrorMessage(error, '更新成员角色失败'))
   } finally {
     updatingMemberUserId.value = ''
   }
@@ -286,13 +290,13 @@ const updateMemberRole = async (member: BusinessLineMember) => {
 
 const removeMember = async (member: BusinessLineMember) => {
   removingMemberUserId.value = member.userId
-  errorMessage.value = ''
 
   try {
     await businessLinesApi.removeMember(member.businessLineId, member.userId)
     await loadMembers()
+    message.success('移除成员成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '移除成员失败'
+    message.error(toErrorMessage(error, '移除成员失败'))
   } finally {
     removingMemberUserId.value = ''
   }
@@ -333,7 +337,7 @@ onMounted(() => {
       <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
         对接业务线 CRUD 与成员管理接口，支持角色变更和移除。
       </p>
-      <p v-if="errorMessage" class="text-sm text-destructive">{{ errorMessage }}</p>
+      <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
     </section>
 
     <section class="panel-card flex flex-wrap gap-2 p-2">

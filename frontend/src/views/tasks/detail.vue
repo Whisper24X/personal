@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import { useMessage } from '@/hooks'
 import { artifactsApi } from '@/api/artifacts'
 import ArtifactPreviewPanel from '@/components/tasks/ArtifactPreviewPanel.vue'
 import { openSseStream } from '@/api/http'
 import { tasksApi } from '@/api/tasks'
 import type { ArtifactPreview } from '@/types/api/artifacts'
 import type { Task, TaskArtifact, TaskArtifactType, TaskDetail, TaskLog, TaskNode } from '@/types/api/tasks'
+import { toErrorMessage } from '@/utils/http/to-error-message'
 
 const route = useRoute()
 const taskId = computed(() => String(route.params.id ?? ''))
@@ -15,19 +17,18 @@ const loading = ref(false)
 const actionLoading = ref(false)
 const uploadingArtifact = ref(false)
 const downloadingArtifactId = ref<string | null>(null)
-const errorMessage = ref('')
+const validationMessage = ref('')
+const message = useMessage()
 
 const detail = ref<TaskDetail | null>(null)
 const logs = ref<TaskLog[]>([])
 const artifacts = ref<TaskArtifact[]>([])
 const previewLoading = ref(false)
-const previewErrorMessage = ref('')
 const selectedPreviewArtifact = ref<TaskArtifact | null>(null)
 const artifactPreview = ref<ArtifactPreview | null>(null)
 
 const closeArtifactPreview = () => {
   previewLoading.value = false
-  previewErrorMessage.value = ''
   selectedPreviewArtifact.value = null
   artifactPreview.value = null
 }
@@ -231,7 +232,7 @@ const loadTaskData = async () => {
   }
 
   loading.value = true
-  errorMessage.value = ''
+  validationMessage.value = ''
   closeArtifactPreview()
 
   try {
@@ -249,7 +250,7 @@ const loadTaskData = async () => {
     })
     artifacts.value = artifactResponse
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '加载任务详情失败'
+    message.error(toErrorMessage(error, '加载任务详情失败'))
   } finally {
     loading.value = false
   }
@@ -277,12 +278,12 @@ const executeTask = async () => {
   }
 
   actionLoading.value = true
-  errorMessage.value = ''
 
   try {
     detail.value = await tasksApi.execute(taskId.value)
+    message.success('任务已开始执行')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '执行任务失败'
+    message.error(toErrorMessage(error, '执行任务失败'))
   } finally {
     actionLoading.value = false
   }
@@ -294,12 +295,12 @@ const cancelTask = async () => {
   }
 
   actionLoading.value = true
-  errorMessage.value = ''
 
   try {
     detail.value = await tasksApi.cancel(taskId.value)
+    message.success('任务已取消')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '取消任务失败'
+    message.error(toErrorMessage(error, '取消任务失败'))
   } finally {
     actionLoading.value = false
   }
@@ -311,12 +312,12 @@ const cleanupTaskWorktree = async () => {
   }
 
   actionLoading.value = true
-  errorMessage.value = ''
 
   try {
     detail.value = await tasksApi.cleanupWorktree(taskId.value)
+    message.success('工作区已清理')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '清理工作区失败'
+    message.error(toErrorMessage(error, '清理工作区失败'))
   } finally {
     actionLoading.value = false
   }
@@ -328,14 +329,14 @@ const retryNode = async (node: TaskNode) => {
   }
 
   actionLoading.value = true
-  errorMessage.value = ''
 
   try {
     detail.value = await tasksApi.retry(taskId.value, {
       nodeId: node.id,
     })
+    message.success('节点已重试')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '重试节点失败'
+    message.error(toErrorMessage(error, '重试节点失败'))
   } finally {
     actionLoading.value = false
   }
@@ -347,14 +348,14 @@ const approveNode = async (node: TaskNode) => {
   }
 
   actionLoading.value = true
-  errorMessage.value = ''
 
   try {
     detail.value = await tasksApi.approve(taskId.value, {
       nodeId: node.id,
     })
+    message.success('节点审批已通过')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '审批节点失败'
+    message.error(toErrorMessage(error, '审批节点失败'))
   } finally {
     actionLoading.value = false
   }
@@ -362,11 +363,12 @@ const approveNode = async (node: TaskNode) => {
 
 const createArtifact = async () => {
   if (!taskId.value || !artifactForm.name.trim()) {
+    validationMessage.value = '产物名称不能为空'
     return
   }
 
   uploadingArtifact.value = true
-  errorMessage.value = ''
+  validationMessage.value = ''
 
   try {
     await tasksApi.createArtifact(taskId.value, {
@@ -385,8 +387,9 @@ const createArtifact = async () => {
 
     await refreshArtifacts()
     await refreshTaskDetail()
+    message.success('上传产物成功')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '上传产物失败'
+    message.error(toErrorMessage(error, '上传产物失败'))
   } finally {
     uploadingArtifact.value = false
   }
@@ -444,14 +447,14 @@ const resolveArtifactData = async (artifact: TaskArtifact): Promise<TaskArtifact
 const openArtifactPreview = async (artifact: TaskArtifact) => {
   downloadingArtifactId.value = artifact.id
   previewLoading.value = true
-  previewErrorMessage.value = ''
   selectedPreviewArtifact.value = artifact
   artifactPreview.value = null
 
   try {
     artifactPreview.value = await artifactsApi.preview(artifact.id)
   } catch (error) {
-    previewErrorMessage.value = error instanceof Error ? error.message : '产物预览失败'
+    message.error(toErrorMessage(error, '产物预览失败'))
+    closeArtifactPreview()
   } finally {
     previewLoading.value = false
     downloadingArtifactId.value = null
@@ -460,7 +463,7 @@ const openArtifactPreview = async (artifact: TaskArtifact) => {
 
 const downloadArtifact = async (artifact: TaskArtifact) => {
   downloadingArtifactId.value = artifact.id
-  errorMessage.value = ''
+  validationMessage.value = ''
 
   try {
     const resolvedArtifact = await resolveArtifactData(artifact)
@@ -475,9 +478,9 @@ const downloadArtifact = async (artifact: TaskArtifact) => {
       return
     }
 
-    errorMessage.value = '产物下载不可用'
+    validationMessage.value = '产物下载不可用'
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '产物下载失败'
+    message.error(toErrorMessage(error, '产物下载失败'))
   } finally {
     downloadingArtifactId.value = null
   }
@@ -578,7 +581,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <p v-if="errorMessage" class="text-sm text-destructive">{{ errorMessage }}</p>
+      <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
     </section>
 
     <section v-if="loading" class="panel-card p-6 text-sm text-muted-foreground">加载中...</section>
@@ -866,7 +869,7 @@ onBeforeUnmount(() => {
           :artifact="selectedPreviewArtifact"
           :preview="artifactPreview"
           :loading="previewLoading"
-          :error-message="previewErrorMessage"
+          error-message=""
           @close="closeArtifactPreview"
         />
       </div>

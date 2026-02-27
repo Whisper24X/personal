@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useMessage } from '@/hooks'
 import { notificationsApi } from '@/api/notifications'
 import { observabilityApi } from '@/api/observability'
 import { projectsApi } from '@/api/projects'
@@ -11,14 +12,14 @@ import type { Project } from '@/types/api/projects'
 import type { QueueStats } from '@/types/api/queue'
 import type { Task } from '@/types/api/tasks'
 import { fetchAllPages } from '@/utils/pagination'
+import { toErrorMessage } from '@/utils/http/to-error-message'
 
 defineOptions({
   name: 'DashboardView',
 })
 
 const loading = ref(false)
-const errorMessage = ref('')
-const monitoringMessage = ref('')
+const message = useMessage()
 
 const projects = ref<Project[]>([])
 const tasks = ref<Task[]>([])
@@ -61,14 +62,6 @@ const saturationLabel = computed(() => `${saturationRate.value.toFixed(2)}%`)
 const saturationBarWidth = computed(() => `${Math.min(Math.max(saturationRate.value, 0), 100)}%`)
 const alertItems = computed<ObservabilityAlert[]>(() => observabilityMetrics.value?.alerts ?? [])
 
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (error instanceof Error && error.message) {
-    return error.message
-  }
-
-  return fallback
-}
-
 const uniqueById = <T extends { id: string }>(items: T[]) => {
   return Array.from(new Map(items.map((item) => [item.id, item])).values())
 }
@@ -96,28 +89,25 @@ const formatDate = (value?: string) => {
 }
 
 const loadMonitoringData = async () => {
-  monitoringMessage.value = ''
-
   const [metricsResult, queueResult] = await Promise.allSettled([observabilityApi.metrics(), queueApi.stats()])
 
   observabilityMetrics.value = metricsResult.status === 'fulfilled' ? metricsResult.value : null
   queueStats.value = queueResult.status === 'fulfilled' ? queueResult.value : null
 
   if (metricsResult.status === 'rejected' && queueResult.status === 'rejected') {
-    monitoringMessage.value = '可观测指标暂不可用（可能需要管理员权限）。'
+    message.error('可观测指标暂不可用（可能需要管理员权限）。')
     return
   }
 
   if (metricsResult.status === 'rejected') {
-    monitoringMessage.value = getErrorMessage(metricsResult.reason, '可观测指标加载失败')
+    message.error(toErrorMessage(metricsResult.reason, '可观测指标加载失败'))
   } else if (queueResult.status === 'rejected') {
-    monitoringMessage.value = getErrorMessage(queueResult.reason, '队列指标加载失败')
+    message.error(toErrorMessage(queueResult.reason, '队列指标加载失败'))
   }
 }
 
 const loadDashboardData = async () => {
   loading.value = true
-  errorMessage.value = ''
 
   try {
     const [projectResponse, taskResponse, unreadEvents] = await Promise.all([
@@ -132,7 +122,7 @@ const loadDashboardData = async () => {
 
     await loadMonitoringData()
   } catch (error) {
-    errorMessage.value = getErrorMessage(error, '加载仪表盘数据失败')
+    message.error(toErrorMessage(error, '加载仪表盘数据失败'))
   } finally {
     loading.value = false
   }
@@ -151,7 +141,6 @@ onMounted(() => {
       <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
         展示项目与任务的实时统计，帮助快速定位当前执行状态。
       </p>
-      <p v-if="errorMessage" class="text-sm text-destructive">{{ errorMessage }}</p>
     </section>
 
     <section class="grid gap-4 md:grid-cols-4">
@@ -196,7 +185,6 @@ onMounted(() => {
           </div>
         </div>
 
-        <p v-if="monitoringMessage" class="mt-3 text-xs text-muted-foreground">{{ monitoringMessage }}</p>
       </article>
 
       <article class="panel-card p-4">
