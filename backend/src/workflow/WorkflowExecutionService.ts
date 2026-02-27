@@ -477,6 +477,27 @@ export class WorkflowExecutionService {
   }
 
   /**
+   * Reset workflow to a specific action within a role.
+   * Earlier actions in the same role remain COMPLETED; only the target action and
+   * all downstream steps are reset to PENDING.
+   */
+  async resetToAction(projectId: string, versionId: string, targetRole: string, targetAction: string): Promise<WorkflowExecution> {
+    const result = await this.repository.resetToAction(projectId, versionId, targetRole, targetAction);
+    if (!result) {
+      throw new Error(`Workflow execution not found for project ${projectId} version ${versionId}`);
+    }
+
+    logger.info('WorkflowExecutionService: Workflow reset to action', {
+      projectId,
+      versionId,
+      targetRole,
+      targetAction,
+    });
+
+    return result;
+  }
+
+  /**
    * Pause workflow execution
    */
   async pause(projectId: string, versionId: string): Promise<WorkflowExecution> {

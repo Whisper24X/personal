@@ -93,54 +93,50 @@
           </div>
         </div>
 
-        <!-- GeneratePrototype: 左右分栏布局 -->
+        <!-- GeneratePrototype: 上下布局 -->
         <div v-if="isPrototypeAction" class="prototype-layout">
-          <el-row :gutter="20">
-            <!-- 左侧：PRD内容 -->
-            <el-col :span="12">
-              <div class="prd-content-section">
-                <div class="section-header">
-                  <h4>
-                    <el-icon><Document /></el-icon>
-                    PRD内容
-                  </h4>
-                  <el-button-group size="small">
-                    <el-button :type="viewMode === 'preview' ? 'primary' : ''" @click="viewMode = 'preview'"> 预览 </el-button>
-                    <el-button :type="viewMode === 'full' ? 'primary' : ''" @click="viewMode = 'full'"> 完整内容 </el-button>
-                  </el-button-group>
-                </div>
-                <el-scrollbar class="prd-scrollbar">
-                  <div v-if="prdLoading" class="loading-container">
-                    <el-skeleton :rows="5" animated />
-                  </div>
-                  <div v-else-if="!prdContent" class="empty-container">
-                    <el-empty description="PRD内容未找到" />
-                  </div>
-                  <div v-else class="prd-content-display">
-                    <el-input
-                      v-if="isEditing"
-                      v-model="editedContent"
-                      type="textarea"
-                      :rows="viewMode === 'preview' ? 15 : 25"
-                      placeholder="编辑PRD内容..."
-                    />
-                    <pre v-else class="content-text">{{ displayPRDContent }}</pre>
-                  </div>
-                </el-scrollbar>
-                <div v-if="viewMode === 'preview' && prdContent && prdContent.length > 1000" class="preview-notice">
-                  <el-alert title="这是内容预览，点击'完整内容'查看全部" type="info" :closable="false" show-icon />
-                </div>
+          <!-- 上方：PRD内容 -->
+          <div class="prd-content-section">
+            <div class="section-header">
+              <h4>
+                <el-icon><Document /></el-icon>
+                PRD内容
+              </h4>
+              <el-button-group size="small">
+                <el-button :type="viewMode === 'preview' ? 'primary' : ''" @click="viewMode = 'preview'"> 预览 </el-button>
+                <el-button :type="viewMode === 'full' ? 'primary' : ''" @click="viewMode = 'full'"> 完整内容 </el-button>
+              </el-button-group>
+            </div>
+            <el-scrollbar class="prd-scrollbar">
+              <div v-if="prdLoading" class="loading-container">
+                <el-skeleton :rows="5" animated />
               </div>
-            </el-col>
+              <div v-else-if="!prdContent" class="empty-container">
+                <el-empty description="PRD内容未找到" />
+              </div>
+              <div v-else class="prd-content-display">
+                <el-input
+                  v-if="isEditing"
+                  v-model="editedContent"
+                  type="textarea"
+                  :rows="viewMode === 'preview' ? 15 : 25"
+                  placeholder="编辑PRD内容..."
+                />
+                <pre v-else class="content-text">{{ displayPRDContent }}</pre>
+              </div>
+            </el-scrollbar>
+            <div v-if="viewMode === 'preview' && prdContent && prdContent.length > 1000" class="preview-notice">
+              <el-alert title="这是内容预览，点击'完整内容'查看全部" type="info" :closable="false" show-icon />
+            </div>
+          </div>
 
-            <!-- 右侧：原型预览 -->
-            <el-col :span="12">
-              <VersionPrototypePreview v-if="projectId && prototypePreviewUrl" :preview-url="prototypePreviewUrl" :auto-load="true" />
-              <div v-else-if="projectId" class="empty-prototype">
-                <el-empty description="正在加载原型预览..." />
-              </div>
-            </el-col>
-          </el-row>
+          <!-- 下方：原型预览 -->
+          <div class="prototype-preview-section">
+            <VersionPrototypePreview v-if="projectId && prototypePreviewUrl" :preview-url="prototypePreviewUrl" :auto-load="true" />
+            <div v-else-if="projectId" class="empty-prototype">
+              <el-empty description="正在加载原型预览..." />
+            </div>
+          </div>
         </div>
 
         <!-- 非GeneratePrototype: 原有内容显示 -->
@@ -1058,16 +1054,26 @@ onUnmounted(() => {
 /* Prototype layout styles */
 .prototype-layout {
   margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .prd-content-section {
   border: 1px solid var(--el-border-color);
   border-radius: 4px;
   padding: 16px;
-  height: 600px;
+  height: 400px;
   display: flex;
   flex-direction: column;
   background-color: var(--el-bg-color-page);
+}
+
+.prototype-preview-section {
+  min-height: 500px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  overflow: hidden;
 }
 
 .prd-content-section .section-header {
@@ -1129,10 +1135,6 @@ onUnmounted(() => {
     flex-direction: column;
     gap: 12px;
     align-items: flex-start;
-  }
-
-  .prototype-layout .el-col {
-    margin-bottom: 16px;
   }
 }
 </style>

@@ -866,8 +866,14 @@ async function sendCliMessage() {
         };
       }
     }
-    cliHistory.value.push({ role: 'assistant', content: '已保存草稿并更新内容。' });
-    ElMessage.success('草稿已更新');
+    const responseData = response?.data;
+    if (responseData?.prototypeRegenerating) {
+      cliHistory.value.push({ role: 'assistant', content: 'PRD 已更新，正在通过工作流重新生成原型图...' });
+      ElMessage.success('PRD 已更新，原型图重新生成已启动');
+    } else {
+      cliHistory.value.push({ role: 'assistant', content: '已保存草稿并更新内容。' });
+      ElMessage.success('草稿已更新');
+    }
     cliMessage.value = '';
   } catch (error: any) {
     console.error('Failed to edit via CLI:', error);

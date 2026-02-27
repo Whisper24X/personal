@@ -28,10 +28,10 @@ export class WorkflowExecutionRepository {
    */
   async findByProjectAndVersion(projectId: string, versionId: string): Promise<WorkflowExecution | null> {
     try {
-      const result = await query<WorkflowExecutionRow>(
-        `SELECT * FROM workflow_executions WHERE project_id = $1 AND version_id = $2`,
-        [projectId, versionId]
-      );
+      const result = await query<WorkflowExecutionRow>(`SELECT * FROM workflow_executions WHERE project_id = $1 AND version_id = $2`, [
+        projectId,
+        versionId,
+      ]);
 
       if (result.rows.length === 0) {
         return null;
@@ -54,10 +54,9 @@ export class WorkflowExecutionRepository {
    */
   async findByProjectId(projectId: string): Promise<WorkflowExecution | null> {
     try {
-      const result = await query<WorkflowExecutionRow>(
-        `SELECT * FROM workflow_executions WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
-        [projectId]
-      );
+      const result = await query<WorkflowExecutionRow>(`SELECT * FROM workflow_executions WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`, [
+        projectId,
+      ]);
 
       if (result.rows.length === 0) {
         return null;
@@ -78,10 +77,7 @@ export class WorkflowExecutionRepository {
    */
   async findById(id: string): Promise<WorkflowExecution | null> {
     try {
-      const result = await query<WorkflowExecutionRow>(
-        `SELECT * FROM workflow_executions WHERE id = $1`,
-        [id]
-      );
+      const result = await query<WorkflowExecutionRow>(`SELECT * FROM workflow_executions WHERE id = $1`, [id]);
 
       if (result.rows.length === 0) {
         return null;
@@ -102,10 +98,7 @@ export class WorkflowExecutionRepository {
    */
   async findByStates(states: WorkflowState[]): Promise<WorkflowExecution[]> {
     try {
-      const result = await query<WorkflowExecutionRow>(
-        `SELECT * FROM workflow_executions WHERE state = ANY($1::text[])`,
-        [states]
-      );
+      const result = await query<WorkflowExecutionRow>(`SELECT * FROM workflow_executions WHERE state = ANY($1::text[])`, [states]);
 
       return result.rows.map(rowToWorkflowExecution);
     } catch (error: any) {
@@ -308,10 +301,7 @@ export class WorkflowExecutionRepository {
    */
   async deleteByProjectAndVersion(projectId: string, versionId: string): Promise<boolean> {
     try {
-      const result = await query(
-        `DELETE FROM workflow_executions WHERE project_id = $1 AND version_id = $2`,
-        [projectId, versionId]
-      );
+      const result = await query(`DELETE FROM workflow_executions WHERE project_id = $1 AND version_id = $2`, [projectId, versionId]);
 
       return (result.rowCount ?? 0) > 0;
     } catch (error: any) {
@@ -330,10 +320,7 @@ export class WorkflowExecutionRepository {
    */
   async deleteByProjectId(projectId: string): Promise<boolean> {
     try {
-      const result = await query(
-        `DELETE FROM workflow_executions WHERE project_id = $1`,
-        [projectId]
-      );
+      const result = await query(`DELETE FROM workflow_executions WHERE project_id = $1`, [projectId]);
 
       return (result.rowCount ?? 0) > 0;
     } catch (error: any) {
@@ -348,11 +335,7 @@ export class WorkflowExecutionRepository {
   /**
    * Get or create workflow execution for a project and version
    */
-  async getOrCreate(
-    projectId: string,
-    versionId: string,
-    workflowConfig: WorkflowConfig
-  ): Promise<WorkflowExecution> {
+  async getOrCreate(projectId: string, versionId: string, workflowConfig: WorkflowConfig): Promise<WorkflowExecution> {
     const existing = await this.findByProjectAndVersion(projectId, versionId);
     if (existing) {
       return existing;
@@ -396,7 +379,7 @@ export class WorkflowExecutionRepository {
       }
 
       // Find target role index
-      const targetStep = steps.find(s => s.role === targetRole);
+      const targetStep = steps.find((s) => s.role === targetRole);
       if (!targetStep) {
         await client.query('ROLLBACK');
         throw new Error(`Role ${targetRole} not found in workflow`);
@@ -406,12 +389,12 @@ export class WorkflowExecutionRepository {
       const targetRoleIndex = Number(targetStep.roleIndex);
 
       // Log which steps will be reset (for debugging)
-      const stepsToReset = steps.filter(s => Number(s.roleIndex) >= targetRoleIndex);
+      const stepsToReset = steps.filter((s) => Number(s.roleIndex) >= targetRoleIndex);
       logger.debug('WorkflowExecutionRepository: Steps to reset', {
         projectId,
         targetRole,
         targetRoleIndex,
-        stepsToReset: stepsToReset.map(s => ({
+        stepsToReset: stepsToReset.map((s) => ({
           role: s.role,
           action: s.action,
           roleIndex: s.roleIndex,
@@ -421,7 +404,7 @@ export class WorkflowExecutionRepository {
 
       // Reset all steps from target role onwards to PENDING
       // Use Number() to ensure proper numeric comparison (JSON may deserialize as strings)
-      const updatedSteps = steps.map(step => {
+      const updatedSteps = steps.map((step) => {
         if (Number(step.roleIndex) >= targetRoleIndex) {
           return {
             ...step,
@@ -436,9 +419,7 @@ export class WorkflowExecutionRepository {
       });
 
       // Verify reset was applied correctly
-      const resetCount = updatedSteps.filter(s => 
-        Number(s.roleIndex) >= targetRoleIndex && s.state === StepState.PENDING
-      ).length;
+      const resetCount = updatedSteps.filter((s) => Number(s.roleIndex) >= targetRoleIndex && s.state === StepState.PENDING).length;
       const expectedResetCount = stepsToReset.length;
 
       if (resetCount !== expectedResetCount) {
@@ -492,6 +473,129 @@ export class WorkflowExecutionRepository {
         projectId,
         versionId,
         targetRole,
+        error: error.message,
+      });
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Reset workflow to a specific action within a role.
+   * Unlike resetToRole, this preserves earlier actions in the same role as COMPLETED.
+   * Resets the target action and all downstream actions/roles to PENDING.
+   */
+  async resetToAction(projectId: string, versionId: string, targetRole: string, targetActionName: string): Promise<WorkflowExecution | null> {
+    const client = await getClient();
+
+    try {
+      await client.query('BEGIN');
+
+      const getResult = await client.query<WorkflowExecutionRow>(
+        `SELECT * FROM workflow_executions WHERE project_id = $1 AND version_id = $2 FOR UPDATE`,
+        [projectId, versionId]
+      );
+
+      if (getResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      const row = getResult.rows[0];
+      const steps: StepStatus[] = row.steps || [];
+      const executionContext: Record<string, any> = row.execution_context || {};
+
+      if (executionContext.deployFailed !== undefined) {
+        delete executionContext.deployFailed;
+      }
+
+      // Locate the target step
+      const targetStep = steps.find((s) => s.role === targetRole && s.action === targetActionName);
+      if (!targetStep) {
+        await client.query('ROLLBACK');
+        throw new Error(`Action ${targetActionName} not found in role ${targetRole} within workflow`);
+      }
+
+      const targetRoleIndex = Number(targetStep.roleIndex);
+      const targetActionIndex = Number(targetStep.actionIndex);
+
+      // Reset the target action and every downstream step; keep earlier actions in the
+      // same role (actionIndex < targetActionIndex) as-is.
+      const updatedSteps = steps.map((step) => {
+        const ri = Number(step.roleIndex);
+        const ai = Number(step.actionIndex);
+        const shouldReset = ri > targetRoleIndex || (ri === targetRoleIndex && ai >= targetActionIndex);
+        if (shouldReset) {
+          return {
+            ...step,
+            state: StepState.PENDING,
+            retryCount: 0,
+            startedAt: undefined,
+            completedAt: undefined,
+            error: undefined,
+          };
+        }
+        return step;
+      });
+
+      const resetCount = updatedSteps.filter((s) => {
+        const ri = Number(s.roleIndex);
+        const ai = Number(s.actionIndex);
+        return (ri > targetRoleIndex || (ri === targetRoleIndex && ai >= targetActionIndex)) && s.state === StepState.PENDING;
+      }).length;
+
+      logger.debug('WorkflowExecutionRepository: Steps reset by resetToAction', {
+        projectId,
+        targetRole,
+        targetActionName,
+        targetRoleIndex,
+        targetActionIndex,
+        resetCount,
+      });
+
+      const updateResult = await client.query<WorkflowExecutionRow>(
+        `UPDATE workflow_executions SET
+          state = $1,
+          current_position = $2,
+          steps = $3,
+          pending_confirmation = NULL,
+          last_error = NULL,
+          execution_context = $4,
+          version = version + 1,
+          updated_at = NOW()
+        WHERE project_id = $5 AND version_id = $6
+        RETURNING *`,
+        [
+          WorkflowState.INITIALIZED,
+          JSON.stringify({ roleIndex: targetRoleIndex, actionIndex: targetActionIndex }),
+          JSON.stringify(updatedSteps),
+          JSON.stringify(executionContext),
+          projectId,
+          versionId,
+        ]
+      );
+
+      await client.query('COMMIT');
+
+      logger.info('WorkflowExecutionRepository: Reset workflow to action completed', {
+        projectId,
+        versionId,
+        targetRole,
+        targetActionName,
+        targetRoleIndex,
+        targetActionIndex,
+        resetCount,
+      });
+
+      return rowToWorkflowExecution(updateResult.rows[0]);
+    } catch (error: any) {
+      await client.query('ROLLBACK');
+      logger.error('WorkflowExecutionRepository: Failed to reset to action', {
+        projectId,
+        versionId,
+        targetRole,
+        targetActionName,
         error: error.message,
       });
       throw error;
