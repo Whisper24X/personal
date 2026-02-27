@@ -523,6 +523,64 @@ export class WorkflowExecutionController {
 
       cliLogStreamService.push(projectId, versionId, { type: 'status', message: 'done', ts: new Date().toISOString() });
 
+      // When PRD.md was modified, roll back the workflow to the GeneratePrototype step
+      // so the prototype is regenerated through the normal workflow engine.
+      const prdWasModified = targetFiles.some((f) => f.relativePath.includes('PRD.md') && !f.relativePath.includes('REVIEW'));
+      let prototypeRegenerating = false;
+
+      if (prdWasModified) {
+        cliLogStreamService.push(projectId, versionId, {
+          type: 'status',
+          message: '检测到 PRD.md 已修改，回退至 GeneratePrototype 步骤...',
+          ts: new Date().toISOString(),
+        });
+        try {
+          // Stop any running executor before resetting state
+          WorkflowExecutionController._stopBackgroundExecution(projectId, versionId);
+
+          // Delete existing prototype to force regeneration
+          // (GeneratePrototype skips generation in 'new' mode if the file already exists)
+          const prototypeFilePath = path.join(workspaceDir, 'docs', 'prototype', 'index.html');
+          try {
+            await fs.unlink(prototypeFilePath);
+            logger.info('WorkflowExecutionController: Deleted existing prototype before regeneration', {
+              prototypeFilePath,
+            });
+          } catch {
+            // File may not exist yet — not an error
+          }
+
+          // Reset to GeneratePrototype (keeps WritePRD as COMPLETED)
+          await WorkflowExecutionController.executionService.resetToAction(projectId, versionId, 'ProductManager', 'GeneratePrototype');
+
+          // Transition state INITIALIZED → RUNNING, then launch executor
+          await WorkflowExecutionController.executionService.start(projectId, versionId);
+          WorkflowExecutionController.startBackgroundExecution(projectId, versionId);
+
+          prototypeRegenerating = true;
+          cliLogStreamService.push(projectId, versionId, {
+            type: 'status',
+            message: '工作流已回退至 GeneratePrototype，正在重新生成原型图...',
+            ts: new Date().toISOString(),
+          });
+          logger.info('WorkflowExecutionController: Rolled back to GeneratePrototype after PRD update', {
+            projectId,
+            versionId,
+          });
+        } catch (rollbackErr: any) {
+          cliLogStreamService.push(projectId, versionId, {
+            type: 'error',
+            message: `回退至 GeneratePrototype 失败: ${rollbackErr.message}`,
+            ts: new Date().toISOString(),
+          });
+          logger.warn('WorkflowExecutionController: Failed to roll back to GeneratePrototype', {
+            projectId,
+            versionId,
+            error: rollbackErr.message,
+          });
+        }
+      }
+
       return res.json({
         success: true,
         data: {
@@ -532,6 +590,7 @@ export class WorkflowExecutionController {
             path: file.path,
           })),
           cliOutput,
+          prototypeRegenerating,
         },
       });
     } catch (error: unknown) {
