@@ -1,126 +1,853 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import {
+  businessLinesApi,
+  type BusinessLine,
+  type BusinessLineMember,
+  type BusinessLineMemberRole,
+} from '@/api/business-lines'
+import { projectsApi } from '@/api/projects'
+import { usersApi } from '@/api/users'
 import type { BusinessLineItem, ProjectItem } from '@/hooks/core/useLayout'
+import type { Project, ProjectMember } from '@/types/api/projects'
+import type { User } from '@/types/api/users'
+import { fetchAllPages } from '@/utils/pagination'
+import BusinessLineFormModal from './modals/BusinessLineFormModal.vue'
+import ConfirmActionModal from './modals/ConfirmActionModal.vue'
+import MemberPermissionModal from './modals/MemberPermissionModal.vue'
+import ProjectFormModal from './modals/ProjectFormModal.vue'
+
+type MainTab = 'projects' | 'members' | 'settings'
+type ProjectPermissionRole = 'none' | 'manage' | 'developer' | 'viewer'
+type ExistingProjectRole = ProjectMember['role'] | null
+
+defineOptions({
+  name: 'BusinessLineModal',
+})
 
 const props = defineProps<{
   open: boolean
   lines: BusinessLineItem[]
   projects: ProjectItem[]
   activeBusinessLineId: string
+  canCreateBusinessLine: boolean
 }>()
 
 const emit = defineEmits<{
   (event: 'update:open', value: boolean): void
   (event: 'select-line', businessLineId: string): void
-  (
-    event: 'create-project',
-    payload: { businessLineId: string; name: string; short: string; gitUrl: string },
-  ): void
-  (event: 'update-project', payload: { businessLineId: string; projectId: string; name: string; short: string }): void
-  (event: 'delete-project', payload: { businessLineId: string; projectId: string }): void
+  (event: 'request-refresh'): void
 }>()
 
 const activeLineId = ref('')
+const activeTab = ref<MainTab>('projects')
+
 const projectQuery = ref('')
-const formName = ref('')
-const formShort = ref('')
-const formGitUrl = ref('')
+const memberQuery = ref('')
+
+const lineDetail = ref<BusinessLine | null>(null)
+const lineProjects = ref<ProjectItem[]>([])
+const lineMembers = ref<BusinessLineMember[]>([])
+const users = ref<User[]>([])
+
+const loadingLineDetail = ref(false)
+const loadingProjects = ref(false)
+const loadingMembers = ref(false)
+const loadingUsers = ref(false)
+
+const projectError = ref('')
+const memberError = ref('')
+const settingsError = ref('')
+
+const lineFormModalOpen = ref(false)
+const lineFormMode = ref<'create' | 'edit'>('create')
+const lineFormSubmitting = ref(false)
+const lineFormError = ref('')
+const lineFormInitialName = ref('')
+const lineFormInitialDescription = ref('')
+
+const projectFormModalOpen = ref(false)
+const projectFormMode = ref<'create' | 'edit'>('create')
+const projectFormSubmitting = ref(false)
+const projectFormError = ref('')
+const projectFormInitialName = ref('')
+const projectFormInitialDescription = ref('')
+const projectFormInitialGitUrl = ref('')
+const projectFormInitialDefaultBranch = ref('main')
 const editingProjectId = ref('')
 
+const memberPermissionModalOpen = ref(false)
+const memberPermissionModalMode = ref<'create' | 'edit'>('create')
+const memberPermissionModalSubmitting = ref(false)
+const memberPermissionModalPreparing = ref(false)
+const memberPermissionModalError = ref('')
+const memberPermissionInitialUserId = ref('')
+const memberPermissionInitialBusinessRole = ref<BusinessLineMemberRole>('member')
+const memberPermissionInitialProjectRoles = ref<Record<string, ProjectPermissionRole>>({})
+
+const projectDeleteModalOpen = ref(false)
+const deletingProject = ref(false)
+const deletingProjectTarget = ref<ProjectItem | null>(null)
+
+const memberRemoveModalOpen = ref(false)
+const removingMember = ref(false)
+const removingMemberTarget = ref<BusinessLineMember | null>(null)
+
+const lineDeleteModalOpen = ref(false)
+const deletingLine = ref(false)
+
 const selectedLine = computed(() => {
-  return props.lines.find((line) => line.id === activeLineId.value)
+  return props.lines.find((line) => line.id === activeLineId.value) ?? null
+})
+
+const selectedLineName = computed(() => {
+  return lineDetail.value?.name ?? selectedLine.value?.name ?? '业务线'
+})
+
+const selectedLineDescription = computed(() => {
+  return lineDetail.value?.description ?? selectedLine.value?.description ?? ''
+})
+
+const canDeleteLine = computed(() => {
+  return lineProjects.value.length === 0 && Boolean(activeLineId.value)
+})
+
+const hasNestedModalOpen = computed(() => {
+  return (
+    lineFormModalOpen.value ||
+    projectFormModalOpen.value ||
+    memberPermissionModalOpen.value ||
+    projectDeleteModalOpen.value ||
+    memberRemoveModalOpen.value ||
+    lineDeleteModalOpen.value
+  )
 })
 
 const filteredProjects = computed(() => {
   const query = projectQuery.value.trim().toLowerCase()
-  if (!query) return props.projects
+  if (!query) {
+    return lineProjects.value
+  }
 
-  return props.projects.filter((project) => {
+  return lineProjects.value.filter((project) => {
     return (
       project.name.toLowerCase().includes(query) ||
       project.id.toLowerCase().includes(query) ||
-      project.short.toLowerCase().includes(query)
+      (project.description ?? '').toLowerCase().includes(query) ||
+      project.gitUrl.toLowerCase().includes(query)
     )
   })
 })
 
-const isEditing = computed(() => Boolean(editingProjectId.value))
+const userMap = computed(() => {
+  return new Map(users.value.map((user) => [user.id, user]))
+})
 
-const resetProjectForm = () => {
-  formName.value = ''
-  formShort.value = ''
-  formGitUrl.value = ''
-  editingProjectId.value = ''
+const filteredMembers = computed(() => {
+  const query = memberQuery.value.trim().toLowerCase()
+  if (!query) {
+    return lineMembers.value
+  }
+
+  return lineMembers.value.filter((member) => {
+    const user = userMap.value.get(member.userId)
+    const nickname = user?.nickname?.toLowerCase() ?? ''
+    const username = user?.username?.toLowerCase() ?? ''
+    const email = user?.email?.toLowerCase() ?? ''
+    return (
+      member.userId.toLowerCase().includes(query) ||
+      member.role.toLowerCase().includes(query) ||
+      nickname.includes(query) ||
+      username.includes(query) ||
+      email.includes(query)
+    )
+  })
+})
+
+const formatDate = (value?: string) => {
+  if (!value) {
+    return '-'
+  }
+
+  const parsedDate = new Date(value)
+  if (Number.isNaN(parsedDate.getTime())) {
+    return value
+  }
+
+  return parsedDate.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+const toErrorMessage = (error: unknown, fallback: string) => {
+  return error instanceof Error ? error.message : fallback
+}
+
+const normalizeOptionalText = (value: string) => {
+  const trimmedValue = value.trim()
+  return trimmedValue.length > 0 ? trimmedValue : undefined
+}
+
+const normalizeProjectShort = (projectName: string) => {
+  return projectName
+    .trim()
+    .replace(/\s+/g, '')
+    .slice(0, 4)
+    .toUpperCase()
+}
+
+const mapProjectItem = (project: Project): ProjectItem => {
+  return {
+    id: project.id,
+    name: project.name,
+    to: `/projects/${project.id}`,
+    short: normalizeProjectShort(project.name),
+    businessLineId: project.businessLineId,
+    description: project.description ?? null,
+    gitUrl: project.gitUrl,
+    defaultBranch: project.defaultBranch,
+  }
+}
+
+const displayUserLabel = (userId: string) => {
+  const user = userMap.value.get(userId)
+  if (!user) {
+    return userId
+  }
+
+  return user.nickname?.trim() || user.username
+}
+
+const displayUserMeta = (userId: string) => {
+  const user = userMap.value.get(userId)
+  if (!user) {
+    return ''
+  }
+
+  return user.email ?? user.username
+}
+
+const roleBadgeClass = (role: BusinessLineMemberRole) => {
+  if (role === 'owner') {
+    return 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300'
+  }
+
+  if (role === 'admin') {
+    return 'border-sky-500/40 bg-sky-500/10 text-sky-800 dark:text-sky-300'
+  }
+
+  return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300'
+}
+
+const mapProjectRoleToPermissionRole = (role: ExistingProjectRole): ProjectPermissionRole => {
+  if (!role) {
+    return 'none'
+  }
+
+  if (role === 'owner' || role === 'maintainer') {
+    return 'manage'
+  }
+
+  if (role === 'developer') {
+    return 'developer'
+  }
+
+  return 'viewer'
+}
+
+const mapPermissionRoleToProjectRole = (
+  permissionRole: ProjectPermissionRole,
+  currentRole: ExistingProjectRole,
+): ExistingProjectRole => {
+  if (permissionRole === 'none') {
+    return null
+  }
+
+  if (permissionRole === 'manage') {
+    return currentRole === 'owner' ? 'owner' : 'maintainer'
+  }
+
+  if (permissionRole === 'developer') {
+    return 'developer'
+  }
+
+  return 'viewer'
+}
+
+const tabClass = (tab: MainTab) => {
+  return tab === activeTab.value
+    ? 'bg-background text-foreground shadow-sm'
+    : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'
+}
+
+const resetTabErrors = () => {
+  projectError.value = ''
+  memberError.value = ''
+  settingsError.value = ''
 }
 
 const closeModal = () => {
   emit('update:open', false)
 }
 
-const selectLine = (businessLineId: string) => {
-  activeLineId.value = businessLineId
-  resetProjectForm()
-  emit('select-line', businessLineId)
+const closeNestedModals = () => {
+  lineFormModalOpen.value = false
+  projectFormModalOpen.value = false
+  memberPermissionModalOpen.value = false
+  projectDeleteModalOpen.value = false
+  memberRemoveModalOpen.value = false
+  lineDeleteModalOpen.value = false
 }
 
-const startEditProject = (project: ProjectItem) => {
-  editingProjectId.value = project.id
-  formName.value = project.name
-  formShort.value = project.short
-  formGitUrl.value = ''
-}
-
-const cancelEditProject = () => {
-  resetProjectForm()
-}
-
-const submitProject = () => {
-  const businessLineId = activeLineId.value
-  const projectName = formName.value.trim()
-  const projectGitUrl = formGitUrl.value.trim()
-
-  if (!businessLineId || !projectName) return
-
-  if (editingProjectId.value) {
-    emit('update-project', {
-      businessLineId,
-      projectId: editingProjectId.value,
-      name: projectName,
-      short: formShort.value,
-    })
-    resetProjectForm()
+const loadLineDetail = async (lineId: string) => {
+  if (!lineId) {
+    lineDetail.value = null
     return
   }
 
-  if (!projectGitUrl) return
+  loadingLineDetail.value = true
 
-  emit('create-project', {
-    businessLineId,
-    name: projectName,
-    short: formShort.value,
-    gitUrl: projectGitUrl,
-  })
+  try {
+    const detail = await businessLinesApi.detail(lineId)
+    if (lineId !== activeLineId.value) {
+      return
+    }
 
-  resetProjectForm()
+    lineDetail.value = detail
+  } catch (error) {
+    if (lineId === activeLineId.value) {
+      settingsError.value = toErrorMessage(error, '加载业务线详情失败')
+    }
+  } finally {
+    if (lineId === activeLineId.value) {
+      loadingLineDetail.value = false
+    }
+  }
 }
 
-const deleteProject = (projectId: string) => {
-  const businessLineId = activeLineId.value
-  if (!businessLineId) return
+const loadLineProjects = async (lineId: string) => {
+  if (!lineId) {
+    lineProjects.value = []
+    return
+  }
 
-  emit('delete-project', {
-    businessLineId,
-    projectId,
+  loadingProjects.value = true
+
+  try {
+    const response = await fetchAllPages((page, limit) =>
+      projectsApi.list({
+        page,
+        limit,
+        businessLineId: lineId,
+      }),
+    )
+
+    if (lineId !== activeLineId.value) {
+      return
+    }
+
+    lineProjects.value = response
+      .map((project) => mapProjectItem(project))
+      .sort((left, right) => left.name.localeCompare(right.name))
+  } catch (error) {
+    if (lineId === activeLineId.value) {
+      lineProjects.value = []
+      projectError.value = toErrorMessage(error, '加载项目失败')
+    }
+  } finally {
+    if (lineId === activeLineId.value) {
+      loadingProjects.value = false
+    }
+  }
+}
+
+const loadLineMembers = async (lineId: string) => {
+  if (!lineId) {
+    lineMembers.value = []
+    return
+  }
+
+  loadingMembers.value = true
+
+  try {
+    const members = await businessLinesApi.listMembers(lineId)
+    if (lineId !== activeLineId.value) {
+      return
+    }
+
+    lineMembers.value = members
+  } catch (error) {
+    if (lineId === activeLineId.value) {
+      lineMembers.value = []
+      memberError.value = toErrorMessage(error, '加载业务线成员失败')
+    }
+  } finally {
+    if (lineId === activeLineId.value) {
+      loadingMembers.value = false
+    }
+  }
+}
+
+const loadUsers = async () => {
+  if (loadingUsers.value) {
+    return
+  }
+
+  loadingUsers.value = true
+
+  try {
+    users.value = await fetchAllPages((page, limit) => usersApi.list({ page, limit }))
+  } catch (error) {
+    memberError.value = toErrorMessage(error, '加载用户列表失败')
+  } finally {
+    loadingUsers.value = false
+  }
+}
+
+const loadLineContext = async ({ includeMembers = false }: { includeMembers?: boolean } = {}) => {
+  if (!activeLineId.value) {
+    lineDetail.value = null
+    lineProjects.value = []
+    lineMembers.value = []
+    return
+  }
+
+  const lineId = activeLineId.value
+  await Promise.all([loadLineDetail(lineId), loadLineProjects(lineId)])
+
+  if (includeMembers) {
+    await loadLineMembers(lineId)
+  }
+}
+
+const refreshForCurrentLine = async ({ includeMembers = false }: { includeMembers?: boolean } = {}) => {
+  emit('request-refresh')
+  await loadLineContext({ includeMembers })
+}
+
+const openCreateLineModal = () => {
+  if (!props.canCreateBusinessLine) {
+    return
+  }
+
+  lineFormMode.value = 'create'
+  lineFormInitialName.value = ''
+  lineFormInitialDescription.value = ''
+  lineFormError.value = ''
+  lineFormModalOpen.value = true
+}
+
+const openEditLineModal = () => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  lineFormMode.value = 'edit'
+  lineFormInitialName.value = selectedLineName.value
+  lineFormInitialDescription.value = selectedLineDescription.value ?? ''
+  lineFormError.value = ''
+  lineFormModalOpen.value = true
+}
+
+const submitLineForm = async (payload: { name: string; description: string }) => {
+  lineFormSubmitting.value = true
+  lineFormError.value = ''
+
+  try {
+    if (lineFormMode.value === 'create') {
+      const created = await businessLinesApi.create({
+        name: payload.name.trim(),
+        description: normalizeOptionalText(payload.description),
+      })
+
+      activeLineId.value = created.id
+      emit('select-line', created.id)
+      activeTab.value = 'projects'
+    } else {
+      if (!activeLineId.value) {
+        return
+      }
+
+      await businessLinesApi.update(activeLineId.value, {
+        name: payload.name.trim(),
+        description: payload.description.trim(),
+      })
+    }
+
+    lineFormModalOpen.value = false
+    await refreshForCurrentLine({ includeMembers: activeTab.value === 'members' })
+  } catch (error) {
+    lineFormError.value = toErrorMessage(error, '保存业务线失败')
+  } finally {
+    lineFormSubmitting.value = false
+  }
+}
+
+const openCreateProjectModal = () => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  projectFormMode.value = 'create'
+  editingProjectId.value = ''
+  projectFormInitialName.value = ''
+  projectFormInitialDescription.value = ''
+  projectFormInitialGitUrl.value = ''
+  projectFormInitialDefaultBranch.value = 'main'
+  projectFormError.value = ''
+  projectFormModalOpen.value = true
+}
+
+const openEditProjectModal = (project: ProjectItem) => {
+  projectFormMode.value = 'edit'
+  editingProjectId.value = project.id
+  projectFormInitialName.value = project.name
+  projectFormInitialDescription.value = project.description ?? ''
+  projectFormInitialGitUrl.value = project.gitUrl
+  projectFormInitialDefaultBranch.value = project.defaultBranch
+  projectFormError.value = ''
+  projectFormModalOpen.value = true
+}
+
+const submitProjectForm = async (payload: {
+  name: string
+  description: string
+  gitUrl: string
+  defaultBranch: string
+}) => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  projectFormSubmitting.value = true
+  projectFormError.value = ''
+
+  try {
+    if (projectFormMode.value === 'create') {
+      await projectsApi.create({
+        businessLineId: activeLineId.value,
+        name: payload.name.trim(),
+        description: normalizeOptionalText(payload.description),
+        gitUrl: payload.gitUrl.trim(),
+        defaultBranch: payload.defaultBranch.trim() || 'main',
+      })
+    } else {
+      if (!editingProjectId.value) {
+        return
+      }
+
+      await projectsApi.update(editingProjectId.value, {
+        name: payload.name.trim(),
+        description: payload.description.trim(),
+        gitUrl: payload.gitUrl.trim(),
+        defaultBranch: payload.defaultBranch.trim() || 'main',
+      })
+    }
+
+    projectFormModalOpen.value = false
+    await refreshForCurrentLine({ includeMembers: activeTab.value === 'members' })
+  } catch (error) {
+    projectFormError.value = toErrorMessage(error, '保存项目失败')
+  } finally {
+    projectFormSubmitting.value = false
+  }
+}
+
+const openProjectDeleteModal = (project: ProjectItem) => {
+  deletingProjectTarget.value = project
+  projectDeleteModalOpen.value = true
+}
+
+const confirmDeleteProject = async () => {
+  if (!deletingProjectTarget.value) {
+    return
+  }
+
+  deletingProject.value = true
+  projectError.value = ''
+
+  try {
+    await projectsApi.remove(deletingProjectTarget.value.id)
+    projectDeleteModalOpen.value = false
+    deletingProjectTarget.value = null
+    await refreshForCurrentLine({ includeMembers: activeTab.value === 'members' })
+  } catch (error) {
+    projectError.value = toErrorMessage(error, '删除项目失败')
+  } finally {
+    deletingProject.value = false
+  }
+}
+
+const buildEmptyProjectRoles = () => {
+  const projectRoles: Record<string, ProjectPermissionRole> = {}
+
+  for (const project of lineProjects.value) {
+    projectRoles[project.id] = 'none'
+  }
+
+  return projectRoles
+}
+
+const fetchProjectRoleMapForUser = async (userId: string) => {
+  const projectRoles = buildEmptyProjectRoles()
+  const rawProjectRoles: Record<string, ExistingProjectRole> = {}
+  const failedProjects: string[] = []
+
+  for (const project of lineProjects.value) {
+    rawProjectRoles[project.id] = null
+  }
+
+  const settledMembers = await Promise.allSettled(
+    lineProjects.value.map((project) => projectsApi.listMembers(project.id)),
+  )
+
+  settledMembers.forEach((result, index) => {
+    const project = lineProjects.value[index]
+    if (!project) {
+      return
+    }
+
+    if (result.status === 'rejected') {
+      failedProjects.push(project.name)
+      return
+    }
+
+    const matchedMember = result.value.find((member) => member.userId === userId)
+    const matchedRole = matchedMember?.role ?? null
+    rawProjectRoles[project.id] = matchedRole
+    projectRoles[project.id] = mapProjectRoleToPermissionRole(matchedRole)
   })
 
-  if (editingProjectId.value === projectId) {
-    resetProjectForm()
+  return {
+    projectRoles,
+    rawProjectRoles,
+    failedProjects,
+  }
+}
+
+const openCreateMemberModal = async () => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  memberPermissionModalMode.value = 'create'
+  memberPermissionInitialUserId.value = ''
+  memberPermissionInitialBusinessRole.value = 'member'
+  memberPermissionInitialProjectRoles.value = buildEmptyProjectRoles()
+  memberPermissionModalPreparing.value = false
+  memberPermissionModalError.value = ''
+  memberPermissionModalOpen.value = true
+
+  if (users.value.length === 0) {
+    await loadUsers()
+  }
+}
+
+const openEditMemberModal = async (member: BusinessLineMember) => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  memberPermissionModalMode.value = 'edit'
+  memberPermissionInitialUserId.value = member.userId
+  memberPermissionInitialBusinessRole.value = member.role
+  memberPermissionInitialProjectRoles.value = buildEmptyProjectRoles()
+  memberPermissionModalPreparing.value = true
+  memberPermissionModalError.value = ''
+  memberPermissionModalOpen.value = true
+
+  if (users.value.length === 0) {
+    await loadUsers()
+  }
+
+  try {
+    const roleMapResult = await fetchProjectRoleMapForUser(member.userId)
+    memberPermissionInitialProjectRoles.value = roleMapResult.projectRoles
+
+    if (roleMapResult.failedProjects.length > 0) {
+      memberPermissionModalError.value = `以下项目权限加载失败：${roleMapResult.failedProjects.join('、')}`
+    }
+  } catch (error) {
+    memberPermissionModalError.value = toErrorMessage(error, '加载成员项目权限失败')
+  } finally {
+    memberPermissionModalPreparing.value = false
+  }
+}
+
+const syncMemberProjectPermissions = async (
+  userId: string,
+  targetRoles: Record<string, ProjectPermissionRole>,
+) => {
+  const failedProjectNames = new Set<string>()
+  const currentRoleResult = await fetchProjectRoleMapForUser(userId)
+
+  for (const projectName of currentRoleResult.failedProjects) {
+    failedProjectNames.add(projectName)
+  }
+
+  for (const project of lineProjects.value) {
+    const nextRole = targetRoles[project.id] ?? 'none'
+    const currentPermissionRole = currentRoleResult.projectRoles[project.id] ?? 'none'
+    const currentRawRole = currentRoleResult.rawProjectRoles[project.id] ?? null
+
+    if (nextRole === currentPermissionRole) {
+      continue
+    }
+
+    try {
+      if (nextRole === 'none') {
+        if (currentRawRole) {
+          await projectsApi.removeMember(project.id, userId)
+        }
+        continue
+      }
+
+      const nextRawRole = mapPermissionRoleToProjectRole(nextRole, currentRawRole)
+      if (!nextRawRole) {
+        continue
+      }
+
+      if (!currentRawRole) {
+        await projectsApi.addMember(project.id, {
+          userId,
+          role: nextRawRole,
+        })
+        continue
+      }
+
+      if (nextRawRole === currentRawRole) {
+        continue
+      }
+
+      await projectsApi.updateMember(project.id, userId, {
+        role: nextRawRole,
+      })
+    } catch (error) {
+      void error
+      failedProjectNames.add(project.name)
+    }
+  }
+
+  return Array.from(failedProjectNames)
+}
+
+const submitMemberPermission = async (payload: {
+  userId: string
+  businessRole: BusinessLineMemberRole
+  projectRoles: Record<string, ProjectPermissionRole>
+}) => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  memberPermissionModalSubmitting.value = true
+  memberPermissionModalError.value = ''
+  memberError.value = ''
+
+  try {
+    if (memberPermissionModalMode.value === 'create') {
+      await businessLinesApi.addMember(activeLineId.value, {
+        userId: payload.userId,
+        role: payload.businessRole,
+      })
+    } else {
+      const currentMember = lineMembers.value.find((member) => member.userId === payload.userId)
+      if (currentMember && currentMember.role !== payload.businessRole) {
+        await businessLinesApi.updateMember(activeLineId.value, payload.userId, {
+          role: payload.businessRole,
+        })
+      }
+    }
+
+    const failedProjects = await syncMemberProjectPermissions(payload.userId, payload.projectRoles)
+    if (failedProjects.length > 0) {
+      memberError.value = `部分项目权限更新失败：${failedProjects.join('、')}`
+    }
+
+    memberPermissionModalOpen.value = false
+    await refreshForCurrentLine({ includeMembers: true })
+  } catch (error) {
+    memberPermissionModalError.value = toErrorMessage(error, '保存成员权限失败')
+  } finally {
+    memberPermissionModalSubmitting.value = false
+  }
+}
+
+const openRemoveMemberModal = (member: BusinessLineMember) => {
+  removingMemberTarget.value = member
+  memberRemoveModalOpen.value = true
+}
+
+const confirmRemoveMember = async () => {
+  if (!activeLineId.value || !removingMemberTarget.value) {
+    return
+  }
+
+  removingMember.value = true
+  memberError.value = ''
+
+  try {
+    await businessLinesApi.removeMember(activeLineId.value, removingMemberTarget.value.userId)
+    memberRemoveModalOpen.value = false
+    removingMemberTarget.value = null
+    await refreshForCurrentLine({ includeMembers: true })
+  } catch (error) {
+    memberError.value = toErrorMessage(error, '移除成员失败')
+  } finally {
+    removingMember.value = false
+  }
+}
+
+const openDeleteLineModal = () => {
+  if (!canDeleteLine.value) {
+    return
+  }
+
+  lineDeleteModalOpen.value = true
+}
+
+const confirmDeleteLine = async () => {
+  if (!activeLineId.value || !canDeleteLine.value) {
+    return
+  }
+
+  deletingLine.value = true
+  settingsError.value = ''
+  const removedLineId = activeLineId.value
+
+  try {
+    await businessLinesApi.remove(removedLineId)
+    lineDeleteModalOpen.value = false
+
+    const fallbackLineId = props.lines.find((line) => line.id !== removedLineId)?.id ?? ''
+    activeLineId.value = fallbackLineId
+
+    if (fallbackLineId) {
+      emit('select-line', fallbackLineId)
+    }
+
+    await refreshForCurrentLine({ includeMembers: activeTab.value === 'members' })
+  } catch (error) {
+    settingsError.value = toErrorMessage(error, '删除业务线失败')
+  } finally {
+    deletingLine.value = false
   }
 }
 
 const onKeydown = (event: KeyboardEvent) => {
-  if (!props.open) return
-  if (event.key !== 'Escape') return
+  if (!props.open || hasNestedModalOpen.value) {
+    return
+  }
+
+  if (event.key !== 'Escape') {
+    return
+  }
+
+  event.preventDefault()
   closeModal()
 }
 
@@ -130,15 +857,25 @@ watch(
   () => props.open,
   (open) => {
     if (open) {
-      activeLineId.value = props.activeBusinessLineId
+      resetTabErrors()
+      activeTab.value = 'projects'
       projectQuery.value = ''
-      resetProjectForm()
+      memberQuery.value = ''
+
+      activeLineId.value = props.activeBusinessLineId || props.lines[0]?.id || ''
+      if (activeLineId.value) {
+        emit('select-line', activeLineId.value)
+      }
+
       previousBodyOverflow = document.body.style.overflow
       document.body.style.overflow = 'hidden'
       window.addEventListener('keydown', onKeydown)
+
+      void loadLineContext({ includeMembers: false })
       return
     }
 
+    closeNestedModals()
     document.body.style.overflow = previousBodyOverflow
     window.removeEventListener('keydown', onKeydown)
   },
@@ -146,8 +883,70 @@ watch(
 
 watch(
   () => props.activeBusinessLineId,
-  (businessLineId) => {
-    activeLineId.value = businessLineId
+  (lineId) => {
+    if (!props.open || !lineId || lineId === activeLineId.value) {
+      return
+    }
+
+    activeLineId.value = lineId
+  },
+)
+
+watch(
+  () => props.lines,
+  (lines) => {
+    if (!props.open) {
+      return
+    }
+
+    if (lines.some((line) => line.id === activeLineId.value)) {
+      return
+    }
+
+    activeLineId.value = lines[0]?.id ?? ''
+  },
+)
+
+watch(
+  () => activeLineId.value,
+  (lineId, previousLineId) => {
+    if (!props.open || lineId === previousLineId) {
+      return
+    }
+
+    projectQuery.value = ''
+    memberQuery.value = ''
+
+    if (!lineId) {
+      lineDetail.value = null
+      lineProjects.value = []
+      lineMembers.value = []
+      return
+    }
+
+    emit('select-line', lineId)
+    void loadLineContext({ includeMembers: activeTab.value === 'members' })
+  },
+)
+
+watch(
+  () => activeTab.value,
+  (tab) => {
+    if (!props.open || !activeLineId.value) {
+      return
+    }
+
+    if (tab === 'projects') {
+      void loadLineProjects(activeLineId.value)
+      return
+    }
+
+    if (tab === 'members') {
+      void Promise.all([loadLineMembers(activeLineId.value), loadUsers()])
+      return
+    }
+
+    void loadLineDetail(activeLineId.value)
   },
 )
 
@@ -173,7 +972,7 @@ onBeforeUnmount(() => {
         aria-labelledby="business-line-modal-title"
         class="relative z-10 h-[min(760px,92vh)] w-full max-w-6xl overflow-hidden rounded-3xl border border-border bg-background shadow-2xl"
       >
-        <div class="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[17rem_minmax(0,1fr)]">
+        <div class="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[18rem_minmax(0,1fr)]">
           <aside class="flex min-h-0 flex-col border-b border-border bg-muted/30 lg:border-r lg:border-b-0">
             <header class="flex h-16 items-center border-b border-border px-4">
               <h2 class="text-sm font-semibold">业务线</h2>
@@ -185,21 +984,45 @@ onBeforeUnmount(() => {
                 :key="line.id"
                 type="button"
                 class="w-full rounded-xl border px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                :class="line.id === activeLineId ? 'border-primary/45 bg-primary/8 shadow-sm' : 'border-border bg-background hover:bg-muted/40'"
-                @click="selectLine(line.id)"
+                :class="
+                  line.id === activeLineId
+                    ? 'border-primary/45 bg-primary/8 shadow-sm'
+                    : 'border-border bg-background hover:bg-muted/40'
+                "
+                @click="activeLineId = line.id"
               >
                 <p class="text-sm font-semibold text-foreground">{{ line.name }}</p>
-                <p class="mt-1 text-xs text-muted-foreground">负责人：{{ line.owner }}</p>
+                <p class="mt-1 text-xs text-muted-foreground">{{ line.description || '暂无描述' }}</p>
                 <p class="mt-2 text-xs text-muted-foreground">项目 {{ line.projectCount }}</p>
               </button>
+
+              <div
+                v-if="props.lines.length === 0"
+                class="rounded-xl border border-dashed border-border bg-background/70 px-3 py-4 text-sm text-muted-foreground"
+              >
+                暂无业务线
+              </div>
             </div>
+
+            <footer class="border-t border-border p-3">
+              <button
+                type="button"
+                class="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="!props.canCreateBusinessLine"
+                :title="props.canCreateBusinessLine ? '创建业务线' : '仅管理员可创建业务线'"
+                @click="openCreateLineModal"
+              >
+                创建业务线
+              </button>
+              <p v-if="!props.canCreateBusinessLine" class="mt-2 text-[11px] text-muted-foreground">仅管理员可创建业务线</p>
+            </footer>
           </aside>
 
           <div class="flex min-h-0 flex-1 flex-col">
             <header class="flex h-16 items-center justify-between border-b border-border px-5">
               <div>
-                <p class="text-xs font-semibold tracking-wide text-muted-foreground">项目管理</p>
-                <h2 id="business-line-modal-title" class="text-sm font-semibold">{{ selectedLine?.name ?? '业务线' }}</h2>
+                <p class="text-xs font-semibold tracking-wide text-muted-foreground">业务线管理</p>
+                <h2 id="business-line-modal-title" class="text-sm font-semibold">{{ selectedLineName }}</h2>
               </div>
               <button
                 type="button"
@@ -225,107 +1048,334 @@ onBeforeUnmount(() => {
               </button>
             </header>
 
-            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-              <section class="panel-card p-4">
-                <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_9rem_minmax(0,1fr)_auto]">
-                  <label class="space-y-1">
-                    <span class="text-xs text-muted-foreground">项目名称</span>
-                    <input
-                      v-model="formName"
-                      type="text"
-                      class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
-                      placeholder="输入项目名称"
-                    />
-                  </label>
-                  <label class="space-y-1">
-                    <span class="text-xs text-muted-foreground">简称</span>
-                    <input
-                      v-model="formShort"
-                      type="text"
-                      class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
-                      placeholder="可选"
-                    />
-                  </label>
-                  <label class="space-y-1">
-                    <span class="text-xs text-muted-foreground">Git 仓库地址</span>
-                    <input
-                      v-model="formGitUrl"
-                      type="text"
-                      class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
-                      placeholder="git@gitlab.example.com:group/project.git"
-                      :disabled="isEditing"
-                    />
-                  </label>
-                  <div class="flex items-end gap-2">
+            <div class="border-b border-border px-4 py-3">
+              <div class="flex flex-wrap gap-2">
+                <button
+                  class="rounded-xl px-4 py-2 text-sm font-semibold transition"
+                  :class="tabClass('projects')"
+                  type="button"
+                  @click="activeTab = 'projects'"
+                >
+                  项目
+                </button>
+                <button
+                  class="rounded-xl px-4 py-2 text-sm font-semibold transition"
+                  :class="tabClass('members')"
+                  type="button"
+                  @click="activeTab = 'members'"
+                >
+                  成员/权限
+                </button>
+                <button
+                  class="rounded-xl px-4 py-2 text-sm font-semibold transition"
+                  :class="tabClass('settings')"
+                  type="button"
+                  @click="activeTab = 'settings'"
+                >
+                  设置
+                </button>
+              </div>
+            </div>
+
+            <div class="min-h-0 flex-1 overflow-y-auto p-4">
+              <section v-if="activeTab === 'projects'" class="space-y-4">
+                <p v-if="projectError" class="text-sm text-destructive">{{ projectError }}</p>
+
+                <div class="panel-card flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+                  <p class="text-sm font-semibold">项目列表（{{ filteredProjects.length }}）</p>
+                  <div class="flex items-center gap-2">
                     <button
                       type="button"
-                      class="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition hover:shadow-md"
-                      @click="submitProject"
+                      class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                      @click="loadLineProjects(activeLineId)"
                     >
-                      {{ isEditing ? '保存修改' : '新增项目' }}
+                      刷新
                     </button>
                     <button
-                      v-if="isEditing"
                       type="button"
-                      class="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
-                      @click="cancelEditProject"
+                      class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm"
+                      :disabled="!activeLineId"
+                      @click="openCreateProjectModal"
                     >
-                      取消
+                      新建项目
                     </button>
+                  </div>
+                </div>
+
+                <div class="panel-card p-4">
+                  <input
+                    v-model="projectQuery"
+                    type="search"
+                    class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+                    placeholder="按项目名 / ID / 描述 / Git 地址搜索"
+                  />
+
+                  <div v-if="loadingProjects" class="mt-4 text-sm text-muted-foreground">加载项目中...</div>
+
+                  <div v-else class="mt-4 space-y-2">
+                    <article
+                      v-for="project in filteredProjects"
+                      :key="project.id"
+                      class="rounded-xl border border-border bg-background/70 px-4 py-3"
+                    >
+                      <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div class="space-y-1">
+                          <p class="text-sm font-semibold text-foreground">{{ project.name }}</p>
+                          <p class="text-xs text-muted-foreground">{{ project.description || '暂无描述' }}</p>
+                          <p class="font-mono text-[11px] text-muted-foreground">{{ project.gitUrl }}</p>
+                          <p class="text-xs text-muted-foreground">默认分支：{{ project.defaultBranch }}</p>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                          <button
+                            type="button"
+                            class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                            @click="openEditProjectModal(project)"
+                          >
+                            编辑
+                          </button>
+                          <button
+                            type="button"
+                            class="inline-flex h-8 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20"
+                            @click="openProjectDeleteModal(project)"
+                          >
+                            删除
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+
+                    <div
+                      v-if="!loadingProjects && filteredProjects.length === 0"
+                      class="rounded-xl border border-dashed border-border bg-background/70 px-4 py-5 text-sm text-muted-foreground"
+                    >
+                      当前业务线暂无项目。
+                    </div>
                   </div>
                 </div>
               </section>
 
-              <section class="panel-card overflow-hidden">
-                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-                  <p class="text-sm font-semibold">项目列表（{{ filteredProjects.length }}）</p>
+              <section v-else-if="activeTab === 'members'" class="space-y-4">
+                <p v-if="memberError" class="text-sm text-destructive">{{ memberError }}</p>
+
+                <div class="panel-card flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+                  <p class="text-sm font-semibold">成员列表（{{ filteredMembers.length }}）</p>
+                  <div class="flex items-center gap-2">
+                    <button
+                      type="button"
+                      class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                      @click="loadLineMembers(activeLineId)"
+                    >
+                      刷新
+                    </button>
+                    <button
+                      type="button"
+                      class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm"
+                      :disabled="!activeLineId"
+                      @click="openCreateMemberModal"
+                    >
+                      添加成员
+                    </button>
+                  </div>
+                </div>
+
+                <div class="panel-card p-4">
                   <input
-                    v-model="projectQuery"
+                    v-model="memberQuery"
                     type="search"
-                    class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm sm:w-72"
-                    placeholder="按项目名 / ID / 简称查询"
+                    class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+                    placeholder="按成员名 / 邮箱 / 用户 ID 搜索"
                   />
+
+                  <div v-if="loadingMembers" class="mt-4 text-sm text-muted-foreground">加载成员中...</div>
+
+                  <div v-else class="mt-4 overflow-x-auto">
+                    <table class="w-full min-w-[760px] text-left text-sm">
+                      <thead class="border-b border-border bg-background/70">
+                        <tr class="text-xs font-semibold text-muted-foreground">
+                          <th class="px-4 py-3">成员</th>
+                          <th class="px-4 py-3">业务线角色</th>
+                          <th class="px-4 py-3">最近更新时间</th>
+                          <th class="px-4 py-3 text-right">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-border">
+                        <tr v-for="member in filteredMembers" :key="member.id" class="transition hover:bg-background/70">
+                          <td class="px-4 py-3">
+                            <p class="text-sm font-semibold">{{ displayUserLabel(member.userId) }}</p>
+                            <p class="mt-0.5 text-xs text-muted-foreground">{{ displayUserMeta(member.userId) }}</p>
+                            <p class="mt-0.5 font-mono text-[11px] text-muted-foreground">{{ member.userId }}</p>
+                          </td>
+                          <td class="px-4 py-3">
+                            <span
+                              class="inline-flex rounded-full border px-2 py-1 text-xs font-semibold"
+                              :class="roleBadgeClass(member.role)"
+                            >
+                              {{ member.role }}
+                            </span>
+                          </td>
+                          <td class="px-4 py-3 text-muted-foreground">{{ formatDate(member.updatedAt) }}</td>
+                          <td class="px-4 py-3">
+                            <div class="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                                @click="openEditMemberModal(member)"
+                              >
+                                编辑权限
+                              </button>
+                              <button
+                                type="button"
+                                class="inline-flex h-8 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20"
+                                @click="openRemoveMemberModal(member)"
+                              >
+                                移除
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+
+                        <tr v-if="!loadingMembers && filteredMembers.length === 0">
+                          <td colspan="4" class="px-4 py-5 text-sm text-muted-foreground">暂无成员，请先添加。</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
+              </section>
 
-                <div v-if="filteredProjects.length > 0" class="min-h-0 divide-y divide-border">
-                  <article
-                    v-for="project in filteredProjects"
-                    :key="project.id"
-                    class="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-                  >
-                    <div class="space-y-1">
-                      <p class="text-sm font-semibold text-foreground">{{ project.name }}</p>
-                      <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <span class="rounded-full border border-border bg-background px-2 py-1">{{ project.id }}</span>
-                        <span class="rounded-full border border-border bg-background px-2 py-1">{{ project.short }}</span>
-                      </div>
+              <section v-else class="space-y-4">
+                <p v-if="settingsError" class="text-sm text-destructive">{{ settingsError }}</p>
+
+                <article class="panel-card p-5">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold">基础信息</p>
+                      <p class="mt-1 text-xs text-muted-foreground">编辑当前业务线名称与描述。</p>
                     </div>
+                    <button
+                      type="button"
+                      class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                      :disabled="!activeLineId || loadingLineDetail"
+                      @click="openEditLineModal"
+                    >
+                      编辑
+                    </button>
+                  </div>
 
-                    <div class="flex items-center gap-2">
-                      <button
-                        type="button"
-                        class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
-                        @click="startEditProject(project)"
-                      >
-                        编辑
-                      </button>
-                      <button
-                        type="button"
-                        class="inline-flex h-8 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20"
-                        @click="deleteProject(project.id)"
-                      >
-                        删除
-                      </button>
+                  <div class="mt-4 space-y-3 rounded-xl border border-border bg-background/70 p-4">
+                    <div>
+                      <p class="text-xs text-muted-foreground">业务线名称</p>
+                      <p class="mt-1 text-sm font-semibold">{{ selectedLineName }}</p>
                     </div>
-                  </article>
-                </div>
+                    <div>
+                      <p class="text-xs text-muted-foreground">描述</p>
+                      <p class="mt-1 text-sm text-foreground">{{ selectedLineDescription || '暂无描述' }}</p>
+                    </div>
+                    <div>
+                      <p class="text-xs text-muted-foreground">项目数量</p>
+                      <p class="mt-1 text-sm text-foreground">{{ lineProjects.length }}</p>
+                    </div>
+                  </div>
+                </article>
 
-                <div v-else class="px-4 py-8 text-center text-sm text-muted-foreground">暂无项目，先新增一个项目吧。</div>
+                <article class="panel-card p-5">
+                  <p class="text-sm font-semibold text-destructive">删除业务线</p>
+                  <p class="mt-1 text-xs text-muted-foreground">
+                    删除后不可恢复。若该业务线下存在项目，需要先删除或迁移项目。
+                  </p>
+
+                  <div class="mt-4 rounded-xl border border-border bg-background/70 p-4">
+                    <p class="text-xs text-muted-foreground">
+                      当前业务线项目数：<span class="font-semibold text-foreground">{{ lineProjects.length }}</span>
+                    </p>
+                    <button
+                      type="button"
+                      class="mt-3 inline-flex h-9 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      :disabled="!canDeleteLine"
+                      @click="openDeleteLineModal"
+                    >
+                      删除业务线
+                    </button>
+                    <p v-if="!canDeleteLine" class="mt-2 text-[11px] text-muted-foreground">
+                      请先删除/迁移该业务线下项目后再删除业务线。
+                    </p>
+                  </div>
+                </article>
               </section>
             </div>
           </div>
         </div>
       </section>
+
+      <BusinessLineFormModal
+        :open="lineFormModalOpen"
+        :mode="lineFormMode"
+        :submitting="lineFormSubmitting"
+        :initial-name="lineFormInitialName"
+        :initial-description="lineFormInitialDescription"
+        :error-message="lineFormError"
+        @update:open="lineFormModalOpen = $event"
+        @submit="submitLineForm"
+      />
+
+      <ProjectFormModal
+        :open="projectFormModalOpen"
+        :mode="projectFormMode"
+        :submitting="projectFormSubmitting"
+        :initial-name="projectFormInitialName"
+        :initial-description="projectFormInitialDescription"
+        :initial-git-url="projectFormInitialGitUrl"
+        :initial-default-branch="projectFormInitialDefaultBranch"
+        :error-message="projectFormError"
+        @update:open="projectFormModalOpen = $event"
+        @submit="submitProjectForm"
+      />
+
+      <MemberPermissionModal
+        :open="memberPermissionModalOpen"
+        :mode="memberPermissionModalMode"
+        :submitting="memberPermissionModalSubmitting"
+        :preparing="memberPermissionModalPreparing"
+        :users="users"
+        :projects="lineProjects"
+        :initial-user-id="memberPermissionInitialUserId"
+        :initial-business-role="memberPermissionInitialBusinessRole"
+        :initial-project-roles="memberPermissionInitialProjectRoles"
+        :error-message="memberPermissionModalError"
+        @update:open="memberPermissionModalOpen = $event"
+        @submit="submitMemberPermission"
+      />
+
+      <ConfirmActionModal
+        :open="projectDeleteModalOpen"
+        :confirming="deletingProject"
+        title="删除项目"
+        :description="`确认删除项目「${deletingProjectTarget?.name ?? ''}」吗？`"
+        confirm-text="删除"
+        @update:open="projectDeleteModalOpen = $event"
+        @confirm="confirmDeleteProject"
+      />
+
+      <ConfirmActionModal
+        :open="memberRemoveModalOpen"
+        :confirming="removingMember"
+        title="移除成员"
+        :description="`确认移除成员「${displayUserLabel(removingMemberTarget?.userId ?? '')}」吗？`"
+        confirm-text="移除"
+        @update:open="memberRemoveModalOpen = $event"
+        @confirm="confirmRemoveMember"
+      />
+
+      <ConfirmActionModal
+        :open="lineDeleteModalOpen"
+        :confirming="deletingLine"
+        title="删除业务线"
+        :description="`确认删除业务线「${selectedLineName}」吗？删除后不可恢复。`"
+        confirm-text="删除"
+        @update:open="lineDeleteModalOpen = $event"
+        @confirm="confirmDeleteLine"
+      />
     </div>
   </Teleport>
 </template>

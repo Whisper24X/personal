@@ -17,7 +17,6 @@ const mapUserToProfile = (user: UserInfo): UserProfile => {
   const allPermissions = [
     'home:view',
     'dashboard:view',
-    'about:view',
     'kanban:view',
     'workflow:view',
     'tasks:view',

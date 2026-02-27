@@ -19,6 +19,7 @@ const {
   businessLineItems,
   activeBusinessLineId,
   currentBusinessLineName,
+  canCreateBusinessLine,
   projectTooltipVisible,
   projectTooltipText,
   projectTooltipStyle,
@@ -37,14 +38,12 @@ const {
   showProjectTooltip,
   hideProjectTooltip,
   showMenuTooltip,
+  refreshLayoutData,
   openBusinessLineModal,
   openSettings,
   closeSettings,
   setSettingsSection,
   selectBusinessLine,
-  createProject,
-  updateProject,
-  deleteProject,
 } = useLayout()
 </script>
 
@@ -122,11 +121,10 @@ const {
       :lines="businessLineItems"
       :projects="projectItems"
       :active-business-line-id="activeBusinessLineId"
+      :can-create-business-line="canCreateBusinessLine"
       @update:open="setBusinessLineModalOpen"
       @select-line="selectBusinessLine"
-      @create-project="createProject"
-      @update-project="updateProject"
-      @delete-project="deleteProject"
+      @request-refresh="refreshLayoutData"
     />
 
     <SettingsModal

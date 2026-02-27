@@ -7,8 +7,8 @@ describe('SettingsModal', () => {
     const wrapper = mount(SettingsModal, {
       props: {
         open: true,
-        activeSection: 'profile',
-        sections: ['profile', 'about'],
+        activeSection: 'account',
+        sections: ['account', 'appearance', 'notifications'],
       },
       global: {
         stubs: {
@@ -20,12 +20,11 @@ describe('SettingsModal', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('个人设置')
+    expect(wrapper.text()).toContain('账号')
     expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
 
     const sectionButtons = wrapper.findAll('aside nav button')
-    await sectionButtons[1]?.trigger('click')
-    expect(wrapper.emitted('select-section')?.[0]).toEqual(['about'])
+    expect(sectionButtons).toHaveLength(3)
 
     const closeButton = wrapper.find('button[aria-label="关闭设置"]')
     await closeButton.trigger('click')

@@ -1,39 +1,34 @@
 export const SETTINGS_QUERY_KEY = 'settings'
 
-export const SETTINGS_SECTIONS = ['profile', 'about', 'business-lines', 'projects', 'users'] as const
+export const SETTINGS_SECTIONS = ['account', 'appearance', 'notifications'] as const
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]
 
 export const SETTINGS_SECTION_LABELS: Record<SettingsSection, string> = {
-  profile: '个人设置',
-  about: '关于',
-  'business-lines': '业务线',
-  projects: '项目管理',
-  users: '用户管理',
+  account: '账号',
+  appearance: '界面偏好',
+  notifications: '通知',
 }
 
 export const isSettingsSection = (value: string): value is SettingsSection => {
   return SETTINGS_SECTIONS.includes(value as SettingsSection)
 }
 
-export const sectionRequiresAdmin = (section: SettingsSection) => section === 'users'
-
-export const getAvailableSettingsSections = (isAdmin: boolean) => {
-  return SETTINGS_SECTIONS.filter((section) => {
-    if (!sectionRequiresAdmin(section)) {
-      return true
-    }
-
-    return isAdmin
-  })
+export const getAvailableSettingsSections = (_isAdmin: boolean) => {
+  return [...SETTINGS_SECTIONS]
 }
 
 export const resolveAuthorizedSettingsSection = (candidate: string, isAdmin: boolean): SettingsSection => {
-  if (isSettingsSection(candidate)) {
-    if (!sectionRequiresAdmin(candidate) || isAdmin) {
-      return candidate
-    }
+  void isAdmin
+  const legacyAccountSections = new Set(['profile', 'security'])
+
+  if (legacyAccountSections.has(candidate)) {
+    return 'account'
   }
 
-  return getAvailableSettingsSections(isAdmin)[0] ?? 'profile'
+  if (isSettingsSection(candidate)) {
+    return candidate
+  }
+
+  return getAvailableSettingsSections(isAdmin)[0] ?? 'account'
 }

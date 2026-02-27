@@ -19,6 +19,10 @@ export type ProjectItem = {
   name: string
   to: string
   short: string
+  businessLineId: string
+  description?: string | null
+  gitUrl: string
+  defaultBranch: string
 }
 
 export type BusinessLineItem = {
@@ -26,11 +30,13 @@ export type BusinessLineItem = {
   name: string
   owner: string
   projectCount: number
+  description?: string | null
 }
 
 type BusinessLine = {
   id: string
   name: string
+  description?: string | null
   owner: string
   projects: ProjectItem[]
 }
@@ -70,7 +76,7 @@ export const useLayout = () => {
   const projectTooltipVisible = ref(false)
   const projectTooltipText = ref('')
   const settingsModalOpen = ref(false)
-  const settingsSection = ref<SettingsSection>('profile')
+  const settingsSection = ref<SettingsSection>('account')
   const projectTooltipStyle = ref({
     left: '0px',
     top: '0px',
@@ -105,7 +111,7 @@ export const useLayout = () => {
   })
 
   const defaultSettingsSection = computed<SettingsSection>(() => {
-    return availableSettingsSections.value[0] ?? 'profile'
+    return availableSettingsSections.value[0] ?? 'account'
   })
 
   const menuIconPaths: Record<MenuItem['id'], string[]> = {
@@ -123,6 +129,10 @@ export const useLayout = () => {
     name: project.name,
     to: `/projects/${project.id}`,
     short: normalizeProjectShort(project.name),
+    businessLineId: project.businessLineId,
+    description: project.description ?? null,
+    gitUrl: project.gitUrl,
+    defaultBranch: project.defaultBranch,
   })
 
   const findBusinessLineByProjectId = (projectId: string) => {
@@ -162,6 +172,7 @@ export const useLayout = () => {
         lineMap.set(line.id, {
           id: line.id,
           name: line.name,
+          description: line.description ?? null,
           owner: '-',
           projects: [],
         })
@@ -208,6 +219,7 @@ export const useLayout = () => {
       name: line.name,
       owner: line.owner,
       projectCount: line.projects.length,
+      description: line.description ?? null,
     }))
   })
 
@@ -218,6 +230,14 @@ export const useLayout = () => {
   const projectItems = computed<ProjectItem[]>(() => {
     return currentBusinessLine.value?.projects ?? []
   })
+
+  const canCreateBusinessLine = computed(() => {
+    return userStore.profile?.isAdmin ?? false
+  })
+
+  const refreshLayoutData = async () => {
+    await loadLayoutData()
+  }
 
   const resolveSettingsSection = (candidate: unknown) => {
     return resolveAuthorizedSettingsSection(
@@ -341,60 +361,6 @@ export const useLayout = () => {
     hideProjectTooltip()
   }
 
-  const createProject = async (payload: {
-    businessLineId: string
-    name: string
-    short: string
-    gitUrl: string
-  }) => {
-    const projectName = payload.name.trim()
-    const projectGitUrl = payload.gitUrl.trim()
-    void payload.short
-    if (!projectName) return
-    if (!projectGitUrl) return
-
-    try {
-      await projectsApi.create({
-        businessLineId: payload.businessLineId,
-        name: projectName,
-        gitUrl: projectGitUrl,
-        defaultBranch: 'main',
-      })
-
-      await loadLayoutData()
-      activeBusinessLineId.value = payload.businessLineId
-    } catch (error) {
-      void error
-    }
-  }
-
-  const updateProject = async (payload: { businessLineId: string; projectId: string; name: string; short: string }) => {
-    const projectName = payload.name.trim()
-    if (!projectName) return
-
-    try {
-      await projectsApi.update(payload.projectId, {
-        name: projectName,
-      })
-
-      await loadLayoutData()
-      activeBusinessLineId.value = payload.businessLineId
-      void payload.short
-    } catch (error) {
-      void error
-    }
-  }
-
-  const deleteProject = async (payload: { businessLineId: string; projectId: string }) => {
-    try {
-      await projectsApi.remove(payload.projectId)
-      await loadLayoutData()
-      activeBusinessLineId.value = payload.businessLineId
-    } catch (error) {
-      void error
-    }
-  }
-
   const updateSettingsQuery = (section: SettingsSection) => {
     const currentSection = normalizeQueryValue(route.query[SETTINGS_QUERY_KEY])
     if (currentSection === section) {
@@ -506,7 +472,7 @@ export const useLayout = () => {
     const savedTheme = localStorage.getItem(STORAGE_KEYS.theme)
     document.documentElement.classList.toggle('dark', savedTheme === 'dark')
 
-    void loadLayoutData()
+    void refreshLayoutData()
 
     desktopMediaQuery = window.matchMedia('(min-width: 1100px)')
     syncDesktop()
@@ -535,6 +501,7 @@ export const useLayout = () => {
     businessLineItems,
     activeBusinessLineId,
     currentBusinessLineName,
+    canCreateBusinessLine,
     projectTooltipVisible,
     projectTooltipText,
     projectTooltipStyle,
@@ -553,13 +520,11 @@ export const useLayout = () => {
     showProjectTooltip,
     hideProjectTooltip,
     showMenuTooltip,
+    refreshLayoutData,
     openBusinessLineModal,
     openSettings,
     closeSettings,
     setSettingsSection,
     selectBusinessLine,
-    createProject,
-    updateProject,
-    deleteProject,
   }
 }

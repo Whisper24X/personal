@@ -292,7 +292,7 @@ onMounted(() => {
             工作流模板
           </RouterLink>
           <RouterLink
-            :to="{ path: '/dashboard', query: { settings: 'profile' } }"
+            :to="{ path: '/dashboard', query: { settings: 'account' } }"
             class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground"
           >
             通知设置

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch, type Component } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch, type Component } from 'vue'
 import PersonalSettingsPanel from '@/components/settings/PersonalSettingsPanel.vue'
 import {
   SETTINGS_SECTION_LABELS,
@@ -26,15 +26,29 @@ let previousBodyOverflow = ''
 let previousFocusedElement: HTMLElement | null = null
 
 const sectionComponents: Record<SettingsSection, Component> = {
-  profile: PersonalSettingsPanel,
-  about: defineAsyncComponent(() => import('@/views/about/index.vue')),
-  'business-lines': defineAsyncComponent(() => import('@/views/business-lines/index.vue')),
-  projects: defineAsyncComponent(() => import('@/views/projects/index.vue')),
-  users: defineAsyncComponent(() => import('@/views/users/index.vue')),
+  account: PersonalSettingsPanel,
+  appearance: PersonalSettingsPanel,
+  notifications: PersonalSettingsPanel,
 }
 
 const currentSectionComponent = computed<Component>(() => {
   return sectionComponents[props.activeSection]
+})
+
+const currentSectionProps = computed(() => {
+  if (props.activeSection === 'account') {
+    return {
+      externalTab: 'profile' as const,
+      showTabNav: true,
+      visibleTabs: ['profile', 'security', 'account'] as const,
+    }
+  }
+
+  return {
+    externalTab: props.activeSection,
+    showTabNav: false,
+    visibleTabs: [props.activeSection],
+  }
 })
 
 const close = () => {
@@ -138,7 +152,7 @@ onBeforeUnmount(() => {
           </header>
 
           <main class="h-[calc(100%-3.5rem)] overflow-auto px-4 py-4">
-            <component :is="currentSectionComponent" />
+            <component :is="currentSectionComponent" v-bind="currentSectionProps" />
           </main>
         </div>
       </section>

@@ -6,17 +6,21 @@ import {
 } from '@/types/common/settings'
 
 describe('settings section authorization', () => {
-  it('hides users section for non-admin users', () => {
-    expect(getAvailableSettingsSections(false)).not.toContain('users')
-    expect(getAvailableSettingsSections(true)).toContain('users')
+  it('provides merged settings sections', () => {
+    expect(getAvailableSettingsSections(false)).toEqual(['account', 'appearance', 'notifications'])
+    expect(getAvailableSettingsSections(true)).toEqual(['account', 'appearance', 'notifications'])
   })
 
-  it('falls back to an authorized section when section is forbidden', () => {
-    expect(resolveAuthorizedSettingsSection('users', false)).toBe('profile')
-    expect(resolveAuthorizedSettingsSection('users', true)).toBe('users')
+  it('maps legacy account sections and falls back correctly', () => {
+    expect(resolveAuthorizedSettingsSection('profile', false)).toBe('account')
+    expect(resolveAuthorizedSettingsSection('security', true)).toBe('account')
+    expect(resolveAuthorizedSettingsSection('users', false)).toBe('account')
+    expect(resolveAuthorizedSettingsSection('users', true)).toBe('account')
   })
 
-  it('uses updated label for business lines section', () => {
-    expect(SETTINGS_SECTION_LABELS['business-lines']).toBe('业务线')
+  it('uses updated labels', () => {
+    expect(SETTINGS_SECTION_LABELS.account).toBe('账号')
+    expect(SETTINGS_SECTION_LABELS.appearance).toBe('界面偏好')
+    expect(SETTINGS_SECTION_LABELS.notifications).toBe('通知')
   })
 })

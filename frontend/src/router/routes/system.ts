@@ -27,14 +27,6 @@ export const systemRoutes: AppRouteRecord[] = [
     },
   },
   {
-    path: '/about',
-    redirect: toDashboardSettings('about'),
-    meta: {
-      title: '关于',
-      requiresAuth: true,
-    },
-  },
-  {
     path: '/dashboard',
     name: 'dashboard',
     component: () => import('@/views/dashboard/index.vue'),
@@ -150,7 +142,7 @@ export const systemRoutes: AppRouteRecord[] = [
   },
   {
     path: '/settings',
-    redirect: toDashboardSettings('profile'),
+    redirect: toDashboardSettings('account'),
     meta: {
       title: '设置',
       requiresAuth: true,

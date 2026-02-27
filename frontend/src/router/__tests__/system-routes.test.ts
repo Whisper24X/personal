@@ -8,17 +8,15 @@ describe('systemRoutes compatibility redirects', () => {
   }
 
   it('redirects legacy settings routes to dashboard settings sections', () => {
-    const aboutRoute = findByPath('/about')
     const businessLinesRoute = findByPath('/business-lines')
     const projectsRoute = findByPath('/projects')
     const usersRoute = findByPath('/users')
     const settingsRoute = findByPath('/settings')
 
-    expect(aboutRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'about' } })
     expect(businessLinesRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'business-lines' } })
     expect(projectsRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'projects' } })
     expect(usersRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'users' } })
-    expect(settingsRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'profile' } })
+    expect(settingsRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'account' } })
   })
 
   it('uses dashboard as default and legacy home redirect target', () => {
