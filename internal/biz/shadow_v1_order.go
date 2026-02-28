@@ -24,6 +24,7 @@ func NewShadowV1OrderUseCase(
 	sysDataLogRepo SysDataLogRepo,
 	wechatPayBillRepo WechatPayBillRepo,
 	subOrderRepo SubOrderRepo,
+	asyncTaskRepo AsyncTaskRepo,
 ) *ShadowV1OrderUseCase {
 	l := log.NewHelper(log.With(logger, "module", "biz/shadowV1Order"), log.WithMessageKey("message"))
 	return &ShadowV1OrderUseCase{
@@ -45,6 +46,7 @@ func NewShadowV1OrderUseCase(
 		sysDataLogRepo:          sysDataLogRepo,
 		wechatPayBillRepo:       wechatPayBillRepo,
 		subOrderRepo:            subOrderRepo,
+		asyncTaskRepo:           asyncTaskRepo,
 	}
 }
 
@@ -67,4 +69,5 @@ type ShadowV1OrderUseCase struct {
 	sysDataLogRepo          SysDataLogRepo
 	wechatPayBillRepo       WechatPayBillRepo
 	subOrderRepo            SubOrderRepo
+	asyncTaskRepo           AsyncTaskRepo
 }

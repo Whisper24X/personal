@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	pb "gitlab.yc345.tv/backend/yanxue/api/shadow/v1"
 	"gitlab.yc345.tv/backend/yanxue/internal/data/constant"
@@ -53,6 +54,7 @@ func (s *ShadowV1SubOrderUseCase) ExportSubOrderCsv(ctx context.Context, subOrde
 		"更新时间",
 		"订单编号",
 		"商品ID",
+		"小程序商户订单号",
 	}
 	if err := writer.Write(headers); err != nil {
 		return err
@@ -106,6 +108,12 @@ func (s *ShadowV1SubOrderUseCase) ExportSubOrderCsv(ctx context.Context, subOrde
 			goodTypeStr = "多日营"
 		}
 
+		// 生成小程序商户订单号：只有小程序渠道才赋值，parentOrderId 去掉 "-"
+		miniProgramMerchantOrderNumber := ""
+		if v.ChannelName == constant.ChannelTypeXCX {
+			miniProgramMerchantOrderNumber = strings.ReplaceAll(v.ParentOrderId, "-", "")
+		}
+
 		record := []string{
 			v.OrderNumber,                           // 渠道订单编号
 			v.ChannelGoodId,                         // 渠道商品ID
@@ -133,6 +141,7 @@ func (s *ShadowV1SubOrderUseCase) ExportSubOrderCsv(ctx context.Context, subOrde
 			updatedAtStr,                            // 更新时间
 			v.Id,                                    // 订单编号
 			v.GoodId,                                // 商品ID
+			miniProgramMerchantOrderNumber,          // 小程序商户订单号
 		}
 		if err := writer.Write(record); err != nil {
 			return err

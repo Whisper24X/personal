@@ -174,6 +174,58 @@ func (r *OrderRepo) OrderRefundFailedFeiShuNotify(ctx context.Context, channelOr
 	return nil
 }
 
+// DouYinOrderCreateFailedFeiShuNotify 抖音订单创建失败飞书通知
+func (r *OrderRepo) DouYinOrderCreateFailedFeiShuNotify(ctx context.Context, taskID, errorInfo, taskContent string) error {
+	// 截取任务内容，避免过长
+	maxContentLen := 500
+	displayContent := taskContent
+	if len(taskContent) > maxContentLen {
+		displayContent = taskContent[:maxContentLen] + "..."
+	}
+
+	var template = `**【严重】抖音订单回调任务失败通知**
+
+**任务ID:** %s
+
+**任务类型:** 抖音订单回调
+
+**重试次数:** 3次（已达上限）
+
+**失败原因:**
+%s
+
+**任务内容:**
+%s`
+	var content string
+	content = fmt.Sprintf(template, taskID, errorInfo, displayContent)
+
+	// 发送飞书通知
+	feiShuCfg := r.cfg.Yc.FeiShu["douYinOrderCreateFailedNotify"]
+	card := webhook.Card{
+		Elements: []webhook.CardElement{
+			{
+				Tag: "div",
+				Text: webhook.CardElementsText{
+					Content: content,
+					Tag:     "lark_md",
+				},
+			},
+		},
+		Header: webhook.CardHeader{
+			Title: webhook.CardHeaderTitle{
+				Content: "抖音订单创建失败告警",
+				Tag:     "plain_text",
+			},
+			Template: "red",
+		},
+	}
+	err := webhook.NewFeiShu(feiShuCfg.GetUrl(), feiShuCfg.GetSign()).SendCard(card)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // SendRefundCancelAppointmentFeiShuNotify 发送退款需要取消预约的飞书通知
 func (r *OrderRepo) SendRefundCancelAppointmentFeiShuNotify(ctx context.Context, channelOrderNumber string) error {
 	var template = `**有退款订单，需要手动取消预约**

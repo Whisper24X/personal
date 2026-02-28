@@ -32,6 +32,7 @@ type Good struct {
 	Label                 datatypes.JSON `gorm:"column:label;type:jsonb;comment:商品标签" json:"label"`                                                    // 商品标签
 	PurchaseAgreementName string         `gorm:"column:purchaseAgreementName;type:character varying(256);comment:购买协议名称" json:"purchaseAgreementName"` // 购买协议名称
 	PurchaseAgreementLink string         `gorm:"column:purchaseAgreementLink;type:character varying(256);comment:购买协议链接" json:"purchaseAgreementLink"` // 购买协议链接
+	Stock                 int32          `gorm:"column:stock;type:integer;comment:库存数量，NULL表示无限库存，0表示售罄，正整数表示剩余库存" json:"stock"`                       // 库存数量，NULL表示无限库存，0表示售罄，正整数表示剩余库存
 }
 
 // TableName Good's table name

@@ -74,3 +74,8 @@ func (s *ShadowV1CourseAppointmentService) CreateCourseAppointment(ctx context.C
 func (s *ShadowV1CourseAppointmentService) FeiShuReportAppointmentSituation(ctx context.Context, req *pb.FeiShuReportAppointmentSituationReq) (*pb.FeiShuReportAppointmentSituationReply, error) {
 	return s.shadowV1CourseAppointmentUseCase.FeiShuReportAppointmentSituation(ctx, req)
 }
+
+// SendAppointmentReminderSms 发送预约提醒短信（定时任务用）
+func (s *ShadowV1CourseAppointmentService) SendAppointmentReminderSms(ctx context.Context) (*biz.SendAppointmentReminderSmsReply, error) {
+	return s.shadowV1CourseAppointmentUseCase.SendAppointmentReminderSms(ctx)
+}

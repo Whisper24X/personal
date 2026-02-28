@@ -56,6 +56,15 @@ func (s *YanxueV1AsyncService) SyncOrderRefundStatus(ctx context.Context) error 
 	return nil
 }
 
+// SendAppointmentReminderSms 发送预约提醒短信
+func (s *YanxueV1AsyncService) SendAppointmentReminderSms(ctx context.Context) error {
+	_, err := s.shadowV1CourseAppointmentService.SendAppointmentReminderSms(ctx)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // SyncWeiDianOrder 同步微店订单
 func (s *YanxueV1AsyncService) SyncWeiDianOrder(ctx context.Context) error {
 	_, err := s.shadowV1OrderService.SyncWeiDianOrder(ctx, &pb.SyncWeiDianOrderReq{})
@@ -113,4 +122,22 @@ func (s *YanxueV1AsyncService) SyncDouYinSettleInfo(ctx context.Context) error {
 // SyncWechatPayBillPlatformFee 同步微信支付账单手续费
 func (s *YanxueV1AsyncService) SyncWechatPayBillPlatformFee(ctx context.Context) error {
 	return s.shadowV1OrderService.SyncWechatPayBillPlatformFee(ctx)
+}
+
+// FixOrderData 修复订单数据
+func (s *YanxueV1AsyncService) FixOrderData(ctx context.Context) error {
+	_, err := s.shadowV1OrderService.FixOrderData(ctx, &pb.FixOrderDataReq{})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// RetryFailedOrderCallback 重试失败的订单回调
+func (s *YanxueV1AsyncService) RetryFailedOrderCallback(ctx context.Context) error {
+	_, err := s.shadowV1OrderService.RetryFailedOrderCallback(ctx, &pb.RetryFailedOrderCallbackReq{})
+	if err != nil {
+		return err
+	}
+	return nil
 }

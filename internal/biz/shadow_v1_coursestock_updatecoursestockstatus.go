@@ -3,8 +3,8 @@ package biz
 import (
 	"context"
 
-	"github.com/samber/lo"
 	"gitlab.yc345.tv/backend/orm-gen/v2/condition"
+
 	pb "gitlab.yc345.tv/backend/yanxue/api/shadow/v1"
 	"gitlab.yc345.tv/backend/yanxue/internal/data/constant"
 	"gitlab.yc345.tv/backend/yanxue/internal/data/errorx"
@@ -25,15 +25,22 @@ func (s *ShadowV1CourseStockUseCase) UpdateCourseStockStatus(ctx context.Context
 	}
 	// 下架课程不能存在预约
 	if req.GetStatus() == constant.CourseStockStatusPutOff.String() {
-		dates := make([]string, 0)
-		periods := make([]string, 0)
+		// 构建要检查的 date+period 组合，并提取所有唯一的日期
+		datePeriodSet := make(map[string]bool)
+		dateSet := make(map[string]bool)
 		for _, courseStock := range courseStockList {
-			dates = append(dates, courseStock.Date)
-			periods = append(periods, courseStock.Period)
+			datePeriodKey := courseStock.Date + "|" + courseStock.Period
+			datePeriodSet[datePeriodKey] = true
+			dateSet[courseStock.Date] = true
 		}
-		dates = lo.Uniq(dates)
-		periods = lo.Uniq(periods)
 
+		// 将日期集合转换为切片
+		dates := make([]string, 0, len(dateSet))
+		for date := range dateSet {
+			dates = append(dates, date)
+		}
+
+		// 先通过日期过滤，再查询有效状态的预约（已预约、已完成）
 		areadyCourseAppointmentList, _, err := s.courseAppointmentRepo.FindMultiByCondition(ctx, &condition.Req{
 			Query: []*condition.QueryParam{
 				{
@@ -43,14 +50,11 @@ func (s *ShadowV1CourseStockUseCase) UpdateCourseStockStatus(ctx context.Context
 					Logic: condition.AND,
 				},
 				{
-					Field: "period",
-					Value: periods,
-					Exp:   condition.IN,
-					Logic: condition.AND,
-				},
-				{
 					Field: "status",
-					Value: []string{constant.CourseAppointmentStatusCompleted.String(), constant.CourseAppointmentStatusSuccess.String()},
+					Value: []string{
+						constant.CourseAppointmentStatusCompleted.String(),
+						constant.CourseAppointmentStatusSuccess.String(),
+					},
 					Exp:   condition.IN,
 					Logic: condition.AND,
 				},
@@ -59,13 +63,15 @@ func (s *ShadowV1CourseStockUseCase) UpdateCourseStockStatus(ctx context.Context
 		if err != nil {
 			return nil, errorx.DataSQLErr.WithError(err).Err()
 		}
-		datePeriods := make([]string, 0)
-		for _, v := range areadyCourseAppointmentList {
-			datePeriods = append(datePeriods, v.Date+v.Period)
-		}
-		for _, v := range courseStockList {
-			if lo.Contains(datePeriods, v.Date+v.Period) {
-				return nil, errorx.CourseStockHasAppointment.WithFmtMsg(v.Date, v.Period).Err()
+
+		// 检查预约记录中是否有与要下架的时间段精确匹配的
+		for _, appointment := range areadyCourseAppointmentList {
+			datePeriodKey := appointment.Date + "|" + appointment.Period
+			if datePeriodSet[datePeriodKey] {
+				// 找到了精确匹配的预约，不允许下架
+				s.log.Warnf("UpdateCourseStockStatus: 课程库存下架失败，该时间段存在预约, date=%s, period=%s, appointmentId=%s, appointmentStatus=%s",
+					appointment.Date, appointment.Period, appointment.ID, appointment.Status)
+				return nil, errorx.CourseStockHasAppointment.WithFmtMsg(appointment.Date, appointment.Period).Err()
 			}
 		}
 	}

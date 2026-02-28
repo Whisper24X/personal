@@ -2639,3 +2639,221 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = FinishCourseAppointmentReplyValidationError{}
+
+// Validate checks the field values on SendAppointmentReminderSmsReq with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *SendAppointmentReminderSmsReq) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on SendAppointmentReminderSmsReq with
+// the rules defined in the proto definition for this message. If any rules
+// are violated, the result is a list of violation errors wrapped in
+// SendAppointmentReminderSmsReqMultiError, or nil if none found.
+func (m *SendAppointmentReminderSmsReq) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *SendAppointmentReminderSmsReq) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if len(errors) > 0 {
+		return SendAppointmentReminderSmsReqMultiError(errors)
+	}
+
+	return nil
+}
+
+// SendAppointmentReminderSmsReqMultiError is an error wrapping multiple
+// validation errors returned by SendAppointmentReminderSmsReq.ValidateAll()
+// if the designated constraints aren't met.
+type SendAppointmentReminderSmsReqMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m SendAppointmentReminderSmsReqMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m SendAppointmentReminderSmsReqMultiError) AllErrors() []error { return m }
+
+// SendAppointmentReminderSmsReqValidationError is the validation error
+// returned by SendAppointmentReminderSmsReq.Validate if the designated
+// constraints aren't met.
+type SendAppointmentReminderSmsReqValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e SendAppointmentReminderSmsReqValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e SendAppointmentReminderSmsReqValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e SendAppointmentReminderSmsReqValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e SendAppointmentReminderSmsReqValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e SendAppointmentReminderSmsReqValidationError) ErrorName() string {
+	return "SendAppointmentReminderSmsReqValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e SendAppointmentReminderSmsReqValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sSendAppointmentReminderSmsReq.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = SendAppointmentReminderSmsReqValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = SendAppointmentReminderSmsReqValidationError{}
+
+// Validate checks the field values on SendAppointmentReminderSmsReply with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *SendAppointmentReminderSmsReply) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on SendAppointmentReminderSmsReply with
+// the rules defined in the proto definition for this message. If any rules
+// are violated, the result is a list of violation errors wrapped in
+// SendAppointmentReminderSmsReplyMultiError, or nil if none found.
+func (m *SendAppointmentReminderSmsReply) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *SendAppointmentReminderSmsReply) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for TomorrowCount
+
+	// no validation rules for TomorrowSuccessCount
+
+	// no validation rules for TomorrowFailCount
+
+	// no validation rules for NextWeekCount
+
+	// no validation rules for NextWeekSuccessCount
+
+	// no validation rules for NextWeekFailCount
+
+	if len(errors) > 0 {
+		return SendAppointmentReminderSmsReplyMultiError(errors)
+	}
+
+	return nil
+}
+
+// SendAppointmentReminderSmsReplyMultiError is an error wrapping multiple
+// validation errors returned by SendAppointmentReminderSmsReply.ValidateAll()
+// if the designated constraints aren't met.
+type SendAppointmentReminderSmsReplyMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m SendAppointmentReminderSmsReplyMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m SendAppointmentReminderSmsReplyMultiError) AllErrors() []error { return m }
+
+// SendAppointmentReminderSmsReplyValidationError is the validation error
+// returned by SendAppointmentReminderSmsReply.Validate if the designated
+// constraints aren't met.
+type SendAppointmentReminderSmsReplyValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e SendAppointmentReminderSmsReplyValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e SendAppointmentReminderSmsReplyValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e SendAppointmentReminderSmsReplyValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e SendAppointmentReminderSmsReplyValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e SendAppointmentReminderSmsReplyValidationError) ErrorName() string {
+	return "SendAppointmentReminderSmsReplyValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e SendAppointmentReminderSmsReplyValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sSendAppointmentReminderSmsReply.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = SendAppointmentReminderSmsReplyValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = SendAppointmentReminderSmsReplyValidationError{}

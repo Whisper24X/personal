@@ -70,6 +70,16 @@ type OrderClient interface {
 	SyncHistoryOrderFee(ctx context.Context, in *SyncHistoryOrderFeeReq, opts ...grpc.CallOption) (*SyncHistoryOrderFeeReply, error)
 	// 同步抖音券ID
 	SyncDouYinCertificateId(ctx context.Context, in *SyncDouYinCertificateIdReq, opts ...grpc.CallOption) (*SyncDouYinCertificateIdReply, error)
+	// 同步微店退款金额
+	SyncWeiDianRefundAmount(ctx context.Context, in *SyncWeiDianRefundAmountReq, opts ...grpc.CallOption) (*SyncWeiDianRefundAmountReply, error)
+	// 修复订单数据
+	FixOrderData(ctx context.Context, in *FixOrderDataReq, opts ...grpc.CallOption) (*FixOrderDataReply, error)
+	// 修复退款数据
+	FixRefundAmount(ctx context.Context, in *FixRefundAmountReq, opts ...grpc.CallOption) (*FixRefundAmountReply, error)
+	// 同步抖音订单
+	SyncDouYinOrder(ctx context.Context, in *SyncDouYinOrderReq, opts ...grpc.CallOption) (*SyncDouYinOrderReply, error)
+	// 重试失败的订单回调
+	RetryFailedOrderCallback(ctx context.Context, in *RetryFailedOrderCallbackReq, opts ...grpc.CallOption) (*RetryFailedOrderCallbackReply, error)
 }
 
 type orderClient struct {
@@ -296,6 +306,51 @@ func (c *orderClient) SyncDouYinCertificateId(ctx context.Context, in *SyncDouYi
 	return out, nil
 }
 
+func (c *orderClient) SyncWeiDianRefundAmount(ctx context.Context, in *SyncWeiDianRefundAmountReq, opts ...grpc.CallOption) (*SyncWeiDianRefundAmountReply, error) {
+	out := new(SyncWeiDianRefundAmountReply)
+	err := c.cc.Invoke(ctx, "/shadow.v1.Order/SyncWeiDianRefundAmount", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orderClient) FixOrderData(ctx context.Context, in *FixOrderDataReq, opts ...grpc.CallOption) (*FixOrderDataReply, error) {
+	out := new(FixOrderDataReply)
+	err := c.cc.Invoke(ctx, "/shadow.v1.Order/FixOrderData", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orderClient) FixRefundAmount(ctx context.Context, in *FixRefundAmountReq, opts ...grpc.CallOption) (*FixRefundAmountReply, error) {
+	out := new(FixRefundAmountReply)
+	err := c.cc.Invoke(ctx, "/shadow.v1.Order/FixRefundAmount", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orderClient) SyncDouYinOrder(ctx context.Context, in *SyncDouYinOrderReq, opts ...grpc.CallOption) (*SyncDouYinOrderReply, error) {
+	out := new(SyncDouYinOrderReply)
+	err := c.cc.Invoke(ctx, "/shadow.v1.Order/SyncDouYinOrder", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orderClient) RetryFailedOrderCallback(ctx context.Context, in *RetryFailedOrderCallbackReq, opts ...grpc.CallOption) (*RetryFailedOrderCallbackReply, error) {
+	out := new(RetryFailedOrderCallbackReply)
+	err := c.cc.Invoke(ctx, "/shadow.v1.Order/RetryFailedOrderCallback", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OrderServer is the server API for Order service.
 // All implementations must embed UnimplementedOrderServer
 // for forward compatibility
@@ -348,6 +403,16 @@ type OrderServer interface {
 	SyncHistoryOrderFee(context.Context, *SyncHistoryOrderFeeReq) (*SyncHistoryOrderFeeReply, error)
 	// 同步抖音券ID
 	SyncDouYinCertificateId(context.Context, *SyncDouYinCertificateIdReq) (*SyncDouYinCertificateIdReply, error)
+	// 同步微店退款金额
+	SyncWeiDianRefundAmount(context.Context, *SyncWeiDianRefundAmountReq) (*SyncWeiDianRefundAmountReply, error)
+	// 修复订单数据
+	FixOrderData(context.Context, *FixOrderDataReq) (*FixOrderDataReply, error)
+	// 修复退款数据
+	FixRefundAmount(context.Context, *FixRefundAmountReq) (*FixRefundAmountReply, error)
+	// 同步抖音订单
+	SyncDouYinOrder(context.Context, *SyncDouYinOrderReq) (*SyncDouYinOrderReply, error)
+	// 重试失败的订单回调
+	RetryFailedOrderCallback(context.Context, *RetryFailedOrderCallbackReq) (*RetryFailedOrderCallbackReply, error)
 	mustEmbedUnimplementedOrderServer()
 }
 
@@ -426,6 +491,21 @@ func (UnimplementedOrderServer) SyncHistoryOrderFee(context.Context, *SyncHistor
 }
 func (UnimplementedOrderServer) SyncDouYinCertificateId(context.Context, *SyncDouYinCertificateIdReq) (*SyncDouYinCertificateIdReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SyncDouYinCertificateId not implemented")
+}
+func (UnimplementedOrderServer) SyncWeiDianRefundAmount(context.Context, *SyncWeiDianRefundAmountReq) (*SyncWeiDianRefundAmountReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SyncWeiDianRefundAmount not implemented")
+}
+func (UnimplementedOrderServer) FixOrderData(context.Context, *FixOrderDataReq) (*FixOrderDataReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FixOrderData not implemented")
+}
+func (UnimplementedOrderServer) FixRefundAmount(context.Context, *FixRefundAmountReq) (*FixRefundAmountReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FixRefundAmount not implemented")
+}
+func (UnimplementedOrderServer) SyncDouYinOrder(context.Context, *SyncDouYinOrderReq) (*SyncDouYinOrderReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SyncDouYinOrder not implemented")
+}
+func (UnimplementedOrderServer) RetryFailedOrderCallback(context.Context, *RetryFailedOrderCallbackReq) (*RetryFailedOrderCallbackReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RetryFailedOrderCallback not implemented")
 }
 func (UnimplementedOrderServer) mustEmbedUnimplementedOrderServer() {}
 
@@ -872,6 +952,96 @@ func _Order_SyncDouYinCertificateId_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Order_SyncWeiDianRefundAmount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SyncWeiDianRefundAmountReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderServer).SyncWeiDianRefundAmount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/shadow.v1.Order/SyncWeiDianRefundAmount",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderServer).SyncWeiDianRefundAmount(ctx, req.(*SyncWeiDianRefundAmountReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Order_FixOrderData_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FixOrderDataReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderServer).FixOrderData(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/shadow.v1.Order/FixOrderData",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderServer).FixOrderData(ctx, req.(*FixOrderDataReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Order_FixRefundAmount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FixRefundAmountReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderServer).FixRefundAmount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/shadow.v1.Order/FixRefundAmount",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderServer).FixRefundAmount(ctx, req.(*FixRefundAmountReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Order_SyncDouYinOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SyncDouYinOrderReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderServer).SyncDouYinOrder(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/shadow.v1.Order/SyncDouYinOrder",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderServer).SyncDouYinOrder(ctx, req.(*SyncDouYinOrderReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Order_RetryFailedOrderCallback_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RetryFailedOrderCallbackReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderServer).RetryFailedOrderCallback(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/shadow.v1.Order/RetryFailedOrderCallback",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderServer).RetryFailedOrderCallback(ctx, req.(*RetryFailedOrderCallbackReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Order_ServiceDesc is the grpc.ServiceDesc for Order service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -974,6 +1144,26 @@ var Order_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SyncDouYinCertificateId",
 			Handler:    _Order_SyncDouYinCertificateId_Handler,
+		},
+		{
+			MethodName: "SyncWeiDianRefundAmount",
+			Handler:    _Order_SyncWeiDianRefundAmount_Handler,
+		},
+		{
+			MethodName: "FixOrderData",
+			Handler:    _Order_FixOrderData_Handler,
+		},
+		{
+			MethodName: "FixRefundAmount",
+			Handler:    _Order_FixRefundAmount_Handler,
+		},
+		{
+			MethodName: "SyncDouYinOrder",
+			Handler:    _Order_SyncDouYinOrder_Handler,
+		},
+		{
+			MethodName: "RetryFailedOrderCallback",
+			Handler:    _Order_RetryFailedOrderCallback_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

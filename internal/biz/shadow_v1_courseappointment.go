@@ -2,12 +2,14 @@ package biz
 
 import (
 	"github.com/go-kratos/kratos/v2/log"
+
 	"gitlab.yc345.tv/backend/yanxue/internal/data/rpc"
 )
 
 func NewShadowV1CourseAppointmentUseCase(
 	logger log.Logger,
 	ycOssHttpRpc *rpc.YcOssHttpRpc,
+	smsNotifyHttpRpc *rpc.SmsNotifyHttpRpc,
 	commonRepo CommonRepo,
 	bffRepo BffRepo,
 	courseAppointmentRepo CourseAppointmentRepo,
@@ -26,6 +28,7 @@ func NewShadowV1CourseAppointmentUseCase(
 	return &ShadowV1CourseAppointmentUseCase{
 		log:                   l,
 		ycOssHttpRpc:          ycOssHttpRpc,
+		smsNotifyHttpRpc:      smsNotifyHttpRpc,
 		commonRepo:            commonRepo,
 		bffRepo:               bffRepo,
 		courseAppointmentRepo: courseAppointmentRepo,
@@ -46,6 +49,7 @@ type ShadowV1CourseAppointmentUseCase struct {
 	log                   *log.Helper
 	commonRepo            CommonRepo
 	ycOssHttpRpc          *rpc.YcOssHttpRpc
+	smsNotifyHttpRpc      *rpc.SmsNotifyHttpRpc
 	bffRepo               BffRepo
 	courseAppointmentRepo CourseAppointmentRepo
 	courseRepo            CourseRepo

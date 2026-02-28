@@ -202,9 +202,13 @@ var (
 var (
 	OrderNotExists             = Manager.New(http.StatusConflict, "OrderNotExists", "订单不存在")
 	OrderStatusNotAllowed      = Manager.New(http.StatusConflict, "OrderStatusNotAllowed", "订单状态不被允许")
-	OrderChangePhoneNotAllowed = Manager.New(http.StatusConflict, "OrderChangePhoneNotAllowed", "只有待预约状态允许修改手机号")
+	OrderChangePhoneNotAllowed = Manager.New(http.StatusConflict, "OrderChangePhoneNotAllowed", "只有待预约和已预约状态允许修改手机号")
 )
 
 var (
 	GoodRecommendationCategoryNotFound = Manager.New(http.StatusConflict, "GoodRecommendationCategoryNotFound", "商品推荐分类不存在")
+)
+
+var (
+	ContractTemplateNameDuplicateError = Manager.New(http.StatusConflict, "ContractTemplateNameDuplicateError", "模板名称已存在，请使用其他名称")
 )

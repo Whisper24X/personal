@@ -137,6 +137,18 @@ func NewCronServer(
 	if err != nil {
 		return nil, err
 	}
+	fixOrderData, err := NewTask(tasks["fixOrderData"], yanxueV1AsyncService.FixOrderData)
+	if err != nil {
+		return nil, err
+	}
+	retryFailedOrderCallback, err := NewTask(tasks["retryFailedOrderCallback"], yanxueV1AsyncService.RetryFailedOrderCallback)
+	if err != nil {
+		return nil, err
+	}
+	sendAppointmentReminderSms, err := NewTask(tasks["sendAppointmentReminderSms"], yanxueV1AsyncService.SendAppointmentReminderSms)
+	if err != nil {
+		return nil, err
+	}
 	resp.Tasks = append(
 		resp.Tasks,
 		syncContractStatus,
@@ -150,6 +162,9 @@ func NewCronServer(
 		syncWechatPayBill,
 		syncDouYinSettleInfo,
 		syncWechatPayBillPlatformFee,
+		fixOrderData,
+		retryFailedOrderCallback,
+		sendAppointmentReminderSms,
 	)
 	return resp, nil
 }

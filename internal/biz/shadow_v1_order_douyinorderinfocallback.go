@@ -213,6 +213,13 @@ func (s *ShadowV1OrderUseCase) CreateDouYinOrder(ctx context.Context, req *Creat
 // DouYinOrderInfoCallback 抖音订单消息回传
 func (s *ShadowV1OrderUseCase) DouYinOrderInfoCallback(ctx context.Context, req *pb.DouYinOrderInfoCallbackReq) (*pb.DouYinOrderInfoCallbackReply, error) {
 	resp := &pb.DouYinOrderInfoCallbackReply{}
+
+	// 检查是否是重试任务
+	isRetry := false
+	if ctx.Value("isRetryTask") != nil {
+		isRetry = ctx.Value("isRetryTask").(bool)
+	}
+
 	content := &DouYinOrderInfoCallbackTestContent{}
 	contentStr := strings.ReplaceAll(req.Content, `\"`, `"`)
 	err := jsonutil.Unmarshal([]byte(contentStr), content)
@@ -226,6 +233,10 @@ func (s *ShadowV1OrderUseCase) DouYinOrderInfoCallback(ctx context.Context, req 
 		err = jsonutil.Unmarshal([]byte(contentStr), douYinOrderCreateItem)
 		if err != nil {
 			s.log.Errorf("新增抖音订单失败！序列化失败！失败原因：%s", err.Error())
+			// 只有非重试任务才记录失败任务
+			if !isRetry {
+				s.recordFailedTask(ctx, req, fmt.Sprintf("序列化失败: %v", err))
+			}
 			return resp, errorx.DataFormattingError.WithError(err).Err()
 		}
 		if douYinOrderCreateItem.Action == "pay_success" {
@@ -242,11 +253,19 @@ func (s *ShadowV1OrderUseCase) DouYinOrderInfoCallback(ctx context.Context, req 
 			})
 			if err != nil {
 				s.log.Errorf("查询抖音订单信息失败！失败原因：%s", err.Error())
+				// 只有非重试任务才记录失败任务
+				if !isRetry {
+					s.recordFailedTask(ctx, req, fmt.Sprintf("查询抖音订单信息失败: %v", err))
+				}
 				return resp, err
 			}
 			s.log.Info("抖音订单信息", douYinOrderInfo)
 			if len(douYinOrderInfo.Data.Orders) == 0 {
 				s.log.Errorf("抖音新增订单失败，回查订单没有查到！订单ID:%s", orderId)
+				// 只有非重试任务才记录失败任务
+				if !isRetry {
+					s.recordFailedTask(ctx, req, fmt.Sprintf("回查订单没有查到, orderId: %s", orderId))
+				}
 				return resp, errorx.APIThirdErr.Err()
 			} else {
 				orderInfo := douYinOrderInfo.Data.Orders[0]
@@ -254,7 +273,11 @@ func (s *ShadowV1OrderUseCase) DouYinOrderInfoCallback(ctx context.Context, req 
 					orderInfo.OrderStatus != constant.OrderStatusAvailable &&
 					orderInfo.OrderStatus != constant.OrderStatusPartPay {
 					s.log.Warnf("抖音新增订单失败，回查订单状态不是支付成功/待使用/部分支付！订单ID:%s,订单状态:%s", orderId, orderInfo.OrderStatus)
-					return resp, nil
+					// 只有非重试任务才记录失败任务
+					if !isRetry {
+						s.recordFailedTask(ctx, req, fmt.Sprintf("回查订单状态不是支付成功/待使用/部分支付, orderId: %s", orderId))
+					}
+					return resp, errorx.ParamErr.Err()
 				}
 				goodName := orderInfo.SkuName
 				goodId := orderInfo.SkuId
@@ -330,12 +353,42 @@ func (s *ShadowV1OrderUseCase) DouYinOrderInfoCallback(ctx context.Context, req 
 				})
 				if err != nil {
 					s.log.Errorf("创建抖音订单失败！订单ID:%s,错误:%s", orderId, err.Error())
+					// 只有非重试任务才记录失败任务
+					if !isRetry {
+						s.recordFailedTask(ctx, req, fmt.Sprintf("创建订单失败, orderId: %s, error: %v", orderId, err))
+					}
 					return resp, errorx.DataSQLErr.WithError(err).Err()
 				}
 			}
 		}
 	}
 	return resp, nil
+}
+
+// recordFailedTask 记录失败的任务到 async_task 表
+// 保存完整的 req 参数，包括 content, msgSignature, timestamp, nonce
+func (s *ShadowV1OrderUseCase) recordFailedTask(ctx context.Context, req *pb.DouYinOrderInfoCallbackReq, errorInfo string) {
+	// 将完整的 req 序列化为 JSON
+	reqJSON, err := jsonutil.Marshal(req)
+	if err != nil {
+		s.log.Errorf("序列化 req 失败: %v", err)
+		reqJSON = []byte(req.Content) // 降级为只保存 content
+	}
+
+	task := &yanxue_model.AsyncTask{
+		TaskType:    constant.DouYinOrderCallbackTaskType,
+		Status:      constant.AsyncTaskStatusPending,
+		ErrorInfo:   errorInfo,
+		TaskContent: string(reqJSON), // 保存完整的 req JSON
+		RetryTimes:  0,
+	}
+
+	err = s.asyncTaskRepo.CreateOneCache(ctx, task)
+	if err != nil {
+		s.log.Errorf("记录失败任务到async_task表失败: %v, req: %s", err, string(reqJSON))
+	} else {
+		s.log.Infof("成功记录失败任务到async_task表, taskId: %s, errorInfo: %s", task.ID, errorInfo)
+	}
 }
 
 type WeiDianOrderGoodInfo struct {
@@ -401,7 +454,7 @@ func (s *ShadowV1OrderUseCase) CreateWeiDianOrder(ctx context.Context, req *Crea
 		goodId := goodInfo.GoodId
 		orderPrice := payAmount / float64(goodNum)
 		lastIncome := lastIncomeTotal * 100 / float64(goodNum) // 单位分
-		receiptAmount := int32(lastIncome)
+		receiptAmount := int32(lastIncome + 0.5)
 		// 计算手续费：手续费 = 实收金额 * 0.6%，四舍五入到整数
 		platformFee := int32(math.Round(float64(receiptAmount) * 0.006))
 		// 对每个商品，根据数量拆分成多个订单

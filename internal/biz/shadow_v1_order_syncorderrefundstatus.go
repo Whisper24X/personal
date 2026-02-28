@@ -117,7 +117,7 @@ func (s *ShadowV1OrderUseCase) SyncOrderRefundStatus(ctx context.Context, req *p
 
 		s.log.Infof("抖音订单数据获取完成，共获取%d条记录", len(reply.Data.Orders))
 
-		// 1. 先筛选出退款券信息（按券维度），只筛选最近7天的数据
+		// 1. 先筛选出退款券信息（按券维度）
 		// 优化：改为券维度退款，只退已退款的券对应的订单
 		type refundCertificateItem struct {
 			OrderId       string // 原始订单ID
@@ -126,19 +126,10 @@ func (s *ShadowV1OrderUseCase) SyncOrderRefundStatus(ctx context.Context, req *p
 		}
 		var refundCertificateList []refundCertificateItem
 
-		// 计算7天前的时间戳（秒级）
-		sevenDaysAgo := time.Now().AddDate(0, 0, -7).Unix()
-
 		for _, order := range reply.Data.Orders {
 			for _, item := range order.Certificate {
 				if item.ItemStatus == constant.CertificateStatusRefund {
-					// 检查 ItemUpdateTime 是否在最近7天内（秒级时间戳）
 					itemUpdateTime := int64(item.ItemUpdateTime)
-					if itemUpdateTime < sevenDaysAgo {
-						s.log.Infof("SyncOrderRefundStatus: 券退款时间超过7天，跳过, orderId=%s, certificateId=%s, itemUpdateTime=%d, sevenDaysAgo=%d",
-							order.OrderId, item.CertificateId, itemUpdateTime, sevenDaysAgo)
-						continue
-					}
 
 					// 记录每张退款券的信息
 					refundCertificateList = append(refundCertificateList, refundCertificateItem{
@@ -153,9 +144,77 @@ func (s *ShadowV1OrderUseCase) SyncOrderRefundStatus(ctx context.Context, req *p
 			}
 		}
 
-		s.log.Infof("SyncOrderRefundStatus: 筛选出最近7天的退款券，共%d张", len(refundCertificateList))
+		s.log.Infof("SyncOrderRefundStatus: 筛选出退款券，共%d张", len(refundCertificateList))
 
-		// 2. 通过 QueryDouYinAfterSaleOrderDetail 查询每张退款券的退款信息
+		// 2. 查询数据库，过滤出状态不是已退款的券
+		if len(refundCertificateList) == 0 {
+			s.log.Infof("SyncOrderRefundStatus: 没有需要处理的退款券")
+			return nil
+		}
+
+		// 提取所有券ID
+		var allCertificateIds []string
+		for _, cert := range refundCertificateList {
+			allCertificateIds = append(allCertificateIds, cert.CertificateId)
+		}
+
+		// 分批查询订单，每批最多1000个券ID
+		const queryBatchSize = 1000
+		var allOrdersInDB []*yanxue_model.Order
+
+		for i := 0; i < len(allCertificateIds); i += queryBatchSize {
+			end := i + queryBatchSize
+			if end > len(allCertificateIds) {
+				end = len(allCertificateIds)
+			}
+
+			batchCertificateIds := allCertificateIds[i:end]
+			batchOrders, err := s.orderRepo.FindMultiByCertificateIDS(ctx, batchCertificateIds)
+			if err != nil {
+				s.log.Errorf("SyncOrderRefundStatus: 根据券ID查询订单失败, err=%v", err)
+				return errorx.DataSQLErr.WithError(err).Err()
+			}
+
+			allOrdersInDB = append(allOrdersInDB, batchOrders...)
+		}
+
+		s.log.Infof("SyncOrderRefundStatus: 根据券ID查询到订单，共%d条", len(allOrdersInDB))
+
+		// 构建 certificateId -> 订单状态 的映射
+		certificateIdToOrderStatusMap := make(map[string]string)
+		for _, order := range allOrdersInDB {
+			certificateIdToOrderStatusMap[order.CertificateID] = order.Status
+		}
+
+		// 过滤出状态不是已退款的券
+		var needProcessCertificateList []refundCertificateItem
+		for _, cert := range refundCertificateList {
+			orderStatus, exists := certificateIdToOrderStatusMap[cert.CertificateId]
+			if !exists {
+				// 数据库中没有找到对应的订单，跳过
+				s.log.Warnf("SyncOrderRefundStatus: 数据库中未找到券对应的订单, certificateId=%s", cert.CertificateId)
+				continue
+			}
+
+			// 如果订单状态已经是已退款，跳过
+			if orderStatus == constant.OrderStatusRefunded.String() {
+				s.log.Infof("SyncOrderRefundStatus: 订单已经是已退款状态，跳过, certificateId=%s, status=%s",
+					cert.CertificateId, orderStatus)
+				continue
+			}
+
+			// 需要处理的券
+			needProcessCertificateList = append(needProcessCertificateList, cert)
+		}
+
+		s.log.Infof("SyncOrderRefundStatus: 过滤后需要处理的退款券，共%d张（已退款的券已跳过）", len(needProcessCertificateList))
+
+		if len(needProcessCertificateList) == 0 {
+			s.log.Infof("SyncOrderRefundStatus: 所有券都已经是已退款状态，无需处理")
+			return nil
+		}
+
+		// 3. 通过 QueryDouYinAfterSaleOrderDetail 查询每张退款券的退款信息
 		// 按券维度查询退款金额和时间
 		type certificateRefundInfo struct {
 			UserRefundAmount int64  // 用户退款金额（单位：分）
@@ -166,7 +225,7 @@ func (s *ShadowV1OrderUseCase) SyncOrderRefundStatus(ctx context.Context, req *p
 
 		// 按原始订单ID分组，批量查询售后单详情
 		orderIdToCertificatesMap := make(map[string][]refundCertificateItem)
-		for _, cert := range refundCertificateList {
+		for _, cert := range needProcessCertificateList {
 			orderIdToCertificatesMap[cert.OrderId] = append(orderIdToCertificatesMap[cert.OrderId], cert)
 		}
 
@@ -236,13 +295,13 @@ func (s *ShadowV1OrderUseCase) SyncOrderRefundStatus(ctx context.Context, req *p
 			}
 		}
 
-		// 3. 根据 certificateId 匹配数据库中的订单，只退款对应券的订单
+		// 4. 根据 certificateId 匹配数据库中的订单，只退款对应券的订单
 		// 按券维度处理退款
 		var refundCertificateIds []string
 		certificateIdToRefundAmountMap := make(map[string]int32)
 		certificateIdToRefundTimeMap := make(map[string]time.Time)
 
-		for _, cert := range refundCertificateList {
+		for _, cert := range needProcessCertificateList {
 			// 如果查询退款信息失败，跳过
 			refundInfo, exists := certificateIdToRefundInfoMap[cert.CertificateId]
 			if !exists {
@@ -258,35 +317,26 @@ func (s *ShadowV1OrderUseCase) SyncOrderRefundStatus(ctx context.Context, req *p
 				cert.CertificateId, refundInfo.UserRefundAmount, time.Unix(refundInfo.CompleteTime, 0).Format("2006-01-02 15:04:05"))
 		}
 
-		// 4. 根据 certificateId 查询数据库中的订单，只更新匹配到的订单
+		// 5. 根据 certificateId 查询数据库中的订单，只更新匹配到的订单
 		// 按券维度查询和更新订单
 		if len(refundCertificateIds) == 0 {
 			s.log.Infof("SyncOrderRefundStatus: 没有需要退款的券")
 			return nil
 		}
 
-		// 分批查询订单，每批最多1000个券ID
-		const batchSize = 1000
-		var orderDBList []*yanxue_model.Order
-
-		for i := 0; i < len(refundCertificateIds); i += batchSize {
-			end := i + batchSize
-			if end > len(refundCertificateIds) {
-				end = len(refundCertificateIds)
+		// 从之前查询的结果中筛选出需要更新的订单
+		orderDBList := make([]*yanxue_model.Order, 0)
+		for _, order := range allOrdersInDB {
+			// 检查订单的券ID是否在需要退款的券ID列表中
+			for _, certId := range refundCertificateIds {
+				if order.CertificateID == certId {
+					orderDBList = append(orderDBList, order)
+					break
+				}
 			}
-
-			batchCertificateIds := refundCertificateIds[i:end]
-			batchOrders, err := s.orderRepo.FindMultiByCertificateIDS(ctx, batchCertificateIds)
-			if err != nil {
-				s.log.Errorf("SyncOrderRefundStatus: 根据券ID查询订单失败, err=%v", err)
-				return errorx.DataSQLErr.WithError(err).Err()
-			}
-
-			orderDBList = append(orderDBList, batchOrders...)
-			s.log.Infof("已查询订单数据：%d/%d券ID", len(orderDBList), len(refundCertificateIds))
 		}
 
-		s.log.Infof("SyncOrderRefundStatus: 根据券ID查询到订单，共%d条", len(orderDBList))
+		s.log.Infof("SyncOrderRefundStatus: 根据券ID筛选出需要更新的订单，共%d条", len(orderDBList))
 
 		// 筛选需要更新的订单
 		var needUpdateOrderList []*yanxue_model.Order
