@@ -54,17 +54,17 @@ func DistributeRefundToSubOrders(
 	}
 
 	// 2. 过滤掉已经退款的子订单
-	var availableSubOrders []*yanxue_model.SubOrder
-	for _, subOrder := range subOrders {
-		if subOrder.Status != string(constant.OrderStatusRefunded) {
-			availableSubOrders = append(availableSubOrders, subOrder)
-		}
-	}
-
-	if len(availableSubOrders) == 0 {
-		log.Infof("所有子订单都已退款，跳过退款分配，parentOrderId=%s", parentOrderId)
-		return nil
-	}
+	var availableSubOrders = subOrders
+	//for _, subOrder := range subOrders {
+	//	if subOrder.Status != string(constant.OrderStatusRefunded) {
+	//		availableSubOrders = append(availableSubOrders, subOrder)
+	//	}
+	//}
+	//
+	//if len(availableSubOrders) == 0 {
+	//	log.Infof("所有子订单都已退款，跳过退款分配，parentOrderId=%s", parentOrderId)
+	//	return nil
+	//}
 
 	// 3. 按照优先级排序子订单
 	sortSubOrdersByRefundPriority(availableSubOrders)
@@ -78,11 +78,10 @@ func DistributeRefundToSubOrders(
 
 		oldSubOrder := subOrderRepo.DeepCopy(subOrder)
 
-		// 计算本次退款金额（退款只会退一次，直接按订单金额分配）
+		// 计算本次退款金额
+		// 注意：不限制退款金额必须小于等于OrderPrice
+		// 因为实际退款金额可能包含平台优惠、支付优惠等，可能大于用户实付金额
 		refundForThisSubOrder := remainingRefund
-		if refundForThisSubOrder > subOrder.OrderPrice {
-			refundForThisSubOrder = subOrder.OrderPrice
-		}
 
 		// 直接赋值子订单退款金额（不累加）
 		subOrder.RefundAmount = refundForThisSubOrder

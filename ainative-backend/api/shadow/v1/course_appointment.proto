@@ -356,3 +356,16 @@ message FinishCourseAppointmentReq {}
 message FinishCourseAppointmentReply {
   repeated string ids = 1; // 课程预约ID集合
 }
+
+//请求-课程-预约-发送提醒短信
+message SendAppointmentReminderSmsReq {}
+
+//响应-课程-预约-发送提醒短信
+message SendAppointmentReminderSmsReply {
+  int32 tomorrowCount = 1; // 明天的预约数量
+  int32 tomorrowSuccessCount = 2; // 明天发送成功数量
+  int32 tomorrowFailCount = 3; // 明天发送失败数量
+  int32 nextWeekCount = 4; // 下周的预约数量
+  int32 nextWeekSuccessCount = 5; // 下周发送成功数量
+  int32 nextWeekFailCount = 6; // 下周发送失败数量
+}

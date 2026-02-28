@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/go-kratos/kratos/v2/log"
+
 	pb "gitlab.yc345.tv/backend/yanxue/api/shadow/v1"
 	"gitlab.yc345.tv/backend/yanxue/internal/biz"
 )
@@ -152,4 +153,29 @@ func (s *ShadowV1OrderService) SyncHistoryOrderFee(ctx context.Context, req *pb.
 // SyncDouYinCertificateId 同步抖音券ID
 func (s *ShadowV1OrderService) SyncDouYinCertificateId(ctx context.Context, req *pb.SyncDouYinCertificateIdReq) (*pb.SyncDouYinCertificateIdReply, error) {
 	return s.shadowV1OrderUseCase.SyncDouYinCertificateId(ctx, req)
+}
+
+// SyncWeiDianRefundAmount 同步微店退款金额
+func (s *ShadowV1OrderService) SyncWeiDianRefundAmount(ctx context.Context, req *pb.SyncWeiDianRefundAmountReq) (*pb.SyncWeiDianRefundAmountReply, error) {
+	return s.shadowV1OrderUseCase.SyncWeiDianRefundAmount(ctx, req)
+}
+
+// FixOrderData 修复订单数据
+func (s *ShadowV1OrderService) FixOrderData(ctx context.Context, req *pb.FixOrderDataReq) (*pb.FixOrderDataReply, error) {
+	return s.shadowV1OrderUseCase.FixOrderData(ctx, req)
+}
+
+// FixRefundAmount 修复退款数据
+func (s *ShadowV1OrderService) FixRefundAmount(ctx context.Context, req *pb.FixRefundAmountReq) (*pb.FixRefundAmountReply, error) {
+	return s.shadowV1OrderUseCase.FixRefundAmount(ctx, req)
+}
+
+// SyncDouYinOrder 同步抖音订单
+func (s *ShadowV1OrderService) SyncDouYinOrder(ctx context.Context, req *pb.SyncDouYinOrderReq) (*pb.SyncDouYinOrderReply, error) {
+	return s.shadowV1OrderUseCase.SyncDouYinOrder(ctx, req)
+}
+
+// RetryFailedOrderCallback 重试失败的订单回调
+func (s *ShadowV1OrderService) RetryFailedOrderCallback(ctx context.Context, req *pb.RetryFailedOrderCallbackReq) (*pb.RetryFailedOrderCallbackReply, error) {
+	return s.shadowV1OrderUseCase.RetryFailedOrderCallback(ctx, req)
 }

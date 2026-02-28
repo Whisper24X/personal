@@ -64,8 +64,7 @@ func (s *ShadowV1OrderUseCase) syncDouYinCertificateIdAsync(ctx context.Context)
 
 	s.log.Infof("SyncDouYinCertificateId: 抖音渠道ID=%s", douYinChannelId)
 
-	// 2. 查询抖音渠道的订单
-	// 分页查询，避免一次性加载过多数据
+	// 2. 分页查询抖音渠道的所有订单，然后在内存中过滤 certificateId 为空的订单
 	const pageSize = 1000
 	var allOrders []*yanxue_model.Order
 	pageNum := int32(1)
@@ -103,7 +102,7 @@ func (s *ShadowV1OrderUseCase) syncDouYinCertificateIdAsync(ctx context.Context)
 
 	s.log.Infof("SyncDouYinCertificateId: 查询到抖音渠道订单，共%d条", len(allOrders))
 
-	// 3. 过滤出没有 certificateId 的订单（certificateId 为 NULL 或空字符串）
+	// 3. 过滤出 certificateId 为空（空字符串或NULL）的订单
 	var ordersWithoutCertificateId []*yanxue_model.Order
 	for _, order := range allOrders {
 		if order.CertificateID == "" {
@@ -111,7 +110,7 @@ func (s *ShadowV1OrderUseCase) syncDouYinCertificateIdAsync(ctx context.Context)
 		}
 	}
 
-	s.log.Infof("SyncDouYinCertificateId: 过滤出没有certificateId的订单，共%d条", len(ordersWithoutCertificateId))
+	s.log.Infof("SyncDouYinCertificateId: 过滤出需要同步的订单，共%d条", len(ordersWithoutCertificateId))
 
 	if len(ordersWithoutCertificateId) == 0 {
 		s.log.Infof("SyncDouYinCertificateId: 没有需要同步的订单")
@@ -126,23 +125,31 @@ func (s *ShadowV1OrderUseCase) syncDouYinCertificateIdAsync(ctx context.Context)
 
 	s.log.Infof("SyncDouYinCertificateId: 按 originOrderNumber 分组，共%d个原始订单", len(originOrderNumberToOrdersMap))
 
-	// 5. 调用抖音接口查询券ID，并更新订单
-	// 抖音 QPS 限制为 500，为了安全起见，我们设置为每秒最多 80 个请求
-	// 使用 channel 控制并发数，并使用 ticker 控制请求速率
-	const maxConcurrency = 5                                // 降低并发数
-	const requestsPerSecond = 80                            // 每秒最多 80 个请求
-	const requestInterval = time.Second / requestsPerSecond // 每个请求间隔 10ms
+	// 5. 并发调用抖音接口查询券ID，并更新订单
+	// 使用并发控制和限流
+	const maxConcurrency = 10                               // 并发数
+	const requestsPerSecond = 100                           // 每秒最多100个请求
+	const requestInterval = time.Second / requestsPerSecond // 每个请求间隔10ms
 
 	semaphore := make(chan struct{}, maxConcurrency)
 	rateLimiter := time.NewTicker(requestInterval) // 速率限制器
 	defer rateLimiter.Stop()
 
 	successCount := 0
+	partialSuccessCount := 0 // 部分成功（父订单更新成功但子订单失败）
 	failCount := 0
 	processedCount := 0
 	totalCount := len(originOrderNumberToOrdersMap)
 	wg := &sync.WaitGroup{}
 	mu := &sync.Mutex{}
+
+	// 用于记录失败原因
+	type failureInfo struct {
+		originOrderNumber string
+		reason            string
+	}
+	var failures []failureInfo
+	var failuresMu sync.Mutex
 
 	s.log.Infof("SyncDouYinCertificateId: 开始并发处理，最大并发数=%d, 请求速率=%d req/s", maxConcurrency, requestsPerSecond)
 
@@ -164,8 +171,9 @@ func (s *ShadowV1OrderUseCase) syncDouYinCertificateIdAsync(ctx context.Context)
 				mu.Lock()
 				processedCount++
 				if processedCount%50 == 0 || processedCount == totalCount {
-					s.log.Infof("SyncDouYinCertificateId: 处理进度 %d/%d (%.2f%%)",
-						processedCount, totalCount, float64(processedCount)/float64(totalCount)*100)
+					s.log.Infof("SyncDouYinCertificateId: 处理进度 %d/%d (%.2f%%), 完全成功=%d, 部分成功=%d, 失败=%d",
+						processedCount, totalCount, float64(processedCount)/float64(totalCount)*100,
+						successCount, partialSuccessCount, failCount)
 				}
 				mu.Unlock()
 			}()
@@ -179,20 +187,27 @@ func (s *ShadowV1OrderUseCase) syncDouYinCertificateIdAsync(ctx context.Context)
 			})
 
 			if err != nil {
-				s.log.Errorf("SyncDouYinCertificateId: 查询抖音订单信息失败, originOrderNumber=%s, err=%v",
-					originOrderNumber, err)
+				reason := "查询抖音订单信息失败: " + err.Error()
+				s.log.Errorf("SyncDouYinCertificateId: %s, originOrderNumber=%s", reason, originOrderNumber)
 				mu.Lock()
 				failCount++
 				mu.Unlock()
+				failuresMu.Lock()
+				failures = append(failures, failureInfo{originOrderNumber: originOrderNumber, reason: reason})
+				failuresMu.Unlock()
 				return
 			}
 
 			// 检查是否查询到订单信息
 			if len(orderInfoReply.Data.Orders) == 0 {
-				s.log.Warnf("SyncDouYinCertificateId: 抖音订单信息为空, originOrderNumber=%s", originOrderNumber)
+				reason := "抖音订单信息为空"
+				s.log.Warnf("SyncDouYinCertificateId: %s, originOrderNumber=%s", reason, originOrderNumber)
 				mu.Lock()
 				failCount++
 				mu.Unlock()
+				failuresMu.Lock()
+				failures = append(failures, failureInfo{originOrderNumber: originOrderNumber, reason: reason})
+				failuresMu.Unlock()
 				return
 			}
 
@@ -201,71 +216,108 @@ func (s *ShadowV1OrderUseCase) syncDouYinCertificateIdAsync(ctx context.Context)
 			// 提取券ID列表
 			var certificateIds []string
 			for _, cert := range orderInfo.Certificate {
-				certificateIds = append(certificateIds, cert.CertificateId)
+				if cert.CertificateId != "" {
+					certificateIds = append(certificateIds, cert.CertificateId)
+				}
 			}
 
 			if len(certificateIds) == 0 {
-				s.log.Warnf("SyncDouYinCertificateId: 订单没有券信息, originOrderNumber=%s", originOrderNumber)
+				reason := "订单没有券信息"
+				s.log.Warnf("SyncDouYinCertificateId: %s, originOrderNumber=%s", reason, originOrderNumber)
 				mu.Lock()
 				failCount++
 				mu.Unlock()
+				failuresMu.Lock()
+				failures = append(failures, failureInfo{originOrderNumber: originOrderNumber, reason: reason})
+				failuresMu.Unlock()
 				return
 			}
 
-			s.log.Infof("SyncDouYinCertificateId: 查询到券ID列表, originOrderNumber=%s, 券数量=%d, 券ID列表=%v",
-				originOrderNumber, len(certificateIds), certificateIds)
+			s.log.Infof("SyncDouYinCertificateId: 查询到券ID列表, originOrderNumber=%s, 券数量=%d, 订单数量=%d",
+				originOrderNumber, len(certificateIds), len(orders))
 
-			// 检查券数量是否与订单数量匹配
+			// 取最小值，避免券数量与订单数量不匹配导致失败
+			minCount := len(certificateIds)
+			if minCount > len(orders) {
+				minCount = len(orders)
+			}
+
 			if len(certificateIds) != len(orders) {
-				s.log.Warnf("SyncDouYinCertificateId: 券数量与订单数量不匹配, originOrderNumber=%s, 券数量=%d, 订单数量=%d",
-					originOrderNumber, len(certificateIds), len(orders))
-				mu.Lock()
-				failCount++
-				mu.Unlock()
-				return
+				s.log.Warnf("SyncDouYinCertificateId: 券数量与订单数量不完全匹配, originOrderNumber=%s, 券数量=%d, 订单数量=%d, 将更新前%d个订单",
+					originOrderNumber, len(certificateIds), len(orders), minCount)
 			}
+
+			// 记录更新结果
+			parentOrderSuccess := 0
+			parentOrderFail := 0
+			subOrderSuccess := 0
+			subOrderFail := 0
 
 			// 更新订单的 certificateId
-			for i, order := range orders {
+			for i := 0; i < minCount; i++ {
 				certificateId := certificateIds[i]
+				order := orders[i]
 
 				// 更新父订单
 				oldOrder := s.orderRepo.DeepCopy(order)
 				order.CertificateID = certificateId
-				err := s.orderRepo.UpdateOneCache(context.Background(), order, oldOrder)
+				err := s.orderRepo.UpdateOneCache(ctx, order, oldOrder)
 				if err != nil {
-					s.log.Errorf("SyncDouYinCertificateId: 更新订单失败, orderId=%s, certificateId=%s, err=%v",
+					s.log.Errorf("SyncDouYinCertificateId: 更新父订单失败, orderId=%s, certificateId=%s, err=%v",
 						order.ID, certificateId, err)
+					parentOrderFail++
 					continue
 				}
 
-				s.log.Infof("SyncDouYinCertificateId: 更新订单成功, orderId=%s, orderNumber=%s, certificateId=%s",
+				parentOrderSuccess++
+				s.log.Infof("SyncDouYinCertificateId: 更新父订单成功, orderId=%s, orderNumber=%s, certificateId=%s",
 					order.ID, order.OrderNumber, certificateId)
 
 				// 更新子订单的 certificateId
-				subOrders, err := s.subOrderRepo.FindMultiByParentOrderID(context.Background(), order.ID)
+				subOrders, err := s.subOrderRepo.FindMultiByParentOrderID(ctx, order.ID)
 				if err != nil {
 					s.log.Errorf("SyncDouYinCertificateId: 查询子订单失败, orderId=%s, err=%v", order.ID, err)
+					subOrderFail++
 					continue
 				}
 
 				for _, subOrder := range subOrders {
 					oldSubOrder := s.subOrderRepo.DeepCopy(subOrder)
 					subOrder.CertificateID = certificateId
-					err := s.subOrderRepo.UpdateOneCache(context.Background(), subOrder, oldSubOrder)
+					err := s.subOrderRepo.UpdateOneCache(ctx, subOrder, oldSubOrder)
 					if err != nil {
 						s.log.Errorf("SyncDouYinCertificateId: 更新子订单失败, subOrderId=%s, certificateId=%s, err=%v",
 							subOrder.ID, certificateId, err)
+						subOrderFail++
 						continue
 					}
 
+					subOrderSuccess++
 					s.log.Infof("SyncDouYinCertificateId: 更新子订单成功, subOrderId=%s, subOrderNumber=%s, certificateId=%s",
 						subOrder.ID, subOrder.OrderNumber, certificateId)
 				}
 			}
 
+			// 统计结果
 			mu.Lock()
-			successCount++
+			if parentOrderFail == 0 && subOrderFail == 0 && parentOrderSuccess == minCount {
+				// 完全成功
+				successCount++
+			} else if parentOrderSuccess > 0 {
+				// 部分成功
+				partialSuccessCount++
+				reason := "部分成功: 父订单成功=" + string(rune(parentOrderSuccess)) + ", 父订单失败=" + string(rune(parentOrderFail)) + ", 子订单失败=" + string(rune(subOrderFail))
+				failuresMu.Lock()
+				failures = append(failures, failureInfo{originOrderNumber: originOrderNumber, reason: reason})
+				failuresMu.Unlock()
+			} else {
+				// 完全失败
+				failCount++
+				reason := "所有订单更新失败"
+				failuresMu.Lock()
+				failures = append(failures, failureInfo{originOrderNumber: originOrderNumber, reason: reason})
+				failuresMu.Unlock()
+			}
 			mu.Unlock()
 
 		}(originOrderNumber, orders)
@@ -274,5 +326,14 @@ func (s *ShadowV1OrderUseCase) syncDouYinCertificateIdAsync(ctx context.Context)
 	wg.Wait()
 	close(semaphore)
 
-	s.log.Infof("SyncDouYinCertificateId: 同步完成, 总数=%d, 成功=%d, 失败=%d", totalCount, successCount, failCount)
+	s.log.Infof("SyncDouYinCertificateId: 同步完成, 总数=%d, 完全成功=%d, 部分成功=%d, 失败=%d",
+		totalCount, successCount, partialSuccessCount, failCount)
+
+	// 输出失败订单详情
+	if len(failures) > 0 {
+		s.log.Warnf("SyncDouYinCertificateId: 失败/部分成功订单详情（共%d个）:", len(failures))
+		for _, f := range failures {
+			s.log.Warnf("  - originOrderNumber=%s, 原因=%s", f.originOrderNumber, f.reason)
+		}
+	}
 }

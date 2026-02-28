@@ -98,18 +98,20 @@ func (s *ShadowV1OrderUseCase) syncHistoryOrderFeeAsync(ctx context.Context) err
 	s.log.Infof("SyncHistoryOrderFee: 小程序订单=%d, 抖音订单=%d, 微店订单=%d",
 		len(xcxOrders), len(dyOrders), len(wdOrders))
 
-	// 4. 处理小程序订单
-	xcxSuccessCount, xcxFailCount := s.syncXCXOrderFee(ctx, xcxOrders)
+	//// 4. 处理小程序订单
+	//xcxSuccessCount, xcxFailCount := s.syncXCXOrderFee(ctx, xcxOrders)
 
 	// 5. 处理抖音订单
 	dySuccessCount, dyFailCount := s.syncDouYinOrderFee(ctx, dyOrders)
 
-	// 6. 重新赋值所有订单的子订单 orderPrice（修复浮点数精度问题）
-	s.log.Infof("SyncHistoryOrderFee: 开始重新赋值所有子订单的 orderPrice")
-	fixSuccessCount, fixFailCount := s.fixSubOrderPrice(ctx, orderList)
+	//// 6. 重新赋值所有订单的子订单 orderPrice（修复浮点数精度问题）
+	//s.log.Infof("SyncHistoryOrderFee: 开始重新赋值所有子订单的 orderPrice")
+	//fixSuccessCount, fixFailCount := s.fixSubOrderPrice(ctx, orderList)
 
-	s.log.Infof("SyncHistoryOrderFee: 同步完成, 小程序(成功=%d,失败=%d), 抖音(成功=%d,失败=%d), 微店订单数=%d(不处理), 修复子订单orderPrice(成功=%d,失败=%d)",
-		xcxSuccessCount, xcxFailCount, dySuccessCount, dyFailCount, len(wdOrders), fixSuccessCount, fixFailCount)
+	s.log.Infof("SyncHistoryOrderFee: 同步完成, 抖音(成功=%d,失败=%d)",
+		dySuccessCount, dyFailCount)
+	//s.log.Infof("SyncHistoryOrderFee: 同步完成, 小程序(成功=%d,失败=%d), 抖音(成功=%d,失败=%d), 微店订单数=%d(不处理), 修复子订单orderPrice(成功=%d,失败=%d)",
+	//	xcxSuccessCount, xcxFailCount, dySuccessCount, dyFailCount, len(wdOrders), fixSuccessCount, fixFailCount)
 
 	return nil
 }
@@ -260,6 +262,8 @@ func (s *ShadowV1OrderUseCase) syncDouYinOrderFee(ctx context.Context, orders []
 			order.ID, totalPlatformDiscountAmount, totalPaymentDiscountAmount)
 
 		// 3. 查询分账信息，获取 shopDiscountAmount 和 actualInsured
+		// 注意：分账信息可能查询不到，不应该影响平台优惠和支付优惠的更新
+		ledgerQuerySuccess := false
 		if len(orderInfo.Certificate) > 0 {
 			var certificateIds []string
 			for _, cert := range orderInfo.Certificate {
@@ -274,32 +278,38 @@ func (s *ShadowV1OrderUseCase) syncDouYinOrderFee(ctx context.Context, orders []
 				})
 
 				if err != nil {
-					s.log.Errorf("SyncHistoryOrderFee: 查询抖音分账信息失败, orderId=%s, err=%v", order.ID, err)
-					failCount++
-					continue
+					s.log.Warnf("SyncHistoryOrderFee: 查询抖音分账信息失败（不影响平台优惠和支付优惠的更新）, orderId=%s, err=%v", order.ID, err)
+				} else if len(ledgerReply.Data.Records) == 0 {
+					s.log.Warnf("SyncHistoryOrderFee: 抖音分账记录为空（不影响平台优惠和支付优惠的更新）, orderId=%s", order.ID)
+				} else {
+					// 汇总所有分账记录的商家优惠（MerchantTicket）和保险费（ActualInsured）
+					var totalMerchantTicket int64 = 0
+					var totalActualInsured int64 = 0
+
+					for _, record := range ledgerReply.Data.Records {
+						totalMerchantTicket += record.Amount.MerchantTicket
+						totalActualInsured += record.Amount.ActualInsured
+					}
+
+					order.ShopDiscountAmount = int32(totalMerchantTicket)
+					order.ActualInsured = int32(totalActualInsured)
+					ledgerQuerySuccess = true
+
+					s.log.Infof("SyncHistoryOrderFee: 抖音订单商家优惠和保险费, orderId=%s, shopDiscountAmount=%d分, actualInsured=%d分",
+						order.ID, totalMerchantTicket, totalActualInsured)
 				}
-
-				if len(ledgerReply.Data.Records) == 0 {
-					s.log.Warnf("SyncHistoryOrderFee: 抖音分账记录为空, orderId=%s", order.ID)
-					failCount++
-					continue
-				}
-
-				// 汇总所有分账记录的商家优惠（MerchantTicket）和保险费（ActualInsured）
-				var totalMerchantTicket int64 = 0
-				var totalActualInsured int64 = 0
-
-				for _, record := range ledgerReply.Data.Records {
-					totalMerchantTicket += record.Amount.MerchantTicket
-					totalActualInsured += record.Amount.ActualInsured
-				}
-
-				order.ShopDiscountAmount = int32(totalMerchantTicket)
-				order.ActualInsured = int32(totalActualInsured)
-
-				s.log.Infof("SyncHistoryOrderFee: 抖音订单商家优惠和保险费, orderId=%s, shopDiscountAmount=%d分, actualInsured=%d分",
-					order.ID, totalMerchantTicket, totalActualInsured)
+			} else {
+				s.log.Warnf("SyncHistoryOrderFee: 抖音订单没有有效的券ID（不影响平台优惠和支付优惠的更新）, orderId=%s", order.ID)
 			}
+		} else {
+			s.log.Warnf("SyncHistoryOrderFee: 抖音订单没有券信息（不影响平台优惠和支付优惠的更新）, orderId=%s", order.ID)
+		}
+
+		// 记录分账信息查询结果
+		if ledgerQuerySuccess {
+			s.log.Infof("SyncHistoryOrderFee: 抖音订单费用同步完整（包含分账信息）, orderId=%s", order.ID)
+		} else {
+			s.log.Infof("SyncHistoryOrderFee: 抖音订单费用同步部分完成（仅平台优惠和支付优惠，分账信息未获取）, orderId=%s", order.ID)
 		}
 
 		// 4. 更新父订单

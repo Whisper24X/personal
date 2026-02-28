@@ -12,12 +12,14 @@ const TableNameAsyncTask = "async_task"
 
 // AsyncTask mapped from table <async_task>
 type AsyncTask struct {
-	ID        string    `gorm:"column:id;type:uuid;primaryKey;default:uuid_generate_v4();comment:主键ID（UUID自动生成）" json:"id"` // 主键ID（UUID自动生成）
-	TaskType  string    `gorm:"column:taskType;type:character varying(32);not null;comment:任务类型" json:"taskType"`           // 任务类型
-	Status    int32     `gorm:"column:status;type:integer;not null;comment:状态：0-待处理 1-执行中 2-成功 3-失败" json:"status"`         // 状态：0-待处理 1-执行中 2-成功 3-失败
-	ErrorInfo string    `gorm:"column:errorInfo;type:text;not null;comment:错误详情" json:"errorInfo"`                          // 错误详情
-	CreatedAt time.Time `gorm:"column:createdAt;type:timestamp with time zone;not null;comment:创建时间" json:"createdAt"`      // 创建时间
-	UpdatedAt time.Time `gorm:"column:updatedAt;type:timestamp with time zone;not null;comment:最后更新时间" json:"updatedAt"`    // 最后更新时间
+	ID          string    `gorm:"column:id;type:uuid;primaryKey;default:uuid_generate_v4();comment:主键ID（UUID自动生成）" json:"id"` // 主键ID（UUID自动生成）
+	TaskType    string    `gorm:"column:taskType;type:character varying(32);not null;comment:任务类型" json:"taskType"`           // 任务类型
+	Status      int32     `gorm:"column:status;type:integer;not null;comment:状态：0-待处理 1-执行中 2-成功 3-失败" json:"status"`         // 状态：0-待处理 1-执行中 2-成功 3-失败
+	ErrorInfo   string    `gorm:"column:errorInfo;type:text;not null;comment:错误详情" json:"errorInfo"`                          // 错误详情
+	CreatedAt   time.Time `gorm:"column:createdAt;type:timestamp with time zone;not null;comment:创建时间" json:"createdAt"`      // 创建时间
+	UpdatedAt   time.Time `gorm:"column:updatedAt;type:timestamp with time zone;not null;comment:最后更新时间" json:"updatedAt"`    // 最后更新时间
+	TaskContent string    `gorm:"column:taskContent;type:text;comment:任务内容" json:"taskContent"`                               // 任务内容
+	RetryTimes  int32     `gorm:"column:retryTimes;type:integer;comment:重试次数" json:"retryTimes"`                              // 重试次数
 }
 
 // TableName AsyncTask's table name

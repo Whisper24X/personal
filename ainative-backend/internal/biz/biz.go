@@ -212,6 +212,7 @@ type OrderRepo interface {
 	OrderRefundFeiShuNotify(ctx context.Context, channelOrderNumber, channel, goodName string, unFinishedAppointmentCount int32) error
 	OrderRefundFailedFeiShuNotify(ctx context.Context, channelOrderNumber, channel string) error
 	SendRefundCancelAppointmentFeiShuNotify(ctx context.Context, channelOrderNumber string) error
+	DouYinOrderCreateFailedFeiShuNotify(ctx context.Context, taskID, errorInfo, taskContent string) error
 	MiniProgramPayOrderNotify(ctx context.Context, paymentTime, goodName, actualPrice, paymentPhone string) error
 }
 

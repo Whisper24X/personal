@@ -5,7 +5,9 @@ import (
 	"time"
 
 	"gitlab.yc345.tv/backend/orm-gen/v2/condition"
+
 	pb "gitlab.yc345.tv/backend/yanxue/api/shadow/v1"
+	"gitlab.yc345.tv/backend/yanxue/internal/data/constant"
 	"gitlab.yc345.tv/backend/yanxue/internal/data/errorx"
 )
 
@@ -30,6 +32,13 @@ func (s *ShadowV1ContractUseCase) QueryContractTemplateList(ctx context.Context,
 			},
 		},
 	}
+	// 过滤掉已删除的模板（状态为 -1）
+	param.Query = append(param.Query, &condition.QueryParam{
+		Field: "status",
+		Value: int32(constant.TemplateInvalidStatus),
+		Exp:   condition.NEQ,
+		Logic: condition.AND,
+	})
 	// 根据模版名称模糊查询
 	if req.GetTemplateName() != "" {
 		param.Query = append(param.Query, &condition.QueryParam{

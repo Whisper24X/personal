@@ -15,11 +15,10 @@ import (
 	"gitlab.yc345.tv/backend/orm-gen/v2/condition"
 	"gitlab.yc345.tv/backend/orm-gen/v2/config"
 	"gitlab.yc345.tv/backend/orm-gen/v2/encoding"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
-
 	"gitlab.yc345.tv/backend/yanxue/internal/data/gorm/yanxue_dao"
 	"gitlab.yc345.tv/backend/yanxue/internal/data/gorm/yanxue_model"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var _ IOrderRepo = (*OrderRepo)(nil)

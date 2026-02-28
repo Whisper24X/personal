@@ -45,6 +45,7 @@ func newGood(db *gorm.DB, opts ...gen.DOOption) good {
 	_good.Label = field.NewField(tableName, "label")
 	_good.PurchaseAgreementName = field.NewString(tableName, "purchaseAgreementName")
 	_good.PurchaseAgreementLink = field.NewString(tableName, "purchaseAgreementLink")
+	_good.Stock = field.NewInt32(tableName, "stock")
 
 	_good.fillFieldMap()
 
@@ -73,6 +74,7 @@ type good struct {
 	Label                 field.Field   // 商品标签
 	PurchaseAgreementName field.String  // 购买协议名称
 	PurchaseAgreementLink field.String  // 购买协议链接
+	Stock                 field.Int32   // 库存数量，NULL表示无限库存，0表示售罄，正整数表示剩余库存
 
 	fieldMap map[string]field.Expr
 }
@@ -107,6 +109,7 @@ func (g *good) updateTableName(table string) *good {
 	g.Label = field.NewField(table, "label")
 	g.PurchaseAgreementName = field.NewString(table, "purchaseAgreementName")
 	g.PurchaseAgreementLink = field.NewString(table, "purchaseAgreementLink")
+	g.Stock = field.NewInt32(table, "stock")
 
 	g.fillFieldMap()
 
@@ -131,7 +134,7 @@ func (g *good) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (g *good) fillFieldMap() {
-	g.fieldMap = make(map[string]field.Expr, 18)
+	g.fieldMap = make(map[string]field.Expr, 19)
 	g.fieldMap["id"] = g.ID
 	g.fieldMap["platformGoodId"] = g.PlatformGoodID
 	g.fieldMap["channelId"] = g.ChannelID
@@ -150,6 +153,7 @@ func (g *good) fillFieldMap() {
 	g.fieldMap["label"] = g.Label
 	g.fieldMap["purchaseAgreementName"] = g.PurchaseAgreementName
 	g.fieldMap["purchaseAgreementLink"] = g.PurchaseAgreementLink
+	g.fieldMap["stock"] = g.Stock
 }
 
 func (g good) clone(db *gorm.DB) good {

@@ -138,6 +138,33 @@ yc:
           feiShu:
             url: ""
             title: 同步抖音分账信息
+      fixOrderData:
+        name: fixOrderData
+        cron: "0 0 * * * *"  # 每小时执行一次
+        mode: default
+        notify:
+          type: NONE
+          feiShu:
+            url: ""
+            title: 修复订单数据
+      retryFailedOrderCallback:
+        name: retryFailedOrderCallback
+        cron: "0 */5 * * * *"  # 每5分钟执行一次
+        mode: default
+        notify:
+          type: NONE
+          feiShu:
+            url: ""
+            title: 重试失败的订单回调
+      sendAppointmentReminderSms:
+        name: sendAppointmentReminderSms
+        cron: "0 0 18 * * *"  # 每天18点执行
+        mode: default
+        notify:
+          type: NONE
+          feiShu:
+            url: ""
+            title: 发送预约提醒短信
   eSign:
     appID: "7439062914"
     appSecret: "ff07233730c81ce2b4095fd18e1f80bb"

@@ -122,6 +122,72 @@
         ]
       }
     },
+    "/yanxue/api/shadow/v1/order/fixOrderData": {
+      "post": {
+        "summary": "修复订单数据",
+        "operationId": "Order_FixOrderData",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1FixOrderDataReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1FixOrderDataReq"
+            }
+          }
+        ],
+        "tags": [
+          "Order"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/order/fixRefundAmount": {
+      "post": {
+        "summary": "修复退款数据",
+        "operationId": "Order_FixRefundAmount",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1FixRefundAmountReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1FixRefundAmountReq"
+            }
+          }
+        ],
+        "tags": [
+          "Order"
+        ]
+      }
+    },
     "/yanxue/api/shadow/v1/order/getOrderList": {
       "post": {
         "summary": "订单-列表数据查询",
@@ -460,6 +526,39 @@
         ]
       }
     },
+    "/yanxue/api/shadow/v1/order/retryFailedOrderCallback": {
+      "post": {
+        "summary": "重试失败的订单回调",
+        "operationId": "Order_RetryFailedOrderCallback",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1RetryFailedOrderCallbackReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1RetryFailedOrderCallbackReq"
+            }
+          }
+        ],
+        "tags": [
+          "Order"
+        ]
+      }
+    },
     "/yanxue/api/shadow/v1/order/splitSubOrder": {
       "post": {
         "summary": "旧订单拆单",
@@ -518,6 +617,39 @@
             "required": true,
             "schema": {
               "$ref": "#/definitions/v1SyncDouYinCertificateIdReq"
+            }
+          }
+        ],
+        "tags": [
+          "Order"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/order/syncDouYinOrder": {
+      "post": {
+        "summary": "同步抖音订单",
+        "operationId": "Order_SyncDouYinOrder",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SyncDouYinOrderReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SyncDouYinOrderReq"
             }
           }
         ],
@@ -617,6 +749,39 @@
             "required": true,
             "schema": {
               "$ref": "#/definitions/v1SyncWeiDianOrderReq"
+            }
+          }
+        ],
+        "tags": [
+          "Order"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/order/syncWeiDianRefundAmount": {
+      "post": {
+        "summary": "同步微店退款金额",
+        "operationId": "Order_SyncWeiDianRefundAmount",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SyncWeiDianRefundAmountReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SyncWeiDianRefundAmountReq"
             }
           }
         ],
@@ -1308,8 +1473,80 @@
       },
       "title": "请求-导出微信账单"
     },
+    "v1FailedRefundOrder": {
+      "type": "object",
+      "properties": {
+        "orderId": {
+          "type": "string"
+        },
+        "orderNumber": {
+          "type": "string"
+        },
+        "parentRefundAmount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "父订单退款金额"
+        },
+        "subOrdersRefundSum": {
+          "type": "integer",
+          "format": "int32",
+          "title": "子订单退款金额总和"
+        },
+        "reason": {
+          "type": "string",
+          "title": "失败原因"
+        }
+      }
+    },
     "v1FinishOrderReply": {
       "type": "object"
+    },
+    "v1FixOrderDataReply": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "title": "消息"
+        }
+      },
+      "title": "响应-修复订单数据"
+    },
+    "v1FixOrderDataReq": {
+      "type": "object",
+      "title": "请求-修复订单数据"
+    },
+    "v1FixRefundAmountReply": {
+      "type": "object",
+      "properties": {
+        "totalCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总数"
+        },
+        "successCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "成功数"
+        },
+        "failCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "失败数"
+        },
+        "failedOrders": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1FailedRefundOrder"
+          },
+          "title": "失败订单列表"
+        }
+      },
+      "title": "响应-修复退款数据"
+    },
+    "v1FixRefundAmountReq": {
+      "type": "object",
+      "title": "请求-修复退款数据"
     },
     "v1GetOrderListByPhoneReply": {
       "type": "object",
@@ -1498,6 +1735,14 @@
       },
       "title": "请求-刷服务状态数据"
     },
+    "v1RetryFailedOrderCallbackReply": {
+      "type": "object",
+      "title": "响应-重试失败的订单回调"
+    },
+    "v1RetryFailedOrderCallbackReq": {
+      "type": "object",
+      "title": "请求-重试失败的订单回调"
+    },
     "v1SplitSubOrderReply": {
       "type": "object",
       "properties": {
@@ -1537,6 +1782,14 @@
       "type": "object",
       "title": "请求-同步抖音券ID"
     },
+    "v1SyncDouYinOrderReply": {
+      "type": "object",
+      "title": "响应-同步抖音订单"
+    },
+    "v1SyncDouYinOrderReq": {
+      "type": "object",
+      "title": "请求-同步抖音订单"
+    },
     "v1SyncDouYinSettleInfoReply": {
       "type": "object",
       "title": "响应-同步抖音分账信息"
@@ -1569,6 +1822,14 @@
     },
     "v1SyncWeiDianOrderReq": {
       "type": "object"
+    },
+    "v1SyncWeiDianRefundAmountReply": {
+      "type": "object",
+      "title": "响应-同步微店退款金额"
+    },
+    "v1SyncWeiDianRefundAmountReq": {
+      "type": "object",
+      "title": "请求-同步微店退款金额"
     },
     "v1UpdateOrderDetailReply": {
       "type": "object",

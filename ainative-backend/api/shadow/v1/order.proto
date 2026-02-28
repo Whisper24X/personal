@@ -227,6 +227,80 @@ service Order {
       body: "*"
     };
   }
+  // 同步微店退款金额
+  rpc SyncWeiDianRefundAmount(SyncWeiDianRefundAmountReq) returns (SyncWeiDianRefundAmountReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/syncWeiDianRefundAmount"
+      body: "*"
+    };
+  }
+  // 修复订单数据
+  rpc FixOrderData(FixOrderDataReq) returns (FixOrderDataReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/fixOrderData"
+      body: "*"
+    };
+  }
+  // 修复退款数据
+  rpc FixRefundAmount(FixRefundAmountReq) returns (FixRefundAmountReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/fixRefundAmount"
+      body: "*"
+    };
+  }
+  // 同步抖音订单
+  rpc SyncDouYinOrder(SyncDouYinOrderReq) returns (SyncDouYinOrderReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/syncDouYinOrder"
+      body: "*"
+    };
+  }
+  // 重试失败的订单回调
+  rpc RetryFailedOrderCallback(RetryFailedOrderCallbackReq) returns (RetryFailedOrderCallbackReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/retryFailedOrderCallback"
+      body: "*"
+    };
+  }
+}
+
+// 请求-同步抖音订单
+message SyncDouYinOrderReq {}
+
+// 响应-同步抖音订单
+message SyncDouYinOrderReply {}
+
+// 请求-重试失败的订单回调
+message RetryFailedOrderCallbackReq {}
+
+// 响应-重试失败的订单回调
+message RetryFailedOrderCallbackReply {}
+
+// 请求-修复退款数据
+message FixRefundAmountReq {}
+
+// 响应-修复退款数据
+message FixRefundAmountReply {
+  int32 totalCount = 1; // 总数
+  int32 successCount = 2; // 成功数
+  int32 failCount = 3; // 失败数
+  repeated FailedRefundOrder failedOrders = 4; // 失败订单列表
+}
+
+message FailedRefundOrder {
+  string orderId = 1;
+  string orderNumber = 2;
+  int32 parentRefundAmount = 3; // 父订单退款金额
+  int32 subOrdersRefundSum = 4; // 子订单退款金额总和
+  string reason = 5; // 失败原因
+}
+
+// 请求-修复订单数据
+message FixOrderDataReq {}
+
+// 响应-修复订单数据
+message FixOrderDataReply {
+  string message = 1; // 消息
 }
 
 // 请求-同步抖音券ID
@@ -234,6 +308,12 @@ message SyncDouYinCertificateIdReq {}
 
 // 响应-同步抖音券ID
 message SyncDouYinCertificateIdReply {}
+
+// 请求-同步微店退款金额
+message SyncWeiDianRefundAmountReq {}
+
+// 响应-同步微店退款金额
+message SyncWeiDianRefundAmountReply {}
 
 // 请求-同步历史订单费用
 message SyncHistoryOrderFeeReq {}

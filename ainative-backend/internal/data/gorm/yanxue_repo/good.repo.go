@@ -28,6 +28,7 @@ var (
 	CacheGoodByIDPrefix             = "DBCache:yanxue:GoodByID"
 	CacheGoodByChannelGoodIDPrefix  = "DBCache:yanxue:GoodByChannelGoodID"
 	CacheGoodByPlatformGoodIDPrefix = "DBCache:yanxue:GoodByPlatformGoodID"
+	CacheGoodByStockPrefix          = "DBCache:yanxue:GoodByStock"
 )
 
 type (
@@ -108,6 +109,14 @@ type (
 		UpdateBatchByPlatformGoodIDS(ctx context.Context, platformGoodIDS []string, data map[string]interface{}) error
 		// UpdateBatchByPlatformGoodIDSTx 根据字段PlatformGoodIDS批量更新(事务),零值会被更新
 		UpdateBatchByPlatformGoodIDSTx(ctx context.Context, tx *yanxue_dao.Query, platformGoodIDS []string, data map[string]interface{}) error
+		// UpdateBatchByStock 根据字段Stock批量更新,零值会被更新
+		UpdateBatchByStock(ctx context.Context, stock int32, data map[string]interface{}) error
+		// UpdateBatchByStockTx 根据主键Stock批量更新(事务),零值会被更新
+		UpdateBatchByStockTx(ctx context.Context, tx *yanxue_dao.Query, stock int32, data map[string]interface{}) error
+		// UpdateBatchByStocks 根据字段Stocks批量更新,零值会被更新
+		UpdateBatchByStocks(ctx context.Context, stocks []int32, data map[string]interface{}) error
+		// UpdateBatchByStocksTx 根据字段Stocks批量更新(事务),零值会被更新
+		UpdateBatchByStocksTx(ctx context.Context, tx *yanxue_dao.Query, stocks []int32, data map[string]interface{}) error
 		// FindOneByID 根据ID查询一条数据
 		FindOneByID(ctx context.Context, ID string) (*yanxue_model.Good, error)
 		// FindOneCacheByID 根据ID查询一条数据，并设置缓存
@@ -132,6 +141,14 @@ type (
 		FindMultiByPlatformGoodIDS(ctx context.Context, platformGoodIDS []string) ([]*yanxue_model.Good, error)
 		// FindMultiCacheByPlatformGoodIDS 根据platformGoodIDS查询多条数据，并设置缓存
 		FindMultiCacheByPlatformGoodIDS(ctx context.Context, platformGoodIDS []string) ([]*yanxue_model.Good, error)
+		// FindMultiByStock 根据stock查询多条数据
+		FindMultiByStock(ctx context.Context, stock int32) ([]*yanxue_model.Good, error)
+		// FindMultiCacheByStock 根据stock查询多条数据并设置缓存
+		FindMultiCacheByStock(ctx context.Context, stock int32) ([]*yanxue_model.Good, error)
+		// FindMultiByStocks 根据stocks查询多条数据
+		FindMultiByStocks(ctx context.Context, stocks []int32) ([]*yanxue_model.Good, error)
+		// FindMultiCacheByStocks 根据stocks查询多条数据，并设置缓存
+		FindMultiCacheByStocks(ctx context.Context, stocks []int32) ([]*yanxue_model.Good, error)
 		// FindMultiByCondition 自定义查询数据(通用)
 		FindMultiByCondition(ctx context.Context, conditionReq *condition.Req) ([]*yanxue_model.Good, *condition.Reply, error)
 		// FindMultiCacheByCondition 自定义查询数据(通用),并设置缓存
@@ -184,6 +201,22 @@ type (
 		DeleteMultiByPlatformGoodIDSTx(ctx context.Context, tx *yanxue_dao.Query, platformGoodIDS []string) error
 		// DeleteMultiCacheByPlatformGoodIDSTx 根据PlatformGoodIDS删除多条数据，并删除缓存(事务)
 		DeleteMultiCacheByPlatformGoodIDSTx(ctx context.Context, tx *yanxue_dao.Query, platformGoodIDS []string) error
+		// DeleteMultiByStock 根据Stock删除多条数据
+		DeleteMultiByStock(ctx context.Context, stock int32) error
+		// DeleteMultiCacheByStock 根据stock删除多条数据，并删除缓存
+		DeleteMultiCacheByStock(ctx context.Context, stock int32) error
+		// DeleteMultiByStockTx 根据stock删除多条数据
+		DeleteMultiByStockTx(ctx context.Context, tx *yanxue_dao.Query, stock int32) error
+		// DeleteMultiCacheByStockTx 根据stock删除多条数据，并删除缓存
+		DeleteMultiCacheByStockTx(ctx context.Context, tx *yanxue_dao.Query, stock int32) error
+		// DeleteMultiByStocks 根据Stocks删除多条数据
+		DeleteMultiByStocks(ctx context.Context, stocks []int32) error
+		// DeleteMultiCacheByStocks 根据Stocks删除多条数据，并删除缓存
+		DeleteMultiCacheByStocks(ctx context.Context, stocks []int32) error
+		// DeleteMultiByStocksTx 根据Stocks删除多条数据(事务)
+		DeleteMultiByStocksTx(ctx context.Context, tx *yanxue_dao.Query, stocks []int32) error
+		// DeleteMultiCacheByStocksTx 根据Stocks删除多条数据，并删除缓存(事务)
+		DeleteMultiCacheByStocksTx(ctx context.Context, tx *yanxue_dao.Query, stocks []int32) error
 		// DeleteIndexCache 删除索引存在的缓存
 		DeleteIndexCache(ctx context.Context, data ...*yanxue_model.Good) error
 	}
@@ -736,6 +769,46 @@ func (g *GoodRepo) UpdateBatchByPlatformGoodIDSTx(ctx context.Context, tx *yanxu
 	return nil
 }
 
+// UpdateBatchByStock 根据字段Stock批量更新,零值会被更新
+func (g *GoodRepo) UpdateBatchByStock(ctx context.Context, stock int32, data map[string]interface{}) error {
+	dao := yanxue_dao.Use(g.db).Good
+	_, err := dao.WithContext(ctx).Where(dao.Stock.Eq(stock)).Updates(data)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// UpdateBatchByStockTx 根据字段Stock批量更新(事务),零值会被更新
+func (g *GoodRepo) UpdateBatchByStockTx(ctx context.Context, tx *yanxue_dao.Query, stock int32, data map[string]interface{}) error {
+	dao := tx.Good
+	_, err := dao.WithContext(ctx).Where(dao.Stock.Eq(stock)).Updates(data)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// UpdateBatchByStocks 根据字段Stocks批量更新,零值会被更新
+func (g *GoodRepo) UpdateBatchByStocks(ctx context.Context, stocks []int32, data map[string]interface{}) error {
+	dao := yanxue_dao.Use(g.db).Good
+	_, err := dao.WithContext(ctx).Where(dao.Stock.In(stocks...)).Updates(data)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// UpdateBatchByStocksTx 根据字段Stocks批量更新(事务),零值会被更新
+func (g *GoodRepo) UpdateBatchByStocksTx(ctx context.Context, tx *yanxue_dao.Query, stocks []int32, data map[string]interface{}) error {
+	dao := tx.Good
+	_, err := dao.WithContext(ctx).Where(dao.Stock.In(stocks...)).Updates(data)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // FindOneByID 根据ID查询一条数据
 func (g *GoodRepo) FindOneByID(ctx context.Context, ID string) (*yanxue_model.Good, error) {
 	dao := yanxue_dao.Use(g.db).Good
@@ -999,6 +1072,111 @@ func (g *GoodRepo) FindMultiCacheByPlatformGoodIDS(ctx context.Context, platform
 		keyToValues := make(map[string][]*yanxue_model.Good)
 		for _, item := range result {
 			key := g.cache.Key(CacheGoodByPlatformGoodIDPrefix, item.PlatformGoodID)
+			if keyToValues[key] == nil {
+				keyToValues[key] = make([]*yanxue_model.Good, 0)
+			}
+			keyToValues[key] = append(keyToValues[key], item)
+		}
+		for item := range dbValue {
+			if keyToValues[item] != nil {
+				marshal, err := g.encoding.Marshal(keyToValues[item])
+				if err != nil {
+					return nil, err
+				}
+				dbValue[item] = string(marshal)
+			}
+		}
+		return dbValue, nil
+	}, g.cache.TTL())
+	if err != nil {
+		return nil, err
+	}
+	for _, cacheKey := range cacheKeys {
+		if cacheValue[cacheKey] != "" {
+			tmp := make([]*yanxue_model.Good, 0)
+			err := g.encoding.Unmarshal([]byte(cacheValue[cacheKey]), &tmp)
+			if err != nil {
+				return nil, err
+			}
+			resp = append(resp, tmp...)
+		}
+	}
+	return resp, nil
+}
+
+// FindMultiByStock 根据stock查询多条数据
+func (g *GoodRepo) FindMultiByStock(ctx context.Context, stock int32) ([]*yanxue_model.Good, error) {
+	dao := yanxue_dao.Use(g.db).Good
+	result, err := dao.WithContext(ctx).Where(dao.Stock.Eq(stock)).Find()
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// FindMultiCacheByStock 根据stock查询多条数据，并设置缓存
+func (g *GoodRepo) FindMultiCacheByStock(ctx context.Context, stock int32) ([]*yanxue_model.Good, error) {
+	resp := make([]*yanxue_model.Good, 0)
+	cacheKey := g.cache.Key(CacheGoodByStockPrefix, stock)
+	cacheValue, err := g.cache.Fetch2(ctx, cacheKey, func() (string, error) {
+		dao := yanxue_dao.Use(g.db).Good
+		result, err := dao.WithContext(ctx).Where(dao.Stock.Eq(stock)).Find()
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", err
+		}
+		marshal, err := g.encoding.Marshal(result)
+		if err != nil {
+			return "", err
+		}
+		return string(marshal), nil
+	}, g.cache.TTL())
+	if err != nil {
+		return nil, err
+	}
+	if cacheValue != "" {
+		err = g.encoding.Unmarshal([]byte(cacheValue), &resp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return resp, nil
+}
+
+// FindMultiByStocks 根据stocks查询多条数据
+func (g *GoodRepo) FindMultiByStocks(ctx context.Context, stocks []int32) ([]*yanxue_model.Good, error) {
+	dao := yanxue_dao.Use(g.db).Good
+	result, err := dao.WithContext(ctx).Where(dao.Stock.In(stocks...)).Find()
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// FindMultiCacheByStocks 根据stocks查询多条数据，并设置缓存
+func (g *GoodRepo) FindMultiCacheByStocks(ctx context.Context, stocks []int32) ([]*yanxue_model.Good, error) {
+	resp := make([]*yanxue_model.Good, 0)
+	cacheKeys := make([]string, 0)
+	keyToParam := make(map[string]int32)
+	for _, item := range stocks {
+		cacheKey := g.cache.Key(CacheGoodByStockPrefix, item)
+		cacheKeys = append(cacheKeys, cacheKey)
+		keyToParam[cacheKey] = item
+	}
+	cacheValue, err := g.cache.FetchBatch2(ctx, cacheKeys, func(miss []string) (map[string]string, error) {
+		dbValue := make(map[string]string)
+		params := make([]int32, 0)
+		for _, item := range miss {
+			dbValue[item] = ""
+			params = append(params, keyToParam[item])
+		}
+		dao := yanxue_dao.Use(g.db).Good
+		result, err := dao.WithContext(ctx).Where(dao.Stock.In(params...)).Find()
+		if err != nil {
+			return nil, err
+		}
+		keyToValues := make(map[string][]*yanxue_model.Good)
+		for _, item := range result {
+			key := g.cache.Key(CacheGoodByStockPrefix, item.Stock)
 			if keyToValues[key] == nil {
 				keyToValues[key] = make([]*yanxue_model.Good, 0)
 			}
@@ -1482,6 +1660,130 @@ func (g *GoodRepo) DeleteMultiCacheByPlatformGoodIDSTx(ctx context.Context, tx *
 	return nil
 }
 
+// DeleteMultiByStock 根据Stock删除多条数据
+func (g *GoodRepo) DeleteMultiByStock(ctx context.Context, stock int32) error {
+	dao := yanxue_dao.Use(g.db).Good
+	_, err := dao.WithContext(ctx).Where(dao.Stock.Eq(stock)).Delete()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// DeleteMultiCacheByStock 根据stock删除多条数据，并删除缓存
+func (g *GoodRepo) DeleteMultiCacheByStock(ctx context.Context, stock int32) error {
+	dao := yanxue_dao.Use(g.db).Good
+	result, err := dao.WithContext(ctx).Where(dao.Stock.Eq(stock)).Find()
+	if err != nil {
+		return err
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	_, err = dao.WithContext(ctx).Where(dao.Stock.Eq(stock)).Delete()
+	if err != nil {
+		return err
+	}
+	err = g.DeleteIndexCache(ctx, result...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// DeleteMultiByStockTx 根据stock删除多条数据
+func (g *GoodRepo) DeleteMultiByStockTx(ctx context.Context, tx *yanxue_dao.Query, stock int32) error {
+	dao := tx.Good
+	_, err := dao.WithContext(ctx).Where(dao.Stock.Eq(stock)).Delete()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// DeleteMultiCacheByStockTx 根据stock删除多条数据，并删除缓存
+func (g *GoodRepo) DeleteMultiCacheByStockTx(ctx context.Context, tx *yanxue_dao.Query, stock int32) error {
+	dao := tx.Good
+	result, err := dao.WithContext(ctx).Where(dao.Stock.Eq(stock)).Find()
+	if err != nil {
+		return err
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	_, err = dao.WithContext(ctx).Where(dao.Stock.Eq(stock)).Delete()
+	if err != nil {
+		return err
+	}
+	err = g.DeleteIndexCache(ctx, result...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// DeleteMultiByStocks 根据stocks删除多条数据
+func (g *GoodRepo) DeleteMultiByStocks(ctx context.Context, stocks []int32) error {
+	dao := yanxue_dao.Use(g.db).Good
+	_, err := dao.WithContext(ctx).Where(dao.Stock.In(stocks...)).Delete()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// DeleteMultiCacheByStocks 根据stocks删除多条数据，并删除缓存
+func (g *GoodRepo) DeleteMultiCacheByStocks(ctx context.Context, stocks []int32) error {
+	dao := yanxue_dao.Use(g.db).Good
+	result, err := dao.WithContext(ctx).Where(dao.Stock.In(stocks...)).Find()
+	if err != nil {
+		return err
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	_, err = dao.WithContext(ctx).Where(dao.Stock.In(stocks...)).Delete()
+	if err != nil {
+		return err
+	}
+	err = g.DeleteIndexCache(ctx, result...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// DeleteMultiByStocksTx 根据stocks删除多条数据
+func (g *GoodRepo) DeleteMultiByStocksTx(ctx context.Context, tx *yanxue_dao.Query, stocks []int32) error {
+	dao := tx.Good
+	_, err := dao.WithContext(ctx).Where(dao.Stock.In(stocks...)).Delete()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// DeleteMultiCacheByStocksTx 根据stocks删除多条数据，并删除缓存
+func (g *GoodRepo) DeleteMultiCacheByStocksTx(ctx context.Context, tx *yanxue_dao.Query, stocks []int32) error {
+	dao := tx.Good
+	result, err := dao.WithContext(ctx).Where(dao.Stock.In(stocks...)).Find()
+	if err != nil {
+		return err
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	_, err = dao.WithContext(ctx).Where(dao.Stock.In(stocks...)).Delete()
+	if err != nil {
+		return err
+	}
+	err = g.DeleteIndexCache(ctx, result...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // DeleteUniqueIndexCache 删除索引存在的缓存
 func (g *GoodRepo) DeleteIndexCache(ctx context.Context, data ...*yanxue_model.Good) error {
 	KeyMap := make(map[string]struct{})
@@ -1492,6 +1794,7 @@ func (g *GoodRepo) DeleteIndexCache(ctx context.Context, data ...*yanxue_model.G
 			KeyMap[g.cache.Key(CacheGoodByIDPrefix, item.ID)] = struct{}{}
 			KeyMap[g.cache.Key(CacheGoodByChannelGoodIDPrefix, item.ChannelGoodID)] = struct{}{}
 			KeyMap[g.cache.Key(CacheGoodByPlatformGoodIDPrefix, item.PlatformGoodID)] = struct{}{}
+			KeyMap[g.cache.Key(CacheGoodByStockPrefix, item.Stock)] = struct{}{}
 		}
 	}
 	for item := range KeyMap {

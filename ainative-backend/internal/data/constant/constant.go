@@ -14,10 +14,11 @@ const (
 )
 
 const (
-	TemplateValidStatus        = 1
-	TemplateInvalidStatus      = -1
-	SubjectDisplayName         = "主题"
-	ContractInfoImportTaskType = "contractInfoImport"
+	TemplateValidStatus         = 1
+	TemplateInvalidStatus       = -1
+	SubjectDisplayName          = "主题"
+	ContractInfoImportTaskType  = "contractInfoImport"
+	DouYinOrderCallbackTaskType = "douYinOrderCallback" // 抖音订单回调任务类型
 )
 
 const (
@@ -159,6 +160,19 @@ const (
 	WeiDianOrderCloseStatusStr = "close" // 已关闭
 	TransactionTypePay         = "货款"
 	TransactionTypeRefund      = "退款"
+
+	// 短信模版 - 生产环境
+	// 参数: classname(课程名称), time(课程时间，格式: 2026年2月5日 15:30)
+	SmsTemplateTomorrowReminder   = "研学单日营出行前一天提醒"
+	SmsTemplateTomorrowReminderID = "42d1608c-2d6a-4136-a9ae-c782ccd0aa34"
+	SmsTemplateNextWeekReminder   = "研学单日营出行前一周提醒-新"
+	SmsTemplateNextWeekReminderID = "6c001d21-bc89-4775-8e99-eebf1691fce7"
+
+	// 短信模版 - 测试/预发环境
+	SmsTemplateTomorrowReminderTest   = "研学单日营出行前一天提醒模板测试"
+	SmsTemplateTomorrowReminderTestID = "26a54a12-4a2e-4ae0-bb30-0ced847e8940"
+	SmsTemplateNextWeekReminderTest   = "研学单日营出行前一周模板测试-无手机号"
+	SmsTemplateNextWeekReminderTestID = "012680ec-e458-424f-9623-44c58a24cca8"
 )
 
 var (

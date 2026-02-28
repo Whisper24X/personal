@@ -125,7 +125,7 @@ func (w *WechatV1CouponUseCase) GetCouponAdaptGoodInfoList(ctx context.Context, 
 			GoodName:     good.Name,
 			MainImage:    mainImages,
 			DetailImages: detailImages,
-			Price:        good.Price,
+			Price:        good.Price * 100,
 		}
 
 		resp.List = append(resp.List, adaptGoodInfo)

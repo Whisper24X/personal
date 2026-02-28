@@ -33,6 +33,8 @@ func newAsyncTask(db *gorm.DB, opts ...gen.DOOption) asyncTask {
 	_asyncTask.ErrorInfo = field.NewString(tableName, "errorInfo")
 	_asyncTask.CreatedAt = field.NewTime(tableName, "createdAt")
 	_asyncTask.UpdatedAt = field.NewTime(tableName, "updatedAt")
+	_asyncTask.TaskContent = field.NewString(tableName, "taskContent")
+	_asyncTask.RetryTimes = field.NewInt32(tableName, "retryTimes")
 
 	_asyncTask.fillFieldMap()
 
@@ -42,13 +44,15 @@ func newAsyncTask(db *gorm.DB, opts ...gen.DOOption) asyncTask {
 type asyncTask struct {
 	asyncTaskDo asyncTaskDo
 
-	ALL       field.Asterisk
-	ID        field.String // 主键ID（UUID自动生成）
-	TaskType  field.String // 任务类型
-	Status    field.Int32  // 状态：0-待处理 1-执行中 2-成功 3-失败
-	ErrorInfo field.String // 错误详情
-	CreatedAt field.Time   // 创建时间
-	UpdatedAt field.Time   // 最后更新时间
+	ALL         field.Asterisk
+	ID          field.String // 主键ID（UUID自动生成）
+	TaskType    field.String // 任务类型
+	Status      field.Int32  // 状态：0-待处理 1-执行中 2-成功 3-失败
+	ErrorInfo   field.String // 错误详情
+	CreatedAt   field.Time   // 创建时间
+	UpdatedAt   field.Time   // 最后更新时间
+	TaskContent field.String // 任务内容
+	RetryTimes  field.Int32  // 重试次数
 
 	fieldMap map[string]field.Expr
 }
@@ -71,6 +75,8 @@ func (a *asyncTask) updateTableName(table string) *asyncTask {
 	a.ErrorInfo = field.NewString(table, "errorInfo")
 	a.CreatedAt = field.NewTime(table, "createdAt")
 	a.UpdatedAt = field.NewTime(table, "updatedAt")
+	a.TaskContent = field.NewString(table, "taskContent")
+	a.RetryTimes = field.NewInt32(table, "retryTimes")
 
 	a.fillFieldMap()
 
@@ -97,13 +103,15 @@ func (a *asyncTask) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (a *asyncTask) fillFieldMap() {
-	a.fieldMap = make(map[string]field.Expr, 6)
+	a.fieldMap = make(map[string]field.Expr, 8)
 	a.fieldMap["id"] = a.ID
 	a.fieldMap["taskType"] = a.TaskType
 	a.fieldMap["status"] = a.Status
 	a.fieldMap["errorInfo"] = a.ErrorInfo
 	a.fieldMap["createdAt"] = a.CreatedAt
 	a.fieldMap["updatedAt"] = a.UpdatedAt
+	a.fieldMap["taskContent"] = a.TaskContent
+	a.fieldMap["retryTimes"] = a.RetryTimes
 }
 
 func (a asyncTask) clone(db *gorm.DB) asyncTask {

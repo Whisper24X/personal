@@ -2,15 +2,15 @@ package biz
 
 import (
 	"context"
-
 	"github.com/pkg/errors"
+	"gorm.io/datatypes"
+
 	pb "gitlab.yc345.tv/backend/yanxue/api/shadow/v1"
 	"gitlab.yc345.tv/backend/yanxue/internal/data/constant"
 	"gitlab.yc345.tv/backend/yanxue/internal/data/errorx"
 	"gitlab.yc345.tv/backend/yanxue/internal/data/gorm/yanxue_model"
 	"gitlab.yc345.tv/backend/yanxue/internal/pkg/meta"
 	"gitlab.yc345.tv/backend/yanxue/internal/pkg/util/jsonutil"
-	"gorm.io/datatypes"
 )
 
 // StoreContractTemplate 添加合同模版（有则更新，无则新增）
@@ -19,6 +19,16 @@ func (s *ShadowV1ContractUseCase) StoreContractTemplate(ctx context.Context, req
 	adminId := meta.GetAdminID(ctx)
 	// 新增
 	if req.GetId() == "" {
+		// 检查模板名称是否已存在
+		existingTemplate, err := s.contractTemplateRepo.FindOneByTemplateName(ctx, req.GetTemplateName())
+		if err != nil && !errors.Is(err, errorx.DataRecordNotFound.Err()) {
+			return resp, errorx.DataSQLErr.WithError(err).Err()
+		}
+		// 如果找到了模板且状态不是无效状态（删除状态），说明模板名称已存在
+		if existingTemplate != nil && existingTemplate.ID != "" && existingTemplate.Status != int32(constant.TemplateInvalidStatus) {
+			return resp, errorx.ContractTemplateNameDuplicateError.Err()
+		}
+
 		contractTemplate := &yanxue_model.ContractTemplate{
 			TemplateType: int16(req.GetTemplateType()),
 			TemplateName: req.GetTemplateName(),
@@ -26,7 +36,7 @@ func (s *ShadowV1ContractUseCase) StoreContractTemplate(ctx context.Context, req
 			Status:       constant.TemplateValidStatus,
 			UpdatedBy:    adminId,
 		}
-		err := s.contractTemplateRepo.CreateOneCache(ctx, contractTemplate)
+		err = s.contractTemplateRepo.CreateOneCache(ctx, contractTemplate)
 		if err != nil {
 			return resp, errorx.DataSQLErr.WithError(err).Err()
 		}
@@ -42,13 +52,26 @@ func (s *ShadowV1ContractUseCase) StoreContractTemplate(ctx context.Context, req
 		})
 		resp.Id = contractTemplate.ID
 	} else { // 更新
-		contractTemplate, err := s.contractTemplateRepo.FindOneCacheByID(ctx, req.GetId())
+		contractTemplate, err := s.contractTemplateRepo.FindOneByID(ctx, req.GetId())
 		if err != nil {
 			return resp, errorx.DataSQLErr.WithError(err).Err()
 		}
 		if contractTemplate.ID == "" {
 			return resp, errorx.DataSQLErr.WithError(errors.New("合同模版不存在")).Err()
 		}
+
+		// 如果修改了模板名称，检查新名称是否已被其他模板使用
+		if contractTemplate.TemplateName != req.GetTemplateName() {
+			existingTemplate, err := s.contractTemplateRepo.FindOneByTemplateName(ctx, req.GetTemplateName())
+			if err != nil && !errors.Is(err, errorx.DataRecordNotFound.Err()) {
+				return resp, errorx.DataSQLErr.WithError(err).Err()
+			}
+			// 如果找到了其他模板使用该名称且状态不是无效状态（删除状态），说明模板名称已存在
+			if existingTemplate != nil && existingTemplate.ID != "" && existingTemplate.ID != req.GetId() && existingTemplate.Status != int32(constant.TemplateInvalidStatus) {
+				return resp, errorx.ContractTemplateNameDuplicateError.Err()
+			}
+		}
+
 		oldContractTemplate := s.contractTemplateRepo.DeepCopy(contractTemplate)
 		contractTemplate.TemplateType = int16(req.GetTemplateType())
 		contractTemplate.TemplateName = req.GetTemplateName()
