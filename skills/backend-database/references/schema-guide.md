@@ -83,3 +83,40 @@ CREATE INDEX {table}_{column}_idx ON public.{table} USING btree ({column});
 | 手机号   | 加密存储（`cryptutil.YcPhoneEncrypt`） |
 | 密码     | Bcrypt 哈希（`cryptutil.BcryptHash`）  |
 | 身份证   | 自定义加密                             |
+
+## 菜单 SQL 模板
+
+新增菜单时使用以下模板，**必须**使用 `gen_random_uuid()` 作为 id，**禁止**硬编码 UUID。
+
+```sql
+-- {模块}菜单注入（幂等）
+-- 父菜单：id 用 gen_random_uuid()，pid 为 NULL
+INSERT INTO public.sys_menu (id, pid, type, name, icon, path, permission, component, sort, status, "createdAt", "updatedAt")
+SELECT gen_random_uuid(), NULL, 'menu_dir', '父菜单名', 'ri:xxx-line', '/parent', 'menus.xxx.title', NULL, 10, 1, NOW(), NOW()
+WHERE NOT EXISTS (SELECT 1 FROM public.sys_menu WHERE path = '/parent');
+
+-- 子菜单：id 用 gen_random_uuid()，pid 通过 path 引用父菜单（必须 id::text，因 sys_menu.pid 为 varchar）
+INSERT INTO public.sys_menu (id, pid, type, name, icon, path, permission, component, sort, status, "createdAt", "updatedAt")
+SELECT gen_random_uuid(), (SELECT id::text FROM public.sys_menu WHERE path = '/parent' LIMIT 1), 'menu', '子菜单名', NULL, 'child', 'menus.xxx.child', '/parent/child', 11, 1, NOW(), NOW()
+WHERE NOT EXISTS (SELECT 1 FROM public.sys_menu WHERE path = 'child' AND pid = (SELECT id::text FROM public.sys_menu WHERE path = '/parent' LIMIT 1));
+
+-- 绑定 super 和超级管理员角色（按 path 查找菜单，不依赖固定 id）
+-- 子菜单需用 path + pid 精确定位，pid 比较必须 id::text（sys_menu.pid 为 varchar）
+INSERT INTO public.sys_role_menu ("roleId", "menuId")
+SELECT '8e94f9e3-5d22-457b-928f-7292cbe46799'::uuid, m.id
+FROM public.sys_menu m
+WHERE (m.path = '/parent' AND m.pid IS NULL)
+   OR (m.path = 'child' AND m.pid = (SELECT id::text FROM public.sys_menu WHERE path = '/parent' LIMIT 1))
+  AND NOT EXISTS (SELECT 1 FROM public.sys_role_menu rm WHERE rm."roleId" = '8e94f9e3-5d22-457b-928f-7292cbe46799'::uuid AND rm."menuId" = m.id);
+
+INSERT INTO public.sys_role_menu ("roleId", "menuId")
+SELECT 'f6481f8e-b041-484a-9b1b-1f1b768cacb8'::uuid, m.id
+FROM public.sys_menu m
+WHERE (m.path = '/parent' AND m.pid IS NULL)
+   OR (m.path = 'child' AND m.pid = (SELECT id::text FROM public.sys_menu WHERE path = '/parent' LIMIT 1))
+  AND NOT EXISTS (SELECT 1 FROM public.sys_role_menu rm WHERE rm."roleId" = 'f6481f8e-b041-484a-9b1b-1f1b768cacb8'::uuid AND rm."menuId" = m.id);
+```
+
+**pid 类型转换（强制）**：`sys_menu.pid` 为 `varchar`，而 `id` 为 `uuid`。所有 pid 的赋值和比较必须使用 `(SELECT id::text FROM sys_menu WHERE path = '/父path' LIMIT 1)`，否则会报错 `operator does not exist: character varying = uuid`。
+
+**要点**：后续新需求若在已有父菜单下新增子菜单，子菜单的 pid 使用 `(SELECT id::text FROM sys_menu WHERE path = '/已有父path' LIMIT 1)` 即可正确关联。

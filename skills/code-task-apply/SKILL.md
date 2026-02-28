@@ -59,6 +59,7 @@ description: 执行 OpenSpec apply 命令生成代码并完成任务。无状态
 - `backend-gorm`：生成 GORM 代码
 - `backend-proto-gen`：生成 Proto 文件
 - `backend-api-gen`：生成 API 代码
+- `backend-database`：建表、菜单 SQL 注入（生成 `*_menu.sql` 后必须执行 `make sqlimport`）
 
 优先使用专门 Skill，只有在没有合适 Skill 时才自己编写代码。
 
@@ -80,12 +81,29 @@ description: 执行 OpenSpec apply 命令生成代码并完成任务。无状态
 
 **代码生成工具命令执行规则表**：
 
-| 命令类型       | 示例           | 有 Sandbox     | 无 Sandbox | 工具缺失处理         |
-| -------------- | -------------- | -------------- | ---------- | -------------------- |
-| **GORM 生成**  | `make gorm`    | sandbox 内执行 | 直接执行   | 安装 gorm 工具后重试 |
-| **Proto 生成** | `make sqltopb` | sandbox 内执行 | 直接执行   | 安装 sqltopb 后重试  |
-| **API 生成**   | `make api`     | sandbox 内执行 | 直接执行   | 检查 protoc 安装     |
-| **依赖注入**   | `make wire`    | sandbox 内执行 | 直接执行   | 安装 wire 后重试     |
+| 命令类型          | 示例           | 有 Sandbox                | 无 Sandbox | 工具缺失处理         |
+| ----------------- | -------------- | ------------------------- | ---------- | -------------------- |
+| **GORM 生成**     | `make gorm`    | sandbox 内执行            | 直接执行   | 安装 gorm 工具后重试 |
+| **Proto 生成**    | `make sqltopb` | sandbox 内执行            | 直接执行   | 安装 sqltopb 后重试  |
+| **API 生成**      | `make api`     | sandbox 内执行            | 直接执行   | 检查 protoc 安装     |
+| **依赖注入**      | `make wire`    | sandbox 内执行            | 直接执行   | 安装 wire 后重试     |
+| **菜单 SQL 注入** | 见下方说明     | **必须在 sandbox 内执行** | -          | -                    |
+
+**菜单 SQL 注入（强制）**：若任务涉及生成 `*_menu.sql`（如 `carousel_menu.sql`），在创建 SQL 文件后**必须在沙箱容器内**执行导入。数据库在沙箱内，宿主机执行 `make sqlimport` 无法连接到正确数据库。
+
+**正确执行方式**（二选一）：
+
+```bash
+# 方式 1：进入沙箱后执行
+./sandbox/sandbox.sh shell
+# 进入容器后：
+cd /workspace/ainative-backend && make sqlimport ./doc/sql/ainative_backend/{module}_menu.sql
+
+# 方式 2：直接 docker exec（沙箱运行时）
+docker exec ainative-workspace-sandbox bash -c "cd /workspace/ainative-backend && make sqlimport ./doc/sql/ainative_backend/{module}_menu.sql"
+# 或使用 psql（不依赖 yc_turbo_kit）：
+docker exec ainative-workspace-sandbox psql -U postgres -d ainative_backend -f /workspace/ainative-backend/doc/sql/ainative_backend/{module}_menu.sql
+```
 
 **严格禁止**：
 

@@ -108,6 +108,13 @@ flowchart TD
 - 必须参考开发规范文档（`docs/dev-spec/`），确保符合项目技术规范
 - 必须参考模板代码，了解项目现有的代码结构和实现模式
 
+**菜单注入任务**（当 Design 第 4.5 章存在时）：
+
+- 在 `tasks.md` 中添加菜单数据库注入任务
+- 任务描述必须包含：**生成 `{module}_menu.sql` 并执行 `make sqlimport` 导入**
+- 验收标准必须包含：**执行 `make sqlimport ./doc/sql/ainative_backend/{module}_menu.sql` 成功**
+- 说明：编码环节执行 sqlimport，使菜单即时生效（init.sql 仅首次启动执行，不会包含新增菜单 SQL）
+
 **Docker 沙箱环境要求**：
 
 - 数据库表创建、数据库迁移等操作必须在 Docker 沙箱环境中运行
