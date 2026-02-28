@@ -99,7 +99,7 @@ describe('Business Lines Module', () => {
         expect(Array.isArray(body)).toBeTruthy();
       });
 
-    const inviteResponse = await request(app)
+    const firstInviteResponse = await request(app)
       .post(`/api/v1/business-lines/${businessLineId}/invitations`)
       .auth(adminToken, {
         type: 'bearer',
@@ -110,7 +110,21 @@ describe('Business Lines Module', () => {
       .expect(201)
       .then(({ body }) => body);
 
-    expect(inviteResponse.token).toBeDefined();
+    expect(firstInviteResponse.token).toBeDefined();
+
+    const secondInviteResponse = await request(app)
+      .post(`/api/v1/business-lines/${businessLineId}/invitations`)
+      .auth(adminToken, {
+        type: 'bearer',
+      })
+      .send({
+        role: 'member',
+      })
+      .expect(201)
+      .then(({ body }) => body);
+
+    expect(secondInviteResponse.token).toBeDefined();
+    expect(secondInviteResponse.token).not.toBe(firstInviteResponse.token);
 
     await request(app)
       .post('/api/v1/business-lines/invitations/accept')
@@ -118,7 +132,17 @@ describe('Business Lines Module', () => {
         type: 'bearer',
       })
       .send({
-        token: inviteResponse.token,
+        token: firstInviteResponse.token,
+      })
+      .expect(403);
+
+    await request(app)
+      .post('/api/v1/business-lines/invitations/accept')
+      .auth(testerToken, {
+        type: 'bearer',
+      })
+      .send({
+        token: secondInviteResponse.token,
       })
       .expect(200)
       .expect(({ body }) => {
@@ -131,7 +155,7 @@ describe('Business Lines Module', () => {
         type: 'bearer',
       })
       .send({
-        token: inviteResponse.token,
+        token: secondInviteResponse.token,
       })
       .expect(409);
 

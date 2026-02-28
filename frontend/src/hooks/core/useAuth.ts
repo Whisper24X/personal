@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { authApi } from '@/api/auth'
 import { useUserStore } from '@/stores/modules/user'
-import type { LoginRequest } from '@/types/api/auth'
+import type { LoginRequest, RegisterRequest } from '@/types/api/auth'
 
 export const useAuth = () => {
   const userStore = useUserStore()
@@ -25,6 +25,20 @@ export const useAuth = () => {
     }
   }
 
+  const register = async (payload: RegisterRequest) => {
+    loading.value = true
+    error.value = null
+
+    try {
+      await authApi.register(payload)
+    } catch (exception) {
+      error.value = exception instanceof Error ? exception.message : '注册失败'
+      throw exception
+    } finally {
+      loading.value = false
+    }
+  }
+
   const logout = async () => {
     await userStore.logout()
   }
@@ -33,6 +47,7 @@ export const useAuth = () => {
     loading,
     error,
     login,
+    register,
     logout,
   }
 }

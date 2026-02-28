@@ -3,6 +3,12 @@ export type LoginRequest = {
   password: string
 }
 
+export type RegisterRequest = {
+  username: string
+  password: string
+  nickname?: string
+}
+
 export type UserInfo = {
   id: string
   username: string

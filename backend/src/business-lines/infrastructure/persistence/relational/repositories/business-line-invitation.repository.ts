@@ -1,0 +1,71 @@
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { IsNull, MoreThan, Repository } from 'typeorm';
+import { BusinessLineInvitationRepository } from '../../business-line-invitation.repository';
+import { BusinessLineInvitationEntity } from '../entities/business-line-invitation.entity';
+import { BusinessLineInvitation } from '../../../../domain/business-line-invitation';
+import { NullableType } from '../../../../../utils/types/nullable.type';
+import { BusinessLineInvitationMapper } from '../mappers/business-line-invitation.mapper';
+
+@Injectable()
+export class BusinessLineInvitationRelationalRepository
+  implements BusinessLineInvitationRepository
+{
+  constructor(
+    @InjectRepository(BusinessLineInvitationEntity)
+    private readonly businessLineInvitationRepository: Repository<BusinessLineInvitationEntity>,
+  ) {}
+
+  async findActiveByToken(
+    token: BusinessLineInvitation['token'],
+    now: Date,
+  ): Promise<NullableType<BusinessLineInvitation>> {
+    const entity = await this.businessLineInvitationRepository.findOne({
+      where: {
+        token,
+        revokedAt: IsNull(),
+        expiresAt: MoreThan(now),
+      },
+    });
+
+    return entity ? BusinessLineInvitationMapper.toDomain(entity) : null;
+  }
+
+  async revokeActiveByBusinessLineId(
+    businessLineId: BusinessLineInvitation['businessLineId'],
+    now: Date,
+  ): Promise<void> {
+    await this.businessLineInvitationRepository
+      .createQueryBuilder()
+      .update(BusinessLineInvitationEntity)
+      .set({ revokedAt: now })
+      .where('"businessLineId" = :businessLineId', {
+        businessLineId,
+      })
+      .andWhere('"revokedAt" IS NULL')
+      .execute();
+  }
+
+  async create(data: {
+    businessLineId: BusinessLineInvitation['businessLineId'];
+    token: BusinessLineInvitation['token'];
+    role: BusinessLineInvitation['role'];
+    projectRoles: BusinessLineInvitation['projectRoles'];
+    createdBy: BusinessLineInvitation['createdBy'];
+    expiresAt: BusinessLineInvitation['expiresAt'];
+  }): Promise<BusinessLineInvitation> {
+    const entity = await this.businessLineInvitationRepository.save(
+      this.businessLineInvitationRepository.create({
+        businessLineId: data.businessLineId,
+        token: data.token,
+        role: data.role,
+        projectRoles: data.projectRoles,
+        createdBy: data.createdBy,
+        expiresAt: data.expiresAt,
+        revokedAt: null,
+      }),
+    );
+
+    return BusinessLineInvitationMapper.toDomain(entity);
+  }
+}

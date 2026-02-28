@@ -15,12 +15,10 @@ import { BusinessLineMember } from './domain/business-line-member';
 import { CreateBusinessLineMemberDto } from './dto/create-business-line-member.dto';
 import { UpdateBusinessLineMemberDto } from './dto/update-business-line-member.dto';
 import { BusinessLineMemberRepository } from './infrastructure/persistence/business-line-member.repository';
+import { BusinessLineInvitationRepository } from './infrastructure/persistence/business-line-invitation.repository';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { BusinessLineMemberRole } from './dto/business-line-member-role.enum';
 import { UsersService } from '../users/users.service';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
-import { AllConfigType } from '../config/config.type';
 import { ProjectRepository } from '../projects/infrastructure/persistence/project.repository';
 import { ProjectMemberRepository } from '../projects/infrastructure/persistence/project-member.repository';
 import { ProjectMemberRole } from '../projects/dto/project-member-role.enum';
@@ -30,14 +28,7 @@ import { BusinessLineInviteProjectRole } from './dto/business-line-invite-projec
 import { AcceptBusinessLineInviteDto } from './dto/accept-business-line-invite.dto';
 import { AcceptBusinessLineInviteResponseDto } from './dto/accept-business-line-invite-response.dto';
 import ms from 'ms';
-
-type BusinessLineInviteTokenPayload = {
-  type: 'business-line-invite';
-  businessLineId: string;
-  role: BusinessLineMemberRole;
-  projectRoles: Record<string, BusinessLineInviteProjectRole>;
-  issuerId: string;
-};
+import { randomBytes } from 'crypto';
 
 @Injectable()
 export class BusinessLinesService {
@@ -47,11 +38,10 @@ export class BusinessLinesService {
     // Dependencies here
     private readonly businessLineRepository: BusinessLineRepository,
     private readonly businessLineMemberRepository: BusinessLineMemberRepository,
+    private readonly businessLineInvitationRepository: BusinessLineInvitationRepository,
     private readonly usersService: UsersService,
     private readonly projectRepository: ProjectRepository,
     private readonly projectMemberRepository: ProjectMemberRepository,
-    private readonly jwtService: JwtService,
-    private readonly configService: ConfigService<AllConfigType>,
   ) {}
 
   async create(
@@ -250,29 +240,32 @@ export class BusinessLinesService {
       createBusinessLineInviteDto.projectRoles,
     );
 
-    const tokenPayload: BusinessLineInviteTokenPayload = {
-      type: 'business-line-invite',
+    const now = new Date();
+    const expiresAt = new Date(
+      now.getTime() + ms(BusinessLinesService.INVITE_TOKEN_EXPIRES_IN),
+    );
+    const token = this.generateInviteToken();
+
+    await this.businessLineInvitationRepository.revokeActiveByBusinessLineId(
       businessLineId,
+      now,
+    );
+
+    const invitation = await this.businessLineInvitationRepository.create({
+      businessLineId,
+      token,
       role: createBusinessLineInviteDto.role,
       projectRoles,
-      issuerId: currentUser.sub,
-    };
-
-    const token = await this.jwtService.signAsync(tokenPayload, {
-      secret: this.configService.getOrThrow('auth.secret', { infer: true }),
-      expiresIn: BusinessLinesService.INVITE_TOKEN_EXPIRES_IN,
+      createdBy: currentUser.sub,
+      expiresAt,
     });
 
-    const expiresAt = new Date(
-      Date.now() + ms(BusinessLinesService.INVITE_TOKEN_EXPIRES_IN),
-    ).toISOString();
-
     return {
-      token,
-      expiresAt,
-      businessLineId,
-      role: createBusinessLineInviteDto.role,
-      projectRoles,
+      token: invitation.token,
+      expiresAt: invitation.expiresAt.toISOString(),
+      businessLineId: invitation.businessLineId,
+      role: invitation.role,
+      projectRoles: invitation.projectRoles,
     };
   }
 
@@ -280,13 +273,21 @@ export class BusinessLinesService {
     acceptBusinessLineInviteDto: AcceptBusinessLineInviteDto,
     currentUser: JwtPayloadType,
   ): Promise<AcceptBusinessLineInviteResponseDto> {
-    const payload = await this.verifyInviteToken(acceptBusinessLineInviteDto);
+    const invitation =
+      await this.businessLineInvitationRepository.findActiveByToken(
+        acceptBusinessLineInviteDto.token,
+        new Date(),
+      );
 
-    await this.ensureBusinessLineExists(payload.businessLineId);
+    if (!invitation) {
+      throw new ForbiddenException('Invalid or expired invitation token');
+    }
+
+    await this.ensureBusinessLineExists(invitation.businessLineId);
 
     const existedMember =
       await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
-        payload.businessLineId,
+        invitation.businessLineId,
         currentUser.sub,
       );
 
@@ -295,15 +296,15 @@ export class BusinessLinesService {
     }
 
     const member = await this.businessLineMemberRepository.create({
-      businessLineId: payload.businessLineId,
+      businessLineId: invitation.businessLineId,
       userId: currentUser.sub,
-      role: payload.role,
+      role: invitation.role,
     });
 
     const failedProjects = await this.syncInviteProjectRoles({
-      businessLineId: payload.businessLineId,
+      businessLineId: invitation.businessLineId,
       userId: currentUser.sub,
-      projectRoles: payload.projectRoles,
+      projectRoles: invitation.projectRoles,
     });
 
     return {
@@ -487,66 +488,6 @@ export class BusinessLinesService {
     return nextProjectRoles;
   }
 
-  private async verifyInviteToken(
-    acceptBusinessLineInviteDto: AcceptBusinessLineInviteDto,
-  ): Promise<BusinessLineInviteTokenPayload> {
-    try {
-      const payload = await this.jwtService.verifyAsync<
-        Record<string, unknown>
-      >(acceptBusinessLineInviteDto.token, {
-        secret: this.configService.getOrThrow('auth.secret', {
-          infer: true,
-        }),
-      });
-
-      if (!this.isInviteTokenPayload(payload)) {
-        throw new BadRequestException('Invalid invitation token payload');
-      }
-
-      return {
-        ...payload,
-        projectRoles: this.normalizeInviteProjectRoles(payload.projectRoles),
-      };
-    } catch (error) {
-      if (
-        error instanceof BadRequestException ||
-        error instanceof ConflictException
-      ) {
-        throw error;
-      }
-
-      throw new ForbiddenException('Invalid or expired invitation token');
-    }
-  }
-
-  private isInviteTokenPayload(
-    payload: unknown,
-  ): payload is BusinessLineInviteTokenPayload {
-    if (!payload || typeof payload !== 'object') {
-      return false;
-    }
-
-    if (Array.isArray(payload)) {
-      return false;
-    }
-
-    const candidate = payload as Partial<BusinessLineInviteTokenPayload>;
-
-    return (
-      candidate.type === 'business-line-invite' &&
-      typeof candidate.businessLineId === 'string' &&
-      this.isUuid(candidate.businessLineId) &&
-      typeof candidate.issuerId === 'string' &&
-      this.isUuid(candidate.issuerId) &&
-      Object.values(BusinessLineMemberRole).includes(
-        candidate.role as BusinessLineMemberRole,
-      ) &&
-      typeof candidate.projectRoles === 'object' &&
-      !Array.isArray(candidate.projectRoles) &&
-      candidate.projectRoles !== null
-    );
-  }
-
   private async syncInviteProjectRoles({
     businessLineId,
     userId,
@@ -624,6 +565,10 @@ export class BusinessLinesService {
     }
 
     return ProjectMemberRole.viewer;
+  }
+
+  private generateInviteToken(): string {
+    return randomBytes(32).toString('hex');
   }
 
   private async findBusinessLinesForUser(

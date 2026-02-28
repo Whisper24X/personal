@@ -313,18 +313,6 @@ watch(
           </div>
 
           <div v-else class="space-y-3">
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">邀请后的业务线角色</span>
-              <select
-                v-model="businessRole"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              >
-                <option v-for="role in roleOptions" :key="role.value" :value="role.value">
-                  {{ role.label }}
-                </option>
-              </select>
-            </label>
-
             <section class="space-y-2 rounded-xl border border-border bg-background/70 p-3">
               <p class="text-xs font-semibold text-muted-foreground">邀请链接</p>
               <input
@@ -352,6 +340,18 @@ watch(
                 </button>
               </div>
             </section>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">邀请后的业务线角色</span>
+              <select
+                v-model="businessRole"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              >
+                <option v-for="role in roleOptions" :key="role.value" :value="role.value">
+                  {{ role.label }}
+                </option>
+              </select>
+            </label>
           </div>
 
           <section class="space-y-2">

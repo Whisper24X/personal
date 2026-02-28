@@ -1,6 +1,7 @@
 import type {
   LoginRequest,
   LoginResponse,
+  RegisterRequest,
   UpdateMePayload,
   UserInfo,
 } from '@/types/api/auth'
@@ -16,6 +17,10 @@ export const authApi = {
     storage.set(STORAGE_KEYS.refreshToken, response.refreshToken)
 
     return response
+  },
+
+  async register(payload: RegisterRequest): Promise<void> {
+    await apiHttp.post<void>('/auth/register', payload)
   },
 
   async me(): Promise<UserInfo> {
