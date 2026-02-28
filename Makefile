@@ -82,30 +82,34 @@ subtree-pull-$(call _name,$(1)):
 	fi
 endef
 
-# 生成 subtree-push 目标: subtree-push-{name} [branch]
+# 生成 subtree-push 目标: subtree-push-{name} feature/xxx
 # 用法: make subtree-push-backend feature/xxx
-# 自定义分支必须以 feature/ 开头
+# 必须指定 feature/ 分支，禁止直接推送到 master
 define _gen_push
 subtree-push-$(call _name,$(1)):
 	$(_check_env)
 	@PUSH_BRANCH="$(filter-out subtree-push-$(call _name,$(1)),$(MAKECMDGOALS))"; \
-	PUSH_BRANCH=$${PUSH_BRANCH:-$(call _branch,$(1))}; \
-	if [ "$$PUSH_BRANCH" != "$(call _branch,$(1))" ] && ! echo "$$PUSH_BRANCH" | grep -q "^feature/"; then \
-		echo "$(C_RED)错误: 自定义分支必须以 feature/ 开头$(C_RESET)"; \
-		echo "$(C_YELLOW)示例: make subtree-push-$(call _name,$(1)) feature/xxx$(C_RESET)"; \
+	if [ -z "$$$$PUSH_BRANCH" ]; then \
+		echo "$(C_RED)错误: 必须指定 feature/ 分支，禁止直接推送到 master$(C_RESET)"; \
+		echo "$(C_YELLOW)用法: make subtree-push-$(call _name,$(1)) feature/xxx$(C_RESET)"; \
 		exit 1; \
 	fi; \
-	echo "$(C_BLUE)推送 $(call _prefix,$(1)) -> $$PUSH_BRANCH...$(C_RESET)"; \
-	OUT=$$(git subtree push --prefix=$(call _prefix,$(1)) $(call _repo,$(1)) $$PUSH_BRANCH 2>&1); \
-	CODE=$$?; \
-	if echo "$$OUT" | grep -q "Everything up-to-date"; then \
+	if ! echo "$$$$PUSH_BRANCH" | grep -q "^feature/"; then \
+		echo "$(C_RED)错误: 分支必须以 feature/ 开头，禁止直接推送到 master$(C_RESET)"; \
+		echo "$(C_YELLOW)用法: make subtree-push-$(call _name,$(1)) feature/xxx$(C_RESET)"; \
+		exit 1; \
+	fi; \
+	echo "$(C_BLUE)推送 $(call _prefix,$(1)) -> $$$$PUSH_BRANCH...$(C_RESET)"; \
+	OUT=$$$$(git subtree push --prefix=$(call _prefix,$(1)) $(call _repo,$(1)) $$$$PUSH_BRANCH 2>&1); \
+	CODE=$$$$?; \
+	if echo "$$$$OUT" | grep -q "Everything up-to-date"; then \
 		echo "$(C_YELLOW)$(call _prefix,$(1)) 无变更$(C_RESET)"; \
-	elif [ $$CODE -ne 0 ]; then \
-		echo "$$OUT"; \
+	elif [ $$$$CODE -ne 0 ]; then \
+		echo "$$$$OUT"; \
 		echo "$(C_RED)推送失败，请先执行: make subtree-pull-$(call _name,$(1))$(C_RESET)"; \
 		exit 1; \
 	else \
-		echo "$(C_GREEN)✓ $(call _prefix,$(1)) 已推送到 $$PUSH_BRANCH$(C_RESET)"; \
+		echo "$(C_GREEN)✓ $(call _prefix,$(1)) 已推送到 $$$$PUSH_BRANCH$(C_RESET)"; \
 	fi
 endef
 
@@ -144,7 +148,8 @@ subtree-pull: $(foreach n,$(NAMES),subtree-pull-$(n))
 	@echo ""
 	@echo "$(C_GREEN)$(C_BOLD)✓ 全部拉取完成$(C_RESET)"
 
-## 推送所有子仓库
+## 推送所有子仓库到指定 feature 分支
+## 用法: make subtree-push feature/xxx
 subtree-push: $(foreach n,$(NAMES),subtree-push-$(n))
 	@echo ""
 	@echo "$(C_GREEN)$(C_BOLD)✓ 全部推送完成$(C_RESET)"
