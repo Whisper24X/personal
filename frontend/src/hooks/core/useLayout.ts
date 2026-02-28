@@ -11,7 +11,7 @@ import {
   resolveAuthorizedSettingsSection,
 } from '@/types/common/settings'
 import type { Project } from '@/types/api/projects'
-import { STORAGE_KEYS } from '@/types/common/storage'
+import { applyStoredUiPreferences } from '@/utils/ui-preferences'
 import { fetchAllPages } from '@/utils/pagination'
 
 export type ProjectItem = {
@@ -469,8 +469,7 @@ export const useLayout = () => {
   })
 
   onMounted(() => {
-    const savedTheme = localStorage.getItem(STORAGE_KEYS.theme)
-    document.documentElement.classList.toggle('dark', savedTheme === 'dark')
+    applyStoredUiPreferences()
 
     void refreshLayoutData()
 

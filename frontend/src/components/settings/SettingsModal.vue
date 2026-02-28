@@ -39,15 +39,11 @@ const currentSectionProps = computed(() => {
   if (props.activeSection === 'account') {
     return {
       externalTab: 'profile' as const,
-      showTabNav: true,
-      visibleTabs: ['profile', 'security', 'account'] as const,
     }
   }
 
   return {
     externalTab: props.activeSection,
-    showTabNav: false,
-    visibleTabs: [props.activeSection],
   }
 })
 

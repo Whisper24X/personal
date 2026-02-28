@@ -92,6 +92,7 @@ const removingMember = ref(false)
 const removingMemberTarget = ref<BusinessLineMember | null>(null)
 
 const lineDeleteModalOpen = ref(false)
+const lineDeleteFinalModalOpen = ref(false)
 const deletingLine = ref(false)
 const message = useMessage()
 
@@ -118,7 +119,8 @@ const hasNestedModalOpen = computed(() => {
     memberPermissionModalOpen.value ||
     projectDeleteModalOpen.value ||
     memberRemoveModalOpen.value ||
-    lineDeleteModalOpen.value
+    lineDeleteModalOpen.value ||
+    lineDeleteFinalModalOpen.value
   )
 })
 
@@ -152,13 +154,11 @@ const filteredMembers = computed(() => {
     const user = userMap.value.get(member.userId)
     const nickname = user?.nickname?.toLowerCase() ?? ''
     const username = user?.username?.toLowerCase() ?? ''
-    const email = user?.email?.toLowerCase() ?? ''
     return (
       member.userId.toLowerCase().includes(query) ||
       member.role.toLowerCase().includes(query) ||
       nickname.includes(query) ||
-      username.includes(query) ||
-      email.includes(query)
+      username.includes(query)
     )
   })
 })
@@ -223,7 +223,7 @@ const displayUserMeta = (userId: string) => {
     return ''
   }
 
-  return user.email ?? user.username
+  return user.username
 }
 
 const roleBadgeClass = (role: BusinessLineMemberRole) => {
@@ -296,6 +296,7 @@ const closeNestedModals = () => {
   projectDeleteModalOpen.value = false
   memberRemoveModalOpen.value = false
   lineDeleteModalOpen.value = false
+  lineDeleteFinalModalOpen.value = false
 }
 
 const loadLineDetail = async (lineId: string) => {
@@ -804,10 +805,20 @@ const openDeleteLineModal = () => {
     return
   }
 
+  lineDeleteFinalModalOpen.value = false
   lineDeleteModalOpen.value = true
 }
 
 const confirmDeleteLine = async () => {
+  if (!activeLineId.value || !canDeleteLine.value) {
+    return
+  }
+
+  lineDeleteModalOpen.value = false
+  lineDeleteFinalModalOpen.value = true
+}
+
+const confirmDeleteLineFinal = async () => {
   if (!activeLineId.value || !canDeleteLine.value) {
     return
   }
@@ -818,6 +829,7 @@ const confirmDeleteLine = async () => {
   try {
     await businessLinesApi.remove(removedLineId)
     lineDeleteModalOpen.value = false
+    lineDeleteFinalModalOpen.value = false
 
     const fallbackLineId = props.lines.find((line) => line.id !== removedLineId)?.id ?? ''
     activeLineId.value = fallbackLineId
@@ -1076,32 +1088,32 @@ onBeforeUnmount(() => {
 
             <div class="min-h-0 flex-1 overflow-y-auto p-4">
               <section v-if="activeTab === 'projects'" class="space-y-4">
-                <div class="panel-card flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-                  <p class="text-sm font-semibold">项目列表（{{ filteredProjects.length }}）</p>
-                  <div class="flex items-center gap-2">
-                    <button
-                      type="button"
-                      class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
-                      @click="loadLineProjects(activeLineId)"
-                    >
-                      刷新
-                    </button>
-                    <button
-                      type="button"
-                      class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm"
-                      :disabled="!activeLineId"
-                      @click="openCreateProjectModal"
-                    >
-                      新建项目
-                    </button>
-                  </div>
-                </div>
-
                 <div class="panel-card p-4">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="text-sm font-semibold">项目列表（{{ filteredProjects.length }}）</p>
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                        @click="loadLineProjects(activeLineId)"
+                      >
+                        刷新
+                      </button>
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm"
+                        :disabled="!activeLineId"
+                        @click="openCreateProjectModal"
+                      >
+                        新建项目
+                      </button>
+                    </div>
+                  </div>
+
                   <input
                     v-model="projectQuery"
                     type="search"
-                    class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+                    class="mt-4 h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
                     placeholder="按项目名 / ID / 描述 / Git 地址搜索"
                   />
 
@@ -1151,33 +1163,33 @@ onBeforeUnmount(() => {
               </section>
 
               <section v-else-if="activeTab === 'members'" class="space-y-4">
-                <div class="panel-card flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-                  <p class="text-sm font-semibold">成员列表（{{ filteredMembers.length }}）</p>
-                  <div class="flex items-center gap-2">
-                    <button
-                      type="button"
-                      class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
-                      @click="loadLineMembers(activeLineId)"
-                    >
-                      刷新
-                    </button>
-                    <button
-                      type="button"
-                      class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm"
-                      :disabled="!activeLineId"
-                      @click="openCreateMemberModal"
-                    >
-                      添加成员
-                    </button>
-                  </div>
-                </div>
-
                 <div class="panel-card p-4">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="text-sm font-semibold">成员列表（{{ filteredMembers.length }}）</p>
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                        @click="loadLineMembers(activeLineId)"
+                      >
+                        刷新
+                      </button>
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm"
+                        :disabled="!activeLineId"
+                        @click="openCreateMemberModal"
+                      >
+                        添加成员
+                      </button>
+                    </div>
+                  </div>
+
                   <input
                     v-model="memberQuery"
                     type="search"
-                    class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
-                    placeholder="按成员名 / 邮箱 / 用户 ID 搜索"
+                    class="mt-4 h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+                    placeholder="按成员名 / 用户名 / 用户 ID 搜索"
                   />
 
                   <div v-if="loadingMembers" class="mt-4 text-sm text-muted-foreground">加载成员中...</div>
@@ -1244,14 +1256,24 @@ onBeforeUnmount(() => {
                       <p class="text-sm font-semibold">基础信息</p>
                       <p class="mt-1 text-xs text-muted-foreground">编辑当前业务线名称与描述。</p>
                     </div>
-                    <button
-                      type="button"
-                      class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
-                      :disabled="!activeLineId || loadingLineDetail"
-                      @click="openEditLineModal"
-                    >
-                      编辑
-                    </button>
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                        :disabled="!activeLineId || loadingLineDetail"
+                        @click="openEditLineModal"
+                      >
+                        编辑信息
+                      </button>
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="!canDeleteLine"
+                        @click="openDeleteLineModal"
+                      >
+                        删除业务线
+                      </button>
+                    </div>
                   </div>
 
                   <div class="mt-4 space-y-3 rounded-xl border border-border bg-background/70 p-4">
@@ -1263,34 +1285,6 @@ onBeforeUnmount(() => {
                       <p class="text-xs text-muted-foreground">描述</p>
                       <p class="mt-1 text-sm text-foreground">{{ selectedLineDescription || '暂无描述' }}</p>
                     </div>
-                    <div>
-                      <p class="text-xs text-muted-foreground">项目数量</p>
-                      <p class="mt-1 text-sm text-foreground">{{ lineProjects.length }}</p>
-                    </div>
-                  </div>
-                </article>
-
-                <article class="panel-card p-5">
-                  <p class="text-sm font-semibold text-destructive">删除业务线</p>
-                  <p class="mt-1 text-xs text-muted-foreground">
-                    删除后不可恢复。若该业务线下存在项目，需要先删除或迁移项目。
-                  </p>
-
-                  <div class="mt-4 rounded-xl border border-border bg-background/70 p-4">
-                    <p class="text-xs text-muted-foreground">
-                      当前业务线项目数：<span class="font-semibold text-foreground">{{ lineProjects.length }}</span>
-                    </p>
-                    <button
-                      type="button"
-                      class="mt-3 inline-flex h-9 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-60"
-                      :disabled="!canDeleteLine"
-                      @click="openDeleteLineModal"
-                    >
-                      删除业务线
-                    </button>
-                    <p v-if="!canDeleteLine" class="mt-2 text-[11px] text-muted-foreground">
-                      请先删除/迁移该业务线下项目后再删除业务线。
-                    </p>
                   </div>
                 </article>
               </section>
@@ -1360,12 +1354,22 @@ onBeforeUnmount(() => {
 
       <ConfirmActionModal
         :open="lineDeleteModalOpen"
-        :confirming="deletingLine"
+        :confirming="false"
         title="删除业务线"
-        :description="`确认删除业务线「${selectedLineName}」吗？删除后不可恢复。`"
-        confirm-text="删除"
+        :description="`确认删除业务线「${selectedLineName}」吗？`"
+        confirm-text="下一步"
         @update:open="lineDeleteModalOpen = $event"
         @confirm="confirmDeleteLine"
+      />
+
+      <ConfirmActionModal
+        :open="lineDeleteFinalModalOpen"
+        :confirming="deletingLine"
+        title="再次确认删除"
+        :description="`该操作不可恢复。请再次确认删除业务线「${selectedLineName}」。`"
+        confirm-text="确认删除"
+        @update:open="lineDeleteFinalModalOpen = $event"
+        @confirm="confirmDeleteLineFinal"
       />
     </div>
   </Teleport>

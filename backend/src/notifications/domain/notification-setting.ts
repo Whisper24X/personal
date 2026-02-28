@@ -10,6 +10,9 @@ export class NotificationSetting {
   @ApiProperty({ type: Boolean, default: true })
   emailEnabled: boolean;
 
+  @ApiProperty({ type: String, required: false, nullable: true })
+  emailAddress?: string | null;
+
   @ApiProperty({ type: Boolean, default: false })
   webhookEnabled: boolean;
 
@@ -17,7 +20,7 @@ export class NotificationSetting {
   webhookUrl?: string | null;
 
   @ApiProperty({ type: Boolean, default: true })
-  inAppEnabled: boolean;
+  browserEnabled: boolean;
 
   @ApiProperty({ type: Date })
   createdAt: Date;

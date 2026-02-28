@@ -1,7 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
   IsBoolean,
-  IsEmail,
   IsInt,
   IsOptional,
   IsString,
@@ -16,12 +15,6 @@ export class AuthRegisterLoginDto {
   @Transform(lowerCaseTransformer)
   @IsString()
   username: string;
-
-  @ApiProperty({ example: 'john.doe@example.com', required: false })
-  @Transform(lowerCaseTransformer)
-  @IsOptional()
-  @IsEmail()
-  email?: string;
 
   @ApiProperty()
   @MinLength(6)

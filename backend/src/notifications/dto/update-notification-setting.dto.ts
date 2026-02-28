@@ -1,10 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsBoolean,
-  IsNotEmpty,
+  IsEmail,
   IsOptional,
   IsString,
   IsUrl,
+  ValidateIf,
 } from 'class-validator';
 
 export class UpdateNotificationSettingDto {
@@ -13,20 +15,28 @@ export class UpdateNotificationSettingDto {
   @IsBoolean()
   emailEnabled?: boolean;
 
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsEmail()
+  emailAddress?: string | null;
+
   @ApiPropertyOptional({ type: Boolean })
   @IsOptional()
   @IsBoolean()
   webhookEnabled?: boolean;
 
-  @ApiPropertyOptional({ type: String })
+  @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @ValidateIf((_, value) => value !== null && value !== undefined)
   @IsString()
-  @IsNotEmpty()
   @IsUrl({ require_tld: false }, { message: 'webhookUrl must be a valid URL' })
-  webhookUrl?: string;
+  webhookUrl?: string | null;
 
   @ApiPropertyOptional({ type: Boolean })
   @IsOptional()
   @IsBoolean()
-  inAppEnabled?: boolean;
+  browserEnabled?: boolean;
 }

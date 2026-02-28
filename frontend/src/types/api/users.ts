@@ -1,7 +1,6 @@
 export type User = {
   id: string
   username: string
-  email?: string | null
   nickname?: string | null
   avatar?: string | null
   isAdmin: boolean
@@ -13,7 +12,6 @@ export type User = {
 export type CreateUserPayload = {
   username: string
   password: string
-  email?: string | null
   nickname?: string | null
   avatar?: string | null
   isAdmin?: boolean

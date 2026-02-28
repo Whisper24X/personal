@@ -23,7 +23,6 @@ const hasNextPage = ref(false)
 const form = reactive({
   username: '',
   password: '',
-  email: '',
   nickname: '',
   avatar: '',
   isAdmin: false,
@@ -39,12 +38,10 @@ const filteredUsers = computed(() => {
   }
 
   return users.value.filter((user) => {
-    const email = user.email ?? ''
     const nickname = user.nickname ?? ''
 
     return (
       user.username.toLowerCase().includes(query) ||
-      email.toLowerCase().includes(query) ||
       nickname.toLowerCase().includes(query) ||
       user.id.toLowerCase().includes(query)
     )
@@ -86,7 +83,6 @@ const resetForm = () => {
   editingUserId.value = ''
   form.username = ''
   form.password = ''
-  form.email = ''
   form.nickname = ''
   form.avatar = ''
   form.isAdmin = false
@@ -97,7 +93,6 @@ const startEdit = (user: User) => {
   editingUserId.value = user.id
   form.username = user.username
   form.password = ''
-  form.email = user.email ?? ''
   form.nickname = user.nickname ?? ''
   form.avatar = user.avatar ?? ''
   form.isAdmin = user.isAdmin
@@ -160,7 +155,6 @@ const submitForm = async () => {
 
   const payloadBase = {
     username: form.username.trim(),
-    email: normalizeOptionalText(form.email),
     nickname: normalizeOptionalText(form.nickname),
     avatar: normalizeOptionalText(form.avatar),
     isAdmin: form.isAdmin,
@@ -226,7 +220,7 @@ onMounted(() => {
       <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">工作区</p>
       <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">用户管理</h1>
       <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-        对接 `/api/v1/users`，支持用户新增、编辑、删除，并可按用户名/邮箱快速筛选。
+        对接 `/api/v1/users`，支持用户新增、编辑、删除，并可按用户名快速筛选。
       </p>
       <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
     </section>
@@ -238,7 +232,7 @@ onMounted(() => {
           <input
             v-model="keyword"
             class="h-10 w-64 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            placeholder="搜索用户名 / 邮箱 / ID"
+            placeholder="搜索用户名 / 昵称 / ID"
             type="search"
           />
           <button
@@ -269,16 +263,6 @@ onMounted(() => {
             class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
             :placeholder="isEditing ? '不修改密码可留空' : '至少 6 位'"
             type="password"
-          />
-        </label>
-
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">邮箱（可选）</span>
-          <input
-            v-model="form.email"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            placeholder="user@example.com"
-            type="email"
           />
         </label>
 
@@ -350,7 +334,7 @@ onMounted(() => {
           <thead class="border-b border-border bg-background/60">
             <tr class="text-xs font-semibold text-muted-foreground">
               <th class="px-5 py-3">用户</th>
-              <th class="px-5 py-3">联系信息</th>
+              <th class="px-5 py-3">昵称</th>
               <th class="px-5 py-3">角色</th>
               <th class="px-5 py-3">状态</th>
               <th class="px-5 py-3">更新时间</th>
@@ -365,7 +349,6 @@ onMounted(() => {
               </td>
               <td class="px-5 py-4 text-muted-foreground">
                 <p>{{ user.nickname || '-' }}</p>
-                <p class="mt-1 text-xs">{{ user.email || '-' }}</p>
               </td>
               <td class="px-5 py-4">
                 <span

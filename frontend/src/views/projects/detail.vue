@@ -134,7 +134,7 @@ const displayUserMeta = (userId: string) => {
     return ''
   }
 
-  return user.email ?? user.username
+  return user.username
 }
 
 const runningTaskCount = computed(() => {

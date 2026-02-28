@@ -1,7 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
-  IsEmail,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -31,12 +30,6 @@ export class AuthUpdateDto {
   @IsString()
   @Transform(lowerCaseTransformer)
   username?: string;
-
-  @ApiPropertyOptional({ example: 'john.doe@example.com' })
-  @IsOptional()
-  @IsEmail()
-  @Transform(lowerCaseTransformer)
-  email?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

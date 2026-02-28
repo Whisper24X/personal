@@ -85,18 +85,6 @@ export class UsersRelationalRepository implements UserRepository {
     return entity ? UserMapper.toDomain(entity) : null;
   }
 
-  async findByEmail(
-    email: NonNullable<User['email']>,
-  ): Promise<NullableType<User>> {
-    if (!email) return null;
-
-    const entity = await this.usersRepository.findOne({
-      where: { email, deletedAt: IsNull() },
-    });
-
-    return entity ? UserMapper.toDomain(entity) : null;
-  }
-
   async update(id: User['id'], payload: Partial<User>): Promise<User> {
     const entity = await this.usersRepository.findOne({
       where: { id: String(id), deletedAt: IsNull() },

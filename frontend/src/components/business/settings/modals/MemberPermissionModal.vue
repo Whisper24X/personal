@@ -77,7 +77,7 @@ const displayUserMeta = (userId: string) => {
     return ''
   }
 
-  return user.email ?? user.username
+  return user.username
 }
 
 const filteredUsers = computed(() => {
@@ -89,9 +89,8 @@ const filteredUsers = computed(() => {
   return props.users.filter((user) => {
     const nickname = user.nickname?.toLowerCase() ?? ''
     const username = user.username.toLowerCase()
-    const email = user.email?.toLowerCase() ?? ''
 
-    return nickname.includes(keyword) || username.includes(keyword) || email.includes(keyword)
+    return nickname.includes(keyword) || username.includes(keyword)
   })
 })
 
@@ -208,7 +207,7 @@ watch(
                 v-model="userKeyword"
                 class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
                 type="search"
-                placeholder="按昵称/用户名/邮箱搜索"
+                placeholder="按昵称/用户名搜索"
               />
             </label>
 

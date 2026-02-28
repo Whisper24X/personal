@@ -33,9 +33,10 @@ export class NotificationSettingRelationalRepository
       this.notificationSettingRepository.create({
         userId: data.userId,
         emailEnabled: data.emailEnabled,
+        emailAddress: data.emailAddress,
         webhookEnabled: data.webhookEnabled,
         webhookUrl: data.webhookUrl,
-        inAppEnabled: data.inAppEnabled,
+        browserEnabled: data.browserEnabled,
       }),
     );
 

@@ -10,7 +10,6 @@ import { NotificationEventRepository } from './infrastructure/persistence/notifi
 import { UpdateNotificationSettingDto } from './dto/update-notification-setting.dto';
 import { NotificationEvent } from './domain/notification-event';
 import { FindNotificationEventsDto } from './dto/find-notification-events.dto';
-import { UsersService } from '../users/users.service';
 import { NotificationEmailService } from './notification-email.service';
 
 @Injectable()
@@ -25,7 +24,6 @@ export class NotificationsService {
   constructor(
     private readonly notificationSettingRepository: NotificationSettingRepository,
     private readonly notificationEventRepository: NotificationEventRepository,
-    private readonly usersService: UsersService,
     private readonly notificationEmailService: NotificationEmailService,
   ) {}
 
@@ -39,10 +37,11 @@ export class NotificationsService {
 
     return this.notificationSettingRepository.create({
       userId,
-      emailEnabled: true,
+      emailEnabled: false,
+      emailAddress: null,
       webhookEnabled: false,
       webhookUrl: null,
-      inAppEnabled: true,
+      browserEnabled: true,
     });
   }
 
@@ -51,12 +50,23 @@ export class NotificationsService {
     updateDto: UpdateNotificationSettingDto,
   ): Promise<NotificationSetting> {
     const existedSetting = await this.getMySetting(userId);
+    const nextEmailEnabled = updateDto.emailEnabled ?? existedSetting.emailEnabled;
+    const nextEmailAddress =
+      updateDto.emailAddress !== undefined
+        ? updateDto.emailAddress?.trim() || null
+        : existedSetting.emailAddress?.trim() || null;
     const nextWebhookEnabled =
       updateDto.webhookEnabled ?? existedSetting.webhookEnabled;
     const nextWebhookUrl =
       updateDto.webhookUrl !== undefined
-        ? updateDto.webhookUrl
-        : existedSetting.webhookUrl;
+        ? updateDto.webhookUrl?.trim() || null
+        : existedSetting.webhookUrl?.trim() || null;
+
+    if (nextEmailEnabled && !nextEmailAddress) {
+      throw new BadRequestException(
+        'emailAddress is required when emailEnabled is true',
+      );
+    }
 
     if (nextWebhookEnabled && !nextWebhookUrl?.trim()) {
       throw new BadRequestException(
@@ -70,14 +80,17 @@ export class NotificationsService {
         ...(updateDto.emailEnabled !== undefined
           ? { emailEnabled: updateDto.emailEnabled }
           : {}),
+        ...(updateDto.emailAddress !== undefined
+          ? { emailAddress: nextEmailAddress }
+          : {}),
         ...(updateDto.webhookEnabled !== undefined
           ? { webhookEnabled: updateDto.webhookEnabled }
           : {}),
         ...(updateDto.webhookUrl !== undefined
-          ? { webhookUrl: updateDto.webhookUrl?.trim() || null }
+          ? { webhookUrl: nextWebhookUrl }
           : {}),
-        ...(updateDto.inAppEnabled !== undefined
-          ? { inAppEnabled: updateDto.inAppEnabled }
+        ...(updateDto.browserEnabled !== undefined
+          ? { browserEnabled: updateDto.browserEnabled }
           : {}),
       },
     );
@@ -166,8 +179,10 @@ export class NotificationsService {
       });
     }
 
-    if (setting.emailEnabled) {
+    const recipientEmail = setting.emailAddress?.trim() || null;
+    if (setting.emailEnabled && recipientEmail) {
       void this.sendEmailNotification({
+        recipientEmail,
         userId,
         taskId,
         eventType,
@@ -178,7 +193,7 @@ export class NotificationsService {
       });
     }
 
-    if (!setting.inAppEnabled) {
+    if (!setting.browserEnabled) {
       return null;
     }
 
@@ -264,6 +279,7 @@ export class NotificationsService {
   }
 
   private async sendEmailNotification({
+    recipientEmail,
     userId,
     taskId,
     eventType,
@@ -272,6 +288,7 @@ export class NotificationsService {
     content,
     occurredAt,
   }: {
+    recipientEmail: string;
     userId: string;
     taskId: string;
     eventType: string;
@@ -281,18 +298,8 @@ export class NotificationsService {
     occurredAt: string;
   }): Promise<void> {
     try {
-      const user = await this.usersService.findById(userId);
-      const recipient = this.resolveRecipientEmail({
-        email: user?.email ?? null,
-        username: user?.username ?? null,
-      });
-
-      if (!recipient) {
-        return;
-      }
-
       await this.notificationEmailService.sendTaskStatusEmail({
-        to: recipient,
+        to: recipientEmail,
         userId,
         taskId,
         eventType,
@@ -306,30 +313,6 @@ export class NotificationsService {
         `Failed to send task email notification: ${error instanceof Error ? error.message : 'unknown error'}`,
       );
     }
-  }
-
-  private resolveRecipientEmail({
-    email,
-    username,
-  }: {
-    email: string | null;
-    username: string | null;
-  }): string | null {
-    if (email?.trim()) {
-      return email.trim();
-    }
-
-    if (!username) {
-      return null;
-    }
-
-    const trimmedUsername = username.trim();
-
-    if (!trimmedUsername.includes('@')) {
-      return null;
-    }
-
-    return trimmedUsername;
   }
 
   private isWebhookSuppressed(dedupeKey: string, now: number): boolean {

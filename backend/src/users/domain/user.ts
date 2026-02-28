@@ -18,15 +18,6 @@ export class User {
 
   @ApiProperty({
     type: String,
-    example: 'john.doe@example.com',
-    nullable: true,
-    required: false,
-  })
-  @Expose({ groups: ['me', 'admin'] })
-  email: string | null;
-
-  @ApiProperty({
-    type: String,
     example: 'John Doe',
     nullable: true,
     required: false,

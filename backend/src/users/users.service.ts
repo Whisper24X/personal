@@ -28,16 +28,6 @@ export class UsersService {
       throw new ConflictException('usernameAlreadyExists');
     }
 
-    if (createUserDto.email) {
-      const existedUserByEmail = await this.usersRepository.findByEmail(
-        createUserDto.email,
-      );
-
-      if (existedUserByEmail) {
-        throw new ConflictException('emailAlreadyExists');
-      }
-    }
-
     const salt = await bcrypt.genSalt();
     const password = await bcrypt.hash(createUserDto.password, salt);
 
@@ -45,7 +35,6 @@ export class UsersService {
       // Do not remove comment below.
       // <creating-property-payload />
       username: createUserDto.username,
-      email: createUserDto.email ?? null,
       password,
       salt,
       nickname: createUserDto.nickname ?? null,
@@ -117,29 +106,10 @@ export class UsersService {
       username = updateUserDto.username;
     }
 
-    let email: string | null | undefined = undefined;
-
-    if (updateUserDto.email !== undefined) {
-      if (updateUserDto.email === null) {
-        email = null;
-      } else {
-        const userByEmail = await this.usersRepository.findByEmail(
-          updateUserDto.email,
-        );
-
-        if (userByEmail && userByEmail.id !== id) {
-          throw new ConflictException('emailAlreadyExists');
-        }
-
-        email = updateUserDto.email;
-      }
-    }
-
     const updatedUser = await this.usersRepository.update(id, {
       // Do not remove comment below.
       // <updating-property-payload />
       ...(username !== undefined ? { username } : {}),
-      ...(email !== undefined ? { email } : {}),
       ...(updateUserDto.nickname !== undefined
         ? { nickname: updateUserDto.nickname }
         : {}),

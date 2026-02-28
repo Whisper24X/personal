@@ -20,11 +20,6 @@ export class UserEntity extends EntityRelationalHelper {
   @Column({ type: String, length: 100, unique: true })
   username: string;
 
-  @Index('UQ_users_email', { unique: true })
-  @Index('IDX_users_email')
-  @Column({ type: String, length: 255, nullable: true })
-  email: string | null;
-
   @Column({ type: String })
   password: string;
 

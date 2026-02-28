@@ -6,7 +6,7 @@ export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]
 
 export const SETTINGS_SECTION_LABELS: Record<SettingsSection, string> = {
   account: '账号',
-  appearance: '界面偏好',
+  appearance: '通用',
   notifications: '通知',
 }
 

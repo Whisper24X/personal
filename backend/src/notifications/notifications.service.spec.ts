@@ -4,10 +4,11 @@ import { NotificationsService } from './notifications.service';
 const createSetting = (overrides?: Partial<any>) => ({
   id: 'setting-1',
   userId: 'user-1',
-  emailEnabled: true,
+  emailEnabled: false,
+  emailAddress: null,
   webhookEnabled: false,
   webhookUrl: null,
-  inAppEnabled: true,
+  browserEnabled: true,
   createdAt: new Date(),
   updatedAt: new Date(),
   ...(overrides ?? {}),
@@ -28,13 +29,6 @@ const createEvent = (overrides?: Partial<any>) => ({
   ...(overrides ?? {}),
 });
 
-const createUser = (overrides?: Partial<any>) => ({
-  id: 'user-1',
-  username: 'john.doe',
-  email: null,
-  ...(overrides ?? {}),
-});
-
 const flushPromises = async (): Promise<void> => {
   await new Promise<void>((resolve) => {
     setImmediate(resolve);
@@ -43,10 +37,6 @@ const flushPromises = async (): Promise<void> => {
 
 describe('NotificationsService', () => {
   const originalFetch = global.fetch;
-  const createUsersService = (overrides?: Partial<any>) => ({
-    findById: jest.fn().mockResolvedValue(createUser()),
-    ...(overrides ?? {}),
-  });
   const createNotificationEmailService = (overrides?: Partial<any>) => ({
     sendTaskStatusEmail: jest.fn().mockResolvedValue(undefined),
     ...(overrides ?? {}),
@@ -69,13 +59,11 @@ describe('NotificationsService', () => {
       findById: jest.fn(),
       markRead: jest.fn(),
     };
-    const usersService = createUsersService();
     const notificationEmailService = createNotificationEmailService();
 
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
-      usersService as never,
       notificationEmailService as never,
     );
 
@@ -87,14 +75,41 @@ describe('NotificationsService', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
-  it('should send webhook and keep in-app event creation', async () => {
+  it('should reject enabling email without email address', async () => {
+    const notificationSettingRepository = {
+      findByUserId: jest.fn().mockResolvedValue(createSetting()),
+      create: jest.fn(),
+      update: jest.fn(),
+    };
+    const notificationEventRepository = {
+      create: jest.fn(),
+      findByUserId: jest.fn(),
+      findById: jest.fn(),
+      markRead: jest.fn(),
+    };
+    const notificationEmailService = createNotificationEmailService();
+
+    const service = new NotificationsService(
+      notificationSettingRepository as never,
+      notificationEventRepository as never,
+      notificationEmailService as never,
+    );
+
+    await expect(
+      service.updateMySetting('user-1', {
+        emailEnabled: true,
+        emailAddress: null,
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('should send webhook and keep browser event creation', async () => {
     const notificationSettingRepository = {
       findByUserId: jest.fn().mockResolvedValue(
         createSetting({
-          emailEnabled: false,
           webhookEnabled: true,
           webhookUrl: 'https://example.com/hook',
-          inAppEnabled: true,
+          browserEnabled: true,
         }),
       ),
       create: jest.fn(),
@@ -106,7 +121,6 @@ describe('NotificationsService', () => {
       findById: jest.fn(),
       markRead: jest.fn(),
     };
-    const usersService = createUsersService();
     const notificationEmailService = createNotificationEmailService();
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,
@@ -117,7 +131,6 @@ describe('NotificationsService', () => {
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
-      usersService as never,
       notificationEmailService as never,
     );
 
@@ -143,10 +156,9 @@ describe('NotificationsService', () => {
     const notificationSettingRepository = {
       findByUserId: jest.fn().mockResolvedValue(
         createSetting({
-          emailEnabled: false,
           webhookEnabled: true,
           webhookUrl: 'https://example.com/hook',
-          inAppEnabled: false,
+          browserEnabled: false,
         }),
       ),
       create: jest.fn(),
@@ -158,7 +170,6 @@ describe('NotificationsService', () => {
       findById: jest.fn(),
       markRead: jest.fn(),
     };
-    const usersService = createUsersService();
     const notificationEmailService = createNotificationEmailService();
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,
@@ -169,7 +180,6 @@ describe('NotificationsService', () => {
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
-      usersService as never,
       notificationEmailService as never,
     );
 
@@ -190,13 +200,14 @@ describe('NotificationsService', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('should send email notification when user email is set', async () => {
+  it('should send email notification when emailAddress is configured', async () => {
     const notificationSettingRepository = {
       findByUserId: jest.fn().mockResolvedValue(
         createSetting({
           emailEnabled: true,
+          emailAddress: 'dev@example.com',
           webhookEnabled: false,
-          inAppEnabled: false,
+          browserEnabled: false,
         }),
       ),
       create: jest.fn(),
@@ -208,19 +219,11 @@ describe('NotificationsService', () => {
       findById: jest.fn(),
       markRead: jest.fn(),
     };
-    const usersService = createUsersService({
-      findById: jest.fn().mockResolvedValue(
-        createUser({
-          email: 'dev@example.com',
-        }),
-      ),
-    });
     const notificationEmailService = createNotificationEmailService();
 
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
-      usersService as never,
       notificationEmailService as never,
     );
 
@@ -241,13 +244,14 @@ describe('NotificationsService', () => {
     expect(notificationEventRepository.create).not.toHaveBeenCalled();
   });
 
-  it('should keep in-app event when email delivery fails', async () => {
+  it('should keep browser event when email delivery fails', async () => {
     const notificationSettingRepository = {
       findByUserId: jest.fn().mockResolvedValue(
         createSetting({
           emailEnabled: true,
+          emailAddress: 'dev@example.com',
           webhookEnabled: false,
-          inAppEnabled: true,
+          browserEnabled: true,
         }),
       ),
       create: jest.fn(),
@@ -259,13 +263,6 @@ describe('NotificationsService', () => {
       findById: jest.fn(),
       markRead: jest.fn(),
     };
-    const usersService = createUsersService({
-      findById: jest.fn().mockResolvedValue(
-        createUser({
-          email: 'dev@example.com',
-        }),
-      ),
-    });
     const notificationEmailService = createNotificationEmailService({
       sendTaskStatusEmail: jest.fn().mockRejectedValue(new Error('smtp down')),
     });
@@ -273,7 +270,6 @@ describe('NotificationsService', () => {
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
-      usersService as never,
       notificationEmailService as never,
     );
 
@@ -286,5 +282,41 @@ describe('NotificationsService', () => {
 
     expect(event).toEqual(expect.objectContaining({ id: 'event-1' }));
     expect(notificationEventRepository.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('should skip browser event when browser channel is disabled', async () => {
+    const notificationSettingRepository = {
+      findByUserId: jest.fn().mockResolvedValue(
+        createSetting({
+          emailEnabled: false,
+          webhookEnabled: false,
+          browserEnabled: false,
+        }),
+      ),
+      create: jest.fn(),
+      update: jest.fn(),
+    };
+    const notificationEventRepository = {
+      create: jest.fn(),
+      findByUserId: jest.fn(),
+      findById: jest.fn(),
+      markRead: jest.fn(),
+    };
+    const notificationEmailService = createNotificationEmailService();
+
+    const service = new NotificationsService(
+      notificationSettingRepository as never,
+      notificationEventRepository as never,
+      notificationEmailService as never,
+    );
+
+    const event = await service.notifyTaskStatusChanged({
+      userId: 'user-1',
+      taskId: 'task-1',
+      status: 'done',
+    });
+
+    expect(event).toBeNull();
+    expect(notificationEventRepository.create).not.toHaveBeenCalled();
   });
 });

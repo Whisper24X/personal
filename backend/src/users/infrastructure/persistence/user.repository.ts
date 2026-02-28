@@ -25,7 +25,6 @@ export abstract class UserRepository {
   abstract findByUsername(
     username: User['username'],
   ): Promise<NullableType<User>>;
-  abstract findByEmail(email: NonNullable<User['email']>): Promise<NullableType<User>>;
 
   abstract update(
     id: User['id'],

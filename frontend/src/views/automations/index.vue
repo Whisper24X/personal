@@ -114,9 +114,9 @@ const channelRows = computed(() => {
       detail: setting?.webhookUrl?.trim() || '未配置 URL',
     },
     {
-      key: 'in-app',
-      label: '应用内通知',
-      enabled: setting?.inAppEnabled ?? false,
+      key: 'browser',
+      label: '浏览器通知',
+      enabled: setting?.browserEnabled ?? false,
       detail: '在设置页查看并标记已读',
     },
   ]

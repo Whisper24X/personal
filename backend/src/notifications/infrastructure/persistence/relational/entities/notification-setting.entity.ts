@@ -22,6 +22,9 @@ export class NotificationSettingEntity extends EntityRelationalHelper {
   @Column({ type: 'boolean', default: true })
   emailEnabled: boolean;
 
+  @Column({ type: String, length: 255, nullable: true })
+  emailAddress?: string | null;
+
   @Column({ type: 'boolean', default: false })
   webhookEnabled: boolean;
 
@@ -29,7 +32,7 @@ export class NotificationSettingEntity extends EntityRelationalHelper {
   webhookUrl?: string | null;
 
   @Column({ type: 'boolean', default: true })
-  inAppEnabled: boolean;
+  browserEnabled: boolean;
 
   @CreateDateColumn()
   createdAt: Date;

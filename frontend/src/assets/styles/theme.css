@@ -79,6 +79,38 @@
   --sidebar-ring: oklch(0.73 0.13 48);
 }
 
+html[data-theme-color='ocean'] {
+  --primary: oklch(0.66 0.135 240);
+  --ring: oklch(0.66 0.135 240);
+  --secondary: oklch(0.56 0.05 210);
+  --sidebar-primary: oklch(0.66 0.135 240);
+  --sidebar-ring: oklch(0.66 0.135 240);
+}
+
+html.dark[data-theme-color='ocean'] {
+  --primary: oklch(0.73 0.13 240);
+  --ring: oklch(0.73 0.13 240);
+  --secondary: oklch(0.62 0.05 210);
+  --sidebar-primary: oklch(0.73 0.13 240);
+  --sidebar-ring: oklch(0.73 0.13 240);
+}
+
+html[data-theme-color='forest'] {
+  --primary: oklch(0.7 0.14 145);
+  --ring: oklch(0.7 0.14 145);
+  --secondary: oklch(0.6 0.05 170);
+  --sidebar-primary: oklch(0.7 0.14 145);
+  --sidebar-ring: oklch(0.7 0.14 145);
+}
+
+html.dark[data-theme-color='forest'] {
+  --primary: oklch(0.75 0.12 145);
+  --ring: oklch(0.75 0.12 145);
+  --secondary: oklch(0.64 0.05 170);
+  --sidebar-primary: oklch(0.75 0.12 145);
+  --sidebar-ring: oklch(0.75 0.12 145);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

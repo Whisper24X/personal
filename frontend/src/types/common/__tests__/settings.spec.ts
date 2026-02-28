@@ -20,7 +20,7 @@ describe('settings section authorization', () => {
 
   it('uses updated labels', () => {
     expect(SETTINGS_SECTION_LABELS.account).toBe('账号')
-    expect(SETTINGS_SECTION_LABELS.appearance).toBe('界面偏好')
+    expect(SETTINGS_SECTION_LABELS.appearance).toBe('通用')
     expect(SETTINGS_SECTION_LABELS.notifications).toBe('通知')
   })
 })
