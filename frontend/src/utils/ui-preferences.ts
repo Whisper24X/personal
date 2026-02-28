@@ -6,7 +6,7 @@ export type UiLocale = (typeof UI_LOCALES)[number]
 export const APPEARANCE_MODES = ['light', 'dark'] as const
 export type AppearanceMode = (typeof APPEARANCE_MODES)[number]
 
-export const THEME_COLORS = ['amber', 'ocean', 'forest'] as const
+export const THEME_COLORS = ['amber', 'ocean', 'forest', 'rose', 'violet', 'teal', 'slate'] as const
 export type ThemeColor = (typeof THEME_COLORS)[number]
 
 export const BACKGROUND_STYLES = ['grid', 'plain', 'glow'] as const

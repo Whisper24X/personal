@@ -16,6 +16,24 @@ export class BusinessLineInvitationRelationalRepository
     private readonly businessLineInvitationRepository: Repository<BusinessLineInvitationEntity>,
   ) {}
 
+  async findLatestActiveByBusinessLineId(
+    businessLineId: BusinessLineInvitation['businessLineId'],
+    now: Date,
+  ): Promise<NullableType<BusinessLineInvitation>> {
+    const entity = await this.businessLineInvitationRepository.findOne({
+      where: {
+        businessLineId,
+        revokedAt: IsNull(),
+        expiresAt: MoreThan(now),
+      },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+
+    return entity ? BusinessLineInvitationMapper.toDomain(entity) : null;
+  }
+
   async findActiveByToken(
     token: BusinessLineInvitation['token'],
     now: Date,

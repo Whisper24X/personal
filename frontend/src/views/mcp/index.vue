@@ -5,6 +5,10 @@ import { mcpsApi } from '@/api/mcps'
 import type { CreateMcpPayload, Mcp, UpdateMcpPayload } from '@/types/api/mcps'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
+defineOptions({
+  name: 'McpManagementView',
+})
+
 const PAGE_LIMIT = 30
 
 const loading = ref(false)

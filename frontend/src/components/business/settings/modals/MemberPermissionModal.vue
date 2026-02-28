@@ -290,30 +290,30 @@ watch(
         </header>
 
         <form class="space-y-4 px-4 py-4" @submit.prevent="submit">
-          <div v-if="props.mode === 'edit'" class="grid gap-3 md:grid-cols-2">
-            <label class="space-y-1 md:col-span-2">
-              <span class="text-xs font-semibold text-muted-foreground">成员</span>
-              <div class="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground">
-                <p class="font-semibold">{{ displayUserLabel(selectedUserId) }}</p>
-                <p class="mt-0.5 text-xs text-muted-foreground">{{ displayUserMeta(selectedUserId) }}</p>
-              </div>
-            </label>
+	          <div v-if="props.mode === 'edit'" class="grid gap-3 md:grid-cols-2">
+	            <label class="space-y-1 md:col-span-2">
+	              <span class="text-xs font-semibold text-muted-foreground">成员</span>
+	              <div class="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground">
+	                <p class="font-semibold">{{ displayUserLabel(selectedUserId) }}</p>
+	                <p class="mt-0.5 text-xs text-muted-foreground">{{ displayUserMeta(selectedUserId) }}</p>
+	              </div>
+	            </label>
 
-            <label class="space-y-1 md:col-span-2">
-              <span class="text-xs font-semibold text-muted-foreground">业务线角色</span>
-              <select
-                v-model="businessRole"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              >
-                <option v-for="role in roleOptions" :key="role.value" :value="role.value">
-                  {{ role.label }}
-                </option>
-              </select>
-            </label>
-          </div>
+	            <section class="space-y-2 rounded-xl border border-border bg-background/70 p-3 md:col-span-2">
+	              <p class="text-xs font-semibold text-muted-foreground">业务线角色</p>
+	              <select
+	                v-model="businessRole"
+	                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+	              >
+	                <option v-for="role in roleOptions" :key="role.value" :value="role.value">
+	                  {{ role.label }}
+	                </option>
+	              </select>
+	            </section>
+	          </div>
 
-          <div v-else class="space-y-3">
-            <section class="space-y-2 rounded-xl border border-border bg-background/70 p-3">
+	          <div v-else class="space-y-3">
+	            <section class="space-y-2 rounded-xl border border-border bg-background/70 p-3">
               <p class="text-xs font-semibold text-muted-foreground">邀请链接</p>
               <input
                 class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
@@ -337,27 +337,27 @@ watch(
                   @click="copyInviteLink"
                 >
                   {{ copyButtonText }}
-                </button>
-              </div>
-            </section>
+	                </button>
+	              </div>
+	            </section>
 
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">邀请后的业务线角色</span>
-              <select
-                v-model="businessRole"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              >
-                <option v-for="role in roleOptions" :key="role.value" :value="role.value">
-                  {{ role.label }}
-                </option>
-              </select>
-            </label>
-          </div>
+	            <section class="space-y-2 rounded-xl border border-border bg-background/70 p-3">
+	              <p class="text-xs font-semibold text-muted-foreground">业务线角色</p>
+	              <select
+	                v-model="businessRole"
+	                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+	              >
+	                <option v-for="role in roleOptions" :key="role.value" :value="role.value">
+	                  {{ role.label }}
+	                </option>
+	              </select>
+	            </section>
+	          </div>
 
-          <section class="space-y-2">
-            <p class="text-xs font-semibold text-muted-foreground">项目权限</p>
-            <div class="max-h-[320px] overflow-auto rounded-xl border border-border">
-              <table class="w-full min-w-[560px] text-left text-sm">
+	          <section class="space-y-2 rounded-xl border border-border bg-background/70 p-3">
+	            <p class="text-xs font-semibold text-muted-foreground">项目权限</p>
+	            <div class="max-h-[320px] overflow-auto rounded-xl border border-border">
+	              <table class="w-full min-w-[560px] text-left text-sm">
                 <thead class="border-b border-border bg-background/70">
                   <tr class="text-xs font-semibold text-muted-foreground">
                     <th class="px-3 py-2">项目</th>

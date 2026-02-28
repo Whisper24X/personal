@@ -42,7 +42,21 @@ const THEME_COLOR_OPTIONS: Array<{ value: ThemeColor; label: string }> = [
   { value: 'amber', label: '琥珀' },
   { value: 'ocean', label: '海蓝' },
   { value: 'forest', label: '森绿' },
+  { value: 'rose', label: '玫红' },
+  { value: 'violet', label: '紫晶' },
+  { value: 'teal', label: '青碧' },
+  { value: 'slate', label: '石墨' },
 ]
+
+const THEME_COLOR_SWATCH_CLASS: Record<ThemeColor, string> = {
+  amber: 'bg-amber-500',
+  ocean: 'bg-sky-500',
+  forest: 'bg-emerald-500',
+  rose: 'bg-rose-500',
+  violet: 'bg-violet-500',
+  teal: 'bg-teal-500',
+  slate: 'bg-slate-500',
+}
 
 const APPEARANCE_OPTIONS: Array<{ value: AppearanceMode; label: string }> = [
   { value: 'light', label: '浅色' },
@@ -411,11 +425,6 @@ const openEmailModal = () => {
 const closeEmailModal = () => {
   emailModalOpen.value = false
   clearEmailErrors()
-}
-
-const openBrowserModal = () => {
-  browserPermission.value = detectBrowserPermission()
-  browserModalOpen.value = true
 }
 
 const closeBrowserModal = () => {
@@ -859,13 +868,7 @@ onMounted(() => {
             >
               <span
                 class="h-3.5 w-3.5 rounded-full"
-                :class="
-                  option.value === 'amber'
-                    ? 'bg-amber-500'
-                    : option.value === 'ocean'
-                      ? 'bg-sky-500'
-                      : 'bg-emerald-500'
-                "
+                :class="THEME_COLOR_SWATCH_CLASS[option.value]"
               />
               {{ option.label }}
             </button>

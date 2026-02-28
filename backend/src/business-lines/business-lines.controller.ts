@@ -225,6 +225,26 @@ export class BusinessLinesController {
     );
   }
 
+  @Get(':businessLineId/invitations/latest')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: BusinessLineInviteDto,
+  })
+  @HttpCode(HttpStatus.OK)
+  findLatestInvite(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+  ): Promise<NullableType<BusinessLineInviteDto>> {
+    return this.businessLinesService.findLatestInvite(
+      businessLineId,
+      request.user,
+    );
+  }
+
   @Patch(':businessLineId/members/:userId')
   @ApiParam({
     name: 'businessLineId',

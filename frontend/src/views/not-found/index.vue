@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
+
+defineOptions({
+  name: 'NotFoundView',
+})
 </script>
 
 <template>

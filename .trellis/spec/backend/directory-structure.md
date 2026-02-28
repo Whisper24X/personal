@@ -6,49 +6,69 @@
 
 ## Overview
 
-<!--
-Document your project's backend directory structure here.
-
-Questions to answer:
-- How are modules/packages organized?
-- Where does business logic live?
-- Where are API endpoints defined?
-- How are utilities and helpers organized?
--->
-
-(To be filled by the team)
+Backend is a NestJS modular monolith with per-domain modules. Each domain commonly contains:
+- `*.module.ts`
+- `*.controller.ts`
+- `*.service.ts`
+- `domain/*`
+- `dto/*`
+- `infrastructure/persistence/*`
 
 ---
 
 ## Directory Layout
 
-```
-<!-- Replace with your actual structure -->
-src/
-├── ...
-└── ...
+```text
+backend/src/
+├── app.module.ts
+├── main.ts
+├── auth/
+├── business-lines/
+├── projects/
+├── tasks/
+├── notifications/
+├── database/
+│   ├── config/
+│   ├── migrations/
+│   └── seeds/
+└── utils/
 ```
 
 ---
 
 ## Module Organization
 
-<!-- How should new features/modules be organized? -->
+- Controllers are thin: parse request params/body and delegate to services.
+- Services contain business rules, authorization checks, and domain orchestration.
+- Persistence is abstracted via repository interfaces and relational implementations.
 
-(To be filled by the team)
+Examples:
+- `backend/src/business-lines/business-lines.controller.ts`
+- `backend/src/business-lines/business-lines.service.ts`
+- `backend/src/business-lines/infrastructure/persistence/relational/repositories/business-line.repository.ts`
 
 ---
 
 ## Naming Conventions
 
-<!-- File and folder naming rules -->
-
-(To be filled by the team)
+- Files/folders use kebab-case (`business-lines`, `project-member.repository.ts`).
+- DTO classes are suffixed with `Dto`.
+- Repository abstractions live outside relational implementation folders (for swapability).
+- Domain entities use singular class names (`Project`, `BusinessLineMember`).
 
 ---
 
 ## Examples
 
-<!-- Link to well-organized modules as examples -->
+Well-structured modules to follow:
+- `backend/src/projects/*`
+- `backend/src/business-lines/*`
+- `backend/src/tasks/*`
 
-(To be filled by the team)
+---
+
+## Common Mistakes / Forbidden Patterns
+
+- Putting business logic in controllers.
+- Bypassing repository abstractions and querying TypeORM directly inside services that already depend on repositories.
+- Cross-domain imports from deep relational implementation paths instead of abstract repository contracts.

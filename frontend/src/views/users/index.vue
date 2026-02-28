@@ -5,6 +5,10 @@ import { usersApi } from '@/api/users'
 import type { CreateUserPayload, UpdateUserPayload, User } from '@/types/api/users'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
+defineOptions({
+  name: 'UsersManagementView',
+})
+
 const PAGE_LIMIT = 20
 
 const loading = ref(false)

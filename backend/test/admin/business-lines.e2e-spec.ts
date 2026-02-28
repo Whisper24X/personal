@@ -127,6 +127,16 @@ describe('Business Lines Module', () => {
     expect(secondInviteResponse.token).not.toBe(firstInviteResponse.token);
 
     await request(app)
+      .get(`/api/v1/business-lines/${businessLineId}/invitations/latest`)
+      .auth(adminToken, {
+        type: 'bearer',
+      })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.token).toBe(secondInviteResponse.token);
+      });
+
+    await request(app)
       .post('/api/v1/business-lines/invitations/accept')
       .auth(testerToken, {
         type: 'bearer',

@@ -6,46 +6,48 @@
 
 ## Overview
 
-<!--
-Document your project's logging conventions here.
+Logging currently uses Nest `Logger` in selected modules (not universally across all services).
 
-Questions to answer:
-- What logging library do you use?
-- What are the log levels and when to use each?
-- What should be logged?
-- What should NOT be logged (PII, secrets)?
--->
+Current usage examples:
+- `backend/src/notifications/notifications.service.ts`
+- `backend/src/notifications/notification-email.service.ts`
+- `backend/src/worker.main.ts`
 
-(To be filled by the team)
+No centralized structured logging pipeline is implemented yet.
 
 ---
 
 ## Log Levels
 
-<!-- When to use each level: debug, info, warn, error -->
-
-(To be filled by the team)
+Current practical usage:
+- `logger.log(...)` for worker lifecycle/startup/shutdown events.
+- `logger.warn(...)` for missing optional infra configuration (SMTP disabled case).
+- Error scenarios are often represented through thrown exceptions instead of explicit logs.
 
 ---
 
 ## Structured Logging
 
-<!-- Log format, required fields -->
+There is no global JSON log schema today. Messages are plain text with module-scoped logger names.
 
-(To be filled by the team)
+When adding logs:
+- Keep logger instance scoped by class name.
+- Include stable identifiers in message text (`taskId`, `userId`, `eventType`) when useful.
+- Prefer one concise log line per event over verbose multi-line logs.
 
 ---
 
 ## What to Log
 
-<!-- Important events to log -->
-
-(To be filled by the team)
+- Runtime lifecycle events (worker boot/shutdown).
+- External integration fallback/disable events (SMTP missing config, webhook retry exhaustion).
+- Important async background failures that do not surface directly to API responses.
 
 ---
 
 ## What NOT to Log
 
-<!-- Sensitive data, PII, secrets -->
-
-(To be filled by the team)
+- Passwords, JWT tokens, refresh tokens.
+- Full sensitive payloads from auth/profile endpoints.
+- Large raw objects when a few identifiers are enough.
+- `console.log` in production backend modules (use `Logger`).

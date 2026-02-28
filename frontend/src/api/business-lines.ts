@@ -95,6 +95,10 @@ export const businessLinesApi = {
     return apiHttp.post<BusinessLineInvite>(`/business-lines/${businessLineId}/invitations`, payload)
   },
 
+  getLatestInvitation(businessLineId: string) {
+    return apiHttp.get<BusinessLineInvite | null>(`/business-lines/${businessLineId}/invitations/latest`)
+  },
+
   acceptInvitation(payload: AcceptBusinessLineInvitePayload) {
     return apiHttp.post<AcceptBusinessLineInviteResponse>('/business-lines/invitations/accept', payload)
   },

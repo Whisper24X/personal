@@ -10,6 +10,7 @@ import {
   type SettingsSection,
   resolveAuthorizedSettingsSection,
 } from '@/types/common/settings'
+import { STORAGE_KEYS } from '@/types/common/storage'
 import type { Project } from '@/types/api/projects'
 import { applyStoredUiPreferences } from '@/utils/ui-preferences'
 import { fetchAllPages } from '@/utils/pagination'
@@ -64,6 +65,10 @@ const normalizeProjectShort = (projectName: string) => {
     .toUpperCase()
 }
 
+const loadStoredSelectedProjectId = () => {
+  return localStorage.getItem(STORAGE_KEYS.lastSelectedProjectId) ?? ''
+}
+
 export const useLayout = () => {
   const route = useRoute()
   const router = useRouter()
@@ -84,6 +89,18 @@ export const useLayout = () => {
 
   const businessLines = ref<BusinessLine[]>([])
   const activeBusinessLineId = ref('')
+  const selectedProjectId = ref(loadStoredSelectedProjectId())
+
+  const setSelectedProjectId = (projectId: string) => {
+    selectedProjectId.value = projectId
+
+    if (projectId) {
+      localStorage.setItem(STORAGE_KEYS.lastSelectedProjectId, projectId)
+      return
+    }
+
+    localStorage.removeItem(STORAGE_KEYS.lastSelectedProjectId)
+  }
 
   const baseMenuItems: MenuItem[] = [
     { id: 'dashboard', label: '仪表盘', to: '/dashboard' },
@@ -140,13 +157,46 @@ export const useLayout = () => {
   }
 
   const getProjectIdFromRoute = () => {
-    if (route.name !== 'project-detail') return ''
-
     const routeProjectId = route.params.id
     if (typeof routeProjectId === 'string') return routeProjectId
     if (Array.isArray(routeProjectId)) return routeProjectId[0] ?? ''
 
+    const projectPathMatch = route.path.match(/^\/projects\/([^/]+)/)
+    if (projectPathMatch?.[1]) {
+      return decodeURIComponent(projectPathMatch[1])
+    }
+
     return ''
+  }
+
+  const syncProjectSelection = () => {
+    const routeProjectId = getProjectIdFromRoute()
+    if (routeProjectId) {
+      setSelectedProjectId(routeProjectId)
+
+      const matchedBusinessLine = findBusinessLineByProjectId(routeProjectId)
+      if (matchedBusinessLine) {
+        activeBusinessLineId.value = matchedBusinessLine.id
+      }
+
+      return
+    }
+
+    const currentProjects = currentBusinessLine.value?.projects ?? []
+    const hasSelectedProject = currentProjects.some((project) => project.id === selectedProjectId.value)
+    if (hasSelectedProject) {
+      return
+    }
+
+    const selectedProjectBusinessLine = selectedProjectId.value
+      ? businessLines.value.find((line) => line.projects.some((project) => project.id === selectedProjectId.value))
+      : undefined
+    if (selectedProjectBusinessLine) {
+      activeBusinessLineId.value = selectedProjectBusinessLine.id
+      return
+    }
+
+    setSelectedProjectId(currentProjects[0]?.id ?? '')
   }
 
   const syncBusinessLineFromRoute = () => {
@@ -196,15 +246,25 @@ export const useLayout = () => {
 
       businessLines.value = nextBusinessLines
 
-      const hasCurrentActive = nextBusinessLines.some((line) => line.id === activeBusinessLineId.value)
-      if (!hasCurrentActive) {
-        activeBusinessLineId.value = nextBusinessLines[0]?.id ?? ''
+      const routeProjectId = getProjectIdFromRoute()
+      const routeMatchedBusinessLine = routeProjectId
+        ? nextBusinessLines.find((line) => line.projects.some((project) => project.id === routeProjectId))
+        : undefined
+
+      if (routeMatchedBusinessLine) {
+        activeBusinessLineId.value = routeMatchedBusinessLine.id
+      } else {
+        const hasCurrentActive = nextBusinessLines.some((line) => line.id === activeBusinessLineId.value)
+        if (!hasCurrentActive) {
+          activeBusinessLineId.value = nextBusinessLines[0]?.id ?? ''
+        }
       }
 
-      syncBusinessLineFromRoute()
+      syncProjectSelection()
     } catch (error) {
       businessLines.value = []
       activeBusinessLineId.value = ''
+      setSelectedProjectId('')
       void error
     }
   }
@@ -288,7 +348,7 @@ export const useLayout = () => {
   }
 
   const projectItemClass = (to: string) => {
-    if (isRouteActive(to)) {
+    if (to === `/projects/${selectedProjectId.value}`) {
       return 'border-primary/45 bg-primary text-primary-foreground shadow-md ring-2 ring-primary/35'
     }
 
@@ -358,6 +418,7 @@ export const useLayout = () => {
     if (!matchedBusinessLine) return
 
     activeBusinessLineId.value = matchedBusinessLine.id
+    syncProjectSelection()
     hideProjectTooltip()
   }
 
@@ -418,6 +479,7 @@ export const useLayout = () => {
       mobileNavOpen.value = false
       hideProjectTooltip()
       syncBusinessLineFromRoute()
+      syncProjectSelection()
     },
   )
 

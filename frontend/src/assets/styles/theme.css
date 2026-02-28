@@ -111,6 +111,70 @@ html.dark[data-theme-color='forest'] {
   --sidebar-ring: oklch(0.75 0.12 145);
 }
 
+html[data-theme-color='rose'] {
+  --primary: oklch(0.68 0.16 18);
+  --ring: oklch(0.68 0.16 18);
+  --secondary: oklch(0.58 0.06 355);
+  --sidebar-primary: oklch(0.68 0.16 18);
+  --sidebar-ring: oklch(0.68 0.16 18);
+}
+
+html.dark[data-theme-color='rose'] {
+  --primary: oklch(0.75 0.13 18);
+  --ring: oklch(0.75 0.13 18);
+  --secondary: oklch(0.64 0.06 355);
+  --sidebar-primary: oklch(0.75 0.13 18);
+  --sidebar-ring: oklch(0.75 0.13 18);
+}
+
+html[data-theme-color='violet'] {
+  --primary: oklch(0.68 0.13 300);
+  --ring: oklch(0.68 0.13 300);
+  --secondary: oklch(0.58 0.05 276);
+  --sidebar-primary: oklch(0.68 0.13 300);
+  --sidebar-ring: oklch(0.68 0.13 300);
+}
+
+html.dark[data-theme-color='violet'] {
+  --primary: oklch(0.76 0.12 300);
+  --ring: oklch(0.76 0.12 300);
+  --secondary: oklch(0.64 0.05 276);
+  --sidebar-primary: oklch(0.76 0.12 300);
+  --sidebar-ring: oklch(0.76 0.12 300);
+}
+
+html[data-theme-color='teal'] {
+  --primary: oklch(0.68 0.12 190);
+  --ring: oklch(0.68 0.12 190);
+  --secondary: oklch(0.58 0.05 205);
+  --sidebar-primary: oklch(0.68 0.12 190);
+  --sidebar-ring: oklch(0.68 0.12 190);
+}
+
+html.dark[data-theme-color='teal'] {
+  --primary: oklch(0.75 0.11 190);
+  --ring: oklch(0.75 0.11 190);
+  --secondary: oklch(0.64 0.05 205);
+  --sidebar-primary: oklch(0.75 0.11 190);
+  --sidebar-ring: oklch(0.75 0.11 190);
+}
+
+html[data-theme-color='slate'] {
+  --primary: oklch(0.62 0.055 255);
+  --ring: oklch(0.62 0.055 255);
+  --secondary: oklch(0.53 0.03 240);
+  --sidebar-primary: oklch(0.62 0.055 255);
+  --sidebar-ring: oklch(0.62 0.055 255);
+}
+
+html.dark[data-theme-color='slate'] {
+  --primary: oklch(0.72 0.05 255);
+  --ring: oklch(0.72 0.05 255);
+  --secondary: oklch(0.62 0.03 240);
+  --sidebar-primary: oklch(0.72 0.05 255);
+  --sidebar-ring: oklch(0.72 0.05 255);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

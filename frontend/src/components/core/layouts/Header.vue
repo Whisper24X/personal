@@ -3,6 +3,10 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { notificationsApi } from '@/api/notifications'
 import type { NotificationEvent } from '@/types/api/notifications'
 
+defineOptions({
+  name: 'AppHeaderBar',
+})
+
 const props = defineProps<{
   mobileNavOpen: boolean
   pageTitle: string

@@ -6,46 +6,54 @@
 
 ## Overview
 
-<!--
-Document your project's quality standards here.
+Frontend quality gates are driven by lint, type-check, and tests:
+- `npm run lint`
+- `npm run type-check`
+- `npm run test:unit`
+- `npm run test:e2e` (when behavior/UI flow changes)
 
-Questions to answer:
-- What patterns are forbidden?
-- What linting rules do you enforce?
-- What are your testing requirements?
-- What code review standards apply?
--->
-
-(To be filled by the team)
+Tooling is configured in:
+- `frontend/eslint.config.ts`
+- `frontend/vitest.config.ts`
+- `frontend/playwright.config.ts`
 
 ---
 
 ## Forbidden Patterns
 
-<!-- Patterns that should never be used and why -->
-
-(To be filled by the team)
+- Direct `fetch` usage in components when project API clients already exist.
+- Unhandled async errors in UI actions (must show message or fallback behavior).
+- Mutating props in child components.
+- Deeply coupling view components to raw backend response fields without local mapping.
 
 ---
 
 ## Required Patterns
 
-<!-- Patterns that must always be used -->
-
-(To be filled by the team)
+- Use `<script setup lang="ts">` for Vue SFCs.
+- Keep API access in `src/api/*` and shared logic in hooks.
+- Add/maintain typed props and emits for reusable components.
+- Use centralized message/toast flow (`useMessage`) for user-visible failures.
 
 ---
 
 ## Testing Requirements
 
-<!-- What level of testing is expected -->
+- Unit tests for changed composables/stores/components with meaningful behavior assertions.
+- For route-level UX updates (auth/business-line flows), add/adjust view/component tests.
+- Use existing test style (`vitest`, `@vue/test-utils`, `pinia` setup, mocks via `vi.mock`).
 
-(To be filled by the team)
+Examples:
+- `frontend/src/views/login/__tests__/index.spec.ts`
+- `frontend/src/components/business/settings/__tests__/BusinessLineModal.spec.ts`
+- `frontend/src/stores/modules/__tests__/message.spec.ts`
 
 ---
 
 ## Code Review Checklist
 
-<!-- What reviewers should check -->
-
-(To be filled by the team)
+- Is data flow split correctly among component local state, hook logic, and Pinia?
+- Are API calls typed and placed in `src/api/*`?
+- Are loading/error states visible and testable?
+- Are modal/dialog interactions keyboard accessible and closable?
+- Did this change run at least lint + type-check + relevant tests?

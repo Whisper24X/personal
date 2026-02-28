@@ -10,6 +10,10 @@ import type { ArtifactPreview } from '@/types/api/artifacts'
 import type { Task, TaskArtifact, TaskArtifactType, TaskDetail, TaskLog, TaskNode } from '@/types/api/tasks'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
+defineOptions({
+  name: 'TaskDetailView',
+})
+
 const route = useRoute()
 const taskId = computed(() => String(route.params.id ?? ''))
 

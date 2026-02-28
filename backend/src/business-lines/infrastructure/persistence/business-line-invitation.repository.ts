@@ -2,6 +2,11 @@ import { NullableType } from '../../../utils/types/nullable.type';
 import { BusinessLineInvitation } from '../../domain/business-line-invitation';
 
 export abstract class BusinessLineInvitationRepository {
+  abstract findLatestActiveByBusinessLineId(
+    businessLineId: BusinessLineInvitation['businessLineId'],
+    now: Date,
+  ): Promise<NullableType<BusinessLineInvitation>>;
+
   abstract findActiveByToken(
     token: BusinessLineInvitation['token'],
     now: Date,

@@ -29,6 +29,8 @@ import { AcceptBusinessLineInviteDto } from './dto/accept-business-line-invite.d
 import { AcceptBusinessLineInviteResponseDto } from './dto/accept-business-line-invite-response.dto';
 import ms from 'ms';
 import { randomBytes } from 'crypto';
+import { NullableType } from '../utils/types/nullable.type';
+import { BusinessLineInvitation } from './domain/business-line-invitation';
 
 @Injectable()
 export class BusinessLinesService {
@@ -260,13 +262,26 @@ export class BusinessLinesService {
       expiresAt,
     });
 
-    return {
-      token: invitation.token,
-      expiresAt: invitation.expiresAt.toISOString(),
-      businessLineId: invitation.businessLineId,
-      role: invitation.role,
-      projectRoles: invitation.projectRoles,
-    };
+    return this.mapInvitationToInviteDto(invitation);
+  }
+
+  async findLatestInvite(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<NullableType<BusinessLineInviteDto>> {
+    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+
+    const invitation =
+      await this.businessLineInvitationRepository.findLatestActiveByBusinessLineId(
+        businessLineId,
+        new Date(),
+      );
+
+    if (!invitation) {
+      return null;
+    }
+
+    return this.mapInvitationToInviteDto(invitation);
   }
 
   async acceptInvite(
@@ -569,6 +584,18 @@ export class BusinessLinesService {
 
   private generateInviteToken(): string {
     return randomBytes(32).toString('hex');
+  }
+
+  private mapInvitationToInviteDto(
+    invitation: BusinessLineInvitation,
+  ): BusinessLineInviteDto {
+    return {
+      token: invitation.token,
+      expiresAt: invitation.expiresAt.toISOString(),
+      businessLineId: invitation.businessLineId,
+      role: invitation.role,
+      projectRoles: invitation.projectRoles,
+    };
   }
 
   private async findBusinessLinesForUser(

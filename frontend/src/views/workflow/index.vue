@@ -11,6 +11,10 @@ import type {
 } from '@/types/api/workflow'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
+defineOptions({
+  name: 'WorkflowManagementView',
+})
+
 const loading = ref(false)
 const loadingMore = ref(false)
 const submitting = ref(false)

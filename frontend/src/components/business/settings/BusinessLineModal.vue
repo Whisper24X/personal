@@ -4,6 +4,7 @@ import { useMessage } from '@/hooks'
 import {
   businessLinesApi,
   type BusinessLine,
+  type BusinessLineInvite,
   type BusinessLineMember,
   type BusinessLineMemberRole,
 } from '@/api/business-lines'
@@ -592,6 +593,38 @@ const buildEmptyProjectRoles = (defaultRole: ProjectPermissionRole = 'none') => 
   return projectRoles
 }
 
+const buildInviteUrl = (token: string) => {
+  const inviteUrl = new URL('/business-lines/invite', window.location.origin)
+  inviteUrl.searchParams.set('token', token)
+  return inviteUrl.toString()
+}
+
+const applyInviteToCreateMemberModal = (invite: BusinessLineInvite | null) => {
+  if (!invite) {
+    memberPermissionInitialBusinessRole.value = 'member'
+    memberPermissionInitialProjectRoles.value = buildEmptyProjectRoles('developer')
+    memberInvitationLink.value = ''
+    memberInvitationExpiresAt.value = ''
+    return
+  }
+
+  const nextProjectRoles = buildEmptyProjectRoles()
+  for (const project of lineProjects.value) {
+    nextProjectRoles[project.id] = invite.projectRoles[project.id] ?? 'none'
+  }
+
+  memberPermissionInitialBusinessRole.value = invite.role
+  memberPermissionInitialProjectRoles.value = nextProjectRoles
+  memberInvitationLink.value = buildInviteUrl(invite.token)
+  memberInvitationExpiresAt.value = invite.expiresAt
+}
+
+const loadLatestInviteForCreateMemberModal = async (businessLineId: string) => {
+  const latestInvite = await businessLinesApi.getLatestInvitation(businessLineId)
+  applyInviteToCreateMemberModal(latestInvite)
+  return latestInvite
+}
+
 const fetchProjectRoleMapForUser = async (userId: string) => {
   const projectRoles = buildEmptyProjectRoles()
   const rawProjectRoles: Record<string, ExistingProjectRole> = {}
@@ -629,20 +662,29 @@ const fetchProjectRoleMapForUser = async (userId: string) => {
   }
 }
 
-const openCreateMemberModal = () => {
+const openCreateMemberModal = async () => {
   if (!activeLineId.value) {
     return
   }
 
+  const businessLineId = activeLineId.value
   memberPermissionModalMode.value = 'create'
   memberPermissionInitialUserId.value = ''
   memberPermissionInitialBusinessRole.value = 'member'
   memberPermissionInitialProjectRoles.value = buildEmptyProjectRoles('developer')
-  memberPermissionModalPreparing.value = false
+  memberPermissionModalPreparing.value = true
   memberPermissionModalError.value = ''
   memberInvitationLink.value = ''
   memberInvitationExpiresAt.value = ''
   memberPermissionModalOpen.value = true
+
+  try {
+    await loadLatestInviteForCreateMemberModal(businessLineId)
+  } catch (error) {
+    message.error(toErrorMessage(error, '加载最近邀请链接失败'))
+  } finally {
+    memberPermissionModalPreparing.value = false
+  }
 }
 
 const openEditMemberModal = async (member: BusinessLineMember) => {
@@ -752,14 +794,22 @@ const submitMemberPermission = async (payload: {
 
   try {
     if (payload.mode === 'create') {
-      const invite = await businessLinesApi.createInvitation(activeLineId.value, {
+      const businessLineId = activeLineId.value
+      const createdInvite = await businessLinesApi.createInvitation(businessLineId, {
         role: payload.businessRole,
         projectRoles: payload.projectRoles,
       })
-      const inviteUrl = new URL('/business-lines/invite', window.location.origin)
-      inviteUrl.searchParams.set('token', invite.token)
-      memberInvitationLink.value = inviteUrl.toString()
-      memberInvitationExpiresAt.value = invite.expiresAt
+
+      try {
+        const latestInvite = await loadLatestInviteForCreateMemberModal(businessLineId)
+        if (!latestInvite) {
+          applyInviteToCreateMemberModal(createdInvite)
+        }
+      } catch (error) {
+        void error
+        applyInviteToCreateMemberModal(createdInvite)
+      }
+
       message.success('邀请链接已生成')
       return
     } else {

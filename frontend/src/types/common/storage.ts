@@ -5,4 +5,5 @@ export const STORAGE_KEYS = {
   theme: 'ainative-theme',
   themeColor: 'ainative-theme-color',
   backgroundStyle: 'ainative-background-style',
+  lastSelectedProjectId: 'ainative-last-selected-project-id',
 } as const

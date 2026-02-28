@@ -5,6 +5,10 @@ import { skillsApi } from '@/api/skills'
 import type { CreateSkillPayload, Skill, UpdateSkillPayload } from '@/types/api/skills'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
+defineOptions({
+  name: 'SkillsManagementView',
+})
+
 const PAGE_LIMIT = 30
 
 const loading = ref(false)

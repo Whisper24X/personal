@@ -6,46 +6,55 @@
 
 ## Overview
 
-<!--
-Document your project's error handling conventions here.
+The project uses NestJS HTTP exceptions from service layer for business and authorization failures.
 
-Questions to answer:
-- What error types do you define?
-- How are errors propagated?
-- How are errors logged?
-- How are errors returned to clients?
--->
-
-(To be filled by the team)
+Common exception types:
+- `NotFoundException`
+- `ConflictException`
+- `ForbiddenException`
+- `BadRequestException`
+- `UnauthorizedException`
 
 ---
 
 ## Error Types
 
-<!-- Custom error classes/types -->
+- Validation errors are handled globally by `ValidationPipe` with custom `exceptionFactory` and return `422 Unprocessable Entity`.
+- Business rule errors are thrown in services.
+- Repository-level not-found checks can throw (for example relational repository `update` methods).
 
-(To be filled by the team)
+Examples:
+- `backend/src/utils/validation-options.ts`
+- `backend/src/business-lines/business-lines.service.ts`
+- `backend/src/projects/infrastructure/persistence/relational/repositories/project.repository.ts`
 
 ---
 
 ## Error Handling Patterns
 
-<!-- Try-catch patterns, error propagation -->
+- Controllers are mostly pass-through and do not wrap service calls in `try/catch`.
+- Services perform explicit authorization/resource checks before writes.
+- Side-effect operations that should not fail primary flow may swallow errors intentionally (`void error`) and return degraded results.
 
-(To be filled by the team)
+Examples:
+- Invitation/project sync fallback in `backend/src/business-lines/business-lines.service.ts`
+- Notification side-effects in `backend/src/notifications/notifications.service.ts`
 
 ---
 
 ## API Error Responses
 
-<!-- Standard error response format -->
+Observed response behavior:
+- Validation: `{ status: 422, errors: { field: 'message' } }`
+- Other exceptions: standard NestJS error payloads with status/message.
 
-(To be filled by the team)
+When adding new endpoints, follow existing exception classes rather than returning custom ad-hoc error objects.
 
 ---
 
 ## Common Mistakes
 
-<!-- Error handling mistakes your team has made -->
-
-(To be filled by the team)
+- Returning `null` for errors that should be explicit `4xx` exceptions.
+- Throwing generic `Error` in services for client-facing failures.
+- Catching and suppressing exceptions without preserving user-visible outcome (unless the operation is explicitly best-effort side effect).
+- Using inconsistent error message keys for i18n-sensitive paths.
