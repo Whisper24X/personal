@@ -33,12 +33,14 @@ const props = defineProps<{
   lines: BusinessLineItem[]
   projects: ProjectItem[]
   activeBusinessLineId: string
+  selectedProjectId?: string
   canCreateBusinessLine: boolean
 }>()
 
 const emit = defineEmits<{
   (event: 'update:open', value: boolean): void
   (event: 'select-line', businessLineId: string): void
+  (event: 'select-project', projectId: string): void
   (event: 'request-refresh'): void
 }>()
 
@@ -300,6 +302,15 @@ const closeNestedModals = () => {
   memberRemoveModalOpen.value = false
   lineDeleteModalOpen.value = false
   lineDeleteFinalModalOpen.value = false
+}
+
+const isCurrentProject = (projectId: string) => {
+  return projectId === props.selectedProjectId
+}
+
+const selectCurrentProject = (project: ProjectItem) => {
+  emit('select-line', project.businessLineId)
+  emit('select-project', project.id)
 }
 
 const loadLineDetail = async (lineId: string) => {
@@ -1186,11 +1197,30 @@ onBeforeUnmount(() => {
                     <article
                       v-for="project in filteredProjects"
                       :key="project.id"
-                      class="rounded-xl border border-border bg-background/70 px-4 py-3"
+                      :data-project-id="project.id"
+                      class="cursor-pointer rounded-xl border px-4 py-3"
+                      :class="
+                        isCurrentProject(project.id)
+                          ? 'border-primary/45 bg-primary/8 shadow-sm'
+                          : 'border-border bg-background/70'
+                      "
+                      role="button"
+                      tabindex="0"
+                      @click="selectCurrentProject(project)"
+                      @keydown.enter.prevent="selectCurrentProject(project)"
+                      @keydown.space.prevent="selectCurrentProject(project)"
                     >
                       <div class="flex flex-wrap items-start justify-between gap-3">
                         <div class="space-y-1">
-                          <p class="text-sm font-semibold text-foreground">{{ project.name }}</p>
+                          <div class="flex flex-wrap items-center gap-2">
+                            <p class="text-sm font-semibold text-foreground">{{ project.name }}</p>
+                            <span
+                              v-if="isCurrentProject(project.id)"
+                              class="inline-flex rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary"
+                            >
+                              当前项目
+                            </span>
+                          </div>
                           <p class="text-xs text-muted-foreground">{{ project.description || '暂无描述' }}</p>
                           <p class="font-mono text-[11px] text-muted-foreground">{{ project.gitUrl }}</p>
                           <p class="text-xs text-muted-foreground">默认分支：{{ project.defaultBranch }}</p>
@@ -1200,14 +1230,14 @@ onBeforeUnmount(() => {
                           <button
                             type="button"
                             class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
-                            @click="openEditProjectModal(project)"
+                            @click.stop="openEditProjectModal(project)"
                           >
                             编辑
                           </button>
                           <button
                             type="button"
                             class="inline-flex h-8 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20"
-                            @click="openProjectDeleteModal(project)"
+                            @click.stop="openProjectDeleteModal(project)"
                           >
                             删除
                           </button>

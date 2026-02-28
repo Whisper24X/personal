@@ -58,11 +58,58 @@ const normalizeQueryValue = (queryValue: unknown) => {
 }
 
 const normalizeProjectShort = (projectName: string) => {
-  return projectName
+  const normalizedName = projectName
     .trim()
     .replace(/\s+/g, '')
-    .slice(0, 4)
-    .toUpperCase()
+  const short = normalizedName.slice(0, 4).toUpperCase()
+  return short || 'PRJ'
+}
+
+const buildDisambiguatedProjectShort = (baseShort: string, index: number) => {
+  const base36Index = index.toString(36).toUpperCase()
+
+  if (base36Index.length === 1) {
+    return `${baseShort.slice(0, 3).padEnd(3, 'X')}${base36Index}`
+  }
+
+  if (base36Index.length === 2) {
+    return `${baseShort.slice(0, 2).padEnd(2, 'X')}${base36Index}`
+  }
+
+  return `${baseShort.slice(0, 1).padEnd(1, 'X')}${base36Index.slice(-3)}`
+}
+
+const assignUniqueProjectShorts = (projects: ProjectItem[]) => {
+  const shortGroups = new Map<string, ProjectItem[]>()
+
+  for (const project of projects) {
+    const baseShort = normalizeProjectShort(project.name)
+    const groupedProjects = shortGroups.get(baseShort) ?? []
+    groupedProjects.push(project)
+    shortGroups.set(baseShort, groupedProjects)
+  }
+
+  for (const [baseShort, groupedProjects] of shortGroups) {
+    if (groupedProjects.length <= 1) {
+      groupedProjects[0]!.short = baseShort
+      continue
+    }
+
+    const sortedProjects = [...groupedProjects].sort((left, right) => {
+      const compareByName = left.name.localeCompare(right.name)
+      if (compareByName !== 0) {
+        return compareByName
+      }
+
+      return left.id.localeCompare(right.id)
+    })
+
+    sortedProjects.forEach((project, index) => {
+      project.short = buildDisambiguatedProjectShort(baseShort, index + 1)
+    })
+  }
+
+  return projects
 }
 
 const loadStoredSelectedProjectId = () => {
@@ -169,7 +216,7 @@ export const useLayout = () => {
     return ''
   }
 
-  const syncProjectSelection = () => {
+  const syncProjectSelection = ({ preserveCurrentBusinessLine = false }: { preserveCurrentBusinessLine?: boolean } = {}) => {
     const routeProjectId = getProjectIdFromRoute()
     if (routeProjectId) {
       setSelectedProjectId(routeProjectId)
@@ -191,7 +238,7 @@ export const useLayout = () => {
     const selectedProjectBusinessLine = selectedProjectId.value
       ? businessLines.value.find((line) => line.projects.some((project) => project.id === selectedProjectId.value))
       : undefined
-    if (selectedProjectBusinessLine) {
+    if (selectedProjectBusinessLine && !preserveCurrentBusinessLine) {
       activeBusinessLineId.value = selectedProjectBusinessLine.id
       return
     }
@@ -240,7 +287,9 @@ export const useLayout = () => {
       const nextBusinessLines = Array.from(lineMap.values())
         .map((line) => ({
           ...line,
-          projects: [...line.projects].sort((left, right) => left.name.localeCompare(right.name)),
+          projects: assignUniqueProjectShorts(
+            [...line.projects].sort((left, right) => left.name.localeCompare(right.name)),
+          ),
         }))
         .sort((left, right) => left.name.localeCompare(right.name))
 
@@ -418,7 +467,22 @@ export const useLayout = () => {
     if (!matchedBusinessLine) return
 
     activeBusinessLineId.value = matchedBusinessLine.id
-    syncProjectSelection()
+    syncProjectSelection({ preserveCurrentBusinessLine: true })
+    hideProjectTooltip()
+  }
+
+  const selectProject = (projectId: string) => {
+    if (!projectId) {
+      return
+    }
+
+    const matchedBusinessLine = findBusinessLineByProjectId(projectId)
+    if (!matchedBusinessLine) {
+      return
+    }
+
+    activeBusinessLineId.value = matchedBusinessLine.id
+    setSelectedProjectId(projectId)
     hideProjectTooltip()
   }
 
@@ -561,6 +625,7 @@ export const useLayout = () => {
     availableSettingsSections,
     businessLineItems,
     activeBusinessLineId,
+    selectedProjectId,
     currentBusinessLineName,
     canCreateBusinessLine,
     projectTooltipVisible,
@@ -587,5 +652,6 @@ export const useLayout = () => {
     closeSettings,
     setSettingsSection,
     selectBusinessLine,
+    selectProject,
   }
 }

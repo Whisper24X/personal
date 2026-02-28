@@ -18,6 +18,7 @@ const {
   availableSettingsSections,
   businessLineItems,
   activeBusinessLineId,
+  selectedProjectId,
   currentBusinessLineName,
   canCreateBusinessLine,
   projectTooltipVisible,
@@ -44,6 +45,7 @@ const {
   closeSettings,
   setSettingsSection,
   selectBusinessLine,
+  selectProject,
 } = useLayout()
 </script>
 
@@ -121,9 +123,11 @@ const {
       :lines="businessLineItems"
       :projects="projectItems"
       :active-business-line-id="activeBusinessLineId"
+      :selected-project-id="selectedProjectId"
       :can-create-business-line="canCreateBusinessLine"
       @update:open="setBusinessLineModalOpen"
       @select-line="selectBusinessLine"
+      @select-project="selectProject"
       @request-refresh="refreshLayoutData"
     />
 

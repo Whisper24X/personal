@@ -57,6 +57,7 @@ const buildProps = (canCreateBusinessLine = true, open = true) => ({
   open,
   canCreateBusinessLine,
   activeBusinessLineId: 'line-1',
+  selectedProjectId: '',
   lines: [
     {
       id: 'line-1',
@@ -202,5 +203,27 @@ describe('BusinessLineModal', () => {
       defaultBranch: 'main',
     })
     expect(wrapper.emitted('request-refresh')).toBeTruthy()
+  })
+
+  it('emits select-project when choosing a project as current', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineModal, {
+      props: buildProps(true, false),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+
+    const projectCard = wrapper.find('[data-project-id="project-1"]')
+    expect(projectCard.exists()).toBe(true)
+    await projectCard.trigger('click')
+
+    expect(wrapper.emitted('select-project')).toEqual([['project-1']])
   })
 })
