@@ -29,6 +29,10 @@ import { AuthGuard } from '@nestjs/passport';
 import { BusinessLineMember } from './domain/business-line-member';
 import { CreateBusinessLineMemberDto } from './dto/create-business-line-member.dto';
 import { UpdateBusinessLineMemberDto } from './dto/update-business-line-member.dto';
+import { CreateBusinessLineInviteDto } from './dto/create-business-line-invite.dto';
+import { BusinessLineInviteDto } from './dto/business-line-invite.dto';
+import { AcceptBusinessLineInviteDto } from './dto/accept-business-line-invite.dto';
+import { AcceptBusinessLineInviteResponseDto } from './dto/accept-business-line-invite-response.dto';
 import {
   InfinityPaginationResponse,
   InfinityPaginationResponseDto,
@@ -87,6 +91,21 @@ export class BusinessLinesController {
         },
       }),
       { page, limit },
+    );
+  }
+
+  @Post('invitations/accept')
+  @ApiOkResponse({
+    type: AcceptBusinessLineInviteResponseDto,
+  })
+  @HttpCode(HttpStatus.OK)
+  acceptInvite(
+    @Request() request,
+    @Body() acceptBusinessLineInviteDto: AcceptBusinessLineInviteDto,
+  ) {
+    return this.businessLinesService.acceptInvite(
+      acceptBusinessLineInviteDto,
+      request.user,
     );
   }
 
@@ -180,6 +199,28 @@ export class BusinessLinesController {
     return this.businessLinesService.addMember(
       businessLineId,
       createBusinessLineMemberDto,
+      request.user,
+    );
+  }
+
+  @Post(':businessLineId/invitations')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiCreatedResponse({
+    type: BusinessLineInviteDto,
+  })
+  @HttpCode(HttpStatus.CREATED)
+  createInvite(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Body() createBusinessLineInviteDto: CreateBusinessLineInviteDto,
+  ) {
+    return this.businessLinesService.createInvite(
+      businessLineId,
+      createBusinessLineInviteDto,
       request.user,
     );
   }

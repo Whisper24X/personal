@@ -1,9 +1,16 @@
 import request from 'supertest';
-import { APP_URL, ADMIN_PASSWORD, ADMIN_USERNAME } from '../utils/constants';
+import {
+  APP_URL,
+  ADMIN_PASSWORD,
+  ADMIN_USERNAME,
+  TESTER_PASSWORD,
+  TESTER_USERNAME,
+} from '../utils/constants';
 
 describe('Business Lines Module', () => {
   const app = APP_URL;
   let adminToken: string;
+  let testerToken: string;
 
   beforeAll(async () => {
     await request(app)
@@ -12,6 +19,14 @@ describe('Business Lines Module', () => {
       .expect(200)
       .then(({ body }) => {
         adminToken = body.token;
+      });
+
+    await request(app)
+      .post('/api/v1/auth/login')
+      .send({ username: TESTER_USERNAME, password: TESTER_PASSWORD })
+      .expect(200)
+      .then(({ body }) => {
+        testerToken = body.token;
       });
   });
 
@@ -83,6 +98,42 @@ describe('Business Lines Module', () => {
       .expect(({ body }) => {
         expect(Array.isArray(body)).toBeTruthy();
       });
+
+    const inviteResponse = await request(app)
+      .post(`/api/v1/business-lines/${businessLineId}/invitations`)
+      .auth(adminToken, {
+        type: 'bearer',
+      })
+      .send({
+        role: 'member',
+      })
+      .expect(201)
+      .then(({ body }) => body);
+
+    expect(inviteResponse.token).toBeDefined();
+
+    await request(app)
+      .post('/api/v1/business-lines/invitations/accept')
+      .auth(testerToken, {
+        type: 'bearer',
+      })
+      .send({
+        token: inviteResponse.token,
+      })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.member?.role).toBe('member');
+      });
+
+    await request(app)
+      .post('/api/v1/business-lines/invitations/accept')
+      .auth(testerToken, {
+        type: 'bearer',
+      })
+      .send({
+        token: inviteResponse.token,
+      })
+      .expect(409);
 
     await request(app)
       .post(`/api/v1/business-lines/${businessLineId}/members`)

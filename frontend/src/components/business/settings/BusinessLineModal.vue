@@ -82,6 +82,8 @@ const memberPermissionModalError = ref('')
 const memberPermissionInitialUserId = ref('')
 const memberPermissionInitialBusinessRole = ref<BusinessLineMemberRole>('member')
 const memberPermissionInitialProjectRoles = ref<Record<string, ProjectPermissionRole>>({})
+const memberInvitationLink = ref('')
+const memberInvitationExpiresAt = ref('')
 
 const projectDeleteModalOpen = ref(false)
 const deletingProject = ref(false)
@@ -580,11 +582,11 @@ const confirmDeleteProject = async () => {
   }
 }
 
-const buildEmptyProjectRoles = () => {
+const buildEmptyProjectRoles = (defaultRole: ProjectPermissionRole = 'none') => {
   const projectRoles: Record<string, ProjectPermissionRole> = {}
 
   for (const project of lineProjects.value) {
-    projectRoles[project.id] = 'none'
+    projectRoles[project.id] = defaultRole
   }
 
   return projectRoles
@@ -627,7 +629,7 @@ const fetchProjectRoleMapForUser = async (userId: string) => {
   }
 }
 
-const openCreateMemberModal = async () => {
+const openCreateMemberModal = () => {
   if (!activeLineId.value) {
     return
   }
@@ -635,14 +637,12 @@ const openCreateMemberModal = async () => {
   memberPermissionModalMode.value = 'create'
   memberPermissionInitialUserId.value = ''
   memberPermissionInitialBusinessRole.value = 'member'
-  memberPermissionInitialProjectRoles.value = buildEmptyProjectRoles()
+  memberPermissionInitialProjectRoles.value = buildEmptyProjectRoles('developer')
   memberPermissionModalPreparing.value = false
   memberPermissionModalError.value = ''
+  memberInvitationLink.value = ''
+  memberInvitationExpiresAt.value = ''
   memberPermissionModalOpen.value = true
-
-  if (users.value.length === 0) {
-    await loadUsers()
-  }
 }
 
 const openEditMemberModal = async (member: BusinessLineMember) => {
@@ -734,6 +734,11 @@ const syncMemberProjectPermissions = async (
 }
 
 const submitMemberPermission = async (payload: {
+  mode: 'create'
+  businessRole: BusinessLineMemberRole
+  projectRoles: Record<string, ProjectPermissionRole>
+} | {
+  mode: 'edit'
   userId: string
   businessRole: BusinessLineMemberRole
   projectRoles: Record<string, ProjectPermissionRole>
@@ -746,11 +751,17 @@ const submitMemberPermission = async (payload: {
   memberPermissionModalError.value = ''
 
   try {
-    if (memberPermissionModalMode.value === 'create') {
-      await businessLinesApi.addMember(activeLineId.value, {
-        userId: payload.userId,
+    if (payload.mode === 'create') {
+      const invite = await businessLinesApi.createInvitation(activeLineId.value, {
         role: payload.businessRole,
+        projectRoles: payload.projectRoles,
       })
+      const inviteUrl = new URL('/business-lines/invite', window.location.origin)
+      inviteUrl.searchParams.set('token', invite.token)
+      memberInvitationLink.value = inviteUrl.toString()
+      memberInvitationExpiresAt.value = invite.expiresAt
+      message.success('邀请链接已生成')
+      return
     } else {
       const currentMember = lineMembers.value.find((member) => member.userId === payload.userId)
       if (currentMember && currentMember.role !== payload.businessRole) {
@@ -758,18 +769,20 @@ const submitMemberPermission = async (payload: {
           role: payload.businessRole,
         })
       }
-    }
 
-    const failedProjects = await syncMemberProjectPermissions(payload.userId, payload.projectRoles)
-    if (failedProjects.length > 0) {
-      message.warning(`部分项目权限更新失败：${failedProjects.join('、')}`)
-    }
+      const failedProjects = await syncMemberProjectPermissions(payload.userId, payload.projectRoles)
+      if (failedProjects.length > 0) {
+        message.warning(`部分项目权限更新失败：${failedProjects.join('、')}`)
+      }
 
-    memberPermissionModalOpen.value = false
-    await refreshForCurrentLine({ includeMembers: true })
-    message.success('保存成员权限成功')
+      memberPermissionModalOpen.value = false
+      await refreshForCurrentLine({ includeMembers: true })
+      message.success('保存成员权限成功')
+    }
   } catch (error) {
-    message.error(toErrorMessage(error, '保存成员权限失败'))
+    message.error(
+      toErrorMessage(error, payload.mode === 'create' ? '生成邀请链接失败' : '保存成员权限失败'),
+    )
   } finally {
     memberPermissionModalSubmitting.value = false
   }
@@ -1180,7 +1193,7 @@ onBeforeUnmount(() => {
                         :disabled="!activeLineId"
                         @click="openCreateMemberModal"
                       >
-                        添加成员
+                        邀请成员
                       </button>
                     </div>
                   </div>
@@ -1241,7 +1254,7 @@ onBeforeUnmount(() => {
                         </tr>
 
                         <tr v-if="!loadingMembers && filteredMembers.length === 0">
-                          <td colspan="4" class="px-4 py-5 text-sm text-muted-foreground">暂无成员，请先添加。</td>
+                          <td colspan="4" class="px-4 py-5 text-sm text-muted-foreground">暂无成员，请先邀请。</td>
                         </tr>
                       </tbody>
                     </table>
@@ -1327,6 +1340,8 @@ onBeforeUnmount(() => {
         :initial-user-id="memberPermissionInitialUserId"
         :initial-business-role="memberPermissionInitialBusinessRole"
         :initial-project-roles="memberPermissionInitialProjectRoles"
+        :invite-link="memberInvitationLink"
+        :invite-expires-at="memberInvitationExpiresAt"
         :error-message="memberPermissionModalError"
         @update:open="memberPermissionModalOpen = $event"
         @submit="submitMemberPermission"

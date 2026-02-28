@@ -35,6 +35,30 @@ export type UpdateBusinessLineMemberPayload = {
   role: BusinessLineMemberRole
 }
 
+export type BusinessLineInviteProjectRole = 'none' | 'manage' | 'developer' | 'viewer'
+
+export type CreateBusinessLineInvitePayload = {
+  role: BusinessLineMemberRole
+  projectRoles?: Record<string, BusinessLineInviteProjectRole>
+}
+
+export type BusinessLineInvite = {
+  token: string
+  expiresAt: string
+  businessLineId: string
+  role: BusinessLineMemberRole
+  projectRoles: Record<string, BusinessLineInviteProjectRole>
+}
+
+export type AcceptBusinessLineInvitePayload = {
+  token: string
+}
+
+export type AcceptBusinessLineInviteResponse = {
+  member: BusinessLineMember
+  failedProjects: string[]
+}
+
 export const businessLinesApi = {
   list(params?: { page?: number; limit?: number }) {
     return apiHttp.get<InfinityPaginationResponse<BusinessLine>>('/business-lines', {
@@ -65,6 +89,14 @@ export const businessLinesApi = {
 
   addMember(businessLineId: string, payload: CreateBusinessLineMemberPayload) {
     return apiHttp.post<BusinessLineMember>(`/business-lines/${businessLineId}/members`, payload)
+  },
+
+  createInvitation(businessLineId: string, payload: CreateBusinessLineInvitePayload) {
+    return apiHttp.post<BusinessLineInvite>(`/business-lines/${businessLineId}/invitations`, payload)
+  },
+
+  acceptInvitation(payload: AcceptBusinessLineInvitePayload) {
+    return apiHttp.post<AcceptBusinessLineInviteResponse>('/business-lines/invitations/accept', payload)
   },
 
   updateMember(

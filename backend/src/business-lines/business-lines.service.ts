@@ -1,5 +1,6 @@
 import {
   // common
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -17,14 +18,40 @@ import { BusinessLineMemberRepository } from './infrastructure/persistence/busin
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { BusinessLineMemberRole } from './dto/business-line-member-role.enum';
 import { UsersService } from '../users/users.service';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import { AllConfigType } from '../config/config.type';
+import { ProjectRepository } from '../projects/infrastructure/persistence/project.repository';
+import { ProjectMemberRepository } from '../projects/infrastructure/persistence/project-member.repository';
+import { ProjectMemberRole } from '../projects/dto/project-member-role.enum';
+import { CreateBusinessLineInviteDto } from './dto/create-business-line-invite.dto';
+import { BusinessLineInviteDto } from './dto/business-line-invite.dto';
+import { BusinessLineInviteProjectRole } from './dto/business-line-invite-project-role.enum';
+import { AcceptBusinessLineInviteDto } from './dto/accept-business-line-invite.dto';
+import { AcceptBusinessLineInviteResponseDto } from './dto/accept-business-line-invite-response.dto';
+import ms from 'ms';
+
+type BusinessLineInviteTokenPayload = {
+  type: 'business-line-invite';
+  businessLineId: string;
+  role: BusinessLineMemberRole;
+  projectRoles: Record<string, BusinessLineInviteProjectRole>;
+  issuerId: string;
+};
 
 @Injectable()
 export class BusinessLinesService {
+  private static readonly INVITE_TOKEN_EXPIRES_IN: ms.StringValue = '7d';
+
   constructor(
     // Dependencies here
     private readonly businessLineRepository: BusinessLineRepository,
     private readonly businessLineMemberRepository: BusinessLineMemberRepository,
     private readonly usersService: UsersService,
+    private readonly projectRepository: ProjectRepository,
+    private readonly projectMemberRepository: ProjectMemberRepository,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService<AllConfigType>,
   ) {}
 
   async create(
@@ -203,6 +230,88 @@ export class BusinessLinesService {
     });
   }
 
+  async createInvite(
+    businessLineId: BusinessLine['id'],
+    createBusinessLineInviteDto: CreateBusinessLineInviteDto,
+    currentUser: JwtPayloadType,
+  ): Promise<BusinessLineInviteDto> {
+    const actorMember = await this.ensureCanManageBusinessLineMembers(
+      businessLineId,
+      currentUser,
+    );
+
+    this.ensureActorCanManageMemberMutation({
+      currentUser,
+      actorMember,
+      nextRole: createBusinessLineInviteDto.role,
+    });
+
+    const projectRoles = this.normalizeInviteProjectRoles(
+      createBusinessLineInviteDto.projectRoles,
+    );
+
+    const tokenPayload: BusinessLineInviteTokenPayload = {
+      type: 'business-line-invite',
+      businessLineId,
+      role: createBusinessLineInviteDto.role,
+      projectRoles,
+      issuerId: currentUser.sub,
+    };
+
+    const token = await this.jwtService.signAsync(tokenPayload, {
+      secret: this.configService.getOrThrow('auth.secret', { infer: true }),
+      expiresIn: BusinessLinesService.INVITE_TOKEN_EXPIRES_IN,
+    });
+
+    const expiresAt = new Date(
+      Date.now() + ms(BusinessLinesService.INVITE_TOKEN_EXPIRES_IN),
+    ).toISOString();
+
+    return {
+      token,
+      expiresAt,
+      businessLineId,
+      role: createBusinessLineInviteDto.role,
+      projectRoles,
+    };
+  }
+
+  async acceptInvite(
+    acceptBusinessLineInviteDto: AcceptBusinessLineInviteDto,
+    currentUser: JwtPayloadType,
+  ): Promise<AcceptBusinessLineInviteResponseDto> {
+    const payload = await this.verifyInviteToken(acceptBusinessLineInviteDto);
+
+    await this.ensureBusinessLineExists(payload.businessLineId);
+
+    const existedMember =
+      await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
+        payload.businessLineId,
+        currentUser.sub,
+      );
+
+    if (existedMember) {
+      throw new ConflictException('Member already exists in business line');
+    }
+
+    const member = await this.businessLineMemberRepository.create({
+      businessLineId: payload.businessLineId,
+      userId: currentUser.sub,
+      role: payload.role,
+    });
+
+    const failedProjects = await this.syncInviteProjectRoles({
+      businessLineId: payload.businessLineId,
+      userId: currentUser.sub,
+      projectRoles: payload.projectRoles,
+    });
+
+    return {
+      member,
+      failedProjects,
+    };
+  }
+
   async updateMemberRole(
     businessLineId: BusinessLine['id'],
     userId: string,
@@ -350,6 +459,173 @@ export class BusinessLinesService {
     }
   }
 
+  private normalizeInviteProjectRoles(
+    rawProjectRoles?: Record<string, BusinessLineInviteProjectRole>,
+  ): Record<string, BusinessLineInviteProjectRole> {
+    if (!rawProjectRoles) {
+      return {};
+    }
+
+    if (Array.isArray(rawProjectRoles)) {
+      throw new BadRequestException('Invalid project role payload');
+    }
+
+    const nextProjectRoles: Record<string, BusinessLineInviteProjectRole> = {};
+
+    for (const [projectId, role] of Object.entries(rawProjectRoles)) {
+      if (!this.isUuid(projectId)) {
+        throw new BadRequestException('Invalid project id in invite payload');
+      }
+
+      if (!Object.values(BusinessLineInviteProjectRole).includes(role)) {
+        throw new BadRequestException('Invalid project role in invite payload');
+      }
+
+      nextProjectRoles[projectId] = role;
+    }
+
+    return nextProjectRoles;
+  }
+
+  private async verifyInviteToken(
+    acceptBusinessLineInviteDto: AcceptBusinessLineInviteDto,
+  ): Promise<BusinessLineInviteTokenPayload> {
+    try {
+      const payload = await this.jwtService.verifyAsync<
+        Record<string, unknown>
+      >(acceptBusinessLineInviteDto.token, {
+        secret: this.configService.getOrThrow('auth.secret', {
+          infer: true,
+        }),
+      });
+
+      if (!this.isInviteTokenPayload(payload)) {
+        throw new BadRequestException('Invalid invitation token payload');
+      }
+
+      return {
+        ...payload,
+        projectRoles: this.normalizeInviteProjectRoles(payload.projectRoles),
+      };
+    } catch (error) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof ConflictException
+      ) {
+        throw error;
+      }
+
+      throw new ForbiddenException('Invalid or expired invitation token');
+    }
+  }
+
+  private isInviteTokenPayload(
+    payload: unknown,
+  ): payload is BusinessLineInviteTokenPayload {
+    if (!payload || typeof payload !== 'object') {
+      return false;
+    }
+
+    if (Array.isArray(payload)) {
+      return false;
+    }
+
+    const candidate = payload as Partial<BusinessLineInviteTokenPayload>;
+
+    return (
+      candidate.type === 'business-line-invite' &&
+      typeof candidate.businessLineId === 'string' &&
+      this.isUuid(candidate.businessLineId) &&
+      typeof candidate.issuerId === 'string' &&
+      this.isUuid(candidate.issuerId) &&
+      Object.values(BusinessLineMemberRole).includes(
+        candidate.role as BusinessLineMemberRole,
+      ) &&
+      typeof candidate.projectRoles === 'object' &&
+      !Array.isArray(candidate.projectRoles) &&
+      candidate.projectRoles !== null
+    );
+  }
+
+  private async syncInviteProjectRoles({
+    businessLineId,
+    userId,
+    projectRoles,
+  }: {
+    businessLineId: string;
+    userId: string;
+    projectRoles: Record<string, BusinessLineInviteProjectRole>;
+  }): Promise<string[]> {
+    const failedProjects: string[] = [];
+
+    for (const [projectId, role] of Object.entries(projectRoles)) {
+      if (role === BusinessLineInviteProjectRole.none) {
+        continue;
+      }
+
+      const nextRole = this.mapInviteProjectRoleToProjectRole(role);
+      if (!nextRole) {
+        continue;
+      }
+
+      try {
+        const project = await this.projectRepository.findById(projectId);
+        if (!project || project.businessLineId !== businessLineId) {
+          failedProjects.push(projectId);
+          continue;
+        }
+
+        const existedMember =
+          await this.projectMemberRepository.findByProjectIdAndUserId(
+            projectId,
+            userId,
+          );
+
+        if (!existedMember) {
+          await this.projectMemberRepository.create({
+            projectId,
+            userId,
+            role: nextRole,
+          });
+          continue;
+        }
+
+        if (existedMember.role === ProjectMemberRole.owner) {
+          continue;
+        }
+
+        if (existedMember.role !== nextRole) {
+          await this.projectMemberRepository.update(projectId, userId, {
+            role: nextRole,
+          });
+        }
+      } catch (error) {
+        void error;
+        failedProjects.push(projectId);
+      }
+    }
+
+    return failedProjects;
+  }
+
+  private mapInviteProjectRoleToProjectRole(
+    role: BusinessLineInviteProjectRole,
+  ): ProjectMemberRole | null {
+    if (role === BusinessLineInviteProjectRole.none) {
+      return null;
+    }
+
+    if (role === BusinessLineInviteProjectRole.manage) {
+      return ProjectMemberRole.maintainer;
+    }
+
+    if (role === BusinessLineInviteProjectRole.developer) {
+      return ProjectMemberRole.developer;
+    }
+
+    return ProjectMemberRole.viewer;
+  }
+
   private async findBusinessLinesForUser(
     userId: string,
     paginationOptions: IPaginationOptions,
@@ -459,5 +735,11 @@ export class BusinessLinesService {
     if (!businessLine) {
       throw new NotFoundException('Business line not found');
     }
+  }
+
+  private isUuid(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    );
   }
 }

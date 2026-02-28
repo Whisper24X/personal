@@ -87,6 +87,15 @@ export const systemRoutes: AppRouteRecord[] = [
     },
   },
   {
+    path: '/business-lines/invite',
+    name: 'business-line-invite',
+    component: () => import('@/views/business-lines/invite.vue'),
+    meta: {
+      title: '业务线邀请',
+      requiresAuth: true,
+    },
+  },
+  {
     path: '/business-lines',
     redirect: toDashboardSettings('business-lines'),
     meta: {

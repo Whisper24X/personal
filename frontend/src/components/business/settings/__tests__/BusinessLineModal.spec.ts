@@ -16,6 +16,8 @@ const {
     remove: vi.fn(),
     listMembers: vi.fn(),
     addMember: vi.fn(),
+    createInvitation: vi.fn(),
+    acceptInvitation: vi.fn(),
     updateMember: vi.fn(),
     removeMember: vi.fn(),
   },
