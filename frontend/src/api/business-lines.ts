@@ -59,6 +59,28 @@ export type AcceptBusinessLineInviteResponse = {
   failedProjects: string[]
 }
 
+export type AgentToolConfig = {
+  id: string
+  businessLineId: string
+  toolId: string
+  name: string
+  description?: string | null
+  configJson: Record<string, unknown>
+  isDefault: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type CreateAgentToolConfigPayload = {
+  toolId: string
+  name: string
+  description?: string
+  configJson: Record<string, unknown>
+  isDefault?: boolean
+}
+
+export type UpdateAgentToolConfigPayload = Partial<CreateAgentToolConfigPayload>
+
 export const businessLinesApi = {
   list(params?: { page?: number; limit?: number }) {
     return apiHttp.get<InfinityPaginationResponse<BusinessLine>>('/business-lines', {
@@ -116,5 +138,30 @@ export const businessLinesApi = {
 
   removeMember(businessLineId: string, userId: string) {
     return apiHttp.delete<void>(`/business-lines/${businessLineId}/members/${userId}`)
+  },
+
+  listAgentToolConfigs(businessLineId: string, params?: { toolId?: string }) {
+    return apiHttp.get<AgentToolConfig[]>(`/business-lines/${businessLineId}/agent-tool-configs`, {
+      toolId: params?.toolId,
+    })
+  },
+
+  createAgentToolConfig(businessLineId: string, payload: CreateAgentToolConfigPayload) {
+    return apiHttp.post<AgentToolConfig>(`/business-lines/${businessLineId}/agent-tool-configs`, payload)
+  },
+
+  updateAgentToolConfig(
+    businessLineId: string,
+    configId: string,
+    payload: UpdateAgentToolConfigPayload,
+  ) {
+    return apiHttp.patch<AgentToolConfig>(
+      `/business-lines/${businessLineId}/agent-tool-configs/${configId}`,
+      payload,
+    )
+  },
+
+  removeAgentToolConfig(businessLineId: string, configId: string) {
+    return apiHttp.delete<void>(`/business-lines/${businessLineId}/agent-tool-configs/${configId}`)
   },
 }

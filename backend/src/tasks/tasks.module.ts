@@ -10,6 +10,7 @@ import { TaskRuntimeService } from './task-runtime.service';
 import { AgentRunnerService } from './agent-runner.service';
 import { SkillsModule } from '../skills/skills.module';
 import { McpsModule } from '../mcps/mcps.module';
+import { RelationalBusinessLinePersistenceModule } from '../business-lines/infrastructure/persistence/relational/relational-persistence.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { McpsModule } from '../mcps/mcps.module';
     NotificationsModule,
     SkillsModule,
     McpsModule,
+    RelationalBusinessLinePersistenceModule,
   ],
   controllers: [TasksController],
   providers: [

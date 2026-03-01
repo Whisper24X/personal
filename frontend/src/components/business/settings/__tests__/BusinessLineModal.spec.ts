@@ -3,12 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import BusinessLineModal from '@/components/business/settings/BusinessLineModal.vue'
 
-const {
-  businessLinesApi,
-  projectsApi,
-  usersApi,
-  fetchAllPages,
-} = vi.hoisted(() => ({
+const { businessLinesApi, projectsApi, usersApi, fetchAllPages } = vi.hoisted(() => ({
   businessLinesApi: {
     detail: vi.fn(),
     create: vi.fn(),
@@ -20,9 +15,14 @@ const {
     acceptInvitation: vi.fn(),
     updateMember: vi.fn(),
     removeMember: vi.fn(),
+    listAgentToolConfigs: vi.fn(),
+    createAgentToolConfig: vi.fn(),
+    updateAgentToolConfig: vi.fn(),
+    removeAgentToolConfig: vi.fn(),
   },
   projectsApi: {
     list: vi.fn(),
+    detail: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     remove: vi.fn(),
@@ -81,6 +81,7 @@ beforeEach(() => {
   })
 
   businessLinesApi.listMembers.mockResolvedValue([])
+  businessLinesApi.listAgentToolConfigs.mockResolvedValue([])
 
   projectsApi.list.mockResolvedValue({
     data: [
@@ -94,6 +95,22 @@ beforeEach(() => {
       },
     ],
     hasNextPage: false,
+  })
+
+  projectsApi.detail.mockResolvedValue({
+    id: 'project-1',
+    businessLineId: 'line-1',
+    name: 'Guard Backend',
+    description: 'Main service',
+    gitUrl: 'git@gitlab.example.com:group/guard-backend.git',
+    defaultBranch: 'main',
+    configJson: {
+      agentAdapter: 'codex',
+      agentRunnerEnabled: false,
+      agentRunner: {
+        timeoutSeconds: 600,
+      },
+    },
   })
 
   projectsApi.create.mockResolvedValue({
@@ -119,7 +136,7 @@ beforeEach(() => {
 })
 
 describe('BusinessLineModal', () => {
-  it('renders left-right layout with 3 tabs by default', async () => {
+  it('renders left-right layout with 4 tabs by default', async () => {
     const pinia = createPinia()
     const wrapper = mount(BusinessLineModal, {
       props: buildProps(true),
@@ -136,8 +153,23 @@ describe('BusinessLineModal', () => {
     expect(wrapper.text()).toContain('业务线')
     expect(wrapper.text()).toContain('项目')
     expect(wrapper.text()).toContain('成员/权限')
+    expect(wrapper.text()).toContain('Agent CLI')
     expect(wrapper.text()).toContain('设置')
     expect(wrapper.text()).toContain('创建业务线')
+
+    const agentCliTab = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === 'Agent CLI')
+
+    expect(agentCliTab).toBeDefined()
+    await agentCliTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Claude Code')
+    expect(wrapper.text()).toContain('Codex')
+    expect(wrapper.text()).toContain('Gemini CLI')
+    expect(wrapper.text()).toContain('Cursor Agent')
+    expect(wrapper.text()).toContain('Opencode')
   })
 
   it('disables create business line button when user has no permission', async () => {

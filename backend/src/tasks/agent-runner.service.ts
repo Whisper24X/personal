@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { spawn } from 'child_process';
 import path from 'path';
+import { AgentToolConfig } from '../business-lines/domain/agent-tool-config';
+import { AgentToolConfigRepository } from '../business-lines/infrastructure/persistence/agent-tool-config.repository';
 import { Project } from '../projects/domain/project';
 import { Task } from './domain/task';
 import { TaskNode } from './domain/task-node';
 
-type AgentAdapter = 'codex' | 'cursor' | 'claude';
+type AgentAdapter = 'codex' | 'cursor' | 'claude' | 'gemini' | 'opencode';
 
 type AgentRunnerConfig = {
   adapter: AgentAdapter;
@@ -14,6 +16,28 @@ type AgentRunnerConfig = {
   timeoutMs: number;
   cwd: string;
   env: Record<string, string>;
+};
+
+type RunnerConfigInput = {
+  command?: string;
+  args?: string[];
+  timeoutSeconds?: number;
+  env?: Record<string, string>;
+};
+
+type AgentToolConfigEntry = {
+  id?: string;
+  name?: string;
+  adapter: AgentAdapter;
+  businessLineId?: string;
+  isDefault: boolean;
+  config: Record<string, unknown>;
+};
+
+type ResolvedAgentToolConfig = {
+  runnerConfig: RunnerConfigInput;
+  configId?: string;
+  configName?: string;
 };
 
 export type AgentRunnerResult = {
@@ -40,6 +64,57 @@ export class AgentRunnerService {
     'tmp',
     'worktrees',
   );
+  private readonly toolConfigAllowedKeys: Record<AgentAdapter, Set<string>> = {
+    codex: new Set([
+      'command',
+      'args',
+      'timeoutSeconds',
+      'timeout_seconds',
+      'base_command_override',
+      'additional_params',
+      'env',
+    ]),
+    cursor: new Set([
+      'command',
+      'args',
+      'timeoutSeconds',
+      'timeout_seconds',
+      'base_command_override',
+      'additional_params',
+      'env',
+    ]),
+    claude: new Set([
+      'command',
+      'args',
+      'timeoutSeconds',
+      'timeout_seconds',
+      'base_command_override',
+      'additional_params',
+      'env',
+    ]),
+    gemini: new Set([
+      'command',
+      'args',
+      'timeoutSeconds',
+      'timeout_seconds',
+      'base_command_override',
+      'additional_params',
+      'env',
+    ]),
+    opencode: new Set([
+      'command',
+      'args',
+      'timeoutSeconds',
+      'timeout_seconds',
+      'base_command_override',
+      'additional_params',
+      'env',
+    ]),
+  };
+
+  constructor(
+    private readonly agentToolConfigRepository: AgentToolConfigRepository,
+  ) {}
 
   async executeAgentNode({
     task,
@@ -55,7 +130,7 @@ export class AgentRunnerService {
     }
 
     const prompt = this.resolvePrompt(task, node);
-    const config = this.resolveRunnerConfig(project, task, node);
+    const config = await this.resolveRunnerConfig(project, task, node);
     return this.runWithConfig(config, prompt);
   }
 
@@ -90,18 +165,27 @@ export class AgentRunnerService {
     };
   }
 
-  private resolveRunnerConfig(
+  private async resolveRunnerConfig(
     project: Project,
     task: Task,
     node: TaskNode,
-  ): AgentRunnerConfig {
+  ): Promise<AgentRunnerConfig> {
     const configJson =
       project.configJson && typeof project.configJson === 'object'
         ? (project.configJson as Record<string, unknown>)
         : {};
 
     const adapter = this.resolveAdapter(configJson);
-    const runnerConfig = this.readRunnerConfig(configJson);
+    const baseRunnerConfig = this.readRunnerConfig(configJson);
+    const agentToolConfig = await this.resolveAgentToolConfig(
+      configJson,
+      project,
+      adapter,
+    );
+    const runnerConfig = this.mergeRunnerConfig(
+      baseRunnerConfig,
+      agentToolConfig?.runnerConfig,
+    );
 
     const command =
       runnerConfig.command?.trim() || this.resolveDefaultCommand(adapter);
@@ -117,8 +201,15 @@ export class AgentRunnerService {
       ...(runnerConfig.env ? this.resolveStringEnv(runnerConfig.env) : {}),
       AINATIVE_TASK_ID: task.id,
       AINATIVE_PROJECT_ID: project.id,
+      AINATIVE_BUSINESS_LINE_ID: project.businessLineId,
       AINATIVE_NODE_ID: node.id,
       AINATIVE_AGENT_ADAPTER: adapter,
+      ...(agentToolConfig?.configId
+        ? { AINATIVE_AGENT_TOOL_CONFIG_ID: agentToolConfig.configId }
+        : {}),
+      ...(agentToolConfig?.configName
+        ? { AINATIVE_AGENT_TOOL_CONFIG_NAME: agentToolConfig.configName }
+        : {}),
     };
 
     const cwd = this.resolveRunnerCwd(task, project);
@@ -201,27 +292,417 @@ export class AgentRunnerService {
       return {};
     }
 
-    const rawRunner = runner as Record<string, unknown>;
+    return this.readRunnerConfigFromRaw(runner as Record<string, unknown>);
+  }
 
-    const args = Array.isArray(rawRunner.args)
-      ? rawRunner.args
-          .filter((item) => typeof item === 'string')
-          .map((item) => String(item))
-      : undefined;
+  private readRunnerConfigFromRaw(
+    raw: Record<string, unknown>,
+  ): RunnerConfigInput {
+    const args =
+      this.resolveStringArray(raw.args) ??
+      this.resolveStringArray(raw.additional_params);
+
+    const command =
+      typeof raw.command === 'string'
+        ? raw.command
+        : typeof raw.base_command_override === 'string'
+          ? raw.base_command_override
+          : undefined;
+
+    const timeoutSeconds = this.resolveTimeoutSeconds(
+      raw.timeoutSeconds ?? raw.timeout_seconds,
+    );
+
+    const env =
+      raw.env && typeof raw.env === 'object'
+        ? this.resolveStringEnv(raw.env as Record<string, unknown>)
+        : undefined;
 
     return {
-      command:
-        typeof rawRunner.command === 'string' ? rawRunner.command : undefined,
-      args: args?.length ? args : undefined,
-      timeoutSeconds:
-        typeof rawRunner.timeoutSeconds === 'number'
-          ? rawRunner.timeoutSeconds
-          : undefined,
-      env:
-        rawRunner.env && typeof rawRunner.env === 'object'
-          ? this.resolveStringEnv(rawRunner.env as Record<string, unknown>)
-          : undefined,
+      command,
+      args,
+      timeoutSeconds,
+      env,
     };
+  }
+
+  private resolveStringArray(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) {
+      return undefined;
+    }
+
+    const parsed = value
+      .filter((item) => typeof item === 'string')
+      .map((item) => String(item).trim())
+      .filter(Boolean);
+
+    return parsed.length ? parsed : undefined;
+  }
+
+  private resolveTimeoutSeconds(value: unknown): number | undefined {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      return value;
+    }
+
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+
+    return undefined;
+  }
+
+  private mergeRunnerConfig(
+    baseConfig: RunnerConfigInput,
+    overrideConfig?: RunnerConfigInput,
+  ): RunnerConfigInput {
+    if (!overrideConfig) {
+      return baseConfig;
+    }
+
+    const mergedEnv =
+      baseConfig.env || overrideConfig.env
+        ? {
+            ...(baseConfig.env ?? {}),
+            ...(overrideConfig.env ?? {}),
+          }
+        : undefined;
+
+    return {
+      command: overrideConfig.command ?? baseConfig.command,
+      args: overrideConfig.args ?? baseConfig.args,
+      timeoutSeconds:
+        overrideConfig.timeoutSeconds ?? baseConfig.timeoutSeconds,
+      env: mergedEnv,
+    };
+  }
+
+  private async resolveAgentToolConfig(
+    configJson: Record<string, unknown>,
+    project: Project,
+    adapter: AgentAdapter,
+  ): Promise<ResolvedAgentToolConfig | null> {
+    const persistedById = await this.resolvePersistedAgentToolConfigById(
+      configJson,
+      project,
+      adapter,
+    );
+    if (persistedById) {
+      return persistedById;
+    }
+
+    const persistedDefault = await this.resolvePersistedDefaultAgentToolConfig(
+      project,
+      adapter,
+    );
+    if (persistedDefault) {
+      return persistedDefault;
+    }
+
+    return this.resolveLegacyAgentToolConfig(configJson, project, adapter);
+  }
+
+  private async resolvePersistedAgentToolConfigById(
+    configJson: Record<string, unknown>,
+    project: Project,
+    adapter: AgentAdapter,
+  ): Promise<ResolvedAgentToolConfig | null> {
+    const requestedConfigId =
+      typeof configJson.agentToolConfigId === 'string' &&
+      configJson.agentToolConfigId.trim()
+        ? configJson.agentToolConfigId.trim()
+        : typeof configJson.agent_tool_config_id === 'string' &&
+            configJson.agent_tool_config_id.trim()
+          ? configJson.agent_tool_config_id.trim()
+          : null;
+
+    if (!requestedConfigId) {
+      return null;
+    }
+
+    const config =
+      await this.agentToolConfigRepository.findById(requestedConfigId);
+    if (!config || config.businessLineId !== project.businessLineId) {
+      return null;
+    }
+
+    if (this.toAgentAdapter(config.toolId) !== adapter) {
+      return null;
+    }
+
+    return this.toResolvedPersistedAgentToolConfig(adapter, config);
+  }
+
+  private async resolvePersistedDefaultAgentToolConfig(
+    project: Project,
+    adapter: AgentAdapter,
+  ): Promise<ResolvedAgentToolConfig | null> {
+    const toolIdCandidates = this.resolveToolIdCandidates(adapter);
+
+    for (const toolId of toolIdCandidates) {
+      const config =
+        await this.agentToolConfigRepository.findDefaultByBusinessLineIdAndToolId(
+          project.businessLineId,
+          toolId,
+        );
+
+      if (!config) {
+        continue;
+      }
+
+      const resolved = this.toResolvedPersistedAgentToolConfig(adapter, config);
+      if (resolved) {
+        return resolved;
+      }
+    }
+
+    return null;
+  }
+
+  private toResolvedPersistedAgentToolConfig(
+    adapter: AgentAdapter,
+    config: AgentToolConfig,
+  ): ResolvedAgentToolConfig | null {
+    const parsedConfig = this.parsePersistedConfigJson(config.configJson);
+    if (!parsedConfig) {
+      return null;
+    }
+
+    const sanitizedConfig = this.sanitizeAgentToolConfig(adapter, parsedConfig);
+
+    return {
+      runnerConfig: this.readRunnerConfigFromRaw(sanitizedConfig),
+      configId: config.id,
+      configName: config.name,
+    };
+  }
+
+  private parsePersistedConfigJson(
+    configJson: string,
+  ): Record<string, unknown> | null {
+    if (!configJson.trim()) {
+      return {};
+    }
+
+    try {
+      const parsed = JSON.parse(configJson);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return null;
+    }
+
+    return null;
+  }
+
+  private resolveLegacyAgentToolConfig(
+    configJson: Record<string, unknown>,
+    project: Project,
+    adapter: AgentAdapter,
+  ): ResolvedAgentToolConfig | null {
+    const rawList = configJson.agentToolConfigs;
+    if (!Array.isArray(rawList)) {
+      return null;
+    }
+
+    const entries = rawList
+      .map((item) => this.normalizeAgentToolConfigEntry(item))
+      .filter(
+        (item): item is AgentToolConfigEntry =>
+          item !== null && item.adapter === adapter,
+      );
+
+    if (!entries.length) {
+      return null;
+    }
+
+    const exactMatches = entries.filter(
+      (item) =>
+        item.businessLineId && item.businessLineId === project.businessLineId,
+    );
+    const globalMatches = entries.filter((item) => !item.businessLineId);
+    const selected =
+      this.pickAgentToolConfig(exactMatches) ??
+      this.pickAgentToolConfig(globalMatches);
+
+    if (!selected) {
+      return null;
+    }
+
+    const sanitizedConfig = this.sanitizeAgentToolConfig(
+      adapter,
+      selected.config,
+    );
+
+    return {
+      runnerConfig: this.readRunnerConfigFromRaw(sanitizedConfig),
+      configId: selected.id,
+      configName: selected.name,
+    };
+  }
+
+  private resolveToolIdCandidates(adapter: AgentAdapter): string[] {
+    if (adapter === 'codex') {
+      return ['codex', 'codex-cli'];
+    }
+
+    if (adapter === 'cursor') {
+      return ['cursor', 'cursor-agent'];
+    }
+
+    if (adapter === 'claude') {
+      return ['claude', 'claude-code'];
+    }
+
+    if (adapter === 'gemini') {
+      return ['gemini', 'gemini-cli'];
+    }
+
+    return ['opencode'];
+  }
+
+  private normalizeAgentToolConfigEntry(
+    raw: unknown,
+  ): AgentToolConfigEntry | null {
+    if (!raw || typeof raw !== 'object') {
+      return null;
+    }
+
+    const source = raw as Record<string, unknown>;
+    const adapter = this.toAgentAdapter(
+      typeof source.toolId === 'string'
+        ? source.toolId
+        : typeof source.tool_id === 'string'
+          ? source.tool_id
+          : typeof source.adapter === 'string'
+            ? source.adapter
+            : undefined,
+    );
+
+    if (!adapter) {
+      return null;
+    }
+
+    const config = this.resolveAgentToolConfigObject(source);
+    if (!config) {
+      return null;
+    }
+
+    const businessLineId =
+      typeof source.businessLineId === 'string' && source.businessLineId.trim()
+        ? source.businessLineId.trim()
+        : typeof source.business_line_id === 'string' &&
+            source.business_line_id.trim()
+          ? source.business_line_id.trim()
+          : undefined;
+
+    const id =
+      typeof source.id === 'string' && source.id.trim()
+        ? source.id.trim()
+        : undefined;
+    const name =
+      typeof source.name === 'string' && source.name.trim()
+        ? source.name.trim()
+        : undefined;
+
+    return {
+      id,
+      name,
+      adapter,
+      businessLineId,
+      isDefault: source.isDefault === true || source.is_default === 1,
+      config,
+    };
+  }
+
+  private resolveAgentToolConfigObject(
+    source: Record<string, unknown>,
+  ): Record<string, unknown> | null {
+    const rawConfig =
+      source.config ?? source.configJson ?? source.config_json ?? null;
+
+    if (!rawConfig) {
+      return {};
+    }
+
+    if (typeof rawConfig === 'object' && !Array.isArray(rawConfig)) {
+      return rawConfig as Record<string, unknown>;
+    }
+
+    if (typeof rawConfig === 'string' && rawConfig.trim()) {
+      try {
+        const parsed = JSON.parse(rawConfig);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>;
+        }
+      } catch {
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  private pickAgentToolConfig(
+    entries: AgentToolConfigEntry[],
+  ): AgentToolConfigEntry | null {
+    if (!entries.length) {
+      return null;
+    }
+
+    return entries.find((item) => item.isDefault) ?? entries[0];
+  }
+
+  private sanitizeAgentToolConfig(
+    adapter: AgentAdapter,
+    config: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const allowedKeys = this.toolConfigAllowedKeys[adapter];
+    if (!allowedKeys) {
+      return config;
+    }
+
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(config)) {
+      if (allowedKeys.has(key)) {
+        sanitized[key] = value;
+      }
+    }
+
+    return sanitized;
+  }
+
+  private toAgentAdapter(value?: string): AgentAdapter | null {
+    if (!value?.trim()) {
+      return null;
+    }
+
+    const normalized = value.trim().toLowerCase();
+
+    if (normalized === 'codex' || normalized === 'codex-cli') {
+      return 'codex';
+    }
+
+    if (normalized === 'cursor' || normalized === 'cursor-agent') {
+      return 'cursor';
+    }
+
+    if (normalized === 'claude' || normalized === 'claude-code') {
+      return 'claude';
+    }
+
+    if (normalized === 'gemini' || normalized === 'gemini-cli') {
+      return 'gemini';
+    }
+
+    if (normalized === 'opencode') {
+      return 'opencode';
+    }
+
+    return null;
   }
 
   private resolveStringEnv(
@@ -240,13 +721,11 @@ export class AgentRunnerService {
 
   private resolveAdapter(configJson: Record<string, unknown>): AgentAdapter {
     const rawAdapter = configJson.agentAdapter;
-
-    if (
-      rawAdapter === 'codex' ||
-      rawAdapter === 'cursor' ||
-      rawAdapter === 'claude'
-    ) {
-      return rawAdapter;
+    if (typeof rawAdapter === 'string') {
+      const normalized = this.toAgentAdapter(rawAdapter);
+      if (normalized) {
+        return normalized;
+      }
     }
 
     return 'codex';
@@ -257,6 +736,8 @@ export class AgentRunnerService {
       codex: process.env.AINATIVE_CODEX_RUNNER_COMMAND,
       cursor: process.env.AINATIVE_CURSOR_RUNNER_COMMAND,
       claude: process.env.AINATIVE_CLAUDE_RUNNER_COMMAND,
+      gemini: process.env.AINATIVE_GEMINI_RUNNER_COMMAND,
+      opencode: process.env.AINATIVE_OPENCODE_RUNNER_COMMAND,
     };
 
     const envCommand = envCommandMap[adapter];
@@ -268,6 +749,8 @@ export class AgentRunnerService {
       codex: 'codex',
       cursor: 'cursor-agent',
       claude: 'claude',
+      gemini: 'gemini',
+      opencode: 'opencode',
     };
 
     return defaultCommandMap[adapter];
@@ -278,6 +761,8 @@ export class AgentRunnerService {
       codex: ['exec', '--skip-git-repo-check', '-'],
       cursor: [],
       claude: ['-p'],
+      gemini: [],
+      opencode: [],
     };
 
     return defaultArgsMap[adapter];

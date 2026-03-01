@@ -9,6 +9,9 @@ import { BusinessLineMemberRelationalRepository } from './repositories/business-
 import { BusinessLineInvitationEntity } from './entities/business-line-invitation.entity';
 import { BusinessLineInvitationRepository } from '../business-line-invitation.repository';
 import { BusinessLineInvitationRelationalRepository } from './repositories/business-line-invitation.repository';
+import { AgentToolConfigRepository } from '../agent-tool-config.repository';
+import { AgentToolConfigRelationalRepository } from './repositories/agent-tool-config.repository';
+import { AgentToolConfigEntity } from './entities/agent-tool-config.entity';
 
 @Module({
   imports: [
@@ -16,6 +19,7 @@ import { BusinessLineInvitationRelationalRepository } from './repositories/busin
       BusinessLineEntity,
       BusinessLineMemberEntity,
       BusinessLineInvitationEntity,
+      AgentToolConfigEntity,
     ]),
   ],
   providers: [
@@ -31,11 +35,16 @@ import { BusinessLineInvitationRelationalRepository } from './repositories/busin
       provide: BusinessLineInvitationRepository,
       useClass: BusinessLineInvitationRelationalRepository,
     },
+    {
+      provide: AgentToolConfigRepository,
+      useClass: AgentToolConfigRelationalRepository,
+    },
   ],
   exports: [
     BusinessLineRepository,
     BusinessLineMemberRepository,
     BusinessLineInvitationRepository,
+    AgentToolConfigRepository,
   ],
 })
 export class RelationalBusinessLinePersistenceModule {}

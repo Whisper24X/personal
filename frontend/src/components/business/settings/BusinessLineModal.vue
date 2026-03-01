@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useMessage } from '@/hooks'
 import {
   businessLinesApi,
+  type AgentToolConfig,
   type BusinessLine,
   type BusinessLineInvite,
   type BusinessLineMember,
@@ -19,10 +20,20 @@ import BusinessLineFormModal from './modals/BusinessLineFormModal.vue'
 import ConfirmActionModal from './modals/ConfirmActionModal.vue'
 import MemberPermissionModal from './modals/MemberPermissionModal.vue'
 import ProjectFormModal from './modals/ProjectFormModal.vue'
+import AgentToolConfigModal from './modals/AgentToolConfigModal.vue'
 
-type MainTab = 'projects' | 'members' | 'settings'
+type MainTab = 'projects' | 'members' | 'agent-cli' | 'settings'
 type ProjectPermissionRole = 'none' | 'manage' | 'developer' | 'viewer'
 type ExistingProjectRole = ProjectMember['role'] | null
+type SupportedCliToolId = 'claude-code' | 'codex' | 'gemini-cli' | 'cursor-agent' | 'opencode'
+
+const SUPPORTED_CLI_TOOLS: Array<{ id: SupportedCliToolId; label: string }> = [
+  { id: 'claude-code', label: 'Claude Code' },
+  { id: 'codex', label: 'Codex' },
+  { id: 'gemini-cli', label: 'Gemini CLI' },
+  { id: 'cursor-agent', label: 'Cursor Agent' },
+  { id: 'opencode', label: 'Opencode' },
+]
 
 defineOptions({
   name: 'BusinessLineModal',
@@ -59,6 +70,21 @@ const loadingLineDetail = ref(false)
 const loadingProjects = ref(false)
 const loadingMembers = ref(false)
 const loadingUsers = ref(false)
+const loadingAgentToolConfigs = ref(false)
+const submittingAgentToolConfig = ref(false)
+const deletingAgentToolConfigId = ref('')
+const agentCliValidationMessage = ref('')
+const agentToolConfigModalOpen = ref(false)
+const agentToolConfigMode = ref<'create' | 'edit'>('create')
+const editingAgentToolConfigId = ref('')
+const agentToolConfigs = ref<AgentToolConfig[]>([])
+const activeAgentCliToolId = ref<SupportedCliToolId>('claude-code')
+const agentToolConfigForm = ref({
+  name: '',
+  description: '',
+  isDefault: false,
+  config: {} as Record<string, unknown>,
+})
 
 const lineFormModalOpen = ref(false)
 const lineFormMode = ref<'create' | 'edit'>('create')
@@ -113,6 +139,13 @@ const selectedLineDescription = computed(() => {
   return lineDetail.value?.description ?? selectedLine.value?.description ?? ''
 })
 
+const activeAgentCliToolLabel = computed(() => {
+  return (
+    SUPPORTED_CLI_TOOLS.find((tool) => tool.id === activeAgentCliToolId.value)?.label ??
+    activeAgentCliToolId.value
+  )
+})
+
 const canDeleteLine = computed(() => {
   return lineProjects.value.length === 0 && Boolean(activeLineId.value)
 })
@@ -122,6 +155,7 @@ const hasNestedModalOpen = computed(() => {
     lineFormModalOpen.value ||
     projectFormModalOpen.value ||
     memberPermissionModalOpen.value ||
+    agentToolConfigModalOpen.value ||
     projectDeleteModalOpen.value ||
     memberRemoveModalOpen.value ||
     lineDeleteModalOpen.value ||
@@ -193,11 +227,7 @@ const normalizeOptionalText = (value: string) => {
 }
 
 const normalizeProjectShort = (projectName: string) => {
-  return projectName
-    .trim()
-    .replace(/\s+/g, '')
-    .slice(0, 4)
-    .toUpperCase()
+  return projectName.trim().replace(/\s+/g, '').slice(0, 4).toUpperCase()
 }
 
 const mapProjectItem = (project: Project): ProjectItem => {
@@ -210,6 +240,170 @@ const mapProjectItem = (project: Project): ProjectItem => {
     description: project.description ?? null,
     gitUrl: project.gitUrl,
     defaultBranch: project.defaultBranch,
+  }
+}
+
+const resetAgentToolConfigForm = () => {
+  agentToolConfigModalOpen.value = false
+  agentToolConfigMode.value = 'create'
+  editingAgentToolConfigId.value = ''
+  agentCliValidationMessage.value = ''
+  agentToolConfigForm.value = {
+    name: '',
+    description: '',
+    isDefault: false,
+    config: {},
+  }
+}
+
+const openCreateAgentToolConfig = () => {
+  resetAgentToolConfigForm()
+  agentToolConfigModalOpen.value = true
+}
+
+const openEditAgentToolConfig = (config: AgentToolConfig) => {
+  agentToolConfigMode.value = 'edit'
+  editingAgentToolConfigId.value = config.id
+  agentCliValidationMessage.value = ''
+  agentToolConfigForm.value = {
+    name: config.name,
+    description: config.description ?? '',
+    isDefault: config.isDefault,
+    config: { ...config.configJson },
+  }
+  agentToolConfigModalOpen.value = true
+}
+
+const loadAgentToolConfigs = async (
+  lineId: string,
+  toolId: SupportedCliToolId = activeAgentCliToolId.value,
+) => {
+  if (!lineId) {
+    agentToolConfigs.value = []
+    resetAgentToolConfigForm()
+    return
+  }
+
+  loadingAgentToolConfigs.value = true
+  try {
+    const configs = await businessLinesApi.listAgentToolConfigs(lineId, { toolId })
+    if (lineId !== activeLineId.value) {
+      return
+    }
+    agentToolConfigs.value = configs
+  } catch (error) {
+    if (lineId === activeLineId.value) {
+      agentToolConfigs.value = []
+      message.error(toErrorMessage(error, '加载 Agent CLI 配置失败'))
+    }
+  } finally {
+    if (lineId === activeLineId.value) {
+      loadingAgentToolConfigs.value = false
+    }
+  }
+}
+
+const saveAgentToolConfig = async (payload: {
+  name: string
+  description: string
+  isDefault: boolean
+  config: Record<string, unknown>
+}) => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  const toolId = activeAgentCliToolId.value
+  const name = payload.name.trim()
+
+  if (!toolId) {
+    agentCliValidationMessage.value = 'Tool ID 不能为空'
+    return
+  }
+
+  if (!name) {
+    agentCliValidationMessage.value = '配置名称不能为空'
+    return
+  }
+
+  submittingAgentToolConfig.value = true
+  agentCliValidationMessage.value = ''
+
+  try {
+    const requestPayload = {
+      toolId,
+      name,
+      description: normalizeOptionalText(payload.description),
+      isDefault: payload.isDefault,
+      configJson: payload.config,
+    }
+
+    if (agentToolConfigMode.value === 'create') {
+      await businessLinesApi.createAgentToolConfig(activeLineId.value, requestPayload)
+      message.success('Agent CLI 配置创建成功')
+    } else {
+      if (!editingAgentToolConfigId.value) {
+        return
+      }
+
+      await businessLinesApi.updateAgentToolConfig(
+        activeLineId.value,
+        editingAgentToolConfigId.value,
+        requestPayload,
+      )
+      message.success('Agent CLI 配置更新成功')
+    }
+
+    await loadAgentToolConfigs(activeLineId.value)
+    resetAgentToolConfigForm()
+    agentToolConfigModalOpen.value = false
+  } catch (error) {
+    message.error(toErrorMessage(error, '保存 Agent CLI 配置失败'))
+  } finally {
+    submittingAgentToolConfig.value = false
+  }
+}
+
+const setAgentToolConfigAsDefault = async (config: AgentToolConfig) => {
+  if (!activeLineId.value || config.isDefault) {
+    return
+  }
+
+  submittingAgentToolConfig.value = true
+  agentCliValidationMessage.value = ''
+
+  try {
+    await businessLinesApi.updateAgentToolConfig(activeLineId.value, config.id, {
+      isDefault: true,
+    })
+    await loadAgentToolConfigs(activeLineId.value, activeAgentCliToolId.value)
+    message.success('默认 Agent CLI 配置已更新')
+  } catch (error) {
+    message.error(toErrorMessage(error, '更新默认配置失败'))
+  } finally {
+    submittingAgentToolConfig.value = false
+  }
+}
+
+const removeAgentToolConfig = async (configId: string) => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  deletingAgentToolConfigId.value = configId
+  try {
+    await businessLinesApi.removeAgentToolConfig(activeLineId.value, configId)
+    await loadAgentToolConfigs(activeLineId.value, activeAgentCliToolId.value)
+
+    if (editingAgentToolConfigId.value === configId) {
+      resetAgentToolConfigForm()
+    }
+
+    message.success('Agent CLI 配置已删除')
+  } catch (error) {
+    message.error(toErrorMessage(error, '删除 Agent CLI 配置失败'))
+  } finally {
+    deletingAgentToolConfigId.value = ''
   }
 }
 
@@ -288,6 +482,7 @@ const resetTabErrors = () => {
   lineFormError.value = ''
   projectFormError.value = ''
   memberPermissionModalError.value = ''
+  agentCliValidationMessage.value = ''
 }
 
 const closeModal = () => {
@@ -298,6 +493,7 @@ const closeNestedModals = () => {
   lineFormModalOpen.value = false
   projectFormModalOpen.value = false
   memberPermissionModalOpen.value = false
+  agentToolConfigModalOpen.value = false
   projectDeleteModalOpen.value = false
   memberRemoveModalOpen.value = false
   lineDeleteModalOpen.value = false
@@ -434,7 +630,9 @@ const loadLineContext = async ({ includeMembers = false }: { includeMembers?: bo
   }
 }
 
-const refreshForCurrentLine = async ({ includeMembers = false }: { includeMembers?: boolean } = {}) => {
+const refreshForCurrentLine = async ({
+  includeMembers = false,
+}: { includeMembers?: boolean } = {}) => {
   emit('request-refresh')
   await loadLineContext({ includeMembers })
 }
@@ -786,16 +984,20 @@ const syncMemberProjectPermissions = async (
   return Array.from(failedProjectNames)
 }
 
-const submitMemberPermission = async (payload: {
-  mode: 'create'
-  businessRole: BusinessLineMemberRole
-  projectRoles: Record<string, ProjectPermissionRole>
-} | {
-  mode: 'edit'
-  userId: string
-  businessRole: BusinessLineMemberRole
-  projectRoles: Record<string, ProjectPermissionRole>
-}) => {
+const submitMemberPermission = async (
+  payload:
+    | {
+        mode: 'create'
+        businessRole: BusinessLineMemberRole
+        projectRoles: Record<string, ProjectPermissionRole>
+      }
+    | {
+        mode: 'edit'
+        userId: string
+        businessRole: BusinessLineMemberRole
+        projectRoles: Record<string, ProjectPermissionRole>
+      },
+) => {
   if (!activeLineId.value) {
     return
   }
@@ -831,7 +1033,10 @@ const submitMemberPermission = async (payload: {
         })
       }
 
-      const failedProjects = await syncMemberProjectPermissions(payload.userId, payload.projectRoles)
+      const failedProjects = await syncMemberProjectPermissions(
+        payload.userId,
+        payload.projectRoles,
+      )
       if (failedProjects.length > 0) {
         message.warning(`部分项目权限更新失败：${failedProjects.join('、')}`)
       }
@@ -944,6 +1149,9 @@ watch(
       activeTab.value = 'projects'
       projectQuery.value = ''
       memberQuery.value = ''
+      activeAgentCliToolId.value = 'claude-code'
+      agentToolConfigs.value = []
+      resetAgentToolConfigForm()
 
       activeLineId.value = props.activeBusinessLineId || props.lines[0]?.id || ''
       if (activeLineId.value) {
@@ -1004,11 +1212,16 @@ watch(
       lineDetail.value = null
       lineProjects.value = []
       lineMembers.value = []
+      agentToolConfigs.value = []
+      resetAgentToolConfigForm()
       return
     }
 
     emit('select-line', lineId)
     void loadLineContext({ includeMembers: activeTab.value === 'members' })
+    if (activeTab.value === 'agent-cli') {
+      void loadAgentToolConfigs(lineId, activeAgentCliToolId.value)
+    }
   },
 )
 
@@ -1029,7 +1242,30 @@ watch(
       return
     }
 
+    if (tab === 'agent-cli') {
+      resetAgentToolConfigForm()
+      void loadAgentToolConfigs(activeLineId.value, activeAgentCliToolId.value)
+      return
+    }
+
     void loadLineDetail(activeLineId.value)
+  },
+)
+
+watch(
+  () => activeAgentCliToolId.value,
+  (toolId, previousToolId) => {
+    if (!props.open || toolId === previousToolId) {
+      return
+    }
+
+    resetAgentToolConfigForm()
+
+    if (activeTab.value !== 'agent-cli' || !activeLineId.value) {
+      return
+    }
+
+    void loadAgentToolConfigs(activeLineId.value, toolId)
   },
 )
 
@@ -1041,7 +1277,11 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div v-if="props.open" class="fixed inset-0 z-[95] flex items-center justify-center p-3 sm:p-6" aria-live="polite">
+    <div
+      v-if="props.open"
+      class="fixed inset-0 z-[95] flex items-center justify-center p-3 sm:p-6"
+      aria-live="polite"
+    >
       <button
         type="button"
         aria-label="关闭业务线弹窗"
@@ -1056,7 +1296,9 @@ onBeforeUnmount(() => {
         class="relative z-10 h-[min(760px,92vh)] w-full max-w-6xl overflow-hidden rounded-3xl border border-border bg-background shadow-2xl"
       >
         <div class="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[18rem_minmax(0,1fr)]">
-          <aside class="flex min-h-0 flex-col border-b border-border bg-muted/30 lg:border-r lg:border-b-0">
+          <aside
+            class="flex min-h-0 flex-col border-b border-border bg-muted/30 lg:border-r lg:border-b-0"
+          >
             <header class="flex h-16 items-center border-b border-border px-4">
               <h2 class="text-sm font-semibold">业务线</h2>
             </header>
@@ -1075,7 +1317,9 @@ onBeforeUnmount(() => {
                 @click="activeLineId = line.id"
               >
                 <p class="text-sm font-semibold text-foreground">{{ line.name }}</p>
-                <p class="mt-1 text-xs text-muted-foreground">{{ line.description || '暂无描述' }}</p>
+                <p class="mt-1 text-xs text-muted-foreground">
+                  {{ line.description || '暂无描述' }}
+                </p>
                 <p class="mt-2 text-xs text-muted-foreground">项目 {{ line.projectCount }}</p>
               </button>
 
@@ -1097,7 +1341,9 @@ onBeforeUnmount(() => {
               >
                 创建业务线
               </button>
-              <p v-if="!props.canCreateBusinessLine" class="mt-2 text-[11px] text-muted-foreground">仅管理员可创建业务线</p>
+              <p v-if="!props.canCreateBusinessLine" class="mt-2 text-[11px] text-muted-foreground">
+                仅管理员可创建业务线
+              </p>
             </footer>
           </aside>
 
@@ -1105,7 +1351,9 @@ onBeforeUnmount(() => {
             <header class="flex h-16 items-center justify-between border-b border-border px-5">
               <div>
                 <p class="text-xs font-semibold tracking-wide text-muted-foreground">业务线管理</p>
-                <h2 id="business-line-modal-title" class="text-sm font-semibold">{{ selectedLineName }}</h2>
+                <h2 id="business-line-modal-title" class="text-sm font-semibold">
+                  {{ selectedLineName }}
+                </h2>
               </div>
               <button
                 type="button"
@@ -1151,6 +1399,14 @@ onBeforeUnmount(() => {
                 </button>
                 <button
                   class="rounded-xl px-4 py-2 text-sm font-semibold transition"
+                  :class="tabClass('agent-cli')"
+                  type="button"
+                  @click="activeTab = 'agent-cli'"
+                >
+                  Agent CLI
+                </button>
+                <button
+                  class="rounded-xl px-4 py-2 text-sm font-semibold transition"
                   :class="tabClass('settings')"
                   type="button"
                   @click="activeTab = 'settings'"
@@ -1191,7 +1447,9 @@ onBeforeUnmount(() => {
                     placeholder="按项目名 / ID / 描述 / Git 地址搜索"
                   />
 
-                  <div v-if="loadingProjects" class="mt-4 text-sm text-muted-foreground">加载项目中...</div>
+                  <div v-if="loadingProjects" class="mt-4 text-sm text-muted-foreground">
+                    加载项目中...
+                  </div>
 
                   <div v-else class="mt-4 space-y-2">
                     <article
@@ -1221,9 +1479,15 @@ onBeforeUnmount(() => {
                               当前项目
                             </span>
                           </div>
-                          <p class="text-xs text-muted-foreground">{{ project.description || '暂无描述' }}</p>
-                          <p class="font-mono text-[11px] text-muted-foreground">{{ project.gitUrl }}</p>
-                          <p class="text-xs text-muted-foreground">默认分支：{{ project.defaultBranch }}</p>
+                          <p class="text-xs text-muted-foreground">
+                            {{ project.description || '暂无描述' }}
+                          </p>
+                          <p class="font-mono text-[11px] text-muted-foreground">
+                            {{ project.gitUrl }}
+                          </p>
+                          <p class="text-xs text-muted-foreground">
+                            默认分支：{{ project.defaultBranch }}
+                          </p>
                         </div>
 
                         <div class="flex items-center gap-2">
@@ -1285,7 +1549,9 @@ onBeforeUnmount(() => {
                     placeholder="按成员名 / 用户名 / 用户 ID 搜索"
                   />
 
-                  <div v-if="loadingMembers" class="mt-4 text-sm text-muted-foreground">加载成员中...</div>
+                  <div v-if="loadingMembers" class="mt-4 text-sm text-muted-foreground">
+                    加载成员中...
+                  </div>
 
                   <div v-else class="mt-4 overflow-x-auto">
                     <table class="w-full min-w-[760px] text-left text-sm">
@@ -1298,11 +1564,21 @@ onBeforeUnmount(() => {
                         </tr>
                       </thead>
                       <tbody class="divide-y divide-border">
-                        <tr v-for="member in filteredMembers" :key="member.id" class="transition hover:bg-background/70">
+                        <tr
+                          v-for="member in filteredMembers"
+                          :key="member.id"
+                          class="transition hover:bg-background/70"
+                        >
                           <td class="px-4 py-3">
-                            <p class="text-sm font-semibold">{{ displayUserLabel(member.userId) }}</p>
-                            <p class="mt-0.5 text-xs text-muted-foreground">{{ displayUserMeta(member.userId) }}</p>
-                            <p class="mt-0.5 font-mono text-[11px] text-muted-foreground">{{ member.userId }}</p>
+                            <p class="text-sm font-semibold">
+                              {{ displayUserLabel(member.userId) }}
+                            </p>
+                            <p class="mt-0.5 text-xs text-muted-foreground">
+                              {{ displayUserMeta(member.userId) }}
+                            </p>
+                            <p class="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                              {{ member.userId }}
+                            </p>
                           </td>
                           <td class="px-4 py-3">
                             <span
@@ -1312,7 +1588,9 @@ onBeforeUnmount(() => {
                               {{ member.role }}
                             </span>
                           </td>
-                          <td class="px-4 py-3 text-muted-foreground">{{ formatDate(member.updatedAt) }}</td>
+                          <td class="px-4 py-3 text-muted-foreground">
+                            {{ formatDate(member.updatedAt) }}
+                          </td>
                           <td class="px-4 py-3">
                             <div class="flex justify-end gap-2">
                               <button
@@ -1334,12 +1612,144 @@ onBeforeUnmount(() => {
                         </tr>
 
                         <tr v-if="!loadingMembers && filteredMembers.length === 0">
-                          <td colspan="4" class="px-4 py-5 text-sm text-muted-foreground">暂无成员，请先邀请。</td>
+                          <td colspan="4" class="px-4 py-5 text-sm text-muted-foreground">
+                            暂无成员，请先邀请。
+                          </td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
                 </div>
+              </section>
+
+              <section v-else-if="activeTab === 'agent-cli'" class="space-y-4">
+                <article class="panel-card p-5">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p class="text-sm font-semibold">Agent CLI 配置池</p>
+                      <p class="mt-1 text-xs text-muted-foreground">
+                        业务线统一维护多套 Agent CLI 配置，供同业务线项目复用。
+                      </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                        :disabled="!activeLineId"
+                        @click="loadAgentToolConfigs(activeLineId, activeAgentCliToolId)"
+                      >
+                        刷新
+                      </button>
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm"
+                        :disabled="!activeLineId"
+                        @click="openCreateAgentToolConfig"
+                      >
+                        新建配置
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="mt-4 flex flex-wrap gap-2">
+                    <button
+                      v-for="tool in SUPPORTED_CLI_TOOLS"
+                      :key="tool.id"
+                      type="button"
+                      class="rounded-xl px-3 py-1.5 text-xs font-semibold transition"
+                      :class="
+                        activeAgentCliToolId === tool.id
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'
+                      "
+                      @click="activeAgentCliToolId = tool.id"
+                    >
+                      {{ tool.label }}
+                    </button>
+                  </div>
+
+                  <div v-if="loadingAgentToolConfigs" class="mt-4 text-sm text-muted-foreground">
+                    加载配置中...
+                  </div>
+
+                  <div v-else class="mt-4 overflow-x-auto">
+                    <table class="w-full min-w-[760px] text-left text-sm">
+                      <thead class="border-b border-border bg-background/70">
+                        <tr class="text-xs font-semibold text-muted-foreground">
+                          <th class="px-4 py-3">名称</th>
+                          <th class="px-4 py-3">Tool ID</th>
+                          <th class="px-4 py-3">默认</th>
+                          <th class="px-4 py-3">更新时间</th>
+                          <th class="px-4 py-3 text-right">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-border">
+                        <tr
+                          v-for="config in agentToolConfigs"
+                          :key="config.id"
+                          class="transition hover:bg-background/70"
+                        >
+                          <td class="px-4 py-3">
+                            <p class="text-sm font-semibold">{{ config.name }}</p>
+                            <p class="mt-1 text-xs text-muted-foreground">
+                              {{ config.description || '暂无描述' }}
+                            </p>
+                          </td>
+                          <td class="px-4 py-3 font-mono text-xs text-muted-foreground">
+                            {{ config.toolId }}
+                          </td>
+                          <td class="px-4 py-3">
+                            <span
+                              v-if="config.isDefault"
+                              class="inline-flex rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-xs font-semibold text-emerald-800 dark:text-emerald-300"
+                            >
+                              默认
+                            </span>
+                            <span v-else class="text-xs text-muted-foreground">-</span>
+                          </td>
+                          <td class="px-4 py-3 text-muted-foreground">
+                            {{ formatDate(config.updatedAt) }}
+                          </td>
+                          <td class="px-4 py-3">
+                            <div class="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                                @click="openEditAgentToolConfig(config)"
+                              >
+                                编辑
+                              </button>
+                              <button
+                                v-if="!config.isDefault"
+                                type="button"
+                                class="inline-flex h-8 items-center justify-center rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-500/20 dark:text-emerald-300"
+                                :disabled="submittingAgentToolConfig"
+                                @click="setAgentToolConfigAsDefault(config)"
+                              >
+                                设为默认
+                              </button>
+                              <button
+                                type="button"
+                                class="inline-flex h-8 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                :disabled="deletingAgentToolConfigId === config.id"
+                                @click="removeAgentToolConfig(config.id)"
+                              >
+                                {{ deletingAgentToolConfigId === config.id ? '删除中...' : '删除' }}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+
+                        <tr v-if="!loadingAgentToolConfigs && agentToolConfigs.length === 0">
+                          <td colspan="5" class="px-4 py-5 text-sm text-muted-foreground">
+                            {{ activeAgentCliToolLabel }} 暂无配置，请先创建。
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </article>
+
               </section>
 
               <section v-else class="space-y-4">
@@ -1376,7 +1786,9 @@ onBeforeUnmount(() => {
                     </div>
                     <div>
                       <p class="text-xs text-muted-foreground">描述</p>
-                      <p class="mt-1 text-sm text-foreground">{{ selectedLineDescription || '暂无描述' }}</p>
+                      <p class="mt-1 text-sm text-foreground">
+                        {{ selectedLineDescription || '暂无描述' }}
+                      </p>
                     </div>
                   </div>
                 </article>
@@ -1425,6 +1837,21 @@ onBeforeUnmount(() => {
         :error-message="memberPermissionModalError"
         @update:open="memberPermissionModalOpen = $event"
         @submit="submitMemberPermission"
+      />
+
+      <AgentToolConfigModal
+        :open="agentToolConfigModalOpen"
+        :mode="agentToolConfigMode"
+        :submitting="submittingAgentToolConfig"
+        :cli-tool-id="activeAgentCliToolId"
+        :cli-tool-label="activeAgentCliToolLabel"
+        :initial-name="agentToolConfigForm.name"
+        :initial-description="agentToolConfigForm.description"
+        :initial-is-default="agentToolConfigForm.isDefault"
+        :initial-config="agentToolConfigForm.config"
+        :error-message="agentCliValidationMessage"
+        @update:open="agentToolConfigModalOpen = $event"
+        @submit="saveAgentToolConfig"
       />
 
       <ConfirmActionModal

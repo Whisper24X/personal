@@ -33,12 +33,16 @@ import { CreateBusinessLineInviteDto } from './dto/create-business-line-invite.d
 import { BusinessLineInviteDto } from './dto/business-line-invite.dto';
 import { AcceptBusinessLineInviteDto } from './dto/accept-business-line-invite.dto';
 import { AcceptBusinessLineInviteResponseDto } from './dto/accept-business-line-invite-response.dto';
+import { AgentToolConfig } from './domain/agent-tool-config';
+import { AgentToolConfigDto } from './dto/agent-tool-config.dto';
+import { CreateAgentToolConfigDto } from './dto/create-agent-tool-config.dto';
 import {
   InfinityPaginationResponse,
   InfinityPaginationResponseDto,
 } from '../utils/dto/infinity-pagination-response.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { FindAllBusinessLinesDto } from './dto/find-all-business-lines.dto';
+import { UpdateAgentToolConfigDto } from './dto/update-agent-tool-config.dto';
 import { NullableType } from '../utils/types/nullable.type';
 import { BusinessLineDto } from './dto/business-line.dto';
 
@@ -297,5 +301,141 @@ export class BusinessLinesController {
       userId,
       request.user,
     );
+  }
+
+  @Get(':businessLineId/agent-tool-configs')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: AgentToolConfigDto,
+    isArray: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  async findAgentToolConfigs(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Query('toolId') toolId?: string,
+  ): Promise<AgentToolConfigDto[]> {
+    const configs = await this.businessLinesService.findAgentToolConfigs(
+      businessLineId,
+      request.user,
+      toolId,
+    );
+
+    return configs.map((item) => this.toAgentToolConfigDto(item));
+  }
+
+  @Post(':businessLineId/agent-tool-configs')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiCreatedResponse({
+    type: AgentToolConfigDto,
+  })
+  @HttpCode(HttpStatus.CREATED)
+  async createAgentToolConfig(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Body() createAgentToolConfigDto: CreateAgentToolConfigDto,
+  ): Promise<AgentToolConfigDto> {
+    const config = await this.businessLinesService.createAgentToolConfig(
+      businessLineId,
+      createAgentToolConfigDto,
+      request.user,
+    );
+
+    return this.toAgentToolConfigDto(config);
+  }
+
+  @Patch(':businessLineId/agent-tool-configs/:configId')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiParam({
+    name: 'configId',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: AgentToolConfigDto,
+  })
+  @HttpCode(HttpStatus.OK)
+  async updateAgentToolConfig(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Param('configId', ParseUUIDPipe) configId: string,
+    @Body() updateAgentToolConfigDto: UpdateAgentToolConfigDto,
+  ): Promise<AgentToolConfigDto> {
+    const config = await this.businessLinesService.updateAgentToolConfig(
+      businessLineId,
+      configId,
+      updateAgentToolConfigDto,
+      request.user,
+    );
+
+    return this.toAgentToolConfigDto(config);
+  }
+
+  @Delete(':businessLineId/agent-tool-configs/:configId')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiParam({
+    name: 'configId',
+    type: String,
+    required: true,
+  })
+  @ApiNoContentResponse()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeAgentToolConfig(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Param('configId', ParseUUIDPipe) configId: string,
+  ): Promise<void> {
+    return this.businessLinesService.removeAgentToolConfig(
+      businessLineId,
+      configId,
+      request.user,
+    );
+  }
+
+  private toAgentToolConfigDto(config: AgentToolConfig): AgentToolConfigDto {
+    return {
+      id: config.id,
+      businessLineId: config.businessLineId,
+      toolId: config.toolId,
+      name: config.name,
+      description: config.description ?? null,
+      configJson: this.parseConfigJson(config.configJson),
+      isDefault: config.isDefault,
+      createdAt: config.createdAt.toISOString(),
+      updatedAt: config.updatedAt.toISOString(),
+    };
+  }
+
+  private parseConfigJson(value: string): Record<string, unknown> {
+    if (!value.trim()) {
+      return {};
+    }
+
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return {};
+    }
+
+    return {};
   }
 }
