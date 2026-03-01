@@ -69,3 +69,35 @@ Enforced sidebar project selection when projects exist, eliminated refresh flick
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Agent CLI business-line config rollout
+
+**Date**: 2026-03-01
+**Task**: Agent CLI business-line config rollout
+
+### Summary
+
+Implemented business-line level Agent CLI config management with reusable multi-config pool across projects. Added backend persistence/API for agent_tool_configs and runner-side config resolution precedence. Added BusinessLineModal Agent CLI tab (between members and settings), create/edit modal UX, and schema-driven form editing for Claude/Codex/Gemini/Cursor/Opencode with validation, better modal scrolling, and autofill suppression for description/api_key fields.
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `727562d1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

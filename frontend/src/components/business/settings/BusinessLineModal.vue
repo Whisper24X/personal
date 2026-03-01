@@ -28,10 +28,10 @@ type ExistingProjectRole = ProjectMember['role'] | null
 type SupportedCliToolId = 'claude-code' | 'codex' | 'gemini-cli' | 'cursor-agent' | 'opencode'
 
 const SUPPORTED_CLI_TOOLS: Array<{ id: SupportedCliToolId; label: string }> = [
+  { id: 'cursor-agent', label: 'Cursor Agent' },
   { id: 'claude-code', label: 'Claude Code' },
   { id: 'codex', label: 'Codex' },
   { id: 'gemini-cli', label: 'Gemini CLI' },
-  { id: 'cursor-agent', label: 'Cursor Agent' },
   { id: 'opencode', label: 'Opencode' },
 ]
 
@@ -78,7 +78,7 @@ const agentToolConfigModalOpen = ref(false)
 const agentToolConfigMode = ref<'create' | 'edit'>('create')
 const editingAgentToolConfigId = ref('')
 const agentToolConfigs = ref<AgentToolConfig[]>([])
-const activeAgentCliToolId = ref<SupportedCliToolId>('claude-code')
+const activeAgentCliToolId = ref<SupportedCliToolId>('cursor-agent')
 const agentToolConfigForm = ref({
   name: '',
   description: '',
@@ -1149,7 +1149,7 @@ watch(
       activeTab.value = 'projects'
       projectQuery.value = ''
       memberQuery.value = ''
-      activeAgentCliToolId.value = 'claude-code'
+      activeAgentCliToolId.value = 'cursor-agent'
       agentToolConfigs.value = []
       resetAgentToolConfigForm()
 
@@ -1626,7 +1626,7 @@ onBeforeUnmount(() => {
                 <article class="panel-card p-5">
                   <div class="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <p class="text-sm font-semibold">Agent CLI 配置池</p>
+                      <p class="text-sm font-semibold">Agent CLI 配置</p>
                       <p class="mt-1 text-xs text-muted-foreground">
                         业务线统一维护多套 Agent CLI 配置，供同业务线项目复用。
                       </p>
@@ -1659,8 +1659,8 @@ onBeforeUnmount(() => {
                       class="rounded-xl px-3 py-1.5 text-xs font-semibold transition"
                       :class="
                         activeAgentCliToolId === tool.id
-                          ? 'bg-background text-foreground shadow-sm'
-                          : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'
+                          ? 'border border-primary/45 bg-primary/12 text-primary shadow-sm'
+                          : 'border border-border text-muted-foreground hover:bg-background/60 hover:text-foreground'
                       "
                       @click="activeAgentCliToolId = tool.id"
                     >

@@ -37,10 +37,14 @@ const props = defineProps<{
       <div class="flex h-16 w-full items-center justify-center border-b border-sidebar-border">
         <RouterLink
           to="/dashboard"
-          class="inline-flex h-10 w-[3.75rem] items-center justify-center overflow-hidden rounded-xl shadow-sm"
+          class="group inline-flex h-11 w-[3.75rem] items-center justify-center rounded-lg transition-transform duration-300 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/55"
           aria-label="打开仪表盘"
         >
-          <img :src="logoImage" alt="AINative Logo" class="h-full w-full object-contain" />
+          <img
+            :src="logoImage"
+            alt="AINative Logo"
+            class="h-10 w-10 rounded-xl object-contain drop-shadow-sm transition-transform duration-300 group-hover:scale-110"
+          />
         </RouterLink>
       </div>
 
