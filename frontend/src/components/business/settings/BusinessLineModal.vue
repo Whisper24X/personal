@@ -191,6 +191,12 @@ const mcpJsonPreviewSourcePath = ref('')
 const mcpJsonPreviewError = ref('')
 const mcpJsonPreviewDraft = ref('')
 const savingMcpJsonPreview = ref(false)
+const skillPreviewModalOpen = ref(false)
+const loadingSkillPreview = ref(false)
+const skillPreviewName = ref('')
+const skillPreviewContent = ref('')
+const skillPreviewError = ref('')
+const skillPreviewRequestToken = ref(0)
 const localSkills = ref<Skill[]>([])
 const localMcps = ref<Mcp[]>([])
 
@@ -233,6 +239,7 @@ const hasNestedModalOpen = computed(() => {
     uploadSkillModalOpen.value ||
     mcpJsonImportModalOpen.value ||
     mcpJsonPreviewModalOpen.value ||
+    skillPreviewModalOpen.value ||
     projectDeleteModalOpen.value ||
     memberRemoveModalOpen.value ||
     lineDeleteModalOpen.value ||
@@ -987,6 +994,55 @@ const submitUploadSkill = async (file: File) => {
   }
 }
 
+const resetSkillPreviewState = () => {
+  skillPreviewRequestToken.value += 1
+  skillPreviewModalOpen.value = false
+  loadingSkillPreview.value = false
+  skillPreviewName.value = ''
+  skillPreviewContent.value = ''
+  skillPreviewError.value = ''
+}
+
+const closeSkillPreview = () => {
+  resetSkillPreviewState()
+}
+
+const openSkillPreview = async (item: Skill) => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  const requestToken = ++skillPreviewRequestToken.value
+  skillPreviewModalOpen.value = true
+  loadingSkillPreview.value = true
+  skillPreviewName.value = item.name
+  skillPreviewContent.value = ''
+  skillPreviewError.value = ''
+
+  try {
+    const response = await businessLinesApi.localSkillContent(
+      activeLineId.value,
+      item.id,
+    )
+
+    if (requestToken !== skillPreviewRequestToken.value) {
+      return
+    }
+
+    skillPreviewContent.value = response.content || ''
+  } catch (error) {
+    if (requestToken !== skillPreviewRequestToken.value) {
+      return
+    }
+
+    skillPreviewError.value = toErrorMessage(error, '读取 SKILL.md 失败')
+  } finally {
+    if (requestToken === skillPreviewRequestToken.value) {
+      loadingSkillPreview.value = false
+    }
+  }
+}
+
 const loadLocalMcps = async (lineId: string) => {
   if (!lineId) {
     localMcps.value = []
@@ -1307,6 +1363,7 @@ const closeNestedModals = () => {
   workflowCreateModalOpen.value = false
   uploadSkillModalOpen.value = false
   mcpJsonImportModalOpen.value = false
+  resetSkillPreviewState()
   resetMcpJsonPreviewState()
   projectDeleteModalOpen.value = false
   memberRemoveModalOpen.value = false
@@ -1979,6 +2036,7 @@ watch(
       mcpJsonImportModalOpen.value = false
       importingLocalMcps.value = false
       mcpJsonImportError.value = ''
+      resetSkillPreviewState()
       resetMcpJsonPreviewState()
       resetWorkflowCreateForm()
 
@@ -2055,6 +2113,7 @@ watch(
       mcpJsonImportModalOpen.value = false
       importingLocalMcps.value = false
       mcpJsonImportError.value = ''
+      resetSkillPreviewState()
       resetMcpJsonPreviewState()
       resetAgentToolConfigForm()
       resetWorkflowCreateForm()
@@ -2291,7 +2350,7 @@ onBeforeUnmount(() => {
                   type="button"
                   @click="activeTab = 'skill'"
                 >
-                  Skill
+                  Skills
                 </button>
                 <button
                   class="rounded-xl px-4 py-2 text-sm font-semibold transition"
@@ -2789,7 +2848,12 @@ onBeforeUnmount(() => {
                     <article
                       v-for="item in localSkills"
                       :key="item.id"
-                      class="rounded-xl border border-border bg-background/70 px-4 py-3"
+                      class="cursor-pointer rounded-xl border border-border bg-background/70 px-4 py-3 transition hover:border-primary/40 hover:bg-muted/30"
+                      role="button"
+                      tabindex="0"
+                      @click="void openSkillPreview(item)"
+                      @keydown.enter.prevent="void openSkillPreview(item)"
+                      @keydown.space.prevent="void openSkillPreview(item)"
                     >
                       <p class="text-sm font-semibold">{{ item.name }}</p>
                       <p class="mt-1 text-xs text-muted-foreground">
@@ -3200,6 +3264,71 @@ onBeforeUnmount(() => {
       />
 
       <div
+        v-if="skillPreviewModalOpen"
+        class="fixed inset-0 z-[126] flex items-center justify-center p-3 sm:p-6"
+      >
+        <button
+          type="button"
+          class="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
+          aria-label="关闭 Skill 预览弹窗"
+          @click="closeSkillPreview"
+        />
+        <section
+          aria-modal="true"
+          role="dialog"
+          class="relative z-10 flex max-h-[85vh] w-full max-w-3xl flex-col rounded-2xl border border-border bg-background shadow-2xl"
+        >
+          <header class="flex items-center justify-between border-b border-border px-4 py-3">
+            <div class="space-y-1">
+              <h2 class="text-base font-semibold">{{ skillPreviewName || 'Skill' }}</h2>
+              <p class="text-xs text-muted-foreground">SKILL.md</p>
+            </div>
+            <button
+              type="button"
+              aria-label="关闭"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
+              @click="closeSkillPreview"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </button>
+          </header>
+
+          <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            <p v-if="loadingSkillPreview" class="text-sm text-muted-foreground">加载中...</p>
+            <p v-else-if="skillPreviewError" class="text-sm text-destructive">{{ skillPreviewError }}</p>
+            <pre
+              v-else
+              class="max-h-[62vh] overflow-auto whitespace-pre-wrap rounded-xl border border-border bg-background p-3 font-mono text-xs leading-relaxed text-foreground"
+            >{{ skillPreviewContent || '未读取到 SKILL.md 内容。' }}</pre>
+          </div>
+
+          <footer class="border-t border-border px-4 py-3">
+            <button
+              type="button"
+              class="h-10 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:shadow-md"
+              @click="closeSkillPreview"
+            >
+              关闭
+            </button>
+          </footer>
+        </section>
+      </div>
+
+      <div
         v-if="mcpJsonPreviewModalOpen"
         class="fixed inset-0 z-[125] flex items-center justify-center p-3 sm:p-6"
       >
@@ -3218,7 +3347,6 @@ onBeforeUnmount(() => {
             <div class="space-y-1">
               <h2 class="text-base font-semibold">MCP JSON</h2>
               <p class="text-xs text-muted-foreground">{{ mcpJsonPreviewName }}</p>
-              <p class="font-mono text-[11px] text-muted-foreground">{{ mcpJsonPreviewSourcePath }}</p>
             </div>
             <div class="flex items-center gap-2">
               <button

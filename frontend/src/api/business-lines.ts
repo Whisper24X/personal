@@ -1,5 +1,5 @@
 import { apiHttp, type InfinityPaginationResponse } from './http'
-import type { Skill } from '@/types/api/skills'
+import type { Skill, SkillContent } from '@/types/api/skills'
 import type { Mcp } from '@/types/api/mcps'
 
 export type BusinessLine = {
@@ -209,6 +209,12 @@ export const businessLinesApi = {
 
   listLocalSkills(businessLineId: string) {
     return apiHttp.get<Skill[]>(`/business-lines/${businessLineId}/local-skills`)
+  },
+
+  localSkillContent(businessLineId: string, skillId: string) {
+    return apiHttp.get<SkillContent>(
+      `/business-lines/${businessLineId}/local-skills/${skillId}/content`,
+    )
   },
 
   uploadLocalSkill(businessLineId: string, file: File) {

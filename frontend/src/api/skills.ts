@@ -1,4 +1,11 @@
-import type { CreateSkillPayload, Skill, SkillContent, UpdateSkillPayload } from '@/types/api/skills'
+import type {
+  CreateSkillPayload,
+  ProjectLocalSkillResult,
+  ProjectSkillProvider,
+  Skill,
+  SkillContent,
+  UpdateSkillPayload,
+} from '@/types/api/skills'
 import { apiHttp, type InfinityPaginationResponse } from './http'
 
 export const skillsApi = {
@@ -20,6 +27,30 @@ export const skillsApi = {
     return apiHttp.get<SkillContent>(`/skills/${skillId}/content`, {
       projectId: params.projectId,
     })
+  },
+
+  copyFromBusinessLine(payload: {
+    projectId: string
+    businessLineSkillId: string
+    provider?: ProjectSkillProvider
+  }) {
+    return apiHttp.post<ProjectLocalSkillResult>('/skills/project/copy-from-business-line', payload)
+  },
+
+  uploadToProject(
+    file: File,
+    params: {
+      projectId: string
+      provider?: ProjectSkillProvider
+    },
+  ) {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('projectId', params.projectId)
+    if (params.provider) {
+      formData.append('provider', params.provider)
+    }
+    return apiHttp.post<ProjectLocalSkillResult>('/skills/project/upload', formData)
   },
 
   create(payload: CreateSkillPayload) {

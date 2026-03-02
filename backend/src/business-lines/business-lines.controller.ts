@@ -59,6 +59,7 @@ import { ImportLocalMcpsDto } from './dto/import-local-mcps.dto';
 import { ImportLocalMcpsResultDto } from './dto/import-local-mcps-result.dto';
 import { GetLocalMcpConfigDto } from './dto/get-local-mcp-config.dto';
 import { LocalMcpConfigDto } from './dto/local-mcp-config.dto';
+import { LocalSkillContentDto } from './dto/local-skill-content.dto';
 
 @ApiTags('Businesslines')
 @ApiBearerAuth()
@@ -359,6 +360,33 @@ export class BusinessLinesController {
   ): Promise<Skill[]> {
     return this.businessLinesService.findLocalSkills(
       businessLineId,
+      request.user,
+    );
+  }
+
+  @Get(':businessLineId/local-skills/:skillId/content')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiParam({
+    name: 'skillId',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: LocalSkillContentDto,
+  })
+  @HttpCode(HttpStatus.OK)
+  findLocalSkillContent(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Param('skillId') skillId: string,
+  ): Promise<LocalSkillContentDto> {
+    return this.businessLinesService.findLocalSkillContent(
+      businessLineId,
+      skillId,
       request.user,
     );
   }

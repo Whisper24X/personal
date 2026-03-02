@@ -28,3 +28,12 @@ export type SkillContent = {
   name: string
   content: string
 }
+
+export type ProjectSkillProvider = 'codex' | 'cursor' | 'curso'
+
+export type ProjectLocalSkillResult = {
+  name: string
+  description?: string | null
+  directoryName: string
+  provider: ProjectSkillProvider
+}

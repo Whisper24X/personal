@@ -34,6 +34,8 @@ export type LocalMcpItem = {
   updatedAt: Date;
 };
 
+export type ProjectSkillProvider = 'codex' | 'cursor' | 'curso';
+
 const PROJECT_AGENT_ROOTS = ['.codex', '.cursor', '.curso'];
 const SKILL_DESCRIPTOR_FILENAMES = [
   'SKILL.md',
@@ -412,6 +414,50 @@ const resolveProjectBaseDir = async (project: Project): Promise<string | null> =
   }
 
   return null;
+};
+
+const isSupportedProjectSkillProvider = (
+  provider: string,
+): provider is ProjectSkillProvider => {
+  return provider === 'codex' || provider === 'cursor' || provider === 'curso';
+};
+
+export const resolveProjectSkillRootForWrite = async (
+  project: Project,
+  preferredProvider?: string | null,
+): Promise<{ provider: ProjectSkillProvider; rootPath: string; skillsPath: string } | null> => {
+  const projectBaseDir = await resolveProjectBaseDir(project);
+
+  if (!projectBaseDir) {
+    return null;
+  }
+
+  const normalizedPreferredProvider = normalizeText(preferredProvider)?.toLowerCase() ?? '';
+  const existingProviders: ProjectSkillProvider[] = [];
+  const providerOrder: ProjectSkillProvider[] = ['cursor', 'codex', 'curso'];
+
+  for (const provider of providerOrder) {
+    const rootName = `.${provider}`;
+    const rootPath = path.join(projectBaseDir, rootName);
+    const rootStat = await safeStat(rootPath);
+    if (rootStat?.isDirectory()) {
+      existingProviders.push(provider);
+    }
+  }
+
+  const resolvedProvider =
+    (isSupportedProjectSkillProvider(normalizedPreferredProvider)
+      ? normalizedPreferredProvider
+      : undefined) ??
+    existingProviders[0] ??
+    'cursor';
+  const rootPath = path.join(projectBaseDir, `.${resolvedProvider}`);
+
+  return {
+    provider: resolvedProvider,
+    rootPath,
+    skillsPath: path.join(rootPath, 'skills'),
+  };
 };
 
 const resolveSkillSourcePath = (skill: LocalSkillItem): string | null => {
@@ -1084,6 +1130,48 @@ export const loadBusinessLineLocalSkills = async (
     directoryPath: skillsPath,
     sourceProvider: 'business-line',
   });
+};
+
+export const loadBusinessLineLocalSkillMarkdownContent = async (
+  businessLineId: string,
+  skillId: string,
+): Promise<{ id: string; name: string; content: string } | null> => {
+  const skills = await loadBusinessLineLocalSkills(businessLineId);
+  const targetSkill = skills.find((item) => item.id === skillId);
+  if (!targetSkill) {
+    return null;
+  }
+
+  const sourcePath = resolveSkillSourcePath(targetSkill);
+  if (!sourcePath) {
+    return null;
+  }
+
+  const candidatePaths = await resolveSkillMarkdownPathCandidates(sourcePath);
+  const businessLineSkillsRoot = path.resolve(
+    ainativeDataRootDir,
+    businessLineId,
+    'skills',
+  );
+
+  for (const candidatePath of candidatePaths) {
+    const resolvedCandidatePath = path.resolve(candidatePath);
+
+    if (!isPathInsideDirectory(resolvedCandidatePath, businessLineSkillsRoot)) {
+      continue;
+    }
+
+    const content = await safeReadFile(resolvedCandidatePath);
+    if (typeof content === 'string') {
+      return {
+        id: targetSkill.id,
+        name: targetSkill.name,
+        content,
+      };
+    }
+  }
+
+  return null;
 };
 
 export const loadBusinessLineLocalMcps = async (

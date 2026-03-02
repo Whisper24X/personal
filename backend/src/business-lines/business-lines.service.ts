@@ -44,6 +44,7 @@ import { Skill } from '../skills/domain/skill';
 import { Mcp } from '../mcps/domain/mcp';
 import {
   loadBusinessLineLocalMcps,
+  loadBusinessLineLocalSkillMarkdownContent,
   loadBusinessLineLocalSkills,
 } from '../utils/local-agent-catalog';
 import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
@@ -53,6 +54,7 @@ import { ImportLocalMcpsDto } from './dto/import-local-mcps.dto';
 import { ImportLocalMcpsResultDto } from './dto/import-local-mcps-result.dto';
 import { GetLocalMcpConfigDto } from './dto/get-local-mcp-config.dto';
 import { LocalMcpConfigDto } from './dto/local-mcp-config.dto';
+import { LocalSkillContentDto } from './dto/local-skill-content.dto';
 
 @Injectable()
 export class BusinessLinesService {
@@ -476,6 +478,25 @@ export class BusinessLinesService {
       ...skill,
       deletedAt: null,
     }));
+  }
+
+  async findLocalSkillContent(
+    businessLineId: BusinessLine['id'],
+    skillId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<LocalSkillContentDto> {
+    await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+
+    const skillContent = await loadBusinessLineLocalSkillMarkdownContent(
+      businessLineId,
+      skillId,
+    );
+
+    if (!skillContent) {
+      throw new NotFoundException('Skill content not found');
+    }
+
+    return skillContent;
   }
 
   async findLocalMcps(
