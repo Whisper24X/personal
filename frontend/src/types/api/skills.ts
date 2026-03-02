@@ -22,3 +22,9 @@ export type CreateSkillPayload = {
 }
 
 export type UpdateSkillPayload = Partial<CreateSkillPayload>
+
+export type SkillContent = {
+  id: string
+  name: string
+  content: string
+}

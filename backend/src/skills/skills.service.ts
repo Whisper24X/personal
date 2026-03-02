@@ -12,7 +12,12 @@ import { FindAllSkillsDto } from './dto/find-all-skills.dto';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { ProjectsService } from '../projects/projects.service';
-import { loadProjectLocalSkills } from '../utils/local-agent-catalog';
+import {
+  loadProjectLocalSkillMarkdownContent,
+  loadProjectLocalSkills,
+} from '../utils/local-agent-catalog';
+import { GetSkillContentDto } from './dto/get-skill-content.dto';
+import { SkillContentDto } from './dto/skill-content.dto';
 
 @Injectable()
 export class SkillsService {
@@ -81,6 +86,28 @@ export class SkillsService {
     }
 
     return skill;
+  }
+
+  async findProjectSkillContent(
+    skillId: string,
+    query: GetSkillContentDto,
+    currentUser: JwtPayloadType,
+  ): Promise<SkillContentDto> {
+    const project = await this.projectsService.assertCanAccessProject(
+      query.projectId,
+      currentUser,
+    );
+
+    const skillContent = await loadProjectLocalSkillMarkdownContent(
+      project,
+      skillId,
+    );
+
+    if (!skillContent) {
+      throw new NotFoundException('Skill content not found');
+    }
+
+    return skillContent;
   }
 
   async update(

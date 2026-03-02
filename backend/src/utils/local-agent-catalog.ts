@@ -144,6 +144,29 @@ const safeReadDir = async (
   }
 };
 
+const toAbsolutePath = (targetPath: string): string => {
+  const normalizedPath = targetPath.trim();
+  if (!normalizedPath) {
+    return '';
+  }
+
+  if (path.isAbsolute(normalizedPath)) {
+    return path.resolve(normalizedPath);
+  }
+
+  return path.resolve(workspaceRootDir, normalizedPath);
+};
+
+const isPathInsideDirectory = (targetPath: string, directoryPath: string): boolean => {
+  const relativePath = path.relative(directoryPath, targetPath);
+
+  if (!relativePath) {
+    return true;
+  }
+
+  return !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
+};
+
 const hasProjectRootMarkers = async (directoryPath: string): Promise<boolean> => {
   const gitDirStat = await safeStat(path.join(directoryPath, '.git'));
   if (gitDirStat?.isDirectory()) {
@@ -389,6 +412,47 @@ const resolveProjectBaseDir = async (project: Project): Promise<string | null> =
   }
 
   return null;
+};
+
+const resolveSkillSourcePath = (skill: LocalSkillItem): string | null => {
+  const metadata = isObjectRecord(skill.metadataJson) ? skill.metadataJson : null;
+  if (!metadata) {
+    return null;
+  }
+
+  return normalizeText(metadata.sourcePath);
+};
+
+const resolveSkillMarkdownPathCandidates = async (
+  sourcePath: string,
+): Promise<string[]> => {
+  const absoluteSourcePath = toAbsolutePath(sourcePath);
+  if (!absoluteSourcePath) {
+    return [];
+  }
+
+  const sourceStat = await safeStat(absoluteSourcePath);
+  const candidateSet = new Set<string>();
+
+  if (sourceStat?.isDirectory()) {
+    candidateSet.add(path.join(absoluteSourcePath, 'SKILL.md'));
+    candidateSet.add(path.join(absoluteSourcePath, 'skill.md'));
+  } else if (sourceStat?.isFile()) {
+    candidateSet.add(absoluteSourcePath);
+    const parentDir = path.dirname(absoluteSourcePath);
+    candidateSet.add(path.join(parentDir, 'SKILL.md'));
+    candidateSet.add(path.join(parentDir, 'skill.md'));
+  } else {
+    candidateSet.add(absoluteSourcePath);
+    const parentDir = path.dirname(absoluteSourcePath);
+    candidateSet.add(path.join(parentDir, 'SKILL.md'));
+    candidateSet.add(path.join(parentDir, 'skill.md'));
+  }
+
+  return Array.from(candidateSet).filter((candidatePath) => {
+    const normalizedExtension = path.extname(candidatePath).toLowerCase();
+    return normalizedExtension === '.md';
+  });
 };
 
 const dedupeSkills = (items: LocalSkillItem[]): LocalSkillItem[] => {
@@ -1067,4 +1131,49 @@ export const loadProjectLocalMcps = async (
   }
 
   return dedupeMcps(allMcps);
+};
+
+export const loadProjectLocalSkillMarkdownContent = async (
+  project: Project,
+  skillId: string,
+): Promise<{ id: string; name: string; content: string } | null> => {
+  const [skills, agentRoots] = await Promise.all([
+    loadProjectLocalSkills(project),
+    loadProjectAgentRootDirs(project),
+  ]);
+
+  const targetSkill = skills.find((item) => item.id === skillId);
+  if (!targetSkill) {
+    return null;
+  }
+
+  const sourcePath = resolveSkillSourcePath(targetSkill);
+  if (!sourcePath) {
+    return null;
+  }
+
+  const candidatePaths = await resolveSkillMarkdownPathCandidates(sourcePath);
+  const allowedRootPaths = agentRoots.map((root) => path.resolve(root.rootPath));
+
+  for (const candidatePath of candidatePaths) {
+    const resolvedCandidatePath = path.resolve(candidatePath);
+    const inAllowedRoot = allowedRootPaths.some((rootPath) =>
+      isPathInsideDirectory(resolvedCandidatePath, rootPath),
+    );
+
+    if (!inAllowedRoot) {
+      continue;
+    }
+
+    const content = await safeReadFile(resolvedCandidatePath);
+    if (typeof content === 'string') {
+      return {
+        id: targetSkill.id,
+        name: targetSkill.name,
+        content,
+      };
+    }
+  }
+
+  return null;
 };

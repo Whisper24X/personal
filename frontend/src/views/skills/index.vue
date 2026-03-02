@@ -26,6 +26,11 @@ const message = useMessage()
 const loading = ref(false)
 const keyword = ref('')
 const skills = ref<Skill[]>([])
+const detailSkill = ref<Skill | null>(null)
+const detailContent = ref('')
+const detailLoading = ref(false)
+const detailErrorMessage = ref('')
+const detailRequestToken = ref(0)
 
 type SkillGroup = {
   id: string
@@ -165,9 +170,50 @@ const loadSkills = async () => {
   }
 }
 
+const closeSkillDetail = () => {
+  detailRequestToken.value += 1
+  detailSkill.value = null
+  detailContent.value = ''
+  detailErrorMessage.value = ''
+  detailLoading.value = false
+}
+
+const openSkillDetail = async (item: Skill) => {
+  const projectId = activeProjectId.value
+  if (!projectId) {
+    return
+  }
+
+  detailSkill.value = item
+  detailContent.value = ''
+  detailErrorMessage.value = ''
+  detailLoading.value = true
+  const requestToken = ++detailRequestToken.value
+
+  try {
+    const response = await skillsApi.content(item.id, { projectId })
+    if (requestToken !== detailRequestToken.value) {
+      return
+    }
+
+    detailContent.value = response.content || ''
+  } catch (error) {
+    if (requestToken !== detailRequestToken.value) {
+      return
+    }
+
+    detailErrorMessage.value = toErrorMessage(error, '加载 SKILL.md 失败')
+  } finally {
+    if (requestToken === detailRequestToken.value) {
+      detailLoading.value = false
+    }
+  }
+}
+
 watch(
   () => activeProjectId.value,
   () => {
+    closeSkillDetail()
     void loadSkills()
   },
   { immediate: true },
@@ -236,10 +282,15 @@ watch(
         </div>
 
         <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          <div
+          <article
             v-for="item in group.items"
             :key="item.id"
-            class="rounded-xl border border-border bg-background/70 px-4 py-3"
+            role="button"
+            class="cursor-pointer rounded-xl border border-border bg-background/70 px-4 py-3 transition-colors hover:border-foreground/20"
+            tabindex="0"
+            @click="openSkillDetail(item)"
+            @keydown.enter.prevent="openSkillDetail(item)"
+            @keydown.space.prevent="openSkillDetail(item)"
           >
             <div class="flex items-start justify-between gap-3">
               <div>
@@ -262,12 +313,82 @@ watch(
               class="mt-3 inline-flex text-xs font-semibold text-primary hover:underline"
               target="_blank"
               rel="noreferrer"
+              @click.stop
             >
               查看说明
             </a>
-          </div>
+          </article>
         </div>
       </article>
     </section>
+
+    <Teleport to="body">
+      <div
+        v-if="detailSkill"
+        class="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6"
+        @keydown.esc.prevent.stop="closeSkillDetail"
+      >
+        <button
+          type="button"
+          aria-label="关闭 Skill 详情弹窗"
+          class="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
+          @click="closeSkillDetail"
+        />
+
+        <section
+          aria-modal="true"
+          role="dialog"
+          class="relative z-10 flex max-h-[85vh] w-full max-w-3xl flex-col rounded-2xl border border-border bg-background shadow-2xl"
+        >
+          <header class="flex items-center justify-between border-b border-border px-4 py-3">
+            <div>
+              <h2 class="text-base font-semibold">{{ detailSkill.name }}</h2>
+              <p class="text-xs text-muted-foreground">SKILL.md（只读）</p>
+            </div>
+            <button
+              type="button"
+              aria-label="关闭"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
+              @click="closeSkillDetail"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </button>
+          </header>
+
+          <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            <p v-if="detailLoading" class="text-sm text-muted-foreground">加载中...</p>
+            <p v-else-if="detailErrorMessage" class="text-sm text-destructive">{{ detailErrorMessage }}</p>
+            <pre
+              v-else
+              class="max-h-[62vh] overflow-auto whitespace-pre-wrap rounded-xl border border-border bg-background p-3 font-mono text-xs leading-relaxed text-foreground"
+            >{{ detailContent || '未读取到 SKILL.md 内容。' }}</pre>
+          </div>
+
+          <footer class="border-t border-border px-4 py-3">
+            <button
+              type="button"
+              class="h-10 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:shadow-md"
+              @click="closeSkillDetail"
+            >
+              关闭
+            </button>
+          </footer>
+        </section>
+      </div>
+    </Teleport>
   </div>
 </template>

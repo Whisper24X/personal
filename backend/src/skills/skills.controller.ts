@@ -32,6 +32,8 @@ import {
 } from '../utils/dto/infinity-pagination-response.dto';
 import { FindAllSkillsDto } from './dto/find-all-skills.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
+import { GetSkillContentDto } from './dto/get-skill-content.dto';
+import { SkillContentDto } from './dto/skill-content.dto';
 
 @ApiTags('Skills')
 @ApiBearerAuth()
@@ -78,6 +80,18 @@ export class SkillsController {
         limit,
       },
     );
+  }
+
+  @Get(':id/content')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: SkillContentDto })
+  @HttpCode(HttpStatus.OK)
+  findProjectSkillContent(
+    @Request() request,
+    @Param('id') id: string,
+    @Query() query: GetSkillContentDto,
+  ) {
+    return this.skillsService.findProjectSkillContent(id, query, request.user);
   }
 
   @Get(':id')
