@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
+import TaskCreateModal from '@/components/tasks/TaskCreateModal.vue'
 import type { Project } from '@/types/api/projects'
 import type { Task, TaskStatus } from '@/types/api/tasks'
 import { STORAGE_KEYS } from '@/types/common/storage'
@@ -22,10 +23,12 @@ type KanbanColumnConfig = {
 
 const loading = ref(false)
 const message = useMessage()
+const route = useRoute()
 
 const projects = ref<Project[]>([])
 const tasks = ref<Task[]>([])
 const selectedProjectId = ref('')
+const createTaskModalOpen = ref(false)
 
 const filters = reactive({
   keyword: '',
@@ -114,8 +117,27 @@ const uniqueById = <T extends { id: string }>(items: T[]) => {
   return Array.from(new Map(items.map((item) => [item.id, item])).values())
 }
 
+const resolveQueryProjectId = () => {
+  const queryProjectId = route.query.projectId
+  if (typeof queryProjectId === 'string') {
+    return queryProjectId
+  }
+  if (Array.isArray(queryProjectId)) {
+    return queryProjectId[0] ?? ''
+  }
+  return ''
+}
+
+const resolveStoredProjectId = () => {
+  return localStorage.getItem(STORAGE_KEYS.lastSelectedProjectId) ?? ''
+}
+
+const resolveProjectIdFromContext = () => {
+  return resolveQueryProjectId() || resolveStoredProjectId()
+}
+
 const syncSelectedProjectId = () => {
-  selectedProjectId.value = localStorage.getItem(STORAGE_KEYS.lastSelectedProjectId) ?? ''
+  selectedProjectId.value = resolveProjectIdFromContext()
 }
 
 const loadAllProjects = async () => {
@@ -172,10 +194,35 @@ const resetFilters = async () => {
   await applyFilters()
 }
 
+const openCreateTaskModal = () => {
+  createTaskModalOpen.value = true
+}
+
 onMounted(() => {
   syncSelectedProjectId()
   void loadPageData()
 })
+
+watch(
+  () => route.query.projectId,
+  async (projectId, previousProjectId) => {
+    const nextProjectId = Array.isArray(projectId) ? (projectId[0] ?? '') : (projectId ?? '')
+    const previousId = Array.isArray(previousProjectId) ? (previousProjectId[0] ?? '') : (previousProjectId ?? '')
+
+    if (nextProjectId === previousId) {
+      return
+    }
+
+    loading.value = true
+    try {
+      await loadTasks()
+    } catch (error) {
+      message.error(toErrorMessage(error, '切换项目后刷新看板失败'))
+    } finally {
+      loading.value = false
+    }
+  },
+)
 </script>
 
 <template>
@@ -211,6 +258,15 @@ onMounted(() => {
           @click="loadPageData"
         >
           刷新
+        </button>
+
+        <button
+          class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          type="button"
+          :disabled="!selectedProjectId"
+          @click="openCreateTaskModal"
+        >
+          新建任务
         </button>
       </div>
 
@@ -257,5 +313,10 @@ onMounted(() => {
         </div>
       </article>
     </section>
+
+    <TaskCreateModal
+      v-model:open="createTaskModalOpen"
+      :project-id="selectedProjectId"
+    />
   </div>
 </template>
