@@ -1,6 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 
 export class FindAllMcpsDto {
   @ApiPropertyOptional({ type: Number })
@@ -19,6 +25,11 @@ export class FindAllMcpsDto {
   @IsOptional()
   @IsString()
   keyword?: string;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsUUID()
+  projectId?: string;
 
   @ApiPropertyOptional({ type: Boolean })
   @Transform(({ value }) => {

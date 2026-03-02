@@ -2,12 +2,13 @@ import type { CreateMcpPayload, Mcp, UpdateMcpPayload } from '@/types/api/mcps'
 import { apiHttp, type InfinityPaginationResponse } from './http'
 
 export const mcpsApi = {
-  list(params?: { page?: number; limit?: number; keyword?: string; enabled?: boolean }) {
+  list(params?: { page?: number; limit?: number; keyword?: string; enabled?: boolean; projectId?: string }) {
     return apiHttp.get<InfinityPaginationResponse<Mcp>>('/mcps', {
       page: params?.page,
       limit: params?.limit,
       keyword: params?.keyword,
       enabled: params?.enabled,
+      projectId: params?.projectId,
     })
   },
 

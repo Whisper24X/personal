@@ -11,10 +11,15 @@ import { UpdateSkillDto } from './dto/update-skill.dto';
 import { FindAllSkillsDto } from './dto/find-all-skills.dto';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
+import { ProjectsService } from '../projects/projects.service';
+import { loadProjectLocalSkills } from '../utils/local-agent-catalog';
 
 @Injectable()
 export class SkillsService {
-  constructor(private readonly skillRepository: SkillRepository) {}
+  constructor(
+    private readonly skillRepository: SkillRepository,
+    private readonly projectsService: ProjectsService,
+  ) {}
 
   async create(
     createSkillDto: CreateSkillDto,
@@ -42,11 +47,24 @@ export class SkillsService {
     });
   }
 
-  async findAllWithPagination(query: FindAllSkillsDto): Promise<Skill[]> {
+  async findAllWithPagination(
+    query: FindAllSkillsDto,
+    currentUser: JwtPayloadType,
+  ): Promise<Skill[]> {
     const paginationOptions: IPaginationOptions = {
       page: query.page ?? 1,
       limit: query.limit ?? 10,
     };
+
+    if (query.projectId) {
+      const project = await this.projectsService.assertCanAccessProject(
+        query.projectId,
+        currentUser,
+      );
+      const localSkills = await loadProjectLocalSkills(project);
+
+      return this.filterAndPaginateLocalSkills(localSkills, query);
+    }
 
     return this.skillRepository.findAllWithPagination({
       paginationOptions,
@@ -136,5 +154,34 @@ export class SkillsService {
     if (!currentUser.roles?.includes('admin')) {
       throw new ForbiddenException('forbiddenSkillManage');
     }
+  }
+
+  private filterAndPaginateLocalSkills(
+    skills: Skill[],
+    query: FindAllSkillsDto,
+  ): Skill[] {
+    const keyword = query.keyword?.trim().toLowerCase() ?? '';
+    const filtered = skills.filter((skill) => {
+      if (query.enabled !== undefined && skill.enabled !== query.enabled) {
+        return false;
+      }
+
+      if (!keyword) {
+        return true;
+      }
+
+      const targetText =
+        `${skill.name} ${skill.version} ${skill.description ?? ''}`
+          .toLowerCase()
+          .trim();
+
+      return targetText.includes(keyword);
+    });
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const offset = (page - 1) * limit;
+
+    return filtered.slice(offset, offset + limit);
   }
 }

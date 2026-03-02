@@ -45,6 +45,8 @@ import { FindAllBusinessLinesDto } from './dto/find-all-business-lines.dto';
 import { UpdateAgentToolConfigDto } from './dto/update-agent-tool-config.dto';
 import { NullableType } from '../utils/types/nullable.type';
 import { BusinessLineDto } from './dto/business-line.dto';
+import { Skill } from '../skills/domain/skill';
+import { Mcp } from '../mcps/domain/mcp';
 
 @ApiTags('Businesslines')
 @ApiBearerAuth()
@@ -326,6 +328,48 @@ export class BusinessLinesController {
     );
 
     return configs.map((item) => this.toAgentToolConfigDto(item));
+  }
+
+  @Get(':businessLineId/local-skills')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: Skill,
+    isArray: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  findLocalSkills(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+  ): Promise<Skill[]> {
+    return this.businessLinesService.findLocalSkills(
+      businessLineId,
+      request.user,
+    );
+  }
+
+  @Get(':businessLineId/local-mcps')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: Mcp,
+    isArray: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  findLocalMcps(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+  ): Promise<Mcp[]> {
+    return this.businessLinesService.findLocalMcps(
+      businessLineId,
+      request.user,
+    );
   }
 
   @Post(':businessLineId/agent-tool-configs')

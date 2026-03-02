@@ -1,4 +1,6 @@
 import { apiHttp, type InfinityPaginationResponse } from './http'
+import type { Skill } from '@/types/api/skills'
+import type { Mcp } from '@/types/api/mcps'
 
 export type BusinessLine = {
   id: string
@@ -163,5 +165,13 @@ export const businessLinesApi = {
 
   removeAgentToolConfig(businessLineId: string, configId: string) {
     return apiHttp.delete<void>(`/business-lines/${businessLineId}/agent-tool-configs/${configId}`)
+  },
+
+  listLocalSkills(businessLineId: string) {
+    return apiHttp.get<Skill[]>(`/business-lines/${businessLineId}/local-skills`)
+  },
+
+  listLocalMcps(businessLineId: string) {
+    return apiHttp.get<Mcp[]>(`/business-lines/${businessLineId}/local-mcps`)
   },
 }

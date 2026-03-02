@@ -3,6 +3,7 @@ import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { Project } from '../projects/domain/project';
+import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 import { Task } from './domain/task';
 
 type EnsureTaskRuntimeResult = {
@@ -43,7 +44,10 @@ export class TaskRuntimeService {
   private readonly defaultRetentionHours = 48;
   private readonly defaultGitTimeoutMs = 60_000;
   private readonly maxDiffLength = 120_000;
-  private readonly defaultBaseDir = path.resolve(
+  private readonly defaultDataRootDir = path.resolve(
+    resolveAinativeDataRootDir(),
+  );
+  private readonly legacyDefaultWorktreeBaseDir = path.resolve(
     process.cwd(),
     'tmp',
     'worktrees',
@@ -110,7 +114,10 @@ export class TaskRuntimeService {
         await fs.mkdir(gitWorktreePath, {
           recursive: true,
         });
-        await this.enforceRuntimeDirectorySecurity(gitWorktreePath, allowedRoot);
+        await this.enforceRuntimeDirectorySecurity(
+          gitWorktreePath,
+          allowedRoot,
+        );
 
         runtimeMeta.sandbox = {
           type: 'directory',
@@ -356,9 +363,7 @@ export class TaskRuntimeService {
     }
 
     const baseDir = this.resolveWorktreeBaseDir(project);
-    const projectSegment = this.sanitizeSegment(project.name) || 'project';
-
-    return path.join(baseDir, `${projectSegment}-${task.id}`);
+    return path.join(baseDir, task.id);
   }
 
   private resolveCleanupAt(task: Task, project: Project): Date {
@@ -384,7 +389,7 @@ export class TaskRuntimeService {
       return path.resolve(process.env.AINATIVE_WORKTREE_BASE_DIR);
     }
 
-    return this.defaultBaseDir;
+    return this.resolveProjectWorktreeBaseDir(project);
   }
 
   private resolveRetentionHours(project: Project): number {
@@ -429,15 +434,75 @@ export class TaskRuntimeService {
     }
 
     const cacheBaseDir =
-      (typeof config.repoCacheBaseDir === 'string' &&
+      typeof config.repoCacheBaseDir === 'string' &&
       config.repoCacheBaseDir.trim()
         ? config.repoCacheBaseDir.trim()
-        : process.env.AINATIVE_REPO_CACHE_BASE_DIR?.trim()) ||
-      path.resolve(this.defaultBaseDir, '.repos');
+        : process.env.AINATIVE_REPO_CACHE_BASE_DIR?.trim();
+
+    const repositoryDirName = this.resolveRepositoryDirectoryName(project);
+
+    if (!cacheBaseDir) {
+      return this.resolveProjectStorageBaseDir(project);
+    }
+
+    return path.resolve(cacheBaseDir, `${repositoryDirName}-${project.id}`);
+  }
+
+  private resolveProjectStorageBaseDir(project: Project): string {
+    const businessLineId =
+      project.businessLineId?.trim() || 'unknown-business-line';
+    const projectId = project.id?.trim() || 'unknown-project';
+
+    return path.resolve(
+      this.defaultDataRootDir,
+      businessLineId,
+      'projects',
+      projectId,
+    );
+  }
+
+  private resolveProjectWorktreeBaseDir(project: Project): string {
+    const businessLineId =
+      project.businessLineId?.trim() || 'unknown-business-line';
+    const projectId = project.id?.trim() || 'unknown-project';
+
+    return path.resolve(
+      this.defaultDataRootDir,
+      businessLineId,
+      'worktrees',
+      projectId,
+    );
+  }
+
+  private resolveRepositoryDirectoryName(project: Project): string {
+    const parsedFromGitUrl = this.extractRepositoryName(project.gitUrl);
+    if (parsedFromGitUrl) {
+      return parsedFromGitUrl;
+    }
 
     const projectSegment = this.sanitizeSegment(project.name) || 'project';
+    return projectSegment;
+  }
 
-    return path.resolve(cacheBaseDir, `${projectSegment}-${project.id}`);
+  private extractRepositoryName(gitUrl: string): string | null {
+    const trimmedUrl = gitUrl.trim();
+    if (!trimmedUrl) {
+      return null;
+    }
+
+    const withoutQuery = trimmedUrl.replace(/[?#].*$/, '').replace(/\/+$/, '');
+    const lastSeparatorIndex = Math.max(
+      withoutQuery.lastIndexOf('/'),
+      withoutQuery.lastIndexOf(':'),
+    );
+    const rawName =
+      lastSeparatorIndex >= 0
+        ? withoutQuery.slice(lastSeparatorIndex + 1)
+        : withoutQuery;
+    const withoutGitSuffix = rawName.replace(/\.git$/i, '');
+    const normalized = this.sanitizeSegment(withoutGitSuffix);
+
+    return normalized || null;
   }
 
   private async ensureProjectRepository(project: Project): Promise<string> {
@@ -671,7 +736,7 @@ export class TaskRuntimeService {
       return path.resolve(process.env.AINATIVE_WORKTREE_BASE_DIR.trim());
     }
 
-    return this.defaultBaseDir;
+    return this.legacyDefaultWorktreeBaseDir;
   }
 
   private ensureWorktreePathAllowed(

@@ -16,6 +16,8 @@ const { businessLinesApi, projectsApi, usersApi, workflowApi, fetchAllPages } = 
     updateMember: vi.fn(),
     removeMember: vi.fn(),
     listAgentToolConfigs: vi.fn(),
+    listLocalSkills: vi.fn(),
+    listLocalMcps: vi.fn(),
     createAgentToolConfig: vi.fn(),
     updateAgentToolConfig: vi.fn(),
     removeAgentToolConfig: vi.fn(),
@@ -92,6 +94,8 @@ beforeEach(() => {
 
   businessLinesApi.listMembers.mockResolvedValue([])
   businessLinesApi.listAgentToolConfigs.mockResolvedValue([])
+  businessLinesApi.listLocalSkills.mockResolvedValue([])
+  businessLinesApi.listLocalMcps.mockResolvedValue([])
   workflowApi.list.mockResolvedValue({
     data: [],
     hasNextPage: false,
@@ -150,7 +154,7 @@ beforeEach(() => {
 })
 
 describe('BusinessLineModal', () => {
-  it('renders left-right layout with 5 tabs by default', async () => {
+  it('renders left-right layout with 7 tabs by default', async () => {
     const pinia = createPinia()
     const wrapper = mount(BusinessLineModal, {
       props: buildProps(true),
@@ -169,6 +173,8 @@ describe('BusinessLineModal', () => {
     expect(wrapper.text()).toContain('成员/权限')
     expect(wrapper.text()).toContain('Agent CLI')
     expect(wrapper.text()).toContain('工作流')
+    expect(wrapper.text()).toContain('Skill')
+    expect(wrapper.text()).toContain('MCP')
     expect(wrapper.text()).toContain('设置')
     expect(wrapper.text()).toContain('创建业务线')
 

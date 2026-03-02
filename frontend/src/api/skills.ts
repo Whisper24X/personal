@@ -2,12 +2,13 @@ import type { CreateSkillPayload, Skill, UpdateSkillPayload } from '@/types/api/
 import { apiHttp, type InfinityPaginationResponse } from './http'
 
 export const skillsApi = {
-  list(params?: { page?: number; limit?: number; keyword?: string; enabled?: boolean }) {
+  list(params?: { page?: number; limit?: number; keyword?: string; enabled?: boolean; projectId?: string }) {
     return apiHttp.get<InfinityPaginationResponse<Skill>>('/skills', {
       page: params?.page,
       limit: params?.limit,
       keyword: params?.keyword,
       enabled: params?.enabled,
+      projectId: params?.projectId,
     })
   },
 

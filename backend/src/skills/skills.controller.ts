@@ -54,6 +54,7 @@ export class SkillsController {
   @ApiOkResponse({ type: InfinityPaginationResponse(Skill) })
   @HttpCode(HttpStatus.OK)
   async findAll(
+    @Request() request,
     @Query() query: FindAllSkillsDto,
   ): Promise<InfinityPaginationResponseDto<Skill>> {
     const page = query?.page ?? 1;
@@ -64,11 +65,14 @@ export class SkillsController {
     }
 
     return infinityPagination(
-      await this.skillsService.findAllWithPagination({
-        ...query,
-        page,
-        limit,
-      }),
+      await this.skillsService.findAllWithPagination(
+        {
+          ...query,
+          page,
+          limit,
+        },
+        request.user,
+      ),
       {
         page,
         limit,

@@ -54,6 +54,7 @@ export class McpsController {
   @ApiOkResponse({ type: InfinityPaginationResponse(Mcp) })
   @HttpCode(HttpStatus.OK)
   async findAll(
+    @Request() request,
     @Query() query: FindAllMcpsDto,
   ): Promise<InfinityPaginationResponseDto<Mcp>> {
     const page = query?.page ?? 1;
@@ -64,11 +65,14 @@ export class McpsController {
     }
 
     return infinityPagination(
-      await this.mcpsService.findAllWithPagination({
-        ...query,
-        page,
-        limit,
-      }),
+      await this.mcpsService.findAllWithPagination(
+        {
+          ...query,
+          page,
+          limit,
+        },
+        request.user,
+      ),
       {
         page,
         limit,

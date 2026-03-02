@@ -1,0 +1,946 @@
+import { createHash } from 'crypto';
+import { promises as fs } from 'fs';
+import path from 'path';
+import { Project } from '../projects/domain/project';
+import {
+  resolveAinativeDataRootDir,
+  resolveWorkspaceRootDir,
+} from './workspace-paths';
+
+export type LocalSkillItem = {
+  id: string;
+  name: string;
+  version: string;
+  description?: string | null;
+  scope?: string | null;
+  homepageUrl?: string | null;
+  metadataJson?: Record<string, unknown> | null;
+  enabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type LocalMcpItem = {
+  id: string;
+  name: string;
+  version: string;
+  description?: string | null;
+  provider?: string | null;
+  toolsCount: number;
+  configSchema?: Record<string, unknown> | null;
+  metadataJson?: Record<string, unknown> | null;
+  enabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+const PROJECT_AGENT_ROOTS = ['.codex', '.cursor'];
+const SKILL_DESCRIPTOR_FILENAMES = [
+  'SKILL.md',
+  'skill.md',
+  'skill.json',
+  'skill.yaml',
+  'skill.yml',
+  'skill.toml',
+];
+const TEXT_CONFIG_EXTENSIONS = new Set([
+  '.json',
+  '.yaml',
+  '.yml',
+  '.toml',
+  '.md',
+]);
+const MCP_FILE_BASENAME_REGEX = /(mcp|settings|config)/i;
+const workspaceRootDir = resolveWorkspaceRootDir();
+const ainativeDataRootDir = resolveAinativeDataRootDir();
+
+const normalizeText = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+};
+
+const normalizeBoolean = (value: unknown, defaultValue: boolean): boolean => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') {
+      return true;
+    }
+    if (normalized === 'false') {
+      return false;
+    }
+  }
+
+  return defaultValue;
+};
+
+const normalizeNumber = (value: unknown, defaultValue: number): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return defaultValue;
+};
+
+const toDisplayPath = (absolutePath: string): string => {
+  const relativePath = path
+    .relative(workspaceRootDir, absolutePath)
+    .replace(/\\/g, '/');
+
+  if (!relativePath || relativePath.startsWith('..')) {
+    return path.resolve(absolutePath);
+  }
+
+  return relativePath;
+};
+
+const buildDeterministicId = (seed: string): string => {
+  return createHash('sha1').update(seed).digest('hex');
+};
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> => {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+};
+
+const safeReadFile = async (filePath: string): Promise<string | null> => {
+  try {
+    return await fs.readFile(filePath, 'utf-8');
+  } catch {
+    return null;
+  }
+};
+
+const safeStat = async (
+  targetPath: string,
+): Promise<import('fs').Stats | null> => {
+  try {
+    return await fs.stat(targetPath);
+  } catch {
+    return null;
+  }
+};
+
+const safeReadDir = async (
+  targetPath: string,
+): Promise<import('fs').Dirent[]> => {
+  try {
+    return await fs.readdir(targetPath, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+};
+
+const parseJsonObject = (content: string): Record<string, unknown> | null => {
+  try {
+    const parsed = JSON.parse(content);
+    return isObjectRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const stripInlineComment = (value: string): string => {
+  const hashIndex = value.indexOf('#');
+  if (hashIndex >= 0) {
+    return value.slice(0, hashIndex).trim();
+  }
+
+  return value.trim();
+};
+
+const stripWrappedQuote = (value: string): string => {
+  if (!value) {
+    return value;
+  }
+
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1).trim();
+  }
+
+  return value;
+};
+
+const parseSimpleKeyValue = (content: string): Record<string, string> => {
+  const result: Record<string, string> = {};
+  const lines = content.split(/\r?\n/);
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('[')) {
+      continue;
+    }
+
+    const separatorIndex = trimmed.includes(':')
+      ? trimmed.indexOf(':')
+      : trimmed.indexOf('=');
+
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const key = trimmed.slice(0, separatorIndex).trim();
+    const value = stripWrappedQuote(
+      stripInlineComment(trimmed.slice(separatorIndex + 1).trim()),
+    );
+
+    if (!key || !value) {
+      continue;
+    }
+
+    result[key] = value;
+  }
+
+  return result;
+};
+
+const parseFrontmatter = (content: string): Record<string, string> => {
+  const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---\s*(?:\n|$)/);
+  if (!frontmatterMatch?.[1]) {
+    return {};
+  }
+
+  return parseSimpleKeyValue(frontmatterMatch[1]);
+};
+
+const pickDescriptionFromMarkdown = (content: string): string | null => {
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    if (line.startsWith('#')) {
+      continue;
+    }
+
+    if (line.startsWith('---')) {
+      continue;
+    }
+
+    if (line.startsWith('name:') || line.startsWith('description:')) {
+      continue;
+    }
+
+    return line;
+  }
+
+  return null;
+};
+
+const resolveProjectBaseDir = (project: Project): string | null => {
+  const configJson = isObjectRecord(project.configJson)
+    ? project.configJson
+    : {};
+
+  const candidates = [
+    configJson.repoLocalPath,
+    configJson.contextBaseDir,
+    configJson.workspacePath,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeText(candidate);
+    if (!normalized) {
+      continue;
+    }
+
+    return path.resolve(normalized);
+  }
+
+  return null;
+};
+
+const dedupeSkills = (items: LocalSkillItem[]): LocalSkillItem[] => {
+  const merged = new Map<string, LocalSkillItem>();
+
+  for (const item of items) {
+    const key = `${item.name.toLowerCase()}@${item.version.toLowerCase()}`;
+    if (!merged.has(key)) {
+      merged.set(key, item);
+    }
+  }
+
+  return Array.from(merged.values()).sort((left, right) => {
+    const byName = left.name.localeCompare(right.name);
+    if (byName !== 0) {
+      return byName;
+    }
+
+    return left.version.localeCompare(right.version);
+  });
+};
+
+const dedupeMcps = (items: LocalMcpItem[]): LocalMcpItem[] => {
+  const merged = new Map<string, LocalMcpItem>();
+
+  for (const item of items) {
+    const key = `${item.name.toLowerCase()}@${item.version.toLowerCase()}`;
+    if (!merged.has(key)) {
+      merged.set(key, item);
+    }
+  }
+
+  return Array.from(merged.values()).sort((left, right) => {
+    const byName = left.name.localeCompare(right.name);
+    if (byName !== 0) {
+      return byName;
+    }
+
+    return left.version.localeCompare(right.version);
+  });
+};
+
+const buildLocalSkillItem = ({
+  sourceProvider,
+  sourcePath,
+  name,
+  version,
+  description,
+  scope,
+  homepageUrl,
+  enabled,
+  metadataJson,
+  updatedAt,
+}: {
+  sourceProvider: string;
+  sourcePath: string;
+  name: string;
+  version: string;
+  description?: string | null;
+  scope?: string | null;
+  homepageUrl?: string | null;
+  enabled: boolean;
+  metadataJson?: Record<string, unknown> | null;
+  updatedAt: Date;
+}): LocalSkillItem => {
+  const normalizedSourcePath = toDisplayPath(sourcePath);
+  const idSeed = `${sourceProvider}:${normalizedSourcePath}:${name}:${version}`;
+
+  return {
+    id: buildDeterministicId(idSeed),
+    name,
+    version,
+    description: description ?? null,
+    scope: scope ?? null,
+    homepageUrl: homepageUrl ?? null,
+    metadataJson: {
+      ...(metadataJson ?? {}),
+      sourceProvider,
+      sourcePath: normalizedSourcePath,
+    },
+    enabled,
+    createdAt: updatedAt,
+    updatedAt,
+  };
+};
+
+const parseSkillDescriptor = async ({
+  filePath,
+  fallbackName,
+  sourceProvider,
+}: {
+  filePath: string;
+  fallbackName: string;
+  sourceProvider: string;
+}): Promise<LocalSkillItem | null> => {
+  const fileContent = await safeReadFile(filePath);
+  if (!fileContent) {
+    return null;
+  }
+
+  const fileStat = await safeStat(filePath);
+  const updatedAt = fileStat?.mtime ?? new Date();
+  const extension = path.extname(filePath).toLowerCase();
+
+  if (extension === '.json') {
+    const parsedObject = parseJsonObject(fileContent);
+    if (parsedObject) {
+      const name = normalizeText(parsedObject.name) ?? fallbackName;
+      const version = normalizeText(parsedObject.version) ?? 'local';
+
+      return buildLocalSkillItem({
+        sourceProvider,
+        sourcePath: filePath,
+        name,
+        version,
+        description: normalizeText(parsedObject.description),
+        scope: normalizeText(parsedObject.scope),
+        homepageUrl:
+          normalizeText(parsedObject.homepageUrl) ??
+          normalizeText(parsedObject.homepage_url),
+        enabled: normalizeBoolean(parsedObject.enabled, true),
+        metadataJson: isObjectRecord(parsedObject.metadataJson)
+          ? parsedObject.metadataJson
+          : isObjectRecord(parsedObject.metadata)
+            ? parsedObject.metadata
+            : null,
+        updatedAt,
+      });
+    }
+  }
+
+  const frontmatter = parseFrontmatter(fileContent);
+  const simpleMap = parseSimpleKeyValue(fileContent);
+
+  const name =
+    normalizeText(frontmatter.name) ??
+    normalizeText(simpleMap.name) ??
+    fallbackName;
+  const version =
+    normalizeText(frontmatter.version) ??
+    normalizeText(simpleMap.version) ??
+    'local';
+
+  return buildLocalSkillItem({
+    sourceProvider,
+    sourcePath: filePath,
+    name,
+    version,
+    description:
+      normalizeText(frontmatter.description) ??
+      normalizeText(simpleMap.description) ??
+      pickDescriptionFromMarkdown(fileContent),
+    scope: normalizeText(frontmatter.scope) ?? normalizeText(simpleMap.scope),
+    homepageUrl:
+      normalizeText(frontmatter.homepageUrl) ??
+      normalizeText(frontmatter.homepage_url) ??
+      normalizeText(simpleMap.homepageUrl) ??
+      normalizeText(simpleMap.homepage_url),
+    enabled: normalizeBoolean(frontmatter.enabled ?? simpleMap.enabled, true),
+    metadataJson: null,
+    updatedAt,
+  });
+};
+
+const loadSkillsFromDirectory = async ({
+  directoryPath,
+  sourceProvider,
+}: {
+  directoryPath: string;
+  sourceProvider: string;
+}): Promise<LocalSkillItem[]> => {
+  const directoryStat = await safeStat(directoryPath);
+  if (!directoryStat?.isDirectory()) {
+    return [];
+  }
+
+  const entries = await safeReadDir(directoryPath);
+  const result: LocalSkillItem[] = [];
+
+  for (const entry of entries) {
+    const entryPath = path.join(directoryPath, entry.name);
+
+    if (entry.isFile()) {
+      const extension = path.extname(entry.name).toLowerCase();
+      if (!TEXT_CONFIG_EXTENSIONS.has(extension)) {
+        continue;
+      }
+
+      const parsed = await parseSkillDescriptor({
+        filePath: entryPath,
+        fallbackName: path.parse(entry.name).name,
+        sourceProvider,
+      });
+
+      if (parsed) {
+        result.push(parsed);
+      }
+
+      continue;
+    }
+
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    let parsedFromDescriptor: LocalSkillItem | null = null;
+
+    for (const descriptorFilename of SKILL_DESCRIPTOR_FILENAMES) {
+      const descriptorPath = path.join(entryPath, descriptorFilename);
+      const descriptorStat = await safeStat(descriptorPath);
+
+      if (!descriptorStat?.isFile()) {
+        continue;
+      }
+
+      parsedFromDescriptor = await parseSkillDescriptor({
+        filePath: descriptorPath,
+        fallbackName: entry.name,
+        sourceProvider,
+      });
+
+      if (parsedFromDescriptor) {
+        break;
+      }
+    }
+
+    if (parsedFromDescriptor) {
+      result.push(parsedFromDescriptor);
+      continue;
+    }
+
+    const directoryEntryStat = await safeStat(entryPath);
+    const fallbackUpdatedAt = directoryEntryStat?.mtime ?? new Date();
+
+    result.push(
+      buildLocalSkillItem({
+        sourceProvider,
+        sourcePath: entryPath,
+        name: entry.name,
+        version: 'local',
+        enabled: true,
+        metadataJson: null,
+        updatedAt: fallbackUpdatedAt,
+      }),
+    );
+  }
+
+  return dedupeSkills(result);
+};
+
+const buildLocalMcpItem = ({
+  sourceProvider,
+  sourcePath,
+  name,
+  version,
+  description,
+  provider,
+  toolsCount,
+  configSchema,
+  metadataJson,
+  enabled,
+  updatedAt,
+}: {
+  sourceProvider: string;
+  sourcePath: string;
+  name: string;
+  version: string;
+  description?: string | null;
+  provider?: string | null;
+  toolsCount: number;
+  configSchema?: Record<string, unknown> | null;
+  metadataJson?: Record<string, unknown> | null;
+  enabled: boolean;
+  updatedAt: Date;
+}): LocalMcpItem => {
+  const normalizedSourcePath = toDisplayPath(sourcePath);
+  const idSeed = `${sourceProvider}:${normalizedSourcePath}:${name}:${version}`;
+
+  return {
+    id: buildDeterministicId(idSeed),
+    name,
+    version,
+    description: description ?? null,
+    provider: provider ?? sourceProvider,
+    toolsCount,
+    configSchema: configSchema ?? null,
+    metadataJson: {
+      ...(metadataJson ?? {}),
+      sourceProvider,
+      sourcePath: normalizedSourcePath,
+    },
+    enabled,
+    createdAt: updatedAt,
+    updatedAt,
+  };
+};
+
+const parseMcpFromEntryObject = ({
+  name,
+  sourcePath,
+  sourceProvider,
+  value,
+  updatedAt,
+}: {
+  name: string;
+  sourcePath: string;
+  sourceProvider: string;
+  value: unknown;
+  updatedAt: Date;
+}): LocalMcpItem => {
+  const record = isObjectRecord(value) ? value : {};
+
+  const toolsCount = Array.isArray(record.tools)
+    ? record.tools.length
+    : normalizeNumber(record.toolsCount ?? record.tools_count, 0);
+
+  return buildLocalMcpItem({
+    sourceProvider,
+    sourcePath,
+    name,
+    version: normalizeText(record.version) ?? 'local',
+    description: normalizeText(record.description),
+    provider:
+      normalizeText(record.provider) ??
+      normalizeText(record.owner) ??
+      sourceProvider,
+    toolsCount: Math.max(0, toolsCount),
+    configSchema: isObjectRecord(record.configSchema)
+      ? record.configSchema
+      : isObjectRecord(record.config_schema)
+        ? record.config_schema
+        : null,
+    metadataJson: isObjectRecord(record.metadataJson)
+      ? record.metadataJson
+      : isObjectRecord(record.metadata)
+        ? record.metadata
+        : isObjectRecord(record.meta)
+          ? record.meta
+          : null,
+    enabled: normalizeBoolean(record.enabled, true),
+    updatedAt,
+  });
+};
+
+const parseMcpObject = ({
+  contentObject,
+  sourcePath,
+  sourceProvider,
+  fallbackName,
+  updatedAt,
+}: {
+  contentObject: Record<string, unknown>;
+  sourcePath: string;
+  sourceProvider: string;
+  fallbackName: string;
+  updatedAt: Date;
+}): LocalMcpItem[] => {
+  const result: LocalMcpItem[] = [];
+
+  const groupedCandidates = [
+    contentObject.mcpServers,
+    contentObject.mcp_servers,
+    contentObject.mcps,
+    contentObject.mcp,
+  ];
+
+  for (const candidate of groupedCandidates) {
+    if (Array.isArray(candidate)) {
+      for (const entry of candidate) {
+        if (!isObjectRecord(entry)) {
+          continue;
+        }
+
+        const name = normalizeText(entry.name) ?? fallbackName;
+        result.push(
+          parseMcpFromEntryObject({
+            name,
+            sourcePath,
+            sourceProvider,
+            value: entry,
+            updatedAt,
+          }),
+        );
+      }
+      continue;
+    }
+
+    if (!isObjectRecord(candidate)) {
+      continue;
+    }
+
+    for (const [name, value] of Object.entries(candidate)) {
+      result.push(
+        parseMcpFromEntryObject({
+          name,
+          sourcePath,
+          sourceProvider,
+          value,
+          updatedAt,
+        }),
+      );
+    }
+  }
+
+  if (result.length > 0) {
+    return result;
+  }
+
+  const objectLevelName = normalizeText(contentObject.name) ?? fallbackName;
+
+  return [
+    parseMcpFromEntryObject({
+      name: objectLevelName,
+      sourcePath,
+      sourceProvider,
+      value: contentObject,
+      updatedAt,
+    }),
+  ];
+};
+
+const parseTomlMcpNames = (content: string): string[] => {
+  const names: string[] = [];
+  const regexes = [
+    /^\s*\[(?:mcpServers|mcp_servers)\.([^\]]+)\]\s*$/gm,
+    /^\s*\[(?:mcpServers|mcp_servers)\.("[^"]+"|'[^']+')\]\s*$/gm,
+  ];
+
+  for (const regex of regexes) {
+    let match: RegExpExecArray | null = regex.exec(content);
+    while (match) {
+      const raw = match[1]?.trim() ?? '';
+      if (raw) {
+        names.push(stripWrappedQuote(raw));
+      }
+      match = regex.exec(content);
+    }
+  }
+
+  return Array.from(new Set(names));
+};
+
+const parseMcpFile = async ({
+  filePath,
+  sourceProvider,
+}: {
+  filePath: string;
+  sourceProvider: string;
+}): Promise<LocalMcpItem[]> => {
+  const content = await safeReadFile(filePath);
+  if (!content) {
+    return [];
+  }
+
+  const fileStat = await safeStat(filePath);
+  const updatedAt = fileStat?.mtime ?? new Date();
+  const fallbackName = path.parse(filePath).name;
+  const extension = path.extname(filePath).toLowerCase();
+
+  if (extension === '.json') {
+    const parsedObject = parseJsonObject(content);
+    if (!parsedObject) {
+      return [];
+    }
+
+    return parseMcpObject({
+      contentObject: parsedObject,
+      sourcePath: filePath,
+      sourceProvider,
+      fallbackName,
+      updatedAt,
+    });
+  }
+
+  const tomlNames = extension === '.toml' ? parseTomlMcpNames(content) : [];
+  if (tomlNames.length > 0) {
+    return tomlNames.map((name) =>
+      buildLocalMcpItem({
+        sourceProvider,
+        sourcePath: filePath,
+        name,
+        version: 'local',
+        provider: sourceProvider,
+        toolsCount: 0,
+        enabled: true,
+        updatedAt,
+      }),
+    );
+  }
+
+  const simpleMap = parseSimpleKeyValue(content);
+  if (simpleMap.name) {
+    return [
+      buildLocalMcpItem({
+        sourceProvider,
+        sourcePath: filePath,
+        name: simpleMap.name,
+        version: simpleMap.version ?? 'local',
+        description: simpleMap.description ?? null,
+        provider: simpleMap.provider ?? sourceProvider,
+        toolsCount: Math.max(0, normalizeNumber(simpleMap.toolsCount, 0)),
+        enabled: normalizeBoolean(simpleMap.enabled, true),
+        updatedAt,
+      }),
+    ];
+  }
+
+  return [];
+};
+
+const walkFiles = async ({
+  rootPath,
+  maxDepth,
+  shouldInclude,
+}: {
+  rootPath: string;
+  maxDepth: number;
+  shouldInclude: (filePath: string, depth: number) => boolean;
+}): Promise<string[]> => {
+  const rootStat = await safeStat(rootPath);
+  if (!rootStat?.isDirectory()) {
+    return [];
+  }
+
+  const files: string[] = [];
+
+  const visit = async (currentPath: string, depth: number): Promise<void> => {
+    if (depth > maxDepth) {
+      return;
+    }
+
+    const entries = await safeReadDir(currentPath);
+
+    for (const entry of entries) {
+      const entryPath = path.join(currentPath, entry.name);
+
+      if (entry.isDirectory()) {
+        await visit(entryPath, depth + 1);
+        continue;
+      }
+
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      if (shouldInclude(entryPath, depth)) {
+        files.push(entryPath);
+      }
+    }
+  };
+
+  await visit(rootPath, 0);
+
+  return files;
+};
+
+const loadMcpsFromDirectory = async ({
+  directoryPath,
+  sourceProvider,
+}: {
+  directoryPath: string;
+  sourceProvider: string;
+}): Promise<LocalMcpItem[]> => {
+  const candidateFiles = await walkFiles({
+    rootPath: directoryPath,
+    maxDepth: 3,
+    shouldInclude: (filePath) => {
+      const extension = path.extname(filePath).toLowerCase();
+      if (!TEXT_CONFIG_EXTENSIONS.has(extension)) {
+        return false;
+      }
+
+      const basename = path.basename(filePath);
+      return MCP_FILE_BASENAME_REGEX.test(basename) || extension === '.json';
+    },
+  });
+
+  const items: LocalMcpItem[] = [];
+
+  for (const candidateFile of candidateFiles) {
+    const parsed = await parseMcpFile({
+      filePath: candidateFile,
+      sourceProvider,
+    });
+    items.push(...parsed);
+  }
+
+  return dedupeMcps(items);
+};
+
+const loadProjectAgentRootDirs = async (
+  project: Project,
+): Promise<Array<{ provider: string; rootPath: string }>> => {
+  const projectBaseDir = resolveProjectBaseDir(project);
+
+  if (!projectBaseDir) {
+    return [];
+  }
+
+  const result: Array<{ provider: string; rootPath: string }> = [];
+
+  for (const rootName of PROJECT_AGENT_ROOTS) {
+    const rootPath = path.join(projectBaseDir, rootName);
+    const rootStat = await safeStat(rootPath);
+
+    if (!rootStat?.isDirectory()) {
+      continue;
+    }
+
+    result.push({
+      provider: rootName.slice(1),
+      rootPath,
+    });
+  }
+
+  return result;
+};
+
+export const loadBusinessLineLocalSkills = async (
+  businessLineId: string,
+): Promise<LocalSkillItem[]> => {
+  const skillsPath = path.resolve(
+    ainativeDataRootDir,
+    businessLineId,
+    'skills',
+  );
+
+  return loadSkillsFromDirectory({
+    directoryPath: skillsPath,
+    sourceProvider: 'business-line',
+  });
+};
+
+export const loadBusinessLineLocalMcps = async (
+  businessLineId: string,
+): Promise<LocalMcpItem[]> => {
+  const mcpPath = path.resolve(ainativeDataRootDir, businessLineId, 'mcp');
+
+  return loadMcpsFromDirectory({
+    directoryPath: mcpPath,
+    sourceProvider: 'business-line',
+  });
+};
+
+export const loadProjectLocalSkills = async (
+  project: Project,
+): Promise<LocalSkillItem[]> => {
+  const agentRoots = await loadProjectAgentRootDirs(project);
+  const allSkills: LocalSkillItem[] = [];
+
+  for (const root of agentRoots) {
+    const skillsPath = path.join(root.rootPath, 'skills');
+    const loaded = await loadSkillsFromDirectory({
+      directoryPath: skillsPath,
+      sourceProvider: root.provider,
+    });
+    allSkills.push(...loaded);
+  }
+
+  return dedupeSkills(allSkills);
+};
+
+export const loadProjectLocalMcps = async (
+  project: Project,
+): Promise<LocalMcpItem[]> => {
+  const agentRoots = await loadProjectAgentRootDirs(project);
+  const allMcps: LocalMcpItem[] = [];
+
+  for (const root of agentRoots) {
+    const loadedFromRoot = await loadMcpsFromDirectory({
+      directoryPath: root.rootPath,
+      sourceProvider: root.provider,
+    });
+
+    allMcps.push(...loadedFromRoot);
+  }
+
+  return dedupeMcps(allMcps);
+};

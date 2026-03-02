@@ -1,9 +1,13 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { spawn } from 'child_process';
+import { promises as fs } from 'fs';
+import path from 'path';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { ProjectRepository } from './infrastructure/persistence/project.repository';
@@ -20,9 +24,15 @@ import { CreateProjectMemberDto } from './dto/create-project-member.dto';
 import { UpdateProjectMemberDto } from './dto/update-project-member.dto';
 import { UsersService } from '../users/users.service';
 import { ProjectMemberRole } from './dto/project-member-role.enum';
+import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 
 @Injectable()
 export class ProjectsService {
+  private readonly defaultGitTimeoutMs = 60_000;
+  private readonly defaultDataRootDir = path.resolve(
+    resolveAinativeDataRootDir(),
+  );
+
   constructor(
     private readonly projectRepository: ProjectRepository,
     private readonly projectMemberRepository: ProjectMemberRepository,
@@ -52,6 +62,8 @@ export class ProjectsService {
       );
     }
 
+    await this.validateGitRepositoryAccessible(createProjectDto.gitUrl);
+
     const project = await this.projectRepository.create({
       businessLineId: createProjectDto.businessLineId,
       name: createProjectDto.name,
@@ -60,6 +72,15 @@ export class ProjectsService {
       defaultBranch: createProjectDto.defaultBranch ?? 'main',
       configJson: createProjectDto.configJson ?? null,
     });
+
+    try {
+      await this.ensureProjectRepository(project);
+    } catch (error) {
+      await this.rollbackCreatedProject(project.id);
+      throw new BadRequestException(
+        this.formatGitSyncFailureMessage(error, project.gitUrl),
+      );
+    }
 
     const existedCreatorMember =
       await this.projectMemberRepository.findByProjectIdAndUserId(
@@ -589,6 +610,229 @@ export class ProjectsService {
       businessLineMember.role !== BusinessLineMemberRole.admin
     ) {
       throw new ForbiddenException('forbiddenBusinessLineManage');
+    }
+  }
+
+  private async validateGitRepositoryAccessible(gitUrl: string): Promise<void> {
+    const result = await this.runCommand('git', [
+      'ls-remote',
+      '--heads',
+      '--tags',
+      gitUrl,
+    ]);
+
+    if (result.success) {
+      return;
+    }
+
+    throw new BadRequestException(
+      `Git repository is unreachable or unauthorized: ${this.truncateError(result.stderr)}`,
+    );
+  }
+
+  private async ensureProjectRepository(project: Project): Promise<void> {
+    const repositoryRoot = this.resolveRepositoryRoot(project);
+    const gitDirPath = path.join(repositoryRoot, '.git');
+    const hasGit = await this.pathExists(gitDirPath);
+
+    if (!hasGit) {
+      await fs.mkdir(path.dirname(repositoryRoot), { recursive: true });
+
+      const cloneResult = await this.runCommand('git', [
+        'clone',
+        '--origin',
+        'origin',
+        project.gitUrl,
+        repositoryRoot,
+      ]);
+
+      if (!cloneResult.success) {
+        throw new Error(
+          cloneResult.stderr || `git clone failed for ${project.gitUrl}`,
+        );
+      }
+    } else {
+      const setUrlResult = await this.runCommand('git', [
+        '-C',
+        repositoryRoot,
+        'remote',
+        'set-url',
+        'origin',
+        project.gitUrl,
+      ]);
+
+      if (!setUrlResult.success) {
+        throw new Error(setUrlResult.stderr || 'git remote set-url failed');
+      }
+    }
+
+    const fetchResult = await this.runCommand('git', [
+      '-C',
+      repositoryRoot,
+      'fetch',
+      '--all',
+      '--prune',
+    ]);
+
+    if (!fetchResult.success) {
+      throw new Error(fetchResult.stderr || 'git fetch failed');
+    }
+  }
+
+  private resolveRepositoryRoot(project: Project): string {
+    const config = (project.configJson ?? {}) as Record<string, unknown>;
+
+    if (
+      typeof config.repoLocalPath === 'string' &&
+      config.repoLocalPath.trim()
+    ) {
+      return path.resolve(config.repoLocalPath.trim());
+    }
+
+    const cacheBaseDir =
+      typeof config.repoCacheBaseDir === 'string' &&
+      config.repoCacheBaseDir.trim()
+        ? config.repoCacheBaseDir.trim()
+        : process.env.AINATIVE_REPO_CACHE_BASE_DIR?.trim();
+
+    const repositoryDirName = this.resolveRepositoryDirectoryName(project);
+
+    if (!cacheBaseDir) {
+      return this.resolveProjectStorageBaseDir(project);
+    }
+
+    return path.resolve(cacheBaseDir, `${repositoryDirName}-${project.id}`);
+  }
+
+  private resolveProjectStorageBaseDir(project: Project): string {
+    const businessLineId =
+      project.businessLineId?.trim() || 'unknown-business-line';
+    const projectId = project.id?.trim() || 'unknown-project';
+
+    return path.resolve(
+      this.defaultDataRootDir,
+      businessLineId,
+      'projects',
+      projectId,
+    );
+  }
+
+  private resolveRepositoryDirectoryName(project: Project): string {
+    const parsedFromGitUrl = this.extractRepositoryName(project.gitUrl);
+    if (parsedFromGitUrl) {
+      return parsedFromGitUrl;
+    }
+
+    const projectSegment = this.sanitizeSegment(project.name) || 'project';
+    return projectSegment;
+  }
+
+  private extractRepositoryName(gitUrl: string): string | null {
+    const trimmedUrl = gitUrl.trim();
+    if (!trimmedUrl) {
+      return null;
+    }
+
+    const withoutQuery = trimmedUrl.replace(/[?#].*$/, '').replace(/\/+$/, '');
+    const lastSeparatorIndex = Math.max(
+      withoutQuery.lastIndexOf('/'),
+      withoutQuery.lastIndexOf(':'),
+    );
+    const rawName =
+      lastSeparatorIndex >= 0
+        ? withoutQuery.slice(lastSeparatorIndex + 1)
+        : withoutQuery;
+    const withoutGitSuffix = rawName.replace(/\.git$/i, '');
+    const normalized = this.sanitizeSegment(withoutGitSuffix);
+
+    return normalized || null;
+  }
+
+  private sanitizeSegment(value: string): string {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  private async rollbackCreatedProject(projectId: string): Promise<void> {
+    try {
+      await this.projectRepository.remove(projectId);
+    } catch {
+      // Keep original error from git sync path.
+    }
+  }
+
+  private formatGitSyncFailureMessage(error: unknown, gitUrl: string): string {
+    if (error instanceof BadRequestException) {
+      return String(error.message);
+    }
+
+    if (error instanceof Error) {
+      return `Failed to sync repository for ${gitUrl}: ${this.truncateError(error.message)}`;
+    }
+
+    return `Failed to sync repository for ${gitUrl}`;
+  }
+
+  private truncateError(message: string): string {
+    const normalized = message.trim();
+    if (!normalized) {
+      return 'Unknown git error';
+    }
+
+    if (normalized.length <= 500) {
+      return normalized;
+    }
+
+    return `${normalized.slice(0, 500)}...`;
+  }
+
+  private async runCommand(
+    command: string,
+    args: string[],
+  ): Promise<{ success: boolean; stderr: string }> {
+    return new Promise((resolve) => {
+      const childProcess = spawn(command, args, {
+        env: process.env,
+        stdio: 'pipe',
+      });
+
+      let stderr = '';
+
+      childProcess.stderr?.on('data', (chunk) => {
+        stderr += chunk.toString('utf-8');
+      });
+
+      const timeoutRef = setTimeout(() => {
+        childProcess.kill('SIGTERM');
+      }, this.defaultGitTimeoutMs);
+
+      childProcess.on('error', (error) => {
+        clearTimeout(timeoutRef);
+        resolve({
+          success: false,
+          stderr: error.message,
+        });
+      });
+
+      childProcess.on('close', (code) => {
+        clearTimeout(timeoutRef);
+        resolve({
+          success: code === 0,
+          stderr: stderr.trimEnd(),
+        });
+      });
+    });
+  }
+
+  private async pathExists(targetPath: string): Promise<boolean> {
+    try {
+      await fs.access(targetPath);
+      return true;
+    } catch {
+      return false;
     }
   }
 

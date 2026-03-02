@@ -35,6 +35,12 @@ import { AgentToolConfig } from './domain/agent-tool-config';
 import { AgentToolConfigRepository } from './infrastructure/persistence/agent-tool-config.repository';
 import { CreateAgentToolConfigDto } from './dto/create-agent-tool-config.dto';
 import { UpdateAgentToolConfigDto } from './dto/update-agent-tool-config.dto';
+import { Skill } from '../skills/domain/skill';
+import { Mcp } from '../mcps/domain/mcp';
+import {
+  loadBusinessLineLocalMcps,
+  loadBusinessLineLocalSkills,
+} from '../utils/local-agent-catalog';
 
 @Injectable()
 export class BusinessLinesService {
@@ -440,6 +446,34 @@ export class BusinessLinesService {
       businessLineId,
       toolId ? this.normalizeToolId(toolId) : undefined,
     );
+  }
+
+  async findLocalSkills(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<Skill[]> {
+    await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+
+    const skills = await loadBusinessLineLocalSkills(businessLineId);
+
+    return skills.map((skill) => ({
+      ...skill,
+      deletedAt: null,
+    }));
+  }
+
+  async findLocalMcps(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<Mcp[]> {
+    await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+
+    const mcps = await loadBusinessLineLocalMcps(businessLineId);
+
+    return mcps.map((mcp) => ({
+      ...mcp,
+      deletedAt: null,
+    }));
   }
 
   async createAgentToolConfig(

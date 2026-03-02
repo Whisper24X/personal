@@ -4,6 +4,7 @@ import path from 'path';
 import { AgentToolConfig } from '../business-lines/domain/agent-tool-config';
 import { AgentToolConfigRepository } from '../business-lines/infrastructure/persistence/agent-tool-config.repository';
 import { Project } from '../projects/domain/project';
+import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 import { Task } from './domain/task';
 import { TaskNode } from './domain/task-node';
 
@@ -59,10 +60,8 @@ export type AgentRunnerResult = {
 export class AgentRunnerService {
   private readonly defaultTimeoutMs = 10 * 60 * 1000;
   private readonly maxOutputLength = 100_000;
-  private readonly defaultWorktreeBaseDir = path.resolve(
-    process.cwd(),
-    'tmp',
-    'worktrees',
+  private readonly defaultDataRootDir = path.resolve(
+    resolveAinativeDataRootDir(),
   );
   private readonly toolConfigAllowedKeys: Record<AgentAdapter, Set<string>> = {
     codex: new Set([
@@ -266,7 +265,33 @@ export class AgentRunnerService {
       return path.resolve(process.env.AINATIVE_WORKTREE_BASE_DIR.trim());
     }
 
-    return this.defaultWorktreeBaseDir;
+    return this.resolveProjectWorktreeBaseDir(project);
+  }
+
+  private resolveProjectStorageBaseDir(project: Project): string {
+    const businessLineId =
+      project.businessLineId?.trim() || 'unknown-business-line';
+    const projectId = project.id?.trim() || 'unknown-project';
+
+    return path.resolve(
+      this.defaultDataRootDir,
+      businessLineId,
+      'projects',
+      projectId,
+    );
+  }
+
+  private resolveProjectWorktreeBaseDir(project: Project): string {
+    const businessLineId =
+      project.businessLineId?.trim() || 'unknown-business-line';
+    const projectId = project.id?.trim() || 'unknown-project';
+
+    return path.resolve(
+      this.defaultDataRootDir,
+      businessLineId,
+      'worktrees',
+      projectId,
+    );
   }
 
   private isPathWithinAllowedRoot(

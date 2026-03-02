@@ -2,6 +2,8 @@ import { spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { Project } from '../projects/domain/project';
+import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 import { Task } from './domain/task';
 import { TaskMode } from './dto/task-mode.enum';
 import { TaskStatus } from './dto/task-status.enum';
@@ -20,7 +22,7 @@ const runGit = (args: string[], cwd: string): string => {
   return result.stdout.trim();
 };
 
-const createTask = (worktreePath: string): Task => ({
+const createTask = (overrides: Partial<Task> = {}): Task => ({
   id: 'task-test-id',
   projectId: 'project-test-id',
   mode: TaskMode.workflow,
@@ -28,10 +30,28 @@ const createTask = (worktreePath: string): Task => ({
   status: TaskStatus.todo,
   branch: 'feature/runtime-test',
   gitBaseBranch: 'main',
-  gitWorktreePath: worktreePath,
+  gitWorktreePath: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   deletedAt: null,
+  ...overrides,
+});
+
+const createProject = (
+  overrides: Partial<Project> = {},
+  configJson?: Record<string, unknown> | null,
+): Project => ({
+  id: 'project-test-id',
+  businessLineId: 'business-line-test-id',
+  name: 'AINative Runtime Project',
+  description: null,
+  gitUrl: 'git@example.com:group/ainative-workspace.git',
+  defaultBranch: 'main',
+  configJson: configJson ?? null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  deletedAt: null,
+  ...overrides,
 });
 
 const initializeRepository = async (): Promise<string> => {
@@ -67,7 +87,7 @@ describe('TaskRuntimeService', () => {
     createdDirectories.push(repositoryPath);
 
     const artifact = await service.collectGitDiffArtifact(
-      createTask(repositoryPath),
+      createTask({ gitWorktreePath: repositoryPath }),
     );
 
     expect(artifact).toBeNull();
@@ -80,7 +100,7 @@ describe('TaskRuntimeService', () => {
     await fs.appendFile(path.join(repositoryPath, 'README.md'), '\nnew line\n');
 
     const artifact = await service.collectGitDiffArtifact(
-      createTask(repositoryPath),
+      createTask({ gitWorktreePath: repositoryPath }),
     );
 
     expect(artifact).not.toBeNull();
@@ -123,11 +143,77 @@ describe('TaskRuntimeService', () => {
     );
 
     const cleanupResult = await service.cleanupRuntime(
-      createTask(worktreePath),
+      createTask({ gitWorktreePath: worktreePath }),
     );
 
     expect(cleanupResult.cleaned).toBeTruthy();
 
     await expect(fs.access(worktreePath)).rejects.toThrow();
+  });
+
+  it('should resolve default repository and worktree paths under .ainative data tree', () => {
+    const project = createProject();
+    const task = createTask();
+
+    const expectedProjectBase = path.resolve(
+      resolveAinativeDataRootDir(),
+      project.businessLineId,
+      'projects',
+      project.id,
+    );
+    const expectedWorktreeBase = path.resolve(
+      resolveAinativeDataRootDir(),
+      project.businessLineId,
+      'worktrees',
+      project.id,
+    );
+
+    expect((service as any).resolveRepositoryRoot(project)).toBe(
+      expectedProjectBase,
+    );
+    expect((service as any).resolveWorktreeBaseDir(project)).toBe(
+      expectedWorktreeBase,
+    );
+    expect((service as any).resolveGitWorktreePath(task, project)).toBe(
+      path.join(expectedWorktreeBase, task.id),
+    );
+  });
+
+  it('should keep explicit repo/worktree path overrides', () => {
+    const project = createProject(
+      {},
+      {
+        repoCacheBaseDir: '/tmp/ainative-repo-cache',
+        worktreeBaseDir: '/tmp/ainative-worktrees',
+      },
+    );
+    const task = createTask();
+
+    expect((service as any).resolveRepositoryRoot(project)).toBe(
+      path.resolve(
+        '/tmp/ainative-repo-cache',
+        'ainative-workspace-project-test-id',
+      ),
+    );
+    expect((service as any).resolveWorktreeBaseDir(project)).toBe(
+      path.resolve('/tmp/ainative-worktrees'),
+    );
+    expect((service as any).resolveGitWorktreePath(task, project)).toBe(
+      path.resolve('/tmp/ainative-worktrees', task.id),
+    );
+  });
+
+  it('should prefer repoLocalPath over repo cache base dir', () => {
+    const project = createProject(
+      {},
+      {
+        repoLocalPath: '/tmp/ainative-fixed-repo',
+        repoCacheBaseDir: '/tmp/ainative-repo-cache',
+      },
+    );
+
+    expect((service as any).resolveRepositoryRoot(project)).toBe(
+      path.resolve('/tmp/ainative-fixed-repo'),
+    );
   });
 });

@@ -11,10 +11,15 @@ import { UpdateMcpDto } from './dto/update-mcp.dto';
 import { FindAllMcpsDto } from './dto/find-all-mcps.dto';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
+import { ProjectsService } from '../projects/projects.service';
+import { loadProjectLocalMcps } from '../utils/local-agent-catalog';
 
 @Injectable()
 export class McpsService {
-  constructor(private readonly mcpRepository: McpRepository) {}
+  constructor(
+    private readonly mcpRepository: McpRepository,
+    private readonly projectsService: ProjectsService,
+  ) {}
 
   async create(
     createMcpDto: CreateMcpDto,
@@ -43,11 +48,24 @@ export class McpsService {
     });
   }
 
-  async findAllWithPagination(query: FindAllMcpsDto): Promise<Mcp[]> {
+  async findAllWithPagination(
+    query: FindAllMcpsDto,
+    currentUser: JwtPayloadType,
+  ): Promise<Mcp[]> {
     const paginationOptions: IPaginationOptions = {
       page: query.page ?? 1,
       limit: query.limit ?? 10,
     };
+
+    if (query.projectId) {
+      const project = await this.projectsService.assertCanAccessProject(
+        query.projectId,
+        currentUser,
+      );
+      const localMcps = await loadProjectLocalMcps(project);
+
+      return this.filterAndPaginateLocalMcps(localMcps, query);
+    }
 
     return this.mcpRepository.findAllWithPagination({
       paginationOptions,
@@ -135,5 +153,34 @@ export class McpsService {
     if (!currentUser.roles?.includes('admin')) {
       throw new ForbiddenException('forbiddenMcpManage');
     }
+  }
+
+  private filterAndPaginateLocalMcps(
+    mcps: Mcp[],
+    query: FindAllMcpsDto,
+  ): Mcp[] {
+    const keyword = query.keyword?.trim().toLowerCase() ?? '';
+    const filtered = mcps.filter((mcp) => {
+      if (query.enabled !== undefined && mcp.enabled !== query.enabled) {
+        return false;
+      }
+
+      if (!keyword) {
+        return true;
+      }
+
+      const targetText =
+        `${mcp.name} ${mcp.version} ${mcp.provider ?? ''} ${mcp.description ?? ''}`
+          .toLowerCase()
+          .trim();
+
+      return targetText.includes(keyword);
+    });
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const offset = (page - 1) * limit;
+
+    return filtered.slice(offset, offset + limit);
   }
 }

@@ -15,6 +15,8 @@ import { workflowApi } from '@/api/workflow'
 import type { BusinessLineItem, ProjectItem } from '@/hooks/core/useLayout'
 import type { Project, ProjectMember } from '@/types/api/projects'
 import type { User } from '@/types/api/users'
+import type { Skill } from '@/types/api/skills'
+import type { Mcp } from '@/types/api/mcps'
 import type {
   WorkflowTemplate,
   WorkflowTemplateNode,
@@ -28,7 +30,7 @@ import MemberPermissionModal from './modals/MemberPermissionModal.vue'
 import ProjectFormModal from './modals/ProjectFormModal.vue'
 import AgentToolConfigModal from './modals/AgentToolConfigModal.vue'
 
-type MainTab = 'projects' | 'members' | 'agent-cli' | 'workflow' | 'settings'
+type MainTab = 'projects' | 'members' | 'agent-cli' | 'workflow' | 'skill' | 'mcp' | 'settings'
 type ProjectPermissionRole = 'none' | 'manage' | 'developer' | 'viewer'
 type ExistingProjectRole = ProjectMember['role'] | null
 type SupportedCliToolId = 'claude-code' | 'codex' | 'gemini-cli' | 'cursor-agent' | 'opencode'
@@ -171,6 +173,11 @@ const workflowCreateForm = ref<{
     },
   ],
 })
+
+const loadingLocalSkills = ref(false)
+const loadingLocalMcps = ref(false)
+const localSkills = ref<Skill[]>([])
+const localMcps = ref<Mcp[]>([])
 
 const message = useMessage()
 
@@ -898,6 +905,74 @@ const removeWorkflowTemplate = async (template: WorkflowTemplate) => {
     message.error(toErrorMessage(error, '删除模板失败'))
   } finally {
     workflowTemplateActionId.value = ''
+  }
+}
+
+const resolveCatalogSourcePath = (payload?: Record<string, unknown> | null) => {
+  if (!payload || typeof payload !== 'object') {
+    return '-'
+  }
+
+  const sourcePath = payload.sourcePath
+  if (typeof sourcePath !== 'string') {
+    return '-'
+  }
+
+  const trimmedPath = sourcePath.trim()
+  return trimmedPath || '-'
+}
+
+const loadLocalSkills = async (lineId: string) => {
+  if (!lineId) {
+    localSkills.value = []
+    return
+  }
+
+  loadingLocalSkills.value = true
+
+  try {
+    const skills = await businessLinesApi.listLocalSkills(lineId)
+    if (lineId !== activeLineId.value) {
+      return
+    }
+
+    localSkills.value = skills
+  } catch (error) {
+    if (lineId === activeLineId.value) {
+      localSkills.value = []
+      message.error(toErrorMessage(error, '加载业务线本地 Skill 失败'))
+    }
+  } finally {
+    if (lineId === activeLineId.value) {
+      loadingLocalSkills.value = false
+    }
+  }
+}
+
+const loadLocalMcps = async (lineId: string) => {
+  if (!lineId) {
+    localMcps.value = []
+    return
+  }
+
+  loadingLocalMcps.value = true
+
+  try {
+    const mcps = await businessLinesApi.listLocalMcps(lineId)
+    if (lineId !== activeLineId.value) {
+      return
+    }
+
+    localMcps.value = mcps
+  } catch (error) {
+    if (lineId === activeLineId.value) {
+      localMcps.value = []
+      message.error(toErrorMessage(error, '加载业务线本地 MCP 失败'))
+    }
+  } finally {
+    if (lineId === activeLineId.value) {
+      loadingLocalMcps.value = false
+    }
   }
 }
 
@@ -1653,6 +1728,8 @@ watch(
       workflowNodeConfigsByTool.value = {}
       workflowNodeConfigLoadingByTool.value = {}
       loadingWorkflowConfiguredCliTools.value = false
+      localSkills.value = []
+      localMcps.value = []
       resetWorkflowCreateForm()
 
       activeLineId.value = props.activeBusinessLineId || props.lines[0]?.id || ''
@@ -1720,6 +1797,8 @@ watch(
       workflowNodeConfigsByTool.value = {}
       workflowNodeConfigLoadingByTool.value = {}
       loadingWorkflowConfiguredCliTools.value = false
+      localSkills.value = []
+      localMcps.value = []
       resetAgentToolConfigForm()
       resetWorkflowCreateForm()
       return
@@ -1735,6 +1814,10 @@ watch(
       void loadAgentToolConfigs(lineId, activeAgentCliToolId.value)
     } else if (activeTab.value === 'workflow') {
       void loadWorkflowTemplates(lineId)
+    } else if (activeTab.value === 'skill') {
+      void loadLocalSkills(lineId)
+    } else if (activeTab.value === 'mcp') {
+      void loadLocalMcps(lineId)
     }
   },
 )
@@ -1767,6 +1850,16 @@ watch(
         loadWorkflowTemplates(activeLineId.value),
         loadWorkflowConfiguredCliTools(activeLineId.value),
       ])
+      return
+    }
+
+    if (tab === 'skill') {
+      void loadLocalSkills(activeLineId.value)
+      return
+    }
+
+    if (tab === 'mcp') {
+      void loadLocalMcps(activeLineId.value)
       return
     }
 
@@ -1934,6 +2027,22 @@ onBeforeUnmount(() => {
                   @click="activeTab = 'workflow'"
                 >
                   工作流
+                </button>
+                <button
+                  class="rounded-xl px-4 py-2 text-sm font-semibold transition"
+                  :class="tabClass('skill')"
+                  type="button"
+                  @click="activeTab = 'skill'"
+                >
+                  Skill
+                </button>
+                <button
+                  class="rounded-xl px-4 py-2 text-sm font-semibold transition"
+                  :class="tabClass('mcp')"
+                  type="button"
+                  @click="activeTab = 'mcp'"
+                >
+                  MCP
                 </button>
                 <button
                   class="rounded-xl px-4 py-2 text-sm font-semibold transition"
@@ -2381,6 +2490,110 @@ onBeforeUnmount(() => {
                         </tr>
                       </tbody>
                     </table>
+                  </div>
+                </article>
+              </section>
+
+              <section v-else-if="activeTab === 'skill'" class="space-y-4">
+                <article class="panel-card p-5">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p class="text-sm font-semibold">业务线本地 Skill</p>
+                      <p class="mt-1 text-xs text-muted-foreground">
+                        读取路径：`~/.ainative/data/{{ activeLineId || '{business_line_id}' }}/skills`
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                      :disabled="!activeLineId || loadingLocalSkills"
+                      @click="loadLocalSkills(activeLineId)"
+                    >
+                      刷新
+                    </button>
+                  </div>
+
+                  <div v-if="loadingLocalSkills" class="mt-3 text-sm text-muted-foreground">
+                    加载业务线本地 Skill 中...
+                  </div>
+
+                  <div v-else class="mt-3 space-y-2">
+                    <article
+                      v-for="item in localSkills"
+                      :key="item.id"
+                      class="rounded-xl border border-border bg-background/70 px-4 py-3"
+                    >
+                      <div class="flex flex-wrap items-center justify-between gap-2">
+                        <p class="text-sm font-semibold">{{ item.name }}</p>
+                        <span class="text-xs text-muted-foreground">版本：{{ item.version }}</span>
+                      </div>
+                      <p class="mt-1 text-xs text-muted-foreground">
+                        {{ item.description ?? '暂无描述' }}
+                      </p>
+                      <p class="mt-1 font-mono text-[11px] text-muted-foreground">
+                        {{ resolveCatalogSourcePath(item.metadataJson ?? null) }}
+                      </p>
+                    </article>
+
+                    <div
+                      v-if="localSkills.length === 0"
+                      class="rounded-xl border border-dashed border-border bg-background/70 px-4 py-4 text-sm text-muted-foreground"
+                    >
+                      当前业务线目录下未发现 Skill 配置。
+                    </div>
+                  </div>
+                </article>
+              </section>
+
+              <section v-else-if="activeTab === 'mcp'" class="space-y-4">
+                <article class="panel-card p-5">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p class="text-sm font-semibold">业务线本地 MCP</p>
+                      <p class="mt-1 text-xs text-muted-foreground">
+                        读取路径：`~/.ainative/data/{{ activeLineId || '{business_line_id}' }}/mcp`
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                      :disabled="!activeLineId || loadingLocalMcps"
+                      @click="loadLocalMcps(activeLineId)"
+                    >
+                      刷新
+                    </button>
+                  </div>
+
+                  <div v-if="loadingLocalMcps" class="mt-3 text-sm text-muted-foreground">
+                    加载业务线本地 MCP 中...
+                  </div>
+
+                  <div v-else class="mt-3 space-y-2">
+                    <article
+                      v-for="item in localMcps"
+                      :key="item.id"
+                      class="rounded-xl border border-border bg-background/70 px-4 py-3"
+                    >
+                      <div class="flex flex-wrap items-center justify-between gap-2">
+                        <p class="text-sm font-semibold">{{ item.name }}</p>
+                        <span class="text-xs text-muted-foreground">
+                          版本：{{ item.version }} · 工具数：{{ item.toolsCount }}
+                        </span>
+                      </div>
+                      <p class="mt-1 text-xs text-muted-foreground">
+                        {{ item.description ?? '暂无描述' }}
+                      </p>
+                      <p class="mt-1 font-mono text-[11px] text-muted-foreground">
+                        {{ resolveCatalogSourcePath(item.metadataJson ?? null) }}
+                      </p>
+                    </article>
+
+                    <div
+                      v-if="localMcps.length === 0"
+                      class="rounded-xl border border-dashed border-border bg-background/70 px-4 py-4 text-sm text-muted-foreground"
+                    >
+                      当前业务线目录下未发现 MCP 配置。
+                    </div>
                   </div>
                 </article>
               </section>

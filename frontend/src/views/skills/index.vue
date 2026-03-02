@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { skillsApi } from '@/api/skills'
-import type { CreateSkillPayload, Skill, UpdateSkillPayload } from '@/types/api/skills'
+import type { Skill } from '@/types/api/skills'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
 defineOptions({
@@ -11,93 +12,55 @@ defineOptions({
 
 const PAGE_LIMIT = 30
 
-const loading = ref(false)
-const loadingMore = ref(false)
-const submitting = ref(false)
-const deletingSkillId = ref('')
-const editingSkillId = ref('')
-const skillFormModalOpen = ref(false)
-const validationMessage = ref('')
-const keyword = ref('')
-const enabledOnly = ref(false)
+const route = useRoute()
 const message = useMessage()
 
+const loading = ref(false)
+const loadingMore = ref(false)
+const keyword = ref('')
+const enabledOnly = ref(false)
 const skills = ref<Skill[]>([])
 const page = ref(1)
 const hasNextPage = ref(false)
 
-const form = reactive({
-  name: '',
-  version: '',
-  description: '',
-  scope: '',
-  homepageUrl: '',
-  enabled: true,
-  metadataJsonText: '',
-})
-
-const normalizeOptionalText = (value: string) => {
-  const trimmedValue = value.trim()
-  return trimmedValue.length > 0 ? trimmedValue : undefined
-}
-
-const normalizeMetadata = (value: string) => {
-  const trimmedValue = value.trim()
-  if (!trimmedValue) {
-    return undefined
+const normalizeRouteParam = (value: unknown) => {
+  if (typeof value === 'string') {
+    return value.trim()
   }
 
-  try {
-    const parsed = JSON.parse(trimmedValue) as unknown
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return null
-    }
-    return parsed as Record<string, unknown>
-  } catch (error) {
-    void error
-    return null
+  if (Array.isArray(value)) {
+    return String(value[0] ?? '').trim()
   }
+
+  return ''
 }
 
-const resetForm = () => {
-  editingSkillId.value = ''
-  form.name = ''
-  form.version = ''
-  form.description = ''
-  form.scope = ''
-  form.homepageUrl = ''
-  form.enabled = true
-  form.metadataJsonText = ''
-}
+const activeProjectId = computed(() => normalizeRouteParam(route.query.projectId))
 
-const openCreateSkillModal = () => {
-  resetForm()
-  validationMessage.value = ''
-  skillFormModalOpen.value = true
-}
+const resolveCatalogSourcePath = (payload?: Record<string, unknown> | null) => {
+  if (!payload || typeof payload !== 'object') {
+    return '-'
+  }
 
-const closeSkillFormModal = () => {
-  skillFormModalOpen.value = false
-  resetForm()
-  validationMessage.value = ''
-}
+  const sourcePath = payload.sourcePath
+  if (typeof sourcePath !== 'string') {
+    return '-'
+  }
 
-const startEdit = (skill: Skill) => {
-  editingSkillId.value = skill.id
-  form.name = skill.name
-  form.version = skill.version
-  form.description = skill.description ?? ''
-  form.scope = skill.scope ?? ''
-  form.homepageUrl = skill.homepageUrl ?? ''
-  form.enabled = skill.enabled
-  form.metadataJsonText = skill.metadataJson
-    ? JSON.stringify(skill.metadataJson, null, 2)
-    : ''
-  validationMessage.value = ''
-  skillFormModalOpen.value = true
+  const normalized = sourcePath.trim()
+  return normalized || '-'
 }
 
 const loadSkills = async (reset = true) => {
+  const projectId = activeProjectId.value
+
+  if (!projectId) {
+    skills.value = []
+    hasNextPage.value = false
+    page.value = 1
+    return
+  }
+
   const nextPage = reset ? 1 : page.value + 1
 
   if (reset) {
@@ -112,6 +75,7 @@ const loadSkills = async (reset = true) => {
       limit: PAGE_LIMIT,
       keyword: keyword.value.trim() || undefined,
       enabled: enabledOnly.value ? true : undefined,
+      projectId,
     })
 
     if (reset) {
@@ -126,87 +90,19 @@ const loadSkills = async (reset = true) => {
     page.value = nextPage
     hasNextPage.value = response.hasNextPage
   } catch (error) {
-    message.error(toErrorMessage(error, '加载 Skills 列表失败'))
+    message.error(toErrorMessage(error, '加载项目本地 Skill 列表失败'))
   } finally {
     loading.value = false
     loadingMore.value = false
   }
 }
 
-const submitSkill = async () => {
-  if (!form.name.trim() || !form.version.trim()) {
-    validationMessage.value = '名称和版本不能为空'
-    return
-  }
-
-  const metadata = normalizeMetadata(form.metadataJsonText)
-  if (metadata === null) {
-    validationMessage.value = 'metadataJson 必须是合法 JSON 对象'
-    return
-  }
-
-  submitting.value = true
-  validationMessage.value = ''
-
-  const payloadBase = {
-    name: form.name.trim(),
-    version: form.version.trim(),
-    description: normalizeOptionalText(form.description),
-    scope: normalizeOptionalText(form.scope),
-    homepageUrl: normalizeOptionalText(form.homepageUrl),
-    enabled: form.enabled,
-    metadataJson: metadata,
-  }
-
-  try {
-    if (editingSkillId.value) {
-      const updatePayload: UpdateSkillPayload = payloadBase
-      await skillsApi.update(editingSkillId.value, updatePayload)
-      message.success('保存 Skill 成功')
-    } else {
-      const createPayload: CreateSkillPayload = payloadBase
-      await skillsApi.create(createPayload)
-      message.success('创建 Skill 成功')
-    }
-
-    closeSkillFormModal()
-    await loadSkills(true)
-  } catch (error) {
-    message.error(toErrorMessage(error, '保存 Skill 失败'))
-  } finally {
-    submitting.value = false
-  }
-}
-
-const toggleSkillEnabled = async (skill: Skill) => {
-  try {
-    await skillsApi.update(skill.id, {
-      enabled: !skill.enabled,
-    })
-    await loadSkills(true)
-    message.success('更新 Skill 状态成功')
-  } catch (error) {
-    message.error(toErrorMessage(error, '更新 Skill 状态失败'))
-  }
-}
-
-const removeSkill = async (skill: Skill) => {
-  if (!window.confirm(`确认删除 Skill「${skill.name}」吗？`)) {
-    return
-  }
-
-  deletingSkillId.value = skill.id
-
-  try {
-    await skillsApi.remove(skill.id)
-    await loadSkills(true)
-    message.success('删除 Skill 成功')
-  } catch (error) {
-    message.error(toErrorMessage(error, '删除 Skill 失败'))
-  } finally {
-    deletingSkillId.value = ''
-  }
-}
+watch(
+  () => activeProjectId.value,
+  () => {
+    void loadSkills(true)
+  },
+)
 
 onMounted(() => {
   void loadSkills(true)
@@ -217,9 +113,12 @@ onMounted(() => {
   <div class="space-y-6 fade-up">
     <section class="space-y-2">
       <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">技能（Skill）</p>
-      <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">Skill 市场与管理</h1>
+      <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">项目本地 Skill 管理</h1>
       <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-        支持 Skills 的浏览、搜索、新增、编辑、启停与删除。
+        当前页面读取项目本地 Agent CLI 配置（如 `.codex/.cursor`）中的 Skill 列表。
+      </p>
+      <p class="font-mono text-xs text-muted-foreground">
+        当前项目：{{ activeProjectId || '未选择项目' }}
       </p>
     </section>
 
@@ -253,18 +152,18 @@ onMounted(() => {
           >
             搜索
           </button>
-          <button
-            class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:shadow-md"
-            type="button"
-            @click="openCreateSkillModal"
-          >
-            新增 Skill
-          </button>
         </div>
       </div>
     </section>
 
-    <section v-if="loading" class="panel-card p-6 text-sm text-muted-foreground">加载中...</section>
+    <section
+      v-if="!activeProjectId"
+      class="panel-card p-6 text-sm text-muted-foreground"
+    >
+      请先在左侧选择项目后再查看 Skill。
+    </section>
+
+    <section v-else-if="loading" class="panel-card p-6 text-sm text-muted-foreground">加载中...</section>
 
     <section v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <article v-for="item in skills" :key="item.id" class="panel-card p-4">
@@ -283,6 +182,9 @@ onMounted(() => {
 
         <p class="mt-3 text-xs text-muted-foreground">范围：{{ item.scope ?? '-' }}</p>
         <p class="mt-2 text-xs text-muted-foreground">{{ item.description ?? '暂无描述' }}</p>
+        <p class="mt-2 font-mono text-[11px] text-muted-foreground">
+          {{ resolveCatalogSourcePath(item.metadataJson ?? null) }}
+        </p>
 
         <a
           v-if="item.homepageUrl"
@@ -293,39 +195,14 @@ onMounted(() => {
         >
           查看说明
         </a>
-
-        <div class="mt-4 flex flex-wrap items-center gap-2">
-          <button
-            class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
-            type="button"
-            @click="startEdit(item)"
-          >
-            编辑
-          </button>
-          <button
-            class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
-            type="button"
-            @click="toggleSkillEnabled(item)"
-          >
-            {{ item.enabled ? '停用' : '启用' }}
-          </button>
-          <button
-            class="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="deletingSkillId === item.id"
-            type="button"
-            @click="removeSkill(item)"
-          >
-            {{ deletingSkillId === item.id ? '删除中...' : '删除' }}
-          </button>
-        </div>
       </article>
 
       <article v-if="skills.length === 0" class="panel-card p-6 text-sm text-muted-foreground md:col-span-2 xl:col-span-3">
-        没有匹配的 Skill。
+        当前项目没有可读取的 Skill 本地配置。
       </article>
     </section>
 
-    <section v-if="!loading && hasNextPage" class="panel-card p-4">
+    <section v-if="activeProjectId && !loading && hasNextPage" class="panel-card p-4">
       <button
         class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
         :disabled="loadingMore"
@@ -335,123 +212,5 @@ onMounted(() => {
         {{ loadingMore ? '加载中...' : '加载更多' }}
       </button>
     </section>
-
-    <Teleport to="body">
-      <div v-if="skillFormModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <button
-          type="button"
-          aria-label="关闭 Skill 表单弹窗"
-          class="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
-          @click="closeSkillFormModal"
-        />
-
-        <section
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="skill-form-modal-title"
-          class="relative z-10 w-full max-w-2xl rounded-2xl border border-border bg-background shadow-2xl"
-          tabindex="-1"
-          @keydown.esc.prevent="closeSkillFormModal"
-        >
-          <header class="flex items-center justify-between border-b border-border px-4 py-3">
-            <h2 id="skill-form-modal-title" class="text-sm font-semibold">
-              {{ editingSkillId ? '编辑 Skill' : '新增 Skill' }}
-            </h2>
-            <button
-              type="button"
-              aria-label="关闭"
-              class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
-              @click="closeSkillFormModal"
-            >
-              ×
-            </button>
-          </header>
-
-          <form class="grid gap-3 px-4 py-4 md:grid-cols-2" @submit.prevent="submitSkill">
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">名称</span>
-              <input
-                v-model="form.name"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                placeholder="例如：code-review"
-                type="text"
-              />
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">版本</span>
-              <input
-                v-model="form.version"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                placeholder="例如：1.0.0"
-                type="text"
-              />
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">范围（可选）</span>
-              <input
-                v-model="form.scope"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                placeholder="例如：frontend"
-                type="text"
-              />
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">主页链接（可选）</span>
-              <input
-                v-model="form.homepageUrl"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                placeholder="https://example.com/skill"
-                type="text"
-              />
-            </label>
-
-            <label class="space-y-1 md:col-span-2">
-              <span class="text-xs font-semibold text-muted-foreground">描述（可选）</span>
-              <input
-                v-model="form.description"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                type="text"
-              />
-            </label>
-
-            <label class="space-y-1 md:col-span-2">
-              <span class="text-xs font-semibold text-muted-foreground">metadataJson（可选，JSON 对象）</span>
-              <textarea
-                v-model="form.metadataJsonText"
-                class="min-h-24 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
-                placeholder="{&quot;maintainer&quot;:&quot;platform&quot;}"
-              />
-            </label>
-
-            <label class="inline-flex items-center gap-2 text-sm md:col-span-2">
-              <input v-model="form.enabled" class="h-4 w-4" type="checkbox" />
-              启用
-            </label>
-
-            <p v-if="validationMessage" class="text-sm text-destructive md:col-span-2">{{ validationMessage }}</p>
-
-            <div class="flex justify-end gap-2 md:col-span-2">
-              <button
-                class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
-                type="button"
-                @click="closeSkillFormModal"
-              >
-                取消
-              </button>
-              <button
-                class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="submitting"
-                type="submit"
-              >
-                {{ submitting ? '保存中...' : editingSkillId ? '保存修改' : '创建 Skill' }}
-              </button>
-            </div>
-          </form>
-        </section>
-      </div>
-    </Teleport>
   </div>
 </template>

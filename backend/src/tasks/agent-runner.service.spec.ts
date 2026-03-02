@@ -1,6 +1,7 @@
 import path from 'path';
 import { AgentToolConfigRepository } from '../business-lines/infrastructure/persistence/agent-tool-config.repository';
 import { Project } from '../projects/domain/project';
+import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 import { Task } from './domain/task';
 import { TaskNode } from './domain/task-node';
 import { AgentRunnerService } from './agent-runner.service';
@@ -8,7 +9,12 @@ import { TaskMode } from './dto/task-mode.enum';
 import { TaskNodeType } from './dto/task-node-type.enum';
 import { TaskStatus } from './dto/task-status.enum';
 
-const worktreeRoot = path.resolve(process.cwd(), 'tmp', 'worktrees');
+const worktreeRoot = path.resolve(
+  resolveAinativeDataRootDir(),
+  'business-line-1',
+  'worktrees',
+  'project-1',
+);
 
 const createProject = (configJson?: Record<string, unknown>): Project => ({
   id: 'project-1',
