@@ -276,8 +276,8 @@ onMounted(() => {
           <RouterLink to="/projects" class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground">
             项目管理
           </RouterLink>
-          <RouterLink to="/workflow" class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground">
-            工作流模板
+          <RouterLink to="/business-lines" class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground">
+            业务线模板
           </RouterLink>
           <RouterLink
             :to="{ path: '/dashboard', query: { settings: 'account' } }"

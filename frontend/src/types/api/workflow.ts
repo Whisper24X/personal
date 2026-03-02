@@ -1,45 +1,36 @@
-export type WorkflowTemplateMode = 'conversation' | 'workflow'
 export type WorkflowTemplateScope = 'global' | 'business_line'
 
 export type WorkflowNodeType = 'agent' | 'skill' | 'mcp' | 'manual'
+
+export type WorkflowTemplateNodeInput = Record<string, unknown> & {
+  prompt?: string
+  cliToolId?: string
+  agentToolConfigId?: string
+}
 
 export type WorkflowTemplateNode = {
   nodeOrder: number
   name: string
   type: WorkflowNodeType
   requiresApproval?: boolean
-  input?: Record<string, unknown>
+  input?: WorkflowTemplateNodeInput
 }
 
 export type WorkflowTemplate = {
   id: string
   name: string
   description?: string | null
-  mode: WorkflowTemplateMode
   scope: WorkflowTemplateScope
   businessLineId?: string | null
   isActive: boolean
-  latestVersion: number
   nodesJson: WorkflowTemplateNode[]
   createdAt?: string
   updatedAt?: string
 }
 
-export type WorkflowTemplateVersion = {
-  id: string
-  templateId: string
-  version: number
-  name: string
-  description?: string | null
-  mode: WorkflowTemplateMode
-  nodesJson: WorkflowTemplateNode[]
-  createdAt?: string
-}
-
 export type CreateWorkflowTemplatePayload = {
   name: string
   description?: string
-  mode: WorkflowTemplateMode
   scope?: WorkflowTemplateScope
   businessLineId?: string
   nodes: WorkflowTemplateNode[]

@@ -14,7 +14,7 @@ describe('Sidebar menu scope', () => {
         projectItems: [],
         menuItems: [
           { id: 'dashboard', label: '仪表盘', to: '/dashboard' },
-          { id: 'workflow', label: '工作流', to: '/workflow' },
+          { id: 'tasks', label: '任务', to: '/tasks' },
         ],
         projectItemClass: () => '',
         menuItemClass: () => '',
@@ -37,7 +37,7 @@ describe('Sidebar menu scope', () => {
 
     expect(wrapper.text()).toContain('项目导航')
     expect(wrapper.text()).toContain('仪表盘')
-    expect(wrapper.text()).toContain('工作流')
+    expect(wrapper.text()).toContain('任务')
     expect(wrapper.text()).not.toContain('用户')
     expect(wrapper.text()).not.toContain('关于')
 

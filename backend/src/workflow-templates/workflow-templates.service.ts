@@ -8,14 +8,11 @@ import {
 import { CreateWorkflowTemplateDto } from './dto/create-workflow-template.dto';
 import { UpdateWorkflowTemplateDto } from './dto/update-workflow-template.dto';
 import { WorkflowTemplateRepository } from './infrastructure/persistence/workflow-template.repository';
-import { WorkflowTemplateVersionRepository } from './infrastructure/persistence/workflow-template-version.repository';
 import { WorkflowTemplate } from './domain/workflow-template';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { FindAllWorkflowTemplatesDto } from './dto/find-all-workflow-templates.dto';
 import { IPaginationOptions } from '../utils/types/pagination-options';
-import { WorkflowTemplateVersion } from './domain/workflow-template-version';
 import { WorkflowTemplateNodeDto } from './dto/workflow-template-node.dto';
-import { WorkflowTemplateMode } from './dto/workflow-template-mode.enum';
 import { ReorderWorkflowTemplateNodesDto } from './dto/reorder-workflow-template-nodes.dto';
 import { WorkflowTemplateScope } from './dto/workflow-template-scope.enum';
 import { ProjectsService } from '../projects/projects.service';
@@ -27,7 +24,6 @@ import { BusinessLineMemberRole } from '../business-lines/dto/business-line-memb
 export class WorkflowTemplatesService {
   constructor(
     private readonly workflowTemplateRepository: WorkflowTemplateRepository,
-    private readonly workflowTemplateVersionRepository: WorkflowTemplateVersionRepository,
     private readonly projectsService: ProjectsService,
     private readonly businessLineRepository: BusinessLineRepository,
     private readonly businessLineMemberRepository: BusinessLineMemberRepository,
@@ -63,10 +59,7 @@ export class WorkflowTemplatesService {
       }
     }
 
-    this.ensureValidNodes(
-      createWorkflowTemplateDto.nodes,
-      createWorkflowTemplateDto.mode,
-    );
+    this.ensureValidNodes(createWorkflowTemplateDto.nodes);
 
     const existedTemplate = await this.workflowTemplateRepository.findByName(
       createWorkflowTemplateDto.name,
@@ -87,16 +80,12 @@ export class WorkflowTemplatesService {
     const template = await this.workflowTemplateRepository.create({
       name: createWorkflowTemplateDto.name,
       description: createWorkflowTemplateDto.description ?? null,
-      mode: createWorkflowTemplateDto.mode,
       scope,
       businessLineId,
       isActive: createWorkflowTemplateDto.isActive ?? true,
       nodesJson: normalizedNodes,
-      latestVersion: 0,
       createdBy: currentUser.sub,
     });
-
-    await this.publishTemplateVersion(template.id, currentUser);
 
     const createdTemplate = await this.workflowTemplateRepository.findById(
       template.id,
@@ -213,10 +202,8 @@ export class WorkflowTemplatesService {
       }
     }
 
-    const nextMode = updateWorkflowTemplateDto.mode ?? existedTemplate.mode;
-
     if (updateWorkflowTemplateDto.nodes) {
-      this.ensureValidNodes(updateWorkflowTemplateDto.nodes, nextMode);
+      this.ensureValidNodes(updateWorkflowTemplateDto.nodes);
     }
 
     const updatedTemplate = await this.workflowTemplateRepository.update(id, {
@@ -225,9 +212,6 @@ export class WorkflowTemplatesService {
         : {}),
       ...(updateWorkflowTemplateDto.description !== undefined
         ? { description: updateWorkflowTemplateDto.description }
-        : {}),
-      ...(updateWorkflowTemplateDto.mode !== undefined
-        ? { mode: updateWorkflowTemplateDto.mode }
         : {}),
       ...(updateWorkflowTemplateDto.nodes !== undefined
         ? { nodesJson: this.normalizeNodes(updateWorkflowTemplateDto.nodes) }
@@ -256,7 +240,7 @@ export class WorkflowTemplatesService {
     }
 
     await this.ensureCanManageTemplate(template, currentUser);
-    this.ensureValidNodes(reorderDto.nodes, template.mode);
+    this.ensureValidNodes(reorderDto.nodes);
 
     const updatedTemplate = await this.workflowTemplateRepository.update(
       template.id,
@@ -283,59 +267,13 @@ export class WorkflowTemplatesService {
     await this.workflowTemplateRepository.remove(id);
   }
 
-  async publishTemplateVersion(
-    templateId: string,
-    currentUser: JwtPayloadType,
-  ): Promise<WorkflowTemplateVersion> {
-    const template = await this.workflowTemplateRepository.findById(templateId);
-
-    if (!template) {
-      throw new NotFoundException('Workflow template not found');
-    }
-
-    await this.ensureCanManageTemplate(template, currentUser);
-    const nextVersion = template.latestVersion + 1;
-
-    const version = await this.workflowTemplateVersionRepository.create({
-      templateId: template.id,
-      version: nextVersion,
-      name: template.name,
-      description: template.description,
-      mode: template.mode,
-      nodesJson: template.nodesJson,
-      publishedBy: currentUser.sub,
-    });
-
-    await this.workflowTemplateRepository.update(template.id, {
-      latestVersion: nextVersion,
-    });
-
-    return version;
-  }
-
-  async findVersions(
-    templateId: string,
-    currentUser: JwtPayloadType,
-  ): Promise<WorkflowTemplateVersion[]> {
-    const template = await this.workflowTemplateRepository.findById(templateId);
-
-    if (!template) {
-      throw new NotFoundException('Workflow template not found');
-    }
-
-    await this.ensureCanAccessTemplate(template, currentUser);
-    return this.workflowTemplateVersionRepository.findByTemplateId(templateId);
-  }
-
-  async getVersionForTask({
+  async getTemplateForTask({
     templateId,
-    version,
     projectBusinessLineId,
   }: {
     templateId: string;
-    version?: number;
     projectBusinessLineId: string;
-  }): Promise<WorkflowTemplateVersion> {
+  }): Promise<WorkflowTemplate> {
     const template = await this.workflowTemplateRepository.findById(templateId);
 
     if (!template) {
@@ -352,28 +290,10 @@ export class WorkflowTemplatesService {
     if (!template.isActive) {
       throw new ConflictException('Workflow template is disabled');
     }
-
-    const resolvedVersion =
-      version !== undefined
-        ? await this.workflowTemplateVersionRepository.findByTemplateIdAndVersion(
-            templateId,
-            version,
-          )
-        : await this.workflowTemplateVersionRepository.findLatestByTemplateId(
-            templateId,
-          );
-
-    if (!resolvedVersion) {
-      throw new NotFoundException('Workflow template version not found');
-    }
-
-    return resolvedVersion;
+    return template;
   }
 
-  private ensureValidNodes(
-    nodes: WorkflowTemplateNodeDto[],
-    mode: WorkflowTemplateMode,
-  ): void {
+  private ensureValidNodes(nodes: WorkflowTemplateNodeDto[]): void {
     const nodeOrderSet = new Set<number>();
     const sortedOrders = [...nodes]
       .map((node) => node.nodeOrder)
@@ -404,12 +324,6 @@ export class WorkflowTemplatesService {
           'Workflow template node_order must be continuous from 1',
         );
       }
-    }
-
-    if (mode === WorkflowTemplateMode.conversation && nodes.length !== 1) {
-      throw new ConflictException(
-        'Conversation mode requires exactly one node',
-      );
     }
   }
 

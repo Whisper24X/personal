@@ -16,11 +16,9 @@ import type { BusinessLineItem, ProjectItem } from '@/hooks/core/useLayout'
 import type { Project, ProjectMember } from '@/types/api/projects'
 import type { User } from '@/types/api/users'
 import type {
-  WorkflowNodeType,
   WorkflowTemplate,
-  WorkflowTemplateMode,
   WorkflowTemplateNode,
-  WorkflowTemplateVersion,
+  WorkflowTemplateNodeInput,
 } from '@/types/api/workflow'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
@@ -34,6 +32,14 @@ type MainTab = 'projects' | 'members' | 'agent-cli' | 'workflow' | 'settings'
 type ProjectPermissionRole = 'none' | 'manage' | 'developer' | 'viewer'
 type ExistingProjectRole = ProjectMember['role'] | null
 type SupportedCliToolId = 'claude-code' | 'codex' | 'gemini-cli' | 'cursor-agent' | 'opencode'
+type WorkflowTemplateNodeInputForm = {
+  prompt: string
+  cliToolId: SupportedCliToolId | ''
+  agentToolConfigId: string
+}
+type WorkflowTemplateNodeForm = Omit<WorkflowTemplateNode, 'input'> & {
+  input: WorkflowTemplateNodeInputForm
+}
 
 const SUPPORTED_CLI_TOOLS: Array<{ id: SupportedCliToolId; label: string }> = [
   { id: 'cursor-agent', label: 'Cursor Agent' },
@@ -136,26 +142,32 @@ const deletingLine = ref(false)
 
 const loadingWorkflowTemplates = ref(false)
 const submittingWorkflowTemplate = ref(false)
+const workflowCreateModalOpen = ref(false)
 const workflowTemplateActionId = ref('')
 const workflowValidationMessage = ref('')
 const workflowTemplates = ref<WorkflowTemplate[]>([])
-const workflowVersions = ref<WorkflowTemplateVersion[]>([])
-const selectedWorkflowTemplateId = ref('')
+const workflowConfiguredCliTools = ref<Array<{ id: SupportedCliToolId; label: string }>>([])
+const loadingWorkflowConfiguredCliTools = ref(false)
+const workflowNodeConfigsByTool = ref<Partial<Record<SupportedCliToolId, AgentToolConfig[]>>>({})
+const workflowNodeConfigLoadingByTool = ref<Partial<Record<SupportedCliToolId, boolean>>>({})
 const workflowCreateForm = ref<{
   name: string
   description: string
-  mode: WorkflowTemplateMode
-  nodes: WorkflowTemplateNode[]
+  nodes: WorkflowTemplateNodeForm[]
 }>({
   name: '',
   description: '',
-  mode: 'conversation',
   nodes: [
     {
       nodeOrder: 1,
-      name: 'conversation-node',
+      name: 'step-1',
       type: 'agent',
       requiresApproval: false,
+      input: {
+        prompt: '',
+        cliToolId: '',
+        agentToolConfigId: '',
+      },
     },
   ],
 })
@@ -181,23 +193,8 @@ const activeAgentCliToolLabel = computed(() => {
   )
 })
 
-const workflowModeLabel: Record<WorkflowTemplateMode, string> = {
-  conversation: '会话模式',
-  workflow: '工作流模式',
-}
-
-const workflowNodeTypeOptions: Array<{ label: string; value: WorkflowNodeType }> = [
-  { label: 'agent', value: 'agent' },
-  { label: 'skill', value: 'skill' },
-  { label: 'mcp', value: 'mcp' },
-  { label: 'manual', value: 'manual' },
-]
-
-const selectedWorkflowTemplate = computed(() => {
-  return (
-    workflowTemplates.value.find((template) => template.id === selectedWorkflowTemplateId.value) ??
-    null
-  )
+const workflowConfiguredCliToolIdSet = computed(() => {
+  return new Set(workflowConfiguredCliTools.value.map((tool) => tool.id))
 })
 
 const canDeleteLine = computed(() => {
@@ -210,6 +207,7 @@ const hasNestedModalOpen = computed(() => {
     projectFormModalOpen.value ||
     memberPermissionModalOpen.value ||
     agentToolConfigModalOpen.value ||
+    workflowCreateModalOpen.value ||
     projectDeleteModalOpen.value ||
     memberRemoveModalOpen.value ||
     lineDeleteModalOpen.value ||
@@ -461,7 +459,81 @@ const removeAgentToolConfig = async (configId: string) => {
   }
 }
 
-const normalizeWorkflowNodes = (nodes: WorkflowTemplateNode[]) => {
+const createEmptyWorkflowNodeInput = (): WorkflowTemplateNodeInputForm => ({
+  prompt: '',
+  cliToolId: '',
+  agentToolConfigId: '',
+})
+
+const isSupportedCliToolId = (toolId: string): toolId is SupportedCliToolId => {
+  return SUPPORTED_CLI_TOOLS.some((tool) => tool.id === toolId)
+}
+
+const normalizeWorkflowNodeInput = (input?: WorkflowTemplateNodeInput): WorkflowTemplateNodeInputForm => {
+  const prompt = typeof input?.prompt === 'string' ? input.prompt : ''
+  const cliToolId = typeof input?.cliToolId === 'string' ? input.cliToolId.trim() : ''
+  const normalizedCliToolId = isSupportedCliToolId(cliToolId) ? cliToolId : ''
+
+  return {
+    prompt,
+    cliToolId: normalizedCliToolId,
+    agentToolConfigId:
+      normalizedCliToolId && typeof input?.agentToolConfigId === 'string'
+        ? input.agentToolConfigId.trim()
+        : '',
+  }
+}
+
+const resolveWorkflowNodeInputByContext = (
+  input: WorkflowTemplateNodeInput | WorkflowTemplateNodeInputForm | undefined,
+  configuredTools: Array<{ id: SupportedCliToolId; label: string }>,
+  configsByTool: Partial<Record<SupportedCliToolId, AgentToolConfig[]>>,
+): WorkflowTemplateNodeInputForm => {
+  const nextInput = normalizeWorkflowNodeInput(input)
+  const allowedToolIds = new Set(configuredTools.map((tool) => tool.id))
+  const fallbackToolId = configuredTools[0]?.id ?? ''
+  const cliToolId =
+    nextInput.cliToolId && allowedToolIds.has(nextInput.cliToolId) ? nextInput.cliToolId : fallbackToolId
+
+  if (!cliToolId) {
+    return {
+      ...nextInput,
+      cliToolId: '',
+      agentToolConfigId: '',
+    }
+  }
+
+  const toolConfigs = configsByTool[cliToolId] ?? []
+  const hasSelectedConfig = toolConfigs.some((config) => config.id === nextInput.agentToolConfigId)
+  const preferredConfigId =
+    toolConfigs.find((config) => config.isDefault)?.id ?? toolConfigs[0]?.id ?? ''
+
+  return {
+    ...nextInput,
+    cliToolId,
+    agentToolConfigId: hasSelectedConfig ? nextInput.agentToolConfigId : preferredConfigId,
+  }
+}
+
+const resolveWorkflowNodeInput = (
+  input: WorkflowTemplateNodeInput | WorkflowTemplateNodeInputForm | undefined,
+): WorkflowTemplateNodeInputForm => {
+  return resolveWorkflowNodeInputByContext(
+    input,
+    workflowConfiguredCliTools.value,
+    workflowNodeConfigsByTool.value,
+  )
+}
+
+const buildWorkflowNode = (nodeOrder: number): WorkflowTemplateNodeForm => ({
+  nodeOrder,
+  name: `step-${nodeOrder}`,
+  type: 'agent',
+  requiresApproval: false,
+  input: resolveWorkflowNodeInput(createEmptyWorkflowNodeInput()),
+})
+
+const normalizeWorkflowNodes = (nodes: WorkflowTemplateNodeForm[]) => {
   return [...nodes]
     .sort((left, right) => left.nodeOrder - right.nodeOrder)
     .map((node, index) => ({
@@ -469,19 +541,45 @@ const normalizeWorkflowNodes = (nodes: WorkflowTemplateNode[]) => {
       nodeOrder: index + 1,
       name: node.name.trim() || `step-${index + 1}`,
       requiresApproval: Boolean(node.requiresApproval),
+      input: normalizeWorkflowNodeInput(node.input),
     }))
 }
 
-const validateWorkflowNodes = (
-  nodes: WorkflowTemplateNode[],
-  mode: WorkflowTemplateMode,
-) => {
+const serializeWorkflowNodeInput = (
+  input: WorkflowTemplateNodeInputForm,
+): WorkflowTemplateNodeInput | undefined => {
+  const normalizedPrompt = input.prompt.trim()
+  const normalizedConfigId = input.agentToolConfigId.trim()
+  const payload: WorkflowTemplateNodeInput = {}
+
+  if (normalizedPrompt) {
+    payload.prompt = normalizedPrompt
+  }
+
+  if (input.cliToolId) {
+    payload.cliToolId = input.cliToolId
+    if (normalizedConfigId) {
+      payload.agentToolConfigId = normalizedConfigId
+    }
+  }
+
+  return Object.keys(payload).length > 0 ? payload : undefined
+}
+
+const buildWorkflowNodesForSubmit = (nodes: WorkflowTemplateNodeForm[]): WorkflowTemplateNode[] => {
+  return normalizeWorkflowNodes(nodes).map((node) => ({
+    ...node,
+    input: serializeWorkflowNodeInput(node.input),
+  }))
+}
+
+const validateWorkflowNodes = (nodes: WorkflowTemplateNode[]) => {
   if (nodes.length === 0) {
     return '至少需要一个节点'
   }
 
-  if (mode === 'conversation' && nodes.length !== 1) {
-    return 'conversation 模式只允许 1 个节点'
+  if (workflowConfiguredCliTools.value.length === 0) {
+    return '当前业务线暂无已配置 Agent CLI，请先在 Agent CLI 页面完成配置'
   }
 
   for (let index = 0; index < nodes.length; index += 1) {
@@ -489,36 +587,174 @@ const validateWorkflowNodes = (
     if (!node || !node.name.trim()) {
       return `节点 #${index + 1} 名称不能为空`
     }
+
+    const nodeInput = normalizeWorkflowNodeInput(node.input)
+    if (!nodeInput.cliToolId) {
+      return `节点 #${index + 1} 请选择 Agent CLI`
+    }
+
+    if (!workflowConfiguredCliToolIdSet.value.has(nodeInput.cliToolId)) {
+      return `节点 #${index + 1} 的 Agent CLI 不可用，请重新选择`
+    }
   }
 
   return ''
 }
 
 const ensureWorkflowCreateNodeShape = () => {
-  if (workflowCreateForm.value.mode === 'conversation') {
-    workflowCreateForm.value.nodes = [
-      {
-        nodeOrder: 1,
-        name: workflowCreateForm.value.nodes[0]?.name?.trim() || 'conversation-node',
-        type: workflowCreateForm.value.nodes[0]?.type ?? 'agent',
-        requiresApproval: Boolean(workflowCreateForm.value.nodes[0]?.requiresApproval),
-      },
-    ]
-    return
-  }
-
   if (workflowCreateForm.value.nodes.length === 0) {
-    workflowCreateForm.value.nodes = [
-      {
-        nodeOrder: 1,
-        name: 'step-1',
-        type: 'agent',
-        requiresApproval: false,
-      },
-    ]
+    workflowCreateForm.value.nodes = [buildWorkflowNode(1)]
   }
 
   workflowCreateForm.value.nodes = normalizeWorkflowNodes(workflowCreateForm.value.nodes)
+}
+
+const loadWorkflowConfiguredCliTools = async (lineId: string) => {
+  if (!lineId) {
+    workflowConfiguredCliTools.value = []
+    workflowNodeConfigsByTool.value = {}
+    return
+  }
+
+  loadingWorkflowConfiguredCliTools.value = true
+  try {
+    const configs = await businessLinesApi.listAgentToolConfigs(lineId)
+    if (lineId !== activeLineId.value) {
+      return
+    }
+
+    const groupedConfigs: Partial<Record<SupportedCliToolId, AgentToolConfig[]>> = {}
+    for (const config of configs) {
+      if (!isSupportedCliToolId(config.toolId)) {
+        continue
+      }
+
+      groupedConfigs[config.toolId] = [...(groupedConfigs[config.toolId] ?? []), config]
+    }
+
+    const configuredTools = SUPPORTED_CLI_TOOLS.filter((tool) => {
+      return Boolean(groupedConfigs[tool.id]?.length)
+    })
+    workflowNodeConfigsByTool.value = groupedConfigs
+    workflowConfiguredCliTools.value = configuredTools
+    workflowCreateForm.value.nodes = normalizeWorkflowNodes(
+      workflowCreateForm.value.nodes.map((node) => {
+        return {
+          ...node,
+          input: resolveWorkflowNodeInputByContext(node.input, configuredTools, groupedConfigs),
+        }
+      }),
+    )
+  } catch (error) {
+    if (lineId === activeLineId.value) {
+      workflowConfiguredCliTools.value = []
+      workflowNodeConfigsByTool.value = {}
+      message.error(toErrorMessage(error, '加载业务线工作流 Agent CLI 列表失败'))
+    }
+  } finally {
+    if (lineId === activeLineId.value) {
+      loadingWorkflowConfiguredCliTools.value = false
+    }
+  }
+}
+
+const loadWorkflowNodeConfigs = async (
+  lineId: string,
+  toolId: SupportedCliToolId,
+): Promise<AgentToolConfig[]> => {
+  const cachedConfigs = workflowNodeConfigsByTool.value[toolId]
+  if (cachedConfigs) {
+    return cachedConfigs
+  }
+
+  workflowNodeConfigLoadingByTool.value = {
+    ...workflowNodeConfigLoadingByTool.value,
+    [toolId]: true,
+  }
+
+  try {
+    const configs = await businessLinesApi.listAgentToolConfigs(lineId, { toolId })
+    if (lineId !== activeLineId.value) {
+      return []
+    }
+
+    workflowNodeConfigsByTool.value = {
+      ...workflowNodeConfigsByTool.value,
+      [toolId]: configs,
+    }
+    return configs
+  } catch (error) {
+    if (lineId === activeLineId.value) {
+      workflowNodeConfigsByTool.value = {
+        ...workflowNodeConfigsByTool.value,
+        [toolId]: [],
+      }
+      message.error(toErrorMessage(error, '加载工作流节点 Agent CLI 配置失败'))
+    }
+    return []
+  } finally {
+    if (lineId === activeLineId.value) {
+      workflowNodeConfigLoadingByTool.value = {
+        ...workflowNodeConfigLoadingByTool.value,
+        [toolId]: false,
+      }
+    }
+  }
+}
+
+const getWorkflowNodeConfigs = (toolId: SupportedCliToolId | '') => {
+  if (!toolId) {
+    return []
+  }
+
+  return workflowNodeConfigsByTool.value[toolId] ?? []
+}
+
+const isWorkflowNodeConfigLoading = (toolId: SupportedCliToolId | '') => {
+  if (!toolId) {
+    return false
+  }
+
+  return Boolean(workflowNodeConfigLoadingByTool.value[toolId])
+}
+
+const handleWorkflowNodeCliToolChange = async (node: WorkflowTemplateNodeForm) => {
+  if (!activeLineId.value) {
+    node.input = resolveWorkflowNodeInput(node.input)
+    return
+  }
+
+  if (!node.input.cliToolId || !workflowConfiguredCliToolIdSet.value.has(node.input.cliToolId)) {
+    node.input = resolveWorkflowNodeInput(node.input)
+    return
+  }
+
+  const selectedToolId = node.input.cliToolId
+  node.input.agentToolConfigId = ''
+
+  const configs = await loadWorkflowNodeConfigs(activeLineId.value, selectedToolId)
+  if (node.input.cliToolId !== selectedToolId) {
+    return
+  }
+
+  const preferredConfigId = configs.find((config) => config.isDefault)?.id ?? configs[0]?.id ?? ''
+  node.input.agentToolConfigId = preferredConfigId
+}
+
+const preloadWorkflowNodeConfigs = async () => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  const toolIds = Array.from(
+    new Set(
+      workflowCreateForm.value.nodes
+        .map((node) => node.input.cliToolId)
+        .filter((toolId): toolId is SupportedCliToolId => Boolean(toolId)),
+    ),
+  )
+
+  await Promise.all(toolIds.map((toolId) => loadWorkflowNodeConfigs(activeLineId.value, toolId)))
 }
 
 const resetWorkflowCreateForm = () => {
@@ -526,25 +762,29 @@ const resetWorkflowCreateForm = () => {
   workflowCreateForm.value = {
     name: '',
     description: '',
-    mode: 'conversation',
-    nodes: [
-      {
-        nodeOrder: 1,
-        name: 'conversation-node',
-        type: 'agent',
-        requiresApproval: false,
-      },
-    ],
+    nodes: [buildWorkflowNode(1)],
   }
 }
 
+const openWorkflowCreateModal = () => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  workflowValidationMessage.value = ''
+  ensureWorkflowCreateNodeShape()
+  workflowNodeConfigLoadingByTool.value = {}
+  workflowCreateModalOpen.value = true
+  void loadWorkflowConfiguredCliTools(activeLineId.value).then(() => preloadWorkflowNodeConfigs())
+}
+
+const closeWorkflowCreateModal = () => {
+  workflowValidationMessage.value = ''
+  workflowCreateModalOpen.value = false
+}
+
 const addWorkflowCreateNode = () => {
-  workflowCreateForm.value.nodes.push({
-    nodeOrder: workflowCreateForm.value.nodes.length + 1,
-    name: `step-${workflowCreateForm.value.nodes.length + 1}`,
-    type: 'agent',
-    requiresApproval: false,
-  })
+  workflowCreateForm.value.nodes.push(buildWorkflowNode(workflowCreateForm.value.nodes.length + 1))
   workflowCreateForm.value.nodes = normalizeWorkflowNodes(workflowCreateForm.value.nodes)
 }
 
@@ -557,28 +797,9 @@ const removeWorkflowCreateNode = (index: number) => {
   workflowCreateForm.value.nodes = normalizeWorkflowNodes(workflowCreateForm.value.nodes)
 }
 
-const loadWorkflowVersions = async (templateId: string) => {
-  if (!templateId) {
-    workflowVersions.value = []
-    selectedWorkflowTemplateId.value = ''
-    return
-  }
-
-  selectedWorkflowTemplateId.value = templateId
-
-  try {
-    workflowVersions.value = await workflowApi.versions(templateId)
-  } catch (error) {
-    workflowVersions.value = []
-    message.error(toErrorMessage(error, '加载工作流模板版本失败'))
-  }
-}
-
 const loadWorkflowTemplates = async (lineId: string) => {
   if (!lineId) {
     workflowTemplates.value = []
-    workflowVersions.value = []
-    selectedWorkflowTemplateId.value = ''
     resetWorkflowCreateForm()
     return
   }
@@ -597,20 +818,8 @@ const loadWorkflowTemplates = async (lineId: string) => {
     )
 
     workflowTemplates.value = templates
-
-    if (!templates.some((template) => template.id === selectedWorkflowTemplateId.value)) {
-      selectedWorkflowTemplateId.value = templates[0]?.id ?? ''
-    }
-
-    if (selectedWorkflowTemplateId.value) {
-      await loadWorkflowVersions(selectedWorkflowTemplateId.value)
-    } else {
-      workflowVersions.value = []
-    }
   } catch (error) {
     workflowTemplates.value = []
-    workflowVersions.value = []
-    selectedWorkflowTemplateId.value = ''
     message.error(toErrorMessage(error, '加载业务线工作流模板失败'))
   } finally {
     loadingWorkflowTemplates.value = false
@@ -628,8 +837,8 @@ const createWorkflowTemplate = async () => {
   }
 
   ensureWorkflowCreateNodeShape()
-  const nodes = normalizeWorkflowNodes(workflowCreateForm.value.nodes)
-  const nodeValidationMessage = validateWorkflowNodes(nodes, workflowCreateForm.value.mode)
+  const nodes = buildWorkflowNodesForSubmit(workflowCreateForm.value.nodes)
+  const nodeValidationMessage = validateWorkflowNodes(nodes)
 
   if (nodeValidationMessage) {
     workflowValidationMessage.value = nodeValidationMessage
@@ -643,7 +852,6 @@ const createWorkflowTemplate = async () => {
     await workflowApi.create({
       name: workflowCreateForm.value.name.trim(),
       description: normalizeOptionalText(workflowCreateForm.value.description),
-      mode: workflowCreateForm.value.mode,
       scope: 'business_line',
       businessLineId: activeLineId.value,
       nodes,
@@ -651,6 +859,7 @@ const createWorkflowTemplate = async () => {
     })
 
     resetWorkflowCreateForm()
+    closeWorkflowCreateModal()
     await loadWorkflowTemplates(activeLineId.value)
     message.success('业务线工作流模板创建成功')
   } catch (error) {
@@ -670,19 +879,6 @@ const toggleWorkflowTemplateActive = async (template: WorkflowTemplate) => {
     message.success('模板状态更新成功')
   } catch (error) {
     message.error(toErrorMessage(error, '更新模板状态失败'))
-  } finally {
-    workflowTemplateActionId.value = ''
-  }
-}
-
-const publishWorkflowTemplate = async (template: WorkflowTemplate) => {
-  workflowTemplateActionId.value = template.id
-  try {
-    await workflowApi.publish(template.id)
-    await loadWorkflowTemplates(activeLineId.value)
-    message.success('模板发布成功')
-  } catch (error) {
-    message.error(toErrorMessage(error, '发布模板失败'))
   } finally {
     workflowTemplateActionId.value = ''
   }
@@ -793,6 +989,7 @@ const closeNestedModals = () => {
   projectFormModalOpen.value = false
   memberPermissionModalOpen.value = false
   agentToolConfigModalOpen.value = false
+  workflowCreateModalOpen.value = false
   projectDeleteModalOpen.value = false
   memberRemoveModalOpen.value = false
   lineDeleteModalOpen.value = false
@@ -1452,8 +1649,10 @@ watch(
       agentToolConfigs.value = []
       resetAgentToolConfigForm()
       workflowTemplates.value = []
-      workflowVersions.value = []
-      selectedWorkflowTemplateId.value = ''
+      workflowConfiguredCliTools.value = []
+      workflowNodeConfigsByTool.value = {}
+      workflowNodeConfigLoadingByTool.value = {}
+      loadingWorkflowConfiguredCliTools.value = false
       resetWorkflowCreateForm()
 
       activeLineId.value = props.activeBusinessLineId || props.lines[0]?.id || ''
@@ -1517,13 +1716,19 @@ watch(
       lineMembers.value = []
       agentToolConfigs.value = []
       workflowTemplates.value = []
-      workflowVersions.value = []
-      selectedWorkflowTemplateId.value = ''
+      workflowConfiguredCliTools.value = []
+      workflowNodeConfigsByTool.value = {}
+      workflowNodeConfigLoadingByTool.value = {}
+      loadingWorkflowConfiguredCliTools.value = false
       resetAgentToolConfigForm()
       resetWorkflowCreateForm()
       return
     }
 
+    workflowConfiguredCliTools.value = []
+    workflowNodeConfigsByTool.value = {}
+    workflowNodeConfigLoadingByTool.value = {}
+    loadingWorkflowConfiguredCliTools.value = false
     emit('select-line', lineId)
     void loadLineContext({ includeMembers: activeTab.value === 'members' })
     if (activeTab.value === 'agent-cli') {
@@ -1558,7 +1763,10 @@ watch(
     }
 
     if (tab === 'workflow') {
-      void loadWorkflowTemplates(activeLineId.value)
+      void Promise.all([
+        loadWorkflowTemplates(activeLineId.value),
+        loadWorkflowConfiguredCliTools(activeLineId.value),
+      ])
       return
     }
 
@@ -2077,144 +2285,29 @@ onBeforeUnmount(() => {
                 <article class="panel-card p-5">
                   <div class="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <p class="text-sm font-semibold">业务线工作流模板</p>
+                      <p class="text-sm font-semibold">模板列表</p>
                       <p class="mt-1 text-xs text-muted-foreground">
-                        当前业务线下创建的模板，可被该业务线全部项目创建任务时复用。
+                        {{ loadingWorkflowTemplates ? '加载中...' : `共 ${workflowTemplates.length} 个` }}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
-                      :disabled="!activeLineId || loadingWorkflowTemplates"
-                      @click="loadWorkflowTemplates(activeLineId)"
-                    >
-                      刷新
-                    </button>
-                  </div>
-
-                  <form class="mt-4 space-y-3" @submit.prevent="createWorkflowTemplate">
-                    <div class="grid gap-3 md:grid-cols-2">
-                      <label class="space-y-1">
-                        <span class="text-xs font-semibold text-muted-foreground">模板名称</span>
-                        <input
-                          v-model="workflowCreateForm.name"
-                          class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
-                          placeholder="例如：业务线默认代码修复流"
-                          type="text"
-                        />
-                      </label>
-                      <label class="space-y-1">
-                        <span class="text-xs font-semibold text-muted-foreground">模式</span>
-                        <select
-                          v-model="workflowCreateForm.mode"
-                          class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
-                          @change="ensureWorkflowCreateNodeShape"
-                        >
-                          <option value="conversation">conversation</option>
-                          <option value="workflow">workflow</option>
-                        </select>
-                      </label>
-                      <label class="space-y-1 md:col-span-2">
-                        <span class="text-xs font-semibold text-muted-foreground">描述</span>
-                        <input
-                          v-model="workflowCreateForm.description"
-                          class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
-                          placeholder="可选"
-                          type="text"
-                        />
-                      </label>
-                    </div>
-
-                    <div class="space-y-2">
-                      <div class="flex items-center justify-between">
-                        <p class="text-xs font-semibold text-muted-foreground">节点定义</p>
-                        <button
-                          v-if="workflowCreateForm.mode === 'workflow'"
-                          type="button"
-                          class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-sm"
-                          @click="addWorkflowCreateNode"
-                        >
-                          添加节点
-                        </button>
-                      </div>
-
-                      <div class="space-y-2">
-                        <div
-                          v-for="(node, index) in workflowCreateForm.nodes"
-                          :key="`workflow-create-node-${index}`"
-                          class="grid gap-2 rounded-xl border border-border bg-background/70 p-3 md:grid-cols-[74px_1fr_160px_auto_auto]"
-                        >
-                          <label class="space-y-1">
-                            <span class="text-[11px] text-muted-foreground">顺序</span>
-                            <input
-                              v-model.number="node.nodeOrder"
-                              class="h-8 w-full rounded-lg border border-border bg-background px-2 text-sm"
-                              min="1"
-                              type="number"
-                              @change="workflowCreateForm.nodes = normalizeWorkflowNodes(workflowCreateForm.nodes)"
-                            />
-                          </label>
-                          <label class="space-y-1">
-                            <span class="text-[11px] text-muted-foreground">节点名称</span>
-                            <input
-                              v-model="node.name"
-                              class="h-8 w-full rounded-lg border border-border bg-background px-2 text-sm"
-                              type="text"
-                            />
-                          </label>
-                          <label class="space-y-1">
-                            <span class="text-[11px] text-muted-foreground">类型</span>
-                            <select
-                              v-model="node.type"
-                              class="h-8 w-full rounded-lg border border-border bg-background px-2 text-sm"
-                            >
-                              <option
-                                v-for="option in workflowNodeTypeOptions"
-                                :key="option.value"
-                                :value="option.value"
-                              >
-                                {{ option.label }}
-                              </option>
-                            </select>
-                          </label>
-                          <label class="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                            <input v-model="node.requiresApproval" type="checkbox" class="h-4 w-4" />
-                            需要审批
-                          </label>
-                          <button
-                            v-if="workflowCreateForm.mode === 'workflow'"
-                            type="button"
-                            class="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive transition hover:bg-destructive/20"
-                            @click="removeWorkflowCreateNode(index)"
-                          >
-                            删除
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="flex justify-end">
+                    <div class="flex items-center gap-2">
                       <button
-                        type="submit"
-                        class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                        :disabled="submittingWorkflowTemplate || !activeLineId"
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="!activeLineId"
+                        @click="openWorkflowCreateModal"
                       >
-                        {{ submittingWorkflowTemplate ? '创建中...' : '创建模板' }}
+                        创建模板
+                      </button>
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                        :disabled="!activeLineId || loadingWorkflowTemplates"
+                        @click="loadWorkflowTemplates(activeLineId)"
+                      >
+                        刷新
                       </button>
                     </div>
-                  </form>
-
-                  <p v-if="workflowValidationMessage" class="mt-3 text-sm text-destructive">
-                    {{ workflowValidationMessage }}
-                  </p>
-                </article>
-
-                <article class="panel-card p-5">
-                  <div class="flex items-center justify-between">
-                    <p class="text-sm font-semibold">模板列表</p>
-                    <p class="text-xs text-muted-foreground">
-                      {{ loadingWorkflowTemplates ? '加载中...' : `共 ${workflowTemplates.length} 个` }}
-                    </p>
                   </div>
 
                   <div v-if="loadingWorkflowTemplates" class="mt-3 text-sm text-muted-foreground">
@@ -2222,15 +2315,13 @@ onBeforeUnmount(() => {
                   </div>
 
                   <div v-else class="mt-3 overflow-x-auto">
-                    <table class="w-full min-w-[860px] text-left text-sm">
+                    <table class="w-full min-w-[640px] table-fixed text-left text-sm">
                       <thead class="border-b border-border bg-background/70">
                         <tr class="text-xs font-semibold text-muted-foreground">
                           <th class="px-3 py-2">模板</th>
-                          <th class="px-3 py-2">模式</th>
-                          <th class="px-3 py-2">节点数</th>
-                          <th class="px-3 py-2">版本</th>
-                          <th class="px-3 py-2">状态</th>
-                          <th class="px-3 py-2 text-right">操作</th>
+                          <th class="w-20 px-3 py-2 whitespace-nowrap">节点数</th>
+                          <th class="w-24 px-3 py-2 whitespace-nowrap">状态</th>
+                          <th class="w-40 px-3 py-2 text-right whitespace-nowrap">操作</th>
                         </tr>
                       </thead>
                       <tbody class="divide-y divide-border">
@@ -2240,27 +2331,17 @@ onBeforeUnmount(() => {
                           class="transition hover:bg-background/70"
                         >
                           <td class="px-3 py-2">
-                            <button
-                              type="button"
-                              class="text-left"
-                              @click="loadWorkflowVersions(template.id)"
-                            >
-                              <p class="font-semibold">{{ template.name }}</p>
-                              <p class="mt-0.5 text-xs text-muted-foreground">
+                            <div class="text-left">
+                              <p class="truncate font-semibold">{{ template.name }}</p>
+                              <p class="mt-0.5 truncate text-xs text-muted-foreground">
                                 {{ template.description || '暂无描述' }}
                               </p>
-                            </button>
+                            </div>
                           </td>
-                          <td class="px-3 py-2 text-muted-foreground">
-                            {{ workflowModeLabel[template.mode] }}
-                          </td>
-                          <td class="px-3 py-2 text-muted-foreground">
+                          <td class="px-3 py-2 text-muted-foreground whitespace-nowrap">
                             {{ template.nodesJson.length }}
                           </td>
-                          <td class="px-3 py-2 text-muted-foreground">
-                            v{{ template.latestVersion }}
-                          </td>
-                          <td class="px-3 py-2">
+                          <td class="px-3 py-2 whitespace-nowrap">
                             <span
                               class="inline-flex rounded-full px-2 py-1 text-xs font-semibold"
                               :class="
@@ -2274,14 +2355,6 @@ onBeforeUnmount(() => {
                           </td>
                           <td class="px-3 py-2">
                             <div class="flex justify-end gap-2">
-                              <button
-                                type="button"
-                                class="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                                :disabled="workflowTemplateActionId === template.id"
-                                @click="publishWorkflowTemplate(template)"
-                              >
-                                发布
-                              </button>
                               <button
                                 type="button"
                                 class="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
@@ -2302,30 +2375,12 @@ onBeforeUnmount(() => {
                           </td>
                         </tr>
                         <tr v-if="workflowTemplates.length === 0">
-                          <td colspan="6" class="px-3 py-4 text-sm text-muted-foreground">
+                          <td colspan="4" class="px-3 py-4 text-sm text-muted-foreground">
                             当前业务线暂无工作流模板，请先创建。
                           </td>
                         </tr>
                       </tbody>
                     </table>
-                  </div>
-
-                  <div class="mt-4 rounded-xl border border-border bg-background/70 p-3">
-                    <p class="text-xs font-semibold text-muted-foreground">
-                      模板版本（{{ selectedWorkflowTemplate?.name ?? '未选择模板' }}）
-                    </p>
-                    <div v-if="workflowVersions.length > 0" class="mt-2 flex flex-wrap gap-2">
-                      <span
-                        v-for="version in workflowVersions"
-                        :key="version.id"
-                        class="inline-flex rounded-full border border-border bg-background px-2 py-1 text-xs text-foreground"
-                      >
-                        v{{ version.version }}
-                      </span>
-                    </div>
-                    <p v-else class="mt-2 text-xs text-muted-foreground">
-                      暂无版本信息。
-                    </p>
                   </div>
                 </article>
               </section>
@@ -2375,6 +2430,190 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </section>
+
+      <div
+        v-if="workflowCreateModalOpen"
+        class="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 px-4 py-6 backdrop-blur-sm"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="business-line-workflow-create-modal-title"
+        @click.self="closeWorkflowCreateModal"
+      >
+        <section class="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+          <header class="flex items-center justify-between border-b border-border px-4 py-3">
+            <h3 id="business-line-workflow-create-modal-title" class="text-sm font-semibold">
+              创建业务线工作流模板
+            </h3>
+            <button
+              type="button"
+              class="rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground transition hover:text-foreground"
+              aria-label="关闭工作流模板创建弹窗"
+              @click="closeWorkflowCreateModal"
+            >
+              关闭
+            </button>
+          </header>
+
+          <form class="max-h-[calc(92vh-56px)] space-y-4 overflow-auto px-4 py-4" @submit.prevent="createWorkflowTemplate">
+            <section class="space-y-3 rounded-xl border border-border bg-background/60 p-3">
+              <div>
+                <p class="text-xs font-semibold text-muted-foreground">模板信息</p>
+                <p class="mt-1 text-[11px] text-muted-foreground">配置模板名称与描述，供业务线所有项目复用。</p>
+              </div>
+              <div class="grid gap-3 md:grid-cols-2">
+                <label class="space-y-1">
+                  <span class="text-xs font-semibold text-muted-foreground">模板名称</span>
+                  <input
+                    v-model="workflowCreateForm.name"
+                    class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+                    placeholder="例如：业务线默认代码修复流"
+                    type="text"
+                  />
+                </label>
+                <label class="space-y-1">
+                  <span class="text-xs font-semibold text-muted-foreground">描述</span>
+                  <input
+                    v-model="workflowCreateForm.description"
+                    class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
+                    placeholder="可选"
+                    type="text"
+                  />
+                </label>
+              </div>
+            </section>
+
+            <section class="space-y-3 rounded-xl border border-border bg-background/60 p-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p class="text-xs font-semibold text-muted-foreground">节点定义</p>
+                  <p class="mt-1 text-[11px] text-muted-foreground">每个节点配置执行提示词、Agent CLI 与配置。</p>
+                </div>
+                <button
+                  type="button"
+                  class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                  @click="addWorkflowCreateNode"
+                >
+                  添加节点
+                </button>
+              </div>
+
+              <div class="space-y-3">
+                <div
+                  v-for="(node, index) in workflowCreateForm.nodes"
+                  :key="`workflow-create-node-${index}`"
+                  class="space-y-3 rounded-2xl border border-border bg-background/80 p-3.5"
+                >
+                  <div class="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p class="text-[11px] font-semibold text-muted-foreground">节点 {{ index + 1 }}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <label class="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs text-muted-foreground">
+                        <input v-model="node.requiresApproval" type="checkbox" class="h-4 w-4" />
+                        需要审批
+                      </label>
+                      <button
+                        type="button"
+                        class="inline-flex h-8 items-center rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 text-xs font-semibold text-destructive transition hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="workflowCreateForm.nodes.length <= 1"
+                        @click="removeWorkflowCreateNode(index)"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="grid gap-3 md:grid-cols-2">
+                    <label class="space-y-1 md:col-span-2">
+                      <span class="text-[11px] text-muted-foreground">节点名称</span>
+                      <input
+                        v-model="node.name"
+                        class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm"
+                        type="text"
+                      />
+                    </label>
+
+                    <label class="space-y-1 md:col-span-2">
+                      <span class="text-[11px] text-muted-foreground">节点 Prompt</span>
+                      <textarea
+                        v-model="node.input.prompt"
+                        class="min-h-[76px] w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
+                        placeholder="输入该节点的执行提示词"
+                      />
+                    </label>
+
+                    <label class="space-y-1">
+                      <span class="text-[11px] text-muted-foreground">Agent CLI</span>
+                      <select
+                        v-model="node.input.cliToolId"
+                        :disabled="loadingWorkflowConfiguredCliTools || workflowConfiguredCliTools.length === 0"
+                        class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                        @change="void handleWorkflowNodeCliToolChange(node)"
+                      >
+                        <option
+                          v-if="!loadingWorkflowConfiguredCliTools && workflowConfiguredCliTools.length === 0"
+                          value=""
+                          disabled
+                        >
+                          当前业务线暂无已配置 Agent CLI
+                        </option>
+                        <option v-for="tool in workflowConfiguredCliTools" :key="tool.id" :value="tool.id">
+                          {{ tool.label }}
+                        </option>
+                      </select>
+                    </label>
+
+                    <label class="space-y-1">
+                      <span class="text-[11px] text-muted-foreground">Agent CLI 配置</span>
+                      <select
+                        v-model="node.input.agentToolConfigId"
+                        :disabled="!node.input.cliToolId || isWorkflowNodeConfigLoading(node.input.cliToolId)"
+                        class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <option value="">
+                          {{
+                            !node.input.cliToolId
+                              ? '请先选择 Agent CLI'
+                              : '自动选择默认/首个配置'
+                          }}
+                        </option>
+                        <option
+                          v-for="config in getWorkflowNodeConfigs(node.input.cliToolId)"
+                          :key="config.id"
+                          :value="config.id"
+                        >
+                          {{ config.name }}
+                        </option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <p v-if="workflowValidationMessage" class="text-sm text-destructive">
+              {{ workflowValidationMessage }}
+            </p>
+
+            <div class="flex justify-end gap-2 border-t border-border pt-3">
+              <button
+                type="button"
+                class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-4 text-xs font-semibold text-foreground"
+                @click="closeWorkflowCreateModal"
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="submittingWorkflowTemplate || !activeLineId"
+              >
+                {{ submittingWorkflowTemplate ? '创建中...' : '创建模板' }}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
 
       <BusinessLineFormModal
         :open="lineFormModalOpen"

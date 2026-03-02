@@ -47,16 +47,6 @@ export const systemRoutes: AppRouteRecord[] = [
     },
   },
   {
-    path: '/workflow',
-    name: 'workflow',
-    component: () => import('@/views/workflow/index.vue'),
-    meta: {
-      title: '工作流',
-      requiresAuth: true,
-      permissions: ['workflow:view'],
-    },
-  },
-  {
     path: '/skills',
     name: 'skills',
     component: () => import('@/views/skills/index.vue'),

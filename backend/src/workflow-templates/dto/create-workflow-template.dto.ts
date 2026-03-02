@@ -10,7 +10,6 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { WorkflowTemplateMode } from './workflow-template-mode.enum';
 import { WorkflowTemplateNodeDto } from './workflow-template-node.dto';
 import { WorkflowTemplateScope } from './workflow-template-scope.enum';
 
@@ -24,13 +23,6 @@ export class CreateWorkflowTemplateDto {
   @IsOptional()
   @IsString()
   description?: string;
-
-  @ApiProperty({
-    enum: WorkflowTemplateMode,
-    enumName: 'WorkflowTemplateMode',
-  })
-  @IsEnum(WorkflowTemplateMode)
-  mode: WorkflowTemplateMode;
 
   @ApiPropertyOptional({
     enum: WorkflowTemplateScope,

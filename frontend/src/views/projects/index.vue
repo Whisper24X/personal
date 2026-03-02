@@ -17,6 +17,7 @@ const loadingMore = ref(false)
 const submitting = ref(false)
 const deletingProjectId = ref<string | null>(null)
 const editingProjectId = ref<string | null>(null)
+const projectFormModalOpen = ref(false)
 const query = ref('')
 const validationMessage = ref('')
 const message = useMessage()
@@ -161,6 +162,18 @@ const resetProjectForm = () => {
   createForm.defaultBranch = 'main'
 }
 
+const openCreateProjectModal = () => {
+  resetProjectForm()
+  validationMessage.value = ''
+  projectFormModalOpen.value = true
+}
+
+const closeProjectFormModal = () => {
+  projectFormModalOpen.value = false
+  resetProjectForm()
+  validationMessage.value = ''
+}
+
 const startEditProject = (project: Project) => {
   editingProjectId.value = project.id
   createForm.businessLineId = project.businessLineId
@@ -168,6 +181,8 @@ const startEditProject = (project: Project) => {
   createForm.description = project.description ?? ''
   createForm.gitUrl = project.gitUrl
   createForm.defaultBranch = project.defaultBranch
+  validationMessage.value = ''
+  projectFormModalOpen.value = true
 }
 
 const submitProject = async () => {
@@ -196,7 +211,7 @@ const submitProject = async () => {
       message.success('创建项目成功')
     }
 
-    resetProjectForm()
+    closeProjectFormModal()
     await loadData()
   } catch (error) {
     message.error(toErrorMessage(error, '保存项目失败'))
@@ -215,7 +230,7 @@ const removeProject = async (project: Project) => {
   try {
     await projectsApi.remove(project.id)
     if (editingProjectId.value === project.id) {
-      resetProjectForm()
+      closeProjectFormModal()
     }
     await loadData()
     message.success('删除项目成功')
@@ -243,89 +258,26 @@ onMounted(() => {
 
     <section class="panel-card p-5">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p class="text-sm font-semibold">{{ isEditingProject ? '编辑项目' : '新建项目' }}</p>
-        <label class="relative block">
-          <span class="sr-only">搜索项目</span>
-          <input
-            v-model="query"
-            class="h-10 w-72 rounded-lg border border-border bg-background px-3 text-sm text-foreground shadow-sm outline-none ring-offset-background transition focus:ring-2 focus:ring-ring"
-            placeholder="按业务线 / 项目 / 仓库搜索"
-            type="search"
-          />
-        </label>
-      </div>
-
-      <form class="grid gap-3 md:grid-cols-2" @submit.prevent="submitProject">
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">所属业务线</span>
-          <select
-            v-model="createForm.businessLineId"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-          >
-            <option v-for="line in businessLines" :key="line.id" :value="line.id">
-              {{ line.name }}
-            </option>
-          </select>
-        </label>
-
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">项目名称</span>
-          <input
-            v-model="createForm.name"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            placeholder="例如：AINative Web"
-            type="text"
-          />
-        </label>
-
-        <label class="space-y-1 md:col-span-2">
-          <span class="text-xs font-semibold text-muted-foreground">Git 仓库地址</span>
-          <input
-            v-model="createForm.gitUrl"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            placeholder="git@gitlab.example.com:group/project.git"
-            type="text"
-          />
-        </label>
-
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">默认分支</span>
-          <input
-            v-model="createForm.defaultBranch"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            type="text"
-          />
-        </label>
-
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">描述（可选）</span>
-          <input
-            v-model="createForm.description"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            type="text"
-          />
-        </label>
-
-        <div class="md:col-span-2 flex justify-end">
+        <p class="text-sm font-semibold">项目筛选与操作</p>
+        <div class="flex items-center gap-2">
+          <label class="relative block">
+            <span class="sr-only">搜索项目</span>
+            <input
+              v-model="query"
+              class="h-10 w-72 rounded-lg border border-border bg-background px-3 text-sm text-foreground shadow-sm outline-none ring-offset-background transition focus:ring-2 focus:ring-ring"
+              placeholder="按业务线 / 项目 / 仓库搜索"
+              type="search"
+            />
+          </label>
           <button
-            v-if="isEditingProject"
-            class="mr-2 h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground shadow-sm transition hover:shadow-md"
+            class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition hover:shadow-md"
             type="button"
-            @click="resetProjectForm"
+            @click="openCreateProjectModal"
           >
-            取消编辑
-          </button>
-          <button
-            class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="submitting"
-            type="submit"
-          >
-            {{ submitting ? '保存中...' : isEditingProject ? '保存修改' : '创建项目' }}
+            新建项目
           </button>
         </div>
-      </form>
-
-      <p v-if="validationMessage" class="mt-3 text-sm text-destructive">{{ validationMessage }}</p>
+      </div>
     </section>
 
     <section class="panel-card border-none bg-transparent p-0 shadow-none">
@@ -421,5 +373,110 @@ onMounted(() => {
       <p class="text-sm font-semibold">未找到业务线或项目</p>
       <p class="mt-2 text-sm text-muted-foreground">请调整搜索条件，或创建第一条项目记录。</p>
     </section>
+
+    <Teleport to="body">
+      <div v-if="projectFormModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <button
+          type="button"
+          aria-label="关闭项目表单弹窗"
+          class="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+          @click="closeProjectFormModal"
+        />
+
+        <section
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="project-form-modal-title"
+          class="relative z-10 w-full max-w-2xl rounded-2xl border border-border bg-background shadow-2xl"
+          tabindex="-1"
+          @keydown.esc.prevent="closeProjectFormModal"
+        >
+          <header class="flex items-center justify-between border-b border-border px-4 py-3">
+            <h2 id="project-form-modal-title" class="text-sm font-semibold">
+              {{ isEditingProject ? '编辑项目' : '新建项目' }}
+            </h2>
+            <button
+              type="button"
+              aria-label="关闭"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
+              @click="closeProjectFormModal"
+            >
+              ×
+            </button>
+          </header>
+
+          <form class="grid gap-3 px-4 py-4 md:grid-cols-2" @submit.prevent="submitProject">
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">所属业务线</span>
+              <select
+                v-model="createForm.businessLineId"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              >
+                <option v-for="line in businessLines" :key="line.id" :value="line.id">
+                  {{ line.name }}
+                </option>
+              </select>
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">项目名称</span>
+              <input
+                v-model="createForm.name"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="例如：AINative Web"
+                type="text"
+              />
+            </label>
+
+            <label class="space-y-1 md:col-span-2">
+              <span class="text-xs font-semibold text-muted-foreground">Git 仓库地址</span>
+              <input
+                v-model="createForm.gitUrl"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="git@gitlab.example.com:group/project.git"
+                type="text"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">默认分支</span>
+              <input
+                v-model="createForm.defaultBranch"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                type="text"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">描述（可选）</span>
+              <input
+                v-model="createForm.description"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                type="text"
+              />
+            </label>
+
+            <p v-if="validationMessage" class="text-sm text-destructive md:col-span-2">{{ validationMessage }}</p>
+
+            <div class="md:col-span-2 flex justify-end gap-2">
+              <button
+                class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground shadow-sm transition hover:shadow-md"
+                type="button"
+                @click="closeProjectFormModal"
+              >
+                取消
+              </button>
+              <button
+                class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="submitting"
+                type="submit"
+              >
+                {{ submitting ? '保存中...' : isEditingProject ? '保存修改' : '创建项目' }}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </Teleport>
   </div>
 </template>

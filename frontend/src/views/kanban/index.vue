@@ -6,6 +6,7 @@ import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
 import type { Project } from '@/types/api/projects'
 import type { Task, TaskStatus } from '@/types/api/tasks'
+import { STORAGE_KEYS } from '@/types/common/storage'
 import { fetchAllPages } from '@/utils/pagination'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
@@ -24,9 +25,9 @@ const message = useMessage()
 
 const projects = ref<Project[]>([])
 const tasks = ref<Task[]>([])
+const selectedProjectId = ref('')
 
 const filters = reactive({
-  projectId: '',
   keyword: '',
 })
 
@@ -59,10 +60,6 @@ const normalizedKeyword = computed(() => filters.keyword.trim().toLowerCase())
 
 const filteredTasks = computed(() => {
   return tasks.value.filter((task) => {
-    if (filters.projectId && task.projectId !== filters.projectId) {
-      return false
-    }
-
     if (!normalizedKeyword.value) {
       return true
     }
@@ -97,14 +94,6 @@ const groupedColumns = computed(() => {
   })
 })
 
-const boardSummary = computed(() => ({
-  total: filteredTasks.value.length,
-  todo: groupedColumns.value.find((column) => column.key === 'todo')?.items.length ?? 0,
-  inProgress: groupedColumns.value.find((column) => column.key === 'in_progress')?.items.length ?? 0,
-  inReview: groupedColumns.value.find((column) => column.key === 'in_review')?.items.length ?? 0,
-  done: groupedColumns.value.find((column) => column.key === 'done')?.items.length ?? 0,
-}))
-
 const getProjectName = (projectId: string) => {
   return projectNameMap.value.get(projectId) ?? projectId
 }
@@ -125,17 +114,28 @@ const uniqueById = <T extends { id: string }>(items: T[]) => {
   return Array.from(new Map(items.map((item) => [item.id, item])).values())
 }
 
+const syncSelectedProjectId = () => {
+  selectedProjectId.value = localStorage.getItem(STORAGE_KEYS.lastSelectedProjectId) ?? ''
+}
+
 const loadAllProjects = async () => {
   const records = await fetchAllPages((page, limit) => projectsApi.list({ page, limit }))
   return uniqueById(records)
 }
 
 const loadTasks = async () => {
+  syncSelectedProjectId()
+
+  if (!selectedProjectId.value) {
+    tasks.value = []
+    return
+  }
+
   const records = await fetchAllPages((page, limit) =>
     tasksApi.list({
       page,
       limit,
-      projectId: filters.projectId || undefined,
+      projectId: selectedProjectId.value,
     }),
   )
   tasks.value = uniqueById(records)
@@ -168,42 +168,24 @@ const applyFilters = async () => {
 }
 
 const resetFilters = async () => {
-  filters.projectId = ''
   filters.keyword = ''
   await applyFilters()
 }
 
 onMounted(() => {
+  syncSelectedProjectId()
   void loadPageData()
 })
 </script>
 
 <template>
   <div class="space-y-6 fade-up">
-    <section class="space-y-2">
-      <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">看板</p>
-      <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">项目看板</h1>
-      <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-        从任务接口实时聚合状态分布，支持按项目和关键词过滤。
-      </p>
-    </section>
-
     <section class="panel-card p-5">
       <div class="flex flex-wrap items-center gap-2">
-        <select
-          v-model="filters.projectId"
-          class="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-        >
-          <option value="">全部项目</option>
-          <option v-for="project in projects" :key="project.id" :value="project.id">
-            {{ project.name }}
-          </option>
-        </select>
-
         <input
           v-model="filters.keyword"
           class="h-10 min-w-64 flex-1 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-          placeholder="搜索任务标题 / 描述 / 项目 / ID"
+          placeholder="搜索任务标题 / 描述 / ID"
           type="text"
         />
 
@@ -212,7 +194,7 @@ onMounted(() => {
           type="button"
           @click="applyFilters"
         >
-          筛选
+          搜索
         </button>
 
         <button
@@ -232,16 +214,13 @@ onMounted(() => {
         </button>
       </div>
 
-      <div class="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-        <span class="rounded-full border border-border px-2.5 py-1">总数 {{ boardSummary.total }}</span>
-        <span class="rounded-full border border-border px-2.5 py-1">待执行 {{ boardSummary.todo }}</span>
-        <span class="rounded-full border border-border px-2.5 py-1">执行中 {{ boardSummary.inProgress }}</span>
-        <span class="rounded-full border border-border px-2.5 py-1">待处理 {{ boardSummary.inReview }}</span>
-        <span class="rounded-full border border-border px-2.5 py-1">已完成 {{ boardSummary.done }}</span>
-      </div>
     </section>
 
     <section v-if="loading" class="panel-card p-5 text-sm text-muted-foreground">加载中...</section>
+
+    <section v-else-if="!selectedProjectId" class="panel-card p-5 text-sm text-muted-foreground">
+      请先在左侧项目菜单中选择项目，再查看对应任务看板。
+    </section>
 
     <section v-else class="grid gap-4 xl:grid-cols-4">
       <article v-for="column in groupedColumns" :key="column.key" class="panel-card p-4">

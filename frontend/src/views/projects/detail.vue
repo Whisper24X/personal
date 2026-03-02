@@ -37,6 +37,8 @@ const creatingMember = ref(false)
 const updatingMemberId = ref<string | null>(null)
 const removingMemberId = ref<string | null>(null)
 const savingConfig = ref(false)
+const memberFormModalOpen = ref(false)
+const configFormModalOpen = ref(false)
 
 const memberRoleDrafts = ref<Record<string, ProjectMember['role']>>({})
 
@@ -144,6 +146,26 @@ const runningTaskCount = computed(() => {
 const doneTaskCount = computed(() => {
   return recentTasks.value.filter((task) => task.status === 'done').length
 })
+
+const openMemberFormModal = () => {
+  validationMessage.value = ''
+  memberFormModalOpen.value = true
+}
+
+const closeMemberFormModal = () => {
+  memberFormModalOpen.value = false
+  validationMessage.value = ''
+}
+
+const openConfigFormModal = () => {
+  validationMessage.value = ''
+  configFormModalOpen.value = true
+}
+
+const closeConfigFormModal = () => {
+  configFormModalOpen.value = false
+  validationMessage.value = ''
+}
 
 const syncConfigForm = (currentProject: Project) => {
   const configJson = (currentProject.configJson ?? {}) as Record<string, unknown>
@@ -262,6 +284,7 @@ const createMember = async () => {
 
     newMemberForm.userId = ''
     newMemberForm.role = 'developer'
+    closeMemberFormModal()
     await loadProjectData()
     message.success('添加项目成员成功')
   } catch (error) {
@@ -371,6 +394,7 @@ const saveConfig = async () => {
     })
 
     await loadProjectData()
+    closeConfigFormModal()
     message.success('保存项目配置成功')
   } catch (error) {
     message.error(toErrorMessage(error, '保存项目配置失败'))
@@ -595,40 +619,21 @@ onMounted(() => {
 
       <section v-else-if="tab === 'members'" class="space-y-4">
         <div class="panel-card p-5">
-          <p class="text-sm font-semibold">添加成员</p>
-          <form class="mt-4 grid gap-3 md:grid-cols-[1fr_200px_auto]" @submit.prevent="createMember">
-            <input
-              v-model="newMemberForm.userId"
-              class="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              list="project-member-user-options"
-              placeholder="输入或选择用户"
-              type="text"
-            />
-            <datalist id="project-member-user-options">
-              <option v-for="user in users" :key="user.id" :value="user.id">
-                {{ user.nickname?.trim() || user.username }}
-              </option>
-            </datalist>
-            <select
-              v-model="newMemberForm.role"
-              class="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            >
-              <option value="owner">owner</option>
-              <option value="maintainer">maintainer</option>
-              <option value="developer">developer</option>
-              <option value="viewer">viewer</option>
-            </select>
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold">成员管理</p>
+              <p class="mt-1 text-xs text-muted-foreground">
+                新增成员已迁移为弹窗表单，支持输入用户 ID 或从已加载用户列表中选择。
+              </p>
+            </div>
             <button
-              class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="creatingMember"
-              type="submit"
+              class="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+              type="button"
+              @click="openMemberFormModal"
             >
-              {{ creatingMember ? '添加中...' : '添加成员' }}
+              添加成员
             </button>
-          </form>
-          <p class="mt-2 text-xs text-muted-foreground">
-            支持输入用户 ID，也可从已加载用户列表中直接选择。
-          </p>
+          </div>
         </div>
 
         <div class="panel-card overflow-hidden">
@@ -690,10 +695,136 @@ onMounted(() => {
 
       <section v-else class="space-y-4">
         <div class="panel-card p-5">
-          <p class="text-sm font-semibold">项目配置</p>
-          <p class="mt-1 text-xs text-muted-foreground">支持仓库配置与执行参数（Agent / Skills / MCP / 并发）。</p>
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold">项目配置</p>
+              <p class="mt-1 text-xs text-muted-foreground">
+                配置编辑已迁移为弹窗表单，避免在页面中直接展示创建和编辑区域。
+              </p>
+            </div>
+            <button
+              class="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+              type="button"
+              @click="openConfigFormModal"
+            >
+              编辑配置
+            </button>
+          </div>
 
-          <form class="mt-5 grid gap-4 md:grid-cols-2" @submit.prevent="saveConfig">
+          <dl class="mt-4 grid gap-3 rounded-xl border border-border bg-background/70 p-4 text-xs md:grid-cols-2">
+            <div>
+              <dt class="text-muted-foreground">项目名称</dt>
+              <dd class="mt-1 font-semibold text-foreground">{{ configForm.name || '-' }}</dd>
+            </div>
+            <div>
+              <dt class="text-muted-foreground">默认分支</dt>
+              <dd class="mt-1 text-foreground">{{ configForm.defaultBranch || '-' }}</dd>
+            </div>
+            <div class="md:col-span-2">
+              <dt class="text-muted-foreground">仓库地址</dt>
+              <dd class="mt-1 break-all text-foreground">{{ configForm.gitUrl || '-' }}</dd>
+            </div>
+            <div>
+              <dt class="text-muted-foreground">Agent 执行器</dt>
+              <dd class="mt-1 text-foreground">{{ configForm.agentAdapter || '-' }}</dd>
+            </div>
+            <div>
+              <dt class="text-muted-foreground">并发上限</dt>
+              <dd class="mt-1 text-foreground">{{ configForm.maxConcurrency || '-' }}</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+    </template>
+
+    <Teleport to="body">
+      <div
+        v-if="memberFormModalOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-background/70 px-4 py-6 backdrop-blur-sm"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="project-member-form-modal-title"
+        @click.self="closeMemberFormModal"
+      >
+        <section class="w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+          <header class="flex items-center justify-between border-b border-border px-4 py-3">
+            <h2 id="project-member-form-modal-title" class="text-sm font-semibold">添加成员</h2>
+            <button
+              class="rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground transition hover:text-foreground"
+              type="button"
+              aria-label="关闭成员弹窗"
+              @click="closeMemberFormModal"
+            >
+              关闭
+            </button>
+          </header>
+
+          <form class="grid gap-3 px-4 py-4 md:grid-cols-[1fr_200px]" @submit.prevent="createMember">
+            <input
+              v-model="newMemberForm.userId"
+              class="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              list="project-member-user-options"
+              placeholder="输入或选择用户"
+              type="text"
+            />
+            <datalist id="project-member-user-options">
+              <option v-for="user in users" :key="user.id" :value="user.id">
+                {{ user.nickname?.trim() || user.username }}
+              </option>
+            </datalist>
+            <select
+              v-model="newMemberForm.role"
+              class="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+            >
+              <option value="owner">owner</option>
+              <option value="maintainer">maintainer</option>
+              <option value="developer">developer</option>
+              <option value="viewer">viewer</option>
+            </select>
+            <div class="md:col-span-2 flex justify-end gap-2">
+              <button
+                class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground"
+                type="button"
+                @click="closeMemberFormModal"
+              >
+                取消
+              </button>
+              <button
+                class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="creatingMember"
+                type="submit"
+              >
+                {{ creatingMember ? '添加中...' : '添加成员' }}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
+      <div
+        v-if="configFormModalOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-background/70 px-4 py-6 backdrop-blur-sm"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="project-config-form-modal-title"
+        @click.self="closeConfigFormModal"
+      >
+        <section class="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+          <header class="flex items-center justify-between border-b border-border px-4 py-3">
+            <h2 id="project-config-form-modal-title" class="text-sm font-semibold">编辑项目配置</h2>
+            <button
+              class="rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground transition hover:text-foreground"
+              type="button"
+              aria-label="关闭配置弹窗"
+              @click="closeConfigFormModal"
+            >
+              关闭
+            </button>
+          </header>
+
+          <form class="grid max-h-[calc(92vh-56px)] gap-4 overflow-auto px-4 py-4 md:grid-cols-2" @submit.prevent="saveConfig">
             <label class="space-y-1">
               <span class="text-xs font-semibold text-muted-foreground">项目名称</span>
               <input
@@ -862,7 +993,14 @@ onMounted(() => {
               />
             </label>
 
-            <div class="md:col-span-2 flex justify-end">
+            <div class="md:col-span-2 flex justify-end gap-2">
+              <button
+                class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground"
+                type="button"
+                @click="closeConfigFormModal"
+              >
+                取消
+              </button>
               <button
                 class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
                 :disabled="savingConfig"
@@ -872,8 +1010,8 @@ onMounted(() => {
               </button>
             </div>
           </form>
-        </div>
-      </section>
-    </template>
+        </section>
+      </div>
+    </Teleport>
   </div>
 </template>

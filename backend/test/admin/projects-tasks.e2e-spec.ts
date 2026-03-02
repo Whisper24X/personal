@@ -65,7 +65,6 @@ describe('Projects and Tasks Module', () => {
       })
       .send({
         name: `template-${Date.now()}`,
-        mode: 'workflow',
         nodes: [
           {
             nodeOrder: 1,
@@ -84,16 +83,6 @@ describe('Projects and Tasks Module', () => {
       .expect(201)
       .then(({ body }) => body);
 
-    const versions = await request(app)
-      .get(`/api/v1/workflow-templates/${createdTemplate.id}/versions`)
-      .auth(adminToken, {
-        type: 'bearer',
-      })
-      .expect(200)
-      .then(({ body }) => body as Array<{ version: number }>);
-
-    expect(versions.length).toBeGreaterThan(0);
-
     const task = await request(app)
       .post('/api/v1/tasks')
       .auth(adminToken, {
@@ -102,7 +91,6 @@ describe('Projects and Tasks Module', () => {
       .send({
         projectId: createdProject.id,
         workflowTemplateId: createdTemplate.id,
-        workflowTemplateVersion: versions[0].version,
         title: 'e2e task',
         description: 'validate task flow',
         acceptanceCriteria: ['node1 done'],

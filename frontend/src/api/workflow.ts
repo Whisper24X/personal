@@ -4,7 +4,6 @@ import type {
   UpdateWorkflowTemplatePayload,
   WorkflowTemplateScope,
   WorkflowTemplate,
-  WorkflowTemplateVersion,
 } from '@/types/api/workflow'
 import { apiHttp, type InfinityPaginationResponse } from './http'
 
@@ -47,13 +46,5 @@ export const workflowApi = {
 
   remove(templateId: string) {
     return apiHttp.delete<void>(`/workflow-templates/${templateId}`)
-  },
-
-  publish(templateId: string) {
-    return apiHttp.post<WorkflowTemplateVersion>(`/workflow-templates/${templateId}/publish`)
-  },
-
-  versions(templateId: string) {
-    return apiHttp.get<WorkflowTemplateVersion[]>(`/workflow-templates/${templateId}/versions`)
   },
 }

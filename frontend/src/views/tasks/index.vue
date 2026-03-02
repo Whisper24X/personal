@@ -1,15 +1,25 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
+import { businessLinesApi, type AgentToolConfig } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
 import { workflowApi } from '@/api/workflow'
 import type { Project } from '@/types/api/projects'
-import type { Task } from '@/types/api/tasks'
-import type { WorkflowTemplate, WorkflowTemplateVersion } from '@/types/api/workflow'
+import type { WorkflowTemplate } from '@/types/api/workflow'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
+
+type SupportedCliToolId = 'claude-code' | 'codex' | 'gemini-cli' | 'cursor-agent' | 'opencode'
+
+const SUPPORTED_CLI_TOOLS: Array<{ id: SupportedCliToolId; label: string }> = [
+  { id: 'cursor-agent', label: 'Cursor Agent' },
+  { id: 'claude-code', label: 'Claude Code' },
+  { id: 'codex', label: 'Codex' },
+  { id: 'gemini-cli', label: 'Gemini CLI' },
+  { id: 'opencode', label: 'Opencode' },
+]
 
 defineOptions({
   name: 'TasksView',
@@ -17,118 +27,71 @@ defineOptions({
 
 const route = useRoute()
 const router = useRouter()
-
-const loading = ref(false)
-const loadingMore = ref(false)
-const submitting = ref(false)
-const validationMessage = ref('')
 const message = useMessage()
 
-const projects = ref<Project[]>([])
-const tasks = ref<Task[]>([])
-const templates = ref<WorkflowTemplate[]>([])
-const templateVersions = ref<WorkflowTemplateVersion[]>([])
-const taskPage = ref(1)
-const taskHasNextPage = ref(false)
+const loading = ref(false)
+const loadingTemplates = ref(false)
+const loadingAgentConfigs = ref(false)
+const submitting = ref(false)
+const validationMessage = ref('')
+const fileInputRef = ref<HTMLInputElement | null>(null)
 
-const filters = reactive({
-  projectId: '',
-  status: '',
-})
+const projects = ref<Project[]>([])
+const templates = ref<WorkflowTemplate[]>([])
+const agentToolConfigs = ref<AgentToolConfig[]>([])
+const selectedFiles = ref<File[]>([])
 
 const createForm = reactive({
   projectId: '',
   mode: 'conversation' as 'conversation' | 'workflow',
   workflowTemplateId: '',
-  workflowTemplateVersion: '' as number | '',
+  cliToolId: 'codex' as SupportedCliToolId,
+  agentToolConfigId: '',
   title: '',
   description: '',
-  acceptanceCriteriaText: '',
-  branch: 'main',
-  environment: 'default',
+  branch: 'master',
 })
 
-const taskStatusOptions: Array<{ label: string; value: '' | Task['status'] }> = [
-  { label: '全部状态', value: '' },
-  { label: '待执行', value: 'todo' },
-  { label: '执行中', value: 'in_progress' },
-  { label: '待处理', value: 'in_review' },
-  { label: '已完成', value: 'done' },
-]
-
-const statusLabelMap: Record<Task['status'], string> = {
-  todo: '待执行',
-  in_progress: '执行中',
-  in_review: '待处理',
-  done: '已完成',
-}
-
-const statusClassMap: Record<Task['status'], string> = {
-  todo: 'bg-muted text-muted-foreground',
-  in_progress: 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
-  in_review: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
-  done: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-}
-
-const selectedTemplate = computed(() => {
-  return templates.value.find((template) => template.id === createForm.workflowTemplateId) ?? null
+const selectedProject = computed(() => {
+  return projects.value.find((project) => project.id === createForm.projectId) ?? null
 })
 
-const formatDate = (value?: string) => {
-  if (!value) return '-'
-  const parsedDate = new Date(value)
-  if (Number.isNaN(parsedDate.getTime())) return value
-  return parsedDate.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-const syncFiltersFromQuery = () => {
+const syncProjectFromQuery = () => {
   const queryProjectId = typeof route.query.projectId === 'string' ? route.query.projectId : ''
-  const queryStatus = typeof route.query.status === 'string' ? route.query.status : ''
   if (queryProjectId) {
-    filters.projectId = queryProjectId
     createForm.projectId = queryProjectId
   }
-
-  if (queryStatus && taskStatusOptions.some((option) => option.value === queryStatus)) {
-    filters.status = queryStatus
-  }
 }
 
-const loadTemplateVersions = async (templateId: string) => {
-  if (!templateId) {
-    templateVersions.value = []
-    createForm.workflowTemplateVersion = ''
-    return
-  }
+const resetCreateForm = (projectId?: string) => {
+  const nextProjectId = projectId || createForm.projectId || projects.value[0]?.id || ''
+  const project = projects.value.find((item) => item.id === nextProjectId)
 
-  try {
-    const versions = await workflowApi.versions(templateId)
-    templateVersions.value = versions
+  createForm.projectId = nextProjectId
+  createForm.mode = 'conversation'
+  createForm.workflowTemplateId = ''
+  createForm.cliToolId = 'codex'
+  createForm.agentToolConfigId = ''
+  createForm.title = ''
+  createForm.description = ''
+  createForm.branch = project?.defaultBranch || 'master'
+  selectedFiles.value = []
+}
 
-    const latestVersion = versions[0]
-    createForm.workflowTemplateVersion = latestVersion ? latestVersion.version : ''
-  } catch (error) {
-    templateVersions.value = []
-    createForm.workflowTemplateVersion = ''
-    message.error(toErrorMessage(error, '加载模板版本失败'))
-  }
+const formatFileSize = (size: number) => {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
 const loadTemplatesForProject = async (projectId: string) => {
   if (!projectId) {
     templates.value = []
-    templateVersions.value = []
     createForm.workflowTemplateId = ''
-    createForm.workflowTemplateVersion = ''
     return
   }
 
+  loadingTemplates.value = true
   try {
     const availableTemplates = await fetchAllPages((page, limit) =>
       workflowApi.list({
@@ -143,83 +106,99 @@ const loadTemplatesForProject = async (projectId: string) => {
 
     if (!availableTemplates.some((template) => template.id === createForm.workflowTemplateId)) {
       createForm.workflowTemplateId = ''
-      createForm.workflowTemplateVersion = ''
-      templateVersions.value = []
     }
   } catch (error) {
     templates.value = []
-    templateVersions.value = []
     createForm.workflowTemplateId = ''
-    createForm.workflowTemplateVersion = ''
     message.error(toErrorMessage(error, '加载可用模板失败'))
+  } finally {
+    loadingTemplates.value = false
   }
 }
 
-const loadTaskList = async (reset = true) => {
-  const nextPage = reset ? 1 : taskPage.value + 1
-
-  if (reset) {
-    loading.value = true
-  } else {
-    loadingMore.value = true
+const loadAgentToolConfigs = async (projectId: string, cliToolId: SupportedCliToolId) => {
+  const project = projects.value.find((item) => item.id === projectId)
+  if (!project?.businessLineId) {
+    agentToolConfigs.value = []
+    createForm.agentToolConfigId = ''
+    return
   }
 
+  loadingAgentConfigs.value = true
   try {
-    const response = await tasksApi.list({
-      page: nextPage,
-      limit: 50,
-      projectId: filters.projectId || undefined,
-      status: filters.status || undefined,
+    const configs = await businessLinesApi.listAgentToolConfigs(project.businessLineId, {
+      toolId: cliToolId,
     })
 
-    if (reset) {
-      tasks.value = response.data
-    } else {
-      const existingTaskIds = new Set(tasks.value.map((task) => task.id))
-      tasks.value = tasks.value.concat(
-        response.data.filter((task) => !existingTaskIds.has(task.id)),
-      )
-    }
+    agentToolConfigs.value = configs
 
-    taskPage.value = nextPage
-    taskHasNextPage.value = response.hasNextPage
+    if (!configs.some((config) => config.id === createForm.agentToolConfigId)) {
+      const defaultConfig = configs.find((config) => config.isDefault)
+      createForm.agentToolConfigId = defaultConfig?.id ?? configs[0]?.id ?? ''
+    }
   } catch (error) {
-    message.error(toErrorMessage(error, '加载任务列表失败'))
+    agentToolConfigs.value = []
+    createForm.agentToolConfigId = ''
+    message.error(toErrorMessage(error, '加载 Agent CLI 配置失败'))
   } finally {
-    loading.value = false
-    loadingMore.value = false
+    loadingAgentConfigs.value = false
   }
 }
 
 const loadPageData = async () => {
   loading.value = true
-
   try {
-    const [projectResponse, taskResponse] = await Promise.all([
-      fetchAllPages((page, limit) => projectsApi.list({ page, limit })),
-      tasksApi.list({
-        page: 1,
-        limit: 50,
-        projectId: filters.projectId || undefined,
-        status: filters.status || undefined,
-      }),
-    ])
-
+    const projectResponse = await fetchAllPages((page, limit) => projectsApi.list({ page, limit }))
     projects.value = projectResponse
-    tasks.value = taskResponse.data
-    taskPage.value = 1
-    taskHasNextPage.value = taskResponse.hasNextPage
 
     if (!createForm.projectId) {
       createForm.projectId = projectResponse[0]?.id ?? ''
     }
 
-    await loadTemplatesForProject(createForm.projectId)
+    const project = projectResponse.find((item) => item.id === createForm.projectId)
+    if (project) {
+      createForm.branch = project.defaultBranch || createForm.branch || 'master'
+    }
+
+    await Promise.all([
+      loadTemplatesForProject(createForm.projectId),
+      loadAgentToolConfigs(createForm.projectId, createForm.cliToolId),
+    ])
   } catch (error) {
     message.error(toErrorMessage(error, '加载任务页面失败'))
   } finally {
     loading.value = false
   }
+}
+
+const openFilePicker = () => {
+  fileInputRef.value?.click()
+}
+
+const onFilesSelected = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const incomingFiles = Array.from(input.files ?? [])
+
+  if (incomingFiles.length === 0) {
+    return
+  }
+
+  const merged = [...selectedFiles.value]
+  for (const file of incomingFiles) {
+    const duplicated = merged.some(
+      (item) => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified,
+    )
+    if (!duplicated) {
+      merged.push(file)
+    }
+  }
+
+  selectedFiles.value = merged
+  input.value = ''
+}
+
+const removeFile = (index: number) => {
+  selectedFiles.value = selectedFiles.value.filter((_, fileIndex) => fileIndex !== index)
 }
 
 const createTask = async () => {
@@ -228,8 +207,30 @@ const createTask = async () => {
     return
   }
 
+  if (!createForm.description.trim()) {
+    validationMessage.value = '提示词不能为空'
+    return
+  }
+
+  if (!createForm.branch.trim()) {
+    validationMessage.value = '分支不能为空'
+    return
+  }
+
+  if (createForm.mode === 'conversation') {
+    if (!createForm.cliToolId) {
+      validationMessage.value = '对话模式下必须选择 Agent CLI'
+      return
+    }
+
+    if (!createForm.agentToolConfigId) {
+      validationMessage.value = '对话模式下必须选择 Agent CLI 配置'
+      return
+    }
+  }
+
   if (createForm.mode === 'workflow' && !createForm.workflowTemplateId) {
-    validationMessage.value = '工作流模式下必须选择模板'
+    validationMessage.value = '工作流模式下必须选择工作流模板'
     return
   }
 
@@ -237,32 +238,39 @@ const createTask = async () => {
   validationMessage.value = ''
 
   try {
-    const acceptanceCriteria = createForm.acceptanceCriteriaText
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
+    const toolVersionsSnapshot: Record<string, unknown> = {
+      clientInput: {
+        mode: createForm.mode,
+        ...(createForm.mode === 'conversation'
+          ? {
+              cliToolId: createForm.cliToolId,
+              agentToolConfigId: createForm.agentToolConfigId,
+            }
+          : {
+              workflowTemplateId: createForm.workflowTemplateId,
+            }),
+        attachments: selectedFiles.value.map((file) => ({
+          name: file.name,
+          size: file.size,
+          type: file.type || 'application/octet-stream',
+          lastModified: file.lastModified,
+        })),
+      },
+    }
 
-    await tasksApi.create({
+    const task = await tasksApi.create({
       projectId: createForm.projectId,
       mode: createForm.mode,
       workflowTemplateId: createForm.workflowTemplateId || undefined,
-      workflowTemplateVersion:
-        createForm.workflowTemplateVersion === '' ? undefined : Number(createForm.workflowTemplateVersion),
       title: createForm.title.trim(),
-      description: createForm.description.trim() || undefined,
-      acceptanceCriteria: acceptanceCriteria.length > 0 ? acceptanceCriteria : undefined,
-      branch: createForm.branch.trim() || undefined,
-      environment: createForm.environment.trim() || undefined,
+      description: createForm.description.trim(),
+      branch: createForm.branch.trim(),
+      toolVersionsSnapshot,
     })
 
-    createForm.title = ''
-    createForm.description = ''
-    createForm.acceptanceCriteriaText = ''
-    createForm.branch = 'main'
-    createForm.environment = 'default'
-
-    await loadTaskList()
-    message.success('创建任务成功')
+    message.success('创建任务成功，正在跳转详情')
+    resetCreateForm(createForm.projectId)
+    await router.push(`/tasks/${task.id}`)
   } catch (error) {
     message.error(toErrorMessage(error, '创建任务失败'))
   } finally {
@@ -271,274 +279,429 @@ const createTask = async () => {
 }
 
 watch(
-  () => createForm.workflowTemplateId,
-  async (templateId) => {
-    const currentTemplate = templates.value.find((template) => template.id === templateId)
-
-    if (currentTemplate) {
-      createForm.mode = currentTemplate.mode
-    }
-
-    await loadTemplateVersions(templateId)
-  },
-)
-
-watch(
   () => createForm.projectId,
   async (projectId, previousProjectId) => {
     if (projectId === previousProjectId) {
       return
     }
 
-    await loadTemplatesForProject(projectId)
+    const project = projects.value.find((item) => item.id === projectId)
+    if (project?.defaultBranch) {
+      createForm.branch = project.defaultBranch
+    }
+
+    await Promise.all([
+      loadTemplatesForProject(projectId),
+      loadAgentToolConfigs(projectId, createForm.cliToolId),
+    ])
+  },
+)
+
+watch(
+  () => createForm.cliToolId,
+  async (cliToolId, previousCliToolId) => {
+    if (cliToolId === previousCliToolId) {
+      return
+    }
+
+    await loadAgentToolConfigs(createForm.projectId, cliToolId)
   },
 )
 
 watch(
   () => createForm.mode,
-  (mode) => {
+  async (mode) => {
     if (mode === 'conversation') {
       createForm.workflowTemplateId = ''
-      createForm.workflowTemplateVersion = ''
-      templateVersions.value = []
+      await loadAgentToolConfigs(createForm.projectId, createForm.cliToolId)
+      return
+    }
+
+    createForm.agentToolConfigId = ''
+  },
+)
+
+watch(
+  () => createForm.workflowTemplateId,
+  (templateId) => {
+    if (templateId) {
+      createForm.mode = 'workflow'
     }
   },
 )
 
-const applyFilters = async () => {
-  await loadTaskList(true)
-  await router.replace({
-    query: {
-      ...(filters.projectId ? { projectId: filters.projectId } : {}),
-      ...(filters.status ? { status: filters.status } : {}),
-    },
-  })
-}
-
 onMounted(() => {
-  syncFiltersFromQuery()
+  syncProjectFromQuery()
   void loadPageData()
 })
 </script>
 
 <template>
-  <div class="space-y-6 fade-up">
-    <section class="space-y-2">
-      <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">任务管理</p>
-      <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">任务列表与创建</h1>
-      <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-        支持选择项目和模板创建任务，并按状态筛选查看执行进展。
-      </p>
-    </section>
+  <div class="fade-up flex min-h-[calc(var(--app-viewport-height)-8rem)] items-center justify-center px-4 py-8 sm:px-8">
+    <div class="w-full max-w-[1120px]">
+      <div v-if="loading" class="py-24 text-center text-sm text-muted-foreground">加载中...</div>
 
-    <section class="panel-card p-5">
-      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p class="text-sm font-semibold">新建任务</p>
-        <div class="flex flex-wrap items-center gap-2">
-          <select
-            v-model="filters.projectId"
-            class="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-          >
-            <option value="">全部项目</option>
-            <option v-for="project in projects" :key="project.id" :value="project.id">
-              {{ project.name }}
-            </option>
-          </select>
-
-          <select
-            v-model="filters.status"
-            class="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-          >
-            <option v-for="option in taskStatusOptions" :key="option.value || 'all'" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
-
-          <button
-            class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
-            type="button"
-            @click="applyFilters"
-          >
-            筛选
-          </button>
-        </div>
-      </div>
-
-      <form class="grid gap-3 md:grid-cols-2" @submit.prevent="createTask">
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">项目</span>
-          <select
-            v-model="createForm.projectId"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-          >
-            <option v-for="project in projects" :key="project.id" :value="project.id">
-              {{ project.name }}
-            </option>
-          </select>
-        </label>
-
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">模式</span>
-          <select
-            v-model="createForm.mode"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-          >
-            <option value="conversation">conversation</option>
-            <option value="workflow">workflow</option>
-          </select>
-        </label>
-
-        <label class="space-y-1 md:col-span-2">
-          <span class="text-xs font-semibold text-muted-foreground">任务标题</span>
-          <input
-            v-model="createForm.title"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            placeholder="例如：实现项目成员权限校验"
-            type="text"
-          />
-        </label>
-
-        <label class="space-y-1 md:col-span-2">
-          <span class="text-xs font-semibold text-muted-foreground">任务描述</span>
-          <input
-            v-model="createForm.description"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            type="text"
-          />
-        </label>
-
-        <template v-if="createForm.mode === 'workflow'">
-          <label class="space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">工作流模板</span>
-            <select
-              v-model="createForm.workflowTemplateId"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+      <template v-else>
+        <header class="mb-8 flex flex-col items-center text-center sm:mb-10">
+          <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted text-foreground/80">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
             >
-              <option value="">请选择模板</option>
-              <option v-for="template in templates" :key="template.id" :value="template.id">
-                {{ template.name }}
-              </option>
-            </select>
-          </label>
+              <path d="M12 3 9.5 9.5 3 12l6.5 2.5L12 21l2.5-6.5L21 12l-6.5-2.5z" />
+            </svg>
+          </div>
+          <h1 class="text-4xl font-semibold tracking-tight text-foreground sm:text-6xl">我能为你做什么？</h1>
+        </header>
 
-          <label class="space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">模板版本</span>
-            <select
-              v-model="createForm.workflowTemplateVersion"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              :disabled="!selectedTemplate"
-            >
-              <option value="">自动选择最新</option>
-              <option v-for="version in templateVersions" :key="version.id" :value="version.version">
-                v{{ version.version }}
-              </option>
-            </select>
-          </label>
-        </template>
-
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">分支</span>
-          <input
-            v-model="createForm.branch"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            type="text"
-          />
-        </label>
-
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">环境</span>
-          <input
-            v-model="createForm.environment"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            type="text"
-          />
-        </label>
-
-        <label class="space-y-1 md:col-span-2">
-          <span class="text-xs font-semibold text-muted-foreground">验收标准（每行一条）</span>
-          <textarea
-            v-model="createForm.acceptanceCriteriaText"
-            class="min-h-24 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-            placeholder="例如：\n- 任务可成功执行\n- 日志流实时可见"
-          />
-        </label>
-
-        <div class="md:col-span-2 flex justify-end">
-          <button
-            class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="submitting"
-            type="submit"
-          >
-            {{ submitting ? '创建中...' : '创建任务' }}
-          </button>
-        </div>
-      </form>
-
-      <p v-if="validationMessage" class="mt-3 text-sm text-destructive">{{ validationMessage }}</p>
-    </section>
-
-    <section class="panel-card overflow-hidden">
-      <div class="border-b border-border px-5 py-4">
-        <p class="text-sm font-semibold">任务列表</p>
-      </div>
-
-      <div v-if="loading" class="p-5 text-sm text-muted-foreground">加载中...</div>
-
-      <div v-else class="overflow-x-auto">
-        <table class="w-full min-w-[980px] text-left text-sm">
-          <thead class="border-b border-border bg-background/60">
-            <tr class="text-xs font-semibold text-muted-foreground">
-              <th class="px-5 py-3">任务</th>
-              <th class="px-5 py-3">项目</th>
-              <th class="px-5 py-3">模式</th>
-              <th class="px-5 py-3">状态</th>
-              <th class="px-5 py-3">更新时间</th>
-              <th class="px-5 py-3 text-right">操作</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-border">
-            <tr v-for="task in tasks" :key="task.id" class="transition hover:bg-background/70">
-              <td class="px-5 py-4">
-                <p class="font-semibold">{{ task.title }}</p>
-                <p class="mt-1 font-mono text-xs text-muted-foreground">{{ task.id }}</p>
-              </td>
-              <td class="px-5 py-4 text-muted-foreground">
-                {{ projects.find((project) => project.id === task.projectId)?.name ?? task.projectId }}
-              </td>
-              <td class="px-5 py-4 text-muted-foreground">{{ task.mode }}</td>
-              <td class="px-5 py-4">
-                <span class="inline-flex rounded-full px-2 py-1 text-xs font-semibold" :class="statusClassMap[task.status]">
-                  {{ statusLabelMap[task.status] }}
-                </span>
-              </td>
-              <td class="px-5 py-4 text-muted-foreground">{{ formatDate(task.updatedAt) }}</td>
-              <td class="px-5 py-4 text-right">
-                <RouterLink
-                  :to="`/tasks/${task.id}`"
-                  class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
-                >
-                  详情
-                </RouterLink>
-              </td>
-            </tr>
-
-            <tr v-if="tasks.length === 0">
-              <td class="px-5 py-6 text-sm text-muted-foreground" colspan="6">暂无任务，先创建一条任务开始执行。</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div v-if="!loading && taskHasNextPage" class="border-t border-border px-5 py-4">
-        <button
-          class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
-          :disabled="loadingMore"
-          type="button"
-          @click="loadTaskList(false)"
+        <form
+          class="overflow-hidden rounded-3xl border border-border bg-card/90 shadow-[0_8px_30px_rgba(15,23,42,0.08)]"
+          @submit.prevent="createTask"
         >
-          {{ loadingMore ? '加载中...' : '加载更多' }}
-        </button>
-      </div>
-    </section>
+          <div class="px-5 pt-5 sm:px-6 sm:pt-6">
+            <input
+              v-model="createForm.title"
+              type="text"
+              class="h-14 w-full border-0 border-b border-border bg-transparent px-1 text-2xl font-semibold text-foreground outline-none placeholder:text-muted-foreground/85"
+              placeholder="标题"
+            />
+
+            <textarea
+              v-model="createForm.description"
+              class="mt-4 min-h-[320px] w-full resize-none border-0 bg-transparent px-1 text-lg text-foreground outline-none placeholder:text-muted-foreground"
+              placeholder="提示词"
+            />
+          </div>
+
+          <div v-if="selectedFiles.length > 0" class="mx-5 mb-2 flex flex-wrap gap-2 sm:mx-6">
+            <span
+              v-for="(file, index) in selectedFiles"
+              :key="`${file.name}-${file.size}-${file.lastModified}`"
+              class="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs text-foreground"
+            >
+              <span class="max-w-[220px] truncate">{{ file.name }}</span>
+              <span class="text-muted-foreground">{{ formatFileSize(file.size) }}</span>
+              <button
+                type="button"
+                class="rounded-full text-muted-foreground transition hover:text-foreground"
+                aria-label="移除文件"
+                @click="removeFile(index)"
+              >
+                ×
+              </button>
+            </span>
+          </div>
+
+          <div class="border-t border-border px-4 py-3 sm:px-5">
+            <div class="flex flex-wrap items-center gap-2">
+              <input
+                ref="fileInputRef"
+                type="file"
+                multiple
+                class="hidden"
+                @change="onFilesSelected"
+              />
+
+              <button
+                type="button"
+                class="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-background text-foreground/80 transition hover:bg-muted"
+                aria-label="添加文件"
+                @click="openFilePicker"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 5v14" />
+                  <path d="M5 12h14" />
+                </svg>
+              </button>
+
+              <div class="inline-flex h-11 items-center rounded-full border border-border bg-background p-1">
+                <button
+                  type="button"
+                  class="rounded-full px-4 py-1.5 text-sm font-semibold transition"
+                  :class="
+                    createForm.mode === 'conversation'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-foreground/80 hover:text-foreground'
+                  "
+                  @click="createForm.mode = 'conversation'"
+                >
+                  对话模式
+                </button>
+                <button
+                  type="button"
+                  class="rounded-full px-4 py-1.5 text-sm font-semibold transition"
+                  :class="
+                    createForm.mode === 'workflow'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-foreground/80 hover:text-foreground'
+                  "
+                  @click="createForm.mode = 'workflow'"
+                >
+                  工作流模式
+                </button>
+              </div>
+
+              <template v-if="createForm.mode === 'conversation'">
+                <label class="relative inline-flex h-11 items-center rounded-full border border-border bg-background pl-3 pr-8">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="mr-2 text-foreground/70"
+                    aria-hidden="true"
+                  >
+                    <path d="M3 3v5h5" />
+                    <path d="M3 8a9 9 0 1 0 2.9-6.6L3 3" />
+                  </svg>
+                  <select
+                    v-model="createForm.cliToolId"
+                    class="min-w-[120px] appearance-none bg-transparent text-sm font-medium text-foreground outline-none"
+                  >
+                    <option v-for="tool in SUPPORTED_CLI_TOOLS" :key="tool.id" :value="tool.id">
+                      {{ tool.label }}
+                    </option>
+                  </select>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="pointer-events-none absolute right-3 text-foreground/70"
+                    aria-hidden="true"
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </label>
+
+                <label class="relative inline-flex h-11 items-center rounded-full border border-border bg-background pl-3 pr-8">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="mr-2 text-foreground/70"
+                    aria-hidden="true"
+                  >
+                    <path d="M4 7h16" />
+                    <path d="M4 12h16" />
+                    <path d="M4 17h16" />
+                  </svg>
+                  <select
+                    v-model="createForm.agentToolConfigId"
+                    class="min-w-[120px] appearance-none bg-transparent text-sm font-medium text-foreground outline-none"
+                    :disabled="loadingAgentConfigs"
+                  >
+                    <option value="">{{ loadingAgentConfigs ? '加载中...' : '选择配置' }}</option>
+                    <option v-for="config in agentToolConfigs" :key="config.id" :value="config.id">
+                      {{ config.name }}
+                    </option>
+                  </select>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="pointer-events-none absolute right-3 text-foreground/70"
+                    aria-hidden="true"
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </label>
+              </template>
+
+              <template v-else>
+                <label class="relative inline-flex h-11 items-center rounded-full border border-border bg-background pl-3 pr-8">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="mr-2 text-foreground/70"
+                    aria-hidden="true"
+                  >
+                    <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                    <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+                    <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+                    <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                    <path d="M12 8v8" />
+                    <path d="m9 11 3-3 3 3" />
+                    <path d="m9 13 3 3 3-3" />
+                  </svg>
+                  <select
+                    v-model="createForm.workflowTemplateId"
+                    class="min-w-[160px] appearance-none bg-transparent text-sm font-medium text-foreground outline-none"
+                    :disabled="loadingTemplates"
+                  >
+                    <option value="">{{ loadingTemplates ? '加载中...' : '选择工作流' }}</option>
+                    <option v-for="template in templates" :key="template.id" :value="template.id">
+                      {{ template.name }}
+                    </option>
+                  </select>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="pointer-events-none absolute right-3 text-foreground/70"
+                    aria-hidden="true"
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </label>
+              </template>
+
+              <label class="inline-flex h-11 items-center rounded-full border border-border bg-background px-3">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="mr-2 text-foreground/70"
+                  aria-hidden="true"
+                >
+                  <path d="M6 3v12" />
+                  <path d="M18 9v12" />
+                  <path d="m3 6 3-3 3 3" />
+                  <path d="m15 18 3 3 3-3" />
+                </svg>
+                <input
+                  v-model="createForm.branch"
+                  type="text"
+                  class="w-24 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground"
+                  placeholder="master"
+                />
+              </label>
+
+              <label v-if="projects.length > 1" class="relative inline-flex h-11 items-center rounded-full border border-border bg-background pl-3 pr-8">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="mr-2 text-foreground/70"
+                  aria-hidden="true"
+                >
+                  <path d="M20 7h-9" />
+                  <path d="M14 17H5" />
+                  <circle cx="17" cy="17" r="3" />
+                  <circle cx="7" cy="7" r="3" />
+                </svg>
+                <select
+                  v-model="createForm.projectId"
+                  class="min-w-[120px] appearance-none bg-transparent text-sm font-medium text-foreground outline-none"
+                >
+                  <option v-for="project in projects" :key="project.id" :value="project.id">
+                    {{ project.name }}
+                  </option>
+                </select>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="pointer-events-none absolute right-3 text-foreground/70"
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </label>
+
+              <button
+                type="submit"
+                class="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-full bg-muted text-foreground transition hover:bg-primary hover:text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="submitting"
+                aria-label="创建任务"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="m12 19 0-14" />
+                  <path d="m5 12 7-7 7 7" />
+                </svg>
+              </button>
+            </div>
+
+            <p v-if="validationMessage" class="mt-2 text-sm text-destructive">{{ validationMessage }}</p>
+            <p v-else-if="selectedProject" class="mt-2 text-xs text-muted-foreground">
+              当前项目：{{ selectedProject.name }}
+            </p>
+          </div>
+        </form>
+      </template>
+    </div>
   </div>
 </template>

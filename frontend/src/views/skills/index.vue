@@ -16,6 +16,7 @@ const loadingMore = ref(false)
 const submitting = ref(false)
 const deletingSkillId = ref('')
 const editingSkillId = ref('')
+const skillFormModalOpen = ref(false)
 const validationMessage = ref('')
 const keyword = ref('')
 const enabledOnly = ref(false)
@@ -69,6 +70,18 @@ const resetForm = () => {
   form.metadataJsonText = ''
 }
 
+const openCreateSkillModal = () => {
+  resetForm()
+  validationMessage.value = ''
+  skillFormModalOpen.value = true
+}
+
+const closeSkillFormModal = () => {
+  skillFormModalOpen.value = false
+  resetForm()
+  validationMessage.value = ''
+}
+
 const startEdit = (skill: Skill) => {
   editingSkillId.value = skill.id
   form.name = skill.name
@@ -80,6 +93,8 @@ const startEdit = (skill: Skill) => {
   form.metadataJsonText = skill.metadataJson
     ? JSON.stringify(skill.metadataJson, null, 2)
     : ''
+  validationMessage.value = ''
+  skillFormModalOpen.value = true
 }
 
 const loadSkills = async (reset = true) => {
@@ -154,7 +169,7 @@ const submitSkill = async () => {
       message.success('创建 Skill 成功')
     }
 
-    resetForm()
+    closeSkillFormModal()
     await loadSkills(true)
   } catch (error) {
     message.error(toErrorMessage(error, '保存 Skill 失败'))
@@ -206,7 +221,6 @@ onMounted(() => {
       <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
         支持 Skills 的浏览、搜索、新增、编辑、启停与删除。
       </p>
-      <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
     </section>
 
     <section class="panel-card p-5">
@@ -239,97 +253,15 @@ onMounted(() => {
           >
             搜索
           </button>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel-card p-5">
-      <div class="mb-4 flex items-center justify-between">
-        <p class="text-sm font-semibold">{{ editingSkillId ? '编辑 Skill' : '新增 Skill' }}</p>
-        <button
-          v-if="editingSkillId"
-          class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
-          type="button"
-          @click="resetForm"
-        >
-          取消编辑
-        </button>
-      </div>
-
-      <form class="grid gap-3 md:grid-cols-2" @submit.prevent="submitSkill">
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">名称</span>
-          <input
-            v-model="form.name"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            placeholder="例如：code-review"
-            type="text"
-          />
-        </label>
-
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">版本</span>
-          <input
-            v-model="form.version"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            placeholder="例如：1.0.0"
-            type="text"
-          />
-        </label>
-
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">范围（可选）</span>
-          <input
-            v-model="form.scope"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            placeholder="例如：frontend"
-            type="text"
-          />
-        </label>
-
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">主页链接（可选）</span>
-          <input
-            v-model="form.homepageUrl"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            placeholder="https://example.com/skill"
-            type="text"
-          />
-        </label>
-
-        <label class="space-y-1 md:col-span-2">
-          <span class="text-xs font-semibold text-muted-foreground">描述（可选）</span>
-          <input
-            v-model="form.description"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            type="text"
-          />
-        </label>
-
-        <label class="space-y-1 md:col-span-2">
-          <span class="text-xs font-semibold text-muted-foreground">metadataJson（可选，JSON 对象）</span>
-          <textarea
-            v-model="form.metadataJsonText"
-            class="min-h-24 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
-            placeholder="{&quot;maintainer&quot;:&quot;platform&quot;}"
-          />
-        </label>
-
-        <label class="inline-flex items-center gap-2 text-sm md:col-span-2">
-          <input v-model="form.enabled" class="h-4 w-4" type="checkbox" />
-          启用
-        </label>
-
-        <div class="md:col-span-2 flex justify-end">
           <button
-            class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="submitting"
-            type="submit"
+            class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:shadow-md"
+            type="button"
+            @click="openCreateSkillModal"
           >
-            {{ submitting ? '保存中...' : editingSkillId ? '保存修改' : '创建 Skill' }}
+            新增 Skill
           </button>
         </div>
-      </form>
+      </div>
     </section>
 
     <section v-if="loading" class="panel-card p-6 text-sm text-muted-foreground">加载中...</section>
@@ -403,5 +335,123 @@ onMounted(() => {
         {{ loadingMore ? '加载中...' : '加载更多' }}
       </button>
     </section>
+
+    <Teleport to="body">
+      <div v-if="skillFormModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <button
+          type="button"
+          aria-label="关闭 Skill 表单弹窗"
+          class="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+          @click="closeSkillFormModal"
+        />
+
+        <section
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="skill-form-modal-title"
+          class="relative z-10 w-full max-w-2xl rounded-2xl border border-border bg-background shadow-2xl"
+          tabindex="-1"
+          @keydown.esc.prevent="closeSkillFormModal"
+        >
+          <header class="flex items-center justify-between border-b border-border px-4 py-3">
+            <h2 id="skill-form-modal-title" class="text-sm font-semibold">
+              {{ editingSkillId ? '编辑 Skill' : '新增 Skill' }}
+            </h2>
+            <button
+              type="button"
+              aria-label="关闭"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
+              @click="closeSkillFormModal"
+            >
+              ×
+            </button>
+          </header>
+
+          <form class="grid gap-3 px-4 py-4 md:grid-cols-2" @submit.prevent="submitSkill">
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">名称</span>
+              <input
+                v-model="form.name"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="例如：code-review"
+                type="text"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">版本</span>
+              <input
+                v-model="form.version"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="例如：1.0.0"
+                type="text"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">范围（可选）</span>
+              <input
+                v-model="form.scope"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="例如：frontend"
+                type="text"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">主页链接（可选）</span>
+              <input
+                v-model="form.homepageUrl"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="https://example.com/skill"
+                type="text"
+              />
+            </label>
+
+            <label class="space-y-1 md:col-span-2">
+              <span class="text-xs font-semibold text-muted-foreground">描述（可选）</span>
+              <input
+                v-model="form.description"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                type="text"
+              />
+            </label>
+
+            <label class="space-y-1 md:col-span-2">
+              <span class="text-xs font-semibold text-muted-foreground">metadataJson（可选，JSON 对象）</span>
+              <textarea
+                v-model="form.metadataJsonText"
+                class="min-h-24 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+                placeholder="{&quot;maintainer&quot;:&quot;platform&quot;}"
+              />
+            </label>
+
+            <label class="inline-flex items-center gap-2 text-sm md:col-span-2">
+              <input v-model="form.enabled" class="h-4 w-4" type="checkbox" />
+              启用
+            </label>
+
+            <p v-if="validationMessage" class="text-sm text-destructive md:col-span-2">{{ validationMessage }}</p>
+
+            <div class="flex justify-end gap-2 md:col-span-2">
+              <button
+                class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
+                type="button"
+                @click="closeSkillFormModal"
+              >
+                取消
+              </button>
+              <button
+                class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="submitting"
+                type="submit"
+              >
+                {{ submitting ? '保存中...' : editingSkillId ? '保存修改' : '创建 Skill' }}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </Teleport>
   </div>
 </template>

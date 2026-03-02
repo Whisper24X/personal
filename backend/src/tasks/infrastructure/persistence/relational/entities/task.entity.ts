@@ -26,9 +26,6 @@ export class TaskEntity extends EntityRelationalHelper {
   @Column({ type: 'uuid', nullable: true })
   workflowTemplateId?: string | null;
 
-  @Column({ type: 'int', nullable: true })
-  workflowTemplateVersion?: number | null;
-
   @Column({
     type: 'enum',
     enum: TaskMode,

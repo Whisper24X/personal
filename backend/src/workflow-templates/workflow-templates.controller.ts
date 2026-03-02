@@ -33,7 +33,6 @@ import {
 } from '../utils/dto/infinity-pagination-response.dto';
 import { FindAllWorkflowTemplatesDto } from './dto/find-all-workflow-templates.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
-import { WorkflowTemplateVersion } from './domain/workflow-template-version';
 import { ReorderWorkflowTemplateNodesDto } from './dto/reorder-workflow-template-nodes.dto';
 
 @ApiTags('WorkflowTemplates')
@@ -140,30 +139,5 @@ export class WorkflowTemplatesController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
     return this.workflowTemplatesService.remove(id, request.user);
-  }
-
-  @Post(':id/publish')
-  @ApiParam({ name: 'id', type: String, required: true })
-  @ApiCreatedResponse({ type: WorkflowTemplateVersion })
-  @HttpCode(HttpStatus.CREATED)
-  publish(
-    @Request() request,
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<WorkflowTemplateVersion> {
-    return this.workflowTemplatesService.publishTemplateVersion(
-      id,
-      request.user,
-    );
-  }
-
-  @Get(':id/versions')
-  @ApiParam({ name: 'id', type: String, required: true })
-  @ApiOkResponse({ type: WorkflowTemplateVersion, isArray: true })
-  @HttpCode(HttpStatus.OK)
-  versions(
-    @Request() request,
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<WorkflowTemplateVersion[]> {
-    return this.workflowTemplatesService.findVersions(id, request.user);
   }
 }

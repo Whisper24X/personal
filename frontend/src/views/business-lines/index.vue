@@ -40,6 +40,7 @@ const lineFormMode = ref<'create' | 'edit'>('create')
 const lineFormInitialName = ref('')
 const lineFormInitialDescription = ref('')
 const editingLineId = ref('')
+const memberFormModalOpen = ref(false)
 
 const memberForm = reactive<{
   userId: string
@@ -245,6 +246,20 @@ const openMembersTabForLine = (line: BusinessLine) => {
   activeTab.value = 'members'
 }
 
+const openMemberFormModal = () => {
+  if (!selectedLine.value) {
+    return
+  }
+
+  validationMessage.value = ''
+  memberFormModalOpen.value = true
+}
+
+const closeMemberFormModal = () => {
+  memberFormModalOpen.value = false
+  validationMessage.value = ''
+}
+
 const addMember = async () => {
   if (!selectedLineId.value || !memberForm.userId.trim()) {
     validationMessage.value = '请先选择业务线并填写用户 ID'
@@ -261,6 +276,7 @@ const addMember = async () => {
     })
     memberForm.userId = ''
     memberForm.role = 'member'
+    closeMemberFormModal()
     await loadMembers()
     message.success('添加成员成功')
   } catch (error) {
@@ -486,53 +502,25 @@ onMounted(() => {
       </article>
 
       <article class="panel-card p-5">
-        <div class="mb-4 flex items-center justify-between">
-          <p class="text-sm font-semibold">业务线成员</p>
-          <span class="text-xs text-muted-foreground">
-            当前：{{ selectedLine?.name ?? '未选择业务线' }}
-          </span>
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p class="text-sm font-semibold">业务线成员</p>
+            <p class="mt-1 text-xs text-muted-foreground">
+              当前：{{ selectedLine?.name ?? '未选择业务线' }}
+            </p>
+          </div>
+          <button
+            class="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="!selectedLine"
+            type="button"
+            @click="openMemberFormModal"
+          >
+            添加成员
+          </button>
         </div>
 
         <template v-if="selectedLine">
-          <form class="grid gap-3 md:grid-cols-[1fr_160px_auto]" @submit.prevent="addMember">
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">用户 ID</span>
-              <input
-                v-model="memberForm.userId"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                list="business-line-user-options"
-                placeholder="输入或选择用户 ID"
-                type="text"
-              />
-              <datalist id="business-line-user-options">
-                <option v-for="user in users" :key="user.id" :value="user.id">
-                  {{ user.nickname?.trim() || user.username }}
-                </option>
-              </datalist>
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">角色</span>
-              <select
-                v-model="memberForm.role"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              >
-                <option v-for="role in roleOptions" :key="role.value" :value="role.value">
-                  {{ role.label }}
-                </option>
-              </select>
-            </label>
-
-            <div class="flex items-end">
-              <button
-                class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="savingMember"
-                type="submit"
-              >
-                {{ savingMember ? '添加中...' : '添加成员' }}
-              </button>
-            </div>
-          </form>
+          <p class="text-xs text-muted-foreground">新增成员已迁移为弹窗表单，点击右上角“添加成员”。</p>
 
           <div class="mt-4 overflow-x-auto">
             <table class="w-full min-w-[640px] text-left text-sm">
@@ -611,5 +599,77 @@ onMounted(() => {
       @update:open="lineFormModalOpen = $event"
       @submit="submitLineForm"
     />
+
+    <Teleport to="body">
+      <div
+        v-if="memberFormModalOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-background/70 px-4 py-6 backdrop-blur-sm"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="business-line-member-modal-title"
+        @click.self="closeMemberFormModal"
+      >
+        <section class="w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+          <header class="flex items-center justify-between border-b border-border px-4 py-3">
+            <h2 id="business-line-member-modal-title" class="text-sm font-semibold">添加成员</h2>
+            <button
+              class="rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground transition hover:text-foreground"
+              type="button"
+              aria-label="关闭成员弹窗"
+              @click="closeMemberFormModal"
+            >
+              关闭
+            </button>
+          </header>
+
+          <form class="grid gap-3 px-4 py-4 md:grid-cols-[1fr_160px]" @submit.prevent="addMember">
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">用户 ID</span>
+              <input
+                v-model="memberForm.userId"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                list="business-line-user-options"
+                placeholder="输入或选择用户 ID"
+                type="text"
+              />
+              <datalist id="business-line-user-options">
+                <option v-for="user in users" :key="user.id" :value="user.id">
+                  {{ user.nickname?.trim() || user.username }}
+                </option>
+              </datalist>
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">角色</span>
+              <select
+                v-model="memberForm.role"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              >
+                <option v-for="role in roleOptions" :key="role.value" :value="role.value">
+                  {{ role.label }}
+                </option>
+              </select>
+            </label>
+
+            <div class="md:col-span-2 flex justify-end gap-2">
+              <button
+                class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground"
+                type="button"
+                @click="closeMemberFormModal"
+              >
+                取消
+              </button>
+              <button
+                class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="savingMember"
+                type="submit"
+              >
+                {{ savingMember ? '添加中...' : '添加成员' }}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </Teleport>
   </div>
 </template>

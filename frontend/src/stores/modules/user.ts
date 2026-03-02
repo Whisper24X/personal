@@ -18,7 +18,6 @@ const mapUserToProfile = (user: UserInfo): UserProfile => {
     'home:view',
     'dashboard:view',
     'kanban:view',
-    'workflow:view',
     'tasks:view',
     'projects:view',
     'business-lines:view',

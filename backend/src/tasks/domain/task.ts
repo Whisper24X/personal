@@ -12,9 +12,6 @@ export class Task {
   @ApiProperty({ type: String, nullable: true, required: false })
   workflowTemplateId?: string | null;
 
-  @ApiProperty({ type: Number, nullable: true, required: false })
-  workflowTemplateVersion?: number | null;
-
   @ApiProperty({ enum: TaskMode, enumName: 'TaskMode' })
   mode: TaskMode;
 

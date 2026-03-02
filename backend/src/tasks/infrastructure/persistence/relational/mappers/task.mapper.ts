@@ -7,7 +7,6 @@ export class TaskMapper {
     domainEntity.id = raw.id;
     domainEntity.projectId = raw.projectId;
     domainEntity.workflowTemplateId = raw.workflowTemplateId;
-    domainEntity.workflowTemplateVersion = raw.workflowTemplateVersion;
     domainEntity.mode = raw.mode;
     domainEntity.title = raw.title;
     domainEntity.description = raw.description;
@@ -38,8 +37,6 @@ export class TaskMapper {
 
     persistenceEntity.projectId = domainEntity.projectId;
     persistenceEntity.workflowTemplateId = domainEntity.workflowTemplateId;
-    persistenceEntity.workflowTemplateVersion =
-      domainEntity.workflowTemplateVersion;
     persistenceEntity.mode = domainEntity.mode;
     persistenceEntity.title = domainEntity.title;
     persistenceEntity.description = domainEntity.description;

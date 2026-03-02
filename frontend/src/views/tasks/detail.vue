@@ -23,6 +23,7 @@ const uploadingArtifact = ref(false)
 const downloadingArtifactId = ref<string | null>(null)
 const validationMessage = ref('')
 const message = useMessage()
+const artifactFormModalOpen = ref(false)
 
 const detail = ref<TaskDetail | null>(null)
 const logs = ref<TaskLog[]>([])
@@ -388,6 +389,7 @@ const createArtifact = async () => {
     artifactForm.name = ''
     artifactForm.content = ''
     artifactForm.downloadUrl = ''
+    artifactFormModalOpen.value = false
 
     await refreshArtifacts()
     await refreshTaskDetail()
@@ -397,6 +399,16 @@ const createArtifact = async () => {
   } finally {
     uploadingArtifact.value = false
   }
+}
+
+const openArtifactFormModal = () => {
+  validationMessage.value = ''
+  artifactFormModalOpen.value = true
+}
+
+const closeArtifactFormModal = () => {
+  artifactFormModalOpen.value = false
+  validationMessage.value = ''
 }
 
 const mergeArtifact = (artifactId: string, payload: { downloadUrl?: string | null; content?: string | null }) => {
@@ -753,69 +765,21 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="panel-card p-5">
-          <p class="text-sm font-semibold">上传产物</p>
-          <form class="mt-4 space-y-3" @submit.prevent="createArtifact">
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">名称</span>
-              <input
-                v-model="artifactForm.name"
-                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                placeholder="例如 report.md"
-                type="text"
-              />
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">类型</span>
-              <select
-                v-model="artifactForm.artifactType"
-                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              >
-                <option value="report">report</option>
-                <option value="diff">diff</option>
-                <option value="file">file</option>
-                <option value="preview">preview</option>
-              </select>
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">关联节点（可选）</span>
-              <select
-                v-model="artifactForm.taskNodeId"
-                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              >
-                <option value="">不关联节点</option>
-                <option v-for="node in sortedNodes" :key="node.id" :value="node.id">
-                  #{{ node.nodeOrder }} {{ node.name }}
-                </option>
-              </select>
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">下载地址（可选）</span>
-              <input
-                v-model="artifactForm.downloadUrl"
-                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                type="text"
-              />
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">内容（可选）</span>
-              <textarea
-                v-model="artifactForm.content"
-                class="min-h-20 w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground"
-              />
-            </label>
-
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold">上传产物</p>
+              <p class="mt-1 text-xs text-muted-foreground">
+                上传表单已迁移为弹窗，避免在页面中直接展示创建编辑区。
+              </p>
+            </div>
             <button
-              class="h-9 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="uploadingArtifact"
-              type="submit"
+              class="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+              type="button"
+              @click="openArtifactFormModal"
             >
-              {{ uploadingArtifact ? '上传中...' : '上传产物' }}
+              新增产物
             </button>
-          </form>
+          </div>
         </div>
 
         <div class="panel-card p-5">
@@ -878,5 +842,102 @@ onBeforeUnmount(() => {
         />
       </div>
     </section>
+
+    <Teleport to="body">
+      <div
+        v-if="artifactFormModalOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-background/70 px-4 py-6 backdrop-blur-sm"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="task-artifact-form-modal-title"
+        @click.self="closeArtifactFormModal"
+      >
+        <section class="w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+          <header class="flex items-center justify-between border-b border-border px-4 py-3">
+            <h2 id="task-artifact-form-modal-title" class="text-sm font-semibold">上传产物</h2>
+            <button
+              class="rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground transition hover:text-foreground"
+              type="button"
+              aria-label="关闭产物上传弹窗"
+              @click="closeArtifactFormModal"
+            >
+              关闭
+            </button>
+          </header>
+
+          <form class="space-y-3 px-4 py-4" @submit.prevent="createArtifact">
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">名称</span>
+              <input
+                v-model="artifactForm.name"
+                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="例如 report.md"
+                type="text"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">类型</span>
+              <select
+                v-model="artifactForm.artifactType"
+                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              >
+                <option value="report">report</option>
+                <option value="diff">diff</option>
+                <option value="file">file</option>
+                <option value="preview">preview</option>
+              </select>
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">关联节点（可选）</span>
+              <select
+                v-model="artifactForm.taskNodeId"
+                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              >
+                <option value="">不关联节点</option>
+                <option v-for="node in sortedNodes" :key="node.id" :value="node.id">
+                  #{{ node.nodeOrder }} {{ node.name }}
+                </option>
+              </select>
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">下载地址（可选）</span>
+              <input
+                v-model="artifactForm.downloadUrl"
+                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                type="text"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">内容（可选）</span>
+              <textarea
+                v-model="artifactForm.content"
+                class="min-h-20 w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground"
+              />
+            </label>
+
+            <div class="flex justify-end gap-2">
+              <button
+                class="h-9 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground"
+                type="button"
+                @click="closeArtifactFormModal"
+              >
+                取消
+              </button>
+              <button
+                class="h-9 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="uploadingArtifact"
+                type="submit"
+              >
+                {{ uploadingArtifact ? '上传中...' : '上传产物' }}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </Teleport>
   </div>
 </template>

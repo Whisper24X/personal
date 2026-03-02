@@ -1,4 +1,5 @@
 import { WorkflowTemplate } from '../../../../domain/workflow-template';
+import { WorkflowTemplateMode } from '../../../../dto/workflow-template-mode.enum';
 import { WorkflowTemplateEntity } from '../entities/workflow-template.entity';
 
 export class WorkflowTemplateMapper {
@@ -7,11 +8,9 @@ export class WorkflowTemplateMapper {
     domainEntity.id = raw.id;
     domainEntity.name = raw.name;
     domainEntity.description = raw.description;
-    domainEntity.mode = raw.mode;
     domainEntity.scope = raw.scope;
     domainEntity.businessLineId = raw.businessLineId;
     domainEntity.isActive = raw.isActive;
-    domainEntity.latestVersion = raw.latestVersion;
     domainEntity.nodesJson = raw.nodesJson;
     domainEntity.createdBy = raw.createdBy;
     domainEntity.createdAt = raw.createdAt;
@@ -30,11 +29,10 @@ export class WorkflowTemplateMapper {
 
     persistenceEntity.name = domainEntity.name;
     persistenceEntity.description = domainEntity.description;
-    persistenceEntity.mode = domainEntity.mode;
+    persistenceEntity.mode = WorkflowTemplateMode.workflow;
     persistenceEntity.scope = domainEntity.scope;
     persistenceEntity.businessLineId = domainEntity.businessLineId;
     persistenceEntity.isActive = domainEntity.isActive;
-    persistenceEntity.latestVersion = domainEntity.latestVersion;
     persistenceEntity.nodesJson = domainEntity.nodesJson;
     persistenceEntity.createdBy = domainEntity.createdBy;
     persistenceEntity.createdAt = domainEntity.createdAt;

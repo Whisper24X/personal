@@ -2,13 +2,11 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
   IsEnum,
-  IsInt,
   IsNotEmpty,
   IsObject,
   IsOptional,
   IsString,
   IsUUID,
-  Min,
 } from 'class-validator';
 import { TaskMode } from './task-mode.enum';
 
@@ -21,12 +19,6 @@ export class CreateTaskDto {
   @IsOptional()
   @IsUUID()
   workflowTemplateId?: string;
-
-  @ApiPropertyOptional({ type: Number })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  workflowTemplateVersion?: number;
 
   @ApiPropertyOptional({ enum: TaskMode, enumName: 'TaskMode' })
   @IsOptional()

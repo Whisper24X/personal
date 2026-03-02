@@ -48,6 +48,7 @@ const automationLoadingMore = ref(false)
 const automationSubmitting = ref(false)
 const automationDeletingId = ref('')
 const automationEditingId = ref('')
+const automationFormModalOpen = ref(false)
 const automationKeyword = ref('')
 const automationStatusFilter = ref<'all' | AutomationStatus>('all')
 const automationPage = ref(1)
@@ -167,6 +168,18 @@ const resetAutomationForm = () => {
   automationForm.status = 'active'
 }
 
+const openCreateAutomationModal = () => {
+  resetAutomationForm()
+  validationMessage.value = ''
+  automationFormModalOpen.value = true
+}
+
+const closeAutomationFormModal = () => {
+  automationFormModalOpen.value = false
+  resetAutomationForm()
+  validationMessage.value = ''
+}
+
 const startEditAutomation = (automation: Automation) => {
   automationEditingId.value = automation.id
   automationForm.name = automation.name
@@ -174,6 +187,8 @@ const startEditAutomation = (automation: Automation) => {
   automationForm.rrule = automation.rrule
   automationForm.cwdsText = (automation.cwds ?? []).join('\n')
   automationForm.status = automation.status
+  validationMessage.value = ''
+  automationFormModalOpen.value = true
 }
 
 const parseCwds = (value: string) => {
@@ -267,7 +282,7 @@ const submitAutomation = async () => {
       message.success('创建自动化计划成功')
     }
 
-    resetAutomationForm()
+    closeAutomationFormModal()
     await loadAutomations(true)
   } catch (error) {
     message.error(toErrorMessage(error, '保存自动化失败'))
@@ -433,88 +448,25 @@ onMounted(() => {
 
     <section class="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
       <article class="panel-card p-5">
-        <div class="mb-4 flex items-center justify-between">
-          <p class="text-sm font-semibold">{{ automationEditingId ? '编辑自动化计划' : '新增自动化计划' }}</p>
-          <button
-            v-if="automationEditingId && canManageAutomations"
-            class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
-            type="button"
-            @click="resetAutomationForm"
-          >
-            取消编辑
-          </button>
-        </div>
-
+        <p class="text-sm font-semibold">计划操作</p>
+        <p class="mt-2 text-xs text-muted-foreground">
+          新增与编辑自动化计划统一使用弹窗，列表侧保留浏览、搜索与启停操作。
+        </p>
+        <button
+          class="mt-4 h-10 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="!canManageAutomations"
+          type="button"
+          @click="openCreateAutomationModal"
+        >
+          新增自动化计划
+        </button>
         <p
           v-if="!canManageAutomations"
-          class="mb-3 rounded-lg border border-border bg-background/60 px-3 py-2 text-xs text-muted-foreground"
+          class="mt-3 rounded-lg border border-border bg-background/60 px-3 py-2 text-xs text-muted-foreground"
         >
           当前账号仅可查看自动化计划，创建/编辑/启停/删除需要管理员权限。
         </p>
-
-        <form class="space-y-3" @submit.prevent="submitAutomation">
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">名称</span>
-            <input
-              v-model="automationForm.name"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              :disabled="!canManageAutomations"
-              placeholder="例如：Daily queue digest"
-              type="text"
-            />
-          </label>
-
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">Prompt</span>
-            <textarea
-              v-model="automationForm.prompt"
-              class="min-h-20 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-              :disabled="!canManageAutomations"
-              placeholder="描述自动化执行内容"
-            />
-          </label>
-
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">RRULE</span>
-            <input
-              v-model="automationForm.rrule"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              :disabled="!canManageAutomations"
-              placeholder="FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0"
-              type="text"
-            />
-          </label>
-
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">工作目录（每行一条，可选）</span>
-            <textarea
-              v-model="automationForm.cwdsText"
-              class="min-h-20 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-              :disabled="!canManageAutomations"
-              placeholder="/workspace/ainative/backend"
-            />
-          </label>
-
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">状态</span>
-            <select
-              v-model="automationForm.status"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              :disabled="!canManageAutomations"
-            >
-              <option value="active">运行中</option>
-              <option value="paused">已暂停</option>
-            </select>
-          </label>
-
-          <button
-            class="h-10 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="automationSubmitting || !canManageAutomations"
-            type="submit"
-          >
-            {{ automationSubmitting ? '保存中...' : automationEditingId ? '保存修改' : '创建计划' }}
-          </button>
-        </form>
+        <p v-else class="mt-3 text-xs text-muted-foreground">可在右侧列表点击“编辑”打开弹窗修改已有计划。</p>
       </article>
 
       <article class="panel-card overflow-hidden">
@@ -739,10 +691,10 @@ onMounted(() => {
         <div class="flex items-center justify-between">
           <p class="text-sm font-semibold">启用模板</p>
           <RouterLink
-            to="/workflow"
+            to="/business-lines"
             class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
           >
-            管理模板
+            管理业务线模板
           </RouterLink>
         </div>
 
@@ -752,17 +704,12 @@ onMounted(() => {
             :key="template.id"
             class="rounded-xl border border-border bg-background/60 px-3 py-2"
           >
-            <div class="flex items-center justify-between gap-2">
-              <p class="font-semibold">{{ template.name }}</p>
-              <span class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                v{{ template.latestVersion }}
-              </span>
-            </div>
-            <p class="mt-1 text-xs text-muted-foreground">{{ template.mode }} · 节点 {{ template.nodesJson.length }}</p>
+            <p class="font-semibold">{{ template.name }}</p>
+            <p class="mt-1 text-xs text-muted-foreground">节点 {{ template.nodesJson.length }}</p>
           </div>
 
           <div v-if="activeTemplates.length === 0" class="rounded-xl border border-dashed border-border bg-background/30 px-3 py-4 text-xs text-muted-foreground">
-            暂无启用模板，请先在工作流页面创建并发布。
+            暂无启用模板，请先在业务线中创建并启用。
           </div>
         </div>
       </article>
@@ -802,5 +749,114 @@ onMounted(() => {
         </div>
       </article>
     </section>
+
+    <Teleport to="body">
+      <div v-if="automationFormModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <button
+          type="button"
+          aria-label="关闭自动化计划弹窗"
+          class="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+          @click="closeAutomationFormModal"
+        />
+
+        <section
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="automation-form-modal-title"
+          class="relative z-10 w-full max-w-2xl rounded-2xl border border-border bg-background shadow-2xl"
+          tabindex="-1"
+          @keydown.esc.prevent="closeAutomationFormModal"
+        >
+          <header class="flex items-center justify-between border-b border-border px-4 py-3">
+            <h2 id="automation-form-modal-title" class="text-sm font-semibold">
+              {{ automationEditingId ? '编辑自动化计划' : '新增自动化计划' }}
+            </h2>
+            <button
+              type="button"
+              aria-label="关闭"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
+              @click="closeAutomationFormModal"
+            >
+              ×
+            </button>
+          </header>
+
+          <form class="space-y-3 px-4 py-4" @submit.prevent="submitAutomation">
+            <label class="block space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">名称</span>
+              <input
+                v-model="automationForm.name"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                :disabled="!canManageAutomations"
+                placeholder="例如：Daily queue digest"
+                type="text"
+              />
+            </label>
+
+            <label class="block space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">Prompt</span>
+              <textarea
+                v-model="automationForm.prompt"
+                class="min-h-20 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                :disabled="!canManageAutomations"
+                placeholder="描述自动化执行内容"
+              />
+            </label>
+
+            <label class="block space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">RRULE</span>
+              <input
+                v-model="automationForm.rrule"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                :disabled="!canManageAutomations"
+                placeholder="FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0"
+                type="text"
+              />
+            </label>
+
+            <label class="block space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">工作目录（每行一条，可选）</span>
+              <textarea
+                v-model="automationForm.cwdsText"
+                class="min-h-20 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                :disabled="!canManageAutomations"
+                placeholder="/workspace/ainative/backend"
+              />
+            </label>
+
+            <label class="block space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">状态</span>
+              <select
+                v-model="automationForm.status"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                :disabled="!canManageAutomations"
+              >
+                <option value="active">运行中</option>
+                <option value="paused">已暂停</option>
+              </select>
+            </label>
+
+            <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
+
+            <div class="flex justify-end gap-2">
+              <button
+                class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
+                type="button"
+                @click="closeAutomationFormModal"
+              >
+                取消
+              </button>
+              <button
+                class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="automationSubmitting || !canManageAutomations"
+                type="submit"
+              >
+                {{ automationSubmitting ? '保存中...' : automationEditingId ? '保存修改' : '创建计划' }}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </Teleport>
   </div>
 </template>

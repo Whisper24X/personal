@@ -16,6 +16,7 @@ const loadingMore = ref(false)
 const submitting = ref(false)
 const deletingUserId = ref<string | null>(null)
 const editingUserId = ref('')
+const userFormModalOpen = ref(false)
 const validationMessage = ref('')
 const keyword = ref('')
 const message = useMessage()
@@ -93,6 +94,18 @@ const resetForm = () => {
   form.status = 1
 }
 
+const openCreateUserModal = () => {
+  resetForm()
+  validationMessage.value = ''
+  userFormModalOpen.value = true
+}
+
+const closeUserFormModal = () => {
+  userFormModalOpen.value = false
+  resetForm()
+  validationMessage.value = ''
+}
+
 const startEdit = (user: User) => {
   editingUserId.value = user.id
   form.username = user.username
@@ -101,6 +114,8 @@ const startEdit = (user: User) => {
   form.avatar = user.avatar ?? ''
   form.isAdmin = user.isAdmin
   form.status = user.status
+  validationMessage.value = ''
+  userFormModalOpen.value = true
 }
 
 const normalizeOptionalText = (value: string) => {
@@ -186,7 +201,7 @@ const submitForm = async () => {
       message.success('创建用户成功')
     }
 
-    resetForm()
+    closeUserFormModal()
     await loadUsers(true)
   } catch (error) {
     message.error(toErrorMessage(error, '保存用户失败'))
@@ -226,12 +241,11 @@ onMounted(() => {
       <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
         对接 `/api/v1/users`，支持用户新增、编辑、删除，并可按用户名快速筛选。
       </p>
-      <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
     </section>
 
     <section class="panel-card p-5">
-      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p class="text-sm font-semibold">{{ isEditing ? '编辑用户' : '新增用户' }}</p>
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <p class="text-sm font-semibold">用户筛选与操作</p>
         <div class="flex items-center gap-2">
           <input
             v-model="keyword"
@@ -246,84 +260,15 @@ onMounted(() => {
           >
             刷新
           </button>
+          <button
+            class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:shadow-md"
+            type="button"
+            @click="openCreateUserModal"
+          >
+            新增用户
+          </button>
         </div>
       </div>
-
-      <form class="grid gap-3 md:grid-cols-2" @submit.prevent="submitForm">
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">用户名</span>
-          <input
-            v-model="form.username"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            placeholder="例如：john.doe"
-            type="text"
-          />
-        </label>
-
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">密码</span>
-          <input
-            v-model="form.password"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            :placeholder="isEditing ? '不修改密码可留空' : '至少 6 位'"
-            type="password"
-          />
-        </label>
-
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">昵称（可选）</span>
-          <input
-            v-model="form.nickname"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            placeholder="显示名称"
-            type="text"
-          />
-        </label>
-
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">头像链接（可选）</span>
-          <input
-            v-model="form.avatar"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            placeholder="https://example.com/avatar.png"
-            type="text"
-          />
-        </label>
-
-        <label class="space-y-1">
-          <span class="text-xs font-semibold text-muted-foreground">账号状态</span>
-          <select
-            v-model.number="form.status"
-            class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-          >
-            <option :value="1">启用</option>
-            <option :value="0">停用</option>
-          </select>
-        </label>
-
-        <label class="inline-flex items-center gap-2 text-sm md:col-span-2">
-          <input v-model="form.isAdmin" class="h-4 w-4" type="checkbox" />
-          设为平台管理员（isAdmin）
-        </label>
-
-        <div class="md:col-span-2 flex justify-end gap-2">
-          <button
-            v-if="isEditing"
-            class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
-            type="button"
-            @click="resetForm"
-          >
-            取消编辑
-          </button>
-          <button
-            class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="submitting"
-            type="submit"
-          >
-            {{ submitting ? '保存中...' : isEditing ? '保存修改' : '创建用户' }}
-          </button>
-        </div>
-      </form>
     </section>
 
     <section class="panel-card overflow-hidden">
@@ -409,5 +354,116 @@ onMounted(() => {
         </button>
       </div>
     </section>
+
+    <Teleport to="body">
+      <div v-if="userFormModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <button
+          type="button"
+          aria-label="关闭用户表单弹窗"
+          class="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+          @click="closeUserFormModal"
+        />
+
+        <section
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="user-form-modal-title"
+          class="relative z-10 w-full max-w-2xl rounded-2xl border border-border bg-background shadow-2xl"
+          tabindex="-1"
+          @keydown.esc.prevent="closeUserFormModal"
+        >
+          <header class="flex items-center justify-between border-b border-border px-4 py-3">
+            <h2 id="user-form-modal-title" class="text-sm font-semibold">
+              {{ isEditing ? '编辑用户' : '新增用户' }}
+            </h2>
+            <button
+              type="button"
+              aria-label="关闭"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
+              @click="closeUserFormModal"
+            >
+              ×
+            </button>
+          </header>
+
+          <form class="grid gap-3 px-4 py-4 md:grid-cols-2" @submit.prevent="submitForm">
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">用户名</span>
+              <input
+                v-model="form.username"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="例如：john.doe"
+                type="text"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">密码</span>
+              <input
+                v-model="form.password"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                :placeholder="isEditing ? '不修改密码可留空' : '至少 6 位'"
+                type="password"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">昵称（可选）</span>
+              <input
+                v-model="form.nickname"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="显示名称"
+                type="text"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">头像链接（可选）</span>
+              <input
+                v-model="form.avatar"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="https://example.com/avatar.png"
+                type="text"
+              />
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs font-semibold text-muted-foreground">账号状态</span>
+              <select
+                v-model.number="form.status"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              >
+                <option :value="1">启用</option>
+                <option :value="0">停用</option>
+              </select>
+            </label>
+
+            <label class="inline-flex items-center gap-2 text-sm md:col-span-2">
+              <input v-model="form.isAdmin" class="h-4 w-4" type="checkbox" />
+              设为平台管理员（isAdmin）
+            </label>
+
+            <p v-if="validationMessage" class="text-sm text-destructive md:col-span-2">{{ validationMessage }}</p>
+
+            <div class="flex justify-end gap-2 md:col-span-2">
+              <button
+                class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
+                type="button"
+                @click="closeUserFormModal"
+              >
+                取消
+              </button>
+              <button
+                class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="submitting"
+                type="submit"
+              >
+                {{ submitting ? '保存中...' : isEditing ? '保存修改' : '创建用户' }}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </Teleport>
   </div>
 </template>

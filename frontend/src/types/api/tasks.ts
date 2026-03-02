@@ -8,7 +8,6 @@ export type Task = {
   id: string
   projectId: string
   workflowTemplateId?: string | null
-  workflowTemplateVersion?: number | null
   mode: TaskMode
   title: string
   description?: string | null
@@ -70,7 +69,6 @@ export type TaskArtifact = {
 export type CreateTaskPayload = {
   projectId: string
   workflowTemplateId?: string
-  workflowTemplateVersion?: number
   mode?: TaskMode
   title: string
   description?: string

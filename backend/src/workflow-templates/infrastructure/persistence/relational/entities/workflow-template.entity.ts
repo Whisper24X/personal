@@ -48,9 +48,6 @@ export class WorkflowTemplateEntity extends EntityRelationalHelper {
   @Column({ type: 'boolean', default: true })
   isActive: boolean;
 
-  @Column({ type: 'int', default: 0 })
-  latestVersion: number;
-
   @Column({ type: 'jsonb' })
   nodesJson: WorkflowTemplateNode[];
 

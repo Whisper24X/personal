@@ -36,10 +36,8 @@ const { businessLinesApi, projectsApi, usersApi, workflowApi, fetchAllPages } = 
   },
   workflowApi: {
     list: vi.fn(),
-    versions: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
-    publish: vi.fn(),
     remove: vi.fn(),
   },
   fetchAllPages: vi.fn(),
@@ -98,7 +96,6 @@ beforeEach(() => {
     data: [],
     hasNextPage: false,
   })
-  workflowApi.versions.mockResolvedValue([])
 
   projectsApi.list.mockResolvedValue({
     data: [

@@ -134,7 +134,7 @@ const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
     assertCanAccessProject: jest.fn(),
   };
   const workflowTemplatesService = {
-    getVersionForTask: jest.fn(),
+    getTemplateForTask: jest.fn(),
   };
   const taskLogEventsService: Pick<TaskLogEventsService, 'emit' | 'subscribe'> =
     {

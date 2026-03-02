@@ -135,7 +135,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
 
     let resolvedMode: TaskMode = createTaskDto.mode ?? TaskMode.conversation;
     let workflowTemplateId: string | null = null;
-    let workflowTemplateVersion: number | null = null;
     let nodes: Array<{
       nodeOrder: number;
       name: string;
@@ -145,21 +144,15 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     }> = [];
 
     if (createTaskDto.workflowTemplateId) {
-      const templateVersion =
-        await this.workflowTemplatesService.getVersionForTask({
-          templateId: createTaskDto.workflowTemplateId,
-          version: createTaskDto.workflowTemplateVersion,
-          projectBusinessLineId: project.businessLineId,
-        });
+      const template = await this.workflowTemplatesService.getTemplateForTask({
+        templateId: createTaskDto.workflowTemplateId,
+        projectBusinessLineId: project.businessLineId,
+      });
 
-      resolvedMode =
-        templateVersion.mode === 'workflow'
-          ? TaskMode.workflow
-          : TaskMode.conversation;
-      workflowTemplateId = templateVersion.templateId;
-      workflowTemplateVersion = templateVersion.version;
+      resolvedMode = TaskMode.workflow;
+      workflowTemplateId = template.id;
 
-      nodes = templateVersion.nodesJson
+      nodes = template.nodesJson
         .map((node) => ({
           nodeOrder: node.nodeOrder,
           name: node.name,
@@ -193,7 +186,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     const task = await this.taskRepository.create({
       projectId: createTaskDto.projectId,
       workflowTemplateId,
-      workflowTemplateVersion,
       mode: resolvedMode,
       title: createTaskDto.title,
       description: createTaskDto.description ?? null,
@@ -671,14 +663,13 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
           polling = true;
 
           try {
-            const incrementalLogs = await this.taskLogRepository.findByTaskIdSince(
-              {
+            const incrementalLogs =
+              await this.taskLogRepository.findByTaskIdSince({
                 taskId,
                 since: cursorSince,
                 afterId: cursorAfterId,
                 limit: streamLimit,
-              },
-            );
+              });
 
             for (const log of incrementalLogs) {
               emitIfFresh(log);
@@ -1675,7 +1666,8 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
             taskId: latestNode.taskId,
             taskNodeId: latestNode.id,
             level: TaskLogLevel.error,
-            message: 'Node execution interrupted due to worker heartbeat timeout',
+            message:
+              'Node execution interrupted due to worker heartbeat timeout',
             payload: {
               workerId: latestNode.workerId ?? null,
               leaseUntil: latestNode.leaseUntil.toISOString(),
@@ -1827,10 +1819,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     return process.env.AINATIVE_RUNTIME_ROLE === 'worker' ? 'worker' : 'api';
   }
 
-  private readPositiveNumberFromEnv(
-    key: string,
-    defaultValue: number,
-  ): number {
+  private readPositiveNumberFromEnv(key: string, defaultValue: number): number {
     const rawValue = process.env[key];
 
     if (!rawValue) {
