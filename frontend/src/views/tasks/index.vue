@@ -34,7 +34,6 @@ const loading = ref(false)
 const loadingTemplates = ref(false)
 const loadingAgentConfigs = ref(false)
 const submitting = ref(false)
-const validationMessage = ref('')
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
 const projects = ref<Project[]>([])
@@ -100,6 +99,10 @@ const formatFileSize = (size: number) => {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
+const showValidationError = (text: string) => {
+  message.error(text)
+}
+
 const isSupportedCliToolId = (toolId: string): toolId is SupportedCliToolId => {
   return SUPPORTED_CLI_TOOLS.some((tool) => tool.id === toolId)
 }
@@ -140,8 +143,14 @@ const loadTemplatesForProject = async (projectId: string) => {
 
     templates.value = availableTemplates
 
-    if (!availableTemplates.some((template) => template.id === createForm.workflowTemplateId)) {
-      createForm.workflowTemplateId = ''
+    const hasSelectedTemplate = availableTemplates.some(
+      (template) => template.id === createForm.workflowTemplateId,
+    )
+
+    if (!hasSelectedTemplate) {
+      createForm.workflowTemplateId = createForm.mode === 'workflow'
+        ? (availableTemplates[0]?.id ?? '')
+        : ''
     }
   } catch (error) {
     templates.value = []
@@ -265,40 +274,44 @@ const createTask = async () => {
   const contextProjectId = resolveProjectIdFromContext()
   const projectIdForSubmit = contextProjectId || createForm.projectId
 
-  if (!projectIdForSubmit || !createForm.title.trim()) {
-    validationMessage.value = '项目和任务标题不能为空'
+  if (!projectIdForSubmit) {
+    showValidationError('请先在左侧栏选择项目后再创建任务')
+    return
+  }
+
+  if (!createForm.title.trim()) {
+    showValidationError('请填写任务标题')
     return
   }
 
   if (!createForm.description.trim()) {
-    validationMessage.value = '提示词不能为空'
+    showValidationError('请填写提示词')
     return
   }
 
   if (!createForm.branch.trim()) {
-    validationMessage.value = '分支不能为空'
+    showValidationError('请填写分支名称')
     return
   }
 
   if (createForm.mode === 'conversation') {
     if (!createForm.cliToolId) {
-      validationMessage.value = '当前业务线没有可用的 Agent CLI 配置'
+      showValidationError('当前业务线没有可用的 Agent CLI 配置，请先在业务线设置中配置')
       return
     }
 
     if (!createForm.agentToolConfigId) {
-      validationMessage.value = '对话模式下必须选择 Agent CLI 配置'
+      showValidationError('请选择 Agent CLI 配置')
       return
     }
   }
 
   if (createForm.mode === 'workflow' && !createForm.workflowTemplateId) {
-    validationMessage.value = '工作流模式下必须选择工作流模板'
+    showValidationError('请选择工作流模板')
     return
   }
 
   submitting.value = true
-  validationMessage.value = ''
 
   try {
     const toolVersionsSnapshot: Record<string, unknown> = {
@@ -385,6 +398,10 @@ watch(
       createForm.workflowTemplateId = ''
       syncAgentToolConfigsForSelectedTool()
       return
+    }
+
+    if (!createForm.workflowTemplateId && templates.value.length > 0) {
+      createForm.workflowTemplateId = templates.value[0]?.id ?? ''
     }
 
     createForm.agentToolConfigId = ''
@@ -553,9 +570,6 @@ onMounted(() => {
                     class="min-w-[120px] appearance-none bg-transparent text-sm font-medium text-foreground outline-none"
                     :disabled="loadingAgentConfigs || configuredCliTools.length === 0"
                   >
-                    <option value="">
-                      {{ loadingAgentConfigs ? '加载中...' : configuredCliTools.length === 0 ? '无可用 CLI' : '选择 CLI' }}
-                    </option>
                     <option v-for="tool in configuredCliTools" :key="tool.id" :value="tool.id">
                       {{ tool.label }}
                     </option>
@@ -598,9 +612,8 @@ onMounted(() => {
                   <select
                     v-model="createForm.agentToolConfigId"
                     class="min-w-[120px] appearance-none bg-transparent text-sm font-medium text-foreground outline-none"
-                    :disabled="loadingAgentConfigs"
+                    :disabled="loadingAgentConfigs || agentToolConfigs.length === 0"
                   >
-                    <option value="">{{ loadingAgentConfigs ? '加载中...' : '选择配置' }}</option>
                     <option v-for="config in agentToolConfigs" :key="config.id" :value="config.id">
                       {{ config.name }}
                     </option>
@@ -649,9 +662,8 @@ onMounted(() => {
                   <select
                     v-model="createForm.workflowTemplateId"
                     class="min-w-[160px] appearance-none bg-transparent text-sm font-medium text-foreground outline-none"
-                    :disabled="loadingTemplates"
+                    :disabled="loadingTemplates || templates.length === 0"
                   >
-                    <option value="">{{ loadingTemplates ? '加载中...' : '选择工作流' }}</option>
                     <option v-for="template in templates" :key="template.id" :value="template.id">
                       {{ template.name }}
                     </option>
@@ -725,7 +737,6 @@ onMounted(() => {
               </button>
             </div>
 
-            <p v-if="validationMessage" class="mt-2 text-sm text-destructive">{{ validationMessage }}</p>
           </div>
         </form>
       </template>
