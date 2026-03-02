@@ -31,6 +31,7 @@ export class Deploy extends BaseAction {
   // 结果文件路径（相对于 workDir）
   private static readonly PREPARE_RESULT_FILE = 'docs/deploy/prepareResult.md';
   private static readonly DEPLOY_RESULT_FILE = 'docs/deploy/deployResult.md';
+  private static readonly DEPLOY_LOG_FILE = 'docs/deploy/deployLog.md';
   private static readonly VERIFY_RESULT_FILE = 'docs/deploy/verifyResult.md';
 
   constructor() {
@@ -159,8 +160,19 @@ export class Deploy extends BaseAction {
         isCompleted = await this.runVerifyPhase(workDir, retryCount, maxRetries, allOutputs);
       }
 
-      // 汇总输出
+      // 汇总输出：优先读取 deployLog.md，不存在或读失败则回退到 allOutputs
       const stdout = allOutputs.join('\n\n');
+      const deployLogPath = path.join(workDir, Deploy.DEPLOY_LOG_FILE);
+      let outputContent: string;
+      let sectionTitle: string;
+      try {
+        const deployLog = await fs.readFile(deployLogPath, 'utf-8');
+        outputContent = deployLog.trim() ? deployLog : stdout;
+        sectionTitle = outputContent === stdout ? 'Cursor CLI Output' : '部署日志';
+      } catch {
+        outputContent = stdout;
+        sectionTitle = 'Cursor CLI Output';
+      }
 
       if (!isCompleted) {
         logger.error('Deploy: Max retries reached, deployment still not completed', {
@@ -176,7 +188,7 @@ export class Deploy extends BaseAction {
       });
 
       return {
-        content: `# Deployment ${isCompleted ? 'Completed' : 'Incomplete'}\n\n## Status: ${isCompleted ? '✅ Deployment successful and services verified' : '❌ Max retries reached'}\n\n## Total Iterations: ${retryCount}\n\n## Cursor CLI Output:\n\n${stdout}`,
+        content: `# Deployment ${isCompleted ? 'Completed' : 'Incomplete'}\n\n## Status: ${isCompleted ? '✅ Deployment successful and services verified' : '❌ Max retries reached'}\n\n## Total Iterations: ${retryCount}\n\n## ${sectionTitle}:\n\n${outputContent}`,
         data: {
           type: 'deploy',
           workspaceDir: workDir,
