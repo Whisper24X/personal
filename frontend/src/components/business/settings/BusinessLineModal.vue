@@ -188,10 +188,8 @@ const mcpJsonPreviewModalOpen = ref(false)
 const loadingMcpJsonPreview = ref(false)
 const mcpJsonPreviewName = ref('')
 const mcpJsonPreviewSourcePath = ref('')
-const mcpJsonPreviewContent = ref('')
 const mcpJsonPreviewError = ref('')
 const mcpJsonPreviewDraft = ref('')
-const editingMcpJsonPreview = ref(false)
 const savingMcpJsonPreview = ref(false)
 const localSkills = ref<Skill[]>([])
 const localMcps = ref<Mcp[]>([])
@@ -1067,10 +1065,8 @@ const resetMcpJsonPreviewState = () => {
   loadingMcpJsonPreview.value = false
   mcpJsonPreviewName.value = ''
   mcpJsonPreviewSourcePath.value = ''
-  mcpJsonPreviewContent.value = ''
   mcpJsonPreviewError.value = ''
   mcpJsonPreviewDraft.value = ''
-  editingMcpJsonPreview.value = false
   savingMcpJsonPreview.value = false
 }
 
@@ -1100,8 +1096,11 @@ const resolveMcpConfigFromDraft = (
   }
 
   const keys = Object.keys(parsedPayload)
-  if (keys.length === 1 && isRecord(parsedPayload[keys[0]])) {
-    return parsedPayload[keys[0]]
+  if (keys.length === 1) {
+    const onlyKey = keys[0]
+    if (onlyKey && isRecord(parsedPayload[onlyKey])) {
+      return parsedPayload[onlyKey]
+    }
   }
 
   if (isRecord(parsedPayload[mcpName])) {
@@ -1119,22 +1118,6 @@ const resolveMcpConfigFromDraft = (
   throw new Error('未找到可保存的 MCP 配置对象')
 }
 
-const startEditingMcpJsonPreview = () => {
-  if (!mcpJsonPreviewContent.value) {
-    return
-  }
-
-  editingMcpJsonPreview.value = true
-  mcpJsonPreviewDraft.value = mcpJsonPreviewContent.value
-  mcpJsonPreviewError.value = ''
-}
-
-const cancelEditingMcpJsonPreview = () => {
-  editingMcpJsonPreview.value = false
-  mcpJsonPreviewDraft.value = ''
-  mcpJsonPreviewError.value = ''
-}
-
 const openMcpJsonPreview = async (item: Mcp) => {
   if (!activeLineId.value) {
     return
@@ -1150,17 +1133,15 @@ const openMcpJsonPreview = async (item: Mcp) => {
   loadingMcpJsonPreview.value = true
   mcpJsonPreviewName.value = item.name
   mcpJsonPreviewSourcePath.value = sourcePath
-  mcpJsonPreviewContent.value = ''
   mcpJsonPreviewError.value = ''
   mcpJsonPreviewDraft.value = ''
-  editingMcpJsonPreview.value = false
 
   try {
     const response = await businessLinesApi.getLocalMcpConfig(activeLineId.value, {
       name: item.name,
       sourcePath,
     })
-    mcpJsonPreviewContent.value = JSON.stringify(
+    mcpJsonPreviewDraft.value = JSON.stringify(
       {
         mcpServers: {
           [response.name]: response.config,
@@ -1214,7 +1195,7 @@ const saveMcpJsonPreview = async () => {
       name: mcpJsonPreviewName.value,
       sourcePath: mcpJsonPreviewSourcePath.value,
     })
-    mcpJsonPreviewContent.value = JSON.stringify(
+    mcpJsonPreviewDraft.value = JSON.stringify(
       {
         mcpServers: {
           [refreshed.name]: refreshed.config,
@@ -1223,8 +1204,6 @@ const saveMcpJsonPreview = async () => {
       null,
       2,
     )
-    editingMcpJsonPreview.value = false
-    mcpJsonPreviewDraft.value = ''
     await loadLocalMcps(activeLineId.value)
     message.success(`MCP「${mcpJsonPreviewName.value}」保存成功`)
   } catch (error) {
@@ -3242,28 +3221,10 @@ onBeforeUnmount(() => {
             </div>
             <div class="flex items-center gap-2">
               <button
-                v-if="!loadingMcpJsonPreview && !editingMcpJsonPreview && !mcpJsonPreviewError"
-                type="button"
-                data-testid="mcp-json-preview-edit"
-                class="h-8 rounded-md border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
-                @click="startEditingMcpJsonPreview"
-              >
-                编辑
-              </button>
-              <button
-                v-if="editingMcpJsonPreview"
-                type="button"
-                class="h-8 rounded-md border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
-                @click="cancelEditingMcpJsonPreview"
-              >
-                取消
-              </button>
-              <button
-                v-if="editingMcpJsonPreview"
                 type="button"
                 data-testid="mcp-json-preview-save"
                 class="h-8 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="savingMcpJsonPreview"
+                :disabled="loadingMcpJsonPreview || savingMcpJsonPreview || !mcpJsonPreviewDraft"
                 @click="void saveMcpJsonPreview()"
               >
                 {{ savingMcpJsonPreview ? '保存中...' : '保存' }}
@@ -3294,24 +3255,14 @@ onBeforeUnmount(() => {
           </header>
           <div class="space-y-3 px-4 py-4">
             <p v-if="loadingMcpJsonPreview" class="text-sm text-muted-foreground">加载 JSON 中...</p>
-            <div v-else-if="editingMcpJsonPreview" class="space-y-2">
+            <div v-else class="space-y-2">
               <textarea
                 v-model="mcpJsonPreviewDraft"
                 data-testid="mcp-json-preview-textarea"
                 class="min-h-[56vh] w-full rounded-xl border border-border bg-muted/20 p-3 font-mono text-xs text-foreground"
               />
             </div>
-            <p v-else-if="mcpJsonPreviewError" class="text-sm text-destructive">
-              {{ mcpJsonPreviewError }}
-            </p>
-            <pre
-              v-else
-              class="max-h-[56vh] overflow-auto rounded-xl border border-border bg-muted/20 p-3 font-mono text-xs text-foreground"
-            ><code>{{ mcpJsonPreviewContent }}</code></pre>
-            <p
-              v-if="!loadingMcpJsonPreview && mcpJsonPreviewError && editingMcpJsonPreview"
-              class="text-sm text-destructive"
-            >
+            <p v-if="!loadingMcpJsonPreview && mcpJsonPreviewError" class="text-sm text-destructive">
               {{ mcpJsonPreviewError }}
             </p>
           </div>

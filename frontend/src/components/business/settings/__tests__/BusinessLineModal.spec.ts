@@ -436,11 +436,6 @@ describe('BusinessLineModal', () => {
     await mcpCard.trigger('click')
     await flushPromises()
 
-    const editButton = wrapper.find('[data-testid="mcp-json-preview-edit"]')
-    expect(editButton.exists()).toBe(true)
-    await editButton.trigger('click')
-    await flushPromises()
-
     const textarea = wrapper.find('[data-testid="mcp-json-preview-textarea"]')
     expect(textarea.exists()).toBe(true)
     await textarea.setValue(
