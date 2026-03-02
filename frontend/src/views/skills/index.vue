@@ -1,27 +1,37 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { skillsApi } from '@/api/skills'
 import type { Skill } from '@/types/api/skills'
+import { STORAGE_KEYS } from '@/types/common/storage'
 import { toErrorMessage } from '@/utils/http/to-error-message'
+import { fetchAllPages } from '@/utils/pagination'
 
 defineOptions({
   name: 'SkillsManagementView',
 })
 
-const PAGE_LIMIT = 30
+const PAGE_LIMIT = 50
+const MAX_PAGE_COUNT = 20
+const PROJECT_SKILL_PROVIDER_LABELS: Record<string, string> = {
+  codex: 'Codex',
+  cursor: 'Cursor',
+  curso: 'Cursor',
+}
 
 const route = useRoute()
 const message = useMessage()
 
 const loading = ref(false)
-const loadingMore = ref(false)
 const keyword = ref('')
-const enabledOnly = ref(false)
 const skills = ref<Skill[]>([])
-const page = ref(1)
-const hasNextPage = ref(false)
+
+type SkillGroup = {
+  id: string
+  label: string
+  items: Skill[]
+}
 
 const normalizeRouteParam = (value: unknown) => {
   if (typeof value === 'string') {
@@ -35,93 +45,137 @@ const normalizeRouteParam = (value: unknown) => {
   return ''
 }
 
-const activeProjectId = computed(() => normalizeRouteParam(route.query.projectId))
+const resolveStoredProjectId = () => {
+  if (typeof window === 'undefined') {
+    return ''
+  }
 
-const resolveCatalogSourcePath = (payload?: Record<string, unknown> | null) => {
+  return localStorage.getItem(STORAGE_KEYS.lastSelectedProjectId) ?? ''
+}
+
+const activeProjectId = computed(() => {
+  return normalizeRouteParam(route.query.projectId) || resolveStoredProjectId()
+})
+
+const readSourceProvider = (payload?: Record<string, unknown> | null) => {
   if (!payload || typeof payload !== 'object') {
-    return '-'
+    return ''
+  }
+
+  const sourceProvider = payload.sourceProvider
+  if (typeof sourceProvider !== 'string') {
+    return ''
+  }
+
+  return sourceProvider.trim().toLowerCase()
+}
+
+const resolveSourcePath = (payload?: Record<string, unknown> | null) => {
+  if (!payload || typeof payload !== 'object') {
+    return ''
   }
 
   const sourcePath = payload.sourcePath
   if (typeof sourcePath !== 'string') {
-    return '-'
+    return ''
   }
 
-  const normalized = sourcePath.trim()
-  return normalized || '-'
+  return sourcePath.trim()
 }
 
-const loadSkills = async (reset = true) => {
+const resolveProviderKey = (item: Skill) => {
+  const sourceProvider = readSourceProvider(item.metadataJson ?? null)
+  if (sourceProvider) {
+    return sourceProvider
+  }
+
+  const sourcePath = resolveSourcePath(item.metadataJson ?? null).replace(/\\/g, '/')
+  if (sourcePath.includes('.codex/skills')) {
+    return 'codex'
+  }
+
+  if (sourcePath.includes('.cursor/skills')) {
+    return 'cursor'
+  }
+
+  if (sourcePath.includes('.curso/skills')) {
+    return 'curso'
+  }
+
+  return 'project'
+}
+
+const groupedSkills = computed<SkillGroup[]>(() => {
+  const groups = new Map<string, SkillGroup>()
+
+  for (const item of skills.value) {
+    const sourceProvider = resolveProviderKey(item)
+    const groupLabel = PROJECT_SKILL_PROVIDER_LABELS[sourceProvider] ?? sourceProvider
+    const currentGroup = groups.get(sourceProvider)
+
+    if (!currentGroup) {
+      groups.set(sourceProvider, {
+        id: sourceProvider,
+        label: groupLabel,
+        items: [item],
+      })
+      continue
+    }
+
+    currentGroup.items.push(item)
+  }
+
+  return Array.from(groups.values())
+    .map((group) => ({
+      ...group,
+      items: [...group.items].sort((left, right) => left.name.localeCompare(right.name)),
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label))
+})
+
+const loadSkills = async () => {
   const projectId = activeProjectId.value
 
   if (!projectId) {
     skills.value = []
-    hasNextPage.value = false
-    page.value = 1
     return
   }
 
-  const nextPage = reset ? 1 : page.value + 1
-
-  if (reset) {
-    loading.value = true
-  } else {
-    loadingMore.value = true
-  }
+  loading.value = true
 
   try {
-    const response = await skillsApi.list({
-      page: nextPage,
-      limit: PAGE_LIMIT,
-      keyword: keyword.value.trim() || undefined,
-      enabled: enabledOnly.value ? true : undefined,
-      projectId,
-    })
+    const records = await fetchAllPages(
+      (page, limit) => skillsApi.list({
+        page,
+        limit,
+        keyword: keyword.value.trim() || undefined,
+        projectId,
+      }),
+      {
+        limit: PAGE_LIMIT,
+        maxPages: MAX_PAGE_COUNT,
+      },
+    )
 
-    if (reset) {
-      skills.value = response.data
-    } else {
-      const existingIds = new Set(skills.value.map((item) => item.id))
-      skills.value = skills.value.concat(
-        response.data.filter((item) => !existingIds.has(item.id)),
-      )
-    }
-
-    page.value = nextPage
-    hasNextPage.value = response.hasNextPage
+    skills.value = Array.from(new Map(records.map((item) => [item.id, item])).values())
   } catch (error) {
     message.error(toErrorMessage(error, '加载项目本地 Skill 列表失败'))
   } finally {
     loading.value = false
-    loadingMore.value = false
   }
 }
 
 watch(
   () => activeProjectId.value,
   () => {
-    void loadSkills(true)
+    void loadSkills()
   },
+  { immediate: true },
 )
-
-onMounted(() => {
-  void loadSkills(true)
-})
 </script>
 
 <template>
   <div class="space-y-6 fade-up">
-    <section class="space-y-2">
-      <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">技能（Skill）</p>
-      <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">项目本地 Skill 管理</h1>
-      <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-        当前页面读取项目本地 Agent CLI 配置（如 `.codex/.cursor`）中的 Skill 列表。
-      </p>
-      <p class="font-mono text-xs text-muted-foreground">
-        当前项目：{{ activeProjectId || '未选择项目' }}
-      </p>
-    </section>
-
     <section class="panel-card p-5">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex flex-1 flex-wrap items-center gap-2">
@@ -131,24 +185,20 @@ onMounted(() => {
             placeholder="搜索名称 / 版本 / 说明"
             type="search"
           />
-          <label class="inline-flex items-center gap-2 text-xs text-muted-foreground">
-            <input v-model="enabledOnly" class="h-4 w-4" type="checkbox" />
-            仅显示启用
-          </label>
         </div>
 
         <div class="flex items-center gap-2">
           <button
             class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
             type="button"
-            @click="loadSkills(true)"
+            @click="loadSkills"
           >
             刷新
           </button>
           <button
             class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:shadow-md"
             type="button"
-            @click="loadSkills(true)"
+            @click="loadSkills"
           >
             搜索
           </button>
@@ -165,52 +215,59 @@ onMounted(() => {
 
     <section v-else-if="loading" class="panel-card p-6 text-sm text-muted-foreground">加载中...</section>
 
-    <section v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      <article v-for="item in skills" :key="item.id" class="panel-card p-4">
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <p class="text-sm font-semibold">{{ item.name }}</p>
-            <p class="mt-1 text-xs text-muted-foreground">版本：{{ item.version }}</p>
-          </div>
-          <span
-            class="inline-flex rounded-full px-2 py-1 text-[10px] font-semibold"
-            :class="item.enabled ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'"
-          >
-            {{ item.enabled ? '已启用' : '已停用' }}
+    <section v-else class="space-y-4">
+      <article
+        v-if="groupedSkills.length === 0"
+        class="panel-card p-6 text-sm text-muted-foreground"
+      >
+        当前项目没有可读取的 Skill 本地配置。
+      </article>
+
+      <article
+        v-for="group in groupedSkills"
+        :key="group.id"
+        class="panel-card p-4"
+      >
+        <div class="flex items-center justify-between gap-2">
+          <p class="text-sm font-semibold">{{ group.label }}</p>
+          <span class="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">
+            {{ group.items.length }} 项
           </span>
         </div>
 
-        <p class="mt-3 text-xs text-muted-foreground">范围：{{ item.scope ?? '-' }}</p>
-        <p class="mt-2 text-xs text-muted-foreground">{{ item.description ?? '暂无描述' }}</p>
-        <p class="mt-2 font-mono text-[11px] text-muted-foreground">
-          {{ resolveCatalogSourcePath(item.metadataJson ?? null) }}
-        </p>
+        <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div
+            v-for="item in group.items"
+            :key="item.id"
+            class="rounded-xl border border-border bg-background/70 px-4 py-3"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-sm font-semibold">{{ item.name }}</p>
+                <p class="mt-1 text-xs text-muted-foreground">版本：{{ item.version }}</p>
+              </div>
+              <span
+                class="inline-flex rounded-full px-2 py-1 text-[10px] font-semibold"
+                :class="item.enabled ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'"
+              >
+                {{ item.enabled ? '已启用' : '已停用' }}
+              </span>
+            </div>
 
-        <a
-          v-if="item.homepageUrl"
-          :href="item.homepageUrl"
-          class="mt-4 inline-flex text-xs font-semibold text-primary hover:underline"
-          target="_blank"
-          rel="noreferrer"
-        >
-          查看说明
-        </a>
+            <p class="mt-3 text-xs text-muted-foreground">{{ item.description ?? '暂无描述' }}</p>
+
+            <a
+              v-if="item.homepageUrl"
+              :href="item.homepageUrl"
+              class="mt-3 inline-flex text-xs font-semibold text-primary hover:underline"
+              target="_blank"
+              rel="noreferrer"
+            >
+              查看说明
+            </a>
+          </div>
+        </div>
       </article>
-
-      <article v-if="skills.length === 0" class="panel-card p-6 text-sm text-muted-foreground md:col-span-2 xl:col-span-3">
-        当前项目没有可读取的 Skill 本地配置。
-      </article>
-    </section>
-
-    <section v-if="activeProjectId && !loading && hasNextPage" class="panel-card p-4">
-      <button
-        class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
-        :disabled="loadingMore"
-        type="button"
-        @click="loadSkills(false)"
-      >
-        {{ loadingMore ? '加载中...' : '加载更多' }}
-      </button>
     </section>
   </div>
 </template>

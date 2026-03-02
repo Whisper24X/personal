@@ -1206,6 +1206,7 @@ const saveMcpJsonPreview = async () => {
     )
     await loadLocalMcps(activeLineId.value)
     message.success(`MCP「${mcpJsonPreviewName.value}」保存成功`)
+    resetMcpJsonPreviewState()
   } catch (error) {
     mcpJsonPreviewError.value = toErrorMessage(error, '保存 MCP JSON 失败')
   } finally {

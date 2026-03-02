@@ -469,5 +469,6 @@ describe('BusinessLineModal', () => {
       },
     })
     expect(businessLinesApi.listLocalMcps).toHaveBeenCalledWith('line-1')
+    expect(wrapper.find('[data-testid="mcp-json-preview-textarea"]').exists()).toBe(false)
   })
 })
