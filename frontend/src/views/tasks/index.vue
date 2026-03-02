@@ -120,6 +120,41 @@ const loadTemplateVersions = async (templateId: string) => {
   }
 }
 
+const loadTemplatesForProject = async (projectId: string) => {
+  if (!projectId) {
+    templates.value = []
+    templateVersions.value = []
+    createForm.workflowTemplateId = ''
+    createForm.workflowTemplateVersion = ''
+    return
+  }
+
+  try {
+    const availableTemplates = await fetchAllPages((page, limit) =>
+      workflowApi.list({
+        page,
+        limit,
+        isActive: true,
+        projectId,
+      }),
+    )
+
+    templates.value = availableTemplates
+
+    if (!availableTemplates.some((template) => template.id === createForm.workflowTemplateId)) {
+      createForm.workflowTemplateId = ''
+      createForm.workflowTemplateVersion = ''
+      templateVersions.value = []
+    }
+  } catch (error) {
+    templates.value = []
+    templateVersions.value = []
+    createForm.workflowTemplateId = ''
+    createForm.workflowTemplateVersion = ''
+    message.error(toErrorMessage(error, '加载可用模板失败'))
+  }
+}
+
 const loadTaskList = async (reset = true) => {
   const nextPage = reset ? 1 : taskPage.value + 1
 
@@ -160,7 +195,7 @@ const loadPageData = async () => {
   loading.value = true
 
   try {
-    const [projectResponse, taskResponse, templateResponse] = await Promise.all([
+    const [projectResponse, taskResponse] = await Promise.all([
       fetchAllPages((page, limit) => projectsApi.list({ page, limit })),
       tasksApi.list({
         page: 1,
@@ -168,22 +203,18 @@ const loadPageData = async () => {
         projectId: filters.projectId || undefined,
         status: filters.status || undefined,
       }),
-      fetchAllPages((page, limit) => workflowApi.list({ page, limit, isActive: true })),
     ])
 
     projects.value = projectResponse
     tasks.value = taskResponse.data
     taskPage.value = 1
     taskHasNextPage.value = taskResponse.hasNextPage
-    templates.value = templateResponse
 
     if (!createForm.projectId) {
       createForm.projectId = projectResponse[0]?.id ?? ''
     }
 
-    if (createForm.workflowTemplateId) {
-      await loadTemplateVersions(createForm.workflowTemplateId)
-    }
+    await loadTemplatesForProject(createForm.projectId)
   } catch (error) {
     message.error(toErrorMessage(error, '加载任务页面失败'))
   } finally {
@@ -249,6 +280,17 @@ watch(
     }
 
     await loadTemplateVersions(templateId)
+  },
+)
+
+watch(
+  () => createForm.projectId,
+  async (projectId, previousProjectId) => {
+    if (projectId === previousProjectId) {
+      return
+    }
+
+    await loadTemplatesForProject(projectId)
   },
 )
 

@@ -6,11 +6,13 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { WorkflowTemplateMode } from './workflow-template-mode.enum';
 import { WorkflowTemplateNodeDto } from './workflow-template-node.dto';
+import { WorkflowTemplateScope } from './workflow-template-scope.enum';
 
 export class CreateWorkflowTemplateDto {
   @ApiProperty({ type: String })
@@ -29,6 +31,20 @@ export class CreateWorkflowTemplateDto {
   })
   @IsEnum(WorkflowTemplateMode)
   mode: WorkflowTemplateMode;
+
+  @ApiPropertyOptional({
+    enum: WorkflowTemplateScope,
+    enumName: 'WorkflowTemplateScope',
+    default: WorkflowTemplateScope.global,
+  })
+  @IsOptional()
+  @IsEnum(WorkflowTemplateScope)
+  scope?: WorkflowTemplateScope;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @IsUUID()
+  businessLineId?: string;
 
   @ApiProperty({ type: [WorkflowTemplateNodeDto] })
   @IsArray()

@@ -151,7 +151,11 @@ const loadTemplates = async (reset = true) => {
   }
 
   try {
-    const response = await workflowApi.list({ page: nextPage, limit: 50 })
+    const response = await workflowApi.list({
+      page: nextPage,
+      limit: 50,
+      scope: 'global',
+    })
 
     if (reset) {
       templates.value = response.data
@@ -288,6 +292,7 @@ const createTemplate = async () => {
       name: createForm.name.trim(),
       description: createForm.description.trim() || undefined,
       mode: createForm.mode,
+      scope: 'global',
       nodes,
       isActive: true,
     })
@@ -477,9 +482,9 @@ onMounted(() => {
   <div class="space-y-6 fade-up">
     <section class="space-y-2">
       <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">工作流</p>
-      <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">工作流模板管理</h1>
+      <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">全局工作流模板管理</h1>
       <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-        支持模板创建、启停、发布和版本查看，供任务创建时引用固定快照版本。
+        管理全局模板，支持创建、启停、发布和版本查看，供各业务线项目按权限复用。
       </p>
     </section>
 

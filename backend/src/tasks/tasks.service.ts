@@ -128,7 +128,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     createTaskDto: CreateTaskDto,
     currentUser: JwtPayloadType,
   ): Promise<Task> {
-    await this.projectsService.assertCanAccessProject(
+    const project = await this.projectsService.assertCanAccessProject(
       createTaskDto.projectId,
       currentUser,
     );
@@ -149,6 +149,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         await this.workflowTemplatesService.getVersionForTask({
           templateId: createTaskDto.workflowTemplateId,
           version: createTaskDto.workflowTemplateVersion,
+          projectBusinessLineId: project.businessLineId,
         });
 
       resolvedMode =

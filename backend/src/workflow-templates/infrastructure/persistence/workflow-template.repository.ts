@@ -1,6 +1,7 @@
 import { NullableType } from '../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
 import { WorkflowTemplate } from '../../domain/workflow-template';
+import { WorkflowTemplateScope } from '../../dto/workflow-template-scope.enum';
 
 export abstract class WorkflowTemplateRepository {
   abstract create(
@@ -16,16 +17,26 @@ export abstract class WorkflowTemplateRepository {
 
   abstract findByName(
     name: WorkflowTemplate['name'],
+    options?: {
+      scope?: WorkflowTemplateScope;
+      businessLineId?: string | null;
+    },
   ): Promise<NullableType<WorkflowTemplate>>;
 
   abstract findAllWithPagination({
     paginationOptions,
     keyword,
     isActive,
+    scope,
+    businessLineId,
+    includeGlobal,
   }: {
     paginationOptions: IPaginationOptions;
     keyword?: string;
     isActive?: boolean;
+    scope?: WorkflowTemplateScope;
+    businessLineId?: string;
+    includeGlobal?: boolean;
   }): Promise<WorkflowTemplate[]>;
 
   abstract update(

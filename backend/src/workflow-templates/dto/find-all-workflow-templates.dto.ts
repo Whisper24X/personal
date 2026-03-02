@@ -1,6 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
+import { WorkflowTemplateScope } from './workflow-template-scope.enum';
 
 export class FindAllWorkflowTemplatesDto {
   @ApiPropertyOptional()
@@ -35,4 +43,22 @@ export class FindAllWorkflowTemplatesDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    enum: WorkflowTemplateScope,
+    enumName: 'WorkflowTemplateScope',
+  })
+  @IsOptional()
+  @IsEnum(WorkflowTemplateScope)
+  scope?: WorkflowTemplateScope;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsUUID()
+  businessLineId?: string;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsUUID()
+  projectId?: string;
 }

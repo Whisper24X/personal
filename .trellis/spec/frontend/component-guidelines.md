@@ -30,6 +30,20 @@ For modal components, use `Teleport to="body"` and manage close behavior via `up
 
 ---
 
+## Create/Edit UI Pattern
+
+- Do not place entity create/edit forms directly in page content areas.
+- Route pages should provide list, search, and action triggers only; clicking "create" or "edit" opens a modal form.
+- Extract form UI into dedicated modal components (for example `UserFormModal.vue`, `ProjectFormModal.vue`) and keep parent views focused on orchestration.
+- Prefer controlled modal props (`open`, `mode`, `submitting`, `initial*`, `errorMessage`) plus `submit`/`update:open` emits.
+- Reset form state when the modal opens/closes to avoid stale values across operations.
+
+Representative modal examples:
+- `frontend/src/components/business/settings/modals/BusinessLineFormModal.vue`
+- `frontend/src/components/business/settings/modals/ProjectFormModal.vue`
+
+---
+
 ## Props Conventions
 
 - Use typed `defineProps<...>()`, not untyped props objects.

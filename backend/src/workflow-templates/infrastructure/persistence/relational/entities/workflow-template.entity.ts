@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
 import { WorkflowTemplateMode } from '../../../../dto/workflow-template-mode.enum';
+import { WorkflowTemplateScope } from '../../../../dto/workflow-template-scope.enum';
 import { WorkflowTemplateNode } from '../../../../domain/workflow-template';
 
 @Entity({
@@ -31,6 +32,18 @@ export class WorkflowTemplateEntity extends EntityRelationalHelper {
     enumName: 'workflow_template_mode_enum',
   })
   mode: WorkflowTemplateMode;
+
+  @Column({
+    type: 'enum',
+    enum: WorkflowTemplateScope,
+    enumName: 'workflow_template_scope_enum',
+    default: WorkflowTemplateScope.global,
+  })
+  scope: WorkflowTemplateScope;
+
+  @Index('IDX_workflow_templates_business_line_id')
+  @Column({ type: 'uuid', nullable: true })
+  businessLineId?: string | null;
 
   @Column({ type: 'boolean', default: true })
   isActive: boolean;

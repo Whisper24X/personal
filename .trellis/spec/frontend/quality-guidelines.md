@@ -25,6 +25,7 @@ Tooling is configured in:
 - Unhandled async errors in UI actions (must show message or fallback behavior).
 - Mutating props in child components.
 - Deeply coupling view components to raw backend response fields without local mapping.
+- Rendering create/edit entity forms directly in route pages (inline CRUD forms). Create/edit interactions must open a dialog/modal (or drawer) instead of occupying persistent page area.
 
 ---
 
@@ -34,6 +35,8 @@ Tooling is configured in:
 - Keep API access in `src/api/*` and shared logic in hooks.
 - Add/maintain typed props and emits for reusable components.
 - Use centralized message/toast flow (`useMessage`) for user-visible failures.
+- For create/edit flows, keep list/filter content in the page and move form UI into dedicated modal components (for example `*FormModal.vue`) controlled by `open` + `mode` state.
+- Full-page create/edit forms are only allowed for explicitly approved wizard-style routes documented in task PRD.
 
 ---
 

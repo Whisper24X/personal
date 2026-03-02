@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { WorkflowTemplateMode } from '../dto/workflow-template-mode.enum';
+import { WorkflowTemplateScope } from '../dto/workflow-template-scope.enum';
 
 export type WorkflowTemplateNode = {
   nodeOrder: number;
@@ -24,6 +25,15 @@ export class WorkflowTemplate {
     enumName: 'WorkflowTemplateMode',
   })
   mode: WorkflowTemplateMode;
+
+  @ApiProperty({
+    enum: WorkflowTemplateScope,
+    enumName: 'WorkflowTemplateScope',
+  })
+  scope: WorkflowTemplateScope;
+
+  @ApiProperty({ type: String, required: false, nullable: true })
+  businessLineId?: string | null;
 
   @ApiProperty({ type: Boolean, default: true })
   isActive: boolean;

@@ -8,6 +8,8 @@ export class WorkflowTemplateMapper {
     domainEntity.name = raw.name;
     domainEntity.description = raw.description;
     domainEntity.mode = raw.mode;
+    domainEntity.scope = raw.scope;
+    domainEntity.businessLineId = raw.businessLineId;
     domainEntity.isActive = raw.isActive;
     domainEntity.latestVersion = raw.latestVersion;
     domainEntity.nodesJson = raw.nodesJson;
@@ -29,6 +31,8 @@ export class WorkflowTemplateMapper {
     persistenceEntity.name = domainEntity.name;
     persistenceEntity.description = domainEntity.description;
     persistenceEntity.mode = domainEntity.mode;
+    persistenceEntity.scope = domainEntity.scope;
+    persistenceEntity.businessLineId = domainEntity.businessLineId;
     persistenceEntity.isActive = domainEntity.isActive;
     persistenceEntity.latestVersion = domainEntity.latestVersion;
     persistenceEntity.nodesJson = domainEntity.nodesJson;

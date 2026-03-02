@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import BusinessLineModal from '@/components/business/settings/BusinessLineModal.vue'
 
-const { businessLinesApi, projectsApi, usersApi, fetchAllPages } = vi.hoisted(() => ({
+const { businessLinesApi, projectsApi, usersApi, workflowApi, fetchAllPages } = vi.hoisted(() => ({
   businessLinesApi: {
     detail: vi.fn(),
     create: vi.fn(),
@@ -34,6 +34,14 @@ const { businessLinesApi, projectsApi, usersApi, fetchAllPages } = vi.hoisted(()
   usersApi: {
     list: vi.fn(),
   },
+  workflowApi: {
+    list: vi.fn(),
+    versions: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    publish: vi.fn(),
+    remove: vi.fn(),
+  },
   fetchAllPages: vi.fn(),
 }))
 
@@ -47,6 +55,10 @@ vi.mock('@/api/projects', () => ({
 
 vi.mock('@/api/users', () => ({
   usersApi,
+}))
+
+vi.mock('@/api/workflow', () => ({
+  workflowApi,
 }))
 
 vi.mock('@/utils/pagination', () => ({
@@ -82,6 +94,11 @@ beforeEach(() => {
 
   businessLinesApi.listMembers.mockResolvedValue([])
   businessLinesApi.listAgentToolConfigs.mockResolvedValue([])
+  workflowApi.list.mockResolvedValue({
+    data: [],
+    hasNextPage: false,
+  })
+  workflowApi.versions.mockResolvedValue([])
 
   projectsApi.list.mockResolvedValue({
     data: [
@@ -136,7 +153,7 @@ beforeEach(() => {
 })
 
 describe('BusinessLineModal', () => {
-  it('renders left-right layout with 4 tabs by default', async () => {
+  it('renders left-right layout with 5 tabs by default', async () => {
     const pinia = createPinia()
     const wrapper = mount(BusinessLineModal, {
       props: buildProps(true),
@@ -154,6 +171,7 @@ describe('BusinessLineModal', () => {
     expect(wrapper.text()).toContain('项目')
     expect(wrapper.text()).toContain('成员/权限')
     expect(wrapper.text()).toContain('Agent CLI')
+    expect(wrapper.text()).toContain('工作流')
     expect(wrapper.text()).toContain('设置')
     expect(wrapper.text()).toContain('创建业务线')
 

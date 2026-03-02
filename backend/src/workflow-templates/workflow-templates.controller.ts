@@ -65,6 +65,7 @@ export class WorkflowTemplatesController {
   @ApiOkResponse({ type: InfinityPaginationResponse(WorkflowTemplate) })
   @HttpCode(HttpStatus.OK)
   async findAll(
+    @Request() request,
     @Query() query: FindAllWorkflowTemplatesDto,
   ): Promise<InfinityPaginationResponseDto<WorkflowTemplate>> {
     const page = query?.page ?? 1;
@@ -75,11 +76,14 @@ export class WorkflowTemplatesController {
     }
 
     return infinityPagination(
-      await this.workflowTemplatesService.findAllWithPagination({
-        ...query,
-        page,
-        limit,
-      }),
+      await this.workflowTemplatesService.findAllWithPagination(
+        {
+          ...query,
+          page,
+          limit,
+        },
+        request.user,
+      ),
       {
         page,
         limit,
@@ -91,8 +95,8 @@ export class WorkflowTemplatesController {
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: WorkflowTemplate })
   @HttpCode(HttpStatus.OK)
-  findById(@Param('id', ParseUUIDPipe) id: string) {
-    return this.workflowTemplatesService.findById(id);
+  findById(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
+    return this.workflowTemplatesService.findById(id, request.user);
   }
 
   @Patch(':id')

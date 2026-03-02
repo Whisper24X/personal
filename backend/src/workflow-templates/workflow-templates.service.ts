@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -16,19 +17,52 @@ import { WorkflowTemplateVersion } from './domain/workflow-template-version';
 import { WorkflowTemplateNodeDto } from './dto/workflow-template-node.dto';
 import { WorkflowTemplateMode } from './dto/workflow-template-mode.enum';
 import { ReorderWorkflowTemplateNodesDto } from './dto/reorder-workflow-template-nodes.dto';
+import { WorkflowTemplateScope } from './dto/workflow-template-scope.enum';
+import { ProjectsService } from '../projects/projects.service';
+import { BusinessLineRepository } from '../business-lines/infrastructure/persistence/business-line.repository';
+import { BusinessLineMemberRepository } from '../business-lines/infrastructure/persistence/business-line-member.repository';
+import { BusinessLineMemberRole } from '../business-lines/dto/business-line-member-role.enum';
 
 @Injectable()
 export class WorkflowTemplatesService {
   constructor(
     private readonly workflowTemplateRepository: WorkflowTemplateRepository,
     private readonly workflowTemplateVersionRepository: WorkflowTemplateVersionRepository,
+    private readonly projectsService: ProjectsService,
+    private readonly businessLineRepository: BusinessLineRepository,
+    private readonly businessLineMemberRepository: BusinessLineMemberRepository,
   ) {}
 
   async create(
     createWorkflowTemplateDto: CreateWorkflowTemplateDto,
     currentUser: JwtPayloadType,
   ): Promise<WorkflowTemplate> {
-    this.ensureAdmin(currentUser);
+    const scope =
+      createWorkflowTemplateDto.scope ?? WorkflowTemplateScope.global;
+    const businessLineId =
+      scope === WorkflowTemplateScope.businessLine
+        ? createWorkflowTemplateDto.businessLineId
+        : null;
+
+    if (scope === WorkflowTemplateScope.businessLine) {
+      if (!businessLineId) {
+        throw new BadRequestException(
+          'businessLineId is required for business_line scope',
+        );
+      }
+      await this.ensureCanManageBusinessLineTemplates(
+        businessLineId,
+        currentUser,
+      );
+    } else {
+      this.ensureAdmin(currentUser);
+      if (createWorkflowTemplateDto.businessLineId) {
+        throw new BadRequestException(
+          'businessLineId is only supported for business_line scope',
+        );
+      }
+    }
+
     this.ensureValidNodes(
       createWorkflowTemplateDto.nodes,
       createWorkflowTemplateDto.mode,
@@ -36,6 +70,10 @@ export class WorkflowTemplatesService {
 
     const existedTemplate = await this.workflowTemplateRepository.findByName(
       createWorkflowTemplateDto.name,
+      {
+        scope,
+        businessLineId,
+      },
     );
 
     if (existedTemplate) {
@@ -50,6 +88,8 @@ export class WorkflowTemplatesService {
       name: createWorkflowTemplateDto.name,
       description: createWorkflowTemplateDto.description ?? null,
       mode: createWorkflowTemplateDto.mode,
+      scope,
+      businessLineId,
       isActive: createWorkflowTemplateDto.isActive ?? true,
       nodesJson: normalizedNodes,
       latestVersion: 0,
@@ -71,21 +111,58 @@ export class WorkflowTemplatesService {
 
   async findAllWithPagination(
     query: FindAllWorkflowTemplatesDto,
+    currentUser: JwtPayloadType,
   ): Promise<WorkflowTemplate[]> {
     const paginationOptions: IPaginationOptions = {
       page: query.page ?? 1,
       limit: query.limit ?? 10,
     };
 
+    let scope = query.scope;
+    let businessLineId = query.businessLineId;
+    let includeGlobal = false;
+
+    if (query.projectId) {
+      const project = await this.projectsService.assertCanAccessProject(
+        query.projectId,
+        currentUser,
+      );
+      businessLineId = project.businessLineId;
+      includeGlobal = !scope;
+    } else if (businessLineId) {
+      if (scope !== WorkflowTemplateScope.global) {
+        await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+      }
+      includeGlobal = !scope;
+    } else if (scope === WorkflowTemplateScope.businessLine) {
+      if (!this.isAdmin(currentUser)) {
+        throw new ForbiddenException('forbiddenWorkflowTemplate');
+      }
+    } else {
+      scope = WorkflowTemplateScope.global;
+    }
+
     return this.workflowTemplateRepository.findAllWithPagination({
       paginationOptions,
       keyword: query.keyword,
       isActive: query.isActive,
+      scope,
+      businessLineId,
+      includeGlobal,
     });
   }
 
-  async findById(id: string): Promise<WorkflowTemplate | null> {
-    return this.workflowTemplateRepository.findById(id);
+  async findById(
+    id: string,
+    currentUser: JwtPayloadType,
+  ): Promise<WorkflowTemplate | null> {
+    const template = await this.workflowTemplateRepository.findById(id);
+    if (!template) {
+      return null;
+    }
+
+    await this.ensureCanAccessTemplate(template, currentUser);
+    return template;
   }
 
   async update(
@@ -93,12 +170,29 @@ export class WorkflowTemplatesService {
     updateWorkflowTemplateDto: UpdateWorkflowTemplateDto,
     currentUser: JwtPayloadType,
   ): Promise<WorkflowTemplate> {
-    this.ensureAdmin(currentUser);
-
     const existedTemplate = await this.workflowTemplateRepository.findById(id);
 
     if (!existedTemplate) {
       throw new NotFoundException('Workflow template not found');
+    }
+
+    await this.ensureCanManageTemplate(existedTemplate, currentUser);
+
+    if (
+      updateWorkflowTemplateDto.scope !== undefined &&
+      updateWorkflowTemplateDto.scope !== existedTemplate.scope
+    ) {
+      throw new ConflictException('Workflow template scope cannot be changed');
+    }
+
+    if (
+      updateWorkflowTemplateDto.businessLineId !== undefined &&
+      updateWorkflowTemplateDto.businessLineId !==
+        (existedTemplate.businessLineId ?? undefined)
+    ) {
+      throw new ConflictException(
+        'Workflow template businessLineId cannot be changed',
+      );
     }
 
     if (
@@ -108,6 +202,10 @@ export class WorkflowTemplatesService {
       const duplicatedTemplate =
         await this.workflowTemplateRepository.findByName(
           updateWorkflowTemplateDto.name,
+          {
+            scope: existedTemplate.scope,
+            businessLineId: existedTemplate.businessLineId ?? null,
+          },
         );
 
       if (duplicatedTemplate) {
@@ -151,14 +249,13 @@ export class WorkflowTemplatesService {
     reorderDto: ReorderWorkflowTemplateNodesDto,
     currentUser: JwtPayloadType,
   ): Promise<WorkflowTemplate> {
-    this.ensureAdmin(currentUser);
-
     const template = await this.workflowTemplateRepository.findById(templateId);
 
     if (!template) {
       throw new NotFoundException('Workflow template not found');
     }
 
+    await this.ensureCanManageTemplate(template, currentUser);
     this.ensureValidNodes(reorderDto.nodes, template.mode);
 
     const updatedTemplate = await this.workflowTemplateRepository.update(
@@ -176,14 +273,13 @@ export class WorkflowTemplatesService {
   }
 
   async remove(id: string, currentUser: JwtPayloadType): Promise<void> {
-    this.ensureAdmin(currentUser);
-
     const existedTemplate = await this.workflowTemplateRepository.findById(id);
 
     if (!existedTemplate) {
       throw new NotFoundException('Workflow template not found');
     }
 
+    await this.ensureCanManageTemplate(existedTemplate, currentUser);
     await this.workflowTemplateRepository.remove(id);
   }
 
@@ -191,14 +287,13 @@ export class WorkflowTemplatesService {
     templateId: string,
     currentUser: JwtPayloadType,
   ): Promise<WorkflowTemplateVersion> {
-    this.ensureAdmin(currentUser);
-
     const template = await this.workflowTemplateRepository.findById(templateId);
 
     if (!template) {
       throw new NotFoundException('Workflow template not found');
     }
 
+    await this.ensureCanManageTemplate(template, currentUser);
     const nextVersion = template.latestVersion + 1;
 
     const version = await this.workflowTemplateVersionRepository.create({
@@ -222,28 +317,36 @@ export class WorkflowTemplatesService {
     templateId: string,
     currentUser: JwtPayloadType,
   ): Promise<WorkflowTemplateVersion[]> {
-    this.ensureAdmin(currentUser);
-
     const template = await this.workflowTemplateRepository.findById(templateId);
 
     if (!template) {
       throw new NotFoundException('Workflow template not found');
     }
 
+    await this.ensureCanAccessTemplate(template, currentUser);
     return this.workflowTemplateVersionRepository.findByTemplateId(templateId);
   }
 
   async getVersionForTask({
     templateId,
     version,
+    projectBusinessLineId,
   }: {
     templateId: string;
     version?: number;
+    projectBusinessLineId: string;
   }): Promise<WorkflowTemplateVersion> {
     const template = await this.workflowTemplateRepository.findById(templateId);
 
     if (!template) {
       throw new NotFoundException('Workflow template not found');
+    }
+
+    if (
+      template.scope === WorkflowTemplateScope.businessLine &&
+      template.businessLineId !== projectBusinessLineId
+    ) {
+      throw new ForbiddenException('forbiddenWorkflowTemplate');
     }
 
     if (!template.isActive) {
@@ -322,8 +425,108 @@ export class WorkflowTemplatesService {
   }
 
   private ensureAdmin(currentUser: JwtPayloadType): void {
-    if (!currentUser.roles?.includes('admin')) {
+    if (!this.isAdmin(currentUser)) {
       throw new ForbiddenException('forbiddenWorkflowTemplateManage');
+    }
+  }
+
+  private isAdmin(currentUser: JwtPayloadType): boolean {
+    return currentUser.roles?.includes('admin') ?? false;
+  }
+
+  private async ensureCanManageBusinessLineTemplates(
+    businessLineId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.ensureBusinessLineExists(businessLineId);
+
+    if (this.isAdmin(currentUser)) {
+      return;
+    }
+
+    const member =
+      await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
+        businessLineId,
+        currentUser.sub,
+      );
+
+    if (!member) {
+      throw new ForbiddenException('forbiddenBusinessLine');
+    }
+
+    if (
+      member.role !== BusinessLineMemberRole.owner &&
+      member.role !== BusinessLineMemberRole.admin
+    ) {
+      throw new ForbiddenException('forbiddenWorkflowTemplateManage');
+    }
+  }
+
+  private async ensureCanAccessBusinessLine(
+    businessLineId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.ensureBusinessLineExists(businessLineId);
+
+    if (this.isAdmin(currentUser)) {
+      return;
+    }
+
+    const member =
+      await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
+        businessLineId,
+        currentUser.sub,
+      );
+
+    if (!member) {
+      throw new ForbiddenException('forbiddenBusinessLine');
+    }
+  }
+
+  private async ensureCanAccessTemplate(
+    template: WorkflowTemplate,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    if (template.scope === WorkflowTemplateScope.global) {
+      return;
+    }
+
+    if (!template.businessLineId) {
+      throw new NotFoundException('Workflow template business line not found');
+    }
+
+    await this.ensureCanAccessBusinessLine(
+      template.businessLineId,
+      currentUser,
+    );
+  }
+
+  private async ensureCanManageTemplate(
+    template: WorkflowTemplate,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    if (template.scope === WorkflowTemplateScope.global) {
+      this.ensureAdmin(currentUser);
+      return;
+    }
+
+    if (!template.businessLineId) {
+      throw new NotFoundException('Workflow template business line not found');
+    }
+
+    await this.ensureCanManageBusinessLineTemplates(
+      template.businessLineId,
+      currentUser,
+    );
+  }
+
+  private async ensureBusinessLineExists(
+    businessLineId: string,
+  ): Promise<void> {
+    const businessLine =
+      await this.businessLineRepository.findById(businessLineId);
+    if (!businessLine) {
+      throw new NotFoundException('Business line not found');
     }
   }
 }
