@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { Project } from './domain/project';
 import { ProjectsService } from './projects.service';
@@ -65,6 +65,7 @@ const createProjectsService = () => {
     projectRepository,
     projectMemberRepository,
     businessLineRepository,
+    businessLineMemberRepository,
   };
 };
 
@@ -168,5 +169,82 @@ describe('ProjectsService', () => {
     );
     expect(projectRepository.remove).toHaveBeenCalledWith(project.id);
     expect(projectMemberRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('should inspect repository and prioritize master as recommended default branch', async () => {
+    const { service, businessLineRepository } = createProjectsService();
+    const serviceAny = service as any;
+    const currentUser = createCurrentUser();
+
+    businessLineRepository.findById.mockResolvedValue({
+      id: 'business-line-1',
+      name: 'BL',
+    });
+    jest.spyOn(serviceAny, 'runCommand').mockResolvedValue({
+      success: true,
+      stdout: [
+        'aaaaaaaa refs/heads/feature-x',
+        'bbbbbbbb refs/heads/main',
+        'cccccccc refs/heads/master',
+      ].join('\n'),
+      stderr: '',
+    });
+
+    const result = await service.inspectRepository(
+      {
+        businessLineId: 'business-line-1',
+        gitUrl: 'git@gitlab.yc345.tv:frontend/ainative-workspace.git',
+      },
+      currentUser,
+    );
+
+    expect(result).toEqual({
+      repoName: 'ainative-workspace',
+      branches: ['master', 'main', 'feature-x'],
+      recommendedDefaultBranch: 'master',
+    });
+  });
+
+  it('should return bad request when repository inspect command fails', async () => {
+    const { service, businessLineRepository } = createProjectsService();
+    const serviceAny = service as any;
+    const currentUser = createCurrentUser();
+
+    businessLineRepository.findById.mockResolvedValue({
+      id: 'business-line-1',
+      name: 'BL',
+    });
+    jest.spyOn(serviceAny, 'runCommand').mockResolvedValue({
+      success: false,
+      stdout: '',
+      stderr: 'Permission denied (publickey).',
+    });
+
+    await expect(
+      service.inspectRepository(
+        {
+          businessLineId: 'business-line-1',
+          gitUrl: 'git@gitlab.yc345.tv:frontend/ainative-workspace.git',
+        },
+        currentUser,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('should reject inspect when business line does not exist', async () => {
+    const { service, businessLineRepository } = createProjectsService();
+    const currentUser = createCurrentUser();
+
+    businessLineRepository.findById.mockResolvedValue(null);
+
+    await expect(
+      service.inspectRepository(
+        {
+          businessLineId: 'business-line-1',
+          gitUrl: 'git@gitlab.yc345.tv:frontend/ainative-workspace.git',
+        },
+        currentUser,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

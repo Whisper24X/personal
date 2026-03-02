@@ -2,7 +2,9 @@ import type { ProjectContext } from '@/types/api/project-context'
 import type {
   CreateProjectMemberPayload,
   CreateProjectPayload,
+  InspectProjectRepositoryPayload,
   Project,
+  ProjectRepositoryInspection,
   ProjectMember,
   UpdateProjectMemberPayload,
   UpdateProjectPayload,
@@ -34,6 +36,10 @@ export const projectsApi = {
 
   create(payload: CreateProjectPayload) {
     return apiHttp.post<Project>('/projects', payload)
+  },
+
+  inspectRepository(payload: InspectProjectRepositoryPayload) {
+    return apiHttp.post<ProjectRepositoryInspection>('/projects/inspect-repository', payload)
   },
 
   update(projectId: string, payload: UpdateProjectPayload) {

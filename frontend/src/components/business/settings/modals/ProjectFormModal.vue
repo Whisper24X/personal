@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { projectsApi } from '@/api/projects'
+import { toErrorMessage } from '@/utils/http/to-error-message'
 
 const props = defineProps<{
   open: boolean
   mode: 'create' | 'edit'
+  businessLineId?: string
   submitting: boolean
   initialName: string
   initialDescription: string
@@ -22,10 +25,38 @@ const description = ref('')
 const gitUrl = ref('')
 const defaultBranch = ref('main')
 const validationMessage = ref('')
+const branchOptions = ref<string[]>([])
+const inspectingRepository = ref(false)
+const inspectionErrorMessage = ref('')
+const nameEditedByUser = ref(false)
+const defaultBranchEditedByUser = ref(false)
+const autoFilledName = ref('')
+let inspectTimer: ReturnType<typeof setTimeout> | null = null
+let inspectRequestId = 0
 
 const modalTitle = computed(() => {
-  return props.mode === 'edit' ? '编辑项目' : '创建项目'
+  return props.mode === 'edit' ? '编辑项目' : '新建项目'
 })
+
+const clearInspectTimer = () => {
+  if (inspectTimer) {
+    clearTimeout(inspectTimer)
+    inspectTimer = null
+  }
+}
+
+const clearInspectionMeta = () => {
+  branchOptions.value = []
+  inspectingRepository.value = false
+  inspectionErrorMessage.value = ''
+}
+
+const resetAutoFillState = () => {
+  nameEditedByUser.value = false
+  defaultBranchEditedByUser.value = false
+  autoFilledName.value = ''
+  clearInspectionMeta()
+}
 
 const syncFormValues = () => {
   name.value = props.initialName
@@ -33,10 +64,113 @@ const syncFormValues = () => {
   gitUrl.value = props.initialGitUrl
   defaultBranch.value = props.initialDefaultBranch || 'main'
   validationMessage.value = ''
+  resetAutoFillState()
 }
 
 const close = () => {
   emit('update:open', false)
+}
+
+const markNameAsEdited = () => {
+  if (props.mode !== 'create') {
+    return
+  }
+
+  nameEditedByUser.value = true
+}
+
+const markDefaultBranchAsEdited = () => {
+  if (props.mode !== 'create') {
+    return
+  }
+
+  defaultBranchEditedByUser.value = true
+}
+
+const applyRepositoryInspection = (inspection: {
+  repoName: string
+  branches: string[]
+  recommendedDefaultBranch: string | null
+}) => {
+  branchOptions.value = inspection.branches
+
+  if (
+    inspection.repoName &&
+    (!nameEditedByUser.value ||
+      !name.value.trim() ||
+      name.value.trim() === autoFilledName.value)
+  ) {
+    name.value = inspection.repoName
+    autoFilledName.value = inspection.repoName
+  }
+
+  if (!inspection.branches.length) {
+    return
+  }
+
+  const recommendedBranch =
+    inspection.recommendedDefaultBranch ?? inspection.branches[0]
+
+  if (!recommendedBranch) {
+    return
+  }
+
+  if (!defaultBranchEditedByUser.value) {
+    defaultBranch.value = recommendedBranch
+    return
+  }
+
+  if (!inspection.branches.includes(defaultBranch.value.trim())) {
+    defaultBranch.value = recommendedBranch
+  }
+}
+
+const inspectRepository = async () => {
+  const businessLineId = props.businessLineId?.trim() ?? ''
+  const normalizedGitUrl = gitUrl.value.trim()
+
+  if (!businessLineId || !normalizedGitUrl) {
+    clearInspectionMeta()
+    return
+  }
+
+  const currentRequestId = ++inspectRequestId
+  inspectingRepository.value = true
+  inspectionErrorMessage.value = ''
+
+  try {
+    const inspection = await projectsApi.inspectRepository({
+      businessLineId,
+      gitUrl: normalizedGitUrl,
+    })
+
+    if (currentRequestId !== inspectRequestId) {
+      return
+    }
+
+    applyRepositoryInspection(inspection)
+  } catch (error) {
+    if (currentRequestId !== inspectRequestId) {
+      return
+    }
+
+    clearInspectionMeta()
+    inspectionErrorMessage.value = toErrorMessage(
+      error,
+      '读取仓库信息失败，请检查 Git 地址和访问权限',
+    )
+  } finally {
+    if (currentRequestId === inspectRequestId) {
+      inspectingRepository.value = false
+    }
+  }
+}
+
+const scheduleRepositoryInspection = () => {
+  clearInspectTimer()
+  inspectTimer = setTimeout(() => {
+    void inspectRepository()
+  }, 450)
 }
 
 const submit = () => {
@@ -46,7 +180,7 @@ const submit = () => {
   }
 
   if (!gitUrl.value.trim()) {
-    validationMessage.value = 'Git 仓库地址不能为空'
+    validationMessage.value = '仓库地址不能为空'
     return
   }
 
@@ -85,6 +219,31 @@ watch(
     syncFormValues()
   },
 )
+
+watch(
+  () => [props.open, props.mode, props.businessLineId, gitUrl.value],
+  ([open, mode]) => {
+    clearInspectTimer()
+    inspectRequestId += 1
+
+    if (!open || mode !== 'create') {
+      clearInspectionMeta()
+      return
+    }
+
+    if (!gitUrl.value.trim() || !props.businessLineId?.trim()) {
+      clearInspectionMeta()
+      return
+    }
+
+    scheduleRepositoryInspection()
+  },
+)
+
+onBeforeUnmount(() => {
+  clearInspectTimer()
+  inspectRequestId += 1
+})
 </script>
 
 <template>
@@ -134,12 +293,43 @@ watch(
 
         <form class="space-y-3 px-4 py-4" @submit.prevent="submit">
           <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">仓库地址</span>
+            <input
+              v-model="gitUrl"
+              type="text"
+              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              placeholder="git@gitlab.example.com:group/project.git"
+            />
+          </label>
+
+          <label class="block space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">默认分支</span>
+            <select
+              v-if="props.mode === 'create' && branchOptions.length > 0"
+              v-model="defaultBranch"
+              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              @change="markDefaultBranchAsEdited"
+            >
+              <option v-for="branch in branchOptions" :key="branch" :value="branch">{{ branch }}</option>
+            </select>
+            <input
+              v-else
+              v-model="defaultBranch"
+              type="text"
+              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              placeholder="main"
+              @input="markDefaultBranchAsEdited"
+            />
+          </label>
+
+          <label class="block space-y-1">
             <span class="text-xs font-semibold text-muted-foreground">项目名称</span>
             <input
               v-model="name"
               type="text"
               class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
               placeholder="输入项目名称"
+              @input="markNameAsEdited"
             />
           </label>
 
@@ -153,25 +343,12 @@ watch(
             />
           </label>
 
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">Git 仓库地址</span>
-            <input
-              v-model="gitUrl"
-              type="text"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              placeholder="git@gitlab.example.com:group/project.git"
-            />
-          </label>
-
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">默认分支</span>
-            <input
-              v-model="defaultBranch"
-              type="text"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              placeholder="main"
-            />
-          </label>
+          <p v-if="props.mode === 'create' && inspectingRepository" class="text-xs text-muted-foreground">
+            正在读取仓库信息...
+          </p>
+          <p v-else-if="props.mode === 'create' && inspectionErrorMessage" class="text-xs text-destructive">
+            {{ inspectionErrorMessage }}
+          </p>
 
           <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
           <p v-else-if="props.errorMessage" class="text-sm text-destructive">{{ props.errorMessage }}</p>
@@ -189,7 +366,7 @@ watch(
               class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
               :disabled="props.submitting"
             >
-              {{ props.submitting ? '保存中...' : props.mode === 'edit' ? '保存修改' : '创建项目' }}
+              {{ props.submitting ? '保存中...' : props.mode === 'edit' ? '保存修改' : '新建项目' }}
             </button>
           </div>
         </form>

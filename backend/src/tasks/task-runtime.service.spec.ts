@@ -169,7 +169,7 @@ describe('TaskRuntimeService', () => {
     );
 
     expect((service as any).resolveRepositoryRoot(project)).toBe(
-      expectedProjectBase,
+      path.join(expectedProjectBase, 'ainative-workspace'),
     );
     expect((service as any).resolveWorktreeBaseDir(project)).toBe(
       expectedWorktreeBase,

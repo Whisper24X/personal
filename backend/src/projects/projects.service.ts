@@ -22,6 +22,10 @@ import { FindAllProjectsDto } from './dto/find-all-projects.dto';
 import { ProjectMember } from './domain/project-member';
 import { CreateProjectMemberDto } from './dto/create-project-member.dto';
 import { UpdateProjectMemberDto } from './dto/update-project-member.dto';
+import {
+  InspectProjectRepositoryDto,
+  ProjectRepositoryInspectionDto,
+} from './dto/inspect-project-repository.dto';
 import { UsersService } from '../users/users.service';
 import { ProjectMemberRole } from './dto/project-member-role.enum';
 import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
@@ -97,6 +101,40 @@ export class ProjectsService {
     }
 
     return project;
+  }
+
+  async inspectRepository(
+    inspectProjectRepositoryDto: InspectProjectRepositoryDto,
+    currentUser: JwtPayloadType,
+  ): Promise<ProjectRepositoryInspectionDto> {
+    await this.ensureCanManageBusinessLine(
+      inspectProjectRepositoryDto.businessLineId,
+      currentUser,
+    );
+
+    const gitUrl = inspectProjectRepositoryDto.gitUrl.trim();
+    const result = await this.runCommand('git', [
+      'ls-remote',
+      '--heads',
+      '--refs',
+      gitUrl,
+    ]);
+
+    if (!result.success) {
+      throw new BadRequestException(
+        `Git repository is unreachable or unauthorized: ${this.truncateError(result.stderr)}`,
+      );
+    }
+
+    const branches = this.sortBranches(this.parseRemoteBranches(result.stdout));
+    const recommendedDefaultBranch =
+      this.resolveRecommendedDefaultBranch(branches);
+
+    return {
+      repoName: this.extractRepositoryName(gitUrl) ?? 'repository',
+      branches,
+      recommendedDefaultBranch,
+    };
   }
 
   async findAllWithPagination({
@@ -698,7 +736,10 @@ export class ProjectsService {
     const repositoryDirName = this.resolveRepositoryDirectoryName(project);
 
     if (!cacheBaseDir) {
-      return this.resolveProjectStorageBaseDir(project);
+      return path.join(
+        this.resolveProjectStorageBaseDir(project),
+        repositoryDirName,
+      );
     }
 
     return path.resolve(cacheBaseDir, `${repositoryDirName}-${project.id}`);
@@ -748,6 +789,55 @@ export class ProjectsService {
     return normalized || null;
   }
 
+  private parseRemoteBranches(stdout: string): string[] {
+    const branchNames = stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => line.split(/\s+/)[1] ?? '')
+      .map((ref) => ref.replace(/^refs\/heads\//, ''))
+      .filter(Boolean);
+
+    return Array.from(new Set(branchNames));
+  }
+
+  private sortBranches(branches: string[]): string[] {
+    return [...new Set(branches)].sort((left, right) => {
+      const priorityDiff =
+        this.resolveBranchPriority(left) - this.resolveBranchPriority(right);
+
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
+
+      return left.localeCompare(right);
+    });
+  }
+
+  private resolveBranchPriority(branch: string): number {
+    if (branch === 'master') {
+      return 0;
+    }
+
+    if (branch === 'main') {
+      return 1;
+    }
+
+    return 2;
+  }
+
+  private resolveRecommendedDefaultBranch(branches: string[]): string | null {
+    if (branches.includes('master')) {
+      return 'master';
+    }
+
+    if (branches.includes('main')) {
+      return 'main';
+    }
+
+    return branches[0] ?? null;
+  }
+
   private sanitizeSegment(value: string): string {
     return value
       .trim()
@@ -792,14 +882,19 @@ export class ProjectsService {
   private async runCommand(
     command: string,
     args: string[],
-  ): Promise<{ success: boolean; stderr: string }> {
+  ): Promise<{ success: boolean; stdout: string; stderr: string }> {
     return new Promise((resolve) => {
       const childProcess = spawn(command, args, {
         env: process.env,
         stdio: 'pipe',
       });
 
+      let stdout = '';
       let stderr = '';
+
+      childProcess.stdout?.on('data', (chunk) => {
+        stdout += chunk.toString('utf-8');
+      });
 
       childProcess.stderr?.on('data', (chunk) => {
         stderr += chunk.toString('utf-8');
@@ -813,6 +908,7 @@ export class ProjectsService {
         clearTimeout(timeoutRef);
         resolve({
           success: false,
+          stdout: stdout.trimEnd(),
           stderr: error.message,
         });
       });
@@ -821,6 +917,7 @@ export class ProjectsService {
         clearTimeout(timeoutRef);
         resolve({
           success: code === 0,
+          stdout: stdout.trimEnd(),
           stderr: stderr.trimEnd(),
         });
       });

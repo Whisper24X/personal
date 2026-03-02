@@ -36,6 +36,10 @@ import { infinityPagination } from '../utils/infinity-pagination';
 import { ProjectMember } from './domain/project-member';
 import { CreateProjectMemberDto } from './dto/create-project-member.dto';
 import { UpdateProjectMemberDto } from './dto/update-project-member.dto';
+import {
+  InspectProjectRepositoryDto,
+  ProjectRepositoryInspectionDto,
+} from './dto/inspect-project-repository.dto';
 
 @ApiTags('Projects')
 @ApiBearerAuth()
@@ -52,6 +56,19 @@ export class ProjectsController {
   @HttpCode(HttpStatus.CREATED)
   create(@Request() request, @Body() createProjectDto: CreateProjectDto) {
     return this.projectsService.create(createProjectDto, request.user);
+  }
+
+  @Post('inspect-repository')
+  @ApiOkResponse({ type: ProjectRepositoryInspectionDto })
+  @HttpCode(HttpStatus.OK)
+  inspectRepository(
+    @Request() request,
+    @Body() inspectProjectRepositoryDto: InspectProjectRepositoryDto,
+  ): Promise<ProjectRepositoryInspectionDto> {
+    return this.projectsService.inspectRepository(
+      inspectProjectRepositoryDto,
+      request.user,
+    );
   }
 
   @Get()

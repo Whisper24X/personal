@@ -442,7 +442,10 @@ export class TaskRuntimeService {
     const repositoryDirName = this.resolveRepositoryDirectoryName(project);
 
     if (!cacheBaseDir) {
-      return this.resolveProjectStorageBaseDir(project);
+      return path.join(
+        this.resolveProjectStorageBaseDir(project),
+        repositoryDirName,
+      );
     }
 
     return path.resolve(cacheBaseDir, `${repositoryDirName}-${project.id}`);

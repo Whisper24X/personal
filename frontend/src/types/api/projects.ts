@@ -38,3 +38,14 @@ export type CreateProjectMemberPayload = {
 export type UpdateProjectMemberPayload = {
   role: ProjectMember['role']
 }
+
+export type InspectProjectRepositoryPayload = {
+  businessLineId: string
+  gitUrl: string
+}
+
+export type ProjectRepositoryInspection = {
+  repoName: string
+  branches: string[]
+  recommendedDefaultBranch: string | null
+}

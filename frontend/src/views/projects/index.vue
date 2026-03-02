@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { businessLinesApi, type BusinessLine } from '@/api/business-lines'
@@ -20,7 +20,15 @@ const editingProjectId = ref<string | null>(null)
 const projectFormModalOpen = ref(false)
 const query = ref('')
 const validationMessage = ref('')
+const repositoryBranchOptions = ref<string[]>([])
+const inspectingRepository = ref(false)
+const repositoryInspectionError = ref('')
+const projectNameEditedByUser = ref(false)
+const defaultBranchEditedByUser = ref(false)
+const autoFilledProjectName = ref('')
 const message = useMessage()
+let inspectRepositoryTimer: ReturnType<typeof setTimeout> | null = null
+let inspectRepositoryRequestId = 0
 
 const businessLines = ref<BusinessLine[]>([])
 const projects = ref<Project[]>([])
@@ -154,12 +162,33 @@ const totalProjectCount = computed(() => {
 
 const isEditingProject = computed(() => Boolean(editingProjectId.value))
 
+const clearInspectRepositoryTimer = () => {
+  if (inspectRepositoryTimer) {
+    clearTimeout(inspectRepositoryTimer)
+    inspectRepositoryTimer = null
+  }
+}
+
+const clearRepositoryInspectionMeta = () => {
+  repositoryBranchOptions.value = []
+  inspectingRepository.value = false
+  repositoryInspectionError.value = ''
+}
+
+const resetRepositoryAutoFillState = () => {
+  projectNameEditedByUser.value = false
+  defaultBranchEditedByUser.value = false
+  autoFilledProjectName.value = ''
+  clearRepositoryInspectionMeta()
+}
+
 const resetProjectForm = () => {
   editingProjectId.value = null
   createForm.name = ''
   createForm.description = ''
   createForm.gitUrl = ''
   createForm.defaultBranch = 'main'
+  resetRepositoryAutoFillState()
 }
 
 const openCreateProjectModal = () => {
@@ -181,8 +210,111 @@ const startEditProject = (project: Project) => {
   createForm.description = project.description ?? ''
   createForm.gitUrl = project.gitUrl
   createForm.defaultBranch = project.defaultBranch
+  clearRepositoryInspectionMeta()
   validationMessage.value = ''
   projectFormModalOpen.value = true
+}
+
+const handleProjectNameInput = () => {
+  if (isEditingProject.value) {
+    return
+  }
+
+  projectNameEditedByUser.value = true
+}
+
+const handleDefaultBranchInput = () => {
+  if (isEditingProject.value) {
+    return
+  }
+
+  defaultBranchEditedByUser.value = true
+}
+
+const applyRepositoryInspection = (inspection: {
+  repoName: string
+  branches: string[]
+  recommendedDefaultBranch: string | null
+}) => {
+  repositoryBranchOptions.value = inspection.branches
+
+  if (
+    inspection.repoName &&
+    (!projectNameEditedByUser.value ||
+      !createForm.name.trim() ||
+      createForm.name.trim() === autoFilledProjectName.value)
+  ) {
+    createForm.name = inspection.repoName
+    autoFilledProjectName.value = inspection.repoName
+  }
+
+  if (!inspection.branches.length) {
+    return
+  }
+
+  const recommendedBranch =
+    inspection.recommendedDefaultBranch ?? inspection.branches[0]
+
+  if (!recommendedBranch) {
+    return
+  }
+
+  if (!defaultBranchEditedByUser.value) {
+    createForm.defaultBranch = recommendedBranch
+    return
+  }
+
+  if (!inspection.branches.includes(createForm.defaultBranch.trim())) {
+    createForm.defaultBranch = recommendedBranch
+  }
+}
+
+const inspectProjectRepository = async () => {
+  const businessLineId = createForm.businessLineId.trim()
+  const gitUrl = createForm.gitUrl.trim()
+
+  if (!projectFormModalOpen.value || isEditingProject.value || !businessLineId || !gitUrl) {
+    clearRepositoryInspectionMeta()
+    return
+  }
+
+  const currentRequestId = ++inspectRepositoryRequestId
+  inspectingRepository.value = true
+  repositoryInspectionError.value = ''
+
+  try {
+    const inspection = await projectsApi.inspectRepository({
+      businessLineId,
+      gitUrl,
+    })
+
+    if (currentRequestId !== inspectRepositoryRequestId) {
+      return
+    }
+
+    applyRepositoryInspection(inspection)
+  } catch (error) {
+    if (currentRequestId !== inspectRepositoryRequestId) {
+      return
+    }
+
+    clearRepositoryInspectionMeta()
+    repositoryInspectionError.value = toErrorMessage(
+      error,
+      '读取仓库信息失败，请检查 Git 地址和访问权限',
+    )
+  } finally {
+    if (currentRequestId === inspectRepositoryRequestId) {
+      inspectingRepository.value = false
+    }
+  }
+}
+
+const scheduleRepositoryInspection = () => {
+  clearInspectRepositoryTimer()
+  inspectRepositoryTimer = setTimeout(() => {
+    void inspectProjectRepository()
+  }, 450)
 }
 
 const submitProject = async () => {
@@ -208,7 +340,7 @@ const submitProject = async () => {
       message.success('保存项目成功')
     } else {
       await projectsApi.create(payload)
-      message.success('创建项目成功')
+      message.success('新建项目成功')
     }
 
     closeProjectFormModal()
@@ -243,6 +375,31 @@ const removeProject = async (project: Project) => {
 
 onMounted(() => {
   void loadData()
+})
+
+watch(
+  () => [projectFormModalOpen.value, editingProjectId.value, createForm.businessLineId, createForm.gitUrl],
+  ([projectModalOpen, currentEditingProjectId]) => {
+    clearInspectRepositoryTimer()
+    inspectRepositoryRequestId += 1
+
+    if (!projectModalOpen || currentEditingProjectId) {
+      clearRepositoryInspectionMeta()
+      return
+    }
+
+    if (!createForm.businessLineId.trim() || !createForm.gitUrl.trim()) {
+      clearRepositoryInspectionMeta()
+      return
+    }
+
+    scheduleRepositoryInspection()
+  },
+)
+
+onBeforeUnmount(() => {
+  clearInspectRepositoryTimer()
+  inspectRepositoryRequestId += 1
 })
 </script>
 
@@ -418,18 +575,8 @@ onMounted(() => {
               </select>
             </label>
 
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">项目名称</span>
-              <input
-                v-model="createForm.name"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                placeholder="例如：AINative Web"
-                type="text"
-              />
-            </label>
-
             <label class="space-y-1 md:col-span-2">
-              <span class="text-xs font-semibold text-muted-foreground">Git 仓库地址</span>
+              <span class="text-xs font-semibold text-muted-foreground">仓库地址</span>
               <input
                 v-model="createForm.gitUrl"
                 class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
@@ -440,14 +587,37 @@ onMounted(() => {
 
             <label class="space-y-1">
               <span class="text-xs font-semibold text-muted-foreground">默认分支</span>
+              <select
+                v-if="!isEditingProject && repositoryBranchOptions.length > 0"
+                v-model="createForm.defaultBranch"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                @change="handleDefaultBranchInput"
+              >
+                <option v-for="branch in repositoryBranchOptions" :key="branch" :value="branch">
+                  {{ branch }}
+                </option>
+              </select>
               <input
+                v-else
                 v-model="createForm.defaultBranch"
                 class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
                 type="text"
+                @input="handleDefaultBranchInput"
               />
             </label>
 
-            <label class="space-y-1">
+            <label class="space-y-1 md:col-span-2">
+              <span class="text-xs font-semibold text-muted-foreground">项目名称</span>
+              <input
+                v-model="createForm.name"
+                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="例如：AINative Web"
+                type="text"
+                @input="handleProjectNameInput"
+              />
+            </label>
+
+            <label class="space-y-1 md:col-span-2">
               <span class="text-xs font-semibold text-muted-foreground">描述（可选）</span>
               <input
                 v-model="createForm.description"
@@ -455,6 +625,19 @@ onMounted(() => {
                 type="text"
               />
             </label>
+
+            <p
+              v-if="!isEditingProject && inspectingRepository"
+              class="text-xs text-muted-foreground md:col-span-2"
+            >
+              正在读取仓库信息...
+            </p>
+            <p
+              v-else-if="!isEditingProject && repositoryInspectionError"
+              class="text-xs text-destructive md:col-span-2"
+            >
+              {{ repositoryInspectionError }}
+            </p>
 
             <p v-if="validationMessage" class="text-sm text-destructive md:col-span-2">{{ validationMessage }}</p>
 
@@ -471,7 +654,7 @@ onMounted(() => {
                 :disabled="submitting"
                 type="submit"
               >
-                {{ submitting ? '保存中...' : isEditingProject ? '保存修改' : '创建项目' }}
+                {{ submitting ? '保存中...' : isEditingProject ? '保存修改' : '新建项目' }}
               </button>
             </div>
           </form>

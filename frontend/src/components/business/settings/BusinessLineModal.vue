@@ -1330,7 +1330,7 @@ const submitProjectForm = async (payload: {
 
     projectFormModalOpen.value = false
     await refreshForCurrentLine({ includeMembers: activeTab.value === 'members' })
-    message.success(projectFormMode.value === 'create' ? '创建项目成功' : '保存项目成功')
+    message.success(projectFormMode.value === 'create' ? '新建项目成功' : '保存项目成功')
   } catch (error) {
     message.error(toErrorMessage(error, '保存项目失败'))
   } finally {
@@ -2842,6 +2842,7 @@ onBeforeUnmount(() => {
       <ProjectFormModal
         :open="projectFormModalOpen"
         :mode="projectFormMode"
+        :business-line-id="activeLineId"
         :submitting="projectFormSubmitting"
         :initial-name="projectFormInitialName"
         :initial-description="projectFormInitialDescription"
