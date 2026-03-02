@@ -8,8 +8,6 @@ import { TaskLogEventsService } from './task-log-events.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { TaskRuntimeService } from './task-runtime.service';
 import { AgentRunnerService } from './agent-runner.service';
-import { SkillsModule } from '../skills/skills.module';
-import { McpsModule } from '../mcps/mcps.module';
 import { RelationalBusinessLinePersistenceModule } from '../business-lines/infrastructure/persistence/relational/relational-persistence.module';
 
 @Module({
@@ -18,8 +16,6 @@ import { RelationalBusinessLinePersistenceModule } from '../business-lines/infra
     ProjectsModule,
     WorkflowTemplatesModule,
     NotificationsModule,
-    SkillsModule,
-    McpsModule,
     RelationalBusinessLinePersistenceModule,
   ],
   controllers: [TasksController],

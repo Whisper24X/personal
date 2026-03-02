@@ -29,6 +29,8 @@ import ConfirmActionModal from './modals/ConfirmActionModal.vue'
 import MemberPermissionModal from './modals/MemberPermissionModal.vue'
 import ProjectFormModal from './modals/ProjectFormModal.vue'
 import AgentToolConfigModal from './modals/AgentToolConfigModal.vue'
+import SkillUploadModal from './modals/SkillUploadModal.vue'
+import McpJsonImportModal from './modals/McpJsonImportModal.vue'
 
 type MainTab = 'projects' | 'members' | 'agent-cli' | 'workflow' | 'skill' | 'mcp' | 'settings'
 type ProjectPermissionRole = 'none' | 'manage' | 'developer' | 'viewer'
@@ -176,6 +178,18 @@ const workflowCreateForm = ref<{
 
 const loadingLocalSkills = ref(false)
 const loadingLocalMcps = ref(false)
+const uploadSkillModalOpen = ref(false)
+const uploadingLocalSkill = ref(false)
+const uploadSkillError = ref('')
+const mcpJsonImportModalOpen = ref(false)
+const importingLocalMcps = ref(false)
+const mcpJsonImportError = ref('')
+const mcpJsonPreviewModalOpen = ref(false)
+const loadingMcpJsonPreview = ref(false)
+const mcpJsonPreviewName = ref('')
+const mcpJsonPreviewSourcePath = ref('')
+const mcpJsonPreviewContent = ref('')
+const mcpJsonPreviewError = ref('')
 const localSkills = ref<Skill[]>([])
 const localMcps = ref<Mcp[]>([])
 
@@ -215,6 +229,9 @@ const hasNestedModalOpen = computed(() => {
     memberPermissionModalOpen.value ||
     agentToolConfigModalOpen.value ||
     workflowCreateModalOpen.value ||
+    uploadSkillModalOpen.value ||
+    mcpJsonImportModalOpen.value ||
+    mcpJsonPreviewModalOpen.value ||
     projectDeleteModalOpen.value ||
     memberRemoveModalOpen.value ||
     lineDeleteModalOpen.value ||
@@ -476,7 +493,9 @@ const isSupportedCliToolId = (toolId: string): toolId is SupportedCliToolId => {
   return SUPPORTED_CLI_TOOLS.some((tool) => tool.id === toolId)
 }
 
-const normalizeWorkflowNodeInput = (input?: WorkflowTemplateNodeInput): WorkflowTemplateNodeInputForm => {
+const normalizeWorkflowNodeInput = (
+  input?: WorkflowTemplateNodeInput,
+): WorkflowTemplateNodeInputForm => {
   const prompt = typeof input?.prompt === 'string' ? input.prompt : ''
   const cliToolId = typeof input?.cliToolId === 'string' ? input.cliToolId.trim() : ''
   const normalizedCliToolId = isSupportedCliToolId(cliToolId) ? cliToolId : ''
@@ -500,7 +519,9 @@ const resolveWorkflowNodeInputByContext = (
   const allowedToolIds = new Set(configuredTools.map((tool) => tool.id))
   const fallbackToolId = configuredTools[0]?.id ?? ''
   const cliToolId =
-    nextInput.cliToolId && allowedToolIds.has(nextInput.cliToolId) ? nextInput.cliToolId : fallbackToolId
+    nextInput.cliToolId && allowedToolIds.has(nextInput.cliToolId)
+      ? nextInput.cliToolId
+      : fallbackToolId
 
   if (!cliToolId) {
     return {
@@ -908,20 +929,6 @@ const removeWorkflowTemplate = async (template: WorkflowTemplate) => {
   }
 }
 
-const resolveCatalogSourcePath = (payload?: Record<string, unknown> | null) => {
-  if (!payload || typeof payload !== 'object') {
-    return '-'
-  }
-
-  const sourcePath = payload.sourcePath
-  if (typeof sourcePath !== 'string') {
-    return '-'
-  }
-
-  const trimmedPath = sourcePath.trim()
-  return trimmedPath || '-'
-}
-
 const loadLocalSkills = async (lineId: string) => {
   if (!lineId) {
     localSkills.value = []
@@ -949,6 +956,36 @@ const loadLocalSkills = async (lineId: string) => {
   }
 }
 
+const openUploadSkillModal = () => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  uploadSkillError.value = ''
+  uploadSkillModalOpen.value = true
+}
+
+const submitUploadSkill = async (file: File) => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  uploadingLocalSkill.value = true
+  uploadSkillError.value = ''
+
+  try {
+    const uploadedSkill = await businessLinesApi.uploadLocalSkill(activeLineId.value, file)
+    uploadSkillModalOpen.value = false
+    await loadLocalSkills(activeLineId.value)
+    message.success(`Skill「${uploadedSkill.name}」上传成功`)
+  } catch (error) {
+    uploadSkillError.value = toErrorMessage(error, '上传 Skill 失败')
+    message.error(uploadSkillError.value)
+  } finally {
+    uploadingLocalSkill.value = false
+  }
+}
+
 const loadLocalMcps = async (lineId: string) => {
   if (!lineId) {
     localMcps.value = []
@@ -973,6 +1010,91 @@ const loadLocalMcps = async (lineId: string) => {
     if (lineId === activeLineId.value) {
       loadingLocalMcps.value = false
     }
+  }
+}
+
+const openImportMcpJsonModal = () => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  mcpJsonImportError.value = ''
+  mcpJsonImportModalOpen.value = true
+}
+
+const submitImportMcpJson = async (payload: Record<string, unknown>) => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  importingLocalMcps.value = true
+  mcpJsonImportError.value = ''
+
+  try {
+    const result = await businessLinesApi.importLocalMcps(activeLineId.value, {
+      payload,
+    })
+    mcpJsonImportModalOpen.value = false
+    await loadLocalMcps(activeLineId.value)
+
+    const summary =
+      result.overwrittenCount > 0
+        ? `导入 ${result.importedCount} 个，覆盖 ${result.overwrittenCount} 个`
+        : `导入 ${result.importedCount} 个`
+    message.success(`MCP 添加成功（${summary}）`)
+  } catch (error) {
+    mcpJsonImportError.value = toErrorMessage(error, '添加 MCP 失败')
+    message.error(mcpJsonImportError.value)
+  } finally {
+    importingLocalMcps.value = false
+  }
+}
+
+const resolveMcpSourcePath = (item: Mcp) => {
+  const sourcePath = item.metadataJson?.sourcePath
+  if (typeof sourcePath !== 'string') {
+    return ''
+  }
+
+  return sourcePath.trim()
+}
+
+const openMcpJsonPreview = async (item: Mcp) => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  const sourcePath = resolveMcpSourcePath(item)
+  if (!sourcePath) {
+    message.error('未找到 MCP 源配置路径')
+    return
+  }
+
+  mcpJsonPreviewModalOpen.value = true
+  loadingMcpJsonPreview.value = true
+  mcpJsonPreviewName.value = item.name
+  mcpJsonPreviewSourcePath.value = sourcePath
+  mcpJsonPreviewContent.value = ''
+  mcpJsonPreviewError.value = ''
+
+  try {
+    const response = await businessLinesApi.getLocalMcpConfig(activeLineId.value, {
+      name: item.name,
+      sourcePath,
+    })
+    mcpJsonPreviewContent.value = JSON.stringify(
+      {
+        mcpServers: {
+          [response.name]: response.config,
+        },
+      },
+      null,
+      2,
+    )
+  } catch (error) {
+    mcpJsonPreviewError.value = toErrorMessage(error, '读取 MCP JSON 失败')
+  } finally {
+    loadingMcpJsonPreview.value = false
   }
 }
 
@@ -1053,6 +1175,8 @@ const resetTabErrors = () => {
   memberPermissionModalError.value = ''
   agentCliValidationMessage.value = ''
   workflowValidationMessage.value = ''
+  mcpJsonImportError.value = ''
+  mcpJsonPreviewError.value = ''
 }
 
 const closeModal = () => {
@@ -1065,6 +1189,9 @@ const closeNestedModals = () => {
   memberPermissionModalOpen.value = false
   agentToolConfigModalOpen.value = false
   workflowCreateModalOpen.value = false
+  uploadSkillModalOpen.value = false
+  mcpJsonImportModalOpen.value = false
+  mcpJsonPreviewModalOpen.value = false
   projectDeleteModalOpen.value = false
   memberRemoveModalOpen.value = false
   lineDeleteModalOpen.value = false
@@ -1730,6 +1857,18 @@ watch(
       loadingWorkflowConfiguredCliTools.value = false
       localSkills.value = []
       localMcps.value = []
+      uploadSkillModalOpen.value = false
+      uploadSkillError.value = ''
+      uploadingLocalSkill.value = false
+      mcpJsonImportModalOpen.value = false
+      importingLocalMcps.value = false
+      mcpJsonImportError.value = ''
+      mcpJsonPreviewModalOpen.value = false
+      loadingMcpJsonPreview.value = false
+      mcpJsonPreviewName.value = ''
+      mcpJsonPreviewSourcePath.value = ''
+      mcpJsonPreviewContent.value = ''
+      mcpJsonPreviewError.value = ''
       resetWorkflowCreateForm()
 
       activeLineId.value = props.activeBusinessLineId || props.lines[0]?.id || ''
@@ -1799,6 +1938,18 @@ watch(
       loadingWorkflowConfiguredCliTools.value = false
       localSkills.value = []
       localMcps.value = []
+      uploadSkillModalOpen.value = false
+      uploadSkillError.value = ''
+      uploadingLocalSkill.value = false
+      mcpJsonImportModalOpen.value = false
+      importingLocalMcps.value = false
+      mcpJsonImportError.value = ''
+      mcpJsonPreviewModalOpen.value = false
+      loadingMcpJsonPreview.value = false
+      mcpJsonPreviewName.value = ''
+      mcpJsonPreviewSourcePath.value = ''
+      mcpJsonPreviewContent.value = ''
+      mcpJsonPreviewError.value = ''
       resetAgentToolConfigForm()
       resetWorkflowCreateForm()
       return
@@ -2396,7 +2547,11 @@ onBeforeUnmount(() => {
                     <div>
                       <p class="text-sm font-semibold">模板列表</p>
                       <p class="mt-1 text-xs text-muted-foreground">
-                        {{ loadingWorkflowTemplates ? '加载中...' : `共 ${workflowTemplates.length} 个` }}
+                        {{
+                          loadingWorkflowTemplates
+                            ? '加载中...'
+                            : `共 ${workflowTemplates.length} 个`
+                        }}
                       </p>
                     </div>
                     <div class="flex items-center gap-2">
@@ -2498,19 +2653,26 @@ onBeforeUnmount(() => {
                 <article class="panel-card p-5">
                   <div class="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <p class="text-sm font-semibold">业务线本地 Skill</p>
-                      <p class="mt-1 text-xs text-muted-foreground">
-                        读取路径：`~/.ainative/data/{{ activeLineId || '{business_line_id}' }}/skills`
-                      </p>
+                      <p class="text-sm font-semibold">Skills 列表</p>
                     </div>
-                    <button
-                      type="button"
-                      class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
-                      :disabled="!activeLineId || loadingLocalSkills"
-                      @click="loadLocalSkills(activeLineId)"
-                    >
-                      刷新
-                    </button>
+                    <div class="ml-auto flex items-center gap-2">
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                        :disabled="!activeLineId || loadingLocalSkills"
+                        @click="loadLocalSkills(activeLineId)"
+                      >
+                        刷新
+                      </button>
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="!activeLineId || uploadingLocalSkill"
+                        @click="openUploadSkillModal"
+                      >
+                        上传技能
+                      </button>
+                    </div>
                   </div>
 
                   <div v-if="loadingLocalSkills" class="mt-3 text-sm text-muted-foreground">
@@ -2523,15 +2685,9 @@ onBeforeUnmount(() => {
                       :key="item.id"
                       class="rounded-xl border border-border bg-background/70 px-4 py-3"
                     >
-                      <div class="flex flex-wrap items-center justify-between gap-2">
-                        <p class="text-sm font-semibold">{{ item.name }}</p>
-                        <span class="text-xs text-muted-foreground">版本：{{ item.version }}</span>
-                      </div>
+                      <p class="text-sm font-semibold">{{ item.name }}</p>
                       <p class="mt-1 text-xs text-muted-foreground">
                         {{ item.description ?? '暂无描述' }}
-                      </p>
-                      <p class="mt-1 font-mono text-[11px] text-muted-foreground">
-                        {{ resolveCatalogSourcePath(item.metadataJson ?? null) }}
                       </p>
                     </article>
 
@@ -2549,19 +2705,26 @@ onBeforeUnmount(() => {
                 <article class="panel-card p-5">
                   <div class="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <p class="text-sm font-semibold">业务线本地 MCP</p>
-                      <p class="mt-1 text-xs text-muted-foreground">
-                        读取路径：`~/.ainative/data/{{ activeLineId || '{business_line_id}' }}/mcp`
-                      </p>
+                      <p class="text-sm font-semibold">MCP 列表</p>
                     </div>
-                    <button
-                      type="button"
-                      class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
-                      :disabled="!activeLineId || loadingLocalMcps"
-                      @click="loadLocalMcps(activeLineId)"
-                    >
-                      刷新
-                    </button>
+                    <div class="ml-auto flex items-center gap-2">
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                        :disabled="!activeLineId || loadingLocalMcps"
+                        @click="loadLocalMcps(activeLineId)"
+                      >
+                        刷新
+                      </button>
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="!activeLineId || importingLocalMcps"
+                        @click="openImportMcpJsonModal"
+                      >
+                        添加
+                      </button>
+                    </div>
                   </div>
 
                   <div v-if="loadingLocalMcps" class="mt-3 text-sm text-muted-foreground">
@@ -2572,19 +2735,25 @@ onBeforeUnmount(() => {
                     <article
                       v-for="item in localMcps"
                       :key="item.id"
-                      class="rounded-xl border border-border bg-background/70 px-4 py-3"
+                      :data-mcp-id="item.id"
+                      class="cursor-pointer rounded-xl border border-border bg-background/70 px-4 py-3 transition hover:bg-muted/30"
+                      role="button"
+                      tabindex="0"
+                      @click="void openMcpJsonPreview(item)"
+                      @keydown.enter.prevent="void openMcpJsonPreview(item)"
+                      @keydown.space.prevent="void openMcpJsonPreview(item)"
                     >
                       <div class="flex flex-wrap items-center justify-between gap-2">
                         <p class="text-sm font-semibold">{{ item.name }}</p>
                         <span class="text-xs text-muted-foreground">
-                          版本：{{ item.version }} · 工具数：{{ item.toolsCount }}
+                          <template v-if="item.version && item.version !== 'local'">
+                            版本：{{ item.version }} ·
+                          </template>
+                          工具数：{{ item.toolsCount }}
                         </span>
                       </div>
-                      <p class="mt-1 text-xs text-muted-foreground">
-                        {{ item.description ?? '暂无描述' }}
-                      </p>
-                      <p class="mt-1 font-mono text-[11px] text-muted-foreground">
-                        {{ resolveCatalogSourcePath(item.metadataJson ?? null) }}
+                      <p v-if="item.description" class="mt-1 text-xs text-muted-foreground">
+                        {{ item.description }}
                       </p>
                     </article>
 
@@ -2652,7 +2821,9 @@ onBeforeUnmount(() => {
         aria-labelledby="business-line-workflow-create-modal-title"
         @click.self="closeWorkflowCreateModal"
       >
-        <section class="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+        <section
+          class="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+        >
           <header class="flex items-center justify-between border-b border-border px-4 py-3">
             <h3 id="business-line-workflow-create-modal-title" class="text-sm font-semibold">
               创建业务线工作流模板
@@ -2667,11 +2838,16 @@ onBeforeUnmount(() => {
             </button>
           </header>
 
-          <form class="max-h-[calc(92vh-56px)] space-y-4 overflow-auto px-4 py-4" @submit.prevent="createWorkflowTemplate">
+          <form
+            class="max-h-[calc(92vh-56px)] space-y-4 overflow-auto px-4 py-4"
+            @submit.prevent="createWorkflowTemplate"
+          >
             <section class="space-y-3 rounded-xl border border-border bg-background/60 p-3">
               <div>
                 <p class="text-xs font-semibold text-muted-foreground">模板信息</p>
-                <p class="mt-1 text-[11px] text-muted-foreground">配置模板名称与描述，供业务线所有项目复用。</p>
+                <p class="mt-1 text-[11px] text-muted-foreground">
+                  配置模板名称与描述，供业务线所有项目复用。
+                </p>
               </div>
               <div class="grid gap-3 md:grid-cols-2">
                 <label class="space-y-1">
@@ -2699,7 +2875,9 @@ onBeforeUnmount(() => {
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p class="text-xs font-semibold text-muted-foreground">节点定义</p>
-                  <p class="mt-1 text-[11px] text-muted-foreground">每个节点配置执行提示词、Agent CLI 与配置。</p>
+                  <p class="mt-1 text-[11px] text-muted-foreground">
+                    每个节点配置执行提示词、Agent CLI 与配置。
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -2718,10 +2896,14 @@ onBeforeUnmount(() => {
                 >
                   <div class="flex flex-wrap items-start justify-between gap-2">
                     <div>
-                      <p class="text-[11px] font-semibold text-muted-foreground">节点 {{ index + 1 }}</p>
+                      <p class="text-[11px] font-semibold text-muted-foreground">
+                        节点 {{ index + 1 }}
+                      </p>
                     </div>
                     <div class="flex items-center gap-2">
-                      <label class="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs text-muted-foreground">
+                      <label
+                        class="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs text-muted-foreground"
+                      >
                         <input v-model="node.requiresApproval" type="checkbox" class="h-4 w-4" />
                         需要审批
                       </label>
@@ -2759,18 +2941,28 @@ onBeforeUnmount(() => {
                       <span class="text-[11px] text-muted-foreground">Agent CLI</span>
                       <select
                         v-model="node.input.cliToolId"
-                        :disabled="loadingWorkflowConfiguredCliTools || workflowConfiguredCliTools.length === 0"
+                        :disabled="
+                          loadingWorkflowConfiguredCliTools ||
+                          workflowConfiguredCliTools.length === 0
+                        "
                         class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                         @change="void handleWorkflowNodeCliToolChange(node)"
                       >
                         <option
-                          v-if="!loadingWorkflowConfiguredCliTools && workflowConfiguredCliTools.length === 0"
+                          v-if="
+                            !loadingWorkflowConfiguredCliTools &&
+                            workflowConfiguredCliTools.length === 0
+                          "
                           value=""
                           disabled
                         >
                           当前业务线暂无已配置 Agent CLI
                         </option>
-                        <option v-for="tool in workflowConfiguredCliTools" :key="tool.id" :value="tool.id">
+                        <option
+                          v-for="tool in workflowConfiguredCliTools"
+                          :key="tool.id"
+                          :value="tool.id"
+                        >
                           {{ tool.label }}
                         </option>
                       </select>
@@ -2780,14 +2972,14 @@ onBeforeUnmount(() => {
                       <span class="text-[11px] text-muted-foreground">Agent CLI 配置</span>
                       <select
                         v-model="node.input.agentToolConfigId"
-                        :disabled="!node.input.cliToolId || isWorkflowNodeConfigLoading(node.input.cliToolId)"
+                        :disabled="
+                          !node.input.cliToolId || isWorkflowNodeConfigLoading(node.input.cliToolId)
+                        "
                         class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <option value="">
                           {{
-                            !node.input.cliToolId
-                              ? '请先选择 Agent CLI'
-                              : '自动选择默认/首个配置'
+                            !node.input.cliToolId ? '请先选择 Agent CLI' : '自动选择默认/首个配置'
                           }}
                         </option>
                         <option
@@ -2884,6 +3076,79 @@ onBeforeUnmount(() => {
         @update:open="agentToolConfigModalOpen = $event"
         @submit="saveAgentToolConfig"
       />
+
+      <SkillUploadModal
+        :open="uploadSkillModalOpen"
+        :submitting="uploadingLocalSkill"
+        :error-message="uploadSkillError"
+        @update:open="uploadSkillModalOpen = $event"
+        @submit="submitUploadSkill"
+      />
+
+      <McpJsonImportModal
+        :open="mcpJsonImportModalOpen"
+        :submitting="importingLocalMcps"
+        :error-message="mcpJsonImportError"
+        @update:open="mcpJsonImportModalOpen = $event"
+        @submit="submitImportMcpJson"
+      />
+
+      <div
+        v-if="mcpJsonPreviewModalOpen"
+        class="fixed inset-0 z-[125] flex items-center justify-center p-3 sm:p-6"
+      >
+        <button
+          type="button"
+          class="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
+          aria-label="关闭 MCP JSON 预览弹窗"
+          @click="mcpJsonPreviewModalOpen = false"
+        />
+        <section
+          aria-modal="true"
+          role="dialog"
+          class="relative z-10 w-full max-w-3xl rounded-2xl border border-border bg-background shadow-2xl"
+        >
+          <header class="flex items-center justify-between border-b border-border px-4 py-3">
+            <div class="space-y-1">
+              <h2 class="text-base font-semibold">MCP JSON</h2>
+              <p class="text-xs text-muted-foreground">{{ mcpJsonPreviewName }}</p>
+              <p class="font-mono text-[11px] text-muted-foreground">{{ mcpJsonPreviewSourcePath }}</p>
+            </div>
+            <button
+              type="button"
+              aria-label="关闭"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
+              @click="mcpJsonPreviewModalOpen = false"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </button>
+          </header>
+          <div class="space-y-3 px-4 py-4">
+            <p v-if="loadingMcpJsonPreview" class="text-sm text-muted-foreground">加载 JSON 中...</p>
+            <p v-else-if="mcpJsonPreviewError" class="text-sm text-destructive">
+              {{ mcpJsonPreviewError }}
+            </p>
+            <pre
+              v-else
+              class="max-h-[56vh] overflow-auto rounded-xl border border-border bg-muted/20 p-3 font-mono text-xs text-foreground"
+            ><code>{{ mcpJsonPreviewContent }}</code></pre>
+          </div>
+        </section>
+      </div>
 
       <ConfirmActionModal
         :open="projectDeleteModalOpen"

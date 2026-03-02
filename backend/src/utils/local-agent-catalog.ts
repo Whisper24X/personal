@@ -34,7 +34,7 @@ export type LocalMcpItem = {
   updatedAt: Date;
 };
 
-const PROJECT_AGENT_ROOTS = ['.codex', '.cursor'];
+const PROJECT_AGENT_ROOTS = ['.codex', '.cursor', '.curso'];
 const SKILL_DESCRIPTOR_FILENAMES = [
   'SKILL.md',
   'skill.md',
@@ -144,6 +144,22 @@ const safeReadDir = async (
   }
 };
 
+const hasProjectRootMarkers = async (directoryPath: string): Promise<boolean> => {
+  const gitDirStat = await safeStat(path.join(directoryPath, '.git'));
+  if (gitDirStat?.isDirectory()) {
+    return true;
+  }
+
+  for (const rootName of PROJECT_AGENT_ROOTS) {
+    const rootStat = await safeStat(path.join(directoryPath, rootName));
+    if (rootStat?.isDirectory()) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 const parseJsonObject = (content: string): Record<string, unknown> | null => {
   try {
     const parsed = JSON.parse(content);
@@ -244,24 +260,132 @@ const pickDescriptionFromMarkdown = (content: string): string | null => {
   return null;
 };
 
-const resolveProjectBaseDir = (project: Project): string | null => {
+const sanitizePathSegment = (value: string): string => {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+};
+
+const extractRepositoryNameFromGitUrl = (gitUrl: string): string | null => {
+  const trimmedUrl = gitUrl.trim();
+  if (!trimmedUrl) {
+    return null;
+  }
+
+  const withoutQuery = trimmedUrl.replace(/[?#].*$/, '').replace(/\/+$/, '');
+  const lastSeparatorIndex = Math.max(
+    withoutQuery.lastIndexOf('/'),
+    withoutQuery.lastIndexOf(':'),
+  );
+  const rawName =
+    lastSeparatorIndex >= 0
+      ? withoutQuery.slice(lastSeparatorIndex + 1)
+      : withoutQuery;
+  const withoutGitSuffix = rawName.replace(/\.git$/i, '');
+  const normalized = sanitizePathSegment(withoutGitSuffix);
+
+  return normalized || null;
+};
+
+const buildProjectStorageBaseDir = (project: Project): string | null => {
+  const businessLineId = normalizeText(project.businessLineId);
+  const projectId = normalizeText(project.id);
+
+  if (!businessLineId || !projectId) {
+    return null;
+  }
+
+  return path.resolve(ainativeDataRootDir, businessLineId, 'projects', projectId);
+};
+
+const buildProjectBaseDirCandidates = (project: Project): string[] => {
   const configJson = isObjectRecord(project.configJson)
     ? project.configJson
     : {};
 
-  const candidates = [
-    configJson.repoLocalPath,
-    configJson.contextBaseDir,
-    configJson.workspacePath,
-  ];
+  const candidateSet = new Set<string>();
+  const pushCandidate = (value: unknown) => {
+    const normalized = normalizeText(value);
+    if (!normalized) {
+      return;
+    }
+
+    candidateSet.add(path.resolve(normalized));
+  };
+
+  pushCandidate(configJson.repoLocalPath);
+  pushCandidate(configJson.contextBaseDir);
+  pushCandidate(configJson.workspacePath);
+
+  const repositoryNameFromGit = extractRepositoryNameFromGitUrl(project.gitUrl);
+  const repositoryNameFromProject = sanitizePathSegment(project.name || '');
+  const storageBaseDir = buildProjectStorageBaseDir(project);
+
+  if (storageBaseDir) {
+    candidateSet.add(storageBaseDir);
+
+    if (repositoryNameFromGit) {
+      candidateSet.add(path.join(storageBaseDir, repositoryNameFromGit));
+    }
+
+    if (repositoryNameFromProject) {
+      candidateSet.add(path.join(storageBaseDir, repositoryNameFromProject));
+    }
+  }
+
+  const repoCacheBaseDir = normalizeText(configJson.repoCacheBaseDir)
+    ?? normalizeText(process.env.AINATIVE_REPO_CACHE_BASE_DIR);
+
+  if (repoCacheBaseDir && repositoryNameFromGit) {
+    const projectId = normalizeText(project.id);
+    if (projectId) {
+      candidateSet.add(
+        path.resolve(repoCacheBaseDir, `${repositoryNameFromGit}-${projectId}`),
+      );
+    }
+  }
+
+  return Array.from(candidateSet);
+};
+
+const resolveProjectBaseDir = async (project: Project): Promise<string | null> => {
+  const candidates = buildProjectBaseDirCandidates(project);
 
   for (const candidate of candidates) {
-    const normalized = normalizeText(candidate);
-    if (!normalized) {
+    const stat = await safeStat(candidate);
+    if (!stat?.isDirectory()) {
       continue;
     }
 
-    return path.resolve(normalized);
+    if (await hasProjectRootMarkers(candidate)) {
+      return candidate;
+    }
+  }
+
+  for (const candidate of candidates) {
+    const stat = await safeStat(candidate);
+    if (stat?.isDirectory()) {
+      return candidate;
+    }
+  }
+
+  const storageBaseDir = buildProjectStorageBaseDir(project);
+  if (!storageBaseDir) {
+    return null;
+  }
+
+  const storageEntries = await safeReadDir(storageBaseDir);
+  const directoryEntries = storageEntries
+    .filter((entry) => entry.isDirectory())
+    .sort((left, right) => left.name.localeCompare(right.name));
+
+  for (const entry of directoryEntries) {
+    const candidate = path.join(storageBaseDir, entry.name);
+    if (await hasProjectRootMarkers(candidate)) {
+      return candidate;
+    }
   }
 
   return null;
@@ -858,7 +982,7 @@ const loadMcpsFromDirectory = async ({
 const loadProjectAgentRootDirs = async (
   project: Project,
 ): Promise<Array<{ provider: string; rootPath: string }>> => {
-  const projectBaseDir = resolveProjectBaseDir(project);
+  const projectBaseDir = await resolveProjectBaseDir(project);
 
   if (!projectBaseDir) {
     return [];

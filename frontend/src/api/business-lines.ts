@@ -83,6 +83,39 @@ export type CreateAgentToolConfigPayload = {
 
 export type UpdateAgentToolConfigPayload = Partial<CreateAgentToolConfigPayload>
 
+export type UploadLocalSkillResult = {
+  name: string
+  description?: string | null
+  directoryName: string
+}
+
+export type LocalMcpTransportType = 'stdio' | 'http' | 'sse'
+
+export type CreateLocalMcpPayload = {
+  name: string
+  transportType: LocalMcpTransportType
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  url?: string
+  headers?: Record<string, string>
+}
+
+export type ImportLocalMcpsPayload = {
+  payload: Record<string, unknown>
+}
+
+export type ImportLocalMcpsResult = {
+  importedCount: number
+  overwrittenCount: number
+}
+
+export type LocalMcpConfig = {
+  name: string
+  sourcePath: string
+  config: Record<string, unknown>
+}
+
 export const businessLinesApi = {
   list(params?: { page?: number; limit?: number }) {
     return apiHttp.get<InfinityPaginationResponse<BusinessLine>>('/business-lines', {
@@ -116,22 +149,26 @@ export const businessLinesApi = {
   },
 
   createInvitation(businessLineId: string, payload: CreateBusinessLineInvitePayload) {
-    return apiHttp.post<BusinessLineInvite>(`/business-lines/${businessLineId}/invitations`, payload)
+    return apiHttp.post<BusinessLineInvite>(
+      `/business-lines/${businessLineId}/invitations`,
+      payload,
+    )
   },
 
   getLatestInvitation(businessLineId: string) {
-    return apiHttp.get<BusinessLineInvite | null>(`/business-lines/${businessLineId}/invitations/latest`)
+    return apiHttp.get<BusinessLineInvite | null>(
+      `/business-lines/${businessLineId}/invitations/latest`,
+    )
   },
 
   acceptInvitation(payload: AcceptBusinessLineInvitePayload) {
-    return apiHttp.post<AcceptBusinessLineInviteResponse>('/business-lines/invitations/accept', payload)
+    return apiHttp.post<AcceptBusinessLineInviteResponse>(
+      '/business-lines/invitations/accept',
+      payload,
+    )
   },
 
-  updateMember(
-    businessLineId: string,
-    userId: string,
-    payload: UpdateBusinessLineMemberPayload,
-  ) {
+  updateMember(businessLineId: string, userId: string, payload: UpdateBusinessLineMemberPayload) {
     return apiHttp.patch<BusinessLineMember>(
       `/business-lines/${businessLineId}/members/${userId}`,
       payload,
@@ -149,7 +186,10 @@ export const businessLinesApi = {
   },
 
   createAgentToolConfig(businessLineId: string, payload: CreateAgentToolConfigPayload) {
-    return apiHttp.post<AgentToolConfig>(`/business-lines/${businessLineId}/agent-tool-configs`, payload)
+    return apiHttp.post<AgentToolConfig>(
+      `/business-lines/${businessLineId}/agent-tool-configs`,
+      payload,
+    )
   },
 
   updateAgentToolConfig(
@@ -171,7 +211,34 @@ export const businessLinesApi = {
     return apiHttp.get<Skill[]>(`/business-lines/${businessLineId}/local-skills`)
   },
 
+  uploadLocalSkill(businessLineId: string, file: File) {
+    const formData = new FormData()
+    formData.append('file', file)
+    return apiHttp.post<UploadLocalSkillResult>(
+      `/business-lines/${businessLineId}/local-skills/upload`,
+      formData,
+    )
+  },
+
   listLocalMcps(businessLineId: string) {
     return apiHttp.get<Mcp[]>(`/business-lines/${businessLineId}/local-mcps`)
+  },
+
+  createLocalMcp(businessLineId: string, payload: CreateLocalMcpPayload) {
+    return apiHttp.post<Mcp>(`/business-lines/${businessLineId}/local-mcps`, payload)
+  },
+
+  importLocalMcps(businessLineId: string, payload: ImportLocalMcpsPayload) {
+    return apiHttp.post<ImportLocalMcpsResult>(
+      `/business-lines/${businessLineId}/local-mcps/import-json`,
+      payload,
+    )
+  },
+
+  getLocalMcpConfig(businessLineId: string, params: { name: string; sourcePath: string }) {
+    return apiHttp.get<LocalMcpConfig>(`/business-lines/${businessLineId}/local-mcps/config`, {
+      name: params.name,
+      sourcePath: params.sourcePath,
+    })
   },
 }

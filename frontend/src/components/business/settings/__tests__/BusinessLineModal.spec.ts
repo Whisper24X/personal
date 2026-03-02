@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import BusinessLineModal from '@/components/business/settings/BusinessLineModal.vue'
+import McpJsonImportModal from '@/components/business/settings/modals/McpJsonImportModal.vue'
 
 const { businessLinesApi, projectsApi, usersApi, workflowApi, fetchAllPages } = vi.hoisted(() => ({
   businessLinesApi: {
@@ -17,7 +18,10 @@ const { businessLinesApi, projectsApi, usersApi, workflowApi, fetchAllPages } = 
     removeMember: vi.fn(),
     listAgentToolConfigs: vi.fn(),
     listLocalSkills: vi.fn(),
+    uploadLocalSkill: vi.fn(),
     listLocalMcps: vi.fn(),
+    importLocalMcps: vi.fn(),
+    getLocalMcpConfig: vi.fn(),
     createAgentToolConfig: vi.fn(),
     updateAgentToolConfig: vi.fn(),
     removeAgentToolConfig: vi.fn(),
@@ -96,6 +100,18 @@ beforeEach(() => {
   businessLinesApi.listAgentToolConfigs.mockResolvedValue([])
   businessLinesApi.listLocalSkills.mockResolvedValue([])
   businessLinesApi.listLocalMcps.mockResolvedValue([])
+  businessLinesApi.importLocalMcps.mockResolvedValue({
+    importedCount: 1,
+    overwrittenCount: 0,
+  })
+  businessLinesApi.getLocalMcpConfig.mockResolvedValue({
+    name: 'filesystem',
+    sourcePath: '/Users/fuzhifei/.ainative/data/line-1/mcp/mcp.json',
+    config: {
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'],
+    },
+  })
   workflowApi.list.mockResolvedValue({
     data: [],
     hasNextPage: false,
@@ -278,5 +294,105 @@ describe('BusinessLineModal', () => {
     await projectCard.trigger('click')
 
     expect(wrapper.emitted('select-project')).toEqual([['project-1']])
+  })
+
+  it('imports local mcps from json payload', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineModal, {
+      props: buildProps(true, false),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+
+    const mcpTab = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === 'MCP')
+    expect(mcpTab).toBeDefined()
+    await mcpTab!.trigger('click')
+    await flushPromises()
+
+    const importButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '添加')
+    expect(importButton).toBeDefined()
+    await importButton!.trigger('click')
+    await flushPromises()
+
+    wrapper.findComponent(McpJsonImportModal).vm.$emit('submit', {
+      mcpServers: {
+        filesystem: {
+          command: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'],
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(businessLinesApi.importLocalMcps).toHaveBeenCalledWith('line-1', {
+      payload: {
+        mcpServers: {
+          filesystem: {
+            command: 'npx',
+            args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'],
+          },
+        },
+      },
+    })
+    expect(businessLinesApi.listLocalMcps).toHaveBeenCalledWith('line-1')
+  })
+
+  it('loads mcp json preview when clicking mcp item', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineModal, {
+      props: buildProps(true, false),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    businessLinesApi.listLocalMcps.mockResolvedValueOnce([
+      {
+        id: 'mcp-1',
+        name: 'filesystem',
+        version: 'local',
+        toolsCount: 0,
+        enabled: true,
+        metadataJson: {
+          sourcePath: '/Users/fuzhifei/.ainative/data/line-1/mcp/mcp.json',
+        },
+      },
+    ])
+
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+
+    const mcpTab = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === 'MCP')
+    expect(mcpTab).toBeDefined()
+    await mcpTab!.trigger('click')
+    await flushPromises()
+
+    const mcpCard = wrapper.find('[data-mcp-id="mcp-1"]')
+    expect(mcpCard.exists()).toBe(true)
+    await mcpCard.trigger('click')
+    await flushPromises()
+
+    expect(businessLinesApi.getLocalMcpConfig).toHaveBeenCalledWith('line-1', {
+      name: 'filesystem',
+      sourcePath: '/Users/fuzhifei/.ainative/data/line-1/mcp/mcp.json',
+    })
+    expect(wrapper.text()).toContain('MCP JSON')
+    expect(wrapper.text()).toContain('filesystem')
   })
 })

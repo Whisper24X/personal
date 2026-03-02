@@ -63,7 +63,7 @@ export const systemRoutes: AppRouteRecord[] = [
     name: 'skills',
     component: () => import('@/views/skills/index.vue'),
     meta: {
-      title: 'Skill',
+      title: 'Skills',
       requiresAuth: true,
       permissions: ['skills:view'],
     },

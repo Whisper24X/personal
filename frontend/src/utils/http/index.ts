@@ -18,14 +18,22 @@ type RefreshTokenResponse = {
 
 let refreshingTokenPromise: Promise<string | null> | null = null
 
-const buildHeaders = (headers?: Record<string, string>, tokenOverride?: string | null) => {
+const buildHeaders = (
+  headers?: Record<string, string>,
+  tokenOverride?: string | null,
+  omitJsonContentType = false,
+) => {
   const token = tokenOverride ?? localStorage.getItem(STORAGE_KEYS.authToken)
 
   return {
-    'Content-Type': 'application/json',
+    ...(omitJsonContentType ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...headers,
   }
+}
+
+const isFormDataBody = (value: unknown): value is FormData => {
+  return typeof FormData !== 'undefined' && value instanceof FormData
 }
 
 const isJsonResponse = (response: Response) => {
@@ -103,10 +111,15 @@ const unwrapResponse = async <T>(response: Response): Promise<T> => {
 export const http = {
   async request<T>(url: string, config: RequestConfig = {}) {
     const method = config.method ?? 'GET'
-    const body = config.body === undefined ? undefined : JSON.stringify(config.body)
+    const body =
+      config.body === undefined
+        ? undefined
+        : isFormDataBody(config.body)
+          ? config.body
+          : JSON.stringify(config.body)
 
     const sendRequest = (tokenOverride?: string | null) => {
-      const headers = buildHeaders(config.headers, tokenOverride)
+      const headers = buildHeaders(config.headers, tokenOverride, isFormDataBody(config.body))
       return fetch(url, {
         method,
         headers,

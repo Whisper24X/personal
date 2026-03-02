@@ -12,6 +12,8 @@ import {
   Query,
   ParseUUIDPipe,
   Request,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
 import { BusinessLinesService } from './business-lines.service';
 import { CreateBusinessLineDto } from './dto/create-business-line.dto';
@@ -19,11 +21,15 @@ import { UpdateBusinessLineDto } from './dto/update-business-line.dto';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiBody,
+  ApiConsumes,
   ApiNoContentResponse,
   ApiOkResponse,
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Express } from 'express';
 import { BusinessLine } from './domain/business-line';
 import { AuthGuard } from '@nestjs/passport';
 import { BusinessLineMember } from './domain/business-line-member';
@@ -47,6 +53,12 @@ import { NullableType } from '../utils/types/nullable.type';
 import { BusinessLineDto } from './dto/business-line.dto';
 import { Skill } from '../skills/domain/skill';
 import { Mcp } from '../mcps/domain/mcp';
+import { UploadLocalSkillResultDto } from './dto/upload-local-skill-result.dto';
+import { CreateLocalMcpDto } from './dto/create-local-mcp.dto';
+import { ImportLocalMcpsDto } from './dto/import-local-mcps.dto';
+import { ImportLocalMcpsResultDto } from './dto/import-local-mcps-result.dto';
+import { GetLocalMcpConfigDto } from './dto/get-local-mcp-config.dto';
+import { LocalMcpConfigDto } from './dto/local-mcp-config.dto';
 
 @ApiTags('Businesslines')
 @ApiBearerAuth()
@@ -368,6 +380,114 @@ export class BusinessLinesController {
   ): Promise<Mcp[]> {
     return this.businessLinesService.findLocalMcps(
       businessLineId,
+      request.user,
+    );
+  }
+
+  @Get(':businessLineId/local-mcps/config')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: LocalMcpConfigDto,
+  })
+  @HttpCode(HttpStatus.OK)
+  getLocalMcpConfig(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Query() query: GetLocalMcpConfigDto,
+  ): Promise<LocalMcpConfigDto> {
+    return this.businessLinesService.getLocalMcpConfig(
+      businessLineId,
+      query,
+      request.user,
+    );
+  }
+
+  @Post(':businessLineId/local-mcps')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiCreatedResponse({
+    type: Mcp,
+  })
+  @HttpCode(HttpStatus.CREATED)
+  createLocalMcp(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Body() createLocalMcpDto: CreateLocalMcpDto,
+  ): Promise<Mcp> {
+    return this.businessLinesService.createLocalMcp(
+      businessLineId,
+      createLocalMcpDto,
+      request.user,
+    );
+  }
+
+  @Post(':businessLineId/local-mcps/import-json')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: ImportLocalMcpsResultDto,
+  })
+  @HttpCode(HttpStatus.OK)
+  importLocalMcps(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Body() importLocalMcpsDto: ImportLocalMcpsDto,
+  ): Promise<ImportLocalMcpsResultDto> {
+    return this.businessLinesService.importLocalMcps(
+      businessLineId,
+      importLocalMcpsDto,
+      request.user,
+    );
+  }
+
+  @Post(':businessLineId/local-skills/upload')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['file'],
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @ApiCreatedResponse({
+    type: UploadLocalSkillResultDto,
+  })
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: 20 * 1024 * 1024,
+      },
+    }),
+  )
+  uploadLocalSkill(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @UploadedFile() file?: Express.Multer.File,
+  ): Promise<UploadLocalSkillResultDto> {
+    return this.businessLinesService.uploadLocalSkill(
+      businessLineId,
+      file,
       request.user,
     );
   }
