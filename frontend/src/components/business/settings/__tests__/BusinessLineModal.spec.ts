@@ -395,4 +395,84 @@ describe('BusinessLineModal', () => {
     expect(wrapper.text()).toContain('MCP JSON')
     expect(wrapper.text()).toContain('filesystem')
   })
+
+  it('edits and saves mcp json from preview modal', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineModal, {
+      props: buildProps(true, false),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    businessLinesApi.listLocalMcps.mockResolvedValueOnce([
+      {
+        id: 'mcp-1',
+        name: 'filesystem',
+        version: 'local',
+        toolsCount: 0,
+        enabled: true,
+        metadataJson: {
+          sourcePath: '/Users/fuzhifei/.ainative/data/line-1/mcp/mcp.json',
+        },
+      },
+    ])
+
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+
+    const mcpTab = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === 'MCP')
+    expect(mcpTab).toBeDefined()
+    await mcpTab!.trigger('click')
+    await flushPromises()
+
+    const mcpCard = wrapper.find('[data-mcp-id="mcp-1"]')
+    expect(mcpCard.exists()).toBe(true)
+    await mcpCard.trigger('click')
+    await flushPromises()
+
+    const editButton = wrapper.find('[data-testid="mcp-json-preview-edit"]')
+    expect(editButton.exists()).toBe(true)
+    await editButton.trigger('click')
+    await flushPromises()
+
+    const textarea = wrapper.find('[data-testid="mcp-json-preview-textarea"]')
+    expect(textarea.exists()).toBe(true)
+    await textarea.setValue(
+      JSON.stringify(
+        {
+          mcpServers: {
+            filesystem: {
+              command: 'node',
+              args: ['server.js'],
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    )
+
+    const saveButton = wrapper.find('[data-testid="mcp-json-preview-save"]')
+    expect(saveButton.exists()).toBe(true)
+    await saveButton.trigger('click')
+    await flushPromises()
+
+    expect(businessLinesApi.importLocalMcps).toHaveBeenCalledWith('line-1', {
+      payload: {
+        mcpServers: {
+          filesystem: {
+            command: 'node',
+            args: ['server.js'],
+          },
+        },
+      },
+    })
+    expect(businessLinesApi.listLocalMcps).toHaveBeenCalledWith('line-1')
+  })
 })
