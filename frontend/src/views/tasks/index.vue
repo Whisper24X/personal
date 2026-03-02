@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { businessLinesApi, type AgentToolConfig } from '@/api/business-lines'
@@ -8,6 +8,7 @@ import { tasksApi } from '@/api/tasks'
 import { workflowApi } from '@/api/workflow'
 import type { Project } from '@/types/api/projects'
 import type { WorkflowTemplate } from '@/types/api/workflow'
+import { STORAGE_KEYS } from '@/types/common/storage'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
 
@@ -38,28 +39,42 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 
 const projects = ref<Project[]>([])
 const templates = ref<WorkflowTemplate[]>([])
+const configuredCliTools = ref<Array<{ id: SupportedCliToolId; label: string }>>([])
 const agentToolConfigs = ref<AgentToolConfig[]>([])
+const agentConfigsByTool = ref<Partial<Record<SupportedCliToolId, AgentToolConfig[]>>>({})
 const selectedFiles = ref<File[]>([])
 
 const createForm = reactive({
   projectId: '',
   mode: 'conversation' as 'conversation' | 'workflow',
   workflowTemplateId: '',
-  cliToolId: 'codex' as SupportedCliToolId,
+  cliToolId: '' as SupportedCliToolId | '',
   agentToolConfigId: '',
   title: '',
   description: '',
   branch: 'master',
 })
 
-const selectedProject = computed(() => {
-  return projects.value.find((project) => project.id === createForm.projectId) ?? null
-})
+const resolveQueryProjectId = () => {
+  return typeof route.query.projectId === 'string' ? route.query.projectId : ''
+}
 
-const syncProjectFromQuery = () => {
-  const queryProjectId = typeof route.query.projectId === 'string' ? route.query.projectId : ''
-  if (queryProjectId) {
-    createForm.projectId = queryProjectId
+const resolveStoredProjectId = () => {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
+  return localStorage.getItem(STORAGE_KEYS.lastSelectedProjectId) ?? ''
+}
+
+const resolveProjectIdFromContext = () => {
+  return resolveQueryProjectId() || resolveStoredProjectId()
+}
+
+const syncProjectFromContext = () => {
+  const projectId = resolveProjectIdFromContext()
+  if (projectId) {
+    createForm.projectId = projectId
   }
 }
 
@@ -70,18 +85,39 @@ const resetCreateForm = (projectId?: string) => {
   createForm.projectId = nextProjectId
   createForm.mode = 'conversation'
   createForm.workflowTemplateId = ''
-  createForm.cliToolId = 'codex'
+  createForm.cliToolId = configuredCliTools.value[0]?.id ?? ''
   createForm.agentToolConfigId = ''
   createForm.title = ''
   createForm.description = ''
   createForm.branch = project?.defaultBranch || 'master'
   selectedFiles.value = []
+  syncAgentToolConfigsForSelectedTool()
 }
 
 const formatFileSize = (size: number) => {
   if (size < 1024) return `${size} B`
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+const isSupportedCliToolId = (toolId: string): toolId is SupportedCliToolId => {
+  return SUPPORTED_CLI_TOOLS.some((tool) => tool.id === toolId)
+}
+
+const syncAgentToolConfigsForSelectedTool = () => {
+  if (!createForm.cliToolId) {
+    agentToolConfigs.value = []
+    createForm.agentToolConfigId = ''
+    return
+  }
+
+  const configs = agentConfigsByTool.value[createForm.cliToolId] ?? []
+  agentToolConfigs.value = configs
+
+  if (!configs.some((config) => config.id === createForm.agentToolConfigId)) {
+    const defaultConfig = configs.find((config) => config.isDefault)
+    createForm.agentToolConfigId = defaultConfig?.id ?? configs[0]?.id ?? ''
+  }
 }
 
 const loadTemplatesForProject = async (projectId: string) => {
@@ -116,28 +152,47 @@ const loadTemplatesForProject = async (projectId: string) => {
   }
 }
 
-const loadAgentToolConfigs = async (projectId: string, cliToolId: SupportedCliToolId) => {
+const loadConversationCliOptions = async (projectId: string) => {
   const project = projects.value.find((item) => item.id === projectId)
   if (!project?.businessLineId) {
+    configuredCliTools.value = []
+    agentConfigsByTool.value = {}
     agentToolConfigs.value = []
+    createForm.cliToolId = ''
     createForm.agentToolConfigId = ''
     return
   }
 
   loadingAgentConfigs.value = true
   try {
-    const configs = await businessLinesApi.listAgentToolConfigs(project.businessLineId, {
-      toolId: cliToolId,
-    })
+    const configs = await businessLinesApi.listAgentToolConfigs(project.businessLineId)
+    const groupedConfigs: Partial<Record<SupportedCliToolId, AgentToolConfig[]>> = {}
 
-    agentToolConfigs.value = configs
+    for (const config of configs) {
+      if (!isSupportedCliToolId(config.toolId)) {
+        continue
+      }
 
-    if (!configs.some((config) => config.id === createForm.agentToolConfigId)) {
-      const defaultConfig = configs.find((config) => config.isDefault)
-      createForm.agentToolConfigId = defaultConfig?.id ?? configs[0]?.id ?? ''
+      const list = groupedConfigs[config.toolId] ?? []
+      list.push(config)
+      groupedConfigs[config.toolId] = list
     }
+
+    agentConfigsByTool.value = groupedConfigs
+    configuredCliTools.value = SUPPORTED_CLI_TOOLS.filter(
+      (tool) => (groupedConfigs[tool.id]?.length ?? 0) > 0,
+    )
+
+    if (!configuredCliTools.value.some((tool) => tool.id === createForm.cliToolId)) {
+      createForm.cliToolId = configuredCliTools.value[0]?.id ?? ''
+    }
+
+    syncAgentToolConfigsForSelectedTool()
   } catch (error) {
+    configuredCliTools.value = []
+    agentConfigsByTool.value = {}
     agentToolConfigs.value = []
+    createForm.cliToolId = ''
     createForm.agentToolConfigId = ''
     message.error(toErrorMessage(error, '加载 Agent CLI 配置失败'))
   } finally {
@@ -151,8 +206,13 @@ const loadPageData = async () => {
     const projectResponse = await fetchAllPages((page, limit) => projectsApi.list({ page, limit }))
     projects.value = projectResponse
 
-    if (!createForm.projectId) {
-      createForm.projectId = projectResponse[0]?.id ?? ''
+    const contextProjectId = resolveProjectIdFromContext()
+    const hasContextProject = projectResponse.some((project) => project.id === contextProjectId)
+
+    if (hasContextProject) {
+      createForm.projectId = contextProjectId
+    } else if (!createForm.projectId || !projectResponse.some((project) => project.id === createForm.projectId)) {
+      createForm.projectId = ''
     }
 
     const project = projectResponse.find((item) => item.id === createForm.projectId)
@@ -162,7 +222,7 @@ const loadPageData = async () => {
 
     await Promise.all([
       loadTemplatesForProject(createForm.projectId),
-      loadAgentToolConfigs(createForm.projectId, createForm.cliToolId),
+      loadConversationCliOptions(createForm.projectId),
     ])
   } catch (error) {
     message.error(toErrorMessage(error, '加载任务页面失败'))
@@ -202,7 +262,10 @@ const removeFile = (index: number) => {
 }
 
 const createTask = async () => {
-  if (!createForm.projectId || !createForm.title.trim()) {
+  const contextProjectId = resolveProjectIdFromContext()
+  const projectIdForSubmit = contextProjectId || createForm.projectId
+
+  if (!projectIdForSubmit || !createForm.title.trim()) {
     validationMessage.value = '项目和任务标题不能为空'
     return
   }
@@ -219,7 +282,7 @@ const createTask = async () => {
 
   if (createForm.mode === 'conversation') {
     if (!createForm.cliToolId) {
-      validationMessage.value = '对话模式下必须选择 Agent CLI'
+      validationMessage.value = '当前业务线没有可用的 Agent CLI 配置'
       return
     }
 
@@ -259,7 +322,7 @@ const createTask = async () => {
     }
 
     const task = await tasksApi.create({
-      projectId: createForm.projectId,
+      projectId: projectIdForSubmit,
       mode: createForm.mode,
       workflowTemplateId: createForm.workflowTemplateId || undefined,
       title: createForm.title.trim(),
@@ -269,7 +332,7 @@ const createTask = async () => {
     })
 
     message.success('创建任务成功，正在跳转详情')
-    resetCreateForm(createForm.projectId)
+    resetCreateForm(projectIdForSubmit)
     await router.push(`/tasks/${task.id}`)
   } catch (error) {
     message.error(toErrorMessage(error, '创建任务失败'))
@@ -292,28 +355,35 @@ watch(
 
     await Promise.all([
       loadTemplatesForProject(projectId),
-      loadAgentToolConfigs(projectId, createForm.cliToolId),
+      loadConversationCliOptions(projectId),
     ])
   },
 )
 
 watch(
+  () => route.query.projectId,
+  () => {
+    syncProjectFromContext()
+  },
+)
+
+watch(
   () => createForm.cliToolId,
-  async (cliToolId, previousCliToolId) => {
+  (cliToolId, previousCliToolId) => {
     if (cliToolId === previousCliToolId) {
       return
     }
 
-    await loadAgentToolConfigs(createForm.projectId, cliToolId)
+    syncAgentToolConfigsForSelectedTool()
   },
 )
 
 watch(
   () => createForm.mode,
-  async (mode) => {
+  (mode) => {
     if (mode === 'conversation') {
       createForm.workflowTemplateId = ''
-      await loadAgentToolConfigs(createForm.projectId, createForm.cliToolId)
+      syncAgentToolConfigsForSelectedTool()
       return
     }
 
@@ -331,7 +401,7 @@ watch(
 )
 
 onMounted(() => {
-  syncProjectFromQuery()
+  syncProjectFromContext()
   void loadPageData()
 })
 </script>
@@ -481,8 +551,12 @@ onMounted(() => {
                   <select
                     v-model="createForm.cliToolId"
                     class="min-w-[120px] appearance-none bg-transparent text-sm font-medium text-foreground outline-none"
+                    :disabled="loadingAgentConfigs || configuredCliTools.length === 0"
                   >
-                    <option v-for="tool in SUPPORTED_CLI_TOOLS" :key="tool.id" :value="tool.id">
+                    <option value="">
+                      {{ loadingAgentConfigs ? '加载中...' : configuredCliTools.length === 0 ? '无可用 CLI' : '选择 CLI' }}
+                    </option>
+                    <option v-for="tool in configuredCliTools" :key="tool.id" :value="tool.id">
                       {{ tool.label }}
                     </option>
                   </select>
@@ -627,50 +701,6 @@ onMounted(() => {
                 />
               </label>
 
-              <label v-if="projects.length > 1" class="relative inline-flex h-11 items-center rounded-full border border-border bg-background pl-3 pr-8">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="mr-2 text-foreground/70"
-                  aria-hidden="true"
-                >
-                  <path d="M20 7h-9" />
-                  <path d="M14 17H5" />
-                  <circle cx="17" cy="17" r="3" />
-                  <circle cx="7" cy="7" r="3" />
-                </svg>
-                <select
-                  v-model="createForm.projectId"
-                  class="min-w-[120px] appearance-none bg-transparent text-sm font-medium text-foreground outline-none"
-                >
-                  <option v-for="project in projects" :key="project.id" :value="project.id">
-                    {{ project.name }}
-                  </option>
-                </select>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="pointer-events-none absolute right-3 text-foreground/70"
-                  aria-hidden="true"
-                >
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
-              </label>
-
               <button
                 type="submit"
                 class="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-full bg-muted text-foreground transition hover:bg-primary hover:text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
@@ -696,9 +726,6 @@ onMounted(() => {
             </div>
 
             <p v-if="validationMessage" class="mt-2 text-sm text-destructive">{{ validationMessage }}</p>
-            <p v-else-if="selectedProject" class="mt-2 text-xs text-muted-foreground">
-              当前项目：{{ selectedProject.name }}
-            </p>
           </div>
         </form>
       </template>

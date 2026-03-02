@@ -16,6 +16,7 @@ describe('Sidebar menu scope', () => {
           { id: 'dashboard', label: '仪表盘', to: '/dashboard' },
           { id: 'tasks', label: '任务', to: '/tasks' },
         ],
+        projectNavigationTo: (projectId: string) => ({ path: '/dashboard', query: { projectId } }),
         projectItemClass: () => '',
         menuItemClass: () => '',
         projectShortLabel: (short: string) => short,

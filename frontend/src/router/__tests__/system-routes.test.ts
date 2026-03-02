@@ -26,4 +26,20 @@ describe('systemRoutes compatibility redirects', () => {
     expect(rootRoute?.redirect).toBe('/dashboard')
     expect(homeRoute?.redirect).toBe('/dashboard')
   })
+
+  it('redirects legacy project detail routes to dashboard with project context', () => {
+    const projectDetailRoute = findByPath('/projects/:id')
+    expect(typeof projectDetailRoute?.redirect).toBe('function')
+
+    if (typeof projectDetailRoute?.redirect !== 'function') {
+      throw new Error('project detail redirect should be a function')
+    }
+
+    const redirect = projectDetailRoute.redirect as (to: unknown, from: unknown) => unknown
+    const target = redirect({ params: { id: 'project-123' } }, {})
+    expect(target).toEqual({
+      path: '/dashboard',
+      query: { projectId: 'project-123' },
+    })
+  })
 })

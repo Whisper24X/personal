@@ -42,6 +42,8 @@ describe('Header notifications dropdown', () => {
       props: {
         mobileNavOpen: false,
         pageTitle: '仪表盘',
+        currentProjectName: 'Project 1',
+        showCurrentProjectName: true,
         breadcrumbs: ['项目菜单', '仪表盘'],
         toggleMobileNav: () => undefined,
       },

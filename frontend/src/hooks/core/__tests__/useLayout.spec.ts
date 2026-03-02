@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useLayout } from '@/hooks/core/useLayout'
 import { STORAGE_KEYS } from '@/types/common/storage'
 
-const { businessLinesApi, projectsApi, routeState, routerReplace } = vi.hoisted(() => ({
+const { businessLinesApi, projectsApi, routeState, routerReplace, routerPush } = vi.hoisted(() => ({
   businessLinesApi: {
     list: vi.fn(),
   },
@@ -21,12 +21,14 @@ const { businessLinesApi, projectsApi, routeState, routerReplace } = vi.hoisted(
     meta: {},
   },
   routerReplace: vi.fn(),
+  routerPush: vi.fn(),
 }))
 
 vi.mock('vue-router', () => ({
   useRoute: () => routeState,
   useRouter: () => ({
     replace: routerReplace,
+    push: routerPush,
   }),
 }))
 
@@ -41,6 +43,13 @@ vi.mock('@/api/projects', () => ({
 describe('useLayout business line selection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+
+    routeState.name = 'dashboard'
+    routeState.path = '/dashboard'
+    routeState.fullPath = '/dashboard'
+    routeState.params = {}
+    routeState.query = {}
+    routeState.meta = {}
 
     const storage = new Map<string, string>()
     Object.defineProperty(globalThis, 'localStorage', {
@@ -118,6 +127,7 @@ describe('useLayout business line selection', () => {
         <div>
           <p data-testid="active-line">{{ activeBusinessLineId }}</p>
           <p data-testid="active-project">{{ projectItems[0]?.id ?? '' }}</p>
+          <p data-testid="current-project">{{ currentProjectName }}</p>
         </div>
       `,
     })
@@ -127,12 +137,14 @@ describe('useLayout business line selection', () => {
 
     expect(wrapper.get('[data-testid="active-line"]').text()).toBe('line-1')
     expect(wrapper.get('[data-testid="active-project"]').text()).toBe('project-1')
+    expect(wrapper.get('[data-testid="current-project"]').text()).toBe('Project 1')
 
     ;(wrapper.vm as { selectBusinessLine: (businessLineId: string) => void }).selectBusinessLine('line-2')
     await nextTick()
 
     expect(wrapper.get('[data-testid="active-line"]').text()).toBe('line-2')
     expect(wrapper.get('[data-testid="active-project"]').text()).toBe('project-2')
+    expect(wrapper.get('[data-testid="current-project"]').text()).toBe('Project 2')
     expect(localStorage.getItem(STORAGE_KEYS.lastSelectedProjectId)).toBe('project-2')
   })
 
@@ -190,5 +202,130 @@ describe('useLayout business line selection', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="project-shorts"]').text()).toBe('TES1,TES2,TES3')
+  })
+
+  it('hides project name before project data is ready and shows it after loading', async () => {
+    setActivePinia(createPinia())
+
+    let resolveBusinessLines: ((value: unknown) => void) | undefined
+    let resolveProjects: ((value: unknown) => void) | undefined
+
+    businessLinesApi.list.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveBusinessLines = resolve
+        }),
+    )
+
+    projectsApi.list.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveProjects = resolve
+        }),
+    )
+
+    const Harness = defineComponent({
+      setup() {
+        return useLayout()
+      },
+      template: `
+        <div>
+          <p data-testid="show-current-project">{{ showCurrentProjectName ? '1' : '0' }}</p>
+          <p data-testid="current-project">{{ currentProjectName }}</p>
+        </div>
+      `,
+    })
+
+    const wrapper = mount(Harness)
+    await nextTick()
+
+    expect(wrapper.get('[data-testid="show-current-project"]').text()).toBe('0')
+
+    if (typeof resolveBusinessLines !== 'function' || typeof resolveProjects !== 'function') {
+      throw new Error('mock resolver not initialized')
+    }
+
+    resolveBusinessLines({
+      data: [{ id: 'line-1', name: 'Line 1', description: '', owner: '-' }],
+      hasNextPage: false,
+    })
+
+    resolveProjects({
+      data: [
+        {
+          id: 'project-1',
+          name: 'Project 1',
+          businessLineId: 'line-1',
+          description: '',
+          gitUrl: 'https://git.example.com/p1.git',
+          defaultBranch: 'main',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      hasNextPage: false,
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="show-current-project"]').text()).toBe('1')
+    expect(wrapper.get('[data-testid="current-project"]').text()).toBe('Project 1')
+  })
+
+  it('navigates to stored menu path when selecting project from non-menu route', async () => {
+    setActivePinia(createPinia())
+    routeState.path = '/settings'
+    routeState.fullPath = '/settings'
+    localStorage.setItem(STORAGE_KEYS.lastSelectedMenuPath, '/tasks')
+
+    const Harness = defineComponent({
+      setup() {
+        return useLayout()
+      },
+      template: '<div />',
+    })
+
+    const wrapper = mount(Harness)
+    await flushPromises()
+
+    ;(wrapper.vm as { selectProject: (projectId: string) => void }).selectProject('project-2')
+    await nextTick()
+
+    expect(routerPush).toHaveBeenCalledWith({
+      path: '/tasks',
+      query: {
+        projectId: 'project-2',
+      },
+    })
+    expect(localStorage.getItem(STORAGE_KEYS.lastSelectedProjectId)).toBe('project-2')
+    expect(localStorage.getItem(STORAGE_KEYS.lastSelectedMenuPath)).toBe('/tasks')
+  })
+
+  it('falls back to first menu when no previous menu is stored', async () => {
+    setActivePinia(createPinia())
+    routeState.path = '/settings'
+    routeState.fullPath = '/settings'
+    localStorage.removeItem(STORAGE_KEYS.lastSelectedMenuPath)
+
+    const Harness = defineComponent({
+      setup() {
+        return useLayout()
+      },
+      template: '<div />',
+    })
+
+    const wrapper = mount(Harness)
+    await flushPromises()
+
+    ;(wrapper.vm as { selectProject: (projectId: string) => void }).selectProject('project-1')
+    await nextTick()
+
+    expect(routerPush).toHaveBeenCalledWith({
+      path: '/dashboard',
+      query: {
+        projectId: 'project-1',
+      },
+    })
+    expect(localStorage.getItem(STORAGE_KEYS.lastSelectedMenuPath)).toBe('/dashboard')
   })
 })

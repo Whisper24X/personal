@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RouterLink } from 'vue-router'
+import { RouterLink, type RouteLocationRaw } from 'vue-router'
 import type { MenuItem, ProjectItem } from '@/hooks/core/useLayout'
 import logoImage from '@/assets/images/logo.svg'
 
@@ -13,7 +13,8 @@ const props = defineProps<{
   currentBusinessLineName: string
   projectItems: ProjectItem[]
   menuItems: MenuItem[]
-  projectItemClass: (to: string) => string
+  projectNavigationTo: (projectId: string) => RouteLocationRaw
+  projectItemClass: (projectId: string) => string
   menuItemClass: (to: string) => string
   projectShortLabel: (short: string) => string
   menuIconFor: (menuId: MenuItem['id']) => string[]
@@ -53,9 +54,9 @@ const props = defineProps<{
           <RouterLink
             v-for="item in props.projectItems"
             :key="item.id"
-            :to="item.to"
+            :to="props.projectNavigationTo(item.id)"
             class="flex h-11 w-[3.75rem] items-center justify-center rounded-lg border text-[11px] font-bold tracking-wider transition-all"
-            :class="props.projectItemClass(item.to)"
+            :class="props.projectItemClass(item.id)"
             :aria-label="item.name"
             :title="item.name"
             @mouseenter="props.showProjectTooltip($event, item.name)"
@@ -135,9 +136,6 @@ const props = defineProps<{
       </div>
 
       <nav class="flex-1 overflow-y-auto overflow-x-hidden p-2">
-        <p v-if="!props.sidebarCollapsed" class="mb-2 px-2 text-[10px] font-semibold tracking-[0.08em] text-sidebar-foreground/55">
-          项目导航
-        </p>
         <div class="space-y-1">
           <RouterLink
             v-for="item in props.menuItems"

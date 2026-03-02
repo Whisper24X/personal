@@ -10,6 +10,8 @@ defineOptions({
 const props = defineProps<{
   mobileNavOpen: boolean
   pageTitle: string
+  currentProjectName: string
+  showCurrentProjectName: boolean
   breadcrumbs: string[]
   toggleMobileNav: () => void
 }>()
@@ -158,13 +160,16 @@ onBeforeUnmount(() => {
           </svg>
         </button>
 
-        <div class="hidden h-9 items-center justify-center rounded-lg bg-muted px-3 text-xs font-semibold text-muted-foreground sm:inline-flex">
-          工作台
+        <div
+          v-if="props.showCurrentProjectName"
+          class="hidden h-9 max-w-[16rem] items-center justify-center rounded-lg bg-muted px-3 text-xs font-semibold text-muted-foreground sm:inline-flex"
+          :title="props.currentProjectName"
+        >
+          <span class="truncate">{{ props.currentProjectName }}</span>
         </div>
 
         <div>
           <p class="text-sm font-semibold leading-none">{{ props.pageTitle }}</p>
-          <p class="mt-1 text-xs text-muted-foreground">{{ props.breadcrumbs.join(' / ') }}</p>
         </div>
       </div>
 

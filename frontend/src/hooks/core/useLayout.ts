@@ -1,5 +1,5 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import { businessLinesApi } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
 import { useUserStore } from '@/stores/modules/user'
@@ -116,6 +116,10 @@ const loadStoredSelectedProjectId = () => {
   return localStorage.getItem(STORAGE_KEYS.lastSelectedProjectId) ?? ''
 }
 
+const loadStoredSelectedMenuPath = () => {
+  return localStorage.getItem(STORAGE_KEYS.lastSelectedMenuPath) ?? ''
+}
+
 export const useLayout = () => {
   const route = useRoute()
   const router = useRouter()
@@ -137,6 +141,7 @@ export const useLayout = () => {
   const businessLines = ref<BusinessLine[]>([])
   const activeBusinessLineId = ref('')
   const selectedProjectId = ref(loadStoredSelectedProjectId())
+  const layoutDataLoading = ref(false)
 
   const setSelectedProjectId = (projectId: string) => {
     selectedProjectId.value = projectId
@@ -167,6 +172,52 @@ export const useLayout = () => {
       return userStore.profile?.isAdmin ?? false
     })
   })
+
+  const resolveMenuPathFromPath = (path: string) => {
+    const matchedMenu = menuItems.value.find((item) => path === item.to || path.startsWith(`${item.to}/`))
+    return matchedMenu?.to ?? ''
+  }
+
+  const setSelectedMenuPath = (menuPath: string) => {
+    if (menuPath) {
+      localStorage.setItem(STORAGE_KEYS.lastSelectedMenuPath, menuPath)
+      return
+    }
+
+    localStorage.removeItem(STORAGE_KEYS.lastSelectedMenuPath)
+  }
+
+  const syncSelectedMenuPath = () => {
+    const menuPath = resolveMenuPathFromPath(route.path)
+    if (!menuPath) {
+      return
+    }
+
+    setSelectedMenuPath(menuPath)
+  }
+
+  const resolveProjectMenuPath = () => {
+    const routeMenuPath = resolveMenuPathFromPath(route.path)
+    if (routeMenuPath) {
+      return routeMenuPath
+    }
+
+    const storedMenuPath = loadStoredSelectedMenuPath()
+    if (storedMenuPath && menuItems.value.some((item) => item.to === storedMenuPath)) {
+      return storedMenuPath
+    }
+
+    return menuItems.value[0]?.to ?? '/dashboard'
+  }
+
+  const projectNavigationTo = (projectId: string): RouteLocationRaw => {
+    return {
+      path: resolveProjectMenuPath(),
+      query: {
+        projectId,
+      },
+    }
+  }
 
   const availableSettingsSections = computed<SettingsSection[]>(() => {
     const isAdmin = userStore.profile?.isAdmin ?? false
@@ -205,6 +256,11 @@ export const useLayout = () => {
     const routeProjectId = route.params.id
     if (typeof routeProjectId === 'string') return routeProjectId
     if (Array.isArray(routeProjectId)) return routeProjectId[0] ?? ''
+
+    const queryProjectId = normalizeQueryValue(route.query.projectId).trim()
+    if (queryProjectId) {
+      return queryProjectId
+    }
 
     const projectPathMatch = route.path.match(/^\/projects\/([^/]+)/)
     if (projectPathMatch?.[1]) {
@@ -255,6 +311,8 @@ export const useLayout = () => {
   }
 
   const loadLayoutData = async () => {
+    layoutDataLoading.value = true
+
     try {
       const [businessLineResponse, projectResponse] = await Promise.all([
         fetchAllPages((page, limit) => businessLinesApi.list({ page, limit })),
@@ -313,6 +371,8 @@ export const useLayout = () => {
       activeBusinessLineId.value = ''
       setSelectedProjectId('')
       void error
+    } finally {
+      layoutDataLoading.value = false
     }
   }
 
@@ -336,6 +396,26 @@ export const useLayout = () => {
 
   const projectItems = computed<ProjectItem[]>(() => {
     return currentBusinessLine.value?.projects ?? []
+  })
+
+  const currentProjectName = computed(() => {
+    const currentProjectId = selectedProjectId.value.trim()
+    if (!currentProjectId) {
+      return '未选择项目'
+    }
+
+    for (const line of businessLines.value) {
+      const matchedProject = line.projects.find((project) => project.id === currentProjectId)
+      if (matchedProject) {
+        return matchedProject.name
+      }
+    }
+
+    return '未选择项目'
+  })
+
+  const showCurrentProjectName = computed(() => {
+    return !layoutDataLoading.value
   })
 
   const canCreateBusinessLine = computed(() => {
@@ -379,7 +459,6 @@ export const useLayout = () => {
     if (route.name === 'automations') return ['项目菜单', '自动化']
     if (route.name === 'tasks') return ['项目菜单', '任务']
     if (route.name === 'task-detail') return ['项目菜单', '任务', '任务详情']
-    if (route.name === 'project-detail') return ['项目管理', '项目详情']
     return ['项目菜单']
   })
 
@@ -393,8 +472,8 @@ export const useLayout = () => {
     return 'text-sidebar-foreground/75 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
   }
 
-  const projectItemClass = (to: string) => {
-    if (to === `/projects/${selectedProjectId.value}`) {
+  const projectItemClass = (projectId: string) => {
+    if (projectId === selectedProjectId.value) {
       return 'border-primary/45 bg-primary text-primary-foreground shadow-md ring-2 ring-primary/35'
     }
 
@@ -480,6 +559,19 @@ export const useLayout = () => {
 
     activeBusinessLineId.value = matchedBusinessLine.id
     setSelectedProjectId(projectId)
+    const targetMenuPath = resolveProjectMenuPath()
+    setSelectedMenuPath(targetMenuPath)
+
+    const currentProjectId = normalizeQueryValue(route.query.projectId)
+    if (route.path !== targetMenuPath || currentProjectId !== projectId) {
+      void router.push({
+        path: targetMenuPath,
+        query: {
+          projectId,
+        },
+      })
+    }
+
     hideProjectTooltip()
   }
 
@@ -539,6 +631,7 @@ export const useLayout = () => {
     () => {
       mobileNavOpen.value = false
       hideProjectTooltip()
+      syncSelectedMenuPath()
       syncBusinessLineFromRoute()
       syncProjectSelection()
     },
@@ -594,6 +687,7 @@ export const useLayout = () => {
   onMounted(() => {
     applyStoredUiPreferences()
 
+    syncSelectedMenuPath()
     void refreshLayoutData()
 
     desktopMediaQuery = window.matchMedia('(min-width: 1100px)')
@@ -623,6 +717,8 @@ export const useLayout = () => {
     businessLineItems,
     activeBusinessLineId,
     selectedProjectId,
+    currentProjectName,
+    showCurrentProjectName,
     currentBusinessLineName,
     canCreateBusinessLine,
     projectTooltipVisible,
@@ -634,6 +730,7 @@ export const useLayout = () => {
     breadcrumbs,
     menuItemClass,
     projectItemClass,
+    projectNavigationTo,
     projectShortLabel,
     menuIconFor,
     setMobileNavOpen,

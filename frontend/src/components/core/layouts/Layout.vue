@@ -19,6 +19,8 @@ const {
   businessLineItems,
   activeBusinessLineId,
   selectedProjectId,
+  currentProjectName,
+  showCurrentProjectName,
   currentBusinessLineName,
   canCreateBusinessLine,
   projectTooltipVisible,
@@ -30,6 +32,7 @@ const {
   breadcrumbs,
   menuItemClass,
   projectItemClass,
+  projectNavigationTo,
   projectShortLabel,
   menuIconFor,
   setMobileNavOpen,
@@ -77,6 +80,7 @@ const {
         :current-business-line-name="currentBusinessLineName"
         :project-items="projectItems"
         :menu-items="menuItems"
+        :project-navigation-to="projectNavigationTo"
         :project-item-class="projectItemClass"
         :menu-item-class="menuItemClass"
         :project-short-label="projectShortLabel"
@@ -97,6 +101,8 @@ const {
           <HeaderBar
             :mobile-nav-open="mobileNavOpen"
             :page-title="pageTitle"
+            :current-project-name="currentProjectName"
+            :show-current-project-name="showCurrentProjectName"
             :breadcrumbs="breadcrumbs"
             :toggle-mobile-nav="toggleMobileNav"
           />
