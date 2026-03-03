@@ -1,5 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check-frontend.md", "reason": "Frontend check spec"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Verify composable state/actions stay clear and predictable"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Ensure state remains local and does not introduce improper global state"}
-{"file": "frontend/src/hooks/core/useLayout.ts", "reason": "Review fallback selection and route sync regressions"}

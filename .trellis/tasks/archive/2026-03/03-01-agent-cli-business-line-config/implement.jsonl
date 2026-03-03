@@ -1,8 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend quality gates and testing requirements"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "Service-side error handling patterns"}
-{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Logging constraints for backend services"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer config contract checks"}
-{"file": "backend/src/tasks/agent-runner.service.ts", "reason": "Existing agent runner config parsing and execution path"}
-{"file": "frontend/src/views/projects/detail.vue", "reason": "Project config UI and payload assembly"}

@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Sidebar selection logic lives in useLayout composable"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Need correct local/composable state fallback behavior"}
-{"file": "frontend/src/hooks/core/useLayout.ts", "reason": "Follow existing layout state and route synchronization pattern"}
