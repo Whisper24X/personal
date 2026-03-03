@@ -1,4 +1,11 @@
-import type { CreateMcpPayload, Mcp, UpdateMcpPayload } from '@/types/api/mcps'
+import type {
+  CreateMcpPayload,
+  ImportProjectLocalMcpsPayload,
+  ImportProjectLocalMcpsResult,
+  Mcp,
+  ProjectLocalMcpConfig,
+  UpdateMcpPayload,
+} from '@/types/api/mcps'
 import { apiHttp, type InfinityPaginationResponse } from './http'
 
 export const mcpsApi = {
@@ -26,5 +33,17 @@ export const mcpsApi = {
 
   remove(mcpId: string) {
     return apiHttp.delete<void>(`/mcps/${mcpId}`)
+  },
+
+  getProjectLocalConfig(params: { projectId: string; name: string; sourcePath: string }) {
+    return apiHttp.get<ProjectLocalMcpConfig>('/mcps/project-local/config', {
+      projectId: params.projectId,
+      name: params.name,
+      sourcePath: params.sourcePath,
+    })
+  },
+
+  importProjectLocalMcps(payload: ImportProjectLocalMcpsPayload) {
+    return apiHttp.post<ImportProjectLocalMcpsResult>('/mcps/project-local/import-json', payload)
   },
 }

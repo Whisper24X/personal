@@ -427,6 +427,25 @@ export class ProjectsService {
     return this.ensureCanManageProject(projectId, currentUser);
   }
 
+  async ensureProjectRepositoryReady(
+    projectId: Project['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<{ project: Project; repositoryRoot: string }> {
+    const project = await this.ensureCanAccessProject(projectId, currentUser);
+
+    try {
+      const repositoryRoot = await this.ensureProjectRepository(project);
+      return {
+        project,
+        repositoryRoot,
+      };
+    } catch (error) {
+      throw new BadRequestException(
+        this.formatGitSyncFailureMessage(error, project.gitUrl),
+      );
+    }
+  }
+
   private isAdmin(currentUser: JwtPayloadType): boolean {
     return currentUser.roles?.includes('admin') ?? false;
   }
@@ -668,7 +687,7 @@ export class ProjectsService {
     );
   }
 
-  private async ensureProjectRepository(project: Project): Promise<void> {
+  private async ensureProjectRepository(project: Project): Promise<string> {
     const repositoryRoot = this.resolveRepositoryRoot(project);
     const gitDirPath = path.join(repositoryRoot, '.git');
     const hasGit = await this.pathExists(gitDirPath);
@@ -715,6 +734,8 @@ export class ProjectsService {
     if (!fetchResult.success) {
       throw new Error(fetchResult.stderr || 'git fetch failed');
     }
+
+    return repositoryRoot;
   }
 
   private resolveRepositoryRoot(project: Project): string {

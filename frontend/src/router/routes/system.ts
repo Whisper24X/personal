@@ -89,6 +89,15 @@ export const systemRoutes: AppRouteRecord[] = [
     },
   },
   {
+    path: '/git',
+    name: 'git',
+    component: () => import('@/views/git/index.vue'),
+    meta: {
+      title: 'Git',
+      requiresAuth: true,
+    },
+  },
+  {
     path: '/business-lines/invite',
     name: 'business-line-invite',
     component: () => import('@/views/business-lines/invite.vue'),

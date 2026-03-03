@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { businessLinesApi } from '@/api/business-lines'
@@ -31,6 +31,7 @@ const keyword = ref('')
 const skills = ref<Skill[]>([])
 const projectBusinessLineId = ref('')
 const addMenuOpen = ref(false)
+const addMenuAnchorRef = ref<HTMLElement | null>(null)
 const copySkillModalOpen = ref(false)
 const copySkillKeyword = ref('')
 const businessLineSkills = ref<Skill[]>([])
@@ -254,6 +255,23 @@ const toggleAddMenu = () => {
   addMenuOpen.value = !addMenuOpen.value
 }
 
+const onDocumentPointerDown = (event: PointerEvent) => {
+  if (!addMenuOpen.value) {
+    return
+  }
+
+  const eventTarget = event.target
+  if (!(eventTarget instanceof Node)) {
+    return
+  }
+
+  if (addMenuAnchorRef.value?.contains(eventTarget)) {
+    return
+  }
+
+  closeAddMenu()
+}
+
 const openCopySkillModal = async () => {
   closeAddMenu()
 
@@ -439,6 +457,30 @@ watch(
   },
   { immediate: true },
 )
+
+watch(
+  () => addMenuOpen.value,
+  (open) => {
+    if (typeof document === 'undefined') {
+      return
+    }
+
+    if (open) {
+      document.addEventListener('pointerdown', onDocumentPointerDown)
+      return
+    }
+
+    document.removeEventListener('pointerdown', onDocumentPointerDown)
+  },
+)
+
+onBeforeUnmount(() => {
+  if (typeof document === 'undefined') {
+    return
+  }
+
+  document.removeEventListener('pointerdown', onDocumentPointerDown)
+})
 </script>
 
 <template>
@@ -469,7 +511,7 @@ watch(
           >
             搜索
           </button>
-          <div class="relative">
+          <div ref="addMenuAnchorRef" class="relative">
             <button
               type="button"
               class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:shadow-md"
@@ -574,14 +616,6 @@ watch(
     </section>
 
     <Teleport to="body">
-      <button
-        v-if="addMenuOpen"
-        type="button"
-        aria-label="关闭添加技能菜单"
-        class="fixed inset-0 z-10 cursor-default bg-transparent"
-        @click="closeAddMenu"
-      />
-
       <div
         v-if="copySkillModalOpen"
         class="fixed inset-0 z-[121] flex items-center justify-center p-3 sm:p-6"
@@ -646,10 +680,10 @@ watch(
                 :key="item.id"
                 class="rounded-xl border border-border bg-background/70 px-4 py-3"
               >
-                <div class="flex items-center justify-between gap-2">
-                  <div>
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0 flex-1">
                     <p class="text-sm font-semibold">{{ item.name }}</p>
-                    <p class="mt-1 text-xs text-muted-foreground">
+                    <p class="mt-1 line-clamp-2 text-xs text-muted-foreground">
                       {{ item.description ?? '暂无描述' }}
                     </p>
                   </div>

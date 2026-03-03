@@ -32,6 +32,10 @@ import {
 } from '../utils/dto/infinity-pagination-response.dto';
 import { FindAllMcpsDto } from './dto/find-all-mcps.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
+import { GetProjectLocalMcpConfigDto } from './dto/get-project-local-mcp-config.dto';
+import { ProjectLocalMcpConfigDto } from './dto/project-local-mcp-config.dto';
+import { ImportProjectLocalMcpsDto } from './dto/import-project-local-mcps.dto';
+import { ImportProjectLocalMcpsResultDto } from './dto/import-project-local-mcps-result.dto';
 
 @ApiTags('MCPs')
 @ApiBearerAuth()
@@ -77,6 +81,29 @@ export class McpsController {
         page,
         limit,
       },
+    );
+  }
+
+  @Get('project-local/config')
+  @ApiOkResponse({ type: ProjectLocalMcpConfigDto })
+  @HttpCode(HttpStatus.OK)
+  getProjectLocalMcpConfig(
+    @Request() request,
+    @Query() query: GetProjectLocalMcpConfigDto,
+  ): Promise<ProjectLocalMcpConfigDto> {
+    return this.mcpsService.getProjectLocalMcpConfig(query, request.user);
+  }
+
+  @Post('project-local/import-json')
+  @ApiOkResponse({ type: ImportProjectLocalMcpsResultDto })
+  @HttpCode(HttpStatus.OK)
+  importProjectLocalMcps(
+    @Request() request,
+    @Body() importProjectLocalMcpsDto: ImportProjectLocalMcpsDto,
+  ): Promise<ImportProjectLocalMcpsResultDto> {
+    return this.mcpsService.importProjectLocalMcps(
+      importProjectLocalMcpsDto,
+      request.user,
     );
   }
 

@@ -43,7 +43,7 @@ type BusinessLine = {
 }
 
 export type MenuItem = {
-  id: 'dashboard' | 'tasks' | 'kanban' | 'automations' | 'skills' | 'mcp'
+  id: 'dashboard' | 'tasks' | 'kanban' | 'automations' | 'skills' | 'mcp' | 'git'
   label: string
   to: string
   adminOnly?: boolean
@@ -161,6 +161,7 @@ export const useLayout = () => {
     { id: 'automations', label: '自动化', to: '/automations' },
     { id: 'skills', label: 'Skills', to: '/skills' },
     { id: 'mcp', label: 'MCP', to: '/mcp' },
+    { id: 'git', label: 'Git', to: '/git' },
   ]
 
   const menuItems = computed<MenuItem[]>(() => {
@@ -235,6 +236,7 @@ export const useLayout = () => {
     automations: ['M12 7v5l3 3', 'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z'],
     skills: ['M12 3v4', 'M12 17v4', 'M4.93 4.93l2.83 2.83', 'M16.24 16.24l2.83 2.83', 'M3 12h4', 'M17 12h4', 'M4.93 19.07l2.83-2.83', 'M16.24 7.76l2.83-2.83'],
     mcp: ['M5 3h14a2 2 0 0 1 2 2v3H3V5a2 2 0 0 1 2-2z', 'M3 10h18v4H3z', 'M3 16h18v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M7 6h.01', 'M7 12h.01', 'M7 18h.01'],
+    git: ['M4 12h9', 'M8 8l-4 4 4 4', 'M12 6h8', 'M16 2l4 4-4 4', 'M12 18h8', 'M16 14l4 4-4 4'],
   }
 
   const mapProjectItem = (project: Project): ProjectItem => ({
@@ -635,6 +637,34 @@ export const useLayout = () => {
       syncBusinessLineFromRoute()
       syncProjectSelection()
     },
+  )
+
+  watch(
+    () => [route.path, route.query.projectId, selectedProjectId.value] as const,
+    ([path, queryProjectId, selectedProjectId]) => {
+      const routeMenuPath = resolveMenuPathFromPath(path)
+      if (!routeMenuPath) {
+        return
+      }
+
+      if (!selectedProjectId) {
+        return
+      }
+
+      const normalizedQueryProjectId = normalizeQueryValue(queryProjectId).trim()
+      if (normalizedQueryProjectId) {
+        return
+      }
+
+      void router.replace({
+        path,
+        query: {
+          ...route.query,
+          projectId: selectedProjectId,
+        },
+      })
+    },
+    { immediate: true },
   )
 
   watch(

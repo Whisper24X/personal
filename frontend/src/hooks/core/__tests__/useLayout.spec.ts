@@ -204,6 +204,27 @@ describe('useLayout business line selection', () => {
     expect(wrapper.get('[data-testid="project-shorts"]').text()).toBe('TES1,TES2,TES3')
   })
 
+  it('includes git entry in sidebar menu items', async () => {
+    setActivePinia(createPinia())
+
+    const Harness = defineComponent({
+      setup() {
+        return useLayout()
+      },
+      template: `
+        <div>
+          <p data-testid="menu-paths">{{ menuItems.map((item) => item.to).join(',') }}</p>
+        </div>
+      `,
+    })
+
+    const wrapper = mount(Harness)
+    await flushPromises()
+
+    const menuPaths = wrapper.get('[data-testid="menu-paths"]').text().split(',')
+    expect(menuPaths).toContain('/git')
+  })
+
   it('hides project name before project data is ready and shows it after loading', async () => {
     setActivePinia(createPinia())
 

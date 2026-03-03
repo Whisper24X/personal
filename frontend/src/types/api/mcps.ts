@@ -12,6 +12,30 @@ export type Mcp = {
   updatedAt?: string
 }
 
+export type ProjectLocalMcpProvider =
+  | 'cursor'
+  | 'gemini'
+  | 'opencode'
+  | 'claude-code'
+  | 'codex'
+
+export type ProjectLocalMcpConfig = {
+  name: string
+  sourcePath: string
+  config: Record<string, unknown>
+}
+
+export type ImportProjectLocalMcpsPayload = {
+  projectId: string
+  provider: ProjectLocalMcpProvider
+  payload: Record<string, unknown>
+}
+
+export type ImportProjectLocalMcpsResult = {
+  importedCount: number
+  overwrittenCount: number
+}
+
 export type CreateMcpPayload = {
   name: string
   version: string

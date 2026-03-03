@@ -35,8 +35,24 @@ export type LocalMcpItem = {
 };
 
 export type ProjectSkillProvider = 'codex' | 'cursor' | 'curso';
+export type ProjectMcpProvider =
+  | 'cursor'
+  | 'gemini'
+  | 'opencode'
+  | 'claude-code'
+  | 'codex';
 
-const PROJECT_AGENT_ROOTS = ['.codex', '.cursor', '.curso'];
+const PROJECT_SKILL_ROOTS = ['.codex', '.cursor', '.curso'] as const;
+export const PROJECT_MCP_CONFIG_SOURCES: ReadonlyArray<{
+  provider: ProjectMcpProvider;
+  relativePath: string;
+}> = [
+  { provider: 'cursor', relativePath: '.cursor/mcp.json' },
+  { provider: 'gemini', relativePath: '.gemini/settings.json' },
+  { provider: 'opencode', relativePath: 'opencode.json' },
+  { provider: 'claude-code', relativePath: '.mcp.json' },
+  { provider: 'codex', relativePath: '.codex/config.toml' },
+];
 const SKILL_DESCRIPTOR_FILENAMES = [
   'SKILL.md',
   'skill.md',
@@ -159,7 +175,10 @@ const toAbsolutePath = (targetPath: string): string => {
   return path.resolve(workspaceRootDir, normalizedPath);
 };
 
-const isPathInsideDirectory = (targetPath: string, directoryPath: string): boolean => {
+const isPathInsideDirectory = (
+  targetPath: string,
+  directoryPath: string,
+): boolean => {
   const relativePath = path.relative(directoryPath, targetPath);
 
   if (!relativePath) {
@@ -169,15 +188,26 @@ const isPathInsideDirectory = (targetPath: string, directoryPath: string): boole
   return !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
 };
 
-const hasProjectRootMarkers = async (directoryPath: string): Promise<boolean> => {
+const hasProjectRootMarkers = async (
+  directoryPath: string,
+): Promise<boolean> => {
   const gitDirStat = await safeStat(path.join(directoryPath, '.git'));
   if (gitDirStat?.isDirectory()) {
     return true;
   }
 
-  for (const rootName of PROJECT_AGENT_ROOTS) {
+  for (const rootName of PROJECT_SKILL_ROOTS) {
     const rootStat = await safeStat(path.join(directoryPath, rootName));
     if (rootStat?.isDirectory()) {
+      return true;
+    }
+  }
+
+  for (const source of PROJECT_MCP_CONFIG_SOURCES) {
+    const configFileStat = await safeStat(
+      path.join(directoryPath, source.relativePath),
+    );
+    if (configFileStat?.isFile()) {
       return true;
     }
   }
@@ -322,7 +352,12 @@ const buildProjectStorageBaseDir = (project: Project): string | null => {
     return null;
   }
 
-  return path.resolve(ainativeDataRootDir, businessLineId, 'projects', projectId);
+  return path.resolve(
+    ainativeDataRootDir,
+    businessLineId,
+    'projects',
+    projectId,
+  );
 };
 
 const buildProjectBaseDirCandidates = (project: Project): string[] => {
@@ -360,8 +395,9 @@ const buildProjectBaseDirCandidates = (project: Project): string[] => {
     }
   }
 
-  const repoCacheBaseDir = normalizeText(configJson.repoCacheBaseDir)
-    ?? normalizeText(process.env.AINATIVE_REPO_CACHE_BASE_DIR);
+  const repoCacheBaseDir =
+    normalizeText(configJson.repoCacheBaseDir) ??
+    normalizeText(process.env.AINATIVE_REPO_CACHE_BASE_DIR);
 
   if (repoCacheBaseDir && repositoryNameFromGit) {
     const projectId = normalizeText(project.id);
@@ -375,7 +411,106 @@ const buildProjectBaseDirCandidates = (project: Project): string[] => {
   return Array.from(candidateSet);
 };
 
-const resolveProjectBaseDir = async (project: Project): Promise<string | null> => {
+const buildSiblingRepoDirCandidates = (project: Project): string[] => {
+  const repositoryNameFromGit = extractRepositoryNameFromGitUrl(project.gitUrl);
+  const repositoryNameFromProject = sanitizePathSegment(project.name || '');
+  const parentDir = path.dirname(workspaceRootDir);
+  const candidateSet = new Set<string>();
+
+  if (repositoryNameFromGit) {
+    candidateSet.add(path.resolve(parentDir, repositoryNameFromGit));
+    if (path.basename(workspaceRootDir) === repositoryNameFromGit) {
+      candidateSet.add(workspaceRootDir);
+    }
+  }
+
+  if (repositoryNameFromProject) {
+    candidateSet.add(path.resolve(parentDir, repositoryNameFromProject));
+    if (path.basename(workspaceRootDir) === repositoryNameFromProject) {
+      candidateSet.add(workspaceRootDir);
+    }
+  }
+
+  return Array.from(candidateSet);
+};
+
+const resolveProjectBaseDirForLocalMcp = async (
+  project: Project,
+): Promise<string | null> => {
+  const candidateSet = new Set<string>([
+    ...buildProjectBaseDirCandidates(project),
+    ...buildSiblingRepoDirCandidates(project),
+  ]);
+  const resolvedBaseDir = await resolveProjectBaseDir(project);
+  if (resolvedBaseDir) {
+    candidateSet.add(resolvedBaseDir);
+  }
+
+  let selectedBaseDir = '';
+  let selectedScore = -1;
+
+  for (const candidatePath of candidateSet) {
+    const candidateStat = await safeStat(candidatePath);
+    if (!candidateStat?.isDirectory()) {
+      continue;
+    }
+
+    let score = 0;
+    for (const source of PROJECT_MCP_CONFIG_SOURCES) {
+      const sourcePath = path.join(candidatePath, source.relativePath);
+      const sourceStat = await safeStat(sourcePath);
+      if (sourceStat?.isFile()) {
+        score += 1;
+      }
+    }
+
+    if (score > selectedScore) {
+      selectedBaseDir = candidatePath;
+      selectedScore = score;
+    }
+  }
+
+  return selectedBaseDir || resolvedBaseDir;
+};
+
+export const resolveProjectLocalMcpConfigPath = async (
+  project: Project,
+  provider: ProjectMcpProvider,
+): Promise<string | null> => {
+  const projectBaseDir = await resolveProjectBaseDirForLocalMcp(project);
+  if (!projectBaseDir) {
+    return null;
+  }
+
+  const source = PROJECT_MCP_CONFIG_SOURCES.find(
+    (item) => item.provider === provider,
+  );
+  if (!source) {
+    return null;
+  }
+
+  return path.join(projectBaseDir, source.relativePath);
+};
+
+export const resolveProjectLocalMcpConfigPathMap = async (
+  project: Project,
+): Promise<Record<ProjectMcpProvider, string> | null> => {
+  const projectBaseDir = await resolveProjectBaseDirForLocalMcp(project);
+  if (!projectBaseDir) {
+    return null;
+  }
+
+  const result = {} as Record<ProjectMcpProvider, string>;
+  for (const source of PROJECT_MCP_CONFIG_SOURCES) {
+    result[source.provider] = path.join(projectBaseDir, source.relativePath);
+  }
+
+  return result;
+};
+
+const resolveProjectBaseDir = async (
+  project: Project,
+): Promise<string | null> => {
   const candidates = buildProjectBaseDirCandidates(project);
 
   for (const candidate of candidates) {
@@ -425,14 +560,19 @@ const isSupportedProjectSkillProvider = (
 export const resolveProjectSkillRootForWrite = async (
   project: Project,
   preferredProvider?: string | null,
-): Promise<{ provider: ProjectSkillProvider; rootPath: string; skillsPath: string } | null> => {
+): Promise<{
+  provider: ProjectSkillProvider;
+  rootPath: string;
+  skillsPath: string;
+} | null> => {
   const projectBaseDir = await resolveProjectBaseDir(project);
 
   if (!projectBaseDir) {
     return null;
   }
 
-  const normalizedPreferredProvider = normalizeText(preferredProvider)?.toLowerCase() ?? '';
+  const normalizedPreferredProvider =
+    normalizeText(preferredProvider)?.toLowerCase() ?? '';
   const existingProviders: ProjectSkillProvider[] = [];
   const providerOrder: ProjectSkillProvider[] = ['cursor', 'codex', 'curso'];
 
@@ -461,7 +601,9 @@ export const resolveProjectSkillRootForWrite = async (
 };
 
 const resolveSkillSourcePath = (skill: LocalSkillItem): string | null => {
-  const metadata = isObjectRecord(skill.metadataJson) ? skill.metadataJson : null;
+  const metadata = isObjectRecord(skill.metadataJson)
+    ? skill.metadataJson
+    : null;
   if (!metadata) {
     return null;
   }
@@ -525,13 +667,26 @@ const dedupeMcps = (items: LocalMcpItem[]): LocalMcpItem[] => {
   const merged = new Map<string, LocalMcpItem>();
 
   for (const item of items) {
-    const key = `${item.name.toLowerCase()}@${item.version.toLowerCase()}`;
+    const key = item.id;
     if (!merged.has(key)) {
       merged.set(key, item);
     }
   }
 
   return Array.from(merged.values()).sort((left, right) => {
+    const leftMetadata = isObjectRecord(left.metadataJson)
+      ? left.metadataJson
+      : null;
+    const rightMetadata = isObjectRecord(right.metadataJson)
+      ? right.metadataJson
+      : null;
+    const leftProvider = normalizeText(leftMetadata?.sourceProvider) ?? '';
+    const rightProvider = normalizeText(rightMetadata?.sourceProvider) ?? '';
+    const byProvider = leftProvider.localeCompare(rightProvider);
+    if (byProvider !== 0) {
+      return byProvider;
+    }
+
     const byName = left.name.localeCompare(right.name);
     if (byName !== 0) {
       return byName;
@@ -808,8 +963,12 @@ const parseMcpFromEntryObject = ({
   sourceProvider: string;
   value: unknown;
   updatedAt: Date;
-}): LocalMcpItem => {
-  const record = isObjectRecord(value) ? value : {};
+}): LocalMcpItem | null => {
+  if (!isObjectRecord(value)) {
+    return null;
+  }
+
+  const record = value;
 
   const toolsCount = Array.isArray(record.tools)
     ? record.tools.length
@@ -843,6 +1002,98 @@ const parseMcpFromEntryObject = ({
   });
 };
 
+const MCP_LIKE_ENTRY_KEYS = new Set([
+  'command',
+  'args',
+  'url',
+  'transport',
+  'transporttype',
+  'mcptransport',
+  'mcp_transport',
+  'env',
+  'headers',
+  'tools',
+  'toolscount',
+  'tools_count',
+  'configschema',
+  'config_schema',
+]);
+
+const isMcpLikeConfigRecord = (record: Record<string, unknown>): boolean => {
+  const normalizedKeys = Object.keys(record).map((key) =>
+    key.trim().toLowerCase(),
+  );
+
+  if (normalizedKeys.some((key) => MCP_LIKE_ENTRY_KEYS.has(key))) {
+    return true;
+  }
+
+  const transportLikeValue =
+    normalizeText(record.type) ??
+    normalizeText(record.transportType) ??
+    normalizeText(record.transport_type);
+  if (!transportLikeValue) {
+    return false;
+  }
+
+  const normalizedTransport = transportLikeValue.toLowerCase();
+  return (
+    normalizedTransport === 'stdio' ||
+    normalizedTransport === 'http' ||
+    normalizedTransport === 'sse' ||
+    normalizedTransport === 'streamable_http'
+  );
+};
+
+const MCP_GROUPED_FIELD_NAMES = new Set([
+  'mcpservers',
+  'mcp_servers',
+  'mcps',
+  'mcp',
+]);
+
+const collectMcpGroupedCandidates = (input: unknown): unknown[] => {
+  const result: unknown[] = [];
+  const visited = new Set<unknown>();
+
+  const visit = (node: unknown, depth: number): void => {
+    if (depth > 6) {
+      return;
+    }
+
+    if (!node || typeof node !== 'object') {
+      return;
+    }
+
+    if (visited.has(node)) {
+      return;
+    }
+    visited.add(node);
+
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        visit(item, depth + 1);
+      }
+      return;
+    }
+
+    for (const [key, value] of Object.entries(node)) {
+      const normalizedKey = key.trim().toLowerCase();
+      if (MCP_GROUPED_FIELD_NAMES.has(normalizedKey)) {
+        result.push(value);
+      }
+
+      if (isObjectRecord(value) || Array.isArray(value)) {
+        visit(value, depth + 1);
+      }
+    }
+  };
+
+  visit(input, 0);
+
+  return result;
+};
+
 const parseMcpObject = ({
   contentObject,
   sourcePath,
@@ -858,30 +1109,26 @@ const parseMcpObject = ({
 }): LocalMcpItem[] => {
   const result: LocalMcpItem[] = [];
 
-  const groupedCandidates = [
-    contentObject.mcpServers,
-    contentObject.mcp_servers,
-    contentObject.mcps,
-    contentObject.mcp,
-  ];
+  const groupedCandidates = collectMcpGroupedCandidates(contentObject);
 
   for (const candidate of groupedCandidates) {
     if (Array.isArray(candidate)) {
       for (const entry of candidate) {
-        if (!isObjectRecord(entry)) {
+        if (!isObjectRecord(entry) || !isMcpLikeConfigRecord(entry)) {
           continue;
         }
 
         const name = normalizeText(entry.name) ?? fallbackName;
-        result.push(
-          parseMcpFromEntryObject({
-            name,
-            sourcePath,
-            sourceProvider,
-            value: entry,
-            updatedAt,
-          }),
-        );
+        const parsed = parseMcpFromEntryObject({
+          name,
+          sourcePath,
+          sourceProvider,
+          value: entry,
+          updatedAt,
+        });
+        if (parsed) {
+          result.push(parsed);
+        }
       }
       continue;
     }
@@ -891,15 +1138,20 @@ const parseMcpObject = ({
     }
 
     for (const [name, value] of Object.entries(candidate)) {
-      result.push(
-        parseMcpFromEntryObject({
-          name,
-          sourcePath,
-          sourceProvider,
-          value,
-          updatedAt,
-        }),
-      );
+      if (!isObjectRecord(value) || !isMcpLikeConfigRecord(value)) {
+        continue;
+      }
+
+      const parsed = parseMcpFromEntryObject({
+        name,
+        sourcePath,
+        sourceProvider,
+        value,
+        updatedAt,
+      });
+      if (parsed) {
+        result.push(parsed);
+      }
     }
   }
 
@@ -907,17 +1159,45 @@ const parseMcpObject = ({
     return result;
   }
 
-  const objectLevelName = normalizeText(contentObject.name) ?? fallbackName;
+  const directMapResult: LocalMcpItem[] = [];
+  for (const [name, value] of Object.entries(contentObject)) {
+    if (!isObjectRecord(value) || !isMcpLikeConfigRecord(value)) {
+      continue;
+    }
 
-  return [
-    parseMcpFromEntryObject({
-      name: objectLevelName,
+    const parsed = parseMcpFromEntryObject({
+      name,
       sourcePath,
       sourceProvider,
-      value: contentObject,
+      value,
       updatedAt,
-    }),
-  ];
+    });
+    if (parsed) {
+      directMapResult.push(parsed);
+    }
+  }
+
+  if (directMapResult.length > 0) {
+    return directMapResult;
+  }
+
+  if (!isMcpLikeConfigRecord(contentObject)) {
+    return [];
+  }
+
+  const objectLevelName = normalizeText(contentObject.name) ?? fallbackName;
+  const parsed = parseMcpFromEntryObject({
+    name: objectLevelName,
+    sourcePath,
+    sourceProvider,
+    value: contentObject,
+    updatedAt,
+  });
+  if (!parsed) {
+    return [];
+  }
+
+  return [parsed];
 };
 
 const parseTomlMcpNames = (content: string): string[] => {
@@ -1100,7 +1380,7 @@ const loadProjectAgentRootDirs = async (
 
   const result: Array<{ provider: string; rootPath: string }> = [];
 
-  for (const rootName of PROJECT_AGENT_ROOTS) {
+  for (const rootName of PROJECT_SKILL_ROOTS) {
     const rootPath = path.join(projectBaseDir, rootName);
     const rootStat = await safeStat(rootPath);
 
@@ -1115,6 +1395,33 @@ const loadProjectAgentRootDirs = async (
   }
 
   return result;
+};
+
+const loadProjectMcpsFromConfiguredPaths = async (
+  project: Project,
+): Promise<LocalMcpItem[]> => {
+  const projectBaseDir = await resolveProjectBaseDirForLocalMcp(project);
+  if (!projectBaseDir) {
+    return [];
+  }
+
+  const allMcps: LocalMcpItem[] = [];
+
+  for (const source of PROJECT_MCP_CONFIG_SOURCES) {
+    const sourcePath = path.join(projectBaseDir, source.relativePath);
+    const sourceStat = await safeStat(sourcePath);
+    if (!sourceStat?.isFile()) {
+      continue;
+    }
+
+    const loaded = await parseMcpFile({
+      filePath: sourcePath,
+      sourceProvider: source.provider,
+    });
+    allMcps.push(...loaded);
+  }
+
+  return dedupeMcps(allMcps);
 };
 
 export const loadBusinessLineLocalSkills = async (
@@ -1206,19 +1513,7 @@ export const loadProjectLocalSkills = async (
 export const loadProjectLocalMcps = async (
   project: Project,
 ): Promise<LocalMcpItem[]> => {
-  const agentRoots = await loadProjectAgentRootDirs(project);
-  const allMcps: LocalMcpItem[] = [];
-
-  for (const root of agentRoots) {
-    const loadedFromRoot = await loadMcpsFromDirectory({
-      directoryPath: root.rootPath,
-      sourceProvider: root.provider,
-    });
-
-    allMcps.push(...loadedFromRoot);
-  }
-
-  return dedupeMcps(allMcps);
+  return loadProjectMcpsFromConfiguredPaths(project);
 };
 
 export const loadProjectLocalSkillMarkdownContent = async (
@@ -1241,7 +1536,9 @@ export const loadProjectLocalSkillMarkdownContent = async (
   }
 
   const candidatePaths = await resolveSkillMarkdownPathCandidates(sourcePath);
-  const allowedRootPaths = agentRoots.map((root) => path.resolve(root.rootPath));
+  const allowedRootPaths = agentRoots.map((root) =>
+    path.resolve(root.rootPath),
+  );
 
   for (const candidatePath of candidatePaths) {
     const resolvedCandidatePath = path.resolve(candidatePath);

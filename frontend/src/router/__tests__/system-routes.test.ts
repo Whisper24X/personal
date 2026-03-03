@@ -27,6 +27,12 @@ describe('systemRoutes compatibility redirects', () => {
     expect(homeRoute?.redirect).toBe('/dashboard')
   })
 
+  it('registers git route for project-level git operations', () => {
+    const gitRoute = findByPath('/git')
+    expect(gitRoute?.name).toBe('git')
+    expect(gitRoute?.meta?.requiresAuth).toBe(true)
+  })
+
   it('redirects legacy project detail routes to dashboard with project context', () => {
     const projectDetailRoute = findByPath('/projects/:id')
     expect(typeof projectDetailRoute?.redirect).toBe('function')
