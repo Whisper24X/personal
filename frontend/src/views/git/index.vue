@@ -159,7 +159,7 @@ watch(activeProjectId, () => {
         </button>
       </div>
       <p v-if="!hasProjectId" class="mt-3 text-xs text-amber-700 dark:text-amber-300">
-        当前 URL 缺少 projectId，请使用 `?projectId=<uuid>` 访问或先在侧栏选择项目。
+        当前 URL 缺少 projectId，请使用 `?projectId=&lt;uuid&gt;` 访问或先在侧栏选择项目。
       </p>
       <p v-else-if="!isOnDefaultBranch" class="mt-3 text-xs text-amber-700 dark:text-amber-300">
         当前不在 {{ branchData.defaultBranch }} 分支，拉取操作会被后端拒绝，请先切换到 {{ branchData.defaultBranch }}。
