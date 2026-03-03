@@ -98,7 +98,11 @@ flowchart TD
 <!DOCTYPE html>
 <html lang="zh-CN">
   <head>
-    <!-- CDN 依赖 -->
+    <!-- CDN 依赖：必须使用 templates.md 第 166-179 行的 CDN 资源 -->
+    <link rel="stylesheet" href="https://fp.yangcong345.com/middle/base/element-38098fc849a985d85be870cf856da4a1.css" />
+    <script src="https://fp.yangcong345.com/middle/base/vue.global.prod.min-0b54d44c0a1191e01683f5d626686f5e.js"></script>
+    <script src="https://fp.yangcong345.com/middle/base/element-f355e990744f69cea3292feaf7b43b40.js"></script>
+    <!-- 若需图表，添加：<script src="https://fp.yangcong345.com/middle/base/echarts.min-b91b9de4da1677c82825c679112da8b2.js"></script> -->
     <!-- 设计标准 CSS -->
   </head>
   <body>
@@ -121,6 +125,14 @@ flowchart TD
   </body>
 </html>
 ```
+
+### CDN 引用规范
+
+所有 script/link 引用必须使用 [templates.md](references/templates.md) 第 166-179 行的 CDN 资源：
+
+- **管理后台**：Vue + Element Plus CSS + Element Plus JS；需要图表时加 ECharts
+- **移动端**：仅 Vue（无 Element Plus）
+- **禁止**使用其他 CDN 或版本
 
 ---
 
@@ -215,6 +227,9 @@ flowchart TD
 - [ ] 包含 `<head>` / `</head>` 和 `<body>` / `</body>`
 - [ ] `<script` 与 `</script>` 标签数量完全相等
 - [ ] 包含 Vue3 CDN 引用：`fp.yangcong345.com/.../vue.global.prod.min`
+- [ ] 包含 Element Plus CSS 引用：`fp.yangcong345.com/.../element-38098fc849a985d85be870cf856da4a1.css`（管理后台）
+- [ ] 包含 Element Plus JS 引用：`fp.yangcong345.com/.../element-f355e990744f69cea3292feaf7b43b40.js`（管理后台）
+- [ ] 若使用图表，包含 ECharts 引用：`fp.yangcong345.com/.../echarts.min-b91b9de4da1677c82825c679112da8b2.js`
 - [ ] 包含 Vue 应用挂载：`.mount('#app')` 或 `.mount("#app")`
 - [ ] JS 代码大括号 `{}` 已配对（无明显截断）
 
@@ -242,14 +257,15 @@ flowchart TD
 
 若发现任何检查项未通过，**立即在文件中修复**：
 
-| 问题类型              | 修复方式                                 |
-| --------------------- | ---------------------------------------- |
-| 标签未闭合            | 补全缺失的闭合标签                       |
-| `</script>` 数量不足  | 补全缺失的 `</script>`                   |
-| Vue 挂载调用缺失      | 在 script 末尾补全 `.mount('#app')`      |
-| `ref` 初始值为 `null` | 改为对应类型的空值（`''` / `[]` / `{}`） |
-| 嵌套属性访问无保护    | 改为可选链写法 `?.`                      |
-| 文件被截断            | 重新生成完整文件                         |
+| 问题类型                     | 修复方式                                 |
+| ---------------------------- | ---------------------------------------- |
+| 标签未闭合                   | 补全缺失的闭合标签                       |
+| `</script>` 数量不足         | 补全缺失的 `</script>`                   |
+| Vue 挂载调用缺失             | 在 script 末尾补全 `.mount('#app')`      |
+| `ref` 初始值为 `null`        | 改为对应类型的空值（`''` / `[]` / `{}`） |
+| 嵌套属性访问无保护           | 改为可选链写法 `?.`                      |
+| 文件被截断                   | 重新生成完整文件                         |
+| CDN 引用非 templates.md 标准 | 替换为 templates.md 第 166-179 行的 URL  |
 
 修复完成后，**重新执行第一步和第二步**，直到所有检查项全部通过。
 
