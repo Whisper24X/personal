@@ -258,6 +258,9 @@ export class PRDController {
       const mainFile = htmlFiles.includes('index.html') ? 'index.html' : htmlFiles[0];
 
       const filePath = path.join(prototypeDir, mainFile);
+      logger.info(`PRDController: Prototype file path`, {
+        filePath,
+      });
 
       try {
         const content = await fs.readFile(filePath, 'utf-8');
