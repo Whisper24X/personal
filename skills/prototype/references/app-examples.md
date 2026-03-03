@@ -327,7 +327,7 @@
       </div>
     </div>
 
-    <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.22/vue.global.js"></script>
+    <script src="https://fp.yangcong345.com/middle/base/vue.global.prod.min-0b54d44c0a1191e01683f5d626686f5e.js"></script>
 
     <script>
       const { createApp, ref, onMounted } = Vue;
@@ -786,7 +786,7 @@
       </div>
     </div>
 
-    <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.22/vue.global.js"></script>
+    <script src="https://fp.yangcong345.com/middle/base/vue.global.prod.min-0b54d44c0a1191e01683f5d626686f5e.js"></script>
 
     <script>
       const { createApp, ref, reactive } = Vue;

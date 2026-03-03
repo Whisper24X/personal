@@ -1,6 +1,6 @@
 ---
 name: prototype
-description: Creates single-file HTML prototypes in /docs/prototype/. Distinguishes new vs iteration: new features generate directly with project design tokens; iterations reference workspace frontend code (ainative-shadow=admin, ainative-app=miniprogram, frontend=single app). Uses Vue3 + Element Plus via CDN. Use when user says "prototype", "demo", "mockup", "quick validation", "visualize idea", or needs UI preview.
+description: Creates single-file HTML prototypes in /docs/prototype/. Distinguishes new vs iteration: new features generate directly with project design tokens; iterations reference  frontend code (ainative-shadow=admin, ainative-app=miniprogram, frontend=single app). Uses Vue3 + Element Plus via CDN. Use when user says "prototype", "demo", "mockup", "quick validation", "visualize idea", or needs UI preview.
 ---
 
 # 单文件原型生成器
@@ -16,9 +16,9 @@ description: Creates single-file HTML prototypes in /docs/prototype/. Distinguis
 
 ---
 
-## 项目结构说明（workspace 根目录下）
+## 项目结构说明
 
-项目实际代码位于 **workspace 根目录** 下，常见结构：
+项目实际代码位于 **根目录** 下，常见结构：
 
 | 目录               | 用途                        | 原型类型          |
 | ------------------ | --------------------------- | ----------------- |
@@ -26,7 +26,7 @@ description: Creates single-file HTML prototypes in /docs/prototype/. Distinguis
 | `ainative-app/`    | 小程序（移动端）            | 移动端/小程序原型 |
 | `frontend/`        | 单前端项目（如 Mind2Build） | 按实际用途判断    |
 
-**路径解析规则**：生成原型前，先检查 workspace 下存在 `ainative-shadow`、`ainative-app`、`frontend` 中的哪些目录，再确定参考代码的根路径 `{root}`。
+**路径解析规则**：生成原型前，先检查 根目录下 下存在 `ainative-shadow`、`ainative-app`、`frontend` 中的哪些目录，再确定参考代码的根路径 `{root}`。
 
 ---
 
@@ -65,7 +65,7 @@ flowchart TD
 
 ### Step 2: 应用设计标准（参考项目实际）
 
-从 workspace 根目录下项目提取设计 token。**来源文件**（路径相对于 workspace 根目录，`{root}` 按项目实际为 `ainative-shadow`、`ainative-app` 或 `frontend`）：
+从项目提取设计 token。**来源文件**（按项目实际为 `ainative-shadow`、`ainative-app` 或 `frontend`）：
 
 - **管理后台**：`ainative-shadow/src/style.css`、`ainative-shadow/src/App.vue`（若存在）；否则 `frontend/src/`
 - **小程序**：`ainative-app/src/` 下对应样式与入口文件
@@ -126,7 +126,7 @@ flowchart TD
 
 ## 迭代场景：前端代码参考
 
-当原型类型为**迭代**时，必须先读取 workspace 下相关前端代码，再生成与现有实现风格一致的原型。
+当原型类型为**迭代**时，必须先读取相关前端代码，再生成与现有实现风格一致的原型。
 
 **必读路径**（按功能域选择）：
 
@@ -214,7 +214,7 @@ flowchart TD
 - [ ] 包含 `<html` 和 `</html>`
 - [ ] 包含 `<head>` / `</head>` 和 `<body>` / `</body>`
 - [ ] `<script` 与 `</script>` 标签数量完全相等
-- [ ] 包含 Vue3 CDN 引用：`vue@3/dist/vue.global.js`
+- [ ] 包含 Vue3 CDN 引用：`fp.yangcong345.com/.../vue.global.prod.min`
 - [ ] 包含 Vue 应用挂载：`.mount('#app')` 或 `.mount("#app")`
 - [ ] JS 代码大括号 `{}` 已配对（无明显截断）
 

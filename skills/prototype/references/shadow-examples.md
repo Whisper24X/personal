@@ -16,7 +16,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>原型 - 用户列表管理</title>
 
-    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/element-plus/2.11.4/theme-chalk/index.css" />
+    <link rel="stylesheet" href="https://fp.yangcong345.com/middle/base/element-38098fc849a985d85be870cf856da4a1.css" />
 
     <style>
       :root {
@@ -202,8 +202,8 @@
       </el-dialog>
     </div>
 
-    <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.22/vue.global.js"></script>
-    <script src="https://cdn.bootcdn.net/ajax/libs/element-plus/2.11.4/index.full.js"></script>
+    <script src="https://fp.yangcong345.com/middle/base/vue.global.prod.min-0b54d44c0a1191e01683f5d626686f5e.js"></script>
+    <script src="https://fp.yangcong345.com/middle/base/element-f355e990744f69cea3292feaf7b43b40.js"></script>
 
     <script>
       const { createApp, ref, reactive, onMounted } = Vue;
@@ -436,7 +436,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>原型 - 数据仪表盘</title>
 
-    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/element-plus/2.11.4/theme-chalk/index.css" />
+    <link rel="stylesheet" href="https://fp.yangcong345.com/middle/base/element-38098fc849a985d85be870cf856da4a1.css" />
 
     <style>
       :root {
@@ -577,9 +577,9 @@
       </div>
     </div>
 
-    <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.22/vue.global.js"></script>
-    <script src="https://cdn.bootcdn.net/ajax/libs/element-plus/2.11.4/index.full.js"></script>
-    <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.6.0/echarts.min.js"></script>
+    <script src="https://fp.yangcong345.com/middle/base/vue.global.prod.min-0b54d44c0a1191e01683f5d626686f5e.js"></script>
+    <script src="https://fp.yangcong345.com/middle/base/element-f355e990744f69cea3292feaf7b43b40.js"></script>
+    <script src="https://fp.yangcong345.com/middle/base/echarts.min-b91b9de4da1677c82825c679112da8b2.js"></script>
 
     <script>
       const { createApp, ref, onMounted } = Vue;
