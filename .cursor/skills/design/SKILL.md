@@ -1,6 +1,6 @@
 ---
 name: design
-description: 将 PRD 转换为系统设计文档（DESIGN.md）
+description: 将 PRD 转换为系统设计文档（DESIGN.md）。当用户提供 PRD 并要求生成系统设计、架构设计，或提到 PRD 转 DESIGN 时使用此 skill。
 ---
 
 # PRD 转系统设计

@@ -1,3 +1,8 @@
+---
+name: debug-ainative-projects
+description: 排查和调试 ainative 项目 (app/shadow/backend) 中的各类问题。提供系统化的调试流程。当代码运行出错、接口调用失败、编译构建失败、功能异常或需要定位问题原因时使用。
+---
+
 # ainative 项目调试问题 Skill
 
 ## 技能用途

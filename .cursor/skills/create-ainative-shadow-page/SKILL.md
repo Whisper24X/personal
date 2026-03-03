@@ -1,3 +1,8 @@
+---
+name: create-ainative-shadow-page
+description: 在 ainative-shadow (Vue3 + Element Plus 管理后台) 中创建新页面或功能模块。提供从需求分析到 CRUD 页面实现的完整流程。当用户要求创建新的管理页面、添加 CRUD 功能或实现业务管理界面时使用。
+---
+
 # ainative-shadow 创建新页面 Skill
 
 ## 技能用途

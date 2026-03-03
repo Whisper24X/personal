@@ -1,3 +1,8 @@
+---
+name: create-ainative-backend-api
+description: 在 ainative-backend (Go + Kratos) 中创建新 API 接口。提供从需求分析到代码生成的完整流程。当用户要求创建新的后端接口、需要为前端提供新的 API、或需要实现新的业务逻辑时使用。
+---
+
 # ainative-backend 创建新 API Skill
 
 ## 技能用途

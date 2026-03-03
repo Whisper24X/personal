@@ -1,3 +1,8 @@
+---
+name: code-review-ainative
+description: 检查和修复 ainative 项目代码规范问题。覆盖 TypeScript、Vue、Go 等多语言规范检查。当提交代码前需要规范检查、CI/CD 流水线报错、代码 Review 或代码质量优化时使用。
+---
+
 # ainative 代码规范检查与修复 Skill
 
 ## 技能用途

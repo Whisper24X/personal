@@ -1,3 +1,8 @@
+---
+name: create-ainative-app-page
+description: 在 ainative-app (Taro + Vue3) 中创建新页面。提供从需求分析到页面实现的完整流程。当用户要求创建新页面、新功能模块、添加新路由页面或实现新的业务界面时使用。
+---
+
 # ainative-app 创建新页面 Skill
 
 ## 技能用途
