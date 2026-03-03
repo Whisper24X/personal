@@ -84,7 +84,7 @@ export class ProjectController {
    */
   static async create(req: Request, res: Response) {
     try {
-      const { name, idea, description, investment, nRound: _nRound, applicationId, gitRepoUrl, cliApiKey } = req.body;
+      const { name, idea, description, investment, applicationId, gitRepoUrl, cliApiKey } = req.body;
       const userId = (req as any).userId || DEFAULT_USER_ID; // From auth middleware
 
       if (!name) {
@@ -105,9 +105,7 @@ export class ProjectController {
       if (exists) {
         return res.status(409).json({
           error: 'Duplicate project name',
-          message: applicationId
-            ? `项目名称 "${name}" 在该应用下已存在，请使用不同的名称`
-            : `项目名称 "${name}" 已存在，请使用不同的名称`,
+          message: applicationId ? `项目名称 "${name}" 在该应用下已存在，请使用不同的名称` : `项目名称 "${name}" 已存在，请使用不同的名称`,
         });
       }
 
@@ -121,13 +119,13 @@ export class ProjectController {
         nameAlias,
         idea,
         description,
-        budget: investment || 10.0,  // V2: renamed from investment to budget
+        budget: investment || 10.0, // V2: renamed from investment to budget
         applicationId,
         gitRepoUrl,
         cliApiKey: cliApiKey.trim(),
       });
 
-      logger.info(`Project created: ${project.id}`, { 
+      logger.info(`Project created: ${project.id}`, {
         gitRepoUrl: gitRepoUrl || 'none',
         nameAlias,
       });
@@ -180,6 +178,8 @@ export class ProjectController {
               createdAt: workspaceProject.createdAt || new Date(),
               completedAt: null,
               workspaceOnly: true, // Flag to indicate this is from workspace only
+              applicationId: workspaceProject.applicationId,
+              application_id: workspaceProject.applicationId,
             },
           });
         }
@@ -201,6 +201,8 @@ export class ProjectController {
           messageCount,
           createdAt: project.created_at,
           completedAt: project.completed_at,
+          applicationId: project.application_id,
+          application_id: project.application_id,
         },
       });
     } catch (error: any) {
@@ -855,4 +857,3 @@ export class ProjectController {
 }
 
 export default ProjectController;
-

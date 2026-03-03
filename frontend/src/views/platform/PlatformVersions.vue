@@ -174,6 +174,7 @@ interface Platform {
   idea?: string;
   gitRepoUrl?: string;
   applicationId?: string;
+  application_id?: string;
 }
 
 const route = useRoute();
@@ -289,8 +290,9 @@ async function deleteVersion(version: Version) {
 }
 
 function enterWorkflow(version: Version) {
-  // 直接导航到带版本ID的路由，不再激活版本
-  router.push(`/platform/${platformId}/workflow/${version.id}`);
+  // 直接导航到带版本ID的路由，不再激活版本（applicationId、projectId、versionId 均在 path 中）
+  const appId = platform.value?.applicationId || platform.value?.application_id || platformId;
+  router.push(`/platform/workflow/${appId}/${platformId}/${version.id}`);
 }
 
 function resetCreateForm() {

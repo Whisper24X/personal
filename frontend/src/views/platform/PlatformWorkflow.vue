@@ -3,7 +3,8 @@
     <PlatformWorkflowHeader @back="handleBack" />
 
     <PlatformInfoCard
-      :platform-id="platformId"
+      :platform-id="projectId"
+      :application-id="applicationId"
       :platform-name="platformName"
       :user-idea="userIdea"
       @download-code="handleDownloadCode"
@@ -118,7 +119,7 @@
             <InteractiveConfirmation
               :role-info="currentStep"
               :loading="actionLoading"
-              :project-id="platformId"
+              :project-id="projectId"
               :version-id="versionId"
               :hide-card="true"
               :hide-header="true"
@@ -169,8 +170,10 @@ const route = useRoute();
 const router = useRouter();
 const roleActionStore = useRoleActionStore();
 
-// Platform Info
-const platformId = ref((route.params.id as string) || '');
+// Platform Info (from route params: applicationId, projectId, versionId)
+const applicationId = computed(() => (route.params.applicationId as string) || '');
+const projectId = computed(() => (route.params.projectId as string) || '');
+const platformId = projectId; // Alias for API calls
 const platformName = ref('未命名平台');
 const userIdea = ref('');
 const businessLineId = ref('');

@@ -95,6 +95,7 @@ interface Version {
 
 const props = defineProps<{
   platformId: string;
+  applicationId?: string;
 }>();
 
 const emit = defineEmits<{
@@ -182,8 +183,8 @@ async function handleVersionSelect(command: string) {
   }
 
   // 在工作流页面：通过路由切换版本
-  if (isInWorkflowPage.value) {
-    router.replace(`/platform/${props.platformId}/workflow/${command}`);
+  if (isInWorkflowPage.value && props.applicationId) {
+    router.replace(`/platform/workflow/${props.applicationId}/${props.platformId}/${command}`);
     emit('version-changed', selectedVersion);
     return;
   }

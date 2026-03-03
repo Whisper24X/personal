@@ -177,11 +177,11 @@ export class PRDController {
                 return null;
               }
 
-              // 返回版本信息和预览URL
+              // 返回版本信息和预览URL（applicationId、projectId、versionId 均在 path 中）
               return {
                 versionId,
                 hasPrototype: true,
-                previewUrl: `/api/projects/${projectId}/versions/${versionId}/prototype/preview`,
+                previewUrl: `/api/projects/${applicationId}/${projectId}/versions/${versionId}/prototype/preview`,
               };
             } catch {
               // 目录不存在，跳过该版本
@@ -214,21 +214,12 @@ export class PRDController {
 
   /**
    * Preview prototype HTML by version ID (returns runnable preview page for iframe)
-   * GET /api/projects/:id/versions/:versionId/prototype/preview
-   * 不查询数据库，直接通过版本ID返回可在iframe中预览的HTML页面
+   * GET /api/projects/:applicationId/:projectId/versions/:versionId/prototype/preview
+   * 所有参数通过 path 传入，不查询数据库
    */
   static async previewPrototypeByVersion(req: Request, res: Response) {
     try {
-      const { id, versionId } = req.params;
-
-      // 获取项目信息（仅用于获取applicationId）
-      const project = await projectRepo.findById(id);
-      if (!project) {
-        return res.status(404).json({ error: 'Project not found' });
-      }
-
-      const applicationId = project.application_id || project.id;
-      const projectId = project.id;
+      const { applicationId, projectId, versionId } = req.params;
 
       // 构建prototype文件路径
       const prototypeDir = path.join(
