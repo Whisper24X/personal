@@ -139,7 +139,6 @@ watch(activeProjectId, () => {
     </section>
 
     <section class="panel-card p-5">
-      <p class="mb-3 text-xs text-muted-foreground">项目 ID：{{ activeProjectId || '-' }}</p>
       <div class="flex flex-wrap items-center gap-2">
         <button
           type="button"
