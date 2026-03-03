@@ -6,46 +6,49 @@
 
 ## Overview
 
-<!--
-Document your project's hook conventions here.
+In this Vue project, "hooks" are Composition API composables stored in `src/hooks/`.
 
-Questions to answer:
-- What custom hooks do you have?
-- How do you handle data fetching?
-- What are the naming conventions?
-- How do you share stateful logic?
--->
-
-(To be filled by the team)
+Current composables are lightweight state-and-action wrappers (auth, message, layout helpers, table/chart helpers).
 
 ---
 
 ## Custom Hook Patterns
 
-<!-- How to create and structure custom hooks -->
+- File naming: `use*.ts`.
+- Compose with `ref`, `computed`, `watch`, and return explicit state/actions object.
+- Use hooks to centralize reusable logic that appears in multiple views/components.
+- Re-export via `src/hooks/index.ts` to provide one import entry.
 
-(To be filled by the team)
+Examples:
+- `src/hooks/core/useAuth.ts`
+- `src/hooks/core/useLayout.ts`
+- `src/hooks/core/useTable.ts`
 
 ---
 
 ## Data Fetching
 
-<!-- How data fetching is handled (React Query, SWR, etc.) -->
+- Server data is usually fetched in views/components, then composed into local refs.
+- Hooks can orchestrate fetching when logic is broad/shared (`useLayout` loads business lines/projects).
+- API modules (`src/api/*.ts`) remain the only place constructing API calls.
 
-(To be filled by the team)
+Examples:
+- `useLayout.ts` uses `projectsApi` + `businessLinesApi`
+- `TaskCreatePanel.vue` loads via `workflowApi`, `projectsApi`, `businessLinesApi`
 
 ---
 
 ## Naming Conventions
 
-<!-- Hook naming rules (use*, etc.) -->
-
-(To be filled by the team)
+- Always prefix composables with `use`.
+- Keep names domain-specific (`useAuth`, `useMessage`, `useLayout`).
+- Keep helper-only logic outside hooks when no reactive state is needed.
 
 ---
 
 ## Common Mistakes
 
-<!-- Hook-related mistakes your team has made -->
-
-(To be filled by the team)
+- Putting route-specific one-off logic into global composables too early.
+- Returning deeply nested structures instead of a flat state/action API.
+- Duplicating logic already available in Pinia stores (`useUserStore`, `useMessageStore`).
+- Mixing raw endpoint construction inside hooks instead of using `api/*` wrappers.

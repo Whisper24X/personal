@@ -6,46 +6,52 @@
 
 ## Overview
 
-<!--
-Document your project's logging conventions here.
+This codebase has two logging channels:
+- Process/runtime logs via Nest `Logger` for infrastructure events
+- Domain execution logs persisted in `task_logs` for task timeline/audit
 
-Questions to answer:
-- What logging library do you use?
-- What are the log levels and when to use each?
-- What should be logged?
-- What should NOT be logged (PII, secrets)?
--->
-
-(To be filled by the team)
+There is currently minimal `Logger` usage; most task execution tracing is stored as structured DB logs.
 
 ---
 
 ## Log Levels
 
-<!-- When to use each level: debug, info, warn, error -->
+- `log` (info-equivalent): startup/shutdown lifecycle
+- `warn`: recoverable failures or missing optional config
+- `error`: represented in task domain logs via `TaskLogLevel.error`
+- `debug`: available in task log enum, but used sparingly
 
-(To be filled by the team)
+Examples:
+- `src/worker.main.ts` (`logger.log` for worker lifecycle)
+- `src/notifications/notification-email.service.ts` (`logger.warn` for missing SMTP config)
+- `src/tasks/dto/task-log-level.enum.ts`
 
 ---
 
 ## Structured Logging
 
-<!-- Log format, required fields -->
+- Task logs are structured records with `taskId`, optional `taskNodeId`, `level`, `message`, and JSON `payload`.
+- `TasksService.appendLog(...)` is the canonical entrypoint for task timeline logs.
+- Task logs are persisted and streamed to clients (SSE) instead of relying on stdout logs.
 
-(To be filled by the team)
+Examples:
+- `src/tasks/tasks.service.ts` (`appendLog`)
+- `src/tasks/infrastructure/persistence/relational/entities/task-log.entity.ts`
+- `src/tasks/tasks.controller.ts` (`@Sse(':taskId/stream')`)
 
 ---
 
 ## What to Log
 
-<!-- Important events to log -->
-
-(To be filled by the team)
+- Task lifecycle transitions and operator actions (execute, retry, approve, cancel)
+- Infrastructure lifecycle events (worker start/shutdown)
+- Delivery failures for optional notification channels (email/webhook)
 
 ---
 
 ## What NOT to Log
 
-<!-- Sensitive data, PII, secrets -->
-
-(To be filled by the team)
+- Secrets and credentials (tokens, passwords, SMTP secrets)
+- Full unbounded command output without truncation/sanitization
+- Repetitive noisy logs in hot paths without a clear operational purpose
+- `console.log`/`console.error` in production service code

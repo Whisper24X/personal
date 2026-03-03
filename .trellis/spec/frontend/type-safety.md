@@ -6,46 +6,57 @@
 
 ## Overview
 
-<!--
-Document your project's type safety conventions here.
-
-Questions to answer:
-- What type system do you use?
-- How are types organized?
-- What validation library do you use?
-- How do you handle type inference?
--->
-
-(To be filled by the team)
+- Language: TypeScript across Vue SFCs and modules.
+- Vue type-checking uses `vue-tsc` (`pnpm type-check`).
+- Alias `@/*` maps to `src/*` in Vite and tsconfig.
 
 ---
 
 ## Type Organization
 
-<!-- Where types are defined, shared types vs local types -->
+- API contracts live in `src/types/api/*.ts` by domain.
+- Shared UI/runtime constants and derived unions live in `src/types/common/*.ts`.
+- Router-specific types live in `src/types/router/*`.
+- Component-level type contracts live in `src/types/component/*`.
+- Store-local view models can be defined near the store when only locally needed.
 
-(To be filled by the team)
+Examples:
+- `src/types/api/tasks.ts`
+- `src/types/common/settings.ts`
+- `src/stores/modules/user.ts` (`UserProfile`)
 
 ---
 
 ## Validation
 
-<!-- Runtime validation patterns (Zod, Yup, io-ts, etc.) -->
+Frontend runtime validation is lightweight and explicit:
+- normalize external values (query/localStorage) through helper functions and type guards
+- use typed constant arrays + derived union types (`as const`)
+- rely on backend DTO/class-validator for authoritative request validation
 
-(To be filled by the team)
+Examples:
+- `src/utils/ui-preferences.ts` (`asKnownValue` + resolvers)
+- `src/types/common/settings.ts` (`SETTINGS_SECTIONS`, `isSettingsSection`)
 
 ---
 
 ## Common Patterns
 
-<!-- Type utilities, generics, type guards -->
+- Typed composables and store return values.
+- `withDefaults(defineProps<...>(), ...)` for optional props.
+- Typed `defineEmits` signatures.
+- Use `Record<string, unknown>` when payload keys are dynamic but still typed.
 
-(To be filled by the team)
+Examples:
+- `src/components/settings/SettingsModal.vue`
+- `src/components/tasks/TaskCreatePanel.vue`
+- `src/utils/http/index.ts`
 
 ---
 
 ## Forbidden Patterns
 
-<!-- any, type assertions, etc. -->
-
-(To be filled by the team)
+- Using `any` for API payloads/responses where concrete types exist.
+- Unchecked type assertions to force unknown route/query values.
+- Untyped event emits and props in Vue components.
+- Ad-hoc string literals for shared unions that already exist as constants/enums.

@@ -6,46 +6,63 @@
 
 ## Overview
 
-<!--
-Document your project's quality standards here.
+- Stack: NestJS + TypeScript + TypeORM
+- Formatting/linting: ESLint + Prettier (`npm run lint`)
+- Tests: Jest unit tests + e2e tests
 
-Questions to answer:
-- What patterns are forbidden?
-- What linting rules do you enforce?
-- What are your testing requirements?
-- What code review standards apply?
--->
-
-(To be filled by the team)
+Core rule: keep feature boundaries clean (controller -> service -> repository port -> adapter).
 
 ---
 
 ## Forbidden Patterns
 
-<!-- Patterns that should never be used and why -->
+- Calling `configService.get/getOrThrow` without `{ infer: true }`.
+- Test descriptions that do not start with `should`.
+- DB access directly from controllers.
+- Large generic repository methods that hide domain intent.
 
-(To be filled by the team)
+Enforced examples:
+- `eslint.config.mjs` (`no-restricted-syntax` for `configService.get` typing and `it("should...")`)
 
 ---
 
 ## Required Patterns
 
-<!-- Patterns that must always be used -->
+- Keep controllers thin and place orchestration in services.
+- Define DTO contracts and validate inputs through global `ValidationPipe`.
+- Keep persistence interfaces abstracted behind repository ports.
+- Cap paginated endpoints (current pattern: max `limit = 50`).
+- Use typed enums for states/modes instead of string literals when shared.
 
-(To be filled by the team)
+Examples:
+- `src/projects/projects.controller.ts` (pagination cap + thin controller methods)
+- `src/tasks/tasks.module.ts` (feature wiring)
+- `src/tasks/infrastructure/persistence/task.repository.ts` (repository port)
 
 ---
 
 ## Testing Requirements
 
-<!-- What level of testing is expected -->
+- Unit tests for service logic in `src/**/*.spec.ts`.
+- E2E tests for API behavior in `test/**/*.e2e-spec.ts`.
+- For behavior changes in service logic, add or update unit tests in the same feature.
 
-(To be filled by the team)
+Commands:
+- `npm run lint`
+- `npm run test`
+- `npm run test:e2e`
+
+Reference examples:
+- `src/tasks/tasks.service.spec.ts`
+- `test/admin/auth.e2e-spec.ts`
 
 ---
 
 ## Code Review Checklist
 
-<!-- What reviewers should check -->
-
-(To be filled by the team)
+- Are permission checks enforced before mutations/reads?
+- Are all new env config reads typed with `{ infer: true }`?
+- Are exceptions specific (`BadRequest/Conflict/Forbidden/NotFound`) and user-safe?
+- Are repository/domain/mapper changes kept in sync?
+- Are pagination/default limits and edge cases handled?
+- Are unit/e2e tests updated for changed behavior?
