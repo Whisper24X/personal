@@ -276,6 +276,9 @@ export class PRDController {
         // 允许在iframe中嵌入（移除X-Frame-Options限制，使用CSP允许所有来源）
         res.removeHeader('X-Frame-Options');
         res.setHeader('Content-Security-Policy', 'frame-ancestors *');
+        // 移除 Helmet 添加的头，避免在 HTTP 非 localhost 下触发 COOP/Origin-Agent-Cluster 报错
+        res.removeHeader('Cross-Origin-Opener-Policy');
+        res.removeHeader('Origin-Agent-Cluster');
         return res.send(content);
       } catch (error: any) {
         if ((error as any).code === 'ENOENT') {
@@ -1089,6 +1092,9 @@ export class PRDController {
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         // Allow iframe embedding (optional, for security you might want to restrict)
         res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+        // 移除 Helmet 添加的头，避免在 HTTP 非 localhost 下触发 COOP/Origin-Agent-Cluster 报错
+        res.removeHeader('Cross-Origin-Opener-Policy');
+        res.removeHeader('Origin-Agent-Cluster');
         return res.send(content);
       } catch (error: any) {
         if ((error as any).code === 'ENOENT') {

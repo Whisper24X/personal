@@ -228,17 +228,11 @@
             :disabled="isDeployFailed"
             @click="handleAction('continue')"
           >
-            <div class="button-content">
-              <span class="shortcut">C</span>
-              <span>{{ isIdle ? '继续下一步' : '确认继续' }}</span>
-            </div>
+            {{ isIdle ? '继续下一步' : '确认继续' }}
           </el-button>
 
           <el-button v-if="!isIdle && !isEditing && (!hasFiles || selectedFileIndex < 0)" type="primary" size="large" :icon="Edit" @click="startEdit">
-            <div class="button-content">
-              <span class="shortcut">E</span>
-              <span>编辑内容</span>
-            </div>
+            编辑内容
           </el-button>
 
           <el-button v-if="!isIdle && isEditing" type="success" size="large" :icon="Check" :loading="loading" @click="saveEdit">
@@ -248,33 +242,15 @@
           <el-button v-if="!isIdle && isEditing" size="large" :icon="Close" @click="cancelEdit"> 取消编辑 </el-button>
 
           <el-button v-if="!isIdle && !isEditing" type="warning" size="large" :icon="Refresh" :loading="loading" @click="handleAction('regenerate')">
-            <div class="button-content">
-              <span class="shortcut">R</span>
-              <span>重新生成</span>
-            </div>
+            重新生成
           </el-button>
 
           <el-button v-if="!isEditing" type="info" size="large" plain :icon="DArrowRight" :loading="loading" @click="handleAction('skip')">
-            <div class="button-content">
-              <span class="shortcut">S</span>
-              <span>跳过</span>
-            </div>
+            跳过
           </el-button>
 
-          <el-button v-if="!isEditing" type="danger" size="large" plain :icon="CloseBold" :loading="loading" @click="confirmQuit">
-            <div class="button-content">
-              <span class="shortcut">Q</span>
-              <span>退出</span>
-            </div>
-          </el-button>
+          <el-button v-if="!isEditing" type="danger" size="large" plain :icon="CloseBold" :loading="loading" @click="confirmQuit"> 退出 </el-button>
         </div>
-
-        <el-alert class="shortcuts-hint" type="info" :closable="false">
-          <template #title>
-            <el-icon><InfoFilled /></el-icon>
-            快捷键提示: 按 C/E/R/S/Q 快速执行对应操作
-          </template>
-        </el-alert>
       </div>
     </component>
   </div>
@@ -338,7 +314,7 @@ export default { components: { ConfirmationHeader } };
 </script>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import {
   Check,
@@ -350,7 +326,6 @@ import {
   Document,
   DocumentCopy,
   FolderOpened,
-  InfoFilled,
   UserFilled,
   SetUp,
   Cpu,
@@ -788,27 +763,8 @@ async function downloadZip() {
   }
 }
 
-// Keyboard shortcuts
-function handleKeyPress(event: KeyboardEvent) {
-  if (isEditing.value) return;
-  const key = event.key.toLowerCase();
-  const actions: Record<string, () => void> = {
-    c: () => handleAction('continue'),
-    e: startEdit,
-    r: () => handleAction('regenerate'),
-    s: () => handleAction('skip'),
-    q: confirmQuit,
-  };
-  actions[key]?.();
-}
-
 onMounted(async () => {
   await roleActionStore.fetchRolesAndActions();
-  document.addEventListener('keypress', handleKeyPress);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('keypress', handleKeyPress);
 });
 </script>
 
@@ -1003,28 +959,6 @@ onUnmounted(() => {
 .action-buttons .el-button {
   flex: 1;
   min-width: 140px;
-}
-
-.button-content {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.shortcut {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 4px;
-  font-weight: bold;
-  font-size: 12px;
-}
-
-.shortcuts-hint {
-  margin-top: 16px;
 }
 
 .zip-download-section {
