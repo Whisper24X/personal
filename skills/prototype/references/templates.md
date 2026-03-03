@@ -59,7 +59,7 @@
       </el-card>
     </div>
 
-    <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.22/vue.global.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.22/vue.global.prod.min.js"></script>
     <script src="https://cdn.bootcdn.net/ajax/libs/element-plus/2.11.4/index.full.js"></script>
     <script>
       const { createApp, ref } = Vue;
@@ -147,7 +147,7 @@
       <!-- 内容 -->
     </div>
 
-    <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.22/vue.global.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.22/vue.global.prod.min.js"></script>
     <script>
       const { createApp, ref } = Vue;
       createApp({
@@ -167,7 +167,7 @@
 
 ```html
 <!-- Vue 3 -->
-<script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.22/vue.global.js"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.22/vue.global.prod.min.js"></script>
 
 <!-- Element Plus (管理后台) -->
 <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/element-plus/2.11.4/theme-chalk/index.css" />
