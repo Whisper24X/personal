@@ -1,0 +1,153 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "wechat/v1/evaluation.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "Evaluation"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/wechat/v1/evaluation/create": {
+      "post": {
+        "summary": "评价表-创建一条数据",
+        "operationId": "Evaluation_CreateEvaluation",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CreateEvaluationReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateEvaluationReq"
+            }
+          }
+        ],
+        "tags": [
+          "Evaluation"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1CreateEvaluationReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        }
+      },
+      "title": "响应-评价表-创建一条数据"
+    },
+    "v1CreateEvaluationReq": {
+      "type": "object",
+      "properties": {
+        "appointmentId": {
+          "type": "string",
+          "title": "预约编号"
+        },
+        "parentName": {
+          "type": "string",
+          "title": "家长姓名"
+        },
+        "phone": {
+          "type": "string",
+          "title": "联系方式"
+        },
+        "childName": {
+          "type": "string",
+          "title": "孩子姓名"
+        },
+        "courseName": {
+          "type": "string",
+          "title": "课程名称"
+        },
+        "courseTime": {
+          "type": "string",
+          "title": "上课时间"
+        },
+        "totalScore": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总评分"
+        },
+        "dimensionScore": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "维度评分：每一行是\"教学水平:5\"这样的格式"
+        },
+        "feedBack": {
+          "type": "string",
+          "title": "反馈内容"
+        },
+        "feedBackImage": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "反馈图片"
+        },
+        "evaluationLabel": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "快速标签"
+        }
+      },
+      "title": "请求-评价表-创建一条数据"
+    }
+  }
+}
