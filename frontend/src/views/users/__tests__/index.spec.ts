@@ -34,18 +34,36 @@ beforeEach(() => {
 })
 
 describe('UsersView toasts', () => {
-  it('keeps local validation inline and does not push toast', async () => {
+  const mountUsersView = () => {
     const pinia = createPinia()
     setActivePinia(pinia)
 
-    const wrapper = mount(UsersView, {
+    return mount(UsersView, {
       global: {
         plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
       },
     })
+  }
+
+  const openCreateUserModal = async (wrapper: ReturnType<typeof mount>) => {
+    const createButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('新增用户'))
+
+    expect(createButton).toBeDefined()
+    await createButton!.trigger('click')
+    await flushPromises()
+  }
+
+  it('keeps local validation inline and does not push toast', async () => {
+    const wrapper = mountUsersView()
 
     await flushPromises()
-    await wrapper.find('form').trigger('submit.prevent')
+    await openCreateUserModal(wrapper)
+    await wrapper.get('section[role="dialog"] form').trigger('submit.prevent')
 
     const messageStore = useMessageStore()
     expect(wrapper.text()).toContain('用户名不能为空')
@@ -53,22 +71,16 @@ describe('UsersView toasts', () => {
   })
 
   it('shows error toast when saving user fails', async () => {
-    const pinia = createPinia()
-    setActivePinia(pinia)
-
     usersApi.create.mockRejectedValueOnce(new Error('保存失败'))
 
-    const wrapper = mount(UsersView, {
-      global: {
-        plugins: [pinia],
-      },
-    })
+    const wrapper = mountUsersView()
 
     await flushPromises()
+    await openCreateUserModal(wrapper)
 
-    await wrapper.find('input[placeholder="例如：john.doe"]').setValue('alice')
-    await wrapper.find('input[placeholder="至少 6 位"]').setValue('123456')
-    await wrapper.find('form').trigger('submit.prevent')
+    await wrapper.get('input[placeholder="例如：john.doe"]').setValue('alice')
+    await wrapper.get('input[placeholder="至少 6 位"]').setValue('123456')
+    await wrapper.get('section[role="dialog"] form').trigger('submit.prevent')
     await flushPromises()
 
     const messageStore = useMessageStore()
@@ -77,20 +89,14 @@ describe('UsersView toasts', () => {
   })
 
   it('shows success toast when creating user succeeds', async () => {
-    const pinia = createPinia()
-    setActivePinia(pinia)
-
-    const wrapper = mount(UsersView, {
-      global: {
-        plugins: [pinia],
-      },
-    })
+    const wrapper = mountUsersView()
 
     await flushPromises()
+    await openCreateUserModal(wrapper)
 
-    await wrapper.find('input[placeholder="例如：john.doe"]').setValue('alice')
-    await wrapper.find('input[placeholder="至少 6 位"]').setValue('123456')
-    await wrapper.find('form').trigger('submit.prevent')
+    await wrapper.get('input[placeholder="例如：john.doe"]').setValue('alice')
+    await wrapper.get('input[placeholder="至少 6 位"]').setValue('123456')
+    await wrapper.get('section[role="dialog"] form').trigger('submit.prevent')
     await flushPromises()
 
     const messageStore = useMessageStore()

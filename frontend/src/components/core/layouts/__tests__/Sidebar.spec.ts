@@ -36,7 +36,8 @@ describe('Sidebar menu scope', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('项目导航')
+    expect(wrapper.text()).toContain('Retail')
+    expect(wrapper.text()).toContain('AINATIVE')
     expect(wrapper.text()).toContain('仪表盘')
     expect(wrapper.text()).toContain('任务')
     expect(wrapper.text()).not.toContain('用户')

@@ -50,7 +50,8 @@ export class NotificationsService {
     updateDto: UpdateNotificationSettingDto,
   ): Promise<NotificationSetting> {
     const existedSetting = await this.getMySetting(userId);
-    const nextEmailEnabled = updateDto.emailEnabled ?? existedSetting.emailEnabled;
+    const nextEmailEnabled =
+      updateDto.emailEnabled ?? existedSetting.emailEnabled;
     const nextEmailAddress =
       updateDto.emailAddress !== undefined
         ? updateDto.emailAddress?.trim() || null
@@ -252,7 +253,11 @@ export class NotificationsService {
     try {
       let lastError: unknown = null;
 
-      for (let attempt = 0; attempt <= this.webhookRetryDelaysMs.length; attempt += 1) {
+      for (
+        let attempt = 0;
+        attempt <= this.webhookRetryDelaysMs.length;
+        attempt += 1
+      ) {
         try {
           const response = await this.sendWebhookRequest(webhookUrl, payload);
           if (!response.ok) {

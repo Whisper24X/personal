@@ -10,7 +10,8 @@ export class UploadProjectLocalSkillDto {
 
   @ApiPropertyOptional({
     enum: SKILL_PROVIDER_VALUES,
-    description: 'Target project CLI provider root. Defaults to first existing provider or cursor.',
+    description:
+      'Target project CLI provider root. Defaults to first existing provider or cursor.',
   })
   @IsOptional()
   @IsIn(SKILL_PROVIDER_VALUES)

@@ -197,7 +197,9 @@ export class TaskRelationalRepository implements TaskRepository {
     return Number(result?.count ?? 0);
   }
 
-  async findOldestQueuedTaskCreatedAt(at: Date = new Date()): Promise<Date | null> {
+  async findOldestQueuedTaskCreatedAt(
+    at: Date = new Date(),
+  ): Promise<Date | null> {
     const row = await this.taskRepository
       .createQueryBuilder('task')
       .select('task."createdAt"', 'createdAt')
@@ -240,6 +242,8 @@ export class TaskRelationalRepository implements TaskRepository {
   }
 
   async findTasksReadyForDispatch(limit: number, _at?: Date): Promise<Task[]> {
+    void _at;
+
     if (limit <= 0) {
       return [];
     }

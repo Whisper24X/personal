@@ -156,7 +156,9 @@ export class SkillsService {
       sourceSkill,
     );
     if (!sourceSkillDirectory) {
-      throw new NotFoundException('Business line skill source directory not found');
+      throw new NotFoundException(
+        'Business line skill source directory not found',
+      );
     }
 
     const targetRoot = await resolveProjectSkillRootForWrite(
@@ -164,7 +166,9 @@ export class SkillsService {
       dto.provider,
     );
     if (!targetRoot) {
-      throw new BadRequestException('Project local skill directory is unavailable');
+      throw new BadRequestException(
+        'Project local skill directory is unavailable',
+      );
     }
 
     await fs.mkdir(targetRoot.skillsPath, { recursive: true });
@@ -177,7 +181,9 @@ export class SkillsService {
     const targetSkillPath = path.join(targetRoot.skillsPath, directoryName);
     const existedStat = await this.safeStat(targetSkillPath);
     if (existedStat) {
-      throw new ConflictException(`Skill directory already exists: ${directoryName}`);
+      throw new ConflictException(
+        `Skill directory already exists: ${directoryName}`,
+      );
     }
 
     await fs.cp(sourceSkillDirectory, targetSkillPath, {
@@ -225,7 +231,9 @@ export class SkillsService {
       query.provider,
     );
     if (!targetRoot) {
-      throw new BadRequestException('Project local skill directory is unavailable');
+      throw new BadRequestException(
+        'Project local skill directory is unavailable',
+      );
     }
 
     const temporaryRoot = await fs.mkdtemp(
@@ -242,7 +250,9 @@ export class SkillsService {
 
       const packageRoot = this.resolveSkillPackageRoot(archiveEntries);
       if (!packageRoot) {
-        throw new BadRequestException('Package root must contain SKILL.md file');
+        throw new BadRequestException(
+          'Package root must contain SKILL.md file',
+        );
       }
 
       await fs.mkdir(extractedPath, { recursive: true });
@@ -256,7 +266,8 @@ export class SkillsService {
         descriptorAbsolutePath,
         'utf-8',
       );
-      const descriptorMetadata = this.parseSkillDescriptorYaml(descriptorContent);
+      const descriptorMetadata =
+        this.parseSkillDescriptorYaml(descriptorContent);
 
       if (!descriptorMetadata.name || !descriptorMetadata.description) {
         throw new BadRequestException(
@@ -323,7 +334,10 @@ export class SkillsService {
         provider: targetRoot.provider,
       };
     } catch (error) {
-      if (error instanceof BadRequestException || error instanceof ConflictException) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof ConflictException
+      ) {
         throw error;
       }
 

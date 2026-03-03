@@ -36,14 +36,13 @@ export class QueueService {
       globalRunning,
       staleRunning,
       oldestQueuedTaskCreatedAt,
-    ] =
-      await Promise.all([
-        this.taskRepository.countRunningTasksByProjectIds(projectIds, now),
-        this.taskRepository.countQueuedTasksByProjectIds(projectIds, now),
-        this.taskRepository.countRunningTasks(now),
-        this.taskRepository.countStaleRunningTasks(now),
-        this.taskRepository.findOldestQueuedTaskCreatedAt(now),
-      ]);
+    ] = await Promise.all([
+      this.taskRepository.countRunningTasksByProjectIds(projectIds, now),
+      this.taskRepository.countQueuedTasksByProjectIds(projectIds, now),
+      this.taskRepository.countRunningTasks(now),
+      this.taskRepository.countStaleRunningTasks(now),
+      this.taskRepository.findOldestQueuedTaskCreatedAt(now),
+    ]);
 
     const projectMap = new Map(
       projects.map((project) => [project.id, project]),

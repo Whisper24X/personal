@@ -73,29 +73,6 @@ const createNodeWithStatus = (status: TaskStatus) => ({
   status,
 });
 
-const createSkill = (enabled = true) => ({
-  id: 'skill-1',
-  name: 'code-review',
-  version: '1.0.0',
-  scope: 'global',
-  enabled,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  deletedAt: null,
-});
-
-const createMcp = (enabled = true) => ({
-  id: 'mcp-1',
-  name: 'filesystem',
-  version: '1.0.0',
-  provider: 'internal',
-  toolsCount: 1,
-  enabled,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  deletedAt: null,
-});
-
 const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
   process.env.AINATIVE_RUNTIME_ROLE = runtimeRole;
 
@@ -152,14 +129,6 @@ const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
   const agentRunnerService = {
     executeAgentNode: jest.fn(),
   };
-  const skillRepository = {
-    findByNameAndVersion: jest.fn(),
-    findAllWithPagination: jest.fn(),
-  };
-  const mcpRepository = {
-    findByNameAndVersion: jest.fn(),
-    findAllWithPagination: jest.fn(),
-  };
   const projectRepository = {
     findAllWithPagination: jest.fn().mockResolvedValue([]),
   };
@@ -184,8 +153,6 @@ const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
     notificationsService as never,
     taskRuntimeService as never,
     agentRunnerService as never,
-    skillRepository as never,
-    mcpRepository as never,
     projectRepository as never,
     dataSource as unknown as DataSource,
   );
@@ -201,8 +168,6 @@ const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
     notificationsService,
     projectsService,
     agentRunnerService,
-    skillRepository,
-    mcpRepository,
     projectRepository,
     dataSource,
   };
@@ -229,12 +194,6 @@ describe('TasksService', () => {
     const executeAgentNodeSpy = jest
       .spyOn(serviceAny, 'executeAgentNode')
       .mockResolvedValue(undefined);
-    const executeSkillNodeSpy = jest
-      .spyOn(serviceAny, 'executeSkillNode')
-      .mockResolvedValue(undefined);
-    const executeMcpNodeSpy = jest
-      .spyOn(serviceAny, 'executeMcpNode')
-      .mockResolvedValue(undefined);
     jest.spyOn(serviceAny, 'delay').mockResolvedValue(undefined);
     jest.spyOn(serviceAny, 'appendLog').mockResolvedValue({});
     jest
@@ -245,118 +204,6 @@ describe('TasksService', () => {
 
     expect(executeManualNodeSpy).toHaveBeenCalledTimes(1);
     expect(executeAgentNodeSpy).not.toHaveBeenCalled();
-    expect(executeSkillNodeSpy).not.toHaveBeenCalled();
-    expect(executeMcpNodeSpy).not.toHaveBeenCalled();
-  });
-
-  it('should resolve skill by project allowed list when node input missing', async () => {
-    const { service, skillRepository } = createTasksService();
-    const serviceAny = service as any;
-
-    const project = createProject({
-      allowedSkills: ['code-review@1.0.0'],
-    });
-    const node = {
-      ...createNode(TaskNodeType.skill),
-      input: {},
-    };
-    const skill = createSkill(true);
-
-    skillRepository.findByNameAndVersion.mockResolvedValue(skill);
-
-    const resolvedSkill = await serviceAny.resolveSkillForNode(node, project);
-
-    expect(skillRepository.findByNameAndVersion).toHaveBeenCalledWith({
-      name: 'code-review',
-      version: '1.0.0',
-    });
-    expect(resolvedSkill).toEqual(skill);
-  });
-
-  it('should reject skill not in project allowed list', async () => {
-    const { service } = createTasksService();
-    const serviceAny = service as any;
-
-    const project = createProject({
-      allowedSkills: ['allowed-skill@1.0.0'],
-    });
-    const node = {
-      ...createNode(TaskNodeType.skill),
-      input: {
-        skillName: 'blocked-skill',
-        skillVersion: '1.0.0',
-      },
-    };
-
-    await expect(serviceAny.resolveSkillForNode(node, project)).rejects.toThrow(
-      ForbiddenException,
-    );
-  });
-
-  it('should reject disabled skill', async () => {
-    const { service, skillRepository } = createTasksService();
-    const serviceAny = service as any;
-
-    const project = createProject({
-      allowedSkills: ['code-review@1.0.0'],
-    });
-    const node = {
-      ...createNode(TaskNodeType.skill),
-      input: {
-        skillName: 'code-review',
-        skillVersion: '1.0.0',
-      },
-    };
-
-    skillRepository.findByNameAndVersion.mockResolvedValue(createSkill(false));
-
-    await expect(serviceAny.resolveSkillForNode(node, project)).rejects.toThrow(
-      ConflictException,
-    );
-  });
-
-  it('should resolve mcp by project allowed list when node input missing', async () => {
-    const { service, mcpRepository } = createTasksService();
-    const serviceAny = service as any;
-
-    const project = createProject({
-      allowedMcps: ['filesystem@1.0.0'],
-    });
-    const node = {
-      ...createNode(TaskNodeType.mcp),
-      input: {},
-    };
-    const mcp = createMcp(true);
-
-    mcpRepository.findByNameAndVersion.mockResolvedValue(mcp);
-
-    const resolvedMcp = await serviceAny.resolveMcpForNode(node, project);
-
-    expect(mcpRepository.findByNameAndVersion).toHaveBeenCalledWith({
-      name: 'filesystem',
-      version: '1.0.0',
-    });
-    expect(resolvedMcp).toEqual(mcp);
-  });
-
-  it('should reject mcp not in project allowed list', async () => {
-    const { service } = createTasksService();
-    const serviceAny = service as any;
-
-    const project = createProject({
-      allowedMcp: ['jira@1.0.0'],
-    });
-    const node = {
-      ...createNode(TaskNodeType.mcp),
-      input: {
-        mcpName: 'filesystem',
-        mcpVersion: '1.0.0',
-      },
-    };
-
-    await expect(serviceAny.resolveMcpForNode(node, project)).rejects.toThrow(
-      ForbiddenException,
-    );
   });
 
   it('should move manual node to in_review and append warning log', async () => {
@@ -587,83 +434,6 @@ describe('TasksService', () => {
     );
   });
 
-  it('should execute skill node in in_review status and skip artifact when approval required', async () => {
-    const { service, taskNodeRepository, skillRepository } =
-      createTasksService();
-    const serviceAny = service as any;
-    const task = createTask();
-    const node = {
-      ...createNode(TaskNodeType.skill),
-      requiresApproval: true,
-      input: {
-        skillName: 'code-review',
-        skillVersion: '1.0.0',
-      },
-    };
-    const project = createProject({
-      allowedSkills: ['code-review@1.0.0'],
-    });
-
-    skillRepository.findByNameAndVersion.mockResolvedValue(createSkill(true));
-    const artifactSpy = jest
-      .spyOn(serviceAny, 'createNodeExecutionArtifact')
-      .mockResolvedValue(undefined);
-
-    await serviceAny.executeSkillNode({
-      taskId: task.id,
-      nodeId: node.id,
-      task,
-      node,
-      project,
-    });
-
-    expect(taskNodeRepository.update).toHaveBeenCalledWith(
-      node.id,
-      expect.objectContaining({
-        status: TaskStatus.inReview,
-      }),
-    );
-    expect(artifactSpy).not.toHaveBeenCalled();
-  });
-
-  it('should execute mcp node in done status and create artifact when approval not required', async () => {
-    const { service, taskNodeRepository, mcpRepository } = createTasksService();
-    const serviceAny = service as any;
-    const task = createTask();
-    const node = {
-      ...createNode(TaskNodeType.mcp),
-      requiresApproval: false,
-      input: {
-        mcpName: 'filesystem',
-        mcpVersion: '1.0.0',
-      },
-    };
-    const project = createProject({
-      allowedMcps: ['filesystem@1.0.0'],
-    });
-
-    mcpRepository.findByNameAndVersion.mockResolvedValue(createMcp(true));
-    const artifactSpy = jest
-      .spyOn(serviceAny, 'createNodeExecutionArtifact')
-      .mockResolvedValue(undefined);
-
-    await serviceAny.executeMcpNode({
-      taskId: task.id,
-      nodeId: node.id,
-      task,
-      node,
-      project,
-    });
-
-    expect(taskNodeRepository.update).toHaveBeenCalledWith(
-      node.id,
-      expect.objectContaining({
-        status: TaskStatus.done,
-      }),
-    );
-    expect(artifactSpy).toHaveBeenCalledTimes(1);
-  });
-
   it('should finalize node as unsupported type when runNode receives unknown node type', async () => {
     const { service, taskRepository, taskNodeRepository } =
       createTasksService();
@@ -699,7 +469,7 @@ describe('TasksService', () => {
       createTasksService();
     const serviceAny = service as any;
     const task = createTask();
-    const node = createNode(TaskNodeType.skill);
+    const node = createNode(TaskNodeType.agent);
     const project = createProject();
 
     taskRepository.findById.mockResolvedValue(task);
@@ -710,8 +480,8 @@ describe('TasksService', () => {
       .spyOn(serviceAny, 'recalculateTaskStatus')
       .mockResolvedValue(undefined);
     jest
-      .spyOn(serviceAny, 'executeSkillNode')
-      .mockRejectedValue(new Error('skill failed'));
+      .spyOn(serviceAny, 'executeAgentNode')
+      .mockRejectedValue(new Error('agent failed'));
 
     await serviceAny.runNode(task.id, node.id, project);
 
@@ -720,7 +490,7 @@ describe('TasksService', () => {
       expect.objectContaining({
         status: TaskStatus.inReview,
         errorCode: 'UNKNOWN',
-        errorMessage: 'skill failed',
+        errorMessage: 'agent failed',
       }),
     );
   });

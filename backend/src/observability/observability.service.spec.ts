@@ -57,7 +57,8 @@ describe('ObservabilityService', () => {
 
     expect(metrics.staleRunning).toBe(1);
     expect(metrics.dispatchLagSeconds).toBe(42);
-    expect(metrics.alerts.some((alert) => alert.code === 'WORKER_STALE_RUNNING'))
-      .toBeTruthy();
+    expect(
+      metrics.alerts.some((alert) => alert.code === 'WORKER_STALE_RUNNING'),
+    ).toBeTruthy();
   });
 });

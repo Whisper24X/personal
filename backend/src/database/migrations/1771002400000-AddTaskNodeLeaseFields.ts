@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddTaskNodeLeaseFields1771002400000
-  implements MigrationInterface
-{
+export class AddTaskNodeLeaseFields1771002400000 implements MigrationInterface {
   name = 'AddTaskNodeLeaseFields1771002400000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -30,8 +28,12 @@ export class AddTaskNodeLeaseFields1771002400000
     await queryRunner.query(
       `DROP INDEX "public"."IDX_task_nodes_status_lease_until"`,
     );
-    await queryRunner.query(`ALTER TABLE "task_nodes" DROP COLUMN "heartbeatAt"`);
-    await queryRunner.query(`ALTER TABLE "task_nodes" DROP COLUMN "leaseUntil"`);
+    await queryRunner.query(
+      `ALTER TABLE "task_nodes" DROP COLUMN "heartbeatAt"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "task_nodes" DROP COLUMN "leaseUntil"`,
+    );
     await queryRunner.query(`ALTER TABLE "task_nodes" DROP COLUMN "workerId"`);
   }
 }
