@@ -187,6 +187,30 @@ export class Deploy extends BaseAction {
         workDir,
       });
 
+      // ============================================================
+      // Phase 4: 生成代码文档（仅部署成功时执行）
+      // ============================================================
+      if (isCompleted) {
+        logger.info('Deploy: Phase 4 - Generating code documentation', { workDir });
+
+        try {
+          const codeDocResult = await this.runCLICommand('使用 code-doc 技能生成代码文档', workDir, {
+            timeout: 1800000,
+            abortSignal: this.abortSignal,
+          });
+
+          allOutputs.push(`=== Phase 4 - Code Documentation ===\n${codeDocResult.output}`);
+          logger.info('Deploy: Phase 4 completed', {
+            outputLength: codeDocResult.output.length,
+          });
+        } catch (docError) {
+          const errorMessage = docError instanceof Error ? docError.message : String(docError);
+          logger.warn('Deploy: Phase 4 failed, continuing with deployment', {
+            error: errorMessage,
+          });
+        }
+      }
+
       return {
         content: `# Deployment ${isCompleted ? 'Completed' : 'Incomplete'}\n\n## Status: ${isCompleted ? '✅ Deployment successful and services verified' : '❌ Max retries reached'}\n\n## Total Iterations: ${retryCount}\n\n## ${sectionTitle}:\n\n${outputContent}`,
         data: {
