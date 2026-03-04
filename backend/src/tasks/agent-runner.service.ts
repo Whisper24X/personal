@@ -169,21 +169,31 @@ export class AgentRunnerService {
     task: Task,
     node: TaskNode,
   ): Promise<AgentRunnerConfig> {
+    const taskConfigJson = this.resolveTaskToolConfig(task);
     const configJson =
       project.configJson && typeof project.configJson === 'object'
         ? (project.configJson as Record<string, unknown>)
         : {};
 
-    const adapter = this.resolveAdapter(configJson);
+    const adapter = this.resolveAdapter({
+      ...configJson,
+      ...taskConfigJson,
+    });
     const baseRunnerConfig = this.readRunnerConfig(configJson);
     const agentToolConfig = await this.resolveAgentToolConfig(
       configJson,
+      taskConfigJson,
       project,
       adapter,
     );
-    const runnerConfig = this.mergeRunnerConfig(
+    const runnerConfigFromTool = this.mergeRunnerConfig(
       baseRunnerConfig,
       agentToolConfig?.runnerConfig,
+    );
+    const taskRunnerConfig = this.resolveTaskRunnerConfig(taskConfigJson);
+    const runnerConfig = this.mergeRunnerConfig(
+      runnerConfigFromTool,
+      taskRunnerConfig,
     );
 
     const command =
@@ -305,6 +315,38 @@ export class AgentRunnerService {
     return !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
   }
 
+  private resolveTaskToolConfig(task: Task): Record<string, unknown> {
+    if (
+      !task.toolVersionsSnapshot ||
+      typeof task.toolVersionsSnapshot !== 'object'
+    ) {
+      return {};
+    }
+
+    return task.toolVersionsSnapshot as Record<string, unknown>;
+  }
+
+  private resolveTaskRunnerConfig(
+    configJson: Record<string, unknown>,
+  ): RunnerConfigInput {
+    if (!configJson || typeof configJson !== 'object') {
+      return {};
+    }
+
+    const runnerConfigCandidate =
+      configJson.agentRunner && typeof configJson.agentRunner === 'object'
+        ? (configJson.agentRunner as Record<string, unknown>)
+        : configJson.runnerConfig && typeof configJson.runnerConfig === 'object'
+          ? (configJson.runnerConfig as Record<string, unknown>)
+          : null;
+
+    if (runnerConfigCandidate) {
+      return this.readRunnerConfigFromRaw(runnerConfigCandidate);
+    }
+
+    return this.readRunnerConfigFromRaw(configJson);
+  }
+
   private readRunnerConfig(configJson: Record<string, unknown>): {
     command?: string;
     args?: string[];
@@ -406,11 +448,13 @@ export class AgentRunnerService {
 
   private async resolveAgentToolConfig(
     configJson: Record<string, unknown>,
+    taskConfigJson: Record<string, unknown>,
     project: Project,
     adapter: AgentAdapter,
   ): Promise<ResolvedAgentToolConfig | null> {
     const persistedById = await this.resolvePersistedAgentToolConfigById(
       configJson,
+      taskConfigJson,
       project,
       adapter,
     );
@@ -431,17 +475,13 @@ export class AgentRunnerService {
 
   private async resolvePersistedAgentToolConfigById(
     configJson: Record<string, unknown>,
+    taskConfigJson: Record<string, unknown>,
     project: Project,
     adapter: AgentAdapter,
   ): Promise<ResolvedAgentToolConfig | null> {
     const requestedConfigId =
-      typeof configJson.agentToolConfigId === 'string' &&
-      configJson.agentToolConfigId.trim()
-        ? configJson.agentToolConfigId.trim()
-        : typeof configJson.agent_tool_config_id === 'string' &&
-            configJson.agent_tool_config_id.trim()
-          ? configJson.agent_tool_config_id.trim()
-          : null;
+      this.resolveAgentToolConfigId(taskConfigJson) ??
+      this.resolveAgentToolConfigId(configJson);
 
     if (!requestedConfigId) {
       return null;
@@ -458,6 +498,26 @@ export class AgentRunnerService {
     }
 
     return this.toResolvedPersistedAgentToolConfig(adapter, config);
+  }
+
+  private resolveAgentToolConfigId(
+    configJson: Record<string, unknown>,
+  ): string | null {
+    if (
+      typeof configJson.agentToolConfigId === 'string' &&
+      configJson.agentToolConfigId.trim()
+    ) {
+      return configJson.agentToolConfigId.trim();
+    }
+
+    if (
+      typeof configJson.agent_tool_config_id === 'string' &&
+      configJson.agent_tool_config_id.trim()
+    ) {
+      return configJson.agent_tool_config_id.trim();
+    }
+
+    return null;
   }
 
   private async resolvePersistedDefaultAgentToolConfig(

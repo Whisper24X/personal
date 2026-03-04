@@ -1,0 +1,9 @@
+{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
+{"file": ".claude/commands/trellis/check-frontend.md", "reason": "Frontend check spec"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Validate SFC structure and component responsibilities"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Verify reactive state is scoped and predictable"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify no untyped props/emits or unsafe assertions"}
+{"file": "frontend/src/views/tasks/detail.vue", "reason": "Primary file for regression check"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Validate async behavior, errors, lint/type quality"}
+{"file": "frontend/src/views/tasks/__tests__/detail.spec.ts", "reason": "Existing task detail test coverage to keep green"}
+{"file": "/Users/fuzhifei/code/go/src/github.com/fzf-labs/vibework/src/renderer/src/pages/task-detail/TaskDetailContainer.tsx", "reason": "Ensure intended architecture ideas align with reference"}

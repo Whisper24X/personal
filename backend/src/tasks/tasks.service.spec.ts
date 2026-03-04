@@ -947,7 +947,10 @@ describe('TasksService', () => {
     const task = createTask();
     const currentUser = createCurrentUser();
 
-    taskRepository.findById.mockResolvedValue(task);
+    taskRepository.findById.mockResolvedValueOnce(task).mockResolvedValueOnce({
+      ...task,
+      title: 'Updated title',
+    });
     projectsService.assertCanAccessProject.mockResolvedValue(createProject());
     taskRuntimeService.cleanupRuntime.mockResolvedValue({
       cleaned: true,
@@ -1217,5 +1220,130 @@ describe('TasksService', () => {
         message: 'Task worktree cleanup skipped or failed',
       }),
     );
+  });
+
+  it('should update task and append update log', async () => {
+    const { service, taskRepository, projectsService, taskNodeRepository } =
+      createTasksService() as any;
+    const task = createTask();
+    const currentUser = createCurrentUser();
+
+    taskRepository.findById.mockResolvedValue(task);
+    taskRepository.update.mockResolvedValue({
+      ...task,
+      title: 'Updated title',
+    });
+    projectsService.assertCanAccessProject.mockResolvedValue(createProject());
+    taskNodeRepository.findByTaskId.mockResolvedValue([]);
+
+    const result = await service.update(
+      task.id,
+      {
+        title: 'Updated title',
+      } as never,
+      currentUser as never,
+    );
+
+    expect(taskRepository.update).toHaveBeenCalledWith(
+      task.id,
+      expect.objectContaining({
+        title: 'Updated title',
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        task: expect.any(Object),
+        nodes: expect.any(Array),
+      }),
+    );
+  });
+
+  it('should queue reply by moving in_review node back to todo', async () => {
+    const {
+      service,
+      taskRepository,
+      taskNodeRepository,
+      taskRuntimeService,
+      projectsService,
+    } = createTasksService() as any;
+    const task = createTask();
+    const inReviewNode = {
+      ...createNodeWithStatus(TaskStatus.inReview),
+      taskId: task.id,
+    };
+    const currentUser = createCurrentUser();
+
+    taskRepository.findById.mockResolvedValue(task);
+    taskRepository.update.mockResolvedValue(task);
+    projectsService.assertCanAccessProject.mockResolvedValue(createProject());
+    taskRuntimeService.ensureRuntime.mockResolvedValue({
+      branch: task.branch,
+      gitBaseBranch: task.gitBaseBranch,
+      gitWorktreePath: task.gitWorktreePath,
+      sandboxCleanupAt: new Date(),
+    });
+    taskNodeRepository.findInProgressByTaskId.mockResolvedValue(null);
+    taskNodeRepository.findFirstByTaskIdAndStatus.mockImplementation(
+      ({ status }) => {
+        if (status === TaskStatus.inReview) {
+          return Promise.resolve(inReviewNode);
+        }
+
+        return Promise.resolve(null);
+      },
+    );
+    taskNodeRepository.findByTaskId.mockResolvedValue([inReviewNode]);
+
+    await service.reply(
+      task.id,
+      {
+        message: 'continue',
+      } as never,
+      currentUser as never,
+    );
+
+    expect(taskNodeRepository.update).toHaveBeenCalledWith(
+      inReviewNode.id,
+      expect.objectContaining({
+        status: TaskStatus.todo,
+      }),
+    );
+  });
+
+  it('should map logs to task messages', async () => {
+    const { service, taskRepository, projectsService, taskLogRepository } =
+      createTasksService() as any;
+    const task = createTask();
+    const currentUser = createCurrentUser();
+
+    taskRepository.findById.mockResolvedValue(task);
+    projectsService.assertCanAccessProject.mockResolvedValue(createProject());
+    taskLogRepository.findByTaskIdSince.mockResolvedValue([
+      {
+        id: 'log-1',
+        taskId: task.id,
+        taskNodeId: null,
+        level: 'info',
+        message: 'user asks',
+        payload: {
+          messageRole: 'user',
+        },
+        createdAt: new Date(),
+      },
+      {
+        id: 'log-2',
+        taskId: task.id,
+        taskNodeId: null,
+        level: 'error',
+        message: 'runner failed',
+        payload: null,
+        createdAt: new Date(),
+      },
+    ]);
+
+    const messages = await service.listMessages(task.id, currentUser as never);
+
+    expect(messages[0].role).toBe('user');
+    expect(messages[1].role).toBe('error');
   });
 });

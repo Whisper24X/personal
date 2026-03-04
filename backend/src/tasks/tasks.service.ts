@@ -37,6 +37,9 @@ import { Project } from '../projects/domain/project';
 import { AgentRunnerService } from './agent-runner.service';
 import { ProjectRepository } from '../projects/infrastructure/persistence/project.repository';
 import { DataSource } from 'typeorm';
+import { UpdateTaskDto } from './dto/update-task.dto';
+import { ReplyTaskDto } from './dto/reply-task.dto';
+import { TaskMessageDto, TaskMessageRole } from './dto/task-message.dto';
 
 @Injectable()
 export class TasksService implements OnModuleInit, OnModuleDestroy {
@@ -285,6 +288,248 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       task,
       nodes,
     };
+  }
+
+  async update(
+    taskId: Task['id'],
+    updateTaskDto: UpdateTaskDto,
+    currentUser: JwtPayloadType,
+  ): Promise<TaskDetailDto> {
+    const task = await this.getTaskOrThrow(taskId, currentUser);
+    const updatePayload: Partial<Task> = {};
+
+    if (updateTaskDto.title !== undefined) {
+      updatePayload.title = updateTaskDto.title;
+    }
+    if (updateTaskDto.description !== undefined) {
+      updatePayload.description = updateTaskDto.description;
+    }
+    if (updateTaskDto.acceptanceCriteria !== undefined) {
+      updatePayload.acceptanceCriteria = updateTaskDto.acceptanceCriteria;
+    }
+    if (updateTaskDto.branch !== undefined) {
+      updatePayload.branch = updateTaskDto.branch;
+    }
+    if (updateTaskDto.environment !== undefined) {
+      updatePayload.environment = updateTaskDto.environment;
+    }
+    if (updateTaskDto.toolVersionsSnapshot !== undefined) {
+      updatePayload.toolVersionsSnapshot = updateTaskDto.toolVersionsSnapshot;
+    }
+    if (
+      updateTaskDto.cliToolId !== undefined ||
+      updateTaskDto.agentToolConfigId !== undefined
+    ) {
+      const currentSnapshot =
+        task.toolVersionsSnapshot &&
+        typeof task.toolVersionsSnapshot === 'object'
+          ? task.toolVersionsSnapshot
+          : {};
+
+      updatePayload.toolVersionsSnapshot = {
+        ...currentSnapshot,
+        ...(updateTaskDto.cliToolId !== undefined
+          ? { cliToolId: updateTaskDto.cliToolId || null }
+          : {}),
+        ...(updateTaskDto.agentToolConfigId !== undefined
+          ? { agentToolConfigId: updateTaskDto.agentToolConfigId || null }
+          : {}),
+        ...(updateTaskDto.toolVersionsSnapshot ?? {}),
+      };
+    }
+
+    if (Object.keys(updatePayload).length === 0) {
+      return this.detailById(task.id, currentUser);
+    }
+
+    await this.taskRepository.update(task.id, updatePayload);
+
+    await this.appendLog({
+      taskId: task.id,
+      taskNodeId: null,
+      level: TaskLogLevel.info,
+      message: 'Task info updated',
+      payload: {
+        updatedBy: currentUser.sub,
+        fields: Object.keys(updatePayload),
+      },
+    });
+
+    return this.detailById(task.id, currentUser);
+  }
+
+  async remove(taskId: Task['id'], currentUser: JwtPayloadType): Promise<void> {
+    const task = await this.getTaskOrThrow(taskId, currentUser);
+    const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
+      task.id,
+    );
+
+    if (runningNode) {
+      throw new ConflictException(
+        'Cannot delete task while execution is in progress',
+      );
+    }
+
+    await this.taskRepository.remove(task.id);
+  }
+
+  async reply(
+    taskId: Task['id'],
+    replyTaskDto: ReplyTaskDto,
+    currentUser: JwtPayloadType,
+  ): Promise<TaskDetailDto> {
+    let task = await this.getTaskOrThrow(taskId, currentUser);
+    const prepared = await this.prepareTaskRuntime(task, currentUser);
+    task = prepared.task;
+
+    const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
+      task.id,
+    );
+    if (runningNode) {
+      throw new ConflictException(
+        'Task already has an in-progress node and cannot accept reply',
+      );
+    }
+
+    const normalizedMessage = replyTaskDto.message.trim();
+    if (!normalizedMessage) {
+      throw new ConflictException('Reply message cannot be empty');
+    }
+
+    await this.appendLog({
+      taskId: task.id,
+      taskNodeId: null,
+      level: TaskLogLevel.info,
+      message: normalizedMessage,
+      payload: {
+        messageRole: TaskMessageRole.user,
+        kind: 'reply',
+        repliedBy: currentUser.sub,
+      },
+    });
+
+    const inReviewNode =
+      await this.taskNodeRepository.findFirstByTaskIdAndStatus({
+        taskId: task.id,
+        status: TaskStatus.inReview,
+      });
+    if (inReviewNode) {
+      await this.taskNodeRepository.update(inReviewNode.id, {
+        status: TaskStatus.todo,
+        finishedAt: null,
+        errorCode: null,
+        errorMessage: null,
+        output: null,
+      });
+
+      await this.appendLog({
+        taskId: task.id,
+        taskNodeId: inReviewNode.id,
+        level: TaskLogLevel.info,
+        message: 'In-review node moved back to todo by reply',
+        payload: {
+          nodeOrder: inReviewNode.nodeOrder,
+          repliedBy: currentUser.sub,
+        },
+      });
+    } else {
+      const todoNode = await this.taskNodeRepository.findFirstByTaskIdAndStatus(
+        {
+          taskId: task.id,
+          status: TaskStatus.todo,
+        },
+      );
+
+      if (!todoNode) {
+        const fallbackNode =
+          await this.taskNodeRepository.findFirstByTaskIdAndStatus({
+            taskId: task.id,
+            status: TaskStatus.done,
+          });
+
+        if (!fallbackNode) {
+          throw new ConflictException('No node available for reply execution');
+        }
+
+        await this.taskNodeRepository.update(fallbackNode.id, {
+          status: TaskStatus.todo,
+          finishedAt: null,
+          errorCode: null,
+          errorMessage: null,
+          output: null,
+        });
+      }
+    }
+
+    const queueRequestedAt = new Date();
+    if (!task.startedAt) {
+      const updatedTask = await this.taskRepository.update(task.id, {
+        startedAt: queueRequestedAt,
+      });
+      task = updatedTask ?? task;
+    }
+
+    await this.appendLog({
+      taskId: task.id,
+      taskNodeId: null,
+      level: TaskLogLevel.info,
+      message: 'Task queued after reply',
+      payload: {
+        repliedBy: currentUser.sub,
+        requestedAt: queueRequestedAt.toISOString(),
+      },
+    });
+
+    await this.recalculateTaskStatus(task.id);
+    await this.triggerWorkerDispatch();
+
+    return this.detailById(task.id, currentUser);
+  }
+
+  async listMessages(
+    taskId: Task['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<TaskMessageDto[]> {
+    await this.getTaskOrThrow(taskId, currentUser);
+
+    const logs = await this.taskLogRepository.findByTaskIdSince({
+      taskId,
+      limit: 500,
+    });
+
+    return logs.map((log) => {
+      const payload =
+        log.payload && typeof log.payload === 'object'
+          ? (log.payload as Record<string, unknown>)
+          : null;
+
+      const payloadRole =
+        payload && typeof payload.messageRole === 'string'
+          ? payload.messageRole
+          : null;
+
+      let role: TaskMessageRole;
+      if (
+        payloadRole === TaskMessageRole.user ||
+        payloadRole === TaskMessageRole.assistant ||
+        payloadRole === TaskMessageRole.system ||
+        payloadRole === TaskMessageRole.error
+      ) {
+        role = payloadRole;
+      } else if (log.level === TaskLogLevel.error) {
+        role = TaskMessageRole.error;
+      } else {
+        role = TaskMessageRole.system;
+      }
+
+      return {
+        role,
+        content: log.message,
+        createdAt: log.createdAt,
+        taskNodeId: log.taskNodeId ?? null,
+        level: log.level,
+      };
+    });
   }
 
   async execute(
@@ -1509,6 +1754,13 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     }
 
     return TaskStatus.todo;
+  }
+
+  async assertCanAccessTask(
+    taskId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<Task> {
+    return this.getTaskOrThrow(taskId, currentUser);
   }
 
   private async getTaskOrThrow(

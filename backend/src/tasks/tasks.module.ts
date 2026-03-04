@@ -9,6 +9,9 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { TaskRuntimeService } from './task-runtime.service';
 import { AgentRunnerService } from './agent-runner.service';
 import { RelationalBusinessLinePersistenceModule } from '../business-lines/infrastructure/persistence/relational/relational-persistence.module';
+import { TaskWorkspaceService } from './task-workspace.service';
+import { TaskGitService } from './task-git.service';
+import { TaskTerminalService } from './task-terminal.service';
 
 @Module({
   imports: [
@@ -24,6 +27,9 @@ import { RelationalBusinessLinePersistenceModule } from '../business-lines/infra
     TaskLogEventsService,
     TaskRuntimeService,
     AgentRunnerService,
+    TaskWorkspaceService,
+    TaskGitService,
+    TaskTerminalService,
   ],
   exports: [TasksService, RelationalTaskPersistenceModule],
 })

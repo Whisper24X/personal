@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
-import { artifactsApi } from '@/api/artifacts'
-import ArtifactPreviewPanel from '@/components/tasks/ArtifactPreviewPanel.vue'
+import ExecutionPanel from '@/components/tasks/detail/ExecutionPanel.vue'
+import ReplyCard from '@/components/tasks/detail/ReplyCard.vue'
+import RightPanelSection from '@/components/tasks/detail/RightPanelSection.vue'
+import TaskCard from '@/components/tasks/detail/TaskCard.vue'
+import TaskDialogs, { type TaskEditFormValue } from '@/components/tasks/detail/TaskDialogs.vue'
+import WorkflowCard from '@/components/tasks/detail/WorkflowCard.vue'
 import { openSseStream } from '@/api/http'
 import { tasksApi } from '@/api/tasks'
-import type { ArtifactPreview } from '@/types/api/artifacts'
-import type { Task, TaskArtifact, TaskArtifactType, TaskDetail, TaskLog, TaskNode } from '@/types/api/tasks'
+import type { Task, TaskDetail, TaskLog, TaskMessage, TaskNode } from '@/types/api/tasks'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
 defineOptions({
@@ -15,43 +18,34 @@ defineOptions({
 })
 
 const route = useRoute()
+const router = useRouter()
 const taskId = computed(() => String(route.params.id ?? ''))
 
 const loading = ref(false)
 const actionLoading = ref(false)
-const uploadingArtifact = ref(false)
-const downloadingArtifactId = ref<string | null>(null)
-const validationMessage = ref('')
-const message = useMessage()
-const artifactFormModalOpen = ref(false)
+const streamConnected = ref(false)
+const isRightPanelVisible = ref(true)
+const rightPanelRefreshToken = ref(0)
 
 const detail = ref<TaskDetail | null>(null)
 const logs = ref<TaskLog[]>([])
-const artifacts = ref<TaskArtifact[]>([])
-const previewLoading = ref(false)
-const selectedPreviewArtifact = ref<TaskArtifact | null>(null)
-const artifactPreview = ref<ArtifactPreview | null>(null)
+const messages = ref<TaskMessage[]>([])
+const selectedWorkflowNodeId = ref<string | null>(null)
 
-const closeArtifactPreview = () => {
-  previewLoading.value = false
-  selectedPreviewArtifact.value = null
-  artifactPreview.value = null
-}
-
-const followTail = ref(true)
-const wrapLines = ref(false)
-const logKeyword = ref('')
-const streamConnected = ref(false)
-
-const logViewport = ref<HTMLDivElement | null>(null)
-
-const artifactForm = reactive({
-  taskNodeId: '',
-  artifactType: 'report' as TaskArtifactType,
-  name: '',
-  content: '',
-  downloadUrl: '',
+const editOpen = ref(false)
+const deleteOpen = ref(false)
+const savingEdit = ref(false)
+const removingTask = ref(false)
+const editForm = reactive<TaskEditFormValue>({
+  title: '',
+  description: '',
+  branch: '',
+  environment: '',
+  cliToolId: '',
+  agentToolConfigId: '',
 })
+
+const message = useMessage()
 
 let streamAbortController: AbortController | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -61,6 +55,11 @@ const statusLabelMap: Record<Task['status'], string> = {
   in_progress: '执行中',
   in_review: '待处理',
   done: '已完成',
+}
+
+const modeLabelMap: Record<Task['mode'], string> = {
+  conversation: '对话',
+  workflow: '工作流',
 }
 
 const statusClassMap: Record<Task['status'], string> = {
@@ -80,15 +79,63 @@ const sortedNodes = computed(() => {
   return [...detail.value.nodes].sort((left, right) => left.nodeOrder - right.nodeOrder)
 })
 
-const visibleLogs = computed(() => {
-  const keyword = logKeyword.value.trim().toLowerCase()
-  if (!keyword) {
-    return logs.value
+const queryProjectId = computed(() => {
+  const rawProjectId = route.query?.projectId
+  if (typeof rawProjectId === 'string') {
+    return rawProjectId
   }
 
-  return logs.value.filter((log) => {
-    return log.message.toLowerCase().includes(keyword) || log.level.toLowerCase().includes(keyword)
-  })
+  if (Array.isArray(rawProjectId) && typeof rawProjectId[0] === 'string') {
+    return rawProjectId[0]
+  }
+
+  return ''
+})
+
+const activeProjectId = computed(() => {
+  return queryProjectId.value || task.value?.projectId || ''
+})
+
+const taskListRoute = computed(() => {
+  if (!activeProjectId.value) {
+    return '/tasks'
+  }
+
+  return {
+    path: '/tasks',
+    query: {
+      projectId: activeProjectId.value,
+    },
+  }
+})
+
+const projectDetailRoute = computed(() => {
+  if (!activeProjectId.value) {
+    return null
+  }
+
+  return `/projects/${activeProjectId.value}`
+})
+
+const taskStatusLabel = computed(() => {
+  if (!task.value) {
+    return '-'
+  }
+  return statusLabelMap[task.value.status]
+})
+
+const taskStatusClass = computed(() => {
+  if (!task.value) {
+    return 'bg-muted text-muted-foreground'
+  }
+  return statusClassMap[task.value.status]
+})
+
+const taskModeLabel = computed(() => {
+  if (!task.value) {
+    return '-'
+  }
+  return modeLabelMap[task.value.mode]
 })
 
 const canExecute = computed(() => {
@@ -107,6 +154,34 @@ const canCleanupWorktree = computed(() => {
   return Boolean(task.value?.gitWorktreePath)
 })
 
+const canEdit = computed(() => {
+  return task.value?.status === 'todo'
+})
+
+const executionMessages = computed(() => {
+  const sourceMessages = messages.value
+
+  if (!selectedWorkflowNodeId.value) {
+    return sourceMessages
+  }
+
+  return sourceMessages.filter((item) => {
+    return item.taskNodeId === selectedWorkflowNodeId.value
+  })
+})
+
+const replyDisabled = computed(() => {
+  return loading.value || actionLoading.value || !task.value
+})
+
+const replyPlaceholder = computed(() => {
+  if (task.value?.status === 'in_progress') {
+    return '任务执行中，可发送补充信息...'
+  }
+
+  return '补充指令或继续提问...'
+})
+
 const formatDate = (value?: string) => {
   if (!value) return '-'
   const parsedDate = new Date(value)
@@ -121,11 +196,37 @@ const formatDate = (value?: string) => {
   })
 }
 
-const logLevelClass = (level: TaskLog['level']) => {
-  if (level === 'error') return 'text-red-600 dark:text-red-300'
-  if (level === 'warn') return 'text-amber-600 dark:text-amber-300'
-  if (level === 'debug') return 'text-violet-600 dark:text-violet-300'
-  return 'text-muted-foreground'
+const mapLogToMessage = (log: TaskLog): TaskMessage => {
+  const payload = log.payload && typeof log.payload === 'object' ? log.payload : null
+  const payloadRole = payload && typeof payload.messageRole === 'string' ? payload.messageRole : null
+
+  if (payloadRole === 'user' || payloadRole === 'assistant' || payloadRole === 'system' || payloadRole === 'error') {
+    return {
+      role: payloadRole,
+      content: log.message,
+      createdAt: log.createdAt,
+      taskNodeId: log.taskNodeId,
+      level: log.level,
+    }
+  }
+
+  if (log.level === 'error') {
+    return {
+      role: 'error',
+      content: log.message,
+      createdAt: log.createdAt,
+      taskNodeId: log.taskNodeId,
+      level: log.level,
+    }
+  }
+
+  return {
+    role: 'system',
+    content: log.message,
+    createdAt: log.createdAt,
+    taskNodeId: log.taskNodeId,
+    level: log.level,
+  }
 }
 
 const upsertLog = (nextLog: TaskLog) => {
@@ -133,15 +234,17 @@ const upsertLog = (nextLog: TaskLog) => {
 
   if (existedIndex >= 0) {
     logs.value[existedIndex] = nextLog
-    return
+  } else {
+    logs.value.push(nextLog)
   }
 
-  logs.value.push(nextLog)
   logs.value.sort((left, right) => {
     const leftAt = new Date(left.createdAt).getTime()
     const rightAt = new Date(right.createdAt).getTime()
     return leftAt - rightAt
   })
+
+  messages.value = logs.value.map(mapLogToMessage)
 }
 
 const clearReconnectTimer = () => {
@@ -185,8 +288,6 @@ const connectStream = async () => {
   streamAbortController = new AbortController()
 
   const lastLog = logs.value.length > 0 ? logs.value[logs.value.length - 1] : undefined
-  const since = lastLog?.createdAt
-  const afterId = lastLog?.id
 
   try {
     streamConnected.value = true
@@ -194,8 +295,8 @@ const connectStream = async () => {
     await openSseStream(
       `/tasks/${taskId.value}/stream`,
       {
-        since,
-        afterId,
+        since: lastLog?.createdAt,
+        afterId: lastLog?.id,
       },
       {
         signal: streamAbortController.signal,
@@ -207,8 +308,8 @@ const connectStream = async () => {
           try {
             const payload = JSON.parse(event.data) as TaskLog
             upsertLog(payload)
-          } catch (error) {
-            void error
+          } catch {
+            // ignore malformed task-log payload
           }
         },
         onError: () => {
@@ -231,20 +332,30 @@ const connectStream = async () => {
   }
 }
 
+const refreshMessages = async () => {
+  if (!taskId.value) {
+    return
+  }
+
+  try {
+    messages.value = await tasksApi.messages(taskId.value)
+  } catch {
+    messages.value = logs.value.map(mapLogToMessage)
+  }
+}
+
 const loadTaskData = async () => {
   if (!taskId.value) {
     return
   }
 
   loading.value = true
-  validationMessage.value = ''
-  closeArtifactPreview()
 
   try {
-    const [detailResponse, logResponse, artifactResponse] = await Promise.all([
+    const [detailResponse, logResponse, messageResponse] = await Promise.all([
       tasksApi.detailWithNodes(taskId.value),
-      tasksApi.logs(taskId.value, { limit: 200 }),
-      tasksApi.artifacts(taskId.value),
+      tasksApi.logs(taskId.value, { limit: 300 }),
+      tasksApi.messages(taskId.value),
     ])
 
     detail.value = detailResponse
@@ -253,28 +364,12 @@ const loadTaskData = async () => {
       const rightAt = new Date(right.createdAt).getTime()
       return leftAt - rightAt
     })
-    artifacts.value = artifactResponse
+    messages.value = messageResponse
   } catch (error) {
     message.error(toErrorMessage(error, '加载任务详情失败'))
   } finally {
     loading.value = false
   }
-}
-
-const refreshTaskDetail = async () => {
-  if (!taskId.value) {
-    return
-  }
-
-  detail.value = await tasksApi.detailWithNodes(taskId.value)
-}
-
-const refreshArtifacts = async () => {
-  if (!taskId.value) {
-    return
-  }
-
-  artifacts.value = await tasksApi.artifacts(taskId.value)
 }
 
 const executeTask = async () => {
@@ -286,6 +381,7 @@ const executeTask = async () => {
 
   try {
     detail.value = await tasksApi.execute(taskId.value)
+    rightPanelRefreshToken.value += 1
     message.success('任务已开始执行')
   } catch (error) {
     message.error(toErrorMessage(error, '执行任务失败'))
@@ -303,9 +399,9 @@ const cancelTask = async () => {
 
   try {
     detail.value = await tasksApi.cancel(taskId.value)
-    message.success('任务已取消')
+    message.success('任务已停止')
   } catch (error) {
-    message.error(toErrorMessage(error, '取消任务失败'))
+    message.error(toErrorMessage(error, '停止任务失败'))
   } finally {
     actionLoading.value = false
   }
@@ -320,6 +416,7 @@ const cleanupTaskWorktree = async () => {
 
   try {
     detail.value = await tasksApi.cleanupWorktree(taskId.value)
+    rightPanelRefreshToken.value += 1
     message.success('工作区已清理')
   } catch (error) {
     message.error(toErrorMessage(error, '清理工作区失败'))
@@ -339,6 +436,7 @@ const retryNode = async (node: TaskNode) => {
     detail.value = await tasksApi.retry(taskId.value, {
       nodeId: node.id,
     })
+    rightPanelRefreshToken.value += 1
     message.success('节点已重试')
   } catch (error) {
     message.error(toErrorMessage(error, '重试节点失败'))
@@ -358,6 +456,7 @@ const approveNode = async (node: TaskNode) => {
     detail.value = await tasksApi.approve(taskId.value, {
       nodeId: node.id,
     })
+    rightPanelRefreshToken.value += 1
     message.success('节点审批已通过')
   } catch (error) {
     message.error(toErrorMessage(error, '审批节点失败'))
@@ -366,157 +465,113 @@ const approveNode = async (node: TaskNode) => {
   }
 }
 
-const createArtifact = async () => {
-  if (!taskId.value || !artifactForm.name.trim()) {
-    validationMessage.value = '产物名称不能为空'
+const handleReply = async (text: string) => {
+  if (!taskId.value) {
     return
   }
 
-  uploadingArtifact.value = true
-  validationMessage.value = ''
+  actionLoading.value = true
 
   try {
-    await tasksApi.createArtifact(taskId.value, {
-      taskNodeId: artifactForm.taskNodeId || undefined,
-      artifactType: artifactForm.artifactType,
-      name: artifactForm.name.trim(),
-      content: artifactForm.content.trim() || undefined,
-      downloadUrl: artifactForm.downloadUrl.trim() || undefined,
+    detail.value = await tasksApi.reply(taskId.value, {
+      message: text,
     })
-
-    artifactForm.taskNodeId = ''
-    artifactForm.artifactType = 'report'
-    artifactForm.name = ''
-    artifactForm.content = ''
-    artifactForm.downloadUrl = ''
-    artifactFormModalOpen.value = false
-
-    await refreshArtifacts()
-    await refreshTaskDetail()
-    message.success('上传产物成功')
+    rightPanelRefreshToken.value += 1
+    await refreshMessages()
+    message.success('回复已提交，任务继续执行')
   } catch (error) {
-    message.error(toErrorMessage(error, '上传产物失败'))
+    message.error(toErrorMessage(error, '回复提交失败'))
   } finally {
-    uploadingArtifact.value = false
+    actionLoading.value = false
   }
 }
 
-const openArtifactFormModal = () => {
-  validationMessage.value = ''
-  artifactFormModalOpen.value = true
+const toggleRightPanel = () => {
+  isRightPanelVisible.value = !isRightPanelVisible.value
 }
 
-const closeArtifactFormModal = () => {
-  artifactFormModalOpen.value = false
-  validationMessage.value = ''
+const handleSelectWorkflowNode = (nodeId: string) => {
+  selectedWorkflowNodeId.value = nodeId
 }
 
-const mergeArtifact = (artifactId: string, payload: { downloadUrl?: string | null; content?: string | null }) => {
-  artifacts.value = artifacts.value.map((artifact) => {
-    if (artifact.id !== artifactId) {
-      return artifact
-    }
-
-    return {
-      ...artifact,
-      ...(payload.downloadUrl !== undefined ? { downloadUrl: payload.downloadUrl } : {}),
-      ...(payload.content !== undefined ? { content: payload.content } : {}),
-    }
-  })
-}
-
-const openExternalUrl = (url: string) => {
-  window.open(url, '_blank', 'noopener,noreferrer')
-}
-
-const downloadTextContent = (filename: string, content: string) => {
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
-  const objectUrl = URL.createObjectURL(blob)
-
-  const anchor = document.createElement('a')
-  anchor.href = objectUrl
-  anchor.download = filename
-  anchor.click()
-
-  URL.revokeObjectURL(objectUrl)
-}
-
-const resolveArtifactData = async (artifact: TaskArtifact): Promise<TaskArtifact> => {
-  if (artifact.downloadUrl || artifact.content) {
-    return artifact
+const openEdit = () => {
+  if (!task.value) {
+    return
   }
 
-  const response = await artifactsApi.download(artifact.id)
+  const snapshot = task.value.toolVersionsSnapshot as Record<string, unknown> | null
 
-  mergeArtifact(artifact.id, {
-    downloadUrl: response.downloadUrl,
-    content: response.content,
-  })
-
-  return {
-    ...artifact,
-    downloadUrl: response.downloadUrl ?? artifact.downloadUrl ?? null,
-    content: response.content ?? artifact.content ?? null,
-  }
+  editForm.title = task.value.title || ''
+  editForm.description = task.value.description || ''
+  editForm.branch = task.value.branch || ''
+  editForm.environment = task.value.environment || ''
+  editForm.cliToolId = snapshot && typeof snapshot.cliToolId === 'string' ? snapshot.cliToolId : ''
+  editForm.agentToolConfigId = snapshot && typeof snapshot.agentToolConfigId === 'string' ? snapshot.agentToolConfigId : ''
+  editOpen.value = true
 }
 
-const openArtifactPreview = async (artifact: TaskArtifact) => {
-  downloadingArtifactId.value = artifact.id
-  previewLoading.value = true
-  selectedPreviewArtifact.value = artifact
-  artifactPreview.value = null
+const saveEdit = async (payload: TaskEditFormValue) => {
+  if (!taskId.value) {
+    return
+  }
+
+  savingEdit.value = true
 
   try {
-    artifactPreview.value = await artifactsApi.preview(artifact.id)
+    detail.value = await tasksApi.update(taskId.value, {
+      title: payload.title,
+      description: payload.description,
+      branch: payload.branch,
+      environment: payload.environment,
+      cliToolId: payload.cliToolId,
+      agentToolConfigId: payload.agentToolConfigId,
+    })
+    editOpen.value = false
+    message.success('任务已更新')
   } catch (error) {
-    message.error(toErrorMessage(error, '产物预览失败'))
-    closeArtifactPreview()
+    message.error(toErrorMessage(error, '更新任务失败'))
   } finally {
-    previewLoading.value = false
-    downloadingArtifactId.value = null
+    savingEdit.value = false
   }
 }
 
-const downloadArtifact = async (artifact: TaskArtifact) => {
-  downloadingArtifactId.value = artifact.id
-  validationMessage.value = ''
+const removeTask = async () => {
+  if (!taskId.value) {
+    return
+  }
+
+  removingTask.value = true
 
   try {
-    const resolvedArtifact = await resolveArtifactData(artifact)
-
-    if (resolvedArtifact.downloadUrl) {
-      openExternalUrl(resolvedArtifact.downloadUrl)
-      return
-    }
-
-    if (resolvedArtifact.content) {
-      downloadTextContent(resolvedArtifact.name, resolvedArtifact.content)
-      return
-    }
-
-    validationMessage.value = '产物下载不可用'
+    await tasksApi.remove(taskId.value)
+    deleteOpen.value = false
+    message.success('任务已删除')
+    await router.push(taskListRoute.value)
   } catch (error) {
-    message.error(toErrorMessage(error, '产物下载失败'))
+    message.error(toErrorMessage(error, '删除任务失败'))
   } finally {
-    downloadingArtifactId.value = null
+    removingTask.value = false
   }
 }
 
 watch(
-  () => visibleLogs.value.length,
-  async () => {
-    if (!followTail.value) {
+  () => sortedNodes.value,
+  (nodes) => {
+    if (nodes.length === 0) {
+      selectedWorkflowNodeId.value = null
       return
     }
 
-    await nextTick()
+    const selectedNodeStillExists = selectedWorkflowNodeId.value
+      ? nodes.some((node) => node.id === selectedWorkflowNodeId.value)
+      : false
 
-    const viewport = logViewport.value
-    if (!viewport) {
-      return
+    if (!selectedNodeStillExists) {
+      selectedWorkflowNodeId.value = nodes[0]?.id || null
     }
-
-    viewport.scrollTop = viewport.scrollHeight
+  },
+  {
+    immediate: true,
   },
 )
 
@@ -539,405 +594,102 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="space-y-6 fade-up">
-    <section class="space-y-2">
-      <div class="flex items-center gap-2 text-xs text-muted-foreground">
-        <RouterLink to="/tasks" class="hover:text-foreground hover:underline">任务列表</RouterLink>
-        <span>/</span>
-        <span class="font-mono">{{ taskId }}</span>
-      </div>
-
-      <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div class="space-y-2">
-          <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">{{ task?.title ?? '任务详情' }}</h1>
-          <div class="flex flex-wrap items-center gap-2">
-            <span v-if="task" class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold" :class="statusClassMap[task.status]">
-              {{ statusLabelMap[task.status] }}
-            </span>
-            <span class="text-xs text-muted-foreground">任务 ID：{{ task?.id ?? '-' }}</span>
-            <span class="text-xs text-muted-foreground">•</span>
-            <span class="text-xs text-muted-foreground">项目：{{ task?.projectId ?? '-' }}</span>
-            <span class="text-xs text-muted-foreground">•</span>
-            <span class="text-xs text-muted-foreground">模式：{{ task?.mode ?? '-' }}</span>
-          </div>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-2">
-          <button
-            class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="actionLoading || !canExecute"
-            type="button"
-            @click="executeTask"
-          >
-            执行
-          </button>
-          <button
-            class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="actionLoading || !canCancel"
-            type="button"
-            @click="cancelTask"
-          >
-            取消
-          </button>
-          <button
-            class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="actionLoading || !canCleanupWorktree"
-            type="button"
-            @click="cleanupTaskWorktree"
-          >
-            清理工作区
-          </button>
-          <button
-            class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground"
-            type="button"
-            @click="loadTaskData"
-          >
-            刷新
-          </button>
-        </div>
-      </div>
-
-      <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
-    </section>
-
+  <div class="fade-up space-y-3">
     <section v-if="loading" class="panel-card p-6 text-sm text-muted-foreground">加载中...</section>
 
-    <section v-else class="grid gap-6 xl:grid-cols-[2fr_1fr]">
-      <div class="space-y-6">
-        <div class="panel-card overflow-hidden">
-          <div class="flex flex-col gap-3 border-b border-border p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p class="text-sm font-semibold">实时日志</p>
-              <p class="text-xs text-muted-foreground">
-                SSE 状态：
-                <span :class="streamConnected ? 'text-emerald-600 dark:text-emerald-300' : 'text-muted-foreground'">
-                  {{ streamConnected ? '已连接' : '未连接' }}
-                </span>
-              </p>
-            </div>
+    <section
+      v-else
+      class="bg-background my-1 flex min-h-[calc(var(--app-viewport-height)-9rem)] min-w-0 overflow-hidden rounded-2xl border border-border/50 shadow-sm"
+    >
+      <div
+        class="bg-background flex min-w-0 flex-col overflow-hidden transition-all duration-200"
+        :class="isRightPanelVisible ? 'rounded-l-2xl' : 'rounded-2xl'"
+        :style="{
+          flex: isRightPanelVisible ? '0 0 auto' : '1 1 0%',
+          width: isRightPanelVisible ? 'clamp(320px, 40%, 520px)' : undefined,
+          minWidth: '320px',
+          maxWidth: isRightPanelVisible ? '520px' : undefined,
+        }"
+      >
+        <div class="flex min-h-0 flex-1 flex-col gap-3 p-3">
+          <TaskCard
+            :task-id="taskId"
+            :task="task"
+            :status-label="taskStatusLabel"
+            :status-class="taskStatusClass"
+            :mode-label="taskModeLabel"
+            :task-list-route="taskListRoute"
+            :project-detail-route="projectDetailRoute"
+            :created-at-label="formatDate(task?.createdAt)"
+            :updated-at-label="formatDate(task?.updatedAt)"
+            :branch-label="task?.branch ?? '-'"
+            :action-loading="actionLoading"
+            :can-execute="canExecute"
+            :can-cancel="canCancel"
+            :can-cleanup-worktree="canCleanupWorktree"
+            :right-panel-visible="isRightPanelVisible"
+            :can-edit="canEdit"
+            @execute="executeTask"
+            @cancel="cancelTask"
+            @cleanup="cleanupTaskWorktree"
+            @refresh="loadTaskData"
+            @toggle-right-panel="toggleRightPanel"
+            @edit="openEdit"
+            @remove="deleteOpen = true"
+          />
 
-            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <input
-                v-model="logKeyword"
-                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-xs text-foreground shadow-sm outline-none ring-offset-background transition focus:ring-2 focus:ring-ring sm:w-56"
-                placeholder="搜索日志"
-                type="search"
-              />
-              <label class="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                <input v-model="followTail" class="h-4 w-4" type="checkbox" />
-                自动跟随
-              </label>
-              <label class="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                <input v-model="wrapLines" class="h-4 w-4" type="checkbox" />
-                自动换行
-              </label>
-            </div>
-          </div>
+          <WorkflowCard
+            v-if="sortedNodes.length > 0"
+            :nodes="sortedNodes"
+            :selected-node-id="selectedWorkflowNodeId"
+            :status-label-map="statusLabelMap"
+            @select-node="handleSelectWorkflowNode"
+            @approve-node="approveNode"
+          />
 
-          <div
-            ref="logViewport"
-            class="h-[420px] overflow-auto p-5 font-mono text-xs leading-relaxed"
-            :class="wrapLines ? 'whitespace-pre-wrap' : 'whitespace-pre'"
-          >
-            <div
-              v-for="log in visibleLogs"
-              :key="log.id"
-              class="flex gap-3 rounded-md px-1 py-0.5 hover:bg-background/60"
-            >
-              <span class="w-52 shrink-0 text-muted-foreground">{{ formatDate(log.createdAt) }}</span>
-              <span class="w-14 shrink-0 font-semibold" :class="logLevelClass(log.level)">
-                {{ log.level.toUpperCase() }}
-              </span>
-              <span class="min-w-0 flex-1 text-foreground/90">{{ log.message }}</span>
-            </div>
+          <ExecutionPanel
+            :loading="loading"
+            :task-status="task?.status || null"
+            :task-status-label="taskStatusLabel"
+            :task-status-class="taskStatusClass"
+            :stream-connected="streamConnected"
+            :messages="executionMessages"
+            :sorted-nodes="sortedNodes"
+            :action-loading="actionLoading"
+            :format-date="formatDate"
+            @retry-node="retryNode"
+            @approve-node="approveNode"
+          />
 
-            <div v-if="visibleLogs.length === 0" class="text-muted-foreground">暂无日志。</div>
-          </div>
-        </div>
-
-        <div class="panel-card overflow-hidden">
-          <div class="border-b border-border px-5 py-4">
-            <p class="text-sm font-semibold">执行节点</p>
-          </div>
-
-          <div class="overflow-x-auto">
-            <table class="w-full min-w-[760px] text-left text-sm">
-              <thead class="border-b border-border bg-background/60">
-                <tr class="text-xs font-semibold text-muted-foreground">
-                  <th class="px-5 py-3">节点</th>
-                  <th class="px-5 py-3">类型</th>
-                  <th class="px-5 py-3">状态</th>
-                  <th class="px-5 py-3">尝试次数</th>
-                  <th class="px-5 py-3 text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-border">
-                <tr v-for="node in sortedNodes" :key="node.id" class="transition hover:bg-background/70">
-                  <td class="px-5 py-4">
-                    <p class="font-semibold">#{{ node.nodeOrder }} {{ node.name }}</p>
-                    <p v-if="node.errorMessage" class="mt-1 text-xs text-destructive">{{ node.errorMessage }}</p>
-                  </td>
-                  <td class="px-5 py-4 text-muted-foreground">{{ node.nodeType }}</td>
-                  <td class="px-5 py-4">
-                    <span class="inline-flex rounded-full px-2 py-1 text-xs font-semibold" :class="statusClassMap[node.status]">
-                      {{ statusLabelMap[node.status] }}
-                    </span>
-                  </td>
-                  <td class="px-5 py-4 text-muted-foreground">{{ node.attempt }}</td>
-                  <td class="px-5 py-4">
-                    <div class="flex justify-end gap-2">
-                      <button
-                        v-if="node.status === 'in_review'"
-                        class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                        :disabled="actionLoading"
-                        type="button"
-                        @click="retryNode(node)"
-                      >
-                        重试
-                      </button>
-                      <button
-                        v-if="node.status === 'in_review'"
-                        class="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                        :disabled="actionLoading"
-                        type="button"
-                        @click="approveNode(node)"
-                      >
-                        审批通过
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-
-                <tr v-if="sortedNodes.length === 0">
-                  <td class="px-5 py-6 text-sm text-muted-foreground" colspan="5">暂无节点信息。</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <ReplyCard
+            :is-running="task?.status === 'in_progress'"
+            :disabled="replyDisabled"
+            :placeholder="replyPlaceholder"
+            @submit="handleReply"
+            @stop="cancelTask"
+          />
         </div>
       </div>
 
-      <div class="space-y-6">
-        <div class="panel-card p-5">
-          <p class="text-sm font-semibold">执行摘要</p>
-          <dl class="mt-4 grid gap-3 text-xs">
-            <div class="flex items-center justify-between">
-              <dt class="text-muted-foreground">任务 ID</dt>
-              <dd class="font-mono text-foreground">{{ task?.id ?? '-' }}</dd>
-            </div>
-            <div class="flex items-center justify-between">
-              <dt class="text-muted-foreground">创建时间</dt>
-              <dd class="text-foreground">{{ formatDate(task?.createdAt) }}</dd>
-            </div>
-            <div class="flex items-center justify-between">
-              <dt class="text-muted-foreground">更新时间</dt>
-              <dd class="text-foreground">{{ formatDate(task?.updatedAt) }}</dd>
-            </div>
-            <div class="flex items-center justify-between">
-              <dt class="text-muted-foreground">工作分支</dt>
-              <dd class="text-foreground">{{ task?.branch ?? '-' }}</dd>
-            </div>
-            <div class="flex items-center justify-between">
-              <dt class="text-muted-foreground">基线分支</dt>
-              <dd class="text-foreground">{{ task?.gitBaseBranch ?? '-' }}</dd>
-            </div>
-            <div class="flex items-center justify-between gap-3">
-              <dt class="text-muted-foreground">工作区路径</dt>
-              <dd class="max-w-[240px] truncate text-right font-mono text-foreground" :title="task?.gitWorktreePath ?? '-'">
-                {{ task?.gitWorktreePath ?? '-' }}
-              </dd>
-            </div>
-            <div class="flex items-center justify-between">
-              <dt class="text-muted-foreground">清理时间</dt>
-              <dd class="text-foreground">{{ formatDate(task?.sandboxCleanupAt ?? undefined) }}</dd>
-            </div>
-          </dl>
-        </div>
+      <div v-if="isRightPanelVisible" class="bg-border/50 w-px shrink-0" />
 
-        <div
-          v-if="task?.gitWorktreePath"
-          class="panel-card border border-amber-500/40 bg-amber-500/10 p-5 text-amber-900 dark:text-amber-200"
-        >
-          <p class="text-sm font-semibold">Sandbox 提示</p>
-          <p class="mt-2 text-xs leading-relaxed">
-            当前任务使用目录级隔离（MVP）：仅允许白名单目录、执行目录权限收敛，并在清理前进行路径归属校验；并非容器级强隔离。
-          </p>
-        </div>
-
-        <div class="panel-card p-5">
-          <div class="flex items-center justify-between gap-3">
-            <div>
-              <p class="text-sm font-semibold">上传产物</p>
-              <p class="mt-1 text-xs text-muted-foreground">
-                上传表单已迁移为弹窗，避免在页面中直接展示创建编辑区。
-              </p>
-            </div>
-            <button
-              class="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
-              type="button"
-              @click="openArtifactFormModal"
-            >
-              新增产物
-            </button>
-          </div>
-        </div>
-
-        <div class="panel-card p-5">
-          <p class="text-sm font-semibold">产物列表</p>
-          <ul class="mt-4 space-y-3 text-sm">
-            <li
-              v-for="artifact in artifacts"
-              :key="artifact.id"
-              class="rounded-xl border border-border bg-background/60 p-4 transition hover:bg-background/85"
-            >
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <p class="truncate font-semibold">{{ artifact.name }}</p>
-                  <p class="mt-1 text-xs text-muted-foreground">
-                    {{ artifact.artifactType }} · {{ formatDate(artifact.createdAt) }}
-                  </p>
-                </div>
-
-                <div class="flex shrink-0 items-center gap-2">
-                  <button
-                    class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                    :disabled="downloadingArtifactId === artifact.id"
-                    type="button"
-                    @click="openArtifactPreview(artifact)"
-                  >
-                    {{ downloadingArtifactId === artifact.id ? '处理中...' : '预览' }}
-                  </button>
-                  <button
-                    class="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                    :disabled="downloadingArtifactId === artifact.id"
-                    type="button"
-                    @click="downloadArtifact(artifact)"
-                  >
-                    下载
-                  </button>
-                </div>
-              </div>
-
-              <p v-if="artifact.downloadUrl" class="mt-2 break-all text-xs text-muted-foreground">
-                下载地址：{{ artifact.downloadUrl }}
-              </p>
-              <pre
-                v-if="artifact.content"
-                class="mt-2 max-h-40 overflow-auto rounded-lg border border-border bg-background p-2 text-xs text-foreground"
-              >{{ artifact.content }}</pre>
-            </li>
-
-            <li v-if="artifacts.length === 0" class="rounded-xl border border-border bg-background/60 px-3 py-3 text-sm text-muted-foreground">
-              暂无产物。
-            </li>
-          </ul>
-        </div>
-
-        <ArtifactPreviewPanel
-          :artifact="selectedPreviewArtifact"
-          :preview="artifactPreview"
-          :loading="previewLoading"
-          error-message=""
-          @close="closeArtifactPreview"
-        />
-      </div>
+      <RightPanelSection
+        v-if="isRightPanelVisible"
+        :task-id="taskId"
+        :branch-name="task?.branch || null"
+        :base-branch="task?.gitBaseBranch || null"
+        :refresh-token="rightPanelRefreshToken"
+      />
     </section>
 
-    <Teleport to="body">
-      <div
-        v-if="artifactFormModalOpen"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-background/70 px-4 py-6 backdrop-blur-sm"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="task-artifact-form-modal-title"
-        @click.self="closeArtifactFormModal"
-      >
-        <section class="w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
-          <header class="flex items-center justify-between border-b border-border px-4 py-3">
-            <h2 id="task-artifact-form-modal-title" class="text-sm font-semibold">上传产物</h2>
-            <button
-              class="rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground transition hover:text-foreground"
-              type="button"
-              aria-label="关闭产物上传弹窗"
-              @click="closeArtifactFormModal"
-            >
-              关闭
-            </button>
-          </header>
-
-          <form class="space-y-3 px-4 py-4" @submit.prevent="createArtifact">
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">名称</span>
-              <input
-                v-model="artifactForm.name"
-                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                placeholder="例如 report.md"
-                type="text"
-              />
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">类型</span>
-              <select
-                v-model="artifactForm.artifactType"
-                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              >
-                <option value="report">report</option>
-                <option value="diff">diff</option>
-                <option value="file">file</option>
-                <option value="preview">preview</option>
-              </select>
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">关联节点（可选）</span>
-              <select
-                v-model="artifactForm.taskNodeId"
-                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              >
-                <option value="">不关联节点</option>
-                <option v-for="node in sortedNodes" :key="node.id" :value="node.id">
-                  #{{ node.nodeOrder }} {{ node.name }}
-                </option>
-              </select>
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">下载地址（可选）</span>
-              <input
-                v-model="artifactForm.downloadUrl"
-                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                type="text"
-              />
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">内容（可选）</span>
-              <textarea
-                v-model="artifactForm.content"
-                class="min-h-20 w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground"
-              />
-            </label>
-
-            <div class="flex justify-end gap-2">
-              <button
-                class="h-9 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground"
-                type="button"
-                @click="closeArtifactFormModal"
-              >
-                取消
-              </button>
-              <button
-                class="h-9 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="uploadingArtifact"
-                type="submit"
-              >
-                {{ uploadingArtifact ? '上传中...' : '上传产物' }}
-              </button>
-            </div>
-          </form>
-        </section>
-      </div>
-    </Teleport>
+    <TaskDialogs
+      v-model:edit-open="editOpen"
+      v-model:delete-open="deleteOpen"
+      :saving="savingEdit"
+      :removing="removingTask"
+      :edit-form="editForm"
+      @save="saveEdit"
+      @remove="removeTask"
+    />
   </div>
 </template>

@@ -18,8 +18,37 @@ describe('TasksController', () => {
       }),
       listLogs: jest.fn().mockResolvedValue([]),
     };
+    const taskWorkspaceService = {
+      getWorkspaceTree: jest.fn(),
+      getWorkspaceFile: jest.fn(),
+      getWorkspacePreview: jest.fn(),
+    };
+    const taskGitService = {
+      getStatus: jest.fn(),
+      getDiff: jest.fn(),
+      getBranchDiffFiles: jest.fn(),
+      getBranchDiff: jest.fn(),
+      stageFiles: jest.fn(),
+      unstageFiles: jest.fn(),
+      commit: jest.fn(),
+      merge: jest.fn(),
+      rebase: jest.fn(),
+      getPrLink: jest.fn(),
+    };
+    const taskTerminalService = {
+      createSession: jest.fn(),
+      listSessions: jest.fn(),
+      input: jest.fn(),
+      stopSession: jest.fn(),
+      openSessionStream: jest.fn(),
+    };
 
-    const controller = new TasksController(tasksService as never);
+    const controller = new TasksController(
+      tasksService as never,
+      taskWorkspaceService as never,
+      taskGitService as never,
+      taskTerminalService as never,
+    );
     const observable = await controller.stream(
       {
         user: {

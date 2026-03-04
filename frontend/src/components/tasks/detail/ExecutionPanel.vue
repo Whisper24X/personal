@@ -1,0 +1,110 @@
+<script setup lang="ts">
+import type { TaskMessage, TaskNode, TaskStatus } from '@/types/api/tasks'
+
+defineOptions({
+  name: 'TaskDetailExecutionPanel',
+})
+
+const props = defineProps<{
+  loading: boolean
+  taskStatus: TaskStatus | null
+  taskStatusLabel: string
+  taskStatusClass: string
+  streamConnected: boolean
+  messages: TaskMessage[]
+  actionLoading: boolean
+  sortedNodes: TaskNode[]
+  formatDate: (value?: string) => string
+}>()
+
+const emit = defineEmits<{
+  retryNode: [node: TaskNode]
+  approveNode: [node: TaskNode]
+}>()
+
+const roleClassMap: Record<TaskMessage['role'], string> = {
+  user: 'bg-primary/10 text-primary',
+  assistant: 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
+  system: 'bg-muted text-muted-foreground',
+  error: 'bg-destructive/10 text-destructive',
+}
+
+const roleLabelMap: Record<TaskMessage['role'], string> = {
+  user: 'User',
+  assistant: 'Assistant',
+  system: 'System',
+  error: 'Error',
+}
+</script>
+
+<template>
+  <section class="border-border/50 bg-background flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border shadow-sm">
+    <div class="border-border/50 bg-background/95 sticky top-0 z-10 flex items-center justify-between gap-2 border-b px-3 py-2 backdrop-blur">
+      <div class="text-muted-foreground flex items-center gap-2 text-xs font-semibold">
+        <span>Execution</span>
+        <span class="text-[10px]" :class="props.streamConnected ? 'text-emerald-600 dark:text-emerald-300' : 'text-muted-foreground'">
+          {{ props.streamConnected ? 'SSE 已连接' : 'SSE 未连接' }}
+        </span>
+      </div>
+
+      <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="props.taskStatusClass">
+        {{ props.taskStatusLabel }}
+      </span>
+    </div>
+
+    <div class="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+      <div v-if="props.loading" class="flex h-full items-center justify-center text-sm text-muted-foreground">加载执行内容中...</div>
+
+      <div v-else-if="props.messages.length > 0" class="space-y-2">
+        <article
+          v-for="(message, index) in props.messages"
+          :key="`${index}-${message.createdAt}`"
+          class="rounded-lg border border-border bg-background/80 px-3 py-2"
+        >
+          <div class="mb-1 flex items-center justify-between gap-2 text-[11px]">
+            <span class="rounded-md px-1.5 py-0.5" :class="roleClassMap[message.role]">{{ roleLabelMap[message.role] }}</span>
+            <span class="text-muted-foreground">{{ props.formatDate(message.createdAt) }}</span>
+          </div>
+          <p class="whitespace-pre-wrap break-words text-xs text-foreground">
+            {{ message.content }}
+          </p>
+        </article>
+      </div>
+
+      <div v-else class="flex h-full items-center justify-center text-sm text-muted-foreground">
+        暂无执行消息。
+      </div>
+    </div>
+
+    <div
+      v-if="props.sortedNodes.some((node) => node.status === 'in_review')"
+      class="border-border/60 bg-muted/20 border-t px-3 py-2"
+    >
+      <div
+        v-for="node in props.sortedNodes.filter((entry) => entry.status === 'in_review')"
+        :key="node.id"
+        class="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-2 py-2"
+      >
+        <p class="min-w-0 truncate text-xs text-foreground">#{{ node.nodeOrder }} {{ node.name }} 待处理</p>
+        <div class="flex items-center gap-2">
+          <button
+            class="h-7 rounded-md border border-border bg-background px-2 text-xs font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="props.actionLoading"
+            type="button"
+            @click="emit('retryNode', node)"
+          >
+            重试
+          </button>
+          <button
+            class="h-7 rounded-md bg-primary px-2 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="props.actionLoading"
+            type="button"
+            @click="emit('approveNode', node)"
+          >
+            审批通过
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+</template>

@@ -1,12 +1,14 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
   MessageEvent,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Request,
@@ -16,6 +18,7 @@ import {
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiParam,
   ApiTags,
@@ -38,6 +41,36 @@ import { TaskLog } from './domain/task-log';
 import { FindTaskLogsDto } from './dto/find-task-logs.dto';
 import { TaskArtifact } from './domain/task-artifact';
 import { CreateTaskArtifactDto } from './dto/create-task-artifact.dto';
+import { UpdateTaskDto } from './dto/update-task.dto';
+import { ReplyTaskDto } from './dto/reply-task.dto';
+import { TaskMessageDto } from './dto/task-message.dto';
+import {
+  TaskWorkspaceFileDto,
+  TaskWorkspaceFileQueryDto,
+  TaskWorkspacePreviewDto,
+  TaskWorkspaceTreeDto,
+  TaskWorkspaceTreeQueryDto,
+} from './dto/task-workspace.dto';
+import {
+  TaskGitActionResultDto,
+  TaskGitBranchDiffFilesDto,
+  TaskGitBranchDiffQueryDto,
+  TaskGitCommitDto,
+  TaskGitDiffDto,
+  TaskGitDiffQueryDto,
+  TaskGitFilesDto,
+  TaskGitPrLinkDto,
+  TaskGitStatusDto,
+} from './dto/task-git.dto';
+import {
+  CreateTaskTerminalSessionDto,
+  TaskTerminalInputDto,
+  TaskTerminalSessionDto,
+  TaskTerminalSessionListDto,
+} from './dto/task-terminal.dto';
+import { TaskWorkspaceService } from './task-workspace.service';
+import { TaskGitService } from './task-git.service';
+import { TaskTerminalService } from './task-terminal.service';
 
 @ApiTags('Tasks')
 @ApiBearerAuth()
@@ -47,7 +80,12 @@ import { CreateTaskArtifactDto } from './dto/create-task-artifact.dto';
   version: '1',
 })
 export class TasksController {
-  constructor(private readonly tasksService: TasksService) {}
+  constructor(
+    private readonly tasksService: TasksService,
+    private readonly taskWorkspaceService: TaskWorkspaceService,
+    private readonly taskGitService: TaskGitService,
+    private readonly taskTerminalService: TaskTerminalService,
+  ) {}
 
   @Post()
   @ApiCreatedResponse({ type: Task })
@@ -94,12 +132,55 @@ export class TasksController {
     return this.tasksService.findById(id, request.user);
   }
 
+  @Patch(':id')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskDetailDto })
+  @HttpCode(HttpStatus.OK)
+  update(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateTaskDto: UpdateTaskDto,
+  ) {
+    return this.tasksService.update(id, updateTaskDto, request.user);
+  }
+
+  @Delete(':id')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiNoContentResponse()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<void> {
+    await this.tasksService.remove(id, request.user);
+  }
+
   @Get(':id/detail')
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: TaskDetailDto })
   @HttpCode(HttpStatus.OK)
   detailById(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
     return this.tasksService.detailById(id, request.user);
+  }
+
+  @Post(':id/reply')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskDetailDto })
+  @HttpCode(HttpStatus.OK)
+  reply(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() replyTaskDto: ReplyTaskDto,
+  ) {
+    return this.tasksService.reply(id, replyTaskDto, request.user);
+  }
+
+  @Get(':id/messages')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskMessageDto, isArray: true })
+  @HttpCode(HttpStatus.OK)
+  messages(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
+    return this.tasksService.listMessages(id, request.user);
   }
 
   @Post(':id/execute')
@@ -148,6 +229,252 @@ export class TasksController {
   @HttpCode(HttpStatus.OK)
   cleanupWorktree(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
     return this.tasksService.cleanupWorktree(id, request.user);
+  }
+
+  @Get(':id/workspace/tree')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskWorkspaceTreeDto })
+  @HttpCode(HttpStatus.OK)
+  workspaceTree(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: TaskWorkspaceTreeQueryDto,
+  ) {
+    return this.taskWorkspaceService.getWorkspaceTree(id, query, request.user);
+  }
+
+  @Get(':id/workspace/file')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskWorkspaceFileDto })
+  @HttpCode(HttpStatus.OK)
+  workspaceFile(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: TaskWorkspaceFileQueryDto,
+  ) {
+    return this.taskWorkspaceService.getWorkspaceFile(id, query, request.user);
+  }
+
+  @Get(':id/workspace/preview')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskWorkspacePreviewDto })
+  @HttpCode(HttpStatus.OK)
+  workspacePreview(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: TaskWorkspaceFileQueryDto,
+  ) {
+    return this.taskWorkspaceService.getWorkspacePreview(
+      id,
+      query,
+      request.user,
+    );
+  }
+
+  @Get(':id/git/status')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskGitStatusDto })
+  @HttpCode(HttpStatus.OK)
+  gitStatus(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
+    return this.taskGitService.getStatus(id, request.user);
+  }
+
+  @Get(':id/git/diff')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskGitDiffDto })
+  @HttpCode(HttpStatus.OK)
+  gitDiff(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: TaskGitDiffQueryDto,
+  ) {
+    return this.taskGitService.getDiff(id, query, request.user);
+  }
+
+  @Get(':id/git/branch-diff-files')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskGitBranchDiffFilesDto })
+  @HttpCode(HttpStatus.OK)
+  gitBranchDiffFiles(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: TaskGitBranchDiffQueryDto,
+  ) {
+    return this.taskGitService.getBranchDiffFiles(id, query, request.user);
+  }
+
+  @Get(':id/git/branch-diff')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskGitDiffDto })
+  @HttpCode(HttpStatus.OK)
+  gitBranchDiff(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: TaskGitBranchDiffQueryDto,
+  ) {
+    return this.taskGitService.getBranchDiff(id, query, request.user);
+  }
+
+  @Post(':id/git/stage')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskGitActionResultDto })
+  @HttpCode(HttpStatus.OK)
+  gitStage(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() payload: TaskGitFilesDto,
+  ) {
+    return this.taskGitService.stageFiles(id, payload, request.user);
+  }
+
+  @Post(':id/git/unstage')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskGitActionResultDto })
+  @HttpCode(HttpStatus.OK)
+  gitUnstage(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() payload: TaskGitFilesDto,
+  ) {
+    return this.taskGitService.unstageFiles(id, payload, request.user);
+  }
+
+  @Post(':id/git/commit')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskGitActionResultDto })
+  @HttpCode(HttpStatus.OK)
+  gitCommit(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() payload: TaskGitCommitDto,
+  ) {
+    return this.taskGitService.commit(id, payload, request.user);
+  }
+
+  @Post(':id/git/merge')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskGitActionResultDto })
+  @HttpCode(HttpStatus.OK)
+  gitMerge(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() payload: TaskGitBranchDiffQueryDto,
+  ) {
+    return this.taskGitService.merge(id, payload, request.user);
+  }
+
+  @Post(':id/git/rebase')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskGitActionResultDto })
+  @HttpCode(HttpStatus.OK)
+  gitRebase(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() payload: TaskGitBranchDiffQueryDto,
+  ) {
+    return this.taskGitService.rebase(id, payload, request.user);
+  }
+
+  @Post(':id/git/pr-link')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskGitPrLinkDto })
+  @HttpCode(HttpStatus.OK)
+  gitPrLink(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() payload: TaskGitBranchDiffQueryDto,
+  ) {
+    return this.taskGitService.getPrLink(id, payload, request.user);
+  }
+
+  @Post(':id/terminal/sessions')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiCreatedResponse({ type: TaskTerminalSessionDto })
+  @HttpCode(HttpStatus.CREATED)
+  createTerminalSession(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() payload: CreateTaskTerminalSessionDto,
+  ) {
+    return this.taskTerminalService.createSession(id, payload, request.user);
+  }
+
+  @Get(':id/terminal/sessions')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskTerminalSessionListDto })
+  @HttpCode(HttpStatus.OK)
+  async listTerminalSessions(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<TaskTerminalSessionListDto> {
+    const sessions = await this.taskTerminalService.listSessions(
+      id,
+      request.user,
+    );
+
+    return {
+      sessions,
+    };
+  }
+
+  @Post(':id/terminal/sessions/:sessionId/input')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiParam({ name: 'sessionId', type: String, required: true })
+  @HttpCode(HttpStatus.OK)
+  async inputTerminalSession(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('sessionId') sessionId: string,
+    @Body() payload: TaskTerminalInputDto,
+  ): Promise<void> {
+    await this.taskTerminalService.input(id, sessionId, payload, request.user);
+  }
+
+  @Post(':id/terminal/sessions/:sessionId/stop')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiParam({ name: 'sessionId', type: String, required: true })
+  @HttpCode(HttpStatus.OK)
+  async stopTerminalSession(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('sessionId') sessionId: string,
+  ): Promise<void> {
+    await this.taskTerminalService.stopSession(id, sessionId, request.user);
+  }
+
+  @Sse(':id/terminal/sessions/:sessionId/stream')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiParam({ name: 'sessionId', type: String, required: true })
+  async streamTerminalSession(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('sessionId') sessionId: string,
+  ): Promise<Observable<MessageEvent>> {
+    const stream = await this.taskTerminalService.openSessionStream({
+      taskId: id,
+      sessionId,
+      currentUser: request.user,
+    });
+
+    return new Observable<MessageEvent>((subscriber) => {
+      for (const historyEvent of stream.history) {
+        subscriber.next({
+          type: 'task-terminal',
+          data: historyEvent,
+        });
+      }
+
+      const unsubscribe = stream.subscribe((event) => {
+        subscriber.next({
+          type: 'task-terminal',
+          data: event,
+        });
+      });
+
+      return () => {
+        unsubscribe();
+      };
+    });
   }
 
   @Get(':id/logs')

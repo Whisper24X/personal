@@ -8,8 +8,12 @@ const { tasksApi, artifactsApi, openSseStream } = vi.hoisted(() => ({
   tasksApi: {
     detailWithNodes: vi.fn(),
     logs: vi.fn(),
+    messages: vi.fn(),
     artifacts: vi.fn(),
+    update: vi.fn(),
+    remove: vi.fn(),
     execute: vi.fn(),
+    reply: vi.fn(),
     cancel: vi.fn(),
     cleanupWorktree: vi.fn(),
     retry: vi.fn(),
@@ -31,6 +35,9 @@ vi.mock('vue-router', () => ({
     params: {
       id: 'task-1',
     },
+  }),
+  useRouter: () => ({
+    push: vi.fn(),
   }),
 }))
 
@@ -63,6 +70,7 @@ beforeEach(() => {
   })
 
   tasksApi.logs.mockResolvedValue([])
+  tasksApi.messages.mockResolvedValue([])
   tasksApi.artifacts.mockResolvedValue([])
   tasksApi.execute.mockRejectedValue(new Error('执行异常'))
   openSseStream.mockResolvedValue(undefined)
@@ -77,7 +85,10 @@ describe('TaskDetailView toasts', () => {
       global: {
         plugins: [pinia],
         stubs: {
-          ArtifactPreviewPanel: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
             template: '<div />',
           },
         },
