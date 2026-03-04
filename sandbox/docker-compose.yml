@@ -1,0 +1,45 @@
+# AINative Workspace - All-in-One Sandbox
+# 使用方式: docker compose up -d
+# 或通过封装脚本: ./sandbox/sandbox.sh start
+
+services:
+  sandbox:
+    image: ${SANDBOX_PROJECT}-sandbox:latest
+    build:
+      context: sandbox
+      dockerfile: Dockerfile
+    container_name: ${SANDBOX_NAME}
+    hostname: ${SANDBOX_NAME}
+    ports:
+      - "${SANDBOX_PORT:-8080}:8080"
+    env_file:
+      - sandbox/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    mem_limit: ${SANDBOX_MEMORY:-8g}
+    mem_reservation: ${SANDBOX_MEMORY_MIN:-2g}
+    volumes:
+      - ./ainative-backend:/workspace/ainative-backend
+      - ./ainative-shadow:/workspace/ainative-shadow
+      - ./ainative-app:/workspace/ainative-app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+      - pnpm-store-cache:/root/.local/share/pnpm/store
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+
+volumes:
+  go-mod-cache:
+    external: true
+    name: ${SANDBOX_PROJECT}-go-mod-cache
+  go-build-cache:
+    external: true
+    name: ${SANDBOX_PROJECT}-go-build-cache
+  pnpm-store-cache:
+    external: true
+    name: ${SANDBOX_PROJECT}-pnpm-store-cache

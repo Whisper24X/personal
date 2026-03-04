@@ -2,7 +2,18 @@
 # All-in-One AI 编码沙箱镜像
 # ============================================================
 
-FROM golang:1.23-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f
+FROM golang:1.23-alpine
+
+# ============================================================
+# 环境变量
+# ============================================================
+
+ENV TZ=Asia/Shanghai \
+    GO_ENV=development \
+    GOPROXY=https://goproxy.cn,direct \
+    GOPRIVATE=gitlab.yc345.tv \
+    CGO_ENABLED=0 \
+    NODE_ENV=development
 
 # ============================================================
 # 安装依赖
@@ -10,13 +21,10 @@ FROM golang:1.23-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6
 
 RUN apk add --no-cache \
     bash curl git make vim jq \
-    openssh-client \
+    openssh-client netcat-openbsd \
     supervisor nginx \
-    postgresql postgresql-contrib \
-    redis \
     nodejs npm \
     tzdata \
-    build-base librdkafka-dev \
     && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
 
@@ -26,72 +34,48 @@ RUN apk add --no-cache \
     protobuf=3.21.9-r0
 
 # ============================================================
-# 环境变量
+# 配置 SSH + Git
 # ============================================================
 
-ENV TZ=Asia/Shanghai \
-    SANDBOX_ENV=development \
-    GO_ENV=development \
-    GOPROXY=https://goproxy.cn,direct \
-    GOPRIVATE=gitlab.yc345.tv \
-    CGO_ENABLED=1 \
-    NODE_ENV=development \
-    DB_HOST=localhost \
-    DB_PORT=5432 \
-    DB_USER=postgres \
-    DB_PASSWORD=123456 \
-    DB_NAME=postgres \
-    REDIS_HOST=localhost \
-    REDIS_PORT=6379 \
-    REDIS_PASSWORD=123456
+COPY ssh/id_ed25519 /root/.ssh/id_ed25519
+COPY ssh/known_hosts /root/.ssh/known_hosts
+RUN chmod 700 /root/.ssh \
+    && chmod 600 /root/.ssh/id_ed25519 \
+    && chmod 644 /root/.ssh/known_hosts \
+    && git config --global url."git@gitlab.yc345.tv:".insteadOf "https://gitlab.yc345.tv/"
 
 # ============================================================
-# 配置 Git 和安装工具
+# 配置 GO
 # ============================================================
 
-RUN git config --global url."git@gitlab.yc345.tv:".insteadOf "https://gitlab.yc345.tv/" \
-    && go install github.com/air-verse/air@v1.61.7 \
-    && npm install -g pnpm \
+RUN go install github.com/air-verse/air@v1.61.7 \
+    && go install github.com/go-kratos/kratos/cmd/kratos/v2@a7bae93 \
+    && go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.1 \
+    && go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2.0 \
+    && go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@v2.13.0 \
+    && go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@v2.27.2 \
+    && go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v2@a7bae93 \
+    && go install github.com/envoyproxy/protoc-gen-validate@v0.9.0 \
+    && go install github.com/google/wire/cmd/wire@v0.6.0 \
+    && go install github.com/abice/go-enum@v0.9.1 \
+    && go install golang.org/x/tools/cmd/goimports@v0.23.0 \
+    && go install gitlab.yc345.tv/backend/protoc-gen-go-errors@v0.0.4 \
+    && rm -rf /root/.cache/go-build /go/pkg/mod/cache
+
+# ============================================================
+# 配置 Node
+# ============================================================
+
+RUN npm install -g pnpm@9 \
     && pnpm config set registry https://registry.npmmirror.com
-
-# ============================================================
-# 配置 PostgreSQL
-# ============================================================
-
-RUN mkdir -p /var/lib/postgresql/data /run/postgresql \
-    && chown -R postgres:postgres /var/lib/postgresql /run/postgresql
-
-# ============================================================
-# 配置 Redis
-# ============================================================
-
-RUN sed -i 's/^bind .*/bind 0.0.0.0/' /etc/redis.conf \
-    && sed -i 's/^daemonize yes/daemonize no/' /etc/redis.conf \
-    && echo "requirepass 123456" >> /etc/redis.conf
 
 # ============================================================
 # 配置 Nginx 和 Supervisor
 # ============================================================
 
 COPY nginx.conf /etc/nginx/nginx.conf
-COPY app-qrcode.nginx.conf /etc/nginx/app-qrcode.conf
 COPY supervisord.conf /etc/supervisord.conf
 RUN mkdir -p /var/log/nginx /run/nginx /etc/supervisor.d /var/log/supervisor
-
-# ============================================================
-# 小程序二维码页面
-# ============================================================
-
-COPY app-qrcode-page.html /tmp/app-qrcode-page.html
-RUN mkdir -p /workspace/ainative-app-qrcode && \
-    cp /tmp/app-qrcode-page.html /workspace/ainative-app-qrcode/index.html
-
-# ============================================================
-# 启动脚本
-# ============================================================
-
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 
 # ============================================================
 # 工作目录和端口
@@ -100,16 +84,4 @@ RUN chmod +x /entrypoint.sh
 WORKDIR /workspace
 EXPOSE 8080
 
-# ============================================================
-# 健康检查
-# ============================================================
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD pg_isready -U postgres && REDISCLI_AUTH=123456 redis-cli ping | grep -q PONG
-
-# ============================================================
-# 入口点
-# ============================================================
-
-ENTRYPOINT ["/entrypoint.sh"]
 CMD ["supervisord", "-c", "/etc/supervisord.conf", "-n"]
