@@ -20,6 +20,11 @@ RUN apk add --no-cache \
     && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
 
+# 从 Alpine 3.17 仓库安装 protobuf 3.21.9 (对应 protoc v3.21.9 / release v21.9)
+RUN apk add --no-cache \
+    --repository=https://dl-cdn.alpinelinux.org/alpine/v3.17/main \
+    protobuf=3.21.9-r0
+
 # ============================================================
 # 环境变量
 # ============================================================
