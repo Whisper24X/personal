@@ -5,7 +5,7 @@
  * 使用 version-review skill 来指导问题生成
  */
 
-import { StructuredKnowledgeContext, formatStructuredKnowledge } from './knowledge';
+import { StructuredKnowledgeContext, formatStructuredKnowledgeForVersionReview } from './knowledge';
 import { loadSkillContent, extractSkillSection } from '../utils/skillLoader';
 
 // 缓存skill内容
@@ -39,15 +39,21 @@ export enum QuestionType {
 }
 
 /**
- * 问题类型标签
+ * 问题类型标签（业务可读）
  */
 export const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   [QuestionType.BUSINESS_RULES]: '业务规则冲突检查',
   [QuestionType.FEATURE_CONFLICT]: '功能冲突检查',
   [QuestionType.TERMINOLOGY]: '术语一致性检查',
-  [QuestionType.DATA_MODEL]: '数据模型一致性检查',
+  [QuestionType.DATA_MODEL]: '业务数据与系统兼容性检查',
   [QuestionType.FINAL_CONFIRMATION]: '综合确认',
 };
+
+/**
+ * 业务可读性要求（生成问题与文档时必须遵守）
+ */
+export const BUSINESS_READABILITY_REQUIREMENT = `
+【业务可读性要求】生成内容必须让非技术人员能直接读懂。禁止使用：数据模型、技术约束、技术规范、PRD、MRD 等术语，改用通俗表述（如：业务数据、系统限制、产品需求文档等）。知识库中的技术表述需转述为业务能理解的语言后再呈现。`;
 
 /**
  * 版本审查系统提示词
@@ -110,13 +116,13 @@ export const VERSION_REVIEW_SYSTEM_PROMPT = `你是一位经验丰富的产品�
  * 基于version-review skill的Round 1指导
  */
 export async function buildBusinessRulesQuestionPrompt(userIdea: string, knowledgeContext: StructuredKnowledgeContext): Promise<string> {
-  const formattedKnowledge = formatStructuredKnowledge(knowledgeContext);
+  const formattedKnowledge = formatStructuredKnowledgeForVersionReview(knowledgeContext);
   const skillContent = await getSkillContent();
 
   // 从skill中提取Round 1的指导
   let roundGuidance = '';
   if (skillContent) {
-    const round1Section = extractSkillSection(skillContent, '#### Round 1: Business Rules Conflict Check');
+    const round1Section = extractSkillSection(skillContent, '#### Step 2: 第 1 轮 - 业务规则冲突检查');
     if (round1Section) {
       roundGuidance = round1Section;
     }
@@ -153,6 +159,8 @@ ${roundGuidance}
 2. 询问用户是否需要调整想法以符合业务规则
 3. 提供具体的冲突示例（如果有）
 
+${BUSINESS_READABILITY_REQUIREMENT}
+
 请直接输出问题内容，不要包含其他说明。`;
 }
 
@@ -165,7 +173,7 @@ export async function buildFeatureConflictQuestionPrompt(
   knowledgeContext: StructuredKnowledgeContext,
   previousAnswers: Array<{ question: string; answer: string }>
 ): Promise<string> {
-  const formattedKnowledge = formatStructuredKnowledge(knowledgeContext);
+  const formattedKnowledge = formatStructuredKnowledgeForVersionReview(knowledgeContext);
   const previousContext =
     previousAnswers.length > 0
       ? `\n【之前的问答记录】\n${previousAnswers.map((qa, i) => `Q${i + 1}: ${qa.question}\nA${i + 1}: ${qa.answer}`).join('\n\n')}`
@@ -174,7 +182,7 @@ export async function buildFeatureConflictQuestionPrompt(
   const skillContent = await getSkillContent();
   let roundGuidance = '';
   if (skillContent) {
-    const round2Section = extractSkillSection(skillContent, '#### Round 2: Feature Conflict Check');
+    const round2Section = extractSkillSection(skillContent, '#### Step 3: 第 2 轮 - 功能冲突检查');
     if (round2Section) {
       roundGuidance = round2Section;
     }
@@ -201,6 +209,8 @@ ${formattedKnowledge}
 2. 询问用户是否需要调整功能范围
 3. 提供具体的功能对比（如果有）
 
+${BUSINESS_READABILITY_REQUIREMENT}
+
 请直接输出问题内容，不要包含其他说明。`;
 }
 
@@ -213,7 +223,7 @@ export async function buildTerminologyQuestionPrompt(
   knowledgeContext: StructuredKnowledgeContext,
   previousAnswers: Array<{ question: string; answer: string }>
 ): Promise<string> {
-  const formattedKnowledge = formatStructuredKnowledge(knowledgeContext);
+  const formattedKnowledge = formatStructuredKnowledgeForVersionReview(knowledgeContext);
   const previousContext =
     previousAnswers.length > 0
       ? `\n【之前的问答记录】\n${previousAnswers.map((qa, i) => `Q${i + 1}: ${qa.question}\nA${i + 1}: ${qa.answer}`).join('\n\n')}`
@@ -222,7 +232,7 @@ export async function buildTerminologyQuestionPrompt(
   const skillContent = await getSkillContent();
   let roundGuidance = '';
   if (skillContent) {
-    const round3Section = extractSkillSection(skillContent, '#### Round 3: Terminology Consistency Check');
+    const round3Section = extractSkillSection(skillContent, '#### Step 4: 第 3 轮 - 术语一致性检查');
     if (round3Section) {
       roundGuidance = round3Section;
     }
@@ -253,6 +263,8 @@ ${roundGuidance}
 2. 询问用户是否需要统一术语使用
 3. 提供术语词典中的标准定义（如果有）
 
+${BUSINESS_READABILITY_REQUIREMENT}
+
 请直接输出问题内容，不要包含其他说明。`;
 }
 
@@ -265,7 +277,7 @@ export async function buildDataModelQuestionPrompt(
   knowledgeContext: StructuredKnowledgeContext,
   previousAnswers: Array<{ question: string; answer: string }>
 ): Promise<string> {
-  const formattedKnowledge = formatStructuredKnowledge(knowledgeContext);
+  const formattedKnowledge = formatStructuredKnowledgeForVersionReview(knowledgeContext);
   const previousContext =
     previousAnswers.length > 0
       ? `\n【之前的问答记录】\n${previousAnswers.map((qa, i) => `Q${i + 1}: ${qa.question}\nA${i + 1}: ${qa.answer}`).join('\n\n')}`
@@ -274,19 +286,19 @@ export async function buildDataModelQuestionPrompt(
   const skillContent = await getSkillContent();
   let roundGuidance = '';
   if (skillContent) {
-    const round4Section = extractSkillSection(skillContent, '#### Round 4: Data Model Consistency Check');
+    const round4Section = extractSkillSection(skillContent, '#### Step 5: 第 4 轮 - 业务数据与系统兼容性检查');
     if (round4Section) {
       roundGuidance = round4Section;
     }
   }
   if (!roundGuidance) {
     roundGuidance = `**Focus**:
-- Check if version idea involves data model changes
-- Identify potential technical constraints
-- Ask if requirements need adjustment to comply with tech specs`;
+- Check if version idea involves business data or information structure changes
+- Identify potential system constraints
+- Ask if requirements need adjustment to comply with development standards`;
   }
 
-  return `请基于以下版本想法、知识库和之前的问答，按照version-review skill的指导生成一个数据模型一致性检查问题：
+  return `请基于以下版本想法、知识库和之前的问答，按照version-review skill的指导生成一个业务数据与系统兼容性检查问题：
 
 【版本想法】
 ${userIdea}
@@ -300,10 +312,12 @@ ${roundGuidance}
 
 ## 要求
 
-请生成一个问题，帮助用户检查版本想法是否涉及数据模型变更，以及是否符合技术约束。问题应该：
-1. 指出可能的数据模型变更
-2. 指出可能的技术约束
-3. 询问用户是否需要调整需求以符合技术规范
+请生成一个问题，帮助用户检查版本想法是否涉及业务数据或信息结构的改动，以及是否符合系统限制。问题应该：
+1. 指出可能的业务数据或信息结构改动
+2. 指出可能的系统限制
+3. 询问用户是否需要调整需求以符合开发标准
+
+${BUSINESS_READABILITY_REQUIREMENT}
 
 请直接输出问题内容，不要包含其他说明。`;
 }
@@ -317,7 +331,7 @@ export async function buildFinalConfirmationQuestionPrompt(
   knowledgeContext: StructuredKnowledgeContext,
   previousAnswers: Array<{ question: string; answer: string }>
 ): Promise<string> {
-  const formattedKnowledge = formatStructuredKnowledge(knowledgeContext);
+  const formattedKnowledge = formatStructuredKnowledgeForVersionReview(knowledgeContext);
   const previousContext =
     previousAnswers.length > 0
       ? `\n【之前的问答记录】\n${previousAnswers.map((qa, i) => `Q${i + 1}: ${qa.question}\nA${i + 1}: ${qa.answer}`).join('\n\n')}`
@@ -326,7 +340,7 @@ export async function buildFinalConfirmationQuestionPrompt(
   const skillContent = await getSkillContent();
   let roundGuidance = '';
   if (skillContent) {
-    const round5Section = extractSkillSection(skillContent, '#### Round 5: Final Confirmation');
+    const round5Section = extractSkillSection(skillContent, '#### Step 6: 第 5 轮 - 最终确认');
     if (round5Section) {
       roundGuidance = round5Section;
     }
@@ -357,6 +371,8 @@ ${roundGuidance}
 2. 询问是否需要基于讨论结果调整版本想法
 3. 如果用户需要调整，询问具体的调整方向
 
+${BUSINESS_READABILITY_REQUIREMENT}
+
 请直接输出问题内容，不要包含其他说明。`;
 }
 
@@ -370,7 +386,7 @@ export async function buildReviewDocumentPrompt(
   questionsAndAnswers: Array<{ question: string; answer: string; questionType?: QuestionType }>,
   knowledgeContext: StructuredKnowledgeContext
 ): Promise<string> {
-  const formattedKnowledge = formatStructuredKnowledge(knowledgeContext);
+  const formattedKnowledge = formatStructuredKnowledgeForVersionReview(knowledgeContext);
   const qaSection = questionsAndAnswers
     .map((qa, i) => {
       const questionTypeLabel = qa.questionType ? QUESTION_TYPE_LABELS[qa.questionType] : `第${i + 1}轮审查`;
@@ -416,6 +432,8 @@ ${documentGuidance ? `## Skill指导\n\n${documentGuidance}\n\n` : ''}## 文档�
    - 修改建议（针对每个冲突）
    - 行动项清单
 
+${BUSINESS_READABILITY_REQUIREMENT}
+
 请直接输出完整的Markdown文档内容。`;
 }
 
@@ -433,17 +451,17 @@ export async function buildCLIQuestionPrompt(
   previousAnswers: Array<{ question: string; answer: string; questionType: QuestionType }>,
   knowledgeContext?: StructuredKnowledgeContext
 ): Promise<string> {
-  const formattedKnowledge = knowledgeContext ? formatStructuredKnowledge(knowledgeContext) : '';
+  const formattedKnowledge = knowledgeContext ? formatStructuredKnowledgeForVersionReview(knowledgeContext) : '';
   const skillContent = await getSkillContent();
 
   // 从skill中提取对应轮次的指导
   let roundGuidance = '';
   const roundSections = {
-    [QuestionType.BUSINESS_RULES]: '#### Round 1: Business Rules Conflict Check',
-    [QuestionType.FEATURE_CONFLICT]: '#### Round 2: Feature Conflict Check',
-    [QuestionType.TERMINOLOGY]: '#### Round 3: Terminology Consistency Check',
-    [QuestionType.DATA_MODEL]: '#### Round 4: Data Model Consistency Check',
-    [QuestionType.FINAL_CONFIRMATION]: '#### Round 5: Final Confirmation',
+    [QuestionType.BUSINESS_RULES]: '#### Step 2: 第 1 轮 - 业务规则冲突检查',
+    [QuestionType.FEATURE_CONFLICT]: '#### Step 3: 第 2 轮 - 功能冲突检查',
+    [QuestionType.TERMINOLOGY]: '#### Step 4: 第 3 轮 - 术语一致性检查',
+    [QuestionType.DATA_MODEL]: '#### Step 5: 第 4 轮 - 业务数据与系统兼容性检查',
+    [QuestionType.FINAL_CONFIRMATION]: '#### Step 6: 第 5 轮 - 最终确认',
   };
 
   if (skillContent) {
@@ -470,6 +488,8 @@ ${formattedKnowledge ? `${formattedKnowledge}\n\n` : ''}${roundGuidance ? `## Sk
 ${formattedKnowledge ? '1. 基于知识库内容，具体、可操作\n' : '1. 具体、可操作\n'}2. 关注冲突和一致性问题
 3. 提供明确的修改建议
 
+${BUSINESS_READABILITY_REQUIREMENT}
+
 请直接输出问题内容，不要包含其他说明。`;
 }
 
@@ -484,7 +504,7 @@ export async function buildCLIReviewDocumentPrompt(
   documentPath: string,
   knowledgeContext?: StructuredKnowledgeContext
 ): Promise<string> {
-  const formattedKnowledge = knowledgeContext ? formatStructuredKnowledge(knowledgeContext) : '';
+  const formattedKnowledge = knowledgeContext ? formatStructuredKnowledgeForVersionReview(knowledgeContext) : '';
   const qaSection = questionsAndAnswers
     .map((qa, i) => {
       const questionTypeLabel = qa.questionType ? QUESTION_TYPE_LABELS[qa.questionType] : `第${i + 1}轮审查`;
@@ -527,6 +547,8 @@ ${formattedKnowledge ? `${formattedKnowledge}\n\n` : ''}${documentGuidance ? `##
    - 冲突分析（基于问答记录${formattedKnowledge ? '和知识库' : ''}）
    - 修改建议（针对每个冲突）
    - 行动项清单
+
+${BUSINESS_READABILITY_REQUIREMENT}
 
 请将文档保存到：${documentPath}`;
 }
