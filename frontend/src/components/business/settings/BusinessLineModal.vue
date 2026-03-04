@@ -147,6 +147,8 @@ const deletingLine = ref(false)
 const loadingWorkflowTemplates = ref(false)
 const submittingWorkflowTemplate = ref(false)
 const workflowCreateModalOpen = ref(false)
+const workflowTemplateModalMode = ref<'create' | 'edit'>('create')
+const editingWorkflowTemplateId = ref('')
 const workflowTemplateActionId = ref('')
 const workflowValidationMessage = ref('')
 const workflowTemplates = ref<WorkflowTemplate[]>([])
@@ -223,6 +225,18 @@ const activeAgentCliToolLabel = computed(() => {
 
 const workflowConfiguredCliToolIdSet = computed(() => {
   return new Set(workflowConfiguredCliTools.value.map((tool) => tool.id))
+})
+
+const workflowTemplateModalTitle = computed(() => {
+  return workflowTemplateModalMode.value === 'edit' ? '编辑业务线工作流模板' : '创建业务线工作流模板'
+})
+
+const workflowTemplateSubmitIdleText = computed(() => {
+  return workflowTemplateModalMode.value === 'edit' ? '保存修改' : '创建模板'
+})
+
+const workflowTemplateSubmitLoadingText = computed(() => {
+  return workflowTemplateModalMode.value === 'edit' ? '保存中...' : '创建中...'
 })
 
 const canDeleteLine = computed(() => {
@@ -802,21 +816,57 @@ const resetWorkflowCreateForm = () => {
   }
 }
 
+const buildWorkflowFormNodesFromTemplate = (template: WorkflowTemplate): WorkflowTemplateNodeForm[] => {
+  const sourceNodes = template.nodesJson.length > 0 ? template.nodesJson : [buildWorkflowNode(1)]
+
+  return normalizeWorkflowNodes(
+    sourceNodes.map((node, index) => ({
+      nodeOrder: node.nodeOrder || index + 1,
+      name: node.name || `step-${index + 1}`,
+      type: node.type || 'agent',
+      requiresApproval: Boolean(node.requiresApproval),
+      input: normalizeWorkflowNodeInput(node.input),
+    })),
+  )
+}
+
 const openWorkflowCreateModal = () => {
   if (!activeLineId.value) {
     return
   }
 
-  workflowValidationMessage.value = ''
+  workflowTemplateModalMode.value = 'create'
+  editingWorkflowTemplateId.value = ''
+  resetWorkflowCreateForm()
   ensureWorkflowCreateNodeShape()
   workflowNodeConfigLoadingByTool.value = {}
   workflowCreateModalOpen.value = true
   void loadWorkflowConfiguredCliTools(activeLineId.value).then(() => preloadWorkflowNodeConfigs())
 }
 
-const closeWorkflowCreateModal = () => {
+const openWorkflowEditModal = (template: WorkflowTemplate) => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  workflowTemplateModalMode.value = 'edit'
+  editingWorkflowTemplateId.value = template.id
   workflowValidationMessage.value = ''
+  workflowCreateForm.value = {
+    name: template.name,
+    description: template.description ?? '',
+    nodes: buildWorkflowFormNodesFromTemplate(template),
+  }
+  workflowNodeConfigLoadingByTool.value = {}
+  workflowCreateModalOpen.value = true
+  void loadWorkflowConfiguredCliTools(activeLineId.value).then(() => preloadWorkflowNodeConfigs())
+}
+
+const closeWorkflowCreateModal = () => {
   workflowCreateModalOpen.value = false
+  workflowTemplateModalMode.value = 'create'
+  editingWorkflowTemplateId.value = ''
+  resetWorkflowCreateForm()
 }
 
 const addWorkflowCreateNode = () => {
@@ -862,8 +912,13 @@ const loadWorkflowTemplates = async (lineId: string) => {
   }
 }
 
-const createWorkflowTemplate = async () => {
+const submitWorkflowTemplate = async () => {
   if (!activeLineId.value) {
+    return
+  }
+
+  if (workflowTemplateModalMode.value === 'edit' && !editingWorkflowTemplateId.value) {
+    workflowValidationMessage.value = '未找到待编辑模板'
     return
   }
 
@@ -884,39 +939,33 @@ const createWorkflowTemplate = async () => {
   submittingWorkflowTemplate.value = true
   workflowValidationMessage.value = ''
 
-  try {
-    await workflowApi.create({
-      name: workflowCreateForm.value.name.trim(),
-      description: normalizeOptionalText(workflowCreateForm.value.description),
-      scope: 'business_line',
-      businessLineId: activeLineId.value,
-      nodes,
-      isActive: true,
-    })
+  const requestPayload = {
+    name: workflowCreateForm.value.name.trim(),
+    description: normalizeOptionalText(workflowCreateForm.value.description),
+    nodes,
+  }
+  const isEditing = workflowTemplateModalMode.value === 'edit'
 
-    resetWorkflowCreateForm()
-    closeWorkflowCreateModal()
+  try {
+    if (isEditing) {
+      await workflowApi.update(editingWorkflowTemplateId.value, requestPayload)
+      message.success('业务线工作流模板更新成功')
+    } else {
+      await workflowApi.create({
+        ...requestPayload,
+        scope: 'business_line',
+        businessLineId: activeLineId.value,
+        isActive: true,
+      })
+      message.success('业务线工作流模板创建成功')
+    }
+
     await loadWorkflowTemplates(activeLineId.value)
-    message.success('业务线工作流模板创建成功')
+    closeWorkflowCreateModal()
   } catch (error) {
-    message.error(toErrorMessage(error, '创建业务线工作流模板失败'))
+    message.error(toErrorMessage(error, isEditing ? '更新业务线工作流模板失败' : '创建业务线工作流模板失败'))
   } finally {
     submittingWorkflowTemplate.value = false
-  }
-}
-
-const toggleWorkflowTemplateActive = async (template: WorkflowTemplate) => {
-  workflowTemplateActionId.value = template.id
-  try {
-    await workflowApi.update(template.id, {
-      isActive: !template.isActive,
-    })
-    await loadWorkflowTemplates(activeLineId.value)
-    message.success('模板状态更新成功')
-  } catch (error) {
-    message.error(toErrorMessage(error, '更新模板状态失败'))
-  } finally {
-    workflowTemplateActionId.value = ''
   }
 }
 
@@ -2039,6 +2088,8 @@ watch(
       resetSkillPreviewState()
       resetMcpJsonPreviewState()
       resetWorkflowCreateForm()
+      workflowTemplateModalMode.value = 'create'
+      editingWorkflowTemplateId.value = ''
 
       activeLineId.value = props.activeBusinessLineId || props.lines[0]?.id || ''
       if (activeLineId.value) {
@@ -2117,6 +2168,8 @@ watch(
       resetMcpJsonPreviewState()
       resetAgentToolConfigForm()
       resetWorkflowCreateForm()
+      workflowTemplateModalMode.value = 'create'
+      editingWorkflowTemplateId.value = ''
       return
     }
 
@@ -2710,7 +2763,7 @@ onBeforeUnmount(() => {
                 <article class="panel-card p-5">
                   <div class="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <p class="text-sm font-semibold">模板列表</p>
+                      <p class="text-sm font-semibold">工作流模板列表</p>
                       <p class="mt-1 text-xs text-muted-foreground">
                         {{
                           loadingWorkflowTemplates
@@ -2749,8 +2802,7 @@ onBeforeUnmount(() => {
                         <tr class="text-xs font-semibold text-muted-foreground">
                           <th class="px-3 py-2">模板</th>
                           <th class="w-20 px-3 py-2 whitespace-nowrap">节点数</th>
-                          <th class="w-24 px-3 py-2 whitespace-nowrap">状态</th>
-                          <th class="w-40 px-3 py-2 text-right whitespace-nowrap">操作</th>
+                          <th class="w-44 px-3 py-2 text-right whitespace-nowrap">操作</th>
                         </tr>
                       </thead>
                       <tbody class="divide-y divide-border">
@@ -2770,27 +2822,16 @@ onBeforeUnmount(() => {
                           <td class="px-3 py-2 text-muted-foreground whitespace-nowrap">
                             {{ template.nodesJson.length }}
                           </td>
-                          <td class="px-3 py-2 whitespace-nowrap">
-                            <span
-                              class="inline-flex rounded-full px-2 py-1 text-xs font-semibold"
-                              :class="
-                                template.isActive
-                                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                                  : 'bg-muted text-muted-foreground'
-                              "
-                            >
-                              {{ template.isActive ? '启用中' : '已停用' }}
-                            </span>
-                          </td>
                           <td class="px-3 py-2">
                             <div class="flex justify-end gap-2">
                               <button
+                                :data-testid="`workflow-edit-${template.id}`"
                                 type="button"
                                 class="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                                 :disabled="workflowTemplateActionId === template.id"
-                                @click="toggleWorkflowTemplateActive(template)"
+                                @click="openWorkflowEditModal(template)"
                               >
-                                {{ template.isActive ? '停用' : '启用' }}
+                                编辑
                               </button>
                               <button
                                 type="button"
@@ -2804,7 +2845,7 @@ onBeforeUnmount(() => {
                           </td>
                         </tr>
                         <tr v-if="workflowTemplates.length === 0">
-                          <td colspan="4" class="px-3 py-4 text-sm text-muted-foreground">
+                          <td colspan="3" class="px-3 py-4 text-sm text-muted-foreground">
                             当前业务线暂无工作流模板，请先创建。
                           </td>
                         </tr>
@@ -2914,13 +2955,11 @@ onBeforeUnmount(() => {
                       @keydown.space.prevent="void openMcpJsonPreview(item)"
                     >
                       <p class="truncate text-xs font-semibold">{{ item.name }}</p>
-                      <p class="mt-1 text-[11px] text-muted-foreground">
-                        <span>
-                          <template v-if="item.version && item.version !== 'local'">
-                            版本：{{ item.version }} ·
-                          </template>
-                          工具数：{{ item.toolsCount }}
-                        </span>
+                      <p
+                        v-if="item.version && item.version !== 'local'"
+                        class="mt-1 text-[11px] text-muted-foreground"
+                      >
+                        版本：{{ item.version }}
                       </p>
                       <p v-if="item.description" class="mt-1 line-clamp-1 text-[11px] text-muted-foreground">
                         {{ item.description }}
@@ -2996,12 +3035,12 @@ onBeforeUnmount(() => {
         >
           <header class="flex items-center justify-between border-b border-border px-4 py-3">
             <h3 id="business-line-workflow-create-modal-title" class="text-sm font-semibold">
-              创建业务线工作流模板
+              {{ workflowTemplateModalTitle }}
             </h3>
             <button
               type="button"
               class="rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground transition hover:text-foreground"
-              aria-label="关闭工作流模板创建弹窗"
+              aria-label="关闭工作流模板弹窗"
               @click="closeWorkflowCreateModal"
             >
               关闭
@@ -3010,7 +3049,7 @@ onBeforeUnmount(() => {
 
           <form
             class="max-h-[calc(92vh-56px)] space-y-4 overflow-auto px-4 py-4"
-            @submit.prevent="createWorkflowTemplate"
+            @submit.prevent="submitWorkflowTemplate"
           >
             <section class="space-y-3 rounded-xl border border-border bg-background/60 p-3">
               <div>
@@ -3183,7 +3222,11 @@ onBeforeUnmount(() => {
                 class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
                 :disabled="submittingWorkflowTemplate || !activeLineId"
               >
-                {{ submittingWorkflowTemplate ? '创建中...' : '创建模板' }}
+                {{
+                  submittingWorkflowTemplate
+                    ? workflowTemplateSubmitLoadingText
+                    : workflowTemplateSubmitIdleText
+                }}
               </button>
             </div>
           </form>

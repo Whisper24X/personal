@@ -296,6 +296,99 @@ describe('BusinessLineModal', () => {
     expect(wrapper.emitted('select-project')).toEqual([['project-1']])
   })
 
+  it('opens workflow edit modal and updates template', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineModal, {
+      props: buildProps(true, false),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    workflowApi.list.mockResolvedValueOnce({
+      data: [
+        {
+          id: 'workflow-1',
+          name: '业务线默认流',
+          description: '默认模板',
+          scope: 'business_line',
+          businessLineId: 'line-1',
+          isActive: true,
+          nodesJson: [
+            {
+              nodeOrder: 1,
+              name: 'step-1',
+              type: 'agent',
+              requiresApproval: false,
+              input: {
+                prompt: '初始提示词',
+                cliToolId: 'codex',
+                agentToolConfigId: 'cfg-1',
+              },
+            },
+          ],
+        },
+      ],
+      hasNextPage: false,
+    })
+    businessLinesApi.listAgentToolConfigs.mockResolvedValue([
+      {
+        id: 'cfg-1',
+        toolId: 'codex',
+        name: '默认 Codex',
+        description: '',
+        isDefault: true,
+        configJson: {},
+      },
+    ])
+
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+
+    const workflowTab = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '工作流')
+    expect(workflowTab).toBeDefined()
+    await workflowTab!.trigger('click')
+    await flushPromises()
+
+    const editButton = wrapper.find('[data-testid="workflow-edit-workflow-1"]')
+    expect(editButton.exists()).toBe(true)
+    await editButton.trigger('click')
+    await flushPromises()
+
+    const nameInput = wrapper.find('input[placeholder="例如：业务线默认代码修复流"]')
+    expect(nameInput.exists()).toBe(true)
+    await nameInput.setValue('业务线默认流-更新')
+
+    const workflowForm = wrapper.find('[aria-labelledby="business-line-workflow-create-modal-title"] form')
+    expect(workflowForm.exists()).toBe(true)
+    await workflowForm.trigger('submit')
+    await flushPromises()
+
+    expect(workflowApi.update).toHaveBeenCalledWith('workflow-1', {
+      name: '业务线默认流-更新',
+      description: '默认模板',
+      nodes: [
+        {
+          nodeOrder: 1,
+          name: 'step-1',
+          type: 'agent',
+          requiresApproval: false,
+          input: {
+            prompt: '初始提示词',
+            cliToolId: 'codex',
+            agentToolConfigId: 'cfg-1',
+          },
+        },
+      ],
+    })
+    expect(workflowApi.create).not.toHaveBeenCalled()
+  })
+
   it('imports local mcps from json payload', async () => {
     const pinia = createPinia()
     const wrapper = mount(BusinessLineModal, {
