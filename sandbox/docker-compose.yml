@@ -1,6 +1,19 @@
+# ============================================================
 # AINative Workspace - All-in-One Sandbox
-# 使用方式: docker compose up -d
-# 或通过封装脚本: ./sandbox/sandbox.sh start
+# ============================================================
+#
+# 单容器开发沙箱，内部通过 Supervisor 管理 3 个服务 + Nginx 反代：
+#   - backend  (Go/Kratos, :8000)
+#   - shadow   (Vue3 管理后台, :8100)
+#   - app      (Taro H5, :8200)
+#   - nginx    (统一入口, :8080)
+#
+# 使用方式:
+#   docker compose up -d
+#   ./sandbox/sandbox.sh start    （推荐，自动推导容器名/端口）
+#
+# 变量来源: sandbox/.env
+# ============================================================
 
 services:
   sandbox:
@@ -11,17 +24,18 @@ services:
     container_name: ${SANDBOX_NAME}
     hostname: ${SANDBOX_NAME}
     ports:
-      - "${SANDBOX_PORT:-8080}:8080"
+      - "${SANDBOX_PORT:-8080}:8080"       # Nginx 统一入口
     env_file:
-      - sandbox/.env
+      - sandbox/.env                       # 中间件连接信息（PG/Redis/Kafka 等）
     extra_hosts:
-      - "host.docker.internal:host-gateway"
-    mem_limit: ${SANDBOX_MEMORY:-8g}
-    mem_reservation: ${SANDBOX_MEMORY_MIN:-2g}
+      - "host.docker.internal:host-gateway" # 容器内访问宿主机服务
+    mem_limit: ${SANDBOX_MEMORY:-4g}        # 容器内存硬上限
     volumes:
+      # 项目源码（双向同步）
       - ./ainative-backend:/workspace/ainative-backend
       - ./ainative-shadow:/workspace/ainative-shadow
       - ./ainative-app:/workspace/ainative-app
+      # 缓存卷（跨分支共享，避免重复下载依赖）
       - go-mod-cache:/go/pkg/mod
       - go-build-cache:/root/.cache/go-build
       - pnpm-store-cache:/root/.local/share/pnpm/store
@@ -30,9 +44,10 @@ services:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
-      start_period: 60s
+      start_period: 60s                    # 首次启动编译较慢，等待 60s
       retries: 3
 
+# 共享缓存卷：external=true，由 sandbox.sh 自动创建
 volumes:
   go-mod-cache:
     external: true

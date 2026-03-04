@@ -38,49 +38,6 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
     done < "$SCRIPT_DIR/.env"
 fi
 
-# 自动推导 worktree 标识：用当前分支名生成唯一后缀
-_resolve_worktree_suffix() {
-    local branch
-    branch=$(git -C "$PROJECT_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null) || branch=""
-    if [[ -z "$branch" || "$branch" == "HEAD" ]]; then
-        branch=$(basename "$PROJECT_ROOT")
-    fi
-    # 规范化：feature/foo-bar → feature-foo-bar
-    echo "${branch//\//-}"
-}
-
-_resolve_port() {
-    local suffix="$1"
-    if [[ "$suffix" == "master" || "$suffix" == "main" ]]; then
-        echo 8080
-        return
-    fi
-    # 用 hash 映射到 8081-49151 范围（用户端口段），冲突时自动偏移
-    local hash base port range=41071
-    hash=$(printf '%s' "$suffix" | cksum | awk '{print $1}')
-    base=$(( 8081 + hash % range ))
-    port=$base
-    local attempts=0
-    while (( attempts < range )); do
-        if ! docker ps --format '{{.Ports}}' 2>/dev/null | grep -q "0.0.0.0:${port}->"; then
-            echo "$port"
-            return
-        fi
-        port=$(( 8081 + (port - 8081 + 1) % range ))
-        (( attempts++ ))
-    done
-    echo "$base"
-}
-
-WORKTREE_SUFFIX="$(_resolve_worktree_suffix)"
-SANDBOX_PROJECT="${SANDBOX_PROJECT:-$(basename "$PROJECT_ROOT")}"
-CONTAINER_NAME="${SANDBOX_NAME:-${SANDBOX_PROJECT}-sandbox-${WORKTREE_SUFFIX}}"
-NGINX_PORT="${SANDBOX_PORT:-$(_resolve_port "$WORKTREE_SUFFIX")}"
-
-export SANDBOX_NAME="$CONTAINER_NAME"
-export SANDBOX_PORT="$NGINX_PORT"
-export SANDBOX_PROJECT
-
 # ============================================================
 # 工具函数
 # ============================================================
@@ -96,6 +53,52 @@ info()    { echo -e "${BLUE}[INFO]${NC} $1"; }
 success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error()   { echo -e "${RED}[ERROR]${NC} $1" >&2; }
+
+# ============================================================
+# 自动推导
+# ============================================================
+
+_resolve_worktree_suffix() {
+    local branch
+    branch=$(git -C "$PROJECT_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null) || branch=""
+    if [[ -z "$branch" || "$branch" == "HEAD" ]]; then
+        branch=$(basename "$PROJECT_ROOT")
+    fi
+    # 规范化：feature/foo-bar → feature-foo-bar
+    echo "${branch//\//-}"
+}
+
+_port_in_use() {
+    lsof -i :"$1" -sTCP:LISTEN >/dev/null 2>&1
+}
+
+_resolve_port() {
+    local suffix="$1"
+    # master/main 优先 8080，被占用则 fallback
+    if [[ "$suffix" == "master" || "$suffix" == "main" ]] && ! _port_in_use 8080; then
+        echo 8080; return
+    fi
+    local hash port
+    hash=$(printf '%s' "$suffix" | cksum | awk '{print $1}')
+    port=$(( 8081 + hash % 41071 ))
+    for (( i=0; i<100; i++ )); do
+        _port_in_use "$port" || { echo "$port"; return; }
+        port=$(( 8081 + (port - 8080) % 41071 ))
+    done
+    warn "尝试 100 次仍未找到可用端口，使用 $port" >&2
+    echo "$port"
+}
+
+WORKTREE_SUFFIX="$(_resolve_worktree_suffix)"
+SANDBOX_PROJECT="${SANDBOX_PROJECT:-$(basename "$PROJECT_ROOT")}"
+CONTAINER_NAME="${SANDBOX_NAME:-${SANDBOX_PROJECT}-sandbox-${WORKTREE_SUFFIX}}"
+NGINX_PORT="${SANDBOX_PORT:-$(_resolve_port "$WORKTREE_SUFFIX")}"
+
+SHARED_VOLUMES=("${SANDBOX_PROJECT}-go-mod-cache" "${SANDBOX_PROJECT}-go-build-cache" "${SANDBOX_PROJECT}-pnpm-store-cache")
+
+export SANDBOX_NAME="$CONTAINER_NAME"
+export SANDBOX_PORT="$NGINX_PORT"
+export SANDBOX_PROJECT
 
 check_docker() {
     if ! docker info > /dev/null 2>&1; then
@@ -138,8 +141,7 @@ cmd_rebuild() {
 }
 
 _ensure_shared_volumes() {
-    local volumes=("${SANDBOX_PROJECT}-go-mod-cache" "${SANDBOX_PROJECT}-go-build-cache" "${SANDBOX_PROJECT}-pnpm-store-cache")
-    for vol in "${volumes[@]}"; do
+    for vol in "${SHARED_VOLUMES[@]}"; do
         if ! docker volume inspect "$vol" > /dev/null 2>&1; then
             docker volume create "$vol" > /dev/null
         fi
@@ -290,9 +292,8 @@ cmd_clean() {
     dc down -v --rmi local 2>/dev/null || true
     success "沙箱已清理"
 
-    local shared_volumes=("${SANDBOX_PROJECT}-go-mod-cache" "${SANDBOX_PROJECT}-go-build-cache" "${SANDBOX_PROJECT}-pnpm-store-cache")
     local existing=()
-    for vol in "${shared_volumes[@]}"; do
+    for vol in "${SHARED_VOLUMES[@]}"; do
         if docker volume inspect "$vol" > /dev/null 2>&1; then
             existing+=("$vol")
         fi
