@@ -28,12 +28,12 @@ init: git-config
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.1
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2.0
 	go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@v2.13.0
-	go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@latest # 与 kratos-demo 不同
+	go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@v2.27.2
 	go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v2@a7bae93
 	go install gitlab.yc345.tv/backend/protoc-gen-go-errors@v0.0.4
 	go install github.com/envoyproxy/protoc-gen-validate@v0.9.0
-	go install github.com/google/wire/cmd/wire@v0.6.0 # 与 kratos-demo 不同
-	go install github.com/abice/go-enum@latest
+	go install github.com/google/wire/cmd/wire@v0.6.0
+	go install github.com/abice/go-enum@v0.9.1
 	go install golang.org/x/tools/cmd/goimports@v0.23.0
 
 .PHONY: git-config
