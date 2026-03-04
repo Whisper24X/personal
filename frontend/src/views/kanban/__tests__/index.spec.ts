@@ -70,7 +70,8 @@ describe('KanbanView project switching', () => {
           component: KanbanView,
         },
         {
-          path: '/tasks/:id',
+          path: '/task-detail/:id',
+          name: 'task-detail',
           component: KanbanView,
         },
       ],
@@ -93,6 +94,24 @@ describe('KanbanView project switching', () => {
     })
     expect(wrapper.text()).toContain('Task project-1')
 
+    const initialTaskLink = wrapper.findAll('a').find((link) => {
+      const href = link.attributes('href')
+      return typeof href === 'string' && href.includes('/task-detail/task-project-1')
+    })
+    expect(initialTaskLink).toBeDefined()
+    if (!initialTaskLink) {
+      throw new Error('initial task detail link not found')
+    }
+    const initialTaskHref = initialTaskLink.attributes('href')
+    if (!initialTaskHref) {
+      throw new Error('initial task detail href not found')
+    }
+
+    const initialTaskDetailUrl = new URL(initialTaskHref, 'http://localhost')
+    expect(initialTaskDetailUrl.pathname).toBe('/task-detail/task-project-1')
+    expect(initialTaskDetailUrl.searchParams.get('projectId')).toBe('project-1')
+    expect(initialTaskDetailUrl.searchParams.get('from')).toBeNull()
+
     await router.push({ path: '/kanban', query: { projectId: 'project-2' } })
     await flushPromises()
 
@@ -102,5 +121,23 @@ describe('KanbanView project switching', () => {
       projectId: 'project-2',
     })
     expect(wrapper.text()).toContain('Task project-2')
+
+    const updatedTaskLink = wrapper.findAll('a').find((link) => {
+      const href = link.attributes('href')
+      return typeof href === 'string' && href.includes('/task-detail/task-project-2')
+    })
+    expect(updatedTaskLink).toBeDefined()
+    if (!updatedTaskLink) {
+      throw new Error('updated task detail link not found')
+    }
+    const updatedTaskHref = updatedTaskLink.attributes('href')
+    if (!updatedTaskHref) {
+      throw new Error('updated task detail href not found')
+    }
+
+    const updatedTaskDetailUrl = new URL(updatedTaskHref, 'http://localhost')
+    expect(updatedTaskDetailUrl.pathname).toBe('/task-detail/task-project-2')
+    expect(updatedTaskDetailUrl.searchParams.get('projectId')).toBe('project-2')
+    expect(updatedTaskDetailUrl.searchParams.get('from')).toBeNull()
   })
 })

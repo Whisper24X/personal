@@ -93,7 +93,7 @@ const queryProjectId = computed(() => {
 })
 
 const activeProjectId = computed(() => {
-  return queryProjectId.value || task.value?.projectId || ''
+  return task.value?.projectId || queryProjectId.value || ''
 })
 
 const taskListRoute = computed(() => {
@@ -486,10 +486,6 @@ const handleReply = async (text: string) => {
   }
 }
 
-const toggleRightPanel = () => {
-  isRightPanelVisible.value = !isRightPanelVisible.value
-}
-
 const handleSelectWorkflowNode = (nodeId: string) => {
   selectedWorkflowNodeId.value = nodeId
 }
@@ -594,21 +590,26 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="fade-up space-y-3">
-    <section v-if="loading" class="panel-card p-6 text-sm text-muted-foreground">加载中...</section>
+  <div class="fade-up flex h-full min-h-0 w-full">
+    <section
+      v-if="loading"
+      class="panel-card flex h-full w-full items-center justify-center p-6 text-sm text-muted-foreground"
+    >
+      加载中...
+    </section>
 
     <section
       v-else
-      class="bg-background my-1 flex min-h-[calc(var(--app-viewport-height)-9rem)] min-w-0 overflow-hidden rounded-2xl border border-border/50 shadow-sm"
+      class="bg-background flex h-full w-full min-w-0 overflow-hidden rounded-2xl border border-border/50 shadow-sm"
     >
       <div
         class="bg-background flex min-w-0 flex-col overflow-hidden transition-all duration-200"
         :class="isRightPanelVisible ? 'rounded-l-2xl' : 'rounded-2xl'"
         :style="{
           flex: isRightPanelVisible ? '0 0 auto' : '1 1 0%',
-          width: isRightPanelVisible ? 'clamp(320px, 40%, 520px)' : undefined,
-          minWidth: '320px',
-          maxWidth: isRightPanelVisible ? '520px' : undefined,
+          width: isRightPanelVisible ? 'clamp(520px, 62%, 1280px)' : undefined,
+          minWidth: isRightPanelVisible ? '520px' : '0',
+          maxWidth: isRightPanelVisible ? '1280px' : undefined,
         }"
       >
         <div class="flex min-h-0 flex-1 flex-col gap-3 p-3">
@@ -627,13 +628,11 @@ onBeforeUnmount(() => {
             :can-execute="canExecute"
             :can-cancel="canCancel"
             :can-cleanup-worktree="canCleanupWorktree"
-            :right-panel-visible="isRightPanelVisible"
             :can-edit="canEdit"
             @execute="executeTask"
             @cancel="cancelTask"
             @cleanup="cleanupTaskWorktree"
             @refresh="loadTaskData"
-            @toggle-right-panel="toggleRightPanel"
             @edit="openEdit"
             @remove="deleteOpen = true"
           />

@@ -22,7 +22,6 @@ const props = defineProps<{
   canExecute: boolean
   canCancel: boolean
   canCleanupWorktree: boolean
-  rightPanelVisible: boolean
   canEdit?: boolean
 }>()
 
@@ -31,7 +30,6 @@ const emit = defineEmits<{
   cancel: []
   cleanup: []
   refresh: []
-  toggleRightPanel: []
   edit: []
   remove: []
 }>()
@@ -60,14 +58,6 @@ const toolMeta = computed(() => {
       </div>
 
       <div class="flex items-center gap-2">
-        <button
-          class="h-8 rounded-md border border-border bg-background px-2 text-xs font-semibold text-foreground"
-          type="button"
-          @click="emit('toggleRightPanel')"
-        >
-          {{ props.rightPanelVisible ? '隐藏侧栏' : '显示侧栏' }}
-        </button>
-
         <button
           class="h-8 rounded-md border border-border bg-background px-2 text-xs font-semibold text-foreground"
           type="button"

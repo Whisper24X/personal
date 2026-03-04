@@ -198,6 +198,19 @@ const openCreateTaskModal = () => {
   createTaskModalOpen.value = true
 }
 
+const taskDetailTo = (task: Task) => {
+  const projectId = selectedProjectId.value || task.projectId
+  return {
+    name: 'task-detail' as const,
+    params: {
+      id: task.id,
+    },
+    query: {
+      projectId,
+    },
+  }
+}
+
 onMounted(() => {
   syncSelectedProjectId()
   void loadPageData()
@@ -291,7 +304,7 @@ watch(
           <RouterLink
             v-for="item in column.items"
             :key="item.id"
-            :to="`/tasks/${item.id}`"
+            :to="taskDetailTo(item)"
             class="block rounded-xl border border-border bg-background/75 px-3 py-2 text-sm transition hover:bg-background"
           >
             <div class="flex items-center justify-between gap-2">

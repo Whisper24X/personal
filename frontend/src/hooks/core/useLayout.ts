@@ -179,6 +179,30 @@ export const useLayout = () => {
     return matchedMenu?.to ?? ''
   }
 
+  const resolveMenuPathFromRoute = () => {
+    if (route.name === 'task-detail') {
+      const storedMenuPath = loadStoredSelectedMenuPath()
+      const rememberedTaskMenuPath = menuItems.value.find((item) => {
+        if (item.to !== storedMenuPath) {
+          return false
+        }
+
+        return item.id === 'tasks' || item.id === 'kanban'
+      })?.to
+
+      if (rememberedTaskMenuPath) {
+        return rememberedTaskMenuPath
+      }
+
+      const tasksMenuPath = menuItems.value.find((item) => item.id === 'tasks')?.to
+      if (tasksMenuPath) {
+        return tasksMenuPath
+      }
+    }
+
+    return resolveMenuPathFromPath(route.path)
+  }
+
   const setSelectedMenuPath = (menuPath: string) => {
     if (menuPath) {
       localStorage.setItem(STORAGE_KEYS.lastSelectedMenuPath, menuPath)
@@ -189,7 +213,7 @@ export const useLayout = () => {
   }
 
   const syncSelectedMenuPath = () => {
-    const menuPath = resolveMenuPathFromPath(route.path)
+    const menuPath = resolveMenuPathFromRoute()
     if (!menuPath) {
       return
     }
@@ -198,7 +222,7 @@ export const useLayout = () => {
   }
 
   const resolveProjectMenuPath = () => {
-    const routeMenuPath = resolveMenuPathFromPath(route.path)
+    const routeMenuPath = resolveMenuPathFromRoute()
     if (routeMenuPath) {
       return routeMenuPath
     }
@@ -275,11 +299,30 @@ export const useLayout = () => {
   const syncProjectSelection = ({ preserveCurrentBusinessLine = false }: { preserveCurrentBusinessLine?: boolean } = {}) => {
     const routeProjectId = getProjectIdFromRoute()
     if (routeProjectId) {
-      setSelectedProjectId(routeProjectId)
-
       const matchedBusinessLine = findBusinessLineByProjectId(routeProjectId)
       if (matchedBusinessLine) {
+        setSelectedProjectId(routeProjectId)
         activeBusinessLineId.value = matchedBusinessLine.id
+        return
+      }
+
+      const hasStoredSelectedProject = selectedProjectId.value
+        ? findBusinessLineByProjectId(selectedProjectId.value)
+        : undefined
+
+      const fallbackProjectId = hasStoredSelectedProject
+        ? selectedProjectId.value
+        : businessLines.value[0]?.projects[0]?.id ?? ''
+
+      setSelectedProjectId(fallbackProjectId)
+
+      if (fallbackProjectId) {
+        const fallbackBusinessLine = findBusinessLineByProjectId(fallbackProjectId)
+        if (fallbackBusinessLine) {
+          activeBusinessLineId.value = fallbackBusinessLine.id
+        }
+      } else {
+        activeBusinessLineId.value = businessLines.value[0]?.id ?? ''
       }
 
       return
@@ -464,7 +507,14 @@ export const useLayout = () => {
     return ['项目菜单']
   })
 
-  const isRouteActive = (to: string) => route.path === to || route.path.startsWith(`${to}/`)
+  const isRouteActive = (to: string) => {
+    const routeMenuPath = resolveMenuPathFromRoute()
+    if (routeMenuPath) {
+      return routeMenuPath === to
+    }
+
+    return route.path === to || route.path.startsWith(`${to}/`)
+  }
 
   const menuItemClass = (to: string) => {
     if (isRouteActive(to)) {
@@ -642,7 +692,7 @@ export const useLayout = () => {
   watch(
     () => [route.path, route.query.projectId, selectedProjectId.value] as const,
     ([path, queryProjectId, selectedProjectId]) => {
-      const routeMenuPath = resolveMenuPathFromPath(path)
+      const routeMenuPath = resolveMenuPathFromRoute()
       if (!routeMenuPath) {
         return
       }
@@ -652,7 +702,7 @@ export const useLayout = () => {
       }
 
       const normalizedQueryProjectId = normalizeQueryValue(queryProjectId).trim()
-      if (normalizedQueryProjectId) {
+      if (normalizedQueryProjectId === selectedProjectId) {
         return
       }
 

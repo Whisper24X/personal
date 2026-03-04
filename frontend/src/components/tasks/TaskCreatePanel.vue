@@ -388,7 +388,11 @@ const createTask = async () => {
     message.success('创建任务成功，正在跳转详情')
     resetCreateForm(projectIdForSubmit)
     emit('created', task.id)
-    await router.push(`/tasks/${task.id}`)
+    await router.push({
+      name: 'task-detail',
+      params: { id: task.id },
+      query: { projectId: projectIdForSubmit },
+    })
   } catch (error) {
     message.error(toErrorMessage(error, '创建任务失败'))
   } finally {

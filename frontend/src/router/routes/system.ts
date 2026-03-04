@@ -147,11 +147,12 @@ export const systemRoutes: AppRouteRecord[] = [
     },
   },
   {
-    path: '/tasks/:id',
+    path: '/task-detail/:id',
     name: 'task-detail',
     component: () => import('@/views/tasks/detail.vue'),
     meta: {
       title: '任务详情',
+      contentMode: 'full',
       requiresAuth: true,
       permissions: ['tasks:view'],
     },

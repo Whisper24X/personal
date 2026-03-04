@@ -672,7 +672,11 @@ onMounted(() => {
           <RouterLink
             v-for="task in reviewTasks.slice(0, 8)"
             :key="task.id"
-            :to="`/tasks/${task.id}`"
+            :to="{
+              name: 'task-detail',
+              params: { id: task.id },
+              query: { projectId: task.projectId },
+            }"
             class="block rounded-xl border border-border bg-background/60 px-3 py-2 transition hover:bg-background"
           >
             <p class="font-semibold">{{ task.title }}</p>

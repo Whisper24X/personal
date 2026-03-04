@@ -349,4 +349,105 @@ describe('useLayout business line selection', () => {
     })
     expect(localStorage.getItem(STORAGE_KEYS.lastSelectedMenuPath)).toBe('/dashboard')
   })
+
+  it('should fallback to valid project when route query projectId is invalid', async () => {
+    setActivePinia(createPinia())
+    routeState.name = 'tasks'
+    routeState.path = '/tasks'
+    routeState.fullPath = '/tasks?projectId=invalid-task-id'
+    routeState.query = {
+      projectId: 'invalid-task-id',
+    }
+
+    const Harness = defineComponent({
+      setup() {
+        return useLayout()
+      },
+      template: `
+        <div>
+          <p data-testid="active-line">{{ activeBusinessLineId }}</p>
+          <p data-testid="selected-project">{{ selectedProjectId }}</p>
+        </div>
+      `,
+    })
+
+    const wrapper = mount(Harness)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="active-line"]').text()).toBe('line-1')
+    expect(wrapper.get('[data-testid="selected-project"]').text()).toBe('project-1')
+    expect(routerReplace).toHaveBeenCalledWith({
+      path: '/tasks',
+      query: {
+        projectId: 'project-1',
+      },
+    })
+  })
+
+  it('keeps kanban menu active on task detail when opened from kanban', async () => {
+    setActivePinia(createPinia())
+    localStorage.setItem(STORAGE_KEYS.lastSelectedMenuPath, '/kanban')
+    routeState.name = 'task-detail'
+    routeState.path = '/task-detail/task-1'
+    routeState.fullPath = '/task-detail/task-1?projectId=project-1'
+    routeState.params = {
+      id: 'task-1',
+    }
+    routeState.query = {
+      projectId: 'project-1',
+    }
+
+    const Harness = defineComponent({
+      setup() {
+        return useLayout()
+      },
+      template: `
+        <div>
+          <p data-testid="kanban-class">{{ menuItemClass('/kanban') }}</p>
+          <p data-testid="tasks-class">{{ menuItemClass('/tasks') }}</p>
+        </div>
+      `,
+    })
+
+    const wrapper = mount(Harness)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="kanban-class"]').text()).toContain('text-sidebar-accent-foreground')
+    expect(wrapper.get('[data-testid="tasks-class"]').text()).toContain('text-sidebar-foreground/75')
+    expect(localStorage.getItem(STORAGE_KEYS.lastSelectedMenuPath)).toBe('/kanban')
+  })
+
+  it('navigates back to kanban when selecting project from task detail opened via kanban', async () => {
+    setActivePinia(createPinia())
+    localStorage.setItem(STORAGE_KEYS.lastSelectedMenuPath, '/kanban')
+    routeState.name = 'task-detail'
+    routeState.path = '/task-detail/task-1'
+    routeState.fullPath = '/task-detail/task-1?projectId=project-1'
+    routeState.params = {
+      id: 'task-1',
+    }
+    routeState.query = {
+      projectId: 'project-1',
+    }
+
+    const Harness = defineComponent({
+      setup() {
+        return useLayout()
+      },
+      template: '<div />',
+    })
+
+    const wrapper = mount(Harness)
+    await flushPromises()
+
+    ;(wrapper.vm as { selectProject: (projectId: string) => void }).selectProject('project-2')
+    await nextTick()
+
+    expect(routerPush).toHaveBeenCalledWith({
+      path: '/kanban',
+      query: {
+        projectId: 'project-2',
+      },
+    })
+  })
 })

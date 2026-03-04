@@ -524,7 +524,11 @@ onMounted(() => {
             <RouterLink
               v-for="task in recentTasks"
               :key="task.id"
-              :to="`/tasks/${task.id}`"
+              :to="{
+                name: 'task-detail',
+                params: { id: task.id },
+                query: { projectId: task.projectId || project?.id || '' },
+              }"
               class="flex items-center justify-between rounded-xl border border-border bg-background/70 px-4 py-3 hover:bg-background"
             >
               <div>

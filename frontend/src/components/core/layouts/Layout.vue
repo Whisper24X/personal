@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import BusinessLineModal from '@/components/business/settings/BusinessLineModal.vue'
 import HeaderBar from '@/components/core/layouts/Header.vue'
 import SideNav from '@/components/core/layouts/Sidebar.vue'
@@ -8,6 +10,9 @@ import { useLayout } from '@/hooks/core/useLayout'
 defineOptions({
   name: 'AppLayout',
 })
+
+const route = useRoute()
+const useFullContentMode = computed(() => route.meta.contentMode === 'full')
 
 const {
   mobileNavOpen,
@@ -108,7 +113,10 @@ const {
           />
 
           <main id="main-content" class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-            <div class="container py-6 md:py-8">
+            <div v-if="useFullContentMode" class="h-full min-h-0 w-full">
+              <slot />
+            </div>
+            <div v-else class="container py-6 md:py-8">
               <slot />
             </div>
           </main>
