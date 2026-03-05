@@ -20,6 +20,7 @@ import type { ObservabilityMetrics } from '@/types/api/observability'
 import type { QueueStats } from '@/types/api/queue'
 import type { Task } from '@/types/api/tasks'
 import type { WorkflowTemplate } from '@/types/api/workflow'
+import ConfirmActionModal from '@/components/business/settings/modals/ConfirmActionModal.vue'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
 
@@ -47,6 +48,8 @@ const automationLoading = ref(false)
 const automationLoadingMore = ref(false)
 const automationSubmitting = ref(false)
 const automationDeletingId = ref('')
+const automationDeleteModalOpen = ref(false)
+const deletingAutomationTarget = ref<Automation | null>(null)
 const automationEditingId = ref('')
 const automationFormModalOpen = ref(false)
 const automationKeyword = ref('')
@@ -314,7 +317,20 @@ const removeAutomation = async (automation: Automation) => {
     return
   }
 
-  if (!window.confirm(`确认删除自动化「${automation.name}」吗？`)) {
+  deletingAutomationTarget.value = automation
+  automationDeleteModalOpen.value = true
+}
+
+const setAutomationDeleteModalOpen = (open: boolean) => {
+  automationDeleteModalOpen.value = open
+  if (!open) {
+    deletingAutomationTarget.value = null
+  }
+}
+
+const confirmRemoveAutomation = async () => {
+  const automation = deletingAutomationTarget.value
+  if (!automation) {
     return
   }
 
@@ -324,6 +340,7 @@ const removeAutomation = async (automation: Automation) => {
     await automationsApi.remove(automation.id)
     await loadAutomations(true)
     message.success('删除自动化成功')
+    setAutomationDeleteModalOpen(false)
   } catch (error) {
     message.error(toErrorMessage(error, '删除自动化失败'))
   } finally {
@@ -753,6 +770,16 @@ onMounted(() => {
         </div>
       </article>
     </section>
+
+    <ConfirmActionModal
+      :open="automationDeleteModalOpen"
+      :confirming="automationDeletingId === (deletingAutomationTarget?.id ?? '')"
+      title="删除自动化计划"
+      :description="`确认删除自动化「${deletingAutomationTarget?.name ?? ''}」吗？`"
+      confirm-text="删除"
+      @update:open="setAutomationDeleteModalOpen"
+      @confirm="confirmRemoveAutomation"
+    />
 
     <Teleport to="body">
       <div v-if="automationFormModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4">

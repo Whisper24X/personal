@@ -5,6 +5,7 @@ import { useMessage } from '@/hooks'
 import { businessLinesApi, type BusinessLine } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
 import type { Project } from '@/types/api/projects'
+import ConfirmActionModal from '@/components/business/settings/modals/ConfirmActionModal.vue'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
 
@@ -16,6 +17,8 @@ const loading = ref(false)
 const loadingMore = ref(false)
 const submitting = ref(false)
 const deletingProjectId = ref<string | null>(null)
+const projectDeleteModalOpen = ref(false)
+const deletingProjectTarget = ref<Project | null>(null)
 const editingProjectId = ref<string | null>(null)
 const projectFormModalOpen = ref(false)
 const query = ref('')
@@ -353,7 +356,20 @@ const submitProject = async () => {
 }
 
 const removeProject = async (project: Project) => {
-  if (!window.confirm(`确认删除项目「${project.name}」吗？`)) {
+  deletingProjectTarget.value = project
+  projectDeleteModalOpen.value = true
+}
+
+const setProjectDeleteModalOpen = (open: boolean) => {
+  projectDeleteModalOpen.value = open
+  if (!open) {
+    deletingProjectTarget.value = null
+  }
+}
+
+const confirmRemoveProject = async () => {
+  const project = deletingProjectTarget.value
+  if (!project) {
     return
   }
 
@@ -366,6 +382,7 @@ const removeProject = async (project: Project) => {
     }
     await loadData()
     message.success('删除项目成功')
+    setProjectDeleteModalOpen(false)
   } catch (error) {
     message.error(toErrorMessage(error, '删除项目失败'))
   } finally {
@@ -530,6 +547,16 @@ onBeforeUnmount(() => {
       <p class="text-sm font-semibold">未找到业务线或项目</p>
       <p class="mt-2 text-sm text-muted-foreground">请调整搜索条件，或创建第一条项目记录。</p>
     </section>
+
+    <ConfirmActionModal
+      :open="projectDeleteModalOpen"
+      :confirming="deletingProjectId === (deletingProjectTarget?.id ?? null)"
+      title="删除项目"
+      :description="`确认删除项目「${deletingProjectTarget?.name ?? ''}」吗？`"
+      confirm-text="删除"
+      @update:open="setProjectDeleteModalOpen"
+      @confirm="confirmRemoveProject"
+    />
 
     <Teleport to="body">
       <div v-if="projectFormModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4">

@@ -150,6 +150,8 @@ const workflowCreateModalOpen = ref(false)
 const workflowTemplateModalMode = ref<'create' | 'edit'>('create')
 const editingWorkflowTemplateId = ref('')
 const workflowTemplateActionId = ref('')
+const workflowTemplateDeleteModalOpen = ref(false)
+const workflowTemplateDeleteTarget = ref<WorkflowTemplate | null>(null)
 const workflowValidationMessage = ref('')
 const workflowTemplates = ref<WorkflowTemplate[]>([])
 const workflowConfiguredCliTools = ref<Array<{ id: SupportedCliToolId; label: string }>>([])
@@ -970,7 +972,20 @@ const submitWorkflowTemplate = async () => {
 }
 
 const removeWorkflowTemplate = async (template: WorkflowTemplate) => {
-  if (!window.confirm(`确认删除模板「${template.name}」吗？`)) {
+  workflowTemplateDeleteTarget.value = template
+  workflowTemplateDeleteModalOpen.value = true
+}
+
+const setWorkflowTemplateDeleteModalOpen = (open: boolean) => {
+  workflowTemplateDeleteModalOpen.value = open
+  if (!open) {
+    workflowTemplateDeleteTarget.value = null
+  }
+}
+
+const confirmRemoveWorkflowTemplate = async () => {
+  const template = workflowTemplateDeleteTarget.value
+  if (!template) {
     return
   }
 
@@ -979,6 +994,7 @@ const removeWorkflowTemplate = async (template: WorkflowTemplate) => {
     await workflowApi.remove(template.id)
     await loadWorkflowTemplates(activeLineId.value)
     message.success('模板删除成功')
+    setWorkflowTemplateDeleteModalOpen(false)
   } catch (error) {
     message.error(toErrorMessage(error, '删除模板失败'))
   } finally {
@@ -3188,7 +3204,7 @@ onBeforeUnmount(() => {
                       >
                         <option value="">
                           {{
-                            !node.input.cliToolId ? '请先选择 Agent CLI' : '自动选择默认/首个配置'
+                            !node.input.cliToolId ? '请先选择 Agent CLI' : '请选择 Agent CLI 配置'
                           }}
                         </option>
                         <option
@@ -3440,6 +3456,16 @@ onBeforeUnmount(() => {
           </div>
         </section>
       </div>
+
+      <ConfirmActionModal
+        :open="workflowTemplateDeleteModalOpen"
+        :confirming="workflowTemplateActionId === (workflowTemplateDeleteTarget?.id ?? '')"
+        title="删除工作流模板"
+        :description="`确认删除模板「${workflowTemplateDeleteTarget?.name ?? ''}」吗？`"
+        confirm-text="删除"
+        @update:open="setWorkflowTemplateDeleteModalOpen"
+        @confirm="confirmRemoveWorkflowTemplate"
+      />
 
       <ConfirmActionModal
         :open="projectDeleteModalOpen"

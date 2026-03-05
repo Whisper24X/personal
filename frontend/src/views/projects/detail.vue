@@ -1627,7 +1627,7 @@ onBeforeUnmount(() => {
         <article class="panel-card p-5">
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
-              <p class="text-sm font-semibold">当前项目模板</p>
+              <p class="text-sm font-semibold">工作流列表</p>
               <p class="mt-1 text-xs text-muted-foreground">仅展示当前项目工作流模板，支持增删改查。</p>
             </div>
             <span class="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">
@@ -1740,6 +1740,26 @@ onBeforeUnmount(() => {
     <section v-else class="panel-card p-5 text-sm text-muted-foreground">
       请先在左侧选择项目后查看工作流。
     </section>
+
+    <ConfirmActionModal
+      :open="workflowDeleteConfirmOpen"
+      title="删除工作流模板"
+      :description="`确认删除模板「${workflowDeleteTarget?.name ?? ''}」吗？`"
+      confirm-text="删除"
+      :confirming="workflowTemplateActionId === (workflowDeleteTarget?.id ?? '')"
+      @update:open="setWorkflowDeleteConfirmOpen"
+      @confirm="confirmRemoveWorkflowTemplate"
+    />
+
+    <ConfirmActionModal
+      :open="memberRemoveConfirmOpen"
+      title="移除项目成员"
+      :description="`确认移除成员 ${memberRemoveTarget?.userId ?? ''} 吗？`"
+      confirm-text="移除"
+      :confirming="removingMemberId === (memberRemoveTarget?.userId ?? '')"
+      @update:open="setMemberRemoveConfirmOpen"
+      @confirm="confirmRemoveMember"
+    />
 
     <Teleport to="body">
       <div
@@ -1886,7 +1906,7 @@ onBeforeUnmount(() => {
                         class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <option value="">
-                          {{ !node.input.cliToolId ? '请先选择 Agent CLI' : '自动选择默认/首个配置' }}
+                          {{ !node.input.cliToolId ? '请先选择 Agent CLI' : '请选择 Agent CLI 配置' }}
                         </option>
                         <option
                           v-for="config in getWorkflowNodeConfigs(node.input.cliToolId)"

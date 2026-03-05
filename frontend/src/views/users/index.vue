@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useMessage } from '@/hooks'
 import { usersApi } from '@/api/users'
 import type { CreateUserPayload, UpdateUserPayload, User } from '@/types/api/users'
+import ConfirmActionModal from '@/components/business/settings/modals/ConfirmActionModal.vue'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
 defineOptions({
@@ -15,6 +16,8 @@ const loading = ref(false)
 const loadingMore = ref(false)
 const submitting = ref(false)
 const deletingUserId = ref<string | null>(null)
+const userDeleteModalOpen = ref(false)
+const deletingUserTarget = ref<User | null>(null)
 const editingUserId = ref('')
 const userFormModalOpen = ref(false)
 const validationMessage = ref('')
@@ -211,7 +214,20 @@ const submitForm = async () => {
 }
 
 const removeUser = async (user: User) => {
-  if (!window.confirm(`确认删除用户「${user.username}」吗？`)) {
+  deletingUserTarget.value = user
+  userDeleteModalOpen.value = true
+}
+
+const setUserDeleteModalOpen = (open: boolean) => {
+  userDeleteModalOpen.value = open
+  if (!open) {
+    deletingUserTarget.value = null
+  }
+}
+
+const confirmRemoveUser = async () => {
+  const user = deletingUserTarget.value
+  if (!user) {
     return
   }
 
@@ -221,6 +237,7 @@ const removeUser = async (user: User) => {
     await usersApi.remove(user.id)
     await loadUsers(true)
     message.success('删除用户成功')
+    setUserDeleteModalOpen(false)
   } catch (error) {
     message.error(toErrorMessage(error, '删除用户失败'))
   } finally {
@@ -354,6 +371,16 @@ onMounted(() => {
         </button>
       </div>
     </section>
+
+    <ConfirmActionModal
+      :open="userDeleteModalOpen"
+      :confirming="deletingUserId === (deletingUserTarget?.id ?? null)"
+      title="删除用户"
+      :description="`确认删除用户「${deletingUserTarget?.username ?? ''}」吗？`"
+      confirm-text="删除"
+      @update:open="setUserDeleteModalOpen"
+      @confirm="confirmRemoveUser"
+    />
 
     <Teleport to="body">
       <div v-if="userFormModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4">

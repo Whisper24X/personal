@@ -12,6 +12,7 @@ import type { User } from '@/types/api/users'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
 import BusinessLineFormModal from '@/views/business-lines/components/BusinessLineFormModal.vue'
+import ConfirmActionModal from '@/components/business/settings/modals/ConfirmActionModal.vue'
 
 defineOptions({
   name: 'BusinessLinesView',
@@ -24,6 +25,8 @@ const loadingMembers = ref(false)
 const savingLine = ref(false)
 const savingMember = ref(false)
 const removingLineId = ref('')
+const lineDeleteModalOpen = ref(false)
+const removingLineTarget = ref<BusinessLine | null>(null)
 const updatingMemberUserId = ref('')
 const removingMemberUserId = ref('')
 const validationMessage = ref('')
@@ -217,7 +220,20 @@ const submitLineForm = async (payload: { name: string; description: string }) =>
 }
 
 const removeLine = async (line: BusinessLine) => {
-  if (!window.confirm(`确认删除业务线「${line.name}」吗？`)) {
+  removingLineTarget.value = line
+  lineDeleteModalOpen.value = true
+}
+
+const setLineDeleteModalOpen = (open: boolean) => {
+  lineDeleteModalOpen.value = open
+  if (!open) {
+    removingLineTarget.value = null
+  }
+}
+
+const confirmRemoveLine = async () => {
+  const line = removingLineTarget.value
+  if (!line) {
     return
   }
 
@@ -234,6 +250,7 @@ const removeLine = async (line: BusinessLine) => {
 
     await loadLines()
     message.success('删除业务线成功')
+    setLineDeleteModalOpen(false)
   } catch (error) {
     message.error(toErrorMessage(error, '删除业务线失败'))
   } finally {
@@ -589,6 +606,16 @@ onMounted(() => {
         </div>
       </article>
     </section>
+
+    <ConfirmActionModal
+      :open="lineDeleteModalOpen"
+      :confirming="removingLineId === (removingLineTarget?.id ?? '')"
+      title="删除业务线"
+      :description="`确认删除业务线「${removingLineTarget?.name ?? ''}」吗？`"
+      confirm-text="删除"
+      @update:open="setLineDeleteModalOpen"
+      @confirm="confirmRemoveLine"
+    />
 
     <BusinessLineFormModal
       :open="lineFormModalOpen"
