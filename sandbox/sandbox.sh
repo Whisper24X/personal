@@ -64,9 +64,8 @@ _resolve_worktree_suffix() {
     if [[ -z "$branch" || "$branch" == "HEAD" ]]; then
         branch=$(basename "$PROJECT_ROOT")
     fi
-    # 规范化：feature/foo-bar → feature-foo-bar, v3.7 → v3-7
-    local normalized="${branch//\//-}"
-    echo "${normalized//./-}"
+    # 规范化：feature/foo-bar → feature-foo-bar
+    echo "${branch//\//-}"
 }
 
 _port_in_use() {
