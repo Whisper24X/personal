@@ -177,11 +177,11 @@ export class PRDController {
                 return null;
               }
 
-              // 返回版本信息和预览URL
+              // 返回版本信息和预览URL（applicationId、projectId、versionId 均在 path 中）
               return {
                 versionId,
                 hasPrototype: true,
-                previewUrl: `/api/projects/${projectId}/versions/${versionId}/prototype/preview`,
+                previewUrl: `/api/projects/${applicationId}/${projectId}/versions/${versionId}/prototype/preview`,
               };
             } catch {
               // 目录不存在，跳过该版本
@@ -214,21 +214,12 @@ export class PRDController {
 
   /**
    * Preview prototype HTML by version ID (returns runnable preview page for iframe)
-   * GET /api/projects/:id/versions/:versionId/prototype/preview
-   * 不查询数据库，直接通过版本ID返回可在iframe中预览的HTML页面
+   * GET /api/projects/:applicationId/:projectId/versions/:versionId/prototype/preview
+   * 所有参数通过 path 传入，不查询数据库
    */
   static async previewPrototypeByVersion(req: Request, res: Response) {
     try {
-      const { id, versionId } = req.params;
-
-      // 获取项目信息（仅用于获取applicationId）
-      const project = await projectRepo.findById(id);
-      if (!project) {
-        return res.status(404).json({ error: 'Project not found' });
-      }
-
-      const applicationId = project.application_id || project.id;
-      const projectId = project.id;
+      const { applicationId, projectId, versionId } = req.params;
 
       // 构建prototype文件路径
       const prototypeDir = path.join(
@@ -267,6 +258,9 @@ export class PRDController {
       const mainFile = htmlFiles.includes('index.html') ? 'index.html' : htmlFiles[0];
 
       const filePath = path.join(prototypeDir, mainFile);
+      logger.info(`PRDController: Prototype file path`, {
+        filePath,
+      });
 
       try {
         const content = await fs.readFile(filePath, 'utf-8');
@@ -276,6 +270,9 @@ export class PRDController {
         // 允许在iframe中嵌入（移除X-Frame-Options限制，使用CSP允许所有来源）
         res.removeHeader('X-Frame-Options');
         res.setHeader('Content-Security-Policy', 'frame-ancestors *');
+        // 移除 Helmet 添加的头，避免在 HTTP 非 localhost 下触发 COOP/Origin-Agent-Cluster 报错
+        res.removeHeader('Cross-Origin-Opener-Policy');
+        res.removeHeader('Origin-Agent-Cluster');
         return res.send(content);
       } catch (error: any) {
         if ((error as any).code === 'ENOENT') {
@@ -1089,6 +1086,9 @@ export class PRDController {
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         // Allow iframe embedding (optional, for security you might want to restrict)
         res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+        // 移除 Helmet 添加的头，避免在 HTTP 非 localhost 下触发 COOP/Origin-Agent-Cluster 报错
+        res.removeHeader('Cross-Origin-Opener-Policy');
+        res.removeHeader('Origin-Agent-Cluster');
         return res.send(content);
       } catch (error: any) {
         if ((error as any).code === 'ENOENT') {

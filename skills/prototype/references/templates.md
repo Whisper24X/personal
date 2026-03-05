@@ -13,7 +13,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>原型 - 功能名称</title>
-    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/element-plus/2.11.4/theme-chalk/index.css" />
+    <link rel="stylesheet" href="https://fp.yangcong345.com/middle/base/element-38098fc849a985d85be870cf856da4a1.css" />
     <style>
       :root {
         --primary-color: #409eff;
@@ -59,8 +59,8 @@
       </el-card>
     </div>
 
-    <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.22/vue.global.js"></script>
-    <script src="https://cdn.bootcdn.net/ajax/libs/element-plus/2.11.4/index.full.js"></script>
+    <script src="https://fp.yangcong345.com/middle/base/vue.global.prod.min-0b54d44c0a1191e01683f5d626686f5e.js"></script>
+    <script src="https://fp.yangcong345.com/middle/base/element-f355e990744f69cea3292feaf7b43b40.js"></script>
     <script>
       const { createApp, ref } = Vue;
       createApp({
@@ -147,7 +147,7 @@
       <!-- 内容 -->
     </div>
 
-    <script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.22/vue.global.js"></script>
+    <script src="https://fp.yangcong345.com/middle/base/vue.global.prod.min-0b54d44c0a1191e01683f5d626686f5e.js"></script>
     <script>
       const { createApp, ref } = Vue;
       createApp({
@@ -167,12 +167,12 @@
 
 ```html
 <!-- Vue 3 -->
-<script src="https://cdn.bootcdn.net/ajax/libs/vue/3.5.22/vue.global.js"></script>
+<script src="https://fp.yangcong345.com/middle/base/vue.global.prod.min-0b54d44c0a1191e01683f5d626686f5e.js"></script>
 
 <!-- Element Plus (管理后台) -->
-<link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/element-plus/2.11.4/theme-chalk/index.css" />
-<script src="https://cdn.bootcdn.net/ajax/libs/element-plus/2.11.4/index.full.js"></script>
+<link rel="stylesheet" href="https://fp.yangcong345.com/middle/base/element-38098fc849a985d85be870cf856da4a1.css" />
+<script src="https://fp.yangcong345.com/middle/base/element-f355e990744f69cea3292feaf7b43b40.js"></script>
 
 <!-- ECharts (图表，可选) -->
-<script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.6.0/echarts.min.js"></script>
+<script src="https://fp.yangcong345.com/middle/base/echarts.min-b91b9de4da1677c82825c679112da8b2.js"></script>
 ```

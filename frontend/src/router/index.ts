@@ -26,7 +26,7 @@ const router = createRouter({
       name: 'Dashboard',
       component: Dashboard,
     },
-    
+
     // ==================== 业务线相关路由 ====================
     {
       path: '/business-lines',
@@ -45,18 +45,18 @@ const router = createRouter({
       component: WorkflowManagement,
       props: true,
     },
-    
+
     // ==================== 平台相关路由 ====================
+    {
+      path: '/platform/workflow/:applicationId/:projectId/:versionId',
+      name: 'PlatformWorkflow',
+      component: PlatformWorkflow,
+      props: true,
+    },
     {
       path: '/platform/:id/versions',
       name: 'PlatformVersions',
       component: PlatformVersions,
-      props: true,
-    },
-    {
-      path: '/platform/:id/workflow/:versionId',
-      name: 'PlatformWorkflow',
-      component: PlatformWorkflow,
       props: true,
     },
     {
@@ -71,7 +71,7 @@ const router = createRouter({
       component: KnowledgeBase,
       props: true,
     },
-    
+
     // ==================== 配置相关路由 ====================
     // 统一配置页面（支持 tab 参数：llm, roles, prompts）
     {

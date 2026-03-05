@@ -1,6 +1,6 @@
 ---
 name: backend-database
-description: 设计并创建 PostgreSQL 数据库表，生成建表 SQL 并通过 make sqlimport 导入容器内数据库。当用户需要新建表、修改表结构、查询现有表、设计表关系，或提到数据库、建表、字段设计时使用此技能。
+description: 设计并创建 PostgreSQL 数据库表，生成建表 SQL 并通过 make sqlimport 导入容器内数据库。支持菜单 SQL（*_menu.sql）注入，编码环节必须执行 sqlimport 使菜单即时生效。当用户需要新建表、修改表结构、查询现有表、设计表关系、菜单注入，或提到数据库、建表、字段设计时使用此技能。
 allowed-tools: Read, Write, Glob, Shell
 ---
 
@@ -85,6 +85,42 @@ cd ainative-backend && make sqldump TABLES={table}
 - 字段数: {count}
 - 索引: {list}
 ```
+
+## 菜单 SQL 注入（\*\_menu.sql）
+
+当任务涉及**新增菜单**（如轮播图管理、内容管理等）时，需生成菜单 SQL 并导入。
+
+**工作流**：
+
+1. 在 `ainative-backend/doc/sql/ainative_backend/` 下创建 `{module}_menu.sql`（如 `carousel_menu.sql`）
+2. SQL 内容：向 `sys_menu` 插入菜单项，向 `sys_role_menu` 绑定 super 角色，使用 `INSERT...SELECT...WHERE NOT EXISTS` 保证幂等
+3. **必须执行导入**：数据库在沙箱容器内，**必须在沙箱内**执行（宿主机执行无法连接）：
+   ```bash
+   # 进入沙箱后执行
+   cd /workspace/ainative-backend && make sqlimport ./doc/sql/ainative_backend/{module}_menu.sql
+   # 或从宿主机直接执行（沙箱运行时）：
+   docker exec ainative-workspace-sandbox psql -U postgres -d ainative_backend -f /workspace/ainative-backend/doc/sql/ainative_backend/{module}_menu.sql
+   ```
+4. 验证：检查输出无报错，登录 Shadow 确认菜单已显示
+
+### 菜单 SQL 规范（强制，避免 UUID 冲突）
+
+**禁止硬编码 UUID**：`sys_menu` 的 `id` 必须使用 `gen_random_uuid()`，禁止使用 `'xxx-xxx-xxx'::uuid` 等硬编码值，否则会与 `init.sql` 或已有菜单冲突导致 `sys_menu_pkey` 重复键错误。
+
+**id 与 pid 关联规则**：
+
+| 菜单类型           | id                  | pid                                                              |
+| ------------------ | ------------------- | ---------------------------------------------------------------- |
+| 父菜单（顶层目录） | `gen_random_uuid()` | `NULL`                                                           |
+| 子菜单             | `gen_random_uuid()` | `(SELECT id::text FROM sys_menu WHERE path = '/父path' LIMIT 1)` |
+
+**pid 类型转换（强制）**：`sys_menu.pid` 为 `varchar`，`id` 为 `uuid`。pid 的赋值和比较必须用 `id::text`，否则会报 `operator does not exist: character varying = uuid`。
+
+**path 作为稳定引用键**：子菜单的 pid、角色绑定的 menuId 均通过 **path** 引用，执行时从数据库查询。这样后续新需求的菜单 SQL 可正确引用已存在的父菜单，无需关心父菜单的 id 具体值。
+
+完整模板见 [references/schema-guide.md#菜单-sql-模板](references/schema-guide.md#菜单-sql-模板)。
+
+> **重要**：`init.sql` 仅沙箱首次启动时执行，菜单 SQL 不会自动纳入。**编码环节必须在沙箱内执行 sqlimport**，否则 Shadow 界面不会显示新菜单。
 
 ## 参考资料
 

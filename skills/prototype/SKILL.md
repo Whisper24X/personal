@@ -1,6 +1,6 @@
 ---
 name: prototype
-description: Creates single-file HTML prototypes in /docs/prototype/. Distinguishes new vs iteration: new features generate directly with project design tokens; iterations reference workspace frontend code (ainative-shadow=admin, ainative-app=miniprogram, frontend=single app). Uses Vue3 + Element Plus via CDN. Use when user says "prototype", "demo", "mockup", "quick validation", "visualize idea", or needs UI preview.
+description: Creates single-file HTML prototypes in /docs/prototype/. Distinguishes new vs iteration: new features generate directly with project design tokens; iterations reference  frontend code (ainative-shadow=admin, ainative-app=miniprogram, frontend=single app). Uses Vue3 + Element Plus via CDN. Use when user says "prototype", "demo", "mockup", "quick validation", "visualize idea", or needs UI preview.
 ---
 
 # 单文件原型生成器
@@ -16,9 +16,9 @@ description: Creates single-file HTML prototypes in /docs/prototype/. Distinguis
 
 ---
 
-## 项目结构说明（workspace 根目录下）
+## 项目结构说明
 
-项目实际代码位于 **workspace 根目录** 下，常见结构：
+项目实际代码位于 **根目录** 下，常见结构：
 
 | 目录               | 用途                        | 原型类型          |
 | ------------------ | --------------------------- | ----------------- |
@@ -26,7 +26,7 @@ description: Creates single-file HTML prototypes in /docs/prototype/. Distinguis
 | `ainative-app/`    | 小程序（移动端）            | 移动端/小程序原型 |
 | `frontend/`        | 单前端项目（如 Mind2Build） | 按实际用途判断    |
 
-**路径解析规则**：生成原型前，先检查 workspace 下存在 `ainative-shadow`、`ainative-app`、`frontend` 中的哪些目录，再确定参考代码的根路径 `{root}`。
+**路径解析规则**：生成原型前，先检查 根目录下 下存在 `ainative-shadow`、`ainative-app`、`frontend` 中的哪些目录，再确定参考代码的根路径 `{root}`。
 
 ---
 
@@ -65,7 +65,7 @@ flowchart TD
 
 ### Step 2: 应用设计标准（参考项目实际）
 
-从 workspace 根目录下项目提取设计 token。**来源文件**（路径相对于 workspace 根目录，`{root}` 按项目实际为 `ainative-shadow`、`ainative-app` 或 `frontend`）：
+从项目提取设计 token。**来源文件**（按项目实际为 `ainative-shadow`、`ainative-app` 或 `frontend`）：
 
 - **管理后台**：`ainative-shadow/src/style.css`、`ainative-shadow/src/App.vue`（若存在）；否则 `frontend/src/`
 - **小程序**：`ainative-app/src/` 下对应样式与入口文件
@@ -98,7 +98,11 @@ flowchart TD
 <!DOCTYPE html>
 <html lang="zh-CN">
   <head>
-    <!-- CDN 依赖 -->
+    <!-- CDN 依赖：必须使用 templates.md 第 166-179 行的 CDN 资源 -->
+    <link rel="stylesheet" href="https://fp.yangcong345.com/middle/base/element-38098fc849a985d85be870cf856da4a1.css" />
+    <script src="https://fp.yangcong345.com/middle/base/vue.global.prod.min-0b54d44c0a1191e01683f5d626686f5e.js"></script>
+    <script src="https://fp.yangcong345.com/middle/base/element-f355e990744f69cea3292feaf7b43b40.js"></script>
+    <!-- 若需图表，添加：<script src="https://fp.yangcong345.com/middle/base/echarts.min-b91b9de4da1677c82825c679112da8b2.js"></script> -->
     <!-- 设计标准 CSS -->
   </head>
   <body>
@@ -122,11 +126,19 @@ flowchart TD
 </html>
 ```
 
+### CDN 引用规范
+
+所有 script/link 引用必须使用 [templates.md](references/templates.md) 第 166-179 行的 CDN 资源：
+
+- **管理后台**：Vue + Element Plus CSS + Element Plus JS；需要图表时加 ECharts
+- **移动端**：仅 Vue（无 Element Plus）
+- **禁止**使用其他 CDN 或版本
+
 ---
 
 ## 迭代场景：前端代码参考
 
-当原型类型为**迭代**时，必须先读取 workspace 下相关前端代码，再生成与现有实现风格一致的原型。
+当原型类型为**迭代**时，必须先读取相关前端代码，再生成与现有实现风格一致的原型。
 
 **必读路径**（按功能域选择）：
 
@@ -188,6 +200,8 @@ flowchart TD
 - [ ] **若为迭代**：已读取相关 `{root}/src/views/` 或 `{root}/src/pages/` 与 `{root}/src/components/` 代码
 - [ ] 设计 token 已与项目实际样式文件对齐
 
+---
+
 生成原型后确认：
 
 - [ ] 单个 HTML 文件
@@ -196,6 +210,76 @@ flowchart TD
 - [ ] 核心功能可演示
 - [ ] 保存到 `docs/prototype/{feature}/index.html`
 - [ ] **若为迭代**：布局与组件风格与现有页面一致
+
+---
+
+## 生成后验证与修复（强制执行，不得跳过）
+
+生成 `index.html` 后，**必须**按以下四步流程完成验证和修复，确保页面能正常在浏览器中打开。
+
+### 第一步：检查 HTML 结构完整性
+
+读取生成的 `index.html`，逐条确认：
+
+- [ ] 文件大小 > 2KB（防止内容截断）
+- [ ] 包含 `<!DOCTYPE html>`
+- [ ] 包含 `<html` 和 `</html>`
+- [ ] 包含 `<head>` / `</head>` 和 `<body>` / `</body>`
+- [ ] `<script` 与 `</script>` 标签数量完全相等
+- [ ] 包含 Vue3 CDN 引用：`fp.yangcong345.com/.../vue.global.prod.min`
+- [ ] 包含 Element Plus CSS 引用：`fp.yangcong345.com/.../element-38098fc849a985d85be870cf856da4a1.css`（管理后台）
+- [ ] 包含 Element Plus JS 引用：`fp.yangcong345.com/.../element-f355e990744f69cea3292feaf7b43b40.js`（管理后台）
+- [ ] 若使用图表，包含 ECharts 引用：`fp.yangcong345.com/.../echarts.min-b91b9de4da1677c82825c679112da8b2.js`
+- [ ] 包含 Vue 应用挂载：`.mount('#app')` 或 `.mount("#app")`
+- [ ] JS 代码大括号 `{}` 已配对（无明显截断）
+
+### 第二步：检查 JS 运行时安全性
+
+审查 `<script>` 内的 JS 代码，排查以下高频运行时错误根因：
+
+**空值访问（防止 `Uncaught TypeError: Cannot read properties of null/undefined`）**
+
+- [ ] `setup()` 中所有 `ref` / `reactive` 变量均已给初始值，禁止使用 `null` 或 `undefined` 作为初始值：
+  - 字符串 → `ref('')`
+  - 数字 → `ref(0)`
+  - 布尔 → `ref(false)`
+  - 数组 → `ref([])`
+  - 对象 → `ref({})` 或 `reactive({})`
+- [ ] 访问嵌套属性时使用可选链 `?.`，例如 `item?.title` 而非 `item.title`
+- [ ] `v-for` 绑定的数组初始值为 `[]`，不得为 `null`
+- [ ] `v-if` 条件涉及对象属性时，先判断对象是否存在（`obj && obj.prop` 或 `obj?.prop`）
+
+**DOM 操作安全**
+
+- [ ] 若有 `document.getElementById` / `querySelector`，返回值使用前先判断非空
+
+### 第三步：修复所有未通过项
+
+若发现任何检查项未通过，**立即在文件中修复**：
+
+| 问题类型                     | 修复方式                                 |
+| ---------------------------- | ---------------------------------------- |
+| 标签未闭合                   | 补全缺失的闭合标签                       |
+| `</script>` 数量不足         | 补全缺失的 `</script>`                   |
+| Vue 挂载调用缺失             | 在 script 末尾补全 `.mount('#app')`      |
+| `ref` 初始值为 `null`        | 改为对应类型的空值（`''` / `[]` / `{}`） |
+| 嵌套属性访问无保护           | 改为可选链写法 `?.`                      |
+| 文件被截断                   | 重新生成完整文件                         |
+| CDN 引用非 templates.md 标准 | 替换为 templates.md 第 166-179 行的 URL  |
+
+修复完成后，**重新执行第一步和第二步**，直到所有检查项全部通过。
+
+### 第四步：确认完成
+
+所有检查通过后，输出确认信息：
+
+```
+✅ 原型图验证通过
+   路径：docs/prototype/index.html
+   文件大小：{实际大小}
+   HTML 结构：完整
+   JS 安全性：无空值风险
+```
 
 ---
 

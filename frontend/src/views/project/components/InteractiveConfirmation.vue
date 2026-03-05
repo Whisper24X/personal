@@ -93,54 +93,50 @@
           </div>
         </div>
 
-        <!-- GeneratePrototype: 左右分栏布局 -->
+        <!-- GeneratePrototype: 上下布局 -->
         <div v-if="isPrototypeAction" class="prototype-layout">
-          <el-row :gutter="20">
-            <!-- 左侧：PRD内容 -->
-            <el-col :span="12">
-              <div class="prd-content-section">
-                <div class="section-header">
-                  <h4>
-                    <el-icon><Document /></el-icon>
-                    PRD内容
-                  </h4>
-                  <el-button-group size="small">
-                    <el-button :type="viewMode === 'preview' ? 'primary' : ''" @click="viewMode = 'preview'"> 预览 </el-button>
-                    <el-button :type="viewMode === 'full' ? 'primary' : ''" @click="viewMode = 'full'"> 完整内容 </el-button>
-                  </el-button-group>
-                </div>
-                <el-scrollbar class="prd-scrollbar">
-                  <div v-if="prdLoading" class="loading-container">
-                    <el-skeleton :rows="5" animated />
-                  </div>
-                  <div v-else-if="!prdContent" class="empty-container">
-                    <el-empty description="PRD内容未找到" />
-                  </div>
-                  <div v-else class="prd-content-display">
-                    <el-input
-                      v-if="isEditing"
-                      v-model="editedContent"
-                      type="textarea"
-                      :rows="viewMode === 'preview' ? 15 : 25"
-                      placeholder="编辑PRD内容..."
-                    />
-                    <pre v-else class="content-text">{{ displayPRDContent }}</pre>
-                  </div>
-                </el-scrollbar>
-                <div v-if="viewMode === 'preview' && prdContent && prdContent.length > 1000" class="preview-notice">
-                  <el-alert title="这是内容预览，点击'完整内容'查看全部" type="info" :closable="false" show-icon />
-                </div>
+          <!-- 上方：PRD内容 -->
+          <div class="prd-content-section">
+            <div class="section-header">
+              <h4>
+                <el-icon><Document /></el-icon>
+                PRD内容
+              </h4>
+              <el-button-group size="small">
+                <el-button :type="viewMode === 'preview' ? 'primary' : ''" @click="viewMode = 'preview'"> 预览 </el-button>
+                <el-button :type="viewMode === 'full' ? 'primary' : ''" @click="viewMode = 'full'"> 完整内容 </el-button>
+              </el-button-group>
+            </div>
+            <el-scrollbar class="prd-scrollbar">
+              <div v-if="prdLoading" class="loading-container">
+                <el-skeleton :rows="5" animated />
               </div>
-            </el-col>
+              <div v-else-if="!prdContent" class="empty-container">
+                <el-empty description="PRD内容未找到" />
+              </div>
+              <div v-else class="prd-content-display">
+                <el-input
+                  v-if="isEditing"
+                  v-model="editedContent"
+                  type="textarea"
+                  :rows="viewMode === 'preview' ? 15 : 25"
+                  placeholder="编辑PRD内容..."
+                />
+                <pre v-else class="content-text">{{ displayPRDContent }}</pre>
+              </div>
+            </el-scrollbar>
+            <div v-if="viewMode === 'preview' && prdContent && prdContent.length > 1000" class="preview-notice">
+              <el-alert title="这是内容预览，点击'完整内容'查看全部" type="info" :closable="false" show-icon />
+            </div>
+          </div>
 
-            <!-- 右侧：原型预览 -->
-            <el-col :span="12">
-              <VersionPrototypePreview v-if="projectId && prototypePreviewUrl" :preview-url="prototypePreviewUrl" :auto-load="true" />
-              <div v-else-if="projectId" class="empty-prototype">
-                <el-empty description="正在加载原型预览..." />
-              </div>
-            </el-col>
-          </el-row>
+          <!-- 下方：原型预览 -->
+          <div class="prototype-preview-section">
+            <VersionPrototypePreview v-if="projectId && prototypePreviewUrl" :preview-url="prototypePreviewUrl" :auto-load="true" />
+            <div v-else-if="projectId" class="empty-prototype">
+              <el-empty description="正在加载原型预览..." />
+            </div>
+          </div>
         </div>
 
         <!-- 非GeneratePrototype: 原有内容显示 -->
@@ -232,17 +228,11 @@
             :disabled="isDeployFailed"
             @click="handleAction('continue')"
           >
-            <div class="button-content">
-              <span class="shortcut">C</span>
-              <span>{{ isIdle ? '继续下一步' : '确认继续' }}</span>
-            </div>
+            {{ isIdle ? '继续下一步' : '确认继续' }}
           </el-button>
 
           <el-button v-if="!isIdle && !isEditing && (!hasFiles || selectedFileIndex < 0)" type="primary" size="large" :icon="Edit" @click="startEdit">
-            <div class="button-content">
-              <span class="shortcut">E</span>
-              <span>编辑内容</span>
-            </div>
+            编辑内容
           </el-button>
 
           <el-button v-if="!isIdle && isEditing" type="success" size="large" :icon="Check" :loading="loading" @click="saveEdit">
@@ -252,33 +242,15 @@
           <el-button v-if="!isIdle && isEditing" size="large" :icon="Close" @click="cancelEdit"> 取消编辑 </el-button>
 
           <el-button v-if="!isIdle && !isEditing" type="warning" size="large" :icon="Refresh" :loading="loading" @click="handleAction('regenerate')">
-            <div class="button-content">
-              <span class="shortcut">R</span>
-              <span>重新生成</span>
-            </div>
+            重新生成
           </el-button>
 
           <el-button v-if="!isEditing" type="info" size="large" plain :icon="DArrowRight" :loading="loading" @click="handleAction('skip')">
-            <div class="button-content">
-              <span class="shortcut">S</span>
-              <span>跳过</span>
-            </div>
+            跳过
           </el-button>
 
-          <el-button v-if="!isEditing" type="danger" size="large" plain :icon="CloseBold" :loading="loading" @click="confirmQuit">
-            <div class="button-content">
-              <span class="shortcut">Q</span>
-              <span>退出</span>
-            </div>
-          </el-button>
+          <el-button v-if="!isEditing" type="danger" size="large" plain :icon="CloseBold" :loading="loading" @click="confirmQuit"> 退出 </el-button>
         </div>
-
-        <el-alert class="shortcuts-hint" type="info" :closable="false">
-          <template #title>
-            <el-icon><InfoFilled /></el-icon>
-            快捷键提示: 按 C/E/R/S/Q 快速执行对应操作
-          </template>
-        </el-alert>
       </div>
     </component>
   </div>
@@ -342,7 +314,7 @@ export default { components: { ConfirmationHeader } };
 </script>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import {
   Check,
@@ -354,7 +326,6 @@ import {
   Document,
   DocumentCopy,
   FolderOpened,
-  InfoFilled,
   UserFilled,
   SetUp,
   Cpu,
@@ -792,27 +763,8 @@ async function downloadZip() {
   }
 }
 
-// Keyboard shortcuts
-function handleKeyPress(event: KeyboardEvent) {
-  if (isEditing.value) return;
-  const key = event.key.toLowerCase();
-  const actions: Record<string, () => void> = {
-    c: () => handleAction('continue'),
-    e: startEdit,
-    r: () => handleAction('regenerate'),
-    s: () => handleAction('skip'),
-    q: confirmQuit,
-  };
-  actions[key]?.();
-}
-
 onMounted(async () => {
   await roleActionStore.fetchRolesAndActions();
-  document.addEventListener('keypress', handleKeyPress);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('keypress', handleKeyPress);
 });
 </script>
 
@@ -1009,28 +961,6 @@ onUnmounted(() => {
   min-width: 140px;
 }
 
-.button-content {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.shortcut {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 4px;
-  font-weight: bold;
-  font-size: 12px;
-}
-
-.shortcuts-hint {
-  margin-top: 16px;
-}
-
 .zip-download-section {
   margin-bottom: 16px;
 }
@@ -1058,16 +988,26 @@ onUnmounted(() => {
 /* Prototype layout styles */
 .prototype-layout {
   margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .prd-content-section {
   border: 1px solid var(--el-border-color);
   border-radius: 4px;
   padding: 16px;
-  height: 600px;
+  height: 400px;
   display: flex;
   flex-direction: column;
   background-color: var(--el-bg-color-page);
+}
+
+.prototype-preview-section {
+  min-height: 500px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  overflow: hidden;
 }
 
 .prd-content-section .section-header {
@@ -1129,10 +1069,6 @@ onUnmounted(() => {
     flex-direction: column;
     gap: 12px;
     align-items: flex-start;
-  }
-
-  .prototype-layout .el-col {
-    margin-bottom: 16px;
   }
 }
 </style>

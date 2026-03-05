@@ -10,11 +10,7 @@
           <span class="value">{{ platformName }}</span>
         </div>
         <div class="actions-row">
-          <VersionSelector
-            v-if="platformId"
-            :platform-id="platformId"
-            @version-changed="handleVersionChanged"
-          />
+          <VersionSelector v-if="platformId" :platform-id="platformId" :application-id="applicationId" @version-changed="handleVersionChanged" />
           <el-dropdown trigger="click" @command="handleDownloadCommand">
             <el-button type="primary" size="small">
               <el-icon class="el-icon--left"><Download /></el-icon>
@@ -58,6 +54,7 @@ import VersionSelector from './VersionSelector.vue';
 
 defineProps<{
   platformId?: string;
+  applicationId?: string;
   platformName: string;
   userIdea?: string;
 }>();
@@ -156,6 +153,6 @@ function handleVersionChanged(version: any) {
   font-size: 14px;
   white-space: pre-wrap;
   word-break: break-word;
-  border-left: 3px solid #409EFF;
+  border-left: 3px solid #409eff;
 }
 </style>

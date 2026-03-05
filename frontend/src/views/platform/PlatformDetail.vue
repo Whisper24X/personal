@@ -2,11 +2,7 @@
   <div class="platform-detail">
     <!-- Error state: Platform not found -->
     <div v-if="!loading && error && !currentPlatform" class="error-state">
-      <el-result
-        icon="error"
-        title="平台不存在"
-        sub-title="该平台可能已被删除或ID不正确"
-      >
+      <el-result icon="error" title="平台不存在" sub-title="该平台可能已被删除或ID不正确">
         <template #extra>
           <el-button type="primary" @click="router.push('/business-lines')">返回业务线列表</el-button>
         </template>
@@ -20,11 +16,7 @@
 
     <!-- Platform content -->
     <div v-else-if="currentPlatform" class="detail-content">
-      <PageHeader
-        :title="currentPlatform.name || '平台详情'"
-        :description="currentPlatform.idea"
-        :back-handler="handleBack"
-      >
+      <PageHeader :title="currentPlatform.name || '平台详情'" :description="currentPlatform.idea" :back-handler="handleBack">
         <template #extra>
           <el-button-group>
             <el-button v-if="!isCompleted" type="primary" @click="continueWorkflow">
@@ -55,14 +47,14 @@
           <el-descriptions-item label="创建时间">
             {{ formatDate(currentPlatform.createdAt || currentPlatform.created_at) }}
           </el-descriptions-item>
-          <el-descriptions-item label="完成时间" v-if="currentPlatform.completedAt">
+          <el-descriptions-item v-if="currentPlatform.completedAt" label="完成时间">
             {{ formatDate(currentPlatform.completedAt || currentPlatform.completed_at) }}
           </el-descriptions-item>
         </el-descriptions>
       </el-card>
 
       <!-- Messages -->
-      <el-card class="messages-card" v-if="messages.length > 0">
+      <el-card v-if="messages.length > 0" class="messages-card">
         <template #header>
           <div class="card-header">
             <span>执行消息</span>
@@ -70,19 +62,14 @@
           </div>
         </template>
         <el-timeline>
-          <el-timeline-item
-            v-for="(msg, index) in messages.slice(0, 10)"
-            :key="index"
-            :timestamp="msg.timestamp"
-            placement="top"
-          >
+          <el-timeline-item v-for="(msg, index) in messages.slice(0, 10)" :key="index" :timestamp="msg.timestamp" placement="top">
             <p>{{ msg.content }}</p>
           </el-timeline-item>
         </el-timeline>
       </el-card>
 
       <!-- Documents -->
-      <el-card class="documents-card" v-if="documents.length > 0">
+      <el-card v-if="documents.length > 0" class="documents-card">
         <template #header>
           <div class="card-header">
             <span>生成文档</span>
@@ -94,9 +81,7 @@
           <el-table-column prop="type" label="类型" width="120" />
           <el-table-column label="操作" width="120">
             <template #default="{ row }">
-              <el-button type="primary" size="small" @click="viewDocument(row)">
-                查看
-              </el-button>
+              <el-button type="primary" size="small" @click="viewDocument(row)"> 查看 </el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -107,9 +92,7 @@
         <template #header>
           <div class="card-header">
             <span>知识库</span>
-            <el-button type="primary" size="small" @click="goToKnowledgeBase">
-              管理知识库
-            </el-button>
+            <el-button type="primary" size="small" @click="goToKnowledgeBase"> 管理知识库 </el-button>
           </div>
         </template>
         <p>管理该平台相关的知识文档，用于增强AI生成效果。</p>
@@ -130,7 +113,7 @@
           <p>为该平台配置专用的 CLI API Key，该平台的所有版本在执行 CLI 操作时将优先使用此 Key。</p>
           <div v-if="apiKeyStatus" class="api-key-status">
             <el-tag :type="apiKeyStatus.hasApiKey ? 'success' : 'info'" size="large">
-              <el-icon style="margin-right: 4px;">
+              <el-icon style="margin-right: 4px">
                 <Key v-if="apiKeyStatus.hasApiKey" />
                 <InfoFilled v-else />
               </el-icon>
@@ -142,11 +125,7 @@
     </div>
 
     <!-- API Key Dialog -->
-    <PlatformApiKeyDialog
-      v-model="showApiKeyDialog"
-      :platform-id="platformId"
-      @updated="handleApiKeyUpdated"
-    />
+    <PlatformApiKeyDialog v-model="showApiKeyDialog" :platform-id="platformId" @updated="handleApiKeyUpdated" />
   </div>
 </template>
 
@@ -187,20 +166,29 @@ const isCompleted = computed(() => currentPlatform.value?.status === 'completed'
 
 const statusType = computed(() => {
   switch (currentPlatform.value?.status) {
-    case 'completed': return 'success';
-    case 'running': return 'warning';
-    case 'failed': return 'danger';
-    default: return 'info';
+    case 'completed':
+      return 'success';
+    case 'running':
+      return 'warning';
+    case 'failed':
+      return 'danger';
+    default:
+      return 'info';
   }
 });
 
 const statusText = computed(() => {
   switch (currentPlatform.value?.status) {
-    case 'completed': return '已完成';
-    case 'running': return '进行中';
-    case 'failed': return '失败';
-    case 'pending': return '待执行';
-    default: return '未知';
+    case 'completed':
+      return '已完成';
+    case 'running':
+      return '进行中';
+    case 'failed':
+      return '失败';
+    case 'pending':
+      return '待执行';
+    default:
+      return '未知';
   }
 });
 
@@ -209,7 +197,7 @@ onMounted(async () => {
   await platformStore.fetchMessages(platformId);
   await platformStore.fetchDocuments(platformId);
   await loadApiKeyStatus();
-  
+
   if (currentPlatform.value) {
     businessLineId.value = currentPlatform.value.applicationId || currentPlatform.value.application_id || '';
   }
@@ -217,7 +205,7 @@ onMounted(async () => {
 
 async function loadApiKeyStatus() {
   try {
-    const response = await apiClient.getPlatformCliApiKey(platformId) as any;
+    const response = (await apiClient.getPlatformCliApiKey(platformId)) as any;
     apiKeyStatus.value = {
       hasApiKey: response.hasApiKey || false,
       maskedKey: response.maskedKey || null,
@@ -240,8 +228,20 @@ function handleBack() {
   }
 }
 
-function continueWorkflow() {
-  router.push(`/platform/${platformId}/workflow`);
+async function continueWorkflow() {
+  const appId = currentPlatform.value?.applicationId || currentPlatform.value?.application_id || platformId;
+  try {
+    const response = (await apiClient.getActivePlatformVersion(platformId)) as any;
+    const activeVersionId = response?.version?.id;
+    if (activeVersionId) {
+      router.push(`/platform/workflow/${appId}/${platformId}/${activeVersionId}`);
+    } else {
+      // 无激活版本时跳转到版本列表
+      router.push(`/platform/${platformId}/versions`);
+    }
+  } catch {
+    router.push(`/platform/${platformId}/versions`);
+  }
 }
 
 function viewDocument(doc: any) {
