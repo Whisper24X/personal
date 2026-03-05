@@ -14,6 +14,8 @@ import { buildCLIModePrompt } from '../utils/document/CLIPromptBuilder';
 export interface AutomationPlanningOptions extends WorkspaceOptions {
   // Inherits all options from WorkspaceOptions
   testUrl?: string; // Optional URL to test against
+  /** 按用例类型选用的部署 URL 映射（类型 -> URL），由 readDeployResultUrlMap 填充 */
+  deployUrlMap?: Record<string, string>;
   /** Enable MCP validation after JSON generation (default: false) */
   enableMCPValidation?: boolean;
   /** Enable MCP auto-fix for detected issues (default: false) */
@@ -107,7 +109,10 @@ export class AutomationPlanning extends BaseAction {
       let validationResults = '';
       let jsonScriptFiles: Array<{ id: string; filename: string; content: string }> = [];
       const sampleTestCases = this.extractSampleTestCases(testCases, 50);
-      const testUrl = options?.testUrl || this.extractUrlFromTestCases(testCases);
+      const workspaceDirForTest = options ? this.getWorkspaceDir({ ...options, documentType: 'TEST' }) : '';
+      const deployUrl = options && workspaceDirForTest ? await this.readDeployResultBaseUrl(workspaceDirForTest) : undefined;
+      const deployUrlMap = options && workspaceDirForTest ? await this.readDeployResultUrlMap(workspaceDirForTest) : {};
+      const testUrl = options?.testUrl || deployUrl || this.extractUrlFromTestCases(testCases);
       const passedCases = sampleTestCases.filter((tc) => tc.steps && tc.steps.length > 0);
 
       if (passedCases.length > 0) {
@@ -116,7 +121,7 @@ export class AutomationPlanning extends BaseAction {
           withStepsCount: passedCases.length,
           testUrl,
         });
-        jsonScriptFiles = await this.generateStagehandScripts(passedCases, testUrl, options);
+        jsonScriptFiles = await this.generateStagehandScripts(passedCases, testUrl, options, deployUrlMap);
         validationResults = '## 自动化用例生成\n\n已为提取的用例生成 JSON 文件。';
         logger.info('AutomationPlanning: JSON generation completed', {
           jsonFilesCount: jsonScriptFiles.length,
@@ -276,7 +281,14 @@ export class AutomationPlanning extends BaseAction {
       await fs.mkdir(autoDir, { recursive: true });
       logger.debug('AutomationPlanning: Ensured auto directory exists', { autoDir });
 
-      const prompt = this.buildCLIPrompt(workspaceDir, options);
+      const deployUrlMap = await this.readDeployResultUrlMap(workspaceDir);
+      const effectiveTestUrl =
+        (Object.keys(deployUrlMap).length > 0 ? deployUrlMap['统一入口'] || Object.values(deployUrlMap)[0] : undefined) ?? options?.testUrl;
+      const prompt = this.buildCLIPrompt(workspaceDir, {
+        ...options,
+        testUrl: effectiveTestUrl,
+        deployUrlMap: Object.keys(deployUrlMap).length > 0 ? deployUrlMap : undefined,
+      });
       const systemPrompt = await this.buildCLISystemPrompt();
 
       logger.info('AutomationPlanning: Executing CLI tool', {
@@ -359,22 +371,24 @@ export class AutomationPlanning extends BaseAction {
 
 ## 输出要求
 
-- 生成物：每个测试用例对应一个 **.js** 文件（Playwright 脚本），不要生成 JSON。
+- **仅针对 UI/功能测试用例生成脚本**：只为文档中「第二部分」或功能/界面类用例（如类型为「管理后台」、用例ID 为 TC-xxx 的列表）生成 Playwright 脚本。**不要**为「第三部分：接口测试用例」、用例ID 为 **API-xxx** 的接口用例生成脚本（接口用例由接口自动化流程单独生成到 docs/test/auto-api）。
+- 生成物：每个符合条件的测试用例对应一个 **.js** 文件（Playwright 脚本），不要生成 JSON。
 - 输出目录：**所有脚本必须写入 docs/test/auto**（相对当前 workspace 的 docs/test/auto），不要写入 /tmp 或其它目录。
 - 遵循 playwright-skill 约定：
   - 使用 \`const { chromium } = require('playwright')\`，脚本内使用 \`(async () => { ... })()\` 等自执行异步函数。
   - URL 使用顶部常量（如 \`const TARGET_URL = '...'\`）参数化，便于配置。
   - 默认 \`headless: false\`，除非用户明确要求无头模式。
   - 每个脚本自包含：打开页面、执行步骤、断言、关闭浏览器。
-
-## playwright-skill 参考
+  - **前置条件与登录**：若用例表格中的「前置条件」包含「已登录」「登录管理后台」「用户已登录」等，脚本必须在执行业务步骤前先执行登录：登录账号与密码由运行环境从 **skills/playwright-skill/login.md** 读取并注入为 \`LOGIN_USER\`、\`LOGIN_PASSWORD\`；脚本使用 \`process.env.LOGIN_USER\` 与 \`process.env.LOGIN_PASSWORD\`（或顶部常量 \`const LOGIN_USER = process.env.LOGIN_USER || ''\`、\`const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || ''\`），打开目标站点后若被重定向到登录页（如 URL 含 \`/login\`），则填写账号密码并提交，**等待跳转**须用 \`page.waitForURL((url) => !url.href.includes('/login'), { timeout: 15000 })\`，注意回调参数 \`url\` 是 URL 对象，必须用 \`url.href.includes(...)\`，禁止写 \`url.includes(...)\`（会报 url.includes is not a function）；若未配置则抛出明确提示（如「需要登录。请配置 skills/playwright-skill/login.md 或设置环境变量 LOGIN_USER 和 LOGIN_PASSWORD」）。登录提交后若 waitForURL 超时未离开登录页，必须 throw new Error(...)，不得仅等待固定时间后继续。
+  - **断言与失败**：预期结果未满足时（如关键元素未出现、仍停留在登录页、文案不符）必须 throw new Error('...') 或 process.exit(1)，不得仅 console.log 后正常结束，否则执行引擎会按退出码 0 误判为成功。
+  - **路径指引**：TEST.md 中若存在「路径指引」小节及表格（页面/场景、操作路径），生成脚本时**必须**使用该表格。当用例前置条件或 Given 涉及表格中的页面（如「进入商品创建页面」「定金商品创建页面」）时，进入该页面的步骤须**严格按照表格中的操作路径**依次通过点击菜单/链接实现（如先点击「商品管理」，再「平台商品管理」，再「新增平台商品」，再输入/选择等），使用 \`page.getByRole('link', { name: '...' })\` 或 \`page.locator('text=...')\` 等，文案须与路径指引一致，不得臆造或跳过中间层级。
 
 ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本，每个用例一个独立 .js 文件。'}
 
 ## 文件命名
 
-- 格式：\`playwright-test-TC-XXX-用例简述.js\`（例如 \`playwright-test-TC-001-用户登录-正确账号密码登录成功.js\`）。
-- 从 TEST.md / TEST_REVIEW.md 解析每个用例的编号与名称，为每个用例生成一个脚本文件。`;
+- 格式：\`playwright-test-TC-XXX-用例简述.js\`（例如 \`playwright-test-TC-001-用户登录-正确账号密码登录成功.js\`）。仅对 TC-xxx 类用例生成，不要生成 playwright-test-API-xxx 等接口脚本。
+- 从 TEST.md / TEST_REVIEW.md 的**功能/UI 用例部分**解析每个用例的编号与名称，为每个符合条件的用例生成一个脚本文件。`;
   }
 
   /**
@@ -427,6 +441,56 @@ ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本�
   }
 
   /**
+   * 解析 deployResult.md 中所有「标签: URL」，返回映射表（如 管理后台 -> url）
+   */
+  private async readDeployResultUrlMap(workspaceDir: string): Promise<Record<string, string>> {
+    const baseWorkspaceDir = workspaceDir.replace(/\/docs\/test$/, '');
+    const deployResultPath = path.join(baseWorkspaceDir, 'docs', 'deploy', 'deployResult.md');
+
+    try {
+      const content = await fs.readFile(deployResultPath, 'utf-8');
+      const map: Record<string, string> = {};
+      // 匹配「标签: URL」或「标签 URL」（冒号可选），支持中文顿号、逗号等分隔
+      const regex = /([^\s,，；]+?)\s*[：:]?\s*(https?:\/\/[^\s,，；)、]+)/g;
+      let match: RegExpExecArray | null;
+      while ((match = regex.exec(content)) !== null) {
+        const label = match[1].trim();
+        const url = match[2].trim();
+        if (label && url && !map[label]) {
+          map[label] = url;
+        }
+      }
+      if (Object.keys(map).length > 0) {
+        logger.debug('AutomationPlanning: Resolved deploy URL map', { deployResultPath, keys: Object.keys(map) });
+      }
+      return map;
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        logger.debug('AutomationPlanning: deployResult.md not found', { deployResultPath });
+      } else {
+        logger.warn('AutomationPlanning: Failed to read deployResult.md', {
+          deployResultPath,
+          error: err?.message ?? String(err),
+        });
+      }
+      return {};
+    }
+  }
+
+  /**
+   * 读取 workspace 下 docs/deploy/deployResult.md 中的部署地址（优先「统一入口」）
+   * 用于在生成 Playwright 脚本时把打开页面的 URL 映射进脚本。
+   */
+  private async readDeployResultBaseUrl(workspaceDir: string): Promise<string | undefined> {
+    const map = await this.readDeployResultUrlMap(workspaceDir);
+    if (map['统一入口']) {
+      return map['统一入口'];
+    }
+    const firstKey = Object.keys(map)[0];
+    return firstKey ? map[firstKey] : undefined;
+  }
+
+  /**
    * 构建 CLI 模式的 Prompt（Playwright 脚本生成到 docs/test/auto）
    */
   private buildCLIPrompt(workspaceDir: string, options?: AutomationPlanningOptions): string {
@@ -434,11 +498,27 @@ ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本�
     const inputDir = `${baseWorkspaceDir}/docs/test`;
     const outputDir = `${baseWorkspaceDir}/docs/test/auto`;
 
-    const testUrl = options?.testUrl || '';
+    const deployUrlMap = options?.deployUrlMap;
+    const hasUrlMap = deployUrlMap && Object.keys(deployUrlMap).length > 0;
+    let systemContext: string | undefined;
+    if (hasUrlMap) {
+      const lines = ['测试目标 URL 按用例类型选用（每个用例见 TEST.md 中该用例表格的「类型」列）：'];
+      for (const [label, url] of Object.entries(deployUrlMap)) {
+        lines.push(`- ${label}: ${url}`);
+      }
+      lines.push('若类型未在上表则使用「统一入口」；若无则使用表中第一个 URL。');
+      lines.push('脚本中的 TARGET_URL 必须与上表所列 URL 完全一致，保留末尾斜杠（如有），不得自行去掉。');
+      systemContext = lines.join('\n');
+    } else {
+      const testUrl = options?.testUrl || '';
+      systemContext = testUrl ? `测试目标 URL: ${testUrl}` : undefined;
+    }
 
     const taskPoints = [
       '从输入文件夹 docs/test 读取 TEST.md 或 TEST_REVIEW.md（优先 TEST_REVIEW.md）',
       '解析测试用例，提取每个用例的编号、名称、前置条件、测试步骤、预期结果',
+      '若 TEST.md 中存在「路径指引」表格，脚本中进入页面的步骤须按表格中的**操作路径**依次点击（如 商品管理 → 平台商品管理 → 新增平台商品 → 选择商品类型为「定金」），不得臆造路径；路径中的文案用于 locator/getByRole 的 name 或 text',
+      '若用例前置条件包含「已登录」或「登录管理后台」，脚本须先使用 LOGIN_USER/LOGIN_PASSWORD 执行登录，再执行业务步骤',
       '按 playwright-skill 约定为每个测试用例生成一个 Playwright JavaScript 脚本（.js）',
       '脚本须自包含：require("playwright")、TARGET_URL 常量、headless: false、步骤与断言、browser.close()',
       '文件命名：playwright-test-TC-XXX-用例简述.js（例如 playwright-test-TC-001-用户登录-正确账号密码登录成功.js）',
@@ -452,7 +532,7 @@ ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本�
       outputFileName: 'playwright-test-*.js',
       taskDescription: '使用 playwright-skill 约定，根据测试用例文档生成 Playwright 自动化测试脚本到 docs/test/auto',
       taskPoints,
-      systemContext: testUrl ? `测试目标 URL: ${testUrl}` : undefined,
+      systemContext,
       includeKnowledgeInput: true,
     });
   }
@@ -464,8 +544,8 @@ ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本�
   private extractSampleTestCases(
     testCases: string,
     maxCount?: number
-  ): Array<{ id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string }> {
-    const samples: Array<{ id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string }> = [];
+  ): Array<{ id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string; caseType?: string }> {
+    const samples: Array<{ id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string; caseType?: string }> = [];
 
     // Preprocess: avoid code block extraction when content is already a full document (starts with #)
     // so we don't truncate at the first inner ``` and lose the test case section
@@ -539,7 +619,8 @@ ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本�
 
     const lines = processedContent.split('\n');
 
-    let currentTestCase: { id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string } | null = null;
+    let currentTestCase: { id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string; caseType?: string } | null =
+      null;
     let inSteps = false;
     let inExpectedResults = false;
 
@@ -580,6 +661,7 @@ ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本�
           steps: [],
           expectedResults: [],
           precondition: '',
+          caseType: undefined,
         };
         inSteps = false;
         inExpectedResults = false;
@@ -594,9 +676,9 @@ ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本�
         }
       }
 
-      // Extract precondition (前置条件) - handle both table format and text format
+      // Extract precondition (前置条件) and case type (类型) - handle both table format and text format
       if (currentTestCase) {
-        // Table format: "| 前置条件 | 用户已登录系统 |"
+        // Table format: "| 前置条件 | 用户已登录系统 |" or "| 类型     | 管理后台                       |"
         if (trimmed.startsWith('|') && trimmed.includes('前置条件')) {
           const parts = trimmed
             .split('|')
@@ -608,6 +690,20 @@ ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本�
             logger.debug('AutomationPlanning: Extracted precondition from table', {
               testCaseId: currentTestCase.id || 'unknown',
               precondition: currentTestCase.precondition,
+            });
+          }
+        }
+        if (trimmed.startsWith('|') && trimmed.includes('类型')) {
+          const parts = trimmed
+            .split('|')
+            .map((p) => p.trim())
+            .filter((p) => p);
+          const typeIndex = parts.findIndex((p) => p.includes('类型'));
+          if (typeIndex >= 0 && typeIndex + 1 < parts.length) {
+            currentTestCase.caseType = parts[typeIndex + 1].trim();
+            logger.debug('AutomationPlanning: Extracted caseType from table', {
+              testCaseId: currentTestCase.id || 'unknown',
+              caseType: currentTestCase.caseType,
             });
           }
         }
@@ -997,9 +1093,10 @@ ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本�
    * 严格按照测试用例的步骤顺序生成 JSON 文件，确保每个步骤都被正确转换
    */
   private async generateStagehandScripts(
-    testCases: Array<{ id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string }>,
+    testCases: Array<{ id: string; name: string; steps: string[]; expectedResults: string[]; precondition: string; caseType?: string }>,
     _url?: string,
-    _options?: AutomationPlanningOptions
+    _options?: AutomationPlanningOptions,
+    deployUrlMap?: Record<string, string>
   ): Promise<Array<{ id: string; filename: string; content: string }>> {
     logger.info('AutomationPlanning: generateStagehandScripts method started (generating JSON files)', {
       testCasesCount: testCases.length,
@@ -1042,6 +1139,16 @@ ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本�
           const safeSteps = (testCase.steps || []).filter((step) => step && step.trim());
           const expectedResults = (testCase.expectedResults || []).filter((er) => er && er.trim());
           const precondition = (testCase.precondition || '').trim();
+
+          // 按用例类型选用部署 URL（open 步骤用）
+          const caseBaseUrl =
+            deployUrlMap && testCase.caseType && deployUrlMap[testCase.caseType]
+              ? deployUrlMap[testCase.caseType]
+              : deployUrlMap && deployUrlMap['统一入口']
+                ? deployUrlMap['统一入口']
+                : deployUrlMap && Object.keys(deployUrlMap).length > 0
+                  ? Object.values(deployUrlMap)[0]
+                  : _url;
 
           // 查找前置用例：如果前置条件包含"登录"或"已登录"，找到登录用例（TC-001）
           // 注意：不能将当前用例自己作为前置条件用例
@@ -1120,6 +1227,12 @@ ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本�
               const { action, params } = this.parseStepAction(trimmedStep);
               const isLastStep = i === totalStepsCount - 1;
 
+              // 打开页面步骤：若无 url 则使用按用例类型解析的 caseBaseUrl
+              let resolvedParams = { ...params };
+              if (action === 'open' && !resolvedParams.url && caseBaseUrl) {
+                resolvedParams = { ...resolvedParams, url: caseBaseUrl };
+              }
+
               // 最后一个步骤包含预期结果（解析为对象格式）
               let expected: { type: 'url' | 'text' | 'element' | 'api' | 'cookie' | 'url_match'; value: string } | null = null;
               let waitFor: { type: 'toast' | 'element'; text?: string; selector?: string; timeout?: number } | undefined = undefined;
@@ -1147,7 +1260,7 @@ ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本�
               allSteps.push({
                 step: trimmedStep,
                 action,
-                params,
+                params: resolvedParams,
                 expected,
                 ...(waitFor && { waitFor }),
                 status: 'pending',

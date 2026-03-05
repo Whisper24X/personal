@@ -198,11 +198,13 @@ const EXECUTION_ACTIONS: ActionDefinition[] = [
   { name: 'Deploy', display_name: '部署', description: '部署应用程序', class_name: 'Deploy', category: 'execution' },
   { name: 'ExecuteSubtask', display_name: '执行子任务', description: '执行分解的子任务', class_name: 'ExecuteSubtask', category: 'execution' },
   { name: 'AutomationExecution', display_name: '自动化执行', description: '执行自动化任务', class_name: 'AutomationExecution', category: 'execution' },
+  { name: 'ApiAutomationExecution', display_name: '接口自动化执行', description: '执行 docs/test/auto-api 中的接口测试脚本并生成报告', class_name: 'ApiAutomationExecution', category: 'execution' },
 ];
 
 // Planning Actions
 const PLANNING_ACTIONS: ActionDefinition[] = [
   { name: 'AutomationPlanning', display_name: '自动化规划', description: '规划自动化方案', class_name: 'AutomationPlanning', category: 'planning' },
+  { name: 'ApiAutomationPlanning', display_name: '接口自动化规划', description: '根据 TEST.md 生成接口自动化脚本到 docs/test/auto-api', class_name: 'ApiAutomationPlanning', category: 'planning' },
   { name: 'ExecuteProjectManagement', display_name: '执行项目管理', description: '执行完整的项目管理流程（填充上下文、创建提案、验证格式、审查内容、评估故事点、验证评估）', class_name: 'ExecuteProjectManagement', category: 'planning' },
   { name: 'Coordinate', display_name: '协调', description: '协调团队工作', class_name: 'Coordinate', category: 'planning' },
 ];
@@ -240,7 +242,7 @@ export const actionDefinitions: ActionDefinition[] = [
  * 3. Architect: WriteDesign -> DesignReview -> ImproveDesign
  * 4. ProjectManager: ExecuteProjectManagement (完整项目管理流程：填充上下文 -> 创建提案 -> 验证格式 -> 审查内容 -> 评估故事点 -> 验证评估)
  * 5. Engineer: WriteCode -> ImproveCode -> Deploy
- * 6. AutomationEngineer: AutomationPlanning -> AutomationExecution
+ * 6. AutomationEngineer: AutomationPlanning -> AutomationExecution -> ApiAutomationPlanning -> ApiAutomationExecution
  */
 export const defaultWorkflowConfig: WorkflowConfig = {
   roles: [
@@ -290,8 +292,8 @@ export const defaultWorkflowConfig: WorkflowConfig = {
       profile: 'AutomationEngineer',
       name: 'Automation Engineer',
       order: 6,
-      actions: ['AutomationPlanning', 'AutomationExecution'],
-      watch_actions: ['ImproveTest'],
+      actions: ['AutomationPlanning', 'AutomationExecution', 'ApiAutomationPlanning', 'ApiAutomationExecution'],
+      watch_actions: ['ImproveTest', 'AutomationPlanning'],
     },
   ],
 };
@@ -347,6 +349,8 @@ export const actionsWithWorkspaceOptions: string[] = [
   // Automation actions
   'AutomationPlanning',
   'AutomationExecution',
+  'ApiAutomationPlanning',
+  'ApiAutomationExecution',
   
   // Project Management actions
   'ExecuteProjectManagement',
@@ -401,6 +405,8 @@ export const actionRelevanceMap: Record<string, string[]> = {
   // Automation Engineer actions (order 6, watch: ImproveTest)
   AutomationPlanning: ['ImproveTest'],
   AutomationExecution: ['AutomationPlanning'],
+  ApiAutomationPlanning: ['ImproveTest'],
+  ApiAutomationExecution: ['ApiAutomationPlanning'],
 };
 
 /**
@@ -494,6 +500,8 @@ export const actionDocumentTypeMap: Record<string, string> = {
   ExecuteSubtask: 'CODE',
   Deploy: 'CODE',
   AutomationExecution: 'TEST',
+  ApiAutomationPlanning: 'TEST',
+  ApiAutomationExecution: 'TEST',
   
   // Planning Actions (use appropriate document types)
   ExecuteProjectManagement: 'TASKS',
