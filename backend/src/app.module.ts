@@ -51,7 +51,7 @@ const infrastructureDatabaseModule = TypeOrmModule.forRootAsync({
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig, authConfig, appConfig],
-      envFilePath: ['.env'],
+      envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
     }),
     infrastructureDatabaseModule,
     I18nModule.forRootAsync({

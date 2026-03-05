@@ -6,7 +6,7 @@
   "private": true,
   "license": "MIT",
   "scripts": {
-    "typeorm": "env-cmd ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js",
+    "typeorm": "env-cmd -f .env.${NODE_ENV:-development} ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js",
     "migration:generate": "npm run typeorm -- --dataSource=src/database/data-source.ts migration:generate",
     "postmigration:generate": "npm run lint -- --fix",
     "migration:create": "npm run typeorm -- migration:create",
@@ -18,7 +18,7 @@
     "postgenerate:resource:relational": "npm run lint -- --fix",
     "add:property:to-relational": "hygen property add-to-relational",
     "postadd:property:to-relational": "npm run lint -- --fix",
-    "seed:run:relational": "ts-node -r tsconfig-paths/register ./src/database/seeds/relational/run-seed.ts",
+    "seed:run:relational": "env-cmd -f .env.${NODE_ENV:-development} ts-node -r tsconfig-paths/register ./src/database/seeds/relational/run-seed.ts",
     "prebuild": "rimraf dist",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
@@ -34,7 +34,7 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "env-cmd jest --config ./test/jest-e2e.json",
+    "test:e2e": "env-cmd -f .env.${NODE_ENV:-test} jest --config ./test/jest-e2e.json",
     "test:e2e:relational:docker": "docker compose -f docker-compose.relational.test.yaml --env-file env-example-relational -p tests up -d --build && docker compose -f docker-compose.relational.test.yaml -p tests exec api /opt/wait-for-it.sh -t 0 localhost:3000 -- npm run test:e2e -- --watchAll --runInBand && docker compose -f docker-compose.relational.test.yaml -p tests down && docker compose -p tests rm -svf",
     "prepare": "is-ci || husky",
     "release": "release-it"

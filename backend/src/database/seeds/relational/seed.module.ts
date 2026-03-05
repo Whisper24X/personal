@@ -16,7 +16,7 @@ import { BusinessLineSeedModule } from './business-line/business-line-seed.modul
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig, appConfig],
-      envFilePath: ['.env'],
+      envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
     }),
     TypeOrmModule.forRootAsync({
       useClass: TypeOrmConfigService,
