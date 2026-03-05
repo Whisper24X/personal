@@ -16,6 +16,7 @@ import type {
   WorkflowTemplateNode,
   WorkflowTemplateNodeInput,
 } from '@/types/api/workflow'
+import ConfirmActionModal from '@/components/business/settings/modals/ConfirmActionModal.vue'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
 
@@ -92,6 +93,8 @@ const contextLoading = ref(false)
 const creatingMember = ref(false)
 const updatingMemberId = ref<string | null>(null)
 const removingMemberId = ref<string | null>(null)
+const memberRemoveConfirmOpen = ref(false)
+const memberRemoveTarget = ref<ProjectMember | null>(null)
 const savingConfig = ref(false)
 const memberFormModalOpen = ref(false)
 const configFormModalOpen = ref(false)
@@ -102,6 +105,8 @@ const workflowCreateModalOpen = ref(false)
 const workflowTemplateModalMode = ref<'create' | 'edit'>('create')
 const editingWorkflowTemplateId = ref('')
 const workflowTemplateActionId = ref('')
+const workflowDeleteConfirmOpen = ref(false)
+const workflowDeleteTarget = ref<WorkflowTemplate | null>(null)
 const workflowValidationMessage = ref('')
 const workflowTemplates = ref<WorkflowTemplate[]>([])
 const workflowKeyword = ref('')
@@ -922,7 +927,20 @@ const removeWorkflowTemplate = async (template: WorkflowTemplate) => {
     return
   }
 
-  if (!window.confirm(`确认删除模板「${template.name}」吗？`)) {
+  workflowDeleteTarget.value = template
+  workflowDeleteConfirmOpen.value = true
+}
+
+const setWorkflowDeleteConfirmOpen = (open: boolean) => {
+  workflowDeleteConfirmOpen.value = open
+  if (!open) {
+    workflowDeleteTarget.value = null
+  }
+}
+
+const confirmRemoveWorkflowTemplate = async () => {
+  const template = workflowDeleteTarget.value
+  if (!template || template.scope !== 'project') {
     return
   }
 
@@ -931,6 +949,7 @@ const removeWorkflowTemplate = async (template: WorkflowTemplate) => {
     await workflowApi.remove(template.id)
     await loadWorkflowTemplates(projectId.value)
     message.success('模板删除成功')
+    setWorkflowDeleteConfirmOpen(false)
   } catch (error) {
     message.error(toErrorMessage(error, '删除模板失败'))
   } finally {
@@ -1115,11 +1134,20 @@ const updateMemberRole = async (member: ProjectMember) => {
 }
 
 const removeMember = async (member: ProjectMember) => {
-  if (!projectId.value) {
-    return
-  }
+  memberRemoveTarget.value = member
+  memberRemoveConfirmOpen.value = true
+}
 
-  if (!window.confirm(`确认移除成员 ${member.userId} 吗？`)) {
+const setMemberRemoveConfirmOpen = (open: boolean) => {
+  memberRemoveConfirmOpen.value = open
+  if (!open) {
+    memberRemoveTarget.value = null
+  }
+}
+
+const confirmRemoveMember = async () => {
+  const member = memberRemoveTarget.value
+  if (!projectId.value || !member) {
     return
   }
 
@@ -1129,6 +1157,7 @@ const removeMember = async (member: ProjectMember) => {
     await projectsApi.removeMember(projectId.value, member.userId)
     await loadProjectData()
     message.success('移除成员成功')
+    setMemberRemoveConfirmOpen(false)
   } catch (error) {
     message.error(toErrorMessage(error, '移除成员失败'))
   } finally {
@@ -1202,6 +1231,8 @@ watch(
   () => {
     closeWorkflowAddMenu()
     closeWorkflowCopyModal()
+    setWorkflowDeleteConfirmOpen(false)
+    setMemberRemoveConfirmOpen(false)
     void loadProjectData()
   },
 )
