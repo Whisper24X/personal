@@ -28,10 +28,9 @@ export class RemoveFilesMailSocialFromUser1760000000000
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`);
 
     await queryRunner.query(
-      `CREATE TABLE IF NOT EXISTS "file" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "path" character varying NOT NULL, CONSTRAINT "PK_36b46d232307066b3a2c9ea3a1d" PRIMARY KEY ("id"))`,
+      `CREATE TABLE IF NOT EXISTS "file" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "path" character varying NOT NULL, CONSTRAINT "PK_36b46d232307066b3a2c9ea3a1d" PRIMARY KEY ("id"))`,
     );
     await queryRunner.query(
       `ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "provider" character varying NOT NULL DEFAULT 'email'`,

@@ -11,7 +11,7 @@ export class CreateTaskArtifactsAndNotifications1771002100000
     );
 
     await queryRunner.query(
-      `CREATE TABLE "task_artifacts" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "taskId" uuid NOT NULL, "taskNodeId" uuid, "artifactType" "public"."task_artifact_type_enum" NOT NULL, "name" character varying(200) NOT NULL, "downloadUrl" text, "content" text, "metadata" jsonb, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_c0c5d5f2dd29a70a7e3b955e6f3" PRIMARY KEY ("id"))`,
+      `CREATE TABLE "task_artifacts" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "taskId" uuid NOT NULL, "taskNodeId" uuid, "artifactType" "public"."task_artifact_type_enum" NOT NULL, "name" character varying(200) NOT NULL, "downloadUrl" text, "content" text, "metadata" jsonb, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_c0c5d5f2dd29a70a7e3b955e6f3" PRIMARY KEY ("id"))`,
     );
 
     await queryRunner.query(
@@ -31,7 +31,7 @@ export class CreateTaskArtifactsAndNotifications1771002100000
     );
 
     await queryRunner.query(
-      `CREATE TABLE "notification_settings" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "userId" uuid NOT NULL, "emailEnabled" boolean NOT NULL DEFAULT true, "webhookEnabled" boolean NOT NULL DEFAULT false, "webhookUrl" text, "inAppEnabled" boolean NOT NULL DEFAULT true, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_8c847f30ee24557b05296f40f4f" PRIMARY KEY ("id"))`,
+      `CREATE TABLE "notification_settings" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "userId" uuid NOT NULL, "emailEnabled" boolean NOT NULL DEFAULT true, "webhookEnabled" boolean NOT NULL DEFAULT false, "webhookUrl" text, "inAppEnabled" boolean NOT NULL DEFAULT true, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_8c847f30ee24557b05296f40f4f" PRIMARY KEY ("id"))`,
     );
 
     await queryRunner.query(
@@ -43,7 +43,7 @@ export class CreateTaskArtifactsAndNotifications1771002100000
     );
 
     await queryRunner.query(
-      `CREATE TABLE "notification_events" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "userId" uuid NOT NULL, "taskId" uuid, "eventType" character varying(120) NOT NULL, "title" character varying(200) NOT NULL, "content" text NOT NULL, "payload" jsonb, "readAt" TIMESTAMP, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_7f32217be3f5f0f74b24d4f6f3a" PRIMARY KEY ("id"))`,
+      `CREATE TABLE "notification_events" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "userId" uuid NOT NULL, "taskId" uuid, "eventType" character varying(120) NOT NULL, "title" character varying(200) NOT NULL, "content" text NOT NULL, "payload" jsonb, "readAt" TIMESTAMP, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_7f32217be3f5f0f74b24d4f6f3a" PRIMARY KEY ("id"))`,
     );
 
     await queryRunner.query(

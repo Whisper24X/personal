@@ -6,14 +6,13 @@ export class CreateProjectsWorkflowTasks1771002000000
   name = 'CreateProjectsWorkflowTasks1771002000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`);
 
     await queryRunner.query(
       `CREATE TYPE "public"."project_member_role_enum" AS ENUM('owner', 'maintainer', 'developer', 'viewer')`,
     );
 
     await queryRunner.query(
-      `CREATE TABLE "projects" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "businessLineId" uuid NOT NULL, "name" character varying(120) NOT NULL, "description" text, "gitUrl" text NOT NULL, "defaultBranch" character varying(120) NOT NULL DEFAULT 'main', "configJson" jsonb, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, CONSTRAINT "PK_6271df0a7aed1d6c0691ce6a279" PRIMARY KEY ("id"))`,
+      `CREATE TABLE "projects" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "businessLineId" uuid NOT NULL, "name" character varying(120) NOT NULL, "description" text, "gitUrl" text NOT NULL, "defaultBranch" character varying(120) NOT NULL DEFAULT 'main', "configJson" jsonb, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, CONSTRAINT "PK_6271df0a7aed1d6c0691ce6a279" PRIMARY KEY ("id"))`,
     );
 
     await queryRunner.query(
@@ -27,7 +26,7 @@ export class CreateProjectsWorkflowTasks1771002000000
     );
 
     await queryRunner.query(
-      `CREATE TABLE "project_members" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "projectId" uuid NOT NULL, "userId" uuid NOT NULL, "role" "public"."project_member_role_enum" NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "UQ_project_member_project_user" UNIQUE ("projectId", "userId"), CONSTRAINT "PK_d8ce26c87b1304f6f8f5d6f4054" PRIMARY KEY ("id"))`,
+      `CREATE TABLE "project_members" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "projectId" uuid NOT NULL, "userId" uuid NOT NULL, "role" "public"."project_member_role_enum" NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "UQ_project_member_project_user" UNIQUE ("projectId", "userId"), CONSTRAINT "PK_d8ce26c87b1304f6f8f5d6f4054" PRIMARY KEY ("id"))`,
     );
 
     await queryRunner.query(
@@ -52,7 +51,7 @@ export class CreateProjectsWorkflowTasks1771002000000
     );
 
     await queryRunner.query(
-      `CREATE TABLE "workflow_templates" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "name" character varying(120) NOT NULL, "description" text, "mode" "public"."workflow_template_mode_enum" NOT NULL, "isActive" boolean NOT NULL DEFAULT true, "latestVersion" integer NOT NULL DEFAULT 0, "nodesJson" jsonb NOT NULL, "createdBy" uuid, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, CONSTRAINT "PK_58a5f8bb2e7e3b640a7795f47b2" PRIMARY KEY ("id"))`,
+      `CREATE TABLE "workflow_templates" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying(120) NOT NULL, "description" text, "mode" "public"."workflow_template_mode_enum" NOT NULL, "isActive" boolean NOT NULL DEFAULT true, "latestVersion" integer NOT NULL DEFAULT 0, "nodesJson" jsonb NOT NULL, "createdBy" uuid, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, CONSTRAINT "PK_58a5f8bb2e7e3b640a7795f47b2" PRIMARY KEY ("id"))`,
     );
 
     await queryRunner.query(
@@ -63,7 +62,7 @@ export class CreateProjectsWorkflowTasks1771002000000
     );
 
     await queryRunner.query(
-      `CREATE TABLE "workflow_template_versions" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "templateId" uuid NOT NULL, "version" integer NOT NULL, "name" character varying(120) NOT NULL, "description" text, "mode" "public"."workflow_template_mode_enum" NOT NULL, "nodesJson" jsonb NOT NULL, "publishedBy" uuid, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "UQ_workflow_template_version_unique" UNIQUE ("templateId", "version"), CONSTRAINT "PK_8e5ef4881827f4439b2db67644f" PRIMARY KEY ("id"))`,
+      `CREATE TABLE "workflow_template_versions" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "templateId" uuid NOT NULL, "version" integer NOT NULL, "name" character varying(120) NOT NULL, "description" text, "mode" "public"."workflow_template_mode_enum" NOT NULL, "nodesJson" jsonb NOT NULL, "publishedBy" uuid, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "UQ_workflow_template_version_unique" UNIQUE ("templateId", "version"), CONSTRAINT "PK_8e5ef4881827f4439b2db67644f" PRIMARY KEY ("id"))`,
     );
 
     await queryRunner.query(
@@ -88,7 +87,7 @@ export class CreateProjectsWorkflowTasks1771002000000
     );
 
     await queryRunner.query(
-      `CREATE TABLE "tasks" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "projectId" uuid NOT NULL, "workflowTemplateId" uuid, "workflowTemplateVersion" integer, "mode" "public"."task_mode_enum" NOT NULL, "title" character varying(160) NOT NULL, "description" text, "acceptanceCriteria" jsonb, "status" "public"."task_status_enum" NOT NULL DEFAULT 'todo', "branch" character varying(120), "environment" character varying(120), "toolVersionsSnapshot" jsonb, "createdBy" uuid, "startedAt" TIMESTAMP, "finishedAt" TIMESTAMP, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, CONSTRAINT "PK_8d12ff38fcc62aaba2cab748772" PRIMARY KEY ("id"))`,
+      `CREATE TABLE "tasks" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "projectId" uuid NOT NULL, "workflowTemplateId" uuid, "workflowTemplateVersion" integer, "mode" "public"."task_mode_enum" NOT NULL, "title" character varying(160) NOT NULL, "description" text, "acceptanceCriteria" jsonb, "status" "public"."task_status_enum" NOT NULL DEFAULT 'todo', "branch" character varying(120), "environment" character varying(120), "toolVersionsSnapshot" jsonb, "createdBy" uuid, "startedAt" TIMESTAMP, "finishedAt" TIMESTAMP, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, CONSTRAINT "PK_8d12ff38fcc62aaba2cab748772" PRIMARY KEY ("id"))`,
     );
 
     await queryRunner.query(
@@ -109,7 +108,7 @@ export class CreateProjectsWorkflowTasks1771002000000
     );
 
     await queryRunner.query(
-      `CREATE TABLE "task_nodes" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "taskId" uuid NOT NULL, "nodeOrder" integer NOT NULL, "name" character varying(160) NOT NULL, "nodeType" "public"."task_node_type_enum" NOT NULL, "input" jsonb, "output" jsonb, "requiresApproval" boolean NOT NULL DEFAULT false, "status" "public"."task_status_enum" NOT NULL DEFAULT 'todo', "attempt" integer NOT NULL DEFAULT 0, "errorCode" character varying(120), "errorMessage" text, "startedAt" TIMESTAMP, "finishedAt" TIMESTAMP, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "UQ_task_nodes_task_node_order" UNIQUE ("taskId", "nodeOrder"), CONSTRAINT "PK_f4e7f7f59d81ca8eda9f2dbf31f" PRIMARY KEY ("id"))`,
+      `CREATE TABLE "task_nodes" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "taskId" uuid NOT NULL, "nodeOrder" integer NOT NULL, "name" character varying(160) NOT NULL, "nodeType" "public"."task_node_type_enum" NOT NULL, "input" jsonb, "output" jsonb, "requiresApproval" boolean NOT NULL DEFAULT false, "status" "public"."task_status_enum" NOT NULL DEFAULT 'todo', "attempt" integer NOT NULL DEFAULT 0, "errorCode" character varying(120), "errorMessage" text, "startedAt" TIMESTAMP, "finishedAt" TIMESTAMP, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "UQ_task_nodes_task_node_order" UNIQUE ("taskId", "nodeOrder"), CONSTRAINT "PK_f4e7f7f59d81ca8eda9f2dbf31f" PRIMARY KEY ("id"))`,
     );
 
     await queryRunner.query(
@@ -127,7 +126,7 @@ export class CreateProjectsWorkflowTasks1771002000000
     );
 
     await queryRunner.query(
-      `CREATE TABLE "task_logs" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "taskId" uuid NOT NULL, "taskNodeId" uuid, "level" "public"."task_log_level_enum" NOT NULL DEFAULT 'info', "message" text NOT NULL, "payload" jsonb, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_b8f8978d9d7ca4bbd7f5f3adbd1" PRIMARY KEY ("id"))`,
+      `CREATE TABLE "task_logs" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "taskId" uuid NOT NULL, "taskNodeId" uuid, "level" "public"."task_log_level_enum" NOT NULL DEFAULT 'info', "message" text NOT NULL, "payload" jsonb, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_b8f8978d9d7ca4bbd7f5f3adbd1" PRIMARY KEY ("id"))`,
     );
 
     await queryRunner.query(

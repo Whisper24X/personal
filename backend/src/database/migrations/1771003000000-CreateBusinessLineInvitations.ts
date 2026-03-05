@@ -7,7 +7,7 @@ export class CreateBusinessLineInvitations1771003000000
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `CREATE TABLE "business_line_invitations" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "businessLineId" uuid NOT NULL, "token" character varying(128) NOT NULL, "role" "public"."business_line_member_role_enum" NOT NULL, "projectRoles" jsonb NOT NULL DEFAULT '{}'::jsonb, "createdBy" uuid NOT NULL, "expiresAt" TIMESTAMP NOT NULL, "revokedAt" TIMESTAMP, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_business_line_invitations_id" PRIMARY KEY ("id"))`,
+      `CREATE TABLE "business_line_invitations" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "businessLineId" uuid NOT NULL, "token" character varying(128) NOT NULL, "role" "public"."business_line_member_role_enum" NOT NULL, "projectRoles" jsonb NOT NULL DEFAULT '{}'::jsonb, "createdBy" uuid NOT NULL, "expiresAt" TIMESTAMP NOT NULL, "revokedAt" TIMESTAMP, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_business_line_invitations_id" PRIMARY KEY ("id"))`,
     );
 
     await queryRunner.query(

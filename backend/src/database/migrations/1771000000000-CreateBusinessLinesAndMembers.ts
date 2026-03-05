@@ -11,7 +11,7 @@ export class CreateBusinessLinesAndMembers1771000000000
     );
 
     await queryRunner.query(
-      `CREATE TABLE "business_lines" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "name" character varying(100) NOT NULL, "description" text, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, CONSTRAINT "PK_845f61f2f22fdbaf07e1f6f96df" PRIMARY KEY ("id"))`,
+      `CREATE TABLE "business_lines" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying(100) NOT NULL, "description" text, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, CONSTRAINT "PK_845f61f2f22fdbaf07e1f6f96df" PRIMARY KEY ("id"))`,
     );
 
     await queryRunner.query(
@@ -23,7 +23,7 @@ export class CreateBusinessLinesAndMembers1771000000000
     );
 
     await queryRunner.query(
-      `CREATE TABLE "business_line_members" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "businessLineId" uuid NOT NULL, "userId" integer NOT NULL, "role" "public"."business_line_member_role_enum" NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "UQ_business_line_member_business_line_user" UNIQUE ("businessLineId", "userId"), CONSTRAINT "PK_405f98b8aef46a3fffb7f7ff0e8" PRIMARY KEY ("id"))`,
+      `CREATE TABLE "business_line_members" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "businessLineId" uuid NOT NULL, "userId" integer NOT NULL, "role" "public"."business_line_member_role_enum" NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "UQ_business_line_member_business_line_user" UNIQUE ("businessLineId", "userId"), CONSTRAINT "PK_405f98b8aef46a3fffb7f7ff0e8" PRIMARY KEY ("id"))`,
     );
 
     await queryRunner.query(

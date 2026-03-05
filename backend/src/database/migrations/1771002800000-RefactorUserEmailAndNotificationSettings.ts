@@ -49,7 +49,7 @@ export class RefactorUserEmailAndNotificationSettings1771002800000
       `INSERT INTO "notification_settings"
        ("id", "userId", "emailEnabled", "emailAddress", "webhookEnabled", "webhookUrl", "browserEnabled", "createdAt", "updatedAt")
        SELECT
-         gen_random_uuid(),
+         uuid_generate_v4(),
          u."id",
          true,
          u."email",

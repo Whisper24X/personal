@@ -5,7 +5,7 @@ export class CreateAgentToolConfigs1771003100000 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `CREATE TABLE "agent_tool_configs" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "businessLineId" uuid NOT NULL, "toolId" character varying(64) NOT NULL, "name" character varying(120) NOT NULL, "description" character varying(255), "configJson" text NOT NULL, "isDefault" boolean NOT NULL DEFAULT false, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_agent_tool_configs_id" PRIMARY KEY ("id"))`,
+      `CREATE TABLE "agent_tool_configs" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "businessLineId" uuid NOT NULL, "toolId" character varying(64) NOT NULL, "name" character varying(120) NOT NULL, "description" character varying(255), "configJson" text NOT NULL, "isDefault" boolean NOT NULL DEFAULT false, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_agent_tool_configs_id" PRIMARY KEY ("id"))`,
     );
 
     await queryRunner.query(
