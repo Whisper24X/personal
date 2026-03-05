@@ -202,11 +202,11 @@ cmd_logs() {
     fi
 
     local service="${1:-}"
-    if [[ -n "$service" ]]; then
-        docker_exec supervisorctl tail -f "$service"
-    else
-        dc logs -f
+    if [[ -z "$service" ]]; then
+        error "请指定服务名: backend | shadow | app | nginx"
+        exit 1
     fi
+    docker_exec sh -c "cat /workspace/logs/${service}.log && echo '=== 以上为历史日志，以下为实时日志 ===' && tail -n 0 -f /workspace/logs/${service}.log"
 }
 
 cmd_info() {

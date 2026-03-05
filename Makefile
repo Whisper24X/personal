@@ -275,7 +275,7 @@ app-check-key:
 # 沙箱环境
 # ==============================================================================
 
-.PHONY: sandbox sandbox-build sandbox-stop sandbox-shell sandbox-logs sandbox-clean sandbox-restart sandbox-mirror sandbox-doctor
+.PHONY: sandbox sandbox-build sandbox-stop sandbox-shell sandbox-logs sandbox-clean sandbox-restart sandbox-list sandbox-mirror sandbox-doctor
 
 SANDBOX := ./sandbox/sandbox.sh
 
@@ -295,9 +295,9 @@ sandbox-stop:
 sandbox-shell:
 	@$(SANDBOX) shell
 
-## 查看沙箱日志
+## 查看沙箱日志 (用法: make sandbox-logs backend)
 sandbox-logs:
-	@$(SANDBOX) logs
+	@$(SANDBOX) logs $(word 2,$(MAKECMDGOALS))
 
 ## 清理沙箱
 sandbox-clean:

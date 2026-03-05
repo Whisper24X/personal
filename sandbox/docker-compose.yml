@@ -35,6 +35,7 @@ services:
       - ./ainative-backend:/workspace/ainative-backend
       - ./ainative-shadow:/workspace/ainative-shadow
       - ./ainative-app:/workspace/ainative-app
+      - ./logs:/workspace/logs
       # 缓存卷（跨分支共享，避免重复下载依赖）
       - go-mod-cache:/go/pkg/mod
       - go-build-cache:/root/.cache/go-build

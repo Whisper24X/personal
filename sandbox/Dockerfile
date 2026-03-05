@@ -94,7 +94,7 @@ RUN npm install -g pnpm@9 \
 
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY supervisord.conf /etc/supervisord.conf
-RUN mkdir -p /var/log/nginx /run/nginx /etc/supervisor.d /var/log/supervisor
+RUN mkdir -p /var/log/nginx /run/nginx /etc/supervisor.d /var/log/supervisor /workspace/logs
 
 # ============================================================
 # 启动入口
