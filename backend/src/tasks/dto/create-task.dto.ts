@@ -1,12 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsArray,
   IsEnum,
   IsNotEmpty,
   IsObject,
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
 } from 'class-validator';
 import { TaskMode } from './task-mode.enum';
 
@@ -33,31 +33,45 @@ export class CreateTaskDto {
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @IsString()
-  description?: string;
+  prompt?: string;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  gitBranch?: string;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  gitBaseBranch?: string;
 
   @ApiPropertyOptional({
-    type: Array,
-    description: 'Checklist or structured acceptance criteria',
+    type: String,
+    description: 'Absolute worktree path under allowed root',
   })
   @IsOptional()
-  @IsArray()
-  acceptanceCriteria?: unknown[];
+  @IsString()
+  @MaxLength(500)
+  gitWorktree?: string;
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @IsString()
-  branch?: string;
+  @MaxLength(64)
+  cliToolId?: string;
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()
-  @IsString()
-  environment?: string;
+  @IsUUID()
+  agentToolConfigId?: string;
 
   @ApiPropertyOptional({
     type: Object,
-    description: 'Template/skill/mcp resolved versions snapshot',
+    description: 'Task input snapshot (attachments and mode metadata)',
   })
   @IsOptional()
   @IsObject()
-  toolVersionsSnapshot?: Record<string, unknown>;
+  clientInputSnapshot?: Record<string, unknown>;
 }

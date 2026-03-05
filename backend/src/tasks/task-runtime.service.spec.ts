@@ -25,12 +25,17 @@ const runGit = (args: string[], cwd: string): string => {
 const createTask = (overrides: Partial<Task> = {}): Task => ({
   id: 'task-test-id',
   projectId: 'project-test-id',
+  businessLineId: 'business-line-test-id',
   mode: TaskMode.workflow,
   title: 'runtime test',
   status: TaskStatus.todo,
-  branch: 'feature/runtime-test',
+  gitBranch: 'feature/runtime-test',
   gitBaseBranch: 'main',
-  gitWorktreePath: null,
+  gitWorktree: null,
+  prompt: null,
+  cliToolId: null,
+  agentToolConfigId: null,
+  clientInputSnapshot: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   deletedAt: null,
@@ -87,7 +92,7 @@ describe('TaskRuntimeService', () => {
     createdDirectories.push(repositoryPath);
 
     const artifact = await service.collectGitDiffArtifact(
-      createTask({ gitWorktreePath: repositoryPath }),
+      createTask({ gitWorktree: repositoryPath }),
     );
 
     expect(artifact).toBeNull();
@@ -100,7 +105,7 @@ describe('TaskRuntimeService', () => {
     await fs.appendFile(path.join(repositoryPath, 'README.md'), '\nnew line\n');
 
     const artifact = await service.collectGitDiffArtifact(
-      createTask({ gitWorktreePath: repositoryPath }),
+      createTask({ gitWorktree: repositoryPath }),
     );
 
     expect(artifact).not.toBeNull();
@@ -143,7 +148,7 @@ describe('TaskRuntimeService', () => {
     );
 
     const cleanupResult = await service.cleanupRuntime(
-      createTask({ gitWorktreePath: worktreePath }),
+      createTask({ gitWorktree: worktreePath }),
     );
 
     expect(cleanupResult.cleaned).toBeTruthy();
@@ -175,7 +180,7 @@ describe('TaskRuntimeService', () => {
       expectedWorktreeBase,
     );
     expect((service as any).resolveGitWorktreePath(task, project)).toBe(
-      path.join(expectedWorktreeBase, task.id),
+      path.join(expectedWorktreeBase, `wk-${task.id}`),
     );
   });
 
@@ -199,7 +204,7 @@ describe('TaskRuntimeService', () => {
       path.resolve('/tmp/ainative-worktrees'),
     );
     expect((service as any).resolveGitWorktreePath(task, project)).toBe(
-      path.resolve('/tmp/ainative-worktrees', task.id),
+      path.resolve('/tmp/ainative-worktrees', `wk-${task.id}`),
     );
   });
 
@@ -215,5 +220,79 @@ describe('TaskRuntimeService', () => {
     expect((service as any).resolveRepositoryRoot(project)).toBe(
       path.resolve('/tmp/ainative-fixed-repo'),
     );
+  });
+
+  it('should normalize task branch to wk- prefix for worktree branch naming', () => {
+    const project = createProject();
+
+    expect(
+      (service as any).resolveBranch(
+        createTask({ gitBranch: 'feature/runtime-test' }),
+        project,
+      ),
+    ).toBe('wk-feature/runtime-test');
+    expect(
+      (service as any).resolveBranch(
+        createTask({ gitBranch: 'wk-existing' }),
+        project,
+      ),
+    ).toBe('wk-existing');
+  });
+
+  it('should generate wk- prefixed fallback branch when task branch is empty', () => {
+    const project = createProject({
+      name: 'AINative Runtime Project',
+    });
+    const task = createTask({ gitBranch: null });
+
+    expect((service as any).resolveBranch(task, project)).toBe(
+      'wk-ainative-runtime-project-task-tes',
+    );
+  });
+
+  it('should normalize and validate requested create worktree path under allowed root', async () => {
+    const allowedRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'ainative-runtime-allowed-root-'),
+    );
+    createdDirectories.push(allowedRoot);
+    const canonicalAllowedRoot = await fs.realpath(allowedRoot);
+    const project = createProject(
+      {},
+      {
+        worktreeAllowedRoot: allowedRoot,
+      },
+    );
+    const requestedPath = path.join(canonicalAllowedRoot, 'task-create-1');
+
+    const resolvedPath = await service.resolveAndValidateCreateWorktreePath(
+      project,
+      requestedPath,
+    );
+
+    expect(resolvedPath).toBe(path.resolve(requestedPath));
+  });
+
+  it('should reject requested create worktree path outside allowed root', async () => {
+    const allowedRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'ainative-runtime-allowed-root-'),
+    );
+    createdDirectories.push(allowedRoot);
+    const outsideRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'ainative-runtime-outside-root-'),
+    );
+    createdDirectories.push(outsideRoot);
+    const project = createProject(
+      {},
+      {
+        worktreeAllowedRoot: allowedRoot,
+      },
+    );
+
+    await expect(
+      service.resolveAndValidateCreateWorktreePath(
+        project,
+        path.join(outsideRoot, 'task-create-2'),
+      ),
+    ).rejects.toThrow('outside allowed root');
   });
 });

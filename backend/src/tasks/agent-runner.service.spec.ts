@@ -29,20 +29,24 @@ const createProject = (configJson?: Record<string, unknown>): Project => ({
   deletedAt: null,
 });
 
-const createTask = (): Task => ({
+const createTask = (overrides: Partial<Task> = {}): Task => ({
   id: 'task-1',
   projectId: 'project-1',
+  businessLineId: 'business-line-1',
   mode: TaskMode.workflow,
   title: 'task title',
-  description: 'task description',
-  acceptanceCriteria: ['criteria 1'],
+  prompt: 'task description',
   status: TaskStatus.todo,
-  branch: 'feature/task-1',
+  gitBranch: 'feature/task-1',
   gitBaseBranch: 'main',
-  gitWorktreePath: path.join(worktreeRoot, 'task-1'),
+  gitWorktree: path.join(worktreeRoot, 'task-1'),
+  cliToolId: null,
+  agentToolConfigId: null,
+  clientInputSnapshot: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   deletedAt: null,
+  ...overrides,
 });
 
 const createNode = (): TaskNode => ({
@@ -129,7 +133,7 @@ describe('AgentRunnerService', () => {
     expect(result.env.forbidden).toBeUndefined();
   });
 
-  it('should prefer project specified agent tool config id', async () => {
+  it('should prefer task specified agent tool config id', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findById.mockResolvedValue({
       id: 'cfg-explicit',
@@ -152,12 +156,13 @@ describe('AgentRunnerService', () => {
 
     const project = createProject({
       agentAdapter: 'codex',
-      agentToolConfigId: 'cfg-explicit',
     });
 
     const result = await serviceAny.resolveRunnerConfig(
       project,
-      createTask(),
+      createTask({
+        agentToolConfigId: 'cfg-explicit',
+      }),
       createNode(),
     );
 

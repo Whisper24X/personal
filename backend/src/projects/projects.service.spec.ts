@@ -36,6 +36,7 @@ const createProjectsService = () => {
   const projectRepository = {
     findByBusinessLineIdAndName: jest.fn(),
     create: jest.fn(),
+    update: jest.fn(),
     remove: jest.fn(),
   };
   const projectMemberRepository = {
@@ -51,6 +52,9 @@ const createProjectsService = () => {
   const usersService = {
     findById: jest.fn(),
   };
+  const taskRepository = {
+    bulkUpdateBusinessLineIdByProjectId: jest.fn(),
+  };
 
   const service = new ProjectsService(
     projectRepository as never,
@@ -58,6 +62,7 @@ const createProjectsService = () => {
     businessLineRepository as never,
     businessLineMemberRepository as never,
     usersService as never,
+    taskRepository as never,
   );
 
   return {
@@ -66,6 +71,7 @@ const createProjectsService = () => {
     projectMemberRepository,
     businessLineRepository,
     businessLineMemberRepository,
+    taskRepository,
   };
 };
 
@@ -246,5 +252,43 @@ describe('ProjectsService', () => {
         currentUser,
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('should sync task business line snapshot after project business line changes', async () => {
+    const { service, projectRepository, taskRepository } =
+      createProjectsService();
+    const serviceAny = service as any;
+    const currentUser = createCurrentUser();
+    const currentProject = createProject();
+    const updatedProject = {
+      ...currentProject,
+      businessLineId: 'business-line-2',
+    };
+
+    jest
+      .spyOn(serviceAny, 'ensureCanManageProject')
+      .mockResolvedValue(currentProject);
+    jest
+      .spyOn(serviceAny, 'ensureCanManageBusinessLine')
+      .mockResolvedValue(undefined);
+    projectRepository.findByBusinessLineIdAndName.mockResolvedValue(null);
+    projectRepository.update.mockResolvedValue(updatedProject);
+
+    const result = await service.update(
+      currentProject.id,
+      {
+        businessLineId: 'business-line-2',
+        name: 'AINative',
+      } as never,
+      currentUser,
+    );
+
+    expect(result).toEqual(updatedProject);
+    expect(
+      taskRepository.bulkUpdateBusinessLineIdByProjectId,
+    ).toHaveBeenCalledWith({
+      projectId: currentProject.id,
+      businessLineId: 'business-line-2',
+    });
   });
 });

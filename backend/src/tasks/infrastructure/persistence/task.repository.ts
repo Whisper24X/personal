@@ -10,6 +10,13 @@ export abstract class TaskRepository {
 
   abstract findById(id: Task['id']): Promise<NullableType<Task>>;
 
+  abstract findByGitWorktree(gitWorktree: string): Promise<NullableType<Task>>;
+
+  abstract bulkUpdateBusinessLineIdByProjectId(params: {
+    projectId: string;
+    businessLineId: string;
+  }): Promise<void>;
+
   abstract findAllWithPagination({
     paginationOptions,
     projectId,

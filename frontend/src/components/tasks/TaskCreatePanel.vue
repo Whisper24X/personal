@@ -72,8 +72,8 @@ const createForm = reactive({
   cliToolId: '' as SupportedCliToolId | '',
   agentToolConfigId: '',
   title: '',
-  description: '',
-  branch: 'master',
+  prompt: '',
+  gitBranch: 'master',
 })
 
 const resolveQueryProjectId = () => {
@@ -109,8 +109,8 @@ const resetCreateForm = (projectId?: string) => {
   createForm.cliToolId = configuredCliTools.value[0]?.id ?? ''
   createForm.agentToolConfigId = ''
   createForm.title = ''
-  createForm.description = ''
-  createForm.branch = project?.defaultBranch || 'master'
+  createForm.prompt = ''
+  createForm.gitBranch = project?.defaultBranch || 'master'
   selectedFiles.value = []
   syncAgentToolConfigsForSelectedTool()
 }
@@ -248,7 +248,7 @@ const loadPageData = async () => {
 
     const project = projectResponse.find((item) => item.id === createForm.projectId)
     if (project) {
-      createForm.branch = project.defaultBranch || createForm.branch || 'master'
+      createForm.gitBranch = project.defaultBranch || createForm.gitBranch || 'master'
     }
 
     await Promise.all([
@@ -325,12 +325,12 @@ const createTask = async () => {
     return
   }
 
-  if (!createForm.description.trim()) {
+  if (!createForm.prompt.trim()) {
     showValidationError('请填写提示词')
     return
   }
 
-  if (!createForm.branch.trim()) {
+  if (!createForm.gitBranch.trim()) {
     showValidationError('请填写分支名称')
     return
   }
@@ -355,24 +355,23 @@ const createTask = async () => {
   submitting.value = true
 
   try {
-    const toolVersionsSnapshot: Record<string, unknown> = {
-      clientInput: {
-        mode: createForm.mode,
-        ...(createForm.mode === 'conversation'
-          ? {
-              cliToolId: createForm.cliToolId,
-              agentToolConfigId: createForm.agentToolConfigId,
-            }
-          : {
-              workflowTemplateId: createForm.workflowTemplateId,
-            }),
-        attachments: selectedFiles.value.map((file) => ({
-          name: file.name,
-          size: file.size,
-          type: file.type || 'application/octet-stream',
-          lastModified: file.lastModified,
-        })),
-      },
+    const project = projects.value.find((item) => item.id === projectIdForSubmit)
+    const clientInputSnapshot: Record<string, unknown> = {
+      mode: createForm.mode,
+      ...(createForm.mode === 'conversation'
+        ? {
+            cliToolId: createForm.cliToolId,
+            agentToolConfigId: createForm.agentToolConfigId,
+          }
+        : {
+            workflowTemplateId: createForm.workflowTemplateId,
+          }),
+      attachments: selectedFiles.value.map((file) => ({
+        name: file.name,
+        size: file.size,
+        type: file.type || 'application/octet-stream',
+        lastModified: file.lastModified,
+      })),
     }
 
     const task = await tasksApi.create({
@@ -380,9 +379,12 @@ const createTask = async () => {
       mode: createForm.mode,
       workflowTemplateId: createForm.workflowTemplateId || undefined,
       title: createForm.title.trim(),
-      description: createForm.description.trim(),
-      branch: createForm.branch.trim(),
-      toolVersionsSnapshot,
+      prompt: createForm.prompt.trim(),
+      gitBranch: createForm.gitBranch.trim(),
+      gitBaseBranch: project?.defaultBranch?.trim() || undefined,
+      cliToolId: createForm.mode === 'conversation' ? createForm.cliToolId : undefined,
+      agentToolConfigId: createForm.mode === 'conversation' ? createForm.agentToolConfigId : undefined,
+      clientInputSnapshot,
     })
 
     message.success('创建任务成功，正在跳转详情')
@@ -409,7 +411,7 @@ watch(
 
     const project = projects.value.find((item) => item.id === projectId)
     if (project?.defaultBranch) {
-      createForm.branch = project.defaultBranch
+      createForm.gitBranch = project.defaultBranch
     }
 
     await Promise.all([
@@ -530,7 +532,7 @@ onBeforeUnmount(() => {
             />
 
             <textarea
-              v-model="createForm.description"
+              v-model="createForm.prompt"
               class="mt-4 min-h-[320px] w-full resize-none border-0 bg-transparent px-1 text-lg text-foreground outline-none placeholder:text-muted-foreground"
               placeholder="提示词"
             />
@@ -774,7 +776,7 @@ onBeforeUnmount(() => {
                   <path d="m15 18 3 3 3-3" />
                 </svg>
                 <input
-                  v-model="createForm.branch"
+                  v-model="createForm.gitBranch"
                   type="text"
                   class="w-24 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground"
                   placeholder="master"

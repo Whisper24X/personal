@@ -3,9 +3,8 @@ import { reactive, watch } from 'vue'
 
 export type TaskEditFormValue = {
   title: string
-  description: string
-  branch: string
-  environment: string
+  prompt: string
+  gitBranch: string
   cliToolId: string
   agentToolConfigId: string
 }
@@ -37,9 +36,8 @@ const emit = defineEmits<{
 
 const localEditForm = reactive<TaskEditFormValue>({
   title: '',
-  description: '',
-  branch: '',
-  environment: '',
+  prompt: '',
+  gitBranch: '',
   cliToolId: '',
   agentToolConfigId: '',
 })
@@ -52,9 +50,8 @@ watch(
     }
 
     localEditForm.title = props.editForm.title
-    localEditForm.description = props.editForm.description
-    localEditForm.branch = props.editForm.branch
-    localEditForm.environment = props.editForm.environment
+    localEditForm.prompt = props.editForm.prompt
+    localEditForm.gitBranch = props.editForm.gitBranch
     localEditForm.cliToolId = props.editForm.cliToolId
     localEditForm.agentToolConfigId = props.editForm.agentToolConfigId
   },
@@ -63,9 +60,8 @@ watch(
 const submitEdit = () => {
   emit('save', {
     title: localEditForm.title,
-    description: localEditForm.description,
-    branch: localEditForm.branch,
-    environment: localEditForm.environment,
+    prompt: localEditForm.prompt,
+    gitBranch: localEditForm.gitBranch,
     cliToolId: localEditForm.cliToolId,
     agentToolConfigId: localEditForm.agentToolConfigId,
   })
@@ -106,32 +102,21 @@ const submitEdit = () => {
           </label>
 
           <label class="space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">描述</span>
+            <span class="text-xs font-semibold text-muted-foreground">提示词</span>
             <textarea
-              v-model="localEditForm.description"
+              v-model="localEditForm.prompt"
               class="min-h-20 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
             />
           </label>
 
-          <div class="grid gap-3 sm:grid-cols-2">
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">分支</span>
-              <input
-                v-model="localEditForm.branch"
-                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                type="text"
-              />
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">环境</span>
-              <input
-                v-model="localEditForm.environment"
-                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                type="text"
-              />
-            </label>
-          </div>
+          <label class="space-y-1">
+            <span class="text-xs font-semibold text-muted-foreground">分支</span>
+            <input
+              v-model="localEditForm.gitBranch"
+              class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              type="text"
+            />
+          </label>
 
           <div class="grid gap-3 sm:grid-cols-2">
             <label class="space-y-1">

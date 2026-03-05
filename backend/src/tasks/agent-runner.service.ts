@@ -156,7 +156,7 @@ export class AgentRunnerService {
       signal: null,
       command: 'simulated-agent',
       args: [],
-      cwd: task.gitWorktreePath?.trim() || process.cwd(),
+      cwd: task.gitWorktree?.trim() || process.cwd(),
       durationMs: 10,
       stdout: 'Agent runner disabled; simulated execution completed.',
       stderr: '',
@@ -169,7 +169,7 @@ export class AgentRunnerService {
     task: Task,
     node: TaskNode,
   ): Promise<AgentRunnerConfig> {
-    const taskConfigJson = this.resolveTaskToolConfig(task);
+    const taskToolConfig = this.resolveTaskToolConfig(task);
     const configJson =
       project.configJson && typeof project.configJson === 'object'
         ? (project.configJson as Record<string, unknown>)
@@ -177,12 +177,12 @@ export class AgentRunnerService {
 
     const adapter = this.resolveAdapter({
       ...configJson,
-      ...taskConfigJson,
+      ...taskToolConfig,
     });
     const baseRunnerConfig = this.readRunnerConfig(configJson);
     const agentToolConfig = await this.resolveAgentToolConfig(
       configJson,
-      taskConfigJson,
+      task,
       project,
       adapter,
     );
@@ -190,11 +190,7 @@ export class AgentRunnerService {
       baseRunnerConfig,
       agentToolConfig?.runnerConfig,
     );
-    const taskRunnerConfig = this.resolveTaskRunnerConfig(taskConfigJson);
-    const runnerConfig = this.mergeRunnerConfig(
-      runnerConfigFromTool,
-      taskRunnerConfig,
-    );
+    const runnerConfig = runnerConfigFromTool;
 
     const command =
       runnerConfig.command?.trim() || this.resolveDefaultCommand(adapter);
@@ -234,11 +230,11 @@ export class AgentRunnerService {
   }
 
   private resolveRunnerCwd(task: Task, project: Project): string {
-    if (!task.gitWorktreePath?.trim()) {
+    if (!task.gitWorktree?.trim()) {
       return process.cwd();
     }
 
-    const cwd = path.resolve(task.gitWorktreePath.trim());
+    const cwd = path.resolve(task.gitWorktree.trim());
     const allowedRoot = this.resolveWorktreeAllowedRoot(project);
 
     if (!this.isPathWithinAllowedRoot(cwd, allowedRoot)) {
@@ -316,35 +312,12 @@ export class AgentRunnerService {
   }
 
   private resolveTaskToolConfig(task: Task): Record<string, unknown> {
-    if (
-      !task.toolVersionsSnapshot ||
-      typeof task.toolVersionsSnapshot !== 'object'
-    ) {
-      return {};
-    }
-
-    return task.toolVersionsSnapshot as Record<string, unknown>;
-  }
-
-  private resolveTaskRunnerConfig(
-    configJson: Record<string, unknown>,
-  ): RunnerConfigInput {
-    if (!configJson || typeof configJson !== 'object') {
-      return {};
-    }
-
-    const runnerConfigCandidate =
-      configJson.agentRunner && typeof configJson.agentRunner === 'object'
-        ? (configJson.agentRunner as Record<string, unknown>)
-        : configJson.runnerConfig && typeof configJson.runnerConfig === 'object'
-          ? (configJson.runnerConfig as Record<string, unknown>)
-          : null;
-
-    if (runnerConfigCandidate) {
-      return this.readRunnerConfigFromRaw(runnerConfigCandidate);
-    }
-
-    return this.readRunnerConfigFromRaw(configJson);
+    return {
+      ...(task.cliToolId ? { cliToolId: task.cliToolId } : {}),
+      ...(task.agentToolConfigId
+        ? { agentToolConfigId: task.agentToolConfigId }
+        : {}),
+    };
   }
 
   private readRunnerConfig(configJson: Record<string, unknown>): {
@@ -448,13 +421,13 @@ export class AgentRunnerService {
 
   private async resolveAgentToolConfig(
     configJson: Record<string, unknown>,
-    taskConfigJson: Record<string, unknown>,
+    task: Task,
     project: Project,
     adapter: AgentAdapter,
   ): Promise<ResolvedAgentToolConfig | null> {
     const persistedById = await this.resolvePersistedAgentToolConfigById(
       configJson,
-      taskConfigJson,
+      task,
       project,
       adapter,
     );
@@ -475,12 +448,12 @@ export class AgentRunnerService {
 
   private async resolvePersistedAgentToolConfigById(
     configJson: Record<string, unknown>,
-    taskConfigJson: Record<string, unknown>,
+    task: Task,
     project: Project,
     adapter: AgentAdapter,
   ): Promise<ResolvedAgentToolConfig | null> {
     const requestedConfigId =
-      this.resolveAgentToolConfigId(taskConfigJson) ??
+      this.normalizeOptionalString(task.agentToolConfigId) ??
       this.resolveAgentToolConfigId(configJson);
 
     if (!requestedConfigId) {
@@ -866,21 +839,10 @@ export class AgentRunnerService {
           ? input.instructions.trim()
           : '';
 
-    const acceptanceCriteria = Array.isArray(task.acceptanceCriteria)
-      ? task.acceptanceCriteria
-      : [];
-
-    const acceptanceText = acceptanceCriteria.length
-      ? acceptanceCriteria
-          .map((item, index) => `- [ ] ${index + 1}. ${String(item)}`)
-          .join('\n')
-      : '';
-
     const sections = [
       nodePrompt,
       `Task Title: ${task.title}`,
-      task.description ? `Task Description:\n${task.description}` : '',
-      acceptanceText ? `Acceptance Criteria:\n${acceptanceText}` : '',
+      task.prompt ? `Task Prompt:\n${task.prompt}` : '',
       `Node Name: ${node.name}`,
       `Node Order: ${node.nodeOrder}`,
     ].filter(Boolean);
@@ -1001,6 +963,15 @@ export class AgentRunnerService {
             : 'Failed to execute agent runner process',
       };
     }
+  }
+
+  private normalizeOptionalString(value?: string | null): string | null {
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    const normalized = value.trim();
+    return normalized || null;
   }
 
   private buildRunnerEnvironment(

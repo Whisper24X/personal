@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -180,21 +181,56 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       throw new ConflictException('Task must contain at least one node');
     }
 
+    const normalizedGitBranch = this.normalizeWorktreeBranch(
+      createTaskDto.gitBranch,
+    );
+    const normalizedGitBaseBranch = this.normalizeOptionalString(
+      createTaskDto.gitBaseBranch,
+    );
+    const requestedGitWorktree = this.normalizeOptionalString(
+      createTaskDto.gitWorktree,
+    );
+    let normalizedGitWorktree: string | null = null;
+
+    if (requestedGitWorktree) {
+      try {
+        normalizedGitWorktree =
+          await this.taskRuntimeService.resolveAndValidateCreateWorktreePath(
+            project,
+            requestedGitWorktree,
+          );
+      } catch (error) {
+        throw new BadRequestException(
+          error instanceof Error ? error.message : 'Invalid git worktree path',
+        );
+      }
+
+      const existedTask = await this.taskRepository.findByGitWorktree(
+        normalizedGitWorktree,
+      );
+
+      if (existedTask) {
+        throw new ConflictException('Task worktree path already in use');
+      }
+    }
+
     const task = await this.taskRepository.create({
       projectId: createTaskDto.projectId,
+      businessLineId: project.businessLineId,
       workflowTemplateId,
       mode: resolvedMode,
       title: createTaskDto.title,
-      description: createTaskDto.description ?? null,
-      acceptanceCriteria: createTaskDto.acceptanceCriteria ?? null,
+      prompt: createTaskDto.prompt ?? null,
       status: TaskStatus.todo,
-      branch: createTaskDto.branch ?? null,
-      environment: createTaskDto.environment ?? null,
-      toolVersionsSnapshot: createTaskDto.toolVersionsSnapshot ?? null,
+      gitBranch: normalizedGitBranch,
+      cliToolId: this.normalizeOptionalString(createTaskDto.cliToolId),
+      agentToolConfigId: this.normalizeOptionalString(
+        createTaskDto.agentToolConfigId,
+      ),
+      clientInputSnapshot: createTaskDto.clientInputSnapshot ?? null,
       createdBy: currentUser.sub,
-      gitBaseBranch: null,
-      gitWorktreePath: null,
-      sandboxCleanupAt: null,
+      gitBaseBranch: normalizedGitBaseBranch,
+      gitWorktree: normalizedGitWorktree,
       startedAt: null,
       finishedAt: null,
     });
@@ -301,41 +337,68 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     if (updateTaskDto.title !== undefined) {
       updatePayload.title = updateTaskDto.title;
     }
-    if (updateTaskDto.description !== undefined) {
-      updatePayload.description = updateTaskDto.description;
+    if (updateTaskDto.prompt !== undefined) {
+      updatePayload.prompt = updateTaskDto.prompt;
     }
-    if (updateTaskDto.acceptanceCriteria !== undefined) {
-      updatePayload.acceptanceCriteria = updateTaskDto.acceptanceCriteria;
+    if (updateTaskDto.gitBranch !== undefined) {
+      updatePayload.gitBranch = this.normalizeWorktreeBranch(
+        updateTaskDto.gitBranch,
+      );
     }
-    if (updateTaskDto.branch !== undefined) {
-      updatePayload.branch = updateTaskDto.branch;
+    if (updateTaskDto.gitBaseBranch !== undefined) {
+      updatePayload.gitBaseBranch = this.normalizeOptionalString(
+        updateTaskDto.gitBaseBranch,
+      );
     }
-    if (updateTaskDto.environment !== undefined) {
-      updatePayload.environment = updateTaskDto.environment;
-    }
-    if (updateTaskDto.toolVersionsSnapshot !== undefined) {
-      updatePayload.toolVersionsSnapshot = updateTaskDto.toolVersionsSnapshot;
-    }
-    if (
-      updateTaskDto.cliToolId !== undefined ||
-      updateTaskDto.agentToolConfigId !== undefined
-    ) {
-      const currentSnapshot =
-        task.toolVersionsSnapshot &&
-        typeof task.toolVersionsSnapshot === 'object'
-          ? task.toolVersionsSnapshot
-          : {};
+    if (updateTaskDto.gitWorktree !== undefined) {
+      const requestedGitWorktree = this.normalizeOptionalString(
+        updateTaskDto.gitWorktree,
+      );
+      if (requestedGitWorktree) {
+        let normalizedGitWorktree: string;
+        try {
+          normalizedGitWorktree =
+            await this.taskRuntimeService.resolveAndValidateCreateWorktreePath(
+              await this.projectsService.assertCanAccessProject(
+                task.projectId,
+                currentUser,
+              ),
+              requestedGitWorktree,
+            );
+        } catch (error) {
+          throw new BadRequestException(
+            error instanceof Error
+              ? error.message
+              : 'Invalid git worktree path',
+          );
+        }
 
-      updatePayload.toolVersionsSnapshot = {
-        ...currentSnapshot,
-        ...(updateTaskDto.cliToolId !== undefined
-          ? { cliToolId: updateTaskDto.cliToolId || null }
-          : {}),
-        ...(updateTaskDto.agentToolConfigId !== undefined
-          ? { agentToolConfigId: updateTaskDto.agentToolConfigId || null }
-          : {}),
-        ...(updateTaskDto.toolVersionsSnapshot ?? {}),
-      };
+        if (normalizedGitWorktree !== task.gitWorktree) {
+          const existedTask = await this.taskRepository.findByGitWorktree(
+            normalizedGitWorktree,
+          );
+          if (existedTask && existedTask.id !== task.id) {
+            throw new ConflictException('Task worktree path already in use');
+          }
+        }
+
+        updatePayload.gitWorktree = normalizedGitWorktree;
+      } else {
+        updatePayload.gitWorktree = null;
+      }
+    }
+    if (updateTaskDto.cliToolId !== undefined) {
+      updatePayload.cliToolId = this.normalizeOptionalString(
+        updateTaskDto.cliToolId,
+      );
+    }
+    if (updateTaskDto.agentToolConfigId !== undefined) {
+      updatePayload.agentToolConfigId = this.normalizeOptionalString(
+        updateTaskDto.agentToolConfigId,
+      );
+    }
+    if (updateTaskDto.clientInputSnapshot !== undefined) {
+      updatePayload.clientInputSnapshot = updateTaskDto.clientInputSnapshot;
     }
 
     if (Object.keys(updatePayload).length === 0) {
@@ -743,8 +806,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     const cleanupResult = await this.taskRuntimeService.cleanupRuntime(task);
 
     await this.taskRepository.update(task.id, {
-      sandboxCleanupAt: new Date(),
-      ...(cleanupResult.cleaned ? { gitWorktreePath: null } : {}),
+      ...(cleanupResult.cleaned ? { gitWorktree: null } : {}),
     });
 
     await this.appendLog({
@@ -755,7 +817,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         ? 'Task worktree cleaned manually'
         : 'Task worktree cleanup skipped or failed',
       payload: {
-        gitWorktreePath: task.gitWorktreePath,
+        gitWorktree: task.gitWorktree,
         errorMessage: cleanupResult.errorMessage ?? null,
       },
     });
@@ -971,9 +1033,9 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         message: 'Runner attached to node',
         payload: {
           nodeOrder: pendingNode.nodeOrder,
-          branch: runtimeTask.branch ?? null,
+          gitBranch: runtimeTask.gitBranch ?? null,
           gitBaseBranch: runtimeTask.gitBaseBranch ?? null,
-          gitWorktreePath: runtimeTask.gitWorktreePath ?? null,
+          gitWorktree: runtimeTask.gitWorktree ?? null,
         },
       });
 
@@ -1063,20 +1125,18 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     const runtime = await this.taskRuntimeService.ensureRuntime(task, project);
 
     const hasRuntimeChanged =
-      task.branch !== runtime.branch ||
+      task.gitBranch !== runtime.gitBranch ||
       task.gitBaseBranch !== runtime.gitBaseBranch ||
-      task.gitWorktreePath !== runtime.gitWorktreePath ||
-      task.sandboxCleanupAt?.getTime() !== runtime.sandboxCleanupAt.getTime();
+      task.gitWorktree !== runtime.gitWorktree;
 
     if (!hasRuntimeChanged) {
       return { task, project };
     }
 
     const updatedTask = await this.taskRepository.update(task.id, {
-      branch: runtime.branch,
+      gitBranch: runtime.gitBranch,
       gitBaseBranch: runtime.gitBaseBranch,
-      gitWorktreePath: runtime.gitWorktreePath,
-      sandboxCleanupAt: runtime.sandboxCleanupAt,
+      gitWorktree: runtime.gitWorktree,
     });
 
     await this.appendLog({
@@ -1085,10 +1145,9 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       level: TaskLogLevel.info,
       message: 'Task sandbox initialized',
       payload: {
-        branch: runtime.branch,
+        gitBranch: runtime.gitBranch,
         gitBaseBranch: runtime.gitBaseBranch,
-        gitWorktreePath: runtime.gitWorktreePath,
-        sandboxCleanupAt: runtime.sandboxCleanupAt.toISOString(),
+        gitWorktree: runtime.gitWorktree,
       },
     });
 
@@ -1655,15 +1714,14 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     task: Task,
     status: TaskStatus,
   ): Promise<void> {
-    if (status === TaskStatus.inReview && task.gitWorktreePath) {
+    if (status === TaskStatus.inReview && task.gitWorktree) {
       await this.appendLog({
         taskId: task.id,
         taskNodeId: null,
         level: TaskLogLevel.warn,
         message: 'Task kept sandbox for troubleshooting',
         payload: {
-          gitWorktreePath: task.gitWorktreePath,
-          sandboxCleanupAt: task.sandboxCleanupAt?.toISOString() ?? null,
+          gitWorktree: task.gitWorktree,
         },
       });
       return;
@@ -1676,8 +1734,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     const cleanupResult = await this.taskRuntimeService.cleanupRuntime(task);
 
     await this.taskRepository.update(task.id, {
-      sandboxCleanupAt: new Date(),
-      ...(cleanupResult.cleaned ? { gitWorktreePath: null } : {}),
+      ...(cleanupResult.cleaned ? { gitWorktree: null } : {}),
     });
 
     await this.appendLog({
@@ -1688,7 +1745,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         ? 'Task worktree cleaned after completion'
         : 'Task worktree cleanup failed after completion',
       payload: {
-        gitWorktreePath: task.gitWorktreePath,
+        gitWorktree: task.gitWorktree,
         errorMessage: cleanupResult.errorMessage ?? null,
       },
     });
@@ -1787,6 +1844,29 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     }
 
     return TaskNodeType.agent;
+  }
+
+  private normalizeOptionalString(value?: string | null): string | null {
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    const normalized = value.trim();
+    return normalized || null;
+  }
+
+  private normalizeWorktreeBranch(value?: string | null): string | null {
+    const normalized = this.normalizeOptionalString(value);
+
+    if (!normalized) {
+      return null;
+    }
+
+    if (normalized.startsWith('wk-')) {
+      return normalized;
+    }
+
+    return `wk-${normalized}`;
   }
 
   private async appendLog({

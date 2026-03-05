@@ -38,9 +38,8 @@ const savingEdit = ref(false)
 const removingTask = ref(false)
 const editForm = reactive<TaskEditFormValue>({
   title: '',
-  description: '',
-  branch: '',
-  environment: '',
+  prompt: '',
+  gitBranch: '',
   cliToolId: '',
   agentToolConfigId: '',
 })
@@ -151,7 +150,7 @@ const canCancel = computed(() => {
 })
 
 const canCleanupWorktree = computed(() => {
-  return Boolean(task.value?.gitWorktreePath)
+  return Boolean(task.value?.gitWorktree)
 })
 
 const canEdit = computed(() => {
@@ -495,14 +494,11 @@ const openEdit = () => {
     return
   }
 
-  const snapshot = task.value.toolVersionsSnapshot as Record<string, unknown> | null
-
   editForm.title = task.value.title || ''
-  editForm.description = task.value.description || ''
-  editForm.branch = task.value.branch || ''
-  editForm.environment = task.value.environment || ''
-  editForm.cliToolId = snapshot && typeof snapshot.cliToolId === 'string' ? snapshot.cliToolId : ''
-  editForm.agentToolConfigId = snapshot && typeof snapshot.agentToolConfigId === 'string' ? snapshot.agentToolConfigId : ''
+  editForm.prompt = task.value.prompt || ''
+  editForm.gitBranch = task.value.gitBranch || ''
+  editForm.cliToolId = task.value.cliToolId || ''
+  editForm.agentToolConfigId = task.value.agentToolConfigId || ''
   editOpen.value = true
 }
 
@@ -515,12 +511,11 @@ const saveEdit = async (payload: TaskEditFormValue) => {
 
   try {
     detail.value = await tasksApi.update(taskId.value, {
-      title: payload.title,
-      description: payload.description,
-      branch: payload.branch,
-      environment: payload.environment,
-      cliToolId: payload.cliToolId,
-      agentToolConfigId: payload.agentToolConfigId,
+      title: payload.title.trim(),
+      prompt: payload.prompt.trim(),
+      gitBranch: payload.gitBranch.trim(),
+      cliToolId: payload.cliToolId.trim() || undefined,
+      agentToolConfigId: payload.agentToolConfigId.trim() || undefined,
     })
     editOpen.value = false
     message.success('任务已更新')
@@ -623,7 +618,7 @@ onBeforeUnmount(() => {
             :project-detail-route="projectDetailRoute"
             :created-at-label="formatDate(task?.createdAt)"
             :updated-at-label="formatDate(task?.updatedAt)"
-            :branch-label="task?.branch ?? '-'"
+            :branch-label="task?.gitBranch ?? '-'"
             :action-loading="actionLoading"
             :can-execute="canExecute"
             :can-cancel="canCancel"
@@ -675,7 +670,7 @@ onBeforeUnmount(() => {
       <RightPanelSection
         v-if="isRightPanelVisible"
         :task-id="taskId"
-        :branch-name="task?.branch || null"
+        :branch-name="task?.gitBranch || null"
         :base-branch="task?.gitBaseBranch || null"
         :refresh-token="rightPanelRefreshToken"
       />

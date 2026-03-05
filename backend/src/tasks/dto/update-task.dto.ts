@@ -1,11 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsArray,
-  IsObject,
-  IsOptional,
-  IsString,
-  IsUUID,
-} from 'class-validator';
+import { IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class UpdateTaskDto {
   @ApiPropertyOptional({ type: String })
@@ -16,22 +10,22 @@ export class UpdateTaskDto {
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @IsString()
-  description?: string;
+  prompt?: string;
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @IsString()
-  branch?: string;
+  gitBranch?: string;
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @IsString()
-  environment?: string;
+  gitBaseBranch?: string;
 
-  @ApiPropertyOptional({ type: Array })
+  @ApiPropertyOptional({ type: String })
   @IsOptional()
-  @IsArray()
-  acceptanceCriteria?: unknown[];
+  @IsString()
+  gitWorktree?: string;
 
   @ApiPropertyOptional({
     type: String,
@@ -51,9 +45,9 @@ export class UpdateTaskDto {
 
   @ApiPropertyOptional({
     type: Object,
-    description: 'Template/skill/mcp resolved versions snapshot',
+    description: 'Task input snapshot (attachments and mode metadata)',
   })
   @IsOptional()
   @IsObject()
-  toolVersionsSnapshot?: Record<string, unknown>;
+  clientInputSnapshot?: Record<string, unknown>;
 }

@@ -7,10 +7,9 @@ import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 import { Task } from './domain/task';
 
 type EnsureTaskRuntimeResult = {
-  branch: string;
+  gitBranch: string;
   gitBaseBranch: string;
-  gitWorktreePath: string;
-  sandboxCleanupAt: Date;
+  gitWorktree: string;
 };
 
 type CleanupTaskRuntimeResult = {
@@ -41,7 +40,6 @@ type RuntimeMeta = {
 
 @Injectable()
 export class TaskRuntimeService {
-  private readonly defaultRetentionHours = 48;
   private readonly defaultGitTimeoutMs = 60_000;
   private readonly maxDiffLength = 120_000;
   private readonly defaultDataRootDir = path.resolve(
@@ -58,22 +56,21 @@ export class TaskRuntimeService {
     task: Task,
     project: Project,
   ): Promise<EnsureTaskRuntimeResult> {
-    const branch = this.resolveBranch(task, project);
+    const gitBranch = this.resolveBranch(task, project);
     const gitBaseBranch = this.resolveGitBaseBranch(task, project);
-    const sandboxCleanupAt = this.resolveCleanupAt(task, project);
     const allowedRoot = await this.resolveCanonicalPath(
       this.resolveWorktreeAllowedRoot(project),
     );
-    const gitWorktreePath = this.ensureWorktreePathAllowed(
+    const gitWorktree = this.ensureWorktreePathAllowed(
       this.resolveGitWorktreePath(task, project),
       allowedRoot,
     );
     const runtimeMeta: RuntimeMeta = {
       taskId: task.id,
       projectId: project.id,
-      branch,
+      branch: gitBranch,
       gitBaseBranch,
-      worktreePath: gitWorktreePath,
+      worktreePath: gitWorktree,
       allowedRoot,
       generatedAt: new Date().toISOString(),
       sandbox: {
@@ -85,10 +82,10 @@ export class TaskRuntimeService {
     const gitRuntimeEnabled = this.isGitRuntimeEnabled(project);
 
     if (!gitRuntimeEnabled) {
-      await fs.mkdir(gitWorktreePath, {
+      await fs.mkdir(gitWorktree, {
         recursive: true,
       });
-      await this.enforceRuntimeDirectorySecurity(gitWorktreePath, allowedRoot);
+      await this.enforceRuntimeDirectorySecurity(gitWorktree, allowedRoot);
 
       runtimeMeta.sandbox = {
         type: 'directory',
@@ -99,9 +96,9 @@ export class TaskRuntimeService {
         const repositoryRoot = await this.ensureProjectRepository(project);
         await this.ensureGitWorktree({
           repositoryRoot,
-          worktreePath: gitWorktreePath,
+          worktreePath: gitWorktree,
           allowedRoot,
-          branch,
+          branch: gitBranch,
           gitBaseBranch,
         });
         runtimeMeta.repositoryRoot = repositoryRoot;
@@ -111,13 +108,10 @@ export class TaskRuntimeService {
           note: 'Runtime prepared with git clone/fetch and worktree.',
         };
       } catch (error) {
-        await fs.mkdir(gitWorktreePath, {
+        await fs.mkdir(gitWorktree, {
           recursive: true,
         });
-        await this.enforceRuntimeDirectorySecurity(
-          gitWorktreePath,
-          allowedRoot,
-        );
+        await this.enforceRuntimeDirectorySecurity(gitWorktree, allowedRoot);
 
         runtimeMeta.sandbox = {
           type: 'directory',
@@ -129,19 +123,18 @@ export class TaskRuntimeService {
       }
     }
 
-    const metaPath = path.join(gitWorktreePath, this.runtimeMetaFilename);
+    const metaPath = path.join(gitWorktree, this.runtimeMetaFilename);
     await fs.writeFile(metaPath, JSON.stringify(runtimeMeta, null, 2), 'utf-8');
 
     return {
-      branch,
+      gitBranch,
       gitBaseBranch,
-      gitWorktreePath,
-      sandboxCleanupAt,
+      gitWorktree,
     };
   }
 
   async cleanupRuntime(task: Task): Promise<CleanupTaskRuntimeResult> {
-    const worktreePath = task.gitWorktreePath?.trim();
+    const worktreePath = task.gitWorktree?.trim();
     if (!worktreePath) {
       return {
         cleaned: false,
@@ -235,7 +228,7 @@ export class TaskRuntimeService {
   }
 
   async collectGitDiffArtifact(task: Task): Promise<GitDiffArtifact | null> {
-    const worktreePath = task.gitWorktreePath?.trim();
+    const worktreePath = task.gitWorktree?.trim();
 
     if (!worktreePath) {
       return null;
@@ -286,7 +279,7 @@ export class TaskRuntimeService {
     const effectiveBranch =
       branchResult.success && branchResult.stdout
         ? branchResult.stdout.trim()
-        : (task.branch ?? null);
+        : (task.gitBranch ?? null);
     const headCommit =
       headResult.success && headResult.stdout ? headResult.stdout.trim() : null;
     const headSubject =
@@ -340,13 +333,29 @@ export class TaskRuntimeService {
     };
   }
 
+  async resolveAndValidateCreateWorktreePath(
+    project: Project,
+    requestedWorktreePath: string,
+  ): Promise<string> {
+    const normalizedPath = requestedWorktreePath.trim();
+    if (!normalizedPath) {
+      throw new Error('gitWorktree cannot be empty');
+    }
+
+    const allowedRoot = await this.resolveCanonicalPath(
+      this.resolveWorktreeAllowedRoot(project),
+    );
+
+    return this.ensureWorktreePathAllowed(normalizedPath, allowedRoot);
+  }
+
   private resolveBranch(task: Task, project: Project): string {
-    if (task.branch?.trim()) {
-      return task.branch.trim();
+    if (task.gitBranch?.trim()) {
+      return this.normalizeWorktreeBranch(task.gitBranch.trim());
     }
 
     const prefix = this.sanitizeSegment(project.name) || 'ainative';
-    return `${prefix}/task-${task.id.slice(0, 8)}`;
+    return `wk-${prefix}-${task.id.slice(0, 8)}`;
   }
 
   private resolveGitBaseBranch(task: Task, project: Project): string {
@@ -358,21 +367,12 @@ export class TaskRuntimeService {
   }
 
   private resolveGitWorktreePath(task: Task, project: Project): string {
-    if (task.gitWorktreePath?.trim()) {
-      return task.gitWorktreePath.trim();
+    if (task.gitWorktree?.trim()) {
+      return task.gitWorktree.trim();
     }
 
     const baseDir = this.resolveWorktreeBaseDir(project);
-    return path.join(baseDir, task.id);
-  }
-
-  private resolveCleanupAt(task: Task, project: Project): Date {
-    if (task.sandboxCleanupAt) {
-      return task.sandboxCleanupAt;
-    }
-
-    const retentionHours = this.resolveRetentionHours(project);
-    return new Date(Date.now() + retentionHours * 60 * 60 * 1000);
+    return path.join(baseDir, `wk-${task.id}`);
   }
 
   private resolveWorktreeBaseDir(project: Project): string {
@@ -392,25 +392,16 @@ export class TaskRuntimeService {
     return this.resolveProjectWorktreeBaseDir(project);
   }
 
-  private resolveRetentionHours(project: Project): number {
-    const config = (project.configJson ?? {}) as Record<string, unknown>;
-
-    if (
-      typeof config.worktreeRetentionHours === 'number' &&
-      config.worktreeRetentionHours > 0
-    ) {
-      return Math.floor(config.worktreeRetentionHours);
-    }
-
-    return this.defaultRetentionHours;
-  }
-
   private sanitizeSegment(value: string): string {
     return value
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9-_]+/g, '-')
       .replace(/^-+|-+$/g, '');
+  }
+
+  private normalizeWorktreeBranch(branch: string): string {
+    return branch.startsWith('wk-') ? branch : `wk-${branch}`;
   }
 
   private isGitRuntimeEnabled(project: Project): boolean {

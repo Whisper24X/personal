@@ -375,11 +375,11 @@ export class TaskGitService {
       currentUser,
     );
 
-    if (!task.gitWorktreePath?.trim()) {
+    if (!task.gitWorktree?.trim()) {
       throw new ConflictException('Task workspace is not initialized');
     }
 
-    const worktreePath = await fs.realpath(task.gitWorktreePath).catch(() => {
+    const worktreePath = await fs.realpath(task.gitWorktree).catch(() => {
       throw new NotFoundException('Task workspace does not exist');
     });
 

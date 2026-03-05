@@ -22,6 +22,10 @@ export class TaskEntity extends EntityRelationalHelper {
   @Column({ type: 'uuid' })
   projectId: string;
 
+  @Index('IDX_tasks_business_line_id')
+  @Column({ type: 'uuid' })
+  businessLineId: string;
+
   @Index('IDX_tasks_workflow_template_id')
   @Column({ type: 'uuid', nullable: true })
   workflowTemplateId?: string | null;
@@ -37,10 +41,7 @@ export class TaskEntity extends EntityRelationalHelper {
   title: string;
 
   @Column({ type: 'text', nullable: true })
-  description?: string | null;
-
-  @Column({ type: 'jsonb', nullable: true })
-  acceptanceCriteria?: unknown[] | null;
+  prompt?: string | null;
 
   @Index('IDX_tasks_status')
   @Column({
@@ -52,22 +53,22 @@ export class TaskEntity extends EntityRelationalHelper {
   status: TaskStatus;
 
   @Column({ type: String, length: 120, nullable: true })
-  branch?: string | null;
+  gitBranch?: string | null;
 
   @Column({ type: String, length: 120, nullable: true })
   gitBaseBranch?: string | null;
 
   @Column({ type: String, length: 500, nullable: true })
-  gitWorktreePath?: string | null;
-
-  @Column({ type: 'timestamp', nullable: true })
-  sandboxCleanupAt?: Date | null;
-
-  @Column({ type: String, length: 120, nullable: true })
-  environment?: string | null;
+  gitWorktree?: string | null;
 
   @Column({ type: 'jsonb', nullable: true })
-  toolVersionsSnapshot?: Record<string, unknown> | null;
+  clientInputSnapshot?: Record<string, unknown> | null;
+
+  @Column({ type: String, length: 64, nullable: true })
+  cliToolId?: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  agentToolConfigId?: string | null;
 
   @Column({ type: 'uuid', nullable: true })
   createdBy?: string | null;

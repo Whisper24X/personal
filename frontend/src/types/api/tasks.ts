@@ -7,18 +7,18 @@ export type TaskNodeType = 'agent' | 'skill' | 'mcp' | 'manual'
 export type Task = {
   id: string
   projectId: string
+  businessLineId: string
   workflowTemplateId?: string | null
   mode: TaskMode
   title: string
-  description?: string | null
-  acceptanceCriteria?: unknown[] | null
+  prompt?: string | null
   status: TaskStatus
-  branch?: string | null
+  gitBranch?: string | null
   gitBaseBranch?: string | null
-  gitWorktreePath?: string | null
-  sandboxCleanupAt?: string | null
-  environment?: string | null
-  toolVersionsSnapshot?: Record<string, unknown> | null
+  gitWorktree?: string | null
+  cliToolId?: string | null
+  agentToolConfigId?: string | null
+  clientInputSnapshot?: Record<string, unknown> | null
   createdAt?: string
   updatedAt?: string
   startedAt?: string | null
@@ -178,22 +178,24 @@ export type CreateTaskPayload = {
   workflowTemplateId?: string
   mode?: TaskMode
   title: string
-  description?: string
-  acceptanceCriteria?: unknown[]
-  branch?: string
-  environment?: string
-  toolVersionsSnapshot?: Record<string, unknown>
+  prompt?: string
+  gitBranch?: string
+  gitBaseBranch?: string
+  gitWorktree?: string
+  cliToolId?: string
+  agentToolConfigId?: string
+  clientInputSnapshot?: Record<string, unknown>
 }
 
 export type UpdateTaskPayload = {
   title?: string
-  description?: string
-  acceptanceCriteria?: unknown[]
-  branch?: string
-  environment?: string
+  prompt?: string
+  gitBranch?: string
+  gitBaseBranch?: string
+  gitWorktree?: string
   cliToolId?: string
   agentToolConfigId?: string
-  toolVersionsSnapshot?: Record<string, unknown>
+  clientInputSnapshot?: Record<string, unknown>
 }
 
 export type ReplyTaskPayload = {

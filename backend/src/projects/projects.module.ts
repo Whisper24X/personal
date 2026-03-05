@@ -4,10 +4,12 @@ import { ProjectsService } from './projects.service';
 import { RelationalProjectPersistenceModule } from './infrastructure/persistence/relational/relational-persistence.module';
 import { UsersModule } from '../users/users.module';
 import { BusinessLinesModule } from '../business-lines/business-lines.module';
+import { RelationalTaskPersistenceModule } from '../tasks/infrastructure/persistence/relational/relational-persistence.module';
 
 @Module({
   imports: [
     RelationalProjectPersistenceModule,
+    RelationalTaskPersistenceModule,
     UsersModule,
     BusinessLinesModule,
   ],

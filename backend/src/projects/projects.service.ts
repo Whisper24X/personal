@@ -29,6 +29,7 @@ import {
 import { UsersService } from '../users/users.service';
 import { ProjectMemberRole } from './dto/project-member-role.enum';
 import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
+import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
 
 @Injectable()
 export class ProjectsService {
@@ -43,6 +44,7 @@ export class ProjectsService {
     private readonly businessLineRepository: BusinessLineRepository,
     private readonly businessLineMemberRepository: BusinessLineMemberRepository,
     private readonly usersService: UsersService,
+    private readonly taskRepository: TaskRepository,
   ) {}
 
   async create(
@@ -244,6 +246,13 @@ export class ProjectsService {
 
     if (!updatedProject) {
       throw new NotFoundException('Project not found');
+    }
+
+    if (updatedProject.businessLineId !== currentProject.businessLineId) {
+      await this.taskRepository.bulkUpdateBusinessLineIdByProjectId({
+        projectId: updatedProject.id,
+        businessLineId: updatedProject.businessLineId,
+      });
     }
 
     return updatedProject;

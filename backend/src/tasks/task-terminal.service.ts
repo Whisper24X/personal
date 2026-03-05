@@ -297,11 +297,11 @@ export class TaskTerminalService implements OnModuleDestroy {
       currentUser,
     );
 
-    if (!task.gitWorktreePath?.trim()) {
+    if (!task.gitWorktree?.trim()) {
       throw new ConflictException('Task workspace is not initialized');
     }
 
-    const workspacePath = await fs.realpath(task.gitWorktreePath).catch(() => {
+    const workspacePath = await fs.realpath(task.gitWorktree).catch(() => {
       throw new NotFoundException('Task workspace does not exist');
     });
 

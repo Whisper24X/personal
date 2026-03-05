@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   NotFoundException,
@@ -26,14 +27,17 @@ const createProject = (configJson?: Record<string, unknown>) => ({
 const createTask = () => ({
   id: 'task-1',
   projectId: 'project-1',
+  businessLineId: 'business-line-1',
   mode: TaskMode.workflow,
   title: 'task title',
-  description: 'task description',
-  acceptanceCriteria: ['criteria'],
+  prompt: 'task description',
   status: TaskStatus.todo,
-  branch: 'feature/task-1',
+  gitBranch: 'feature/task-1',
   gitBaseBranch: 'main',
-  gitWorktreePath: '/tmp/worktree-task-1',
+  gitWorktree: '/tmp/worktree-task-1',
+  cliToolId: null,
+  agentToolConfigId: null,
+  clientInputSnapshot: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   deletedAt: null,
@@ -77,7 +81,9 @@ const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
   process.env.AINATIVE_RUNTIME_ROLE = runtimeRole;
 
   const taskRepository = {
+    create: jest.fn(),
     findById: jest.fn(),
+    findByGitWorktree: jest.fn().mockResolvedValue(null),
     update: jest.fn(),
     findTasksReadyForDispatch: jest.fn().mockResolvedValue([]),
     countRunningTasks: jest.fn().mockResolvedValue(0),
@@ -87,6 +93,7 @@ const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
     findOldestQueuedTaskCreatedAt: jest.fn().mockResolvedValue(null),
   };
   const taskNodeRepository = {
+    createMany: jest.fn(),
     findById: jest.fn(),
     update: jest.fn(),
     findByTaskId: jest.fn(),
@@ -125,6 +132,7 @@ const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
     ensureRuntime: jest.fn(),
     cleanupRuntime: jest.fn(),
     collectGitDiffArtifact: jest.fn(),
+    resolveAndValidateCreateWorktreePath: jest.fn(),
   };
   const agentRunnerService = {
     executeAgentNode: jest.fn(),
@@ -174,6 +182,155 @@ const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
 };
 
 describe('TasksService', () => {
+  it('should create task with normalized git fields', async () => {
+    const {
+      service,
+      taskRepository,
+      taskNodeRepository,
+      projectsService,
+      taskRuntimeService,
+    } = createTasksService() as any;
+    const currentUser = createCurrentUser();
+    const project = createProject();
+
+    projectsService.assertCanAccessProject.mockResolvedValue(project);
+    taskRuntimeService.resolveAndValidateCreateWorktreePath.mockResolvedValue(
+      '/tmp/worktrees/task-1',
+    );
+    taskRepository.findByGitWorktree.mockResolvedValue(null);
+    taskRepository.create.mockResolvedValue({
+      ...createTask(),
+      mode: TaskMode.conversation,
+      projectId: project.id,
+      gitBaseBranch: 'develop',
+      gitWorktree: '/tmp/worktrees/task-1',
+    });
+
+    await service.create(
+      {
+        projectId: project.id,
+        title: 'Create task',
+        prompt: 'Do something',
+        gitBranch: 'feature/new-task',
+        gitBaseBranch: ' develop ',
+        gitWorktree: '/tmp/worktrees/task-1',
+      } as never,
+      currentUser as never,
+    );
+
+    expect(
+      taskRuntimeService.resolveAndValidateCreateWorktreePath,
+    ).toHaveBeenCalledWith(project, '/tmp/worktrees/task-1');
+    expect(taskRepository.findByGitWorktree).toHaveBeenCalledWith(
+      '/tmp/worktrees/task-1',
+    );
+    expect(taskRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: project.id,
+        businessLineId: project.businessLineId,
+        mode: TaskMode.conversation,
+        gitBranch: 'wk-feature/new-task',
+        gitBaseBranch: 'develop',
+        gitWorktree: '/tmp/worktrees/task-1',
+      }),
+    );
+    expect(taskNodeRepository.createMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('should throw bad request when gitWorktree is outside allowed root', async () => {
+    const { service, taskRepository, projectsService, taskRuntimeService } =
+      createTasksService() as any;
+    const currentUser = createCurrentUser();
+    const project = createProject();
+
+    projectsService.assertCanAccessProject.mockResolvedValue(project);
+    taskRuntimeService.resolveAndValidateCreateWorktreePath.mockRejectedValue(
+      new Error('worktree path /tmp/outside is outside allowed root /tmp/in'),
+    );
+
+    await expect(
+      service.create(
+        {
+          projectId: project.id,
+          title: 'Create task',
+          gitWorktree: '/tmp/outside',
+        } as never,
+        currentUser as never,
+      ),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(taskRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('should throw conflict when gitWorktree is already in use', async () => {
+    const { service, taskRepository, projectsService, taskRuntimeService } =
+      createTasksService() as any;
+    const currentUser = createCurrentUser();
+    const project = createProject();
+
+    projectsService.assertCanAccessProject.mockResolvedValue(project);
+    taskRuntimeService.resolveAndValidateCreateWorktreePath.mockResolvedValue(
+      '/tmp/worktrees/task-dup',
+    );
+    taskRepository.findByGitWorktree.mockResolvedValue(createTask());
+
+    await expect(
+      service.create(
+        {
+          projectId: project.id,
+          title: 'Create task',
+          gitWorktree: '/tmp/worktrees/task-dup',
+        } as never,
+        currentUser as never,
+      ),
+    ).rejects.toThrow(ConflictException);
+
+    expect(taskRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('should keep git fields nullable when create payload does not provide them', async () => {
+    const {
+      service,
+      taskRepository,
+      taskNodeRepository,
+      projectsService,
+      taskRuntimeService,
+    } = createTasksService() as any;
+    const currentUser = createCurrentUser();
+    const project = createProject();
+
+    projectsService.assertCanAccessProject.mockResolvedValue(project);
+    taskRepository.create.mockResolvedValue({
+      ...createTask(),
+      mode: TaskMode.conversation,
+      gitBaseBranch: null,
+      gitWorktree: null,
+    });
+
+    await service.create(
+      {
+        projectId: project.id,
+        title: 'Create task',
+        prompt: 'Do something',
+      } as never,
+      currentUser as never,
+    );
+
+    expect(
+      taskRuntimeService.resolveAndValidateCreateWorktreePath,
+    ).not.toHaveBeenCalled();
+    expect(taskRepository.findByGitWorktree).not.toHaveBeenCalled();
+    expect(taskRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        businessLineId: project.businessLineId,
+        gitBranch: null,
+        gitBaseBranch: null,
+        gitWorktree: null,
+      }),
+    );
+    expect(taskNodeRepository.createMany).toHaveBeenCalledTimes(1);
+  });
+
   it('should dispatch manual node to executeManualNode', async () => {
     const { service, taskRepository, taskNodeRepository } =
       createTasksService();
@@ -379,7 +536,7 @@ describe('TasksService', () => {
       name: diffArtifactName,
       content: '# diff',
       metadata: {
-        branch: 'feature/task-1',
+        gitBranch: 'feature/task-1',
       },
     });
     taskArtifactRepository.findByTaskId.mockResolvedValue([
@@ -414,7 +571,7 @@ describe('TasksService', () => {
       name: diffArtifactName,
       content: '# diff',
       metadata: {
-        branch: 'feature/task-1',
+        gitBranch: 'feature/task-1',
       },
     });
     taskArtifactRepository.findByTaskId.mockResolvedValue([]);
@@ -545,7 +702,7 @@ describe('TasksService', () => {
       ...createTask(),
       status: TaskStatus.inProgress,
       createdBy: 'user-1',
-      gitWorktreePath: '/tmp/worktree-task-1',
+      gitWorktree: '/tmp/worktree-task-1',
     };
 
     taskNodeRepository.findByTaskId.mockResolvedValue([
@@ -571,7 +728,7 @@ describe('TasksService', () => {
       2,
       task.id,
       expect.objectContaining({
-        gitWorktreePath: null,
+        gitWorktree: null,
       }),
     );
     expect(notificationsService.notifyTaskStatusChanged).toHaveBeenCalledWith({
@@ -595,8 +752,7 @@ describe('TasksService', () => {
       ...createTask(),
       status: TaskStatus.inProgress,
       createdBy: 'user-2',
-      gitWorktreePath: '/tmp/worktree-task-2',
-      sandboxCleanupAt: null,
+      gitWorktree: '/tmp/worktree-task-2',
     };
 
     taskNodeRepository.findByTaskId.mockResolvedValue([
@@ -963,7 +1119,7 @@ describe('TasksService', () => {
     expect(taskRepository.update).toHaveBeenCalledWith(
       task.id,
       expect.objectContaining({
-        gitWorktreePath: null,
+        gitWorktree: null,
       }),
     );
     expect(taskLogRepository.create).toHaveBeenCalledWith(
@@ -1195,7 +1351,7 @@ describe('TasksService', () => {
     } = createTasksService() as any;
     const task = {
       ...createTask(),
-      gitWorktreePath: '/tmp/worktree-task-fail',
+      gitWorktree: '/tmp/worktree-task-fail',
     };
     const currentUser = createCurrentUser();
 
@@ -1212,7 +1368,7 @@ describe('TasksService', () => {
     expect(taskRepository.update).toHaveBeenCalledWith(
       task.id,
       expect.not.objectContaining({
-        gitWorktreePath: null,
+        gitWorktree: null,
       }),
     );
     expect(taskLogRepository.create).toHaveBeenCalledWith(
@@ -1277,10 +1433,9 @@ describe('TasksService', () => {
     taskRepository.update.mockResolvedValue(task);
     projectsService.assertCanAccessProject.mockResolvedValue(createProject());
     taskRuntimeService.ensureRuntime.mockResolvedValue({
-      branch: task.branch,
+      gitBranch: task.gitBranch,
       gitBaseBranch: task.gitBaseBranch,
-      gitWorktreePath: task.gitWorktreePath,
-      sandboxCleanupAt: new Date(),
+      gitWorktree: task.gitWorktree,
     });
     taskNodeRepository.findInProgressByTaskId.mockResolvedValue(null);
     taskNodeRepository.findFirstByTaskIdAndStatus.mockImplementation(

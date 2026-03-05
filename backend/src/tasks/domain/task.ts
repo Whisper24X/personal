@@ -9,6 +9,9 @@ export class Task {
   @ApiProperty({ type: String })
   projectId: string;
 
+  @ApiProperty({ type: String })
+  businessLineId: string;
+
   @ApiProperty({ type: String, nullable: true, required: false })
   workflowTemplateId?: string | null;
 
@@ -19,36 +22,33 @@ export class Task {
   title: string;
 
   @ApiProperty({ type: String, required: false, nullable: true })
-  description?: string | null;
-
-  @ApiProperty({ type: Array, required: false, nullable: true })
-  acceptanceCriteria?: unknown[] | null;
+  prompt?: string | null;
 
   @ApiProperty({ enum: TaskStatus, enumName: 'TaskStatus' })
   status: TaskStatus;
 
   @ApiProperty({ type: String, required: false, nullable: true })
-  branch?: string | null;
+  gitBranch?: string | null;
 
   @ApiProperty({ type: String, required: false, nullable: true })
   gitBaseBranch?: string | null;
 
   @ApiProperty({ type: String, required: false, nullable: true })
-  gitWorktreePath?: string | null;
-
-  @ApiProperty({ type: Date, required: false, nullable: true })
-  sandboxCleanupAt?: Date | null;
+  gitWorktree?: string | null;
 
   @ApiProperty({ type: String, required: false, nullable: true })
-  environment?: string | null;
+  cliToolId?: string | null;
 
   @ApiProperty({
     type: Object,
     required: false,
     nullable: true,
-    description: 'Resolved tools versions used by this task',
+    description: 'User input snapshot from create/update payload',
   })
-  toolVersionsSnapshot?: Record<string, unknown> | null;
+  clientInputSnapshot?: Record<string, unknown> | null;
+
+  @ApiProperty({ type: String, required: false, nullable: true })
+  agentToolConfigId?: string | null;
 
   @ApiProperty({ type: String, required: false, nullable: true })
   createdBy?: string | null;

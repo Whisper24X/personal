@@ -42,6 +42,37 @@ export class TaskRelationalRepository implements TaskRepository {
     return entity ? TaskMapper.toDomain(entity) : null;
   }
 
+  async findByGitWorktree(gitWorktree: string): Promise<NullableType<Task>> {
+    const entity = await this.taskRepository.findOne({
+      where: {
+        gitWorktree,
+        deletedAt: IsNull(),
+      },
+    });
+
+    return entity ? TaskMapper.toDomain(entity) : null;
+  }
+
+  async bulkUpdateBusinessLineIdByProjectId({
+    projectId,
+    businessLineId,
+  }: {
+    projectId: string;
+    businessLineId: string;
+  }): Promise<void> {
+    await this.taskRepository
+      .createQueryBuilder()
+      .update(TaskEntity)
+      .set({
+        businessLineId,
+      })
+      .where('"projectId" = :projectId', {
+        projectId,
+      })
+      .andWhere('"deletedAt" IS NULL')
+      .execute();
+  }
+
   async findAllWithPagination({
     paginationOptions,
     projectId,

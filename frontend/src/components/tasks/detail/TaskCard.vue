@@ -35,17 +35,9 @@ const emit = defineEmits<{
 }>()
 
 const toolMeta = computed(() => {
-  const snapshot = props.task?.toolVersionsSnapshot
-  if (!snapshot || typeof snapshot !== 'object') {
-    return {
-      cliToolId: '-',
-      cliConfigId: '-',
-    }
-  }
-
   return {
-    cliToolId: String((snapshot as Record<string, unknown>).cliToolId ?? '-'),
-    cliConfigId: String((snapshot as Record<string, unknown>).agentToolConfigId ?? '-'),
+    cliToolId: props.task?.cliToolId || '-',
+    cliConfigId: props.task?.agentToolConfigId || '-',
   }
 })
 </script>

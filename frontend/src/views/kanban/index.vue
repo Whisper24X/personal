@@ -69,7 +69,7 @@ const filteredTasks = computed(() => {
 
     const searchText = [
       task.title,
-      task.description ?? '',
+      task.prompt ?? '',
       task.id,
       projectNameMap.value.get(task.projectId) ?? '',
     ]
