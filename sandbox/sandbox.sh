@@ -64,8 +64,11 @@ _resolve_worktree_suffix() {
     if [[ -z "$branch" || "$branch" == "HEAD" ]]; then
         branch=$(basename "$PROJECT_ROOT")
     fi
-    # 规范化：feature/foo-bar → feature-foo-bar
-    echo "${branch//\//-}"
+    # 规范化：Docker Compose 项目名只允许 [a-z0-9-_]
+    # 斜杠/点号 → 连字符，大写 → 小写
+    local normalized="${branch//\//-}"
+    normalized="${normalized//./-}"
+    echo "$normalized" | tr '[:upper:]' '[:lower:]'
 }
 
 _port_in_use() {
