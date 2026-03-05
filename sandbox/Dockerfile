@@ -17,8 +17,8 @@ FROM golang:1.23-alpine
 ENV TZ=Asia/Shanghai \
     GO_ENV=development \
     GOPROXY=https://goproxy.cn,direct \
-    GOPRIVATE=gitlab.yc345.tv \        
-    CGO_ENABLED=0 \
+    GOPRIVATE=gitlab.yc345.tv \
+    CGO_ENABLED=1 \
     NODE_ENV=development
 
 # ============================================================
@@ -37,6 +37,7 @@ RUN apk add --no-cache \
     supervisor nginx \
     nodejs npm \
     tzdata \
+    gcc musl-dev librdkafka-dev \
     && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
 
