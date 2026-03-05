@@ -8,6 +8,17 @@ allowed-tools: Bash, Read, Glob
 
 代码质量检查与验证。
 
+## 前置检查：http.go 注册验证
+
+**在执行任何 make 命令之前**，必须验证本次新增的所有 Service 均已注册到 `internal/server/http.go`：
+
+```bash
+grep "Register{Table}HTTPServer" ainative-backend/internal/server/http.go
+```
+
+- ❌ 若未找到 → **立即停止**，返回 Step 6 (`backend-codeing`) 的 Step 4 补充注册，再重新执行本步骤
+- ✅ 找到后 → 继续执行以下命令
+
 ## 命令
 
 ```bash
@@ -22,6 +33,7 @@ cd ainative-backend && make lint
 ## Step 7: 质量检查
 | 检查项 | 状态 |
 |--------|------|
+| http.go 注册验证 | ✅/❌ |
 | wire | ✅/❌ |
 | gci | ✅/❌ |
 | lint | ✅/❌ |
