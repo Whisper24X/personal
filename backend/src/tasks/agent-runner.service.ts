@@ -811,7 +811,7 @@ export class AgentRunnerService {
 
     const defaultCommandMap: Record<AgentAdapter, string> = {
       codex: 'codex',
-      cursor: 'cursor-agent',
+      cursor: 'agent',
       claude: 'claude',
       gemini: 'gemini',
       opencode: 'opencode',
@@ -823,7 +823,7 @@ export class AgentRunnerService {
   private resolveDefaultArgs(adapter: AgentAdapter): string[] {
     const defaultArgsMap: Record<AgentAdapter, string[]> = {
       codex: ['exec', '--skip-git-repo-check', '-'],
-      cursor: [],
+      cursor: ['-p', '--trust', '--force'],
       claude: ['-p'],
       gemini: [],
       opencode: [],
@@ -851,6 +851,8 @@ export class AgentRunnerService {
       task.prompt ? `Task Prompt:\n${task.prompt}` : '',
       `Node Name: ${node.name}`,
       `Node Order: ${node.nodeOrder}`,
+      '---',
+      'Output requirement: After completing the task, please output an execution summary to stdout, including: 1) What was done; 2) Which files were modified (if any); 3) Any issues encountered (if any).',
     ].filter(Boolean);
 
     return sections.join('\n\n');
@@ -871,7 +873,12 @@ export class AgentRunnerService {
     try {
       const mergedEnv = this.buildRunnerEnvironment(config.env);
 
-      const childProcess = spawn(config.command, config.args, {
+      const spawnArgs =
+        config.adapter === 'cursor'
+          ? [...config.args, prompt]
+          : config.args;
+
+      const childProcess = spawn(config.command, spawnArgs, {
         cwd: config.cwd,
         env: mergedEnv,
         stdio: 'pipe',
@@ -894,8 +901,10 @@ export class AgentRunnerService {
         }, 2_000);
       }, config.timeoutMs);
 
-      childProcess.stdin?.write(prompt);
-      childProcess.stdin?.end();
+      if (config.adapter !== 'cursor') {
+        childProcess.stdin?.write(prompt);
+        childProcess.stdin?.end();
+      }
 
       const closeResult = await new Promise<{
         exitCode: number | null;

@@ -68,6 +68,8 @@ import {
   TaskTerminalSessionDto,
   TaskTerminalSessionListDto,
 } from './dto/task-terminal.dto';
+import { ReadWorktreeFileDto } from './dto/read-worktree-file.dto';
+import { ListWorktreeFilesDto } from './dto/list-worktree-files.dto';
 import { TaskWorkspaceService } from './task-workspace.service';
 import { TaskGitService } from './task-git.service';
 import { TaskTerminalService } from './task-terminal.service';
@@ -495,6 +497,38 @@ export class TasksController {
   @HttpCode(HttpStatus.OK)
   artifacts(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
     return this.tasksService.listArtifacts(id, request.user);
+  }
+
+  @Get(':id/worktree-files')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: String, isArray: true })
+  @HttpCode(HttpStatus.OK)
+  listWorktreeFiles(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ListWorktreeFilesDto,
+  ) {
+    return this.tasksService.listWorktreeFiles(id, request.user, {
+      prefix: query.prefix,
+    });
+  }
+
+  @Get(':id/worktree-files/content')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({
+    schema: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } } },
+  })
+  @HttpCode(HttpStatus.OK)
+  readWorktreeFile(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ReadWorktreeFileDto,
+  ) {
+    return this.tasksService.readWorktreeFile(
+      id,
+      query.path,
+      request.user,
+    );
   }
 
   @Post(':id/artifacts')

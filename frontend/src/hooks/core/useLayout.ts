@@ -684,6 +684,7 @@ export const useLayout = () => {
     () => route.fullPath,
     () => {
       mobileNavOpen.value = false
+      businessLineModalOpen.value = false
       hideProjectTooltip()
       syncSelectedMenuPath()
       syncBusinessLineFromRoute()

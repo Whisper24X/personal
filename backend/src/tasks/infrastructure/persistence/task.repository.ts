@@ -45,6 +45,11 @@ export abstract class TaskRepository {
 
   abstract findTasksReadyForDispatch(limit: number, at?: Date): Promise<Task[]>;
 
+  abstract findTasksWithExpiredWorktrees(
+    limit: number,
+    at?: Date,
+  ): Promise<Task[]>;
+
   abstract update(
     id: Task['id'],
     payload: Partial<Task>,

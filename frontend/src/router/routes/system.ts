@@ -9,18 +9,6 @@ const toDashboardSettings = (section: string) => ({
   },
 })
 
-const resolveProjectId = (value: unknown) => {
-  if (typeof value === 'string') {
-    return value
-  }
-
-  if (Array.isArray(value)) {
-    return value[0] ?? ''
-  }
-
-  return ''
-}
-
 export const systemRoutes: AppRouteRecord[] = [
   {
     path: '/',
@@ -136,14 +124,10 @@ export const systemRoutes: AppRouteRecord[] = [
   },
   {
     path: '/projects/:id',
-    redirect: (to) => ({
-      path: '/dashboard',
-      query: {
-        projectId: resolveProjectId(to.params.id),
-      },
-    }),
+    name: 'project-detail',
+    component: () => import('@/views/projects/detail.vue'),
     meta: {
-      title: '项目',
+      title: '项目详情',
       requiresAuth: true,
       permissions: ['projects:view'],
     },
