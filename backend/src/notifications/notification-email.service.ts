@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import nodemailer, { type Transporter } from 'nodemailer';
 
 type TaskEmailPayload = {
@@ -15,16 +16,38 @@ type TaskEmailPayload = {
 @Injectable()
 export class NotificationEmailService {
   private readonly logger = new Logger(NotificationEmailService.name);
-  private readonly smtpHost = process.env.AINATIVE_SMTP_HOST?.trim();
-  private readonly smtpPort = Number(process.env.AINATIVE_SMTP_PORT ?? 25);
-  private readonly smtpUser = process.env.AINATIVE_SMTP_USER?.trim();
-  private readonly smtpPass = process.env.AINATIVE_SMTP_PASS;
-  private readonly smtpFrom = process.env.AINATIVE_SMTP_FROM?.trim();
-  private readonly smtpSecure = this.parseBoolean(
-    process.env.AINATIVE_SMTP_SECURE,
-  );
+  private readonly smtpHost: string | undefined;
+  private readonly smtpPort: number;
+  private readonly smtpUser: string | undefined;
+  private readonly smtpPass: string | undefined;
+  private readonly smtpFrom: string | undefined;
+  private readonly smtpSecure: boolean;
   private transporter: Transporter | null = null;
   private missingConfigWarned = false;
+
+  constructor(
+    private readonly configService: ConfigService = new ConfigService(),
+  ) {
+    this.smtpHost = this.configService
+      .get<string>('AINATIVE_SMTP_HOST', { infer: true })
+      ?.trim();
+    this.smtpPort = Number(
+      this.configService.get<string>('AINATIVE_SMTP_PORT', { infer: true }) ??
+        25,
+    );
+    this.smtpUser = this.configService
+      .get<string>('AINATIVE_SMTP_USER', { infer: true })
+      ?.trim();
+    this.smtpPass = this.configService.get<string>('AINATIVE_SMTP_PASS', {
+      infer: true,
+    });
+    this.smtpFrom = this.configService
+      .get<string>('AINATIVE_SMTP_FROM', { infer: true })
+      ?.trim();
+    this.smtpSecure = this.parseBoolean(
+      this.configService.get<string>('AINATIVE_SMTP_SECURE', { infer: true }),
+    );
+  }
 
   async sendTaskStatusEmail(payload: TaskEmailPayload): Promise<void> {
     if (!this.smtpHost || !this.smtpFrom || Number.isNaN(this.smtpPort)) {

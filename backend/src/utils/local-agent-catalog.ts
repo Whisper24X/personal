@@ -1,3 +1,4 @@
+import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -71,6 +72,7 @@ const TEXT_CONFIG_EXTENSIONS = new Set([
 const MCP_FILE_BASENAME_REGEX = /(mcp|settings|config)/i;
 const workspaceRootDir = resolveWorkspaceRootDir();
 const ainativeDataRootDir = resolveAinativeDataRootDir();
+const configService = new ConfigService();
 
 const normalizeText = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -397,7 +399,11 @@ const buildProjectBaseDirCandidates = (project: Project): string[] => {
 
   const repoCacheBaseDir =
     normalizeText(configJson.repoCacheBaseDir) ??
-    normalizeText(process.env.AINATIVE_REPO_CACHE_BASE_DIR);
+    normalizeText(
+      configService.get<string>('AINATIVE_REPO_CACHE_BASE_DIR', {
+        infer: true,
+      }),
+    );
 
   if (repoCacheBaseDir && repositoryNameFromGit) {
     const projectId = normalizeText(project.id);

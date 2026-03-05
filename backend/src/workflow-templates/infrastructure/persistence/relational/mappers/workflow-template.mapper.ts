@@ -10,6 +10,7 @@ export class WorkflowTemplateMapper {
     domainEntity.description = raw.description;
     domainEntity.scope = raw.scope;
     domainEntity.businessLineId = raw.businessLineId;
+    domainEntity.projectId = raw.projectId;
     domainEntity.isActive = raw.isActive;
     domainEntity.nodesJson = raw.nodesJson;
     domainEntity.createdBy = raw.createdBy;
@@ -32,6 +33,7 @@ export class WorkflowTemplateMapper {
     persistenceEntity.mode = WorkflowTemplateMode.workflow;
     persistenceEntity.scope = domainEntity.scope;
     persistenceEntity.businessLineId = domainEntity.businessLineId;
+    persistenceEntity.projectId = domainEntity.projectId;
     persistenceEntity.isActive = domainEntity.isActive;
     persistenceEntity.nodesJson = domainEntity.nodesJson;
     persistenceEntity.createdBy = domainEntity.createdBy;

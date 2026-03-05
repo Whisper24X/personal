@@ -43,7 +43,7 @@ async function bootstrap() {
     .addGlobalParameters({
       in: 'header',
       required: false,
-      name: process.env.APP_HEADER_LANGUAGE || 'x-custom-lang',
+      name: configService.getOrThrow('app.headerLanguage', { infer: true }),
       schema: {
         example: 'en',
       },

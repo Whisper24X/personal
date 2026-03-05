@@ -8,6 +8,7 @@ import { UserSeedModule } from './user/user-seed.module';
 import databaseConfig from '../../config/database.config';
 import appConfig from '../../../config/app.config';
 import { BusinessLineSeedModule } from './business-line/business-line-seed.module';
+import { resolveEnvFilePath } from '../../../config/env-file-path';
 
 @Module({
   imports: [
@@ -16,7 +17,7 @@ import { BusinessLineSeedModule } from './business-line/business-line-seed.modul
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig, appConfig],
-      envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
+      envFilePath: resolveEnvFilePath(),
     }),
     TypeOrmModule.forRootAsync({
       useClass: TypeOrmConfigService,

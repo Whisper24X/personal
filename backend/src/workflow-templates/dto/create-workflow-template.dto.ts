@@ -3,6 +3,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsEnum,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -24,19 +25,23 @@ export class CreateWorkflowTemplateDto {
   @IsString()
   description?: string;
 
-  @ApiPropertyOptional({
-    enum: WorkflowTemplateScope,
+  @ApiProperty({
+    enum: [WorkflowTemplateScope.businessLine, WorkflowTemplateScope.project],
     enumName: 'WorkflowTemplateScope',
-    default: WorkflowTemplateScope.global,
   })
-  @IsOptional()
   @IsEnum(WorkflowTemplateScope)
-  scope?: WorkflowTemplateScope;
+  @IsIn([WorkflowTemplateScope.businessLine, WorkflowTemplateScope.project])
+  scope: WorkflowTemplateScope;
 
   @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
   @IsUUID()
   businessLineId?: string;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @IsUUID()
+  projectId?: string;
 
   @ApiProperty({ type: [WorkflowTemplateNodeDto] })
   @IsArray()

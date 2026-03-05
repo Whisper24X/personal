@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { spawn } from 'child_process';
 import path from 'path';
 import { AgentToolConfig } from '../business-lines/domain/agent-tool-config';
@@ -113,6 +114,7 @@ export class AgentRunnerService {
 
   constructor(
     private readonly agentToolConfigRepository: AgentToolConfigRepository,
+    private readonly configService: ConfigService = new ConfigService(),
   ) {}
 
   async executeAgentNode({
@@ -143,7 +145,7 @@ export class AgentRunnerService {
       return configJson.agentRunnerEnabled;
     }
 
-    return process.env.AINATIVE_AGENT_RUNNER_ENABLED === 'true';
+    return this.readTrimmedEnv('AINATIVE_AGENT_RUNNER_ENABLED') === 'true';
   }
 
   private buildSimulatedResult(task: Task, node: TaskNode): AgentRunnerResult {
@@ -256,8 +258,11 @@ export class AgentRunnerService {
       return path.resolve(config.worktreeAllowedRoot.trim());
     }
 
-    if (process.env.AINATIVE_WORKTREE_ALLOWED_ROOT?.trim()) {
-      return path.resolve(process.env.AINATIVE_WORKTREE_ALLOWED_ROOT.trim());
+    const worktreeAllowedRoot = this.readTrimmedEnv(
+      'AINATIVE_WORKTREE_ALLOWED_ROOT',
+    );
+    if (worktreeAllowedRoot) {
+      return path.resolve(worktreeAllowedRoot);
     }
 
     if (
@@ -267,8 +272,9 @@ export class AgentRunnerService {
       return path.resolve(config.worktreeBaseDir.trim());
     }
 
-    if (process.env.AINATIVE_WORKTREE_BASE_DIR?.trim()) {
-      return path.resolve(process.env.AINATIVE_WORKTREE_BASE_DIR.trim());
+    const worktreeBaseDir = this.readTrimmedEnv('AINATIVE_WORKTREE_BASE_DIR');
+    if (worktreeBaseDir) {
+      return path.resolve(worktreeBaseDir);
     }
 
     return this.resolveProjectWorktreeBaseDir(project);
@@ -791,11 +797,11 @@ export class AgentRunnerService {
 
   private resolveDefaultCommand(adapter: AgentAdapter): string {
     const envCommandMap: Record<AgentAdapter, string | undefined> = {
-      codex: process.env.AINATIVE_CODEX_RUNNER_COMMAND,
-      cursor: process.env.AINATIVE_CURSOR_RUNNER_COMMAND,
-      claude: process.env.AINATIVE_CLAUDE_RUNNER_COMMAND,
-      gemini: process.env.AINATIVE_GEMINI_RUNNER_COMMAND,
-      opencode: process.env.AINATIVE_OPENCODE_RUNNER_COMMAND,
+      codex: this.readTrimmedEnv('AINATIVE_CODEX_RUNNER_COMMAND'),
+      cursor: this.readTrimmedEnv('AINATIVE_CURSOR_RUNNER_COMMAND'),
+      claude: this.readTrimmedEnv('AINATIVE_CLAUDE_RUNNER_COMMAND'),
+      gemini: this.readTrimmedEnv('AINATIVE_GEMINI_RUNNER_COMMAND'),
+      opencode: this.readTrimmedEnv('AINATIVE_OPENCODE_RUNNER_COMMAND'),
     };
 
     const envCommand = envCommandMap[adapter];
@@ -991,7 +997,7 @@ export class AgentRunnerService {
     ];
     const baseEnv = allowedBaseEnvKeys.reduce<NodeJS.ProcessEnv>(
       (result, key) => {
-        const value = process.env[key];
+        const value = this.configService.get<string>(key, { infer: true });
 
         if (value) {
           result[key] = value;
@@ -1006,6 +1012,10 @@ export class AgentRunnerService {
       ...baseEnv,
       ...envOverrides,
     };
+  }
+
+  private readTrimmedEnv(key: string): string | undefined {
+    return this.configService.get<string>(key, { infer: true })?.trim();
   }
 
   private concatWithLimit(current: string, next: string): string {

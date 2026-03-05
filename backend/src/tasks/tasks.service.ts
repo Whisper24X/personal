@@ -7,6 +7,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { TaskRepository } from './infrastructure/persistence/task.repository';
 import { TaskNodeRepository } from './infrastructure/persistence/task-node.repository';
@@ -89,6 +90,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     private readonly agentRunnerService: AgentRunnerService,
     private readonly projectRepository: ProjectRepository,
     private readonly dataSource: DataSource,
+    private readonly configService: ConfigService = new ConfigService(),
   ) {}
 
   onModuleInit(): void {
@@ -144,6 +146,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     if (createTaskDto.workflowTemplateId) {
       const template = await this.workflowTemplatesService.getTemplateForTask({
         templateId: createTaskDto.workflowTemplateId,
+        projectId: project.id,
         projectBusinessLineId: project.businessLineId,
       });
 
@@ -1691,11 +1694,14 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
   }
 
   private resolveRuntimeRole(): 'api' | 'worker' {
-    return process.env.AINATIVE_RUNTIME_ROLE === 'worker' ? 'worker' : 'api';
+    return this.configService.get('AINATIVE_RUNTIME_ROLE', { infer: true }) ===
+      'worker'
+      ? 'worker'
+      : 'api';
   }
 
   private readPositiveNumberFromEnv(key: string, defaultValue: number): number {
-    const rawValue = process.env[key];
+    const rawValue = this.configService.get<string>(key, { infer: true });
 
     if (!rawValue) {
       return defaultValue;

@@ -4,6 +4,7 @@ import {
   NotFoundException,
   OnModuleDestroy,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
@@ -39,7 +40,10 @@ export class TaskTerminalService implements OnModuleDestroy {
   >();
   private readonly maxHistoryEvents = 1_000;
 
-  constructor(private readonly tasksService: TasksService) {}
+  constructor(
+    private readonly tasksService: TasksService,
+    private readonly configService: ConfigService = new ConfigService(),
+  ) {}
 
   onModuleDestroy(): void {
     for (const sessions of this.sessionsByTaskId.values()) {
@@ -280,7 +284,9 @@ export class TaskTerminalService implements OnModuleDestroy {
       return candidate;
     }
 
-    const envShell = process.env.SHELL?.trim();
+    const envShell = this.configService
+      .get<string>('SHELL', { infer: true })
+      ?.trim();
     if (envShell) {
       return envShell;
     }

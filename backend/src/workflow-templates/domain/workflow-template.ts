@@ -28,6 +28,9 @@ export class WorkflowTemplate {
   @ApiProperty({ type: String, required: false, nullable: true })
   businessLineId?: string | null;
 
+  @ApiProperty({ type: String, required: false, nullable: true })
+  projectId?: string | null;
+
   @ApiProperty({ type: Boolean, default: true })
   isActive: boolean;
 

@@ -54,6 +54,7 @@ export class WorkflowTemplateRelationalRepository
     options?: {
       scope?: WorkflowTemplateScope;
       businessLineId?: string | null;
+      projectId?: string | null;
     },
   ): Promise<NullableType<WorkflowTemplate>> {
     const query = this.workflowTemplateRepository
@@ -77,6 +78,16 @@ export class WorkflowTemplateRelationalRepository
       }
     }
 
+    if (options?.projectId !== undefined) {
+      if (options.projectId === null) {
+        query.andWhere('workflowTemplate.projectId IS NULL');
+      } else {
+        query.andWhere('workflowTemplate.projectId = :projectId', {
+          projectId: options.projectId,
+        });
+      }
+    }
+
     const entity = await query.getOne();
 
     return entity ? WorkflowTemplateMapper.toDomain(entity) : null;
@@ -88,18 +99,28 @@ export class WorkflowTemplateRelationalRepository
     isActive,
     scope,
     businessLineId,
+    projectId,
     includeGlobal,
+    excludeGlobal,
   }: {
     paginationOptions: IPaginationOptions;
     keyword?: string;
     isActive?: boolean;
     scope?: WorkflowTemplateScope;
     businessLineId?: string;
+    projectId?: string;
     includeGlobal?: boolean;
+    excludeGlobal?: boolean;
   }): Promise<WorkflowTemplate[]> {
     const query = this.workflowTemplateRepository
       .createQueryBuilder('workflowTemplate')
       .where('workflowTemplate.deletedAt IS NULL');
+
+    if (excludeGlobal) {
+      query.andWhere('workflowTemplate.scope <> :globalScope', {
+        globalScope: WorkflowTemplateScope.global,
+      });
+    }
 
     if (scope) {
       query.andWhere('workflowTemplate.scope = :scope', {
@@ -111,29 +132,46 @@ export class WorkflowTemplateRelationalRepository
           businessLineId,
         });
       }
-    } else if (businessLineId) {
+
+      if (scope === WorkflowTemplateScope.project && projectId) {
+        query.andWhere('workflowTemplate.projectId = :projectId', {
+          projectId,
+        });
+      }
+    } else if (projectId) {
       if (includeGlobal) {
         query.andWhere(
           new Brackets((qb) => {
-            qb.where('workflowTemplate.scope = :globalScope', {
-              globalScope: WorkflowTemplateScope.global,
-            }).orWhere(
+            qb.where(
               'workflowTemplate.scope = :businessLineScope AND workflowTemplate.businessLineId = :businessLineId',
               {
                 businessLineScope: WorkflowTemplateScope.businessLine,
-                businessLineId,
+                businessLineId: businessLineId ?? null,
+              },
+            ).orWhere(
+              'workflowTemplate.scope = :projectScope AND workflowTemplate.projectId = :projectId',
+              {
+                projectScope: WorkflowTemplateScope.project,
+                projectId,
               },
             );
           }),
         );
       } else {
-        query.andWhere('workflowTemplate.scope = :businessLineScope', {
-          businessLineScope: WorkflowTemplateScope.businessLine,
+        query.andWhere('workflowTemplate.scope = :projectScope', {
+          projectScope: WorkflowTemplateScope.project,
         });
-        query.andWhere('workflowTemplate.businessLineId = :businessLineId', {
-          businessLineId,
+        query.andWhere('workflowTemplate.projectId = :projectId', {
+          projectId,
         });
       }
+    } else if (businessLineId) {
+      query.andWhere('workflowTemplate.scope = :businessLineScope', {
+        businessLineScope: WorkflowTemplateScope.businessLine,
+      });
+      query.andWhere('workflowTemplate.businessLineId = :businessLineId', {
+        businessLineId,
+      });
     }
 
     if (keyword) {

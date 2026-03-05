@@ -20,6 +20,7 @@ export abstract class WorkflowTemplateRepository {
     options?: {
       scope?: WorkflowTemplateScope;
       businessLineId?: string | null;
+      projectId?: string | null;
     },
   ): Promise<NullableType<WorkflowTemplate>>;
 
@@ -29,14 +30,18 @@ export abstract class WorkflowTemplateRepository {
     isActive,
     scope,
     businessLineId,
+    projectId,
     includeGlobal,
+    excludeGlobal,
   }: {
     paginationOptions: IPaginationOptions;
     keyword?: string;
     isActive?: boolean;
     scope?: WorkflowTemplateScope;
     businessLineId?: string;
+    projectId?: string;
     includeGlobal?: boolean;
+    excludeGlobal?: boolean;
   }): Promise<WorkflowTemplate[]>;
 
   abstract update(

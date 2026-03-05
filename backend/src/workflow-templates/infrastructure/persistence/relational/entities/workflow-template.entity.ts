@@ -45,6 +45,10 @@ export class WorkflowTemplateEntity extends EntityRelationalHelper {
   @Column({ type: 'uuid', nullable: true })
   businessLineId?: string | null;
 
+  @Index('IDX_workflow_templates_project_id')
+  @Column({ type: 'uuid', nullable: true })
+  projectId?: string | null;
+
   @Column({ type: 'boolean', default: true })
   isActive: boolean;
 

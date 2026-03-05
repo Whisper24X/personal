@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -45,6 +46,7 @@ export class ProjectsService {
     private readonly businessLineMemberRepository: BusinessLineMemberRepository,
     private readonly usersService: UsersService,
     private readonly taskRepository: TaskRepository,
+    private readonly configService: ConfigService = new ConfigService(),
   ) {}
 
   async create(
@@ -761,7 +763,9 @@ export class ProjectsService {
       typeof config.repoCacheBaseDir === 'string' &&
       config.repoCacheBaseDir.trim()
         ? config.repoCacheBaseDir.trim()
-        : process.env.AINATIVE_REPO_CACHE_BASE_DIR?.trim();
+        : this.configService
+            .get<string>('AINATIVE_REPO_CACHE_BASE_DIR', { infer: true })
+            ?.trim();
 
     const repositoryDirName = this.resolveRepositoryDirectoryName(project);
 

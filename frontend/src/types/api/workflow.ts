@@ -1,4 +1,4 @@
-export type WorkflowTemplateScope = 'global' | 'business_line'
+export type WorkflowTemplateScope = 'business_line' | 'project'
 
 export type WorkflowNodeType = 'agent' | 'skill' | 'mcp' | 'manual'
 
@@ -22,6 +22,7 @@ export type WorkflowTemplate = {
   description?: string | null
   scope: WorkflowTemplateScope
   businessLineId?: string | null
+  projectId?: string | null
   isActive: boolean
   nodesJson: WorkflowTemplateNode[]
   createdAt?: string
@@ -33,6 +34,7 @@ export type CreateWorkflowTemplatePayload = {
   description?: string
   scope?: WorkflowTemplateScope
   businessLineId?: string
+  projectId?: string
   nodes: WorkflowTemplateNode[]
   isActive?: boolean
 }

@@ -3,6 +3,7 @@ import { Transform } from 'class-transformer';
 import {
   IsBoolean,
   IsEnum,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -45,11 +46,12 @@ export class FindAllWorkflowTemplatesDto {
   isActive?: boolean;
 
   @ApiPropertyOptional({
-    enum: WorkflowTemplateScope,
+    enum: [WorkflowTemplateScope.businessLine, WorkflowTemplateScope.project],
     enumName: 'WorkflowTemplateScope',
   })
   @IsOptional()
   @IsEnum(WorkflowTemplateScope)
+  @IsIn([WorkflowTemplateScope.businessLine, WorkflowTemplateScope.project])
   scope?: WorkflowTemplateScope;
 
   @ApiPropertyOptional({ type: String })

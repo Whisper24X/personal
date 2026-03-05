@@ -123,6 +123,16 @@ export const systemRoutes: AppRouteRecord[] = [
     },
   },
   {
+    path: '/projects/workflows',
+    name: 'project-workflows',
+    component: () => import('@/views/projects/detail.vue'),
+    meta: {
+      title: '项目工作流',
+      requiresAuth: true,
+      permissions: ['projects:view'],
+    },
+  },
+  {
     path: '/projects/:id',
     redirect: (to) => ({
       path: '/dashboard',
@@ -132,6 +142,21 @@ export const systemRoutes: AppRouteRecord[] = [
     }),
     meta: {
       title: '项目',
+      requiresAuth: true,
+      permissions: ['projects:view'],
+    },
+  },
+  {
+    path: '/projects/:id/workflows',
+    name: 'project-workflows-by-id',
+    redirect: (to) => ({
+      path: '/projects/workflows',
+      query: {
+        projectId: resolveProjectId(to.params.id),
+      },
+    }),
+    meta: {
+      title: '项目工作流',
       requiresAuth: true,
       permissions: ['projects:view'],
     },

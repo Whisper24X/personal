@@ -1,8 +1,10 @@
+import { ConfigService } from '@nestjs/config';
 import { existsSync } from 'fs';
 import os from 'os';
 import path from 'path';
 
 const workspaceMarkers = ['.git', '.trellis', 'AGENTS.md'];
+const configService = new ConfigService();
 
 const hasWorkspaceMarker = (directory: string): boolean => {
   return workspaceMarkers.some((marker) =>
@@ -42,7 +44,9 @@ const expandHomePath = (inputPath: string): string => {
 };
 
 export const resolveAinativeDataRootDir = (): string => {
-  const configuredPath = process.env.AINATIVE_DATA_ROOT_DIR?.trim();
+  const configuredPath = configService
+    .get<string>('AINATIVE_DATA_ROOT_DIR', { infer: true })
+    ?.trim();
 
   if (configuredPath) {
     return path.resolve(expandHomePath(configuredPath));

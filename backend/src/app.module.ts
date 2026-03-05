@@ -25,6 +25,7 @@ import { ObservabilityModule } from './observability/observability.module';
 import { ProjectContextModule } from './project-context/project-context.module';
 import { AutomationsModule } from './automations/automations.module';
 import { GitModule } from './git/git.module';
+import { resolveEnvFilePath } from './config/env-file-path';
 
 const infrastructureDatabaseModule = TypeOrmModule.forRootAsync({
   useClass: TypeOrmConfigService,
@@ -51,7 +52,7 @@ const infrastructureDatabaseModule = TypeOrmModule.forRootAsync({
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig, authConfig, appConfig],
-      envFilePath: `.env.${process.env.NODE_ENV || 'development'}`,
+      envFilePath: resolveEnvFilePath(),
     }),
     infrastructureDatabaseModule,
     I18nModule.forRootAsync({

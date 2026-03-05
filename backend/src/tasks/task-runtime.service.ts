@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -40,6 +41,7 @@ type RuntimeMeta = {
 
 @Injectable()
 export class TaskRuntimeService {
+  private readonly configService = new ConfigService();
   private readonly defaultGitTimeoutMs = 60_000;
   private readonly maxDiffLength = 120_000;
   private readonly defaultDataRootDir = path.resolve(
@@ -385,8 +387,9 @@ export class TaskRuntimeService {
       return path.resolve(config.worktreeBaseDir);
     }
 
-    if (process.env.AINATIVE_WORKTREE_BASE_DIR?.trim()) {
-      return path.resolve(process.env.AINATIVE_WORKTREE_BASE_DIR);
+    const worktreeBaseDir = this.readTrimmedEnv('AINATIVE_WORKTREE_BASE_DIR');
+    if (worktreeBaseDir) {
+      return path.resolve(worktreeBaseDir);
     }
 
     return this.resolveProjectWorktreeBaseDir(project);
@@ -411,7 +414,7 @@ export class TaskRuntimeService {
       return config.gitRuntimeEnabled;
     }
 
-    return process.env.AINATIVE_GIT_RUNTIME_ENABLED === 'true';
+    return this.readTrimmedEnv('AINATIVE_GIT_RUNTIME_ENABLED') === 'true';
   }
 
   private resolveRepositoryRoot(project: Project): string {
@@ -428,7 +431,7 @@ export class TaskRuntimeService {
       typeof config.repoCacheBaseDir === 'string' &&
       config.repoCacheBaseDir.trim()
         ? config.repoCacheBaseDir.trim()
-        : process.env.AINATIVE_REPO_CACHE_BASE_DIR?.trim();
+        : this.readTrimmedEnv('AINATIVE_REPO_CACHE_BASE_DIR');
 
     const repositoryDirName = this.resolveRepositoryDirectoryName(project);
 
@@ -714,20 +717,23 @@ export class TaskRuntimeService {
       return path.resolve(config.worktreeAllowedRoot.trim());
     }
 
-    if (process.env.AINATIVE_WORKTREE_ALLOWED_ROOT?.trim()) {
-      return path.resolve(process.env.AINATIVE_WORKTREE_ALLOWED_ROOT.trim());
+    const allowedRoot = this.readTrimmedEnv('AINATIVE_WORKTREE_ALLOWED_ROOT');
+    if (allowedRoot) {
+      return path.resolve(allowedRoot);
     }
 
     return this.resolveWorktreeBaseDir(project);
   }
 
   private resolveGlobalWorktreeAllowedRoot(): string {
-    if (process.env.AINATIVE_WORKTREE_ALLOWED_ROOT?.trim()) {
-      return path.resolve(process.env.AINATIVE_WORKTREE_ALLOWED_ROOT.trim());
+    const allowedRoot = this.readTrimmedEnv('AINATIVE_WORKTREE_ALLOWED_ROOT');
+    if (allowedRoot) {
+      return path.resolve(allowedRoot);
     }
 
-    if (process.env.AINATIVE_WORKTREE_BASE_DIR?.trim()) {
-      return path.resolve(process.env.AINATIVE_WORKTREE_BASE_DIR.trim());
+    const worktreeBaseDir = this.readTrimmedEnv('AINATIVE_WORKTREE_BASE_DIR');
+    if (worktreeBaseDir) {
+      return path.resolve(worktreeBaseDir);
     }
 
     return this.legacyDefaultWorktreeBaseDir;
@@ -740,6 +746,10 @@ export class TaskRuntimeService {
     const resolvedWorktreePath = path.resolve(worktreePath);
     this.ensurePathWithinAllowedRoot(resolvedWorktreePath, allowedRoot);
     return resolvedWorktreePath;
+  }
+
+  private readTrimmedEnv(key: string): string | undefined {
+    return this.configService.get<string>(key, { infer: true })?.trim();
   }
 
   private ensurePathWithinAllowedRoot(

@@ -213,7 +213,7 @@ Don't forget to create `indexes` on the Foreign Keys (FK) columns (if needed), b
 
 ### Max connections
 
-Set the optimal number of [max connections](https://node-postgres.com/apis/pool) to database for your application in `/.env`:
+Set the optimal number of [max connections](https://node-postgres.com/apis/pool) in your active env file (for example `/.env.development`):
 
 ```txt
 DATABASE_MAX_CONNECTIONS=100
@@ -230,7 +230,7 @@ Once you have completed all the steps, you should have a running app.
 
 If you've made it this far, it only requires a few changes to switch from `PostgreSQL` to `MySQL`.
 
-**Change the `.env` file to the following:**
+**Change your active env file (for example `.env.development`) to the following:**
 
 ```env
 DATABASE_TYPE=mysql

@@ -29,7 +29,7 @@ sequenceDiagram
 
 ## Configure Auth
 
-Set these env vars in `.env`:
+Set these env vars in your active env file (for example `.env.development`):
 
 ```text
 AUTH_JWT_SECRET=...

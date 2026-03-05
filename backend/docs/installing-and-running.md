@@ -23,18 +23,21 @@ The database layer follows [Hexagonal Architecture](architecture.md#hexagonal-ar
    git clone --depth 1 https://github.com/brocoders/nestjs-boilerplate.git my-app
    ```
 
-1. Go to folder, and copy `env-example-relational` as `.env`.
+1. Go to folder, and copy `env-example.development` as `.env.development`.
 
    ```bash
    cd my-app/
-   cp env-example-relational .env
+   cp env-example.development .env.development
    ```
+
+   For other environments, copy `env-example.test` -> `.env.test` or
+   `env-example.production` -> `.env.production`.
 
 1. Change `DATABASE_HOST=postgres` to `DATABASE_HOST=localhost`
 1. Run additional container:
 
    ```bash
-   docker compose up -d postgres adminer
+   docker compose --env-file .env.development up -d postgres adminer
    ```
 
 1. Install dependency
@@ -79,23 +82,23 @@ If you want quick run your app, you can use following commands:
    git clone --depth 1 https://github.com/brocoders/nestjs-boilerplate.git my-app
    ```
 
-1. Go to folder, and copy `env-example-relational` as `.env`.
+1. Go to folder, and copy `env-example.development` as `.env.development`.
 
    ```bash
    cd my-app/
-   cp env-example-relational .env
+   cp env-example.development .env.development
    ```
 
 1. Run containers
 
    ```bash
-   docker compose up -d
+   docker compose --env-file .env.development up -d
    ```
 
 1. For check status run
 
    ```bash
-   docker compose logs
+   docker compose --env-file .env.development logs
    ```
 
 1. Open <http://localhost:3000>

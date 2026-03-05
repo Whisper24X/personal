@@ -43,7 +43,7 @@ type BusinessLine = {
 }
 
 export type MenuItem = {
-  id: 'dashboard' | 'tasks' | 'kanban' | 'automations' | 'skills' | 'mcp' | 'git'
+  id: 'dashboard' | 'workflow' | 'tasks' | 'kanban' | 'automations' | 'skills' | 'mcp' | 'git'
   label: string
   to: string
   adminOnly?: boolean
@@ -159,6 +159,7 @@ export const useLayout = () => {
     { id: 'tasks', label: '任务', to: '/tasks' },
     { id: 'kanban', label: '看板', to: '/kanban' },
     { id: 'automations', label: '自动化', to: '/automations' },
+    { id: 'workflow', label: '工作流', to: '/projects/workflows' },
     { id: 'skills', label: 'Skills', to: '/skills' },
     { id: 'mcp', label: 'MCP', to: '/mcp' },
     { id: 'git', label: 'Git', to: '/git' },
@@ -255,6 +256,7 @@ export const useLayout = () => {
 
   const menuIconPaths: Record<MenuItem['id'], string[]> = {
     dashboard: ['M3 3h8v8H3z', 'M13 3h8v5h-8z', 'M13 10h8v11h-8z', 'M3 13h8v8H3z'],
+    workflow: ['M5 6h14', 'M5 18h14', 'M12 6v12', 'm8 10 4-4 4 4', 'm8 14 4 4 4-4'],
     tasks: ['m9 11 2 2 4-4', 'M5 11h.01', 'M5 18h.01', 'm9 18 2 2 4-4', 'M14 11h5', 'M14 18h5', 'M3 6h18'],
     kanban: ['M4 5h6v14H4z', 'M14 5h6v8h-6z', 'M14 15h6v4h-6z'],
     automations: ['M12 7v5l3 3', 'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z'],
@@ -498,6 +500,8 @@ export const useLayout = () => {
 
     if (HOME_MENU_ENABLED && route.name === 'home') return ['项目菜单', '首页']
     if (route.name === 'dashboard') return ['项目菜单', '仪表盘']
+    if (route.name === 'project-workflows') return ['项目菜单', '工作流']
+    if (route.name === 'project-workflows-by-id') return ['项目菜单', '工作流']
     if (route.name === 'kanban') return ['项目菜单', '看板']
     if (route.name === 'skills') return ['项目菜单', 'Skills']
     if (route.name === 'mcp') return ['项目菜单', 'MCP']
