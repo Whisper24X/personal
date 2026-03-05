@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { businessLinesApi, type AgentToolConfig } from '@/api/business-lines'
@@ -104,6 +104,15 @@ const editingWorkflowTemplateId = ref('')
 const workflowTemplateActionId = ref('')
 const workflowValidationMessage = ref('')
 const workflowTemplates = ref<WorkflowTemplate[]>([])
+const workflowKeyword = ref('')
+const workflowAddMenuOpen = ref(false)
+const workflowAddMenuAnchorRef = ref<HTMLElement | null>(null)
+const workflowCopyModalOpen = ref(false)
+const workflowCopyKeyword = ref('')
+const loadingBusinessLineWorkflowTemplates = ref(false)
+const businessLineWorkflowTemplates = ref<WorkflowTemplate[]>([])
+const copyingBusinessLineWorkflowTemplateId = ref('')
+const copyWorkflowErrorMessage = ref('')
 const workflowConfiguredCliTools = ref<Array<{ id: SupportedCliToolId; label: string }>>([])
 const loadingWorkflowConfiguredCliTools = ref(false)
 const workflowNodeConfigsByTool = ref<Partial<Record<SupportedCliToolId, AgentToolConfig[]>>>({})
@@ -233,6 +242,20 @@ const workflowTemplateSubmitIdleText = computed(() => {
 
 const workflowTemplateSubmitLoadingText = computed(() => {
   return workflowTemplateModalMode.value === 'edit' ? '保存中...' : '创建中...'
+})
+
+const filteredBusinessLineWorkflowTemplates = computed(() => {
+  const keyword = workflowCopyKeyword.value.trim().toLowerCase()
+  if (!keyword) {
+    return businessLineWorkflowTemplates.value
+  }
+
+  return businessLineWorkflowTemplates.value.filter((item) => {
+    return (
+      item.name.toLowerCase().includes(keyword) ||
+      (item.description ?? '').toLowerCase().includes(keyword)
+    )
+  })
 })
 
 const displayUserName = (userId: string) => {
@@ -608,6 +631,7 @@ const openWorkflowCreateModal = () => {
     return
   }
 
+  workflowAddMenuOpen.value = false
   workflowTemplateModalMode.value = 'create'
   editingWorkflowTemplateId.value = ''
   resetWorkflowCreateForm()
@@ -657,6 +681,148 @@ const removeWorkflowCreateNode = (index: number) => {
   workflowCreateForm.value.nodes = normalizeWorkflowNodes(workflowCreateForm.value.nodes)
 }
 
+const closeWorkflowAddMenu = () => {
+  workflowAddMenuOpen.value = false
+}
+
+const toggleWorkflowAddMenu = () => {
+  workflowAddMenuOpen.value = !workflowAddMenuOpen.value
+}
+
+const onDocumentPointerDown = (event: PointerEvent) => {
+  if (!workflowAddMenuOpen.value) {
+    return
+  }
+
+  const eventTarget = event.target
+  if (!(eventTarget instanceof Node)) {
+    return
+  }
+
+  if (workflowAddMenuAnchorRef.value?.contains(eventTarget)) {
+    return
+  }
+
+  closeWorkflowAddMenu()
+}
+
+const loadBusinessLineWorkflowTemplates = async (businessLineId: string) => {
+  if (!businessLineId) {
+    businessLineWorkflowTemplates.value = []
+    return
+  }
+
+  loadingBusinessLineWorkflowTemplates.value = true
+  copyWorkflowErrorMessage.value = ''
+
+  try {
+    const templates = await fetchAllPages((page, limit) =>
+      workflowApi.list({
+        page,
+        limit,
+        scope: 'business_line',
+        businessLineId,
+      }),
+    )
+    if (businessLineId !== project.value?.businessLineId) {
+      return
+    }
+
+    businessLineWorkflowTemplates.value = templates
+  } catch (error) {
+    if (businessLineId === project.value?.businessLineId) {
+      businessLineWorkflowTemplates.value = []
+      copyWorkflowErrorMessage.value = toErrorMessage(error, '加载业务线工作流模板失败')
+    }
+  } finally {
+    if (businessLineId === project.value?.businessLineId) {
+      loadingBusinessLineWorkflowTemplates.value = false
+    }
+  }
+}
+
+const closeWorkflowCopyModal = () => {
+  copyingBusinessLineWorkflowTemplateId.value = ''
+  copyWorkflowErrorMessage.value = ''
+  workflowCopyModalOpen.value = false
+}
+
+const openWorkflowCopyModal = async () => {
+  closeWorkflowAddMenu()
+  const businessLineId = project.value?.businessLineId
+  if (!businessLineId) {
+    message.error('当前项目未绑定业务线，无法复制模板')
+    return
+  }
+
+  workflowCopyKeyword.value = ''
+  copyWorkflowErrorMessage.value = ''
+  workflowCopyModalOpen.value = true
+  await loadBusinessLineWorkflowTemplates(businessLineId)
+}
+
+const cloneWorkflowNodesFromTemplate = (template: WorkflowTemplate): WorkflowTemplateNode[] => {
+  if (!template.nodesJson.length) {
+    return [buildWorkflowNode(1)]
+  }
+
+  return template.nodesJson.map((node, index) => ({
+    nodeOrder: node.nodeOrder || index + 1,
+    name: node.name || `step-${index + 1}`,
+    type: node.type || 'agent',
+    requiresApproval: Boolean(node.requiresApproval),
+    input: node.input ? { ...node.input } : undefined,
+  }))
+}
+
+const buildCopiedWorkflowTemplateName = (sourceName: string) => {
+  const baseName = sourceName.trim() || '业务线工作流模板'
+  const existingNameSet = new Set(workflowTemplates.value.map((template) => template.name.trim()))
+
+  if (!existingNameSet.has(baseName)) {
+    return baseName
+  }
+
+  let index = 1
+  let nextName = `${baseName}（复制）`
+
+  while (existingNameSet.has(nextName)) {
+    index += 1
+    nextName = `${baseName}（复制${index}）`
+  }
+
+  return nextName
+}
+
+const submitCopyBusinessLineWorkflowTemplate = async (template: WorkflowTemplate) => {
+  if (!projectId.value) {
+    return
+  }
+
+  copyingBusinessLineWorkflowTemplateId.value = template.id
+  copyWorkflowErrorMessage.value = ''
+
+  try {
+    await workflowApi.create({
+      name: buildCopiedWorkflowTemplateName(template.name),
+      description: normalizeOptionalText(template.description ?? ''),
+      scope: 'project',
+      projectId: projectId.value,
+      nodes: cloneWorkflowNodesFromTemplate(template),
+      isActive: template.isActive,
+    })
+
+    closeWorkflowCopyModal()
+    await loadWorkflowTemplates(projectId.value)
+    message.success(`模板「${template.name}」已复制到当前项目`)
+  } catch (error) {
+    copyWorkflowErrorMessage.value = toErrorMessage(error, '复制业务线模板失败')
+    message.error(copyWorkflowErrorMessage.value)
+  } finally {
+    copyingBusinessLineWorkflowTemplateId.value = ''
+  }
+}
+
 const loadWorkflowTemplates = async (targetProjectId: string) => {
   if (!targetProjectId) {
     workflowTemplates.value = []
@@ -671,6 +837,7 @@ const loadWorkflowTemplates = async (targetProjectId: string) => {
       workflowApi.list({
         page,
         limit,
+        keyword: workflowKeyword.value.trim() || undefined,
         projectId: targetProjectId,
         scope: 'project',
       }),
@@ -1033,6 +1200,8 @@ const saveConfig = async () => {
 watch(
   () => projectId.value,
   () => {
+    closeWorkflowAddMenu()
+    closeWorkflowCopyModal()
     void loadProjectData()
   },
 )
@@ -1046,17 +1215,41 @@ watch(
   },
 )
 
+watch(
+  () => workflowAddMenuOpen.value,
+  (open) => {
+    if (typeof document === 'undefined') {
+      return
+    }
+
+    if (open) {
+      document.addEventListener('pointerdown', onDocumentPointerDown)
+      return
+    }
+
+    document.removeEventListener('pointerdown', onDocumentPointerDown)
+  },
+)
+
 onMounted(() => {
   void loadProjectData()
   void loadUsers().catch((error) => {
     message.error(toErrorMessage(error, '加载用户列表失败'))
   })
 })
+
+onBeforeUnmount(() => {
+  if (typeof document === 'undefined') {
+    return
+  }
+
+  document.removeEventListener('pointerdown', onDocumentPointerDown)
+})
 </script>
 
 <template>
   <div class="space-y-6 fade-up">
-    <section class="space-y-2">
+    <section v-if="!workflowOnlyMode" class="space-y-2">
       <div class="flex items-center gap-2 text-xs text-muted-foreground">
         <RouterLink to="/projects" class="hover:text-foreground hover:underline">项目列表</RouterLink>
         <span>/</span>
@@ -1077,16 +1270,11 @@ onMounted(() => {
           </p>
         </div>
 
-        <RouterLink
-          to="/tasks"
-          class="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition hover:shadow-md"
-        >
-          新建任务
-        </RouterLink>
       </div>
 
-      <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
     </section>
+
+    <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
 
     <section v-if="loading" class="panel-card p-6 text-sm text-muted-foreground">加载中...</section>
 
@@ -1343,34 +1531,64 @@ onMounted(() => {
 
       <section v-else-if="workflowOnlyMode || tab === 'workflow'" class="space-y-4">
         <article class="panel-card p-5">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p class="text-sm font-semibold">项目工作流模板</p>
-              <p class="mt-1 text-xs text-muted-foreground">
-                {{
-                  loadingWorkflowTemplates
-                    ? '加载中...'
-                    : `可用 ${workflowTemplates.length} 个项目模板`
-                }}
-              </p>
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex flex-1 flex-wrap items-center gap-2">
+              <input
+                v-model="workflowKeyword"
+                class="h-10 min-w-[240px] flex-1 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="搜索名称 / 描述"
+                type="search"
+                @keydown.enter.prevent="loadWorkflowTemplates(projectId)"
+              />
             </div>
+
             <div class="flex items-center gap-2">
               <button
                 type="button"
-                class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="!projectId"
-                @click="openWorkflowCreateModal"
-              >
-                新建模板
-              </button>
-              <button
-                type="button"
-                class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
                 :disabled="!projectId || loadingWorkflowTemplates"
                 @click="loadWorkflowTemplates(projectId)"
               >
                 刷新
               </button>
+              <button
+                type="button"
+                class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="!projectId || loadingWorkflowTemplates"
+                @click="loadWorkflowTemplates(projectId)"
+              >
+                搜索
+              </button>
+              <div ref="workflowAddMenuAnchorRef" class="relative">
+                <button
+                  type="button"
+                  class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+                  :disabled="!projectId"
+                  @click="toggleWorkflowAddMenu"
+                >
+                  添加工作流
+                </button>
+
+                <div
+                  v-if="workflowAddMenuOpen"
+                  class="absolute right-0 z-20 mt-2 w-44 rounded-lg border border-border bg-background p-1 shadow-lg"
+                >
+                  <button
+                    type="button"
+                    class="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-foreground transition hover:bg-muted"
+                    @click="void openWorkflowCopyModal()"
+                  >
+                    从业务线复制
+                  </button>
+                  <button
+                    type="button"
+                    class="mt-1 flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-foreground transition hover:bg-muted"
+                    @click="openWorkflowCreateModal"
+                  >
+                    新建工作流
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </article>
@@ -1381,6 +1599,9 @@ onMounted(() => {
               <p class="text-sm font-semibold">当前项目模板</p>
               <p class="mt-1 text-xs text-muted-foreground">仅展示当前项目工作流模板，支持增删改查。</p>
             </div>
+            <span class="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">
+              {{ workflowTemplates.length }} 项
+            </span>
           </div>
 
           <div class="overflow-x-auto">
@@ -1671,6 +1892,104 @@ onMounted(() => {
               </button>
             </div>
           </form>
+        </section>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
+      <div
+        v-if="workflowCopyModalOpen"
+        class="fixed inset-0 z-[121] flex items-center justify-center p-3 sm:p-6"
+        @keydown.esc.prevent.stop="closeWorkflowCopyModal"
+      >
+        <button
+          type="button"
+          aria-label="关闭复制工作流弹窗"
+          class="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
+          @click="closeWorkflowCopyModal"
+        />
+
+        <section
+          aria-modal="true"
+          role="dialog"
+          class="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-border bg-background shadow-2xl"
+        >
+          <header class="flex items-center justify-between border-b border-border px-4 py-3">
+            <h2 class="text-base font-semibold">从业务线复制工作流</h2>
+            <button
+              type="button"
+              aria-label="关闭"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
+              @click="closeWorkflowCopyModal"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </button>
+          </header>
+
+          <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            <input
+              v-model="workflowCopyKeyword"
+              type="search"
+              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              placeholder="搜索业务线工作流模板"
+            />
+
+            <p v-if="loadingBusinessLineWorkflowTemplates" class="mt-3 text-sm text-muted-foreground">
+              加载中...
+            </p>
+            <p v-else-if="copyWorkflowErrorMessage" class="mt-3 text-sm text-destructive">
+              {{ copyWorkflowErrorMessage }}
+            </p>
+
+            <div v-else class="mt-3 space-y-2">
+              <article
+                v-for="template in filteredBusinessLineWorkflowTemplates"
+                :key="template.id"
+                class="rounded-xl border border-border bg-background/70 px-4 py-3"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-semibold">{{ template.name }}</p>
+                    <p class="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                      {{ template.description ?? '暂无描述' }}
+                    </p>
+                    <p class="mt-2 text-[11px] text-muted-foreground">
+                      节点数：{{ template.nodesJson.length }}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="h-8 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                    :disabled="copyingBusinessLineWorkflowTemplateId === template.id"
+                    @click="submitCopyBusinessLineWorkflowTemplate(template)"
+                  >
+                    {{ copyingBusinessLineWorkflowTemplateId === template.id ? '复制中...' : '复制' }}
+                  </button>
+                </div>
+              </article>
+
+              <article
+                v-if="filteredBusinessLineWorkflowTemplates.length === 0"
+                class="rounded-xl border border-dashed border-border bg-background/70 px-4 py-4 text-sm text-muted-foreground"
+              >
+                当前业务线暂无可复制的工作流模板。
+              </article>
+            </div>
+          </div>
         </section>
       </div>
     </Teleport>

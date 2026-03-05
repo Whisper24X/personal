@@ -159,6 +159,7 @@ const loadTemplatesForProject = async (projectId: string) => {
         page,
         limit,
         isActive: true,
+        scope: 'project',
         projectId,
       }),
     )
@@ -177,7 +178,7 @@ const loadTemplatesForProject = async (projectId: string) => {
   } catch (error) {
     templates.value = []
     createForm.workflowTemplateId = ''
-    message.error(toErrorMessage(error, '加载可用模板失败'))
+    message.error(toErrorMessage(error, '加载项目工作流模板失败'))
   } finally {
     loadingTemplates.value = false
   }
