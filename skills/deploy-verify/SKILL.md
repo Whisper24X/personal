@@ -92,7 +92,7 @@ curl -s -o /dev/null -w "%{http_code}" http://[地址]:[端口]
 
 ### 3. 生成部署文档
 
-在 `docs/deploy/deploy.md` 中生成完整的部署文档，文档格式见 [deploy-md-template.md](deploy-md-template.md)。
+在 `docs/deploy/deploy.md` 中生成完整的部署文档，文档格式见 [deploy-md-template.md](references/deploy-md-template.md)。
 
 **文档要求**：
 
@@ -108,7 +108,7 @@ curl -s -o /dev/null -w "%{http_code}" http://[地址]:[端口]
 
 将结果以 JSON 格式写入 `docs/deploy/verifyResult.md`，包含 `result`、`reason`、`details` 字段（Docker 失败时增加 `fix_commands` 字段，服务失败时增加 `error_logs` 字段）。
 
-JSON 格式示例见 [verify-result-template.md](verify-result-template.md)。
+JSON 格式示例见 [verify-result-template.md](references/verify-result-template.md)。
 
 ## 完成判定标准
 
