@@ -5,6 +5,7 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
@@ -18,6 +19,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ArtifactsService } from './artifacts.service';
 import { TaskArtifact } from '../tasks/domain/task-artifact';
 import { ArtifactPreviewDto } from './dto/artifact-preview.dto';
+import { ArtifactPreviewQueryDto } from './dto/artifact-preview-query.dto';
 
 @ApiTags('Artifacts')
 @ApiBearerAuth()
@@ -46,19 +48,36 @@ export class ArtifactsController {
         artifactId: { type: 'string', format: 'uuid' },
         downloadUrl: { type: 'string', nullable: true },
         content: { type: 'string', nullable: true },
+        suggestedFileName: { type: 'string', nullable: true },
       },
     },
   })
   @HttpCode(HttpStatus.OK)
-  download(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
-    return this.artifactsService.resolveDownload(id, request.user);
+  download(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ArtifactPreviewQueryDto,
+  ) {
+    return this.artifactsService.resolveDownload(
+      id,
+      request.user,
+      query.worktreePath,
+    );
   }
 
   @Get(':id/preview')
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: ArtifactPreviewDto })
   @HttpCode(HttpStatus.OK)
-  preview(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
-    return this.artifactsService.resolvePreview(id, request.user);
+  preview(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ArtifactPreviewQueryDto,
+  ) {
+    return this.artifactsService.resolvePreview(
+      id,
+      request.user,
+      query.worktreePath,
+    );
   }
 }

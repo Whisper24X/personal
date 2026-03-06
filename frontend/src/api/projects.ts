@@ -1,5 +1,12 @@
 import type { ProjectContext } from '@/types/api/project-context'
 import type {
+  ProjectDocContent,
+  ProjectDocItem,
+  QueryProjectDocsPayload,
+  QueryProjectDocsResponse,
+  SaveProjectDocPayload,
+} from '@/types/api/project-docs'
+import type {
   CreateProjectMemberPayload,
   CreateProjectPayload,
   InspectProjectRepositoryPayload,
@@ -64,5 +71,31 @@ export const projectsApi = {
 
   removeMember(projectId: string, userId: string) {
     return apiHttp.delete<void>(`/projects/${projectId}/members/${userId}`)
+  },
+
+  listDocs(projectId: string) {
+    return apiHttp.get<ProjectDocItem[]>(`/projects/${projectId}/docs`)
+  },
+
+  readDoc(projectId: string, path: string) {
+    return apiHttp.get<ProjectDocContent>(`/projects/${projectId}/docs/content`, {
+      path,
+    })
+  },
+
+  createDoc(projectId: string, payload: SaveProjectDocPayload) {
+    return apiHttp.post<ProjectDocContent>(`/projects/${projectId}/docs`, payload)
+  },
+
+  updateDoc(projectId: string, payload: SaveProjectDocPayload) {
+    return apiHttp.patch<ProjectDocContent>(`/projects/${projectId}/docs`, payload)
+  },
+
+  removeDoc(projectId: string, path: string) {
+    return apiHttp.delete<void>(`/projects/${projectId}/docs?path=${encodeURIComponent(path)}`)
+  },
+
+  queryDocs(projectId: string, payload: QueryProjectDocsPayload) {
+    return apiHttp.post<QueryProjectDocsResponse>(`/projects/${projectId}/docs/query`, payload)
   },
 }

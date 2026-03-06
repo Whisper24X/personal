@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { businessLinesApi, type AgentToolConfig } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
@@ -17,6 +18,9 @@ import type {
   WorkflowTemplateNodeInput,
 } from '@/types/api/workflow'
 import ConfirmActionModal from '@/components/business/settings/modals/ConfirmActionModal.vue'
+import { SETTINGS_QUERY_KEY } from '@/types/common/settings'
+import { STORAGE_KEYS } from '@/types/common/storage'
+import { HttpError } from '@/utils/http/error'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
 
@@ -43,6 +47,7 @@ const SUPPORTED_CLI_TOOLS: Array<{ id: SupportedCliToolId; label: string }> = [
 ]
 
 const route = useRoute()
+const router = useRouter()
 const normalizeRouteParam = (value: unknown) => {
   if (typeof value === 'string') {
     return value.trim()
@@ -1069,6 +1074,11 @@ const loadProjectData = async () => {
     ])
   } catch (error) {
     message.error(toErrorMessage(error, '加载项目详情失败'))
+
+    if (error instanceof HttpError && (error.status === 404 || error.status === 403)) {
+      localStorage.removeItem(STORAGE_KEYS.lastSelectedProjectId)
+      void router.replace({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'projects' } })
+    }
   } finally {
     loading.value = false
   }

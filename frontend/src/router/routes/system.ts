@@ -9,18 +9,6 @@ const toDashboardSettings = (section: string) => ({
   },
 })
 
-const resolveProjectId = (value: unknown) => {
-  if (typeof value === 'string') {
-    return value
-  }
-
-  if (Array.isArray(value)) {
-    return value[0] ?? ''
-  }
-
-  return ''
-}
-
 export const systemRoutes: AppRouteRecord[] = [
   {
     path: '/',
@@ -58,6 +46,17 @@ export const systemRoutes: AppRouteRecord[] = [
       title: '看板',
       requiresAuth: true,
       permissions: ['kanban:view'],
+    },
+  },
+  {
+    path: '/knowledge-base',
+    name: 'knowledge-base',
+    component: () => import('@/views/knowledge-base/index.vue'),
+    meta: {
+      title: '知识库',
+      contentMode: 'full',
+      requiresAuth: true,
+      permissions: ['projects:view'],
     },
   },
   {
@@ -136,14 +135,10 @@ export const systemRoutes: AppRouteRecord[] = [
   },
   {
     path: '/projects/:id',
-    redirect: (to) => ({
-      path: '/dashboard',
-      query: {
-        projectId: resolveProjectId(to.params.id),
-      },
-    }),
+    name: 'project-detail',
+    component: () => import('@/views/projects/detail.vue'),
     meta: {
-      title: '项目',
+      title: '项目详情',
       requiresAuth: true,
       permissions: ['projects:view'],
     },

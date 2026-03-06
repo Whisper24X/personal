@@ -86,6 +86,7 @@ const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
     findByGitWorktree: jest.fn().mockResolvedValue(null),
     update: jest.fn(),
     findTasksReadyForDispatch: jest.fn().mockResolvedValue([]),
+    findTasksWithExpiredWorktrees: jest.fn().mockResolvedValue([]),
     countRunningTasks: jest.fn().mockResolvedValue(0),
     countRunningTasksByProjectIds: jest.fn().mockResolvedValue({}),
     countQueuedTasksByProjectIds: jest.fn().mockResolvedValue({}),
@@ -689,12 +690,13 @@ describe('TasksService', () => {
     expect(status).toBe(TaskStatus.done);
   });
 
-  it('should cleanup runtime and notify user when status changes to done', async () => {
+  it('should retain worktree and notify user when status changes to done', async () => {
     const {
       service,
       taskRepository,
       taskNodeRepository,
       taskRuntimeService,
+      taskLogRepository,
       notificationsService,
     } = createTasksService();
     const serviceAny = service as any;
@@ -710,25 +712,22 @@ describe('TasksService', () => {
       createNodeWithStatus(TaskStatus.done),
     ]);
     taskRepository.findById.mockResolvedValue(task);
-    taskRuntimeService.cleanupRuntime.mockResolvedValue({
-      cleaned: true,
-    });
 
     await serviceAny.recalculateTaskStatus(task.id);
 
-    expect(taskRuntimeService.cleanupRuntime).toHaveBeenCalledWith(task);
-    expect(taskRepository.update).toHaveBeenNthCalledWith(
-      1,
+    expect(taskRuntimeService.cleanupRuntime).not.toHaveBeenCalled();
+    expect(taskRepository.update).toHaveBeenCalledTimes(1);
+    expect(taskRepository.update).toHaveBeenCalledWith(
       task.id,
       expect.objectContaining({
         status: TaskStatus.done,
       }),
     );
-    expect(taskRepository.update).toHaveBeenNthCalledWith(
-      2,
-      task.id,
+    expect(taskLogRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        gitWorktree: null,
+        taskId: task.id,
+        message:
+          'Task completed; worktree retained until retention period expires',
       }),
     );
     expect(notificationsService.notifyTaskStatusChanged).toHaveBeenCalledWith({

@@ -103,6 +103,19 @@ export const tasksApi = {
     return apiHttp.get<TaskArtifact[]>(`/tasks/${taskId}/artifacts`)
   },
 
+  worktreeFiles(taskId: string, prefix?: string) {
+    return apiHttp.get<string[]>(`/tasks/${taskId}/worktree-files`, {
+      prefix,
+    })
+  },
+
+  worktreeFileContent(taskId: string, path: string) {
+    return apiHttp.get<{ path: string; content: string }>(
+      `/tasks/${taskId}/worktree-files/content`,
+      { path },
+    )
+  },
+
   createArtifact(taskId: string, payload: CreateTaskArtifactPayload) {
     return apiHttp.post<TaskArtifact>(`/tasks/${taskId}/artifacts`, payload)
   },

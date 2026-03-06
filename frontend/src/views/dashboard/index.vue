@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
 import type { Project } from '@/types/api/projects'
 import type { Task } from '@/types/api/tasks'
 import { STORAGE_KEYS } from '@/types/common/storage'
+import { HttpError } from '@/utils/http/error'
 import { fetchAllPages } from '@/utils/pagination'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
@@ -15,6 +16,7 @@ defineOptions({
 })
 
 const route = useRoute()
+const router = useRouter()
 const message = useMessage()
 
 const loading = ref(false)
@@ -124,6 +126,13 @@ const loadProjectDashboardData = async () => {
     project.value = null
     tasks.value = []
     message.error(toErrorMessage(error, '加载项目仪表盘数据失败'))
+
+    if (error instanceof HttpError && (error.status === 404 || error.status === 403)) {
+      localStorage.removeItem(STORAGE_KEYS.lastSelectedProjectId)
+      if (route.query.projectId) {
+        void router.replace({ path: route.path, query: {} })
+      }
+    }
   } finally {
     loading.value = false
   }

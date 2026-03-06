@@ -43,7 +43,7 @@ type BusinessLine = {
 }
 
 export type MenuItem = {
-  id: 'dashboard' | 'workflow' | 'tasks' | 'kanban' | 'automations' | 'skills' | 'mcp' | 'git'
+  id: 'dashboard' | 'workflow' | 'tasks' | 'knowledge' | 'kanban' | 'automations' | 'skills' | 'mcp' | 'git'
   label: string
   to: string
   adminOnly?: boolean
@@ -155,6 +155,7 @@ export const useLayout = () => {
   const baseMenuItems: MenuItem[] = [
     { id: 'dashboard', label: '仪表盘', to: '/dashboard' },
     { id: 'tasks', label: '任务', to: '/tasks' },
+    { id: 'knowledge', label: '知识库', to: '/knowledge-base' },
     { id: 'kanban', label: '看板', to: '/kanban' },
     { id: 'automations', label: '自动化', to: '/automations' },
     { id: 'workflow', label: '工作流', to: '/projects/workflows' },
@@ -255,6 +256,7 @@ export const useLayout = () => {
     dashboard: ['M3 3h8v8H3z', 'M13 3h8v5h-8z', 'M13 10h8v11h-8z', 'M3 13h8v8H3z'],
     workflow: ['M5 6h14', 'M5 18h14', 'M12 6v12', 'm8 10 4-4 4 4', 'm8 14 4 4 4-4'],
     tasks: ['m9 11 2 2 4-4', 'M5 11h.01', 'M5 18h.01', 'm9 18 2 2 4-4', 'M14 11h5', 'M14 18h5', 'M3 6h18'],
+    knowledge: ['M4 19.5A2.5 2.5 0 0 1 6.5 17H20', 'M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z', 'M8 7h8', 'M8 11h8'],
     kanban: ['M4 5h6v14H4z', 'M14 5h6v8h-6z', 'M14 15h6v4h-6z'],
     automations: ['M12 7v5l3 3', 'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z'],
     skills: ['M12 3v4', 'M12 17v4', 'M4.93 4.93l2.83 2.83', 'M16.24 16.24l2.83 2.83', 'M3 12h4', 'M17 12h4', 'M4.93 19.07l2.83-2.83', 'M16.24 7.76l2.83-2.83'],
@@ -501,6 +503,7 @@ export const useLayout = () => {
     if (route.name === 'project-workflows') return ['项目菜单', '工作流']
     if (route.name === 'project-workflows-by-id') return ['项目菜单', '工作流']
     if (route.name === 'kanban') return ['项目菜单', '看板']
+    if (route.name === 'knowledge-base') return ['项目菜单', '知识库']
     if (route.name === 'skills') return ['项目菜单', 'Skills']
     if (route.name === 'mcp') return ['项目菜单', 'MCP']
     if (route.name === 'automations') return ['项目菜单', '自动化']
@@ -684,6 +687,7 @@ export const useLayout = () => {
     () => route.fullPath,
     () => {
       mobileNavOpen.value = false
+      businessLineModalOpen.value = false
       hideProjectTooltip()
       syncSelectedMenuPath()
       syncBusinessLineFromRoute()

@@ -48,6 +48,7 @@ const message = useMessage()
 
 let streamAbortController: AbortController | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let detailRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 const statusLabelMap: Record<Task['status'], string> = {
   todo: '待执行',
@@ -257,6 +258,10 @@ const clearReconnectTimer = () => {
 
 const disconnectStream = () => {
   clearReconnectTimer()
+  if (detailRefreshDebounceTimer) {
+    clearTimeout(detailRefreshDebounceTimer)
+    detailRefreshDebounceTimer = null
+  }
 
   if (streamAbortController) {
     streamAbortController.abort()
@@ -307,6 +312,17 @@ const connectStream = async () => {
           try {
             const payload = JSON.parse(event.data) as TaskLog
             upsertLog(payload)
+            // 收到节点状态变更类日志时刷新任务详情，以更新执行节点表格（如待审批按钮）
+            if (
+              payload.message?.includes('waiting for approval') ||
+              payload.message?.includes('Node execution started')
+            ) {
+              if (detailRefreshDebounceTimer) clearTimeout(detailRefreshDebounceTimer)
+              detailRefreshDebounceTimer = setTimeout(() => {
+                detailRefreshDebounceTimer = null
+                void loadTaskData()
+              }, 300)
+            }
           } catch {
             // ignore malformed task-log payload
           }

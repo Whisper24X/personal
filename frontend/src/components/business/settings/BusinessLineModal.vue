@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 import { useMessage } from '@/hooks'
 import {
   businessLinesApi,
@@ -1869,7 +1870,9 @@ const submitProjectForm = async (payload: {
     await refreshForCurrentLine({ includeMembers: activeTab.value === 'members' })
     message.success(projectFormMode.value === 'create' ? '新建项目成功' : '保存项目成功')
   } catch (error) {
-    message.error(toErrorMessage(error, '保存项目失败'))
+    const errMsg = toErrorMessage(error, '保存项目失败')
+    projectFormError.value = errMsg
+    message.error(errMsg)
   } finally {
     projectFormSubmitting.value = false
   }
@@ -2689,6 +2692,13 @@ onBeforeUnmount(() => {
                         </div>
 
                         <div class="flex items-center gap-2">
+                          <RouterLink
+                            :to="`/projects/${project.id}`"
+                            class="inline-flex h-8 items-center justify-center rounded-lg border border-primary/40 bg-primary/10 px-3 text-xs font-semibold text-primary transition hover:bg-primary/20"
+                            @click.stop
+                          >
+                            项目配置
+                          </RouterLink>
                           <button
                             type="button"
                             class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"

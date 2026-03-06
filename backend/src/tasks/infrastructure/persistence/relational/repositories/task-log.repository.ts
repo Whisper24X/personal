@@ -39,28 +39,28 @@ export class TaskLogRelationalRepository implements TaskLogRepository {
     limit?: number;
   }): Promise<TaskLog[]> {
     const query = this.taskLogRepository
-      .createQueryBuilder('taskLog')
-      .where('taskLog.taskId = :taskId', {
+      .createQueryBuilder('tl')
+      .where('tl.taskId = :taskId', {
         taskId,
       });
 
     if (since && afterId) {
       query.andWhere(
-        '("taskLog"."createdAt" > :since OR ("taskLog"."createdAt" = :since AND "taskLog"."id" > :afterId))',
+        '(tl."createdAt" > :since OR (tl."createdAt" = :since AND tl.id > :afterId))',
         {
           since,
           afterId,
         },
       );
     } else if (since) {
-      query.andWhere('"taskLog"."createdAt" > :since', {
+      query.andWhere('tl."createdAt" > :since', {
         since,
       });
     }
 
     const entities = await query
-      .orderBy('taskLog.createdAt', 'ASC')
-      .addOrderBy('taskLog.id', 'ASC')
+      .orderBy('tl.createdAt', 'ASC')
+      .addOrderBy('tl.id', 'ASC')
       .limit(limit ?? 200)
       .getMany();
 

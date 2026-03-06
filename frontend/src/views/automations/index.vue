@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { automationsApi } from '@/api/automations'
 import { notificationsApi } from '@/api/notifications'
+import { projectsApi } from '@/api/projects'
 import { observabilityApi } from '@/api/observability'
 import { queueApi } from '@/api/queue'
 import { tasksApi } from '@/api/tasks'
@@ -368,6 +369,22 @@ const loadMonitoringData = async () => {
   } else if (metricsResult.status === 'rejected') {
     message.error(toErrorMessage(metricsResult.reason, '可观测指标加载失败'))
   }
+}
+
+const loadReviewTasks = async () => {
+  const isAdmin = userStore.profile?.isAdmin ?? false
+  if (isAdmin) {
+    return fetchAllPages((page, limit) => tasksApi.list({ page, limit, status: 'in_review' }))
+  }
+  const projects = await fetchAllPages((page, limit) => projectsApi.list({ page, limit }))
+  if (projects.length === 0) return []
+  const results = await Promise.all(
+    projects.map((project) =>
+      tasksApi.list({ projectId: project.id, page: 1, limit: 50, status: 'in_review' }).then((res) => res.data),
+    ),
+  )
+  const merged = results.flat()
+  return Array.from(new Map(merged.map((item) => [item.id, item])).values())
 }
 
 const loadPageData = async () => {

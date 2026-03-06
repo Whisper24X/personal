@@ -31,6 +31,6 @@ import { TaskTerminalService } from './task-terminal.service';
     TaskGitService,
     TaskTerminalService,
   ],
-  exports: [TasksService, RelationalTaskPersistenceModule],
+  exports: [TasksService, TaskRuntimeService, RelationalTaskPersistenceModule],
 })
 export class TasksModule {}

@@ -6,6 +6,8 @@ import type { TaskArtifact } from '@/types/api/tasks'
 const props = defineProps<{
   artifact: TaskArtifact | null
   preview: ArtifactPreview | null
+  /** 工作区文件内容，用于展示 docs 等实际文件 */
+  worktreeFile?: { path: string; content: string } | null
   loading: boolean
   errorMessage: string
 }>()
@@ -15,6 +17,9 @@ const emit = defineEmits<{
 }>()
 
 const panelTitle = computed(() => {
+  if (props.worktreeFile) {
+    return props.worktreeFile.path
+  }
   if (props.preview?.title) {
     return props.preview.title
   }
@@ -23,7 +28,7 @@ const panelTitle = computed(() => {
 })
 
 const hasContent = computed(() => {
-  return Boolean(props.loading || props.errorMessage || props.preview)
+  return Boolean(props.loading || props.errorMessage || props.preview || props.worktreeFile)
 })
 
 const flattenedFileTree = computed(() => {
@@ -63,7 +68,7 @@ const openExternalPreview = () => {
   <section v-if="hasContent" class="panel-card p-5">
     <div class="flex items-start justify-between gap-3">
       <div>
-        <p class="text-sm font-semibold">产物预览</p>
+        <p class="text-sm font-semibold">{{ worktreeFile ? '文件预览' : '产物预览' }}</p>
         <p class="mt-1 text-xs text-muted-foreground">{{ panelTitle }}</p>
       </div>
       <button
@@ -77,6 +82,17 @@ const openExternalPreview = () => {
 
     <div v-if="loading" class="mt-4 text-sm text-muted-foreground">预览加载中...</div>
     <p v-else-if="errorMessage" class="mt-4 text-sm text-destructive">{{ errorMessage }}</p>
+
+    <template v-else-if="worktreeFile">
+      <div class="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <span class="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-emerald-700 dark:text-emerald-300">
+          docs 文件
+        </span>
+      </div>
+      <pre class="mt-4 max-h-[540px] overflow-auto rounded-xl border border-border bg-background p-3 font-mono text-xs leading-relaxed text-foreground">{{
+        worktreeFile.content || '# 空文件'
+      }}</pre>
+    </template>
 
     <template v-else-if="preview">
       <div class="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
