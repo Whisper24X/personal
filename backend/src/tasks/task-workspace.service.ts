@@ -16,6 +16,7 @@ import {
   TaskWorkspaceTreeQueryDto,
 } from './dto/task-workspace.dto';
 import { Task } from './domain/task';
+import { TaskRuntimeService } from './task-runtime.service';
 import { TasksService } from './tasks.service';
 
 @Injectable()
@@ -24,7 +25,10 @@ export class TaskWorkspaceService {
   private readonly maxTextPreviewBytes = 256 * 1024;
   private readonly maxImagePreviewBytes = 4 * 1024 * 1024;
 
-  constructor(private readonly tasksService: TasksService) {}
+  constructor(
+    private readonly tasksService: TasksService,
+    private readonly taskRuntimeService: TaskRuntimeService,
+  ) {}
 
   async getWorkspaceTree(
     taskId: string,
@@ -220,7 +224,7 @@ export class TaskWorkspaceService {
     taskId: string,
     currentUser: JwtPayloadType,
   ): Promise<{ task: Task; workspaceRoot: string }> {
-    const task = await this.tasksService.assertCanAccessTask(
+    const { task, project } = await this.tasksService.assertCanAccessTaskProject(
       taskId,
       currentUser,
     );
@@ -229,7 +233,10 @@ export class TaskWorkspaceService {
       throw new ConflictException('Task workspace is not initialized');
     }
 
-    const workspaceRoot = await fs.realpath(task.gitWorktree).catch(() => {
+    const runtimeWorkspaceRoot =
+      this.taskRuntimeService.resolveTaskWorktreePath(task, project);
+
+    const workspaceRoot = await fs.realpath(runtimeWorkspaceRoot).catch(() => {
       throw new NotFoundException('Task workspace path does not exist');
     });
 

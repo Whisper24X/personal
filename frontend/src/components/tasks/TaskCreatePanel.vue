@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { businessLinesApi, type AgentToolConfig } from '@/api/business-lines'
@@ -73,7 +73,14 @@ const createForm = reactive({
   agentToolConfigId: '',
   title: '',
   prompt: '',
-  gitBranch: 'master',
+})
+
+const selectedProject = computed(() => {
+  return projects.value.find((item) => item.id === createForm.projectId) ?? null
+})
+
+const selectedGitBaseBranch = computed(() => {
+  return selectedProject.value?.defaultBranch?.trim() || '未配置'
 })
 
 const resolveQueryProjectId = () => {
@@ -101,7 +108,6 @@ const syncProjectFromContext = () => {
 
 const resetCreateForm = (projectId?: string) => {
   const nextProjectId = projectId || createForm.projectId || projects.value[0]?.id || ''
-  const project = projects.value.find((item) => item.id === nextProjectId)
 
   createForm.projectId = nextProjectId
   createForm.mode = 'conversation'
@@ -110,7 +116,6 @@ const resetCreateForm = (projectId?: string) => {
   createForm.agentToolConfigId = ''
   createForm.title = ''
   createForm.prompt = ''
-  createForm.gitBranch = project?.defaultBranch || 'master'
   selectedFiles.value = []
   syncAgentToolConfigsForSelectedTool()
 }
@@ -247,11 +252,6 @@ const loadPageData = async () => {
       createForm.projectId = ''
     }
 
-    const project = projectResponse.find((item) => item.id === createForm.projectId)
-    if (project) {
-      createForm.gitBranch = project.defaultBranch || createForm.gitBranch || 'master'
-    }
-
     await Promise.all([
       loadTemplatesForProject(createForm.projectId),
       loadConversationCliOptions(createForm.projectId),
@@ -331,11 +331,6 @@ const createTask = async () => {
     return
   }
 
-  if (!createForm.gitBranch.trim()) {
-    showValidationError('请填写分支名称')
-    return
-  }
-
   if (createForm.mode === 'conversation') {
     if (!createForm.cliToolId) {
       showValidationError('当前业务线没有可用的 Agent CLI 配置，请先在业务线设置中配置')
@@ -381,7 +376,6 @@ const createTask = async () => {
       workflowTemplateId: createForm.workflowTemplateId || undefined,
       title: createForm.title.trim(),
       prompt: createForm.prompt.trim(),
-      gitBranch: createForm.gitBranch.trim(),
       gitBaseBranch: project?.defaultBranch?.trim() || undefined,
       cliToolId: createForm.mode === 'conversation' ? createForm.cliToolId : undefined,
       agentToolConfigId: createForm.mode === 'conversation' ? createForm.agentToolConfigId : undefined,
@@ -408,11 +402,6 @@ watch(
   async (projectId, previousProjectId) => {
     if (projectId === previousProjectId) {
       return
-    }
-
-    const project = projects.value.find((item) => item.id === projectId)
-    if (project?.defaultBranch) {
-      createForm.gitBranch = project.defaultBranch
     }
 
     await Promise.all([
@@ -776,12 +765,10 @@ onBeforeUnmount(() => {
                   <path d="m3 6 3-3 3 3" />
                   <path d="m15 18 3 3 3-3" />
                 </svg>
-                <input
-                  v-model="createForm.gitBranch"
-                  type="text"
-                  class="w-24 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground"
-                  placeholder="master"
-                />
+                <span class="mr-2 text-xs text-muted-foreground">Base</span>
+                <span class="max-w-40 truncate text-sm font-medium text-foreground">
+                  {{ selectedGitBaseBranch }}
+                </span>
               </label>
 
               <button

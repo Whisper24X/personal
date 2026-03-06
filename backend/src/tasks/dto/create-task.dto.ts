@@ -49,7 +49,7 @@ export class CreateTaskDto {
 
   @ApiPropertyOptional({
     type: String,
-    description: 'Absolute worktree path under allowed root',
+    description: 'Worktree identifier; runtime path is derived from project config',
   })
   @IsOptional()
   @IsString()

@@ -140,7 +140,6 @@ describe('TaskCreatePanel', () => {
 
     expect(payload.projectId).toBe('project-1')
     expect(payload.mode).toBe('conversation')
-    expect(payload.gitBranch).toBe('main')
     expect(payload.gitBaseBranch).toBe('main')
     expect(payload.cliToolId).toBe('codex')
     expect(payload.agentToolConfigId).toBe('cfg-1')
@@ -155,6 +154,7 @@ describe('TaskCreatePanel', () => {
     )
 
     expect('environment' in payload).toBe(false)
+    expect('gitBranch' in payload).toBe(false)
     expect('gitWorktree' in payload).toBe(false)
     expect('toolVersionsSnapshot' in payload).toBe(false)
   })

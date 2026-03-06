@@ -17,6 +17,7 @@ import {
   TaskTerminalSessionStatus,
 } from './dto/task-terminal.dto';
 import { Task } from './domain/task';
+import { TaskRuntimeService } from './task-runtime.service';
 import { TasksService } from './tasks.service';
 
 type TerminalSessionInternal = {
@@ -42,6 +43,7 @@ export class TaskTerminalService implements OnModuleDestroy {
 
   constructor(
     private readonly tasksService: TasksService,
+    private readonly taskRuntimeService: TaskRuntimeService,
     private readonly configService: ConfigService = new ConfigService(),
   ) {}
 
@@ -298,7 +300,7 @@ export class TaskTerminalService implements OnModuleDestroy {
     taskId: string,
     currentUser: JwtPayloadType,
   ): Promise<{ task: Task; workspacePath: string }> {
-    const task = await this.tasksService.assertCanAccessTask(
+    const { task, project } = await this.tasksService.assertCanAccessTaskProject(
       taskId,
       currentUser,
     );
@@ -307,7 +309,12 @@ export class TaskTerminalService implements OnModuleDestroy {
       throw new ConflictException('Task workspace is not initialized');
     }
 
-    const workspacePath = await fs.realpath(task.gitWorktree).catch(() => {
+    const runtimeWorkspacePath = this.taskRuntimeService.resolveTaskWorktreePath(
+      task,
+      project,
+    );
+
+    const workspacePath = await fs.realpath(runtimeWorkspacePath).catch(() => {
       throw new NotFoundException('Task workspace does not exist');
     });
 

@@ -149,6 +149,7 @@ describe('TaskRuntimeService', () => {
 
     const cleanupResult = await service.cleanupRuntime(
       createTask({ gitWorktree: worktreePath }),
+      createProject(),
     );
 
     expect(cleanupResult.cleaned).toBeTruthy();
@@ -208,6 +209,23 @@ describe('TaskRuntimeService', () => {
     );
   });
 
+  it('should derive runtime worktree path from stored worktree name', () => {
+    const project = createProject();
+    const task = createTask({
+      gitWorktree: 'wk-20260306-001',
+    });
+
+    expect((service as any).resolveGitWorktreePath(task, project)).toBe(
+      path.resolve(
+        resolveAinativeDataRootDir(),
+        project.businessLineId,
+        'worktrees',
+        project.id,
+        'wk-20260306-001',
+      ),
+    );
+  });
+
   it('should prefer repoLocalPath over repo cache base dir', () => {
     const project = createProject(
       {},
@@ -222,7 +240,7 @@ describe('TaskRuntimeService', () => {
     );
   });
 
-  it('should normalize task branch to wk- prefix for worktree branch naming', () => {
+  it('should keep explicit task branch for git worktree naming', () => {
     const project = createProject();
 
     expect(
@@ -230,7 +248,7 @@ describe('TaskRuntimeService', () => {
         createTask({ gitBranch: 'feature/runtime-test' }),
         project,
       ),
-    ).toBe('wk-feature/runtime-test');
+    ).toBe('feature/runtime-test');
     expect(
       (service as any).resolveBranch(
         createTask({ gitBranch: 'wk-existing' }),
@@ -239,14 +257,14 @@ describe('TaskRuntimeService', () => {
     ).toBe('wk-existing');
   });
 
-  it('should generate wk- prefixed fallback branch when task branch is empty', () => {
+  it('should generate feature-prefixed fallback branch when task branch is empty', () => {
     const project = createProject({
       name: 'AINative Runtime Project',
     });
     const task = createTask({ gitBranch: null });
 
     expect((service as any).resolveBranch(task, project)).toBe(
-      'wk-ainative-runtime-project-task-tes',
+      'feature/ainative-runtime-project-task-tes',
     );
   });
 

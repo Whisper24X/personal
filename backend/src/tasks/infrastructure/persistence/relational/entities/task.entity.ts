@@ -79,7 +79,7 @@ export class TaskEntity extends EntityRelationalHelper {
     type: String,
     length: 500,
     nullable: true,
-    comment: '任务Git工作树文件系统路径',
+    comment: '任务Git工作树名称/标识（运行时路径可推导）',
   })
   gitWorktree?: string | null;
 

@@ -84,6 +84,7 @@ const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
     create: jest.fn(),
     findById: jest.fn(),
     findByGitWorktree: jest.fn().mockResolvedValue(null),
+    findMaxGitWorktreeSequence: jest.fn().mockResolvedValue(0),
     update: jest.fn(),
     findTasksReadyForDispatch: jest.fn().mockResolvedValue([]),
     countRunningTasks: jest.fn().mockResolvedValue(0),
@@ -129,7 +130,12 @@ const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
     notifyTaskStatusChanged: jest.fn(),
   };
   const taskRuntimeService = {
-    ensureRuntime: jest.fn(),
+    ensureRuntime: jest.fn().mockResolvedValue({
+      gitBranch: 'feature/task-1',
+      gitBaseBranch: 'main',
+      gitWorktree: '/tmp/worktree-task-1',
+      worktreePath: '/tmp/worktree-task-1',
+    }),
     cleanupRuntime: jest.fn(),
     collectGitDiffArtifact: jest.fn(),
     resolveAndValidateCreateWorktreePath: jest.fn(),
@@ -138,6 +144,7 @@ const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
     executeAgentNode: jest.fn(),
   };
   const projectRepository = {
+    findById: jest.fn().mockResolvedValue(createProject()),
     findAllWithPagination: jest.fn().mockResolvedValue([]),
   };
   const dataSource = {
@@ -203,7 +210,7 @@ describe('TasksService', () => {
       mode: TaskMode.conversation,
       projectId: project.id,
       gitBaseBranch: 'develop',
-      gitWorktree: '/tmp/worktrees/task-1',
+      gitWorktree: 'task-1',
     });
 
     await service.create(
@@ -221,17 +228,15 @@ describe('TasksService', () => {
     expect(
       taskRuntimeService.resolveAndValidateCreateWorktreePath,
     ).toHaveBeenCalledWith(project, '/tmp/worktrees/task-1');
-    expect(taskRepository.findByGitWorktree).toHaveBeenCalledWith(
-      '/tmp/worktrees/task-1',
-    );
+    expect(taskRepository.findByGitWorktree).toHaveBeenCalledWith('task-1');
     expect(taskRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId: project.id,
         businessLineId: project.businessLineId,
         mode: TaskMode.conversation,
-        gitBranch: 'wk-feature/new-task',
+        gitBranch: 'feature/new-task',
         gitBaseBranch: 'develop',
-        gitWorktree: '/tmp/worktrees/task-1',
+        gitWorktree: 'task-1',
       }),
     );
     expect(taskNodeRepository.createMany).toHaveBeenCalledTimes(1);
@@ -285,26 +290,29 @@ describe('TasksService', () => {
       ),
     ).rejects.toThrow(ConflictException);
 
+    expect(taskRepository.findByGitWorktree).toHaveBeenCalledWith('task-dup');
+
     expect(taskRepository.create).not.toHaveBeenCalled();
   });
 
-  it('should keep git fields nullable when create payload does not provide them', async () => {
+  it('should generate default git names when create payload does not provide them', async () => {
     const {
       service,
       taskRepository,
       taskNodeRepository,
       projectsService,
-      taskRuntimeService,
     } = createTasksService() as any;
     const currentUser = createCurrentUser();
     const project = createProject();
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-06T10:20:00Z'));
 
     projectsService.assertCanAccessProject.mockResolvedValue(project);
     taskRepository.create.mockResolvedValue({
       ...createTask(),
       mode: TaskMode.conversation,
       gitBaseBranch: null,
-      gitWorktree: null,
+      gitBranch: 'feature/20260306-001',
+      gitWorktree: 'wk-20260306-001',
     });
 
     await service.create(
@@ -316,19 +324,20 @@ describe('TasksService', () => {
       currentUser as never,
     );
 
-    expect(
-      taskRuntimeService.resolveAndValidateCreateWorktreePath,
-    ).not.toHaveBeenCalled();
-    expect(taskRepository.findByGitWorktree).not.toHaveBeenCalled();
+    expect(taskRepository.findByGitWorktree).toHaveBeenCalledWith(
+      'wk-20260306-001',
+    );
     expect(taskRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
         businessLineId: project.businessLineId,
-        gitBranch: null,
+        gitBranch: 'feature/20260306-001',
         gitBaseBranch: null,
-        gitWorktree: null,
+        gitWorktree: 'wk-20260306-001',
       }),
     );
     expect(taskNodeRepository.createMany).toHaveBeenCalledTimes(1);
+
+    jest.useRealTimers();
   });
 
   it('should dispatch manual node to executeManualNode', async () => {
@@ -716,7 +725,10 @@ describe('TasksService', () => {
 
     await serviceAny.recalculateTaskStatus(task.id);
 
-    expect(taskRuntimeService.cleanupRuntime).toHaveBeenCalledWith(task);
+    expect(taskRuntimeService.cleanupRuntime).toHaveBeenCalledWith(
+      task,
+      expect.objectContaining({ id: task.projectId }),
+    );
     expect(taskRepository.update).toHaveBeenNthCalledWith(
       1,
       task.id,
@@ -1115,7 +1127,10 @@ describe('TasksService', () => {
 
     await service.cleanupWorktree(task.id, currentUser as never);
 
-    expect(taskRuntimeService.cleanupRuntime).toHaveBeenCalledWith(task);
+    expect(taskRuntimeService.cleanupRuntime).toHaveBeenCalledWith(
+      task,
+      expect.objectContaining({ id: task.projectId }),
+    );
     expect(taskRepository.update).toHaveBeenCalledWith(
       task.id,
       expect.objectContaining({
@@ -1436,6 +1451,7 @@ describe('TasksService', () => {
       gitBranch: task.gitBranch,
       gitBaseBranch: task.gitBaseBranch,
       gitWorktree: task.gitWorktree,
+      worktreePath: task.gitWorktree,
     });
     taskNodeRepository.findInProgressByTaskId.mockResolvedValue(null);
     taskNodeRepository.findFirstByTaskIdAndStatus.mockImplementation(

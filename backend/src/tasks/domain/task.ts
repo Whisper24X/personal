@@ -33,7 +33,12 @@ export class Task {
   @ApiProperty({ type: String, required: false, nullable: true })
   gitBaseBranch?: string | null;
 
-  @ApiProperty({ type: String, required: false, nullable: true })
+  @ApiProperty({
+    type: String,
+    required: false,
+    nullable: true,
+    description: 'Worktree identifier; runtime path is derived from project config',
+  })
   gitWorktree?: string | null;
 
   @ApiProperty({ type: String, required: false, nullable: true })

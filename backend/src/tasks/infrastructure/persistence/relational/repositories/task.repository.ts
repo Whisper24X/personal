@@ -53,6 +53,33 @@ export class TaskRelationalRepository implements TaskRepository {
     return entity ? TaskMapper.toDomain(entity) : null;
   }
 
+  async findMaxGitWorktreeSequence(prefix: string): Promise<number> {
+    const rows = await this.taskRepository
+      .createQueryBuilder('task')
+      .select('task."gitWorktree"', 'gitWorktree')
+      .where('task."deletedAt" IS NULL')
+      .andWhere('task."gitWorktree" LIKE :pattern', {
+        pattern: `${prefix}%`,
+      })
+      .getRawMany<{ gitWorktree?: string | null }>();
+
+    return rows.reduce((maxSequence, row) => {
+      const gitWorktree = row.gitWorktree?.trim();
+
+      if (!gitWorktree) {
+        return maxSequence;
+      }
+
+      const suffix = gitWorktree.slice(prefix.length);
+
+      if (!/^\d+$/.test(suffix)) {
+        return maxSequence;
+      }
+
+      return Math.max(maxSequence, Number(suffix));
+    }, 0);
+  }
+
   async bulkUpdateBusinessLineIdByProjectId({
     projectId,
     businessLineId,

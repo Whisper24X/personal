@@ -12,6 +12,8 @@ export abstract class TaskRepository {
 
   abstract findByGitWorktree(gitWorktree: string): Promise<NullableType<Task>>;
 
+  abstract findMaxGitWorktreeSequence(prefix: string): Promise<number>;
+
   abstract bulkUpdateBusinessLineIdByProjectId(params: {
     projectId: string;
     businessLineId: string;

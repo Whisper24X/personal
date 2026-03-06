@@ -8,6 +8,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import path from 'path';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { TaskRepository } from './infrastructure/persistence/task.repository';
 import { TaskNodeRepository } from './infrastructure/persistence/task-node.repository';
@@ -184,37 +185,45 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       throw new ConflictException('Task must contain at least one node');
     }
 
-    const normalizedGitBranch = this.normalizeWorktreeBranch(
-      createTaskDto.gitBranch,
-    );
     const normalizedGitBaseBranch = this.normalizeOptionalString(
       createTaskDto.gitBaseBranch,
     );
     const requestedGitWorktree = this.normalizeOptionalString(
       createTaskDto.gitWorktree,
     );
-    let normalizedGitWorktree: string | null = null;
+    const taskNameId = await this.resolveCreateTaskNameId({
+      gitBranch: createTaskDto.gitBranch,
+      gitBaseBranch: normalizedGitBaseBranch,
+      gitWorktree: requestedGitWorktree,
+      projectDefaultBranch: project.defaultBranch,
+    });
+    const normalizedGitBranch = this.resolveCreateGitBranch({
+      gitBranch: createTaskDto.gitBranch,
+      gitBaseBranch: normalizedGitBaseBranch,
+      projectDefaultBranch: project.defaultBranch,
+      taskNameId,
+    });
+    let normalizedGitWorktree = this.buildDefaultGitWorktree(taskNameId);
 
     if (requestedGitWorktree) {
       try {
-        normalizedGitWorktree =
-          await this.taskRuntimeService.resolveAndValidateCreateWorktreePath(
-            project,
-            requestedGitWorktree,
-          );
+        normalizedGitWorktree = await this.normalizeGitWorktree(
+          requestedGitWorktree,
+          project,
+        );
       } catch (error) {
         throw new BadRequestException(
-          error instanceof Error ? error.message : 'Invalid git worktree path',
+          error instanceof Error ? error.message : 'Invalid git worktree name',
         );
       }
+    }
 
-      const existedTask = await this.taskRepository.findByGitWorktree(
-        normalizedGitWorktree,
-      );
+    const existedTask = await this.taskRepository.findByGitWorktree(
+      normalizedGitWorktree,
+    );
 
-      if (existedTask) {
-        throw new ConflictException('Task worktree path already in use');
-      }
+    if (existedTask) {
+      throw new ConflictException('Task worktree name already in use');
     }
 
     const task = await this.taskRepository.create({
@@ -344,9 +353,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       updatePayload.prompt = updateTaskDto.prompt;
     }
     if (updateTaskDto.gitBranch !== undefined) {
-      updatePayload.gitBranch = this.normalizeWorktreeBranch(
-        updateTaskDto.gitBranch,
-      );
+      updatePayload.gitBranch = this.normalizeGitBranch(updateTaskDto.gitBranch);
     }
     if (updateTaskDto.gitBaseBranch !== undefined) {
       updatePayload.gitBaseBranch = this.normalizeOptionalString(
@@ -360,19 +367,15 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       if (requestedGitWorktree) {
         let normalizedGitWorktree: string;
         try {
-          normalizedGitWorktree =
-            await this.taskRuntimeService.resolveAndValidateCreateWorktreePath(
-              await this.projectsService.assertCanAccessProject(
-                task.projectId,
-                currentUser,
-              ),
-              requestedGitWorktree,
-            );
+          normalizedGitWorktree = await this.normalizeGitWorktree(
+            requestedGitWorktree,
+            await this.getProjectByIdOrThrow(task.projectId),
+          );
         } catch (error) {
           throw new BadRequestException(
             error instanceof Error
               ? error.message
-              : 'Invalid git worktree path',
+              : 'Invalid git worktree name',
           );
         }
 
@@ -381,7 +384,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
             normalizedGitWorktree,
           );
           if (existedTask && existedTask.id !== task.id) {
-            throw new ConflictException('Task worktree path already in use');
+            throw new ConflictException('Task worktree name already in use');
           }
         }
 
@@ -805,8 +808,12 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     currentUser: JwtPayloadType,
   ): Promise<TaskDetailDto> {
     const task = await this.getTaskOrThrow(taskId, currentUser);
+    const project = await this.getProjectByIdOrThrow(task.projectId);
 
-    const cleanupResult = await this.taskRuntimeService.cleanupRuntime(task);
+    const cleanupResult = await this.taskRuntimeService.cleanupRuntime(
+      task,
+      project,
+    );
 
     await this.taskRepository.update(task.id, {
       ...(cleanupResult.cleaned ? { gitWorktree: null } : {}),
@@ -1029,6 +1036,12 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         throw new NotFoundException('Task not found');
       }
 
+      const runtime = await this.taskRuntimeService.ensureRuntime(
+        runtimeTask,
+        project,
+      );
+      const executionTask = this.createRuntimeTaskSnapshot(runtimeTask, runtime);
+
       await this.appendLog({
         taskId,
         taskNodeId: nodeId,
@@ -1036,9 +1049,10 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         message: 'Runner attached to node',
         payload: {
           nodeOrder: pendingNode.nodeOrder,
-          gitBranch: runtimeTask.gitBranch ?? null,
-          gitBaseBranch: runtimeTask.gitBaseBranch ?? null,
-          gitWorktree: runtimeTask.gitWorktree ?? null,
+          gitBranch: runtime.gitBranch,
+          gitBaseBranch: runtime.gitBaseBranch,
+          gitWorktree: runtime.gitWorktree,
+          worktreePath: runtime.worktreePath,
         },
       });
 
@@ -1056,7 +1070,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         await this.executeAgentNode({
           taskId,
           nodeId,
-          task: runtimeTask,
+          task: executionTask,
           node: runningNode,
           project,
         });
@@ -1132,8 +1146,10 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       task.gitBaseBranch !== runtime.gitBaseBranch ||
       task.gitWorktree !== runtime.gitWorktree;
 
+    const runtimeTaskSnapshot = this.createRuntimeTaskSnapshot(task, runtime);
+
     if (!hasRuntimeChanged) {
-      return { task, project };
+      return { task: runtimeTaskSnapshot, project };
     }
 
     const updatedTask = await this.taskRepository.update(task.id, {
@@ -1151,11 +1167,12 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         gitBranch: runtime.gitBranch,
         gitBaseBranch: runtime.gitBaseBranch,
         gitWorktree: runtime.gitWorktree,
+        worktreePath: runtime.worktreePath,
       },
     });
 
     return {
-      task: updatedTask ?? task,
+      task: this.createRuntimeTaskSnapshot(updatedTask ?? task, runtime),
       project,
     };
   }
@@ -1737,7 +1754,10 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const cleanupResult = await this.taskRuntimeService.cleanupRuntime(task);
+    const cleanupResult = await this.taskRuntimeService.cleanupRuntime(
+      task,
+      await this.getProjectByIdOrThrow(task.projectId),
+    );
 
     await this.taskRepository.update(task.id, {
       ...(cleanupResult.cleaned ? { gitWorktree: null } : {}),
@@ -1826,6 +1846,19 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     return this.getTaskOrThrow(taskId, currentUser);
   }
 
+  async assertCanAccessTaskProject(
+    taskId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<{ task: Task; project: Project }> {
+    const task = await this.getTaskOrThrow(taskId, currentUser);
+    const project = await this.getProjectByIdOrThrow(task.projectId);
+
+    return {
+      task,
+      project,
+    };
+  }
+
   private async getTaskOrThrow(
     taskId: string,
     currentUser: JwtPayloadType,
@@ -1861,18 +1894,179 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     return normalized || null;
   }
 
-  private normalizeWorktreeBranch(value?: string | null): string | null {
+  private normalizeGitBranch(value?: string | null): string | null {
+    return this.normalizeOptionalString(value);
+  }
+
+  private async resolveCreateTaskNameId({
+    gitBranch,
+    gitBaseBranch,
+    gitWorktree,
+    projectDefaultBranch,
+  }: {
+    gitBranch?: string | null;
+    gitBaseBranch?: string | null;
+    gitWorktree?: string | null;
+    projectDefaultBranch?: string | null;
+  }): Promise<string> {
+    const normalizedGitBranch = this.normalizeGitBranch(gitBranch);
+    const reservedBranches = new Set(
+      [gitBaseBranch, projectDefaultBranch, 'main', 'master']
+        .map((value) => this.normalizeOptionalString(value))
+        .filter((value): value is string => Boolean(value)),
+    );
+    const gitBranchTaskNameId =
+      normalizedGitBranch && !reservedBranches.has(normalizedGitBranch)
+        ? this.extractTaskNameIdFromGitBranch(normalizedGitBranch)
+        : null;
+    const gitWorktreeTaskNameId = gitWorktree
+      ? this.extractTaskNameIdFromGitWorktree(gitWorktree)
+      : null;
+
+    return (
+      gitWorktreeTaskNameId ??
+      gitBranchTaskNameId ??
+      (await this.buildTaskNameId())
+    );
+  }
+
+  private async buildTaskNameId(): Promise<string> {
+    const datePrefix = this.formatTaskNameDate(new Date());
+    const nextSequence =
+      (await this.taskRepository.findMaxGitWorktreeSequence(
+        this.buildTaskNameSequencePrefix(datePrefix),
+      )) + 1;
+
+    return `${datePrefix}-${this.formatTaskNameSequence(nextSequence)}`;
+  }
+
+  private formatTaskNameDate(date: Date): string {
+    const year = date.getFullYear().toString();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+
+    return `${year}${month}${day}`;
+  }
+
+  private buildTaskNameSequencePrefix(datePrefix: string): string {
+    return `wk-${datePrefix}-`;
+  }
+
+  private formatTaskNameSequence(sequence: number): string {
+    return `${sequence}`.padStart(3, '0');
+  }
+
+  private buildDefaultGitBranch(taskNameId: string): string {
+    return `feature/${taskNameId}`;
+  }
+
+  private buildDefaultGitWorktree(taskNameId: string): string {
+    return `wk-${taskNameId}`;
+  }
+
+  private extractTaskNameIdFromGitBranch(gitBranch: string): string | null {
+    const match = /^feature\/(\d{8}-\d+)$/.exec(gitBranch.trim());
+
+    return match?.[1] ?? null;
+  }
+
+  private extractTaskNameIdFromGitWorktree(gitWorktree: string): string | null {
+    const worktreeName = path.basename(gitWorktree.trim());
+    const match = /^wk-(\d{8}-\d+)$/.exec(worktreeName);
+
+    return match?.[1] ?? null;
+  }
+
+  private resolveCreateGitBranch({
+    gitBranch,
+    gitBaseBranch,
+    projectDefaultBranch,
+    taskNameId,
+  }: {
+    gitBranch?: string | null;
+    gitBaseBranch?: string | null;
+    projectDefaultBranch?: string | null;
+    taskNameId: string;
+  }): string {
+    const normalizedGitBranch = this.normalizeGitBranch(gitBranch);
+
+    if (!normalizedGitBranch) {
+      return this.buildDefaultGitBranch(taskNameId);
+    }
+
+    const reservedBranches = new Set(
+      [gitBaseBranch, projectDefaultBranch, 'main', 'master']
+        .map((value) => this.normalizeOptionalString(value))
+        .filter((value): value is string => Boolean(value)),
+    );
+
+    if (reservedBranches.has(normalizedGitBranch)) {
+      return this.buildDefaultGitBranch(taskNameId);
+    }
+
+    return normalizedGitBranch;
+  }
+
+  private async normalizeGitWorktree(
+    value: string,
+    project: Project,
+  ): Promise<string> {
     const normalized = this.normalizeOptionalString(value);
 
     if (!normalized) {
-      return null;
+      throw new Error('gitWorktree cannot be empty');
     }
 
-    if (normalized.startsWith('wk-')) {
-      return normalized;
+    if (path.isAbsolute(normalized)) {
+      const resolvedPath =
+        await this.taskRuntimeService.resolveAndValidateCreateWorktreePath(
+          project,
+          normalized,
+        );
+
+      return path.basename(resolvedPath);
     }
 
-    return `wk-${normalized}`;
+    const normalizedSegments = normalized
+      .replace(/\\/g, '/')
+      .split('/')
+      .filter(Boolean);
+
+    if (
+      normalizedSegments.length !== 1 ||
+      normalizedSegments[0] === '.' ||
+      normalizedSegments[0] === '..'
+    ) {
+      throw new Error('gitWorktree must be a single directory name');
+    }
+
+    return normalizedSegments[0] ?? normalized;
+  }
+
+  private async getProjectByIdOrThrow(projectId: string): Promise<Project> {
+    const project = await this.projectRepository.findById(projectId);
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    return project;
+  }
+
+  private createRuntimeTaskSnapshot(
+    task: Task,
+    runtime: {
+      gitBranch: string;
+      gitBaseBranch: string;
+      worktreePath: string;
+    },
+  ): Task {
+    return {
+      ...task,
+      gitBranch: runtime.gitBranch,
+      gitBaseBranch: runtime.gitBaseBranch,
+      gitWorktree: runtime.worktreePath,
+    };
   }
 
   private async appendLog({

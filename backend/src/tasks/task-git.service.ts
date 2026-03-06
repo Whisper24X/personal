@@ -20,6 +20,7 @@ import {
   TaskGitStatusDto,
 } from './dto/task-git.dto';
 import { Task } from './domain/task';
+import { TaskRuntimeService } from './task-runtime.service';
 import { TasksService } from './tasks.service';
 
 type GitExecutionResult = {
@@ -34,7 +35,10 @@ export class TaskGitService {
   private readonly defaultGitTimeoutMs = 90_000;
   private readonly maxDiffTextLength = 180_000;
 
-  constructor(private readonly tasksService: TasksService) {}
+  constructor(
+    private readonly tasksService: TasksService,
+    private readonly taskRuntimeService: TaskRuntimeService,
+  ) {}
 
   async getStatus(
     taskId: string,
@@ -370,7 +374,7 @@ export class TaskGitService {
     taskId: string,
     currentUser: JwtPayloadType,
   ): Promise<{ task: Task; worktreePath: string }> {
-    const task = await this.tasksService.assertCanAccessTask(
+    const { task, project } = await this.tasksService.assertCanAccessTaskProject(
       taskId,
       currentUser,
     );
@@ -379,7 +383,12 @@ export class TaskGitService {
       throw new ConflictException('Task workspace is not initialized');
     }
 
-    const worktreePath = await fs.realpath(task.gitWorktree).catch(() => {
+    const runtimeWorktreePath = this.taskRuntimeService.resolveTaskWorktreePath(
+      task,
+      project,
+    );
+
+    const worktreePath = await fs.realpath(runtimeWorktreePath).catch(() => {
       throw new NotFoundException('Task workspace does not exist');
     });
 

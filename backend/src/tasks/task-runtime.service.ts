@@ -11,6 +11,7 @@ type EnsureTaskRuntimeResult = {
   gitBranch: string;
   gitBaseBranch: string;
   gitWorktree: string;
+  worktreePath: string;
 };
 
 type CleanupTaskRuntimeResult = {
@@ -63,6 +64,7 @@ export class TaskRuntimeService {
     const allowedRoot = await this.resolveCanonicalPath(
       this.resolveWorktreeAllowedRoot(project),
     );
+    const worktreeIdentifier = this.resolveGitWorktreeIdentifier(task);
     const gitWorktree = this.ensureWorktreePathAllowed(
       this.resolveGitWorktreePath(task, project),
       allowedRoot,
@@ -131,24 +133,29 @@ export class TaskRuntimeService {
     return {
       gitBranch,
       gitBaseBranch,
-      gitWorktree,
+      gitWorktree: worktreeIdentifier,
+      worktreePath: gitWorktree,
     };
   }
 
-  async cleanupRuntime(task: Task): Promise<CleanupTaskRuntimeResult> {
-    const worktreePath = task.gitWorktree?.trim();
-    if (!worktreePath) {
+  async cleanupRuntime(
+    task: Task,
+    project: Project,
+  ): Promise<CleanupTaskRuntimeResult> {
+    const worktreeIdentifier = task.gitWorktree?.trim();
+    if (!worktreeIdentifier) {
       return {
         cleaned: false,
       };
     }
 
+    const worktreePath = this.resolveGitWorktreePath(task, project);
     const cleanupErrors: string[] = [];
     const runtimeMeta = await this.readRuntimeMeta(worktreePath);
     const allowedRoot = await this.resolveCanonicalPath(
       runtimeMeta?.allowedRoot
         ? runtimeMeta.allowedRoot
-        : this.resolveGlobalWorktreeAllowedRoot(),
+        : this.resolveWorktreeAllowedRoot(project),
     );
     const resolvedWorktreePath = await this.resolveCanonicalPath(worktreePath);
 
@@ -351,13 +358,17 @@ export class TaskRuntimeService {
     return this.ensureWorktreePathAllowed(normalizedPath, allowedRoot);
   }
 
+  resolveTaskWorktreePath(task: Task, project: Project): string {
+    return this.resolveGitWorktreePath(task, project);
+  }
+
   private resolveBranch(task: Task, project: Project): string {
     if (task.gitBranch?.trim()) {
-      return this.normalizeWorktreeBranch(task.gitBranch.trim());
+      return task.gitBranch.trim();
     }
 
     const prefix = this.sanitizeSegment(project.name) || 'ainative';
-    return `wk-${prefix}-${task.id.slice(0, 8)}`;
+    return `feature/${prefix}-${task.id.slice(0, 8)}`;
   }
 
   private resolveGitBaseBranch(task: Task, project: Project): string {
@@ -369,12 +380,24 @@ export class TaskRuntimeService {
   }
 
   private resolveGitWorktreePath(task: Task, project: Project): string {
-    if (task.gitWorktree?.trim()) {
-      return task.gitWorktree.trim();
+    const gitWorktree = this.resolveGitWorktreeIdentifier(task);
+
+    if (path.isAbsolute(gitWorktree)) {
+      return gitWorktree;
     }
 
     const baseDir = this.resolveWorktreeBaseDir(project);
-    return path.join(baseDir, `wk-${task.id}`);
+    return path.join(baseDir, gitWorktree);
+  }
+
+  private resolveGitWorktreeIdentifier(task: Task): string {
+    const gitWorktree = task.gitWorktree?.trim();
+
+    if (gitWorktree) {
+      return gitWorktree;
+    }
+
+    return `wk-${task.id}`;
   }
 
   private resolveWorktreeBaseDir(project: Project): string {
@@ -401,10 +424,6 @@ export class TaskRuntimeService {
       .toLowerCase()
       .replace(/[^a-z0-9-_]+/g, '-')
       .replace(/^-+|-+$/g, '');
-  }
-
-  private normalizeWorktreeBranch(branch: string): string {
-    return branch.startsWith('wk-') ? branch : `wk-${branch}`;
   }
 
   private isGitRuntimeEnabled(project: Project): boolean {
