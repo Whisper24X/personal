@@ -1819,7 +1819,9 @@ const submitProjectForm = async (payload: {
     await refreshForCurrentLine({ includeMembers: activeTab.value === 'members' })
     message.success(projectFormMode.value === 'create' ? '新建项目成功' : '保存项目成功')
   } catch (error) {
-    message.error(toErrorMessage(error, '保存项目失败'))
+    const errMsg = toErrorMessage(error, '保存项目失败')
+    projectFormError.value = errMsg
+    message.error(errMsg)
   } finally {
     projectFormSubmitting.value = false
   }

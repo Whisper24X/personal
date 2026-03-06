@@ -11,6 +11,7 @@ import {
   Post,
   Query,
   Request,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -40,6 +41,15 @@ import {
   InspectProjectRepositoryDto,
   ProjectRepositoryInspectionDto,
 } from './dto/inspect-project-repository.dto';
+import {
+  QueryProjectDocsDto,
+  QueryProjectDocsResponseDto,
+  ProjectDocContentDto,
+  ProjectDocItemDto,
+  ReadProjectDocDto,
+  SaveProjectDocDto,
+} from './dto/project-doc.dto';
+import type { Response } from 'express';
 
 @ApiTags('Projects')
 @ApiBearerAuth()
@@ -50,13 +60,6 @@ import {
 })
 export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
-
-  @Post()
-  @ApiCreatedResponse({ type: ProjectDto })
-  @HttpCode(HttpStatus.CREATED)
-  create(@Request() request, @Body() createProjectDto: CreateProjectDto) {
-    return this.projectsService.create(createProjectDto, request.user);
-  }
 
   @Post('inspect-repository')
   @ApiOkResponse({ type: ProjectRepositoryInspectionDto })
@@ -69,6 +72,13 @@ export class ProjectsController {
       inspectProjectRepositoryDto,
       request.user,
     );
+  }
+
+  @Post()
+  @ApiCreatedResponse({ type: ProjectDto })
+  @HttpCode(HttpStatus.CREATED)
+  create(@Request() request, @Body() createProjectDto: CreateProjectDto) {
+    return this.projectsService.create(createProjectDto, request.user);
   }
 
   @Get()
@@ -191,5 +201,95 @@ export class ProjectsController {
     @Param('userId', ParseUUIDPipe) userId: string,
   ): Promise<void> {
     return this.projectsService.removeMember(projectId, userId, request.user);
+  }
+
+  @Get(':id/docs')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: ProjectDocItemDto, isArray: true })
+  @HttpCode(HttpStatus.OK)
+  listDocs(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
+    return this.projectsService.listDocs(id, request.user);
+  }
+
+  @Get(':id/docs/content')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: ProjectDocContentDto })
+  @HttpCode(HttpStatus.OK)
+  readDoc(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ReadProjectDocDto,
+  ) {
+    return this.projectsService.readDoc(id, query.path, request.user);
+  }
+
+  @Post(':id/docs')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiCreatedResponse({ type: ProjectDocContentDto })
+  @HttpCode(HttpStatus.CREATED)
+  createDoc(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() payload: SaveProjectDocDto,
+  ) {
+    return this.projectsService.createDoc(id, payload, request.user);
+  }
+
+  @Patch(':id/docs')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: ProjectDocContentDto })
+  @HttpCode(HttpStatus.OK)
+  updateDoc(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() payload: SaveProjectDocDto,
+  ) {
+    return this.projectsService.updateDoc(id, payload, request.user);
+  }
+
+  @Delete(':id/docs')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiNoContentResponse()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeDoc(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ReadProjectDocDto,
+  ): Promise<void> {
+    await this.projectsService.removeDoc(id, query.path, request.user);
+  }
+
+  @Post(':id/docs/query')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: QueryProjectDocsResponseDto })
+  @HttpCode(HttpStatus.OK)
+  queryDocs(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() payload: QueryProjectDocsDto,
+  ) {
+    return this.projectsService.queryDocs(id, payload, request.user);
+  }
+
+  @Get(':id/docs/query/stream')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @HttpCode(HttpStatus.OK)
+  async queryDocsStream(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: QueryProjectDocsDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    await this.projectsService.streamDocsQuery(id, query, request.user, (event, data) => {
+      res.write(`event: ${event}\n`);
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    });
+
+    res.end();
   }
 }

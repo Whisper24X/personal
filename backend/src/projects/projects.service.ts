@@ -3,9 +3,11 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { QueryFailedError } from 'typeorm';
 import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -27,6 +29,11 @@ import {
   InspectProjectRepositoryDto,
   ProjectRepositoryInspectionDto,
 } from './dto/inspect-project-repository.dto';
+import {
+  QueryProjectDocsDto,
+  QueryProjectDocsResponseDto,
+  SaveProjectDocDto,
+} from './dto/project-doc.dto';
 import { UsersService } from '../users/users.service';
 import { ProjectMemberRole } from './dto/project-member-role.enum';
 import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
@@ -35,6 +42,11 @@ import { TaskRepository } from '../tasks/infrastructure/persistence/task.reposit
 @Injectable()
 export class ProjectsService {
   private readonly defaultGitTimeoutMs = 60_000;
+  private readonly maxProjectDocFiles = 500;
+  private readonly maxProjectDocDepth = 8;
+  private readonly maxQueryContextChars = 24_000;
+  private readonly maxQueryDocSnippetChars = 1_600;
+  private readonly defaultQueryTimeoutMs = 120_000;
   private readonly defaultDataRootDir = path.resolve(
     resolveAinativeDataRootDir(),
   );
@@ -72,14 +84,23 @@ export class ProjectsService {
 
     await this.validateGitRepositoryAccessible(createProjectDto.gitUrl);
 
-    const project = await this.projectRepository.create({
-      businessLineId: createProjectDto.businessLineId,
-      name: createProjectDto.name,
-      description: createProjectDto.description ?? null,
-      gitUrl: createProjectDto.gitUrl,
-      defaultBranch: createProjectDto.defaultBranch ?? 'main',
-      configJson: createProjectDto.configJson ?? null,
-    });
+    let project: Project;
+
+    try {
+      project = await this.projectRepository.create({
+        businessLineId: createProjectDto.businessLineId,
+        name: createProjectDto.name,
+        description: createProjectDto.description ?? null,
+        gitUrl: createProjectDto.gitUrl,
+        defaultBranch: createProjectDto.defaultBranch ?? 'main',
+        configJson: createProjectDto.configJson ?? null,
+      });
+    } catch (error) {
+      throw this.mapDatabaseErrorToHttpException(
+        error,
+        'Failed to create project',
+      );
+    }
 
     try {
       await this.ensureProjectRepository(project);
@@ -90,21 +111,63 @@ export class ProjectsService {
       );
     }
 
+    const userId = currentUser?.sub;
+    if (!userId) {
+      await this.rollbackCreatedProject(project.id);
+      throw new BadRequestException('Invalid user session');
+    }
+
     const existedCreatorMember =
       await this.projectMemberRepository.findByProjectIdAndUserId(
         project.id,
-        currentUser.sub,
+        userId,
       );
 
     if (!existedCreatorMember) {
-      await this.projectMemberRepository.create({
-        projectId: project.id,
-        userId: currentUser.sub,
-        role: ProjectMemberRole.owner,
-      });
+      try {
+        await this.projectMemberRepository.create({
+          projectId: project.id,
+          userId,
+          role: ProjectMemberRole.owner,
+        });
+      } catch (error) {
+        await this.rollbackCreatedProject(project.id);
+        throw this.mapDatabaseErrorToHttpException(
+          error,
+          'Failed to add project owner',
+        );
+      }
     }
 
     return project;
+  }
+
+  private mapDatabaseErrorToHttpException(
+    error: unknown,
+    context: string,
+  ): BadRequestException | ConflictException | InternalServerErrorException {
+    if (error instanceof QueryFailedError) {
+      const pgError = error as QueryFailedError & { code?: string };
+      const code = pgError.code;
+
+      if (code === '23503') {
+        return new BadRequestException(
+          `${context}: Referenced record not found (e.g. business line or user does not exist)`,
+        );
+      }
+
+      if (code === '23505') {
+        return new ConflictException(
+          `${context}: Duplicate entry (e.g. project name already exists)`,
+        );
+      }
+    }
+
+    const message =
+      error instanceof Error ? error.message : 'Unknown database error';
+    return new InternalServerErrorException(
+      `${context}: ${this.truncateError(message)}`,
+    );
   }
 
   async inspectRepository(
@@ -455,15 +518,611 @@ export class ProjectsService {
     }
   }
 
+  async listDocs(
+    projectId: Project['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<
+    Array<{ path: string; name: string; size: number; updatedAt: Date }>
+  > {
+    const { repositoryRoot } = await this.ensureProjectRepositoryReady(
+      projectId,
+      currentUser,
+    );
+    const docsRoot = path.join(repositoryRoot, 'docs');
+    const docsRootExists = await this.pathExists(docsRoot);
+    if (!docsRootExists) {
+      return [];
+    }
+
+    const results: Array<{
+      path: string;
+      name: string;
+      size: number;
+      updatedAt: Date;
+    }> = [];
+
+    const walk = async (dir: string, depth: number): Promise<void> => {
+      if (depth > this.maxProjectDocDepth || results.length >= this.maxProjectDocFiles) {
+        return;
+      }
+
+      let entries: Array<{
+        name: string;
+        isDirectory: () => boolean;
+        isFile: () => boolean;
+      }>;
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+
+      entries.sort((left, right) => left.name.localeCompare(right.name));
+
+      for (const entry of entries) {
+        if (results.length >= this.maxProjectDocFiles) {
+          return;
+        }
+
+        const absolutePath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(absolutePath, depth + 1);
+          continue;
+        }
+
+        if (!entry.isFile()) {
+          continue;
+        }
+
+        const stat = await fs.stat(absolutePath).catch(() => null);
+        if (!stat?.isFile()) {
+          continue;
+        }
+
+        const relativePath = path.relative(docsRoot, absolutePath).split(path.sep).join('/');
+        if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+          continue;
+        }
+
+        results.push({
+          path: relativePath,
+          name: path.basename(absolutePath),
+          size: stat.size,
+          updatedAt: stat.mtime,
+        });
+      }
+    };
+
+    await walk(docsRoot, 0);
+    return results.sort((left, right) => left.path.localeCompare(right.path));
+  }
+
+  async readDoc(
+    projectId: Project['id'],
+    rawDocPath: string,
+    currentUser: JwtPayloadType,
+  ): Promise<{
+    path: string;
+    name: string;
+    size: number;
+    updatedAt: Date;
+    content: string;
+  }> {
+    const { repositoryRoot } = await this.ensureProjectRepositoryReady(
+      projectId,
+      currentUser,
+    );
+    const docsRoot = path.join(repositoryRoot, 'docs');
+    const relativePath = this.normalizeProjectDocPath(rawDocPath);
+    const absolutePath = this.resolveProjectDocAbsolutePath(docsRoot, relativePath);
+    const stat = await fs.stat(absolutePath).catch(() => null);
+
+    if (!stat || !stat.isFile()) {
+      throw new NotFoundException('Project doc not found');
+    }
+
+    const content = await fs.readFile(absolutePath, 'utf-8');
+
+    return {
+      path: relativePath,
+      name: path.basename(absolutePath),
+      size: stat.size,
+      updatedAt: stat.mtime,
+      content,
+    };
+  }
+
+  async createDoc(
+    projectId: Project['id'],
+    payload: SaveProjectDocDto,
+    currentUser: JwtPayloadType,
+  ): Promise<{
+    path: string;
+    name: string;
+    size: number;
+    updatedAt: Date;
+    content: string;
+  }> {
+    const { repositoryRoot } = await this.ensureProjectRepositoryReady(
+      projectId,
+      currentUser,
+    );
+    const docsRoot = path.join(repositoryRoot, 'docs');
+    const relativePath = this.normalizeProjectDocPath(payload.path);
+    const absolutePath = this.resolveProjectDocAbsolutePath(docsRoot, relativePath);
+
+    const existed = await this.pathExists(absolutePath);
+    if (existed) {
+      throw new ConflictException('Project doc already exists');
+    }
+
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    await fs.writeFile(absolutePath, payload.content ?? '', 'utf-8');
+
+    return this.readDoc(projectId, relativePath, currentUser);
+  }
+
+  async updateDoc(
+    projectId: Project['id'],
+    payload: SaveProjectDocDto,
+    currentUser: JwtPayloadType,
+  ): Promise<{
+    path: string;
+    name: string;
+    size: number;
+    updatedAt: Date;
+    content: string;
+  }> {
+    const { repositoryRoot } = await this.ensureProjectRepositoryReady(
+      projectId,
+      currentUser,
+    );
+    const docsRoot = path.join(repositoryRoot, 'docs');
+    const relativePath = this.normalizeProjectDocPath(payload.path);
+    const absolutePath = this.resolveProjectDocAbsolutePath(docsRoot, relativePath);
+    const stat = await fs.stat(absolutePath).catch(() => null);
+    if (!stat || !stat.isFile()) {
+      throw new NotFoundException('Project doc not found');
+    }
+
+    await fs.writeFile(absolutePath, payload.content ?? '', 'utf-8');
+    return this.readDoc(projectId, relativePath, currentUser);
+  }
+
+  async removeDoc(
+    projectId: Project['id'],
+    rawDocPath: string,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    const { repositoryRoot } = await this.ensureProjectRepositoryReady(
+      projectId,
+      currentUser,
+    );
+    const docsRoot = path.join(repositoryRoot, 'docs');
+    const relativePath = this.normalizeProjectDocPath(rawDocPath);
+    const absolutePath = this.resolveProjectDocAbsolutePath(docsRoot, relativePath);
+    const stat = await fs.stat(absolutePath).catch(() => null);
+    if (!stat || !stat.isFile()) {
+      throw new NotFoundException('Project doc not found');
+    }
+
+    await fs.unlink(absolutePath);
+  }
+
+  async queryDocs(
+    projectId: Project['id'],
+    payload: QueryProjectDocsDto,
+    currentUser: JwtPayloadType,
+  ): Promise<QueryProjectDocsResponseDto> {
+    const startAt = Date.now();
+    const { project, repositoryRoot } = await this.ensureProjectRepositoryReady(
+      projectId,
+      currentUser,
+    );
+    const docsRoot = path.join(repositoryRoot, 'docs');
+    const docsRootExists = await this.pathExists(docsRoot);
+
+    if (!docsRootExists) {
+      return {
+        answer: '当前项目还没有 docs 文档，无法执行知识问答。请先上传或创建文档。',
+        citations: [],
+        durationMs: Date.now() - startAt,
+      };
+    }
+
+    const normalizedQuestion = payload.question.trim();
+    const maxContextDocs = Math.max(1, Math.min(payload.maxContextDocs ?? 6, 20));
+    const candidateDocs = await this.selectCandidateDocs({
+      projectId,
+      docsRoot,
+      question: normalizedQuestion,
+      maxContextDocs,
+      scope: payload.scope ?? 'project',
+      currentPath: payload.currentPath,
+      currentUser,
+    });
+
+    if (!candidateDocs.length) {
+      return {
+        answer: '没有检索到相关文档内容。建议换个问法，或补充更明确的关键词。',
+        citations: [],
+        durationMs: Date.now() - startAt,
+      };
+    }
+
+    const citations = candidateDocs.map((doc) => ({
+      path: doc.path,
+      snippet: this.buildCitationSnippet(doc.content),
+    }));
+
+    const prompt = this.buildKnowledgeQueryPrompt({
+      question: normalizedQuestion,
+      docs: candidateDocs,
+    });
+
+    const agentResult = await this.executeKnowledgeAgent({
+      project,
+      repositoryRoot,
+      prompt,
+      onChunk: undefined,
+    });
+
+    const answer =
+      agentResult.success && agentResult.stdout.trim()
+        ? agentResult.stdout.trim()
+        : this.buildFallbackAnswer(citations, agentResult.stderr);
+
+    return {
+      answer,
+      citations,
+      durationMs: Date.now() - startAt,
+      traceId: `docs-query-${projectId}-${Date.now()}`,
+    };
+  }
+
+  async streamDocsQuery(
+    projectId: Project['id'],
+    payload: QueryProjectDocsDto,
+    currentUser: JwtPayloadType,
+    emit: (event: string, data: unknown) => void,
+  ): Promise<void> {
+    const startAt = Date.now();
+    const { project, repositoryRoot } = await this.ensureProjectRepositoryReady(
+      projectId,
+      currentUser,
+    );
+    const docsRoot = path.join(repositoryRoot, 'docs');
+    const docsRootExists = await this.pathExists(docsRoot);
+
+    if (!docsRootExists) {
+      emit('error', {
+        message: '当前项目还没有 docs 文档，无法执行知识问答。',
+      });
+      emit('done', {
+        durationMs: Date.now() - startAt,
+      });
+      return;
+    }
+
+    const normalizedQuestion = payload.question.trim();
+    const maxContextDocs = Math.max(1, Math.min(payload.maxContextDocs ?? 6, 20));
+    const candidateDocs = await this.selectCandidateDocs({
+      projectId,
+      docsRoot,
+      question: normalizedQuestion,
+      maxContextDocs,
+      scope: payload.scope ?? 'project',
+      currentPath: payload.currentPath,
+      currentUser,
+    });
+
+    if (!candidateDocs.length) {
+      emit('error', {
+        message: '没有检索到相关文档内容。建议换个问法，或补充更明确的关键词。',
+      });
+      emit('done', {
+        durationMs: Date.now() - startAt,
+      });
+      return;
+    }
+
+    const citations = candidateDocs.map((doc) => ({
+      path: doc.path,
+      snippet: this.buildCitationSnippet(doc.content),
+    }));
+
+    const prompt = this.buildKnowledgeQueryPrompt({
+      question: normalizedQuestion,
+      docs: candidateDocs,
+    });
+
+    const agentResult = await this.executeKnowledgeAgent({
+      project,
+      repositoryRoot,
+      prompt,
+      onChunk: (chunk) => {
+        if (!chunk.trim()) {
+          return;
+        }
+        emit('chunk', { delta: chunk });
+      },
+    });
+
+    if (!agentResult.success && !agentResult.stdout.trim()) {
+      emit('chunk', {
+        delta: this.buildFallbackAnswer(citations, agentResult.stderr),
+      });
+    }
+
+    emit('citations', { citations });
+    emit('done', {
+      durationMs: Date.now() - startAt,
+      traceId: `docs-query-${projectId}-${Date.now()}`,
+    });
+  }
+
   private isAdmin(currentUser: JwtPayloadType): boolean {
     return currentUser.roles?.includes('admin') ?? false;
+  }
+
+  private async selectCandidateDocs({
+    projectId,
+    docsRoot,
+    question,
+    maxContextDocs,
+    scope,
+    currentPath,
+    currentUser,
+  }: {
+    projectId: string;
+    docsRoot: string;
+    question: string;
+    maxContextDocs: number;
+    scope: 'project' | 'current_doc';
+    currentPath?: string;
+    currentUser: JwtPayloadType;
+  }): Promise<Array<{ path: string; content: string }>> {
+    const docs = await this.listDocs(projectId, currentUser);
+    if (!docs.length) {
+      return [];
+    }
+
+    const normalizedCurrentPath = currentPath
+      ? this.normalizeProjectDocPath(currentPath)
+      : null;
+    const tokens = this.extractQueryTokens(question);
+
+    const scored = docs.map((doc) => {
+      let score = 0;
+      const lowerPath = doc.path.toLowerCase();
+
+      for (const token of tokens) {
+        if (lowerPath.includes(token)) {
+          score += 3;
+        }
+      }
+
+      if (normalizedCurrentPath && doc.path === normalizedCurrentPath) {
+        score += 100;
+      }
+
+      return { doc, score };
+    });
+
+    scored.sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+
+      return left.doc.path.localeCompare(right.doc.path);
+    });
+
+    const picked = scored
+      .filter((item, index) => {
+        if (scope === 'current_doc' && normalizedCurrentPath) {
+          if (item.doc.path === normalizedCurrentPath) {
+            return true;
+          }
+
+          return index < Math.max(2, Math.floor(maxContextDocs / 2));
+        }
+
+        return true;
+      })
+      .slice(0, maxContextDocs)
+      .map((item) => item.doc);
+
+    const contexts: Array<{ path: string; content: string }> = [];
+    let totalChars = 0;
+
+    for (const doc of picked) {
+      const absolutePath = this.resolveProjectDocAbsolutePath(docsRoot, doc.path);
+      const rawContent = await fs.readFile(absolutePath, 'utf-8').catch(() => '');
+      if (!rawContent.trim()) {
+        continue;
+      }
+
+      const clipped = rawContent.slice(0, this.maxQueryDocSnippetChars);
+      if (totalChars + clipped.length > this.maxQueryContextChars) {
+        break;
+      }
+
+      contexts.push({
+        path: doc.path,
+        content: clipped,
+      });
+      totalChars += clipped.length;
+    }
+
+    return contexts;
+  }
+
+  private extractQueryTokens(question: string): string[] {
+    const rawTokens = question
+      .toLowerCase()
+      .split(/[\s,，。！？!?:：;；、/\\|()[\]{}"'`]+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 2);
+
+    return Array.from(new Set(rawTokens)).slice(0, 12);
+  }
+
+  private buildCitationSnippet(content: string): string {
+    const normalized = content.replace(/\s+/g, ' ').trim();
+    if (!normalized) {
+      return '';
+    }
+
+    if (normalized.length <= 220) {
+      return normalized;
+    }
+
+    return `${normalized.slice(0, 220)}...`;
+  }
+
+  private buildKnowledgeQueryPrompt({
+    question,
+    docs,
+  }: {
+    question: string;
+    docs: Array<{ path: string; content: string }>;
+  }): string {
+    const contextBlocks = docs.map((doc, index) => {
+      return [
+        `## Document ${index + 1}`,
+        `Path: ${doc.path}`,
+        'Content:',
+        doc.content,
+      ].join('\n');
+    });
+
+    return [
+      'You are an assistant for project docs Q&A.',
+      'Use ONLY the provided document content to answer.',
+      'If the answer is not in the docs, explicitly say you do not know.',
+      'Keep the answer concise and in Chinese.',
+      'At the end, include a short "References" section listing used paths.',
+      '',
+      `Question: ${question}`,
+      '',
+      'Context documents:',
+      ...contextBlocks,
+    ].join('\n');
+  }
+
+  private async executeKnowledgeAgent({
+    project,
+    repositoryRoot,
+    prompt,
+    onChunk,
+  }: {
+    project: Project;
+    repositoryRoot: string;
+    prompt: string;
+    onChunk?: (chunk: string) => void;
+  }): Promise<{ success: boolean; stdout: string; stderr: string }> {
+    const projectConfig =
+      project.configJson && typeof project.configJson === 'object'
+        ? (project.configJson as Record<string, unknown>)
+        : {};
+    const adapter =
+      typeof projectConfig.agentAdapter === 'string'
+        ? projectConfig.agentAdapter.trim().toLowerCase()
+        : 'codex';
+
+    const command =
+      typeof process.env.AINATIVE_CODEX_RUNNER_COMMAND === 'string' &&
+      process.env.AINATIVE_CODEX_RUNNER_COMMAND.trim()
+        ? process.env.AINATIVE_CODEX_RUNNER_COMMAND.trim()
+        : adapter === 'cursor'
+          ? 'agent'
+          : 'codex';
+    const args =
+      adapter === 'cursor'
+        ? ['-p', '--trust', '--force', prompt]
+        : ['exec', '--skip-git-repo-check', '-'];
+
+    return new Promise((resolve) => {
+      const child = spawn(command, args, {
+        cwd: repositoryRoot,
+        env: process.env,
+        stdio: 'pipe',
+      });
+
+      let stdout = '';
+      let stderr = '';
+      let timedOut = false;
+
+      const timeoutRef = setTimeout(() => {
+        timedOut = true;
+        child.kill('SIGTERM');
+      }, this.defaultQueryTimeoutMs);
+
+      child.stdout?.on('data', (chunk) => {
+        const text = chunk.toString('utf-8');
+        stdout += text;
+        onChunk?.(text);
+      });
+      child.stderr?.on('data', (chunk) => {
+        stderr += chunk.toString('utf-8');
+      });
+
+      child.on('error', (error) => {
+        clearTimeout(timeoutRef);
+        resolve({
+          success: false,
+          stdout: '',
+          stderr: error.message,
+        });
+      });
+
+      if (adapter !== 'cursor') {
+        child.stdin?.write(prompt);
+        child.stdin?.end();
+      }
+
+      child.on('close', (code) => {
+        clearTimeout(timeoutRef);
+        resolve({
+          success: !timedOut && code === 0,
+          stdout: stdout.trim(),
+          stderr: timedOut
+            ? 'Agent execution timed out'
+            : stderr.trim() || `Agent exit code ${code ?? 'null'}`,
+        });
+      });
+    });
+  }
+
+  private buildFallbackAnswer(
+    citations: Array<{ path: string; snippet: string }>,
+    errorMessage: string,
+  ): string {
+    const lines = [
+      '当前未能成功调用 Agent 生成答案，已返回候选文档摘要供参考。',
+      `原因：${errorMessage || '未知错误'}`,
+      '',
+      '你可以根据以下内容手动判断，或重试提问：',
+      ...citations.slice(0, 4).map((item) => `- ${item.path}: ${item.snippet}`),
+    ];
+
+    return lines.join('\n');
   }
 
   private async ensureCanAccessProject(
     projectId: Project['id'],
     currentUser: JwtPayloadType,
   ): Promise<Project> {
-    const project = await this.projectRepository.findById(projectId);
+    let project: Project | null;
+
+    try {
+      project = await this.projectRepository.findById(projectId);
+    } catch (error) {
+      throw this.mapDatabaseErrorToHttpException(
+        error,
+        'Failed to load project',
+      );
+    }
 
     if (!project) {
       throw new NotFoundException('Project not found');
@@ -473,16 +1132,26 @@ export class ProjectsService {
       return project;
     }
 
-    const [projectMember, businessLineMember] = await Promise.all([
-      this.projectMemberRepository.findByProjectIdAndUserId(
-        project.id,
-        currentUser.sub,
-      ),
-      this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
-        project.businessLineId,
-        currentUser.sub,
-      ),
-    ]);
+    let projectMember;
+    let businessLineMember;
+
+    try {
+      [projectMember, businessLineMember] = await Promise.all([
+        this.projectMemberRepository.findByProjectIdAndUserId(
+          project.id,
+          currentUser.sub,
+        ),
+        this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
+          project.businessLineId,
+          currentUser.sub,
+        ),
+      ]);
+    } catch (error) {
+      throw this.mapDatabaseErrorToHttpException(
+        error,
+        'Failed to verify project access',
+      );
+    }
 
     if (projectMember) {
       return project;
@@ -496,7 +1165,9 @@ export class ProjectsService {
       return project;
     }
 
-    throw new ForbiddenException('forbiddenProject');
+    throw new ForbiddenException(
+      'You do not have access to this project. Please ensure you are a project member or business line admin.',
+    );
   }
 
   private async ensureCanManageProject(
@@ -702,7 +1373,15 @@ export class ProjectsService {
     const hasGit = await this.pathExists(gitDirPath);
 
     if (!hasGit) {
-      await fs.mkdir(path.dirname(repositoryRoot), { recursive: true });
+      try {
+        await fs.mkdir(path.dirname(repositoryRoot), { recursive: true });
+      } catch (mkdirError) {
+        const msg =
+          mkdirError instanceof Error ? mkdirError.message : 'Unknown error';
+        throw new Error(
+          `Cannot create project repository directory: ${this.truncateError(msg)}`,
+        );
+      }
 
       const cloneResult = await this.runCommand('git', [
         'clone',
@@ -775,6 +1454,48 @@ export class ProjectsService {
     }
 
     return path.resolve(cacheBaseDir, `${repositoryDirName}-${project.id}`);
+  }
+
+  private normalizeProjectDocPath(value: string): string {
+    const raw = value?.trim();
+    if (!raw) {
+      throw new BadRequestException('Project doc path is required');
+    }
+
+    if (path.isAbsolute(raw)) {
+      throw new BadRequestException('Absolute path is not allowed');
+    }
+
+    const normalized = path
+      .normalize(raw.replace(/\\/g, '/'))
+      .replace(/^\.(?:[\\/]|$)/, '')
+      .replace(/[\\/]+$/, '');
+
+    if (!normalized || normalized === '.') {
+      throw new BadRequestException('Project doc path is required');
+    }
+
+    const pathSegments = normalized.split(path.sep);
+    if (pathSegments.some((segment) => segment === '..')) {
+      throw new BadRequestException('Project doc path cannot escape docs root');
+    }
+
+    return pathSegments.join('/');
+  }
+
+  private resolveProjectDocAbsolutePath(
+    docsRoot: string,
+    relativePath: string,
+  ): string {
+    const resolvedDocsRoot = path.resolve(docsRoot);
+    const absolutePath = path.resolve(resolvedDocsRoot, relativePath);
+    const relative = path.relative(resolvedDocsRoot, absolutePath);
+
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new BadRequestException('Project doc path cannot escape docs root');
+    }
+
+    return absolutePath;
   }
 
   private resolveProjectStorageBaseDir(project: Project): string {

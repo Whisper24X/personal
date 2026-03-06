@@ -49,6 +49,17 @@ export const systemRoutes: AppRouteRecord[] = [
     },
   },
   {
+    path: '/knowledge-base',
+    name: 'knowledge-base',
+    component: () => import('@/views/knowledge-base/index.vue'),
+    meta: {
+      title: '知识库',
+      contentMode: 'full',
+      requiresAuth: true,
+      permissions: ['projects:view'],
+    },
+  },
+  {
     path: '/skills',
     name: 'skills',
     component: () => import('@/views/skills/index.vue'),
