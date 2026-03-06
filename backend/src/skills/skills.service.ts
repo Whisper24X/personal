@@ -19,10 +19,15 @@ import { IPaginationOptions } from '../utils/types/pagination-options';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { ProjectsService } from '../projects/projects.service';
 import {
+  buildSkillDirectoryTree,
   loadBusinessLineLocalSkills,
   loadProjectLocalSkillMarkdownContent,
   loadProjectLocalSkills,
+  packSkillAsZip,
+  readSkillFile,
   resolveProjectSkillRootForWrite,
+  resolveSkillRootDirectory,
+  type SkillTreeNode,
 } from '../utils/local-agent-catalog';
 import { GetSkillContentDto } from './dto/get-skill-content.dto';
 import { SkillContentDto } from './dto/skill-content.dto';
@@ -129,6 +134,89 @@ export class SkillsService {
     }
 
     return skillContent;
+  }
+
+  async findProjectSkillTree(
+    skillId: string,
+    projectId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<{ id: string; name: string; tree: SkillTreeNode[] }> {
+    const project = await this.projectsService.assertCanAccessProject(
+      projectId,
+      currentUser,
+    );
+
+    const skills = await loadProjectLocalSkills(project);
+    const targetSkill = skills.find((item) => item.id === skillId);
+    if (!targetSkill) {
+      throw new NotFoundException('Skill not found');
+    }
+
+    const rootDir = resolveSkillRootDirectory(targetSkill);
+    if (!rootDir) {
+      throw new NotFoundException('Skill directory not found');
+    }
+
+    const tree = await buildSkillDirectoryTree(rootDir);
+
+    return { id: targetSkill.id, name: targetSkill.name, tree };
+  }
+
+  async findProjectSkillFile(
+    skillId: string,
+    projectId: string,
+    filePath: string,
+    currentUser: JwtPayloadType,
+  ): Promise<{ path: string; content: string }> {
+    const project = await this.projectsService.assertCanAccessProject(
+      projectId,
+      currentUser,
+    );
+
+    const skills = await loadProjectLocalSkills(project);
+    const targetSkill = skills.find((item) => item.id === skillId);
+    if (!targetSkill) {
+      throw new NotFoundException('Skill not found');
+    }
+
+    const rootDir = resolveSkillRootDirectory(targetSkill);
+    if (!rootDir) {
+      throw new NotFoundException('Skill directory not found');
+    }
+
+    const content = await readSkillFile(rootDir, filePath);
+    if (content === null) {
+      throw new NotFoundException('File not found');
+    }
+
+    return { path: filePath, content };
+  }
+
+  async downloadProjectSkill(
+    skillId: string,
+    projectId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    const project = await this.projectsService.assertCanAccessProject(
+      projectId,
+      currentUser,
+    );
+
+    const skills = await loadProjectLocalSkills(project);
+    const targetSkill = skills.find((item) => item.id === skillId);
+    if (!targetSkill) {
+      throw new NotFoundException('Skill not found');
+    }
+
+    const rootDir = resolveSkillRootDirectory(targetSkill);
+    if (!rootDir) {
+      throw new NotFoundException('Skill directory not found');
+    }
+
+    const buffer = await packSkillAsZip(rootDir);
+    const safeName = this.toSafeSkillDirectoryName(targetSkill.name) || 'skill';
+
+    return { buffer, fileName: `${safeName}.zip` };
   }
 
   async copyBusinessLineSkillToProject(
@@ -416,6 +504,54 @@ export class SkillsService {
     this.ensureAdmin(currentUser);
     await this.findById(id);
     await this.skillRepository.remove(id);
+  }
+
+  async removeProjectLocalSkill(
+    projectId: string,
+    skillId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    const project = await this.projectsService.assertCanManageProject(
+      projectId,
+      currentUser,
+    );
+
+    const skills = await loadProjectLocalSkills(project);
+    const targetSkill = skills.find((item) => item.id === skillId);
+    if (!targetSkill) {
+      throw new NotFoundException('Skill not found');
+    }
+
+    const sourcePath =
+      targetSkill.metadataJson && typeof targetSkill.metadataJson === 'object'
+        ? (targetSkill.metadataJson as Record<string, unknown>).sourcePath
+        : null;
+
+    if (typeof sourcePath !== 'string' || !sourcePath.trim()) {
+      throw new BadRequestException('Skill source path is unavailable');
+    }
+
+    const absoluteSourcePath = path.resolve(sourcePath.trim());
+
+    const stat = await this.safeStat(absoluteSourcePath);
+    const directoryToRemove = stat?.isDirectory()
+      ? absoluteSourcePath
+      : path.dirname(absoluteSourcePath);
+
+    if (
+      !this.isPathWithin(path.dirname(directoryToRemove), directoryToRemove)
+    ) {
+      throw new BadRequestException('Skill path is invalid');
+    }
+
+    const dirBasename = path.basename(path.dirname(directoryToRemove));
+    if (dirBasename !== 'skills') {
+      throw new BadRequestException(
+        'Skill directory is not inside a skills folder',
+      );
+    }
+
+    await fs.rm(directoryToRemove, { recursive: true, force: true });
   }
 
   private ensureAdmin(currentUser: JwtPayloadType): void {

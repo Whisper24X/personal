@@ -15,7 +15,7 @@ import { workflowApi } from '@/api/workflow'
 import type { BusinessLineItem, ProjectItem } from '@/hooks/core/useLayout'
 import type { Project, ProjectMember } from '@/types/api/projects'
 import type { User } from '@/types/api/users'
-import type { Skill } from '@/types/api/skills'
+import type { Skill, SkillTreeNode } from '@/types/api/skills'
 import type { Mcp } from '@/types/api/mcps'
 import type {
   WorkflowTemplate,
@@ -30,7 +30,9 @@ import MemberPermissionModal from './modals/MemberPermissionModal.vue'
 import ProjectFormModal from './modals/ProjectFormModal.vue'
 import AgentToolConfigModal from './modals/AgentToolConfigModal.vue'
 import SkillUploadModal from './modals/SkillUploadModal.vue'
+import SkillTreeNodeComponent from '@/components/core/SkillTreeNode.vue'
 import McpJsonImportModal from './modals/McpJsonImportModal.vue'
+import { STORAGE_KEYS } from '@/types/common/storage'
 
 type MainTab = 'projects' | 'members' | 'agent-cli' | 'workflow' | 'skill' | 'mcp' | 'settings'
 type ProjectPermissionRole = 'none' | 'manage' | 'developer' | 'viewer'
@@ -179,6 +181,9 @@ const workflowCreateForm = ref<{
 })
 
 const loadingLocalSkills = ref(false)
+const skillKeyword = ref('')
+const removingLocalSkillId = ref('')
+const downloadingLocalSkillId = ref('')
 const loadingLocalMcps = ref(false)
 const uploadSkillModalOpen = ref(false)
 const uploadingLocalSkill = ref(false)
@@ -195,10 +200,15 @@ const mcpJsonPreviewDraft = ref('')
 const savingMcpJsonPreview = ref(false)
 const skillPreviewModalOpen = ref(false)
 const loadingSkillPreview = ref(false)
+const skillPreviewId = ref('')
 const skillPreviewName = ref('')
+const skillPreviewTree = ref<SkillTreeNode[]>([])
 const skillPreviewContent = ref('')
+const skillPreviewSelectedPath = ref('')
+const skillPreviewFileLoading = ref(false)
 const skillPreviewError = ref('')
 const skillPreviewRequestToken = ref(0)
+const skillPreviewExpandedDirs = ref(new Set<string>())
 const localSkills = ref<Skill[]>([])
 const localMcps = ref<Mcp[]>([])
 
@@ -995,7 +1005,8 @@ const loadLocalSkills = async (lineId: string) => {
   loadingLocalSkills.value = true
 
   try {
-    const skills = await businessLinesApi.listLocalSkills(lineId)
+    const keyword = skillKeyword.value.trim() || undefined
+    const skills = await businessLinesApi.listLocalSkills(lineId, { keyword })
     if (lineId !== activeLineId.value) {
       return
     }
@@ -1010,6 +1021,63 @@ const loadLocalSkills = async (lineId: string) => {
     if (lineId === activeLineId.value) {
       loadingLocalSkills.value = false
     }
+  }
+}
+
+const downloadLocalSkill = async (item: Skill) => {
+  if (!activeLineId.value || downloadingLocalSkillId.value) {
+    return
+  }
+
+  downloadingLocalSkillId.value = item.id
+
+  try {
+    const token = localStorage.getItem(STORAGE_KEYS.authToken)
+    const url = `/api/v1/business-lines/${encodeURIComponent(activeLineId.value)}/local-skills/${encodeURIComponent(item.id)}/download`
+    const response = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+
+    if (!response.ok) {
+      throw new Error(`下载失败 (${response.status})`)
+    }
+
+    const blob = await response.blob()
+    const disposition = response.headers.get('content-disposition')
+    const fileNameMatch = disposition?.match(/filename="?([^"]+)"?/)
+    const fileName = fileNameMatch?.[1] ? decodeURIComponent(fileNameMatch[1]) : `${item.name}.zip`
+
+    const anchor = document.createElement('a')
+    anchor.href = URL.createObjectURL(blob)
+    anchor.download = fileName
+    anchor.click()
+    URL.revokeObjectURL(anchor.href)
+  } catch (error) {
+    message.error(toErrorMessage(error, '下载技能失败'))
+  } finally {
+    downloadingLocalSkillId.value = ''
+  }
+}
+
+const removeLocalSkill = async (item: Skill) => {
+  if (!activeLineId.value || removingLocalSkillId.value) {
+    return
+  }
+
+  if (!window.confirm(`确认删除技能「${item.name}」吗？此操作不可撤销。`)) {
+    return
+  }
+
+  removingLocalSkillId.value = item.id
+
+  try {
+    await businessLinesApi.removeLocalSkill(activeLineId.value, item.id)
+    await loadLocalSkills(activeLineId.value)
+    message.success(`技能「${item.name}」已删除`)
+  } catch (error) {
+    message.error(toErrorMessage(error, '删除技能失败'))
+  } finally {
+    removingLocalSkillId.value = ''
   }
 }
 
@@ -1047,13 +1115,63 @@ const resetSkillPreviewState = () => {
   skillPreviewRequestToken.value += 1
   skillPreviewModalOpen.value = false
   loadingSkillPreview.value = false
+  skillPreviewId.value = ''
   skillPreviewName.value = ''
+  skillPreviewTree.value = []
   skillPreviewContent.value = ''
+  skillPreviewSelectedPath.value = ''
+  skillPreviewFileLoading.value = false
   skillPreviewError.value = ''
+  skillPreviewExpandedDirs.value = new Set()
 }
 
 const closeSkillPreview = () => {
   resetSkillPreviewState()
+}
+
+const toggleSkillPreviewDir = (dirPath: string) => {
+  const expanded = skillPreviewExpandedDirs.value
+  if (expanded.has(dirPath)) {
+    expanded.delete(dirPath)
+  } else {
+    expanded.add(dirPath)
+  }
+}
+
+const loadSkillPreviewFile = async (skillId: string, filePath: string) => {
+  if (!activeLineId.value) return
+
+  skillPreviewSelectedPath.value = filePath
+  skillPreviewFileLoading.value = true
+  skillPreviewContent.value = ''
+  const requestToken = skillPreviewRequestToken.value
+
+  try {
+    const response = await businessLinesApi.localSkillFile(
+      activeLineId.value,
+      skillId,
+      filePath,
+    )
+    if (requestToken !== skillPreviewRequestToken.value) return
+    skillPreviewContent.value = response.content
+  } catch (error) {
+    if (requestToken !== skillPreviewRequestToken.value) return
+    skillPreviewContent.value = ''
+    skillPreviewError.value = toErrorMessage(error, '加载文件失败')
+  } finally {
+    if (requestToken === skillPreviewRequestToken.value) {
+      skillPreviewFileLoading.value = false
+    }
+  }
+}
+
+const findSkillMdInTree = (nodes: SkillTreeNode[]): string | null => {
+  for (const node of nodes) {
+    if (!node.isDir && node.name.toLowerCase() === 'skill.md') {
+      return node.path
+    }
+  }
+  return null
 }
 
 const openSkillPreview = async (item: Skill) => {
@@ -1064,27 +1182,30 @@ const openSkillPreview = async (item: Skill) => {
   const requestToken = ++skillPreviewRequestToken.value
   skillPreviewModalOpen.value = true
   loadingSkillPreview.value = true
+  skillPreviewId.value = item.id
   skillPreviewName.value = item.name
+  skillPreviewTree.value = []
   skillPreviewContent.value = ''
+  skillPreviewSelectedPath.value = ''
   skillPreviewError.value = ''
+  skillPreviewExpandedDirs.value = new Set()
 
   try {
-    const response = await businessLinesApi.localSkillContent(
+    const response = await businessLinesApi.localSkillTree(
       activeLineId.value,
       item.id,
     )
 
-    if (requestToken !== skillPreviewRequestToken.value) {
-      return
-    }
+    if (requestToken !== skillPreviewRequestToken.value) return
 
-    skillPreviewContent.value = response.content || ''
+    skillPreviewTree.value = response.tree
+    const defaultFile = findSkillMdInTree(response.tree)
+    if (defaultFile) {
+      await loadSkillPreviewFile(item.id, defaultFile)
+    }
   } catch (error) {
-    if (requestToken !== skillPreviewRequestToken.value) {
-      return
-    }
-
-    skillPreviewError.value = toErrorMessage(error, '读取 SKILL.md 失败')
+    if (requestToken !== skillPreviewRequestToken.value) return
+    skillPreviewError.value = toErrorMessage(error, '加载技能目录失败')
   } finally {
     if (requestToken === skillPreviewRequestToken.value) {
       loadingSkillPreview.value = false
@@ -2079,6 +2200,7 @@ watch(
       loadingWorkflowConfiguredCliTools.value = false
       localSkills.value = []
       localMcps.value = []
+      skillKeyword.value = ''
       uploadSkillModalOpen.value = false
       uploadSkillError.value = ''
       uploadingLocalSkill.value = false
@@ -2158,6 +2280,7 @@ watch(
       loadingWorkflowConfiguredCliTools.value = false
       localSkills.value = []
       localMcps.value = []
+      skillKeyword.value = ''
       uploadSkillModalOpen.value = false
       uploadSkillError.value = ''
       uploadingLocalSkill.value = false
@@ -2858,10 +2981,16 @@ onBeforeUnmount(() => {
               <section v-else-if="activeTab === 'skill'" class="space-y-4">
                 <article class="panel-card p-5">
                   <div class="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p class="text-sm font-semibold">Skills 列表</p>
+                    <div class="flex flex-1 items-center gap-2">
+                      <input
+                        v-model="skillKeyword"
+                        class="h-9 min-w-[180px] flex-1 rounded-lg border border-border bg-background px-3 text-xs text-foreground"
+                        placeholder="搜索名称 / 版本 / 说明"
+                        type="search"
+                        @keydown.enter.prevent="loadLocalSkills(activeLineId)"
+                      />
                     </div>
-                    <div class="ml-auto flex items-center gap-2">
+                    <div class="flex items-center gap-2">
                       <button
                         type="button"
                         class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
@@ -2869,6 +2998,14 @@ onBeforeUnmount(() => {
                         @click="loadLocalSkills(activeLineId)"
                       >
                         刷新
+                      </button>
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="!activeLineId || loadingLocalSkills"
+                        @click="loadLocalSkills(activeLineId)"
+                      >
+                        搜索
                       </button>
                       <button
                         type="button"
@@ -2900,6 +3037,24 @@ onBeforeUnmount(() => {
                       <p class="mt-1 text-xs text-muted-foreground">
                         {{ item.description ?? '暂无描述' }}
                       </p>
+                      <div class="mt-2 flex items-center gap-2">
+                        <button
+                          type="button"
+                          class="inline-flex h-7 items-center justify-center rounded-md border border-border bg-background px-2 text-xs font-semibold text-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                          :disabled="downloadingLocalSkillId === item.id"
+                          @click.stop="downloadLocalSkill(item)"
+                        >
+                          {{ downloadingLocalSkillId === item.id ? '下载中...' : '下载' }}
+                        </button>
+                        <button
+                          type="button"
+                          class="inline-flex h-7 items-center justify-center rounded-md border border-red-300 bg-red-50 px-2 text-xs font-semibold text-red-600 transition hover:border-red-500 hover:bg-red-100 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-400 dark:hover:border-red-400 dark:hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          :disabled="removingLocalSkillId === item.id"
+                          @click.stop="removeLocalSkill(item)"
+                        >
+                          {{ removingLocalSkillId === item.id ? '删除中...' : '删除' }}
+                        </button>
+                      </div>
                     </article>
 
                     <div
@@ -3319,12 +3474,12 @@ onBeforeUnmount(() => {
         <section
           aria-modal="true"
           role="dialog"
-          class="relative z-10 flex max-h-[85vh] w-full max-w-3xl flex-col rounded-2xl border border-border bg-background shadow-2xl"
+          class="relative z-10 flex max-h-[85vh] w-full max-w-5xl flex-col rounded-2xl border border-border bg-background shadow-2xl"
         >
           <header class="flex items-center justify-between border-b border-border px-4 py-3">
             <div class="space-y-1">
               <h2 class="text-base font-semibold">{{ skillPreviewName || 'Skill' }}</h2>
-              <p class="text-xs text-muted-foreground">SKILL.md</p>
+              <p class="text-xs text-muted-foreground">{{ skillPreviewSelectedPath || '技能目录' }}</p>
             </div>
             <button
               type="button"
@@ -3332,31 +3487,39 @@ onBeforeUnmount(() => {
               class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
               @click="closeSkillPreview"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M18 6 6 18" />
-                <path d="m6 6 12 12" />
-              </svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
             </button>
           </header>
 
-          <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-            <p v-if="loadingSkillPreview" class="text-sm text-muted-foreground">加载中...</p>
-            <p v-else-if="skillPreviewError" class="text-sm text-destructive">{{ skillPreviewError }}</p>
-            <pre
-              v-else
-              class="max-h-[62vh] overflow-auto whitespace-pre-wrap rounded-xl border border-border bg-background p-3 font-mono text-xs leading-relaxed text-foreground"
-            >{{ skillPreviewContent || '未读取到 SKILL.md 内容。' }}</pre>
+          <div v-if="loadingSkillPreview" class="flex-1 px-4 py-6 text-sm text-muted-foreground">加载中...</div>
+          <p v-else-if="skillPreviewError && skillPreviewTree.length === 0" class="flex-1 px-4 py-6 text-sm text-destructive">{{ skillPreviewError }}</p>
+
+          <div v-else class="flex min-h-0 flex-1">
+            <aside class="w-52 flex-shrink-0 overflow-y-auto border-r border-border px-2 py-3">
+              <SkillTreeNodeComponent
+                :nodes="skillPreviewTree"
+                :selected-path="skillPreviewSelectedPath"
+                :expanded-dirs="skillPreviewExpandedDirs"
+                @select-file="loadSkillPreviewFile(skillPreviewId, $event)"
+                @toggle-dir="toggleSkillPreviewDir($event)"
+              />
+
+              <p v-if="skillPreviewTree.length === 0" class="px-2 py-2 text-xs text-muted-foreground">
+                无文件
+              </p>
+            </aside>
+
+            <div class="min-w-0 flex-1 overflow-y-auto px-4 py-3">
+              <p v-if="skillPreviewFileLoading" class="text-sm text-muted-foreground">加载中...</p>
+              <p v-else-if="skillPreviewError" class="text-sm text-destructive">{{ skillPreviewError }}</p>
+              <p v-else-if="!skillPreviewSelectedPath" class="text-sm text-muted-foreground">
+                请在左侧选择一个文件查看内容。
+              </p>
+              <pre
+                v-else
+                class="max-h-[62vh] overflow-auto whitespace-pre-wrap rounded-xl border border-border bg-background p-3 font-mono text-xs leading-relaxed text-foreground"
+              >{{ skillPreviewContent || '文件内容为空。' }}</pre>
+            </div>
           </div>
 
           <footer class="border-t border-border px-4 py-3">

@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { spawn } from 'child_process';
 import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -1567,4 +1568,159 @@ export const loadProjectLocalSkillMarkdownContent = async (
   }
 
   return null;
+};
+
+export type SkillTreeNode = {
+  name: string;
+  path: string;
+  isDir: boolean;
+  children: SkillTreeNode[];
+};
+
+export const buildSkillDirectoryTree = async (
+  directoryPath: string,
+  basePath = '',
+): Promise<SkillTreeNode[]> => {
+  const entries = await safeReadDir(directoryPath);
+  const nodes: SkillTreeNode[] = [];
+
+  const sorted = [...entries].sort((a, b) => {
+    if (a.isDirectory() && !b.isDirectory()) return -1;
+    if (!a.isDirectory() && b.isDirectory()) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  for (const entry of sorted) {
+    if (entry.name.startsWith('.') || entry.name === 'node_modules') {
+      continue;
+    }
+
+    const entryAbsolutePath = path.join(directoryPath, entry.name);
+    const relativePath = basePath ? `${basePath}/${entry.name}` : entry.name;
+
+    if (entry.isDirectory()) {
+      const children = await buildSkillDirectoryTree(
+        entryAbsolutePath,
+        relativePath,
+      );
+      nodes.push({
+        name: entry.name,
+        path: relativePath,
+        isDir: true,
+        children,
+      });
+    } else {
+      nodes.push({
+        name: entry.name,
+        path: relativePath,
+        isDir: false,
+        children: [],
+      });
+    }
+  }
+
+  return nodes;
+};
+
+export const resolveSkillRootDirectory = (
+  skill: LocalSkillItem,
+): string | null => {
+  const metadata = isObjectRecord(skill.metadataJson)
+    ? skill.metadataJson
+    : null;
+  if (!metadata) {
+    return null;
+  }
+
+  const sourcePath = normalizeText(metadata.sourcePath);
+  if (!sourcePath) {
+    return null;
+  }
+
+  const absolutePath = toAbsolutePath(sourcePath);
+  if (!absolutePath) {
+    return null;
+  }
+
+  try {
+    const parsed = path.parse(absolutePath);
+    if (parsed.ext) {
+      return path.dirname(absolutePath);
+    }
+    return absolutePath;
+  } catch {
+    return null;
+  }
+};
+
+export const readSkillFile = async (
+  skillRootDir: string,
+  relativePath: string,
+): Promise<string | null> => {
+  const normalizedRelative = relativePath.replace(/\\/g, '/').trim();
+  if (
+    !normalizedRelative ||
+    normalizedRelative.includes('\0') ||
+    normalizedRelative.startsWith('/') ||
+    normalizedRelative.startsWith('~')
+  ) {
+    return null;
+  }
+
+  const segments = normalizedRelative.split('/').filter(Boolean);
+  if (segments.some((seg) => seg === '..')) {
+    return null;
+  }
+
+  const absolutePath = path.resolve(skillRootDir, normalizedRelative);
+  if (!isPathInsideDirectory(absolutePath, skillRootDir)) {
+    return null;
+  }
+
+  return safeReadFile(absolutePath);
+};
+
+export const packSkillAsZip = async (skillRootDir: string): Promise<Buffer> => {
+  const stat = await safeStat(skillRootDir);
+  if (!stat?.isDirectory()) {
+    throw new Error('Skill directory does not exist');
+  }
+
+  return new Promise((resolve, reject) => {
+    const childProcess = spawn('zip', ['-r', '-', '.'], {
+      cwd: skillRootDir,
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const chunks: Buffer[] = [];
+    let stderr = '';
+
+    childProcess.stdout.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+
+    childProcess.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf-8');
+    });
+
+    const timeoutRef = setTimeout(() => {
+      childProcess.kill('SIGTERM');
+      reject(new Error('Skill zip timed out'));
+    }, 30_000);
+
+    childProcess.on('error', (error) => {
+      clearTimeout(timeoutRef);
+      reject(error);
+    });
+
+    childProcess.on('close', (code) => {
+      clearTimeout(timeoutRef);
+      if (code !== 0) {
+        reject(new Error(`zip failed (code=${code}): ${stderr.slice(0, 500)}`));
+        return;
+      }
+      resolve(Buffer.concat(chunks));
+    });
+  });
 };

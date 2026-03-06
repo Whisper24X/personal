@@ -12,9 +12,12 @@ import {
   Query,
   ParseUUIDPipe,
   Request,
+  Res,
+  StreamableFile,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { BusinessLinesService } from './business-lines.service';
 import { CreateBusinessLineDto } from './dto/create-business-line.dto';
 import { UpdateBusinessLineDto } from './dto/update-business-line.dto';
@@ -26,6 +29,7 @@ import {
   ApiNoContentResponse,
   ApiOkResponse,
   ApiParam,
+  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -349,6 +353,11 @@ export class BusinessLinesController {
     type: String,
     required: true,
   })
+  @ApiQuery({
+    name: 'keyword',
+    type: String,
+    required: false,
+  })
   @ApiOkResponse({
     type: Skill,
     isArray: true,
@@ -357,10 +366,12 @@ export class BusinessLinesController {
   findLocalSkills(
     @Request() request,
     @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Query('keyword') keyword?: string,
   ): Promise<Skill[]> {
     return this.businessLinesService.findLocalSkills(
       businessLineId,
       request.user,
+      keyword,
     );
   }
 
@@ -385,6 +396,119 @@ export class BusinessLinesController {
     @Param('skillId') skillId: string,
   ): Promise<LocalSkillContentDto> {
     return this.businessLinesService.findLocalSkillContent(
+      businessLineId,
+      skillId,
+      request.user,
+    );
+  }
+
+  @Get(':businessLineId/local-skills/:skillId/tree')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiParam({
+    name: 'skillId',
+    type: String,
+    required: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  findLocalSkillTree(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Param('skillId') skillId: string,
+  ) {
+    return this.businessLinesService.findLocalSkillTree(
+      businessLineId,
+      skillId,
+      request.user,
+    );
+  }
+
+  @Get(':businessLineId/local-skills/:skillId/file')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiParam({
+    name: 'skillId',
+    type: String,
+    required: true,
+  })
+  @ApiQuery({
+    name: 'path',
+    type: String,
+    required: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  findLocalSkillFile(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Param('skillId') skillId: string,
+    @Query('path') filePath: string,
+  ) {
+    return this.businessLinesService.findLocalSkillFile(
+      businessLineId,
+      skillId,
+      filePath,
+      request.user,
+    );
+  }
+
+  @Get(':businessLineId/local-skills/:skillId/download')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiParam({
+    name: 'skillId',
+    type: String,
+    required: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  async downloadLocalSkill(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Param('skillId') skillId: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { buffer, fileName } =
+      await this.businessLinesService.downloadLocalSkill(
+        businessLineId,
+        skillId,
+        request.user,
+      );
+
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${encodeURIComponent(fileName)}"`,
+    });
+
+    return new StreamableFile(buffer);
+  }
+
+  @Delete(':businessLineId/local-skills/:skillId')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiParam({
+    name: 'skillId',
+    type: String,
+    required: true,
+  })
+  @ApiNoContentResponse()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeLocalSkill(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Param('skillId') skillId: string,
+  ): Promise<void> {
+    return this.businessLinesService.removeLocalSkill(
       businessLineId,
       skillId,
       request.user,

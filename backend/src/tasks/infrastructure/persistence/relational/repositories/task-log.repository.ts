@@ -46,14 +46,14 @@ export class TaskLogRelationalRepository implements TaskLogRepository {
 
     if (since && afterId) {
       query.andWhere(
-        '(taskLog."createdAt" > :since OR (taskLog."createdAt" = :since AND taskLog.id > :afterId))',
+        '("taskLog"."createdAt" > :since OR ("taskLog"."createdAt" = :since AND "taskLog"."id" > :afterId))',
         {
           since,
           afterId,
         },
       );
     } else if (since) {
-      query.andWhere('taskLog.createdAt > :since', {
+      query.andWhere('"taskLog"."createdAt" > :since', {
         since,
       });
     }

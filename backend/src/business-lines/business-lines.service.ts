@@ -43,9 +43,14 @@ import { UpdateAgentToolConfigDto } from './dto/update-agent-tool-config.dto';
 import { Skill } from '../skills/domain/skill';
 import { Mcp } from '../mcps/domain/mcp';
 import {
+  buildSkillDirectoryTree,
   loadBusinessLineLocalMcps,
   loadBusinessLineLocalSkillMarkdownContent,
   loadBusinessLineLocalSkills,
+  packSkillAsZip,
+  readSkillFile,
+  resolveSkillRootDirectory,
+  type SkillTreeNode,
 } from '../utils/local-agent-catalog';
 import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 import { UploadLocalSkillResultDto } from './dto/upload-local-skill-result.dto';
@@ -469,12 +474,24 @@ export class BusinessLinesService {
   async findLocalSkills(
     businessLineId: BusinessLine['id'],
     currentUser: JwtPayloadType,
+    keyword?: string,
   ): Promise<Skill[]> {
     await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
 
     const skills = await loadBusinessLineLocalSkills(businessLineId);
 
-    return skills.map((skill) => ({
+    const normalizedKeyword = keyword?.trim().toLowerCase() ?? '';
+    const filtered = normalizedKeyword
+      ? skills.filter((skill) => {
+          const haystack =
+            `${skill.name} ${skill.version} ${skill.description ?? ''}`
+              .toLowerCase()
+              .trim();
+          return haystack.includes(normalizedKeyword);
+        })
+      : skills;
+
+    return filtered.map((skill) => ({
       ...skill,
       deletedAt: null,
     }));
@@ -497,6 +514,146 @@ export class BusinessLinesService {
     }
 
     return skillContent;
+  }
+
+  async findLocalSkillTree(
+    businessLineId: BusinessLine['id'],
+    skillId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<{ id: string; name: string; tree: SkillTreeNode[] }> {
+    await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+
+    const skills = await loadBusinessLineLocalSkills(businessLineId);
+    const targetSkill = skills.find((item) => item.id === skillId);
+    if (!targetSkill) {
+      throw new NotFoundException('Skill not found');
+    }
+
+    const rootDir = resolveSkillRootDirectory(targetSkill);
+    if (!rootDir) {
+      throw new NotFoundException('Skill directory not found');
+    }
+
+    const tree = await buildSkillDirectoryTree(rootDir);
+
+    return { id: targetSkill.id, name: targetSkill.name, tree };
+  }
+
+  async findLocalSkillFile(
+    businessLineId: BusinessLine['id'],
+    skillId: string,
+    filePath: string,
+    currentUser: JwtPayloadType,
+  ): Promise<{ path: string; content: string }> {
+    await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+
+    const skills = await loadBusinessLineLocalSkills(businessLineId);
+    const targetSkill = skills.find((item) => item.id === skillId);
+    if (!targetSkill) {
+      throw new NotFoundException('Skill not found');
+    }
+
+    const rootDir = resolveSkillRootDirectory(targetSkill);
+    if (!rootDir) {
+      throw new NotFoundException('Skill directory not found');
+    }
+
+    const content = await readSkillFile(rootDir, filePath);
+    if (content === null) {
+      throw new NotFoundException('File not found');
+    }
+
+    return { path: filePath, content };
+  }
+
+  async downloadLocalSkill(
+    businessLineId: BusinessLine['id'],
+    skillId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+
+    const skills = await loadBusinessLineLocalSkills(businessLineId);
+    const targetSkill = skills.find((item) => item.id === skillId);
+    if (!targetSkill) {
+      throw new NotFoundException('Skill not found');
+    }
+
+    const rootDir = resolveSkillRootDirectory(targetSkill);
+    if (!rootDir) {
+      throw new NotFoundException('Skill directory not found');
+    }
+
+    const buffer = await packSkillAsZip(rootDir);
+    const safeName =
+      targetSkill.name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9-_]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'skill';
+
+    return { buffer, fileName: `${safeName}.zip` };
+  }
+
+  async removeLocalSkill(
+    businessLineId: BusinessLine['id'],
+    skillId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+
+    const skills = await loadBusinessLineLocalSkills(businessLineId);
+    const targetSkill = skills.find((item) => item.id === skillId);
+    if (!targetSkill) {
+      throw new NotFoundException('Skill not found');
+    }
+
+    const sourcePath =
+      targetSkill.metadataJson && typeof targetSkill.metadataJson === 'object'
+        ? (targetSkill.metadataJson as Record<string, unknown>).sourcePath
+        : null;
+
+    if (typeof sourcePath !== 'string' || !sourcePath.trim()) {
+      throw new BadRequestException('Skill source path is unavailable');
+    }
+
+    const absoluteSourcePath = path.resolve(sourcePath.trim());
+    const businessLineSkillsRoot = path.resolve(
+      resolveAinativeDataRootDir(),
+      businessLineId,
+      'skills',
+    );
+
+    const relativePath = path.relative(
+      businessLineSkillsRoot,
+      absoluteSourcePath,
+    );
+    if (
+      !relativePath ||
+      relativePath.startsWith('..') ||
+      path.isAbsolute(relativePath)
+    ) {
+      throw new BadRequestException('Skill path is outside allowed directory');
+    }
+
+    const stat = await fs.stat(absoluteSourcePath).catch(() => null);
+    const directoryToRemove = stat?.isDirectory()
+      ? absoluteSourcePath
+      : path.dirname(absoluteSourcePath);
+
+    const dirRelativePath = path.relative(
+      businessLineSkillsRoot,
+      directoryToRemove,
+    );
+    if (
+      !dirRelativePath ||
+      dirRelativePath.startsWith('..') ||
+      path.isAbsolute(dirRelativePath)
+    ) {
+      throw new BadRequestException('Skill path is outside allowed directory');
+    }
+
+    await fs.rm(directoryToRemove, { recursive: true, force: true });
   }
 
   async findLocalMcps(
