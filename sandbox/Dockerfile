@@ -79,6 +79,8 @@ RUN go install github.com/air-verse/air@v1.61.7 \
     && go install github.com/abice/go-enum@v0.9.1 \
     && go install golang.org/x/tools/cmd/goimports@v0.23.0 \
     && go install gitlab.yc345.tv/backend/protoc-gen-go-errors@v0.0.4 \
+    && go install gitlab.yc345.tv/backend/yc_turbo_kit@latest \
+    && go install github.com/securego/gosec/v2/cmd/gosec@latest \
     && rm -rf /root/.cache/go-build /go/pkg/mod/cache
 
 # ============================================================

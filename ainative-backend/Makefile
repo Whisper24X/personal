@@ -1,10 +1,3 @@
-# SSH 配置（用于拉取私有仓库）
-# 使用项目内的 SSH key，或使用系统默认 SSH key（如果已配置）
-MAKEFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
-export GIT_SSH_COMMAND := ssh -i $(MAKEFILE_DIR)/configs/ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=no
-export GOPROXY=https://goproxy.cn,direct
-export GOPRIVATE=gitlab.yc345.tv/*
-
 GOPATH=$(shell go env GOPATH)
 VERSION=$(shell git describe --tags --always)
 APP_RELATIVE_PATH=$(shell a=`basename $$PWD` && cd .. && b=`basename $$PWD` && echo $$b/$$a)
@@ -23,7 +16,7 @@ YAPI_PROJECT_ID=xxx
 
 .PHONY: init
 # 初始化安装
-init: git-config
+init:
 	go install github.com/go-kratos/kratos/cmd/kratos/v2@a7bae93
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.1
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2.0
@@ -36,23 +29,9 @@ init: git-config
 	go install github.com/abice/go-enum@v0.9.1
 	go install golang.org/x/tools/cmd/goimports@v0.23.0
 
-.PHONY: git-config
-# 配置 Git 使用 SSH 访问私有仓库（如果未配置）+ 修复 SSH key 权限
-git-config:
-	@if [ -f configs/ssh/id_ed25519 ]; then \
-		chmod 600 configs/ssh/id_ed25519; \
-	fi
-	@if ! git config --global --get url."git@gitlab.yc345.tv:".insteadOf > /dev/null 2>&1; then \
-		echo "配置 Git 使用 SSH 访问 gitlab.yc345.tv..."; \
-		git config --global url."git@gitlab.yc345.tv:".insteadOf "https://gitlab.yc345.tv/"; \
-		echo "✓ Git 配置完成"; \
-	else \
-		echo "✓ Git SSH 配置已存在"; \
-	fi
-
 .PHONY: mod
 # 下载依赖
-mod: git-config
+mod:
 	go mod tidy
 
 .PHONY: config
