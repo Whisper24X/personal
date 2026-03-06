@@ -60,6 +60,7 @@ app     → ./logs/app.log
 在等待就绪的过程中，同时读取 `./logs/supervisord.log`：
 
 - 出现 `FATAL` 或 `entered EXITED state` → 立即读取该服务日志，进入**步骤 2d 错误修复流程**
+- **例外**：`app` 服务出现 `FATAL` 时，**直接跳过，不进入修复流程**（后期环境就绪后移除此规则）
 
 **步骤 2c：通过分析日志内容判断各服务是否真正就绪**
 
@@ -115,8 +116,9 @@ app     → ./logs/app.log
 读取以下日志文件，检查是否存在错误：
 
 - `./logs/backend.log`
-- `./logs/app.log`
 - `./logs/shadow.log`
+
+> `./logs/app.log` 暂时跳过（后期环境就绪后恢复）
 
 错误关键词：`Error`、`panic`、`Fatal`、`Exception`、`EADDRINUSE`、`Cannot find module`
 
