@@ -104,10 +104,10 @@
       </el-row>
 
       <!-- 购买页推送信息 -->
-      <el-divider v-if="isMiniprogramChannel" content-position="left"
+      <el-divider v-if="isMiniprogramChannel && props.goodType !== 'deposit'" content-position="left"
         >购买页推送信息</el-divider
       >
-      <el-row v-if="isMiniprogramChannel" :gutter="20">
+      <el-row v-if="isMiniprogramChannel && props.goodType !== 'deposit'" :gutter="20">
         <el-col :span="12">
           <el-form-item
             label="是否推送预约信息"
@@ -118,6 +118,33 @@
               <el-radio :value="true">是</el-radio>
               <el-radio :value="false">否</el-radio>
             </el-radio-group>
+          </el-form-item>
+        </el-col>
+      </el-row>
+
+      <!-- 库存信息（仅定金商品显示） -->
+      <el-divider v-if="props.goodType === 'deposit'" content-position="left"
+        >库存信息</el-divider
+      >
+      <el-row v-if="props.goodType === 'deposit'" :gutter="20">
+        <el-col :span="12">
+          <el-form-item
+            label="库存数量"
+            prop="stock"
+            label-width="150"
+          >
+            <el-input-number
+              v-model="form.stock"
+              :min="0"
+              :max="999999"
+              :precision="0"
+              :step="1"
+              placeholder="留空表示无限库存"
+              style="width: 100%"
+            />
+            <div style="color: #909399; font-size: 12px; margin-top: 4px">
+              留空或0表示无限库存，最大999999
+            </div>
           </el-form-item>
         </el-col>
       </el-row>
@@ -292,7 +319,7 @@ const props = withDefaults(
     type?: 'add' | 'edit' | 'copy'
     platformGoodId: string
     data?: GoodInfo | null
-    goodType: 'single' | 'multi'
+    goodType: 'single' | 'multi' | 'deposit'
   }>(),
   {
     title: '渠道商品',
@@ -359,64 +386,90 @@ const form = reactive<CreateGoodReq>({
   // 新增：购买协议
   purchaseAgreementName: '',
   purchaseAgreementLink: '',
+  // 新增：库存数量（仅定金商品使用）
+  stock: undefined as number | undefined,
 })
 
 // 表单验证规则 - 使用计算属性动态生成
-const rules = computed(() => ({
-  channelId: [{ required: true, message: '请选择渠道', trigger: 'change' }],
-  channelGoodId: isMiniprogramChannel.value
-    ? []
-    : [{ required: true, message: '请输入渠道商品ID', trigger: 'blur' }],
-  price: [
-    { required: true, message: '请输入售价', trigger: 'blur' },
-    { type: 'number', min: 0.01, message: '售价必须大于0', trigger: 'blur' },
-  ],
-  mainImages: [{ required: true, message: '请上传主图', trigger: 'change' }],
-  detailImages: [
-    { required: true, message: '请上传详情图', trigger: 'change' },
-  ],
-  isPushAppointmentInfo: [
-    { required: true, message: '请选择是否推送预约信息', trigger: 'change' },
-  ],
-  label: [
-    {
-      validator: (rule: any, value: string[], callback: any) => {
-        if (!value || value.length === 0) {
-          callback(new Error('请至少添加一个标签'))
-        } else if (value.length > 2) {
-          callback(new Error('最多只能添加2个标签'))
-        } else if (value.some((tag) => !tag || tag.trim() === '')) {
-          callback(new Error('标签不能为空'))
-        } else if (value.some((tag) => tag.length > 4)) {
-          callback(new Error('标签最多4个字符'))
-        } else {
-          callback()
-        }
+const rules = computed(() => {
+  const baseRules: any = {
+    channelId: [{ required: true, message: '请选择渠道', trigger: 'change' }],
+    channelGoodId: isMiniprogramChannel.value
+      ? []
+      : [{ required: true, message: '请输入渠道商品ID', trigger: 'blur' }],
+    price: [
+      { required: true, message: '请输入售价', trigger: 'blur' },
+      { type: 'number', min: 0.01, message: '售价必须大于0', trigger: 'blur' },
+    ],
+    mainImages: [{ required: true, message: '请上传主图', trigger: 'change' }],
+    detailImages: [
+      { required: true, message: '请上传详情图', trigger: 'change' },
+    ],
+    label: [
+      {
+        validator: (rule: any, value: string[], callback: any) => {
+          if (!value || value.length === 0) {
+            callback(new Error('请至少添加一个标签'))
+          } else if (value.length > 2) {
+            callback(new Error('最多只能添加2个标签'))
+          } else if (value.some((tag) => !tag || tag.trim() === '')) {
+            callback(new Error('标签不能为空'))
+          } else if (value.some((tag) => tag.length > 4)) {
+            callback(new Error('标签最多4个字符'))
+          } else {
+            callback()
+          }
+        },
+        trigger: 'change',
       },
-      trigger: 'change',
-    },
-  ],
-  purchaseAgreementLink: isMiniprogramChannel.value
-    ? [
-        {
-          validator: (rule: any, value: string, callback: any) => {
-            if (!value || value.trim() === '') {
-              callback()
+    ],
+    purchaseAgreementLink: isMiniprogramChannel.value
+      ? [
+          {
+            validator: (rule: any, value: string, callback: any) => {
+              if (!value || value.trim() === '') {
+                callback()
+                return
+              }
+              // 校验链接格式: https://7to12.yangcong345.com/onion-learning/user-setting/agreementGeneralPage?navTitle=xx&agreementId=xxx
+              const urlPattern = /^https:\/\/7to12\.yangcong345\.com\/onion-learning\/user-setting\/agreementGeneralPage\?navTitle=.+&agreementId=.+$/
+              if (!urlPattern.test(value)) {
+                callback(new Error('协议链接格式不正确,应为: https://7to12.yangcong345.com/onion-learning/user-setting/agreementGeneralPage?navTitle=xx&agreementId=xxx'))
+              } else {
+                callback()
+              }
+            },
+            trigger: 'blur',
+          },
+        ]
+      : [],
+  }
+
+  // 定金商品不需要预约信息字段验证，但需要库存字段验证
+  if (props.goodType === 'deposit') {
+    baseRules.stock = [
+      {
+        validator: (rule: any, value: number | undefined, callback: any) => {
+          if (value !== undefined && value !== null) {
+            if (value < 0 || value > 999999) {
+              callback(new Error('库存数量必须在0-999999之间'))
               return
             }
-            // 校验链接格式: https://7to12.yangcong345.com/onion-learning/user-setting/agreementGeneralPage?navTitle=xx&agreementId=xxx
-            const urlPattern = /^https:\/\/7to12\.yangcong345\.com\/onion-learning\/user-setting\/agreementGeneralPage\?navTitle=.+&agreementId=.+$/
-            if (!urlPattern.test(value)) {
-              callback(new Error('协议链接格式不正确,应为: https://7to12.yangcong345.com/onion-learning/user-setting/agreementGeneralPage?navTitle=xx&agreementId=xxx'))
-            } else {
-              callback()
-            }
-          },
-          trigger: 'blur',
+          }
+          callback()
         },
-      ]
-    : [],
-}))
+        trigger: 'blur',
+      },
+    ]
+  } else {
+    // 非定金商品需要预约信息字段验证
+    baseRules.isPushAppointmentInfo = [
+      { required: true, message: '请选择是否推送预约信息', trigger: 'change' },
+    ]
+  }
+
+  return baseRules
+})
 
 // 监听visible状态
 watch(
@@ -508,6 +561,8 @@ const initFormData = (good: GoodInfo) => {
   // 新增：购买协议
   form.purchaseAgreementName = good.purchaseAgreementName || ''
   form.purchaseAgreementLink = good.purchaseAgreementLink || ''
+  // 新增：库存数量（仅定金商品）
+  form.stock = (good as any).stock || undefined
 
   if (props.type === 'edit') {
     tempId.value = good.id
@@ -561,6 +616,8 @@ const resetForm = () => {
   // 新增：购买协议
   form.purchaseAgreementName = ''
   form.purchaseAgreementLink = ''
+  // 新增：库存数量
+  form.stock = undefined
 
   // 图片信息
   form.mainImages = []
@@ -608,6 +665,9 @@ const filterCoursesByGoodType = () => {
     filteredCourseOptions.value = courseOptions.value.filter(
       (course) => course.courseType === 'multi',
     )
+  } else if (props.goodType === 'deposit') {
+    // 定金商品不需要课程
+    filteredCourseOptions.value = []
   } else {
     // 默认显示所有课程
     filteredCourseOptions.value = [...courseOptions.value]
@@ -625,7 +685,7 @@ const handleSubmit = async () => {
     }
 
     // 验证商品类别和课程
-    if (form.content.goodCategories.length === 0) {
+    if (form.content.goodCategories.length === 0 && props.goodType !== 'deposit') {
       ElMessage.error('请添加至少一个商品类别')
       return
     }
@@ -712,8 +772,8 @@ const handleSubmit = async () => {
     try {
       let result = { success: false, message: '' }
 
-      // 如果是小程序渠道,清空渠道商品ID;如果不是小程序渠道,清空购买协议字段
-      const submitData = {
+      // 定金商品字段强制设置逻辑
+      let submitData: any = {
         ...form,
         channelGoodId: isMiniprogramChannel.value
           ? undefined
@@ -724,6 +784,17 @@ const handleSubmit = async () => {
         purchaseAgreementLink: isMiniprogramChannel.value
           ? form.purchaseAgreementLink
           : undefined,
+      }
+
+      // 如果是定金商品，强制设置字段
+      if (props.goodType === 'deposit') {
+        submitData.isPushAppointmentInfo = false
+        submitData.appointmentRules = ''
+        // 处理库存字段：如果 stock 为 undefined 或 0，则设为 0（表示无限库存，后端会转换为 NULL）
+        submitData.stock = form.stock && form.stock > 0 ? form.stock : 0
+      } else {
+        // 非定金商品，不传递 stock 字段
+        delete submitData.stock
       }
 
       if (['add', 'copy'].includes(props.type)) {

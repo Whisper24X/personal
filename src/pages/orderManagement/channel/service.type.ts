@@ -121,6 +121,7 @@ export const STATUS_OPTIONS = [
   { label: '交易关闭', value: 'closed' },
   { label: '已退款', value: 'refunded' },
   { label: '退款中', value: 'refunding' },
+  { label: '已完成', value: 'completed' },
   { label: '退款失败', value: 'failedRefund' },
 ]
 
@@ -157,6 +158,7 @@ export const SERVICE_STATUS_OPTIONS = [
 export const GOOD_TYPE_OPTIONS = [
   { label: '单日营', value: 'single' },
   { label: '多日营', value: 'multi' },
+  { label: '定金', value: 'deposit' },
 ]
 
 /**

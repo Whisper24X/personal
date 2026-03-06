@@ -47,9 +47,9 @@
       >
         <template #default="scope">
           <el-tag
-            :type="scope.row.goodType === 'single' ? 'success' : 'primary'"
+            :type="scope.row.goodType === 'single' ? 'success' : scope.row.goodType === 'multi' ? 'primary' : 'warning'"
           >
-            {{ scope.row.goodType === 'single' ? '单日营' : '多日营' }}
+            {{ scope.row.goodType === 'single' ? '单日营' : scope.row.goodType === 'multi' ? '多日营' : '定金' }}
           </el-tag>
         </template>
       </el-table-column>
@@ -102,6 +102,7 @@
           >
             <el-option label="单日营" value="single" />
             <el-option label="多日营" value="multi" />
+            <el-option label="定金" value="deposit" />
           </el-select>
         </el-form-item>
       </el-form>
@@ -181,7 +182,7 @@ const formRef = ref()
 const form = reactive({
   id: '',
   name: '',
-  goodType: '' as 'single' | 'multi' | '',
+  goodType: '' as 'single' | 'multi' | 'deposit' | '',
 })
 const formRules = computed(() => ({
   name: [
@@ -224,7 +225,7 @@ const submitForm = async () => {
           // 新增商品
           const res = await createPlatformGood({
             name: form.name,
-            goodType: form.goodType as 'single' | 'multi',
+            goodType: form.goodType as 'single' | 'multi' | 'deposit',
           })
 
           if (res.id) {
