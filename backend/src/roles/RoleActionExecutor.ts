@@ -118,7 +118,7 @@ export class RoleActionExecutor {
     const dependencies = actionDependencies[actionName];
 
     // Actions that read from workspace - pass context as fallback
-    const workspaceReadActions = ['TestReview', 'AutomationPlanning', 'AutomationExecution'];
+    const workspaceReadActions = ['TestReview', 'AutomationPlanning', 'AutomationExecution', 'ApiAutomationPlanning', 'ApiAutomationExecution'];
     if (workspaceReadActions.includes(actionName)) {
       return context;
     }
@@ -329,6 +329,8 @@ export class RoleActionExecutor {
       case 'ImproveTest':
       case 'AutomationPlanning':
       case 'AutomationExecution':
+      case 'ApiAutomationPlanning':
+      case 'ApiAutomationExecution':
         return await (action as any).run(input, workspaceOptions);
 
       default:

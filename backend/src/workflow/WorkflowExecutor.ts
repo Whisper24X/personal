@@ -1,7 +1,7 @@
 /**
  * WorkflowExecutor
  * Connects workflow state management with actual role/action execution
- * 
+ *
  * This is the execution engine that:
  * 1. Reads current state from WorkflowExecutionService
  * 2. Creates and executes Role/Action instances
@@ -11,7 +11,7 @@
 
 import { WorkflowExecutionService } from './WorkflowExecutionService';
 import { WorkflowState, StepOutput } from './types';
-import { RoleActionFactory } from '../services/RoleActionFactory';
+import { RoleActionFactory, API_AUTOMATION_ACTIONS } from '../services/RoleActionFactory';
 import { Context } from '../core/context/Context';
 import { Message } from '../core/message/Message';
 import { ProjectRepository } from '../database/repositories/ProjectRepository';
@@ -60,15 +60,15 @@ export class WorkflowExecutor {
     this.projectRepository = new ProjectRepository();
     this.versionRepository = new ProjectVersionRepository();
     this.messageRepository = new MessageRepository();
-    
+
     // Initialize role completion service and register handlers
     this.roleCompletionService = new RoleCompletionService();
     this.roleCompletionService.register(new GitCommitOnRoleCompleteHandler());
-    
+
     // Initialize workflow startup service and register handlers
     this.workflowStartupService = new WorkflowStartupService();
     this.workflowStartupService.register(new EnsureWorkspaceHandler());
-    
+
     // Config is currently unused but parameter is kept for future use
   }
 
@@ -100,13 +100,13 @@ export class WorkflowExecutor {
    */
   stop(): void {
     this.shouldStop = true;
-    
+
     // Abort any running action
     if (this.abortController) {
       this.abortController.abort();
       logger.info('WorkflowExecutor: Aborted running action');
     }
-    
+
     logger.info('WorkflowExecutor: Stop requested');
   }
 
@@ -128,7 +128,7 @@ export class WorkflowExecutor {
     try {
       // Execute workflow startup hooks (e.g., ensure workspace exists)
       await this.executeWorkflowStartupHooks(projectId, versionId);
-      
+
       await this.executeLoop(projectId, versionId);
     } finally {
       this.isExecuting = false;
@@ -143,7 +143,7 @@ export class WorkflowExecutor {
     while (!this.shouldStop) {
       // Get current state
       const state = await this.executionService.getCurrentState(projectId, versionId);
-      
+
       if (!state) {
         logger.error('WorkflowExecutor: Workflow execution not found', { projectId, versionId });
         break;
@@ -152,17 +152,17 @@ export class WorkflowExecutor {
       // Check if we should continue based on state
       if (state.state === WorkflowState.COMPLETED) {
         logger.info('WorkflowExecutor: Workflow completed', { projectId, versionId });
-        
+
         // 归档所有文档（工作流完全完成后执行）
         await this.archiveDocumentsOnComplete(projectId, versionId);
-        
+
         this.sendMessage('completed', { projectId, versionId });
         break;
       }
 
       if (state.state === WorkflowState.FAILED) {
         logger.info('WorkflowExecutor: Workflow failed', { projectId, versionId });
-        this.sendMessage('error', { 
+        this.sendMessage('error', {
           message: state.lastError?.message || 'Workflow execution failed',
           projectId,
           versionId,
@@ -188,7 +188,7 @@ export class WorkflowExecutor {
       }
 
       if (state.state !== WorkflowState.RUNNING) {
-        logger.warn('WorkflowExecutor: Unexpected state', { 
+        logger.warn('WorkflowExecutor: Unexpected state', {
           projectId,
           versionId,
           state: state.state,
@@ -198,17 +198,17 @@ export class WorkflowExecutor {
 
       // Get current step to execute
       const { currentRole, currentAction } = state;
-      
+
       if (!currentRole || !currentAction) {
         logger.error('WorkflowExecutor: No current step to execute', { projectId, versionId });
         break;
       }
 
       // Execute the current step
-      logger.info('WorkflowExecutor: Executing step', { 
+      logger.info('WorkflowExecutor: Executing step', {
         projectId,
         versionId,
-        role: currentRole, 
+        role: currentRole,
         action: currentAction,
       });
 
@@ -221,10 +221,8 @@ export class WorkflowExecutor {
         await this.executeStep(projectId, versionId, currentRole, currentAction);
       } catch (error: any) {
         // Check if this was a cancellation
-        const isCancelled = error.message?.includes('cancelled') || 
-                           error.message?.includes('was cancelled') ||
-                           this.shouldStop;
-        
+        const isCancelled = error.message?.includes('cancelled') || error.message?.includes('was cancelled') || this.shouldStop;
+
         if (isCancelled) {
           logger.info('WorkflowExecutor: Step execution cancelled', {
             projectId,
@@ -234,7 +232,7 @@ export class WorkflowExecutor {
           // Don't mark as failed, just exit the loop
           break;
         }
-        
+
         logger.error('WorkflowExecutor: Step execution error', {
           projectId,
           versionId,
@@ -247,7 +245,7 @@ export class WorkflowExecutor {
         // Check if we should retry
         const newState = await this.executionService.getCurrentState(projectId, versionId);
         if (newState?.state === WorkflowState.FAILED) {
-          this.sendMessage('error', { 
+          this.sendMessage('error', {
             message: error.message,
             projectId,
             versionId,
@@ -308,12 +306,7 @@ export class WorkflowExecutor {
   /**
    * Execute a single step
    */
-  private async executeStep(
-    projectId: string,
-    versionId: string,
-    role: string,
-    action: string
-  ): Promise<void> {
+  private async executeStep(projectId: string, versionId: string, role: string, action: string): Promise<void> {
     // Mark step as started
     await this.executionService.onStepStart(projectId, versionId, role, action);
 
@@ -332,7 +325,7 @@ export class WorkflowExecutor {
     // Create context
     const context = new Context(undefined, project.budget || 10.0);
     context.set('projectId', projectId);
-    context.set('versionId', versionId);  // Add versionId to context
+    context.set('versionId', versionId); // Add versionId to context
     if (project.application_id) {
       context.set('applicationId', project.application_id);
     }
@@ -347,19 +340,13 @@ export class WorkflowExecutor {
     }
 
     // Find role config in workflow snapshot
-    const roleConfig = execution.workflowSnapshot.roles.find(r => r.profile === role);
+    const roleConfig = execution.workflowSnapshot.roles.find((r) => r.profile === role);
     if (!roleConfig) {
       throw new Error(`Role not found in workflow config: ${role}`);
     }
 
     // Create role instance with configured actions
-    const roleInstance = RoleActionFactory.createRoleFromDefinition(
-      role,
-      context,
-      roleConfig.name,
-      roleConfig.actions,
-      roleConfig.watch_actions
-    );
+    const roleInstance = RoleActionFactory.createRoleFromDefinition(role, context, roleConfig.name, roleConfig.actions, roleConfig.watch_actions);
 
     // Wait for LLM config to load
     if ((roleInstance as any)['llmLoadPromise']) {
@@ -367,8 +354,17 @@ export class WorkflowExecutor {
     }
 
     // Find the target action
-    const targetAction = roleInstance.actions.find(a => a.name === action);
+    const targetAction = roleInstance.actions.find((a) => a.name === action);
     if (!targetAction) {
+      // 接口自动化被 env 关闭时，RoleActionFactory 会过滤掉这两个 action，步骤视为跳过并标记完成
+      if (API_AUTOMATION_ACTIONS.includes(action) && process.env.ENABLE_API_AUTOMATION !== 'true') {
+        logger.info('WorkflowExecutor: Skipping step (ENABLE_API_AUTOMATION is not true)', { role, action });
+        await this.executionService.onStepComplete(projectId, versionId, role, action, {
+          content: '[Skipped] ENABLE_API_AUTOMATION is not true',
+          outputFiles: [],
+        });
+        return;
+      }
       throw new Error(`Action not found: ${action}`);
     }
 
@@ -386,11 +382,8 @@ export class WorkflowExecutor {
     if (execution && execution.workflowSnapshot) {
       const sortedRoles = [...execution.workflowSnapshot.roles].sort((a, b) => a.order - b.order);
       const firstRole = sortedRoles[0];
-      const isFirstAction = firstRole && 
-                           firstRole.profile === role && 
-                           firstRole.actions && 
-                           firstRole.actions[0] === action;
-      
+      const isFirstAction = firstRole && firstRole.profile === role && firstRole.actions && firstRole.actions[0] === action;
+
       if (isFirstAction && version.idea) {
         const userMessage = new Message({
           content: version.idea,
@@ -445,13 +438,7 @@ export class WorkflowExecutor {
     };
 
     // Mark step as completed
-    const { needsConfirmation, isCompleted } = await this.executionService.onStepComplete(
-      projectId,
-      versionId,
-      role,
-      action,
-      output
-    );
+    const { needsConfirmation, isCompleted } = await this.executionService.onStepComplete(projectId, versionId, role, action, output);
 
     logger.info('WorkflowExecutor: Step completed', {
       projectId,
@@ -471,12 +458,7 @@ export class WorkflowExecutor {
    * @param role - Role that was confirmed
    * @param action - Action that was confirmed
    */
-  async onRoleConfirmed(
-    projectId: string,
-    versionId: string,
-    role: string,
-    action: string
-  ): Promise<void> {
+  async onRoleConfirmed(projectId: string, versionId: string, role: string, action: string): Promise<void> {
     try {
       // Get project info
       const project = await this.projectRepository.findById(projectId);
@@ -524,18 +506,13 @@ export class WorkflowExecutor {
   /**
    * Load relevant messages from project history
    * Uses version isolation and role_profile + cause_by deduplication to prevent duplicate messages
-   * 
+   *
    * @param projectId - Project ID
    * @param versionId - Version ID for isolation
    * @param role - Role instance to load messages into
    * @param actionName - Action name to determine relevant message types
    */
-  private async loadRelevantMessages(
-    projectId: string,
-    versionId: string,
-    role: any,
-    actionName: string
-  ): Promise<void> {
+  private async loadRelevantMessages(projectId: string, versionId: string, role: any, actionName: string): Promise<void> {
     try {
       // Use findByVersionWithDedup for version isolation and deduplication
       // This ensures only one message per role_profile + cause_by combination is loaded
@@ -590,10 +567,10 @@ export class WorkflowExecutor {
     // Use centralized actionRelevanceMap from defaultWorkflowConfig.ts
     // This ensures consistency across the codebase and automatic updates when config changes
     const relevantTypes = actionRelevanceMap[actionName] || [];
-    
+
     // Handle special case: 'User' should be mapped to 'UserInput' for consistency
     // Some actions may reference 'User' in watch_actions, but messages use 'UserInput' as causeBy
-    return relevantTypes.map(type => type === 'User' ? 'UserInput' : type);
+    return relevantTypes.map((type) => (type === 'User' ? 'UserInput' : type));
   }
 
   /**
@@ -625,15 +602,15 @@ export class WorkflowExecutor {
           projectId,
           versionId,
           archivedCount: results.length,
-          docTypes: results.map(r => r.docType),
-          versions: results.map(r => r.versionDir),
+          docTypes: results.map((r) => r.docType),
+          versions: results.map((r) => r.versionDir),
         });
 
         // 发送归档完成消息
         this.sendMessage('documents_archived', {
           projectId,
           versionId,
-          archives: results.map(r => ({
+          archives: results.map((r) => ({
             docType: r.docType,
             version: r.versionDir,
             fileCount: r.files.length,

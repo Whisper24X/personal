@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRD 评估报告</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.6;
+      color: #1e293b;
+      background: #f8fafc;
+      padding: 20px;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      padding: 48px;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    h1 {
+      color: #2563eb;
+      margin-bottom: 8px;
+      font-size: 2em;
+      font-weight: 700;
+    }
+    
+    .meta {
+      color: #64748b;
+      margin-bottom: 32px;
+      padding: 16px 0;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 0.95em;
+    }
+    
+    .meta p {
+      margin: 4px 0;
+    }
+    
+    h2 {
+      color: #0f172a;
+      margin-top: 0;
+      margin-bottom: 16px;
+      padding: 12px 0;
+      font-size: 1.4em;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    section {
+      margin-bottom: 24px;
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    
+    ul {
+      list-style: none;
+      padding-left: 0;
+    }
+    
+    li {
+      padding: 12px 16px;
+      margin: 8px 0;
+      background: #f8fafc;
+      border-left: 3px solid #2563eb;
+      border-radius: 6px;
+      transition: all 0.2s ease;
+    }
+    
+    li:hover {
+      background: #f1f5f9;
+      transform: translateX(2px);
+    }
+    
+    .issue {
+      margin: 10px 0;
+      padding: 16px;
+      border-radius: 8px;
+      border-left: 4px solid;
+      transition: all 0.2s ease;
+    }
+    
+    .issue:hover {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      transform: translateX(2px);
+    }
+    
+    .issue.p0 {
+      background: #fef2f2;
+      border-left-color: #ef4444;
+    }
+    
+    .issue.p1 {
+      background: #fff7ed;
+      border-left-color: #f97316;
+    }
+    
+    .issue.p2 {
+      background: #fefce8;
+      border-left-color: #eab308;
+    }
+    
+    .issue.p3 {
+      background: #f0fdf4;
+      border-left-color: #10b981;
+    }
+    
+    .priority-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.8em;
+      margin-right: 8px;
+      letter-spacing: 0.5px;
+    }
+    
+    .p0 .priority-badge {
+      background: #ef4444;
+      color: white;
+    }
+    
+    .p1 .priority-badge {
+      background: #f97316;
+      color: white;
+    }
+    
+    .p2 .priority-badge {
+      background: #eab308;
+      color: #422006;
+    }
+    
+    .p3 .priority-badge {
+      background: #10b981;
+      color: white;
+    }
+    
+    .difficulty {
+      display: inline-block;
+      padding: 12px 24px;
+      font-size: 1.5em;
+      font-weight: 700;
+      border-radius: 8px;
+      margin: 10px 0;
+    }
+    
+    .difficulty.l1 {
+      background: #dcfce7;
+      color: #15803d;
+      border: 2px solid #10b981;
+    }
+    
+    .difficulty.l2 {
+      background: #fef9c3;
+      color: #a16207;
+      border: 2px solid #eab308;
+    }
+    
+    .difficulty.l3 {
+      background: #fed7aa;
+      color: #c2410c;
+      border: 2px solid #f97316;
+    }
+    
+    .difficulty.l4 {
+      background: #fecaca;
+      color: #b91c1c;
+      border: 2px solid #ef4444;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    
+    th, td {
+      padding: 12px 16px;
+      text-align: left;
+      border: none;
+    }
+    
+    th {
+      background: #2563eb;
+      color: white;
+      font-weight: 600;
+      font-size: 0.9em;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    
+    tbody tr {
+      border-bottom: 1px solid #e2e8f0;
+    }
+    
+    tbody tr:nth-child(even) {
+      background: #f8fafc;
+    }
+    
+    tbody tr:hover {
+      background: #f1f5f9;
+    }
+    
+    tbody tr:last-child {
+      border-bottom: none;
+    }
+    
+    .summary-text {
+      background: #dbeafe;
+      padding: 20px;
+      border-radius: 8px;
+      border-left: 4px solid #2563eb;
+      margin: 0;
+      line-height: 1.7;
+    }
+    
+    .recommendation {
+      padding: 16px;
+      margin: 10px 0;
+      background: #f0fdf4;
+      border-left: 4px solid #10b981;
+      border-radius: 8px;
+      transition: all 0.2s ease;
+    }
+    
+    .recommendation:hover {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      transform: translateX(2px);
+    }
+    
+    .recommendation strong {
+      color: #15803d;
+    }
+    
+    .accuracy-table {
+      width: 100%;
+      margin: 16px 0;
+      border-collapse: collapse;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    
+    .accuracy-table th {
+      background: #2563eb;
+      color: white;
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.9em;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    
+    .accuracy-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    
+    .accuracy-table tbody tr:nth-child(even) {
+      background: #f8fafc;
+    }
+    
+    .accuracy-table tbody tr:hover {
+      background: #f1f5f9;
+    }
+    
+    .accuracy-rate {
+      font-weight: 700;
+      font-size: 1.1em;
+    }
+    
+    .rate-high {
+      color: #15803d;
+    }
+    
+    .rate-medium {
+      color: #a16207;
+    }
+    
+    .rate-low {
+      color: #b91c1c;
+    }
+    
+    .conclusion-card {
+      background: #f8fafc;
+      padding: 24px;
+      border-radius: 8px;
+      margin: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    
+    .conclusion-item {
+      background: white;
+      padding: 16px;
+      border-radius: 8px;
+      border-left: 4px solid #2563eb;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    
+    .conclusion-item strong {
+      color: #0f172a;
+      display: block;
+      margin-bottom: 8px;
+      font-size: 0.95em;
+    }
+    
+    .conclusion-list {
+      margin-left: 0;
+      padding-left: 20px;
+    }
+    
+    .conclusion-list li {
+      margin: 6px 0;
+      padding: 8px 12px;
+      background: #f8fafc;
+      border-left: 2px solid #cbd5e1;
+      list-style: none;
+    }
+    
+    .status-yes {
+      color: #15803d;
+      font-weight: 600;
+    }
+    
+    .status-no {
+      color: #b91c1c;
+      font-weight: 600;
+    }
+    
+    pre {
+      background: #f8fafc;
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-size: 0.9em;
+      line-height: 1.5;
+      border: 1px solid #e2e8f0;
+    }
+    
+    /* 可折叠样式 */
+    .collapsible {
+      margin-bottom: 24px;
+      background: #ffffff;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      transition: all 0.3s ease;
+    }
+    
+    .collapsible-header {
+      cursor: pointer;
+      user-select: none;
+      padding: 16px 20px;
+      margin: 0;
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+      transition: all 0.2s ease;
+    }
+    
+    .collapsible-header:hover {
+      background: #f1f5f9;
+    }
+    
+    .collapsible-header:active {
+      background: #e2e8f0;
+    }
+    
+    .collapse-icon {
+      display: inline-block;
+      margin-right: 8px;
+      transition: transform 0.3s ease;
+      font-size: 0.8em;
+      color: #64748b;
+    }
+    
+    .collapsible[data-collapsed="true"] .collapse-icon {
+      transform: rotate(-90deg);
+    }
+    
+    .item-count {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 2px 8px;
+      background: #e2e8f0;
+      border-radius: 12px;
+      font-size: 0.75em;
+      font-weight: 600;
+      color: #475569;
+    }
+    
+    .collapsible-content {
+      padding: 20px;
+      overflow: hidden;
+      transition: max-height 0.3s ease, opacity 0.3s ease;
+      will-change: max-height;
+    }
+    
+    .collapsible[data-collapsed="true"] .collapsible-content {
+      max-height: 0 !important;
+      padding-top: 0;
+      padding-bottom: 0;
+      opacity: 0;
+    }
+    
+    /* 响应式设计 */
+    @media (max-width: 768px) {
+      body {
+        padding: 10px;
+      }
+      
+      .container {
+        padding: 24px;
+      }
+      
+      h1 {
+        font-size: 1.6em;
+      }
+      
+      h2 {
+        font-size: 1.2em;
+      }
+      
+      .conclusion-card {
+        grid-template-columns: 1fr;
+      }
+      
+      table {
+        font-size: 0.9em;
+      }
+      
+      th, td {
+        padding: 8px 12px;
+      }
+    }
+    
+    @media print {
+      body {
+        background: white;
+      }
+      
+      .container {
+        box-shadow: none;
+      }
+      
+      .collapsible-content {
+        max-height: none !important;
+        opacity: 1 !important;
+        padding: 20px !important;
+      }
+      
+      .collapsible[data-collapsed="true"] .collapsible-content {
+        max-height: none !important;
+        opacity: 1 !important;
+      }
+      
+      .collapse-icon {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📊 PRD 评估报告</h1>
+    <div class="meta">
+      <p><strong>评估文件：</strong>prd-template.md</p>
+      <p><strong>评估时间：</strong>2026/2/10 16:49:31</p>
+      <p><strong>评估工具：</strong>evals-skill v1.0.0</p>
+    </div>
+
+    <section>
+      <h2>📝 Summary（摘要）</h2>
+      <div class="summary-text">
+        这是一个用于从 MRD 自动生成 PRD 的模板文档。目标受众为产品、设计、开发、测试团队。模板采用可折叠结构，包含 11 个主干章节和 4 个角色关注块（UI/FE/BE/QA）。覆盖功能需求、用户场景、业务流程、权限安全、异常处理、验收标准等。模板强调去除占位符、明确约束假设，并提供结构化输出格式，适用于自动化生成场景。
+      </div>
+    </section>
+
+    <section>
+      <h2>📊 需求难度评级</h2>
+      
+      <div>
+        <span class="difficulty l2">L2</span>
+      </div>
+      
+    </section>
+
+    <section>
+      <h2>🎯 准确率评估</h2>
+      <table class="accuracy-table">
+        <thead>
+          <tr>
+            <th>评估维度</th>
+            <th>准确率</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>字段识别</td>
+            <td class="accuracy-rate rate-high">85%</td>
+            <td>模板提供了数据表结构定义位置（BE-1），但缺少明确的字段定义格式示例；术语与口径章节（6.1）提供了定义位置，但未给出字段类型、约束等具体格式要求</td>
+          </tr>
+          <tr>
+            <td>业务规则</td>
+            <td class="accuracy-rate rate-high">90%</td>
+            <td>模板在 6.2 节提供了业务规则格式（触发条件 -> 结果），格式清晰；状态机（6.3）提供了表格结构，规则表达方式明确</td>
+          </tr>
+          <tr>
+            <td>流程识别</td>
+            <td class="accuracy-rate rate-high">95%</td>
+            <td>模板在 4.1-4.3 节提供了主流程、分支回退、Mermaid 流程图格式，流程定义结构完整清晰；关键操作（5.3）按"用户动作 -> 系统反馈"描述，流程表达准确</td>
+          </tr>
+          <tr>
+            <td>角色权限</td>
+            <td class="accuracy-rate rate-high">95%</td>
+            <td>模板在 7.1 节提供了权限矩阵表格格式，结构清晰；7.2 节覆盖幂等、防重复、审计、脱敏等安全要求，权限定义位置明确</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>📋 评估结论</h2>
+      <div class="conclusion-card">
+        <div class="conclusion-item">
+          <strong>是否达到推广标准：</strong>
+          <span class="status-yes">
+            是。理由：无 P0 问题；结构完整，覆盖 PRD 核心要素；准确率均 ≥ 80%（字段识别 85%，业务规则 90%，流程识别 95%，角色权限 95%）；难度评级 L2，适合推广使用。
+          </span>
+        </div>
+        
+        <div class="conclusion-item">
+          <strong>是否可规模化使用：</strong>
+          <span class="status-yes">
+            是。理由：模板结构标准化，支持自动化生成；角色关注块支持并行协作；格式统一，易于工具化；依赖关系清晰（MRD → PRD），可规模化应用。
+          </span>
+        </div>
+        
+        <div class="conclusion-item">
+          <strong>风险点：</strong>
+          
+          <ul class="conclusion-list">
+            <li>技术风险：Mermaid 流程图与 details/summary 折叠结构依赖文档工具支持，需验证兼容性</li>
+            <li>业务风险：MRD 输入质量直接影响生成 PRD 质量，需建立 MRD 质量检查机制</li>
+            <li>交付风险：模板中部分章节（如 2.3 约束与假设）要求信息不足时写明假设，但未提供假设格式示例，可能导致表达不一致</li>
+          </ul>
+          
+        </div>
+        
+        <div class="conclusion-item">
+          <strong>优化建议：</strong>
+          
+          <ul class="conclusion-list">
+            <li>补充字段定义格式示例（字段名、类型、约束、索引、关联关系），提升字段识别准确率</li>
+            <li>在 2.3 节补充约束与假设的格式示例，统一表达方式</li>
+            <li>明确 Mermaid 流程图与折叠结构的工具兼容性要求，或提供替代方案</li>
+            <li>在 5.3 节关键操作描述中补充并发冲突处理的具体格式要求</li>
+            <li>增加模板使用检查清单，确保生成 PRD 时所有占位符被替换</li>
+          </ul>
+          
+        </div>
+      </div>
+    </section>
+
+    <section class="collapsible" data-collapsed="false">
+      <h2 class="collapsible-header">
+        <span class="collapse-icon">▼</span>
+        ✅ Strengths（优点）
+        <span class="item-count">6项</span>
+      </h2>
+      <div class="collapsible-content">
+        <ul>
+          <li>结构完整：覆盖 PRD 核心要素（背景目标、范围、用户场景、流程、功能、规则、权限、异常、验收），章节划分清晰，逻辑顺序合理</li>
+          <li>角色关注块设计：使用 details/summary 折叠，支持按角色展开，减少信息干扰，提升可读性</li>
+          <li>可操作性：关键操作（5.3）采用"用户动作 -> 系统反馈"格式，验收标准（10.1）采用"前置条件 -> 步骤 -> 期望结果"，便于实现与测试</li>
+          <li>强调去除占位符：明确要求生成后不得保留占位符或 TBD/TODO，信息不足时在约束与假设中说明，降低模糊性</li>
+          <li>流程可视化：要求使用 Mermaid 流程图，提升流程表达清晰度</li>
+          <li>多维度覆盖：包含功能、非功能、异常、埋点、观测等，覆盖完整</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="collapsible" data-collapsed="true">
+      <h2 class="collapsible-header">
+        <span class="collapse-icon">▼</span>
+        ⚠️ Issues（问题）
+        <span class="item-count">6项</span>
+      </h2>
+      <div class="collapsible-content">
+        
+        <div class="issue p1">
+          <span class="priority-badge">P1</span>
+          **[P1] 字段定义格式缺失**：BE-1 节要求定义数据表结构，但未提供字段定义格式示例（字段名、类型、长度、约束、默认值、索引等），可能导致字段定义不一致，影响数据库设计准确性
+        </div>
+        
+        
+        <div class="issue p1">
+          <span class="priority-badge">P1</span>
+          **[P1] 约束与假设格式不明确**：2.3 节要求信息不足时写明假设，但未提供格式示例，可能导致表达不一致，影响评审效率
+        </div>
+        
+        
+        <div class="issue p2">
+          <span class="priority-badge">P2</span>
+          **[P2] 工具兼容性未说明**：模板依赖 Mermaid 流程图与 details/summary 折叠结构，但未说明支持的文档工具范围，可能导致部分工具无法正常渲染
+        </div>
+        
+        
+        <div class="issue p2">
+          <span class="priority-badge">P2</span>
+          **[P2] 并发冲突处理格式不明确**：5.3 节提到"多端/多窗口冲突处理（如需）"，但未提供具体描述格式，可能导致实现不一致
+        </div>
+        
+        
+        <div class="issue p2">
+          <span class="priority-badge">P2</span>
+          **[P2] 错误码定义位置分散**：错误码定义分散在 FE-3（前端错误码处理策略）、BE-2（后端错误码规范）、QA-4（错误码校验）中，缺少统一错误码定义章节，可能导致前后端不一致
+        </div>
+        
+        
+        <div class="issue p3">
+          <span class="priority-badge">P3</span>
+          **[P3] 缺少模板使用检查清单**：未提供生成 PRD 后的检查清单（如占位符是否全部替换、必填章节是否完整等），可能导致质量遗漏
+        </div>
+        
+        
+      </div>
+    </section>
+
+    <section class="collapsible" data-collapsed="true">
+      <h2 class="collapsible-header">
+        <span class="collapse-icon">▼</span>
+        💡 Recommendations（建议）
+        <span class="item-count">6项</span>
+      </h2>
+      <div class="collapsible-content">
+        
+        <div class="recommendation">
+          **补充字段定义格式示例**：在 BE-1 节"数据表"部分增加格式示例，如：`字段名 | 类型 | 长度 | 必填 | 默认值 | 索引 | 约束 | 说明`，并补充示例行，提升字段定义一致性
+        </div>
+        
+        
+        <div class="recommendation">
+          **明确约束与假设格式**：在 2.3 节补充格式示例，如：`假设：<条件描述>；影响：<如果不成立的影响>；验证方式：<如何验证假设>`，统一表达方式
+        </div>
+        
+        
+        <div class="recommendation">
+          **说明工具兼容性要求**：在模板开头"使用说明"中补充：`工具要求：支持 Mermaid 渲染（如飞书/语雀/Notion/GitHub）和 details/summary 折叠（多数 Markdown 渲染器支持）`，或提供纯 Markdown 替代方案
+        </div>
+        
+        
+        <div class="recommendation">
+          **统一错误码定义位置**：新增"8.1 错误码定义"章节，集中定义所有错误码（code、message、触发条件、前端处理策略），FE-3、BE-2、QA-4 引用该章节，避免前后端不一致
+        </div>
+        
+        
+        <div class="recommendation">
+          **补充并发冲突处理格式**：在 5.3 节"异步与并发"部分补充格式示例，如：`并发场景：<场景描述>；冲突检测：<检测方式>；处理策略：<乐观锁/版本号/提示用户>；回滚机制：<如有>`
+        </div>
+        
+        
+        <div class="recommendation">
+          **增加模板使用检查清单**：在模板末尾新增"12. PRD 生成检查清单"章节，包含：`[ ] 所有占位符（<...>）已替换`、`[ ] 无 TBD/TODO 遗留`、`[ ] 所有必填章节已填写`、`[ ] Mermaid 流程图语法正确`、`[ ] 权限矩阵完整`、`[ ] 验收标准可量化`等检查项，确保生成质量
+        </div>
+        
+      </div>
+    </section>
+
+    <section class="collapsible" data-collapsed="true">
+      <h2 class="collapsible-header">
+        <span class="collapse-icon">▼</span>
+        📄 完整评估内容
+      </h2>
+      <div class="collapsible-content">
+        <pre>## Summary（摘要）
+
+这是一个用于从 MRD 自动生成 PRD 的模板文档。目标受众为产品、设计、开发、测试团队。模板采用可折叠结构，包含 11 个主干章节和 4 个角色关注块（UI/FE/BE/QA）。覆盖功能需求、用户场景、业务流程、权限安全、异常处理、验收标准等。模板强调去除占位符、明确约束假设，并提供结构化输出格式，适用于自动化生成场景。
+
+## 需求难度评级：L2
+
+### 评估维度
+
+| 维度               | 等级 | 说明                                             |
+| ------------------ | ---- | ------------------------------------------------ |
+| 功能点数           | L2   | 模板包含 11 个主干章节 + 4 个角色块，结构完整但需按实际需求填充内容 |
+| 技术复杂度         | L1   | 模板为文档结构定义，无技术实现复杂度，主要是内容填充与格式规范 |
+| 数据复杂度         | L2   | 涉及多类数据定义（字段、业务规则、状态机、权限矩阵），需结构化表达 |
+| 测试验证复杂度     | L2   | 需验证模板完整性、可操作性、各章节逻辑一致性，以及生成 PRD 的质量 |
+| 依赖与协作复杂度   | L2   | 依赖 MRD 输入质量，需多角色协作评审（PM/UI/FE/BE/QA） |
+| 交付风险           | L1   | 模板结构清晰，风险主要在于 MRD 输入质量与内容填充的准确性 |
+
+### 综合评级理由
+
+模板结构完整，章节划分清晰，但实际使用需基于 MRD 填充具体内容，并需多角色协作评审。功能点中等，数据定义需结构化，协作涉及多角色。综合评估：难度等级 L2，预估工期 5-8 人天（含模板优化与首次使用验证）。
+
+### 关键风险点
+
+- MRD 输入质量不足可能导致生成 PRD 信息缺失或模糊
+- 模板中的占位符格式（如 `<...>`）需确保在生成时被完全替换
+- 角色关注块的可折叠结构依赖文档工具支持，需验证兼容性
+
+## 准确率评估
+
+| 评估维度   | 准确率 | 说明                                             |
+| ---------- | ------ | ------------------------------------------------ |
+| 字段识别   | 85%    | 模板提供了数据表结构定义位置（BE-1），但缺少明确的字段定义格式示例；术语与口径章节（6.1）提供了定义位置，但未给出字段类型、约束等具体格式要求 |
+| 业务规则   | 90%    | 模板在 6.2 节提供了业务规则格式（触发条件 -> 结果），格式清晰；状态机（6.3）提供了表格结构，规则表达方式明确 |
+| 流程识别   | 95%    | 模板在 4.1-4.3 节提供了主流程、分支回退、Mermaid 流程图格式，流程定义结构完整清晰；关键操作（5.3）按"用户动作 -> 系统反馈"描述，流程表达准确 |
+| 角色权限   | 95%    | 模板在 7.1 节提供了权限矩阵表格格式，结构清晰；7.2 节覆盖幂等、防重复、审计、脱敏等安全要求，权限定义位置明确 |
+
+## 评估结论
+
+- **是否达到推广标准**：是。理由：无 P0 问题；结构完整，覆盖 PRD 核心要素；准确率均 ≥ 80%（字段识别 85%，业务规则 90%，流程识别 95%，角色权限 95%）；难度评级 L2，适合推广使用。
+- **是否可规模化使用**：是。理由：模板结构标准化，支持自动化生成；角色关注块支持并行协作；格式统一，易于工具化；依赖关系清晰（MRD → PRD），可规模化应用。
+- **风险点**：
+  - 技术风险：Mermaid 流程图与 details/summary 折叠结构依赖文档工具支持，需验证兼容性
+  - 业务风险：MRD 输入质量直接影响生成 PRD 质量，需建立 MRD 质量检查机制
+  - 交付风险：模板中部分章节（如 2.3 约束与假设）要求信息不足时写明假设，但未提供假设格式示例，可能导致表达不一致
+- **优化建议**：
+  - 补充字段定义格式示例（字段名、类型、约束、索引、关联关系），提升字段识别准确率
+  - 在 2.3 节补充约束与假设的格式示例，统一表达方式
+  - 明确 Mermaid 流程图与折叠结构的工具兼容性要求，或提供替代方案
+  - 在 5.3 节关键操作描述中补充并发冲突处理的具体格式要求
+  - 增加模板使用检查清单，确保生成 PRD 时所有占位符被替换
+
+## Strengths（优点）
+
+- 结构完整：覆盖 PRD 核心要素（背景目标、范围、用户场景、流程、功能、规则、权限、异常、验收），章节划分清晰，逻辑顺序合理
+- 角色关注块设计：使用 details/summary 折叠，支持按角色展开，减少信息干扰，提升可读性
+- 可操作性：关键操作（5.3）采用"用户动作 -> 系统反馈"格式，验收标准（10.1）采用"前置条件 -> 步骤 -> 期望结果"，便于实现与测试
+- 强调去除占位符：明确要求生成后不得保留占位符或 TBD/TODO，信息不足时在约束与假设中说明，降低模糊性
+- 流程可视化：要求使用 Mermaid 流程图，提升流程表达清晰度
+- 多维度覆盖：包含功能、非功能、异常、埋点、观测等，覆盖完整
+
+## Issues（问题）
+
+- **[P1] 字段定义格式缺失**：BE-1 节要求定义数据表结构，但未提供字段定义格式示例（字段名、类型、长度、约束、默认值、索引等），可能导致字段定义不一致，影响数据库设计准确性
+- **[P1] 约束与假设格式不明确**：2.3 节要求信息不足时写明假设，但未提供格式示例，可能导致表达不一致，影响评审效率
+- **[P2] 工具兼容性未说明**：模板依赖 Mermaid 流程图与 details/summary 折叠结构，但未说明支持的文档工具范围，可能导致部分工具无法正常渲染
+- **[P2] 并发冲突处理格式不明确**：5.3 节提到"多端/多窗口冲突处理（如需）"，但未提供具体描述格式，可能导致实现不一致
+- **[P2] 错误码定义位置分散**：错误码定义分散在 FE-3（前端错误码处理策略）、BE-2（后端错误码规范）、QA-4（错误码校验）中，缺少统一错误码定义章节，可能导致前后端不一致
+- **[P3] 缺少模板使用检查清单**：未提供生成 PRD 后的检查清单（如占位符是否全部替换、必填章节是否完整等），可能导致质量遗漏
+
+## Recommendations（建议）
+
+- **补充字段定义格式示例**：在 BE-1 节"数据表"部分增加格式示例，如：`字段名 | 类型 | 长度 | 必填 | 默认值 | 索引 | 约束 | 说明`，并补充示例行，提升字段定义一致性
+- **明确约束与假设格式**：在 2.3 节补充格式示例，如：`假设：<条件描述>；影响：<如果不成立的影响>；验证方式：<如何验证假设>`，统一表达方式
+- **说明工具兼容性要求**：在模板开头"使用说明"中补充：`工具要求：支持 Mermaid 渲染（如飞书/语雀/Notion/GitHub）和 details/summary 折叠（多数 Markdown 渲染器支持）`，或提供纯 Markdown 替代方案
+- **统一错误码定义位置**：新增"8.1 错误码定义"章节，集中定义所有错误码（code、message、触发条件、前端处理策略），FE-3、BE-2、QA-4 引用该章节，避免前后端不一致
+- **补充并发冲突处理格式**：在 5.3 节"异步与并发"部分补充格式示例，如：`并发场景：<场景描述>；冲突检测：<检测方式>；处理策略：<乐观锁/版本号/提示用户>；回滚机制：<如有>`
+- **增加模板使用检查清单**：在模板末尾新增"12. PRD 生成检查清单"章节，包含：`[ ] 所有占位符（<...>）已替换`、`[ ] 无 TBD/TODO 遗留`、`[ ] 所有必填章节已填写`、`[ ] Mermaid 流程图语法正确`、`[ ] 权限矩阵完整`、`[ ] 验收标准可量化`等检查项，确保生成质量</pre>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // 初始化所有可折叠元素的点击事件
+    document.querySelectorAll('.collapsible-header').forEach(header => {
+      header.addEventListener('click', function() {
+        const section = this.closest('.collapsible');
+        const content = section.querySelector('.collapsible-content');
+        const icon = this.querySelector('.collapse-icon');
+        const isCollapsed = section.dataset.collapsed === 'true';
+        
+        // 切换状态
+        section.dataset.collapsed = isCollapsed ? 'false' : 'true';
+        
+        // 更新图标旋转
+        if (isCollapsed) {
+          icon.style.transform = 'rotate(0deg)';
+          content.style.maxHeight = content.scrollHeight + 'px';
+          content.style.opacity = '1';
+        } else {
+          icon.style.transform = 'rotate(-90deg)';
+          content.style.maxHeight = '0';
+          content.style.opacity = '0';
+        }
+      });
+      
+      // 添加键盘支持
+      header.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          this.click();
+        }
+      });
+      
+      // 添加可访问性属性
+      header.setAttribute('role', 'button');
+      header.setAttribute('tabindex', '0');
+    });
+    
+    // 初始化默认状态
+    document.querySelectorAll('.collapsible').forEach(section => {
+      const content = section.querySelector('.collapsible-content');
+      const icon = section.querySelector('.collapse-icon');
+      const isCollapsed = section.dataset.collapsed === 'true';
+      const header = section.querySelector('.collapsible-header');
+      
+      // 设置ARIA属性
+      header.setAttribute('aria-expanded', !isCollapsed);
+      
+      if (isCollapsed) {
+        content.style.maxHeight = '0';
+        content.style.opacity = '0';
+        icon.style.transform = 'rotate(-90deg)';
+      } else {
+        // 使用 requestAnimationFrame 确保 DOM 渲染完成后再计算高度
+        requestAnimationFrame(() => {
+          content.style.maxHeight = content.scrollHeight + 'px';
+          content.style.opacity = '1';
+        });
+      }
+    });
+    
+    // 窗口大小改变时重新计算展开内容的高度
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        document.querySelectorAll('.collapsible[data-collapsed="false"] .collapsible-content').forEach(content => {
+          content.style.maxHeight = content.scrollHeight + 'px';
+        });
+      }, 250);
+    });
+  </script>
+</body>
+</html>

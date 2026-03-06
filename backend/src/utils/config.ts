@@ -1,7 +1,7 @@
 /**
  * Configuration loader
  * Loads environment variables and provides typed application config
- * 
+ *
  * Note: LLM configuration management is handled by LLMManager.
  * This file only provides the application configuration structure.
  */
@@ -15,7 +15,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 /**
  * Application configuration
- * 
+ *
  * Note: config.llm is a placeholder. Actual LLM configuration is managed
  * by LLMManager and loaded from database at runtime.
  * The placeholder values here are only used during initialization
@@ -36,7 +36,7 @@ export const config: IAppConfig = {
   server: {
     port: parseInt(process.env.BACKEND_PORT || '3000'),
     cors: {
-      origin: (process.env.ALLOWED_ORIGINS || 'http://localhost:5173').split(','),
+      origin: (process.env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',').map((origin) => origin.trim()),
     },
   },
   // workspace 配置已移除，统一使用 WorkspaceManager.getWorkspaceRoot() 获取路径

@@ -177,6 +177,88 @@ function getContextOptionsWithHeaders(options = {}) {
 }
 
 /**
+ * When AUTOMATION_REPORT_DIR and AUTOMATION_TEST_CASE_ID are set (by AutomationExecution),
+ * inject page capture hook and assign main async IIFE to global.__automationPromise so we can await and take screenshot.
+ */
+function wrapWithScreenshotCapture(code) {
+  const reportDir = process.env.AUTOMATION_REPORT_DIR;
+  const testCaseId = process.env.AUTOMATION_TEST_CASE_ID;
+  if (!reportDir || !testCaseId) return code;
+
+  const hook = `
+(function() {
+  var __screenshotPath = require('path');
+  var playwright = require('playwright');
+  var origLaunch = playwright.chromium.launch.bind(playwright.chromium);
+  playwright.chromium.launch = function() {
+    var args = arguments;
+    return origLaunch.apply(this, args).then(function(browser) {
+      var origNewPage = browser.newPage.bind(browser);
+      var origNewContext = browser.newContext.bind(browser);
+      var origClose = browser.close.bind(browser);
+      function capturePage(page) {
+        global.__automationPage = page;
+        return page;
+      }
+      browser.newPage = function() {
+        return origNewPage.apply(this, arguments).then(capturePage);
+      };
+      browser.newContext = function() {
+        var opts = arguments[0] && typeof arguments[0] === 'object' ? arguments[0] : {};
+        if (!opts.viewport) {
+          opts = { ...opts, viewport: { width: 1920, height: 1080 } };
+        }
+        return origNewContext.call(this, opts).then(function(context) {
+          var origCtxNewPage = context.newPage.bind(context);
+          context.newPage = function() {
+            return origCtxNewPage.apply(this, arguments).then(capturePage);
+          };
+          return context;
+        });
+      };
+      browser.close = function() {
+        var reportDir = process.env.AUTOMATION_REPORT_DIR;
+        var testCaseId = process.env.AUTOMATION_TEST_CASE_ID;
+        if (reportDir && testCaseId && global.__automationPage) {
+          return global.__automationPage.screenshot({ path: __screenshotPath.join(reportDir, testCaseId + '-success.png') }).catch(function() {}).then(function() {
+            return origClose();
+          });
+        }
+        return origClose();
+      };
+      return browser;
+    });
+  };
+})();
+`;
+  // Assign main async IIFE to global.__automationPromise (replace first occurrence of "(async () => {")
+  const firstAsyncIife = code.indexOf('(async () => {');
+  const alt = code.indexOf('(async()=>{');
+  const pos = firstAsyncIife >= 0 ? firstAsyncIife : alt;
+  const pattern = firstAsyncIife >= 0 ? '(async () => {' : '(async()=>{';
+  if (pos < 0) return code;
+  const suffix = `
+if (global.__automationPromise && process.env.AUTOMATION_REPORT_DIR && process.env.AUTOMATION_TEST_CASE_ID) {
+  var __screenshotPath = require('path');
+  var reportDir = process.env.AUTOMATION_REPORT_DIR;
+  var testCaseId = process.env.AUTOMATION_TEST_CASE_ID;
+  global.__automationPromise = global.__automationPromise
+    .then(async function() {
+      /* success screenshot is taken in browser.close() wrapper */
+    })
+    .catch(async function(e) {
+      if (global.__automationPage) {
+        await global.__automationPage.screenshot({ path: __screenshotPath.join(reportDir, testCaseId + '-fail.png') }).catch(function() {});
+      }
+      throw e;
+    });
+  module.exports = global.__automationPromise;
+}
+`;
+  return hook + '\n' + code.slice(0, pos) + 'global.__automationPromise = ' + pattern + code.slice(pos + pattern.length) + suffix;
+}
+
+/**
  * Main execution
  */
 async function main() {
@@ -195,7 +277,8 @@ async function main() {
 
   // Get code to execute
   const rawCode = getCodeToExecute();
-  const code = wrapCodeIfNeeded(rawCode);
+  let code = wrapCodeIfNeeded(rawCode);
+  code = wrapWithScreenshotCapture(code);
 
   // Create temporary file for execution
   const tempFile = path.join(__dirname, `.temp-execution-${Date.now()}.js`);
@@ -206,11 +289,11 @@ async function main() {
 
     // Execute the code
     console.log('🚀 Starting automation...\n');
-    require(tempFile);
+    const exported = require(tempFile);
 
-    // Note: Temp file will be cleaned up on next run
-    // This allows long-running async operations to complete safely
-
+    if (process.env.AUTOMATION_REPORT_DIR && process.env.AUTOMATION_TEST_CASE_ID && exported && typeof exported.then === 'function') {
+      await exported;
+    }
   } catch (error) {
     console.error('❌ Execution failed:', error.message);
     if (error.stack) {
