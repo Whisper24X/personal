@@ -819,6 +819,76 @@ export class BusinessLinesService {
     };
   }
 
+  async removeLocalMcp(
+    businessLineId: BusinessLine['id'],
+    query: GetLocalMcpConfigDto,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+
+    const sourcePath = query.sourcePath.trim();
+    const mcpName = query.name.trim();
+    if (!mcpName) {
+      throw new BadRequestException('MCP name is required');
+    }
+
+    const mcpRoot = path.resolve(
+      resolveAinativeDataRootDir(),
+      businessLineId,
+      'mcp',
+    );
+    const resolvedSourcePath = path.resolve(sourcePath);
+
+    if (!this.isPathWithin(mcpRoot, resolvedSourcePath)) {
+      throw new BadRequestException('Invalid MCP source path');
+    }
+
+    const content = await fs
+      .readFile(resolvedSourcePath, 'utf-8')
+      .catch((error) => {
+        if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+          throw new NotFoundException('MCP source file not found');
+        }
+        throw error;
+      });
+
+    let parsedPayload: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(content);
+      if (!this.isObjectRecord(parsed)) {
+        throw new BadRequestException('MCP source file must be a JSON object');
+      }
+      parsedPayload = parsed;
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(
+        error instanceof Error
+          ? `Failed to parse MCP source JSON: ${error.message}`
+          : 'Failed to parse MCP source JSON',
+      );
+    }
+
+    const mcpServers = this.resolveImportedMcpServers(parsedPayload);
+    if (!this.isObjectRecord(mcpServers)) {
+      throw new BadRequestException('Invalid MCP servers payload');
+    }
+
+    if (!this.isObjectRecord(mcpServers[mcpName])) {
+      throw new NotFoundException('MCP config not found');
+    }
+
+    delete mcpServers[mcpName];
+    parsedPayload.mcpServers = mcpServers;
+
+    await fs.writeFile(
+      resolvedSourcePath,
+      `${JSON.stringify(parsedPayload, null, 2)}\n`,
+      'utf-8',
+    );
+  }
+
   async importLocalMcps(
     businessLineId: BusinessLine['id'],
     importLocalMcpsDto: ImportLocalMcpsDto,
@@ -1816,10 +1886,12 @@ export class BusinessLinesService {
       }
 
       const headers = this.normalizeStringMap(value.headers);
+      const description = this.normalizeOptionalText(value.description);
       return {
         url,
         ...(type === 'sse' ? { type: 'sse' } : {}),
         ...(Object.keys(headers).length > 0 ? { headers } : {}),
+        ...(description ? { description } : {}),
       };
     }
 
@@ -1832,11 +1904,13 @@ export class BusinessLinesService {
 
     const args = this.normalizeStringArray(value.args, serverName);
     const env = this.normalizeStringMap(value.env);
+    const description = this.normalizeOptionalText(value.description);
 
     return {
       command,
       ...(args.length > 0 ? { args } : {}),
       ...(Object.keys(env).length > 0 ? { env } : {}),
+      ...(description ? { description } : {}),
     };
   }
 

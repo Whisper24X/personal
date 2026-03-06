@@ -46,4 +46,18 @@ export const mcpsApi = {
   importProjectLocalMcps(payload: ImportProjectLocalMcpsPayload) {
     return apiHttp.post<ImportProjectLocalMcpsResult>('/mcps/project-local/import-json', payload)
   },
+
+  removeProjectLocalMcp(params: {
+    projectId: string
+    provider: string
+    name: string
+    sourcePath: string
+  }) {
+    const query = new URLSearchParams()
+    query.set('projectId', params.projectId)
+    query.set('provider', params.provider)
+    query.set('name', params.name)
+    query.set('sourcePath', params.sourcePath)
+    return apiHttp.delete<void>(`/mcps/project-local?${query.toString()}`)
+  },
 }

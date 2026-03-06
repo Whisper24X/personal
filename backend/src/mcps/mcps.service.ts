@@ -21,6 +21,7 @@ import {
 } from './dto/import-project-local-mcps.dto';
 import { ImportProjectLocalMcpsResultDto } from './dto/import-project-local-mcps-result.dto';
 import { ProjectLocalMcpConfigDto } from './dto/project-local-mcp-config.dto';
+import { RemoveProjectLocalMcpDto } from './dto/remove-project-local-mcp.dto';
 
 @Injectable()
 export class McpsService {
@@ -232,6 +233,76 @@ export class McpsService {
 
     throw new BadRequestException(
       'Current provider does not support MCP config import',
+    );
+  }
+
+  async removeProjectLocalMcp(
+    dto: RemoveProjectLocalMcpDto,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    const project = await this.projectsService.assertCanManageProject(
+      dto.projectId,
+      currentUser,
+    );
+
+    const sourcePath = path.resolve(dto.sourcePath.trim());
+    const mcpName = dto.name.trim();
+    if (!mcpName) {
+      throw new BadRequestException('MCP name is required');
+    }
+
+    const sourcePathMap = await resolveProjectLocalMcpConfigPathMap(project);
+    if (!sourcePathMap) {
+      throw new NotFoundException('Project MCP directory not found');
+    }
+
+    const allowedPaths = new Set(
+      Object.values(sourcePathMap).map((item) => path.resolve(item)),
+    );
+    if (!allowedPaths.has(sourcePath)) {
+      throw new BadRequestException('Invalid MCP source path');
+    }
+
+    const sourceFileExtension = path.extname(sourcePath).toLowerCase();
+
+    if (sourceFileExtension === '.json') {
+      const payload = await this.readLocalMcpConfig(sourcePath);
+      const { containerKey, servers } = this.resolveMcpServersFromPayload(
+        payload,
+        dto.provider as ProjectLocalMcpProvider,
+      );
+
+      if (!this.isObjectRecord(servers[mcpName])) {
+        throw new NotFoundException('MCP config not found');
+      }
+
+      delete servers[mcpName];
+      payload[containerKey] = servers;
+
+      await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+      await fs.writeFile(
+        sourcePath,
+        `${JSON.stringify(payload, null, 2)}\n`,
+        'utf-8',
+      );
+      return;
+    }
+
+    if (sourceFileExtension === '.toml') {
+      const existingContent = await this.readLocalTextFile(sourcePath);
+      const existingServers = this.parseTomlMcpServers(existingContent);
+
+      if (!this.isObjectRecord(existingServers[mcpName])) {
+        throw new NotFoundException('MCP config not found');
+      }
+
+      const nextContent = this.removeTomlMcpServer(existingContent, mcpName);
+      await fs.writeFile(sourcePath, nextContent, 'utf-8');
+      return;
+    }
+
+    throw new BadRequestException(
+      'Current MCP source format does not support removal',
     );
   }
 
@@ -599,6 +670,45 @@ export class McpsService {
     }
 
     return lines.join('\n');
+  }
+
+  private removeTomlMcpServer(content: string, serverName: string): string {
+    const lines = content.split(/\r?\n/);
+    const headerRegex = /^\s*\[(?:mcp_servers|mcpServers)\.([^\]]+)\]\s*$/;
+    const skipLineIndexes = new Set<number>();
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index] ?? '';
+      const match = headerRegex.exec(line);
+      if (!match?.[1]) {
+        continue;
+      }
+
+      const name = this.normalizeTomlKeyOrSection(match[1]);
+      if (name !== serverName) {
+        continue;
+      }
+
+      let endIndex = index;
+      while (endIndex + 1 < lines.length) {
+        const nextLine = lines[endIndex + 1] ?? '';
+        if (/^\s*\[.+\]\s*$/.test(nextLine)) {
+          break;
+        }
+        endIndex += 1;
+      }
+
+      for (let lineIndex = index; lineIndex <= endIndex; lineIndex += 1) {
+        skipLineIndexes.add(lineIndex);
+      }
+      break;
+    }
+
+    return lines
+      .filter((_, index) => !skipLineIndexes.has(index))
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trimEnd();
   }
 
   private upsertTomlMcpServers(

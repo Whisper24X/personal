@@ -195,6 +195,7 @@ const importingLocalMcps = ref(false)
 const mcpJsonImportError = ref('')
 const mcpJsonPreviewModalOpen = ref(false)
 const loadingMcpJsonPreview = ref(false)
+const mcpJsonPreviewItem = ref<Mcp | null>(null)
 const mcpJsonPreviewName = ref('')
 const mcpJsonPreviewSourcePath = ref('')
 const mcpJsonPreviewError = ref('')
@@ -202,6 +203,7 @@ const mcpJsonPreviewDraft = ref('')
 const savingMcpJsonPreview = ref(false)
 const skillPreviewModalOpen = ref(false)
 const loadingSkillPreview = ref(false)
+const skillPreviewItem = ref<Skill | null>(null)
 const skillPreviewId = ref('')
 const skillPreviewName = ref('')
 const skillPreviewTree = ref<SkillTreeNode[]>([])
@@ -1088,6 +1090,9 @@ const removeLocalSkill = async (item: Skill) => {
 
   try {
     await businessLinesApi.removeLocalSkill(activeLineId.value, item.id)
+    if (skillPreviewItem.value?.id === item.id) {
+      closeSkillPreview()
+    }
     await loadLocalSkills(activeLineId.value)
     message.success(`技能「${item.name}」已删除`)
   } catch (error) {
@@ -1131,6 +1136,7 @@ const resetSkillPreviewState = () => {
   skillPreviewRequestToken.value += 1
   skillPreviewModalOpen.value = false
   loadingSkillPreview.value = false
+  skillPreviewItem.value = null
   skillPreviewId.value = ''
   skillPreviewName.value = ''
   skillPreviewTree.value = []
@@ -1198,6 +1204,7 @@ const openSkillPreview = async (item: Skill) => {
   const requestToken = ++skillPreviewRequestToken.value
   skillPreviewModalOpen.value = true
   loadingSkillPreview.value = true
+  skillPreviewItem.value = item
   skillPreviewId.value = item.id
   skillPreviewName.value = item.name
   skillPreviewTree.value = []
@@ -1294,17 +1301,21 @@ const submitImportMcpJson = async (payload: Record<string, unknown>) => {
 }
 
 const resolveMcpSourcePath = (item: Mcp) => {
+  const absolute = item.metadataJson?.sourcePathAbsolute
+  if (typeof absolute === 'string' && absolute.trim()) {
+    return absolute.trim()
+  }
   const sourcePath = item.metadataJson?.sourcePath
   if (typeof sourcePath !== 'string') {
     return ''
   }
-
   return sourcePath.trim()
 }
 
 const resetMcpJsonPreviewState = () => {
   mcpJsonPreviewModalOpen.value = false
   loadingMcpJsonPreview.value = false
+  mcpJsonPreviewItem.value = null
   mcpJsonPreviewName.value = ''
   mcpJsonPreviewSourcePath.value = ''
   mcpJsonPreviewError.value = ''
@@ -1373,6 +1384,7 @@ const openMcpJsonPreview = async (item: Mcp) => {
 
   mcpJsonPreviewModalOpen.value = true
   loadingMcpJsonPreview.value = true
+  mcpJsonPreviewItem.value = item
   mcpJsonPreviewName.value = item.name
   mcpJsonPreviewSourcePath.value = sourcePath
   mcpJsonPreviewError.value = ''
@@ -1399,6 +1411,41 @@ const openMcpJsonPreview = async (item: Mcp) => {
   }
 }
 
+const removingLocalMcpId = ref('')
+const removeLocalMcp = async (item: Mcp) => {
+  if (!activeLineId.value || removingLocalMcpId.value) {
+    return
+  }
+
+  const sourcePath = resolveMcpSourcePath(item)
+  if (!sourcePath) {
+    message.error('未找到 MCP 源配置路径')
+    return
+  }
+
+  if (!window.confirm(`确认删除 MCP「${item.name}」吗？`)) {
+    return
+  }
+
+  removingLocalMcpId.value = item.id
+
+  try {
+    await businessLinesApi.removeLocalMcp(activeLineId.value, {
+      name: item.name,
+      sourcePath,
+    })
+    if (mcpJsonPreviewItem.value?.id === item.id) {
+      resetMcpJsonPreviewState()
+    }
+    await loadLocalMcps(activeLineId.value)
+    message.success(`MCP「${item.name}」已删除`)
+  } catch (error) {
+    message.error(toErrorMessage(error, '删除 MCP 失败'))
+  } finally {
+    removingLocalMcpId.value = ''
+  }
+}
+
 const saveMcpJsonPreview = async () => {
   if (!activeLineId.value || !mcpJsonPreviewName.value) {
     return
@@ -1419,6 +1466,10 @@ const saveMcpJsonPreview = async () => {
     mcpJsonPreviewError.value =
       error instanceof Error ? error.message : '无法解析 MCP 配置'
     return
+  }
+
+  if (Object.prototype.hasOwnProperty.call(nextConfig, 'description')) {
+    delete nextConfig.description
   }
 
   savingMcpJsonPreview.value = true
@@ -3053,24 +3104,6 @@ onBeforeUnmount(() => {
                       <p class="mt-1 text-xs text-muted-foreground">
                         {{ item.description ?? '暂无描述' }}
                       </p>
-                      <div class="mt-2 flex items-center gap-2">
-                        <button
-                          type="button"
-                          class="inline-flex h-7 items-center justify-center rounded-md border border-border bg-background px-2 text-xs font-semibold text-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-                          :disabled="downloadingLocalSkillId === item.id"
-                          @click.stop="downloadLocalSkill(item)"
-                        >
-                          {{ downloadingLocalSkillId === item.id ? '下载中...' : '下载' }}
-                        </button>
-                        <button
-                          type="button"
-                          class="inline-flex h-7 items-center justify-center rounded-md border border-red-300 bg-red-50 px-2 text-xs font-semibold text-red-600 transition hover:border-red-500 hover:bg-red-100 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-400 dark:hover:border-red-400 dark:hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                          :disabled="removingLocalSkillId === item.id"
-                          @click.stop="removeLocalSkill(item)"
-                        >
-                          {{ removingLocalSkillId === item.id ? '删除中...' : '删除' }}
-                        </button>
-                      </div>
                     </article>
 
                     <div
@@ -3118,23 +3151,22 @@ onBeforeUnmount(() => {
                       v-for="item in localMcps"
                       :key="item.id"
                       :data-mcp-id="item.id"
-                      class="cursor-pointer rounded-lg border border-border bg-background/70 px-2.5 py-2 transition hover:border-primary/40 hover:bg-muted/30"
+                      class="flex cursor-pointer flex-col rounded-lg border border-border bg-background/70 px-2.5 py-2 transition hover:border-primary/40 hover:bg-muted/30"
                       role="button"
                       tabindex="0"
                       @click="void openMcpJsonPreview(item)"
                       @keydown.enter.prevent="void openMcpJsonPreview(item)"
                       @keydown.space.prevent="void openMcpJsonPreview(item)"
                     >
-                      <p class="truncate text-xs font-semibold">{{ item.name }}</p>
-                      <p
-                        v-if="item.version && item.version !== 'local'"
-                        class="mt-1 text-[11px] text-muted-foreground"
-                      >
-                        版本：{{ item.version }}
-                      </p>
-                      <p v-if="item.description" class="mt-1 line-clamp-1 text-[11px] text-muted-foreground">
-                        {{ item.description }}
-                      </p>
+                      <div class="min-w-0 flex-1">
+                        <p class="truncate text-xs font-semibold">{{ item.name }}</p>
+                        <p
+                          v-if="item.version && item.version !== 'local'"
+                          class="mt-1 text-[11px] text-muted-foreground"
+                        >
+                          版本：{{ item.version }}
+                        </p>
+                      </div>
                     </article>
 
                     <div
@@ -3497,14 +3529,35 @@ onBeforeUnmount(() => {
               <h2 class="text-base font-semibold">{{ skillPreviewName || 'Skill' }}</h2>
               <p class="text-xs text-muted-foreground">{{ skillPreviewSelectedPath || '技能目录' }}</p>
             </div>
-            <button
-              type="button"
-              aria-label="关闭"
-              class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
-              @click="closeSkillPreview"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-            </button>
+            <div class="flex items-center gap-2">
+              <button
+                v-if="skillPreviewItem"
+                type="button"
+                class="inline-flex h-8 items-center justify-center rounded-md border border-primary/60 bg-primary/5 px-3 text-xs font-semibold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="loadingSkillPreview || downloadingLocalSkillId === skillPreviewItem.id"
+                @click="skillPreviewItem && void downloadLocalSkill(skillPreviewItem)"
+              >
+                {{ downloadingLocalSkillId === skillPreviewItem?.id ? '下载中...' : '下载' }}
+              </button>
+              <button
+                v-if="skillPreviewItem"
+                type="button"
+                class="inline-flex h-8 items-center justify-center rounded-md border border-destructive/60 bg-destructive/5 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="删除 Skill"
+                :disabled="loadingSkillPreview || removingLocalSkillId === skillPreviewItem.id"
+                @click="skillPreviewItem && void removeLocalSkill(skillPreviewItem)"
+              >
+                {{ removingLocalSkillId === skillPreviewItem?.id ? '删除中...' : '删除' }}
+              </button>
+              <button
+                type="button"
+                aria-label="关闭"
+                class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
+                @click="closeSkillPreview"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+              </button>
+            </div>
           </header>
 
           <div v-if="loadingSkillPreview" class="flex-1 px-4 py-6 text-sm text-muted-foreground">加载中...</div>
@@ -3572,6 +3625,23 @@ onBeforeUnmount(() => {
             </div>
             <div class="flex items-center gap-2">
               <button
+                v-if="mcpJsonPreviewItem"
+                type="button"
+                class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-semibold text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label="删除 MCP"
+                :disabled="loadingMcpJsonPreview || savingMcpJsonPreview || removingLocalMcpId === mcpJsonPreviewItem.id"
+                @click="mcpJsonPreviewItem && void removeLocalMcp(mcpJsonPreviewItem)"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 6h18" />
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                  <line x1="10" x2="10" y1="11" y2="17" />
+                  <line x1="14" x2="14" y1="11" y2="17" />
+                </svg>
+                删除
+              </button>
+              <button
                 type="button"
                 data-testid="mcp-json-preview-save"
                 class="h-8 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
@@ -3606,12 +3676,15 @@ onBeforeUnmount(() => {
           </header>
           <div class="space-y-3 px-4 py-4">
             <p v-if="loadingMcpJsonPreview" class="text-sm text-muted-foreground">加载 JSON 中...</p>
-            <div v-else class="space-y-2">
-              <textarea
-                v-model="mcpJsonPreviewDraft"
+            <div v-else class="space-y-3">
+              <div>
+                <label class="mb-1 block text-xs font-medium text-muted-foreground">JSON 配置</label>
+                <textarea
+                  v-model="mcpJsonPreviewDraft"
                 data-testid="mcp-json-preview-textarea"
-                class="min-h-[56vh] w-full rounded-xl border border-border bg-muted/20 p-3 font-mono text-xs text-foreground"
+                class="min-h-[48vh] w-full rounded-xl border border-border bg-muted/20 p-3 font-mono text-xs text-foreground"
               />
+              </div>
             </div>
             <p v-if="!loadingMcpJsonPreview && mcpJsonPreviewError" class="text-sm text-destructive">
               {{ mcpJsonPreviewError }}

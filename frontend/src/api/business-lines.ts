@@ -266,4 +266,13 @@ export const businessLinesApi = {
       sourcePath: params.sourcePath,
     })
   },
+
+  removeLocalMcp(businessLineId: string, params: { name: string; sourcePath: string }) {
+    const query = new URLSearchParams()
+    query.set('name', params.name)
+    query.set('sourcePath', params.sourcePath)
+    return apiHttp.delete<void>(
+      `/business-lines/${businessLineId}/local-mcps?${query.toString()}`,
+    )
+  },
 }

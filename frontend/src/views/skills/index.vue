@@ -420,6 +420,9 @@ const removeProjectSkill = async (item: Skill) => {
 
   try {
     await skillsApi.removeFromProject(item.id, { projectId })
+    if (detailSkill.value?.id === item.id) {
+      closeSkillDetail()
+    }
     await loadSkills()
     message.success(`技能「${item.name}」已删除`)
   } catch (error) {
@@ -724,35 +727,6 @@ onBeforeUnmount(() => {
             </div>
 
             <p class="mt-3 text-xs text-muted-foreground">{{ item.description ?? '暂无描述' }}</p>
-
-            <div class="mt-3 flex items-center gap-2">
-              <button
-                type="button"
-                class="inline-flex h-7 items-center justify-center rounded-md border border-border bg-background px-2 text-xs font-semibold text-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-                :disabled="downloadingSkillId === item.id"
-                @click.stop="downloadProjectSkill(item)"
-              >
-                {{ downloadingSkillId === item.id ? '下载中...' : '下载' }}
-              </button>
-              <button
-                type="button"
-                class="inline-flex h-7 items-center justify-center rounded-md border border-red-300 bg-red-50 px-2 text-xs font-semibold text-red-600 transition hover:border-red-500 hover:bg-red-100 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-400 dark:hover:border-red-400 dark:hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                :disabled="removingSkillId === item.id"
-                @click.stop="removeProjectSkill(item)"
-              >
-                {{ removingSkillId === item.id ? '删除中...' : '删除' }}
-              </button>
-              <a
-                v-if="item.homepageUrl"
-                :href="item.homepageUrl"
-                class="ml-auto inline-flex text-xs font-semibold text-primary hover:underline"
-                target="_blank"
-                rel="noreferrer"
-                @click.stop
-              >
-                查看说明
-              </a>
-            </div>
           </article>
         </div>
       </article>
@@ -883,14 +857,42 @@ onBeforeUnmount(() => {
               <h2 class="text-base font-semibold">{{ detailSkill.name }}</h2>
               <p class="text-xs text-muted-foreground">{{ detailSelectedPath || '技能目录' }}</p>
             </div>
-            <button
-              type="button"
-              aria-label="关闭"
-              class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
-              @click="closeSkillDetail"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-            </button>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="inline-flex h-8 items-center justify-center rounded-md border border-primary/60 bg-primary/5 px-3 text-xs font-semibold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="detailLoading || downloadingSkillId === detailSkill.id"
+                @click="void downloadProjectSkill(detailSkill)"
+              >
+                {{ downloadingSkillId === detailSkill.id ? '下载中...' : '下载' }}
+              </button>
+              <button
+                type="button"
+                class="inline-flex h-8 items-center justify-center rounded-md border border-destructive/60 bg-destructive/5 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="删除技能"
+                :disabled="detailLoading || removingSkillId === detailSkill.id"
+                @click="void removeProjectSkill(detailSkill)"
+              >
+                {{ removingSkillId === detailSkill.id ? '删除中...' : '删除' }}
+              </button>
+              <a
+                v-if="detailSkill.homepageUrl"
+                :href="detailSkill.homepageUrl"
+                class="inline-flex text-xs font-semibold text-primary hover:underline"
+                target="_blank"
+                rel="noreferrer"
+              >
+                查看说明
+              </a>
+              <button
+                type="button"
+                aria-label="关闭"
+                class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
+                @click="closeSkillDetail"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+              </button>
+            </div>
           </header>
 
           <div v-if="detailLoading" class="flex-1 px-4 py-6 text-sm text-muted-foreground">加载中...</div>

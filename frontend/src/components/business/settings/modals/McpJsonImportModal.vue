@@ -102,15 +102,17 @@ watch(
         </header>
 
         <div class="space-y-4 px-4 py-4">
-          <p class="text-xs text-muted-foreground">
-            支持两种格式：`{ "mcpServers": { ... } }` 或直接 `{ "serverName": { ... } }`
-          </p>
-
-          <textarea
+          <div>
+            <label class="mb-1 block text-xs font-medium text-muted-foreground">JSON 配置</label>
+            <p class="mb-1 text-xs text-muted-foreground">
+              支持两种格式：`{ "mcpServers": { ... } }` 或直接 `{ "serverName": { ... } }`
+            </p>
+            <textarea
             v-model="jsonText"
             class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm"
             placeholder="{&quot;mcpServers&quot;:{&quot;filesystem&quot;:{&quot;command&quot;:&quot;npx&quot;,&quot;args&quot;:[&quot;-y&quot;,&quot;@modelcontextprotocol/server-filesystem&quot;,&quot;/tmp&quot;]}}}"
           />
+          </div>
 
           <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
           <p v-else-if="props.errorMessage" class="text-sm text-destructive">
