@@ -86,6 +86,16 @@ func (s *ShadowV1GoodUseCase) CreateGood(ctx context.Context, req *pb.CreateGood
 	if platformGood == nil || platformGood.ID == "" {
 		return resp, errorx.PlatformGoodNotExists.WithFmtMsg(req.GetPlatformGoodId()).Err()
 	}
+	// 判断是否为定金商品
+	isDepositGood := platformGood.GoodType == "deposit"
+	// 定金商品字段强制设置逻辑
+	isPushAppointmentInfo := req.GetIsPushAppointmentInfo()
+	appointmentRules := req.GetAppointmentRules()
+	if isDepositGood {
+		// 定金商品强制设置：isPushAppointmentInfo=false，appointmentRules=''
+		isPushAppointmentInfo = false
+		appointmentRules = ""
+	}
 	// 校验标签：每个标签最多不超过4个中文字符
 	for _, label := range req.GetLabel() {
 		if utf8.RuneCountInString(label) > 4 {
@@ -111,6 +121,15 @@ func (s *ShadowV1GoodUseCase) CreateGood(ctx context.Context, req *pb.CreateGood
 		return resp, errorx.DataFormattingError.WithError(err).Err()
 	}
 
+	// 处理库存字段：如果 stock <= 0 或未设置，则设为 NULL（无限库存）
+	// 注意：由于 Go 的 int32 默认值为 0，需要通过指针或特殊值判断
+	// 这里使用 0 表示未设置或无限库存，>0 表示有限库存
+	var stock *int32
+	if req.GetStock() > 0 {
+		stockVal := req.GetStock()
+		stock = &stockVal
+	}
+
 	good := &yanxue_model.Good{
 		ID:                    goodId, // 显式设置ID
 		PlatformGoodID:        req.GetPlatformGoodId(),
@@ -121,13 +140,19 @@ func (s *ShadowV1GoodUseCase) CreateGood(ctx context.Context, req *pb.CreateGood
 		DetailImages:          detailImagesJson,
 		Price:                 float64(req.GetPrice()) / 100.0, // 前端传入分，转换为元存储
 		Content:               content,
-		AppointmentRules:      req.GetAppointmentRules(),
+		AppointmentRules:      appointmentRules,
 		Status:                string(constant.GoodStatusPending),
 		UpdatedBy:             adminId,
-		IsPushAppointmentInfo: req.GetIsPushAppointmentInfo(),
+		IsPushAppointmentInfo: isPushAppointmentInfo,
 		Label:                 labelJson,
 		PurchaseAgreementName: req.GetPurchaseAgreementName(),
 		PurchaseAgreementLink: req.GetPurchaseAgreementLink(),
+	}
+	// 设置库存字段（如果 Good 模型有 Stock 字段）
+	// 注意：需要先执行数据库迁移，然后重新生成模型代码，Stock 字段才会存在
+	// 这里先注释，等模型更新后再取消注释
+	if stock != nil {
+		good.Stock = *stock
 	}
 	err = s.goodRepo.CreateOneCache(ctx, good)
 	if err != nil {

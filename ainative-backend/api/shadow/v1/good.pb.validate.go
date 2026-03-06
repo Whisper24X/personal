@@ -122,6 +122,8 @@ func (m *GoodInfo) validate(all bool) error {
 
 	// no validation rules for PurchaseAgreementLink
 
+	// no validation rules for Stock
+
 	if len(errors) > 0 {
 		return GoodInfoMultiError(errors)
 	}
@@ -739,6 +741,8 @@ func (m *CreateGoodReq) validate(all bool) error {
 
 	// no validation rules for PurchaseAgreementLink
 
+	// no validation rules for Stock
+
 	if len(errors) > 0 {
 		return CreateGoodReqMultiError(errors)
 	}
@@ -1014,6 +1018,8 @@ func (m *UpdateGoodReq) validate(all bool) error {
 	// no validation rules for PurchaseAgreementName
 
 	// no validation rules for PurchaseAgreementLink
+
+	// no validation rules for Stock
 
 	if len(errors) > 0 {
 		return UpdateGoodReqMultiError(errors)

@@ -1151,6 +1151,11 @@
         "purchaseAgreementLink": {
           "type": "string",
           "title": "购买协议链接"
+        },
+        "stock": {
+          "type": "integer",
+          "format": "int32",
+          "title": "库存数量，NULL表示无限库存，\u003e0表示有限库存"
         }
       },
       "title": "商品信息"

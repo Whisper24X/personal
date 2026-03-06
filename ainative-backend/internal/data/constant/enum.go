@@ -172,10 +172,11 @@ enable=1 // 启用
 */
 type UserStatus int32
 
-// 商品类型 单日类型商品 多日类型商品
+// 商品类型 单日类型商品 多日类型商品 定金商品
 /*ENUM(
 single // 单日类型商品
 multi // 多日类型商品
+deposit // 定金商品
 )*/
 type GoodType string
 

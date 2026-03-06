@@ -68,6 +68,7 @@ message GoodInfo {
   repeated string label = 20; // 商品标签
   string purchaseAgreementName = 21; // 购买协议名称
   string purchaseAgreementLink = 22; // 购买协议链接
+  int32 stock = 23; // 库存数量，NULL表示无限库存，>0表示有限库存
 }
 
 message CourseItem {
@@ -115,6 +116,7 @@ message CreateGoodReq {
   repeated string label = 10; // 商品标签
   string purchaseAgreementName = 11; // 购买协议名称
   string purchaseAgreementLink = 12; // 购买协议链接
+  int32 stock = 13; // 库存数量，0表示无限库存，>0表示有限库存（可选字段，定金商品使用）
 }
 
 //响应-商品-创建一条数据
@@ -137,6 +139,7 @@ message UpdateGoodReq {
   repeated string label = 11; // 商品标签
   string purchaseAgreementName = 12; // 购买协议名称
   string purchaseAgreementLink = 13; // 购买协议链接
+  int32 stock = 14; // 库存数量，0表示无限库存，>0表示有限库存（可选字段，定金商品使用）
 }
 
 //响应-商品-更新一条数据

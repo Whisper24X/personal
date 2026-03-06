@@ -55,14 +55,38 @@ func (w *WechatV1OrderUseCase) WechatPayPaidNotify(wr http.ResponseWriter, r *ht
 		}
 		// 支付成功
 		if transaction.TradeState == models.WX_TRADE_STATE_SUCCESS {
-			// 支付成功后，订单状态变更为待预约，并记录支付时间和支付单号
-			orderInfo.Status = string(constant.OrderStatusPending)
-			orderInfo.ServiceStatus = string(constant.OrderStatusPending)
+			// 查询商品类型，判断是否为定金商品
+			goodInfo, err := w.goodRepo.FindOneCacheByID(ctx, orderInfo.GoodID)
+			if err != nil {
+				w.log.Errorf("WechatPayPaidNotify: find good failed, orderId=%s, goodId=%s, err=%s", orderId, orderInfo.GoodID, err.Error())
+				fail("find good failed")
+				return false
+			}
+			platformGoodIdToGoodTypeMap, err := w.platformGoodRepo.PlatformGoodIdToGoodType(ctx, []string{goodInfo.PlatformGoodID})
+			if err != nil {
+				w.log.Errorf("WechatPayPaidNotify: get good type failed, orderId=%s, platformGoodId=%s, err=%s", orderId, goodInfo.PlatformGoodID, err.Error())
+				fail("get good type failed")
+				return false
+			}
+			goodType := platformGoodIdToGoodTypeMap[goodInfo.PlatformGoodID]
+			isDepositGood := goodType == "deposit"
+
 			paymentTime := timeutil.Carbon().Parse(transaction.SuccessTime).ToStdTime()
 			orderInfo.PaymentTime = paymentTime
 			orderInfo.PayID = transaction.TransactionID
 			// 小程序渠道的实收金额等于订单金额
 			orderInfo.ReceiptAmount = int32(orderInfo.OrderPrice*100 + 0.5) // 元转分，四舍五入
+
+			if isDepositGood {
+				// 定金商品：支付成功后直接更新为 completed 状态
+				orderInfo.Status = string(constant.OrderStatusCompleted)
+				orderInfo.ServiceStatus = "" // 定金商品 serviceStatus 设为空字符串
+			} else {
+				// 预约商品：支付成功后，订单状态变更为待预约
+				orderInfo.Status = string(constant.OrderStatusPending)
+				orderInfo.ServiceStatus = string(constant.OrderStatusPending)
+			}
+
 			// 更新订单信息
 			err = w.orderRepo.UpdateOneCache(ctx, orderInfo, oldOrderInfo)
 			if err != nil {
@@ -71,11 +95,13 @@ func (w *WechatV1OrderUseCase) WechatPayPaidNotify(wr http.ResponseWriter, r *ht
 				return false
 			}
 
-			// 拆分订单为子订单
-			err = w.SplitOrderToSubOrders(ctx, orderId)
-			if err != nil {
-				w.log.Errorf("WechatPayPaidNotify: split order failed, orderId=%s, err=%s", orderId, err.Error())
-				// 拆单失败不影响主流程，只记录日志
+			// 只有非定金商品才需要拆分订单为子订单
+			if !isDepositGood {
+				err = w.SplitOrderToSubOrders(ctx, orderId)
+				if err != nil {
+					w.log.Errorf("WechatPayPaidNotify: split order failed, orderId=%s, err=%s", orderId, err.Error())
+					// 拆单失败不影响主流程，只记录日志
+				}
 			}
 		}
 
@@ -99,6 +125,15 @@ func (w *WechatV1OrderUseCase) WechatPayPaidNotify(wr http.ResponseWriter, r *ht
 					oldUserCoupon := w.userCouponRepo.DeepCopy(userCoupon)
 					userCoupon.Status = string(constant.UserCouponStatusUnUsed)
 					w.userCouponRepo.UpdateOneCache(ctx, userCoupon, oldUserCoupon)
+				}
+			}
+
+			// 定金商品支付失败/超时/取消时的库存回补逻辑
+			if orderInfo.GoodType == "deposit" {
+				err = w.goodRepo.RollbackStock(ctx, orderInfo.GoodID, 1)
+				if err != nil {
+					w.log.Errorf("支付失败/超时/取消，库存回补失败，订单ID：%s，商品ID：%s，错误：%v", orderInfo.ID, orderInfo.GoodID, err)
+					// 库存回补失败不影响主流程，只记录日志
 				}
 			}
 		}

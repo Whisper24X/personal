@@ -85,6 +85,18 @@ func (s *ShadowV1OrderUseCase) CloseExpiredOrders(ctx context.Context, req *pb.C
 			return resp, errorx.DataSQLErr.WithError(err).Err()
 		}
 	}
+
+	// 定金商品超时订单的库存回补逻辑
+	for _, order := range orderList {
+		if order.GoodType == "deposit" {
+			err = s.goodRepo.RollbackStock(ctx, order.GoodID, 1)
+			if err != nil {
+				s.log.Errorf("超时订单库存回补失败，订单ID：%s，商品ID：%s，错误：%v", order.ID, order.GoodID, err)
+				// 库存回补失败不影响主流程，只记录日志
+			}
+		}
+	}
+
 	resp.SuccessCount = int32(len(orderList))
 	s.log.Infof("成功关闭 %d 个超时未支付订单", len(orderList))
 
