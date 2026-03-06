@@ -4,6 +4,8 @@ import type {
   ProjectSkillProvider,
   Skill,
   SkillContent,
+  SkillFile,
+  SkillTree,
   UpdateSkillPayload,
 } from '@/types/api/skills'
 import { apiHttp, type InfinityPaginationResponse } from './http'
@@ -26,6 +28,19 @@ export const skillsApi = {
   content(skillId: string, params: { projectId: string }) {
     return apiHttp.get<SkillContent>(`/skills/${skillId}/content`, {
       projectId: params.projectId,
+    })
+  },
+
+  tree(skillId: string, params: { projectId: string }) {
+    return apiHttp.get<SkillTree>(`/skills/${skillId}/tree`, {
+      projectId: params.projectId,
+    })
+  },
+
+  file(skillId: string, params: { projectId: string; path: string }) {
+    return apiHttp.get<SkillFile>(`/skills/${skillId}/file`, {
+      projectId: params.projectId,
+      path: params.path,
     })
   },
 
@@ -63,5 +78,11 @@ export const skillsApi = {
 
   remove(skillId: string) {
     return apiHttp.delete<void>(`/skills/${skillId}`)
+  },
+
+  removeFromProject(skillId: string, params: { projectId: string }) {
+    return apiHttp.delete<void>(
+      `/skills/project/${skillId}?projectId=${encodeURIComponent(params.projectId)}`,
+    )
   },
 }

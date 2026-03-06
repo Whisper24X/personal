@@ -5,11 +5,12 @@ import { useMessage } from '@/hooks'
 import { businessLinesApi } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
 import { skillsApi } from '@/api/skills'
-import type { Skill } from '@/types/api/skills'
+import type { Skill, SkillTreeNode } from '@/types/api/skills'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
 import SkillUploadModal from '@/components/business/settings/modals/SkillUploadModal.vue'
+import SkillTreeNodeComponent from '@/components/core/SkillTreeNode.vue'
 
 defineOptions({
   name: 'SkillsManagementView',
@@ -43,10 +44,17 @@ const uploadingProjectSkill = ref(false)
 const uploadSkillErrorMessage = ref('')
 const projectContextRequestToken = ref(0)
 const detailSkill = ref<Skill | null>(null)
+const detailTree = ref<SkillTreeNode[]>([])
 const detailContent = ref('')
+const detailSelectedPath = ref('')
 const detailLoading = ref(false)
+const detailFileLoading = ref(false)
 const detailErrorMessage = ref('')
 const detailRequestToken = ref(0)
+const detailExpandedDirs = ref(new Set<string>())
+const detailSource = ref<'project' | 'business-line'>('project')
+const removingSkillId = ref('')
+const downloadingSkillId = ref('')
 
 type SkillGroup = {
   id: string
@@ -362,12 +370,130 @@ const submitUploadProjectSkill = async (file: File) => {
   }
 }
 
+const downloadProjectSkill = async (item: Skill) => {
+  const projectId = activeProjectId.value
+  if (!projectId || downloadingSkillId.value) {
+    return
+  }
+
+  downloadingSkillId.value = item.id
+
+  try {
+    const token = localStorage.getItem(STORAGE_KEYS.authToken)
+    const url = `/api/v1/skills/${encodeURIComponent(item.id)}/download?projectId=${encodeURIComponent(projectId)}`
+    const response = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+
+    if (!response.ok) {
+      throw new Error(`下载失败 (${response.status})`)
+    }
+
+    const blob = await response.blob()
+    const disposition = response.headers.get('content-disposition')
+    const fileNameMatch = disposition?.match(/filename="?([^"]+)"?/)
+    const fileName = fileNameMatch?.[1] ? decodeURIComponent(fileNameMatch[1]) : `${item.name}.zip`
+
+    const anchor = document.createElement('a')
+    anchor.href = URL.createObjectURL(blob)
+    anchor.download = fileName
+    anchor.click()
+    URL.revokeObjectURL(anchor.href)
+  } catch (error) {
+    message.error(toErrorMessage(error, '下载技能失败'))
+  } finally {
+    downloadingSkillId.value = ''
+  }
+}
+
+const removeProjectSkill = async (item: Skill) => {
+  const projectId = activeProjectId.value
+  if (!projectId || removingSkillId.value) {
+    return
+  }
+
+  if (!window.confirm(`确认删除技能「${item.name}」吗？此操作不可撤销。`)) {
+    return
+  }
+
+  removingSkillId.value = item.id
+
+  try {
+    await skillsApi.removeFromProject(item.id, { projectId })
+    await loadSkills()
+    message.success(`技能「${item.name}」已删除`)
+  } catch (error) {
+    message.error(toErrorMessage(error, '删除技能失败'))
+  } finally {
+    removingSkillId.value = ''
+  }
+}
+
+const toggleDetailDir = (dirPath: string) => {
+  const expanded = detailExpandedDirs.value
+  if (expanded.has(dirPath)) {
+    expanded.delete(dirPath)
+  } else {
+    expanded.add(dirPath)
+  }
+}
+
+const loadDetailFile = async (filePath: string) => {
+  const skill = detailSkill.value
+  if (!skill) return
+
+  detailSelectedPath.value = filePath
+  detailFileLoading.value = true
+  detailContent.value = ''
+  const requestToken = detailRequestToken.value
+
+  try {
+    let response: { path: string; content: string }
+    if (detailSource.value === 'business-line') {
+      response = await businessLinesApi.localSkillFile(
+        projectBusinessLineId.value,
+        skill.id,
+        filePath,
+      )
+    } else {
+      response = await skillsApi.file(skill.id, {
+        projectId: activeProjectId.value,
+        path: filePath,
+      })
+    }
+    if (requestToken !== detailRequestToken.value) return
+    detailContent.value = response.content
+  } catch (error) {
+    if (requestToken !== detailRequestToken.value) return
+    detailContent.value = ''
+    detailErrorMessage.value = toErrorMessage(error, '加载文件失败')
+  } finally {
+    if (requestToken === detailRequestToken.value) {
+      detailFileLoading.value = false
+    }
+  }
+}
+
+const findSkillMdPath = (nodes: SkillTreeNode[]): string | null => {
+  for (const node of nodes) {
+    if (!node.isDir && node.name.toLowerCase() === 'skill.md') {
+      return node.path
+    }
+  }
+  return null
+}
+
 const closeSkillDetail = () => {
   detailRequestToken.value += 1
   detailSkill.value = null
+  detailTree.value = []
   detailContent.value = ''
+  detailSelectedPath.value = ''
   detailErrorMessage.value = ''
   detailLoading.value = false
+  detailFileLoading.value = false
+  detailExpandedDirs.value = new Set()
+  detailSource.value = 'project'
 }
 
 const openSkillDetail = async (item: Skill) => {
@@ -377,24 +503,27 @@ const openSkillDetail = async (item: Skill) => {
   }
 
   detailSkill.value = item
+  detailTree.value = []
   detailContent.value = ''
+  detailSelectedPath.value = ''
   detailErrorMessage.value = ''
   detailLoading.value = true
+  detailSource.value = 'project'
+  detailExpandedDirs.value = new Set()
   const requestToken = ++detailRequestToken.value
 
   try {
-    const response = await skillsApi.content(item.id, { projectId })
-    if (requestToken !== detailRequestToken.value) {
-      return
-    }
+    const response = await skillsApi.tree(item.id, { projectId })
+    if (requestToken !== detailRequestToken.value) return
 
-    detailContent.value = response.content || ''
+    detailTree.value = response.tree
+    const defaultFile = findSkillMdPath(response.tree)
+    if (defaultFile) {
+      await loadDetailFile(defaultFile)
+    }
   } catch (error) {
-    if (requestToken !== detailRequestToken.value) {
-      return
-    }
-
-    detailErrorMessage.value = toErrorMessage(error, '加载 SKILL.md 失败')
+    if (requestToken !== detailRequestToken.value) return
+    detailErrorMessage.value = toErrorMessage(error, '加载技能目录失败')
   } finally {
     if (requestToken === detailRequestToken.value) {
       detailLoading.value = false
@@ -410,24 +539,27 @@ const openBusinessLineSkillDetail = async (item: Skill) => {
   }
 
   detailSkill.value = item
+  detailTree.value = []
   detailContent.value = ''
+  detailSelectedPath.value = ''
   detailErrorMessage.value = ''
   detailLoading.value = true
+  detailSource.value = 'business-line'
+  detailExpandedDirs.value = new Set()
   const requestToken = ++detailRequestToken.value
 
   try {
-    const response = await businessLinesApi.localSkillContent(businessLineId, item.id)
-    if (requestToken !== detailRequestToken.value) {
-      return
-    }
+    const response = await businessLinesApi.localSkillTree(businessLineId, item.id)
+    if (requestToken !== detailRequestToken.value) return
 
-    detailContent.value = response.content || ''
+    detailTree.value = response.tree
+    const defaultFile = findSkillMdPath(response.tree)
+    if (defaultFile) {
+      await loadDetailFile(defaultFile)
+    }
   } catch (error) {
-    if (requestToken !== detailRequestToken.value) {
-      return
-    }
-
-    detailErrorMessage.value = toErrorMessage(error, '加载 SKILL.md 失败')
+    if (requestToken !== detailRequestToken.value) return
+    detailErrorMessage.value = toErrorMessage(error, '加载技能目录失败')
   } finally {
     if (requestToken === detailRequestToken.value) {
       detailLoading.value = false
@@ -493,6 +625,7 @@ onBeforeUnmount(() => {
             class="h-10 min-w-[240px] flex-1 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
             placeholder="搜索名称 / 版本 / 说明"
             type="search"
+            @keydown.enter.prevent="loadSkills"
           />
         </div>
 
@@ -585,31 +718,41 @@ onBeforeUnmount(() => {
             @keydown.enter.prevent="openSkillDetail(item)"
             @keydown.space.prevent="openSkillDetail(item)"
           >
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <p class="text-sm font-semibold">{{ item.name }}</p>
-                <p class="mt-1 text-xs text-muted-foreground">版本：{{ item.version }}</p>
-              </div>
-              <span
-                class="inline-flex rounded-full px-2 py-1 text-[10px] font-semibold"
-                :class="item.enabled ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'"
-              >
-                {{ item.enabled ? '已启用' : '已停用' }}
-              </span>
+            <div>
+              <p class="text-sm font-semibold">{{ item.name }}</p>
+              <p class="mt-1 text-xs text-muted-foreground">版本：{{ item.version }}</p>
             </div>
 
             <p class="mt-3 text-xs text-muted-foreground">{{ item.description ?? '暂无描述' }}</p>
 
-            <a
-              v-if="item.homepageUrl"
-              :href="item.homepageUrl"
-              class="mt-3 inline-flex text-xs font-semibold text-primary hover:underline"
-              target="_blank"
-              rel="noreferrer"
-              @click.stop
-            >
-              查看说明
-            </a>
+            <div class="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                class="inline-flex h-7 items-center justify-center rounded-md border border-border bg-background px-2 text-xs font-semibold text-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="downloadingSkillId === item.id"
+                @click.stop="downloadProjectSkill(item)"
+              >
+                {{ downloadingSkillId === item.id ? '下载中...' : '下载' }}
+              </button>
+              <button
+                type="button"
+                class="inline-flex h-7 items-center justify-center rounded-md border border-red-300 bg-red-50 px-2 text-xs font-semibold text-red-600 transition hover:border-red-500 hover:bg-red-100 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-400 dark:hover:border-red-400 dark:hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="removingSkillId === item.id"
+                @click.stop="removeProjectSkill(item)"
+              >
+                {{ removingSkillId === item.id ? '删除中...' : '删除' }}
+              </button>
+              <a
+                v-if="item.homepageUrl"
+                :href="item.homepageUrl"
+                class="ml-auto inline-flex text-xs font-semibold text-primary hover:underline"
+                target="_blank"
+                rel="noreferrer"
+                @click.stop
+              >
+                查看说明
+              </a>
+            </div>
           </article>
         </div>
       </article>
@@ -733,12 +876,12 @@ onBeforeUnmount(() => {
         <section
           aria-modal="true"
           role="dialog"
-          class="relative z-10 flex max-h-[85vh] w-full max-w-3xl flex-col rounded-2xl border border-border bg-background shadow-2xl"
+          class="relative z-10 flex max-h-[85vh] w-full max-w-5xl flex-col rounded-2xl border border-border bg-background shadow-2xl"
         >
           <header class="flex items-center justify-between border-b border-border px-4 py-3">
             <div>
               <h2 class="text-base font-semibold">{{ detailSkill.name }}</h2>
-              <p class="text-xs text-muted-foreground">SKILL.md</p>
+              <p class="text-xs text-muted-foreground">{{ detailSelectedPath || '技能目录' }}</p>
             </div>
             <button
               type="button"
@@ -746,31 +889,38 @@ onBeforeUnmount(() => {
               class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
               @click="closeSkillDetail"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M18 6 6 18" />
-                <path d="m6 6 12 12" />
-              </svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
             </button>
           </header>
 
-          <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-            <p v-if="detailLoading" class="text-sm text-muted-foreground">加载中...</p>
-            <p v-else-if="detailErrorMessage" class="text-sm text-destructive">{{ detailErrorMessage }}</p>
-            <pre
-              v-else
-              class="max-h-[62vh] overflow-auto whitespace-pre-wrap rounded-xl border border-border bg-background p-3 font-mono text-xs leading-relaxed text-foreground"
-            >{{ detailContent || '未读取到 SKILL.md 内容。' }}</pre>
+          <div v-if="detailLoading" class="flex-1 px-4 py-6 text-sm text-muted-foreground">加载中...</div>
+          <p v-else-if="detailErrorMessage" class="flex-1 px-4 py-6 text-sm text-destructive">{{ detailErrorMessage }}</p>
+
+          <div v-else class="flex min-h-0 flex-1">
+            <aside class="w-56 flex-shrink-0 overflow-y-auto border-r border-border px-2 py-3">
+              <SkillTreeNodeComponent
+                :nodes="detailTree"
+                :selected-path="detailSelectedPath"
+                :expanded-dirs="detailExpandedDirs"
+                @select-file="loadDetailFile($event)"
+                @toggle-dir="toggleDetailDir($event)"
+              />
+
+              <p v-if="detailTree.length === 0" class="px-2 py-2 text-xs text-muted-foreground">
+                无文件
+              </p>
+            </aside>
+
+            <div class="min-w-0 flex-1 overflow-y-auto px-4 py-3">
+              <p v-if="detailFileLoading" class="text-sm text-muted-foreground">加载中...</p>
+              <p v-else-if="!detailSelectedPath" class="text-sm text-muted-foreground">
+                请在左侧选择一个文件查看内容。
+              </p>
+              <pre
+                v-else
+                class="max-h-[62vh] overflow-auto whitespace-pre-wrap rounded-xl border border-border bg-background p-3 font-mono text-xs leading-relaxed text-foreground"
+              >{{ detailContent || '文件内容为空。' }}</pre>
+            </div>
           </div>
 
           <footer class="border-t border-border px-4 py-3">

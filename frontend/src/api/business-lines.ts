@@ -1,5 +1,5 @@
 import { apiHttp, type InfinityPaginationResponse } from './http'
-import type { Skill, SkillContent } from '@/types/api/skills'
+import type { Skill, SkillContent, SkillFile, SkillTree } from '@/types/api/skills'
 import type { Mcp } from '@/types/api/mcps'
 
 export type BusinessLine = {
@@ -207,13 +207,32 @@ export const businessLinesApi = {
     return apiHttp.delete<void>(`/business-lines/${businessLineId}/agent-tool-configs/${configId}`)
   },
 
-  listLocalSkills(businessLineId: string) {
-    return apiHttp.get<Skill[]>(`/business-lines/${businessLineId}/local-skills`)
+  listLocalSkills(businessLineId: string, params?: { keyword?: string }) {
+    return apiHttp.get<Skill[]>(`/business-lines/${businessLineId}/local-skills`, {
+      keyword: params?.keyword,
+    })
+  },
+
+  removeLocalSkill(businessLineId: string, skillId: string) {
+    return apiHttp.delete<void>(`/business-lines/${businessLineId}/local-skills/${skillId}`)
   },
 
   localSkillContent(businessLineId: string, skillId: string) {
     return apiHttp.get<SkillContent>(
       `/business-lines/${businessLineId}/local-skills/${skillId}/content`,
+    )
+  },
+
+  localSkillTree(businessLineId: string, skillId: string) {
+    return apiHttp.get<SkillTree>(
+      `/business-lines/${businessLineId}/local-skills/${skillId}/tree`,
+    )
+  },
+
+  localSkillFile(businessLineId: string, skillId: string, filePath: string) {
+    return apiHttp.get<SkillFile>(
+      `/business-lines/${businessLineId}/local-skills/${skillId}/file`,
+      { path: filePath },
     )
   },
 

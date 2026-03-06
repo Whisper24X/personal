@@ -1,6 +1,12 @@
+import { StreamableFile } from '@nestjs/common';
+
 async function deepResolvePromises(input) {
   if (input instanceof Promise) {
     return await input;
+  }
+
+  if (input instanceof StreamableFile) {
+    return input;
   }
 
   if (Array.isArray(input)) {

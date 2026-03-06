@@ -29,6 +29,24 @@ export type SkillContent = {
   content: string
 }
 
+export type SkillTreeNode = {
+  name: string
+  path: string
+  isDir: boolean
+  children: SkillTreeNode[]
+}
+
+export type SkillTree = {
+  id: string
+  name: string
+  tree: SkillTreeNode[]
+}
+
+export type SkillFile = {
+  path: string
+  content: string
+}
+
 export type ProjectSkillProvider = 'codex' | 'cursor' | 'curso'
 
 export type ProjectLocalSkillResult = {
