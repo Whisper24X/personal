@@ -1,7 +1,7 @@
 /**
  * Role Action Factory
  * Dynamically creates role and action instances based on registry and database configuration
- * 
+ *
  * This factory uses centralized registries from roles/index.ts and actions/index.ts
  * to create instances, eliminating the need for hardcoded mappings in multiple files.
  */
@@ -15,17 +15,14 @@ import { logger } from '../utils';
 import { ROLE_REGISTRY } from '../roles';
 import { ACTION_REGISTRY } from '../actions';
 
+/** 接口自动化相关 action，仅当 ENABLE_API_AUTOMATION=true 时加入执行列表 */
+export const API_AUTOMATION_ACTIONS = ['ApiAutomationPlanning', 'ApiAutomationExecution'];
+
 export class RoleActionFactory {
   /**
    * Create a role instance from role definition
    */
-  static createRoleFromDefinition(
-    profile: string,
-    context: Context,
-    name?: string,
-    actions?: string[],
-    watchActions?: string[]
-  ): Role {
+  static createRoleFromDefinition(profile: string, context: Context, name?: string, actions?: string[], watchActions?: string[]): Role {
     const RoleClass = ROLE_REGISTRY[profile];
     if (!RoleClass) {
       throw new Error(`Unknown role profile: ${profile}. Available profiles: ${Object.keys(ROLE_REGISTRY).join(', ')}`);
@@ -36,8 +33,13 @@ export class RoleActionFactory {
 
     // Override actions if specified
     if (actions && actions.length > 0) {
+      const enableApiAutomation = process.env.ENABLE_API_AUTOMATION === 'true';
       const actionInstances = actions
         .map((actionName) => {
+          if (API_AUTOMATION_ACTIONS.includes(actionName) && !enableApiAutomation) {
+            logger.debug(`RoleActionFactory: Skipping ${actionName} (ENABLE_API_AUTOMATION is not true)`);
+            return null;
+          }
           const ActionClass = ACTION_REGISTRY[actionName];
           if (!ActionClass) {
             logger.warn(`Unknown action: ${actionName}, skipping`);
@@ -74,14 +76,16 @@ export class RoleActionFactory {
    * Useful for getting metadata from all roles
    */
   static createAllRoleInstances(context: Context): Role[] {
-    return Object.entries(ROLE_REGISTRY).map(([profile, RoleClass]) => {
-      try {
-        return new RoleClass(context);
-      } catch (error: any) {
-        logger.warn(`Failed to create role instance for ${profile}:`, error.message);
-        return null;
-      }
-    }).filter((role): role is Role => role !== null);
+    return Object.entries(ROLE_REGISTRY)
+      .map(([profile, RoleClass]) => {
+        try {
+          return new RoleClass(context);
+        } catch (error: any) {
+          logger.warn(`Failed to create role instance for ${profile}:`, error.message);
+          return null;
+        }
+      })
+      .filter((role): role is Role => role !== null);
   }
 
   /**
@@ -89,14 +93,16 @@ export class RoleActionFactory {
    * Useful for getting metadata from all actions
    */
   static createAllActionInstances(): BaseAction[] {
-    return Object.entries(ACTION_REGISTRY).map(([name, ActionClass]) => {
-      try {
-        return new ActionClass();
-      } catch (error: any) {
-        logger.warn(`Failed to create action instance for ${name}:`, error.message);
-        return null;
-      }
-    }).filter((action): action is BaseAction => action !== null);
+    return Object.entries(ACTION_REGISTRY)
+      .map(([name, ActionClass]) => {
+        try {
+          return new ActionClass();
+        } catch (error: any) {
+          logger.warn(`Failed to create action instance for ${name}:`, error.message);
+          return null;
+        }
+      })
+      .filter((action): action is BaseAction => action !== null);
   }
 
   /**

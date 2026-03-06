@@ -54,6 +54,10 @@ interface TestCaseExecutionResult {
   timestamp: string;
   steps: StepExecutionResult[];
   error?: string;
+  /** 执行成功时的页面截图文件名（相对 report 目录），用于报告展示 */
+  screenshotSuccess?: string;
+  /** 执行失败时的页面截图文件名（相对 report 目录），用于报告展示 */
+  screenshotFail?: string;
 }
 
 export class AutomationExecution extends BaseAction {
@@ -304,6 +308,14 @@ export class AutomationExecution extends BaseAction {
 
       const scriptFiles = entries
         .filter((entry) => entry.isFile() && (entry.name.endsWith('.js') || entry.name.endsWith('.ts')))
+        .filter((entry) => {
+          const name = entry.name;
+          if (/^playwright-test-API-/i.test(name) || /^api-test-/i.test(name)) {
+            logger.debug('AutomationExecution: Excluding API script from Playwright execution', { name });
+            return false;
+          }
+          return true;
+        })
         .map((entry) => path.join(autoDir, entry.name))
         .sort();
 
@@ -338,13 +350,139 @@ export class AutomationExecution extends BaseAction {
   }
 
   /**
+   * 优先从 skills/playwright-skill/login.md 解析账号、密码（供 Playwright 脚本 LOGIN_USER/LOGIN_PASSWORD）。
+   * 若无则从 workspace 的 docs/deploy/deployResult.md 解析。
+   */
+  private async readLoginMdCredentials(): Promise<{ loginUser?: string; loginPassword?: string }> {
+    const projectRoot = WorkspaceManager.getProjectRootPath();
+    const loginPath = path.join(projectRoot, 'skills', 'playwright-skill', 'login.md');
+
+    try {
+      const content = await fs.readFile(loginPath, 'utf-8');
+      let loginUser: string | undefined;
+      let loginPassword: string | undefined;
+      const accountMatch = content.match(/账号\s*[：:]\s*(.+)/);
+      if (accountMatch && accountMatch[1]) {
+        loginUser = accountMatch[1].trim();
+      }
+      const passwordMatch = content.match(/密码\s*[：:]\s*(.+)/);
+      if (passwordMatch && passwordMatch[1]) {
+        loginPassword = passwordMatch[1].trim();
+      }
+      if (loginUser !== undefined || loginPassword !== undefined) {
+        logger.debug('AutomationExecution: Resolved credentials from login.md', {
+          hasLoginUser: !!loginUser,
+          loginUserLength: loginUser?.length,
+        });
+      }
+      return { loginUser, loginPassword };
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        logger.debug('AutomationExecution: login.md not found', { loginPath });
+      } else {
+        logger.warn('AutomationExecution: Failed to read login.md for credentials', {
+          loginPath,
+          error: err?.message ?? String(err),
+        });
+      }
+      return {};
+    }
+  }
+
+  /**
+   * 从 workspace 的 docs/deploy/deployResult.md 解析账号、密码（供 Playwright 脚本 LOGIN_USER/LOGIN_PASSWORD）
+   */
+  private async readDeployResultCredentials(workspaceDir: string): Promise<{ loginUser?: string; loginPassword?: string }> {
+    const baseWorkspaceDir = workspaceDir.replace(/\/docs\/test$/, '');
+    const deployResultPath = path.join(baseWorkspaceDir, 'docs', 'deploy', 'deployResult.md');
+
+    try {
+      const content = await fs.readFile(deployResultPath, 'utf-8');
+      let loginUser: string | undefined;
+      let loginPassword: string | undefined;
+      const accountMatch = content.match(/账号\s*[：:]\s*(.+)/);
+      if (accountMatch && accountMatch[1]) {
+        loginUser = accountMatch[1].trim();
+      }
+      const passwordMatch = content.match(/密码\s*[：:]\s*(.+)/);
+      if (passwordMatch && passwordMatch[1]) {
+        loginPassword = passwordMatch[1].trim();
+      }
+      if (loginUser !== undefined || loginPassword !== undefined) {
+        logger.debug('AutomationExecution: Resolved credentials from deployResult', {
+          hasLoginUser: !!loginUser,
+          loginUserLength: loginUser?.length,
+        });
+      }
+      return { loginUser, loginPassword };
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        logger.debug('AutomationExecution: deployResult.md not found', { deployResultPath });
+      } else {
+        logger.warn('AutomationExecution: Failed to read deployResult.md for credentials', {
+          deployResultPath,
+          error: err?.message ?? String(err),
+        });
+      }
+      return {};
+    }
+  }
+
+  /**
+   * 从 workspace 的 docs/deploy/deployResult.md 解析部署地址，供 Playwright 脚本 TARGET_URL。
+   * 优先「管理后台」，其次「统一入口」，否则取表中第一个 URL。
+   */
+  private async readDeployResultBaseUrl(workspaceDir: string): Promise<string | undefined> {
+    const baseWorkspaceDir = workspaceDir.replace(/\/docs\/test$/, '');
+    const deployResultPath = path.join(baseWorkspaceDir, 'docs', 'deploy', 'deployResult.md');
+    try {
+      const content = await fs.readFile(deployResultPath, 'utf-8');
+      const map: Record<string, string> = {};
+      const regex = /([^\s,，；]+?)\s*[：:]?\s*(https?:\/\/[^\s,，；)、]+)/g;
+      let match: RegExpExecArray | null;
+      while ((match = regex.exec(content)) !== null) {
+        const label = match[1].trim();
+        const url = match[2].trim();
+        if (label && url && !map[label]) {
+          map[label] = url;
+        }
+      }
+      if (map['管理后台']) {
+        return map['管理后台'];
+      }
+      if (map['统一入口']) {
+        return map['统一入口'];
+      }
+      const firstKey = Object.keys(map)[0];
+      return firstKey ? map[firstKey] : undefined;
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        logger.debug('AutomationExecution: deployResult.md not found for baseUrl', { deployResultPath });
+      } else {
+        logger.warn('AutomationExecution: Failed to read deployResult.md for baseUrl', {
+          deployResultPath,
+          error: err?.message ?? String(err),
+        });
+      }
+      return undefined;
+    }
+  }
+
+  /**
    * Execute a single Playwright script via run.js and return result
    */
-  private runPlaywrightScript(scriptPath: string, skillDir: string, runJsPath: string): { exitCode: number; stdout: string; stderr: string } {
+  private runPlaywrightScript(
+    scriptPath: string,
+    skillDir: string,
+    runJsPath: string,
+    env?: NodeJS.ProcessEnv
+  ): { exitCode: number; stdout: string; stderr: string } {
+    const runEnv = env ? { ...process.env, ...env } : process.env;
     const result = spawnSync('node', [runJsPath, scriptPath], {
       cwd: skillDir,
       encoding: 'utf-8',
       timeout: 120000,
+      env: runEnv,
     });
     return {
       exitCode: result.status ?? -1,
@@ -379,16 +517,39 @@ export class AutomationExecution extends BaseAction {
         totalFiles: jsonFiles.length,
         skillDir: runPath.skillDir,
       });
+      const workspaceDir = path.join(_cwd, '..');
+      const reportDir = path.join(workspaceDir, 'report');
+      await fs.mkdir(reportDir, { recursive: true });
+      const loginMdCredentials = await this.readLoginMdCredentials();
+      const hasLoginMd =
+        (loginMdCredentials.loginUser != null && loginMdCredentials.loginUser !== '') ||
+        (loginMdCredentials.loginPassword != null && loginMdCredentials.loginPassword !== '');
+      const credentials = hasLoginMd ? loginMdCredentials : await this.readDeployResultCredentials(workspaceDir);
+      const runEnv: NodeJS.ProcessEnv = { ...process.env };
+      if (credentials.loginUser != null && credentials.loginUser !== '') {
+        runEnv.LOGIN_USER = credentials.loginUser;
+      }
+      if (credentials.loginPassword != null && credentials.loginPassword !== '') {
+        runEnv.LOGIN_PASSWORD = credentials.loginPassword;
+      }
+      const baseUrl = await this.readDeployResultBaseUrl(workspaceDir);
+      if (baseUrl) {
+        runEnv.TARGET_URL = baseUrl;
+      }
+      runEnv.AUTOMATION_REPORT_DIR = reportDir;
       for (const scriptFile of jsonFiles) {
         const startTime = Date.now();
         const fileName = path.basename(scriptFile);
         const testCaseId = fileName.replace(/\.(js|ts)$/, '');
-        const { exitCode, stderr } = this.runPlaywrightScript(scriptFile, runPath.skillDir, runPath.runJsPath);
+        runEnv.AUTOMATION_TEST_CASE_ID = testCaseId;
+        const { exitCode, stderr } = this.runPlaywrightScript(scriptFile, runPath.skillDir, runPath.runJsPath, runEnv);
         const executionTime = Date.now() - startTime;
         const success = exitCode === 0;
         if (!success) {
           logger.warn('AutomationExecution: Script failed', { fileName, exitCode, stderr: stderr.slice(0, 500) });
         }
+        const screenshotSuccess = success && existsSync(path.join(reportDir, `${testCaseId}-success.png`)) ? `${testCaseId}-success.png` : undefined;
+        const screenshotFail = !success && existsSync(path.join(reportDir, `${testCaseId}-fail.png`)) ? `${testCaseId}-fail.png` : undefined;
         results.push({
           testCaseId,
           testCaseName: testCaseId,
@@ -398,6 +559,8 @@ export class AutomationExecution extends BaseAction {
           timestamp: new Date().toISOString(),
           steps: [],
           error: success ? undefined : stderr?.trim() || `exit code ${exitCode}`,
+          screenshotSuccess,
+          screenshotFail,
         });
       }
       logger.info('AutomationExecution: Completed executing Playwright scripts', {
@@ -445,6 +608,8 @@ export class AutomationExecution extends BaseAction {
           executionTime: r.executionTime,
           timestamp: r.timestamp,
           error: r.error,
+          screenshotSuccess: r.screenshotSuccess,
+          screenshotFail: r.screenshotFail,
           steps: r.steps.map((s) => ({
             stepIndex: s.stepIndex,
             step: s.step,
@@ -637,6 +802,27 @@ export class AutomationExecution extends BaseAction {
             font-size: 14px;
             margin-bottom: 20px;
         }
+        .screenshot-details {
+            background: #f0f4f8;
+            border-left: 4px solid #0d6efd;
+            padding: 12px;
+            margin-top: 5px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .screenshot-details img {
+            max-width: 100%;
+            max-height: 400px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            margin-top: 8px;
+            display: block;
+        }
+        .screenshot-details .screenshot-label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
     </style>
 </head>
 <body>
@@ -756,6 +942,29 @@ export class AutomationExecution extends BaseAction {
                         <div class="error-details">
                             <strong>❌ 错误信息:</strong><br>
                             ${this.escapeHtml(result.error)}
+                        </div>
+                    </td>
+                </tr>`;
+      }
+
+      // Show page screenshot(s) in detailed results
+      if (result.screenshotSuccess || result.screenshotFail) {
+        html += `
+                <tr>
+                    <td colspan="6">
+                        <div class="screenshot-details">
+                            <strong>📷 页面截图</strong>`;
+        if (result.screenshotSuccess) {
+          html += `
+                            <div class="screenshot-label">执行成功时:</div>
+                            <img src="${this.escapeHtml(result.screenshotSuccess)}" alt="成功截图" />`;
+        }
+        if (result.screenshotFail) {
+          html += `
+                            <div class="screenshot-label" style="margin-top: 12px;">执行失败时:</div>
+                            <img src="${this.escapeHtml(result.screenshotFail)}" alt="失败截图" />`;
+        }
+        html += `
                         </div>
                     </td>
                 </tr>`;

@@ -1,11 +1,11 @@
 ---
 name: deploy-execute
-description: 执行部署命令并监控进度：停止旧服务、运行 make sandbox（或等效命令）、等待服务就绪，输出日志到 deployLog.md 和结果到 deployResult.md。当需要执行 sandbox 部署、监控服务启动或记录部署日志时使用。
+description: 执行部署命令并监控进度：运行 make sandbox-restart、读取 ./logs/ 目录下的日志文件判断服务启动状态，发现错误立即修复并重启，输出日志到 deployLog.md 和结果到 deployResult.md。当需要执行 sandbox 部署、监控服务启动或记录部署日志时使用。
 ---
 
 # ExecuteDeployment - 执行部署
 
-执行实际的部署命令，监控部署进度，确保服务完全启动。
+执行实际的部署命令，通过读取日志文件监控部署进度，**发现错误立即修复后重启**，确保服务完全启动。
 
 ## 输出规范（强制）
 
@@ -18,172 +18,154 @@ description: 执行部署命令并监控进度：停止旧服务、运行 make s
 | **结果格式** | 固定两行：第一行状态，第二行原因               |
 | **状态值**   | `部署成功` / `部署失败` / `部署超时`（三选一） |
 
+输出模板见 [references/templates.md](references/templates.md)。
+
 ## 执行步骤
 
-### 1. 执行部署命令
+### 1. 执行重启命令
 
-**部署命令选择**：
+执行 `make sandbox-restart`，该命令会自动完成：
 
-| 条件                              | 命令                       |
-| --------------------------------- | -------------------------- |
-| 有 Makefile 且包含 `sandbox` 目标 | `make sandbox`             |
-| 有 `docker-compose.yml`           | `docker compose up -d`     |
-| 有 npm `start` 或 `dev` 脚本      | `npm run dev` / `pnpm dev` |
-| 其他                              | 根据项目实际情况判断       |
+- 停止现有容器（`dc stop`）
+- 清空所有日志文件（`./logs/*.log`）
+- 重新启动容器并等待就绪（`dc up -d --wait`）
 
-**执行流程**：
-
-1. **停止现有服务**（确保干净环境）
-   - 执行 `make sandbox-stop`（无论服务是否在运行都执行此命令）
-   - 等待停止命令执行完成
-
-2. **启动服务**
-   - 执行 `make sandbox` 或等效部署命令
-   - 如果遇到任何部署错误，必须分析并解决问题，重新执行直到成功
-   - **不要在遇到错误时停止，必须想办法解决问题**
-
-### 2. 监控部署进度
-
-**日志分析要求**：
-
-需要分析日志输出，判断服务是否真正启动完成：
-
-1. **观察日志输出**：识别服务启动的关键标志
-2. **不要提前判断**：不要仅看到容器启动的消息就认为服务完成
-3. **等待应用就绪**：需要等到实际的应用服务器启动并输出访问地址
-
-**服务就绪判断标准**：
-
-| 标志类型     | 示例                               | 状态    |
-| ------------ | ---------------------------------- | ------- |
-| 访问地址出现 | `Local: http://localhost:3000`     | ✅ 就绪 |
-| Ready 状态   | `ready in 500ms`、`Server started` | ✅ 就绪 |
-| 容器启动     | `Container xxx Started`            | ⏳ 等待 |
-| 编译中       | `Compiling...`、`Building...`      | ⏳ 等待 |
-| 错误         | `Error`、`Failed`、`EADDRINUSE`    | ❌ 失败 |
-
-**等待策略**：
-
-- 不同项目的日志格式不同，需要根据实际输出灵活判断
-- 关键是确保应用服务器已完全启动并可以对外提供服务
-- 如果日志输出停止且没有错误信息，可以尝试访问服务地址验证是否可用
-- **必须等到 vite dev server 完全启动（看到 "ready in XXXms."）才能继续**
-
-### 3. 输出部署日志
-
-**日志文件** `docs/deploy/deployLog.md` 的完整格式见 [templates.md](templates.md)。
-
-日志内容须包含：部署时间、执行命令、执行耗时、停止服务输出、启动服务输出、服务启动状态表（服务名/状态/访问地址/耗时）、错误记录（如有）。
-
-**网络 IP 识别（用于网络访问）**：
-
-在写入 deployLog.md 前，执行以下任一命令获取**本机真实局域网 IP**，用于填充「网络访问」行：
-
-- Linux：`hostname -I | awk '{print $1}'` 或 `ip route get 1 2>/dev/null | awk '{print $7;exit}'`
-- macOS：`ipconfig getifaddr en0`（根据实际网卡如 en1、en0 调整）
-
-将识别到的 IP 记为 `<本机IP>`，仅用于「网络访问」行。
-
-**提取访问地址（严格规则）**：
-
-访问地址**只能**从以下两个来源提取，**禁止**从任何其他来源推断：
-
-**来源1：`make sandbox` 命令的终端输出**
-
-`sandbox.sh start` 执行结束时会打印如下格式的访问地址：
-
-```
-访问地址:
-  统一入口:    http://localhost:${SANDBOX_PORT}/ 或 http://10.8.8.152:${SANDBOX_PORT}/
-  后端 API:    http://localhost:${SANDBOX_PORT}/api/ 或 http://10.8.8.152:${SANDBOX_PORT}/api/
-  管理后台:    http://localhost:${SANDBOX_PORT}/shadow/ 或 http://10.8.8.152:${SANDBOX_PORT}/shadow/
-  移动端 H5:   http://localhost:${SANDBOX_PORT}/app/ 或 http://10.8.8.152:${SANDBOX_PORT}/app/
-  网络访问:    http://<本机IP>:${SANDBOX_PORT}/ （局域网内其他设备可访问）
+```bash
+make sandbox-restart
 ```
 
-直接从这段输出中提取 `http://localhost:[端口]/[路径]` 格式的地址；「网络访问」行用上一步识别的 `<本机IP>` 单独补充。
+- 如果遇到 Docker 未运行等错误，分析并解决后重试
+- **不要在遇到错误时停止，必须想办法解决问题**
 
-**来源2：`sandbox/.env` 配置文件**
+### 2. 发现服务列表并等待就绪
 
-如果命令输出中没有打印访问地址（如容器已在运行时输出跳过了 info），读取 `sandbox/.env` 获取 `SANDBOX_PORT`（默认 `8080`），按以下固定格式构造：
+**步骤 2a：从 `sandbox/supervisord.conf` 读取服务列表**
 
-- 统一入口：`http://localhost:${SANDBOX_PORT}/ 或 http://10.8.8.152:${SANDBOX_PORT}/`
-- 后端 API：`http://localhost:${SANDBOX_PORT}/api/ 或 http://10.8.8.152:${SANDBOX_PORT}/api/`
-- 管理后台：`http://localhost:${SANDBOX_PORT}/shadow/ 或 http://10.8.8.152:${SANDBOX_PORT}/shadow/`
-- 移动端 H5：`http://localhost:${SANDBOX_PORT}/app/ 或 http://10.8.8.152:${SANDBOX_PORT}/app/`
-- 网络访问：`http://<本机IP>:${SANDBOX_PORT}/ （局域网内其他设备可访问）`
+解析项目中的 `sandbox/supervisord.conf`，找出所有 `[program:X]` 段，提取：
 
-**严格禁止**：
+- 服务名（`X`）
+- 对应的日志文件路径（`stdout_logfile`，路径中 `/workspace/` 对应项目根目录的 `./logs/`）
 
-- ❌ 读取任何 nginx 配置文件（`nginx.conf`、`/etc/nginx/` 等）
-- ❌ 使用 nginx `server_name` 中的域名作为访问地址
-- ❌ 执行 `nginx -T`、`hostname` 或任何 OS 网络发现命令
-- ❌ 从项目目录结构或 docs 文档中"推断"访问地址
-- ❌ 使用 `localhost` 以外的主机名（`sandbox/.env` 中未显式配置时）
+示例解析结果（以当前项目为例，实际以配置文件内容为准）：
 
-**例外**：为获取「网络访问」行的本机 IP，执行 `hostname -I`、`ip route get`、`ipconfig getifaddr` 等命令是**允许**的。
+```
+nginx   → ./logs/nginx.log
+backend → ./logs/backend.log
+shadow  → ./logs/shadow.log
+app     → ./logs/app.log
+```
 
-记录服务启动状态（运行中/未启动/启动失败），只记录实际存在的服务。
+**步骤 2b：监控崩溃（早期检测）**
+
+在等待就绪的过程中，同时读取 `./logs/supervisord.log`：
+
+- 出现 `FATAL` 或 `entered EXITED state` → 立即读取该服务日志，进入**步骤 2d 错误修复流程**
+- **例外**：`app` 服务出现 `FATAL` 时，**直接跳过，不进入修复流程**（后期环境就绪后移除此规则）
+
+**步骤 2c：通过分析日志内容判断各服务是否真正就绪**
+
+每隔 10 秒读取每个服务的日志文件，通过日志内容**自主判断**服务是否已完成初始化并可接受请求。无固定格式，根据实际内容分析：
+
+- 出现端口监听信息（如 `listening on`、`running at`、`http://`、`ready`、`started` 等）→ 就绪
+- 出现持续刷新的进度信息（编译中、安装依赖中）→ 仍在初始化，继续等待
+- 出现明显错误 → 进入**步骤 2d 错误修复流程**
+
+> **注意**：部分服务的日志中可能出现非关键性的警告或错误（如容器内无显示器导致的 `spawn xdg-open ENOENT`），需结合上下文判断是否影响服务可用性，不要因单行警告误判为失败。
+
+| 情况                           | 判定              |
+| ------------------------------ | ----------------- |
+| supervisord.log 出现 `FATAL`   | 进入步骤 2d 修复  |
+| 服务日志出现明显错误           | 进入步骤 2d 修复  |
+| 所有服务日志均出现就绪信号     | ✅ 继续步骤 3     |
+| 600 秒内仍有服务未出现就绪信号 | ⏳ 超时，标记失败 |
+
+**步骤 2d：错误内联修复（发现错误时立即执行）**
+
+> 这是核心改进：检测到启动错误后，**不记录后放弃**，而是立即尝试分析修复，修复后原地重启，最多内部重启 2 次。
+
+执行流程：
+
+```
+1. 读取出错服务的完整日志内容，分析根因
+2. 自主判断是否可修复：
+   - 可修复 → 直接修改相关文件或执行修复命令
+             → 将修复动作写入 deployLog.md 的「## 修复记录」章节
+             → 重新执行 make sandbox-restart（内部重启计数 +1）
+             → 返回步骤 2b 继续监控
+   - 无法判断如何修复 → 将错误详情写入 deployLog.md，标记「部署失败」，终止
+3. 内部重启计数达到 2 次后仍失败 → 写入错误详情，标记「部署失败」，终止
+```
+
+> **Go 版本冲突的特殊规定**：
+> 当错误为 `go.mod requires go >= X.Y (running go A.B)` 时，修复方式必须是将 go.mod 中的 `go X.Y` 降低为沙箱实际运行的版本（即 `go A.B`）。
+> 禁止通过设置 `GOTOOLCHAIN=auto`、`GOTOOLCHAIN=path` 或修改 `Makefile`/`air.toml` 来让沙箱下载更高版本的 Go 工具链。
+> 沙箱环境的 Go 版本是固定基准，代码应适配环境，而非环境适配代码。
+
+修复记录格式（追加到 `docs/deploy/deployLog.md`）：
+
+```markdown
+## 修复记录
+
+- **错误原因**：[错误日志原文摘要]
+- **修复动作**：[具体执行了什么操作，修改了哪个文件的哪一行]
+- **修复结果**：成功 / 失败（[失败原因]）
+```
+
+### 3. 检查日志中的错误关键词
+
+读取以下日志文件，检查是否存在错误：
+
+- `./logs/backend.log`
+- `./logs/shadow.log`
+
+> `./logs/app.log` 暂时跳过（后期环境就绪后恢复）
+
+错误关键词：`Error`、`panic`、`Fatal`、`Exception`、`EADDRINUSE`、`Cannot find module`
+
+如发现错误，记录相关行到部署日志。
 
 ## 结果写入
 
+### deployLog.md
+
+内容须包含：部署时间、执行命令、各服务 RUNNING 状态时间点、应用级别就绪时间、修复记录（如有）、错误记录（如有）。
+
+### deployResult.md
+
 将结果写入 `docs/deploy/deployResult.md`：
 
-### 示例 - 部署成功
+#### 示例 - 部署成功
 
 ```
 部署成功
-所有服务已启动，frontend: http://localhost:5173, backend: http://localhost:3000
+所有服务已启动，backend: [::]:8000, app: http://localhost:8200
 ```
 
-### 示例 - 部署失败（Docker 配置错误）
+#### 示例 - 部署成功（经修复后）
 
 ```
-部署失败
-Docker 启动失败：Docker 服务未运行或配置错误。请执行 `sudo systemctl start docker` 启动服务后重试。
-
-详细错误信息请查看 deployLog.md
+部署成功
+发现 go.mod 版本不匹配，已修复后重启，所有服务正常启动
 ```
 
-### 示例 - 部署失败（服务启动失败）
+#### 示例 - 部署失败（服务启动失败）
 
 ```
 部署失败
-后端服务启动失败：Error: Cannot find module 'express'。前端服务正常启动。
+backend 服务进入 FATAL 状态，错误日志：panic: runtime error...
 ```
 
-### 示例 - 部署超时
+#### 示例 - 部署超时
 
 ```
 部署超时
-等待 600 秒后服务仍未就绪，最后日志：Compiling TypeScript...
+等待 600 秒后 app 服务仍未进入 RUNNING 状态，supervisord 最后日志：spawned 'app' with pid 10
 ```
 
 ## 错误处理策略
 
-| 错误类型                    | 处理方式                                      |
-| --------------------------- | --------------------------------------------- |
-| 端口被占用 (EADDRINUSE)     | 杀死占用进程后重试                            |
-| 依赖缺失 (MODULE_NOT_FOUND) | 执行 `pnpm install` 后重试                    |
-| 构建错误                    | 记录错误详情，标记部署失败                    |
-| Docker 服务未运行           | 执行 `sudo systemctl start docker` 启动后重试 |
-| Docker 容器启动失败         | 检查容器日志 (`docker logs`)，记录错误详情    |
-| 超时（>600s）               | 标记部署超时，记录最后日志                    |
-
-**Docker 错误详细处理**：
-
-1. **Docker 服务未运行**
-
-   ```bash
-   sudo systemctl start docker
-   # 等待 3-5 秒后验证
-   sudo systemctl status docker
-   ```
-
-2. **Docker 容器启动失败**
-   ```bash
-   # 查看容器列表
-   docker ps -a
-   # 查看失败容器的日志
-   docker logs <container_id>
-   ```
+| 错误类型          | 处理方式                                      |
+| ----------------- | --------------------------------------------- |
+| Docker 服务未运行 | 执行 `sudo systemctl start docker` 启动后重试 |
+| 服务启动报错      | 进入步骤 2d，分析日志，自主修复，内部重启     |
+| 超时（>600s）     | 标记部署超时，记录 supervisord.log 最后内容   |

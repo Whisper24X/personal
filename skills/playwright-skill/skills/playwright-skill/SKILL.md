@@ -123,22 +123,96 @@ const TARGET_URL = 'http://localhost:3001'; // Auto-detected
 // /tmp/playwright-test-login.js
 const { chromium } = require('playwright');
 
-const TARGET_URL = 'http://localhost:3001'; // Auto-detected
+const TARGET_URL = process.env.TARGET_URL || 'http://localhost:3000'; // 由 env 或检测提供，勿写死项目地址
 
 (async () => {
   const browser = await chromium.launch({ headless: false });
   const page = await browser.newPage();
 
-  await page.goto(`${TARGET_URL}/login`);
+  // 登录页路径、表单选择器、登录后跳转 URL 因项目而异，按实际页面或 env 配置编写
+  await page.goto(TARGET_URL);
 
-  await page.fill('input[name="email"]', 'test@example.com');
-  await page.fill('input[name="password"]', 'password123');
-  await page.click('button[type="submit"]');
+  await page.fill('input[name="email"], input[type="text"]', process.env.LOGIN_USER || '');
+  await page.fill('input[name="password"], input[type="password"]', process.env.LOGIN_PASSWORD || '');
+  await page.click('button[type="submit"], button:has-text("登录"), button:has-text("Sign in")');
 
-  // Wait for redirect
-  await page.waitForURL('**/dashboard');
-  console.log('✅ Login successful, redirected to dashboard');
+  await page.waitForURL((url) => !url.href.includes('/login'), { timeout: 10000 }).catch(() => {});
+  console.log('✅ Login attempted');
 
+  await browser.close();
+})();
+```
+
+### 前置条件与登录（从测试用例生成脚本时）
+
+当根据测试用例文档（如 TEST.md）生成脚本时，若该用例的**前置条件**包含「已登录」「登录管理后台」「用户已登录」等，生成的脚本必须：
+
+- 在顶部声明 `const LOGIN_USER = process.env.LOGIN_USER || ''` 与 `const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || ''`。
+- **TARGET_URL 必须参数化**：使用 `process.env.TARGET_URL` 或由调用方/部署文档注入，**禁止在脚本中写死某项目的域名、端口或路径**（如勿写死 localhost:8070、/shadow/ 等），以便换项目或换环境时脚本仍可执行。
+- **进入目标页面的方式二选一**：
+  - **按文字导航（推荐，当 PRD/用例未提供具体 URL 时）**：先打开 TARGET_URL（仅入口，不带业务路径），登录后根据用例/PRD 中的**文字描述**通过点击菜单、侧栏或链接进入目标页（如 `page.getByRole('link', { name: /目标页描述文案/ }).first().click()` 或 `page.locator('a:has-text("目标页描述文案")').first().click()`），再等待目标页关键元素出现后执行业务步骤与断言。菜单/链接的**点击文案须来自用例或 PRD**，勿写死为某项目专有名词。
+  - **按路径进入（仅当已知具体路径时）**：若部署文档或 PRD 明确给出了页面路径，可使用 `BUSINESS_PATH` 与 `page.goto(TARGET_URL + BUSINESS_PATH)`；否则勿臆造路径。
+- **登录页判断与选择器因项目而异**：判断是否在登录页可用 `page.url().includes('/login')` 或检测登录表单（如密码框）是否存在；账号/密码输入框、登录按钮选择器须兼容常见写法（如 `input[type="text"]`、`input[placeholder*="账号"]`、`button[type="submit"]`、`button:has-text("登录")`），若项目结构不同则按实际 DOM 编写，**勿写死某项目独有 class 或 id**。
+- 若未配置 LOGIN_USER/LOGIN_PASSWORD 且需要登录，则抛出明确错误提示（如 `throw new Error('需要登录。请设置环境变量 LOGIN_USER 和 LOGIN_PASSWORD。')`）。
+- **注意**：`page.waitForURL((url) => ...)` 的回调参数 `url` 是 **URL 对象**，判断是否包含某路径须用 `url.href.includes(...)`，不要用 `url.includes(...)`（会报 url.includes is not a function）。
+
+**示例：仅用文字定位、通过菜单/链接进入目标页（无具体 URL 路径，不写死地址）**
+
+```javascript
+const { chromium } = require('playwright');
+const TARGET_URL = process.env.TARGET_URL; // 由执行环境/部署文档注入，勿写死
+const LOGIN_USER = process.env.LOGIN_USER || '';
+const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || '';
+
+(async () => {
+  const browser = await chromium.launch({ headless: false });
+  const page = await browser.newPage();
+  if (!TARGET_URL) throw new Error('请设置环境变量 TARGET_URL（或由执行环境/部署文档注入）');
+  await page.goto(TARGET_URL.replace(/\/$/, ''), { waitUntil: 'networkidle', timeout: 30000 });
+  const isLoginPage = () => page.url().includes('/login') || page.locator('input[type="password"]').count() > 0;
+  if (isLoginPage()) {
+    if (!LOGIN_USER || !LOGIN_PASSWORD) throw new Error('需要登录。请设置环境变量 LOGIN_USER 和 LOGIN_PASSWORD。');
+    await page.fill('input[type="text"], input[placeholder*="用户名"], input[placeholder*="账号"]', LOGIN_USER);
+    await page.fill('input[type="password"]', LOGIN_PASSWORD);
+    await page.click('button[type="submit"], button:has-text("登录")');
+    await page.waitForURL((url) => !url.href.includes('/login'), { timeout: 10000 });
+  }
+  // 按用例/PRD 中描述该页面的文字点击进入（下例「课程预约」仅为示例，实际替换为当前用例/PRD 文案）
+  await page
+    .getByRole('link', { name: /课程预约/ })
+    .first()
+    .click();
+  await page.waitForSelector('table', { timeout: 15000 }); // 目标页关键元素依业务而定
+  // 执行业务步骤与断言...
+  await browser.close();
+})();
+```
+
+**示例：已知具体路径时使用 BUSINESS_PATH（路径与 TARGET_URL 均不写死）**
+
+```javascript
+const { chromium } = require('playwright');
+const TARGET_URL = process.env.TARGET_URL; // 由环境/部署文档注入
+const BUSINESS_PATH = process.env.BUSINESS_PATH || ''; // 仅当部署文档/PRD 明确给出时配置
+const LOGIN_USER = process.env.LOGIN_USER || '';
+const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || '';
+
+(async () => {
+  const browser = await chromium.launch({ headless: false });
+  const page = await browser.newPage();
+  if (!TARGET_URL) throw new Error('请设置环境变量 TARGET_URL（或由执行环境/部署文档注入）');
+  const base = TARGET_URL.replace(/\/$/, '');
+  const entryUrl = BUSINESS_PATH ? base + BUSINESS_PATH : base;
+  await page.goto(entryUrl, { waitUntil: 'networkidle', timeout: 30000 });
+  if (page.url().includes('/login')) {
+    if (!LOGIN_USER || !LOGIN_PASSWORD) throw new Error('需要登录。请设置环境变量 LOGIN_USER 和 LOGIN_PASSWORD。');
+    await page.fill('input[type="text"], input[placeholder*="用户名"], input[placeholder*="账号"]', LOGIN_USER);
+    await page.fill('input[type="password"]', LOGIN_PASSWORD);
+    await page.click('button[type="submit"], button:has-text("登录")');
+    await page.waitForURL((url) => !url.href.includes('/login'), { timeout: 10000 });
+    await page.goto(entryUrl, { waitUntil: 'networkidle', timeout: 15000 });
+  }
+  // 执行业务步骤与断言...
   await browser.close();
 })();
 ```
@@ -382,7 +456,7 @@ For comprehensive Playwright API documentation, see [API_REFERENCE.md](API_REFER
 - **CRITICAL: Detect servers FIRST** - Always run `detectDevServers()` before writing test code for localhost testing
 - **Custom headers** - Use `PW_HEADER_NAME`/`PW_HEADER_VALUE` env vars to identify automated traffic to your backend
 - **Use /tmp for test files** - Write to `/tmp/playwright-test-*.js`, never to skill directory or user's project
-- **Parameterize URLs** - Put detected/provided URL in a `TARGET_URL` constant at the top of every script
+- **Parameterize URLs** - Put detected/provided URL in a `TARGET_URL` constant at the top of every script；**勿写死项目地址**（域名、端口、路径如 /shadow/、/course/ 等），TARGET_URL、登录页判断、菜单点击文案等应从 env、部署文档或用例/PRD 获取，以便换项目或换环境时脚本仍可执行
 - **DEFAULT: Visible browser** - Always use `headless: false` unless user explicitly asks for headless mode
 - **Headless mode** - Only use `headless: true` when user specifically requests "headless" or "background" execution
 - **Slow down:** Use `slowMo: 100` to make actions visible and easier to follow

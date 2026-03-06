@@ -39,6 +39,8 @@ export { TestReview } from './TestReview';
 export { ImproveTest } from './ImproveTest';
 export { AutomationPlanning } from './AutomationPlanning';
 export { AutomationExecution } from './AutomationExecution';
+export { ApiAutomationPlanning } from './ApiAutomationPlanning';
+export { ApiAutomationExecution } from './ApiAutomationExecution';
 export { CoverageQualityCheck } from './CoverageQualityCheck';
 export { QAConclusion } from './QAConclusion';
 
@@ -67,6 +69,8 @@ import { TestReview } from './TestReview';
 import { ImproveTest } from './ImproveTest';
 import { AutomationPlanning } from './AutomationPlanning';
 import { AutomationExecution } from './AutomationExecution';
+import { ApiAutomationPlanning } from './ApiAutomationPlanning';
+import { ApiAutomationExecution } from './ApiAutomationExecution';
 import { CoverageQualityCheck } from './CoverageQualityCheck';
 import { QAConclusion } from './QAConclusion';
 import { Coordinate } from './Coordinate';
@@ -108,6 +112,8 @@ export const ACTION_REGISTRY: Record<string, new () => BaseAction> = {
   ImproveTest,
   AutomationPlanning,
   AutomationExecution,
+  ApiAutomationPlanning,
+  ApiAutomationExecution,
   CoverageQualityCheck,
   QAConclusion,
   // Other Actions

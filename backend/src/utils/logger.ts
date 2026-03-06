@@ -12,6 +12,75 @@ const logLevel = process.env.LOG_LEVEL || 'debug';
 // 确定日志目录路径（相对于项目根目录）
 const logsDir = path.join(process.cwd(), 'logs');
 
+/**
+ * 过滤长日志内容，特别是 Stagehand 的详细元素日志
+ * @param message 日志消息
+ * @param meta 日志元数据
+ * @returns 过滤后的消息和元数据
+ */
+function filterLongLogs(message: string, meta: any): { message: string; meta: any } {
+  // 如果消息包含 accessibility tree 且过长，截断
+  if (message.includes('Accessibility Tree') || (message.length > 1000 && (message.includes('accessibility') || message.includes('Accessibility')))) {
+    // 只保留关键信息
+    return {
+      message: message.substring(0, 200) + '... [内容过长已截断 - 包含 Accessibility Tree]',
+      meta: { ...meta, truncated: true },
+    };
+  }
+
+  // 如果消息本身过长（可能是包含完整元素树），截断
+  if (message.length > 2000) {
+    // 检查是否包含 JSON 格式的 accessibility tree
+    if (message.includes('"role"') && message.includes('"content"') && message.length > 5000) {
+      return {
+        message: message.substring(0, 300) + '... [内容过长已截断 - 可能包含完整元素树]',
+        meta: { ...meta, truncated: true },
+      };
+    }
+  }
+
+  // 如果包含 openaiOptions 且内容过长，简化
+  if (meta?.openaiOptions?.messages) {
+    const messages = meta.openaiOptions.messages;
+    const filteredMessages = messages.map((msg: any) => {
+      if (msg.content && typeof msg.content === 'string' && msg.content.length > 500) {
+        // 检查是否包含 Accessibility Tree
+        if (msg.content.includes('Accessibility Tree') || msg.content.includes('accessibility tree')) {
+          return {
+            ...msg,
+            content: msg.content.substring(0, 200) + '... [内容过长已截断 - 包含 Accessibility Tree]',
+          };
+        }
+        return {
+          ...msg,
+          content: msg.content.substring(0, 300) + '... [内容过长已截断]',
+        };
+      }
+      return msg;
+    });
+    return {
+      message,
+      meta: { ...meta, openaiOptions: { ...meta.openaiOptions, messages: filteredMessages } },
+    };
+  }
+
+  // 如果 meta 中包含长字符串内容，检查并截断
+  if (meta?.content && typeof meta.content === 'string' && meta.content.length > 1000) {
+    if (meta.content.includes('Accessibility Tree') || meta.content.includes('accessibility tree')) {
+      return {
+        message,
+        meta: {
+          ...meta,
+          content: meta.content.substring(0, 200) + '... [内容过长已截断 - 包含 Accessibility Tree]',
+          truncated: true,
+        },
+      };
+    }
+  }
+
+  return { message, meta };
+}
+
 // 日志格式配置
 const logFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
@@ -43,10 +112,7 @@ export const logger = winston.createLogger({
   level: logLevel,
   format: logFormat,
   defaultMeta: { service: 'mind2build' },
-  transports: [
-    errorLogTransport,
-    combinedLogTransport,
-  ],
+  transports: [errorLogTransport, combinedLogTransport],
 });
 
 // If not in production, log to console as well
@@ -56,9 +122,18 @@ if (process.env.NODE_ENV !== 'production') {
       format: winston.format.combine(
         winston.format.colorize(),
         winston.format.printf(({ timestamp, level, message, service, ...meta }) => {
-          let msg = `${timestamp} [${service}] ${level}: ${message}`;
-          if (Object.keys(meta).length > 0) {
-            msg += ` ${JSON.stringify(meta)}`;
+          // 应用日志过滤器
+          const filtered = filterLongLogs(String(message), meta);
+          let msg = `${timestamp} [${service}] ${level}: ${filtered.message}`;
+          if (Object.keys(filtered.meta).length > 0) {
+            // 如果元数据被截断，添加提示
+            const metaStr = JSON.stringify(filtered.meta);
+            // 如果元数据字符串过长，也截断
+            if (metaStr.length > 500) {
+              msg += ` ${metaStr.substring(0, 500)}... [元数据过长已截断]`;
+            } else {
+              msg += ` ${metaStr}`;
+            }
           }
           return msg;
         })
@@ -108,7 +183,7 @@ export function getProjectLogger(projectId: string): winston.Logger {
   const projectLogger = winston.createLogger({
     level: logLevel,
     format: logFormat,
-    defaultMeta: { 
+    defaultMeta: {
       service: 'mind2build',
       projectId: projectId,
     },
@@ -128,9 +203,18 @@ export function getProjectLogger(projectId: string): winston.Logger {
         format: winston.format.combine(
           winston.format.colorize(),
           winston.format.printf(({ timestamp, level, message, service, projectId, ...meta }) => {
-            let msg = `${timestamp} [${service}]${projectId ? ` [Project:${projectId}]` : ''} ${level}: ${message}`;
-            if (Object.keys(meta).length > 0) {
-              msg += ` ${JSON.stringify(meta)}`;
+            // 应用日志过滤器
+            const filtered = filterLongLogs(String(message), meta);
+            let msg = `${timestamp} [${service}]${projectId ? ` [Project:${projectId}]` : ''} ${level}: ${filtered.message}`;
+            if (Object.keys(filtered.meta).length > 0) {
+              // 如果元数据被截断，添加提示
+              const metaStr = JSON.stringify(filtered.meta);
+              // 如果元数据字符串过长，也截断
+              if (metaStr.length > 500) {
+                msg += ` ${metaStr.substring(0, 500)}... [元数据过长已截断]`;
+              } else {
+                msg += ` ${metaStr}`;
+              }
             }
             return msg;
           })
@@ -146,4 +230,3 @@ export function getProjectLogger(projectId: string): winston.Logger {
 }
 
 export default logger;
-
