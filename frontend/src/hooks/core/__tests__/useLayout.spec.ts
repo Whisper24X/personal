@@ -116,7 +116,7 @@ describe('useLayout business line selection', () => {
     localStorage.setItem(STORAGE_KEYS.lastSelectedProjectId, 'project-1')
   })
 
-  it('keeps manually selected business line instead of restoring line from previous selected project', async () => {
+  it('keeps manually selected business line and clears project until user reselects one', async () => {
     setActivePinia(createPinia())
 
     const Harness = defineComponent({
@@ -126,7 +126,7 @@ describe('useLayout business line selection', () => {
       template: `
         <div>
           <p data-testid="active-line">{{ activeBusinessLineId }}</p>
-          <p data-testid="active-project">{{ projectItems[0]?.id ?? '' }}</p>
+          <p data-testid="selected-project">{{ selectedProjectId }}</p>
           <p data-testid="current-project">{{ currentProjectName }}</p>
         </div>
       `,
@@ -136,16 +136,16 @@ describe('useLayout business line selection', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="active-line"]').text()).toBe('line-1')
-    expect(wrapper.get('[data-testid="active-project"]').text()).toBe('project-1')
+    expect(wrapper.get('[data-testid="selected-project"]').text()).toBe('project-1')
     expect(wrapper.get('[data-testid="current-project"]').text()).toBe('Project 1')
 
     ;(wrapper.vm as { selectBusinessLine: (businessLineId: string) => void }).selectBusinessLine('line-2')
     await nextTick()
 
     expect(wrapper.get('[data-testid="active-line"]').text()).toBe('line-2')
-    expect(wrapper.get('[data-testid="active-project"]').text()).toBe('project-2')
-    expect(wrapper.get('[data-testid="current-project"]').text()).toBe('Project 2')
-    expect(localStorage.getItem(STORAGE_KEYS.lastSelectedProjectId)).toBe('project-2')
+    expect(wrapper.get('[data-testid="selected-project"]').text()).toBe('')
+    expect(wrapper.get('[data-testid="current-project"]').text()).toBe('未选择项目')
+    expect(localStorage.getItem(STORAGE_KEYS.lastSelectedProjectId)).toBeNull()
   })
 
   it('uses unique project short labels when names share the same prefix', async () => {
@@ -291,6 +291,31 @@ describe('useLayout business line selection', () => {
 
     expect(wrapper.get('[data-testid="show-current-project"]').text()).toBe('1')
     expect(wrapper.get('[data-testid="current-project"]').text()).toBe('Project 1')
+  })
+
+  it('does not auto select the first project when there is no route or stored project', async () => {
+    setActivePinia(createPinia())
+    localStorage.removeItem(STORAGE_KEYS.lastSelectedProjectId)
+
+    const Harness = defineComponent({
+      setup() {
+        return useLayout()
+      },
+      template: `
+        <div>
+          <p data-testid="active-line">{{ activeBusinessLineId }}</p>
+          <p data-testid="selected-project">{{ selectedProjectId }}</p>
+          <p data-testid="has-selected-project">{{ hasSelectedProject ? '1' : '0' }}</p>
+        </div>
+      `,
+    })
+
+    const wrapper = mount(Harness)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="active-line"]').text()).toBe('line-1')
+    expect(wrapper.get('[data-testid="selected-project"]').text()).toBe('')
+    expect(wrapper.get('[data-testid="has-selected-project"]').text()).toBe('0')
   })
 
   it('navigates to stored menu path when selecting project from non-menu route', async () => {

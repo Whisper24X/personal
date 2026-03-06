@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import LoginView from '@/views/login/index.vue'
+import { projectsApi } from '@/api/projects'
 import { useMessageStore } from '@/stores/modules/message'
 
 const { loginMock, registerMock, pushMock } = vi.hoisted(() => ({
@@ -33,8 +34,27 @@ vi.mock('@/hooks', async (importOriginal) => {
   }
 })
 
+vi.mock('@/api/projects', () => ({
+  projectsApi: {
+    list: vi.fn(),
+  },
+}))
+
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(projectsApi.list).mockResolvedValue({
+    data: [
+      {
+        id: 'project-1',
+        name: 'Project 1',
+        businessLineId: 'line-1',
+        description: '',
+        gitUrl: 'https://git.example.com/p1.git',
+        defaultBranch: 'main',
+      },
+    ],
+    hasNextPage: false,
+  })
 })
 
 describe('LoginView toasts', () => {
@@ -109,5 +129,38 @@ describe('LoginView toasts', () => {
     const messageStore = useMessageStore()
     expect(messageStore.items[0]?.type).toBe('success')
     expect(messageStore.items[0]?.text).toBe('注册成功，已自动登录')
+  })
+
+  it('redirects to home after login when user has no available project', async () => {
+    loginMock.mockResolvedValue({
+      token: 'token',
+      refreshToken: 'refresh',
+      tokenExpires: Date.now() + 10000,
+      user: {
+        id: '1',
+        username: 'alice',
+        nickname: 'Alice',
+      },
+    })
+    vi.mocked(projectsApi.list).mockResolvedValue({
+      data: [],
+      hasNextPage: false,
+    })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(LoginView, {
+      global: {
+        plugins: [pinia],
+      },
+    })
+
+    await wrapper.find('input[autocomplete="username"]').setValue('alice')
+    await wrapper.find('input[autocomplete="current-password"]').setValue('secret')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(pushMock).toHaveBeenCalledWith('/home')
   })
 })

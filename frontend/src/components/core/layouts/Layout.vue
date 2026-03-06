@@ -25,6 +25,7 @@ const {
   activeBusinessLineId,
   selectedProjectId,
   currentProjectName,
+  hasSelectedProject,
   showCurrentProjectName,
   currentBusinessLineName,
   canCreateBusinessLine,
@@ -85,6 +86,7 @@ const {
         :current-business-line-name="currentBusinessLineName"
         :project-items="projectItems"
         :menu-items="menuItems"
+        :show-project-menu-column="hasSelectedProject"
         :project-navigation-to="projectNavigationTo"
         :project-item-class="projectItemClass"
         :menu-item-class="menuItemClass"

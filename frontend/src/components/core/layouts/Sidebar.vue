@@ -13,6 +13,7 @@ const props = defineProps<{
   currentBusinessLineName: string
   projectItems: ProjectItem[]
   menuItems: MenuItem[]
+  showProjectMenuColumn: boolean
   projectNavigationTo: (projectId: string) => RouteLocationRaw
   projectItemClass: (projectId: string) => string
   menuItemClass: (to: string) => string
@@ -32,14 +33,17 @@ const props = defineProps<{
   <aside
     id="workspace-nav"
     class="fixed inset-y-0 left-0 z-50 flex border-r border-sidebar-border bg-sidebar/95 backdrop-blur transition-[width,transform] duration-200 2xl:static 2xl:h-full 2xl:translate-x-0"
-    :class="[props.mobileNavOpen ? 'translate-x-0' : '-translate-x-full', props.sidebarCollapsed ? 'w-[9.25rem]' : 'w-[19rem]']"
+    :class="[
+      props.mobileNavOpen ? 'translate-x-0' : '-translate-x-full',
+      props.showProjectMenuColumn ? (props.sidebarCollapsed ? 'w-[9.25rem]' : 'w-[19rem]') : 'w-[5.25rem]',
+    ]"
   >
     <div class="relative z-20 flex h-full min-h-0 w-[5.25rem] flex-col items-center border-r border-sidebar-border px-1">
       <div class="flex h-16 w-full items-center justify-center border-b border-sidebar-border">
         <RouterLink
-          to="/dashboard"
+          to="/home"
           class="group inline-flex h-11 w-[3.75rem] items-center justify-center rounded-lg transition-transform duration-300 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/55"
-          aria-label="打开仪表盘"
+          aria-label="打开首页"
         >
           <img
             :src="logoImage"
@@ -92,7 +96,11 @@ const props = defineProps<{
       </div>
     </div>
 
-    <div class="relative z-10 flex min-h-0 flex-col transition-[width] duration-200" :class="props.sidebarCollapsed ? 'w-16' : 'w-[13.75rem]'">
+    <div
+      v-if="props.showProjectMenuColumn"
+      class="relative z-10 flex min-h-0 flex-col transition-[width] duration-200"
+      :class="props.sidebarCollapsed ? 'w-16' : 'w-[13.75rem]'"
+    >
       <div class="relative flex h-16 items-center border-b border-sidebar-border px-2" :class="props.sidebarCollapsed ? 'justify-center' : 'justify-center px-3'">
         <div
           class="inline-flex h-11 cursor-pointer items-center rounded-xl text-sidebar-foreground transition-colors select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"

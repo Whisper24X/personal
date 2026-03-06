@@ -16,4 +16,6 @@ app.use(createAppStore())
 app.use(router)
 installDirectives(app)
 
-app.mount('#app')
+void router.isReady().then(() => {
+  app.mount('#app')
+})

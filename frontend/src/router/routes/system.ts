@@ -1,4 +1,5 @@
 import type { AppRouteRecord } from '@/types/router/route'
+import { appSettings } from '@/config/setting'
 import { SETTINGS_QUERY_KEY } from '@/types/common/settings'
 
 const toDashboardSettings = (section: string) => ({
@@ -23,7 +24,7 @@ const resolveProjectId = (value: unknown) => {
 export const systemRoutes: AppRouteRecord[] = [
   {
     path: '/',
-    redirect: '/dashboard',
+    redirect: appSettings.defaultRoute,
     meta: {
       title: '仪表盘',
       requiresAuth: true,
@@ -32,7 +33,8 @@ export const systemRoutes: AppRouteRecord[] = [
   },
   {
     path: '/home',
-    redirect: '/dashboard',
+    name: 'home',
+    component: () => import('@/views/home/index.vue'),
     meta: {
       title: '首页',
       requiresAuth: true,

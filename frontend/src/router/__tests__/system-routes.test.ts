@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { appSettings } from '@/config/setting'
 import { SETTINGS_QUERY_KEY } from '@/types/common/settings'
 import { systemRoutes } from '@/router/routes/system'
 
@@ -19,12 +20,13 @@ describe('systemRoutes compatibility redirects', () => {
     expect(settingsRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'account' } })
   })
 
-  it('uses dashboard as default and legacy home redirect target', () => {
+  it('uses configured default route and registers home page', () => {
     const rootRoute = findByPath('/')
     const homeRoute = findByPath('/home')
 
-    expect(rootRoute?.redirect).toBe('/dashboard')
-    expect(homeRoute?.redirect).toBe('/dashboard')
+    expect(rootRoute?.redirect).toBe(appSettings.defaultRoute)
+    expect(homeRoute?.name).toBe('home')
+    expect(typeof homeRoute?.component).toBe('function')
   })
 
   it('registers git route for project-level git operations', () => {

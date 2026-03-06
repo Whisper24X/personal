@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/hooks'
 import { useMessage } from '@/hooks'
+import { resolveAuthenticatedRedirectPath } from '@/utils/router/post-auth'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
 type AuthMode = 'login' | 'register'
@@ -21,10 +22,6 @@ const username = ref('')
 const password = ref('')
 const nickname = ref('')
 const confirmPassword = ref('')
-
-const getRedirectPath = () => {
-  return typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard'
-}
 
 const switchMode = (nextMode: AuthMode) => {
   if (mode.value === nextMode) {
@@ -73,7 +70,7 @@ const onLogin = async () => {
     password: password.value,
   })
 
-  await router.push(getRedirectPath())
+  await router.push(await resolveAuthenticatedRedirectPath(route.query.redirect))
 }
 
 const onRegister = async () => {
@@ -91,7 +88,7 @@ const onRegister = async () => {
   })
 
   message.success('注册成功，已自动登录')
-  await router.push(getRedirectPath())
+  await router.push(await resolveAuthenticatedRedirectPath(route.query.redirect))
 }
 
 const onLoginSubmit = async () => {

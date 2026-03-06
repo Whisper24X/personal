@@ -49,8 +49,6 @@ export type MenuItem = {
   adminOnly?: boolean
 }
 
-const HOME_MENU_ENABLED = false
-
 const normalizeQueryValue = (queryValue: unknown) => {
   if (typeof queryValue === 'string') return queryValue
   if (Array.isArray(queryValue)) return queryValue[0] ?? ''
@@ -313,7 +311,7 @@ export const useLayout = () => {
 
       const fallbackProjectId = hasStoredSelectedProject
         ? selectedProjectId.value
-        : businessLines.value[0]?.projects[0]?.id ?? ''
+        : ''
 
       setSelectedProjectId(fallbackProjectId)
 
@@ -343,7 +341,7 @@ export const useLayout = () => {
       return
     }
 
-    setSelectedProjectId(currentProjects[0]?.id ?? '')
+    setSelectedProjectId('')
   }
 
   const syncBusinessLineFromRoute = () => {
@@ -460,8 +458,12 @@ export const useLayout = () => {
     return '未选择项目'
   })
 
+  const hasSelectedProject = computed(() => {
+    return Boolean(selectedProjectId.value.trim())
+  })
+
   const showCurrentProjectName = computed(() => {
-    return !layoutDataLoading.value
+    return !layoutDataLoading.value && hasSelectedProject.value
   })
 
   const canCreateBusinessLine = computed(() => {
@@ -494,7 +496,7 @@ export const useLayout = () => {
       return ['工作区', '设置', SETTINGS_SECTION_LABELS[section]]
     }
 
-    if (HOME_MENU_ENABLED && route.name === 'home') return ['项目菜单', '首页']
+    if (route.name === 'home') return ['工作区', '首页']
     if (route.name === 'dashboard') return ['项目菜单', '仪表盘']
     if (route.name === 'project-workflows') return ['项目菜单', '工作流']
     if (route.name === 'project-workflows-by-id') return ['项目菜单', '工作流']
@@ -798,6 +800,7 @@ export const useLayout = () => {
     activeBusinessLineId,
     selectedProjectId,
     currentProjectName,
+    hasSelectedProject,
     showCurrentProjectName,
     currentBusinessLineName,
     canCreateBusinessLine,
