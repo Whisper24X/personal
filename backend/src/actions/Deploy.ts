@@ -32,6 +32,7 @@ export class Deploy extends BaseAction {
   private static readonly PREPARE_RESULT_FILE = 'docs/deploy/prepareResult.md';
   private static readonly DEPLOY_RESULT_FILE = 'docs/deploy/deployResult.md';
   private static readonly DEPLOY_LOG_FILE = 'docs/deploy/deployLog.md';
+  private static readonly DEPLOY_REPORT_FILE = 'docs/deploy/deploy.md';
   private static readonly VERIFY_RESULT_FILE = 'docs/deploy/verifyResult.md';
 
   constructor() {
@@ -160,15 +161,15 @@ export class Deploy extends BaseAction {
         isCompleted = await this.runVerifyPhase(workDir, retryCount, maxRetries, allOutputs);
       }
 
-      // 汇总输出：优先读取 deployLog.md，不存在或读失败则回退到 allOutputs
+      // 汇总输出：优先读取 deploy.md（部署报告），不存在或读失败则回退到 allOutputs
       const stdout = allOutputs.join('\n\n');
-      const deployLogPath = path.join(workDir, Deploy.DEPLOY_LOG_FILE);
+      const deployReportPath = path.join(workDir, Deploy.DEPLOY_REPORT_FILE);
       let outputContent: string;
       let sectionTitle: string;
       try {
-        const deployLog = await fs.readFile(deployLogPath, 'utf-8');
-        outputContent = deployLog.trim() ? deployLog : stdout;
-        sectionTitle = outputContent === stdout ? 'Cursor CLI Output' : '部署日志';
+        const deployReport = await fs.readFile(deployReportPath, 'utf-8');
+        outputContent = deployReport.trim() ? deployReport : stdout;
+        sectionTitle = outputContent === stdout ? 'Cursor CLI Output' : '部署报告';
       } catch {
         outputContent = stdout;
         sectionTitle = 'Cursor CLI Output';
@@ -194,7 +195,7 @@ export class Deploy extends BaseAction {
         logger.info('Deploy: Phase 4 - Generating code documentation', { workDir });
 
         try {
-          const codeDocResult = await this.runCLICommand('使用 code-doc 技能生成代码文档', workDir, {
+          const codeDocResult = await this.runCLICommand('使用 code-doc 技能生成代码变更文档', workDir, {
             timeout: 1800000,
             abortSignal: this.abortSignal,
           });

@@ -75,54 +75,6 @@ description: 执行部署命令并监控进度：停止旧服务、运行 make s
 
 日志内容须包含：部署时间、执行命令、执行耗时、停止服务输出、启动服务输出、服务启动状态表（服务名/状态/访问地址/耗时）、错误记录（如有）。
 
-**网络 IP 识别（用于网络访问）**：
-
-在写入 deployLog.md 前，执行以下任一命令获取**本机真实局域网 IP**，用于填充「网络访问」行：
-
-- Linux：`hostname -I | awk '{print $1}'` 或 `ip route get 1 2>/dev/null | awk '{print $7;exit}'`
-- macOS：`ipconfig getifaddr en0`（根据实际网卡如 en1、en0 调整）
-
-将识别到的 IP 记为 `<本机IP>`，仅用于「网络访问」行。
-
-**提取访问地址（严格规则）**：
-
-访问地址**只能**从以下两个来源提取，**禁止**从任何其他来源推断：
-
-**来源1：`make sandbox` 命令的终端输出**
-
-`sandbox.sh start` 执行结束时会打印如下格式的访问地址：
-
-```
-访问地址:
-  统一入口:    http://localhost:${SANDBOX_PORT}/ 或 http://10.8.8.152:${SANDBOX_PORT}/
-  后端 API:    http://localhost:${SANDBOX_PORT}/api/ 或 http://10.8.8.152:${SANDBOX_PORT}/api/
-  管理后台:    http://localhost:${SANDBOX_PORT}/shadow/ 或 http://10.8.8.152:${SANDBOX_PORT}/shadow/
-  移动端 H5:   http://localhost:${SANDBOX_PORT}/app/ 或 http://10.8.8.152:${SANDBOX_PORT}/app/
-  网络访问:    http://<本机IP>:${SANDBOX_PORT}/ （局域网内其他设备可访问）
-```
-
-直接从这段输出中提取 `http://localhost:[端口]/[路径]` 格式的地址；「网络访问」行用上一步识别的 `<本机IP>` 单独补充。
-
-**来源2：`sandbox/.env` 配置文件**
-
-如果命令输出中没有打印访问地址（如容器已在运行时输出跳过了 info），读取 `sandbox/.env` 获取 `SANDBOX_PORT`（默认 `8080`），按以下固定格式构造：
-
-- 统一入口：`http://localhost:${SANDBOX_PORT}/ 或 http://10.8.8.152:${SANDBOX_PORT}/`
-- 后端 API：`http://localhost:${SANDBOX_PORT}/api/ 或 http://10.8.8.152:${SANDBOX_PORT}/api/`
-- 管理后台：`http://localhost:${SANDBOX_PORT}/shadow/ 或 http://10.8.8.152:${SANDBOX_PORT}/shadow/`
-- 移动端 H5：`http://localhost:${SANDBOX_PORT}/app/ 或 http://10.8.8.152:${SANDBOX_PORT}/app/`
-- 网络访问：`http://<本机IP>:${SANDBOX_PORT}/ （局域网内其他设备可访问）`
-
-**严格禁止**：
-
-- ❌ 读取任何 nginx 配置文件（`nginx.conf`、`/etc/nginx/` 等）
-- ❌ 使用 nginx `server_name` 中的域名作为访问地址
-- ❌ 执行 `nginx -T`、`hostname` 或任何 OS 网络发现命令
-- ❌ 从项目目录结构或 docs 文档中"推断"访问地址
-- ❌ 使用 `localhost` 以外的主机名（`sandbox/.env` 中未显式配置时）
-
-**例外**：为获取「网络访问」行的本机 IP，执行 `hostname -I`、`ip route get`、`ipconfig getifaddr` 等命令是**允许**的。
-
 记录服务启动状态（运行中/未启动/启动失败），只记录实际存在的服务。
 
 ## 结果写入
