@@ -32,6 +32,22 @@ export class WorkflowTemplateEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid', { comment: '主键（UUID）' })
   id: string;
 
+  @Index('IDX_workflow_templates_business_line_id')
+  @Column({
+    type: 'uuid',
+    nullable: true,
+    comment: '所属业务线ID（业务线作用域时填写）',
+  })
+  businessLineId?: string | null;
+
+  @Index('IDX_workflow_templates_project_id')
+  @Column({
+    type: 'uuid',
+    nullable: true,
+    comment: '所属项目ID（项目作用域时填写）',
+  })
+  projectId?: string | null;
+
   @Index('IDX_workflow_templates_name')
   @Column({ type: String, length: 120, comment: '模板名称' })
   name: string;
@@ -55,22 +71,6 @@ export class WorkflowTemplateEntity extends EntityRelationalHelper {
     comment: '模板作用域（全局/业务线/项目）',
   })
   scope: WorkflowTemplateScope;
-
-  @Index('IDX_workflow_templates_business_line_id')
-  @Column({
-    type: 'uuid',
-    nullable: true,
-    comment: '所属业务线ID（业务线作用域时填写）',
-  })
-  businessLineId?: string | null;
-
-  @Index('IDX_workflow_templates_project_id')
-  @Column({
-    type: 'uuid',
-    nullable: true,
-    comment: '所属项目ID（项目作用域时填写）',
-  })
-  projectId?: string | null;
 
   @Column({ type: 'boolean', default: true, comment: '模板是否启用' })
   isActive: boolean;

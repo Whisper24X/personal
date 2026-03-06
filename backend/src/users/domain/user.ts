@@ -34,13 +34,6 @@ export class User {
   @Expose({ groups: ['me', 'admin'] })
   avatar: string | null;
 
-  @ApiProperty({
-    type: Boolean,
-    default: false,
-  })
-  @Expose({ groups: ['me', 'admin'] })
-  isAdmin: boolean;
-
   @Exclude({ toPlainOnly: true })
   password: string;
 

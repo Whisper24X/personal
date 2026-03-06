@@ -93,8 +93,6 @@ export class BusinessLinesService {
     // Do not remove comment below.
     // <creating-property />
 
-    this.ensureAdmin(currentUser);
-
     const existedBusinessLine = await this.businessLineRepository.findByName(
       createBusinessLineDto.name,
     );
@@ -1222,12 +1220,6 @@ export class BusinessLinesService {
 
   private isAdmin(currentUser: JwtPayloadType): boolean {
     return currentUser.roles?.includes('admin') ?? false;
-  }
-
-  private ensureAdmin(currentUser: JwtPayloadType): void {
-    if (!this.isAdmin(currentUser)) {
-      throw new ForbiddenException('forbiddenBusinessLineManage');
-    }
   }
 
   private async ensureCanAccessBusinessLine(

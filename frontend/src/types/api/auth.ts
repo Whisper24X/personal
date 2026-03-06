@@ -14,7 +14,6 @@ export type UserInfo = {
   username: string
   nickname?: string | null
   avatar?: string | null
-  isAdmin: boolean
 }
 
 export type LoginResponse = {

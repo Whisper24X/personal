@@ -229,7 +229,7 @@ describe('BusinessLineModal', () => {
 
     expect(createLineButton).toBeDefined()
     expect((createLineButton!.element as HTMLButtonElement).disabled).toBe(true)
-    expect(wrapper.text()).toContain('仅管理员可创建业务线')
+    expect(wrapper.text()).toContain('当前账号暂无创建业务线权限')
   })
 
   it('opens create project modal and submits project payload', async () => {

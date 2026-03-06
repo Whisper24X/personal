@@ -60,7 +60,7 @@ export class TaskNodeEntity extends EntityRelationalHelper {
   @Column({
     type: 'enum',
     enum: TaskStatus,
-    enumName: 'task_status_enum',
+    enumName: 'task_node_status_enum',
     default: TaskStatus.todo,
     comment: '节点状态',
   })

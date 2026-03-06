@@ -171,7 +171,7 @@ export const useLayout = () => {
         return true
       }
 
-      return userStore.profile?.isAdmin ?? false
+      return false
     })
   })
 
@@ -246,8 +246,7 @@ export const useLayout = () => {
   }
 
   const availableSettingsSections = computed<SettingsSection[]>(() => {
-    const isAdmin = userStore.profile?.isAdmin ?? false
-    return getAvailableSettingsSections(isAdmin)
+    return getAvailableSettingsSections()
   })
 
   const defaultSettingsSection = computed<SettingsSection>(() => {
@@ -466,7 +465,7 @@ export const useLayout = () => {
   })
 
   const canCreateBusinessLine = computed(() => {
-    return userStore.profile?.isAdmin ?? false
+    return userStore.isLogin
   })
 
   const refreshLayoutData = async () => {
@@ -474,10 +473,7 @@ export const useLayout = () => {
   }
 
   const resolveSettingsSection = (candidate: unknown) => {
-    return resolveAuthorizedSettingsSection(
-      normalizeQueryValue(candidate),
-      userStore.profile?.isAdmin ?? false,
-    )
+    return resolveAuthorizedSettingsSection(normalizeQueryValue(candidate))
   }
 
   const routeSettingsSection = computed(() => {

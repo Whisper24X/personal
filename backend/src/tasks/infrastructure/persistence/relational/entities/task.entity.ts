@@ -23,13 +23,13 @@ export class TaskEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid', { comment: '主键（UUID）' })
   id: string;
 
-  @Index('IDX_tasks_project_id')
-  @Column({ type: 'uuid', comment: '关联项目ID' })
-  projectId: string;
-
   @Index('IDX_tasks_business_line_id')
   @Column({ type: 'uuid', comment: '所属业务线ID' })
   businessLineId: string;
+
+  @Index('IDX_tasks_project_id')
+  @Column({ type: 'uuid', comment: '关联项目ID' })
+  projectId: string;
 
   @Index('IDX_tasks_workflow_template_id')
   @Column({ type: 'uuid', nullable: true, comment: '关联工作流模板ID' })

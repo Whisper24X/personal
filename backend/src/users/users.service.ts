@@ -39,7 +39,6 @@ export class UsersService {
       salt,
       nickname: createUserDto.nickname ?? null,
       avatar: createUserDto.avatar ?? null,
-      isAdmin: createUserDto.isAdmin ?? false,
     });
   }
 
@@ -114,9 +113,6 @@ export class UsersService {
         : {}),
       ...(updateUserDto.avatar !== undefined
         ? { avatar: updateUserDto.avatar }
-        : {}),
-      ...(updateUserDto.isAdmin !== undefined
-        ? { isAdmin: updateUserDto.isAdmin }
         : {}),
       password,
       ...(salt !== undefined ? { salt } : {}),

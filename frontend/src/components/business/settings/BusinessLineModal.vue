@@ -2336,13 +2336,13 @@ onBeforeUnmount(() => {
                 type="button"
                 class="inline-flex h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
                 :disabled="!props.canCreateBusinessLine"
-                :title="props.canCreateBusinessLine ? '创建业务线' : '仅管理员可创建业务线'"
+                :title="props.canCreateBusinessLine ? '创建业务线' : '当前账号暂无创建业务线权限'"
                 @click="openCreateLineModal"
               >
                 创建业务线
               </button>
               <p v-if="!props.canCreateBusinessLine" class="mt-2 text-[11px] text-muted-foreground">
-                仅管理员可创建业务线
+                当前账号暂无创建业务线权限
               </p>
             </footer>
           </aside>

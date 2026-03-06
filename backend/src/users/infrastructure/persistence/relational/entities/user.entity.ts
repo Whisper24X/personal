@@ -33,9 +33,6 @@ export class UserEntity extends EntityRelationalHelper {
   @Column({ type: String, nullable: true, comment: '头像地址' })
   avatar: string | null;
 
-  @Column({ type: Boolean, default: false, comment: '是否管理员' })
-  isAdmin: boolean;
-
   @CreateDateColumn({ comment: '创建时间' })
   createdAt: Date;
 

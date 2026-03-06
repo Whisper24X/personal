@@ -2,7 +2,7 @@ import { PartialType, ApiPropertyOptional } from '@nestjs/swagger';
 import { CreateUserDto } from './create-user.dto';
 
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsOptional, IsString, MinLength } from 'class-validator';
 import { lowerCaseTransformer } from '../../utils/transformers/lower-case.transformer';
 
 export class UpdateUserDto extends PartialType(CreateUserDto) {
@@ -29,9 +29,4 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsOptional()
   @IsString()
   avatar?: string | null;
-
-  @ApiPropertyOptional({ example: false, type: Boolean })
-  @IsOptional()
-  @IsBoolean()
-  isAdmin?: boolean;
 }

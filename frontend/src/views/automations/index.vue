@@ -8,7 +8,6 @@ import { observabilityApi } from '@/api/observability'
 import { queueApi } from '@/api/queue'
 import { tasksApi } from '@/api/tasks'
 import { workflowApi } from '@/api/workflow'
-import { useUserStore } from '@/stores/modules/user'
 import type {
   Automation,
   AutomationStatus,
@@ -29,7 +28,6 @@ defineOptions({
 })
 
 const AUTOMATION_PAGE_LIMIT = 20
-const userStore = useUserStore()
 
 const loading = ref(false)
 const markingEventId = ref('')
@@ -72,7 +70,7 @@ const inReviewTaskCount = computed(
 )
 const unreadEventCount = computed(() => unreadEvents.value.length)
 const activeAutomationCount = computed(() => automations.value.filter((item) => item.status === 'active').length)
-const canManageAutomations = computed(() => userStore.profile?.isAdmin ?? false)
+const canManageAutomations = computed(() => false)
 
 const saturationRate = computed(() => queueStats.value?.global.saturationRate ?? observabilityMetrics.value?.concurrencyUsage ?? 0)
 const maxConcurrency = computed(() => queueStats.value?.global.maxConcurrency ?? observabilityMetrics.value?.maxConcurrency ?? 0)
@@ -253,7 +251,7 @@ const loadAutomations = async (reset = true) => {
 
 const submitAutomation = async () => {
   if (!canManageAutomations.value) {
-    validationMessage.value = '仅管理员可管理自动化计划'
+    validationMessage.value = '当前账号暂无自动化管理权限'
     return
   }
 
@@ -296,7 +294,7 @@ const submitAutomation = async () => {
 
 const toggleAutomationStatus = async (automation: Automation) => {
   if (!canManageAutomations.value) {
-    validationMessage.value = '仅管理员可管理自动化计划'
+    validationMessage.value = '当前账号暂无自动化管理权限'
     return
   }
 
@@ -313,7 +311,7 @@ const toggleAutomationStatus = async (automation: Automation) => {
 
 const removeAutomation = async (automation: Automation) => {
   if (!canManageAutomations.value) {
-    validationMessage.value = '仅管理员可管理自动化计划'
+    validationMessage.value = '当前账号暂无自动化管理权限'
     return
   }
 
@@ -349,13 +347,19 @@ const confirmRemoveAutomation = async () => {
 }
 
 const loadMonitoringData = async () => {
+  if (!canManageAutomations.value) {
+    queueStats.value = null
+    observabilityMetrics.value = null
+    return
+  }
+
   const [queueResult, metricsResult] = await Promise.allSettled([queueApi.stats(), observabilityApi.metrics()])
 
   queueStats.value = queueResult.status === 'fulfilled' ? queueResult.value : null
   observabilityMetrics.value = metricsResult.status === 'fulfilled' ? metricsResult.value : null
 
   if (queueResult.status === 'rejected' && metricsResult.status === 'rejected') {
-    message.error('调度监控不可用（可能需要管理员权限）')
+    message.error('调度监控不可用（当前账号暂无监控访问权限）')
     return
   }
 
@@ -370,17 +374,26 @@ const loadPageData = async () => {
   loading.value = true
 
   try {
-    const [reviewTaskResponse, templateResponse, settingResponse, unreadEventResponse] = await Promise.all([
-      fetchAllPages((page, limit) => tasksApi.list({ page, limit, status: 'in_review' })),
-      fetchAllPages((page, limit) => workflowApi.list({ page, limit, isActive: true })),
+    const [settingResponse, unreadEventResponse] = await Promise.all([
       notificationsApi.setting(),
       notificationsApi.events({ unreadOnly: true, limit: 20 }),
     ])
 
-    reviewTasks.value = reviewTaskResponse
-    activeTemplates.value = templateResponse
     notificationSetting.value = settingResponse
     unreadEvents.value = unreadEventResponse
+
+    if (canManageAutomations.value) {
+      const [reviewTaskResponse, templateResponse] = await Promise.all([
+        fetchAllPages((page, limit) => tasksApi.list({ page, limit, status: 'in_review' })),
+        fetchAllPages((page, limit) => workflowApi.list({ page, limit, isActive: true })),
+      ])
+
+      reviewTasks.value = reviewTaskResponse
+      activeTemplates.value = templateResponse
+    } else {
+      reviewTasks.value = []
+      activeTemplates.value = []
+    }
 
     await loadMonitoringData()
   } catch (error) {
@@ -481,7 +494,7 @@ onMounted(() => {
           v-if="!canManageAutomations"
           class="mt-3 rounded-lg border border-border bg-background/60 px-3 py-2 text-xs text-muted-foreground"
         >
-          当前账号仅可查看自动化计划，创建/编辑/启停/删除需要管理员权限。
+          当前账号仅可查看自动化计划，创建/编辑/启停/删除需要额外管理权限。
         </p>
         <p v-else class="mt-3 text-xs text-muted-foreground">可在右侧列表点击“编辑”打开弹窗修改已有计划。</p>
       </article>

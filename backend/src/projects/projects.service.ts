@@ -308,18 +308,16 @@ export class ProjectsService {
       throw new NotFoundException('User not found');
     }
 
-    if (!user.isAdmin) {
-      const businessLineMember =
-        await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
-          manageContext.project.businessLineId,
-          createProjectMemberDto.userId,
-        );
+    const businessLineMember =
+      await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
+        manageContext.project.businessLineId,
+        createProjectMemberDto.userId,
+      );
 
-      if (!businessLineMember) {
-        throw new ConflictException(
-          'User is not a member of project business line',
-        );
-      }
+    if (!businessLineMember) {
+      throw new ConflictException(
+        'User is not a member of project business line',
+      );
     }
 
     return this.projectMemberRepository.create({

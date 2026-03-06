@@ -10,7 +10,6 @@ export type UserProfile = {
   username: string
   avatar?: string | null
   permissions: string[]
-  isAdmin: boolean
 }
 
 const mapUserToProfile = (user: UserInfo): UserProfile => {
@@ -35,8 +34,7 @@ const mapUserToProfile = (user: UserInfo): UserProfile => {
     name: user.nickname?.trim() || user.username,
     username: user.username,
     avatar: user.avatar,
-    permissions: user.isAdmin ? allPermissions : defaultPermissions,
-    isAdmin: user.isAdmin,
+    permissions: defaultPermissions,
   }
 }
 

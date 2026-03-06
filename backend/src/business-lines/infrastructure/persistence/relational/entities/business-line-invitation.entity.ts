@@ -32,7 +32,7 @@ export class BusinessLineInvitationEntity extends EntityRelationalHelper {
   @Column({
     type: 'enum',
     enum: BusinessLineMemberRole,
-    enumName: 'business_line_member_role_enum',
+    enumName: 'business_line_invitation_role_enum',
     comment: '邀请成员角色',
   })
   role: BusinessLineMemberRole;

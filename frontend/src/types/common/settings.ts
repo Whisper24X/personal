@@ -14,12 +14,11 @@ export const isSettingsSection = (value: string): value is SettingsSection => {
   return SETTINGS_SECTIONS.includes(value as SettingsSection)
 }
 
-export const getAvailableSettingsSections = (_isAdmin: boolean) => {
+export const getAvailableSettingsSections = () => {
   return [...SETTINGS_SECTIONS]
 }
 
-export const resolveAuthorizedSettingsSection = (candidate: string, isAdmin: boolean): SettingsSection => {
-  void isAdmin
+export const resolveAuthorizedSettingsSection = (candidate: string): SettingsSection => {
   const legacyAccountSections = new Set(['profile', 'security'])
 
   if (legacyAccountSections.has(candidate)) {
@@ -30,5 +29,5 @@ export const resolveAuthorizedSettingsSection = (candidate: string, isAdmin: boo
     return candidate
   }
 
-  return getAvailableSettingsSections(isAdmin)[0] ?? 'account'
+  return getAvailableSettingsSections()[0] ?? 'account'
 }

@@ -3,7 +3,6 @@ export type User = {
   username: string
   nickname?: string | null
   avatar?: string | null
-  isAdmin: boolean
   createdAt?: string
   updatedAt?: string
 }
@@ -13,7 +12,6 @@ export type CreateUserPayload = {
   password: string
   nickname?: string | null
   avatar?: string | null
-  isAdmin?: boolean
 }
 
 export type UpdateUserPayload = Partial<CreateUserPayload>

@@ -5,7 +5,6 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 import {
   // decorators here
-  IsBoolean,
   IsNotEmpty,
   IsOptional,
   MinLength,
@@ -37,9 +36,4 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   avatar?: string | null;
-
-  @ApiProperty({ example: false, required: false, default: false })
-  @IsOptional()
-  @IsBoolean()
-  isAdmin?: boolean;
 }

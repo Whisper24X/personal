@@ -30,7 +30,6 @@ export class UserSeedService {
           salt,
           nickname: 'Super Admin',
           avatar: null,
-          isAdmin: true,
         }),
       );
     }
@@ -52,7 +51,6 @@ export class UserSeedService {
           salt,
           nickname: 'John Doe',
           avatar: null,
-          isAdmin: false,
         }),
       );
     }

@@ -71,7 +71,6 @@ describe('LoginView toasts', () => {
         id: '1',
         username: 'alice',
         nickname: 'Alice',
-        isAdmin: false,
       },
     })
 

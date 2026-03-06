@@ -7,15 +7,13 @@ import {
 
 describe('settings section authorization', () => {
   it('provides merged settings sections', () => {
-    expect(getAvailableSettingsSections(false)).toEqual(['account', 'appearance', 'notifications'])
-    expect(getAvailableSettingsSections(true)).toEqual(['account', 'appearance', 'notifications'])
+    expect(getAvailableSettingsSections()).toEqual(['account', 'appearance', 'notifications'])
   })
 
   it('maps legacy account sections and falls back correctly', () => {
-    expect(resolveAuthorizedSettingsSection('profile', false)).toBe('account')
-    expect(resolveAuthorizedSettingsSection('security', true)).toBe('account')
-    expect(resolveAuthorizedSettingsSection('users', false)).toBe('account')
-    expect(resolveAuthorizedSettingsSection('users', true)).toBe('account')
+    expect(resolveAuthorizedSettingsSection('profile')).toBe('account')
+    expect(resolveAuthorizedSettingsSection('security')).toBe('account')
+    expect(resolveAuthorizedSettingsSection('users')).toBe('account')
   })
 
   it('uses updated labels', () => {

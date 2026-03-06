@@ -50,7 +50,6 @@ export class AuthService {
     const { token, refreshToken, tokenExpires } = await this.getTokensData({
       id: user.id,
       username: user.username,
-      isAdmin: user.isAdmin,
     });
 
     return {
@@ -130,7 +129,6 @@ export class AuthService {
     const { token, refreshToken, tokenExpires } = await this.getTokensData({
       id: user.id,
       username: user.username,
-      isAdmin: user.isAdmin,
     });
 
     return {
@@ -151,7 +149,6 @@ export class AuthService {
   private async getTokensData(data: {
     id: User['id'];
     username: User['username'];
-    isAdmin: User['isAdmin'];
   }) {
     const tokenExpiresIn = this.configService.getOrThrow('auth.expires', {
       infer: true,
@@ -164,7 +161,7 @@ export class AuthService {
         {
           sub: data.id,
           username: data.username,
-          roles: data.isAdmin ? ['admin'] : ['user'],
+          roles: ['user'],
         },
         {
           secret: this.configService.getOrThrow('auth.secret', { infer: true }),
@@ -175,7 +172,7 @@ export class AuthService {
         {
           sub: data.id,
           username: data.username,
-          roles: data.isAdmin ? ['admin'] : ['user'],
+          roles: ['user'],
         },
         {
           secret: this.configService.getOrThrow('auth.refreshSecret', {

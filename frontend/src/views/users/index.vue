@@ -33,7 +33,6 @@ const form = reactive({
   password: '',
   nickname: '',
   avatar: '',
-  isAdmin: false,
 })
 
 const isEditing = computed(() => Boolean(editingUserId.value))
@@ -80,7 +79,6 @@ const resetForm = () => {
   form.password = ''
   form.nickname = ''
   form.avatar = ''
-  form.isAdmin = false
 }
 
 const openCreateUserModal = () => {
@@ -101,7 +99,6 @@ const startEdit = (user: User) => {
   form.password = ''
   form.nickname = user.nickname ?? ''
   form.avatar = user.avatar ?? ''
-  form.isAdmin = user.isAdmin
   validationMessage.value = ''
   userFormModalOpen.value = true
 }
@@ -164,7 +161,6 @@ const submitForm = async () => {
     username: form.username.trim(),
     nickname: normalizeOptionalText(form.nickname),
     avatar: normalizeOptionalText(form.avatar),
-    isAdmin: form.isAdmin,
   }
 
   try {
@@ -285,7 +281,6 @@ onMounted(() => {
             <tr class="text-xs font-semibold text-muted-foreground">
               <th class="px-5 py-3">用户</th>
               <th class="px-5 py-3">昵称</th>
-              <th class="px-5 py-3">角色</th>
               <th class="px-5 py-3">更新时间</th>
               <th class="px-5 py-3 text-right">操作</th>
             </tr>
@@ -298,14 +293,6 @@ onMounted(() => {
               </td>
               <td class="px-5 py-4 text-muted-foreground">
                 <p>{{ user.nickname || '-' }}</p>
-              </td>
-              <td class="px-5 py-4">
-                <span
-                  class="inline-flex rounded-full px-2 py-1 text-xs font-semibold"
-                  :class="user.isAdmin ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'"
-                >
-                  {{ user.isAdmin ? '管理员' : '普通用户' }}
-                </span>
               </td>
               <td class="px-5 py-4 text-muted-foreground">{{ formatDate(user.updatedAt ?? user.createdAt) }}</td>
               <td class="px-5 py-4 text-right">
@@ -330,7 +317,7 @@ onMounted(() => {
             </tr>
 
             <tr v-if="filteredUsers.length === 0">
-              <td class="px-5 py-6 text-sm text-muted-foreground" colspan="5">
+              <td class="px-5 py-6 text-sm text-muted-foreground" colspan="4">
                 {{ keyword.trim() ? '没有匹配的用户。' : '暂无用户，请先创建。' }}
               </td>
             </tr>
@@ -431,12 +418,6 @@ onMounted(() => {
                 type="text"
               />
             </label>
-
-            <label class="inline-flex items-center gap-2 text-sm md:col-span-2">
-              <input v-model="form.isAdmin" class="h-4 w-4" type="checkbox" />
-              设为平台管理员（isAdmin）
-            </label>
-
             <p v-if="validationMessage" class="text-sm text-destructive md:col-span-2">{{ validationMessage }}</p>
 
             <div class="flex justify-end gap-2 md:col-span-2">
