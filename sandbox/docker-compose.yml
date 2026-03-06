@@ -31,8 +31,8 @@ services:
       - "host.docker.internal:host-gateway" # 容器内访问宿主机服务
     mem_limit: ${SANDBOX_MEMORY:-4g}        # 容器内存硬上限
     volumes:
-      # Nginx 配置
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      # Nginx 配置（热更新，无需 rebuild）
+      - ./sandbox/nginx.conf:/etc/nginx/nginx.conf:ro
       # 项目源码（双向同步）
       - ./ainative-backend:/workspace/ainative-backend
       - ./ainative-shadow:/workspace/ainative-shadow
