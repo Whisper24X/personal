@@ -173,6 +173,15 @@ export const CLI_IO_CONFIGS: Record<string, DocumentIOConfig> = {
     outputFileName: '*.json', // 多个 JSON 文件（每个测试用例一个）
   },
 
+  // API 接口自动化规划（生成 api-test-*.js 到 test/auto-api）
+  write_api_automation_test: {
+    documentType: 'TEST',
+    inputDirRelative: 'test',
+    inputFileNames: ['TEST.md', 'TEST_REVIEW.md'],
+    outputDirRelative: 'test/auto-api',
+    outputFileName: 'api-test-*.js',
+  },
+
   // Prototype 相关
   write_prototype: {
     documentType: 'PROTOTYPE',
