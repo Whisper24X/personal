@@ -88,16 +88,11 @@ description: 部署前环境准备：检查 Docker 环境、代码完整性、�
 
 **执行步骤**：
 
-1. **停止现有服务**
-   - 执行 `make sandbox-stop`（无论服务是否在运行）
-   - 等待停止命令执行完成
-   - 如果没有 Makefile 或 sandbox 目标，跳过此步骤
-
-2. **确保目录结构**
+1. **确保目录结构**
    - 确保 `docs/deploy/` 目录存在
    - 清理上次部署的临时文件（如有）
 
-3. **构建检查**
+2. **构建检查**
    - 根据项目类型执行构建验证：
      - 前端项目：`pnpm build` 或 `npm run build`
      - 后端项目：`make build` 或 `tsc --noEmit`
