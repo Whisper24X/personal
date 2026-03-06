@@ -1,12 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import {
-  IsBoolean,
-  IsInt,
-  IsOptional,
-  IsString,
-  Min,
-  MinLength,
-} from 'class-validator';
+import { IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { lowerCaseTransformer } from '../../utils/transformers/lower-case.transformer';
 
@@ -37,10 +30,4 @@ export class AuthRegisterLoginDto {
   @IsOptional()
   @IsBoolean()
   isAdmin?: boolean;
-
-  @ApiProperty({ example: 1, required: false, default: 1 })
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  status?: number;
 }

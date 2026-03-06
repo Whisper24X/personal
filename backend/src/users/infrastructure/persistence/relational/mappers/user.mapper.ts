@@ -11,7 +11,6 @@ export class UserMapper {
     domainEntity.nickname = raw.nickname;
     domainEntity.avatar = raw.avatar;
     domainEntity.isAdmin = raw.isAdmin;
-    domainEntity.status = raw.status;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
     domainEntity.deletedAt = raw.deletedAt;
@@ -29,7 +28,6 @@ export class UserMapper {
     persistenceEntity.nickname = domainEntity.nickname;
     persistenceEntity.avatar = domainEntity.avatar;
     persistenceEntity.isAdmin = domainEntity.isAdmin;
-    persistenceEntity.status = domainEntity.status;
     persistenceEntity.createdAt = domainEntity.createdAt;
     persistenceEntity.updatedAt = domainEntity.updatedAt;
     persistenceEntity.deletedAt = domainEntity.deletedAt;

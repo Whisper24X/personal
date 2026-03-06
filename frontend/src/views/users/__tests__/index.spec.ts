@@ -28,7 +28,6 @@ beforeEach(() => {
   usersApi.create.mockResolvedValue({
     id: 'user-1',
     username: 'alice',
-    status: 1,
     isAdmin: false,
   })
 })

@@ -15,24 +15,26 @@ import { ProjectMemberRole } from '../../../../dto/project-member-role.enum';
 
 @Entity({
   name: 'project_members',
+  comment: '项目成员',
 })
 @Unique('UQ_project_member_project_user', ['projectId', 'userId'])
 export class ProjectMemberEntity extends EntityRelationalHelper {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('uuid', { comment: '主键（UUID）' })
   id: string;
 
   @Index('IDX_project_members_project_id')
-  @Column({ type: 'uuid' })
+  @Column({ type: 'uuid', comment: '关联项目ID' })
   projectId: string;
 
   @Index('IDX_project_members_user_id')
-  @Column({ type: 'uuid' })
+  @Column({ type: 'uuid', comment: '关联用户ID' })
   userId: string;
 
   @Column({
     type: 'enum',
     enum: ProjectMemberRole,
     enumName: 'project_member_role_enum',
+    comment: '项目成员角色',
   })
   role: ProjectMemberRole;
 
@@ -42,9 +44,9 @@ export class ProjectMemberEntity extends EntityRelationalHelper {
   @JoinColumn({ name: 'projectId' })
   project: ProjectEntity;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ comment: '创建时间' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ comment: '更新时间' })
   updatedAt: Date;
 }

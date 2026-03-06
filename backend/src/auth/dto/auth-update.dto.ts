@@ -1,11 +1,9 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
-  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
-  Min,
   MinLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
@@ -46,10 +44,4 @@ export class AuthUpdateDto {
   @IsOptional()
   @IsBoolean()
   isAdmin?: boolean;
-
-  @ApiPropertyOptional({ example: 1 })
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  status?: number;
 }

@@ -31,7 +31,6 @@ export class UserSeedService {
           nickname: 'Super Admin',
           avatar: null,
           isAdmin: true,
-          status: 1,
         }),
       );
     }
@@ -54,7 +53,6 @@ export class UserSeedService {
           nickname: 'John Doe',
           avatar: null,
           isAdmin: false,
-          status: 1,
         }),
       );
     }

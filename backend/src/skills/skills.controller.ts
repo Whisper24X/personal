@@ -1,13 +1,10 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Param,
-  ParseUUIDPipe,
-  Patch,
   Post,
   Query,
   Request,
@@ -20,7 +17,6 @@ import {
   ApiBearerAuth,
   ApiConsumes,
   ApiCreatedResponse,
-  ApiNoContentResponse,
   ApiOkResponse,
   ApiParam,
   ApiTags,
@@ -30,8 +26,6 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Express } from 'express';
 import { SkillsService } from './skills.service';
 import { Skill } from './domain/skill';
-import { CreateSkillDto } from './dto/create-skill.dto';
-import { UpdateSkillDto } from './dto/update-skill.dto';
 import {
   InfinityPaginationResponse,
   InfinityPaginationResponseDto,
@@ -53,13 +47,6 @@ import { ProjectLocalSkillResultDto } from './dto/project-local-skill-result.dto
 })
 export class SkillsController {
   constructor(private readonly skillsService: SkillsService) {}
-
-  @Post()
-  @ApiCreatedResponse({ type: Skill })
-  @HttpCode(HttpStatus.CREATED)
-  create(@Request() request, @Body() createSkillDto: CreateSkillDto) {
-    return this.skillsService.create(createSkillDto, request.user);
-  }
 
   @Post('project/copy-from-business-line')
   @ApiCreatedResponse({ type: ProjectLocalSkillResultDto })
@@ -153,33 +140,5 @@ export class SkillsController {
     @Query() query: GetSkillContentDto,
   ) {
     return this.skillsService.findProjectSkillContent(id, query, request.user);
-  }
-
-  @Get(':id')
-  @ApiParam({ name: 'id', type: String, required: true })
-  @ApiOkResponse({ type: Skill })
-  @HttpCode(HttpStatus.OK)
-  findById(@Param('id', ParseUUIDPipe) id: string) {
-    return this.skillsService.findById(id);
-  }
-
-  @Patch(':id')
-  @ApiParam({ name: 'id', type: String, required: true })
-  @ApiOkResponse({ type: Skill })
-  @HttpCode(HttpStatus.OK)
-  update(
-    @Request() request,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() updateSkillDto: UpdateSkillDto,
-  ) {
-    return this.skillsService.update(id, updateSkillDto, request.user);
-  }
-
-  @Delete(':id')
-  @ApiParam({ name: 'id', type: String, required: true })
-  @ApiNoContentResponse()
-  @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
-    return this.skillsService.remove(id, request.user);
   }
 }

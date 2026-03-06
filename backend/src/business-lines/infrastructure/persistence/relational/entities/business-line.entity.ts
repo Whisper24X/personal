@@ -11,24 +11,29 @@ import { EntityRelationalHelper } from '../../../../../utils/relational-entity-h
 
 @Entity({
   name: 'business_lines',
+  comment: '业务线',
 })
 export class BusinessLineEntity extends EntityRelationalHelper {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('uuid', { comment: '主键（UUID）' })
   id: string;
 
-  @Index('idx_business_lines_name')
-  @Column({ type: String, length: 100 })
+  @Index('IDX_business_lines_name')
+  @Index('UQ_business_lines_name', {
+    unique: true,
+    where: '"deletedAt" IS NULL',
+  })
+  @Column({ type: String, length: 100, comment: '业务线名称' })
   name: string;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: 'text', nullable: true, comment: '业务线描述' })
   description?: string | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ comment: '创建时间' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ comment: '更新时间' })
   updatedAt: Date;
 
-  @DeleteDateColumn()
+  @DeleteDateColumn({ comment: '软删除时间' })
   deletedAt: Date | null;
 }

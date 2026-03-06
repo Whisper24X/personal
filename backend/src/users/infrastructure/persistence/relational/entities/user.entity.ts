@@ -11,39 +11,37 @@ import { EntityRelationalHelper } from '../../../../../utils/relational-entity-h
 
 @Entity({
   name: 'users',
+  comment: '系统用户',
 })
 export class UserEntity extends EntityRelationalHelper {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('uuid', { comment: '主键（UUID）' })
   id: string;
 
-  @Index('IDX_users_username')
-  @Column({ type: String, length: 100, unique: true })
+  @Index('UQ_users_username', { unique: true, where: '"deletedAt" IS NULL' })
+  @Column({ type: String, length: 100, comment: '登录用户名' })
   username: string;
 
-  @Column({ type: String })
+  @Column({ type: String, comment: '加密密码' })
   password: string;
 
-  @Column({ type: String, nullable: true })
+  @Column({ type: String, nullable: true, comment: '密码盐' })
   salt: string | null;
 
-  @Column({ type: String, nullable: true })
+  @Column({ type: String, nullable: true, comment: '显示昵称' })
   nickname: string | null;
 
-  @Column({ type: String, nullable: true })
+  @Column({ type: String, nullable: true, comment: '头像地址' })
   avatar: string | null;
 
-  @Column({ type: Boolean, default: false })
+  @Column({ type: Boolean, default: false, comment: '是否管理员' })
   isAdmin: boolean;
 
-  @Column({ type: 'int', default: 1 })
-  status: number;
-
-  @CreateDateColumn()
+  @CreateDateColumn({ comment: '创建时间' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ comment: '更新时间' })
   updatedAt: Date;
 
-  @DeleteDateColumn()
+  @DeleteDateColumn({ comment: '软删除时间' })
   deletedAt: Date | null;
 }

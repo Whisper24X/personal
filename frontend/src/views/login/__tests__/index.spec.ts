@@ -72,7 +72,6 @@ describe('LoginView toasts', () => {
         username: 'alice',
         nickname: 'Alice',
         isAdmin: false,
-        status: 1,
       },
     })
 

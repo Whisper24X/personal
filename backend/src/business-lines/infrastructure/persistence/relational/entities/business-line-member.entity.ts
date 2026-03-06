@@ -15,27 +15,29 @@ import { BusinessLineMemberRole } from '../../../../dto/business-line-member-rol
 
 @Entity({
   name: 'business_line_members',
+  comment: '业务线成员',
 })
 @Unique('UQ_business_line_member_business_line_user', [
   'businessLineId',
   'userId',
 ])
 export class BusinessLineMemberEntity extends EntityRelationalHelper {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('uuid', { comment: '主键（UUID）' })
   id: string;
 
   @Index('IDX_business_line_member_business_line_id')
-  @Column({ type: 'uuid' })
+  @Column({ type: 'uuid', comment: '关联业务线ID' })
   businessLineId: string;
 
   @Index('IDX_business_line_member_user_id')
-  @Column({ type: 'uuid' })
+  @Column({ type: 'uuid', comment: '关联用户ID' })
   userId: string;
 
   @Column({
     type: 'enum',
     enum: BusinessLineMemberRole,
     enumName: 'business_line_member_role_enum',
+    comment: '成员角色',
   })
   role: BusinessLineMemberRole;
 
@@ -45,9 +47,9 @@ export class BusinessLineMemberEntity extends EntityRelationalHelper {
   @JoinColumn({ name: 'businessLineId' })
   businessLine: BusinessLineEntity;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ comment: '创建时间' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ comment: '更新时间' })
   updatedAt: Date;
 }

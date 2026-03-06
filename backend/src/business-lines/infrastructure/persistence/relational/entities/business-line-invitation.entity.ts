@@ -15,39 +15,42 @@ import { BusinessLineInviteProjectRole } from '../../../../dto/business-line-inv
 
 @Entity({
   name: 'business_line_invitations',
+  comment: '业务线邀请',
 })
 export class BusinessLineInvitationEntity extends EntityRelationalHelper {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('uuid', { comment: '主键（UUID）' })
   id: string;
 
   @Index('IDX_business_line_invitation_business_line_id')
-  @Column({ type: 'uuid' })
+  @Column({ type: 'uuid', comment: '关联业务线ID' })
   businessLineId: string;
 
   @Index('UQ_business_line_invitation_token', { unique: true })
-  @Column({ type: 'varchar', length: 128 })
+  @Column({ type: 'varchar', length: 128, comment: '邀请令牌' })
   token: string;
 
   @Column({
     type: 'enum',
     enum: BusinessLineMemberRole,
     enumName: 'business_line_member_role_enum',
+    comment: '邀请成员角色',
   })
   role: BusinessLineMemberRole;
 
   @Column({
     type: 'jsonb',
     default: () => "'{}'::jsonb",
+    comment: '按项目分配的成员角色JSON',
   })
   projectRoles: Record<string, BusinessLineInviteProjectRole>;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'uuid', comment: '邀请创建者用户ID' })
   createdBy: string;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamp', comment: '邀请过期时间' })
   expiresAt: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamp', nullable: true, comment: '邀请撤销时间' })
   revokedAt: Date | null;
 
   @ManyToOne(() => BusinessLineEntity, {
@@ -56,9 +59,9 @@ export class BusinessLineInvitationEntity extends EntityRelationalHelper {
   @JoinColumn({ name: 'businessLineId' })
   businessLine: BusinessLineEntity;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ comment: '创建时间' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ comment: '更新时间' })
   updatedAt: Date;
 }

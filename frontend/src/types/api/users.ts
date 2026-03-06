@@ -4,7 +4,6 @@ export type User = {
   nickname?: string | null
   avatar?: string | null
   isAdmin: boolean
-  status: number
   createdAt?: string
   updatedAt?: string
 }
@@ -15,7 +14,6 @@ export type CreateUserPayload = {
   nickname?: string | null
   avatar?: string | null
   isAdmin?: boolean
-  status?: number
 }
 
 export type UpdateUserPayload = Partial<CreateUserPayload>

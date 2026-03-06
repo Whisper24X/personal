@@ -34,7 +34,6 @@ const form = reactive({
   nickname: '',
   avatar: '',
   isAdmin: false,
-  status: 1,
 })
 
 const isEditing = computed(() => Boolean(editingUserId.value))
@@ -75,18 +74,6 @@ const formatDate = (value?: string) => {
   })
 }
 
-const statusLabel = (status: number) => {
-  return status === 1 ? '启用' : '停用'
-}
-
-const statusClass = (status: number) => {
-  if (status === 1) {
-    return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-  }
-
-  return 'bg-muted text-muted-foreground'
-}
-
 const resetForm = () => {
   editingUserId.value = ''
   form.username = ''
@@ -94,7 +81,6 @@ const resetForm = () => {
   form.nickname = ''
   form.avatar = ''
   form.isAdmin = false
-  form.status = 1
 }
 
 const openCreateUserModal = () => {
@@ -116,7 +102,6 @@ const startEdit = (user: User) => {
   form.nickname = user.nickname ?? ''
   form.avatar = user.avatar ?? ''
   form.isAdmin = user.isAdmin
-  form.status = user.status
   validationMessage.value = ''
   userFormModalOpen.value = true
 }
@@ -180,7 +165,6 @@ const submitForm = async () => {
     nickname: normalizeOptionalText(form.nickname),
     avatar: normalizeOptionalText(form.avatar),
     isAdmin: form.isAdmin,
-    status: Number(form.status),
   }
 
   try {
@@ -302,7 +286,6 @@ onMounted(() => {
               <th class="px-5 py-3">用户</th>
               <th class="px-5 py-3">昵称</th>
               <th class="px-5 py-3">角色</th>
-              <th class="px-5 py-3">状态</th>
               <th class="px-5 py-3">更新时间</th>
               <th class="px-5 py-3 text-right">操作</th>
             </tr>
@@ -322,11 +305,6 @@ onMounted(() => {
                   :class="user.isAdmin ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'"
                 >
                   {{ user.isAdmin ? '管理员' : '普通用户' }}
-                </span>
-              </td>
-              <td class="px-5 py-4">
-                <span class="inline-flex rounded-full px-2 py-1 text-xs font-semibold" :class="statusClass(user.status)">
-                  {{ statusLabel(user.status) }}
                 </span>
               </td>
               <td class="px-5 py-4 text-muted-foreground">{{ formatDate(user.updatedAt ?? user.createdAt) }}</td>
@@ -352,7 +330,7 @@ onMounted(() => {
             </tr>
 
             <tr v-if="filteredUsers.length === 0">
-              <td class="px-5 py-6 text-sm text-muted-foreground" colspan="6">
+              <td class="px-5 py-6 text-sm text-muted-foreground" colspan="5">
                 {{ keyword.trim() ? '没有匹配的用户。' : '暂无用户，请先创建。' }}
               </td>
             </tr>
@@ -452,17 +430,6 @@ onMounted(() => {
                 placeholder="https://example.com/avatar.png"
                 type="text"
               />
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">账号状态</span>
-              <select
-                v-model.number="form.status"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              >
-                <option :value="1">启用</option>
-                <option :value="0">停用</option>
-              </select>
             </label>
 
             <label class="inline-flex items-center gap-2 text-sm md:col-span-2">

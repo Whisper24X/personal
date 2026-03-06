@@ -41,14 +41,6 @@ export class User {
   @Expose({ groups: ['me', 'admin'] })
   isAdmin: boolean;
 
-  @ApiProperty({
-    type: Number,
-    default: 1,
-    description: '1 means active',
-  })
-  @Expose({ groups: ['me', 'admin'] })
-  status: number;
-
   @Exclude({ toPlainOnly: true })
   password: string;
 

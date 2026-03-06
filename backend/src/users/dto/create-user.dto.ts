@@ -6,12 +6,10 @@ import { ApiProperty } from '@nestjs/swagger';
 import {
   // decorators here
   IsBoolean,
-  IsInt,
   IsNotEmpty,
   IsOptional,
   MinLength,
   IsString,
-  Min,
 } from 'class-validator';
 import { lowerCaseTransformer } from '../../utils/transformers/lower-case.transformer';
 
@@ -44,10 +42,4 @@ export class CreateUserDto {
   @IsOptional()
   @IsBoolean()
   isAdmin?: boolean;
-
-  @ApiProperty({ example: 1, required: false, default: 1 })
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  status?: number;
 }
