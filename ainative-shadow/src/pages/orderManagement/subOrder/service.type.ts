@@ -115,6 +115,7 @@ export const GOOD_TYPE_OPTIONS = [
   { label: '全部', value: '' },
   { label: '单日营', value: 'single' },
   { label: '多日营', value: 'multi' },
+  { label: '定金', value: 'deposit' },
 ]
 
 /**

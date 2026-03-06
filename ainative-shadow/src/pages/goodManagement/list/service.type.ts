@@ -9,7 +9,7 @@ export interface GetPlatformGoodListReq {
 export interface PlatformGoodInfo {
   id: string
   name: string
-  goodType: 'single' | 'multi'
+  goodType: 'single' | 'multi' | 'deposit'
   sales: number
   createdAt: string
   updatedAt: string
@@ -25,7 +25,7 @@ export interface GetPlatformGoodListReply {
 // 创建平台商品请求
 export interface CreatePlatformGoodReq {
   name: string
-  goodType: 'single' | 'multi'
+  goodType: 'single' | 'multi' | 'deposit'
 }
 
 // 创建平台商品响应

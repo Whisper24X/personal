@@ -246,7 +246,7 @@
       </el-table-column>
       <el-table-column
         prop="orderPrice"
-        label="课程金额"
+        label="商家实收"
         min-width="100"
         align="center"
       >

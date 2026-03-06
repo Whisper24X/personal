@@ -203,7 +203,7 @@ const platformGoodName = computed(
   () => (route.query.name as string) || '商品渠道列表',
 )
 const platformGoodType = computed(
-  () => (route.query.goodType as 'single' | 'multi') || 'single',
+  () => (route.query.goodType as 'single' | 'multi' | 'deposit') || 'single',
 )
 
 // 搜索表单
