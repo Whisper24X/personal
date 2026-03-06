@@ -179,6 +179,11 @@ const goToOrderDetail = (orderId: string) => {
         url: `/pages/order/completed/index?orderId=${orderId}&from=order`
       })
     } else {
+      // 定金商品不显示预约入口
+      if (order.goodType === "deposit") {
+        // 定金商品订单已完成，无需预约
+        return
+      }
       // 待预约状态(serviceStatus === "pending" 或无serviceStatus)
       // 多日营没预约上属于异常情况，直接跳转到预约异常页面
       if (order.goodType === "multi") {

@@ -34,6 +34,7 @@
         :type="type"
         :show-book-btn="showBookBtn"
         :order-info="orderInfo"
+        :good-info="goodInfo"
         @book-now="handleBookNow"
         @book-record="handleBookRecord"
         @share="handleShare"
@@ -159,7 +160,28 @@ export default {
     })
 
     // 是否显示预约按钮
+    // 计算库存状态（仅定金商品）
+    const stockStatus = computed(() => {
+      if (goodInfo.value?.goodType !== "deposit") {
+        return null // 非定金商品，不显示库存状态
+      }
+      const stock = goodInfo.value?.stock
+      if (stock === null || stock === undefined) {
+        return "unlimited" // 无限库存
+      }
+      if (stock === 0) {
+        return "soldOut" // 已售罄
+      }
+      return "available" // 有库存
+    })
+
     const showBookBtn = computed(() => {
+      // 定金商品：库存为0时不显示按钮
+      // debugger
+      if (goodInfo.value?.goodType === "deposit") {
+        return true
+      }
+
       if (isProductType.value) {
         // 商品页面：直接检查是否有可预约课程
         return hasAvailableAppointments.value

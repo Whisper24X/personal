@@ -66,6 +66,14 @@ export interface GoodInfo {
    * 最大优惠金额
    */
   maxDiscountAmount?: number
+  /**
+   * 商品类型：single-单日营，multi-多日营，deposit-定金
+   */
+  goodType?: string
+  /**
+   * 库存数量，NULL表示无限库存
+   */
+  stock?: number | null
 }
 
 /**

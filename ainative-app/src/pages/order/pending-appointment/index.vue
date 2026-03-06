@@ -12,8 +12,8 @@
         <!-- 购买成功状态 -->
         <OrderStatusHeader
           title="购买成功"
-          message="可点击下方立即预约按钮前往预约"
-          keyword="立即预约"
+          :message="isDepositProduct ? '' : '可点击下方立即预约按钮前往预约'"
+          :keyword="isDepositProduct ? '' : '立即预约'"
         />
 
         <!-- 商品信息 -->
@@ -58,6 +58,7 @@
             联系客服
           </UiButton>
           <UiButton
+            v-if="!isDepositProduct"
             class="action-btn"
             type="default"
             size="medium"
@@ -128,6 +129,8 @@ const serviceQrCode = computed(() => configStore.defaultServiceQrCodeUrl)
 // 兼容性访问
 const orderInfo = computed(() => orderData.value?.orderInfo)
 const goodInfo = computed(() => orderData.value?.goodInfo)
+
+const isDepositProduct = computed(() => goodInfo.value?.goodType === "deposit")
 
 // 优惠券折扣金额(单位:分,需要转换为元)
 const discountAmount = computed(() => {
