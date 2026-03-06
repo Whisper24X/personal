@@ -108,7 +108,7 @@
             查看订单
           </UiButton>
           <UiButton
-            v-if="!isAppointed"
+            v-if="!isAppointed && !isDepositProduct"
             class="action-btn"
             type="default"
             size="medium"
@@ -173,6 +173,8 @@ const goodInfo = computed(() => orderData.value?.goodInfo)
 const isAppointed = computed(() => {
   return !!orderData.value?.courseAppointmentDraft && orderData.value?.courseAppointmentDraft?.date
 })
+
+const isDepositProduct = computed(() => goodInfo.value?.goodType === "deposit")
 
 const hasAppointmentInfo = computed(() => {
   // 预约信息从 courseAppointmentDraft 中获取

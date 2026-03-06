@@ -25,10 +25,11 @@
           size="huge"
           type="default"
           :round="true"
+          :disabled="isSoldOut"
           class="book-btn product-book-btn"
           @tap="handleBookNow('product')"
         >
-          立即预订
+          {{ isSoldOut ? '已售罄' : '立即预订' }}
         </UiButton>
       </template>
 
@@ -86,6 +87,10 @@ export default defineComponent({
     orderInfo: {
       type: Object,
       default: () => null
+    },
+    goodInfo: {
+      type: Object,
+      default: () => null
     }
   },
   emits: ["book-now", "book-record", "share", "customer-service"],
@@ -94,6 +99,15 @@ export default defineComponent({
 
     const shouldShowButtons = computed(() => {
       return props.type === "product" || props.orderInfo?.status !== REFUNDED_STATUS
+    })
+
+    // 判断是否已售罄（仅定金商品）
+    const isSoldOut = computed(() => {
+      if (props.goodInfo?.goodType !== 'deposit') {
+        return false
+      }
+      const stock = props.goodInfo?.stock
+      return stock !== null && stock !== undefined && stock === 0
     })
 
     const handleBookNow = type => {
@@ -114,6 +128,7 @@ export default defineComponent({
 
     return {
       shouldShowButtons,
+      isSoldOut,
       handleBookNow,
       handleBookRecord,
       handleShare,
