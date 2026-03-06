@@ -385,6 +385,11 @@
         "purchaseAgreementLink": {
           "type": "string",
           "title": "购买协议链接"
+        },
+        "stock": {
+          "type": "integer",
+          "format": "int32",
+          "title": "库存数量，NULL表示无限库存，\u003e0表示有限库存"
         }
       },
       "title": "商品信息"
@@ -459,6 +464,11 @@
         "purchaseAgreementLink": {
           "type": "string",
           "title": "购买协议链接"
+        },
+        "stock": {
+          "type": "integer",
+          "format": "int32",
+          "title": "库存数量，0表示无限库存，\u003e0表示有限库存（可选字段，定金商品使用）"
         }
       },
       "title": "请求-商品-创建一条数据"
@@ -588,6 +598,11 @@
         "purchaseAgreementLink": {
           "type": "string",
           "title": "购买协议链接"
+        },
+        "stock": {
+          "type": "integer",
+          "format": "int32",
+          "title": "库存数量，0表示无限库存，\u003e0表示有限库存（可选字段，定金商品使用）"
         }
       },
       "title": "请求-商品-更新一条数据"

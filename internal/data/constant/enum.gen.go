@@ -762,6 +762,8 @@ const (
 	GoodTypeSingle GoodType = "single"
 	// 多日类型商品
 	GoodTypeMulti GoodType = "multi"
+	// 定金商品
+	GoodTypeDeposit GoodType = "deposit"
 )
 
 var ErrInvalidGoodType = fmt.Errorf("not a valid GoodType, try [%s]", strings.Join(_GoodTypeNames, ", "))
@@ -769,6 +771,7 @@ var ErrInvalidGoodType = fmt.Errorf("not a valid GoodType, try [%s]", strings.Jo
 var _GoodTypeNames = []string{
 	string(GoodTypeSingle),
 	string(GoodTypeMulti),
+	string(GoodTypeDeposit),
 }
 
 // GoodTypeNames returns a list of possible string values of GoodType.
@@ -783,6 +786,7 @@ func GoodTypeValues() []GoodType {
 	return []GoodType{
 		GoodTypeSingle,
 		GoodTypeMulti,
+		GoodTypeDeposit,
 	}
 }
 
@@ -799,8 +803,9 @@ func (x GoodType) IsValid() bool {
 }
 
 var _GoodTypeValue = map[string]GoodType{
-	"single": GoodTypeSingle,
-	"multi":  GoodTypeMulti,
+	"single":  GoodTypeSingle,
+	"multi":   GoodTypeMulti,
+	"deposit": GoodTypeDeposit,
 }
 
 // ParseGoodType attempts to convert a string to a GoodType.

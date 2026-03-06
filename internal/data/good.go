@@ -83,3 +83,37 @@ func (r *GoodRepo) HasCourseGoodIds(ctx context.Context, courseId string) ([]str
 	}
 	return lo.Uniq(goodIds), nil
 }
+
+// PreDeductStock 预扣库存（使用乐观锁，返回是否成功）
+// 使用乐观锁机制：UPDATE good SET stock = stock - num WHERE id = goodId AND (stock IS NULL OR stock >= num)
+// 返回 true 表示预扣成功，false 表示库存不足
+func (r *GoodRepo) PreDeductStock(ctx context.Context, goodId string, num int32) (bool, error) {
+	if num <= 0 {
+		return false, nil
+	}
+	// 使用原生 SQL 实现乐观锁
+	// 注意：stock IS NULL 表示无限库存，不需要扣减
+	// stock >= num 表示库存充足，可以扣减
+	result := r.data.db.WithContext(ctx).Exec(
+		"UPDATE good SET stock = stock - ? WHERE id = ? AND (stock IS NULL OR stock >= ?)",
+		num, goodId, num,
+	)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	// 检查是否有行被更新
+	return result.RowsAffected > 0, nil
+}
+
+// RollbackStock 回补库存
+func (r *GoodRepo) RollbackStock(ctx context.Context, goodId string, num int32) error {
+	if num <= 0 {
+		return nil
+	}
+	// 回补库存：只对有限库存的商品回补（stock IS NOT NULL）
+	result := r.data.db.WithContext(ctx).Exec(
+		"UPDATE good SET stock = stock + ? WHERE id = ? AND stock IS NOT NULL",
+		num, goodId,
+	)
+	return result.Error
+}

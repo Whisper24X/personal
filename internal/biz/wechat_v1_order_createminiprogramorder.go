@@ -127,6 +127,30 @@ func (w *WechatV1OrderUseCase) CreateMiniProgramOrder(ctx context.Context, req *
 			return errorx.DataSQLErr.WithError(err).Err()
 		}
 		goodType := platformGoodIdToGoodTypeMap[goodInfo.PlatformGoodID]
+		isDepositGood := goodType == "deposit"
+
+		// 定金商品库存预扣逻辑（使用乐观锁）
+		// 如果是定金商品且后台设置了库存（stock > 0），则需要预扣库存
+		// 如果后台没有设置库存（stock = 0 表示未设置），则默认为不限库存，跳过预扣
+		if isDepositGood && goodInfo.Stock > 0 {
+			// 定金商品购买数量固定为1
+			// 预扣库存：使用乐观锁机制
+			stockDeducted, err := w.goodRepo.PreDeductStock(ctx, req.GetGoodId(), 1)
+			if err != nil {
+				return errorx.DataSQLErr.WithError(err).Err()
+			}
+			if !stockDeducted {
+				return errors.New(http.StatusConflict, "-1", "商品库存不足，无法购买！")
+			}
+		}
+
+		// 设置订单的 serviceStatus 字段
+		// 定金商品设为空字符串，预约商品保持默认值（待后续支付回调时设置）
+		serviceStatus := ""
+		if !isDepositGood {
+			// 非定金商品，serviceStatus 在支付回调时设置，这里先不设置
+			serviceStatus = ""
+		}
 
 		orderData := &yanxue_model.Order{
 			GoodID:                 req.GoodId,
@@ -143,7 +167,8 @@ func (w *WechatV1OrderUseCase) CreateMiniProgramOrder(ctx context.Context, req *
 			ShopDiscountAmount:     discountAmount * 100, // 小程序的优惠金额同时赋值给店铺优惠
 			CourseAppointmentDraft: courseAppointmentDraft,
 			PaymentDeadline:        paymentDeadline,
-			GoodType:               goodType, // 商品类型
+			GoodType:               goodType,      // 商品类型
+			ServiceStatus:          serviceStatus, // 定金商品设为空字符串
 		}
 		if req.GetUserCouponId() != "" {
 			orderData.UserCouponID = req.GetUserCouponId()
@@ -151,6 +176,13 @@ func (w *WechatV1OrderUseCase) CreateMiniProgramOrder(ctx context.Context, req *
 
 		err = w.orderRepo.CreateOneCache(ctx, orderData)
 		if err != nil {
+			// 如果订单创建失败，需要回补库存（仅当实际预扣了库存时）
+			if isDepositGood && goodInfo.Stock > 0 {
+				rollbackErr := w.goodRepo.RollbackStock(ctx, req.GetGoodId(), 1)
+				if rollbackErr != nil {
+					w.log.Errorf("订单创建失败，库存回补失败：goodId=%s, err=%v", req.GetGoodId(), rollbackErr)
+				}
+			}
 			return errorx.DataSQLErr.WithError(err).Err()
 		}
 		// 如果已经使用了优惠券，则需要变更优惠券的状态

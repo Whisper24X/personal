@@ -1,3 +1,10 @@
+# SSH 配置（用于拉取私有仓库）
+# 使用项目内的 SSH key，或使用系统默认 SSH key（如果已配置）
+MAKEFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+export GIT_SSH_COMMAND := ssh -i $(MAKEFILE_DIR)/configs/ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=no
+export GOPROXY=https://goproxy.cn,direct
+export GOPRIVATE=gitlab.yc345.tv/*
+
 GOPATH=$(shell go env GOPATH)
 VERSION=$(shell git describe --tags --always)
 APP_RELATIVE_PATH=$(shell a=`basename $$PWD` && cd .. && b=`basename $$PWD` && echo $$b/$$a)
@@ -8,10 +15,15 @@ BUF_INSTALLED=$(shell command -v buf 2> /dev/null)
 GCI_INSTALLED=$(shell command -v gci 2> /dev/null)
 YC_TURBO_KIT_INSTALLED := $(shell command -v yc_turbo_kit 2> /dev/null)
 TABLES := ''
+# Apifox Configuration
+APIFOX_PROJECT_ID=6283389
+APIFOX_PROJECT_TOKEN=APS-1zB0KpDZlq5eunxay3GzoRYC6AdeuXg9
+# Yapi Configuration
+YAPI_PROJECT_ID=xxx
 
 .PHONY: init
 # 初始化安装
-init:
+init: git-config
 	go install github.com/go-kratos/kratos/cmd/kratos/v2@a7bae93
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.1
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2.0
@@ -23,6 +35,25 @@ init:
 	go install github.com/google/wire/cmd/wire@v0.6.0 # 与 kratos-demo 不同
 	go install github.com/abice/go-enum@latest
 	go install golang.org/x/tools/cmd/goimports@v0.23.0
+
+.PHONY: git-config
+# 配置 Git 使用 SSH 访问私有仓库（如果未配置）+ 修复 SSH key 权限
+git-config:
+	@if [ -f configs/ssh/id_ed25519 ]; then \
+		chmod 600 configs/ssh/id_ed25519; \
+	fi
+	@if ! git config --global --get url."git@gitlab.yc345.tv:".insteadOf > /dev/null 2>&1; then \
+		echo "配置 Git 使用 SSH 访问 gitlab.yc345.tv..."; \
+		git config --global url."git@gitlab.yc345.tv:".insteadOf "https://gitlab.yc345.tv/"; \
+		echo "✓ Git 配置完成"; \
+	else \
+		echo "✓ Git SSH 配置已存在"; \
+	fi
+
+.PHONY: mod
+# 下载依赖
+mod: git-config
+	go mod tidy
 
 .PHONY: config
 # 生成配置文件
@@ -42,7 +73,7 @@ api: buf
 			--go-grpc_out=paths=source_relative:./api \
 			--validate_out=paths=source_relative,lang=go:./api \
 			--go-errors_out=paths=source_relative:. \
-			--openapiv2_out ./api \
+			--openapiv2_out ./doc/swagger/ \
 			--openapiv2_opt logtostderr=true \
 			--openapiv2_opt json_names_for_fields=false \
 			$(API_PROTO_FILES)
@@ -61,6 +92,11 @@ lint:
 # 生成依赖注入文件
 wire:
 	wire ./...
+
+.PHONY: run
+# run
+run:
+	@export GO_ENV=development && kratos run
 
 .PHONY: gosec
 # 代码安全检查gosec
@@ -93,14 +129,22 @@ checkVersion:
 .PHONY: apidoc
 # 同步接口文档
 apidoc:ycTurboKitCheck
-	@yc_turbo_kit apidoc apifox -t APS-1zB0KpDZlq5eunxay3GzoRYC6AdeuXg9 -p 6283389
+	@yc_turbo_kit apidoc apifox -t $(APIFOX_PROJECT_TOKEN) -p $(APIFOX_PROJECT_ID)
+	@yc_turbo_kit apidoc yapi -t $(YAPI_PROJECT_ID)
+
+.PHONY: pbdoc
+# sql转为pb
+pbdoc:
+	@rm -rf ./doc/pb/*
+	@yc_turbo_kit sqltopb -p 'shadow.v1' -g 'gitlab.yc345.tv/backend/ainative-backend/api/shadow/v1;v1' -o './doc/pb'
+
 
 .PHONY: jmeter
 # jmeter 生成压测文件 make jmeter USER=your_username
 jmeter:ycTurboKitCheck
 	@if [ -n "$(USER)" ]; then \
 		echo "notice jmeter user: $(USER)"; \
-		yc_turbo_kit jmeter -d yanxue.7to12 -u $(USER) -s "|" -q false; \
+		yc_turbo_kit jmeter -d backend.ainative -u $(USER) -s "|" -q false; \
 	else \
 		echo "Please provide USER parameter"; \
 		exit 1; \
@@ -124,12 +168,34 @@ gorm:ycTurboKitCheck
 sqldump:ycTurboKitCheck
 	@yc_turbo_kit sqldump -f true -t $(TABLES)
 
-.PHONY: sqltopb
-# sql转为pb
-sqltopb:ycTurboKitCheck
-	@yc_turbo_kit sqltopb -p 'shadow.v1' -g 'gitlab.yc345.tv/backend/yanxue/api/shadow/v1;v1' -o './api/shadow/v1' -t $(TABLES)
-	#@yc_turbo_kit sqltopb -p 'wechat.v1' -g 'gitlab.yc345.tv/backend/yanxue/api/wechat/v1;v1' -o './api/wechat/v1' -t $(TABLES)
+.PHONY: sqlimport
+# 导入sql文件 (使用: make sqlimport ./doc/sql/ 或 make sqlimport ./doc/sql/users.sql)
+sqlimport:ycTurboKitCheck
+	@if [ -z "$(word 2,$(MAKECMDGOALS))" ]; then \
+		echo "错误: 必须指定 SQL 文件或目录路径"; \
+		echo "使用方法: make sqlimport ./doc/sql/users.sql"; \
+		exit 1; \
+	fi
+	@yc_turbo_kit sqlimport -i $(word 2,$(MAKECMDGOALS))
 
+.PHONY: sqltopb
+# sql转为pb，需要传入位置参数: make sqltopb shadow table1,table2
+sqltopb:ycTurboKitCheck
+	@if [ -z "$(word 2,$(MAKECMDGOALS))" ]; then \
+		echo "错误: 必须指定 POSITION 参数 (shadow/app)"; \
+		echo "使用方法: make sqltopb shadow table1,table2"; \
+		exit 1; \
+	fi
+	@if [ -z "$(word 3,$(MAKECMDGOALS))" ]; then \
+		echo "错误: 必须指定 TABLES 参数"; \
+		echo "使用方法: make sqltopb shadow table1,table2"; \
+		exit 1; \
+	fi
+	@POSITION=$(word 2,$(MAKECMDGOALS)); \
+	TABLES=$(word 3,$(MAKECMDGOALS)); \
+	@yc_turbo_kit sqltopb -p "$$POSITION.v1" -g "gitlab.yc345.tv/backend/ainative-backend/api/$$POSITION/v1;v1" -o "./api/$$POSITION/v1"
+%: # 防止位置参数被当作目标处理
+	@:
 
 .PHONY: errcode
 # 导出错误码
@@ -165,9 +231,9 @@ ycTurboKitCheck:
   	   	go install gitlab.yc345.tv/backend/yc_turbo_kit@latest; \
     fi
 
-.PHONY: new-release-branch
-# 创建新的release分支 tag +1
-new-release-branch:
+.PHONY: new-pre-branch
+# 创建新的pre分支 tag +1
+new-pre-branch:
 	@git fetch --tags
 	@latest_tag=$$(git describe --tags --abbrev=0 origin/master); \
 	IFS='.' read -r -a version_parts <<< "$${latest_tag#v}"; \
@@ -176,7 +242,7 @@ new-release-branch:
 	patch=$${version_parts[2]}; \
 	new_patch=$$((patch + 1)); \
 	new_tag="v$${major}.$${minor}.$${new_patch}"; \
-	git checkout -b "release/$${new_tag}" origin/master; \
+	git checkout -b "pre/$${new_tag}" origin/master; \
 	git branch --unset-upstream; \
 
 protoc-install:

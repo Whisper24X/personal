@@ -176,6 +176,10 @@ type GoodRepo interface {
 	yanxue_repo.IGoodRepo
 	GoodIdToName(ctx context.Context, goodIds []string) (map[string]string, error)
 	HasCourseGoodIds(ctx context.Context, courseId string) ([]string, error)
+	// PreDeductStock 预扣库存（使用乐观锁，返回是否成功）
+	PreDeductStock(ctx context.Context, goodId string, num int32) (bool, error)
+	// RollbackStock 回补库存
+	RollbackStock(ctx context.Context, goodId string, num int32) error
 }
 
 type CourseRepo interface {

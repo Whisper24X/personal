@@ -145,6 +145,11 @@ func NewHTTPServer(
 	// 支付回调通知
 	srv.HandleFunc("/yanxue/wechat/v1/order/wechatPayPaidNotify", wechatV1OrderService.WechatPayPaidNotify)
 	srv.HandleFunc("/yanxue/wechat/v1/order/wechatPayRefundNotify", wechatV1OrderService.WechatPayRefundNotify)
+
+	// 根目录:服务状态提示
+	srv.HandleFunc("/", func(w netHttp.ResponseWriter, r *netHttp.Request) {
+		w.Write([]byte(config.GetName() + " is running"))
+	})
 	return srv
 }
 

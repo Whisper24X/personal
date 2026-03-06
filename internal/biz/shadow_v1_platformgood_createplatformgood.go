@@ -19,7 +19,8 @@ func (s *ShadowV1PlatformGoodUseCase) CreatePlatformGood(ctx context.Context, re
 	adminId := meta.GetAdminID(ctx)
 	// 校验商品类型是否正确
 	if req.GetGoodType() != string(constant.GoodTypeSingle) &&
-		req.GetGoodType() != string(constant.GoodTypeMulti) {
+		req.GetGoodType() != string(constant.GoodTypeMulti) &&
+		req.GetGoodType() != string(constant.GoodTypeDeposit) {
 		return resp, errors.New(http.StatusBadRequest, "-1", "商品类型不正确！")
 	}
 	platformGood := &yanxue_model.PlatformGood{
