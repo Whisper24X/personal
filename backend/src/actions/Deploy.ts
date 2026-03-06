@@ -31,7 +31,6 @@ export class Deploy extends BaseAction {
   // 结果文件路径（相对于 workDir）
   private static readonly PREPARE_RESULT_FILE = 'docs/deploy/prepareResult.md';
   private static readonly DEPLOY_RESULT_FILE = 'docs/deploy/deployResult.md';
-  private static readonly DEPLOY_LOG_FILE = 'docs/deploy/deployLog.md';
   private static readonly DEPLOY_REPORT_FILE = 'docs/deploy/deploy.md';
   private static readonly VERIFY_RESULT_FILE = 'docs/deploy/verifyResult.md';
 
