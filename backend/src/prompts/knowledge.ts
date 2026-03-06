@@ -56,6 +56,20 @@ export const KNOWLEDGE_TYPE_LABELS: Record<KnowledgeType, string> = {
 };
 
 /**
+ * 知识类型业务可读标签（用于 version-review 等面向业务人员的场景）
+ */
+export const KNOWLEDGE_TYPE_LABELS_FOR_BUSINESS: Record<KnowledgeType, string> = {
+  [KnowledgeType.BUSINESS_RULES]: '业务规则',
+  [KnowledgeType.HISTORY_PRD]: '历史需求文档',
+  [KnowledgeType.HISTORY_MRD]: '市场调研',
+  [KnowledgeType.TECH_CONSTRAINTS]: '系统限制',
+  [KnowledgeType.COMPETITOR_ANALYSIS]: '竞品分析',
+  [KnowledgeType.TERMINOLOGY]: '术语词典',
+  [KnowledgeType.FEATURE_LIST]: '现有功能',
+  [KnowledgeType.DEV_SPEC]: '开发规范',
+};
+
+/**
  * 章节-知识映射配置
  */
 export interface SectionKnowledgeMapping {
@@ -497,6 +511,65 @@ export function formatStructuredKnowledge(context: StructuredKnowledgeContext): 
 
   for (const { chunks, title } of knowledgeSections) {
     const formatted = formatKnowledgeChunks(chunks, title);
+    if (formatted) {
+      sections.push(formatted);
+    }
+  }
+
+  if (sections.length === 0) {
+    return '';
+  }
+
+  return `## 知识库上下文（由系统自动提供）
+
+${sections.join('\n\n---\n\n')}`;
+}
+
+/**
+ * 格式化单个知识片段（业务可读标签，用于 version-review）
+ */
+function formatKnowledgeChunkForBusiness(chunk: KnowledgeChunk): string {
+  const label = KNOWLEDGE_TYPE_LABELS_FOR_BUSINESS[chunk.type] || KNOWLEDGE_TYPE_LABELS[chunk.type] || chunk.type;
+  const source = chunk.sourceTitle ? ` - ${chunk.sourceTitle}` : '';
+  const similarity = chunk.similarity ? ` (相关度: ${(chunk.similarity * 100).toFixed(1)}%)` : '';
+
+  return `> 📚 来源：${label}${source}${similarity}
+${chunk.content}`;
+}
+
+/**
+ * 格式化知识片段数组（业务可读）
+ */
+function formatKnowledgeChunksForBusiness(chunks: KnowledgeChunk[], title: string): string {
+  if (!chunks || chunks.length === 0) {
+    return '';
+  }
+
+  const formattedChunks = chunks.map(formatKnowledgeChunkForBusiness).join('\n\n');
+  return `### ${title}\n\n${formattedChunks}`;
+}
+
+/**
+ * 格式化结构化知识上下文为提示词（version-review 专用，业务友好标签）
+ * @param context 结构化知识上下文
+ * @returns 格式化后的知识内容字符串
+ */
+export function formatStructuredKnowledgeForVersionReview(context: StructuredKnowledgeContext): string {
+  const sections: string[] = [];
+
+  const knowledgeSections = [
+    { chunks: context.terminology, title: '术语词典' },
+    { chunks: context.businessRules, title: '业务规则' },
+    { chunks: context.existingFeatures, title: '现有功能' },
+    { chunks: context.historyPRD, title: '历史需求文档' },
+    { chunks: context.historyMRD, title: '市场调研' },
+    { chunks: context.techConstraints, title: '系统限制' },
+    { chunks: context.competitors, title: '竞品分析' },
+    { chunks: context.devSpec, title: '开发规范' },
+  ];
+
+  for (const { chunks, title } of knowledgeSections) {
+    const formatted = formatKnowledgeChunksForBusiness(chunks, title);
     if (formatted) {
       sections.push(formatted);
     }
