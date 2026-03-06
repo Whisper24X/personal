@@ -71,6 +71,7 @@ _resolve_worktree_suffix() {
     echo "$normalized" | tr '[:upper:]' '[:lower:]'
 }
 
+
 _port_in_use() {
     lsof -i :"$1" -sTCP:LISTEN >/dev/null 2>&1
 }
@@ -325,6 +326,16 @@ cmd_restart() {
     check_docker
     info "重启沙箱容器..."
     dc stop
+
+    info "清理日志文件..."
+    local log_dir="$PROJECT_ROOT/logs"
+    if [[ -d "$log_dir" ]]; then
+        for f in "$log_dir"/*.log; do
+            [[ -f "$f" ]] && : > "$f"
+        done
+        success "日志已清空"
+    fi
+
     dc up -d --wait
     success "沙箱已重启"
 }
