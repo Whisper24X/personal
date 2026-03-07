@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
+import { useAccessStore } from '@/stores/modules/access'
 import ExecutionPanel from '@/components/tasks/detail/ExecutionPanel.vue'
 import ReplyCard from '@/components/tasks/detail/ReplyCard.vue'
 import RightPanelSection from '@/components/tasks/detail/RightPanelSection.vue'
@@ -19,6 +20,7 @@ defineOptions({
 
 const route = useRoute()
 const router = useRouter()
+const accessStore = useAccessStore()
 const taskId = computed(() => String(route.params.id ?? ''))
 
 const loading = ref(false)
@@ -138,7 +140,7 @@ const taskModeLabel = computed(() => {
 })
 
 const canExecute = computed(() => {
-  if (!task.value) {
+  if (!task.value || !accessStore.hasCapability('project.task.execute')) {
     return false
   }
 
@@ -146,15 +148,23 @@ const canExecute = computed(() => {
 })
 
 const canCancel = computed(() => {
-  return task.value?.status === 'in_progress'
+  return accessStore.hasCapability('project.task.cancel') && task.value?.status === 'in_progress'
 })
 
 const canCleanupWorktree = computed(() => {
-  return Boolean(task.value?.gitWorktree)
+  return accessStore.hasCapability('project.task.create') && Boolean(task.value?.gitWorktree)
 })
 
 const canEdit = computed(() => {
-  return task.value?.status === 'todo'
+  return accessStore.hasCapability('project.task.create') && task.value?.status === 'todo'
+})
+
+const canRemove = computed(() => {
+  return accessStore.hasCapability('project.task.create')
+})
+
+const canManageReview = computed(() => {
+  return accessStore.hasCapability('project.task.execute')
 })
 
 const executionMessages = computed(() => {
@@ -170,7 +180,7 @@ const executionMessages = computed(() => {
 })
 
 const replyDisabled = computed(() => {
-  return loading.value || actionLoading.value || !task.value
+  return loading.value || actionLoading.value || !task.value || !accessStore.hasCapability('project.task.create')
 })
 
 const replyPlaceholder = computed(() => {
@@ -343,6 +353,17 @@ const refreshMessages = async () => {
   }
 }
 
+const refreshAccessContext = async (projectId: string) => {
+  try {
+    await accessStore.loadContext({
+      ...(projectId ? { projectId } : {}),
+    })
+  } catch (error) {
+    void error
+    accessStore.clear()
+  }
+}
+
 const loadTaskData = async () => {
   if (!taskId.value) {
     return
@@ -356,6 +377,8 @@ const loadTaskData = async () => {
       tasksApi.logs(taskId.value, { limit: 300 }),
       tasksApi.messages(taskId.value),
     ])
+
+    await refreshAccessContext(detailResponse.task.projectId || queryProjectId.value)
 
     detail.value = detailResponse
     logs.value = [...logResponse].sort((left, right) => {
@@ -372,7 +395,7 @@ const loadTaskData = async () => {
 }
 
 const executeTask = async () => {
-  if (!taskId.value) {
+  if (!taskId.value || !canExecute.value) {
     return
   }
 
@@ -390,7 +413,7 @@ const executeTask = async () => {
 }
 
 const cancelTask = async () => {
-  if (!taskId.value) {
+  if (!taskId.value || !canCancel.value) {
     return
   }
 
@@ -407,7 +430,7 @@ const cancelTask = async () => {
 }
 
 const cleanupTaskWorktree = async () => {
-  if (!taskId.value) {
+  if (!taskId.value || !canCleanupWorktree.value) {
     return
   }
 
@@ -425,7 +448,7 @@ const cleanupTaskWorktree = async () => {
 }
 
 const retryNode = async (node: TaskNode) => {
-  if (!taskId.value) {
+  if (!taskId.value || !canManageReview.value) {
     return
   }
 
@@ -445,7 +468,7 @@ const retryNode = async (node: TaskNode) => {
 }
 
 const approveNode = async (node: TaskNode) => {
-  if (!taskId.value) {
+  if (!taskId.value || !canManageReview.value) {
     return
   }
 
@@ -465,7 +488,7 @@ const approveNode = async (node: TaskNode) => {
 }
 
 const handleReply = async (text: string) => {
-  if (!taskId.value) {
+  if (!taskId.value || !accessStore.hasCapability('project.task.create')) {
     return
   }
 
@@ -490,7 +513,7 @@ const handleSelectWorkflowNode = (nodeId: string) => {
 }
 
 const openEdit = () => {
-  if (!task.value) {
+  if (!task.value || !canEdit.value) {
     return
   }
 
@@ -503,7 +526,7 @@ const openEdit = () => {
 }
 
 const saveEdit = async (payload: TaskEditFormValue) => {
-  if (!taskId.value) {
+  if (!taskId.value || !accessStore.hasCapability('project.task.create')) {
     return
   }
 
@@ -527,7 +550,7 @@ const saveEdit = async (payload: TaskEditFormValue) => {
 }
 
 const removeTask = async () => {
-  if (!taskId.value) {
+  if (!taskId.value || !canRemove.value) {
     return
   }
 
@@ -624,6 +647,7 @@ onBeforeUnmount(() => {
             :can-cancel="canCancel"
             :can-cleanup-worktree="canCleanupWorktree"
             :can-edit="canEdit"
+            :can-remove="canRemove"
             @execute="executeTask"
             @cancel="cancelTask"
             @cleanup="cleanupTaskWorktree"
@@ -637,6 +661,7 @@ onBeforeUnmount(() => {
             :nodes="sortedNodes"
             :selected-node-id="selectedWorkflowNodeId"
             :status-label-map="statusLabelMap"
+            :can-manage-review="canManageReview"
             @select-node="handleSelectWorkflowNode"
             @approve-node="approveNode"
           />
@@ -651,6 +676,7 @@ onBeforeUnmount(() => {
             :sorted-nodes="sortedNodes"
             :action-loading="actionLoading"
             :format-date="formatDate"
+            :can-manage-review="canManageReview"
             @retry-node="retryNode"
             @approve-node="approveNode"
           />
@@ -658,6 +684,7 @@ onBeforeUnmount(() => {
           <ReplyCard
             :is-running="task?.status === 'in_progress'"
             :disabled="replyDisabled"
+            :can-stop="canCancel"
             :placeholder="replyPlaceholder"
             @submit="handleReply"
             @stop="cancelTask"

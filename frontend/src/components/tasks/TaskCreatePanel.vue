@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
+import { useAccessStore } from '@/stores/modules/access'
 import { businessLinesApi, type AgentToolConfig } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
@@ -49,6 +50,7 @@ defineOptions({
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
+const accessStore = useAccessStore()
 
 const loading = ref(false)
 const loadingTemplates = ref(false)
@@ -81,6 +83,10 @@ const selectedProject = computed(() => {
 
 const selectedGitBaseBranch = computed(() => {
   return selectedProject.value?.defaultBranch?.trim() || '未配置'
+})
+
+const canCreateTask = computed(() => {
+  return Boolean(createForm.projectId) && accessStore.hasCapability('project.task.create')
 })
 
 const resolveQueryProjectId = () => {
@@ -237,6 +243,17 @@ const loadConversationCliOptions = async (projectId: string) => {
   }
 }
 
+const refreshAccessContext = async (projectId: string) => {
+  try {
+    await accessStore.loadContext({
+      ...(projectId ? { projectId } : {}),
+    })
+  } catch (error) {
+    void error
+    accessStore.clear()
+  }
+}
+
 const loadPageData = async () => {
   loading.value = true
   try {
@@ -251,6 +268,8 @@ const loadPageData = async () => {
     } else if (!createForm.projectId || !projectResponse.some((project) => project.id === createForm.projectId)) {
       createForm.projectId = ''
     }
+
+    await refreshAccessContext(createForm.projectId)
 
     await Promise.all([
       loadTemplatesForProject(createForm.projectId),
@@ -315,6 +334,11 @@ const pickRandomHeadline = () => {
 const createTask = async () => {
   const contextProjectId = resolveProjectIdFromContext()
   const projectIdForSubmit = contextProjectId || createForm.projectId
+
+  if (!accessStore.hasCapability('project.task.create')) {
+    showValidationError('当前项目暂无创建任务权限')
+    return
+  }
 
   if (!projectIdForSubmit) {
     showValidationError('请先在左侧栏选择项目后再创建任务')
@@ -404,6 +428,7 @@ watch(
       return
     }
 
+    await refreshAccessContext(projectId)
     await Promise.all([
       loadTemplatesForProject(projectId),
       loadConversationCliOptions(projectId),
@@ -774,7 +799,7 @@ onBeforeUnmount(() => {
               <button
                 type="submit"
                 class="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-full bg-muted text-foreground transition hover:bg-primary hover:text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="submitting"
+                :disabled="submitting || !canCreateTask"
                 aria-label="创建任务"
               >
                 <svg

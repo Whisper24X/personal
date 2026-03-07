@@ -9,32 +9,14 @@ export type UserProfile = {
   name: string
   username: string
   avatar?: string | null
-  permissions: string[]
 }
 
 const mapUserToProfile = (user: UserInfo): UserProfile => {
-  const allPermissions = [
-    'home:view',
-    'dashboard:view',
-    'kanban:view',
-    'tasks:view',
-    'projects:view',
-    'business-lines:view',
-    'skills:view',
-    'mcp:view',
-    'automations:view',
-    'settings:view',
-    'users:view',
-  ]
-
-  const defaultPermissions = allPermissions.filter((permission) => permission !== 'users:view')
-
   return {
     id: user.id,
     name: user.nickname?.trim() || user.username,
     username: user.username,
     avatar: user.avatar,
-    permissions: defaultPermissions,
   }
 }
 
@@ -52,11 +34,6 @@ export const useUserStore = defineStore('user', () => {
     profile.value = nextProfile
   }
 
-  const hasPermission = (permission: string) => {
-    if (!profile.value) return false
-    return profile.value.permissions.includes(permission)
-  }
-
   const loadMe = async () => {
     if (!token.value) {
       profile.value = null
@@ -71,6 +48,8 @@ export const useUserStore = defineStore('user', () => {
 
   const logout = async () => {
     await authApi.logout()
+    const { useAccessStore } = await import('./access')
+    useAccessStore().clear()
     setToken(null)
     setProfile(null)
   }
@@ -81,7 +60,6 @@ export const useUserStore = defineStore('user', () => {
     isLogin,
     setToken,
     setProfile,
-    hasPermission,
     loadMe,
     logout,
     mapUserToProfile,

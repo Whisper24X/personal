@@ -20,6 +20,7 @@ const props = defineProps<{
   initialUserId: string
   initialBusinessRole: BusinessLineMemberRole
   initialProjectRoles: Record<string, ProjectPermissionRole>
+  showProjectRoles?: boolean
   inviteLink?: string
   inviteExpiresAt?: string
   errorMessage?: string
@@ -151,8 +152,10 @@ const syncState = () => {
   copyState.value = 'idle'
 
   const nextProjectRoles: Record<string, ProjectPermissionRole> = {}
-  for (const project of props.projects) {
-    nextProjectRoles[project.id] = props.initialProjectRoles[project.id] ?? 'none'
+  if (props.showProjectRoles !== false) {
+    for (const project of props.projects) {
+      nextProjectRoles[project.id] = props.initialProjectRoles[project.id] ?? 'none'
+    }
   }
   projectRoles.value = nextProjectRoles
 
@@ -222,7 +225,7 @@ watch(
 )
 
 watch(
-  () => [props.initialUserId, props.initialBusinessRole, props.initialProjectRoles, props.projects, props.mode],
+  () => [props.initialUserId, props.initialBusinessRole, props.initialProjectRoles, props.projects, props.mode, props.showProjectRoles],
   () => {
     if (!props.open) {
       return
@@ -354,8 +357,8 @@ watch(
 	            </section>
 	          </div>
 
-	          <section class="space-y-2 rounded-xl border border-border bg-background/70 p-3">
-	            <p class="text-xs font-semibold text-muted-foreground">项目权限</p>
+	          <section v-if="props.showProjectRoles !== false" class="space-y-2 rounded-xl border border-border bg-background/70 p-3">
+            <p class="text-xs font-semibold text-muted-foreground">项目权限</p>
 	            <div class="max-h-[320px] overflow-auto rounded-xl border border-border">
 	              <table class="w-full min-w-[560px] text-left text-sm">
                 <thead class="border-b border-border bg-background/70">

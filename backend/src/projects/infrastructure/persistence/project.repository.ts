@@ -11,6 +11,10 @@ export abstract class ProjectRepository {
 
   abstract findByIds(ids: Project['id'][]): Promise<Project[]>;
 
+  abstract findByBusinessLineId(
+    businessLineId: Project['businessLineId'],
+  ): Promise<Project[]>;
+
   abstract findByBusinessLineIdAndName(
     businessLineId: Project['businessLineId'],
     name: Project['name'],

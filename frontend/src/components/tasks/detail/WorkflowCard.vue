@@ -10,6 +10,7 @@ const props = defineProps<{
   nodes: TaskNode[]
   selectedNodeId: string | null
   statusLabelMap: Record<Task['status'], string>
+  canManageReview: boolean
 }>()
 
 const emit = defineEmits<{
@@ -89,6 +90,7 @@ const nodeDotClass = (node: TaskNode) => {
             </p>
           </div>
           <button
+            v-if="props.canManageReview"
             class="h-7 rounded-md bg-primary px-2 text-xs font-semibold text-primary-foreground"
             type="button"
             @click="emit('approveNode', currentReviewNode)"

@@ -31,6 +31,7 @@ import { UsersService } from '../users/users.service';
 import { ProjectMemberRole } from './dto/project-member-role.enum';
 import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
+import { AccessService } from '../access/access.service';
 
 @Injectable()
 export class ProjectsService {
@@ -46,6 +47,7 @@ export class ProjectsService {
     private readonly businessLineMemberRepository: BusinessLineMemberRepository,
     private readonly usersService: UsersService,
     private readonly taskRepository: TaskRepository,
+    private readonly accessService: AccessService,
     private readonly configService: ConfigService = new ConfigService(),
   ) {}
 
@@ -56,6 +58,7 @@ export class ProjectsService {
     await this.ensureCanManageBusinessLine(
       createProjectDto.businessLineId,
       currentUser,
+      'businessLine.project.create',
     );
 
     const existedProject =
@@ -114,6 +117,7 @@ export class ProjectsService {
     await this.ensureCanManageBusinessLine(
       inspectProjectRepositoryDto.businessLineId,
       currentUser,
+      'businessLine.project.create',
     );
 
     const gitUrl = inspectProjectRepositoryDto.gitUrl.trim();
@@ -199,7 +203,10 @@ export class ProjectsService {
     updateProjectDto: UpdateProjectDto,
     currentUser: JwtPayloadType,
   ): Promise<Project> {
-    const currentProject = await this.ensureCanManageProject(id, currentUser);
+    const currentProject = await this.ensureCanUpdateProjectItem(
+      id,
+      currentUser,
+    );
 
     const nextBusinessLineId =
       updateProjectDto.businessLineId ?? currentProject.businessLineId;
@@ -208,6 +215,7 @@ export class ProjectsService {
       await this.ensureCanManageBusinessLine(
         updateProjectDto.businessLineId,
         currentUser,
+        'businessLine.project.update',
       );
     }
 
@@ -261,7 +269,7 @@ export class ProjectsService {
   }
 
   async remove(id: Project['id'], currentUser: JwtPayloadType): Promise<void> {
-    await this.ensureCanManageProject(id, currentUser);
+    await this.ensureCanDeleteProjectItem(id, currentUser);
     await this.projectRepository.remove(id);
   }
 
@@ -269,7 +277,11 @@ export class ProjectsService {
     projectId: Project['id'],
     currentUser: JwtPayloadType,
   ): Promise<ProjectMember[]> {
-    await this.ensureCanAccessProject(projectId, currentUser);
+    await this.accessService.assertProjectCapability(
+      currentUser,
+      projectId,
+      'project.member.manage',
+    );
 
     return this.projectMemberRepository.findByProjectId(projectId);
   }
@@ -287,7 +299,6 @@ export class ProjectsService {
     this.ensureActorCanManageMemberMutation({
       currentUser,
       actorProjectMember: manageContext.actorProjectMember,
-      byBusinessLinePermission: manageContext.byBusinessLinePermission,
       nextRole: createProjectMemberDto.role,
     });
 
@@ -351,7 +362,6 @@ export class ProjectsService {
     this.ensureActorCanManageMemberMutation({
       currentUser,
       actorProjectMember: manageContext.actorProjectMember,
-      byBusinessLinePermission: manageContext.byBusinessLinePermission,
       targetMember,
       nextRole: updateProjectMemberDto.role,
     });
@@ -360,11 +370,7 @@ export class ProjectsService {
       targetMember.role === ProjectMemberRole.owner &&
       updateProjectMemberDto.role !== ProjectMemberRole.owner
     ) {
-      this.ensureOwnerSelfProtection(
-        targetMember,
-        currentUser,
-        manageContext.byBusinessLinePermission,
-      );
+      this.ensureOwnerSelfProtection(targetMember, currentUser);
       await this.ensureOwnerCanBeModified(projectId);
     }
 
@@ -406,16 +412,11 @@ export class ProjectsService {
     this.ensureActorCanManageMemberMutation({
       currentUser,
       actorProjectMember: manageContext.actorProjectMember,
-      byBusinessLinePermission: manageContext.byBusinessLinePermission,
       targetMember,
     });
 
     if (targetMember.role === ProjectMemberRole.owner) {
-      this.ensureOwnerSelfProtection(
-        targetMember,
-        currentUser,
-        manageContext.byBusinessLinePermission,
-      );
+      this.ensureOwnerSelfProtection(targetMember, currentUser);
       await this.ensureOwnerCanBeModified(projectId);
     }
 
@@ -434,6 +435,18 @@ export class ProjectsService {
     currentUser: JwtPayloadType,
   ): Promise<Project> {
     return this.ensureCanManageProject(projectId, currentUser);
+  }
+
+  async assertProjectCapability(
+    projectId: Project['id'],
+    currentUser: JwtPayloadType,
+    capability: string,
+  ): Promise<Project> {
+    return this.accessService.assertProjectCapability(
+      currentUser,
+      projectId,
+      capability,
+    );
   }
 
   async ensureProjectRepositoryReady(
@@ -463,84 +476,22 @@ export class ProjectsService {
     projectId: Project['id'],
     currentUser: JwtPayloadType,
   ): Promise<Project> {
-    const project = await this.projectRepository.findById(projectId);
-
-    if (!project) {
-      throw new NotFoundException('Project not found');
-    }
-
-    if (this.isAdmin(currentUser)) {
-      return project;
-    }
-
-    const [projectMember, businessLineMember] = await Promise.all([
-      this.projectMemberRepository.findByProjectIdAndUserId(
-        project.id,
-        currentUser.sub,
-      ),
-      this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
-        project.businessLineId,
-        currentUser.sub,
-      ),
-    ]);
-
-    if (projectMember) {
-      return project;
-    }
-
-    if (
-      businessLineMember &&
-      (businessLineMember.role === BusinessLineMemberRole.owner ||
-        businessLineMember.role === BusinessLineMemberRole.admin)
-    ) {
-      return project;
-    }
-
-    throw new ForbiddenException('forbiddenProject');
+    return this.accessService.assertProjectCapability(
+      currentUser,
+      projectId,
+      'project.read',
+    );
   }
 
   private async ensureCanManageProject(
     projectId: Project['id'],
     currentUser: JwtPayloadType,
   ): Promise<Project> {
-    const project = await this.projectRepository.findById(projectId);
-
-    if (!project) {
-      throw new NotFoundException('Project not found');
-    }
-
-    if (this.isAdmin(currentUser)) {
-      return project;
-    }
-
-    const [projectMember, businessLineMember] = await Promise.all([
-      this.projectMemberRepository.findByProjectIdAndUserId(
-        project.id,
-        currentUser.sub,
-      ),
-      this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
-        project.businessLineId,
-        currentUser.sub,
-      ),
-    ]);
-
-    if (
-      businessLineMember &&
-      (businessLineMember.role === BusinessLineMemberRole.owner ||
-        businessLineMember.role === BusinessLineMemberRole.admin)
-    ) {
-      return project;
-    }
-
-    if (
-      projectMember &&
-      (projectMember.role === ProjectMemberRole.owner ||
-        projectMember.role === ProjectMemberRole.maintainer)
-    ) {
-      return project;
-    }
-
-    throw new ForbiddenException('forbiddenProjectManage');
+    return this.accessService.assertProjectCapability(
+      currentUser,
+      projectId,
+      'project.update',
+    );
   }
 
   private async ensureCanManageProjectMembers(
@@ -549,79 +500,44 @@ export class ProjectsService {
   ): Promise<{
     project: Project;
     actorProjectMember: ProjectMember | null;
-    byBusinessLinePermission: boolean;
   }> {
-    const project = await this.projectRepository.findById(projectId);
-
-    if (!project) {
-      throw new NotFoundException('Project not found');
-    }
+    const project = await this.accessService.assertProjectCapability(
+      currentUser,
+      projectId,
+      'project.member.manage',
+    );
 
     if (this.isAdmin(currentUser)) {
       return {
         project,
         actorProjectMember: null,
-        byBusinessLinePermission: false,
       };
     }
 
-    const [projectMember, businessLineMember] = await Promise.all([
-      this.projectMemberRepository.findByProjectIdAndUserId(
+    const actorProjectMember =
+      await this.projectMemberRepository.findByProjectIdAndUserId(
         project.id,
         currentUser.sub,
-      ),
-      this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
-        project.businessLineId,
-        currentUser.sub,
-      ),
-    ]);
+      );
 
-    const byBusinessLinePermission =
-      !!businessLineMember &&
-      (businessLineMember.role === BusinessLineMemberRole.owner ||
-        businessLineMember.role === BusinessLineMemberRole.admin);
-
-    if (byBusinessLinePermission) {
-      return {
-        project,
-        actorProjectMember: projectMember,
-        byBusinessLinePermission: true,
-      };
-    }
-
-    if (
-      projectMember &&
-      (projectMember.role === ProjectMemberRole.owner ||
-        projectMember.role === ProjectMemberRole.maintainer)
-    ) {
-      return {
-        project,
-        actorProjectMember: projectMember,
-        byBusinessLinePermission: false,
-      };
-    }
-
-    throw new ForbiddenException('forbiddenProjectManage');
+    return {
+      project,
+      actorProjectMember,
+    };
   }
 
   private ensureActorCanManageMemberMutation({
     currentUser,
     actorProjectMember,
-    byBusinessLinePermission,
     targetMember,
     nextRole,
   }: {
     currentUser: JwtPayloadType;
     actorProjectMember: ProjectMember | null;
-    byBusinessLinePermission: boolean;
     targetMember?: ProjectMember;
     nextRole?: ProjectMemberRole;
   }): void {
     if (this.isAdmin(currentUser)) {
-      return;
-    }
-
-    if (byBusinessLinePermission) {
       return;
     }
 
@@ -649,34 +565,83 @@ export class ProjectsService {
   private async ensureCanManageBusinessLine(
     businessLineId: string,
     currentUser: JwtPayloadType,
+    capability: string,
   ): Promise<void> {
-    const businessLine =
-      await this.businessLineRepository.findById(businessLineId);
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      capability,
+    );
+  }
 
-    if (!businessLine) {
-      throw new NotFoundException('Business line not found');
-    }
+  private async ensureCanUpdateProjectItem(
+    projectId: Project['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<Project> {
+    const project = await this.getProjectOrThrow(projectId);
 
     if (this.isAdmin(currentUser)) {
-      return;
+      return project;
     }
 
-    const businessLineMember =
-      await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
-        businessLineId,
-        currentUser.sub,
-      );
+    const [canManageByBusinessLine, canManageByProject] = await Promise.all([
+      this.accessService.hasBusinessLineCapability(
+        currentUser,
+        project.businessLineId,
+        'businessLine.project.update',
+      ),
+      this.accessService.hasProjectCapability(
+        currentUser,
+        project.id,
+        'project.update',
+      ),
+    ]);
 
-    if (!businessLineMember) {
-      throw new ForbiddenException('forbiddenBusinessLine');
+    if (!canManageByBusinessLine && !canManageByProject) {
+      throw new ForbiddenException('forbiddenProjectManage');
     }
 
-    if (
-      businessLineMember.role !== BusinessLineMemberRole.owner &&
-      businessLineMember.role !== BusinessLineMemberRole.admin
-    ) {
-      throw new ForbiddenException('forbiddenBusinessLineManage');
+    return project;
+  }
+
+  private async ensureCanDeleteProjectItem(
+    projectId: Project['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<Project> {
+    const project = await this.getProjectOrThrow(projectId);
+
+    if (this.isAdmin(currentUser)) {
+      return project;
     }
+
+    const [canManageByBusinessLine, canManageByProject] = await Promise.all([
+      this.accessService.hasBusinessLineCapability(
+        currentUser,
+        project.businessLineId,
+        'businessLine.project.delete',
+      ),
+      this.accessService.hasProjectCapability(
+        currentUser,
+        project.id,
+        'project.delete',
+      ),
+    ]);
+
+    if (!canManageByBusinessLine && !canManageByProject) {
+      throw new ForbiddenException('forbiddenProjectManage');
+    }
+
+    return project;
+  }
+
+  private async getProjectOrThrow(projectId: Project['id']): Promise<Project> {
+    const project = await this.projectRepository.findById(projectId);
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    return project;
   }
 
   private async validateGitRepositoryAccessible(gitUrl: string): Promise<void> {
@@ -981,13 +946,8 @@ export class ProjectsService {
   private ensureOwnerSelfProtection(
     targetMember: ProjectMember,
     currentUser: JwtPayloadType,
-    byBusinessLinePermission: boolean,
   ): void {
     if (this.isAdmin(currentUser)) {
-      return;
-    }
-
-    if (byBusinessLinePermission) {
       return;
     }
 

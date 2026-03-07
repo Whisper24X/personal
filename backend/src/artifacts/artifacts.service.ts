@@ -33,9 +33,10 @@ export class ArtifactsService {
       throw new NotFoundException('Task not found for artifact');
     }
 
-    await this.projectsService.assertCanAccessProject(
+    await this.projectsService.assertProjectCapability(
       task.projectId,
       currentUser,
+      'project.artifact.read',
     );
 
     return artifact;

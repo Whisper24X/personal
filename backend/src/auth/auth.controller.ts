@@ -10,6 +10,7 @@ import {
   Patch,
   Delete,
   SerializeOptions,
+  Query,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
@@ -21,6 +22,8 @@ import { LoginResponseDto } from './dto/login-response.dto';
 import { NullableType } from '../utils/types/nullable.type';
 import { User } from '../users/domain/user';
 import { RefreshResponseDto } from './dto/refresh-response.dto';
+import { GetCurrentAccessDto } from '../access/dto/get-current-access.dto';
+import { CurrentAccessDto } from '../access/dto/current-access.dto';
 
 @ApiTags('Auth')
 @Controller({
@@ -77,6 +80,20 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   public me(@Request() request): Promise<NullableType<User>> {
     return this.service.me(request.user);
+  }
+
+  @ApiBearerAuth()
+  @Get('me/access')
+  @UseGuards(AuthGuard('jwt'))
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({
+    type: CurrentAccessDto,
+  })
+  public access(
+    @Request() request,
+    @Query() query: GetCurrentAccessDto,
+  ): Promise<CurrentAccessDto> {
+    return this.service.access(request.user, query);
   }
 
   @ApiBearerAuth()

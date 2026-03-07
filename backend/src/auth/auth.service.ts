@@ -18,12 +18,16 @@ import { JwtPayloadType } from './strategies/types/jwt-payload.type';
 import { UsersService } from '../users/users.service';
 import { AllConfigType } from '../config/config.type';
 import { User } from '../users/domain/user';
+import { AccessService } from '../access/access.service';
+import { GetCurrentAccessDto } from '../access/dto/get-current-access.dto';
+import { CurrentAccessDto } from '../access/dto/current-access.dto';
 
 @Injectable()
 export class AuthService {
   constructor(
     private jwtService: JwtService,
     private usersService: UsersService,
+    private accessService: AccessService,
     private configService: ConfigService<AllConfigType>,
   ) {}
 
@@ -69,6 +73,13 @@ export class AuthService {
 
   async me(userJwtPayload: JwtPayloadType): Promise<NullableType<User>> {
     return this.usersService.findById(userJwtPayload.sub);
+  }
+
+  async access(
+    userJwtPayload: JwtPayloadType,
+    query: GetCurrentAccessDto,
+  ): Promise<CurrentAccessDto> {
+    return this.accessService.getCurrentAccess(userJwtPayload, query);
   }
 
   async update(

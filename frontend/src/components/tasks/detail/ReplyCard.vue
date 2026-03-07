@@ -10,10 +10,12 @@ const props = withDefaults(
     isRunning: boolean
     disabled?: boolean
     placeholder?: string
+    canStop?: boolean
   }>(),
   {
     disabled: false,
     placeholder: '补充指令或继续提问...',
+    canStop: true,
   },
 )
 
@@ -56,7 +58,7 @@ const handleSubmit = () => {
       <span class="text-muted-foreground text-xs font-semibold">Reply</span>
       <button
         class="h-7 rounded-md border border-border bg-background px-2 text-xs font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-        :disabled="!props.isRunning"
+        :disabled="!props.isRunning || !props.canStop"
         type="button"
         @click="emit('stop')"
       >

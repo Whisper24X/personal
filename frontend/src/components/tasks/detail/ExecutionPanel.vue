@@ -15,6 +15,7 @@ const props = defineProps<{
   actionLoading: boolean
   sortedNodes: TaskNode[]
   formatDate: (value?: string) => string
+  canManageReview: boolean
 }>()
 
 const emit = defineEmits<{
@@ -77,7 +78,7 @@ const roleLabelMap: Record<TaskMessage['role'], string> = {
     </div>
 
     <div
-      v-if="props.sortedNodes.some((node) => node.status === 'in_review')"
+      v-if="props.canManageReview && props.sortedNodes.some((node) => node.status === 'in_review')"
       class="border-border/60 bg-muted/20 border-t px-3 py-2"
     >
       <div

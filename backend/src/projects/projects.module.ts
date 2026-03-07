@@ -5,6 +5,7 @@ import { RelationalProjectPersistenceModule } from './infrastructure/persistence
 import { UsersModule } from '../users/users.module';
 import { BusinessLinesModule } from '../business-lines/business-lines.module';
 import { RelationalTaskPersistenceModule } from '../tasks/infrastructure/persistence/relational/relational-persistence.module';
+import { AccessModule } from '../access/access.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { RelationalTaskPersistenceModule } from '../tasks/infrastructure/persist
     RelationalTaskPersistenceModule,
     UsersModule,
     BusinessLinesModule,
+    AccessModule,
   ],
   controllers: [ProjectsController],
   providers: [ProjectsService],

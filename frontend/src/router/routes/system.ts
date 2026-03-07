@@ -28,7 +28,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: '仪表盘',
       requiresAuth: true,
-      permissions: ['dashboard:view'],
+      capabilities: ['project.read'],
     },
   },
   {
@@ -47,7 +47,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: '仪表盘',
       requiresAuth: true,
-      permissions: ['dashboard:view'],
+      capabilities: ['project.read'],
     },
   },
   {
@@ -57,7 +57,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: '看板',
       requiresAuth: true,
-      permissions: ['kanban:view'],
+      capabilities: ['project.kanban.view'],
     },
   },
   {
@@ -67,7 +67,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: 'Skills',
       requiresAuth: true,
-      permissions: ['skills:view'],
+      capabilities: ['project.read'],
     },
   },
   {
@@ -77,7 +77,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: 'MCP',
       requiresAuth: true,
-      permissions: ['mcp:view'],
+      capabilities: ['project.read'],
     },
   },
   {
@@ -87,7 +87,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: '自动化',
       requiresAuth: true,
-      permissions: ['automations:view'],
+      capabilities: ['project.read'],
     },
   },
   {
@@ -97,6 +97,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: 'Git',
       requiresAuth: true,
+      capabilities: ['project.read'],
     },
   },
   {
@@ -131,7 +132,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: '项目工作流',
       requiresAuth: true,
-      permissions: ['projects:view'],
+      capabilities: ['project.workflow.view'],
     },
   },
   {
@@ -145,7 +146,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: '项目',
       requiresAuth: true,
-      permissions: ['projects:view'],
+      capabilities: ['project.read'],
     },
   },
   {
@@ -160,7 +161,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: '项目工作流',
       requiresAuth: true,
-      permissions: ['projects:view'],
+      capabilities: ['project.workflow.view'],
     },
   },
   {
@@ -170,7 +171,7 @@ export const systemRoutes: AppRouteRecord[] = [
     meta: {
       title: '任务',
       requiresAuth: true,
-      permissions: ['tasks:view'],
+      capabilities: ['project.task.read'],
     },
   },
   {
@@ -181,7 +182,7 @@ export const systemRoutes: AppRouteRecord[] = [
       title: '任务详情',
       contentMode: 'full',
       requiresAuth: true,
-      permissions: ['tasks:view'],
+      capabilities: ['project.task.read'],
     },
   },
   {

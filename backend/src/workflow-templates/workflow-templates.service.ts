@@ -65,7 +65,11 @@ export class WorkflowTemplatesService {
           'businessLineId is only supported for business_line scope',
         );
       }
-      await this.projectsService.assertCanManageProject(projectId, currentUser);
+      await this.projectsService.assertProjectCapability(
+        projectId,
+        currentUser,
+        'project.workflow.manage',
+      );
     } else {
       throw new BadRequestException(
         'scope only supports business_line or project',
@@ -128,9 +132,10 @@ export class WorkflowTemplatesService {
     let includeGlobal = false;
 
     if (projectId) {
-      const project = await this.projectsService.assertCanAccessProject(
+      const project = await this.projectsService.assertProjectCapability(
         projectId,
         currentUser,
+        'project.workflow.view',
       );
       if (businessLineId && businessLineId !== project.businessLineId) {
         throw new BadRequestException(
@@ -471,9 +476,10 @@ export class WorkflowTemplatesService {
       throw new NotFoundException('Workflow template project not found');
     }
 
-    await this.projectsService.assertCanAccessProject(
+    await this.projectsService.assertProjectCapability(
       template.projectId,
       currentUser,
+      'project.workflow.view',
     );
   }
 
@@ -503,9 +509,10 @@ export class WorkflowTemplatesService {
       throw new NotFoundException('Workflow template project not found');
     }
 
-    await this.projectsService.assertCanManageProject(
+    await this.projectsService.assertProjectCapability(
       template.projectId,
       currentUser,
+      'project.workflow.manage',
     );
   }
 

@@ -27,6 +27,7 @@ import { UsersService } from '../users/users.service';
 import { ProjectRepository } from '../projects/infrastructure/persistence/project.repository';
 import { ProjectMemberRepository } from '../projects/infrastructure/persistence/project-member.repository';
 import { ProjectMemberRole } from '../projects/dto/project-member-role.enum';
+import { AccessService } from '../access/access.service';
 import { CreateBusinessLineInviteDto } from './dto/create-business-line-invite.dto';
 import { BusinessLineInviteDto } from './dto/business-line-invite.dto';
 import { BusinessLineInviteProjectRole } from './dto/business-line-invite-project-role.enum';
@@ -89,6 +90,7 @@ export class BusinessLinesService {
     private readonly projectRepository: ProjectRepository,
     private readonly projectMemberRepository: ProjectMemberRepository,
     private readonly agentToolConfigRepository: AgentToolConfigRepository,
+    private readonly accessService: AccessService,
   ) {}
 
   async create(
@@ -281,9 +283,7 @@ export class BusinessLinesService {
       nextRole: createBusinessLineInviteDto.role,
     });
 
-    const projectRoles = this.normalizeInviteProjectRoles(
-      createBusinessLineInviteDto.projectRoles,
-    );
+    const projectRoles: Record<string, BusinessLineInviteProjectRole> = {};
 
     const now = new Date();
     const expiresAt = new Date(
@@ -359,11 +359,7 @@ export class BusinessLinesService {
       role: invitation.role,
     });
 
-    const failedProjects = await this.syncInviteProjectRoles({
-      businessLineId: invitation.businessLineId,
-      userId: currentUser.sub,
-      projectRoles: invitation.projectRoles,
-    });
+    const failedProjects: string[] = [];
 
     return {
       member,
@@ -1383,76 +1379,42 @@ export class BusinessLinesService {
     businessLineId: BusinessLine['id'],
     currentUser: JwtPayloadType,
   ): Promise<void> {
-    await this.ensureBusinessLineExists(businessLineId);
-
-    if (this.isAdmin(currentUser)) {
-      return;
-    }
-
-    const member =
-      await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
-        businessLineId,
-        currentUser.sub,
-      );
-
-    if (!member) {
-      throw new ForbiddenException('forbiddenBusinessLine');
-    }
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.read',
+    );
   }
 
   private async ensureCanManageBusinessLine(
     businessLineId: BusinessLine['id'],
     currentUser: JwtPayloadType,
   ): Promise<void> {
-    await this.ensureBusinessLineExists(businessLineId);
-
-    if (this.isAdmin(currentUser)) {
-      return;
-    }
-
-    const member =
-      await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
-        businessLineId,
-        currentUser.sub,
-      );
-
-    if (!member) {
-      throw new ForbiddenException('forbiddenBusinessLine');
-    }
-
-    if (member.role !== BusinessLineMemberRole.owner) {
-      throw new ForbiddenException('forbiddenBusinessLineManage');
-    }
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.update',
+    );
   }
 
   private async ensureCanManageBusinessLineMembers(
     businessLineId: BusinessLine['id'],
     currentUser: JwtPayloadType,
   ): Promise<BusinessLineMember | null> {
-    await this.ensureBusinessLineExists(businessLineId);
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.member.manage',
+    );
 
     if (this.isAdmin(currentUser)) {
       return null;
     }
 
-    const member =
-      await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
-        businessLineId,
-        currentUser.sub,
-      );
-
-    if (!member) {
-      throw new ForbiddenException('forbiddenBusinessLine');
-    }
-
-    if (
-      member.role !== BusinessLineMemberRole.owner &&
-      member.role !== BusinessLineMemberRole.admin
-    ) {
-      throw new ForbiddenException('forbiddenBusinessLineManage');
-    }
-
-    return member;
+    return this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
+      businessLineId,
+      currentUser.sub,
+    );
   }
 
   private async ensureBusinessLineExists(

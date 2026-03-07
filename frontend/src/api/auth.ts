@@ -1,10 +1,12 @@
 import type {
+  AccessContextParams,
   LoginRequest,
   LoginResponse,
   RegisterRequest,
   UpdateMePayload,
   UserInfo,
 } from '@/types/api/auth'
+import type { CurrentAccessResponse } from '@/types/common/access'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import { storage } from '@/utils/storage'
 import { apiHttp } from './http'
@@ -25,6 +27,10 @@ export const authApi = {
 
   async me(): Promise<UserInfo> {
     return apiHttp.get<UserInfo>('/auth/me')
+  },
+
+  async access(params?: AccessContextParams): Promise<CurrentAccessResponse> {
+    return apiHttp.get<CurrentAccessResponse>('/auth/me/access', params)
   },
 
   async updateMe(payload: UpdateMePayload): Promise<UserInfo> {

@@ -2,6 +2,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import { businessLinesApi } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
+import { useAccessStore } from '@/stores/modules/access'
 import { useUserStore } from '@/stores/modules/user'
 import {
   getAvailableSettingsSections,
@@ -46,7 +47,7 @@ export type MenuItem = {
   id: 'dashboard' | 'workflow' | 'tasks' | 'kanban' | 'automations' | 'skills' | 'mcp' | 'git'
   label: string
   to: string
-  adminOnly?: boolean
+  capability?: string
 }
 
 const normalizeQueryValue = (queryValue: unknown) => {
@@ -121,6 +122,7 @@ const loadStoredSelectedMenuPath = () => {
 export const useLayout = () => {
   const route = useRoute()
   const router = useRouter()
+  const accessStore = useAccessStore()
   const userStore = useUserStore()
 
   const mobileNavOpen = ref(false)
@@ -153,23 +155,19 @@ export const useLayout = () => {
   }
 
   const baseMenuItems: MenuItem[] = [
-    { id: 'dashboard', label: '仪表盘', to: '/dashboard' },
-    { id: 'tasks', label: '任务', to: '/tasks' },
-    { id: 'kanban', label: '看板', to: '/kanban' },
-    { id: 'automations', label: '自动化', to: '/automations' },
-    { id: 'workflow', label: '工作流', to: '/projects/workflows' },
-    { id: 'skills', label: 'Skills', to: '/skills' },
-    { id: 'mcp', label: 'MCP', to: '/mcp' },
-    { id: 'git', label: 'Git', to: '/git' },
+    { id: 'dashboard', label: '仪表盘', to: '/dashboard', capability: 'project.read' },
+    { id: 'tasks', label: '任务', to: '/tasks', capability: 'project.task.read' },
+    { id: 'kanban', label: '看板', to: '/kanban', capability: 'project.kanban.view' },
+    { id: 'automations', label: '自动化', to: '/automations', capability: 'project.read' },
+    { id: 'workflow', label: '工作流', to: '/projects/workflows', capability: 'project.workflow.view' },
+    { id: 'skills', label: 'Skills', to: '/skills', capability: 'project.read' },
+    { id: 'mcp', label: 'MCP', to: '/mcp', capability: 'project.read' },
+    { id: 'git', label: 'Git', to: '/git', capability: 'project.read' },
   ]
 
   const menuItems = computed<MenuItem[]>(() => {
     return baseMenuItems.filter((item) => {
-      if (!item.adminOnly) {
-        return true
-      }
-
-      return false
+      return item.capability ? accessStore.hasCapability(item.capability) : true
     })
   })
 
@@ -231,7 +229,7 @@ export const useLayout = () => {
       return storedMenuPath
     }
 
-    return menuItems.value[0]?.to ?? '/dashboard'
+    return menuItems.value[0]?.to ?? '/home'
   }
 
   const projectNavigationTo = (projectId: string): RouteLocationRaw => {
@@ -410,10 +408,12 @@ export const useLayout = () => {
       }
 
       syncProjectSelection()
+      await refreshAccessContext()
     } catch (error) {
       businessLines.value = []
       activeBusinessLineId.value = ''
       setSelectedProjectId('')
+      accessStore.clear()
       void error
     } finally {
       layoutDataLoading.value = false
@@ -466,8 +466,66 @@ export const useLayout = () => {
     return !layoutDataLoading.value && hasSelectedProject.value
   })
 
+  const ensureAccessibleRoute = async (projectId?: string) => {
+    const requiredCapabilities = (route.meta.capabilities as string[] | undefined) ?? []
+    if (requiredCapabilities.length === 0) {
+      return
+    }
+
+    const canAccessRoute = requiredCapabilities.some((capability) => accessStore.hasCapability(capability))
+    if (canAccessRoute) {
+      return
+    }
+
+    const normalizedProjectId = projectId?.trim() || ''
+    const fallbackMenuPath = menuItems.value[0]?.to ?? '/home'
+
+    if (fallbackMenuPath === '/home' || !normalizedProjectId) {
+      if (route.path !== '/home') {
+        await router.replace('/home')
+      }
+      return
+    }
+
+    const currentProjectId = normalizeQueryValue(route.query.projectId).trim()
+    if (route.path === fallbackMenuPath && currentProjectId === normalizedProjectId) {
+      return
+    }
+
+    await router.replace({
+      path: fallbackMenuPath,
+      query: {
+        projectId: normalizedProjectId,
+      },
+    })
+  }
+
+  const refreshAccessContext = async (context?: { businessLineId?: string; projectId?: string }) => {
+    if (!userStore.isLogin) {
+      accessStore.clear()
+      return null
+    }
+
+    const businessLineId = context?.businessLineId?.trim() || activeBusinessLineId.value.trim()
+    const projectId = context?.projectId?.trim() || selectedProjectId.value.trim()
+
+    try {
+      const access = await accessStore.loadContext({
+        ...(businessLineId ? { businessLineId } : {}),
+        ...(projectId ? { projectId } : {}),
+      })
+      await ensureAccessibleRoute(projectId)
+      return access
+    } catch (error) {
+      void error
+      accessStore.clear()
+      await ensureAccessibleRoute('')
+      return null
+    }
+  }
+
   const canCreateBusinessLine = computed(() => {
-    return userStore.isLogin
+    return accessStore.hasCapability('businessLine.create')
   })
 
   const refreshLayoutData = async () => {
@@ -592,16 +650,17 @@ export const useLayout = () => {
     }
   }
 
-  const selectBusinessLine = (businessLineId: string) => {
+  const selectBusinessLine = async (businessLineId: string) => {
     const matchedBusinessLine = businessLines.value.find((line) => line.id === businessLineId)
     if (!matchedBusinessLine) return
 
     activeBusinessLineId.value = matchedBusinessLine.id
     syncProjectSelection({ preserveCurrentBusinessLine: true })
+    await refreshAccessContext({ businessLineId: matchedBusinessLine.id })
     hideProjectTooltip()
   }
 
-  const selectProject = (projectId: string) => {
+  const selectProject = async (projectId: string) => {
     if (!projectId) {
       return
     }
@@ -613,6 +672,11 @@ export const useLayout = () => {
 
     activeBusinessLineId.value = matchedBusinessLine.id
     setSelectedProjectId(projectId)
+    await refreshAccessContext({
+      businessLineId: matchedBusinessLine.id,
+      projectId,
+    })
+
     const targetMenuPath = resolveProjectMenuPath()
     setSelectedMenuPath(targetMenuPath)
 
@@ -688,6 +752,7 @@ export const useLayout = () => {
       syncSelectedMenuPath()
       syncBusinessLineFromRoute()
       syncProjectSelection()
+      void refreshAccessContext()
     },
   )
 
@@ -717,6 +782,13 @@ export const useLayout = () => {
       })
     },
     { immediate: true },
+  )
+
+  watch(
+    () => [userStore.isLogin, activeBusinessLineId.value, selectedProjectId.value] as const,
+    () => {
+      void refreshAccessContext()
+    },
   )
 
   watch(

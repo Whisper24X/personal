@@ -56,6 +56,22 @@ export class ProjectRelationalRepository implements ProjectRepository {
     return entities.map((entity) => ProjectMapper.toDomain(entity));
   }
 
+  async findByBusinessLineId(
+    businessLineId: Project['businessLineId'],
+  ): Promise<Project[]> {
+    const entities = await this.projectRepository.find({
+      where: {
+        businessLineId,
+        deletedAt: IsNull(),
+      },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+
+    return entities.map((entity) => ProjectMapper.toDomain(entity));
+  }
+
   async findByBusinessLineIdAndName(
     businessLineId: Project['businessLineId'],
     name: Project['name'],

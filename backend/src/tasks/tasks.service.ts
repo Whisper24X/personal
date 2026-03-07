@@ -129,9 +129,10 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     createTaskDto: CreateTaskDto,
     currentUser: JwtPayloadType,
   ): Promise<Task> {
-    const project = await this.projectsService.assertCanAccessProject(
+    const project = await this.projectsService.assertProjectCapability(
       createTaskDto.projectId,
       currentUser,
+      'project.task.create',
     );
 
     let resolvedMode: TaskMode = createTaskDto.mode ?? TaskMode.conversation;
@@ -292,9 +293,10 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     };
 
     if (query.projectId) {
-      await this.projectsService.assertCanAccessProject(
+      await this.projectsService.assertProjectCapability(
         query.projectId,
         currentUser,
+        'project.task.read',
       );
     } else if (!this.isAdmin(currentUser)) {
       throw new ForbiddenException('ProjectId is required for non-admin users');
@@ -317,9 +319,10 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
 
-    await this.projectsService.assertCanAccessProject(
+    await this.projectsService.assertProjectCapability(
       task.projectId,
       currentUser,
+      'project.task.read',
     );
 
     return task;
@@ -343,7 +346,11 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     updateTaskDto: UpdateTaskDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskDetailDto> {
-    const task = await this.getTaskOrThrow(taskId, currentUser);
+    const task = await this.getTaskOrThrow(
+      taskId,
+      currentUser,
+      'project.task.create',
+    );
     const updatePayload: Partial<Task> = {};
 
     if (updateTaskDto.title !== undefined) {
@@ -428,7 +435,11 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
   }
 
   async remove(taskId: Task['id'], currentUser: JwtPayloadType): Promise<void> {
-    const task = await this.getTaskOrThrow(taskId, currentUser);
+    const task = await this.getTaskOrThrow(
+      taskId,
+      currentUser,
+      'project.task.create',
+    );
     const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
       task.id,
     );
@@ -447,7 +458,11 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     replyTaskDto: ReplyTaskDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskDetailDto> {
-    let task = await this.getTaskOrThrow(taskId, currentUser);
+    let task = await this.getTaskOrThrow(
+      taskId,
+      currentUser,
+      'project.task.create',
+    );
     const prepared = await this.prepareTaskRuntime(task, currentUser);
     task = prepared.task;
 
@@ -605,7 +620,11 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     taskId: Task['id'],
     currentUser: JwtPayloadType,
   ): Promise<TaskDetailDto> {
-    let task = await this.getTaskOrThrow(taskId, currentUser);
+    let task = await this.getTaskOrThrow(
+      taskId,
+      currentUser,
+      'project.task.execute',
+    );
     const prepared = await this.prepareTaskRuntime(task, currentUser);
     task = prepared.task;
 
@@ -658,7 +677,11 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     retryTaskDto: RetryTaskDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskDetailDto> {
-    let task = await this.getTaskOrThrow(taskId, currentUser);
+    let task = await this.getTaskOrThrow(
+      taskId,
+      currentUser,
+      'project.task.execute',
+    );
     const prepared = await this.prepareTaskRuntime(task, currentUser);
     task = prepared.task;
 
@@ -723,7 +746,11 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     taskId: Task['id'],
     currentUser: JwtPayloadType,
   ): Promise<TaskDetailDto> {
-    const task = await this.getTaskOrThrow(taskId, currentUser);
+    const task = await this.getTaskOrThrow(
+      taskId,
+      currentUser,
+      'project.task.cancel',
+    );
 
     const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
       task.id,
@@ -764,7 +791,11 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     approveTaskDto: ApproveTaskDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskDetailDto> {
-    const task = await this.getTaskOrThrow(taskId, currentUser);
+    const task = await this.getTaskOrThrow(
+      taskId,
+      currentUser,
+      'project.task.execute',
+    );
 
     const targetNode = await this.taskNodeRepository.findById(
       approveTaskDto.nodeId,
@@ -807,7 +838,11 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     taskId: Task['id'],
     currentUser: JwtPayloadType,
   ): Promise<TaskDetailDto> {
-    const task = await this.getTaskOrThrow(taskId, currentUser);
+    const task = await this.getTaskOrThrow(
+      taskId,
+      currentUser,
+      'project.task.create',
+    );
     const project = await this.getProjectByIdOrThrow(task.projectId);
 
     const cleanupResult = await this.taskRuntimeService.cleanupRuntime(
@@ -864,7 +899,11 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     createTaskArtifactDto: CreateTaskArtifactDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskArtifact> {
-    const task = await this.getTaskOrThrow(taskId, currentUser);
+    const task = await this.getTaskOrThrow(
+      taskId,
+      currentUser,
+      'project.task.create',
+    );
 
     if (createTaskArtifactDto.taskNodeId) {
       const taskNode = await this.taskNodeRepository.findById(
@@ -1134,9 +1173,10 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     task: Task,
     currentUser: JwtPayloadType,
   ): Promise<{ task: Task; project: Project }> {
-    const project = await this.projectsService.assertCanAccessProject(
+    const project = await this.projectsService.assertProjectCapability(
       task.projectId,
       currentUser,
+      'project.task.read',
     );
 
     const runtime = await this.taskRuntimeService.ensureRuntime(task, project);
@@ -1862,6 +1902,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
   private async getTaskOrThrow(
     taskId: string,
     currentUser: JwtPayloadType,
+    capability = 'project.task.read',
   ): Promise<Task> {
     const task = await this.taskRepository.findById(taskId);
 
@@ -1869,9 +1910,10 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException('Task not found');
     }
 
-    await this.projectsService.assertCanAccessProject(
+    await this.projectsService.assertProjectCapability(
       task.projectId,
       currentUser,
+      capability,
     );
 
     return task;

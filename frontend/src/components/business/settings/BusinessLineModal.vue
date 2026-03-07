@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useMessage } from '@/hooks'
+import { authApi } from '@/api/auth'
 import {
   businessLinesApi,
   type AgentToolConfig,
@@ -13,7 +14,7 @@ import { projectsApi } from '@/api/projects'
 import { usersApi } from '@/api/users'
 import { workflowApi } from '@/api/workflow'
 import type { BusinessLineItem, ProjectItem } from '@/hooks/core/useLayout'
-import type { Project, ProjectMember } from '@/types/api/projects'
+import type { Project } from '@/types/api/projects'
 import type { User } from '@/types/api/users'
 import type { Skill, SkillTreeNode } from '@/types/api/skills'
 import type { Mcp } from '@/types/api/mcps'
@@ -36,7 +37,6 @@ import { STORAGE_KEYS } from '@/types/common/storage'
 
 type MainTab = 'projects' | 'members' | 'agent-cli' | 'workflow' | 'skill' | 'mcp' | 'settings'
 type ProjectPermissionRole = 'none' | 'manage' | 'developer' | 'viewer'
-type ExistingProjectRole = ProjectMember['role'] | null
 type SupportedCliToolId = 'claude-code' | 'codex' | 'gemini-cli' | 'cursor-agent' | 'opencode'
 type WorkflowTemplateNodeInputForm = {
   prompt: string
@@ -215,6 +215,7 @@ const localSkills = ref<Skill[]>([])
 const localMcps = ref<Mcp[]>([])
 
 const message = useMessage()
+const lineCapabilitiesById = ref<Record<string, string[]>>({})
 
 const selectedLine = computed(() => {
   return props.lines.find((line) => line.id === activeLineId.value) ?? null
@@ -227,6 +228,58 @@ const selectedLineName = computed(() => {
 const selectedLineDescription = computed(() => {
   return lineDetail.value?.description ?? selectedLine.value?.description ?? ''
 })
+
+const getLineCapabilities = (lineId: string) => {
+  return lineCapabilitiesById.value[lineId] ?? []
+}
+
+const hasActiveLineCapability = (capability: string) => {
+  if (!activeLineId.value) {
+    return false
+  }
+
+  return getLineCapabilities(activeLineId.value).includes(capability)
+}
+
+const canManageActiveLine = computed(() => {
+  return hasActiveLineCapability('businessLine.update')
+})
+
+const canManageActiveLineMembers = computed(() => {
+  return hasActiveLineCapability('businessLine.member.manage')
+})
+
+const canCreateProjectItem = computed(() => {
+  return hasActiveLineCapability('businessLine.project.create')
+})
+
+const canUpdateProjectItem = computed(() => {
+  return hasActiveLineCapability('businessLine.project.update')
+})
+
+const canDeleteProjectItem = computed(() => {
+  return hasActiveLineCapability('businessLine.project.delete')
+})
+
+const loadLineAccess = async (lineId: string) => {
+  if (!lineId) {
+    return
+  }
+
+  try {
+    const response = await authApi.access({ businessLineId: lineId })
+    lineCapabilitiesById.value = {
+      ...lineCapabilitiesById.value,
+      [lineId]: Array.from(new Set(response.capabilities)),
+    }
+  } catch (error) {
+    void error
+    lineCapabilitiesById.value = {
+      ...lineCapabilitiesById.value,
+      [lineId]: [],
+    }
+  }
+}
 
 const activeAgentCliToolLabel = computed(() => {
   return (
@@ -252,7 +305,7 @@ const workflowTemplateSubmitLoadingText = computed(() => {
 })
 
 const canDeleteLine = computed(() => {
-  return lineProjects.value.length === 0 && Boolean(activeLineId.value)
+  return Boolean(activeLineId.value) && hasActiveLineCapability('businessLine.delete') && lineProjects.value.length === 0
 })
 
 const hasNestedModalOpen = computed(() => {
@@ -1486,41 +1539,6 @@ const roleBadgeClass = (role: BusinessLineMemberRole) => {
   return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300'
 }
 
-const mapProjectRoleToPermissionRole = (role: ExistingProjectRole): ProjectPermissionRole => {
-  if (!role) {
-    return 'none'
-  }
-
-  if (role === 'owner' || role === 'maintainer') {
-    return 'manage'
-  }
-
-  if (role === 'developer') {
-    return 'developer'
-  }
-
-  return 'viewer'
-}
-
-const mapPermissionRoleToProjectRole = (
-  permissionRole: ProjectPermissionRole,
-  currentRole: ExistingProjectRole,
-): ExistingProjectRole => {
-  if (permissionRole === 'none') {
-    return null
-  }
-
-  if (permissionRole === 'manage') {
-    return currentRole === 'owner' ? 'owner' : 'maintainer'
-  }
-
-  if (permissionRole === 'developer') {
-    return 'developer'
-  }
-
-  return 'viewer'
-}
-
 const tabClass = (tab: MainTab) => {
   return tab === activeTab.value
     ? 'bg-background text-foreground shadow-sm'
@@ -1707,7 +1725,7 @@ const openCreateLineModal = () => {
 }
 
 const openEditLineModal = () => {
-  if (!activeLineId.value) {
+  if (!activeLineId.value || !canManageActiveLine.value) {
     return
   }
 
@@ -1733,7 +1751,7 @@ const submitLineForm = async (payload: { name: string; description: string }) =>
       emit('select-line', created.id)
       activeTab.value = 'projects'
     } else {
-      if (!activeLineId.value) {
+      if (!activeLineId.value || !canManageActiveLine.value) {
         return
       }
 
@@ -1754,7 +1772,7 @@ const submitLineForm = async (payload: { name: string; description: string }) =>
 }
 
 const openCreateProjectModal = () => {
-  if (!activeLineId.value) {
+  if (!activeLineId.value || !canCreateProjectItem.value) {
     return
   }
 
@@ -1769,6 +1787,10 @@ const openCreateProjectModal = () => {
 }
 
 const openEditProjectModal = (project: ProjectItem) => {
+  if (!canUpdateProjectItem.value) {
+    return
+  }
+
   projectFormMode.value = 'edit'
   editingProjectId.value = project.id
   projectFormInitialName.value = project.name
@@ -1794,6 +1816,9 @@ const submitProjectForm = async (payload: {
 
   try {
     if (projectFormMode.value === 'create') {
+      if (!canCreateProjectItem.value) {
+        return
+      }
       await projectsApi.create({
         businessLineId: activeLineId.value,
         name: payload.name.trim(),
@@ -1802,7 +1827,7 @@ const submitProjectForm = async (payload: {
         defaultBranch: payload.defaultBranch.trim() || 'main',
       })
     } else {
-      if (!editingProjectId.value) {
+      if (!editingProjectId.value || !canUpdateProjectItem.value) {
         return
       }
 
@@ -1825,12 +1850,16 @@ const submitProjectForm = async (payload: {
 }
 
 const openProjectDeleteModal = (project: ProjectItem) => {
+  if (!canDeleteProjectItem.value) {
+    return
+  }
+
   deletingProjectTarget.value = project
   projectDeleteModalOpen.value = true
 }
 
 const confirmDeleteProject = async () => {
-  if (!deletingProjectTarget.value) {
+  if (!deletingProjectTarget.value || !canDeleteProjectItem.value) {
     return
   }
 
@@ -1849,16 +1878,6 @@ const confirmDeleteProject = async () => {
   }
 }
 
-const buildEmptyProjectRoles = (defaultRole: ProjectPermissionRole = 'none') => {
-  const projectRoles: Record<string, ProjectPermissionRole> = {}
-
-  for (const project of lineProjects.value) {
-    projectRoles[project.id] = defaultRole
-  }
-
-  return projectRoles
-}
-
 const buildInviteUrl = (token: string) => {
   const inviteUrl = new URL('/business-lines/invite', window.location.origin)
   inviteUrl.searchParams.set('token', token)
@@ -1868,19 +1887,14 @@ const buildInviteUrl = (token: string) => {
 const applyInviteToCreateMemberModal = (invite: BusinessLineInvite | null) => {
   if (!invite) {
     memberPermissionInitialBusinessRole.value = 'member'
-    memberPermissionInitialProjectRoles.value = buildEmptyProjectRoles('developer')
+    memberPermissionInitialProjectRoles.value = {}
     memberInvitationLink.value = ''
     memberInvitationExpiresAt.value = ''
     return
   }
 
-  const nextProjectRoles = buildEmptyProjectRoles()
-  for (const project of lineProjects.value) {
-    nextProjectRoles[project.id] = invite.projectRoles[project.id] ?? 'none'
-  }
-
   memberPermissionInitialBusinessRole.value = invite.role
-  memberPermissionInitialProjectRoles.value = nextProjectRoles
+  memberPermissionInitialProjectRoles.value = {}
   memberInvitationLink.value = buildInviteUrl(invite.token)
   memberInvitationExpiresAt.value = invite.expiresAt
 }
@@ -1891,45 +1905,8 @@ const loadLatestInviteForCreateMemberModal = async (businessLineId: string) => {
   return latestInvite
 }
 
-const fetchProjectRoleMapForUser = async (userId: string) => {
-  const projectRoles = buildEmptyProjectRoles()
-  const rawProjectRoles: Record<string, ExistingProjectRole> = {}
-  const failedProjects: string[] = []
-
-  for (const project of lineProjects.value) {
-    rawProjectRoles[project.id] = null
-  }
-
-  const settledMembers = await Promise.allSettled(
-    lineProjects.value.map((project) => projectsApi.listMembers(project.id)),
-  )
-
-  settledMembers.forEach((result, index) => {
-    const project = lineProjects.value[index]
-    if (!project) {
-      return
-    }
-
-    if (result.status === 'rejected') {
-      failedProjects.push(project.name)
-      return
-    }
-
-    const matchedMember = result.value.find((member) => member.userId === userId)
-    const matchedRole = matchedMember?.role ?? null
-    rawProjectRoles[project.id] = matchedRole
-    projectRoles[project.id] = mapProjectRoleToPermissionRole(matchedRole)
-  })
-
-  return {
-    projectRoles,
-    rawProjectRoles,
-    failedProjects,
-  }
-}
-
 const openCreateMemberModal = async () => {
-  if (!activeLineId.value) {
+  if (!activeLineId.value || !canManageActiveLineMembers.value) {
     return
   }
 
@@ -1937,7 +1914,7 @@ const openCreateMemberModal = async () => {
   memberPermissionModalMode.value = 'create'
   memberPermissionInitialUserId.value = ''
   memberPermissionInitialBusinessRole.value = 'member'
-  memberPermissionInitialProjectRoles.value = buildEmptyProjectRoles('developer')
+  memberPermissionInitialProjectRoles.value = {}
   memberPermissionModalPreparing.value = true
   memberPermissionModalError.value = ''
   memberInvitationLink.value = ''
@@ -1954,14 +1931,14 @@ const openCreateMemberModal = async () => {
 }
 
 const openEditMemberModal = async (member: BusinessLineMember) => {
-  if (!activeLineId.value) {
+  if (!activeLineId.value || !canManageActiveLineMembers.value) {
     return
   }
 
   memberPermissionModalMode.value = 'edit'
   memberPermissionInitialUserId.value = member.userId
   memberPermissionInitialBusinessRole.value = member.role
-  memberPermissionInitialProjectRoles.value = buildEmptyProjectRoles()
+  memberPermissionInitialProjectRoles.value = {}
   memberPermissionModalPreparing.value = true
   memberPermissionModalError.value = ''
   memberPermissionModalOpen.value = true
@@ -1970,75 +1947,7 @@ const openEditMemberModal = async (member: BusinessLineMember) => {
     await loadUsers()
   }
 
-  try {
-    const roleMapResult = await fetchProjectRoleMapForUser(member.userId)
-    memberPermissionInitialProjectRoles.value = roleMapResult.projectRoles
-
-    if (roleMapResult.failedProjects.length > 0) {
-      message.warning(`以下项目权限加载失败：${roleMapResult.failedProjects.join('、')}`)
-    }
-  } catch (error) {
-    message.error(toErrorMessage(error, '加载成员项目权限失败'))
-  } finally {
-    memberPermissionModalPreparing.value = false
-  }
-}
-
-const syncMemberProjectPermissions = async (
-  userId: string,
-  targetRoles: Record<string, ProjectPermissionRole>,
-) => {
-  const failedProjectNames = new Set<string>()
-  const currentRoleResult = await fetchProjectRoleMapForUser(userId)
-
-  for (const projectName of currentRoleResult.failedProjects) {
-    failedProjectNames.add(projectName)
-  }
-
-  for (const project of lineProjects.value) {
-    const nextRole = targetRoles[project.id] ?? 'none'
-    const currentPermissionRole = currentRoleResult.projectRoles[project.id] ?? 'none'
-    const currentRawRole = currentRoleResult.rawProjectRoles[project.id] ?? null
-
-    if (nextRole === currentPermissionRole) {
-      continue
-    }
-
-    try {
-      if (nextRole === 'none') {
-        if (currentRawRole) {
-          await projectsApi.removeMember(project.id, userId)
-        }
-        continue
-      }
-
-      const nextRawRole = mapPermissionRoleToProjectRole(nextRole, currentRawRole)
-      if (!nextRawRole) {
-        continue
-      }
-
-      if (!currentRawRole) {
-        await projectsApi.addMember(project.id, {
-          userId,
-          role: nextRawRole,
-        })
-        continue
-      }
-
-      if (nextRawRole === currentRawRole) {
-        continue
-      }
-
-      await projectsApi.updateMember(project.id, userId, {
-        role: nextRawRole,
-      })
-    } catch (error) {
-      void error
-      failedProjectNames.add(project.name)
-    }
-  }
-
-  return Array.from(failedProjectNames)
+  memberPermissionModalPreparing.value = false
 }
 
 const submitMemberPermission = async (
@@ -2055,7 +1964,7 @@ const submitMemberPermission = async (
         projectRoles: Record<string, ProjectPermissionRole>
       },
 ) => {
-  if (!activeLineId.value) {
+  if (!activeLineId.value || !canManageActiveLineMembers.value) {
     return
   }
 
@@ -2067,7 +1976,7 @@ const submitMemberPermission = async (
       const businessLineId = activeLineId.value
       const createdInvite = await businessLinesApi.createInvitation(businessLineId, {
         role: payload.businessRole,
-        projectRoles: payload.projectRoles,
+        projectRoles: {},
       })
 
       try {
@@ -2090,14 +1999,6 @@ const submitMemberPermission = async (
         })
       }
 
-      const failedProjects = await syncMemberProjectPermissions(
-        payload.userId,
-        payload.projectRoles,
-      )
-      if (failedProjects.length > 0) {
-        message.warning(`部分项目权限更新失败：${failedProjects.join('、')}`)
-      }
-
       memberPermissionModalOpen.value = false
       await refreshForCurrentLine({ includeMembers: true })
       message.success('保存成员权限成功')
@@ -2112,12 +2013,16 @@ const submitMemberPermission = async (
 }
 
 const openRemoveMemberModal = (member: BusinessLineMember) => {
+  if (!canManageActiveLineMembers.value) {
+    return
+  }
+
   removingMemberTarget.value = member
   memberRemoveModalOpen.value = true
 }
 
 const confirmRemoveMember = async () => {
-  if (!activeLineId.value || !removingMemberTarget.value) {
+  if (!activeLineId.value || !removingMemberTarget.value || !canManageActiveLineMembers.value) {
     return
   }
 
@@ -2232,6 +2137,7 @@ watch(
       activeLineId.value = props.activeBusinessLineId || props.lines[0]?.id || ''
       if (activeLineId.value) {
         emit('select-line', activeLineId.value)
+        void loadLineAccess(activeLineId.value)
       }
 
       previousBodyOverflow = document.body.style.overflow
@@ -2317,6 +2223,7 @@ watch(
     workflowNodeConfigLoadingByTool.value = {}
     loadingWorkflowConfiguredCliTools.value = false
     emit('select-line', lineId)
+    void loadLineAccess(lineId)
     void loadLineContext({ includeMembers: activeTab.value === 'members' })
     if (activeTab.value === 'agent-cli') {
       void loadAgentToolConfigs(lineId, activeAgentCliToolId.value)
@@ -2578,8 +2485,8 @@ onBeforeUnmount(() => {
                       </button>
                       <button
                         type="button"
-                        class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm"
-                        :disabled="!activeLineId"
+                        class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="!activeLineId || !canCreateProjectItem"
                         @click="openCreateProjectModal"
                       >
                         新建项目
@@ -2639,6 +2546,7 @@ onBeforeUnmount(() => {
 
                         <div class="flex items-center gap-2">
                           <button
+                            v-if="canUpdateProjectItem"
                             type="button"
                             class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
                             @click.stop="openEditProjectModal(project)"
@@ -2646,6 +2554,7 @@ onBeforeUnmount(() => {
                             编辑
                           </button>
                           <button
+                            v-if="canDeleteProjectItem"
                             type="button"
                             class="inline-flex h-8 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20"
                             @click.stop="openProjectDeleteModal(project)"
@@ -2680,8 +2589,8 @@ onBeforeUnmount(() => {
                       </button>
                       <button
                         type="button"
-                        class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm"
-                        :disabled="!activeLineId"
+                        class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="!activeLineId || !canManageActiveLineMembers"
                         @click="openCreateMemberModal"
                       >
                         邀请成员
@@ -2741,6 +2650,7 @@ onBeforeUnmount(() => {
                           <td class="px-4 py-3">
                             <div class="flex justify-end gap-2">
                               <button
+                                v-if="canManageActiveLineMembers"
                                 type="button"
                                 class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
                                 @click="openEditMemberModal(member)"
@@ -2748,6 +2658,7 @@ onBeforeUnmount(() => {
                                 编辑权限
                               </button>
                               <button
+                                v-if="canManageActiveLineMembers"
                                 type="button"
                                 class="inline-flex h-8 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20"
                                 @click="openRemoveMemberModal(member)"
@@ -3157,8 +3068,8 @@ onBeforeUnmount(() => {
                     <div class="flex items-center gap-2">
                       <button
                         type="button"
-                        class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
-                        :disabled="!activeLineId || loadingLineDetail"
+                        class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="!activeLineId || loadingLineDetail || !canManageActiveLine"
                         @click="openEditLineModal"
                       >
                         编辑信息
@@ -3439,6 +3350,7 @@ onBeforeUnmount(() => {
         :initial-user-id="memberPermissionInitialUserId"
         :initial-business-role="memberPermissionInitialBusinessRole"
         :initial-project-roles="memberPermissionInitialProjectRoles"
+        :show-project-roles="false"
         :invite-link="memberInvitationLink"
         :invite-expires-at="memberInvitationExpiresAt"
         :error-message="memberPermissionModalError"

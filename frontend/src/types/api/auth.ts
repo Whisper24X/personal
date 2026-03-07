@@ -3,6 +3,11 @@ export type LoginRequest = {
   password: string
 }
 
+export type AccessContextParams = Partial<{
+  businessLineId: string
+  projectId: string
+}>
+
 export type RegisterRequest = {
   username: string
   password: string

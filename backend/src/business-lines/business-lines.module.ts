@@ -7,6 +7,7 @@ import { BusinessLinesController } from './business-lines.controller';
 import { RelationalBusinessLinePersistenceModule } from './infrastructure/persistence/relational/relational-persistence.module';
 import { UsersModule } from '../users/users.module';
 import { RelationalProjectPersistenceModule } from '../projects/infrastructure/persistence/relational/relational-persistence.module';
+import { AccessModule } from '../access/access.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { RelationalProjectPersistenceModule } from '../projects/infrastructure/p
     RelationalBusinessLinePersistenceModule,
     RelationalProjectPersistenceModule,
     UsersModule,
+    AccessModule,
   ],
   controllers: [BusinessLinesController],
   providers: [BusinessLinesService],

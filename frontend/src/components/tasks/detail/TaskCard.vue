@@ -23,6 +23,7 @@ const props = defineProps<{
   canCancel: boolean
   canCleanupWorktree: boolean
   canEdit?: boolean
+  canRemove?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -118,7 +119,9 @@ const toolMeta = computed(() => {
           编辑
         </button>
         <button
-          class="h-8 rounded-md border border-destructive/40 bg-background px-3 text-xs font-semibold text-destructive"
+          v-if="props.canRemove"
+          class="h-8 rounded-md border border-destructive/40 bg-background px-3 text-xs font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="props.actionLoading"
           type="button"
           @click="emit('remove')"
         >

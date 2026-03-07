@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useMessage } from '@/hooks'
+import { useAccessStore } from '@/stores/modules/access'
 import { businessLinesApi, type AgentToolConfig } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
@@ -82,6 +83,7 @@ const tab = ref<TabKey>(resolveInitialTab())
 const loading = ref(false)
 const validationMessage = ref('')
 const message = useMessage()
+const accessStore = useAccessStore()
 
 const project = ref<Project | null>(null)
 const projectMembers = ref<ProjectMember[]>([])
@@ -247,6 +249,40 @@ const workflowTemplateSubmitIdleText = computed(() => {
 
 const workflowTemplateSubmitLoadingText = computed(() => {
   return workflowTemplateModalMode.value === 'edit' ? '保存中...' : '创建中...'
+})
+
+const canManageProjectMembers = computed(() => {
+  return accessStore.hasCapability('project.member.manage')
+})
+
+const canViewWorkflow = computed(() => {
+  return accessStore.hasCapability('project.workflow.view')
+})
+
+const canManageWorkflow = computed(() => {
+  return accessStore.hasCapability('project.workflow.manage')
+})
+
+const canUpdateProject = computed(() => {
+  return accessStore.hasCapability('project.update')
+})
+
+const availableTabs = computed<TabKey[]>(() => {
+  const tabs: TabKey[] = ['overview', 'context']
+
+  if (canManageProjectMembers.value) {
+    tabs.push('members')
+  }
+
+  if (canViewWorkflow.value) {
+    tabs.push('workflow')
+  }
+
+  if (canUpdateProject.value) {
+    tabs.push('config')
+  }
+
+  return tabs
 })
 
 const filteredBusinessLineWorkflowTemplates = computed(() => {
@@ -630,6 +666,11 @@ const preloadWorkflowNodeConfigs = async () => {
 }
 
 const openWorkflowCreateModal = () => {
+  if (!canManageWorkflow.value) {
+    message.error('当前账号暂无项目工作流管理权限')
+    return
+  }
+
   const businessLineId = project.value?.businessLineId
   if (!businessLineId) {
     message.error('当前项目未绑定业务线，无法创建工作流模板')
@@ -647,6 +688,11 @@ const openWorkflowCreateModal = () => {
 }
 
 const openWorkflowEditModal = (template: WorkflowTemplate) => {
+  if (!canManageWorkflow.value) {
+    message.error('当前账号暂无项目工作流管理权限')
+    return
+  }
+
   const businessLineId = project.value?.businessLineId
   if (!businessLineId) {
     return
@@ -753,6 +799,11 @@ const closeWorkflowCopyModal = () => {
 }
 
 const openWorkflowCopyModal = async () => {
+  if (!canManageWorkflow.value) {
+    message.error('当前账号暂无项目工作流管理权限')
+    return
+  }
+
   closeWorkflowAddMenu()
   const businessLineId = project.value?.businessLineId
   if (!businessLineId) {
@@ -866,6 +917,11 @@ const loadWorkflowTemplates = async (targetProjectId: string) => {
 }
 
 const submitWorkflowTemplate = async () => {
+  if (!canManageWorkflow.value) {
+    message.error('当前账号暂无项目工作流管理权限')
+    return
+  }
+
   if (!projectId.value) {
     return
   }
@@ -923,6 +979,11 @@ const submitWorkflowTemplate = async () => {
 }
 
 const removeWorkflowTemplate = async (template: WorkflowTemplate) => {
+  if (!canManageWorkflow.value) {
+    message.error('当前账号暂无项目工作流管理权限')
+    return
+  }
+
   if (template.scope !== 'project') {
     return
   }
@@ -939,6 +1000,11 @@ const setWorkflowDeleteConfirmOpen = (open: boolean) => {
 }
 
 const confirmRemoveWorkflowTemplate = async () => {
+  if (!canManageWorkflow.value) {
+    message.error('当前账号暂无项目工作流管理权限')
+    return
+  }
+
   const template = workflowDeleteTarget.value
   if (!template || template.scope !== 'project') {
     return
@@ -958,6 +1024,11 @@ const confirmRemoveWorkflowTemplate = async () => {
 }
 
 const openMemberFormModal = () => {
+  if (!canManageProjectMembers.value) {
+    message.error('当前账号暂无项目成员管理权限')
+    return
+  }
+
   validationMessage.value = ''
   memberFormModalOpen.value = true
 }
@@ -968,6 +1039,11 @@ const closeMemberFormModal = () => {
 }
 
 const openConfigFormModal = () => {
+  if (!canUpdateProject.value) {
+    message.error('当前账号暂无项目配置权限')
+    return
+  }
+
   validationMessage.value = ''
   configFormModalOpen.value = true
 }
@@ -1047,9 +1123,12 @@ const loadProjectData = async () => {
   validationMessage.value = ''
 
   try {
+    await accessStore.loadContext({ projectId: projectId.value })
+
+    const shouldLoadMembers = canManageProjectMembers.value
     const [projectResponse, memberResponse, taskResponse] = await Promise.all([
       projectsApi.detail(projectId.value),
-      projectsApi.listMembers(projectId.value),
+      shouldLoadMembers ? projectsApi.listMembers(projectId.value) : Promise.resolve([] as ProjectMember[]),
       tasksApi.list({ projectId: projectId.value, page: 1, limit: 20 }),
     ])
 
@@ -1062,11 +1141,24 @@ const loadProjectData = async () => {
       return result
     }, {})
 
+    if (shouldLoadMembers && users.value.length === 0) {
+      void loadUsers().catch((error) => {
+        message.error(toErrorMessage(error, '加载用户列表失败'))
+      })
+    }
+
     syncConfigForm(projectResponse)
-    await Promise.all([
-      loadProjectContext(),
-      loadWorkflowTemplates(projectResponse.id),
-    ])
+    await loadProjectContext()
+
+    if (canViewWorkflow.value) {
+      await loadWorkflowTemplates(projectResponse.id)
+      return
+    }
+
+    workflowTemplates.value = []
+    businessLineWorkflowTemplates.value = []
+    closeWorkflowAddMenu()
+    closeWorkflowCopyModal()
   } catch (error) {
     message.error(toErrorMessage(error, '加载项目详情失败'))
   } finally {
@@ -1075,6 +1167,11 @@ const loadProjectData = async () => {
 }
 
 const createMember = async () => {
+  if (!canManageProjectMembers.value) {
+    message.error('当前账号暂无项目成员管理权限')
+    return
+  }
+
   if (!projectId.value || !newMemberForm.userId.trim()) {
     return
   }
@@ -1108,6 +1205,11 @@ const createMember = async () => {
 }
 
 const updateMemberRole = async (member: ProjectMember) => {
+  if (!canManageProjectMembers.value) {
+    message.error('当前账号暂无项目成员管理权限')
+    return
+  }
+
   if (!projectId.value) {
     return
   }
@@ -1134,6 +1236,11 @@ const updateMemberRole = async (member: ProjectMember) => {
 }
 
 const removeMember = async (member: ProjectMember) => {
+  if (!canManageProjectMembers.value) {
+    message.error('当前账号暂无项目成员管理权限')
+    return
+  }
+
   memberRemoveTarget.value = member
   memberRemoveConfirmOpen.value = true
 }
@@ -1146,6 +1253,11 @@ const setMemberRemoveConfirmOpen = (open: boolean) => {
 }
 
 const confirmRemoveMember = async () => {
+  if (!canManageProjectMembers.value) {
+    message.error('当前账号暂无项目成员管理权限')
+    return
+  }
+
   const member = memberRemoveTarget.value
   if (!projectId.value || !member) {
     return
@@ -1166,6 +1278,11 @@ const confirmRemoveMember = async () => {
 }
 
 const saveConfig = async () => {
+  if (!canUpdateProject.value) {
+    message.error('当前账号暂无项目配置权限')
+    return
+  }
+
   if (!project.value || !projectId.value || !configForm.name.trim() || !configForm.gitUrl.trim()) {
     validationMessage.value = '项目名称和仓库地址不能为空'
     return
@@ -1262,11 +1379,23 @@ watch(
   },
 )
 
+watch(
+  () => [availableTabs.value, workflowOnlyMode.value] as const,
+  ([nextTabs, isWorkflowOnly]) => {
+    if (isWorkflowOnly && canViewWorkflow.value) {
+      tab.value = 'workflow'
+      return
+    }
+
+    if (!nextTabs.includes(tab.value)) {
+      tab.value = nextTabs[0] ?? 'overview'
+    }
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
   void loadProjectData()
-  void loadUsers().catch((error) => {
-    message.error(toErrorMessage(error, '加载用户列表失败'))
-  })
 })
 
 onBeforeUnmount(() => {
@@ -1328,6 +1457,7 @@ onBeforeUnmount(() => {
           项目上下文
         </button>
         <button
+          v-if="canManageProjectMembers"
           class="rounded-xl px-4 py-2 text-sm font-semibold transition"
           :class="tabClass('members')"
           type="button"
@@ -1336,6 +1466,7 @@ onBeforeUnmount(() => {
           成员管理
         </button>
         <button
+          v-if="canViewWorkflow"
           class="rounded-xl px-4 py-2 text-sm font-semibold transition"
           :class="tabClass('workflow')"
           type="button"
@@ -1344,6 +1475,7 @@ onBeforeUnmount(() => {
           工作流
         </button>
         <button
+          v-if="canUpdateProject"
           class="rounded-xl px-4 py-2 text-sm font-semibold transition"
           :class="tabClass('config')"
           type="button"
@@ -1484,7 +1616,7 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <section v-else-if="!workflowOnlyMode && tab === 'members'" class="space-y-4">
+      <section v-else-if="!workflowOnlyMode && tab === 'members' && canManageProjectMembers" class="space-y-4">
         <div class="panel-card p-5">
           <div class="flex items-center justify-between gap-3">
             <div>
@@ -1494,6 +1626,7 @@ onBeforeUnmount(() => {
               </p>
             </div>
             <button
+              v-if="canManageProjectMembers"
               class="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
               type="button"
               @click="openMemberFormModal"
@@ -1523,6 +1656,7 @@ onBeforeUnmount(() => {
                   <select
                     v-model="memberRoleDrafts[member.userId]"
                     class="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                    :disabled="!canManageProjectMembers || updatingMemberId === member.userId"
                   >
                     <option value="owner">owner</option>
                     <option value="maintainer">maintainer</option>
@@ -1533,6 +1667,7 @@ onBeforeUnmount(() => {
                 <td class="px-5 py-4">
                   <div class="flex justify-end gap-2">
                     <button
+                      v-if="canManageProjectMembers"
                       class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                       :disabled="updatingMemberId === member.userId"
                       type="button"
@@ -1541,6 +1676,7 @@ onBeforeUnmount(() => {
                       {{ updatingMemberId === member.userId ? '保存中...' : '保存角色' }}
                     </button>
                     <button
+                      v-if="canManageProjectMembers"
                       class="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-60"
                       :disabled="removingMemberId === member.userId"
                       type="button"
@@ -1560,7 +1696,7 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <section v-else-if="workflowOnlyMode || tab === 'workflow'" class="space-y-4">
+      <section v-else-if="(workflowOnlyMode || tab === 'workflow') && canViewWorkflow" class="space-y-4">
         <article class="panel-card p-5">
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex flex-1 flex-wrap items-center gap-2">
@@ -1590,7 +1726,7 @@ onBeforeUnmount(() => {
               >
                 搜索
               </button>
-              <div ref="workflowAddMenuAnchorRef" class="relative">
+              <div v-if="canManageWorkflow" ref="workflowAddMenuAnchorRef" class="relative">
                 <button
                   type="button"
                   class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
@@ -1664,6 +1800,7 @@ onBeforeUnmount(() => {
                   <td class="px-3 py-2">
                     <div class="flex justify-end gap-2">
                       <button
+                        v-if="canManageWorkflow"
                         type="button"
                         class="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                         :disabled="workflowTemplateActionId === template.id"
@@ -1672,6 +1809,7 @@ onBeforeUnmount(() => {
                         编辑
                       </button>
                       <button
+                        v-if="canManageWorkflow"
                         type="button"
                         class="rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 py-1 text-xs font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-60"
                         :disabled="workflowTemplateActionId === template.id"
@@ -1703,6 +1841,7 @@ onBeforeUnmount(() => {
               </p>
             </div>
             <button
+              v-if="canUpdateProject"
               class="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
               type="button"
               @click="openConfigFormModal"
