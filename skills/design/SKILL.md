@@ -1,6 +1,6 @@
 ---
 name: design
-description: 将 PRD 转为系统设计文档（DESIGN.md），补充技术实现细节。适用于：用户提供 PRD 并要求生成系统设计、技术方案、架构设计、或提及 Design/DESIGN 时。输出至 docs/design/DESIGN.md，严格遵循 8 章节模板。
+description: 将 PRD 转为系统设计文档（DESIGN.md），补充技术实现细节。输出至 docs/design/DESIGN.md，严格遵循 8 章节模板。Use when 用户提供 PRD 并要求生成系统设计、技术方案、架构设计、或提及 Design/DESIGN 时。
 ---
 
 # PRD 转系统设计
@@ -13,7 +13,35 @@ description: 将 PRD 转为系统设计文档（DESIGN.md），补充技术实�
 - **职责**：将产品需求转化为可执行的技术方案
 - **输出**：系统设计文档（DESIGN.md），用于指导后续开发任务规划
 
+## 适用范围
+
+- 用户提供 PRD 并要求生成系统设计
+- 需要技术方案、架构设计文档
+- 提及 Design、DESIGN、技术设计
+
+## 不适用场景
+
+- 仅有 MRD 无 PRD → 先使用 prd skill 生成 PRD
+- 仅需原型/UI 稿 → 使用 prototype skill
+- 仅需测试用例 → 使用 test skill
+
 ## 执行流程
+
+```mermaid
+flowchart TD
+    start([开始])
+    end_node([结束])
+    step1[Step 1: 读取输入文档]
+    step2[Step 2: 生成 DESIGN.md]
+    step3[Step 3: 检测 router 并补充]
+    step4[Step 4: 完善技术细节]
+
+    start --> step1
+    step1 --> step2
+    step2 --> step3
+    step3 --> step4
+    step4 --> end_node
+```
 
 ### Step 1: 读取输入文档
 
@@ -21,6 +49,7 @@ description: 将 PRD 转为系统设计文档（DESIGN.md），补充技术实�
 2. **读取开发规范**（必须参考）：
    - `docs/dev-spec/ainative-app/` - 移动端开发规范
    - `docs/dev-spec/ainative-shadow/` - 管理后台开发规范
+   - [shadow-frontend-conventions.md](references/shadow-frontend-conventions.md) - ainative-shadow 当前项目前端规范（目录、API 放置、路径、路由）
    - `docs/dev-spec/ainative-backend/` - 后端开发规范
 3. **读取模板**：[design-template.md](references/design-template.md)（8 个章节）
 
@@ -56,7 +85,7 @@ description: 将 PRD 转为系统设计文档（DESIGN.md），补充技术实�
 
 确保 Design 文档包含以下可执行的技术细节：
 
-- **前端**：文件清单、目录结构（按开发规范）、路由配置、Pinia store、API 调用
+- **前端**：文件清单、目录结构、路由配置、Pinia store、API 调用（遵循 [shadow-frontend-conventions.md](references/shadow-frontend-conventions.md)：pages 目录、service 与页面同级、API 路径 `/api/shadow/v1/...` 不带 yanxue）
 - **后端**：Protobuf 接口定义、Service/Biz/Data 层文件清单、数据模型、核心业务流程
 - **数据模型**：Mermaid ER 图、表设计（表名/字段/类型/约束/索引）、菜单权限表（如涉及）
 
@@ -68,15 +97,17 @@ description: 将 PRD 转为系统设计文档（DESIGN.md），补充技术实�
 | 管理后台 | Vue3 + Element Plus + TailwindCSS       | `docs/dev-spec/ainative-shadow/`  |
 | 后端     | Go + Kratos + GORM + PostgreSQL + Redis | `docs/dev-spec/ainative-backend/` |
 
-## 输出要求
+## 输出规范（强制）
 
-### 文件规范
+> **重要**：以下规范必须严格遵守，不可违反。
 
-- **文件名**：`DESIGN.md`（必须）
-- **位置**：`docs/design/DESIGN.md`
-- **章节**：严格 8 个（禁止增删）
-- **字数**：≥ 4000 字
-- **图表**：≥ 3 个 Mermaid 图表（架构图/ER图/流程图）
+| 项目       | 规范                                       |
+| ---------- | ------------------------------------------ |
+| 输出文件名 | `DESIGN.md`（必须）                        |
+| 输出位置   | `docs/design/DESIGN.md`                    |
+| 章节数量   | 严格 8 个（禁止增删）                      |
+| 字数       | ≥ 4000 字                                  |
+| 图表       | ≥ 3 个 Mermaid 图表（架构图/ER 图/流程图） |
 
 ### 内容要求
 
@@ -102,15 +133,25 @@ description: 将 PRD 转为系统设计文档（DESIGN.md），补充技术实�
 | router 信息不完整  | 在 Design 中说明需在执行阶段从路由文件提取     |
 | 数据模型不明确     | 根据业务设计表结构，标注需评审                 |
 
+## 禁止事项
+
+以下行为是禁止的，违反将导致输出无效：
+
+1. ❌ 使用非 `DESIGN.md` 的文件名
+2. ❌ 输出至非 `docs/design/` 目录
+3. ❌ 增删模板 8 个章节
+4. ❌ 使用 `docs/dev-spec/` 外的技术栈
+5. ❌ 在文件清单中出现 `src/views/`、`src/api/{模块}.ts`
+6. ❌ 输出占位符或技术细节缺失
+
 ## 附加资源
 
-| 资源                                                | 说明                                                                           |
-| --------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [design-template.md](references/design-template.md) | 8 章节模板                                                                     |
-| [menu-planning.md](references/menu-planning.md)     | ainative-shadow 存在且 router 新增/修改时，补充 4.5/菜单表、配置格式、检查清单 |
-| `docs/dev-spec/`                                    | 前后端开发规范                                                                 |
-
----
+| 资源                                                                        | 说明                                                                           |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| [design-template.md](references/design-template.md)                         | 8 章节模板                                                                     |
+| [menu-planning.md](references/menu-planning.md)                             | ainative-shadow 存在且 router 新增/修改时，补充 4.5/菜单表、配置格式、检查清单 |
+| [shadow-frontend-conventions.md](references/shadow-frontend-conventions.md) | ainative-shadow 前端规范：目录、API 放置、路径、路由（整合当前项目实践）       |
+| `docs/dev-spec/`                                                            | 前后端开发规范                                                                 |
 
 ## 生成完成检查清单
 
