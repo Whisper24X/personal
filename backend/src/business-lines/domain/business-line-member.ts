@@ -1,25 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class BusinessLineMember {
-  @ApiProperty({
-    type: String,
-  })
+  @ApiProperty({ type: String })
   id: string;
 
-  @ApiProperty({
-    type: String,
-  })
+  @ApiProperty({ type: String })
   businessLineId: string;
 
-  @ApiProperty({
-    type: String,
-  })
+  @ApiProperty({ type: String })
   userId: string;
 
-  @ApiProperty({
-    type: String,
-  })
-  role: string;
+  @ApiProperty({ type: String })
+  roleId: string;
 
   @ApiPropertyOptional({ type: String, nullable: true })
   customRoleName?: string | null;

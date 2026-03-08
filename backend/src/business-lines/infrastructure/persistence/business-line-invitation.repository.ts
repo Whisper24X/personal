@@ -20,15 +20,15 @@ export abstract class BusinessLineInvitationRepository {
   abstract create(data: {
     businessLineId: BusinessLineInvitation['businessLineId'];
     token: BusinessLineInvitation['token'];
-    role: BusinessLineInvitation['role'];
+    roleId: BusinessLineInvitation['roleId'];
     projectRoles: BusinessLineInvitation['projectRoles'];
     createdBy: BusinessLineInvitation['createdBy'];
     expiresAt: BusinessLineInvitation['expiresAt'];
   }): Promise<BusinessLineInvitation>;
 
-  abstract countActiveByBusinessLineIdAndRole(
+  abstract countActiveByBusinessLineIdAndRoleId(
     businessLineId: string,
-    role: string,
+    roleId: string,
     now: Date,
   ): Promise<number>;
 }

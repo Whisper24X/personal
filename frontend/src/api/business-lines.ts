@@ -21,7 +21,7 @@ export type BusinessLineMember = {
   id: string
   businessLineId: string
   userId: string
-  role: string
+  roleId: string
   customRoleName?: string | null
   createdAt?: string
   updatedAt?: string
@@ -36,17 +36,17 @@ export type UpdateBusinessLinePayload = Partial<CreateBusinessLinePayload>
 
 export type CreateBusinessLineMemberPayload = {
   userId: string
-  role: string
+  roleId: string
 }
 
 export type UpdateBusinessLineMemberPayload = {
-  role: string
+  roleId: string
 }
 
 export type BusinessLineInviteProjectRole = 'none' | 'manage' | 'developer' | 'viewer'
 
 export type CreateBusinessLineInvitePayload = {
-  role: string
+  roleId: string
   projectRoles?: Record<string, BusinessLineInviteProjectRole>
 }
 
@@ -54,7 +54,7 @@ export type BusinessLineInvite = {
   token: string
   expiresAt: string
   businessLineId: string
-  role: string
+  roleId: string
   projectRoles: Record<string, BusinessLineInviteProjectRole>
   customRoleName?: string | null
 }
@@ -83,7 +83,6 @@ export type AgentToolConfig = {
 export type BusinessLineCustomRole = {
   id: string
   businessLineId: string
-  code: string
   name: string
   description?: string | null
   capabilities: string[]
@@ -175,10 +174,7 @@ export const businessLinesApi = {
   },
 
   createInvitation(businessLineId: string, payload: CreateBusinessLineInvitePayload) {
-    return apiHttp.post<BusinessLineInvite>(
-      `/business-lines/${businessLineId}/invitations`,
-      payload,
-    )
+    return apiHttp.post<BusinessLineInvite>(`/business-lines/${businessLineId}/invitations`, payload)
   },
 
   getLatestInvitation(businessLineId: string) {
@@ -266,9 +262,7 @@ export const businessLinesApi = {
   },
 
   listAgentToolConfigs(businessLineId: string, params?: { toolId?: string }) {
-    return apiHttp.get<AgentToolConfig[]>(`/business-lines/${businessLineId}/agent-tool-configs`, {
-      toolId: params?.toolId,
-    })
+    return apiHttp.get<AgentToolConfig[]>(`/business-lines/${businessLineId}/agent-tool-configs`, params)
   },
 
   createAgentToolConfig(businessLineId: string, payload: CreateAgentToolConfigPayload) {
@@ -294,85 +288,67 @@ export const businessLinesApi = {
   },
 
   listLocalSkills(businessLineId: string, params?: { keyword?: string }) {
-    return apiHttp.get<Skill[]>(`/business-lines/${businessLineId}/local-skills`, {
-      keyword: params?.keyword,
-    })
+    return apiHttp.get<Skill[]>(`/business-lines/${businessLineId}/local-skills`, params)
   },
 
-  uploadLocalSkill(businessLineId: string, file: File) {
-    const formData = new FormData()
-    formData.append('file', file)
-    return apiHttp.post<UploadLocalSkillResult>(
-      `/business-lines/${businessLineId}/local-skills/upload`,
-      formData,
-    )
+  uploadLocalSkill(businessLineId: string, file: File | FormData) {
+    const formData = file instanceof FormData ? file : (() => {
+      const nextFormData = new FormData()
+      nextFormData.append('file', file)
+      return nextFormData
+    })()
+    return apiHttp.post<UploadLocalSkillResult>(`/business-lines/${businessLineId}/local-skills`, formData)
   },
 
-  getLocalSkillTree(businessLineId: string, directoryName: string) {
-    return apiHttp.get<SkillTree>(
-      `/business-lines/${businessLineId}/local-skills/${directoryName}/tree`,
-    )
+  getLocalSkillTree(businessLineId: string, skillName: string) {
+    return apiHttp.get<SkillTree>(`/business-lines/${businessLineId}/local-skills/${encodeURIComponent(skillName)}/tree`)
   },
 
-  localSkillTree(businessLineId: string, directoryName: string) {
-    return this.getLocalSkillTree(businessLineId, directoryName)
-  },
-
-  getLocalSkillFile(businessLineId: string, directoryName: string, filePath: string) {
-    return apiHttp.get<SkillFile>(
-      `/business-lines/${businessLineId}/local-skills/${directoryName}/file`,
-      {
-        path: filePath,
-      },
-    )
-  },
-
-  localSkillFile(businessLineId: string, directoryName: string, filePath: string) {
-    return this.getLocalSkillFile(businessLineId, directoryName, filePath)
-  },
-
-  getLocalSkillContent(businessLineId: string, directoryName: string) {
+  getLocalSkillContent(businessLineId: string, skillName: string, relativePath: string) {
     return apiHttp.get<SkillContent>(
-      `/business-lines/${businessLineId}/local-skills/${directoryName}/content`,
+      `/business-lines/${businessLineId}/local-skills/${encodeURIComponent(skillName)}/content`,
+      { relativePath },
     )
   },
 
-  downloadLocalSkillArchive(businessLineId: string, directoryName: string) {
-    return `/api/v1/business-lines/${encodeURIComponent(businessLineId)}/local-skills/${encodeURIComponent(directoryName)}/download`
+  removeLocalSkill(businessLineId: string, skillName: string) {
+    return apiHttp.delete<void>(
+      `/business-lines/${businessLineId}/local-skills/${encodeURIComponent(skillName)}`,
+    )
   },
 
-  deleteLocalSkill(businessLineId: string, directoryName: string) {
-    return apiHttp.delete<void>(`/business-lines/${businessLineId}/local-skills/${directoryName}`)
+  localSkillTree(businessLineId: string, skillName: string) {
+    return apiHttp.get<SkillTree>(
+      `/business-lines/${businessLineId}/local-skills/${encodeURIComponent(skillName)}/tree`,
+    )
   },
 
-  removeLocalSkill(businessLineId: string, directoryName: string) {
-    return this.deleteLocalSkill(businessLineId, directoryName)
+  localSkillFile(businessLineId: string, skillName: string, path: string) {
+    return apiHttp.get<SkillFile>(
+      `/business-lines/${businessLineId}/local-skills/${encodeURIComponent(skillName)}/content`,
+      { relativePath: path },
+    )
   },
 
   listLocalMcps(businessLineId: string) {
     return apiHttp.get<Mcp[]>(`/business-lines/${businessLineId}/local-mcps`)
   },
 
-  createLocalMcp(businessLineId: string, payload: CreateLocalMcpPayload) {
-    return apiHttp.post<Mcp>(`/business-lines/${businessLineId}/local-mcps`, payload)
-  },
-
-  updateLocalMcp(businessLineId: string, mcpId: string, payload: CreateLocalMcpPayload) {
-    return apiHttp.patch<Mcp>(`/business-lines/${businessLineId}/local-mcps/${mcpId}`, payload)
-  },
-
-  deleteLocalMcp(businessLineId: string, mcpId: string) {
-    return apiHttp.delete<void>(`/business-lines/${businessLineId}/local-mcps/${mcpId}`)
-  },
-
   importLocalMcps(businessLineId: string, payload: ImportLocalMcpsPayload) {
     return apiHttp.post<ImportLocalMcpsResult>(
-      `/business-lines/${businessLineId}/local-mcps/import-json`,
+      `/business-lines/${businessLineId}/local-mcps/import`,
       payload,
     )
   },
 
-  getLocalMcpConfig(businessLineId: string, query: { name: string; sourcePath: string }) {
-    return apiHttp.get<LocalMcpConfig>(`/business-lines/${businessLineId}/local-mcps/config`, query)
+  getLocalMcpConfig(businessLineId: string, params: { name: string; sourcePath?: string }) {
+    return apiHttp.get<LocalMcpConfig>(
+      `/business-lines/${businessLineId}/local-mcps/${encodeURIComponent(params.name)}/config`,
+      { sourcePath: params.sourcePath },
+    )
+  },
+
+  createLocalMcp(businessLineId: string, payload: CreateLocalMcpPayload) {
+    return apiHttp.post<Mcp>(`/business-lines/${businessLineId}/local-mcps`, payload)
   },
 }

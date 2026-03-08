@@ -2,25 +2,17 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BusinessLineInviteProjectRole } from '../dto/business-line-invite-project-role.enum';
 
 export class BusinessLineInvitation {
-  @ApiProperty({
-    type: String,
-  })
+  @ApiProperty({ type: String })
   id: string;
 
-  @ApiProperty({
-    type: String,
-  })
+  @ApiProperty({ type: String })
   businessLineId: string;
 
-  @ApiProperty({
-    type: String,
-  })
+  @ApiProperty({ type: String })
   token: string;
 
-  @ApiProperty({
-    type: String,
-  })
-  role: string;
+  @ApiProperty({ type: String })
+  roleId: string;
 
   @ApiProperty({
     type: 'object',
@@ -34,9 +26,7 @@ export class BusinessLineInvitation {
   @ApiPropertyOptional({ type: String, nullable: true })
   customRoleName?: string | null;
 
-  @ApiProperty({
-    type: String,
-  })
+  @ApiProperty({ type: String })
   createdBy: string;
 
   @ApiProperty()

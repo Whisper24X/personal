@@ -39,6 +39,8 @@ import {
   BUSINESS_LINE_CAPABILITY_OPTIONS,
   PROJECT_CAPABILITY_OPTIONS,
   buildBusinessLineRoleAssignmentOptions,
+  isBusinessLineDefaultRole,
+  isProjectDefaultRole,
 } from '@/constants/access'
 import { getCapabilityLabel } from '@/constants/access-control'
 
@@ -51,6 +53,7 @@ type MainTab =
   | 'skill'
   | 'mcp'
   | 'settings'
+type PermissionRoleTab = 'business-line' | 'project'
 type ProjectPermissionRole = 'none' | 'manage' | 'developer' | 'viewer'
 type SupportedCliToolId = 'claude-code' | 'codex' | 'gemini-cli' | 'cursor-agent' | 'opencode'
 type WorkflowTemplateNodeInputForm = {
@@ -69,9 +72,6 @@ const SUPPORTED_CLI_TOOLS: Array<{ id: SupportedCliToolId; label: string }> = [
   { id: 'gemini-cli', label: 'Gemini CLI' },
   { id: 'opencode', label: 'Opencode' },
 ]
-
-const defaultBusinessLineRoleCodes = new Set(['owner', 'admin', 'member'])
-const defaultProjectRoleCodes = new Set(['owner', 'maintainer', 'developer', 'viewer'])
 
 defineOptions({
   name: 'BusinessLineModal',
@@ -95,6 +95,7 @@ const emit = defineEmits<{
 
 const activeLineId = ref('')
 const activeTab = ref<MainTab>('projects')
+const activePermissionRoleTab = ref<PermissionRoleTab>('business-line')
 
 const projectQuery = ref('')
 const memberQuery = ref('')
@@ -442,7 +443,7 @@ const filteredMembers = computed(() => {
     const username = user?.username?.toLowerCase() ?? ''
     return (
       member.userId.toLowerCase().includes(query) ||
-      member.role.toLowerCase().includes(query) ||
+      member.roleId.toLowerCase().includes(query) ||
       (member.customRoleName ?? '').toLowerCase().includes(query) ||
       nickname.includes(query) ||
       username.includes(query)
@@ -1613,15 +1614,17 @@ const displayBusinessLineRoleLabel = (member: BusinessLineMember) => {
     return member.customRoleName
   }
 
-  return member.role
+  return member.roleId
 }
 
 const roleBadgeClass = (role: string) => {
-  if (role === 'owner') {
+  const normalizedRole = role.trim().toLowerCase()
+
+  if (normalizedRole === 'owner') {
     return 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300'
   }
 
-  if (role === 'admin') {
+  if (normalizedRole === 'admin') {
     return 'border-sky-500/40 bg-sky-500/10 text-sky-800 dark:text-sky-300'
   }
 
@@ -1630,6 +1633,12 @@ const roleBadgeClass = (role: string) => {
 
 const tabClass = (tab: MainTab) => {
   return tab === activeTab.value
+    ? 'bg-background text-foreground shadow-sm'
+    : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'
+}
+
+const permissionRoleTabClass = (tab: PermissionRoleTab) => {
+  return tab === activePermissionRoleTab.value
     ? 'bg-background text-foreground shadow-sm'
     : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'
 }
@@ -2017,7 +2026,7 @@ const applyInviteToCreateMemberModal = (invite: BusinessLineInvite | null) => {
     return
   }
 
-  memberPermissionInitialBusinessRole.value = invite.role
+  memberPermissionInitialBusinessRole.value = invite.roleId
   memberPermissionInitialProjectRoles.value = {}
   memberInvitationLink.value = buildInviteUrl(invite.token)
   memberInvitationExpiresAt.value = invite.expiresAt
@@ -2061,7 +2070,7 @@ const openEditMemberModal = async (member: BusinessLineMember) => {
 
   memberPermissionModalMode.value = 'edit'
   memberPermissionInitialUserId.value = member.userId
-  memberPermissionInitialBusinessRole.value = member.role
+  memberPermissionInitialBusinessRole.value = member.roleId
   memberPermissionInitialProjectRoles.value = {}
   memberPermissionModalPreparing.value = true
   memberPermissionModalError.value = ''
@@ -2099,7 +2108,7 @@ const submitMemberPermission = async (
     if (payload.mode === 'create') {
       const businessLineId = activeLineId.value
       const createdInvite = await businessLinesApi.createInvitation(businessLineId, {
-        role: payload.businessRole,
+        roleId: payload.businessRole,
         projectRoles: {},
       })
 
@@ -2118,12 +2127,12 @@ const submitMemberPermission = async (
     } else {
       const currentMember = lineMembers.value.find((member) => member.userId === payload.userId)
       const shouldUpdateMember = Boolean(
-        currentMember && currentMember.role !== payload.businessRole,
+        currentMember && currentMember.roleId !== payload.businessRole,
       )
 
       if (shouldUpdateMember) {
         await businessLinesApi.updateMember(activeLineId.value, payload.userId, {
-          role: payload.businessRole,
+          roleId: payload.businessRole,
         })
       }
 
@@ -2468,6 +2477,7 @@ watch(
       editingWorkflowTemplateId.value = ''
 
       activeLineId.value = props.activeBusinessLineId || props.lines[0]?.id || ''
+      activePermissionRoleTab.value = 'business-line'
       if (activeLineId.value) {
         emit('select-line', activeLineId.value)
         void loadLineAccess(activeLineId.value)
@@ -3015,7 +3025,7 @@ onBeforeUnmount(() => {
                           <td class="px-4 py-3">
                             <span
                               class="inline-flex rounded-full border px-2 py-1 text-xs font-semibold"
-                              :class="roleBadgeClass(member.role)"
+                              :class="roleBadgeClass(displayBusinessLineRoleLabel(member))"
                             >
                               {{ displayBusinessLineRoleLabel(member) }}
                             </span>
@@ -3057,12 +3067,48 @@ onBeforeUnmount(() => {
               </section>
 
               <section v-else-if="activeTab === 'permissions'" class="space-y-4">
-                <div class="panel-card p-4">
-                  <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p class="text-sm font-semibold">权限角色</p>
+                    <p class="mt-1 text-xs text-muted-foreground">
+                      按角色类型分别管理业务线角色和项目角色，保持列表化展示，减少页面层级。
+                    </p>
+                  </div>
+                  <div
+                    class="inline-flex w-full flex-wrap gap-2 rounded-xl border border-border bg-muted/30 p-1 lg:w-auto"
+                  >
+                    <button
+                      type="button"
+                      class="rounded-lg px-3 py-2 text-xs font-semibold transition"
+                      :class="permissionRoleTabClass('business-line')"
+                      @click="activePermissionRoleTab = 'business-line'"
+                    >
+                      业务线角色
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded-lg px-3 py-2 text-xs font-semibold transition"
+                      :class="permissionRoleTabClass('project')"
+                      @click="activePermissionRoleTab = 'project'"
+                    >
+                      项目角色
+                    </button>
+                  </div>
+                </div>
+
+                <div v-if="activePermissionRoleTab === 'business-line'" class="panel-card space-y-4 p-4">
+                  <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p class="text-sm font-semibold">业务线角色库</p>
+                      <div class="flex flex-wrap items-center gap-2">
+                        <p class="text-sm font-semibold">业务线角色库</p>
+                        <span
+                          class="rounded-full border border-border px-2 py-1 text-[11px] text-muted-foreground"
+                        >
+                          共 {{ lineCustomRoles.length }} 个
+                        </span>
+                      </div>
                       <p class="mt-1 text-xs text-muted-foreground">
-                        这里维护全局可复用的业务线角色；当前业务线通过挂载来启用这些角色。
+                        当前业务线的成员权限角色定义，编辑只影响当前业务线。
                       </p>
                     </div>
                     <div class="flex items-center gap-2">
@@ -3079,155 +3125,94 @@ onBeforeUnmount(() => {
                         class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm"
                         @click="openCreateCustomRoleModal"
                       >
-                        新建业务线角色
+                        新建
                       </button>
                     </div>
                   </div>
 
-                  <div class="mt-4">
+                  <div v-if="loadingCustomRoles" class="text-sm text-muted-foreground">
+                    加载业务线角色中...
+                  </div>
+                  <div
+                    v-else-if="lineCustomRoles.length === 0"
+                    class="rounded-xl border border-dashed border-border bg-background/60 px-4 py-4 text-sm text-muted-foreground"
+                  >
+                    当前暂无业务线角色。
+                  </div>
+                  <div v-else class="space-y-3">
                     <article
-                      class="space-y-3 rounded-xl border border-border bg-background px-4 py-3"
+                      v-for="role in lineCustomRoles"
+                      :key="role.id"
+                      class="rounded-xl border border-border bg-background px-4 py-3"
                     >
-                      <div class="flex items-center justify-between gap-2">
+                      <div class="flex items-start justify-between gap-3">
                         <div>
-                          <p class="text-sm font-semibold">业务线角色库</p>
+                          <div class="flex flex-wrap items-center gap-2">
+                            <p class="text-sm font-semibold">{{ role.name }}</p>
+                            <span
+                              class="rounded-full border px-2 py-0.5 text-[11px]"
+                              :class="
+                                isBusinessLineDefaultRole(role)
+                                  ? 'border-primary/30 bg-primary/5 text-primary'
+                                  : 'border-border text-muted-foreground'
+                              "
+                            >
+                              {{
+                                isBusinessLineDefaultRole(role)
+                                  ? '默认角色'
+                                  : '自定义角色'
+                              }}
+                            </span>
+                            <span
+                              class="rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11px] text-primary"
+                            >
+                            </span>
+                          </div>
                           <p class="mt-1 text-xs text-muted-foreground">
-                            当前业务线的成员权限角色定义，编辑只影响当前业务线。
+                            {{ role.description || '暂无描述' }}
                           </p>
                         </div>
-                        <span
-                          class="rounded-full border border-border px-2 py-1 text-[11px] text-muted-foreground"
-                        >
-                          共 {{ lineCustomRoles.length }} 个
-                        </span>
-                      </div>
-
-                      <div v-if="loadingCustomRoles" class="text-sm text-muted-foreground">
-                        加载业务线角色中...
-                      </div>
-                      <div
-                        v-else-if="lineCustomRoles.length === 0"
-                        class="rounded-xl border border-dashed border-border bg-background/60 px-4 py-4 text-sm text-muted-foreground"
-                      >
-                        当前暂无业务线角色。
-                      </div>
-                      <div v-else class="grid gap-3 xl:grid-cols-2">
-                        <article
-                          v-for="role in lineCustomRoles"
-                          :key="role.id"
-                          class="rounded-xl border border-border bg-background px-4 py-3"
-                        >
-                          <div class="flex items-start justify-between gap-3">
-                            <div>
-                              <div class="flex flex-wrap items-center gap-2">
-                                <p class="text-sm font-semibold">{{ role.name }}</p>
-                                <span
-                                  class="rounded-full border px-2 py-0.5 text-[11px]"
-                                  :class="
-                                    defaultBusinessLineRoleCodes.has(role.code)
-                                      ? 'border-primary/30 bg-primary/5 text-primary'
-                                      : 'border-border text-muted-foreground'
-                                  "
-                                >
-                                  {{
-                                    defaultBusinessLineRoleCodes.has(role.code)
-                                      ? '默认角色'
-                                      : '自定义角色'
-                                  }}
-                                </span>
-                                <span
-                                  class="rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11px] text-primary"
-                                >
-                                  代码 · {{ role.code }}
-                                </span>
-                              </div>
-                              <p class="mt-1 text-xs text-muted-foreground">
-                                {{ role.description || '暂无描述' }}
-                              </p>
-                            </div>
-                            <div v-if="canManageActiveLineMembers" class="flex items-center gap-2">
-                              <button
-                                type="button"
-                                class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
-                                @click="openEditCustomRoleModal(role)"
-                              >
-                                编辑
-                              </button>
-                              <button
-                                type="button"
-                                class="inline-flex h-8 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-60"
-                                :disabled="deletingCustomRoleId === role.id"
-                                @click="removeCustomRole(role)"
-                              >
-                                {{ deletingCustomRoleId === role.id ? '删除中...' : '删除' }}
-                              </button>
-                            </div>
-                          </div>
-                          <div class="mt-3 flex flex-wrap gap-2">
-                            <span
-                              v-for="capability in role.capabilities"
-                              :key="`${role.id}-${capability}`"
-                              class="rounded-full border border-border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground"
-                            >
-                              {{ getCapabilityLabel(capability) }}
-                            </span>
-                            <span
-                              v-if="role.capabilities.length === 0"
-                              class="rounded-full border border-border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground"
-                            >
-                              无额外能力
-                            </span>
-                          </div>
-                        </article>
+                        <div v-if="canManageActiveLineMembers" class="flex items-center gap-2">
+                          <button
+                            type="button"
+                            class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                            @click="openEditCustomRoleModal(role)"
+                          >
+                            编辑
+                          </button>
+                          <button
+                            type="button"
+                            class="inline-flex h-8 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-60"
+                            :disabled="deletingCustomRoleId === role.id"
+                            @click="removeCustomRole(role)"
+                          >
+                            {{ deletingCustomRoleId === role.id ? '删除中...' : '删除' }}
+                          </button>
+                        </div>
                       </div>
                     </article>
                   </div>
                 </div>
 
-                <div class="panel-card p-4">
-                  <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div v-else class="panel-card space-y-4 p-4">
+                  <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p class="text-sm font-semibold">项目角色库</p>
-                      <p class="mt-1 text-xs text-muted-foreground">
-                        项目角色归属于当前业务线；当前业务线下的所有项目都会直接使用这里的角色库。
-                      </p>
-                    </div>
-                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-                      <button
-                        type="button"
-                        class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
-                        :disabled="!activeLineId"
-                        @click="activeLineId && loadPermissionProjectCustomRoles(activeLineId)"
-                      >
-                        刷新项目角色
-                      </button>
-                      <button
-                        v-if="canManagePermissionProjectRoles"
-                        type="button"
-                        class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm"
-                        @click="openCreatePermissionProjectRoleModal"
-                      >
-                        新建项目角色
-                      </button>
-                    </div>
-                  </div>
-
-                  <div
-                    v-if="!activeLineId"
-                    class="mt-4 rounded-xl border border-dashed border-border bg-background/60 px-4 py-4 text-sm text-muted-foreground"
-                  >
-                    请先选择业务线。
-                  </div>
-                  <template v-else>
-                    <div class="mt-4 rounded-xl border border-border bg-background px-4 py-3">
-                      <div class="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <p class="text-sm font-semibold">{{ selectedLineName }}</p>
-                          <p class="mt-1 text-xs text-muted-foreground">
-                            {{ selectedLineDescription || '当前业务线未填写描述。' }}
-                          </p>
-                        </div>
+                      <div class="flex flex-wrap items-center gap-2">
+                        <p class="text-sm font-semibold">项目角色库</p>
                         <span
+                          v-if="activeLineId"
+                          class="rounded-full border border-border px-2 py-1 text-[11px] text-muted-foreground"
+                        >
+                          {{ selectedLineName }}
+                        </span>
+                        <span
+                          v-if="activeLineId"
+                          class="rounded-full border border-border px-2 py-1 text-[11px] text-muted-foreground"
+                        >
+                          共 {{ permissionProjectRoleLibrary.length }} 个
+                        </span>
+                        <span
+                          v-if="activeLineId"
                           class="rounded-full border px-2 py-1 text-[11px]"
                           :class="
                             canManagePermissionProjectRoles
@@ -3238,117 +3223,111 @@ onBeforeUnmount(() => {
                           {{ canManagePermissionProjectRoles ? '可编辑角色库' : '仅可查看角色库' }}
                         </span>
                       </div>
+                      <p class="mt-1 text-xs text-muted-foreground">
+                        编辑角色定义会同步影响当前业务线下所有项目的成员角色分配。
+                      </p>
+                      <p v-if="activeLineId && selectedLineDescription" class="mt-1 text-xs text-muted-foreground">
+                        {{ selectedLineDescription }}
+                      </p>
                     </div>
-
-                    <div class="mt-4">
-                      <article
-                        class="space-y-3 rounded-xl border border-border bg-background px-4 py-3"
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="!activeLineId"
+                        @click="activeLineId && loadPermissionProjectCustomRoles(activeLineId)"
                       >
-                        <div class="flex items-center justify-between gap-2">
-                          <div>
-                            <p class="text-sm font-semibold">当前业务线项目角色库</p>
-                            <p class="mt-1 text-xs text-muted-foreground">
-                              编辑角色定义会同步影响当前业务线下所有项目的成员角色分配。
-                            </p>
-                          </div>
-                          <span
-                            class="rounded-full border border-border px-2 py-1 text-[11px] text-muted-foreground"
-                          >
-                            共 {{ permissionProjectRoleLibrary.length }} 个
-                          </span>
-                        </div>
-
-                        <div
-                          v-if="loadingPermissionProjectRoleLibrary"
-                          class="text-sm text-muted-foreground"
-                        >
-                          加载项目角色库中...
-                        </div>
-                        <div
-                          v-else-if="permissionProjectRoleLibrary.length === 0"
-                          class="rounded-xl border border-dashed border-border bg-background/60 px-4 py-4 text-sm text-muted-foreground"
-                        >
-                          当前业务线暂无项目角色。
-                        </div>
-                        <div v-else class="grid gap-3 xl:grid-cols-2">
-                          <article
-                            v-for="role in permissionProjectRoleLibrary"
-                            :key="role.id"
-                            class="rounded-xl border border-border bg-background px-4 py-3"
-                          >
-                            <div class="flex items-start justify-between gap-3">
-                              <div>
-                                <div class="flex flex-wrap items-center gap-2">
-                                  <p class="text-sm font-semibold">{{ role.name }}</p>
-                                  <span
-                                    class="rounded-full border px-2 py-0.5 text-[11px]"
-                                    :class="
-                                      defaultBusinessLineRoleCodes.has(role.code)
-                                        ? 'border-primary/30 bg-primary/5 text-primary'
-                                        : 'border-border text-muted-foreground'
-                                    "
-                                  >
-                                    {{
-                                      defaultProjectRoleCodes.has(role.code)
-                                        ? '默认模板'
-                                        : '自定义模板'
-                                    }}
-                                  </span>
-                                  <span
-                                    class="rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11px] text-primary"
-                                  >
-                                    代码 · {{ role.code }}
-                                  </span>
-                                </div>
-                                <p class="mt-1 text-xs text-muted-foreground">
-                                  {{ role.description || '暂无描述' }}
-                                </p>
-                              </div>
-                              <div
-                                v-if="canManagePermissionProjectRoles"
-                                class="flex items-center gap-2"
-                              >
-                                <button
-                                  type="button"
-                                  class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
-                                  @click="openEditPermissionProjectRoleModal(role)"
-                                >
-                                  编辑
-                                </button>
-                                <button
-                                  type="button"
-                                  class="inline-flex h-8 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-60"
-                                  :disabled="deletingPermissionProjectRoleId === role.id"
-                                  @click="removePermissionProjectRole(role)"
-                                >
-                                  {{
-                                    deletingPermissionProjectRoleId === role.id
-                                      ? '删除中...'
-                                      : '删除'
-                                  }}
-                                </button>
-                              </div>
-                            </div>
-                            <div class="mt-3 flex flex-wrap gap-2">
-                              <span
-                                v-for="capability in role.capabilities"
-                                :key="`${role.id}-${capability}`"
-                                class="rounded-full border border-border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground"
-                              >
-                                {{ getCapabilityLabel(capability) }}
-                              </span>
-                              <span
-                                v-if="role.capabilities.length === 0"
-                                class="rounded-full border border-border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground"
-                              >
-                                无额外能力
-                              </span>
-                            </div>
-                          </article>
-                        </div>
-                      </article>
+                        刷新
+                      </button>
+                      <button
+                        v-if="canManagePermissionProjectRoles"
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm"
+                        @click="openCreatePermissionProjectRoleModal"
+                      >
+                        新建
+                      </button>
                     </div>
-                  </template>
+                  </div>
+
+                  <div
+                    v-if="!activeLineId"
+                    class="rounded-xl border border-dashed border-border bg-background/60 px-4 py-4 text-sm text-muted-foreground"
+                  >
+                    请先选择业务线。
+                  </div>
+                  <div
+                    v-else-if="loadingPermissionProjectRoleLibrary"
+                    class="text-sm text-muted-foreground"
+                  >
+                    加载项目角色库中...
+                  </div>
+                  <div
+                    v-else-if="permissionProjectRoleLibrary.length === 0"
+                    class="rounded-xl border border-dashed border-border bg-background/60 px-4 py-4 text-sm text-muted-foreground"
+                  >
+                    当前业务线暂无项目角色。
+                  </div>
+                  <div v-else class="space-y-3">
+                    <article
+                      v-for="role in permissionProjectRoleLibrary"
+                      :key="role.id"
+                      class="rounded-xl border border-border bg-background px-4 py-3"
+                    >
+                      <div class="flex items-start justify-between gap-3">
+                        <div>
+                          <div class="flex flex-wrap items-center gap-2">
+                            <p class="text-sm font-semibold">{{ role.name }}</p>
+                            <span
+                              class="rounded-full border px-2 py-0.5 text-[11px]"
+                              :class="
+                                isProjectDefaultRole(role)
+                                  ? 'border-primary/30 bg-primary/5 text-primary'
+                                  : 'border-border text-muted-foreground'
+                              "
+                            >
+                              {{
+                                isProjectDefaultRole(role)
+                                  ? '默认模板'
+                                  : '自定义模板'
+                              }}
+                            </span>
+                            <span
+                              class="rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11px] text-primary"
+                            >
+                            </span>
+                          </div>
+                          <p class="mt-1 text-xs text-muted-foreground">
+                            {{ role.description || '暂无描述' }}
+                          </p>
+                        </div>
+                        <div
+                          v-if="canManagePermissionProjectRoles"
+                          class="flex items-center gap-2"
+                        >
+                          <button
+                            type="button"
+                            class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                            @click="openEditPermissionProjectRoleModal(role)"
+                          >
+                            编辑
+                          </button>
+                          <button
+                            type="button"
+                            class="inline-flex h-8 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-60"
+                            :disabled="deletingPermissionProjectRoleId === role.id"
+                            @click="removePermissionProjectRole(role)"
+                          >
+                            {{
+                              deletingPermissionProjectRoleId === role.id
+                                ? '删除中...'
+                                : '删除'
+                            }}
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
                 </div>
               </section>
               <section v-else-if="activeTab === 'agent-cli'" class="space-y-4">

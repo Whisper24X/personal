@@ -16,27 +16,21 @@ export class BusinessLineMemberRelationalRepository
     private readonly businessLineMemberRepository: Repository<BusinessLineMemberEntity>,
   ) {}
 
-  async findByBusinessLineId(
-    businessLineId: BusinessLineMember['businessLineId'],
-  ): Promise<BusinessLineMember[]> {
+  async findByBusinessLineId(businessLineId: BusinessLineMember['businessLineId']): Promise<BusinessLineMember[]> {
     const entities = await this.businessLineMemberRepository.find({
       where: { businessLineId },
-      order: {
-        createdAt: 'ASC',
-      },
+      relations: { roleRef: true },
+      order: { createdAt: 'ASC' },
     });
 
     return entities.map((entity) => BusinessLineMemberMapper.toDomain(entity));
   }
 
-  async findByUserId(
-    userId: BusinessLineMember['userId'],
-  ): Promise<BusinessLineMember[]> {
+  async findByUserId(userId: BusinessLineMember['userId']): Promise<BusinessLineMember[]> {
     const entities = await this.businessLineMemberRepository.find({
       where: { userId },
-      order: {
-        createdAt: 'ASC',
-      },
+      relations: { roleRef: true },
+      order: { createdAt: 'ASC' },
     });
 
     return entities.map((entity) => BusinessLineMemberMapper.toDomain(entity));
@@ -47,10 +41,8 @@ export class BusinessLineMemberRelationalRepository
     userId: BusinessLineMember['userId'],
   ): Promise<NullableType<BusinessLineMember>> {
     const entity = await this.businessLineMemberRepository.findOne({
-      where: {
-        businessLineId,
-        userId,
-      },
+      where: { businessLineId, userId },
+      relations: { roleRef: true },
     });
 
     return entity ? BusinessLineMemberMapper.toDomain(entity) : null;
@@ -59,17 +51,22 @@ export class BusinessLineMemberRelationalRepository
   async create(data: {
     businessLineId: BusinessLineMember['businessLineId'];
     userId: BusinessLineMember['userId'];
-    role: BusinessLineMember['role'];
+    roleId: BusinessLineMember['roleId'];
   }): Promise<BusinessLineMember> {
     const newEntity = await this.businessLineMemberRepository.save(
       this.businessLineMemberRepository.create({
         businessLineId: data.businessLineId,
         userId: data.userId,
-        role: data.role,
+        roleId: data.roleId,
       }),
     );
 
-    return BusinessLineMemberMapper.toDomain(newEntity);
+    const entity = await this.businessLineMemberRepository.findOneOrFail({
+      where: { id: newEntity.id },
+      relations: { roleRef: true },
+    });
+
+    return BusinessLineMemberMapper.toDomain(entity);
   }
 
   async update(
@@ -78,10 +75,7 @@ export class BusinessLineMemberRelationalRepository
     payload: Partial<BusinessLineMember>,
   ): Promise<NullableType<BusinessLineMember>> {
     const entity = await this.businessLineMemberRepository.findOne({
-      where: {
-        businessLineId,
-        userId,
-      },
+      where: { businessLineId, userId },
     });
 
     if (!entity) {
@@ -91,32 +85,25 @@ export class BusinessLineMemberRelationalRepository
     const updatedEntity = await this.businessLineMemberRepository.save(
       this.businessLineMemberRepository.create({
         ...entity,
-        role: payload.role ?? entity.role,
+        roleId: payload.roleId ?? entity.roleId,
       }),
     );
 
-    return BusinessLineMemberMapper.toDomain(updatedEntity);
-  }
-
-  async remove(
-    businessLineId: BusinessLineMember['businessLineId'],
-    userId: BusinessLineMember['userId'],
-  ): Promise<void> {
-    await this.businessLineMemberRepository.delete({
-      businessLineId,
-      userId,
+    const nextEntity = await this.businessLineMemberRepository.findOneOrFail({
+      where: { id: updatedEntity.id },
+      relations: { roleRef: true },
     });
+
+    return BusinessLineMemberMapper.toDomain(nextEntity);
   }
 
-  async countByBusinessLineIdAndRole(
-    businessLineId: string,
-    role: string,
-  ): Promise<number> {
+  async remove(businessLineId: BusinessLineMember['businessLineId'], userId: BusinessLineMember['userId']): Promise<void> {
+    await this.businessLineMemberRepository.delete({ businessLineId, userId });
+  }
+
+  async countByBusinessLineIdAndRoleId(businessLineId: string, roleId: string): Promise<number> {
     return this.businessLineMemberRepository.count({
-      where: {
-        businessLineId,
-        role,
-      },
+      where: { businessLineId, roleId },
     });
   }
 }

@@ -74,6 +74,13 @@ import {
   ALL_BUSINESS_LINE_CAPABILITIES,
   BUSINESS_LINE_DEFAULT_ROLE_TEMPLATES,
   PROJECT_DEFAULT_ROLE_TEMPLATES,
+  getBusinessLineDefaultRoleTemplate,
+  getProjectDefaultRoleTemplate,
+  hasBusinessLineTemplateCapabilities,
+  hasProjectTemplateCapabilities,
+  isBusinessLineOwnerCapabilities,
+  isDefaultTemplateRoleName,
+  isProjectOwnerCapabilities,
   normalizeBusinessLineCapabilities,
   normalizeProjectCapabilities,
 } from '../access/access.constants';
@@ -133,18 +140,17 @@ export class BusinessLinesService {
       description: createBusinessLineDto.description ?? null,
     });
 
-    const defaultRoles = await this.ensureDefaultBusinessLineCustomRoles(
-      businessLine.id,
-    );
+    await this.ensureDefaultBusinessLineCustomRoles(businessLine.id);
     await this.ensureDefaultProjectCustomRoles(businessLine.id);
-    const ownerRole =
-      defaultRoles.find((role) => role.code === BusinessLineMemberRole.owner) ??
-      null;
+    const ownerRole = await this.findDefaultBusinessLineCustomRole(
+      businessLine.id,
+      BusinessLineMemberRole.owner,
+    );
 
     await this.businessLineMemberRepository.create({
       businessLineId: businessLine.id,
       userId: currentUser.sub,
-      role: ownerRole?.code ?? BusinessLineMemberRole.owner,
+      roleId: ownerRole.id,
     });
 
     return businessLine;
@@ -266,13 +272,14 @@ export class BusinessLinesService {
     );
     const assignment = await this.resolveBusinessLineMemberAssignment(
       businessLineId,
-      createBusinessLineMemberDto.role,
+      createBusinessLineMemberDto.roleId,
     );
 
-    this.ensureActorCanManageMemberMutation({
+    await this.ensureActorCanManageMemberMutation({
       currentUser,
+      businessLineId,
       actorMember,
-      nextRole: assignment.role,
+      nextRoleId: assignment.roleId,
     });
 
     const existedMember =
@@ -296,7 +303,7 @@ export class BusinessLinesService {
     const member = await this.businessLineMemberRepository.create({
       businessLineId,
       userId: createBusinessLineMemberDto.userId,
-      role: assignment.role,
+      roleId: assignment.roleId,
     });
 
     return this.attachCustomRoleNameToBusinessLineMember(member);
@@ -313,13 +320,14 @@ export class BusinessLinesService {
     );
     const assignment = await this.resolveBusinessLineMemberAssignment(
       businessLineId,
-      createBusinessLineInviteDto.role,
+      createBusinessLineInviteDto.roleId,
     );
 
-    this.ensureActorCanManageMemberMutation({
+    await this.ensureActorCanManageMemberMutation({
       currentUser,
+      businessLineId,
       actorMember,
-      nextRole: assignment.role,
+      nextRoleId: assignment.roleId,
     });
 
     const projectRoles: Record<string, BusinessLineInviteProjectRole> = {};
@@ -338,7 +346,7 @@ export class BusinessLinesService {
     const invitation = await this.businessLineInvitationRepository.create({
       businessLineId,
       token,
-      role: assignment.role,
+      roleId: assignment.roleId,
       projectRoles,
       createdBy: currentUser.sub,
       expiresAt,
@@ -395,7 +403,7 @@ export class BusinessLinesService {
     const member = await this.businessLineMemberRepository.create({
       businessLineId: invitation.businessLineId,
       userId: currentUser.sub,
-      role: invitation.role,
+      roleId: invitation.roleId,
     });
 
     const failedProjects: string[] = [];
@@ -429,19 +437,20 @@ export class BusinessLinesService {
 
     const assignment = await this.resolveBusinessLineMemberAssignment(
       businessLineId,
-      updateBusinessLineMemberDto.role,
+      updateBusinessLineMemberDto.roleId,
     );
 
-    this.ensureActorCanManageMemberMutation({
+    await this.ensureActorCanManageMemberMutation({
       currentUser,
+      businessLineId,
       actorMember,
       targetMember: currentMember,
-      nextRole: assignment.role,
+      nextRoleId: assignment.roleId,
     });
 
     if (
-      currentMember.role === BusinessLineMemberRole.owner &&
-      assignment.role !== BusinessLineMemberRole.owner
+      (await this.isBusinessLineOwnerRole(businessLineId, currentMember.roleId)) &&
+      !(await this.isBusinessLineOwnerRole(businessLineId, assignment.roleId))
     ) {
       this.ensureOwnerSelfProtection(currentMember, currentUser);
       await this.ensureOwnerCanBeModified(businessLineId);
@@ -451,7 +460,7 @@ export class BusinessLinesService {
       businessLineId,
       userId,
       {
-        role: assignment.role,
+        roleId: assignment.roleId,
       },
     );
 
@@ -482,13 +491,14 @@ export class BusinessLinesService {
       throw new NotFoundException('Business line member not found');
     }
 
-    this.ensureActorCanManageMemberMutation({
+    await this.ensureActorCanManageMemberMutation({
       currentUser,
+      businessLineId,
       actorMember,
       targetMember: existedMember,
     });
 
-    if (existedMember.role === BusinessLineMemberRole.owner) {
+    if (await this.isBusinessLineOwnerRole(businessLineId, existedMember.roleId)) {
       this.ensureOwnerSelfProtection(existedMember, currentUser);
       await this.ensureOwnerCanBeModified(businessLineId);
     }
@@ -529,7 +539,6 @@ export class BusinessLinesService {
 
     return this.businessLineCustomRoleRepository.create({
       businessLineId,
-      code: await this.generateBusinessLineRoleCode(businessLineId),
       ...payload,
     });
   }
@@ -587,13 +596,13 @@ export class BusinessLinesService {
     );
 
     const [memberCount, invitationCount] = await Promise.all([
-      this.businessLineMemberRepository.countByBusinessLineIdAndRole(
+      this.businessLineMemberRepository.countByBusinessLineIdAndRoleId(
         businessLineId,
-        customRole.code,
+        customRole.id,
       ),
-      this.businessLineInvitationRepository.countActiveByBusinessLineIdAndRole(
+      this.businessLineInvitationRepository.countActiveByBusinessLineIdAndRoleId(
         businessLineId,
-        customRole.code,
+        customRole.id,
         new Date(),
       ),
     ]);
@@ -631,7 +640,6 @@ export class BusinessLinesService {
 
     return this.projectCustomRoleRepository.create({
       businessLineId,
-      code: await this.generateProjectRoleCode(businessLineId),
       ...payload,
     });
   }
@@ -693,9 +701,9 @@ export class BusinessLinesService {
     const memberCount = (
       await Promise.all(
         businessLineProjects.map((project) =>
-          this.projectMemberRepository.countByProjectIdAndRole(
+          this.projectMemberRepository.countByProjectIdAndRoleId(
             project.id,
-            customRole.code,
+            customRole.id,
           ),
         ),
       )
@@ -1436,9 +1444,16 @@ export class BusinessLinesService {
         businessLineId,
       );
 
-    const ownerCount = members.filter(
-      (member) => member.role === BusinessLineMemberRole.owner,
-    ).length;
+    const roles =
+      await this.businessLineCustomRoleRepository.findAllByBusinessLineId(
+        businessLineId,
+      );
+    const ownerRoleIdSet = new Set(
+      roles
+        .filter((role) => isBusinessLineOwnerCapabilities(role.capabilities))
+        .map((role) => role.id),
+    );
+    const ownerCount = members.filter((member) => ownerRoleIdSet.has(member.roleId)).length;
 
     if (ownerCount <= 1) {
       throw new ConflictException('At least one owner is required');
@@ -1454,17 +1469,19 @@ export class BusinessLinesService {
     }
   }
 
-  private ensureActorCanManageMemberMutation({
+  private async ensureActorCanManageMemberMutation({
     currentUser,
+    businessLineId,
     actorMember,
     targetMember,
-    nextRole,
+    nextRoleId,
   }: {
     currentUser: JwtPayloadType;
+    businessLineId: string;
     actorMember: BusinessLineMember | null;
     targetMember?: BusinessLineMember;
-    nextRole?: string;
-  }): void {
+    nextRoleId?: string;
+  }): Promise<void> {
     if (this.isAdmin(currentUser)) {
       return;
     }
@@ -1473,15 +1490,21 @@ export class BusinessLinesService {
       throw new ForbiddenException('forbiddenBusinessLineManage');
     }
 
-    if (actorMember.role === BusinessLineMemberRole.owner) {
+    if (await this.isBusinessLineOwnerRole(businessLineId, actorMember.roleId)) {
       return;
     }
 
-    if (targetMember?.role === BusinessLineMemberRole.owner) {
+    if (
+      targetMember &&
+      (await this.isBusinessLineOwnerRole(businessLineId, targetMember.roleId))
+    ) {
       throw new ForbiddenException('forbiddenBusinessLineManage');
     }
 
-    if (nextRole === BusinessLineMemberRole.owner) {
+    if (
+      nextRoleId &&
+      (await this.isBusinessLineOwnerRole(businessLineId, nextRoleId))
+    ) {
       throw new ForbiddenException('forbiddenBusinessLineManage');
     }
   }
@@ -1549,21 +1572,33 @@ export class BusinessLinesService {
           );
 
         if (!existedMember) {
+          const nextProjectRole = await this.findDefaultProjectCustomRole(
+            businessLineId,
+            nextRole,
+          );
+
           await this.projectMemberRepository.create({
             projectId,
             userId,
-            role: nextRole,
+            roleId: nextProjectRole.id,
           });
           continue;
         }
 
-        if (existedMember.role === ProjectMemberRole.owner) {
+        if (
+          await this.isProjectOwnerRole(businessLineId, existedMember.roleId)
+        ) {
           continue;
         }
 
-        if (existedMember.role !== nextRole) {
+        const nextProjectRole = await this.findDefaultProjectCustomRole(
+          businessLineId,
+          nextRole,
+        );
+
+        if (existedMember.roleId !== nextProjectRole.id) {
           await this.projectMemberRepository.update(projectId, userId, {
-            role: nextRole,
+            roleId: nextProjectRole.id,
           });
         }
       } catch (error) {
@@ -1577,24 +1612,23 @@ export class BusinessLinesService {
 
   private async resolveBusinessLineMemberAssignment(
     businessLineId: string,
-    roleCode: string,
-  ): Promise<{ role: string }> {
-    const normalizedRoleCode = roleCode.trim();
-    if (!normalizedRoleCode) {
-      throw new BadRequestException('Business line role code is required');
+    roleId: string,
+  ): Promise<{ roleId: string }> {
+    const normalizedRoleId = roleId.trim();
+    if (!normalizedRoleId) {
+      throw new BadRequestException('Business line role id is required');
     }
 
-    const role = await this.businessLineCustomRoleRepository.findByCode(
-      businessLineId,
-      normalizedRoleCode,
+    const role = await this.businessLineCustomRoleRepository.findById(
+      normalizedRoleId,
     );
 
-    if (!role) {
+    if (!role || role.businessLineId !== businessLineId) {
       throw new NotFoundException('Business line role not found');
     }
 
     return {
-      role: role.code,
+      roleId: role.id,
     };
   }
 
@@ -1605,15 +1639,15 @@ export class BusinessLinesService {
       await this.businessLineCustomRoleRepository.findAllByBusinessLineId(
         businessLineId,
       );
-    const roleCodeSet = new Set(
-      existingRoles
-        .map((role) => role.code)
-        .filter((code): code is string => Boolean(code)),
-    );
     const roleNameSet = new Set(existingRoles.map((role) => role.name));
 
     for (const template of BUSINESS_LINE_DEFAULT_ROLE_TEMPLATES) {
-      if (roleCodeSet.has(template.code)) {
+      const existedRole = existingRoles.find(
+        (role) =>
+          hasBusinessLineTemplateCapabilities(role.capabilities, template.role) ||
+          isDefaultTemplateRoleName(role.name, template.name),
+      );
+      if (existedRole) {
         continue;
       }
 
@@ -1622,20 +1656,17 @@ export class BusinessLinesService {
         roleNameSet,
       );
 
-      await this.businessLineCustomRoleRepository.create({
+      const createdRole = await this.businessLineCustomRoleRepository.create({
         businessLineId,
-        code: template.code,
         name: roleName,
         description: template.description,
         capabilities: template.capabilities,
       });
-      roleCodeSet.add(template.code);
+      existingRoles.push(createdRole);
       roleNameSet.add(roleName);
     }
 
-    return this.businessLineCustomRoleRepository.findAllByBusinessLineId(
-      businessLineId,
-    );
+    return existingRoles;
   }
 
   private buildAvailableDefaultRoleName(
@@ -1665,10 +1696,12 @@ export class BusinessLinesService {
   ): Promise<BusinessLineCustomRole> {
     await this.ensureDefaultBusinessLineCustomRoles(businessLineId);
 
-    const customRole = await this.businessLineCustomRoleRepository.findByCode(
-      businessLineId,
-      role,
-    );
+    const template = getBusinessLineDefaultRoleTemplate(role);
+    const roles = await this.ensureDefaultBusinessLineCustomRoles(businessLineId);
+    const customRole =
+      roles.find((item) => hasBusinessLineTemplateCapabilities(item.capabilities, role)) ??
+      roles.find((item) => isDefaultTemplateRoleName(item.name, template.name)) ??
+      null;
 
     if (!customRole) {
       throw new NotFoundException('Business line default role not found');
@@ -1736,15 +1769,15 @@ export class BusinessLinesService {
       await this.projectCustomRoleRepository.findAllByBusinessLineId(
         businessLineId,
       );
-    const roleCodeSet = new Set(
-      existingRoles
-        .map((role) => role.code)
-        .filter((code): code is string => Boolean(code)),
-    );
     const roleNameSet = new Set(existingRoles.map((role) => role.name));
 
     for (const template of PROJECT_DEFAULT_ROLE_TEMPLATES) {
-      if (roleCodeSet.has(template.code)) {
+      const existedRole = existingRoles.find(
+        (role) =>
+          hasProjectTemplateCapabilities(role.capabilities, template.role) ||
+          isDefaultTemplateRoleName(role.name, template.name),
+      );
+      if (existedRole) {
         continue;
       }
 
@@ -1753,20 +1786,54 @@ export class BusinessLinesService {
         roleNameSet,
       );
 
-      await this.projectCustomRoleRepository.create({
+      const createdRole = await this.projectCustomRoleRepository.create({
         businessLineId,
-        code: template.code,
         name: roleName,
         description: template.description,
         capabilities: template.capabilities,
       });
-      roleCodeSet.add(template.code);
+      existingRoles.push(createdRole);
       roleNameSet.add(roleName);
     }
 
-    return this.projectCustomRoleRepository.findAllByBusinessLineId(
-      businessLineId,
-    );
+    return existingRoles;
+  }
+
+  private async findDefaultProjectCustomRole(
+    businessLineId: BusinessLine['id'],
+    role: ProjectMemberRole,
+  ): Promise<ProjectCustomRole> {
+    await this.ensureDefaultProjectCustomRoles(businessLineId);
+
+    const template = getProjectDefaultRoleTemplate(role);
+    const roles = await this.ensureDefaultProjectCustomRoles(businessLineId);
+    const customRole =
+      roles.find((item) => hasProjectTemplateCapabilities(item.capabilities, role)) ??
+      roles.find((item) => isDefaultTemplateRoleName(item.name, template.name)) ??
+      null;
+
+    if (!customRole) {
+      throw new NotFoundException('Project default role not found');
+    }
+
+    return customRole;
+  }
+
+
+  private async isBusinessLineOwnerRole(
+    businessLineId: string,
+    roleId: string,
+  ): Promise<boolean> {
+    const role = await this.businessLineCustomRoleRepository.findById(roleId);
+    return !!role && role.businessLineId === businessLineId && isBusinessLineOwnerCapabilities(role.capabilities);
+  }
+
+  private async isProjectOwnerRole(
+    businessLineId: string,
+    roleId: string,
+  ): Promise<boolean> {
+    const role = await this.projectCustomRoleRepository.findById(roleId);
+    return !!role && role.businessLineId === businessLineId && isProjectOwnerCapabilities(role.capabilities);
   }
 
   private async buildProjectCustomRolePayload(
@@ -1821,42 +1888,12 @@ export class BusinessLinesService {
     };
   }
 
-  private async generateBusinessLineRoleCode(
-    businessLineId: BusinessLine['id'],
-  ): Promise<string> {
-    while (true) {
-      const code = `blr-${randomBytes(8).toString('hex')}`;
-      const existing = await this.businessLineCustomRoleRepository.findByCode(
-        businessLineId,
-        code,
-      );
-      if (!existing) {
-        return code;
-      }
-    }
-  }
-
-  private async generateProjectRoleCode(
-    businessLineId: BusinessLine['id'],
-  ): Promise<string> {
-    while (true) {
-      const code = `prj-${randomBytes(8).toString('hex')}`;
-      const existing = await this.projectCustomRoleRepository.findByCode(
-        businessLineId,
-        code,
-      );
-      if (!existing) {
-        return code;
-      }
-    }
-  }
-
   private async getBusinessLineProjectCustomRoleOrThrow(
     businessLineId: BusinessLine['id'],
-    customRoleId: string,
+    roleId: string,
   ): Promise<ProjectCustomRole> {
     const customRole =
-      await this.projectCustomRoleRepository.findById(customRoleId);
+      await this.projectCustomRoleRepository.findById(roleId);
 
     if (!customRole || customRole.businessLineId !== businessLineId) {
       throw new NotFoundException('Project role not found');
@@ -1867,10 +1904,10 @@ export class BusinessLinesService {
 
   private async getBusinessLineCustomRoleOrThrow(
     businessLineId: BusinessLine['id'],
-    customRoleId: string,
+    roleId: string,
   ): Promise<BusinessLineCustomRole> {
     const customRole =
-      await this.businessLineCustomRoleRepository.findById(customRoleId);
+      await this.businessLineCustomRoleRepository.findById(roleId);
 
     if (!customRole || customRole.businessLineId !== businessLineId) {
       throw new NotFoundException('Business line role not found');
@@ -1893,14 +1930,14 @@ export class BusinessLinesService {
           businessLineId,
         );
       for (const role of roles) {
-        roleMap.set(`${businessLineId}:${role.code}`, role.name);
+        roleMap.set(role.id, role.name);
       }
     }
 
     return members.map((member) => ({
       ...member,
       customRoleName:
-        roleMap.get(`${member.businessLineId}:${member.role}`) ?? null,
+        roleMap.get(member.roleId) ?? null,
     }));
   }
 
@@ -1916,9 +1953,8 @@ export class BusinessLinesService {
   private async resolveInvitationCustomRoleName(
     invitation: BusinessLineInvitation,
   ): Promise<string | null> {
-    const role = await this.businessLineCustomRoleRepository.findByCode(
-      invitation.businessLineId,
-      invitation.role,
+    const role = await this.businessLineCustomRoleRepository.findById(
+      invitation.roleId,
     );
     return role?.name ?? null;
   }
@@ -1952,7 +1988,7 @@ export class BusinessLinesService {
       token: invitation.token,
       expiresAt: invitation.expiresAt.toISOString(),
       businessLineId: invitation.businessLineId,
-      role: invitation.role,
+      roleId: invitation.roleId,
       projectRoles: invitation.projectRoles,
       customRoleName: await this.resolveInvitationCustomRoleName(invitation),
     };

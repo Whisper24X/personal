@@ -18,7 +18,7 @@ const props = defineProps<{
   preparing: boolean
   users: User[]
   projects: ProjectPermissionItem[]
-  roleOptions: RoleAssignmentOption<string>[]
+  roleOptions: RoleAssignmentOption[]
   initialUserId: string
   initialBusinessRole: string
   initialProjectRoles: Record<string, ProjectPermissionRole>
@@ -210,7 +210,7 @@ const submit = () => {
     validationMessage.value = ''
     emit('submit', {
       mode: 'create',
-      businessRole: selected.role,
+      businessRole: selected.roleId,
       projectRoles: { ...projectRoles.value },
     })
     return
@@ -225,7 +225,7 @@ const submit = () => {
   emit('submit', {
     mode: 'edit',
     userId: selectedUserId.value,
-    businessRole: selected.role,
+    businessRole: selected.roleId,
     projectRoles: { ...projectRoles.value },
   })
 }

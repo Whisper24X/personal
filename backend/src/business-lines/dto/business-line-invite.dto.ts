@@ -12,7 +12,7 @@ export class BusinessLineInviteDto {
   businessLineId: string;
 
   @ApiProperty({ type: String })
-  role: string;
+  roleId: string;
 
   @ApiProperty({
     type: 'object',

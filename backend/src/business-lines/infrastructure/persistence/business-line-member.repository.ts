@@ -18,7 +18,7 @@ export abstract class BusinessLineMemberRepository {
   abstract create(data: {
     businessLineId: BusinessLineMember['businessLineId'];
     userId: BusinessLineMember['userId'];
-    role: BusinessLineMember['role'];
+    roleId: BusinessLineMember['roleId'];
   }): Promise<BusinessLineMember>;
 
   abstract update(
@@ -32,8 +32,8 @@ export abstract class BusinessLineMemberRepository {
     userId: BusinessLineMember['userId'],
   ): Promise<void>;
 
-  abstract countByBusinessLineIdAndRole(
+  abstract countByBusinessLineIdAndRoleId(
     businessLineId: string,
-    role: string,
+    roleId: string,
   ): Promise<number>;
 }

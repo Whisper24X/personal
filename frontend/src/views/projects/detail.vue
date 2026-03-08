@@ -20,7 +20,7 @@ import type {
 import ConfirmActionModal from '@/components/business/settings/modals/ConfirmActionModal.vue'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
-import { buildProjectRoleAssignmentOptions, resolveRoleAssignmentKey } from '@/constants/access'
+import { buildProjectRoleAssignmentOptions, isProjectDefaultRole, resolveRoleAssignmentKey } from '@/constants/access'
 
 defineOptions({
   name: 'ProjectsDetailView',
@@ -262,11 +262,12 @@ const projectRoleOptions = computed(() => {
 })
 
 const preferredProjectRoleKey = computed(() => {
+  const developerRole = projectCustomRoles.value.find((role) => isProjectDefaultRole(role, 'developer'))
+
   return (
-    projectRoleOptions.value.find((item) => item.source === 'default' && item.role === 'developer')
-      ?.key ??
-    projectRoleOptions.value.find((item) => item.source === 'default')?.key ??
-    projectRoleOptions.value[0]?.key ??
+    (developerRole ? `role:${developerRole.id}` : '') ||
+    projectRoleOptions.value.find((item) => item.source === 'default')?.key ||
+    projectRoleOptions.value[0]?.key ||
     ''
   )
 })
@@ -1174,7 +1175,7 @@ const loadProjectData = async () => {
     projectCustomRoles.value = customRoleResponse
 
     memberRoleDrafts.value = memberResponse.reduce<Record<string, string>>((result, member) => {
-      result[member.userId] = resolveRoleAssignmentKey(member.role, projectRoleOptions.value)
+      result[member.userId] = resolveRoleAssignmentKey(member.roleId, projectRoleOptions.value)
       return result
     }, {})
 
@@ -1233,7 +1234,7 @@ const createMember = async () => {
 
     await projectsApi.addMember(projectId.value, {
       userId: normalizedUserId,
-      role: selectedRole.role,
+      roleId: selectedRole.roleId,
     })
 
     newMemberForm.userId = ''
@@ -1264,7 +1265,7 @@ const updateMemberRole = async (member: ProjectMember) => {
     return
   }
 
-  const currentRoleKey = resolveRoleAssignmentKey(member.role, projectRoleOptions.value)
+  const currentRoleKey = resolveRoleAssignmentKey(member.roleId, projectRoleOptions.value)
   if (nextRoleKey === currentRoleKey) {
     return
   }
@@ -1273,7 +1274,7 @@ const updateMemberRole = async (member: ProjectMember) => {
 
   try {
     await projectsApi.updateMember(projectId.value, member.userId, {
-      role: selectedRole.role,
+      roleId: selectedRole.roleId,
     })
 
     await loadProjectData()

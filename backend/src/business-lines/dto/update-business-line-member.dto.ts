@@ -1,12 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsUUID } from 'class-validator';
 
 export class UpdateBusinessLineMemberDto {
-  @ApiProperty({
-    type: String,
-  })
-  @IsString()
+  @ApiProperty({ type: String })
+  @IsUUID()
   @IsNotEmpty()
-  @MaxLength(64)
-  role: string;
+  roleId: string;
 }

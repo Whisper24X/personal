@@ -8,35 +8,27 @@ import { ProjectMemberEntity } from '../entities/project-member.entity';
 import { ProjectMemberMapper } from '../mappers/project-member.mapper';
 
 @Injectable()
-export class ProjectMemberRelationalRepository
-  implements ProjectMemberRepository
-{
+export class ProjectMemberRelationalRepository implements ProjectMemberRepository {
   constructor(
     @InjectRepository(ProjectMemberEntity)
     private readonly projectMemberRepository: Repository<ProjectMemberEntity>,
   ) {}
 
-  async findByProjectId(
-    projectId: ProjectMember['projectId'],
-  ): Promise<ProjectMember[]> {
+  async findByProjectId(projectId: ProjectMember['projectId']): Promise<ProjectMember[]> {
     const entities = await this.projectMemberRepository.find({
       where: { projectId },
-      order: {
-        createdAt: 'ASC',
-      },
+      relations: { roleRef: true },
+      order: { createdAt: 'ASC' },
     });
 
     return entities.map((entity) => ProjectMemberMapper.toDomain(entity));
   }
 
-  async findByUserId(
-    userId: ProjectMember['userId'],
-  ): Promise<ProjectMember[]> {
+  async findByUserId(userId: ProjectMember['userId']): Promise<ProjectMember[]> {
     const entities = await this.projectMemberRepository.find({
       where: { userId },
-      order: {
-        createdAt: 'ASC',
-      },
+      relations: { roleRef: true },
+      order: { createdAt: 'ASC' },
     });
 
     return entities.map((entity) => ProjectMemberMapper.toDomain(entity));
@@ -47,10 +39,8 @@ export class ProjectMemberRelationalRepository
     userId: ProjectMember['userId'],
   ): Promise<NullableType<ProjectMember>> {
     const entity = await this.projectMemberRepository.findOne({
-      where: {
-        projectId,
-        userId,
-      },
+      where: { projectId, userId },
+      relations: { roleRef: true },
     });
 
     return entity ? ProjectMemberMapper.toDomain(entity) : null;
@@ -59,11 +49,16 @@ export class ProjectMemberRelationalRepository
   async create(data: {
     projectId: ProjectMember['projectId'];
     userId: ProjectMember['userId'];
-    role: ProjectMember['role'];
+    roleId: ProjectMember['roleId'];
   }): Promise<ProjectMember> {
-    const entity = await this.projectMemberRepository.save(
+    const saved = await this.projectMemberRepository.save(
       this.projectMemberRepository.create(data),
     );
+
+    const entity = await this.projectMemberRepository.findOneOrFail({
+      where: { id: saved.id },
+      relations: { roleRef: true },
+    });
 
     return ProjectMemberMapper.toDomain(entity);
   }
@@ -74,10 +69,7 @@ export class ProjectMemberRelationalRepository
     payload: Partial<ProjectMember>,
   ): Promise<NullableType<ProjectMember>> {
     const entity = await this.projectMemberRepository.findOne({
-      where: {
-        projectId,
-        userId,
-      },
+      where: { projectId, userId },
     });
 
     if (!entity) {
@@ -87,32 +79,25 @@ export class ProjectMemberRelationalRepository
     const updatedEntity = await this.projectMemberRepository.save(
       this.projectMemberRepository.create({
         ...entity,
-        role: payload.role ?? entity.role,
+        roleId: payload.roleId ?? entity.roleId,
       }),
     );
 
-    return ProjectMemberMapper.toDomain(updatedEntity);
-  }
-
-  async remove(
-    projectId: ProjectMember['projectId'],
-    userId: ProjectMember['userId'],
-  ): Promise<void> {
-    await this.projectMemberRepository.delete({
-      projectId,
-      userId,
+    const nextEntity = await this.projectMemberRepository.findOneOrFail({
+      where: { id: updatedEntity.id },
+      relations: { roleRef: true },
     });
+
+    return ProjectMemberMapper.toDomain(nextEntity);
   }
 
-  async countByProjectIdAndRole(
-    projectId: string,
-    role: string,
-  ): Promise<number> {
+  async remove(projectId: ProjectMember['projectId'], userId: ProjectMember['userId']): Promise<void> {
+    await this.projectMemberRepository.delete({ projectId, userId });
+  }
+
+  async countByProjectIdAndRoleId(projectId: string, roleId: string): Promise<number> {
     return this.projectMemberRepository.count({
-      where: {
-        projectId,
-        role,
-      },
+      where: { projectId, roleId },
     });
   }
 }

@@ -11,7 +11,7 @@ export class ProjectMember {
   userId: string;
 
   @ApiProperty({ type: String })
-  role: string;
+  roleId: string;
 
   @ApiPropertyOptional({ type: String, nullable: true })
   customRoleName?: string | null;

@@ -19,14 +19,8 @@ export abstract class ProjectCustomRoleRepository {
     name: ProjectCustomRole['name'],
   ): Promise<NullableType<ProjectCustomRole>>;
 
-  abstract findByCode(
-    businessLineId: ProjectCustomRole['businessLineId'],
-    code: string,
-  ): Promise<NullableType<ProjectCustomRole>>;
-
   abstract create(data: {
     businessLineId: ProjectCustomRole['businessLineId'];
-    code: ProjectCustomRole['code'];
     name: ProjectCustomRole['name'];
     description?: ProjectCustomRole['description'];
     capabilities: ProjectCustomRole['capabilities'];

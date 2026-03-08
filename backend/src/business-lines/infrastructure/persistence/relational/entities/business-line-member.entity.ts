@@ -11,15 +11,13 @@ import {
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
 import { BusinessLineEntity } from './business-line.entity';
+import { BusinessLineCustomRoleEntity } from './business-line-custom-role.entity';
 
 @Entity({
   name: 'business_line_members',
   comment: '业务线成员',
 })
-@Unique('UQ_business_line_member_business_line_user', [
-  'businessLineId',
-  'userId',
-])
+@Unique('UQ_business_line_member_business_line_user', ['businessLineId', 'userId'])
 export class BusinessLineMemberEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid', { comment: '主键（UUID）' })
   id: string;
@@ -32,20 +30,21 @@ export class BusinessLineMemberEntity extends EntityRelationalHelper {
   @Column({ type: 'uuid', comment: '关联用户ID' })
   userId: string;
 
-  @Index('IDX_business_line_member_role_code')
-  @Column({
-    name: 'businessLineRoleCode',
-    type: 'varchar',
-    length: 64,
-    comment: '业务线角色代码',
-  })
-  role: string;
+  @Index('IDX_business_line_member_role_id')
+  @Column({ type: 'uuid', comment: '业务线角色ID' })
+  roleId: string;
 
   @ManyToOne(() => BusinessLineEntity, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'businessLineId' })
   businessLine: BusinessLineEntity;
+
+  @ManyToOne(() => BusinessLineCustomRoleEntity, {
+    onDelete: 'RESTRICT',
+  })
+  @JoinColumn({ name: 'roleId' })
+  roleRef: BusinessLineCustomRoleEntity;
 
   @CreateDateColumn({ comment: '创建时间' })
   createdAt: Date;

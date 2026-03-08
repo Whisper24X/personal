@@ -11,6 +11,7 @@ import {
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
 import { BusinessLineEntity } from './business-line.entity';
 import { BusinessLineInviteProjectRole } from '../../../../dto/business-line-invite-project-role.enum';
+import { BusinessLineCustomRoleEntity } from './business-line-custom-role.entity';
 
 @Entity({
   name: 'business_line_invitations',
@@ -28,14 +29,9 @@ export class BusinessLineInvitationEntity extends EntityRelationalHelper {
   @Column({ type: 'varchar', length: 128, comment: '邀请令牌' })
   token: string;
 
-  @Index('IDX_business_line_invitation_role_code')
-  @Column({
-    name: 'businessLineRoleCode',
-    type: 'varchar',
-    length: 64,
-    comment: '业务线角色代码',
-  })
-  role: string;
+  @Index('IDX_business_line_invitation_role_id')
+  @Column({ type: 'uuid', comment: '业务线角色ID' })
+  roleId: string;
 
   @Column({
     type: 'jsonb',
@@ -58,6 +54,12 @@ export class BusinessLineInvitationEntity extends EntityRelationalHelper {
   })
   @JoinColumn({ name: 'businessLineId' })
   businessLine: BusinessLineEntity;
+
+  @ManyToOne(() => BusinessLineCustomRoleEntity, {
+    onDelete: 'RESTRICT',
+  })
+  @JoinColumn({ name: 'roleId' })
+  roleRef: BusinessLineCustomRoleEntity;
 
   @CreateDateColumn({ comment: '创建时间' })
   createdAt: Date;

@@ -38,7 +38,7 @@ const acceptInvite = async () => {
     })
 
     accepted.value = true
-    joinedRole.value = response.member.role
+    joinedRole.value = response.member.customRoleName ?? response.member.roleId
     failedProjects.value = response.failedProjects
     message.success('加入业务线成功')
   } catch (error) {

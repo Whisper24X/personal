@@ -8,9 +8,6 @@ export class ProjectCustomRole {
   businessLineId: string;
 
   @ApiProperty({ type: String })
-  code: string;
-
-  @ApiProperty({ type: String })
   name: string;
 
   @ApiPropertyOptional({ type: String, nullable: true })

@@ -19,14 +19,8 @@ export abstract class BusinessLineCustomRoleRepository {
     name: BusinessLineCustomRole['name'],
   ): Promise<NullableType<BusinessLineCustomRole>>;
 
-  abstract findByCode(
-    businessLineId: BusinessLineCustomRole['businessLineId'],
-    code: string,
-  ): Promise<NullableType<BusinessLineCustomRole>>;
-
   abstract create(data: {
     businessLineId: BusinessLineCustomRole['businessLineId'];
-    code: BusinessLineCustomRole['code'];
     name: BusinessLineCustomRole['name'];
     description?: BusinessLineCustomRole['description'];
     capabilities: BusinessLineCustomRole['capabilities'];

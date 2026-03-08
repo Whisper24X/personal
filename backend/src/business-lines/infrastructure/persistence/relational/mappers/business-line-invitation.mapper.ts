@@ -8,37 +8,30 @@ export class BusinessLineInvitationMapper {
     domainEntity.id = raw.id;
     domainEntity.businessLineId = raw.businessLineId;
     domainEntity.token = raw.token;
-    domainEntity.role = raw.role;
+    domainEntity.roleId = raw.roleId;
     domainEntity.projectRoles = raw.projectRoles ?? {};
     domainEntity.createdBy = raw.createdBy;
     domainEntity.expiresAt = raw.expiresAt;
     domainEntity.revokedAt = raw.revokedAt;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
-
     return domainEntity;
   }
 
-  static toPersistence(
-    domainEntity: BusinessLineInvitation,
-  ): BusinessLineInvitationEntity {
+  static toPersistence(domainEntity: BusinessLineInvitation): BusinessLineInvitationEntity {
     const persistenceEntity = new BusinessLineInvitationEntity();
-
     if (domainEntity.id) {
       persistenceEntity.id = domainEntity.id;
     }
-
     persistenceEntity.businessLineId = domainEntity.businessLineId;
     persistenceEntity.token = domainEntity.token;
-    persistenceEntity.role = domainEntity.role;
-    persistenceEntity.projectRoles = (domainEntity.projectRoles ??
-      {}) as Record<string, BusinessLineInviteProjectRole>;
+    persistenceEntity.roleId = domainEntity.roleId;
+    persistenceEntity.projectRoles = (domainEntity.projectRoles ?? {}) as Record<string, BusinessLineInviteProjectRole>;
     persistenceEntity.createdBy = domainEntity.createdBy;
     persistenceEntity.expiresAt = domainEntity.expiresAt;
     persistenceEntity.revokedAt = domainEntity.revokedAt ?? null;
     persistenceEntity.createdAt = domainEntity.createdAt;
     persistenceEntity.updatedAt = domainEntity.updatedAt;
-
     return persistenceEntity;
   }
 }

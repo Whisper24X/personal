@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { spawn } from 'child_process';
-import { randomBytes } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { CreateProjectDto } from './dto/create-project.dto';
@@ -39,6 +38,10 @@ import { UpdateProjectCustomRoleDto } from './dto/update-project-custom-role.dto
 import {
   ALL_PROJECT_CAPABILITIES,
   PROJECT_DEFAULT_ROLE_TEMPLATES,
+  getProjectDefaultRoleTemplate,
+  hasProjectTemplateCapabilities,
+  isDefaultTemplateRoleName,
+  isProjectOwnerCapabilities,
   normalizeProjectCapabilities,
 } from '../access/access.constants';
 
@@ -110,17 +113,16 @@ export class ProjectsService {
       );
 
     if (!existedCreatorMember) {
-      const defaultRoles = await this.ensureDefaultProjectCustomRoles(
+      await this.ensureDefaultProjectCustomRoles(project.businessLineId);
+      const ownerRole = await this.findDefaultProjectCustomRole(
         project.businessLineId,
+        ProjectMemberRole.owner,
       );
-      const ownerRole =
-        defaultRoles.find((role) => role.code === ProjectMemberRole.owner) ??
-        null;
 
       await this.projectMemberRepository.create({
         projectId: project.id,
         userId: currentUser.sub,
-        role: ownerRole?.code ?? ProjectMemberRole.owner,
+        roleId: ownerRole.id,
       });
     }
 
@@ -332,13 +334,14 @@ export class ProjectsService {
 
     const assignment = await this.resolveProjectMemberAssignment(
       manageContext.project,
-      createProjectMemberDto.role,
+      createProjectMemberDto.roleId,
     );
 
-    this.ensureActorCanManageMemberMutation({
+    await this.ensureActorCanManageMemberMutation({
       currentUser,
+      businessLineId: manageContext.project.businessLineId,
       actorProjectMember: manageContext.actorProjectMember,
-      nextRole: assignment.role,
+      nextRoleId: assignment.roleId,
     });
 
     const existedMember =
@@ -373,7 +376,7 @@ export class ProjectsService {
     const member = await this.projectMemberRepository.create({
       projectId,
       userId: createProjectMemberDto.userId,
-      role: assignment.role,
+      roleId: assignment.roleId,
     });
 
     return this.attachCustomRoleNameToProjectMember(
@@ -405,19 +408,26 @@ export class ProjectsService {
 
     const assignment = await this.resolveProjectMemberAssignment(
       manageContext.project,
-      updateProjectMemberDto.role,
+      updateProjectMemberDto.roleId,
     );
 
-    this.ensureActorCanManageMemberMutation({
+    await this.ensureActorCanManageMemberMutation({
       currentUser,
+      businessLineId: manageContext.project.businessLineId,
       actorProjectMember: manageContext.actorProjectMember,
       targetMember,
-      nextRole: assignment.role,
+      nextRoleId: assignment.roleId,
     });
 
     if (
-      targetMember.role === ProjectMemberRole.owner &&
-      assignment.role !== ProjectMemberRole.owner
+      (await this.isProjectOwnerRole(
+        manageContext.project.businessLineId,
+        targetMember.roleId,
+      )) &&
+      !(await this.isProjectOwnerRole(
+        manageContext.project.businessLineId,
+        assignment.roleId,
+      ))
     ) {
       this.ensureOwnerSelfProtection(targetMember, currentUser);
       await this.ensureOwnerCanBeModified(projectId);
@@ -427,7 +437,7 @@ export class ProjectsService {
       projectId,
       userId,
       {
-        role: assignment.role,
+        roleId: assignment.roleId,
       },
     );
 
@@ -461,13 +471,19 @@ export class ProjectsService {
       throw new NotFoundException('Project member not found');
     }
 
-    this.ensureActorCanManageMemberMutation({
+    await this.ensureActorCanManageMemberMutation({
       currentUser,
+      businessLineId: manageContext.project.businessLineId,
       actorProjectMember: manageContext.actorProjectMember,
       targetMember,
     });
 
-    if (targetMember.role === ProjectMemberRole.owner) {
+    if (
+      await this.isProjectOwnerRole(
+        manageContext.project.businessLineId,
+        targetMember.roleId,
+      )
+    ) {
       this.ensureOwnerSelfProtection(targetMember, currentUser);
       await this.ensureOwnerCanBeModified(projectId);
     }
@@ -513,7 +529,6 @@ export class ProjectsService {
 
     return this.projectCustomRoleRepository.create({
       businessLineId: project.businessLineId,
-      code: await this.generateProjectRoleCode(project.businessLineId),
       ...payload,
     });
   }
@@ -580,9 +595,9 @@ export class ProjectsService {
     const memberCount = (
       await Promise.all(
         businessLineProjects.map((item) =>
-          this.projectMemberRepository.countByProjectIdAndRole(
+          this.projectMemberRepository.countByProjectIdAndRoleId(
             item.id,
-            currentRole.code,
+            currentRole.id,
           ),
         ),
       )
@@ -759,17 +774,19 @@ export class ProjectsService {
     };
   }
 
-  private ensureActorCanManageMemberMutation({
+  private async ensureActorCanManageMemberMutation({
     currentUser,
+    businessLineId,
     actorProjectMember,
     targetMember,
-    nextRole,
+    nextRoleId,
   }: {
     currentUser: JwtPayloadType;
+    businessLineId: string;
     actorProjectMember: ProjectMember | null;
     targetMember?: ProjectMember;
-    nextRole?: string;
-  }): void {
+    nextRoleId?: string;
+  }): Promise<void> {
     if (this.isAdmin(currentUser)) {
       return;
     }
@@ -778,15 +795,18 @@ export class ProjectsService {
       throw new ForbiddenException('forbiddenProjectManage');
     }
 
-    if (actorProjectMember.role === ProjectMemberRole.owner) {
+    if (await this.isProjectOwnerRole(businessLineId, actorProjectMember.roleId)) {
       return;
     }
 
-    if (targetMember?.role === ProjectMemberRole.owner) {
+    if (
+      targetMember &&
+      (await this.isProjectOwnerRole(businessLineId, targetMember.roleId))
+    ) {
       throw new ForbiddenException('forbiddenProjectManage');
     }
 
-    if (nextRole === ProjectMemberRole.owner) {
+    if (nextRoleId && (await this.isProjectOwnerRole(businessLineId, nextRoleId))) {
       throw new ForbiddenException('forbiddenProjectManage');
     }
   }
@@ -1161,24 +1181,23 @@ export class ProjectsService {
 
   private async resolveProjectMemberAssignment(
     project: Pick<Project, 'id' | 'businessLineId'>,
-    roleCode: string,
-  ): Promise<{ role: string }> {
-    const normalizedRoleCode = roleCode.trim();
-    if (!normalizedRoleCode) {
-      throw new BadRequestException('Project role code is required');
+    roleId: string,
+  ): Promise<{ roleId: string }> {
+    const normalizedRoleId = roleId.trim();
+    if (!normalizedRoleId) {
+      throw new BadRequestException('Project role id is required');
     }
 
-    const role = await this.projectCustomRoleRepository.findByCode(
-      project.businessLineId,
-      normalizedRoleCode,
+    const role = await this.projectCustomRoleRepository.findById(
+      normalizedRoleId,
     );
 
-    if (!role) {
+    if (!role || role.businessLineId !== project.businessLineId) {
       throw new NotFoundException('Project role not found');
     }
 
     return {
-      role: role.code,
+      roleId: role.id,
     };
   }
 
@@ -1189,15 +1208,15 @@ export class ProjectsService {
       await this.projectCustomRoleRepository.findAllByBusinessLineId(
         businessLineId,
       );
-    const roleCodeSet = new Set(
-      existingRoles
-        .map((role) => role.code)
-        .filter((code): code is string => Boolean(code)),
-    );
     const roleNameSet = new Set(existingRoles.map((role) => role.name));
 
     for (const template of PROJECT_DEFAULT_ROLE_TEMPLATES) {
-      if (roleCodeSet.has(template.code)) {
+      const existedRole = existingRoles.find(
+        (role) =>
+          hasProjectTemplateCapabilities(role.capabilities, template.role) ||
+          isDefaultTemplateRoleName(role.name, template.name),
+      );
+      if (existedRole) {
         continue;
       }
 
@@ -1206,20 +1225,17 @@ export class ProjectsService {
         roleNameSet,
       );
 
-      await this.projectCustomRoleRepository.create({
+      const createdRole = await this.projectCustomRoleRepository.create({
         businessLineId,
-        code: template.code,
         name: roleName,
         description: template.description,
         capabilities: template.capabilities,
       });
-      roleCodeSet.add(template.code);
+      existingRoles.push(createdRole);
       roleNameSet.add(roleName);
     }
 
-    return this.projectCustomRoleRepository.findAllByBusinessLineId(
-      businessLineId,
-    );
+    return existingRoles;
   }
 
   private buildAvailableDefaultRoleName(
@@ -1249,16 +1265,27 @@ export class ProjectsService {
   ): Promise<ProjectCustomRole> {
     await this.ensureDefaultProjectCustomRoles(businessLineId);
 
-    const customRole = await this.projectCustomRoleRepository.findByCode(
-      businessLineId,
-      role,
-    );
+    const template = getProjectDefaultRoleTemplate(role);
+    const roles = await this.ensureDefaultProjectCustomRoles(businessLineId);
+    const customRole =
+      roles.find((item) => hasProjectTemplateCapabilities(item.capabilities, role)) ??
+      roles.find((item) => isDefaultTemplateRoleName(item.name, template.name)) ??
+      null;
 
     if (!customRole) {
       throw new NotFoundException('Project default role not found');
     }
 
     return customRole;
+  }
+
+
+  private async isProjectOwnerRole(
+    businessLineId: string,
+    roleId: string,
+  ): Promise<boolean> {
+    const role = await this.projectCustomRoleRepository.findById(roleId);
+    return !!role && role.businessLineId === businessLineId && isProjectOwnerCapabilities(role.capabilities);
   }
 
   private async buildProjectCustomRolePayload(
@@ -1313,27 +1340,12 @@ export class ProjectsService {
     };
   }
 
-  private async generateProjectRoleCode(
-    businessLineId: Project['businessLineId'],
-  ): Promise<string> {
-    while (true) {
-      const code = `prj-${randomBytes(8).toString('hex')}`;
-      const existing = await this.projectCustomRoleRepository.findByCode(
-        businessLineId,
-        code,
-      );
-      if (!existing) {
-        return code;
-      }
-    }
-  }
-
   private async getBusinessLineProjectCustomRoleOrThrow(
     businessLineId: Project['businessLineId'],
-    customRoleId: string,
+    roleId: string,
   ): Promise<ProjectCustomRole> {
     const customRole =
-      await this.projectCustomRoleRepository.findById(customRoleId);
+      await this.projectCustomRoleRepository.findById(roleId);
 
     if (!customRole || customRole.businessLineId !== businessLineId) {
       throw new NotFoundException('Project role not found');
@@ -1350,11 +1362,11 @@ export class ProjectsService {
       await this.projectCustomRoleRepository.findAllByBusinessLineId(
         businessLineId,
       );
-    const roleMap = new Map(roles.map((role) => [role.code, role.name]));
+    const roleMap = new Map(roles.map((role) => [role.id, role.name]));
 
     return members.map((member) => ({
       ...member,
-      customRoleName: roleMap.get(member.role) ?? null,
+      customRoleName: roleMap.get(member.roleId) ?? null,
     }));
   }
 
@@ -1382,9 +1394,16 @@ export class ProjectsService {
     const members =
       await this.projectMemberRepository.findByProjectId(projectId);
 
-    const ownerCount = members.filter(
-      (member) => member.role === ProjectMemberRole.owner,
-    ).length;
+    const project = await this.getProjectOrThrow(projectId);
+    const roles = await this.projectCustomRoleRepository.findAllByBusinessLineId(
+      project.businessLineId,
+    );
+    const ownerRoleIdSet = new Set(
+      roles
+        .filter((role) => isProjectOwnerCapabilities(role.capabilities))
+        .map((role) => role.id),
+    );
+    const ownerCount = members.filter((member) => ownerRoleIdSet.has(member.roleId)).length;
 
     if (ownerCount <= 1) {
       throw new ConflictException('At least one project owner is required');

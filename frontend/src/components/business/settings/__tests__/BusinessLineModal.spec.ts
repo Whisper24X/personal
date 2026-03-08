@@ -4,12 +4,17 @@ import { createPinia, setActivePinia } from 'pinia'
 import BusinessLineModal from '@/components/business/settings/BusinessLineModal.vue'
 import McpJsonImportModal from '@/components/business/settings/modals/McpJsonImportModal.vue'
 
-const { businessLinesApi, projectsApi, usersApi, workflowApi, fetchAllPages } = vi.hoisted(() => ({
+const { authApi, businessLinesApi, projectsApi, usersApi, workflowApi, fetchAllPages } = vi.hoisted(() => ({
+  authApi: {
+    access: vi.fn(),
+  },
   businessLinesApi: {
     detail: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     remove: vi.fn(),
+    listCustomRoles: vi.fn(),
+    listProjectCustomRoles: vi.fn(),
     listMembers: vi.fn(),
     addMember: vi.fn(),
     createInvitation: vi.fn(),
@@ -47,6 +52,10 @@ const { businessLinesApi, projectsApi, usersApi, workflowApi, fetchAllPages } = 
     remove: vi.fn(),
   },
   fetchAllPages: vi.fn(),
+}))
+
+vi.mock('@/api/auth', () => ({
+  authApi,
 }))
 
 vi.mock('@/api/business-lines', () => ({
@@ -90,11 +99,59 @@ beforeEach(() => {
   vi.clearAllMocks()
   setActivePinia(createPinia())
 
+  authApi.access.mockResolvedValue({
+    user: {
+      id: 'user-1',
+      username: 'tester',
+      nickname: 'Tester',
+      avatar: null,
+    },
+    currentContext: {
+      businessLineId: 'line-1',
+      businessRole: 'owner',
+      projectRole: null,
+    },
+    capabilities: [
+      'businessLine.update',
+      'businessLine.member.manage',
+      'businessLine.project.create',
+      'businessLine.project.update',
+      'businessLine.project.delete',
+    ],
+    visibility: {
+      visibleBusinessLineIds: ['line-1'],
+      visibleProjectIds: ['project-1'],
+    },
+  })
+
   businessLinesApi.detail.mockResolvedValue({
     id: 'line-1',
     name: 'Retail',
     description: 'Retail team',
   })
+
+  businessLinesApi.listCustomRoles.mockResolvedValue([
+    {
+      id: 'line-role-1',
+      businessLineId: 'line-1',
+      name: '成员',
+      description: '默认成员角色',
+      capabilities: ['businessLine.read'],
+      createdAt: '2026-03-08T00:00:00.000Z',
+      updatedAt: '2026-03-08T00:00:00.000Z',
+    },
+  ])
+  businessLinesApi.listProjectCustomRoles.mockResolvedValue([
+    {
+      id: 'project-role-1',
+      businessLineId: 'line-1',
+      name: '开发者',
+      description: '项目默认开发角色',
+      capabilities: ['project.read'],
+      createdAt: '2026-03-08T00:00:00.000Z',
+      updatedAt: '2026-03-08T00:00:00.000Z',
+    },
+  ])
 
   businessLinesApi.listMembers.mockResolvedValue([])
   businessLinesApi.listAgentToolConfigs.mockResolvedValue([])
@@ -186,10 +243,11 @@ describe('BusinessLineModal', () => {
 
     expect(wrapper.text()).toContain('业务线')
     expect(wrapper.text()).toContain('项目')
-    expect(wrapper.text()).toContain('成员/权限')
+    expect(wrapper.text()).toContain('成员')
+    expect(wrapper.text()).toContain('权限')
     expect(wrapper.text()).toContain('Agent CLI')
     expect(wrapper.text()).toContain('工作流')
-    expect(wrapper.text()).toContain('Skill')
+    expect(wrapper.text()).toContain('Skills')
     expect(wrapper.text()).toContain('MCP')
     expect(wrapper.text()).toContain('设置')
     expect(wrapper.text()).toContain('创建业务线')
@@ -230,6 +288,46 @@ describe('BusinessLineModal', () => {
     expect(createLineButton).toBeDefined()
     expect((createLineButton!.element as HTMLButtonElement).disabled).toBe(true)
     expect(wrapper.text()).toContain('当前账号暂无创建业务线权限')
+  })
+
+  it('renders permission tab with nested role tabs', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineModal, {
+      props: buildProps(true, false),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+
+    const permissionTab = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '权限')
+
+    expect(permissionTab).toBeDefined()
+    await permissionTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('业务线角色')
+    expect(wrapper.text()).toContain('项目角色')
+    expect(wrapper.text()).toContain('当前业务线的成员权限角色定义')
+    expect(wrapper.text()).not.toContain('项目角色库')
+
+    const projectRoleTab = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '项目角色')
+
+    expect(projectRoleTab).toBeDefined()
+    await projectRoleTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('项目角色库')
+    expect(wrapper.text()).toContain('开发者')
   })
 
   it('opens create project modal and submits project payload', async () => {

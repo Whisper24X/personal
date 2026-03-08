@@ -16,7 +16,7 @@ export type ProjectMember = {
   id: string
   projectId: string
   userId: string
-  role: string
+  roleId: string
   customRoleName?: string | null
   createdAt?: string
   updatedAt?: string
@@ -25,7 +25,6 @@ export type ProjectMember = {
 export type ProjectCustomRole = {
   id: string
   businessLineId: string
-  code: string
   name: string
   description?: string | null
   capabilities: string[]
@@ -46,11 +45,11 @@ export type UpdateProjectPayload = Partial<CreateProjectPayload>
 
 export type CreateProjectMemberPayload = {
   userId: string
-  role: string
+  roleId: string
 }
 
 export type UpdateProjectMemberPayload = {
-  role: string
+  roleId: string
 }
 
 export type InspectProjectRepositoryPayload = {

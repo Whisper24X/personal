@@ -23,13 +23,6 @@ export class ProjectCustomRoleEntity extends EntityRelationalHelper {
   @Column({ type: 'uuid', comment: '所属业务线ID' })
   businessLineId: string;
 
-  @Column({
-    type: 'varchar',
-    length: 64,
-    comment: '角色代码',
-  })
-  code: string;
-
   @Column({ type: 'varchar', length: 120, comment: '角色名称' })
   name: string;
 

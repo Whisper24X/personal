@@ -18,7 +18,7 @@ export abstract class ProjectMemberRepository {
   abstract create(data: {
     projectId: ProjectMember['projectId'];
     userId: ProjectMember['userId'];
-    role: ProjectMember['role'];
+    roleId: ProjectMember['roleId'];
   }): Promise<ProjectMember>;
 
   abstract update(
@@ -32,8 +32,8 @@ export abstract class ProjectMemberRepository {
     userId: ProjectMember['userId'],
   ): Promise<void>;
 
-  abstract countByProjectIdAndRole(
+  abstract countByProjectIdAndRoleId(
     projectId: string,
-    role: string,
+    roleId: string,
   ): Promise<number>;
 }

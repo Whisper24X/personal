@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useMessage } from '@/hooks'
-import { businessLinesApi, type BusinessLine, type BusinessLineMember } from '@/api/business-lines'
+import { businessLinesApi, type BusinessLine, type BusinessLineCustomRole, type BusinessLineMember } from '@/api/business-lines'
+import { buildBusinessLineRoleAssignmentOptions } from '@/constants/access'
 import { usersApi } from '@/api/users'
 import type { User } from '@/types/api/users'
 import { toErrorMessage } from '@/utils/http/to-error-message'
@@ -29,6 +30,7 @@ const message = useMessage()
 
 const lines = ref<BusinessLine[]>([])
 const members = ref<BusinessLineMember[]>([])
+const lineRoles = ref<BusinessLineCustomRole[]>([])
 const users = ref<User[]>([])
 const selectedLineId = ref('')
 const activeTab = ref<BusinessLinesTab>('lines')
@@ -42,10 +44,10 @@ const memberFormModalOpen = ref(false)
 
 const memberForm = reactive<{
   userId: string
-  role: string
+  roleId: string
 }>({
   userId: '',
-  role: 'member',
+  roleId: '',
 })
 
 const memberRoleDrafts = ref<Record<string, string>>({})
@@ -58,11 +60,12 @@ const userMap = computed(() => {
   return new Map(users.value.map((user) => [user.id, user]))
 })
 
-const roleOptions: Array<{ label: string; value: string }> = [
-  { label: 'owner', value: 'owner' },
-  { label: 'admin', value: 'admin' },
-  { label: 'member', value: 'member' },
-]
+const roleOptions = computed(() =>
+  buildBusinessLineRoleAssignmentOptions(lineRoles.value).map((item) => ({
+    label: item.label,
+    value: item.roleId,
+  })),
+)
 
 const tabClass = (key: BusinessLinesTab) =>
   key === activeTab.value
@@ -105,7 +108,7 @@ const normalizeOptionalText = (value: string) => {
 const syncMemberRoleDrafts = () => {
   const nextDrafts: Record<string, string> = {}
   for (const member of members.value) {
-    nextDrafts[member.userId] = member.role
+    nextDrafts[member.userId] = member.roleId
   }
   memberRoleDrafts.value = nextDrafts
 }
@@ -151,8 +154,15 @@ const loadMembers = async () => {
   loadingMembers.value = true
 
   try {
-    const response = await businessLinesApi.listMembers(selectedLineId.value)
+    const [response, roles] = await Promise.all([
+      businessLinesApi.listMembers(selectedLineId.value),
+      businessLinesApi.listCustomRoles(selectedLineId.value),
+    ])
     members.value = response
+    lineRoles.value = roles
+    if (!memberForm.roleId) {
+      memberForm.roleId = roleOptions.value[0]?.value ?? ''
+    }
     syncMemberRoleDrafts()
   } catch (error) {
     message.error(toErrorMessage(error, '加载业务线成员失败'))
@@ -282,10 +292,10 @@ const addMember = async () => {
   try {
     await businessLinesApi.addMember(selectedLineId.value, {
       userId: memberForm.userId.trim(),
-      role: memberForm.role,
+      roleId: memberForm.roleId,
     })
     memberForm.userId = ''
-    memberForm.role = 'member'
+    memberForm.roleId = roleOptions.value[0]?.value ?? ''
     closeMemberFormModal()
     await loadMembers()
     message.success('添加成员成功')
@@ -297,13 +307,13 @@ const addMember = async () => {
 }
 
 const updateMemberRole = async (member: BusinessLineMember) => {
-  const nextRole = memberRoleDrafts.value[member.userId] ?? member.role
+  const nextRole = memberRoleDrafts.value[member.userId] ?? member.roleId
 
   updatingMemberUserId.value = member.userId
 
   try {
     await businessLinesApi.updateMember(member.businessLineId, member.userId, {
-      role: nextRole,
+      roleId: nextRole,
     })
     await loadMembers()
     message.success('更新成员角色成功')
@@ -685,7 +695,7 @@ onMounted(() => {
             <label class="space-y-1">
               <span class="text-xs font-semibold text-muted-foreground">角色</span>
               <select
-                v-model="memberForm.role"
+                v-model="memberForm.roleId"
                 class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
               >
                 <option v-for="role in roleOptions" :key="role.value" :value="role.value">

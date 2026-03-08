@@ -16,26 +16,17 @@ export class ProjectCustomRoleRelationalRepository
     private readonly repository: Repository<ProjectCustomRoleEntity>,
   ) {}
 
-  async findById(
-    id: ProjectCustomRole['id'],
-  ): Promise<NullableType<ProjectCustomRole>> {
+  async findById(id: ProjectCustomRole['id']): Promise<NullableType<ProjectCustomRole>> {
     const entity = await this.repository.findOne({ where: { id } });
     return entity ? ProjectCustomRoleMapper.toDomain(entity) : null;
   }
 
-  async findByIds(
-    ids: ProjectCustomRole['id'][],
-  ): Promise<ProjectCustomRole[]> {
+  async findByIds(ids: ProjectCustomRole['id'][]): Promise<ProjectCustomRole[]> {
     if (!ids.length) {
       return [];
     }
 
-    const entities = await this.repository.find({
-      where: {
-        id: In(ids),
-      },
-    });
-
+    const entities = await this.repository.find({ where: { id: In(ids) } });
     return entities.map((entity) => ProjectCustomRoleMapper.toDomain(entity));
   }
 
@@ -64,22 +55,8 @@ export class ProjectCustomRoleRelationalRepository
     return entity ? ProjectCustomRoleMapper.toDomain(entity) : null;
   }
 
-  async findByCode(
-    businessLineId: ProjectCustomRole['businessLineId'],
-    code: string,
-  ): Promise<NullableType<ProjectCustomRole>> {
-    const entity = await this.repository
-      .createQueryBuilder('role')
-      .where('role."businessLineId" = :businessLineId', { businessLineId })
-      .andWhere('role."code" = :code', { code })
-      .getOne();
-
-    return entity ? ProjectCustomRoleMapper.toDomain(entity) : null;
-  }
-
   async create(data: {
     businessLineId: ProjectCustomRole['businessLineId'];
-    code: ProjectCustomRole['code'];
     name: ProjectCustomRole['name'];
     description?: ProjectCustomRole['description'];
     capabilities: ProjectCustomRole['capabilities'];
@@ -87,7 +64,6 @@ export class ProjectCustomRoleRelationalRepository
     const entity = await this.repository.save(
       this.repository.create({
         businessLineId: data.businessLineId,
-        code: data.code,
         name: data.name,
         description: data.description ?? null,
         capabilities: data.capabilities,
@@ -109,14 +85,9 @@ export class ProjectCustomRoleRelationalRepository
     const updatedEntity = await this.repository.save(
       this.repository.create({
         ...entity,
-        ...(payload.code !== undefined ? { code: payload.code } : {}),
         ...(payload.name !== undefined ? { name: payload.name } : {}),
-        ...(payload.description !== undefined
-          ? { description: payload.description ?? null }
-          : {}),
-        ...(payload.capabilities !== undefined
-          ? { capabilities: payload.capabilities }
-          : {}),
+        ...(payload.description !== undefined ? { description: payload.description ?? null } : {}),
+        ...(payload.capabilities !== undefined ? { capabilities: payload.capabilities } : {}),
       }),
     );
 

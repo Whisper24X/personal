@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
 import { ProjectEntity } from './project.entity';
+import { ProjectCustomRoleEntity } from './project-custom-role.entity';
 
 @Entity({
   name: 'project_members',
@@ -29,20 +30,21 @@ export class ProjectMemberEntity extends EntityRelationalHelper {
   @Column({ type: 'uuid', comment: '关联用户ID' })
   userId: string;
 
-  @Index('IDX_project_members_role_code')
-  @Column({
-    name: 'projectRoleCode',
-    type: 'varchar',
-    length: 64,
-    comment: '项目角色代码',
-  })
-  role: string;
+  @Index('IDX_project_members_role_id')
+  @Column({ type: 'uuid', comment: '项目角色ID' })
+  roleId: string;
 
   @ManyToOne(() => ProjectEntity, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'projectId' })
   project: ProjectEntity;
+
+  @ManyToOne(() => ProjectCustomRoleEntity, {
+    onDelete: 'RESTRICT',
+  })
+  @JoinColumn({ name: 'roleId' })
+  roleRef: ProjectCustomRoleEntity;
 
   @CreateDateColumn({ comment: '创建时间' })
   createdAt: Date;

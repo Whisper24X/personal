@@ -18,7 +18,8 @@ import { WorkflowTemplateScope } from './dto/workflow-template-scope.enum';
 import { ProjectsService } from '../projects/projects.service';
 import { BusinessLineRepository } from '../business-lines/infrastructure/persistence/business-line.repository';
 import { BusinessLineMemberRepository } from '../business-lines/infrastructure/persistence/business-line-member.repository';
-import { BusinessLineMemberRole } from '../business-lines/dto/business-line-member-role.enum';
+import { BusinessLineCustomRoleRepository } from '../business-lines/infrastructure/persistence/business-line-custom-role.repository';
+import { canManageBusinessLineMembersByCapabilities } from '../access/access.constants';
 
 @Injectable()
 export class WorkflowTemplatesService {
@@ -27,6 +28,7 @@ export class WorkflowTemplatesService {
     private readonly projectsService: ProjectsService,
     private readonly businessLineRepository: BusinessLineRepository,
     private readonly businessLineMemberRepository: BusinessLineMemberRepository,
+    private readonly businessLineCustomRoleRepository: BusinessLineCustomRoleRepository,
   ) {}
 
   async create(
@@ -421,9 +423,12 @@ export class WorkflowTemplatesService {
       throw new ForbiddenException('forbiddenBusinessLine');
     }
 
+    const role = await this.businessLineCustomRoleRepository.findById(member.roleId);
+
     if (
-      member.role !== BusinessLineMemberRole.owner &&
-      member.role !== BusinessLineMemberRole.admin
+      !role ||
+      role.businessLineId !== businessLineId ||
+      !canManageBusinessLineMembersByCapabilities(role.capabilities)
     ) {
       throw new ForbiddenException('forbiddenWorkflowTemplateManage');
     }
