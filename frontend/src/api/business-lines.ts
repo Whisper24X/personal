@@ -41,6 +41,7 @@ export type CreateBusinessLineMemberPayload = {
 
 export type UpdateBusinessLineMemberPayload = {
   roleId: string
+  projectRoles?: Record<string, string>
 }
 
 export type BusinessLineInviteProjectRole = 'none' | 'manage' | 'developer' | 'viewer'
@@ -48,6 +49,10 @@ export type BusinessLineInviteProjectRole = 'none' | 'manage' | 'developer' | 'v
 export type CreateBusinessLineInvitePayload = {
   roleId: string
   projectRoles?: Record<string, BusinessLineInviteProjectRole>
+}
+
+export type BusinessLineMemberProjectRoles = {
+  projectRoles: Record<string, string>
 }
 
 export type BusinessLineInvite = {
@@ -188,6 +193,10 @@ export const businessLinesApi = {
       '/business-lines/invitations/accept',
       payload,
     )
+  },
+
+  getMemberProjectRoles(businessLineId: string, userId: string) {
+    return apiHttp.get<BusinessLineMemberProjectRoles>(`/business-lines/${businessLineId}/members/${userId}/project-roles`)
   },
 
   updateMember(businessLineId: string, userId: string, payload: UpdateBusinessLineMemberPayload) {

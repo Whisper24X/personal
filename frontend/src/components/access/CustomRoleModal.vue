@@ -115,7 +115,7 @@ const submit = () => {
       />
 
       <section
-        class="relative z-10 w-full max-w-4xl rounded-2xl border border-border bg-background shadow-2xl"
+        class="relative z-10 flex max-h-[min(88vh,820px)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
       >
         <header class="flex items-center justify-between border-b border-border px-4 py-3">
           <div>
@@ -134,7 +134,8 @@ const submit = () => {
           </button>
         </header>
 
-        <form class="space-y-4 px-4 py-4" @submit.prevent="submit">
+        <form class="flex min-h-0 flex-1 flex-col" @submit.prevent="submit">
+          <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
           <div class="grid gap-3 md:grid-cols-2">
             <label class="space-y-1">
               <span class="text-xs font-semibold text-muted-foreground">角色名称</span>
@@ -200,8 +201,9 @@ const submit = () => {
           <p v-else-if="props.errorMessage" class="text-sm text-destructive">
             {{ props.errorMessage }}
           </p>
+          </div>
 
-          <div class="flex justify-end gap-2">
+          <div class="flex shrink-0 justify-end gap-2 border-t border-border px-4 py-4">
             <button
               type="button"
               class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"

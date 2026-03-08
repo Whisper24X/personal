@@ -4,7 +4,7 @@ import type { RoleAssignmentOption } from '@/constants/access'
 import { resolveRoleAssignmentKey } from '@/constants/access'
 import type { User } from '@/types/api/users'
 
-export type ProjectPermissionRole = 'none' | 'manage' | 'developer' | 'viewer'
+type ProjectRoleSelection = string
 
 type ProjectPermissionItem = {
   id: string
@@ -21,8 +21,9 @@ const props = defineProps<{
   roleOptions: RoleAssignmentOption[]
   initialUserId: string
   initialBusinessRole: string
-  initialProjectRoles: Record<string, ProjectPermissionRole>
+  initialProjectRoles: Record<string, ProjectRoleSelection>
   showProjectRoles?: boolean
+  projectRoleOptions: Array<{ label: string; value: ProjectRoleSelection }>
   inviteLink?: string
   inviteExpiresAt?: string
   errorMessage?: string
@@ -35,13 +36,13 @@ const emit = defineEmits<{
       | {
           mode: 'create'
           businessRole: string
-          projectRoles: Record<string, ProjectPermissionRole>
+          projectRoles: Record<string, ProjectRoleSelection>
         }
       | {
           mode: 'edit'
           userId: string
           businessRole: string
-          projectRoles: Record<string, ProjectPermissionRole>
+          projectRoles: Record<string, ProjectRoleSelection>
         },
   ): void
   (event: 'update:open', value: boolean): void
@@ -49,16 +50,10 @@ const emit = defineEmits<{
 
 const selectedUserId = ref('')
 const selectedRoleKey = ref('')
-const projectRoles = ref<Record<string, ProjectPermissionRole>>({})
+const projectRoles = ref<Record<string, ProjectRoleSelection>>({})
 const validationMessage = ref('')
 const copyState = ref<'idle' | 'success' | 'error'>('idle')
 
-const projectRoleOptions: Array<{ label: string; value: ProjectPermissionRole }> = [
-  { label: '无权限', value: 'none' },
-  { label: '管理', value: 'manage' },
-  { label: '开发', value: 'developer' },
-  { label: '只读', value: 'viewer' },
-]
 
 const modeTitle = computed(() => {
   return props.mode === 'edit' ? '编辑成员权限' : '邀请成员'
@@ -137,6 +132,9 @@ const copyButtonText = computed(() => {
   return '复制链接'
 })
 
+const activeProjectRoleCount = computed(() => {
+  return Object.values(projectRoles.value).filter((value) => value.trim().length > 0).length
+})
 const submitButtonText = computed(() => {
   if (props.mode === 'create') {
     if (props.submitting) {
@@ -166,10 +164,16 @@ const syncState = () => {
   validationMessage.value = ''
   copyState.value = 'idle'
 
-  const nextProjectRoles: Record<string, ProjectPermissionRole> = {}
+  const nextProjectRoles: Record<string, ProjectRoleSelection> = {}
   if (props.showProjectRoles !== false) {
+    const availableProjectRoleValues = props.projectRoleOptions.map((option) => option.value)
+    const defaultProjectRoleValue = availableProjectRoleValues[0] ?? ''
+
     for (const project of props.projects) {
-      nextProjectRoles[project.id] = props.initialProjectRoles[project.id] ?? 'none'
+      const initialProjectRole = props.initialProjectRoles[project.id] ?? ''
+      nextProjectRoles[project.id] = availableProjectRoleValues.includes(initialProjectRole)
+        ? initialProjectRole
+        : defaultProjectRoleValue
     }
   }
   projectRoles.value = nextProjectRoles
@@ -221,6 +225,11 @@ const submit = () => {
     return
   }
 
+  if (props.showProjectRoles !== false && props.projects.length > 0 && props.projectRoleOptions.length === 0) {
+    validationMessage.value = '请先创建项目角色'
+    return
+  }
+
   validationMessage.value = ''
   emit('submit', {
     mode: 'edit',
@@ -264,181 +273,166 @@ watch(
       />
 
       <section
-        class="relative z-10 w-full max-w-3xl rounded-2xl border border-border bg-background shadow-2xl"
+        class="relative z-10 flex max-h-[min(88vh,820px)] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-border bg-background shadow-2xl"
       >
-        <header class="flex items-center justify-between border-b border-border px-4 py-3">
-          <div>
-            <h2 class="text-sm font-semibold">{{ modeTitle }}</h2>
-            <p class="mt-1 text-xs text-muted-foreground">
+        <header class="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+          <div class="space-y-1">
+            <h2 class="text-base font-semibold text-foreground">{{ modeTitle }}</h2>
+            <p class="text-sm text-muted-foreground">
               {{
                 props.mode === 'create'
-                  ? '生成业务线邀请链接，并选择默认成员角色。'
-                  : '调整当前成员的业务线角色。'
+                  ? '选择业务线角色并生成邀请链接。'
+                  : '统一调整成员的业务线角色和项目角色。'
               }}
             </p>
           </div>
           <button
             type="button"
             aria-label="关闭"
-            class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
             @click="close"
           >
             ×
           </button>
         </header>
 
-        <form class="space-y-4 px-4 py-4" @submit.prevent="submit">
-          <div v-if="props.mode === 'edit'" class="space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">成员</span>
-            <div
-              class="rounded-xl border border-border bg-background px-3 py-3 text-sm text-foreground"
+        <form class="flex min-h-0 flex-1 flex-col" @submit.prevent="submit">
+          <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+            <section
+              v-if="props.mode === 'edit'"
+              class="rounded-2xl border border-border bg-muted/20 px-4 py-3"
             >
-              <div class="font-semibold">{{ displayUserLabel(selectedUserId) }}</div>
-              <div class="mt-1 text-xs text-muted-foreground">
-                {{ displayUserMeta(selectedUserId) }}
-              </div>
-            </div>
-          </div>
-
-          <div class="grid gap-4 md:grid-cols-2">
-            <section class="space-y-2">
-              <p class="text-xs font-semibold text-muted-foreground">默认角色</p>
-              <div class="space-y-2">
-                <label
-                  v-for="option in defaultRoleOptions"
-                  :key="option.key"
-                  class="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-background px-3 py-3 transition hover:bg-muted/30"
-                >
-                  <input
-                    v-model="selectedRoleKey"
-                    class="mt-1 h-4 w-4 rounded border-border"
-                    type="radio"
-                    :value="option.key"
-                  />
-                  <span class="min-w-0">
-                    <span class="block text-sm font-semibold text-foreground">{{
-                      option.label
-                    }}</span>
-                    <span class="mt-1 block text-xs text-muted-foreground">{{
-                      option.description
-                    }}</span>
-                  </span>
-                </label>
+              <div class="flex flex-col gap-1">
+                <p class="text-xs font-semibold text-muted-foreground">当前成员</p>
+                <p class="text-sm font-semibold text-foreground">{{ displayUserLabel(selectedUserId) }}</p>
+                <p class="text-xs text-muted-foreground">{{ displayUserMeta(selectedUserId) }}</p>
               </div>
             </section>
 
-            <section class="space-y-2">
-              <p class="text-xs font-semibold text-muted-foreground">自定义角色</p>
-              <div v-if="customRoleOptions.length > 0" class="space-y-2">
-                <label
-                  v-for="option in customRoleOptions"
-                  :key="option.key"
-                  class="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-background px-3 py-3 transition hover:bg-muted/30"
-                >
-                  <input
-                    v-model="selectedRoleKey"
-                    class="mt-1 h-4 w-4 rounded border-border"
-                    type="radio"
-                    :value="option.key"
-                  />
-                  <span class="min-w-0">
-                    <span class="block text-sm font-semibold text-foreground">{{
-                      option.label
-                    }}</span>
-                    <span class="mt-1 block text-xs text-muted-foreground">{{
-                      option.description
-                    }}</span>
-                  </span>
-                </label>
+            <section class="rounded-2xl border border-border bg-muted/20 p-4">
+              <div class="space-y-1">
+                <p class="text-sm font-semibold text-foreground">业务线角色</p>
+                <p class="text-xs text-muted-foreground">选择成员在当前业务线下的角色。</p>
               </div>
-              <div
-                v-else
-                class="rounded-xl border border-dashed border-border bg-background/60 px-4 py-4 text-sm text-muted-foreground"
-              >
-                暂无自定义角色
-              </div>
-            </section>
-          </div>
 
-          <section
-            v-if="props.mode === 'create'"
-            class="rounded-xl border border-border bg-background/70 px-4 py-3"
-          >
-            <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p class="text-xs font-semibold text-muted-foreground">邀请链接</p>
-                <p class="mt-1 text-xs text-muted-foreground">{{ inviteExpiresLabel }}</p>
-              </div>
-              <button
-                type="button"
-                class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="!props.inviteLink"
-                @click="copyInviteLink"
-              >
-                {{ copyButtonText }}
-              </button>
-            </div>
-
-            <div
-              class="mt-3 rounded-xl border border-dashed border-border bg-background px-3 py-3 text-xs text-muted-foreground"
-            >
-              <span v-if="props.inviteLink" class="break-all">{{ props.inviteLink }}</span>
-              <span v-else>提交后生成最新邀请链接</span>
-            </div>
-          </section>
-
-          <section
-            v-if="props.showProjectRoles !== false"
-            class="space-y-2 rounded-xl border border-border bg-background/70 p-3"
-          >
-            <div>
-              <p class="text-xs font-semibold text-muted-foreground">项目默认权限</p>
-              <p class="mt-1 text-xs text-muted-foreground">可按项目预分配默认项目角色。</p>
-            </div>
-            <div class="space-y-2">
-              <div
-                v-for="project in props.projects"
-                :key="project.id"
-                class="flex flex-col gap-2 rounded-xl border border-border bg-background px-3 py-3 md:flex-row md:items-center md:justify-between"
-              >
-                <div>
-                  <div class="text-sm font-semibold text-foreground">{{ project.name }}</div>
-                  <div class="mt-1 font-mono text-[11px] text-muted-foreground">
-                    {{ project.id }}
-                  </div>
-                </div>
+              <div class="mt-4 space-y-2">
+                <label class="text-xs font-semibold text-muted-foreground">角色</label>
                 <select
-                  v-model="projectRoles[project.id]"
-                  class="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground md:w-40"
+                  v-model="selectedRoleKey"
+                  class="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground"
                 >
-                  <option
-                    v-for="option in projectRoleOptions"
-                    :key="option.value"
-                    :value="option.value"
-                  >
-                    {{ option.label }}
-                  </option>
+                  <optgroup v-if="defaultRoleOptions.length > 0" label="默认角色">
+                    <option
+                      v-for="option in defaultRoleOptions"
+                      :key="option.key"
+                      :value="option.key"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </optgroup>
+                  <optgroup v-if="customRoleOptions.length > 0" label="自定义角色">
+                    <option
+                      v-for="option in customRoleOptions"
+                      :key="option.key"
+                      :value="option.key"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </optgroup>
                 </select>
+                <p
+                  v-if="props.roleOptions.length === 0"
+                  class="text-sm text-muted-foreground"
+                >
+                  请先创建角色
+                </p>
               </div>
-            </div>
-          </section>
+            </section>
 
-          <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
-          <p v-else-if="props.errorMessage" class="text-sm text-destructive">
-            {{ props.errorMessage }}
-          </p>
+            <section
+              v-if="props.showProjectRoles !== false"
+              class="rounded-2xl border border-border bg-muted/20 p-4"
+            >
+              <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p class="text-sm font-semibold text-foreground">项目角色</p>
+                  <p class="mt-1 text-xs text-muted-foreground">按项目调整成员角色。</p>
+                </div>
+                <div class="rounded-xl border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                  已配置 {{ activeProjectRoleCount }} / {{ props.projects.length }} 个项目
+                </div>
+              </div>
 
-          <div class="flex justify-end gap-2">
+              <div class="mt-4 space-y-2">
+                <div
+                  v-for="project in props.projects"
+                  :key="project.id"
+                  class="flex flex-col gap-3 rounded-2xl border border-border bg-background px-4 py-3 lg:flex-row lg:items-center lg:justify-between"
+                >
+                  <div class="min-w-0">
+                    <div class="truncate text-sm font-semibold text-foreground">{{ project.name }}</div>
+                    <div class="mt-1 font-mono text-[11px] text-muted-foreground">{{ project.id }}</div>
+                  </div>
+                  <select
+                    v-model="projectRoles[project.id]"
+                    class="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground lg:w-44"
+                  >
+                    <option
+                      v-for="option in props.projectRoleOptions"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            <section
+              v-if="props.mode === 'create'"
+              class="rounded-2xl border border-border bg-muted/20 px-4 py-3"
+            >
+              <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p class="text-sm font-semibold text-foreground">邀请链接</p>
+                  <p class="mt-1 text-xs text-muted-foreground">{{ inviteExpiresLabel }}</p>
+                </div>
+                <button
+                  type="button"
+                  class="inline-flex h-9 items-center justify-center rounded-xl border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                  :disabled="!props.inviteLink"
+                  @click="copyInviteLink"
+                >
+                  {{ copyButtonText }}
+                </button>
+              </div>
+
+              <div
+                class="mt-3 rounded-2xl border border-dashed border-border bg-background px-3 py-3 text-xs text-muted-foreground"
+              >
+                <span v-if="props.inviteLink" class="break-all">{{ props.inviteLink }}</span>
+                <span v-else>提交后生成最新邀请链接</span>
+              </div>
+            </section>
+
+            <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
+            <p v-else-if="props.errorMessage" class="text-sm text-destructive">
+              {{ props.errorMessage }}
+            </p>
+          </div>
+
+          <div class="flex items-center justify-end gap-2 border-t border-border bg-background/95 px-5 py-4">
             <button
               type="button"
-              class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
+              class="h-10 rounded-xl border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
               @click="close"
             >
               取消
             </button>
             <button
               type="submit"
-              class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+              class="h-10 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
               :disabled="props.preparing || props.submitting"
             >
               {{ submitButtonText }}

@@ -70,6 +70,7 @@ import { UpdateBusinessLineCustomRoleDto } from './dto/update-business-line-cust
 import { ProjectCustomRole } from '../projects/domain/project-custom-role';
 import { CreateProjectCustomRoleDto } from '../projects/dto/create-project-custom-role.dto';
 import { UpdateProjectCustomRoleDto } from '../projects/dto/update-project-custom-role.dto';
+import { BusinessLineMemberProjectRolesDto } from './dto/business-line-member-project-roles.dto';
 
 @ApiTags('Businesslines')
 @ApiBearerAuth()
@@ -454,6 +455,33 @@ export class BusinessLinesController {
   ): Promise<NullableType<BusinessLineInviteDto>> {
     return this.businessLinesService.findLatestInvite(
       businessLineId,
+      request.user,
+    );
+  }
+
+  @Get(':businessLineId/members/:userId/project-roles')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiParam({
+    name: 'userId',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: BusinessLineMemberProjectRolesDto,
+  })
+  @HttpCode(HttpStatus.OK)
+  findMemberProjectRoles(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+  ) {
+    return this.businessLinesService.findMemberProjectRoles(
+      businessLineId,
+      userId,
       request.user,
     );
   }

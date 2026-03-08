@@ -330,7 +330,9 @@ export class BusinessLinesService {
       nextRoleId: assignment.roleId,
     });
 
-    const projectRoles: Record<string, BusinessLineInviteProjectRole> = {};
+    const projectRoles = this.normalizeInviteProjectRoles(
+      createBusinessLineInviteDto.projectRoles,
+    );
 
     const now = new Date();
     const expiresAt = new Date(
@@ -406,12 +408,47 @@ export class BusinessLinesService {
       roleId: invitation.roleId,
     });
 
-    const failedProjects: string[] = [];
+    const failedProjects = await this.syncProjectRoleAssignments({
+      businessLineId: invitation.businessLineId,
+      userId: currentUser.sub,
+      projectRoles: invitation.projectRoles,
+    });
 
     return {
       member: await this.attachCustomRoleNameToBusinessLineMember(member),
       failedProjects,
     };
+  }
+
+  async findMemberProjectRoles(
+    businessLineId: BusinessLine['id'],
+    userId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<{ projectRoles: Record<string, string> }> {
+    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+
+    const [projects, memberships, roles] = await Promise.all([
+      this.projectRepository.findByBusinessLineId(businessLineId),
+      this.projectMemberRepository.findByUserId(userId),
+      this.projectCustomRoleRepository.findAllByBusinessLineId(businessLineId),
+    ]);
+
+    const projectIdSet = new Set(projects.map((project) => project.id));
+    const projectMembershipMap = new Map(
+      memberships
+        .filter((membership) => projectIdSet.has(membership.projectId))
+        .map((membership) => [membership.projectId, membership]),
+    );
+    const roleMap = new Map(roles.map((role) => [role.id, role]));
+    const projectRoles: Record<string, string> = {};
+
+    for (const project of projects) {
+      const membership = projectMembershipMap.get(project.id);
+      const role = membership ? roleMap.get(membership.roleId) ?? null : null;
+      projectRoles[project.id] = role?.id ?? 'none';
+    }
+
+    return { projectRoles };
   }
 
   async updateMemberRole(
@@ -467,6 +504,14 @@ export class BusinessLinesService {
     if (!updatedMember) {
       throw new NotFoundException('Business line member not found');
     }
+
+    await this.syncExplicitProjectRoleAssignments({
+      businessLineId,
+      userId,
+      projectRoles: this.normalizeExplicitProjectRoles(
+        updateBusinessLineMemberDto.projectRoles,
+      ),
+    });
 
     return this.attachCustomRoleNameToBusinessLineMember(updatedMember);
   }
@@ -1509,6 +1554,40 @@ export class BusinessLinesService {
     }
   }
 
+
+  private normalizeExplicitProjectRoles(
+    rawProjectRoles?: Record<string, string>,
+  ): Record<string, string> {
+    if (!rawProjectRoles) {
+      return {};
+    }
+
+    if (Array.isArray(rawProjectRoles)) {
+      throw new BadRequestException('Invalid project role payload');
+    }
+
+    const nextProjectRoles: Record<string, string> = {};
+
+    for (const [projectId, roleId] of Object.entries(rawProjectRoles)) {
+      if (!this.isUuid(projectId)) {
+        throw new BadRequestException('Invalid project id in member payload');
+      }
+
+      if (typeof roleId !== 'string') {
+        throw new BadRequestException('Invalid project role in member payload');
+      }
+
+      const normalizedRoleId = roleId.trim();
+      if (normalizedRoleId !== 'none' && !this.isUuid(normalizedRoleId)) {
+        throw new BadRequestException('Invalid project role in member payload');
+      }
+
+      nextProjectRoles[projectId] = normalizedRoleId || 'none';
+    }
+
+    return nextProjectRoles;
+  }
+
   private normalizeInviteProjectRoles(
     rawProjectRoles?: Record<string, BusinessLineInviteProjectRole>,
   ): Record<string, BusinessLineInviteProjectRole> {
@@ -1537,27 +1616,19 @@ export class BusinessLinesService {
     return nextProjectRoles;
   }
 
-  private async syncInviteProjectRoles({
+
+  private async syncExplicitProjectRoleAssignments({
     businessLineId,
     userId,
     projectRoles,
   }: {
     businessLineId: string;
     userId: string;
-    projectRoles: Record<string, BusinessLineInviteProjectRole>;
+    projectRoles: Record<string, string>;
   }): Promise<string[]> {
     const failedProjects: string[] = [];
 
-    for (const [projectId, role] of Object.entries(projectRoles)) {
-      if (role === BusinessLineInviteProjectRole.none) {
-        continue;
-      }
-
-      const nextRole = this.mapInviteProjectRoleToProjectRole(role);
-      if (!nextRole) {
-        continue;
-      }
-
+    for (const [projectId, roleId] of Object.entries(projectRoles)) {
       try {
         const project = await this.projectRepository.findById(projectId);
         if (!project || project.businessLineId !== businessLineId) {
@@ -1570,6 +1641,100 @@ export class BusinessLinesService {
             projectId,
             userId,
           );
+
+        if (roleId === 'none') {
+          if (!existedMember) {
+            continue;
+          }
+
+          if (
+            await this.isProjectOwnerRole(businessLineId, existedMember.roleId)
+          ) {
+            continue;
+          }
+
+          await this.projectMemberRepository.remove(projectId, userId);
+          continue;
+        }
+
+        const nextProjectRole = await this.getBusinessLineProjectCustomRoleOrThrow(
+          businessLineId,
+          roleId,
+        );
+
+        if (!existedMember) {
+          await this.projectMemberRepository.create({
+            projectId,
+            userId,
+            roleId: nextProjectRole.id,
+          });
+          continue;
+        }
+
+        if (
+          await this.isProjectOwnerRole(businessLineId, existedMember.roleId)
+        ) {
+          continue;
+        }
+
+        if (existedMember.roleId !== nextProjectRole.id) {
+          await this.projectMemberRepository.update(projectId, userId, {
+            roleId: nextProjectRole.id,
+          });
+        }
+      } catch (error) {
+        void error;
+        failedProjects.push(projectId);
+      }
+    }
+
+    return failedProjects;
+  }
+
+  private async syncProjectRoleAssignments({
+    businessLineId,
+    userId,
+    projectRoles,
+  }: {
+    businessLineId: string;
+    userId: string;
+    projectRoles: Record<string, BusinessLineInviteProjectRole>;
+  }): Promise<string[]> {
+    const failedProjects: string[] = [];
+
+    for (const [projectId, role] of Object.entries(projectRoles)) {
+      try {
+        const project = await this.projectRepository.findById(projectId);
+        if (!project || project.businessLineId !== businessLineId) {
+          failedProjects.push(projectId);
+          continue;
+        }
+
+        const existedMember =
+          await this.projectMemberRepository.findByProjectIdAndUserId(
+            projectId,
+            userId,
+          );
+
+        if (role === BusinessLineInviteProjectRole.none) {
+          if (!existedMember) {
+            continue;
+          }
+
+          if (
+            await this.isProjectOwnerRole(businessLineId, existedMember.roleId)
+          ) {
+            continue;
+          }
+
+          await this.projectMemberRepository.remove(projectId, userId);
+          continue;
+        }
+
+        const nextRole = this.mapInviteProjectRoleToProjectRole(role);
+        if (!nextRole) {
+          continue;
+        }
 
         if (!existedMember) {
           const nextProjectRole = await this.findDefaultProjectCustomRole(
@@ -1957,6 +2122,43 @@ export class BusinessLinesService {
       invitation.roleId,
     );
     return role?.name ?? null;
+  }
+
+  private mapProjectCustomRoleToInviteProjectRole(
+    role: ProjectCustomRole | null,
+  ): BusinessLineInviteProjectRole {
+    if (!role) {
+      return BusinessLineInviteProjectRole.none;
+    }
+
+    if (
+      hasProjectTemplateCapabilities(role.capabilities, ProjectMemberRole.owner) ||
+      hasProjectTemplateCapabilities(role.capabilities, ProjectMemberRole.maintainer) ||
+      role.capabilities.includes('project.member.manage') ||
+      role.capabilities.includes('project.workflow.manage') ||
+      role.capabilities.includes('project.update') ||
+      role.capabilities.includes('project.delete')
+    ) {
+      return BusinessLineInviteProjectRole.manage;
+    }
+
+    if (
+      hasProjectTemplateCapabilities(role.capabilities, ProjectMemberRole.developer) ||
+      role.capabilities.includes('project.task.create') ||
+      role.capabilities.includes('project.task.execute')
+    ) {
+      return BusinessLineInviteProjectRole.developer;
+    }
+
+    if (
+      hasProjectTemplateCapabilities(role.capabilities, ProjectMemberRole.viewer) ||
+      role.capabilities.includes('project.read') ||
+      role.capabilities.includes('project.task.read')
+    ) {
+      return BusinessLineInviteProjectRole.viewer;
+    }
+
+    return BusinessLineInviteProjectRole.none;
   }
 
   private mapInviteProjectRoleToProjectRole(

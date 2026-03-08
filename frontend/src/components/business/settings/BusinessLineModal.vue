@@ -39,8 +39,6 @@ import {
   BUSINESS_LINE_CAPABILITY_OPTIONS,
   PROJECT_CAPABILITY_OPTIONS,
   buildBusinessLineRoleAssignmentOptions,
-  isBusinessLineDefaultRole,
-  isProjectDefaultRole,
 } from '@/constants/access'
 import { getCapabilityLabel } from '@/constants/access-control'
 
@@ -54,7 +52,8 @@ type MainTab =
   | 'mcp'
   | 'settings'
 type PermissionRoleTab = 'business-line' | 'project'
-type ProjectPermissionRole = 'none' | 'manage' | 'developer' | 'viewer'
+const PROJECT_ROLE_NONE_VALUE = 'none'
+type ProjectRoleSelection = string
 type SupportedCliToolId = 'claude-code' | 'codex' | 'gemini-cli' | 'cursor-agent' | 'opencode'
 type WorkflowTemplateNodeInputForm = {
   prompt: string
@@ -151,7 +150,7 @@ const memberPermissionModalPreparing = ref(false)
 const memberPermissionModalError = ref('')
 const memberPermissionInitialUserId = ref('')
 const memberPermissionInitialBusinessRole = ref<string>('member')
-const memberPermissionInitialProjectRoles = ref<Record<string, ProjectPermissionRole>>({})
+const memberPermissionInitialProjectRoles = ref<Record<string, ProjectRoleSelection>>({})
 const memberInvitationLink = ref('')
 const memberInvitationExpiresAt = ref('')
 
@@ -296,6 +295,13 @@ const businessLineRoleOptions = computed(() => {
   return buildBusinessLineRoleAssignmentOptions(lineCustomRoles.value)
 })
 
+const memberPermissionProjectRoleOptions = computed(() => {
+  return permissionProjectRoleLibrary.value.map((role) => ({
+    label: role.name,
+    value: role.id,
+  }))
+})
+
 const canCreateProjectItem = computed(() => {
   return hasActiveLineCapability('businessLine.project.create')
 })
@@ -350,7 +356,7 @@ const loadPermissionProjectCustomRoles = async (lineId: string) => {
   } catch (error) {
     if (lineId === activeLineId.value) {
       permissionProjectRoleLibrary.value = []
-      message.error(toErrorMessage(error, '加载项目角色库失败'))
+      message.error(toErrorMessage(error, '加载角色列表失败'))
     }
   } finally {
     if (lineId === activeLineId.value) {
@@ -1639,8 +1645,8 @@ const tabClass = (tab: MainTab) => {
 
 const permissionRoleTabClass = (tab: PermissionRoleTab) => {
   return tab === activePermissionRoleTab.value
-    ? 'bg-background text-foreground shadow-sm'
-    : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'
+    ? 'border border-border bg-background text-foreground shadow-sm shadow-primary/5'
+    : 'border border-transparent text-muted-foreground hover:border-border/60 hover:bg-background/70 hover:text-foreground'
 }
 
 const isMemberAccessTab = (tab: MainTab = activeTab.value) => {
@@ -2076,11 +2082,28 @@ const openEditMemberModal = async (member: BusinessLineMember) => {
   memberPermissionModalError.value = ''
   memberPermissionModalOpen.value = true
 
-  if (users.value.length === 0) {
-    await loadUsers()
-  }
+  try {
+    if (users.value.length === 0) {
+      await loadUsers()
+    }
 
-  memberPermissionModalPreparing.value = false
+    if (permissionProjectRoleLibrary.value.length === 0) {
+      await loadPermissionProjectCustomRoles(activeLineId.value)
+    }
+
+    const response = await businessLinesApi.getMemberProjectRoles(activeLineId.value, member.userId)
+    const nextProjectRoles: Record<string, ProjectRoleSelection> = {}
+
+    for (const project of lineProjects.value) {
+      nextProjectRoles[project.id] = response.projectRoles[project.id] ?? PROJECT_ROLE_NONE_VALUE
+    }
+
+    memberPermissionInitialProjectRoles.value = nextProjectRoles
+  } catch (error) {
+    message.error(toErrorMessage(error, '加载成员项目角色失败'))
+  } finally {
+    memberPermissionModalPreparing.value = false
+  }
 }
 
 const submitMemberPermission = async (
@@ -2088,13 +2111,13 @@ const submitMemberPermission = async (
     | {
         mode: 'create'
         businessRole: string
-        projectRoles: Record<string, ProjectPermissionRole>
+        projectRoles: Record<string, ProjectRoleSelection>
       }
     | {
         mode: 'edit'
         userId: string
         businessRole: string
-        projectRoles: Record<string, ProjectPermissionRole>
+        projectRoles: Record<string, ProjectRoleSelection>
       },
 ) => {
   if (!activeLineId.value || !canManageActiveLineMembers.value) {
@@ -2125,16 +2148,10 @@ const submitMemberPermission = async (
       message.success('邀请链接已生成')
       return
     } else {
-      const currentMember = lineMembers.value.find((member) => member.userId === payload.userId)
-      const shouldUpdateMember = Boolean(
-        currentMember && currentMember.roleId !== payload.businessRole,
-      )
-
-      if (shouldUpdateMember) {
-        await businessLinesApi.updateMember(activeLineId.value, payload.userId, {
-          roleId: payload.businessRole,
-        })
-      }
+      await businessLinesApi.updateMember(activeLineId.value, payload.userId, {
+        roleId: payload.businessRole,
+        projectRoles: payload.projectRoles,
+      })
 
       memberPermissionModalOpen.value = false
       await refreshForCurrentLine({ includeMembers: true })
@@ -3067,19 +3084,13 @@ onBeforeUnmount(() => {
               </section>
 
               <section v-else-if="activeTab === 'permissions'" class="space-y-4">
-                <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <p class="text-sm font-semibold">权限角色</p>
-                    <p class="mt-1 text-xs text-muted-foreground">
-                      按角色类型分别管理业务线角色和项目角色，保持列表化展示，减少页面层级。
-                    </p>
-                  </div>
+                <div class="flex justify-center sm:justify-start">
                   <div
-                    class="inline-flex w-full flex-wrap gap-2 rounded-xl border border-border bg-muted/30 p-1 lg:w-auto"
+                    class="inline-flex w-full max-w-md items-center gap-1.5 rounded-2xl border border-border/70 bg-muted/35 p-1.5 shadow-sm sm:w-auto"
                   >
                     <button
                       type="button"
-                      class="rounded-lg px-3 py-2 text-xs font-semibold transition"
+                      class="flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold transition sm:flex-none sm:min-w-[132px]"
                       :class="permissionRoleTabClass('business-line')"
                       @click="activePermissionRoleTab = 'business-line'"
                     >
@@ -3087,7 +3098,7 @@ onBeforeUnmount(() => {
                     </button>
                     <button
                       type="button"
-                      class="rounded-lg px-3 py-2 text-xs font-semibold transition"
+                      class="flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold transition sm:flex-none sm:min-w-[132px]"
                       :class="permissionRoleTabClass('project')"
                       @click="activePermissionRoleTab = 'project'"
                     >
@@ -3099,17 +3110,7 @@ onBeforeUnmount(() => {
                 <div v-if="activePermissionRoleTab === 'business-line'" class="panel-card space-y-4 p-4">
                   <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div class="flex flex-wrap items-center gap-2">
-                        <p class="text-sm font-semibold">业务线角色库</p>
-                        <span
-                          class="rounded-full border border-border px-2 py-1 text-[11px] text-muted-foreground"
-                        >
-                          共 {{ lineCustomRoles.length }} 个
-                        </span>
-                      </div>
-                      <p class="mt-1 text-xs text-muted-foreground">
-                        当前业务线的成员权限角色定义，编辑只影响当前业务线。
-                      </p>
+                      <p class="text-sm font-semibold">角色列表（{{ lineCustomRoles.length }}）</p>
                     </div>
                     <div class="flex items-center gap-2">
                       <button
@@ -3149,24 +3150,6 @@ onBeforeUnmount(() => {
                         <div>
                           <div class="flex flex-wrap items-center gap-2">
                             <p class="text-sm font-semibold">{{ role.name }}</p>
-                            <span
-                              class="rounded-full border px-2 py-0.5 text-[11px]"
-                              :class="
-                                isBusinessLineDefaultRole(role)
-                                  ? 'border-primary/30 bg-primary/5 text-primary'
-                                  : 'border-border text-muted-foreground'
-                              "
-                            >
-                              {{
-                                isBusinessLineDefaultRole(role)
-                                  ? '默认角色'
-                                  : '自定义角色'
-                              }}
-                            </span>
-                            <span
-                              class="rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11px] text-primary"
-                            >
-                            </span>
                           </div>
                           <p class="mt-1 text-xs text-muted-foreground">
                             {{ role.description || '暂无描述' }}
@@ -3197,38 +3180,7 @@ onBeforeUnmount(() => {
                 <div v-else class="panel-card space-y-4 p-4">
                   <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div class="flex flex-wrap items-center gap-2">
-                        <p class="text-sm font-semibold">项目角色库</p>
-                        <span
-                          v-if="activeLineId"
-                          class="rounded-full border border-border px-2 py-1 text-[11px] text-muted-foreground"
-                        >
-                          {{ selectedLineName }}
-                        </span>
-                        <span
-                          v-if="activeLineId"
-                          class="rounded-full border border-border px-2 py-1 text-[11px] text-muted-foreground"
-                        >
-                          共 {{ permissionProjectRoleLibrary.length }} 个
-                        </span>
-                        <span
-                          v-if="activeLineId"
-                          class="rounded-full border px-2 py-1 text-[11px]"
-                          :class="
-                            canManagePermissionProjectRoles
-                              ? 'border-primary/30 bg-primary/5 text-primary'
-                              : 'border-border text-muted-foreground'
-                          "
-                        >
-                          {{ canManagePermissionProjectRoles ? '可编辑角色库' : '仅可查看角色库' }}
-                        </span>
-                      </div>
-                      <p class="mt-1 text-xs text-muted-foreground">
-                        编辑角色定义会同步影响当前业务线下所有项目的成员角色分配。
-                      </p>
-                      <p v-if="activeLineId && selectedLineDescription" class="mt-1 text-xs text-muted-foreground">
-                        {{ selectedLineDescription }}
-                      </p>
+                      <p class="text-sm font-semibold">角色列表（{{ permissionProjectRoleLibrary.length }}）</p>
                     </div>
                     <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <button
@@ -3260,7 +3212,7 @@ onBeforeUnmount(() => {
                     v-else-if="loadingPermissionProjectRoleLibrary"
                     class="text-sm text-muted-foreground"
                   >
-                    加载项目角色库中...
+                    加载角色列表中...
                   </div>
                   <div
                     v-else-if="permissionProjectRoleLibrary.length === 0"
@@ -3278,24 +3230,6 @@ onBeforeUnmount(() => {
                         <div>
                           <div class="flex flex-wrap items-center gap-2">
                             <p class="text-sm font-semibold">{{ role.name }}</p>
-                            <span
-                              class="rounded-full border px-2 py-0.5 text-[11px]"
-                              :class="
-                                isProjectDefaultRole(role)
-                                  ? 'border-primary/30 bg-primary/5 text-primary'
-                                  : 'border-border text-muted-foreground'
-                              "
-                            >
-                              {{
-                                isProjectDefaultRole(role)
-                                  ? '默认模板'
-                                  : '自定义模板'
-                              }}
-                            </span>
-                            <span
-                              class="rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11px] text-primary"
-                            >
-                            </span>
                           </div>
                           <p class="mt-1 text-xs text-muted-foreground">
                             {{ role.description || '暂无描述' }}
@@ -4004,7 +3938,8 @@ onBeforeUnmount(() => {
         :role-options="businessLineRoleOptions"
         :initial-business-role="memberPermissionInitialBusinessRole"
         :initial-project-roles="memberPermissionInitialProjectRoles"
-        :show-project-roles="false"
+        :show-project-roles="memberPermissionModalMode === 'edit'"
+        :project-role-options="memberPermissionProjectRoleOptions"
         :invite-link="memberInvitationLink"
         :invite-expires-at="memberInvitationExpiresAt"
         :error-message="memberPermissionModalError"

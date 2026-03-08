@@ -19,6 +19,7 @@ const { authApi, businessLinesApi, projectsApi, usersApi, workflowApi, fetchAllP
     addMember: vi.fn(),
     createInvitation: vi.fn(),
     acceptInvitation: vi.fn(),
+    getMemberProjectRoles: vi.fn(),
     updateMember: vi.fn(),
     removeMember: vi.fn(),
     listAgentToolConfigs: vi.fn(),
@@ -154,6 +155,11 @@ beforeEach(() => {
   ])
 
   businessLinesApi.listMembers.mockResolvedValue([])
+  businessLinesApi.getMemberProjectRoles.mockResolvedValue({
+    projectRoles: {
+      'project-1': 'project-role-1',
+    },
+  })
   businessLinesApi.listAgentToolConfigs.mockResolvedValue([])
   businessLinesApi.listLocalSkills.mockResolvedValue([])
   businessLinesApi.listLocalMcps.mockResolvedValue([])
@@ -315,7 +321,6 @@ describe('BusinessLineModal', () => {
 
     expect(wrapper.text()).toContain('业务线角色')
     expect(wrapper.text()).toContain('项目角色')
-    expect(wrapper.text()).toContain('当前业务线的成员权限角色定义')
     expect(wrapper.text()).not.toContain('项目角色库')
 
     const projectRoleTab = wrapper
