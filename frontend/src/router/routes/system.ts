@@ -3,24 +3,14 @@ import { appSettings } from '@/config/setting'
 import { SETTINGS_QUERY_KEY } from '@/types/common/settings'
 import { buildRouteAccessMeta } from '@/constants/access-control'
 
+const resolveProjectId = (id: string | string[] | undefined) => (Array.isArray(id) ? id[0] : id)
+
 const toDashboardSettings = (section: string) => ({
   path: '/dashboard',
   query: {
     [SETTINGS_QUERY_KEY]: section,
   },
 })
-
-const resolveProjectId = (value: unknown) => {
-  if (typeof value === 'string') {
-    return value
-  }
-
-  if (Array.isArray(value)) {
-    return value[0] ?? ''
-  }
-
-  return ''
-}
 
 export const systemRoutes: AppRouteRecord[] = [
   {
@@ -45,6 +35,14 @@ export const systemRoutes: AppRouteRecord[] = [
     name: 'kanban',
     component: () => import('@/views/kanban/index.vue'),
     meta: buildRouteAccessMeta('kanban'),
+  },
+  {
+    path: '/knowledge-base',
+    name: 'knowledge-base',
+    component: () => import('@/views/knowledge-base/index.vue'),
+    meta: buildRouteAccessMeta('knowledgeBase', {
+      contentMode: 'full',
+    }),
   },
   {
     path: '/skills',

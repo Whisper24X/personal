@@ -702,6 +702,118 @@ export class TaskRuntimeService {
     }
   }
 
+  async listWorktreeFiles(
+    task: Task,
+    options?: { prefix?: string },
+  ): Promise<string[]> {
+    const worktreePath = task.gitWorktree?.trim();
+    if (!worktreePath) {
+      return [];
+    }
+
+    const exists = await this.pathExists(worktreePath);
+    if (!exists) {
+      return [];
+    }
+
+    const maxDepth = 8;
+    const maxFiles = 200;
+    const result: string[] = [];
+
+    const walk = async (
+      dir: string,
+      relativePrefix: string,
+      depth: number,
+    ): Promise<void> => {
+      if (depth > maxDepth || result.length >= maxFiles) {
+        return;
+      }
+
+      let entries: { name: string; isFile: boolean }[];
+      try {
+        const names = await fs.readdir(dir);
+        const stats = await Promise.all(
+          names.map(async (name) => {
+            if (name === '.git') {
+              return null;
+            }
+            const fullPath = path.join(dir, name);
+            const stat = await fs.stat(fullPath);
+            return { name, isFile: stat.isFile() };
+          }),
+        );
+        entries = stats.filter((s): s is { name: string; isFile: boolean } =>
+          Boolean(s),
+        );
+      } catch {
+        return;
+      }
+
+      for (const { name, isFile } of entries) {
+        if (result.length >= maxFiles) {
+          return;
+        }
+        const relativePath = relativePrefix ? `${relativePrefix}/${name}` : name;
+        if (isFile) {
+          result.push(relativePath);
+        } else {
+          await walk(path.join(dir, name), relativePath, depth + 1);
+        }
+      }
+    };
+
+    await walk(worktreePath, '', 0);
+
+    const prefix = options?.prefix?.trim();
+    const filtered =
+      prefix && prefix.length > 0
+        ? result.filter(
+            (p) =>
+              p === prefix || p.startsWith(`${prefix}/`),
+          )
+        : result;
+
+    return filtered.sort((a, b) => a.localeCompare(b));
+  }
+
+  async readFileFromWorktree(
+    task: Task,
+    relativePath: string,
+  ): Promise<string | null> {
+    const worktreePath = task.gitWorktree?.trim();
+    if (!worktreePath) {
+      return null;
+    }
+
+    const normalized = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
+    if (!normalized || normalized.includes('..')) {
+      return null;
+    }
+
+    const fullPath = path.resolve(worktreePath, normalized);
+    const worktreeResolved = path.resolve(worktreePath);
+    const relative = path.relative(worktreeResolved, fullPath);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      return null;
+    }
+
+    const exists = await this.pathExists(fullPath);
+    if (!exists) {
+      return null;
+    }
+
+    try {
+      const stat = await fs.stat(fullPath);
+      if (!stat.isFile()) {
+        return null;
+      }
+      const content = await fs.readFile(fullPath, 'utf-8');
+      return content;
+    } catch {
+      return null;
+    }
+  }
+
   private async readRuntimeMeta(
     worktreePath: string,
   ): Promise<RuntimeMeta | null> {

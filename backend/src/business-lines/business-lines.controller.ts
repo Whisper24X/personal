@@ -733,6 +733,26 @@ export class BusinessLinesController {
     );
   }
 
+  @Delete(':businessLineId/local-mcps')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiNoContentResponse()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeLocalMcp(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Query() query: GetLocalMcpConfigDto,
+  ): Promise<void> {
+    return this.businessLinesService.removeLocalMcp(
+      businessLineId,
+      query,
+      request.user,
+    );
+  }
+
   @Get(':businessLineId/local-mcps')
   @ApiParam({
     name: 'businessLineId',

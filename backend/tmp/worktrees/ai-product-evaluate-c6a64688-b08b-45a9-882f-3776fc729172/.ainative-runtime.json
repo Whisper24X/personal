@@ -1,0 +1,13 @@
+{
+  "taskId": "c6a64688-b08b-45a9-882f-3776fc729172",
+  "projectId": "f0d5e169-5e33-48f5-ac3d-21cdf03a2364",
+  "branch": "main",
+  "gitBaseBranch": "main",
+  "worktreePath": "/Users/draskychen/workspace/ainative/code/ainative/backend/tmp/worktrees/ai-product-evaluate-c6a64688-b08b-45a9-882f-3776fc729172",
+  "allowedRoot": "/Users/draskychen/workspace/ainative/code/ainative/backend/tmp/worktrees",
+  "generatedAt": "2026-03-03T11:07:25.539Z",
+  "sandbox": {
+    "type": "directory",
+    "note": "Fallback to directory sandbox: Preparing worktree (resetting branch 'main'; was at 16da88b)\nfatal: cannot force update the branch 'main' checked out at '/Users/draskychen/workspace/ainative/code/ainative/backend/tmp/worktrees/.repos/ai-product-evaluate-f0d5e169-5e33-48f5-ac3d-21cdf03a2364'"
+  }
+}

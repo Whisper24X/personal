@@ -65,6 +65,10 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     'AINATIVE_STALE_RECOVERY_INTERVAL_MS',
     15_000,
   );
+  private readonly retentionCleanupIntervalMs = this.readPositiveNumberFromEnv(
+    'AINATIVE_RETENTION_CLEANUP_INTERVAL_MS',
+    3600_000,
+  );
   private readonly streamDbPollIntervalMs = this.readPositiveNumberFromEnv(
     'AINATIVE_STREAM_DB_POLL_INTERVAL_MS',
     1_000,
@@ -74,6 +78,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
   private readonly projectPageLimit = 200;
   private schedulerTimer: NodeJS.Timeout | null = null;
   private staleRecoveryTimer: NodeJS.Timeout | null = null;
+  private retentionCleanupTimer: NodeJS.Timeout | null = null;
   private scheduling = false;
   private recoveringExpiredNodes = false;
   private destroyed = false;
@@ -107,8 +112,13 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       void this.recoverExpiredLeases();
     }, this.staleRecoveryIntervalMs);
     this.staleRecoveryTimer.unref();
+    this.retentionCleanupTimer = setInterval(() => {
+      void this.scheduleRetentionCleanup();
+    }, this.retentionCleanupIntervalMs);
+    this.retentionCleanupTimer.unref();
     void this.scheduleQueuedNodes();
     void this.recoverExpiredLeases();
+    void this.scheduleRetentionCleanup();
   }
 
   onModuleDestroy(): void {
@@ -122,6 +132,10 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     if (this.staleRecoveryTimer) {
       clearInterval(this.staleRecoveryTimer);
       this.staleRecoveryTimer = null;
+    }
+    if (this.retentionCleanupTimer) {
+      clearInterval(this.retentionCleanupTimer);
+      this.retentionCleanupTimer = null;
     }
   }
 
@@ -829,7 +843,27 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
+    // 审批通过后创建产物（节点执行时因 requiresApproval 而跳过了产物创建）
+    const outputSummary =
+      targetNode.output && typeof targetNode.output.summary === 'string'
+        ? targetNode.output.summary
+        : `Node ${targetNode.nodeOrder} approved`;
+    const generatedBy =
+      targetNode.nodeType === TaskNodeType.agent
+        ? 'agent-runner:approved'
+        : targetNode.nodeType === TaskNodeType.manual
+          ? 'manual:approved'
+          : 'workflow:approved';
+    await this.createNodeExecutionArtifact({
+      taskId: task.id,
+      task,
+      node: targetNode,
+      summary: outputSummary,
+      generatedBy,
+    });
+
     await this.recalculateTaskStatus(task.id);
+    await this.triggerWorkerDispatch();
 
     return this.detailById(task.id, currentUser);
   }
@@ -892,6 +926,39 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     await this.getTaskOrThrow(taskId, currentUser);
 
     return this.taskArtifactRepository.findByTaskId(taskId);
+  }
+
+  async listWorktreeFiles(
+    taskId: Task['id'],
+    currentUser: JwtPayloadType,
+    options?: { prefix?: string },
+  ): Promise<string[]> {
+    const task = await this.getTaskOrThrow(taskId, currentUser);
+
+    if (!task.gitWorktree?.trim()) {
+      return [];
+    }
+
+    return this.taskRuntimeService.listWorktreeFiles(task, options);
+  }
+
+  async readWorktreeFile(
+    taskId: Task['id'],
+    relativePath: string,
+    currentUser: JwtPayloadType,
+  ): Promise<{ path: string; content: string }> {
+    const task = await this.getTaskOrThrow(taskId, currentUser);
+
+    const content =
+      await this.taskRuntimeService.readFileFromWorktree(task, relativePath);
+    if (content === null) {
+      throw new NotFoundException(
+        `Worktree file not found: ${relativePath}`,
+      );
+    }
+
+    const normalized = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
+    return { path: normalized, content };
   }
 
   async createArtifact(
@@ -1237,9 +1304,9 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (executionResult.success) {
-      const summary = executionResult.stdout
-        ? executionResult.stdout.slice(0, 2_000)
-        : 'Agent execution finished without stdout output';
+      const fullOutput = executionResult.stdout ?? 'Agent execution finished without stdout output';
+      const summary =
+        fullOutput.length > 2_000 ? fullOutput.slice(0, 2_000) : fullOutput;
 
       await this.finalizeNodeAsSuccess({
         node,
@@ -1273,7 +1340,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
           taskId,
           task,
           node,
-          summary,
+          summary: fullOutput,
           generatedBy: `agent-runner:${executionResult.command}`,
         });
       }
@@ -1406,22 +1473,24 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     summary: string;
     generatedBy: string;
   }): Promise<void> {
-    await this.taskArtifactRepository.create({
-      taskId,
-      taskNodeId: node.id,
-      artifactType: TaskArtifactType.report,
-      name: `node-${node.nodeOrder}-summary.md`,
-      downloadUrl: null,
-      content: `# Node ${node.nodeOrder}\n\n${summary}`,
-      metadata: {
-        generatedBy,
-      },
-    });
-
-    await this.createGitDiffArtifact({
+    const fileCount = await this.createGitDiffArtifact({
       task,
       taskNode: node,
     });
+
+    if (fileCount === 0) {
+      await this.taskArtifactRepository.create({
+        taskId,
+        taskNodeId: node.id,
+        artifactType: TaskArtifactType.report,
+        name: `node-${node.nodeOrder}-summary.md`,
+        downloadUrl: null,
+        content: `# Node ${node.nodeOrder}\n\n${summary}`,
+        metadata: {
+          generatedBy,
+        },
+      });
+    }
   }
 
   private async createGitDiffArtifact({
@@ -1430,13 +1499,19 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
   }: {
     task: Task;
     taskNode: TaskNode;
-  }): Promise<void> {
+  }): Promise<number> {
     const diffArtifact =
       await this.taskRuntimeService.collectGitDiffArtifact(task);
 
     if (!diffArtifact) {
-      return;
+      return 0;
     }
+
+    const fileCount = await this.createFileArtifactsFromWorktree({
+      task,
+      taskNode,
+      changedFiles: diffArtifact.metadata?.changedFiles as string[] | undefined,
+    });
 
     const existedArtifacts = await this.taskArtifactRepository.findByTaskId(
       task.id,
@@ -1450,19 +1525,76 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       );
     });
 
-    if (hasSameArtifact) {
-      return;
+    if (!hasSameArtifact) {
+      await this.taskArtifactRepository.create({
+        taskId: task.id,
+        taskNodeId: taskNode.id,
+        artifactType: TaskArtifactType.diff,
+        name: artifactName,
+        downloadUrl: null,
+        content: diffArtifact.content,
+        metadata: diffArtifact.metadata,
+      });
     }
 
-    await this.taskArtifactRepository.create({
-      taskId: task.id,
-      taskNodeId: taskNode.id,
-      artifactType: TaskArtifactType.diff,
-      name: artifactName,
-      downloadUrl: null,
-      content: diffArtifact.content,
-      metadata: diffArtifact.metadata,
-    });
+    return fileCount;
+  }
+
+  private async createFileArtifactsFromWorktree({
+    task,
+    taskNode,
+    changedFiles,
+  }: {
+    task: Task;
+    taskNode: TaskNode;
+    changedFiles?: string[];
+  }): Promise<number> {
+    if (!Array.isArray(changedFiles) || changedFiles.length === 0) {
+      return 0;
+    }
+
+    const existedArtifacts = await this.taskArtifactRepository.findByTaskId(
+      task.id,
+    );
+    const existingFileNames = new Set(
+      existedArtifacts
+        .filter(
+          (a) =>
+            a.taskNodeId === taskNode.id &&
+            a.artifactType === TaskArtifactType.file,
+        )
+        .map((a) => a.name),
+    );
+
+    let created = 0;
+    for (const filePath of changedFiles) {
+      const fileName =
+        typeof filePath === 'string' && filePath.trim()
+          ? filePath.trim()
+          : null;
+      if (!fileName || existingFileNames.has(fileName)) {
+        continue;
+      }
+
+      const content =
+        await this.taskRuntimeService.readFileFromWorktree(task, fileName);
+      if (content === null) {
+        continue;
+      }
+
+      await this.taskArtifactRepository.create({
+        taskId: task.id,
+        taskNodeId: taskNode.id,
+        artifactType: TaskArtifactType.file,
+        name: fileName,
+        downloadUrl: null,
+        content,
+        metadata: { source: 'worktree' },
+      });
+      existingFileNames.add(fileName);
+      created += 1;
+    }
+    return created;
   }
 
   private async scheduleQueuedNodes(): Promise<void> {
@@ -1676,6 +1808,50 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     await this.scheduleQueuedNodes();
   }
 
+  private async scheduleRetentionCleanup(): Promise<void> {
+    if (this.runtimeRole !== 'worker' || this.destroyed) {
+      return;
+    }
+
+    const now = new Date();
+    const expiredTasks =
+      await this.taskRepository.findTasksWithExpiredWorktrees(20, now);
+
+    for (const task of expiredTasks) {
+      try {
+        const cleanupResult =
+          await this.taskRuntimeService.cleanupRuntime(task);
+
+        await this.taskRepository.update(task.id, {
+          ...(cleanupResult.cleaned ? { gitWorktree: null } : {}),
+        });
+
+        await this.appendLog({
+          taskId: task.id,
+          taskNodeId: null,
+          level: cleanupResult.cleaned ? TaskLogLevel.info : TaskLogLevel.warn,
+          message: cleanupResult.cleaned
+            ? 'Task worktree cleaned after retention period'
+            : 'Task worktree cleanup failed after retention period',
+          payload: {
+            gitWorktree: task.gitWorktree,
+            errorMessage: cleanupResult.errorMessage ?? null,
+          },
+        });
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : 'Retention cleanup error';
+        await this.appendLog({
+          taskId: task.id,
+          taskNodeId: null,
+          level: TaskLogLevel.warn,
+          message: 'Retention cleanup failed',
+          payload: { errorMessage },
+        });
+      }
+    }
+  }
+
   private startNodeLeaseHeartbeat({
     nodeId,
     workerId,
@@ -1806,13 +1982,10 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     await this.appendLog({
       taskId: task.id,
       taskNodeId: null,
-      level: cleanupResult.cleaned ? TaskLogLevel.info : TaskLogLevel.warn,
-      message: cleanupResult.cleaned
-        ? 'Task worktree cleaned after completion'
-        : 'Task worktree cleanup failed after completion',
+      level: TaskLogLevel.info,
+      message: 'Task completed; worktree retained until retention period expires',
       payload: {
         gitWorktree: task.gitWorktree,
-        errorMessage: cleanupResult.errorMessage ?? null,
       },
     });
   }

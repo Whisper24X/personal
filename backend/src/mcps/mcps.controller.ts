@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -9,7 +10,7 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { McpsService } from './mcps.service';
 import { Mcp } from './domain/mcp';
@@ -23,6 +24,7 @@ import { GetProjectLocalMcpConfigDto } from './dto/get-project-local-mcp-config.
 import { ProjectLocalMcpConfigDto } from './dto/project-local-mcp-config.dto';
 import { ImportProjectLocalMcpsDto } from './dto/import-project-local-mcps.dto';
 import { ImportProjectLocalMcpsResultDto } from './dto/import-project-local-mcps-result.dto';
+import { RemoveProjectLocalMcpDto } from './dto/remove-project-local-mcp.dto';
 
 @ApiTags('MCPs')
 @ApiBearerAuth()
@@ -85,5 +87,15 @@ export class McpsController {
       importProjectLocalMcpsDto,
       request.user,
     );
+  }
+
+  @Delete('project-local')
+  @ApiNoContentResponse()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeProjectLocalMcp(
+    @Request() request,
+    @Query() query: RemoveProjectLocalMcpDto,
+  ): Promise<void> {
+    return this.mcpsService.removeProjectLocalMcp(query, request.user);
   }
 }

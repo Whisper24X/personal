@@ -35,19 +35,9 @@ describe('systemRoutes compatibility redirects', () => {
     expect(gitRoute?.meta?.requiresAuth).toBe(true)
   })
 
-  it('redirects legacy project detail routes to dashboard with project context', () => {
+  it('renders project detail page at /projects/:id', () => {
     const projectDetailRoute = findByPath('/projects/:id')
-    expect(typeof projectDetailRoute?.redirect).toBe('function')
-
-    if (typeof projectDetailRoute?.redirect !== 'function') {
-      throw new Error('project detail redirect should be a function')
-    }
-
-    const redirect = projectDetailRoute.redirect as (to: unknown, from: unknown) => unknown
-    const target = redirect({ params: { id: 'project-123' } }, {})
-    expect(target).toEqual({
-      path: '/dashboard',
-      query: { projectId: 'project-123' },
-    })
+    expect(projectDetailRoute?.name).toBe('project-detail')
+    expect(projectDetailRoute?.component).toBeDefined()
   })
 })

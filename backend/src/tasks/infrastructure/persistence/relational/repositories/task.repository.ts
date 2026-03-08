@@ -342,6 +342,15 @@ export class TaskRelationalRepository implements TaskRepository {
     return entities.map((entity) => TaskMapper.toDomain(entity));
   }
 
+  async findTasksWithExpiredWorktrees(
+    _limit: number,
+    _at: Date = new Date(),
+  ): Promise<Task[]> {
+    // Schema uses gitWorktree; retention (sandboxCleanupAt) not in current schema.
+    // Return empty until retention columns are added.
+    return [];
+  }
+
   async update(
     id: Task['id'],
     payload: Partial<Task>,

@@ -360,4 +360,13 @@ export const businessLinesApi = {
   createLocalMcp(businessLineId: string, payload: CreateLocalMcpPayload) {
     return apiHttp.post<Mcp>(`/business-lines/${businessLineId}/local-mcps`, payload)
   },
+
+  removeLocalMcp(businessLineId: string, params: { name: string; sourcePath: string }) {
+    const query = new URLSearchParams()
+    query.set('name', params.name)
+    query.set('sourcePath', params.sourcePath)
+    return apiHttp.delete<void>(
+      `/business-lines/${businessLineId}/local-mcps?${query.toString()}`,
+    )
+  },
 }

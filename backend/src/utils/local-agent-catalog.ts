@@ -951,6 +951,7 @@ const buildLocalMcpItem = ({
       ...(metadataJson ?? {}),
       sourceProvider,
       sourcePath: normalizedSourcePath,
+      sourcePathAbsolute: sourcePath,
     },
     enabled,
     createdAt: updatedAt,

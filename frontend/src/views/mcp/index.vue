@@ -2,7 +2,9 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMessage } from '@/hooks'
+import { businessLinesApi } from '@/api/business-lines'
 import { mcpsApi } from '@/api/mcps'
+import { projectsApi } from '@/api/projects'
 import type { Mcp, ProjectLocalMcpProvider } from '@/types/api/mcps'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import { toErrorMessage } from '@/utils/http/to-error-message'
@@ -56,12 +58,25 @@ const mcpJsonImportError = ref('')
 
 const mcpJsonPreviewModalOpen = ref(false)
 const loadingMcpJsonPreview = ref(false)
+const mcpJsonPreviewItem = ref<Mcp | null>(null)
 const mcpJsonPreviewName = ref('')
 const mcpJsonPreviewSourcePath = ref('')
 const mcpJsonPreviewProvider = ref<ProjectLocalMcpProvider | ''>('')
 const mcpJsonPreviewError = ref('')
 const mcpJsonPreviewDraft = ref('')
 const savingMcpJsonPreview = ref(false)
+const removingProjectMcpId = ref('')
+
+const projectBusinessLineId = ref('')
+const projectName = ref('')
+const copyMcpModalOpen = ref(false)
+const copyMcpKeyword = ref('')
+const businessLineMcps = ref<Mcp[]>([])
+const loadingBusinessLineMcps = ref(false)
+const copyingBusinessLineMcpId = ref('')
+const copyMcpErrorMessage = ref('')
+const copyMcpTargetProvider = ref<ProjectLocalMcpProvider>('cursor')
+const projectContextRequestToken = ref(0)
 
 const normalizeRouteParam = (value: unknown) => {
   if (typeof value === 'string') {
@@ -109,7 +124,11 @@ const resolveSourceProvider = (server: Mcp) => {
 }
 
 const resolveSourcePath = (server: Mcp) => {
-  return resolveMetadataField(server.metadataJson ?? null, 'sourcePath') || ''
+  return (
+    resolveMetadataField(server.metadataJson ?? null, 'sourcePathAbsolute') ||
+    resolveMetadataField(server.metadataJson ?? null, 'sourcePath') ||
+    ''
+  )
 }
 
 const resolveProviderLabel = (provider: string) => {
@@ -182,6 +201,145 @@ const onDocumentPointerDown = (event: PointerEvent) => {
   }
 
   closeAddMenu()
+}
+
+const loadProjectContext = async (projectId: string) => {
+  const token = ++projectContextRequestToken.value
+
+  try {
+    const project = await projectsApi.detail(projectId)
+    if (token !== projectContextRequestToken.value) {
+      return
+    }
+
+    projectBusinessLineId.value = project.businessLineId
+    projectName.value = project.name
+  } catch (error) {
+    if (token !== projectContextRequestToken.value) {
+      return
+    }
+
+    projectBusinessLineId.value = ''
+    projectName.value = ''
+    message.error(toErrorMessage(error, '加载项目信息失败'))
+  }
+}
+
+const filteredBusinessLineMcps = computed(() => {
+  const query = copyMcpKeyword.value.trim().toLowerCase()
+  if (!query) {
+    return businessLineMcps.value
+  }
+
+  return businessLineMcps.value.filter((item) => {
+  return (
+    item.name.toLowerCase().includes(query) ||
+    (item.version ?? '').toLowerCase().includes(query)
+  )
+  })
+})
+
+const loadBusinessLineMcps = async () => {
+  const businessLineId = projectBusinessLineId.value
+  if (!businessLineId) {
+    businessLineMcps.value = []
+    return
+  }
+
+  loadingBusinessLineMcps.value = true
+  copyMcpErrorMessage.value = ''
+
+  try {
+    businessLineMcps.value = await businessLinesApi.listLocalMcps(businessLineId)
+  } catch (error) {
+    businessLineMcps.value = []
+    copyMcpErrorMessage.value = toErrorMessage(error, '加载业务线 MCP 失败')
+  } finally {
+    loadingBusinessLineMcps.value = false
+  }
+}
+
+const openCopyMcpModal = async () => {
+  closeAddMenu()
+
+  if (!activeProjectId.value) {
+    message.error('请先选择项目')
+    return
+  }
+
+  if (!projectBusinessLineId.value) {
+    await loadProjectContext(activeProjectId.value)
+  }
+
+  if (!projectBusinessLineId.value) {
+    message.error('无法识别项目所属业务线')
+    return
+  }
+
+  copyMcpKeyword.value = ''
+  copyMcpErrorMessage.value = ''
+  copyMcpModalOpen.value = true
+  await loadBusinessLineMcps()
+}
+
+const closeCopyMcpModal = () => {
+  copyingBusinessLineMcpId.value = ''
+  copyMcpErrorMessage.value = ''
+  copyMcpModalOpen.value = false
+}
+
+const getWrapperKeyForProvider = (provider: ProjectLocalMcpProvider) => {
+  return provider === 'opencode'
+    ? 'mcp'
+    : provider === 'codex'
+      ? 'mcp_servers'
+      : 'mcpServers'
+}
+
+const submitCopyBusinessLineMcp = async (item: Mcp) => {
+  const projectId = activeProjectId.value
+  const businessLineId = projectBusinessLineId.value
+  if (!projectId || !businessLineId || copyingBusinessLineMcpId.value) {
+    return
+  }
+
+  const sourcePath = resolveSourcePath(item)
+  if (!sourcePath) {
+    message.error('未找到 MCP 源配置路径')
+    return
+  }
+
+  copyingBusinessLineMcpId.value = item.id
+  copyMcpErrorMessage.value = ''
+
+  try {
+    const response = await businessLinesApi.getLocalMcpConfig(businessLineId, {
+      name: item.name,
+      sourcePath,
+    })
+
+    const wrapperKey = getWrapperKeyForProvider(copyMcpTargetProvider.value)
+    const payload = {
+      [wrapperKey]: {
+        [response.name]: response.config,
+      },
+    }
+
+    await mcpsApi.importProjectLocalMcps({
+      projectId,
+      provider: copyMcpTargetProvider.value,
+      payload,
+    })
+
+    closeCopyMcpModal()
+    await loadProjectMcps()
+    message.success(`MCP「${item.name}」已复制到当前项目`)
+  } catch (error) {
+    copyMcpErrorMessage.value = toErrorMessage(error, '复制业务线 MCP 失败')
+    message.error(copyMcpErrorMessage.value)
+  } finally {
+    copyingBusinessLineMcpId.value = ''
+  }
 }
 
 const loadProjectMcps = async () => {
@@ -323,6 +481,7 @@ const resolveMcpConfigFromDraft = (
 const resetMcpJsonPreviewState = () => {
   mcpJsonPreviewModalOpen.value = false
   loadingMcpJsonPreview.value = false
+  mcpJsonPreviewItem.value = null
   mcpJsonPreviewName.value = ''
   mcpJsonPreviewSourcePath.value = ''
   mcpJsonPreviewProvider.value = ''
@@ -337,6 +496,44 @@ const closeMcpJsonPreview = () => {
   }
 
   resetMcpJsonPreviewState()
+}
+
+const removeProjectLocalMcp = async (item: Mcp) => {
+  const projectId = activeProjectId.value
+  if (!projectId || removingProjectMcpId.value) {
+    return
+  }
+
+  const sourcePath = resolveSourcePath(item)
+  const provider = resolveSourceProvider(item)
+  if (!sourcePath || !isEditableProvider(provider)) {
+    message.error('无法删除此 MCP')
+    return
+  }
+
+  if (!window.confirm(`确认删除 MCP「${item.name}」吗？`)) {
+    return
+  }
+
+  removingProjectMcpId.value = item.id
+
+  try {
+    await mcpsApi.removeProjectLocalMcp({
+      projectId,
+      provider,
+      name: item.name,
+      sourcePath,
+    })
+    if (mcpJsonPreviewItem.value?.id === item.id) {
+      resetMcpJsonPreviewState()
+    }
+    await loadProjectMcps()
+    message.success(`MCP「${item.name}」已删除`)
+  } catch (error) {
+    message.error(toErrorMessage(error, '删除 MCP 失败'))
+  } finally {
+    removingProjectMcpId.value = ''
+  }
 }
 
 const openMcpJsonPreview = async (item: Mcp) => {
@@ -359,6 +556,7 @@ const openMcpJsonPreview = async (item: Mcp) => {
 
   mcpJsonPreviewModalOpen.value = true
   loadingMcpJsonPreview.value = true
+  mcpJsonPreviewItem.value = item
   mcpJsonPreviewName.value = item.name
   mcpJsonPreviewSourcePath.value = sourcePath
   mcpJsonPreviewProvider.value = sourceProvider
@@ -372,11 +570,7 @@ const openMcpJsonPreview = async (item: Mcp) => {
       sourcePath,
     })
 
-    const wrapperKey = mcpJsonPreviewProvider.value === 'opencode'
-      ? 'mcp'
-      : mcpJsonPreviewProvider.value === 'codex'
-        ? 'mcp_servers'
-        : 'mcpServers'
+    const wrapperKey = getWrapperKeyForProvider(mcpJsonPreviewProvider.value as ProjectLocalMcpProvider)
     mcpJsonPreviewDraft.value = JSON.stringify(
       {
         [wrapperKey]: {
@@ -417,15 +611,15 @@ const saveMcpJsonPreview = async () => {
     return
   }
 
+  if (Object.prototype.hasOwnProperty.call(nextConfig, 'description')) {
+    delete nextConfig.description
+  }
+
   savingMcpJsonPreview.value = true
   mcpJsonPreviewError.value = ''
 
   try {
-    const wrapperKey = provider === 'opencode'
-      ? 'mcp'
-      : provider === 'codex'
-        ? 'mcp_servers'
-        : 'mcpServers'
+    const wrapperKey = getWrapperKeyForProvider(provider)
     await mcpsApi.importProjectLocalMcps({
       projectId,
       provider,
@@ -451,6 +645,9 @@ watch(
   async () => {
     closeAddMenu()
     mcpJsonImportModalOpen.value = false
+    copyMcpModalOpen.value = false
+    projectBusinessLineId.value = ''
+    projectName.value = ''
     resetMcpJsonPreviewState()
     await loadProjectMcps()
   },
@@ -525,6 +722,14 @@ onBeforeUnmount(() => {
               v-if="addMenuOpen"
               class="absolute right-0 z-20 mt-2 w-56 rounded-lg border border-border bg-background p-1 shadow-lg"
             >
+              <button
+                type="button"
+                class="flex w-full items-center rounded-md bg-primary/5 px-3 py-2 text-left text-sm text-foreground transition hover:bg-primary/10"
+                @click="openCopyMcpModal"
+              >
+                从业务线复制
+              </button>
+              <div class="my-1 border-t border-border" />
               <button
                 type="button"
                 class="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-foreground transition hover:bg-muted"
@@ -608,27 +813,28 @@ onBeforeUnmount(() => {
             v-for="item in group.servers"
             :key="item.id"
             role="button"
-            class="cursor-pointer rounded-xl border border-border bg-background/70 px-4 py-3 transition-colors hover:border-foreground/20"
+            class="flex cursor-pointer flex-col rounded-xl border border-border bg-background/70 px-4 py-3 transition-colors hover:border-foreground/20"
             tabindex="0"
             @click="void openMcpJsonPreview(item)"
             @keydown.enter.prevent="void openMcpJsonPreview(item)"
             @keydown.space.prevent="void openMcpJsonPreview(item)"
           >
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <p class="text-sm font-semibold">{{ item.name }}</p>
-                <p class="mt-1 text-xs text-muted-foreground">版本：{{ item.version }}</p>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-sm font-semibold">{{ item.name }}</p>
+                  <p class="mt-1 text-xs text-muted-foreground">版本：{{ item.version }}</p>
+                </div>
+                <span
+                  class="inline-flex rounded-full px-2 py-1 text-[10px] font-semibold"
+                  :class="item.enabled ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'"
+                >
+                  {{ item.enabled ? '已启用' : '已停用' }}
+                </span>
               </div>
-              <span
-                class="inline-flex rounded-full px-2 py-1 text-[10px] font-semibold"
-                :class="item.enabled ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'"
-              >
-                {{ item.enabled ? '已启用' : '已停用' }}
-              </span>
-            </div>
 
-            <p class="mt-3 line-clamp-2 text-xs text-muted-foreground">{{ item.description ?? '暂无描述' }}</p>
-            <p class="mt-3 break-all font-mono text-[10px] text-muted-foreground">{{ resolveSourcePath(item) || '-' }}</p>
+              <p class="mt-3 break-all font-mono text-[10px] text-muted-foreground">{{ resolveSourcePath(item) || '-' }}</p>
+            </div>
           </article>
         </div>
 
@@ -648,6 +854,116 @@ onBeforeUnmount(() => {
       @update:open="mcpJsonImportModalOpen = $event"
       @submit="submitImportMcpJson"
     />
+
+    <Teleport to="body">
+      <div
+        v-if="copyMcpModalOpen"
+        class="fixed inset-0 z-[121] flex items-center justify-center p-3 sm:p-6"
+        @keydown.esc.prevent.stop="closeCopyMcpModal"
+      >
+        <button
+          type="button"
+          aria-label="关闭复制 MCP 弹窗"
+          class="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
+          @click="closeCopyMcpModal"
+        />
+
+        <section
+          aria-modal="true"
+          role="dialog"
+          class="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-border bg-background shadow-2xl"
+        >
+          <header class="flex items-center justify-between border-b border-border px-4 py-3">
+            <h2 class="text-base font-semibold">
+              从业务线复制 MCP 到 {{ projectName || '当前项目' }}
+            </h2>
+            <button
+              type="button"
+              aria-label="关闭"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
+              @click="closeCopyMcpModal"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </button>
+          </header>
+
+          <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            <div class="mb-3 flex items-center gap-3">
+              <label class="text-xs font-medium text-muted-foreground">复制到</label>
+              <select
+                v-model="copyMcpTargetProvider"
+                class="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              >
+                <option
+                  v-for="p in PROJECT_PROVIDER_ORDER"
+                  :key="p"
+                  :value="p"
+                >
+                  {{ PROVIDER_LABEL_MAP[p] ?? p }}
+                </option>
+              </select>
+            </div>
+
+            <input
+              v-model="copyMcpKeyword"
+              type="search"
+              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              placeholder="搜索业务线 MCP"
+            />
+
+            <p v-if="loadingBusinessLineMcps" class="mt-3 text-sm text-muted-foreground">
+              加载中...
+            </p>
+            <p v-else-if="copyMcpErrorMessage" class="mt-3 text-sm text-destructive">
+              {{ copyMcpErrorMessage }}
+            </p>
+
+            <div v-else class="mt-3 space-y-2">
+              <article
+                v-for="item in filteredBusinessLineMcps"
+                :key="item.id"
+                class="rounded-xl border border-border bg-background/70 px-4 py-3"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-semibold">{{ item.name }}</p>
+                  </div>
+                  <button
+                    type="button"
+                    class="h-8 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                    :disabled="copyingBusinessLineMcpId === item.id"
+                    @click="submitCopyBusinessLineMcp(item)"
+                  >
+                    {{ copyingBusinessLineMcpId === item.id ? '复制中...' : '复制' }}
+                  </button>
+                </div>
+              </article>
+
+              <article
+                v-if="filteredBusinessLineMcps.length === 0"
+                class="rounded-xl border border-dashed border-border bg-background/70 px-4 py-4 text-sm text-muted-foreground"
+              >
+                当前业务线暂无 MCP 配置。
+              </article>
+            </div>
+          </div>
+        </section>
+      </div>
+    </Teleport>
 
     <Teleport to="body">
       <div
@@ -671,6 +987,23 @@ onBeforeUnmount(() => {
               <p class="text-xs text-muted-foreground">{{ mcpJsonPreviewName }}</p>
             </div>
             <div class="flex items-center gap-2">
+              <button
+                v-if="mcpJsonPreviewItem && isEditableProvider(mcpJsonPreviewProvider)"
+                type="button"
+                class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-semibold text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label="删除 MCP"
+                :disabled="loadingMcpJsonPreview || savingMcpJsonPreview || removingProjectMcpId === mcpJsonPreviewItem.id"
+                @click="mcpJsonPreviewItem && void removeProjectLocalMcp(mcpJsonPreviewItem)"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 6h18" />
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                  <line x1="10" x2="10" y1="11" y2="17" />
+                  <line x1="14" x2="14" y1="11" y2="17" />
+                </svg>
+                删除
+              </button>
               <button
                 type="button"
                 class="h-8 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
@@ -705,11 +1038,14 @@ onBeforeUnmount(() => {
           </header>
           <div class="space-y-3 px-4 py-4">
             <p v-if="loadingMcpJsonPreview" class="text-sm text-muted-foreground">加载配置中...</p>
-            <div v-else class="space-y-2">
-              <textarea
-                v-model="mcpJsonPreviewDraft"
-                class="min-h-[56vh] w-full rounded-xl border border-border bg-muted/20 p-3 font-mono text-xs text-foreground"
-              />
+            <div v-else class="space-y-3">
+              <div>
+                <label class="mb-1 block text-xs font-medium text-muted-foreground">JSON 配置</label>
+                <textarea
+                  v-model="mcpJsonPreviewDraft"
+                  class="min-h-[48vh] w-full rounded-xl border border-border bg-muted/20 p-3 font-mono text-xs text-foreground"
+                />
+              </div>
             </div>
             <p v-if="!loadingMcpJsonPreview && mcpJsonPreviewError" class="text-sm text-destructive">
               {{ mcpJsonPreviewError }}

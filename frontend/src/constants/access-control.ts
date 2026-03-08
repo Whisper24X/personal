@@ -151,6 +151,10 @@ export const ROUTE_ACCESS_CONFIG = {
     title: '看板',
     capabilities: ['project.kanban.view'],
   },
+  knowledgeBase: {
+    title: '知识库',
+    capabilities: ['project.read'],
+  },
   skills: {
     title: 'Skills',
     capabilities: ['project.read'],
@@ -212,7 +216,7 @@ export const ROUTE_ACCESS_CONFIG = {
 export type RouteAccessKey = keyof typeof ROUTE_ACCESS_CONFIG
 
 export type ProjectMenuAccessItem = {
-  id: 'dashboard' | 'workflow' | 'tasks' | 'kanban' | 'automations' | 'skills' | 'mcp' | 'git'
+  id: 'dashboard' | 'workflow' | 'tasks' | 'knowledge' | 'kanban' | 'automations' | 'skills' | 'mcp' | 'git'
   label: string
   to: string
   capabilities: readonly AccessCapabilityCode[]
@@ -221,6 +225,7 @@ export type ProjectMenuAccessItem = {
 export const PROJECT_MENU_ACCESS_CONFIG = [
   { id: 'dashboard', label: '仪表盘', to: '/dashboard', capabilities: ['project.read'] },
   { id: 'tasks', label: '任务', to: '/tasks', capabilities: ['project.task.read'] },
+  { id: 'knowledge', label: '知识库', to: '/knowledge-base', capabilities: ['project.read'] },
   { id: 'kanban', label: '看板', to: '/kanban', capabilities: ['project.kanban.view'] },
   { id: 'automations', label: '自动化', to: '/automations', capabilities: ['project.read'] },
   { id: 'workflow', label: '工作流', to: '/projects/workflows', capabilities: ['project.workflow.view'] },

@@ -2,6 +2,13 @@ import type { TaskArtifactType } from './tasks'
 
 export type ArtifactPreviewMode = 'diff' | 'text' | 'external'
 
+export type ArtifactDownloadResponse = {
+  artifactId: string
+  downloadUrl?: string | null
+  content?: string | null
+  suggestedFileName?: string | null
+}
+
 export type ArtifactPreviewFileTreeNode = {
   name: string
   path: string

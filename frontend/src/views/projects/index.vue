@@ -349,7 +349,9 @@ const submitProject = async () => {
     closeProjectFormModal()
     await loadData()
   } catch (error) {
-    message.error(toErrorMessage(error, '保存项目失败'))
+    const errMsg = toErrorMessage(error, '保存项目失败')
+    validationMessage.value = errMsg
+    message.error(errMsg)
   } finally {
     submitting.value = false
   }
