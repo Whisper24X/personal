@@ -1,9 +1,4 @@
----
-name: record-session
-description: "Record work progress after human has tested and committed code"
----
-
-[!] **Prerequisite**: This skill should only be used AFTER the human has tested and committed the code.
+[!] **Prerequisite**: This command should only be used AFTER the human has tested and committed the code.
 
 **AI must NOT execute git commit** - only read history (`git log`, `git status`, `git diff`).
 
