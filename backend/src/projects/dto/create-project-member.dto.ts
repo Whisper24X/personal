@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsUUID } from 'class-validator';
+import { IsNotEmpty, IsString, IsUUID, MaxLength } from 'class-validator';
 import { ProjectMemberRole } from './project-member-role.enum';
 
 export class CreateProjectMemberDto {
@@ -7,7 +7,9 @@ export class CreateProjectMemberDto {
   @IsUUID()
   userId: string;
 
-  @ApiProperty({ enum: ProjectMemberRole, enumName: 'ProjectMemberRole' })
-  @IsEnum(ProjectMemberRole)
-  role: ProjectMemberRole;
+  @ApiProperty({ type: String, default: ProjectMemberRole.developer })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
+  role: string;
 }

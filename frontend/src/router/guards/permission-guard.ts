@@ -1,6 +1,7 @@
 import type { NavigationGuardWithThis } from 'vue-router'
 import { useAccessStore } from '@/stores/modules/access'
 import { STORAGE_KEYS } from '@/types/common/storage'
+import { ROUTE_ACCESS_CONFIG, hasSomeAccess } from '@/constants/access-control'
 
 const normalizeRouteValue = (value: unknown) => {
   if (typeof value === 'string') {
@@ -39,9 +40,12 @@ export const permissionGuard: NavigationGuardWithThis<undefined> = async (to) =>
     accessStore.clear()
   }
 
-  const canAccess = requiredCapabilities.some((capability) => accessStore.hasCapability(capability))
+  const canAccess = hasSomeAccess(requiredCapabilities, (capability) => accessStore.hasCapability(capability))
   if (!canAccess) {
-    if (projectId && accessStore.hasCapability('project.read')) {
+    if (
+      projectId &&
+      hasSomeAccess(ROUTE_ACCESS_CONFIG.dashboard.capabilities, (capability) => accessStore.hasCapability(capability))
+    ) {
       return {
         path: '/dashboard',
         query: { projectId },

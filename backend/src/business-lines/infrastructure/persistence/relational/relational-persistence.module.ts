@@ -12,6 +12,9 @@ import { BusinessLineInvitationRelationalRepository } from './repositories/busin
 import { AgentToolConfigRepository } from '../agent-tool-config.repository';
 import { AgentToolConfigRelationalRepository } from './repositories/agent-tool-config.repository';
 import { AgentToolConfigEntity } from './entities/agent-tool-config.entity';
+import { BusinessLineCustomRoleEntity } from './entities/business-line-custom-role.entity';
+import { BusinessLineCustomRoleRepository } from '../business-line-custom-role.repository';
+import { BusinessLineCustomRoleRelationalRepository } from './repositories/business-line-custom-role.repository';
 
 @Module({
   imports: [
@@ -20,6 +23,7 @@ import { AgentToolConfigEntity } from './entities/agent-tool-config.entity';
       BusinessLineMemberEntity,
       BusinessLineInvitationEntity,
       AgentToolConfigEntity,
+      BusinessLineCustomRoleEntity,
     ]),
   ],
   providers: [
@@ -39,12 +43,17 @@ import { AgentToolConfigEntity } from './entities/agent-tool-config.entity';
       provide: AgentToolConfigRepository,
       useClass: AgentToolConfigRelationalRepository,
     },
+    {
+      provide: BusinessLineCustomRoleRepository,
+      useClass: BusinessLineCustomRoleRelationalRepository,
+    },
   ],
   exports: [
     BusinessLineRepository,
     BusinessLineMemberRepository,
     BusinessLineInvitationRepository,
     AgentToolConfigRepository,
+    BusinessLineCustomRoleRepository,
   ],
 })
 export class RelationalBusinessLinePersistenceModule {}

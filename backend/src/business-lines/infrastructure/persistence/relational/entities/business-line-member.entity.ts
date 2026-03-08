@@ -11,7 +11,6 @@ import {
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
 import { BusinessLineEntity } from './business-line.entity';
-import { BusinessLineMemberRole } from '../../../../dto/business-line-member-role.enum';
 
 @Entity({
   name: 'business_line_members',
@@ -33,13 +32,14 @@ export class BusinessLineMemberEntity extends EntityRelationalHelper {
   @Column({ type: 'uuid', comment: '关联用户ID' })
   userId: string;
 
+  @Index('IDX_business_line_member_role_code')
   @Column({
-    type: 'enum',
-    enum: BusinessLineMemberRole,
-    enumName: 'business_line_member_role_enum',
-    comment: '成员角色',
+    name: 'businessLineRoleCode',
+    type: 'varchar',
+    length: 64,
+    comment: '业务线角色代码',
   })
-  role: BusinessLineMemberRole;
+  role: string;
 
   @ManyToOne(() => BusinessLineEntity, {
     onDelete: 'CASCADE',

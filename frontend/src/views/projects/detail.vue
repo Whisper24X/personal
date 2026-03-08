@@ -9,7 +9,7 @@ import { tasksApi } from '@/api/tasks'
 import { usersApi } from '@/api/users'
 import { workflowApi } from '@/api/workflow'
 import type { ProjectContext } from '@/types/api/project-context'
-import type { Project, ProjectMember } from '@/types/api/projects'
+import type { Project, ProjectCustomRole, ProjectMember } from '@/types/api/projects'
 import type { Task } from '@/types/api/tasks'
 import type { User } from '@/types/api/users'
 import type {
@@ -20,6 +20,7 @@ import type {
 import ConfirmActionModal from '@/components/business/settings/modals/ConfirmActionModal.vue'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
+import { buildProjectRoleAssignmentOptions, resolveRoleAssignmentKey } from '@/constants/access'
 
 defineOptions({
   name: 'ProjectsDetailView',
@@ -87,6 +88,7 @@ const accessStore = useAccessStore()
 
 const project = ref<Project | null>(null)
 const projectMembers = ref<ProjectMember[]>([])
+const projectCustomRoles = ref<ProjectCustomRole[]>([])
 const recentTasks = ref<Task[]>([])
 const projectContext = ref<ProjectContext | null>(null)
 const users = ref<User[]>([])
@@ -146,11 +148,11 @@ const workflowCreateForm = ref<{
   ],
 })
 
-const memberRoleDrafts = ref<Record<string, ProjectMember['role']>>({})
+const memberRoleDrafts = ref<Record<string, string>>({})
 
 const newMemberForm = reactive({
   userId: '',
-  role: 'developer' as ProjectMember['role'],
+  roleKey: '',
 })
 
 const configForm = reactive({
@@ -255,6 +257,20 @@ const canManageProjectMembers = computed(() => {
   return accessStore.hasCapability('project.member.manage')
 })
 
+const projectRoleOptions = computed(() => {
+  return buildProjectRoleAssignmentOptions(projectCustomRoles.value)
+})
+
+const preferredProjectRoleKey = computed(() => {
+  return (
+    projectRoleOptions.value.find((item) => item.source === 'default' && item.role === 'developer')
+      ?.key ??
+    projectRoleOptions.value.find((item) => item.source === 'default')?.key ??
+    projectRoleOptions.value[0]?.key ??
+    ''
+  )
+})
+
 const canViewWorkflow = computed(() => {
   return accessStore.hasCapability('project.workflow.view')
 })
@@ -284,6 +300,16 @@ const availableTabs = computed<TabKey[]>(() => {
 
   return tabs
 })
+
+watch(
+  projectRoleOptions,
+  (options) => {
+    if (!options.some((item) => item.key === newMemberForm.roleKey)) {
+      newMemberForm.roleKey = preferredProjectRoleKey.value
+    }
+  },
+  { immediate: true },
+)
 
 const filteredBusinessLineWorkflowTemplates = computed(() => {
   const keyword = workflowCopyKeyword.value.trim().toLowerCase()
@@ -339,18 +365,13 @@ const normalizeWorkflowNodeInput = (
     return createEmptyWorkflowNodeInput()
   }
 
-  const prompt =
-    typeof input.prompt === 'string'
-      ? input.prompt
-      : ''
+  const prompt = typeof input.prompt === 'string' ? input.prompt : ''
   const cliToolId =
     typeof input.cliToolId === 'string' && isSupportedCliToolId(input.cliToolId)
       ? input.cliToolId
       : ''
   const agentToolConfigId =
-    typeof input.agentToolConfigId === 'string'
-      ? input.agentToolConfigId
-      : ''
+    typeof input.agentToolConfigId === 'string' ? input.agentToolConfigId : ''
 
   return {
     prompt,
@@ -503,7 +524,9 @@ const resetWorkflowCreateForm = () => {
   }
 }
 
-const buildWorkflowFormNodesFromTemplate = (template: WorkflowTemplate): WorkflowTemplateNodeForm[] => {
+const buildWorkflowFormNodesFromTemplate = (
+  template: WorkflowTemplate,
+): WorkflowTemplateNodeForm[] => {
   const sourceNodes = template.nodesJson.length > 0 ? template.nodesJson : [buildWorkflowNode(1)]
 
   return normalizeWorkflowNodes(
@@ -541,7 +564,9 @@ const loadWorkflowConfiguredCliTools = async (businessLineId: string) => {
       groupedConfigs[config.toolId] = [...(groupedConfigs[config.toolId] ?? []), config]
     }
 
-    const configuredTools = SUPPORTED_CLI_TOOLS.filter((tool) => Boolean(groupedConfigs[tool.id]?.length))
+    const configuredTools = SUPPORTED_CLI_TOOLS.filter((tool) =>
+      Boolean(groupedConfigs[tool.id]?.length),
+    )
     workflowNodeConfigsByTool.value = groupedConfigs
     workflowConfiguredCliTools.value = configuredTools
     workflowCreateForm.value.nodes = normalizeWorkflowNodes(
@@ -972,7 +997,9 @@ const submitWorkflowTemplate = async () => {
     await loadWorkflowTemplates(projectId.value)
     closeWorkflowCreateModal()
   } catch (error) {
-    message.error(toErrorMessage(error, isEditing ? '更新项目工作流模板失败' : '创建项目工作流模板失败'))
+    message.error(
+      toErrorMessage(error, isEditing ? '更新项目工作流模板失败' : '创建项目工作流模板失败'),
+    )
   } finally {
     submittingWorkflowTemplate.value = false
   }
@@ -1030,6 +1057,8 @@ const openMemberFormModal = () => {
   }
 
   validationMessage.value = ''
+  newMemberForm.userId = ''
+  newMemberForm.roleKey = preferredProjectRoleKey.value
   memberFormModalOpen.value = true
 }
 
@@ -1064,10 +1093,12 @@ const syncConfigForm = (currentProject: Project) => {
   configForm.description = currentProject.description ?? ''
   configForm.gitUrl = currentProject.gitUrl
   configForm.defaultBranch = currentProject.defaultBranch
-  configForm.agentAdapter = typeof configJson.agentAdapter === 'string' ? configJson.agentAdapter : 'codex'
+  configForm.agentAdapter =
+    typeof configJson.agentAdapter === 'string' ? configJson.agentAdapter : 'codex'
   configForm.agentRunnerEnabled = configJson.agentRunnerEnabled === true
   configForm.gitRuntimeEnabled = configJson.gitRuntimeEnabled === true
-  configForm.repoLocalPath = typeof configJson.repoLocalPath === 'string' ? configJson.repoLocalPath : ''
+  configForm.repoLocalPath =
+    typeof configJson.repoLocalPath === 'string' ? configJson.repoLocalPath : ''
   configForm.repoCacheBaseDir =
     typeof configJson.repoCacheBaseDir === 'string' ? configJson.repoCacheBaseDir : ''
   configForm.worktreeBaseDir =
@@ -1126,18 +1157,24 @@ const loadProjectData = async () => {
     await accessStore.loadContext({ projectId: projectId.value })
 
     const shouldLoadMembers = canManageProjectMembers.value
-    const [projectResponse, memberResponse, taskResponse] = await Promise.all([
+    const [projectResponse, memberResponse, taskResponse, customRoleResponse] = await Promise.all([
       projectsApi.detail(projectId.value),
-      shouldLoadMembers ? projectsApi.listMembers(projectId.value) : Promise.resolve([] as ProjectMember[]),
+      shouldLoadMembers
+        ? projectsApi.listMembers(projectId.value)
+        : Promise.resolve([] as ProjectMember[]),
       tasksApi.list({ projectId: projectId.value, page: 1, limit: 20 }),
+      shouldLoadMembers
+        ? projectsApi.listCustomRoles(projectId.value)
+        : Promise.resolve([] as ProjectCustomRole[]),
     ])
 
     project.value = projectResponse
     projectMembers.value = memberResponse
     recentTasks.value = taskResponse.data
+    projectCustomRoles.value = customRoleResponse
 
-    memberRoleDrafts.value = memberResponse.reduce<Record<string, ProjectMember['role']>>((result, member) => {
-      result[member.userId] = member.role
+    memberRoleDrafts.value = memberResponse.reduce<Record<string, string>>((result, member) => {
+      result[member.userId] = resolveRoleAssignmentKey(member.role, projectRoleOptions.value)
       return result
     }, {})
 
@@ -1157,6 +1194,7 @@ const loadProjectData = async () => {
 
     workflowTemplates.value = []
     businessLineWorkflowTemplates.value = []
+    projectCustomRoles.value = shouldLoadMembers ? projectCustomRoles.value : []
     closeWorkflowAddMenu()
     closeWorkflowCopyModal()
   } catch (error) {
@@ -1187,13 +1225,19 @@ const createMember = async () => {
   validationMessage.value = ''
 
   try {
+    const selectedRole = projectRoleOptions.value.find((item) => item.key === newMemberForm.roleKey)
+    if (!selectedRole) {
+      validationMessage.value = '请选择角色'
+      return
+    }
+
     await projectsApi.addMember(projectId.value, {
       userId: normalizedUserId,
-      role: newMemberForm.role,
+      role: selectedRole.role,
     })
 
     newMemberForm.userId = ''
-    newMemberForm.role = 'developer'
+    newMemberForm.roleKey = preferredProjectRoleKey.value
     closeMemberFormModal()
     await loadProjectData()
     message.success('添加项目成员成功')
@@ -1214,8 +1258,14 @@ const updateMemberRole = async (member: ProjectMember) => {
     return
   }
 
-  const nextRole = memberRoleDrafts.value[member.userId]
-  if (!nextRole || nextRole === member.role) {
+  const nextRoleKey = memberRoleDrafts.value[member.userId]
+  const selectedRole = projectRoleOptions.value.find((item) => item.key === nextRoleKey)
+  if (!selectedRole) {
+    return
+  }
+
+  const currentRoleKey = resolveRoleAssignmentKey(member.role, projectRoleOptions.value)
+  if (nextRoleKey === currentRoleKey) {
     return
   }
 
@@ -1223,7 +1273,7 @@ const updateMemberRole = async (member: ProjectMember) => {
 
   try {
     await projectsApi.updateMember(projectId.value, member.userId, {
-      role: nextRole,
+      role: selectedRole.role,
     })
 
     await loadProjectData()
@@ -1313,11 +1363,15 @@ const saveConfig = async () => {
       priority: configForm.priority.trim() || 'normal',
       agentRunnerEnabled: configForm.agentRunnerEnabled,
       gitRuntimeEnabled: configForm.gitRuntimeEnabled,
-      ...(configForm.repoLocalPath.trim() ? { repoLocalPath: configForm.repoLocalPath.trim() } : {}),
+      ...(configForm.repoLocalPath.trim()
+        ? { repoLocalPath: configForm.repoLocalPath.trim() }
+        : {}),
       ...(configForm.repoCacheBaseDir.trim()
         ? { repoCacheBaseDir: configForm.repoCacheBaseDir.trim() }
         : {}),
-      ...(configForm.worktreeBaseDir.trim() ? { worktreeBaseDir: configForm.worktreeBaseDir.trim() } : {}),
+      ...(configForm.worktreeBaseDir.trim()
+        ? { worktreeBaseDir: configForm.worktreeBaseDir.trim() }
+        : {}),
       agentRunner: {
         ...(configForm.runnerCommand.trim() ? { command: configForm.runnerCommand.trim() } : {}),
         ...(runnerArgs.length ? { args: runnerArgs } : {}),
@@ -1411,27 +1465,31 @@ onBeforeUnmount(() => {
   <div class="space-y-6 fade-up">
     <section v-if="!workflowOnlyMode" class="space-y-2">
       <div class="flex items-center gap-2 text-xs text-muted-foreground">
-        <RouterLink to="/projects" class="hover:text-foreground hover:underline">项目列表</RouterLink>
+        <RouterLink to="/projects" class="hover:text-foreground hover:underline"
+          >项目列表</RouterLink
+        >
         <span>/</span>
         <span class="font-mono">{{ projectId }}</span>
       </div>
 
       <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div class="space-y-1">
-          <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">{{ project?.name ?? '项目详情' }}</h1>
+          <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">
+            {{ project?.name ?? '项目详情' }}
+          </h1>
           <p class="text-sm text-muted-foreground">
             <span class="font-mono text-xs">{{ project?.gitUrl ?? '-' }}</span>
             <span class="mx-2">•</span>
-            <span class="rounded-full border border-border bg-background px-2 py-1 text-xs font-semibold text-muted-foreground">
+            <span
+              class="rounded-full border border-border bg-background px-2 py-1 text-xs font-semibold text-muted-foreground"
+            >
               {{ project?.defaultBranch ?? '-' }}
             </span>
             <span class="mx-2">•</span>
             <span>更新于 {{ formatDate(project?.updatedAt) }}</span>
           </p>
         </div>
-
       </div>
-
     </section>
 
     <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
@@ -1463,7 +1521,7 @@ onBeforeUnmount(() => {
           type="button"
           @click="tab = 'members'"
         >
-          成员管理
+          成员
         </button>
         <button
           v-if="canViewWorkflow"
@@ -1528,27 +1586,36 @@ onBeforeUnmount(() => {
             >
               <div>
                 <p class="font-semibold">{{ task.title }}</p>
-                <p class="mt-1 text-xs text-muted-foreground">{{ task.id }} · {{ formatDate(task.updatedAt) }}</p>
+                <p class="mt-1 text-xs text-muted-foreground">
+                  {{ task.id }} · {{ formatDate(task.updatedAt) }}
+                </p>
               </div>
-              <span class="inline-flex rounded-full px-2 py-1 text-xs font-semibold" :class="statusClassMap[task.status]">
+              <span
+                class="inline-flex rounded-full px-2 py-1 text-xs font-semibold"
+                :class="statusClassMap[task.status]"
+              >
                 {{ statusLabelMap[task.status] }}
               </span>
             </RouterLink>
 
-            <div v-if="recentTasks.length === 0" class="rounded-xl border border-border bg-background/70 px-4 py-3 text-sm text-muted-foreground">
+            <div
+              v-if="recentTasks.length === 0"
+              class="rounded-xl border border-border bg-background/70 px-4 py-3 text-sm text-muted-foreground"
+            >
               暂无任务，点击右上角“新建任务”开始。
             </div>
           </div>
         </div>
       </section>
 
-
       <section v-else-if="!workflowOnlyMode && tab === 'context'" class="space-y-4">
         <div class="panel-card p-5">
           <div class="flex items-start justify-between gap-3">
             <div>
               <p class="text-sm font-semibold">项目上下文</p>
-              <p class="mt-1 text-xs text-muted-foreground">自动读取 README / docs / spec 目录内容，供任务执行时参考。</p>
+              <p class="mt-1 text-xs text-muted-foreground">
+                自动读取 README / docs / spec 目录内容，供任务执行时参考。
+              </p>
             </div>
             <button
               class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition disabled:cursor-not-allowed disabled:opacity-60"
@@ -1560,13 +1627,17 @@ onBeforeUnmount(() => {
             </button>
           </div>
 
-          <div v-if="contextLoading" class="mt-4 text-sm text-muted-foreground">上下文加载中...</div>
+          <div v-if="contextLoading" class="mt-4 text-sm text-muted-foreground">
+            上下文加载中...
+          </div>
 
           <template v-else-if="projectContext">
             <div class="mt-4 grid gap-3 md:grid-cols-3">
               <div class="rounded-lg border border-border bg-background/70 px-4 py-3">
                 <p class="text-xs text-muted-foreground">来源</p>
-                <p class="mt-1 text-sm font-semibold">{{ contextSourceLabelMap[projectContext.source] }}</p>
+                <p class="mt-1 text-sm font-semibold">
+                  {{ contextSourceLabelMap[projectContext.source] }}
+                </p>
               </div>
               <div class="rounded-lg border border-border bg-background/70 px-4 py-3">
                 <p class="text-xs text-muted-foreground">文档数量</p>
@@ -1574,7 +1645,9 @@ onBeforeUnmount(() => {
               </div>
               <div class="rounded-lg border border-border bg-background/70 px-4 py-3">
                 <p class="text-xs text-muted-foreground">快照时间</p>
-                <p class="mt-1 text-sm font-semibold">{{ formatDate(projectContext.generatedAt) }}</p>
+                <p class="mt-1 text-sm font-semibold">
+                  {{ formatDate(projectContext.generatedAt) }}
+                </p>
               </div>
             </div>
 
@@ -1599,10 +1672,15 @@ onBeforeUnmount(() => {
                     <p class="text-sm font-semibold">{{ document.title }}</p>
                     <p class="mt-1 font-mono text-xs text-muted-foreground">{{ document.path }}</p>
                   </div>
-                  <span class="text-xs text-muted-foreground">{{ formatContextLength(document.length) }}</span>
+                  <span class="text-xs text-muted-foreground">{{
+                    formatContextLength(document.length)
+                  }}</span>
                 </div>
 
-                <pre class="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground">{{ document.preview }}</pre>
+                <pre
+                  class="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground"
+                  >{{ document.preview }}</pre
+                >
               </article>
 
               <div
@@ -1616,13 +1694,16 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <section v-else-if="!workflowOnlyMode && tab === 'members' && canManageProjectMembers" class="space-y-4">
-        <div class="panel-card p-5">
+      <section
+        v-else-if="!workflowOnlyMode && tab === 'members' && canManageProjectMembers"
+        class="space-y-4"
+      >
+        <div class="panel-card p-5 space-y-4">
           <div class="flex items-center justify-between gap-3">
             <div>
               <p class="text-sm font-semibold">成员管理</p>
               <p class="mt-1 text-xs text-muted-foreground">
-                新增成员已迁移为弹窗表单，支持输入用户 ID 或从已加载用户列表中选择。
+                新增成员支持直接分配默认角色或项目自定义角色。
               </p>
             </div>
             <button
@@ -1646,11 +1727,19 @@ onBeforeUnmount(() => {
               </tr>
             </thead>
             <tbody class="divide-y divide-border">
-              <tr v-for="member in projectMembers" :key="member.id" class="transition hover:bg-background/70">
+              <tr
+                v-for="member in projectMembers"
+                :key="member.id"
+                class="transition hover:bg-background/70"
+              >
                 <td class="px-5 py-4">
                   <p class="text-sm font-semibold">{{ displayUserName(member.userId) }}</p>
-                  <p class="mt-1 text-xs text-muted-foreground">{{ displayUserMeta(member.userId) }}</p>
-                  <p class="mt-1 font-mono text-[11px] text-muted-foreground">{{ member.userId }}</p>
+                  <p class="mt-1 text-xs text-muted-foreground">
+                    {{ displayUserMeta(member.userId) }}
+                  </p>
+                  <p class="mt-1 font-mono text-[11px] text-muted-foreground">
+                    {{ member.userId }}
+                  </p>
                 </td>
                 <td class="px-5 py-4">
                   <select
@@ -1658,11 +1747,38 @@ onBeforeUnmount(() => {
                     class="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
                     :disabled="!canManageProjectMembers || updatingMemberId === member.userId"
                   >
-                    <option value="owner">owner</option>
-                    <option value="maintainer">maintainer</option>
-                    <option value="developer">developer</option>
-                    <option value="viewer">viewer</option>
+                    <optgroup
+                      v-if="projectRoleOptions.some((item) => item.source === 'default')"
+                      label="默认角色"
+                    >
+                      <option
+                        v-for="option in projectRoleOptions.filter(
+                          (item) => item.source === 'default',
+                        )"
+                        :key="option.key"
+                        :value="option.key"
+                      >
+                        {{ option.label }}
+                      </option>
+                    </optgroup>
+                    <optgroup
+                      v-if="projectRoleOptions.some((item) => item.source === 'custom')"
+                      label="自定义角色"
+                    >
+                      <option
+                        v-for="option in projectRoleOptions.filter(
+                          (item) => item.source === 'custom',
+                        )"
+                        :key="option.key"
+                        :value="option.key"
+                      >
+                        {{ option.label }}
+                      </option>
+                    </optgroup>
                   </select>
+                  <p v-if="member.customRoleName" class="mt-1 text-[11px] text-muted-foreground">
+                    当前：{{ member.customRoleName }}
+                  </p>
                 </td>
                 <td class="px-5 py-4">
                   <div class="flex justify-end gap-2">
@@ -1689,14 +1805,19 @@ onBeforeUnmount(() => {
               </tr>
 
               <tr v-if="projectMembers.length === 0">
-                <td class="px-5 py-6 text-sm text-muted-foreground" colspan="3">暂无成员，请先添加。</td>
+                <td class="px-5 py-6 text-sm text-muted-foreground" colspan="3">
+                  暂无成员，请先添加。
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
       </section>
 
-      <section v-else-if="(workflowOnlyMode || tab === 'workflow') && canViewWorkflow" class="space-y-4">
+      <section
+        v-else-if="(workflowOnlyMode || tab === 'workflow') && canViewWorkflow"
+        class="space-y-4"
+      >
         <article class="panel-card p-5">
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex flex-1 flex-wrap items-center gap-2">
@@ -1764,9 +1885,13 @@ onBeforeUnmount(() => {
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
               <p class="text-sm font-semibold">工作流列表</p>
-              <p class="mt-1 text-xs text-muted-foreground">仅展示当前项目工作流模板，支持增删改查。</p>
+              <p class="mt-1 text-xs text-muted-foreground">
+                仅展示当前项目工作流模板，支持增删改查。
+              </p>
             </div>
-            <span class="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">
+            <span
+              class="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground"
+            >
               {{ workflowTemplates.length }} 项
             </span>
           </div>
@@ -1850,7 +1975,9 @@ onBeforeUnmount(() => {
             </button>
           </div>
 
-          <dl class="mt-4 grid gap-3 rounded-xl border border-border bg-background/70 p-4 text-xs md:grid-cols-2">
+          <dl
+            class="mt-4 grid gap-3 rounded-xl border border-border bg-background/70 p-4 text-xs md:grid-cols-2"
+          >
             <div>
               <dt class="text-muted-foreground">项目名称</dt>
               <dd class="mt-1 font-semibold text-foreground">{{ configForm.name || '-' }}</dd>
@@ -1909,7 +2036,9 @@ onBeforeUnmount(() => {
         aria-labelledby="project-workflow-create-modal-title"
         @click.self="closeWorkflowCreateModal"
       >
-        <section class="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+        <section
+          class="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+        >
           <header class="flex items-center justify-between border-b border-border px-4 py-3">
             <h2 id="project-workflow-create-modal-title" class="text-sm font-semibold">
               {{ workflowTemplateModalTitle }}
@@ -1924,13 +2053,14 @@ onBeforeUnmount(() => {
             </button>
           </header>
 
-          <form class="max-h-[calc(92vh-56px)] space-y-4 overflow-auto px-4 py-4" @submit.prevent="submitWorkflowTemplate">
+          <form
+            class="max-h-[calc(92vh-56px)] space-y-4 overflow-auto px-4 py-4"
+            @submit.prevent="submitWorkflowTemplate"
+          >
             <section class="space-y-3 rounded-xl border border-border bg-background/60 p-3">
               <div>
                 <p class="text-xs font-semibold text-muted-foreground">模板信息</p>
-                <p class="mt-1 text-[11px] text-muted-foreground">
-                  可配置当前项目的工作流模板。
-                </p>
+                <p class="mt-1 text-[11px] text-muted-foreground">可配置当前项目的工作流模板。</p>
               </div>
               <div class="grid gap-3 md:grid-cols-2">
                 <label class="space-y-1">
@@ -1958,7 +2088,9 @@ onBeforeUnmount(() => {
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p class="text-xs font-semibold text-muted-foreground">节点定义</p>
-                  <p class="mt-1 text-[11px] text-muted-foreground">每个节点可配置 Prompt、Agent CLI 和配置。</p>
+                  <p class="mt-1 text-[11px] text-muted-foreground">
+                    每个节点可配置 Prompt、Agent CLI 和配置。
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -1977,7 +2109,9 @@ onBeforeUnmount(() => {
                 >
                   <div class="flex flex-wrap items-start justify-between gap-2">
                     <div>
-                      <p class="text-[11px] font-semibold text-muted-foreground">节点 {{ index + 1 }}</p>
+                      <p class="text-[11px] font-semibold text-muted-foreground">
+                        节点 {{ index + 1 }}
+                      </p>
                     </div>
                     <div class="flex items-center gap-2">
                       <label
@@ -2020,18 +2154,28 @@ onBeforeUnmount(() => {
                       <span class="text-[11px] text-muted-foreground">Agent CLI</span>
                       <select
                         v-model="node.input.cliToolId"
-                        :disabled="loadingWorkflowConfiguredCliTools || workflowConfiguredCliTools.length === 0"
+                        :disabled="
+                          loadingWorkflowConfiguredCliTools ||
+                          workflowConfiguredCliTools.length === 0
+                        "
                         class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                         @change="void handleWorkflowNodeCliToolChange(node)"
                       >
                         <option
-                          v-if="!loadingWorkflowConfiguredCliTools && workflowConfiguredCliTools.length === 0"
+                          v-if="
+                            !loadingWorkflowConfiguredCliTools &&
+                            workflowConfiguredCliTools.length === 0
+                          "
                           value=""
                           disabled
                         >
                           当前业务线暂无已配置 Agent CLI
                         </option>
-                        <option v-for="tool in workflowConfiguredCliTools" :key="tool.id" :value="tool.id">
+                        <option
+                          v-for="tool in workflowConfiguredCliTools"
+                          :key="tool.id"
+                          :value="tool.id"
+                        >
                           {{ tool.label }}
                         </option>
                       </select>
@@ -2041,11 +2185,15 @@ onBeforeUnmount(() => {
                       <span class="text-[11px] text-muted-foreground">Agent CLI 配置</span>
                       <select
                         v-model="node.input.agentToolConfigId"
-                        :disabled="!node.input.cliToolId || isWorkflowNodeConfigLoading(node.input.cliToolId)"
+                        :disabled="
+                          !node.input.cliToolId || isWorkflowNodeConfigLoading(node.input.cliToolId)
+                        "
                         class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <option value="">
-                          {{ !node.input.cliToolId ? '请先选择 Agent CLI' : '请选择 Agent CLI 配置' }}
+                          {{
+                            !node.input.cliToolId ? '请先选择 Agent CLI' : '请选择 Agent CLI 配置'
+                          }}
                         </option>
                         <option
                           v-for="config in getWorkflowNodeConfigs(node.input.cliToolId)"
@@ -2078,7 +2226,11 @@ onBeforeUnmount(() => {
                 class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
                 :disabled="submittingWorkflowTemplate || !projectId"
               >
-                {{ submittingWorkflowTemplate ? workflowTemplateSubmitLoadingText : workflowTemplateSubmitIdleText }}
+                {{
+                  submittingWorkflowTemplate
+                    ? workflowTemplateSubmitLoadingText
+                    : workflowTemplateSubmitIdleText
+                }}
               </button>
             </div>
           </form>
@@ -2138,7 +2290,10 @@ onBeforeUnmount(() => {
               placeholder="搜索业务线工作流模板"
             />
 
-            <p v-if="loadingBusinessLineWorkflowTemplates" class="mt-3 text-sm text-muted-foreground">
+            <p
+              v-if="loadingBusinessLineWorkflowTemplates"
+              class="mt-3 text-sm text-muted-foreground"
+            >
               加载中...
             </p>
             <p v-else-if="copyWorkflowErrorMessage" class="mt-3 text-sm text-destructive">
@@ -2167,7 +2322,9 @@ onBeforeUnmount(() => {
                     :disabled="copyingBusinessLineWorkflowTemplateId === template.id"
                     @click="submitCopyBusinessLineWorkflowTemplate(template)"
                   >
-                    {{ copyingBusinessLineWorkflowTemplateId === template.id ? '复制中...' : '复制' }}
+                    {{
+                      copyingBusinessLineWorkflowTemplateId === template.id ? '复制中...' : '复制'
+                    }}
                   </button>
                 </div>
               </article>
@@ -2193,7 +2350,9 @@ onBeforeUnmount(() => {
         aria-labelledby="project-member-form-modal-title"
         @click.self="closeMemberFormModal"
       >
-        <section class="w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+        <section
+          class="w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+        >
           <header class="flex items-center justify-between border-b border-border px-4 py-3">
             <h2 id="project-member-form-modal-title" class="text-sm font-semibold">添加成员</h2>
             <button
@@ -2206,7 +2365,10 @@ onBeforeUnmount(() => {
             </button>
           </header>
 
-          <form class="grid gap-3 px-4 py-4 md:grid-cols-[1fr_200px]" @submit.prevent="createMember">
+          <form
+            class="grid gap-3 px-4 py-4 md:grid-cols-[1fr_200px]"
+            @submit.prevent="createMember"
+          >
             <input
               v-model="newMemberForm.userId"
               class="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
@@ -2220,13 +2382,33 @@ onBeforeUnmount(() => {
               </option>
             </datalist>
             <select
-              v-model="newMemberForm.role"
+              v-model="newMemberForm.roleKey"
               class="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
             >
-              <option value="owner">owner</option>
-              <option value="maintainer">maintainer</option>
-              <option value="developer">developer</option>
-              <option value="viewer">viewer</option>
+              <optgroup
+                v-if="projectRoleOptions.some((item) => item.source === 'default')"
+                label="默认角色"
+              >
+                <option
+                  v-for="option in projectRoleOptions.filter((item) => item.source === 'default')"
+                  :key="option.key"
+                  :value="option.key"
+                >
+                  {{ option.label }}
+                </option>
+              </optgroup>
+              <optgroup
+                v-if="projectRoleOptions.some((item) => item.source === 'custom')"
+                label="自定义角色"
+              >
+                <option
+                  v-for="option in projectRoleOptions.filter((item) => item.source === 'custom')"
+                  :key="option.key"
+                  :value="option.key"
+                >
+                  {{ option.label }}
+                </option>
+              </optgroup>
             </select>
             <div class="md:col-span-2 flex justify-end gap-2">
               <button
@@ -2258,7 +2440,9 @@ onBeforeUnmount(() => {
         aria-labelledby="project-config-form-modal-title"
         @click.self="closeConfigFormModal"
       >
-        <section class="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+        <section
+          class="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+        >
           <header class="flex items-center justify-between border-b border-border px-4 py-3">
             <h2 id="project-config-form-modal-title" class="text-sm font-semibold">编辑项目配置</h2>
             <button
@@ -2271,7 +2455,10 @@ onBeforeUnmount(() => {
             </button>
           </header>
 
-          <form class="grid max-h-[calc(92vh-56px)] gap-4 overflow-auto px-4 py-4 md:grid-cols-2" @submit.prevent="saveConfig">
+          <form
+            class="grid max-h-[calc(92vh-56px)] gap-4 overflow-auto px-4 py-4 md:grid-cols-2"
+            @submit.prevent="saveConfig"
+          >
             <label class="space-y-1">
               <span class="text-xs font-semibold text-muted-foreground">项目名称</span>
               <input
@@ -2351,7 +2538,9 @@ onBeforeUnmount(() => {
             </label>
 
             <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">Skills 白名单（逗号分隔）</span>
+              <span class="text-xs font-semibold text-muted-foreground"
+                >Skills 白名单（逗号分隔）</span
+              >
               <input
                 v-model="configForm.skills"
                 class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
@@ -2361,7 +2550,9 @@ onBeforeUnmount(() => {
             </label>
 
             <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">MCP 白名单（逗号分隔）</span>
+              <span class="text-xs font-semibold text-muted-foreground"
+                >MCP 白名单（逗号分隔）</span
+              >
               <input
                 v-model="configForm.mcp"
                 class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
@@ -2391,7 +2582,9 @@ onBeforeUnmount(() => {
             </label>
 
             <label class="space-y-1 md:col-span-2">
-              <span class="text-xs font-semibold text-muted-foreground">Worktree 基础目录（可选）</span>
+              <span class="text-xs font-semibold text-muted-foreground"
+                >Worktree 基础目录（可选）</span
+              >
               <input
                 v-model="configForm.worktreeBaseDir"
                 class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
@@ -2411,7 +2604,9 @@ onBeforeUnmount(() => {
             </label>
 
             <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">Runner 参数（逗号分隔）</span>
+              <span class="text-xs font-semibold text-muted-foreground"
+                >Runner 参数（逗号分隔）</span
+              >
               <input
                 v-model="configForm.runnerArgs"
                 class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"

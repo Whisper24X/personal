@@ -12,6 +12,7 @@ import WorkflowCard from '@/components/tasks/detail/WorkflowCard.vue'
 import { openSseStream } from '@/api/http'
 import { tasksApi } from '@/api/tasks'
 import type { Task, TaskDetail, TaskLog, TaskMessage, TaskNode } from '@/types/api/tasks'
+import { BUTTON_ACCESS_CONFIG, hasSomeAccess } from '@/constants/access-control'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
 defineOptions({
@@ -19,6 +20,10 @@ defineOptions({
 })
 
 const route = useRoute()
+const hasButtonAccess = (buttonKey: keyof typeof BUTTON_ACCESS_CONFIG) => {
+  return hasSomeAccess(BUTTON_ACCESS_CONFIG[buttonKey].capabilities, (capability) => accessStore.hasCapability(capability))
+}
+
 const router = useRouter()
 const accessStore = useAccessStore()
 const taskId = computed(() => String(route.params.id ?? ''))
@@ -140,7 +145,7 @@ const taskModeLabel = computed(() => {
 })
 
 const canExecute = computed(() => {
-  if (!task.value || !accessStore.hasCapability('project.task.execute')) {
+  if (!task.value || !hasButtonAccess('executeTask')) {
     return false
   }
 
@@ -148,23 +153,23 @@ const canExecute = computed(() => {
 })
 
 const canCancel = computed(() => {
-  return accessStore.hasCapability('project.task.cancel') && task.value?.status === 'in_progress'
+  return hasButtonAccess('cancelTask') && task.value?.status === 'in_progress'
 })
 
 const canCleanupWorktree = computed(() => {
-  return accessStore.hasCapability('project.task.create') && Boolean(task.value?.gitWorktree)
+  return hasButtonAccess('editTask') && Boolean(task.value?.gitWorktree)
 })
 
 const canEdit = computed(() => {
-  return accessStore.hasCapability('project.task.create') && task.value?.status === 'todo'
+  return hasButtonAccess('editTask') && task.value?.status === 'todo'
 })
 
 const canRemove = computed(() => {
-  return accessStore.hasCapability('project.task.create')
+  return hasButtonAccess('deleteTask')
 })
 
 const canManageReview = computed(() => {
-  return accessStore.hasCapability('project.task.execute')
+  return hasButtonAccess('executeTask')
 })
 
 const executionMessages = computed(() => {
@@ -180,7 +185,7 @@ const executionMessages = computed(() => {
 })
 
 const replyDisabled = computed(() => {
-  return loading.value || actionLoading.value || !task.value || !accessStore.hasCapability('project.task.create')
+  return loading.value || actionLoading.value || !task.value || !hasButtonAccess('replyTask')
 })
 
 const replyPlaceholder = computed(() => {
@@ -488,7 +493,7 @@ const approveNode = async (node: TaskNode) => {
 }
 
 const handleReply = async (text: string) => {
-  if (!taskId.value || !accessStore.hasCapability('project.task.create')) {
+  if (!taskId.value || !hasButtonAccess('editTask')) {
     return
   }
 
@@ -526,7 +531,7 @@ const openEdit = () => {
 }
 
 const saveEdit = async (payload: TaskEditFormValue) => {
-  if (!taskId.value || !accessStore.hasCapability('project.task.create')) {
+  if (!taskId.value || !hasButtonAccess('editTask')) {
     return
   }
 

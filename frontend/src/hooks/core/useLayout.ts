@@ -13,6 +13,12 @@ import {
 } from '@/types/common/settings'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import type { Project } from '@/types/api/projects'
+import {
+  BUTTON_ACCESS_CONFIG,
+  PROJECT_MENU_ACCESS_CONFIG,
+  hasSomeAccess,
+  type ProjectMenuId,
+} from '@/constants/access-control'
 import { applyStoredUiPreferences } from '@/utils/ui-preferences'
 import { fetchAllPages } from '@/utils/pagination'
 
@@ -44,10 +50,10 @@ type BusinessLine = {
 }
 
 export type MenuItem = {
-  id: 'dashboard' | 'workflow' | 'tasks' | 'kanban' | 'automations' | 'skills' | 'mcp' | 'git'
+  id: ProjectMenuId
   label: string
   to: string
-  capability?: string
+  capabilities?: readonly string[]
 }
 
 const normalizeQueryValue = (queryValue: unknown) => {
@@ -154,20 +160,16 @@ export const useLayout = () => {
     localStorage.removeItem(STORAGE_KEYS.lastSelectedProjectId)
   }
 
-  const baseMenuItems: MenuItem[] = [
-    { id: 'dashboard', label: '仪表盘', to: '/dashboard', capability: 'project.read' },
-    { id: 'tasks', label: '任务', to: '/tasks', capability: 'project.task.read' },
-    { id: 'kanban', label: '看板', to: '/kanban', capability: 'project.kanban.view' },
-    { id: 'automations', label: '自动化', to: '/automations', capability: 'project.read' },
-    { id: 'workflow', label: '工作流', to: '/projects/workflows', capability: 'project.workflow.view' },
-    { id: 'skills', label: 'Skills', to: '/skills', capability: 'project.read' },
-    { id: 'mcp', label: 'MCP', to: '/mcp', capability: 'project.read' },
-    { id: 'git', label: 'Git', to: '/git', capability: 'project.read' },
-  ]
+  const baseMenuItems: MenuItem[] = PROJECT_MENU_ACCESS_CONFIG.map((item) => ({
+    id: item.id,
+    label: item.label,
+    to: item.to,
+    capabilities: [...item.capabilities],
+  }))
 
   const menuItems = computed<MenuItem[]>(() => {
     return baseMenuItems.filter((item) => {
-      return item.capability ? accessStore.hasCapability(item.capability) : true
+      return hasSomeAccess(item.capabilities, (capability) => accessStore.hasCapability(capability))
     })
   })
 
@@ -525,7 +527,10 @@ export const useLayout = () => {
   }
 
   const canCreateBusinessLine = computed(() => {
-    return accessStore.hasCapability('businessLine.create')
+    return hasSomeAccess(
+      BUTTON_ACCESS_CONFIG.createBusinessLine.capabilities,
+      (capability) => accessStore.hasCapability(capability),
+    )
   })
 
   const refreshLayoutData = async () => {

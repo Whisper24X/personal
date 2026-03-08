@@ -17,8 +17,8 @@ export type CurrentAccessResponse = {
   currentContext: {
     businessLineId?: string
     projectId?: string
-    businessRole?: BusinessLineRole | null
-    projectRole?: ProjectRole | null
+    businessRole?: string | null
+    projectRole?: string | null
   }
   capabilities: string[]
   visibility: {

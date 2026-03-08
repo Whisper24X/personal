@@ -6,5 +6,6 @@ export type AppRouteMeta = {
   contentMode?: 'container' | 'full'
   requiresAuth?: boolean
   permissions?: UserPermission[]
+  capabilities?: string[]
   keepAlive?: boolean
 }

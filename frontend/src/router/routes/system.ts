@@ -1,6 +1,7 @@
 import type { AppRouteRecord } from '@/types/router/route'
 import { appSettings } from '@/config/setting'
 import { SETTINGS_QUERY_KEY } from '@/types/common/settings'
+import { buildRouteAccessMeta } from '@/constants/access-control'
 
 const toDashboardSettings = (section: string) => ({
   path: '/dashboard',
@@ -25,115 +26,71 @@ export const systemRoutes: AppRouteRecord[] = [
   {
     path: '/',
     redirect: appSettings.defaultRoute,
-    meta: {
-      title: '仪表盘',
-      requiresAuth: true,
-      capabilities: ['project.read'],
-    },
+    meta: buildRouteAccessMeta('rootRedirect'),
   },
   {
     path: '/home',
     name: 'home',
     component: () => import('@/views/home/index.vue'),
-    meta: {
-      title: '首页',
-      requiresAuth: true,
-    },
+    meta: buildRouteAccessMeta('home'),
   },
   {
     path: '/dashboard',
     name: 'dashboard',
     component: () => import('@/views/dashboard/index.vue'),
-    meta: {
-      title: '仪表盘',
-      requiresAuth: true,
-      capabilities: ['project.read'],
-    },
+    meta: buildRouteAccessMeta('dashboard'),
   },
   {
     path: '/kanban',
     name: 'kanban',
     component: () => import('@/views/kanban/index.vue'),
-    meta: {
-      title: '看板',
-      requiresAuth: true,
-      capabilities: ['project.kanban.view'],
-    },
+    meta: buildRouteAccessMeta('kanban'),
   },
   {
     path: '/skills',
     name: 'skills',
     component: () => import('@/views/skills/index.vue'),
-    meta: {
-      title: 'Skills',
-      requiresAuth: true,
-      capabilities: ['project.read'],
-    },
+    meta: buildRouteAccessMeta('skills'),
   },
   {
     path: '/mcp',
     name: 'mcp',
     component: () => import('@/views/mcp/index.vue'),
-    meta: {
-      title: 'MCP',
-      requiresAuth: true,
-      capabilities: ['project.read'],
-    },
+    meta: buildRouteAccessMeta('mcp'),
   },
   {
     path: '/automations',
     name: 'automations',
     component: () => import('@/views/automations/index.vue'),
-    meta: {
-      title: '自动化',
-      requiresAuth: true,
-      capabilities: ['project.read'],
-    },
+    meta: buildRouteAccessMeta('automations'),
   },
   {
     path: '/git',
     name: 'git',
     component: () => import('@/views/git/index.vue'),
-    meta: {
-      title: 'Git',
-      requiresAuth: true,
-      capabilities: ['project.read'],
-    },
+    meta: buildRouteAccessMeta('git'),
   },
   {
     path: '/business-lines/invite',
     name: 'business-line-invite',
     component: () => import('@/views/business-lines/invite.vue'),
-    meta: {
-      title: '业务线邀请',
-      requiresAuth: true,
-    },
+    meta: buildRouteAccessMeta('businessLineInvite'),
   },
   {
     path: '/business-lines',
     redirect: toDashboardSettings('business-lines'),
-    meta: {
-      title: '业务线',
-      requiresAuth: true,
-    },
+    meta: buildRouteAccessMeta('businessLines'),
   },
   {
     path: '/projects',
     redirect: toDashboardSettings('projects'),
-    meta: {
-      title: '项目列表',
-      requiresAuth: true,
-    },
+    meta: buildRouteAccessMeta('projects'),
   },
   {
     path: '/projects/workflows',
     name: 'project-workflows',
     component: () => import('@/views/projects/detail.vue'),
-    meta: {
-      title: '项目工作流',
-      requiresAuth: true,
-      capabilities: ['project.workflow.view'],
-    },
+    meta: buildRouteAccessMeta('projectWorkflows'),
   },
   {
     path: '/projects/:id',
@@ -143,11 +100,7 @@ export const systemRoutes: AppRouteRecord[] = [
         projectId: resolveProjectId(to.params.id),
       },
     }),
-    meta: {
-      title: '项目',
-      requiresAuth: true,
-      capabilities: ['project.read'],
-    },
+    meta: buildRouteAccessMeta('projectDetail'),
   },
   {
     path: '/projects/:id/workflows',
@@ -158,47 +111,30 @@ export const systemRoutes: AppRouteRecord[] = [
         projectId: resolveProjectId(to.params.id),
       },
     }),
-    meta: {
-      title: '项目工作流',
-      requiresAuth: true,
-      capabilities: ['project.workflow.view'],
-    },
+    meta: buildRouteAccessMeta('projectWorkflowsById'),
   },
   {
     path: '/tasks',
     name: 'tasks',
     component: () => import('@/views/tasks/index.vue'),
-    meta: {
-      title: '任务',
-      requiresAuth: true,
-      capabilities: ['project.task.read'],
-    },
+    meta: buildRouteAccessMeta('tasks'),
   },
   {
     path: '/task-detail/:id',
     name: 'task-detail',
     component: () => import('@/views/tasks/detail.vue'),
-    meta: {
-      title: '任务详情',
+    meta: buildRouteAccessMeta('taskDetail', {
       contentMode: 'full',
-      requiresAuth: true,
-      capabilities: ['project.task.read'],
-    },
+    }),
   },
   {
     path: '/users',
     redirect: toDashboardSettings('users'),
-    meta: {
-      title: '用户管理',
-      requiresAuth: true,
-    },
+    meta: buildRouteAccessMeta('users'),
   },
   {
     path: '/settings',
     redirect: toDashboardSettings('account'),
-    meta: {
-      title: '设置',
-      requiresAuth: true,
-    },
+    meta: buildRouteAccessMeta('settings'),
   },
 ]

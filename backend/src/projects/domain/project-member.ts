@@ -1,5 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { ProjectMemberRole } from '../dto/project-member-role.enum';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ProjectMember {
   @ApiProperty({ type: String })
@@ -11,8 +10,11 @@ export class ProjectMember {
   @ApiProperty({ type: String })
   userId: string;
 
-  @ApiProperty({ enum: ProjectMemberRole, enumName: 'ProjectMemberRole' })
-  role: ProjectMemberRole;
+  @ApiProperty({ type: String })
+  role: string;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  customRoleName?: string | null;
 
   @ApiProperty()
   createdAt: Date;

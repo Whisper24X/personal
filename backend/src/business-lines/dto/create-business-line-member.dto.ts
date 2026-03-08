@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsNotEmpty, IsUUID } from 'class-validator';
+import { IsNotEmpty, IsString, IsUUID, MaxLength } from 'class-validator';
 import { BusinessLineMemberRole } from './business-line-member-role.enum';
 
 export class CreateBusinessLineMemberDto {
@@ -11,10 +11,11 @@ export class CreateBusinessLineMemberDto {
   userId: string;
 
   @ApiProperty({
-    enum: BusinessLineMemberRole,
-    enumName: 'BusinessLineMemberRole',
+    type: String,
     default: BusinessLineMemberRole.member,
   })
-  @IsEnum(BusinessLineMemberRole)
-  role: BusinessLineMemberRole;
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
+  role: string;
 }

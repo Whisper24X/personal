@@ -1,12 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useMessage } from '@/hooks'
-import {
-  businessLinesApi,
-  type BusinessLine,
-  type BusinessLineMember,
-  type BusinessLineMemberRole,
-} from '@/api/business-lines'
+import { businessLinesApi, type BusinessLine, type BusinessLineMember } from '@/api/business-lines'
 import { usersApi } from '@/api/users'
 import type { User } from '@/types/api/users'
 import { toErrorMessage } from '@/utils/http/to-error-message'
@@ -47,13 +42,13 @@ const memberFormModalOpen = ref(false)
 
 const memberForm = reactive<{
   userId: string
-  role: BusinessLineMemberRole
+  role: string
 }>({
   userId: '',
   role: 'member',
 })
 
-const memberRoleDrafts = ref<Record<string, BusinessLineMemberRole>>({})
+const memberRoleDrafts = ref<Record<string, string>>({})
 
 const selectedLine = computed(() => {
   return lines.value.find((line) => line.id === selectedLineId.value) ?? null
@@ -63,7 +58,7 @@ const userMap = computed(() => {
   return new Map(users.value.map((user) => [user.id, user]))
 })
 
-const roleOptions: Array<{ label: string; value: BusinessLineMemberRole }> = [
+const roleOptions: Array<{ label: string; value: string }> = [
   { label: 'owner', value: 'owner' },
   { label: 'admin', value: 'admin' },
   { label: 'member', value: 'member' },
@@ -108,7 +103,7 @@ const normalizeOptionalText = (value: string) => {
 }
 
 const syncMemberRoleDrafts = () => {
-  const nextDrafts: Record<string, BusinessLineMemberRole> = {}
+  const nextDrafts: Record<string, string> = {}
   for (const member of members.value) {
     nextDrafts[member.userId] = member.role
   }
@@ -127,9 +122,7 @@ const loadLines = async (preferredSelectedId?: string) => {
   loadingLines.value = true
 
   try {
-    const response = await fetchAllPages((page, limit) =>
-      businessLinesApi.list({ page, limit }),
-    )
+    const response = await fetchAllPages((page, limit) => businessLinesApi.list({ page, limit }))
     lines.value = response
 
     if (preferredSelectedId && response.some((line) => line.id === preferredSelectedId)) {
@@ -423,7 +416,11 @@ onMounted(() => {
           v-for="line in lines"
           :key="line.id"
           class="w-full rounded-xl border px-4 py-3 text-left transition"
-          :class="line.id === selectedLineId ? 'border-primary bg-primary/5' : 'border-border bg-background/70 hover:bg-background'"
+          :class="
+            line.id === selectedLineId
+              ? 'border-primary bg-primary/5'
+              : 'border-border bg-background/70 hover:bg-background'
+          "
           type="button"
           @click="selectedLineId = line.id"
         >
@@ -431,7 +428,9 @@ onMounted(() => {
             <div>
               <p class="text-sm font-semibold">{{ line.name }}</p>
               <p class="mt-1 text-xs text-muted-foreground">{{ line.description || '暂无描述' }}</p>
-              <p class="mt-1 text-[11px] text-muted-foreground">更新时间：{{ formatDate(line.updatedAt) }}</p>
+              <p class="mt-1 text-[11px] text-muted-foreground">
+                更新时间：{{ formatDate(line.updatedAt) }}
+              </p>
             </div>
             <div class="flex gap-2">
               <button
@@ -494,7 +493,11 @@ onMounted(() => {
             v-for="line in lines"
             :key="line.id"
             class="w-full rounded-xl border px-3 py-3 text-left transition"
-            :class="line.id === selectedLineId ? 'border-primary bg-primary/5' : 'border-border bg-background/70 hover:bg-background'"
+            :class="
+              line.id === selectedLineId
+                ? 'border-primary bg-primary/5'
+                : 'border-border bg-background/70 hover:bg-background'
+            "
             type="button"
             @click="selectedLineId = line.id"
           >
@@ -537,7 +540,9 @@ onMounted(() => {
         </div>
 
         <template v-if="selectedLine">
-          <p class="text-xs text-muted-foreground">新增成员已迁移为弹窗表单，点击右上角“添加成员”。</p>
+          <p class="text-xs text-muted-foreground">
+            新增成员已迁移为弹窗表单，点击右上角“添加成员”。
+          </p>
 
           <div class="mt-4 overflow-x-auto">
             <table class="w-full min-w-[640px] text-left text-sm">
@@ -553,7 +558,12 @@ onMounted(() => {
                 <tr v-if="loadingMembers">
                   <td class="px-4 py-5 text-sm text-muted-foreground" colspan="4">加载成员中...</td>
                 </tr>
-                <tr v-for="member in members" v-else :key="member.id" class="transition hover:bg-background/70">
+                <tr
+                  v-for="member in members"
+                  v-else
+                  :key="member.id"
+                  class="transition hover:bg-background/70"
+                >
                   <td class="px-4 py-4">
                     <p class="font-semibold">{{ displayUserLabel(member.userId) }}</p>
                     <p class="mt-1 font-mono text-xs text-muted-foreground">{{ member.userId }}</p>
@@ -568,7 +578,9 @@ onMounted(() => {
                       </option>
                     </select>
                   </td>
-                  <td class="px-4 py-4 text-muted-foreground">{{ formatDate(member.updatedAt) }}</td>
+                  <td class="px-4 py-4 text-muted-foreground">
+                    {{ formatDate(member.updatedAt) }}
+                  </td>
                   <td class="px-4 py-4">
                     <div class="flex justify-end gap-2">
                       <button
@@ -591,7 +603,9 @@ onMounted(() => {
                   </td>
                 </tr>
                 <tr v-if="!loadingMembers && members.length === 0">
-                  <td class="px-4 py-5 text-sm text-muted-foreground" colspan="4">暂无成员，请先添加。</td>
+                  <td class="px-4 py-5 text-sm text-muted-foreground" colspan="4">
+                    暂无成员，请先添加。
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -636,7 +650,9 @@ onMounted(() => {
         aria-labelledby="business-line-member-modal-title"
         @click.self="closeMemberFormModal"
       >
-        <section class="w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+        <section
+          class="w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+        >
           <header class="flex items-center justify-between border-b border-border px-4 py-3">
             <h2 id="business-line-member-modal-title" class="text-sm font-semibold">添加成员</h2>
             <button

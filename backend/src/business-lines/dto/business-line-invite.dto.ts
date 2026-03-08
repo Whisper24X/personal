@@ -1,29 +1,18 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { BusinessLineMemberRole } from './business-line-member-role.enum';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BusinessLineInviteProjectRole } from './business-line-invite-project-role.enum';
 
 export class BusinessLineInviteDto {
-  @ApiProperty({
-    type: String,
-  })
+  @ApiProperty({ type: String })
   token: string;
 
-  @ApiProperty({
-    type: String,
-    format: 'date-time',
-  })
+  @ApiProperty({ type: String })
   expiresAt: string;
 
-  @ApiProperty({
-    type: String,
-  })
+  @ApiProperty({ type: String })
   businessLineId: string;
 
-  @ApiProperty({
-    enum: BusinessLineMemberRole,
-    enumName: 'BusinessLineMemberRole',
-  })
-  role: BusinessLineMemberRole;
+  @ApiProperty({ type: String })
+  role: string;
 
   @ApiProperty({
     type: 'object',
@@ -33,4 +22,7 @@ export class BusinessLineInviteDto {
     },
   })
   projectRoles: Record<string, BusinessLineInviteProjectRole>;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  customRoleName?: string | null;
 }

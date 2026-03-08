@@ -2,12 +2,12 @@ import { NullableType } from '../../../utils/types/nullable.type';
 import { BusinessLineMember } from '../../domain/business-line-member';
 
 export abstract class BusinessLineMemberRepository {
-  abstract findByUserId(
-    userId: BusinessLineMember['userId'],
-  ): Promise<BusinessLineMember[]>;
-
   abstract findByBusinessLineId(
     businessLineId: BusinessLineMember['businessLineId'],
+  ): Promise<BusinessLineMember[]>;
+
+  abstract findByUserId(
+    userId: BusinessLineMember['userId'],
   ): Promise<BusinessLineMember[]>;
 
   abstract findByBusinessLineIdAndUserId(
@@ -31,4 +31,9 @@ export abstract class BusinessLineMemberRepository {
     businessLineId: BusinessLineMember['businessLineId'],
     userId: BusinessLineMember['userId'],
   ): Promise<void>;
+
+  abstract countByBusinessLineIdAndRole(
+    businessLineId: string,
+    role: string,
+  ): Promise<number>;
 }

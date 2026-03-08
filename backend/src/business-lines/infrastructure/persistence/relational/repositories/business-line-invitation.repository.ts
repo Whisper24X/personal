@@ -86,4 +86,19 @@ export class BusinessLineInvitationRelationalRepository
 
     return BusinessLineInvitationMapper.toDomain(entity);
   }
+
+  async countActiveByBusinessLineIdAndRole(
+    businessLineId: string,
+    role: string,
+    now: Date,
+  ): Promise<number> {
+    return this.businessLineInvitationRepository.count({
+      where: {
+        businessLineId,
+        role,
+        revokedAt: IsNull(),
+        expiresAt: MoreThan(now),
+      },
+    });
+  }
 }

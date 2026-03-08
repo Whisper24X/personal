@@ -36,6 +36,9 @@ import { infinityPagination } from '../utils/infinity-pagination';
 import { ProjectMember } from './domain/project-member';
 import { CreateProjectMemberDto } from './dto/create-project-member.dto';
 import { UpdateProjectMemberDto } from './dto/update-project-member.dto';
+import { ProjectCustomRole } from './domain/project-custom-role';
+import { CreateProjectCustomRoleDto } from './dto/create-project-custom-role.dto';
+import { UpdateProjectCustomRoleDto } from './dto/update-project-custom-role.dto';
 import {
   InspectProjectRepositoryDto,
   ProjectRepositoryInspectionDto,
@@ -132,6 +135,118 @@ export class ProjectsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
     return this.projectsService.remove(id, request.user);
+  }
+
+  @Get(':projectId/custom-roles')
+  @ApiParam({
+    name: 'projectId',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: ProjectCustomRole,
+    isArray: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  findCustomRoles(
+    @Request() request,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+  ) {
+    return this.projectsService.findCustomRoles(projectId, request.user);
+  }
+
+  @Get(':projectId/custom-role-library')
+  @ApiParam({
+    name: 'projectId',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: ProjectCustomRole,
+    isArray: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  findCustomRoleLibrary(
+    @Request() request,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+  ) {
+    return this.projectsService.findCustomRoleLibrary(projectId, request.user);
+  }
+
+  @Post(':projectId/custom-roles')
+  @ApiParam({
+    name: 'projectId',
+    type: String,
+    required: true,
+  })
+  @ApiCreatedResponse({
+    type: ProjectCustomRole,
+  })
+  @HttpCode(HttpStatus.CREATED)
+  createCustomRole(
+    @Request() request,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Body() createProjectCustomRoleDto: CreateProjectCustomRoleDto,
+  ) {
+    return this.projectsService.createCustomRole(
+      projectId,
+      createProjectCustomRoleDto,
+      request.user,
+    );
+  }
+
+  @Patch(':projectId/custom-roles/:roleId')
+  @ApiParam({
+    name: 'projectId',
+    type: String,
+    required: true,
+  })
+  @ApiParam({
+    name: 'roleId',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: ProjectCustomRole,
+  })
+  @HttpCode(HttpStatus.OK)
+  updateCustomRole(
+    @Request() request,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Param('roleId', ParseUUIDPipe) roleId: string,
+    @Body() updateProjectCustomRoleDto: UpdateProjectCustomRoleDto,
+  ) {
+    return this.projectsService.updateCustomRole(
+      projectId,
+      roleId,
+      updateProjectCustomRoleDto,
+      request.user,
+    );
+  }
+
+  @Delete(':projectId/custom-roles/:roleId')
+  @ApiParam({
+    name: 'projectId',
+    type: String,
+    required: true,
+  })
+  @ApiParam({
+    name: 'roleId',
+    type: String,
+    required: true,
+  })
+  @ApiNoContentResponse()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeCustomRole(
+    @Request() request,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Param('roleId', ParseUUIDPipe) roleId: string,
+  ): Promise<void> {
+    return this.projectsService.removeCustomRole(
+      projectId,
+      roleId,
+      request.user,
+    );
   }
 
   @Get(':projectId/members')

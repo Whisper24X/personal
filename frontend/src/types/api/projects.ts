@@ -10,13 +10,27 @@ export type Project = {
   updatedAt?: string
 }
 
+export type ProjectMemberRole = 'owner' | 'maintainer' | 'developer' | 'viewer'
+
 export type ProjectMember = {
   id: string
   projectId: string
   userId: string
-  role: 'owner' | 'maintainer' | 'developer' | 'viewer'
+  role: string
+  customRoleName?: string | null
   createdAt?: string
   updatedAt?: string
+}
+
+export type ProjectCustomRole = {
+  id: string
+  businessLineId: string
+  code: string
+  name: string
+  description?: string | null
+  capabilities: string[]
+  createdAt: string
+  updatedAt: string
 }
 
 export type CreateProjectPayload = {
@@ -32,11 +46,11 @@ export type UpdateProjectPayload = Partial<CreateProjectPayload>
 
 export type CreateProjectMemberPayload = {
   userId: string
-  role: ProjectMember['role']
+  role: string
 }
 
 export type UpdateProjectMemberPayload = {
-  role: ProjectMember['role']
+  role: string
 }
 
 export type InspectProjectRepositoryPayload = {
@@ -49,3 +63,11 @@ export type ProjectRepositoryInspection = {
   branches: string[]
   recommendedDefaultBranch: string | null
 }
+
+export type CreateProjectCustomRolePayload = {
+  name: string
+  description?: string
+  capabilities: string[]
+}
+
+export type UpdateProjectCustomRolePayload = Partial<CreateProjectCustomRolePayload>

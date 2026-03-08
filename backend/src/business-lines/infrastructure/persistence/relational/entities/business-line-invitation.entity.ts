@@ -10,7 +10,6 @@ import {
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
 import { BusinessLineEntity } from './business-line.entity';
-import { BusinessLineMemberRole } from '../../../../dto/business-line-member-role.enum';
 import { BusinessLineInviteProjectRole } from '../../../../dto/business-line-invite-project-role.enum';
 
 @Entity({
@@ -29,13 +28,14 @@ export class BusinessLineInvitationEntity extends EntityRelationalHelper {
   @Column({ type: 'varchar', length: 128, comment: '邀请令牌' })
   token: string;
 
+  @Index('IDX_business_line_invitation_role_code')
   @Column({
-    type: 'enum',
-    enum: BusinessLineMemberRole,
-    enumName: 'business_line_invitation_role_enum',
-    comment: '邀请成员角色',
+    name: 'businessLineRoleCode',
+    type: 'varchar',
+    length: 64,
+    comment: '业务线角色代码',
   })
-  role: BusinessLineMemberRole;
+  role: string;
 
   @Column({
     type: 'jsonb',

@@ -5,19 +5,17 @@ import type {
   InspectProjectRepositoryPayload,
   Project,
   ProjectRepositoryInspection,
+  ProjectCustomRole,
   ProjectMember,
   UpdateProjectMemberPayload,
   UpdateProjectPayload,
+  CreateProjectCustomRolePayload,
+  UpdateProjectCustomRolePayload,
 } from '@/types/api/projects'
 import { apiHttp, type InfinityPaginationResponse } from './http'
 
 export const projectsApi = {
-  list(params?: {
-    page?: number
-    limit?: number
-    businessLineId?: string
-    keyword?: string
-  }) {
+  list(params?: { page?: number; limit?: number; businessLineId?: string; keyword?: string }) {
     return apiHttp.get<InfinityPaginationResponse<Project>>('/projects', {
       page: params?.page,
       limit: params?.limit,
@@ -64,5 +62,28 @@ export const projectsApi = {
 
   removeMember(projectId: string, userId: string) {
     return apiHttp.delete<void>(`/projects/${projectId}/members/${userId}`)
+  },
+
+  listCustomRoles(projectId: string) {
+    return apiHttp.get<ProjectCustomRole[]>(`/projects/${projectId}/custom-roles`)
+  },
+
+  listCustomRoleLibrary(projectId: string) {
+    return apiHttp.get<ProjectCustomRole[]>(`/projects/${projectId}/custom-role-library`)
+  },
+
+  createCustomRole(projectId: string, payload: CreateProjectCustomRolePayload) {
+    return apiHttp.post<ProjectCustomRole>(`/projects/${projectId}/custom-roles`, payload)
+  },
+
+  updateCustomRole(projectId: string, roleId: string, payload: UpdateProjectCustomRolePayload) {
+    return apiHttp.patch<ProjectCustomRole>(
+      `/projects/${projectId}/custom-roles/${roleId}`,
+      payload,
+    )
+  },
+
+  removeCustomRole(projectId: string, roleId: string) {
+    return apiHttp.delete<void>(`/projects/${projectId}/custom-roles/${roleId}`)
   },
 }

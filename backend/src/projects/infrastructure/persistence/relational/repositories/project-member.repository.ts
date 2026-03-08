@@ -103,4 +103,16 @@ export class ProjectMemberRelationalRepository
       userId,
     });
   }
+
+  async countByProjectIdAndRole(
+    projectId: string,
+    role: string,
+  ): Promise<number> {
+    return this.projectMemberRepository.count({
+      where: {
+        projectId,
+        role,
+      },
+    });
+  }
 }

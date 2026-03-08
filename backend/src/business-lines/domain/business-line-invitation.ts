@@ -1,5 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { BusinessLineMemberRole } from '../dto/business-line-member-role.enum';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BusinessLineInviteProjectRole } from '../dto/business-line-invite-project-role.enum';
 
 export class BusinessLineInvitation {
@@ -19,10 +18,9 @@ export class BusinessLineInvitation {
   token: string;
 
   @ApiProperty({
-    enum: BusinessLineMemberRole,
-    enumName: 'BusinessLineMemberRole',
+    type: String,
   })
-  role: BusinessLineMemberRole;
+  role: string;
 
   @ApiProperty({
     type: 'object',
@@ -32,6 +30,9 @@ export class BusinessLineInvitation {
     },
   })
   projectRoles: Record<string, BusinessLineInviteProjectRole>;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  customRoleName?: string | null;
 
   @ApiProperty({
     type: String,

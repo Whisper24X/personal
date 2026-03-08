@@ -22,6 +22,8 @@ const username = ref('')
 const password = ref('')
 const nickname = ref('')
 const confirmPassword = ref('')
+const showLoginPassword = ref(false)
+const showRegisterPasswords = ref(false)
 
 const switchMode = (nextMode: AuthMode) => {
   if (mode.value === nextMode) {
@@ -29,6 +31,8 @@ const switchMode = (nextMode: AuthMode) => {
   }
 
   mode.value = nextMode
+  showLoginPassword.value = false
+  showRegisterPasswords.value = false
 }
 
 const validateLoginForm = () => {
@@ -179,13 +183,23 @@ const onRegisterSubmit = async () => {
 
                   <label class="block space-y-2">
                     <span class="text-xs font-semibold text-muted-foreground">密码</span>
-                    <input
-                      v-model="password"
-                      autocomplete="current-password"
-                      class="auth-input"
-                      placeholder="••••••••"
-                      type="password"
-                    />
+                    <div class="auth-password-field">
+                      <input
+                        v-model="password"
+                        autocomplete="current-password"
+                        class="auth-input auth-input-password"
+                        placeholder="输入密码"
+                        :type="showLoginPassword ? 'text' : 'password'"
+                      />
+                      <button
+                        class="auth-password-toggle"
+                        :aria-label="showLoginPassword ? '隐藏密码' : '显示密码'"
+                        type="button"
+                        @click="showLoginPassword = !showLoginPassword"
+                      >
+                        {{ showLoginPassword ? '隐藏' : '显示' }}
+                      </button>
+                    </div>
                   </label>
 
                   <button class="auth-submit" :disabled="isLoading" type="submit">
@@ -230,24 +244,44 @@ const onRegisterSubmit = async () => {
 
                   <label class="block space-y-2">
                     <span class="text-xs font-semibold text-muted-foreground">密码</span>
-                    <input
-                      v-model="password"
-                      autocomplete="new-password"
-                      class="auth-input"
-                      placeholder="••••••••"
-                      type="password"
-                    />
+                    <div class="auth-password-field">
+                      <input
+                        v-model="password"
+                        autocomplete="new-password"
+                        class="auth-input auth-input-password"
+                        placeholder="输入密码"
+                        :type="showRegisterPasswords ? 'text' : 'password'"
+                      />
+                      <button
+                        class="auth-password-toggle"
+                        :aria-label="showRegisterPasswords ? '隐藏密码' : '显示密码'"
+                        type="button"
+                        @click="showRegisterPasswords = !showRegisterPasswords"
+                      >
+                        {{ showRegisterPasswords ? '隐藏' : '显示' }}
+                      </button>
+                    </div>
                   </label>
 
                   <label class="block space-y-2">
                     <span class="text-xs font-semibold text-muted-foreground">确认密码</span>
-                    <input
-                      v-model="confirmPassword"
-                      autocomplete="new-password"
-                      class="auth-input"
-                      placeholder="再次输入密码"
-                      type="password"
-                    />
+                    <div class="auth-password-field">
+                      <input
+                        v-model="confirmPassword"
+                        autocomplete="new-password"
+                        class="auth-input auth-input-password"
+                        placeholder="再次输入密码"
+                        :type="showRegisterPasswords ? 'text' : 'password'"
+                      />
+                      <button
+                        class="auth-password-toggle"
+                        :aria-label="showRegisterPasswords ? '隐藏密码' : '显示密码'"
+                        type="button"
+                        @click="showRegisterPasswords = !showRegisterPasswords"
+                      >
+                        {{ showRegisterPasswords ? '隐藏' : '显示' }}
+                      </button>
+                    </div>
                   </label>
 
                   <button class="auth-submit" :disabled="isLoading" type="submit">
@@ -484,12 +518,43 @@ const onRegisterSubmit = async () => {
     background-color 170ms ease;
 }
 
+.auth-password-field {
+  position: relative;
+}
+
+.auth-input-password {
+  padding-right: 4.3rem;
+}
+
 .auth-input:focus {
   border-color: color-mix(in oklab, var(--primary) 56%, var(--ring));
   box-shadow:
     0 0 0 3px color-mix(in oklab, var(--primary) 18%, transparent),
     0 10px 20px -16px color-mix(in oklab, var(--primary) 46%, transparent);
   background: color-mix(in oklab, var(--background) 98%, transparent);
+}
+
+.auth-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.85rem;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  transform: translateY(-50%);
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--muted-foreground);
+  transition: opacity 160ms ease, color 160ms ease;
+}
+
+.auth-password-toggle:hover {
+  color: var(--foreground);
+}
+
+.auth-password-toggle:focus-visible {
+  outline: none;
+  opacity: 0.9;
 }
 
 .auth-submit {

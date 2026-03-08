@@ -9,98 +9,29 @@ import { UsersService } from '../users/users.service';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { BusinessLineRepository } from '../business-lines/infrastructure/persistence/business-line.repository';
 import { BusinessLineMemberRepository } from '../business-lines/infrastructure/persistence/business-line-member.repository';
+import { BusinessLineCustomRoleRepository } from '../business-lines/infrastructure/persistence/business-line-custom-role.repository';
 import { ProjectRepository } from '../projects/infrastructure/persistence/project.repository';
 import { ProjectMemberRepository } from '../projects/infrastructure/persistence/project-member.repository';
+import { ProjectCustomRoleRepository } from '../projects/infrastructure/persistence/project-custom-role.repository';
 import { BusinessLineMemberRole } from '../business-lines/dto/business-line-member-role.enum';
 import { ProjectMemberRole } from '../projects/dto/project-member-role.enum';
 import type { GetCurrentAccessDto } from './dto/get-current-access.dto';
 import type { CurrentAccessDto } from './dto/current-access.dto';
 import type { BusinessLine } from '../business-lines/domain/business-line';
+import type { BusinessLineMember } from '../business-lines/domain/business-line-member';
+import type { BusinessLineCustomRole } from '../business-lines/domain/business-line-custom-role';
 import type { Project } from '../projects/domain/project';
-
-export const BUSINESS_LINE_CREATE_CAPABILITY = 'businessLine.create';
-
-export const BUSINESS_LINE_ROLE_CAPABILITIES: Record<
-  BusinessLineMemberRole,
-  string[]
-> = {
-  [BusinessLineMemberRole.owner]: [
-    'businessLine.read',
-    'businessLine.update',
-    'businessLine.delete',
-    'businessLine.member.manage',
-    'businessLine.project.list.all',
-    'businessLine.project.create',
-    'businessLine.project.update',
-    'businessLine.project.delete',
-  ],
-  [BusinessLineMemberRole.admin]: [
-    'businessLine.read',
-    'businessLine.member.manage',
-    'businessLine.project.list.all',
-    'businessLine.project.create',
-    'businessLine.project.update',
-    'businessLine.project.delete',
-  ],
-  [BusinessLineMemberRole.member]: [
-    'businessLine.read',
-    'businessLine.project.list.joined',
-  ],
-};
-
-export const PROJECT_ROLE_CAPABILITIES: Record<ProjectMemberRole, string[]> = {
-  [ProjectMemberRole.owner]: [
-    'project.read',
-    'project.update',
-    'project.delete',
-    'project.member.manage',
-    'project.task.read',
-    'project.task.create',
-    'project.task.execute',
-    'project.task.cancel',
-    'project.kanban.view',
-    'project.workflow.view',
-    'project.workflow.manage',
-    'project.artifact.read',
-  ],
-  [ProjectMemberRole.maintainer]: [
-    'project.read',
-    'project.update',
-    'project.member.manage',
-    'project.task.read',
-    'project.task.create',
-    'project.task.execute',
-    'project.task.cancel',
-    'project.kanban.view',
-    'project.workflow.view',
-    'project.workflow.manage',
-    'project.artifact.read',
-  ],
-  [ProjectMemberRole.developer]: [
-    'project.read',
-    'project.task.read',
-    'project.task.create',
-    'project.task.execute',
-    'project.kanban.view',
-    'project.workflow.view',
-    'project.artifact.read',
-  ],
-  [ProjectMemberRole.viewer]: [
-    'project.read',
-    'project.task.read',
-    'project.kanban.view',
-    'project.workflow.view',
-    'project.artifact.read',
-  ],
-};
-
-const ALL_BUSINESS_LINE_CAPABILITIES = Array.from(
-  new Set(Object.values(BUSINESS_LINE_ROLE_CAPABILITIES).flat()),
-);
-
-const ALL_PROJECT_CAPABILITIES = Array.from(
-  new Set(Object.values(PROJECT_ROLE_CAPABILITIES).flat()),
-);
+import type { ProjectMember } from '../projects/domain/project-member';
+import type { ProjectCustomRole } from '../projects/domain/project-custom-role';
+import {
+  ALL_BUSINESS_LINE_CAPABILITIES,
+  ALL_PROJECT_CAPABILITIES,
+  BUSINESS_LINE_CREATE_CAPABILITY,
+  getBusinessLineRoleCapabilities,
+  getProjectRoleCapabilities,
+  normalizeBusinessLineCapabilities,
+  normalizeProjectCapabilities,
+} from './access.constants';
 
 @Injectable()
 export class AccessService {
@@ -108,8 +39,10 @@ export class AccessService {
     private readonly usersService: UsersService,
     private readonly businessLineRepository: BusinessLineRepository,
     private readonly businessLineMemberRepository: BusinessLineMemberRepository,
+    private readonly businessLineCustomRoleRepository: BusinessLineCustomRoleRepository,
     private readonly projectRepository: ProjectRepository,
     private readonly projectMemberRepository: ProjectMemberRepository,
+    private readonly projectCustomRoleRepository: ProjectCustomRoleRepository,
   ) {}
 
   async getCurrentAccess(
@@ -127,20 +60,28 @@ export class AccessService {
       this.projectMemberRepository.findByUserId(currentUser.sub),
     ]);
 
-    const businessRoleById = new Map(
+    const [businessCapabilityMap, projectCapabilityMap] = await Promise.all([
+      this.buildBusinessLineCapabilityMap(businessLineMemberships),
+      this.buildProjectCapabilityMap(projectMemberships),
+    ]);
+
+    const businessMembershipByBusinessLineId = new Map(
       businessLineMemberships.map((membership) => [
         membership.businessLineId,
-        membership.role,
+        membership,
       ]),
     );
-    const projectRoleById = new Map(
-      projectMemberships.map((membership) => [membership.projectId, membership.role]),
+    const projectMembershipByProjectId = new Map(
+      projectMemberships.map((membership) => [
+        membership.projectId,
+        membership,
+      ]),
     );
 
     let resolvedBusinessLineId = query.businessLineId;
-    let resolvedProjectId = query.projectId;
-    let businessRole: BusinessLineMemberRole | null = null;
-    let projectRole: ProjectMemberRole | null = null;
+    const resolvedProjectId = query.projectId;
+    let businessRole: BusinessLineMember['role'] | null = null;
+    let projectRole: ProjectMember['role'] | null = null;
 
     const capabilities = new Set<string>([BUSINESS_LINE_CREATE_CAPABILITY]);
 
@@ -149,6 +90,7 @@ export class AccessService {
     );
     let visibleProjectIds = await this.resolveVisibleProjectIds({
       businessLineMemberships,
+      businessCapabilityMap,
       projectMemberships,
       currentBusinessLineId: resolvedBusinessLineId,
     });
@@ -172,11 +114,12 @@ export class AccessService {
       resolvedBusinessLineId = project.businessLineId;
 
       if (!this.isAdmin(currentUser)) {
-        const businessMembership = businessRoleById.get(project.businessLineId);
-        const isVisibleByBusinessLine =
-          businessMembership === BusinessLineMemberRole.owner ||
-          businessMembership === BusinessLineMemberRole.admin;
-        const isVisibleByProject = projectRoleById.has(project.id);
+        const businessCapabilities =
+          businessCapabilityMap.get(project.businessLineId) ?? [];
+        const isVisibleByBusinessLine = businessCapabilities.includes(
+          'businessLine.project.list.all',
+        );
+        const isVisibleByProject = projectMembershipByProjectId.has(project.id);
 
         if (!isVisibleByBusinessLine && !isVisibleByProject) {
           throw new ForbiddenException('forbiddenProject');
@@ -196,15 +139,20 @@ export class AccessService {
       if (this.isAdmin(currentUser)) {
         businessRole = BusinessLineMemberRole.owner;
       } else {
-        businessRole = businessRoleById.get(resolvedBusinessLineId) ?? null;
+        const membership = businessMembershipByBusinessLineId.get(
+          resolvedBusinessLineId,
+        );
+        businessRole = membership?.role ?? null;
 
-        if (!businessRole) {
+        if (!membership || !businessRole) {
           throw new ForbiddenException('forbiddenBusinessLine');
         }
-      }
 
-      for (const capability of this.resolveBusinessLineCapabilities(businessRole)) {
-        capabilities.add(capability);
+        for (const capability of businessCapabilityMap.get(
+          resolvedBusinessLineId,
+        ) ?? []) {
+          capabilities.add(capability);
+        }
       }
 
       visibleBusinessLineIds = this.mergeUniqueIds(visibleBusinessLineIds, [
@@ -216,14 +164,18 @@ export class AccessService {
       if (this.isAdmin(currentUser)) {
         projectRole = ProjectMemberRole.owner;
       } else {
-        projectRole = projectRoleById.get(resolvedProjectId) ?? null;
+        const membership = projectMembershipByProjectId.get(resolvedProjectId);
+        projectRole = membership?.role ?? null;
+
+        for (const capability of projectCapabilityMap.get(resolvedProjectId) ??
+          []) {
+          capabilities.add(capability);
+        }
       }
 
-      for (const capability of this.resolveProjectCapabilities(projectRole)) {
-        capabilities.add(capability);
-      }
-
-      visibleProjectIds = this.mergeUniqueIds(visibleProjectIds, [resolvedProjectId]);
+      visibleProjectIds = this.mergeUniqueIds(visibleProjectIds, [
+        resolvedProjectId,
+      ]);
     }
 
     if (this.isAdmin(currentUser)) {
@@ -235,9 +187,10 @@ export class AccessService {
       }
 
       if (resolvedBusinessLineId) {
-        const businessProjects = await this.projectRepository.findByBusinessLineId(
-          resolvedBusinessLineId,
-        );
+        const businessProjects =
+          await this.projectRepository.findByBusinessLineId(
+            resolvedBusinessLineId,
+          );
         visibleProjectIds = this.mergeUniqueIds(
           visibleProjectIds,
           businessProjects.map((project) => project.id),
@@ -271,7 +224,8 @@ export class AccessService {
     businessLineId: string,
     capability: string,
   ): Promise<BusinessLine> {
-    const businessLine = await this.businessLineRepository.findById(businessLineId);
+    const businessLine =
+      await this.businessLineRepository.findById(businessLineId);
 
     if (!businessLine) {
       throw new NotFoundException('Business line not found');
@@ -291,7 +245,10 @@ export class AccessService {
       throw new ForbiddenException('forbiddenBusinessLine');
     }
 
-    if (!this.resolveBusinessLineCapabilities(membership.role).includes(capability)) {
+    const availableCapabilities =
+      await this.resolveBusinessLineCapabilitiesForMembership(membership);
+
+    if (!availableCapabilities.includes(capability)) {
       throw new ForbiddenException(
         capability === 'businessLine.read'
           ? 'forbiddenBusinessLine'
@@ -317,16 +274,27 @@ export class AccessService {
       return project;
     }
 
-    const membership = await this.projectMemberRepository.findByProjectIdAndUserId(
-      projectId,
-      currentUser.sub,
-    );
+    const membership =
+      await this.projectMemberRepository.findByProjectIdAndUserId(
+        projectId,
+        currentUser.sub,
+      );
 
     if (!membership) {
-      throw new ForbiddenException('forbiddenProject');
+      throw new ForbiddenException(
+        capability === 'project.read' || capability === 'project.task.read'
+          ? 'forbiddenProject'
+          : 'forbiddenProjectManage',
+      );
     }
 
-    if (!this.resolveProjectCapabilities(membership.role).includes(capability)) {
+    const availableCapabilities =
+      await this.resolveProjectCapabilitiesForMembership(
+        membership,
+        project.businessLineId,
+      );
+
+    if (!availableCapabilities.includes(capability)) {
       throw new ForbiddenException(
         capability === 'project.read' || capability === 'project.task.read'
           ? 'forbiddenProject'
@@ -356,9 +324,9 @@ export class AccessService {
       return false;
     }
 
-    return this.resolveBusinessLineCapabilities(membership.role).includes(
-      capability,
-    );
+    return (
+      await this.resolveBusinessLineCapabilitiesForMembership(membership)
+    ).includes(capability);
   }
 
   async hasProjectCapability(
@@ -370,34 +338,193 @@ export class AccessService {
       return true;
     }
 
-    const membership = await this.projectMemberRepository.findByProjectIdAndUserId(
-      projectId,
-      currentUser.sub,
-    );
+    const membership =
+      await this.projectMemberRepository.findByProjectIdAndUserId(
+        projectId,
+        currentUser.sub,
+      );
 
     if (!membership) {
       return false;
     }
 
-    return this.resolveProjectCapabilities(membership.role).includes(capability);
+    const project = await this.projectRepository.findById(projectId);
+    if (!project) {
+      return false;
+    }
+
+    return (
+      await this.resolveProjectCapabilitiesForMembership(
+        membership,
+        project.businessLineId,
+      )
+    ).includes(capability);
   }
 
-  private resolveBusinessLineCapabilities(
-    role: BusinessLineMemberRole | null,
-  ): string[] {
-    if (!role) {
+  async buildBusinessLineCapabilityMap(
+    memberships: BusinessLineMember[],
+  ): Promise<Map<string, string[]>> {
+    const customRoleMap = await this.loadBusinessLineCustomRoleMap(
+      memberships.map((membership) => membership.businessLineId),
+    );
+
+    const entries = await Promise.all(
+      memberships.map(async (membership) => {
+        return [
+          membership.businessLineId,
+          await this.resolveBusinessLineCapabilitiesForMembership(
+            membership,
+            customRoleMap,
+          ),
+        ] as const;
+      }),
+    );
+
+    return new Map(entries);
+  }
+
+  async buildProjectCapabilityMap(
+    memberships: ProjectMember[],
+  ): Promise<Map<string, string[]>> {
+    const projects = await this.projectRepository.findByIds(
+      Array.from(
+        new Set(memberships.map((membership) => membership.projectId)),
+      ),
+    );
+    const projectBusinessLineMap = new Map(
+      projects.map((project) => [project.id, project.businessLineId]),
+    );
+    const customRoleMap = await this.loadProjectCustomRoleMap(
+      Array.from(new Set(projects.map((project) => project.businessLineId))),
+    );
+
+    const entries = await Promise.all(
+      memberships.map(async (membership) => {
+        return [
+          membership.projectId,
+          await this.resolveProjectCapabilitiesForMembership(
+            membership,
+            projectBusinessLineMap.get(membership.projectId),
+            customRoleMap,
+          ),
+        ] as const;
+      }),
+    );
+
+    return new Map(entries);
+  }
+
+  private async resolveBusinessLineCapabilitiesForMembership(
+    membership: BusinessLineMember | null,
+    customRoleMap?: Map<string, BusinessLineCustomRole>,
+  ): Promise<string[]> {
+    if (!membership) {
       return [];
     }
 
-    return BUSINESS_LINE_ROLE_CAPABILITIES[role] ?? [];
+    const customRole = await this.resolveBusinessLineCustomRole(
+      membership.businessLineId,
+      membership.role,
+      customRoleMap,
+    );
+
+    if (!customRole) {
+      return getBusinessLineRoleCapabilities(membership.role);
+    }
+
+    return normalizeBusinessLineCapabilities(customRole.capabilities);
   }
 
-  private resolveProjectCapabilities(role: ProjectMemberRole | null): string[] {
-    if (!role) {
+  private async resolveProjectCapabilitiesForMembership(
+    membership: ProjectMember | null,
+    businessLineId?: string,
+    customRoleMap?: Map<string, ProjectCustomRole>,
+  ): Promise<string[]> {
+    if (!membership || !businessLineId) {
       return [];
     }
 
-    return PROJECT_ROLE_CAPABILITIES[role] ?? [];
+    const customRole = await this.resolveProjectCustomRole(
+      businessLineId,
+      membership.role,
+      customRoleMap,
+    );
+
+    if (!customRole) {
+      return getProjectRoleCapabilities(membership.role);
+    }
+
+    return normalizeProjectCapabilities(customRole.capabilities);
+  }
+
+  private async resolveBusinessLineCustomRole(
+    businessLineId: string,
+    roleCode: string,
+    customRoleMap?: Map<string, BusinessLineCustomRole>,
+  ): Promise<BusinessLineCustomRole | null> {
+    const key = `${businessLineId}:${roleCode}`;
+    if (customRoleMap?.has(key)) {
+      return customRoleMap.get(key) ?? null;
+    }
+
+    return this.businessLineCustomRoleRepository.findByCode(
+      businessLineId,
+      roleCode,
+    );
+  }
+
+  private async resolveProjectCustomRole(
+    businessLineId: string,
+    roleCode: string,
+    customRoleMap?: Map<string, ProjectCustomRole>,
+  ): Promise<ProjectCustomRole | null> {
+    const key = `${businessLineId}:${roleCode}`;
+    if (customRoleMap?.has(key)) {
+      return customRoleMap.get(key) ?? null;
+    }
+
+    return this.projectCustomRoleRepository.findByCode(
+      businessLineId,
+      roleCode,
+    );
+  }
+
+  private async loadBusinessLineCustomRoleMap(
+    businessLineIds: string[],
+  ): Promise<Map<string, BusinessLineCustomRole>> {
+    const ids = Array.from(new Set(businessLineIds.filter(Boolean)));
+    const roleMap = new Map<string, BusinessLineCustomRole>();
+
+    for (const businessLineId of ids) {
+      const roles =
+        await this.businessLineCustomRoleRepository.findAllByBusinessLineId(
+          businessLineId,
+        );
+      for (const role of roles) {
+        roleMap.set(`${businessLineId}:${role.code}`, role);
+      }
+    }
+
+    return roleMap;
+  }
+
+  private async loadProjectCustomRoleMap(
+    businessLineIds: string[],
+  ): Promise<Map<string, ProjectCustomRole>> {
+    const ids = Array.from(new Set(businessLineIds.filter(Boolean)));
+    const roleMap = new Map<string, ProjectCustomRole>();
+
+    for (const businessLineId of ids) {
+      const roles =
+        await this.projectCustomRoleRepository.findAllByBusinessLineId(
+          businessLineId,
+        );
+      for (const role of roles) {
+        roleMap.set(`${businessLineId}:${role.code}`, role);
+      }
+    }
+
+    return roleMap;
   }
 
   private isAdmin(currentUser: JwtPayloadType): boolean {
@@ -406,35 +533,35 @@ export class AccessService {
 
   private async resolveVisibleProjectIds({
     businessLineMemberships,
+    businessCapabilityMap,
     projectMemberships,
     currentBusinessLineId,
   }: {
-    businessLineMemberships: Array<{
-      businessLineId: string;
-      role: BusinessLineMemberRole;
-    }>;
+    businessLineMemberships: BusinessLineMember[];
+    businessCapabilityMap: Map<string, string[]>;
     projectMemberships: Array<{
       projectId: string;
     }>;
     currentBusinessLineId?: string;
   }): Promise<string[]> {
-    const projectIds = new Set(projectMemberships.map((membership) => membership.projectId));
+    const projectIds = new Set(
+      projectMemberships.map((membership) => membership.projectId),
+    );
 
-    const manageableBusinessLineIds = businessLineMemberships
-      .filter(
-        (membership) =>
-          membership.role === BusinessLineMemberRole.owner ||
-          membership.role === BusinessLineMemberRole.admin,
+    const listAllBusinessLineIds = businessLineMemberships
+      .filter((membership) =>
+        (businessCapabilityMap.get(membership.businessLineId) ?? []).includes(
+          'businessLine.project.list.all',
+        ),
       )
       .map((membership) => membership.businessLineId)
       .filter((businessLineId) =>
         currentBusinessLineId ? businessLineId === currentBusinessLineId : true,
       );
 
-    for (const businessLineId of manageableBusinessLineIds) {
-      const projects = await this.projectRepository.findByBusinessLineId(
-        businessLineId,
-      );
+    for (const businessLineId of listAllBusinessLineIds) {
+      const projects =
+        await this.projectRepository.findByBusinessLineId(businessLineId);
       for (const project of projects) {
         projectIds.add(project.id);
       }

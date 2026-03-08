@@ -10,6 +10,7 @@ import { workflowApi } from '@/api/workflow'
 import type { Project } from '@/types/api/projects'
 import type { WorkflowTemplate } from '@/types/api/workflow'
 import { STORAGE_KEYS } from '@/types/common/storage'
+import { BUTTON_ACCESS_CONFIG, hasSomeAccess } from '@/constants/access-control'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
 
@@ -86,7 +87,10 @@ const selectedGitBaseBranch = computed(() => {
 })
 
 const canCreateTask = computed(() => {
-  return Boolean(createForm.projectId) && accessStore.hasCapability('project.task.create')
+  return (
+    Boolean(createForm.projectId) &&
+    hasSomeAccess(BUTTON_ACCESS_CONFIG.createTask.capabilities, (capability) => accessStore.hasCapability(capability))
+  )
 })
 
 const resolveQueryProjectId = () => {
@@ -335,7 +339,7 @@ const createTask = async () => {
   const contextProjectId = resolveProjectIdFromContext()
   const projectIdForSubmit = contextProjectId || createForm.projectId
 
-  if (!accessStore.hasCapability('project.task.create')) {
+  if (!hasSomeAccess(BUTTON_ACCESS_CONFIG.createTask.capabilities, (capability) => accessStore.hasCapability(capability))) {
     showValidationError('当前项目暂无创建任务权限')
     return
   }

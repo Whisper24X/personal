@@ -1,6 +1,11 @@
 import { apiHttp, type InfinityPaginationResponse } from './http'
 import type { Skill, SkillContent, SkillFile, SkillTree } from '@/types/api/skills'
 import type { Mcp } from '@/types/api/mcps'
+import type {
+  CreateProjectCustomRolePayload,
+  ProjectCustomRole,
+  UpdateProjectCustomRolePayload,
+} from '@/types/api/projects'
 
 export type BusinessLine = {
   id: string
@@ -16,7 +21,8 @@ export type BusinessLineMember = {
   id: string
   businessLineId: string
   userId: string
-  role: BusinessLineMemberRole
+  role: string
+  customRoleName?: string | null
   createdAt?: string
   updatedAt?: string
 }
@@ -30,17 +36,17 @@ export type UpdateBusinessLinePayload = Partial<CreateBusinessLinePayload>
 
 export type CreateBusinessLineMemberPayload = {
   userId: string
-  role: BusinessLineMemberRole
+  role: string
 }
 
 export type UpdateBusinessLineMemberPayload = {
-  role: BusinessLineMemberRole
+  role: string
 }
 
 export type BusinessLineInviteProjectRole = 'none' | 'manage' | 'developer' | 'viewer'
 
 export type CreateBusinessLineInvitePayload = {
-  role: BusinessLineMemberRole
+  role: string
   projectRoles?: Record<string, BusinessLineInviteProjectRole>
 }
 
@@ -48,8 +54,9 @@ export type BusinessLineInvite = {
   token: string
   expiresAt: string
   businessLineId: string
-  role: BusinessLineMemberRole
+  role: string
   projectRoles: Record<string, BusinessLineInviteProjectRole>
+  customRoleName?: string | null
 }
 
 export type AcceptBusinessLineInvitePayload = {
@@ -72,6 +79,25 @@ export type AgentToolConfig = {
   createdAt: string
   updatedAt: string
 }
+
+export type BusinessLineCustomRole = {
+  id: string
+  businessLineId: string
+  code: string
+  name: string
+  description?: string | null
+  capabilities: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export type CreateBusinessLineCustomRolePayload = {
+  name: string
+  description?: string
+  capabilities: string[]
+}
+
+export type UpdateBusinessLineCustomRolePayload = Partial<CreateBusinessLineCustomRolePayload>
 
 export type CreateAgentToolConfigPayload = {
   toolId: string
@@ -179,6 +205,66 @@ export const businessLinesApi = {
     return apiHttp.delete<void>(`/business-lines/${businessLineId}/members/${userId}`)
   },
 
+  listCustomRoles(businessLineId: string) {
+    return apiHttp.get<BusinessLineCustomRole[]>(`/business-lines/${businessLineId}/custom-roles`)
+  },
+
+  listCustomRoleLibrary(businessLineId: string) {
+    return apiHttp.get<BusinessLineCustomRole[]>(
+      `/business-lines/${businessLineId}/custom-role-library`,
+    )
+  },
+
+  createCustomRole(businessLineId: string, payload: CreateBusinessLineCustomRolePayload) {
+    return apiHttp.post<BusinessLineCustomRole>(
+      `/business-lines/${businessLineId}/custom-roles`,
+      payload,
+    )
+  },
+
+  updateCustomRole(
+    businessLineId: string,
+    roleId: string,
+    payload: UpdateBusinessLineCustomRolePayload,
+  ) {
+    return apiHttp.patch<BusinessLineCustomRole>(
+      `/business-lines/${businessLineId}/custom-roles/${roleId}`,
+      payload,
+    )
+  },
+
+  removeCustomRole(businessLineId: string, roleId: string) {
+    return apiHttp.delete<void>(`/business-lines/${businessLineId}/custom-roles/${roleId}`)
+  },
+
+  listProjectCustomRoles(businessLineId: string) {
+    return apiHttp.get<ProjectCustomRole[]>(
+      `/business-lines/${businessLineId}/project-custom-roles`,
+    )
+  },
+
+  createProjectCustomRole(businessLineId: string, payload: CreateProjectCustomRolePayload) {
+    return apiHttp.post<ProjectCustomRole>(
+      `/business-lines/${businessLineId}/project-custom-roles`,
+      payload,
+    )
+  },
+
+  updateProjectCustomRole(
+    businessLineId: string,
+    roleId: string,
+    payload: UpdateProjectCustomRolePayload,
+  ) {
+    return apiHttp.patch<ProjectCustomRole>(
+      `/business-lines/${businessLineId}/project-custom-roles/${roleId}`,
+      payload,
+    )
+  },
+
+  removeProjectCustomRole(businessLineId: string, roleId: string) {
+    return apiHttp.delete<void>(`/business-lines/${businessLineId}/project-custom-roles/${roleId}`)
+  },
+
   listAgentToolConfigs(businessLineId: string, params?: { toolId?: string }) {
     return apiHttp.get<AgentToolConfig[]>(`/business-lines/${businessLineId}/agent-tool-configs`, {
       toolId: params?.toolId,
@@ -213,29 +299,6 @@ export const businessLinesApi = {
     })
   },
 
-  removeLocalSkill(businessLineId: string, skillId: string) {
-    return apiHttp.delete<void>(`/business-lines/${businessLineId}/local-skills/${skillId}`)
-  },
-
-  localSkillContent(businessLineId: string, skillId: string) {
-    return apiHttp.get<SkillContent>(
-      `/business-lines/${businessLineId}/local-skills/${skillId}/content`,
-    )
-  },
-
-  localSkillTree(businessLineId: string, skillId: string) {
-    return apiHttp.get<SkillTree>(
-      `/business-lines/${businessLineId}/local-skills/${skillId}/tree`,
-    )
-  },
-
-  localSkillFile(businessLineId: string, skillId: string, filePath: string) {
-    return apiHttp.get<SkillFile>(
-      `/business-lines/${businessLineId}/local-skills/${skillId}/file`,
-      { path: filePath },
-    )
-  },
-
   uploadLocalSkill(businessLineId: string, file: File) {
     const formData = new FormData()
     formData.append('file', file)
@@ -243,6 +306,47 @@ export const businessLinesApi = {
       `/business-lines/${businessLineId}/local-skills/upload`,
       formData,
     )
+  },
+
+  getLocalSkillTree(businessLineId: string, directoryName: string) {
+    return apiHttp.get<SkillTree>(
+      `/business-lines/${businessLineId}/local-skills/${directoryName}/tree`,
+    )
+  },
+
+  localSkillTree(businessLineId: string, directoryName: string) {
+    return this.getLocalSkillTree(businessLineId, directoryName)
+  },
+
+  getLocalSkillFile(businessLineId: string, directoryName: string, filePath: string) {
+    return apiHttp.get<SkillFile>(
+      `/business-lines/${businessLineId}/local-skills/${directoryName}/file`,
+      {
+        path: filePath,
+      },
+    )
+  },
+
+  localSkillFile(businessLineId: string, directoryName: string, filePath: string) {
+    return this.getLocalSkillFile(businessLineId, directoryName, filePath)
+  },
+
+  getLocalSkillContent(businessLineId: string, directoryName: string) {
+    return apiHttp.get<SkillContent>(
+      `/business-lines/${businessLineId}/local-skills/${directoryName}/content`,
+    )
+  },
+
+  downloadLocalSkillArchive(businessLineId: string, directoryName: string) {
+    return `/api/v1/business-lines/${encodeURIComponent(businessLineId)}/local-skills/${encodeURIComponent(directoryName)}/download`
+  },
+
+  deleteLocalSkill(businessLineId: string, directoryName: string) {
+    return apiHttp.delete<void>(`/business-lines/${businessLineId}/local-skills/${directoryName}`)
+  },
+
+  removeLocalSkill(businessLineId: string, directoryName: string) {
+    return this.deleteLocalSkill(businessLineId, directoryName)
   },
 
   listLocalMcps(businessLineId: string) {
@@ -253,6 +357,14 @@ export const businessLinesApi = {
     return apiHttp.post<Mcp>(`/business-lines/${businessLineId}/local-mcps`, payload)
   },
 
+  updateLocalMcp(businessLineId: string, mcpId: string, payload: CreateLocalMcpPayload) {
+    return apiHttp.patch<Mcp>(`/business-lines/${businessLineId}/local-mcps/${mcpId}`, payload)
+  },
+
+  deleteLocalMcp(businessLineId: string, mcpId: string) {
+    return apiHttp.delete<void>(`/business-lines/${businessLineId}/local-mcps/${mcpId}`)
+  },
+
   importLocalMcps(businessLineId: string, payload: ImportLocalMcpsPayload) {
     return apiHttp.post<ImportLocalMcpsResult>(
       `/business-lines/${businessLineId}/local-mcps/import-json`,
@@ -260,10 +372,7 @@ export const businessLinesApi = {
     )
   },
 
-  getLocalMcpConfig(businessLineId: string, params: { name: string; sourcePath: string }) {
-    return apiHttp.get<LocalMcpConfig>(`/business-lines/${businessLineId}/local-mcps/config`, {
-      name: params.name,
-      sourcePath: params.sourcePath,
-    })
+  getLocalMcpConfig(businessLineId: string, query: { name: string; sourcePath: string }) {
+    return apiHttp.get<LocalMcpConfig>(`/business-lines/${businessLineId}/local-mcps/config`, query)
   },
 }

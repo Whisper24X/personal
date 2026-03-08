@@ -25,4 +25,10 @@ export abstract class BusinessLineInvitationRepository {
     createdBy: BusinessLineInvitation['createdBy'];
     expiresAt: BusinessLineInvitation['expiresAt'];
   }): Promise<BusinessLineInvitation>;
+
+  abstract countActiveByBusinessLineIdAndRole(
+    businessLineId: string,
+    role: string,
+    now: Date,
+  ): Promise<number>;
 }

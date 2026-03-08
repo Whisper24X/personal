@@ -64,6 +64,12 @@ import { ImportLocalMcpsResultDto } from './dto/import-local-mcps-result.dto';
 import { GetLocalMcpConfigDto } from './dto/get-local-mcp-config.dto';
 import { LocalMcpConfigDto } from './dto/local-mcp-config.dto';
 import { LocalSkillContentDto } from './dto/local-skill-content.dto';
+import { BusinessLineCustomRole } from './domain/business-line-custom-role';
+import { CreateBusinessLineCustomRoleDto } from './dto/create-business-line-custom-role.dto';
+import { UpdateBusinessLineCustomRoleDto } from './dto/update-business-line-custom-role.dto';
+import { ProjectCustomRole } from '../projects/domain/project-custom-role';
+import { CreateProjectCustomRoleDto } from '../projects/dto/create-project-custom-role.dto';
+import { UpdateProjectCustomRoleDto } from '../projects/dto/update-project-custom-role.dto';
 
 @ApiTags('Businesslines')
 @ApiBearerAuth()
@@ -222,6 +228,190 @@ export class BusinessLinesController {
     return this.businessLinesService.addMember(
       businessLineId,
       createBusinessLineMemberDto,
+      request.user,
+    );
+  }
+
+  @Get(':businessLineId/custom-roles')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: BusinessLineCustomRole,
+    isArray: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  findCustomRoles(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+  ) {
+    return this.businessLinesService.findCustomRoles(
+      businessLineId,
+      request.user,
+    );
+  }
+
+  @Get(':businessLineId/custom-role-library')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: BusinessLineCustomRole,
+    isArray: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  findCustomRoleLibrary(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+  ) {
+    return this.businessLinesService.findCustomRoleLibrary(
+      businessLineId,
+      request.user,
+    );
+  }
+
+  @Post(':businessLineId/custom-roles')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiCreatedResponse({
+    type: BusinessLineCustomRole,
+  })
+  @HttpCode(HttpStatus.CREATED)
+  createCustomRole(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Body() createBusinessLineCustomRoleDto: CreateBusinessLineCustomRoleDto,
+  ) {
+    return this.businessLinesService.createCustomRole(
+      businessLineId,
+      createBusinessLineCustomRoleDto,
+      request.user,
+    );
+  }
+
+  @Patch(':businessLineId/custom-roles/:roleId')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiParam({
+    name: 'roleId',
+    type: String,
+    required: true,
+  })
+  @ApiOkResponse({
+    type: BusinessLineCustomRole,
+  })
+  @HttpCode(HttpStatus.OK)
+  updateCustomRole(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Param('roleId', ParseUUIDPipe) roleId: string,
+    @Body() updateBusinessLineCustomRoleDto: UpdateBusinessLineCustomRoleDto,
+  ) {
+    return this.businessLinesService.updateCustomRole(
+      businessLineId,
+      roleId,
+      updateBusinessLineCustomRoleDto,
+      request.user,
+    );
+  }
+
+  @Delete(':businessLineId/custom-roles/:roleId')
+  @ApiParam({
+    name: 'businessLineId',
+    type: String,
+    required: true,
+  })
+  @ApiParam({
+    name: 'roleId',
+    type: String,
+    required: true,
+  })
+  @ApiNoContentResponse()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeCustomRole(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Param('roleId', ParseUUIDPipe) roleId: string,
+  ): Promise<void> {
+    return this.businessLinesService.removeCustomRole(
+      businessLineId,
+      roleId,
+      request.user,
+    );
+  }
+
+  @Get(':businessLineId/project-custom-roles')
+  @ApiParam({ name: 'businessLineId', type: String, required: true })
+  @ApiOkResponse({ type: ProjectCustomRole, isArray: true })
+  @HttpCode(HttpStatus.OK)
+  findProjectCustomRoles(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+  ) {
+    return this.businessLinesService.findProjectCustomRoles(
+      businessLineId,
+      request.user,
+    );
+  }
+
+  @Post(':businessLineId/project-custom-roles')
+  @ApiParam({ name: 'businessLineId', type: String, required: true })
+  @ApiCreatedResponse({ type: ProjectCustomRole })
+  @HttpCode(HttpStatus.CREATED)
+  createProjectCustomRole(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Body() createProjectCustomRoleDto: CreateProjectCustomRoleDto,
+  ) {
+    return this.businessLinesService.createProjectCustomRole(
+      businessLineId,
+      createProjectCustomRoleDto,
+      request.user,
+    );
+  }
+
+  @Patch(':businessLineId/project-custom-roles/:roleId')
+  @ApiParam({ name: 'businessLineId', type: String, required: true })
+  @ApiParam({ name: 'roleId', type: String, required: true })
+  @ApiOkResponse({ type: ProjectCustomRole })
+  @HttpCode(HttpStatus.OK)
+  updateProjectCustomRole(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Param('roleId', ParseUUIDPipe) roleId: string,
+    @Body() updateProjectCustomRoleDto: UpdateProjectCustomRoleDto,
+  ) {
+    return this.businessLinesService.updateProjectCustomRole(
+      businessLineId,
+      roleId,
+      updateProjectCustomRoleDto,
+      request.user,
+    );
+  }
+
+  @Delete(':businessLineId/project-custom-roles/:roleId')
+  @ApiParam({ name: 'businessLineId', type: String, required: true })
+  @ApiParam({ name: 'roleId', type: String, required: true })
+  @ApiNoContentResponse()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeProjectCustomRole(
+    @Request() request,
+    @Param('businessLineId', ParseUUIDPipe) businessLineId: string,
+    @Param('roleId', ParseUUIDPipe) roleId: string,
+  ): Promise<void> {
+    return this.businessLinesService.removeProjectCustomRole(
+      businessLineId,
+      roleId,
       request.user,
     );
   }

@@ -1,6 +1,4 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { BusinessLineMemberRole } from '../../business-lines/dto/business-line-member-role.enum';
-import { ProjectMemberRole } from '../../projects/dto/project-member-role.enum';
 
 export class CurrentAccessUserDto {
   @ApiProperty({ type: String })
@@ -23,19 +21,11 @@ export class CurrentAccessContextDto {
   @ApiPropertyOptional({ type: String })
   projectId?: string;
 
-  @ApiPropertyOptional({
-    enum: BusinessLineMemberRole,
-    enumName: 'BusinessLineMemberRole',
-    nullable: true,
-  })
-  businessRole?: BusinessLineMemberRole | null;
+  @ApiPropertyOptional({ type: String, nullable: true })
+  businessRole?: string | null;
 
-  @ApiPropertyOptional({
-    enum: ProjectMemberRole,
-    enumName: 'ProjectMemberRole',
-    nullable: true,
-  })
-  projectRole?: ProjectMemberRole | null;
+  @ApiPropertyOptional({ type: String, nullable: true })
+  projectRole?: string | null;
 }
 
 export class CurrentAccessVisibilityDto {

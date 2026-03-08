@@ -107,4 +107,16 @@ export class BusinessLineMemberRelationalRepository
       userId,
     });
   }
+
+  async countByBusinessLineIdAndRole(
+    businessLineId: string,
+    role: string,
+  ): Promise<number> {
+    return this.businessLineMemberRepository.count({
+      where: {
+        businessLineId,
+        role,
+      },
+    });
+  }
 }

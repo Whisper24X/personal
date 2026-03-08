@@ -11,7 +11,6 @@ import {
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
 import { ProjectEntity } from './project.entity';
-import { ProjectMemberRole } from '../../../../dto/project-member-role.enum';
 
 @Entity({
   name: 'project_members',
@@ -30,13 +29,14 @@ export class ProjectMemberEntity extends EntityRelationalHelper {
   @Column({ type: 'uuid', comment: '关联用户ID' })
   userId: string;
 
+  @Index('IDX_project_members_role_code')
   @Column({
-    type: 'enum',
-    enum: ProjectMemberRole,
-    enumName: 'project_member_role_enum',
-    comment: '项目成员角色',
+    name: 'projectRoleCode',
+    type: 'varchar',
+    length: 64,
+    comment: '项目角色代码',
   })
-  role: ProjectMemberRole;
+  role: string;
 
   @ManyToOne(() => ProjectEntity, {
     onDelete: 'CASCADE',

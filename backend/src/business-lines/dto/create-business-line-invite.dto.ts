@@ -1,16 +1,23 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsObject, IsOptional } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import { BusinessLineMemberRole } from './business-line-member-role.enum';
 import { BusinessLineInviteProjectRole } from './business-line-invite-project-role.enum';
 
 export class CreateBusinessLineInviteDto {
   @ApiProperty({
-    enum: BusinessLineMemberRole,
-    enumName: 'BusinessLineMemberRole',
+    type: String,
     default: BusinessLineMemberRole.member,
   })
-  @IsEnum(BusinessLineMemberRole)
-  role: BusinessLineMemberRole;
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
+  role: string;
 
   @ApiPropertyOptional({
     type: 'object',

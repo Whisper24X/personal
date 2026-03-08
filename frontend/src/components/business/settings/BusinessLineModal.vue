@@ -6,15 +6,15 @@ import {
   businessLinesApi,
   type AgentToolConfig,
   type BusinessLine,
+  type BusinessLineCustomRole,
   type BusinessLineInvite,
   type BusinessLineMember,
-  type BusinessLineMemberRole,
 } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
 import { usersApi } from '@/api/users'
 import { workflowApi } from '@/api/workflow'
 import type { BusinessLineItem, ProjectItem } from '@/hooks/core/useLayout'
-import type { Project } from '@/types/api/projects'
+import type { Project, ProjectCustomRole } from '@/types/api/projects'
 import type { User } from '@/types/api/users'
 import type { Skill, SkillTreeNode } from '@/types/api/skills'
 import type { Mcp } from '@/types/api/mcps'
@@ -28,14 +28,29 @@ import { fetchAllPages } from '@/utils/pagination'
 import BusinessLineFormModal from './modals/BusinessLineFormModal.vue'
 import ConfirmActionModal from './modals/ConfirmActionModal.vue'
 import MemberPermissionModal from './modals/MemberPermissionModal.vue'
+import CustomRoleModal from '@/components/access/CustomRoleModal.vue'
 import ProjectFormModal from './modals/ProjectFormModal.vue'
 import AgentToolConfigModal from './modals/AgentToolConfigModal.vue'
 import SkillUploadModal from './modals/SkillUploadModal.vue'
 import SkillTreeNodeComponent from '@/components/core/SkillTreeNode.vue'
 import McpJsonImportModal from './modals/McpJsonImportModal.vue'
 import { STORAGE_KEYS } from '@/types/common/storage'
+import {
+  BUSINESS_LINE_CAPABILITY_OPTIONS,
+  PROJECT_CAPABILITY_OPTIONS,
+  buildBusinessLineRoleAssignmentOptions,
+} from '@/constants/access'
+import { getCapabilityLabel } from '@/constants/access-control'
 
-type MainTab = 'projects' | 'members' | 'agent-cli' | 'workflow' | 'skill' | 'mcp' | 'settings'
+type MainTab =
+  | 'projects'
+  | 'members'
+  | 'permissions'
+  | 'agent-cli'
+  | 'workflow'
+  | 'skill'
+  | 'mcp'
+  | 'settings'
 type ProjectPermissionRole = 'none' | 'manage' | 'developer' | 'viewer'
 type SupportedCliToolId = 'claude-code' | 'codex' | 'gemini-cli' | 'cursor-agent' | 'opencode'
 type WorkflowTemplateNodeInputForm = {
@@ -54,6 +69,9 @@ const SUPPORTED_CLI_TOOLS: Array<{ id: SupportedCliToolId; label: string }> = [
   { id: 'gemini-cli', label: 'Gemini CLI' },
   { id: 'opencode', label: 'Opencode' },
 ]
+
+const defaultBusinessLineRoleCodes = new Set(['owner', 'admin', 'member'])
+const defaultProjectRoleCodes = new Set(['owner', 'maintainer', 'developer', 'viewer'])
 
 defineOptions({
   name: 'BusinessLineModal',
@@ -84,11 +102,13 @@ const memberQuery = ref('')
 const lineDetail = ref<BusinessLine | null>(null)
 const lineProjects = ref<ProjectItem[]>([])
 const lineMembers = ref<BusinessLineMember[]>([])
+const lineCustomRoles = ref<BusinessLineCustomRole[]>([])
 const users = ref<User[]>([])
 
 const loadingLineDetail = ref(false)
 const loadingProjects = ref(false)
 const loadingMembers = ref(false)
+const loadingCustomRoles = ref(false)
 const loadingUsers = ref(false)
 const loadingAgentToolConfigs = ref(false)
 const submittingAgentToolConfig = ref(false)
@@ -129,10 +149,32 @@ const memberPermissionModalSubmitting = ref(false)
 const memberPermissionModalPreparing = ref(false)
 const memberPermissionModalError = ref('')
 const memberPermissionInitialUserId = ref('')
-const memberPermissionInitialBusinessRole = ref<BusinessLineMemberRole>('member')
+const memberPermissionInitialBusinessRole = ref<string>('member')
 const memberPermissionInitialProjectRoles = ref<Record<string, ProjectPermissionRole>>({})
 const memberInvitationLink = ref('')
 const memberInvitationExpiresAt = ref('')
+
+const customRoleModalOpen = ref(false)
+const customRoleModalMode = ref<'create' | 'edit'>('create')
+const customRoleModalSubmitting = ref(false)
+const customRoleModalError = ref('')
+const editingCustomRoleId = ref('')
+const customRoleInitialName = ref('')
+const customRoleInitialDescription = ref('')
+const customRoleInitialCapabilities = ref<string[]>([])
+const deletingCustomRoleId = ref('')
+
+const permissionProjectRoleLibrary = ref<ProjectCustomRole[]>([])
+const loadingPermissionProjectRoleLibrary = ref(false)
+const permissionProjectRoleModalOpen = ref(false)
+const permissionProjectRoleModalMode = ref<'create' | 'edit'>('create')
+const permissionProjectRoleModalSubmitting = ref(false)
+const permissionProjectRoleModalError = ref('')
+const editingPermissionProjectRoleId = ref('')
+const permissionProjectRoleInitialName = ref('')
+const permissionProjectRoleInitialDescription = ref('')
+const permissionProjectRoleInitialCapabilities = ref<string[]>([])
+const deletingPermissionProjectRoleId = ref('')
 
 const projectDeleteModalOpen = ref(false)
 const deletingProject = ref(false)
@@ -249,6 +291,10 @@ const canManageActiveLineMembers = computed(() => {
   return hasActiveLineCapability('businessLine.member.manage')
 })
 
+const businessLineRoleOptions = computed(() => {
+  return buildBusinessLineRoleAssignmentOptions(lineCustomRoles.value)
+})
+
 const canCreateProjectItem = computed(() => {
   return hasActiveLineCapability('businessLine.project.create')
 })
@@ -259,6 +305,10 @@ const canUpdateProjectItem = computed(() => {
 
 const canDeleteProjectItem = computed(() => {
   return hasActiveLineCapability('businessLine.project.delete')
+})
+
+const canManagePermissionProjectRoles = computed(() => {
+  return Boolean(activeLineId.value) && canManageActiveLineMembers.value
 })
 
 const loadLineAccess = async (lineId: string) => {
@@ -281,6 +331,33 @@ const loadLineAccess = async (lineId: string) => {
   }
 }
 
+const loadPermissionProjectCustomRoles = async (lineId: string) => {
+  if (!lineId) {
+    permissionProjectRoleLibrary.value = []
+    return
+  }
+
+  loadingPermissionProjectRoleLibrary.value = true
+
+  try {
+    const roles = await businessLinesApi.listProjectCustomRoles(lineId)
+    if (lineId !== activeLineId.value) {
+      return
+    }
+
+    permissionProjectRoleLibrary.value = roles
+  } catch (error) {
+    if (lineId === activeLineId.value) {
+      permissionProjectRoleLibrary.value = []
+      message.error(toErrorMessage(error, '加载项目角色库失败'))
+    }
+  } finally {
+    if (lineId === activeLineId.value) {
+      loadingPermissionProjectRoleLibrary.value = false
+    }
+  }
+}
+
 const activeAgentCliToolLabel = computed(() => {
   return (
     SUPPORTED_CLI_TOOLS.find((tool) => tool.id === activeAgentCliToolId.value)?.label ??
@@ -293,7 +370,9 @@ const workflowConfiguredCliToolIdSet = computed(() => {
 })
 
 const workflowTemplateModalTitle = computed(() => {
-  return workflowTemplateModalMode.value === 'edit' ? '编辑业务线工作流模板' : '创建业务线工作流模板'
+  return workflowTemplateModalMode.value === 'edit'
+    ? '编辑业务线工作流模板'
+    : '创建业务线工作流模板'
 })
 
 const workflowTemplateSubmitIdleText = computed(() => {
@@ -305,7 +384,11 @@ const workflowTemplateSubmitLoadingText = computed(() => {
 })
 
 const canDeleteLine = computed(() => {
-  return Boolean(activeLineId.value) && hasActiveLineCapability('businessLine.delete') && lineProjects.value.length === 0
+  return (
+    Boolean(activeLineId.value) &&
+    hasActiveLineCapability('businessLine.delete') &&
+    lineProjects.value.length === 0
+  )
 })
 
 const hasNestedModalOpen = computed(() => {
@@ -314,6 +397,7 @@ const hasNestedModalOpen = computed(() => {
     projectFormModalOpen.value ||
     memberPermissionModalOpen.value ||
     agentToolConfigModalOpen.value ||
+    permissionProjectRoleModalOpen.value ||
     workflowCreateModalOpen.value ||
     uploadSkillModalOpen.value ||
     mcpJsonImportModalOpen.value ||
@@ -359,6 +443,7 @@ const filteredMembers = computed(() => {
     return (
       member.userId.toLowerCase().includes(query) ||
       member.role.toLowerCase().includes(query) ||
+      (member.customRoleName ?? '').toLowerCase().includes(query) ||
       nickname.includes(query) ||
       username.includes(query)
     )
@@ -881,7 +966,9 @@ const resetWorkflowCreateForm = () => {
   }
 }
 
-const buildWorkflowFormNodesFromTemplate = (template: WorkflowTemplate): WorkflowTemplateNodeForm[] => {
+const buildWorkflowFormNodesFromTemplate = (
+  template: WorkflowTemplate,
+): WorkflowTemplateNodeForm[] => {
   const sourceNodes = template.nodesJson.length > 0 ? template.nodesJson : [buildWorkflowNode(1)]
 
   return normalizeWorkflowNodes(
@@ -1028,7 +1115,9 @@ const submitWorkflowTemplate = async () => {
     await loadWorkflowTemplates(activeLineId.value)
     closeWorkflowCreateModal()
   } catch (error) {
-    message.error(toErrorMessage(error, isEditing ? '更新业务线工作流模板失败' : '创建业务线工作流模板失败'))
+    message.error(
+      toErrorMessage(error, isEditing ? '更新业务线工作流模板失败' : '创建业务线工作流模板失败'),
+    )
   } finally {
     submittingWorkflowTemplate.value = false
   }
@@ -1216,11 +1305,7 @@ const loadSkillPreviewFile = async (skillId: string, filePath: string) => {
   const requestToken = skillPreviewRequestToken.value
 
   try {
-    const response = await businessLinesApi.localSkillFile(
-      activeLineId.value,
-      skillId,
-      filePath,
-    )
+    const response = await businessLinesApi.localSkillFile(activeLineId.value, skillId, filePath)
     if (requestToken !== skillPreviewRequestToken.value) return
     skillPreviewContent.value = response.content
   } catch (error) {
@@ -1260,10 +1345,7 @@ const openSkillPreview = async (item: Skill) => {
   skillPreviewExpandedDirs.value = new Set()
 
   try {
-    const response = await businessLinesApi.localSkillTree(
-      activeLineId.value,
-      item.id,
-    )
+    const response = await businessLinesApi.localSkillTree(activeLineId.value, item.id)
 
     if (requestToken !== skillPreviewRequestToken.value) return
 
@@ -1469,8 +1551,7 @@ const saveMcpJsonPreview = async () => {
   try {
     nextConfig = resolveMcpConfigFromDraft(parsedPayload, mcpJsonPreviewName.value)
   } catch (error) {
-    mcpJsonPreviewError.value =
-      error instanceof Error ? error.message : '无法解析 MCP 配置'
+    mcpJsonPreviewError.value = error instanceof Error ? error.message : '无法解析 MCP 配置'
     return
   }
 
@@ -1527,7 +1608,15 @@ const displayUserMeta = (userId: string) => {
   return user.username
 }
 
-const roleBadgeClass = (role: BusinessLineMemberRole) => {
+const displayBusinessLineRoleLabel = (member: BusinessLineMember) => {
+  if (member.customRoleName?.trim()) {
+    return member.customRoleName
+  }
+
+  return member.role
+}
+
+const roleBadgeClass = (role: string) => {
   if (role === 'owner') {
     return 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300'
   }
@@ -1545,10 +1634,15 @@ const tabClass = (tab: MainTab) => {
     : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'
 }
 
+const isMemberAccessTab = (tab: MainTab = activeTab.value) => {
+  return tab === 'members' || tab === 'permissions'
+}
+
 const resetTabErrors = () => {
   lineFormError.value = ''
   projectFormError.value = ''
   memberPermissionModalError.value = ''
+  permissionProjectRoleModalError.value = ''
   agentCliValidationMessage.value = ''
   workflowValidationMessage.value = ''
   mcpJsonImportError.value = ''
@@ -1564,6 +1658,7 @@ const closeNestedModals = () => {
   projectFormModalOpen.value = false
   memberPermissionModalOpen.value = false
   agentToolConfigModalOpen.value = false
+  permissionProjectRoleModalOpen.value = false
   workflowCreateModalOpen.value = false
   uploadSkillModalOpen.value = false
   mcpJsonImportModalOpen.value = false
@@ -1649,6 +1744,7 @@ const loadLineProjects = async (lineId: string) => {
 const loadLineMembers = async (lineId: string) => {
   if (!lineId) {
     lineMembers.value = []
+    lineCustomRoles.value = []
     return
   }
 
@@ -1669,6 +1765,33 @@ const loadLineMembers = async (lineId: string) => {
   } finally {
     if (lineId === activeLineId.value) {
       loadingMembers.value = false
+    }
+  }
+}
+
+const loadLineCustomRoles = async (lineId: string) => {
+  if (!lineId) {
+    lineCustomRoles.value = []
+    return
+  }
+
+  loadingCustomRoles.value = true
+
+  try {
+    const roles = await businessLinesApi.listCustomRoles(lineId)
+    if (lineId !== activeLineId.value) {
+      return
+    }
+
+    lineCustomRoles.value = roles
+  } catch (error) {
+    if (lineId === activeLineId.value) {
+      lineCustomRoles.value = []
+      message.error(toErrorMessage(error, '加载业务线角色失败'))
+    }
+  } finally {
+    if (lineId === activeLineId.value) {
+      loadingCustomRoles.value = false
     }
   }
 }
@@ -1694,6 +1817,7 @@ const loadLineContext = async ({ includeMembers = false }: { includeMembers?: bo
     lineDetail.value = null
     lineProjects.value = []
     lineMembers.value = []
+    lineCustomRoles.value = []
     return
   }
 
@@ -1701,7 +1825,7 @@ const loadLineContext = async ({ includeMembers = false }: { includeMembers?: bo
   await Promise.all([loadLineDetail(lineId), loadLineProjects(lineId)])
 
   if (includeMembers) {
-    await loadLineMembers(lineId)
+    await Promise.all([loadLineMembers(lineId), loadLineCustomRoles(lineId)])
   }
 }
 
@@ -1762,7 +1886,7 @@ const submitLineForm = async (payload: { name: string; description: string }) =>
     }
 
     lineFormModalOpen.value = false
-    await refreshForCurrentLine({ includeMembers: activeTab.value === 'members' })
+    await refreshForCurrentLine({ includeMembers: isMemberAccessTab() })
     message.success(lineFormMode.value === 'create' ? '创建业务线成功' : '保存业务线成功')
   } catch (error) {
     message.error(toErrorMessage(error, '保存业务线失败'))
@@ -1840,7 +1964,7 @@ const submitProjectForm = async (payload: {
     }
 
     projectFormModalOpen.value = false
-    await refreshForCurrentLine({ includeMembers: activeTab.value === 'members' })
+    await refreshForCurrentLine({ includeMembers: isMemberAccessTab() })
     message.success(projectFormMode.value === 'create' ? '新建项目成功' : '保存项目成功')
   } catch (error) {
     message.error(toErrorMessage(error, '保存项目失败'))
@@ -1869,7 +1993,7 @@ const confirmDeleteProject = async () => {
     await projectsApi.remove(deletingProjectTarget.value.id)
     projectDeleteModalOpen.value = false
     deletingProjectTarget.value = null
-    await refreshForCurrentLine({ includeMembers: activeTab.value === 'members' })
+    await refreshForCurrentLine({ includeMembers: isMemberAccessTab() })
     message.success('删除项目成功')
   } catch (error) {
     message.error(toErrorMessage(error, '删除项目失败'))
@@ -1954,13 +2078,13 @@ const submitMemberPermission = async (
   payload:
     | {
         mode: 'create'
-        businessRole: BusinessLineMemberRole
+        businessRole: string
         projectRoles: Record<string, ProjectPermissionRole>
       }
     | {
         mode: 'edit'
         userId: string
-        businessRole: BusinessLineMemberRole
+        businessRole: string
         projectRoles: Record<string, ProjectPermissionRole>
       },
 ) => {
@@ -1993,7 +2117,11 @@ const submitMemberPermission = async (
       return
     } else {
       const currentMember = lineMembers.value.find((member) => member.userId === payload.userId)
-      if (currentMember && currentMember.role !== payload.businessRole) {
+      const shouldUpdateMember = Boolean(
+        currentMember && currentMember.role !== payload.businessRole,
+      )
+
+      if (shouldUpdateMember) {
         await businessLinesApi.updateMember(activeLineId.value, payload.userId, {
           role: payload.businessRole,
         })
@@ -2010,6 +2138,211 @@ const submitMemberPermission = async (
   } finally {
     memberPermissionModalSubmitting.value = false
   }
+}
+
+const openCreateCustomRoleModal = () => {
+  if (!activeLineId.value || !canManageActiveLineMembers.value) {
+    return
+  }
+
+  customRoleModalMode.value = 'create'
+  editingCustomRoleId.value = ''
+  customRoleInitialName.value = ''
+  customRoleInitialDescription.value = ''
+  customRoleInitialCapabilities.value = ['businessLine.read']
+  customRoleModalError.value = ''
+  customRoleModalOpen.value = true
+}
+
+const openEditCustomRoleModal = (role: BusinessLineCustomRole) => {
+  if (!activeLineId.value || !canManageActiveLineMembers.value) {
+    return
+  }
+
+  customRoleModalMode.value = 'edit'
+  editingCustomRoleId.value = role.id
+  customRoleInitialName.value = role.name
+  customRoleInitialDescription.value = role.description ?? ''
+  customRoleInitialCapabilities.value = [...role.capabilities]
+  customRoleModalError.value = ''
+  customRoleModalOpen.value = true
+}
+
+const submitCustomRole = async (payload: {
+  name: string
+  description: string
+  capabilities: string[]
+}) => {
+  if (!activeLineId.value || !canManageActiveLineMembers.value) {
+    return
+  }
+
+  customRoleModalSubmitting.value = true
+  customRoleModalError.value = ''
+
+  try {
+    const requestPayload = {
+      name: payload.name.trim(),
+      description: normalizeOptionalText(payload.description),
+      capabilities: [...payload.capabilities],
+    }
+
+    if (customRoleModalMode.value === 'edit' && editingCustomRoleId.value) {
+      await businessLinesApi.updateCustomRole(
+        activeLineId.value,
+        editingCustomRoleId.value,
+        requestPayload,
+      )
+    } else {
+      await businessLinesApi.createCustomRole(activeLineId.value, requestPayload)
+    }
+
+    customRoleModalOpen.value = false
+    await loadLineCustomRoles(activeLineId.value)
+    message.success(customRoleModalMode.value === 'edit' ? '保存角色成功' : '创建角色成功')
+  } catch (error) {
+    customRoleModalError.value = toErrorMessage(error, '保存自定义角色失败')
+  } finally {
+    customRoleModalSubmitting.value = false
+  }
+}
+
+const removeCustomRole = async (role: BusinessLineCustomRole) => {
+  if (!activeLineId.value || !canManageActiveLineMembers.value || deletingCustomRoleId.value) {
+    return
+  }
+
+  const confirmed = window.confirm(`确认删除自定义角色「${role.name}」吗？`)
+  if (!confirmed) {
+    return
+  }
+
+  deletingCustomRoleId.value = role.id
+
+  try {
+    await businessLinesApi.removeCustomRole(activeLineId.value, role.id)
+    await loadLineCustomRoles(activeLineId.value)
+    message.success('删除角色成功')
+  } catch (error) {
+    message.error(toErrorMessage(error, '删除自定义角色失败'))
+  } finally {
+    deletingCustomRoleId.value = ''
+  }
+}
+
+const openCreatePermissionProjectRoleModal = () => {
+  if (!activeLineId.value || !canManagePermissionProjectRoles.value) {
+    return
+  }
+
+  permissionProjectRoleModalMode.value = 'create'
+  editingPermissionProjectRoleId.value = ''
+  permissionProjectRoleInitialName.value = ''
+  permissionProjectRoleInitialDescription.value = ''
+  permissionProjectRoleInitialCapabilities.value = ['project.read', 'project.task.read']
+  permissionProjectRoleModalError.value = ''
+  permissionProjectRoleModalOpen.value = true
+}
+
+const openEditPermissionProjectRoleModal = (role: ProjectCustomRole) => {
+  if (!activeLineId.value || !canManagePermissionProjectRoles.value) {
+    return
+  }
+
+  permissionProjectRoleModalMode.value = 'edit'
+  editingPermissionProjectRoleId.value = role.id
+  permissionProjectRoleInitialName.value = role.name
+  permissionProjectRoleInitialDescription.value = role.description ?? ''
+  permissionProjectRoleInitialCapabilities.value = [...role.capabilities]
+  permissionProjectRoleModalError.value = ''
+  permissionProjectRoleModalOpen.value = true
+}
+
+const submitPermissionProjectRole = async (payload: {
+  name: string
+  description: string
+  capabilities: string[]
+}) => {
+  if (!activeLineId.value || !canManagePermissionProjectRoles.value) {
+    return
+  }
+
+  permissionProjectRoleModalSubmitting.value = true
+  permissionProjectRoleModalError.value = ''
+
+  try {
+    const requestPayload = {
+      name: payload.name.trim(),
+      description: normalizeOptionalText(payload.description),
+      capabilities: [...payload.capabilities],
+    }
+
+    if (permissionProjectRoleModalMode.value === 'edit' && editingPermissionProjectRoleId.value) {
+      await businessLinesApi.updateProjectCustomRole(
+        activeLineId.value,
+        editingPermissionProjectRoleId.value,
+        requestPayload,
+      )
+    } else {
+      await businessLinesApi.createProjectCustomRole(activeLineId.value, requestPayload)
+    }
+
+    permissionProjectRoleModalOpen.value = false
+    await loadPermissionProjectCustomRoles(activeLineId.value)
+    message.success(
+      permissionProjectRoleModalMode.value === 'edit' ? '保存项目角色成功' : '创建项目角色成功',
+    )
+  } catch (error) {
+    permissionProjectRoleModalError.value = toErrorMessage(error, '保存项目角色失败')
+  } finally {
+    permissionProjectRoleModalSubmitting.value = false
+  }
+}
+
+const removePermissionProjectRole = async (role: ProjectCustomRole) => {
+  if (
+    !activeLineId.value ||
+    !canManagePermissionProjectRoles.value ||
+    deletingPermissionProjectRoleId.value
+  ) {
+    return
+  }
+
+  const confirmed = window.confirm(`确认删除项目角色「${role.name}」吗？`)
+  if (!confirmed) {
+    return
+  }
+
+  deletingPermissionProjectRoleId.value = role.id
+
+  try {
+    await businessLinesApi.removeProjectCustomRole(activeLineId.value, role.id)
+    await loadPermissionProjectCustomRoles(activeLineId.value)
+    message.success('删除项目角色成功')
+  } catch (error) {
+    message.error(toErrorMessage(error, '删除项目角色失败'))
+  } finally {
+    deletingPermissionProjectRoleId.value = ''
+  }
+}
+
+const refreshLinePermissionSection = async () => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  await Promise.all([
+    loadLineCustomRoles(activeLineId.value),
+    loadPermissionProjectCustomRoles(activeLineId.value),
+  ])
+}
+
+const refreshMemberAccessSection = async () => {
+  if (!activeLineId.value) {
+    return
+  }
+
+  await Promise.all([loadLineMembers(activeLineId.value), loadLineCustomRoles(activeLineId.value)])
 }
 
 const openRemoveMemberModal = (member: BusinessLineMember) => {
@@ -2079,7 +2412,7 @@ const confirmDeleteLineFinal = async () => {
       emit('select-line', fallbackLineId)
     }
 
-    await refreshForCurrentLine({ includeMembers: activeTab.value === 'members' })
+    await refreshForCurrentLine({ includeMembers: isMemberAccessTab() })
     message.success('删除业务线成功')
   } catch (error) {
     message.error(toErrorMessage(error, '删除业务线失败'))
@@ -2194,6 +2527,7 @@ watch(
       lineDetail.value = null
       lineProjects.value = []
       lineMembers.value = []
+      permissionProjectRoleLibrary.value = []
       agentToolConfigs.value = []
       workflowTemplates.value = []
       workflowConfiguredCliTools.value = []
@@ -2222,9 +2556,10 @@ watch(
     workflowNodeConfigsByTool.value = {}
     workflowNodeConfigLoadingByTool.value = {}
     loadingWorkflowConfiguredCliTools.value = false
+    permissionProjectRoleLibrary.value = []
     emit('select-line', lineId)
     void loadLineAccess(lineId)
-    void loadLineContext({ includeMembers: activeTab.value === 'members' })
+    void loadLineContext({ includeMembers: isMemberAccessTab() })
     if (activeTab.value === 'agent-cli') {
       void loadAgentToolConfigs(lineId, activeAgentCliToolId.value)
     } else if (activeTab.value === 'workflow') {
@@ -2250,7 +2585,19 @@ watch(
     }
 
     if (tab === 'members') {
-      void Promise.all([loadLineMembers(activeLineId.value), loadUsers()])
+      void Promise.all([
+        loadLineMembers(activeLineId.value),
+        loadLineCustomRoles(activeLineId.value),
+        loadUsers(),
+      ])
+      return
+    }
+
+    if (tab === 'permissions') {
+      void Promise.all([
+        loadLineCustomRoles(activeLineId.value),
+        loadPermissionProjectCustomRoles(activeLineId.value),
+      ])
       return
     }
 
@@ -2279,6 +2626,22 @@ watch(
     }
 
     void loadLineDetail(activeLineId.value)
+  },
+)
+
+watch(
+  () => [props.open, activeTab.value, activeLineId.value] as const,
+  ([open, tab]) => {
+    if (!open || tab !== 'permissions') {
+      return
+    }
+
+    if (!activeLineId.value) {
+      permissionProjectRoleLibrary.value = []
+      return
+    }
+
+    void loadPermissionProjectCustomRoles(activeLineId.value)
   },
 )
 
@@ -2425,7 +2788,15 @@ onBeforeUnmount(() => {
                   type="button"
                   @click="activeTab = 'members'"
                 >
-                  成员/权限
+                  成员
+                </button>
+                <button
+                  class="rounded-xl px-4 py-2 text-sm font-semibold transition"
+                  :class="tabClass('permissions')"
+                  type="button"
+                  @click="activeTab = 'permissions'"
+                >
+                  权限
                 </button>
                 <button
                   class="rounded-xl px-4 py-2 text-sm font-semibold transition"
@@ -2578,12 +2949,17 @@ onBeforeUnmount(() => {
               <section v-else-if="activeTab === 'members'" class="space-y-4">
                 <div class="panel-card p-4">
                   <div class="flex flex-wrap items-center justify-between gap-2">
-                    <p class="text-sm font-semibold">成员列表（{{ filteredMembers.length }}）</p>
+                    <div>
+                      <p class="text-sm font-semibold">成员列表（{{ filteredMembers.length }}）</p>
+                      <p class="mt-1 text-xs text-muted-foreground">
+                        管理业务线成员，并为成员分配默认角色或自定义角色。
+                      </p>
+                    </div>
                     <div class="flex items-center gap-2">
                       <button
                         type="button"
                         class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
-                        @click="loadLineMembers(activeLineId)"
+                        @click="refreshMemberAccessSection"
                       >
                         刷新
                       </button>
@@ -2641,7 +3017,7 @@ onBeforeUnmount(() => {
                               class="inline-flex rounded-full border px-2 py-1 text-xs font-semibold"
                               :class="roleBadgeClass(member.role)"
                             >
-                              {{ member.role }}
+                              {{ displayBusinessLineRoleLabel(member) }}
                             </span>
                           </td>
                           <td class="px-4 py-3 text-muted-foreground">
@@ -2655,7 +3031,7 @@ onBeforeUnmount(() => {
                                 class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
                                 @click="openEditMemberModal(member)"
                               >
-                                编辑权限
+                                编辑角色
                               </button>
                               <button
                                 v-if="canManageActiveLineMembers"
@@ -2680,6 +3056,301 @@ onBeforeUnmount(() => {
                 </div>
               </section>
 
+              <section v-else-if="activeTab === 'permissions'" class="space-y-4">
+                <div class="panel-card p-4">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p class="text-sm font-semibold">业务线角色库</p>
+                      <p class="mt-1 text-xs text-muted-foreground">
+                        这里维护全局可复用的业务线角色；当前业务线通过挂载来启用这些角色。
+                      </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                        @click="refreshLinePermissionSection()"
+                      >
+                        刷新
+                      </button>
+                      <button
+                        v-if="canManageActiveLineMembers"
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm"
+                        @click="openCreateCustomRoleModal"
+                      >
+                        新建业务线角色
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="mt-4">
+                    <article
+                      class="space-y-3 rounded-xl border border-border bg-background px-4 py-3"
+                    >
+                      <div class="flex items-center justify-between gap-2">
+                        <div>
+                          <p class="text-sm font-semibold">业务线角色库</p>
+                          <p class="mt-1 text-xs text-muted-foreground">
+                            当前业务线的成员权限角色定义，编辑只影响当前业务线。
+                          </p>
+                        </div>
+                        <span
+                          class="rounded-full border border-border px-2 py-1 text-[11px] text-muted-foreground"
+                        >
+                          共 {{ lineCustomRoles.length }} 个
+                        </span>
+                      </div>
+
+                      <div v-if="loadingCustomRoles" class="text-sm text-muted-foreground">
+                        加载业务线角色中...
+                      </div>
+                      <div
+                        v-else-if="lineCustomRoles.length === 0"
+                        class="rounded-xl border border-dashed border-border bg-background/60 px-4 py-4 text-sm text-muted-foreground"
+                      >
+                        当前暂无业务线角色。
+                      </div>
+                      <div v-else class="grid gap-3 xl:grid-cols-2">
+                        <article
+                          v-for="role in lineCustomRoles"
+                          :key="role.id"
+                          class="rounded-xl border border-border bg-background px-4 py-3"
+                        >
+                          <div class="flex items-start justify-between gap-3">
+                            <div>
+                              <div class="flex flex-wrap items-center gap-2">
+                                <p class="text-sm font-semibold">{{ role.name }}</p>
+                                <span
+                                  class="rounded-full border px-2 py-0.5 text-[11px]"
+                                  :class="
+                                    defaultBusinessLineRoleCodes.has(role.code)
+                                      ? 'border-primary/30 bg-primary/5 text-primary'
+                                      : 'border-border text-muted-foreground'
+                                  "
+                                >
+                                  {{
+                                    defaultBusinessLineRoleCodes.has(role.code)
+                                      ? '默认角色'
+                                      : '自定义角色'
+                                  }}
+                                </span>
+                                <span
+                                  class="rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11px] text-primary"
+                                >
+                                  代码 · {{ role.code }}
+                                </span>
+                              </div>
+                              <p class="mt-1 text-xs text-muted-foreground">
+                                {{ role.description || '暂无描述' }}
+                              </p>
+                            </div>
+                            <div v-if="canManageActiveLineMembers" class="flex items-center gap-2">
+                              <button
+                                type="button"
+                                class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                                @click="openEditCustomRoleModal(role)"
+                              >
+                                编辑
+                              </button>
+                              <button
+                                type="button"
+                                class="inline-flex h-8 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                :disabled="deletingCustomRoleId === role.id"
+                                @click="removeCustomRole(role)"
+                              >
+                                {{ deletingCustomRoleId === role.id ? '删除中...' : '删除' }}
+                              </button>
+                            </div>
+                          </div>
+                          <div class="mt-3 flex flex-wrap gap-2">
+                            <span
+                              v-for="capability in role.capabilities"
+                              :key="`${role.id}-${capability}`"
+                              class="rounded-full border border-border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground"
+                            >
+                              {{ getCapabilityLabel(capability) }}
+                            </span>
+                            <span
+                              v-if="role.capabilities.length === 0"
+                              class="rounded-full border border-border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground"
+                            >
+                              无额外能力
+                            </span>
+                          </div>
+                        </article>
+                      </div>
+                    </article>
+                  </div>
+                </div>
+
+                <div class="panel-card p-4">
+                  <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <p class="text-sm font-semibold">项目角色库</p>
+                      <p class="mt-1 text-xs text-muted-foreground">
+                        项目角色归属于当前业务线；当前业务线下的所有项目都会直接使用这里的角色库。
+                      </p>
+                    </div>
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <button
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="!activeLineId"
+                        @click="activeLineId && loadPermissionProjectCustomRoles(activeLineId)"
+                      >
+                        刷新项目角色
+                      </button>
+                      <button
+                        v-if="canManagePermissionProjectRoles"
+                        type="button"
+                        class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm"
+                        @click="openCreatePermissionProjectRoleModal"
+                      >
+                        新建项目角色
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    v-if="!activeLineId"
+                    class="mt-4 rounded-xl border border-dashed border-border bg-background/60 px-4 py-4 text-sm text-muted-foreground"
+                  >
+                    请先选择业务线。
+                  </div>
+                  <template v-else>
+                    <div class="mt-4 rounded-xl border border-border bg-background px-4 py-3">
+                      <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p class="text-sm font-semibold">{{ selectedLineName }}</p>
+                          <p class="mt-1 text-xs text-muted-foreground">
+                            {{ selectedLineDescription || '当前业务线未填写描述。' }}
+                          </p>
+                        </div>
+                        <span
+                          class="rounded-full border px-2 py-1 text-[11px]"
+                          :class="
+                            canManagePermissionProjectRoles
+                              ? 'border-primary/30 bg-primary/5 text-primary'
+                              : 'border-border text-muted-foreground'
+                          "
+                        >
+                          {{ canManagePermissionProjectRoles ? '可编辑角色库' : '仅可查看角色库' }}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div class="mt-4">
+                      <article
+                        class="space-y-3 rounded-xl border border-border bg-background px-4 py-3"
+                      >
+                        <div class="flex items-center justify-between gap-2">
+                          <div>
+                            <p class="text-sm font-semibold">当前业务线项目角色库</p>
+                            <p class="mt-1 text-xs text-muted-foreground">
+                              编辑角色定义会同步影响当前业务线下所有项目的成员角色分配。
+                            </p>
+                          </div>
+                          <span
+                            class="rounded-full border border-border px-2 py-1 text-[11px] text-muted-foreground"
+                          >
+                            共 {{ permissionProjectRoleLibrary.length }} 个
+                          </span>
+                        </div>
+
+                        <div
+                          v-if="loadingPermissionProjectRoleLibrary"
+                          class="text-sm text-muted-foreground"
+                        >
+                          加载项目角色库中...
+                        </div>
+                        <div
+                          v-else-if="permissionProjectRoleLibrary.length === 0"
+                          class="rounded-xl border border-dashed border-border bg-background/60 px-4 py-4 text-sm text-muted-foreground"
+                        >
+                          当前业务线暂无项目角色。
+                        </div>
+                        <div v-else class="grid gap-3 xl:grid-cols-2">
+                          <article
+                            v-for="role in permissionProjectRoleLibrary"
+                            :key="role.id"
+                            class="rounded-xl border border-border bg-background px-4 py-3"
+                          >
+                            <div class="flex items-start justify-between gap-3">
+                              <div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                  <p class="text-sm font-semibold">{{ role.name }}</p>
+                                  <span
+                                    class="rounded-full border px-2 py-0.5 text-[11px]"
+                                    :class="
+                                      defaultBusinessLineRoleCodes.has(role.code)
+                                        ? 'border-primary/30 bg-primary/5 text-primary'
+                                        : 'border-border text-muted-foreground'
+                                    "
+                                  >
+                                    {{
+                                      defaultProjectRoleCodes.has(role.code)
+                                        ? '默认模板'
+                                        : '自定义模板'
+                                    }}
+                                  </span>
+                                  <span
+                                    class="rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11px] text-primary"
+                                  >
+                                    代码 · {{ role.code }}
+                                  </span>
+                                </div>
+                                <p class="mt-1 text-xs text-muted-foreground">
+                                  {{ role.description || '暂无描述' }}
+                                </p>
+                              </div>
+                              <div
+                                v-if="canManagePermissionProjectRoles"
+                                class="flex items-center gap-2"
+                              >
+                                <button
+                                  type="button"
+                                  class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
+                                  @click="openEditPermissionProjectRoleModal(role)"
+                                >
+                                  编辑
+                                </button>
+                                <button
+                                  type="button"
+                                  class="inline-flex h-8 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                  :disabled="deletingPermissionProjectRoleId === role.id"
+                                  @click="removePermissionProjectRole(role)"
+                                >
+                                  {{
+                                    deletingPermissionProjectRoleId === role.id
+                                      ? '删除中...'
+                                      : '删除'
+                                  }}
+                                </button>
+                              </div>
+                            </div>
+                            <div class="mt-3 flex flex-wrap gap-2">
+                              <span
+                                v-for="capability in role.capabilities"
+                                :key="`${role.id}-${capability}`"
+                                class="rounded-full border border-border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground"
+                              >
+                                {{ getCapabilityLabel(capability) }}
+                              </span>
+                              <span
+                                v-if="role.capabilities.length === 0"
+                                class="rounded-full border border-border bg-background/80 px-2 py-1 text-[11px] text-muted-foreground"
+                              >
+                                无额外能力
+                              </span>
+                            </div>
+                          </article>
+                        </div>
+                      </article>
+                    </div>
+                  </template>
+                </div>
+              </section>
               <section v-else-if="activeTab === 'agent-cli'" class="space-y-4">
                 <article class="panel-card p-5">
                   <div class="flex flex-wrap items-center justify-between gap-2">
@@ -3043,7 +3714,10 @@ onBeforeUnmount(() => {
                       >
                         版本：{{ item.version }}
                       </p>
-                      <p v-if="item.description" class="mt-1 line-clamp-1 text-[11px] text-muted-foreground">
+                      <p
+                        v-if="item.description"
+                        class="mt-1 line-clamp-1 text-[11px] text-muted-foreground"
+                      >
                         {{ item.description }}
                       </p>
                     </article>
@@ -3348,6 +4022,7 @@ onBeforeUnmount(() => {
         :users="users"
         :projects="lineProjects"
         :initial-user-id="memberPermissionInitialUserId"
+        :role-options="businessLineRoleOptions"
         :initial-business-role="memberPermissionInitialBusinessRole"
         :initial-project-roles="memberPermissionInitialProjectRoles"
         :show-project-roles="false"
@@ -3356,6 +4031,34 @@ onBeforeUnmount(() => {
         :error-message="memberPermissionModalError"
         @update:open="memberPermissionModalOpen = $event"
         @submit="submitMemberPermission"
+      />
+
+      <CustomRoleModal
+        :open="customRoleModalOpen"
+        :mode="customRoleModalMode"
+        scope-label="业务线"
+        :submitting="customRoleModalSubmitting"
+        :capability-options="BUSINESS_LINE_CAPABILITY_OPTIONS"
+        :initial-name="customRoleInitialName"
+        :initial-description="customRoleInitialDescription"
+        :initial-capabilities="customRoleInitialCapabilities"
+        :error-message="customRoleModalError"
+        @update:open="customRoleModalOpen = $event"
+        @submit="submitCustomRole"
+      />
+
+      <CustomRoleModal
+        :open="permissionProjectRoleModalOpen"
+        :mode="permissionProjectRoleModalMode"
+        scope-label="项目"
+        :submitting="permissionProjectRoleModalSubmitting"
+        :capability-options="PROJECT_CAPABILITY_OPTIONS"
+        :initial-name="permissionProjectRoleInitialName"
+        :initial-description="permissionProjectRoleInitialDescription"
+        :initial-capabilities="permissionProjectRoleInitialCapabilities"
+        :error-message="permissionProjectRoleModalError"
+        @update:open="permissionProjectRoleModalOpen = $event"
+        @submit="submitPermissionProjectRole"
       />
 
       <AgentToolConfigModal
@@ -3407,7 +4110,9 @@ onBeforeUnmount(() => {
           <header class="flex items-center justify-between border-b border-border px-4 py-3">
             <div class="space-y-1">
               <h2 class="text-base font-semibold">{{ skillPreviewName || 'Skill' }}</h2>
-              <p class="text-xs text-muted-foreground">{{ skillPreviewSelectedPath || '技能目录' }}</p>
+              <p class="text-xs text-muted-foreground">
+                {{ skillPreviewSelectedPath || '技能目录' }}
+              </p>
             </div>
             <button
               type="button"
@@ -3415,12 +4120,33 @@ onBeforeUnmount(() => {
               class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
               @click="closeSkillPreview"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
             </button>
           </header>
 
-          <div v-if="loadingSkillPreview" class="flex-1 px-4 py-6 text-sm text-muted-foreground">加载中...</div>
-          <p v-else-if="skillPreviewError && skillPreviewTree.length === 0" class="flex-1 px-4 py-6 text-sm text-destructive">{{ skillPreviewError }}</p>
+          <div v-if="loadingSkillPreview" class="flex-1 px-4 py-6 text-sm text-muted-foreground">
+            加载中...
+          </div>
+          <p
+            v-else-if="skillPreviewError && skillPreviewTree.length === 0"
+            class="flex-1 px-4 py-6 text-sm text-destructive"
+          >
+            {{ skillPreviewError }}
+          </p>
 
           <div v-else class="flex min-h-0 flex-1">
             <aside class="w-52 flex-shrink-0 overflow-y-auto border-r border-border px-2 py-3">
@@ -3432,21 +4158,27 @@ onBeforeUnmount(() => {
                 @toggle-dir="toggleSkillPreviewDir($event)"
               />
 
-              <p v-if="skillPreviewTree.length === 0" class="px-2 py-2 text-xs text-muted-foreground">
+              <p
+                v-if="skillPreviewTree.length === 0"
+                class="px-2 py-2 text-xs text-muted-foreground"
+              >
                 无文件
               </p>
             </aside>
 
             <div class="min-w-0 flex-1 overflow-y-auto px-4 py-3">
               <p v-if="skillPreviewFileLoading" class="text-sm text-muted-foreground">加载中...</p>
-              <p v-else-if="skillPreviewError" class="text-sm text-destructive">{{ skillPreviewError }}</p>
+              <p v-else-if="skillPreviewError" class="text-sm text-destructive">
+                {{ skillPreviewError }}
+              </p>
               <p v-else-if="!skillPreviewSelectedPath" class="text-sm text-muted-foreground">
                 请在左侧选择一个文件查看内容。
               </p>
               <pre
                 v-else
                 class="max-h-[62vh] overflow-auto whitespace-pre-wrap rounded-xl border border-border bg-background p-3 font-mono text-xs leading-relaxed text-foreground"
-              >{{ skillPreviewContent || '文件内容为空。' }}</pre>
+                >{{ skillPreviewContent || '文件内容为空。' }}</pre
+              >
             </div>
           </div>
 
@@ -3517,7 +4249,9 @@ onBeforeUnmount(() => {
             </div>
           </header>
           <div class="space-y-3 px-4 py-4">
-            <p v-if="loadingMcpJsonPreview" class="text-sm text-muted-foreground">加载 JSON 中...</p>
+            <p v-if="loadingMcpJsonPreview" class="text-sm text-muted-foreground">
+              加载 JSON 中...
+            </p>
             <div v-else class="space-y-2">
               <textarea
                 v-model="mcpJsonPreviewDraft"
@@ -3525,7 +4259,10 @@ onBeforeUnmount(() => {
                 class="min-h-[56vh] w-full rounded-xl border border-border bg-muted/20 p-3 font-mono text-xs text-foreground"
               />
             </div>
-            <p v-if="!loadingMcpJsonPreview && mcpJsonPreviewError" class="text-sm text-destructive">
+            <p
+              v-if="!loadingMcpJsonPreview && mcpJsonPreviewError"
+              class="text-sm text-destructive"
+            >
               {{ mcpJsonPreviewError }}
             </p>
           </div>

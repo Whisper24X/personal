@@ -31,4 +31,9 @@ export abstract class ProjectMemberRepository {
     projectId: ProjectMember['projectId'],
     userId: ProjectMember['userId'],
   ): Promise<void>;
+
+  abstract countByProjectIdAndRole(
+    projectId: string,
+    role: string,
+  ): Promise<number>;
 }
