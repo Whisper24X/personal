@@ -121,9 +121,7 @@ export class AddCustomScopeRoles1772900000000 implements MigrationInterface {
     await queryRunner.query(
       `DROP INDEX "public"."UQ_project_custom_role_name"`,
     );
-    await queryRunner.query(
-      `DROP TABLE "project_custom_roles"`,
-    );
+    await queryRunner.query(`DROP TABLE "project_custom_roles"`);
 
     await queryRunner.query(
       `DROP INDEX "public"."IDX_business_line_custom_role_business_line_id"`,
@@ -131,8 +129,6 @@ export class AddCustomScopeRoles1772900000000 implements MigrationInterface {
     await queryRunner.query(
       `DROP INDEX "public"."UQ_business_line_custom_role_name"`,
     );
-    await queryRunner.query(
-      `DROP TABLE "business_line_custom_roles"`,
-    );
+    await queryRunner.query(`DROP TABLE "business_line_custom_roles"`);
   }
 }

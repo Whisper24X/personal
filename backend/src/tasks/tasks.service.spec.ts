@@ -297,12 +297,8 @@ describe('TasksService', () => {
   });
 
   it('should generate default git names when create payload does not provide them', async () => {
-    const {
-      service,
-      taskRepository,
-      taskNodeRepository,
-      projectsService,
-    } = createTasksService() as any;
+    const { service, taskRepository, taskNodeRepository, projectsService } =
+      createTasksService() as any;
     const currentUser = createCurrentUser();
     const project = createProject();
     jest.useFakeTimers().setSystemTime(new Date('2026-03-06T10:20:00Z'));

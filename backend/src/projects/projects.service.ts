@@ -795,7 +795,10 @@ export class ProjectsService {
     }> = [];
 
     const walk = async (dir: string, depth: number): Promise<void> => {
-      if (depth > this.maxProjectDocDepth || results.length >= this.maxProjectDocFiles) {
+      if (
+        depth > this.maxProjectDocDepth ||
+        results.length >= this.maxProjectDocFiles
+      ) {
         return;
       }
 
@@ -832,8 +835,15 @@ export class ProjectsService {
           continue;
         }
 
-        const relativePath = path.relative(docsRoot, absolutePath).split(path.sep).join('/');
-        if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+        const relativePath = path
+          .relative(docsRoot, absolutePath)
+          .split(path.sep)
+          .join('/');
+        if (
+          !relativePath ||
+          relativePath.startsWith('..') ||
+          path.isAbsolute(relativePath)
+        ) {
           continue;
         }
 
@@ -867,7 +877,10 @@ export class ProjectsService {
     );
     const docsRoot = path.join(repositoryRoot, 'docs');
     const relativePath = this.normalizeProjectDocPath(rawDocPath);
-    const absolutePath = this.resolveProjectDocAbsolutePath(docsRoot, relativePath);
+    const absolutePath = this.resolveProjectDocAbsolutePath(
+      docsRoot,
+      relativePath,
+    );
     const stat = await fs.stat(absolutePath).catch(() => null);
 
     if (!stat || !stat.isFile()) {
@@ -902,7 +915,10 @@ export class ProjectsService {
     );
     const docsRoot = path.join(repositoryRoot, 'docs');
     const relativePath = this.normalizeProjectDocPath(payload.path);
-    const absolutePath = this.resolveProjectDocAbsolutePath(docsRoot, relativePath);
+    const absolutePath = this.resolveProjectDocAbsolutePath(
+      docsRoot,
+      relativePath,
+    );
 
     const existed = await this.pathExists(absolutePath);
     if (existed) {
@@ -932,7 +948,10 @@ export class ProjectsService {
     );
     const docsRoot = path.join(repositoryRoot, 'docs');
     const relativePath = this.normalizeProjectDocPath(payload.path);
-    const absolutePath = this.resolveProjectDocAbsolutePath(docsRoot, relativePath);
+    const absolutePath = this.resolveProjectDocAbsolutePath(
+      docsRoot,
+      relativePath,
+    );
     const stat = await fs.stat(absolutePath).catch(() => null);
     if (!stat || !stat.isFile()) {
       throw new NotFoundException('Project doc not found');
@@ -953,7 +972,10 @@ export class ProjectsService {
     );
     const docsRoot = path.join(repositoryRoot, 'docs');
     const relativePath = this.normalizeProjectDocPath(rawDocPath);
-    const absolutePath = this.resolveProjectDocAbsolutePath(docsRoot, relativePath);
+    const absolutePath = this.resolveProjectDocAbsolutePath(
+      docsRoot,
+      relativePath,
+    );
     const stat = await fs.stat(absolutePath).catch(() => null);
     if (!stat || !stat.isFile()) {
       throw new NotFoundException('Project doc not found');
@@ -977,14 +999,18 @@ export class ProjectsService {
 
     if (!docsRootExists) {
       return {
-        answer: '当前项目还没有 docs 文档，无法执行知识问答。请先上传或创建文档。',
+        answer:
+          '当前项目还没有 docs 文档，无法执行知识问答。请先上传或创建文档。',
         citations: [],
         durationMs: Date.now() - startAt,
       };
     }
 
     const normalizedQuestion = payload.question.trim();
-    const maxContextDocs = Math.max(1, Math.min(payload.maxContextDocs ?? 6, 20));
+    const maxContextDocs = Math.max(
+      1,
+      Math.min(payload.maxContextDocs ?? 6, 20),
+    );
     const candidateDocs = await this.selectCandidateDocs({
       projectId,
       docsRoot,
@@ -1058,7 +1084,10 @@ export class ProjectsService {
     }
 
     const normalizedQuestion = payload.question.trim();
-    const maxContextDocs = Math.max(1, Math.min(payload.maxContextDocs ?? 6, 20));
+    const maxContextDocs = Math.max(
+      1,
+      Math.min(payload.maxContextDocs ?? 6, 20),
+    );
     const candidateDocs = await this.selectCandidateDocs({
       projectId,
       docsRoot,
@@ -1189,8 +1218,13 @@ export class ProjectsService {
     let totalChars = 0;
 
     for (const doc of picked) {
-      const absolutePath = this.resolveProjectDocAbsolutePath(docsRoot, doc.path);
-      const rawContent = await fs.readFile(absolutePath, 'utf-8').catch(() => '');
+      const absolutePath = this.resolveProjectDocAbsolutePath(
+        docsRoot,
+        doc.path,
+      );
+      const rawContent = await fs
+        .readFile(absolutePath, 'utf-8')
+        .catch(() => '');
       if (!rawContent.trim()) {
         continue;
       }
@@ -1437,7 +1471,9 @@ export class ProjectsService {
       throw new ForbiddenException('forbiddenProjectManage');
     }
 
-    if (await this.isProjectOwnerRole(businessLineId, actorProjectMember.roleId)) {
+    if (
+      await this.isProjectOwnerRole(businessLineId, actorProjectMember.roleId)
+    ) {
       return;
     }
 
@@ -1448,7 +1484,10 @@ export class ProjectsService {
       throw new ForbiddenException('forbiddenProjectManage');
     }
 
-    if (nextRoleId && (await this.isProjectOwnerRole(businessLineId, nextRoleId))) {
+    if (
+      nextRoleId &&
+      (await this.isProjectOwnerRole(businessLineId, nextRoleId))
+    ) {
       throw new ForbiddenException('forbiddenProjectManage');
     }
   }
@@ -1880,9 +1919,8 @@ export class ProjectsService {
       throw new BadRequestException('Project role id is required');
     }
 
-    const role = await this.projectCustomRoleRepository.findById(
-      normalizedRoleId,
-    );
+    const role =
+      await this.projectCustomRoleRepository.findById(normalizedRoleId);
 
     if (!role || role.businessLineId !== project.businessLineId) {
       throw new NotFoundException('Project role not found');
@@ -1960,8 +1998,12 @@ export class ProjectsService {
     const template = getProjectDefaultRoleTemplate(role);
     const roles = await this.ensureDefaultProjectCustomRoles(businessLineId);
     const customRole =
-      roles.find((item) => hasProjectTemplateCapabilities(item.capabilities, role)) ??
-      roles.find((item) => isDefaultTemplateRoleName(item.name, template.name)) ??
+      roles.find((item) =>
+        hasProjectTemplateCapabilities(item.capabilities, role),
+      ) ??
+      roles.find((item) =>
+        isDefaultTemplateRoleName(item.name, template.name),
+      ) ??
       null;
 
     if (!customRole) {
@@ -1971,13 +2013,16 @@ export class ProjectsService {
     return customRole;
   }
 
-
   private async isProjectOwnerRole(
     businessLineId: string,
     roleId: string,
   ): Promise<boolean> {
     const role = await this.projectCustomRoleRepository.findById(roleId);
-    return !!role && role.businessLineId === businessLineId && isProjectOwnerCapabilities(role.capabilities);
+    return (
+      !!role &&
+      role.businessLineId === businessLineId &&
+      isProjectOwnerCapabilities(role.capabilities)
+    );
   }
 
   private async buildProjectCustomRolePayload(
@@ -2036,8 +2081,7 @@ export class ProjectsService {
     businessLineId: Project['businessLineId'],
     roleId: string,
   ): Promise<ProjectCustomRole> {
-    const customRole =
-      await this.projectCustomRoleRepository.findById(roleId);
+    const customRole = await this.projectCustomRoleRepository.findById(roleId);
 
     if (!customRole || customRole.businessLineId !== businessLineId) {
       throw new NotFoundException('Project role not found');
@@ -2087,15 +2131,18 @@ export class ProjectsService {
       await this.projectMemberRepository.findByProjectId(projectId);
 
     const project = await this.getProjectOrThrow(projectId);
-    const roles = await this.projectCustomRoleRepository.findAllByBusinessLineId(
-      project.businessLineId,
-    );
+    const roles =
+      await this.projectCustomRoleRepository.findAllByBusinessLineId(
+        project.businessLineId,
+      );
     const ownerRoleIdSet = new Set(
       roles
         .filter((role) => isProjectOwnerCapabilities(role.capabilities))
         .map((role) => role.id),
     );
-    const ownerCount = members.filter((member) => ownerRoleIdSet.has(member.roleId)).length;
+    const ownerCount = members.filter((member) =>
+      ownerRoleIdSet.has(member.roleId),
+    ).length;
 
     if (ownerCount <= 1) {
       throw new ConflictException('At least one project owner is required');

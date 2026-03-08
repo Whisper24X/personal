@@ -1,6 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 
 export class ProjectDocItemDto {
   @ApiProperty({ type: String })
@@ -36,7 +44,8 @@ export class ProjectDocContentDto {
 export class ReadProjectDocDto {
   @ApiProperty({
     type: String,
-    description: 'Relative path under project docs directory (e.g. architecture/overview.md)',
+    description:
+      'Relative path under project docs directory (e.g. architecture/overview.md)',
   })
   @IsString()
   @IsNotEmpty()
@@ -46,7 +55,8 @@ export class ReadProjectDocDto {
 export class SaveProjectDocDto {
   @ApiProperty({
     type: String,
-    description: 'Relative path under project docs directory (e.g. architecture/overview.md)',
+    description:
+      'Relative path under project docs directory (e.g. architecture/overview.md)',
   })
   @IsString()
   @IsNotEmpty()

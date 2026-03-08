@@ -49,7 +49,8 @@ export class CreateTaskDto {
 
   @ApiPropertyOptional({
     type: String,
-    description: 'Worktree identifier; runtime path is derived from project config',
+    description:
+      'Worktree identifier; runtime path is derived from project config',
   })
   @IsOptional()
   @IsString()

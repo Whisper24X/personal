@@ -753,7 +753,9 @@ export class TaskRuntimeService {
         if (result.length >= maxFiles) {
           return;
         }
-        const relativePath = relativePrefix ? `${relativePrefix}/${name}` : name;
+        const relativePath = relativePrefix
+          ? `${relativePrefix}/${name}`
+          : name;
         if (isFile) {
           result.push(relativePath);
         } else {
@@ -767,10 +769,7 @@ export class TaskRuntimeService {
     const prefix = options?.prefix?.trim();
     const filtered =
       prefix && prefix.length > 0
-        ? result.filter(
-            (p) =>
-              p === prefix || p.startsWith(`${prefix}/`),
-          )
+        ? result.filter((p) => p === prefix || p.startsWith(`${prefix}/`))
         : result;
 
     return filtered.sort((a, b) => a.localeCompare(b));

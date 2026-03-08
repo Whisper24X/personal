@@ -14,7 +14,9 @@ export class BusinessLineCustomRoleMapper {
     return domainEntity;
   }
 
-  static toPersistence(domainEntity: BusinessLineCustomRole): BusinessLineCustomRoleEntity {
+  static toPersistence(
+    domainEntity: BusinessLineCustomRole,
+  ): BusinessLineCustomRoleEntity {
     const persistenceEntity = new BusinessLineCustomRoleEntity();
     if (domainEntity.id) {
       persistenceEntity.id = domainEntity.id;

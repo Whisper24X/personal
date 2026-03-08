@@ -13,7 +13,9 @@ export class BusinessLineMemberMapper {
     return domainEntity;
   }
 
-  static toPersistence(domainEntity: BusinessLineMember): BusinessLineMemberEntity {
+  static toPersistence(
+    domainEntity: BusinessLineMember,
+  ): BusinessLineMemberEntity {
     const persistenceEntity = new BusinessLineMemberEntity();
     if (domainEntity.id) {
       persistenceEntity.id = domainEntity.id;

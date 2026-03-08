@@ -16,7 +16,9 @@ export class BusinessLineMemberRelationalRepository
     private readonly businessLineMemberRepository: Repository<BusinessLineMemberEntity>,
   ) {}
 
-  async findByBusinessLineId(businessLineId: BusinessLineMember['businessLineId']): Promise<BusinessLineMember[]> {
+  async findByBusinessLineId(
+    businessLineId: BusinessLineMember['businessLineId'],
+  ): Promise<BusinessLineMember[]> {
     const entities = await this.businessLineMemberRepository.find({
       where: { businessLineId },
       relations: { roleRef: true },
@@ -26,7 +28,9 @@ export class BusinessLineMemberRelationalRepository
     return entities.map((entity) => BusinessLineMemberMapper.toDomain(entity));
   }
 
-  async findByUserId(userId: BusinessLineMember['userId']): Promise<BusinessLineMember[]> {
+  async findByUserId(
+    userId: BusinessLineMember['userId'],
+  ): Promise<BusinessLineMember[]> {
     const entities = await this.businessLineMemberRepository.find({
       where: { userId },
       relations: { roleRef: true },
@@ -97,11 +101,17 @@ export class BusinessLineMemberRelationalRepository
     return BusinessLineMemberMapper.toDomain(nextEntity);
   }
 
-  async remove(businessLineId: BusinessLineMember['businessLineId'], userId: BusinessLineMember['userId']): Promise<void> {
+  async remove(
+    businessLineId: BusinessLineMember['businessLineId'],
+    userId: BusinessLineMember['userId'],
+  ): Promise<void> {
     await this.businessLineMemberRepository.delete({ businessLineId, userId });
   }
 
-  async countByBusinessLineIdAndRoleId(businessLineId: string, roleId: string): Promise<number> {
+  async countByBusinessLineIdAndRoleId(
+    businessLineId: string,
+    roleId: string,
+  ): Promise<number> {
     return this.businessLineMemberRepository.count({
       where: { businessLineId, roleId },
     });

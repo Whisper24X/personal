@@ -300,19 +300,15 @@ export class TaskTerminalService implements OnModuleDestroy {
     taskId: string,
     currentUser: JwtPayloadType,
   ): Promise<{ task: Task; workspacePath: string }> {
-    const { task, project } = await this.tasksService.assertCanAccessTaskProject(
-      taskId,
-      currentUser,
-    );
+    const { task, project } =
+      await this.tasksService.assertCanAccessTaskProject(taskId, currentUser);
 
     if (!task.gitWorktree?.trim()) {
       throw new ConflictException('Task workspace is not initialized');
     }
 
-    const runtimeWorkspacePath = this.taskRuntimeService.resolveTaskWorktreePath(
-      task,
-      project,
-    );
+    const runtimeWorkspacePath =
+      this.taskRuntimeService.resolveTaskWorktreePath(task, project);
 
     const workspacePath = await fs.realpath(runtimeWorkspacePath).catch(() => {
       throw new NotFoundException('Task workspace does not exist');

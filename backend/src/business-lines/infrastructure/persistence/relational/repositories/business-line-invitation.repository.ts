@@ -29,7 +29,10 @@ export class BusinessLineInvitationRelationalRepository
     return entity ? BusinessLineInvitationMapper.toDomain(entity) : null;
   }
 
-  async findActiveByToken(token: BusinessLineInvitation['token'], now: Date): Promise<NullableType<BusinessLineInvitation>> {
+  async findActiveByToken(
+    token: BusinessLineInvitation['token'],
+    now: Date,
+  ): Promise<NullableType<BusinessLineInvitation>> {
     const entity = await this.businessLineInvitationRepository.findOne({
       where: { token, revokedAt: IsNull(), expiresAt: MoreThan(now) },
       relations: { roleRef: true },
@@ -38,7 +41,10 @@ export class BusinessLineInvitationRelationalRepository
     return entity ? BusinessLineInvitationMapper.toDomain(entity) : null;
   }
 
-  async revokeActiveByBusinessLineId(businessLineId: BusinessLineInvitation['businessLineId'], now: Date): Promise<void> {
+  async revokeActiveByBusinessLineId(
+    businessLineId: BusinessLineInvitation['businessLineId'],
+    now: Date,
+  ): Promise<void> {
     await this.businessLineInvitationRepository
       .createQueryBuilder()
       .update(BusinessLineInvitationEntity)
@@ -76,9 +82,18 @@ export class BusinessLineInvitationRelationalRepository
     return BusinessLineInvitationMapper.toDomain(entity);
   }
 
-  async countActiveByBusinessLineIdAndRoleId(businessLineId: string, roleId: string, now: Date): Promise<number> {
+  async countActiveByBusinessLineIdAndRoleId(
+    businessLineId: string,
+    roleId: string,
+    now: Date,
+  ): Promise<number> {
     return this.businessLineInvitationRepository.count({
-      where: { businessLineId, roleId, revokedAt: IsNull(), expiresAt: MoreThan(now) },
+      where: {
+        businessLineId,
+        roleId,
+        revokedAt: IsNull(),
+        expiresAt: MoreThan(now),
+      },
     });
   }
 }

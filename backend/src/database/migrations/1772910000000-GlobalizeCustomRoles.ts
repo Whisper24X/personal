@@ -53,7 +53,10 @@ const buildFingerprint = (input: {
   });
 };
 
-const buildUniqueName = (preferredName: string, occupiedNames: Set<string>): string => {
+const buildUniqueName = (
+  preferredName: string,
+  occupiedNames: Set<string>,
+): string => {
   if (!occupiedNames.has(preferredName)) {
     occupiedNames.add(preferredName);
     return preferredName;
@@ -179,7 +182,9 @@ export class GlobalizeCustomRoles1772910000000 implements MigrationInterface {
     );
   }
 
-  private async migrateBusinessLineRoles(queryRunner: QueryRunner): Promise<void> {
+  private async migrateBusinessLineRoles(
+    queryRunner: QueryRunner,
+  ): Promise<void> {
     const rows = (await queryRunner.query(
       `SELECT "id", "businessLineId", "code", "name", "description", "baseRole", "capabilities" FROM "business_line_custom_roles" WHERE "businessLineId" IS NOT NULL ORDER BY "createdAt" ASC`,
     )) as BusinessLineRoleRow[];
@@ -309,7 +314,9 @@ export class GlobalizeCustomRoles1772910000000 implements MigrationInterface {
     );
   }
 
-  private async restoreBusinessLineLocalRoles(queryRunner: QueryRunner): Promise<void> {
+  private async restoreBusinessLineLocalRoles(
+    queryRunner: QueryRunner,
+  ): Promise<void> {
     const mounts = (await queryRunner.query(
       `SELECT mount."businessLineId" AS "businessLineId", role."id" AS "roleId", role."code" AS "code", role."name" AS "name", role."description" AS "description", role."baseRole" AS "baseRole", role."capabilities" AS "capabilities" FROM "business_line_custom_role_mounts" mount INNER JOIN "business_line_custom_roles" role ON role."id" = mount."customRoleId" ORDER BY role."createdAt" ASC`,
     )) as Array<{
@@ -335,7 +342,8 @@ export class GlobalizeCustomRoles1772910000000 implements MigrationInterface {
       usedCodesByBusinessLine.set(mount.businessLineId, codeSet);
 
       const nextName = buildUniqueName(mount.name, nameSet);
-      const nextCode = mount.code && !codeSet.has(mount.code) ? mount.code : null;
+      const nextCode =
+        mount.code && !codeSet.has(mount.code) ? mount.code : null;
       if (nextCode) {
         codeSet.add(nextCode);
       }
@@ -357,7 +365,10 @@ export class GlobalizeCustomRoles1772910000000 implements MigrationInterface {
         continue;
       }
 
-      localRoleIdMap.set(`${mount.businessLineId}:${mount.roleId}`, localRoleId);
+      localRoleIdMap.set(
+        `${mount.businessLineId}:${mount.roleId}`,
+        localRoleId,
+      );
     }
 
     for (const [key, localRoleId] of localRoleIdMap.entries()) {
@@ -377,7 +388,9 @@ export class GlobalizeCustomRoles1772910000000 implements MigrationInterface {
     );
   }
 
-  private async restoreProjectLocalRoles(queryRunner: QueryRunner): Promise<void> {
+  private async restoreProjectLocalRoles(
+    queryRunner: QueryRunner,
+  ): Promise<void> {
     const mounts = (await queryRunner.query(
       `SELECT mount."projectId" AS "projectId", role."id" AS "roleId", role."code" AS "code", role."name" AS "name", role."description" AS "description", role."baseRole" AS "baseRole", role."capabilities" AS "capabilities" FROM "project_custom_role_mounts" mount INNER JOIN "project_custom_roles" role ON role."id" = mount."customRoleId" ORDER BY role."createdAt" ASC`,
     )) as Array<{
@@ -395,13 +408,16 @@ export class GlobalizeCustomRoles1772910000000 implements MigrationInterface {
     const localRoleIdMap = new Map<string, string>();
 
     for (const mount of mounts) {
-      const nameSet = usedNamesByProject.get(mount.projectId) ?? new Set<string>();
+      const nameSet =
+        usedNamesByProject.get(mount.projectId) ?? new Set<string>();
       usedNamesByProject.set(mount.projectId, nameSet);
-      const codeSet = usedCodesByProject.get(mount.projectId) ?? new Set<string>();
+      const codeSet =
+        usedCodesByProject.get(mount.projectId) ?? new Set<string>();
       usedCodesByProject.set(mount.projectId, codeSet);
 
       const nextName = buildUniqueName(mount.name, nameSet);
-      const nextCode = mount.code && !codeSet.has(mount.code) ? mount.code : null;
+      const nextCode =
+        mount.code && !codeSet.has(mount.code) ? mount.code : null;
       if (nextCode) {
         codeSet.add(nextCode);
       }
@@ -434,6 +450,8 @@ export class GlobalizeCustomRoles1772910000000 implements MigrationInterface {
       );
     }
 
-    await queryRunner.query(`DELETE FROM "project_custom_roles" WHERE "projectId" IS NULL`);
+    await queryRunner.query(
+      `DELETE FROM "project_custom_roles" WHERE "projectId" IS NULL`,
+    );
   }
 }

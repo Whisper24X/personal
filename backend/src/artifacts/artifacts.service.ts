@@ -82,10 +82,7 @@ export class ArtifactsService {
       };
     }
 
-    if (
-      artifact.artifactType === TaskArtifactType.diff &&
-      artifact.content
-    ) {
+    if (artifact.artifactType === TaskArtifactType.diff && artifact.content) {
       const changedFiles = this.resolveChangedFiles(artifact);
       if (changedFiles.length === 1) {
         const diffPatch = this.extractDiffPatch(artifact.content);
@@ -127,10 +124,7 @@ export class ArtifactsService {
     if (worktreeContent) {
       const truncated =
         worktreeContent.content.length > this.maxTextPreviewLength;
-      const text = worktreeContent.content.slice(
-        0,
-        this.maxTextPreviewLength,
-      );
+      const text = worktreeContent.content.slice(0, this.maxTextPreviewLength);
       return {
         artifactId: artifact.id,
         mode: 'text',
@@ -153,10 +147,7 @@ export class ArtifactsService {
         if (extracted && changedFiles.length === 1) {
           const truncated =
             extracted.content.length > this.maxTextPreviewLength;
-          const text = extracted.content.slice(
-            0,
-            this.maxTextPreviewLength,
-          );
+          const text = extracted.content.slice(0, this.maxTextPreviewLength);
           return {
             artifactId: artifact.id,
             mode: 'text',
@@ -235,8 +226,7 @@ export class ArtifactsService {
       return null;
     }
 
-    const worktreeFiles =
-      await this.taskRuntimeService.listWorktreeFiles(task);
+    const worktreeFiles = await this.taskRuntimeService.listWorktreeFiles(task);
     if (worktreeFiles.length === 0) {
       return null;
     }
@@ -248,8 +238,10 @@ export class ArtifactsService {
         : worktreeFiles[0]
       : worktreeFiles[0];
 
-    const content =
-      await this.taskRuntimeService.readFileFromWorktree(task, fileToRead);
+    const content = await this.taskRuntimeService.readFileFromWorktree(
+      task,
+      fileToRead,
+    );
     if (content === null) {
       return null;
     }

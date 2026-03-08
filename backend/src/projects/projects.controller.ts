@@ -400,10 +400,15 @@ export class ProjectsController {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders?.();
 
-    await this.projectsService.streamDocsQuery(id, query, request.user, (event, data) => {
-      res.write(`event: ${event}\n`);
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
-    });
+    await this.projectsService.streamDocsQuery(
+      id,
+      query,
+      request.user,
+      (event, data) => {
+        res.write(`event: ${event}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      },
+    );
 
     res.end();
   }

@@ -14,7 +14,9 @@ export class ProjectCustomRoleMapper {
     return domainEntity;
   }
 
-  static toPersistence(domainEntity: ProjectCustomRole): ProjectCustomRoleEntity {
+  static toPersistence(
+    domainEntity: ProjectCustomRole,
+  ): ProjectCustomRoleEntity {
     const persistenceEntity = new ProjectCustomRoleEntity();
     if (domainEntity.id) {
       persistenceEntity.id = domainEntity.id;

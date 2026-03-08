@@ -16,12 +16,16 @@ export class ProjectCustomRoleRelationalRepository
     private readonly repository: Repository<ProjectCustomRoleEntity>,
   ) {}
 
-  async findById(id: ProjectCustomRole['id']): Promise<NullableType<ProjectCustomRole>> {
+  async findById(
+    id: ProjectCustomRole['id'],
+  ): Promise<NullableType<ProjectCustomRole>> {
     const entity = await this.repository.findOne({ where: { id } });
     return entity ? ProjectCustomRoleMapper.toDomain(entity) : null;
   }
 
-  async findByIds(ids: ProjectCustomRole['id'][]): Promise<ProjectCustomRole[]> {
+  async findByIds(
+    ids: ProjectCustomRole['id'][],
+  ): Promise<ProjectCustomRole[]> {
     if (!ids.length) {
       return [];
     }
@@ -86,8 +90,12 @@ export class ProjectCustomRoleRelationalRepository
       this.repository.create({
         ...entity,
         ...(payload.name !== undefined ? { name: payload.name } : {}),
-        ...(payload.description !== undefined ? { description: payload.description ?? null } : {}),
-        ...(payload.capabilities !== undefined ? { capabilities: payload.capabilities } : {}),
+        ...(payload.description !== undefined
+          ? { description: payload.description ?? null }
+          : {}),
+        ...(payload.capabilities !== undefined
+          ? { capabilities: payload.capabilities }
+          : {}),
       }),
     );
 

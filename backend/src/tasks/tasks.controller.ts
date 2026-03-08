@@ -516,7 +516,10 @@ export class TasksController {
   @Get(':id/worktree-files/content')
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({
-    schema: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } } },
+    schema: {
+      type: 'object',
+      properties: { path: { type: 'string' }, content: { type: 'string' } },
+    },
   })
   @HttpCode(HttpStatus.OK)
   readWorktreeFile(
@@ -524,11 +527,7 @@ export class TasksController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: ReadWorktreeFileDto,
   ) {
-    return this.tasksService.readWorktreeFile(
-      id,
-      query.path,
-      request.user,
-    );
+    return this.tasksService.readWorktreeFile(id, query.path, request.user);
   }
 
   @Post(':id/artifacts')

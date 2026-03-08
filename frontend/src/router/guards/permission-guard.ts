@@ -32,9 +32,7 @@ export const permissionGuard: NavigationGuardWithThis<undefined> = async (to) =>
   const projectId = resolveProjectId(to)
 
   try {
-    await accessStore.loadContext({
-      ...(projectId ? { projectId } : {}),
-    })
+    await accessStore.loadContext((projectId ? { projectId } : {}))
   } catch (error) {
     void error
     accessStore.clear()

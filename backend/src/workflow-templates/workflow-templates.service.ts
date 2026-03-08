@@ -423,7 +423,9 @@ export class WorkflowTemplatesService {
       throw new ForbiddenException('forbiddenBusinessLine');
     }
 
-    const role = await this.businessLineCustomRoleRepository.findById(member.roleId);
+    const role = await this.businessLineCustomRoleRepository.findById(
+      member.roleId,
+    );
 
     if (
       !role ||

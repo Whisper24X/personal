@@ -32,6 +32,10 @@ import { ProjectCustomRoleRelationalRepository } from './repositories/project-cu
       useClass: ProjectCustomRoleRelationalRepository,
     },
   ],
-  exports: [ProjectRepository, ProjectMemberRepository, ProjectCustomRoleRepository],
+  exports: [
+    ProjectRepository,
+    ProjectMemberRepository,
+    ProjectCustomRoleRepository,
+  ],
 })
 export class RelationalProjectPersistenceModule {}

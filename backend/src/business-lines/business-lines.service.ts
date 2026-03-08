@@ -444,7 +444,7 @@ export class BusinessLinesService {
 
     for (const project of projects) {
       const membership = projectMembershipMap.get(project.id);
-      const role = membership ? roleMap.get(membership.roleId) ?? null : null;
+      const role = membership ? (roleMap.get(membership.roleId) ?? null) : null;
       projectRoles[project.id] = role?.id ?? 'none';
     }
 
@@ -486,7 +486,10 @@ export class BusinessLinesService {
     });
 
     if (
-      (await this.isBusinessLineOwnerRole(businessLineId, currentMember.roleId)) &&
+      (await this.isBusinessLineOwnerRole(
+        businessLineId,
+        currentMember.roleId,
+      )) &&
       !(await this.isBusinessLineOwnerRole(businessLineId, assignment.roleId))
     ) {
       this.ensureOwnerSelfProtection(currentMember, currentUser);
@@ -543,7 +546,9 @@ export class BusinessLinesService {
       targetMember: existedMember,
     });
 
-    if (await this.isBusinessLineOwnerRole(businessLineId, existedMember.roleId)) {
+    if (
+      await this.isBusinessLineOwnerRole(businessLineId, existedMember.roleId)
+    ) {
       this.ensureOwnerSelfProtection(existedMember, currentUser);
       await this.ensureOwnerCanBeModified(businessLineId);
     }
@@ -1568,7 +1573,9 @@ export class BusinessLinesService {
         .filter((role) => isBusinessLineOwnerCapabilities(role.capabilities))
         .map((role) => role.id),
     );
-    const ownerCount = members.filter((member) => ownerRoleIdSet.has(member.roleId)).length;
+    const ownerCount = members.filter((member) =>
+      ownerRoleIdSet.has(member.roleId),
+    ).length;
 
     if (ownerCount <= 1) {
       throw new ConflictException('At least one owner is required');
@@ -1605,7 +1612,9 @@ export class BusinessLinesService {
       throw new ForbiddenException('forbiddenBusinessLineManage');
     }
 
-    if (await this.isBusinessLineOwnerRole(businessLineId, actorMember.roleId)) {
+    if (
+      await this.isBusinessLineOwnerRole(businessLineId, actorMember.roleId)
+    ) {
       return;
     }
 
@@ -1623,7 +1632,6 @@ export class BusinessLinesService {
       throw new ForbiddenException('forbiddenBusinessLineManage');
     }
   }
-
 
   private normalizeExplicitProjectRoles(
     rawProjectRoles?: Record<string, string>,
@@ -1686,7 +1694,6 @@ export class BusinessLinesService {
     return nextProjectRoles;
   }
 
-
   private async syncExplicitProjectRoleAssignments({
     businessLineId,
     userId,
@@ -1727,10 +1734,11 @@ export class BusinessLinesService {
           continue;
         }
 
-        const nextProjectRole = await this.getBusinessLineProjectCustomRoleOrThrow(
-          businessLineId,
-          roleId,
-        );
+        const nextProjectRole =
+          await this.getBusinessLineProjectCustomRoleOrThrow(
+            businessLineId,
+            roleId,
+          );
 
         if (!existedMember) {
           await this.projectMemberRepository.create({
@@ -1854,9 +1862,8 @@ export class BusinessLinesService {
       throw new BadRequestException('Business line role id is required');
     }
 
-    const role = await this.businessLineCustomRoleRepository.findById(
-      normalizedRoleId,
-    );
+    const role =
+      await this.businessLineCustomRoleRepository.findById(normalizedRoleId);
 
     if (!role || role.businessLineId !== businessLineId) {
       throw new NotFoundException('Business line role not found');
@@ -1879,8 +1886,10 @@ export class BusinessLinesService {
     for (const template of BUSINESS_LINE_DEFAULT_ROLE_TEMPLATES) {
       const existedRole = existingRoles.find(
         (role) =>
-          hasBusinessLineTemplateCapabilities(role.capabilities, template.role) ||
-          isDefaultTemplateRoleName(role.name, template.name),
+          hasBusinessLineTemplateCapabilities(
+            role.capabilities,
+            template.role,
+          ) || isDefaultTemplateRoleName(role.name, template.name),
       );
       if (existedRole) {
         continue;
@@ -1932,10 +1941,15 @@ export class BusinessLinesService {
     await this.ensureDefaultBusinessLineCustomRoles(businessLineId);
 
     const template = getBusinessLineDefaultRoleTemplate(role);
-    const roles = await this.ensureDefaultBusinessLineCustomRoles(businessLineId);
+    const roles =
+      await this.ensureDefaultBusinessLineCustomRoles(businessLineId);
     const customRole =
-      roles.find((item) => hasBusinessLineTemplateCapabilities(item.capabilities, role)) ??
-      roles.find((item) => isDefaultTemplateRoleName(item.name, template.name)) ??
+      roles.find((item) =>
+        hasBusinessLineTemplateCapabilities(item.capabilities, role),
+      ) ??
+      roles.find((item) =>
+        isDefaultTemplateRoleName(item.name, template.name),
+      ) ??
       null;
 
     if (!customRole) {
@@ -2043,8 +2057,12 @@ export class BusinessLinesService {
     const template = getProjectDefaultRoleTemplate(role);
     const roles = await this.ensureDefaultProjectCustomRoles(businessLineId);
     const customRole =
-      roles.find((item) => hasProjectTemplateCapabilities(item.capabilities, role)) ??
-      roles.find((item) => isDefaultTemplateRoleName(item.name, template.name)) ??
+      roles.find((item) =>
+        hasProjectTemplateCapabilities(item.capabilities, role),
+      ) ??
+      roles.find((item) =>
+        isDefaultTemplateRoleName(item.name, template.name),
+      ) ??
       null;
 
     if (!customRole) {
@@ -2054,13 +2072,16 @@ export class BusinessLinesService {
     return customRole;
   }
 
-
   private async isBusinessLineOwnerRole(
     businessLineId: string,
     roleId: string,
   ): Promise<boolean> {
     const role = await this.businessLineCustomRoleRepository.findById(roleId);
-    return !!role && role.businessLineId === businessLineId && isBusinessLineOwnerCapabilities(role.capabilities);
+    return (
+      !!role &&
+      role.businessLineId === businessLineId &&
+      isBusinessLineOwnerCapabilities(role.capabilities)
+    );
   }
 
   private async isProjectOwnerRole(
@@ -2068,7 +2089,11 @@ export class BusinessLinesService {
     roleId: string,
   ): Promise<boolean> {
     const role = await this.projectCustomRoleRepository.findById(roleId);
-    return !!role && role.businessLineId === businessLineId && isProjectOwnerCapabilities(role.capabilities);
+    return (
+      !!role &&
+      role.businessLineId === businessLineId &&
+      isProjectOwnerCapabilities(role.capabilities)
+    );
   }
 
   private async buildProjectCustomRolePayload(
@@ -2127,8 +2152,7 @@ export class BusinessLinesService {
     businessLineId: BusinessLine['id'],
     roleId: string,
   ): Promise<ProjectCustomRole> {
-    const customRole =
-      await this.projectCustomRoleRepository.findById(roleId);
+    const customRole = await this.projectCustomRoleRepository.findById(roleId);
 
     if (!customRole || customRole.businessLineId !== businessLineId) {
       throw new NotFoundException('Project role not found');
@@ -2171,8 +2195,7 @@ export class BusinessLinesService {
 
     return members.map((member) => ({
       ...member,
-      customRoleName:
-        roleMap.get(member.roleId) ?? null,
+      customRoleName: roleMap.get(member.roleId) ?? null,
     }));
   }
 
@@ -2202,8 +2225,14 @@ export class BusinessLinesService {
     }
 
     if (
-      hasProjectTemplateCapabilities(role.capabilities, ProjectMemberRole.owner) ||
-      hasProjectTemplateCapabilities(role.capabilities, ProjectMemberRole.maintainer) ||
+      hasProjectTemplateCapabilities(
+        role.capabilities,
+        ProjectMemberRole.owner,
+      ) ||
+      hasProjectTemplateCapabilities(
+        role.capabilities,
+        ProjectMemberRole.maintainer,
+      ) ||
       role.capabilities.includes('project.member.manage') ||
       role.capabilities.includes('project.workflow.manage') ||
       role.capabilities.includes('project.update') ||
@@ -2213,7 +2242,10 @@ export class BusinessLinesService {
     }
 
     if (
-      hasProjectTemplateCapabilities(role.capabilities, ProjectMemberRole.developer) ||
+      hasProjectTemplateCapabilities(
+        role.capabilities,
+        ProjectMemberRole.developer,
+      ) ||
       role.capabilities.includes('project.task.create') ||
       role.capabilities.includes('project.task.execute')
     ) {
@@ -2221,7 +2253,10 @@ export class BusinessLinesService {
     }
 
     if (
-      hasProjectTemplateCapabilities(role.capabilities, ProjectMemberRole.viewer) ||
+      hasProjectTemplateCapabilities(
+        role.capabilities,
+        ProjectMemberRole.viewer,
+      ) ||
       role.capabilities.includes('project.read') ||
       role.capabilities.includes('project.task.read')
     ) {

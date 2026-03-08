@@ -224,10 +224,8 @@ export class TaskWorkspaceService {
     taskId: string,
     currentUser: JwtPayloadType,
   ): Promise<{ task: Task; workspaceRoot: string }> {
-    const { task, project } = await this.tasksService.assertCanAccessTaskProject(
-      taskId,
-      currentUser,
-    );
+    const { task, project } =
+      await this.tasksService.assertCanAccessTaskProject(taskId, currentUser);
 
     if (!task.gitWorktree?.trim()) {
       throw new ConflictException('Task workspace is not initialized');

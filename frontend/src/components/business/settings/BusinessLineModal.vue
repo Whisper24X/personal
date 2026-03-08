@@ -41,7 +41,6 @@ import {
   PROJECT_CAPABILITY_OPTIONS,
   buildBusinessLineRoleAssignmentOptions,
 } from '@/constants/access'
-import { getCapabilityLabel } from '@/constants/access-control'
 
 type MainTab =
   | 'projects'

@@ -17,7 +17,10 @@ import { BusinessLineCustomRoleEntity } from './business-line-custom-role.entity
   name: 'business_line_members',
   comment: '业务线成员',
 })
-@Unique('UQ_business_line_member_business_line_user', ['businessLineId', 'userId'])
+@Unique('UQ_business_line_member_business_line_user', [
+  'businessLineId',
+  'userId',
+])
 export class BusinessLineMemberEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid', { comment: '主键（UUID）' })
   id: string;

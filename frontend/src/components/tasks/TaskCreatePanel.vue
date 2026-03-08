@@ -249,9 +249,7 @@ const loadConversationCliOptions = async (projectId: string) => {
 
 const refreshAccessContext = async (projectId: string) => {
   try {
-    await accessStore.loadContext({
-      ...(projectId ? { projectId } : {}),
-    })
+    await accessStore.loadContext((projectId ? { projectId } : {}))
   } catch (error) {
     void error
     accessStore.clear()

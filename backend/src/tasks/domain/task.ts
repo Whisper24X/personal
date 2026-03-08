@@ -37,7 +37,8 @@ export class Task {
     type: String,
     required: false,
     nullable: true,
-    description: 'Worktree identifier; runtime path is derived from project config',
+    description:
+      'Worktree identifier; runtime path is derived from project config',
   })
   gitWorktree?: string | null;
 

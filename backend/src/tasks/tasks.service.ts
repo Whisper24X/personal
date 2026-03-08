@@ -374,7 +374,9 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       updatePayload.prompt = updateTaskDto.prompt;
     }
     if (updateTaskDto.gitBranch !== undefined) {
-      updatePayload.gitBranch = this.normalizeGitBranch(updateTaskDto.gitBranch);
+      updatePayload.gitBranch = this.normalizeGitBranch(
+        updateTaskDto.gitBranch,
+      );
     }
     if (updateTaskDto.gitBaseBranch !== undefined) {
       updatePayload.gitBaseBranch = this.normalizeOptionalString(
@@ -949,12 +951,12 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
   ): Promise<{ path: string; content: string }> {
     const task = await this.getTaskOrThrow(taskId, currentUser);
 
-    const content =
-      await this.taskRuntimeService.readFileFromWorktree(task, relativePath);
+    const content = await this.taskRuntimeService.readFileFromWorktree(
+      task,
+      relativePath,
+    );
     if (content === null) {
-      throw new NotFoundException(
-        `Worktree file not found: ${relativePath}`,
-      );
+      throw new NotFoundException(`Worktree file not found: ${relativePath}`);
     }
 
     const normalized = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
@@ -1146,7 +1148,10 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         runtimeTask,
         project,
       );
-      const executionTask = this.createRuntimeTaskSnapshot(runtimeTask, runtime);
+      const executionTask = this.createRuntimeTaskSnapshot(
+        runtimeTask,
+        runtime,
+      );
 
       await this.appendLog({
         taskId,
@@ -1304,7 +1309,9 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (executionResult.success) {
-      const fullOutput = executionResult.stdout ?? 'Agent execution finished without stdout output';
+      const fullOutput =
+        executionResult.stdout ??
+        'Agent execution finished without stdout output';
       const summary =
         fullOutput.length > 2_000 ? fullOutput.slice(0, 2_000) : fullOutput;
 
@@ -1576,8 +1583,10 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
 
-      const content =
-        await this.taskRuntimeService.readFileFromWorktree(task, fileName);
+      const content = await this.taskRuntimeService.readFileFromWorktree(
+        task,
+        fileName,
+      );
       if (content === null) {
         continue;
       }
@@ -1819,8 +1828,9 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
 
     for (const task of expiredTasks) {
       try {
+        const project = await this.getProjectByIdOrThrow(task.projectId);
         const cleanupResult =
-          await this.taskRuntimeService.cleanupRuntime(task);
+          await this.taskRuntimeService.cleanupRuntime(task, project);
 
         await this.taskRepository.update(task.id, {
           ...(cleanupResult.cleaned ? { gitWorktree: null } : {}),
@@ -1983,7 +1993,8 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       taskId: task.id,
       taskNodeId: null,
       level: TaskLogLevel.info,
-      message: 'Task completed; worktree retained until retention period expires',
+      message:
+        'Task completed; worktree retained until retention period expires',
       payload: {
         gitWorktree: task.gitWorktree,
       },

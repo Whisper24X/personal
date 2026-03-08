@@ -8,13 +8,17 @@ import { ProjectMemberEntity } from '../entities/project-member.entity';
 import { ProjectMemberMapper } from '../mappers/project-member.mapper';
 
 @Injectable()
-export class ProjectMemberRelationalRepository implements ProjectMemberRepository {
+export class ProjectMemberRelationalRepository
+  implements ProjectMemberRepository
+{
   constructor(
     @InjectRepository(ProjectMemberEntity)
     private readonly projectMemberRepository: Repository<ProjectMemberEntity>,
   ) {}
 
-  async findByProjectId(projectId: ProjectMember['projectId']): Promise<ProjectMember[]> {
+  async findByProjectId(
+    projectId: ProjectMember['projectId'],
+  ): Promise<ProjectMember[]> {
     const entities = await this.projectMemberRepository.find({
       where: { projectId },
       relations: { roleRef: true },
@@ -24,7 +28,9 @@ export class ProjectMemberRelationalRepository implements ProjectMemberRepositor
     return entities.map((entity) => ProjectMemberMapper.toDomain(entity));
   }
 
-  async findByUserId(userId: ProjectMember['userId']): Promise<ProjectMember[]> {
+  async findByUserId(
+    userId: ProjectMember['userId'],
+  ): Promise<ProjectMember[]> {
     const entities = await this.projectMemberRepository.find({
       where: { userId },
       relations: { roleRef: true },
@@ -91,11 +97,17 @@ export class ProjectMemberRelationalRepository implements ProjectMemberRepositor
     return ProjectMemberMapper.toDomain(nextEntity);
   }
 
-  async remove(projectId: ProjectMember['projectId'], userId: ProjectMember['userId']): Promise<void> {
+  async remove(
+    projectId: ProjectMember['projectId'],
+    userId: ProjectMember['userId'],
+  ): Promise<void> {
     await this.projectMemberRepository.delete({ projectId, userId });
   }
 
-  async countByProjectIdAndRoleId(projectId: string, roleId: string): Promise<number> {
+  async countByProjectIdAndRoleId(
+    projectId: string,
+    roleId: string,
+  ): Promise<number> {
     return this.projectMemberRepository.count({
       where: { projectId, roleId },
     });

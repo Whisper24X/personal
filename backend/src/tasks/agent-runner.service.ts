@@ -874,9 +874,7 @@ export class AgentRunnerService {
       const mergedEnv = this.buildRunnerEnvironment(config.env);
 
       const spawnArgs =
-        config.adapter === 'cursor'
-          ? [...config.args, prompt]
-          : config.args;
+        config.adapter === 'cursor' ? [...config.args, prompt] : config.args;
 
       const childProcess = spawn(config.command, spawnArgs, {
         cwd: config.cwd,

@@ -137,9 +137,7 @@ const buildAvailableDefaultRoleName = (
   return `${baseName}-${suffix}`;
 };
 
-export class SeedDefaultCustomRoles1772905000000
-  implements MigrationInterface
-{
+export class SeedDefaultCustomRoles1772905000000 implements MigrationInterface {
   name = 'SeedDefaultCustomRoles1772905000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -173,7 +171,9 @@ export class SeedDefaultCustomRoles1772905000000
         [businessLine.id],
       )) as ScopeRoleRow[];
       const existingCodes = new Set(
-        existingRoles.map((role) => role.code).filter((code): code is string => Boolean(code)),
+        existingRoles
+          .map((role) => role.code)
+          .filter((code): code is string => Boolean(code)),
       );
       const existingNames = new Set(existingRoles.map((role) => role.name));
 
@@ -182,7 +182,10 @@ export class SeedDefaultCustomRoles1772905000000
           continue;
         }
 
-        const roleName = buildAvailableDefaultRoleName(template.name, existingNames);
+        const roleName = buildAvailableDefaultRoleName(
+          template.name,
+          existingNames,
+        );
         await queryRunner.query(
           `INSERT INTO "business_line_custom_roles" ("businessLineId", "code", "name", "description", "baseRole", "capabilities") VALUES ($1, $2, $3, $4, CAST($5 AS "public"."business_line_member_role_enum"), $6::jsonb)`,
           [
@@ -209,7 +212,9 @@ export class SeedDefaultCustomRoles1772905000000
         [project.id],
       )) as ScopeRoleRow[];
       const existingCodes = new Set(
-        existingRoles.map((role) => role.code).filter((code): code is string => Boolean(code)),
+        existingRoles
+          .map((role) => role.code)
+          .filter((code): code is string => Boolean(code)),
       );
       const existingNames = new Set(existingRoles.map((role) => role.name));
 
@@ -218,7 +223,10 @@ export class SeedDefaultCustomRoles1772905000000
           continue;
         }
 
-        const roleName = buildAvailableDefaultRoleName(template.name, existingNames);
+        const roleName = buildAvailableDefaultRoleName(
+          template.name,
+          existingNames,
+        );
         await queryRunner.query(
           `INSERT INTO "project_custom_roles" ("projectId", "code", "name", "description", "baseRole", "capabilities") VALUES ($1, $2, $3, $4, CAST($5 AS "public"."project_member_role_enum"), $6::jsonb)`,
           [

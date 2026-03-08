@@ -110,7 +110,10 @@ const BUSINESS_LINE_CAPABILITY_DEPENDENCIES: Record<
   'businessLine.project.delete': ['businessLine.read'],
 };
 
-const PROJECT_CAPABILITY_DEPENDENCIES: Record<CapabilityCode, CapabilityCode[]> = {
+const PROJECT_CAPABILITY_DEPENDENCIES: Record<
+  CapabilityCode,
+  CapabilityCode[]
+> = {
   'project.update': ['project.read'],
   'project.delete': ['project.read'],
   'project.member.manage': ['project.read'],
@@ -158,13 +161,18 @@ const hasSameCapabilitySet = (
   left: CapabilityCode[],
   right: CapabilityCode[],
 ): boolean => {
-  return normalizeCapabilitySignature(left) === normalizeCapabilitySignature(right);
+  return (
+    normalizeCapabilitySignature(left) === normalizeCapabilitySignature(right)
+  );
 };
 
 export const normalizeBusinessLineCapabilities = (
   capabilities: CapabilityCode[],
 ): CapabilityCode[] => {
-  return expandCapabilities(capabilities, BUSINESS_LINE_CAPABILITY_DEPENDENCIES);
+  return expandCapabilities(
+    capabilities,
+    BUSINESS_LINE_CAPABILITY_DEPENDENCIES,
+  );
 };
 
 export const normalizeProjectCapabilities = (
@@ -180,19 +188,25 @@ export const BUSINESS_LINE_DEFAULT_ROLE_TEMPLATES: Array<
     role: BusinessLineMemberRole.owner,
     name: 'owner',
     description: '拥有业务线全部能力',
-    capabilities: [...BUSINESS_LINE_ROLE_CAPABILITIES[BusinessLineMemberRole.owner]],
+    capabilities: [
+      ...BUSINESS_LINE_ROLE_CAPABILITIES[BusinessLineMemberRole.owner],
+    ],
   },
   {
     role: BusinessLineMemberRole.admin,
     name: 'admin',
     description: '可管理成员和项目条目，但不是 owner',
-    capabilities: [...BUSINESS_LINE_ROLE_CAPABILITIES[BusinessLineMemberRole.admin]],
+    capabilities: [
+      ...BUSINESS_LINE_ROLE_CAPABILITIES[BusinessLineMemberRole.admin],
+    ],
   },
   {
     role: BusinessLineMemberRole.member,
     name: 'member',
     description: '仅查看业务线和自己加入的项目',
-    capabilities: [...BUSINESS_LINE_ROLE_CAPABILITIES[BusinessLineMemberRole.member]],
+    capabilities: [
+      ...BUSINESS_LINE_ROLE_CAPABILITIES[BusinessLineMemberRole.member],
+    ],
   },
 ];
 
@@ -268,10 +282,14 @@ export const matchesProjectDefaultRoleTemplate = (
   templateRole?: ProjectMemberRole,
 ): boolean => {
   const templates = templateRole
-    ? PROJECT_DEFAULT_ROLE_TEMPLATES.filter((template) => template.role === templateRole)
+    ? PROJECT_DEFAULT_ROLE_TEMPLATES.filter(
+        (template) => template.role === templateRole,
+      )
     : PROJECT_DEFAULT_ROLE_TEMPLATES;
 
-  const normalizedRoleCapabilities = normalizeProjectCapabilities(role.capabilities);
+  const normalizedRoleCapabilities = normalizeProjectCapabilities(
+    role.capabilities,
+  );
 
   return templates.some((template) => {
     return (
@@ -321,8 +339,9 @@ export const getBusinessLineDefaultRoleTemplate = (
   role: BusinessLineMemberRole,
 ): DefaultScopedRoleTemplate<BusinessLineMemberRole> => {
   return (
-    BUSINESS_LINE_DEFAULT_ROLE_TEMPLATES.find((template) => template.role === role) ??
-    BUSINESS_LINE_DEFAULT_ROLE_TEMPLATES[0]
+    BUSINESS_LINE_DEFAULT_ROLE_TEMPLATES.find(
+      (template) => template.role === role,
+    ) ?? BUSINESS_LINE_DEFAULT_ROLE_TEMPLATES[0]
   );
 };
 

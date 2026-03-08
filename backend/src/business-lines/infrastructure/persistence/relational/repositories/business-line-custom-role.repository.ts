@@ -16,18 +16,24 @@ export class BusinessLineCustomRoleRelationalRepository
     private readonly repository: Repository<BusinessLineCustomRoleEntity>,
   ) {}
 
-  async findById(id: BusinessLineCustomRole['id']): Promise<NullableType<BusinessLineCustomRole>> {
+  async findById(
+    id: BusinessLineCustomRole['id'],
+  ): Promise<NullableType<BusinessLineCustomRole>> {
     const entity = await this.repository.findOne({ where: { id } });
     return entity ? BusinessLineCustomRoleMapper.toDomain(entity) : null;
   }
 
-  async findByIds(ids: BusinessLineCustomRole['id'][]): Promise<BusinessLineCustomRole[]> {
+  async findByIds(
+    ids: BusinessLineCustomRole['id'][],
+  ): Promise<BusinessLineCustomRole[]> {
     if (!ids.length) {
       return [];
     }
 
     const entities = await this.repository.find({ where: { id: In(ids) } });
-    return entities.map((entity) => BusinessLineCustomRoleMapper.toDomain(entity));
+    return entities.map((entity) =>
+      BusinessLineCustomRoleMapper.toDomain(entity),
+    );
   }
 
   async findAllByBusinessLineId(
@@ -39,7 +45,9 @@ export class BusinessLineCustomRoleRelationalRepository
       .orderBy('role."createdAt"', 'ASC')
       .getMany();
 
-    return entities.map((entity) => BusinessLineCustomRoleMapper.toDomain(entity));
+    return entities.map((entity) =>
+      BusinessLineCustomRoleMapper.toDomain(entity),
+    );
   }
 
   async findByName(
@@ -86,8 +94,12 @@ export class BusinessLineCustomRoleRelationalRepository
       this.repository.create({
         ...entity,
         ...(payload.name !== undefined ? { name: payload.name } : {}),
-        ...(payload.description !== undefined ? { description: payload.description ?? null } : {}),
-        ...(payload.capabilities !== undefined ? { capabilities: payload.capabilities } : {}),
+        ...(payload.description !== undefined
+          ? { description: payload.description ?? null }
+          : {}),
+        ...(payload.capabilities !== undefined
+          ? { capabilities: payload.capabilities }
+          : {}),
       }),
     );
 

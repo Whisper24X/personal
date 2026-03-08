@@ -18,7 +18,9 @@ export class BusinessLineInvitationMapper {
     return domainEntity;
   }
 
-  static toPersistence(domainEntity: BusinessLineInvitation): BusinessLineInvitationEntity {
+  static toPersistence(
+    domainEntity: BusinessLineInvitation,
+  ): BusinessLineInvitationEntity {
     const persistenceEntity = new BusinessLineInvitationEntity();
     if (domainEntity.id) {
       persistenceEntity.id = domainEntity.id;
@@ -26,7 +28,8 @@ export class BusinessLineInvitationMapper {
     persistenceEntity.businessLineId = domainEntity.businessLineId;
     persistenceEntity.token = domainEntity.token;
     persistenceEntity.roleId = domainEntity.roleId;
-    persistenceEntity.projectRoles = (domainEntity.projectRoles ?? {}) as Record<string, BusinessLineInviteProjectRole>;
+    persistenceEntity.projectRoles = (domainEntity.projectRoles ??
+      {}) as Record<string, BusinessLineInviteProjectRole>;
     persistenceEntity.createdBy = domainEntity.createdBy;
     persistenceEntity.expiresAt = domainEntity.expiresAt;
     persistenceEntity.revokedAt = domainEntity.revokedAt ?? null;

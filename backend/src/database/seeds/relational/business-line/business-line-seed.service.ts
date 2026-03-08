@@ -70,7 +70,8 @@ export class BusinessLineSeedService {
           businessLineId: businessLine.id,
           name: 'owner',
           description: 'Seeded owner role',
-          capabilities: BUSINESS_LINE_ROLE_CAPABILITIES[BusinessLineMemberRole.owner],
+          capabilities:
+            BUSINESS_LINE_ROLE_CAPABILITIES[BusinessLineMemberRole.owner],
         }),
       );
     }
