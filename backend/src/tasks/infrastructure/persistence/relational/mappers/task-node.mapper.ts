@@ -9,17 +9,14 @@ export class TaskNodeMapper {
     domainEntity.nodeOrder = raw.nodeOrder;
     domainEntity.name = raw.name;
     domainEntity.input = raw.input;
-    domainEntity.output = raw.output;
-    domainEntity.configJson = raw.configJson;
+    domainEntity.cliToolId = raw.cliToolId;
+    domainEntity.agentToolConfigId = raw.agentToolConfigId;
+    domainEntity.outputRef = raw.outputRef;
+    domainEntity.runtimeJson = raw.runtimeJson;
     domainEntity.status = raw.status;
     domainEntity.attempt = raw.attempt;
-    domainEntity.errorCode = raw.errorCode;
-    domainEntity.errorMessage = raw.errorMessage;
     domainEntity.startedAt = raw.startedAt;
     domainEntity.finishedAt = raw.finishedAt;
-    domainEntity.workerId = raw.workerId;
-    domainEntity.leaseUntil = raw.leaseUntil;
-    domainEntity.heartbeatAt = raw.heartbeatAt;
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
 
@@ -36,20 +33,15 @@ export class TaskNodeMapper {
     persistenceEntity.taskId = domainEntity.taskId;
     persistenceEntity.nodeOrder = domainEntity.nodeOrder;
     persistenceEntity.name = domainEntity.name;
-    persistenceEntity.input = domainEntity.input;
-    persistenceEntity.output = domainEntity.output;
-    persistenceEntity.configJson = domainEntity.configJson;
+    persistenceEntity.input = domainEntity.input ?? null;
+    persistenceEntity.cliToolId = domainEntity.cliToolId ?? '';
+    persistenceEntity.agentToolConfigId = domainEntity.agentToolConfigId ?? '';
+    persistenceEntity.outputRef = domainEntity.outputRef ?? null;
+    persistenceEntity.runtimeJson = domainEntity.runtimeJson ?? null;
     persistenceEntity.status = domainEntity.status;
     persistenceEntity.attempt = domainEntity.attempt;
-    persistenceEntity.errorCode = domainEntity.errorCode;
-    persistenceEntity.errorMessage = domainEntity.errorMessage;
-    persistenceEntity.startedAt = domainEntity.startedAt;
-    persistenceEntity.finishedAt = domainEntity.finishedAt;
-    persistenceEntity.workerId = domainEntity.workerId;
-    persistenceEntity.leaseUntil = domainEntity.leaseUntil;
-    persistenceEntity.heartbeatAt = domainEntity.heartbeatAt;
-    persistenceEntity.createdAt = domainEntity.createdAt;
-    persistenceEntity.updatedAt = domainEntity.updatedAt;
+    persistenceEntity.startedAt = domainEntity.startedAt ?? null;
+    persistenceEntity.finishedAt = domainEntity.finishedAt ?? null;
 
     return persistenceEntity;
   }

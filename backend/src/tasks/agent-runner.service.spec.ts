@@ -52,10 +52,13 @@ const createNode = (): TaskNode => ({
   nodeOrder: 1,
   name: 'agent node',
   input: {
-    prompt: 'Run task',
+    nodeInput: 'Run task',
+    taskInput: 'task description',
   },
-  output: null,
-  configJson: null,
+  cliToolId: 'codex',
+  agentToolConfigId: 'cfg-default',
+  outputRef: null,
+  runtimeJson: null,
   status: TaskStatus.todo,
   attempt: 0,
   createdAt: new Date(),
@@ -156,10 +159,11 @@ describe('AgentRunnerService', () => {
 
     const result = await serviceAny.resolveRunnerConfig(
       project,
-      createTask({
-        configJson: { agentToolConfigId: 'cfg-explicit' },
-      }),
-      createNode(),
+      createTask(),
+      {
+        ...createNode(),
+        agentToolConfigId: 'cfg-explicit',
+      },
     );
 
     expect(result.command).toBe('codex-explicit');
@@ -280,7 +284,10 @@ describe('AgentRunnerService', () => {
     const result = await serviceAny.resolveRunnerConfig(
       project,
       createTask(),
-      createNode(),
+      {
+        ...createNode(),
+        cliToolId: 'gemini-cli',
+      },
     );
 
     expect(result.command).toBe('legacy-command');
@@ -306,7 +313,10 @@ describe('AgentRunnerService', () => {
     const result = await serviceAny.resolveRunnerConfig(
       project,
       createTask(),
-      createNode(),
+      {
+        ...createNode(),
+        cliToolId: 'gemini-cli',
+      },
     );
 
     expect(result.adapter).toBe('gemini');

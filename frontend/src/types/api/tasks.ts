@@ -22,7 +22,6 @@ export type Task = {
   id: string
   projectId: string
   businessLineId: string
-  workflowTemplateId?: string | null
   mode: TaskMode
   title: string
   prompt?: string | null
@@ -30,8 +29,6 @@ export type Task = {
   gitBranch?: string | null
   gitBaseBranch?: string | null
   gitWorktree?: string | null
-  cliToolId?: string | null
-  agentToolConfigId?: string | null
   configJson?: TaskConfig | null
   createdAt?: string
   updatedAt?: string
@@ -44,12 +41,22 @@ export type TaskNode = {
   taskId: string
   nodeOrder: number
   name: string
-  nodeType: TaskNodeType
+  input?: {
+    taskInput?: string | null
+    nodeInput?: string | null
+    [key: string]: unknown
+  } | null
+  cliToolId?: string | null
+  agentToolConfigId?: string | null
+  outputRef?: string | null
+  runtimeJson?: {
+    workerId?: string | null
+    leaseUntil?: string | null
+    heartbeatAt?: string | null
+    [key: string]: unknown
+  } | null
   status: TaskStatus
-  requiresApproval: boolean
   attempt: number
-  errorCode?: string | null
-  errorMessage?: string | null
 }
 
 export type TaskDetail = {

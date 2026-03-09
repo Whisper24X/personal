@@ -8,6 +8,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { promises as fs } from 'fs';
 import path from 'path';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { TaskRepository } from './infrastructure/persistence/task.repository';
@@ -42,12 +43,12 @@ import { DataSource } from 'typeorm';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { ReplyTaskDto } from './dto/reply-task.dto';
 import { TaskMessageDto, TaskMessageRole } from './dto/task-message.dto';
-import { TaskConfig, TaskNodeConfig } from './types/task-config.type';
+import { TaskConfig, TaskNodeInput, TaskNodeRuntime } from './types/task-config.type';
+import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 
 @Injectable()
 export class TasksService implements OnModuleInit, OnModuleDestroy {
   private readonly runningNodeSet = new Set<string>();
-  private readonly runtimeRole = this.resolveRuntimeRole();
   private readonly workerId = `${process.pid}-${Math.random().toString(16).slice(2, 10)}`;
   private readonly schedulerIntervalMs = this.readPositiveNumberFromEnv(
     'AINATIVE_DISPATCH_INTERVAL_MS',
@@ -72,6 +73,9 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
   private readonly streamDbPollIntervalMs = this.readPositiveNumberFromEnv(
     'AINATIVE_STREAM_DB_POLL_INTERVAL_MS',
     1_000,
+  );
+  private readonly defaultDataRootDir = path.resolve(
+    resolveAinativeDataRootDir(),
   );
   private readonly dispatchAdvisoryLockKey = 345123;
   private readonly schedulerBatchSize = 50;
@@ -100,10 +104,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
-    if (this.runtimeRole !== 'worker') {
-      return;
-    }
-
     this.schedulerTimer = setInterval(() => {
       void this.scheduleQueuedNodes();
     }, this.schedulerIntervalMs);
@@ -152,15 +152,18 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     let resolvedMode: TaskMode = createTaskDto.mode ?? TaskMode.conversation;
     const taskConfig = this.mergeTaskConfig(
       null,
-      this.buildIncomingTaskConfig(createTaskDto),
+      this.toObjectRecord(createTaskDto.configJson),
     );
     const workflowTemplateId = this.readTaskWorkflowTemplateId(taskConfig);
-    const defaultNodeConfig = this.buildNodeConfigFromTaskConfig(taskConfig);
+    const defaultNodeExecution = this.resolveRequiredNodeExecutionConfig(
+      taskConfig,
+    );
     let nodes: Array<{
       nodeOrder: number;
       name: string;
-      input?: Record<string, unknown> | null;
-      configJson?: TaskNodeConfig | null;
+      input?: TaskNodeInput | null;
+      cliToolId: string;
+      agentToolConfigId: string;
     }> = [];
 
     if (workflowTemplateId) {
@@ -177,8 +180,12 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         .map((node) => ({
           nodeOrder: node.nodeOrder,
           name: node.name,
-          input: node.input ?? null,
-          configJson: defaultNodeConfig,
+          input: this.buildTaskNodeInput({
+            taskPrompt: createTaskDto.prompt ?? null,
+            nodeInput: this.readTemplateNodeInput(node.input),
+          }),
+          cliToolId: defaultNodeExecution.cliToolId,
+          agentToolConfigId: defaultNodeExecution.agentToolConfigId,
         }))
         .sort((left, right) => left.nodeOrder - right.nodeOrder);
     } else {
@@ -192,8 +199,12 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         {
           nodeOrder: 1,
           name: 'conversation-node',
-          input: null,
-          configJson: defaultNodeConfig,
+          input: this.buildTaskNodeInput({
+            taskPrompt: createTaskDto.prompt ?? null,
+            nodeInput: null,
+          }),
+          cliToolId: defaultNodeExecution.cliToolId,
+          agentToolConfigId: defaultNodeExecution.agentToolConfigId,
         },
       ];
     }
@@ -292,12 +303,12 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         nodeOrder: node.nodeOrder,
         name: node.name,
         input: node.input ?? null,
-        output: null,
-        configJson: node.configJson ?? null,
+        cliToolId: node.cliToolId,
+        agentToolConfigId: node.agentToolConfigId,
+        outputRef: null,
+        runtimeJson: null,
         status: TaskStatus.todo,
         attempt: 0,
-        errorCode: null,
-        errorMessage: null,
         startedAt: null,
         finishedAt: null,
       })),
@@ -439,10 +450,10 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         updatePayload.gitWorktree = null;
       }
     }
-    if (this.hasIncomingTaskConfig(updateTaskDto)) {
+    if (updateTaskDto.configJson !== undefined) {
       updatePayload.configJson = this.mergeTaskConfig(
         task.configJson,
-        this.buildIncomingTaskConfig(updateTaskDto),
+        this.toObjectRecord(updateTaskDto.configJson),
       );
     }
     if (Object.keys(updatePayload).length === 0) {
@@ -455,8 +466,11 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     );
     const effectiveTask = updatedTask ?? task;
 
-    if (updatePayload.configJson !== undefined) {
-      const nextNodeConfig = this.buildNodeConfigFromTaskConfig(
+    if (
+      updatePayload.configJson !== undefined ||
+      updatePayload.prompt !== undefined
+    ) {
+      const nextNodeExecution = this.resolveRequiredNodeExecutionConfig(
         effectiveTask.configJson,
       );
       const nodes = await this.taskNodeRepository.findByTaskId(task.id);
@@ -465,7 +479,12 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
           .filter((node) => node.status !== TaskStatus.done)
           .map((node) =>
             this.taskNodeRepository.update(node.id, {
-              configJson: nextNodeConfig,
+              cliToolId: nextNodeExecution.cliToolId,
+              agentToolConfigId: nextNodeExecution.agentToolConfigId,
+              input: this.withTaskInput(
+                node.input,
+                effectiveTask.prompt ?? null,
+              ),
             }),
           ),
       );
@@ -552,9 +571,8 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       await this.taskNodeRepository.update(inReviewNode.id, {
         status: TaskStatus.todo,
         finishedAt: null,
-        errorCode: null,
-        errorMessage: null,
-        output: null,
+        outputRef: null,
+        runtimeJson: null,
       });
 
       await this.appendLog({
@@ -589,9 +607,8 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         await this.taskNodeRepository.update(fallbackNode.id, {
           status: TaskStatus.todo,
           finishedAt: null,
-          errorCode: null,
-          errorMessage: null,
-          output: null,
+          outputRef: null,
+          runtimeJson: null,
         });
       }
     }
@@ -762,9 +779,8 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     await this.taskNodeRepository.update(targetNode.id, {
       status: TaskStatus.todo,
       finishedAt: null,
-      errorCode: null,
-      errorMessage: null,
-      output: null,
+      outputRef: null,
+      runtimeJson: null,
     });
 
     const queueRequestedAt = new Date();
@@ -814,11 +830,19 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     await this.taskNodeRepository.update(runningNode.id, {
       status: TaskStatus.inReview,
       finishedAt: new Date(),
-      errorCode: 'CANCELLED',
-      errorMessage: 'Execution cancelled by user',
-      workerId: null,
-      leaseUntil: null,
-      heartbeatAt: null,
+      outputRef: await this.writeNodeOutputJsonl({
+        task,
+        node: runningNode,
+        output: {
+          summary: 'Execution cancelled by user',
+          finishedAt: new Date().toISOString(),
+          error: {
+            code: 'CANCELLED',
+            message: 'Execution cancelled by user',
+          },
+        },
+      }),
+      runtimeJson: null,
     });
 
     await this.appendLog({
@@ -863,11 +887,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     await this.taskNodeRepository.update(targetNode.id, {
       status: TaskStatus.done,
       finishedAt: targetNode.finishedAt ?? new Date(),
-      errorCode: null,
-      errorMessage: null,
-      workerId: null,
-      leaseUntil: null,
-      heartbeatAt: null,
+      runtimeJson: null,
     });
 
     await this.appendLog({
@@ -882,9 +902,8 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
 
     // 审批通过后创建产物（节点执行时因 requiresApproval 而跳过了产物创建）
     const outputSummary =
-      targetNode.output && typeof targetNode.output.summary === 'string'
-        ? targetNode.output.summary
-        : `Node ${targetNode.nodeOrder} approved`;
+      (await this.readNodeOutputSummary(targetNode)) ??
+      `Node ${targetNode.nodeOrder} approved`;
     const generatedBy = 'agent-runner:approved';
     await this.createNodeExecutionArtifact({
       taskId: task.id,
@@ -1159,6 +1178,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
 
     this.runningNodeSet.add(nodeId);
     let stopLeaseHeartbeat: (() => void) | undefined;
+    let executionTask: Task | null = null;
 
     try {
       await this.delay(150);
@@ -1178,7 +1198,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         runtimeTask,
         project,
       );
-      const executionTask = this.createRuntimeTaskSnapshot(
+      executionTask = this.createRuntimeTaskSnapshot(
         runtimeTask,
         runtime,
       );
@@ -1219,11 +1239,28 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       const errorMessage =
         error instanceof Error ? error.message : 'Unexpected execution error';
 
-      await this.finalizeNodeAsFailure({
-        nodeId,
-        errorCode: 'UNKNOWN',
-        errorMessage,
-      });
+      const latestNode = await this.taskNodeRepository.findById(nodeId);
+      const outputTask = executionTask ?? (await this.taskRepository.findById(taskId));
+
+      if (latestNode && outputTask) {
+        const outputRef = await this.writeNodeOutputJsonl({
+          task: outputTask,
+          node: latestNode,
+          output: {
+            summary: errorMessage,
+            finishedAt: new Date().toISOString(),
+            error: {
+              code: 'UNKNOWN',
+              message: errorMessage,
+            },
+          },
+        });
+
+        await this.finalizeNodeAsFailure({
+          nodeId,
+          outputRef,
+        });
+      }
 
       await this.appendLog({
         taskId,
@@ -1339,8 +1376,9 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         'Agent execution finished without stdout output';
       const summary =
         fullOutput.length > 2_000 ? fullOutput.slice(0, 2_000) : fullOutput;
-
-      await this.finalizeNodeAsSuccess({
+      const finishedAt = new Date().toISOString();
+      const outputRef = await this.writeNodeOutputJsonl({
+        task,
         node,
         output: {
           summary,
@@ -1348,8 +1386,16 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
           stderr: executionResult.stderr || null,
           exitCode: executionResult.exitCode,
           durationMs: executionResult.durationMs,
-          finishedAt: new Date().toISOString(),
+          finishedAt,
+          command: executionResult.command,
+          args: executionResult.args,
+          prompt: executionResult.prompt,
         },
+      });
+
+      await this.finalizeNodeAsSuccess({
+        node,
+        outputRef,
       });
 
       await this.appendLog({
@@ -1376,18 +1422,31 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    await this.finalizeNodeAsFailure({
-      nodeId,
-      errorCode: executionResult.timedOut ? 'TIMEOUT' : 'RUNNER_FAILED',
-      errorMessage: executionResult.errorMessage ?? 'Agent execution failed',
+    const outputRef = await this.writeNodeOutputJsonl({
+      task,
+      node,
       output: {
+        summary: executionResult.errorMessage ?? 'Agent execution failed',
         stdout: executionResult.stdout || null,
         stderr: executionResult.stderr || null,
         exitCode: executionResult.exitCode,
         signal: executionResult.signal,
         durationMs: executionResult.durationMs,
         timedOut: executionResult.timedOut,
+        finishedAt: new Date().toISOString(),
+        command: executionResult.command,
+        args: executionResult.args,
+        prompt: executionResult.prompt,
+        error: {
+          code: executionResult.timedOut ? 'TIMEOUT' : 'RUNNER_FAILED',
+          message: executionResult.errorMessage ?? 'Agent execution failed',
+        },
       },
+    });
+
+    await this.finalizeNodeAsFailure({
+      nodeId,
+      outputRef,
     });
 
     await this.appendLog({
@@ -1407,33 +1466,25 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
 
   private async finalizeNodeAsSuccess({
     node,
-    output,
+    outputRef,
   }: {
     node: TaskNode;
-    output: Record<string, unknown>;
+    outputRef: string;
   }): Promise<void> {
     await this.taskNodeRepository.update(node.id, {
       status: TaskStatus.done,
       finishedAt: new Date(),
-      output,
-      errorCode: null,
-      errorMessage: null,
-      workerId: null,
-      leaseUntil: null,
-      heartbeatAt: null,
+      outputRef,
+      runtimeJson: null,
     });
   }
 
   private async finalizeNodeAsFailure({
     nodeId,
-    errorCode,
-    errorMessage,
-    output,
+    outputRef,
   }: {
     nodeId: string;
-    errorCode: string;
-    errorMessage: string;
-    output?: Record<string, unknown>;
+    outputRef: string;
   }): Promise<void> {
     const latestNode = await this.taskNodeRepository.findById(nodeId);
 
@@ -1444,12 +1495,8 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     await this.taskNodeRepository.update(nodeId, {
       status: TaskStatus.inReview,
       finishedAt: new Date(),
-      errorCode,
-      errorMessage,
-      workerId: null,
-      leaseUntil: null,
-      heartbeatAt: null,
-      ...(output ? { output } : {}),
+      outputRef,
+      runtimeJson: null,
     });
   }
 
@@ -1593,7 +1640,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async scheduleQueuedNodes(): Promise<void> {
-    if (this.runtimeRole !== 'worker' || this.destroyed || this.scheduling) {
+    if (this.destroyed || this.scheduling) {
       return;
     }
 
@@ -1683,11 +1730,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async recoverExpiredLeases(): Promise<void> {
-    if (
-      this.runtimeRole !== 'worker' ||
-      this.destroyed ||
-      this.recoveringExpiredNodes
-    ) {
+    if (this.destroyed || this.recoveringExpiredNodes) {
       return;
     }
 
@@ -1708,20 +1751,32 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
           if (
             !latestNode ||
             latestNode.status !== TaskStatus.inProgress ||
-            !latestNode.leaseUntil ||
-            latestNode.leaseUntil > now
+            !this.readNodeLeaseUntil(latestNode) ||
+            this.readNodeLeaseUntil(latestNode)! > now
           ) {
             continue;
           }
 
+          const leaseUntil = this.readNodeLeaseUntil(latestNode);
+          const workerId = this.readRuntimeWorkerId(latestNode);
+          const outputRef = await this.writeNodeOutputJsonl({
+            task: await this.getTaskByIdOrThrow(latestNode.taskId),
+            node: latestNode,
+            output: {
+              summary: 'Node lease expired; worker heartbeat lost',
+              finishedAt: new Date().toISOString(),
+              error: {
+                code: 'WORKER_LOST',
+                message: 'Node lease expired; worker heartbeat lost',
+              },
+            },
+          });
+
           await this.taskNodeRepository.update(node.id, {
             status: TaskStatus.inReview,
             finishedAt: new Date(),
-            errorCode: 'WORKER_LOST',
-            errorMessage: 'Node lease expired; worker heartbeat lost',
-            workerId: null,
-            leaseUntil: null,
-            heartbeatAt: null,
+            outputRef,
+            runtimeJson: null,
           });
 
           await this.appendLog({
@@ -1731,8 +1786,8 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
             message:
               'Node execution interrupted due to worker heartbeat timeout',
             payload: {
-              workerId: latestNode.workerId ?? null,
-              leaseUntil: latestNode.leaseUntil.toISOString(),
+              workerId,
+              leaseUntil: leaseUntil?.toISOString() ?? null,
             },
           });
 
@@ -1796,15 +1851,11 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async triggerWorkerDispatch(): Promise<void> {
-    if (this.runtimeRole !== 'worker') {
-      return;
-    }
-
     await this.scheduleQueuedNodes();
   }
 
   private async scheduleRetentionCleanup(): Promise<void> {
-    if (this.runtimeRole !== 'worker' || this.destroyed) {
+    if (this.destroyed) {
       return;
     }
 
@@ -1922,13 +1973,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         [this.dispatchAdvisoryLockKey],
       );
     }
-  }
-
-  private resolveRuntimeRole(): 'api' | 'worker' {
-    return this.configService.get('AINATIVE_RUNTIME_ROLE', { infer: true }) ===
-      'worker'
-      ? 'worker'
-      : 'api';
   }
 
   private readPositiveNumberFromEnv(key: string, defaultValue: number): number {
@@ -2091,6 +2135,16 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     return task;
   }
 
+  private async getTaskByIdOrThrow(taskId: string): Promise<Task> {
+    const task = await this.taskRepository.findById(taskId);
+
+    if (!task) {
+      throw new NotFoundException('Task not found');
+    }
+
+    return task;
+  }
+
   private normalizeOptionalString(value?: string | null): string | null {
     if (value === undefined || value === null) {
       return null;
@@ -2156,52 +2210,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     return Object.keys(merged).length ? merged : null;
   }
 
-  private buildIncomingTaskConfig(
-    payload: Pick<
-      CreateTaskDto | UpdateTaskDto,
-      | 'configJson'
-      | 'workflowTemplateId'
-      | 'cliToolId'
-      | 'agentToolConfigId'
-    >,
-  ): Record<string, unknown> | null {
-    const legacyConfig: Record<string, unknown> = {};
-
-    if (typeof payload.workflowTemplateId === 'string') {
-      legacyConfig.workflowTemplateId = payload.workflowTemplateId;
-    }
-
-    if (typeof payload.cliToolId === 'string') {
-      legacyConfig.cliToolId = payload.cliToolId;
-    }
-
-    if (typeof payload.agentToolConfigId === 'string') {
-      legacyConfig.agentToolConfigId = payload.agentToolConfigId;
-    }
-
-    return {
-      ...legacyConfig,
-      ...this.toObjectRecord(payload.configJson),
-    };
-  }
-
-  private hasIncomingTaskConfig(
-    payload: Pick<
-      CreateTaskDto | UpdateTaskDto,
-      | 'configJson'
-      | 'workflowTemplateId'
-      | 'cliToolId'
-      | 'agentToolConfigId'
-    >,
-  ): boolean {
-    return (
-      payload.configJson !== undefined ||
-      payload.workflowTemplateId !== undefined ||
-      payload.cliToolId !== undefined ||
-      payload.agentToolConfigId !== undefined
-    );
-  }
-
   private readTaskWorkflowTemplateId(
     configJson: Record<string, unknown> | null | undefined,
   ): string | null {
@@ -2214,9 +2222,12 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private buildNodeConfigFromTaskConfig(
+  private resolveRequiredNodeExecutionConfig(
     configJson: Record<string, unknown> | null | undefined,
-  ): TaskNodeConfig | null {
+  ): {
+    cliToolId: string;
+    agentToolConfigId: string;
+  } {
     const config = this.toObjectRecord(configJson);
     const cliToolId = this.normalizeOptionalString(
       typeof config.cliToolId === 'string' ? config.cliToolId : null,
@@ -2227,17 +2238,175 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         : null,
     );
 
-    const nodeConfig: TaskNodeConfig = {};
-
-    if (cliToolId) {
-      nodeConfig.cliToolId = cliToolId;
+    if (!cliToolId) {
+      throw new ConflictException(
+        'Task config must include cliToolId for executable task nodes',
+      );
     }
 
-    if (agentToolConfigId) {
-      nodeConfig.agentToolConfigId = agentToolConfigId;
+    if (!agentToolConfigId) {
+      throw new ConflictException(
+        'Task config must include agentToolConfigId for executable task nodes',
+      );
     }
 
-    return Object.keys(nodeConfig).length ? nodeConfig : null;
+    return {
+      cliToolId,
+      agentToolConfigId,
+    };
+  }
+
+  private buildTaskNodeInput({
+    taskPrompt,
+    nodeInput,
+    source,
+  }: {
+    taskPrompt?: string | null;
+    nodeInput?: string | null;
+    source?: Record<string, unknown> | null;
+  }): TaskNodeInput {
+    const normalized = {
+      ...this.toObjectRecord(source),
+      taskInput: this.normalizeOptionalString(taskPrompt),
+      nodeInput: this.normalizeOptionalString(nodeInput),
+    } as TaskNodeInput;
+
+    delete normalized.prompt;
+    delete normalized.instructions;
+
+    return normalized;
+  }
+
+  private withTaskInput(
+    currentInput: Record<string, unknown> | null | undefined,
+    taskPrompt?: string | null,
+  ): TaskNodeInput {
+    const source = this.toObjectRecord(currentInput);
+    const nodeInput = this.normalizeOptionalString(
+      typeof source.nodeInput === 'string'
+        ? source.nodeInput
+        : typeof source.prompt === 'string'
+          ? source.prompt
+          : typeof source.instructions === 'string'
+            ? source.instructions
+            : null,
+    );
+
+    return this.buildTaskNodeInput({
+      source,
+      taskPrompt,
+      nodeInput,
+    });
+  }
+
+  private readTemplateNodeInput(
+    input: Record<string, unknown> | null | undefined,
+  ): string | null {
+    const source = this.toObjectRecord(input);
+
+    return this.normalizeOptionalString(
+      typeof source.nodeInput === 'string'
+        ? source.nodeInput
+        : typeof source.prompt === 'string'
+          ? source.prompt
+          : typeof source.instructions === 'string'
+            ? source.instructions
+            : null,
+    );
+  }
+
+  private readNodeRuntime(
+    node: TaskNode,
+  ): TaskNodeRuntime | null {
+    const runtime = this.toObjectRecord(node.runtimeJson);
+
+    return Object.keys(runtime).length ? (runtime as TaskNodeRuntime) : null;
+  }
+
+  private readRuntimeWorkerId(node: TaskNode): string | null {
+    const runtime = this.readNodeRuntime(node);
+
+    return this.normalizeOptionalString(
+      typeof runtime?.workerId === 'string' ? runtime.workerId : null,
+    );
+  }
+
+  private readNodeLeaseUntil(node: TaskNode): Date | null {
+    const runtime = this.readNodeRuntime(node);
+    const raw = this.normalizeOptionalString(
+      typeof runtime?.leaseUntil === 'string' ? runtime.leaseUntil : null,
+    );
+
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  private async writeNodeOutputJsonl({
+    task,
+    node,
+    output,
+  }: {
+    task: Task;
+    node: TaskNode;
+    output: Record<string, unknown>;
+  }): Promise<string> {
+    const outputPath = this.resolveNodeOutputPath(task, node);
+
+    await fs.mkdir(path.dirname(outputPath), {
+      recursive: true,
+    });
+    await fs.writeFile(outputPath, `${JSON.stringify(output)}\n`, 'utf-8');
+
+    return outputPath;
+  }
+
+  private async readNodeOutputSummary(node: TaskNode): Promise<string | null> {
+    const outputRef = this.normalizeOptionalString(node.outputRef);
+
+    if (!outputRef) {
+      return null;
+    }
+
+    try {
+      const content = await fs.readFile(outputRef, 'utf-8');
+      const records = content
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+      for (let index = records.length - 1; index >= 0; index -= 1) {
+        try {
+          const parsed = JSON.parse(records[index]) as Record<string, unknown>;
+          if (typeof parsed.summary === 'string' && parsed.summary.trim()) {
+            return parsed.summary.trim();
+          }
+        } catch {
+          continue;
+        }
+      }
+    } catch {
+      return null;
+    }
+
+    return null;
+  }
+
+  private resolveNodeOutputPath(task: Task, node: TaskNode): string {
+    return path.resolve(
+      this.defaultDataRootDir,
+      task.businessLineId?.trim() || 'unknown-business-line',
+      'projects',
+      task.projectId?.trim() || 'unknown-project',
+      'tasks',
+      task.id,
+      'nodes',
+      node.id,
+      'output.jsonl',
+    );
   }
 
   private ensureTemplateNodesSupported(

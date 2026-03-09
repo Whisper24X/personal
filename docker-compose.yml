@@ -23,7 +23,6 @@ x-backend-env: &backend-env
   AUTH_JWT_TOKEN_EXPIRES_IN: ${AUTH_JWT_TOKEN_EXPIRES_IN:-15m}
   AUTH_REFRESH_SECRET: ${AUTH_REFRESH_SECRET:-secret_for_refresh}
   AUTH_REFRESH_TOKEN_EXPIRES_IN: ${AUTH_REFRESH_TOKEN_EXPIRES_IN:-3650d}
-  AINATIVE_RUNTIME_ROLE: api
   AINATIVE_DISPATCH_INTERVAL_MS: ${AINATIVE_DISPATCH_INTERVAL_MS:-1000}
   AINATIVE_NODE_LEASE_TTL_MS: ${AINATIVE_NODE_LEASE_TTL_MS:-45000}
   AINATIVE_NODE_HEARTBEAT_INTERVAL_MS: ${AINATIVE_NODE_HEARTBEAT_INTERVAL_MS:-10000}
@@ -120,28 +119,6 @@ services:
       timeout: 5s
       retries: 10
       start_period: 60s
-    networks:
-      - ainative
-
-  worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: ainative-worker
-    restart: unless-stopped
-    environment:
-      <<: *backend-env
-      AINATIVE_RUNTIME_ROLE: worker
-      AINATIVE_RUN_SEED: "false"
-    command:
-      [
-        "/bin/sh",
-        "-lc",
-        "/opt/wait-for-it.sh ${DATABASE_HOST:-postgres}:${DATABASE_PORT:-5432} && npm run start:worker",
-      ]
-    depends_on:
-      backend:
-        condition: service_healthy
     networks:
       - ainative
 

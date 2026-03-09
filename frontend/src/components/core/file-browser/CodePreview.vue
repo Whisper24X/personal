@@ -22,14 +22,14 @@ import 'prismjs/components/prism-makefile'
 import 'prismjs/components/prism-go-module'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import {
-  highlightTaskCodeLine,
-  resolveTaskCodeLanguage,
-  resolveTaskCodeLanguageLabel,
-  resolveTaskPrismLanguage,
-} from './task-preview'
+  highlightCodeLine,
+  resolveCodeLanguage,
+  resolveCodeLanguageLabel,
+  resolvePrismLanguage,
+} from './preview'
 
 defineOptions({
-  name: 'TaskTextPreview',
+  name: 'CodePreview',
 })
 
 const props = withDefaults(
@@ -51,9 +51,9 @@ let copyResetTimer: ReturnType<typeof window.setTimeout> | null = null
 let copyPathResetTimer: ReturnType<typeof window.setTimeout> | null = null
 
 const sourceText = computed(() => props.lines.join('\n'))
-const language = computed(() => resolveTaskCodeLanguage(props.selectedPath, props.mimeType))
-const prismLanguage = computed(() => resolveTaskPrismLanguage(language.value))
-const languageLabel = computed(() => resolveTaskCodeLanguageLabel(language.value))
+const language = computed(() => resolveCodeLanguage(props.selectedPath, props.mimeType))
+const prismLanguage = computed(() => resolvePrismLanguage(language.value))
+const languageLabel = computed(() => resolveCodeLanguageLabel(language.value))
 const byteSize = computed(() => new TextEncoder().encode(sourceText.value).length)
 const isLargeFile = computed(() => props.lines.length > 1000 || byteSize.value > 200 * 1024)
 const shouldHighlight = computed(() => forceHighlight.value || !isLargeFile.value)
@@ -83,12 +83,12 @@ const highlightedHtmlLines = computed(() => {
       try {
         return Prism.highlight(line, prismGrammar.value, prismLanguage.value) || '&nbsp;'
       } catch {
-        return highlightTaskCodeLine(line, language.value)
+        return highlightCodeLine(line, language.value)
       }
     })
   }
 
-  return props.lines.map((line) => highlightTaskCodeLine(line, language.value))
+  return props.lines.map((line) => highlightCodeLine(line, language.value))
 })
 const displayLineIndexes = computed(() => {
   return Array.from({ length: highlightedHtmlLines.value.length }, (_, index) => index)

@@ -18,7 +18,6 @@ import { TaskEntity } from './task.entity';
   comment: '任务执行节点',
 })
 @Unique('UQ_task_nodes_task_node_order', ['taskId', 'nodeOrder'])
-@Index('IDX_task_nodes_status_lease_until', ['status', 'leaseUntil'])
 @Index('IDX_task_nodes_task_status_order', ['taskId', 'status', 'nodeOrder'])
 @Index('UQ_task_nodes_single_in_progress', ['taskId'], {
   unique: true,
@@ -41,11 +40,17 @@ export class TaskNodeEntity extends EntityRelationalHelper {
   @Column({ type: 'jsonb', nullable: true, comment: '节点输入JSON' })
   input?: Record<string, unknown> | null;
 
-  @Column({ type: 'jsonb', nullable: true, comment: '节点输出JSON' })
-  output?: Record<string, unknown> | null;
+  @Column({ type: String, length: 64, comment: 'CLI工具ID' })
+  cliToolId: string;
 
-  @Column({ type: 'jsonb', nullable: true, comment: '节点执行配置JSON' })
-  configJson?: Record<string, unknown> | null;
+  @Column({ type: 'uuid', comment: 'Agent工具配置ID' })
+  agentToolConfigId: string;
+
+  @Column({ type: 'text', nullable: true, comment: 'Agent CLI输出JSONL文件地址' })
+  outputRef?: string | null;
+
+  @Column({ type: 'jsonb', nullable: true, comment: '节点运行时临时状态JSON' })
+  runtimeJson?: Record<string, unknown> | null;
 
   @Index('IDX_task_nodes_status')
   @Column({
@@ -60,35 +65,11 @@ export class TaskNodeEntity extends EntityRelationalHelper {
   @Column({ type: 'int', default: 0, comment: '重试次数' })
   attempt: number;
 
-  @Column({ type: String, length: 120, nullable: true, comment: '错误码' })
-  errorCode?: string | null;
-
-  @Column({ type: 'text', nullable: true, comment: '错误详情' })
-  errorMessage?: string | null;
-
   @Column({ type: 'timestamp', nullable: true, comment: '节点执行开始时间' })
   startedAt?: Date | null;
 
   @Column({ type: 'timestamp', nullable: true, comment: '节点执行结束时间' })
   finishedAt?: Date | null;
-
-  @Column({
-    type: String,
-    length: 120,
-    nullable: true,
-    comment: '持有租约的工作进程ID',
-  })
-  workerId?: string | null;
-
-  @Column({ type: 'timestamp', nullable: true, comment: '租约过期时间' })
-  leaseUntil?: Date | null;
-
-  @Column({
-    type: 'timestamp',
-    nullable: true,
-    comment: '最近工作进程心跳时间',
-  })
-  heartbeatAt?: Date | null;
 
   @ManyToOne(() => TaskEntity, {
     onDelete: 'CASCADE',

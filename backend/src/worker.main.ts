@@ -3,16 +3,10 @@ import { NestFactory } from '@nestjs/core';
 import { WorkerModule } from './worker.module';
 
 async function bootstrap() {
-  if (!process.env.AINATIVE_RUNTIME_ROLE) {
-    process.env.AINATIVE_RUNTIME_ROLE = 'worker';
-  }
-
   const logger = new Logger('AINativeWorker');
   const app = await NestFactory.createApplicationContext(WorkerModule);
 
-  logger.log(
-    `Worker started (role=${process.env.AINATIVE_RUNTIME_ROLE ?? 'worker'})`,
-  );
+  logger.log('Background scheduler started');
 
   const shutdown = async (signal: string) => {
     logger.log(`Received ${signal}, shutting down worker...`);

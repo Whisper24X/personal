@@ -4,12 +4,25 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import path from 'path';
 import { DataSource } from 'typeorm';
 import { TaskLogEventsService } from './task-log-events.service';
 import { TaskArtifactType } from './dto/task-artifact-type.enum';
 import { TaskMode } from './dto/task-mode.enum';
 import { TaskStatus } from './dto/task-status.enum';
 import { TasksService } from './tasks.service';
+
+process.env.AINATIVE_DATA_ROOT_DIR = path.resolve(
+  process.cwd(),
+  '..',
+  'tmp',
+  'ainative-test-data',
+);
+
+const defaultExecutionConfig = {
+  cliToolId: 'codex',
+  agentToolConfigId: 'cfg-1',
+};
 
 const createProject = (configJson?: Record<string, unknown>) => ({
   id: 'project-1',
@@ -59,9 +72,14 @@ const createNode = (overrides: Record<string, unknown> = {}) => ({
   taskId: 'task-1',
   nodeOrder: 1,
   name: 'agent-node',
-  input: null,
-  output: null,
-  configJson: null,
+  input: {
+    taskInput: 'task description',
+    nodeInput: null,
+  },
+  cliToolId: defaultExecutionConfig.cliToolId,
+  agentToolConfigId: defaultExecutionConfig.agentToolConfigId,
+  outputRef: null,
+  runtimeJson: null,
   status: TaskStatus.inProgress,
   attempt: 0,
   createdAt: new Date(),
@@ -74,9 +92,7 @@ const createNodeWithStatus = (status: TaskStatus) => ({
   status,
 });
 
-const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
-  process.env.AINATIVE_RUNTIME_ROLE = runtimeRole;
-
+const createTasksService = () => {
   const taskRepository = {
     create: jest.fn(),
     findById: jest.fn(),
@@ -228,6 +244,7 @@ describe('TasksService', () => {
         gitBranch: 'feature/new-task',
         gitBaseBranch: ' develop ',
         gitWorktree: '/tmp/worktrees/task-1',
+        configJson: defaultExecutionConfig,
       } as never,
       currentUser as never,
     );
@@ -275,6 +292,7 @@ describe('TasksService', () => {
           projectId: project.id,
           title: 'Create task',
           gitWorktree: '/tmp/outside',
+          configJson: defaultExecutionConfig,
         } as never,
         currentUser as never,
       ),
@@ -301,6 +319,7 @@ describe('TasksService', () => {
           projectId: project.id,
           title: 'Create task',
           gitWorktree: '/tmp/worktrees/task-dup',
+          configJson: defaultExecutionConfig,
         } as never,
         currentUser as never,
       ),
@@ -343,6 +362,7 @@ describe('TasksService', () => {
         projectId: project.id,
         title: 'Create task',
         prompt: 'Do something',
+        configJson: defaultExecutionConfig,
       } as never,
       currentUser as never,
     );
@@ -363,7 +383,7 @@ describe('TasksService', () => {
     jest.useRealTimers();
   });
 
-  it('should create workflow task from legacy top-level workflowTemplateId', async () => {
+  it('should create workflow task from configJson workflowTemplateId', async () => {
     const {
       service,
       taskRepository,
@@ -387,6 +407,7 @@ describe('TasksService', () => {
       ...createTask(),
       mode: TaskMode.workflow,
       configJson: {
+        ...defaultExecutionConfig,
         workflowTemplateId: 'wf-1',
       },
     });
@@ -395,7 +416,10 @@ describe('TasksService', () => {
       {
         projectId: project.id,
         mode: TaskMode.workflow,
-        workflowTemplateId: 'wf-1',
+        configJson: {
+          ...defaultExecutionConfig,
+          workflowTemplateId: 'wf-1',
+        },
         title: 'Workflow task',
       } as never,
       currentUser as never,
@@ -440,6 +464,9 @@ describe('TasksService', () => {
       gitBranch: 'feature/20260306-001',
       gitBaseBranch: null,
       gitWorktree: 'wk-20260306-001',
+      configJson: {
+        ...defaultExecutionConfig,
+      },
     };
 
     projectsService.assertProjectCapability.mockResolvedValue(project);
@@ -453,6 +480,7 @@ describe('TasksService', () => {
         {
           projectId: project.id,
           title: 'Create task',
+          configJson: defaultExecutionConfig,
         } as never,
         currentUser as never,
       ),
@@ -532,8 +560,8 @@ describe('TasksService', () => {
       node.id,
       expect.objectContaining({
         status: TaskStatus.done,
-        errorCode: null,
-        errorMessage: null,
+        outputRef: expect.any(String),
+        runtimeJson: null,
       }),
     );
     expect(artifactSpy).toHaveBeenCalledTimes(1);
@@ -575,7 +603,7 @@ describe('TasksService', () => {
       node.id,
       expect.objectContaining({
         status: TaskStatus.inReview,
-        errorCode: 'TIMEOUT',
+        outputRef: expect.any(String),
       }),
     );
   });
@@ -672,8 +700,7 @@ describe('TasksService', () => {
       node.id,
       expect.objectContaining({
         status: TaskStatus.inReview,
-        errorCode: 'UNKNOWN',
-        errorMessage: 'agent failed',
+        outputRef: expect.any(String),
       }),
     );
   });
@@ -896,23 +923,39 @@ describe('TasksService', () => {
     );
   });
 
-  it('should queue task without dispatch in api role', async () => {
-    const { service, taskRepository, taskNodeRepository, projectsService } =
-      createTasksService({ runtimeRole: 'api' }) as any;
+  it('should always attempt dispatch after queueing a task', async () => {
+    const {
+      service,
+      taskRepository,
+      taskNodeRepository,
+      projectsService,
+      projectRepository,
+    } = createTasksService() as any;
     const serviceAny = service as any;
     const task = createTask();
     const project = createProject();
+    const todoNode = {
+      ...createNode(),
+      status: TaskStatus.inProgress,
+    };
     const currentUser = createCurrentUser();
 
     taskRepository.findById.mockResolvedValue(task);
+    taskRepository.findTasksReadyForDispatch.mockResolvedValue([task]);
+    taskRepository.countRunningTasks.mockResolvedValue(0);
+    taskRepository.countRunningTasksByProjectIds.mockResolvedValue({
+      [task.projectId]: 0,
+    });
     projectsService.assertProjectCapability.mockResolvedValue(project);
+    projectRepository.findAllWithPagination.mockResolvedValue([project]);
     taskNodeRepository.findInProgressByTaskId.mockResolvedValue(null);
     taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValue({
       ...createNode(),
       status: TaskStatus.todo,
     });
+    taskNodeRepository.claimFirstTodoNode.mockResolvedValue(todoNode);
     taskNodeRepository.findByTaskId.mockResolvedValue([
-      createNodeWithStatus(TaskStatus.todo),
+      todoNode,
     ]);
     jest
       .spyOn(serviceAny, 'prepareTaskRuntime')
@@ -926,8 +969,17 @@ describe('TasksService', () => {
 
     await service.execute(task.id, currentUser as never);
 
-    expect(taskNodeRepository.claimFirstTodoNode).not.toHaveBeenCalled();
-    expect(runNodeSpy).not.toHaveBeenCalled();
+    expect(taskNodeRepository.claimFirstTodoNode).toHaveBeenCalledWith(
+      task.id,
+      expect.any(String),
+      expect.any(Date),
+    );
+    expect(runNodeSpy).toHaveBeenCalledWith(
+      task.id,
+      todoNode.id,
+      project,
+      expect.any(String),
+    );
   });
 
   it('should reject execute when task already has in-progress node', async () => {
@@ -1006,7 +1058,7 @@ describe('TasksService', () => {
       reviewNode.id,
       expect.objectContaining({
         status: TaskStatus.todo,
-        output: null,
+        outputRef: null,
       }),
     );
     expect(runNodeSpy).toHaveBeenCalledWith(
@@ -1080,8 +1132,7 @@ describe('TasksService', () => {
       reviewNode.id,
       expect.objectContaining({
         status: TaskStatus.done,
-        errorCode: null,
-        errorMessage: null,
+        runtimeJson: null,
       }),
     );
   });
@@ -1111,7 +1162,7 @@ describe('TasksService', () => {
       runningNode.id,
       expect.objectContaining({
         status: TaskStatus.inReview,
-        errorCode: 'CANCELLED',
+        outputRef: expect.any(String),
       }),
     );
   });
@@ -1442,7 +1493,7 @@ describe('TasksService', () => {
     );
   });
 
-  it('should merge legacy top-level task config fields on update', async () => {
+  it('should merge task config fields on update', async () => {
     const { service, taskRepository, projectsService, taskNodeRepository } =
       createTasksService() as any;
     const task = {
@@ -1467,7 +1518,9 @@ describe('TasksService', () => {
     await service.update(
       task.id,
       {
-        agentToolConfigId: 'cfg-2',
+        configJson: {
+          agentToolConfigId: 'cfg-2',
+        },
       } as never,
       currentUser as never,
     );
@@ -1484,10 +1537,8 @@ describe('TasksService', () => {
     expect(taskNodeRepository.update).toHaveBeenCalledWith(
       'node-1',
       expect.objectContaining({
-        configJson: {
-          cliToolId: 'codex',
-          agentToolConfigId: 'cfg-2',
-        },
+        cliToolId: 'codex',
+        agentToolConfigId: 'cfg-2',
       }),
     );
   });

@@ -19,7 +19,11 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
     data: Array<Omit<TaskNode, 'id' | 'createdAt' | 'updatedAt'>>,
   ): Promise<TaskNode[]> {
     const entities = await this.taskNodeRepository.save(
-      data.map((item) => this.taskNodeRepository.create(item)),
+      data.map((item) =>
+        this.taskNodeRepository.create(
+          TaskNodeMapper.toPersistence(item as TaskNode),
+        ),
+      ),
     );
 
     return entities.map((entity) => TaskNodeMapper.toDomain(entity));
@@ -107,6 +111,11 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
   ): Promise<NullableType<TaskNode>> {
     const todoStatus = TaskStatus.todo;
     const now = new Date();
+    const runtimeJson = this.buildRuntimeJsonSql({
+      workerId,
+      leaseUntil: leaseUntil.toISOString(),
+      heartbeatAt: now.toISOString(),
+    });
 
     const candidateSubQuery = this.taskNodeRepository
       .createQueryBuilder('candidate')
@@ -141,11 +150,8 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
         attempt: () => '"attempt" + 1',
         startedAt: now,
         finishedAt: null,
-        errorCode: null,
-        errorMessage: null,
-        workerId,
-        leaseUntil,
-        heartbeatAt: now,
+        outputRef: null,
+        runtimeJson: () => runtimeJson,
       })
       .where(`id = (${candidateSubQuery})`)
       .andWhere('status = :todoStatus', {
@@ -155,6 +161,9 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
         taskId,
         todoStatus,
         runningStatus: TaskStatus.inProgress,
+        workerId,
+        leaseUntil: leaseUntil.toISOString(),
+        heartbeatAt: now.toISOString(),
       })
       .returning('id')
       .execute();
@@ -184,8 +193,12 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
       .createQueryBuilder()
       .update(TaskNodeEntity)
       .set({
-        leaseUntil,
-        heartbeatAt,
+        runtimeJson: () =>
+          this.buildRuntimeJsonSql({
+            workerId,
+            leaseUntil: leaseUntil.toISOString(),
+            heartbeatAt: heartbeatAt.toISOString(),
+          }),
       })
       .where('id = :nodeId', {
         nodeId,
@@ -193,8 +206,13 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
       .andWhere('status = :status', {
         status: TaskStatus.inProgress,
       })
-      .andWhere('workerId = :workerId', {
+      .andWhere(`("runtimeJson"->>'workerId') = :workerId`, {
         workerId,
+      })
+      .setParameters({
+        workerId,
+        leaseUntil: leaseUntil.toISOString(),
+        heartbeatAt: heartbeatAt.toISOString(),
       })
       .execute();
 
@@ -206,9 +224,7 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
       .createQueryBuilder()
       .update(TaskNodeEntity)
       .set({
-        workerId: null,
-        leaseUntil: null,
-        heartbeatAt: null,
+        runtimeJson: null,
       })
       .where('id = :nodeId', {
         nodeId,
@@ -227,16 +243,20 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
       return [];
     }
 
+    const nowIso = now.toISOString();
     const entities = await this.taskNodeRepository
       .createQueryBuilder('node')
       .where('node.status = :status', {
         status: TaskStatus.inProgress,
       })
-      .andWhere('node."leaseUntil" IS NOT NULL')
-      .andWhere('node."leaseUntil" <= :now', {
-        now,
-      })
-      .orderBy('node."leaseUntil"', 'ASC')
+      .andWhere('(node."runtimeJson"->>\'leaseUntil\') IS NOT NULL')
+      .andWhere(
+        '((node."runtimeJson"->>\'leaseUntil\')::timestamptz) <= :now',
+        {
+          now: nowIso,
+        },
+      )
+      .orderBy('(node."runtimeJson"->>\'leaseUntil\')::timestamptz', 'ASC')
       .addOrderBy('node."createdAt"', 'ASC')
       .limit(limit)
       .getMany();
@@ -268,5 +288,17 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
     );
 
     return TaskNodeMapper.toDomain(updatedEntity);
+  }
+
+  private buildRuntimeJsonSql({
+    workerId,
+    leaseUntil,
+    heartbeatAt,
+  }: {
+    workerId: string;
+    leaseUntil: string;
+    heartbeatAt: string;
+  }): string {
+    return `jsonb_strip_nulls(jsonb_build_object('workerId', :workerId, 'leaseUntil', :leaseUntil, 'heartbeatAt', :heartbeatAt))`;
   }
 }

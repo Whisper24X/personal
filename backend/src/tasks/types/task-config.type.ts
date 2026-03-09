@@ -12,7 +12,13 @@ export type TaskConfig = Record<string, unknown> & {
   attachments?: TaskAttachmentConfig[] | null;
 };
 
-export type TaskNodeConfig = Record<string, unknown> & {
-  cliToolId?: string | null;
-  agentToolConfigId?: string | null;
+export type TaskNodeInput = Record<string, unknown> & {
+  taskInput?: string | null;
+  nodeInput?: string | null;
+};
+
+export type TaskNodeRuntime = Record<string, unknown> & {
+  workerId?: string | null;
+  leaseUntil?: string | null;
+  heartbeatAt?: string | null;
 };

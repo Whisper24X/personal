@@ -334,7 +334,18 @@ export class AgentRunnerService {
   ): Record<string, unknown> {
     return {
       ...this.toObjectRecord(task.configJson),
-      ...this.toObjectRecord(node.configJson),
+      ...(node.cliToolId
+        ? {
+            cliToolId: node.cliToolId,
+            toolId: node.cliToolId,
+            agentAdapter: node.cliToolId,
+          }
+        : {}),
+      ...(node.agentToolConfigId
+        ? {
+            agentToolConfigId: node.agentToolConfigId,
+          }
+        : {}),
     };
   }
 
@@ -851,16 +862,24 @@ export class AgentRunnerService {
         : {};
 
     const nodePrompt =
-      typeof input.prompt === 'string' && input.prompt.trim()
-        ? input.prompt.trim()
-        : typeof input.instructions === 'string' && input.instructions.trim()
-          ? input.instructions.trim()
+      typeof input.nodeInput === 'string' && input.nodeInput.trim()
+        ? input.nodeInput.trim()
+        : typeof input.prompt === 'string' && input.prompt.trim()
+          ? input.prompt.trim()
+          : typeof input.instructions === 'string' && input.instructions.trim()
+            ? input.instructions.trim()
+            : '';
+    const taskInput =
+      typeof input.taskInput === 'string' && input.taskInput.trim()
+        ? input.taskInput.trim()
+        : typeof task.prompt === 'string' && task.prompt.trim()
+          ? task.prompt.trim()
           : '';
 
     const sections = [
       nodePrompt,
       `Task Title: ${task.title}`,
-      task.prompt ? `Task Prompt:\n${task.prompt}` : '',
+      taskInput ? `Task Prompt:\n${taskInput}` : '',
       `Node Name: ${node.name}`,
       `Node Order: ${node.nodeOrder}`,
       '---',
