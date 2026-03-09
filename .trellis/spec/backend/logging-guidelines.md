@@ -8,9 +8,9 @@
 
 This codebase has two logging channels:
 - Process/runtime logs via Nest `Logger` for infrastructure events
-- Domain execution logs persisted in `task_logs` for task timeline/audit
+- Domain execution logs persisted as structured task-scoped JSONL files for task timeline/audit
 
-There is currently minimal `Logger` usage; most task execution tracing is stored as structured DB logs.
+There is currently minimal `Logger` usage; most task execution tracing is stored as structured file-backed task logs.
 
 ---
 
@@ -32,11 +32,11 @@ Examples:
 
 - Task logs are structured records with `taskId`, optional `taskNodeId`, `level`, `message`, and JSON `payload`.
 - `TasksService.appendLog(...)` is the canonical entrypoint for task timeline logs.
-- Task logs are persisted and streamed to clients (SSE) instead of relying on stdout logs.
+- Task logs are persisted under `AINATIVE_DATA_ROOT_DIR/meta/task-logs/` and streamed to clients (SSE) instead of relying on stdout logs.
 
 Examples:
 - `src/tasks/tasks.service.ts` (`appendLog`)
-- `src/tasks/infrastructure/persistence/relational/entities/task-log.entity.ts`
+- `src/tasks/infrastructure/persistence/file/repositories/task-log.repository.ts`
 - `src/tasks/tasks.controller.ts` (`@Sse(':taskId/stream')`)
 
 ---

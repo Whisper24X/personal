@@ -9,6 +9,8 @@ import { TaskMode } from './dto/task-mode.enum';
 import { TaskStatus } from './dto/task-status.enum';
 import { TaskRuntimeService } from './task-runtime.service';
 
+process.env.AINATIVE_DATA_ROOT_DIR ??= path.resolve(process.cwd(), 'tmp');
+
 const runGit = (args: string[], cwd: string): string => {
   const result = spawnSync('git', args, {
     cwd,
@@ -162,7 +164,7 @@ describe('TaskRuntimeService', () => {
     await expect(fs.access(worktreePath)).rejects.toThrow();
   });
 
-  it('should resolve default repository and worktree paths under .ainative data tree', () => {
+  it('should resolve default repository and worktree paths under tmp tree', () => {
     const project = createProject();
     const task = createTask();
 

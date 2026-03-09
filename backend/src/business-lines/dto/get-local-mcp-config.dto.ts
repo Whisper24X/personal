@@ -9,7 +9,7 @@ export class GetLocalMcpConfigDto {
 
   @ApiProperty({
     type: String,
-    example: '/Users/fuzhifei/.ainative/data/{businessLineId}/mcp/mcp.json',
+    example: '/path/to/app/tmp/{businessLineId}/mcp/mcp.json',
   })
   @IsString()
   @IsNotEmpty()

@@ -1,6 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { TaskStatus } from '../dto/task-status.enum';
-import { TaskLoopConfig, TaskNodeInput, TaskNodeRuntime } from '../types/task-config.type';
+import {
+  TaskLoopConfig,
+  TaskNodeInput,
+  TaskNodeRuntime,
+} from '../types/task-config.type';
 
 export class TaskNode {
   @ApiProperty({ type: String })

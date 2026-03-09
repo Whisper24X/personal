@@ -6,7 +6,7 @@ export class LocalMcpConfigDto {
 
   @ApiProperty({
     type: String,
-    example: '/Users/fuzhifei/.ainative/data/{businessLineId}/mcp/mcp.json',
+    example: '/path/to/app/tmp/{businessLineId}/mcp/mcp.json',
   })
   sourcePath: string;
 

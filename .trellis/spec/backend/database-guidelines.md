@@ -10,6 +10,7 @@
 - Primary DB: PostgreSQL
 - Migrations are SQL-first TypeORM migration classes in `src/database/migrations/`
 - Runtime DB config is validated from env before app startup
+- Task timeline logs and generated artifacts are file-backed runtime metadata under `AINATIVE_DATA_ROOT_DIR`; do not model them as relational tables unless a real query requirement appears
 
 ---
 

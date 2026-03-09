@@ -62,5 +62,4 @@ export class CreateTaskDto {
   @ValidateNested()
   @Type(() => TaskConfigDto)
   configJson?: TaskConfigDto;
-
 }

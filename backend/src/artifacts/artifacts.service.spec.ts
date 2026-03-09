@@ -40,8 +40,12 @@ describe('ArtifactsService', () => {
         projectId: 'project-1',
       }),
     };
+    const taskRuntimeService = {
+      listWorktreeFiles: jest.fn(),
+      readFileFromWorktree: jest.fn(),
+    };
     const projectsService = {
-      assertCanAccessProject: jest.fn().mockResolvedValue({
+      assertProjectCapability: jest.fn().mockResolvedValue({
         id: 'project-1',
       }),
     };
@@ -49,6 +53,7 @@ describe('ArtifactsService', () => {
     const service = new ArtifactsService(
       taskArtifactRepository as never,
       taskRepository as never,
+      taskRuntimeService as never,
       projectsService as never,
     );
 
@@ -82,8 +87,12 @@ describe('ArtifactsService', () => {
         projectId: 'project-1',
       }),
     };
+    const taskRuntimeService = {
+      listWorktreeFiles: jest.fn(),
+      readFileFromWorktree: jest.fn(),
+    };
     const projectsService = {
-      assertCanAccessProject: jest.fn().mockResolvedValue({
+      assertProjectCapability: jest.fn().mockResolvedValue({
         id: 'project-1',
       }),
     };
@@ -91,6 +100,7 @@ describe('ArtifactsService', () => {
     const service = new ArtifactsService(
       taskArtifactRepository as never,
       taskRepository as never,
+      taskRuntimeService as never,
       projectsService as never,
     );
 

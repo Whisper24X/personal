@@ -28,7 +28,11 @@ export class TaskLogFileRepository implements TaskLogRepository {
 
     const filePath = this.resolveTaskLogPath(log.taskId);
     await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.appendFile(filePath, `${JSON.stringify(this.serialize(log))}\n`, 'utf-8');
+    await fs.appendFile(
+      filePath,
+      `${JSON.stringify(this.serialize(log))}\n`,
+      'utf-8',
+    );
 
     return log;
   }
@@ -46,7 +50,8 @@ export class TaskLogFileRepository implements TaskLogRepository {
   }): Promise<TaskLog[]> {
     const logs = await this.readTaskLogs(taskId);
     const sortedLogs = logs.sort((left, right) => {
-      const createdAtDiff = left.createdAt.getTime() - right.createdAt.getTime();
+      const createdAtDiff =
+        left.createdAt.getTime() - right.createdAt.getTime();
       if (createdAtDiff !== 0) {
         return createdAtDiff;
       }
@@ -124,7 +129,9 @@ export class TaskLogFileRepository implements TaskLogRepository {
         level: String(raw.level ?? 'info') as TaskLog['level'],
         message: typeof raw.message === 'string' ? raw.message : '',
         payload:
-          raw.payload && typeof raw.payload === 'object' && !Array.isArray(raw.payload)
+          raw.payload &&
+          typeof raw.payload === 'object' &&
+          !Array.isArray(raw.payload)
             ? (raw.payload as Record<string, unknown>)
             : null,
         createdAt,

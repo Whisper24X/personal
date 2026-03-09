@@ -8,6 +8,8 @@ import { AgentRunnerService } from './agent-runner.service';
 import { TaskMode } from './dto/task-mode.enum';
 import { TaskStatus } from './dto/task-status.enum';
 
+process.env.AINATIVE_DATA_ROOT_DIR ??= path.resolve(process.cwd(), 'tmp');
+
 const worktreeRoot = path.resolve(
   resolveAinativeDataRootDir(),
   'business-line-1',
@@ -161,14 +163,10 @@ describe('AgentRunnerService', () => {
       agentAdapter: 'codex',
     });
 
-    const result = await serviceAny.resolveRunnerConfig(
-      project,
-      createTask(),
-      {
-        ...createNode(),
-        agentCliConfigId: 'cfg-explicit',
-      },
-    );
+    const result = await serviceAny.resolveRunnerConfig(project, createTask(), {
+      ...createNode(),
+      agentCliConfigId: 'cfg-explicit',
+    });
 
     expect(result.command).toBe('codex-explicit');
     expect(result.env.AINATIVE_AGENT_TOOL_CONFIG_ID).toBe('cfg-explicit');
@@ -285,14 +283,10 @@ describe('AgentRunnerService', () => {
       },
     });
 
-    const result = await serviceAny.resolveRunnerConfig(
-      project,
-      createTask(),
-      {
-        ...createNode(),
-        agentCliId: 'gemini-cli',
-      },
-    );
+    const result = await serviceAny.resolveRunnerConfig(project, createTask(), {
+      ...createNode(),
+      agentCliId: 'gemini-cli',
+    });
 
     expect(result.command).toBe('legacy-command');
     expect(result.env.AINATIVE_AGENT_TOOL_CONFIG_ID).toBeUndefined();
@@ -314,14 +308,10 @@ describe('AgentRunnerService', () => {
       },
     });
 
-    const result = await serviceAny.resolveRunnerConfig(
-      project,
-      createTask(),
-      {
-        ...createNode(),
-        agentCliId: 'gemini-cli',
-      },
-    );
+    const result = await serviceAny.resolveRunnerConfig(project, createTask(), {
+      ...createNode(),
+      agentCliId: 'gemini-cli',
+    });
 
     expect(result.adapter).toBe('gemini');
     expect(result.command).toBe('gemini');

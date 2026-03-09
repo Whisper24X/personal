@@ -1,10 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import {
-  IsOptional,
-  IsString,
-  ValidateNested,
-} from 'class-validator';
+import { IsOptional, IsString, ValidateNested } from 'class-validator';
 import { TaskConfigDto } from './task-config.dto';
 
 export class UpdateTaskDto {
@@ -41,5 +37,4 @@ export class UpdateTaskDto {
   @ValidateNested()
   @Type(() => TaskConfigDto)
   configJson?: TaskConfigDto;
-
 }

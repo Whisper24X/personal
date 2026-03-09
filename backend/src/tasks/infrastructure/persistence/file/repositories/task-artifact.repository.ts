@@ -36,8 +36,16 @@ export class TaskArtifactFileRepository implements TaskArtifactRepository {
 
     await fs.mkdir(path.dirname(byTaskPath), { recursive: true });
     await fs.mkdir(path.dirname(byIdPath), { recursive: true });
-    await fs.appendFile(byTaskPath, `${JSON.stringify(this.serialize(artifact))}\n`, 'utf-8');
-    await fs.writeFile(byIdPath, JSON.stringify(this.serialize(artifact), null, 2), 'utf-8');
+    await fs.appendFile(
+      byTaskPath,
+      `${JSON.stringify(this.serialize(artifact))}\n`,
+      'utf-8',
+    );
+    await fs.writeFile(
+      byIdPath,
+      JSON.stringify(this.serialize(artifact), null, 2),
+      'utf-8',
+    );
 
     return artifact;
   }
@@ -45,7 +53,8 @@ export class TaskArtifactFileRepository implements TaskArtifactRepository {
   async findByTaskId(taskId: TaskArtifact['taskId']): Promise<TaskArtifact[]> {
     const artifacts = await this.readByTaskId(taskId);
     return artifacts.sort((left, right) => {
-      const createdAtDiff = right.createdAt.getTime() - left.createdAt.getTime();
+      const createdAtDiff =
+        right.createdAt.getTime() - left.createdAt.getTime();
       if (createdAtDiff !== 0) {
         return createdAtDiff;
       }
@@ -129,10 +138,13 @@ export class TaskArtifactFileRepository implements TaskArtifactRepository {
         taskNodeId: typeof raw.taskNodeId === 'string' ? raw.taskNodeId : null,
         artifactType: raw.artifactType as TaskArtifact['artifactType'],
         name: raw.name,
-        downloadUrl: typeof raw.downloadUrl === 'string' ? raw.downloadUrl : null,
+        downloadUrl:
+          typeof raw.downloadUrl === 'string' ? raw.downloadUrl : null,
         content: typeof raw.content === 'string' ? raw.content : null,
         metadata:
-          raw.metadata && typeof raw.metadata === 'object' && !Array.isArray(raw.metadata)
+          raw.metadata &&
+          typeof raw.metadata === 'object' &&
+          !Array.isArray(raw.metadata)
             ? (raw.metadata as Record<string, unknown>)
             : null,
         createdAt,

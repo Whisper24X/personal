@@ -48,9 +48,11 @@ export const resolveAinativeDataRootDir = (): string => {
     .get<string>('AINATIVE_DATA_ROOT_DIR', { infer: true })
     ?.trim();
 
-  if (configuredPath) {
-    return path.resolve(expandHomePath(configuredPath));
+  if (!configuredPath) {
+    throw new Error(
+      'AINATIVE_DATA_ROOT_DIR is required. Set it in the active backend .env file.',
+    );
   }
 
-  return path.resolve(os.homedir(), '.ainative', 'data');
+  return path.resolve(expandHomePath(configuredPath));
 };
