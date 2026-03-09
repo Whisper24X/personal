@@ -42,6 +42,7 @@ import { ProjectCustomRoleRepository } from './infrastructure/persistence/projec
 import { ProjectCustomRole } from './domain/project-custom-role';
 import { CreateProjectCustomRoleDto } from './dto/create-project-custom-role.dto';
 import { UpdateProjectCustomRoleDto } from './dto/update-project-custom-role.dto';
+import { WorkflowTemplateRepository } from '../workflow-templates/infrastructure/persistence/workflow-template.repository';
 import {
   ALL_PROJECT_CAPABILITIES,
   PROJECT_DEFAULT_ROLE_TEMPLATES,
@@ -76,6 +77,7 @@ export class ProjectsService {
     private readonly usersService: UsersService,
     private readonly taskRepository: TaskRepository,
     private readonly projectCustomRoleRepository: ProjectCustomRoleRepository,
+    private readonly workflowTemplateRepository: WorkflowTemplateRepository,
     private readonly accessService: AccessService,
     private readonly configService: ConfigService = new ConfigService(),
   ) {}
@@ -346,6 +348,13 @@ export class ProjectsService {
         projectId: updatedProject.id,
         businessLineId: updatedProject.businessLineId,
       });
+
+      await this.workflowTemplateRepository.bulkUpdateBusinessLineIdByProjectId(
+        {
+          projectId: updatedProject.id,
+          businessLineId: updatedProject.businessLineId,
+        },
+      );
     }
 
     return updatedProject;

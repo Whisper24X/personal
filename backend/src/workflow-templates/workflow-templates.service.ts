@@ -67,11 +67,13 @@ export class WorkflowTemplatesService {
           'businessLineId is only supported for business_line scope',
         );
       }
-      await this.projectsService.assertProjectCapability(
+      const project = await this.projectsService.assertProjectCapability(
         projectId,
         currentUser,
         'project.workflow.manage',
       );
+
+      businessLineId = project.businessLineId;
     } else {
       throw new BadRequestException(
         'scope only supports business_line or project',
@@ -82,11 +84,15 @@ export class WorkflowTemplatesService {
 
     const existedTemplate = await this.workflowTemplateRepository.findByName(
       createWorkflowTemplateDto.name,
-      {
-        scope,
-        businessLineId,
-        projectId,
-      },
+      scope === WorkflowTemplateScope.businessLine
+        ? {
+            scope,
+            businessLineId,
+          }
+        : {
+            scope,
+            projectId,
+          },
     );
 
     if (existedTemplate) {
@@ -238,11 +244,15 @@ export class WorkflowTemplatesService {
       const duplicatedTemplate =
         await this.workflowTemplateRepository.findByName(
           updateWorkflowTemplateDto.name,
-          {
-            scope: existedTemplate.scope,
-            businessLineId: existedTemplate.businessLineId ?? null,
-            projectId: existedTemplate.projectId ?? null,
-          },
+          existedTemplate.scope === WorkflowTemplateScope.businessLine
+            ? {
+                scope: existedTemplate.scope,
+                businessLineId: existedTemplate.businessLineId ?? null,
+              }
+            : {
+                scope: existedTemplate.scope,
+                projectId: existedTemplate.projectId ?? null,
+              },
         );
 
       if (duplicatedTemplate) {

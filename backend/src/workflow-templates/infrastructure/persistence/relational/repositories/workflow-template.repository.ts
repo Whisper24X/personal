@@ -36,6 +36,26 @@ export class WorkflowTemplateRelationalRepository
     return WorkflowTemplateMapper.toDomain(entity);
   }
 
+  async bulkUpdateBusinessLineIdByProjectId({
+    projectId,
+    businessLineId,
+  }: {
+    projectId: string;
+    businessLineId: string;
+  }): Promise<void> {
+    await this.workflowTemplateRepository
+      .createQueryBuilder()
+      .update(WorkflowTemplateEntity)
+      .set({
+        businessLineId,
+      })
+      .where('"projectId" = :projectId', {
+        projectId,
+      })
+      .andWhere('"deletedAt" IS NULL')
+      .execute();
+  }
+
   async findById(
     id: WorkflowTemplate['id'],
   ): Promise<NullableType<WorkflowTemplate>> {

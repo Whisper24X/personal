@@ -65,6 +65,9 @@ const createProjectsService = () => {
     update: jest.fn(),
     remove: jest.fn(),
   };
+  const workflowTemplateRepository = {
+    bulkUpdateBusinessLineIdByProjectId: jest.fn(),
+  };
   const accessService = {
     assertProjectCapability: jest.fn(),
     assertBusinessLineCapability: jest.fn(),
@@ -80,6 +83,7 @@ const createProjectsService = () => {
     usersService as never,
     taskRepository as never,
     projectCustomRoleRepository as never,
+    workflowTemplateRepository as never,
     accessService as never,
   );
 
@@ -91,6 +95,7 @@ const createProjectsService = () => {
     businessLineMemberRepository,
     taskRepository,
     projectCustomRoleRepository,
+    workflowTemplateRepository,
     accessService,
   };
 };
@@ -304,7 +309,7 @@ describe('ProjectsService', () => {
   });
 
   it('should sync task business line snapshot after project business line changes', async () => {
-    const { service, projectRepository, taskRepository } =
+    const { service, projectRepository, taskRepository, workflowTemplateRepository } =
       createProjectsService();
     const serviceAny = service as any;
     const currentUser = createCurrentUser();
@@ -335,6 +340,12 @@ describe('ProjectsService', () => {
     expect(result).toEqual(updatedProject);
     expect(
       taskRepository.bulkUpdateBusinessLineIdByProjectId,
+    ).toHaveBeenCalledWith({
+      projectId: currentProject.id,
+      businessLineId: 'business-line-2',
+    });
+    expect(
+      workflowTemplateRepository.bulkUpdateBusinessLineIdByProjectId,
     ).toHaveBeenCalledWith({
       projectId: currentProject.id,
       businessLineId: 'business-line-2',

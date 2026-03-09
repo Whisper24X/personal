@@ -11,6 +11,11 @@ export abstract class WorkflowTemplateRepository {
     >,
   ): Promise<WorkflowTemplate>;
 
+  abstract bulkUpdateBusinessLineIdByProjectId(params: {
+    projectId: string;
+    businessLineId: string;
+  }): Promise<void>;
+
   abstract findById(
     id: WorkflowTemplate['id'],
   ): Promise<NullableType<WorkflowTemplate>>;
