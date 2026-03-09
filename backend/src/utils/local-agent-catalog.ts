@@ -72,7 +72,7 @@ const TEXT_CONFIG_EXTENSIONS = new Set([
 ]);
 const MCP_FILE_BASENAME_REGEX = /(mcp|settings|config)/i;
 const workspaceRootDir = resolveWorkspaceRootDir();
-const ainativeDataRootDir = resolveAinativeDataRootDir();
+const getAinativeDataRootDir = (): string => resolveAinativeDataRootDir();
 const configService = new ConfigService();
 
 const normalizeText = (value: unknown): string | null => {
@@ -356,7 +356,7 @@ const buildProjectStorageBaseDir = (project: Project): string | null => {
   }
 
   return path.resolve(
-    ainativeDataRootDir,
+    getAinativeDataRootDir(),
     businessLineId,
     'projects',
     projectId,
@@ -1436,7 +1436,7 @@ export const loadBusinessLineLocalSkills = async (
   businessLineId: string,
 ): Promise<LocalSkillItem[]> => {
   const skillsPath = path.resolve(
-    ainativeDataRootDir,
+    getAinativeDataRootDir(),
     businessLineId,
     'skills',
   );
@@ -1464,7 +1464,7 @@ export const loadBusinessLineLocalSkillMarkdownContent = async (
 
   const candidatePaths = await resolveSkillMarkdownPathCandidates(sourcePath);
   const businessLineSkillsRoot = path.resolve(
-    ainativeDataRootDir,
+    getAinativeDataRootDir(),
     businessLineId,
     'skills',
   );
@@ -1492,7 +1492,7 @@ export const loadBusinessLineLocalSkillMarkdownContent = async (
 export const loadBusinessLineLocalMcps = async (
   businessLineId: string,
 ): Promise<LocalMcpItem[]> => {
-  const mcpPath = path.resolve(ainativeDataRootDir, businessLineId, 'mcp');
+  const mcpPath = path.resolve(getAinativeDataRootDir(), businessLineId, 'mcp');
 
   return loadMcpsFromDirectory({
     directoryPath: mcpPath,
