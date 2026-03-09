@@ -62,16 +62,16 @@ const corsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     // In development, allow all localhost origins
     if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
-      if (!origin || origin.startsWith('http://localhost:') || origin.startsWith('https://localhost:')) {
-        callback(null, true);
-        return;
-      }
+      callback(null, true);
+      return;
     }
     // In production or when origin is specified, check against allowed origins
     const allowedOrigins = Array.isArray(config.server.cors.origin) ? config.server.cors.origin : [config.server.cors.origin];
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
+      logger.info(`CORS allowed origin: ${origin}, allowed: ${allowedOrigins.join(', ')}`);
     } else {
+      logger.error(`CORS blocked origin: ${origin}, allowed: ${allowedOrigins.join(', ')}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
