@@ -4,6 +4,20 @@ export type TaskMode = 'conversation' | 'workflow'
 
 export type TaskNodeType = 'agent' | 'skill' | 'mcp' | 'manual'
 
+export type TaskAttachmentConfig = {
+  name: string
+  size: number
+  type: string
+  lastModified: number
+}
+
+export type TaskConfig = {
+  workflowTemplateId?: string | null
+  cliToolId?: string | null
+  agentToolConfigId?: string | null
+  attachments?: TaskAttachmentConfig[] | null
+}
+
 export type Task = {
   id: string
   projectId: string
@@ -18,7 +32,7 @@ export type Task = {
   gitWorktree?: string | null
   cliToolId?: string | null
   agentToolConfigId?: string | null
-  clientInputSnapshot?: Record<string, unknown> | null
+  configJson?: TaskConfig | null
   createdAt?: string
   updatedAt?: string
   startedAt?: string | null
@@ -181,12 +195,7 @@ export type CreateTaskPayload = {
   gitBranch?: string
   gitBaseBranch?: string
   gitWorktree?: string
-  configJson?: {
-    workflowTemplateId?: string
-    cliToolId?: string
-    agentToolConfigId?: string
-  }
-  clientInputSnapshot?: Record<string, unknown>
+  configJson?: TaskConfig
 }
 
 export type UpdateTaskPayload = {
@@ -195,12 +204,7 @@ export type UpdateTaskPayload = {
   gitBranch?: string
   gitBaseBranch?: string
   gitWorktree?: string
-  configJson?: {
-    workflowTemplateId?: string
-    cliToolId?: string
-    agentToolConfigId?: string
-  }
-  clientInputSnapshot?: Record<string, unknown>
+  configJson?: TaskConfig
 }
 
 export type ReplyTaskPayload = {

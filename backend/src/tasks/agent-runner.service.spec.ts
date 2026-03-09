@@ -40,7 +40,6 @@ const createTask = (overrides: Partial<Task> = {}): Task => ({
   gitBaseBranch: 'main',
   gitWorktree: path.join(worktreeRoot, 'task-1'),
   configJson: null,
-  clientInputSnapshot: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   deletedAt: null,

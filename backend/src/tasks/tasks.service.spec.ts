@@ -35,7 +35,6 @@ const createTask = () => ({
   gitBaseBranch: 'main',
   gitWorktree: '/tmp/worktree-task-1',
   configJson: null,
-  clientInputSnapshot: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   deletedAt: null,

@@ -15,7 +15,6 @@ export class TaskMapper {
     domainEntity.gitBaseBranch = raw.gitBaseBranch;
     domainEntity.gitWorktree = raw.gitWorktree;
     domainEntity.configJson = raw.configJson;
-    domainEntity.clientInputSnapshot = raw.clientInputSnapshot;
     domainEntity.createdBy = raw.createdBy;
     domainEntity.startedAt = raw.startedAt;
     domainEntity.finishedAt = raw.finishedAt;
@@ -43,7 +42,6 @@ export class TaskMapper {
     persistenceEntity.gitBaseBranch = domainEntity.gitBaseBranch;
     persistenceEntity.gitWorktree = domainEntity.gitWorktree;
     persistenceEntity.configJson = domainEntity.configJson;
-    persistenceEntity.clientInputSnapshot = domainEntity.clientInputSnapshot;
     persistenceEntity.createdBy = domainEntity.createdBy;
     persistenceEntity.startedAt = domainEntity.startedAt;
     persistenceEntity.finishedAt = domainEntity.finishedAt;

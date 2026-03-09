@@ -79,9 +79,6 @@ export class TaskEntity extends EntityRelationalHelper {
   })
   gitWorktree?: string | null;
 
-  @Column({ type: 'jsonb', nullable: true, comment: '客户端输入快照JSON' })
-  clientInputSnapshot?: Record<string, unknown> | null;
-
   @Column({ type: 'jsonb', nullable: true, comment: '任务执行配置JSON' })
   configJson?: Record<string, unknown> | null;
 

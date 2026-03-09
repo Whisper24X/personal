@@ -3,7 +3,6 @@ import { Type } from 'class-transformer';
 import {
   IsEnum,
   IsNotEmpty,
-  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -87,11 +86,4 @@ export class CreateTaskDto {
   @Type(() => TaskConfigDto)
   configJson?: TaskConfigDto;
 
-  @ApiPropertyOptional({
-    type: Object,
-    description: 'Task input snapshot (attachments and mode metadata)',
-  })
-  @IsOptional()
-  @IsObject()
-  clientInputSnapshot?: Record<string, unknown>;
 }

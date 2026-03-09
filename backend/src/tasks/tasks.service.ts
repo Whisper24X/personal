@@ -252,7 +252,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       status: TaskStatus.todo,
       gitBranch: normalizedGitBranch,
       configJson: taskConfig,
-      clientInputSnapshot: createTaskDto.clientInputSnapshot ?? null,
       createdBy: currentUser.sub,
       gitBaseBranch: normalizedGitBaseBranch,
       gitWorktree: normalizedGitWorktree,
@@ -446,10 +445,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         this.buildIncomingTaskConfig(updateTaskDto),
       );
     }
-    if (updateTaskDto.clientInputSnapshot !== undefined) {
-      updatePayload.clientInputSnapshot = updateTaskDto.clientInputSnapshot;
-    }
-
     if (Object.keys(updatePayload).length === 0) {
       return this.detailById(task.id, currentUser);
     }

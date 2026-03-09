@@ -48,14 +48,6 @@ export class Task {
   })
   configJson?: TaskConfig | null;
 
-  @ApiProperty({
-    type: Object,
-    required: false,
-    nullable: true,
-    description: 'User input snapshot from create/update payload',
-  })
-  clientInputSnapshot?: Record<string, unknown> | null;
-
   @ApiProperty({ type: String, required: false, nullable: true })
   createdBy?: string | null;
 

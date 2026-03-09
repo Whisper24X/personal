@@ -1,7 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -68,11 +67,4 @@ export class UpdateTaskDto {
   @Type(() => TaskConfigDto)
   configJson?: TaskConfigDto;
 
-  @ApiPropertyOptional({
-    type: Object,
-    description: 'Task input snapshot (attachments and mode metadata)',
-  })
-  @IsOptional()
-  @IsObject()
-  clientInputSnapshot?: Record<string, unknown>;
 }

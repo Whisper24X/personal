@@ -37,8 +37,8 @@ const emit = defineEmits<{
 
 const toolMeta = computed(() => {
   return {
-    cliToolId: props.task?.cliToolId || '-',
-    cliConfigId: props.task?.agentToolConfigId || '-',
+    cliToolId: props.task?.configJson?.cliToolId || '-',
+    cliConfigId: props.task?.configJson?.agentToolConfigId || '-',
   }
 })
 </script>

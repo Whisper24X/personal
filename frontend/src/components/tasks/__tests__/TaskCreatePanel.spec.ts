@@ -153,20 +153,13 @@ describe('TaskCreatePanel', () => {
     expect(payload.configJson).toEqual({
       cliToolId: 'codex',
       agentToolConfigId: 'cfg-1',
+      attachments: [],
     })
-
-    const clientInputSnapshot = payload.clientInputSnapshot as Record<string, unknown>
-    expect(clientInputSnapshot).toEqual(
-      expect.objectContaining({
-        mode: 'conversation',
-        cliToolId: 'codex',
-        agentToolConfigId: 'cfg-1',
-      }),
-    )
 
     expect('environment' in payload).toBe(false)
     expect('gitBranch' in payload).toBe(false)
     expect('gitWorktree' in payload).toBe(false)
     expect('toolVersionsSnapshot' in payload).toBe(false)
+    expect('clientInputSnapshot' in payload).toBe(false)
   })
 })

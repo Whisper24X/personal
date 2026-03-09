@@ -190,10 +190,9 @@ watch(
 
 <template>
   <div class="flex h-full min-w-0">
-    <aside class="border-border/70 flex w-80 shrink-0 flex-col border-r bg-background/80">
-      <header class="border-border/70 flex h-12 items-center justify-between border-b px-3 text-xs">
+    <aside class="border-border/70 flex w-80 shrink-0 flex-col border-r bg-muted/10">
+      <header class="border-border/70 flex h-12 items-center justify-between border-b bg-background/80 px-3 text-xs backdrop-blur">
         <div class="min-w-0">
-          <p class="text-muted-foreground">Files</p>
           <p class="truncate text-foreground">{{ props.branchName || '-' }}</p>
         </div>
 
@@ -206,14 +205,13 @@ watch(
         </button>
       </header>
 
-      <div class="min-h-0 flex-1 overflow-auto p-2">
+      <div class="min-h-0 flex-1 overflow-auto px-1.5 py-2">
         <div class="space-y-2 text-xs">
-          <p v-if="treeLoading" class="px-2 text-muted-foreground">加载中...</p>
-          <p v-else-if="treeErrorMessage" class="px-2 text-destructive">{{ treeErrorMessage }}</p>
-          <p v-else-if="treeNodes.length === 0" class="px-2 text-muted-foreground">当前工作区为空</p>
+          <p v-if="treeErrorMessage" class="px-2 text-destructive">{{ treeErrorMessage }}</p>
+          <p v-else-if="!treeLoading && treeNodes.length === 0" class="px-2 text-muted-foreground">当前工作区为空</p>
 
           <TaskFileTree
-            v-else
+            v-else-if="treeNodes.length > 0"
             :nodes="treeNodes"
             :selected-path="selectedPath"
             :expanded-paths="expandedPaths"

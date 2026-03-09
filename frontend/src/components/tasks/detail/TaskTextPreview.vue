@@ -23,8 +23,10 @@ const props = withDefaults(
 )
 
 const copyState = ref<'idle' | 'success' | 'error'>('idle')
+const copyPathState = ref<'idle' | 'success' | 'error'>('idle')
 const forceHighlight = ref(false)
 let copyResetTimer: ReturnType<typeof window.setTimeout> | null = null
+let copyPathResetTimer: ReturnType<typeof window.setTimeout> | null = null
 
 const sourceText = computed(() => props.lines.join('\n'))
 const language = computed(() => resolveTaskCodeLanguage(props.selectedPath, props.mimeType))
@@ -51,6 +53,18 @@ const copyButtonText = computed(() => {
   return '复制代码'
 })
 
+const copyPathButtonText = computed(() => {
+  if (copyPathState.value === 'success') {
+    return '已复制路径'
+  }
+
+  if (copyPathState.value === 'error') {
+    return '路径复制失败'
+  }
+
+  return '复制路径'
+})
+
 const resetCopyStateLater = () => {
   if (copyResetTimer) {
     window.clearTimeout(copyResetTimer)
@@ -58,6 +72,16 @@ const resetCopyStateLater = () => {
 
   copyResetTimer = window.setTimeout(() => {
     copyState.value = 'idle'
+  }, 2000)
+}
+
+const resetCopyPathStateLater = () => {
+  if (copyPathResetTimer) {
+    window.clearTimeout(copyPathResetTimer)
+  }
+
+  copyPathResetTimer = window.setTimeout(() => {
+    copyPathState.value = 'idle'
   }, 2000)
 }
 
@@ -78,6 +102,23 @@ const copyCode = async () => {
   resetCopyStateLater()
 }
 
+const copyPath = async () => {
+  if (!props.selectedPath || typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+    copyPathState.value = 'error'
+    resetCopyPathStateLater()
+    return
+  }
+
+  try {
+    await navigator.clipboard.writeText(props.selectedPath)
+    copyPathState.value = 'success'
+  } catch {
+    copyPathState.value = 'error'
+  }
+
+  resetCopyPathStateLater()
+}
+
 const enableHighlight = () => {
   forceHighlight.value = true
 }
@@ -86,42 +127,54 @@ onBeforeUnmount(() => {
   if (copyResetTimer) {
     window.clearTimeout(copyResetTimer)
   }
+
+  if (copyPathResetTimer) {
+    window.clearTimeout(copyPathResetTimer)
+  }
 })
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col">
-    <div class="grid h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/70 px-4 text-[11px] text-muted-foreground">
-      <div class="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap">
-        <span class="shrink-0 whitespace-nowrap rounded-full border border-border bg-muted/40 px-2.5 py-1">
-          {{ languageLabel }}
-        </span>
-        <span class="shrink-0 whitespace-nowrap">{{ props.lines.length }} 行</span>
-        <span v-if="!shouldHighlight" class="shrink-0 whitespace-nowrap rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-amber-700 dark:text-amber-300">
-          大文件已关闭高亮
-        </span>
+  <div class="flex h-full min-h-0 flex-col overflow-hidden">
+    <div class="code-scroll min-h-0 flex-1 overflow-y-scroll overflow-x-hidden bg-muted/20 text-foreground">
+      <div class="sticky top-0 z-10 grid h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/70 bg-background/95 px-4 text-[11px] text-muted-foreground backdrop-blur">
+        <div class="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap">
+          <span class="shrink-0 whitespace-nowrap rounded-full border border-border bg-muted/40 px-2.5 py-1">
+            {{ languageLabel }}
+          </span>
+          <span class="shrink-0 whitespace-nowrap">{{ props.lines.length }} 行</span>
+          <span v-if="!shouldHighlight" class="shrink-0 whitespace-nowrap rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-amber-700 dark:text-amber-300">
+            大文件已关闭高亮
+          </span>
+        </div>
+
+        <div class="flex items-center gap-2 whitespace-nowrap">
+          <button
+            v-if="props.selectedPath"
+            class="rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
+            type="button"
+            @click="copyPath"
+          >
+            {{ copyPathButtonText }}
+          </button>
+          <button
+            v-if="!shouldHighlight"
+            class="rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
+            type="button"
+            @click="enableHighlight"
+          >
+            启用高亮
+          </button>
+          <button
+            class="rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
+            type="button"
+            @click="copyCode"
+          >
+            {{ copyButtonText }}
+          </button>
+        </div>
       </div>
 
-      <div class="flex items-center gap-2 whitespace-nowrap">
-        <button
-          v-if="!shouldHighlight"
-          class="rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
-          type="button"
-          @click="enableHighlight"
-        >
-          启用高亮
-        </button>
-        <button
-          class="rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
-          type="button"
-          @click="copyCode"
-        >
-          {{ copyButtonText }}
-        </button>
-      </div>
-    </div>
-
-    <div class="code-scroll min-h-0 overflow-y-scroll overflow-x-hidden bg-muted/20 text-foreground">
       <div class="min-w-full font-mono text-[12px] leading-6">
         <div
           v-for="(line, index) in renderedLines"

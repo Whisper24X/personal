@@ -78,6 +78,8 @@ const statusClassMap: Record<Task['status'], string> = {
 
 const task = computed(() => detail.value?.task ?? null)
 
+const taskConfig = computed(() => task.value?.configJson ?? null)
+
 const sortedNodes = computed(() => {
   if (!detail.value) {
     return [] as TaskNode[]
@@ -539,8 +541,8 @@ const openEdit = () => {
   editForm.title = task.value.title || ''
   editForm.prompt = task.value.prompt || ''
   editForm.gitBranch = task.value.gitBranch || ''
-  editForm.cliToolId = task.value.cliToolId || ''
-  editForm.agentToolConfigId = task.value.agentToolConfigId || ''
+  editForm.cliToolId = taskConfig.value?.cliToolId || ''
+  editForm.agentToolConfigId = taskConfig.value?.agentToolConfigId || ''
   editOpen.value = true
 }
 

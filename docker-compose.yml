@@ -1,62 +1,160 @@
+x-backend-env: &backend-env
+  TZ: ${TZ:-Asia/Shanghai}
+  LANG: ${LANG:-C.UTF-8}
+  NODE_ENV: ${NODE_ENV:-production}
+  APP_PORT: 3000
+  APP_NAME: ${APP_NAME:-AINative API}
+  API_PREFIX: ${API_PREFIX:-api}
+  APP_FALLBACK_LANGUAGE: ${APP_FALLBACK_LANGUAGE:-en}
+  APP_HEADER_LANGUAGE: ${APP_HEADER_LANGUAGE:-x-custom-lang}
+  FRONTEND_DOMAIN: ${FRONTEND_DOMAIN:-http://localhost:${FRONTEND_PORT:-8090}}
+  BACKEND_DOMAIN: ${BACKEND_DOMAIN:-http://localhost:${BACKEND_PORT:-8000}}
+  DATABASE_TYPE: postgres
+  DATABASE_HOST: postgres
+  DATABASE_PORT: 5432
+  DATABASE_USERNAME: ${POSTGRES_USER:-postgres}
+  DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+  DATABASE_NAME: ${POSTGRES_DB:-ainative}
+  DATABASE_SYNCHRONIZE: ${DATABASE_SYNCHRONIZE:-false}
+  DATABASE_MAX_CONNECTIONS: ${DATABASE_MAX_CONNECTIONS:-100}
+  DATABASE_SSL_ENABLED: ${DATABASE_SSL_ENABLED:-false}
+  DATABASE_REJECT_UNAUTHORIZED: ${DATABASE_REJECT_UNAUTHORIZED:-false}
+  AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-secret}
+  AUTH_JWT_TOKEN_EXPIRES_IN: ${AUTH_JWT_TOKEN_EXPIRES_IN:-15m}
+  AUTH_REFRESH_SECRET: ${AUTH_REFRESH_SECRET:-secret_for_refresh}
+  AUTH_REFRESH_TOKEN_EXPIRES_IN: ${AUTH_REFRESH_TOKEN_EXPIRES_IN:-3650d}
+  AINATIVE_RUNTIME_ROLE: api
+  AINATIVE_DISPATCH_INTERVAL_MS: ${AINATIVE_DISPATCH_INTERVAL_MS:-1000}
+  AINATIVE_NODE_LEASE_TTL_MS: ${AINATIVE_NODE_LEASE_TTL_MS:-45000}
+  AINATIVE_NODE_HEARTBEAT_INTERVAL_MS: ${AINATIVE_NODE_HEARTBEAT_INTERVAL_MS:-10000}
+  AINATIVE_STALE_RECOVERY_INTERVAL_MS: ${AINATIVE_STALE_RECOVERY_INTERVAL_MS:-15000}
+  AINATIVE_RETENTION_CLEANUP_INTERVAL_MS: ${AINATIVE_RETENTION_CLEANUP_INTERVAL_MS:-3600000}
+  AINATIVE_STREAM_DB_POLL_INTERVAL_MS: ${AINATIVE_STREAM_DB_POLL_INTERVAL_MS:-1000}
+  AINATIVE_GIT_RUNTIME_ENABLED: ${AINATIVE_GIT_RUNTIME_ENABLED:-false}
+  AINATIVE_AGENT_RUNNER_ENABLED: ${AINATIVE_AGENT_RUNNER_ENABLED:-false}
+  AINATIVE_REPO_CACHE_BASE_DIR: ${AINATIVE_REPO_CACHE_BASE_DIR:-}
+  AINATIVE_WORKTREE_BASE_DIR: ${AINATIVE_WORKTREE_BASE_DIR:-}
+  AINATIVE_WORKTREE_ALLOWED_ROOT: ${AINATIVE_WORKTREE_ALLOWED_ROOT:-}
+  AINATIVE_DATA_ROOT_DIR: ${AINATIVE_DATA_ROOT_DIR:-}
+  AINATIVE_CODEX_RUNNER_COMMAND: ${AINATIVE_CODEX_RUNNER_COMMAND:-}
+  AINATIVE_CLAUDE_RUNNER_COMMAND: ${AINATIVE_CLAUDE_RUNNER_COMMAND:-}
+  AINATIVE_GEMINI_RUNNER_COMMAND: ${AINATIVE_GEMINI_RUNNER_COMMAND:-}
+  AINATIVE_OPENCODE_RUNNER_COMMAND: ${AINATIVE_OPENCODE_RUNNER_COMMAND:-}
+  AINATIVE_CURSOR_RUNNER_COMMAND: ${AINATIVE_CURSOR_RUNNER_COMMAND:-}
+  AINATIVE_SMTP_HOST: ${AINATIVE_SMTP_HOST:-}
+  AINATIVE_SMTP_PORT: ${AINATIVE_SMTP_PORT:-25}
+  AINATIVE_SMTP_SECURE: ${AINATIVE_SMTP_SECURE:-false}
+  AINATIVE_SMTP_USER: ${AINATIVE_SMTP_USER:-}
+  AINATIVE_SMTP_PASS: ${AINATIVE_SMTP_PASS:-}
+  AINATIVE_SMTP_FROM: ${AINATIVE_SMTP_FROM:-}
+  WORKER_HOST: ${WORKER_HOST:-redis://:${REDIS_PASSWORD:-redis}@redis:6379/1}
+  AINATIVE_RUN_SEED: ${AINATIVE_RUN_SEED:-true}
+
 networks:
   ainative:
     driver: bridge
 
 volumes:
-  ainative-volume-postgresql:
-    external: true
-  ainative-volume-redis:
-    external: true
+  ainative-postgres-data:
+  ainative-redis-data:
 
 services:
-  ainative-postgresql:
-    image: postgres:14.5
-    container_name: ainative-postgresql                                                        # 容器名为'postgresql'
-    # 重启策略
-    restart: always               # 指定容器退出后的重启策略为始终重启，但是不考虑在Docker守护进程启动时就已经停止了的容器
-    # 设置环境变量,相当于docker run命令中的-e
+  postgres:
+    image: postgres:17.6-alpine
+    container_name: ainative-postgres
+    restart: unless-stopped
     environment:
-      TZ: Asia/Shanghai
-      LANG: en_US.UTF-8
-      POSTGRES_DB: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: your_postgres_password_here
-      ALLOW_IP_RANGE: 0.0.0.0/0 # 允许所有ip访问
-    # 数据卷挂载路径设置,使用外部存储卷
+      TZ: ${TZ:-Asia/Shanghai}
+      POSTGRES_DB: ${POSTGRES_DB:-ainative}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
-      - "ainative-volume-postgresql:/var/lib/postgresql/data"
-    # 映射端口
-    ports:
-      - "5432:5432"
+      - ainative-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ainative}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     networks:
       - ainative
-  ainative-redis:
+
+  redis:
+    image: redis:7-alpine
     container_name: ainative-redis
-    image: 'redis:6.2.13-alpine'
-    restart: always
-    environment:
-      - TZ=Asia/Shanghai
-    command: [ "redis-server", "--appendonly", "yes", "--requirepass","your_redis_password_here" ]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-redis}"]
     volumes:
-      - "ainative-volume-redis:/data:rw"
-    ports:
-      - "6379:6379"
+      - ainative-redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-redis} ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
     networks:
       - ainative
-  ainative-backend:
-    image: your_docker_registry_here/your_namespace_here/ainative-backend:your_tag_here
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: ainative-backend
-    restart: always
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
-      - "8000:8000"
-      - "9000:9000"
+      - "${BACKEND_PORT:-8000}:3000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3000/').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
     networks:
       - ainative
-  ainative-frontend:
-    image: your_docker_registry_here/your_namespace_here/ainative-frontend:your_tag_here
-    container_name: ainative-admin
-    restart: always
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ainative-worker
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      AINATIVE_RUNTIME_ROLE: worker
+      AINATIVE_RUN_SEED: "false"
+    command:
+      [
+        "/bin/sh",
+        "-lc",
+        "/opt/wait-for-it.sh ${DATABASE_HOST:-postgres}:${DATABASE_PORT:-5432} && npm run start:worker",
+      ]
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - ainative
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ainative-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
     ports:
-      - "8090:8080"
+      - "${FRONTEND_PORT:-8090}:80"
     networks:
       - ainative

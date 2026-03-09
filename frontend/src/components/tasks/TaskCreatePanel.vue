@@ -378,40 +378,28 @@ const createTask = async () => {
 
   try {
     const project = projects.value.find((item) => item.id === projectIdForSubmit)
-    const clientInputSnapshot: Record<string, unknown> = {
-      mode: createForm.mode,
-      ...(createForm.mode === 'conversation'
-        ? {
-            cliToolId: createForm.cliToolId,
-            agentToolConfigId: createForm.agentToolConfigId,
-          }
-        : {
-            workflowTemplateId: createForm.workflowTemplateId,
-          }),
-      attachments: selectedFiles.value.map((file) => ({
-        name: file.name,
-        size: file.size,
-        type: file.type || 'application/octet-stream',
-        lastModified: file.lastModified,
-      })),
-    }
-
     const task = await tasksApi.create({
       projectId: projectIdForSubmit,
       mode: createForm.mode,
       title: createForm.title.trim(),
       prompt: createForm.prompt.trim(),
       gitBaseBranch: project?.defaultBranch?.trim() || undefined,
-      configJson:
-        createForm.mode === 'workflow'
+      configJson: {
+        ...(createForm.mode === 'workflow'
           ? {
               workflowTemplateId: createForm.workflowTemplateId || undefined,
             }
           : {
               cliToolId: createForm.cliToolId || undefined,
               agentToolConfigId: createForm.agentToolConfigId || undefined,
-            },
-      clientInputSnapshot,
+            }),
+        attachments: selectedFiles.value.map((file) => ({
+          name: file.name,
+          size: file.size,
+          type: file.type || 'application/octet-stream',
+          lastModified: file.lastModified,
+        })),
+      },
     })
 
     message.success('创建任务成功，正在跳转详情')

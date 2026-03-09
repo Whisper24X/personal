@@ -34,7 +34,6 @@ const createTask = (overrides: Partial<Task> = {}): Task => ({
   gitWorktree: null,
   prompt: null,
   configJson: null,
-  clientInputSnapshot: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   deletedAt: null,
