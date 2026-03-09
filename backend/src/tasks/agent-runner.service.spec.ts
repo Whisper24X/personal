@@ -55,12 +55,16 @@ const createNode = (): TaskNode => ({
     nodeInput: 'Run task',
     taskInput: 'task description',
   },
-  cliToolId: 'codex',
-  agentToolConfigId: 'cfg-default',
-  outputRef: null,
+  agentCliId: 'codex',
+  agentCliConfigId: 'cfg-default',
+  agentClioutput: null,
+  loopJson: {
+    enabled: false,
+    loopCount: 0,
+    maxLoops: 1,
+  },
   runtimeJson: null,
   status: TaskStatus.todo,
-  attempt: 0,
   createdAt: new Date(),
   updatedAt: new Date(),
 });
@@ -162,7 +166,7 @@ describe('AgentRunnerService', () => {
       createTask(),
       {
         ...createNode(),
-        agentToolConfigId: 'cfg-explicit',
+        agentCliConfigId: 'cfg-explicit',
       },
     );
 
@@ -286,7 +290,7 @@ describe('AgentRunnerService', () => {
       createTask(),
       {
         ...createNode(),
-        cliToolId: 'gemini-cli',
+        agentCliId: 'gemini-cli',
       },
     );
 
@@ -315,7 +319,7 @@ describe('AgentRunnerService', () => {
       createTask(),
       {
         ...createNode(),
-        cliToolId: 'gemini-cli',
+        agentCliId: 'gemini-cli',
       },
     );
 

@@ -43,7 +43,12 @@ import { DataSource } from 'typeorm';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { ReplyTaskDto } from './dto/reply-task.dto';
 import { TaskMessageDto, TaskMessageRole } from './dto/task-message.dto';
-import { TaskConfig, TaskNodeInput, TaskNodeRuntime } from './types/task-config.type';
+import {
+  TaskConfig,
+  TaskLoopConfig,
+  TaskNodeInput,
+  TaskNodeRuntime,
+} from './types/task-config.type';
 import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 
 @Injectable()
@@ -162,8 +167,9 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       nodeOrder: number;
       name: string;
       input?: TaskNodeInput | null;
-      cliToolId: string;
-      agentToolConfigId: string;
+      agentCliId: string;
+      agentCliConfigId: string;
+      loopJson: TaskLoopConfig | null;
     }> = [];
 
     if (workflowTemplateId) {
@@ -183,9 +189,11 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
           input: this.buildTaskNodeInput({
             taskPrompt: createTaskDto.prompt ?? null,
             nodeInput: this.readTemplateNodeInput(node.input),
+            source: this.toObjectRecord(node.input),
           }),
-          cliToolId: defaultNodeExecution.cliToolId,
-          agentToolConfigId: defaultNodeExecution.agentToolConfigId,
+          agentCliId: defaultNodeExecution.agentCliId,
+          agentCliConfigId: defaultNodeExecution.agentCliConfigId,
+          loopJson: this.resolveNodeLoopJson(node.input, taskConfig),
         }))
         .sort((left, right) => left.nodeOrder - right.nodeOrder);
     } else {
@@ -203,8 +211,9 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
             taskPrompt: createTaskDto.prompt ?? null,
             nodeInput: null,
           }),
-          cliToolId: defaultNodeExecution.cliToolId,
-          agentToolConfigId: defaultNodeExecution.agentToolConfigId,
+          agentCliId: defaultNodeExecution.agentCliId,
+          agentCliConfigId: defaultNodeExecution.agentCliConfigId,
+          loopJson: this.resolveNodeLoopJson(null, taskConfig),
         },
       ];
     }
@@ -303,12 +312,12 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         nodeOrder: node.nodeOrder,
         name: node.name,
         input: node.input ?? null,
-        cliToolId: node.cliToolId,
-        agentToolConfigId: node.agentToolConfigId,
-        outputRef: null,
+        agentCliId: node.agentCliId,
+        agentCliConfigId: node.agentCliConfigId,
+        agentClioutput: null,
+        loopJson: node.loopJson,
         runtimeJson: null,
         status: TaskStatus.todo,
-        attempt: 0,
         startedAt: null,
         finishedAt: null,
       })),
@@ -479,8 +488,12 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
           .filter((node) => node.status !== TaskStatus.done)
           .map((node) =>
             this.taskNodeRepository.update(node.id, {
-              cliToolId: nextNodeExecution.cliToolId,
-              agentToolConfigId: nextNodeExecution.agentToolConfigId,
+              agentCliId: nextNodeExecution.agentCliId,
+              agentCliConfigId: nextNodeExecution.agentCliConfigId,
+              loopJson:
+                effectiveTask.mode === TaskMode.conversation && node.nodeOrder === 1
+                  ? this.resolveNodeLoopJson(node.input, effectiveTask.configJson, node.loopJson)
+                  : node.loopJson,
               input: this.withTaskInput(
                 node.input,
                 effectiveTask.prompt ?? null,
@@ -571,7 +584,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       await this.taskNodeRepository.update(inReviewNode.id, {
         status: TaskStatus.todo,
         finishedAt: null,
-        outputRef: null,
+        agentClioutput: null,
         runtimeJson: null,
       });
 
@@ -607,7 +620,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         await this.taskNodeRepository.update(fallbackNode.id, {
           status: TaskStatus.todo,
           finishedAt: null,
-          outputRef: null,
+          agentClioutput: null,
           runtimeJson: null,
         });
       }
@@ -779,7 +792,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     await this.taskNodeRepository.update(targetNode.id, {
       status: TaskStatus.todo,
       finishedAt: null,
-      outputRef: null,
+      agentClioutput: null,
       runtimeJson: null,
     });
 
@@ -830,7 +843,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     await this.taskNodeRepository.update(runningNode.id, {
       status: TaskStatus.inReview,
       finishedAt: new Date(),
-      outputRef: await this.writeNodeOutputJsonl({
+      agentClioutput: await this.writeNodeOutputJsonl({
         task,
         node: runningNode,
         output: {
@@ -1243,7 +1256,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       const outputTask = executionTask ?? (await this.taskRepository.findById(taskId));
 
       if (latestNode && outputTask) {
-        const outputRef = await this.writeNodeOutputJsonl({
+        const agentClioutput = await this.writeNodeOutputJsonl({
           task: outputTask,
           node: latestNode,
           output: {
@@ -1258,7 +1271,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
 
         await this.finalizeNodeAsFailure({
           nodeId,
-          outputRef,
+          agentClioutput,
         });
       }
 
@@ -1377,7 +1390,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       const summary =
         fullOutput.length > 2_000 ? fullOutput.slice(0, 2_000) : fullOutput;
       const finishedAt = new Date().toISOString();
-      const outputRef = await this.writeNodeOutputJsonl({
+      const agentClioutput = await this.writeNodeOutputJsonl({
         task,
         node,
         output: {
@@ -1393,36 +1406,41 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
-      await this.finalizeNodeAsSuccess({
+      const loopResult = await this.finalizeNodeAsSuccess({
         node,
-        outputRef,
+        agentClioutput,
       });
 
       await this.appendLog({
         taskId,
         taskNodeId: nodeId,
         level: TaskLogLevel.info,
-        message: 'Agent node completed successfully',
+        message: loopResult.queuedNextLoop
+          ? 'Agent node loop completed; queued next loop'
+          : 'Agent node completed successfully',
         payload: {
-          status: TaskStatus.done,
+          status: loopResult.status,
           durationMs: executionResult.durationMs,
           command: executionResult.command,
           args: executionResult.args,
+          loopJson: loopResult.loopJson,
         },
       });
 
-      await this.createNodeExecutionArtifact({
-        taskId,
-        task,
-        node,
-        summary: fullOutput,
-        generatedBy: `agent-runner:${executionResult.command}`,
-      });
+      if (!loopResult.queuedNextLoop) {
+        await this.createNodeExecutionArtifact({
+          taskId,
+          task,
+          node,
+          summary: fullOutput,
+          generatedBy: `agent-runner:${executionResult.command}`,
+        });
+      }
 
       return;
     }
 
-    const outputRef = await this.writeNodeOutputJsonl({
+    const agentClioutput = await this.writeNodeOutputJsonl({
       task,
       node,
       output: {
@@ -1446,7 +1464,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
 
     await this.finalizeNodeAsFailure({
       nodeId,
-      outputRef,
+      agentClioutput,
     });
 
     await this.appendLog({
@@ -1466,25 +1484,47 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
 
   private async finalizeNodeAsSuccess({
     node,
-    outputRef,
+    agentClioutput,
   }: {
     node: TaskNode;
-    outputRef: string;
-  }): Promise<void> {
+    agentClioutput: string;
+  }): Promise<{
+    status: TaskStatus;
+    loopJson: TaskLoopConfig;
+    queuedNextLoop: boolean;
+  }> {
+    const currentLoop = this.readNodeLoopConfig(node.loopJson);
+    const nextLoopJson: TaskLoopConfig = {
+      enabled: currentLoop.enabled,
+      loopCount: Math.max(currentLoop.loopCount + 1, 1),
+      maxLoops: currentLoop.maxLoops,
+    };
+    const queuedNextLoop =
+      nextLoopJson.enabled && nextLoopJson.loopCount < nextLoopJson.maxLoops;
+    const status = queuedNextLoop ? TaskStatus.todo : TaskStatus.done;
+
     await this.taskNodeRepository.update(node.id, {
-      status: TaskStatus.done,
-      finishedAt: new Date(),
-      outputRef,
+      status,
+      loopJson: nextLoopJson,
+      startedAt: queuedNextLoop ? null : node.startedAt ?? null,
+      finishedAt: queuedNextLoop ? null : new Date(),
+      agentClioutput,
       runtimeJson: null,
     });
+
+    return {
+      status,
+      loopJson: nextLoopJson,
+      queuedNextLoop,
+    };
   }
 
   private async finalizeNodeAsFailure({
     nodeId,
-    outputRef,
+    agentClioutput,
   }: {
     nodeId: string;
-    outputRef: string;
+    agentClioutput: string;
   }): Promise<void> {
     const latestNode = await this.taskNodeRepository.findById(nodeId);
 
@@ -1495,7 +1535,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     await this.taskNodeRepository.update(nodeId, {
       status: TaskStatus.inReview,
       finishedAt: new Date(),
-      outputRef,
+      agentClioutput,
       runtimeJson: null,
     });
   }
@@ -1759,7 +1799,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
 
           const leaseUntil = this.readNodeLeaseUntil(latestNode);
           const workerId = this.readRuntimeWorkerId(latestNode);
-          const outputRef = await this.writeNodeOutputJsonl({
+          const agentClioutput = await this.writeNodeOutputJsonl({
             task: await this.getTaskByIdOrThrow(latestNode.taskId),
             node: latestNode,
             output: {
@@ -1775,7 +1815,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
           await this.taskNodeRepository.update(node.id, {
             status: TaskStatus.inReview,
             finishedAt: new Date(),
-            outputRef,
+            agentClioutput,
             runtimeJson: null,
           });
 
@@ -2079,8 +2119,17 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
 
     const hasTodo = nodes.some((node) => node.status === TaskStatus.todo);
     const hasDone = nodes.some((node) => node.status === TaskStatus.done);
+    const hasQueuedLoop = nodes.some((node) => {
+      const loopJson = this.readNodeLoopConfig(node.loopJson);
+      return (
+        node.status === TaskStatus.todo &&
+        loopJson.enabled &&
+        loopJson.loopCount > 0 &&
+        loopJson.loopCount < loopJson.maxLoops
+      );
+    });
 
-    if (hasTodo && hasDone) {
+    if (hasQueuedLoop || (hasTodo && hasDone)) {
       return TaskStatus.inProgress;
     }
 
@@ -2180,13 +2229,26 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         ? merged.workflowTemplateId
         : null,
     );
-    const cliToolId = this.normalizeOptionalString(
-      typeof merged.cliToolId === 'string' ? merged.cliToolId : null,
+    const agentCliId = this.normalizeOptionalString(
+      typeof merged.agentCliId === 'string'
+        ? merged.agentCliId
+        : typeof merged.cliToolId === 'string'
+          ? merged.cliToolId
+          : null,
     );
-    const agentToolConfigId = this.normalizeOptionalString(
-      typeof merged.agentToolConfigId === 'string'
-        ? merged.agentToolConfigId
-        : null,
+    const agentCliConfigId = this.normalizeOptionalString(
+      typeof merged.agentCliConfigId === 'string'
+        ? merged.agentCliConfigId
+        : typeof merged.agentToolConfigId === 'string'
+          ? merged.agentToolConfigId
+          : null,
+    );
+    const loopEnabled = this.normalizeBoolean(
+      typeof merged.loopEnabled === 'boolean' ? merged.loopEnabled : null,
+    );
+    const maxLoops = this.normalizeMaxLoops(
+      merged.maxLoops,
+      false,
     );
 
     if (workflowTemplateId) {
@@ -2195,17 +2257,32 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       delete merged.workflowTemplateId;
     }
 
-    if (cliToolId) {
-      merged.cliToolId = cliToolId;
+    if (agentCliId) {
+      merged.agentCliId = agentCliId;
     } else {
-      delete merged.cliToolId;
+      delete merged.agentCliId;
     }
 
-    if (agentToolConfigId) {
-      merged.agentToolConfigId = agentToolConfigId;
+    if (agentCliConfigId) {
+      merged.agentCliConfigId = agentCliConfigId;
     } else {
-      delete merged.agentToolConfigId;
+      delete merged.agentCliConfigId;
     }
+
+    if (loopEnabled !== null) {
+      merged.loopEnabled = loopEnabled;
+    } else {
+      delete merged.loopEnabled;
+    }
+
+    if (maxLoops !== null) {
+      merged.maxLoops = maxLoops;
+    } else {
+      delete merged.maxLoops;
+    }
+
+    delete merged.cliToolId;
+    delete merged.agentToolConfigId;
 
     return Object.keys(merged).length ? merged : null;
   }
@@ -2225,35 +2302,139 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
   private resolveRequiredNodeExecutionConfig(
     configJson: Record<string, unknown> | null | undefined,
   ): {
-    cliToolId: string;
-    agentToolConfigId: string;
+    agentCliId: string;
+    agentCliConfigId: string;
   } {
     const config = this.toObjectRecord(configJson);
-    const cliToolId = this.normalizeOptionalString(
-      typeof config.cliToolId === 'string' ? config.cliToolId : null,
+    const agentCliId = this.normalizeOptionalString(
+      typeof config.agentCliId === 'string'
+        ? config.agentCliId
+        : typeof config.cliToolId === 'string'
+          ? config.cliToolId
+          : null,
     );
-    const agentToolConfigId = this.normalizeOptionalString(
-      typeof config.agentToolConfigId === 'string'
-        ? config.agentToolConfigId
-        : null,
+    const agentCliConfigId = this.normalizeOptionalString(
+      typeof config.agentCliConfigId === 'string'
+        ? config.agentCliConfigId
+        : typeof config.agentToolConfigId === 'string'
+          ? config.agentToolConfigId
+          : null,
     );
 
-    if (!cliToolId) {
+    if (!agentCliId) {
       throw new ConflictException(
-        'Task config must include cliToolId for executable task nodes',
+        'Task config must include agentCliId for executable task nodes',
       );
     }
 
-    if (!agentToolConfigId) {
+    if (!agentCliConfigId) {
       throw new ConflictException(
-        'Task config must include agentToolConfigId for executable task nodes',
+        'Task config must include agentCliConfigId for executable task nodes',
       );
     }
 
     return {
-      cliToolId,
-      agentToolConfigId,
+      agentCliId,
+      agentCliConfigId,
     };
+  }
+
+  private resolveNodeLoopJson(
+    input: Record<string, unknown> | null | undefined,
+    taskConfig?: Record<string, unknown> | null,
+    currentLoopJson?: Record<string, unknown> | null,
+  ): TaskLoopConfig {
+    const source = this.toObjectRecord(input);
+    const config = this.toObjectRecord(taskConfig);
+    const current = this.readNodeLoopConfig(currentLoopJson);
+    const maxLoops =
+      this.normalizeMaxLoops(source.maxLoops, false) ??
+      this.normalizeMaxLoops(config.maxLoops, false) ??
+      current.maxLoops;
+    const explicitEnabled =
+      this.normalizeBoolean(
+        typeof source.loopEnabled === 'boolean' ? source.loopEnabled : null,
+      ) ??
+      this.normalizeBoolean(
+        typeof config.loopEnabled === 'boolean' ? config.loopEnabled : null,
+      );
+    const enabled = explicitEnabled ?? maxLoops > 1;
+
+    return {
+      enabled,
+      loopCount: current.loopCount,
+      maxLoops,
+    };
+  }
+
+  private readNodeLoopConfig(
+    loopJson: Record<string, unknown> | null | undefined,
+  ): TaskLoopConfig {
+    const source = this.toObjectRecord(loopJson);
+    const maxLoops = this.normalizeMaxLoops(source.maxLoops) ?? 1;
+    const loopCount = Math.max(
+      this.normalizeNonNegativeInteger(source.loopCount) ?? 0,
+      0,
+    );
+    const enabled =
+      this.normalizeBoolean(
+        typeof source.enabled === 'boolean' ? source.enabled : null,
+      ) ?? maxLoops > 1;
+
+    return {
+      enabled,
+      loopCount,
+      maxLoops,
+    };
+  }
+
+  private normalizeBoolean(value: unknown): boolean | null {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    return null;
+  }
+
+  private normalizeNonNegativeInteger(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      const normalized = Math.floor(value);
+      return normalized >= 0 ? normalized : null;
+    }
+
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Number(value.trim());
+      if (Number.isFinite(parsed)) {
+        const normalized = Math.floor(parsed);
+        return normalized >= 0 ? normalized : null;
+      }
+    }
+
+    return null;
+  }
+
+  private normalizeMaxLoops(
+    value: unknown,
+    fallbackToOne = true,
+  ): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      const normalized = Math.floor(value);
+      if (normalized >= 1) {
+        return normalized;
+      }
+    }
+
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Number(value.trim());
+      if (Number.isFinite(parsed)) {
+        const normalized = Math.floor(parsed);
+        if (normalized >= 1) {
+          return normalized;
+        }
+      }
+    }
+
+    return fallbackToOne ? 1 : null;
   }
 
   private buildTaskNodeInput({
@@ -2273,6 +2454,12 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
 
     delete normalized.prompt;
     delete normalized.instructions;
+    delete normalized.loopEnabled;
+    delete normalized.maxLoops;
+    delete normalized.agentCliId;
+    delete normalized.agentCliConfigId;
+    delete normalized.cliToolId;
+    delete normalized.agentToolConfigId;
 
     return normalized;
   }
@@ -2365,14 +2552,14 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async readNodeOutputSummary(node: TaskNode): Promise<string | null> {
-    const outputRef = this.normalizeOptionalString(node.outputRef);
+    const agentClioutput = this.normalizeOptionalString(node.agentClioutput);
 
-    if (!outputRef) {
+    if (!agentClioutput) {
       return null;
     }
 
     try {
-      const content = await fs.readFile(outputRef, 'utf-8');
+      const content = await fs.readFile(agentClioutput, 'utf-8');
       const records = content
         .split(/\r?\n/)
         .map((line) => line.trim())

@@ -773,7 +773,10 @@ export class ProjectsService {
     const project = await this.ensureCanAccessProject(projectId, currentUser);
 
     try {
-      const repositoryRoot = await this.ensureProjectRepository(project, options);
+      const repositoryRoot = await this.ensureProjectRepository(
+        project,
+        options,
+      );
       return {
         project,
         repositoryRoot,

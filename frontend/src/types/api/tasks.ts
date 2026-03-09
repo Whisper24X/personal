@@ -11,10 +11,18 @@ export type TaskAttachmentConfig = {
   lastModified: number
 }
 
+export type TaskLoopConfig = {
+  enabled: boolean
+  loopCount: number
+  maxLoops: number
+}
+
 export type TaskConfig = {
   workflowTemplateId?: string | null
-  cliToolId?: string | null
-  agentToolConfigId?: string | null
+  agentCliId?: string | null
+  agentCliConfigId?: string | null
+  loopEnabled?: boolean | null
+  maxLoops?: number | null
   attachments?: TaskAttachmentConfig[] | null
 }
 
@@ -46,9 +54,10 @@ export type TaskNode = {
     nodeInput?: string | null
     [key: string]: unknown
   } | null
-  cliToolId?: string | null
-  agentToolConfigId?: string | null
-  outputRef?: string | null
+  agentCliId?: string | null
+  agentCliConfigId?: string | null
+  agentClioutput?: string | null
+  loopJson?: TaskLoopConfig | null
   runtimeJson?: {
     workerId?: string | null
     leaseUntil?: string | null
@@ -56,7 +65,6 @@ export type TaskNode = {
     [key: string]: unknown
   } | null
   status: TaskStatus
-  attempt: number
 }
 
 export type TaskDetail = {
@@ -239,15 +247,16 @@ export type TaskGitFilesPayload = {
   files: string[]
 }
 
-export type TaskGitCommitPayload = {
-  message: string
-}
-
 export type TaskGitBaseBranchPayload = {
   baseBranch?: string
 }
 
+export type TaskGitCommitPayload = {
+  message: string
+}
+
 export type CreateTaskTerminalSessionPayload = {
+  cwd?: string
   shell?: string
 }
 

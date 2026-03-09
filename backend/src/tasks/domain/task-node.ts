@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { TaskStatus } from '../dto/task-status.enum';
-import { TaskNodeInput, TaskNodeRuntime } from '../types/task-config.type';
+import { TaskLoopConfig, TaskNodeInput, TaskNodeRuntime } from '../types/task-config.type';
 
 export class TaskNode {
   @ApiProperty({ type: String })
@@ -19,7 +19,7 @@ export class TaskNode {
   input?: TaskNodeInput | null;
 
   @ApiProperty({ type: String, required: false, nullable: true })
-  outputRef?: string | null;
+  agentClioutput?: string | null;
 
   @ApiProperty({
     type: String,
@@ -27,7 +27,7 @@ export class TaskNode {
     nullable: true,
     description: 'CLI tool identifier resolved for this node',
   })
-  cliToolId?: string | null;
+  agentCliId?: string | null;
 
   @ApiProperty({
     type: String,
@@ -35,7 +35,15 @@ export class TaskNode {
     nullable: true,
     description: 'Agent tool config identifier resolved for this node',
   })
-  agentToolConfigId?: string | null;
+  agentCliConfigId?: string | null;
+
+  @ApiProperty({
+    type: Object,
+    required: false,
+    nullable: true,
+    description: 'Loop execution config JSON',
+  })
+  loopJson?: TaskLoopConfig | null;
 
   @ApiProperty({
     type: Object,
@@ -47,9 +55,6 @@ export class TaskNode {
 
   @ApiProperty({ enum: TaskStatus, enumName: 'TaskStatus' })
   status: TaskStatus;
-
-  @ApiProperty({ type: Number, default: 0 })
-  attempt: number;
 
   @ApiProperty({ type: Date, required: false, nullable: true })
   startedAt?: Date | null;

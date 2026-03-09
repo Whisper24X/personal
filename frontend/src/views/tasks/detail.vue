@@ -47,8 +47,8 @@ const editForm = reactive<TaskEditFormValue>({
   title: '',
   prompt: '',
   gitBranch: '',
-  cliToolId: '',
-  agentToolConfigId: '',
+  agentCliId: '',
+  agentCliConfigId: '',
 })
 
 const message = useMessage()
@@ -541,8 +541,8 @@ const openEdit = () => {
   editForm.title = task.value.title || ''
   editForm.prompt = task.value.prompt || ''
   editForm.gitBranch = task.value.gitBranch || ''
-  editForm.cliToolId = taskConfig.value?.cliToolId || ''
-  editForm.agentToolConfigId = taskConfig.value?.agentToolConfigId || ''
+  editForm.agentCliId = taskConfig.value?.agentCliId || ''
+  editForm.agentCliConfigId = taskConfig.value?.agentCliConfigId || ''
   editOpen.value = true
 }
 
@@ -559,8 +559,8 @@ const saveEdit = async (payload: TaskEditFormValue) => {
       prompt: payload.prompt.trim(),
       gitBranch: payload.gitBranch.trim(),
       configJson: {
-        cliToolId: payload.cliToolId.trim() || undefined,
-        agentToolConfigId: payload.agentToolConfigId.trim() || undefined,
+        agentCliId: payload.agentCliId.trim() || undefined,
+        agentCliConfigId: payload.agentCliConfigId.trim() || undefined,
       },
     })
     editOpen.value = false

@@ -37,8 +37,8 @@ const emit = defineEmits<{
 
 const toolMeta = computed(() => {
   return {
-    cliToolId: props.task?.configJson?.cliToolId || '-',
-    cliConfigId: props.task?.configJson?.agentToolConfigId || '-',
+    agentCliId: props.task?.configJson?.agentCliId || '-',
+    cliConfigId: props.task?.configJson?.agentCliConfigId || '-',
   }
 })
 </script>
@@ -132,7 +132,7 @@ const toolMeta = computed(() => {
       <div class="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
         <span>创建：{{ props.createdAtLabel }}</span>
         <span>更新：{{ props.updatedAtLabel }}</span>
-        <span>CLI 工具：{{ toolMeta.cliToolId }}</span>
+        <span>CLI 工具：{{ toolMeta.agentCliId }}</span>
         <span>CLI 配置：{{ toolMeta.cliConfigId }}</span>
       </div>
     </div>

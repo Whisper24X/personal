@@ -57,8 +57,8 @@ type ProjectRoleSelection = string
 type SupportedCliToolId = 'claude-code' | 'codex' | 'gemini-cli' | 'cursor-agent' | 'opencode'
 type WorkflowTemplateNodeInputForm = {
   prompt: string
-  cliToolId: SupportedCliToolId | ''
-  agentToolConfigId: string
+  agentCliId: SupportedCliToolId | ''
+  agentCliConfigId: string
 }
 type WorkflowTemplateNodeForm = Omit<WorkflowTemplateNode, 'input'> & {
   input: WorkflowTemplateNodeInputForm
@@ -217,8 +217,8 @@ const workflowCreateForm = ref<{
       requiresApproval: false,
       input: {
         prompt: '',
-        cliToolId: '',
-        agentToolConfigId: '',
+        agentCliId: '',
+        agentCliConfigId: '',
       },
     },
   ],
@@ -666,8 +666,8 @@ const removeAgentToolConfig = async (configId: string) => {
 
 const createEmptyWorkflowNodeInput = (): WorkflowTemplateNodeInputForm => ({
   prompt: '',
-  cliToolId: '',
-  agentToolConfigId: '',
+  agentCliId: '',
+  agentCliConfigId: '',
 })
 
 const isSupportedCliToolId = (toolId: string): toolId is SupportedCliToolId => {
@@ -677,17 +677,26 @@ const isSupportedCliToolId = (toolId: string): toolId is SupportedCliToolId => {
 const normalizeWorkflowNodeInput = (
   input?: WorkflowTemplateNodeInput,
 ): WorkflowTemplateNodeInputForm => {
-  const prompt = typeof input?.prompt === 'string' ? input.prompt : ''
-  const cliToolId = typeof input?.cliToolId === 'string' ? input.cliToolId.trim() : ''
-  const normalizedCliToolId = isSupportedCliToolId(cliToolId) ? cliToolId : ''
+  const rawInput = (input ?? {}) as Record<string, unknown>
+  const prompt = typeof rawInput.prompt === 'string' ? rawInput.prompt : ''
+  const rawAgentCliId =
+    typeof rawInput.agentCliId === 'string'
+      ? rawInput.agentCliId.trim()
+      : typeof rawInput.cliToolId === 'string'
+        ? rawInput.cliToolId.trim()
+        : ''
+  const normalizedCliToolId = isSupportedCliToolId(rawAgentCliId) ? rawAgentCliId : ''
+  const rawAgentCliConfigId =
+    typeof rawInput.agentCliConfigId === 'string'
+      ? rawInput.agentCliConfigId.trim()
+      : typeof rawInput.agentToolConfigId === 'string'
+        ? rawInput.agentToolConfigId.trim()
+        : ''
 
   return {
     prompt,
-    cliToolId: normalizedCliToolId,
-    agentToolConfigId:
-      normalizedCliToolId && typeof input?.agentToolConfigId === 'string'
-        ? input.agentToolConfigId.trim()
-        : '',
+    agentCliId: normalizedCliToolId,
+    agentCliConfigId: normalizedCliToolId ? rawAgentCliConfigId : '',
   }
 }
 
@@ -699,28 +708,28 @@ const resolveWorkflowNodeInputByContext = (
   const nextInput = normalizeWorkflowNodeInput(input)
   const allowedToolIds = new Set(configuredTools.map((tool) => tool.id))
   const fallbackToolId = configuredTools[0]?.id ?? ''
-  const cliToolId =
-    nextInput.cliToolId && allowedToolIds.has(nextInput.cliToolId)
-      ? nextInput.cliToolId
+  const agentCliId =
+    nextInput.agentCliId && allowedToolIds.has(nextInput.agentCliId)
+      ? nextInput.agentCliId
       : fallbackToolId
 
-  if (!cliToolId) {
+  if (!agentCliId) {
     return {
       ...nextInput,
-      cliToolId: '',
-      agentToolConfigId: '',
+      agentCliId: '',
+      agentCliConfigId: '',
     }
   }
 
-  const toolConfigs = configsByTool[cliToolId] ?? []
-  const hasSelectedConfig = toolConfigs.some((config) => config.id === nextInput.agentToolConfigId)
+  const toolConfigs = configsByTool[agentCliId] ?? []
+  const hasSelectedConfig = toolConfigs.some((config) => config.id === nextInput.agentCliConfigId)
   const preferredConfigId =
     toolConfigs.find((config) => config.isDefault)?.id ?? toolConfigs[0]?.id ?? ''
 
   return {
     ...nextInput,
-    cliToolId,
-    agentToolConfigId: hasSelectedConfig ? nextInput.agentToolConfigId : preferredConfigId,
+    agentCliId,
+    agentCliConfigId: hasSelectedConfig ? nextInput.agentCliConfigId : preferredConfigId,
   }
 }
 
@@ -758,17 +767,17 @@ const serializeWorkflowNodeInput = (
   input: WorkflowTemplateNodeInputForm,
 ): WorkflowTemplateNodeInput | undefined => {
   const normalizedPrompt = input.prompt.trim()
-  const normalizedConfigId = input.agentToolConfigId.trim()
+  const normalizedConfigId = input.agentCliConfigId.trim()
   const payload: WorkflowTemplateNodeInput = {}
 
   if (normalizedPrompt) {
     payload.prompt = normalizedPrompt
   }
 
-  if (input.cliToolId) {
-    payload.cliToolId = input.cliToolId
+  if (input.agentCliId) {
+    payload.agentCliId = input.agentCliId
     if (normalizedConfigId) {
-      payload.agentToolConfigId = normalizedConfigId
+      payload.agentCliConfigId = normalizedConfigId
     }
   }
 
@@ -798,11 +807,11 @@ const validateWorkflowNodes = (nodes: WorkflowTemplateNode[]) => {
     }
 
     const nodeInput = normalizeWorkflowNodeInput(node.input)
-    if (!nodeInput.cliToolId) {
+    if (!nodeInput.agentCliId) {
       return `节点 #${index + 1} 请选择 Agent CLI`
     }
 
-    if (!workflowConfiguredCliToolIdSet.value.has(nodeInput.cliToolId)) {
+    if (!workflowConfiguredCliToolIdSet.value.has(nodeInput.agentCliId)) {
       return `节点 #${index + 1} 的 Agent CLI 不可用，请重新选择`
     }
   }
@@ -933,21 +942,21 @@ const handleWorkflowNodeCliToolChange = async (node: WorkflowTemplateNodeForm) =
     return
   }
 
-  if (!node.input.cliToolId || !workflowConfiguredCliToolIdSet.value.has(node.input.cliToolId)) {
+  if (!node.input.agentCliId || !workflowConfiguredCliToolIdSet.value.has(node.input.agentCliId)) {
     node.input = resolveWorkflowNodeInput(node.input)
     return
   }
 
-  const selectedToolId = node.input.cliToolId
-  node.input.agentToolConfigId = ''
+  const selectedToolId = node.input.agentCliId
+  node.input.agentCliConfigId = ''
 
   const configs = await loadWorkflowNodeConfigs(activeLineId.value, selectedToolId)
-  if (node.input.cliToolId !== selectedToolId) {
+  if (node.input.agentCliId !== selectedToolId) {
     return
   }
 
   const preferredConfigId = configs.find((config) => config.isDefault)?.id ?? configs[0]?.id ?? ''
-  node.input.agentToolConfigId = preferredConfigId
+  node.input.agentCliConfigId = preferredConfigId
 }
 
 const preloadWorkflowNodeConfigs = async () => {
@@ -958,7 +967,7 @@ const preloadWorkflowNodeConfigs = async () => {
   const toolIds = Array.from(
     new Set(
       workflowCreateForm.value.nodes
-        .map((node) => node.input.cliToolId)
+        .map((node) => node.input.agentCliId)
         .filter((toolId): toolId is SupportedCliToolId => Boolean(toolId)),
     ),
   )
@@ -3862,7 +3871,7 @@ onBeforeUnmount(() => {
                     <label class="space-y-1">
                       <span class="text-[11px] text-muted-foreground">Agent CLI</span>
                       <select
-                        v-model="node.input.cliToolId"
+                        v-model="node.input.agentCliId"
                         :disabled="
                           loadingWorkflowConfiguredCliTools ||
                           workflowConfiguredCliTools.length === 0
@@ -3893,19 +3902,19 @@ onBeforeUnmount(() => {
                     <label class="space-y-1">
                       <span class="text-[11px] text-muted-foreground">Agent CLI 配置</span>
                       <select
-                        v-model="node.input.agentToolConfigId"
+                        v-model="node.input.agentCliConfigId"
                         :disabled="
-                          !node.input.cliToolId || isWorkflowNodeConfigLoading(node.input.cliToolId)
+                          !node.input.agentCliId || isWorkflowNodeConfigLoading(node.input.agentCliId)
                         "
                         class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <option value="">
                           {{
-                            !node.input.cliToolId ? '请先选择 Agent CLI' : '请选择 Agent CLI 配置'
+                            !node.input.agentCliId ? '请先选择 Agent CLI' : '请选择 Agent CLI 配置'
                           }}
                         </option>
                         <option
-                          v-for="config in getWorkflowNodeConfigs(node.input.cliToolId)"
+                          v-for="config in getWorkflowNodeConfigs(node.input.agentCliId)"
                           :key="config.id"
                           :value="config.id"
                         >

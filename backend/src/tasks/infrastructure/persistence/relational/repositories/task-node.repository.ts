@@ -147,10 +147,9 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
       .update(TaskNodeEntity)
       .set({
         status: TaskStatus.inProgress,
-        attempt: () => '"attempt" + 1',
         startedAt: now,
         finishedAt: null,
-        outputRef: null,
+        agentClioutput: null,
         runtimeJson: () => runtimeJson,
       })
       .where(`id = (${candidateSubQuery})`)

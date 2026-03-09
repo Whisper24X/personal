@@ -20,8 +20,8 @@ process.env.AINATIVE_DATA_ROOT_DIR = path.resolve(
 );
 
 const defaultExecutionConfig = {
-  cliToolId: 'codex',
-  agentToolConfigId: 'cfg-1',
+  agentCliId: 'codex',
+  agentCliConfigId: 'cfg-1',
 };
 
 const createProject = (configJson?: Record<string, unknown>) => ({
@@ -76,12 +76,16 @@ const createNode = (overrides: Record<string, unknown> = {}) => ({
     taskInput: 'task description',
     nodeInput: null,
   },
-  cliToolId: defaultExecutionConfig.cliToolId,
-  agentToolConfigId: defaultExecutionConfig.agentToolConfigId,
-  outputRef: null,
+  agentCliId: defaultExecutionConfig.agentCliId,
+  agentCliConfigId: defaultExecutionConfig.agentCliConfigId,
+  agentClioutput: null,
+  loopJson: {
+    enabled: false,
+    loopCount: 0,
+    maxLoops: 1,
+  },
   runtimeJson: null,
   status: TaskStatus.inProgress,
-  attempt: 0,
   createdAt: new Date(),
   updatedAt: new Date(),
   ...overrides,
@@ -560,11 +564,71 @@ describe('TasksService', () => {
       node.id,
       expect.objectContaining({
         status: TaskStatus.done,
-        outputRef: expect.any(String),
+        agentClioutput: expect.any(String),
         runtimeJson: null,
       }),
     );
     expect(artifactSpy).toHaveBeenCalledTimes(1);
+  });
+
+
+  it('should queue next loop when agent node has remaining loops', async () => {
+    const { service, taskNodeRepository, agentRunnerService } =
+      createTasksService();
+    const serviceAny = service as any;
+    const task = createTask();
+    const node = createNode({
+      status: TaskStatus.inProgress,
+      loopJson: {
+      enabled: true,
+      loopCount: 1,
+      maxLoops: 3,
+    },
+    });
+    const project = createProject();
+
+    agentRunnerService.executeAgentNode.mockResolvedValue({
+      success: true,
+      timedOut: false,
+      exitCode: 0,
+      signal: null,
+      command: 'codex',
+      args: ['exec', '-'],
+      cwd: '/tmp/worktree-task-1',
+      durationMs: 50,
+      stdout: 'agent output',
+      stderr: '',
+      prompt: 'prompt',
+    });
+
+    const artifactSpy = jest
+      .spyOn(serviceAny, 'createNodeExecutionArtifact')
+      .mockResolvedValue(undefined);
+
+    await serviceAny.executeAgentNode({
+      taskId: task.id,
+      nodeId: node.id,
+      task,
+      node,
+      project,
+    });
+
+    expect(taskNodeRepository.update).toHaveBeenCalledWith(
+      node.id,
+      expect.objectContaining({
+        status: TaskStatus.todo,
+        loopJson: {
+          enabled: true,
+          loopCount: 2,
+          maxLoops: 3,
+        },
+        startedAt: null,
+        finishedAt: null,
+        agentClioutput: expect.any(String),
+        runtimeJson: null,
+      }),
+    );
+    expect(artifactSpy).not.toHaveBeenCalled();
   });
 
   it('should mark agent node in_review when execution fails', async () => {
@@ -603,7 +667,7 @@ describe('TasksService', () => {
       node.id,
       expect.objectContaining({
         status: TaskStatus.inReview,
-        outputRef: expect.any(String),
+        agentClioutput: expect.any(String),
       }),
     );
   });
@@ -700,7 +764,7 @@ describe('TasksService', () => {
       node.id,
       expect.objectContaining({
         status: TaskStatus.inReview,
-        outputRef: expect.any(String),
+        agentClioutput: expect.any(String),
       }),
     );
   });
@@ -872,7 +936,11 @@ describe('TasksService', () => {
     const todoNode = {
       ...createNode(),
       status: TaskStatus.inProgress,
-      attempt: 2,
+      loopJson: {
+      enabled: true,
+      loopCount: 2,
+      maxLoops: 3,
+    },
     };
     const currentUser = createCurrentUser();
 
@@ -888,7 +956,11 @@ describe('TasksService', () => {
     taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValue({
       ...todoNode,
       status: TaskStatus.todo,
-      attempt: 1,
+      loopJson: {
+      enabled: true,
+      loopCount: 1,
+      maxLoops: 3,
+    },
     });
     taskNodeRepository.claimFirstTodoNode.mockResolvedValue(todoNode);
     taskNodeRepository.findByTaskId.mockResolvedValue([todoNode]);
@@ -1016,7 +1088,11 @@ describe('TasksService', () => {
     const reviewNode = {
       ...createNode(),
       status: TaskStatus.inReview,
-      attempt: 2,
+      loopJson: {
+      enabled: true,
+      loopCount: 2,
+      maxLoops: 3,
+    },
     };
     const currentUser = createCurrentUser();
 
@@ -1033,7 +1109,11 @@ describe('TasksService', () => {
     taskNodeRepository.claimFirstTodoNode.mockResolvedValue({
       ...reviewNode,
       status: TaskStatus.inProgress,
-      attempt: 3,
+      loopJson: {
+      enabled: true,
+      loopCount: 2,
+      maxLoops: 3,
+    },
     });
     taskNodeRepository.findByTaskId.mockResolvedValue([reviewNode]);
     jest
@@ -1058,7 +1138,7 @@ describe('TasksService', () => {
       reviewNode.id,
       expect.objectContaining({
         status: TaskStatus.todo,
-        outputRef: null,
+        agentClioutput: null,
       }),
     );
     expect(runNodeSpy).toHaveBeenCalledWith(
@@ -1162,7 +1242,7 @@ describe('TasksService', () => {
       runningNode.id,
       expect.objectContaining({
         status: TaskStatus.inReview,
-        outputRef: expect.any(String),
+        agentClioutput: expect.any(String),
       }),
     );
   });
@@ -1499,7 +1579,7 @@ describe('TasksService', () => {
     const task = {
       ...createTask(),
       configJson: {
-        cliToolId: 'codex',
+        agentCliId: 'codex',
       },
     };
     const currentUser = createCurrentUser();
@@ -1508,8 +1588,8 @@ describe('TasksService', () => {
     taskRepository.update.mockResolvedValue({
       ...task,
       configJson: {
-        cliToolId: 'codex',
-        agentToolConfigId: 'cfg-2',
+        agentCliId: 'codex',
+        agentCliConfigId: 'cfg-2',
       },
     });
     projectsService.assertProjectCapability.mockResolvedValue(createProject());
@@ -1519,7 +1599,7 @@ describe('TasksService', () => {
       task.id,
       {
         configJson: {
-          agentToolConfigId: 'cfg-2',
+          agentCliConfigId: 'cfg-2',
         },
       } as never,
       currentUser as never,
@@ -1529,16 +1609,16 @@ describe('TasksService', () => {
       task.id,
       expect.objectContaining({
         configJson: {
-          cliToolId: 'codex',
-          agentToolConfigId: 'cfg-2',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-2',
         },
       }),
     );
     expect(taskNodeRepository.update).toHaveBeenCalledWith(
       'node-1',
       expect.objectContaining({
-        cliToolId: 'codex',
-        agentToolConfigId: 'cfg-2',
+        agentCliId: 'codex',
+        agentCliConfigId: 'cfg-2',
       }),
     );
   });

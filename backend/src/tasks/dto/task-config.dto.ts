@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsBoolean,
   IsInt,
   IsOptional,
   IsString,
@@ -45,12 +46,24 @@ export class TaskConfigDto {
   @IsOptional()
   @IsString()
   @MaxLength(64)
-  cliToolId?: string;
+  agentCliId?: string;
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @IsUUID()
-  agentToolConfigId?: string;
+  agentCliConfigId?: string;
+
+  @ApiPropertyOptional({ type: Boolean, default: false })
+  @IsOptional()
+  @IsBoolean()
+  loopEnabled?: boolean;
+
+  @ApiPropertyOptional({ type: Number, default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  maxLoops?: number;
 
   @ApiPropertyOptional({ type: TaskAttachmentConfigDto, isArray: true })
   @IsOptional()
@@ -65,10 +78,22 @@ export class TaskNodeConfigDto {
   @IsOptional()
   @IsString()
   @MaxLength(64)
-  cliToolId?: string;
+  agentCliId?: string;
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()
   @IsUUID()
-  agentToolConfigId?: string;
+  agentCliConfigId?: string;
+
+  @ApiPropertyOptional({ type: Boolean, default: false })
+  @IsOptional()
+  @IsBoolean()
+  loopEnabled?: boolean;
+
+  @ApiPropertyOptional({ type: Number, default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  maxLoops?: number;
 }

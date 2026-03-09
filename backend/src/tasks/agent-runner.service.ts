@@ -334,16 +334,16 @@ export class AgentRunnerService {
   ): Record<string, unknown> {
     return {
       ...this.toObjectRecord(task.configJson),
-      ...(node.cliToolId
+      ...(node.agentCliId
         ? {
-            cliToolId: node.cliToolId,
-            toolId: node.cliToolId,
-            agentAdapter: node.cliToolId,
+            agentCliId: node.agentCliId,
+            toolId: node.agentCliId,
+            agentAdapter: node.agentCliId,
           }
         : {}),
-      ...(node.agentToolConfigId
+      ...(node.agentCliConfigId
         ? {
-            agentToolConfigId: node.agentToolConfigId,
+            agentCliConfigId: node.agentCliConfigId,
           }
         : {}),
     };
@@ -505,6 +505,13 @@ export class AgentRunnerService {
   private resolveAgentToolConfigId(
     configJson: Record<string, unknown>,
   ): string | null {
+    if (
+      typeof configJson.agentCliConfigId === 'string' &&
+      configJson.agentCliConfigId.trim()
+    ) {
+      return configJson.agentCliConfigId.trim();
+    }
+
     if (
       typeof configJson.agentToolConfigId === 'string' &&
       configJson.agentToolConfigId.trim()

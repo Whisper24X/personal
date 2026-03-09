@@ -151,8 +151,8 @@ describe('TaskCreatePanel', () => {
     expect(payload.gitBaseBranch).toBe('main')
 
     expect(payload.configJson).toEqual({
-      cliToolId: 'codex',
-      agentToolConfigId: 'cfg-1',
+      agentCliId: 'codex',
+      agentCliConfigId: 'cfg-1',
       attachments: [],
     })
 

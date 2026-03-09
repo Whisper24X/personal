@@ -5,8 +5,8 @@ export type TaskEditFormValue = {
   title: string
   prompt: string
   gitBranch: string
-  cliToolId: string
-  agentToolConfigId: string
+  agentCliId: string
+  agentCliConfigId: string
 }
 
 defineOptions({
@@ -38,8 +38,8 @@ const localEditForm = reactive<TaskEditFormValue>({
   title: '',
   prompt: '',
   gitBranch: '',
-  cliToolId: '',
-  agentToolConfigId: '',
+  agentCliId: '',
+  agentCliConfigId: '',
 })
 
 watch(
@@ -52,8 +52,8 @@ watch(
     localEditForm.title = props.editForm.title
     localEditForm.prompt = props.editForm.prompt
     localEditForm.gitBranch = props.editForm.gitBranch
-    localEditForm.cliToolId = props.editForm.cliToolId
-    localEditForm.agentToolConfigId = props.editForm.agentToolConfigId
+    localEditForm.agentCliId = props.editForm.agentCliId
+    localEditForm.agentCliConfigId = props.editForm.agentCliConfigId
   },
 )
 
@@ -62,8 +62,8 @@ const submitEdit = () => {
     title: localEditForm.title,
     prompt: localEditForm.prompt,
     gitBranch: localEditForm.gitBranch,
-    cliToolId: localEditForm.cliToolId,
-    agentToolConfigId: localEditForm.agentToolConfigId,
+    agentCliId: localEditForm.agentCliId,
+    agentCliConfigId: localEditForm.agentCliConfigId,
   })
 }
 </script>
@@ -122,7 +122,7 @@ const submitEdit = () => {
             <label class="space-y-1">
               <span class="text-xs font-semibold text-muted-foreground">CLI 工具 ID</span>
               <input
-                v-model="localEditForm.cliToolId"
+                v-model="localEditForm.agentCliId"
                 class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
                 type="text"
               />
@@ -131,7 +131,7 @@ const submitEdit = () => {
             <label class="space-y-1">
               <span class="text-xs font-semibold text-muted-foreground">CLI 配置 ID</span>
               <input
-                v-model="localEditForm.agentToolConfigId"
+                v-model="localEditForm.agentCliConfigId"
                 class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
                 type="text"
               />

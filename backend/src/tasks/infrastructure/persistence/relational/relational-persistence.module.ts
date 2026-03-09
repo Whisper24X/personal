@@ -6,22 +6,13 @@ import { TaskLogRepository } from '../task-log.repository';
 import { TaskArtifactRepository } from '../task-artifact.repository';
 import { TaskEntity } from './entities/task.entity';
 import { TaskNodeEntity } from './entities/task-node.entity';
-import { TaskLogEntity } from './entities/task-log.entity';
-import { TaskArtifactEntity } from './entities/task-artifact.entity';
 import { TaskRelationalRepository } from './repositories/task.repository';
 import { TaskNodeRelationalRepository } from './repositories/task-node.repository';
-import { TaskLogRelationalRepository } from './repositories/task-log.repository';
-import { TaskArtifactRelationalRepository } from './repositories/task-artifact.repository';
+import { TaskLogFileRepository } from '../file/repositories/task-log.repository';
+import { TaskArtifactFileRepository } from '../file/repositories/task-artifact.repository';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([
-      TaskEntity,
-      TaskNodeEntity,
-      TaskLogEntity,
-      TaskArtifactEntity,
-    ]),
-  ],
+  imports: [TypeOrmModule.forFeature([TaskEntity, TaskNodeEntity])],
   providers: [
     {
       provide: TaskRepository,
@@ -33,11 +24,11 @@ import { TaskArtifactRelationalRepository } from './repositories/task-artifact.r
     },
     {
       provide: TaskLogRepository,
-      useClass: TaskLogRelationalRepository,
+      useClass: TaskLogFileRepository,
     },
     {
       provide: TaskArtifactRepository,
-      useClass: TaskArtifactRelationalRepository,
+      useClass: TaskArtifactFileRepository,
     },
   ],
   exports: [

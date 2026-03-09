@@ -5,10 +5,18 @@ export type TaskAttachmentConfig = {
   lastModified: number;
 };
 
+export type TaskLoopConfig = {
+  enabled: boolean;
+  loopCount: number;
+  maxLoops: number;
+};
+
 export type TaskConfig = Record<string, unknown> & {
   workflowTemplateId?: string | null;
-  cliToolId?: string | null;
-  agentToolConfigId?: string | null;
+  agentCliId?: string | null;
+  agentCliConfigId?: string | null;
+  loopEnabled?: boolean | null;
+  maxLoops?: number | null;
   attachments?: TaskAttachmentConfig[] | null;
 };
 

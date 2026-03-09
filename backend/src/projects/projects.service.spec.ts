@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { Project } from './domain/project';
 import { ProjectsService } from './projects.service';
@@ -58,7 +58,7 @@ const createProjectsService = () => {
   };
   const projectCustomRoleRepository = {
     findAllByBusinessLineId: jest.fn().mockResolvedValue([]),
-    create: jest.fn().mockImplementation(async (payload) => ({
+    create: jest.fn().mockImplementation((payload) => ({
       id: `role-${payload.name}`,
       ...payload,
     })),
@@ -309,8 +309,12 @@ describe('ProjectsService', () => {
   });
 
   it('should sync task business line snapshot after project business line changes', async () => {
-    const { service, projectRepository, taskRepository, workflowTemplateRepository } =
-      createProjectsService();
+    const {
+      service,
+      projectRepository,
+      taskRepository,
+      workflowTemplateRepository,
+    } = createProjectsService();
     const serviceAny = service as any;
     const currentUser = createCurrentUser();
     const currentProject = createProject();

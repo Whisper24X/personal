@@ -4,8 +4,10 @@ export type WorkflowNodeType = 'agent' | 'skill' | 'mcp' | 'manual'
 
 export type WorkflowTemplateNodeInput = Record<string, unknown> & {
   prompt?: string
-  cliToolId?: string
-  agentToolConfigId?: string
+  agentCliId?: string
+  agentCliConfigId?: string
+  loopEnabled?: boolean
+  maxLoops?: number
 }
 
 export type WorkflowTemplateNode = {

@@ -428,8 +428,8 @@ describe('BusinessLineModal', () => {
               requiresApproval: false,
               input: {
                 prompt: '初始提示词',
-                cliToolId: 'codex',
-                agentToolConfigId: 'cfg-1',
+                agentCliId: 'codex',
+                agentCliConfigId: 'cfg-1',
               },
             },
           ],
@@ -483,8 +483,8 @@ describe('BusinessLineModal', () => {
           requiresApproval: false,
           input: {
             prompt: '初始提示词',
-            cliToolId: 'codex',
-            agentToolConfigId: 'cfg-1',
+            agentCliId: 'codex',
+            agentCliConfigId: 'cfg-1',
           },
         },
       ],

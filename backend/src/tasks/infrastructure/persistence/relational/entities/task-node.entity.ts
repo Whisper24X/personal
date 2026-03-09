@@ -40,14 +40,31 @@ export class TaskNodeEntity extends EntityRelationalHelper {
   @Column({ type: 'jsonb', nullable: true, comment: '节点输入JSON' })
   input?: Record<string, unknown> | null;
 
-  @Column({ type: String, length: 64, comment: 'CLI工具ID' })
-  cliToolId: string;
+  @Column({
+    name: 'agentCliId',
+    type: String,
+    length: 64,
+    comment: 'Agent CLI ID',
+  })
+  agentCliId: string;
 
-  @Column({ type: 'uuid', comment: 'Agent工具配置ID' })
-  agentToolConfigId: string;
+  @Column({
+    name: 'agentCliConfigId',
+    type: 'uuid',
+    comment: 'Agent CLI配置ID',
+  })
+  agentCliConfigId: string;
 
-  @Column({ type: 'text', nullable: true, comment: 'Agent CLI输出JSONL文件地址' })
-  outputRef?: string | null;
+  @Column({
+    name: 'agentClioutput',
+    type: 'text',
+    nullable: true,
+    comment: 'Agent CLI日志JSONL文件地址',
+  })
+  agentClioutput?: string | null;
+
+  @Column({ type: 'jsonb', nullable: true, comment: '循环执行配置JSON' })
+  loopJson?: Record<string, unknown> | null;
 
   @Column({ type: 'jsonb', nullable: true, comment: '节点运行时临时状态JSON' })
   runtimeJson?: Record<string, unknown> | null;
@@ -61,9 +78,6 @@ export class TaskNodeEntity extends EntityRelationalHelper {
     comment: '节点状态',
   })
   status: TaskStatus;
-
-  @Column({ type: 'int', default: 0, comment: '重试次数' })
-  attempt: number;
 
   @Column({ type: 'timestamp', nullable: true, comment: '节点执行开始时间' })
   startedAt?: Date | null;

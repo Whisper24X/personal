@@ -1,4 +1,5 @@
 import { TaskNode } from '../../../../domain/task-node';
+import { TaskLoopConfig } from '../../../../types/task-config.type';
 import { TaskNodeEntity } from '../entities/task-node.entity';
 
 export class TaskNodeMapper {
@@ -9,12 +10,12 @@ export class TaskNodeMapper {
     domainEntity.nodeOrder = raw.nodeOrder;
     domainEntity.name = raw.name;
     domainEntity.input = raw.input;
-    domainEntity.cliToolId = raw.cliToolId;
-    domainEntity.agentToolConfigId = raw.agentToolConfigId;
-    domainEntity.outputRef = raw.outputRef;
+    domainEntity.agentCliId = raw.agentCliId;
+    domainEntity.agentCliConfigId = raw.agentCliConfigId;
+    domainEntity.agentClioutput = raw.agentClioutput;
+    domainEntity.loopJson = raw.loopJson as TaskLoopConfig | null;
     domainEntity.runtimeJson = raw.runtimeJson;
     domainEntity.status = raw.status;
-    domainEntity.attempt = raw.attempt;
     domainEntity.startedAt = raw.startedAt;
     domainEntity.finishedAt = raw.finishedAt;
     domainEntity.createdAt = raw.createdAt;
@@ -34,12 +35,12 @@ export class TaskNodeMapper {
     persistenceEntity.nodeOrder = domainEntity.nodeOrder;
     persistenceEntity.name = domainEntity.name;
     persistenceEntity.input = domainEntity.input ?? null;
-    persistenceEntity.cliToolId = domainEntity.cliToolId ?? '';
-    persistenceEntity.agentToolConfigId = domainEntity.agentToolConfigId ?? '';
-    persistenceEntity.outputRef = domainEntity.outputRef ?? null;
+    persistenceEntity.agentCliId = domainEntity.agentCliId ?? '';
+    persistenceEntity.agentCliConfigId = domainEntity.agentCliConfigId ?? '';
+    persistenceEntity.agentClioutput = domainEntity.agentClioutput ?? null;
+    persistenceEntity.loopJson = domainEntity.loopJson ?? null;
     persistenceEntity.runtimeJson = domainEntity.runtimeJson ?? null;
     persistenceEntity.status = domainEntity.status;
-    persistenceEntity.attempt = domainEntity.attempt;
     persistenceEntity.startedAt = domainEntity.startedAt ?? null;
     persistenceEntity.finishedAt = domainEntity.finishedAt ?? null;
 

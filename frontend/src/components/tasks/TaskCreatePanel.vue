@@ -72,8 +72,8 @@ const createForm = reactive({
   projectId: '',
   mode: 'conversation' as 'conversation' | 'workflow',
   workflowTemplateId: '',
-  cliToolId: '' as SupportedCliToolId | '',
-  agentToolConfigId: '',
+  agentCliId: '' as SupportedCliToolId | '',
+  agentCliConfigId: '',
   title: '',
   prompt: '',
 })
@@ -122,8 +122,8 @@ const resetCreateForm = (projectId?: string) => {
   createForm.projectId = nextProjectId
   createForm.mode = 'conversation'
   createForm.workflowTemplateId = ''
-  createForm.cliToolId = configuredCliTools.value[0]?.id ?? ''
-  createForm.agentToolConfigId = ''
+  createForm.agentCliId = configuredCliTools.value[0]?.id ?? ''
+  createForm.agentCliConfigId = ''
   createForm.title = ''
   createForm.prompt = ''
   selectedFiles.value = []
@@ -145,18 +145,18 @@ const isSupportedCliToolId = (toolId: string): toolId is SupportedCliToolId => {
 }
 
 const syncAgentToolConfigsForSelectedTool = () => {
-  if (!createForm.cliToolId) {
+  if (!createForm.agentCliId) {
     agentToolConfigs.value = []
-    createForm.agentToolConfigId = ''
+    createForm.agentCliConfigId = ''
     return
   }
 
-  const configs = agentConfigsByTool.value[createForm.cliToolId] ?? []
+  const configs = agentConfigsByTool.value[createForm.agentCliId] ?? []
   agentToolConfigs.value = configs
 
-  if (!configs.some((config) => config.id === createForm.agentToolConfigId)) {
+  if (!configs.some((config) => config.id === createForm.agentCliConfigId)) {
     const defaultConfig = configs.find((config) => config.isDefault)
-    createForm.agentToolConfigId = defaultConfig?.id ?? configs[0]?.id ?? ''
+    createForm.agentCliConfigId = defaultConfig?.id ?? configs[0]?.id ?? ''
   }
 }
 
@@ -205,8 +205,8 @@ const loadConversationCliOptions = async (projectId: string) => {
     configuredCliTools.value = []
     agentConfigsByTool.value = {}
     agentToolConfigs.value = []
-    createForm.cliToolId = ''
-    createForm.agentToolConfigId = ''
+    createForm.agentCliId = ''
+    createForm.agentCliConfigId = ''
     return
   }
 
@@ -230,8 +230,8 @@ const loadConversationCliOptions = async (projectId: string) => {
       (tool) => (groupedConfigs[tool.id]?.length ?? 0) > 0,
     )
 
-    if (!configuredCliTools.value.some((tool) => tool.id === createForm.cliToolId)) {
-      createForm.cliToolId = configuredCliTools.value[0]?.id ?? ''
+    if (!configuredCliTools.value.some((tool) => tool.id === createForm.agentCliId)) {
+      createForm.agentCliId = configuredCliTools.value[0]?.id ?? ''
     }
 
     syncAgentToolConfigsForSelectedTool()
@@ -239,8 +239,8 @@ const loadConversationCliOptions = async (projectId: string) => {
     configuredCliTools.value = []
     agentConfigsByTool.value = {}
     agentToolConfigs.value = []
-    createForm.cliToolId = ''
-    createForm.agentToolConfigId = ''
+    createForm.agentCliId = ''
+    createForm.agentCliConfigId = ''
     message.error(toErrorMessage(error, '加载 Agent CLI 配置失败'))
   } finally {
     loadingAgentConfigs.value = false
@@ -358,12 +358,12 @@ const createTask = async () => {
   }
 
   if (createForm.mode === 'conversation') {
-    if (!createForm.cliToolId) {
+    if (!createForm.agentCliId) {
       showValidationError('当前业务线没有可用的 Agent CLI 配置，请先在业务线设置中配置')
       return
     }
 
-    if (!createForm.agentToolConfigId) {
+    if (!createForm.agentCliConfigId) {
       showValidationError('请选择 Agent CLI 配置')
       return
     }
@@ -390,8 +390,8 @@ const createTask = async () => {
               workflowTemplateId: createForm.workflowTemplateId || undefined,
             }
           : {
-              cliToolId: createForm.cliToolId || undefined,
-              agentToolConfigId: createForm.agentToolConfigId || undefined,
+              agentCliId: createForm.agentCliId || undefined,
+              agentCliConfigId: createForm.agentCliConfigId || undefined,
             }),
         attachments: selectedFiles.value.map((file) => ({
           name: file.name,
@@ -447,9 +447,9 @@ watch(
 )
 
 watch(
-  () => createForm.cliToolId,
-  (cliToolId, previousCliToolId) => {
-    if (cliToolId === previousCliToolId) {
+  () => createForm.agentCliId,
+  (agentCliId, previousCliToolId) => {
+    if (agentCliId === previousCliToolId) {
       return
     }
 
@@ -470,7 +470,7 @@ watch(
       createForm.workflowTemplateId = templates.value[0]?.id ?? ''
     }
 
-    createForm.agentToolConfigId = ''
+    createForm.agentCliConfigId = ''
   },
 )
 
@@ -647,7 +647,7 @@ onBeforeUnmount(() => {
                     <path d="M3 8a9 9 0 1 0 2.9-6.6L3 3" />
                   </svg>
                   <select
-                    v-model="createForm.cliToolId"
+                    v-model="createForm.agentCliId"
                     class="min-w-[120px] appearance-none bg-transparent text-sm font-medium text-foreground outline-none"
                     :disabled="loadingAgentConfigs || configuredCliTools.length === 0"
                   >
@@ -691,7 +691,7 @@ onBeforeUnmount(() => {
                     <path d="M4 17h16" />
                   </svg>
                   <select
-                    v-model="createForm.agentToolConfigId"
+                    v-model="createForm.agentCliConfigId"
                     class="min-w-[120px] appearance-none bg-transparent text-sm font-medium text-foreground outline-none"
                     :disabled="loadingAgentConfigs || agentToolConfigs.length === 0"
                   >
