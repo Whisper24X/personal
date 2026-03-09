@@ -1,13 +1,14 @@
 /**
  * ImproveCode Action
- * 基于QA反馈和用户建议改进代码
+ * 基于QA反馈、用户建议和 Code Review 扫描改进代码
  *
- * 编排三个独立的 Cursor Skills（无状态执行工具）：
- * - improve-analyze  → skills/improve-analyze/SKILL.md   （分析改进需求）
+ * 编排四个独立的 Cursor Skills（无状态执行工具）：
+ * - improve-review   → skills/improve-review/SKILL.md   （Code Review 扫描，发现 SOLID/安全/质量/移除候选）
+ * - improve-analyze  → skills/improve-analyze/SKILL.md   （分析改进需求，合并用户问题与 review 结果）
  * - improve-execute  → skills/improve-execute/SKILL.md   （执行代码改进）
  * - improve-verify   → skills/improve-verify/SKILL.md    （验证改进效果）
  *
- * 循环控制由此编排层负责，符合 Tool Design 最佳实践
+ * 流程：review（始终执行）→ analyze → execute → verify（循环）
  */
 
 import { BaseAction } from '../core/base/BaseAction';
@@ -22,12 +23,14 @@ export interface ImproveCodeOptions extends WorkspaceOptions {
 
 export class ImproveCode extends BaseAction {
   // Skill 引用（Cursor CLI 会自动匹配 skills/ 目录下对应的 SKILL.md）
+  private static readonly REVIEW_COMMAND = '使用 improve-review 技能执行代码审查扫描'; // Skill: improve-review
   private static readonly ANALYZE_COMMAND = '使用 improve-analyze 技能分析改进需求'; // Skill: improve-analyze
   private static readonly EXECUTE_COMMAND = '使用 improve-execute 技能执行代码改进'; // Skill: improve-execute
   private static readonly VERIFY_COMMAND = '使用 improve-verify 技能验证改进效果'; // Skill: improve-verify
 
   // 文件路径（相对于 workDir）
   private static readonly IMPROVE_FILE = 'docs/code/ImproveCode.md';
+  private static readonly REVIEW_RESULT_FILE = 'docs/code/improveReviewResult.md';
   private static readonly ANALYZE_RESULT_FILE = 'docs/code/improveAnalyzeResult.md';
   private static readonly EXECUTE_RESULT_FILE = 'docs/code/improveExecuteResult.md';
   private static readonly VERIFY_RESULT_FILE = 'docs/code/improveVerifyResult.md';
@@ -100,22 +103,11 @@ export class ImproveCode extends BaseAction {
         };
       }
 
-      // 首次检查文件是否存在
-      let fileExists = await this.checkFileExists(improveFilePath);
-      if (!fileExists) {
-        logger.info('ImproveCode: No improvement file found, skipping', {
-          improveFilePath,
-        });
-        return {
-          content: `# 代码改进 - 已跳过\n\n未找到改进文件 \`docs/code/ImproveCode.md\`。\n\n这是正常现象，首次执行时不会运行。只有在 QA 测试发现问题后才会执行。\n\n## 工作流程：\n\n1. QA 测试识别 Bug 或改进机会\n2. 系统生成 \`docs/code/ImproveCode.md\` 文件，包含问题详情\n3. ImproveCode 读取文件并执行代码改进\n4. 改进成功后删除该文件\n5. 如果发现新问题，重复上述流程\n\n当前状态: ✅ 无需改进`,
-          data: {
-            type: 'skipped',
-            reason: 'no_improvement_file',
-            filePath: improveFilePath,
-            timestamp: new Date().toISOString(),
-          },
-        };
-      }
+      // ============================================================
+      // Phase 0: Code Review 扫描（始终执行，发现 SOLID/安全/质量/移除候选）
+      // ============================================================
+      const allOutputs: string[] = [];
+      await this.runReviewPhase(workDir, allOutputs);
 
       // ============================================================
       // 三阶段改进循环：analyze -> execute -> verify
@@ -123,20 +115,19 @@ export class ImproveCode extends BaseAction {
       const maxRetries = 10;
       let isCompleted = false;
       let retryCount = 0;
-      const allOutputs: string[] = [];
 
       logger.info('ImproveCode: Starting improvement loop', {
         cwd: workDir,
         maxRetries,
-        improveFilePath,
       });
 
+      let fileExists: boolean;
       while (!isCompleted && retryCount < maxRetries) {
         // 检查是否被取消
         this.checkCancellation();
         retryCount++;
 
-        // Phase 1: 分析改进需求
+        // Phase 1: 分析改进需求（合并 ImproveCode.md + improveReviewResult.md）
         const hasIssues = await this.runAnalyzePhase(workDir, retryCount, maxRetries, allOutputs);
         if (!hasIssues) {
           // 分析阶段判定无需改进，检查文件是否仍存在
@@ -205,11 +196,41 @@ export class ImproveCode extends BaseAction {
   }
 
   // ============================================================
+  // Phase 0: Code Review 扫描
+  // ============================================================
+
+  /**
+   * 执行 Code Review 阶段：扫描代码库，发现 SOLID/安全/质量/移除候选，输出 improveReviewResult.md
+   */
+  private async runReviewPhase(workDir: string, allOutputs: string[]): Promise<void> {
+    logger.info('ImproveCode: Phase 0 - Running improve-review skill (Code Review scan)');
+
+    const reviewResult = await this.runCLICommand(ImproveCode.REVIEW_COMMAND, workDir, {
+      timeout: 300000, // 5分钟超时
+      abortSignal: this.abortSignal,
+    });
+
+    const reviewOutput = reviewResult.output;
+    if (reviewResult.exitCode === 0) {
+      logger.info('ImproveCode: Review command completed', {
+        outputLength: reviewOutput.length,
+      });
+    } else {
+      logger.warn('ImproveCode: Review command failed', {
+        exitCode: reviewResult.exitCode,
+        stderr: reviewResult.stderr || '(empty)',
+      });
+    }
+
+    allOutputs.push(`=== Phase 0 - Code Review ===\n${reviewOutput}`);
+  }
+
+  // ============================================================
   // Phase 1: 分析改进需求
   // ============================================================
 
   /**
-   * 执行分析阶段：读取 ImproveCode.md，解析问题和优先级，输出分析结果
+   * 执行分析阶段：读取 ImproveCode.md + improveReviewResult.md，合并排序，输出分析结果
    * @returns true 如果有待解决的问题，false 如果无需改进
    */
   private async runAnalyzePhase(workDir: string, iteration: number, maxRetries: number, allOutputs: string[]): Promise<boolean> {
