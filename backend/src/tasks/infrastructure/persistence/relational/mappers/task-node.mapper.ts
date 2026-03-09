@@ -8,10 +8,9 @@ export class TaskNodeMapper {
     domainEntity.taskId = raw.taskId;
     domainEntity.nodeOrder = raw.nodeOrder;
     domainEntity.name = raw.name;
-    domainEntity.nodeType = raw.nodeType;
     domainEntity.input = raw.input;
     domainEntity.output = raw.output;
-    domainEntity.requiresApproval = raw.requiresApproval;
+    domainEntity.configJson = raw.configJson;
     domainEntity.status = raw.status;
     domainEntity.attempt = raw.attempt;
     domainEntity.errorCode = raw.errorCode;
@@ -37,10 +36,9 @@ export class TaskNodeMapper {
     persistenceEntity.taskId = domainEntity.taskId;
     persistenceEntity.nodeOrder = domainEntity.nodeOrder;
     persistenceEntity.name = domainEntity.name;
-    persistenceEntity.nodeType = domainEntity.nodeType;
     persistenceEntity.input = domainEntity.input;
     persistenceEntity.output = domainEntity.output;
-    persistenceEntity.requiresApproval = domainEntity.requiresApproval;
+    persistenceEntity.configJson = domainEntity.configJson;
     persistenceEntity.status = domainEntity.status;
     persistenceEntity.attempt = domainEntity.attempt;
     persistenceEntity.errorCode = domainEntity.errorCode;

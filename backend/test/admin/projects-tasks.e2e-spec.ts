@@ -70,13 +70,11 @@ describe('Projects and Tasks Module', () => {
             nodeOrder: 1,
             name: 'analyze',
             type: 'agent',
-            requiresApproval: false,
           },
           {
             nodeOrder: 2,
-            name: 'review',
-            type: 'manual',
-            requiresApproval: true,
+            name: 'implement',
+            type: 'agent',
           },
         ],
       })
@@ -90,7 +88,9 @@ describe('Projects and Tasks Module', () => {
       })
       .send({
         projectId: createdProject.id,
-        workflowTemplateId: createdTemplate.id,
+        configJson: {
+          workflowTemplateId: createdTemplate.id,
+        },
         title: 'e2e task',
         description: 'validate task flow',
         acceptanceCriteria: ['node1 done'],

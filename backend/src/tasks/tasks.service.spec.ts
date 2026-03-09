@@ -8,7 +8,6 @@ import { DataSource } from 'typeorm';
 import { TaskLogEventsService } from './task-log-events.service';
 import { TaskArtifactType } from './dto/task-artifact-type.enum';
 import { TaskMode } from './dto/task-mode.enum';
-import { TaskNodeType } from './dto/task-node-type.enum';
 import { TaskStatus } from './dto/task-status.enum';
 import { TasksService } from './tasks.service';
 
@@ -35,8 +34,7 @@ const createTask = () => ({
   gitBranch: 'feature/task-1',
   gitBaseBranch: 'main',
   gitWorktree: '/tmp/worktree-task-1',
-  cliToolId: null,
-  agentToolConfigId: null,
+  configJson: null,
   clientInputSnapshot: null,
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -57,23 +55,23 @@ const createNonAdminUser = () => ({
   exp: 9999999999,
 });
 
-const createNode = (nodeType: TaskNodeType) => ({
+const createNode = (overrides: Record<string, unknown> = {}) => ({
   id: 'node-1',
   taskId: 'task-1',
   nodeOrder: 1,
-  name: `${nodeType}-node`,
-  nodeType,
+  name: 'agent-node',
   input: null,
   output: null,
-  requiresApproval: false,
+  configJson: null,
   status: TaskStatus.inProgress,
   attempt: 0,
   createdAt: new Date(),
   updatedAt: new Date(),
+  ...overrides,
 });
 
 const createNodeWithStatus = (status: TaskStatus) => ({
-  ...createNode(TaskNodeType.agent),
+  ...createNode(),
   status,
 });
 
@@ -93,6 +91,7 @@ const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
     countQueuedTasksByProjectIds: jest.fn().mockResolvedValue({}),
     countStaleRunningTasks: jest.fn().mockResolvedValue(0),
     findOldestQueuedTaskCreatedAt: jest.fn().mockResolvedValue(null),
+    remove: jest.fn().mockResolvedValue(undefined),
   };
   const taskNodeRepository = {
     createMany: jest.fn(),
@@ -117,7 +116,7 @@ const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
     findByTaskId: jest.fn().mockResolvedValue([]),
   };
   const projectsService = {
-    assertCanAccessProject: jest.fn(),
+    assertProjectCapability: jest.fn(),
   };
   const workflowTemplatesService = {
     getTemplateForTask: jest.fn(),
@@ -137,7 +136,7 @@ const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
       gitWorktree: '/tmp/worktree-task-1',
       worktreePath: '/tmp/worktree-task-1',
     }),
-    cleanupRuntime: jest.fn(),
+    cleanupRuntime: jest.fn().mockResolvedValue({ cleaned: false }),
     collectGitDiffArtifact: jest.fn(),
     resolveAndValidateCreateWorktreePath: jest.fn(),
   };
@@ -183,6 +182,7 @@ const createTasksService = ({ runtimeRole = 'worker' } = {}) => {
     taskRuntimeService,
     notificationsService,
     projectsService,
+    workflowTemplatesService,
     agentRunnerService,
     projectRepository,
     dataSource,
@@ -201,7 +201,7 @@ describe('TasksService', () => {
     const currentUser = createCurrentUser();
     const project = createProject();
 
-    projectsService.assertCanAccessProject.mockResolvedValue(project);
+    projectsService.assertProjectCapability.mockResolvedValue(project);
     taskRuntimeService.resolveAndValidateCreateWorktreePath.mockResolvedValue(
       '/tmp/worktrees/task-1',
     );
@@ -210,8 +210,15 @@ describe('TasksService', () => {
       ...createTask(),
       mode: TaskMode.conversation,
       projectId: project.id,
+      gitBranch: 'feature/new-task',
       gitBaseBranch: 'develop',
       gitWorktree: 'task-1',
+    });
+    taskRuntimeService.ensureRuntime.mockResolvedValue({
+      gitBranch: 'feature/new-task',
+      gitBaseBranch: 'develop',
+      gitWorktree: 'task-1',
+      worktreePath: '/tmp/worktrees/task-1',
     });
 
     await service.create(
@@ -240,6 +247,15 @@ describe('TasksService', () => {
         gitWorktree: 'task-1',
       }),
     );
+    expect(taskRuntimeService.ensureRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'task-1',
+        gitBranch: 'feature/new-task',
+        gitBaseBranch: 'develop',
+        gitWorktree: 'task-1',
+      }),
+      project,
+    );
     expect(taskNodeRepository.createMany).toHaveBeenCalledTimes(1);
   });
 
@@ -249,7 +265,7 @@ describe('TasksService', () => {
     const currentUser = createCurrentUser();
     const project = createProject();
 
-    projectsService.assertCanAccessProject.mockResolvedValue(project);
+    projectsService.assertProjectCapability.mockResolvedValue(project);
     taskRuntimeService.resolveAndValidateCreateWorktreePath.mockRejectedValue(
       new Error('worktree path /tmp/outside is outside allowed root /tmp/in'),
     );
@@ -274,7 +290,7 @@ describe('TasksService', () => {
     const currentUser = createCurrentUser();
     const project = createProject();
 
-    projectsService.assertCanAccessProject.mockResolvedValue(project);
+    projectsService.assertProjectCapability.mockResolvedValue(project);
     taskRuntimeService.resolveAndValidateCreateWorktreePath.mockResolvedValue(
       '/tmp/worktrees/task-dup',
     );
@@ -297,19 +313,30 @@ describe('TasksService', () => {
   });
 
   it('should generate default git names when create payload does not provide them', async () => {
-    const { service, taskRepository, taskNodeRepository, projectsService } =
-      createTasksService() as any;
+    const {
+      service,
+      taskRepository,
+      taskNodeRepository,
+      projectsService,
+      taskRuntimeService,
+    } = createTasksService() as any;
     const currentUser = createCurrentUser();
     const project = createProject();
     jest.useFakeTimers().setSystemTime(new Date('2026-03-06T10:20:00Z'));
 
-    projectsService.assertCanAccessProject.mockResolvedValue(project);
+    projectsService.assertProjectCapability.mockResolvedValue(project);
     taskRepository.create.mockResolvedValue({
       ...createTask(),
       mode: TaskMode.conversation,
       gitBaseBranch: null,
       gitBranch: 'feature/20260306-001',
       gitWorktree: 'wk-20260306-001',
+    });
+    taskRuntimeService.ensureRuntime.mockResolvedValue({
+      gitBranch: 'feature/20260306-001',
+      gitBaseBranch: null,
+      gitWorktree: 'wk-20260306-001',
+      worktreePath: '/tmp/worktrees/wk-20260306-001',
     });
 
     await service.create(
@@ -337,13 +364,116 @@ describe('TasksService', () => {
     jest.useRealTimers();
   });
 
-  it('should dispatch manual node to executeManualNode', async () => {
+  it('should create workflow task from legacy top-level workflowTemplateId', async () => {
+    const {
+      service,
+      taskRepository,
+      taskNodeRepository,
+      projectsService,
+      workflowTemplatesService,
+      taskRuntimeService,
+    } = createTasksService() as any;
+    const currentUser = createCurrentUser();
+    const project = createProject();
+
+    projectsService.assertProjectCapability.mockResolvedValue(project);
+    workflowTemplatesService.getTemplateForTask.mockResolvedValue({
+      id: 'wf-1',
+      nodesJson: [
+        { nodeOrder: 2, name: 'second-node', type: 'agent', input: null },
+        { nodeOrder: 1, name: 'first-node', type: 'agent', input: null },
+      ],
+    });
+    taskRepository.create.mockResolvedValue({
+      ...createTask(),
+      mode: TaskMode.workflow,
+      configJson: {
+        workflowTemplateId: 'wf-1',
+      },
+    });
+
+    await service.create(
+      {
+        projectId: project.id,
+        mode: TaskMode.workflow,
+        workflowTemplateId: 'wf-1',
+        title: 'Workflow task',
+      } as never,
+      currentUser as never,
+    );
+
+    expect(workflowTemplatesService.getTemplateForTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        templateId: 'wf-1',
+        projectId: project.id,
+      }),
+    );
+    expect(taskRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: TaskMode.workflow,
+        configJson: expect.objectContaining({
+          workflowTemplateId: 'wf-1',
+        }),
+      }),
+    );
+    expect(taskNodeRepository.createMany).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ nodeOrder: 1, name: 'first-node' }),
+        expect.objectContaining({ nodeOrder: 2, name: 'second-node' }),
+      ]),
+    );
+    expect(taskRuntimeService.ensureRuntime).toHaveBeenCalledTimes(1);
+  });
+
+  it('should cleanup created task when runtime initialization fails during create', async () => {
+    const {
+      service,
+      taskRepository,
+      taskNodeRepository,
+      projectsService,
+      taskRuntimeService,
+    } = createTasksService() as any;
+    const currentUser = createCurrentUser();
+    const project = createProject();
+    const createdTask = {
+      ...createTask(),
+      projectId: project.id,
+      gitBranch: 'feature/20260306-001',
+      gitBaseBranch: null,
+      gitWorktree: 'wk-20260306-001',
+    };
+
+    projectsService.assertProjectCapability.mockResolvedValue(project);
+    taskRepository.create.mockResolvedValue(createdTask);
+    taskRuntimeService.ensureRuntime.mockRejectedValue(
+      new Error('git clone failed'),
+    );
+
+    await expect(
+      service.create(
+        {
+          projectId: project.id,
+          title: 'Create task',
+        } as never,
+        currentUser as never,
+      ),
+    ).rejects.toThrow(ConflictException);
+
+    expect(taskRuntimeService.cleanupRuntime).toHaveBeenCalledWith(
+      createdTask,
+      project,
+    );
+    expect(taskRepository.remove).toHaveBeenCalledWith(createdTask.id);
+    expect(taskNodeRepository.createMany).not.toHaveBeenCalled();
+  });
+
+  it('should dispatch runnable node to executeAgentNode', async () => {
     const { service, taskRepository, taskNodeRepository } =
       createTasksService();
     const serviceAny = service as any;
 
     const task = createTask();
-    const node = createNode(TaskNodeType.manual);
+    const node = createNode();
     const project = createProject();
 
     taskRepository.findById.mockResolvedValue(task);
@@ -351,9 +481,6 @@ describe('TasksService', () => {
       .mockResolvedValueOnce(node)
       .mockResolvedValueOnce(node);
 
-    const executeManualNodeSpy = jest
-      .spyOn(serviceAny, 'executeManualNode')
-      .mockResolvedValue(undefined);
     const executeAgentNodeSpy = jest
       .spyOn(serviceAny, 'executeAgentNode')
       .mockResolvedValue(undefined);
@@ -365,37 +492,7 @@ describe('TasksService', () => {
 
     await serviceAny.runNode(task.id, node.id, project);
 
-    expect(executeManualNodeSpy).toHaveBeenCalledTimes(1);
-    expect(executeAgentNodeSpy).not.toHaveBeenCalled();
-  });
-
-  it('should move manual node to in_review and append warning log', async () => {
-    const { service, taskNodeRepository, taskLogRepository } =
-      createTasksService();
-    const serviceAny = service as any;
-    const node = createNode(TaskNodeType.manual);
-
-    await serviceAny.executeManualNode({
-      taskId: 'task-1',
-      nodeId: node.id,
-      node,
-    });
-
-    expect(taskNodeRepository.update).toHaveBeenCalledWith(
-      node.id,
-      expect.objectContaining({
-        status: TaskStatus.inReview,
-        errorCode: null,
-        errorMessage: null,
-      }),
-    );
-    expect(taskLogRepository.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        taskId: 'task-1',
-        taskNodeId: node.id,
-        level: 'warn',
-      }),
-    );
+    expect(executeAgentNodeSpy).toHaveBeenCalledTimes(1);
   });
 
   it('should mark agent node done and create artifact when execution succeeds', async () => {
@@ -403,7 +500,7 @@ describe('TasksService', () => {
       createTasksService();
     const serviceAny = service as any;
     const task = createTask();
-    const node = createNode(TaskNodeType.agent);
+    const node = createNode();
     const project = createProject();
 
     agentRunnerService.executeAgentNode.mockResolvedValue({
@@ -443,58 +540,12 @@ describe('TasksService', () => {
     expect(artifactSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('should mark agent node in_review without artifact when approval is required', async () => {
-    const { service, taskNodeRepository, agentRunnerService } =
-      createTasksService();
-    const serviceAny = service as any;
-    const task = createTask();
-    const node = {
-      ...createNode(TaskNodeType.agent),
-      requiresApproval: true,
-    };
-    const project = createProject();
-
-    agentRunnerService.executeAgentNode.mockResolvedValue({
-      success: true,
-      timedOut: false,
-      exitCode: 0,
-      signal: null,
-      command: 'codex',
-      args: ['exec', '-'],
-      cwd: '/tmp/worktree-task-1',
-      durationMs: 50,
-      stdout: 'agent output',
-      stderr: '',
-      prompt: 'prompt',
-    });
-
-    const artifactSpy = jest
-      .spyOn(serviceAny, 'createNodeExecutionArtifact')
-      .mockResolvedValue(undefined);
-
-    await serviceAny.executeAgentNode({
-      taskId: task.id,
-      nodeId: node.id,
-      task,
-      node,
-      project,
-    });
-
-    expect(taskNodeRepository.update).toHaveBeenCalledWith(
-      node.id,
-      expect.objectContaining({
-        status: TaskStatus.inReview,
-      }),
-    );
-    expect(artifactSpy).not.toHaveBeenCalled();
-  });
-
   it('should mark agent node in_review when execution fails', async () => {
     const { service, taskNodeRepository, agentRunnerService } =
       createTasksService();
     const serviceAny = service as any;
     const task = createTask();
-    const node = createNode(TaskNodeType.agent);
+    const node = createNode();
     const project = createProject();
 
     agentRunnerService.executeAgentNode.mockResolvedValue({
@@ -535,7 +586,7 @@ describe('TasksService', () => {
       createTasksService();
     const serviceAny = service as any;
     const task = createTask();
-    const node = createNode(TaskNodeType.agent);
+    const node = createNode();
     const diffArtifactName = 'task-task-1-changes.diff';
 
     taskRuntimeService.collectGitDiffArtifact.mockResolvedValue({
@@ -570,7 +621,7 @@ describe('TasksService', () => {
       createTasksService();
     const serviceAny = service as any;
     const task = createTask();
-    const node = createNode(TaskNodeType.agent);
+    const node = createNode();
     const diffArtifactName = 'task-task-1-changes.diff';
 
     taskRuntimeService.collectGitDiffArtifact.mockResolvedValue({
@@ -597,42 +648,12 @@ describe('TasksService', () => {
     );
   });
 
-  it('should finalize node as unsupported type when runNode receives unknown node type', async () => {
-    const { service, taskRepository, taskNodeRepository } =
-      createTasksService();
-    const serviceAny = service as any;
-    const task = createTask();
-    const node = {
-      ...createNode(TaskNodeType.agent),
-      nodeType: 'unknown-node-type' as TaskNodeType,
-    };
-    const project = createProject();
-
-    taskRepository.findById.mockResolvedValue(task);
-    taskNodeRepository.findById.mockResolvedValue(node);
-    jest.spyOn(serviceAny, 'delay').mockResolvedValue(undefined);
-    jest.spyOn(serviceAny, 'appendLog').mockResolvedValue({});
-    jest
-      .spyOn(serviceAny, 'recalculateTaskStatus')
-      .mockResolvedValue(undefined);
-
-    await serviceAny.runNode(task.id, node.id, project);
-
-    expect(taskNodeRepository.update).toHaveBeenCalledWith(
-      node.id,
-      expect.objectContaining({
-        status: TaskStatus.inReview,
-        errorCode: 'UNSUPPORTED_NODE_TYPE',
-      }),
-    );
-  });
-
   it('should finalize node as unknown error when node executor throws', async () => {
     const { service, taskRepository, taskNodeRepository } =
       createTasksService();
     const serviceAny = service as any;
     const task = createTask();
-    const node = createNode(TaskNodeType.agent);
+    const node = createNode();
     const project = createProject();
 
     taskRepository.findById.mockResolvedValue(task);
@@ -823,7 +844,7 @@ describe('TasksService', () => {
     const task = createTask();
     const project = createProject();
     const todoNode = {
-      ...createNode(TaskNodeType.agent),
+      ...createNode(),
       status: TaskStatus.inProgress,
       attempt: 2,
     };
@@ -835,7 +856,7 @@ describe('TasksService', () => {
     taskRepository.countRunningTasksByProjectIds.mockResolvedValue({
       [task.projectId]: 0,
     });
-    projectsService.assertCanAccessProject.mockResolvedValue(project);
+    projectsService.assertProjectCapability.mockResolvedValue(project);
     projectRepository.findAllWithPagination.mockResolvedValue([project]);
     taskNodeRepository.findInProgressByTaskId.mockResolvedValue(null);
     taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValue({
@@ -885,10 +906,10 @@ describe('TasksService', () => {
     const currentUser = createCurrentUser();
 
     taskRepository.findById.mockResolvedValue(task);
-    projectsService.assertCanAccessProject.mockResolvedValue(project);
+    projectsService.assertProjectCapability.mockResolvedValue(project);
     taskNodeRepository.findInProgressByTaskId.mockResolvedValue(null);
     taskNodeRepository.findFirstByTaskIdAndStatus.mockResolvedValue({
-      ...createNode(TaskNodeType.agent),
+      ...createNode(),
       status: TaskStatus.todo,
     });
     taskNodeRepository.findByTaskId.mockResolvedValue([
@@ -919,10 +940,8 @@ describe('TasksService', () => {
     const currentUser = createCurrentUser();
 
     taskRepository.findById.mockResolvedValue(task);
-    projectsService.assertCanAccessProject.mockResolvedValue(project);
-    taskNodeRepository.findInProgressByTaskId.mockResolvedValue(
-      createNode(TaskNodeType.agent),
-    );
+    projectsService.assertProjectCapability.mockResolvedValue(project);
+    taskNodeRepository.findInProgressByTaskId.mockResolvedValue(createNode());
     jest
       .spyOn(serviceAny, 'prepareTaskRuntime')
       .mockResolvedValue({ task, project });
@@ -944,7 +963,7 @@ describe('TasksService', () => {
     const task = createTask();
     const project = createProject();
     const reviewNode = {
-      ...createNode(TaskNodeType.agent),
+      ...createNode(),
       status: TaskStatus.inReview,
       attempt: 2,
     };
@@ -956,7 +975,7 @@ describe('TasksService', () => {
     taskRepository.countRunningTasksByProjectIds.mockResolvedValue({
       [task.projectId]: 0,
     });
-    projectsService.assertCanAccessProject.mockResolvedValue(project);
+    projectsService.assertProjectCapability.mockResolvedValue(project);
     projectRepository.findAllWithPagination.mockResolvedValue([project]);
     taskNodeRepository.findInProgressByTaskId.mockResolvedValue(null);
     taskNodeRepository.findById.mockResolvedValue(reviewNode);
@@ -1006,13 +1025,13 @@ describe('TasksService', () => {
     const task = createTask();
     const project = createProject();
     const doneNode = {
-      ...createNode(TaskNodeType.agent),
+      ...createNode(),
       status: TaskStatus.done,
     };
     const currentUser = createCurrentUser();
 
     taskRepository.findById.mockResolvedValue(task);
-    projectsService.assertCanAccessProject.mockResolvedValue(project);
+    projectsService.assertProjectCapability.mockResolvedValue(project);
     taskNodeRepository.findInProgressByTaskId.mockResolvedValue(null);
     taskNodeRepository.findById.mockResolvedValue(doneNode);
     jest
@@ -1036,14 +1055,14 @@ describe('TasksService', () => {
     const serviceAny = service as any;
     const task = createTask();
     const reviewNode = {
-      ...createNode(TaskNodeType.manual),
+      ...createNode(),
       status: TaskStatus.inReview,
       finishedAt: null,
     };
     const currentUser = createCurrentUser();
 
     taskRepository.findById.mockResolvedValue(task);
-    projectsService.assertCanAccessProject.mockResolvedValue(createProject());
+    projectsService.assertProjectCapability.mockResolvedValue(createProject());
     taskNodeRepository.findById.mockResolvedValue(reviewNode);
     taskNodeRepository.findByTaskId.mockResolvedValue([reviewNode]);
     jest
@@ -1074,13 +1093,13 @@ describe('TasksService', () => {
     const serviceAny = service as any;
     const task = createTask();
     const runningNode = {
-      ...createNode(TaskNodeType.agent),
+      ...createNode(),
       status: TaskStatus.inProgress,
     };
     const currentUser = createCurrentUser();
 
     taskRepository.findById.mockResolvedValue(task);
-    projectsService.assertCanAccessProject.mockResolvedValue(createProject());
+    projectsService.assertProjectCapability.mockResolvedValue(createProject());
     taskNodeRepository.findInProgressByTaskId.mockResolvedValue(runningNode);
     taskNodeRepository.findByTaskId.mockResolvedValue([runningNode]);
     jest
@@ -1114,7 +1133,7 @@ describe('TasksService', () => {
       ...task,
       title: 'Updated title',
     });
-    projectsService.assertCanAccessProject.mockResolvedValue(createProject());
+    projectsService.assertProjectCapability.mockResolvedValue(createProject());
     taskRuntimeService.cleanupRuntime.mockResolvedValue({
       cleaned: true,
     });
@@ -1152,7 +1171,7 @@ describe('TasksService', () => {
     const currentUser = createCurrentUser();
 
     taskRepository.findById.mockResolvedValue(task);
-    projectsService.assertCanAccessProject.mockResolvedValue(createProject());
+    projectsService.assertProjectCapability.mockResolvedValue(createProject());
     taskArtifactRepository.create.mockResolvedValue({
       id: 'artifact-1',
       taskId: task.id,
@@ -1191,9 +1210,9 @@ describe('TasksService', () => {
     const currentUser = createCurrentUser();
 
     taskRepository.findById.mockResolvedValue(task);
-    projectsService.assertCanAccessProject.mockResolvedValue(createProject());
+    projectsService.assertProjectCapability.mockResolvedValue(createProject());
     taskNodeRepository.findById.mockResolvedValue({
-      ...createNode(TaskNodeType.agent),
+      ...createNode(),
       taskId: 'another-task-id',
     });
 
@@ -1232,7 +1251,7 @@ describe('TasksService', () => {
     const unsubscribe = jest.fn();
 
     taskRepository.findById.mockResolvedValue(task);
-    projectsService.assertCanAccessProject.mockResolvedValue(createProject());
+    projectsService.assertProjectCapability.mockResolvedValue(createProject());
     taskLogRepository.findByTaskIdSince
       .mockResolvedValueOnce(history)
       .mockResolvedValue([]);
@@ -1304,7 +1323,7 @@ describe('TasksService', () => {
     ];
 
     taskRepository.findById.mockResolvedValue(task);
-    projectsService.assertCanAccessProject.mockResolvedValue(createProject());
+    projectsService.assertProjectCapability.mockResolvedValue(createProject());
     taskArtifactRepository.findByTaskId.mockResolvedValue(artifacts);
 
     const result = await service.listArtifacts(task.id, currentUser as never);
@@ -1329,7 +1348,7 @@ describe('TasksService', () => {
     const since = new Date().toISOString();
 
     taskRepository.findById.mockResolvedValue(task);
-    projectsService.assertCanAccessProject.mockResolvedValue(createProject());
+    projectsService.assertProjectCapability.mockResolvedValue(createProject());
     taskLogRepository.findByTaskIdSince.mockResolvedValue(logs);
 
     const result = await service.listLogs(
@@ -1366,7 +1385,7 @@ describe('TasksService', () => {
     const currentUser = createCurrentUser();
 
     taskRepository.findById.mockResolvedValue(task);
-    projectsService.assertCanAccessProject.mockResolvedValue(createProject());
+    projectsService.assertProjectCapability.mockResolvedValue(createProject());
     taskRuntimeService.cleanupRuntime.mockResolvedValue({
       cleaned: false,
       errorMessage: 'cleanup failed',
@@ -1399,7 +1418,7 @@ describe('TasksService', () => {
       ...task,
       title: 'Updated title',
     });
-    projectsService.assertCanAccessProject.mockResolvedValue(createProject());
+    projectsService.assertProjectCapability.mockResolvedValue(createProject());
     taskNodeRepository.findByTaskId.mockResolvedValue([]);
 
     const result = await service.update(
@@ -1424,6 +1443,56 @@ describe('TasksService', () => {
     );
   });
 
+  it('should merge legacy top-level task config fields on update', async () => {
+    const { service, taskRepository, projectsService, taskNodeRepository } =
+      createTasksService() as any;
+    const task = {
+      ...createTask(),
+      configJson: {
+        cliToolId: 'codex',
+      },
+    };
+    const currentUser = createCurrentUser();
+
+    taskRepository.findById.mockResolvedValue(task);
+    taskRepository.update.mockResolvedValue({
+      ...task,
+      configJson: {
+        cliToolId: 'codex',
+        agentToolConfigId: 'cfg-2',
+      },
+    });
+    projectsService.assertProjectCapability.mockResolvedValue(createProject());
+    taskNodeRepository.findByTaskId.mockResolvedValue([createNode()]);
+
+    await service.update(
+      task.id,
+      {
+        agentToolConfigId: 'cfg-2',
+      } as never,
+      currentUser as never,
+    );
+
+    expect(taskRepository.update).toHaveBeenCalledWith(
+      task.id,
+      expect.objectContaining({
+        configJson: {
+          cliToolId: 'codex',
+          agentToolConfigId: 'cfg-2',
+        },
+      }),
+    );
+    expect(taskNodeRepository.update).toHaveBeenCalledWith(
+      'node-1',
+      expect.objectContaining({
+        configJson: {
+          cliToolId: 'codex',
+          agentToolConfigId: 'cfg-2',
+        },
+      }),
+    );
+  });
+
   it('should queue reply by moving in_review node back to todo', async () => {
     const {
       service,
@@ -1441,7 +1510,7 @@ describe('TasksService', () => {
 
     taskRepository.findById.mockResolvedValue(task);
     taskRepository.update.mockResolvedValue(task);
-    projectsService.assertCanAccessProject.mockResolvedValue(createProject());
+    projectsService.assertProjectCapability.mockResolvedValue(createProject());
     taskRuntimeService.ensureRuntime.mockResolvedValue({
       gitBranch: task.gitBranch,
       gitBaseBranch: task.gitBaseBranch,
@@ -1483,7 +1552,7 @@ describe('TasksService', () => {
     const currentUser = createCurrentUser();
 
     taskRepository.findById.mockResolvedValue(task);
-    projectsService.assertCanAccessProject.mockResolvedValue(createProject());
+    projectsService.assertProjectCapability.mockResolvedValue(createProject());
     taskLogRepository.findByTaskIdSince.mockResolvedValue([
       {
         id: 'log-1',

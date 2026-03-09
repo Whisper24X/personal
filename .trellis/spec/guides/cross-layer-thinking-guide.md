@@ -68,6 +68,16 @@ For each boundary:
 
 **Good**: Each layer only knows its neighbors
 
+### Mistake 4: Read Path Coupled to Slow Sync
+
+**Bad**: A read-only feature (for example project docs browsing) always performs remote repository sync before serving local cached content.
+
+**Good**: Separate "repository exists locally" from "repository is freshly synced". Read paths should prefer local cache and only do remote sync when the product explicitly needs freshness.
+
+Typical example:
+- Knowledge-base `GET /projects/:id/docs` should read the local `docs/` tree directly when the project repository has already been prepared.
+- Remote `git fetch` should be triggered by explicit sync actions, first-time clone, or workflows that truly require latest remote state.
+
 ---
 
 ## Checklist for Cross-Layer Features
@@ -82,6 +92,7 @@ After implementation:
 - [ ] Tested with edge cases (null, empty, invalid)
 - [ ] Verified error handling at each boundary
 - [ ] Checked data survives round-trip
+- [ ] Verified read paths are not accidentally blocked by remote sync or other slow side effects
 
 ---
 

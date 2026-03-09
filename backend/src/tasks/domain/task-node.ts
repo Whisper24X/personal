@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { TaskNodeType } from '../dto/task-node-type.enum';
 import { TaskStatus } from '../dto/task-status.enum';
+import { TaskNodeConfig } from '../types/task-config.type';
 
 export class TaskNode {
   @ApiProperty({ type: String })
@@ -15,17 +15,19 @@ export class TaskNode {
   @ApiProperty({ type: String })
   name: string;
 
-  @ApiProperty({ enum: TaskNodeType, enumName: 'TaskNodeType' })
-  nodeType: TaskNodeType;
-
   @ApiProperty({ type: Object, required: false, nullable: true })
   input?: Record<string, unknown> | null;
 
   @ApiProperty({ type: Object, required: false, nullable: true })
   output?: Record<string, unknown> | null;
 
-  @ApiProperty({ type: Boolean, default: false })
-  requiresApproval: boolean;
+  @ApiProperty({
+    type: Object,
+    required: false,
+    nullable: true,
+    description: 'Node execution configuration',
+  })
+  configJson?: TaskNodeConfig | null;
 
   @ApiProperty({ enum: TaskStatus, enumName: 'TaskStatus' })
   status: TaskStatus;

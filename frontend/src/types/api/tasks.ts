@@ -175,15 +175,17 @@ export type TaskTerminalEvent = {
 
 export type CreateTaskPayload = {
   projectId: string
-  workflowTemplateId?: string
   mode?: TaskMode
   title: string
   prompt?: string
   gitBranch?: string
   gitBaseBranch?: string
   gitWorktree?: string
-  cliToolId?: string
-  agentToolConfigId?: string
+  configJson?: {
+    workflowTemplateId?: string
+    cliToolId?: string
+    agentToolConfigId?: string
+  }
   clientInputSnapshot?: Record<string, unknown>
 }
 
@@ -193,8 +195,11 @@ export type UpdateTaskPayload = {
   gitBranch?: string
   gitBaseBranch?: string
   gitWorktree?: string
-  cliToolId?: string
-  agentToolConfigId?: string
+  configJson?: {
+    workflowTemplateId?: string
+    cliToolId?: string
+    agentToolConfigId?: string
+  }
   clientInputSnapshot?: Record<string, unknown>
 }
 

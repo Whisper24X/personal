@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { TaskMode } from '../dto/task-mode.enum';
 import { TaskStatus } from '../dto/task-status.enum';
+import { TaskConfig } from '../types/task-config.type';
 
 export class Task {
   @ApiProperty({ type: String })
@@ -11,9 +12,6 @@ export class Task {
 
   @ApiProperty({ type: String })
   businessLineId: string;
-
-  @ApiProperty({ type: String, nullable: true, required: false })
-  workflowTemplateId?: string | null;
 
   @ApiProperty({ enum: TaskMode, enumName: 'TaskMode' })
   mode: TaskMode;
@@ -42,8 +40,13 @@ export class Task {
   })
   gitWorktree?: string | null;
 
-  @ApiProperty({ type: String, required: false, nullable: true })
-  cliToolId?: string | null;
+  @ApiProperty({
+    type: Object,
+    required: false,
+    nullable: true,
+    description: 'Task execution configuration',
+  })
+  configJson?: TaskConfig | null;
 
   @ApiProperty({
     type: Object,
@@ -52,9 +55,6 @@ export class Task {
     description: 'User input snapshot from create/update payload',
   })
   clientInputSnapshot?: Record<string, unknown> | null;
-
-  @ApiProperty({ type: String, required: false, nullable: true })
-  agentToolConfigId?: string | null;
 
   @ApiProperty({ type: String, required: false, nullable: true })
   createdBy?: string | null;

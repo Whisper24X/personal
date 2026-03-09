@@ -6,7 +6,6 @@ import { Task } from './domain/task';
 import { TaskNode } from './domain/task-node';
 import { AgentRunnerService } from './agent-runner.service';
 import { TaskMode } from './dto/task-mode.enum';
-import { TaskNodeType } from './dto/task-node-type.enum';
 import { TaskStatus } from './dto/task-status.enum';
 
 const worktreeRoot = path.resolve(
@@ -40,8 +39,7 @@ const createTask = (overrides: Partial<Task> = {}): Task => ({
   gitBranch: 'feature/task-1',
   gitBaseBranch: 'main',
   gitWorktree: path.join(worktreeRoot, 'task-1'),
-  cliToolId: null,
-  agentToolConfigId: null,
+  configJson: null,
   clientInputSnapshot: null,
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -54,12 +52,11 @@ const createNode = (): TaskNode => ({
   taskId: 'task-1',
   nodeOrder: 1,
   name: 'agent node',
-  nodeType: TaskNodeType.agent,
   input: {
     prompt: 'Run task',
   },
   output: null,
-  requiresApproval: false,
+  configJson: null,
   status: TaskStatus.todo,
   attempt: 0,
   createdAt: new Date(),
@@ -161,7 +158,7 @@ describe('AgentRunnerService', () => {
     const result = await serviceAny.resolveRunnerConfig(
       project,
       createTask({
-        agentToolConfigId: 'cfg-explicit',
+        configJson: { agentToolConfigId: 'cfg-explicit' },
       }),
       createNode(),
     );

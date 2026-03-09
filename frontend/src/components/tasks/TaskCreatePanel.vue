@@ -399,12 +399,18 @@ const createTask = async () => {
     const task = await tasksApi.create({
       projectId: projectIdForSubmit,
       mode: createForm.mode,
-      workflowTemplateId: createForm.workflowTemplateId || undefined,
       title: createForm.title.trim(),
       prompt: createForm.prompt.trim(),
       gitBaseBranch: project?.defaultBranch?.trim() || undefined,
-      cliToolId: createForm.mode === 'conversation' ? createForm.cliToolId : undefined,
-      agentToolConfigId: createForm.mode === 'conversation' ? createForm.agentToolConfigId : undefined,
+      configJson:
+        createForm.mode === 'workflow'
+          ? {
+              workflowTemplateId: createForm.workflowTemplateId || undefined,
+            }
+          : {
+              cliToolId: createForm.cliToolId || undefined,
+              agentToolConfigId: createForm.agentToolConfigId || undefined,
+            },
       clientInputSnapshot,
     })
 

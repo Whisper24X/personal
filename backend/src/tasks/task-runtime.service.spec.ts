@@ -33,8 +33,7 @@ const createTask = (overrides: Partial<Task> = {}): Task => ({
   gitBaseBranch: 'main',
   gitWorktree: null,
   prompt: null,
-  cliToolId: null,
-  agentToolConfigId: null,
+  configJson: null,
   clientInputSnapshot: null,
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -78,8 +77,15 @@ const initializeRepository = async (): Promise<string> => {
 describe('TaskRuntimeService', () => {
   const service = new TaskRuntimeService();
   const createdDirectories: string[] = [];
+  const originalGitRuntimeEnabled = process.env.AINATIVE_GIT_RUNTIME_ENABLED;
 
   afterEach(async () => {
+    if (originalGitRuntimeEnabled === undefined) {
+      delete process.env.AINATIVE_GIT_RUNTIME_ENABLED;
+    } else {
+      process.env.AINATIVE_GIT_RUNTIME_ENABLED = originalGitRuntimeEnabled;
+    }
+
     await Promise.all(
       createdDirectories
         .splice(0)
@@ -183,6 +189,18 @@ describe('TaskRuntimeService', () => {
     expect((service as any).resolveGitWorktreePath(task, project)).toBe(
       path.join(expectedWorktreeBase, `wk-${task.id}`),
     );
+  });
+
+  it('should enable git runtime by default when project and env are unset', () => {
+    delete process.env.AINATIVE_GIT_RUNTIME_ENABLED;
+
+    expect((service as any).isGitRuntimeEnabled(createProject())).toBe(true);
+  });
+
+  it('should allow env to explicitly disable git runtime', () => {
+    process.env.AINATIVE_GIT_RUNTIME_ENABLED = 'false';
+
+    expect((service as any).isGitRuntimeEnabled(createProject())).toBe(false);
   });
 
   it('should keep explicit repo/worktree path overrides', () => {

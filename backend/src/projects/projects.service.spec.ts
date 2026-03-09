@@ -34,6 +34,7 @@ const createProject = (): Project => ({
 
 const createProjectsService = () => {
   const projectRepository = {
+    findById: jest.fn(),
     findByBusinessLineIdAndName: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
@@ -55,6 +56,21 @@ const createProjectsService = () => {
   const taskRepository = {
     bulkUpdateBusinessLineIdByProjectId: jest.fn(),
   };
+  const projectCustomRoleRepository = {
+    findAllByBusinessLineId: jest.fn().mockResolvedValue([]),
+    create: jest.fn().mockImplementation(async (payload) => ({
+      id: `role-${payload.name}`,
+      ...payload,
+    })),
+    update: jest.fn(),
+    remove: jest.fn(),
+  };
+  const accessService = {
+    assertProjectCapability: jest.fn(),
+    assertBusinessLineCapability: jest.fn(),
+    hasBusinessLineCapability: jest.fn(),
+    hasProjectCapability: jest.fn(),
+  };
 
   const service = new ProjectsService(
     projectRepository as never,
@@ -63,6 +79,8 @@ const createProjectsService = () => {
     businessLineMemberRepository as never,
     usersService as never,
     taskRepository as never,
+    projectCustomRoleRepository as never,
+    accessService as never,
   );
 
   return {
@@ -72,6 +90,8 @@ const createProjectsService = () => {
     businessLineRepository,
     businessLineMemberRepository,
     taskRepository,
+    projectCustomRoleRepository,
+    accessService,
   };
 };
 
@@ -177,6 +197,52 @@ describe('ProjectsService', () => {
     expect(projectMemberRepository.create).not.toHaveBeenCalled();
   });
 
+  it('should list docs without forcing remote sync', async () => {
+    const { service } = createProjectsService();
+    const currentUser = createCurrentUser();
+
+    const ensureRepoReadySpy = jest
+      .spyOn(service, 'ensureProjectRepositoryReady')
+      .mockResolvedValue({
+        project: createProject(),
+        repositoryRoot: '/tmp/ainative-project-repo',
+      } as never);
+    jest.spyOn(service as any, 'pathExists').mockResolvedValue(false);
+
+    const result = await service.listDocs('project-1', currentUser);
+
+    expect(result).toEqual([]);
+    expect(ensureRepoReadySpy).toHaveBeenCalledWith('project-1', currentUser, {
+      syncRemote: false,
+    });
+  });
+
+  it('should forward explicit repository sync options', async () => {
+    const { service } = createProjectsService();
+    const serviceAny = service as any;
+    const currentUser = createCurrentUser();
+    const project = createProject();
+
+    jest.spyOn(serviceAny, 'ensureCanAccessProject').mockResolvedValue(project);
+    const ensureRepoSpy = jest
+      .spyOn(serviceAny, 'ensureProjectRepository')
+      .mockResolvedValue('/tmp/ainative-project-repo');
+
+    const result = await service.ensureProjectRepositoryReady(
+      project.id,
+      currentUser,
+      {
+        syncRemote: false,
+      },
+    );
+
+    expect(result).toEqual({
+      project,
+      repositoryRoot: '/tmp/ainative-project-repo',
+    });
+    expect(ensureRepoSpy).toHaveBeenCalledWith(project, { syncRemote: false });
+  });
+
   it('should inspect repository and prioritize master as recommended default branch', async () => {
     const { service, businessLineRepository } = createProjectsService();
     const serviceAny = service as any;
@@ -237,23 +303,6 @@ describe('ProjectsService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('should reject inspect when business line does not exist', async () => {
-    const { service, businessLineRepository } = createProjectsService();
-    const currentUser = createCurrentUser();
-
-    businessLineRepository.findById.mockResolvedValue(null);
-
-    await expect(
-      service.inspectRepository(
-        {
-          businessLineId: 'business-line-1',
-          gitUrl: 'git@gitlab.yc345.tv:frontend/ainative-workspace.git',
-        },
-        currentUser,
-      ),
-    ).rejects.toBeInstanceOf(NotFoundException);
-  });
-
   it('should sync task business line snapshot after project business line changes', async () => {
     const { service, projectRepository, taskRepository } =
       createProjectsService();
@@ -266,7 +315,7 @@ describe('ProjectsService', () => {
     };
 
     jest
-      .spyOn(serviceAny, 'ensureCanManageProject')
+      .spyOn(serviceAny, 'ensureCanUpdateProjectItem')
       .mockResolvedValue(currentProject);
     jest
       .spyOn(serviceAny, 'ensureCanManageBusinessLine')

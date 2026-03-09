@@ -5,7 +5,6 @@ export type WorkflowTemplateNode = {
   nodeOrder: number;
   name: string;
   type: string;
-  requiresApproval?: boolean;
   input?: Record<string, unknown> | null;
 };
 

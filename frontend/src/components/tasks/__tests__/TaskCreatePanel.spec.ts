@@ -45,6 +45,14 @@ vi.mock('@/hooks', () => ({
   }),
 }))
 
+vi.mock('@/stores/modules/access', () => ({
+  useAccessStore: () => ({
+    hasCapability: () => true,
+    loadContext: vi.fn().mockResolvedValue(undefined),
+    clear: vi.fn(),
+  }),
+}))
+
 vi.mock('@/api/tasks', () => ({
   tasksApi,
 }))
@@ -121,7 +129,7 @@ describe('TaskCreatePanel', () => {
     expect(wrapper.text()).not.toContain('收起高级参数')
   })
 
-  it('should create conversation task with top-level cli config fields', async () => {
+  it('should create conversation task with configJson cli config fields', async () => {
     const wrapper = mount(TaskCreatePanel, {
       props: {
         projectId: 'project-1',
@@ -141,8 +149,11 @@ describe('TaskCreatePanel', () => {
     expect(payload.projectId).toBe('project-1')
     expect(payload.mode).toBe('conversation')
     expect(payload.gitBaseBranch).toBe('main')
-    expect(payload.cliToolId).toBe('codex')
-    expect(payload.agentToolConfigId).toBe('cfg-1')
+
+    expect(payload.configJson).toEqual({
+      cliToolId: 'codex',
+      agentToolConfigId: 'cfg-1',
+    })
 
     const clientInputSnapshot = payload.clientInputSnapshot as Record<string, unknown>
     expect(clientInputSnapshot).toEqual(

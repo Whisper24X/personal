@@ -31,10 +31,6 @@ export class TaskEntity extends EntityRelationalHelper {
   @Column({ type: 'uuid', comment: '关联项目ID' })
   projectId: string;
 
-  @Index('IDX_tasks_workflow_template_id')
-  @Column({ type: 'uuid', nullable: true, comment: '关联工作流模板ID' })
-  workflowTemplateId?: string | null;
-
   @Column({
     type: 'enum',
     enum: TaskMode,
@@ -86,11 +82,8 @@ export class TaskEntity extends EntityRelationalHelper {
   @Column({ type: 'jsonb', nullable: true, comment: '客户端输入快照JSON' })
   clientInputSnapshot?: Record<string, unknown> | null;
 
-  @Column({ type: String, length: 64, nullable: true, comment: 'CLI工具标识' })
-  cliToolId?: string | null;
-
-  @Column({ type: 'uuid', nullable: true, comment: '关联工具配置ID' })
-  agentToolConfigId?: string | null;
+  @Column({ type: 'jsonb', nullable: true, comment: '任务执行配置JSON' })
+  configJson?: Record<string, unknown> | null;
 
   @Column({ type: 'uuid', nullable: true, comment: '创建者用户ID' })
   createdBy?: string | null;

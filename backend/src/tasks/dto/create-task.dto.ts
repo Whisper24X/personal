@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsEnum,
   IsNotEmpty,
@@ -7,18 +8,15 @@ import {
   IsString,
   IsUUID,
   MaxLength,
+  ValidateNested,
 } from 'class-validator';
 import { TaskMode } from './task-mode.enum';
+import { TaskConfigDto } from './task-config.dto';
 
 export class CreateTaskDto {
   @ApiProperty({ type: String })
   @IsUUID()
   projectId: string;
-
-  @ApiPropertyOptional({ type: String })
-  @IsOptional()
-  @IsUUID()
-  workflowTemplateId?: string;
 
   @ApiPropertyOptional({ enum: TaskMode, enumName: 'TaskMode' })
   @IsOptional()
@@ -29,6 +27,29 @@ export class CreateTaskDto {
   @IsString()
   @IsNotEmpty()
   title: string;
+
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsUUID()
+  workflowTemplateId?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Deprecated top-level task config field; prefer configJson.cliToolId',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  cliToolId?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    description:
+      'Deprecated top-level task config field; prefer configJson.agentToolConfigId',
+  })
+  @IsOptional()
+  @IsUUID()
+  agentToolConfigId?: string;
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()
@@ -57,16 +78,14 @@ export class CreateTaskDto {
   @MaxLength(500)
   gitWorktree?: string;
 
-  @ApiPropertyOptional({ type: String })
+  @ApiPropertyOptional({
+    type: TaskConfigDto,
+    description: 'Task execution configuration',
+  })
   @IsOptional()
-  @IsString()
-  @MaxLength(64)
-  cliToolId?: string;
-
-  @ApiPropertyOptional({ type: String })
-  @IsOptional()
-  @IsUUID()
-  agentToolConfigId?: string;
+  @ValidateNested()
+  @Type(() => TaskConfigDto)
+  configJson?: TaskConfigDto;
 
   @ApiPropertyOptional({
     type: Object,

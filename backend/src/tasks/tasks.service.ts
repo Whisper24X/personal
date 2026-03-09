@@ -19,7 +19,6 @@ import { WorkflowTemplatesService } from '../workflow-templates/workflow-templat
 import { Task } from './domain/task';
 import { TaskStatus } from './dto/task-status.enum';
 import { TaskMode } from './dto/task-mode.enum';
-import { TaskNodeType } from './dto/task-node-type.enum';
 import { TaskNode } from './domain/task-node';
 import { TaskLogLevel } from './dto/task-log-level.enum';
 import { TaskLog } from './domain/task-log';
@@ -43,6 +42,7 @@ import { DataSource } from 'typeorm';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { ReplyTaskDto } from './dto/reply-task.dto';
 import { TaskMessageDto, TaskMessageRole } from './dto/task-message.dto';
+import { TaskConfig, TaskNodeConfig } from './types/task-config.type';
 
 @Injectable()
 export class TasksService implements OnModuleInit, OnModuleDestroy {
@@ -150,38 +150,41 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     );
 
     let resolvedMode: TaskMode = createTaskDto.mode ?? TaskMode.conversation;
-    let workflowTemplateId: string | null = null;
+    const taskConfig = this.mergeTaskConfig(
+      null,
+      this.buildIncomingTaskConfig(createTaskDto),
+    );
+    const workflowTemplateId = this.readTaskWorkflowTemplateId(taskConfig);
+    const defaultNodeConfig = this.buildNodeConfigFromTaskConfig(taskConfig);
     let nodes: Array<{
       nodeOrder: number;
       name: string;
-      nodeType: TaskNodeType;
-      requiresApproval: boolean;
       input?: Record<string, unknown> | null;
+      configJson?: TaskNodeConfig | null;
     }> = [];
 
-    if (createTaskDto.workflowTemplateId) {
+    if (workflowTemplateId) {
       const template = await this.workflowTemplatesService.getTemplateForTask({
-        templateId: createTaskDto.workflowTemplateId,
+        templateId: workflowTemplateId,
         projectId: project.id,
         projectBusinessLineId: project.businessLineId,
       });
 
+      this.ensureTemplateNodesSupported(template.nodesJson);
       resolvedMode = TaskMode.workflow;
-      workflowTemplateId = template.id;
 
       nodes = template.nodesJson
         .map((node) => ({
           nodeOrder: node.nodeOrder,
           name: node.name,
-          nodeType: this.normalizeNodeType(node.type),
-          requiresApproval: !!node.requiresApproval,
           input: node.input ?? null,
+          configJson: defaultNodeConfig,
         }))
         .sort((left, right) => left.nodeOrder - right.nodeOrder);
     } else {
       if (resolvedMode === TaskMode.workflow) {
         throw new ConflictException(
-          'Workflow mode requires workflowTemplateId',
+          'Workflow mode requires configJson.workflowTemplateId',
         );
       }
 
@@ -189,9 +192,8 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         {
           nodeOrder: 1,
           name: 'conversation-node',
-          nodeType: TaskNodeType.agent,
-          requiresApproval: false,
           input: null,
+          configJson: defaultNodeConfig,
         },
       ];
     }
@@ -244,16 +246,12 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     const task = await this.taskRepository.create({
       projectId: createTaskDto.projectId,
       businessLineId: project.businessLineId,
-      workflowTemplateId,
       mode: resolvedMode,
       title: createTaskDto.title,
       prompt: createTaskDto.prompt ?? null,
       status: TaskStatus.todo,
       gitBranch: normalizedGitBranch,
-      cliToolId: this.normalizeOptionalString(createTaskDto.cliToolId),
-      agentToolConfigId: this.normalizeOptionalString(
-        createTaskDto.agentToolConfigId,
-      ),
+      configJson: taskConfig,
       clientInputSnapshot: createTaskDto.clientInputSnapshot ?? null,
       createdBy: currentUser.sub,
       gitBaseBranch: normalizedGitBaseBranch,
@@ -262,15 +260,41 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       finishedAt: null,
     });
 
+    let runtimeTask = task;
+
+    try {
+      const initializedRuntime = await this.initializeTaskRuntime(
+        task,
+        project,
+        {
+          forceLog: true,
+        },
+      );
+      runtimeTask = initializedRuntime.task;
+    } catch (error) {
+      await this.taskRuntimeService.cleanupRuntime(task, project).catch(() => ({
+        cleaned: false,
+      }));
+      await this.taskRepository.remove(task.id).catch(() => undefined);
+
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : 'Failed to initialize task runtime';
+
+      throw new ConflictException(
+        `Task runtime initialization failed: ${errorMessage}`,
+      );
+    }
+
     await this.taskNodeRepository.createMany(
       nodes.map((node) => ({
-        taskId: task.id,
+        taskId: runtimeTask.id,
         nodeOrder: node.nodeOrder,
         name: node.name,
-        nodeType: node.nodeType,
         input: node.input ?? null,
         output: null,
-        requiresApproval: node.requiresApproval,
+        configJson: node.configJson ?? null,
         status: TaskStatus.todo,
         attempt: 0,
         errorCode: null,
@@ -281,7 +305,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     );
 
     await this.appendLog({
-      taskId: task.id,
+      taskId: runtimeTask.id,
       taskNodeId: null,
       level: TaskLogLevel.info,
       message: 'Task created',
@@ -291,7 +315,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    return task;
+    return runtimeTask;
   }
 
   async findAllWithPagination({
@@ -416,14 +440,10 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         updatePayload.gitWorktree = null;
       }
     }
-    if (updateTaskDto.cliToolId !== undefined) {
-      updatePayload.cliToolId = this.normalizeOptionalString(
-        updateTaskDto.cliToolId,
-      );
-    }
-    if (updateTaskDto.agentToolConfigId !== undefined) {
-      updatePayload.agentToolConfigId = this.normalizeOptionalString(
-        updateTaskDto.agentToolConfigId,
+    if (this.hasIncomingTaskConfig(updateTaskDto)) {
+      updatePayload.configJson = this.mergeTaskConfig(
+        task.configJson,
+        this.buildIncomingTaskConfig(updateTaskDto),
       );
     }
     if (updateTaskDto.clientInputSnapshot !== undefined) {
@@ -434,7 +454,27 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       return this.detailById(task.id, currentUser);
     }
 
-    await this.taskRepository.update(task.id, updatePayload);
+    const updatedTask = await this.taskRepository.update(
+      task.id,
+      updatePayload,
+    );
+    const effectiveTask = updatedTask ?? task;
+
+    if (updatePayload.configJson !== undefined) {
+      const nextNodeConfig = this.buildNodeConfigFromTaskConfig(
+        effectiveTask.configJson,
+      );
+      const nodes = await this.taskNodeRepository.findByTaskId(task.id);
+      await Promise.all(
+        nodes
+          .filter((node) => node.status !== TaskStatus.done)
+          .map((node) =>
+            this.taskNodeRepository.update(node.id, {
+              configJson: nextNodeConfig,
+            }),
+          ),
+      );
+    }
 
     await this.appendLog({
       taskId: task.id,
@@ -850,12 +890,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       targetNode.output && typeof targetNode.output.summary === 'string'
         ? targetNode.output.summary
         : `Node ${targetNode.nodeOrder} approved`;
-    const generatedBy =
-      targetNode.nodeType === TaskNodeType.agent
-        ? 'agent-runner:approved'
-        : targetNode.nodeType === TaskNodeType.manual
-          ? 'manual:approved'
-          : 'workflow:approved';
+    const generatedBy = 'agent-runner:approved';
     await this.createNodeExecutionArtifact({
       taskId: task.id,
       task,
@@ -1177,41 +1212,14 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         workerId,
       });
 
-      if (runningNode.nodeType === TaskNodeType.agent) {
-        await this.executeAgentNode({
-          taskId,
-          nodeId,
-          task: executionTask,
-          node: runningNode,
-          project,
-        });
-        return;
-      }
-
-      if (runningNode.nodeType === TaskNodeType.manual) {
-        await this.executeManualNode({
-          taskId,
-          nodeId,
-          node: runningNode,
-        });
-        return;
-      }
-
-      await this.finalizeNodeAsFailure({
-        nodeId,
-        errorCode: 'UNSUPPORTED_NODE_TYPE',
-        errorMessage: `Unsupported node type: ${runningNode.nodeType}`,
-      });
-
-      await this.appendLog({
+      await this.executeAgentNode({
         taskId,
-        taskNodeId: nodeId,
-        level: TaskLogLevel.error,
-        message: 'Node execution failed due to unsupported node type',
-        payload: {
-          nodeType: runningNode.nodeType,
-        },
+        nodeId,
+        task: executionTask,
+        node: runningNode,
+        project,
       });
+      return;
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unexpected execution error';
@@ -1251,6 +1259,30 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       'project.task.read',
     );
 
+    const initializedRuntime = await this.initializeTaskRuntime(task, project);
+
+    return {
+      task: this.createRuntimeTaskSnapshot(
+        initializedRuntime.task,
+        initializedRuntime.runtime,
+      ),
+      project,
+    };
+  }
+
+  private async initializeTaskRuntime(
+    task: Task,
+    project: Project,
+    options?: { forceLog?: boolean },
+  ): Promise<{
+    task: Task;
+    runtime: {
+      gitBranch: string;
+      gitBaseBranch: string;
+      gitWorktree: string;
+      worktreePath: string;
+    };
+  }> {
     const runtime = await this.taskRuntimeService.ensureRuntime(task, project);
 
     const hasRuntimeChanged =
@@ -1258,34 +1290,32 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       task.gitBaseBranch !== runtime.gitBaseBranch ||
       task.gitWorktree !== runtime.gitWorktree;
 
-    const runtimeTaskSnapshot = this.createRuntimeTaskSnapshot(task, runtime);
+    const runtimeTask = hasRuntimeChanged
+      ? ((await this.taskRepository.update(task.id, {
+          gitBranch: runtime.gitBranch,
+          gitBaseBranch: runtime.gitBaseBranch,
+          gitWorktree: runtime.gitWorktree,
+        })) ?? task)
+      : task;
 
-    if (!hasRuntimeChanged) {
-      return { task: runtimeTaskSnapshot, project };
+    if (options?.forceLog || hasRuntimeChanged) {
+      await this.appendLog({
+        taskId: task.id,
+        taskNodeId: null,
+        level: TaskLogLevel.info,
+        message: 'Task sandbox initialized',
+        payload: {
+          gitBranch: runtime.gitBranch,
+          gitBaseBranch: runtime.gitBaseBranch,
+          gitWorktree: runtime.gitWorktree,
+          worktreePath: runtime.worktreePath,
+        },
+      });
     }
 
-    const updatedTask = await this.taskRepository.update(task.id, {
-      gitBranch: runtime.gitBranch,
-      gitBaseBranch: runtime.gitBaseBranch,
-      gitWorktree: runtime.gitWorktree,
-    });
-
-    await this.appendLog({
-      taskId: task.id,
-      taskNodeId: null,
-      level: TaskLogLevel.info,
-      message: 'Task sandbox initialized',
-      payload: {
-        gitBranch: runtime.gitBranch,
-        gitBaseBranch: runtime.gitBaseBranch,
-        gitWorktree: runtime.gitWorktree,
-        worktreePath: runtime.worktreePath,
-      },
-    });
-
     return {
-      task: this.createRuntimeTaskSnapshot(updatedTask ?? task, runtime),
-      project,
+      task: runtimeTask,
+      runtime,
     };
   }
 
@@ -1330,27 +1360,23 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       await this.appendLog({
         taskId,
         taskNodeId: nodeId,
-        level: node.requiresApproval ? TaskLogLevel.warn : TaskLogLevel.info,
-        message: node.requiresApproval
-          ? 'Agent node completed and waiting for approval'
-          : 'Agent node completed successfully',
+        level: TaskLogLevel.info,
+        message: 'Agent node completed successfully',
         payload: {
-          status: node.requiresApproval ? TaskStatus.inReview : TaskStatus.done,
+          status: TaskStatus.done,
           durationMs: executionResult.durationMs,
           command: executionResult.command,
           args: executionResult.args,
         },
       });
 
-      if (!node.requiresApproval) {
-        await this.createNodeExecutionArtifact({
-          taskId,
-          task,
-          node,
-          summary: fullOutput,
-          generatedBy: `agent-runner:${executionResult.command}`,
-        });
-      }
+      await this.createNodeExecutionArtifact({
+        taskId,
+        task,
+        node,
+        summary: fullOutput,
+        generatedBy: `agent-runner:${executionResult.command}`,
+      });
 
       return;
     }
@@ -1384,37 +1410,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private async executeManualNode({
-    taskId,
-    nodeId,
-    node,
-  }: {
-    taskId: string;
-    nodeId: string;
-    node: TaskNode;
-  }): Promise<void> {
-    await this.taskNodeRepository.update(node.id, {
-      status: TaskStatus.inReview,
-      finishedAt: new Date(),
-      output: {
-        summary: 'Manual node requires human action',
-        finishedAt: new Date().toISOString(),
-      },
-      errorCode: null,
-      errorMessage: null,
-    });
-
-    await this.appendLog({
-      taskId,
-      taskNodeId: nodeId,
-      level: TaskLogLevel.warn,
-      message: 'Manual node moved to in_review for human approval',
-      payload: {
-        status: TaskStatus.inReview,
-      },
-    });
-  }
-
   private async finalizeNodeAsSuccess({
     node,
     output,
@@ -1422,12 +1417,8 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     node: TaskNode;
     output: Record<string, unknown>;
   }): Promise<void> {
-    const nextStatus = node.requiresApproval
-      ? TaskStatus.inReview
-      : TaskStatus.done;
-
     await this.taskNodeRepository.update(node.id, {
-      status: nextStatus,
+      status: TaskStatus.done,
       finishedAt: new Date(),
       output,
       errorCode: null,
@@ -1829,8 +1820,10 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     for (const task of expiredTasks) {
       try {
         const project = await this.getProjectByIdOrThrow(task.projectId);
-        const cleanupResult =
-          await this.taskRuntimeService.cleanupRuntime(task, project);
+        const cleanupResult = await this.taskRuntimeService.cleanupRuntime(
+          task,
+          project,
+        );
 
         await this.taskRepository.update(task.id, {
           ...(cleanupResult.cleaned ? { gitWorktree: null } : {}),
@@ -2103,14 +2096,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     return task;
   }
 
-  private normalizeNodeType(nodeType: string): TaskNodeType {
-    if (Object.values(TaskNodeType).includes(nodeType as TaskNodeType)) {
-      return nodeType as TaskNodeType;
-    }
-
-    return TaskNodeType.agent;
-  }
-
   private normalizeOptionalString(value?: string | null): string | null {
     if (value === undefined || value === null) {
       return null;
@@ -2122,6 +2107,154 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
 
   private normalizeGitBranch(value?: string | null): string | null {
     return this.normalizeOptionalString(value);
+  }
+
+  private toObjectRecord(value: unknown): Record<string, unknown> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {};
+    }
+
+    return { ...(value as Record<string, unknown>) };
+  }
+
+  private mergeTaskConfig(
+    currentConfig: Record<string, unknown> | null | undefined,
+    incomingConfig: Record<string, unknown> | null | undefined,
+  ): TaskConfig | null {
+    const merged = {
+      ...this.toObjectRecord(currentConfig),
+      ...this.toObjectRecord(incomingConfig),
+    } as TaskConfig;
+
+    const workflowTemplateId = this.normalizeOptionalString(
+      typeof merged.workflowTemplateId === 'string'
+        ? merged.workflowTemplateId
+        : null,
+    );
+    const cliToolId = this.normalizeOptionalString(
+      typeof merged.cliToolId === 'string' ? merged.cliToolId : null,
+    );
+    const agentToolConfigId = this.normalizeOptionalString(
+      typeof merged.agentToolConfigId === 'string'
+        ? merged.agentToolConfigId
+        : null,
+    );
+
+    if (workflowTemplateId) {
+      merged.workflowTemplateId = workflowTemplateId;
+    } else {
+      delete merged.workflowTemplateId;
+    }
+
+    if (cliToolId) {
+      merged.cliToolId = cliToolId;
+    } else {
+      delete merged.cliToolId;
+    }
+
+    if (agentToolConfigId) {
+      merged.agentToolConfigId = agentToolConfigId;
+    } else {
+      delete merged.agentToolConfigId;
+    }
+
+    return Object.keys(merged).length ? merged : null;
+  }
+
+  private buildIncomingTaskConfig(
+    payload: Pick<
+      CreateTaskDto | UpdateTaskDto,
+      | 'configJson'
+      | 'workflowTemplateId'
+      | 'cliToolId'
+      | 'agentToolConfigId'
+    >,
+  ): Record<string, unknown> | null {
+    const legacyConfig: Record<string, unknown> = {};
+
+    if (typeof payload.workflowTemplateId === 'string') {
+      legacyConfig.workflowTemplateId = payload.workflowTemplateId;
+    }
+
+    if (typeof payload.cliToolId === 'string') {
+      legacyConfig.cliToolId = payload.cliToolId;
+    }
+
+    if (typeof payload.agentToolConfigId === 'string') {
+      legacyConfig.agentToolConfigId = payload.agentToolConfigId;
+    }
+
+    return {
+      ...legacyConfig,
+      ...this.toObjectRecord(payload.configJson),
+    };
+  }
+
+  private hasIncomingTaskConfig(
+    payload: Pick<
+      CreateTaskDto | UpdateTaskDto,
+      | 'configJson'
+      | 'workflowTemplateId'
+      | 'cliToolId'
+      | 'agentToolConfigId'
+    >,
+  ): boolean {
+    return (
+      payload.configJson !== undefined ||
+      payload.workflowTemplateId !== undefined ||
+      payload.cliToolId !== undefined ||
+      payload.agentToolConfigId !== undefined
+    );
+  }
+
+  private readTaskWorkflowTemplateId(
+    configJson: Record<string, unknown> | null | undefined,
+  ): string | null {
+    const config = this.toObjectRecord(configJson);
+
+    return this.normalizeOptionalString(
+      typeof config.workflowTemplateId === 'string'
+        ? config.workflowTemplateId
+        : null,
+    );
+  }
+
+  private buildNodeConfigFromTaskConfig(
+    configJson: Record<string, unknown> | null | undefined,
+  ): TaskNodeConfig | null {
+    const config = this.toObjectRecord(configJson);
+    const cliToolId = this.normalizeOptionalString(
+      typeof config.cliToolId === 'string' ? config.cliToolId : null,
+    );
+    const agentToolConfigId = this.normalizeOptionalString(
+      typeof config.agentToolConfigId === 'string'
+        ? config.agentToolConfigId
+        : null,
+    );
+
+    const nodeConfig: TaskNodeConfig = {};
+
+    if (cliToolId) {
+      nodeConfig.cliToolId = cliToolId;
+    }
+
+    if (agentToolConfigId) {
+      nodeConfig.agentToolConfigId = agentToolConfigId;
+    }
+
+    return Object.keys(nodeConfig).length ? nodeConfig : null;
+  }
+
+  private ensureTemplateNodesSupported(
+    nodes: Array<{ type?: string | null }>,
+  ): void {
+    const unsupportedNode = nodes.find((node) => node.type !== 'agent');
+
+    if (unsupportedNode) {
+      throw new ConflictException(
+        'Workflow template only supports agent nodes',
+      );
+    }
   }
 
   private async resolveCreateTaskNameId({

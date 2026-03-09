@@ -1,5 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  ValidateNested,
+} from 'class-validator';
+import { TaskConfigDto } from './task-config.dto';
 
 export class UpdateTaskDto {
   @ApiPropertyOptional({ type: String })
@@ -27,21 +36,37 @@ export class UpdateTaskDto {
   @IsString()
   gitWorktree?: string;
 
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsUUID()
+  workflowTemplateId?: string;
+
   @ApiPropertyOptional({
     type: String,
-    description: 'Selected CLI tool id for this task',
+    description: 'Deprecated top-level task config field; prefer configJson.cliToolId',
   })
   @IsOptional()
   @IsString()
+  @MaxLength(64)
   cliToolId?: string;
 
   @ApiPropertyOptional({
     type: String,
-    description: 'Selected CLI config id for this task',
+    description:
+      'Deprecated top-level task config field; prefer configJson.agentToolConfigId',
   })
   @IsOptional()
   @IsUUID()
   agentToolConfigId?: string;
+
+  @ApiPropertyOptional({
+    type: TaskConfigDto,
+    description: 'Task execution configuration',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TaskConfigDto)
+  configJson?: TaskConfigDto;
 
   @ApiPropertyOptional({
     type: Object,

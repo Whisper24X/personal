@@ -52,6 +52,10 @@ import {
   normalizeProjectCapabilities,
 } from '../access/access.constants';
 
+type EnsureProjectRepositoryOptions = {
+  syncRemote?: boolean;
+};
+
 @Injectable()
 export class ProjectsService {
   private readonly defaultGitTimeoutMs = 60_000;
@@ -755,11 +759,12 @@ export class ProjectsService {
   async ensureProjectRepositoryReady(
     projectId: Project['id'],
     currentUser: JwtPayloadType,
+    options: EnsureProjectRepositoryOptions = {},
   ): Promise<{ project: Project; repositoryRoot: string }> {
     const project = await this.ensureCanAccessProject(projectId, currentUser);
 
     try {
-      const repositoryRoot = await this.ensureProjectRepository(project);
+      const repositoryRoot = await this.ensureProjectRepository(project, options);
       return {
         project,
         repositoryRoot,
@@ -780,6 +785,7 @@ export class ProjectsService {
     const { repositoryRoot } = await this.ensureProjectRepositoryReady(
       projectId,
       currentUser,
+      { syncRemote: false },
     );
     const docsRoot = path.join(repositoryRoot, 'docs');
     const docsRootExists = await this.pathExists(docsRoot);
@@ -874,6 +880,7 @@ export class ProjectsService {
     const { repositoryRoot } = await this.ensureProjectRepositoryReady(
       projectId,
       currentUser,
+      { syncRemote: false },
     );
     const docsRoot = path.join(repositoryRoot, 'docs');
     const relativePath = this.normalizeProjectDocPath(rawDocPath);
@@ -912,6 +919,7 @@ export class ProjectsService {
     const { repositoryRoot } = await this.ensureProjectRepositoryReady(
       projectId,
       currentUser,
+      { syncRemote: false },
     );
     const docsRoot = path.join(repositoryRoot, 'docs');
     const relativePath = this.normalizeProjectDocPath(payload.path);
@@ -945,6 +953,7 @@ export class ProjectsService {
     const { repositoryRoot } = await this.ensureProjectRepositoryReady(
       projectId,
       currentUser,
+      { syncRemote: false },
     );
     const docsRoot = path.join(repositoryRoot, 'docs');
     const relativePath = this.normalizeProjectDocPath(payload.path);
@@ -969,6 +978,7 @@ export class ProjectsService {
     const { repositoryRoot } = await this.ensureProjectRepositoryReady(
       projectId,
       currentUser,
+      { syncRemote: false },
     );
     const docsRoot = path.join(repositoryRoot, 'docs');
     const relativePath = this.normalizeProjectDocPath(rawDocPath);
@@ -993,6 +1003,7 @@ export class ProjectsService {
     const { project, repositoryRoot } = await this.ensureProjectRepositoryReady(
       projectId,
       currentUser,
+      { syncRemote: false },
     );
     const docsRoot = path.join(repositoryRoot, 'docs');
     const docsRootExists = await this.pathExists(docsRoot);
@@ -1069,6 +1080,7 @@ export class ProjectsService {
     const { project, repositoryRoot } = await this.ensureProjectRepositoryReady(
       projectId,
       currentUser,
+      { syncRemote: false },
     );
     const docsRoot = path.join(repositoryRoot, 'docs');
     const docsRootExists = await this.pathExists(docsRoot);
@@ -1591,10 +1603,14 @@ export class ProjectsService {
     );
   }
 
-  private async ensureProjectRepository(project: Project): Promise<string> {
+  private async ensureProjectRepository(
+    project: Project,
+    options: EnsureProjectRepositoryOptions = {},
+  ): Promise<string> {
     const repositoryRoot = this.resolveRepositoryRoot(project);
     const gitDirPath = path.join(repositoryRoot, '.git');
     const hasGit = await this.pathExists(gitDirPath);
+    const shouldSyncRemote = options.syncRemote ?? true;
 
     if (!hasGit) {
       try {
@@ -1620,7 +1636,7 @@ export class ProjectsService {
           cloneResult.stderr || `git clone failed for ${project.gitUrl}`,
         );
       }
-    } else {
+    } else if (shouldSyncRemote) {
       const setUrlResult = await this.runCommand('git', [
         '-C',
         repositoryRoot,
@@ -1635,16 +1651,18 @@ export class ProjectsService {
       }
     }
 
-    const fetchResult = await this.runCommand('git', [
-      '-C',
-      repositoryRoot,
-      'fetch',
-      '--all',
-      '--prune',
-    ]);
+    if (shouldSyncRemote) {
+      const fetchResult = await this.runCommand('git', [
+        '-C',
+        repositoryRoot,
+        'fetch',
+        '--all',
+        '--prune',
+      ]);
 
-    if (!fetchResult.success) {
-      throw new Error(fetchResult.stderr || 'git fetch failed');
+      if (!fetchResult.success) {
+        throw new Error(fetchResult.stderr || 'git fetch failed');
+      }
     }
 
     return repositoryRoot;

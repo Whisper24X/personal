@@ -556,8 +556,10 @@ const saveEdit = async (payload: TaskEditFormValue) => {
       title: payload.title.trim(),
       prompt: payload.prompt.trim(),
       gitBranch: payload.gitBranch.trim(),
-      cliToolId: payload.cliToolId.trim() || undefined,
-      agentToolConfigId: payload.agentToolConfigId.trim() || undefined,
+      configJson: {
+        cliToolId: payload.cliToolId.trim() || undefined,
+        agentToolConfigId: payload.agentToolConfigId.trim() || undefined,
+      },
     })
     editOpen.value = false
     message.success('任务已更新')
@@ -644,9 +646,9 @@ onBeforeUnmount(() => {
         :class="isRightPanelVisible ? 'rounded-l-2xl' : 'rounded-2xl'"
         :style="{
           flex: isRightPanelVisible ? '0 0 auto' : '1 1 0%',
-          width: isRightPanelVisible ? 'clamp(520px, 62%, 1280px)' : undefined,
-          minWidth: isRightPanelVisible ? '520px' : '0',
-          maxWidth: isRightPanelVisible ? '1280px' : undefined,
+          width: isRightPanelVisible ? '33.3333%' : undefined,
+          minWidth: isRightPanelVisible ? '0' : '0',
+          maxWidth: isRightPanelVisible ? '33.3333%' : undefined,
         }"
       >
         <div class="flex min-h-0 flex-1 flex-col gap-3 p-3">

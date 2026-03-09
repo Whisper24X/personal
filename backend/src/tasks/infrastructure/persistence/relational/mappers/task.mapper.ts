@@ -7,7 +7,6 @@ export class TaskMapper {
     domainEntity.id = raw.id;
     domainEntity.projectId = raw.projectId;
     domainEntity.businessLineId = raw.businessLineId;
-    domainEntity.workflowTemplateId = raw.workflowTemplateId;
     domainEntity.mode = raw.mode;
     domainEntity.title = raw.title;
     domainEntity.prompt = raw.prompt;
@@ -15,8 +14,7 @@ export class TaskMapper {
     domainEntity.gitBranch = raw.gitBranch;
     domainEntity.gitBaseBranch = raw.gitBaseBranch;
     domainEntity.gitWorktree = raw.gitWorktree;
-    domainEntity.cliToolId = raw.cliToolId;
-    domainEntity.agentToolConfigId = raw.agentToolConfigId;
+    domainEntity.configJson = raw.configJson;
     domainEntity.clientInputSnapshot = raw.clientInputSnapshot;
     domainEntity.createdBy = raw.createdBy;
     domainEntity.startedAt = raw.startedAt;
@@ -37,7 +35,6 @@ export class TaskMapper {
 
     persistenceEntity.projectId = domainEntity.projectId;
     persistenceEntity.businessLineId = domainEntity.businessLineId;
-    persistenceEntity.workflowTemplateId = domainEntity.workflowTemplateId;
     persistenceEntity.mode = domainEntity.mode;
     persistenceEntity.title = domainEntity.title;
     persistenceEntity.prompt = domainEntity.prompt;
@@ -45,8 +42,7 @@ export class TaskMapper {
     persistenceEntity.gitBranch = domainEntity.gitBranch;
     persistenceEntity.gitBaseBranch = domainEntity.gitBaseBranch;
     persistenceEntity.gitWorktree = domainEntity.gitWorktree;
-    persistenceEntity.cliToolId = domainEntity.cliToolId;
-    persistenceEntity.agentToolConfigId = domainEntity.agentToolConfigId;
+    persistenceEntity.configJson = domainEntity.configJson;
     persistenceEntity.clientInputSnapshot = domainEntity.clientInputSnapshot;
     persistenceEntity.createdBy = domainEntity.createdBy;
     persistenceEntity.startedAt = domainEntity.startedAt;

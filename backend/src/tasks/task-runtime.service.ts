@@ -96,35 +96,20 @@ export class TaskRuntimeService {
         note: 'Git runtime disabled; using isolated directory sandbox.',
       };
     } else {
-      try {
-        const repositoryRoot = await this.ensureProjectRepository(project);
-        await this.ensureGitWorktree({
-          repositoryRoot,
-          worktreePath: gitWorktree,
-          allowedRoot,
-          branch: gitBranch,
-          gitBaseBranch,
-        });
-        runtimeMeta.repositoryRoot = repositoryRoot;
+      const repositoryRoot = await this.ensureProjectRepository(project);
+      await this.ensureGitWorktree({
+        repositoryRoot,
+        worktreePath: gitWorktree,
+        allowedRoot,
+        branch: gitBranch,
+        gitBaseBranch,
+      });
+      runtimeMeta.repositoryRoot = repositoryRoot;
 
-        runtimeMeta.sandbox = {
-          type: 'git-worktree',
-          note: 'Runtime prepared with git clone/fetch and worktree.',
-        };
-      } catch (error) {
-        await fs.mkdir(gitWorktree, {
-          recursive: true,
-        });
-        await this.enforceRuntimeDirectorySecurity(gitWorktree, allowedRoot);
-
-        runtimeMeta.sandbox = {
-          type: 'directory',
-          note:
-            error instanceof Error
-              ? `Fallback to directory sandbox: ${error.message}`
-              : 'Fallback to directory sandbox: git runtime preparation failed',
-        };
-      }
+      runtimeMeta.sandbox = {
+        type: 'git-worktree',
+        note: 'Runtime prepared with git clone/fetch and worktree.',
+      };
     }
 
     const metaPath = path.join(gitWorktree, this.runtimeMetaFilename);
@@ -433,7 +418,19 @@ export class TaskRuntimeService {
       return config.gitRuntimeEnabled;
     }
 
-    return this.readTrimmedEnv('AINATIVE_GIT_RUNTIME_ENABLED') === 'true';
+    const gitRuntimeEnabled = this.readTrimmedEnv(
+      'AINATIVE_GIT_RUNTIME_ENABLED',
+    );
+
+    if (gitRuntimeEnabled === 'true') {
+      return true;
+    }
+
+    if (gitRuntimeEnabled === 'false') {
+      return false;
+    }
+
+    return true;
   }
 
   private resolveRepositoryRoot(project: Project): string {

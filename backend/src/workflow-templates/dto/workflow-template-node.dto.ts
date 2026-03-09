@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsBoolean,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -25,11 +24,6 @@ export class WorkflowTemplateNodeDto {
   @ApiProperty({ enum: WorkflowNodeType, enumName: 'WorkflowNodeType' })
   @IsEnum(WorkflowNodeType)
   type: WorkflowNodeType;
-
-  @ApiPropertyOptional({ type: Boolean })
-  @IsOptional()
-  @IsBoolean()
-  requiresApproval?: boolean;
 
   @ApiPropertyOptional({
     type: Object,

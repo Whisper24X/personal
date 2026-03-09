@@ -225,9 +225,9 @@ export type ProjectMenuAccessItem = {
 export const PROJECT_MENU_ACCESS_CONFIG = [
   { id: 'dashboard', label: '仪表盘', to: '/dashboard', capabilities: ['project.read'] },
   { id: 'tasks', label: '任务', to: '/tasks', capabilities: ['project.task.read'] },
-  { id: 'knowledge', label: '知识库', to: '/knowledge-base', capabilities: ['project.read'] },
   { id: 'kanban', label: '看板', to: '/kanban', capabilities: ['project.kanban.view'] },
   { id: 'automations', label: '自动化', to: '/automations', capabilities: ['project.read'] },
+  { id: 'knowledge', label: '知识库', to: '/knowledge-base', capabilities: ['project.read'] },
   { id: 'workflow', label: '工作流', to: '/projects/workflows', capabilities: ['project.workflow.view'] },
   { id: 'skills', label: 'Skills', to: '/skills', capabilities: ['project.read'] },
   { id: 'mcp', label: 'MCP', to: '/mcp', capabilities: ['project.read'] },

@@ -10,7 +10,6 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
-import { TaskNodeType } from '../../../../dto/task-node-type.enum';
 import { TaskStatus } from '../../../../dto/task-status.enum';
 import { TaskEntity } from './task.entity';
 
@@ -39,22 +38,14 @@ export class TaskNodeEntity extends EntityRelationalHelper {
   @Column({ type: String, length: 160, comment: '节点名称' })
   name: string;
 
-  @Column({
-    type: 'enum',
-    enum: TaskNodeType,
-    enumName: 'task_node_type_enum',
-    comment: '节点类型',
-  })
-  nodeType: TaskNodeType;
-
   @Column({ type: 'jsonb', nullable: true, comment: '节点输入JSON' })
   input?: Record<string, unknown> | null;
 
   @Column({ type: 'jsonb', nullable: true, comment: '节点输出JSON' })
   output?: Record<string, unknown> | null;
 
-  @Column({ type: 'boolean', default: false, comment: '节点是否需要人工审批' })
-  requiresApproval: boolean;
+  @Column({ type: 'jsonb', nullable: true, comment: '节点执行配置JSON' })
+  configJson?: Record<string, unknown> | null;
 
   @Index('IDX_task_nodes_status')
   @Column({

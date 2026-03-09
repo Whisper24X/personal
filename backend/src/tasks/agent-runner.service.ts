@@ -171,7 +171,7 @@ export class AgentRunnerService {
     task: Task,
     node: TaskNode,
   ): Promise<AgentRunnerConfig> {
-    const taskToolConfig = this.resolveTaskToolConfig(task);
+    const executionToolConfig = this.resolveExecutionToolConfig(task, node);
     const configJson =
       project.configJson && typeof project.configJson === 'object'
         ? (project.configJson as Record<string, unknown>)
@@ -179,12 +179,15 @@ export class AgentRunnerService {
 
     const adapter = this.resolveAdapter({
       ...configJson,
-      ...taskToolConfig,
+      ...executionToolConfig,
     });
     const baseRunnerConfig = this.readRunnerConfig(configJson);
     const agentToolConfig = await this.resolveAgentToolConfig(
-      configJson,
-      task,
+      {
+        ...configJson,
+        ...executionToolConfig,
+      },
+      executionToolConfig,
       project,
       adapter,
     );
@@ -317,12 +320,21 @@ export class AgentRunnerService {
     return !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
   }
 
-  private resolveTaskToolConfig(task: Task): Record<string, unknown> {
+  private toObjectRecord(value: unknown): Record<string, unknown> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {};
+    }
+
+    return value as Record<string, unknown>;
+  }
+
+  private resolveExecutionToolConfig(
+    task: Task,
+    node: TaskNode,
+  ): Record<string, unknown> {
     return {
-      ...(task.cliToolId ? { cliToolId: task.cliToolId } : {}),
-      ...(task.agentToolConfigId
-        ? { agentToolConfigId: task.agentToolConfigId }
-        : {}),
+      ...this.toObjectRecord(task.configJson),
+      ...this.toObjectRecord(node.configJson),
     };
   }
 
@@ -426,14 +438,13 @@ export class AgentRunnerService {
   }
 
   private async resolveAgentToolConfig(
-    configJson: Record<string, unknown>,
-    task: Task,
+    projectExecutionConfig: Record<string, unknown>,
+    executionConfig: Record<string, unknown>,
     project: Project,
     adapter: AgentAdapter,
   ): Promise<ResolvedAgentToolConfig | null> {
     const persistedById = await this.resolvePersistedAgentToolConfigById(
-      configJson,
-      task,
+      executionConfig,
       project,
       adapter,
     );
@@ -449,18 +460,19 @@ export class AgentRunnerService {
       return persistedDefault;
     }
 
-    return this.resolveLegacyAgentToolConfig(configJson, project, adapter);
+    return this.resolveLegacyAgentToolConfig(
+      projectExecutionConfig,
+      project,
+      adapter,
+    );
   }
 
   private async resolvePersistedAgentToolConfigById(
-    configJson: Record<string, unknown>,
-    task: Task,
+    executionConfig: Record<string, unknown>,
     project: Project,
     adapter: AgentAdapter,
   ): Promise<ResolvedAgentToolConfig | null> {
-    const requestedConfigId =
-      this.normalizeOptionalString(task.agentToolConfigId) ??
-      this.resolveAgentToolConfigId(configJson);
+    const requestedConfigId = this.resolveAgentToolConfigId(executionConfig);
 
     if (!requestedConfigId) {
       return null;
