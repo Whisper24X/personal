@@ -34,11 +34,14 @@ const TASK_HEADLINES = [
 ]
 const HEADLINE_ROTATE_INTERVAL_MS = 30000
 
-const props = withDefaults(defineProps<{
-  projectId?: string
-}>(), {
-  projectId: '',
-})
+const props = withDefaults(
+  defineProps<{
+    projectId?: string
+  }>(),
+  {
+    projectId: '',
+  },
+)
 
 const emit = defineEmits<{
   (event: 'created', taskId: string): void
@@ -89,7 +92,9 @@ const selectedGitBaseBranch = computed(() => {
 const canCreateTask = computed(() => {
   return (
     Boolean(createForm.projectId) &&
-    hasSomeAccess(BUTTON_ACCESS_CONFIG.createTask.capabilities, (capability) => accessStore.hasCapability(capability))
+    hasSomeAccess(BUTTON_ACCESS_CONFIG.createTask.capabilities, (capability) =>
+      accessStore.hasCapability(capability),
+    )
   )
 })
 
@@ -186,9 +191,8 @@ const loadTemplatesForProject = async (projectId: string) => {
     )
 
     if (!hasSelectedTemplate) {
-      createForm.workflowTemplateId = createForm.mode === 'workflow'
-        ? (availableTemplates[0]?.id ?? '')
-        : ''
+      createForm.workflowTemplateId =
+        createForm.mode === 'workflow' ? (availableTemplates[0]?.id ?? '') : ''
     }
   } catch (error) {
     templates.value = []
@@ -249,7 +253,7 @@ const loadConversationCliOptions = async (projectId: string) => {
 
 const refreshAccessContext = async (projectId: string) => {
   try {
-    await accessStore.loadContext((projectId ? { projectId } : {}))
+    await accessStore.loadContext(projectId ? { projectId } : {})
   } catch (error) {
     void error
     accessStore.clear()
@@ -267,7 +271,10 @@ const loadPageData = async () => {
 
     if (hasContextProject) {
       createForm.projectId = contextProjectId
-    } else if (!createForm.projectId || !projectResponse.some((project) => project.id === createForm.projectId)) {
+    } else if (
+      !createForm.projectId ||
+      !projectResponse.some((project) => project.id === createForm.projectId)
+    ) {
       createForm.projectId = ''
     }
 
@@ -299,7 +306,10 @@ const onFilesSelected = (event: Event) => {
   const merged = [...selectedFiles.value]
   for (const file of incomingFiles) {
     const duplicated = merged.some(
-      (item) => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified,
+      (item) =>
+        item.name === file.name &&
+        item.size === file.size &&
+        item.lastModified === file.lastModified,
     )
     if (!duplicated) {
       merged.push(file)
@@ -337,7 +347,11 @@ const createTask = async () => {
   const contextProjectId = resolveProjectIdFromContext()
   const projectIdForSubmit = contextProjectId || createForm.projectId
 
-  if (!hasSomeAccess(BUTTON_ACCESS_CONFIG.createTask.capabilities, (capability) => accessStore.hasCapability(capability))) {
+  if (
+    !hasSomeAccess(BUTTON_ACCESS_CONFIG.createTask.capabilities, (capability) =>
+      accessStore.hasCapability(capability),
+    )
+  ) {
     showValidationError('当前项目暂无创建任务权限')
     return
   }
@@ -425,10 +439,7 @@ watch(
     }
 
     await refreshAccessContext(projectId)
-    await Promise.all([
-      loadTemplatesForProject(projectId),
-      loadConversationCliOptions(projectId),
-    ])
+    await Promise.all([loadTemplatesForProject(projectId), loadConversationCliOptions(projectId)])
   },
 )
 
@@ -501,13 +512,17 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="fade-up flex min-h-[calc(var(--app-viewport-height)-8rem)] items-center justify-center px-4 py-8 sm:px-8">
+  <div
+    class="fade-up flex min-h-[calc(var(--app-viewport-height)-8rem)] items-center justify-center px-4 py-8 sm:px-8"
+  >
     <div class="w-full max-w-[1120px]">
       <div v-if="loading" class="py-24 text-center text-sm text-muted-foreground">加载中...</div>
 
       <template v-else>
         <header class="mb-8 flex flex-col items-center text-center sm:mb-10">
-          <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted text-foreground/80">
+          <div
+            class="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted text-foreground/80"
+          >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="24"
@@ -524,7 +539,10 @@ onBeforeUnmount(() => {
             </svg>
           </div>
           <Transition name="headline-fade" mode="out-in">
-            <h1 :key="currentHeadline" class="text-4xl font-semibold tracking-tight text-foreground sm:text-6xl">
+            <h1
+              :key="currentHeadline"
+              class="text-4xl font-semibold tracking-tight text-foreground sm:text-6xl"
+            >
               {{ currentHeadline }}
             </h1>
           </Transition>
@@ -601,7 +619,9 @@ onBeforeUnmount(() => {
                 </svg>
               </button>
 
-              <div class="inline-flex h-11 items-center rounded-full border border-border bg-background p-1">
+              <div
+                class="inline-flex h-11 items-center rounded-full border border-border bg-background p-1"
+              >
                 <button
                   type="button"
                   class="rounded-full px-4 py-1.5 text-sm font-semibold transition"
@@ -629,7 +649,9 @@ onBeforeUnmount(() => {
               </div>
 
               <template v-if="createForm.mode === 'conversation'">
-                <label class="relative inline-flex h-11 items-center rounded-full border border-border bg-background pl-3 pr-8">
+                <label
+                  class="relative inline-flex h-11 items-center rounded-full border border-border bg-background pl-3 pr-8"
+                >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="16"
@@ -672,7 +694,9 @@ onBeforeUnmount(() => {
                   </svg>
                 </label>
 
-                <label class="relative inline-flex h-11 items-center rounded-full border border-border bg-background pl-3 pr-8">
+                <label
+                  class="relative inline-flex h-11 items-center rounded-full border border-border bg-background pl-3 pr-8"
+                >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="16"
@@ -718,7 +742,9 @@ onBeforeUnmount(() => {
               </template>
 
               <template v-else>
-                <label class="relative inline-flex h-11 items-center rounded-full border border-border bg-background pl-3 pr-8">
+                <label
+                  class="relative inline-flex h-11 items-center rounded-full border border-border bg-background pl-3 pr-8"
+                >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="16"
@@ -767,7 +793,9 @@ onBeforeUnmount(() => {
                 </label>
               </template>
 
-              <label class="inline-flex h-11 items-center rounded-full border border-border bg-background px-3">
+              <label
+                class="inline-flex h-11 items-center rounded-full border border-border bg-background px-3"
+              >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="16"
@@ -815,7 +843,6 @@ onBeforeUnmount(() => {
                 </svg>
               </button>
             </div>
-
           </div>
         </form>
       </template>

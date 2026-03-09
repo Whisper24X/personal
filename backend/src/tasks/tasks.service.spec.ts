@@ -403,15 +403,30 @@ describe('TasksService', () => {
     workflowTemplatesService.getTemplateForTask.mockResolvedValue({
       id: 'wf-1',
       nodesJson: [
-        { nodeOrder: 2, name: 'second-node', type: 'agent', input: null },
-        { nodeOrder: 1, name: 'first-node', type: 'agent', input: null },
+        {
+          nodeOrder: 2,
+          name: 'second-node',
+          type: 'agent',
+          input: {
+            agentCliId: 'gemini-cli',
+            agentCliConfigId: 'cfg-2',
+          },
+        },
+        {
+          nodeOrder: 1,
+          name: 'first-node',
+          type: 'agent',
+          input: {
+            agentCliId: 'codex',
+            agentCliConfigId: 'cfg-1',
+          },
+        },
       ],
     });
     taskRepository.create.mockResolvedValue({
       ...createTask(),
       mode: TaskMode.workflow,
       configJson: {
-        ...defaultExecutionConfig,
         workflowTemplateId: 'wf-1',
       },
     });
@@ -421,7 +436,6 @@ describe('TasksService', () => {
         projectId: project.id,
         mode: TaskMode.workflow,
         configJson: {
-          ...defaultExecutionConfig,
           workflowTemplateId: 'wf-1',
         },
         title: 'Workflow task',
@@ -445,11 +459,64 @@ describe('TasksService', () => {
     );
     expect(taskNodeRepository.createMany).toHaveBeenCalledWith(
       expect.arrayContaining([
-        expect.objectContaining({ nodeOrder: 1, name: 'first-node' }),
-        expect.objectContaining({ nodeOrder: 2, name: 'second-node' }),
+        expect.objectContaining({
+          nodeOrder: 1,
+          name: 'first-node',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        }),
+        expect.objectContaining({
+          nodeOrder: 2,
+          name: 'second-node',
+          agentCliId: 'gemini-cli',
+          agentCliConfigId: 'cfg-2',
+        }),
       ]),
     );
     expect(taskRuntimeService.ensureRuntime).toHaveBeenCalledTimes(1);
+  });
+
+  it('should update workflow task prompt without requiring task-level cli config', async () => {
+    const { service, taskRepository, projectsService, taskNodeRepository } =
+      createTasksService() as any;
+    const task = {
+      ...createTask(),
+      mode: TaskMode.workflow,
+      configJson: {
+        workflowTemplateId: 'wf-1',
+      },
+    };
+    const currentUser = createCurrentUser();
+
+    taskRepository.findById.mockResolvedValue(task);
+    taskRepository.update.mockResolvedValue({
+      ...task,
+      prompt: 'Updated workflow prompt',
+    });
+    projectsService.assertProjectCapability.mockResolvedValue(createProject());
+    taskNodeRepository.findByTaskId.mockResolvedValue([
+      createNode({
+        status: TaskStatus.todo,
+        agentCliId: 'gemini-cli',
+        agentCliConfigId: 'cfg-2',
+      }),
+    ]);
+
+    await service.update(
+      task.id,
+      {
+        prompt: 'Updated workflow prompt',
+      } as never,
+      currentUser as never,
+    );
+
+    expect(taskNodeRepository.update).toHaveBeenCalledWith(
+      'node-1',
+      expect.objectContaining({
+        agentCliId: 'gemini-cli',
+        agentCliConfigId: 'cfg-2',
+      }),
+    );
   });
 
   it('should cleanup created task when runtime initialization fails during create', async () => {
@@ -571,7 +638,6 @@ describe('TasksService', () => {
     expect(artifactSpy).toHaveBeenCalledTimes(1);
   });
 
-
   it('should queue next loop when agent node has remaining loops', async () => {
     const { service, taskNodeRepository, agentRunnerService } =
       createTasksService();
@@ -580,10 +646,10 @@ describe('TasksService', () => {
     const node = createNode({
       status: TaskStatus.inProgress,
       loopJson: {
-      enabled: true,
-      loopCount: 1,
-      maxLoops: 3,
-    },
+        enabled: true,
+        loopCount: 1,
+        maxLoops: 3,
+      },
     });
     const project = createProject();
 
@@ -937,10 +1003,10 @@ describe('TasksService', () => {
       ...createNode(),
       status: TaskStatus.inProgress,
       loopJson: {
-      enabled: true,
-      loopCount: 2,
-      maxLoops: 3,
-    },
+        enabled: true,
+        loopCount: 2,
+        maxLoops: 3,
+      },
     };
     const currentUser = createCurrentUser();
 
@@ -957,10 +1023,10 @@ describe('TasksService', () => {
       ...todoNode,
       status: TaskStatus.todo,
       loopJson: {
-      enabled: true,
-      loopCount: 1,
-      maxLoops: 3,
-    },
+        enabled: true,
+        loopCount: 1,
+        maxLoops: 3,
+      },
     });
     taskNodeRepository.claimFirstTodoNode.mockResolvedValue(todoNode);
     taskNodeRepository.findByTaskId.mockResolvedValue([todoNode]);
@@ -1026,9 +1092,7 @@ describe('TasksService', () => {
       status: TaskStatus.todo,
     });
     taskNodeRepository.claimFirstTodoNode.mockResolvedValue(todoNode);
-    taskNodeRepository.findByTaskId.mockResolvedValue([
-      todoNode,
-    ]);
+    taskNodeRepository.findByTaskId.mockResolvedValue([todoNode]);
     jest
       .spyOn(serviceAny, 'prepareTaskRuntime')
       .mockResolvedValue({ task, project });
@@ -1089,10 +1153,10 @@ describe('TasksService', () => {
       ...createNode(),
       status: TaskStatus.inReview,
       loopJson: {
-      enabled: true,
-      loopCount: 2,
-      maxLoops: 3,
-    },
+        enabled: true,
+        loopCount: 2,
+        maxLoops: 3,
+      },
     };
     const currentUser = createCurrentUser();
 
@@ -1110,10 +1174,10 @@ describe('TasksService', () => {
       ...reviewNode,
       status: TaskStatus.inProgress,
       loopJson: {
-      enabled: true,
-      loopCount: 2,
-      maxLoops: 3,
-    },
+        enabled: true,
+        loopCount: 2,
+        maxLoops: 3,
+      },
     });
     taskNodeRepository.findByTaskId.mockResolvedValue([reviewNode]);
     jest

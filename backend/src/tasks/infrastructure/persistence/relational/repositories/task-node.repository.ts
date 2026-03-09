@@ -289,15 +289,12 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
     return TaskNodeMapper.toDomain(updatedEntity);
   }
 
-  private buildRuntimeJsonSql({
-    workerId,
-    leaseUntil,
-    heartbeatAt,
-  }: {
+  private buildRuntimeJsonSql(_params: {
     workerId: string;
     leaseUntil: string;
     heartbeatAt: string;
   }): string {
-    return `jsonb_strip_nulls(jsonb_build_object('workerId', :workerId, 'leaseUntil', :leaseUntil, 'heartbeatAt', :heartbeatAt))`;
+    void _params;
+    return `jsonb_strip_nulls(jsonb_build_object('workerId', CAST(:workerId AS text), 'leaseUntil', CAST(:leaseUntil AS text), 'heartbeatAt', CAST(:heartbeatAt AS text)))`;
   }
 }

@@ -19,8 +19,10 @@
 - Use relational adapter repositories for DB-specific logic.
 - Use QueryBuilder for filtering/pagination/aggregations.
 - Keep mapping between domain and persistence explicit with dedicated mapper classes.
+- When runtime data is stored inside JSON/JSONB columns, QueryBuilder conditions must read the JSON path explicitly; do not keep querying removed physical columns after schema refactors.
 
 Examples:
+
 - `src/tasks/infrastructure/persistence/task.repository.ts` (repository port)
 - `src/tasks/infrastructure/persistence/relational/repositories/task.repository.ts` (QueryBuilder, pagination, counters)
 - `src/tasks/infrastructure/persistence/relational/mappers/task.mapper.ts` (domain <-> entity mapping)
@@ -35,11 +37,13 @@ Examples:
 - Include reverse operations in `down()` for rollback.
 
 Commands:
+
 - `npm run migration:generate -- src/database/migrations/<Name>`
 - `npm run migration:run`
 - `npm run migration:revert`
 
 Examples:
+
 - `src/database/migrations/1771002000000-CreateProjectsWorkflowTasks.ts`
 - `src/database/migrations/1771002700000-AddTableAndColumnComments.ts`
 
@@ -56,6 +60,7 @@ Examples:
 - Enum types in DB are explicit (`task_status_enum`, `task_mode_enum`)
 
 Entity examples:
+
 - `src/projects/infrastructure/persistence/relational/entities/project.entity.ts`
 - `src/tasks/infrastructure/persistence/relational/entities/task.entity.ts`
 
@@ -98,3 +103,4 @@ export class TaskEntity extends EntityRelationalHelper {
 - Placing `businessLineId` / `projectId` deep in the entity body, making scope fields harder to discover during review.
 - Forgetting soft-delete filters (`deletedAt IS NULL`) in custom queries.
 - Writing migration `up()` changes without matching `down()` rollback.
+- Migrating a field from a physical column to `json/jsonb` storage without updating all read-side queries, counters, and scheduling SQL.

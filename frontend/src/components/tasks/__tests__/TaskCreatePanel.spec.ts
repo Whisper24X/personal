@@ -7,7 +7,16 @@ const routeState = {
   params: {},
 }
 
-const { push, success, error, tasksApi, projectsApi, workflowApi, businessLinesApi, fetchAllPages } = vi.hoisted(() => ({
+const {
+  push,
+  success,
+  error,
+  tasksApi,
+  projectsApi,
+  workflowApi,
+  businessLinesApi,
+  fetchAllPages,
+} = vi.hoisted(() => ({
   push: vi.fn(),
   success: vi.fn(),
   error: vi.fn(),
@@ -161,5 +170,47 @@ describe('TaskCreatePanel', () => {
     expect('gitWorktree' in payload).toBe(false)
     expect('toolVersionsSnapshot' in payload).toBe(false)
     expect('clientInputSnapshot' in payload).toBe(false)
+  })
+
+  it('should create workflow task with workflowTemplateId only', async () => {
+    workflowApi.list.mockResolvedValue({
+      data: [
+        {
+          id: 'wf-1',
+          name: 'Analyze Project',
+        },
+      ],
+      hasNextPage: false,
+    })
+
+    const wrapper = mount(TaskCreatePanel, {
+      props: {
+        projectId: 'project-1',
+      },
+    })
+
+    await flushPromises()
+
+    const workflowModeButton = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '工作流模式')
+
+    expect(workflowModeButton).toBeTruthy()
+    await workflowModeButton!.trigger('click')
+    await flushPromises()
+
+    await wrapper.find('input[placeholder="标题"]').setValue('分析项目')
+    await wrapper.find('textarea[placeholder="提示词"]').setValue('请先分析项目结构')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(tasksApi.create).toHaveBeenCalledTimes(1)
+    const payload = tasksApi.create.mock.calls[0]![0] as Record<string, unknown>
+
+    expect(payload.mode).toBe('workflow')
+    expect(payload.configJson).toEqual({
+      workflowTemplateId: 'wf-1',
+      attachments: [],
+    })
   })
 })

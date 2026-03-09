@@ -58,6 +58,22 @@ describe('Projects and Tasks Module', () => {
         expect(body.id).toBe(createdProject.id);
       });
 
+    const agentToolConfig = await request(app)
+      .post(
+        `/api/v1/business-lines/${createdBusinessLine.id}/agent-tool-configs`,
+      )
+      .auth(adminToken, {
+        type: 'bearer',
+      })
+      .send({
+        toolId: 'codex',
+        name: `Codex Default ${Date.now()}`,
+        configJson: {},
+        isDefault: true,
+      })
+      .expect(201)
+      .then(({ body }) => body);
+
     const createdTemplate = await request(app)
       .post('/api/v1/workflow-templates')
       .auth(adminToken, {
@@ -65,16 +81,26 @@ describe('Projects and Tasks Module', () => {
       })
       .send({
         name: `template-${Date.now()}`,
+        scope: 'project',
+        projectId: createdProject.id,
         nodes: [
           {
             nodeOrder: 1,
             name: 'analyze',
             type: 'agent',
+            input: {
+              agentCliId: 'codex',
+              agentCliConfigId: agentToolConfig.id,
+            },
           },
           {
             nodeOrder: 2,
             name: 'implement',
             type: 'agent',
+            input: {
+              agentCliId: 'codex',
+              agentCliConfigId: agentToolConfig.id,
+            },
           },
         ],
       })
@@ -88,12 +114,11 @@ describe('Projects and Tasks Module', () => {
       })
       .send({
         projectId: createdProject.id,
+        prompt: 'validate task flow',
         configJson: {
           workflowTemplateId: createdTemplate.id,
         },
         title: 'e2e task',
-        description: 'validate task flow',
-        acceptanceCriteria: ['node1 done'],
       })
       .expect(201)
       .then(({ body }) => body);

@@ -141,7 +141,7 @@ export class TaskRelationalRepository implements TaskRepository {
       .innerJoin(
         'task_nodes',
         'node',
-        'node."taskId" = task.id AND node.status = :status AND node."leaseUntil" > :at',
+        `node."taskId" = task.id AND node.status = :status AND ((node."runtimeJson"->>'leaseUntil')::timestamptz) > :at`,
         {
           status: TaskStatus.inProgress,
           at,
@@ -168,7 +168,7 @@ export class TaskRelationalRepository implements TaskRepository {
       .innerJoin(
         'task_nodes',
         'node',
-        'node."taskId" = task.id AND node.status = :status AND node."leaseUntil" > :at',
+        `node."taskId" = task.id AND node.status = :status AND ((node."runtimeJson"->>'leaseUntil')::timestamptz) > :at`,
         {
           status: TaskStatus.inProgress,
           at,
@@ -220,7 +220,7 @@ export class TaskRelationalRepository implements TaskRepository {
           FROM task_nodes running
           WHERE running."taskId" = task.id
             AND running.status = :runningStatus
-            AND running."leaseUntil" > :at
+            AND ((running."runtimeJson"->>'leaseUntil')::timestamptz) > :at
         )`,
         {
           runningStatus: TaskStatus.inProgress,
@@ -243,7 +243,7 @@ export class TaskRelationalRepository implements TaskRepository {
       .innerJoin(
         'task_nodes',
         'node',
-        'node."taskId" = task.id AND node.status = :status AND node."leaseUntil" IS NOT NULL AND node."leaseUntil" <= :at',
+        `node."taskId" = task.id AND node.status = :status AND (node."runtimeJson"->>'leaseUntil') IS NOT NULL AND ((node."runtimeJson"->>'leaseUntil')::timestamptz) <= :at`,
         {
           status: TaskStatus.inProgress,
           at,
@@ -279,7 +279,7 @@ export class TaskRelationalRepository implements TaskRepository {
           FROM task_nodes running
           WHERE running."taskId" = task.id
             AND running.status = :runningStatus
-            AND running."leaseUntil" > :at
+            AND ((running."runtimeJson"->>'leaseUntil')::timestamptz) > :at
         )`,
         {
           runningStatus: TaskStatus.inProgress,
