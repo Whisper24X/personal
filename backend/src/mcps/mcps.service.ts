@@ -82,9 +82,11 @@ export class McpsService {
         ? item.metadataJson
         : null;
       const itemSourcePath =
-        typeof metadata?.sourcePath === 'string'
-          ? path.resolve(metadata.sourcePath)
-          : '';
+        typeof metadata?.sourcePathAbsolute === 'string'
+          ? path.resolve(metadata.sourcePathAbsolute)
+          : typeof metadata?.sourcePath === 'string'
+            ? path.resolve(metadata.sourcePath)
+            : '';
 
       return itemSourcePath === sourcePath;
     });
