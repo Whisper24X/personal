@@ -381,10 +381,7 @@ export class TasksController {
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: TaskGitActionResultDto })
   @HttpCode(HttpStatus.OK)
-  gitPush(
-    @Request() request,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
+  gitPush(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
     return this.taskGitService.push(id, request.user);
   }
 
@@ -392,10 +389,7 @@ export class TasksController {
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: TaskGitActionResultDto })
   @HttpCode(HttpStatus.OK)
-  gitLog(
-    @Request() request,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
+  gitLog(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
     return this.taskGitService.getLog(id, request.user);
   }
 

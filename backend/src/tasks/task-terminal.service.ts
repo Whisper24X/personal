@@ -290,10 +290,7 @@ export class TaskTerminalService implements OnModuleDestroy {
     return this.getTaskSessions(taskId).has(sessionId);
   }
 
-  private writeToSession(
-    session: TerminalSessionInternal,
-    data: string,
-  ): void {
+  private writeToSession(session: TerminalSessionInternal, data: string): void {
     if (
       !session.ptyProcess ||
       session.status !== TaskTerminalSessionStatus.running

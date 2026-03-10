@@ -1743,8 +1743,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     const queuedNextLoop =
       nextLoopJson.enabled && nextLoopJson.loopCount < nextLoopJson.maxLoops;
     const pendingApproval =
-      !queuedNextLoop &&
-      this.readNodeConfigRequiresApproval(node.configJson);
+      !queuedNextLoop && this.readNodeConfigRequiresApproval(node.configJson);
     const status = queuedNextLoop
       ? TaskStatus.todo
       : pendingApproval
@@ -2788,9 +2787,9 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     return config.requiresApproval === true;
   }
 
-  private buildTaskNodeConfig(
-    templateNode: { requiresApproval?: boolean },
-  ): TaskNodeConfig | null {
+  private buildTaskNodeConfig(templateNode: {
+    requiresApproval?: boolean;
+  }): TaskNodeConfig | null {
     const requiresApproval = templateNode.requiresApproval === true;
 
     if (!requiresApproval) {

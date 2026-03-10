@@ -18,12 +18,10 @@ const previewUrl = ref('')
 const iframeSrc = ref('')
 const errorMessage = ref('')
 const running = ref(false)
+const configOpen = ref(false)
+const logOpen = ref(false)
 
 const terminalContainerRef = ref<HTMLDivElement | null>(null)
-const splitContainerRef = ref<HTMLDivElement | null>(null)
-const topPanelRef = ref<HTMLDivElement | null>(null)
-
-const splitRatio = ref(50)
 
 let session: TaskTerminalSession | null = null
 let terminal: Terminal | null = null
@@ -37,7 +35,7 @@ const initTerminal = () => {
 
   terminal = new Terminal({
     cursorBlink: true,
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: 'Menlo, Monaco, "Courier New", monospace',
     theme: {
       background: '#0f1115',
@@ -169,13 +167,21 @@ const stopCommand = async () => {
   running.value = false
 }
 
-const navigatePreview = () => {
+const restartCommand = async () => {
+  await stopCommand()
+  await nextTick()
+  await runCommand()
+}
+
+const applyConfig = () => {
   const url = previewUrl.value.trim()
   if (!url) {
     iframeSrc.value = ''
-    return
+  } else {
+    iframeSrc.value =
+      url.startsWith('http://') || url.startsWith('https://') ? url : `http://${url}`
   }
-  iframeSrc.value = url.startsWith('http://') || url.startsWith('https://') ? url : `http://${url}`
+  configOpen.value = false
 }
 
 const refreshPreview = () => {
@@ -187,44 +193,38 @@ const refreshPreview = () => {
   })
 }
 
-let isDragging = false
-
-const onDividerMouseDown = (e: MouseEvent) => {
-  e.preventDefault()
-  isDragging = true
-  document.addEventListener('mousemove', onMouseMove)
-  document.addEventListener('mouseup', onMouseUp)
-  document.body.style.cursor = 'row-resize'
-  document.body.style.userSelect = 'none'
+const toggleConfig = () => {
+  configOpen.value = !configOpen.value
+  if (configOpen.value) {
+    nextTick(() => {
+      initTerminal()
+    })
+  }
 }
 
-const onMouseMove = (e: MouseEvent) => {
-  if (!isDragging || !splitContainerRef.value) return
-  const rect = splitContainerRef.value.getBoundingClientRect()
-  const offset = e.clientY - rect.top
-  const ratio = Math.min(Math.max((offset / rect.height) * 100, 15), 85)
-  splitRatio.value = ratio
-}
-
-const onMouseUp = () => {
-  isDragging = false
-  document.removeEventListener('mousemove', onMouseMove)
-  document.removeEventListener('mouseup', onMouseUp)
-  document.body.style.cursor = ''
-  document.body.style.userSelect = ''
-  fitAddon?.fit()
+const toggleLog = () => {
+  logOpen.value = !logOpen.value
+  if (logOpen.value) {
+    nextTick(() => {
+      initTerminal()
+      fitAddon?.fit()
+    })
+  }
 }
 
 watch(
   () => props.taskId,
-  async () => {
+  () => {
     disconnectWs()
     session = null
     running.value = false
     terminal?.clear()
-    await nextTick()
-    initTerminal()
-    connectWs()
+    nextTick(() => {
+      connectWs()
+      if (configOpen.value || logOpen.value) {
+        initTerminal()
+      }
+    })
   },
   { immediate: true },
 )
@@ -236,96 +236,135 @@ onBeforeUnmount(() => {
   if (session && running.value) {
     void tasksApi.terminalStop(props.taskId, session.id)
   }
-
-  document.removeEventListener('mousemove', onMouseMove)
-  document.removeEventListener('mouseup', onMouseUp)
 })
 </script>
 
 <template>
-  <div ref="splitContainerRef" class="flex h-full min-w-0 flex-col">
-    <!-- Top: Terminal -->
-    <div ref="topPanelRef" class="flex min-h-0 flex-col" :style="{ flexBasis: splitRatio + '%', flexGrow: 0, flexShrink: 0 }">
-      <header class="border-border/70 flex items-center gap-2 border-b px-3 py-2">
-        <input
-          v-model="command"
-          type="text"
-          placeholder="输入命令，如 npm run dev"
-          class="border-border bg-background text-foreground placeholder:text-muted-foreground h-7 flex-1 rounded-md border px-2 text-xs outline-none focus:border-primary"
-          @keydown.enter="runCommand"
+  <div class="flex h-full min-w-0 flex-col">
+    <!-- Header -->
+    <header class="border-border/70 flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2">
+      <div class="flex items-center gap-1.5 overflow-hidden">
+        <span
+          class="inline-flex h-2 w-2 shrink-0 rounded-full"
+          :class="running ? 'bg-green-500' : 'bg-muted-foreground/40'"
         />
-        <button
-          v-if="!running"
-          class="bg-primary text-primary-foreground h-7 shrink-0 rounded-md px-3 text-xs font-semibold"
-          type="button"
-          :disabled="!command.trim()"
-          @click="runCommand"
-        >
-          运行
-        </button>
-        <button
-          v-else
-          class="bg-destructive text-destructive-foreground h-7 shrink-0 rounded-md px-3 text-xs font-semibold"
-          type="button"
-          @click="stopCommand"
-        >
-          停止
-        </button>
-      </header>
+        <span v-if="iframeSrc" class="text-foreground truncate text-xs">{{ iframeSrc }}</span>
+        <span v-else class="text-muted-foreground text-xs">未配置预览地址</span>
+      </div>
 
-      <p v-if="errorMessage" class="px-3 py-1 text-xs text-destructive">{{ errorMessage }}</p>
-
-      <div ref="terminalContainerRef" class="min-h-0 flex-1 bg-[#0f1115] p-1" />
-    </div>
-
-    <!-- Draggable divider -->
-    <div
-      class="border-border/70 hover:bg-primary/30 flex h-1.5 shrink-0 cursor-row-resize items-center justify-center border-y transition-colors"
-      @mousedown="onDividerMouseDown"
-    >
-      <div class="bg-muted-foreground/40 h-0.5 w-8 rounded-full" />
-    </div>
-
-    <!-- Bottom: Preview iframe -->
-    <div class="flex min-h-0 flex-1 flex-col">
-      <header class="border-border/70 flex items-center gap-2 border-b px-3 py-2">
-        <input
-          v-model="previewUrl"
-          type="text"
-          placeholder="输入预览地址，如 http://localhost:3000"
-          class="border-border bg-background text-foreground placeholder:text-muted-foreground h-7 flex-1 rounded-md border px-2 text-xs outline-none focus:border-primary"
-          @keydown.enter="navigatePreview"
-        />
+      <div class="flex shrink-0 items-center gap-1">
         <button
-          class="bg-primary text-primary-foreground h-7 shrink-0 rounded-md px-3 text-xs font-semibold"
+          class="border-border bg-background text-foreground h-7 rounded-md border px-2.5 text-xs transition hover:bg-accent disabled:opacity-40"
           type="button"
-          @click="navigatePreview"
-        >
-          前往
-        </button>
-        <button
-          v-if="iframeSrc"
-          class="border-border bg-background text-foreground h-7 shrink-0 rounded-md border px-3 text-xs"
-          type="button"
+          title="刷新页面"
+          :disabled="!iframeSrc"
           @click="refreshPreview"
         >
           刷新
         </button>
-      </header>
-
-      <div class="min-h-0 flex-1">
-        <iframe
-          v-if="iframeSrc"
-          :src="iframeSrc"
-          class="h-full w-full border-0"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-        />
-        <div
-          v-else
-          class="text-muted-foreground flex h-full items-center justify-center text-sm"
+        <button
+          class="border-border bg-background text-foreground h-7 rounded-md border px-2.5 text-xs transition hover:bg-accent disabled:opacity-40"
+          type="button"
+          title="重启服务"
+          :disabled="!command.trim()"
+          @click="restartCommand"
         >
-          输入地址并点击"前往"以预览页面
+          重启
+        </button>
+        <button
+          class="h-7 rounded-md border px-2.5 text-xs font-semibold transition"
+          :class="configOpen ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-foreground hover:bg-accent'"
+          type="button"
+          title="配置启动命令和预览地址"
+          @click="toggleConfig"
+        >
+          配置
+        </button>
+        <button
+          class="h-7 rounded-md border px-2.5 text-xs transition"
+          :class="logOpen ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-foreground hover:bg-accent'"
+          type="button"
+          title="查看运行日志"
+          @click="toggleLog"
+        >
+          日志
+        </button>
+      </div>
+    </header>
+
+    <!-- Config panel (collapsible) -->
+    <div v-if="configOpen" class="border-border/70 shrink-0 border-b bg-muted/30 px-3 py-2.5">
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2">
+          <label class="text-muted-foreground w-16 shrink-0 text-xs">启动命令</label>
+          <input
+            v-model="command"
+            type="text"
+            placeholder="例如 npm run dev"
+            class="border-border bg-background text-foreground placeholder:text-muted-foreground h-7 flex-1 rounded-md border px-2 text-xs outline-none focus:border-primary"
+            @keydown.enter="applyConfig"
+          />
+          <button
+            v-if="!running"
+            class="bg-primary text-primary-foreground h-7 shrink-0 rounded-md px-3 text-xs font-semibold disabled:opacity-40"
+            type="button"
+            :disabled="!command.trim()"
+            @click="runCommand"
+          >
+            运行
+          </button>
+          <button
+            v-else
+            class="bg-destructive text-destructive-foreground h-7 shrink-0 rounded-md px-3 text-xs font-semibold"
+            type="button"
+            @click="stopCommand"
+          >
+            停止
+          </button>
         </div>
+        <div class="flex items-center gap-2">
+          <label class="text-muted-foreground w-16 shrink-0 text-xs">预览地址</label>
+          <input
+            v-model="previewUrl"
+            type="text"
+            placeholder="例如 http://localhost:3000"
+            class="border-border bg-background text-foreground placeholder:text-muted-foreground h-7 flex-1 rounded-md border px-2 text-xs outline-none focus:border-primary"
+            @keydown.enter="applyConfig"
+          />
+          <button
+            class="bg-primary text-primary-foreground h-7 shrink-0 rounded-md px-3 text-xs font-semibold"
+            type="button"
+            @click="applyConfig"
+          >
+            应用
+          </button>
+        </div>
+      </div>
+      <p v-if="errorMessage" class="mt-1.5 text-xs text-destructive">{{ errorMessage }}</p>
+    </div>
+
+    <!-- Log panel (collapsible) -->
+    <div
+      v-show="logOpen"
+      class="border-border/70 shrink-0 border-b"
+      style="height: 180px"
+    >
+      <div ref="terminalContainerRef" class="h-full bg-[#0f1115] p-1" />
+    </div>
+
+    <!-- Body: iframe preview -->
+    <div class="min-h-0 flex-1">
+      <iframe
+        v-if="iframeSrc"
+        :src="iframeSrc"
+        class="h-full w-full border-0"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+      />
+      <div
+        v-else
+        class="text-muted-foreground flex h-full flex-col items-center justify-center gap-2"
+      >
+        <span class="text-sm">点击"配置"设置启动命令和预览地址</span>
       </div>
     </div>
   </div>

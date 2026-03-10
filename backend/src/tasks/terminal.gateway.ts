@@ -33,7 +33,7 @@ export class TerminalGateway
     private readonly configService: ConfigService<AllConfigType>,
   ) {}
 
-  async handleConnection(client: WebSocket, req: IncomingMessage) {
+  handleConnection(client: WebSocket, req: IncomingMessage) {
     try {
       const user = this.authenticateClient(req);
       this.clients.set(client, {
@@ -82,7 +82,7 @@ export class TerminalGateway
 
     switch (type) {
       case 'attach':
-        this.handleAttach(client, state, message);
+        void this.handleAttach(client, state, message);
         break;
       case 'input':
         this.handleInput(state, message);
@@ -118,10 +118,7 @@ export class TerminalGateway
     }
 
     try {
-      await this.taskTerminalService.assertCanAccessTask(
-        taskId,
-        state.user,
-      );
+      await this.taskTerminalService.assertCanAccessTask(taskId, state.user);
     } catch {
       this.sendToClient(client, {
         type: 'error',
@@ -169,10 +166,7 @@ export class TerminalGateway
     }
   }
 
-  private handleInput(
-    state: ClientState,
-    message: Record<string, unknown>,
-  ) {
+  private handleInput(state: ClientState, message: Record<string, unknown>) {
     if (!state.taskId || !state.sessionId) {
       return;
     }
@@ -195,10 +189,7 @@ export class TerminalGateway
     }
   }
 
-  private handleResize(
-    state: ClientState,
-    message: Record<string, unknown>,
-  ) {
+  private handleResize(state: ClientState, message: Record<string, unknown>) {
     if (!state.taskId || !state.sessionId) {
       return;
     }
@@ -206,7 +197,12 @@ export class TerminalGateway
     const cols = Number(message.cols);
     const rows = Number(message.rows);
 
-    if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 1 || rows < 1) {
+    if (
+      !Number.isFinite(cols) ||
+      !Number.isFinite(rows) ||
+      cols < 1 ||
+      rows < 1
+    ) {
       return;
     }
 
@@ -228,10 +224,7 @@ export class TerminalGateway
     state.unsubscribe = null;
   }
 
-  private forwardEventToClient(
-    client: WebSocket,
-    event: TaskTerminalEventDto,
-  ) {
+  private forwardEventToClient(client: WebSocket, event: TaskTerminalEventDto) {
     if (event.type === 'chunk') {
       this.sendToClient(client, { type: 'output', data: event.data ?? '' });
     } else if (event.type === 'exit') {
@@ -255,7 +248,10 @@ export class TerminalGateway
   }
 
   private authenticateClient(req: IncomingMessage): JwtPayloadType {
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+    const url = new URL(
+      req.url ?? '/',
+      `http://${req.headers.host ?? 'localhost'}`,
+    );
     const token = url.searchParams.get('token');
 
     if (!token) {
