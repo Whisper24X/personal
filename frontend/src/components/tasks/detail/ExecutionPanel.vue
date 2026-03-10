@@ -24,10 +24,10 @@ const roleClassMap: Record<TaskMessage['role'], string> = {
 }
 
 const roleLabelMap: Record<TaskMessage['role'], string> = {
-  user: 'User',
-  assistant: 'Assistant',
-  system: 'System',
-  error: 'Error',
+  user: '用户',
+  assistant: '助手',
+  system: '系统',
+  error: '错误',
 }
 </script>
 

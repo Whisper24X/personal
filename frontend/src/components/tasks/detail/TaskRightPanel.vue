@@ -35,7 +35,7 @@ const activeTab = ref<'files' | 'git' | 'terminal'>('files')
           type="button"
           @click="activeTab = 'files'"
         >
-          files
+          文件
         </button>
         <button
           class="h-8 rounded-md px-3 text-xs font-semibold transition"
@@ -43,7 +43,7 @@ const activeTab = ref<'files' | 'git' | 'terminal'>('files')
           type="button"
           @click="activeTab = 'git'"
         >
-          git
+          Git
         </button>
         <button
           class="h-8 rounded-md px-3 text-xs font-semibold transition"
@@ -51,7 +51,7 @@ const activeTab = ref<'files' | 'git' | 'terminal'>('files')
           type="button"
           @click="activeTab = 'terminal'"
         >
-          terminal
+          终端
         </button>
       </div>
     </div>

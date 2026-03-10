@@ -689,7 +689,7 @@ onBeforeUnmount(() => {
           maxWidth: isRightPanelVisible ? '33.3333%' : undefined,
         }"
       >
-        <div class="flex min-h-0 w-full flex-1 flex-col gap-3">
+        <div class="flex min-h-0 w-full flex-1 flex-col">
           <TaskCard
             :task="task"
             :status-label="taskStatusLabel"

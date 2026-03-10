@@ -50,21 +50,26 @@ const handleSubmit = () => {
 
 <template>
   <section class="border-border/50 bg-background rounded-xl border shadow-sm">
-    <div class="space-y-2 px-3 py-2">
+    <div class="px-3 pb-2 pt-2.5">
       <textarea
         v-model="inputValue"
-        class="min-h-20 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+        rows="3"
+        class="w-full resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
         :placeholder="props.placeholder"
+        :disabled="props.disabled"
+        @keydown.meta.enter="handleSubmit"
+        @keydown.ctrl.enter="handleSubmit"
       />
 
-      <div class="flex justify-end">
+      <div class="flex items-center justify-between pt-1">
+        <span class="text-[10px] text-muted-foreground/40">⌘ Enter 发送</span>
         <button
-          class="h-8 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+          class="inline-flex h-6 items-center rounded-md bg-primary px-3 text-[11px] font-medium text-primary-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="!canSubmit"
           type="button"
           @click="handleSubmit"
         >
-          回复
+          发送
         </button>
       </div>
     </div>
