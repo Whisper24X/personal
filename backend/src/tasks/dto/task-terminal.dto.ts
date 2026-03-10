@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export enum TaskTerminalSessionStatus {
   running = 'running',
@@ -12,6 +12,20 @@ export class CreateTaskTerminalSessionDto {
   @IsOptional()
   @IsString()
   shell?: string;
+
+  @ApiPropertyOptional({ type: Number, default: 80 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  cols?: number;
+
+  @ApiPropertyOptional({ type: Number, default: 24 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  rows?: number;
 }
 
 export class TaskTerminalInputDto {

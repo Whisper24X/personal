@@ -183,6 +183,14 @@ export const tasksApi = {
     return apiHttp.post<TaskGitActionResult>(`/tasks/${taskId}/git/rebase`, payload ?? {})
   },
 
+  gitPush(taskId: string) {
+    return apiHttp.post<TaskGitActionResult>(`/tasks/${taskId}/git/push`, {})
+  },
+
+  gitLog(taskId: string) {
+    return apiHttp.get<TaskGitActionResult>(`/tasks/${taskId}/git/log`)
+  },
+
   gitPrLink(taskId: string, payload?: TaskGitBaseBranchPayload) {
     return apiHttp.post<TaskGitPrLink>(`/tasks/${taskId}/git/pr-link`, payload ?? {})
   },
@@ -201,5 +209,9 @@ export const tasksApi = {
 
   terminalStop(taskId: string, sessionId: string) {
     return apiHttp.post<void>(`/tasks/${taskId}/terminal/sessions/${sessionId}/stop`)
+  },
+
+  terminalRemove(taskId: string, sessionId: string) {
+    return apiHttp.delete<void>(`/tasks/${taskId}/terminal/sessions/${sessionId}`)
   },
 }

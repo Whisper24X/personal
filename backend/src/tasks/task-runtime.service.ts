@@ -25,21 +25,6 @@ type GitDiffArtifact = {
   metadata: Record<string, unknown>;
 };
 
-type RuntimeMeta = {
-  taskId: string;
-  projectId: string;
-  branch: string;
-  gitBaseBranch: string;
-  worktreePath: string;
-  allowedRoot: string;
-  repositoryRoot?: string;
-  generatedAt: string;
-  sandbox: {
-    type: 'directory' | 'git-worktree';
-    note: string;
-  };
-};
-
 @Injectable()
 export class TaskRuntimeService {
   private readonly configService = new ConfigService();
@@ -53,7 +38,6 @@ export class TaskRuntimeService {
     'tmp',
     'worktrees',
   );
-  private readonly runtimeMetaFilename = '.ainative-runtime.json';
 
   async ensureRuntime(
     task: Task,
@@ -69,20 +53,6 @@ export class TaskRuntimeService {
       this.resolveGitWorktreePath(task, project),
       allowedRoot,
     );
-    const runtimeMeta: RuntimeMeta = {
-      taskId: task.id,
-      projectId: project.id,
-      branch: gitBranch,
-      gitBaseBranch,
-      worktreePath: gitWorktree,
-      allowedRoot,
-      generatedAt: new Date().toISOString(),
-      sandbox: {
-        type: 'directory',
-        note: 'MVP sandbox uses process-local isolated directory.',
-      },
-    };
-
     const gitRuntimeEnabled = this.isGitRuntimeEnabled(project);
 
     if (!gitRuntimeEnabled) {
@@ -90,30 +60,15 @@ export class TaskRuntimeService {
         recursive: true,
       });
       await this.enforceRuntimeDirectorySecurity(gitWorktree, allowedRoot);
-
-      runtimeMeta.sandbox = {
-        type: 'directory',
-        note: 'Git runtime disabled; using isolated directory sandbox.',
-      };
     } else {
-      const repositoryRoot = await this.ensureProjectRepository(project);
       await this.ensureGitWorktree({
-        repositoryRoot,
+        repositoryRoot: await this.ensureProjectRepository(project),
         worktreePath: gitWorktree,
         allowedRoot,
         branch: gitBranch,
         gitBaseBranch,
       });
-      runtimeMeta.repositoryRoot = repositoryRoot;
-
-      runtimeMeta.sandbox = {
-        type: 'git-worktree',
-        note: 'Runtime prepared with git clone/fetch and worktree.',
-      };
     }
-
-    const metaPath = path.join(gitWorktree, this.runtimeMetaFilename);
-    await fs.writeFile(metaPath, JSON.stringify(runtimeMeta, null, 2), 'utf-8');
 
     return {
       gitBranch,
@@ -136,11 +91,8 @@ export class TaskRuntimeService {
 
     const worktreePath = this.resolveGitWorktreePath(task, project);
     const cleanupErrors: string[] = [];
-    const runtimeMeta = await this.readRuntimeMeta(worktreePath);
     const allowedRoot = await this.resolveCanonicalPath(
-      runtimeMeta?.allowedRoot
-        ? runtimeMeta.allowedRoot
-        : this.resolveWorktreeAllowedRoot(project),
+      this.resolveWorktreeAllowedRoot(project),
     );
     const resolvedWorktreePath = await this.resolveCanonicalPath(worktreePath);
 
@@ -148,14 +100,6 @@ export class TaskRuntimeService {
       return {
         cleaned: false,
         errorMessage: 'cleanup rejected: worktree path is outside allowed root',
-      };
-    }
-
-    if (runtimeMeta?.taskId && runtimeMeta.taskId !== task.id) {
-      return {
-        cleaned: false,
-        errorMessage:
-          'cleanup rejected: runtime metadata task ownership mismatch',
       };
     }
 
@@ -179,13 +123,11 @@ export class TaskRuntimeService {
       }
     }
 
-    if (
-      runtimeMeta?.sandbox.type === 'git-worktree' &&
-      runtimeMeta.repositoryRoot?.trim()
-    ) {
+    if (this.isGitRuntimeEnabled(project)) {
+      const repositoryRoot = this.resolveRepositoryRoot(project);
       const removeResult = await this.runCommand('git', [
         '-C',
-        runtimeMeta.repositoryRoot.trim(),
+        repositoryRoot,
         'worktree',
         'remove',
         '--force',
@@ -826,30 +768,6 @@ export class TaskRuntimeService {
       }
       const content = await fs.readFile(fullPath, 'utf-8');
       return content;
-    } catch {
-      return null;
-    }
-  }
-
-  private async readRuntimeMeta(
-    worktreePath: string,
-  ): Promise<RuntimeMeta | null> {
-    const metaPath = path.join(worktreePath, this.runtimeMetaFilename);
-    const hasMeta = await this.pathExists(metaPath);
-
-    if (!hasMeta) {
-      return null;
-    }
-
-    try {
-      const rawText = await fs.readFile(metaPath, 'utf-8');
-      const parsed = JSON.parse(rawText) as RuntimeMeta;
-
-      if (!parsed || typeof parsed !== 'object') {
-        return null;
-      }
-
-      return parsed;
     } catch {
       return null;
     }

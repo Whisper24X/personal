@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
 import { TasksController } from './tasks.controller';
 import { TasksService } from './tasks.service';
 import { RelationalTaskPersistenceModule } from './infrastructure/persistence/relational/relational-persistence.module';
@@ -12,6 +13,7 @@ import { RelationalBusinessLinePersistenceModule } from '../business-lines/infra
 import { TaskWorkspaceService } from './task-workspace.service';
 import { TaskGitService } from './task-git.service';
 import { TaskTerminalService } from './task-terminal.service';
+import { TerminalGateway } from './terminal.gateway';
 
 @Module({
   imports: [
@@ -20,6 +22,7 @@ import { TaskTerminalService } from './task-terminal.service';
     WorkflowTemplatesModule,
     NotificationsModule,
     RelationalBusinessLinePersistenceModule,
+    JwtModule.register({}),
   ],
   controllers: [TasksController],
   providers: [
@@ -30,6 +33,7 @@ import { TaskTerminalService } from './task-terminal.service';
     TaskWorkspaceService,
     TaskGitService,
     TaskTerminalService,
+    TerminalGateway,
   ],
   exports: [TasksService, TaskRuntimeService, RelationalTaskPersistenceModule],
 })

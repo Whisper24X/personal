@@ -258,6 +258,8 @@ export type TaskGitCommitPayload = {
 export type CreateTaskTerminalSessionPayload = {
   cwd?: string
   shell?: string
+  cols?: number
+  rows?: number
 }
 
 export type TaskTerminalInputPayload = {

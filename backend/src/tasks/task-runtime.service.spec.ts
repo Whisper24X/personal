@@ -125,38 +125,24 @@ describe('TaskRuntimeService', () => {
   });
 
   it('should fall back to directory cleanup when git worktree cleanup fails', async () => {
-    const worktreePath = await fs.mkdtemp(
-      path.join(os.tmpdir(), 'ainative-runtime-cleanup-spec-'),
+    const project = createProject();
+    const worktreeBase = path.resolve(
+      resolveAinativeDataRootDir(),
+      project.businessLineId,
+      'projects',
+      project.id,
+      'worktrees',
     );
-    createdDirectories.push(worktreePath);
-
-    const runtimeMetaPath = path.join(worktreePath, '.ainative-runtime.json');
-    await fs.writeFile(
-      runtimeMetaPath,
-      JSON.stringify(
-        {
-          taskId: 'task-test-id',
-          projectId: 'project-test-id',
-          branch: 'feature/runtime-test',
-          gitBaseBranch: 'main',
-          worktreePath,
-          allowedRoot: path.dirname(worktreePath),
-          repositoryRoot: '/tmp/not-exists-repository-root',
-          generatedAt: new Date().toISOString(),
-          sandbox: {
-            type: 'git-worktree',
-            note: 'test meta',
-          },
-        },
-        null,
-        2,
-      ),
-      'utf-8',
+    const worktreePath = path.join(
+      worktreeBase,
+      `wk-cleanup-test-${Date.now()}`,
     );
+    await fs.mkdir(worktreePath, { recursive: true });
+    createdDirectories.push(path.dirname(worktreePath));
 
     const cleanupResult = await service.cleanupRuntime(
       createTask({ gitWorktree: worktreePath }),
-      createProject(),
+      project,
     );
 
     expect(cleanupResult.cleaned).toBeTruthy();

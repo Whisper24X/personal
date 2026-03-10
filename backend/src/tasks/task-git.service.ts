@@ -329,6 +329,58 @@ export class TaskGitService {
     };
   }
 
+  async push(
+    taskId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<TaskGitActionResultDto> {
+    const { worktreePath } = await this.resolveTaskGitContext(
+      taskId,
+      currentUser,
+    );
+
+    const result = await this.runGitCommand(worktreePath, [
+      'push',
+      '--set-upstream',
+      'origin',
+      'HEAD',
+    ]);
+
+    if (!result.success) {
+      throw this.toGitException('Failed to push changes', result);
+    }
+
+    return {
+      success: true,
+      message: result.stderr || result.stdout || 'Push completed',
+    };
+  }
+
+  async getLog(
+    taskId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<TaskGitActionResultDto> {
+    const { worktreePath } = await this.resolveTaskGitContext(
+      taskId,
+      currentUser,
+    );
+
+    const result = await this.runGitCommand(worktreePath, [
+      'log',
+      '--oneline',
+      '-20',
+      '--no-color',
+    ]);
+
+    if (!result.success) {
+      throw this.toGitException('Failed to read git log', result);
+    }
+
+    return {
+      success: true,
+      message: result.stdout || 'No commits yet',
+    };
+  }
+
   async getPrLink(
     taskId: string,
     payload: TaskGitBranchDiffQueryDto,

@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { NestFactory, Reflector } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { WsAdapter } from '@nestjs/platform-ws';
 import { useContainer } from 'class-validator';
 import { AppModule } from './app.module';
 import validationOptions from './utils/validation-options';
@@ -14,6 +15,7 @@ import { ResolvePromisesInterceptor } from './utils/serializer.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { cors: true });
+  app.useWebSocketAdapter(new WsAdapter(app));
   useContainer(app.select(AppModule), { fallbackOnErrors: true });
   const configService = app.get(ConfigService<AllConfigType>);
 

@@ -377,6 +377,28 @@ export class TasksController {
     return this.taskGitService.rebase(id, payload, request.user);
   }
 
+  @Post(':id/git/push')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskGitActionResultDto })
+  @HttpCode(HttpStatus.OK)
+  gitPush(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.taskGitService.push(id, request.user);
+  }
+
+  @Get(':id/git/log')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskGitActionResultDto })
+  @HttpCode(HttpStatus.OK)
+  gitLog(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.taskGitService.getLog(id, request.user);
+  }
+
   @Post(':id/git/pr-link')
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: TaskGitPrLinkDto })
@@ -442,6 +464,18 @@ export class TasksController {
     @Param('sessionId') sessionId: string,
   ): Promise<void> {
     await this.taskTerminalService.stopSession(id, sessionId, request.user);
+  }
+
+  @Delete(':id/terminal/sessions/:sessionId')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiParam({ name: 'sessionId', type: String, required: true })
+  @HttpCode(HttpStatus.OK)
+  async removeTerminalSession(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('sessionId') sessionId: string,
+  ): Promise<void> {
+    await this.taskTerminalService.removeSession(id, sessionId, request.user);
   }
 
   @Sse(':id/terminal/sessions/:sessionId/stream')

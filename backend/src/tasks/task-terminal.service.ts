@@ -4,10 +4,9 @@ import {
   NotFoundException,
   OnModuleDestroy,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
+import * as pty from 'node-pty';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import {
   CreateTaskTerminalSessionDto,
@@ -25,10 +24,12 @@ type TerminalSessionInternal = {
   taskId: string;
   cwd: string;
   shell: string;
+  cols: number;
+  rows: number;
   status: TaskTerminalSessionStatus;
   createdAt: Date;
   updatedAt: Date;
-  process: ChildProcessWithoutNullStreams | null;
+  ptyProcess: pty.IPty | null;
   listeners: Set<(event: TaskTerminalEventDto) => void>;
   history: TaskTerminalEventDto[];
 };
@@ -44,13 +45,12 @@ export class TaskTerminalService implements OnModuleDestroy {
   constructor(
     private readonly tasksService: TasksService,
     private readonly taskRuntimeService: TaskRuntimeService,
-    private readonly configService: ConfigService = new ConfigService(),
   ) {}
 
   onModuleDestroy(): void {
     for (const sessions of this.sessionsByTaskId.values()) {
       for (const session of sessions.values()) {
-        this.stopSessionProcess(session);
+        this.killPtyProcess(session);
       }
     }
 
@@ -68,13 +68,24 @@ export class TaskTerminalService implements OnModuleDestroy {
     );
 
     const shell = this.resolveShell(payload.shell);
+    const cols = payload.cols ?? 80;
+    const rows = payload.rows ?? 24;
     const sessionId = randomUUID();
     const now = new Date();
 
-    const childProcess = spawn(shell, [], {
+    const sanitizedEnv: Record<string, string> = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (value !== undefined) {
+        sanitizedEnv[key] = value;
+      }
+    }
+
+    const ptyProcess = pty.spawn(shell, [], {
+      name: 'xterm-256color',
+      cols,
+      rows,
       cwd: workspacePath,
-      env: process.env,
-      stdio: 'pipe',
+      env: sanitizedEnv,
     });
 
     const session: TerminalSessionInternal = {
@@ -82,10 +93,12 @@ export class TaskTerminalService implements OnModuleDestroy {
       taskId,
       cwd: workspacePath,
       shell,
+      cols,
+      rows,
       status: TaskTerminalSessionStatus.running,
       createdAt: now,
       updatedAt: now,
-      process: childProcess,
+      ptyProcess,
       listeners: new Set(),
       history: [],
     };
@@ -93,8 +106,7 @@ export class TaskTerminalService implements OnModuleDestroy {
     const taskSessions = this.getTaskSessions(taskId, true);
     taskSessions.set(sessionId, session);
 
-    childProcess.stdout?.on('data', (chunk: Buffer | string) => {
-      const data = typeof chunk === 'string' ? chunk : chunk.toString('utf-8');
+    ptyProcess.onData((data: string) => {
       this.emitEvent(session, {
         type: 'chunk',
         stream: 'stdout',
@@ -103,43 +115,19 @@ export class TaskTerminalService implements OnModuleDestroy {
       });
     });
 
-    childProcess.stderr?.on('data', (chunk: Buffer | string) => {
-      const data = typeof chunk === 'string' ? chunk : chunk.toString('utf-8');
-      this.emitEvent(session, {
-        type: 'chunk',
-        stream: 'stderr',
-        data,
-        timestamp: new Date(),
-      });
-    });
-
-    childProcess.on('error', (error) => {
-      this.updateSessionStatus(session, TaskTerminalSessionStatus.error);
-      this.emitEvent(session, {
-        type: 'error',
-        message: error.message,
-        timestamp: new Date(),
-      });
-      this.emitEvent(session, {
-        type: 'status',
-        message: TaskTerminalSessionStatus.error,
-        timestamp: new Date(),
-      });
-    });
-
-    childProcess.on('close', (code, signal) => {
+    ptyProcess.onExit(({ exitCode, signal }) => {
       const nextStatus =
         session.status === TaskTerminalSessionStatus.error
           ? TaskTerminalSessionStatus.error
           : TaskTerminalSessionStatus.stopped;
 
-      session.process = null;
+      session.ptyProcess = null;
       this.updateSessionStatus(session, nextStatus);
 
       this.emitEvent(session, {
         type: 'exit',
-        code,
-        signal,
+        code: exitCode,
+        signal: signal !== undefined ? String(signal) : null,
         timestamp: new Date(),
       });
       this.emitEvent(session, {
@@ -181,14 +169,35 @@ export class TaskTerminalService implements OnModuleDestroy {
       currentUser,
     );
 
-    if (
-      !session.process ||
-      session.status !== TaskTerminalSessionStatus.running
-    ) {
-      throw new ConflictException('Terminal session is not running');
+    this.writeToSession(session, payload.input);
+  }
+
+  writeToSessionDirect(taskId: string, sessionId: string, data: string): void {
+    const session = this.getTaskSessions(taskId).get(sessionId);
+    if (!session) {
+      return;
     }
 
-    session.process.stdin.write(payload.input);
+    this.writeToSession(session, data);
+  }
+
+  resizeSession(
+    taskId: string,
+    sessionId: string,
+    cols: number,
+    rows: number,
+  ): void {
+    const session = this.getTaskSessions(taskId).get(sessionId);
+    if (
+      !session?.ptyProcess ||
+      session.status !== TaskTerminalSessionStatus.running
+    ) {
+      return;
+    }
+
+    session.ptyProcess.resize(cols, rows);
+    session.cols = cols;
+    session.rows = rows;
     session.updatedAt = new Date();
   }
 
@@ -203,7 +212,22 @@ export class TaskTerminalService implements OnModuleDestroy {
       currentUser,
     );
 
-    this.stopSessionProcess(session);
+    this.killPtyProcess(session);
+  }
+
+  async removeSession(
+    taskId: string,
+    sessionId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    const session = await this.getSessionOrThrow(
+      taskId,
+      sessionId,
+      currentUser,
+    );
+
+    this.killPtyProcess(session);
+    this.getTaskSessions(taskId).delete(sessionId);
   }
 
   async openSessionStream({
@@ -234,6 +258,51 @@ export class TaskTerminalService implements OnModuleDestroy {
         };
       },
     };
+  }
+
+  subscribeToSession(
+    taskId: string,
+    sessionId: string,
+    listener: (event: TaskTerminalEventDto) => void,
+  ): { history: TaskTerminalEventDto[]; unsubscribe: () => void } | null {
+    const session = this.getTaskSessions(taskId).get(sessionId);
+    if (!session) {
+      return null;
+    }
+
+    session.listeners.add(listener);
+    return {
+      history: [...session.history],
+      unsubscribe: () => {
+        session.listeners.delete(listener);
+      },
+    };
+  }
+
+  async assertCanAccessTask(
+    taskId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.tasksService.assertCanAccessTask(taskId, currentUser);
+  }
+
+  sessionExists(taskId: string, sessionId: string): boolean {
+    return this.getTaskSessions(taskId).has(sessionId);
+  }
+
+  private writeToSession(
+    session: TerminalSessionInternal,
+    data: string,
+  ): void {
+    if (
+      !session.ptyProcess ||
+      session.status !== TaskTerminalSessionStatus.running
+    ) {
+      throw new ConflictException('Terminal session is not running');
+    }
+
+    session.ptyProcess.write(data);
+    session.updatedAt = new Date();
   }
 
   private getTaskSessions(
@@ -286,9 +355,7 @@ export class TaskTerminalService implements OnModuleDestroy {
       return candidate;
     }
 
-    const envShell = this.configService
-      .get<string>('SHELL', { infer: true })
-      ?.trim();
+    const envShell = process.env.SHELL?.trim();
     if (envShell) {
       return envShell;
     }
@@ -336,23 +403,16 @@ export class TaskTerminalService implements OnModuleDestroy {
     return session;
   }
 
-  private stopSessionProcess(session: TerminalSessionInternal): void {
-    if (!session.process) {
+  private killPtyProcess(session: TerminalSessionInternal): void {
+    if (!session.ptyProcess) {
       return;
     }
 
-    const childProcess = session.process;
-    childProcess.kill('SIGTERM');
-
-    const forceKillTimer = setTimeout(() => {
-      if (!session.process) {
-        return;
-      }
-
-      session.process.kill('SIGKILL');
-    }, 3_000);
-
-    forceKillTimer.unref();
+    try {
+      session.ptyProcess.kill();
+    } catch {
+      // PTY process may have already exited
+    }
   }
 
   private toSessionDto(

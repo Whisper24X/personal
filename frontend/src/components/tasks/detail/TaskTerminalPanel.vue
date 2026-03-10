@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { openSseStream } from '@/api/http'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { Terminal } from '@xterm/xterm'
+import { FitAddon } from '@xterm/addon-fit'
+import { WebLinksAddon } from '@xterm/addon-web-links'
+import '@xterm/xterm/css/xterm.css'
 import { tasksApi } from '@/api/tasks'
-import type { TaskTerminalEvent, TaskTerminalSession } from '@/types/api/tasks'
+import type { TaskTerminalSession } from '@/types/api/tasks'
 import { toErrorMessage } from '@/utils/http/to-error-message'
+import { TerminalWsConnection } from '@/utils/ws/terminal-ws'
 
 const props = defineProps<{
   taskId: string
@@ -14,87 +18,116 @@ const loading = ref(false)
 const errorMessage = ref('')
 const creating = ref(false)
 const activeSessionId = ref<string | null>(null)
-const inputValue = ref('')
-const outputMap = ref<Record<string, string>>({})
 
-let streamAbortController: AbortController | null = null
+const terminalContainerRef = ref<HTMLDivElement | null>(null)
 
-const activeSession = computed(() => {
-  if (!activeSessionId.value) {
-    return null
+let terminal: Terminal | null = null
+let fitAddon: FitAddon | null = null
+let resizeObserver: ResizeObserver | null = null
+let wsConnection: TerminalWsConnection | null = null
+let wsReady = false
+
+const initTerminal = () => {
+  if (terminal) {
+    return
   }
 
-  return sessions.value.find((session) => session.id === activeSessionId.value) ?? null
-})
-
-const activeOutput = computed(() => {
-  if (!activeSessionId.value) {
-    return ''
-  }
-
-  return outputMap.value[activeSessionId.value] || ''
-})
-
-const disconnectStream = () => {
-  if (streamAbortController) {
-    streamAbortController.abort()
-    streamAbortController = null
-  }
-}
-
-const appendOutput = (sessionId: string, text: string) => {
-  const current = outputMap.value[sessionId] || ''
-  const next = `${current}${text}`
-  outputMap.value = {
-    ...outputMap.value,
-    [sessionId]: next.slice(-200_000),
-  }
-}
-
-const connectStream = async (sessionId: string) => {
-  disconnectStream()
-
-  streamAbortController = new AbortController()
-
-  await openSseStream(
-    `/tasks/${props.taskId}/terminal/sessions/${sessionId}/stream`,
-    undefined,
-    {
-      signal: streamAbortController.signal,
-      onEvent: (event) => {
-        if (event.event && event.event !== 'task-terminal') {
-          return
-        }
-
-        try {
-          const payload = JSON.parse(event.data) as TaskTerminalEvent
-
-          if (payload.type === 'chunk' && payload.data) {
-            appendOutput(sessionId, payload.data)
-            return
-          }
-
-          if (payload.type === 'error' && payload.message) {
-            appendOutput(sessionId, `\n[error] ${payload.message}\n`)
-            return
-          }
-
-          if (payload.type === 'exit') {
-            appendOutput(sessionId, `\n[exit] code=${payload.code ?? 'null'} signal=${payload.signal ?? '-'}\n`)
-            void loadSessions()
-          }
-        } catch {
-          // ignore malformed SSE payload
-        }
-      },
-      onError: () => {
-        // keep panel usable even when stream reconnect fails
-      },
+  terminal = new Terminal({
+    cursorBlink: true,
+    fontSize: 13,
+    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+    theme: {
+      background: '#0f1115',
+      foreground: '#c7d2fe',
+      cursor: '#c7d2fe',
+      selectionBackground: '#364154',
     },
-  )
+    scrollback: 5000,
+    convertEol: true,
+    allowProposedApi: true,
+  })
+
+  fitAddon = new FitAddon()
+  terminal.loadAddon(fitAddon)
+  terminal.loadAddon(new WebLinksAddon())
+
+  if (terminalContainerRef.value) {
+    terminal.open(terminalContainerRef.value)
+    fitAddon.fit()
+  }
+
+  terminal.onData((data: string) => {
+    wsConnection?.input(data)
+  })
+
+  resizeObserver = new ResizeObserver(() => {
+    fitAddon?.fit()
+
+    if (terminal && wsConnection?.isOpen) {
+      wsConnection.resize(terminal.cols, terminal.rows)
+    }
+  })
+
+  if (terminalContainerRef.value) {
+    resizeObserver.observe(terminalContainerRef.value)
+  }
 }
 
-const loadSessions = async () => {
+const disposeTerminal = () => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+  terminal?.dispose()
+  terminal = null
+  fitAddon = null
+}
+
+const connectWs = () => {
+  disconnectWs()
+
+  wsConnection = new TerminalWsConnection({
+    onMessage: (message) => {
+      if (message.type === 'output') {
+        terminal?.write(message.data)
+      } else if (message.type === 'exit') {
+        terminal?.write(`\r\n\x1b[90m[Process exited with code ${message.code ?? 'null'}]\x1b[0m\r\n`)
+        void loadSessions()
+      } else if (message.type === 'error') {
+        terminal?.write(`\r\n\x1b[31m[Error: ${message.message}]\x1b[0m\r\n`)
+      } else if (message.type === 'attached') {
+        if (terminal && wsConnection?.isOpen) {
+          wsConnection.resize(terminal.cols, terminal.rows)
+        }
+      }
+    },
+    onOpen: () => {
+      wsReady = true
+      if (activeSessionId.value) {
+        wsConnection?.attach(props.taskId, activeSessionId.value)
+      }
+    },
+    onClose: () => {
+      wsReady = false
+    },
+  })
+
+  wsConnection.connect()
+}
+
+const disconnectWs = () => {
+  wsConnection?.dispose()
+  wsConnection = null
+  wsReady = false
+}
+
+const attachToSession = (sessionId: string) => {
+  terminal?.clear()
+
+  if (wsReady && wsConnection) {
+    wsConnection.attach(props.taskId, sessionId)
+  }
+}
+
+const loadSessions = async ({ autoCreate = false } = {}) => {
   loading.value = true
   errorMessage.value = ''
 
@@ -113,6 +146,12 @@ const loadSessions = async () => {
     ) {
       activeSessionId.value = firstSession?.id || null
     }
+
+    if (autoCreate && sessions.value.length === 0) {
+      loading.value = false
+      await createSession()
+      return
+    }
   } catch (error) {
     sessions.value = []
     errorMessage.value = toErrorMessage(error, '加载终端会话失败')
@@ -125,13 +164,11 @@ const createSession = async () => {
   creating.value = true
 
   try {
-    const session = await tasksApi.createTerminalSession(props.taskId)
+    const cols = terminal?.cols ?? 80
+    const rows = terminal?.rows ?? 24
+    const session = await tasksApi.createTerminalSession(props.taskId, { cols, rows })
     sessions.value = [...sessions.value, session]
     activeSessionId.value = session.id
-    outputMap.value = {
-      ...outputMap.value,
-      [session.id]: outputMap.value[session.id] || '',
-    }
   } catch (error) {
     errorMessage.value = toErrorMessage(error, '创建终端会话失败')
   } finally {
@@ -139,65 +176,50 @@ const createSession = async () => {
   }
 }
 
-const sendInput = async () => {
-  if (!activeSessionId.value || !inputValue.value.trim()) {
-    return
-  }
-
-  const input = inputValue.value
-
+const closeSession = async (sessionId: string) => {
   try {
-    await tasksApi.terminalInput(props.taskId, activeSessionId.value, {
-      input,
-    })
-
-    appendOutput(activeSessionId.value, input)
-    inputValue.value = ''
-  } catch (error) {
-    errorMessage.value = toErrorMessage(error, '发送输入失败')
-  }
-}
-
-const stopActiveSession = async () => {
-  if (!activeSessionId.value) {
-    return
+    await tasksApi.terminalRemove(props.taskId, sessionId)
+  } catch {
+    // session may already be removed
   }
 
-  try {
-    await tasksApi.terminalStop(props.taskId, activeSessionId.value)
-    await loadSessions()
-  } catch (error) {
-    errorMessage.value = toErrorMessage(error, '停止终端失败')
+  sessions.value = sessions.value.filter((s) => s.id !== sessionId)
+
+  if (activeSessionId.value === sessionId) {
+    activeSessionId.value = sessions.value[0]?.id ?? null
   }
 }
 
 watch(
   () => props.taskId,
   async () => {
-    disconnectStream()
+    disconnectWs()
     activeSessionId.value = null
-    outputMap.value = {}
-    await loadSessions()
+    await loadSessions({ autoCreate: true })
+    await nextTick()
+    initTerminal()
+    connectWs()
   },
-  {
-    immediate: true,
-  },
+  { immediate: true },
 )
 
 watch(
   () => activeSessionId.value,
-  async (sessionId) => {
+  (sessionId) => {
     if (!sessionId) {
-      disconnectStream()
+      wsConnection?.detach()
+      terminal?.clear()
       return
     }
 
-    await connectStream(sessionId)
+    attachToSession(sessionId)
   },
 )
 
 onBeforeUnmount(() => {
-  disconnectStream()
+  disconnectWs()
+  disposeTerminal()
+
   const runningSessionIds = sessions.value
     .filter((session) => session.status === 'running')
     .map((session) => session.id)
@@ -217,12 +239,30 @@ onBeforeUnmount(() => {
 <template>
   <div class="flex h-full min-w-0 flex-col">
     <header class="border-border/70 flex items-center justify-between gap-2 border-b px-3 py-2">
-      <div class="text-xs">
-        <p class="text-muted-foreground">Terminal</p>
-        <p class="text-foreground">{{ activeSession?.shell || '-' }}</p>
+      <div class="flex items-center gap-1 overflow-x-auto">
+        <div
+          v-for="session in sessions"
+          :key="session.id"
+          class="flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-xs"
+          :class="activeSessionId === session.id ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-foreground'"
+          role="button"
+          tabindex="0"
+          @click="activeSessionId = session.id"
+          @keydown.enter="activeSessionId = session.id"
+        >
+          <span>终端 {{ sessions.indexOf(session) + 1 }}</span>
+          <button
+            class="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-sm opacity-60 transition-opacity hover:opacity-100"
+            type="button"
+            title="关闭会话"
+            @click.stop="closeSession(session.id)"
+          >
+            &#x2715;
+          </button>
+        </div>
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="flex shrink-0 items-center gap-2">
         <button
           class="h-7 rounded-md border border-border bg-background px-2 text-xs"
           :disabled="creating"
@@ -231,43 +271,11 @@ onBeforeUnmount(() => {
         >
           {{ creating ? '创建中...' : '新建会话' }}
         </button>
-        <button class="h-7 rounded-md border border-border bg-background px-2 text-xs" type="button" @click="loadSessions">
-          刷新
-        </button>
       </div>
     </header>
 
-    <div class="border-border/70 flex items-center gap-1 overflow-x-auto border-b px-2 py-1">
-      <button
-        v-for="session in sessions"
-        :key="session.id"
-        class="h-7 rounded-md border px-2 text-xs"
-        :class="activeSessionId === session.id ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-foreground'"
-        type="button"
-        @click="activeSessionId = session.id"
-      >
-        {{ session.id.slice(0, 8) }} · {{ session.status }}
-      </button>
-    </div>
+    <p v-if="errorMessage" class="px-3 py-1 text-xs text-destructive">{{ errorMessage }}</p>
 
-    <div class="relative min-h-0 flex-1 bg-[#0f1115]">
-      <pre class="h-full overflow-auto p-3 text-xs text-[#c7d2fe]">{{ activeOutput || (loading ? 'Loading...' : '请选择或创建终端会话') }}</pre>
-    </div>
-
-    <footer class="border-border/70 border-t px-3 py-2">
-      <p v-if="errorMessage" class="mb-2 text-xs text-destructive">{{ errorMessage }}</p>
-
-      <div class="flex items-center gap-2">
-        <input
-          v-model="inputValue"
-          class="h-8 flex-1 rounded-md border border-border bg-background px-2 text-xs text-foreground"
-          placeholder="输入命令，例如 ls -la\n"
-          type="text"
-          @keydown.enter.prevent="sendInput"
-        />
-        <button class="h-8 rounded-md border border-border bg-background px-2 text-xs" type="button" @click="sendInput">发送</button>
-        <button class="h-8 rounded-md bg-destructive px-2 text-xs text-destructive-foreground" type="button" @click="stopActiveSession">停止</button>
-      </div>
-    </footer>
+    <div ref="terminalContainerRef" class="min-h-0 flex-1 bg-[#0f1115] p-1" />
   </div>
 </template>
