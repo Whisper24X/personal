@@ -33,14 +33,15 @@ allowed-tools: Read, Glob, Grep, mcp__dbhub__search_objects
 
 按顺序检查以下工件是否存在：
 
-| Step | 检查项       | 路径                                                       | 检查方式                   |
-| ---- | ------------ | ---------------------------------------------------------- | -------------------------- |
-| 1    | SQL 文件     | `doc/sql/ainative-backend/{table}.sql`                     | Glob                       |
-| 1    | 数据库表     | public.{table}                                             | mcp**dbhub**search_objects |
-| 2    | GORM Model   | `internal/data/gorm/ainative-backend_model/{table}.gen.go` | Glob                       |
-| 3    | Proto 文件   | `api/{position}/v1/{table}.proto`                          | Glob                       |
-| 5    | API pb.go    | `api/{position}/v1/{table}.pb.go`                          | Glob                       |
-| 5    | Service 文件 | `internal/service/{position}_v1_{table}.go`                | Glob                       |
+| Step | 检查项       | 路径                                                       | 检查方式                                       |
+| ---- | ------------ | ---------------------------------------------------------- | ---------------------------------------------- |
+| 1    | SQL 文件     | `doc/sql/ainative-backend/{table}.sql`                     | Glob                                           |
+| 1    | 数据库表     | public.{table}                                             | mcp**dbhub**search_objects                     |
+| 2    | GORM Model   | `internal/data/gorm/ainative-backend_model/{table}.gen.go` | Glob                                           |
+| 3    | Proto 文件   | `api/{position}/v1/{table}.proto`                          | Glob                                           |
+| 5    | API pb.go    | `api/{position}/v1/{table}.pb.go`                          | Glob                                           |
+| 5    | Service 文件 | `internal/service/{position}_v1_{table}.go`                | Glob                                           |
+| 6    | http.go 注册 | `internal/server/http.go`                                  | Grep: `Register{Table}HTTPServer` |
 
 ## 审计逻辑
 
@@ -50,6 +51,7 @@ allowed-tools: Read, Glob, Grep, mcp__dbhub__search_objects
 如果 Proto 文件不存在 → 从 Step 3 开始
 如果 API pb.go 不存在 → 从 Step 5 开始
 如果 Service 文件不存在 → 从 Step 6 开始
+如果 Service 文件存在但 http.go 未注册 Register{Table}HTTPServer → 标记为需补注册，从 Step 6 Server 层开始
 否则 → 检查是否需要修改现有代码
 ```
 
@@ -72,6 +74,7 @@ allowed-tools: Read, Glob, Grep, mcp__dbhub__search_objects
 | 4 | Proto 文件 | ✅/❌ |
 | 5 | API pb.go | ✅/❌ |
 | 6 | Service 文件 | ✅/❌ |
+| 6 | http.go 注册 | ✅/❌ |
 
 ### 建议
 - 建议从 Step {N} 开始

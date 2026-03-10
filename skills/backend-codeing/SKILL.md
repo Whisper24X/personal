@@ -210,6 +210,13 @@ func NewHTTPServer(
 }
 ```
 
+### 4.1 验证注册已写入（必须执行，不可跳过）
+
+完成编辑后，必须 grep `internal/server/http.go` 确认以下两项均已存在，任意一项缺失则视为 Step 4 **未完成**，须返回补全后再继续：
+
+- 函数参数已添加：`{Position}V1{Table}Service *service.{Position}V1{Table}Service`
+- 注册调用已添加：`Register{Table}HTTPServer(srv,`
+
 ---
 
 ## Step 5: Wire 同步
@@ -256,10 +263,11 @@ cd ainative-backend && make wire
 - [ ] 只调用 Biz 层，不直接调用 Data 层
 - [ ] 已添加到 `service.go` 的 ProviderSet
 
-### Server 层
+### Server 层（以下三项必须全部完成，不可跳过）
 
 - [ ] 已添加 Service 参数到 `NewHTTPServer`
 - [ ] 已调用 `RegisterXxxHTTPServer`
+- [ ] 已通过 grep 验证上述两项写入（Step 4.1）
 - [ ] 已执行 `make wire`
 
 ## 输出
