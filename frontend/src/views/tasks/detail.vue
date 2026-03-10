@@ -76,6 +76,15 @@ const statusClassMap: Record<Task['status'], string> = {
   done: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
 }
 
+const cliLabelMap: Record<string, string> = {
+  cursor: 'Cursor Agent',
+  'cursor-agent': 'Cursor Agent',
+  'claude-code': 'Claude Code',
+  codex: 'Codex',
+  'gemini-cli': 'Gemini CLI',
+  opencode: 'Opencode',
+}
+
 const task = computed(() => detail.value?.task ?? null)
 
 const taskConfig = computed(() => task.value?.configJson ?? null)
@@ -197,6 +206,19 @@ const executionMessages = computed(() => {
   return sourceMessages.filter((item) => {
     return item.taskNodeId === selectedWorkflowNodeId.value
   })
+})
+
+const executionPanelTitle = computed(() => {
+  const selectedNode = selectedWorkflowNodeId.value
+    ? sortedNodes.value.find((node) => node.id === selectedWorkflowNodeId.value) ?? null
+    : null
+  const cliId =
+    selectedNode?.agentCliId ||
+    taskConfig.value?.agentCliId ||
+    sortedNodes.value[0]?.agentCliId ||
+    ''
+
+  return cliLabelMap[cliId] || cliId || 'Execution'
 })
 
 const formatDate = (value?: string) => {
@@ -656,11 +678,10 @@ onBeforeUnmount(() => {
 
     <section
       v-else
-      class="bg-background flex h-full w-full min-w-0 overflow-hidden rounded-2xl border border-border/50 shadow-sm"
+      class="flex h-full w-full min-w-0 overflow-hidden"
     >
       <div
         class="bg-background flex min-w-0 flex-col overflow-hidden transition-all duration-200"
-        :class="isRightPanelVisible ? 'rounded-l-2xl' : 'rounded-2xl'"
         :style="{
           flex: isRightPanelVisible ? '0 0 auto' : '1 1 0%',
           width: isRightPanelVisible ? '33.3333%' : undefined,
@@ -668,29 +689,18 @@ onBeforeUnmount(() => {
           maxWidth: isRightPanelVisible ? '33.3333%' : undefined,
         }"
       >
-        <div class="flex min-h-0 flex-1 flex-col gap-3 p-3">
+        <div class="flex min-h-0 w-full flex-1 flex-col gap-3">
           <TaskCard
-            :task-id="taskId"
             :task="task"
             :status-label="taskStatusLabel"
             :status-class="taskStatusClass"
             :mode-label="taskModeLabel"
-            :task-list-route="taskListRoute"
-            :project-detail-route="projectDetailRoute"
-            :created-at-label="formatDate(task?.createdAt)"
-            :updated-at-label="formatDate(task?.updatedAt)"
             :branch-label="task?.gitBranch ?? '-'"
             :action-loading="actionLoading"
             :can-execute="canExecute"
-            :can-cancel="canCancel"
-            :can-cleanup-worktree="canCleanupWorktree"
-            :can-edit="canEdit"
             :can-remove="canRemove"
             @execute="executeTask"
-            @cancel="cancelTask"
-            @cleanup="cleanupTaskWorktree"
             @refresh="loadTaskData"
-            @edit="openEdit"
             @remove="deleteOpen = true"
           />
 
@@ -705,6 +715,7 @@ onBeforeUnmount(() => {
           />
 
           <ExecutionPanel
+            :title="executionPanelTitle"
             :loading="loading"
             :task-status="task?.status || null"
             :task-status-label="taskStatusLabel"

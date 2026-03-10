@@ -92,6 +92,9 @@ beforeEach(() => {
       mode: 'conversation',
       title: 'Demo task',
       status: 'todo',
+      configJson: {
+        agentCliId: 'codex',
+      },
       createdAt: '2026-02-27T10:00:00.000Z',
       updatedAt: '2026-02-27T10:00:00.000Z',
     },
@@ -190,6 +193,30 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.text()).not.toContain('Agent CLI stdout chunk')
   })
 
+  it('uses cli name as execution panel title', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Codex')
+    expect(wrapper.text()).not.toContain('Execution')
+  })
+
   it('keeps reply box but hides header actions', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
@@ -214,5 +241,41 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.text()).toContain('回复')
     expect(wrapper.text()).not.toContain('Reply')
     expect(wrapper.text()).not.toContain('停止执行')
+  })
+
+  it('renders a streamlined task card with high-value fields only', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Demo task')
+    expect(wrapper.text()).toContain('待执行')
+    expect(wrapper.text()).toContain('模式 对话')
+    expect(wrapper.text()).not.toContain('分支')
+    expect(wrapper.text()).not.toContain('项目 project-1')
+    expect(wrapper.text()).not.toContain('CLI 工具')
+    expect(wrapper.text()).not.toContain('CLI 配置')
+    expect(wrapper.text()).not.toContain('创建：')
+    expect(wrapper.text()).not.toContain('更新：')
+    expect(wrapper.text()).not.toContain('停止')
+    expect(wrapper.text()).not.toContain('清理工作区')
+    expect(wrapper.text()).not.toContain('编辑')
+    expect(wrapper.text()).not.toContain('任务列表')
+    expect(wrapper.text()).not.toContain('项目详情')
   })
 })
