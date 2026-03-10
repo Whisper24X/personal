@@ -47,8 +47,8 @@ const props = withDefaults(
 const copyState = ref<'idle' | 'success' | 'error'>('idle')
 const copyPathState = ref<'idle' | 'success' | 'error'>('idle')
 const forceHighlight = ref(false)
-let copyResetTimer: ReturnType<typeof window.setTimeout> | null = null
-let copyPathResetTimer: ReturnType<typeof window.setTimeout> | null = null
+let copyResetTimer: number | null = null
+let copyPathResetTimer: number | null = null
 
 const sourceText = computed(() => props.lines.join('\n'))
 const language = computed(() => resolveTaskCodeLanguage(props.selectedPath, props.mimeType))
@@ -75,13 +75,15 @@ const highlightedHtmlLines = computed(() => {
   }
 
   if (usePrismHighlight.value && prismLanguage.value && prismGrammar.value) {
+    const grammar = prismGrammar.value
+    const lang = prismLanguage.value
     return props.lines.map((line) => {
       if (!line) {
         return '&nbsp;'
       }
 
       try {
-        return Prism.highlight(line, prismGrammar.value, prismLanguage.value) || '&nbsp;'
+        return Prism.highlight(line, grammar, lang) || '&nbsp;'
       } catch {
         return highlightTaskCodeLine(line, language.value)
       }

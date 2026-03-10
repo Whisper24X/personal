@@ -32,13 +32,17 @@ let pendingCommand: string | null = null
 
 const MAX_LOG_LINES = 2000
 
+const ESC = String.fromCodePoint(0x1b)
+const BEL = String.fromCodePoint(0x07)
+const CTRL_RANGE = `${String.fromCodePoint(0x00)}-${String.fromCodePoint(0x08)}${String.fromCodePoint(0x0b)}${String.fromCodePoint(0x0c)}${String.fromCodePoint(0x0e)}-${String.fromCodePoint(0x1f)}${String.fromCodePoint(0x7f)}`
+
 const stripAnsi = (text: string): string => {
   return text
-    .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')       // CSI sequences (colors, cursor, erase)
-    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '') // OSC sequences (window title, etc.)
-    .replace(/\x1b[()#][A-Za-z0-9]/g, '')           // character set selection
-    .replace(/\x1b[A-Za-z]/g, '')                    // two-char escape sequences
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '') // control chars (keep \t \n \r)
+    .replace(new RegExp(`${ESC}\\[[0-9;?]*[A-Za-z]`, 'g'), '')
+    .replace(new RegExp(`${ESC}\\][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\\\)`, 'g'), '')
+    .replace(new RegExp(`${ESC}[()#][A-Za-z0-9]`, 'g'), '')
+    .replace(new RegExp(`${ESC}[A-Za-z]`, 'g'), '')
+    .replace(new RegExp(`[${CTRL_RANGE}]`, 'g'), '')
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
 }

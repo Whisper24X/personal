@@ -127,14 +127,6 @@ const taskListRoute = computed(() => {
   }
 })
 
-const projectDetailRoute = computed(() => {
-  if (!activeProjectId.value) {
-    return null
-  }
-
-  return `/projects/${activeProjectId.value}`
-})
-
 const taskStatusLabel = computed(() => {
   if (!task.value) {
     return '-'
@@ -162,18 +154,6 @@ const canExecute = computed(() => {
   }
 
   return task.value.status === 'todo' || task.value.status === 'in_review'
-})
-
-const canCancel = computed(() => {
-  return hasButtonAccess('cancelTask') && task.value?.status === 'in_progress'
-})
-
-const canCleanupWorktree = computed(() => {
-  return hasButtonAccess('editTask') && Boolean(task.value?.gitWorktree)
-})
-
-const canEdit = computed(() => {
-  return hasButtonAccess('editTask') && task.value?.status === 'todo'
 })
 
 const canRemove = computed(() => {
@@ -470,60 +450,6 @@ const executeTask = async () => {
   }
 }
 
-const cancelTask = async () => {
-  if (!taskId.value || !canCancel.value) {
-    return
-  }
-
-  actionLoading.value = true
-
-  try {
-    detail.value = await tasksApi.cancel(taskId.value)
-    message.success('任务已停止')
-  } catch (error) {
-    message.error(toErrorMessage(error, '停止任务失败'))
-  } finally {
-    actionLoading.value = false
-  }
-}
-
-const cleanupTaskWorktree = async () => {
-  if (!taskId.value || !canCleanupWorktree.value) {
-    return
-  }
-
-  actionLoading.value = true
-
-  try {
-    detail.value = await tasksApi.cleanupWorktree(taskId.value)
-    rightPanelRefreshToken.value += 1
-    message.success('工作区已清理')
-  } catch (error) {
-    message.error(toErrorMessage(error, '清理工作区失败'))
-  } finally {
-    actionLoading.value = false
-  }
-}
-
-const retryNode = async (node: TaskNode) => {
-  if (!taskId.value || !canManageReview.value) {
-    return
-  }
-
-  actionLoading.value = true
-
-  try {
-    detail.value = await tasksApi.retry(taskId.value, {
-      nodeId: node.id,
-    })
-    rightPanelRefreshToken.value += 1
-    message.success('节点已重试')
-  } catch (error) {
-    message.error(toErrorMessage(error, '重试节点失败'))
-  } finally {
-    actionLoading.value = false
-  }
-}
 
 const approveNode = async (node: TaskNode) => {
   if (!taskId.value || !canManageReview.value) {
@@ -568,19 +494,6 @@ const handleReply = async (replyMessage: string) => {
   } finally {
     actionLoading.value = false
   }
-}
-
-const openEdit = () => {
-  if (!task.value || !canEdit.value) {
-    return
-  }
-
-  editForm.title = task.value.title || ''
-  editForm.prompt = task.value.prompt || ''
-  editForm.gitBranch = task.value.gitBranch || ''
-  editForm.agentCliId = taskConfig.value?.agentCliId || ''
-  editForm.agentCliConfigId = taskConfig.value?.agentCliConfigId || ''
-  editOpen.value = true
 }
 
 const saveEdit = async (payload: TaskEditFormValue) => {

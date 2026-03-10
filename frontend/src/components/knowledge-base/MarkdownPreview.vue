@@ -30,6 +30,10 @@ const markdownParser = new MarkdownIt({
 const defaultFenceRenderer = markdownParser.renderer.rules.fence
 markdownParser.renderer.rules.fence = (tokens, idx, options, env, self) => {
   const token = tokens[idx]
+  if (!token) {
+    return self.renderToken(tokens, idx, options)
+  }
+
   const language = token.info.trim()
 
   if (language === 'mermaid') {
