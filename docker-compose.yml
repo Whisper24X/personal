@@ -12,14 +12,14 @@ services:
     container_name: ainative-postgres
     restart: unless-stopped
     environment:
-      TZ: ${TZ:-Asia/Shanghai}
-      POSTGRES_DB: ${POSTGRES_DB:-ainative}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      TZ: ${TZ}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - ainative-postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ainative}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -31,11 +31,11 @@ services:
     image: redis:6-alpine
     container_name: ainative-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-redis}"]
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
     volumes:
       - ainative-redis-data:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-redis} ping | grep PONG"]
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD} ping | grep PONG"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -48,10 +48,37 @@ services:
     container_name: ainative-adminer
     restart: unless-stopped
     ports:
-      - "${ADMINER_PORT:-8080}:8080"
+      - "${ADMINER_PORT}:8080"
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - ainative
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ainative-backend
+    restart: unless-stopped
+    env_file: ./backend/.env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT}:3000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3000/').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
     networks:
       - ainative
 
@@ -61,7 +88,12 @@ services:
       dockerfile: Dockerfile
     container_name: ainative-frontend
     restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:3000
+    depends_on:
+      backend:
+        condition: service_healthy
     ports:
-      - "${FRONTEND_PORT:-8090}:80"
+      - "${FRONTEND_PORT}:80"
     networks:
       - ainative
