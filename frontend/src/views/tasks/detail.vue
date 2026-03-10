@@ -175,6 +175,18 @@ const canManageReview = computed(() => {
   return hasButtonAccess('executeTask')
 })
 
+const replyDisabled = computed(() => {
+  return !task.value || actionLoading.value || task.value.status === 'in_progress'
+})
+
+const replyPlaceholder = computed(() => {
+  if (task.value?.status === 'in_progress') {
+    return '任务执行中，暂不可回复...'
+  }
+
+  return '补充指令或继续提问...'
+})
+
 const executionMessages = computed(() => {
   const sourceMessages = messages.value
 
@@ -185,18 +197,6 @@ const executionMessages = computed(() => {
   return sourceMessages.filter((item) => {
     return item.taskNodeId === selectedWorkflowNodeId.value
   })
-})
-
-const replyDisabled = computed(() => {
-  return loading.value || actionLoading.value || !task.value || !hasButtonAccess('replyTask')
-})
-
-const replyPlaceholder = computed(() => {
-  if (task.value?.status === 'in_progress') {
-    return '任务执行中，可发送补充信息...'
-  }
-
-  return '补充指令或继续提问...'
 })
 
 const formatDate = (value?: string) => {
@@ -213,6 +213,21 @@ const formatDate = (value?: string) => {
   })
 }
 
+const resolveLogMessageContent = (log: TaskLog) => {
+  const payload = log.payload && typeof log.payload === 'object' ? log.payload : null
+
+  if (
+    (log.message === 'Agent CLI stdout chunk' || log.message === 'Agent CLI stderr chunk') &&
+    payload &&
+    typeof payload.text === 'string' &&
+    payload.text.length > 0
+  ) {
+    return payload.text
+  }
+
+  return log.message
+}
+
 const mapLogToMessage = (log: TaskLog): TaskMessage => {
   const payload = log.payload && typeof log.payload === 'object' ? log.payload : null
   const payloadRole = payload && typeof payload.messageRole === 'string' ? payload.messageRole : null
@@ -220,7 +235,7 @@ const mapLogToMessage = (log: TaskLog): TaskMessage => {
   if (payloadRole === 'user' || payloadRole === 'assistant' || payloadRole === 'system' || payloadRole === 'error') {
     return {
       role: payloadRole,
-      content: log.message,
+      content: resolveLogMessageContent(log),
       createdAt: log.createdAt,
       taskNodeId: log.taskNodeId,
       level: log.level,
@@ -230,7 +245,7 @@ const mapLogToMessage = (log: TaskLog): TaskMessage => {
   if (log.level === 'error') {
     return {
       role: 'error',
-      content: log.message,
+      content: resolveLogMessageContent(log),
       createdAt: log.createdAt,
       taskNodeId: log.taskNodeId,
       level: log.level,
@@ -239,7 +254,7 @@ const mapLogToMessage = (log: TaskLog): TaskMessage => {
 
   return {
     role: 'system',
-    content: log.message,
+    content: resolveLogMessageContent(log),
     createdAt: log.createdAt,
     taskNodeId: log.taskNodeId,
     level: log.level,
@@ -508,8 +523,12 @@ const approveNode = async (node: TaskNode) => {
   }
 }
 
-const handleReply = async (text: string) => {
-  if (!taskId.value || !hasButtonAccess('editTask')) {
+const handleSelectWorkflowNode = (nodeId: string) => {
+  selectedWorkflowNodeId.value = nodeId
+}
+
+const handleReply = async (replyMessage: string) => {
+  if (!taskId.value || replyDisabled.value) {
     return
   }
 
@@ -517,20 +536,16 @@ const handleReply = async (text: string) => {
 
   try {
     detail.value = await tasksApi.reply(taskId.value, {
-      message: text,
+      message: replyMessage,
     })
-    rightPanelRefreshToken.value += 1
     await refreshMessages()
-    message.success('回复已提交，任务继续执行')
+    rightPanelRefreshToken.value += 1
+    message.success('回复已提交')
   } catch (error) {
-    message.error(toErrorMessage(error, '回复提交失败'))
+    message.error(toErrorMessage(error, '提交回复失败'))
   } finally {
     actionLoading.value = false
   }
-}
-
-const handleSelectWorkflowNode = (nodeId: string) => {
-  selectedWorkflowNodeId.value = nodeId
 }
 
 const openEdit = () => {
@@ -696,21 +711,13 @@ onBeforeUnmount(() => {
             :task-status-class="taskStatusClass"
             :stream-connected="streamConnected"
             :messages="executionMessages"
-            :sorted-nodes="sortedNodes"
-            :action-loading="actionLoading"
             :format-date="formatDate"
-            :can-manage-review="canManageReview"
-            @retry-node="retryNode"
-            @approve-node="approveNode"
           />
 
           <ReplyCard
-            :is-running="task?.status === 'in_progress'"
             :disabled="replyDisabled"
-            :can-stop="canCancel"
             :placeholder="replyPlaceholder"
             @submit="handleReply"
-            @stop="cancelTask"
           />
         </div>
       </div>

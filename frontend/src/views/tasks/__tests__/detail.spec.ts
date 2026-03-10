@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import TaskDetailView from '@/views/tasks/detail.vue'
 import { useMessageStore } from '@/stores/modules/message'
 
-const { tasksApi, artifactsApi, openSseStream } = vi.hoisted(() => ({
+const { tasksApi, artifactsApi, authApi, openSseStream } = vi.hoisted(() => ({
   tasksApi: {
     detailWithNodes: vi.fn(),
     logs: vi.fn(),
@@ -23,6 +23,11 @@ const { tasksApi, artifactsApi, openSseStream } = vi.hoisted(() => ({
   artifactsApi: {
     download: vi.fn(),
     preview: vi.fn(),
+  },
+  authApi: {
+    access: vi.fn(),
+    me: vi.fn(),
+    logout: vi.fn(),
   },
   openSseStream: vi.fn(),
 }))
@@ -49,12 +54,36 @@ vi.mock('@/api/artifacts', () => ({
   artifactsApi,
 }))
 
+vi.mock('@/api/auth', () => ({
+  authApi,
+}))
+
 vi.mock('@/api/http', () => ({
   openSseStream,
 }))
 
 beforeEach(() => {
   vi.clearAllMocks()
+
+  const storage = new Map<string, string>()
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem(key: string) {
+        return storage.get(key) ?? null
+      },
+      setItem(key: string, value: string) {
+        storage.set(key, String(value))
+      },
+      removeItem(key: string) {
+        storage.delete(key)
+      },
+      clear() {
+        storage.clear()
+      },
+    },
+  })
+  localStorage.setItem('ainative-auth-token', 'token')
 
   tasksApi.detailWithNodes.mockResolvedValue({
     task: {
@@ -73,6 +102,15 @@ beforeEach(() => {
   tasksApi.messages.mockResolvedValue([])
   tasksApi.artifacts.mockResolvedValue([])
   tasksApi.execute.mockRejectedValue(new Error('执行异常'))
+  authApi.access.mockResolvedValue({
+    capabilities: ['project.task.read', 'project.task.execute', 'project.task.create', 'project.task.cancel'],
+    currentContext: {
+      businessLineId: 'business-line-1',
+      businessRole: 'owner',
+      projectId: 'project-1',
+      projectRole: 'owner',
+    },
+  })
   openSseStream.mockResolvedValue(undefined)
 })
 
@@ -109,5 +147,72 @@ describe('TaskDetailView toasts', () => {
     expect(messageStore.items[0]?.type).toBe('error')
     expect(messageStore.items[0]?.text).toBe('执行异常')
     expect(wrapper.text()).not.toContain('执行异常')
+  })
+
+  it('renders agent cli chunk text from SSE payload', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    openSseStream.mockImplementation(async (_url, _query, options) => {
+      options?.onEvent?.({
+        data: JSON.stringify({
+          id: 'log-1',
+          taskId: 'task-1',
+          taskNodeId: null,
+          level: 'info',
+          message: 'Agent CLI stdout chunk',
+          payload: {
+            stream: 'stdout',
+            text: 'real agent output',
+          },
+          createdAt: '2026-02-27T10:00:01.000Z',
+        }),
+      })
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('real agent output')
+    expect(wrapper.text()).not.toContain('Agent CLI stdout chunk')
+  })
+
+  it('keeps reply box but hides header actions', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('textarea').exists()).toBe(true)
+    expect(wrapper.text()).toContain('回复')
+    expect(wrapper.text()).not.toContain('Reply')
+    expect(wrapper.text()).not.toContain('停止执行')
   })
 })

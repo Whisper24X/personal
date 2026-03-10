@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TaskMessage, TaskNode, TaskStatus } from '@/types/api/tasks'
+import type { TaskMessage, TaskStatus } from '@/types/api/tasks'
 
 defineOptions({
   name: 'TaskDetailExecutionPanel',
@@ -12,15 +12,7 @@ const props = defineProps<{
   taskStatusClass: string
   streamConnected: boolean
   messages: TaskMessage[]
-  actionLoading: boolean
-  sortedNodes: TaskNode[]
   formatDate: (value?: string) => string
-  canManageReview: boolean
-}>()
-
-const emit = defineEmits<{
-  retryNode: [node: TaskNode]
-  approveNode: [node: TaskNode]
 }>()
 
 const roleClassMap: Record<TaskMessage['role'], string> = {
@@ -74,37 +66,6 @@ const roleLabelMap: Record<TaskMessage['role'], string> = {
 
       <div v-else class="flex h-full items-center justify-center text-sm text-muted-foreground">
         暂无执行消息。
-      </div>
-    </div>
-
-    <div
-      v-if="props.canManageReview && props.sortedNodes.some((node) => node.status === 'in_review')"
-      class="border-border/60 bg-muted/20 border-t px-3 py-2"
-    >
-      <div
-        v-for="node in props.sortedNodes.filter((entry) => entry.status === 'in_review')"
-        :key="node.id"
-        class="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-2 py-2"
-      >
-        <p class="min-w-0 truncate text-xs text-foreground">#{{ node.nodeOrder }} {{ node.name }} 待处理</p>
-        <div class="flex items-center gap-2">
-          <button
-            class="h-7 rounded-md border border-border bg-background px-2 text-xs font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="props.actionLoading"
-            type="button"
-            @click="emit('retryNode', node)"
-          >
-            重试
-          </button>
-          <button
-            class="h-7 rounded-md bg-primary px-2 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="props.actionLoading"
-            type="button"
-            @click="emit('approveNode', node)"
-          >
-            审批通过
-          </button>
-        </div>
       </div>
     </div>
   </section>

@@ -63,6 +63,14 @@ export class TaskNodeEntity extends EntityRelationalHelper {
   })
   agentClioutput?: string | null;
 
+  @Column({
+    name: 'agentCliSessionId',
+    type: 'text',
+    nullable: true,
+    comment: 'Agent CLI对话会话ID',
+  })
+  agentCliSessionId?: string | null;
+
   @Column({ type: 'jsonb', nullable: true, comment: '循环执行配置JSON' })
   loopJson?: Record<string, unknown> | null;
 

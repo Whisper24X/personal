@@ -4,10 +4,12 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import { promises as fs } from 'fs';
 import path from 'path';
 import { DataSource } from 'typeorm';
 import { TaskLogEventsService } from './task-log-events.service';
 import { TaskArtifactType } from './dto/task-artifact-type.enum';
+import { TaskLogLevel } from './dto/task-log-level.enum';
 import { TaskMode } from './dto/task-mode.enum';
 import { TaskStatus } from './dto/task-status.enum';
 import { TasksService } from './tasks.service';
@@ -18,6 +20,7 @@ process.env.AINATIVE_DATA_ROOT_DIR = path.resolve(
   'tmp',
   'ainative-test-data',
 );
+const testDataRootDir = process.env.AINATIVE_DATA_ROOT_DIR;
 
 const defaultExecutionConfig = {
   agentCliId: 'codex',
@@ -79,6 +82,7 @@ const createNode = (overrides: Record<string, unknown> = {}) => ({
   agentCliId: defaultExecutionConfig.agentCliId,
   agentCliConfigId: defaultExecutionConfig.agentCliConfigId,
   agentClioutput: null,
+  agentCliSessionId: null,
   loopJson: {
     enabled: false,
     loopCount: 0,
@@ -125,9 +129,15 @@ const createTasksService = () => {
     findExpiredInProgressNodes: jest.fn().mockResolvedValue([]),
   };
   const taskLogRepository = {
-    create: jest.fn().mockResolvedValue({
+    create: jest.fn().mockImplementation((data) => ({
       id: 'log-1',
-    }),
+      taskId: data.taskId,
+      taskNodeId: data.taskNodeId ?? null,
+      level: data.level,
+      message: data.message,
+      payload: data.payload ?? null,
+      createdAt: new Date('2026-03-09T15:00:00.000Z'),
+    })),
     findByTaskIdSince: jest.fn().mockResolvedValue([]),
   };
   const taskArtifactRepository = {
@@ -209,6 +219,12 @@ const createTasksService = () => {
 };
 
 describe('TasksService', () => {
+  beforeEach(async () => {
+    if (testDataRootDir) {
+      await fs.rm(testDataRootDir, { recursive: true, force: true });
+    }
+  });
+
   it('should create task with normalized git fields', async () => {
     const {
       service,
@@ -351,14 +367,14 @@ describe('TasksService', () => {
       ...createTask(),
       mode: TaskMode.conversation,
       gitBaseBranch: null,
-      gitBranch: 'feature/20260306-001',
-      gitWorktree: 'wk-20260306-001',
+      gitBranch: 'feature/20260306-182000',
+      gitWorktree: 'wk-20260306-182000',
     });
     taskRuntimeService.ensureRuntime.mockResolvedValue({
-      gitBranch: 'feature/20260306-001',
+      gitBranch: 'feature/20260306-182000',
       gitBaseBranch: null,
-      gitWorktree: 'wk-20260306-001',
-      worktreePath: '/tmp/worktrees/wk-20260306-001',
+      gitWorktree: 'wk-20260306-182000',
+      worktreePath: '/tmp/worktrees/wk-20260306-182000',
     });
 
     await service.create(
@@ -372,14 +388,14 @@ describe('TasksService', () => {
     );
 
     expect(taskRepository.findByGitWorktree).toHaveBeenCalledWith(
-      'wk-20260306-001',
+      'wk-20260306-182000',
     );
     expect(taskRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
         businessLineId: project.businessLineId,
-        gitBranch: 'feature/20260306-001',
+        gitBranch: 'feature/20260306-182000',
         gitBaseBranch: null,
-        gitWorktree: 'wk-20260306-001',
+        gitWorktree: 'wk-20260306-182000',
       }),
     );
     expect(taskNodeRepository.createMany).toHaveBeenCalledTimes(1);
@@ -532,9 +548,9 @@ describe('TasksService', () => {
     const createdTask = {
       ...createTask(),
       projectId: project.id,
-      gitBranch: 'feature/20260306-001',
+      gitBranch: 'feature/20260306-182000',
       gitBaseBranch: null,
-      gitWorktree: 'wk-20260306-001',
+      gitWorktree: 'wk-20260306-182000',
       configJson: {
         ...defaultExecutionConfig,
       },
@@ -594,8 +610,12 @@ describe('TasksService', () => {
   });
 
   it('should mark agent node done and create artifact when execution succeeds', async () => {
-    const { service, taskNodeRepository, agentRunnerService } =
-      createTasksService();
+    const {
+      service,
+      taskNodeRepository,
+      agentRunnerService,
+      taskLogRepository,
+    } = createTasksService();
     const serviceAny = service as any;
     const task = createTask();
     const node = createNode();
@@ -635,7 +655,219 @@ describe('TasksService', () => {
         runtimeJson: null,
       }),
     );
+    expect(taskLogRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: task.id,
+        taskNodeId: node.id,
+        level: TaskLogLevel.info,
+        message: 'Agent CLI stdout chunk',
+        payload: expect.objectContaining({
+          stream: 'stdout',
+          chunkIndex: 1,
+          chunkCount: 1,
+          text: 'agent output',
+          command: 'codex',
+          args: ['exec', '-'],
+          exitCode: 0,
+        }),
+      }),
+    );
     expect(artifactSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('should persist only stdout json lines into output jsonl', async () => {
+    const { service, agentRunnerService } = createTasksService();
+    const serviceAny = service as any;
+    const task = createTask();
+    const node = createNode();
+    const project = createProject();
+    const stdoutJsonl = [
+      '{"type":"message","delta":"hello"}',
+      '{"type":"result","ok":true}',
+    ].join('\n');
+
+    agentRunnerService.executeAgentNode.mockResolvedValue({
+      success: true,
+      timedOut: false,
+      exitCode: 0,
+      signal: null,
+      command: 'codex',
+      args: ['exec', '-'],
+      cwd: '/tmp/worktree-task-1',
+      durationMs: 50,
+      stdout: stdoutJsonl,
+      stderr: '',
+      prompt: 'prompt',
+    });
+
+    jest
+      .spyOn(serviceAny, 'createNodeExecutionArtifact')
+      .mockResolvedValue(undefined);
+
+    await serviceAny.executeAgentNode({
+      taskId: task.id,
+      nodeId: node.id,
+      task,
+      node,
+      project,
+    });
+
+    const outputPath = path.resolve(
+      testDataRootDir!,
+      task.businessLineId,
+      'projects',
+      task.projectId,
+      'tasks',
+      task.id,
+      'nodes',
+      node.id,
+      'output.jsonl',
+    );
+    const content = await fs.readFile(outputPath, 'utf-8');
+    const lines = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    expect(lines).toEqual([
+      '{"type":"message","delta":"hello"}',
+      '{"type":"result","ok":true}',
+    ]);
+  });
+
+  it('should append agent cli stdout json lines one by one during execution', async () => {
+    const { service, agentRunnerService, taskLogRepository } =
+      createTasksService();
+    const serviceAny = service as any;
+    const task = createTask();
+    const node = createNode();
+    const project = createProject();
+    const stdoutLines = [
+      '{"type":"system","subtype":"init"}',
+      '{"type":"result","ok":true}',
+    ];
+
+    agentRunnerService.executeAgentNode.mockImplementation(
+      ({
+        callbacks,
+      }: {
+        callbacks?: { onStdoutLine?: (line: string) => void };
+      }) => {
+        callbacks?.onStdoutLine?.(stdoutLines[0]);
+        callbacks?.onStdoutLine?.(stdoutLines[1]);
+
+        return Promise.resolve({
+          success: true,
+          timedOut: false,
+          exitCode: 0,
+          signal: null,
+          command: 'agent',
+          args: ['-p', '--output-format', 'stream-json'],
+          cwd: '/tmp/worktree-task-1',
+          durationMs: 50,
+          stdout: stdoutLines.join('\n'),
+          stderr: '',
+          prompt: 'prompt',
+        });
+      },
+    );
+
+    jest
+      .spyOn(serviceAny, 'createNodeExecutionArtifact')
+      .mockResolvedValue(undefined);
+
+    await serviceAny.executeAgentNode({
+      taskId: task.id,
+      nodeId: node.id,
+      task,
+      node,
+      project,
+    });
+
+    const outputPath = path.resolve(
+      testDataRootDir!,
+      task.businessLineId,
+      'projects',
+      task.projectId,
+      'tasks',
+      task.id,
+      'nodes',
+      node.id,
+      'output.jsonl',
+    );
+    const content = await fs.readFile(outputPath, 'utf-8');
+    const lines = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    expect(lines).toEqual(stdoutLines);
+    expect(taskLogRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: task.id,
+        taskNodeId: node.id,
+        level: TaskLogLevel.info,
+        message: 'Agent CLI stdout chunk',
+        payload: expect.objectContaining({
+          stream: 'stdout',
+          lineIndex: 1,
+          text: stdoutLines[0],
+        }),
+      }),
+    );
+    expect(taskLogRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: task.id,
+        taskNodeId: node.id,
+        level: TaskLogLevel.info,
+        message: 'Agent CLI stdout chunk',
+        payload: expect.objectContaining({
+          stream: 'stdout',
+          lineIndex: 2,
+          text: stdoutLines[1],
+        }),
+      }),
+    );
+  });
+
+  it('should fallback to output jsonl content when no summary metadata exists', async () => {
+    const { service } = createTasksService();
+    const serviceAny = service as any;
+    const task = createTask();
+    const node = createNode();
+    const outputPath = path.resolve(
+      testDataRootDir!,
+      task.businessLineId,
+      'projects',
+      task.projectId,
+      'tasks',
+      task.id,
+      'nodes',
+      node.id,
+      'output.jsonl',
+    );
+
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    await fs.writeFile(
+      outputPath,
+      [
+        '{"type":"message","delta":"hello"}',
+        '{"type":"result","ok":true}',
+      ].join('\n') + '\n',
+      'utf-8',
+    );
+
+    const summary = await serviceAny.readNodeOutputSummary({
+      ...node,
+      agentClioutput: outputPath,
+    });
+
+    expect(summary).toBe(
+      [
+        '{"type":"message","delta":"hello"}',
+        '{"type":"result","ok":true}',
+      ].join('\n'),
+    );
   });
 
   it('should queue next loop when agent node has remaining loops', async () => {
@@ -698,8 +930,12 @@ describe('TasksService', () => {
   });
 
   it('should mark agent node in_review when execution fails', async () => {
-    const { service, taskNodeRepository, agentRunnerService } =
-      createTasksService();
+    const {
+      service,
+      taskNodeRepository,
+      agentRunnerService,
+      taskLogRepository,
+    } = createTasksService();
     const serviceAny = service as any;
     const task = createTask();
     const node = createNode();
@@ -736,6 +972,34 @@ describe('TasksService', () => {
         agentClioutput: expect.any(String),
       }),
     );
+    expect(taskLogRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: task.id,
+        taskNodeId: node.id,
+        level: TaskLogLevel.warn,
+        message: 'Agent CLI stderr chunk',
+        payload: expect.objectContaining({
+          stream: 'stderr',
+          text: 'timeout',
+          command: 'codex',
+          args: ['exec', '-'],
+          exitCode: 1,
+          timedOut: true,
+        }),
+      }),
+    );
+  });
+
+  it('should split long agent cli output into multiple task log chunks', () => {
+    const { service } = createTasksService();
+    const serviceAny = service as any;
+    const content = 'a'.repeat(4_500);
+
+    const chunks = serviceAny.chunkAgentCliLogContent(content);
+
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]).toHaveLength(4_000);
+    expect(chunks[1]).toHaveLength(500);
   });
 
   it('should skip creating duplicated git diff artifact for same node', async () => {
@@ -1735,6 +1999,9 @@ describe('TasksService', () => {
       inReviewNode.id,
       expect.objectContaining({
         status: TaskStatus.todo,
+        runtimeJson: {
+          pendingUserMessage: 'continue',
+        },
       }),
     );
   });
@@ -1768,11 +2035,24 @@ describe('TasksService', () => {
         payload: null,
         createdAt: new Date(),
       },
+      {
+        id: 'log-3',
+        taskId: task.id,
+        taskNodeId: 'node-1',
+        level: 'info',
+        message: 'Agent CLI stdout chunk',
+        payload: {
+          stream: 'stdout',
+          text: 'real agent output',
+        },
+        createdAt: new Date(),
+      },
     ]);
 
     const messages = await service.listMessages(task.id, currentUser as never);
 
     expect(messages[0].role).toBe('user');
     expect(messages[1].role).toBe('error');
+    expect(messages[2].content).toBe('real agent output');
   });
 });

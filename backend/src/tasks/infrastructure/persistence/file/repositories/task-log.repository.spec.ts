@@ -8,13 +8,21 @@ describe('TaskLogFileRepository', () => {
   const originalDataRootDir = process.env.AINATIVE_DATA_ROOT_DIR;
   let dataRootDir: string;
   let repository: TaskLogFileRepository;
+  let taskRepository: { findById: jest.Mock };
 
   beforeEach(async () => {
     dataRootDir = await fs.mkdtemp(
       path.join(os.tmpdir(), 'ainative-task-log-repo-'),
     );
     process.env.AINATIVE_DATA_ROOT_DIR = dataRootDir;
-    repository = new TaskLogFileRepository();
+    taskRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'task-1',
+        businessLineId: 'business-line-1',
+        projectId: 'project-1',
+      }),
+    };
+    repository = new TaskLogFileRepository(taskRepository as never);
   });
 
   afterEach(async () => {
@@ -27,7 +35,7 @@ describe('TaskLogFileRepository', () => {
     await fs.rm(dataRootDir, { recursive: true, force: true });
   });
 
-  it('should persist logs to task-scoped jsonl files', async () => {
+  it('should persist logs to task-scoped jsonl files under the task directory', async () => {
     const createdLog = await repository.create({
       taskId: 'task-1',
       taskNodeId: 'node-1',
@@ -43,7 +51,15 @@ describe('TaskLogFileRepository', () => {
     expect(logs).toHaveLength(1);
     expect(logs[0]).toEqual(createdLog);
 
-    const logFile = path.join(dataRootDir, 'meta', 'task-logs', 'task-1.jsonl');
+    const logFile = path.join(
+      dataRootDir,
+      'business-line-1',
+      'projects',
+      'project-1',
+      'tasks',
+      'task-1',
+      'task-log.jsonl',
+    );
     await expect(fs.readFile(logFile, 'utf-8')).resolves.toContain('queued');
   });
 

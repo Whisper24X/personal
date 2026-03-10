@@ -177,8 +177,9 @@ describe('TaskRuntimeService', () => {
     const expectedWorktreeBase = path.resolve(
       resolveAinativeDataRootDir(),
       project.businessLineId,
-      'worktrees',
+      'projects',
       project.id,
+      'worktrees',
     );
 
     expect((service as any).resolveRepositoryRoot(project)).toBe(
@@ -238,11 +239,33 @@ describe('TaskRuntimeService', () => {
       path.resolve(
         resolveAinativeDataRootDir(),
         project.businessLineId,
-        'worktrees',
+        'projects',
         project.id,
+        'worktrees',
         'wk-20260306-001',
       ),
     );
+  });
+
+  it('should prefer legacy worktree path when old directory still exists', async () => {
+    const project = createProject();
+    const task = createTask({
+      gitWorktree: 'wk-20260306-001',
+    });
+    const legacyPath = path.resolve(
+      resolveAinativeDataRootDir(),
+      project.businessLineId,
+      'worktrees',
+      project.id,
+      'wk-20260306-001',
+    );
+
+    await fs.mkdir(legacyPath, { recursive: true });
+    createdDirectories.push(
+      path.resolve(resolveAinativeDataRootDir(), project.businessLineId),
+    );
+
+    expect(service.resolveTaskWorktreePath(task, project)).toBe(legacyPath);
   });
 
   it('should prefer repoLocalPath over repo cache base dir', () => {

@@ -9,6 +9,22 @@ const createCurrentUser = () => ({
   exp: 9999999999,
 });
 
+const createWorkflowNode = (
+  overrides: Partial<{
+    nodeOrder: number;
+    name: string;
+    type: WorkflowNodeType;
+    requiresApproval: boolean;
+  }> = {},
+) => ({
+  nodeOrder: overrides.nodeOrder ?? 1,
+  name: overrides.name ?? 'Analyze',
+  type: overrides.type ?? WorkflowNodeType.agent,
+  ...(overrides.requiresApproval !== undefined
+    ? { requiresApproval: overrides.requiresApproval }
+    : {}),
+});
+
 const createWorkflowTemplatesService = () => {
   const workflowTemplateRepository = {
     create: jest.fn(),
@@ -73,13 +89,7 @@ describe('WorkflowTemplatesService', () => {
       businessLineId: project.businessLineId,
       projectId: 'project-1',
       isActive: true,
-      nodesJson: [
-        {
-          nodeOrder: 1,
-          name: 'Analyze',
-          type: WorkflowNodeType.agent,
-        },
-      ],
+      nodesJson: [createWorkflowNode()],
       createdBy: currentUser.sub,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -91,13 +101,7 @@ describe('WorkflowTemplatesService', () => {
         name: 'Project template',
         scope: WorkflowTemplateScope.project,
         projectId: 'project-1',
-        nodes: [
-          {
-            nodeOrder: 1,
-            name: 'Analyze',
-            type: WorkflowNodeType.agent,
-          },
-        ],
+        nodes: [createWorkflowNode({ requiresApproval: true })],
       },
       currentUser,
     );
@@ -121,15 +125,74 @@ describe('WorkflowTemplatesService', () => {
       businessLineId: project.businessLineId,
       projectId: 'project-1',
       isActive: true,
-      nodesJson: [
-        {
-          nodeOrder: 1,
-          name: 'Analyze',
-          type: WorkflowNodeType.agent,
-        },
-      ],
+      nodesJson: [createWorkflowNode({ requiresApproval: true })],
       createdBy: currentUser.sub,
     });
     expect(result.businessLineId).toBe(project.businessLineId);
+  });
+
+  it('should preserve requiresApproval when updating workflow template nodes', async () => {
+    const { service, workflowTemplateRepository } =
+      createWorkflowTemplatesService();
+    const currentUser = createCurrentUser();
+
+    workflowTemplateRepository.findById
+      .mockResolvedValueOnce({
+        id: 'template-1',
+        name: 'Project template',
+        description: null,
+        scope: WorkflowTemplateScope.project,
+        businessLineId: 'business-line-1',
+        projectId: 'project-1',
+        isActive: true,
+        nodesJson: [createWorkflowNode()],
+        createdBy: currentUser.sub,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+      })
+      .mockResolvedValueOnce({
+        id: 'template-1',
+        name: 'Project template',
+        description: null,
+        scope: WorkflowTemplateScope.project,
+        businessLineId: 'business-line-1',
+        projectId: 'project-1',
+        isActive: true,
+        nodesJson: [createWorkflowNode({ requiresApproval: true })],
+        createdBy: currentUser.sub,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+      });
+    workflowTemplateRepository.update.mockResolvedValue({
+      id: 'template-1',
+      name: 'Project template',
+      description: null,
+      scope: WorkflowTemplateScope.project,
+      businessLineId: 'business-line-1',
+      projectId: 'project-1',
+      isActive: true,
+      nodesJson: [createWorkflowNode({ requiresApproval: true })],
+      createdBy: currentUser.sub,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    });
+
+    await service.update(
+      'template-1',
+      {
+        nodes: [createWorkflowNode({ requiresApproval: true })],
+      },
+      currentUser,
+    );
+
+    expect(workflowTemplateRepository.update).toHaveBeenCalledWith(
+      'template-1',
+      {
+        nodesJson: [createWorkflowNode({ requiresApproval: true })],
+      },
+    );
   });
 });

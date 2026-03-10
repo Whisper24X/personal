@@ -26,6 +26,7 @@ import { ProjectContextModule } from './project-context/project-context.module';
 import { AutomationsModule } from './automations/automations.module';
 import { GitModule } from './git/git.module';
 import { resolveEnvFilePath } from './config/env-file-path';
+import { existsSync } from 'fs';
 
 const infrastructureDatabaseModule = TypeOrmModule.forRootAsync({
   useClass: TypeOrmConfigService,
@@ -33,6 +34,15 @@ const infrastructureDatabaseModule = TypeOrmModule.forRootAsync({
     return new DataSource(options).initialize();
   },
 });
+
+function resolveI18nPath(): string {
+  const candidates = [
+    path.join(__dirname, 'i18n'),
+    path.join(__dirname, '..', 'i18n'),
+  ];
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
+}
 
 @Module({
   imports: [
@@ -60,7 +70,7 @@ const infrastructureDatabaseModule = TypeOrmModule.forRootAsync({
         fallbackLanguage: configService.getOrThrow('app.fallbackLanguage', {
           infer: true,
         }),
-        loaderOptions: { path: path.join(__dirname, '/i18n/'), watch: true },
+        loaderOptions: { path: resolveI18nPath(), watch: true },
       }),
       resolvers: [
         {

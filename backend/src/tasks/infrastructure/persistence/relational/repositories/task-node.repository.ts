@@ -295,6 +295,6 @@ export class TaskNodeRelationalRepository implements TaskNodeRepository {
     heartbeatAt: string;
   }): string {
     void _params;
-    return `jsonb_strip_nulls(jsonb_build_object('workerId', CAST(:workerId AS text), 'leaseUntil', CAST(:leaseUntil AS text), 'heartbeatAt', CAST(:heartbeatAt AS text)))`;
+    return `jsonb_strip_nulls(COALESCE("runtimeJson", '{}'::jsonb) || jsonb_build_object('workerId', CAST(:workerId AS text), 'leaseUntil', CAST(:leaseUntil AS text), 'heartbeatAt', CAST(:heartbeatAt AS text)))`;
   }
 }

@@ -19,5 +19,9 @@ describe('TaskNodeEntity', () => {
       columns.find((column) => column.propertyName === 'agentClioutput')
         ?.options.name,
     ).toBe('agentClioutput');
+    expect(
+      columns.find((column) => column.propertyName === 'agentCliSessionId')
+        ?.options.name,
+    ).toBe('agentCliSessionId');
   });
 });

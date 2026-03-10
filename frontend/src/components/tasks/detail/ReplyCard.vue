@@ -7,21 +7,17 @@ defineOptions({
 
 const props = withDefaults(
   defineProps<{
-    isRunning: boolean
     disabled?: boolean
     placeholder?: string
-    canStop?: boolean
   }>(),
   {
     disabled: false,
     placeholder: '补充指令或继续提问...',
-    canStop: true,
   },
 )
 
 const emit = defineEmits<{
   submit: [message: string]
-  stop: []
 }>()
 
 const inputValue = ref('')
@@ -54,18 +50,6 @@ const handleSubmit = () => {
 
 <template>
   <section class="border-border/50 bg-background rounded-xl border shadow-sm">
-    <div class="border-border/50 flex items-center justify-between gap-2 border-b px-3 py-2">
-      <span class="text-muted-foreground text-xs font-semibold">Reply</span>
-      <button
-        class="h-7 rounded-md border border-border bg-background px-2 text-xs font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-        :disabled="!props.isRunning || !props.canStop"
-        type="button"
-        @click="emit('stop')"
-      >
-        停止执行
-      </button>
-    </div>
-
     <div class="space-y-2 px-3 py-2">
       <textarea
         v-model="inputValue"
@@ -80,7 +64,7 @@ const handleSubmit = () => {
           type="button"
           @click="handleSubmit"
         >
-          提交回复
+          回复
         </button>
       </div>
     </div>

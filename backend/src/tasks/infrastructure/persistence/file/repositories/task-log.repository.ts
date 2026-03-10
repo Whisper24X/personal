@@ -1,20 +1,19 @@
 import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { randomUUID } from 'crypto';
 import { resolveAinativeDataRootDir } from '../../../../../utils/workspace-paths';
+import { Task } from '../../../../domain/task';
 import { TaskLog } from '../../../../domain/task-log';
+import { TaskRepository } from '../../task.repository';
 import { TaskLogRepository } from '../../task-log.repository';
 
 @Injectable()
 export class TaskLogFileRepository implements TaskLogRepository {
-  private readonly baseDir = path.resolve(
-    resolveAinativeDataRootDir(),
-    'meta',
-    'task-logs',
-  );
+  constructor(private readonly taskRepository: TaskRepository) {}
 
   async create(data: Omit<TaskLog, 'id' | 'createdAt'>): Promise<TaskLog> {
+    const task = await this.requireTask(data.taskId);
     const createdAt = new Date();
     const log: TaskLog = {
       id: randomUUID(),
@@ -25,8 +24,8 @@ export class TaskLogFileRepository implements TaskLogRepository {
       payload: data.payload ?? null,
       createdAt,
     };
+    const filePath = this.resolveTaskLogPath(task);
 
-    const filePath = this.resolveTaskLogPath(log.taskId);
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.appendFile(
       filePath,
@@ -48,8 +47,13 @@ export class TaskLogFileRepository implements TaskLogRepository {
     afterId?: string;
     limit?: number;
   }): Promise<TaskLog[]> {
-    const logs = await this.readTaskLogs(taskId);
-    const sortedLogs = logs.sort((left, right) => {
+    const task = await this.taskRepository.findById(taskId);
+    if (!task) {
+      return [];
+    }
+
+    const logs = await this.readTaskLogs(task);
+    const sortedLogs = [...logs].sort((left, right) => {
       const createdAtDiff =
         left.createdAt.getTime() - right.createdAt.getTime();
       if (createdAtDiff !== 0) {
@@ -78,12 +82,29 @@ export class TaskLogFileRepository implements TaskLogRepository {
     return filteredLogs.slice(0, limit ?? 200);
   }
 
-  private resolveTaskLogPath(taskId: string): string {
-    return path.resolve(this.baseDir, `${taskId}.jsonl`);
+  private async requireTask(taskId: string): Promise<Task> {
+    const task = await this.taskRepository.findById(taskId);
+    if (!task) {
+      throw new Error(`Task ${taskId} not found for task log persistence`);
+    }
+
+    return task;
   }
 
-  private async readTaskLogs(taskId: string): Promise<TaskLog[]> {
-    const filePath = this.resolveTaskLogPath(taskId);
+  private resolveTaskLogPath(task: Task): string {
+    return path.resolve(
+      resolveAinativeDataRootDir(),
+      task.businessLineId?.trim() || 'unknown-business-line',
+      'projects',
+      task.projectId?.trim() || 'unknown-project',
+      'tasks',
+      task.id,
+      'task-log.jsonl',
+    );
+  }
+
+  private async readTaskLogs(task: Task): Promise<TaskLog[]> {
+    const filePath = this.resolveTaskLogPath(task);
 
     try {
       const content = await fs.readFile(filePath, 'utf-8');

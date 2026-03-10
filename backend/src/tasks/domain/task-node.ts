@@ -29,6 +29,14 @@ export class TaskNode {
     type: String,
     required: false,
     nullable: true,
+    description: 'CLI conversation/session identifier for follow-up messages',
+  })
+  agentCliSessionId?: string | null;
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    nullable: true,
     description: 'CLI tool identifier resolved for this node',
   })
   agentCliId?: string | null;

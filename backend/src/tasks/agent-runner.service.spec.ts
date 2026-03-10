@@ -13,8 +13,9 @@ process.env.AINATIVE_DATA_ROOT_DIR ??= path.resolve(process.cwd(), 'tmp');
 const worktreeRoot = path.resolve(
   resolveAinativeDataRootDir(),
   'business-line-1',
-  'worktrees',
+  'projects',
   'project-1',
+  'worktrees',
 );
 
 const createProject = (configJson?: Record<string, unknown>): Project => ({
@@ -60,6 +61,7 @@ const createNode = (): TaskNode => ({
   agentCliId: 'codex',
   agentCliConfigId: 'cfg-default',
   agentClioutput: null,
+  agentCliSessionId: null,
   loopJson: {
     enabled: false,
     loopCount: 0,
@@ -316,5 +318,250 @@ describe('AgentRunnerService', () => {
     expect(result.adapter).toBe('gemini');
     expect(result.command).toBe('gemini');
     expect(result.args).toEqual(['-p']);
+  });
+
+  it('should use stream-json defaults for cursor agent', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'cursor-agent',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'cursor-agent',
+      },
+    );
+
+    expect(result.adapter).toBe('cursor');
+    expect(result.command).toBe('agent');
+    expect(result.args).toEqual([
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--trust',
+      '--force',
+    ]);
+  });
+
+  it('should pass cursor api_key from persisted config as CURSOR_API_KEY env', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-cursor-default',
+      businessLineId: 'business-line-1',
+      toolId: 'cursor-agent',
+      name: 'Default Cursor',
+      description: null,
+      configJson: JSON.stringify({
+        api_key: 'crsr_test_key',
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'cursor-agent',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'cursor-agent',
+        agentCliConfigId: 'cfg-cursor-default',
+      },
+    );
+
+    expect(result.adapter).toBe('cursor');
+    expect(result.env.CURSOR_API_KEY).toBe('crsr_test_key');
+    expect(result.env.AINATIVE_AGENT_TOOL_CONFIG_ID).toBe('cfg-cursor-default');
+  });
+
+  it('should resolve cwd inside project worktree storage path', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+    const task = createTask({
+      gitWorktree: path.join(worktreeRoot, 'wk-20260309-234934'),
+    });
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'codex',
+      }),
+      task,
+      createNode(),
+    );
+
+    expect(result.cwd).toBe(path.join(worktreeRoot, 'wk-20260309-234934'));
+  });
+
+  it('should apply configured gemini resume session when resolving runner args', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue({
+      id: 'cfg-gemini-default',
+      businessLineId: 'business-line-1',
+      toolId: 'gemini-cli',
+      name: 'Gemini Default',
+      description: null,
+      configJson: JSON.stringify({
+        resume: 'gemini-session-1',
+      }),
+      isDefault: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'gemini-cli',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'gemini-cli',
+      },
+    );
+
+    expect(result.args).toEqual(['--resume', 'gemini-session-1']);
+  });
+
+  it('should apply node session id for opencode continuation', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'opencode',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'opencode',
+        agentCliSessionId: 'opencode-session-1',
+      },
+    );
+
+    expect(result.args).toEqual([
+      '--continue',
+      '--session',
+      'opencode-session-1',
+    ]);
+  });
+
+  it('should use follow-up message only when resuming an existing cli session', () => {
+    const service = new AgentRunnerService(
+      createRepositoryMock() as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const prompt = serviceAny.resolvePrompt(createTask(), {
+      ...createNode(),
+      agentCliSessionId: 'session-1',
+      runtimeJson: {
+        pendingUserMessage: 'Please continue from the previous result',
+      },
+    });
+
+    expect(prompt).toBe('Please continue from the previous result');
+  });
+
+  it('should append follow-up message to the full prompt before a session is established', () => {
+    const service = new AgentRunnerService(
+      createRepositoryMock() as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const prompt = serviceAny.resolvePrompt(createTask(), {
+      ...createNode(),
+      runtimeJson: {
+        pendingUserMessage: 'Please continue from the previous result',
+      },
+    });
+
+    expect(prompt).toContain('Task Title: task title');
+    expect(prompt).toContain(
+      'Follow-up User Message:\nPlease continue from the previous result',
+    );
+  });
+
+  it('should extract agent session id from json and plain text output', () => {
+    const service = new AgentRunnerService(
+      createRepositoryMock() as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    expect(
+      serviceAny.extractAgentSessionId(
+        JSON.stringify({
+          event: 'session.started',
+          session_id: 'session-json-1',
+        }),
+      ),
+    ).toBe('session-json-1');
+    expect(
+      serviceAny.extractAgentSessionId('conversation_id=conversation-text-1'),
+    ).toBe('conversation-text-1');
+  });
+
+  it('should redact secret env values from execution logs', () => {
+    const service = new AgentRunnerService(
+      createRepositoryMock() as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const payload = serviceAny.buildExecutionLogPayload({
+      executionContext: {
+        taskId: 'task-1',
+        nodeId: 'node-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+      },
+      config: {
+        adapter: 'cursor',
+        command: 'agent',
+        args: ['-p'],
+        cwd: '/tmp/worktree',
+        timeoutMs: 1000,
+        env: {
+          CURSOR_API_KEY: 'crsr_secret',
+        },
+      },
+      prompt: 'prompt',
+      mergedEnv: {
+        CURSOR_API_KEY: 'crsr_secret',
+        PATH: '/usr/bin',
+      },
+    });
+
+    expect(payload.hasCursorApiKey).toBe(true);
+    expect(payload.envKeys).toEqual(['CURSOR_API_KEY', 'PATH']);
+    expect(JSON.stringify(payload)).not.toContain('crsr_secret');
   });
 });

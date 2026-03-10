@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { spawn } from 'child_process';
 import path from 'path';
@@ -38,8 +38,21 @@ type AgentToolConfigEntry = {
 
 type ResolvedAgentToolConfig = {
   runnerConfig: RunnerConfigInput;
+  rawConfig?: Record<string, unknown>;
   configId?: string;
   configName?: string;
+};
+
+type AgentExecutionContext = {
+  taskId: string;
+  nodeId: string;
+  projectId: string;
+  businessLineId: string;
+};
+
+type AgentRunnerStreamCallbacks = {
+  onStdoutLine?: (line: string) => void;
+  onStderrLine?: (line: string) => void;
 };
 
 export type AgentRunnerResult = {
@@ -54,11 +67,13 @@ export type AgentRunnerResult = {
   stdout: string;
   stderr: string;
   prompt: string;
+  sessionId?: string | null;
   errorMessage?: string;
 };
 
 @Injectable()
 export class AgentRunnerService {
+  private readonly logger = new Logger(AgentRunnerService.name);
   private readonly defaultTimeoutMs = 10 * 60 * 1000;
   private readonly maxOutputLength = 100_000;
   private readonly defaultDataRootDir = path.resolve(
@@ -81,6 +96,7 @@ export class AgentRunnerService {
       'timeout_seconds',
       'base_command_override',
       'additional_params',
+      'api_key',
       'env',
     ]),
     claude: new Set([
@@ -99,6 +115,7 @@ export class AgentRunnerService {
       'timeout_seconds',
       'base_command_override',
       'additional_params',
+      'resume',
       'env',
     ]),
     opencode: new Set([
@@ -108,6 +125,8 @@ export class AgentRunnerService {
       'timeout_seconds',
       'base_command_override',
       'additional_params',
+      'continue',
+      'session',
       'env',
     ]),
   };
@@ -121,49 +140,26 @@ export class AgentRunnerService {
     task,
     node,
     project,
+    callbacks,
   }: {
     task: Task;
     node: TaskNode;
     project: Project;
+    callbacks?: AgentRunnerStreamCallbacks;
   }): Promise<AgentRunnerResult> {
-    if (!this.isAgentRunnerEnabled(project)) {
-      return this.buildSimulatedResult(task, node);
-    }
-
     const prompt = this.resolvePrompt(task, node);
     const config = await this.resolveRunnerConfig(project, task, node);
-    return this.runWithConfig(config, prompt);
-  }
-
-  private isAgentRunnerEnabled(project: Project): boolean {
-    const configJson =
-      project.configJson && typeof project.configJson === 'object'
-        ? (project.configJson as Record<string, unknown>)
-        : {};
-
-    if (typeof configJson.agentRunnerEnabled === 'boolean') {
-      return configJson.agentRunnerEnabled;
-    }
-
-    return this.readTrimmedEnv('AINATIVE_AGENT_RUNNER_ENABLED') === 'true';
-  }
-
-  private buildSimulatedResult(task: Task, node: TaskNode): AgentRunnerResult {
-    const prompt = this.resolvePrompt(task, node);
-
-    return {
-      success: true,
-      timedOut: false,
-      exitCode: 0,
-      signal: null,
-      command: 'simulated-agent',
-      args: [],
-      cwd: task.gitWorktree?.trim() || process.cwd(),
-      durationMs: 10,
-      stdout: 'Agent runner disabled; simulated execution completed.',
-      stderr: '',
+    return this.runWithConfig(
+      config,
       prompt,
-    };
+      {
+        taskId: task.id,
+        nodeId: node.id,
+        projectId: project.id,
+        businessLineId: project.businessLineId,
+      },
+      callbacks,
+    );
   }
 
   private async resolveRunnerConfig(
@@ -197,9 +193,19 @@ export class AgentRunnerService {
     );
     const runnerConfig = runnerConfigFromTool;
 
+    const continuationConfig = {
+      ...configJson,
+      ...executionToolConfig,
+      ...(agentToolConfig?.rawConfig ?? {}),
+    };
     const command =
       runnerConfig.command?.trim() || this.resolveDefaultCommand(adapter);
-    const args = runnerConfig.args ?? this.resolveDefaultArgs(adapter);
+    const args = this.applyContinuationArgs({
+      adapter,
+      args: runnerConfig.args ?? this.resolveDefaultArgs(adapter),
+      sessionId: this.normalizeOptionalString(node.agentCliSessionId),
+      continuationConfig,
+    });
     const timeoutMs = Math.max(
       5_000,
       Math.floor(
@@ -297,15 +303,9 @@ export class AgentRunnerService {
   }
 
   private resolveProjectWorktreeBaseDir(project: Project): string {
-    const businessLineId =
-      project.businessLineId?.trim() || 'unknown-business-line';
-    const projectId = project.id?.trim() || 'unknown-project';
-
     return path.resolve(
-      this.defaultDataRootDir,
-      businessLineId,
+      this.resolveProjectStorageBaseDir(project),
       'worktrees',
-      projectId,
     );
   }
 
@@ -387,11 +387,16 @@ export class AgentRunnerService {
         ? this.resolveStringEnv(raw.env as Record<string, unknown>)
         : undefined;
 
+    const apiKey =
+      typeof raw.api_key === 'string' && raw.api_key.trim()
+        ? raw.api_key.trim()
+        : undefined;
+
     return {
       command,
       args,
       timeoutSeconds,
-      env,
+      env: apiKey ? { ...(env ?? {}), CURSOR_API_KEY: apiKey } : env,
     };
   }
 
@@ -568,6 +573,7 @@ export class AgentRunnerService {
 
     return {
       runnerConfig: this.readRunnerConfigFromRaw(sanitizedConfig),
+      rawConfig: sanitizedConfig,
       configId: config.id,
       configName: config.name,
     };
@@ -633,6 +639,7 @@ export class AgentRunnerService {
 
     return {
       runnerConfig: this.readRunnerConfigFromRaw(sanitizedConfig),
+      rawConfig: sanitizedConfig,
       configId: selected.id,
       configName: selected.name,
     };
@@ -850,10 +857,60 @@ export class AgentRunnerService {
     return defaultCommandMap[adapter];
   }
 
+  private applyContinuationArgs({
+    adapter,
+    args,
+    sessionId,
+    continuationConfig,
+  }: {
+    adapter: AgentAdapter;
+    args: string[];
+    sessionId?: string | null;
+    continuationConfig: Record<string, unknown>;
+  }): string[] {
+    const normalizedSessionId = this.normalizeOptionalString(
+      sessionId ??
+        this.resolveConfiguredContinuationSession(adapter, continuationConfig),
+    );
+
+    if (!normalizedSessionId) {
+      return args;
+    }
+
+    if (adapter === 'gemini') {
+      return [...args, '--resume', normalizedSessionId];
+    }
+
+    if (adapter === 'opencode') {
+      return [...args, '--continue', '--session', normalizedSessionId];
+    }
+
+    return args;
+  }
+
+  private resolveConfiguredContinuationSession(
+    adapter: AgentAdapter,
+    continuationConfig: Record<string, unknown>,
+  ): string | null {
+    if (adapter === 'gemini') {
+      return typeof continuationConfig.resume === 'string'
+        ? continuationConfig.resume
+        : null;
+    }
+
+    if (adapter === 'opencode') {
+      return typeof continuationConfig.session === 'string'
+        ? continuationConfig.session
+        : null;
+    }
+
+    return null;
+  }
+
   private resolveDefaultArgs(adapter: AgentAdapter): string[] {
     const defaultArgsMap: Record<AgentAdapter, string[]> = {
       codex: ['exec', '--skip-git-repo-check', '-'],
-      cursor: ['-p', '--trust', '--force'],
+      cursor: ['-p', '--output-format', 'stream-json', '--trust', '--force'],
       claude: ['-p'],
       gemini: [],
       opencode: [],
@@ -867,6 +924,14 @@ export class AgentRunnerService {
       node.input && typeof node.input === 'object'
         ? (node.input as Record<string, unknown>)
         : {};
+    const pendingUserMessage = this.readPendingUserMessage(node);
+
+    if (
+      pendingUserMessage &&
+      this.normalizeOptionalString(node.agentCliSessionId)
+    ) {
+      return pendingUserMessage;
+    }
 
     const nodePrompt =
       typeof input.nodeInput === 'string' && input.nodeInput.trim()
@@ -889,6 +954,9 @@ export class AgentRunnerService {
       taskInput ? `Task Prompt:\n${taskInput}` : '',
       `Node Name: ${node.name}`,
       `Node Order: ${node.nodeOrder}`,
+      pendingUserMessage
+        ? `Follow-up User Message:\n${pendingUserMessage}`
+        : '',
       '---',
       'Output requirement: After completing the task, please output an execution summary to stdout, including: 1) What was done; 2) Which files were modified (if any); 3) Any issues encountered (if any).',
     ].filter(Boolean);
@@ -896,23 +964,68 @@ export class AgentRunnerService {
     return sections.join('\n\n');
   }
 
+  private readPendingUserMessage(node: TaskNode): string | null {
+    const runtime =
+      node.runtimeJson && typeof node.runtimeJson === 'object'
+        ? (node.runtimeJson as Record<string, unknown>)
+        : null;
+
+    if (!runtime) {
+      return null;
+    }
+
+    return this.normalizeOptionalString(
+      typeof runtime.pendingUserMessage === 'string'
+        ? runtime.pendingUserMessage
+        : null,
+    );
+  }
+
   private async runWithConfig(
     config: AgentRunnerConfig,
     prompt: string,
+    executionContext: AgentExecutionContext,
+    callbacks?: AgentRunnerStreamCallbacks,
   ): Promise<AgentRunnerResult> {
     const startAt = Date.now();
 
     let stdout = '';
     let stderr = '';
+    let stdoutLineBuffer = '';
+    let stderrLineBuffer = '';
+    let stdoutChunkCount = 0;
+    let stderrChunkCount = 0;
+    let stdoutByteLength = 0;
+    let stderrByteLength = 0;
     let timedOut = false;
+    let extractedSessionId: string | null = null;
     let timeoutRef: NodeJS.Timeout | null = null;
     let killTimerRef: NodeJS.Timeout | null = null;
+    const captureStdoutLine = (line: string): void => {
+      extractedSessionId ??= this.extractAgentSessionId(line);
+      callbacks?.onStdoutLine?.(line);
+    };
+    const captureStderrLine = (line: string): void => {
+      extractedSessionId ??= this.extractAgentSessionId(line);
+      callbacks?.onStderrLine?.(line);
+    };
 
     try {
       const mergedEnv = this.buildRunnerEnvironment(config.env);
 
       const spawnArgs =
         config.adapter === 'cursor' ? [...config.args, prompt] : config.args;
+
+      this.logger.log(
+        `agent_runner_spawn ${JSON.stringify(
+          this.buildExecutionLogPayload({
+            executionContext,
+            config,
+            prompt,
+            mergedEnv,
+          }),
+        )}`,
+      );
 
       const childProcess = spawn(config.command, spawnArgs, {
         cwd: config.cwd,
@@ -921,15 +1034,73 @@ export class AgentRunnerService {
       });
 
       childProcess.stdout?.on('data', (chunk: Buffer | string) => {
-        stdout = this.concatWithLimit(stdout, this.toChunkText(chunk));
+        const chunkText = this.toChunkText(chunk);
+        stdout = this.concatWithLimit(stdout, chunkText);
+        const stdoutConsumeResult = this.consumeStreamChunkLines(
+          stdoutLineBuffer,
+          chunkText,
+          captureStdoutLine,
+        );
+        stdoutLineBuffer = stdoutConsumeResult.remainingBuffer;
+        stdoutChunkCount += 1;
+        stdoutByteLength += Buffer.byteLength(chunkText, 'utf-8');
+
+        if (stdoutChunkCount === 1) {
+          this.logger.debug(
+            `agent_runner_stdout_first_chunk ${JSON.stringify(
+              this.buildChunkLogPayload({
+                executionContext,
+                stream: 'stdout',
+                chunkText,
+              }),
+            )}`,
+          );
+        }
       });
 
       childProcess.stderr?.on('data', (chunk: Buffer | string) => {
-        stderr = this.concatWithLimit(stderr, this.toChunkText(chunk));
+        const chunkText = this.toChunkText(chunk);
+        stderr = this.concatWithLimit(stderr, chunkText);
+        const stderrConsumeResult = this.consumeStreamChunkLines(
+          stderrLineBuffer,
+          chunkText,
+          captureStderrLine,
+        );
+        stderrLineBuffer = stderrConsumeResult.remainingBuffer;
+        stderrChunkCount += 1;
+        stderrByteLength += Buffer.byteLength(chunkText, 'utf-8');
+
+        if (stderrChunkCount === 1) {
+          this.logger.warn(
+            `agent_runner_stderr_first_chunk ${JSON.stringify(
+              this.buildChunkLogPayload({
+                executionContext,
+                stream: 'stderr',
+                chunkText,
+              }),
+            )}`,
+          );
+        }
       });
 
       timeoutRef = setTimeout(() => {
         timedOut = true;
+        this.logger.warn(
+          `agent_runner_timeout ${JSON.stringify(
+            this.buildResultLogPayload({
+              executionContext,
+              config,
+              durationMs: Date.now() - startAt,
+              stdout,
+              stderr,
+              stdoutChunkCount,
+              stderrChunkCount,
+              stdoutByteLength,
+              stderrByteLength,
+              timedOut,
+            }),
+          )}`,
+        );
         childProcess.kill('SIGTERM');
 
         killTimerRef = setTimeout(() => {
@@ -947,6 +1118,23 @@ export class AgentRunnerService {
         signal: NodeJS.Signals | null;
       }>((resolve, reject) => {
         childProcess.once('error', (error) => {
+          this.logger.error(
+            `agent_runner_process_error ${JSON.stringify(
+              this.buildResultLogPayload({
+                executionContext,
+                config,
+                durationMs: Date.now() - startAt,
+                stdout,
+                stderr,
+                stdoutChunkCount,
+                stderrChunkCount,
+                stdoutByteLength,
+                stderrByteLength,
+                timedOut,
+                errorMessage: error.message,
+              }),
+            )}`,
+          );
           reject(error);
         });
 
@@ -965,8 +1153,38 @@ export class AgentRunnerService {
         clearTimeout(killTimerRef);
       }
 
+      this.flushTrailingStreamBuffer(stdoutLineBuffer, captureStdoutLine);
+      this.flushTrailingStreamBuffer(stderrLineBuffer, captureStderrLine);
+
+      extractedSessionId ??= this.extractAgentSessionId(stdout);
+      extractedSessionId ??= this.extractAgentSessionId(stderr);
+
       const durationMs = Date.now() - startAt;
       const success = !timedOut && closeResult.exitCode === 0;
+      const resultLogPayload = this.buildResultLogPayload({
+        executionContext,
+        config,
+        durationMs,
+        stdout,
+        stderr,
+        stdoutChunkCount,
+        stderrChunkCount,
+        stdoutByteLength,
+        stderrByteLength,
+        timedOut,
+        exitCode: closeResult.exitCode,
+        signal: closeResult.signal,
+      });
+
+      if (success) {
+        this.logger.log(
+          `agent_runner_completed ${JSON.stringify(resultLogPayload)}`,
+        );
+      } else {
+        this.logger.warn(
+          `agent_runner_failed ${JSON.stringify(resultLogPayload)}`,
+        );
+      }
 
       return {
         success,
@@ -980,6 +1198,7 @@ export class AgentRunnerService {
         stdout: stdout.trim(),
         stderr: stderr.trim(),
         prompt,
+        sessionId: extractedSessionId,
         ...(success
           ? {}
           : {
@@ -996,6 +1215,35 @@ export class AgentRunnerService {
         clearTimeout(killTimerRef);
       }
 
+      this.flushTrailingStreamBuffer(stdoutLineBuffer, captureStdoutLine);
+      this.flushTrailingStreamBuffer(stderrLineBuffer, captureStderrLine);
+
+      extractedSessionId ??= this.extractAgentSessionId(stdout);
+      extractedSessionId ??= this.extractAgentSessionId(stderr);
+
+      const durationMs = Date.now() - startAt;
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : 'Failed to execute agent runner process';
+      this.logger.error(
+        `agent_runner_exception ${JSON.stringify(
+          this.buildResultLogPayload({
+            executionContext,
+            config,
+            durationMs,
+            stdout,
+            stderr,
+            stdoutChunkCount,
+            stderrChunkCount,
+            stdoutByteLength,
+            stderrByteLength,
+            timedOut,
+            errorMessage,
+          }),
+        )}`,
+      );
+
       return {
         success: false,
         timedOut,
@@ -1004,14 +1252,12 @@ export class AgentRunnerService {
         command: config.command,
         args: config.args,
         cwd: config.cwd,
-        durationMs: Date.now() - startAt,
+        durationMs,
         stdout: stdout.trim(),
         stderr: stderr.trim(),
         prompt,
-        errorMessage:
-          error instanceof Error
-            ? error.message
-            : 'Failed to execute agent runner process',
+        sessionId: extractedSessionId,
+        errorMessage,
       };
     }
   }
@@ -1023,6 +1269,124 @@ export class AgentRunnerService {
 
     const normalized = value.trim();
     return normalized || null;
+  }
+
+  private consumeStreamChunkLines(
+    currentBuffer: string,
+    chunkText: string,
+    onLine?: (line: string) => void,
+  ): { remainingBuffer: string } {
+    if (!onLine) {
+      return {
+        remainingBuffer: currentBuffer,
+      };
+    }
+
+    const combined = `${currentBuffer}${chunkText}`;
+    const normalized = combined.replace(/\r\n/g, '\n');
+    const segments = normalized.split('\n');
+    const remainingBuffer = segments.pop() ?? '';
+
+    for (const segment of segments) {
+      const line = segment.trim();
+      if (!line) {
+        continue;
+      }
+
+      onLine(line);
+    }
+
+    return {
+      remainingBuffer,
+    };
+  }
+
+  private flushTrailingStreamBuffer(
+    buffer: string,
+    onLine?: (line: string) => void,
+  ): void {
+    if (!onLine) {
+      return;
+    }
+
+    const line = buffer.trim();
+    if (!line) {
+      return;
+    }
+
+    onLine(line);
+  }
+
+  private extractAgentSessionId(content: string): string | null {
+    const normalized = this.normalizeOptionalString(content);
+    if (!normalized) {
+      return null;
+    }
+
+    const jsonMatch = this.extractAgentSessionIdFromJson(normalized);
+    if (jsonMatch) {
+      return jsonMatch;
+    }
+
+    const textMatch =
+      /(?:session|conversation|thread|chat)[_ -]?id["'=: ]+([A-Za-z0-9._:-]+)/i.exec(
+        normalized,
+      );
+
+    return textMatch?.[1] ?? null;
+  }
+
+  private extractAgentSessionIdFromJson(content: string): string | null {
+    try {
+      const parsed = JSON.parse(content) as unknown;
+      return this.findAgentSessionIdInValue(parsed);
+    } catch {
+      return null;
+    }
+  }
+
+  private findAgentSessionIdInValue(value: unknown): string | null {
+    if (!value || typeof value !== 'object') {
+      return null;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const found = this.findAgentSessionIdInValue(item);
+        if (found) {
+          return found;
+        }
+      }
+
+      return null;
+    }
+
+    const record = value as Record<string, unknown>;
+    const candidateKeys = [
+      'session_id',
+      'sessionId',
+      'conversation_id',
+      'conversationId',
+      'thread_id',
+      'threadId',
+      'chat_id',
+      'chatId',
+    ];
+
+    for (const key of candidateKeys) {
+      if (typeof record[key] === 'string' && record[key].trim()) {
+        return record[key].trim();
+      }
+    }
+
+    for (const nestedValue of Object.values(record)) {
+      const found = this.findAgentSessionIdInValue(nestedValue);
+      if (found) {
+        return found;
+      }
+    }
+
+    return null;
   }
 
   private buildRunnerEnvironment(
@@ -1057,6 +1421,128 @@ export class AgentRunnerService {
       ...baseEnv,
       ...envOverrides,
     };
+  }
+
+  private buildExecutionLogPayload({
+    executionContext,
+    config,
+    prompt,
+    mergedEnv,
+  }: {
+    executionContext: AgentExecutionContext;
+    config: AgentRunnerConfig;
+    prompt: string;
+    mergedEnv: NodeJS.ProcessEnv;
+  }): Record<string, unknown> {
+    return {
+      ...executionContext,
+      adapter: config.adapter,
+      command: config.command,
+      args: config.args,
+      cwd: config.cwd,
+      timeoutMs: config.timeoutMs,
+      promptLength: prompt.length,
+      envKeys: Object.keys(mergedEnv)
+        .filter((key) => typeof mergedEnv[key] === 'string')
+        .sort(),
+      hasCursorApiKey:
+        typeof mergedEnv.CURSOR_API_KEY === 'string' &&
+        mergedEnv.CURSOR_API_KEY.length > 0,
+    };
+  }
+
+  private buildChunkLogPayload({
+    executionContext,
+    stream,
+    chunkText,
+  }: {
+    executionContext: AgentExecutionContext;
+    stream: 'stdout' | 'stderr';
+    chunkText: string;
+  }): Record<string, unknown> {
+    return {
+      ...executionContext,
+      stream,
+      chunkLength: chunkText.length,
+      preview: this.truncateForLog(chunkText),
+    };
+  }
+
+  private buildResultLogPayload({
+    executionContext,
+    config,
+    durationMs,
+    stdout,
+    stderr,
+    stdoutChunkCount,
+    stderrChunkCount,
+    stdoutByteLength,
+    stderrByteLength,
+    timedOut,
+    exitCode,
+    signal,
+    errorMessage,
+  }: {
+    executionContext: AgentExecutionContext;
+    config: AgentRunnerConfig;
+    durationMs: number;
+    stdout: string;
+    stderr: string;
+    stdoutChunkCount: number;
+    stderrChunkCount: number;
+    stdoutByteLength: number;
+    stderrByteLength: number;
+    timedOut: boolean;
+    exitCode?: number | null;
+    signal?: NodeJS.Signals | null;
+    errorMessage?: string;
+  }): Record<string, unknown> {
+    return {
+      ...executionContext,
+      adapter: config.adapter,
+      command: config.command,
+      args: config.args,
+      cwd: config.cwd,
+      timeoutMs: config.timeoutMs,
+      durationMs,
+      timedOut,
+      exitCode: exitCode ?? null,
+      signal: signal ?? null,
+      stdoutChunkCount,
+      stderrChunkCount,
+      stdoutByteLength,
+      stderrByteLength,
+      stdoutJsonLineCount: this.countJsonLines(stdout),
+      stderrPreview: this.truncateForLog(stderr),
+      stdoutPreview: this.truncateForLog(stdout),
+      errorMessage: errorMessage ?? null,
+    };
+  }
+
+  private countJsonLines(value: string): number {
+    return value
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter((line) => this.isJsonLine(line)).length;
+  }
+
+  private isJsonLine(value: string): boolean {
+    try {
+      JSON.parse(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private truncateForLog(value: string): string | null {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    return trimmed.length > 500 ? `${trimmed.slice(0, 500)}...` : trimmed;
   }
 
   private readTrimmedEnv(key: string): string | undefined {

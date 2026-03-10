@@ -32,7 +32,7 @@ Examples:
 
 - Task logs are structured records with `taskId`, optional `taskNodeId`, `level`, `message`, and JSON `payload`.
 - `TasksService.appendLog(...)` is the canonical entrypoint for task timeline logs.
-- Task logs are persisted under `AINATIVE_DATA_ROOT_DIR/meta/task-logs/` and streamed to clients (SSE) instead of relying on stdout logs.
+- Task logs are persisted under `AINATIVE_DATA_ROOT_DIR/<businessLineId>/projects/<projectId>/tasks/<taskId>/task-log.jsonl` and streamed to clients (SSE).
 
 Examples:
 - `src/tasks/tasks.service.ts` (`appendLog`)

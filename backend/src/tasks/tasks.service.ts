@@ -53,6 +53,7 @@ import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 
 @Injectable()
 export class TasksService implements OnModuleInit, OnModuleDestroy {
+  private readonly agentCliLogChunkLength = 4_000;
   private readonly runningNodeSet = new Set<string>();
   private readonly workerId = `${process.pid}-${Math.random().toString(16).slice(2, 10)}`;
   private readonly schedulerIntervalMs = this.readPositiveNumberFromEnv(
@@ -236,7 +237,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     const requestedGitWorktree = this.normalizeOptionalString(
       createTaskDto.gitWorktree,
     );
-    const taskNameId = await this.resolveCreateTaskNameId({
+    const taskNameId = this.resolveCreateTaskNameId({
       gitBranch: createTaskDto.gitBranch,
       gitBaseBranch: normalizedGitBaseBranch,
       gitWorktree: requestedGitWorktree,
@@ -323,6 +324,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         agentCliId: node.agentCliId,
         agentCliConfigId: node.agentCliConfigId,
         agentClioutput: null,
+        agentCliSessionId: null,
         loopJson: node.loopJson,
         runtimeJson: null,
         status: TaskStatus.todo,
@@ -608,7 +610,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         status: TaskStatus.todo,
         finishedAt: null,
         agentClioutput: null,
-        runtimeJson: null,
+        runtimeJson: this.buildPendingReplyRuntimeJson(normalizedMessage),
       });
 
       await this.appendLog({
@@ -629,7 +631,11 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         },
       );
 
-      if (!todoNode) {
+      if (todoNode) {
+        await this.taskNodeRepository.update(todoNode.id, {
+          runtimeJson: this.buildPendingReplyRuntimeJson(normalizedMessage),
+        });
+      } else {
         const fallbackNode =
           await this.taskNodeRepository.findFirstByTaskIdAndStatus({
             taskId: task.id,
@@ -644,7 +650,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
           status: TaskStatus.todo,
           finishedAt: null,
           agentClioutput: null,
-          runtimeJson: null,
+          runtimeJson: this.buildPendingReplyRuntimeJson(normalizedMessage),
         });
       }
     }
@@ -712,7 +718,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
 
       return {
         role,
-        content: log.message,
+        content: this.resolveTaskLogMessageContent(log),
         createdAt: log.createdAt,
         taskNodeId: log.taskNodeId ?? null,
         level: log.level,
@@ -1293,6 +1299,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         await this.finalizeNodeAsFailure({
           nodeId,
           agentClioutput,
+          agentCliSessionId: latestNode.agentCliSessionId ?? null,
         });
       }
 
@@ -1398,10 +1405,56 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     node: TaskNode;
     project: Project;
   }): Promise<void> {
+    let streamedStdoutLineCount = 0;
+    let streamedStderrLineCount = 0;
+    let streamPersistQueue = Promise.resolve();
+
     const executionResult = await this.agentRunnerService.executeAgentNode({
       task,
       node,
       project,
+      callbacks: {
+        onStdoutLine: (line) => {
+          streamedStdoutLineCount += 1;
+          const lineIndex = streamedStdoutLineCount;
+          streamPersistQueue = streamPersistQueue.then(() => {
+            return this.persistAgentCliStreamLine({
+              taskId,
+              nodeId,
+              task,
+              node,
+              stream: 'stdout',
+              line,
+              lineIndex,
+            });
+          });
+        },
+        onStderrLine: (line) => {
+          streamedStderrLineCount += 1;
+          const lineIndex = streamedStderrLineCount;
+          streamPersistQueue = streamPersistQueue.then(() => {
+            return this.persistAgentCliStreamLine({
+              taskId,
+              nodeId,
+              task,
+              node,
+              stream: 'stderr',
+              line,
+              lineIndex,
+            });
+          });
+        },
+      },
+    });
+
+    await streamPersistQueue;
+
+    await this.appendAgentCliProcessLogs({
+      taskId,
+      nodeId,
+      executionResult,
+      streamedStdoutLineCount,
+      streamedStderrLineCount,
     });
 
     if (executionResult.success) {
@@ -1424,12 +1477,14 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
           command: executionResult.command,
           args: executionResult.args,
           prompt: executionResult.prompt,
+          sessionId: executionResult.sessionId ?? null,
         },
       });
 
       const loopResult = await this.finalizeNodeAsSuccess({
         node,
         agentClioutput,
+        agentCliSessionId: executionResult.sessionId ?? null,
       });
 
       await this.appendLog({
@@ -1476,6 +1531,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         command: executionResult.command,
         args: executionResult.args,
         prompt: executionResult.prompt,
+        sessionId: executionResult.sessionId ?? null,
         error: {
           code: executionResult.timedOut ? 'TIMEOUT' : 'RUNNER_FAILED',
           message: executionResult.errorMessage ?? 'Agent execution failed',
@@ -1486,6 +1542,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     await this.finalizeNodeAsFailure({
       nodeId,
       agentClioutput,
+      agentCliSessionId: executionResult.sessionId ?? null,
     });
 
     await this.appendLog({
@@ -1503,12 +1560,166 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  private async appendAgentCliProcessLogs({
+    taskId,
+    nodeId,
+    executionResult,
+    streamedStdoutLineCount,
+    streamedStderrLineCount,
+  }: {
+    taskId: string;
+    nodeId: string;
+    executionResult: {
+      stdout: string;
+      stderr: string;
+      durationMs: number;
+      command: string;
+      args: string[];
+      exitCode: number | null;
+      signal: NodeJS.Signals | null;
+      timedOut: boolean;
+    };
+    streamedStdoutLineCount?: number;
+    streamedStderrLineCount?: number;
+  }): Promise<void> {
+    if (!streamedStdoutLineCount) {
+      await this.appendAgentCliStreamLogs({
+        taskId,
+        nodeId,
+        stream: 'stdout',
+        content: executionResult.stdout,
+        level: TaskLogLevel.info,
+        executionResult,
+      });
+    }
+    if (!streamedStderrLineCount) {
+      await this.appendAgentCliStreamLogs({
+        taskId,
+        nodeId,
+        stream: 'stderr',
+        content: executionResult.stderr,
+        level: TaskLogLevel.warn,
+        executionResult,
+      });
+    }
+  }
+
+  private async persistAgentCliStreamLine({
+    taskId,
+    nodeId,
+    task,
+    node,
+    stream,
+    line,
+    lineIndex,
+  }: {
+    taskId: string;
+    nodeId: string;
+    task: Task;
+    node: TaskNode;
+    stream: 'stdout' | 'stderr';
+    line: string;
+    lineIndex: number;
+  }): Promise<void> {
+    const normalizedLine = line.trim();
+    if (!normalizedLine) {
+      return;
+    }
+
+    if (stream === 'stdout' && this.isJsonLine(normalizedLine)) {
+      await this.appendNodeOutputJsonlLines({
+        task,
+        node,
+        lines: [normalizedLine],
+      });
+    }
+
+    await this.appendLog({
+      taskId,
+      taskNodeId: nodeId,
+      level: stream === 'stdout' ? TaskLogLevel.info : TaskLogLevel.warn,
+      message: `Agent CLI ${stream} chunk`,
+      payload: {
+        stream,
+        lineIndex,
+        text: normalizedLine,
+      },
+    });
+  }
+
+  private async appendAgentCliStreamLogs({
+    taskId,
+    nodeId,
+    stream,
+    content,
+    level,
+    executionResult,
+  }: {
+    taskId: string;
+    nodeId: string;
+    stream: 'stdout' | 'stderr';
+    content: string;
+    level: TaskLogLevel;
+    executionResult: {
+      durationMs: number;
+      command: string;
+      args: string[];
+      exitCode: number | null;
+      signal: NodeJS.Signals | null;
+      timedOut: boolean;
+    };
+  }): Promise<void> {
+    const normalizedContent = content.trim();
+    if (!normalizedContent) {
+      return;
+    }
+
+    const chunks = this.chunkAgentCliLogContent(normalizedContent);
+
+    for (let index = 0; index < chunks.length; index += 1) {
+      await this.appendLog({
+        taskId,
+        taskNodeId: nodeId,
+        level,
+        message: `Agent CLI ${stream} chunk`,
+        payload: {
+          stream,
+          chunkIndex: index + 1,
+          chunkCount: chunks.length,
+          text: chunks[index],
+          durationMs: executionResult.durationMs,
+          command: executionResult.command,
+          args: executionResult.args,
+          exitCode: executionResult.exitCode,
+          signal: executionResult.signal,
+          timedOut: executionResult.timedOut,
+        },
+      });
+    }
+  }
+
+  private chunkAgentCliLogContent(content: string): string[] {
+    const chunks: string[] = [];
+
+    for (
+      let index = 0;
+      index < content.length;
+      index += this.agentCliLogChunkLength
+    ) {
+      chunks.push(content.slice(index, index + this.agentCliLogChunkLength));
+    }
+
+    return chunks;
+  }
+
   private async finalizeNodeAsSuccess({
     node,
     agentClioutput,
+    agentCliSessionId,
   }: {
     node: TaskNode;
     agentClioutput: string;
+    agentCliSessionId?: string | null;
   }): Promise<{
     status: TaskStatus;
     loopJson: TaskLoopConfig;
@@ -1530,6 +1741,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       startedAt: queuedNextLoop ? null : (node.startedAt ?? null),
       finishedAt: queuedNextLoop ? null : new Date(),
       agentClioutput,
+      agentCliSessionId: agentCliSessionId ?? node.agentCliSessionId ?? null,
       runtimeJson: null,
     });
 
@@ -1543,9 +1755,11 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
   private async finalizeNodeAsFailure({
     nodeId,
     agentClioutput,
+    agentCliSessionId,
   }: {
     nodeId: string;
     agentClioutput: string;
+    agentCliSessionId?: string | null;
   }): Promise<void> {
     const latestNode = await this.taskNodeRepository.findById(nodeId);
 
@@ -1557,6 +1771,8 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       status: TaskStatus.inReview,
       finishedAt: new Date(),
       agentClioutput,
+      agentCliSessionId:
+        agentCliSessionId ?? latestNode.agentCliSessionId ?? null,
       runtimeJson: null,
     });
   }
@@ -2541,6 +2757,12 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  private buildPendingReplyRuntimeJson(message: string): TaskNodeRuntime {
+    return {
+      pendingUserMessage: message,
+    };
+  }
+
   private readNodeRuntime(node: TaskNode): TaskNodeRuntime | null {
     const runtime = this.toObjectRecord(node.runtimeJson);
 
@@ -2579,13 +2801,72 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     output: Record<string, unknown>;
   }): Promise<string> {
     const outputPath = this.resolveNodeOutputPath(task, node);
+    const serializedOutput = this.serializeNodeOutputJsonl(output);
 
     await fs.mkdir(path.dirname(outputPath), {
       recursive: true,
     });
-    await fs.writeFile(outputPath, `${JSON.stringify(output)}\n`, 'utf-8');
+    await fs.writeFile(outputPath, serializedOutput, 'utf-8');
 
     return outputPath;
+  }
+
+  private async appendNodeOutputJsonlLines({
+    task,
+    node,
+    lines,
+  }: {
+    task: Task;
+    node: TaskNode;
+    lines: string[];
+  }): Promise<string> {
+    const normalizedLines = lines
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter((line) => this.isJsonLine(line));
+
+    const outputPath = this.resolveNodeOutputPath(task, node);
+    if (!normalizedLines.length) {
+      return outputPath;
+    }
+
+    await fs.mkdir(path.dirname(outputPath), {
+      recursive: true,
+    });
+    await fs.appendFile(outputPath, `${normalizedLines.join('\n')}\n`, 'utf-8');
+
+    return outputPath;
+  }
+
+  private serializeNodeOutputJsonl(output: Record<string, unknown>): string {
+    const stdout =
+      typeof output.stdout === 'string' && output.stdout.trim()
+        ? output.stdout
+        : null;
+    const stdoutJsonlLines = stdout ? this.extractStdoutJsonlLines(stdout) : [];
+
+    if (!stdoutJsonlLines.length) {
+      return '';
+    }
+
+    return `${stdoutJsonlLines.join('\n')}\n`;
+  }
+
+  private extractStdoutJsonlLines(stdout: string): string[] {
+    return stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter((line) => this.isJsonLine(line));
+  }
+
+  private isJsonLine(value: string): boolean {
+    try {
+      JSON.parse(value);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async readNodeOutputSummary(node: TaskNode): Promise<string | null> {
@@ -2611,6 +2892,13 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         } catch {
           continue;
         }
+      }
+
+      const fallbackSummary = records.join('\n').trim();
+      if (fallbackSummary) {
+        return fallbackSummary.length > 2_000
+          ? fallbackSummary.slice(0, 2_000)
+          : fallbackSummary;
       }
     } catch {
       return null;
@@ -2645,7 +2933,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async resolveCreateTaskNameId({
+  private resolveCreateTaskNameId({
     gitBranch,
     gitBaseBranch,
     gitWorktree,
@@ -2655,7 +2943,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     gitBaseBranch?: string | null;
     gitWorktree?: string | null;
     projectDefaultBranch?: string | null;
-  }): Promise<string> {
+  }): string {
     const normalizedGitBranch = this.normalizeGitBranch(gitBranch);
     const reservedBranches = new Set(
       [gitBaseBranch, projectDefaultBranch, 'main', 'master']
@@ -2671,20 +2959,15 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       : null;
 
     return (
-      gitWorktreeTaskNameId ??
-      gitBranchTaskNameId ??
-      (await this.buildTaskNameId())
+      gitWorktreeTaskNameId ?? gitBranchTaskNameId ?? this.buildTaskNameId()
     );
   }
 
-  private async buildTaskNameId(): Promise<string> {
-    const datePrefix = this.formatTaskNameDate(new Date());
-    const nextSequence =
-      (await this.taskRepository.findMaxGitWorktreeSequence(
-        this.buildTaskNameSequencePrefix(datePrefix),
-      )) + 1;
+  private buildTaskNameId(): string {
+    const now = new Date();
+    const datePrefix = this.formatTaskNameDate(now);
 
-    return `${datePrefix}-${this.formatTaskNameSequence(nextSequence)}`;
+    return `${datePrefix}-${this.formatTaskNameTime(now)}`;
   }
 
   private formatTaskNameDate(date: Date): string {
@@ -2695,12 +2978,12 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     return `${year}${month}${day}`;
   }
 
-  private buildTaskNameSequencePrefix(datePrefix: string): string {
-    return `wk-${datePrefix}-`;
-  }
+  private formatTaskNameTime(date: Date): string {
+    const hours = `${date.getHours()}`.padStart(2, '0');
+    const minutes = `${date.getMinutes()}`.padStart(2, '0');
+    const seconds = `${date.getSeconds()}`.padStart(2, '0');
 
-  private formatTaskNameSequence(sequence: number): string {
-    return `${sequence}`.padStart(3, '0');
+    return `${hours}${minutes}${seconds}`;
   }
 
   private buildDefaultGitBranch(taskNameId: string): string {
@@ -2840,6 +3123,25 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     this.taskLogEventsService.emit(log);
 
     return log;
+  }
+
+  private resolveTaskLogMessageContent(log: TaskLog): string {
+    const payload =
+      log.payload && typeof log.payload === 'object'
+        ? (log.payload as Record<string, unknown>)
+        : null;
+
+    if (
+      (log.message === 'Agent CLI stdout chunk' ||
+        log.message === 'Agent CLI stderr chunk') &&
+      payload &&
+      typeof payload.text === 'string' &&
+      payload.text.length > 0
+    ) {
+      return payload.text;
+    }
+
+    return log.message;
   }
 
   private parseDate(value?: string): Date | undefined {

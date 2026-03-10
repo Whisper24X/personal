@@ -13,6 +13,7 @@ export class TaskNodeMapper {
     domainEntity.agentCliId = raw.agentCliId;
     domainEntity.agentCliConfigId = raw.agentCliConfigId;
     domainEntity.agentClioutput = raw.agentClioutput;
+    domainEntity.agentCliSessionId = raw.agentCliSessionId;
     domainEntity.loopJson = raw.loopJson as TaskLoopConfig | null;
     domainEntity.runtimeJson = raw.runtimeJson;
     domainEntity.status = raw.status;
@@ -38,6 +39,8 @@ export class TaskNodeMapper {
     persistenceEntity.agentCliId = domainEntity.agentCliId ?? '';
     persistenceEntity.agentCliConfigId = domainEntity.agentCliConfigId ?? '';
     persistenceEntity.agentClioutput = domainEntity.agentClioutput ?? null;
+    persistenceEntity.agentCliSessionId =
+      domainEntity.agentCliSessionId ?? null;
     persistenceEntity.loopJson = domainEntity.loopJson ?? null;
     persistenceEntity.runtimeJson = domainEntity.runtimeJson ?? null;
     persistenceEntity.status = domainEntity.status;

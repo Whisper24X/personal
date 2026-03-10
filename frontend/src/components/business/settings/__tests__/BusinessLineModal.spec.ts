@@ -203,7 +203,6 @@ beforeEach(() => {
     defaultBranch: 'main',
     configJson: {
       agentAdapter: 'codex',
-      agentRunnerEnabled: false,
       agentRunner: {
         timeoutSeconds: 600,
       },

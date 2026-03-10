@@ -29,4 +29,5 @@ export type TaskNodeRuntime = Record<string, unknown> & {
   workerId?: string | null;
   leaseUntil?: string | null;
   heartbeatAt?: string | null;
+  pendingUserMessage?: string | null;
 };

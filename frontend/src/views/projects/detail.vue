@@ -166,7 +166,6 @@ const configForm = reactive({
   gitUrl: '',
   defaultBranch: 'main',
   agentAdapter: 'codex',
-  agentRunnerEnabled: false,
   gitRuntimeEnabled: false,
   repoLocalPath: '',
   repoCacheBaseDir: '',
@@ -1109,7 +1108,6 @@ const syncConfigForm = (currentProject: Project) => {
   configForm.defaultBranch = currentProject.defaultBranch
   configForm.agentAdapter =
     typeof configJson.agentAdapter === 'string' ? configJson.agentAdapter : 'codex'
-  configForm.agentRunnerEnabled = configJson.agentRunnerEnabled === true
   configForm.gitRuntimeEnabled = configJson.gitRuntimeEnabled === true
   configForm.repoLocalPath =
     typeof configJson.repoLocalPath === 'string' ? configJson.repoLocalPath : ''
@@ -1380,7 +1378,6 @@ const saveConfig = async () => {
       allowedMcp,
       maxConcurrency: Math.max(1, Number(configForm.maxConcurrency) || 1),
       priority: configForm.priority.trim() || 'normal',
-      agentRunnerEnabled: configForm.agentRunnerEnabled,
       gitRuntimeEnabled: configForm.gitRuntimeEnabled,
       ...(configForm.repoLocalPath.trim()
         ? { repoLocalPath: configForm.repoLocalPath.trim() }
@@ -2532,17 +2529,6 @@ onBeforeUnmount(() => {
                 min="1"
                 type="number"
               />
-            </label>
-
-            <label class="space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">Agent Runner 开关</span>
-              <select
-                v-model="configForm.agentRunnerEnabled"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              >
-                <option :value="true">开启（真实执行）</option>
-                <option :value="false">关闭（模拟执行）</option>
-              </select>
             </label>
 
             <label class="space-y-1">

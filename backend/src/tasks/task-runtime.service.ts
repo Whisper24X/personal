@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { spawn } from 'child_process';
-import { promises as fs } from 'fs';
+import { existsSync, promises as fs } from 'fs';
 import path from 'path';
 import { Project } from '../projects/domain/project';
 import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
@@ -344,7 +344,9 @@ export class TaskRuntimeService {
   }
 
   resolveTaskWorktreePath(task: Task, project: Project): string {
-    return this.resolveGitWorktreePath(task, project);
+    return this.resolveGitWorktreePath(task, project, {
+      preferLegacyExistingPath: true,
+    });
   }
 
   private resolveBranch(task: Task, project: Project): string {
@@ -364,7 +366,11 @@ export class TaskRuntimeService {
     return project.defaultBranch || 'main';
   }
 
-  private resolveGitWorktreePath(task: Task, project: Project): string {
+  private resolveGitWorktreePath(
+    task: Task,
+    project: Project,
+    options?: { preferLegacyExistingPath?: boolean },
+  ): string {
     const gitWorktree = this.resolveGitWorktreeIdentifier(task);
 
     if (path.isAbsolute(gitWorktree)) {
@@ -372,7 +378,18 @@ export class TaskRuntimeService {
     }
 
     const baseDir = this.resolveWorktreeBaseDir(project);
-    return path.join(baseDir, gitWorktree);
+    const nextPath = path.join(baseDir, gitWorktree);
+
+    if (options?.preferLegacyExistingPath) {
+      const legacyBaseDir = this.resolveLegacyProjectWorktreeBaseDir(project);
+      const legacyPath = path.join(legacyBaseDir, gitWorktree);
+
+      if (legacyPath !== nextPath && existsSync(legacyPath)) {
+        return legacyPath;
+      }
+    }
+
+    return nextPath;
   }
 
   private resolveGitWorktreeIdentifier(task: Task): string {
@@ -475,6 +492,10 @@ export class TaskRuntimeService {
   }
 
   private resolveProjectWorktreeBaseDir(project: Project): string {
+    return path.join(this.resolveProjectStorageBaseDir(project), 'worktrees');
+  }
+
+  private resolveLegacyProjectWorktreeBaseDir(project: Project): string {
     const businessLineId =
       project.businessLineId?.trim() || 'unknown-business-line';
     const projectId = project.id?.trim() || 'unknown-project';
