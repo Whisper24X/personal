@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
-import { WebLinksAddon } from '@xterm/addon-web-links'
-import '@xterm/xterm/css/xterm.css'
+import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
 import type { TaskTerminalSession } from '@/types/api/tasks'
 import { toErrorMessage } from '@/utils/http/to-error-message'
@@ -11,6 +8,7 @@ import { TerminalWsConnection } from '@/utils/ws/terminal-ws'
 
 const props = defineProps<{
   taskId: string
+  projectId?: string
 }>()
 
 const command = ref('')
@@ -20,65 +18,91 @@ const errorMessage = ref('')
 const running = ref(false)
 const configOpen = ref(false)
 const logOpen = ref(false)
+const logLines = ref<string[]>([])
+const configLoaded = ref(false)
 
-const terminalContainerRef = ref<HTMLDivElement | null>(null)
+const logContainerRef = ref<HTMLDivElement | null>(null)
 
 let session: TaskTerminalSession | null = null
-let terminal: Terminal | null = null
-let fitAddon: FitAddon | null = null
-let resizeObserver: ResizeObserver | null = null
 let wsConnection: TerminalWsConnection | null = null
 let wsReady = false
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+let commandStarted = false
+let pendingCommand: string | null = null
 
-const initTerminal = () => {
-  if (terminal) return
+const MAX_LOG_LINES = 2000
 
-  terminal = new Terminal({
-    cursorBlink: true,
-    fontSize: 12,
-    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-    theme: {
-      background: '#0f1115',
-      foreground: '#c7d2fe',
-      cursor: '#c7d2fe',
-      selectionBackground: '#364154',
-    },
-    scrollback: 5000,
-    convertEol: true,
-    allowProposedApi: true,
-  })
+const stripAnsi = (text: string): string => {
+  return text
+    .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')       // CSI sequences (colors, cursor, erase)
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '') // OSC sequences (window title, etc.)
+    .replace(/\x1b[()#][A-Za-z0-9]/g, '')           // character set selection
+    .replace(/\x1b[A-Za-z]/g, '')                    // two-char escape sequences
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '') // control chars (keep \t \n \r)
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+}
 
-  fitAddon = new FitAddon()
-  terminal.loadAddon(fitAddon)
-  terminal.loadAddon(new WebLinksAddon())
-
-  if (terminalContainerRef.value) {
-    terminal.open(terminalContainerRef.value)
-    fitAddon.fit()
-  }
-
-  terminal.onData((data: string) => {
-    wsConnection?.input(data)
-  })
-
-  resizeObserver = new ResizeObserver(() => {
-    fitAddon?.fit()
-    if (terminal && wsConnection?.isOpen) {
-      wsConnection.resize(terminal.cols, terminal.rows)
+const appendLog = (text: string) => {
+  const cleaned = stripAnsi(text)
+  const newLines = cleaned.split('\n').filter((l) => l.length > 0 || cleaned.endsWith('\n'))
+  if (newLines.length === 0) return
+  logLines.value = [...logLines.value, ...newLines].slice(-MAX_LOG_LINES)
+  nextTick(() => {
+    if (logContainerRef.value) {
+      logContainerRef.value.scrollTop = logContainerRef.value.scrollHeight
     }
   })
+}
 
-  if (terminalContainerRef.value) {
-    resizeObserver.observe(terminalContainerRef.value)
+const clearLog = () => {
+  logLines.value = []
+}
+
+const loadConfig = async () => {
+  if (!props.projectId) return
+
+  try {
+    const project = await projectsApi.detail(props.projectId)
+    const cfg = project.configJson as Record<string, unknown> | null | undefined
+    const preview = cfg?.preview as Record<string, string> | undefined
+    if (preview) {
+      command.value = preview.command ?? ''
+      previewUrl.value = preview.url ?? ''
+      applyUrl()
+    }
+  } catch {
+    // ignore load errors
+  } finally {
+    configLoaded.value = true
   }
 }
 
-const disposeTerminal = () => {
-  resizeObserver?.disconnect()
-  resizeObserver = null
-  terminal?.dispose()
-  terminal = null
-  fitAddon = null
+const saveConfig = async () => {
+  if (!props.projectId) return
+
+  try {
+    const project = await projectsApi.detail(props.projectId)
+    const existingConfig = (project.configJson as Record<string, unknown>) ?? {}
+    await projectsApi.update(props.projectId, {
+      configJson: {
+        ...existingConfig,
+        preview: {
+          command: command.value.trim(),
+          url: previewUrl.value.trim(),
+        },
+      },
+    })
+  } catch {
+    // silent save
+  }
+}
+
+const debouncedSave = () => {
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => {
+    void saveConfig()
+  }, 600)
 }
 
 const connectWs = () => {
@@ -87,17 +111,19 @@ const connectWs = () => {
   wsConnection = new TerminalWsConnection({
     onMessage: (message) => {
       if (message.type === 'output') {
-        terminal?.write(message.data)
+        if (commandStarted) {
+          appendLog(message.data)
+        }
       } else if (message.type === 'exit') {
-        terminal?.write(
-          `\r\n\x1b[90m[Process exited with code ${message.code ?? 'null'}]\x1b[0m\r\n`,
-        )
+        appendLog(`[进程已退出，退出码 ${message.code ?? 'null'}]`)
         running.value = false
       } else if (message.type === 'error') {
-        terminal?.write(`\r\n\x1b[31m[Error: ${message.message}]\x1b[0m\r\n`)
+        appendLog(`[错误: ${message.message}]`)
       } else if (message.type === 'attached') {
-        if (terminal && wsConnection?.isOpen) {
-          wsConnection.resize(terminal.cols, terminal.rows)
+        if (pendingCommand) {
+          commandStarted = true
+          wsConnection?.input(pendingCommand)
+          pendingCommand = null
         }
       }
     },
@@ -126,7 +152,7 @@ const runCommand = async () => {
   if (!cmd) return
 
   errorMessage.value = ''
-  terminal?.clear()
+  clearLog()
 
   if (session) {
     try {
@@ -139,18 +165,20 @@ const runCommand = async () => {
   }
 
   try {
-    const cols = terminal?.cols ?? 80
-    const rows = terminal?.rows ?? 24
-    session = await tasksApi.createTerminalSession(props.taskId, { cols, rows })
+    commandStarted = false
+    pendingCommand = `exec ${cmd}\n`
+    session = await tasksApi.createTerminalSession(props.taskId, {
+      cols: 120,
+      rows: 30,
+      shell: '/bin/sh',
+    })
     running.value = true
 
     if (wsReady && wsConnection) {
       wsConnection.attach(props.taskId, session.id)
     }
-
-    await nextTick()
-    wsConnection?.input(cmd + '\n')
   } catch (error) {
+    pendingCommand = null
     errorMessage.value = toErrorMessage(error, '启动脚本失败')
     running.value = false
   }
@@ -173,7 +201,7 @@ const restartCommand = async () => {
   await runCommand()
 }
 
-const applyConfig = () => {
+const applyUrl = () => {
   const url = previewUrl.value.trim()
   if (!url) {
     iframeSrc.value = ''
@@ -181,7 +209,6 @@ const applyConfig = () => {
     iframeSrc.value =
       url.startsWith('http://') || url.startsWith('https://') ? url : `http://${url}`
   }
-  configOpen.value = false
 }
 
 const refreshPreview = () => {
@@ -195,21 +222,19 @@ const refreshPreview = () => {
 
 const toggleConfig = () => {
   configOpen.value = !configOpen.value
-  if (configOpen.value) {
-    nextTick(() => {
-      initTerminal()
-    })
-  }
 }
 
 const toggleLog = () => {
   logOpen.value = !logOpen.value
-  if (logOpen.value) {
-    nextTick(() => {
-      initTerminal()
-      fitAddon?.fit()
-    })
-  }
+}
+
+const onCommandInput = () => {
+  debouncedSave()
+}
+
+const onUrlInput = () => {
+  applyUrl()
+  debouncedSave()
 }
 
 watch(
@@ -218,20 +243,27 @@ watch(
     disconnectWs()
     session = null
     running.value = false
-    terminal?.clear()
+    clearLog()
     nextTick(() => {
       connectWs()
-      if (configOpen.value || logOpen.value) {
-        initTerminal()
-      }
     })
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.projectId,
+  () => {
+    configLoaded.value = false
+    void loadConfig()
   },
   { immediate: true },
 )
 
 onBeforeUnmount(() => {
   disconnectWs()
-  disposeTerminal()
+
+  if (saveTimer) clearTimeout(saveTimer)
 
   if (session && running.value) {
     void tasksApi.terminalStop(props.taskId, session.id)
@@ -302,25 +334,8 @@ onBeforeUnmount(() => {
             type="text"
             placeholder="例如 npm run dev"
             class="border-border bg-background text-foreground placeholder:text-muted-foreground h-7 flex-1 rounded-md border px-2 text-xs outline-none focus:border-primary"
-            @keydown.enter="applyConfig"
+            @input="onCommandInput"
           />
-          <button
-            v-if="!running"
-            class="bg-primary text-primary-foreground h-7 shrink-0 rounded-md px-3 text-xs font-semibold disabled:opacity-40"
-            type="button"
-            :disabled="!command.trim()"
-            @click="runCommand"
-          >
-            运行
-          </button>
-          <button
-            v-else
-            class="bg-destructive text-destructive-foreground h-7 shrink-0 rounded-md px-3 text-xs font-semibold"
-            type="button"
-            @click="stopCommand"
-          >
-            停止
-          </button>
         </div>
         <div class="flex items-center gap-2">
           <label class="text-muted-foreground w-16 shrink-0 text-xs">预览地址</label>
@@ -329,27 +344,26 @@ onBeforeUnmount(() => {
             type="text"
             placeholder="例如 http://localhost:3000"
             class="border-border bg-background text-foreground placeholder:text-muted-foreground h-7 flex-1 rounded-md border px-2 text-xs outline-none focus:border-primary"
-            @keydown.enter="applyConfig"
+            @input="onUrlInput"
           />
-          <button
-            class="bg-primary text-primary-foreground h-7 shrink-0 rounded-md px-3 text-xs font-semibold"
-            type="button"
-            @click="applyConfig"
-          >
-            应用
-          </button>
         </div>
       </div>
       <p v-if="errorMessage" class="mt-1.5 text-xs text-destructive">{{ errorMessage }}</p>
     </div>
 
-    <!-- Log panel (collapsible) -->
+    <!-- Log panel (collapsible, read-only) -->
     <div
-      v-show="logOpen"
+      v-if="logOpen"
       class="border-border/70 shrink-0 border-b"
       style="height: 180px"
     >
-      <div ref="terminalContainerRef" class="h-full bg-[#0f1115] p-1" />
+      <div
+        ref="logContainerRef"
+        class="h-full overflow-auto bg-[#0f1115] px-3 py-2 font-mono text-xs leading-5 text-[#c7d2fe] select-text"
+      >
+        <div v-if="logLines.length === 0" class="text-muted-foreground italic">暂无日志</div>
+        <div v-for="(line, i) in logLines" :key="i" class="whitespace-pre-wrap break-all">{{ line }}</div>
+      </div>
     </div>
 
     <!-- Body: iframe preview -->

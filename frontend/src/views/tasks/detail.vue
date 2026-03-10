@@ -738,6 +738,7 @@ onBeforeUnmount(() => {
       <RightPanelSection
         v-if="isRightPanelVisible"
         :task-id="taskId"
+        :project-id="activeProjectId"
         :branch-name="task?.gitBranch || null"
         :base-branch="task?.gitBaseBranch || null"
         :refresh-token="rightPanelRefreshToken"

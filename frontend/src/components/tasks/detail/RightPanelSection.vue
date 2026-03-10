@@ -8,11 +8,13 @@ defineOptions({
 const props = withDefaults(
   defineProps<{
     taskId: string
+    projectId?: string
     branchName?: string | null
     baseBranch?: string | null
     refreshToken?: number
   }>(),
   {
+    projectId: '',
     branchName: null,
     baseBranch: null,
     refreshToken: 0,
@@ -24,6 +26,7 @@ const props = withDefaults(
   <div class="bg-muted/10 flex min-w-0 flex-1 flex-col overflow-hidden">
     <TaskRightPanel
       :task-id="props.taskId"
+      :project-id="props.projectId"
       :branch-name="props.branchName"
       :base-branch="props.baseBranch"
       :refresh-token="props.refreshToken"
