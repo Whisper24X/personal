@@ -176,3 +176,35 @@
 <!-- ECharts (图表，可选) -->
 <script src="https://fp.yangcong345.com/middle/base/echarts.min-b91b9de4da1677c82825c679112da8b2.js"></script>
 ```
+
+### 禁止使用的 CDN（切勿使用）
+
+以下域名**禁止**出现在原型 HTML 中：
+
+- unpkg.com
+- cdn.jsdelivr.net
+- cdnjs.cloudflare.com
+- element-plus.org
+- 任何非 fp.yangcong345.com 的域名
+
+---
+
+## 默认 Design Tokens
+
+若无法从项目提取设计 token，使用以下默认值（Element Plus 风格）：
+
+```css
+:root {
+  --primary-color: #409eff;
+  --success-color: #67c23a;
+  --warning-color: #e6a23c;
+  --error-color: #f56c6c;
+  --text-color: #303133;
+  --text-secondary: #909399;
+  --bg-color: #f5f7fa;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --border-radius: 4px;
+  --box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+```

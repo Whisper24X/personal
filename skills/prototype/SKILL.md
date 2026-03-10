@@ -1,11 +1,21 @@
 ---
 name: prototype
-description: Creates single-file HTML prototypes in /docs/prototype/. Distinguishes new vs iteration: new features generate directly with project design tokens; iterations reference  frontend code (ainative-shadow=admin, ainative-app=miniprogram, frontend=single app). Uses Vue3 + Element Plus via CDN. Use when user says "prototype", "demo", "mockup", "quick validation", "visualize idea", or needs UI preview.
+description: Creates single-file HTML prototypes in docs/prototype/ using Vue3 + Element Plus via specified CDN. New features use project design tokens; iterations reference ainative-shadow/ainative-app/frontend code. Use when user says prototype, demo, mockup, quick validation, visualize idea, UI preview, 原型, 演示, or needs visual mockup.
 ---
 
 # 单文件原型生成器
 
 生成独立的 HTML 原型文件，双击即可演示，样式参考项目设计系统。
+
+## Quick Start
+
+1. 判断类型（新增 / 迭代）→ 2. 确定风格（管理后台 / 移动端）→ 3. 从 [templates.md](references/templates.md) 复制 CDN 与模板 → 4. 生成 `docs/prototype/{feature}/index.html` → 5. 按 [verification-guide.md](references/verification-guide.md) 检查并修复
+
+## CDN 强制约束（生成前必读）
+
+- **唯一允许**：`https://fp.yangcong345.com/middle/base/` 下的资源
+- **禁止使用**：unpkg.com、cdn.jsdelivr.net、cdnjs.cloudflare.com、element-plus.org 等任何其他 CDN
+- **操作方式**：从 [templates.md](references/templates.md) 第 166-177 行**直接复制** CDN 标签，不得自行编写或改写 URL
 
 ## 核心特性
 
@@ -70,69 +80,13 @@ flowchart TD
 - **管理后台**：`ainative-shadow/src/style.css`、`ainative-shadow/src/App.vue`（若存在）；否则 `frontend/src/`
 - **小程序**：`ainative-app/src/` 下对应样式与入口文件
 
-若无法读取项目文件，使用以下默认 Design Tokens（Element Plus 风格）：
-
-```css
-:root {
-  --primary-color: #409eff;
-  --success-color: #67c23a;
-  --warning-color: #e6a23c;
-  --error-color: #f56c6c;
-  --text-color: #303133;
-  --text-secondary: #909399;
-  --bg-color: #f5f7fa;
-  --spacing-md: 16px;
-  --spacing-lg: 24px;
-  --border-radius: 4px;
-  --box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
-}
-```
+若无法读取项目文件，使用 [templates.md](references/templates.md) 中的默认 Design Tokens。
 
 ### Step 3: 生成原型文件
 
 **输出位置**: `docs/prototype/{feature-name}/index.html`
 
-**文件结构**:
-
-```html
-<!DOCTYPE html>
-<html lang="zh-CN">
-  <head>
-    <!-- CDN 依赖：必须使用 templates.md 第 166-179 行的 CDN 资源 -->
-    <link rel="stylesheet" href="https://fp.yangcong345.com/middle/base/element-38098fc849a985d85be870cf856da4a1.css" />
-    <script src="https://fp.yangcong345.com/middle/base/vue.global.prod.min-0b54d44c0a1191e01683f5d626686f5e.js"></script>
-    <script src="https://fp.yangcong345.com/middle/base/element-f355e990744f69cea3292feaf7b43b40.js"></script>
-    <!-- 若需图表，添加：<script src="https://fp.yangcong345.com/middle/base/echarts.min-b91b9de4da1677c82825c679112da8b2.js"></script> -->
-    <!-- 设计标准 CSS -->
-  </head>
-  <body>
-    <!--
-    原型说明注释：
-    - 功能描述
-    - 使用方法
-    - 原型限制
-    - 下一步计划
-  -->
-
-    <div id="app">
-      <!-- 原型标记 -->
-      <div class="prototype-badge">🚧 原型</div>
-
-      <!-- 页面内容 -->
-    </div>
-
-    <!-- Vue3 + 业务逻辑 -->
-  </body>
-</html>
-```
-
-### CDN 引用规范
-
-所有 script/link 引用必须使用 [templates.md](references/templates.md) 第 166-179 行的 CDN 资源：
-
-- **管理后台**：Vue + Element Plus CSS + Element Plus JS；需要图表时加 ECharts
-- **移动端**：仅 Vue（无 Element Plus）
-- **禁止**使用其他 CDN 或版本
+**文件骨架**：从 [templates.md](references/templates.md) 复制管理后台或移动端完整模板，CDN 见上方 CDN 强制约束。结构包含：`<head>` 内 CDN + 设计 CSS；`<body>` 内 `#app`、`prototype-badge`、页面内容；末尾 Vue3 挂载。
 
 ---
 
@@ -196,6 +150,7 @@ flowchart TD
 - [ ] 已判断类型（新增 / 迭代）
 - [ ] 确定类型（管理后台/移动端）
 - [ ] 选择合适的基础模板
+- [ ] CDN 将使用 templates.md 指定链接（见上方 CDN 强制约束）
 - [ ] 应用项目设计标准
 - [ ] **若为迭代**：已读取相关 `{root}/src/views/` 或 `{root}/src/pages/` 与 `{root}/src/components/` 代码
 - [ ] 设计 token 已与项目实际样式文件对齐
@@ -215,80 +170,22 @@ flowchart TD
 
 ## 生成后验证与修复（强制执行，不得跳过）
 
-生成 `index.html` 后，**必须**按以下四步流程完成验证和修复，确保页面能正常在浏览器中打开。
+生成 `index.html` 后，**必须**按 [verification-guide.md](references/verification-guide.md) 完成四步验证：
 
-### 第一步：检查 HTML 结构完整性
-
-读取生成的 `index.html`，逐条确认：
-
-- [ ] 文件大小 > 2KB（防止内容截断）
-- [ ] 包含 `<!DOCTYPE html>`
-- [ ] 包含 `<html` 和 `</html>`
-- [ ] 包含 `<head>` / `</head>` 和 `<body>` / `</body>`
-- [ ] `<script` 与 `</script>` 标签数量完全相等
-- [ ] 包含 Vue3 CDN 引用：`fp.yangcong345.com/.../vue.global.prod.min`
-- [ ] 包含 Element Plus CSS 引用：`fp.yangcong345.com/.../element-38098fc849a985d85be870cf856da4a1.css`（管理后台）
-- [ ] 包含 Element Plus JS 引用：`fp.yangcong345.com/.../element-f355e990744f69cea3292feaf7b43b40.js`（管理后台）
-- [ ] 若使用图表，包含 ECharts 引用：`fp.yangcong345.com/.../echarts.min-b91b9de4da1677c82825c679112da8b2.js`
-- [ ] 包含 Vue 应用挂载：`.mount('#app')` 或 `.mount("#app")`
-- [ ] JS 代码大括号 `{}` 已配对（无明显截断）
-
-### 第二步：检查 JS 运行时安全性
-
-审查 `<script>` 内的 JS 代码，排查以下高频运行时错误根因：
-
-**空值访问（防止 `Uncaught TypeError: Cannot read properties of null/undefined`）**
-
-- [ ] `setup()` 中所有 `ref` / `reactive` 变量均已给初始值，禁止使用 `null` 或 `undefined` 作为初始值：
-  - 字符串 → `ref('')`
-  - 数字 → `ref(0)`
-  - 布尔 → `ref(false)`
-  - 数组 → `ref([])`
-  - 对象 → `ref({})` 或 `reactive({})`
-- [ ] 访问嵌套属性时使用可选链 `?.`，例如 `item?.title` 而非 `item.title`
-- [ ] `v-for` 绑定的数组初始值为 `[]`，不得为 `null`
-- [ ] `v-if` 条件涉及对象属性时，先判断对象是否存在（`obj && obj.prop` 或 `obj?.prop`）
-
-**DOM 操作安全**
-
-- [ ] 若有 `document.getElementById` / `querySelector`，返回值使用前先判断非空
-
-### 第三步：修复所有未通过项
-
-若发现任何检查项未通过，**立即在文件中修复**：
-
-| 问题类型                     | 修复方式                                 |
-| ---------------------------- | ---------------------------------------- |
-| 标签未闭合                   | 补全缺失的闭合标签                       |
-| `</script>` 数量不足         | 补全缺失的 `</script>`                   |
-| Vue 挂载调用缺失             | 在 script 末尾补全 `.mount('#app')`      |
-| `ref` 初始值为 `null`        | 改为对应类型的空值（`''` / `[]` / `{}`） |
-| 嵌套属性访问无保护           | 改为可选链写法 `?.`                      |
-| 文件被截断                   | 重新生成完整文件                         |
-| CDN 引用非 templates.md 标准 | 替换为 templates.md 第 166-179 行的 URL  |
-
-修复完成后，**重新执行第一步和第二步**，直到所有检查项全部通过。
-
-### 第四步：确认完成
-
-所有检查通过后，输出确认信息：
-
-```
-✅ 原型图验证通过
-   路径：docs/prototype/index.html
-   文件大小：{实际大小}
-   HTML 结构：完整
-   JS 安全性：无空值风险
-```
+1. **检查 HTML 结构完整性**：DOCTYPE、标签闭合、CDN 引用（仅 fp.yangcong345.com）、Vue 挂载
+2. **检查 JS 运行时安全性**：ref/reactive 初始值、可选链、v-for 数组非 null
+3. **修复所有未通过项**：按 verification-guide 中的修复表格处理
+4. **确认完成**：输出验证通过信息
 
 ---
 
 ## 附加资源
 
-| 资源                                                    | 说明                                       |
-| ------------------------------------------------------- | ------------------------------------------ |
-| [templates.md](references/templates.md)                 | 管理后台/移动端完整模板、CDN 资源          |
-| [common-prototypes.md](references/common-prototypes.md) | 常用功能片段、常见组件、快速参考、打开方式 |
-| [iteration-guide.md](references/iteration-guide.md)     | 迭代场景详细指南、功能域推断               |
-| [shadow-examples.md](references/shadow-examples.md)     | 管理后台完整示例（用户列表、数据仪表盘）   |
-| [app-examples.md](references/app-examples.md)           | 移动端完整示例（商品列表、表单提交）       |
+| 资源                                                      | 说明                                                  |
+| --------------------------------------------------------- | ----------------------------------------------------- |
+| [templates.md](references/templates.md)                   | 管理后台/移动端完整模板、CDN 资源、默认 Design Tokens |
+| [verification-guide.md](references/verification-guide.md) | 生成后四步验证与修复完整清单                          |
+| [common-prototypes.md](references/common-prototypes.md)   | 常用功能片段、常见组件、快速参考、打开方式            |
+| [iteration-guide.md](references/iteration-guide.md)       | 迭代场景详细指南、功能域推断                          |
+| [shadow-examples.md](references/shadow-examples.md)       | 管理后台完整示例（用户列表、数据仪表盘）              |
+| [app-examples.md](references/app-examples.md)             | 移动端完整示例（商品列表、表单提交）                  |
