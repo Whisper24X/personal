@@ -83,9 +83,37 @@ description: 验证代码改进效果。检查问题解决状态、验证代码�
 2. 修复的代码引入了新的 TODO/占位符
 3. 代码构建失败或 lint 检查不通过
 
-### 4. 删除改进文件（仅在全部完成时执行）
+### 4. 追加历史记录并删除改进文件（仅在全部完成时执行）
 
-**当且仅当判定为"已完成"时**，必须执行以下操作：
+**当且仅当判定为"已完成"时**，按顺序执行以下操作：
+
+#### 4.1 追加历史记录
+
+在删除 `ImproveCode.md` 之前，将其内容追加到历史记录文档：
+
+1. 读取 `docs/code/ImproveCode.md` 的完整内容
+2. 通过 shell 命令获取真实系统时间（**不得自行估算时间**）：
+
+```bash
+date '+%Y-%m-%d %H:%M:%S'
+```
+
+3. 若 `docs/improveHistory.md` 不存在，先创建并写入首行：`# 代码改进历史记录`
+4. 向 `docs/improveHistory.md` 末尾追加以下内容（注意是追加，不是覆盖）：
+
+```
+---
+
+## YYYY-MM-DD HH:mm:ss
+
+[docs/code/ImproveCode.md 的完整内容]
+
+```
+
+- `docs/improveHistory.md` 位于 workspace 的 `docs/` 根目录下，不是 `docs/code/` 目录
+- 若 `ImproveCode.md` 内容为空，跳过追加，不影响后续删除步骤
+
+#### 4.2 删除改进文件
 
 ```bash
 rm docs/code/ImproveCode.md
@@ -171,7 +199,9 @@ rm docs/code/ImproveCode.md
 1. **必须写入文件**：结果必须写入 `docs/code/improveVerifyResult.md`，不是输出到终端
 2. **JSON 格式严格**：确保输出的是合法 JSON，可被程序解析
 3. **确保目录存在**：如果 `docs/code/` 目录不存在，需要先创建
-4. **已完成时必须删除 ImproveCode.md**：这是完成信号，ImproveCode Action 依赖此判断
-5. **未完成时不要删除 ImproveCode.md**：保留文件，系统会再次执行改进循环
-6. **每次覆盖写入**：每次执行都覆盖 `improveVerifyResult.md`（不是追加）
-7. **代码质量标准**：参照 `code-evaluate-completion` 的检查规范，保持团队标准一致
+4. **已完成时必须先追加历史再删除 ImproveCode.md**：顺序不能反，追加完成后再执行删除
+5. **历史文件是追加写入**：`docs/improveHistory.md` 每次追加新条目，不是覆盖
+6. **时间必须通过 shell 命令获取**：执行 `date '+%Y-%m-%d %H:%M:%S'` 获取真实系统时间，禁止自行估算
+7. **未完成时不要删除 ImproveCode.md**：保留文件，系统会再次执行改进循环
+8. **每次覆盖写入**：每次执行都覆盖 `improveVerifyResult.md`（不是追加）
+9. **代码质量标准**：参照 `code-evaluate-completion` 的检查规范，保持团队标准一致
