@@ -1,5 +1,8 @@
 import { TaskNode } from '../../../../domain/task-node';
-import { TaskLoopConfig } from '../../../../types/task-config.type';
+import {
+  TaskLoopConfig,
+  TaskNodeConfig,
+} from '../../../../types/task-config.type';
 import { TaskNodeEntity } from '../entities/task-node.entity';
 
 export class TaskNodeMapper {
@@ -14,6 +17,7 @@ export class TaskNodeMapper {
     domainEntity.agentCliConfigId = raw.agentCliConfigId;
     domainEntity.agentClioutput = raw.agentClioutput;
     domainEntity.agentCliSessionId = raw.agentCliSessionId;
+    domainEntity.configJson = raw.configJson as TaskNodeConfig | null;
     domainEntity.loopJson = raw.loopJson as TaskLoopConfig | null;
     domainEntity.runtimeJson = raw.runtimeJson;
     domainEntity.status = raw.status;
@@ -41,6 +45,7 @@ export class TaskNodeMapper {
     persistenceEntity.agentClioutput = domainEntity.agentClioutput ?? null;
     persistenceEntity.agentCliSessionId =
       domainEntity.agentCliSessionId ?? null;
+    persistenceEntity.configJson = domainEntity.configJson ?? null;
     persistenceEntity.loopJson = domainEntity.loopJson ?? null;
     persistenceEntity.runtimeJson = domainEntity.runtimeJson ?? null;
     persistenceEntity.status = domainEntity.status;

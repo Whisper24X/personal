@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { TaskStatus } from '../dto/task-status.enum';
 import {
   TaskLoopConfig,
+  TaskNodeConfig,
   TaskNodeInput,
   TaskNodeRuntime,
 } from '../types/task-config.type';
@@ -48,6 +49,14 @@ export class TaskNode {
     description: 'Agent tool config identifier resolved for this node',
   })
   agentCliConfigId?: string | null;
+
+  @ApiProperty({
+    type: Object,
+    required: false,
+    nullable: true,
+    description: 'Node configuration JSON (e.g. requiresApproval)',
+  })
+  configJson?: TaskNodeConfig | null;
 
   @ApiProperty({
     type: Object,

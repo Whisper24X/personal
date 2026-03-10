@@ -46,6 +46,7 @@ import { TaskMessageDto, TaskMessageRole } from './dto/task-message.dto';
 import {
   TaskConfig,
   TaskLoopConfig,
+  TaskNodeConfig,
   TaskNodeInput,
   TaskNodeRuntime,
 } from './types/task-config.type';
@@ -168,6 +169,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       input?: TaskNodeInput | null;
       agentCliId: string;
       agentCliConfigId: string;
+      configJson: TaskNodeConfig | null;
       loopJson: TaskLoopConfig | null;
     }> = [];
 
@@ -198,6 +200,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
             }),
             agentCliId: nodeExecution.agentCliId,
             agentCliConfigId: nodeExecution.agentCliConfigId,
+            configJson: this.buildTaskNodeConfig(node),
             loopJson: this.resolveNodeLoopJson(node.input, taskConfig),
           };
         })
@@ -222,6 +225,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
           }),
           agentCliId: conversationNodeExecution.agentCliId,
           agentCliConfigId: conversationNodeExecution.agentCliConfigId,
+          configJson: null,
           loopJson: this.resolveNodeLoopJson(null, taskConfig),
         },
       ];
@@ -325,6 +329,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         agentCliConfigId: node.agentCliConfigId,
         agentClioutput: null,
         agentCliSessionId: null,
+        configJson: node.configJson,
         loopJson: node.loopJson,
         runtimeJson: null,
         status: TaskStatus.todo,
@@ -1493,17 +1498,20 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         level: TaskLogLevel.info,
         message: loopResult.queuedNextLoop
           ? 'Agent node loop completed; queued next loop'
-          : 'Agent node completed successfully',
+          : loopResult.pendingApproval
+            ? 'Agent node completed; pending approval'
+            : 'Agent node completed successfully',
         payload: {
           status: loopResult.status,
           durationMs: executionResult.durationMs,
           command: executionResult.command,
           args: executionResult.args,
           loopJson: loopResult.loopJson,
+          pendingApproval: loopResult.pendingApproval,
         },
       });
 
-      if (!loopResult.queuedNextLoop) {
+      if (!loopResult.queuedNextLoop && !loopResult.pendingApproval) {
         await this.createNodeExecutionArtifact({
           taskId,
           task,
@@ -1724,6 +1732,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     status: TaskStatus;
     loopJson: TaskLoopConfig;
     queuedNextLoop: boolean;
+    pendingApproval: boolean;
   }> {
     const currentLoop = this.readNodeLoopConfig(node.loopJson);
     const nextLoopJson: TaskLoopConfig = {
@@ -1733,7 +1742,14 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     };
     const queuedNextLoop =
       nextLoopJson.enabled && nextLoopJson.loopCount < nextLoopJson.maxLoops;
-    const status = queuedNextLoop ? TaskStatus.todo : TaskStatus.done;
+    const pendingApproval =
+      !queuedNextLoop &&
+      this.readNodeConfigRequiresApproval(node.configJson);
+    const status = queuedNextLoop
+      ? TaskStatus.todo
+      : pendingApproval
+        ? TaskStatus.inReview
+        : TaskStatus.done;
 
     await this.taskNodeRepository.update(node.id, {
       status,
@@ -1749,6 +1765,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       status,
       loopJson: nextLoopJson,
       queuedNextLoop,
+      pendingApproval,
     };
   }
 
@@ -2761,6 +2778,26 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     return {
       pendingUserMessage: message,
     };
+  }
+
+  private readNodeConfigRequiresApproval(
+    configJson: Record<string, unknown> | null | undefined,
+  ): boolean {
+    const config = this.toObjectRecord(configJson);
+
+    return config.requiresApproval === true;
+  }
+
+  private buildTaskNodeConfig(
+    templateNode: { requiresApproval?: boolean },
+  ): TaskNodeConfig | null {
+    const requiresApproval = templateNode.requiresApproval === true;
+
+    if (!requiresApproval) {
+      return null;
+    }
+
+    return { requiresApproval };
   }
 
   private readNodeRuntime(node: TaskNode): TaskNodeRuntime | null {

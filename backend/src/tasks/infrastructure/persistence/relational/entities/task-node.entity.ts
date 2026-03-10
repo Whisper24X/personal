@@ -71,6 +71,9 @@ export class TaskNodeEntity extends EntityRelationalHelper {
   })
   agentCliSessionId?: string | null;
 
+  @Column({ type: 'jsonb', nullable: true, comment: '节点配置JSON' })
+  configJson?: Record<string, unknown> | null;
+
   @Column({ type: 'jsonb', nullable: true, comment: '循环执行配置JSON' })
   loopJson?: Record<string, unknown> | null;
 
