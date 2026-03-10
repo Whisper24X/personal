@@ -795,17 +795,9 @@ onBeforeUnmount(() => {
       >
         <div class="flex items-center justify-between gap-2">
           <p class="text-sm font-semibold">{{ group.label }}</p>
-          <div class="flex items-center gap-2">
-            <span
-              class="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-              :class="group.configured ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'"
-            >
-              {{ group.configured ? '已配置' : '未配置' }}
-            </span>
-            <span class="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">
-              {{ group.serverCount }} 项
-            </span>
-          </div>
+          <span class="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">
+            {{ group.serverCount }} 项
+          </span>
         </div>
 
         <div v-if="group.serverCount > 0" class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -825,12 +817,6 @@ onBeforeUnmount(() => {
                   <p class="text-sm font-semibold">{{ item.name }}</p>
                   <p class="mt-1 text-xs text-muted-foreground">版本：{{ item.version }}</p>
                 </div>
-                <span
-                  class="inline-flex rounded-full px-2 py-1 text-[10px] font-semibold"
-                  :class="item.enabled ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'"
-                >
-                  {{ item.enabled ? '已启用' : '已停用' }}
-                </span>
               </div>
 
               <p class="mt-3 break-all font-mono text-[10px] text-muted-foreground">{{ resolveSourcePath(item) || '-' }}</p>
