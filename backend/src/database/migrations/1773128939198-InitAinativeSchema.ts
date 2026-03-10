@@ -4,6 +4,7 @@ export class InitAinativeSchema1773128939198 implements MigrationInterface {
   name = 'InitAinativeSchema1773128939198';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
     await queryRunner.query(
       `CREATE TABLE "users" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "username" character varying(100) NOT NULL, "password" character varying NOT NULL, "salt" character varying, "nickname" character varying, "avatar" character varying, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, CONSTRAINT "PK_a3ffb1c0c8416b9fc6f907b7433" PRIMARY KEY ("id")); COMMENT ON COLUMN "users"."id" IS '主键（UUID）'; COMMENT ON COLUMN "users"."username" IS '登录用户名'; COMMENT ON COLUMN "users"."password" IS '加密密码'; COMMENT ON COLUMN "users"."salt" IS '密码盐'; COMMENT ON COLUMN "users"."nickname" IS '显示昵称'; COMMENT ON COLUMN "users"."avatar" IS '头像地址'; COMMENT ON COLUMN "users"."createdAt" IS '创建时间'; COMMENT ON COLUMN "users"."updatedAt" IS '更新时间'; COMMENT ON COLUMN "users"."deletedAt" IS '软删除时间'`,
     );
