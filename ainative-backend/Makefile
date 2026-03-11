@@ -176,6 +176,11 @@ sqltopb:ycTurboKitCheck
 %: # 防止位置参数被当作目标处理
 	@:
 
+.PHONY: redisclear
+# 清除Redis缓存
+redisclear:ycTurboKitCheck
+	@yc_turbo_kit redisclear
+
 .PHONY: errcode
 # 导出错误码
 errcode:
