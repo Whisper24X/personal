@@ -114,7 +114,10 @@ beforeEach(() => {
     },
     capabilities: [
       'businessLine.update',
-      'businessLine.member.manage',
+      'businessLine.member.read',
+      'businessLine.member.invite',
+      'businessLine.member.remove',
+      'businessLine.member.updateRole',
       'businessLine.project.create',
       'businessLine.project.update',
       'businessLine.project.delete',

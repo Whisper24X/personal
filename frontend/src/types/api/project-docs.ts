@@ -11,7 +11,31 @@ export type ProjectDocContent = ProjectDocItem & {
 
 export type SaveProjectDocPayload = {
   path: string
-  content: string
+  /** Text content for text files (e.g. .md, .txt) */
+  content?: string
+  /** Base64-encoded content for binary files (e.g. images). When set, content is ignored. */
+  contentBase64?: string
+}
+
+export type ProjectDocsEntry = {
+  name: string
+  path: string
+  isDir: boolean
+}
+
+export type ProjectDocsTree = {
+  cwd: string
+  entries: ProjectDocsEntry[]
+}
+
+export type ProjectDocsPreview = {
+  path: string
+  previewType: 'text' | 'image' | 'binary' | 'pdf' | 'video' | 'audio'
+  tooLarge: boolean
+  size: number
+  mimeType?: string | null
+  text?: string | null
+  dataUrl?: string | null
 }
 
 export type ProjectDocQueryScope = 'project' | 'current_doc'

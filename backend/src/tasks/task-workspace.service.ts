@@ -1,3 +1,4 @@
+import { createReadStream } from 'fs';
 import {
   BadRequestException,
   ConflictException,
@@ -85,6 +86,39 @@ export class TaskWorkspaceService {
     };
   }
 
+  
+  async getWorkspaceFileStream(
+    taskId: string,
+    query: TaskWorkspaceFileQueryDto,
+    currentUser: JwtPayloadType,
+  ) {
+    const { workspaceRoot } = await this.resolveWorkspaceContext(
+      taskId,
+      currentUser,
+    );
+    const resolved = await this.resolveTargetPath({
+      workspaceRoot,
+      relativePath: query.path,
+    });
+
+    const stat = await fs.stat(resolved.targetPath).catch(() => null);
+    if (!stat) {
+      throw new NotFoundException('Workspace file not found');
+    }
+    if (!stat.isFile()) {
+      throw new BadRequestException('Workspace path must be a file');
+    }
+
+    const mimeType = this.resolveMimeType(resolved.targetPath);
+    const stream = createReadStream(resolved.targetPath);
+
+    return {
+      stream,
+      mimeType,
+      size: stat.size,
+    };
+  }
+
   async getWorkspaceFile(
     taskId: string,
     query: TaskWorkspaceFileQueryDto,
@@ -161,6 +195,36 @@ export class TaskWorkspaceService {
     }
 
     const mimeType = this.resolveMimeType(resolved.targetPath);
+
+    if (mimeType === 'application/pdf') {
+      return {
+        path: resolved.cwd,
+        previewType: 'pdf',
+        tooLarge: false,
+        size: stat.size,
+        mimeType,
+      };
+    }
+
+    if (mimeType.startsWith('video/')) {
+      return {
+        path: resolved.cwd,
+        previewType: 'video',
+        tooLarge: false,
+        size: stat.size,
+        mimeType,
+      };
+    }
+
+    if (mimeType.startsWith('audio/')) {
+      return {
+        path: resolved.cwd,
+        previewType: 'audio',
+        tooLarge: false,
+        size: stat.size,
+        mimeType,
+      };
+    }
 
     if (mimeType.startsWith('image/')) {
       if (stat.size > this.maxImagePreviewBytes) {

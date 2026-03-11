@@ -188,7 +188,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col overflow-hidden">
+  <div class="flex flex-1 min-h-0 flex-col overflow-hidden">
     <div class="code-scroll min-h-0 flex-1 overflow-y-scroll overflow-x-hidden bg-muted/20 text-foreground">
       <div class="sticky top-0 z-10 grid h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/70 bg-background/95 px-4 text-[11px] text-muted-foreground backdrop-blur">
         <div class="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap">

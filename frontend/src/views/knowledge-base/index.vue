@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
+import FileTree from '@/components/core/file-browser/FileTree.vue'
+import FilePreviewCard from '@/components/core/file-browser/FilePreviewCard.vue'
+import {
+  createFileTreeNodes,
+  updateFileTreeChildren,
+  type FileTreeNode,
+} from '@/components/core/file-browser/file-tree'
+import type { FileBrowserPreview } from '@/components/core/file-browser/types'
 import MarkdownPreview from '@/components/knowledge-base/MarkdownPreview.vue'
 import { projectsApi } from '@/api/projects'
 import { openSseStream } from '@/api/http'
 import { useMessage } from '@/hooks'
 import type { Project } from '@/types/api/projects'
-import type { ProjectDocCitation, ProjectDocItem } from '@/types/api/project-docs'
+import type { ProjectDocCitation } from '@/types/api/project-docs'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import { HttpError } from '@/utils/http/error'
 import { toErrorMessage } from '@/utils/http/to-error-message'
@@ -15,38 +23,25 @@ defineOptions({
   name: 'KnowledgeBaseView',
 })
 
-type TreeItem = {
-  key: string
-  name: string
-  path: string
-  depth: number
-  isDir: boolean
-  treePrefix: string
-  doc?: ProjectDocItem
-}
-
-type FolderNode = {
-  name: string
-  path: string
-  dirs: Map<string, FolderNode>
-  files: ProjectDocItem[]
-}
-
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
 
 const loading = ref(false)
 const docsLoading = ref(false)
-const previewLoading = ref(false)
 const uploading = ref(false)
 const dragActive = ref(false)
 
 const project = ref<Project | null>(null)
-const docs = ref<ProjectDocItem[]>([])
+const treeNodes = ref<FileTreeNode[]>([])
 const selectedPath = ref('')
-const selectedContent = ref('')
+const preview = ref<FileBrowserPreview | null>(null)
+const previewLoading = ref(false)
 const previewError = ref('')
+
+const expandedPaths = ref<Set<string>>(new Set())
+const loadingPaths = ref<Set<string>>(new Set())
+
 const queryLoading = ref(false)
 const queryQuestion = ref('')
 const queryError = ref('')
@@ -124,90 +119,26 @@ const activeProjectId = computed(() => {
 const hasProjectId = computed(() => Boolean(activeProjectId.value))
 const isEditing = computed(() => Boolean(editingPath.value))
 
-const sortedDocs = computed(() => {
-  return [...docs.value].sort((left, right) => left.path.localeCompare(right.path))
-})
-
-const selectedDoc = computed(() => {
-  return docs.value.find((doc) => doc.path === selectedPath.value) ?? null
-})
-
 const canQueryCurrentDoc = computed(() => Boolean(selectedPath.value))
 
-const treeItems = computed<TreeItem[]>(() => {
-  const root: FolderNode = {
-    name: 'docs',
-    path: '',
-    dirs: new Map(),
-    files: [],
-  }
+const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, msg: string): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | null = null
 
-  for (const doc of sortedDocs.value) {
-    const segments = doc.path.split('/').filter(Boolean)
-    let current = root
-
-    for (let index = 0; index < Math.max(segments.length - 1, 0); index += 1) {
-      const segment = segments[index]!
-      const nextPath = current.path ? `${current.path}/${segment}` : segment
-      const existed = current.dirs.get(segment)
-      if (existed) {
-        current = existed
-        continue
-      }
-
-      const created: FolderNode = {
-        name: segment,
-        path: nextPath,
-        dirs: new Map(),
-        files: [],
-      }
-      current.dirs.set(segment, created)
-      current = created
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(msg))
+        }, timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timer) {
+      clearTimeout(timer)
     }
-
-    current.files.push(doc)
   }
-
-  const result: TreeItem[] = []
-  const walk = (node: FolderNode, depth: number, prefix: string) => {
-    const dirNodes = [...node.dirs.values()].sort((left, right) => left.name.localeCompare(right.name))
-    const fileNodes = [...node.files].sort((left, right) => left.path.localeCompare(right.path))
-    const totalDirs = dirNodes.length
-    const totalFiles = fileNodes.length
-
-    dirNodes.forEach((dirNode, i) => {
-      const isLastDir = i === totalDirs - 1 && totalFiles === 0
-      const connector = isLastDir ? '└── ' : '├── '
-      result.push({
-        key: `dir:${dirNode.path}`,
-        name: `${dirNode.name}/`,
-        path: dirNode.path,
-        depth,
-        isDir: true,
-        treePrefix: prefix + connector,
-      })
-      const childPrefix = prefix + (isLastDir ? '    ' : '│   ')
-      walk(dirNode, depth + 1, childPrefix)
-    })
-
-    fileNodes.forEach((fileNode, i) => {
-      const isLast = i === totalFiles - 1
-      const connector = isLast ? '└── ' : '├── '
-      result.push({
-        key: `file:${fileNode.path}`,
-        name: fileNode.name,
-        path: fileNode.path,
-        depth,
-        isDir: false,
-        treePrefix: prefix + connector,
-        doc: fileNode,
-      })
-    })
-  }
-
-  walk(root, 0, '')
-  return result
-})
+}
 
 const formatDate = (value?: string) => {
   if (!value) return '-'
@@ -222,17 +153,11 @@ const formatDate = (value?: string) => {
   })
 }
 
-const formatSize = (bytes: number) => {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${bytes} B`
-}
-
 const loadSelectedDoc = async () => {
   const projectId = activeProjectId.value
-  const path = selectedPath.value
-  if (!projectId || !path) {
-    selectedContent.value = ''
+  const filePath = selectedPath.value
+  if (!projectId || !filePath) {
+    preview.value = null
     previewError.value = ''
     return
   }
@@ -240,30 +165,45 @@ const loadSelectedDoc = async () => {
   previewLoading.value = true
   previewError.value = ''
   try {
-    const detail = await projectsApi.readDoc(projectId, path)
-    selectedContent.value = detail.content
+    const raw = await withTimeout(
+      projectsApi.docsPreview(projectId, filePath),
+      20_000,
+      '读取文档超时，请稍后重试',
+    )
+    if (['pdf', 'video', 'audio'].includes(raw.previewType) && !raw.tooLarge) {
+      raw.dataUrl = projectsApi.getDocsFileRawUrl(projectId, filePath)
+    }
+    const isMarkdown =
+      raw.previewType === 'text' && raw.mimeType === 'text/markdown'
+    preview.value = {
+      ...raw,
+      previewType: isMarkdown ? 'markdown' : raw.previewType,
+    }
   } catch (error) {
-    selectedContent.value = ''
+    preview.value = null
     previewError.value = toErrorMessage(error, '读取知识库文件失败')
   } finally {
     previewLoading.value = false
   }
 }
 
-const syncSelectionAfterDocsChanged = async () => {
-  if (!docs.value.length) {
-    selectedPath.value = ''
-    selectedContent.value = ''
-    previewError.value = ''
-    return
+const findFirstFile = (nodes: FileTreeNode[]): FileTreeNode | null => {
+  for (const node of nodes) {
+    if (!node.isDir) return node
+    if (node.children?.length) {
+      const found = findFirstFile(node.children)
+      if (found) return found
+    }
   }
+  return null
+}
 
-  const selectedStillExists = docs.value.some((doc) => doc.path === selectedPath.value)
-  if (!selectedStillExists) {
-    selectedPath.value = docs.value[0]!.path
+const autoSelectFirst = () => {
+  const firstFile = findFirstFile(treeNodes.value)
+  if (firstFile) {
+    selectedPath.value = firstFile.path
+    void loadSelectedDoc()
   }
-
-  await loadSelectedDoc()
 }
 
 const openCreateModal = () => {
@@ -274,17 +214,21 @@ const openCreateModal = () => {
   modalOpen.value = true
 }
 
-const openEditModal = async (doc: ProjectDocItem) => {
+const openEditModal = async (docPath: string) => {
   if (!activeProjectId.value) return
-  editingPath.value = doc.path
-  formPath.value = doc.path
+  editingPath.value = docPath
+  formPath.value = docPath
   formContent.value = ''
   formError.value = ''
   modalOpen.value = true
   modalSaving.value = true
 
   try {
-    const detail = await projectsApi.readDoc(activeProjectId.value, doc.path)
+    const detail = await withTimeout(
+      projectsApi.readDoc(activeProjectId.value, docPath),
+      20_000,
+      '读取文档超时，请稍后重试',
+    )
     formContent.value = detail.content
   } catch (error) {
     formError.value = toErrorMessage(error, '读取知识库文件失败')
@@ -294,8 +238,8 @@ const openEditModal = async (doc: ProjectDocItem) => {
 }
 
 const openEditSelected = async () => {
-  if (!selectedDoc.value) return
-  await openEditModal(selectedDoc.value)
+  if (!selectedPath.value) return
+  await openEditModal(selectedPath.value)
 }
 
 const closeModal = () => {
@@ -312,19 +256,84 @@ const selectDoc = (path: string) => {
   void loadSelectedDoc()
 }
 
-const loadDocs = async () => {
-  if (!activeProjectId.value) {
-    docs.value = []
+const handleToggleDir = async (node: FileTreeNode) => {
+  if (expandedPaths.value.has(node.path)) {
+    const next = new Set(expandedPaths.value)
+    next.delete(node.path)
+    expandedPaths.value = next
+    return
+  }
+
+  const next = new Set(expandedPaths.value)
+  next.add(node.path)
+  expandedPaths.value = next
+
+  if (node.childrenLoaded) return
+
+  const projectId = activeProjectId.value
+  if (!projectId) return
+
+  const lp = new Set(loadingPaths.value)
+  lp.add(node.path)
+  loadingPaths.value = lp
+
+  try {
+    const response = await projectsApi.docsTree(projectId, { path: node.path })
+    treeNodes.value = updateFileTreeChildren(treeNodes.value, node.path, response.entries)
+  } catch (error) {
+    message.error(toErrorMessage(error, '加载目录失败'))
+  } finally {
+    const lpDone = new Set(loadingPaths.value)
+    lpDone.delete(node.path)
+    loadingPaths.value = lpDone
+  }
+}
+
+const handleSelectFile = (node: FileTreeNode) => {
+  selectDoc(node.path)
+}
+
+const loadDocsRoot = async () => {
+  const projectId = activeProjectId.value
+  if (!projectId) {
+    treeNodes.value = []
     selectedPath.value = ''
-    selectedContent.value = ''
+    preview.value = null
     previewError.value = ''
     return
   }
 
   docsLoading.value = true
   try {
-    docs.value = await projectsApi.listDocs(activeProjectId.value)
-    await syncSelectionAfterDocsChanged()
+    const response = await withTimeout(
+      projectsApi.docsTree(projectId),
+      25_000,
+      '加载文档列表超时，请稍后重试',
+    )
+
+    const docsRoot: FileTreeNode = {
+      name: 'docs',
+      path: '.',
+      isDir: true,
+      children: createFileTreeNodes(response.entries),
+      childrenLoaded: true,
+    }
+
+    let nextNodes: FileTreeNode[] = [docsRoot]
+
+    const expandedSnapshot = [...expandedPaths.value].filter((p) => p !== '.')
+    for (const expandedPath of expandedSnapshot) {
+      try {
+        const childResponse = await projectsApi.docsTree(projectId, { path: expandedPath })
+        nextNodes = updateFileTreeChildren(nextNodes, expandedPath, childResponse.entries)
+      } catch {
+        // skip stale expanded dirs
+      }
+    }
+
+    treeNodes.value = nextNodes
+    expandedPaths.value = new Set(['.', ...expandedSnapshot])
+    autoSelectFirst()
   } catch (error) {
     message.error(toErrorMessage(error, '加载知识库失败'))
   } finally {
@@ -336,9 +345,9 @@ const loadProjectData = async () => {
   const projectId = activeProjectId.value
   if (!projectId) {
     project.value = null
-    docs.value = []
+    treeNodes.value = []
     selectedPath.value = ''
-    selectedContent.value = ''
+    preview.value = null
     previewError.value = ''
     queryMessages.value = []
     queryError.value = ''
@@ -347,13 +356,17 @@ const loadProjectData = async () => {
 
   loading.value = true
   try {
-    project.value = await projectsApi.detail(projectId)
-    await loadDocs()
+    project.value = await withTimeout(
+      projectsApi.detail(projectId),
+      20_000,
+      '加载项目信息超时，请稍后重试',
+    )
+    void loadDocsRoot()
   } catch (error) {
     project.value = null
-    docs.value = []
+    treeNodes.value = []
     selectedPath.value = ''
-    selectedContent.value = ''
+    preview.value = null
     previewError.value = ''
     queryMessages.value = []
     queryError.value = ''
@@ -399,7 +412,10 @@ const submitDoc = async () => {
     }
 
     closeModal()
-    await loadDocs()
+    await loadDocsRoot()
+    if (selectedPath.value === path) {
+      void loadSelectedDoc()
+    }
   } catch (error) {
     formError.value = toErrorMessage(error, '保存知识库文件失败')
   } finally {
@@ -415,7 +431,12 @@ const removeDocByPath = async (path: string) => {
   try {
     await projectsApi.removeDoc(activeProjectId.value, path)
     message.success('删除知识库文件成功')
-    await loadDocs()
+    if (selectedPath.value === path) {
+      selectedPath.value = ''
+      preview.value = null
+      previewError.value = ''
+    }
+    await loadDocsRoot()
   } catch (error) {
     message.error(toErrorMessage(error, '删除知识库文件失败'))
   } finally {
@@ -424,8 +445,8 @@ const removeDocByPath = async (path: string) => {
 }
 
 const removeSelected = async () => {
-  if (!selectedDoc.value) return
-  await removeDocByPath(selectedDoc.value.path)
+  if (!selectedPath.value) return
+  await removeDocByPath(selectedPath.value)
 }
 
 const submitKnowledgeQuery = async () => {
@@ -557,6 +578,62 @@ const normalizeUploadPath = (file: File) => {
   return normalized
 }
 
+const TEXT_EXTENSIONS = new Set([
+  'txt',
+  'md',
+  'markdown',
+  'json',
+  'yml',
+  'yaml',
+  'xml',
+  'csv',
+  'ts',
+  'tsx',
+  'js',
+  'jsx',
+  'vue',
+  'css',
+  'scss',
+  'sass',
+  'less',
+  'html',
+  'htm',
+  'sql',
+  'sh',
+  'bash',
+  'zsh',
+  'py',
+  'java',
+  'go',
+  'rs',
+  'c',
+  'cc',
+  'cpp',
+  'h',
+  'hpp',
+])
+
+const isBinaryFile = (file: File) => {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+  const mimeType = (file.type || '').toLowerCase()
+  if (!mimeType) {
+    return !TEXT_EXTENSIONS.has(ext)
+  }
+
+  if (mimeType.startsWith('text/')) {
+    return false
+  }
+  if (
+    mimeType === 'application/json' ||
+    mimeType === 'application/xml' ||
+    mimeType === 'application/x-yaml'
+  ) {
+    return false
+  }
+
+  return true
+}
+
 const uploadFiles = async (fileLikeList: FileList | File[]) => {
   const projectId = activeProjectId.value
   if (!projectId) return
@@ -564,7 +641,6 @@ const uploadFiles = async (fileLikeList: FileList | File[]) => {
   const files = Array.from(fileLikeList)
   if (!files.length) return
 
-  const existingPaths = new Set(docs.value.map((doc) => doc.path))
   let successCount = 0
   let failCount = 0
 
@@ -578,12 +654,24 @@ const uploadFiles = async (fileLikeList: FileList | File[]) => {
       }
 
       try {
-        const content = await file.text()
-        if (existingPaths.has(nextPath)) {
-          await projectsApi.updateDoc(projectId, { path: nextPath, content })
+        let payload: { path: string; content?: string; contentBase64?: string }
+        if (isBinaryFile(file)) {
+          const buf = await file.arrayBuffer()
+          const bytes = new Uint8Array(buf)
+          let binary = ''
+          const chunkSize = 8192
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+          }
+          payload = { path: nextPath, contentBase64: btoa(binary) }
         } else {
-          await projectsApi.createDoc(projectId, { path: nextPath, content })
-          existingPaths.add(nextPath)
+          const content = await file.text()
+          payload = { path: nextPath, content }
+        }
+        try {
+          await projectsApi.createDoc(projectId, payload)
+        } catch {
+          await projectsApi.updateDoc(projectId, payload)
         }
         successCount += 1
       } catch {
@@ -591,7 +679,7 @@ const uploadFiles = async (fileLikeList: FileList | File[]) => {
       }
     }
 
-    await loadDocs()
+    await loadDocsRoot()
     if (successCount > 0 && failCount === 0) {
       message.success(`上传成功，共 ${successCount} 个文件`)
     } else if (successCount > 0) {
@@ -664,7 +752,7 @@ watch(
 
       <template v-else-if="project">
         <section class="grid grid-cols-1 gap-4 xl:items-start xl:grid-cols-[22rem_1fr]">
-          <article class="panel-card flex min-h-[780px] flex-col overflow-hidden p-4">
+          <article class="panel-card flex min-h-[780px] flex-col overflow-auto p-4">
             <div class="flex-shrink-0 space-y-1">
               <p class="text-sm font-semibold">{{ project.name }}</p>
               <p class="text-xs text-muted-foreground">
@@ -686,7 +774,7 @@ watch(
                 class="h-9 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
                 :disabled="docsLoading"
                 type="button"
-                @click="loadDocs"
+                @click="loadDocsRoot"
               >
                 {{ docsLoading ? '刷新中' : '刷新列表' }}
               </button>
@@ -718,84 +806,53 @@ watch(
             </div>
 
             <div class="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-background/50 p-2">
-              <p class="flex-shrink-0 px-2 py-1 font-mono text-xs font-semibold text-muted-foreground">docs/</p>
-              <div class="min-h-0 flex-1 overflow-auto pr-1 font-mono text-xs">
-                <div v-if="treeItems.length === 0" class="px-2 py-6 text-muted-foreground">
+              <div class="min-h-0 flex-1 overflow-auto pr-1 text-xs">
+                <div v-if="treeNodes.length === 0 && !docsLoading" class="px-2 py-6 text-muted-foreground">
                   暂无文档
                 </div>
-                <template v-else>
-                  <div
-                    v-for="item in treeItems"
-                    :key="item.key"
-                    class="mb-0.5 flex select-none rounded-md leading-relaxed"
-                  >
-                    <span v-if="item.isDir" class="flex-1 py-0.5 text-muted-foreground">
-                      <span class="text-muted-foreground/70">{{ item.treePrefix }}</span>{{ item.name }}
-                    </span>
-                    <button
-                      v-else
-                      type="button"
-                      class="min-w-0 flex-1 py-0.5 text-left transition"
-                      :class="item.path === selectedPath ? 'text-foreground' : 'text-foreground/85 hover:text-foreground'"
-                      @click="selectDoc(item.path)"
-                    >
-                      <span class="text-muted-foreground/70">{{ item.treePrefix }}</span>
-                      <span
-                        :class="[
-                          'rounded px-1 py-0.5 transition',
-                          item.path === selectedPath ? 'bg-primary/15' : 'hover:bg-background',
-                        ]"
-                      >
-                        {{ item.name }}
-                      </span>
-                    </button>
-                  </div>
-                </template>
+                <FileTree
+                  v-else-if="treeNodes.length > 0"
+                  :nodes="treeNodes"
+                  :selected-path="selectedPath"
+                  :expanded-paths="expandedPaths"
+                  :loading-paths="loadingPaths"
+                  @toggle-dir="handleToggleDir"
+                  @select-file="handleSelectFile"
+                />
               </div>
             </div>
           </article>
 
-          <article class="panel-card flex min-h-[780px] flex-col overflow-hidden p-4">
-            <div v-if="!selectedDoc" class="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-              从左侧文件树选择一个文档以预览内容。
-            </div>
+          <article class="panel-card flex flex-col flex-1 p-4 min-h-[780px]">
+            <FilePreviewCard
+              class="flex flex-col flex-1 min-h-0"
+              :selected-path="selectedPath"
+              :preview="preview"
+              :loading="previewLoading"
+              :error-message="previewError"
+              preview-max-height-class="max-h-[62vh] min-h-[400px]"
+              empty-message="从左侧文件树选择一个文档以预览内容。"
+            >
+              <template #actions>
+                <button
+                  class="h-9 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-md"
+                  type="button"
+                  @click="openEditSelected"
+                >
+                  编辑
+                </button>
+                <button
+                  class="h-9 rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-60"
+                  :disabled="deletingPath === selectedPath"
+                  type="button"
+                  @click="removeSelected"
+                >
+                  {{ deletingPath === selectedPath ? '删除中...' : '删除' }}
+                </button>
+              </template>
 
-            <template v-else>
-              <div class="flex flex-shrink-0 flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
-                <div>
-                  <p class="font-mono text-sm font-semibold">{{ selectedDoc.path }}</p>
-                  <p class="mt-1 text-xs text-muted-foreground">
-                    {{ formatSize(selectedDoc.size) }} • 更新于 {{ formatDate(selectedDoc.updatedAt) }}
-                  </p>
-                </div>
-
-                <div class="flex items-center gap-2">
-                  <button
-                    class="h-9 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-md"
-                    type="button"
-                    @click="openEditSelected"
-                  >
-                    编辑
-                  </button>
-                  <button
-                    class="h-9 rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-60"
-                    :disabled="deletingPath === selectedDoc.path"
-                    type="button"
-                    @click="removeSelected"
-                  >
-                    {{ deletingPath === selectedDoc.path ? '删除中...' : '删除' }}
-                  </button>
-                </div>
-              </div>
-
-              <div class="mt-4 flex min-h-[760px] flex-col gap-3">
-                <div class="min-h-[380px] max-h-[520px] overflow-y-auto overflow-x-auto rounded-lg border border-border bg-background p-4">
-                  <div v-if="previewLoading" class="text-sm text-muted-foreground">文档加载中...</div>
-                  <div v-else-if="previewError" class="text-sm text-destructive">{{ previewError }}</div>
-                  <MarkdownPreview v-else :content="selectedContent" />
-                </div>
-
-                <section class="flex h-[520px] min-h-[520px] max-h-[520px] flex-col overflow-hidden rounded-lg border border-border bg-background p-3">
+              <template #footer>
+                <section class="flex min-h-[280px] max-h-[40vh] flex-col overflow-hidden rounded-lg border border-border bg-background p-3">
                   <div class="flex items-center justify-between border-b border-border pb-2">
                     <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">知识问答</p>
                     <div class="flex items-center gap-3 text-xs">
@@ -821,7 +878,7 @@ watch(
                     </div>
                   </div>
 
-                  <div class="mt-2 min-h-0 flex-1 overflow-auto pr-1">
+                  <div class="mt-2 min-h-0 flex-1 overflow-auto rounded-lg border border-border/70 bg-muted/25 p-2 pr-1">
                     <p v-if="queryMessages.length === 0 && !queryError" class="text-sm text-muted-foreground">
                       输入问题后点击提问，答案会基于 docs 内容生成并附带引用来源。
                     </p>
@@ -867,10 +924,10 @@ watch(
                     </div>
                   </div>
 
-                  <form class="mt-2 flex items-end gap-2 border-t border-border pt-2" @submit.prevent="submitKnowledgeQuery">
+                  <form class="mt-2 flex items-end gap-2 rounded-lg border border-border bg-card p-2" @submit.prevent="submitKnowledgeQuery">
                     <textarea
                       v-model="queryQuestion"
-                      class="min-h-[56px] flex-1 resize-y rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                      class="min-h-[56px] flex-1 resize-y rounded-lg border border-input bg-background px-2 py-1.5 text-sm text-foreground shadow-xs outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
                       placeholder="例如：这个项目的部署流程是什么？"
                     />
                     <button
@@ -882,8 +939,8 @@ watch(
                     </button>
                   </form>
                 </section>
-              </div>
-            </template>
+              </template>
+            </FilePreviewCard>
           </article>
         </section>
       </template>

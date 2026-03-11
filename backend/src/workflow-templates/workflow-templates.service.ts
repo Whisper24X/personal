@@ -19,7 +19,10 @@ import { ProjectsService } from '../projects/projects.service';
 import { BusinessLineRepository } from '../business-lines/infrastructure/persistence/business-line.repository';
 import { BusinessLineMemberRepository } from '../business-lines/infrastructure/persistence/business-line-member.repository';
 import { BusinessLineCustomRoleRepository } from '../business-lines/infrastructure/persistence/business-line-custom-role.repository';
-import { canManageBusinessLineMembersByCapabilities } from '../access/access.constants';
+import {
+  canManageBusinessLineWorkflowByCapabilities,
+  canReadWorkflowByCapabilities,
+} from '../access/access.constants';
 
 @Injectable()
 export class WorkflowTemplatesService {
@@ -158,7 +161,7 @@ export class WorkflowTemplatesService {
           'projectId is required for project scope',
         );
       }
-      await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+      await this.ensureCanReadBusinessLineWorkflow(businessLineId, currentUser);
       includeGlobal = !scope;
     } else if (scope === WorkflowTemplateScope.businessLine) {
       if (!this.isAdmin(currentUser)) {
@@ -440,13 +443,13 @@ export class WorkflowTemplatesService {
     if (
       !role ||
       role.businessLineId !== businessLineId ||
-      !canManageBusinessLineMembersByCapabilities(role.capabilities)
+      !canManageBusinessLineWorkflowByCapabilities(role.capabilities)
     ) {
       throw new ForbiddenException('forbiddenWorkflowTemplateManage');
     }
   }
 
-  private async ensureCanAccessBusinessLine(
+  private async ensureCanReadBusinessLineWorkflow(
     businessLineId: string,
     currentUser: JwtPayloadType,
   ): Promise<void> {
@@ -465,6 +468,18 @@ export class WorkflowTemplatesService {
     if (!member) {
       throw new ForbiddenException('forbiddenBusinessLine');
     }
+
+    const role = await this.businessLineCustomRoleRepository.findById(
+      member.roleId,
+    );
+
+    if (
+      !role ||
+      role.businessLineId !== businessLineId ||
+      !canReadWorkflowByCapabilities(role.capabilities)
+    ) {
+      throw new ForbiddenException('forbiddenWorkflowTemplate');
+    }
   }
 
   private async ensureCanAccessTemplate(
@@ -482,7 +497,7 @@ export class WorkflowTemplatesService {
         );
       }
 
-      await this.ensureCanAccessBusinessLine(
+      await this.ensureCanReadBusinessLineWorkflow(
         template.businessLineId,
         currentUser,
       );

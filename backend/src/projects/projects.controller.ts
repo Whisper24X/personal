@@ -49,6 +49,10 @@ import {
   QueryProjectDocsResponseDto,
   ProjectDocContentDto,
   ProjectDocItemDto,
+  ProjectDocsPreviewDto,
+  ProjectDocsPreviewQueryDto,
+  ProjectDocsTreeDto,
+  ProjectDocsTreeQueryDto,
   ReadProjectDocDto,
   SaveProjectDocDto,
 } from './dto/project-doc.dto';
@@ -324,6 +328,52 @@ export class ProjectsController {
   @HttpCode(HttpStatus.OK)
   listDocs(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
     return this.projectsService.listDocs(id, request.user);
+  }
+
+  @Get(':id/docs/tree')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: ProjectDocsTreeDto })
+  @HttpCode(HttpStatus.OK)
+  docsTree(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ProjectDocsTreeQueryDto,
+  ) {
+    return this.projectsService.docsTree(id, query, request.user);
+  }
+
+  @Get(':id/docs/file/raw')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @HttpCode(HttpStatus.OK)
+  async docsFileRaw(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ProjectDocsPreviewQueryDto,
+    @Res() res: Response,
+  ) {
+    const { stream, mimeType, size } = await this.projectsService.docsFileStream(
+      id,
+      query,
+      request.user,
+    );
+    res.set({
+      'Content-Type': mimeType,
+      'Content-Length': size,
+      'Content-Disposition': `inline; filename="${encodeURIComponent(query.path.split('/').pop() || 'file')}"`,
+    });
+    stream.pipe(res);
+  }
+
+  @Get(':id/docs/preview')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: ProjectDocsPreviewDto })
+  @HttpCode(HttpStatus.OK)
+  docsPreview(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ProjectDocsPreviewQueryDto,
+  ) {
+    return this.projectsService.docsPreview(id, query, request.user);
   }
 
   @Get(':id/docs/content')

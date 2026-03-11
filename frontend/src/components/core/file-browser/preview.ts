@@ -19,6 +19,7 @@ export type TaskCodeLanguage =
   | 'go'
   | 'rust'
   | 'java'
+  | 'csv'
   | 'plaintext'
 
 export const formatTaskPreviewSize = (size: number) => {
@@ -56,6 +57,14 @@ export const resolveTaskPreviewTypeLabel = (preview: FileBrowserPreview | null) 
       return 'Image Preview'
     case 'text':
       return 'Text Preview'
+    case 'markdown':
+      return 'Markdown Preview'
+    case 'pdf':
+      return 'PDF Preview'
+    case 'video':
+      return 'Video Preview'
+    case 'audio':
+      return 'Audio Preview'
     default:
       return 'Binary File'
   }
@@ -155,6 +164,10 @@ export const resolveTaskCodeLanguage = (
     return 'sql'
   }
 
+  if (['csv'].includes(extension) || normalizedMimeType.includes('csv')) {
+    return 'csv'
+  }
+
   if (['py'].includes(extension) || normalizedMimeType.includes('python')) {
     return 'python'
   }
@@ -212,6 +225,8 @@ export const resolveTaskPrismLanguage = (language: TaskCodeLanguage): string | n
       return 'rust'
     case 'java':
       return 'java'
+    case 'csv':
+      return 'csv'
     default:
       return null
   }
@@ -255,6 +270,8 @@ export const resolveTaskCodeLanguageLabel = (language: TaskCodeLanguage) => {
       return 'Rust'
     case 'java':
       return 'Java'
+    case 'csv':
+      return 'CSV'
     default:
       return 'Plain Text'
   }
@@ -660,6 +677,19 @@ const highlightSqlLine = (value: string) => {
   ])
 }
 
+const highlightCsvLine = (value: string) => {
+  return applyHighlightPatterns(value, [
+    {
+      regex: /[^,\n]+/g,
+      className: 'token-string',
+    },
+    {
+      regex: /,/g,
+      className: 'token-keyword',
+    },
+  ])
+}
+
 export const highlightTaskCodeLine = (line: string, language: TaskCodeLanguage) => {
   const escapedLine = escapeTaskCodeHtml(line)
 
@@ -736,6 +766,8 @@ export const highlightTaskCodeLine = (line: string, language: TaskCodeLanguage) 
         'import', 'instanceof', 'interface', 'new', 'null', 'package', 'private', 'protected',
         'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'true', 'try', 'void', 'while',
       ])
+    case 'csv':
+      return highlightCsvLine(escapedLine)
     default:
       return highlightPlaintextLine(escapedLine)
   }

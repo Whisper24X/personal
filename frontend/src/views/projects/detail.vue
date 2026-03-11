@@ -72,6 +72,21 @@ const projectId = computed(() => {
 })
 
 type TabKey = 'overview' | 'context' | 'members' | 'workflow' | 'config'
+const resolveRouteTab = (value: unknown): TabKey | '' => {
+  const rawValue = normalizeRouteParam(value)
+  if (
+    rawValue === 'overview' ||
+    rawValue === 'context' ||
+    rawValue === 'members' ||
+    rawValue === 'workflow' ||
+    rawValue === 'config'
+  ) {
+    return rawValue
+  }
+
+  return ''
+}
+
 const workflowOnlyMode = computed(() => {
   return route.path === '/projects/workflows' || route.path.endsWith('/workflows')
 })
@@ -79,6 +94,11 @@ const workflowOnlyMode = computed(() => {
 const resolveInitialTab = (): TabKey => {
   if (workflowOnlyMode.value) {
     return 'workflow'
+  }
+
+  const routeTab = resolveRouteTab(route.query.tab)
+  if (routeTab) {
+    return routeTab
   }
 
   return 'overview'
@@ -1452,6 +1472,12 @@ watch(
 watch(
   () => [availableTabs.value, workflowOnlyMode.value] as const,
   ([nextTabs, isWorkflowOnly]) => {
+    const routeTab = resolveRouteTab(route.query.tab)
+    if (!isWorkflowOnly && routeTab && nextTabs.includes(routeTab)) {
+      tab.value = routeTab
+      return
+    }
+
     if (isWorkflowOnly && canViewWorkflow.value) {
       tab.value = 'workflow'
       return

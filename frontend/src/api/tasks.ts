@@ -26,7 +26,8 @@ import type {
   TaskWorkspaceTree,
   UpdateTaskPayload,
 } from '@/types/api/tasks'
-import { apiHttp, type InfinityPaginationResponse } from './http'
+import { apiHttp, buildUrl, type InfinityPaginationResponse } from './http'
+import { STORAGE_KEYS } from '@/types/common/storage'
 
 export const tasksApi = {
   list(params?: {
@@ -132,6 +133,11 @@ export const tasksApi = {
     })
   },
 
+  
+  getWorkspaceFileRawUrl(taskId: string, path: string) {
+    const token = localStorage.getItem(STORAGE_KEYS.authToken)
+    return buildUrl(`/tasks/${taskId}/workspace/file/raw`, { path, token }).toString()
+  },
   workspacePreview(taskId: string, path: string) {
     return apiHttp.get<TaskWorkspacePreview>(`/tasks/${taskId}/workspace/preview`, {
       path,

@@ -28,8 +28,12 @@ const loadTree: FileBrowserLoadTree = (path) => {
   })
 }
 
-const loadPreview: FileBrowserLoadPreview = (path) => {
-  return tasksApi.workspacePreview(props.taskId, path)
+const loadPreview: FileBrowserLoadPreview = async (path) => {
+  const preview = await tasksApi.workspacePreview(props.taskId, path)
+  if (['pdf', 'video', 'audio'].includes(preview.previewType) && !preview.tooLarge) {
+    preview.dataUrl = tasksApi.getWorkspaceFileRawUrl(props.taskId, path)
+  }
+  return preview
 }
 </script>
 

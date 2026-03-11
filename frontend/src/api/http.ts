@@ -19,7 +19,7 @@ const getApiBase = () => {
   return configuredBase
 }
 
-const buildUrl = (path: string, query?: Record<string, QueryValue>) => {
+export const buildUrl = (path: string, query?: Record<string, QueryValue>) => {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   const url = new URL(`${API_PREFIX}${normalizedPath}`, getApiBase())
 

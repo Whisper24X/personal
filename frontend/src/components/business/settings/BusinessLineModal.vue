@@ -37,8 +37,8 @@ import SkillTreeNodeComponent from '@/components/core/SkillTreeNode.vue'
 import McpJsonImportModal from './modals/McpJsonImportModal.vue'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import {
-  BUSINESS_LINE_CAPABILITY_OPTIONS,
-  PROJECT_CAPABILITY_OPTIONS,
+  BUSINESS_LINE_CAPABILITY_TREE,
+  PROJECT_CAPABILITY_TREE,
   buildBusinessLineRoleAssignmentOptions,
 } from '@/constants/access'
 
@@ -285,13 +285,41 @@ const hasActiveLineCapability = (capability: string) => {
   return getLineCapabilities(activeLineId.value).includes(capability)
 }
 
+const hasAnyActiveLineCapability = (...capabilities: string[]) => {
+  return capabilities.some((cap) => hasActiveLineCapability(cap))
+}
+
 const canManageActiveLine = computed(() => {
   return hasActiveLineCapability('businessLine.update')
 })
 
 const canManageActiveLineMembers = computed(() => {
-  return hasActiveLineCapability('businessLine.member.manage')
+  return hasAnyActiveLineCapability(
+    'businessLine.member.read',
+    'businessLine.member.invite',
+    'businessLine.member.remove',
+    'businessLine.member.updateRole',
+  )
 })
+
+const canInviteMembers = computed(() =>
+  hasActiveLineCapability('businessLine.member.invite'),
+)
+const canUpdateMemberRole = computed(() =>
+  hasActiveLineCapability('businessLine.member.updateRole'),
+)
+const canRemoveMembers = computed(() =>
+  hasActiveLineCapability('businessLine.member.remove'),
+)
+const canCreateBusinessLineRole = computed(() =>
+  hasActiveLineCapability('businessLine.role.create'),
+)
+const canUpdateBusinessLineRole = computed(() =>
+  hasActiveLineCapability('businessLine.role.update'),
+)
+const canDeleteBusinessLineRole = computed(() =>
+  hasActiveLineCapability('businessLine.role.delete'),
+)
 
 const businessLineRoleOptions = computed(() => {
   return buildBusinessLineRoleAssignmentOptions(lineCustomRoles.value)
@@ -317,7 +345,14 @@ const canDeleteProjectItem = computed(() => {
 })
 
 const canManagePermissionProjectRoles = computed(() => {
-  return Boolean(activeLineId.value) && canManageActiveLineMembers.value
+  return (
+    Boolean(activeLineId.value) &&
+    hasAnyActiveLineCapability(
+      'businessLine.projectRole.create',
+      'businessLine.projectRole.update',
+      'businessLine.projectRole.delete',
+    )
+  )
 })
 
 const loadLineAccess = async (lineId: string) => {
@@ -2107,7 +2142,7 @@ const loadLatestInviteForCreateMemberModal = async (businessLineId: string) => {
 }
 
 const openCreateMemberModal = async () => {
-  if (!activeLineId.value || !canManageActiveLineMembers.value) {
+  if (!activeLineId.value || !canInviteMembers.value) {
     return
   }
 
@@ -2132,7 +2167,7 @@ const openCreateMemberModal = async () => {
 }
 
 const openEditMemberModal = async (member: BusinessLineMember) => {
-  if (!activeLineId.value || !canManageActiveLineMembers.value) {
+  if (!activeLineId.value || !canUpdateMemberRole.value) {
     return
   }
 
@@ -2182,7 +2217,9 @@ const submitMemberPermission = async (
         projectRoles: Record<string, ProjectRoleSelection>
       },
 ) => {
-  if (!activeLineId.value || !canManageActiveLineMembers.value) {
+  const canSubmit =
+    payload.mode === 'create' ? canInviteMembers.value : canUpdateMemberRole.value
+  if (!activeLineId.value || !canSubmit) {
     return
   }
 
@@ -2229,7 +2266,7 @@ const submitMemberPermission = async (
 }
 
 const openCreateCustomRoleModal = () => {
-  if (!activeLineId.value || !canManageActiveLineMembers.value) {
+  if (!activeLineId.value || !canCreateBusinessLineRole.value) {
     return
   }
 
@@ -2243,7 +2280,7 @@ const openCreateCustomRoleModal = () => {
 }
 
 const openEditCustomRoleModal = (role: BusinessLineCustomRole) => {
-  if (!activeLineId.value || !canManageActiveLineMembers.value) {
+  if (!activeLineId.value || !canUpdateBusinessLineRole.value) {
     return
   }
 
@@ -2261,7 +2298,11 @@ const submitCustomRole = async (payload: {
   description: string
   capabilities: string[]
 }) => {
-  if (!activeLineId.value || !canManageActiveLineMembers.value) {
+  const canSubmit =
+    customRoleModalMode.value === 'create'
+      ? canCreateBusinessLineRole.value
+      : canUpdateBusinessLineRole.value
+  if (!activeLineId.value || !canSubmit) {
     return
   }
 
@@ -2296,7 +2337,7 @@ const submitCustomRole = async (payload: {
 }
 
 const removeCustomRole = async (role: BusinessLineCustomRole) => {
-  if (!activeLineId.value || !canManageActiveLineMembers.value || deletingCustomRoleId.value) {
+  if (!activeLineId.value || !canDeleteBusinessLineRole.value || deletingCustomRoleId.value) {
     return
   }
 
@@ -2434,7 +2475,7 @@ const refreshMemberAccessSection = async () => {
 }
 
 const openRemoveMemberModal = (member: BusinessLineMember) => {
-  if (!canManageActiveLineMembers.value) {
+  if (!canRemoveMembers.value) {
     return
   }
 
@@ -2443,7 +2484,7 @@ const openRemoveMemberModal = (member: BusinessLineMember) => {
 }
 
 const confirmRemoveMember = async () => {
-  if (!activeLineId.value || !removingMemberTarget.value || !canManageActiveLineMembers.value) {
+  if (!activeLineId.value || !removingMemberTarget.value || !canRemoveMembers.value) {
     return
   }
 
@@ -3062,7 +3103,7 @@ onBeforeUnmount(() => {
                       <button
                         type="button"
                         class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
-                        :disabled="!activeLineId || !canManageActiveLineMembers"
+                        :disabled="!activeLineId || !canInviteMembers"
                         @click="openCreateMemberModal"
                       >
                         邀请成员
@@ -3122,7 +3163,7 @@ onBeforeUnmount(() => {
                           <td class="px-4 py-3">
                             <div class="flex justify-end gap-2">
                               <button
-                                v-if="canManageActiveLineMembers"
+                                v-if="canUpdateMemberRole"
                                 type="button"
                                 class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
                                 @click="openEditMemberModal(member)"
@@ -3130,7 +3171,7 @@ onBeforeUnmount(() => {
                                 编辑角色
                               </button>
                               <button
-                                v-if="canManageActiveLineMembers"
+                                v-if="canRemoveMembers"
                                 type="button"
                                 class="inline-flex h-8 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20"
                                 @click="openRemoveMemberModal(member)"
@@ -3190,7 +3231,7 @@ onBeforeUnmount(() => {
                         刷新
                       </button>
                       <button
-                        v-if="canManageActiveLineMembers"
+                        v-if="canCreateBusinessLineRole"
                         type="button"
                         class="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:shadow-sm"
                         @click="openCreateCustomRoleModal"
@@ -3224,8 +3265,12 @@ onBeforeUnmount(() => {
                             {{ role.description || '暂无描述' }}
                           </p>
                         </div>
-                        <div v-if="canManageActiveLineMembers" class="flex items-center gap-2">
+                        <div
+                          v-if="canUpdateBusinessLineRole || canDeleteBusinessLineRole"
+                          class="flex items-center gap-2"
+                        >
                           <button
+                            v-if="canUpdateBusinessLineRole"
                             type="button"
                             class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:shadow-sm"
                             @click="openEditCustomRoleModal(role)"
@@ -3233,6 +3278,7 @@ onBeforeUnmount(() => {
                             编辑
                           </button>
                           <button
+                            v-if="canDeleteBusinessLineRole"
                             type="button"
                             class="inline-flex h-8 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-3 text-xs font-semibold text-destructive transition hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-60"
                             :disabled="deletingCustomRoleId === role.id"
@@ -4005,7 +4051,7 @@ onBeforeUnmount(() => {
         :mode="customRoleModalMode"
         scope-label="业务线"
         :submitting="customRoleModalSubmitting"
-        :capability-options="BUSINESS_LINE_CAPABILITY_OPTIONS"
+        :capability-tree="BUSINESS_LINE_CAPABILITY_TREE"
         :initial-name="customRoleInitialName"
         :initial-description="customRoleInitialDescription"
         :initial-capabilities="customRoleInitialCapabilities"
@@ -4019,7 +4065,7 @@ onBeforeUnmount(() => {
         :mode="permissionProjectRoleModalMode"
         scope-label="项目"
         :submitting="permissionProjectRoleModalSubmitting"
-        :capability-options="PROJECT_CAPABILITY_OPTIONS"
+        :capability-tree="PROJECT_CAPABILITY_TREE"
         :initial-name="permissionProjectRoleInitialName"
         :initial-description="permissionProjectRoleInitialDescription"
         :initial-capabilities="permissionProjectRoleInitialCapabilities"
