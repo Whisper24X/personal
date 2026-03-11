@@ -331,6 +331,30 @@ export class AccessService {
     ).includes(capability);
   }
 
+  async hasBusinessLineCapabilityAny(
+    currentUser: JwtPayloadType,
+    businessLineId: string,
+    capabilities: string[],
+  ): Promise<boolean> {
+    if (this.isAdmin(currentUser)) {
+      return true;
+    }
+
+    const membership =
+      await this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
+        businessLineId,
+        currentUser.sub,
+      );
+
+    if (!membership) {
+      return false;
+    }
+
+    const userCapabilities =
+      await this.resolveBusinessLineCapabilitiesForMembership(membership);
+    return capabilities.some((cap) => userCapabilities.includes(cap));
+  }
+
   async hasProjectCapability(
     currentUser: JwtPayloadType,
     projectId: string,

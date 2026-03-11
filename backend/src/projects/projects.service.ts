@@ -722,10 +722,15 @@ export class ProjectsService {
     }
 
     if (
-      await this.accessService.hasBusinessLineCapability(
+      await this.accessService.hasBusinessLineCapabilityAny(
         currentUser,
         project.businessLineId,
-        'businessLine.member.manage',
+        [
+          'businessLine.projectRole.read',
+          'businessLine.projectRole.create',
+          'businessLine.projectRole.update',
+          'businessLine.projectRole.delete',
+        ],
       )
     ) {
       return project;
@@ -755,10 +760,14 @@ export class ProjectsService {
     }
 
     const hasBusinessLinePermission =
-      await this.accessService.hasBusinessLineCapability(
+      await this.accessService.hasBusinessLineCapabilityAny(
         currentUser,
         project.businessLineId,
-        'businessLine.member.manage',
+        [
+          'businessLine.projectRole.create',
+          'businessLine.projectRole.update',
+          'businessLine.projectRole.delete',
+        ],
       );
 
     if (!hasBusinessLinePermission) {

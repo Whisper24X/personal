@@ -251,7 +251,7 @@ export class BusinessLinesService {
     businessLineId: BusinessLine['id'],
     currentUser: JwtPayloadType,
   ): Promise<BusinessLineMember[]> {
-    await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+    await this.ensureCanReadMembers(businessLineId, currentUser);
 
     const members =
       await this.businessLineMemberRepository.findByBusinessLineId(
@@ -266,7 +266,7 @@ export class BusinessLinesService {
     createBusinessLineMemberDto: CreateBusinessLineMemberDto,
     currentUser: JwtPayloadType,
   ): Promise<BusinessLineMember> {
-    const actorMember = await this.ensureCanManageBusinessLineMembers(
+    const actorMember = await this.ensureCanInviteMembers(
       businessLineId,
       currentUser,
     );
@@ -314,7 +314,7 @@ export class BusinessLinesService {
     createBusinessLineInviteDto: CreateBusinessLineInviteDto,
     currentUser: JwtPayloadType,
   ): Promise<BusinessLineInviteDto> {
-    const actorMember = await this.ensureCanManageBusinessLineMembers(
+    const actorMember = await this.ensureCanInviteMembers(
       businessLineId,
       currentUser,
     );
@@ -361,7 +361,7 @@ export class BusinessLinesService {
     businessLineId: BusinessLine['id'],
     currentUser: JwtPayloadType,
   ): Promise<NullableType<BusinessLineInviteDto>> {
-    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+    await this.ensureCanInviteMembers(businessLineId, currentUser);
 
     const invitation =
       await this.businessLineInvitationRepository.findLatestActiveByBusinessLineId(
@@ -425,7 +425,7 @@ export class BusinessLinesService {
     userId: string,
     currentUser: JwtPayloadType,
   ): Promise<{ projectRoles: Record<string, string> }> {
-    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+    await this.ensureCanReadMembers(businessLineId, currentUser);
 
     const [projects, memberships, roles] = await Promise.all([
       this.projectRepository.findByBusinessLineId(businessLineId),
@@ -457,7 +457,7 @@ export class BusinessLinesService {
     updateBusinessLineMemberDto: UpdateBusinessLineMemberDto,
     currentUser: JwtPayloadType,
   ): Promise<BusinessLineMember> {
-    const actorMember = await this.ensureCanManageBusinessLineMembers(
+    const actorMember = await this.ensureCanUpdateMemberRole(
       businessLineId,
       currentUser,
     );
@@ -524,7 +524,7 @@ export class BusinessLinesService {
     userId: string,
     currentUser: JwtPayloadType,
   ): Promise<void> {
-    const actorMember = await this.ensureCanManageBusinessLineMembers(
+    const actorMember = await this.ensureCanRemoveMembers(
       businessLineId,
       currentUser,
     );
@@ -560,7 +560,7 @@ export class BusinessLinesService {
     businessLineId: BusinessLine['id'],
     currentUser: JwtPayloadType,
   ): Promise<BusinessLineCustomRole[]> {
-    await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+    await this.ensureCanReadBusinessLineRole(businessLineId, currentUser);
     await this.ensureDefaultBusinessLineCustomRoles(businessLineId);
 
     return this.businessLineCustomRoleRepository.findAllByBusinessLineId(
@@ -580,7 +580,7 @@ export class BusinessLinesService {
     createBusinessLineCustomRoleDto: CreateBusinessLineCustomRoleDto,
     currentUser: JwtPayloadType,
   ): Promise<BusinessLineCustomRole> {
-    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+    await this.ensureCanCreateBusinessLineRole(businessLineId, currentUser);
 
     const payload = await this.buildBusinessLineCustomRolePayload(
       businessLineId,
@@ -599,7 +599,7 @@ export class BusinessLinesService {
     updateBusinessLineCustomRoleDto: UpdateBusinessLineCustomRoleDto,
     currentUser: JwtPayloadType,
   ): Promise<BusinessLineCustomRole> {
-    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+    await this.ensureCanUpdateBusinessLineRole(businessLineId, currentUser);
 
     const currentRole = await this.getBusinessLineCustomRoleOrThrow(
       businessLineId,
@@ -638,7 +638,7 @@ export class BusinessLinesService {
     roleId: string,
     currentUser: JwtPayloadType,
   ): Promise<void> {
-    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+    await this.ensureCanDeleteBusinessLineRole(businessLineId, currentUser);
 
     const customRole = await this.getBusinessLineCustomRoleOrThrow(
       businessLineId,
@@ -668,7 +668,7 @@ export class BusinessLinesService {
     businessLineId: BusinessLine['id'],
     currentUser: JwtPayloadType,
   ): Promise<ProjectCustomRole[]> {
-    await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+    await this.ensureCanReadProjectRole(businessLineId, currentUser);
     await this.ensureDefaultProjectCustomRoles(businessLineId);
 
     return this.projectCustomRoleRepository.findAllByBusinessLineId(
@@ -681,7 +681,7 @@ export class BusinessLinesService {
     createProjectCustomRoleDto: CreateProjectCustomRoleDto,
     currentUser: JwtPayloadType,
   ): Promise<ProjectCustomRole> {
-    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+    await this.ensureCanCreateProjectRole(businessLineId, currentUser);
 
     const payload = await this.buildProjectCustomRolePayload(
       businessLineId,
@@ -700,7 +700,7 @@ export class BusinessLinesService {
     updateProjectCustomRoleDto: UpdateProjectCustomRoleDto,
     currentUser: JwtPayloadType,
   ): Promise<ProjectCustomRole> {
-    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+    await this.ensureCanUpdateProjectRole(businessLineId, currentUser);
 
     const currentRole = await this.getBusinessLineProjectCustomRoleOrThrow(
       businessLineId,
@@ -738,7 +738,7 @@ export class BusinessLinesService {
     roleId: string,
     currentUser: JwtPayloadType,
   ): Promise<void> {
-    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+    await this.ensureCanDeleteProjectRole(businessLineId, currentUser);
 
     const customRole = await this.getBusinessLineProjectCustomRoleOrThrow(
       businessLineId,
@@ -771,7 +771,7 @@ export class BusinessLinesService {
     currentUser: JwtPayloadType,
     toolId?: string,
   ): Promise<AgentToolConfig[]> {
-    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+    await this.ensureCanReadAgentCli(businessLineId, currentUser);
 
     return this.agentToolConfigRepository.findByBusinessLineId(
       businessLineId,
@@ -784,7 +784,7 @@ export class BusinessLinesService {
     currentUser: JwtPayloadType,
     keyword?: string,
   ): Promise<Skill[]> {
-    await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+    await this.ensureCanReadSkills(businessLineId, currentUser);
 
     const skills = await loadBusinessLineLocalSkills(businessLineId);
 
@@ -810,7 +810,7 @@ export class BusinessLinesService {
     skillId: string,
     currentUser: JwtPayloadType,
   ): Promise<LocalSkillContentDto> {
-    await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+    await this.ensureCanReadSkills(businessLineId, currentUser);
 
     const skillContent = await loadBusinessLineLocalSkillMarkdownContent(
       businessLineId,
@@ -829,7 +829,7 @@ export class BusinessLinesService {
     skillId: string,
     currentUser: JwtPayloadType,
   ): Promise<{ id: string; name: string; tree: SkillTreeNode[] }> {
-    await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+    await this.ensureCanReadSkills(businessLineId, currentUser);
 
     const skills = await loadBusinessLineLocalSkills(businessLineId);
     const targetSkill = skills.find((item) => item.id === skillId);
@@ -853,7 +853,7 @@ export class BusinessLinesService {
     filePath: string,
     currentUser: JwtPayloadType,
   ): Promise<{ path: string; content: string }> {
-    await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+    await this.ensureCanReadSkills(businessLineId, currentUser);
 
     const skills = await loadBusinessLineLocalSkills(businessLineId);
     const targetSkill = skills.find((item) => item.id === skillId);
@@ -879,7 +879,7 @@ export class BusinessLinesService {
     skillId: string,
     currentUser: JwtPayloadType,
   ): Promise<{ buffer: Buffer; fileName: string }> {
-    await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+    await this.ensureCanReadSkills(businessLineId, currentUser);
 
     const skills = await loadBusinessLineLocalSkills(businessLineId);
     const targetSkill = skills.find((item) => item.id === skillId);
@@ -908,7 +908,7 @@ export class BusinessLinesService {
     skillId: string,
     currentUser: JwtPayloadType,
   ): Promise<void> {
-    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+    await this.ensureCanDeleteSkills(businessLineId, currentUser);
 
     const skills = await loadBusinessLineLocalSkills(businessLineId);
     const targetSkill = skills.find((item) => item.id === skillId);
@@ -968,7 +968,7 @@ export class BusinessLinesService {
     businessLineId: BusinessLine['id'],
     currentUser: JwtPayloadType,
   ): Promise<Mcp[]> {
-    await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+    await this.ensureCanReadMcp(businessLineId, currentUser);
 
     const mcps = await loadBusinessLineLocalMcps(businessLineId);
 
@@ -983,7 +983,7 @@ export class BusinessLinesService {
     query: GetLocalMcpConfigDto,
     currentUser: JwtPayloadType,
   ): Promise<LocalMcpConfigDto> {
-    await this.ensureCanAccessBusinessLine(businessLineId, currentUser);
+    await this.ensureCanReadMcp(businessLineId, currentUser);
 
     const sourcePath = query.sourcePath.trim();
     const mcpName = query.name.trim();
@@ -1047,7 +1047,7 @@ export class BusinessLinesService {
     createLocalMcpDto: CreateLocalMcpDto,
     currentUser: JwtPayloadType,
   ): Promise<Mcp> {
-    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+    await this.ensureCanManageMcp(businessLineId, currentUser);
 
     const name = createLocalMcpDto.name.trim();
     const transportType = createLocalMcpDto.transportType;
@@ -1134,7 +1134,7 @@ export class BusinessLinesService {
     query: GetLocalMcpConfigDto,
     currentUser: JwtPayloadType,
   ): Promise<void> {
-    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+    await this.ensureCanManageMcp(businessLineId, currentUser);
 
     const sourcePath = query.sourcePath.trim();
     const mcpName = query.name.trim();
@@ -1204,7 +1204,7 @@ export class BusinessLinesService {
     importLocalMcpsDto: ImportLocalMcpsDto,
     currentUser: JwtPayloadType,
   ): Promise<ImportLocalMcpsResultDto> {
-    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+    await this.ensureCanManageMcp(businessLineId, currentUser);
 
     const importedRawServers = this.resolveImportedMcpServers(
       importLocalMcpsDto.payload,
@@ -1275,7 +1275,7 @@ export class BusinessLinesService {
     file: Express.Multer.File | undefined,
     currentUser: JwtPayloadType,
   ): Promise<UploadLocalSkillResultDto> {
-    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+    await this.ensureCanUploadSkills(businessLineId, currentUser);
 
     if (!file?.buffer?.length) {
       throw new BadRequestException('Skill package file is required');
@@ -1419,7 +1419,7 @@ export class BusinessLinesService {
     createAgentToolConfigDto: CreateAgentToolConfigDto,
     currentUser: JwtPayloadType,
   ): Promise<AgentToolConfig> {
-    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+    await this.ensureCanCreateAgentCli(businessLineId, currentUser);
 
     const toolId = this.normalizeToolId(createAgentToolConfigDto.toolId);
     const existedConfigs =
@@ -1459,7 +1459,7 @@ export class BusinessLinesService {
     updateAgentToolConfigDto: UpdateAgentToolConfigDto,
     currentUser: JwtPayloadType,
   ): Promise<AgentToolConfig> {
-    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+    await this.ensureCanUpdateAgentCli(businessLineId, currentUser);
 
     const existedConfig =
       await this.agentToolConfigRepository.findById(configId);
@@ -1545,7 +1545,7 @@ export class BusinessLinesService {
     configId: AgentToolConfig['id'],
     currentUser: JwtPayloadType,
   ): Promise<void> {
-    await this.ensureCanManageBusinessLineMembers(businessLineId, currentUser);
+    await this.ensureCanDeleteAgentCli(businessLineId, currentUser);
 
     const existedConfig =
       await this.agentToolConfigRepository.findById(configId);
@@ -2341,23 +2341,249 @@ export class BusinessLinesService {
     );
   }
 
-  private async ensureCanManageBusinessLineMembers(
+  private async ensureCanReadMembers(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.member.read',
+    );
+  }
+
+  private async ensureCanInviteMembers(
     businessLineId: BusinessLine['id'],
     currentUser: JwtPayloadType,
   ): Promise<BusinessLineMember | null> {
     await this.accessService.assertBusinessLineCapability(
       currentUser,
       businessLineId,
-      'businessLine.member.manage',
+      'businessLine.member.invite',
     );
-
-    if (this.isAdmin(currentUser)) {
-      return null;
-    }
-
+    if (this.isAdmin(currentUser)) return null;
     return this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
       businessLineId,
       currentUser.sub,
+    );
+  }
+
+  private async ensureCanUpdateMemberRole(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<BusinessLineMember | null> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.member.updateRole',
+    );
+    if (this.isAdmin(currentUser)) return null;
+    return this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
+      businessLineId,
+      currentUser.sub,
+    );
+  }
+
+  private async ensureCanRemoveMembers(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<BusinessLineMember | null> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.member.remove',
+    );
+    if (this.isAdmin(currentUser)) return null;
+    return this.businessLineMemberRepository.findByBusinessLineIdAndUserId(
+      businessLineId,
+      currentUser.sub,
+    );
+  }
+
+  private async ensureCanReadBusinessLineRole(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.role.read',
+    );
+  }
+
+  private async ensureCanCreateBusinessLineRole(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.role.create',
+    );
+  }
+
+  private async ensureCanUpdateBusinessLineRole(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.role.update',
+    );
+  }
+
+  private async ensureCanDeleteBusinessLineRole(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.role.delete',
+    );
+  }
+
+  private async ensureCanReadProjectRole(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.projectRole.read',
+    );
+  }
+
+  private async ensureCanCreateProjectRole(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.projectRole.create',
+    );
+  }
+
+  private async ensureCanUpdateProjectRole(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.projectRole.update',
+    );
+  }
+
+  private async ensureCanDeleteProjectRole(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.projectRole.delete',
+    );
+  }
+
+  private async ensureCanReadAgentCli(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.agentCli.read',
+    );
+  }
+
+  private async ensureCanCreateAgentCli(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.agentCli.create',
+    );
+  }
+
+  private async ensureCanUpdateAgentCli(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.agentCli.update',
+    );
+  }
+
+  private async ensureCanDeleteAgentCli(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.agentCli.delete',
+    );
+  }
+
+  private async ensureCanReadSkills(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.skill.read',
+    );
+  }
+
+  private async ensureCanUploadSkills(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.skill.upload',
+    );
+  }
+
+  private async ensureCanDeleteSkills(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.skill.delete',
+    );
+  }
+
+  private async ensureCanReadMcp(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.mcp.read',
+    );
+  }
+
+  private async ensureCanManageMcp(
+    businessLineId: BusinessLine['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      businessLineId,
+      'businessLine.mcp.manage',
     );
   }
 

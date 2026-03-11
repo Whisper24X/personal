@@ -12,31 +12,89 @@ export type DefaultScopedRoleTemplate<Role extends string> = {
 
 export const BUSINESS_LINE_CREATE_CAPABILITY = 'businessLine.create';
 
+const OWNER_GRANULAR_CAPABILITIES: CapabilityCode[] = [
+  'businessLine.read',
+  'businessLine.update',
+  'businessLine.delete',
+  'businessLine.project.list.all',
+  'businessLine.project.create',
+  'businessLine.project.update',
+  'businessLine.project.delete',
+  'businessLine.member.read',
+  'businessLine.member.invite',
+  'businessLine.member.remove',
+  'businessLine.member.updateRole',
+  'businessLine.role.read',
+  'businessLine.role.create',
+  'businessLine.role.update',
+  'businessLine.role.delete',
+  'businessLine.projectRole.read',
+  'businessLine.projectRole.create',
+  'businessLine.projectRole.update',
+  'businessLine.projectRole.delete',
+  'businessLine.agentCli.read',
+  'businessLine.agentCli.create',
+  'businessLine.agentCli.update',
+  'businessLine.agentCli.setDefault',
+  'businessLine.agentCli.delete',
+  'businessLine.workflow.read',
+  'businessLine.workflow.create',
+  'businessLine.workflow.update',
+  'businessLine.workflow.delete',
+  'businessLine.skill.read',
+  'businessLine.skill.upload',
+  'businessLine.skill.update',
+  'businessLine.skill.delete',
+  'businessLine.mcp.read',
+  'businessLine.mcp.manage',
+];
+
+const ADMIN_GRANULAR_CAPABILITIES: CapabilityCode[] = [
+  'businessLine.read',
+  'businessLine.project.list.all',
+  'businessLine.project.create',
+  'businessLine.project.update',
+  'businessLine.project.delete',
+  'businessLine.member.read',
+  'businessLine.member.invite',
+  'businessLine.member.remove',
+  'businessLine.member.updateRole',
+  'businessLine.role.read',
+  'businessLine.role.create',
+  'businessLine.role.update',
+  'businessLine.role.delete',
+  'businessLine.projectRole.read',
+  'businessLine.projectRole.create',
+  'businessLine.projectRole.update',
+  'businessLine.projectRole.delete',
+  'businessLine.agentCli.read',
+  'businessLine.agentCli.create',
+  'businessLine.agentCli.update',
+  'businessLine.agentCli.setDefault',
+  'businessLine.agentCli.delete',
+  'businessLine.workflow.read',
+  'businessLine.workflow.create',
+  'businessLine.workflow.update',
+  'businessLine.workflow.delete',
+  'businessLine.skill.read',
+  'businessLine.skill.upload',
+  'businessLine.skill.update',
+  'businessLine.skill.delete',
+  'businessLine.mcp.read',
+  'businessLine.mcp.manage',
+];
+
 export const BUSINESS_LINE_ROLE_CAPABILITIES: Record<
   BusinessLineMemberRole,
   CapabilityCode[]
 > = {
-  [BusinessLineMemberRole.owner]: [
-    'businessLine.read',
-    'businessLine.update',
-    'businessLine.delete',
-    'businessLine.member.manage',
-    'businessLine.project.list.all',
-    'businessLine.project.create',
-    'businessLine.project.update',
-    'businessLine.project.delete',
-  ],
-  [BusinessLineMemberRole.admin]: [
-    'businessLine.read',
-    'businessLine.member.manage',
-    'businessLine.project.list.all',
-    'businessLine.project.create',
-    'businessLine.project.update',
-    'businessLine.project.delete',
-  ],
+  [BusinessLineMemberRole.owner]: [...OWNER_GRANULAR_CAPABILITIES],
+  [BusinessLineMemberRole.admin]: [...ADMIN_GRANULAR_CAPABILITIES],
   [BusinessLineMemberRole.member]: [
     'businessLine.read',
     'businessLine.project.list.joined',
+    'businessLine.skill.read',
+    'businessLine.mcp.read',
   ],
 };
 
@@ -103,11 +161,38 @@ const BUSINESS_LINE_CAPABILITY_DEPENDENCIES: Record<
 > = {
   'businessLine.update': ['businessLine.read'],
   'businessLine.delete': ['businessLine.read'],
-  'businessLine.member.manage': ['businessLine.read'],
   'businessLine.project.list.all': ['businessLine.read'],
+  'businessLine.project.list.joined': ['businessLine.read'],
   'businessLine.project.create': ['businessLine.read'],
   'businessLine.project.update': ['businessLine.read'],
   'businessLine.project.delete': ['businessLine.read'],
+  'businessLine.member.read': ['businessLine.read'],
+  'businessLine.member.invite': ['businessLine.read'],
+  'businessLine.member.remove': ['businessLine.read'],
+  'businessLine.member.updateRole': ['businessLine.read'],
+  'businessLine.role.read': ['businessLine.read'],
+  'businessLine.role.create': ['businessLine.read'],
+  'businessLine.role.update': ['businessLine.read'],
+  'businessLine.role.delete': ['businessLine.read'],
+  'businessLine.projectRole.read': ['businessLine.read'],
+  'businessLine.projectRole.create': ['businessLine.read'],
+  'businessLine.projectRole.update': ['businessLine.read'],
+  'businessLine.projectRole.delete': ['businessLine.read'],
+  'businessLine.agentCli.read': ['businessLine.read'],
+  'businessLine.agentCli.create': ['businessLine.read'],
+  'businessLine.agentCli.update': ['businessLine.read'],
+  'businessLine.agentCli.setDefault': ['businessLine.read'],
+  'businessLine.agentCli.delete': ['businessLine.read'],
+  'businessLine.workflow.read': ['businessLine.read'],
+  'businessLine.workflow.create': ['businessLine.read'],
+  'businessLine.workflow.update': ['businessLine.read'],
+  'businessLine.workflow.delete': ['businessLine.read'],
+  'businessLine.skill.read': ['businessLine.read'],
+  'businessLine.skill.upload': ['businessLine.read'],
+  'businessLine.skill.update': ['businessLine.read'],
+  'businessLine.skill.delete': ['businessLine.read'],
+  'businessLine.mcp.read': ['businessLine.read'],
+  'businessLine.mcp.manage': ['businessLine.read'],
 };
 
 const PROJECT_CAPABILITY_DEPENDENCIES: Record<
@@ -362,13 +447,140 @@ export const isBusinessLineOwnerCapabilities = (
   );
 };
 
-export const canManageBusinessLineMembersByCapabilities = (
+const hasCapability = (
   capabilities: CapabilityCode[],
-): boolean => {
-  return normalizeBusinessLineCapabilities(capabilities).includes(
-    'businessLine.member.manage',
-  );
-};
+  code: CapabilityCode,
+): boolean => normalizeBusinessLineCapabilities(capabilities).includes(code);
+
+export const canReadMembersByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.member.read');
+
+export const canInviteMembersByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.member.invite');
+
+export const canRemoveMembersByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.member.remove');
+
+export const canUpdateMemberRoleByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.member.updateRole');
+
+export const canReadBusinessLineRoleByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.role.read');
+
+export const canCreateBusinessLineRoleByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.role.create');
+
+export const canUpdateBusinessLineRoleByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.role.update');
+
+export const canDeleteBusinessLineRoleByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.role.delete');
+
+export const canReadProjectRoleByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.projectRole.read');
+
+export const canCreateProjectRoleByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.projectRole.create');
+
+export const canUpdateProjectRoleByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.projectRole.update');
+
+export const canDeleteProjectRoleByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.projectRole.delete');
+
+export const canReadAgentCliByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.agentCli.read');
+
+export const canCreateAgentCliByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.agentCli.create');
+
+export const canUpdateAgentCliByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.agentCli.update');
+
+export const canSetDefaultAgentCliByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.agentCli.setDefault');
+
+export const canDeleteAgentCliByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.agentCli.delete');
+
+export const canReadWorkflowByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.workflow.read');
+
+export const canCreateWorkflowByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.workflow.create');
+
+export const canUpdateWorkflowByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.workflow.update');
+
+export const canDeleteWorkflowByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.workflow.delete');
+
+export const canManageBusinessLineWorkflowByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean =>
+  canCreateWorkflowByCapabilities(capabilities) ||
+  canUpdateWorkflowByCapabilities(capabilities) ||
+  canDeleteWorkflowByCapabilities(capabilities);
+
+export const canReadSkillsByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.skill.read');
+
+export const canUploadSkillsByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.skill.upload');
+
+export const canUpdateSkillsByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.skill.update');
+
+export const canDeleteSkillsByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.skill.delete');
+
+export const canReadMcpByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.mcp.read');
+
+export const canManageMcpByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean => hasCapability(capabilities, 'businessLine.mcp.manage');
+
+export const canViewProjectRoleConfigByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean =>
+  canReadProjectRoleByCapabilities(capabilities) ||
+  canCreateProjectRoleByCapabilities(capabilities) ||
+  canUpdateProjectRoleByCapabilities(capabilities) ||
+  canDeleteProjectRoleByCapabilities(capabilities);
+
+export const canManageProjectRoleConfigByCapabilities = (
+  capabilities: CapabilityCode[],
+): boolean =>
+  canCreateProjectRoleByCapabilities(capabilities) ||
+  canUpdateProjectRoleByCapabilities(capabilities) ||
+  canDeleteProjectRoleByCapabilities(capabilities);
 
 export const isProjectOwnerCapabilities = (
   capabilities: CapabilityCode[],

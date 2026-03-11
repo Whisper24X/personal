@@ -1,8 +1,21 @@
 import type { BusinessLineCustomRole } from '@/api/business-lines'
 import type { ProjectCustomRole } from '@/types/api/projects'
-export { BUSINESS_LINE_CAPABILITY_OPTIONS, PROJECT_CAPABILITY_OPTIONS } from './access-control'
+export {
+  BUSINESS_LINE_CAPABILITY_OPTIONS,
+  PROJECT_CAPABILITY_OPTIONS,
+  BUSINESS_LINE_CAPABILITY_TREE,
+  PROJECT_CAPABILITY_TREE,
+  flattenCapabilityTree,
+} from './access-control'
 
-export type { CapabilityOption } from './access-control'
+export type {
+  CapabilityOption,
+  CapabilityTreeNode,
+  CapabilityTreeLeaf,
+  CapabilityTreeGroup,
+} from './access-control'
+
+export { isCapabilityTreeLeaf } from './access-control'
 
 export type RoleAssignmentOption = {
   key: string
@@ -26,11 +39,37 @@ const BUSINESS_LINE_DEFAULT_ROLE_TEMPLATES = [
       'businessLine.read',
       'businessLine.update',
       'businessLine.delete',
-      'businessLine.member.manage',
       'businessLine.project.list.all',
       'businessLine.project.create',
       'businessLine.project.update',
       'businessLine.project.delete',
+      'businessLine.member.read',
+      'businessLine.member.invite',
+      'businessLine.member.remove',
+      'businessLine.member.updateRole',
+      'businessLine.role.read',
+      'businessLine.role.create',
+      'businessLine.role.update',
+      'businessLine.role.delete',
+      'businessLine.projectRole.read',
+      'businessLine.projectRole.create',
+      'businessLine.projectRole.update',
+      'businessLine.projectRole.delete',
+      'businessLine.agentCli.read',
+      'businessLine.agentCli.create',
+      'businessLine.agentCli.update',
+      'businessLine.agentCli.setDefault',
+      'businessLine.agentCli.delete',
+      'businessLine.workflow.read',
+      'businessLine.workflow.create',
+      'businessLine.workflow.update',
+      'businessLine.workflow.delete',
+      'businessLine.skill.read',
+      'businessLine.skill.upload',
+      'businessLine.skill.update',
+      'businessLine.skill.delete',
+      'businessLine.mcp.read',
+      'businessLine.mcp.manage',
     ],
   },
   {
@@ -38,17 +77,48 @@ const BUSINESS_LINE_DEFAULT_ROLE_TEMPLATES = [
     name: 'admin',
     capabilities: [
       'businessLine.read',
-      'businessLine.member.manage',
       'businessLine.project.list.all',
       'businessLine.project.create',
       'businessLine.project.update',
       'businessLine.project.delete',
+      'businessLine.member.read',
+      'businessLine.member.invite',
+      'businessLine.member.remove',
+      'businessLine.member.updateRole',
+      'businessLine.role.read',
+      'businessLine.role.create',
+      'businessLine.role.update',
+      'businessLine.role.delete',
+      'businessLine.projectRole.read',
+      'businessLine.projectRole.create',
+      'businessLine.projectRole.update',
+      'businessLine.projectRole.delete',
+      'businessLine.agentCli.read',
+      'businessLine.agentCli.create',
+      'businessLine.agentCli.update',
+      'businessLine.agentCli.setDefault',
+      'businessLine.agentCli.delete',
+      'businessLine.workflow.read',
+      'businessLine.workflow.create',
+      'businessLine.workflow.update',
+      'businessLine.workflow.delete',
+      'businessLine.skill.read',
+      'businessLine.skill.upload',
+      'businessLine.skill.update',
+      'businessLine.skill.delete',
+      'businessLine.mcp.read',
+      'businessLine.mcp.manage',
     ],
   },
   {
     role: 'member',
     name: 'member',
-    capabilities: ['businessLine.read', 'businessLine.project.list.joined'],
+    capabilities: [
+      'businessLine.read',
+      'businessLine.project.list.joined',
+      'businessLine.skill.read',
+      'businessLine.mcp.read',
+    ],
   },
 ] as const satisfies DefaultRoleTemplate<'owner' | 'admin' | 'member'>[]
 
