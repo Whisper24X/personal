@@ -23,13 +23,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         bash curl git openssh-client ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# CLI tools (curl-based): Claude Code, OpenCode, Cursor
-RUN curl -fsSL https://claude.ai/install.sh | bash \
-    && curl -fsSL https://opencode.ai/install | bash \
+# CLI tools (curl-based): OpenCode, Cursor
+RUN curl -fsSL https://opencode.ai/install | bash \
     && curl -fsSL https://cursor.com/install | bash
 
-# CLI tools (npm-based): Codex, Gemini CLI
-RUN npm i -g @openai/codex@latest @google/gemini-cli@latest
+# CLI tools (npm-based): Claude Code, Codex, Gemini CLI
+RUN npm i -g @anthropic-ai/claude-code@latest @openai/codex@latest @google/gemini-cli@latest
 
 ENV PATH="/root/.local/bin:/root/.opencode/bin:${PATH}"
 
