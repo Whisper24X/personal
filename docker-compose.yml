@@ -59,6 +59,7 @@ services:
     volumes:
       - ~/.ssh:/root/.ssh:ro
       - ${SSH_AUTH_SOCK}:/ssh-agent
+      - ./tmp:/usr/src/tmp
     depends_on:
       postgres:
         condition: service_healthy

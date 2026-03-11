@@ -1,8 +1,10 @@
 # ── 构建阶段 ──
-FROM node:22.21.1-alpine AS build
+FROM node:22.21.1-bookworm-slim AS build
 
 # node-pty 等原生模块需要编译工具链
-RUN apk add --no-cache bash python3 make g++
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -28,6 +30,8 @@ RUN curl -fsSL https://claude.ai/install.sh | bash \
 
 # CLI tools (npm-based): Codex, Gemini CLI
 RUN npm i -g @openai/codex@latest @google/gemini-cli@latest
+
+ENV PATH="/root/.local/bin:/root/.opencode/bin:${PATH}"
 
 WORKDIR /usr/src/app
 
