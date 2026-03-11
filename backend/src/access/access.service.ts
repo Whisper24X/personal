@@ -284,7 +284,7 @@ export class AccessService {
 
     if (!membership) {
       throw new ForbiddenException(
-        capability === 'project.read' || capability === 'project.task.read'
+        capability === 'project.dashboard.read' || capability === 'project.task.read'
           ? 'forbiddenProject'
           : 'forbiddenProjectManage',
       );
@@ -298,7 +298,7 @@ export class AccessService {
 
     if (!availableCapabilities.includes(capability)) {
       throw new ForbiddenException(
-        capability === 'project.read' || capability === 'project.task.read'
+        capability === 'project.dashboard.read' || capability === 'project.task.read'
           ? 'forbiddenProject'
           : 'forbiddenProjectManage',
       );

@@ -98,53 +98,38 @@ export const BUSINESS_LINE_ROLE_CAPABILITIES: Record<
   ],
 };
 
+const PROJECT_VIEWER_CAPABILITIES: CapabilityCode[] = [
+  'project.dashboard.read',
+  'project.task.read',
+  'project.kanban.read',
+  'project.knowledge.read',
+  'project.workflow.read',
+];
+
+const PROJECT_DEVELOPER_CAPABILITIES: CapabilityCode[] = [
+  ...PROJECT_VIEWER_CAPABILITIES,
+  'project.automation.read',
+];
+
+const PROJECT_MAINTAINER_CAPABILITIES: CapabilityCode[] = [
+  ...PROJECT_DEVELOPER_CAPABILITIES,
+  'project.skill.read',
+  'project.mcp.read',
+];
+
+const PROJECT_OWNER_CAPABILITIES: CapabilityCode[] = [
+  ...PROJECT_MAINTAINER_CAPABILITIES,
+  'project.git.read',
+];
+
 export const PROJECT_ROLE_CAPABILITIES: Record<
   ProjectMemberRole,
   CapabilityCode[]
 > = {
-  [ProjectMemberRole.owner]: [
-    'project.read',
-    'project.update',
-    'project.delete',
-    'project.member.manage',
-    'project.task.read',
-    'project.task.create',
-    'project.task.execute',
-    'project.task.cancel',
-    'project.kanban.view',
-    'project.workflow.view',
-    'project.workflow.manage',
-    'project.artifact.read',
-  ],
-  [ProjectMemberRole.maintainer]: [
-    'project.read',
-    'project.update',
-    'project.member.manage',
-    'project.task.read',
-    'project.task.create',
-    'project.task.execute',
-    'project.task.cancel',
-    'project.kanban.view',
-    'project.workflow.view',
-    'project.workflow.manage',
-    'project.artifact.read',
-  ],
-  [ProjectMemberRole.developer]: [
-    'project.read',
-    'project.task.read',
-    'project.task.create',
-    'project.task.execute',
-    'project.kanban.view',
-    'project.workflow.view',
-    'project.artifact.read',
-  ],
-  [ProjectMemberRole.viewer]: [
-    'project.read',
-    'project.task.read',
-    'project.kanban.view',
-    'project.workflow.view',
-    'project.artifact.read',
-  ],
+  [ProjectMemberRole.owner]: [...PROJECT_OWNER_CAPABILITIES],
+  [ProjectMemberRole.maintainer]: [...PROJECT_MAINTAINER_CAPABILITIES],
+  [ProjectMemberRole.developer]: [...PROJECT_DEVELOPER_CAPABILITIES],
+  [ProjectMemberRole.viewer]: [...PROJECT_VIEWER_CAPABILITIES],
 };
 
 export const ALL_BUSINESS_LINE_CAPABILITIES = Array.from(
@@ -199,17 +184,19 @@ const PROJECT_CAPABILITY_DEPENDENCIES: Record<
   CapabilityCode,
   CapabilityCode[]
 > = {
-  'project.update': ['project.read'],
-  'project.delete': ['project.read'],
-  'project.member.manage': ['project.read'],
-  'project.task.read': ['project.read'],
-  'project.task.create': ['project.read', 'project.task.read'],
-  'project.task.execute': ['project.read', 'project.task.read'],
-  'project.task.cancel': ['project.read', 'project.task.read'],
-  'project.kanban.view': ['project.read'],
-  'project.workflow.view': ['project.read'],
-  'project.workflow.manage': ['project.read', 'project.workflow.view'],
-  'project.artifact.read': ['project.read'],
+  'project.dashboard.read': [],
+  'project.task.read': ['project.dashboard.read'],
+  'project.kanban.read': ['project.dashboard.read'],
+  'project.automation.read': ['project.dashboard.read'],
+  'project.knowledge.read': ['project.dashboard.read'],
+  'project.workflow.read': ['project.dashboard.read'],
+  'project.skill.read': ['project.dashboard.read'],
+  'project.mcp.read': ['project.dashboard.read'],
+  'project.git.read': ['project.dashboard.read'],
+  // Deprecated aliases for backward compatibility
+  'project.read': ['project.dashboard.read'],
+  'project.kanban.view': ['project.kanban.read'],
+  'project.workflow.view': ['project.workflow.read'],
 };
 
 const expandCapabilities = (
@@ -301,25 +288,25 @@ export const PROJECT_DEFAULT_ROLE_TEMPLATES: Array<
   {
     role: ProjectMemberRole.owner,
     name: 'owner',
-    description: '项目内全部能力',
+    description: '全部 9 个管理项可用',
     capabilities: [...PROJECT_ROLE_CAPABILITIES[ProjectMemberRole.owner]],
   },
   {
     role: ProjectMemberRole.maintainer,
     name: 'maintainer',
-    description: '可管理成员、配置和工作流，但不能删项目/授予 owner',
+    description: '仪表盘、任务、看板、知识库、工作流、自动化、Skills、MCP',
     capabilities: [...PROJECT_ROLE_CAPABILITIES[ProjectMemberRole.maintainer]],
   },
   {
     role: ProjectMemberRole.developer,
     name: 'developer',
-    description: '可执行开发任务和查看工作流',
+    description: '仪表盘、任务、看板、知识库、工作流、自动化',
     capabilities: [...PROJECT_ROLE_CAPABILITIES[ProjectMemberRole.developer]],
   },
   {
     role: ProjectMemberRole.viewer,
     name: 'viewer',
-    description: '只读访问',
+    description: '仪表盘、任务、看板、知识库、工作流',
     capabilities: [...PROJECT_ROLE_CAPABILITIES[ProjectMemberRole.viewer]],
   },
 ];
@@ -582,16 +569,6 @@ export const canManageProjectRoleConfigByCapabilities = (
   canUpdateProjectRoleByCapabilities(capabilities) ||
   canDeleteProjectRoleByCapabilities(capabilities);
 
-export const isProjectOwnerCapabilities = (
-  capabilities: CapabilityCode[],
-): boolean => {
-  return normalizeProjectCapabilities(capabilities).includes('project.delete');
-};
-
-export const canManageProjectMembersByCapabilities = (
-  capabilities: CapabilityCode[],
-): boolean => {
-  return normalizeProjectCapabilities(capabilities).includes(
-    'project.member.manage',
-  );
+export const isProjectOwnerRoleName = (roleName: string | null | undefined): boolean => {
+  return isDefaultTemplateRoleName(roleName, 'owner');
 };

@@ -40,6 +40,8 @@ import {
   BUSINESS_LINE_CAPABILITY_TREE,
   PROJECT_CAPABILITY_TREE,
   buildBusinessLineRoleAssignmentOptions,
+  formatProjectRoleCapabilitiesDisplay,
+  formatBusinessLineRoleCapabilitiesDisplay,
 } from '@/constants/access'
 
 type MainTab =
@@ -2359,7 +2361,17 @@ const openCreatePermissionProjectRoleModal = () => {
   editingPermissionProjectRoleId.value = ''
   permissionProjectRoleInitialName.value = ''
   permissionProjectRoleInitialDescription.value = ''
-  permissionProjectRoleInitialCapabilities.value = ['project.read', 'project.task.read']
+  permissionProjectRoleInitialCapabilities.value = [
+    'project.dashboard.read',
+    'project.task.read',
+    'project.kanban.read',
+    'project.automation.read',
+    'project.knowledge.read',
+    'project.workflow.read',
+    'project.skill.read',
+    'project.mcp.read',
+    'project.git.read',
+  ]
   permissionProjectRoleModalError.value = ''
   permissionProjectRoleModalOpen.value = true
 }
@@ -3248,17 +3260,17 @@ onBeforeUnmount(() => {
                       class="rounded-xl border border-border bg-background px-4 py-3"
                     >
                       <div class="flex items-start justify-between gap-3">
-                        <div>
+                        <div class="min-w-0 flex-1">
                           <div class="flex flex-wrap items-center gap-2">
                             <p class="text-sm font-semibold">{{ role.name }}</p>
                           </div>
                           <p class="mt-1 text-xs text-muted-foreground">
-                            {{ role.description || '暂无描述' }}
+                            {{ formatBusinessLineRoleCapabilitiesDisplay(role.capabilities) || role.description || '暂无描述' }}
                           </p>
                         </div>
                         <div
                           v-if="canUpdateBusinessLineRole || canDeleteBusinessLineRole"
-                          class="flex items-center gap-2"
+                          class="flex shrink-0 items-center gap-2"
                         >
                           <button
                             v-if="canUpdateBusinessLineRole"
@@ -3333,17 +3345,17 @@ onBeforeUnmount(() => {
                       class="rounded-xl border border-border bg-background px-4 py-3"
                     >
                       <div class="flex items-start justify-between gap-3">
-                        <div>
+                        <div class="min-w-0 flex-1">
                           <div class="flex flex-wrap items-center gap-2">
                             <p class="text-sm font-semibold">{{ role.name }}</p>
                           </div>
                           <p class="mt-1 text-xs text-muted-foreground">
-                            {{ role.description || '暂无描述' }}
+                            {{ formatProjectRoleCapabilitiesDisplay(role.capabilities) || role.description || '暂无描述' }}
                           </p>
                         </div>
                         <div
                           v-if="canManagePermissionProjectRoles"
-                          class="flex items-center gap-2"
+                          class="flex shrink-0 items-center gap-2"
                         >
                           <button
                             type="button"

@@ -215,64 +215,49 @@ export const ACCESS_CAPABILITY_CONFIG = {
     description: '删除业务线下项目条目',
     scope: 'businessLine',
   },
-  'project.read': {
-    label: '查看项目',
-    description: '访问项目详情和基础信息',
-    scope: 'project',
-  },
-  'project.update': {
-    label: '项目配置',
-    description: '修改项目配置',
-    scope: 'project',
-  },
-  'project.delete': {
-    label: '删除项目',
-    description: '删除项目',
-    scope: 'project',
-  },
-  'project.member.manage': {
-    label: '成员管理',
-    description: '添加、调整和移除项目成员',
+  'project.dashboard.read': {
+    label: '仪表盘',
+    description: '查看仪表盘和项目概览',
     scope: 'project',
   },
   'project.task.read': {
-    label: '查看任务',
-    description: '查看项目任务列表和详情',
+    label: '任务',
+    description: '任务管理项可用',
     scope: 'project',
   },
-  'project.task.create': {
-    label: '创建任务',
-    description: '创建和编辑任务',
+  'project.kanban.read': {
+    label: '看板',
+    description: '看板管理项可用',
     scope: 'project',
   },
-  'project.task.execute': {
-    label: '执行任务',
-    description: '执行、重试和推进任务',
+  'project.automation.read': {
+    label: '自动化',
+    description: '自动化管理项可用',
     scope: 'project',
   },
-  'project.task.cancel': {
-    label: '取消任务',
-    description: '取消运行中的任务',
+  'project.knowledge.read': {
+    label: '知识库',
+    description: '知识库管理项可用',
     scope: 'project',
   },
-  'project.kanban.view': {
-    label: '查看看板',
-    description: '查看项目看板',
+  'project.workflow.read': {
+    label: '工作流',
+    description: '工作流管理项可用',
     scope: 'project',
   },
-  'project.workflow.view': {
-    label: '查看工作流',
-    description: '查看工作流模板',
+  'project.skill.read': {
+    label: 'Skills',
+    description: 'Skills 管理项可用',
     scope: 'project',
   },
-  'project.workflow.manage': {
-    label: '管理工作流',
-    description: '新增、编辑和删除工作流模板',
+  'project.mcp.read': {
+    label: 'MCP',
+    description: 'MCP 管理项可用',
     scope: 'project',
   },
-  'project.artifact.read': {
-    label: '查看产物',
-    description: '查看任务产物',
+  'project.git.read': {
+    label: 'Git',
+    description: 'Git 管理项可用',
     scope: 'project',
   },
 } as const satisfies Record<string, AccessCapabilityDefinition>
@@ -287,7 +272,7 @@ export type RouteAccessConfig = {
 export const ROUTE_ACCESS_CONFIG = {
   rootRedirect: {
     title: '仪表盘',
-    capabilities: ['project.read'],
+    capabilities: ['project.dashboard.read'],
   },
   home: {
     title: '首页',
@@ -295,31 +280,31 @@ export const ROUTE_ACCESS_CONFIG = {
   },
   dashboard: {
     title: '仪表盘',
-    capabilities: ['project.read'],
+    capabilities: ['project.dashboard.read'],
   },
   kanban: {
     title: '看板',
-    capabilities: ['project.kanban.view'],
+    capabilities: ['project.kanban.read'],
   },
   knowledgeBase: {
     title: '知识库',
-    capabilities: ['project.read'],
+    capabilities: ['project.knowledge.read'],
   },
   skills: {
     title: 'Skills',
-    capabilities: ['project.read'],
+    capabilities: ['project.skill.read'],
   },
   mcp: {
     title: 'MCP',
-    capabilities: ['project.read'],
+    capabilities: ['project.mcp.read'],
   },
   automations: {
     title: '自动化',
-    capabilities: ['project.read'],
+    capabilities: ['project.automation.read'],
   },
   git: {
     title: 'Git',
-    capabilities: ['project.read'],
+    capabilities: ['project.git.read'],
   },
   businessLineInvite: {
     title: '业务线邀请',
@@ -335,15 +320,15 @@ export const ROUTE_ACCESS_CONFIG = {
   },
   projectWorkflows: {
     title: '项目工作流',
-    capabilities: ['project.workflow.view'],
+    capabilities: ['project.workflow.read'],
   },
   projectDetail: {
     title: '项目',
-    capabilities: ['project.read'],
+    capabilities: ['project.dashboard.read'],
   },
   projectWorkflowsById: {
     title: '项目工作流',
-    capabilities: ['project.workflow.view'],
+    capabilities: ['project.workflow.read'],
   },
   tasks: {
     title: '任务',
@@ -373,15 +358,15 @@ export type ProjectMenuAccessItem = {
 }
 
 export const PROJECT_MENU_ACCESS_CONFIG = [
-  { id: 'dashboard', label: '仪表盘', to: '/dashboard', capabilities: ['project.read'] },
+  { id: 'dashboard', label: '仪表盘', to: '/dashboard', capabilities: ['project.dashboard.read'] },
   { id: 'tasks', label: '任务', to: '/tasks', capabilities: ['project.task.read'] },
-  { id: 'kanban', label: '看板', to: '/kanban', capabilities: ['project.kanban.view'] },
-  { id: 'automations', label: '自动化', to: '/automations', capabilities: ['project.read'] },
-  { id: 'knowledge', label: '知识库', to: '/knowledge-base', capabilities: ['project.read'] },
-  { id: 'workflow', label: '工作流', to: '/projects/workflows', capabilities: ['project.workflow.view'] },
-  { id: 'skills', label: 'Skills', to: '/skills', capabilities: ['project.read'] },
-  { id: 'mcp', label: 'MCP', to: '/mcp', capabilities: ['project.read'] },
-  { id: 'git', label: 'Git', to: '/git', capabilities: ['project.read'] },
+  { id: 'kanban', label: '看板', to: '/kanban', capabilities: ['project.kanban.read'] },
+  { id: 'automations', label: '自动化', to: '/automations', capabilities: ['project.automation.read'] },
+  { id: 'knowledge', label: '知识库', to: '/knowledge-base', capabilities: ['project.knowledge.read'] },
+  { id: 'workflow', label: '工作流', to: '/projects/workflows', capabilities: ['project.workflow.read'] },
+  { id: 'skills', label: 'Skills', to: '/skills', capabilities: ['project.skill.read'] },
+  { id: 'mcp', label: 'MCP', to: '/mcp', capabilities: ['project.mcp.read'] },
+  { id: 'git', label: 'Git', to: '/git', capabilities: ['project.git.read'] },
 ] as const satisfies readonly ProjectMenuAccessItem[]
 
 export type ProjectMenuId = (typeof PROJECT_MENU_ACCESS_CONFIG)[number]['id']
@@ -422,43 +407,43 @@ export const BUTTON_ACCESS_CONFIG = {
   },
   manageProjectMembers: {
     label: '管理项目成员',
-    capabilities: ['project.member.manage'],
+    capabilities: ['businessLine.member.updateRole'],
   },
   editProjectConfig: {
     label: '编辑项目配置',
-    capabilities: ['project.update'],
+    capabilities: ['businessLine.project.update'],
   },
   deleteProject: {
     label: '删除项目',
-    capabilities: ['project.delete'],
+    capabilities: ['businessLine.project.delete'],
   },
   createTask: {
     label: '创建任务',
-    capabilities: ['project.task.create'],
+    capabilities: ['project.task.read'],
   },
   editTask: {
     label: '编辑任务',
-    capabilities: ['project.task.create'],
+    capabilities: ['project.task.read'],
   },
   deleteTask: {
     label: '删除任务',
-    capabilities: ['project.task.create'],
+    capabilities: ['project.task.read'],
   },
   replyTask: {
     label: '补充任务信息',
-    capabilities: ['project.task.create'],
+    capabilities: ['project.task.read'],
   },
   executeTask: {
     label: '执行任务',
-    capabilities: ['project.task.execute'],
+    capabilities: ['project.task.read'],
   },
   cancelTask: {
     label: '取消任务',
-    capabilities: ['project.task.cancel'],
+    capabilities: ['project.task.read'],
   },
   manageWorkflow: {
     label: '管理工作流',
-    capabilities: ['project.workflow.manage'],
+    capabilities: ['project.workflow.read'],
   },
   createBusinessLineCustomRole: {
     label: '创建业务线自定义角色',
@@ -484,6 +469,32 @@ export const getCapabilityLabel = (code: string) => {
 
 export const getCapabilityDescription = (code: string) => {
   return ACCESS_CAPABILITY_CONFIG[code as AccessCapabilityCode]?.description ?? ''
+}
+
+/** 项目 read 能力码展示顺序（与 PROJECT_MENU_ACCESS_CONFIG 一致） */
+const PROJECT_READ_CAPABILITIES_ORDER: readonly string[] = [
+  'project.dashboard.read',
+  'project.task.read',
+  'project.kanban.read',
+  'project.knowledge.read',
+  'project.workflow.read',
+  'project.automation.read',
+  'project.skill.read',
+  'project.mcp.read',
+  'project.git.read',
+]
+
+/** 根据角色选中的能力码动态生成展示文案 */
+export const formatProjectRoleCapabilitiesDisplay = (capabilities: string[]): string => {
+  if (!capabilities?.length) return ''
+  const capabilitySet = new Set(capabilities)
+  const labels = PROJECT_READ_CAPABILITIES_ORDER.filter((cap) =>
+    capabilitySet.has(cap),
+  ).map((cap) => getCapabilityLabel(cap))
+  if (labels.length === PROJECT_READ_CAPABILITIES_ORDER.length) {
+    return '全部9个管理项可用'
+  }
+  return labels.join('、')
 }
 
 export const getCapabilityOptionsByScope = (scope: Exclude<AccessScope, 'global'>): CapabilityOption[] => {
@@ -589,55 +600,61 @@ export const BUSINESS_LINE_CAPABILITY_TREE: CapabilityTreeNode[] = [
   },
 ]
 
-/** 项目能力树（按管理项分组） */
+/** 项目能力树（按管理项分组，每项仅 1 个 read） */
 export const PROJECT_CAPABILITY_TREE: CapabilityTreeNode[] = [
   {
-    key: 'project.basic',
-    label: '项目基础',
-    description: '查看、配置和删除项目',
-    children: [
-      { code: 'project.read', label: '查看项目', description: '访问项目详情和基础信息' },
-      { code: 'project.update', label: '项目配置', description: '修改项目配置' },
-      { code: 'project.delete', label: '删除项目', description: '删除项目' },
-    ],
-  },
-  {
-    key: 'project.member',
-    label: '成员管理',
-    description: '添加、调整和移除项目成员',
-    children: [{ code: 'project.member.manage', label: '成员管理', description: '添加、调整和移除项目成员' }],
+    key: 'project.dashboard',
+    label: '仪表盘',
+    description: '仪表盘和项目概览',
+    children: [{ code: 'project.dashboard.read', label: '仪表盘', description: '仪表盘管理项可用' }],
   },
   {
     key: 'project.task',
     label: '任务',
-    description: '查看、创建、执行和取消任务',
-    children: [
-      { code: 'project.task.read', label: '查看任务', description: '查看项目任务列表和详情' },
-      { code: 'project.task.create', label: '创建任务', description: '创建和编辑任务' },
-      { code: 'project.task.execute', label: '执行任务', description: '执行、重试和推进任务' },
-      { code: 'project.task.cancel', label: '取消任务', description: '取消运行中的任务' },
-    ],
+    description: '任务管理项',
+    children: [{ code: 'project.task.read', label: '任务', description: '任务管理项可用' }],
   },
   {
     key: 'project.kanban',
     label: '看板',
-    description: '查看项目看板',
-    children: [{ code: 'project.kanban.view', label: '查看看板', description: '查看项目看板' }],
+    description: '看板管理项',
+    children: [{ code: 'project.kanban.read', label: '看板', description: '看板管理项可用' }],
+  },
+  {
+    key: 'project.automation',
+    label: '自动化',
+    description: '自动化管理项',
+    children: [{ code: 'project.automation.read', label: '自动化', description: '自动化管理项可用' }],
+  },
+  {
+    key: 'project.knowledge',
+    label: '知识库',
+    description: '知识库管理项',
+    children: [{ code: 'project.knowledge.read', label: '知识库', description: '知识库管理项可用' }],
   },
   {
     key: 'project.workflow',
     label: '工作流',
-    description: '查看和管理工作流模板',
-    children: [
-      { code: 'project.workflow.view', label: '查看工作流', description: '查看工作流模板' },
-      { code: 'project.workflow.manage', label: '管理工作流', description: '新增、编辑和删除工作流模板' },
-    ],
+    description: '工作流管理项',
+    children: [{ code: 'project.workflow.read', label: '工作流', description: '工作流管理项可用' }],
   },
   {
-    key: 'project.artifact',
-    label: '产物',
-    description: '查看任务产物',
-    children: [{ code: 'project.artifact.read', label: '查看产物', description: '查看任务产物' }],
+    key: 'project.skill',
+    label: 'Skills',
+    description: 'Skills 管理项',
+    children: [{ code: 'project.skill.read', label: 'Skills', description: 'Skills 管理项可用' }],
+  },
+  {
+    key: 'project.mcp',
+    label: 'MCP',
+    description: 'MCP 管理项',
+    children: [{ code: 'project.mcp.read', label: 'MCP', description: 'MCP 管理项可用' }],
+  },
+  {
+    key: 'project.git',
+    label: 'Git',
+    description: 'Git 管理项',
+    children: [{ code: 'project.git.read', label: 'Git', description: 'Git 管理项可用' }],
   },
 ]
 
@@ -655,6 +672,26 @@ export const flattenCapabilityTree = (tree: CapabilityTreeNode[]): CapabilityOpt
   }
   visit(tree)
   return result
+}
+
+/** 业务线能力展示顺序（与 BUSINESS_LINE_CAPABILITY_TREE 一致） */
+const BUSINESS_LINE_CAPABILITIES_ORDER = flattenCapabilityTree(
+  BUSINESS_LINE_CAPABILITY_TREE,
+).map((opt) => opt.code)
+
+/** 根据角色选中的能力码动态生成业务线角色展示文案 */
+export const formatBusinessLineRoleCapabilitiesDisplay = (
+  capabilities: string[],
+): string => {
+  if (!capabilities?.length) return ''
+  const capabilitySet = new Set(capabilities)
+  const labels = BUSINESS_LINE_CAPABILITIES_ORDER.filter((cap) =>
+    capabilitySet.has(cap),
+  ).map((cap) => getCapabilityLabel(cap))
+  if (labels.length === BUSINESS_LINE_CAPABILITIES_ORDER.length) {
+    return '拥有业务线全部能力'
+  }
+  return labels.join('、')
 }
 
 export const getPermissionNames = (capabilities: readonly string[]) => {

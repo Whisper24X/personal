@@ -278,7 +278,7 @@ const workflowTemplateSubmitLoadingText = computed(() => {
 })
 
 const canManageProjectMembers = computed(() => {
-  return accessStore.hasCapability('project.member.manage')
+  return accessStore.hasCapability('businessLine.member.updateRole')
 })
 
 const projectRoleOptions = computed(() => {
@@ -296,16 +296,12 @@ const preferredProjectRoleKey = computed(() => {
   )
 })
 
-const canViewWorkflow = computed(() => {
-  return accessStore.hasCapability('project.workflow.view')
-})
-
-const canManageWorkflow = computed(() => {
-  return accessStore.hasCapability('project.workflow.manage')
+const canAccessWorkflow = computed(() => {
+  return accessStore.hasCapability('project.workflow.read')
 })
 
 const canUpdateProject = computed(() => {
-  return accessStore.hasCapability('project.update')
+  return accessStore.hasCapability('businessLine.project.update')
 })
 
 const availableTabs = computed<TabKey[]>(() => {
@@ -315,7 +311,7 @@ const availableTabs = computed<TabKey[]>(() => {
     tabs.push('members')
   }
 
-  if (canViewWorkflow.value) {
+  if (canAccessWorkflow.value) {
     tabs.push('workflow')
   }
 
@@ -724,7 +720,7 @@ const preloadWorkflowNodeConfigs = async () => {
 }
 
 const openWorkflowCreateModal = () => {
-  if (!canManageWorkflow.value) {
+  if (!canAccessWorkflow.value) {
     message.error('当前账号暂无项目工作流管理权限')
     return
   }
@@ -746,7 +742,7 @@ const openWorkflowCreateModal = () => {
 }
 
 const openWorkflowEditModal = (template: WorkflowTemplate) => {
-  if (!canManageWorkflow.value) {
+  if (!canAccessWorkflow.value) {
     message.error('当前账号暂无项目工作流管理权限')
     return
   }
@@ -857,7 +853,7 @@ const closeWorkflowCopyModal = () => {
 }
 
 const openWorkflowCopyModal = async () => {
-  if (!canManageWorkflow.value) {
+  if (!canAccessWorkflow.value) {
     message.error('当前账号暂无项目工作流管理权限')
     return
   }
@@ -975,7 +971,7 @@ const loadWorkflowTemplates = async (targetProjectId: string) => {
 }
 
 const submitWorkflowTemplate = async () => {
-  if (!canManageWorkflow.value) {
+  if (!canAccessWorkflow.value) {
     message.error('当前账号暂无项目工作流管理权限')
     return
   }
@@ -1039,7 +1035,7 @@ const submitWorkflowTemplate = async () => {
 }
 
 const removeWorkflowTemplate = async (template: WorkflowTemplate) => {
-  if (!canManageWorkflow.value) {
+  if (!canAccessWorkflow.value) {
     message.error('当前账号暂无项目工作流管理权限')
     return
   }
@@ -1060,7 +1056,7 @@ const setWorkflowDeleteConfirmOpen = (open: boolean) => {
 }
 
 const confirmRemoveWorkflowTemplate = async () => {
-  if (!canManageWorkflow.value) {
+  if (!canAccessWorkflow.value) {
     message.error('当前账号暂无项目工作流管理权限')
     return
   }
@@ -1219,7 +1215,7 @@ const loadProjectData = async () => {
     syncConfigForm(projectResponse)
     await loadProjectContext()
 
-    if (canViewWorkflow.value) {
+    if (canAccessWorkflow.value) {
       await loadWorkflowTemplates(projectResponse.id)
       return
     }
@@ -1478,7 +1474,7 @@ watch(
       return
     }
 
-    if (isWorkflowOnly && canViewWorkflow.value) {
+    if (isWorkflowOnly && canAccessWorkflow.value) {
       tab.value = 'workflow'
       return
     }
@@ -1566,7 +1562,7 @@ onBeforeUnmount(() => {
           成员
         </button>
         <button
-          v-if="canViewWorkflow"
+          v-if="canAccessWorkflow"
           class="rounded-xl px-4 py-2 text-sm font-semibold transition"
           :class="tabClass('workflow')"
           type="button"
@@ -1857,7 +1853,7 @@ onBeforeUnmount(() => {
       </section>
 
       <section
-        v-else-if="(workflowOnlyMode || tab === 'workflow') && canViewWorkflow"
+        v-else-if="(workflowOnlyMode || tab === 'workflow') && canAccessWorkflow"
         class="space-y-4"
       >
         <article class="panel-card p-5">
@@ -1889,7 +1885,7 @@ onBeforeUnmount(() => {
               >
                 搜索
               </button>
-              <div v-if="canManageWorkflow" ref="workflowAddMenuAnchorRef" class="relative">
+              <div v-if="canAccessWorkflow" ref="workflowAddMenuAnchorRef" class="relative">
                 <button
                   type="button"
                   class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
@@ -1967,7 +1963,7 @@ onBeforeUnmount(() => {
                   <td class="px-3 py-2">
                     <div class="flex justify-end gap-2">
                       <button
-                        v-if="canManageWorkflow"
+                        v-if="canAccessWorkflow"
                         type="button"
                         class="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                         :disabled="workflowTemplateActionId === template.id"
@@ -1976,7 +1972,7 @@ onBeforeUnmount(() => {
                         编辑
                       </button>
                       <button
-                        v-if="canManageWorkflow"
+                        v-if="canAccessWorkflow"
                         type="button"
                         class="rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 py-1 text-xs font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-60"
                         :disabled="workflowTemplateActionId === template.id"

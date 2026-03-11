@@ -153,7 +153,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     const project = await this.projectsService.assertProjectCapability(
       createTaskDto.projectId,
       currentUser,
-      'project.task.create',
+      'project.task.read',
     );
 
     let resolvedMode: TaskMode = createTaskDto.mode ?? TaskMode.conversation;
@@ -421,7 +421,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     const task = await this.getTaskOrThrow(
       taskId,
       currentUser,
-      'project.task.create',
+      'project.task.read',
     );
     const updatePayload: Partial<Task> = {};
 
@@ -551,7 +551,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     const task = await this.getTaskOrThrow(
       taskId,
       currentUser,
-      'project.task.create',
+      'project.task.read',
     );
     const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
       task.id,
@@ -574,7 +574,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     let task = await this.getTaskOrThrow(
       taskId,
       currentUser,
-      'project.task.create',
+      'project.task.read',
     );
     const prepared = await this.prepareTaskRuntime(task, currentUser);
     task = prepared.task;
@@ -738,7 +738,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     let task = await this.getTaskOrThrow(
       taskId,
       currentUser,
-      'project.task.execute',
+      'project.task.read',
     );
     const prepared = await this.prepareTaskRuntime(task, currentUser);
     task = prepared.task;
@@ -795,7 +795,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     let task = await this.getTaskOrThrow(
       taskId,
       currentUser,
-      'project.task.execute',
+      'project.task.read',
     );
     const prepared = await this.prepareTaskRuntime(task, currentUser);
     task = prepared.task;
@@ -863,7 +863,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     const task = await this.getTaskOrThrow(
       taskId,
       currentUser,
-      'project.task.cancel',
+      'project.task.read',
     );
 
     const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
@@ -916,7 +916,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     const task = await this.getTaskOrThrow(
       taskId,
       currentUser,
-      'project.task.execute',
+      'project.task.read',
     );
 
     const targetNode = await this.taskNodeRepository.findById(
@@ -973,7 +973,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     const task = await this.getTaskOrThrow(
       taskId,
       currentUser,
-      'project.task.create',
+      'project.task.read',
     );
     const project = await this.getProjectByIdOrThrow(task.projectId);
 
@@ -1067,7 +1067,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     const task = await this.getTaskOrThrow(
       taskId,
       currentUser,
-      'project.task.create',
+      'project.task.read',
     );
 
     if (createTaskArtifactDto.taskNodeId) {

@@ -106,7 +106,7 @@ beforeEach(() => {
   tasksApi.artifacts.mockResolvedValue([])
   tasksApi.execute.mockRejectedValue(new Error('执行异常'))
   authApi.access.mockResolvedValue({
-    capabilities: ['project.task.read', 'project.task.execute', 'project.task.create', 'project.task.cancel'],
+    capabilities: ['project.task.read'],
     currentContext: {
       businessLineId: 'business-line-1',
       businessRole: 'owner',
