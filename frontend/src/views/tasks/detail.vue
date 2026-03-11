@@ -188,16 +188,20 @@ const executionMessages = computed(() => {
   })
 })
 
-const executionPanelTitle = computed(() => {
+const executionCliId = computed(() => {
   const selectedNode = selectedWorkflowNodeId.value
     ? sortedNodes.value.find((node) => node.id === selectedWorkflowNodeId.value) ?? null
     : null
-  const cliId =
+  return (
     selectedNode?.agentCliId ||
     taskConfig.value?.agentCliId ||
     sortedNodes.value[0]?.agentCliId ||
     ''
+  )
+})
 
+const executionPanelTitle = computed(() => {
+  const cliId = executionCliId.value
   return cliLabelMap[cliId] || cliId || 'Execution'
 })
 
@@ -213,6 +217,14 @@ const formatDate = (value?: string) => {
     minute: '2-digit',
     second: '2-digit',
   })
+}
+
+const isAgentOutputLog = (log: TaskLog) => {
+  return (
+    log.message === 'Agent CLI stdout chunk' ||
+    log.message === 'Agent CLI stderr chunk' ||
+    log.level === 'error'
+  )
 }
 
 const resolveLogMessageContent = (log: TaskLog) => {
@@ -278,7 +290,9 @@ const upsertLog = (nextLog: TaskLog) => {
     return leftAt - rightAt
   })
 
-  messages.value = logs.value.map(mapLogToMessage)
+  messages.value = logs.value
+    .filter(isAgentOutputLog)
+    .map(mapLogToMessage)
 }
 
 const clearReconnectTimer = () => {
@@ -630,6 +644,7 @@ onBeforeUnmount(() => {
           <ExecutionPanel
             :title="executionPanelTitle"
             :loading="loading"
+            :agent-cli-id="executionCliId"
             :task-status="task?.status || null"
             :task-status-label="taskStatusLabel"
             :task-status-class="taskStatusClass"

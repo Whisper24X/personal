@@ -696,39 +696,41 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       limit: 500,
     });
 
-    return logs.map((log) => {
-      const payload =
-        log.payload && typeof log.payload === 'object'
-          ? (log.payload as Record<string, unknown>)
-          : null;
+    return logs
+      .filter((log) => this.isAgentOutputLog(log))
+      .map((log) => {
+        const payload =
+          log.payload && typeof log.payload === 'object'
+            ? (log.payload as Record<string, unknown>)
+            : null;
 
-      const payloadRole =
-        payload && typeof payload.messageRole === 'string'
-          ? payload.messageRole
-          : null;
+        const payloadRole =
+          payload && typeof payload.messageRole === 'string'
+            ? payload.messageRole
+            : null;
 
-      let role: TaskMessageRole;
-      if (
-        payloadRole === TaskMessageRole.user ||
-        payloadRole === TaskMessageRole.assistant ||
-        payloadRole === TaskMessageRole.system ||
-        payloadRole === TaskMessageRole.error
-      ) {
-        role = payloadRole;
-      } else if (log.level === TaskLogLevel.error) {
-        role = TaskMessageRole.error;
-      } else {
-        role = TaskMessageRole.system;
-      }
+        let role: TaskMessageRole;
+        if (
+          payloadRole === TaskMessageRole.user ||
+          payloadRole === TaskMessageRole.assistant ||
+          payloadRole === TaskMessageRole.system ||
+          payloadRole === TaskMessageRole.error
+        ) {
+          role = payloadRole;
+        } else if (log.level === TaskLogLevel.error) {
+          role = TaskMessageRole.error;
+        } else {
+          role = TaskMessageRole.system;
+        }
 
-      return {
-        role,
-        content: this.resolveTaskLogMessageContent(log),
-        createdAt: log.createdAt,
-        taskNodeId: log.taskNodeId ?? null,
-        level: log.level,
-      };
-    });
+        return {
+          role,
+          content: this.resolveTaskLogMessageContent(log),
+          createdAt: log.createdAt,
+          taskNodeId: log.taskNodeId ?? null,
+          level: log.level,
+        };
+      });
   }
 
   async execute(
@@ -3159,6 +3161,14 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     this.taskLogEventsService.emit(log);
 
     return log;
+  }
+
+  private isAgentOutputLog(log: TaskLog): boolean {
+    return (
+      log.message === 'Agent CLI stdout chunk' ||
+      log.message === 'Agent CLI stderr chunk' ||
+      log.level === TaskLogLevel.error
+    );
   }
 
   private resolveTaskLogMessageContent(log: TaskLog): string {
