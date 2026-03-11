@@ -2,6 +2,7 @@ export type NormalizedEntryType =
   | 'assistant_message'
   | 'user_message'
   | 'system_message'
+  | 'thinking'
   | 'tool_use'
   | 'tool_result'
   | 'command_run'

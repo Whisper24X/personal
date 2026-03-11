@@ -93,7 +93,9 @@ function parseOpencodeLine(
         if (eventType?.toLowerCase().includes('error')) {
           return createEntry('error', eventContent, timestamp, `${idBase}-error`)
         }
-        return createEntry('system_message', eventContent, timestamp, `${idBase}-system`)
+        return createEntry('system_message', eventContent, timestamp, `${idBase}-system`, {
+          sdkEventType: eventType,
+        })
       }
     }
 

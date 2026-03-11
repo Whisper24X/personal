@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Task } from '@/types/api/tasks'
 
 defineOptions({
@@ -15,15 +15,19 @@ const props = defineProps<{
   actionLoading: boolean
   canExecute: boolean
   canRemove?: boolean
+  rightPanelVisible?: boolean
 }>()
 
 const emit = defineEmits<{
   execute: []
   refresh: []
   remove: []
+  toggleRightPanel: []
 }>()
 
 const promptExpanded = ref(false)
+const moreMenuOpen = ref(false)
+const moreMenuRef = ref<HTMLDivElement | null>(null)
 
 const promptText = computed(() => {
   return (props.task?.prompt ?? '').trim()
@@ -40,6 +44,20 @@ const canTogglePrompt = computed(() => {
 
 watch(promptText, () => {
   promptExpanded.value = false
+})
+
+function handleClickOutside(e: MouseEvent) {
+  if (moreMenuRef.value && !moreMenuRef.value.contains(e.target as Node)) {
+    moreMenuOpen.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside, true)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleClickOutside, true)
 })
 </script>
 
@@ -78,17 +96,55 @@ watch(promptText, () => {
           </svg>
         </button>
         <button
-          v-if="props.canRemove"
-          class="flex size-6 items-center justify-center rounded-md border border-border/60 bg-background text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40"
-          :disabled="props.actionLoading"
+          class="flex size-6 items-center justify-center rounded-md border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           type="button"
-          aria-label="删除任务"
-          @click="emit('remove')"
+          :aria-label="props.rightPanelVisible ? '收起右侧面板' : '展开右侧面板'"
+          :title="props.rightPanelVisible ? '收起右侧面板' : '展开右侧面板'"
+          @click="emit('toggleRightPanel')"
         >
           <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 0 0 6 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 1 0 .23 1.482l.149-.022 1.005 11.36A2.75 2.75 0 0 0 7.76 20h4.48a2.75 2.75 0 0 0 2.742-2.53l1.005-11.36.149.022a.75.75 0 1 0 .23-1.482A41.03 41.03 0 0 0 14 4.193V3.75A2.75 2.75 0 0 0 11.25 1h-2.5ZM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4ZM8.58 7.72a.75.75 0 0 1 .7.8l-.5 5.5a.75.75 0 0 1-1.495-.137l.5-5.5a.75.75 0 0 1 .795-.662Zm2.84 0a.75.75 0 0 1 .795.662l.5 5.5a.75.75 0 1 1-1.495.136l-.5-5.5a.75.75 0 0 1 .7-.798Z" clip-rule="evenodd" />
+            <path v-if="props.rightPanelVisible" fill-rule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zM2 10a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 10zm0 5.25a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75z" clip-rule="evenodd" />
+            <path v-else fill-rule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 5.25a.75.75 0 01.75-.75h7.5a.75.75 0 010 1.5h-7.5A.75.75 0 012 10zm0 5.25a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75a.75.75 0 01-.75-.75z" clip-rule="evenodd" />
           </svg>
         </button>
+        <!-- More menu -->
+        <div v-if="props.canRemove" ref="moreMenuRef" class="relative">
+          <button
+            class="flex size-6 items-center justify-center rounded-md border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            type="button"
+            aria-label="更多操作"
+            title="更多操作"
+            @click="moreMenuOpen = !moreMenuOpen"
+          >
+            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M3 10a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0ZM8.5 10a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0ZM15.5 8.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z" />
+            </svg>
+          </button>
+
+          <Transition
+            enter-active-class="transition duration-100 ease-out"
+            leave-active-class="transition duration-75 ease-in"
+            enter-from-class="opacity-0 scale-95"
+            leave-to-class="opacity-0 scale-95"
+          >
+            <div
+              v-if="moreMenuOpen"
+              class="absolute right-0 top-full z-30 mt-1 min-w-[120px] rounded-lg border border-border bg-background py-1 shadow-lg"
+            >
+              <button
+                class="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-40"
+                :disabled="props.actionLoading"
+                type="button"
+                @click="moreMenuOpen = false; emit('remove')"
+              >
+                <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 0 0 6 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 1 0 .23 1.482l.149-.022 1.005 11.36A2.75 2.75 0 0 0 7.76 20h4.48a2.75 2.75 0 0 0 2.742-2.53l1.005-11.36.149.022a.75.75 0 1 0 .23-1.482A41.03 41.03 0 0 0 14 4.193V3.75A2.75 2.75 0 0 0 11.25 1h-2.5ZM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4ZM8.58 7.72a.75.75 0 0 1 .7.8l-.5 5.5a.75.75 0 0 1-1.495-.137l.5-5.5a.75.75 0 0 1 .795-.662Zm2.84 0a.75.75 0 0 1 .795.662l.5 5.5a.75.75 0 1 1-1.495.136l-.5-5.5a.75.75 0 0 1 .7-.798Z" clip-rule="evenodd" />
+                </svg>
+                删除任务
+              </button>
+            </div>
+          </Transition>
+        </div>
       </div>
     </div>
 

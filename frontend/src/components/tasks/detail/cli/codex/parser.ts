@@ -1,4 +1,4 @@
-import type { NormalizedEntry, NormalizedEntryType, RecordLike } from '../types'
+import type { NormalizedEntry, RecordLike } from '../types'
 import type { TaskMessage } from '@/types/api/tasks'
 import {
   asRecord,
@@ -285,9 +285,9 @@ function parseCodexMessage(
     if (normalizedType === 'exec_command_end')
       return createCodexCommandEnd(msg, timestamp, makeId(idBase, 'exec-end'))
     if (normalizedType === 'patch_apply_begin')
-      return createEntry('system_message', formatPatchApplyBegin(msg), timestamp, makeId(idBase, 'patch-begin'))
+      return createEntry('system_message', formatPatchApplyBegin(msg), timestamp, makeId(idBase, 'patch-begin'), { codexEventType: 'patch_begin' })
     if (normalizedType === 'patch_apply_end')
-      return createEntry('system_message', formatPatchApplyEnd(msg), timestamp, makeId(idBase, 'patch-end'))
+      return createEntry('system_message', formatPatchApplyEnd(msg), timestamp, makeId(idBase, 'patch-end'), { codexEventType: 'patch_end', success: msg.success === true })
 
     if (normalizedType.startsWith('item_')) {
       const itemEntry = parseCodexItemEvent(msg, timestamp, normalizedType, makeId(idBase, 'item'))
@@ -300,7 +300,7 @@ function parseCodexMessage(
     if (normalizedType === 'turn_started')
       return createEntry('system_message', 'Turn started', timestamp, makeId(idBase, 'turn-start'))
     if (normalizedType === 'turn_completed')
-      return createEntry('system_message', formatTurnCompleted(msg), timestamp, makeId(idBase, 'turn-end'))
+      return createEntry('system_message', formatTurnCompleted(msg), timestamp, makeId(idBase, 'turn-end'), { codexEventType: 'turn_completed' })
 
     if (['agent_message', 'agent_message_delta', 'assistant_message', 'message', 'response'].includes(normalizedType)) {
       if (!content) return null

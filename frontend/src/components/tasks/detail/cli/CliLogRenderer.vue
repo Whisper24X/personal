@@ -1,26 +1,30 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, type Component } from 'vue'
 import type { TaskMessage } from '@/types/api/tasks'
-import { parseMessages } from './parsers'
-import LogCard from './LogCard.vue'
+import CursorAgentRenderer from './cursor-agent/Renderer.vue'
+import ClaudeCodeRenderer from './claude-code/Renderer.vue'
+import CodexRenderer from './codex/Renderer.vue'
+import OpencodeRenderer from './opencode/Renderer.vue'
+import GeminiRenderer from './gemini/Renderer.vue'
+import FallbackRenderer from './fallback/Renderer.vue'
 
 const props = defineProps<{
   agentCliId: string
   messages: TaskMessage[]
 }>()
 
-const entries = computed(() => parseMessages(props.agentCliId, props.messages))
+const rendererMap: Record<string, Component> = {
+  'cursor-agent': CursorAgentRenderer,
+  'cursor': CursorAgentRenderer,
+  'claude-code': ClaudeCodeRenderer,
+  'codex': CodexRenderer,
+  'opencode': OpencodeRenderer,
+  'gemini-cli': GeminiRenderer,
+}
+
+const rendererComponent = computed(() => rendererMap[props.agentCliId] || FallbackRenderer)
 </script>
 
 <template>
-  <div v-if="entries.length > 0" class="space-y-2">
-    <LogCard
-      v-for="entry in entries"
-      :key="entry.id"
-      :entry="entry"
-    />
-  </div>
-  <div v-else class="flex h-full items-center justify-center text-sm text-muted-foreground">
-    暂无执行日志
-  </div>
+  <component :is="rendererComponent" :messages="messages" />
 </template>

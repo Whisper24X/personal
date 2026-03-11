@@ -13,7 +13,8 @@ import {
 
 function extractExitCode(output: string): number | undefined {
   const match = output.match(/\[Process exited with code (\d+)\]/)
-  return match ? Number.parseInt(match[1], 10) : undefined
+  const exitCode = match?.[1]
+  return exitCode ? Number.parseInt(exitCode, 10) : undefined
 }
 
 function parseClaudeToolUse(
@@ -75,7 +76,10 @@ function parseClaudeAssistantMessage(
   }
 
   if (entries.length === 0) return null
-  return entries.length === 1 ? entries[0] : entries
+  if (entries.length === 1) {
+    return entries[0] ?? null
+  }
+  return entries
 }
 
 function parseClaudeUserMessage(
@@ -145,11 +149,16 @@ function parseClaudeResultMessage(
 ): NormalizedEntry | null {
   const durationMs = getNumber(msg.duration_ms)
   const totalCost = getNumber(msg.total_cost_usd)
-  const status = getString(msg.subtype) === 'success' ? '\u2713' : '\u2717'
+  const subtype = getString(msg.subtype)
+  const status = subtype === 'success' ? '\u2713' : '\u2717'
   const duration = durationMs ? `${(durationMs / 1000).toFixed(1)}s` : ''
   const cost = totalCost ? `$${totalCost.toFixed(4)}` : ''
   const content = `${status} Completed ${duration ? `in ${duration}` : ''} ${cost ? `(${cost})` : ''}`.trim()
-  return createEntry('system_message', content, timestamp, makeId(idBase, 'result'))
+  return createEntry('system_message', content, timestamp, makeId(idBase, 'result'), {
+    durationMs,
+    totalCostUsd: totalCost,
+    resultSubtype: subtype,
+  })
 }
 
 function parseClaudeCodeLine(

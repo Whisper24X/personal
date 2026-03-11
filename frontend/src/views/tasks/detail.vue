@@ -626,9 +626,11 @@ onBeforeUnmount(() => {
             :action-loading="actionLoading"
             :can-execute="canExecute"
             :can-remove="canRemove"
+            :right-panel-visible="isRightPanelVisible"
             @execute="executeTask"
             @refresh="loadTaskData"
             @remove="deleteOpen = true"
+            @toggle-right-panel="isRightPanelVisible = !isRightPanelVisible"
           />
 
           <WorkflowCard
@@ -661,7 +663,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="isRightPanelVisible" class="bg-border/50 w-px shrink-0" />
+      <div v-if="isRightPanelVisible" class="bg-border/50 h-full w-px shrink-0" />
 
       <RightPanelSection
         v-if="isRightPanelVisible"
