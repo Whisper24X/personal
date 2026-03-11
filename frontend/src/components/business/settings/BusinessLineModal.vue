@@ -293,15 +293,6 @@ const canManageActiveLine = computed(() => {
   return hasActiveLineCapability('businessLine.update')
 })
 
-const canManageActiveLineMembers = computed(() => {
-  return hasAnyActiveLineCapability(
-    'businessLine.member.read',
-    'businessLine.member.invite',
-    'businessLine.member.remove',
-    'businessLine.member.updateRole',
-  )
-})
-
 const canInviteMembers = computed(() =>
   hasActiveLineCapability('businessLine.member.invite'),
 )

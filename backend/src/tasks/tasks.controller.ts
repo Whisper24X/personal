@@ -12,7 +12,8 @@ import {
   Patch,
   Post,
   Query,
-  Request, Res,
+  Request,
+  Res,
   Sse,
   UseGuards,
 } from '@nestjs/common';
@@ -255,11 +256,12 @@ export class TasksController {
     @Query() query: TaskWorkspaceFileQueryDto,
     @Res() res: Response,
   ) {
-    const { stream, mimeType, size } = await this.taskWorkspaceService.getWorkspaceFileStream(
-      id,
-      query,
-      request.user,
-    );
+    const { stream, mimeType, size } =
+      await this.taskWorkspaceService.getWorkspaceFileStream(
+        id,
+        query,
+        request.user,
+      );
     res.set({
       'Content-Type': mimeType,
       'Content-Length': size,

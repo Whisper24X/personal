@@ -1,9 +1,5 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import VuePdfEmbed from 'vue-pdf-embed'
-// 必须引入样式，否则可能无法正确渲染
-import 'vue-pdf-embed/dist/styles/annotationLayer.css'
-import 'vue-pdf-embed/dist/styles/textLayer.css'
 
 defineOptions({
   name: 'PdfPreview',
@@ -31,23 +27,19 @@ const handleLoaded = () => {
   isLoading.value = false
 }
 
-const handleRendered = () => {
-  isLoading.value = false
+const toErrorMessage = (error: unknown) => {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return String(error)
 }
 
-const handleError = (error: any) => {
+const handleError = (error: unknown) => {
   console.error('PDF load error:', error)
   isLoading.value = false
   hasError.value = true
-  errorMessage.value = error?.message || String(error)
-}
-
-const handleLoadingFailed = (error: Error) => {
-  handleError(error)
-}
-
-const handleRenderingFailed = (error: Error) => {
-  handleError(error)
+  errorMessage.value = toErrorMessage(error)
 }
 </script>
 
@@ -76,31 +68,26 @@ const handleRenderingFailed = (error: Error) => {
       </div>
     </div>
 
-    <div class="flex-1 px-4 py-6 relative">
-      <VuePdfEmbed
+    <div class="relative flex-1 px-4 py-6">
+      <iframe
         v-if="props.src"
-        :source="props.src"
-        :width="960"
-        :text-layer="false"
-        :annotation-layer="false"
-        class="pdf-embed mx-auto shadow-xl bg-white min-h-[500px] w-full"
-        @loaded="handleLoaded"
-        @rendered="handleRendered"
+        :src="props.src"
+        class="pdf-embed mx-auto min-h-[500px] w-full bg-white shadow-xl"
+        title="PDF 预览"
+        @load="handleLoaded"
         @error="handleError"
-        @loading-failed="handleLoadingFailed"
-        @rendering-failed="handleRenderingFailed"
       />
     </div>
   </div>
 </template>
 
 <style scoped>
-.pdf-embed :deep(canvas) {
+.pdf-embed {
   display: block !important;
-  visibility: visible !important;
-  opacity: 1 !important;
   width: 100% !important;
-  height: auto !important;
+  height: 100% !important;
+  min-height: 70vh;
+  border: 0;
   background: #fff;
 }
 </style>

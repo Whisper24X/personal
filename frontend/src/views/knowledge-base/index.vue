@@ -140,19 +140,6 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, msg: strin
   }
 }
 
-const formatDate = (value?: string) => {
-  if (!value) return '-'
-  const parsedDate = new Date(value)
-  if (Number.isNaN(parsedDate.getTime())) return value
-  return parsedDate.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 const loadSelectedDoc = async () => {
   const projectId = activeProjectId.value
   const filePath = selectedPath.value

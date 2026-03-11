@@ -186,7 +186,10 @@ export class ProjectDocsPreviewDto {
   @ApiProperty({ type: String })
   path: string;
 
-  @ApiProperty({ type: String, enum: ['text', 'image', 'binary', 'pdf', 'video', 'audio'] })
+  @ApiProperty({
+    type: String,
+    enum: ['text', 'image', 'binary', 'pdf', 'video', 'audio'],
+  })
   previewType: 'text' | 'image' | 'binary' | 'pdf' | 'video' | 'audio';
 
   @ApiProperty({ type: Boolean })

@@ -834,7 +834,10 @@ export class ProjectsService {
         const absoluteEntryPath = path.join(targetPath, entry.name);
         return {
           name: entry.name,
-          path: path.relative(docsRoot, absoluteEntryPath).split(path.sep).join('/'),
+          path: path
+            .relative(docsRoot, absoluteEntryPath)
+            .split(path.sep)
+            .join('/'),
           isDir: entry.isDirectory(),
         };
       })
@@ -851,7 +854,6 @@ export class ProjectsService {
     return { cwd: cwd || '.', entries };
   }
 
-  
   async docsFileStream(
     projectId: Project['id'],
     query: ProjectDocsPreviewQueryDto,
@@ -862,7 +864,7 @@ export class ProjectsService {
       currentUser,
       { syncRemote: false },
     );
-    const docsRoot = require('path').resolve(require('path').join(repositoryRoot, 'docs'));
+    const docsRoot = path.resolve(path.join(repositoryRoot, 'docs'));
     const relativePath = this.normalizeProjectDocPath(query.path);
     const absolutePath = this.resolveProjectDocAbsolutePath(
       docsRoot,

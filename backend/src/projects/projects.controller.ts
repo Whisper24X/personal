@@ -351,11 +351,8 @@ export class ProjectsController {
     @Query() query: ProjectDocsPreviewQueryDto,
     @Res() res: Response,
   ) {
-    const { stream, mimeType, size } = await this.projectsService.docsFileStream(
-      id,
-      query,
-      request.user,
-    );
+    const { stream, mimeType, size } =
+      await this.projectsService.docsFileStream(id, query, request.user);
     res.set({
       'Content-Type': mimeType,
       'Content-Length': size,

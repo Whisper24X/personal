@@ -86,7 +86,6 @@ export class TaskWorkspaceService {
     };
   }
 
-  
   async getWorkspaceFileStream(
     taskId: string,
     query: TaskWorkspaceFileQueryDto,
