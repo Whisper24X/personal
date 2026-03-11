@@ -1,3 +1,4 @@
+import { Response } from 'express';
 import {
   Body,
   Controller,
@@ -11,7 +12,7 @@ import {
   Patch,
   Post,
   Query,
-  Request,
+  Request, Res,
   Sse,
   UseGuards,
 } from '@nestjs/common';
@@ -243,6 +244,28 @@ export class TasksController {
     @Query() query: TaskWorkspaceTreeQueryDto,
   ) {
     return this.taskWorkspaceService.getWorkspaceTree(id, query, request.user);
+  }
+
+  @Get(':id/workspace/file/raw')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @HttpCode(HttpStatus.OK)
+  async workspaceFileRaw(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: TaskWorkspaceFileQueryDto,
+    @Res() res: Response,
+  ) {
+    const { stream, mimeType, size } = await this.taskWorkspaceService.getWorkspaceFileStream(
+      id,
+      query,
+      request.user,
+    );
+    res.set({
+      'Content-Type': mimeType,
+      'Content-Length': size,
+      'Content-Disposition': `inline; filename="${encodeURIComponent(query.path.split('/').pop() || 'file')}"`,
+    });
+    stream.pipe(res);
   }
 
   @Get(':id/workspace/file')

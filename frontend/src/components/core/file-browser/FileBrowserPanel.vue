@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import FileTree from './FileTree.vue'
-import FilePreviewPanel from './FilePreviewPanel.vue'
+import FilePreviewCard from './FilePreviewCard.vue'
 import {
   createFileTreeNodes,
   updateFileTreeChildren,
@@ -83,12 +83,19 @@ const resetState = () => {
   previewErrorMessage.value = ''
 }
 
+const normalizePreviewType = (raw: FileBrowserPreview): FileBrowserPreview => {
+  if (raw.previewType === 'text' && raw.mimeType === 'text/markdown') {
+    return { ...raw, previewType: 'markdown' }
+  }
+  return raw
+}
+
 const loadPreview = async (path: string) => {
   previewLoading.value = true
   previewErrorMessage.value = ''
 
   try {
-    preview.value = await props.loadPreview(path)
+    preview.value = normalizePreviewType(await props.loadPreview(path))
   } catch (error) {
     preview.value = null
     previewErrorMessage.value = toErrorMessage(error, props.previewLoadErrorText)
@@ -198,8 +205,8 @@ watch(
 </script>
 
 <template>
-  <div class="flex h-full min-w-0">
-    <aside class="border-border/70 flex w-80 shrink-0 flex-col border-r bg-muted/10">
+  <div class="flex h-full min-h-0 min-w-0 overflow-hidden">
+    <aside class="border-border/70 flex min-h-0 w-80 shrink-0 flex-col border-r bg-muted/10">
       <header class="border-border/70 flex h-12 items-center justify-between border-b bg-background/80 px-3 text-xs backdrop-blur">
         <div class="min-w-0">
           <p class="truncate text-foreground">{{ props.headerTitle || '-' }}</p>
@@ -232,11 +239,18 @@ watch(
       </div>
     </aside>
 
-    <FilePreviewPanel
+    <FilePreviewCard
       :selected-path="selectedPath"
       :preview="preview"
       :loading="previewLoading"
       :error-message="previewErrorMessage"
-    />
+    >
+      <template v-if="$slots.actions" #actions>
+        <slot name="actions" />
+      </template>
+      <template v-if="$slots.footer" #footer>
+        <slot name="footer" />
+      </template>
+    </FilePreviewCard>
   </div>
 </template>

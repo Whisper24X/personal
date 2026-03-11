@@ -29,7 +29,7 @@ const activeTab = ref<'preview' | 'files' | 'git' | 'terminal'>('files')
 </script>
 
 <template>
-  <div class="flex h-full min-w-0 flex-col">
+  <div class="flex h-full min-h-0 min-w-0 flex-col">
     <div class="border-border/70 border-b px-3 py-2">
       <div class="flex gap-1">
         <button

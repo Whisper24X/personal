@@ -1,3 +1,4 @@
+import { createReadStream } from 'fs';
 import {
   BadRequestException,
   ConflictException,
@@ -29,6 +30,8 @@ import {
   ProjectRepositoryInspectionDto,
 } from './dto/inspect-project-repository.dto';
 import {
+  ProjectDocsPreviewQueryDto,
+  ProjectDocsTreeQueryDto,
   QueryProjectDocsDto,
   QueryProjectDocsResponseDto,
   SaveProjectDocDto,
@@ -788,6 +791,208 @@ export class ProjectsService {
     }
   }
 
+  private readonly maxTextPreviewBytes = 256 * 1024;
+  private readonly maxImagePreviewBytes = 4 * 1024 * 1024;
+
+  async docsTree(
+    projectId: Project['id'],
+    query: ProjectDocsTreeQueryDto,
+    currentUser: JwtPayloadType,
+  ): Promise<{
+    cwd: string;
+    entries: Array<{ name: string; path: string; isDir: boolean }>;
+  }> {
+    const { repositoryRoot } = await this.ensureProjectRepositoryReady(
+      projectId,
+      currentUser,
+      { syncRemote: false },
+    );
+    const docsRoot = path.resolve(path.join(repositoryRoot, 'docs'));
+    await fs.mkdir(docsRoot, { recursive: true });
+
+    const targetPath = this.resolveDocsBrowsePath(docsRoot, query.path);
+
+    const stat = await fs.stat(targetPath).catch(() => null);
+    if (!stat || !stat.isDirectory()) {
+      throw new NotFoundException('Docs path not found or not a directory');
+    }
+
+    const dirEntries = await fs.readdir(targetPath, { withFileTypes: true });
+
+    const entries = dirEntries
+      .filter((entry) => entry.isDirectory() || entry.isFile())
+      .map((entry) => {
+        const absoluteEntryPath = path.join(targetPath, entry.name);
+        return {
+          name: entry.name,
+          path: path.relative(docsRoot, absoluteEntryPath).split(path.sep).join('/'),
+          isDir: entry.isDirectory(),
+        };
+      })
+      .sort((left, right) => {
+        if (left.isDir && !right.isDir) return -1;
+        if (!left.isDir && right.isDir) return 1;
+        return left.name.localeCompare(right.name, undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        });
+      });
+
+    const cwd = path.relative(docsRoot, targetPath);
+    return { cwd: cwd || '.', entries };
+  }
+
+  
+  async docsFileStream(
+    projectId: Project['id'],
+    query: ProjectDocsPreviewQueryDto,
+    currentUser: JwtPayloadType,
+  ) {
+    const { repositoryRoot } = await this.ensureProjectRepositoryReady(
+      projectId,
+      currentUser,
+      { syncRemote: false },
+    );
+    const docsRoot = require('path').resolve(require('path').join(repositoryRoot, 'docs'));
+    const relativePath = this.normalizeProjectDocPath(query.path);
+    const absolutePath = this.resolveProjectDocAbsolutePath(
+      docsRoot,
+      relativePath,
+    );
+
+    const stat = await fs.stat(absolutePath).catch(() => null);
+    if (!stat || !stat.isFile()) {
+      throw new NotFoundException('Doc file not found');
+    }
+
+    const mimeType = this.resolveDocMimeType(absolutePath);
+    const stream = createReadStream(absolutePath);
+
+    return {
+      stream,
+      mimeType,
+      size: stat.size,
+    };
+  }
+
+  async docsPreview(
+    projectId: Project['id'],
+    query: ProjectDocsPreviewQueryDto,
+    currentUser: JwtPayloadType,
+  ): Promise<{
+    path: string;
+    previewType: 'text' | 'image' | 'binary' | 'pdf' | 'video' | 'audio';
+    tooLarge: boolean;
+    size: number;
+    mimeType?: string | null;
+    text?: string | null;
+    dataUrl?: string | null;
+  }> {
+    const { repositoryRoot } = await this.ensureProjectRepositoryReady(
+      projectId,
+      currentUser,
+      { syncRemote: false },
+    );
+    const docsRoot = path.resolve(path.join(repositoryRoot, 'docs'));
+    const relativePath = this.normalizeProjectDocPath(query.path);
+    const absolutePath = this.resolveProjectDocAbsolutePath(
+      docsRoot,
+      relativePath,
+    );
+
+    const stat = await fs.stat(absolutePath).catch(() => null);
+    if (!stat || !stat.isFile()) {
+      throw new NotFoundException('Docs file not found');
+    }
+
+    const mimeType = this.resolveDocMimeType(absolutePath);
+
+    if (mimeType === 'application/pdf') {
+      return {
+        path: relativePath,
+        previewType: 'pdf',
+        tooLarge: false,
+        size: stat.size,
+        mimeType,
+      };
+    }
+
+    if (mimeType.startsWith('video/')) {
+      return {
+        path: relativePath,
+        previewType: 'video',
+        tooLarge: false,
+        size: stat.size,
+        mimeType,
+      };
+    }
+
+    if (mimeType.startsWith('audio/')) {
+      return {
+        path: relativePath,
+        previewType: 'audio',
+        tooLarge: false,
+        size: stat.size,
+        mimeType,
+      };
+    }
+
+    if (mimeType.startsWith('image/')) {
+      if (stat.size > this.maxImagePreviewBytes) {
+        return {
+          path: relativePath,
+          previewType: 'image',
+          tooLarge: true,
+          size: stat.size,
+          mimeType,
+          dataUrl: null,
+        };
+      }
+      const fileBuffer = await fs.readFile(absolutePath);
+      return {
+        path: relativePath,
+        previewType: 'image',
+        tooLarge: false,
+        size: stat.size,
+        mimeType,
+        dataUrl: `data:${mimeType};base64,${fileBuffer.toString('base64')}`,
+      };
+    }
+
+    if (stat.size > this.maxTextPreviewBytes) {
+      return {
+        path: relativePath,
+        previewType: this.isDocTextLikeMime(mimeType) ? 'text' : 'binary',
+        tooLarge: true,
+        size: stat.size,
+        mimeType,
+      };
+    }
+
+    const fileBuffer = await fs.readFile(absolutePath);
+    const isText =
+      this.isDocTextLikeMime(mimeType) || this.isDocTextBuffer(fileBuffer);
+
+    if (!isText) {
+      return {
+        path: relativePath,
+        previewType: 'binary',
+        tooLarge: false,
+        size: stat.size,
+        mimeType,
+      };
+    }
+
+    return {
+      path: relativePath,
+      previewType: 'text',
+      tooLarge: false,
+      size: stat.size,
+      mimeType,
+      text: fileBuffer.toString('utf-8'),
+    };
+  }
+
   async listDocs(
     projectId: Project['id'],
     currentUser: JwtPayloadType,
@@ -945,8 +1150,25 @@ export class ProjectsService {
       throw new ConflictException('Project doc already exists');
     }
 
-    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-    await fs.writeFile(absolutePath, payload.content ?? '', 'utf-8');
+    const parentDir = path.dirname(absolutePath);
+    const parentStat = await fs.stat(parentDir).catch(() => null);
+    if (parentStat?.isFile()) {
+      const parentRelative = path
+        .relative(docsRoot, parentDir)
+        .replace(/\\/g, '/');
+      throw new ConflictException(
+        `路径「${parentRelative}」已存在为文件，无法在其下创建子文件。请删除该文件或选择其他路径。`,
+      );
+    }
+
+    await fs.mkdir(parentDir, { recursive: true });
+
+    if (payload.contentBase64 != null && payload.contentBase64 !== '') {
+      const buf = Buffer.from(payload.contentBase64, 'base64');
+      await fs.writeFile(absolutePath, buf);
+    } else {
+      await fs.writeFile(absolutePath, payload.content ?? '', 'utf-8');
+    }
 
     return this.readDoc(projectId, relativePath, currentUser);
   }
@@ -978,7 +1200,12 @@ export class ProjectsService {
       throw new NotFoundException('Project doc not found');
     }
 
-    await fs.writeFile(absolutePath, payload.content ?? '', 'utf-8');
+    if (payload.contentBase64 != null && payload.contentBase64 !== '') {
+      const buf = Buffer.from(payload.contentBase64, 'base64');
+      await fs.writeFile(absolutePath, buf);
+    } else {
+      await fs.writeFile(absolutePath, payload.content ?? '', 'utf-8');
+    }
     return this.readDoc(projectId, relativePath, currentUser);
   }
 
@@ -1750,6 +1977,85 @@ export class ProjectsService {
     }
 
     return absolutePath;
+  }
+
+  private resolveDocsBrowsePath(
+    docsRoot: string,
+    relativePath?: string,
+  ): string {
+    const raw = relativePath?.trim();
+    if (!raw || raw === '.') {
+      return docsRoot;
+    }
+
+    if (path.isAbsolute(raw)) {
+      throw new BadRequestException('Absolute path is not allowed');
+    }
+
+    const normalized = path
+      .normalize(raw.replace(/\\/g, '/'))
+      .replace(/[\\/]+$/, '');
+
+    if (normalized.split(path.sep).some((segment) => segment === '..')) {
+      throw new BadRequestException('Docs path cannot escape docs root');
+    }
+
+    const absolutePath = path.resolve(docsRoot, normalized);
+    const relative = path.relative(docsRoot, absolutePath);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new BadRequestException('Docs path cannot escape docs root');
+    }
+
+    return absolutePath;
+  }
+
+  private resolveDocMimeType(filePath: string): string {
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      '.txt': 'text/plain',
+      '.md': 'text/markdown',
+      '.json': 'application/json',
+      '.yml': 'text/yaml',
+      '.yaml': 'text/yaml',
+      '.ts': 'text/typescript',
+      '.tsx': 'text/typescript',
+      '.js': 'text/javascript',
+      '.jsx': 'text/javascript',
+      '.vue': 'text/plain',
+      '.css': 'text/css',
+      '.scss': 'text/x-scss',
+      '.html': 'text/html',
+      '.xml': 'application/xml',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.svg': 'image/svg+xml',
+      '.bmp': 'image/bmp',
+      '.ico': 'image/x-icon',
+      '.pdf': 'application/pdf',
+      '.zip': 'application/zip',
+      '.tar': 'application/x-tar',
+      '.gz': 'application/gzip',
+    };
+    return mimeMap[ext] ?? 'application/octet-stream';
+  }
+
+  private isDocTextLikeMime(mimeType: string): boolean {
+    return (
+      mimeType.startsWith('text/') ||
+      mimeType === 'application/json' ||
+      mimeType === 'application/xml'
+    );
+  }
+
+  private isDocTextBuffer(value: Buffer): boolean {
+    const inspectLength = Math.min(value.length, 8_192);
+    for (let index = 0; index < inspectLength; index += 1) {
+      if (value[index] === 0) return false;
+    }
+    return true;
   }
 
   private resolveProjectStorageBaseDir(project: Project): string {

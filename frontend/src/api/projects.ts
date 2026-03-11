@@ -2,6 +2,8 @@ import type { ProjectContext } from '@/types/api/project-context'
 import type {
   ProjectDocContent,
   ProjectDocItem,
+  ProjectDocsPreview,
+  ProjectDocsTree,
   QueryProjectDocsPayload,
   QueryProjectDocsResponse,
   SaveProjectDocPayload,
@@ -19,7 +21,8 @@ import type {
   CreateProjectCustomRolePayload,
   UpdateProjectCustomRolePayload,
 } from '@/types/api/projects'
-import { apiHttp, type InfinityPaginationResponse } from './http'
+import { apiHttp, buildUrl, type InfinityPaginationResponse } from './http'
+import { STORAGE_KEYS } from '@/types/common/storage'
 
 export const projectsApi = {
   list(params?: { page?: number; limit?: number; businessLineId?: string; keyword?: string }) {
@@ -96,6 +99,23 @@ export const projectsApi = {
 
   listDocs(projectId: string) {
     return apiHttp.get<ProjectDocItem[]>(`/projects/${projectId}/docs`)
+  },
+
+  docsTree(projectId: string, params?: { path?: string }) {
+    return apiHttp.get<ProjectDocsTree>(`/projects/${projectId}/docs/tree`, {
+      path: params?.path,
+    })
+  },
+
+  
+  getDocsFileRawUrl(projectId: string, path: string) {
+    const token = localStorage.getItem(STORAGE_KEYS.authToken)
+    return buildUrl(`/projects/${projectId}/docs/file/raw`, { path, token }).toString()
+  },
+  docsPreview(projectId: string, path: string) {
+    return apiHttp.get<ProjectDocsPreview>(`/projects/${projectId}/docs/preview`, {
+      path,
+    })
   },
 
   readDoc(projectId: string, path: string) {

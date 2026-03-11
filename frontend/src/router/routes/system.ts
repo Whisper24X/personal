@@ -92,12 +92,8 @@ export const systemRoutes: AppRouteRecord[] = [
   },
   {
     path: '/projects/:id',
-    redirect: (to) => ({
-      path: '/dashboard',
-      query: {
-        projectId: resolveProjectId(to.params.id),
-      },
-    }),
+    name: 'project-detail',
+    component: () => import('@/views/projects/detail.vue'),
     meta: buildRouteAccessMeta('projectDetail'),
   },
   {

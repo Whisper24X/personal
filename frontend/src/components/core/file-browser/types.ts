@@ -11,7 +11,7 @@ export type FileBrowserTree = {
 
 export type FileBrowserPreview = {
   path: string
-  previewType: 'text' | 'image' | 'binary'
+  previewType: 'text' | 'image' | 'binary' | 'markdown' | 'pdf' | 'video' | 'audio'
   tooLarge: boolean
   size: number
   mimeType?: string | null

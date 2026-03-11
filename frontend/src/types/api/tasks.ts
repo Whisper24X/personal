@@ -131,7 +131,7 @@ export type TaskWorkspaceFile = {
 
 export type TaskWorkspacePreview = {
   path: string
-  previewType: 'text' | 'image' | 'binary'
+  previewType: 'text' | 'image' | 'binary' | 'pdf' | 'video' | 'audio'
   tooLarge: boolean
   size: number
   mimeType?: string | null
