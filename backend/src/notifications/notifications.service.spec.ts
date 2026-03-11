@@ -20,7 +20,7 @@ const createEvent = (overrides?: Partial<any>) => ({
   taskId: 'task-1',
   eventType: 'task.done',
   title: '任务执行完成',
-  content: '任务 task-1 已执行完成。',
+  content: '任务「测试任务」已执行完成。',
   payload: {
     status: 'done',
   },
@@ -137,6 +137,7 @@ describe('NotificationsService', () => {
     const event = await service.notifyTaskStatusChanged({
       userId: 'user-1',
       taskId: 'task-1',
+      taskTitle: '测试任务',
       status: 'done',
     });
     await flushPromises();
@@ -186,6 +187,7 @@ describe('NotificationsService', () => {
     await service.notifyTaskStatusChanged({
       userId: 'user-1',
       taskId: 'task-1',
+      taskTitle: '测试任务',
       status: 'done',
     });
     await flushPromises();
@@ -193,6 +195,7 @@ describe('NotificationsService', () => {
     await service.notifyTaskStatusChanged({
       userId: 'user-1',
       taskId: 'task-1',
+      taskTitle: '测试任务',
       status: 'done',
     });
     await flushPromises();
@@ -230,6 +233,7 @@ describe('NotificationsService', () => {
     const event = await service.notifyTaskStatusChanged({
       userId: 'user-1',
       taskId: 'task-1',
+      taskTitle: '测试任务',
       status: 'done',
     });
     await flushPromises();
@@ -276,12 +280,183 @@ describe('NotificationsService', () => {
     const event = await service.notifyTaskStatusChanged({
       userId: 'user-1',
       taskId: 'task-1',
+      taskTitle: '测试任务',
       status: 'in_review',
     });
     await flushPromises();
 
     expect(event).toEqual(expect.objectContaining({ id: 'event-1' }));
     expect(notificationEventRepository.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('should use taskTitle in notification content', async () => {
+    const notificationSettingRepository = {
+      findByUserId: jest
+        .fn()
+        .mockResolvedValue(createSetting({ browserEnabled: true })),
+      create: jest.fn(),
+      update: jest.fn(),
+    };
+    const notificationEventRepository = {
+      create: jest.fn().mockResolvedValue(createEvent()),
+      findByUserId: jest.fn(),
+      findById: jest.fn(),
+      markRead: jest.fn(),
+      markAllReadByUserId: jest.fn(),
+      deleteReadByUserId: jest.fn(),
+      countUnreadByUserId: jest.fn(),
+    };
+    const notificationEmailService = createNotificationEmailService();
+
+    const service = new NotificationsService(
+      notificationSettingRepository as never,
+      notificationEventRepository as never,
+      notificationEmailService as never,
+    );
+
+    await service.notifyTaskStatusChanged({
+      userId: 'user-1',
+      taskId: 'task-1',
+      taskTitle: '我的重要任务',
+      status: 'done',
+    });
+
+    expect(notificationEventRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: '任务「我的重要任务」已执行完成。',
+      }),
+    );
+  });
+
+  it('should fall back to taskId when taskTitle is not provided', async () => {
+    const notificationSettingRepository = {
+      findByUserId: jest
+        .fn()
+        .mockResolvedValue(createSetting({ browserEnabled: true })),
+      create: jest.fn(),
+      update: jest.fn(),
+    };
+    const notificationEventRepository = {
+      create: jest.fn().mockResolvedValue(createEvent()),
+      findByUserId: jest.fn(),
+      findById: jest.fn(),
+      markRead: jest.fn(),
+      markAllReadByUserId: jest.fn(),
+      deleteReadByUserId: jest.fn(),
+      countUnreadByUserId: jest.fn(),
+    };
+    const notificationEmailService = createNotificationEmailService();
+
+    const service = new NotificationsService(
+      notificationSettingRepository as never,
+      notificationEventRepository as never,
+      notificationEmailService as never,
+    );
+
+    await service.notifyTaskStatusChanged({
+      userId: 'user-1',
+      taskId: 'task-1',
+      status: 'done',
+    });
+
+    expect(notificationEventRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: '任务「task-1」已执行完成。',
+      }),
+    );
+  });
+
+  it('should mark all unread events as read', async () => {
+    const notificationSettingRepository = {
+      findByUserId: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    };
+    const notificationEventRepository = {
+      create: jest.fn(),
+      findByUserId: jest.fn(),
+      findById: jest.fn(),
+      markRead: jest.fn(),
+      markAllReadByUserId: jest.fn().mockResolvedValue(3),
+      deleteReadByUserId: jest.fn(),
+      countUnreadByUserId: jest.fn(),
+    };
+    const notificationEmailService = createNotificationEmailService();
+
+    const service = new NotificationsService(
+      notificationSettingRepository as never,
+      notificationEventRepository as never,
+      notificationEmailService as never,
+    );
+
+    const result = await service.markAllEventsRead('user-1');
+
+    expect(result).toEqual({ affected: 3 });
+    expect(
+      notificationEventRepository.markAllReadByUserId,
+    ).toHaveBeenCalledWith('user-1', expect.any(Date));
+  });
+
+  it('should delete all read events', async () => {
+    const notificationSettingRepository = {
+      findByUserId: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    };
+    const notificationEventRepository = {
+      create: jest.fn(),
+      findByUserId: jest.fn(),
+      findById: jest.fn(),
+      markRead: jest.fn(),
+      markAllReadByUserId: jest.fn(),
+      deleteReadByUserId: jest.fn().mockResolvedValue(5),
+      countUnreadByUserId: jest.fn(),
+    };
+    const notificationEmailService = createNotificationEmailService();
+
+    const service = new NotificationsService(
+      notificationSettingRepository as never,
+      notificationEventRepository as never,
+      notificationEmailService as never,
+    );
+
+    const result = await service.deleteReadEvents('user-1');
+
+    expect(result).toEqual({ affected: 5 });
+    expect(notificationEventRepository.deleteReadByUserId).toHaveBeenCalledWith(
+      'user-1',
+    );
+  });
+
+  it('should count unread events', async () => {
+    const notificationSettingRepository = {
+      findByUserId: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    };
+    const notificationEventRepository = {
+      create: jest.fn(),
+      findByUserId: jest.fn(),
+      findById: jest.fn(),
+      markRead: jest.fn(),
+      markAllReadByUserId: jest.fn(),
+      deleteReadByUserId: jest.fn(),
+      countUnreadByUserId: jest.fn().mockResolvedValue(7),
+    };
+    const notificationEmailService = createNotificationEmailService();
+
+    const service = new NotificationsService(
+      notificationSettingRepository as never,
+      notificationEventRepository as never,
+      notificationEmailService as never,
+    );
+
+    const result = await service.countUnreadEvents('user-1');
+
+    expect(result).toEqual({ count: 7 });
+    expect(
+      notificationEventRepository.countUnreadByUserId,
+    ).toHaveBeenCalledWith('user-1');
   });
 
   it('should skip browser event when browser channel is disabled', async () => {
@@ -313,6 +488,7 @@ describe('NotificationsService', () => {
     const event = await service.notifyTaskStatusChanged({
       userId: 'user-1',
       taskId: 'task-1',
+      taskTitle: '测试任务',
       status: 'done',
     });
 

@@ -877,6 +877,10 @@ export class AgentRunnerService {
       return args;
     }
 
+    if (adapter === 'cursor') {
+      return [...args, '--resume', normalizedSessionId];
+    }
+
     if (adapter === 'gemini') {
       return [...args, '--resume', normalizedSessionId];
     }
@@ -892,6 +896,12 @@ export class AgentRunnerService {
     adapter: AgentAdapter,
     continuationConfig: Record<string, unknown>,
   ): string | null {
+    if (adapter === 'cursor') {
+      return typeof continuationConfig.resume === 'string'
+        ? continuationConfig.resume
+        : null;
+    }
+
     if (adapter === 'gemini') {
       return typeof continuationConfig.resume === 'string'
         ? continuationConfig.resume

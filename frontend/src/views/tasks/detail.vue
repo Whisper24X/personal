@@ -153,7 +153,7 @@ const canExecute = computed(() => {
     return false
   }
 
-  return task.value.status === 'todo' || task.value.status === 'in_review'
+  return task.value.status === 'todo'
 })
 
 const canRemove = computed(() => {
@@ -164,8 +164,16 @@ const canManageReview = computed(() => {
   return hasButtonAccess('executeTask')
 })
 
+const isCliRunning = computed(() => {
+  return task.value?.status === 'in_progress'
+})
+
+const canInterruptExecution = computed(() => {
+  return isCliRunning.value && hasButtonAccess('cancelTask')
+})
+
 const replyDisabled = computed(() => {
-  return !task.value || actionLoading.value || task.value.status === 'in_progress'
+  return !task.value || actionLoading.value || isCliRunning.value
 })
 
 const replyPlaceholder = computed(() => {
@@ -295,6 +303,17 @@ const upsertLog = (nextLog: TaskLog) => {
     .map(mapLogToMessage)
 }
 
+const shouldRefreshTaskDetailForLog = (log: TaskLog) => {
+  const refreshMessages = [
+    'Node execution started',
+    'Agent node completed; pending approval',
+    'Agent node execution failed',
+    'Node approved and marked as done',
+  ]
+
+  return refreshMessages.some((messageText) => log.message?.includes(messageText))
+}
+
 const clearReconnectTimer = () => {
   if (!reconnectTimer) {
     return
@@ -360,11 +379,7 @@ const connectStream = async () => {
           try {
             const payload = JSON.parse(event.data) as TaskLog
             upsertLog(payload)
-            // 收到节点状态变更类日志时刷新任务详情，以更新执行节点表格（如待审批按钮）
-            if (
-              payload.message?.includes('waiting for approval') ||
-              payload.message?.includes('Node execution started')
-            ) {
+            if (shouldRefreshTaskDetailForLog(payload)) {
               if (detailRefreshDebounceTimer) clearTimeout(detailRefreshDebounceTimer)
               detailRefreshDebounceTimer = setTimeout(() => {
                 detailRefreshDebounceTimer = null
@@ -489,6 +504,28 @@ const handleSelectWorkflowNode = (nodeId: string) => {
   selectedWorkflowNodeId.value = nodeId
 }
 
+const resolveAutoSelectedWorkflowNodeId = (nodes: TaskNode[]) => {
+  const activeNode = nodes.find((node) => node.status === 'in_progress')
+  if (activeNode) {
+    return activeNode.id
+  }
+
+  const reviewNode = nodes.find((node) => node.status === 'in_review')
+  if (reviewNode) {
+    return reviewNode.id
+  }
+
+  const selectedNodeStillExists = selectedWorkflowNodeId.value
+    ? nodes.some((node) => node.id === selectedWorkflowNodeId.value)
+    : false
+
+  if (selectedNodeStillExists) {
+    return selectedWorkflowNodeId.value
+  }
+
+  return nodes[0]?.id || null
+}
+
 const handleReply = async (replyMessage: string) => {
   if (!taskId.value || replyDisabled.value) {
     return
@@ -505,6 +542,25 @@ const handleReply = async (replyMessage: string) => {
     message.success('回复已提交')
   } catch (error) {
     message.error(toErrorMessage(error, '提交回复失败'))
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+const interruptExecution = async () => {
+  if (!taskId.value || !canInterruptExecution.value) {
+    return
+  }
+
+  actionLoading.value = true
+
+  try {
+    detail.value = await tasksApi.cancel(taskId.value)
+    await refreshMessages()
+    rightPanelRefreshToken.value += 1
+    message.success('任务已停止执行')
+  } catch (error) {
+    message.error(toErrorMessage(error, '停止执行失败'))
   } finally {
     actionLoading.value = false
   }
@@ -563,13 +619,7 @@ watch(
       return
     }
 
-    const selectedNodeStillExists = selectedWorkflowNodeId.value
-      ? nodes.some((node) => node.id === selectedWorkflowNodeId.value)
-      : false
-
-    if (!selectedNodeStillExists) {
-      selectedWorkflowNodeId.value = nodes[0]?.id || null
-    }
+    selectedWorkflowNodeId.value = resolveAutoSelectedWorkflowNodeId(nodes)
   },
   {
     immediate: true,
@@ -658,7 +708,11 @@ onBeforeUnmount(() => {
           <ReplyCard
             :disabled="replyDisabled"
             :placeholder="replyPlaceholder"
+            :running="isCliRunning"
+            :action-loading="actionLoading"
+            :can-interrupt="canInterruptExecution"
             @submit="handleReply"
+            @interrupt="interruptExecution"
           />
         </div>
       </div>

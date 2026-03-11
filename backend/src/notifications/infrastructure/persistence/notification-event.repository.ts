@@ -24,4 +24,17 @@ export abstract class NotificationEventRepository {
     id: NotificationEvent['id'],
     readAt: Date,
   ): Promise<NullableType<NotificationEvent>>;
+
+  abstract markAllReadByUserId(
+    userId: NotificationEvent['userId'],
+    readAt: Date,
+  ): Promise<number>;
+
+  abstract deleteReadByUserId(
+    userId: NotificationEvent['userId'],
+  ): Promise<number>;
+
+  abstract countUnreadByUserId(
+    userId: NotificationEvent['userId'],
+  ): Promise<number>;
 }

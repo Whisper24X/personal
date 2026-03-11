@@ -136,13 +136,38 @@ export class NotificationsService {
     return markedEvent;
   }
 
+  async markAllEventsRead(userId: string): Promise<{ affected: number }> {
+    const affected = await this.notificationEventRepository.markAllReadByUserId(
+      userId,
+      new Date(),
+    );
+
+    return { affected };
+  }
+
+  async deleteReadEvents(userId: string): Promise<{ affected: number }> {
+    const affected =
+      await this.notificationEventRepository.deleteReadByUserId(userId);
+
+    return { affected };
+  }
+
+  async countUnreadEvents(userId: string): Promise<{ count: number }> {
+    const count =
+      await this.notificationEventRepository.countUnreadByUserId(userId);
+
+    return { count };
+  }
+
   async notifyTaskStatusChanged({
     userId,
     taskId,
+    taskTitle,
     status,
   }: {
     userId: string;
     taskId: string;
+    taskTitle?: string;
     status: string;
   }): Promise<NotificationEvent | null> {
     if (status !== 'done' && status !== 'in_review') {
@@ -150,6 +175,8 @@ export class NotificationsService {
     }
 
     const setting = await this.getMySetting(userId);
+
+    const displayName = taskTitle || taskId;
 
     const title =
       status === 'done'
@@ -160,10 +187,10 @@ export class NotificationsService {
 
     const content =
       status === 'done'
-        ? `任务 ${taskId} 已执行完成。`
+        ? `任务「${displayName}」已执行完成。`
         : status === 'in_review'
-          ? `任务 ${taskId} 进入待处理状态，请审批或重试。`
-          : `任务 ${taskId} 状态更新为 ${status}。`;
+          ? `任务「${displayName}」进入待处理状态，请审批或重试。`
+          : `任务「${displayName}」状态更新为 ${status}。`;
     const eventType = `task.${status}`;
     const occurredAt = new Date().toISOString();
 

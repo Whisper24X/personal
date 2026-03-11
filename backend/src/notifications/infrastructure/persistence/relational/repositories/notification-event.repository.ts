@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { IsNull, Not, Repository } from 'typeorm';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { NotificationEvent } from '../../../../domain/notification-event';
 import { NotificationEventRepository } from '../../notification-event.repository';
@@ -90,5 +90,29 @@ export class NotificationEventRelationalRepository
     );
 
     return NotificationEventMapper.toDomain(updatedEntity);
+  }
+
+  async markAllReadByUserId(userId: string, readAt: Date): Promise<number> {
+    const result = await this.notificationEventRepository.update(
+      { userId, readAt: IsNull() },
+      { readAt },
+    );
+
+    return result.affected ?? 0;
+  }
+
+  async deleteReadByUserId(userId: string): Promise<number> {
+    const result = await this.notificationEventRepository.delete({
+      userId,
+      readAt: Not(IsNull()),
+    });
+
+    return result.affected ?? 0;
+  }
+
+  async countUnreadByUserId(userId: string): Promise<number> {
+    return this.notificationEventRepository.count({
+      where: { userId, readAt: IsNull() },
+    });
   }
 }

@@ -475,6 +475,31 @@ describe('AgentRunnerService', () => {
     ]);
   });
 
+  it('should apply node session id for cursor continuation', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'cursor',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'cursor',
+        agentCliSessionId: 'cursor-session-1',
+      },
+    );
+
+    expect(result.args).toContain('--resume');
+    expect(result.args).toContain('cursor-session-1');
+  });
+
   it('should use follow-up message only when resuming an existing cli session', () => {
     const service = new AgentRunnerService(
       createRepositoryMock() as unknown as AgentToolConfigRepository,

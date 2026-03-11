@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -63,6 +64,33 @@ export class NotificationsController {
     @Query() query: FindNotificationEventsDto,
   ): Promise<NotificationEvent[]> {
     return this.notificationsService.listMyEvents(request.user.sub, query);
+  }
+
+  @Get('events/unread-count')
+  @ApiOkResponse({
+    schema: { type: 'object', properties: { count: { type: 'number' } } },
+  })
+  @HttpCode(HttpStatus.OK)
+  countUnreadEvents(@Request() request): Promise<{ count: number }> {
+    return this.notificationsService.countUnreadEvents(request.user.sub);
+  }
+
+  @Post('events/read-all')
+  @ApiOkResponse({
+    schema: { type: 'object', properties: { affected: { type: 'number' } } },
+  })
+  @HttpCode(HttpStatus.OK)
+  markAllEventsRead(@Request() request): Promise<{ affected: number }> {
+    return this.notificationsService.markAllEventsRead(request.user.sub);
+  }
+
+  @Delete('events/read')
+  @ApiOkResponse({
+    schema: { type: 'object', properties: { affected: { type: 'number' } } },
+  })
+  @HttpCode(HttpStatus.OK)
+  deleteReadEvents(@Request() request): Promise<{ affected: number }> {
+    return this.notificationsService.deleteReadEvents(request.user.sub);
   }
 
   @Post('events/:id/read')

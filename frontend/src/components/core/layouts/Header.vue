@@ -21,9 +21,16 @@ const notificationOpen = ref(false)
 const notificationLoading = ref(false)
 const notificationError = ref('')
 const notificationEvents = ref<NotificationEvent[]>([])
+const badgeCount = ref(0)
+const markingAllRead = ref(false)
+const deletingRead = ref(false)
 
 const unreadCount = computed(() => {
   return notificationEvents.value.filter((event) => !event.readAt).length
+})
+
+const hasReadEvents = computed(() => {
+  return notificationEvents.value.some((event) => event.readAt)
 })
 
 const formatDate = (value: string) => {
@@ -40,12 +47,22 @@ const formatDate = (value: string) => {
   })
 }
 
+const loadUnreadCount = async () => {
+  try {
+    const result = await notificationsApi.unreadCount()
+    badgeCount.value = result.count
+  } catch {
+    badgeCount.value = 0
+  }
+}
+
 const loadNotifications = async () => {
   notificationLoading.value = true
   notificationError.value = ''
 
   try {
-    notificationEvents.value = await notificationsApi.events({ limit: 12 })
+    notificationEvents.value = await notificationsApi.events({ limit: 50 })
+    badgeCount.value = unreadCount.value
   } catch (error) {
     notificationError.value = error instanceof Error ? error.message : '加载消息失败'
   } finally {
@@ -76,8 +93,49 @@ const markRead = async (event: NotificationEvent) => {
   try {
     await notificationsApi.markRead(event.id)
     event.readAt = new Date().toISOString()
+    badgeCount.value = unreadCount.value
   } catch (error) {
     notificationError.value = error instanceof Error ? error.message : '标记已读失败'
+  }
+}
+
+const markAllRead = async () => {
+  if (markingAllRead.value || unreadCount.value === 0) {
+    return
+  }
+
+  markingAllRead.value = true
+
+  try {
+    await notificationsApi.markAllRead()
+    const now = new Date().toISOString()
+    for (const event of notificationEvents.value) {
+      if (!event.readAt) {
+        event.readAt = now
+      }
+    }
+    badgeCount.value = 0
+  } catch (error) {
+    notificationError.value = error instanceof Error ? error.message : '全部已读失败'
+  } finally {
+    markingAllRead.value = false
+  }
+}
+
+const deleteReadEvents = async () => {
+  if (deletingRead.value || !hasReadEvents.value) {
+    return
+  }
+
+  deletingRead.value = true
+
+  try {
+    await notificationsApi.deleteRead()
+    notificationEvents.value = notificationEvents.value.filter((event) => !event.readAt)
+  } catch (error) {
+    notificationError.value = error instanceof Error ? error.message : '清除已读失败'
+  } finally {
+    deletingRead.value = false
   }
 }
 
@@ -105,6 +163,7 @@ const onWindowKeydown = (event: KeyboardEvent) => {
 onMounted(() => {
   window.addEventListener('click', onWindowClick)
   window.addEventListener('keydown', onWindowKeydown)
+  void loadUnreadCount()
 })
 
 onBeforeUnmount(() => {
@@ -198,10 +257,10 @@ onBeforeUnmount(() => {
             <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .738-1.674C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" />
           </svg>
           <span
-            v-if="unreadCount > 0"
+            v-if="badgeCount > 0"
             class="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold leading-5 text-destructive-foreground"
           >
-            {{ unreadCount > 99 ? '99+' : unreadCount }}
+            {{ badgeCount > 99 ? '99+' : badgeCount }}
           </span>
         </button>
 
@@ -211,14 +270,32 @@ onBeforeUnmount(() => {
         >
           <div class="flex items-center justify-between border-b border-border px-4 py-3">
             <p class="text-sm font-semibold">消息中心</p>
-            <button
-              class="rounded-md border border-border px-2 py-1 text-xs text-foreground transition hover:bg-muted"
-              type="button"
-              :disabled="notificationLoading"
-              @click="loadNotifications"
-            >
-              {{ notificationLoading ? '刷新中...' : '刷新' }}
-            </button>
+            <div class="flex items-center gap-1.5">
+              <button
+                class="rounded-md border border-border px-2 py-1 text-xs text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                type="button"
+                :disabled="markingAllRead || unreadCount === 0"
+                @click="markAllRead"
+              >
+                全部已读
+              </button>
+              <button
+                class="rounded-md border border-border px-2 py-1 text-xs text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                type="button"
+                :disabled="deletingRead || !hasReadEvents"
+                @click="deleteReadEvents"
+              >
+                清除已读
+              </button>
+              <button
+                class="rounded-md border border-border px-2 py-1 text-xs text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                type="button"
+                :disabled="notificationLoading"
+                @click="loadNotifications"
+              >
+                {{ notificationLoading ? '刷新中...' : '刷新' }}
+              </button>
+            </div>
           </div>
 
           <div class="max-h-96 overflow-auto p-2">

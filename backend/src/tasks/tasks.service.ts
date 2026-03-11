@@ -614,7 +614,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       await this.taskNodeRepository.update(inReviewNode.id, {
         status: TaskStatus.todo,
         finishedAt: null,
-        agentClioutput: null,
         runtimeJson: this.buildPendingReplyRuntimeJson(normalizedMessage),
       });
 
@@ -654,7 +653,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         await this.taskNodeRepository.update(fallbackNode.id, {
           status: TaskStatus.todo,
           finishedAt: null,
-          agentClioutput: null,
           runtimeJson: this.buildPendingReplyRuntimeJson(normalizedMessage),
         });
       }
@@ -1464,6 +1462,10 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       streamedStderrLineCount,
     });
 
+    const isContinuation = !!this.normalizeOptionalString(
+      node.agentCliSessionId,
+    );
+
     if (executionResult.success) {
       const fullOutput =
         executionResult.stdout ??
@@ -1471,22 +1473,24 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       const summary =
         fullOutput.length > 2_000 ? fullOutput.slice(0, 2_000) : fullOutput;
       const finishedAt = new Date().toISOString();
-      const agentClioutput = await this.writeNodeOutputJsonl({
-        task,
-        node,
-        output: {
-          summary,
-          stdout: executionResult.stdout,
-          stderr: executionResult.stderr || null,
-          exitCode: executionResult.exitCode,
-          durationMs: executionResult.durationMs,
-          finishedAt,
-          command: executionResult.command,
-          args: executionResult.args,
-          prompt: executionResult.prompt,
-          sessionId: executionResult.sessionId ?? null,
-        },
-      });
+      const agentClioutput = isContinuation
+        ? this.resolveNodeOutputPath(task, node)
+        : await this.writeNodeOutputJsonl({
+            task,
+            node,
+            output: {
+              summary,
+              stdout: executionResult.stdout,
+              stderr: executionResult.stderr || null,
+              exitCode: executionResult.exitCode,
+              durationMs: executionResult.durationMs,
+              finishedAt,
+              command: executionResult.command,
+              args: executionResult.args,
+              prompt: executionResult.prompt,
+              sessionId: executionResult.sessionId ?? null,
+            },
+          });
 
       const loopResult = await this.finalizeNodeAsSuccess({
         node,
@@ -1526,28 +1530,30 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const agentClioutput = await this.writeNodeOutputJsonl({
-      task,
-      node,
-      output: {
-        summary: executionResult.errorMessage ?? 'Agent execution failed',
-        stdout: executionResult.stdout || null,
-        stderr: executionResult.stderr || null,
-        exitCode: executionResult.exitCode,
-        signal: executionResult.signal,
-        durationMs: executionResult.durationMs,
-        timedOut: executionResult.timedOut,
-        finishedAt: new Date().toISOString(),
-        command: executionResult.command,
-        args: executionResult.args,
-        prompt: executionResult.prompt,
-        sessionId: executionResult.sessionId ?? null,
-        error: {
-          code: executionResult.timedOut ? 'TIMEOUT' : 'RUNNER_FAILED',
-          message: executionResult.errorMessage ?? 'Agent execution failed',
-        },
-      },
-    });
+    const agentClioutput = isContinuation
+      ? this.resolveNodeOutputPath(task, node)
+      : await this.writeNodeOutputJsonl({
+          task,
+          node,
+          output: {
+            summary: executionResult.errorMessage ?? 'Agent execution failed',
+            stdout: executionResult.stdout || null,
+            stderr: executionResult.stderr || null,
+            exitCode: executionResult.exitCode,
+            signal: executionResult.signal,
+            durationMs: executionResult.durationMs,
+            timedOut: executionResult.timedOut,
+            finishedAt: new Date().toISOString(),
+            command: executionResult.command,
+            args: executionResult.args,
+            prompt: executionResult.prompt,
+            sessionId: executionResult.sessionId ?? null,
+            error: {
+              code: executionResult.timedOut ? 'TIMEOUT' : 'RUNNER_FAILED',
+              message: executionResult.errorMessage ?? 'Agent execution failed',
+            },
+          },
+        });
 
     await this.finalizeNodeAsFailure({
       nodeId,
@@ -1745,7 +1751,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     const queuedNextLoop =
       nextLoopJson.enabled && nextLoopJson.loopCount < nextLoopJson.maxLoops;
     const pendingApproval =
-      !queuedNextLoop && this.readNodeConfigRequiresApproval(node.configJson);
+      !queuedNextLoop && this.readNodeRequiresApproval(node);
     const status = queuedNextLoop
       ? TaskStatus.todo
       : pendingApproval
@@ -2307,21 +2313,11 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const cleanupResult = await this.taskRuntimeService.cleanupRuntime(
-      task,
-      await this.getProjectByIdOrThrow(task.projectId),
-    );
-
-    await this.taskRepository.update(task.id, {
-      ...(cleanupResult.cleaned ? { gitWorktree: null } : {}),
-    });
-
     await this.appendLog({
       taskId: task.id,
       taskNodeId: null,
       level: TaskLogLevel.info,
-      message:
-        'Task completed; worktree retained until retention period expires',
+      message: 'Task completed; worktree preserved',
       payload: {
         gitWorktree: task.gitWorktree,
       },
@@ -2353,6 +2349,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         await this.notificationsService.notifyTaskStatusChanged({
           userId: currentTask.createdBy,
           taskId,
+          taskTitle: currentTask.title,
           status,
         });
       }
@@ -2781,12 +2778,42 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private readNodeConfigRequiresApproval(
-    configJson: Record<string, unknown> | null | undefined,
-  ): boolean {
-    const config = this.toObjectRecord(configJson);
+  private readNodeRequiresApproval(node: TaskNode): boolean {
+    const config = this.toObjectRecord(node.configJson);
+    const input = this.toObjectRecord(node.input);
 
-    return config.requiresApproval === true;
+    return (
+      this.normalizeBooleanLike(config.requiresApproval) ??
+      this.normalizeBooleanLike(input.requiresApproval) ??
+      false
+    );
+  }
+
+  private normalizeBooleanLike(value: unknown): boolean | null {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true') {
+        return true;
+      }
+      if (normalized === 'false') {
+        return false;
+      }
+    }
+
+    if (typeof value === 'number') {
+      if (value === 1) {
+        return true;
+      }
+      if (value === 0) {
+        return false;
+      }
+    }
+
+    return null;
   }
 
   private buildTaskNodeConfig(templateNode: {

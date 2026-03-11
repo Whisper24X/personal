@@ -24,4 +24,16 @@ export const notificationsApi = {
   markRead(eventId: string) {
     return apiHttp.post<NotificationEvent>(`/notifications/events/${eventId}/read`)
   },
+
+  markAllRead() {
+    return apiHttp.post<{ affected: number }>('/notifications/events/read-all')
+  },
+
+  deleteRead() {
+    return apiHttp.delete<{ affected: number }>('/notifications/events/read')
+  },
+
+  unreadCount() {
+    return apiHttp.get<{ count: number }>('/notifications/events/unread-count')
+  },
 }

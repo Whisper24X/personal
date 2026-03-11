@@ -830,6 +830,95 @@ describe('TasksService', () => {
     );
   });
 
+  it('should preserve existing output.jsonl data when continuing a session', async () => {
+    const { service, agentRunnerService } = createTasksService();
+    const serviceAny = service as any;
+    const task = createTask();
+    const node = createNode({
+      agentCliSessionId: 'existing-session-1',
+    });
+    const project = createProject();
+
+    const outputPath = path.resolve(
+      testDataRootDir!,
+      task.businessLineId,
+      'projects',
+      task.projectId,
+      'tasks',
+      task.id,
+      'nodes',
+      node.id,
+      'output.jsonl',
+    );
+
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    const existingData =
+      [
+        '{"type":"system","subtype":"init","session_id":"existing-session-1"}',
+        '{"type":"result","ok":true,"session_id":"existing-session-1"}',
+      ].join('\n') + '\n';
+    await fs.writeFile(outputPath, existingData, 'utf-8');
+
+    const newStdoutLines = [
+      '{"type":"user","message":"continue","session_id":"existing-session-1"}',
+      '{"type":"result","ok":true,"session_id":"existing-session-1"}',
+    ];
+
+    agentRunnerService.executeAgentNode.mockImplementation(
+      ({
+        callbacks,
+      }: {
+        callbacks?: { onStdoutLine?: (line: string) => void };
+      }) => {
+        callbacks?.onStdoutLine?.(newStdoutLines[0]);
+        callbacks?.onStdoutLine?.(newStdoutLines[1]);
+
+        return Promise.resolve({
+          success: true,
+          timedOut: false,
+          exitCode: 0,
+          signal: null,
+          command: 'cursor',
+          args: ['-p', '--resume', 'existing-session-1'],
+          cwd: '/tmp/worktree-task-1',
+          durationMs: 50,
+          stdout: newStdoutLines.join('\n'),
+          stderr: '',
+          prompt: 'continue working',
+          sessionId: 'existing-session-1',
+        });
+      },
+    );
+
+    jest
+      .spyOn(serviceAny, 'createNodeExecutionArtifact')
+      .mockResolvedValue(undefined);
+
+    await serviceAny.executeAgentNode({
+      taskId: task.id,
+      nodeId: node.id,
+      task,
+      node,
+      project,
+    });
+
+    const content = await fs.readFile(outputPath, 'utf-8');
+    const lines = content
+      .split(/\r?\n/)
+      .map((line: string) => line.trim())
+      .filter(Boolean);
+
+    expect(lines.length).toBe(4);
+    expect(lines[0]).toBe(
+      '{"type":"system","subtype":"init","session_id":"existing-session-1"}',
+    );
+    expect(lines[1]).toBe(
+      '{"type":"result","ok":true,"session_id":"existing-session-1"}',
+    );
+    expect(lines[2]).toBe(newStdoutLines[0]);
+    expect(lines[3]).toBe(newStdoutLines[1]);
+  });
+
   it('should fallback to output jsonl content when no summary metadata exists', async () => {
     const { service } = createTasksService();
     const serviceAny = service as any;
@@ -923,6 +1012,60 @@ describe('TasksService', () => {
         startedAt: null,
         finishedAt: null,
         agentClioutput: expect.any(String),
+        runtimeJson: null,
+      }),
+    );
+    expect(artifactSpy).not.toHaveBeenCalled();
+  });
+
+  it('should keep final node in_review when approval is required', async () => {
+    const { service, taskNodeRepository, agentRunnerService } =
+      createTasksService();
+    const serviceAny = service as any;
+    const task = createTask();
+    const node = createNode({
+      status: TaskStatus.inProgress,
+      configJson: {
+        requiresApproval: true,
+      },
+      loopJson: {
+        enabled: false,
+        loopCount: 0,
+        maxLoops: 1,
+      },
+    });
+    const project = createProject();
+
+    agentRunnerService.executeAgentNode.mockResolvedValue({
+      success: true,
+      timedOut: false,
+      exitCode: 0,
+      signal: null,
+      command: 'codex',
+      args: ['exec', '-'],
+      cwd: '/tmp/worktree-task-1',
+      durationMs: 50,
+      stdout: 'agent output',
+      stderr: '',
+      prompt: 'prompt',
+    });
+
+    const artifactSpy = jest
+      .spyOn(serviceAny, 'createNodeExecutionArtifact')
+      .mockResolvedValue(undefined);
+
+    await serviceAny.executeAgentNode({
+      taskId: task.id,
+      nodeId: node.id,
+      task,
+      node,
+      project,
+    });
+
+    expect(taskNodeRepository.update).toHaveBeenCalledWith(
+      node.id,
+      expect.objectContaining({
+        status: TaskStatus.inReview,
         runtimeJson: null,
       }),
     );
@@ -1136,7 +1279,7 @@ describe('TasksService', () => {
     expect(status).toBe(TaskStatus.done);
   });
 
-  it('should retain worktree and notify user when status changes to done', async () => {
+  it('should preserve worktree and notify user when status changes to done', async () => {
     const {
       service,
       taskRepository,
@@ -1161,10 +1304,7 @@ describe('TasksService', () => {
 
     await serviceAny.recalculateTaskStatus(task.id);
 
-    expect(taskRuntimeService.cleanupRuntime).toHaveBeenCalledWith(
-      task,
-      expect.objectContaining({ id: task.projectId }),
-    );
+    expect(taskRuntimeService.cleanupRuntime).not.toHaveBeenCalled();
     expect(taskRepository.update).toHaveBeenNthCalledWith(
       1,
       task.id,
@@ -1175,8 +1315,7 @@ describe('TasksService', () => {
     expect(taskLogRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
         taskId: task.id,
-        message:
-          'Task completed; worktree retained until retention period expires',
+        message: 'Task completed; worktree preserved',
       }),
     );
     expect(notificationsService.notifyTaskStatusChanged).toHaveBeenCalledWith({
@@ -2004,6 +2143,11 @@ describe('TasksService', () => {
         },
       }),
     );
+
+    const updateArgs = taskNodeRepository.update.mock.calls.find(
+      (call: unknown[]) => call[0] === inReviewNode.id,
+    );
+    expect(updateArgs?.[1]).not.toHaveProperty('agentClioutput');
   });
 
   it('should map logs to task messages', async () => {

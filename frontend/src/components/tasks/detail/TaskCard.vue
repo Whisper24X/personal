@@ -78,8 +78,9 @@ onBeforeUnmount(() => {
 
       <div class="flex items-center gap-1.5">
         <button
+          v-if="props.canExecute"
           class="inline-flex h-6 items-center rounded-md bg-primary px-2.5 text-[11px] font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-          :disabled="props.actionLoading || !props.canExecute"
+          :disabled="props.actionLoading"
           type="button"
           @click="emit('execute')"
         >

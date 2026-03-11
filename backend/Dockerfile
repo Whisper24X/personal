@@ -15,9 +15,19 @@ COPY . .
 RUN npm run build
 
 # ── 运行阶段 ──
-FROM node:22.21.1-alpine
+FROM node:22.21.1-bookworm-slim
 
-RUN apk add --no-cache bash
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bash curl git openssh-client ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# CLI tools (curl-based): Claude Code, OpenCode, Cursor
+RUN curl -fsSL https://claude.ai/install.sh | bash \
+    && curl -fsSL https://opencode.ai/install | bash \
+    && curl -fsSL https://cursor.com/install | bash
+
+# CLI tools (npm-based): Codex, Gemini CLI
+RUN npm i -g @openai/codex@latest @google/gemini-cli@latest
 
 WORKDIR /usr/src/app
 

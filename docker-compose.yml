@@ -54,6 +54,11 @@ services:
       DATABASE_HOST: postgres
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
       WORKER_HOST: redis://:${REDIS_PASSWORD}@redis:6379/1
+      SSH_AUTH_SOCK: /ssh-agent
+      GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=no"
+    volumes:
+      - ~/.ssh:/root/.ssh:ro
+      - ${SSH_AUTH_SOCK}:/ssh-agent
     depends_on:
       postgres:
         condition: service_healthy

@@ -97,10 +97,6 @@ const groupedColumns = computed(() => {
   })
 })
 
-const getProjectName = (projectId: string) => {
-  return projectNameMap.value.get(projectId) ?? projectId
-}
-
 const formatDate = (value?: string) => {
   if (!value) return '-'
   const parsedDate = new Date(value)
@@ -305,7 +301,7 @@ watch(
             v-for="item in column.items"
             :key="item.id"
             :to="taskDetailTo(item)"
-            class="block rounded-xl border border-border bg-background/75 px-3 py-2 text-sm transition hover:bg-background"
+            class="block h-20 rounded-xl border border-border bg-background/75 px-3 py-2 text-sm transition hover:bg-background"
           >
             <div class="flex items-center justify-between gap-2">
               <p class="font-semibold">{{ item.title }}</p>
@@ -313,13 +309,13 @@ watch(
                 {{ statusLabelMap[item.status] }}
               </span>
             </div>
-            <p class="mt-1 text-xs text-muted-foreground">{{ getProjectName(item.projectId) }} · {{ item.mode }}</p>
+            <p class="mt-1 text-xs text-muted-foreground">{{ item.mode }}</p>
             <p class="mt-1 text-xs text-muted-foreground">{{ formatDate(item.updatedAt ?? item.createdAt) }}</p>
           </RouterLink>
 
           <div
             v-if="column.items.length === 0"
-            class="rounded-xl border border-dashed border-border bg-background/30 px-3 py-5 text-center text-xs text-muted-foreground"
+            class="flex h-20 items-center justify-center rounded-xl border border-dashed border-border bg-background/30 px-3 text-xs text-muted-foreground"
           >
             {{ column.emptyText }}
           </div>
