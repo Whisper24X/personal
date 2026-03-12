@@ -345,6 +345,31 @@ describe('AgentRunnerService', () => {
     expect(result.args).toEqual(['--output-format', 'stream-json']);
   });
 
+  it('should use json run defaults for opencode', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'opencode',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'opencode',
+      },
+    );
+
+    expect(result.adapter).toBe('opencode');
+    expect(result.command).toBe('opencode');
+    expect(result.args).toEqual(['run', '--format', 'json']);
+  });
+
   it('should use stream-json defaults for cursor agent', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
@@ -632,6 +657,9 @@ describe('AgentRunnerService', () => {
     );
 
     expect(result.args).toEqual([
+      'run',
+      '--format',
+      'json',
       '--continue',
       '--session',
       'opencode-session-1',

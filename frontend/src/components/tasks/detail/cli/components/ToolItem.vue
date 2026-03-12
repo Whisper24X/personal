@@ -61,7 +61,10 @@ const fullInput = computed(() => {
   return stringify(input)
 })
 
-const fullOutput = computed(() => props.result?.content?.trim() || '')
+const fullOutput = computed(() => {
+  const output = getString(props.result?.metadata?.toolOutput) || props.result?.content?.trim() || ''
+  return output
+})
 
 const toggle = () => {
   expanded.value = !expanded.value

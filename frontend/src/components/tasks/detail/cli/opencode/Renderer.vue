@@ -6,8 +6,7 @@ import { groupOpencodeEntries } from './groupEntries'
 import TaskGroupCard from './TaskGroupCard.vue'
 import UserMessage from '../components/UserMessage.vue'
 import AssistantMessage from '../components/AssistantMessage.vue'
-import type { NormalizedEntry } from '../types'
-import { formatTime, getString } from '../utils'
+import { formatTime } from '../utils'
 
 defineOptions({ name: 'CliOpencodeRenderer' })
 
@@ -17,10 +16,6 @@ const props = defineProps<{
 
 const entries = computed(() => parseOpencodeMessages(props.messages))
 const groups = computed(() => groupOpencodeEntries(entries.value))
-
-function isSdkEvent(entry: NormalizedEntry) {
-  return entry.type === 'system_message' && getString(entry.metadata?.sdkEventType) !== undefined
-}
 </script>
 
 <template>
@@ -33,18 +28,28 @@ function isSdkEvent(entry: NormalizedEntry) {
         :entry="group.entry"
       />
 
-      <!-- SDK event -->
       <div
-        v-else-if="group.type === 'other' && isSdkEvent(group.entry)"
-        class="flex items-center gap-2 rounded-md border border-border/30 bg-muted/20 px-3 py-1.5 text-xs text-muted-foreground"
+        v-else-if="group.type === 'other' && group.entry.type === 'assistant_message'"
+        class="rounded-xl border border-border/50 bg-background px-4 py-3 shadow-sm"
       >
-        <span>⚙</span>
-        <span class="font-mono">{{ getString(group.entry.metadata?.sdkEventType) }}</span>
-        <span class="truncate">{{ group.entry.content }}</span>
-        <span class="ml-auto shrink-0">{{ formatTime(group.entry.timestamp) }}</span>
+        <div class="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+          <span class="font-medium text-foreground">最终回答</span>
+          <span class="ml-auto">{{ formatTime(group.entry.timestamp) }}</span>
+        </div>
+        <AssistantMessage :content="group.entry.content" />
       </div>
 
-      <!-- Error -->
+      <div
+        v-else-if="group.type === 'other' && group.entry.type === 'system_message'"
+        class="rounded-lg border border-border/40 bg-muted/15 px-3 py-2 text-xs text-muted-foreground"
+      >
+        <div class="flex items-center gap-2">
+          <span>步骤信息</span>
+          <span class="ml-auto">{{ formatTime(group.entry.timestamp) }}</span>
+        </div>
+        <div class="mt-1 whitespace-pre-wrap">{{ group.entry.content }}</div>
+      </div>
+
       <div
         v-else-if="group.type === 'other' && group.entry.type === 'error'"
         class="rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2"
@@ -57,7 +62,6 @@ function isSdkEvent(entry: NormalizedEntry) {
         <p class="mt-1 whitespace-pre-wrap text-sm text-red-600">{{ group.entry.content }}</p>
       </div>
 
-      <!-- System message -->
       <div
         v-else-if="group.type === 'other'"
         class="px-2 py-1 text-xs text-muted-foreground"

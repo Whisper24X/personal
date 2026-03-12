@@ -976,6 +976,79 @@ describe('TasksService', () => {
     expect(lines).toEqual(stdoutLines);
   });
 
+  it('should append opencode stdout json lines into output jsonl during execution', async () => {
+    const { service, agentRunnerService } = createTasksService();
+    const serviceAny = service as any;
+    const task = createTask();
+    const node = createNode({
+      agentCliId: 'opencode',
+    });
+    const project = createProject({
+      agentAdapter: 'opencode',
+    });
+    const stdoutLines = [
+      '{"type":"assistant","message":{"content":[{"type":"text","text":"hello"}]},"session_id":"opencode-session-1"}',
+      '{"type":"tool_call","tool":"read","input":{"path":"README.md"},"id":"call-1","session_id":"opencode-session-1"}',
+      '{"type":"tool_result","result":{"content":"done"},"call_id":"call-1","session_id":"opencode-session-1"}',
+    ];
+
+    agentRunnerService.executeAgentNode.mockImplementation(
+      ({
+        callbacks,
+      }: {
+        callbacks?: { onStdoutLine?: (line: string) => void };
+      }) => {
+        stdoutLines.forEach((line) => callbacks?.onStdoutLine?.(line));
+
+        return Promise.resolve({
+          success: true,
+          timedOut: false,
+          exitCode: 0,
+          signal: null,
+          command: 'opencode',
+          args: ['run', '--format', 'json'],
+          cwd: '/tmp/worktree-task-1',
+          durationMs: 50,
+          stdout: stdoutLines.join('\n'),
+          stderr: '',
+          prompt: 'prompt',
+          sessionId: 'opencode-session-1',
+        });
+      },
+    );
+
+    jest
+      .spyOn(serviceAny, 'createNodeExecutionArtifact')
+      .mockResolvedValue(undefined);
+
+    await serviceAny.executeAgentNode({
+      taskId: task.id,
+      nodeId: node.id,
+      task,
+      node,
+      project,
+    });
+
+    const outputPath = path.resolve(
+      testDataRootDir!,
+      task.businessLineId,
+      'projects',
+      task.projectId,
+      'tasks',
+      task.id,
+      'nodes',
+      node.id,
+      'output.jsonl',
+    );
+    const content = await fs.readFile(outputPath, 'utf-8');
+    const lines = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    expect(lines).toEqual(stdoutLines);
+  });
+
   it('should extract embedded gemini json lines from mixed stdout chunks', async () => {
     const { service, agentRunnerService } = createTasksService();
     const serviceAny = service as any;

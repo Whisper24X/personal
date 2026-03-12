@@ -957,7 +957,7 @@ export class AgentRunnerService {
       cursor: ['-p', '--output-format', 'stream-json', '--trust', '--force'],
       claude: ['-p', '--output-format', 'stream-json', '--verbose'],
       gemini: ['--output-format', 'stream-json'],
-      opencode: [],
+      opencode: ['run', '--format', 'json'],
     };
 
     return defaultArgsMap[adapter];
