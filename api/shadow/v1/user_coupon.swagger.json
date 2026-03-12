@@ -1,0 +1,208 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "shadow/v1/user_coupon.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "UserCoupon"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/api/shadow/v1/user_coupon/list": {
+      "post": {
+        "summary": "用户优惠券记录表-列表数据查询",
+        "operationId": "UserCoupon_GetUserCouponList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetUserCouponListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetUserCouponListReq"
+            }
+          }
+        ],
+        "tags": [
+          "UserCoupon"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1ExpireUserCouponsReply": {
+      "type": "object",
+      "title": "响应-过期用户优惠券状态更新"
+    },
+    "v1GetUserCouponListReply": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总数"
+        },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1UserCouponInfo"
+          },
+          "title": "列表数据"
+        }
+      },
+      "title": "响应-用户优惠券记录表-列表数据查询"
+    },
+    "v1GetUserCouponListReq": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页码"
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页数"
+        },
+        "status": {
+          "type": "string",
+          "title": "状态"
+        },
+        "couponName": {
+          "type": "string",
+          "title": "优惠券名称"
+        },
+        "phone": {
+          "type": "string",
+          "title": "手机号"
+        },
+        "claimStartTime": {
+          "type": "string",
+          "title": "领取开始时间"
+        },
+        "claimEndTime": {
+          "type": "string",
+          "title": "领取结束时间"
+        },
+        "expireTimeStartTime": {
+          "type": "string",
+          "title": "过期开始时间"
+        },
+        "expireTimeEndTime": {
+          "type": "string",
+          "title": "过期结束时间"
+        }
+      },
+      "title": "请求-用户优惠券记录表-列表数据查询"
+    },
+    "v1UserCouponInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "userId": {
+          "type": "string",
+          "title": "用户ID"
+        },
+        "couponId": {
+          "type": "string",
+          "title": "优惠券ID"
+        },
+        "couponName": {
+          "type": "string",
+          "title": "优惠券名称"
+        },
+        "status": {
+          "type": "string",
+          "title": "状态：已核销:used；未核销:unUsed；已过期:expired；"
+        },
+        "ph": {
+          "type": "string",
+          "title": "手机号"
+        },
+        "pushType": {
+          "type": "string",
+          "title": "推送方式"
+        },
+        "claimTime": {
+          "type": "string",
+          "title": "领取时间"
+        },
+        "expireTime": {
+          "type": "string",
+          "title": "过期时间"
+        },
+        "orderNumber": {
+          "type": "string",
+          "title": "订单编号"
+        },
+        "useTime": {
+          "type": "string",
+          "title": "使用时间"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        }
+      },
+      "title": "用户优惠券记录表信息"
+    }
+  }
+}

@@ -1,0 +1,192 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "wechat/v1/good_recommendation_category.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "GoodRecommendationCategory"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/wechat/v1/good_recommendation_category/list": {
+      "post": {
+        "summary": "商品推荐分类表-列表数据查询",
+        "operationId": "GoodRecommendationCategory_GetGoodRecommendationCategoryList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/wechatv1GetGoodRecommendationCategoryListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/wechatv1GetGoodRecommendationCategoryListReq"
+            }
+          }
+        ],
+        "tags": [
+          "GoodRecommendationCategory"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "wechatv1GetGoodRecommendationCategoryListReply": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总数"
+        },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/wechatv1GoodRecommendationCategoryInfo"
+          },
+          "title": "列表数据"
+        }
+      },
+      "title": "响应-商品推荐分类表-列表数据查询"
+    },
+    "wechatv1GetGoodRecommendationCategoryListReq": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页码"
+        },
+        "pageSize": {
+          "type": "integer",
+          "format": "int32",
+          "title": "页数"
+        }
+      },
+      "title": "请求-商品推荐分类表-列表数据查询"
+    },
+    "wechatv1GoodItem": {
+      "type": "object",
+      "properties": {
+        "goodId": {
+          "type": "string",
+          "title": "商品id"
+        },
+        "sortOrder": {
+          "type": "integer",
+          "format": "int32",
+          "title": "排序号，数字越小排序越靠前"
+        },
+        "goodName": {
+          "type": "string",
+          "title": "商品名称"
+        },
+        "mainImage": {
+          "type": "string",
+          "title": "主图URL"
+        },
+        "price": {
+          "type": "integer",
+          "format": "int32",
+          "title": "价格：单位分"
+        },
+        "isShowInHomepage": {
+          "type": "boolean",
+          "title": "是否在首页展示"
+        },
+        "label": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "标签"
+        }
+      }
+    },
+    "wechatv1GoodRecommendationCategoryInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "name": {
+          "type": "string",
+          "title": "分类名称"
+        },
+        "icon": {
+          "type": "string",
+          "title": "分类图标URL"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态：-1-下架，1-上架"
+        },
+        "sortOrder": {
+          "type": "integer",
+          "format": "int32",
+          "title": "排序号，数字越小排序越靠前"
+        },
+        "goodItems": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/wechatv1GoodItem"
+          },
+          "title": "商品内容JSON数组，格式：[{\"goodId\": \"uuid\", \"sortOrder\": 1}]"
+        }
+      },
+      "title": "商品推荐分类表信息"
+    }
+  }
+}

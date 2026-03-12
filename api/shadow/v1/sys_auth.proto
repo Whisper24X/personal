@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package shadow.v1;
+
+import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+import "validate/validate.proto";
+
+option go_package = "gitlab.yc345.tv/backend/yanxue/api/shadow/v1;v1";
+
+//变量的命名一律使用小驼峰命名法，例如：firstName、lastName等。
+//后缀定义:请求req,响应reply
+
+//Auth
+service SysAuth {
+  //Auth-登录
+  rpc SysAuthLogin(SysAuthLoginReq) returns (SysAuthLoginReply) {
+    option (google.api.http) = {
+      post: "/yanxue/shadow/v1/sysAuthLogin"
+      body: "*"
+    };
+  }
+  //Auth-退出
+  rpc SysAuthLogout(SysAuthLogoutReq) returns (SysAuthLogoutReply) {
+    option (google.api.http) = {
+      post: "/yanxue/shadow/v1/SysAuthLogout"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  //Auth-检查token
+  rpc SysAuthCheckToken(SysAuthCheckTokenReq) returns (SysAuthCheckTokenReply) {}
+}
+
+//请求-登录
+message SysAuthLoginReq {
+  string username = 1 [(validate.rules).string = {
+    min_len: 1
+    max_len: 128
+  }]; // 账号名，4到16位（字母，数字，下划线，减号）
+  string password = 2 [(validate.rules).string = {
+    min_len: 1
+    max_len: 128
+  }]; //密码
+}
+
+//响应-登录
+message SysAuthLoginReply {
+  string token = 1; //Token
+  int64 expiredAt = 2; //过期时间
+  int64 refreshAt = 3; //刷新时间
+}
+
+//请求-退出
+message SysAuthLogoutReq {}
+
+//响应-退出
+message SysAuthLogoutReply {}
+
+message SysAuthCheckTokenReq {
+  string token = 1; //token
+}
+message SysAuthCheckTokenReply {
+  string adminId = 1; //管理员Id
+}

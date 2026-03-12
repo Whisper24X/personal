@@ -1,0 +1,326 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "wechat/v1/user_coupon.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "UserCoupon"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/wechat/v1/user_coupon/create": {
+      "post": {
+        "summary": "用户优惠券记录表-创建一条数据",
+        "operationId": "UserCoupon_CreateUserCoupon",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CreateUserCouponReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateUserCouponReq"
+            }
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "UserCoupon"
+        ]
+      }
+    },
+    "/yanxue/wechat/v1/user_coupon/getMyCouponList": {
+      "get": {
+        "summary": "用户优惠券记录表-查询我的优惠券列表",
+        "operationId": "UserCoupon_GetMyCouponList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetMyCouponListReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "goodId",
+            "description": "商品ID",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "UserCoupon"
+        ]
+      }
+    },
+    "/yanxue/wechat/v1/user_coupon/getUserCouponInfo": {
+      "get": {
+        "summary": "用户优惠券记录表-通过用户优惠券ID查询用户优惠券信息",
+        "operationId": "UserCoupon_GetUserCouponInfo",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetUserCouponInfoReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "userCouponId",
+            "description": "用户优惠券ID",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "UserCoupon"
+        ]
+      }
+    },
+    "/yanxue/wechat/v1/user_coupon/update": {
+      "post": {
+        "summary": "用户优惠券记录表-更新一条数据",
+        "operationId": "UserCoupon_UpdateUserCoupon",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UpdateUserCouponReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UpdateUserCouponReq"
+            }
+          }
+        ],
+        "tags": [
+          "UserCoupon"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1CreateUserCouponReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        }
+      },
+      "title": "响应-用户优惠券记录表-创建一条数据"
+    },
+    "v1CreateUserCouponReq": {
+      "type": "object",
+      "properties": {
+        "couponId": {
+          "type": "string",
+          "title": "优惠券ID"
+        }
+      },
+      "title": "请求-用户优惠券记录表-创建一条数据"
+    },
+    "v1GetMyCouponListReply": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1MyCouponItem"
+          },
+          "title": "优惠券列表"
+        }
+      },
+      "title": "响应-我的优惠券列表"
+    },
+    "v1GetUserCouponInfoReply": {
+      "type": "object",
+      "properties": {
+        "couponInfo": {
+          "$ref": "#/definitions/v1MyCouponItem",
+          "title": "优惠券信息"
+        }
+      },
+      "title": "响应-查询用户优惠券信息"
+    },
+    "v1MyCouponItem": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "userId": {
+          "type": "string",
+          "title": "用户ID"
+        },
+        "couponId": {
+          "type": "string",
+          "title": "优惠券ID"
+        },
+        "couponName": {
+          "type": "string",
+          "title": "优惠券名称"
+        },
+        "status": {
+          "type": "string",
+          "title": "状态：已核销:used；未核销:unUsed；已过期:expired；已锁定:locked;"
+        },
+        "pushType": {
+          "type": "string",
+          "title": "推送方式：public:公开；private:私密"
+        },
+        "claimTime": {
+          "type": "string",
+          "title": "领取时间"
+        },
+        "expireTime": {
+          "type": "string",
+          "title": "过期时间"
+        },
+        "useTime": {
+          "type": "string",
+          "title": "使用时间"
+        },
+        "discountAmount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "优惠金额"
+        },
+        "couponType": {
+          "type": "string",
+          "title": "优惠券类型：common:通用；good:商品"
+        },
+        "minAmount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "门槛金额：为0则表示无门槛"
+        }
+      }
+    },
+    "v1UpdateUserCouponReply": {
+      "type": "object",
+      "title": "响应-用户优惠券记录表-更新一条数据"
+    },
+    "v1UpdateUserCouponReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "id"
+        },
+        "status": {
+          "type": "string",
+          "title": "状态：已核销；未核销；已过期；"
+        },
+        "orderNumber": {
+          "type": "string",
+          "title": "订单编号"
+        },
+        "useTime": {
+          "type": "string",
+          "title": "使用时间"
+        }
+      },
+      "title": "请求-用户优惠券记录表-更新一条数据"
+    }
+  }
+}
