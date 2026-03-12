@@ -1,462 +1,369 @@
 # ==============================================================================
-# AINative Workspace Makefile
+# Subtree 配置（test 分支用）
 # ==============================================================================
-#
-# 项目结构：
-#   - ainative-backend  : Go 后端服务
-#   - ainative-shadow   : 影子服务
-#   - ainative-app      : 移动端小程序
-#
-# 使用方式：
-#   make help           查看所有可用命令
-#   make subtree-pull   拉取所有子仓库
-#   make subtree-status 查看子仓库状态
-#
-# ==============================================================================
-
-.DEFAULT_GOAL := help
-
-# ==============================================================================
-# 配置
-# ==============================================================================
-
-# Subtree 配置（格式：别名|目录|仓库地址|分支）
+# 格式：别名|目录|仓库地址|默认分支
 SUBTREES := \
 	backend|ainative-backend|git@gitlab.yc345.tv:backend/yanxue.git|master \
 	shadow|ainative-shadow|git@gitlab.yc345.tv:frontend/trip-shadow.git|master \
 	app|ainative-app|git@gitlab.yc345.tv:frontend/trip-miniprogram.git|master
 
-# 颜色
-C_RESET  := \033[0m
-C_RED    := \033[31m
-C_GREEN  := \033[32m
-C_YELLOW := \033[33m
-C_BLUE   := \033[34m
-C_CYAN   := \033[36m
-C_BOLD   := \033[1m
-
-# ==============================================================================
-# 内部函数
-# ==============================================================================
+# test 分支对应的子仓库分支：backend=test, shadow/app=develop
+SUBTREE_TEST_BRANCH_backend := test
+SUBTREE_TEST_BRANCH_shadow  := develop
+SUBTREE_TEST_BRANCH_app     := develop
 
 # 解析 subtree 配置字段
 _name   = $(word 1,$(subst |, ,$(1)))
 _prefix = $(word 2,$(subst |, ,$(1)))
 _repo   = $(word 3,$(subst |, ,$(1)))
-_branch = $(word 4,$(subst |, ,$(1)))
 
-# 所有 subtree 名称
-NAMES := $(foreach s,$(SUBTREES),$(call _name,$(s)))
-
-# 检查执行环境
+# 检查执行环境（subtree 操作需在仓库根目录、非 worktree 中执行）
 define _check_env
 	@ROOT=$$(git rev-parse --show-toplevel 2>/dev/null) || { \
-		echo "$(C_RED)错误: 不在 git 仓库中$(C_RESET)"; exit 1; \
+		echo "\033[31m错误: 不在 git 仓库中\033[0m"; exit 1; \
 	}; \
 	[ "$$(pwd -P)" = "$$(cd $$ROOT && pwd -P)" ] || { \
-		echo "$(C_RED)错误: 请在仓库根目录执行$(C_RESET)"; exit 1; \
+		echo "\033[31m错误: 请在仓库根目录执行\033[0m"; exit 1; \
 	}; \
 	[ ! -f "$$ROOT/.git" ] || { \
-		echo "$(C_RED)错误: 不能在 worktree 中执行 subtree 操作$(C_RESET)"; exit 1; \
+		echo "\033[31m错误: 不能在 worktree 中执行 subtree 操作\033[0m"; exit 1; \
 	}
 endef
 
 # ==============================================================================
-# Subtree 目标生成
+# Backend 配置
 # ==============================================================================
+GOPATH=$(shell go env GOPATH)
+VERSION=$(shell git describe --tags --always)
+APP_RELATIVE_PATH=$(shell a=`basename $$PWD` && cd .. && b=`basename $$PWD` && echo $$b/$$a)
+APP_NAME=$(shell echo $(APP_RELATIVE_PATH) | rev |cut -d '/' -f 1 | rev | tr '-' '_')
+INTERNAL_PROTO_FILES=$(shell find internal -name *.proto)
+API_PROTO_FILES=$(shell find api -name *.proto  -not -name apifox.proto)
+BUF_INSTALLED=$(shell command -v buf 2> /dev/null)
+GCI_INSTALLED=$(shell command -v gci 2> /dev/null)
+YC_TURBO_KIT_INSTALLED := $(shell command -v yc_turbo_kit 2> /dev/null)
+TABLES := ''
+# Apifox Configuration
+APIFOX_PROJECT_ID=6283389
+APIFOX_PROJECT_TOKEN=APS-1zB0KpDZlq5eunxay3GzoRYC6AdeuXg9
+# Yapi Configuration
+YAPI_PROJECT_ID=xxx
 
-# 生成 subtree-pull 目标: subtree-pull-{name}
-define _gen_pull
-subtree-pull-$(call _name,$(1)):
-	$(_check_env)
-	@echo "$(C_BLUE)拉取 $(call _prefix,$(1))...$(C_RESET)"
-	@OUT=$$$$(git subtree pull --prefix=$(call _prefix,$(1)) $(call _repo,$(1)) $(call _branch,$(1)) --squash 2>&1); \
-	CODE=$$$$?; \
-	if [ $$$$CODE -ne 0 ] && echo "$$$$OUT" | grep -q "does not exist"; then \
-		echo "$(C_YELLOW)首次添加 $(call _prefix,$(1))...$(C_RESET)"; \
-		$(MAKE) -s subtree-add-$(call _name,$(1)); \
-	elif [ $$$$CODE -ne 0 ]; then \
-		echo "$$$$OUT"; exit 1; \
+.PHONY: init
+# 初始化安装
+init:
+	go install github.com/go-kratos/kratos/cmd/kratos/v2@a7bae93
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.1
+	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2.0
+	go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@v2.13.0
+	go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@v2.27.2
+	go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v2@a7bae93
+	go install gitlab.yc345.tv/backend/protoc-gen-go-errors@v0.0.4
+	go install github.com/envoyproxy/protoc-gen-validate@v0.9.0
+	go install github.com/google/wire/cmd/wire@v0.6.0
+	go install github.com/abice/go-enum@v0.9.1
+	go install golang.org/x/tools/cmd/goimports@v0.23.0
+
+.PHONY: mod
+# 下载依赖
+mod:
+	go mod tidy
+
+.PHONY: config
+# 生成配置文件
+config:
+	protoc --proto_path=. \
+	       --proto_path=./third_party \
+ 	       --go_out=paths=source_relative:. \
+	       $(INTERNAL_PROTO_FILES)
+
+.PHONY: api
+# 生成API文件
+api: buf
+	protoc	--proto_path=./api \
+			--proto_path=./third_party \
+			--go_out=paths=source_relative:./api \
+			--go-http_out=paths=source_relative:./api \
+			--go-grpc_out=paths=source_relative:./api \
+			--validate_out=paths=source_relative,lang=go:./api \
+			--go-errors_out=paths=source_relative:. \
+			--openapiv2_out ./doc/swagger/ \
+			--openapiv2_opt logtostderr=true \
+			--openapiv2_opt json_names_for_fields=false \
+			$(API_PROTO_FILES)
+
+.PHONY: build
+# 构建
+build:
+	mkdir -p bin/ && GOPROXY="https://goproxy.cn,direct" GOPRIVATE="gitlab.yc345.tv/*" go mod tidy && go build -ldflags '-w -s -extldflags "-static" -X main.Version=$(VERSION)' -tags musl -o ./bin/ ./cmd/...
+
+.PHONY: lint
+# golang lint 检查
+lint:
+	@golangci-lint run --config .golangci.yml ./... -v
+
+.PHONY: wire
+# 生成依赖注入文件
+wire:
+	wire ./...
+
+.PHONY: run
+# run
+run:
+	@export GO_ENV=development && kratos run
+
+.PHONY: gosec
+# 代码安全检查gosec
+gosec:
+	GO111MODULE=on go install github.com/securego/gosec/v2/cmd/gosec@latest
+	gosec -quiet -exclude=G104,G108,G403,G501,G502 -exclude-dir=api,third_party,sql,test ./...
+
+.PHONY: checkVersion
+# 定义变量; 要检查更新的包
+PACKAGES := gitlab.yc345.tv/backend/utils gitlab.yc345.tv/backend/go-logger
+# checkVersion 检查包版本并是否更新
+checkVersion:
+	@for package in $(PACKAGES); do \
+		result="$$(go list -m -u $$package)"; \
+		if [ -z "$${result##*[[]*}" ]; then \
+			content="$$(echo "$$result" | grep -oE '\[([^]]+)\]' | sed 's/[][]//g')"; \
+			echo "\033[1;33m$$package 已存在最新版本: $$content\033[0m"; \
+			read -p "是否更新到最新版本 (y/N): " choice && \
+			if [ "$$choice" = "y" ]; then \
+				go get $$package && \
+				upresult="$$(go list -m -u $$package)"; \
+				if [ -z "$${upresult##*[[]*}" ]; then \
+					echo "\033[1;31m$$package 更新失败!\033[0m"; \
+				fi; \
+			fi; \
+		fi; \
+	done
+	go mod tidy;
+
+.PHONY: apidoc
+# 同步接口文档
+apidoc:ycTurboKitCheck
+	@yc_turbo_kit apidoc apifox -t $(APIFOX_PROJECT_TOKEN) -p $(APIFOX_PROJECT_ID)
+	@yc_turbo_kit apidoc yapi -t $(YAPI_PROJECT_ID)
+
+.PHONY: pbdoc
+# sql转为pb
+pbdoc:
+	@rm -rf ./doc/pb/*
+	@yc_turbo_kit sqltopb -p 'shadow.v1' -g 'gitlab.yc345.tv/backend/ainative-backend/api/shadow/v1;v1' -o './doc/pb'
+
+
+.PHONY: jmeter
+# jmeter 生成压测文件 make jmeter USER=your_username
+jmeter:ycTurboKitCheck
+	@if [ -n "$(USER)" ]; then \
+		echo "notice jmeter user: $(USER)"; \
+		yc_turbo_kit jmeter -d backend.ainative -u $(USER) -s "|" -q false; \
 	else \
-		echo "$(C_GREEN)✓ $(call _prefix,$(1)) 已更新$(C_RESET)"; \
+		echo "Please provide USER parameter"; \
+		exit 1; \
 	fi
-endef
 
-# 生成 subtree-push 目标: subtree-push-{name} feature/xxx
-# 用法: make subtree-push-backend feature/xxx
-# 必须指定 feature/ 分支，禁止直接推送到 master
-define _gen_push
-subtree-push-$(call _name,$(1)):
-	$(_check_env)
-	@PUSH_BRANCH="$(filter-out subtree-push-$(call _name,$(1)),$(MAKECMDGOALS))"; \
-	if [ -z "$$$$PUSH_BRANCH" ]; then \
-		echo "$(C_RED)错误: 必须指定 feature/ 分支，禁止直接推送到 master$(C_RESET)"; \
-		echo "$(C_YELLOW)用法: make subtree-push-$(call _name,$(1)) feature/xxx$(C_RESET)"; \
+.PHONY: protocode
+# 通过proto文件,生成对应的data,biz,service代码,make protocode
+protocode:ycTurboKitCheck
+	@echo "proto code start";
+	@yc_turbo_kit proto logic
+	@yc_turbo_kit proto data -t $(TABLES)
+	@echo "proto code finish";
+
+.PHONY: gorm
+# 生成 GORM 数据库代码
+gorm:ycTurboKitCheck
+	@yc_turbo_kit ormgen -v v2 -t $(TABLES)
+
+.PHONY: sqldump
+# 导出sql文件
+sqldump:ycTurboKitCheck
+	@yc_turbo_kit sqldump -f true -t $(TABLES)
+
+.PHONY: sqlimport
+# 导入sql文件 (使用: make sqlimport ./doc/sql/ 或 make sqlimport ./doc/sql/users.sql)
+sqlimport:ycTurboKitCheck
+	@if [ -z "$(word 2,$(MAKECMDGOALS))" ]; then \
+		echo "错误: 必须指定 SQL 文件或目录路径"; \
+		echo "使用方法: make sqlimport ./doc/sql/users.sql"; \
 		exit 1; \
-	fi; \
-	if ! echo "$$$$PUSH_BRANCH" | grep -q "^feature/"; then \
-		echo "$(C_RED)错误: 分支必须以 feature/ 开头，禁止直接推送到 master$(C_RESET)"; \
-		echo "$(C_YELLOW)用法: make subtree-push-$(call _name,$(1)) feature/xxx$(C_RESET)"; \
-		exit 1; \
-	fi; \
-	echo "$(C_BLUE)推送 $(call _prefix,$(1)) -> $$$$PUSH_BRANCH...$(C_RESET)"; \
-	OUT=$$$$(git subtree push --prefix=$(call _prefix,$(1)) $(call _repo,$(1)) $$$$PUSH_BRANCH 2>&1); \
-	CODE=$$$$?; \
-	if echo "$$$$OUT" | grep -q "Everything up-to-date"; then \
-		echo "$(C_YELLOW)$(call _prefix,$(1)) 无变更$(C_RESET)"; \
-	elif [ $$$$CODE -ne 0 ]; then \
-		echo "$$$$OUT"; \
-		echo "$(C_RED)推送失败，请先执行: make subtree-pull-$(call _name,$(1))$(C_RESET)"; \
-		exit 1; \
-	else \
-		echo "$(C_GREEN)✓ $(call _prefix,$(1)) 已推送到 $$$$PUSH_BRANCH$(C_RESET)"; \
 	fi
-endef
+	@yc_turbo_kit sqlimport -i $(word 2,$(MAKECMDGOALS))
 
-# 生成 subtree-merge-develop 目标: subtree-merge-develop-{name} feature/xxx
-# 用法: make subtree-merge-develop-backend feature/xxx
-# 从指定 feature/ 分支拉取，并推送合并到子仓库远端 develop 分支
-define _gen_merge_develop
-subtree-merge-develop-$(call _name,$(1)):
-	$(_check_env)
-	@FEATURE_BRANCH="$(filter-out subtree-merge-develop-$(call _name,$(1)),$(MAKECMDGOALS))"; \
-	if [ -z "$$$$FEATURE_BRANCH" ]; then \
-		echo "$(C_RED)错误: 必须指定 feature/ 分支$(C_RESET)"; \
-		echo "$(C_YELLOW)用法: make subtree-merge-develop-$(call _name,$(1)) feature/xxx$(C_RESET)"; \
+.PHONY: sqltopb
+# sql转为pb，需要传入位置参数: make sqltopb shadow table1,table2
+sqltopb:ycTurboKitCheck
+	@if [ -z "$(word 2,$(MAKECMDGOALS))" ]; then \
+		echo "错误: 必须指定 POSITION 参数 (shadow/app)"; \
+		echo "使用方法: make sqltopb shadow table1,table2"; \
 		exit 1; \
-	fi; \
-	if ! echo "$$$$FEATURE_BRANCH" | grep -q "^feature/"; then \
-		echo "$(C_RED)错误: 分支必须以 feature/ 开头$(C_RESET)"; \
-		echo "$(C_YELLOW)用法: make subtree-merge-develop-$(call _name,$(1)) feature/xxx$(C_RESET)"; \
-		exit 1; \
-	fi; \
-	echo "$(C_BLUE)拉取 $(call _prefix,$(1)) <- $$$$FEATURE_BRANCH...$(C_RESET)"; \
-	OUT=$$$$(git subtree pull --prefix=$(call _prefix,$(1)) $(call _repo,$(1)) $$$$FEATURE_BRANCH --squash 2>&1); \
-	CODE=$$$$?; \
-	if [ $$$$CODE -ne 0 ]; then \
-		echo "$$$$OUT"; \
-		echo "$(C_RED)拉取失败$(C_RESET)"; exit 1; \
-	fi; \
-	echo "$(C_BLUE)推送 $(call _prefix,$(1)) -> develop...$(C_RESET)"; \
-	OUT=$$$$(git subtree push --prefix=$(call _prefix,$(1)) $(call _repo,$(1)) develop 2>&1); \
-	CODE=$$$$?; \
-	if echo "$$$$OUT" | grep -q "Everything up-to-date"; then \
-		echo "$(C_YELLOW)$(call _prefix,$(1)) develop 无变更$(C_RESET)"; \
-	elif [ $$$$CODE -ne 0 ]; then \
-		echo "$$$$OUT"; \
-		echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
-	else \
-		echo "$(C_GREEN)✓ $(call _prefix,$(1)) 已从 $$$$FEATURE_BRANCH 合并到 develop$(C_RESET)"; \
 	fi
-endef
-
-# 生成 subtree-merge-test 目标: subtree-merge-test-{name} feature/xxx
-# 用法: make subtree-merge-test-backend feature/xxx
-# 从指定 feature/ 分支拉取，并推送合并到子仓库远端 test 分支
-define _gen_merge_test
-subtree-merge-test-$(call _name,$(1)):
-	$(_check_env)
-	@FEATURE_BRANCH="$(filter-out subtree-merge-test-$(call _name,$(1)),$(MAKECMDGOALS))"; \
-	if [ -z "$$$$FEATURE_BRANCH" ]; then \
-		echo "$(C_RED)错误: 必须指定 feature/ 分支$(C_RESET)"; \
-		echo "$(C_YELLOW)用法: make subtree-merge-test-$(call _name,$(1)) feature/xxx$(C_RESET)"; \
+	@if [ -z "$(word 3,$(MAKECMDGOALS))" ]; then \
+		echo "错误: 必须指定 TABLES 参数"; \
+		echo "使用方法: make sqltopb shadow table1,table2"; \
 		exit 1; \
-	fi; \
-	if ! echo "$$$$FEATURE_BRANCH" | grep -q "^feature/"; then \
-		echo "$(C_RED)错误: 分支必须以 feature/ 开头$(C_RESET)"; \
-		echo "$(C_YELLOW)用法: make subtree-merge-test-$(call _name,$(1)) feature/xxx$(C_RESET)"; \
-		exit 1; \
-	fi; \
-	echo "$(C_BLUE)拉取 $(call _prefix,$(1)) <- $$$$FEATURE_BRANCH...$(C_RESET)"; \
-	OUT=$$$$(git subtree pull --prefix=$(call _prefix,$(1)) $(call _repo,$(1)) $$$$FEATURE_BRANCH --squash 2>&1); \
-	CODE=$$$$?; \
-	if [ $$$$CODE -ne 0 ]; then \
-		echo "$$$$OUT"; \
-		echo "$(C_RED)拉取失败$(C_RESET)"; exit 1; \
-	fi; \
-	echo "$(C_BLUE)推送 $(call _prefix,$(1)) -> test...$(C_RESET)"; \
-	OUT=$$$$(git subtree push --prefix=$(call _prefix,$(1)) $(call _repo,$(1)) test 2>&1); \
-	CODE=$$$$?; \
-	if echo "$$$$OUT" | grep -q "Everything up-to-date"; then \
-		echo "$(C_YELLOW)$(call _prefix,$(1)) test 无变更$(C_RESET)"; \
-	elif [ $$$$CODE -ne 0 ]; then \
-		echo "$$$$OUT"; \
-		echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
-	else \
-		echo "$(C_GREEN)✓ $(call _prefix,$(1)) 已从 $$$$FEATURE_BRANCH 合并到 test$(C_RESET)"; \
 	fi
-endef
-
-# 允许任意分支名作为目标（避免 make 报错）
-%:
+	@POSITION=$(word 2,$(MAKECMDGOALS)); \
+	TABLES=$(word 3,$(MAKECMDGOALS)); \
+	@yc_turbo_kit sqltopb -p "$$POSITION.v1" -g "gitlab.yc345.tv/backend/ainative-backend/api/$$POSITION/v1;v1" -o "./api/$$POSITION/v1"
+%: # 防止位置参数被当作目标处理
 	@:
 
-# 生成 subtree-add 目标: subtree-add-{name}
-define _gen_add
-subtree-add-$(call _name,$(1)):
+# ==============================================================================
+# Subtree Test 分支操作
+# ==============================================================================
+
+.PHONY: subtree-pull-test subtree-pull-test-backend subtree-pull-test-shadow subtree-pull-test-app
+.PHONY: subtree-push-test subtree-push-test-backend subtree-push-test-shadow subtree-push-test-app
+.PHONY: merge-to-test
+
+# 拉取子仓库（test 分支用：backend<-test, shadow/app<-develop）
+subtree-pull-test: subtree-pull-test-backend subtree-pull-test-shadow subtree-pull-test-app
+	@echo ""
+	@echo "\033[32m\033[1m✓ 全部拉取完成\033[0m"
+
+subtree-pull-test-backend:
 	$(_check_env)
-	@echo "$(C_BLUE)添加 $(call _prefix,$(1))...$(C_RESET)"
-	@if [ -d "$(call _prefix,$(1))" ]; then \
-		echo "$(C_YELLOW)清理已存在的目录...$(C_RESET)"; \
-		git rm -rf --cached $(call _prefix,$(1)) 2>/dev/null || true; \
-		rm -rf $(call _prefix,$(1)); \
-		git commit -m "chore: reset $(call _prefix,$(1))" 2>/dev/null || true; \
-	fi
-	@git subtree add --prefix=$(call _prefix,$(1)) $(call _repo,$(1)) $(call _branch,$(1)) --squash
-	@echo "$(C_GREEN)✓ $(call _prefix,$(1)) 已添加$(C_RESET)"
-endef
+	@echo "\033[34m拉取 ainative-backend <- test...\033[0m"
+	@git subtree pull --prefix=ainative-backend git@gitlab.yc345.tv:backend/yanxue.git test --squash
+	@echo "\033[32m✓ ainative-backend 已更新\033[0m"
 
-# 动态生成所有目标
-$(foreach s,$(SUBTREES),$(eval $(call _gen_pull,$(s))))
-$(foreach s,$(SUBTREES),$(eval $(call _gen_push,$(s))))
-$(foreach s,$(SUBTREES),$(eval $(call _gen_add,$(s))))
-$(foreach s,$(SUBTREES),$(eval $(call _gen_merge_develop,$(s))))
-$(foreach s,$(SUBTREES),$(eval $(call _gen_merge_test,$(s))))
-
-# ==============================================================================
-# Subtree 批量操作
-# ==============================================================================
-
-.PHONY: subtree-pull subtree-push subtree-add subtree-status subtree-list subtree-merge-develop subtree-merge-test
-
-## 拉取所有子仓库
-subtree-pull: $(foreach n,$(NAMES),subtree-pull-$(n))
-	@echo ""
-	@echo "$(C_GREEN)$(C_BOLD)✓ 全部拉取完成$(C_RESET)"
-
-## 推送所有子仓库到指定 feature 分支
-## 用法: make subtree-push feature/xxx
-subtree-push: $(foreach n,$(NAMES),subtree-push-$(n))
-	@echo ""
-	@echo "$(C_GREEN)$(C_BOLD)✓ 全部推送完成$(C_RESET)"
-
-## 添加所有子仓库
-subtree-add: $(foreach n,$(NAMES),subtree-add-$(n))
-	@echo ""
-	@echo "$(C_GREEN)$(C_BOLD)✓ 全部添加完成$(C_RESET)"
-
-## 拉取指定 feature 分支并合并到所有子仓库的 develop 分支
-## 用法: make subtree-merge-develop feature/xxx
-subtree-merge-develop: $(foreach n,$(NAMES),subtree-merge-develop-$(n))
-	@echo ""
-	@echo "$(C_GREEN)$(C_BOLD)✓ 全部合并到 develop 完成$(C_RESET)"
-
-## 拉取指定 feature 分支并合并到所有子仓库的 test 分支（触发测试环境 CI）
-## 用法: make subtree-merge-test feature/xxx
-subtree-merge-test: $(foreach n,$(NAMES),subtree-merge-test-$(n))
-	@echo ""
-	@echo "$(C_GREEN)$(C_BOLD)✓ 全部合并到 test 完成$(C_RESET)"
-
-## 查看子仓库状态
-subtree-status:
+subtree-pull-test-shadow:
 	$(_check_env)
-	@echo "$(C_CYAN)$(C_BOLD)子仓库状态$(C_RESET)"
+	@echo "\033[34m拉取 ainative-shadow <- develop...\033[0m"
+	@git subtree pull --prefix=ainative-shadow git@gitlab.yc345.tv:frontend/trip-shadow.git develop --squash
+	@echo "\033[32m✓ ainative-shadow 已更新\033[0m"
+
+subtree-pull-test-app:
+	$(_check_env)
+	@echo "\033[34m拉取 ainative-app <- develop...\033[0m"
+	@git subtree pull --prefix=ainative-app git@gitlab.yc345.tv:frontend/trip-miniprogram.git develop --squash
+	@echo "\033[32m✓ ainative-app 已更新\033[0m"
+
+# 推送 test 分支到子仓库（backend->test, shadow/app->develop）
+subtree-push-test: subtree-push-test-backend subtree-push-test-shadow subtree-push-test-app
 	@echo ""
-	@$(foreach s,$(SUBTREES), \
-		echo "$(C_YELLOW)● $(call _prefix,$(s))$(C_RESET)"; \
-		if [ -d "$(call _prefix,$(s))" ]; then \
-			COMMIT=$$(git log --oneline -1 -- $(call _prefix,$(s))/ 2>/dev/null); \
-			if [ -n "$$COMMIT" ]; then \
-				echo "  $(C_GREEN)$$COMMIT$(C_RESET)"; \
-			else \
-				echo "  $(C_YELLOW)无提交记录$(C_RESET)"; \
-			fi; \
-			CHANGES=$$(git status --short $(call _prefix,$(s))/ 2>/dev/null); \
-			if [ -n "$$CHANGES" ]; then \
-				echo "  $(C_RED)有未提交的更改$(C_RESET)"; \
-			fi; \
-		else \
-			echo "  $(C_RED)未添加$(C_RESET)"; \
-		fi; \
-		echo "";)
+	@echo "\033[32m\033[1m✓ 全部推送完成\033[0m"
 
-## 列出子仓库配置
-subtree-list:
-	@echo "$(C_CYAN)$(C_BOLD)子仓库配置$(C_RESET)"
-	@echo ""
-	@$(foreach s,$(SUBTREES), \
-		echo "$(C_YELLOW)$(call _name,$(s))$(C_RESET)"; \
-		echo "  目录: $(call _prefix,$(s))"; \
-		echo "  仓库: $(call _repo,$(s))"; \
-		echo "  分支: $(call _branch,$(s))"; \
-		echo "";)
+subtree-push-test-backend:
+	$(_check_env)
+	@echo "\033[34m推送 ainative-backend -> test...\033[0m"
+	@git subtree push --prefix=ainative-backend git@gitlab.yc345.tv:backend/yanxue.git test
+	@echo "\033[32m✓ ainative-backend 已推送\033[0m"
 
-# ==============================================================================
-# 小程序 CI
-# ==============================================================================
+subtree-push-test-shadow:
+	$(_check_env)
+	@echo "\033[34m推送 ainative-shadow -> develop...\033[0m"
+	@git subtree push --prefix=ainative-shadow git@gitlab.yc345.tv:frontend/trip-shadow.git develop
+	@echo "\033[32m✓ ainative-shadow 已推送\033[0m"
 
-.PHONY: app-preview app-upload app-upload-test app-upload-stage app-upload-prod app-check app-check-key
+subtree-push-test-app:
+	$(_check_env)
+	@echo "\033[34m推送 ainative-app -> develop...\033[0m"
+	@git subtree push --prefix=ainative-app git@gitlab.yc345.tv:frontend/trip-miniprogram.git develop
+	@echo "\033[32m✓ ainative-app 已推送\033[0m"
 
-## 生成小程序预览二维码
-app-preview:
-	@echo "$(C_BLUE)生成小程序预览二维码...$(C_RESET)"
-	@cd ainative-app && pnpm ci:weapp:preview
-	@echo "$(C_GREEN)✓ 预览二维码已生成$(C_RESET)"
+# 合并当前分支到 test（先切换 test、pull，再合并，最后 push）
+merge-to-test:
+	$(_check_env)
+	@CURRENT=$$(git branch --show-current); \
+	if [ "$$CURRENT" = "test" ]; then \
+		echo "\033[31m错误: 当前已在 test 分支，请先切换到要合并的分支\033[0m"; exit 1; \
+	fi; \
+	echo "\033[34m当前分支: $$CURRENT\033[0m"; \
+	echo "\033[34m切换到 test 并拉取...\033[0m"; \
+	git checkout test && git pull origin test; \
+	echo "\033[34m合并 $$CURRENT 到 test...\033[0m"; \
+	git merge $$CURRENT -m "Merge branch '$$CURRENT' into test"; \
+	echo "\033[34m推送 test 到 remote...\033[0m"; \
+	git push origin test; \
+	echo "\033[32m✓ 已合并 $$CURRENT 到 test 并推送完成\033[0m"
 
-## 上传小程序到微信后台（测试环境）
-app-upload-test:
-	@echo "$(C_BLUE)上传测试环境小程序...$(C_RESET)"
-	@cd ainative-app && pnpm ci:weapp:upload:test
-	@echo "$(C_GREEN)✓ 测试环境已上传，请在微信后台设置体验版$(C_RESET)"
+.PHONY: redisclear
+# 清除Redis缓存
+redisclear:ycTurboKitCheck
+	@yc_turbo_kit redisclear
 
-## 上传小程序到微信后台（预发布环境）
-app-upload-stage:
-	@echo "$(C_BLUE)上传预发布环境小程序...$(C_RESET)"
-	@cd ainative-app && pnpm ci:weapp:upload:stage
-	@echo "$(C_GREEN)✓ 预发布环境已上传，请在微信后台设置体验版$(C_RESET)"
+.PHONY: errcode
+# 导出错误码
+errcode:
+	@go run ./internal/pkg/errcode/main.go
 
-## 上传小程序到微信后台（生产环境）
-app-upload-prod:
-	@echo "$(C_BLUE)上传生产环境小程序...$(C_RESET)"
-	@cd ainative-app && pnpm ci:weapp:upload:production
-	@echo "$(C_GREEN)✓ 生产环境已上传，请在微信后台设置体验版$(C_RESET)"
+.PHONY: buf
+# buf 格式化 proto
+buf:
+	@if [ -n "$(BUF_INSTALLED)" ]; then \
+        cd ./api  && \
+        buf format -w && \
+        echo "proto format finish"; \
+    else \
+        echo "please installation buf: https://buf.build/docs/installation"; \
+    fi
 
-## 上传小程序（默认测试环境）
-app-upload: app-upload-test
+.PHONY: gci
+# buf 格式化 proto
+gci:
+	@if [ -n "$(GCI_INSTALLED)" ]; then \
+        gci write ./internal --skip-generated && \
+        echo "gci format finish"; \
+    else \
+        echo "please installation gci: https://github.com/daixiang0/gci"; \
+    fi
 
-## 全面检查小程序 CI 环境
-app-check:
-	@./scripts/check-app-ci.sh
+.PHONY: ycTurboKitCheck
+# 效率工具安装检查
+ycTurboKitCheck:
+	@if [ -z "$(YC_TURBO_KIT_INSTALLED)" ]; then \
+  		echo "try to install yc_turbo_kit: https://gitlab.yc345.tv/backend/yc_turbo_kit"; \
+  	   	go install gitlab.yc345.tv/backend/yc_turbo_kit@latest; \
+    fi
 
-## 检查小程序私钥配置
-app-check-key:
-	@echo "$(C_CYAN)检查小程序私钥配置...$(C_RESET)"
-	@echo ""
-	@if [ ! -f "ainative-app/ci.test.config.js" ]; then \
-		echo "$(C_RED)✗ 缺少测试环境配置: ainative-app/ci.test.config.js$(C_RESET)"; \
-	else \
-		echo "$(C_GREEN)✓ 测试环境配置存在$(C_RESET)"; \
-		APPID=$$(grep WEAPP_APPID ainative-app/ci.test.config.js | cut -d'"' -f2); \
-		KEY_PATH=$$(grep WEAPP_PRIVATE_KEY_PATH ainative-app/ci.test.config.js | cut -d'"' -f2); \
-		echo "  AppID: $$APPID"; \
-		echo "  私钥路径: $$KEY_PATH"; \
-		if [ -f "ainative-app/$$KEY_PATH" ]; then \
-			echo "  $(C_GREEN)✓ 私钥文件存在$(C_RESET)"; \
-		else \
-			echo "  $(C_RED)✗ 私钥文件不存在$(C_RESET)"; \
-		fi; \
-	fi
-	@echo ""
-	@if [ ! -f "ainative-app/ci.config.js" ]; then \
-		echo "$(C_RED)✗ 缺少生产环境配置: ainative-app/ci.config.js$(C_RESET)"; \
-	else \
-		echo "$(C_GREEN)✓ 生产环境配置存在$(C_RESET)"; \
-		APPID=$$(grep WEAPP_APPID ainative-app/ci.config.js | cut -d'"' -f2); \
-		KEY_PATH=$$(grep WEAPP_PRIVATE_KEY_PATH ainative-app/ci.config.js | cut -d'"' -f2); \
-		echo "  AppID: $$APPID"; \
-		echo "  私钥路径: $$KEY_PATH"; \
-		if [ -f "ainative-app/$$KEY_PATH" ]; then \
-			echo "  $(C_GREEN)✓ 私钥文件存在$(C_RESET)"; \
-		else \
-			echo "  $(C_RED)✗ 私钥文件不存在$(C_RESET)"; \
-		fi; \
-	fi
-	@echo ""
-	@echo "$(C_YELLOW)私钥获取方式：$(C_RESET)"
-	@echo "  1. 登录微信公众平台: https://mp.weixin.qq.com/"
-	@echo "  2. 进入"开发" -> "开发设置" -> "小程序代码上传""
-	@echo "  3. 生成并下载代码上传密钥"
-	@echo "  4. 将密钥文件放到 ainative-app/key/ 目录"
-	@echo ""
+.PHONY: new-pre-branch
+# 创建新的pre分支 tag +1
+new-pre-branch:
+	@git fetch --tags
+	@latest_tag=$$(git describe --tags --abbrev=0 origin/master); \
+	IFS='.' read -r -a version_parts <<< "$${latest_tag#v}"; \
+	major=$${version_parts[0]}; \
+	minor=$${version_parts[1]}; \
+	patch=$${version_parts[2]}; \
+	new_patch=$$((patch + 1)); \
+	new_tag="v$${major}.$${minor}.$${new_patch}"; \
+	git checkout -b "pre/$${new_tag}" origin/master; \
+	git branch --unset-upstream; \
 
-# ==============================================================================
-# 沙箱环境
-# ==============================================================================
+protoc-install:
+	@curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v21.9/protoc-21.9-osx-x86_64.zip
+	@unzip -o protoc-21.9-osx-x86_64.zip -d ./protoc-21.9-osx-x86_64
+	@mv ./protoc-21.9-osx-x86_64/bin/protoc "$(shell go env GOPATH)/bin/protoc"
+	@rm -rf protoc-21.9-osx-x86_64.zip ./protoc-21.9-osx-x86_64
 
-.PHONY: sandbox sandbox-build sandbox-stop sandbox-shell sandbox-logs sandbox-clean sandbox-restart sandbox-list sandbox-mirror sandbox-doctor
+.PHONY: all
+# generate all
+all:
+	make api;
+	make config;
+	make checkVersion;
+	make wire;
+	make gosec;
 
-SANDBOX := ./sandbox/sandbox.sh
-
-## 启动沙箱
-sandbox:
-	@$(SANDBOX) start
-
-## 构建沙箱镜像
-sandbox-build:
-	@$(SANDBOX) build
-
-## 停止沙箱
-sandbox-stop:
-	@$(SANDBOX) stop
-
-## 进入沙箱终端
-sandbox-shell:
-	@$(SANDBOX) shell
-
-## 查看沙箱日志 (用法: make sandbox-logs backend)
-sandbox-logs:
-	@$(SANDBOX) logs $(word 2,$(MAKECMDGOALS))
-
-## 清理沙箱
-sandbox-clean:
-	@$(SANDBOX) clean
-
-## 重启沙箱
-sandbox-restart:
-	@$(SANDBOX) restart
-
-## 诊断 Docker/沙箱环境问题
-sandbox-doctor:
-	@bash ./sandbox/setup-rootless-docker.sh --check
-
-## 配置 Docker 镜像加速
-sandbox-mirror:
-	@echo '{"registry-mirrors":["https://dockerproxy.com","https://docker.mirrors.ustc.edu.cn","https://docker.nju.edu.cn"]}' > ~/.docker/daemon.json
-	@echo "$(C_GREEN)✓ 已配置镜像加速，请重启 Docker Desktop$(C_RESET)"
-
-# ==============================================================================
-# 帮助
-# ==============================================================================
-
-.PHONY: help
-
+# show help
 help:
-	@echo ""
-	@echo "$(C_CYAN)$(C_BOLD)AINative Workspace$(C_RESET)"
-	@echo ""
-	@echo "$(C_YELLOW)子仓库管理$(C_RESET)"
-	@echo "  $(C_GREEN)make subtree-pull$(C_RESET)              拉取所有子仓库"
-	@echo "  $(C_GREEN)make subtree-push$(C_RESET)              推送所有子仓库"
-	@echo "  $(C_GREEN)make subtree-add$(C_RESET)               添加所有子仓库"
-	@echo "  $(C_GREEN)make subtree-status$(C_RESET)            查看子仓库状态"
-	@echo "  $(C_GREEN)make subtree-list$(C_RESET)              列出子仓库配置"
-	@echo "  $(C_GREEN)make subtree-merge-develop$(C_RESET)     从 feature 分支合并到所有子仓库 develop"
-	@echo "  $(C_GREEN)make subtree-merge-test$(C_RESET)        从 feature 分支合并到所有子仓库 test（触发测试 CI）"
-	@echo ""
-	@echo "$(C_YELLOW)单个子仓库$(C_RESET)"
-	@$(foreach s,$(SUBTREES), \
-		echo "  $(C_GREEN)make subtree-pull-$(call _name,$(s))$(C_RESET)  拉取 $(call _prefix,$(s))";)
-	@$(foreach s,$(SUBTREES), \
-		echo "  $(C_GREEN)make subtree-push-$(call _name,$(s))$(C_RESET)  推送 $(call _prefix,$(s))";)
-	@$(foreach s,$(SUBTREES), \
-		echo "  $(C_GREEN)make subtree-merge-develop-$(call _name,$(s))$(C_RESET)  合并到 $(call _prefix,$(s)) develop";)
-	@$(foreach s,$(SUBTREES), \
-		echo "  $(C_GREEN)make subtree-merge-test-$(call _name,$(s))$(C_RESET)  合并到 $(call _prefix,$(s)) test";)
-	@echo ""
-	@echo ""
-	@echo "$(C_YELLOW)推送到指定分支$(C_RESET)"
-	@echo "  $(C_GREEN)make subtree-push-backend feature/xxx$(C_RESET)          推送到 feature 分支"
-	@echo "  $(C_GREEN)make subtree-merge-develop-backend feature/xxx$(C_RESET)  从 feature 拉取并合并到 develop"
-	@echo "  $(C_GREEN)make subtree-merge-test-backend feature/xxx$(C_RESET)     从 feature 拉取并合并到 test"
-	@echo ""
-	@echo "$(C_YELLOW)小程序 CI$(C_RESET)"
-	@echo "  $(C_GREEN)make app-preview$(C_RESET)       生成预览二维码"
-	@echo "  $(C_GREEN)make app-upload-test$(C_RESET)   上传测试环境"
-	@echo "  $(C_GREEN)make app-upload-stage$(C_RESET)  上传预发布环境"
-	@echo "  $(C_GREEN)make app-upload-prod$(C_RESET)   上传生产环境"
-	@echo "  $(C_GREEN)make app-check$(C_RESET)         全面检查 CI 环境"
-	@echo "  $(C_GREEN)make app-check-key$(C_RESET)     检查私钥配置"
-	@echo ""
-	@echo "$(C_YELLOW)沙箱环境$(C_RESET)"
-	@echo "  $(C_GREEN)make sandbox$(C_RESET)           启动沙箱"
-	@echo "  $(C_GREEN)make sandbox-build$(C_RESET)     构建沙箱镜像"
-	@echo "  $(C_GREEN)make sandbox-stop$(C_RESET)      停止沙箱"
-	@echo "  $(C_GREEN)make sandbox-shell$(C_RESET)     进入沙箱终端"
-	@echo "  $(C_GREEN)make sandbox-logs$(C_RESET)      查看沙箱日志"
-	@echo "  $(C_GREEN)make sandbox-clean$(C_RESET)     清理沙箱"
-	@echo "  $(C_GREEN)make sandbox-restart$(C_RESET)   重启沙箱"
-	@echo "  $(C_GREEN)make sandbox-mirror$(C_RESET)    配置 Docker 镜像加速"
-	@echo ""
+	@echo ''
+	@echo 'Usage:'
+	@echo ' make [target]'
+	@echo ''
+	@echo 'Targets:'
+	@awk '/^[a-zA-Z\-\_0-9]+:/ { \
+	helpMessage = match(lastLine, /^# (.*)/); \
+		if (helpMessage) { \
+			helpCommand = substr($$1, 0, index($$1, ":")-1); \
+			helpMessage = substr(lastLine, RSTART + 2, RLENGTH); \
+			printf "\033[36m%-22s\033[0m %s\n", helpCommand,helpMessage; \
+		} \
+	} \
+	{ lastLine = $$0 }' $(MAKEFILE_LIST)
 
-# .PHONY 声明
-.PHONY: $(foreach n,$(NAMES),subtree-pull-$(n) subtree-push-$(n) subtree-add-$(n) subtree-merge-develop-$(n) subtree-merge-test-$(n))
+.DEFAULT_GOAL := help
