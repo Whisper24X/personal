@@ -1,38 +1,3 @@
-# ==============================================================================
-# Subtree 配置（test 分支用）
-# ==============================================================================
-# 格式：别名|目录|仓库地址|默认分支
-SUBTREES := \
-	backend|ainative-backend|git@gitlab.yc345.tv:backend/yanxue.git|master \
-	shadow|ainative-shadow|git@gitlab.yc345.tv:frontend/trip-shadow.git|master \
-	app|ainative-app|git@gitlab.yc345.tv:frontend/trip-miniprogram.git|master
-
-# test 分支对应的子仓库分支：backend=test, shadow/app=develop
-SUBTREE_TEST_BRANCH_backend := test
-SUBTREE_TEST_BRANCH_shadow  := develop
-SUBTREE_TEST_BRANCH_app     := develop
-
-# 解析 subtree 配置字段
-_name   = $(word 1,$(subst |, ,$(1)))
-_prefix = $(word 2,$(subst |, ,$(1)))
-_repo   = $(word 3,$(subst |, ,$(1)))
-
-# 检查执行环境（subtree 操作需在仓库根目录、非 worktree 中执行）
-define _check_env
-	@ROOT=$$(git rev-parse --show-toplevel 2>/dev/null) || { \
-		echo "\033[31m错误: 不在 git 仓库中\033[0m"; exit 1; \
-	}; \
-	[ "$$(pwd -P)" = "$$(cd $$ROOT && pwd -P)" ] || { \
-		echo "\033[31m错误: 请在仓库根目录执行\033[0m"; exit 1; \
-	}; \
-	[ ! -f "$$ROOT/.git" ] || { \
-		echo "\033[31m错误: 不能在 worktree 中执行 subtree 操作\033[0m"; exit 1; \
-	}
-endef
-
-# ==============================================================================
-# Backend 配置
-# ==============================================================================
 GOPATH=$(shell go env GOPATH)
 VERSION=$(shell git describe --tags --always)
 APP_RELATIVE_PATH=$(shell a=`basename $$PWD` && cd .. && b=`basename $$PWD` && echo $$b/$$a)
@@ -212,12 +177,24 @@ sqltopb:ycTurboKitCheck
 	@:
 
 # ==============================================================================
-# Subtree Test 分支操作
+# Subtree 配置（test 分支用）
 # ==============================================================================
+# 检查执行环境（subtree 需在仓库根目录、非 worktree 中执行）
+define _check_env
+	@ROOT=$$(git rev-parse --show-toplevel 2>/dev/null) || { \
+		echo "\033[31m错误: 不在 git 仓库中\033[0m"; exit 1; \
+	}; \
+	[ "$$(pwd -P)" = "$$(cd $$ROOT && pwd -P)" ] || { \
+		echo "\033[31m错误: 请在仓库根目录执行\033[0m"; exit 1; \
+	}; \
+	[ ! -f "$$ROOT/.git" ] || { \
+		echo "\033[31m错误: 不能在 worktree 中执行 subtree 操作\033[0m"; exit 1; \
+	}
+endef
 
 .PHONY: subtree-pull-test subtree-pull-test-backend subtree-pull-test-shadow subtree-pull-test-app
 .PHONY: subtree-push-test subtree-push-test-backend subtree-push-test-shadow subtree-push-test-app
-.PHONY: merge-to-test
+.PHONY: checkout-test merge-to-test
 
 # 拉取子仓库（test 分支用：backend<-test, shadow/app<-develop）
 subtree-pull-test: subtree-pull-test-backend subtree-pull-test-shadow subtree-pull-test-app
@@ -265,7 +242,15 @@ subtree-push-test-app:
 	@git subtree push --prefix=ainative-app git@gitlab.yc345.tv:frontend/trip-miniprogram.git develop
 	@echo "\033[32m✓ ainative-app 已推送\033[0m"
 
-# 合并当前分支到 test（先切换 test、pull，再合并，最后 push）
+# 切换 test 分支并拉取子仓库
+checkout-test:
+	$(_check_env)
+	@echo "\033[34m切换到 test 并拉取...\033[0m"
+	@git checkout test && git pull origin test
+	@$(MAKE) subtree-pull-test
+	@echo "\033[32m✓ 已切换到 test 并完成子仓库拉取\033[0m"
+
+# 合并当前分支到 test，推送主仓库，并推送子仓库
 merge-to-test:
 	$(_check_env)
 	@CURRENT=$$(git branch --show-current); \
@@ -279,7 +264,9 @@ merge-to-test:
 	git merge $$CURRENT -m "Merge branch '$$CURRENT' into test"; \
 	echo "\033[34m推送 test 到 remote...\033[0m"; \
 	git push origin test; \
-	echo "\033[32m✓ 已合并 $$CURRENT 到 test 并推送完成\033[0m"
+	echo "\033[34m推送 test 到子仓库...\033[0m"; \
+	$(MAKE) subtree-push-test; \
+	echo "\033[32m✓ 已合并 $$CURRENT 到 test，主仓库与子仓库均已推送\033[0m"
 
 .PHONY: redisclear
 # 清除Redis缓存
