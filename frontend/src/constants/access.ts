@@ -6,6 +6,8 @@ export {
   BUSINESS_LINE_CAPABILITY_TREE,
   PROJECT_CAPABILITY_TREE,
   flattenCapabilityTree,
+  formatProjectRoleCapabilitiesDisplay,
+  formatBusinessLineRoleCapabilitiesDisplay,
 } from './access-control'
 
 export type {
@@ -122,71 +124,50 @@ const BUSINESS_LINE_DEFAULT_ROLE_TEMPLATES = [
   },
 ] as const satisfies DefaultRoleTemplate<'owner' | 'admin' | 'member'>[]
 
+const PROJECT_VIEWER_CAPABILITIES = [
+  'project.dashboard.read',
+  'project.task.read',
+  'project.kanban.read',
+  'project.knowledge.read',
+  'project.workflow.read',
+] as const
+
+const PROJECT_DEVELOPER_CAPABILITIES = [
+  ...PROJECT_VIEWER_CAPABILITIES,
+  'project.automation.read',
+] as const
+
+const PROJECT_MAINTAINER_CAPABILITIES = [
+  ...PROJECT_DEVELOPER_CAPABILITIES,
+  'project.skill.read',
+  'project.mcp.read',
+] as const
+
+const PROJECT_OWNER_CAPABILITIES = [
+  ...PROJECT_MAINTAINER_CAPABILITIES,
+  'project.git.read',
+] as const
+
 const PROJECT_DEFAULT_ROLE_TEMPLATES = [
   {
     role: 'owner',
     name: 'owner',
-    capabilities: [
-      'project.read',
-      'project.update',
-      'project.delete',
-      'project.member.manage',
-      'project.task.read',
-      'project.task.create',
-      'project.task.execute',
-      'project.task.cancel',
-      'project.kanban.view',
-      'project.automation.view',
-      'project.automation.manage',
-      'project.workflow.view',
-      'project.workflow.manage',
-      'project.artifact.read',
-    ],
+    capabilities: [...PROJECT_OWNER_CAPABILITIES],
   },
   {
     role: 'maintainer',
     name: 'maintainer',
-    capabilities: [
-      'project.read',
-      'project.update',
-      'project.member.manage',
-      'project.task.read',
-      'project.task.create',
-      'project.task.execute',
-      'project.task.cancel',
-      'project.kanban.view',
-      'project.automation.view',
-      'project.automation.manage',
-      'project.workflow.view',
-      'project.workflow.manage',
-      'project.artifact.read',
-    ],
+    capabilities: [...PROJECT_MAINTAINER_CAPABILITIES],
   },
   {
     role: 'developer',
     name: 'developer',
-    capabilities: [
-      'project.read',
-      'project.task.read',
-      'project.task.create',
-      'project.task.execute',
-      'project.kanban.view',
-      'project.automation.view',
-      'project.workflow.view',
-      'project.artifact.read',
-    ],
+    capabilities: [...PROJECT_DEVELOPER_CAPABILITIES],
   },
   {
     role: 'viewer',
     name: 'viewer',
-    capabilities: [
-      'project.read',
-      'project.task.read',
-      'project.kanban.view',
-      'project.automation.view',
-      'project.workflow.view',
-      'project.artifact.read',
-    ],
+    capabilities: [...PROJECT_VIEWER_CAPABILITIES],
   },
 ] as const satisfies DefaultRoleTemplate<'owner' | 'maintainer' | 'developer' | 'viewer'>[]
 

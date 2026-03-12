@@ -109,7 +109,7 @@ describe('WorkflowTemplatesService', () => {
     expect(projectsService.assertProjectCapability).toHaveBeenCalledWith(
       'project-1',
       currentUser,
-      'project.workflow.manage',
+      'project.workflow.read',
     );
     expect(workflowTemplateRepository.findByName).toHaveBeenCalledWith(
       'Project template',

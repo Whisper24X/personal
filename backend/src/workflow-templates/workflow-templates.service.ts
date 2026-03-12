@@ -73,7 +73,7 @@ export class WorkflowTemplatesService {
       const project = await this.projectsService.assertProjectCapability(
         projectId,
         currentUser,
-        'project.workflow.manage',
+        'project.workflow.read',
       );
 
       businessLineId = project.businessLineId;
@@ -146,7 +146,7 @@ export class WorkflowTemplatesService {
       const project = await this.projectsService.assertProjectCapability(
         projectId,
         currentUser,
-        'project.workflow.view',
+        'project.workflow.read',
       );
       if (businessLineId && businessLineId !== project.businessLineId) {
         throw new BadRequestException(
@@ -511,7 +511,7 @@ export class WorkflowTemplatesService {
     await this.projectsService.assertProjectCapability(
       template.projectId,
       currentUser,
-      'project.workflow.view',
+      'project.workflow.read',
     );
   }
 
@@ -544,7 +544,7 @@ export class WorkflowTemplatesService {
     await this.projectsService.assertProjectCapability(
       template.projectId,
       currentUser,
-      'project.workflow.manage',
+      'project.workflow.read',
     );
   }
 

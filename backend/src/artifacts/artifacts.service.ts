@@ -38,7 +38,7 @@ export class ArtifactsService {
     await this.projectsService.assertProjectCapability(
       task.projectId,
       currentUser,
-      'project.artifact.read',
+      'project.task.read',
     );
 
     return artifact;

@@ -547,12 +547,19 @@ export class AccessService {
 
   private isProjectReadCapability(capability: string): boolean {
     return [
-      'project.read',
+      'project.dashboard.read',
       'project.task.read',
+      'project.kanban.read',
+      'project.automation.read',
+      'project.knowledge.read',
+      'project.workflow.read',
+      'project.skill.read',
+      'project.mcp.read',
+      'project.git.read',
+      'project.read',
       'project.kanban.view',
       'project.automation.view',
       'project.workflow.view',
-      'project.artifact.read',
     ].includes(capability);
   }
 

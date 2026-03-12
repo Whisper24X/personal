@@ -52,7 +52,7 @@ import {
   getProjectDefaultRoleTemplate,
   hasProjectTemplateCapabilities,
   isDefaultTemplateRoleName,
-  isProjectOwnerCapabilities,
+  isProjectOwnerRoleName,
   normalizeProjectCapabilities,
 } from '../access/access.constants';
 
@@ -376,20 +376,13 @@ export class ProjectsService {
     projectId: Project['id'],
     currentUser: JwtPayloadType,
   ): Promise<ProjectMember[]> {
-    await this.accessService.assertProjectCapability(
-      currentUser,
+    const { project } = await this.ensureCanManageProjectMembers(
       projectId,
-      'project.member.manage',
+      currentUser,
     );
 
-    const [project, members] = await Promise.all([
-      this.projectRepository.findById(projectId),
-      this.projectMemberRepository.findByProjectId(projectId),
-    ]);
-
-    if (!project) {
-      throw new NotFoundException('Project not found');
-    }
+    const members =
+      await this.projectMemberRepository.findByProjectId(projectId);
 
     return this.attachCustomRoleNamesToProjectMembers(
       members,
@@ -743,7 +736,7 @@ export class ProjectsService {
     await this.accessService.assertProjectCapability(
       currentUser,
       projectId,
-      'project.read',
+      'project.dashboard.read',
     );
 
     return project;
@@ -1669,7 +1662,7 @@ export class ProjectsService {
     return this.accessService.assertProjectCapability(
       currentUser,
       projectId,
-      'project.read',
+      'project.dashboard.read',
     );
   }
 
@@ -1677,11 +1670,19 @@ export class ProjectsService {
     projectId: Project['id'],
     currentUser: JwtPayloadType,
   ): Promise<Project> {
-    return this.accessService.assertProjectCapability(
+    const project = await this.getProjectOrThrow(projectId);
+
+    if (this.isAdmin(currentUser)) {
+      return project;
+    }
+
+    await this.accessService.assertBusinessLineCapability(
       currentUser,
-      projectId,
-      'project.update',
+      project.businessLineId,
+      'businessLine.project.update',
     );
+
+    return project;
   }
 
   private async ensureCanManageProjectMembers(
@@ -1691,11 +1692,7 @@ export class ProjectsService {
     project: Project;
     actorProjectMember: ProjectMember | null;
   }> {
-    const project = await this.accessService.assertProjectCapability(
-      currentUser,
-      projectId,
-      'project.member.manage',
-    );
+    const project = await this.ensureCanAccessProject(projectId, currentUser);
 
     if (this.isAdmin(currentUser)) {
       return {
@@ -1703,6 +1700,12 @@ export class ProjectsService {
         actorProjectMember: null,
       };
     }
+
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      project.businessLineId,
+      'businessLine.member.updateRole',
+    );
 
     const actorProjectMember =
       await this.projectMemberRepository.findByProjectIdAndUserId(
@@ -1780,22 +1783,11 @@ export class ProjectsService {
       return project;
     }
 
-    const [canManageByBusinessLine, canManageByProject] = await Promise.all([
-      this.accessService.hasBusinessLineCapability(
-        currentUser,
-        project.businessLineId,
-        'businessLine.project.update',
-      ),
-      this.accessService.hasProjectCapability(
-        currentUser,
-        project.id,
-        'project.update',
-      ),
-    ]);
-
-    if (!canManageByBusinessLine && !canManageByProject) {
-      throw new ForbiddenException('forbiddenProjectManage');
-    }
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      project.businessLineId,
+      'businessLine.project.update',
+    );
 
     return project;
   }
@@ -1810,22 +1802,11 @@ export class ProjectsService {
       return project;
     }
 
-    const [canManageByBusinessLine, canManageByProject] = await Promise.all([
-      this.accessService.hasBusinessLineCapability(
-        currentUser,
-        project.businessLineId,
-        'businessLine.project.delete',
-      ),
-      this.accessService.hasProjectCapability(
-        currentUser,
-        project.id,
-        'project.delete',
-      ),
-    ]);
-
-    if (!canManageByBusinessLine && !canManageByProject) {
-      throw new ForbiddenException('forbiddenProjectManage');
-    }
+    await this.accessService.assertBusinessLineCapability(
+      currentUser,
+      project.businessLineId,
+      'businessLine.project.delete',
+    );
 
     return project;
   }
@@ -2329,10 +2310,8 @@ export class ProjectsService {
     const roleNameSet = new Set(existingRoles.map((role) => role.name));
 
     for (const template of PROJECT_DEFAULT_ROLE_TEMPLATES) {
-      const existedRole = existingRoles.find(
-        (role) =>
-          hasProjectTemplateCapabilities(role.capabilities, template.role) ||
-          isDefaultTemplateRoleName(role.name, template.name),
+      const existedRole = existingRoles.find((role) =>
+        isDefaultTemplateRoleName(role.name, template.name),
       );
       if (existedRole) {
         continue;
@@ -2409,7 +2388,7 @@ export class ProjectsService {
     return (
       !!role &&
       role.businessLineId === businessLineId &&
-      isProjectOwnerCapabilities(role.capabilities)
+      isProjectOwnerRoleName(role.name)
     );
   }
 
@@ -2525,7 +2504,7 @@ export class ProjectsService {
       );
     const ownerRoleIdSet = new Set(
       roles
-        .filter((role) => isProjectOwnerCapabilities(role.capabilities))
+        .filter((role) => isProjectOwnerRoleName(role.name))
         .map((role) => role.id),
     );
     const ownerCount = members.filter((member) =>
