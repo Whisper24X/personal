@@ -79,7 +79,7 @@ describe('AutomationsService', () => {
     expect(projectsService.assertProjectCapability).toHaveBeenCalledWith(
       'project-1',
       currentUser,
-      'project.automation.manage',
+      'project.automation.read',
     );
     expect(automationRepository.findByName).toHaveBeenCalledWith(
       'Daily queue digest',
@@ -143,7 +143,7 @@ describe('AutomationsService', () => {
     expect(projectsService.assertProjectCapability).toHaveBeenCalledWith(
       'project-1',
       currentUser,
-      'project.automation.view',
+      'project.automation.read',
     );
     expect(automationRepository.findAllWithPagination).toHaveBeenCalledWith({
       paginationOptions: {

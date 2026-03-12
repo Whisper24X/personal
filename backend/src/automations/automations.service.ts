@@ -27,7 +27,7 @@ export class AutomationsService {
     await this.projectsService.assertProjectCapability(
       createAutomationDto.projectId,
       currentUser,
-      'project.automation.manage',
+      'project.automation.read',
     );
 
     const existedAutomation = await this.automationRepository.findByName(
@@ -59,7 +59,7 @@ export class AutomationsService {
     await this.projectsService.assertProjectCapability(
       query.projectId,
       currentUser,
-      'project.automation.view',
+      'project.automation.read',
     );
 
     const paginationOptions: IPaginationOptions = {
@@ -88,7 +88,7 @@ export class AutomationsService {
     await this.projectsService.assertProjectCapability(
       automation.projectId,
       currentUser,
-      'project.automation.view',
+      'project.automation.read',
     );
 
     return automation;
@@ -108,7 +108,7 @@ export class AutomationsService {
     await this.projectsService.assertProjectCapability(
       existedAutomation.projectId,
       currentUser,
-      'project.automation.manage',
+      'project.automation.read',
     );
 
     const nextName = updateAutomationDto.name ?? existedAutomation.name;
@@ -156,7 +156,7 @@ export class AutomationsService {
     await this.projectsService.assertProjectCapability(
       automation.projectId,
       currentUser,
-      'project.automation.manage',
+      'project.automation.read',
     );
     await this.automationRepository.remove(id);
   }

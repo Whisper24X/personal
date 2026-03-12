@@ -92,7 +92,7 @@ const activeProjectId = computed(() => {
 })
 
 const hasProjectId = computed(() => Boolean(activeProjectId.value))
-const canManageAutomations = computed(() => accessStore.hasCapability('project.automation.manage'))
+const canManageAutomations = computed(() => accessStore.hasCapability('project.automation.read'))
 const totalAutomationCount = computed(() => automations.value.length)
 const activeAutomationCount = computed(() => automations.value.filter((item) => item.status === 'active').length)
 const pausedAutomationCount = computed(() => automations.value.filter((item) => item.status === 'paused').length)
