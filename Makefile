@@ -11,6 +11,8 @@
 #   make help           查看所有可用命令
 #   make subtree-pull   拉取所有子仓库
 #   make subtree-status 查看子仓库状态
+#   make branch-test    切换到 test 并拉取子仓库 (backend=test, shadow/app=develop)
+#   make subtree-push-test  推送 test 到子仓库 (backend=test, shadow/app=develop)
 #
 # ==============================================================================
 
@@ -113,98 +115,6 @@ subtree-push-$(call _name,$(1)):
 	fi
 endef
 
-# 生成 subtree-merge-develop 目标: subtree-merge-develop-{name} feature/xxx
-# 用法: make subtree-merge-develop-backend feature/xxx
-# 从指定 feature/ 分支拉取，并推送合并到子仓库远端 develop 分支
-define _gen_merge_develop
-subtree-merge-develop-$(call _name,$(1)):
-	$(_check_env)
-	@FEATURE_BRANCH="$(filter feature/%,$(MAKECMDGOALS))"; \
-	if [ -z "$$$$FEATURE_BRANCH" ]; then \
-		echo "$(C_RED)错误: 必须指定 feature/ 分支$(C_RESET)"; \
-		echo "$(C_YELLOW)用法: make subtree-merge-develop-$(call _name,$(1)) feature/xxx$(C_RESET)"; \
-		exit 1; \
-	fi; \
-	if ! echo "$$$$FEATURE_BRANCH" | grep -q "^feature/"; then \
-		echo "$(C_RED)错误: 分支必须以 feature/ 开头$(C_RESET)"; \
-		echo "$(C_YELLOW)用法: make subtree-merge-develop-$(call _name,$(1)) feature/xxx$(C_RESET)"; \
-		exit 1; \
-	fi; \
-	echo "$(C_BLUE)拉取 $(call _prefix,$(1)) <- $$$$FEATURE_BRANCH...$(C_RESET)"; \
-	OUT=$$$$(git subtree pull --prefix=$(call _prefix,$(1)) $(call _repo,$(1)) $$$$FEATURE_BRANCH --squash 2>&1); \
-	CODE=$$$$?; \
-	if [ $$$$CODE -ne 0 ]; then \
-		echo "$$$$OUT"; \
-		echo "$(C_RED)拉取失败$(C_RESET)"; exit 1; \
-	fi; \
-	echo "$(C_BLUE)推送 $(call _prefix,$(1)) -> develop...$(C_RESET)"; \
-	OUT=$$$$(git subtree push --prefix=$(call _prefix,$(1)) $(call _repo,$(1)) develop 2>&1); \
-	CODE=$$$$?; \
-	if echo "$$$$OUT" | grep -q "Everything up-to-date"; then \
-		echo "$(C_YELLOW)$(call _prefix,$(1)) develop 无变更$(C_RESET)"; \
-	elif [ $$$$CODE -ne 0 ]; then \
-		echo "$$$$OUT"; \
-		echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
-	else \
-		echo "$(C_GREEN)✓ $(call _prefix,$(1)) 已从 $$$$FEATURE_BRANCH 合并到 develop$(C_RESET)"; \
-	fi
-endef
-
-# 生成 subtree-merge-test 目标: subtree-merge-test-{name} feature/xxx
-# 用法: make subtree-merge-test-backend feature/xxx
-# 从指定 feature/ 分支拉取，并推送合并到子仓库远端 test 分支
-define _gen_merge_test
-subtree-merge-test-$(call _name,$(1)):
-	$(_check_env)
-	@FEATURE_BRANCH="$(filter feature/%,$(MAKECMDGOALS))"; \
-	if [ -z "$$$$FEATURE_BRANCH" ]; then \
-		echo "$(C_RED)错误: 必须指定 feature/ 分支$(C_RESET)"; \
-		echo "$(C_YELLOW)用法: make subtree-merge-test-$(call _name,$(1)) feature/xxx$(C_RESET)"; \
-		exit 1; \
-	fi; \
-	if ! echo "$$$$FEATURE_BRANCH" | grep -q "^feature/"; then \
-		echo "$(C_RED)错误: 分支必须以 feature/ 开头$(C_RESET)"; \
-		echo "$(C_YELLOW)用法: make subtree-merge-test-$(call _name,$(1)) feature/xxx$(C_RESET)"; \
-		exit 1; \
-	fi; \
-	echo "$(C_BLUE)拉取 $(call _prefix,$(1)) <- $$$$FEATURE_BRANCH...$(C_RESET)"; \
-	OUT=$$$$(git subtree pull --prefix=$(call _prefix,$(1)) $(call _repo,$(1)) $$$$FEATURE_BRANCH --squash 2>&1); \
-	CODE=$$$$?; \
-	if [ $$$$CODE -ne 0 ]; then \
-		echo "$$$$OUT"; \
-		echo "$(C_RED)拉取失败$(C_RESET)"; exit 1; \
-	fi; \
-	echo "$(C_BLUE)推送 $(call _prefix,$(1)) -> test...$(C_RESET)"; \
-	OUT=$$$$(git subtree push --prefix=$(call _prefix,$(1)) $(call _repo,$(1)) test 2>&1); \
-	CODE=$$$$?; \
-	if echo "$$$$OUT" | grep -q "Everything up-to-date"; then \
-		echo "$(C_YELLOW)$(call _prefix,$(1)) test 无变更$(C_RESET)"; \
-	elif [ $$$$CODE -ne 0 ]; then \
-		echo "$$$$OUT"; \
-		echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
-	else \
-		echo "$(C_GREEN)✓ $(call _prefix,$(1)) 已从 $$$$FEATURE_BRANCH 合并到 test$(C_RESET)"; \
-	fi
-endef
-
-# 生成 subtree-pull-test 目标: subtree-pull-test-{name}
-# 从子仓拉取 test 分支到主仓对应子树
-define _gen_pull_test
-subtree-pull-test-$(call _name,$(1)):
-	$(_check_env)
-	@echo "$(C_BLUE)拉取 $(call _prefix,$(1)) <- test...$(C_RESET)"
-	@OUT=$$$$(git subtree pull --prefix=$(call _prefix,$(1)) $(call _repo,$(1)) test --squash 2>&1); \
-	CODE=$$$$?; \
-	if [ $$$$CODE -ne 0 ] && echo "$$$$OUT" | grep -q "does not exist"; then \
-		echo "$(C_YELLOW)首次添加 $(call _prefix,$(1))...$(C_RESET)"; \
-		$(MAKE) -s subtree-add-$(call _name,$(1)); \
-	elif [ $$$$CODE -ne 0 ]; then \
-		echo "$$$$OUT"; exit 1; \
-	else \
-		echo "$(C_GREEN)✓ $(call _prefix,$(1)) 已从 test 更新$(C_RESET)"; \
-	fi
-endef
-
 # 允许任意分支名作为目标（避免 make 报错）
 %:
 	@:
@@ -228,15 +138,12 @@ endef
 $(foreach s,$(SUBTREES),$(eval $(call _gen_pull,$(s))))
 $(foreach s,$(SUBTREES),$(eval $(call _gen_push,$(s))))
 $(foreach s,$(SUBTREES),$(eval $(call _gen_add,$(s))))
-$(foreach s,$(SUBTREES),$(eval $(call _gen_merge_develop,$(s))))
-$(foreach s,$(SUBTREES),$(eval $(call _gen_merge_test,$(s))))
-$(foreach s,$(SUBTREES),$(eval $(call _gen_pull_test,$(s))))
 
 # ==============================================================================
 # Subtree 批量操作
 # ==============================================================================
 
-.PHONY: subtree-pull subtree-push subtree-add subtree-status subtree-list subtree-merge-develop subtree-merge-test subtree-pull-test push-test
+.PHONY: subtree-pull subtree-push subtree-add subtree-status subtree-list
 
 ## 拉取所有子仓库
 subtree-pull: $(foreach n,$(NAMES),subtree-pull-$(n))
@@ -254,45 +161,108 @@ subtree-add: $(foreach n,$(NAMES),subtree-add-$(n))
 	@echo ""
 	@echo "$(C_GREEN)$(C_BOLD)✓ 全部添加完成$(C_RESET)"
 
-## 拉取指定 feature 分支并合并到所有子仓库的 develop 分支
-## 用法: make subtree-merge-develop feature/xxx
-subtree-merge-develop: $(foreach n,$(NAMES),subtree-merge-develop-$(n))
-	@echo ""
-	@echo "$(C_GREEN)$(C_BOLD)✓ 全部合并到 develop 完成$(C_RESET)"
+# ==============================================================================
+# Test 分支工作流
+# ==============================================================================
+# 切换 test 分支后拉取子仓库：backend=test, shadow/app=develop
+# 推送 test 分支代码到子仓库：backend=test, shadow/app=develop
 
-## 拉取指定 feature 分支并合并到所有子仓库的 test 分支（触发测试环境 CI）
-## 用法: make subtree-merge-test feature/xxx
-subtree-merge-test: $(foreach n,$(NAMES),subtree-merge-test-$(n))
-	@echo ""
-	@echo "$(C_GREEN)$(C_BOLD)✓ 全部合并到 test 完成$(C_RESET)"
+.PHONY: branch-test subtree-pull-test subtree-push-test merge-to-test push-test
 
-## 拉取所有子仓库的 test 分支
-subtree-pull-test: $(foreach n,$(NAMES),subtree-pull-test-$(n))
-	@echo ""
-	@echo "$(C_GREEN)$(C_BOLD)✓ 全部子仓 test 分支拉取完成$(C_RESET)"
+## 合并当前分支到 test
+## 流程: checkout test → pull origin test → merge --no-ff 当前分支
+merge-to-test:
+	$(_check_env)
+	@CUR=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null); \
+	if [ "$$CUR" = "test" ]; then \
+		echo "$(C_YELLOW)当前已在 test 分支$(C_RESET)"; exit 0; \
+	fi; \
+	echo "$(C_BLUE)合并 $$CUR -> test...$(C_RESET)"; \
+	git checkout test && git pull origin test && git merge --no-ff $$CUR -m "Merge branch '$$CUR' into test" && \
+	echo "$(C_GREEN)✓ 已合并到 test$(C_RESET)"
 
-## 推送 test 完整流程
-## 用法: make push-test feature/xxx
-## 1. 切换到 test 分支  2. git pull  3. 从子仓拉取 test
-## 4. backend->test, shadow/app->develop
+## 切换到 test 分支并拉取子仓库对应分支
+## backend -> test, shadow/app -> develop
+branch-test:
+	$(_check_env)
+	@echo "$(C_BLUE)切换到 test 分支...$(C_RESET)"
+	@git checkout test
+	@$(MAKE) -s subtree-pull-test
+
+## 拉取子仓库（test 分支工作流）
+## backend -> test, shadow/app -> develop
+subtree-pull-test:
+	$(_check_env)
+	@echo "$(C_BLUE)拉取 ainative-backend (test)...$(C_RESET)"
+	@OUT=$$(git subtree pull --prefix=ainative-backend git@gitlab.yc345.tv:backend/yanxue.git test --squash 2>&1); \
+	CODE=$$?; \
+	if [ $$CODE -ne 0 ] && echo "$$OUT" | grep -q "does not exist"; then \
+		echo "$(C_YELLOW)首次添加 ainative-backend...$(C_RESET)"; $(MAKE) -s subtree-add-backend; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; exit 1; \
+	else echo "$(C_GREEN)✓ ainative-backend 已更新$(C_RESET)"; fi
+	@echo "$(C_BLUE)拉取 ainative-shadow (develop)...$(C_RESET)"
+	@OUT=$$(git subtree pull --prefix=ainative-shadow git@gitlab.yc345.tv:frontend/trip-shadow.git develop --squash 2>&1); \
+	CODE=$$?; \
+	if [ $$CODE -ne 0 ] && echo "$$OUT" | grep -q "does not exist"; then \
+		echo "$(C_YELLOW)首次添加 ainative-shadow...$(C_RESET)"; $(MAKE) -s subtree-add-shadow; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; exit 1; \
+	else echo "$(C_GREEN)✓ ainative-shadow 已更新$(C_RESET)"; fi
+	@echo "$(C_BLUE)拉取 ainative-app (develop)...$(C_RESET)"
+	@OUT=$$(git subtree pull --prefix=ainative-app git@gitlab.yc345.tv:frontend/trip-miniprogram.git develop --squash 2>&1); \
+	CODE=$$?; \
+	if [ $$CODE -ne 0 ] && echo "$$OUT" | grep -q "does not exist"; then \
+		echo "$(C_YELLOW)首次添加 ainative-app...$(C_RESET)"; $(MAKE) -s subtree-add-app; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; exit 1; \
+	else echo "$(C_GREEN)✓ ainative-app 已更新$(C_RESET)"; fi
+	@echo ""
+	@echo "$(C_GREEN)$(C_BOLD)✓ test 分支子仓库拉取完成$(C_RESET)"
+
+## 推送 test 分支代码到子仓库对应分支
+## backend -> test, shadow/app -> develop
+subtree-push-test:
+	$(_check_env)
+	@CUR=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null); \
+	if [ "$$CUR" != "test" ]; then \
+		echo "$(C_YELLOW)当前分支为 $$CUR，建议在 test 分支执行$(C_RESET)"; \
+	fi
+	@echo "$(C_BLUE)推送 ainative-backend -> test...$(C_RESET)"
+	@OUT=$$(git subtree push --prefix=ainative-backend git@gitlab.yc345.tv:backend/yanxue.git test 2>&1); \
+	CODE=$$?; \
+	if echo "$$OUT" | grep -q "Everything up-to-date"; then echo "$(C_YELLOW)ainative-backend 无变更$(C_RESET)"; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
+	else echo "$(C_GREEN)✓ ainative-backend 已推送到 test$(C_RESET)"; fi
+	@echo "$(C_BLUE)推送 ainative-shadow -> develop...$(C_RESET)"
+	@OUT=$$(git subtree push --prefix=ainative-shadow git@gitlab.yc345.tv:frontend/trip-shadow.git develop 2>&1); \
+	CODE=$$?; \
+	if echo "$$OUT" | grep -q "Everything up-to-date"; then echo "$(C_YELLOW)ainative-shadow 无变更$(C_RESET)"; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
+	else echo "$(C_GREEN)✓ ainative-shadow 已推送到 develop$(C_RESET)"; fi
+	@echo "$(C_BLUE)推送 ainative-app -> develop...$(C_RESET)"
+	@OUT=$$(git subtree push --prefix=ainative-app git@gitlab.yc345.tv:frontend/trip-miniprogram.git develop 2>&1); \
+	CODE=$$?; \
+	if echo "$$OUT" | grep -q "Everything up-to-date"; then echo "$(C_YELLOW)ainative-app 无变更$(C_RESET)"; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
+	else echo "$(C_GREEN)✓ ainative-app 已推送到 develop$(C_RESET)"; fi
+	@echo ""
+	@echo "$(C_GREEN)$(C_BOLD)✓ test 分支子仓库推送完成$(C_RESET)"
+
+## 完整流程：1) 切换到 test 并拉取子仓库 2) 合并切换前的分支到 test 3) 提交到 test 4) 推送 test 到子仓
+## 用法: make push-test（在 feature 分支上执行，自动合并当前分支到 test）
 push-test:
 	$(_check_env)
-	@FEATURE_BRANCH="$(filter feature/%,$(MAKECMDGOALS))"; \
-	if [ -z "$$FEATURE_BRANCH" ]; then \
-		echo "$(C_RED)错误: 必须指定 feature/ 分支$(C_RESET)"; \
-		echo "$(C_YELLOW)用法: make push-test feature/xxx$(C_RESET)"; \
-		exit 1; \
+	@CUR=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null); \
+	if [ "$$CUR" = "test" ]; then \
+		echo "$(C_RED)错误: 当前已在 test 分支，请在 feature 分支上执行$(C_RESET)"; exit 1; \
 	fi; \
-	echo "$(C_BLUE)1. 切换到 test 分支...$(C_RESET)"; \
-	git checkout test; \
-	echo "$(C_BLUE)2. 拉取主仓...$(C_RESET)"; \
-	git pull; \
-	echo "$(C_BLUE)3. 从子仓拉取 test...$(C_RESET)"; \
+	echo "$(C_BLUE)1/4 切换到 test 并拉取子仓库...$(C_RESET)"; \
+	git checkout test || { echo "$(C_RED)切换失败$(C_RESET)"; exit 1; }; \
 	$(MAKE) -s subtree-pull-test; \
-	echo "$(C_BLUE)4. 合并 feature 并推送到子仓...$(C_RESET)"; \
-	$(MAKE) -s subtree-merge-test-backend $$FEATURE_BRANCH; \
-	$(MAKE) -s subtree-merge-develop-shadow $$FEATURE_BRANCH; \
-	$(MAKE) -s subtree-merge-develop-app $$FEATURE_BRANCH; \
+	echo "$(C_BLUE)2/4 合并 $$CUR -> test...$(C_RESET)"; \
+	git merge --no-ff $$CUR -m "Merge branch '$$CUR' into test" || { echo "$(C_RED)合并失败，请解决冲突后重试$(C_RESET)"; exit 1; }; \
+	echo "$(C_BLUE)3/4 提交到 test 分支（合并已完成）$(C_RESET)"; \
+	echo "$(C_BLUE)4/4 推送 test 到主仓和子仓库...$(C_RESET)"; \
+	git push origin test || { echo "$(C_RED)推送主仓失败$(C_RESET)"; exit 1; }; \
+	$(MAKE) -s subtree-push-test; \
 	echo ""; \
 	echo "$(C_GREEN)$(C_BOLD)✓ push-test 完成$(C_RESET)"
 
@@ -464,33 +434,28 @@ help:
 	@echo "$(C_CYAN)$(C_BOLD)AINative Workspace$(C_RESET)"
 	@echo ""
 	@echo "$(C_YELLOW)子仓库管理$(C_RESET)"
-	@echo "  $(C_GREEN)make subtree-pull$(C_RESET)              拉取所有子仓库"
-	@echo "  $(C_GREEN)make subtree-push$(C_RESET)              推送所有子仓库"
-	@echo "  $(C_GREEN)make subtree-add$(C_RESET)               添加所有子仓库"
-	@echo "  $(C_GREEN)make subtree-status$(C_RESET)            查看子仓库状态"
-	@echo "  $(C_GREEN)make subtree-list$(C_RESET)              列出子仓库配置"
-	@echo "  $(C_GREEN)make subtree-merge-develop$(C_RESET)     从 feature 分支合并到所有子仓库 develop"
-	@echo "  $(C_GREEN)make subtree-merge-test$(C_RESET)        从 feature 分支合并到所有子仓库 test（触发测试 CI）"
-	@echo "  $(C_GREEN)make subtree-pull-test$(C_RESET)        从子仓拉取 test 分支"
-	@echo "  $(C_GREEN)make push-test feature/xxx$(C_RESET)     推送 test 完整流程（checkout test + pull + subtree-pull-test + backend->test, shadow/app->develop）"
+	@echo "  $(C_GREEN)make subtree-pull$(C_RESET)      拉取所有子仓库"
+	@echo "  $(C_GREEN)make subtree-push$(C_RESET)      推送所有子仓库"
+	@echo "  $(C_GREEN)make subtree-add$(C_RESET)       添加所有子仓库"
+	@echo "  $(C_GREEN)make subtree-status$(C_RESET)    查看子仓库状态"
+	@echo "  $(C_GREEN)make subtree-list$(C_RESET)      列出子仓库配置"
 	@echo ""
 	@echo "$(C_YELLOW)单个子仓库$(C_RESET)"
 	@$(foreach s,$(SUBTREES), \
 		echo "  $(C_GREEN)make subtree-pull-$(call _name,$(s))$(C_RESET)  拉取 $(call _prefix,$(s))";)
 	@$(foreach s,$(SUBTREES), \
 		echo "  $(C_GREEN)make subtree-push-$(call _name,$(s))$(C_RESET)  推送 $(call _prefix,$(s))";)
-	@$(foreach s,$(SUBTREES), \
-		echo "  $(C_GREEN)make subtree-merge-develop-$(call _name,$(s))$(C_RESET)  合并到 $(call _prefix,$(s)) develop";)
-	@$(foreach s,$(SUBTREES), \
-		echo "  $(C_GREEN)make subtree-merge-test-$(call _name,$(s))$(C_RESET)  合并到 $(call _prefix,$(s)) test";)
-	@$(foreach s,$(SUBTREES), \
-		echo "  $(C_GREEN)make subtree-pull-test-$(call _name,$(s))$(C_RESET)  从 $(call _prefix,$(s)) 拉取 test";)
 	@echo ""
 	@echo ""
 	@echo "$(C_YELLOW)推送到指定分支$(C_RESET)"
-	@echo "  $(C_GREEN)make subtree-push-backend feature/xxx$(C_RESET)          推送到 feature 分支"
-	@echo "  $(C_GREEN)make subtree-merge-develop-backend feature/xxx$(C_RESET)  从 feature 拉取并合并到 develop"
-	@echo "  $(C_GREEN)make subtree-merge-test-backend feature/xxx$(C_RESET)     从 feature 拉取并合并到 test"
+	@echo "  $(C_GREEN)make subtree-push-backend feature/xxx$(C_RESET)  推送到 feature 分支"
+	@echo ""
+	@echo "$(C_YELLOW)Test 分支工作流$(C_RESET)"
+	@echo "  $(C_GREEN)make branch-test$(C_RESET)            切换到 test 并拉取子仓库 (backend=test, shadow/app=develop)"
+	@echo "  $(C_GREEN)make subtree-pull-test$(C_RESET)      拉取子仓库 (backend=test, shadow/app=develop)"
+	@echo "  $(C_GREEN)make subtree-push-test$(C_RESET)      推送 test 到子仓库 (backend=test, shadow/app=develop)"
+	@echo "  $(C_GREEN)make merge-to-test$(C_RESET)          合并当前分支到 test"
+	@echo "  $(C_GREEN)make push-test$(C_RESET)  切换 test→拉取子仓→合并当前分支→推送主仓和子仓"
 	@echo ""
 	@echo "$(C_YELLOW)小程序 CI$(C_RESET)"
 	@echo "  $(C_GREEN)make app-preview$(C_RESET)       生成预览二维码"
@@ -512,4 +477,4 @@ help:
 	@echo ""
 
 # .PHONY 声明
-.PHONY: $(foreach n,$(NAMES),subtree-pull-$(n) subtree-push-$(n) subtree-add-$(n) subtree-merge-develop-$(n) subtree-merge-test-$(n) subtree-pull-test-$(n))
+.PHONY: $(foreach n,$(NAMES),subtree-pull-$(n) subtree-push-$(n) subtree-add-$(n))
