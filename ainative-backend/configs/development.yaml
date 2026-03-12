@@ -138,6 +138,15 @@ yc:
           feiShu:
             url: ""
             title: 同步抖音分账信息
+      syncOrderSettlementTime:
+        name: syncOrderSettlementTime
+        cron: "0 0 4 * * ?"  # 每天4点执行一次
+        mode: default
+        notify:
+          type: NONE
+          feiShu:
+            url: ""
+            title: 同步订单结算时间
       fixOrderData:
         name: fixOrderData
         cron: "0 0 * * * *"  # 每小时执行一次

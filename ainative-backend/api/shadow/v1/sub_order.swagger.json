@@ -434,6 +434,10 @@
           "type": "integer",
           "format": "int32",
           "title": "保险费：单位分"
+        },
+        "settlementTime": {
+          "type": "string",
+          "title": "结算时间"
         }
       },
       "title": "订单信息"

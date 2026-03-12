@@ -33,6 +33,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		GoodRecommendationCategory: newGoodRecommendationCategory(db, opts...),
 		GrabTicketSiteConfig:       newGrabTicketSiteConfig(db, opts...),
 		GrabTicketTaskConfig:       newGrabTicketTaskConfig(db, opts...),
+		NotificationContent:        newNotificationContent(db, opts...),
 		Order:                      newOrder(db, opts...),
 		PlatformGood:               newPlatformGood(db, opts...),
 		SubOrder:                   newSubOrder(db, opts...),
@@ -73,6 +74,7 @@ type Query struct {
 	GoodRecommendationCategory goodRecommendationCategory
 	GrabTicketSiteConfig       grabTicketSiteConfig
 	GrabTicketTaskConfig       grabTicketTaskConfig
+	NotificationContent        notificationContent
 	Order                      order
 	PlatformGood               platformGood
 	SubOrder                   subOrder
@@ -114,6 +116,7 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		GoodRecommendationCategory: q.GoodRecommendationCategory.clone(db),
 		GrabTicketSiteConfig:       q.GrabTicketSiteConfig.clone(db),
 		GrabTicketTaskConfig:       q.GrabTicketTaskConfig.clone(db),
+		NotificationContent:        q.NotificationContent.clone(db),
 		Order:                      q.Order.clone(db),
 		PlatformGood:               q.PlatformGood.clone(db),
 		SubOrder:                   q.SubOrder.clone(db),
@@ -162,6 +165,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		GoodRecommendationCategory: q.GoodRecommendationCategory.replaceDB(db),
 		GrabTicketSiteConfig:       q.GrabTicketSiteConfig.replaceDB(db),
 		GrabTicketTaskConfig:       q.GrabTicketTaskConfig.replaceDB(db),
+		NotificationContent:        q.NotificationContent.replaceDB(db),
 		Order:                      q.Order.replaceDB(db),
 		PlatformGood:               q.PlatformGood.replaceDB(db),
 		SubOrder:                   q.SubOrder.replaceDB(db),
@@ -200,6 +204,7 @@ type queryCtx struct {
 	GoodRecommendationCategory *goodRecommendationCategoryDo
 	GrabTicketSiteConfig       *grabTicketSiteConfigDo
 	GrabTicketTaskConfig       *grabTicketTaskConfigDo
+	NotificationContent        *notificationContentDo
 	Order                      *orderDo
 	PlatformGood               *platformGoodDo
 	SubOrder                   *subOrderDo
@@ -238,6 +243,7 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 		GoodRecommendationCategory: q.GoodRecommendationCategory.WithContext(ctx),
 		GrabTicketSiteConfig:       q.GrabTicketSiteConfig.WithContext(ctx),
 		GrabTicketTaskConfig:       q.GrabTicketTaskConfig.WithContext(ctx),
+		NotificationContent:        q.NotificationContent.WithContext(ctx),
 		Order:                      q.Order.WithContext(ctx),
 		PlatformGood:               q.PlatformGood.WithContext(ctx),
 		SubOrder:                   q.SubOrder.WithContext(ctx),

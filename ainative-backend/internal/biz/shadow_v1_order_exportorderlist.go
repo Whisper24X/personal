@@ -44,6 +44,7 @@ func (s *ShadowV1OrderUseCase) ExportContractCsv(ctx context.Context, orderList 
 		"平台手续费",
 		"联系方式",
 		"支付时间",
+		"结算时间",
 		"服务状态",
 		"订单状态",
 		"退款金额",
@@ -75,6 +76,10 @@ func (s *ShadowV1OrderUseCase) ExportContractCsv(ctx context.Context, orderList 
 		paymentTimeStr := ""
 		if v.PaymentTime != "" {
 			paymentTimeStr = timeutil.Carbon().Parse(v.PaymentTime).ToDateTimeString()
+		}
+		settlementTimeStr := ""
+		if v.SettlementTime != "" {
+			settlementTimeStr = timeutil.Carbon().Parse(v.SettlementTime).ToDateTimeString()
 		}
 		refundTimeStr := ""
 		if v.RefundTime != "" {
@@ -122,6 +127,7 @@ func (s *ShadowV1OrderUseCase) ExportContractCsv(ctx context.Context, orderList 
 			fmt.Sprintf("¥%.2f", platformFeeYuan),   // 平台手续费
 			v.Phone,                                 // 联系方式
 			paymentTimeStr,                          // 支付时间
+			settlementTimeStr,                       // 结算时间
 			serviceStatusStr,                        // 服务状态
 			constant.NewOrderStatusToName[v.Status], // 订单状态
 			fmt.Sprintf("¥%.2f", refundAmountYuan),  // 退款金额

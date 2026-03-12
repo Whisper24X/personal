@@ -11,7 +11,18 @@ import (
 	"gitlab.yc345.tv/backend/yanxue/internal/data/cache"
 	"gitlab.yc345.tv/backend/yanxue/internal/data/constant"
 	"gitlab.yc345.tv/backend/yanxue/internal/data/errorx"
+	"gitlab.yc345.tv/backend/yanxue/internal/data/gorm/yanxue_model"
 )
+
+// OrderBillInfo 订单账单信息
+type OrderBillInfo struct {
+	TotalHandlingFee float64   // 总手续费
+	HasRefund        bool      // 是否有退款账单
+	BillCount        int       // 账单数量
+	PayFee           float64   // 货款手续费
+	RefundFee        float64   // 退款手续费
+	PayTradeTime     time.Time // 货款交易时间（用于计算结算时间）
+}
 
 // SyncWechatPayBill 同步微信支付账单
 // 优化逻辑：
@@ -184,13 +195,19 @@ func (s *ShadowV1OrderUseCase) SyncWechatPayBill(ctx context.Context, req *pb.Sy
 	return resp, nil
 }
 
-// updateOrderPlatformFee 更新父订单和子订单的平台手续费
-func (s *ShadowV1OrderUseCase) updateOrderPlatformFee(ctx context.Context, orderIdToHandlingFeeMap map[string]float64) error {
+// updateOrderPlatformFee 更新父订单和子订单的平台手续费和结算时间
+func (s *ShadowV1OrderUseCase) updateOrderPlatformFee(ctx context.Context, orderIdToHandlingFeeMap map[string]float64, orderNumberToBillInfoMap map[string]*OrderBillInfo, orderList []*yanxue_model.Order) error {
+	// 构建 orderId -> orderNumber 映射
+	orderIdToNumberMap := make(map[string]string)
+	for _, order := range orderList {
+		orderIdToNumberMap[order.ID] = order.OrderNumber
+	}
+
 	for orderId, handlingFee := range orderIdToHandlingFeeMap {
 		// 手续费从元转换为分
 		platformFeeInCents := int32(handlingFee*100 + 0.5) // 元转分，四舍五入
 
-		// 更新父订单的平台手续费
+		// 更新父订单的平台手续费和结算时间
 		order, err := s.orderRepo.FindOneByID(ctx, orderId)
 		if err != nil {
 			s.log.Errorf("查询订单失败，orderId=%s, err=%v", orderId, err)
@@ -201,9 +218,20 @@ func (s *ShadowV1OrderUseCase) updateOrderPlatformFee(ctx context.Context, order
 		// 直接更新手续费（不再累加）
 		oldPlatformFee := order.PlatformFee
 		order.PlatformFee = platformFeeInCents
+
+		// 更新结算时间：货款交易时间的T+1
+		orderNumber := orderIdToNumberMap[orderId]
+		if billInfo, exists := orderNumberToBillInfoMap[orderNumber]; exists && !billInfo.PayTradeTime.IsZero() {
+			// 计算结算时间：交易时间T+1（加1天）
+			settlementTime := billInfo.PayTradeTime.AddDate(0, 0, 1)
+			order.SettlementTime = settlementTime
+			s.log.Infof("更新订单结算时间，orderId=%s, 交易时间=%s, 结算时间=%s",
+				orderId, billInfo.PayTradeTime.Format("2006-01-02 15:04:05"), settlementTime.Format("2006-01-02 15:04:05"))
+		}
+
 		err = s.orderRepo.UpdateOneCacheWithZero(ctx, order, oldOrder)
 		if err != nil {
-			s.log.Errorf("更新父订单手续费失败，orderId=%s, err=%v", orderId, err)
+			s.log.Errorf("更新父订单手续费和结算时间失败，orderId=%s, err=%v", orderId, err)
 			continue
 		}
 
@@ -237,13 +265,15 @@ func (s *ShadowV1OrderUseCase) updateOrderPlatformFee(ctx context.Context, order
 			}
 
 			subOrder.PlatformFee = subOrderPlatformFee
+			// 同步父订单的结算时间到子订单
+			subOrder.SettlementTime = order.SettlementTime
 			err = s.subOrderRepo.UpdateOneCacheWithZero(ctx, subOrder, oldSubOrder)
 			if err != nil {
-				s.log.Errorf("更新子订单手续费失败，subOrderId=%s, err=%v", subOrder.ID, err)
+				s.log.Errorf("更新子订单手续费和结算时间失败，subOrderId=%s, err=%v", subOrder.ID, err)
 				continue
 			}
 
-			s.log.Infof("更新子订单手续费成功，subOrderId=%s, platformFee=%d分", subOrder.ID, subOrderPlatformFee)
+			s.log.Infof("更新子订单手续费和结算时间成功，subOrderId=%s, platformFee=%d分", subOrder.ID, subOrderPlatformFee)
 		}
 	}
 
@@ -318,14 +348,6 @@ func (s *ShadowV1OrderUseCase) SyncWechatPayBillPlatformFee(ctx context.Context)
 
 		// 按 ChannelOrderID 分组账单
 		// channelOrderId 对应 order 表的 orderNumber
-		type OrderBillInfo struct {
-			TotalHandlingFee float64 // 总手续费
-			HasRefund        bool    // 是否有退款账单
-			BillCount        int     // 账单数量
-			PayFee           float64 // 货款手续费
-			RefundFee        float64 // 退款手续费
-		}
-
 		orderNumberToBillInfoMap := make(map[string]*OrderBillInfo)
 		for _, bill := range allBillList {
 			if bill.ChannelOrderID == "" || bill.HandlingFee == 0 {
@@ -339,6 +361,7 @@ func (s *ShadowV1OrderUseCase) SyncWechatPayBillPlatformFee(ctx context.Context)
 					BillCount:        0,
 					PayFee:           0,
 					RefundFee:        0,
+					PayTradeTime:     time.Time{},
 				}
 			}
 
@@ -352,6 +375,10 @@ func (s *ShadowV1OrderUseCase) SyncWechatPayBillPlatformFee(ctx context.Context)
 				info.RefundFee += bill.HandlingFee
 			} else if bill.TransactionType == constant.TransactionTypePay {
 				info.PayFee += bill.HandlingFee
+				// 记录货款的交易时间（用于计算结算时间T+1）
+				if info.PayTradeTime.IsZero() || bill.TradeTime.Before(info.PayTradeTime) {
+					info.PayTradeTime = bill.TradeTime
+				}
 			}
 		}
 
@@ -424,17 +451,17 @@ func (s *ShadowV1OrderUseCase) SyncWechatPayBillPlatformFee(ctx context.Context)
 			return nil
 		}
 
-		s.log.Infof("准备更新 %d 个订单的手续费（强制更新=%d，常规更新=%d，跳过=%d）",
+		s.log.Infof("准备更新 %d 个订单的手续费和结算时间（强制更新=%d，常规更新=%d，跳过=%d）",
 			len(orderIdToHandlingFeeMap), forceUpdateCount, len(orderIdToHandlingFeeMap)-forceUpdateCount, skippedCount)
 
-		// 更新父订单和子订单的手续费
-		err = s.updateOrderPlatformFee(ctx, orderIdToHandlingFeeMap)
+		// 更新父订单和子订单的手续费和结算时间
+		err = s.updateOrderPlatformFee(ctx, orderIdToHandlingFeeMap, orderNumberToBillInfoMap, orderList)
 		if err != nil {
-			s.log.Errorf("更新订单手续费失败: %v", err)
+			s.log.Errorf("更新订单手续费和结算时间失败: %v", err)
 			return err
 		}
 
-		s.log.Infof("同步微信支付账单手续费成功，共更新 %d 个订单", len(orderIdToHandlingFeeMap))
+		s.log.Infof("同步微信支付账单手续费和结算时间成功，共更新 %d 个订单", len(orderIdToHandlingFeeMap))
 		return nil
 	})
 }

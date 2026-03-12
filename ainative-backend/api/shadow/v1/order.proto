@@ -262,6 +262,20 @@ service Order {
       body: "*"
     };
   }
+  // 同步订单结算时间
+  rpc SyncOrderSettlementTime(SyncOrderSettlementTimeReq) returns (SyncOrderSettlementTimeReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/syncOrderSettlementTime"
+      body: "*"
+    };
+  }
+  // 查询抖音订单券ID信息
+  rpc QueryDouYinOrderCertificateInfo(QueryDouYinOrderCertificateInfoReq) returns (QueryDouYinOrderCertificateInfoReply) {
+    option (google.api.http) = {
+      post: "/yanxue/api/shadow/v1/order/queryDouYinOrderCertificateInfo"
+      body: "*"
+    };
+  }
 }
 
 // 请求-同步抖音订单
@@ -275,6 +289,48 @@ message RetryFailedOrderCallbackReq {}
 
 // 响应-重试失败的订单回调
 message RetryFailedOrderCallbackReply {}
+
+// 请求-同步订单结算时间
+message SyncOrderSettlementTimeReq {
+  string channel = 1; // 渠道类型：miniprogram-小程序渠道 douyin-抖音渠道
+}
+
+// 响应-同步订单结算时间
+message SyncOrderSettlementTimeReply {
+  int32 totalCount = 1; // 总处理订单数
+  int32 successCount = 2; // 成功更新数
+  int32 failCount = 3; // 失败数
+}
+
+// 请求-查询抖音订单券ID信息
+message QueryDouYinOrderCertificateInfoReq {
+  string orderId = 1; // 抖音订单ID（originOrderNumber）
+  string accountId = 2; // 抖音账户ID（可选，默认使用系统配置）
+}
+
+// 响应-查询抖音订单券ID信息
+message QueryDouYinOrderCertificateInfoReply {
+  string orderId = 1; // 订单ID
+  int32 orderStatus = 2; // 订单状态
+  string skuName = 3; // 商品名称
+  string skuId = 4; // 商品ID
+  int32 count = 5; // 券数量
+  int32 receiptAmount = 6; // 实收金额（单位：分）
+  int32 discountAmount = 7; // 优惠金额（单位：分）
+  int64 anchorId = 8; // 达人ID
+  repeated CertificateInfo certificates = 9; // 券信息列表
+}
+
+// 券信息
+message CertificateInfo {
+  string certificateId = 1; // 券ID
+  string combinationId = 2; // 组合ID
+  int32 itemStatus = 3; // 券状态：301-已退款
+  int32 itemUpdateTime = 4; // 券更新时间
+  string orderItemId = 5; // 订单项ID
+  int32 refundAmount = 6; // 退款金额（单位：分）
+  int32 refundTime = 7; // 退款时间
+}
 
 // 请求-修复退款数据
 message FixRefundAmountReq {}
@@ -514,6 +570,7 @@ message OrderInfo {
   int32 paymentDiscountAmount = 31; // 支付优惠金额：单位分
   int32 shopDiscountAmount = 32; // 店铺优惠金额：单位分
   int32 actualInsured = 33; // 保险费：单位分
+  string settlementTime = 34; // 结算时间
 }
 
 //请求-订单-列表数据查询
