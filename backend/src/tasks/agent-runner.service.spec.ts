@@ -129,7 +129,7 @@ describe('AgentRunnerService', () => {
 
     expect(result.adapter).toBe('codex');
     expect(result.command).toBe('codex-business');
-    expect(result.args).toEqual(['exec', '--full-auto', '-']);
+    expect(result.args).toEqual(['exec', '--json', '--full-auto', '-']);
     expect(result.env).toMatchObject({
       BASE_ENV: 'base',
       PROFILE_ENV: 'retail',
@@ -320,6 +320,31 @@ describe('AgentRunnerService', () => {
     expect(result.args).toEqual(['-p']);
   });
 
+  it('should use stream-json defaults for gemini cli', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'gemini-cli',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'gemini-cli',
+      },
+    );
+
+    expect(result.adapter).toBe('gemini');
+    expect(result.command).toBe('gemini');
+    expect(result.args).toEqual(['--output-format', 'stream-json']);
+  });
+
   it('should use stream-json defaults for cursor agent', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
@@ -348,6 +373,67 @@ describe('AgentRunnerService', () => {
       'stream-json',
       '--trust',
       '--force',
+    ]);
+  });
+
+  it('should use json defaults for codex', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'codex',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'codex',
+      },
+    );
+
+    expect(result.adapter).toBe('codex');
+    expect(result.command).toBe('codex');
+    expect(result.args).toEqual([
+      'exec',
+      '--json',
+      '--skip-git-repo-check',
+      '-',
+    ]);
+  });
+
+  it('should inject json arg for codex custom args overrides', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'codex',
+        agentRunner: {
+          args: ['exec', '--dangerously-bypass-approvals', '-'],
+        },
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'codex',
+      },
+    );
+
+    expect(result.args).toEqual([
+      'exec',
+      '--json',
+      '--dangerously-bypass-approvals',
+      '-',
     ]);
   });
 
@@ -474,7 +560,12 @@ describe('AgentRunnerService', () => {
       },
     );
 
-    expect(result.args).toEqual(['--resume', 'gemini-session-1']);
+    expect(result.args).toEqual([
+      '--output-format',
+      'stream-json',
+      '--resume',
+      'gemini-session-1',
+    ]);
   });
 
   it('should apply configured claude resume session when resolving runner args', async () => {
@@ -620,7 +711,7 @@ describe('AgentRunnerService', () => {
     expect(prompt).toBe('Please continue from the previous result');
   });
 
-  it('should append follow-up message to the full prompt before a session is established', () => {
+  it('should compose task prompt, node prompt, and follow-up message before a session is established', () => {
     const service = new AgentRunnerService(
       createRepositoryMock() as unknown as AgentToolConfigRepository,
     );
@@ -633,9 +724,12 @@ describe('AgentRunnerService', () => {
       },
     });
 
-    expect(prompt).toContain('Task Title: task title');
-    expect(prompt).toContain(
-      'Follow-up User Message:\nPlease continue from the previous result',
+    expect(prompt).toBe(
+      [
+        'task description',
+        'Run task',
+        'Please continue from the previous result',
+      ].join('\n\n'),
     );
   });
 
@@ -691,5 +785,30 @@ describe('AgentRunnerService', () => {
     expect(payload.hasCursorApiKey).toBe(true);
     expect(payload.envKeys).toEqual(['CURSOR_API_KEY', 'PATH']);
     expect(JSON.stringify(payload)).not.toContain('crsr_secret');
+  });
+
+  it('should pass GEMINI_API_KEY from process env into runner environment', () => {
+    const previousGeminiApiKey = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = 'gemini_secret';
+
+    try {
+      const service = new AgentRunnerService(
+        createRepositoryMock() as unknown as AgentToolConfigRepository,
+      );
+      const serviceAny = service as any;
+
+      const env = serviceAny.buildRunnerEnvironment({
+        PATH: '/usr/bin',
+      });
+
+      expect(env.PATH).toBe('/usr/bin');
+      expect(env.GEMINI_API_KEY).toBe('gemini_secret');
+    } finally {
+      if (previousGeminiApiKey === undefined) {
+        delete process.env.GEMINI_API_KEY;
+      } else {
+        process.env.GEMINI_API_KEY = previousGeminiApiKey;
+      }
+    }
   });
 });

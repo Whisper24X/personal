@@ -19,6 +19,7 @@ const rendererMap: Record<string, Component> = {
   'claude-code': ClaudeCodeRenderer,
   'codex': CodexRenderer,
   'opencode': OpencodeRenderer,
+  'gemini': GeminiRenderer,
   'gemini-cli': GeminiRenderer,
 }
 

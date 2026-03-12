@@ -66,6 +66,7 @@ const message = useMessage()
 let streamAbortController: AbortController | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let detailRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
+let messageRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 const statusLabelMap: Record<Task['status'], string> = {
   todo: '待执行',
@@ -91,6 +92,7 @@ const cliLabelMap: Record<string, string> = {
   'cursor-agent': 'Cursor Agent',
   'claude-code': 'Claude Code',
   codex: 'Codex',
+  gemini: 'Gemini CLI',
   'gemini-cli': 'Gemini CLI',
   opencode: 'Opencode',
 }
@@ -315,10 +317,6 @@ const upsertLog = (nextLog: TaskLog) => {
     const rightAt = new Date(right.createdAt).getTime()
     return leftAt - rightAt
   })
-
-  messages.value = logs.value
-    .filter(isAgentOutputLog)
-    .map(mapLogToMessage)
 }
 
 const shouldRefreshTaskDetailForLog = (log: TaskLog) => {
@@ -341,8 +339,30 @@ const clearReconnectTimer = () => {
   reconnectTimer = null
 }
 
+const clearMessageRefreshTimer = () => {
+  if (!messageRefreshDebounceTimer) {
+    return
+  }
+
+  clearTimeout(messageRefreshDebounceTimer)
+  messageRefreshDebounceTimer = null
+}
+
+const scheduleRefreshMessages = (delay = 120) => {
+  if (!taskId.value) {
+    return
+  }
+
+  clearMessageRefreshTimer()
+  messageRefreshDebounceTimer = setTimeout(() => {
+    messageRefreshDebounceTimer = null
+    void refreshMessages()
+  }, delay)
+}
+
 const disconnectStream = () => {
   clearReconnectTimer()
+  clearMessageRefreshTimer()
   if (detailRefreshDebounceTimer) {
     clearTimeout(detailRefreshDebounceTimer)
     detailRefreshDebounceTimer = null
@@ -397,6 +417,9 @@ const connectStream = async () => {
           try {
             const payload = JSON.parse(event.data) as TaskLog
             upsertLog(payload)
+            if (isAgentOutputLog(payload) || shouldRefreshTaskDetailForLog(payload)) {
+              scheduleRefreshMessages()
+            }
             if (shouldRefreshTaskDetailForLog(payload)) {
               if (detailRefreshDebounceTimer) clearTimeout(detailRefreshDebounceTimer)
               detailRefreshDebounceTimer = setTimeout(() => {
@@ -436,7 +459,9 @@ const refreshMessages = async () => {
   try {
     messages.value = await tasksApi.messages(taskId.value)
   } catch {
-    messages.value = logs.value.map(mapLogToMessage)
+    messages.value = logs.value
+      .filter(isAgentOutputLog)
+      .map(mapLogToMessage)
   }
 }
 

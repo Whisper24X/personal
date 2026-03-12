@@ -78,6 +78,19 @@ Typical example:
 - Knowledge-base `GET /projects/:id/docs` should read the local `docs/` tree directly when the project repository has already been prepared.
 - Remote `git fetch` should be triggered by explicit sync actions, first-time clone, or workflows that truly require latest remote state.
 
+### Mistake 5: Structured Output Contract Left Implicit
+
+**Bad**: The runner expects JSON lines on `stdout`, but the integrated CLI defaults to plain text or emits important events only on `stderr`.
+
+**Good**: Treat structured CLI output as a contract across runner, task persistence, and frontend rendering:
+
+- The runner must force the CLI into a machine-readable mode when downstream code persists `stdout` JSONL.
+- The persistence layer must document whether it stores only `stdout` JSON lines or also error metadata.
+- Adapter tests should assert the default command arguments that enable structured output.
+
+Typical example:
+- A task node persists `output.jsonl` only from `stdout` JSON lines. If a new CLI adapter is added without `--output-format stream-json`/`--json`, task logs may exist while `output.jsonl` stays empty.
+
 ---
 
 ## Checklist for Cross-Layer Features
@@ -93,6 +106,7 @@ After implementation:
 - [ ] Verified error handling at each boundary
 - [ ] Checked data survives round-trip
 - [ ] Verified read paths are not accidentally blocked by remote sync or other slow side effects
+- [ ] Verified machine-readable CLI integrations actually emit the format required by downstream persistence/rendering
 
 ---
 

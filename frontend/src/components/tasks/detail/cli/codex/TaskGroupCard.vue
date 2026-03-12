@@ -2,8 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import type { CodexTaskGroup } from './groupEntries'
 import AssistantMessage from '../components/AssistantMessage.vue'
-import ToolItem from '../components/ToolItem.vue'
 import type { NormalizedEntry } from '../types'
+import { asRecord, getString, pickToolInputValue, stringify } from '../utils'
 
 const props = defineProps<{
   group: CodexTaskGroup
@@ -53,6 +53,69 @@ const toolCount = computed(() => groupItems.value.filter((i) => i.kind === 'tool
 const thinkingCount = computed(() => groupItems.value.filter((i) => i.kind === 'thinking').length)
 const isThinkingOnly = computed(() => toolCount.value === 0 && thinkingCount.value > 0)
 const thinkingExpanded = ref(false)
+const expandedToolId = ref<string | null>(null)
+
+const resolveToolName = (entry: NormalizedEntry) => {
+  const name = entry.metadata?.toolName
+  if (name) return name
+
+  const typeMap: Record<string, string> = {
+    command_run: 'Bash',
+    file_edit: 'Edit',
+    file_read: 'Read',
+    tool_use: 'Tool',
+  }
+  return typeMap[entry.type] || 'Tool'
+}
+
+const resolveToolParamSummary = (entry: NormalizedEntry) => {
+  const input = asRecord(entry.metadata?.toolInput)
+  const cmd = getString(entry.metadata?.command)
+  if (cmd) return `$ ${cmd}`
+
+  const path = getString(entry.metadata?.filePath)
+  if (path) return path
+
+  const picked = pickToolInputValue(input)
+  if (picked) return picked.length > 80 ? `${picked.slice(0, 80)}...` : picked
+
+  return ''
+}
+
+const resolveToolResultSummary = (result?: NormalizedEntry) => {
+  if (!result) return ''
+  const content = result.content?.trim()
+  if (!content) return 'completed'
+  const lines = content.split('\n')
+  if (lines.length > 1) return `${lines.length} lines of output`
+  return content.length > 100 ? `${content.slice(0, 100)}...` : content
+}
+
+const resolveToolDotColor = (
+  entry: NormalizedEntry,
+  result?: NormalizedEntry,
+) => {
+  const status = result?.metadata?.status || entry.metadata?.status
+  if (status === 'failed') return 'bg-red-500'
+  if (status === 'success') return 'bg-emerald-500'
+  if (status === 'running') return 'bg-yellow-500 animate-pulse'
+  if (result) return 'bg-emerald-500'
+  return 'bg-yellow-500 animate-pulse'
+}
+
+const resolveToolFullInput = (entry: NormalizedEntry) => {
+  const input = asRecord(entry.metadata?.toolInput)
+  if (!input) return ''
+  return stringify(input)
+}
+
+const resolveToolFullOutput = (result?: NormalizedEntry) => {
+  return result?.content?.trim() || ''
+}
+
+const toggleTool = (entryId: string) => {
+  expandedToolId.value = expandedToolId.value === entryId ? null : entryId
+}
 </script>
 
 <template>
@@ -75,7 +138,10 @@ const thinkingExpanded = ref(false)
         </span>
       </div>
 
-      <span class="mt-0.5 text-xs text-muted-foreground transition-transform" :class="{ 'rotate-180': !collapsed }">
+      <span
+        class="mt-0.5 text-xs text-muted-foreground transition-transform"
+        :class="{ 'rotate-180': !collapsed }"
+      >
         ▾
       </span>
     </div>
@@ -99,11 +165,45 @@ const thinkingExpanded = ref(false)
           >{{ item.entry.content }}</div>
         </div>
 
-        <ToolItem
+        <div
           v-else
-          :entry="item.tool"
-          :result="item.result"
-        />
+          class="group cursor-pointer select-none rounded-md px-2 py-1 transition-colors hover:bg-muted/50"
+          @click="toggleTool(item.tool.id)"
+        >
+          <div class="flex items-start gap-2 text-sm">
+            <span
+              class="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+              :class="resolveToolDotColor(item.tool, item.result)"
+            />
+            <div class="min-w-0 flex-1">
+              <span class="font-medium text-foreground">{{ resolveToolName(item.tool) }}</span>
+              <span v-if="resolveToolParamSummary(item.tool)" class="text-muted-foreground">
+                ({{ resolveToolParamSummary(item.tool) }})
+              </span>
+              <div v-if="resolveToolResultSummary(item.result)" class="text-xs text-muted-foreground">
+                └ {{ resolveToolResultSummary(item.result) }}
+              </div>
+            </div>
+            <span class="mt-0.5 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+              {{ expandedToolId === item.tool.id ? '收起' : '展开' }}
+            </span>
+          </div>
+
+          <div
+            v-if="expandedToolId === item.tool.id"
+            class="ml-4 mt-2 space-y-2"
+            @click.stop
+          >
+            <div v-if="resolveToolFullInput(item.tool)" class="rounded-md bg-muted/50 p-2">
+              <div class="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">输入</div>
+              <pre class="max-h-48 overflow-auto text-xs text-foreground">{{ resolveToolFullInput(item.tool) }}</pre>
+            </div>
+            <div v-if="resolveToolFullOutput(item.result)" class="rounded-md bg-muted/50 p-2">
+              <div class="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">输出</div>
+              <pre class="max-h-48 overflow-auto text-xs text-foreground">{{ resolveToolFullOutput(item.result) }}</pre>
+            </div>
+          </div>
+        </div>
       </template>
     </div>
   </div>

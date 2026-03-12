@@ -903,6 +903,154 @@ describe('TasksService', () => {
     expect(lines).toEqual(stdoutLines);
   });
 
+  it('should append gemini stdout json lines into output jsonl during execution', async () => {
+    const { service, agentRunnerService } = createTasksService();
+    const serviceAny = service as any;
+    const task = createTask();
+    const node = createNode({
+      agentCliId: 'gemini-cli',
+    });
+    const project = createProject({
+      agentAdapter: 'gemini-cli',
+    });
+    const stdoutLines = [
+      '{"type":"system","subtype":"init","session_id":"gemini-session-1"}',
+      '{"type":"assistant","message":{"content":[{"type":"text","text":"hello"}]}}',
+      '{"type":"result","subtype":"success","session_id":"gemini-session-1"}',
+    ];
+
+    agentRunnerService.executeAgentNode.mockImplementation(
+      ({
+        callbacks,
+      }: {
+        callbacks?: { onStdoutLine?: (line: string) => void };
+      }) => {
+        stdoutLines.forEach((line) => callbacks?.onStdoutLine?.(line));
+
+        return Promise.resolve({
+          success: true,
+          timedOut: false,
+          exitCode: 0,
+          signal: null,
+          command: 'gemini',
+          args: ['--output-format', 'stream-json'],
+          cwd: '/tmp/worktree-task-1',
+          durationMs: 50,
+          stdout: stdoutLines.join('\n'),
+          stderr: '',
+          prompt: 'prompt',
+          sessionId: 'gemini-session-1',
+        });
+      },
+    );
+
+    jest
+      .spyOn(serviceAny, 'createNodeExecutionArtifact')
+      .mockResolvedValue(undefined);
+
+    await serviceAny.executeAgentNode({
+      taskId: task.id,
+      nodeId: node.id,
+      task,
+      node,
+      project,
+    });
+
+    const outputPath = path.resolve(
+      testDataRootDir!,
+      task.businessLineId,
+      'projects',
+      task.projectId,
+      'tasks',
+      task.id,
+      'nodes',
+      node.id,
+      'output.jsonl',
+    );
+    const content = await fs.readFile(outputPath, 'utf-8');
+    const lines = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    expect(lines).toEqual(stdoutLines);
+  });
+
+  it('should extract embedded gemini json lines from mixed stdout chunks', async () => {
+    const { service, agentRunnerService } = createTasksService();
+    const serviceAny = service as any;
+    const task = createTask();
+    const node = createNode({
+      agentCliId: 'gemini-cli',
+    });
+    const project = createProject({
+      agentAdapter: 'gemini-cli',
+    });
+    const mixedStdoutLines = [
+      'MCP issues detected. Run /mcp list for status.{"type":"init","timestamp":"2026-03-12T08:40:39.670Z","session_id":"gemini-session-1","model":"gemini-3-pro-preview"}',
+      '{"type":"message","timestamp":"2026-03-12T08:40:39.671Z","role":"user","content":"prompt"}',
+    ];
+
+    agentRunnerService.executeAgentNode.mockImplementation(
+      ({
+        callbacks,
+      }: {
+        callbacks?: { onStdoutLine?: (line: string) => void };
+      }) => {
+        mixedStdoutLines.forEach((line) => callbacks?.onStdoutLine?.(line));
+
+        return Promise.resolve({
+          success: true,
+          timedOut: false,
+          exitCode: 0,
+          signal: null,
+          command: 'gemini',
+          args: ['--output-format', 'stream-json'],
+          cwd: '/tmp/worktree-task-1',
+          durationMs: 50,
+          stdout: mixedStdoutLines.join('\n'),
+          stderr: '',
+          prompt: 'prompt',
+          sessionId: 'gemini-session-1',
+        });
+      },
+    );
+
+    jest
+      .spyOn(serviceAny, 'createNodeExecutionArtifact')
+      .mockResolvedValue(undefined);
+
+    await serviceAny.executeAgentNode({
+      taskId: task.id,
+      nodeId: node.id,
+      task,
+      node,
+      project,
+    });
+
+    const outputPath = path.resolve(
+      testDataRootDir!,
+      task.businessLineId,
+      'projects',
+      task.projectId,
+      'tasks',
+      task.id,
+      'nodes',
+      node.id,
+      'output.jsonl',
+    );
+    const content = await fs.readFile(outputPath, 'utf-8');
+    const lines = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    expect(lines).toEqual([
+      '{"type":"init","timestamp":"2026-03-12T08:40:39.670Z","session_id":"gemini-session-1","model":"gemini-3-pro-preview"}',
+      '{"type":"message","timestamp":"2026-03-12T08:40:39.671Z","role":"user","content":"prompt"}',
+    ]);
+  });
+
   it('should preserve existing output.jsonl data when continuing a session', async () => {
     const { service, agentRunnerService } = createTasksService();
     const serviceAny = service as any;
@@ -2325,53 +2473,108 @@ describe('TasksService', () => {
     expect(updateArgs?.[1]).not.toHaveProperty('agentClioutput');
   });
 
-  it('should map logs to task messages', async () => {
-    const { service, taskRepository, projectsService, taskLogRepository } =
+  it('should read task messages from node output jsonl files', async () => {
+    const { service, taskRepository, taskNodeRepository, projectsService } =
       createTasksService() as any;
     const task = createTask();
     const currentUser = createCurrentUser();
+    const node = createNode({
+      id: 'node-1',
+      status: TaskStatus.inProgress,
+      startedAt: new Date('2026-03-12T03:00:00.000Z'),
+    });
+    const outputPath = path.resolve(
+      testDataRootDir!,
+      task.businessLineId,
+      'projects',
+      task.projectId,
+      'tasks',
+      task.id,
+      'nodes',
+      node.id,
+      'output.jsonl',
+    );
 
     taskRepository.findById.mockResolvedValue(task);
+    taskNodeRepository.findByTaskId.mockResolvedValue([node]);
     projectsService.assertProjectCapability.mockResolvedValue(createProject());
-    taskLogRepository.findByTaskIdSince.mockResolvedValue([
-      {
-        id: 'log-1',
-        taskId: task.id,
-        taskNodeId: null,
-        level: 'info',
-        message: 'user asks',
-        payload: {
-          messageRole: 'user',
-        },
-        createdAt: new Date(),
-      },
-      {
-        id: 'log-2',
-        taskId: task.id,
-        taskNodeId: null,
-        level: 'error',
-        message: 'runner failed',
-        payload: null,
-        createdAt: new Date(),
-      },
-      {
-        id: 'log-3',
-        taskId: task.id,
-        taskNodeId: 'node-1',
-        level: 'info',
-        message: 'Agent CLI stdout chunk',
-        payload: {
-          stream: 'stdout',
-          text: 'real agent output',
-        },
-        createdAt: new Date(),
-      },
-    ]);
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    await fs.writeFile(
+      outputPath,
+      [
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"hello"}]},"timestamp_ms":1741748400000}',
+        '{"type":"user","message":{"content":"continue"},"timestamp_ms":1741748401000}',
+        '{"type":"result","subtype":"error","timestamp_ms":1741748402000}',
+      ].join('\n') + '\n',
+      'utf-8',
+    );
 
     const messages = await service.listMessages(task.id, currentUser as never);
 
-    expect(messages[0].role).toBe('user');
-    expect(messages[1].role).toBe('error');
-    expect(messages[2].content).toBe('real agent output');
+    expect(messages).toHaveLength(3);
+    expect(messages[0]).toMatchObject({
+      role: 'assistant',
+      content:
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"hello"}]},"timestamp_ms":1741748400000}',
+      taskNodeId: node.id,
+      level: TaskLogLevel.info,
+    });
+    expect(messages[1]).toMatchObject({
+      role: 'user',
+      content:
+        '{"type":"user","message":{"content":"continue"},"timestamp_ms":1741748401000}',
+      taskNodeId: node.id,
+      level: TaskLogLevel.info,
+    });
+    expect(messages[2]).toMatchObject({
+      role: 'error',
+      content:
+        '{"type":"result","subtype":"error","timestamp_ms":1741748402000}',
+      taskNodeId: node.id,
+      level: TaskLogLevel.error,
+    });
+    expect(messages[0].createdAt.toISOString()).toBe(
+      '2025-03-12T03:00:00.000Z',
+    );
+    expect(messages[1].createdAt.toISOString()).toBe(
+      '2025-03-12T03:00:01.000Z',
+    );
+    expect(messages[2].createdAt.toISOString()).toBe(
+      '2025-03-12T03:00:02.000Z',
+    );
+  });
+
+  it('should use stored node output path when listing task messages', async () => {
+    const { service, taskRepository, taskNodeRepository, projectsService } =
+      createTasksService() as any;
+    const task = createTask();
+    const currentUser = createCurrentUser();
+    const outputPath = path.resolve(testDataRootDir!, 'custom-output.jsonl');
+    const node = createNode({
+      id: 'node-1',
+      agentClioutput: outputPath,
+      status: TaskStatus.done,
+      createdAt: new Date('2026-03-12T04:00:00.000Z'),
+    });
+
+    taskRepository.findById.mockResolvedValue(task);
+    taskNodeRepository.findByTaskId.mockResolvedValue([node]);
+    projectsService.assertProjectCapability.mockResolvedValue(createProject());
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    await fs.writeFile(
+      outputPath,
+      '{"type":"system","subtype":"init"}\n',
+      'utf-8',
+    );
+
+    const messages = await service.listMessages(task.id, currentUser as never);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      role: 'system',
+      content: '{"type":"system","subtype":"init"}',
+      taskNodeId: node.id,
+      level: TaskLogLevel.info,
+    });
   });
 });

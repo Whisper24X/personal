@@ -76,15 +76,22 @@ const toggle = () => {
 
 <template>
   <div
-    class="group cursor-pointer select-none rounded-md px-2 py-1 transition-colors hover:bg-muted/50"
+    class="group cursor-pointer select-none rounded-md px-2 py-1.5 transition-colors hover:bg-muted/30"
     @click="toggle"
   >
     <div class="flex items-start gap-2 text-sm">
       <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" :class="dotColor" />
       <div class="min-w-0 flex-1">
-        <span class="font-medium text-foreground">{{ toolName }}</span>
-        <span v-if="paramSummary" class="text-muted-foreground">({{ paramSummary }})</span>
-        <div v-if="resultSummary" class="text-xs text-muted-foreground">
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span class="font-medium text-foreground">{{ toolName }}</span>
+          <span
+            v-if="paramSummary"
+            class="min-w-0 max-w-full truncate text-xs text-muted-foreground"
+          >
+            ({{ paramSummary }})
+          </span>
+        </div>
+        <div v-if="resultSummary" class="mt-1 text-xs text-muted-foreground">
           └ {{ resultSummary }}
         </div>
       </div>
@@ -93,12 +100,12 @@ const toggle = () => {
       </span>
     </div>
 
-    <div v-if="expanded" class="ml-4 mt-2 space-y-2" @click.stop>
-      <div v-if="fullInput" class="rounded-md bg-muted/50 p-2">
+    <div v-if="expanded" class="mt-3 space-y-2 border-t border-border/30 pt-3" @click.stop>
+      <div v-if="fullInput" class="rounded-md bg-muted/40 p-2">
         <div class="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">输入</div>
         <pre class="max-h-48 overflow-auto text-xs text-foreground">{{ fullInput }}</pre>
       </div>
-      <div v-if="fullOutput" class="rounded-md bg-muted/50 p-2">
+      <div v-if="fullOutput" class="rounded-md bg-muted/40 p-2">
         <div class="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">输出</div>
         <pre class="max-h-48 overflow-auto text-xs text-foreground">{{ fullOutput }}</pre>
       </div>

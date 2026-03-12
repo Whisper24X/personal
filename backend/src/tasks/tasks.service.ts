@@ -687,48 +687,13 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     taskId: Task['id'],
     currentUser: JwtPayloadType,
   ): Promise<TaskMessageDto[]> {
-    await this.getTaskOrThrow(taskId, currentUser);
+    const task = await this.getTaskOrThrow(taskId, currentUser);
+    const nodes = await this.taskNodeRepository.findByTaskId(taskId);
+    const nodeMessages = await Promise.all(
+      nodes.map((node) => this.readNodeOutputMessages(task, node)),
+    );
 
-    const logs = await this.taskLogRepository.findByTaskIdSince({
-      taskId,
-      limit: 500,
-    });
-
-    return logs
-      .filter((log) => this.isAgentOutputLog(log))
-      .map((log) => {
-        const payload =
-          log.payload && typeof log.payload === 'object'
-            ? (log.payload as Record<string, unknown>)
-            : null;
-
-        const payloadRole =
-          payload && typeof payload.messageRole === 'string'
-            ? payload.messageRole
-            : null;
-
-        let role: TaskMessageRole;
-        if (
-          payloadRole === TaskMessageRole.user ||
-          payloadRole === TaskMessageRole.assistant ||
-          payloadRole === TaskMessageRole.system ||
-          payloadRole === TaskMessageRole.error
-        ) {
-          role = payloadRole;
-        } else if (log.level === TaskLogLevel.error) {
-          role = TaskMessageRole.error;
-        } else {
-          role = TaskMessageRole.system;
-        }
-
-        return {
-          role,
-          content: this.resolveTaskLogMessageContent(log),
-          createdAt: log.createdAt,
-          taskNodeId: log.taskNodeId ?? null,
-          level: log.level,
-        };
-      });
+    return nodeMessages.flat();
   }
 
   async execute(
@@ -2885,10 +2850,9 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     node: TaskNode;
     lines: string[];
   }): Promise<string> {
-    const normalizedLines = lines
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .filter((line) => this.isJsonLine(line));
+    const normalizedLines = lines.flatMap((line) =>
+      this.extractJsonLinesFromContent(line),
+    );
 
     const outputPath = this.resolveNodeOutputPath(task, node);
     if (!normalizedLines.length) {
@@ -2908,7 +2872,9 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       typeof output.stdout === 'string' && output.stdout.trim()
         ? output.stdout
         : null;
-    const stdoutJsonlLines = stdout ? this.extractStdoutJsonlLines(stdout) : [];
+    const stdoutJsonlLines = stdout
+      ? this.extractJsonLinesFromContent(stdout)
+      : [];
 
     if (!stdoutJsonlLines.length) {
       return '';
@@ -2917,12 +2883,40 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     return `${stdoutJsonlLines.join('\n')}\n`;
   }
 
-  private extractStdoutJsonlLines(stdout: string): string[] {
-    return stdout
+  private extractJsonLinesFromContent(content: string): string[] {
+    return content
       .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .filter((line) => this.isJsonLine(line));
+      .flatMap((line) => this.extractJsonCandidatesFromLine(line));
+  }
+
+  private extractJsonCandidatesFromLine(line: string): string[] {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      return [];
+    }
+
+    if (this.isJsonLine(trimmed)) {
+      return [trimmed];
+    }
+
+    const candidates: string[] = [];
+
+    for (let index = 0; index < trimmed.length; index += 1) {
+      const marker = trimmed[index];
+      if (marker !== '{' && marker !== '[') {
+        continue;
+      }
+
+      const candidate = trimmed.slice(index).trim();
+      if (!candidate || !this.isJsonLine(candidate)) {
+        continue;
+      }
+
+      candidates.push(candidate);
+      break;
+    }
+
+    return candidates;
   }
 
   private isJsonLine(value: string): boolean {
@@ -2970,6 +2964,251 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     }
 
     return null;
+  }
+
+  private async readNodeOutputMessages(
+    task: Task,
+    node: TaskNode,
+  ): Promise<TaskMessageDto[]> {
+    const outputPath = this.resolveReadableNodeOutputPath(task, node);
+
+    if (!outputPath) {
+      return [];
+    }
+
+    try {
+      const content = await fs.readFile(outputPath, 'utf-8');
+      const records = content
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+      const fallbackTimeMs = (
+        node.startedAt ??
+        node.finishedAt ??
+        node.createdAt ??
+        task.createdAt ??
+        new Date()
+      ).getTime();
+
+      return records.flatMap((line, index) => {
+        const metadata = this.resolveNodeOutputMessageMetadata(line);
+
+        if (!metadata) {
+          return [];
+        }
+
+        return [
+          {
+            role: metadata.role,
+            content: line,
+            createdAt: new Date(metadata.createdAtMs ?? fallbackTimeMs + index),
+            taskNodeId: node.id,
+            level:
+              metadata.role === TaskMessageRole.error
+                ? TaskLogLevel.error
+                : TaskLogLevel.info,
+          },
+        ];
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  private resolveReadableNodeOutputPath(task: Task, node: TaskNode): string {
+    return (
+      this.normalizeOptionalString(node.agentClioutput) ??
+      this.resolveNodeOutputPath(task, node)
+    );
+  }
+
+  private resolveNodeOutputMessageMetadata(
+    line: string,
+  ): { role: TaskMessageRole; createdAtMs?: number } | null {
+    const record = this.tryParseNodeOutputRecord(line);
+
+    if (!record) {
+      return {
+        role: TaskMessageRole.system,
+      };
+    }
+
+    const createdAt = this.resolveNodeOutputRecordDate(record);
+
+    return {
+      role: this.resolveNodeOutputRecordRole(record),
+      createdAtMs: createdAt?.getTime(),
+    };
+  }
+
+  private tryParseNodeOutputRecord(
+    line: string,
+  ): Record<string, unknown> | null {
+    try {
+      const parsed = JSON.parse(line) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return null;
+      }
+
+      return parsed as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  private resolveNodeOutputRecordRole(
+    record: Record<string, unknown>,
+  ): TaskMessageRole {
+    const descriptors = this.collectNodeOutputDescriptors(record);
+
+    if (
+      descriptors.some((descriptor) => {
+        return descriptor === 'user' || descriptor === 'user_message';
+      })
+    ) {
+      return TaskMessageRole.user;
+    }
+
+    if (
+      descriptors.some((descriptor) => {
+        return (
+          descriptor === 'assistant' ||
+          descriptor === 'assistant_message' ||
+          descriptor === 'agent_message' ||
+          descriptor === 'agent_message_delta' ||
+          descriptor === 'model'
+        );
+      })
+    ) {
+      return TaskMessageRole.assistant;
+    }
+
+    if (
+      descriptors.some((descriptor) => {
+        return (
+          descriptor === 'error' ||
+          descriptor.endsWith('_error') ||
+          descriptor.includes('error')
+        );
+      })
+    ) {
+      return TaskMessageRole.error;
+    }
+
+    if (record.is_error === true) {
+      return TaskMessageRole.error;
+    }
+
+    return TaskMessageRole.system;
+  }
+
+  private collectNodeOutputDescriptors(
+    record: Record<string, unknown>,
+  ): string[] {
+    const descriptors = new Set<string>();
+    const queue: Array<{ value: Record<string, unknown>; depth: number }> = [
+      { value: record, depth: 0 },
+    ];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+
+      if (!current) {
+        continue;
+      }
+
+      if (current.depth > 2) {
+        continue;
+      }
+
+      ['type', 'event', 'method', 'kind', 'role', 'subtype'].forEach((key) => {
+        const value = current.value[key];
+        if (typeof value === 'string' && value.trim()) {
+          descriptors.add(value.trim().toLowerCase().replace(/\./g, '_'));
+        }
+      });
+
+      ['item', 'message', 'params', 'result', 'event'].forEach((key) => {
+        const nested = current.value[key];
+        if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+          queue.push({
+            value: nested as Record<string, unknown>,
+            depth: current.depth + 1,
+          });
+        }
+      });
+    }
+
+    return [...descriptors];
+  }
+
+  private resolveNodeOutputRecordDate(
+    record: Record<string, unknown>,
+  ): Date | null {
+    const timestampMs = this.normalizeTimestampNumber(record.timestamp_ms);
+    if (timestampMs !== null) {
+      return new Date(timestampMs);
+    }
+
+    const timestamp = this.normalizeTimestampNumber(record.timestamp);
+    if (timestamp !== null) {
+      return new Date(timestamp);
+    }
+
+    const directDateCandidates = [
+      record.createdAt,
+      record.created_at,
+      record.updatedAt,
+      record.updated_at,
+      record.time,
+      record.ts,
+    ];
+
+    for (const candidate of directDateCandidates) {
+      const parsed = this.parseOptionalDateLike(candidate);
+      if (parsed) {
+        return parsed;
+      }
+    }
+
+    return null;
+  }
+
+  private normalizeTimestampNumber(value: unknown): number | null {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      return null;
+    }
+
+    if (value < 100_000_000_000) {
+      return value * 1_000;
+    }
+
+    return value;
+  }
+
+  private parseOptionalDateLike(value: unknown): Date | null {
+    if (typeof value === 'number' && !Number.isNaN(value)) {
+      return new Date(this.normalizeTimestampNumber(value) ?? value);
+    }
+
+    if (typeof value !== 'string') {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const numericValue = Number(trimmed);
+    if (!Number.isNaN(numericValue)) {
+      const normalized = this.normalizeTimestampNumber(numericValue);
+      return normalized === null ? null : new Date(normalized);
+    }
+
+    const parsed = new Date(trimmed);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
   private resolveNodeOutputPath(task: Task, node: TaskNode): string {
@@ -3188,33 +3427,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     this.taskLogEventsService.emit(log);
 
     return log;
-  }
-
-  private isAgentOutputLog(log: TaskLog): boolean {
-    return (
-      log.message === 'Agent CLI stdout chunk' ||
-      log.message === 'Agent CLI stderr chunk' ||
-      log.level === TaskLogLevel.error
-    );
-  }
-
-  private resolveTaskLogMessageContent(log: TaskLog): string {
-    const payload =
-      log.payload && typeof log.payload === 'object'
-        ? (log.payload as Record<string, unknown>)
-        : null;
-
-    if (
-      (log.message === 'Agent CLI stdout chunk' ||
-        log.message === 'Agent CLI stderr chunk') &&
-      payload &&
-      typeof payload.text === 'string' &&
-      payload.text.length > 0
-    ) {
-      return payload.text;
-    }
-
-    return log.message;
   }
 
   private parseDate(value?: string): Date | undefined {

@@ -201,9 +201,13 @@ export class AgentRunnerService {
     };
     const command =
       runnerConfig.command?.trim() || this.resolveDefaultCommand(adapter);
+    const normalizedArgs = this.normalizeRunnerArgs(
+      adapter,
+      runnerConfig.args ?? this.resolveDefaultArgs(adapter),
+    );
     const args = this.applyContinuationArgs({
       adapter,
-      args: runnerConfig.args ?? this.resolveDefaultArgs(adapter),
+      args: normalizedArgs,
       sessionId: this.normalizeOptionalString(node.agentCliSessionId),
       continuationConfig,
     });
@@ -452,6 +456,25 @@ export class AgentRunnerService {
         overrideConfig.timeoutSeconds ?? baseConfig.timeoutSeconds,
       env: mergedEnv,
     };
+  }
+
+  private normalizeRunnerArgs(adapter: AgentAdapter, args: string[]): string[] {
+    if (adapter !== 'codex') {
+      return [...args];
+    }
+
+    const normalizedArgs = [...args];
+    if (normalizedArgs.includes('--json')) {
+      return normalizedArgs;
+    }
+
+    const execIndex = normalizedArgs.indexOf('exec');
+    if (execIndex >= 0) {
+      normalizedArgs.splice(execIndex + 1, 0, '--json');
+      return normalizedArgs;
+    }
+
+    return ['exec', '--json', ...normalizedArgs];
   }
 
   private async resolveAgentToolConfig(
@@ -930,10 +953,10 @@ export class AgentRunnerService {
 
   private resolveDefaultArgs(adapter: AgentAdapter): string[] {
     const defaultArgsMap: Record<AgentAdapter, string[]> = {
-      codex: ['exec', '--skip-git-repo-check', '-'],
+      codex: ['exec', '--json', '--skip-git-repo-check', '-'],
       cursor: ['-p', '--output-format', 'stream-json', '--trust', '--force'],
       claude: ['-p', '--output-format', 'stream-json', '--verbose'],
-      gemini: [],
+      gemini: ['--output-format', 'stream-json'],
       opencode: [],
     };
 
@@ -969,18 +992,9 @@ export class AgentRunnerService {
           ? task.prompt.trim()
           : '';
 
-    const sections = [
-      nodePrompt,
-      `Task Title: ${task.title}`,
-      taskInput ? `Task Prompt:\n${taskInput}` : '',
-      `Node Name: ${node.name}`,
-      `Node Order: ${node.nodeOrder}`,
-      pendingUserMessage
-        ? `Follow-up User Message:\n${pendingUserMessage}`
-        : '',
-      '---',
-      'Output requirement: After completing the task, please output an execution summary to stdout, including: 1) What was done; 2) Which files were modified (if any); 3) Any issues encountered (if any).',
-    ].filter(Boolean);
+    const sections = [taskInput, nodePrompt, pendingUserMessage].filter(
+      Boolean,
+    );
 
     return sections.join('\n\n');
   }
@@ -1424,6 +1438,7 @@ export class AgentRunnerService {
       'LANG',
       'LC_ALL',
       'TERM',
+      'GEMINI_API_KEY',
     ];
     const baseEnv = allowedBaseEnvKeys.reduce<NodeJS.ProcessEnv>(
       (result, key) => {
