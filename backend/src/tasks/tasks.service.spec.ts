@@ -762,7 +762,7 @@ describe('TasksService', () => {
           exitCode: 0,
           signal: null,
           command: 'agent',
-          args: ['-p', '--output-format', 'stream-json'],
+          args: ['-p', '--output-format', 'stream-json', '--verbose'],
           cwd: '/tmp/worktree-task-1',
           durationMs: 50,
           stdout: stdoutLines.join('\n'),
@@ -828,6 +828,79 @@ describe('TasksService', () => {
         }),
       }),
     );
+  });
+
+  it('should append claude code stdout json lines into output jsonl during execution', async () => {
+    const { service, agentRunnerService } = createTasksService();
+    const serviceAny = service as any;
+    const task = createTask();
+    const node = createNode({
+      agentCliId: 'claude-code',
+    });
+    const project = createProject({
+      agentAdapter: 'claude-code',
+    });
+    const stdoutLines = [
+      '{"type":"system","subtype":"init","session_id":"claude-session-1"}',
+      '{"type":"assistant","message":{"content":[{"type":"text","text":"hello"}]}}',
+      '{"type":"result","subtype":"success","session_id":"claude-session-1"}',
+    ];
+
+    agentRunnerService.executeAgentNode.mockImplementation(
+      ({
+        callbacks,
+      }: {
+        callbacks?: { onStdoutLine?: (line: string) => void };
+      }) => {
+        stdoutLines.forEach((line) => callbacks?.onStdoutLine?.(line));
+
+        return Promise.resolve({
+          success: true,
+          timedOut: false,
+          exitCode: 0,
+          signal: null,
+          command: 'claude',
+          args: ['-p', '--output-format', 'stream-json', '--verbose'],
+          cwd: '/tmp/worktree-task-1',
+          durationMs: 50,
+          stdout: stdoutLines.join('\n'),
+          stderr: '',
+          prompt: 'prompt',
+          sessionId: 'claude-session-1',
+        });
+      },
+    );
+
+    jest
+      .spyOn(serviceAny, 'createNodeExecutionArtifact')
+      .mockResolvedValue(undefined);
+
+    await serviceAny.executeAgentNode({
+      taskId: task.id,
+      nodeId: node.id,
+      task,
+      node,
+      project,
+    });
+
+    const outputPath = path.resolve(
+      testDataRootDir!,
+      task.businessLineId,
+      'projects',
+      task.projectId,
+      'tasks',
+      task.id,
+      'nodes',
+      node.id,
+      'output.jsonl',
+    );
+    const content = await fs.readFile(outputPath, 'utf-8');
+    const lines = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    expect(lines).toEqual(stdoutLines);
   });
 
   it('should preserve existing output.jsonl data when continuing a session', async () => {
@@ -917,6 +990,108 @@ describe('TasksService', () => {
     );
     expect(lines[2]).toBe(newStdoutLines[0]);
     expect(lines[3]).toBe(newStdoutLines[1]);
+  });
+
+  it('should preserve existing claude output jsonl data when continuing a session', async () => {
+    const { service, agentRunnerService, taskNodeRepository } =
+      createTasksService();
+    const serviceAny = service as any;
+    const task = createTask();
+    const node = createNode({
+      agentCliId: 'claude-code',
+      agentCliSessionId: 'claude-session-1',
+    });
+    const project = createProject({
+      agentAdapter: 'claude-code',
+    });
+
+    const outputPath = path.resolve(
+      testDataRootDir!,
+      task.businessLineId,
+      'projects',
+      task.projectId,
+      'tasks',
+      task.id,
+      'nodes',
+      node.id,
+      'output.jsonl',
+    );
+
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    const existingData =
+      [
+        '{"type":"system","subtype":"init","session_id":"claude-session-1"}',
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"first turn"}]}}',
+      ].join('\n') + '\n';
+    await fs.writeFile(outputPath, existingData, 'utf-8');
+
+    const newStdoutLines = [
+      '{"type":"user","message":{"content":"continue"},"session_id":"claude-session-1"}',
+      '{"type":"result","subtype":"success","session_id":"claude-session-1"}',
+    ];
+
+    agentRunnerService.executeAgentNode.mockImplementation(
+      ({
+        callbacks,
+      }: {
+        callbacks?: { onStdoutLine?: (line: string) => void };
+      }) => {
+        newStdoutLines.forEach((line) => callbacks?.onStdoutLine?.(line));
+
+        return Promise.resolve({
+          success: true,
+          timedOut: false,
+          exitCode: 0,
+          signal: null,
+          command: 'claude',
+          args: [
+            '-p',
+            '--output-format',
+            'stream-json',
+            '--verbose',
+            '--resume',
+            'claude-session-1',
+          ],
+          cwd: '/tmp/worktree-task-1',
+          durationMs: 50,
+          stdout: newStdoutLines.join('\n'),
+          stderr: '',
+          prompt: 'continue working',
+          sessionId: 'claude-session-1',
+        });
+      },
+    );
+
+    jest
+      .spyOn(serviceAny, 'createNodeExecutionArtifact')
+      .mockResolvedValue(undefined);
+
+    await serviceAny.executeAgentNode({
+      taskId: task.id,
+      nodeId: node.id,
+      task,
+      node,
+      project,
+    });
+
+    const content = await fs.readFile(outputPath, 'utf-8');
+    const lines = content
+      .split(/\r?\n/)
+      .map((line: string) => line.trim())
+      .filter(Boolean);
+
+    expect(lines).toEqual([
+      '{"type":"system","subtype":"init","session_id":"claude-session-1"}',
+      '{"type":"assistant","message":{"content":[{"type":"text","text":"first turn"}]}}',
+      '{"type":"user","message":{"content":"continue"},"session_id":"claude-session-1"}',
+      '{"type":"result","subtype":"success","session_id":"claude-session-1"}',
+    ]);
+    expect(taskNodeRepository.update).toHaveBeenCalledWith(
+      node.id,
+      expect.objectContaining({
+        agentCliSessionId: 'claude-session-1',
+      }),
+    );
   });
 
   it('should fallback to output jsonl content when no summary metadata exists', async () => {

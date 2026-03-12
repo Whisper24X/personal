@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { Task, TaskNode } from '@/types/api/tasks'
+import type { TaskNode } from '@/types/api/tasks'
 
 defineOptions({
   name: 'TaskDetailWorkflowCard',
@@ -9,18 +8,11 @@ defineOptions({
 const props = defineProps<{
   nodes: TaskNode[]
   selectedNodeId: string | null
-  statusLabelMap: Record<Task['status'], string>
-  canManageReview: boolean
 }>()
 
 const emit = defineEmits<{
   selectNode: [nodeId: string]
-  approveNode: [node: TaskNode]
 }>()
-
-const currentReviewNode = computed(() => {
-  return props.nodes.find((node) => node.status === 'in_review') ?? null
-})
 
 const nodeChipClass = (node: TaskNode) => {
   if (node.status === 'done') {
@@ -78,25 +70,6 @@ const nodeDotClass = (node: TaskNode) => {
               :class="node.status === 'done' ? 'bg-emerald-500/40' : 'bg-muted-foreground/20'"
             />
           </template>
-        </div>
-      </div>
-
-      <div v-if="currentReviewNode" class="rounded-md border border-amber-500/30 bg-amber-50/30 px-2 py-2">
-        <div class="flex items-center justify-between gap-2">
-          <div class="min-w-0">
-            <p class="text-xs font-medium text-amber-700">节点待审批</p>
-            <p class="truncate text-xs text-muted-foreground">
-              #{{ currentReviewNode.nodeOrder }} {{ currentReviewNode.name }} · {{ props.statusLabelMap[currentReviewNode.status] }}
-            </p>
-          </div>
-          <button
-            v-if="props.canManageReview"
-            class="h-7 rounded-md bg-primary px-2 text-xs font-semibold text-primary-foreground"
-            type="button"
-            @click="emit('approveNode', currentReviewNode)"
-          >
-            审批通过
-          </button>
         </div>
       </div>
     </div>

@@ -106,6 +106,7 @@ export class AgentRunnerService {
       'timeout_seconds',
       'base_command_override',
       'additional_params',
+      'resume',
       'env',
     ]),
     gemini: new Set([
@@ -885,6 +886,10 @@ export class AgentRunnerService {
       return [...args, '--resume', normalizedSessionId];
     }
 
+    if (adapter === 'claude') {
+      return [...args, '--resume', normalizedSessionId];
+    }
+
     if (adapter === 'opencode') {
       return [...args, '--continue', '--session', normalizedSessionId];
     }
@@ -908,6 +913,12 @@ export class AgentRunnerService {
         : null;
     }
 
+    if (adapter === 'claude') {
+      return typeof continuationConfig.resume === 'string'
+        ? continuationConfig.resume
+        : null;
+    }
+
     if (adapter === 'opencode') {
       return typeof continuationConfig.session === 'string'
         ? continuationConfig.session
@@ -921,7 +932,7 @@ export class AgentRunnerService {
     const defaultArgsMap: Record<AgentAdapter, string[]> = {
       codex: ['exec', '--skip-git-repo-check', '-'],
       cursor: ['-p', '--output-format', 'stream-json', '--trust', '--force'],
-      claude: ['-p'],
+      claude: ['-p', '--output-format', 'stream-json', '--verbose'],
       gemini: [],
       opencode: [],
     };

@@ -10,16 +10,20 @@ import {
 import { AutomationStatus } from '../../../../domain/automation-status.enum';
 
 @Entity({ name: 'automations', comment: '定时自动化定义' })
+@Index('IDX_automations_project_id', ['projectId'])
 @Index('IDX_automations_name', ['name'])
 @Index('IDX_automations_status', ['status'])
 @Index('IDX_automations_created_by', ['createdBy'])
-@Index('UQ_automations_name', ['name'], {
+@Index('UQ_automations_project_name', ['projectId', 'name'], {
   unique: true,
   where: '"deletedAt" IS NULL',
 })
 export class AutomationEntity {
   @PrimaryGeneratedColumn('uuid', { comment: '主键（UUID）' })
   id: string;
+
+  @Column({ type: 'uuid', comment: '所属项目ID' })
+  projectId: string;
 
   @Column({ type: String, length: 120, comment: '自动化名称' })
   name: string;

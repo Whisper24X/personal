@@ -351,6 +351,36 @@ describe('AgentRunnerService', () => {
     ]);
   });
 
+  it('should use stream-json defaults for claude code', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'claude-code',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'claude-code',
+      },
+    );
+
+    expect(result.adapter).toBe('claude');
+    expect(result.command).toBe('claude');
+    expect(result.args).toEqual([
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+    ]);
+  });
+
   it('should pass cursor api_key from persisted config as CURSOR_API_KEY env', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findById.mockResolvedValue({
@@ -447,6 +477,48 @@ describe('AgentRunnerService', () => {
     expect(result.args).toEqual(['--resume', 'gemini-session-1']);
   });
 
+  it('should apply configured claude resume session when resolving runner args', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue({
+      id: 'cfg-claude-default',
+      businessLineId: 'business-line-1',
+      toolId: 'claude-code',
+      name: 'Claude Default',
+      description: null,
+      configJson: JSON.stringify({
+        resume: 'claude-session-1',
+      }),
+      isDefault: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'claude-code',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'claude-code',
+      },
+    );
+
+    expect(result.args).toEqual([
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--resume',
+      'claude-session-1',
+    ]);
+  });
+
   it('should apply node session id for opencode continuation', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
@@ -498,6 +570,37 @@ describe('AgentRunnerService', () => {
 
     expect(result.args).toContain('--resume');
     expect(result.args).toContain('cursor-session-1');
+  });
+
+  it('should apply node session id for claude continuation', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'claude-code',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'claude-code',
+        agentCliSessionId: 'claude-session-1',
+      },
+    );
+
+    expect(result.args).toEqual([
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--resume',
+      'claude-session-1',
+    ]);
   });
 
   it('should use follow-up message only when resuming an existing cli session', () => {

@@ -2,6 +2,7 @@ export type AutomationStatus = 'active' | 'paused'
 
 export type Automation = {
   id: string
+  projectId: string
   name: string
   prompt: string
   rrule: string
@@ -15,6 +16,7 @@ export type Automation = {
 }
 
 export type CreateAutomationPayload = {
+  projectId: string
   name: string
   prompt: string
   rrule: string
@@ -22,4 +24,4 @@ export type CreateAutomationPayload = {
   status?: AutomationStatus
 }
 
-export type UpdateAutomationPayload = Partial<CreateAutomationPayload>
+export type UpdateAutomationPayload = Partial<Omit<CreateAutomationPayload, 'projectId'>>

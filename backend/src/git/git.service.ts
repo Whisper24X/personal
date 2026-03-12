@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { spawn } from 'child_process';
 import { GitBranchesDto } from './dto/git-branches.dto';
+import { GitLogDto } from './dto/git-log.dto';
 import { GitPullMainDto } from './dto/git-pull-main.dto';
+import { GitStatusDto } from './dto/git-status.dto';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { ProjectsService } from '../projects/projects.service';
 
@@ -19,6 +21,7 @@ export class GitService {
     const { repositoryRoot, defaultBranch } = await this.resolveProjectContext(
       projectId,
       currentUser,
+      { syncRemote: true },
     );
     const snapshot = await this.readBranchSnapshot(
       repositoryRoot,
@@ -40,6 +43,7 @@ export class GitService {
     const { repositoryRoot, defaultBranch } = await this.resolveProjectContext(
       projectId,
       currentUser,
+      { syncRemote: true },
     );
     const snapshot = await this.readBranchSnapshot(
       repositoryRoot,
@@ -83,14 +87,80 @@ export class GitService {
     };
   }
 
+  async readStatus(
+    projectId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<GitStatusDto> {
+    const { repositoryRoot, defaultBranch } = await this.resolveProjectContext(
+      projectId,
+      currentUser,
+      { syncRemote: false },
+    );
+
+    const [snapshot, workingTreeResult] = await Promise.all([
+      this.readBranchSnapshot(repositoryRoot, defaultBranch),
+      this.runCommand(['-C', repositoryRoot, 'status', '--porcelain']),
+    ]);
+
+    if (!workingTreeResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure('读取仓库状态失败', workingTreeResult),
+      );
+    }
+
+    const changedFilesCount = this.parseChangedFilesCount(
+      workingTreeResult.stdout,
+    );
+
+    return {
+      defaultBranch,
+      currentBranch: snapshot.currentBranch,
+      isOnDefaultBranch: snapshot.currentBranch === defaultBranch,
+      hasUncommittedChanges: changedFilesCount > 0,
+      changedFilesCount,
+    };
+  }
+
+  async readLog(
+    projectId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<GitLogDto> {
+    const { repositoryRoot } = await this.resolveProjectContext(
+      projectId,
+      currentUser,
+      { syncRemote: false },
+    );
+
+    const logResult = await this.runCommand([
+      '-C',
+      repositoryRoot,
+      'log',
+      '--max-count=8',
+      '--date=iso-strict',
+      '--pretty=format:%H%x1f%h%x1f%an%x1f%cI%x1f%s',
+    ]);
+
+    if (!logResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure('读取提交记录失败', logResult),
+      );
+    }
+
+    return {
+      commits: this.parseCommits(logResult.stdout),
+    };
+  }
+
   private async resolveProjectContext(
     projectId: string,
     currentUser: JwtPayloadType,
+    options: { syncRemote?: boolean } = {},
   ): Promise<{ repositoryRoot: string; defaultBranch: string }> {
     const { project, repositoryRoot } =
       await this.projectsService.ensureProjectRepositoryReady(
         projectId,
         currentUser,
+        options,
       );
 
     const defaultBranch =
@@ -193,6 +263,33 @@ export class GitService {
           .filter(Boolean),
       ),
     );
+  }
+
+  private parseChangedFilesCount(stdout: string): number {
+    return stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean).length;
+  }
+
+  private parseCommits(stdout: string): GitLogDto['commits'] {
+    return stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [sha, shortSha, authorName, committedAt, ...messageParts] =
+          line.split('\x1f');
+
+        return {
+          sha: sha || '',
+          shortSha: shortSha || '',
+          authorName: authorName || '',
+          committedAt: committedAt || '',
+          message: messageParts.join('\x1f') || '',
+        };
+      })
+      .filter((commit) => commit.sha && commit.shortSha);
   }
 
   private sortBranches(branches: string[], defaultBranch: string): string[] {

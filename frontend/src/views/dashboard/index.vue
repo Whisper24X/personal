@@ -20,8 +20,21 @@ const router = useRouter()
 const message = useMessage()
 
 const loading = ref(false)
+const refreshing = ref(false)
 const project = ref<Project | null>(null)
 const tasks = ref<Task[]>([])
+
+type DashboardMetaItem = {
+  label: string
+  value: string
+  monospace?: boolean
+  breakAll?: boolean
+}
+
+type DashboardMetric = {
+  label: string
+  value: number
+}
 
 const statusLabelMap: Record<Task['status'], string> = {
   todo: '待执行',
@@ -68,13 +81,15 @@ const runningTaskCount = computed(() => tasks.value.filter((task) => task.status
 const reviewTaskCount = computed(() => tasks.value.filter((task) => task.status === 'in_review').length)
 const doneTaskCount = computed(() => tasks.value.filter((task) => task.status === 'done').length)
 
-const completionRate = computed(() => {
+const completionRateValue = computed(() => {
   if (totalTaskCount.value === 0) {
-    return '0.0%'
+    return 0
   }
 
-  return `${((doneTaskCount.value / totalTaskCount.value) * 100).toFixed(1)}%`
+  return Number(((doneTaskCount.value / totalTaskCount.value) * 100).toFixed(1))
 })
+
+const completionRate = computed(() => `${completionRateValue.value.toFixed(1)}%`)
 
 const recentTasks = computed(() => {
   return [...tasks.value]
@@ -85,6 +100,55 @@ const recentTasks = computed(() => {
     })
     .slice(0, 5)
 })
+
+const projectMetaItems = computed<DashboardMetaItem[]>(() => {
+  if (!project.value) {
+    return []
+  }
+
+  return [
+    {
+      label: '项目 ID',
+      value: project.value.id,
+      monospace: true,
+    },
+    {
+      label: '业务线 ID',
+      value: project.value.businessLineId,
+      monospace: true,
+    },
+    {
+      label: '默认分支',
+      value: project.value.defaultBranch || '-',
+      monospace: true,
+    },
+    {
+      label: 'Git 仓库',
+      value: project.value.gitUrl || '-',
+      monospace: true,
+      breakAll: true,
+    },
+  ]
+})
+
+const taskMetrics = computed<DashboardMetric[]>(() => [
+  {
+    label: '待执行',
+    value: todoTaskCount.value,
+  },
+  {
+    label: '执行中',
+    value: runningTaskCount.value,
+  },
+  {
+    label: '待处理',
+    value: reviewTaskCount.value,
+  },
+  {
+    label: '已完成',
+    value: doneTaskCount.value,
+  },
+])
 
 const uniqueById = <T extends { id: string }>(items: T[]) => {
   return Array.from(new Map(items.map((item) => [item.id, item])).values())
@@ -103,16 +167,25 @@ const formatDate = (value?: string) => {
   })
 }
 
-const loadProjectDashboardData = async () => {
+const loadProjectDashboardData = async (options: { keepContent?: boolean } = {}) => {
   const projectId = activeProjectId.value
 
   if (!projectId) {
+    loading.value = false
+    refreshing.value = false
     project.value = null
     tasks.value = []
     return
   }
 
-  loading.value = true
+  if (options.keepContent && project.value) {
+    refreshing.value = true
+  } else {
+    loading.value = true
+  }
+
+  const previousProject = project.value
+  const previousTasks = tasks.value
 
   try {
     const [projectResponse, taskResponse] = await Promise.all([
@@ -123,11 +196,19 @@ const loadProjectDashboardData = async () => {
     project.value = projectResponse
     tasks.value = uniqueById(taskResponse)
   } catch (error) {
-    project.value = null
-    tasks.value = []
+    if (options.keepContent && previousProject) {
+      project.value = previousProject
+      tasks.value = previousTasks
+    } else {
+      project.value = null
+      tasks.value = []
+    }
+
     message.error(toErrorMessage(error, '加载项目仪表盘数据失败'))
 
     if (error instanceof HttpError && (error.status === 404 || error.status === 403)) {
+      project.value = null
+      tasks.value = []
       localStorage.removeItem(STORAGE_KEYS.lastSelectedProjectId)
       if (route.query.projectId) {
         void router.replace({ path: route.path, query: {} })
@@ -135,6 +216,7 @@ const loadProjectDashboardData = async () => {
     }
   } finally {
     loading.value = false
+    refreshing.value = false
   }
 }
 
@@ -148,15 +230,7 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-6 fade-up">
-    <section class="space-y-2">
-      <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">仪表盘</p>
-      <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">项目仪表盘</h1>
-      <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-        仅展示当前项目的信息与任务状态，不再包含全局系统数据。
-      </p>
-    </section>
-
+  <div class="space-y-5 fade-up">
     <section v-if="!hasProjectId" class="panel-card p-5">
       <p class="text-sm font-semibold">未选择项目</p>
       <p class="mt-2 text-sm text-muted-foreground">
@@ -175,122 +249,90 @@ watch(
       </section>
 
       <template v-else>
-        <section class="grid gap-4 md:grid-cols-2">
-          <article class="panel-card p-4">
-            <p class="text-sm font-semibold">项目概览</p>
-            <div class="mt-3 grid gap-2 text-sm text-muted-foreground">
-              <p>
-                名称：
-                <span class="font-semibold text-foreground">{{ project.name }}</span>
-              </p>
-              <p>
-                项目 ID：
-                <span class="font-mono text-foreground">{{ project.id }}</span>
-              </p>
-              <p>
-                业务线 ID：
-                <span class="font-mono text-foreground">{{ project.businessLineId }}</span>
-              </p>
-              <p>
-                默认分支：
-                <span class="font-mono text-foreground">{{ project.defaultBranch }}</span>
-              </p>
-              <p>
-                Git 仓库：
-                <span class="break-all font-mono text-foreground">{{ project.gitUrl }}</span>
-              </p>
-              <p>最近更新：{{ formatDate(project.updatedAt ?? project.createdAt) }}</p>
-            </div>
-            <p v-if="project.description" class="mt-3 text-sm text-muted-foreground">
-              {{ project.description }}
-            </p>
-          </article>
+        <section class="grid gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(20rem,1fr)]">
+          <article class="panel-card p-5">
+            <div class="flex flex-col gap-4">
+              <div v-if="refreshing" class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span class="text-primary">刷新中...</span>
+              </div>
 
-          <article class="panel-card p-4">
-            <p class="text-sm font-semibold">项目快捷入口</p>
-            <div class="mt-3 flex flex-wrap gap-2">
-              <RouterLink
-                :to="{ path: '/tasks', query: { projectId: project.id } }"
-                class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground"
-              >
-                任务
-              </RouterLink>
-              <RouterLink
-                :to="{ path: '/kanban', query: { projectId: project.id } }"
-                class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground"
-              >
-                看板
-              </RouterLink>
-              <RouterLink
-                :to="{ path: '/skills', query: { projectId: project.id } }"
-                class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground"
-              >
-                Skills
-              </RouterLink>
-              <RouterLink
-                :to="{ path: '/mcp', query: { projectId: project.id } }"
-                class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground"
-              >
-                MCP
-              </RouterLink>
-              <RouterLink
-                :to="{ path: '/git', query: { projectId: project.id } }"
-                class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground"
-              >
-                Git
-              </RouterLink>
+              <div class="space-y-2">
+                <h2 class="text-2xl font-semibold tracking-tight md:text-3xl">{{ project.name }}</h2>
+                <p class="max-w-3xl text-sm leading-relaxed text-muted-foreground">
+                  {{ project.description || '暂无项目描述。' }}
+                </p>
+              </div>
+
+              <div class="rounded-2xl border border-border/80 bg-background/60">
+                <div
+                  v-for="(item, index) in projectMetaItems"
+                  :key="item.label"
+                  class="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+                  :class="index < projectMetaItems.length - 1 ? 'border-b border-border/70' : ''"
+                >
+                  <p class="text-xs text-muted-foreground sm:w-24 sm:shrink-0 sm:pt-0.5">{{ item.label }}</p>
+                  <p
+                    class="text-sm text-foreground sm:flex-1 sm:text-right"
+                    :class="[
+                      item.monospace ? 'font-mono' : '',
+                      item.breakAll ? 'break-all' : '',
+                    ]"
+                  >
+                    {{ item.value }}
+                  </p>
+                </div>
+              </div>
             </div>
           </article>
-        </section>
 
-        <section class="grid gap-4 md:grid-cols-4">
-          <article class="panel-card p-4">
-            <p class="text-xs text-muted-foreground">任务总数</p>
-            <p class="mt-2 text-2xl font-semibold">{{ totalTaskCount }}</p>
-          </article>
-          <article class="panel-card p-4">
-            <p class="text-xs text-muted-foreground">待执行</p>
-            <p class="mt-2 text-2xl font-semibold">{{ todoTaskCount }}</p>
-          </article>
-          <article class="panel-card p-4">
-            <p class="text-xs text-muted-foreground">执行中</p>
-            <p class="mt-2 text-2xl font-semibold">{{ runningTaskCount }}</p>
-          </article>
-          <article class="panel-card p-4">
-            <p class="text-xs text-muted-foreground">待处理</p>
-            <p class="mt-2 text-2xl font-semibold">{{ reviewTaskCount }}</p>
-          </article>
-        </section>
+          <article class="panel-card p-5">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">执行概览</p>
+                <p class="mt-2 text-4xl font-semibold tracking-tight">{{ completionRate }}</p>
+                <p class="mt-1 text-sm text-muted-foreground">
+                  已完成 {{ doneTaskCount }} / {{ totalTaskCount }} 个任务
+                </p>
+              </div>
+              <span class="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                完成率
+              </span>
+            </div>
 
-        <section class="panel-card p-4">
-          <div class="flex items-center justify-between">
-            <p class="text-sm font-semibold">完成率</p>
-            <p class="text-xs text-muted-foreground">已完成 {{ doneTaskCount }} / {{ totalTaskCount }}</p>
-          </div>
-          <div class="mt-3 h-2 rounded-full bg-muted">
-            <div class="h-full rounded-full bg-primary transition-all" :style="{ width: completionRate }" />
-          </div>
-          <p class="mt-2 text-xs text-muted-foreground">{{ completionRate }}</p>
+            <div class="mt-4 h-2 rounded-full bg-muted">
+              <div
+                class="h-full rounded-full bg-primary transition-all"
+                :style="{ width: `${completionRateValue}%` }"
+              />
+            </div>
+
+            <div class="mt-4 grid grid-cols-2 gap-3">
+              <article
+                v-for="metric in taskMetrics"
+                :key="metric.label"
+                class="rounded-2xl border border-border/80 bg-background/60 px-4 py-3"
+              >
+                <div>
+                  <p class="text-xs text-muted-foreground">{{ metric.label }}</p>
+                  <p class="mt-1 text-2xl font-semibold">{{ metric.value }}</p>
+                </div>
+              </article>
+            </div>
+          </article>
         </section>
 
         <section class="panel-card p-5">
           <div class="flex items-center justify-between">
-            <p class="text-sm font-semibold">最近任务</p>
-            <div class="flex items-center gap-2">
-              <button
-                class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-sm"
-                type="button"
-                @click="loadProjectDashboardData"
-              >
-                刷新
-              </button>
-              <RouterLink
-                :to="{ path: '/tasks', query: { projectId: project.id } }"
-                class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-sm"
-              >
-                查看全部
-              </RouterLink>
+            <div>
+              <p class="text-sm font-semibold">最近任务</p>
+              <p class="mt-1 text-xs text-muted-foreground">最近更新的 5 条任务，便于快速继续处理。</p>
             </div>
+            <RouterLink
+              :to="{ path: '/tasks', query: { projectId: project.id } }"
+              class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-sm"
+            >
+              查看全部
+            </RouterLink>
           </div>
 
           <div class="mt-4 space-y-2 text-sm">
@@ -304,9 +346,15 @@ watch(
               }"
               class="flex items-center justify-between rounded-xl border border-border bg-background/70 px-4 py-3 hover:bg-background"
             >
-              <div>
+              <div class="min-w-0">
                 <p class="font-semibold">{{ task.title }}</p>
-                <p class="mt-1 text-xs text-muted-foreground">{{ formatDate(task.updatedAt ?? task.createdAt) }} · {{ task.mode }}</p>
+                <p class="mt-1 text-xs text-muted-foreground">
+                  <span class="font-mono">{{ task.id }}</span>
+                  <span class="mx-1.5">·</span>
+                  <span>{{ formatDate(task.updatedAt ?? task.createdAt) }}</span>
+                  <span class="mx-1.5">·</span>
+                  <span>{{ task.mode }}</span>
+                </p>
               </div>
               <span class="rounded-full px-2 py-1 text-xs font-semibold" :class="statusClassMap[task.status]">
                 {{ statusLabelMap[task.status] }}

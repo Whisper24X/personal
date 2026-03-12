@@ -2234,6 +2234,7 @@ export class BusinessLinesService {
         ProjectMemberRole.maintainer,
       ) ||
       role.capabilities.includes('project.member.manage') ||
+      role.capabilities.includes('project.automation.manage') ||
       role.capabilities.includes('project.workflow.manage') ||
       role.capabilities.includes('project.update') ||
       role.capabilities.includes('project.delete')
@@ -2257,6 +2258,7 @@ export class BusinessLinesService {
         role.capabilities,
         ProjectMemberRole.viewer,
       ) ||
+      role.capabilities.includes('project.automation.view') ||
       role.capabilities.includes('project.read') ||
       role.capabilities.includes('project.task.read')
     ) {

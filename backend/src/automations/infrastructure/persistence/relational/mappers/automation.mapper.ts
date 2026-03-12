@@ -5,6 +5,7 @@ export class AutomationMapper {
   static toDomain(entity: AutomationEntity): Automation {
     const domain = new Automation();
     domain.id = entity.id;
+    domain.projectId = entity.projectId;
     domain.name = entity.name;
     domain.prompt = entity.prompt;
     domain.rrule = entity.rrule;
@@ -23,6 +24,7 @@ export class AutomationMapper {
   static toPersistence(domain: Automation): AutomationEntity {
     const entity = new AutomationEntity();
     entity.id = domain.id;
+    entity.projectId = domain.projectId;
     entity.name = domain.name;
     entity.prompt = domain.prompt;
     entity.rrule = domain.rrule;

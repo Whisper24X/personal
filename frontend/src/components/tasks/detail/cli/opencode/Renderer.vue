@@ -2,8 +2,8 @@
 import { computed } from 'vue'
 import type { TaskMessage } from '@/types/api/tasks'
 import { parseOpencodeMessages } from './parser'
-import { groupEntries } from '../components/groupEntries'
-import TaskGroupCard from '../components/TaskGroupCard.vue'
+import { groupOpencodeEntries } from './groupEntries'
+import TaskGroupCard from './TaskGroupCard.vue'
 import UserMessage from '../components/UserMessage.vue'
 import AssistantMessage from '../components/AssistantMessage.vue'
 import type { NormalizedEntry } from '../types'
@@ -16,7 +16,7 @@ const props = defineProps<{
 }>()
 
 const entries = computed(() => parseOpencodeMessages(props.messages))
-const groups = computed(() => groupEntries(entries.value))
+const groups = computed(() => groupOpencodeEntries(entries.value))
 
 function isSdkEvent(entry: NormalizedEntry) {
   return entry.type === 'system_message' && getString(entry.metadata?.sdkEventType) !== undefined

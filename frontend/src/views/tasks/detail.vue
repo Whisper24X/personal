@@ -5,6 +5,7 @@ import { useMessage } from '@/hooks'
 import { useAccessStore } from '@/stores/modules/access'
 import ExecutionPanel from '@/components/tasks/detail/ExecutionPanel.vue'
 import ReplyCard from '@/components/tasks/detail/ReplyCard.vue'
+import ReviewCard from '@/components/tasks/detail/ReviewCard.vue'
 import RightPanelSection from '@/components/tasks/detail/RightPanelSection.vue'
 import TaskCard from '@/components/tasks/detail/TaskCard.vue'
 import TaskDialogs, { type TaskEditFormValue } from '@/components/tasks/detail/TaskDialogs.vue'
@@ -12,6 +13,7 @@ import WorkflowCard from '@/components/tasks/detail/WorkflowCard.vue'
 import { openSseStream } from '@/api/http'
 import { tasksApi } from '@/api/tasks'
 import type { Task, TaskDetail, TaskLog, TaskMessage, TaskNode } from '@/types/api/tasks'
+import { STORAGE_KEYS } from '@/types/common/storage'
 import { BUTTON_ACCESS_CONFIG, hasSomeAccess } from '@/constants/access-control'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
@@ -28,10 +30,18 @@ const router = useRouter()
 const accessStore = useAccessStore()
 const taskId = computed(() => String(route.params.id ?? ''))
 
+const resolveStoredRightPanelVisible = () => {
+  if (typeof localStorage === 'undefined') {
+    return true
+  }
+
+  return localStorage.getItem(STORAGE_KEYS.taskDetailRightPanelVisible) !== 'false'
+}
+
 const loading = ref(false)
 const actionLoading = ref(false)
 const streamConnected = ref(false)
-const isRightPanelVisible = ref(true)
+const isRightPanelVisible = ref(resolveStoredRightPanelVisible())
 const rightPanelRefreshToken = ref(0)
 
 const detail = ref<TaskDetail | null>(null)
@@ -146,6 +156,14 @@ const taskModeLabel = computed(() => {
     return '-'
   }
   return modeLabelMap[task.value.mode]
+})
+
+const showWorkflowCard = computed(() => {
+  return task.value?.mode === 'workflow' && sortedNodes.value.length > 0
+})
+
+const currentReviewNode = computed(() => {
+  return sortedNodes.value.find((node) => node.status === 'in_review') ?? null
 })
 
 const canExecute = computed(() => {
@@ -634,6 +652,14 @@ watch(
   },
 )
 
+watch(isRightPanelVisible, (visible) => {
+  if (typeof localStorage === 'undefined') {
+    return
+  }
+
+  localStorage.setItem(STORAGE_KEYS.taskDetailRightPanelVisible, String(visible))
+})
+
 onMounted(async () => {
   await loadTaskData()
   await connectStream()
@@ -684,12 +710,16 @@ onBeforeUnmount(() => {
           />
 
           <WorkflowCard
-            v-if="sortedNodes.length > 0"
+            v-if="showWorkflowCard"
             :nodes="sortedNodes"
             :selected-node-id="selectedWorkflowNodeId"
+            @select-node="handleSelectWorkflowNode"
+          />
+
+          <ReviewCard
+            :node="currentReviewNode"
             :status-label-map="statusLabelMap"
             :can-manage-review="canManageReview"
-            @select-node="handleSelectWorkflowNode"
             @approve-node="approveNode"
           />
 

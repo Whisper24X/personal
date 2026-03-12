@@ -68,6 +68,10 @@ export class ProjectsService {
   private readonly maxQueryContextChars = 24_000;
   private readonly maxQueryDocSnippetChars = 1_600;
   private readonly defaultQueryTimeoutMs = 120_000;
+  private readonly repositorySyncLocks = new Map<
+    string,
+    { tail: Promise<void>; pending: number }
+  >();
   private readonly defaultDataRootDir = path.resolve(
     resolveAinativeDataRootDir(),
   );
@@ -1858,64 +1862,101 @@ export class ProjectsService {
     options: EnsureProjectRepositoryOptions = {},
   ): Promise<string> {
     const repositoryRoot = this.resolveRepositoryRoot(project);
-    const gitDirPath = path.join(repositoryRoot, '.git');
-    const hasGit = await this.pathExists(gitDirPath);
-    const shouldSyncRemote = options.syncRemote ?? true;
+    return this.withRepositorySyncLock(repositoryRoot, async () => {
+      const gitDirPath = path.join(repositoryRoot, '.git');
+      const hasGit = await this.pathExists(gitDirPath);
+      const shouldSyncRemote = options.syncRemote ?? true;
 
-    if (!hasGit) {
-      try {
-        await fs.mkdir(path.dirname(repositoryRoot), { recursive: true });
-      } catch (mkdirError) {
-        const msg =
-          mkdirError instanceof Error ? mkdirError.message : 'Unknown error';
-        throw new Error(
-          `Cannot create project repository directory: ${this.truncateError(msg)}`,
-        );
+      if (!hasGit) {
+        try {
+          await fs.mkdir(path.dirname(repositoryRoot), { recursive: true });
+        } catch (mkdirError) {
+          const msg =
+            mkdirError instanceof Error ? mkdirError.message : 'Unknown error';
+          throw new Error(
+            `Cannot create project repository directory: ${this.truncateError(msg)}`,
+          );
+        }
+
+        const cloneResult = await this.runCommand('git', [
+          'clone',
+          '--origin',
+          'origin',
+          project.gitUrl,
+          repositoryRoot,
+        ]);
+
+        if (!cloneResult.success) {
+          throw new Error(
+            cloneResult.stderr || `git clone failed for ${project.gitUrl}`,
+          );
+        }
+      } else if (shouldSyncRemote) {
+        const setUrlResult = await this.runCommand('git', [
+          '-C',
+          repositoryRoot,
+          'remote',
+          'set-url',
+          'origin',
+          project.gitUrl,
+        ]);
+
+        if (!setUrlResult.success) {
+          throw new Error(setUrlResult.stderr || 'git remote set-url failed');
+        }
       }
 
-      const cloneResult = await this.runCommand('git', [
-        'clone',
-        '--origin',
-        'origin',
-        project.gitUrl,
-        repositoryRoot,
-      ]);
+      if (shouldSyncRemote) {
+        const fetchResult = await this.runCommand('git', [
+          '-C',
+          repositoryRoot,
+          'fetch',
+          '--all',
+          '--prune',
+        ]);
 
-      if (!cloneResult.success) {
-        throw new Error(
-          cloneResult.stderr || `git clone failed for ${project.gitUrl}`,
-        );
+        if (!fetchResult.success) {
+          throw new Error(fetchResult.stderr || 'git fetch failed');
+        }
       }
-    } else if (shouldSyncRemote) {
-      const setUrlResult = await this.runCommand('git', [
-        '-C',
-        repositoryRoot,
-        'remote',
-        'set-url',
-        'origin',
-        project.gitUrl,
-      ]);
 
-      if (!setUrlResult.success) {
-        throw new Error(setUrlResult.stderr || 'git remote set-url failed');
-      }
+      return repositoryRoot;
+    });
+  }
+
+  private async withRepositorySyncLock<T>(
+    repositoryRoot: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    let state = this.repositorySyncLocks.get(repositoryRoot);
+
+    if (!state) {
+      state = {
+        tail: Promise.resolve(),
+        pending: 0,
+      };
+      this.repositorySyncLocks.set(repositoryRoot, state);
     }
 
-    if (shouldSyncRemote) {
-      const fetchResult = await this.runCommand('git', [
-        '-C',
-        repositoryRoot,
-        'fetch',
-        '--all',
-        '--prune',
-      ]);
+    const previous = state.tail;
+    state.pending += 1;
 
-      if (!fetchResult.success) {
-        throw new Error(fetchResult.stderr || 'git fetch failed');
+    let releaseCurrent!: () => void;
+    state.tail = new Promise<void>((resolve) => {
+      releaseCurrent = resolve;
+    });
+
+    await previous.catch(() => undefined);
+
+    try {
+      return await operation();
+    } finally {
+      releaseCurrent();
+      state.pending -= 1;
+      if (state.pending === 0) {
+        this.repositorySyncLocks.delete(repositoryRoot);
       }
     }
-
-    return repositoryRoot;
   }
 
   private resolveRepositoryRoot(project: Project): string {

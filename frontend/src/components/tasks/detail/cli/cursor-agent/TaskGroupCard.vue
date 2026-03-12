@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { TaskGroup } from './groupEntries'
-import AssistantMessage from './AssistantMessage.vue'
-import ToolItem from './ToolItem.vue'
+import type { CursorTaskGroup } from './groupEntries'
+import AssistantMessage from '../components/AssistantMessage.vue'
+import ToolItem from '../components/ToolItem.vue'
 import type { NormalizedEntry } from '../types'
 
 const props = defineProps<{
-  group: TaskGroup
+  group: CursorTaskGroup
 }>()
 
 const isRunning = computed(() =>
@@ -27,7 +27,7 @@ const groupItems = computed<GroupItem[]>(() => {
   const items: GroupItem[] = []
   const tools = props.group.tools
 
-  for (let i = 0; i < tools.length; i++) {
+  for (let i = 0; i < tools.length; i += 1) {
     const entry = tools[i]
     if (!entry) continue
 
@@ -80,7 +80,7 @@ const thinkingExpanded = ref(false)
       </span>
     </div>
 
-    <div v-if="!collapsed && groupItems.length > 0" class="border-t border-border/30 px-2 py-1.5 space-y-0.5">
+    <div v-if="!collapsed && groupItems.length > 0" class="space-y-0.5 border-t border-border/30 px-2 py-1.5">
       <template v-for="(item, idx) in groupItems" :key="idx">
         <div v-if="item.kind === 'thinking'" class="rounded-md px-2 py-1">
           <div
@@ -94,7 +94,7 @@ const thinkingExpanded = ref(false)
           </div>
           <div
             v-if="isThinkingOnly || thinkingExpanded"
-            class="mt-1 max-h-60 overflow-auto whitespace-pre-wrap rounded bg-muted/30 px-2 py-1.5 text-xs text-muted-foreground leading-relaxed"
+            class="mt-1 max-h-60 overflow-auto whitespace-pre-wrap rounded bg-muted/30 px-2 py-1.5 text-xs leading-relaxed text-muted-foreground"
             :class="isThinkingOnly ? '' : 'ml-4'"
           >{{ item.entry.content }}</div>
         </div>

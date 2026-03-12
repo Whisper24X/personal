@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import TaskDetailView from '@/views/tasks/detail.vue'
 import { useMessageStore } from '@/stores/modules/message'
+import { STORAGE_KEYS } from '@/types/common/storage'
 
 const { tasksApi, artifactsApi, authApi, openSseStream } = vi.hoisted(() => ({
   tasksApi: {
@@ -212,6 +213,8 @@ describe('TaskDetailView toasts', () => {
 
     expect(tasksApi.detailWithNodes).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('节点待审批')
+    expect(wrapper.findComponent({ name: 'TaskDetailReviewCard' }).exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'TaskDetailWorkflowCard' }).text()).not.toContain('节点待审批')
 
     vi.useRealTimers()
   })
@@ -525,6 +528,114 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.text()).not.toContain('编辑')
     expect(wrapper.text()).not.toContain('任务列表')
     expect(wrapper.text()).not.toContain('项目详情')
+  })
+
+  it('does not render workflow card for conversation tasks even when nodes exist', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce({
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        mode: 'conversation',
+        title: 'Demo task',
+        status: 'in_progress',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'Conversation node',
+          status: 'in_progress',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        },
+      ],
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: 'TaskDetailWorkflowCard' }).exists()).toBe(false)
+    expect(wrapper.text()).toContain('Codex')
+  })
+
+  it('restores the stored right panel visibility preference', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    localStorage.setItem(STORAGE_KEYS.taskDetailRightPanelVisible, 'false')
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div data-testid="right-panel-section" />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="right-panel-section"]').exists()).toBe(false)
+    expect(wrapper.find('button[aria-label="展开右侧面板"]').exists()).toBe(true)
+  })
+
+  it('persists right panel visibility when the user toggles it', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div data-testid="right-panel-section" />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    await wrapper.find('button[aria-label="收起右侧面板"]').trigger('click')
+    await flushPromises()
+
+    expect(localStorage.getItem(STORAGE_KEYS.taskDetailRightPanelVisible)).toBe('false')
+    expect(wrapper.find('[data-testid="right-panel-section"]').exists()).toBe(false)
+
+    await wrapper.find('button[aria-label="展开右侧面板"]').trigger('click')
+    await flushPromises()
+
+    expect(localStorage.getItem(STORAGE_KEYS.taskDetailRightPanelVisible)).toBe('true')
+    expect(wrapper.find('[data-testid="right-panel-section"]').exists()).toBe(true)
   })
 
   it('auto-selects the first in-progress workflow node by node order', async () => {

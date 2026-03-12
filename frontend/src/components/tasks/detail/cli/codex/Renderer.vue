@@ -2,8 +2,8 @@
 import { computed } from 'vue'
 import type { TaskMessage } from '@/types/api/tasks'
 import { parseCodexMessages } from './parser'
-import { groupEntries } from '../components/groupEntries'
-import TaskGroupCard from '../components/TaskGroupCard.vue'
+import { groupCodexEntries } from './groupEntries'
+import TaskGroupCard from './TaskGroupCard.vue'
 import UserMessage from '../components/UserMessage.vue'
 import AssistantMessage from '../components/AssistantMessage.vue'
 import type { NormalizedEntry } from '../types'
@@ -16,7 +16,7 @@ const props = defineProps<{
 }>()
 
 const entries = computed(() => parseCodexMessages(props.messages))
-const groups = computed(() => groupEntries(entries.value))
+const groups = computed(() => groupCodexEntries(entries.value))
 
 function isPatchEvent(entry: NormalizedEntry) {
   const t = getString(entry.metadata?.codexEventType)

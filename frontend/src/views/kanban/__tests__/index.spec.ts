@@ -93,6 +93,8 @@ describe('KanbanView project switching', () => {
       projectId: 'project-1',
     })
     expect(wrapper.text()).toContain('Task project-1')
+    expect(wrapper.text()).toContain('对话')
+    expect(wrapper.text()).not.toContain('conversation')
 
     const initialTaskLink = wrapper.findAll('a').find((link) => {
       const href = link.attributes('href')

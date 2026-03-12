@@ -7,17 +7,19 @@ import type {
 import { apiHttp, type InfinityPaginationResponse } from './http'
 
 export const automationsApi = {
-  list(params?: {
+  list(params: {
+    projectId: string
     page?: number
     limit?: number
     keyword?: string
     status?: AutomationStatus
   }) {
     return apiHttp.get<InfinityPaginationResponse<Automation>>('/automations', {
-      page: params?.page,
-      limit: params?.limit,
-      keyword: params?.keyword,
-      status: params?.status,
+      projectId: params.projectId,
+      page: params.page,
+      limit: params.limit,
+      keyword: params.keyword,
+      status: params.status,
     })
   },
 

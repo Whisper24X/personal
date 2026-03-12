@@ -57,6 +57,7 @@ export class AutomationsController {
   @ApiOkResponse({ type: InfinityPaginationResponse(Automation) })
   @HttpCode(HttpStatus.OK)
   async findAll(
+    @Request() request,
     @Query() query: FindAllAutomationsDto,
   ): Promise<InfinityPaginationResponseDto<Automation>> {
     const page = query?.page ?? 1;
@@ -67,11 +68,14 @@ export class AutomationsController {
     }
 
     return infinityPagination(
-      await this.automationsService.findAllWithPagination({
-        ...query,
-        page,
-        limit,
-      }),
+      await this.automationsService.findAllWithPagination(
+        {
+          ...query,
+          page,
+          limit,
+        },
+        request.user,
+      ),
       {
         page,
         limit,
@@ -83,8 +87,11 @@ export class AutomationsController {
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: Automation })
   @HttpCode(HttpStatus.OK)
-  findById(@Param('id', ParseUUIDPipe) id: string): Promise<Automation> {
-    return this.automationsService.findById(id);
+  findById(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<Automation> {
+    return this.automationsService.findById(id, request.user);
   }
 
   @Patch(':id')

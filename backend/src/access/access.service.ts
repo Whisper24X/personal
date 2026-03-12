@@ -284,7 +284,7 @@ export class AccessService {
 
     if (!membership) {
       throw new ForbiddenException(
-        capability === 'project.read' || capability === 'project.task.read'
+        this.isProjectReadCapability(capability)
           ? 'forbiddenProject'
           : 'forbiddenProjectManage',
       );
@@ -298,7 +298,7 @@ export class AccessService {
 
     if (!availableCapabilities.includes(capability)) {
       throw new ForbiddenException(
-        capability === 'project.read' || capability === 'project.task.read'
+        this.isProjectReadCapability(capability)
           ? 'forbiddenProject'
           : 'forbiddenProjectManage',
       );
@@ -543,6 +543,17 @@ export class AccessService {
 
   private isAdmin(currentUser: JwtPayloadType): boolean {
     return currentUser.roles?.includes('admin') ?? false;
+  }
+
+  private isProjectReadCapability(capability: string): boolean {
+    return [
+      'project.read',
+      'project.task.read',
+      'project.kanban.view',
+      'project.automation.view',
+      'project.workflow.view',
+      'project.artifact.read',
+    ].includes(capability);
   }
 
   private async resolveVisibleProjectIds({

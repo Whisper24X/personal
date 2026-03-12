@@ -6,6 +6,9 @@ export class Automation {
   id: string;
 
   @ApiProperty({ type: String })
+  projectId: string;
+
+  @ApiProperty({ type: String })
   name: string;
 
   @ApiProperty({ type: String })

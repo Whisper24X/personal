@@ -718,15 +718,7 @@ watch(
 </script>
 
 <template>
-  <div class="container min-h-full space-y-4 py-4 md:py-5 fade-up">
-    <section class="flex-shrink-0 space-y-1.5">
-      <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">知识库</p>
-      <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">项目知识库</h1>
-      <p class="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-        左侧模拟 <code>/docs</code> 文件夹，右侧可预览文档内容；支持新建、编辑、删除、拖拽上传和点击选择上传。
-      </p>
-    </section>
-
+  <div class="min-h-full space-y-4 px-4 py-4 md:px-6 md:py-5 xl:px-8 fade-up">
     <section v-if="!hasProjectId" class="flex-shrink-0 panel-card p-5">
       <p class="text-sm font-semibold">未选择项目</p>
       <p class="mt-2 text-sm text-muted-foreground">请先在左侧选择项目，再进入知识库页面进行配置。</p>

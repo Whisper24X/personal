@@ -12,14 +12,17 @@ export abstract class AutomationRepository {
 
   abstract findByName(
     name: Automation['name'],
+    projectId: Automation['projectId'],
   ): Promise<NullableType<Automation>>;
 
   abstract findAllWithPagination({
     paginationOptions,
+    projectId,
     keyword,
     status,
   }: {
     paginationOptions: IPaginationOptions;
+    projectId: Automation['projectId'];
     keyword?: string;
     status?: AutomationStatus;
   }): Promise<Automation[]>;

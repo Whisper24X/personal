@@ -7,4 +7,5 @@ export const STORAGE_KEYS = {
   backgroundStyle: 'ainative-background-style',
   lastSelectedProjectId: 'ainative-last-selected-project-id',
   lastSelectedMenuPath: 'ainative-last-selected-menu-path',
+  taskDetailRightPanelVisible: 'ainative-task-detail-right-panel-visible',
 } as const

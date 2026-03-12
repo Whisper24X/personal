@@ -260,6 +260,16 @@ export const ACCESS_CAPABILITY_CONFIG = {
     description: '查看项目看板',
     scope: 'project',
   },
+  'project.automation.view': {
+    label: '查看自动化',
+    description: '查看项目自动化计划',
+    scope: 'project',
+  },
+  'project.automation.manage': {
+    label: '管理自动化',
+    description: '新增、编辑和删除项目自动化计划',
+    scope: 'project',
+  },
   'project.workflow.view': {
     label: '查看工作流',
     description: '查看工作流模板',
@@ -315,7 +325,7 @@ export const ROUTE_ACCESS_CONFIG = {
   },
   automations: {
     title: '自动化',
-    capabilities: ['project.read'],
+    capabilities: ['project.automation.view'],
   },
   git: {
     title: 'Git',
@@ -376,7 +386,7 @@ export const PROJECT_MENU_ACCESS_CONFIG = [
   { id: 'dashboard', label: '仪表盘', to: '/dashboard', capabilities: ['project.read'] },
   { id: 'tasks', label: '任务', to: '/tasks', capabilities: ['project.task.read'] },
   { id: 'kanban', label: '看板', to: '/kanban', capabilities: ['project.kanban.view'] },
-  { id: 'automations', label: '自动化', to: '/automations', capabilities: ['project.read'] },
+  { id: 'automations', label: '自动化', to: '/automations', capabilities: ['project.automation.view'] },
   { id: 'knowledge', label: '知识库', to: '/knowledge-base', capabilities: ['project.read'] },
   { id: 'workflow', label: '工作流', to: '/projects/workflows', capabilities: ['project.workflow.view'] },
   { id: 'skills', label: 'Skills', to: '/skills', capabilities: ['project.read'] },
@@ -623,6 +633,15 @@ export const PROJECT_CAPABILITY_TREE: CapabilityTreeNode[] = [
     label: '看板',
     description: '查看项目看板',
     children: [{ code: 'project.kanban.view', label: '查看看板', description: '查看项目看板' }],
+  },
+  {
+    key: 'project.automation',
+    label: '自动化',
+    description: '查看和管理项目自动化计划',
+    children: [
+      { code: 'project.automation.view', label: '查看自动化', description: '查看项目自动化计划' },
+      { code: 'project.automation.manage', label: '管理自动化', description: '新增、编辑和删除项目自动化计划' },
+    ],
   },
   {
     key: 'project.workflow',

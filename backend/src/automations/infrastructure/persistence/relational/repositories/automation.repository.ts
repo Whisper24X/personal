@@ -44,9 +44,11 @@ export class AutomationRelationalRepository implements AutomationRepository {
 
   async findByName(
     name: Automation['name'],
+    projectId: Automation['projectId'],
   ): Promise<NullableType<Automation>> {
     const entity = await this.automationRepository.findOne({
       where: {
+        projectId,
         name,
         deletedAt: IsNull(),
       },
@@ -57,16 +59,19 @@ export class AutomationRelationalRepository implements AutomationRepository {
 
   async findAllWithPagination({
     paginationOptions,
+    projectId,
     keyword,
     status,
   }: {
     paginationOptions: IPaginationOptions;
+    projectId: Automation['projectId'];
     keyword?: string;
     status?: AutomationStatus;
   }): Promise<Automation[]> {
     const query = this.automationRepository
       .createQueryBuilder('automation')
-      .where('automation.deletedAt IS NULL');
+      .where('automation.deletedAt IS NULL')
+      .andWhere('automation.projectId = :projectId', { projectId });
 
     if (keyword) {
       query.andWhere(

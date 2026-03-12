@@ -13,8 +13,10 @@ import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { GitService } from './git.service';
 import { GitBranchesDto } from './dto/git-branches.dto';
+import { GitLogDto } from './dto/git-log.dto';
 import { GitPullMainDto } from './dto/git-pull-main.dto';
 import { GitProjectDto } from './dto/git-project.dto';
+import { GitStatusDto } from './dto/git-status.dto';
 
 @ApiTags('Git')
 @ApiBearerAuth()
@@ -34,6 +36,26 @@ export class GitController {
     @Query() query: GitProjectDto,
   ): Promise<GitBranchesDto> {
     return this.gitService.listBranches(query.projectId, request.user);
+  }
+
+  @Get('status')
+  @ApiOkResponse({ type: GitStatusDto })
+  @HttpCode(HttpStatus.OK)
+  readStatus(
+    @Request() request,
+    @Query() query: GitProjectDto,
+  ): Promise<GitStatusDto> {
+    return this.gitService.readStatus(query.projectId, request.user);
+  }
+
+  @Get('log')
+  @ApiOkResponse({ type: GitLogDto })
+  @HttpCode(HttpStatus.OK)
+  readLog(
+    @Request() request,
+    @Query() query: GitProjectDto,
+  ): Promise<GitLogDto> {
+    return this.gitService.readLog(query.projectId, request.user);
   }
 
   @Post('pull-main')

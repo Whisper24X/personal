@@ -48,6 +48,11 @@ const statusLabelMap: Record<TaskStatus, string> = {
   done: '已完成',
 }
 
+const modeLabelMap: Record<Task['mode'], string> = {
+  conversation: '对话',
+  workflow: '工作流',
+}
+
 const statusClassMap: Record<TaskStatus, string> = {
   todo: 'bg-muted text-muted-foreground',
   in_progress: 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
@@ -309,7 +314,7 @@ watch(
                 {{ statusLabelMap[item.status] }}
               </span>
             </div>
-            <p class="mt-1 text-xs text-muted-foreground">{{ item.mode }}</p>
+            <p class="mt-1 text-xs text-muted-foreground">{{ modeLabelMap[item.mode] }}</p>
             <p class="mt-1 text-xs text-muted-foreground">{{ formatDate(item.updatedAt ?? item.createdAt) }}</p>
           </RouterLink>
 

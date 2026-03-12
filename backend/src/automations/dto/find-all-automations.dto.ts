@@ -1,9 +1,19 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsEnum, IsNumber, IsOptional, IsString } from 'class-validator';
+import {
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 import { AutomationStatus } from '../domain/automation-status.enum';
 
 export class FindAllAutomationsDto {
+  @ApiProperty({ type: String, format: 'uuid' })
+  @IsUUID()
+  projectId: string;
+
   @ApiPropertyOptional({ type: Number })
   @Transform(({ value }) => (value ? Number(value) : 1))
   @IsOptional()

@@ -2,8 +2,8 @@
 import { computed } from 'vue'
 import type { TaskMessage } from '@/types/api/tasks'
 import { parseClaudeCodeMessages } from './parser'
-import { groupEntries } from '../components/groupEntries'
-import TaskGroupCard from '../components/TaskGroupCard.vue'
+import { groupClaudeEntries } from './groupEntries'
+import TaskGroupCard from './TaskGroupCard.vue'
 import UserMessage from '../components/UserMessage.vue'
 import AssistantMessage from '../components/AssistantMessage.vue'
 import type { NormalizedEntry } from '../types'
@@ -16,10 +16,14 @@ const props = defineProps<{
 }>()
 
 const entries = computed(() => parseClaudeCodeMessages(props.messages))
-const groups = computed(() => groupEntries(entries.value))
+const groups = computed(() => groupClaudeEntries(entries.value))
 
 function isResultEntry(entry: NormalizedEntry) {
-  return entry.type === 'system_message' && entry.metadata?.resultSubtype !== undefined
+  return entry.metadata?.isResult === true
+}
+
+function isInitEntry(entry: NormalizedEntry) {
+  return entry.metadata?.isInit === true
 }
 
 function formatDuration(entry: NormalizedEntry): string {
@@ -37,6 +41,43 @@ function formatCost(entry: NormalizedEntry): string {
 function isSuccess(entry: NormalizedEntry): boolean {
   return getString(entry.metadata?.resultSubtype) === 'success'
 }
+
+function formatUsage(entry: NormalizedEntry): string {
+  const parts: string[] = []
+  const input = getNumber(entry.metadata?.inputTokens)
+  const cacheRead = getNumber(entry.metadata?.cacheReadTokens)
+  const output = getNumber(entry.metadata?.outputTokens)
+  if (input) parts.push(`in: ${input}`)
+  if (cacheRead) parts.push(`cached: ${cacheRead}`)
+  if (output) parts.push(`out: ${output}`)
+  return parts.join(', ')
+}
+
+function formatTurns(entry: NormalizedEntry): string {
+  const turns = getNumber(entry.metadata?.numTurns)
+  return turns ? `${turns} turns` : ''
+}
+
+function formatStopReason(entry: NormalizedEntry): string {
+  const reason = getString(entry.metadata?.stopReason)
+  return reason ? `stop: ${reason}` : ''
+}
+
+function formatInitMeta(entry: NormalizedEntry): string {
+  const parts: string[] = []
+  const permissionMode = getString(entry.metadata?.permissionMode)
+  const mcpConnected = getNumber(entry.metadata?.mcpConnectedCount)
+  const mcpTotal = getNumber(entry.metadata?.mcpServerCount)
+  const cwdName = getString(entry.metadata?.cwdName)
+  const version = getString(entry.metadata?.claudeCodeVersion)
+  if (permissionMode) parts.push(`perm: ${permissionMode}`)
+  if (typeof mcpConnected === 'number' && typeof mcpTotal === 'number') {
+    parts.push(`mcp: ${mcpConnected}/${mcpTotal}`)
+  }
+  if (cwdName) parts.push(`cwd: ${cwdName}`)
+  if (version) parts.push(`v${version}`)
+  return parts.join(' · ')
+}
 </script>
 
 <template>
@@ -52,7 +93,7 @@ function isSuccess(entry: NormalizedEntry): boolean {
       <!-- Result summary with cost/duration -->
       <div
         v-else-if="group.type === 'other' && isResultEntry(group.entry)"
-        class="flex items-center gap-2 rounded-md border px-3 py-2 text-xs"
+        class="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs"
         :class="isSuccess(group.entry) ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-600' : 'border-red-500/20 bg-red-500/5 text-red-600'"
       >
         <span>{{ isSuccess(group.entry) ? '✓' : '✗' }}</span>
@@ -63,7 +104,28 @@ function isSuccess(entry: NormalizedEntry): boolean {
         <span v-if="formatCost(group.entry)" class="text-muted-foreground">
           ({{ formatCost(group.entry) }})
         </span>
+        <span v-if="formatTurns(group.entry)" class="rounded bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+          {{ formatTurns(group.entry) }}
+        </span>
+        <span v-if="formatUsage(group.entry)" class="rounded bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+          {{ formatUsage(group.entry) }}
+        </span>
+        <span v-if="formatStopReason(group.entry)" class="text-muted-foreground">
+          {{ formatStopReason(group.entry) }}
+        </span>
         <span class="ml-auto text-muted-foreground">{{ formatTime(group.entry.timestamp) }}</span>
+      </div>
+
+      <div
+        v-else-if="group.type === 'other' && isInitEntry(group.entry)"
+        class="flex flex-wrap items-center gap-2 rounded-md border border-border/30 bg-muted/20 px-3 py-2 text-xs text-muted-foreground"
+      >
+        <span>⚙</span>
+        <span class="font-medium text-foreground">{{ group.entry.content }}</span>
+        <span v-if="formatInitMeta(group.entry)" class="rounded bg-background/70 px-1.5 py-0.5 font-mono text-[10px]">
+          {{ formatInitMeta(group.entry) }}
+        </span>
+        <span class="ml-auto">{{ formatTime(group.entry.timestamp) }}</span>
       </div>
 
       <!-- Error -->

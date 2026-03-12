@@ -6,11 +6,16 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
 } from 'class-validator';
 import { AutomationStatus } from '../domain/automation-status.enum';
 
 export class CreateAutomationDto {
+  @ApiProperty({ type: String, format: 'uuid' })
+  @IsUUID()
+  projectId: string;
+
   @ApiProperty({ type: String, example: 'Daily queue digest' })
   @IsString()
   @IsNotEmpty()

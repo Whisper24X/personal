@@ -1,18 +1,18 @@
 import type { NormalizedEntry, NormalizedEntryType } from '../types'
 
-export interface TaskGroup {
+export interface CodexTaskGroup {
   type: 'task'
   title: string
   description: string
   tools: NormalizedEntry[]
 }
 
-export interface OtherGroup {
+export interface CodexOtherGroup {
   type: 'other'
   entry: NormalizedEntry
 }
 
-export type MessageGroup = TaskGroup | OtherGroup
+export type CodexMessageGroup = CodexTaskGroup | CodexOtherGroup
 
 const TOOL_TYPES: Set<NormalizedEntryType> = new Set([
   'tool_use',
@@ -23,9 +23,9 @@ const TOOL_TYPES: Set<NormalizedEntryType> = new Set([
   'thinking',
 ])
 
-export function groupEntries(entries: NormalizedEntry[]): MessageGroup[] {
-  const groups: MessageGroup[] = []
-  let currentTaskGroup: TaskGroup | null = null
+export function groupCodexEntries(entries: NormalizedEntry[]): CodexMessageGroup[] {
+  const groups: CodexMessageGroup[] = []
+  let currentTaskGroup: CodexTaskGroup | null = null
 
   const flushTaskGroup = () => {
     if (currentTaskGroup && (currentTaskGroup.tools.length > 0 || currentTaskGroup.description)) {

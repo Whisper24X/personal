@@ -1,10 +1,10 @@
 import {
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
+import { ProjectsService } from '../projects/projects.service';
 import { IPaginationOptions } from '../utils/types/pagination-options';
 import { AutomationStatus } from './domain/automation-status.enum';
 import { Automation } from './domain/automation';
@@ -15,16 +15,24 @@ import { AutomationRepository } from './infrastructure/persistence/automation.re
 
 @Injectable()
 export class AutomationsService {
-  constructor(private readonly automationRepository: AutomationRepository) {}
+  constructor(
+    private readonly automationRepository: AutomationRepository,
+    private readonly projectsService: ProjectsService,
+  ) {}
 
   async create(
     createAutomationDto: CreateAutomationDto,
     currentUser: JwtPayloadType,
   ): Promise<Automation> {
-    this.ensureAdmin(currentUser);
+    await this.projectsService.assertProjectCapability(
+      createAutomationDto.projectId,
+      currentUser,
+      'project.automation.manage',
+    );
 
     const existedAutomation = await this.automationRepository.findByName(
       createAutomationDto.name,
+      createAutomationDto.projectId,
     );
 
     if (existedAutomation) {
@@ -32,6 +40,7 @@ export class AutomationsService {
     }
 
     return this.automationRepository.create({
+      projectId: createAutomationDto.projectId,
       name: createAutomationDto.name,
       prompt: createAutomationDto.prompt,
       rrule: createAutomationDto.rrule,
@@ -45,7 +54,14 @@ export class AutomationsService {
 
   async findAllWithPagination(
     query: FindAllAutomationsDto,
+    currentUser: JwtPayloadType,
   ): Promise<Automation[]> {
+    await this.projectsService.assertProjectCapability(
+      query.projectId,
+      currentUser,
+      'project.automation.view',
+    );
+
     const paginationOptions: IPaginationOptions = {
       page: query.page ?? 1,
       limit: query.limit ?? 10,
@@ -53,17 +69,27 @@ export class AutomationsService {
 
     return this.automationRepository.findAllWithPagination({
       paginationOptions,
+      projectId: query.projectId,
       keyword: query.keyword,
       status: query.status,
     });
   }
 
-  async findById(id: Automation['id']): Promise<Automation> {
+  async findById(
+    id: Automation['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<Automation> {
     const automation = await this.automationRepository.findById(id);
 
     if (!automation) {
       throw new NotFoundException('Automation not found');
     }
+
+    await this.projectsService.assertProjectCapability(
+      automation.projectId,
+      currentUser,
+      'project.automation.view',
+    );
 
     return automation;
   }
@@ -73,18 +99,24 @@ export class AutomationsService {
     updateAutomationDto: UpdateAutomationDto,
     currentUser: JwtPayloadType,
   ): Promise<Automation> {
-    this.ensureAdmin(currentUser);
-
     const existedAutomation = await this.automationRepository.findById(id);
 
     if (!existedAutomation) {
       throw new NotFoundException('Automation not found');
     }
 
+    await this.projectsService.assertProjectCapability(
+      existedAutomation.projectId,
+      currentUser,
+      'project.automation.manage',
+    );
+
     const nextName = updateAutomationDto.name ?? existedAutomation.name;
     if (nextName !== existedAutomation.name) {
-      const duplicatedAutomation =
-        await this.automationRepository.findByName(nextName);
+      const duplicatedAutomation = await this.automationRepository.findByName(
+        nextName,
+        existedAutomation.projectId,
+      );
 
       if (duplicatedAutomation && duplicatedAutomation.id !== id) {
         throw new ConflictException('Automation name already exists');
@@ -120,8 +152,12 @@ export class AutomationsService {
     id: Automation['id'],
     currentUser: JwtPayloadType,
   ): Promise<void> {
-    this.ensureAdmin(currentUser);
-    await this.findById(id);
+    const automation = await this.findById(id, currentUser);
+    await this.projectsService.assertProjectCapability(
+      automation.projectId,
+      currentUser,
+      'project.automation.manage',
+    );
     await this.automationRepository.remove(id);
   }
 
@@ -137,11 +173,5 @@ export class AutomationsService {
     return normalizedCwds.length > 0
       ? Array.from(new Set(normalizedCwds))
       : null;
-  }
-
-  private ensureAdmin(currentUser: JwtPayloadType): void {
-    if (!currentUser.roles?.includes('admin')) {
-      throw new ForbiddenException('forbiddenAutomationManage');
-    }
   }
 }
