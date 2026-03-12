@@ -62,6 +62,7 @@ func newOrder(db *gorm.DB, opts ...gen.DOOption) order {
 	_order.ShopDiscountAmount = field.NewInt32(tableName, "shopDiscountAmount")
 	_order.ActualInsured = field.NewInt32(tableName, "actualInsured")
 	_order.CertificateID = field.NewString(tableName, "certificateId")
+	_order.SettlementTime = field.NewTime(tableName, "settlementTime")
 
 	_order.fillFieldMap()
 
@@ -107,6 +108,7 @@ type order struct {
 	ShopDiscountAmount     field.Int32   // 店铺优惠：单位分
 	ActualInsured          field.Int32   // 实际保险费用：单位分（抖音）
 	CertificateID          field.String  // 抖音券ID
+	SettlementTime         field.Time    // 结算时间
 
 	fieldMap map[string]field.Expr
 }
@@ -158,6 +160,7 @@ func (o *order) updateTableName(table string) *order {
 	o.ShopDiscountAmount = field.NewInt32(table, "shopDiscountAmount")
 	o.ActualInsured = field.NewInt32(table, "actualInsured")
 	o.CertificateID = field.NewString(table, "certificateId")
+	o.SettlementTime = field.NewTime(table, "settlementTime")
 
 	o.fillFieldMap()
 
@@ -182,7 +185,7 @@ func (o *order) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (o *order) fillFieldMap() {
-	o.fieldMap = make(map[string]field.Expr, 35)
+	o.fieldMap = make(map[string]field.Expr, 36)
 	o.fieldMap["id"] = o.ID
 	o.fieldMap["channelId"] = o.ChannelID
 	o.fieldMap["goodId"] = o.GoodID
@@ -218,6 +221,7 @@ func (o *order) fillFieldMap() {
 	o.fieldMap["shopDiscountAmount"] = o.ShopDiscountAmount
 	o.fieldMap["actualInsured"] = o.ActualInsured
 	o.fieldMap["certificateId"] = o.CertificateID
+	o.fieldMap["settlementTime"] = o.SettlementTime
 }
 
 func (o order) clone(db *gorm.DB) order {

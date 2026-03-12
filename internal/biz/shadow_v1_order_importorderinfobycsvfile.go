@@ -251,6 +251,7 @@ func (s *ShadowV1OrderUseCase) ImportOrderInfoByCsvFile(ctx context.Context, req
 	talentNameFieldName := fieldMapping["达人名称"]       // 可选
 	talentUIDFieldName := fieldMapping["达人uid"]       // 可选
 	talentCommissionFieldName := fieldMapping["达人佣金"] // 可选
+	settlementTimeFieldName := fieldMapping["结算时间"]   // 可选
 
 	// 需要先校验商品ID是否存在
 	var channelGoodIdList []string
@@ -451,6 +452,15 @@ func (s *ShadowV1OrderUseCase) ImportOrderInfoByCsvFile(ctx context.Context, req
 			}
 		}
 
+		// 结算时间（可选）
+		var settlementTime time.Time
+		if settlementTimeFieldName != "" {
+			if settlementTimeValue, ok := item[settlementTimeFieldName]; ok && settlementTimeValue != "" {
+				settlementTimeStr := formatDateStandardString(settlementTimeValue.(string))
+				settlementTime = timeutil.Carbon().Parse(settlementTimeStr).ToStdTime()
+			}
+		}
+
 		// 如果件数大于1，则需要拆单
 		for i := 1; i <= goodNumInt; i++ {
 			// 从第1件商品开始就加后缀：-1, -2, -3...
@@ -495,6 +505,9 @@ func (s *ShadowV1OrderUseCase) ImportOrderInfoByCsvFile(ctx context.Context, req
 			}
 			if talentCommission > 0 {
 				order.TalentCommission = talentCommission / int32(goodNumInt) // 平分
+			}
+			if !settlementTime.IsZero() {
+				order.SettlementTime = settlementTime
 			}
 
 			orderDataDBList = append(orderDataDBList, order)
@@ -713,6 +726,7 @@ func (s *ShadowV1OrderUseCase) syncUpdateSubOrders(ctx context.Context, newOrder
 			subOrder.Ph = newOrder.Ph
 			subOrder.Status = newOrder.Status
 			subOrder.PaymentTime = newOrder.PaymentTime
+			subOrder.SettlementTime = newOrder.SettlementTime
 			subOrder.ServiceStatus = newOrder.ServiceStatus
 			subOrder.GoodType = newOrder.GoodType
 

@@ -460,6 +460,39 @@
         ]
       }
     },
+    "/yanxue/api/shadow/v1/order/queryDouYinOrderCertificateInfo": {
+      "post": {
+        "summary": "查询抖音订单券ID信息",
+        "operationId": "Order_QueryDouYinOrderCertificateInfo",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1QueryDouYinOrderCertificateInfoReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1QueryDouYinOrderCertificateInfoReq"
+            }
+          }
+        ],
+        "tags": [
+          "Order"
+        ]
+      }
+    },
     "/yanxue/api/shadow/v1/order/refreshGoodType": {
       "post": {
         "summary": "刷新商品类型",
@@ -716,6 +749,39 @@
             "required": true,
             "schema": {
               "$ref": "#/definitions/v1SyncHistoryOrderFeeReq"
+            }
+          }
+        ],
+        "tags": [
+          "Order"
+        ]
+      }
+    },
+    "/yanxue/api/shadow/v1/order/syncOrderSettlementTime": {
+      "post": {
+        "summary": "同步订单结算时间",
+        "operationId": "Order_SyncOrderSettlementTime",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SyncOrderSettlementTimeReply"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SyncOrderSettlementTimeReq"
             }
           }
         ],
@@ -1304,6 +1370,10 @@
           "type": "integer",
           "format": "int32",
           "title": "保险费：单位分"
+        },
+        "settlementTime": {
+          "type": "string",
+          "title": "结算时间"
         }
       },
       "title": "订单信息"
@@ -1337,6 +1407,44 @@
           "title": "列表数据"
         }
       }
+    },
+    "v1CertificateInfo": {
+      "type": "object",
+      "properties": {
+        "certificateId": {
+          "type": "string",
+          "title": "券ID"
+        },
+        "combinationId": {
+          "type": "string",
+          "title": "组合ID"
+        },
+        "itemStatus": {
+          "type": "integer",
+          "format": "int32",
+          "title": "券状态：301-已退款"
+        },
+        "itemUpdateTime": {
+          "type": "integer",
+          "format": "int32",
+          "title": "券更新时间"
+        },
+        "orderItemId": {
+          "type": "string",
+          "title": "订单项ID"
+        },
+        "refundAmount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "退款金额（单位：分）"
+        },
+        "refundTime": {
+          "type": "integer",
+          "format": "int32",
+          "title": "退款时间"
+        }
+      },
+      "title": "券信息"
     },
     "v1CloseExpiredOrdersReply": {
       "type": "object",
@@ -1684,6 +1792,71 @@
         }
       }
     },
+    "v1QueryDouYinOrderCertificateInfoReply": {
+      "type": "object",
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "title": "订单ID"
+        },
+        "orderStatus": {
+          "type": "integer",
+          "format": "int32",
+          "title": "订单状态"
+        },
+        "skuName": {
+          "type": "string",
+          "title": "商品名称"
+        },
+        "skuId": {
+          "type": "string",
+          "title": "商品ID"
+        },
+        "count": {
+          "type": "integer",
+          "format": "int32",
+          "title": "券数量"
+        },
+        "receiptAmount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "实收金额（单位：分）"
+        },
+        "discountAmount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "优惠金额（单位：分）"
+        },
+        "anchorId": {
+          "type": "string",
+          "format": "int64",
+          "title": "达人ID"
+        },
+        "certificates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1CertificateInfo"
+          },
+          "title": "券信息列表"
+        }
+      },
+      "title": "响应-查询抖音订单券ID信息"
+    },
+    "v1QueryDouYinOrderCertificateInfoReq": {
+      "type": "object",
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "title": "抖音订单ID（originOrderNumber）"
+        },
+        "accountId": {
+          "type": "string",
+          "title": "抖音账户ID（可选，默认使用系统配置）"
+        }
+      },
+      "title": "请求-查询抖音订单券ID信息"
+    },
     "v1RefreshGoodTypeReply": {
       "type": "object",
       "properties": {
@@ -1813,6 +1986,37 @@
     },
     "v1SyncOrderRefundStatusReply": {
       "type": "object"
+    },
+    "v1SyncOrderSettlementTimeReply": {
+      "type": "object",
+      "properties": {
+        "totalCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总处理订单数"
+        },
+        "successCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "成功更新数"
+        },
+        "failCount": {
+          "type": "integer",
+          "format": "int32",
+          "title": "失败数"
+        }
+      },
+      "title": "响应-同步订单结算时间"
+    },
+    "v1SyncOrderSettlementTimeReq": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "type": "string",
+          "title": "渠道类型：miniprogram-小程序渠道 douyin-抖音渠道"
+        }
+      },
+      "title": "请求-同步订单结算时间"
     },
     "v1SyncWechatPayBillReply": {
       "type": "object",

@@ -448,6 +448,597 @@ var _ interface {
 	ErrorName() string
 } = RetryFailedOrderCallbackReplyValidationError{}
 
+// Validate checks the field values on SyncOrderSettlementTimeReq with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *SyncOrderSettlementTimeReq) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on SyncOrderSettlementTimeReq with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// SyncOrderSettlementTimeReqMultiError, or nil if none found.
+func (m *SyncOrderSettlementTimeReq) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *SyncOrderSettlementTimeReq) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Channel
+
+	if len(errors) > 0 {
+		return SyncOrderSettlementTimeReqMultiError(errors)
+	}
+
+	return nil
+}
+
+// SyncOrderSettlementTimeReqMultiError is an error wrapping multiple
+// validation errors returned by SyncOrderSettlementTimeReq.ValidateAll() if
+// the designated constraints aren't met.
+type SyncOrderSettlementTimeReqMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m SyncOrderSettlementTimeReqMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m SyncOrderSettlementTimeReqMultiError) AllErrors() []error { return m }
+
+// SyncOrderSettlementTimeReqValidationError is the validation error returned
+// by SyncOrderSettlementTimeReq.Validate if the designated constraints aren't met.
+type SyncOrderSettlementTimeReqValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e SyncOrderSettlementTimeReqValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e SyncOrderSettlementTimeReqValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e SyncOrderSettlementTimeReqValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e SyncOrderSettlementTimeReqValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e SyncOrderSettlementTimeReqValidationError) ErrorName() string {
+	return "SyncOrderSettlementTimeReqValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e SyncOrderSettlementTimeReqValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sSyncOrderSettlementTimeReq.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = SyncOrderSettlementTimeReqValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = SyncOrderSettlementTimeReqValidationError{}
+
+// Validate checks the field values on SyncOrderSettlementTimeReply with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *SyncOrderSettlementTimeReply) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on SyncOrderSettlementTimeReply with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// SyncOrderSettlementTimeReplyMultiError, or nil if none found.
+func (m *SyncOrderSettlementTimeReply) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *SyncOrderSettlementTimeReply) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for TotalCount
+
+	// no validation rules for SuccessCount
+
+	// no validation rules for FailCount
+
+	if len(errors) > 0 {
+		return SyncOrderSettlementTimeReplyMultiError(errors)
+	}
+
+	return nil
+}
+
+// SyncOrderSettlementTimeReplyMultiError is an error wrapping multiple
+// validation errors returned by SyncOrderSettlementTimeReply.ValidateAll() if
+// the designated constraints aren't met.
+type SyncOrderSettlementTimeReplyMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m SyncOrderSettlementTimeReplyMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m SyncOrderSettlementTimeReplyMultiError) AllErrors() []error { return m }
+
+// SyncOrderSettlementTimeReplyValidationError is the validation error returned
+// by SyncOrderSettlementTimeReply.Validate if the designated constraints
+// aren't met.
+type SyncOrderSettlementTimeReplyValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e SyncOrderSettlementTimeReplyValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e SyncOrderSettlementTimeReplyValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e SyncOrderSettlementTimeReplyValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e SyncOrderSettlementTimeReplyValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e SyncOrderSettlementTimeReplyValidationError) ErrorName() string {
+	return "SyncOrderSettlementTimeReplyValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e SyncOrderSettlementTimeReplyValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sSyncOrderSettlementTimeReply.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = SyncOrderSettlementTimeReplyValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = SyncOrderSettlementTimeReplyValidationError{}
+
+// Validate checks the field values on QueryDouYinOrderCertificateInfoReq with
+// the rules defined in the proto definition for this message. If any rules
+// are violated, the first error encountered is returned, or nil if there are
+// no violations.
+func (m *QueryDouYinOrderCertificateInfoReq) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on QueryDouYinOrderCertificateInfoReq
+// with the rules defined in the proto definition for this message. If any
+// rules are violated, the result is a list of violation errors wrapped in
+// QueryDouYinOrderCertificateInfoReqMultiError, or nil if none found.
+func (m *QueryDouYinOrderCertificateInfoReq) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *QueryDouYinOrderCertificateInfoReq) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for OrderId
+
+	// no validation rules for AccountId
+
+	if len(errors) > 0 {
+		return QueryDouYinOrderCertificateInfoReqMultiError(errors)
+	}
+
+	return nil
+}
+
+// QueryDouYinOrderCertificateInfoReqMultiError is an error wrapping multiple
+// validation errors returned by
+// QueryDouYinOrderCertificateInfoReq.ValidateAll() if the designated
+// constraints aren't met.
+type QueryDouYinOrderCertificateInfoReqMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m QueryDouYinOrderCertificateInfoReqMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m QueryDouYinOrderCertificateInfoReqMultiError) AllErrors() []error { return m }
+
+// QueryDouYinOrderCertificateInfoReqValidationError is the validation error
+// returned by QueryDouYinOrderCertificateInfoReq.Validate if the designated
+// constraints aren't met.
+type QueryDouYinOrderCertificateInfoReqValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e QueryDouYinOrderCertificateInfoReqValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e QueryDouYinOrderCertificateInfoReqValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e QueryDouYinOrderCertificateInfoReqValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e QueryDouYinOrderCertificateInfoReqValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e QueryDouYinOrderCertificateInfoReqValidationError) ErrorName() string {
+	return "QueryDouYinOrderCertificateInfoReqValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e QueryDouYinOrderCertificateInfoReqValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sQueryDouYinOrderCertificateInfoReq.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = QueryDouYinOrderCertificateInfoReqValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = QueryDouYinOrderCertificateInfoReqValidationError{}
+
+// Validate checks the field values on QueryDouYinOrderCertificateInfoReply
+// with the rules defined in the proto definition for this message. If any
+// rules are violated, the first error encountered is returned, or nil if
+// there are no violations.
+func (m *QueryDouYinOrderCertificateInfoReply) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on QueryDouYinOrderCertificateInfoReply
+// with the rules defined in the proto definition for this message. If any
+// rules are violated, the result is a list of violation errors wrapped in
+// QueryDouYinOrderCertificateInfoReplyMultiError, or nil if none found.
+func (m *QueryDouYinOrderCertificateInfoReply) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *QueryDouYinOrderCertificateInfoReply) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for OrderId
+
+	// no validation rules for OrderStatus
+
+	// no validation rules for SkuName
+
+	// no validation rules for SkuId
+
+	// no validation rules for Count
+
+	// no validation rules for ReceiptAmount
+
+	// no validation rules for DiscountAmount
+
+	// no validation rules for AnchorId
+
+	for idx, item := range m.GetCertificates() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, QueryDouYinOrderCertificateInfoReplyValidationError{
+						field:  fmt.Sprintf("Certificates[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, QueryDouYinOrderCertificateInfoReplyValidationError{
+						field:  fmt.Sprintf("Certificates[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return QueryDouYinOrderCertificateInfoReplyValidationError{
+					field:  fmt.Sprintf("Certificates[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	if len(errors) > 0 {
+		return QueryDouYinOrderCertificateInfoReplyMultiError(errors)
+	}
+
+	return nil
+}
+
+// QueryDouYinOrderCertificateInfoReplyMultiError is an error wrapping multiple
+// validation errors returned by
+// QueryDouYinOrderCertificateInfoReply.ValidateAll() if the designated
+// constraints aren't met.
+type QueryDouYinOrderCertificateInfoReplyMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m QueryDouYinOrderCertificateInfoReplyMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m QueryDouYinOrderCertificateInfoReplyMultiError) AllErrors() []error { return m }
+
+// QueryDouYinOrderCertificateInfoReplyValidationError is the validation error
+// returned by QueryDouYinOrderCertificateInfoReply.Validate if the designated
+// constraints aren't met.
+type QueryDouYinOrderCertificateInfoReplyValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e QueryDouYinOrderCertificateInfoReplyValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e QueryDouYinOrderCertificateInfoReplyValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e QueryDouYinOrderCertificateInfoReplyValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e QueryDouYinOrderCertificateInfoReplyValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e QueryDouYinOrderCertificateInfoReplyValidationError) ErrorName() string {
+	return "QueryDouYinOrderCertificateInfoReplyValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e QueryDouYinOrderCertificateInfoReplyValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sQueryDouYinOrderCertificateInfoReply.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = QueryDouYinOrderCertificateInfoReplyValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = QueryDouYinOrderCertificateInfoReplyValidationError{}
+
+// Validate checks the field values on CertificateInfo with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *CertificateInfo) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on CertificateInfo with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// CertificateInfoMultiError, or nil if none found.
+func (m *CertificateInfo) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *CertificateInfo) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for CertificateId
+
+	// no validation rules for CombinationId
+
+	// no validation rules for ItemStatus
+
+	// no validation rules for ItemUpdateTime
+
+	// no validation rules for OrderItemId
+
+	// no validation rules for RefundAmount
+
+	// no validation rules for RefundTime
+
+	if len(errors) > 0 {
+		return CertificateInfoMultiError(errors)
+	}
+
+	return nil
+}
+
+// CertificateInfoMultiError is an error wrapping multiple validation errors
+// returned by CertificateInfo.ValidateAll() if the designated constraints
+// aren't met.
+type CertificateInfoMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m CertificateInfoMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m CertificateInfoMultiError) AllErrors() []error { return m }
+
+// CertificateInfoValidationError is the validation error returned by
+// CertificateInfo.Validate if the designated constraints aren't met.
+type CertificateInfoValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e CertificateInfoValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e CertificateInfoValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e CertificateInfoValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e CertificateInfoValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e CertificateInfoValidationError) ErrorName() string { return "CertificateInfoValidationError" }
+
+// Error satisfies the builtin error interface
+func (e CertificateInfoValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sCertificateInfo.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = CertificateInfoValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = CertificateInfoValidationError{}
+
 // Validate checks the field values on FixRefundAmountReq with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
@@ -5261,6 +5852,8 @@ func (m *OrderInfo) validate(all bool) error {
 	// no validation rules for ShopDiscountAmount
 
 	// no validation rules for ActualInsured
+
+	// no validation rules for SettlementTime
 
 	if len(errors) > 0 {
 		return OrderInfoMultiError(errors)

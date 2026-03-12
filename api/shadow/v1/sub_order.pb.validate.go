@@ -361,6 +361,8 @@ func (m *SubOrderInfo) validate(all bool) error {
 
 	// no validation rules for ActualInsured
 
+	// no validation rules for SettlementTime
+
 	if len(errors) > 0 {
 		return SubOrderInfoMultiError(errors)
 	}

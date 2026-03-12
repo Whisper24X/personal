@@ -120,6 +120,33 @@ func (s *ShadowV1OrderService) SyncWechatPayBillPlatformFee(ctx context.Context)
 	return s.shadowV1OrderUseCase.SyncWechatPayBillPlatformFee(ctx)
 }
 
+// SyncOrderSettlementTimeTask 同步订单结算时间（定时任务）
+// 同时同步小程序和抖音渠道的订单结算时间（并行执行）
+func (s *ShadowV1OrderService) SyncOrderSettlementTimeTask(ctx context.Context) error {
+	// 并行同步小程序渠道和抖音渠道
+	// 由于每个渠道使用不同的分布式锁，可以同时执行
+
+	// 同步小程序渠道
+	_, err1 := s.shadowV1OrderUseCase.SyncOrderSettlementTime(ctx, &pb.SyncOrderSettlementTimeReq{
+		Channel: "miniprogram",
+	})
+
+	// 同步抖音渠道
+	_, err2 := s.shadowV1OrderUseCase.SyncOrderSettlementTime(ctx, &pb.SyncOrderSettlementTimeReq{
+		Channel: "douyin",
+	})
+
+	// 如果任一渠道启动失败，返回错误
+	if err1 != nil {
+		return err1
+	}
+	if err2 != nil {
+		return err2
+	}
+
+	return nil
+}
+
 // SyncDouYinSettleInfo 同步抖音分账信息
 func (s *ShadowV1OrderService) SyncDouYinSettleInfo(ctx context.Context, req *pb.SyncDouYinSettleInfoReq) (*pb.SyncDouYinSettleInfoReply, error) {
 	return s.shadowV1OrderUseCase.SyncDouYinSettleInfo(ctx, req)
@@ -178,4 +205,14 @@ func (s *ShadowV1OrderService) SyncDouYinOrder(ctx context.Context, req *pb.Sync
 // RetryFailedOrderCallback 重试失败的订单回调
 func (s *ShadowV1OrderService) RetryFailedOrderCallback(ctx context.Context, req *pb.RetryFailedOrderCallbackReq) (*pb.RetryFailedOrderCallbackReply, error) {
 	return s.shadowV1OrderUseCase.RetryFailedOrderCallback(ctx, req)
+}
+
+// SyncOrderSettlementTime 同步订单结算时间
+func (s *ShadowV1OrderService) SyncOrderSettlementTime(ctx context.Context, req *pb.SyncOrderSettlementTimeReq) (*pb.SyncOrderSettlementTimeReply, error) {
+	return s.shadowV1OrderUseCase.SyncOrderSettlementTime(ctx, req)
+}
+
+// QueryDouYinOrderCertificateInfo 查询抖音订单券ID信息
+func (s *ShadowV1OrderService) QueryDouYinOrderCertificateInfo(ctx context.Context, req *pb.QueryDouYinOrderCertificateInfoReq) (*pb.QueryDouYinOrderCertificateInfoReply, error) {
+	return s.shadowV1OrderUseCase.QueryDouYinOrderCertificateInfo(ctx, req)
 }

@@ -80,6 +80,10 @@ type OrderClient interface {
 	SyncDouYinOrder(ctx context.Context, in *SyncDouYinOrderReq, opts ...grpc.CallOption) (*SyncDouYinOrderReply, error)
 	// 重试失败的订单回调
 	RetryFailedOrderCallback(ctx context.Context, in *RetryFailedOrderCallbackReq, opts ...grpc.CallOption) (*RetryFailedOrderCallbackReply, error)
+	// 同步订单结算时间
+	SyncOrderSettlementTime(ctx context.Context, in *SyncOrderSettlementTimeReq, opts ...grpc.CallOption) (*SyncOrderSettlementTimeReply, error)
+	// 查询抖音订单券ID信息
+	QueryDouYinOrderCertificateInfo(ctx context.Context, in *QueryDouYinOrderCertificateInfoReq, opts ...grpc.CallOption) (*QueryDouYinOrderCertificateInfoReply, error)
 }
 
 type orderClient struct {
@@ -351,6 +355,24 @@ func (c *orderClient) RetryFailedOrderCallback(ctx context.Context, in *RetryFai
 	return out, nil
 }
 
+func (c *orderClient) SyncOrderSettlementTime(ctx context.Context, in *SyncOrderSettlementTimeReq, opts ...grpc.CallOption) (*SyncOrderSettlementTimeReply, error) {
+	out := new(SyncOrderSettlementTimeReply)
+	err := c.cc.Invoke(ctx, "/shadow.v1.Order/SyncOrderSettlementTime", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orderClient) QueryDouYinOrderCertificateInfo(ctx context.Context, in *QueryDouYinOrderCertificateInfoReq, opts ...grpc.CallOption) (*QueryDouYinOrderCertificateInfoReply, error) {
+	out := new(QueryDouYinOrderCertificateInfoReply)
+	err := c.cc.Invoke(ctx, "/shadow.v1.Order/QueryDouYinOrderCertificateInfo", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OrderServer is the server API for Order service.
 // All implementations must embed UnimplementedOrderServer
 // for forward compatibility
@@ -413,6 +435,10 @@ type OrderServer interface {
 	SyncDouYinOrder(context.Context, *SyncDouYinOrderReq) (*SyncDouYinOrderReply, error)
 	// 重试失败的订单回调
 	RetryFailedOrderCallback(context.Context, *RetryFailedOrderCallbackReq) (*RetryFailedOrderCallbackReply, error)
+	// 同步订单结算时间
+	SyncOrderSettlementTime(context.Context, *SyncOrderSettlementTimeReq) (*SyncOrderSettlementTimeReply, error)
+	// 查询抖音订单券ID信息
+	QueryDouYinOrderCertificateInfo(context.Context, *QueryDouYinOrderCertificateInfoReq) (*QueryDouYinOrderCertificateInfoReply, error)
 	mustEmbedUnimplementedOrderServer()
 }
 
@@ -506,6 +532,12 @@ func (UnimplementedOrderServer) SyncDouYinOrder(context.Context, *SyncDouYinOrde
 }
 func (UnimplementedOrderServer) RetryFailedOrderCallback(context.Context, *RetryFailedOrderCallbackReq) (*RetryFailedOrderCallbackReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RetryFailedOrderCallback not implemented")
+}
+func (UnimplementedOrderServer) SyncOrderSettlementTime(context.Context, *SyncOrderSettlementTimeReq) (*SyncOrderSettlementTimeReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SyncOrderSettlementTime not implemented")
+}
+func (UnimplementedOrderServer) QueryDouYinOrderCertificateInfo(context.Context, *QueryDouYinOrderCertificateInfoReq) (*QueryDouYinOrderCertificateInfoReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method QueryDouYinOrderCertificateInfo not implemented")
 }
 func (UnimplementedOrderServer) mustEmbedUnimplementedOrderServer() {}
 
@@ -1042,6 +1074,42 @@ func _Order_RetryFailedOrderCallback_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Order_SyncOrderSettlementTime_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SyncOrderSettlementTimeReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderServer).SyncOrderSettlementTime(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/shadow.v1.Order/SyncOrderSettlementTime",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderServer).SyncOrderSettlementTime(ctx, req.(*SyncOrderSettlementTimeReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Order_QueryDouYinOrderCertificateInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryDouYinOrderCertificateInfoReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderServer).QueryDouYinOrderCertificateInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/shadow.v1.Order/QueryDouYinOrderCertificateInfo",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderServer).QueryDouYinOrderCertificateInfo(ctx, req.(*QueryDouYinOrderCertificateInfoReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Order_ServiceDesc is the grpc.ServiceDesc for Order service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1164,6 +1232,14 @@ var Order_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RetryFailedOrderCallback",
 			Handler:    _Order_RetryFailedOrderCallback_Handler,
+		},
+		{
+			MethodName: "SyncOrderSettlementTime",
+			Handler:    _Order_SyncOrderSettlementTime_Handler,
+		},
+		{
+			MethodName: "QueryDouYinOrderCertificateInfo",
+			Handler:    _Order_QueryDouYinOrderCertificateInfo_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -52,6 +52,7 @@ func (s *ShadowV1SubOrderUseCase) ExportSubOrderCsv(ctx context.Context, subOrde
 		"退款时间",
 		"创建时间",
 		"更新时间",
+		"结算时间",
 		"订单编号",
 		"商品ID",
 		"小程序商户订单号",
@@ -79,6 +80,10 @@ func (s *ShadowV1SubOrderUseCase) ExportSubOrderCsv(ctx context.Context, subOrde
 		paymentTimeStr := ""
 		if v.PaymentTime != "" {
 			paymentTimeStr = timeutil.Carbon().Parse(v.PaymentTime).ToDateTimeString()
+		}
+		settlementTimeStr := ""
+		if v.SettlementTime != "" {
+			settlementTimeStr = timeutil.Carbon().Parse(v.SettlementTime).ToDateTimeString()
 		}
 		refundTimeStr := ""
 		if v.RefundTime != "" {
@@ -139,6 +144,7 @@ func (s *ShadowV1SubOrderUseCase) ExportSubOrderCsv(ctx context.Context, subOrde
 			refundTimeStr,                           // 退款时间
 			createdAtStr,                            // 创建时间
 			updatedAtStr,                            // 更新时间
+			settlementTimeStr,                       // 结算时间
 			v.Id,                                    // 订单编号
 			v.GoodId,                                // 商品ID
 			miniProgramMerchantOrderNumber,          // 小程序商户订单号

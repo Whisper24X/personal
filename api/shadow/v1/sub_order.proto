@@ -95,6 +95,7 @@ message SubOrderInfo {
   int32 paymentDiscountAmount = 33; // 支付优惠金额：单位分
   int32 shopDiscountAmount = 34; // 店铺优惠金额：单位分
   int32 actualInsured = 35; // 保险费：单位分
+  string settlementTime = 36; // 结算时间
 }
 
 //请求-订单-列表数据查询
