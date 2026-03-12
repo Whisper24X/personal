@@ -569,6 +569,8 @@ export const canManageProjectRoleConfigByCapabilities = (
   canUpdateProjectRoleByCapabilities(capabilities) ||
   canDeleteProjectRoleByCapabilities(capabilities);
 
-export const isProjectOwnerRoleName = (roleName: string | null | undefined): boolean => {
+export const isProjectOwnerRoleName = (
+  roleName: string | null | undefined,
+): boolean => {
   return isDefaultTemplateRoleName(roleName, 'owner');
 };
