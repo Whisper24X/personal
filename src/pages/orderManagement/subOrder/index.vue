@@ -191,6 +191,7 @@
           {{ formatDateTime(row.refundTime) }}
         </template>
       </el-table-column>
+
       <!-- 创建时间 -->
       <el-table-column prop="createdAt" label="创建时间" min-width="160" align="center">
         <template #default="{ row }">
@@ -201,6 +202,12 @@
       <el-table-column prop="updatedAt" label="更新时间" min-width="160" align="center">
         <template #default="{ row }">
           {{ formatDateTime(row.updatedAt) }}
+        </template>
+      </el-table-column>
+      <!-- 结算时间 -->
+      <el-table-column prop="settlementTime" label="结算时间" min-width="160" align="center">
+        <template #default="{ row }">
+          {{ formatDateTime(row.settlementTime) }}
         </template>
       </el-table-column>
       <!-- 订单编号 -->

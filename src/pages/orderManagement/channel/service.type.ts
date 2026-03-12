@@ -44,6 +44,7 @@ export interface OrderItem {
   refundAmount?: number // 退款金额
   parentRemark?: string // 订单备注
   refundTime?: string // 退款时间
+  settlementTime?: string // 结算时间
   goodType?: string // 商品类型：single_day单日营，multi_day多日营
   platformFee?: number // 平台手续费：单位分
   serviceStatus?: string // 服务状态：pending待预约，success已预约，completed已出行
@@ -343,6 +344,7 @@ export interface SubOrderItem {
   paymentDiscountAmount?: number // 支付优惠金额：单位分
   shopDiscountAmount?: number // 店铺优惠金额：单位分
   actualInsured?: number // 保险费：单位分
+  settlementTime?: string // 结算时间
 }
 
 /**

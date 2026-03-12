@@ -287,6 +287,8 @@
             </template>
           </el-table-column>
 
+          
+
           <!-- 23. 创建时间 -->
           <el-table-column
             prop="createdAt"
@@ -310,7 +312,17 @@
               {{ formatDateTime(row.updatedAt) }}
             </template>
           </el-table-column>
-
+          <!-- 22.1 结算时间 -->
+          <el-table-column
+            prop="settlementTime"
+            label="结算时间"
+            min-width="160"
+            align="center"
+          >
+            <template #default="{ row }">
+              {{ formatDateTime(row.settlementTime) }}
+            </template>
+          </el-table-column>
           <!-- 25. 订单编号 -->
           <el-table-column
             prop="id"

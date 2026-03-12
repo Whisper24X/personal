@@ -312,6 +312,17 @@
           {{ formatDateTime(row.paymentTime) }}
         </template>
       </el-table-column>
+      <!-- 结算时间 -->
+      <el-table-column
+        prop="settlementTime"
+        label="结算时间"
+        min-width="160"
+        align="center"
+      >
+        <template #default="{ row }">
+          {{ formatDateTime(row.settlementTime) }}
+        </template>
+      </el-table-column>
       <!-- 服务状态 -->
       <el-table-column
         prop="serviceStatus"
@@ -359,6 +370,7 @@
           {{ formatDateTime(row.refundTime) }}
         </template>
       </el-table-column>
+
       <!-- 创建时间 -->
       <el-table-column
         prop="createdAt"
