@@ -69,6 +69,7 @@ export interface SubOrderItem {
   paymentDiscountAmount?: number // 支付优惠金额：单位分
   shopDiscountAmount?: number // 店铺优惠金额：单位分
   actualInsured?: number // 保险费：单位分
+  settlementTime?: string // 结算时间
 }
 
 /**

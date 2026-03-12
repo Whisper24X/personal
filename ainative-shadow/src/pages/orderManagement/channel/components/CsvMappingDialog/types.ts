@@ -44,6 +44,7 @@ export const SYSTEM_FIELDS = [
   { label: '保险费', value: '保险费' },
   { label: '平台手续费', value: '平台手续费' },
   { label: '退款时间', value: '退款时间' },
+  { label: '结算时间', value: '结算时间' },
   { label: '退款金额', value: '退款金额' },
   { label: '达人名称', value: '达人名称' },
   { label: '达人uid', value: '达人uid' },
