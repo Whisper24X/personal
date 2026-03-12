@@ -11,6 +11,9 @@
 #   make help           查看所有可用命令
 #   make subtree-pull   拉取所有子仓库
 #   make subtree-status 查看子仓库状态
+#   make branch-test    切换到 test 并拉取子仓库 (backend=test, shadow/app=develop)
+#   make subtree-push-test  推送 test 到子仓库 (backend=test, shadow/app=develop)
+#   make commit-merge-push-test MSG="xxx"  提交→合并到test→推送子仓库
 #
 # ==============================================================================
 
@@ -158,6 +161,150 @@ subtree-push: $(foreach n,$(NAMES),subtree-push-$(n))
 subtree-add: $(foreach n,$(NAMES),subtree-add-$(n))
 	@echo ""
 	@echo "$(C_GREEN)$(C_BOLD)✓ 全部添加完成$(C_RESET)"
+
+# ==============================================================================
+# Test 分支工作流
+# ==============================================================================
+# 切换 test 分支后拉取子仓库：backend=test, shadow/app=develop
+# 推送 test 分支代码到子仓库：backend=test, shadow/app=develop
+
+.PHONY: branch-test subtree-pull-test subtree-push-test subtree-push-current merge-to-test commit-merge-push-test push-current-commit-merge-push-test
+
+## 推送当前分支到子仓库（各子仓使用当前分支名）
+subtree-push-current:
+	$(_check_env)
+	@CUR=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null); \
+	echo "$(C_BLUE)推送当前分支 $$CUR 到子仓库...$(C_RESET)"; \
+	echo "$(C_BLUE)推送 ainative-backend -> $$CUR...$(C_RESET)"; \
+	OUT=$$(git subtree push --prefix=ainative-backend git@gitlab.yc345.tv:backend/yanxue.git $$CUR 2>&1); \
+	CODE=$$?; \
+	if echo "$$OUT" | grep -q "Everything up-to-date"; then echo "$(C_YELLOW)ainative-backend 无变更$(C_RESET)"; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
+	else echo "$(C_GREEN)✓ ainative-backend 已推送到 $$CUR$(C_RESET)"; fi; \
+	echo "$(C_BLUE)推送 ainative-shadow -> $$CUR...$(C_RESET)"; \
+	OUT=$$(git subtree push --prefix=ainative-shadow git@gitlab.yc345.tv:frontend/trip-shadow.git $$CUR 2>&1); \
+	CODE=$$?; \
+	if echo "$$OUT" | grep -q "Everything up-to-date"; then echo "$(C_YELLOW)ainative-shadow 无变更$(C_RESET)"; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
+	else echo "$(C_GREEN)✓ ainative-shadow 已推送到 $$CUR$(C_RESET)"; fi; \
+	echo "$(C_BLUE)推送 ainative-app -> $$CUR...$(C_RESET)"; \
+	OUT=$$(git subtree push --prefix=ainative-app git@gitlab.yc345.tv:frontend/trip-miniprogram.git $$CUR 2>&1); \
+	CODE=$$?; \
+	if echo "$$OUT" | grep -q "Everything up-to-date"; then echo "$(C_YELLOW)ainative-app 无变更$(C_RESET)"; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
+	else echo "$(C_GREEN)✓ ainative-app 已推送到 $$CUR$(C_RESET)"; fi; \
+	echo "$(C_GREEN)✓ 当前分支已推送到子仓库$(C_RESET)"
+
+## 合并当前分支到 test
+## 流程: checkout test → pull origin test → merge --no-ff 当前分支
+merge-to-test:
+	$(_check_env)
+	@CUR=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null); \
+	if [ "$$CUR" = "test" ]; then \
+		echo "$(C_YELLOW)当前已在 test 分支$(C_RESET)"; exit 0; \
+	fi; \
+	echo "$(C_BLUE)合并 $$CUR -> test...$(C_RESET)"; \
+	git checkout test && git pull origin test && git merge --no-ff $$CUR -m "Merge branch '$$CUR' into test" && \
+	echo "$(C_GREEN)✓ 已合并到 test$(C_RESET)"
+
+## 完整流程：当前分支提交 → 合并到 test → 推送子仓库
+## 用法: make commit-merge-push-test MSG="feat: xxx"
+commit-merge-push-test:
+	$(_check_env)
+	@if [ -z "$(MSG)" ]; then \
+		echo "$(C_RED)错误: 请指定 MSG，如 make commit-merge-push-test MSG=\"feat: xxx\"$(C_RESET)"; exit 1; \
+	fi
+	@echo "$(C_BLUE)1/3 提交当前分支...$(C_RESET)"
+	@git add . && git commit -m "$(MSG)" || { echo "$(C_YELLOW)无变更或已提交$(C_RESET)"; true; }
+	@echo "$(C_BLUE)2/3 合并到 test...$(C_RESET)"
+	@$(MAKE) -s merge-to-test
+	@echo "$(C_BLUE)3/3 推送子仓库到测试分支...$(C_RESET)"
+	@$(MAKE) -s subtree-push-test
+	@echo ""
+	@echo "$(C_GREEN)$(C_BOLD)✓ 完整流程完成$(C_RESET)"
+
+## 完整流程：先推送当前分支到子仓 → 提交 → 合并到 test → 推送 test 到子仓
+## 用法: make push-current-commit-merge-push-test MSG="feat: xxx"
+push-current-commit-merge-push-test:
+	$(_check_env)
+	@if [ -z "$(MSG)" ]; then \
+		echo "$(C_RED)错误: 请指定 MSG，如 make push-current-commit-merge-push-test MSG=\"feat: xxx\"$(C_RESET)"; exit 1; \
+	fi
+	@echo "$(C_BLUE)1/4 推送当前分支到子仓库...$(C_RESET)"
+	@$(MAKE) -s subtree-push-current
+	@echo "$(C_BLUE)2/4 提交当前分支...$(C_RESET)"
+	@git add . && git commit -m "$(MSG)" || { echo "$(C_YELLOW)无变更或已提交$(C_RESET)"; true; }
+	@echo "$(C_BLUE)3/4 合并到 test...$(C_RESET)"
+	@$(MAKE) -s merge-to-test
+	@echo "$(C_BLUE)4/4 推送 test 到子仓库...$(C_RESET)"
+	@$(MAKE) -s subtree-push-test
+	@echo ""
+	@echo "$(C_GREEN)$(C_BOLD)✓ 完整流程完成$(C_RESET)"
+
+## 切换到 test 分支并拉取子仓库对应分支
+## backend -> test, shadow/app -> develop
+branch-test:
+	$(_check_env)
+	@echo "$(C_BLUE)切换到 test 分支...$(C_RESET)"
+	@git checkout test
+	@$(MAKE) -s subtree-pull-test
+
+## 拉取子仓库（test 分支工作流）
+## backend -> test, shadow/app -> develop
+subtree-pull-test:
+	$(_check_env)
+	@echo "$(C_BLUE)拉取 ainative-backend (test)...$(C_RESET)"
+	@OUT=$$(git subtree pull --prefix=ainative-backend git@gitlab.yc345.tv:backend/yanxue.git test --squash 2>&1); \
+	CODE=$$?; \
+	if [ $$CODE -ne 0 ] && echo "$$OUT" | grep -q "does not exist"; then \
+		echo "$(C_YELLOW)首次添加 ainative-backend...$(C_RESET)"; $(MAKE) -s subtree-add-backend; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; exit 1; \
+	else echo "$(C_GREEN)✓ ainative-backend 已更新$(C_RESET)"; fi
+	@echo "$(C_BLUE)拉取 ainative-shadow (develop)...$(C_RESET)"
+	@OUT=$$(git subtree pull --prefix=ainative-shadow git@gitlab.yc345.tv:frontend/trip-shadow.git develop --squash 2>&1); \
+	CODE=$$?; \
+	if [ $$CODE -ne 0 ] && echo "$$OUT" | grep -q "does not exist"; then \
+		echo "$(C_YELLOW)首次添加 ainative-shadow...$(C_RESET)"; $(MAKE) -s subtree-add-shadow; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; exit 1; \
+	else echo "$(C_GREEN)✓ ainative-shadow 已更新$(C_RESET)"; fi
+	@echo "$(C_BLUE)拉取 ainative-app (develop)...$(C_RESET)"
+	@OUT=$$(git subtree pull --prefix=ainative-app git@gitlab.yc345.tv:frontend/trip-miniprogram.git develop --squash 2>&1); \
+	CODE=$$?; \
+	if [ $$CODE -ne 0 ] && echo "$$OUT" | grep -q "does not exist"; then \
+		echo "$(C_YELLOW)首次添加 ainative-app...$(C_RESET)"; $(MAKE) -s subtree-add-app; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; exit 1; \
+	else echo "$(C_GREEN)✓ ainative-app 已更新$(C_RESET)"; fi
+	@echo ""
+	@echo "$(C_GREEN)$(C_BOLD)✓ test 分支子仓库拉取完成$(C_RESET)"
+
+## 推送 test 分支代码到子仓库对应分支
+## backend -> test, shadow/app -> develop
+subtree-push-test:
+	$(_check_env)
+	@CUR=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null); \
+	if [ "$$CUR" != "test" ]; then \
+		echo "$(C_YELLOW)当前分支为 $$CUR，建议在 test 分支执行$(C_RESET)"; \
+	fi
+	@echo "$(C_BLUE)推送 ainative-backend -> test...$(C_RESET)"
+	@OUT=$$(git subtree push --prefix=ainative-backend git@gitlab.yc345.tv:backend/yanxue.git test 2>&1); \
+	CODE=$$?; \
+	if echo "$$OUT" | grep -q "Everything up-to-date"; then echo "$(C_YELLOW)ainative-backend 无变更$(C_RESET)"; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
+	else echo "$(C_GREEN)✓ ainative-backend 已推送到 test$(C_RESET)"; fi
+	@echo "$(C_BLUE)推送 ainative-shadow -> develop...$(C_RESET)"
+	@OUT=$$(git subtree push --prefix=ainative-shadow git@gitlab.yc345.tv:frontend/trip-shadow.git develop 2>&1); \
+	CODE=$$?; \
+	if echo "$$OUT" | grep -q "Everything up-to-date"; then echo "$(C_YELLOW)ainative-shadow 无变更$(C_RESET)"; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
+	else echo "$(C_GREEN)✓ ainative-shadow 已推送到 develop$(C_RESET)"; fi
+	@echo "$(C_BLUE)推送 ainative-app -> develop...$(C_RESET)"
+	@OUT=$$(git subtree push --prefix=ainative-app git@gitlab.yc345.tv:frontend/trip-miniprogram.git develop 2>&1); \
+	CODE=$$?; \
+	if echo "$$OUT" | grep -q "Everything up-to-date"; then echo "$(C_YELLOW)ainative-app 无变更$(C_RESET)"; \
+	elif [ $$CODE -ne 0 ]; then echo "$$OUT"; echo "$(C_RED)推送失败$(C_RESET)"; exit 1; \
+	else echo "$(C_GREEN)✓ ainative-app 已推送到 develop$(C_RESET)"; fi
+	@echo ""
+	@echo "$(C_GREEN)$(C_BOLD)✓ test 分支子仓库推送完成$(C_RESET)"
 
 ## 查看子仓库状态
 subtree-status:
@@ -342,6 +489,15 @@ help:
 	@echo ""
 	@echo "$(C_YELLOW)推送到指定分支$(C_RESET)"
 	@echo "  $(C_GREEN)make subtree-push-backend feature/xxx$(C_RESET)  推送到 feature 分支"
+	@echo ""
+	@echo "$(C_YELLOW)Test 分支工作流$(C_RESET)"
+	@echo "  $(C_GREEN)make branch-test$(C_RESET)            切换到 test 并拉取子仓库 (backend=test, shadow/app=develop)"
+	@echo "  $(C_GREEN)make subtree-pull-test$(C_RESET)      拉取子仓库 (backend=test, shadow/app=develop)"
+	@echo "  $(C_GREEN)make subtree-push-test$(C_RESET)      推送 test 到子仓库 (backend=test, shadow/app=develop)"
+	@echo "  $(C_GREEN)make subtree-push-current$(C_RESET)    推送当前分支到子仓库"
+	@echo "  $(C_GREEN)make merge-to-test$(C_RESET)          合并当前分支到 test"
+	@echo "  $(C_GREEN)make commit-merge-push-test MSG=\"xxx\"$(C_RESET)  提交→合并→推送子仓库"
+	@echo "  $(C_GREEN)make push-current-commit-merge-push-test MSG=\"xxx\"$(C_RESET)  先推当前分支→提交→合并→推送 test"
 	@echo ""
 	@echo "$(C_YELLOW)小程序 CI$(C_RESET)"
 	@echo "  $(C_GREEN)make app-preview$(C_RESET)       生成预览二维码"
