@@ -1,0 +1,202 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "shadow/v1/sys_operation_log.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "SysOperationLog"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/shadow/v1/sysOperationLog/list": {
+      "get": {
+        "summary": "操作日志-列表",
+        "operationId": "SysOperationLog_SysOperationLogList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SysOperationLogListResp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "page",
+            "description": "页码",
+            "in": "query",
+            "required": true,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "pageSize",
+            "description": "每页数量",
+            "in": "query",
+            "required": true,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "adminId",
+            "description": "管理员Id",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "ip",
+            "description": "IP",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "uri",
+            "description": "请求路径",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "startDate",
+            "description": "开始时间",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "endDate",
+            "description": "结束时间",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SysOperationLog"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1SysOperationLogInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "编号"
+        },
+        "adminId": {
+          "type": "string",
+          "title": "管理员Id"
+        },
+        "username": {
+          "type": "string",
+          "title": "账号"
+        },
+        "ip": {
+          "type": "string",
+          "title": "IP"
+        },
+        "uri": {
+          "type": "string",
+          "title": "请求路径"
+        },
+        "uriDesc": {
+          "type": "string",
+          "title": "请求描述"
+        },
+        "useragent": {
+          "type": "string",
+          "title": "浏览器标识"
+        },
+        "req": {
+          "type": "string",
+          "title": "请求数据"
+        },
+        "resp": {
+          "type": "string",
+          "title": "响应数据"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        }
+      },
+      "title": "操作日志-信息"
+    },
+    "v1SysOperationLogListResp": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "format": "int32",
+          "title": "总条数"
+        },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1SysOperationLogInfo"
+          },
+          "title": "管理员列表"
+        }
+      },
+      "title": "操作日志-列表-响应"
+    },
+    "v1SysOperationLogStoreResp": {
+      "type": "object",
+      "title": "操作日志-保存-响应"
+    }
+  }
+}

@@ -1,0 +1,286 @@
+syntax = "proto3";
+
+package wechat.v1;
+
+import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+import "validate/validate.proto";
+
+option go_package = "gitlab.yc345.tv/backend/yanxue/api/wechat/v1;v1";
+
+//变量的命名一律使用小驼峰命名法，例如：firstName、lastName等。
+//后缀定义:请求req,响应reply
+
+//User
+service User {
+  //User-登录(公众号)
+  rpc AuthLogin(AuthLoginReq) returns (AuthLoginReply) {
+    option (google.api.http) = {
+      post: "/yanxue/wechat/v1/auth/login"
+      body: "*"
+    };
+  }
+  //User-登录(小程序)
+  rpc AuthLoginXcx(AuthLoginXcxReq) returns (AuthLoginXcxReply) {
+    option (google.api.http) = {
+      post: "/yanxue/wechat/v1/auth/login_xcx"
+      body: "*"
+    };
+  }
+  //User-手机号-发送手机验证码
+  rpc AuthSendPhoneSmsCode(AuthSendPhoneSmsCodeReq) returns (AuthSendPhoneSmsCodeReply) {
+    option (google.api.http) = {
+      post: "/yanxue/wechat/v1/auth/sms_code"
+      body: "*"
+    };
+  }
+  //User-手机号-登录
+  rpc AuthPhoneLogin(AuthPhoneLoginReq) returns (AuthPhoneLoginReply) {
+    option (google.api.http) = {
+      post: "/yanxue/wechat/v1/auth/phone_login"
+      body: "*"
+    };
+  }
+  //User-检查token
+  rpc AuthCheckToken(AuthCheckTokenReq) returns (AuthCheckTokenReply) {}
+  //User-获取用户信息
+  rpc UserGetInfo(UserGetInfoReq) returns (UserGetInfoReply) {
+    option (google.api.http) = {get: "/yanxue/wechat/v1/user/info"};
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  //User-更新用户信息
+  rpc UpdateUserInfo(UpdateUserInfoReq) returns (UpdateUserInfoReply) {
+    option (google.api.http) = {
+      post: "/yanxue/wechat/v1/user/update"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  //User-保存监护人信息
+  rpc StoreParentInfo(StoreParentInfoReq) returns (StoreParentInfoReply) {
+    option (google.api.http) = {
+      post: "/yanxue/wechat/v1/user_wx/storeParentInfo"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+  //User-查询监护人信息
+  rpc QueryParentInfo(QueryParentInfoReq) returns (QueryParentInfoReply) {
+    option (google.api.http) = {get: "/yanxue/wechat/v1/user_wx/queryParentInfo"};
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      parameters: {
+        headers: {
+          name: "Authorization"
+          description: "TOKEN"
+          type: STRING
+          required: true
+        }
+      }
+    };
+  }
+}
+
+//请求-查询监护人信息
+message QueryParentInfoReq {}
+
+//响应-查询监护人信息
+message QueryParentInfoReply {
+  repeated ParentInfo parentInfo = 1; // 监护人信息
+}
+
+//请求-更新监护人信息
+message StoreParentInfoReq {
+  repeated ParentInfo parentInfo = 1; // 监护人信息
+}
+
+//响应-更新监护人信息
+message StoreParentInfoReply {}
+
+message Token {
+  string token = 1; //Token
+  int32 expiredAt = 2; //过期时间
+  int32 refreshAt = 3; //刷新时间
+}
+
+//监护人信息
+message ParentInfo {
+  string id = 1; // id
+  string parentName = 2; // 家长-姓名
+  string parentSex = 3; // 家长-性别 男M 女F
+  string parentPhone = 4; // 家长-手机号
+}
+
+//用户信息
+message UserInfo {
+  string id = 1; // id
+  string phone = 2; // 手机号
+  string nickname = 3; // 昵称
+  string avatar = 4; // 头像
+  string address = 5; // 地址
+  string birthday = 6; // 生日
+  int32 status = 7; // -1=禁用 1=开启
+  string createdAt = 8; // 创建时间
+  string updatedAt = 9; // 更新时间
+  UserWxInfo userWxInfo = 10; // 用户微信信息
+  UserAppointmentInfo userAppointmentInfo = 11; // 用户预约信息
+  repeated ParentInfo parentInfo = 12; // 监护人信息
+}
+
+//用户预约信息
+message UserAppointmentInfo {
+  string parentName = 1; // 用户名称
+  string parentPhone = 2; // 用户手机号
+  string parentAccompany = 3; // 家长是否陪同
+}
+
+//用户-微信信息
+message UserWxInfo {
+  string id = 1; // id
+  string unionid = 2; // unionid
+  string offiaccountOpenId = 3; // 公众号openid
+  bool offiaccountFollow = 4; // 公众号是否关注
+  int32 status = 5; // -1=禁用 1=开启
+  string createdAt = 6; // 创建时间
+  string updatedAt = 7; // 更新时间
+  string nickname = 8; // 昵称
+  int32 sex = 9; // 性别
+  string province = 10; // 省份
+  string city = 11; // 城市
+  string country = 12; // 国家
+  string headimgurl = 13; // 头像
+}
+
+//请求-登录
+message AuthLoginReq {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {
+      required: ["code"]
+    }
+  };
+  string code = 1 [(validate.rules).string = {
+    min_len: 1
+    max_len: 128
+  }]; // 微信code
+}
+
+//响应-登录
+message AuthLoginReply {
+  string userWxId = 1; // 用户微信ID
+  Token token = 2; //Token
+}
+
+message AuthLoginXcxReq {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {
+      required: ["code"]
+    }
+  };
+  string code = 1 [(validate.rules).string = {
+    min_len: 1
+    max_len: 128
+  }]; // 微信code
+}
+
+message AuthLoginXcxReply {
+  string userWxId = 1; // 用户微信ID
+  Token token = 2; //Token
+}
+
+message AuthSendPhoneSmsCodeReq {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {
+      required: [
+        "userWxId",
+        "countryCode",
+        "phone"
+      ]
+    }
+  };
+  string userWxId = 1 [(validate.rules).string = {min_len: 1}]; // 用户微信ID
+  string countryCode = 2 [(validate.rules).string = {min_len: 1}]; // 国家码
+  string phone = 3 [(validate.rules).string = {min_len: 1}]; // 手机号
+}
+
+message AuthSendPhoneSmsCodeReply {
+  string smsCodeId = 1; // 短信验证码ID
+}
+
+//请求-手机号注册并登录
+message AuthPhoneLoginReq {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {
+      required: [
+        "smsId",
+        "smsCode"
+      ]
+    }
+  };
+  string smsCodeId = 1 [(validate.rules).string = {min_len: 1}]; // 短信验证码Id
+  string smsCode = 2 [(validate.rules).string = {min_len: 1}]; // 短信验证码
+}
+
+//响应-手机号注册并登录
+message AuthPhoneLoginReply {
+  Token token = 1; //Token
+}
+
+//请求-检查token
+message AuthCheckTokenReq {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {
+      required: ["token"]
+    }
+  };
+  string token = 1 [(validate.rules).string = {min_len: 1}]; //token
+}
+
+//响应-检查token
+message AuthCheckTokenReply {
+  string userId = 1; //用户Id
+}
+
+//请求-获取用户信息
+message UserGetInfoReq {}
+
+//响应-获取用户信息
+message UserGetInfoReply {
+  UserInfo userInfo = 1; //用户信息
+}
+
+//请求-更新用户信息
+message UpdateUserInfoReq {
+  string nickname = 1; // 昵称
+  string avatar = 2; // 头像
+  string address = 3; // 地址
+  string birthday = 4; // 生日
+}
+
+//响应-更新用户信息
+message UpdateUserInfoReply {}

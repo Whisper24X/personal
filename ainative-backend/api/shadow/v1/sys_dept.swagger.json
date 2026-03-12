@@ -1,0 +1,356 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "shadow/v1/sys_dept.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "SysDept"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/yanxue/shadow/v1/sysDept/del": {
+      "post": {
+        "summary": "部门-删除",
+        "operationId": "SysDept_SysDeptDel",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SysDeptDelResp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SysDeptDelReq"
+            }
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SysDept"
+        ]
+      }
+    },
+    "/yanxue/shadow/v1/sysDept/list": {
+      "get": {
+        "summary": "部门-列表",
+        "operationId": "SysDept_SysDeptList",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SysDeptListResp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SysDept"
+        ]
+      }
+    },
+    "/yanxue/shadow/v1/sysDept/status": {
+      "post": {
+        "summary": "部门-修改权限状态",
+        "operationId": "SysDept_SysDeptStatus",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SysDeptStatusResp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SysDeptStatusReq"
+            }
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SysDept"
+        ]
+      }
+    },
+    "/yanxue/shadow/v1/sysDept/store": {
+      "post": {
+        "summary": "部门-保存",
+        "operationId": "SysDept_SysDeptStore",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SysDeptStoreResp"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SysDeptStoreReq"
+            }
+          },
+          {
+            "name": "Authorization",
+            "description": "TOKEN",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "SysDept"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1SysDeptDelReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id"
+        }
+      },
+      "title": "部门-删除-请求",
+      "required": [
+        "id"
+      ]
+    },
+    "v1SysDeptDelResp": {
+      "type": "object",
+      "title": "部门-删除-响应"
+    },
+    "v1SysDeptInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id"
+        },
+        "pid": {
+          "type": "string",
+          "title": "pid"
+        },
+        "type": {
+          "type": "string",
+          "title": "类型:root=根节点,child=子节点,leaf=叶子节点"
+        },
+        "name": {
+          "type": "string",
+          "title": "名称"
+        },
+        "remark": {
+          "type": "string",
+          "title": "备注"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态:-1=禁用,1=启用"
+        },
+        "createdAt": {
+          "type": "string",
+          "title": "创建时间"
+        },
+        "updatedAt": {
+          "type": "string",
+          "title": "更新时间"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1SysDeptInfo"
+          },
+          "title": "子集"
+        },
+        "isSelect": {
+          "type": "boolean",
+          "title": "是否可选"
+        }
+      },
+      "title": "部门-信息"
+    },
+    "v1SysDeptListResp": {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1SysDeptInfo"
+          },
+          "title": "列表"
+        }
+      },
+      "title": "部门-列表-响应"
+    },
+    "v1SysDeptStatusReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态:-1=禁用,1=启用"
+        }
+      },
+      "title": "部门-修改权限状态-请求",
+      "required": [
+        "id",
+        "status"
+      ]
+    },
+    "v1SysDeptStatusResp": {
+      "type": "object",
+      "title": "部门-修改权限状态-响应"
+    },
+    "v1SysDeptStoreReq": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id"
+        },
+        "pid": {
+          "type": "string",
+          "title": "pid"
+        },
+        "type": {
+          "type": "string",
+          "title": "类型:root=根节点,child=子节点,leaf=叶子节点"
+        },
+        "name": {
+          "type": "string",
+          "title": "名称"
+        },
+        "remark": {
+          "type": "string",
+          "title": "备注"
+        },
+        "status": {
+          "type": "integer",
+          "format": "int32",
+          "title": "状态:-1=禁用,1=启用"
+        }
+      },
+      "title": "部门-保存-请求",
+      "required": [
+        "id",
+        "pid",
+        "type",
+        "name",
+        "remark",
+        "status"
+      ]
+    },
+    "v1SysDeptStoreResp": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "title": "Id"
+        }
+      },
+      "title": "部门-保存-响应"
+    }
+  }
+}

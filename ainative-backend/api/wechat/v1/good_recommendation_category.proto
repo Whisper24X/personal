@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package wechat.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "gitlab.yc345.tv/backend/yanxue/api/wechat/v1;v1";
+
+//商品推荐分类表
+service GoodRecommendationCategory {
+  //商品推荐分类表-列表数据查询
+  rpc GetGoodRecommendationCategoryList(GetGoodRecommendationCategoryListReq) returns (GetGoodRecommendationCategoryListReply) {
+    option (google.api.http) = {
+      post: "/yanxue/wechat/v1/good_recommendation_category/list"
+      body: "*"
+    };
+  }
+}
+
+message GoodItem {
+  string goodId = 1; // 商品id
+  int32 sortOrder = 2; // 排序号，数字越小排序越靠前
+  string goodName = 3; // 商品名称
+  string mainImage = 4; // 主图URL
+  int32 price = 5; // 价格：单位分
+  bool isShowInHomepage = 6; // 是否在首页展示
+  repeated string label = 7; // 标签
+}
+
+//商品推荐分类表信息
+message GoodRecommendationCategoryInfo {
+  string id = 1; // id
+  string name = 2; // 分类名称
+  string icon = 3; // 分类图标URL
+  int32 status = 4; // 状态：-1-下架，1-上架
+  int32 sortOrder = 5; // 排序号，数字越小排序越靠前
+  repeated GoodItem goodItems = 6; // 商品内容JSON数组，格式：[{"goodId": "uuid", "sortOrder": 1}]
+}
+
+//请求-商品推荐分类表-列表数据查询
+message GetGoodRecommendationCategoryListReq {
+  int32 page = 1; //页码
+  int32 pageSize = 2; //页数
+}
+
+//响应-商品推荐分类表-列表数据查询
+message GetGoodRecommendationCategoryListReply {
+  int32 total = 1; //总数
+  repeated GoodRecommendationCategoryInfo list = 2; // 列表数据
+}
