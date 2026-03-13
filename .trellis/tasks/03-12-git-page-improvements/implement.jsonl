@@ -1,0 +1,4 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Modal and component patterns"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type definitions for Git APIs"}
