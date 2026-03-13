@@ -64,6 +64,7 @@ func newSubOrder(db *gorm.DB, opts ...gen.DOOption) subOrder {
 	_subOrder.ShopDiscountAmount = field.NewInt32(tableName, "shopDiscountAmount")
 	_subOrder.ActualInsured = field.NewInt32(tableName, "actualInsured")
 	_subOrder.CertificateID = field.NewString(tableName, "certificateId")
+	_subOrder.SettlementTime = field.NewTime(tableName, "settlementTime")
 
 	_subOrder.fillFieldMap()
 
@@ -111,6 +112,7 @@ type subOrder struct {
 	ShopDiscountAmount     field.Int32  // 店铺优惠：单位分
 	ActualInsured          field.Int32  // 实际保险费用：单位分（抖音）
 	CertificateID          field.String // 抖音券ID
+	SettlementTime         field.Time
 
 	fieldMap map[string]field.Expr
 }
@@ -164,6 +166,7 @@ func (s *subOrder) updateTableName(table string) *subOrder {
 	s.ShopDiscountAmount = field.NewInt32(table, "shopDiscountAmount")
 	s.ActualInsured = field.NewInt32(table, "actualInsured")
 	s.CertificateID = field.NewString(table, "certificateId")
+	s.SettlementTime = field.NewTime(table, "settlementTime")
 
 	s.fillFieldMap()
 
@@ -188,7 +191,7 @@ func (s *subOrder) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (s *subOrder) fillFieldMap() {
-	s.fieldMap = make(map[string]field.Expr, 37)
+	s.fieldMap = make(map[string]field.Expr, 38)
 	s.fieldMap["id"] = s.ID
 	s.fieldMap["parentOrderId"] = s.ParentOrderID
 	s.fieldMap["channelId"] = s.ChannelID
@@ -226,6 +229,7 @@ func (s *subOrder) fillFieldMap() {
 	s.fieldMap["shopDiscountAmount"] = s.ShopDiscountAmount
 	s.fieldMap["actualInsured"] = s.ActualInsured
 	s.fieldMap["certificateId"] = s.CertificateID
+	s.fieldMap["settlementTime"] = s.SettlementTime
 }
 
 func (s subOrder) clone(db *gorm.DB) subOrder {

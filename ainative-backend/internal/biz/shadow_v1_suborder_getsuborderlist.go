@@ -351,6 +351,7 @@ func (s *ShadowV1SubOrderUseCase) GetSubOrderList(ctx context.Context, req *pb.G
 			PaymentDiscountAmount:  paymentDiscountAmount,
 			ShopDiscountAmount:     shopDiscountAmount,
 			ActualInsured:          actualInsured,
+			SettlementTime:         TransTimeToRFC3339(subOrder.SettlementTime),
 		}
 
 		resp.List = append(resp.List, subOrderInfo)

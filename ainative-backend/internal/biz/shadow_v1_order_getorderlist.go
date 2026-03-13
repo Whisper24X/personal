@@ -273,6 +273,7 @@ func (s *ShadowV1OrderUseCase) GetOrderList(ctx context.Context, req *pb.GetOrde
 			PaymentDiscountAmount:  paymentDiscountAmount,
 			ShopDiscountAmount:     shopDiscountAmount,
 			ActualInsured:          actualInsured,
+			SettlementTime:         TransTimeToRFC3339(order.SettlementTime),
 		}
 		resp.List = append(resp.List, orderItem)
 	}

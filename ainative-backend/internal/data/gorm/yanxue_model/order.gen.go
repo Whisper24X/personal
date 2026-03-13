@@ -49,6 +49,7 @@ type Order struct {
 	ShopDiscountAmount     int32          `gorm:"column:shopDiscountAmount;type:integer;comment:店铺优惠：单位分" json:"shopDiscountAmount"`                   // 店铺优惠：单位分
 	ActualInsured          int32          `gorm:"column:actualInsured;type:integer;comment:实际保险费用：单位分（抖音）" json:"actualInsured"`                       // 实际保险费用：单位分（抖音）
 	CertificateID          string         `gorm:"column:certificateId;type:character varying(255);comment:抖音券ID" json:"certificateId"`                 // 抖音券ID
+	SettlementTime         time.Time      `gorm:"column:settlementTime;type:timestamp with time zone;not null;comment:结算时间" json:"settlementTime"`     // 结算时间
 }
 
 // TableName Order's table name

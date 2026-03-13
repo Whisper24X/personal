@@ -31,6 +31,7 @@ const OperationOrderGetOrderVerificationProgressList = "/shadow.v1.Order/GetOrde
 const OperationOrderImportOrderInfoByCsvFile = "/shadow.v1.Order/ImportOrderInfoByCsvFile"
 const OperationOrderImportPhoneByCsvFile = "/shadow.v1.Order/ImportPhoneByCsvFile"
 const OperationOrderMiniProgramOrderRefund = "/shadow.v1.Order/MiniProgramOrderRefund"
+const OperationOrderQueryDouYinOrderCertificateInfo = "/shadow.v1.Order/QueryDouYinOrderCertificateInfo"
 const OperationOrderRefreshGoodType = "/shadow.v1.Order/RefreshGoodType"
 const OperationOrderRefreshServiceStatus = "/shadow.v1.Order/RefreshServiceStatus"
 const OperationOrderRetryFailedOrderCallback = "/shadow.v1.Order/RetryFailedOrderCallback"
@@ -39,6 +40,7 @@ const OperationOrderSyncDouYinCertificateId = "/shadow.v1.Order/SyncDouYinCertif
 const OperationOrderSyncDouYinOrder = "/shadow.v1.Order/SyncDouYinOrder"
 const OperationOrderSyncDouYinSettleInfo = "/shadow.v1.Order/SyncDouYinSettleInfo"
 const OperationOrderSyncHistoryOrderFee = "/shadow.v1.Order/SyncHistoryOrderFee"
+const OperationOrderSyncOrderSettlementTime = "/shadow.v1.Order/SyncOrderSettlementTime"
 const OperationOrderSyncWeiDianOrder = "/shadow.v1.Order/SyncWeiDianOrder"
 const OperationOrderSyncWeiDianRefundAmount = "/shadow.v1.Order/SyncWeiDianRefundAmount"
 const OperationOrderUpdateOrderDetail = "/shadow.v1.Order/UpdateOrderDetail"
@@ -56,6 +58,7 @@ type OrderHTTPServer interface {
 	ImportOrderInfoByCsvFile(context.Context, *ImportOrderInfoByCsvFileReq) (*ImportOrderInfoByCsvFileReply, error)
 	ImportPhoneByCsvFile(context.Context, *ImportPhoneByCsvFileReq) (*ImportPhoneByCsvFileReply, error)
 	MiniProgramOrderRefund(context.Context, *MiniProgramOrderRefundReq) (*MiniProgramOrderRefundReply, error)
+	QueryDouYinOrderCertificateInfo(context.Context, *QueryDouYinOrderCertificateInfoReq) (*QueryDouYinOrderCertificateInfoReply, error)
 	RefreshGoodType(context.Context, *RefreshGoodTypeReq) (*RefreshGoodTypeReply, error)
 	RefreshServiceStatus(context.Context, *RefreshServiceStatusReq) (*RefreshServiceStatusReply, error)
 	RetryFailedOrderCallback(context.Context, *RetryFailedOrderCallbackReq) (*RetryFailedOrderCallbackReply, error)
@@ -64,6 +67,7 @@ type OrderHTTPServer interface {
 	SyncDouYinOrder(context.Context, *SyncDouYinOrderReq) (*SyncDouYinOrderReply, error)
 	SyncDouYinSettleInfo(context.Context, *SyncDouYinSettleInfoReq) (*SyncDouYinSettleInfoReply, error)
 	SyncHistoryOrderFee(context.Context, *SyncHistoryOrderFeeReq) (*SyncHistoryOrderFeeReply, error)
+	SyncOrderSettlementTime(context.Context, *SyncOrderSettlementTimeReq) (*SyncOrderSettlementTimeReply, error)
 	SyncWeiDianOrder(context.Context, *SyncWeiDianOrderReq) (*SyncWeiDianOrderReply, error)
 	SyncWeiDianRefundAmount(context.Context, *SyncWeiDianRefundAmountReq) (*SyncWeiDianRefundAmountReply, error)
 	UpdateOrderDetail(context.Context, *UpdateOrderDetailReq) (*UpdateOrderDetailReply, error)
@@ -94,6 +98,8 @@ func RegisterOrderHTTPServer(s *http.Server, srv OrderHTTPServer) {
 	r.POST("/yanxue/api/shadow/v1/order/fixRefundAmount", _Order_FixRefundAmount0_HTTP_Handler(srv))
 	r.POST("/yanxue/api/shadow/v1/order/syncDouYinOrder", _Order_SyncDouYinOrder0_HTTP_Handler(srv))
 	r.POST("/yanxue/api/shadow/v1/order/retryFailedOrderCallback", _Order_RetryFailedOrderCallback0_HTTP_Handler(srv))
+	r.POST("/yanxue/api/shadow/v1/order/syncOrderSettlementTime", _Order_SyncOrderSettlementTime0_HTTP_Handler(srv))
+	r.POST("/yanxue/api/shadow/v1/order/queryDouYinOrderCertificateInfo", _Order_QueryDouYinOrderCertificateInfo0_HTTP_Handler(srv))
 }
 
 func _Order_GetOrderList0_HTTP_Handler(srv OrderHTTPServer) func(ctx http.Context) error {
@@ -533,6 +539,44 @@ func _Order_RetryFailedOrderCallback0_HTTP_Handler(srv OrderHTTPServer) func(ctx
 	}
 }
 
+func _Order_SyncOrderSettlementTime0_HTTP_Handler(srv OrderHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in SyncOrderSettlementTimeReq
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOrderSyncOrderSettlementTime)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.SyncOrderSettlementTime(ctx, req.(*SyncOrderSettlementTimeReq))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*SyncOrderSettlementTimeReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Order_QueryDouYinOrderCertificateInfo0_HTTP_Handler(srv OrderHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in QueryDouYinOrderCertificateInfoReq
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationOrderQueryDouYinOrderCertificateInfo)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.QueryDouYinOrderCertificateInfo(ctx, req.(*QueryDouYinOrderCertificateInfoReq))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*QueryDouYinOrderCertificateInfoReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 type OrderHTTPClient interface {
 	DouYinOrderInfoCallback(ctx context.Context, req *DouYinOrderInfoCallbackReq, opts ...http.CallOption) (rsp *DouYinOrderInfoCallbackReply, err error)
 	ExportOrderList(ctx context.Context, req *ExportOrderListReq, opts ...http.CallOption) (rsp *ExportOrderListReply, err error)
@@ -546,6 +590,7 @@ type OrderHTTPClient interface {
 	ImportOrderInfoByCsvFile(ctx context.Context, req *ImportOrderInfoByCsvFileReq, opts ...http.CallOption) (rsp *ImportOrderInfoByCsvFileReply, err error)
 	ImportPhoneByCsvFile(ctx context.Context, req *ImportPhoneByCsvFileReq, opts ...http.CallOption) (rsp *ImportPhoneByCsvFileReply, err error)
 	MiniProgramOrderRefund(ctx context.Context, req *MiniProgramOrderRefundReq, opts ...http.CallOption) (rsp *MiniProgramOrderRefundReply, err error)
+	QueryDouYinOrderCertificateInfo(ctx context.Context, req *QueryDouYinOrderCertificateInfoReq, opts ...http.CallOption) (rsp *QueryDouYinOrderCertificateInfoReply, err error)
 	RefreshGoodType(ctx context.Context, req *RefreshGoodTypeReq, opts ...http.CallOption) (rsp *RefreshGoodTypeReply, err error)
 	RefreshServiceStatus(ctx context.Context, req *RefreshServiceStatusReq, opts ...http.CallOption) (rsp *RefreshServiceStatusReply, err error)
 	RetryFailedOrderCallback(ctx context.Context, req *RetryFailedOrderCallbackReq, opts ...http.CallOption) (rsp *RetryFailedOrderCallbackReply, err error)
@@ -554,6 +599,7 @@ type OrderHTTPClient interface {
 	SyncDouYinOrder(ctx context.Context, req *SyncDouYinOrderReq, opts ...http.CallOption) (rsp *SyncDouYinOrderReply, err error)
 	SyncDouYinSettleInfo(ctx context.Context, req *SyncDouYinSettleInfoReq, opts ...http.CallOption) (rsp *SyncDouYinSettleInfoReply, err error)
 	SyncHistoryOrderFee(ctx context.Context, req *SyncHistoryOrderFeeReq, opts ...http.CallOption) (rsp *SyncHistoryOrderFeeReply, err error)
+	SyncOrderSettlementTime(ctx context.Context, req *SyncOrderSettlementTimeReq, opts ...http.CallOption) (rsp *SyncOrderSettlementTimeReply, err error)
 	SyncWeiDianOrder(ctx context.Context, req *SyncWeiDianOrderReq, opts ...http.CallOption) (rsp *SyncWeiDianOrderReply, err error)
 	SyncWeiDianRefundAmount(ctx context.Context, req *SyncWeiDianRefundAmountReq, opts ...http.CallOption) (rsp *SyncWeiDianRefundAmountReply, err error)
 	UpdateOrderDetail(ctx context.Context, req *UpdateOrderDetailReq, opts ...http.CallOption) (rsp *UpdateOrderDetailReply, err error)
@@ -723,6 +769,19 @@ func (c *OrderHTTPClientImpl) MiniProgramOrderRefund(ctx context.Context, in *Mi
 	return &out, err
 }
 
+func (c *OrderHTTPClientImpl) QueryDouYinOrderCertificateInfo(ctx context.Context, in *QueryDouYinOrderCertificateInfoReq, opts ...http.CallOption) (*QueryDouYinOrderCertificateInfoReply, error) {
+	var out QueryDouYinOrderCertificateInfoReply
+	pattern := "/yanxue/api/shadow/v1/order/queryDouYinOrderCertificateInfo"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationOrderQueryDouYinOrderCertificateInfo))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, err
+}
+
 func (c *OrderHTTPClientImpl) RefreshGoodType(ctx context.Context, in *RefreshGoodTypeReq, opts ...http.CallOption) (*RefreshGoodTypeReply, error) {
 	var out RefreshGoodTypeReply
 	pattern := "/yanxue/api/shadow/v1/order/refreshGoodType"
@@ -819,6 +878,19 @@ func (c *OrderHTTPClientImpl) SyncHistoryOrderFee(ctx context.Context, in *SyncH
 	pattern := "/yanxue/api/shadow/v1/order/syncHistoryOrderFee"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationOrderSyncHistoryOrderFee))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, err
+}
+
+func (c *OrderHTTPClientImpl) SyncOrderSettlementTime(ctx context.Context, in *SyncOrderSettlementTimeReq, opts ...http.CallOption) (*SyncOrderSettlementTimeReply, error) {
+	var out SyncOrderSettlementTimeReply
+	pattern := "/yanxue/api/shadow/v1/order/syncOrderSettlementTime"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationOrderSyncOrderSettlementTime))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

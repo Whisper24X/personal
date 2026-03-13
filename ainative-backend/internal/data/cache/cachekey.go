@@ -32,4 +32,5 @@ var (
 	FixRefundAmountLock                  = cacheKey.AddKey("FixRefundAmountLock", time.Minute*5, "修复退款金额锁")
 	SyncDouYinOrderLock                  = cacheKey.AddKey("SyncDouYinOrderLock", time.Minute*10, "同步抖音订单锁")
 	RetryFailedOrderCallbackLock         = cacheKey.AddKey("RetryFailedOrderCallbackLock", time.Minute*1, "重试失败订单回调锁")
+	SyncOrderSettlementTimeLock          = cacheKey.AddKey("SyncOrderSettlementTimeLock", time.Minute*5, "同步订单结算时间锁")
 )

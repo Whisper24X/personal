@@ -544,21 +544,125 @@ type QueryDouYinCertificateReply struct {
 			Status          int    `json:"status"`            // 券状态
 			UsedStatusType  int    `json:"used_status_type"`  // 使用状态类型
 			CanVerifyStatus int    `json:"can_verify_status"` // 可核销状态
-			ExpireTime      int64  `json:"expire_time"`       // 过期时间
-			StartTime       int64  `json:"start_time"`        // 开始时间
+			ExpireTime      int64  `json:"expire_time"`       // 过期时间（秒级时间戳）
+			StartTime       int64  `json:"start_time"`        // 开始时间（秒级时间戳）
+			CertificateId   int64  `json:"certificate_id"`    // 券ID
+			EncryptedCode   string `json:"encrypted_code"`    // 加密券码
 			Amount          struct {
-				PayAmount              int64 `json:"pay_amount"`               // 支付金额（单位：分）
-				PlatformDiscountAmount int64 `json:"platform_discount_amount"` // 平台优惠金额（单位：分）
-				PaymentDiscountAmount  int64 `json:"payment_discount_amount"`  // 支付优惠金额（单位：分）
+				PayAmount              int64  `json:"pay_amount"`                // 支付金额（单位：分）
+				PlatformDiscountAmount int64  `json:"platform_discount_amount"`  // 平台优惠金额（单位：分）
+				PaymentDiscountAmount  int64  `json:"payment_discount_amount"`   // 支付优惠金额（单位：分）
+				OriginalAmount         int64  `json:"original_amount"`           // 原始金额（单位：分）
+				MerchantTicketAmount   int64  `json:"merchant_ticket_amount"`    // 商家优惠金额（单位：分）
+				BrandTicketAmount      int64  `json:"brand_ticket_amount"`       // 品牌优惠金额（单位：分）
+				CouponPayAmount        int64  `json:"coupon_pay_amount"`         // 优惠券支付金额（单位：分）
+				ListMarketAmount       int64  `json:"list_market_amount"`        // 市场价金额（单位：分）
+				OriginListMarketAmount int64  `json:"origin_list_market_amount"` // 原始市场价金额（单位：分）
+				OriginalCurrency       string `json:"original_currency"`         // 原始货币类型
 			} `json:"amount"` // 金额信息
 			PayBillInfo struct {
 				BillTotalAmount int64 `json:"bill_total_amount"` // 账单总金额（单位：分）
 				BillAmount      int64 `json:"bill_amount"`       // 账单金额（单位：分）
 			} `json:"pay_bill_info"` // 支付账单信息
+			Sku struct {
+				SkuId               string            `json:"sku_id"`                 // SKU ID
+				Title               string            `json:"title"`                  // 商品标题
+				MarketPrice         int64             `json:"market_price"`           // 市场价格（单位：分）
+				ProductId           string            `json:"product_id"`             // 商品ID
+				ThirdSkuId          string            `json:"third_sku_id"`           // 第三方SKU ID
+				SkuOutId            string            `json:"sku_out_id"`             // SKU外部ID
+				ProductOutId        string            `json:"product_out_id"`         // 商品外部ID
+				SuplierProductOutId string            `json:"suplier_product_out_id"` // 供应商商品外部ID
+				AccountId           string            `json:"account_id"`             // 账户ID
+				VoucherType         int               `json:"voucher_type"`           // 券类型
+				GrouponType         int               `json:"groupon_type"`           // 团购类型
+				SoldStartTime       int64             `json:"sold_start_time"`        // 开售时间（秒级时间戳）
+				ProductAttr         map[string]string `json:"product_attr"`           // 商品属性
+			} `json:"sku"` // SKU信息
+			Verify struct {
+				VerifyId           string `json:"verify_id"`             // 核销ID
+				CertificateId      string `json:"certificate_id"`        // 券ID
+				VerifyType         int    `json:"verify_type"`           // 核销类型
+				PoiId              int64  `json:"poi_id"`                // POI ID
+				VerifierUniqueId   string `json:"verifier_unique_id"`    // 核销员唯一ID
+				VerifyTime         int64  `json:"verify_time"`           // 核销时间（秒级时间戳）
+				CanCancel          bool   `json:"can_cancel"`            // 是否可以取消核销
+				TimesCardSerialNum int64  `json:"times_card_serial_num"` // 次卡序列号
+				BenefitAmount      struct {
+					PrincipalAmount        int64 `json:"principal_amount"`         // 本金金额（单位：分）
+					BenefitAmount          int64 `json:"benefit_amount"`           // 优惠金额（单位：分）
+					TotalAmount            int64 `json:"total_amount"`             // 总金额（单位：分）
+					PayAmount              int64 `json:"pay_amount"`               // 支付金额（单位：分）
+					PlatformDiscountAmount int64 `json:"platform_discount_amount"` // 平台优惠金额（单位：分）
+					MerchantDiscountAmount int64 `json:"merchant_discount_amount"` // 商家优惠金额（单位：分）
+					BrandDiscountAmount    int64 `json:"brand_discount_amount"`    // 品牌优惠金额（单位：分）
+					ProviderDiscountAmount int64 `json:"provider_discount_amount"` // 供应商优惠金额（单位：分）
+					PaymentDiscountAmount  int64 `json:"payment_discount_amount"`  // 支付优惠金额（单位：分）
+				} `json:"benefit_amount"` // 优惠金额信息
+				Extra struct {
+					OpenOrderId string `json:"open_order_id"` // 开放订单ID
+				} `json:"extra"` // 额外信息
+			} `json:"verify"` // 核销信息（单次核销场景）
+			VerifyRecords []struct {
+				VerifyId           string `json:"verify_id"`             // 核销ID
+				CertificateId      string `json:"certificate_id"`        // 券ID
+				VerifyType         int    `json:"verify_type"`           // 核销类型
+				PoiId              int64  `json:"poi_id"`                // POI ID
+				VerifierUniqueId   string `json:"verifier_unique_id"`    // 核销员唯一ID
+				VerifyTime         int64  `json:"verify_time"`           // 核销时间（秒级时间戳）
+				CanCancel          bool   `json:"can_cancel"`            // 是否可以取消核销
+				TimesCardSerialNum int64  `json:"times_card_serial_num"` // 次卡序列号
+				BenefitAmount      struct {
+					PrincipalAmount        int64 `json:"principal_amount"`         // 本金金额（单位：分）
+					BenefitAmount          int64 `json:"benefit_amount"`           // 优惠金额（单位：分）
+					TotalAmount            int64 `json:"total_amount"`             // 总金额（单位：分）
+					PayAmount              int64 `json:"pay_amount"`               // 支付金额（单位：分）
+					PlatformDiscountAmount int64 `json:"platform_discount_amount"` // 平台优惠金额（单位：分）
+					MerchantDiscountAmount int64 `json:"merchant_discount_amount"` // 商家优惠金额（单位：分）
+					BrandDiscountAmount    int64 `json:"brand_discount_amount"`    // 品牌优惠金额（单位：分）
+					ProviderDiscountAmount int64 `json:"provider_discount_amount"` // 供应商优惠金额（单位：分）
+					PaymentDiscountAmount  int64 `json:"payment_discount_amount"`  // 支付优惠金额（单位：分）
+				} `json:"benefit_amount"` // 优惠金额信息
+				Extra struct {
+					OpenOrderId string `json:"open_order_id"` // 开放订单ID
+				} `json:"extra"` // 额外信息
+			} `json:"verify_records"` // 核销记录列表（多次核销场景）
+			CancelVerifyRecords []struct {
+				VerifyId           string `json:"verify_id"`             // 核销ID
+				CertificateId      string `json:"certificate_id"`        // 券ID
+				VerifyType         int    `json:"verify_type"`           // 核销类型
+				PoiId              int64  `json:"poi_id"`                // POI ID
+				VerifierUniqueId   string `json:"verifier_unique_id"`    // 核销员唯一ID
+				VerifyTime         int64  `json:"verify_time"`           // 核销时间（秒级时间戳）
+				CanCancel          bool   `json:"can_cancel"`            // 是否可以取消核销
+				TimesCardSerialNum int64  `json:"times_card_serial_num"` // 次卡序列号
+				BenefitAmount      struct {
+					PrincipalAmount        int64 `json:"principal_amount"`         // 本金金额（单位：分）
+					BenefitAmount          int64 `json:"benefit_amount"`           // 优惠金额（单位：分）
+					TotalAmount            int64 `json:"total_amount"`             // 总金额（单位：分）
+					PayAmount              int64 `json:"pay_amount"`               // 支付金额（单位：分）
+					PlatformDiscountAmount int64 `json:"platform_discount_amount"` // 平台优惠金额（单位：分）
+					MerchantDiscountAmount int64 `json:"merchant_discount_amount"` // 商家优惠金额（单位：分）
+					BrandDiscountAmount    int64 `json:"brand_discount_amount"`    // 品牌优惠金额（单位：分）
+					ProviderDiscountAmount int64 `json:"provider_discount_amount"` // 供应商优惠金额（单位：分）
+					PaymentDiscountAmount  int64 `json:"payment_discount_amount"`  // 支付优惠金额（单位：分）
+				} `json:"benefit_amount"` // 优惠金额信息
+				Extra struct {
+					OpenOrderId string `json:"open_order_id"` // 开放订单ID
+				} `json:"extra"` // 额外信息
+			} `json:"cancel_verify_records"` // 取消核销记录列表
 		} `json:"certificates"` // 券信息列表
 		ErrorCode   int    `json:"error_code"`  // 错误码
 		Description string `json:"description"` // 错误描述
 	} `json:"data"`
+	Extra struct {
+		ErrorCode      int    `json:"error_code"`      // 错误码
+		Description    string `json:"description"`     // 错误描述
+		SubErrorCode   int    `json:"sub_error_code"`  // 子错误码
+		SubDescription string `json:"sub_description"` // 子错误描述
+		Logid          string `json:"logid"`           // 日志ID
+		Now            int64  `json:"now"`             // 当前时间戳
+	} `json:"extra"` // 额外信息
 }
 
 // QueryDouYinCertificate 查询抖音券状态

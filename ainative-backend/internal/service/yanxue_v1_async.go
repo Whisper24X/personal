@@ -124,6 +124,12 @@ func (s *YanxueV1AsyncService) SyncWechatPayBillPlatformFee(ctx context.Context)
 	return s.shadowV1OrderService.SyncWechatPayBillPlatformFee(ctx)
 }
 
+// SyncOrderSettlementTime 同步订单结算时间
+// 同时同步小程序和抖音渠道的订单结算时间
+func (s *YanxueV1AsyncService) SyncOrderSettlementTime(ctx context.Context) error {
+	return s.shadowV1OrderService.SyncOrderSettlementTimeTask(ctx)
+}
+
 // FixOrderData 修复订单数据
 func (s *YanxueV1AsyncService) FixOrderData(ctx context.Context) error {
 	_, err := s.shadowV1OrderService.FixOrderData(ctx, &pb.FixOrderDataReq{})
