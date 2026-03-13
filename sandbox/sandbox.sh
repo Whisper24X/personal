@@ -335,7 +335,9 @@ cmd_restart() {
             || warn "日志清理失败，继续重启"
     fi
 
-    dc stop
+    dc down
+    # 容器可能由旧 project-name 创建，dc down 无法删除；显式清理残留
+    docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
     dc up -d --wait
     success "沙箱已重启"
 }
