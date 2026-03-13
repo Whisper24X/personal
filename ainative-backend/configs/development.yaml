@@ -33,7 +33,7 @@ yc:
       disableMetric: false
       slowThreshold: 0.5s
   nacos:
-    host: nacos.ops.svc.cluster.local
+    host: 10.88.119.69
     port: 8848
     username: nacos
     password: unitednac
