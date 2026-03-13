@@ -25,7 +25,7 @@ description: 执行代码改进。读取分析结果和改进需求文件，按�
 
 1. **读取分析结果** `docs/code/improveAnalyzeResult.md`
    - 解析 JSON，获取 `issues` 列表
-   - 筛选 `status === "pending"` 的问题
+   - 筛选 `status === "pending"` 且 `source === "product"` 的问题（跳过 `source === "test-env"` 的问题）
    - 按 `priority` 排序：high → medium → low
 
 2. **读取改进需求原文** `docs/code/ImproveCode.md`
@@ -55,6 +55,9 @@ description: 执行代码改进。读取分析结果和改进需求文件，按�
 - 保持代码风格与项目一致
 - 确保修复后代码可编译、可运行
 - 每个修复尽量原子化，便于追踪
+- **禁止修改测试脚本**：不得修改 `docs/test/auto/` 目录下的任何文件
+- **仅修改应用代码**：所有修复必须针对项目的应用源码（前端组件、后端接口等）
+- **跳过测试环境问题**：`source` 为 `test-env` 的问题不执行修复，直接标记为 `⏭ 已跳过（测试环境问题）`
 
 ### 3. 标记已解决（重要）
 

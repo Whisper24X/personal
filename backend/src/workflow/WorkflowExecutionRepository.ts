@@ -377,6 +377,12 @@ export class WorkflowExecutionRepository {
       if (executionContext.deployFailed !== undefined) {
         delete executionContext.deployFailed;
       }
+      if (executionContext.resetToEngineer !== undefined) {
+        delete executionContext.resetToEngineer;
+      }
+      if (executionContext.lastActionOutput !== undefined) {
+        delete executionContext.lastActionOutput;
+      }
 
       // Find target role index
       const targetStep = steps.find((s) => s.role === targetRole);

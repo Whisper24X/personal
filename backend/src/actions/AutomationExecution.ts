@@ -7,6 +7,7 @@
 import { BaseAction } from '../core/base/BaseAction';
 import { IActionOutput } from '@mind2build/shared';
 import { WorkspaceOptions, logger, WorkspaceManager } from '../utils';
+import { runOptimizer } from '../optimizer/optimizerRunner';
 import * as fs from 'fs/promises';
 import { existsSync } from 'fs';
 import * as path from 'path';
@@ -58,6 +59,16 @@ interface TestCaseExecutionResult {
   screenshotSuccess?: string;
   /** 执行失败时的页面截图文件名（相对 report 目录），用于报告展示 */
   screenshotFail?: string;
+  /** 嵌入的日志信息（step/selector/expected/actual/url/consoleErrors/network），供分析失败原因 */
+  logEmbed?: {
+    step?: string;
+    selector?: string;
+    expected?: string;
+    actual?: string;
+    url?: string;
+    consoleErrors?: string[];
+    network?: { api: string; status: number }[];
+  };
 }
 
 export class AutomationExecution extends BaseAction {
@@ -273,8 +284,75 @@ export class AutomationExecution extends BaseAction {
         reportDir,
       });
 
+      // When tests fail, save structured bug report as ImproveCode.md for the Engineer to fix
+      let resetToEngineer = false;
+      if (summary.failed > 0) {
+        try {
+          const codeOptions: WorkspaceOptions = { ...workspaceOptions, documentType: 'CODE' };
+          const bugReport = await this.generateBugReport(summary, results, reportDir);
+          await this.saveToWorkspace('ImproveCode.md', bugReport, codeOptions);
+          resetToEngineer = true;
+          logger.info('AutomationExecution: Saved ImproveCode.md with structured bug report', {
+            failedCount: summary.failed,
+          });
+        } catch (saveError: any) {
+          logger.warn('AutomationExecution: Failed to save ImproveCode.md, continuing normally', {
+            error: saveError.message,
+          });
+        }
+      }
+
+      // Generate HTML report with embedded base64 screenshots as content
+      let embeddedHtml = this.generateHTMLReport(summary, results);
+
+      // Embed screenshots as base64 data URLs inline
+      for (const r of results) {
+        if (r.screenshotFail) {
+          const imgPath = path.join(reportDir, r.screenshotFail);
+          try {
+            const imgBuffer = await fs.readFile(imgPath);
+            const base64 = imgBuffer.toString('base64');
+            embeddedHtml = embeddedHtml.replace(
+              `src="${this.escapeHtml(r.screenshotFail)}"`,
+              `src="data:image/png;base64,${base64}"`
+            );
+          } catch (imgErr: any) {
+            logger.warn('AutomationExecution: Failed to embed screenshot', {
+              file: r.screenshotFail,
+              error: imgErr.message,
+            });
+          }
+        }
+        if (r.screenshotSuccess) {
+          const imgPath = path.join(reportDir, r.screenshotSuccess);
+          try {
+            const imgBuffer = await fs.readFile(imgPath);
+            const base64 = imgBuffer.toString('base64');
+            embeddedHtml = embeddedHtml.replace(
+              `src="${this.escapeHtml(r.screenshotSuccess)}"`,
+              `src="data:image/png;base64,${base64}"`
+            );
+          } catch (imgErr: any) {
+            logger.warn('AutomationExecution: Failed to embed screenshot', {
+              file: r.screenshotSuccess,
+              error: imgErr.message,
+            });
+          }
+        }
+      }
+
+      if (resetToEngineer) {
+        embeddedHtml = embeddedHtml.replace(
+          '</div>\n</body>',
+          `    <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+            <strong>⚠ 检测到失败用例</strong>，已生成 ImproveCode.md 并重置流程到工程师角色进行代码改进。
+        </div>
+    </div>\n</body>`
+        );
+      }
+
       return {
-        content: `自动化测试执行完成\n\n总测试用例数: ${summary.total}\n通过: ${summary.passed}\n失败: ${summary.failed}\n成功率: ${summary.successRate}\n\n报告已保存到 test/report 目录`,
+        content: embeddedHtml,
         data: {
           type: 'automation_execution',
           summary,
@@ -282,6 +360,7 @@ export class AutomationExecution extends BaseAction {
           timestamp: new Date().toISOString(),
           workspaceDir,
           reportDir,
+          resetToEngineer,
         },
       };
     } catch (error: any) {
@@ -295,7 +374,58 @@ export class AutomationExecution extends BaseAction {
   }
 
   /**
-   * Find all Playwright script files (.js / .ts) in the auto directory
+   * Parse TEST.md to extract TC IDs in document order (first occurrence).
+   * Returns Map<tcId, index> for sorting. Empty map on parse failure.
+   */
+  private async getTestMdTcOrder(workspaceDir: string): Promise<Map<string, number>> {
+    const testMdPath = path.join(workspaceDir, 'TEST.md');
+    try {
+      const content = await fs.readFile(testMdPath, 'utf-8');
+      const tcOrder = new Map<string, number>();
+      const tcRegex = /TC-[^\s]+/g;
+      let match: RegExpExecArray | null;
+      let index = 0;
+      while ((match = tcRegex.exec(content)) !== null) {
+        const tcId = match[0];
+        if (!tcOrder.has(tcId)) {
+          tcOrder.set(tcId, index++);
+        }
+      }
+      if (tcOrder.size > 0) {
+        logger.info('AutomationExecution: Parsed TEST.md for TC order', {
+          testMdPath,
+          tcCount: tcOrder.size,
+          tcIds: Array.from(tcOrder.keys()),
+        });
+      }
+      return tcOrder;
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        logger.debug('AutomationExecution: TEST.md not found, using lexicographic sort', { testMdPath });
+      } else {
+        logger.warn('AutomationExecution: Failed to parse TEST.md for TC order, using lexicographic sort', {
+          testMdPath,
+          error: err?.message ?? String(err),
+        });
+      }
+      return new Map();
+    }
+  }
+
+  /**
+   * Extract TC ID from Playwright script filename.
+   * e.g. playwright-test-TC-渠道配置-001-xxx.js -> TC-渠道配置-001
+   */
+  private extractTcIdFromFilepath(filePath: string): string | null {
+    const baseName = path.basename(filePath);
+    // TC-{模块}-{编号}，如 TC-渠道配置-001、TC-CSV导入-001
+    const match = baseName.match(/playwright-test-(TC-[^-]+-\d+)(?:-|\.)/);
+    return match ? match[1] : null;
+  }
+
+  /**
+   * Find all Playwright script files (.js / .ts) in the auto directory.
+   * Sorts by TEST.md TC order when available; otherwise lexicographic.
    */
   private async findTestCaseFiles(autoDir: string): Promise<string[]> {
     try {
@@ -306,7 +436,8 @@ export class AutomationExecution extends BaseAction {
         entryNames: entries.map((e) => e.name),
       });
 
-      const scriptFiles = entries
+      const workspaceDir = path.dirname(autoDir);
+      let scriptFiles = entries
         .filter((entry) => entry.isFile() && (entry.name.endsWith('.js') || entry.name.endsWith('.ts')))
         .filter((entry) => {
           const name = entry.name;
@@ -316,8 +447,23 @@ export class AutomationExecution extends BaseAction {
           }
           return true;
         })
-        .map((entry) => path.join(autoDir, entry.name))
-        .sort();
+        .map((entry) => path.join(autoDir, entry.name));
+
+      const tcOrder = await this.getTestMdTcOrder(workspaceDir);
+      if (tcOrder.size > 0) {
+        scriptFiles = scriptFiles.sort((a, b) => {
+          const tcA = this.extractTcIdFromFilepath(a);
+          const tcB = this.extractTcIdFromFilepath(b);
+          const idxA = tcA !== null ? tcOrder.get(tcA) : undefined;
+          const idxB = tcB !== null ? tcOrder.get(tcB) : undefined;
+          if (idxA !== undefined && idxB !== undefined) return idxA - idxB;
+          if (idxA !== undefined) return -1;
+          if (idxB !== undefined) return 1;
+          return path.basename(a).localeCompare(path.basename(b));
+        });
+      } else {
+        scriptFiles.sort();
+      }
 
       logger.info('AutomationExecution: Filtered Playwright script files', {
         fileCount: scriptFiles.length,
@@ -332,6 +478,32 @@ export class AutomationExecution extends BaseAction {
         autoDir,
       });
       return [];
+    }
+  }
+
+  /**
+   * Parse __AUTOMATION_LOG__{json}__END__ from stdout and build logEmbed with error info
+   */
+  private parseLogFromStdout(stdout: string, testCaseId: string, error?: string): TestCaseExecutionResult['logEmbed'] | undefined {
+    const m = stdout.match(/__AUTOMATION_LOG__(.+?)__END__/s);
+    if (!m) return undefined;
+    try {
+      const raw = JSON.parse(m[1]) as { url?: string; consoleErrors?: string[]; network?: { api: string; status: number }[] };
+      const locator = error ? this.extractLocatorInfo(error) : undefined;
+      const actual = error ? this.extractErrorDescription(error) : undefined;
+      const step = testCaseId.replace(/^playwright-test-/, '');
+      const embed: NonNullable<TestCaseExecutionResult['logEmbed']> = {
+        step,
+        url: raw.url || undefined,
+        consoleErrors: raw.consoleErrors?.length ? raw.consoleErrors : undefined,
+        network: raw.network?.length ? raw.network : undefined,
+      };
+      if (locator?.selector) embed.selector = locator.selector;
+      if (actual) embed.actual = actual;
+      if (embed.selector || embed.actual) embed.expected = 'visible';
+      return embed;
+    } catch {
+      return undefined;
     }
   }
 
@@ -429,16 +601,19 @@ export class AutomationExecution extends BaseAction {
   }
 
   /**
-   * 从 workspace 的 docs/deploy/deployResult.md 解析部署地址，供 Playwright 脚本 TARGET_URL。
-   * 优先「管理后台」，其次「统一入口」，否则取表中第一个 URL。
+   * 从 workspace 的 docs/deploy 解析部署地址，供 Playwright 脚本 TARGET_URL。
+   * 优先读取 deploy.md（含完整访问地址表），若无或解析不到则读 deployResult.md。
+   * 优先级：管理后台 > 统一入口 > 表中第一个 URL。
    */
   private async readDeployResultBaseUrl(workspaceDir: string): Promise<string | undefined> {
     const baseWorkspaceDir = workspaceDir.replace(/\/docs\/test$/, '');
-    const deployResultPath = path.join(baseWorkspaceDir, 'docs', 'deploy', 'deployResult.md');
-    try {
-      const content = await fs.readFile(deployResultPath, 'utf-8');
+    const deployDir = path.join(baseWorkspaceDir, 'docs', 'deploy');
+    const deployMdPath = path.join(deployDir, 'deploy.md');
+    const deployResultPath = path.join(deployDir, 'deployResult.md');
+    const regex = /([^\s,，；]+?)\s*[：:]?\s*(https?:\/\/[^\s,，；)、]+)/g;
+
+    const parseUrlMap = (content: string): Record<string, string> => {
       const map: Record<string, string> = {};
-      const regex = /([^\s,，；]+?)\s*[：:]?\s*(https?:\/\/[^\s,，；)、]+)/g;
       let match: RegExpExecArray | null;
       while ((match = regex.exec(content)) !== null) {
         const label = match[1].trim();
@@ -447,6 +622,37 @@ export class AutomationExecution extends BaseAction {
           map[label] = url;
         }
       }
+      return map;
+    };
+
+    try {
+      try {
+        const content = await fs.readFile(deployMdPath, 'utf-8');
+        const map = parseUrlMap(content);
+        if (Object.keys(map).length > 0) {
+          if (map['管理后台']) {
+            logger.debug('AutomationExecution: Resolved baseUrl from deploy.md (管理后台)', {
+              deployMdPath,
+              url: map['管理后台'],
+            });
+            return map['管理后台'];
+          }
+          if (map['统一入口']) {
+            return map['统一入口'];
+          }
+          const firstKey = Object.keys(map)[0];
+          return firstKey ? map[firstKey] : undefined;
+        }
+      } catch (e: any) {
+        if (e?.code !== 'ENOENT') {
+          logger.warn('AutomationExecution: Failed to read deploy.md for baseUrl', {
+            deployMdPath,
+            error: e?.message ?? String(e),
+          });
+        }
+      }
+      const content = await fs.readFile(deployResultPath, 'utf-8');
+      const map = parseUrlMap(content);
       if (map['管理后台']) {
         return map['管理后台'];
       }
@@ -457,9 +663,13 @@ export class AutomationExecution extends BaseAction {
       return firstKey ? map[firstKey] : undefined;
     } catch (err: any) {
       if (err?.code === 'ENOENT') {
-        logger.debug('AutomationExecution: deployResult.md not found for baseUrl', { deployResultPath });
+        logger.debug('AutomationExecution: No deploy doc found for baseUrl', {
+          deployMdPath,
+          deployResultPath,
+        });
       } else {
-        logger.warn('AutomationExecution: Failed to read deployResult.md for baseUrl', {
+        logger.warn('AutomationExecution: Failed to read deploy docs for baseUrl', {
+          deployMdPath,
           deployResultPath,
           error: err?.message ?? String(err),
         });
@@ -542,7 +752,7 @@ export class AutomationExecution extends BaseAction {
         const fileName = path.basename(scriptFile);
         const testCaseId = fileName.replace(/\.(js|ts)$/, '');
         runEnv.AUTOMATION_TEST_CASE_ID = testCaseId;
-        const { exitCode, stderr } = this.runPlaywrightScript(scriptFile, runPath.skillDir, runPath.runJsPath, runEnv);
+        const { exitCode, stdout, stderr } = this.runPlaywrightScript(scriptFile, runPath.skillDir, runPath.runJsPath, runEnv);
         const executionTime = Date.now() - startTime;
         const success = exitCode === 0;
         if (!success) {
@@ -550,6 +760,7 @@ export class AutomationExecution extends BaseAction {
         }
         const screenshotSuccess = success && existsSync(path.join(reportDir, `${testCaseId}-success.png`)) ? `${testCaseId}-success.png` : undefined;
         const screenshotFail = !success && existsSync(path.join(reportDir, `${testCaseId}-fail.png`)) ? `${testCaseId}-fail.png` : undefined;
+        const logEmbed = this.parseLogFromStdout(stdout, testCaseId, success ? undefined : stderr?.trim());
         results.push({
           testCaseId,
           testCaseName: testCaseId,
@@ -561,6 +772,7 @@ export class AutomationExecution extends BaseAction {
           error: success ? undefined : stderr?.trim() || `exit code ${exitCode}`,
           screenshotSuccess,
           screenshotFail,
+          logEmbed,
         });
       }
       logger.info('AutomationExecution: Completed executing Playwright scripts', {
@@ -568,6 +780,49 @@ export class AutomationExecution extends BaseAction {
         successCount: results.filter((r) => r.success).length,
         failedCount: results.filter((r) => !r.success).length,
       });
+
+      // Optimizer: on failure, parse → classify → transform (SCRIPT_*) → rerun up to 2 rounds
+      const failedCount = results.filter((r) => !r.success).length;
+      if (failedCount > 0) {
+        const runScript = async (scriptPath: string) => {
+          const fileName = path.basename(scriptPath);
+          const testCaseId = fileName.replace(/\.(js|ts)$/, '');
+          runEnv.AUTOMATION_TEST_CASE_ID = testCaseId;
+          const { exitCode, stdout, stderr } = this.runPlaywrightScript(
+            scriptPath,
+            runPath.skillDir,
+            runPath.runJsPath,
+            runEnv
+          );
+          const success = exitCode === 0;
+          const screenshotFail =
+            !success && existsSync(path.join(reportDir, `${testCaseId}-fail.png`))
+              ? `${testCaseId}-fail.png`
+              : undefined;
+          const logEmbed = this.parseLogFromStdout(stdout, testCaseId, success ? undefined : stderr?.trim());
+          return {
+            success,
+            error: success ? undefined : stderr?.trim(),
+            logEmbed,
+            screenshotFail,
+          };
+        };
+        const { results: optimizedResults, optimized } = await runOptimizer({
+          scriptFiles: jsonFiles,
+          reportDir,
+          autoDir: _cwd,
+          results,
+          runScript,
+        });
+        if (optimized.length > 0) {
+          logger.info('Optimizer: Applied transformations and reran', {
+            optimizedCount: optimized.length,
+            newSuccessCount: optimizedResults.filter((r) => r.success).length,
+          });
+          return optimizedResults;
+        }
+      }
+
       return results;
     }
 
@@ -610,6 +865,7 @@ export class AutomationExecution extends BaseAction {
           error: r.error,
           screenshotSuccess: r.screenshotSuccess,
           screenshotFail: r.screenshotFail,
+          logEmbed: r.logEmbed,
           steps: r.steps.map((s) => ({
             stepIndex: s.stepIndex,
             step: s.step,
@@ -626,6 +882,214 @@ export class AutomationExecution extends BaseAction {
       null,
       2
     );
+  }
+
+  /**
+   * Parse the Playwright Call log to extract the CSS selector, data-testid, and UI element type.
+   */
+  private extractLocatorInfo(rawError: string): { selector: string; testId?: string; elementType?: string } | null {
+    if (!rawError) return null;
+    const cleaned = rawError.replace(/\u001b\[[0-9;]*m/g, '');
+
+    const locatorMatch = cleaned.match(/waiting for locator\('(.+?)'\)/);
+    if (!locatorMatch) return null;
+
+    const selector = locatorMatch[1];
+    const testIdMatch = selector.match(/data-testid="([^"]+)"/);
+    const testId = testIdMatch ? testIdMatch[1] : undefined;
+
+    const elementTypeMap: [RegExp, string][] = [
+      [/\.el-select|select/i, '下拉框'],
+      [/\.el-button|button/i, '按钮'],
+      [/\.el-input|input/i, '输入框'],
+      [/\.el-table|table/i, '表格'],
+      [/\.el-checkbox|checkbox/i, '复选框'],
+      [/\.el-dialog|dialog|modal/i, '对话框'],
+    ];
+
+    let elementType: string | undefined;
+    for (const [pattern, label] of elementTypeMap) {
+      if (pattern.test(selector)) {
+        elementType = label;
+        break;
+      }
+    }
+    if (!elementType && testId) {
+      if (/btn|button/i.test(testId)) elementType = '按钮';
+      else if (/select|filter|dropdown/i.test(testId)) elementType = '下拉框';
+      else if (/input|search/i.test(testId)) elementType = '输入框';
+      else elementType = '控件';
+    }
+
+    return { selector, testId, elementType };
+  }
+
+  /**
+   * Extract a user-visible error description from a raw Playwright error string.
+   * For timeout errors, parses the Call log to identify which UI element is missing.
+   */
+  private extractErrorDescription(rawError: string): string {
+    if (!rawError) return '未知错误';
+    const cleaned = rawError.replace(/\u001b\[[0-9;]*m/g, '');
+
+    const isTimeout = /Timeout\s+\d+ms\s+exceeded/i.test(cleaned);
+    if (isTimeout) {
+      const locator = this.extractLocatorInfo(rawError);
+      if (locator) {
+        const name = locator.testId || locator.selector;
+        const type = locator.elementType || '元素';
+        return `页面未找到「${name}」${type}，该功能可能未实现`;
+      }
+    }
+
+    const firstLine = cleaned.split('\n')[0].trim();
+    return firstLine
+      .replace(/^❌\s*/, '')
+      .replace(/^Execution failed:\s*/i, '')
+      .replace(/^Error:\s*/i, '')
+      .trim() || '未知错误';
+  }
+
+  /**
+   * Determine whether a test failure is a test-environment / data issue rather than a product bug.
+   */
+  private isTestEnvIssue(errorDescription: string): boolean {
+    const envKeywords = ['不足', '无法执行', '测试数据', '测试环境', '未配置', '连接失败', 'ERR_CONNECTION_REFUSED'];
+    return envKeywords.some((kw) => errorDescription.includes(kw));
+  }
+
+  /**
+   * Extract a readable test case name from the testCaseId.
+   * e.g. "playwright-test-TC-ModeConfig-001-老师为单台设备设置默认自主学习模式"
+   *   -> "TC-ModeConfig-001 老师为单台设备设置默认自主学习模式"
+   */
+  private extractReadableCaseName(testCaseId: string): string {
+    const withoutPrefix = testCaseId.replace(/^playwright-test-/, '');
+    // Split on the first Chinese char boundary: keep TC-XXX-NNN as ID, rest as description
+    const match = withoutPrefix.match(/^(TC-[A-Za-z]+-\d+)-(.+)$/);
+    if (match) {
+      return `${match[1]} ${match[2]}`;
+    }
+    return withoutPrefix;
+  }
+
+  /**
+   * Generate a structured Markdown bug report for the Engineer.
+   * Only product defects are listed as actionable bugs; test-env issues are separated.
+   * Embeds assertion summary when available to reduce token usage.
+   */
+  private async generateBugReport(summary: any, results: TestCaseExecutionResult[], _reportDir: string): Promise<string> {
+    interface BugEntry {
+      caseName: string;
+      caseDescription: string;
+      description: string;
+      selector?: string;
+      screenshotFail?: string;
+      logEmbed?: TestCaseExecutionResult['logEmbed'];
+      summaryEmbed?: string;
+      rawError: string;
+    }
+
+    const failedResults = results.filter((r) => !r.success && r.error);
+    const productBugs: BugEntry[] = [];
+    const envIssues: { caseName: string; description: string }[] = [];
+
+    for (const r of failedResults) {
+      const description = this.extractErrorDescription(r.error!);
+      const caseName = this.extractReadableCaseName(r.testCaseId);
+      const locator = this.extractLocatorInfo(r.error!);
+
+      const descMatch = caseName.match(/^TC-[A-Za-z]+-\d+\s+(.+)$/);
+      const caseDescription = descMatch ? descMatch[1] : caseName;
+
+      if (this.isTestEnvIssue(description)) {
+        envIssues.push({ caseName, description });
+      } else {
+        let summaryEmbed: string | undefined;
+        if (r.logEmbed) {
+          const parts: string[] = [];
+          if (r.logEmbed.consoleErrors?.length) {
+            parts.push(`Console: ${r.logEmbed.consoleErrors.slice(0, 3).join(' | ')}`);
+          }
+          if (r.logEmbed.network?.length) {
+            parts.push(`Network: ${r.logEmbed.network.map((n) => `${n.api}:${n.status}`).join(', ')}`);
+          }
+          if (parts.length > 0) summaryEmbed = parts.join(' | ');
+        }
+        productBugs.push({
+          caseName,
+          caseDescription,
+          description,
+          selector: locator?.selector,
+          screenshotFail: r.screenshotFail,
+          logEmbed: r.logEmbed,
+          summaryEmbed,
+          rawError: r.error!,
+        });
+      }
+    }
+
+    const lines: string[] = [];
+    lines.push('# 自动化测试发现的产品缺陷');
+    lines.push('');
+    lines.push('> 以下问题由自动化测试发现，请修复**应用代码**中的对应问题。');
+    lines.push('> **禁止修改测试脚本**（docs/test/auto/ 目录下的文件不在修改范围内）。');
+    lines.push('');
+    lines.push('## 测试概览');
+    lines.push('');
+    lines.push(`- 总用例: ${summary.total} | 通过: ${summary.passed} | 失败: ${summary.failed}`);
+    lines.push('');
+
+    if (productBugs.length > 0) {
+      lines.push('## 产品缺陷');
+      lines.push('');
+      productBugs.forEach((bug, idx) => {
+        lines.push(`### Bug ${idx + 1}: ${bug.description}`);
+        lines.push('');
+        lines.push(`- **用例**: ${bug.caseName}`);
+        lines.push(`- **现象**: ${bug.description}`);
+        lines.push(`- **预期行为**: ${bug.caseDescription}`);
+        if (bug.selector) {
+          lines.push(`- **定位线索**: \`${bug.selector}\``);
+        }
+        lines.push(`- **修复方向**: 请检查该功能是否已实现，确认对应组件是否渲染到页面中`);
+        if (bug.screenshotFail) {
+          lines.push('');
+          lines.push('- **失败截图**:');
+          lines.push('');
+          lines.push(`![失败截图](../test/report/${bug.screenshotFail})`);
+        }
+        if (bug.summaryEmbed) {
+          lines.push('- **断言摘要**（优先参考，减少 token）:');
+          lines.push('```');
+          lines.push(bug.summaryEmbed);
+          lines.push('```');
+        }
+        if (bug.logEmbed && (bug.logEmbed.consoleErrors?.length || bug.logEmbed.network?.length)) {
+          const parts: string[] = [];
+          if (bug.logEmbed.consoleErrors?.length) parts.push('Console: ' + bug.logEmbed.consoleErrors.slice(0, 2).join('; '));
+          if (bug.logEmbed.network?.length) parts.push('Network: ' + bug.logEmbed.network.map((n) => `${n.api}:${n.status}`).join(', '));
+          lines.push('- **日志**: ' + parts.join(' | '));
+        }
+        lines.push('');
+      });
+    } else {
+      lines.push('## 产品缺陷');
+      lines.push('');
+      lines.push('无产品缺陷（所有失败均为测试环境问题）。');
+      lines.push('');
+    }
+
+    if (envIssues.length > 0) {
+      lines.push('## 测试环境问题（无需修复代码）');
+      lines.push('');
+      envIssues.forEach((issue) => {
+        lines.push(`- ${issue.caseName}: ${issue.description}`);
+      });
+      lines.push('');
+    }
+
+    return lines.join('\n');
   }
 
   /**
@@ -885,6 +1349,32 @@ export class AutomationExecution extends BaseAction {
                     <td>${new Date(result.timestamp).toLocaleString('zh-CN')}</td>
                 </tr>`;
 
+      // For failed tests: show error and screenshot first (more prominent)
+      if (result.error && !result.success) {
+        html += `
+                <tr>
+                    <td colspan="6">
+                        <div class="error-details">
+                            <strong>❌ 错误信息:</strong><br>
+                            ${this.escapeHtml(result.error)}
+                        </div>
+                    </td>
+                </tr>`;
+      }
+
+      if (result.screenshotFail) {
+        html += `
+                <tr>
+                    <td colspan="6">
+                        <div class="screenshot-details">
+                            <strong>📷 执行失败时页面截图</strong>
+                            <div class="screenshot-label" style="margin-top: 8px;">执行失败时:</div>
+                            <img src="${this.escapeHtml(result.screenshotFail)}" alt="失败截图" />
+                        </div>
+                    </td>
+                </tr>`;
+      }
+
       // Show step-level execution details if available
       if (result.steps && result.steps.length > 0) {
         html += `
@@ -934,37 +1424,33 @@ export class AutomationExecution extends BaseAction {
                 </tr>`;
       }
 
-      // Show error details (only for failed tests)
-      if (result.error && !result.success) {
+      // Show page screenshot(s) in detailed results (success only; fail already shown above for failed cases)
+      if (result.screenshotSuccess) {
         html += `
                 <tr>
                     <td colspan="6">
-                        <div class="error-details">
-                            <strong>❌ 错误信息:</strong><br>
-                            ${this.escapeHtml(result.error)}
+                        <div class="screenshot-details">
+                            <strong>📷 页面截图</strong>
+                            <div class="screenshot-label">执行成功时:</div>
+                            <img src="${this.escapeHtml(result.screenshotSuccess)}" alt="成功截图" />
                         </div>
                     </td>
                 </tr>`;
       }
 
-      // Show page screenshot(s) in detailed results
-      if (result.screenshotSuccess || result.screenshotFail) {
+      // Assertion info: summary (preferred), DOM snapshot, console log, network log, test data
+      if (result.logEmbed && (result.logEmbed.consoleErrors?.length || result.logEmbed.network?.length)) {
+        const parts: string[] = [];
+        if (result.logEmbed.selector) parts.push('selector: ' + this.escapeHtml(result.logEmbed.selector));
+        if (result.logEmbed.actual) parts.push('actual: ' + this.escapeHtml(result.logEmbed.actual));
+        if (result.logEmbed.consoleErrors?.length) parts.push('console: ' + result.logEmbed.consoleErrors.slice(0, 2).join('; '));
+        if (result.logEmbed.network?.length) parts.push('network: ' + result.logEmbed.network.map((n) => `${n.api}:${n.status}`).join(', '));
         html += `
                 <tr>
                     <td colspan="6">
-                        <div class="screenshot-details">
-                            <strong>📷 页面截图</strong>`;
-        if (result.screenshotSuccess) {
-          html += `
-                            <div class="screenshot-label">执行成功时:</div>
-                            <img src="${this.escapeHtml(result.screenshotSuccess)}" alt="成功截图" />`;
-        }
-        if (result.screenshotFail) {
-          html += `
-                            <div class="screenshot-label" style="margin-top: 12px;">执行失败时:</div>
-                            <img src="${this.escapeHtml(result.screenshotFail)}" alt="失败截图" />`;
-        }
-        html += `
+                        <div class="assertion-details" style="background: #f8f9fa; padding: 12px; border-radius: 4px;">
+                            <strong>📋 日志</strong>
+                            <div style="margin-top: 8px; font-size: 12px;">${parts.join(' | ')}</div>
                         </div>
                     </td>
                 </tr>`;

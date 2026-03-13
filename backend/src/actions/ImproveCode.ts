@@ -30,7 +30,6 @@ export class ImproveCode extends BaseAction {
 
   // 文件路径（相对于 workDir）
   private static readonly IMPROVE_FILE = 'docs/code/ImproveCode.md';
-  private static readonly REVIEW_RESULT_FILE = 'docs/code/improveReviewResult.md';
   private static readonly ANALYZE_RESULT_FILE = 'docs/code/improveAnalyzeResult.md';
   private static readonly EXECUTE_RESULT_FILE = 'docs/code/improveExecuteResult.md';
   private static readonly VERIFY_RESULT_FILE = 'docs/code/improveVerifyResult.md';

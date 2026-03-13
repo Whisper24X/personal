@@ -42,10 +42,26 @@ description: 分析代码改进需求。读取 ImproveCode.md 和 improveReviewR
 
 **从 ImproveCode.md 解析**（若存在）：
 
+**问题来源分类**：
+
+| source     | 含义             | 处理方式                           |
+| ---------- | ---------------- | ---------------------------------- |
+| `product`  | 产品缺陷         | 需修复应用代码，设为 `pending`     |
+| `test-env` | 测试环境/数据问题 | 非产品缺陷，直接设为 `skipped`     |
+
+分类规则：
+- 位于「产品缺陷」章节下的问题 → `source: "product"`
+- 位于「测试环境问题」章节下的问题 → `source: "test-env"`
+- 如果无法通过章节判断，错误描述包含"不足"、"无法执行"、"测试数据"、"测试环境"、"连接失败"等关键词 → `source: "test-env"`
+- 其他问题默认 → `source: "product"`
+
+**问题状态识别**：
+
 | 标记               | 状态   | 说明                 |
 | ------------------ | ------ | -------------------- |
 | 包含 `✅ 已解决`   | 已解决 | 之前的改进循环已修复 |
-| 不包含 `✅ 已解决` | 待解决 | 需要本次改进处理     |
+| `source: test-env` | 跳过   | 测试环境问题，无需修复代码 |
+| 其他待解决问题     | 待解决 | 需要本次改进处理     |
 
 **从 improveReviewResult.md 解析**（若存在）：
 
@@ -71,9 +87,10 @@ description: 分析代码改进需求。读取 ImproveCode.md 和 improveReviewR
 
 ### 3. 选择待解决问题
 
-- 过滤出所有状态为"待解决"的问题
+- 过滤出所有 `source === "product"` 且状态为"待解决"的问题
+- `source === "test-env"` 的问题直接标记为 `skipped`，不纳入待改进列表
 - 按优先级排序：high > medium > low
-- 如果合并后无待解决问题，result 设为 `无需改进`
+- 如果所有 product 问题都已解决（或仅剩 test-env 问题），result 设为 `无需改进`
 
 ### 4. 输出分析结果
 
@@ -108,13 +125,13 @@ description: 分析代码改进需求。读取 ImproveCode.md 和 improveReviewR
 ```json
 {
   "result": "有待改进",
-  "reason": "发现 3 个待解决问题（1 high, 1 medium, 1 low），2 个已解决",
+  "reason": "发现 2 个待解决产品缺陷（1 high, 1 medium），1 个测试环境问题已跳过，2 个已解决",
   "issues": [
-    { "id": 1, "title": "登录失败时未显示错误提示", "priority": "high", "status": "pending", "type": "bug" },
-    { "id": 2, "title": "列表加载超过 3 秒", "priority": "medium", "status": "pending", "type": "performance" },
-    { "id": 3, "title": "变量命名不规范", "priority": "low", "status": "pending", "type": "quality" },
-    { "id": 4, "title": "按钮样式不一致", "priority": "low", "status": "resolved", "type": "ux" },
-    { "id": 5, "title": "接口超时未提示用户", "priority": "medium", "status": "resolved", "type": "bug" }
+    { "id": 1, "title": "登录失败时未显示错误提示", "priority": "high", "status": "pending", "type": "bug", "source": "product" },
+    { "id": 2, "title": "列表加载超过 3 秒", "priority": "medium", "status": "pending", "type": "performance", "source": "product" },
+    { "id": 3, "title": "设备列表不足 3 台", "priority": "low", "status": "skipped", "type": "data", "source": "test-env" },
+    { "id": 4, "title": "按钮样式不一致", "priority": "low", "status": "resolved", "type": "ux", "source": "product" },
+    { "id": 5, "title": "接口超时未提示用户", "priority": "medium", "status": "resolved", "type": "bug", "source": "product" }
   ]
 }
 ```
@@ -124,10 +141,11 @@ description: 分析代码改进需求。读取 ImproveCode.md 和 improveReviewR
 ```json
 {
   "result": "无需改进",
-  "reason": "所有 5 个问题已标记为 ✅ 已解决",
+  "reason": "所有 3 个产品问题已标记为 ✅ 已解决，2 个测试环境问题已跳过",
   "issues": [
-    { "id": 1, "title": "登录失败处理不正确", "priority": "high", "status": "resolved", "type": "bug" },
-    { "id": 2, "title": "列表分页性能差", "priority": "medium", "status": "resolved", "type": "performance" }
+    { "id": 1, "title": "登录失败处理不正确", "priority": "high", "status": "resolved", "type": "bug", "source": "product" },
+    { "id": 2, "title": "列表分页性能差", "priority": "medium", "status": "resolved", "type": "performance", "source": "product" },
+    { "id": 3, "title": "设备数据不足", "priority": "low", "status": "skipped", "type": "data", "source": "test-env" }
   ]
 }
 ```

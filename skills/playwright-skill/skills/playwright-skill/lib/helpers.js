@@ -422,6 +422,21 @@ async function detectDevServers(customPorts = []) {
   return detectedServers;
 }
 
+/**
+ * 点击侧栏菜单项（兼容 link / menuitem / el-menu-item）
+ * 用于管理后台（Element Plus 等）侧栏导航，不依赖 role=link
+ * @param {import('playwright').Page} page - Playwright page
+ * @param {string} menuText - 菜单文案，如 '订单管理'、'渠道订单管理'
+ * @param {number} timeout - 等待可见超时 ms，默认 15000
+ */
+async function clickSidebarMenu(page, menuText, timeout = 15000) {
+  const locator = page
+    .getByRole('link', { name: menuText })
+    .or(page.locator(`a:has-text("${menuText}"), [role="menuitem"]:has-text("${menuText}"), .el-menu-item:has-text("${menuText}")`).first());
+  await locator.waitFor({ state: 'visible', timeout });
+  await locator.click();
+}
+
 module.exports = {
   launchBrowser,
   createPage,
@@ -437,5 +452,6 @@ module.exports = {
   retryWithBackoff,
   createContext,
   detectDevServers,
-  getExtraHeadersFromEnv
+  getExtraHeadersFromEnv,
+  clickSidebarMenu
 };

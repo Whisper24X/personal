@@ -3,521 +3,129 @@ name: playwright-skill
 description: Complete browser automation with Playwright. Auto-detects dev servers, writes clean test scripts to /tmp. Test pages, fill forms, take screenshots, check responsive design, validate UX, test login flows, check links, automate any browser task. Use when user wants to test websites, automate browser interactions, validate web functionality, or perform any browser-based testing.
 ---
 
-**IMPORTANT - Path Resolution:**
-This skill can be installed in different locations (plugin system, manual installation, global, or project-specific). Before executing any commands, determine the skill directory based on where you loaded this SKILL.md file, and use that path in all commands below. Replace `$SKILL_DIR` with the actual discovered path.
-
-Common installation paths:
-
-- Plugin system: `~/.claude/plugins/marketplaces/playwright-skill/skills/playwright-skill`
-- Manual global: `~/.claude/skills/playwright-skill`
-- Project-specific: `<project>/.claude/skills/playwright-skill`
+**Path Resolution:** Use `$SKILL_DIR` as the directory where this SKILL.md is located. All commands below use this path.
 
 # Playwright Browser Automation
 
-General-purpose browser automation skill. I'll write custom Playwright code for any automation task you request and execute it via the universal executor.
+Write and execute custom Playwright automation for any browser task via the universal executor.
 
 **CRITICAL WORKFLOW - Follow these steps in order:**
 
-1. **Auto-detect dev servers** - For localhost testing, ALWAYS run server detection FIRST:
+1. **Auto-detect dev servers** - For localhost testing, ALWAYS run detection FIRST:
 
    ```bash
-   cd $SKILL_DIR && node -e "require('./lib/helpers').detectDevServers().then(servers => console.log(JSON.stringify(servers)))"
+   cd $SKILL_DIR && node -e "require('./lib/helpers').detectDevServers().then(s => console.log(JSON.stringify(s)))"
    ```
 
-   - If **1 server found**: Use it automatically, inform user
-   - If **multiple servers found**: Ask user which one to test
-   - If **no servers found**: Ask for URL or offer to help start dev server
+   - 1 server found: use it automatically
+   - Multiple: ask user which one
+   - None: ask for URL or help start dev server
 
-2. **Write scripts to /tmp** - NEVER write test files to skill directory; always use `/tmp/playwright-test-*.js`
+2. **Write scripts to /tmp** - NEVER write to skill directory; always use `/tmp/playwright-test-*.js`
 
-3. **Use visible browser by default** - Always use `headless: false` unless user specifically requests headless mode
+3. **Visible browser by default** - Always `headless: false` unless user requests headless
 
-4. **Parameterize URLs** - Always make URLs configurable via environment variable or constant at top of script
+4. **Parameterize URLs** - `TARGET_URL` constant at top of every script; never hardcode project-specific addresses
 
 ## How It Works
 
-1. You describe what you want to test/automate
-2. I auto-detect running dev servers (or ask for URL if testing external site)
-3. I write custom Playwright code in `/tmp/playwright-test-*.js` (won't clutter your project)
-4. I execute it via: `cd $SKILL_DIR && node run.js /tmp/playwright-test-*.js`
-5. Results displayed in real-time, browser window visible for debugging
-6. Test files auto-cleaned from /tmp by your OS
+1. User describes what to test/automate
+2. Auto-detect running dev servers (or ask for URL)
+3. Write custom Playwright code to `/tmp/playwright-test-*.js`
+4. Execute via: `cd $SKILL_DIR && node run.js /tmp/playwright-test-*.js`
+5. Results displayed in real-time with visible browser
+6. Test files auto-cleaned from /tmp
 
 ## Setup (First Time)
-
-```bash
-cd $SKILL_DIR
-npm run setup
-```
-
-This installs Playwright and Chromium browser. Only needed once.
-
-## Execution Pattern
-
-**Step 1: Detect dev servers (for localhost testing)**
-
-```bash
-cd $SKILL_DIR && node -e "require('./lib/helpers').detectDevServers().then(s => console.log(JSON.stringify(s)))"
-```
-
-**Step 2: Write test script to /tmp with URL parameter**
-
-```javascript
-// /tmp/playwright-test-page.js
-const { chromium } = require('playwright');
-
-// Parameterized URL (detected or user-provided)
-const TARGET_URL = 'http://localhost:3001'; // <-- Auto-detected or from user
-
-(async () => {
-  const browser = await chromium.launch({ headless: false });
-  const page = await browser.newPage();
-
-  await page.goto(TARGET_URL);
-  console.log('Page loaded:', await page.title());
-
-  await page.screenshot({ path: '/tmp/screenshot.png', fullPage: true });
-  console.log('📸 Screenshot saved to /tmp/screenshot.png');
-
-  await browser.close();
-})();
-```
-
-**Step 3: Execute from skill directory**
-
-```bash
-cd $SKILL_DIR && node run.js /tmp/playwright-test-page.js
-```
-
-## Common Patterns
-
-### Test a Page (Multiple Viewports)
-
-```javascript
-// /tmp/playwright-test-responsive.js
-const { chromium } = require('playwright');
-
-const TARGET_URL = 'http://localhost:3001'; // Auto-detected
-
-(async () => {
-  const browser = await chromium.launch({ headless: false, slowMo: 100 });
-  const page = await browser.newPage();
-
-  // Desktop test
-  await page.setViewportSize({ width: 1920, height: 1080 });
-  await page.goto(TARGET_URL);
-  console.log('Desktop - Title:', await page.title());
-  await page.screenshot({ path: '/tmp/desktop.png', fullPage: true });
-
-  // Mobile test
-  await page.setViewportSize({ width: 375, height: 667 });
-  await page.screenshot({ path: '/tmp/mobile.png', fullPage: true });
-
-  await browser.close();
-})();
-```
-
-### Test Login Flow
-
-```javascript
-// /tmp/playwright-test-login.js
-const { chromium } = require('playwright');
-
-const TARGET_URL = process.env.TARGET_URL || 'http://localhost:3000'; // 由 env 或检测提供，勿写死项目地址
-
-(async () => {
-  const browser = await chromium.launch({ headless: false });
-  const page = await browser.newPage();
-
-  // 登录页路径、表单选择器、登录后跳转 URL 因项目而异，按实际页面或 env 配置编写
-  await page.goto(TARGET_URL);
-
-  await page.fill('input[name="email"], input[type="text"]', process.env.LOGIN_USER || '');
-  await page.fill('input[name="password"], input[type="password"]', process.env.LOGIN_PASSWORD || '');
-  await page.click('button[type="submit"], button:has-text("登录"), button:has-text("Sign in")');
-
-  await page.waitForURL((url) => !url.href.includes('/login'), { timeout: 10000 }).catch(() => {});
-  console.log('✅ Login attempted');
-
-  await browser.close();
-})();
-```
-
-### 前置条件与登录（从测试用例生成脚本时）
-
-当根据测试用例文档（如 TEST.md）生成脚本时，若该用例的**前置条件**包含「已登录」「登录管理后台」「用户已登录」等，生成的脚本必须：
-
-- 在顶部声明 `const LOGIN_USER = process.env.LOGIN_USER || ''` 与 `const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || ''`。
-- **TARGET_URL 必须参数化**：使用 `process.env.TARGET_URL` 或由调用方/部署文档注入，**禁止在脚本中写死某项目的域名、端口或路径**（如勿写死 localhost:8070、/shadow/ 等），以便换项目或换环境时脚本仍可执行。
-- **进入目标页面的方式二选一**：
-  - **按文字导航（推荐，当 PRD/用例未提供具体 URL 时）**：先打开 TARGET_URL（仅入口，不带业务路径），登录后根据用例/PRD 中的**文字描述**通过点击菜单、侧栏或链接进入目标页（如 `page.getByRole('link', { name: /目标页描述文案/ }).first().click()` 或 `page.locator('a:has-text("目标页描述文案")').first().click()`），再等待目标页关键元素出现后执行业务步骤与断言。菜单/链接的**点击文案须来自用例或 PRD**，勿写死为某项目专有名词。
-  - **按路径进入（仅当已知具体路径时）**：若部署文档或 PRD 明确给出了页面路径，可使用 `BUSINESS_PATH` 与 `page.goto(TARGET_URL + BUSINESS_PATH)`；否则勿臆造路径。
-- **登录页判断与选择器因项目而异**：判断是否在登录页可用 `page.url().includes('/login')` 或检测登录表单（如密码框）是否存在；账号/密码输入框、登录按钮选择器须兼容常见写法（如 `input[type="text"]`、`input[placeholder*="账号"]`、`button[type="submit"]`、`button:has-text("登录")`），若项目结构不同则按实际 DOM 编写，**勿写死某项目独有 class 或 id**。
-- 若未配置 LOGIN_USER/LOGIN_PASSWORD 且需要登录，则抛出明确错误提示（如 `throw new Error('需要登录。请设置环境变量 LOGIN_USER 和 LOGIN_PASSWORD。')`）。
-- **注意**：`page.waitForURL((url) => ...)` 的回调参数 `url` 是 **URL 对象**，判断是否包含某路径须用 `url.href.includes(...)`，不要用 `url.includes(...)`（会报 url.includes is not a function）。
-
-**示例：仅用文字定位、通过菜单/链接进入目标页（无具体 URL 路径，不写死地址）**
-
-```javascript
-const { chromium } = require('playwright');
-const TARGET_URL = process.env.TARGET_URL; // 由执行环境/部署文档注入，勿写死
-const LOGIN_USER = process.env.LOGIN_USER || '';
-const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || '';
-
-(async () => {
-  const browser = await chromium.launch({ headless: false });
-  const page = await browser.newPage();
-  if (!TARGET_URL) throw new Error('请设置环境变量 TARGET_URL（或由执行环境/部署文档注入）');
-  await page.goto(TARGET_URL.replace(/\/$/, ''), { waitUntil: 'networkidle', timeout: 30000 });
-  const isLoginPage = () => page.url().includes('/login') || page.locator('input[type="password"]').count() > 0;
-  if (isLoginPage()) {
-    if (!LOGIN_USER || !LOGIN_PASSWORD) throw new Error('需要登录。请设置环境变量 LOGIN_USER 和 LOGIN_PASSWORD。');
-    await page.fill('input[type="text"], input[placeholder*="用户名"], input[placeholder*="账号"]', LOGIN_USER);
-    await page.fill('input[type="password"]', LOGIN_PASSWORD);
-    await page.click('button[type="submit"], button:has-text("登录")');
-    await page.waitForURL((url) => !url.href.includes('/login'), { timeout: 10000 });
-  }
-  // 按用例/PRD 中描述该页面的文字点击进入（下例「课程预约」仅为示例，实际替换为当前用例/PRD 文案）
-  await page
-    .getByRole('link', { name: /课程预约/ })
-    .first()
-    .click();
-  await page.waitForSelector('table', { timeout: 15000 }); // 目标页关键元素依业务而定
-  // 执行业务步骤与断言...
-  await browser.close();
-})();
-```
-
-**示例：已知具体路径时使用 BUSINESS_PATH（路径与 TARGET_URL 均不写死）**
-
-```javascript
-const { chromium } = require('playwright');
-const TARGET_URL = process.env.TARGET_URL; // 由环境/部署文档注入
-const BUSINESS_PATH = process.env.BUSINESS_PATH || ''; // 仅当部署文档/PRD 明确给出时配置
-const LOGIN_USER = process.env.LOGIN_USER || '';
-const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || '';
-
-(async () => {
-  const browser = await chromium.launch({ headless: false });
-  const page = await browser.newPage();
-  if (!TARGET_URL) throw new Error('请设置环境变量 TARGET_URL（或由执行环境/部署文档注入）');
-  const base = TARGET_URL.replace(/\/$/, '');
-  const entryUrl = BUSINESS_PATH ? base + BUSINESS_PATH : base;
-  await page.goto(entryUrl, { waitUntil: 'networkidle', timeout: 30000 });
-  if (page.url().includes('/login')) {
-    if (!LOGIN_USER || !LOGIN_PASSWORD) throw new Error('需要登录。请设置环境变量 LOGIN_USER 和 LOGIN_PASSWORD。');
-    await page.fill('input[type="text"], input[placeholder*="用户名"], input[placeholder*="账号"]', LOGIN_USER);
-    await page.fill('input[type="password"]', LOGIN_PASSWORD);
-    await page.click('button[type="submit"], button:has-text("登录")');
-    await page.waitForURL((url) => !url.href.includes('/login'), { timeout: 10000 });
-    await page.goto(entryUrl, { waitUntil: 'networkidle', timeout: 15000 });
-  }
-  // 执行业务步骤与断言...
-  await browser.close();
-})();
-```
-
-### Fill and Submit Form
-
-```javascript
-// /tmp/playwright-test-form.js
-const { chromium } = require('playwright');
-
-const TARGET_URL = 'http://localhost:3001'; // Auto-detected
-
-(async () => {
-  const browser = await chromium.launch({ headless: false, slowMo: 50 });
-  const page = await browser.newPage();
-
-  await page.goto(`${TARGET_URL}/contact`);
-
-  await page.fill('input[name="name"]', 'John Doe');
-  await page.fill('input[name="email"]', 'john@example.com');
-  await page.fill('textarea[name="message"]', 'Test message');
-  await page.click('button[type="submit"]');
-
-  // Verify submission
-  await page.waitForSelector('.success-message');
-  console.log('✅ Form submitted successfully');
-
-  await browser.close();
-})();
-```
-
-### Check for Broken Links
-
-```javascript
-const { chromium } = require('playwright');
-
-(async () => {
-  const browser = await chromium.launch({ headless: false });
-  const page = await browser.newPage();
-
-  await page.goto('http://localhost:3000');
-
-  const links = await page.locator('a[href^="http"]').all();
-  const results = { working: 0, broken: [] };
-
-  for (const link of links) {
-    const href = await link.getAttribute('href');
-    try {
-      const response = await page.request.head(href);
-      if (response.ok()) {
-        results.working++;
-      } else {
-        results.broken.push({ url: href, status: response.status() });
-      }
-    } catch (e) {
-      results.broken.push({ url: href, error: e.message });
-    }
-  }
-
-  console.log(`✅ Working links: ${results.working}`);
-  console.log(`❌ Broken links:`, results.broken);
-
-  await browser.close();
-})();
-```
-
-### Take Screenshot with Error Handling
-
-```javascript
-const { chromium } = require('playwright');
-
-(async () => {
-  const browser = await chromium.launch({ headless: false });
-  const page = await browser.newPage();
-
-  try {
-    await page.goto('http://localhost:3000', {
-      waitUntil: 'networkidle',
-      timeout: 10000,
-    });
-
-    await page.screenshot({
-      path: '/tmp/screenshot.png',
-      fullPage: true,
-    });
-
-    console.log('📸 Screenshot saved to /tmp/screenshot.png');
-  } catch (error) {
-    console.error('❌ Error:', error.message);
-  } finally {
-    await browser.close();
-  }
-})();
-```
-
-### Test Responsive Design
-
-```javascript
-// /tmp/playwright-test-responsive-full.js
-const { chromium } = require('playwright');
-
-const TARGET_URL = 'http://localhost:3001'; // Auto-detected
-
-(async () => {
-  const browser = await chromium.launch({ headless: false });
-  const page = await browser.newPage();
-
-  const viewports = [
-    { name: 'Desktop', width: 1920, height: 1080 },
-    { name: 'Tablet', width: 768, height: 1024 },
-    { name: 'Mobile', width: 375, height: 667 },
-  ];
-
-  for (const viewport of viewports) {
-    console.log(`Testing ${viewport.name} (${viewport.width}x${viewport.height})`);
-
-    await page.setViewportSize({
-      width: viewport.width,
-      height: viewport.height,
-    });
-
-    await page.goto(TARGET_URL);
-    await page.waitForTimeout(1000);
-
-    await page.screenshot({
-      path: `/tmp/${viewport.name.toLowerCase()}.png`,
-      fullPage: true,
-    });
-  }
-
-  console.log('✅ All viewports tested');
-  await browser.close();
-})();
-```
-
-## Inline Execution (Simple Tasks)
-
-For quick one-off tasks, you can execute code inline without creating files:
-
-```bash
-# Take a quick screenshot
-cd $SKILL_DIR && node run.js "
-const browser = await chromium.launch({ headless: false });
-const page = await browser.newPage();
-await page.goto('http://localhost:3001');
-await page.screenshot({ path: '/tmp/quick-screenshot.png', fullPage: true });
-console.log('Screenshot saved');
-await browser.close();
-"
-```
-
-**When to use inline vs files:**
-
-- **Inline**: Quick one-off tasks (screenshot, check if element exists, get page title)
-- **Files**: Complex tests, responsive design checks, anything user might want to re-run
-
-## Available Helpers
-
-Optional utility functions in `lib/helpers.js`:
-
-```javascript
-const helpers = require('./lib/helpers');
-
-// Detect running dev servers (CRITICAL - use this first!)
-const servers = await helpers.detectDevServers();
-console.log('Found servers:', servers);
-
-// Safe click with retry
-await helpers.safeClick(page, 'button.submit', { retries: 3 });
-
-// Safe type with clear
-await helpers.safeType(page, '#username', 'testuser');
-
-// Take timestamped screenshot
-await helpers.takeScreenshot(page, 'test-result');
-
-// Handle cookie banners
-await helpers.handleCookieBanner(page);
-
-// Extract table data
-const data = await helpers.extractTableData(page, 'table.results');
-```
-
-See `lib/helpers.js` for full list.
-
-## Custom HTTP Headers
-
-Configure custom headers for all HTTP requests via environment variables. Useful for:
-
-- Identifying automated traffic to your backend
-- Getting LLM-optimized responses (e.g., plain text errors instead of styled HTML)
-- Adding authentication tokens globally
-
-### Configuration
-
-**Single header (common case):**
-
-```bash
-PW_HEADER_NAME=X-Automated-By PW_HEADER_VALUE=playwright-skill \
-  cd $SKILL_DIR && node run.js /tmp/my-script.js
-```
-
-**Multiple headers (JSON format):**
-
-```bash
-PW_EXTRA_HEADERS='{"X-Automated-By":"playwright-skill","X-Debug":"true"}' \
-  cd $SKILL_DIR && node run.js /tmp/my-script.js
-```
-
-### How It Works
-
-Headers are automatically applied when using `helpers.createContext()`:
-
-```javascript
-const context = await helpers.createContext(browser);
-const page = await context.newPage();
-// All requests from this page include your custom headers
-```
-
-For scripts using raw Playwright API, use the injected `getContextOptionsWithHeaders()`:
-
-```javascript
-const context = await browser.newContext(getContextOptionsWithHeaders({ viewport: { width: 1920, height: 1080 } }));
-```
-
-## Advanced Usage
-
-For comprehensive Playwright API documentation, see [API_REFERENCE.md](API_REFERENCE.md):
-
-- Selectors & Locators best practices
-- Network interception & API mocking
-- Authentication & session management
-- Visual regression testing
-- Mobile device emulation
-- Performance testing
-- Debugging techniques
-- CI/CD integration
-
-## Tips
-
-- **CRITICAL: Detect servers FIRST** - Always run `detectDevServers()` before writing test code for localhost testing
-- **Custom headers** - Use `PW_HEADER_NAME`/`PW_HEADER_VALUE` env vars to identify automated traffic to your backend
-- **Use /tmp for test files** - Write to `/tmp/playwright-test-*.js`, never to skill directory or user's project
-- **Parameterize URLs** - Put detected/provided URL in a `TARGET_URL` constant at the top of every script；**勿写死项目地址**（域名、端口、路径如 /shadow/、/course/ 等），TARGET_URL、登录页判断、菜单点击文案等应从 env、部署文档或用例/PRD 获取，以便换项目或换环境时脚本仍可执行
-- **DEFAULT: Visible browser** - Always use `headless: false` unless user explicitly asks for headless mode
-- **Headless mode** - Only use `headless: true` when user specifically requests "headless" or "background" execution
-- **Slow down:** Use `slowMo: 100` to make actions visible and easier to follow
-- **Wait strategies:** Use `waitForURL`, `waitForSelector`, `waitForLoadState` instead of fixed timeouts
-- **Error handling:** Always use try-catch for robust automation
-- **Console output:** Use `console.log()` to track progress and show what's happening
-
-## Troubleshooting
-
-**Playwright not installed:**
 
 ```bash
 cd $SKILL_DIR && npm run setup
 ```
 
-**Module not found:**
-Ensure running from skill directory via `run.js` wrapper
+## Execution Pattern
 
-**Browser doesn't open:**
-Check `headless: false` and ensure display available
+**Step 1:** Detect dev servers
 
-**Element not found:**
-Add wait: `await page.waitForSelector('.element', { timeout: 10000 })`
-
-## Example Usage
-
-```
-User: "Test if the marketing page looks good"
-
-Claude: I'll test the marketing page across multiple viewports. Let me first detect running servers...
-[Runs: detectDevServers()]
-[Output: Found server on port 3001]
-I found your dev server running on http://localhost:3001
-
-[Writes custom automation script to /tmp/playwright-test-marketing.js with URL parameterized]
-[Runs: cd $SKILL_DIR && node run.js /tmp/playwright-test-marketing.js]
-[Shows results with screenshots from /tmp/]
+```bash
+cd $SKILL_DIR && node -e "require('./lib/helpers').detectDevServers().then(s => console.log(JSON.stringify(s)))"
 ```
 
-```
-User: "Check if login redirects correctly"
+**Step 2:** Write script to `/tmp/playwright-test-*.js` with `TARGET_URL` parameterized at top
 
-Claude: I'll test the login flow. First, let me check for running servers...
-[Runs: detectDevServers()]
-[Output: Found servers on ports 3000 and 3001]
-I found 2 dev servers. Which one should I test?
-- http://localhost:3000
-- http://localhost:3001
+**Step 3:** Execute from skill directory
 
-User: "Use 3001"
-
-[Writes login automation to /tmp/playwright-test-login.js]
-[Runs: cd $SKILL_DIR && node run.js /tmp/playwright-test-login.js]
-[Reports: ✅ Login successful, redirected to /dashboard]
+```bash
+cd $SKILL_DIR && node run.js /tmp/playwright-test-*.js
 ```
 
-## Notes
+## Common Patterns
 
-- Each automation is custom-written for your specific request
-- Not limited to pre-built scripts - any browser task possible
-- Auto-detects running dev servers to eliminate hardcoded URLs
-- Test scripts written to `/tmp` for automatic cleanup (no clutter)
-- Code executes reliably with proper module resolution via `run.js`
-- Progressive disclosure - API_REFERENCE.md loaded only when advanced features needed
+| Pattern | Description |
+|---------|-------------|
+| Responsive testing | Test page across Desktop/Tablet/Mobile viewports |
+| Login flow | Fill credentials and verify redirect |
+| Form submission | Fill and submit forms, verify success |
+| Broken links check | Crawl page links and report broken ones |
+| Screenshot | Full-page screenshot with error handling |
+| Inline execution | Quick one-off tasks via `node run.js "code"` |
+
+For complete code examples, see [references/COMMON_PATTERNS.md](references/COMMON_PATTERNS.md).
+
+## Login & Preconditions (Test Case Generation)
+
+When generating scripts from test case documents where preconditions include "已登录":
+
+- Use `process.env.LOGIN_USER` / `process.env.LOGIN_PASSWORD` — never hardcode credentials
+- `TARGET_URL` must come from env or deploy docs — **never hardcode** project domains/ports/paths
+- Navigate to target page by clicking menu text from test case/PRD, or via `BUSINESS_PATH` if explicitly provided
+- **管理后台侧栏菜单用多策略定位** — Element Plus 等框架的菜单项可能非 `role="link"`，需用 `getByRole('link').or(locator)` 组合 getByText / menuitem / `.el-menu-item` 作为回退，见 [LOGIN_PATTERNS](references/LOGIN_PATTERNS.md)
+- `page.waitForURL((url) => ...)` — parameter `url` is a **URL object**, use `url.href.includes(...)` not `url.includes(...)`
+- Throw clear error if credentials missing
+
+For detailed rules and full examples, see [references/LOGIN_PATTERNS.md](references/LOGIN_PATTERNS.md).
+
+## Available Helpers
+
+Optional utilities in `lib/helpers.js`:
+
+```javascript
+const helpers = require('./lib/helpers');
+const servers = await helpers.detectDevServers();  // CRITICAL - use first!
+await helpers.safeClick(page, 'button.submit', { retries: 3 });
+await helpers.safeType(page, '#username', 'testuser');
+await helpers.takeScreenshot(page, 'test-result');
+await helpers.handleCookieBanner(page);
+const data = await helpers.extractTableData(page, 'table.results');
+```
+
+## Custom HTTP Headers
+
+Set `PW_HEADER_NAME`/`PW_HEADER_VALUE` env vars for automated traffic identification. See [references/HTTP_HEADERS.md](references/HTTP_HEADERS.md) for details.
+
+## Advanced Usage
+
+For comprehensive Playwright API docs (selectors, network interception, auth, visual testing, mobile emulation, debugging, CI/CD), see [API_REFERENCE.md](API_REFERENCE.md).
+
+## Tips
+
+- **Detect servers FIRST** - Always run `detectDevServers()` before writing test code
+- **Use /tmp for test files** - Write to `/tmp/playwright-test-*.js`, never to skill directory or user's project
+- **Parameterize URLs** - `TARGET_URL` at top of every script; never hardcode project addresses. **Never strip trailing slash** (no `.replace(/\/$/, '')`) — Docker/nginx 301 redirects use internal ports, causing `ERR_CONNECTION_REFUSED`. Always `page.goto(TARGET_URL, ...)` as-is
+- **Visible browser** - Always `headless: false` unless user requests headless
+- **slowMo** - Use `slowMo: 100` to make actions visible
+- **Wait strategies** - Use `waitForURL`, `waitForSelector`, `waitForLoadState` instead of fixed timeouts
+- **After click, wait for content** - After clicking a menu/dropdown, wait for expanded content to be visible before next action (e.g. `locator('table tbody tr').first().waitFor({ state: 'visible', timeout: 10000 })`)
+- **Error handling** - Always use try-catch; throw on assertion failure (never just console.log)
+- **Idempotent select** - For auto-save dropdowns, read current value first. If already equals target, select a different option (wait for save), then select target again to guarantee change event fires. See [references/COMMON_PATTERNS.md](references/COMMON_PATTERNS.md) for full example.
+- **Async data tables** - Element UI tables render an empty container before data arrives. After clicking a navigation item, directly `waitForSelector` on data rows (e.g. `.el-table__body tr`) instead of the table container. Do NOT use `waitForLoadState('networkidle')` on pages with polling/auto-refresh — it waits up to 30s and DOM may be in a refresh mid-state when it times out. After clicking "返回" in a loop, also wait for rows (not just the table container) before re-accessing them.
+- **Sidebar menu locator** - 管理后台侧栏菜单用多策略定位，见 [LOGIN_PATTERNS](references/LOGIN_PATTERNS.md)
+
+## Troubleshooting
+
+**Playwright not installed:** `cd $SKILL_DIR && npm run setup`
+
+**Module not found:** Ensure running from skill directory via `run.js` wrapper
+
+**Browser doesn't open:** Check `headless: false` and ensure display available
+
+**Element not found:** Add wait: `await page.waitForSelector('.element', { timeout: 10000 })`

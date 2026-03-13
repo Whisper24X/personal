@@ -176,6 +176,8 @@ description: 当用户或工作流需要自动化测试规划、自动化脚本�
 | 1    | AutomationPlanning  | TEST.md / TEST_REVIEW.md | `auto/*.json` |
 | 2    | AutomationExecution | auto/\*.json             | 执行报告      |
 
+**说明**：当前仅对 TEST.md 中**标题包含「正向场景」**的用例生成自动化脚本（Step 1）；异常场景、边界条件等不生成脚本。
+
 ## 使用场景
 
 当用户有以下需求时启用：

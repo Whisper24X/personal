@@ -159,6 +159,12 @@
                   placeholder="编辑文件内容..."
                   @update:model-value="updateCurrentFileContent"
                 />
+                <img
+                  v-else-if="isImageContent(selectedFileIndex)"
+                  :src="getFileContent(selectedFileIndex)"
+                  class="screenshot-image"
+                  style="max-width: 100%; border-radius: 4px;"
+                />
                 <pre v-else class="content-text file-content">{{ getFileContent(selectedFileIndex) }}</pre>
               </div>
               <!-- Main content view/edit -->
@@ -177,6 +183,13 @@
                     </template>
                   </el-alert>
                 </div>
+                <iframe
+                  v-else-if="isHtmlContent"
+                  :srcdoc="displayContent"
+                  class="html-report-frame"
+                  style="width: 100%; border: none; border-radius: 4px; min-height: 600px;"
+                  @load="autoResizeIframe"
+                />
                 <pre v-else class="content-text">{{ displayContent }}</pre>
               </div>
             </div>
@@ -432,13 +445,26 @@ const isPrototypeAction = computed(() => {
   return props.roleInfo.action === 'GeneratePrototype';
 });
 
+const isHtmlContent = computed(() => {
+  const content = props.roleInfo.content || '';
+  return content.trimStart().startsWith('<!DOCTYPE html>') || content.trimStart().startsWith('<html');
+});
+
 const displayContent = computed(() => {
   const content = props.roleInfo.content || '';
+  if (isHtmlContent.value) return content;
   if (viewMode.value === 'preview' && content.length > 500) {
     return content.substring(0, 500) + '\n...\n\n[查看完整内容]';
   }
   return content;
 });
+
+function autoResizeIframe(e: Event) {
+  const iframe = e.target as HTMLIFrameElement;
+  if (iframe.contentDocument) {
+    iframe.style.height = iframe.contentDocument.body.scrollHeight + 40 + 'px';
+  }
+}
 
 const displayPRDContent = computed(() => {
   const content = prdContent.value || '';
@@ -500,6 +526,11 @@ function getFileContent(index: number): string {
   if (typeof file === 'string') return '';
   const edited = editedFiles.value.get(file.path);
   return edited !== undefined ? edited : file.content;
+}
+
+function isImageContent(index: number): boolean {
+  const content = getFileContent(index);
+  return content.startsWith('data:image/');
 }
 
 function getCurrentFileEditedContent(): string {

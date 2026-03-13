@@ -241,6 +241,21 @@ export class WorkflowExecutionService {
     step.retryCount = 0; // Reset retry count on success
     step.error = undefined;
 
+    // Track last non-skipped action output for confirmation display
+    const isSkippedStep = output?.content?.startsWith('[Skipped]');
+    if (output && !isSkippedStep) {
+      updatedExec.executionContext = {
+        ...updatedExec.executionContext,
+        lastActionOutput: {
+          role,
+          action,
+          content: output.content,
+          outputFiles: output.outputFiles,
+          instructContent: output.instructContent,
+        },
+      };
+    }
+
     // 检测 Deploy action 结果，更新 deployFailed 状态
     if (action === 'Deploy' && output?.instructContent?.isCompleted !== undefined) {
       const deployFailed = output.instructContent.isCompleted === false;
@@ -256,6 +271,19 @@ export class WorkflowExecutionService {
       });
     }
 
+    if (output?.instructContent?.resetToEngineer) {
+      updatedExec.executionContext = {
+        ...updatedExec.executionContext,
+        resetToEngineer: true,
+      };
+      logger.info('WorkflowExecutionService: resetToEngineer flag stored for deferred reset', {
+        projectId,
+        versionId,
+        role,
+        action,
+      });
+    }
+
     let needsConfirmation = false;
     let isCompleted = false;
 
@@ -266,24 +294,47 @@ export class WorkflowExecutionService {
       // Check if this is the last step of the entire workflow
       const nextPosition = WorkflowStateMachine.getNextPosition(updatedExec, role, action);
 
-      if (!nextPosition) {
-        // Workflow complete
-        updatedExec.state = WorkflowState.COMPLETED;
-        updatedExec.currentPosition = null;
-        updatedExec.pendingConfirmation = null;
-        isCompleted = true;
+      // For skipped steps, use the last non-skipped action's output for confirmation display
+      const confirmOutput = isSkippedStep && updatedExec.executionContext?.lastActionOutput
+        ? updatedExec.executionContext.lastActionOutput
+        : output;
+      const confirmRole = (isSkippedStep && updatedExec.executionContext?.lastActionOutput?.role) || role;
+      const confirmAction = (isSkippedStep && updatedExec.executionContext?.lastActionOutput?.action) || action;
 
-        logger.info('WorkflowExecutionService: Workflow completed', { projectId });
+      if (!nextPosition) {
+        // Last role's last action — show confirmation so user can review results before completing
+        updatedExec.state = WorkflowState.WAITING_CONFIRMATION;
+        updatedExec.currentPosition = null;
+        updatedExec.pendingConfirmation = confirmOutput
+          ? {
+              role: confirmRole,
+              action: confirmAction,
+              content: confirmOutput.content,
+              outputFiles: confirmOutput.outputFiles,
+              instructContent: confirmOutput.instructContent,
+              createdAt: new Date().toISOString(),
+              deployFailed: updatedExec.executionContext?.deployFailed ?? false,
+            }
+          : null;
+        needsConfirmation = true;
+
+        logger.info('WorkflowExecutionService: Last step complete, waiting for final confirmation', {
+          projectId,
+          role,
+          action,
+          displayRole: confirmRole,
+          displayAction: confirmAction,
+        });
       } else {
         // Need user confirmation before proceeding to next role
         updatedExec.state = WorkflowState.WAITING_CONFIRMATION;
-        updatedExec.pendingConfirmation = output
+        updatedExec.pendingConfirmation = confirmOutput
           ? {
-              role,
-              action,
-              content: output.content,
-              outputFiles: output.outputFiles,
-              instructContent: output.instructContent,
+              role: confirmRole,
+              action: confirmAction,
+              content: confirmOutput.content,
+              outputFiles: confirmOutput.outputFiles,
+              instructContent: confirmOutput.instructContent,
               createdAt: new Date().toISOString(),
               deployFailed: updatedExec.executionContext?.deployFailed ?? false,
             }
@@ -294,6 +345,8 @@ export class WorkflowExecutionService {
           projectId,
           role,
           action,
+          displayRole: confirmRole,
+          displayAction: confirmAction,
           deployFailed: updatedExec.executionContext?.deployFailed ?? false,
         });
       }
@@ -432,18 +485,67 @@ export class WorkflowExecutionService {
       throw new Error(`Workflow is not waiting for confirmation. Current state: ${exec.state}`);
     }
 
+    // Dual-source detection: check both executionContext and pendingConfirmation.instructContent
+    const contextFlag = exec.executionContext?.resetToEngineer;
+    const instructFlag = (exec.pendingConfirmation?.instructContent as any)?.resetToEngineer;
+    const shouldResetToEngineer = contextFlag || instructFlag;
+
+    // Scope check: resetToEngineer only applies when the confirmed context is AutomationEngineer
+    const pendingRole = exec.pendingConfirmation?.role;
+    const lastOutputRole = (exec.executionContext?.lastActionOutput as any)?.role;
+    const isAutomationContext = pendingRole === 'AutomationEngineer' || lastOutputRole === 'AutomationEngineer';
+
+    logger.info('WorkflowExecutionService: confirm() resetToEngineer decision', {
+      projectId,
+      versionId,
+      contextFlag,
+      instructFlag,
+      shouldResetToEngineer,
+      pendingRole,
+      lastOutputRole,
+      isAutomationContext,
+    });
+
+    if (shouldResetToEngineer && isAutomationContext) {
+      await this.reset(projectId, versionId, 'Engineer');
+      const result = await this.start(projectId, versionId);
+      WorkflowStateMachine.logTransition(projectId, exec.state, WorkflowState.RUNNING, 'confirm_and_reset_to_engineer');
+      logger.info('WorkflowExecutionService: Confirmed and reset to Engineer', { projectId });
+      return result;
+    }
+
     const updatedExec = this.cloneExecution(exec);
+
+    // Clear stale resetToEngineer flags when not in automation context
+    if (shouldResetToEngineer && !isAutomationContext) {
+      logger.info('WorkflowExecutionService: Clearing stale resetToEngineer flag (non-automation context)', {
+        projectId,
+        pendingRole,
+      });
+      delete updatedExec.executionContext.resetToEngineer;
+      delete updatedExec.executionContext.testFailed;
+      delete updatedExec.executionContext.testsFailed;
+    }
 
     // Find next step to execute
     const confirmedRole = exec.pendingConfirmation?.role;
     const confirmedAction = exec.pendingConfirmation?.action;
 
+    let isCompleted = false;
     if (confirmedRole && confirmedAction) {
       const nextPosition = WorkflowStateMachine.getNextPosition(exec, confirmedRole, confirmedAction);
       updatedExec.currentPosition = nextPosition;
+      if (!nextPosition) {
+        isCompleted = true;
+      }
     }
 
-    updatedExec.state = WorkflowState.RUNNING;
+    // Clear execution context on workflow completion to prevent stale flags in next cycle
+    if (isCompleted) {
+      updatedExec.executionContext = {};
+    }
+
+    updatedExec.state = isCompleted ? WorkflowState.COMPLETED : WorkflowState.RUNNING;
     updatedExec.pendingConfirmation = null;
 
     updatedExec.version += 1;
@@ -451,9 +553,14 @@ export class WorkflowExecutionService {
 
     const result = await this.repository.update(updatedExec);
 
-    WorkflowStateMachine.logTransition(projectId, exec.state, WorkflowState.RUNNING, 'confirm');
+    const targetState = isCompleted ? WorkflowState.COMPLETED : WorkflowState.RUNNING;
+    WorkflowStateMachine.logTransition(projectId, exec.state, targetState, 'confirm');
 
-    logger.info('WorkflowExecutionService: Workflow confirmed', { projectId });
+    logger.info('WorkflowExecutionService: Workflow confirmed', {
+      projectId,
+      isCompleted,
+      targetState,
+    });
 
     return result;
   }

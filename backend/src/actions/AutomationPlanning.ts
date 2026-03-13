@@ -22,6 +22,8 @@ export interface AutomationPlanningOptions extends WorkspaceOptions {
   enableMCPAutoFix?: boolean;
   /** Maximum number of fix attempts per JSON file (default: 1) */
   mcpMaxFixAttempts?: number;
+  /** 强制重新生成脚本，跳过「脚本已存在且 TEST.md 未变更」的检测 */
+  forceRegenerate?: boolean;
 }
 
 export class AutomationPlanning extends BaseAction {
@@ -41,6 +43,8 @@ export class AutomationPlanning extends BaseAction {
       executorMode: this.getExecutorMode(),
     });
     logger.info('========================================');
+
+    await this.enrichTestCasesWithPathGuide(options);
 
     if (isCLIMode) {
       // CLI 模式：使用 Cursor CLI 按 playwright-skill 约定生成 Playwright 脚本到 docs/test/auto
@@ -113,7 +117,9 @@ export class AutomationPlanning extends BaseAction {
       const deployUrl = options && workspaceDirForTest ? await this.readDeployResultBaseUrl(workspaceDirForTest) : undefined;
       const deployUrlMap = options && workspaceDirForTest ? await this.readDeployResultUrlMap(workspaceDirForTest) : {};
       const testUrl = options?.testUrl || deployUrl || this.extractUrlFromTestCases(testCases);
-      const passedCases = sampleTestCases.filter((tc) => tc.steps && tc.steps.length > 0);
+      const passedCases = sampleTestCases.filter(
+        (tc) => tc.name && tc.name.includes('正向场景') && tc.steps && tc.steps.length > 0
+      );
 
       if (passedCases.length > 0) {
         logger.info('AutomationPlanning: Generating JSON files from test cases', {
@@ -264,6 +270,44 @@ export class AutomationPlanning extends BaseAction {
   }
 
   /**
+   * 判断是否可跳过规划：脚本已存在且 TEST.md 未在脚本生成后被修改
+   */
+  private async shouldSkipPlanning(workspaceDir: string): Promise<boolean> {
+    const autoDir = path.join(workspaceDir, 'auto');
+    const testMdPath = path.join(workspaceDir, 'TEST.md');
+    try {
+      const entries = await fs.readdir(autoDir, { withFileTypes: true });
+      const scriptEntries = entries.filter(
+        (e) =>
+          e.isFile() &&
+          (e.name.endsWith('.js') || e.name.endsWith('.ts')) &&
+          !/^playwright-test-API-/i.test(e.name) &&
+          !/^api-test-/i.test(e.name)
+      );
+      if (scriptEntries.length === 0) return false;
+
+      let minScriptMtime = Infinity;
+      for (const entry of scriptEntries) {
+        const stat = await fs.stat(path.join(autoDir, entry.name));
+        if (stat.mtimeMs < minScriptMtime) minScriptMtime = stat.mtimeMs;
+      }
+
+      const testMdStat = await fs.stat(testMdPath);
+      const skip = testMdStat.mtimeMs < minScriptMtime;
+      if (skip) {
+        logger.info('AutomationPlanning: Skipping - scripts exist and TEST.md unchanged', {
+          scriptCount: scriptEntries.length,
+          testMdMtime: testMdStat.mtimeMs,
+          minScriptMtime,
+        });
+      }
+      return skip;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * CLI 模式：使用 CLI 工具生成 JSON 文件
    */
   private async runCLIMode(_input: string, options?: AutomationPlanningOptions): Promise<IActionOutput> {
@@ -280,6 +324,29 @@ export class AutomationPlanning extends BaseAction {
       const autoDir = path.join(workspaceDir, 'auto');
       await fs.mkdir(autoDir, { recursive: true });
       logger.debug('AutomationPlanning: Ensured auto directory exists', { autoDir });
+
+      // 脚本已存在且 TEST.md 未变更时跳过生成（ImproveCode 完成后回来自动化流程的场景）
+      if (!options?.forceRegenerate && (await this.shouldSkipPlanning(workspaceDir))) {
+        const scriptFiles = await this.readGeneratedScriptFiles(workspaceDir);
+        const summary = `脚本已存在且 TEST.md 未变更，跳过生成，直接执行（共 ${scriptFiles.length} 个脚本）`;
+        logger.info('AutomationPlanning: ' + summary);
+        return {
+          content: summary,
+          data: {
+            type: 'automation_plan',
+            timestamp: new Date().toISOString(),
+            workspaceDir,
+            scriptFilesGenerated: scriptFiles.length > 0,
+            scriptFilesCount: scriptFiles.length,
+            scriptFiles: scriptFiles.map((f) => ({ id: f.id, filename: f.filename })),
+            jsonFilesGenerated: scriptFiles.length > 0,
+            jsonFilesCount: scriptFiles.length,
+            jsonFiles: scriptFiles.map((f) => ({ id: f.id, filename: f.filename })),
+            cliMode: true,
+            skipped: true,
+          },
+        };
+      }
 
       const deployUrlMap = await this.readDeployResultUrlMap(workspaceDir);
       const effectiveTestUrl =
@@ -362,28 +429,170 @@ export class AutomationPlanning extends BaseAction {
   }
 
   /**
+   * 加载 API_REFERENCE.md 用于 CLI 模式，提供选择器回退、等待策略、表单操作等详细参考
+   */
+  private async loadAPIReferenceForCLI(): Promise<string> {
+    const projectRoot = WorkspaceManager.getProjectRootPath();
+    const apiRefPath = path.join(
+      projectRoot,
+      'skills',
+      'playwright-skill',
+      'skills',
+      'playwright-skill',
+      'API_REFERENCE.md'
+    );
+
+    try {
+      const content = await fs.readFile(apiRefPath, 'utf-8');
+      // 限制长度，优先保留 Selectors & Locators（含 fallback）、Common Actions、Waiting Strategies、Assertions
+      const maxLen = 6000;
+      return content.length > maxLen ? content.slice(0, maxLen) + '\n\n...(truncated)' : content;
+    } catch (error) {
+      logger.warn('AutomationPlanning: Failed to load API_REFERENCE', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return '';
+    }
+  }
+
+  /**
+   * 加载 path-guide skill 内容，用于路径指引补充
+   */
+  private async loadPathGuideSkill(): Promise<string> {
+    const projectRoot = WorkspaceManager.getProjectRootPath();
+    const skillPath = path.join(projectRoot, 'skills', 'path-guide', 'SKILL.md');
+    try {
+      return await fs.readFile(skillPath, 'utf-8');
+    } catch {
+      logger.warn('AutomationPlanning: path-guide skill not found', { skillPath });
+      return '';
+    }
+  }
+
+  /**
+   * 在生成脚本前，使用 path-guide skill 补充 TEST.md 中各用例的 When 导航路径。
+   * 读取 PRD + 扫描前端源码 → 更新 TEST.md 的 When 步骤。
+   * 任何失败都不阻断后续脚本生成流程。
+   */
+  private async enrichTestCasesWithPathGuide(options?: AutomationPlanningOptions): Promise<void> {
+    try {
+      const pathGuideSkill = await this.loadPathGuideSkill();
+      if (!pathGuideSkill) {
+        logger.info('AutomationPlanning: Skipping path guide enrichment (skill not found)');
+        return;
+      }
+
+      const workspaceOptions = this.validateWorkspaceOptions(options, 'TEST');
+      const testDir = this.getWorkspaceDir(workspaceOptions);
+      const baseWorkspaceDir = testDir.replace(/\/docs\/test$/, '');
+
+      let prdContent = '';
+      try {
+        const prd = await this.readWorkspaceFile('PRD.md', { ...options, documentType: 'PRD' });
+        if (prd) {
+          prdContent = prd.length > 6000 ? prd.slice(0, 6000) + '\n\n...(truncated)' : prd;
+        }
+      } catch {
+        logger.debug('AutomationPlanning: PRD not found, skipping path guide enrichment');
+      }
+      if (!prdContent) {
+        logger.info('AutomationPlanning: No PRD available, skipping path guide enrichment');
+        return;
+      }
+
+      const prompt = `你是自动化测试用例优化工程师。请根据以下 skill 规范，生成自动化就绪的测试用例。
+
+## 任务
+
+1. 读取 docs/prd/PRD.md（内容已提供在下方）
+2. 扫描项目前端源码，查找路由文件和页面组件：
+   - 查找 ainative-shadow/src/routers/ 或 ainative-shadow/src/router/ 下的路由配置文件
+   - 分析路由 meta.title（菜单名称）和 meta.hidden（是否隐藏）
+   - 对隐藏路由，读取其父级页面组件找到跳转入口（按钮文案、router.push 等）
+3. 读取 docs/test/TEST.md
+4. 对每个测试用例的 **When** 步骤，将抽象的页面导航描述替换为基于源码分析的准确导航步骤
+5. 根据 When 到达的最终页面，优化 **Then** 断言（仅保留该页面上可直接观测到的 UI 变化）
+6. 对非 UI 可验证用例（后台定时任务、数据库直接操作等），在属性表 \`类型\` 列标注为 \`通用（不可UI自动化）\`
+7. 将更新后的 TEST.md 写回 docs/test/TEST.md
+
+## 约束
+
+- 修改 **When** 步骤中的导航部分，补充具体菜单点击路径和等待点
+- 根据 When 到达的最终页面优化 **Then** 断言：只保留页面可观测结果（提示信息、列表变化、元素状态等），移除数据库断言、接口断言、硬编码时间/数量、主观描述
+- **不修改 Given** 和属性表格（类型标注除外）
+- 菜单/按钮文案必须与路由 meta.title 和组件中的按钮文案一致
+- 隐藏路由必须写明通过哪个页面的哪个按钮进入
+- 每步点击后标注等待点（如 → 等待表格加载）
+- 导航路径用 → 连接，不得跳级
+
+## path-guide skill 规范
+
+${pathGuideSkill}
+
+## PRD 内容（用于理解功能页面）
+
+${prdContent}
+`;
+
+      logger.info('AutomationPlanning: Enriching TEST.md with path guide', {
+        promptLength: prompt.length,
+        baseWorkspaceDir,
+      });
+
+      await this.execute(prompt, {
+        workDir: baseWorkspaceDir,
+      });
+
+      logger.info('AutomationPlanning: Path guide enrichment completed');
+    } catch (error: any) {
+      logger.warn('AutomationPlanning: Path guide enrichment failed, continuing with script generation', {
+        error: error.message,
+      });
+    }
+  }
+
+  /**
    * 构建 CLI 模式的系统提示词（Playwright 脚本生成）
    */
   private async buildCLISystemPrompt(): Promise<string> {
-    const skillContent = await this.loadPlaywrightSkillForCLI();
+    const [skillContent, apiRefContent] = await Promise.all([
+      this.loadPlaywrightSkillForCLI(),
+      this.loadAPIReferenceForCLI(),
+    ]);
 
     return `你是一个专业的自动化测试工程师。你的任务是根据测试用例文档，按 playwright-skill 的约定生成 **Playwright JavaScript 脚本**，并保存到 **docs/test/auto** 目录。
 
 ## 输出要求
 
 - **仅针对 UI/功能测试用例生成脚本**：只为文档中「第二部分」或功能/界面类用例（如类型为「管理后台」、用例ID 为 TC-xxx 的列表）生成 Playwright 脚本。**不要**为「第三部分：接口测试用例」、用例ID 为 **API-xxx** 的接口用例生成脚本（接口用例由接口自动化流程单独生成到 docs/test/auto-api）。
+- **仅针对「正向场景」**：只为**标题中包含「正向场景」**的用例生成脚本，跳过标题含「异常场景」「边界条件」等的用例。
 - 生成物：每个符合条件的测试用例对应一个 **.js** 文件（Playwright 脚本），不要生成 JSON。
 - 输出目录：**所有脚本必须写入 docs/test/auto**（相对当前 workspace 的 docs/test/auto），不要写入 /tmp 或其它目录。
 - 遵循 playwright-skill 约定：
   - 使用 \`const { chromium } = require('playwright')\`，脚本内使用 \`(async () => { ... })()\` 等自执行异步函数。
-  - URL 使用顶部常量（如 \`const TARGET_URL = '...'\`）参数化，便于配置。
+  - URL 使用顶部常量（如 \`const TARGET_URL = process.env.TARGET_URL || '...'\`）参数化，便于配置。**禁止对 TARGET_URL 做 .replace() 去掉尾斜杠**，必须原样传给 \`page.goto(TARGET_URL, ...)\`，否则 Docker 环境下 nginx 301 重定向会导致端口错误而连接被拒绝。
   - 默认 \`headless: false\`，除非用户明确要求无头模式。
   - 每个脚本自包含：打开页面、执行步骤、断言、关闭浏览器。
-  - **前置条件与登录**：若用例表格中的「前置条件」包含「已登录」「登录管理后台」「用户已登录」等，脚本必须在执行业务步骤前先执行登录：登录账号与密码由运行环境从 **skills/playwright-skill/login.md** 读取并注入为 \`LOGIN_USER\`、\`LOGIN_PASSWORD\`；脚本使用 \`process.env.LOGIN_USER\` 与 \`process.env.LOGIN_PASSWORD\`（或顶部常量 \`const LOGIN_USER = process.env.LOGIN_USER || ''\`、\`const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || ''\`），打开目标站点后若被重定向到登录页（如 URL 含 \`/login\`），则填写账号密码并提交，**等待跳转**须用 \`page.waitForURL((url) => !url.href.includes('/login'), { timeout: 15000 })\`，注意回调参数 \`url\` 是 URL 对象，必须用 \`url.href.includes(...)\`，禁止写 \`url.includes(...)\`（会报 url.includes is not a function）；若未配置则抛出明确提示（如「需要登录。请配置 skills/playwright-skill/login.md 或设置环境变量 LOGIN_USER 和 LOGIN_PASSWORD」）。登录提交后若 waitForURL 超时未离开登录页，必须 throw new Error(...)，不得仅等待固定时间后继续。
+  - **前置条件与登录**：若用例表格中的「前置条件」包含「已登录」「登录管理后台」「用户已登录」等，脚本必须在执行业务步骤前先执行登录：登录账号与密码由运行环境从 **skills/playwright-skill/login.md** 读取并注入为 \`LOGIN_USER\`、\`LOGIN_PASSWORD\`；脚本使用 \`process.env.LOGIN_USER\` 与 \`process.env.LOGIN_PASSWORD\`（或顶部常量 \`const LOGIN_USER = process.env.LOGIN_USER || ''\`、\`const LOGIN_PASSWORD = process.env.LOGIN_PASSWORD || ''\`）。打开目标站点后，**必须先等待 SPA 可能的异步重定向**：用 \`try { await page.waitForURL((url) => url.href.includes('/login')); } catch (e) {}\` 等待客户端路由重定向到 /login（SPA 的 Vue Router/React Router 重定向是异步的，直接检查 \`page.url()\` 会漏掉重定向），然后再用 \`if (page.url().includes('/login'))\` 判断是否需要登录。登录时填写账号密码并提交，**等待跳转**须用 \`page.waitForURL((url) => !url.href.includes('/login'))\`，注意回调参数 \`url\` 是 URL 对象，必须用 \`url.href.includes(...)\`，禁止写 \`url.includes(...)\`（会报 url.includes is not a function）；若未配置则抛出明确提示（如「需要登录。请配置 skills/playwright-skill/login.md 或设置环境变量 LOGIN_USER 和 LOGIN_PASSWORD」）。登录提交后若 waitForURL 超时未离开登录页，必须 throw new Error(...)，不得仅等待固定时间后继续。**禁止在 waitFor、waitForURL、goto 等调用中写 timeout 参数**，使用 Playwright 默认超时。
   - **断言与失败**：预期结果未满足时（如关键元素未出现、仍停留在登录页、文案不符）必须 throw new Error('...') 或 process.exit(1)，不得仅 console.log 后正常结束，否则执行引擎会按退出码 0 误判为成功。
-  - **路径指引**：TEST.md 中若存在「路径指引」小节及表格（页面/场景、操作路径），生成脚本时**必须**使用该表格。当用例前置条件或 Given 涉及表格中的页面（如「进入商品创建页面」「定金商品创建页面」）时，进入该页面的步骤须**严格按照表格中的操作路径**依次通过点击菜单/链接实现（如先点击「商品管理」，再「平台商品管理」，再「新增平台商品」，再输入/选择等），使用 \`page.getByRole('link', { name: '...' })\` 或 \`page.locator('text=...')\` 等，文案须与路径指引一致，不得臆造或跳过中间层级。
+  - **幂等下拉选择（自动保存型）**：若用例中某个下拉框选择后会自动保存（无需额外点击保存按钮），脚本必须先读取下拉框当前值（如 \`textContent()\`），判断是否已等于目标值。若已等于目标值，需先选择另一个选项并等待保存动作完成（如等待 success message 出现并消失），再选择目标值，确保 change 事件必定触发。否则直接选择当前已选值不会触发 change，断言会超时。
+  - **路径指引**：TEST.md 中若存在「路径指引」小节及表格（页面/场景、操作路径），生成脚本时**必须**使用该表格。当用例前置条件或 Given 涉及表格中的页面（如「进入商品创建页面」「定金商品创建页面」）时，进入该页面的步骤须**严格按照表格中的操作路径**依次通过点击菜单/链接实现（如先点击「商品管理」，再「平台商品管理」，再「新增平台商品」，再输入/选择等），使用 \`page.getByRole('link', { name: '...' })\` 或 \`page.locator('text=...')\` 等，文案须与路径指引一致，不得臆造或跳过中间层级。**每步点击菜单、下拉或选择器后，须等待其展开内容（如列表、表格、下拉选项）可见后再执行下一步点击**，使用 \`locator('...').waitFor({ state: 'visible' })\` 等待下一级内容区域（不写 timeout），避免未加载就操作。
 
 ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本，每个用例一个独立 .js 文件。'}
+
+${apiRefContent ? `## Playwright API 参考（选择器、等待、表单操作等）
+
+生成脚本时请参考以下 API 参考，**必须遵守**：
+- **多弹窗**：页面上有多个 dialog 时，用 \`page.getByRole('dialog', { name: '弹窗标题' })\` 精确定位，禁止 \`locator('[role="dialog"]')\`（会 strict mode violation）
+- **Element Plus 下拉**：下拉选项渲染在 body portal，用 \`page.locator('.el-select-dropdown, .el-popper').last().getByText('选项')\`，点击前先 \`waitFor({ state: 'visible' })\`
+- **Element Plus Tab**：用 \`dialog.locator('.el-tabs__item').filter({ hasText: 'Tab名' })\` 定位 Tab 头
+- **弹窗内按钮**：若 element is not visible，先 \`scrollIntoViewIfNeeded()\` 再点击
+- **表单项过滤**：用 \`locator('.el-form-item').filter({ hasText: '购买渠道' })\`，禁止 \`.el-form-item:has-text("购买渠道")\`（会 CSS 解析错误）
+- **禁止固定 timeout**：不写 \`timeout: 10000\`、\`timeout: 5000\` 等，省略则用 Playwright 默认；禁止 \`page.waitForTimeout(ms)\`
+- **Selectors & Locators**：\`getByRole('link')\` 失败时用 \`.or()\` 回退
+- **Common Actions**：表单填写、下拉选择等标准写法
+
+${apiRefContent}` : ''}
 
 ## 文件命名
 
@@ -441,17 +650,18 @@ ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本�
   }
 
   /**
-   * 解析 deployResult.md 中所有「标签: URL」，返回映射表（如 管理后台 -> url）
+   * 解析部署文档中所有「标签: URL」，返回映射表（如 管理后台 -> url）。
+   * 优先读取 docs/deploy/deploy.md（含完整访问地址表），若无或解析不到则回退到 deployResult.md。
    */
   private async readDeployResultUrlMap(workspaceDir: string): Promise<Record<string, string>> {
     const baseWorkspaceDir = workspaceDir.replace(/\/docs\/test$/, '');
-    const deployResultPath = path.join(baseWorkspaceDir, 'docs', 'deploy', 'deployResult.md');
+    const deployDir = path.join(baseWorkspaceDir, 'docs', 'deploy');
+    const deployMdPath = path.join(deployDir, 'deploy.md');
+    const deployResultPath = path.join(deployDir, 'deployResult.md');
+    const regex = /([^\s,，；]+?)\s*[：:]?\s*(https?:\/\/[^\s,，；)、]+)/g;
 
-    try {
-      const content = await fs.readFile(deployResultPath, 'utf-8');
+    const parseUrlMap = (content: string): Record<string, string> => {
       const map: Record<string, string> = {};
-      // 匹配「标签: URL」或「标签 URL」（冒号可选），支持中文顿号、逗号等分隔
-      const regex = /([^\s,，；]+?)\s*[：:]?\s*(https?:\/\/[^\s,，；)、]+)/g;
       let match: RegExpExecArray | null;
       while ((match = regex.exec(content)) !== null) {
         const label = match[1].trim();
@@ -460,15 +670,46 @@ ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本�
           map[label] = url;
         }
       }
+      return map;
+    };
+
+    try {
+      try {
+        const content = await fs.readFile(deployMdPath, 'utf-8');
+        const map = parseUrlMap(content);
+        if (Object.keys(map).length > 0) {
+          logger.debug('AutomationPlanning: Resolved deploy URL map from deploy.md', {
+            deployMdPath,
+            keys: Object.keys(map),
+          });
+          return map;
+        }
+      } catch (e: any) {
+        if (e?.code !== 'ENOENT') {
+          logger.warn('AutomationPlanning: Failed to read deploy.md for URL map', {
+            deployMdPath,
+            error: e?.message ?? String(e),
+          });
+        }
+      }
+      const content = await fs.readFile(deployResultPath, 'utf-8');
+      const map = parseUrlMap(content);
       if (Object.keys(map).length > 0) {
-        logger.debug('AutomationPlanning: Resolved deploy URL map', { deployResultPath, keys: Object.keys(map) });
+        logger.debug('AutomationPlanning: Resolved deploy URL map from deployResult.md', {
+          deployResultPath,
+          keys: Object.keys(map),
+        });
       }
       return map;
     } catch (err: any) {
       if (err?.code === 'ENOENT') {
-        logger.debug('AutomationPlanning: deployResult.md not found', { deployResultPath });
+        logger.debug('AutomationPlanning: No deploy doc found for URL map', {
+          deployMdPath,
+          deployResultPath,
+        });
       } else {
-        logger.warn('AutomationPlanning: Failed to read deployResult.md', {
+        logger.warn('AutomationPlanning: Failed to read deploy docs for URL map', {
+          deployMdPath,
           deployResultPath,
           error: err?.message ?? String(err),
         });
@@ -478,7 +719,8 @@ ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本�
   }
 
   /**
-   * 读取 workspace 下 docs/deploy/deployResult.md 中的部署地址（优先「统一入口」）
+   * 读取 workspace 下部署文档中的部署地址（优先「统一入口」）。
+   * 优先从 docs/deploy/deploy.md 解析（含完整访问地址表），若无或解析不到则从 deployResult.md 解析。
    * 用于在生成 Playwright 脚本时把打开页面的 URL 映射进脚本。
    */
   private async readDeployResultBaseUrl(workspaceDir: string): Promise<string | undefined> {
@@ -507,7 +749,7 @@ ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本�
         lines.push(`- ${label}: ${url}`);
       }
       lines.push('若类型未在上表则使用「统一入口」；若无则使用表中第一个 URL。');
-      lines.push('脚本中的 TARGET_URL 必须与上表所列 URL 完全一致，保留末尾斜杠（如有），不得自行去掉。');
+      lines.push('脚本中的 TARGET_URL 必须与上表所列 URL 完全一致，保留末尾斜杠（如有），不得自行去掉。**严禁使用 .replace() 去掉尾斜杠**，直接 `page.goto(TARGET_URL, ...)` 即可。');
       systemContext = lines.join('\n');
     } else {
       const testUrl = options?.testUrl || '';
@@ -517,6 +759,7 @@ ${skillContent || '请按 Playwright 官方写法编写浏览器自动化脚本�
     const taskPoints = [
       '从输入文件夹 docs/test 读取 TEST.md 或 TEST_REVIEW.md（优先 TEST_REVIEW.md）',
       '解析测试用例，提取每个用例的编号、名称、前置条件、测试步骤、预期结果',
+      '**仅针对标题中包含「正向场景」的用例**生成 Playwright 脚本；不要为标题含「异常场景」「边界条件」等非正向场景的用例生成脚本',
       '若 TEST.md 中存在「路径指引」表格，脚本中进入页面的步骤须按表格中的**操作路径**依次点击（如 商品管理 → 平台商品管理 → 新增平台商品 → 选择商品类型为「定金」），不得臆造路径；路径中的文案用于 locator/getByRole 的 name 或 text',
       '若用例前置条件包含「已登录」或「登录管理后台」，脚本须先使用 LOGIN_USER/LOGIN_PASSWORD 执行登录，再执行业务步骤',
       '按 playwright-skill 约定为每个测试用例生成一个 Playwright JavaScript 脚本（.js）',
