@@ -5,10 +5,10 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-# 预构建命令（拉取依赖）
-pre_cmd = ["make mod"]
+# 预构建命令（避免每次热重载都执行 go mod tidy）
+pre_cmd = []
 # 构建命令
-cmd = "go build -tags dynamic -o ./tmp/main ./cmd/yanxue"
+cmd = "GOMAXPROCS=2 GOFLAGS='-p=1' go build -tags dynamic -o ./tmp/main ./cmd/yanxue"
 # 二进制文件路径
 bin = "./tmp/main"
 # 运行参数
@@ -16,7 +16,7 @@ args_bin = ["-conf", "./configs"]
 # 监听文件变化的扩展名
 include_ext = ["go", "yaml", "yml"]
 # 排除的目录
-exclude_dir = ["tmp", "vendor", "third_party", "doc", "api"]
+exclude_dir = ["tmp", "bin", "logs", ".git", "vendor", "third_party", "doc", "api"]
 # 排除的文件正则
 exclude_regex = ["_test\\.go$", "wire_gen\\.go$", "\\.pb\\.go$", "\\.pb\\.validate\\.go$"]
 # 排除的文件
