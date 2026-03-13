@@ -53,6 +53,7 @@ make wire && make build         # 依赖注入和构建
 | 任务场景 | 推荐阅读 |
 |----------|----------|
 | 了解整体架构和约定 | [openspec/project.md](openspec/project.md) |
+| 架构、设计、质量等专题 | [knowledge/](../../knowledge/)（ARCHITECTURE、DESIGN、QUALITY_SCORE 等） |
 | 开发微信小程序 | [ainative-app 指南](docs/dev-spec/ainative-app/README.md) |
 | 开发管理后台页面 | [ainative-shadow 指南](docs/dev-spec/ainative-shadow/README.md) |
 | 开发后端接口/业务逻辑 | [ainative-backend 指南](docs/dev-spec/ainative-backend/README.md) |
