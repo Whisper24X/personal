@@ -325,17 +325,17 @@ cmd_clean() {
 cmd_restart() {
     check_docker
     info "重启沙箱容器..."
-    dc stop
 
-    info "清理日志文件..."
-    local log_dir="$PROJECT_ROOT/logs"
-    if [[ -d "$log_dir" ]]; then
-        for f in "$log_dir"/*.log; do
-            [[ -f "$f" ]] && : > "$f"
-        done
-        success "日志已清空"
+    # 日志文件由容器内 root 创建，宿主机用户无权清空；
+    # 趁容器还在运行，用 docker exec 在容器内完成截断。
+    if is_running; then
+        info "清理日志文件（容器内执行）..."
+        docker_exec sh -c 'for f in /workspace/logs/*.log; do [ -f "$f" ] && : > "$f"; done' \
+            && success "日志已清空" \
+            || warn "日志清理失败，继续重启"
     fi
 
+    dc stop
     dc up -d --wait
     success "沙箱已重启"
 }
