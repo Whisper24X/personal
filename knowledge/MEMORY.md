@@ -2,7 +2,8 @@
 
 ## 学习与修正记录
 
-学习与修正记录存放在 `.learnings/` 目录，执行任务前可查阅。
+- 学习与修正记录在 `.learnings/`，执行任务前可查阅
+- **错误记录（强制）**：任务执行中若遇到命令失败、异常、超时或非预期输出，必须先追加到 `.learnings/ERRORS.md` 再继续或重试。格式见 `.cursor/skills/self-improvement/SKILL.md` 错误条目。
 
 ## 使用约定
 
