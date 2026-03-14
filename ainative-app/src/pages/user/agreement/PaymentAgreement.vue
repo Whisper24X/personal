@@ -146,7 +146,7 @@
             为免疑义，以上退费规则不适用于储值卡产品，储值卡产品的退费规则请见
           </text>
           <text decode="true" class="link-text" @tap="navigateToStoredValueCardRules">
-            《葱头宇宙储值卡使用规则》。
+            《洋葱研学储值卡使用规则》。
           </text>
         </view>
       </view>

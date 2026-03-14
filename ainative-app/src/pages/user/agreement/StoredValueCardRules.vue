@@ -1,12 +1,12 @@
 <template>
   <view class="agreement-content">
-    <text decode="true" class="title">葱头宇宙储值卡使用规则</text>
+    <text decode="true" class="title">洋葱研学储值卡使用规则</text>
 
     <view class="section">
       <text decode="true" class="section-title">一、概述</text>
       <view class="paragraph">
         <text decode="true" class="paragraph-text">
-          感谢您购买"葱头宇宙储值卡"（以下简称"本卡"或"储值卡"）。为规范储值卡的购买、使用和管理,保障用户合法权益，特制定本规则。在您点击确认购买或实际充值前，请务必仔细阅读本协议，特别是关于有效期、退费限制、扣款逻辑等加粗条款。
+          感谢您购买"洋葱研学储值卡"（以下简称"本卡"或"储值卡"）。为规范储值卡的购买、使用和管理,保障用户合法权益，特制定本规则。在您点击确认购买或实际充值前，请务必仔细阅读本协议，特别是关于有效期、退费限制、扣款逻辑等加粗条款。
         </text>
       </view>
     </view>
