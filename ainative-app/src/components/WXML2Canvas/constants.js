@@ -5,12 +5,20 @@ export const DEFAULT_LINE_HEIGHT = 1.4
 export const FONT_SIZE_OFFSET = 0.88
 /** 换行符 */
 export const LINE_BREAK_SYMBOL = "\n"
-/** 系统信息 */
-export const {
-  platform: SYS_PLATFORM,
-  pixelRatio: SYS_DPR,
-  windowWidth: SYS_WIDTH
-} = wx.getSystemInfoSync()
+/** 系统信息（H5 环境下 wx 不存在，使用浏览器 API 作为降级） */
+const _sysInfo =
+  typeof wx !== "undefined" && wx.getSystemInfoSync
+    ? wx.getSystemInfoSync()
+    : {
+        platform: "h5",
+        pixelRatio: typeof window !== "undefined" ? window.devicePixelRatio || 2 : 2,
+        windowWidth: typeof window !== "undefined" ? window.innerWidth : 375
+      }
+export const SYS_PLATFORM = _sysInfo.platform
+export const SYS_DPR = _sysInfo.pixelRatio
+export const SYS_WIDTH = _sysInfo.windowWidth
+/** 是否为 H5 平台 */
+export const IS_H5 = SYS_PLATFORM === "h5"
 /** 是否为 iOS 平台 */
 export const IS_IOS = SYS_PLATFORM === "ios"
 /** 是否为 macOS 平台 */

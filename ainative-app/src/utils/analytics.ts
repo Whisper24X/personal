@@ -52,6 +52,11 @@ function isEnabled(): boolean {
     return false
   }
 
+  // H5 环境下不启用（依赖 wx.reportEvent、Taro.getCurrentPages 等小程序 API）
+  if (process.env.TARO_ENV === "h5") {
+    return false
+  }
+
   // 开发环境检查
   if (process.env.NODE_ENV === "development" && !globalConfig.enableInDev) {
     return false
@@ -623,43 +628,49 @@ export const vTrackView: Directive = {
 
     // 使用 IntersectionObserver 监听元素曝光
     try {
-      // 小程序环境中使用 createIntersectionObserver
-      const observer = Taro.createIntersectionObserver(el)
+      // H5 使用原生 IntersectionObserver，小程序使用 Taro.createIntersectionObserver
+      const isH5 = process.env.TARO_ENV === "h5"
+      let observer: any
 
-      // 保存已曝光状态，避免重复上报
-      let hasReported = false
-
-      observer.relativeToViewport({ bottom: 0 }).observe(el, res => {
-        if (globalConfig.debug) {
-          console.log("[Analytics] v-track-view 元素可见性变化:", {
-            eventId,
-            intersectionRatio: res?.intersectionRatio,
-            hasReported
-          })
-        }
-
-        if (res && (res.intersectionRatio ?? 0) > 0 && !hasReported) {
-          hasReported = true
-          if (globalConfig.debug) {
-            console.log("[Analytics] v-track-view 触发曝光事件:", eventId)
+      if (isH5 && typeof IntersectionObserver !== "undefined") {
+        observer = new IntersectionObserver(
+          entries => {
+            const entry = entries[0]
+            if (entry?.isIntersecting && !(el as any)._trackViewReported) {
+              ;(el as any)._trackViewReported = true
+              track(
+                eventId,
+                {
+                  elementType: (el as HTMLElement).tagName?.toLowerCase() || "unknown",
+                  ...eventData
+                },
+                EventType.EXPOSURE
+              )
+            }
+          },
+          { threshold: 0.1 }
+        )
+        observer.observe(el)
+      } else if (!isH5) {
+        observer = Taro.createIntersectionObserver(el)
+        let hasReported = false
+        observer.relativeToViewport({ bottom: 0 }).observe(el, (res: any) => {
+          if (res && (res.intersectionRatio ?? 0) > 0 && !hasReported) {
+            hasReported = true
+            track(
+              eventId,
+              {
+                elementType: (el as HTMLElement).tagName?.toLowerCase() || "unknown",
+                ...eventData
+              },
+              EventType.EXPOSURE
+            )
           }
-          track(
-            eventId,
-            {
-              elementType: el.tagName?.toLowerCase() || "unknown",
-              ...eventData
-            },
-            EventType.EXPOSURE
-          )
-        }
-      })
+        })
+      }
 
-      // 保存 observer，用于卸载时断开
-      // @ts-ignore
-      el._trackViewObserver = observer
-
-      if (globalConfig.debug) {
-        console.log("[Analytics] v-track-view observer 创建成功")
+      if (observer) {
+        ;(el as any)._trackViewObserver = observer
       }
     } catch (error) {
       if (globalConfig.debug) {
@@ -672,17 +683,15 @@ export const vTrackView: Directive = {
     if (globalConfig.debug) {
       console.log("[Analytics] v-track-view 指令卸载")
     }
-    // 断开 observer
-    // @ts-ignore
-    if (el._trackViewObserver) {
+    const observer = (el as any)._trackViewObserver
+    if (observer) {
       try {
-        // @ts-ignore
-        el._trackViewObserver.disconnect()
-        // @ts-ignore
-        delete el._trackViewObserver
-        if (globalConfig.debug) {
-          console.log("[Analytics] v-track-view observer 已断开")
+        if (typeof observer.disconnect === "function") {
+          observer.disconnect()
+        } else if (typeof observer.unobserve === "function") {
+          observer.unobserve(el)
         }
+        delete (el as any)._trackViewObserver
       } catch (error) {
         if (globalConfig.debug) {
           console.warn("[Analytics] v-track-view observer 断开失败:", error)

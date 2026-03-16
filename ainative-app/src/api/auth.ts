@@ -37,14 +37,27 @@ export const xcxLogin = async (): Promise<LoginResponse> => {
       throw new Error("获取微信登录凭证失败")
     }
 
+    // 开发环境打印调试信息（便于排查 openid 获取失败）
+    if (process.env.NODE_ENV !== "production") {
+      const accountInfo = await Taro.getAccountInfoSync?.()
+      console.log("[登录调试] AppID:", accountInfo?.miniProgram?.appId, "| 环境:", process.env.TARO_ENV)
+    }
+
     // 调用后端登录接口
     const response = await post<LoginResponse>("/yanxue/wechat/v1/auth/login_xcx", {
       code: loginResult.code
     })
 
     return response
-  } catch (error) {
+  } catch (error: any) {
     console.error("小程序登录失败:", error)
+    // 针对 openid 获取失败给出排查提示
+    const msg = error?.message || ""
+    if (msg.includes("open") && msg.includes("ID")) {
+      throw new Error(
+        "登录失败：后端无法换取 openid。请确认：1) 后端已配置正确 AppID/AppSecret；2) AppID 与当前小程序一致（见控制台 [登录调试]）"
+      )
+    }
     throw error
   }
 }

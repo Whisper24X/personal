@@ -1,18 +1,19 @@
 import Taro from "@tarojs/taro"
-import { CURRENT_ENV, IS_DEV } from "../config/env"
+import { CURRENT_ENV, IS_DEV, IS_LOCAL } from "../config/env"
 
 // 环境列表
 const ENV_LIST = [
+  { label: "本地联调(沙箱)", value: "local" },
   { label: "开发环境", value: "development" },
   { label: "测试环境", value: "test" },
   { label: "预发布环境", value: "stage" },
   { label: "生产环境", value: "production" }
 ]
 
-// 切换环境
+// 切换环境（注：API 地址由构建时 mode 决定，运行时切换需重新编译）
 export const switchEnv = () => {
-  // 仅在开发模式下可用
-  if (!IS_DEV) {
+  // 仅在开发/本地模式下可用
+  if (!IS_DEV && !IS_LOCAL) {
     console.log("仅在开发模式下可切换环境")
     return
   }

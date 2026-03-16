@@ -13,7 +13,7 @@ export default defineConfig<"vite">(async (merge, { command, mode }) => {
 
   // 根据环境获取CI配置文件
   let ciConfig = {}
-  if (["test", "development"].includes(mode)) {
+  if (["local", "test", "development"].includes(mode)) {
     const ciConfigPath = path.resolve(__dirname, "../ci.test.config.js")
     console.log("ciConfigPath", ciConfigPath)
     if (fs.existsSync(ciConfigPath)) {
@@ -33,7 +33,7 @@ export default defineConfig<"vite">(async (merge, { command, mode }) => {
     },
     version: ciConfig["WEAPP_VERSION"] || "1.0.0",
     desc: ciConfig["WEAPP_DESC"] || `${env}环境构建版本`,
-    qrcodeOutputDest: path.resolve(__dirname, "../qrcode/preview.png")
+    // qrcodeOutputDest: path.resolve(__dirname, "../qrcode/preview.png")
     // hooks: {
     //   beforePreview: (config) => {
     //     console.log("预览前配置:", JSON.stringify(config, null, 2))
@@ -140,7 +140,10 @@ export default defineConfig<"vite">(async (merge, { command, mode }) => {
     h5: {
       publicPath: "/",
       staticDirectory: "static",
-
+      // 沙箱中 Nginx 期望 app 监听 8200
+      ...(process.env.TARO_APP_API && {
+        devServer: { port: 8200, host: "0.0.0.0", open: false }
+      }),
       miniCssExtractPluginOption: {
         ignoreOrder: true,
         filename: "css/[name].[hash].css",

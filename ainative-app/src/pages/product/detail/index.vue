@@ -9,7 +9,7 @@
     <view v-else class="detail-content">
       <!-- 返回按钮 -->
       <view class="back-button" :style="{ top: `${statusBarHeight}px` }" @tap="handleGoBack">
-        <image class="back-icon" src="/src/assets/icons/back.png" />
+        <image class="back-icon" :src="backIcon" />
       </view>
       <!-- 商品图片轮播 -->
       <ProductImageSlider
@@ -85,6 +85,7 @@ import { PAGE_TYPES, PAGE_TITLES, VALID_APPOINTMENT_STATUSES, ROUTES } from "./c
 import { useDidShow } from "@tarojs/taro"
 import TabBarLayout from "@/components/TabBarLayout/index.vue"
 import { statusBarHeight } from "@/utils/style"
+import backIcon from "@/assets/icons/back.png"
 import { checkLoginStatus } from "@/api/auth"
 import { centsToYuan } from "@/utils/formatPrice"
 import { track, trackClick } from "@/utils/analytics"
@@ -488,6 +489,7 @@ export default {
       showCouponModal,
       orderId,
       statusBarHeight,
+      backIcon,
       // 计算属性
       pageTitle,
       isProductType,

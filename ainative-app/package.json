@@ -11,22 +11,26 @@
   },
   "scripts": {
     "build:weapp": "taro build --type weapp --mode development",
+    "build:weapp:local": "taro build --type weapp --mode local",
     "build:weapp:test": "taro build --type weapp --mode test",
     "build:weapp:stage": "taro build --type weapp --mode stage",
     "build:weapp:production": "taro build --type weapp --mode production",
     "build:swan": "taro build --type swan",
     "build:alipay": "taro build --type alipay",
     "build:tt": "taro build --type tt",
-    "build:h5": "taro build --type h5",
+    "build:h5": "BROWSERSLIST_ENV=production taro build --type h5",
+    "build:h5:local": "BROWSERSLIST_ENV=production taro build --type h5 --mode local",
     "build:rn": "taro build --type rn",
     "build:qq": "taro build --type qq",
     "build:jd": "taro build --type jd",
     "build:harmony-hybrid": "taro build --type harmony-hybrid",
     "dev:weapp": "npm run build:weapp -- --watch",
+    "dev:weapp:local": "npm run build:weapp:local -- --watch",
     "dev:swan": "npm run build:swan -- --watch",
     "dev:alipay": "npm run build:alipay -- --watch",
     "dev:tt": "npm run build:tt -- --watch",
     "dev:h5": "npm run build:h5 -- --watch",
+    "dev:h5:local": "npm run build:h5:local -- --watch",
     "dev:rn": "npm run build:rn -- --watch",
     "dev:qq": "npm run build:qq -- --watch",
     "dev:jd": "npm run build:jd -- --watch",
@@ -46,8 +50,9 @@
   },
   "browserslist": {
     "development": [
-      "defaults and fully supports es6-module",
-      "maintained node versions"
+      "last 1 Chrome version",
+      "last 1 Firefox version",
+      "last 1 Safari version"
     ],
     "production": [
       "last 3 versions",

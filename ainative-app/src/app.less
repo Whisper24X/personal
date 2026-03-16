@@ -1,3 +1,15 @@
 @import "./styles/common.less";
 
-// 其他全局样式...
+// Taro H5: 修复页面动画样式（loadAnimateStyle）导致的渲染问题
+// 1. body overflow:hidden 阻止页面滚动
+// 2. .taro_page transform/position:absolute 导致页面不可见
+body {
+  overflow: auto !important;
+}
+
+.taro_page {
+  transform: none !important;
+  position: relative !important;
+  height: auto !important;
+  min-height: 100%;
+}

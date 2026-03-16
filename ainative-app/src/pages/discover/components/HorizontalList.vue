@@ -14,8 +14,9 @@
       <text class="item-title">{{ item.title }}</text>
     </view>
   </view>
-  <!-- 全屏视频播放弹框 -->
+  <!-- 全屏视频播放弹框（仅小程序环境，H5 下 channel-video 不可用） -->
   <video-player-modal
+    v-if="!isH5"
     :show="showVideoModal"
     :title="currentVlog?.title || ''"
     :feed-id="currentFeedId"
@@ -29,6 +30,8 @@
 import { ref } from "vue"
 import Taro from "@tarojs/taro"
 import VideoPlayerModal from "./VideoPlayerModal.vue"
+
+const isH5 = process.env.TARO_ENV === "h5"
 
 interface ListItem {
   id: string
@@ -51,10 +54,8 @@ function parseQueryToJson(str: string) {
   const result: { [key: string]: string } = {}
   if (!str) return result
 
-  // 去掉开头的 ? 或多余空格
   str = str.trim().replace(/^\?/, "")
 
-  // 拆分每个键值对
   str.split("&").forEach(pair => {
     const [key, value] = pair.split("=")
     if (key) {
@@ -79,9 +80,16 @@ const handleItemClick = (item: ListItem) => {
     showVideoModal.value = false
     emit("itemClick", item)
   } else {
+    if (isH5) {
+      Taro.showToast({
+        title: "视频号内容请在微信小程序中查看",
+        icon: "none",
+        duration: 2000
+      })
+      return
+    }
     showVideoModal.value = true
     currentVlog.value = item
-    // 从url中提取feedId和finderUserName
     const urlObj = parseQueryToJson(item.url || "")
     currentFeedId.value = urlObj["feedId"] || ""
     currentFinderUserName.value = urlObj["finderUserName"] || ""

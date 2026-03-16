@@ -7,11 +7,10 @@ import { useUserStore } from "./store/userStore"
 import { useConfigStore } from "./store/configStore"
 import Taro from "@tarojs/taro"
 import { initAnalytics, vTrack, vTrackView } from "./utils/analytics"
-// @ts-ignore
-import PageSpy from "@huolala-tech/page-spy-wechat"
-import { IS_PROD } from "./config/env"
+import { IS_LOCAL, IS_PROD } from "./config/env"
+import "@tarojs/components/global.css"
 
-// 动态注入字体
+// 动态注入字体（失败时静默忽略，避免未配置 downloadFile 合法域名时报错阻断）
 const fontMaps = {
   AlibabaPuHuiTi_2_55_Regular: "https://fp.yangcong345.com/AlibabaPuHuiTi-2-55-Regular.otf",
   AlibabaPuHuiTi_2_105_Heavy: "https://fp.yangcong345.com/AlibabaPuHuiTi-2-105-Heavy.otf"
@@ -21,19 +20,22 @@ Object.keys(fontMaps).forEach(font => {
     global: true,
     family: font,
     source: `url("${fontMaps[font]}")`
+  }).catch(() => {
+    // 字体加载失败时使用系统默认字体，不影响功能
   })
 })
 
 import "./app.less"
 
-// 初始化 PageSpy - 仅在非生产环境启用
-if (!IS_PROD) {
-  const pageSpy = new PageSpy({
-    api: "pagespy.yc345.tv",
-    // 项目名称，用于区分不同的项目
-    project: "trip-miniprogram"
+// 初始化 PageSpy - 仅在非生产环境且微信小程序环境下启用（H5 无 wx 会报错，需动态导入避免模块加载时访问 wx）
+if (!IS_PROD && process.env.TARO_ENV !== "h5") {
+  import("@huolala-tech/page-spy-wechat").then(({ default: PageSpy }) => {
+    const pageSpy = new PageSpy({
+      api: "pagespy.yc345.tv",
+      project: "trip-miniprogram"
+    })
+    console.log("PageSpy 初始化完成", pageSpy.getDebugLink())
   })
-  console.log("PageSpy 初始化完成", pageSpy.getDebugLink())
 }
 console.log("IS_PROD---------->", IS_PROD)
 console.log("ENV_TYPE---------->", __ENV_TYPE)
@@ -113,6 +115,12 @@ setTimeout(() => {
   const tabBarStore = useTabBarStore()
   const userStore = useUserStore()
   const configStore = useConfigStore()
+
+  // H5 沙箱本地联调：注入固定 dev token，便于 H5 无法微信登录时访问所有页面
+  if (IS_LOCAL && process.env.TARO_ENV === "h5" && !userStore.token) {
+    userStore.setToken("h5-dev-local-token")
+    console.log("[H5 本地联调] 已注入 dev token，可访问需登录页面")
+  }
 
   Taro.eventCenter.on("PAGE_SHOW", () => {
     console.log("页面显示，更新TabBar状态")
