@@ -43,6 +43,9 @@ const actionLoading = ref(false)
 const streamConnected = ref(false)
 const isRightPanelVisible = ref(resolveStoredRightPanelVisible())
 const rightPanelRefreshToken = ref(0)
+const leftPanelWidth = ref(33.3333)
+const isDragging = ref(false)
+const containerRef = ref<HTMLElement | null>(null)
 
 const detail = ref<TaskDetail | null>(null)
 const logs = ref<TaskLog[]>([])
@@ -323,6 +326,8 @@ const shouldRefreshTaskDetailForLog = (log: TaskLog) => {
   const refreshMessages = [
     'Node execution started',
     'Agent node completed; pending approval',
+    'Agent node completed successfully',
+    'Task completed; worktree preserved',
     'Agent node execution failed',
     'Node approved and marked as done',
   ]
@@ -693,6 +698,31 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   disconnectStream()
 })
+
+function startDrag(e: MouseEvent) {
+  isDragging.value = true
+  e.preventDefault()
+  document.body.style.userSelect = 'none'
+  document.body.style.cursor = 'col-resize'
+
+  const onMouseMove = (event: MouseEvent) => {
+    if (!containerRef.value) return
+    const rect = containerRef.value.getBoundingClientRect()
+    const pct = ((event.clientX - rect.left) / rect.width) * 100
+    leftPanelWidth.value = Math.min(Math.max(pct, 20), 80)
+  }
+
+  const onMouseUp = () => {
+    isDragging.value = false
+    document.body.style.userSelect = ''
+    document.body.style.cursor = ''
+    window.removeEventListener('mousemove', onMouseMove)
+    window.removeEventListener('mouseup', onMouseUp)
+  }
+
+  window.addEventListener('mousemove', onMouseMove)
+  window.addEventListener('mouseup', onMouseUp)
+}
 </script>
 
 <template>
@@ -706,15 +736,17 @@ onBeforeUnmount(() => {
 
     <section
       v-else
+      ref="containerRef"
       class="flex h-full w-full min-w-0 overflow-hidden"
     >
       <div
-        class="bg-background flex min-w-0 flex-col overflow-hidden transition-all duration-200"
+        class="bg-background flex min-w-0 flex-col overflow-hidden"
+        :class="{ 'transition-all duration-200': !isDragging }"
         :style="{
           flex: isRightPanelVisible ? '0 0 auto' : '1 1 0%',
-          width: isRightPanelVisible ? '33.3333%' : undefined,
+          width: isRightPanelVisible ? `${leftPanelWidth}%` : undefined,
           minWidth: isRightPanelVisible ? '0' : '0',
-          maxWidth: isRightPanelVisible ? '33.3333%' : undefined,
+          maxWidth: isRightPanelVisible ? `${leftPanelWidth}%` : undefined,
         }"
       >
         <div class="flex min-h-0 w-full flex-1 flex-col">
@@ -772,7 +804,12 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="isRightPanelVisible" class="bg-border/50 h-full w-px shrink-0" />
+      <div
+        v-if="isRightPanelVisible"
+        class="bg-border/50 h-full w-1 shrink-0 cursor-col-resize transition-colors hover:bg-primary/50"
+        :class="{ 'bg-primary/50': isDragging }"
+        @mousedown.prevent="startDrag"
+      />
 
       <RightPanelSection
         v-if="isRightPanelVisible"
