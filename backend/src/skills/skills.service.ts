@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { spawn } from 'child_process';
@@ -22,6 +23,7 @@ import {
   readSkillFile,
   resolveProjectSkillRootForWrite,
   resolveSkillRootDirectory,
+  WORKSPACE_SUBDIR_NOT_FOUND_MESSAGE,
   type SkillTreeNode,
 } from '../utils/local-agent-catalog';
 import { GetSkillContentDto } from './dto/get-skill-content.dto';
@@ -38,6 +40,7 @@ const workspaceRootDir = resolveWorkspaceRootDir();
 
 @Injectable()
 export class SkillsService {
+  private readonly logger = new Logger(SkillsService.name);
   private static readonly MAX_SKILL_ARCHIVE_SIZE_BYTES = 20 * 1024 * 1024;
   private static readonly SKILL_UPLOAD_EXTENSIONS = new Set(['.zip']);
   private static readonly SKILL_UPLOAD_COMMAND_TIMEOUT_MS = 15_000;
@@ -196,15 +199,24 @@ export class SkillsService {
       );
     }
 
+    this.logger.log(
+      `[SkillsCopy] copyBusinessLineSkillToProject projectId=${dto.projectId} provider=${dto.provider ?? 'undefined'} skillName=${sourceSkill.name}`,
+    );
+
     const targetRoot = await resolveProjectSkillRootForWrite(
       project,
       dto.provider,
     );
     if (!targetRoot) {
-      throw new BadRequestException(
-        'Project local skill directory is unavailable',
+      this.logger.warn(
+        `[SkillsCopy] resolveProjectSkillRootForWrite returned null projectId=${dto.projectId} provider=${dto.provider}`,
       );
+      throw new BadRequestException(WORKSPACE_SUBDIR_NOT_FOUND_MESSAGE);
     }
+
+    this.logger.log(
+      `[SkillsCopy] targetRoot resolved provider=${targetRoot.provider} rootPath=${targetRoot.rootPath} skillsPath=${targetRoot.skillsPath}`,
+    );
 
     await fs.mkdir(targetRoot.skillsPath, { recursive: true });
 
@@ -221,11 +233,19 @@ export class SkillsService {
       );
     }
 
+    this.logger.log(
+      `[SkillsCopy] copying source=${sourceSkillDirectory} -> target=${targetSkillPath}`,
+    );
+
     await fs.cp(sourceSkillDirectory, targetSkillPath, {
       recursive: true,
       force: false,
       errorOnExist: true,
     });
+
+    this.logger.log(
+      `[SkillsCopy] copy done skillName=${sourceSkill.name} provider=${targetRoot.provider}`,
+    );
 
     return {
       name: sourceSkill.name,
@@ -266,9 +286,7 @@ export class SkillsService {
       query.provider,
     );
     if (!targetRoot) {
-      throw new BadRequestException(
-        'Project local skill directory is unavailable',
-      );
+      throw new BadRequestException(WORKSPACE_SUBDIR_NOT_FOUND_MESSAGE);
     }
 
     const temporaryRoot = await fs.mkdtemp(
@@ -402,29 +420,18 @@ export class SkillsService {
       throw new NotFoundException('Skill not found');
     }
 
-    const sourcePath =
-      targetSkill.metadataJson && typeof targetSkill.metadataJson === 'object'
-        ? (targetSkill.metadataJson as Record<string, unknown>).sourcePath
-        : null;
-
-    if (typeof sourcePath !== 'string' || !sourcePath.trim()) {
-      throw new BadRequestException('Skill source path is unavailable');
+    const directoryToRemove = resolveSkillRootDirectory(targetSkill);
+    if (!directoryToRemove) {
+      throw new NotFoundException('Skill directory not found');
     }
 
-    const absoluteSourcePath = path.resolve(sourcePath.trim());
-
-    const stat = await this.safeStat(absoluteSourcePath);
-    const directoryToRemove = stat?.isDirectory()
-      ? absoluteSourcePath
-      : path.dirname(absoluteSourcePath);
-
-    if (
-      !this.isPathWithin(path.dirname(directoryToRemove), directoryToRemove)
-    ) {
-      throw new BadRequestException('Skill path is invalid');
+    const stat = await this.safeStat(directoryToRemove);
+    if (!stat?.isDirectory()) {
+      throw new BadRequestException('Skill directory not found');
     }
 
-    const dirBasename = path.basename(path.dirname(directoryToRemove));
+    const parentDir = path.dirname(directoryToRemove);
+    const dirBasename = path.basename(parentDir);
     if (dirBasename !== 'skills') {
       throw new BadRequestException(
         'Skill directory is not inside a skills folder',

@@ -1,7 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsOptional, IsUUID } from 'class-validator';
 
-const SKILL_PROVIDER_VALUES = ['codex', 'cursor', 'curso'] as const;
+const SKILL_PROVIDER_VALUES = [
+  'codex',
+  'cursor',
+  'curso',
+  'gemini',
+  'opencode',
+  'claude',
+] as const;
 
 export class UploadProjectLocalSkillDto {
   @ApiProperty({ type: String, format: 'uuid' })

@@ -5,7 +5,7 @@ import { useMessage } from '@/hooks'
 import { businessLinesApi } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
 import { skillsApi } from '@/api/skills'
-import type { Skill, SkillTreeNode } from '@/types/api/skills'
+import type { ProjectSkillProvider, Skill, SkillTreeNode } from '@/types/api/skills'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
@@ -18,10 +18,20 @@ defineOptions({
 
 const PAGE_LIMIT = 50
 const MAX_PAGE_COUNT = 20
+const PROJECT_SKILL_PROVIDER_ORDER: ProjectSkillProvider[] = [
+  'cursor',
+  'gemini',
+  'opencode',
+  'claude',
+  'codex',
+]
 const PROJECT_SKILL_PROVIDER_LABELS: Record<string, string> = {
   codex: 'Codex',
   cursor: 'Cursor',
   curso: 'Cursor',
+  gemini: 'Gemini',
+  opencode: 'OpenCode',
+  claude: 'Claude Code',
 }
 
 const route = useRoute()
@@ -39,6 +49,7 @@ const businessLineSkills = ref<Skill[]>([])
 const loadingBusinessLineSkills = ref(false)
 const copyingBusinessLineSkillId = ref('')
 const copySkillErrorMessage = ref('')
+const copySkillTargetProviders = ref<ProjectSkillProvider[]>(['cursor'])
 const uploadSkillModalOpen = ref(false)
 const uploadingProjectSkill = ref(false)
 const uploadSkillErrorMessage = ref('')
@@ -129,6 +140,18 @@ const resolveProviderKey = (item: Skill) => {
 
   if (sourcePath.includes('.curso/skills')) {
     return 'curso'
+  }
+
+  if (sourcePath.includes('.gemini/skills')) {
+    return 'gemini'
+  }
+
+  if (sourcePath.includes('.opencode/skills')) {
+    return 'opencode'
+  }
+
+  if (sourcePath.includes('.claude/skills')) {
+    return 'claude'
   }
 
   return 'project'
@@ -299,6 +322,7 @@ const openCopySkillModal = async () => {
 
   copySkillKeyword.value = ''
   copySkillErrorMessage.value = ''
+  copySkillTargetProviders.value = ['cursor']
   copySkillModalOpen.value = true
   await loadBusinessLineSkills()
 }
@@ -309,8 +333,23 @@ const closeCopySkillModal = () => {
   copySkillModalOpen.value = false
 }
 
+const selectAllCopySkillProviders = () => {
+  copySkillTargetProviders.value = [...PROJECT_SKILL_PROVIDER_ORDER]
+}
+
+const clearAllCopySkillProviders = () => {
+  copySkillTargetProviders.value = ['cursor']
+}
+
 const submitCopyBusinessLineSkill = async (skillId: string) => {
-  if (!activeProjectId.value) {
+  const projectId = activeProjectId.value
+  const providers = copySkillTargetProviders.value
+  if (!projectId) {
+    return
+  }
+
+  if (providers.length === 0) {
+    message.error('请至少选择一个目标类型')
     return
   }
 
@@ -318,14 +357,41 @@ const submitCopyBusinessLineSkill = async (skillId: string) => {
   copySkillErrorMessage.value = ''
 
   try {
-    const result = await skillsApi.copyFromBusinessLine({
-      projectId: activeProjectId.value,
-      businessLineSkillId: skillId,
-    })
+    const errors: string[] = []
+    let lastResult: { name: string } | null = null
 
-    closeCopySkillModal()
-    await loadSkills()
-    message.success(`Skill「${result.name}」复制成功`)
+    for (const provider of providers) {
+      try {
+        const result = await skillsApi.copyFromBusinessLine({
+          projectId,
+          businessLineSkillId: skillId,
+          provider,
+        })
+        lastResult = result
+      } catch (err) {
+        errors.push(
+          `${PROJECT_SKILL_PROVIDER_LABELS[provider] ?? provider}: ${toErrorMessage(err, '复制失败')}`,
+        )
+      }
+    }
+
+    if (errors.length > 0) {
+      copySkillErrorMessage.value = errors.join('；')
+      message.error(copySkillErrorMessage.value)
+      if (errors.length < providers.length && lastResult) {
+        await loadSkills()
+      }
+    } else {
+      closeCopySkillModal()
+      await loadSkills()
+      message.success(
+        lastResult
+          ? providers.length === 1
+            ? `Skill「${lastResult.name}」复制成功`
+            : `Skill「${lastResult.name}」已复制到 ${providers.length} 个类型`
+          : '复制成功',
+      )
+    }
   } catch (error) {
     copySkillErrorMessage.value = toErrorMessage(error, '复制业务线技能失败')
     message.error(copySkillErrorMessage.value)
@@ -346,8 +412,17 @@ const openUploadSkillModal = () => {
   uploadSkillModalOpen.value = true
 }
 
-const submitUploadProjectSkill = async (file: File) => {
-  if (!activeProjectId.value) {
+const submitUploadProjectSkill = async (
+  file: File,
+  providers: ProjectSkillProvider[],
+) => {
+  const projectId = activeProjectId.value
+  if (!projectId) {
+    return
+  }
+
+  if (providers.length === 0) {
+    message.error('请至少选择一个目标类型')
     return
   }
 
@@ -355,13 +430,41 @@ const submitUploadProjectSkill = async (file: File) => {
   uploadSkillErrorMessage.value = ''
 
   try {
-    const result = await skillsApi.uploadToProject(file, {
-      projectId: activeProjectId.value,
-    })
+    const errors: string[] = []
+    let lastResult: { name: string } | null = null
 
-    uploadSkillModalOpen.value = false
-    await loadSkills()
-    message.success(`Skill「${result.name}」添加成功`)
+    for (const provider of providers) {
+      try {
+        const result = await skillsApi.uploadToProject(file, {
+          projectId,
+          provider,
+        })
+        lastResult = result
+      } catch (err) {
+        errors.push(
+          `${PROJECT_SKILL_PROVIDER_LABELS[provider] ?? provider}: ${toErrorMessage(err, '上传失败')}`,
+        )
+      }
+    }
+
+    if (errors.length > 0) {
+      uploadSkillErrorMessage.value = errors.join('；')
+      message.error(uploadSkillErrorMessage.value)
+      if (errors.length < providers.length && lastResult) {
+        uploadSkillModalOpen.value = false
+        await loadSkills()
+      }
+    } else {
+      uploadSkillModalOpen.value = false
+      await loadSkills()
+      message.success(
+        lastResult
+          ? providers.length === 1
+            ? `Skill「${lastResult.name}」添加成功`
+            : `Skill「${lastResult.name}」已添加到 ${providers.length} 个类型`
+          : '上传成功',
+      )
+    }
   } catch (error) {
     uploadSkillErrorMessage.value = toErrorMessage(error, '上传技能到项目失败')
     message.error(uploadSkillErrorMessage.value)
@@ -777,6 +880,43 @@ onBeforeUnmount(() => {
           </header>
 
           <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            <div class="mb-3">
+              <div class="mb-2 flex items-center justify-between">
+                <label class="text-xs font-medium text-muted-foreground">复制到</label>
+                <div class="flex gap-2">
+                  <button
+                    type="button"
+                    class="text-xs text-muted-foreground underline hover:text-foreground"
+                    @click="selectAllCopySkillProviders"
+                  >
+                    全选
+                  </button>
+                  <button
+                    type="button"
+                    class="text-xs text-muted-foreground underline hover:text-foreground"
+                    @click="clearAllCopySkillProviders"
+                  >
+                    取消全选
+                  </button>
+                </div>
+              </div>
+              <div class="flex flex-wrap gap-x-4 gap-y-2">
+                <label
+                  v-for="p in PROJECT_SKILL_PROVIDER_ORDER"
+                  :key="p"
+                  class="flex cursor-pointer items-center gap-2"
+                >
+                  <input
+                    v-model="copySkillTargetProviders"
+                    type="checkbox"
+                    :value="p"
+                    class="h-4 w-4 rounded border-border"
+                  />
+                  <span class="text-sm">{{ PROJECT_SKILL_PROVIDER_LABELS[p] ?? p }}</span>
+                </label>
+              </div>
+            </div>
+
             <input
               v-model="copySkillKeyword"
               type="search"

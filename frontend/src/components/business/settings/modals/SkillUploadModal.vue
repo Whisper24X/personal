@@ -1,7 +1,24 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import type { ProjectSkillProvider } from '@/types/api/skills'
 
 const ALLOWED_EXTENSIONS = new Set(['.zip'])
+
+const PROJECT_SKILL_PROVIDER_ORDER: ProjectSkillProvider[] = [
+  'cursor',
+  'gemini',
+  'opencode',
+  'claude',
+  'codex',
+]
+const PROJECT_SKILL_PROVIDER_LABELS: Record<string, string> = {
+  codex: 'Codex',
+  cursor: 'Cursor',
+  curso: 'Cursor',
+  gemini: 'Gemini',
+  opencode: 'OpenCode',
+  claude: 'Claude Code',
+}
 
 const props = defineProps<{
   open: boolean
@@ -11,21 +28,31 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: 'update:open', value: boolean): void
-  (event: 'submit', file: File): void
+  (event: 'submit', file: File, providers: ProjectSkillProvider[]): void
 }>()
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
+const selectedProviders = ref<ProjectSkillProvider[]>(['cursor'])
 const dragActive = ref(false)
 const validationMessage = ref('')
 
 const resetState = () => {
   selectedFile.value = null
+  selectedProviders.value = ['cursor']
   dragActive.value = false
   validationMessage.value = ''
   if (fileInputRef.value) {
     fileInputRef.value.value = ''
   }
+}
+
+const selectAllProviders = () => {
+  selectedProviders.value = [...PROJECT_SKILL_PROVIDER_ORDER]
+}
+
+const clearAllProviders = () => {
+  selectedProviders.value = ['cursor']
 }
 
 const close = () => {
@@ -81,8 +108,13 @@ const submit = () => {
     return
   }
 
+  if (selectedProviders.value.length === 0) {
+    validationMessage.value = '请至少选择一个目标类型'
+    return
+  }
+
   validationMessage.value = ''
-  emit('submit', selectedFile.value)
+  emit('submit', selectedFile.value, selectedProviders.value)
 }
 
 watch(
@@ -196,6 +228,43 @@ watch(
             </ul>
           </section>
 
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-medium text-muted-foreground">添加到</label>
+              <div class="flex gap-2">
+                <button
+                  type="button"
+                  class="text-xs text-muted-foreground underline hover:text-foreground"
+                  @click="selectAllProviders"
+                >
+                  全选
+                </button>
+                <button
+                  type="button"
+                  class="text-xs text-muted-foreground underline hover:text-foreground"
+                  @click="clearAllProviders"
+                >
+                  取消全选
+                </button>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-x-4 gap-y-2">
+              <label
+                v-for="p in PROJECT_SKILL_PROVIDER_ORDER"
+                :key="p"
+                class="flex cursor-pointer items-center gap-2"
+              >
+                <input
+                  v-model="selectedProviders"
+                  type="checkbox"
+                  :value="p"
+                  class="h-4 w-4 rounded border-border"
+                />
+                <span class="text-sm">{{ PROJECT_SKILL_PROVIDER_LABELS[p] ?? p }}</span>
+              </label>
+            </div>
+          </div>
+
           <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
           <p v-else-if="props.errorMessage" class="text-sm text-destructive">
             {{ props.errorMessage }}
@@ -212,7 +281,7 @@ watch(
             <button
               type="button"
               class="h-9 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="props.submitting || !selectedFile"
+              :disabled="props.submitting || !selectedFile || selectedProviders.length === 0"
               @click="submit"
             >
               {{ props.submitting ? '上传中...' : '上传技能' }}

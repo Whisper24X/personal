@@ -80,7 +80,7 @@ export class SkillsController {
         },
         provider: {
           type: 'string',
-          enum: ['codex', 'cursor', 'curso'],
+          enum: ['codex', 'cursor', 'curso', 'gemini', 'opencode', 'claude'],
         },
         file: {
           type: 'string',

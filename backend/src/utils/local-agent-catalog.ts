@@ -1,4 +1,3 @@
-import { ConfigService } from '@nestjs/config';
 import { spawn } from 'child_process';
 import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
@@ -36,7 +35,13 @@ export type LocalMcpItem = {
   updatedAt: Date;
 };
 
-export type ProjectSkillProvider = 'codex' | 'cursor' | 'curso';
+export type ProjectSkillProvider =
+  | 'codex'
+  | 'cursor'
+  | 'curso'
+  | 'gemini'
+  | 'opencode'
+  | 'claude';
 export type ProjectMcpProvider =
   | 'cursor'
   | 'gemini'
@@ -44,7 +49,14 @@ export type ProjectMcpProvider =
   | 'claude-code'
   | 'codex';
 
-const PROJECT_SKILL_ROOTS = ['.codex', '.cursor', '.curso'] as const;
+const PROJECT_SKILL_ROOTS = [
+  '.codex',
+  '.cursor',
+  '.curso',
+  '.gemini',
+  '.opencode',
+  '.claude',
+] as const;
 export const PROJECT_MCP_CONFIG_SOURCES: ReadonlyArray<{
   provider: ProjectMcpProvider;
   relativePath: string;
@@ -73,7 +85,6 @@ const TEXT_CONFIG_EXTENSIONS = new Set([
 const MCP_FILE_BASENAME_REGEX = /(mcp|settings|config)/i;
 const workspaceRootDir = resolveWorkspaceRootDir();
 const getAinativeDataRootDir = (): string => resolveAinativeDataRootDir();
-const configService = new ConfigService();
 
 const normalizeText = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -189,33 +200,6 @@ const isPathInsideDirectory = (
   }
 
   return !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
-};
-
-const hasProjectRootMarkers = async (
-  directoryPath: string,
-): Promise<boolean> => {
-  const gitDirStat = await safeStat(path.join(directoryPath, '.git'));
-  if (gitDirStat?.isDirectory()) {
-    return true;
-  }
-
-  for (const rootName of PROJECT_SKILL_ROOTS) {
-    const rootStat = await safeStat(path.join(directoryPath, rootName));
-    if (rootStat?.isDirectory()) {
-      return true;
-    }
-  }
-
-  for (const source of PROJECT_MCP_CONFIG_SOURCES) {
-    const configFileStat = await safeStat(
-      path.join(directoryPath, source.relativePath),
-    );
-    if (configFileStat?.isFile()) {
-      return true;
-    }
-  }
-
-  return false;
 };
 
 const parseJsonObject = (content: string): Record<string, unknown> | null => {
@@ -363,121 +347,41 @@ const buildProjectStorageBaseDir = (project: Project): string | null => {
   );
 };
 
-const buildProjectBaseDirCandidates = (project: Project): string[] => {
-  const configJson = isObjectRecord(project.configJson)
-    ? project.configJson
-    : {};
-
-  const candidateSet = new Set<string>();
-  const pushCandidate = (value: unknown) => {
-    const normalized = normalizeText(value);
-    if (!normalized) {
-      return;
-    }
-
-    candidateSet.add(path.resolve(normalized));
-  };
-
-  pushCandidate(configJson.repoLocalPath);
-  pushCandidate(configJson.contextBaseDir);
-  pushCandidate(configJson.workspacePath);
-
-  const repositoryNameFromGit = extractRepositoryNameFromGitUrl(project.gitUrl);
-  const repositoryNameFromProject = sanitizePathSegment(project.name || '');
-  const storageBaseDir = buildProjectStorageBaseDir(project);
-
-  if (storageBaseDir) {
-    candidateSet.add(storageBaseDir);
-
-    if (repositoryNameFromGit) {
-      candidateSet.add(path.join(storageBaseDir, repositoryNameFromGit));
-    }
-
-    if (repositoryNameFromProject) {
-      candidateSet.add(path.join(storageBaseDir, repositoryNameFromProject));
-    }
-  }
-
-  const repoCacheBaseDir =
-    normalizeText(configJson.repoCacheBaseDir) ??
-    normalizeText(
-      configService.get<string>('AINATIVE_REPO_CACHE_BASE_DIR', {
-        infer: true,
-      }),
-    );
-
-  if (repoCacheBaseDir && repositoryNameFromGit) {
-    const projectId = normalizeText(project.id);
-    if (projectId) {
-      candidateSet.add(
-        path.resolve(repoCacheBaseDir, `${repositoryNameFromGit}-${projectId}`),
-      );
-    }
-  }
-
-  return Array.from(candidateSet);
-};
-
-const buildSiblingRepoDirCandidates = (project: Project): string[] => {
-  const repositoryNameFromGit = extractRepositoryNameFromGitUrl(project.gitUrl);
-  const repositoryNameFromProject = sanitizePathSegment(project.name || '');
-  const parentDir = path.dirname(workspaceRootDir);
-  const candidateSet = new Set<string>();
-
-  if (repositoryNameFromGit) {
-    candidateSet.add(path.resolve(parentDir, repositoryNameFromGit));
-    if (path.basename(workspaceRootDir) === repositoryNameFromGit) {
-      candidateSet.add(workspaceRootDir);
-    }
-  }
-
-  if (repositoryNameFromProject) {
-    candidateSet.add(path.resolve(parentDir, repositoryNameFromProject));
-    if (path.basename(workspaceRootDir) === repositoryNameFromProject) {
-      candidateSet.add(workspaceRootDir);
-    }
-  }
-
-  return Array.from(candidateSet);
-};
+export const WORKSPACE_SUBDIR_NOT_FOUND_MESSAGE =
+  'Project workspace subdirectory (e.g. yanxue-main) does not exist. Please clone the repository first.';
 
 const resolveProjectBaseDirForLocalMcp = async (
   project: Project,
 ): Promise<string | null> => {
-  const candidateSet = new Set<string>([
-    ...buildProjectBaseDirCandidates(project),
-    ...buildSiblingRepoDirCandidates(project),
-  ]);
-  const resolvedBaseDir = await resolveProjectBaseDir(project);
-  if (resolvedBaseDir) {
-    candidateSet.add(resolvedBaseDir);
-  }
+  const storageBaseDir = buildProjectStorageBaseDir(project);
+  const repositoryNameFromGit = extractRepositoryNameFromGitUrl(project.gitUrl);
+  const repositoryNameFromProject = sanitizePathSegment(project.name || '');
 
-  let selectedBaseDir = '';
-  let selectedScore = -1;
-
-  for (const candidatePath of candidateSet) {
-    const candidateStat = await safeStat(candidatePath);
-    if (!candidateStat?.isDirectory()) {
-      continue;
+  const workspaceSubdirCandidates: string[] = [];
+  if (storageBaseDir) {
+    if (repositoryNameFromGit) {
+      workspaceSubdirCandidates.push(
+        path.join(storageBaseDir, repositoryNameFromGit),
+      );
     }
-
-    let score = 0;
-    for (const source of PROJECT_MCP_CONFIG_SOURCES) {
-      const sourcePath = path.join(candidatePath, source.relativePath);
-      const sourceStat = await safeStat(sourcePath);
-      if (sourceStat?.isFile()) {
-        score += 1;
-      }
-    }
-
-    if (score > selectedScore) {
-      selectedBaseDir = candidatePath;
-      selectedScore = score;
+    if (
+      repositoryNameFromProject &&
+      repositoryNameFromProject !== repositoryNameFromGit
+    ) {
+      workspaceSubdirCandidates.push(
+        path.join(storageBaseDir, repositoryNameFromProject),
+      );
     }
   }
 
-  return selectedBaseDir || resolvedBaseDir;
+  for (const candidatePath of workspaceSubdirCandidates) {
+    const stat = await safeStat(candidatePath);
+    if (stat?.isDirectory()) {
+      return candidatePath;
+    }
+  }
+
+  return null;
 };
 
 export const resolveProjectLocalMcpConfigPath = async (
@@ -515,53 +419,17 @@ export const resolveProjectLocalMcpConfigPathMap = async (
   return result;
 };
 
-const resolveProjectBaseDir = async (
-  project: Project,
-): Promise<string | null> => {
-  const candidates = buildProjectBaseDirCandidates(project);
-
-  for (const candidate of candidates) {
-    const stat = await safeStat(candidate);
-    if (!stat?.isDirectory()) {
-      continue;
-    }
-
-    if (await hasProjectRootMarkers(candidate)) {
-      return candidate;
-    }
-  }
-
-  for (const candidate of candidates) {
-    const stat = await safeStat(candidate);
-    if (stat?.isDirectory()) {
-      return candidate;
-    }
-  }
-
-  const storageBaseDir = buildProjectStorageBaseDir(project);
-  if (!storageBaseDir) {
-    return null;
-  }
-
-  const storageEntries = await safeReadDir(storageBaseDir);
-  const directoryEntries = storageEntries
-    .filter((entry) => entry.isDirectory())
-    .sort((left, right) => left.name.localeCompare(right.name));
-
-  for (const entry of directoryEntries) {
-    const candidate = path.join(storageBaseDir, entry.name);
-    if (await hasProjectRootMarkers(candidate)) {
-      return candidate;
-    }
-  }
-
-  return null;
-};
-
 const isSupportedProjectSkillProvider = (
   provider: string,
 ): provider is ProjectSkillProvider => {
-  return provider === 'codex' || provider === 'cursor' || provider === 'curso';
+  return (
+    provider === 'codex' ||
+    provider === 'cursor' ||
+    provider === 'curso' ||
+    provider === 'gemini' ||
+    provider === 'opencode' ||
+    provider === 'claude'
+  );
 };
 
 export const resolveProjectSkillRootForWrite = async (
@@ -572,7 +440,7 @@ export const resolveProjectSkillRootForWrite = async (
   rootPath: string;
   skillsPath: string;
 } | null> => {
-  const projectBaseDir = await resolveProjectBaseDir(project);
+  const projectBaseDir = await resolveProjectBaseDirForLocalMcp(project);
 
   if (!projectBaseDir) {
     return null;
@@ -581,7 +449,14 @@ export const resolveProjectSkillRootForWrite = async (
   const normalizedPreferredProvider =
     normalizeText(preferredProvider)?.toLowerCase() ?? '';
   const existingProviders: ProjectSkillProvider[] = [];
-  const providerOrder: ProjectSkillProvider[] = ['cursor', 'codex', 'curso'];
+  const providerOrder: ProjectSkillProvider[] = [
+    'cursor',
+    'gemini',
+    'opencode',
+    'claude',
+    'codex',
+    'curso',
+  ];
 
   for (const provider of providerOrder) {
     const rootName = `.${provider}`;
@@ -654,13 +529,26 @@ const dedupeSkills = (items: LocalSkillItem[]): LocalSkillItem[] => {
   const merged = new Map<string, LocalSkillItem>();
 
   for (const item of items) {
-    const key = `${item.name.toLowerCase()}@${item.version.toLowerCase()}`;
+    const key = item.id;
     if (!merged.has(key)) {
       merged.set(key, item);
     }
   }
 
   return Array.from(merged.values()).sort((left, right) => {
+    const leftProvider =
+      (left.metadataJson as Record<string, unknown> | null)?.sourceProvider ??
+      '';
+    const rightProvider =
+      (right.metadataJson as Record<string, unknown> | null)?.sourceProvider ??
+      '';
+    const byProvider = String(leftProvider).localeCompare(
+      String(rightProvider),
+    );
+    if (byProvider !== 0) {
+      return byProvider;
+    }
+
     const byName = left.name.localeCompare(right.name);
     if (byName !== 0) {
       return byName;
@@ -1380,7 +1268,7 @@ const loadMcpsFromDirectory = async ({
 const loadProjectAgentRootDirs = async (
   project: Project,
 ): Promise<Array<{ provider: string; rootPath: string }>> => {
-  const projectBaseDir = await resolveProjectBaseDir(project);
+  const projectBaseDir = await resolveProjectBaseDirForLocalMcp(project);
 
   if (!projectBaseDir) {
     return [];

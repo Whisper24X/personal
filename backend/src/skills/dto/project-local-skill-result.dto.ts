@@ -12,7 +12,13 @@ export class ProjectLocalSkillResultDto {
 
   @ApiProperty({
     type: String,
-    enum: ['codex', 'cursor', 'curso'],
+    enum: ['codex', 'cursor', 'curso', 'gemini', 'opencode', 'claude'],
   })
-  provider: 'codex' | 'cursor' | 'curso';
+  provider:
+    | 'codex'
+    | 'cursor'
+    | 'curso'
+    | 'gemini'
+    | 'opencode'
+    | 'claude';
 }

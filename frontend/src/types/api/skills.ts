@@ -47,7 +47,13 @@ export type SkillFile = {
   content: string
 }
 
-export type ProjectSkillProvider = 'codex' | 'cursor' | 'curso'
+export type ProjectSkillProvider =
+  | 'codex'
+  | 'cursor'
+  | 'curso'
+  | 'gemini'
+  | 'opencode'
+  | 'claude'
 
 export type ProjectLocalSkillResult = {
   name: string
