@@ -75,7 +75,7 @@ const businessLineMcps = ref<Mcp[]>([])
 const loadingBusinessLineMcps = ref(false)
 const copyingBusinessLineMcpId = ref('')
 const copyMcpErrorMessage = ref('')
-const copyMcpTargetProvider = ref<ProjectLocalMcpProvider>('cursor')
+const copyMcpTargetProviders = ref<ProjectLocalMcpProvider[]>(['cursor'])
 const projectContextRequestToken = ref(0)
 
 const normalizeRouteParam = (value: unknown) => {
@@ -278,6 +278,7 @@ const openCopyMcpModal = async () => {
 
   copyMcpKeyword.value = ''
   copyMcpErrorMessage.value = ''
+  copyMcpTargetProviders.value = ['cursor']
   copyMcpModalOpen.value = true
   await loadBusinessLineMcps()
 }
@@ -286,6 +287,14 @@ const closeCopyMcpModal = () => {
   copyingBusinessLineMcpId.value = ''
   copyMcpErrorMessage.value = ''
   copyMcpModalOpen.value = false
+}
+
+const selectAllCopyMcpProviders = () => {
+  copyMcpTargetProviders.value = [...PROJECT_PROVIDER_ORDER] as ProjectLocalMcpProvider[]
+}
+
+const clearAllCopyMcpProviders = () => {
+  copyMcpTargetProviders.value = ['cursor']
 }
 
 const getWrapperKeyForProvider = (provider: ProjectLocalMcpProvider) => {
@@ -299,7 +308,13 @@ const getWrapperKeyForProvider = (provider: ProjectLocalMcpProvider) => {
 const submitCopyBusinessLineMcp = async (item: Mcp) => {
   const projectId = activeProjectId.value
   const businessLineId = projectBusinessLineId.value
+  const providers = copyMcpTargetProviders.value
   if (!projectId || !businessLineId || copyingBusinessLineMcpId.value) {
+    return
+  }
+
+  if (providers.length === 0) {
+    message.error('请至少选择一个目标类型')
     return
   }
 
@@ -318,22 +333,40 @@ const submitCopyBusinessLineMcp = async (item: Mcp) => {
       sourcePath,
     })
 
-    const wrapperKey = getWrapperKeyForProvider(copyMcpTargetProvider.value)
-    const payload = {
-      [wrapperKey]: {
-        [response.name]: response.config,
-      },
+    const errors: string[] = []
+    for (const provider of providers) {
+      try {
+        const wrapperKey = getWrapperKeyForProvider(provider)
+        const payload = {
+          [wrapperKey]: {
+            [response.name]: response.config,
+          },
+        }
+        await mcpsApi.importProjectLocalMcps({
+          projectId,
+          provider,
+          payload,
+        })
+      } catch (err) {
+        errors.push(`${resolveProviderLabel(provider)}: ${toErrorMessage(err, '导入失败')}`)
+      }
     }
 
-    await mcpsApi.importProjectLocalMcps({
-      projectId,
-      provider: copyMcpTargetProvider.value,
-      payload,
-    })
-
-    closeCopyMcpModal()
-    await loadProjectMcps()
-    message.success(`MCP「${item.name}」已复制到当前项目`)
+    if (errors.length > 0) {
+      copyMcpErrorMessage.value = errors.join('；')
+      message.error(copyMcpErrorMessage.value)
+      if (errors.length < providers.length) {
+        await loadProjectMcps()
+      }
+    } else {
+      closeCopyMcpModal()
+      await loadProjectMcps()
+      message.success(
+        providers.length === 1
+          ? `MCP「${item.name}」已复制到当前项目`
+          : `MCP「${item.name}」已复制到 ${providers.length} 个类型`,
+      )
+    }
   } catch (error) {
     copyMcpErrorMessage.value = toErrorMessage(error, '复制业务线 MCP 失败')
     message.error(copyMcpErrorMessage.value)
@@ -888,20 +921,41 @@ onBeforeUnmount(() => {
           </header>
 
           <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-            <div class="mb-3 flex items-center gap-3">
-              <label class="text-xs font-medium text-muted-foreground">复制到</label>
-              <select
-                v-model="copyMcpTargetProvider"
-                class="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              >
-                <option
+            <div class="mb-3">
+              <div class="mb-2 flex items-center justify-between">
+                <label class="text-xs font-medium text-muted-foreground">复制到</label>
+                <div class="flex gap-2">
+                  <button
+                    type="button"
+                    class="text-xs text-muted-foreground underline hover:text-foreground"
+                    @click="selectAllCopyMcpProviders"
+                  >
+                    全选
+                  </button>
+                  <button
+                    type="button"
+                    class="text-xs text-muted-foreground underline hover:text-foreground"
+                    @click="clearAllCopyMcpProviders"
+                  >
+                    取消全选
+                  </button>
+                </div>
+              </div>
+              <div class="flex flex-wrap gap-x-4 gap-y-2">
+                <label
                   v-for="p in PROJECT_PROVIDER_ORDER"
                   :key="p"
-                  :value="p"
+                  class="flex cursor-pointer items-center gap-2"
                 >
-                  {{ PROVIDER_LABEL_MAP[p] ?? p }}
-                </option>
-              </select>
+                  <input
+                    v-model="copyMcpTargetProviders"
+                    type="checkbox"
+                    :value="p"
+                    class="h-4 w-4 rounded border-border"
+                  />
+                  <span class="text-sm">{{ PROVIDER_LABEL_MAP[p] ?? p }}</span>
+                </label>
+              </div>
             </div>
 
             <input

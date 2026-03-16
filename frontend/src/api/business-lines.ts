@@ -345,15 +345,15 @@ export const businessLinesApi = {
 
   importLocalMcps(businessLineId: string, payload: ImportLocalMcpsPayload) {
     return apiHttp.post<ImportLocalMcpsResult>(
-      `/business-lines/${businessLineId}/local-mcps/import`,
+      `/business-lines/${businessLineId}/local-mcps/import-json`,
       payload,
     )
   },
 
   getLocalMcpConfig(businessLineId: string, params: { name: string; sourcePath?: string }) {
     return apiHttp.get<LocalMcpConfig>(
-      `/business-lines/${businessLineId}/local-mcps/${encodeURIComponent(params.name)}/config`,
-      { sourcePath: params.sourcePath },
+      `/business-lines/${businessLineId}/local-mcps/config`,
+      { name: params.name, sourcePath: params.sourcePath },
     )
   },
 
