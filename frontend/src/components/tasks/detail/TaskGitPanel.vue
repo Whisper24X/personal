@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { tasksApi } from '@/api/tasks'
 import type { TaskGitBranchDiffFile, TaskGitStatus } from '@/types/api/tasks'
 import { toErrorMessage } from '@/utils/http/to-error-message'
+import TaskDiffViewer from './TaskDiffViewer.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -18,12 +19,14 @@ const loading = ref(false)
 const errorMessage = ref('')
 const statusInfo = ref<TaskGitStatus | null>(null)
 const diffText = ref('')
+const diffLoading = ref(false)
 const selectedFilePath = ref<string | null>(null)
 const activeTab = ref<'changes' | 'compare' | 'log'>('changes')
 
 const branchDiffFiles = ref<TaskGitBranchDiffFile[]>([])
 const selectedBranchDiffPath = ref<string | null>(null)
 const branchDiffText = ref('')
+const branchDiffLoading = ref(false)
 const compareLoading = ref(false)
 
 const commitMessage = ref('')
@@ -70,6 +73,7 @@ const loadStatus = async () => {
 }
 
 const loadDiff = async (filePath?: string, staged?: boolean) => {
+  diffLoading.value = true
   try {
     const response = await tasksApi.gitDiff(props.taskId, {
       path: filePath,
@@ -79,6 +83,8 @@ const loadDiff = async (filePath?: string, staged?: boolean) => {
   } catch (error) {
     diffText.value = ''
     errorMessage.value = toErrorMessage(error, '加载 diff 失败')
+  } finally {
+    diffLoading.value = false
   }
 }
 
@@ -95,6 +101,13 @@ const loadBranchDiffFiles = async () => {
       baseBranch: baseBranchInput.value,
     })
     branchDiffFiles.value = response.files
+    if (
+      selectedBranchDiffPath.value &&
+      !response.files.some((file) => file.path === selectedBranchDiffPath.value)
+    ) {
+      selectedBranchDiffPath.value = null
+      branchDiffText.value = ''
+    }
   } catch (error) {
     branchDiffFiles.value = []
     errorMessage.value = toErrorMessage(error, '加载分支差异文件失败')
@@ -104,6 +117,7 @@ const loadBranchDiffFiles = async () => {
 }
 
 const loadBranchDiff = async (filePath?: string) => {
+  branchDiffLoading.value = true
   try {
     const response = await tasksApi.gitBranchDiff(props.taskId, {
       baseBranch: baseBranchInput.value,
@@ -113,6 +127,8 @@ const loadBranchDiff = async (filePath?: string) => {
   } catch (error) {
     branchDiffText.value = ''
     errorMessage.value = toErrorMessage(error, '加载分支差异失败')
+  } finally {
+    branchDiffLoading.value = false
   }
 }
 
@@ -485,7 +501,12 @@ watch(
             <p v-if="actionMessage" class="mt-1.5 text-[11px] text-muted-foreground">{{ actionMessage }}</p>
           </div>
 
-          <pre class="min-h-0 flex-1 overflow-auto p-3 font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap">{{ diffText || '选择文件查看差异' }}</pre>
+          <TaskDiffViewer
+            :diff-text="diffText"
+            :loading="diffLoading"
+            :empty-text="'选择文件查看差异'"
+            :fallback-path="selectedFilePath"
+          />
         </section>
       </div>
 
@@ -573,7 +594,12 @@ watch(
             </div>
           </div>
 
-          <pre class="min-h-0 flex-1 overflow-auto p-3 font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap">{{ branchDiffText || '选择文件查看差异' }}</pre>
+          <TaskDiffViewer
+            :diff-text="branchDiffText"
+            :loading="branchDiffLoading"
+            :empty-text="'选择文件查看差异'"
+            :fallback-path="selectedBranchDiffPath"
+          />
         </section>
       </div>
 
