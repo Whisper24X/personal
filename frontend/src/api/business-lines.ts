@@ -306,7 +306,7 @@ export const businessLinesApi = {
       nextFormData.append('file', file)
       return nextFormData
     })()
-    return apiHttp.post<UploadLocalSkillResult>(`/business-lines/${businessLineId}/local-skills`, formData)
+    return apiHttp.post<UploadLocalSkillResult>(`/business-lines/${businessLineId}/local-skills/upload`, formData)
   },
 
   getLocalSkillTree(businessLineId: string, skillName: string) {
