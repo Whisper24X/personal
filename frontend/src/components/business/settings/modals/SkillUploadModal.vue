@@ -20,11 +20,15 @@ const PROJECT_SKILL_PROVIDER_LABELS: Record<string, string> = {
   claude: 'Claude Code',
 }
 
-const props = defineProps<{
-  open: boolean
-  submitting: boolean
-  errorMessage?: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    open: boolean
+    submitting: boolean
+    errorMessage?: string
+    showTargetSelection?: boolean
+  }>(),
+  { showTargetSelection: true },
+)
 
 const emit = defineEmits<{
   (event: 'update:open', value: boolean): void
@@ -108,13 +112,17 @@ const submit = () => {
     return
   }
 
-  if (selectedProviders.value.length === 0) {
+  if (props.showTargetSelection && selectedProviders.value.length === 0) {
     validationMessage.value = '请至少选择一个目标类型'
     return
   }
 
   validationMessage.value = ''
-  emit('submit', selectedFile.value, selectedProviders.value)
+  emit(
+    'submit',
+    selectedFile.value,
+    props.showTargetSelection ? selectedProviders.value : [],
+  )
 }
 
 watch(
@@ -228,7 +236,7 @@ watch(
             </ul>
           </section>
 
-          <div class="space-y-2">
+          <div v-if="props.showTargetSelection" class="space-y-2">
             <div class="flex items-center justify-between">
               <label class="text-xs font-medium text-muted-foreground">添加到</label>
               <div class="flex gap-2">
@@ -281,7 +289,7 @@ watch(
             <button
               type="button"
               class="h-9 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="props.submitting || !selectedFile || selectedProviders.length === 0"
+              :disabled="props.submitting || !selectedFile || (props.showTargetSelection && selectedProviders.length === 0)"
               @click="submit"
             >
               {{ props.submitting ? '上传中...' : '上传技能' }}

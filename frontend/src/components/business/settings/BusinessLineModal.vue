@@ -4096,6 +4096,7 @@ onBeforeUnmount(() => {
         :open="uploadSkillModalOpen"
         :submitting="uploadingLocalSkill"
         :error-message="uploadSkillError"
+        :show-target-selection="false"
         @update:open="uploadSkillModalOpen = $event"
         @submit="submitUploadSkill"
       />
