@@ -78,11 +78,16 @@ const tabList: TabItem[] = [
 onMounted(async () => {
   // 获取底部安全区域高度
   try {
+    // H5 环境下不使用小程序安全区算法，避免出现异常超大 padding-bottom（如 982px）
+    if (process.env.TARO_ENV === "h5") {
+      safeAreaBottom.value = 0
+    } else {
     // 使用新的API代替已废弃的getSystemInfoSync
     const windowInfo = Taro.getWindowInfo()
     safeAreaBottom.value = windowInfo.safeArea
       ? windowInfo.screenHeight - windowInfo.safeArea.bottom
       : 0
+    }
   } catch (e) {
     console.error("获取安全区域失败", e)
   }

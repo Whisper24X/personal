@@ -1,7 +1,5 @@
 import { defineConfig, type UserConfigExport } from "@tarojs/cli"
 import { resolve } from "path"
-import * as fs from "fs"
-import * as path from "path"
 
 import devConfig from "./dev"
 import prodConfig from "./prod"
@@ -10,45 +8,6 @@ import prodConfig from "./prod"
 export default defineConfig<"vite">(async (merge, { command, mode }) => {
   const env = mode || "development"
   console.log("构建环境:", command, "目标环境:", env)
-
-  // 根据环境获取CI配置文件
-  let ciConfig = {}
-  if (["test", "development"].includes(mode)) {
-    const ciConfigPath = path.resolve(__dirname, "../ci.test.config.js")
-    console.log("ciConfigPath", ciConfigPath)
-    if (fs.existsSync(ciConfigPath)) {
-      ciConfig = require(ciConfigPath)
-    }
-  } else {
-    const ciConfigPath = path.resolve(__dirname, "../ci.config.js")
-    if (fs.existsSync(ciConfigPath)) {
-      ciConfig = require(ciConfigPath)
-    }
-  }
-  // 小程序CI插件配置
-  const CIPluginOpt = {
-    weapp: {
-      appid: ciConfig["WEAPP_APPID"] || "微信小程序appid",
-      privateKeyPath: ciConfig["WEAPP_PRIVATE_KEY_PATH"] || "key/private.key"
-    },
-    version: ciConfig["WEAPP_VERSION"] || "1.0.0",
-    desc: ciConfig["WEAPP_DESC"] || `${env}环境构建版本`,
-    qrcodeOutputDest: path.resolve(__dirname, "../qrcode/preview.png")
-    // hooks: {
-    //   beforePreview: (config) => {
-    //     console.log("预览前配置:", JSON.stringify(config, null, 2))
-    //     return config
-    //   },
-    //   beforeUpload: (config) => {
-    //     console.log("上传前配置:", JSON.stringify(config, null, 2))
-    //     return config
-    //   },
-    //   afterUpload: (res) => {
-    //     console.log("上传结果:", JSON.stringify(res, null, 2))
-    //     return res
-    //   },
-    // },
-  }
 
   const baseConfig: UserConfigExport<"vite"> = {
     projectName: "trip-miniprogram",
@@ -72,7 +31,6 @@ export default defineConfig<"vite">(async (merge, { command, mode }) => {
       "@/types": resolve(__dirname, "..", "src/types")
     },
     plugins: [
-      ["@tarojs/plugin-mini-ci", CIPluginOpt],
       [
         "@tarojs/plugin-inject",
         {
@@ -140,7 +98,10 @@ export default defineConfig<"vite">(async (merge, { command, mode }) => {
     h5: {
       publicPath: "/",
       staticDirectory: "static",
-
+      // 沙箱中 Nginx 期望 app 监听 8200
+      ...(process.env.TARO_APP_API && {
+        devServer: { port: 8200, host: "0.0.0.0", open: false }
+      }),
       miniCssExtractPluginOption: {
         ignoreOrder: true,
         filename: "css/[name].[hash].css",

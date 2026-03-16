@@ -116,22 +116,27 @@ const handleMomentsShare = async () => {
     // 调用海报生成器生成海报
     const posterPath = await posterGeneratorRef.value.generatePoster()
 
-    // 显示分享菜单
-    wx.showShareImageMenu({
-      path: posterPath,
-      success: () => {
-        console.log("✅ 海报分享成功")
-        emit("share-success", "moments")
-      },
-      fail: err => {
-        console.error("❌ 海报分享失败:", err)
-        Taro.showToast({
-          title: "分享失败",
-          icon: "error"
-        })
-        emit("share-error", err)
-      }
-    })
+    // 显示分享菜单（仅小程序环境支持）
+    if (typeof wx !== "undefined" && wx.showShareImageMenu) {
+      wx.showShareImageMenu({
+        path: posterPath,
+        success: () => {
+          console.log("✅ 海报分享成功")
+          emit("share-success", "moments")
+        },
+        fail: err => {
+          console.error("❌ 海报分享失败:", err)
+          Taro.showToast({
+            title: "分享失败",
+            icon: "error"
+          })
+          emit("share-error", err)
+        }
+      })
+    } else {
+      console.warn("H5 环境不支持 showShareImageMenu")
+      Taro.showToast({ title: "H5 暂不支持此分享方式", icon: "none" })
+    }
   } catch (error) {
     console.error("❌ 生成海报失败:", error)
     emit("share-error", error)
@@ -172,20 +177,21 @@ const handlePosterComplete = () => {
 
 // 页面加载
 useLoad(() => {
-  // 默认开启分享菜单，并开启ShareTicket
-  wx.showShareMenu({
-    withShareTicket: true,
-    menus: ["shareAppMessage", "shareTimeline"],
-    success() {
-      console.log("share menu shown")
-    },
-    fail() {
-      console.log("share menu failed")
-    },
-    complete() {
-      console.log("share menu complete")
-    }
-  })
+  if (typeof wx !== "undefined" && wx.showShareMenu) {
+    wx.showShareMenu({
+      withShareTicket: true,
+      menus: ["shareAppMessage", "shareTimeline"],
+      success() {
+        console.log("share menu shown")
+      },
+      fail() {
+        console.log("share menu failed")
+      },
+      complete() {
+        console.log("share menu complete")
+      }
+    })
+  }
 })
 
 // 微信分享配置

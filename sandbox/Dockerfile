@@ -2,13 +2,14 @@
 # All-in-One AI 编码沙箱镜像
 # ============================================================
 #
-# 基于 golang:1.23-alpine，预装 Go 工具链 + Node/pnpm + protoc
+# 基于 golang:1.23-bookworm (Debian)，预装 Go 工具链 + Node/pnpm + protoc
+# 使用 glibc 以兼容 Taro @tarojs/binding-linux-x64-gnu（Alpine musl 不支持）
 # 容器启动后由 Supervisor 托管 backend / shadow / app 三个服务
 #
 # 构建: docker compose build  或  ./sandbox/sandbox.sh build
 # ============================================================
 
-FROM golang:1.23-alpine
+FROM golang:1.23-bookworm
 
 # ============================================================
 # 环境变量
@@ -30,21 +31,37 @@ ENV TZ=Asia/Shanghai \
 # openssh-client      — 拉取 gitlab 私有仓库
 # netcat-openbsd      — 健康检查 / 端口探测
 # supervisor/nginx    — 进程管理 + 反向代理
-# nodejs/npm          — 前端构建
-RUN apk add --no-cache \
-    bash curl git make vim jq \
+# nodejs/npm          — 前端构建（glibc 兼容 Taro binding）
+# cmake               — 构建 librdkafka（confluent-kafka-go 需 v2.3+，Debian 自带版本过旧）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash curl git make vim jq cmake \
     openssh-client netcat-openbsd \
     supervisor nginx \
     nodejs npm \
-    tzdata \
-    gcc musl-dev librdkafka-dev \
-    && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    ca-certificates \
+    unzip \
+    gcc g++ \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
 
-# protoc 需要锁定 3.21.9 版本，当前 Alpine 主线已升级，从 3.17 仓库安装
-RUN apk add --no-cache \
-    --repository=https://dl-cdn.alpinelinux.org/alpine/v3.17/main \
-    protobuf=3.21.9-r0
+# protoc 锁定 3.21.9
+RUN ARCH=$(uname -m) \
+    && case "$ARCH" in aarch64) PROTOC_ARCH=aarch_64;; x86_64) PROTOC_ARCH=x86_64;; *) echo "unsupported arch: $ARCH" && exit 1;; esac \
+    && curl -sL "https://github.com/protocolbuffers/protobuf/releases/download/v21.9/protoc-21.9-linux-${PROTOC_ARCH}.zip" -o /tmp/protoc.zip \
+    && unzip -o /tmp/protoc.zip -d /usr/local bin/protoc 'include/*' \
+    && rm -f /tmp/protoc.zip \
+    && protoc --version
+
+# 从源码构建 librdkafka v2.3+（confluent-kafka-go 要求，Debian bookworm 仅 2.0.2）
+RUN cd /tmp \
+    && curl -sL https://github.com/confluentinc/librdkafka/archive/refs/tags/v2.3.0.tar.gz | tar xz \
+    && cd librdkafka-2.3.0 \
+    && mkdir build && cd build \
+    && cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
+    && make -j$(nproc) && make install \
+    && ldconfig \
+    && cd / && rm -rf /tmp/librdkafka-2.3.0
 
 # ============================================================
 # SSH + Git（用于拉取 gitlab.yc345.tv 私有依赖）

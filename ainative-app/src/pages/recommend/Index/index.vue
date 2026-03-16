@@ -22,10 +22,10 @@
     <template v-else>
       <template v-for="category in recommendationCategories">
         <category-section
-          v-if="category.goodItems.length > 0"
+          v-if="category.goodItems && category.goodItems.length > 0"
           :key="category.id"
           :title="category.name"
-          :courses="mapGoodItemsToCourses(category.goodItems)"
+          :courses="mapGoodItemsToCourses(category.goodItems || [])"
           :category-type="category.id"
         />
       </template>

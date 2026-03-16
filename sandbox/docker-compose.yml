@@ -17,6 +17,7 @@
 
 services:
   sandbox:
+    platform: linux/amd64
     image: ${SANDBOX_PROJECT}-sandbox:latest
     build:
       context: sandbox
@@ -34,10 +35,14 @@ services:
     volumes:
       # Nginx 配置（热更新，无需 rebuild）
       - ./sandbox/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Supervisor 配置（热更新，无需 rebuild）
+      - ./sandbox/supervisord.conf:/etc/supervisord.conf:ro
       # 项目源码（双向同步）
       - ./ainative-backend:/workspace/ainative-backend
       - ./ainative-shadow:/workspace/ainative-shadow
       - ./ainative-app:/workspace/ainative-app
+      # 容器内独立 node_modules（Alpine arm64 原生依赖，避免宿主机 macOS 二进制不兼容）
+      - app-node-modules:/workspace/ainative-app/node_modules
       - ./logs:/workspace/logs
       # 缓存卷（跨分支共享，避免重复下载依赖）
       - go-mod-cache:/go/pkg/mod
@@ -62,3 +67,5 @@ volumes:
   pnpm-store-cache:
     external: true
     name: ${SANDBOX_PROJECT}-pnpm-store-cache
+  app-node-modules:
+    name: ${SANDBOX_PROJECT}-app-node-modules

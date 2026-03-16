@@ -24,7 +24,6 @@ cd ainative-app
 pnpm install                    # 安装依赖
 pnpm dev:weapp                  # 微信小程序开发
 pnpm build:weapp:production     # 构建微信小程序
-pnpm ci:weapp:upload:production # CI 上传
 ```
 
 ### ainative-shadow（管理后台）
