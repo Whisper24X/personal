@@ -54,39 +54,6 @@ make subtree-push-shadow   # 推送管理后台代码
 make subtree-push-app      # 推送小程序代码
 ```
 
-### 小程序 CI 验证
-
-**无需传统构建步骤**，小程序通过微信 CI 生成体验版二维码进行验证。
-
-```bash
-# 1. 检查私钥配置（首次使用必看）
-make app-check-key
-
-# 2. 生成预览二维码（推荐，快速验证）
-make app-preview
-
-# 3. 上传到微信后台作为体验版
-make app-upload-test     # 测试环境
-make app-upload-stage    # 预发布环境
-make app-upload-prod     # 生产环境
-```
-
-#### 私钥配置说明
-
-首次使用小程序 CI 前需要配置私钥：
-
-1. 登录[微信公众平台](https://mp.weixin.qq.com/)
-2. 进入"开发" → "开发设置" → "小程序代码上传"
-3. 生成并下载代码上传密钥
-4. 创建目录并放置私钥：
-   ```bash
-   mkdir -p ainative-app/key
-   # 将下载的密钥文件放到 ainative-app/key/ 目录
-   ```
-5. 确认配置文件中的路径正确：
-   - 测试环境：`ainative-app/ci.test.config.js`
-   - 生产环境：`ainative-app/ci.config.js`
-
 ### 沙箱环境
 
 ```bash
@@ -127,8 +94,6 @@ git commit -m "feat: 新功能"
 cd ..
 make subtree-push-app
 
-# 4. 小程序验证（生成预览二维码）
-make app-preview
 ```
 
 ### 推送到 Feature 分支
@@ -148,14 +113,12 @@ make subtree-push-app feature/payment
 2. **不要在 worktree 中操作**：Subtree 命令不支持 worktree
 3. **推送前先拉取**：推送失败时先执行 `make subtree-pull-{name}`
 4. **私钥文件不要提交**：`ainative-app/key/` 目录已在 `.gitignore` 中排除
-5. **小程序无需构建部署**：通过 CI 生成二维码或上传到微信后台即可验证
 
 ## 获取帮助
 
 ```bash
 make help              # 查看所有可用命令
 make subtree-list      # 查看子仓库配置
-make app-check-key     # 检查小程序私钥配置
 ```
 
 ---

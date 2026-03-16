@@ -39,11 +39,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor nginx \
     nodejs npm \
     ca-certificates \
-    protobuf-compiler \
+    unzip \
     gcc g++ \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
+
+# protoc 锁定 3.21.9
+RUN ARCH=$(uname -m) \
+    && case "$ARCH" in aarch64) PROTOC_ARCH=aarch_64;; x86_64) PROTOC_ARCH=x86_64;; *) echo "unsupported arch: $ARCH" && exit 1;; esac \
+    && curl -sL "https://github.com/protocolbuffers/protobuf/releases/download/v21.9/protoc-21.9-linux-${PROTOC_ARCH}.zip" -o /tmp/protoc.zip \
+    && unzip -o /tmp/protoc.zip -d /usr/local bin/protoc 'include/*' \
+    && rm -f /tmp/protoc.zip \
+    && protoc --version
 
 # 从源码构建 librdkafka v2.3+（confluent-kafka-go 要求，Debian bookworm 仅 2.0.2）
 RUN cd /tmp \

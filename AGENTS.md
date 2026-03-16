@@ -44,8 +44,6 @@ Monorepo 全栈应用：小程序 + 管理后台 + Go 后端。
 | Skill | 用途 |
 |-------|------|
 | [小程序构建部署](.cursor/skills/app-build-deploy/SKILL.md) | ainative-app 多环境编译打包部署 |
-| [小程序体验版](.cursor/skills/app-preview/SKILL.md) | 生成小程序体验版供测试验证 |
-| [小程序 CI 验证](.cursor/skills/app-ci/SKILL.md) | 小程序 CI 预览二维码、体验版上传、私钥配置、沙箱二维码页面 |
 | [后端构建部署](.cursor/skills/backend-build-deploy/SKILL.md) | ainative-backend Go 服务构建部署 |
 | [管理后台构建部署](.cursor/skills/shadow-build-deploy/SKILL.md) | ainative-shadow 管理后台构建部署 |
 | [沙箱环境管理](.cursor/skills/sandbox-manage/SKILL.md) | 沙箱环境配置、端口映射、多实例、服务架构、故障排查 |

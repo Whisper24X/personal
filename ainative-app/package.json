@@ -40,13 +40,7 @@
     "lint:fix": "eslint --ext .js,.ts,.vue src --fix",
     "format": "prettier --write \"src/**/*.{js,ts,vue,less,scss}\"",
     "format:fix": "npm run lint:fix && npm run format",
-    "commitlint": "commitlint --config commitlint.config.js -e",
-    "ci:weapp:open": "taro build --type weapp --open",
-    "ci:weapp:preview": "taro build --type weapp --preview",
-    "ci:weapp:upload": "taro build --type weapp --upload",
-    "ci:weapp:upload:test": "taro build --type weapp --mode test --upload",
-    "ci:weapp:upload:stage": "taro build --type weapp --mode stage --upload",
-    "ci:weapp:upload:production": "taro build --type weapp --mode production --upload"
+    "commitlint": "commitlint --config commitlint.config.js -e"
   },
   "browserslist": {
     "development": [
@@ -91,7 +85,7 @@
     "@commitlint/config-conventional": "^19.8.0",
     "@tarojs/cli": "4.0.9",
     "@tarojs/plugin-inject": "^4.1.6",
-    "@tarojs/plugin-mini-ci": "^4.0.12",
+
     "@tarojs/vite-runner": "4.0.9",
     "@typescript-eslint/eslint-plugin": "^8.28.0",
     "@typescript-eslint/parser": "^8.28.0",
@@ -108,7 +102,7 @@
     "install": "^0.13.0",
     "less": "^4.2.0",
     "lint-staged": "^15.5.0",
-    "miniprogram-ci": "1.9.17",
+
     "postcss": "^8.4.38",
     "postcss-pxtorem": "^6.1.0",
     "postcss-viewport-units": "^0.1.6",

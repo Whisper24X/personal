@@ -147,7 +147,6 @@ ainative-app/
 │   └── app.less              # 全局样式
 ├── types/                    # 全局类型声明
 ├── .env.*                    # 环境变量
-├── ci.config.js              # CI 配置
 └── package.json
 ```
 
@@ -331,7 +330,7 @@ const result = await handleTaroFileUpload({
 
 ---
 
-## 构建与 CI
+## 构建
 
 ### 微信小程序
 
@@ -341,29 +340,7 @@ pnpm dev:weapp
 
 # 构建
 pnpm build:weapp
-
-# CI 上传
-pnpm ci:weapp:upload:production
 ```
-
-### CI 验证（推荐）
-
-小程序验证**不需要 npm run build**，直接使用 make 命令：
-
-```bash
-# 生成预览二维码（扫码立即看效果）
-make app-preview
-
-# 检查 CI 配置
-make app-check-key
-
-# 上传体验版
-make app-upload-test    # 测试环境
-make app-upload-stage   # 预发布环境
-make app-upload-prod    # 生产环境
-```
-
-→ 详见 [CI 快速参考](references/ci-quick-reference.md) | [CI 完整指南](references/ci-guide.md) | [二维码页面配置](references/qrcode-page.md)
 
 ---
 
@@ -400,19 +377,6 @@ TARO_APP_ENV=development
 # .env.production
 TARO_APP_API_BASE_URL=https://api.example.com
 TARO_APP_ENV=production
-```
-
-### CI 配置
-
-修改 `ci.config.js`：
-
-```javascript
-module.exports = {
-  WEAPP_APPID: "your-weapp-appid",
-  WEAPP_PRIVATE_KEY_PATH: "key/private.key",
-  WEAPP_VERSION: "1.0.0",
-  WEAPP_DESC: "生产环境版本"
-}
 ```
 
 → 详见 [环境配置规范](references/environment.md)
