@@ -14,11 +14,5 @@ export class ProjectLocalSkillResultDto {
     type: String,
     enum: ['codex', 'cursor', 'curso', 'gemini', 'opencode', 'claude'],
   })
-  provider:
-    | 'codex'
-    | 'cursor'
-    | 'curso'
-    | 'gemini'
-    | 'opencode'
-    | 'claude';
+  provider: 'codex' | 'cursor' | 'curso' | 'gemini' | 'opencode' | 'claude';
 }
