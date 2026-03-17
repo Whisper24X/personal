@@ -58,7 +58,10 @@ import {
   resolveSkillRootDirectory,
   type SkillTreeNode,
 } from '../utils/local-agent-catalog';
-import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
+import {
+  resolveAinativeDataRootDir,
+  resolveWorkspaceRootDir,
+} from '../utils/workspace-paths';
 import { UploadLocalSkillResultDto } from './dto/upload-local-skill-result.dto';
 import { CreateLocalMcpDto } from './dto/create-local-mcp.dto';
 import { ImportLocalMcpsDto } from './dto/import-local-mcps.dto';
@@ -925,7 +928,10 @@ export class BusinessLinesService {
       throw new BadRequestException('Skill source path is unavailable');
     }
 
-    const absoluteSourcePath = path.resolve(sourcePath.trim());
+    const trimmedSourcePath = sourcePath.trim();
+    const absoluteSourcePath = path.isAbsolute(trimmedSourcePath)
+      ? path.resolve(trimmedSourcePath)
+      : path.resolve(resolveWorkspaceRootDir(), trimmedSourcePath);
     const businessLineSkillsRoot = path.resolve(
       resolveAinativeDataRootDir(),
       businessLineId,
