@@ -1,0 +1,24 @@
+{
+  "name": "ainative",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "run-p dev:backend dev:frontend",
+    "dev:backend": "pnpm --dir backend run start:dev",
+    "dev:frontend": "pnpm --dir frontend dev",
+    "docker": "docker compose up -d && echo '\\n✅ 全栈服务已启动：\\n   前端: http://localhost:8000\\n   后端: http://localhost:9000'",
+    "docker:build": "docker compose build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:restart": "docker compose restart",
+    "docker:clean": "docker compose down -v",
+    "install:all": "pnpm --dir frontend install && pnpm --dir backend install",
+    "clean": "rm -rf frontend/node_modules frontend/dist backend/node_modules backend/dist"
+  },
+  "devDependencies": {
+    "npm-run-all2": "^8.0.4"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}
