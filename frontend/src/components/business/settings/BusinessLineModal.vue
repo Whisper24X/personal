@@ -35,6 +35,8 @@ import AgentToolConfigModal from './modals/AgentToolConfigModal.vue'
 import SkillUploadModal from './modals/SkillUploadModal.vue'
 import SkillTreeNodeComponent from '@/components/core/SkillTreeNode.vue'
 import McpJsonImportModal from './modals/McpJsonImportModal.vue'
+import WorkflowPromptVariablesHint from '@/components/workflow/WorkflowPromptVariablesHint.vue'
+import WorkflowPromptTextarea from '@/components/workflow/WorkflowPromptTextarea.vue'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import {
   BUSINESS_LINE_CAPABILITY_TREE,
@@ -296,15 +298,11 @@ const canManageActiveLine = computed(() => {
   return hasActiveLineCapability('businessLine.update')
 })
 
-const canInviteMembers = computed(() =>
-  hasActiveLineCapability('businessLine.member.invite'),
-)
+const canInviteMembers = computed(() => hasActiveLineCapability('businessLine.member.invite'))
 const canUpdateMemberRole = computed(() =>
   hasActiveLineCapability('businessLine.member.updateRole'),
 )
-const canRemoveMembers = computed(() =>
-  hasActiveLineCapability('businessLine.member.remove'),
-)
+const canRemoveMembers = computed(() => hasActiveLineCapability('businessLine.member.remove'))
 const canCreateBusinessLineRole = computed(() =>
   hasActiveLineCapability('businessLine.role.create'),
 )
@@ -2226,8 +2224,7 @@ const submitMemberPermission = async (
         projectRoles: Record<string, ProjectRoleSelection>
       },
 ) => {
-  const canSubmit =
-    payload.mode === 'create' ? canInviteMembers.value : canUpdateMemberRole.value
+  const canSubmit = payload.mode === 'create' ? canInviteMembers.value : canUpdateMemberRole.value
   if (!activeLineId.value || !canSubmit) {
     return
   }
@@ -2821,7 +2818,7 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <div
       v-if="props.open"
-      class="fixed inset-0 z-[95] flex items-center justify-center p-3 sm:p-6"
+      class="fixed inset-0 z-[95]"
       aria-live="polite"
     >
       <button
@@ -2835,7 +2832,7 @@ onBeforeUnmount(() => {
         aria-modal="true"
         role="dialog"
         aria-labelledby="business-line-modal-title"
-        class="relative z-10 h-[min(760px,92vh)] w-full max-w-6xl overflow-hidden rounded-3xl border border-border bg-background shadow-2xl"
+        class="relative z-10 h-full w-full overflow-hidden bg-background"
       >
         <div class="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[18rem_minmax(0,1fr)]">
           <aside
@@ -3236,7 +3233,10 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
 
-                <div v-if="activePermissionRoleTab === 'business-line'" class="panel-card space-y-4 p-4">
+                <div
+                  v-if="activePermissionRoleTab === 'business-line'"
+                  class="panel-card space-y-4 p-4"
+                >
                   <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p class="text-sm font-semibold">角色列表（{{ lineCustomRoles.length }}）</p>
@@ -3281,7 +3281,11 @@ onBeforeUnmount(() => {
                             <p class="text-sm font-semibold">{{ role.name }}</p>
                           </div>
                           <p class="mt-1 text-xs text-muted-foreground">
-                            {{ formatBusinessLineRoleCapabilitiesDisplay(role.capabilities) || role.description || '暂无描述' }}
+                            {{
+                              formatBusinessLineRoleCapabilitiesDisplay(role.capabilities) ||
+                              role.description ||
+                              '暂无描述'
+                            }}
                           </p>
                         </div>
                         <div
@@ -3314,7 +3318,9 @@ onBeforeUnmount(() => {
                 <div v-else class="panel-card space-y-4 p-4">
                   <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p class="text-sm font-semibold">角色列表（{{ permissionProjectRoleLibrary.length }}）</p>
+                      <p class="text-sm font-semibold">
+                        角色列表（{{ permissionProjectRoleLibrary.length }}）
+                      </p>
                     </div>
                     <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <button
@@ -3366,7 +3372,11 @@ onBeforeUnmount(() => {
                             <p class="text-sm font-semibold">{{ role.name }}</p>
                           </div>
                           <p class="mt-1 text-xs text-muted-foreground">
-                            {{ formatProjectRoleCapabilitiesDisplay(role.capabilities) || role.description || '暂无描述' }}
+                            {{
+                              formatProjectRoleCapabilitiesDisplay(role.capabilities) ||
+                              role.description ||
+                              '暂无描述'
+                            }}
                           </p>
                         </div>
                         <div
@@ -3386,11 +3396,7 @@ onBeforeUnmount(() => {
                             :disabled="deletingPermissionProjectRoleId === role.id"
                             @click="removePermissionProjectRole(role)"
                           >
-                            {{
-                              deletingPermissionProjectRoleId === role.id
-                                ? '删除中...'
-                                : '删除'
-                            }}
+                            {{ deletingPermissionProjectRoleId === role.id ? '删除中...' : '删除' }}
                           </button>
                         </div>
                       </div>
@@ -3818,7 +3824,7 @@ onBeforeUnmount(() => {
         @click.self="closeWorkflowCreateModal"
       >
         <section
-          class="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+          class="max-h-[95vh] w-full max-w-6xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
         >
           <header class="flex items-center justify-between border-b border-border px-4 py-3">
             <h3 id="business-line-workflow-create-modal-title" class="text-sm font-semibold">
@@ -3835,7 +3841,7 @@ onBeforeUnmount(() => {
           </header>
 
           <form
-            class="max-h-[calc(92vh-56px)] space-y-4 overflow-auto px-4 py-4"
+            class="max-h-[calc(95vh-56px)] space-y-4 overflow-auto px-4 py-4"
             @submit.prevent="submitWorkflowTemplate"
           >
             <section class="space-y-3 rounded-xl border border-border bg-background/60 p-3">
@@ -3925,11 +3931,13 @@ onBeforeUnmount(() => {
                     </label>
 
                     <label class="space-y-1 md:col-span-2">
-                      <span class="text-[11px] text-muted-foreground">节点 Prompt</span>
-                      <textarea
+                      <span class="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <span>节点 Prompt</span>
+                        <WorkflowPromptVariablesHint variant="popover" />
+                      </span>
+                      <WorkflowPromptTextarea
                         v-model="node.input.prompt"
-                        class="min-h-[76px] w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
-                        placeholder="输入该节点的执行提示词"
+                        placeholder="输入该节点的提示词，输入 / 可插入变量"
                       />
                     </label>
 
@@ -3969,7 +3977,8 @@ onBeforeUnmount(() => {
                       <select
                         v-model="node.input.agentCliConfigId"
                         :disabled="
-                          !node.input.agentCliId || isWorkflowNodeConfigLoading(node.input.agentCliId)
+                          !node.input.agentCliId ||
+                          isWorkflowNodeConfigLoading(node.input.agentCliId)
                         "
                         class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                       >
@@ -4023,6 +4032,7 @@ onBeforeUnmount(() => {
       <BusinessLineFormModal
         :open="lineFormModalOpen"
         :mode="lineFormMode"
+        size="large"
         :submitting="lineFormSubmitting"
         :initial-name="lineFormInitialName"
         :initial-description="lineFormInitialDescription"
@@ -4034,6 +4044,7 @@ onBeforeUnmount(() => {
       <ProjectFormModal
         :open="projectFormModalOpen"
         :mode="projectFormMode"
+        size="large"
         :business-line-id="activeLineId"
         :submitting="projectFormSubmitting"
         :initial-name="projectFormInitialName"
@@ -4048,6 +4059,7 @@ onBeforeUnmount(() => {
       <MemberPermissionModal
         :open="memberPermissionModalOpen"
         :mode="memberPermissionModalMode"
+        size="large"
         :submitting="memberPermissionModalSubmitting"
         :preparing="memberPermissionModalPreparing"
         :users="users"
@@ -4068,6 +4080,7 @@ onBeforeUnmount(() => {
       <CustomRoleModal
         :open="customRoleModalOpen"
         :mode="customRoleModalMode"
+        size="large"
         scope-label="业务线"
         :submitting="customRoleModalSubmitting"
         :capability-tree="BUSINESS_LINE_CAPABILITY_TREE"
@@ -4082,6 +4095,7 @@ onBeforeUnmount(() => {
       <CustomRoleModal
         :open="permissionProjectRoleModalOpen"
         :mode="permissionProjectRoleModalMode"
+        size="large"
         scope-label="项目"
         :submitting="permissionProjectRoleModalSubmitting"
         :capability-tree="PROJECT_CAPABILITY_TREE"
@@ -4096,6 +4110,7 @@ onBeforeUnmount(() => {
       <AgentToolConfigModal
         :open="agentToolConfigModalOpen"
         :mode="agentToolConfigMode"
+        size="large"
         :submitting="submittingAgentToolConfig"
         :cli-tool-id="activeAgentCliToolId"
         :cli-tool-label="activeAgentCliToolLabel"
@@ -4110,6 +4125,7 @@ onBeforeUnmount(() => {
 
       <SkillUploadModal
         :open="uploadSkillModalOpen"
+        size="large"
         :submitting="uploadingLocalSkill"
         :error-message="uploadSkillError"
         :show-target-selection="false"
@@ -4119,6 +4135,7 @@ onBeforeUnmount(() => {
 
       <McpJsonImportModal
         :open="mcpJsonImportModalOpen"
+        size="large"
         :submitting="importingLocalMcps"
         :error-message="mcpJsonImportError"
         @update:open="mcpJsonImportModalOpen = $event"
@@ -4173,7 +4190,21 @@ onBeforeUnmount(() => {
                 class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
                 @click="closeSkillPreview"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </svg>
               </button>
             </div>
           </header>
@@ -4260,10 +4291,25 @@ onBeforeUnmount(() => {
                 type="button"
                 class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-semibold text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-60"
                 aria-label="删除 MCP"
-                :disabled="loadingMcpJsonPreview || savingMcpJsonPreview || removingLocalMcpId === mcpJsonPreviewItem.id"
+                :disabled="
+                  loadingMcpJsonPreview ||
+                  savingMcpJsonPreview ||
+                  removingLocalMcpId === mcpJsonPreviewItem.id
+                "
                 @click="mcpJsonPreviewItem && void removeLocalMcp(mcpJsonPreviewItem)"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
                   <path d="M3 6h18" />
                   <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
                   <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
@@ -4306,15 +4352,19 @@ onBeforeUnmount(() => {
             </div>
           </header>
           <div class="space-y-3 px-4 py-4">
-            <p v-if="loadingMcpJsonPreview" class="text-sm text-muted-foreground">加载 JSON 中...</p>
+            <p v-if="loadingMcpJsonPreview" class="text-sm text-muted-foreground">
+              加载 JSON 中...
+            </p>
             <div v-else class="space-y-3">
               <div>
-                <label class="mb-1 block text-xs font-medium text-muted-foreground">JSON 配置</label>
+                <label class="mb-1 block text-xs font-medium text-muted-foreground"
+                  >JSON 配置</label
+                >
                 <textarea
                   v-model="mcpJsonPreviewDraft"
-                data-testid="mcp-json-preview-textarea"
-                class="min-h-[48vh] w-full rounded-xl border border-border bg-muted/20 p-3 font-mono text-xs text-foreground"
-              />
+                  data-testid="mcp-json-preview-textarea"
+                  class="min-h-[48vh] w-full rounded-xl border border-border bg-muted/20 p-3 font-mono text-xs text-foreground"
+                />
               </div>
             </div>
             <p

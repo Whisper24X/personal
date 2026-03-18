@@ -1170,6 +1170,7 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         task: executionTask,
         node: runningNode,
         project,
+        runtimeContext: runtime,
       });
       return;
     } catch (error) {
@@ -1296,12 +1297,19 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     task,
     node,
     project,
+    runtimeContext,
   }: {
     taskId: string;
     nodeId: string;
     task: Task;
     node: TaskNode;
     project: Project;
+    runtimeContext?: {
+      gitBranch: string;
+      gitBaseBranch: string;
+      gitWorktree: string;
+      worktreePath: string;
+    };
   }): Promise<void> {
     let streamedStdoutLineCount = 0;
     let streamedStderrLineCount = 0;
@@ -1311,6 +1319,14 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       task,
       node,
       project,
+      runtimeContext: runtimeContext
+        ? {
+            gitBranch: runtimeContext.gitBranch,
+            gitBaseBranch: runtimeContext.gitBaseBranch,
+            gitWorktree: runtimeContext.gitWorktree,
+            gitWorktreePath: runtimeContext.worktreePath,
+          }
+        : undefined,
       callbacks: {
         onStdoutLine: (line) => {
           streamedStdoutLineCount += 1;

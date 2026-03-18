@@ -19,12 +19,18 @@ import type {
   WorkflowTemplateNodeInput,
 } from '@/types/api/workflow'
 import ConfirmActionModal from '@/components/business/settings/modals/ConfirmActionModal.vue'
+import WorkflowPromptVariablesHint from '@/components/workflow/WorkflowPromptVariablesHint.vue'
+import WorkflowPromptTextarea from '@/components/workflow/WorkflowPromptTextarea.vue'
 import { SETTINGS_QUERY_KEY } from '@/types/common/settings'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import { HttpError } from '@/utils/http/error'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
-import { buildProjectRoleAssignmentOptions, isProjectDefaultRole, resolveRoleAssignmentKey } from '@/constants/access'
+import {
+  buildProjectRoleAssignmentOptions,
+  isProjectDefaultRole,
+  resolveRoleAssignmentKey,
+} from '@/constants/access'
 
 defineOptions({
   name: 'ProjectsDetailView',
@@ -286,7 +292,9 @@ const projectRoleOptions = computed(() => {
 })
 
 const preferredProjectRoleKey = computed(() => {
-  const developerRole = projectCustomRoles.value.find((role) => isProjectDefaultRole(role, 'developer'))
+  const developerRole = projectCustomRoles.value.find((role) =>
+    isProjectDefaultRole(role, 'developer'),
+  )
 
   return (
     (developerRole ? `role:${developerRole.id}` : '') ||
@@ -2180,11 +2188,13 @@ onBeforeUnmount(() => {
                     </label>
 
                     <label class="space-y-1 md:col-span-2">
-                      <span class="text-[11px] text-muted-foreground">节点 Prompt</span>
-                      <textarea
+                      <span class="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <span>节点 Prompt</span>
+                        <WorkflowPromptVariablesHint variant="popover" />
+                      </span>
+                      <WorkflowPromptTextarea
                         v-model="node.input.prompt"
-                        class="min-h-[76px] w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
-                        placeholder="输入该节点的执行提示词"
+                        placeholder="输入该节点的提示词，输入 / 可插入变量"
                       />
                     </label>
 
@@ -2224,7 +2234,8 @@ onBeforeUnmount(() => {
                       <select
                         v-model="node.input.agentCliConfigId"
                         :disabled="
-                          !node.input.agentCliId || isWorkflowNodeConfigLoading(node.input.agentCliId)
+                          !node.input.agentCliId ||
+                          isWorkflowNodeConfigLoading(node.input.agentCliId)
                         "
                         class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                       >

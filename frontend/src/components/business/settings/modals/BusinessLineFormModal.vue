@@ -8,6 +8,7 @@ const props = defineProps<{
   initialName: string
   initialDescription: string
   errorMessage?: string
+  size?: 'default' | 'large'
 }>()
 
 const emit = defineEmits<{
@@ -21,6 +22,18 @@ const validationMessage = ref('')
 
 const modalTitle = computed(() => {
   return props.mode === 'edit' ? '编辑业务线' : '创建业务线'
+})
+
+const sectionClass = computed(() => {
+  return props.size === 'large'
+    ? 'relative z-10 flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl'
+    : 'relative z-10 w-full max-w-lg rounded-2xl border border-border bg-background shadow-2xl'
+})
+
+const formClass = computed(() => {
+  return props.size === 'large'
+    ? 'max-h-[calc(95vh-56px)] space-y-3 overflow-y-auto px-4 py-4'
+    : 'space-y-3 px-4 py-4'
 })
 
 const syncFormValues = () => {
@@ -86,7 +99,7 @@ watch(
       <section
         aria-modal="true"
         role="dialog"
-        class="relative z-10 w-full max-w-lg rounded-2xl border border-border bg-background shadow-2xl"
+        :class="sectionClass"
       >
         <header class="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 class="text-sm font-semibold">{{ modalTitle }}</h2>
@@ -114,7 +127,7 @@ watch(
           </button>
         </header>
 
-        <form class="space-y-3 px-4 py-4" @submit.prevent="submit">
+        <form :class="formClass" @submit.prevent="submit">
           <label class="block space-y-1">
             <span class="text-xs font-semibold text-muted-foreground">业务线名称</span>
             <input

@@ -20,6 +20,7 @@ const props = defineProps<{
   initialDescription?: string
   initialCapabilities: string[]
   errorMessage?: string
+  size?: 'default' | 'large'
 }>()
 
 const emit = defineEmits<{
@@ -51,6 +52,12 @@ const collectGroupKeys = (nodes: CapabilityTreeNode[]): string[] => {
 
 const modalTitle = computed(() => {
   return props.mode === 'edit' ? `编辑${props.scopeLabel}角色` : `新建${props.scopeLabel}角色`
+})
+
+const sectionClass = computed(() => {
+  return props.size === 'large'
+    ? 'relative z-10 flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl'
+    : 'relative z-10 flex max-h-[min(88vh,820px)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl'
 })
 
 const flattenedOptions = computed(() => flattenCapabilityTree(props.capabilityTree))
@@ -209,9 +216,7 @@ const vIndeterminate = {
         @click="close"
       />
 
-      <section
-        class="relative z-10 flex max-h-[min(88vh,820px)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
-      >
+      <section :class="sectionClass">
         <header class="flex items-center justify-between border-b border-border px-4 py-3">
           <div>
             <h2 class="text-sm font-semibold">{{ modalTitle }}</h2>

@@ -25,71 +25,92 @@ type ConfigFieldSchema = {
 }
 
 const CODEX_SANDBOX_OPTIONS: ConfigFieldOption[] = [
-  { value: 'auto', label: 'Auto' },
   { value: 'read-only', label: 'Read Only' },
   { value: 'workspace-write', label: 'Workspace Write' },
   { value: 'danger-full-access', label: 'Danger Full Access' },
 ]
 
-const CODEX_APPROVAL_OPTIONS: ConfigFieldOption[] = [
-  { value: 'unless-trusted', label: 'Unless Trusted' },
-  { value: 'on-failure', label: 'On Failure' },
-  { value: 'on-request', label: 'On Request' },
-  { value: 'never', label: 'Never' },
+const CODEX_EXECUTION_MODE_OPTIONS: ConfigFieldOption[] = [
+  { value: 'standard', label: 'Standard' },
+  { value: 'full-auto', label: 'Full Auto' },
+  {
+    value: 'dangerously-bypass-approvals-and-sandbox',
+    label: 'Dangerously Bypass Approvals And Sandbox',
+  },
 ]
 
-const CODEX_REASONING_EFFORT_OPTIONS: ConfigFieldOption[] = [
+const CLAUDE_EFFORT_OPTIONS: ConfigFieldOption[] = [
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
-  { value: 'xhigh', label: 'XHigh' },
+  { value: 'max', label: 'Max' },
 ]
 
-const CODEX_REASONING_SUMMARY_OPTIONS: ConfigFieldOption[] = [
+const CLAUDE_PERMISSION_MODE_OPTIONS: ConfigFieldOption[] = [
+  { value: 'acceptEdits', label: 'Accept Edits' },
+  { value: 'bypassPermissions', label: 'Bypass Permissions' },
+  { value: 'default', label: 'Default' },
+  { value: 'dontAsk', label: 'Dont Ask' },
+  { value: 'plan', label: 'Plan' },
   { value: 'auto', label: 'Auto' },
-  { value: 'concise', label: 'Concise' },
-  { value: 'detailed', label: 'Detailed' },
-  { value: 'none', label: 'None' },
-]
-
-const CODEX_REASONING_SUMMARY_FORMAT_OPTIONS: ConfigFieldOption[] = [
-  { value: 'none', label: 'None' },
-  { value: 'experimental', label: 'Experimental' },
 ]
 
 const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
   'claude-code': {
-    append_prompt: { type: 'string', multiline: true },
-    claude_code_router: { type: 'booleanNullable' },
-    plan: { type: 'booleanNullable' },
-    approvals: { type: 'booleanNullable' },
     model: { type: 'string' },
-    dangerously_skip_permissions: { type: 'booleanNullable' },
-    disable_api_key: { type: 'booleanNullable' },
-    base_command_override: { type: 'string' },
-    additional_params: { type: 'stringArray' },
+    effort: { type: 'string', options: CLAUDE_EFFORT_OPTIONS },
+    permission_mode: {
+      type: 'string',
+      options: CLAUDE_PERMISSION_MODE_OPTIONS,
+      description: '仅在未开启危险权限时生效',
+    },
+    dangerously_skip_permissions: {
+      type: 'boolean',
+      defaultValue: true,
+      description: '默认使用最高权限',
+    },
+    allowed_tools: {
+      type: 'stringArray',
+      description: '每行一个 tool 名称',
+    },
+    disallowed_tools: {
+      type: 'stringArray',
+      description: '每行一个 tool 名称',
+    },
+    settings: {
+      type: 'string',
+      multiline: true,
+      description: 'Claude settings JSON 或 settings 文件路径',
+    },
+    mcp_config: {
+      type: 'stringArray',
+      description: '每行一个 MCP 配置文件路径或 JSON 字符串',
+    },
     env: { type: 'stringMap' },
   },
   codex: {
-    append_prompt: { type: 'string', multiline: true },
-    sandbox: { type: 'string', options: CODEX_SANDBOX_OPTIONS },
-    ask_for_approval: { type: 'string', options: CODEX_APPROVAL_OPTIONS },
+    model: { type: 'string', defaultValue: 'gpt-5.4', description: '默认模型' },
     oss: { type: 'booleanNullable' },
-    model: { type: 'string' },
-    model_reasoning_effort: { type: 'string', options: CODEX_REASONING_EFFORT_OPTIONS },
-    model_reasoning_summary: { type: 'string', options: CODEX_REASONING_SUMMARY_OPTIONS },
-    model_reasoning_summary_format: {
+    local_provider: {
       type: 'string',
-      options: CODEX_REASONING_SUMMARY_FORMAT_OPTIONS,
+      description: '例如 ollama 或 lmstudio',
     },
-    profile: { type: 'string' },
-    base_instructions: { type: 'string', multiline: true },
-    include_apply_patch_tool: { type: 'booleanNullable' },
-    model_provider: { type: 'string' },
-    compact_prompt: { type: 'string', multiline: true },
-    developer_instructions: { type: 'string', multiline: true },
-    base_command_override: { type: 'string' },
-    additional_params: { type: 'stringArray' },
+    profile: { type: 'string', description: 'Codex profile 名称' },
+    execution_mode: {
+      type: 'string',
+      options: CODEX_EXECUTION_MODE_OPTIONS,
+      defaultValue: 'dangerously-bypass-approvals-and-sandbox',
+      description: '默认使用最高权限模式',
+    },
+    sandbox: {
+      type: 'string',
+      options: CODEX_SANDBOX_OPTIONS,
+      description: '仅在 Standard 模式下生效',
+    },
+    config_overrides: {
+      type: 'stringArray',
+      description: '每行一个 key=value，将转换为 -c key=value',
+    },
     env: { type: 'stringMap' },
   },
   'cursor-agent': {
@@ -127,25 +148,14 @@ const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
 
 const ADVANCED_FIELDS_BY_TOOL: Record<string, Set<string>> = {
   'claude-code': new Set([
-    'claude_code_router',
-    'approvals',
-    'dangerously_skip_permissions',
-    'disable_api_key',
-    'base_command_override',
-    'additional_params',
+    'allowed_tools',
+    'disallowed_tools',
+    'settings',
+    'mcp_config',
     'env',
   ]),
   codex: new Set([
-    'model_reasoning_effort',
-    'model_reasoning_summary',
-    'model_reasoning_summary_format',
-    'base_instructions',
-    'include_apply_patch_tool',
-    'model_provider',
-    'compact_prompt',
-    'developer_instructions',
-    'base_command_override',
-    'additional_params',
+    'config_overrides',
     'env',
   ]),
   'cursor-agent': new Set(['base_command_override', 'additional_params', 'env']),
@@ -172,6 +182,7 @@ const props = defineProps<{
   initialIsDefault: boolean
   initialConfig: Record<string, unknown>
   errorMessage?: string
+  size?: 'default' | 'large'
 }>()
 
 const emit = defineEmits<{
@@ -188,6 +199,12 @@ const isApiKeyVisible = ref(false)
 
 const modalTitle = computed(() => {
   return props.mode === 'create' ? '新建 Agent CLI 配置' : '编辑 Agent CLI 配置'
+})
+
+const sectionClass = computed(() => {
+  return props.size === 'large'
+    ? 'relative z-10 my-3 flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl sm:my-0'
+    : 'relative z-10 my-3 flex max-h-[calc(100vh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl sm:my-0 sm:max-h-[calc(100vh-3rem)]'
 })
 
 const activeConfigSchema = computed<Record<string, ConfigFieldSchema>>(() => {
@@ -208,6 +225,55 @@ const basicFieldEntries = computed(() => {
 
 const advancedFieldEntries = computed(() => {
   return configFieldEntries.value.filter(([fieldKey]) => advancedFieldKeys.value.has(fieldKey))
+})
+
+const codexExecutionMode = computed(() => {
+  if (props.cliToolId !== 'codex') {
+    return ''
+  }
+
+  const value = draftConfig.value.execution_mode
+  return typeof value === 'string' ? value : ''
+})
+
+const isCodexSandboxDisabled = computed(() => {
+  return props.cliToolId === 'codex' && codexExecutionMode.value !== 'standard'
+})
+
+const codexExecutionWarning = computed(() => {
+  if (props.cliToolId !== 'codex') {
+    return ''
+  }
+
+  if (codexExecutionMode.value === 'dangerously-bypass-approvals-and-sandbox') {
+    return '当前模式会跳过审批并关闭沙箱，仅适用于已由外部环境隔离的执行场景。'
+  }
+
+  if (codexExecutionMode.value === 'full-auto') {
+    return 'Full Auto 会自动执行命令，并忽略单独的 sandbox 选择。'
+  }
+
+  return ''
+})
+
+const claudeDangerouslySkipPermissions = computed(() => {
+  if (props.cliToolId !== 'claude-code') {
+    return false
+  }
+
+  return draftConfig.value.dangerously_skip_permissions === true
+})
+
+const isClaudePermissionModeDisabled = computed(() => {
+  return props.cliToolId === 'claude-code' && claudeDangerouslySkipPermissions.value
+})
+
+const claudeExecutionWarning = computed(() => {
+  if (!isClaudePermissionModeDisabled.value) {
+    return ''
+  }
+
+  return '当前模式会跳过 Claude Code 的权限检查，仅适用于已由外部环境隔离的执行场景。'
 })
 
 const sanitizeStringMap = (value: unknown): Record<string, string> => {
@@ -320,6 +386,34 @@ const sanitizeFieldByType = (
   return value
 }
 
+const normalizeConfigByTool = (
+  toolId: string,
+  config: Record<string, unknown>,
+): Record<string, unknown> => {
+  if (toolId === 'codex') {
+    const executionMode =
+      typeof config.execution_mode === 'string' ? config.execution_mode : ''
+
+    if (executionMode !== 'standard') {
+      return {
+        ...config,
+        sandbox: '',
+      }
+    }
+
+    return config
+  }
+
+  if (toolId === 'claude-code' && config.dangerously_skip_permissions === true) {
+    return {
+      ...config,
+      permission_mode: '',
+    }
+  }
+
+  return config
+}
+
 const createConfigTemplate = (toolId: string): Record<string, unknown> => {
   const schema = TOOL_CONFIG_SCHEMAS[toolId]
   if (!schema) {
@@ -341,10 +435,12 @@ const sanitizeConfigBySchema = (
     return parsed
   }
 
-  return Object.entries(schema).reduce<Record<string, unknown>>((accumulator, [key, field]) => {
+  const sanitized = Object.entries(schema).reduce<Record<string, unknown>>((accumulator, [key, field]) => {
     accumulator[key] = sanitizeFieldByType(field.type, parsed[key], field.defaultValue)
     return accumulator
   }, {})
+
+  return normalizeConfigByTool(toolId, sanitized)
 }
 
 const isFieldWide = (fieldKey: string, field: ConfigFieldSchema): boolean => {
@@ -356,9 +452,13 @@ const isFieldWide = (fieldKey: string, field: ConfigFieldSchema): boolean => {
   )
 }
 
-const getFieldDescription = (field: ConfigFieldSchema): string => {
+const getFieldDescription = (fieldKey: string, field: ConfigFieldSchema): string => {
   if (field.description) {
     return field.description
+  }
+
+  if (fieldKey === 'config_overrides') {
+    return '每行一个 key=value'
   }
 
   if (field.type === 'stringArray') {
@@ -370,6 +470,14 @@ const getFieldDescription = (field: ConfigFieldSchema): string => {
   }
 
   return ''
+}
+
+const shouldShowDefaultOption = (fieldKey: string): boolean => {
+  if (props.cliToolId === 'codex' && fieldKey === 'execution_mode') {
+    return false
+  }
+
+  return true
 }
 
 const getStringFieldValue = (fieldKey: string): string => {
@@ -424,6 +532,15 @@ const validateConfig = (toolId: string, parsed: Record<string, unknown>): string
     const value = parsed[key]
     if (field.type === 'string' && (typeof value !== 'string' || !value.trim())) {
       return `必填字段缺失：${key}`
+    }
+  }
+
+  if (toolId === 'codex') {
+    const configOverrides = sanitizeStringArray(parsed.config_overrides)
+    const invalidOverride = configOverrides.find((item) => !item.includes('='))
+
+    if (invalidOverride) {
+      return 'Config Overrides 需使用 key=value 格式'
     }
   }
 
@@ -483,6 +600,7 @@ watch(
 
     syncFormValues()
   },
+  { immediate: true },
 )
 
 watch(
@@ -521,7 +639,7 @@ watch(
       <section
         aria-modal="true"
         role="dialog"
-        class="relative z-10 my-3 flex max-h-[calc(100vh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl sm:my-0 sm:max-h-[calc(100vh-3rem)]"
+        :class="sectionClass"
       >
         <header class="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 class="text-sm font-semibold">{{ modalTitle }}</h2>
@@ -624,10 +742,14 @@ watch(
                 <select
                   v-if="field.type === 'string' && field.options?.length"
                   :value="getStringFieldValue(fieldKey)"
+                  :disabled="
+                    (fieldKey === 'sandbox' && isCodexSandboxDisabled) ||
+                    (fieldKey === 'permission_mode' && isClaudePermissionModeDisabled)
+                  "
                   class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
                   @change="setDraftFieldValue(fieldKey, ($event.target as HTMLSelectElement).value)"
                 >
-                  <option value="">Default</option>
+                  <option v-if="shouldShowDefaultOption(fieldKey)" value="">Default</option>
                   <option v-for="option in field.options" :key="option.value" :value="option.value">
                     {{ option.label }}
                   </option>
@@ -690,20 +812,62 @@ watch(
                   <option value="false">Disabled</option>
                 </select>
 
-                <label v-else class="inline-flex h-10 items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    :checked="getBooleanFieldChecked(fieldKey, field)"
-                    @change="setDraftFieldValue(fieldKey, ($event.target as HTMLInputElement).checked)"
-                  />
-                  <span>{{ getBooleanFieldChecked(fieldKey, field) ? 'Enabled' : 'Disabled' }}</span>
+                <label
+                  v-else
+                  class="flex min-h-11 cursor-pointer items-center justify-between rounded-lg border px-3 py-2 text-sm transition"
+                  :class="
+                    getBooleanFieldChecked(fieldKey, field)
+                      ? 'border-emerald-500/40 bg-emerald-500/5'
+                      : 'border-border bg-muted/20 hover:border-border/80 hover:bg-muted/40'
+                  "
+                >
+                  <div class="space-y-0.5">
+                    <span class="font-medium text-foreground">
+                      {{ getBooleanFieldChecked(fieldKey, field) ? 'Enabled' : 'Disabled' }}
+                    </span>
+                    <p class="text-xs text-muted-foreground">
+                      {{ getBooleanFieldChecked(fieldKey, field) ? '当前已启用' : '当前已禁用' }}
+                    </p>
+                  </div>
+                  <span class="relative inline-flex h-6 w-11 shrink-0 items-center">
+                    <input
+                      type="checkbox"
+                      class="peer sr-only"
+                      :checked="getBooleanFieldChecked(fieldKey, field)"
+                      @change="setDraftFieldValue(fieldKey, ($event.target as HTMLInputElement).checked)"
+                    />
+                    <span
+                      class="absolute inset-0 rounded-full transition-colors"
+                      :class="
+                        getBooleanFieldChecked(fieldKey, field)
+                          ? 'bg-emerald-500'
+                          : 'bg-muted-foreground/30'
+                      "
+                    />
+                    <span
+                      class="absolute left-0.5 h-5 w-5 rounded-full bg-background shadow-sm transition-transform peer-checked:translate-x-5"
+                    />
+                  </span>
                 </label>
 
                 <p class="text-[11px] text-muted-foreground">
-                  {{ fieldKey }}{{ getFieldDescription(field) ? ` · ${getFieldDescription(field)}` : '' }}
+                  {{ fieldKey }}{{ getFieldDescription(fieldKey, field) ? ` · ${getFieldDescription(fieldKey, field)}` : '' }}
                 </p>
               </div>
             </div>
+
+            <p
+              v-if="codexExecutionWarning"
+              class="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
+            >
+              {{ codexExecutionWarning }}
+            </p>
+            <p
+              v-if="claudeExecutionWarning"
+              class="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
+            >
+              {{ claudeExecutionWarning }}
+            </p>
           </section>
 
           <section v-if="advancedFieldEntries.length > 0" class="space-y-2 rounded-xl border border-border bg-background/70 p-3">
@@ -723,7 +887,7 @@ watch(
                   class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
                   @change="setDraftFieldValue(fieldKey, ($event.target as HTMLSelectElement).value)"
                 >
-                  <option value="">Default</option>
+                  <option v-if="shouldShowDefaultOption(fieldKey)" value="">Default</option>
                   <option v-for="option in field.options" :key="option.value" :value="option.value">
                     {{ option.label }}
                   </option>
@@ -786,17 +950,46 @@ watch(
                   <option value="false">Disabled</option>
                 </select>
 
-                <label v-else class="inline-flex h-10 items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    :checked="getBooleanFieldChecked(fieldKey, field)"
-                    @change="setDraftFieldValue(fieldKey, ($event.target as HTMLInputElement).checked)"
-                  />
-                  <span>{{ getBooleanFieldChecked(fieldKey, field) ? 'Enabled' : 'Disabled' }}</span>
+                <label
+                  v-else
+                  class="flex min-h-11 cursor-pointer items-center justify-between rounded-lg border px-3 py-2 text-sm transition"
+                  :class="
+                    getBooleanFieldChecked(fieldKey, field)
+                      ? 'border-emerald-500/40 bg-emerald-500/5'
+                      : 'border-border bg-muted/20 hover:border-border/80 hover:bg-muted/40'
+                  "
+                >
+                  <div class="space-y-0.5">
+                    <span class="font-medium text-foreground">
+                      {{ getBooleanFieldChecked(fieldKey, field) ? 'Enabled' : 'Disabled' }}
+                    </span>
+                    <p class="text-xs text-muted-foreground">
+                      {{ getBooleanFieldChecked(fieldKey, field) ? '当前已启用' : '当前已禁用' }}
+                    </p>
+                  </div>
+                  <span class="relative inline-flex h-6 w-11 shrink-0 items-center">
+                    <input
+                      type="checkbox"
+                      class="peer sr-only"
+                      :checked="getBooleanFieldChecked(fieldKey, field)"
+                      @change="setDraftFieldValue(fieldKey, ($event.target as HTMLInputElement).checked)"
+                    />
+                    <span
+                      class="absolute inset-0 rounded-full transition-colors"
+                      :class="
+                        getBooleanFieldChecked(fieldKey, field)
+                          ? 'bg-emerald-500'
+                          : 'bg-muted-foreground/30'
+                      "
+                    />
+                    <span
+                      class="absolute left-0.5 h-5 w-5 rounded-full bg-background shadow-sm transition-transform peer-checked:translate-x-5"
+                    />
+                  </span>
                 </label>
 
                 <p class="text-[11px] text-muted-foreground">
-                  {{ fieldKey }}{{ getFieldDescription(field) ? ` · ${getFieldDescription(field)}` : '' }}
+                  {{ fieldKey }}{{ getFieldDescription(fieldKey, field) ? ` · ${getFieldDescription(fieldKey, field)}` : '' }}
                 </p>
               </div>
             </div>

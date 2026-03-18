@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps<{
   open: boolean
   submitting: boolean
   errorMessage?: string
+  size?: 'default' | 'large'
 }>()
 
 const emit = defineEmits<{
@@ -23,6 +24,18 @@ const resetForm = () => {
 const close = () => {
   emit('update:open', false)
 }
+
+const sectionClass = computed(() => {
+  return props.size === 'large'
+    ? 'relative z-10 flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl'
+    : 'relative z-10 w-full max-w-2xl rounded-2xl border border-border bg-background shadow-2xl'
+})
+
+const bodyClass = computed(() => {
+  return props.size === 'large'
+    ? 'max-h-[calc(95vh-56px)] space-y-4 overflow-y-auto px-4 py-4'
+    : 'space-y-4 px-4 py-4'
+})
 
 const submit = () => {
   if (!jsonText.value.trim()) {
@@ -73,7 +86,7 @@ watch(
       <section
         aria-modal="true"
         role="dialog"
-        class="relative z-10 w-full max-w-2xl rounded-2xl border border-border bg-background shadow-2xl"
+        :class="sectionClass"
       >
         <header class="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 class="text-base font-semibold">添加 MCP</h2>
@@ -101,17 +114,17 @@ watch(
           </button>
         </header>
 
-        <div class="space-y-4 px-4 py-4">
+        <div :class="bodyClass">
           <div>
             <label class="mb-1 block text-xs font-medium text-muted-foreground">JSON 配置</label>
             <p class="mb-1 text-xs text-muted-foreground">
               支持两种格式：`{ "mcpServers": { ... } }` 或直接 `{ "serverName": { ... } }`
             </p>
             <textarea
-            v-model="jsonText"
-            class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm"
-            placeholder="{&quot;mcpServers&quot;:{&quot;filesystem&quot;:{&quot;command&quot;:&quot;npx&quot;,&quot;args&quot;:[&quot;-y&quot;,&quot;@modelcontextprotocol/server-filesystem&quot;,&quot;/tmp&quot;]}}}"
-          />
+              v-model="jsonText"
+              class="min-h-[260px] w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm"
+              placeholder="{&quot;mcpServers&quot;:{&quot;filesystem&quot;:{&quot;command&quot;:&quot;npx&quot;,&quot;args&quot;:[&quot;-y&quot;,&quot;@modelcontextprotocol/server-filesystem&quot;,&quot;/tmp&quot;]}}}"
+            />
           </div>
 
           <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>

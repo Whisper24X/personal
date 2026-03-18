@@ -8,6 +8,10 @@ import { Project } from '../projects/domain/project';
 import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 import { Task } from './domain/task';
 import { TaskNode } from './domain/task-node';
+import {
+  PromptTemplateRuntimeContext,
+  PromptTemplateService,
+} from './prompt-template.service';
 
 type AgentAdapter = 'codex' | 'cursor' | 'claude' | 'gemini' | 'opencode';
 
@@ -18,6 +22,8 @@ type AgentRunnerConfig = {
   timeoutMs: number;
   cwd: string;
   env: Record<string, string>;
+  agentToolConfigId?: string;
+  agentToolConfigName?: string;
 };
 
 type RunnerConfigInput = {
@@ -81,12 +87,13 @@ export class AgentRunnerService {
   );
   private readonly toolConfigAllowedKeys: Record<AgentAdapter, Set<string>> = {
     codex: new Set([
-      'command',
-      'args',
-      'timeoutSeconds',
-      'timeout_seconds',
-      'base_command_override',
-      'additional_params',
+      'model',
+      'oss',
+      'local_provider',
+      'sandbox',
+      'profile',
+      'execution_mode',
+      'config_overrides',
       'env',
     ]),
     cursor: new Set([
@@ -100,13 +107,14 @@ export class AgentRunnerService {
       'env',
     ]),
     claude: new Set([
-      'command',
-      'args',
-      'timeoutSeconds',
-      'timeout_seconds',
-      'base_command_override',
-      'additional_params',
-      'resume',
+      'model',
+      'effort',
+      'permission_mode',
+      'dangerously_skip_permissions',
+      'allowed_tools',
+      'disallowed_tools',
+      'settings',
+      'mcp_config',
       'env',
     ]),
     gemini: new Set([
@@ -135,21 +143,35 @@ export class AgentRunnerService {
   constructor(
     private readonly agentToolConfigRepository: AgentToolConfigRepository,
     private readonly configService: ConfigService = new ConfigService(),
+    private readonly promptTemplateService: PromptTemplateService = new PromptTemplateService(),
   ) {}
 
   async executeAgentNode({
     task,
     node,
     project,
+    runtimeContext,
     callbacks,
   }: {
     task: Task;
     node: TaskNode;
     project: Project;
+    runtimeContext?: PromptTemplateRuntimeContext;
     callbacks?: AgentRunnerStreamCallbacks;
   }): Promise<AgentRunnerResult> {
-    const prompt = this.resolvePrompt(task, node);
-    const config = await this.resolveRunnerConfig(project, task, node);
+    const config = await this.resolveRunnerConfig(
+      project,
+      task,
+      node,
+      runtimeContext,
+    );
+    const prompt = this.resolvePrompt(
+      task,
+      node,
+      project,
+      config,
+      runtimeContext,
+    );
     return this.runWithConfig(
       config,
       prompt,
@@ -167,6 +189,7 @@ export class AgentRunnerService {
     project: Project,
     task: Task,
     node: TaskNode,
+    runtimeContext?: PromptTemplateRuntimeContext,
   ): Promise<AgentRunnerConfig> {
     const executionToolConfig = this.resolveExecutionToolConfig(task, node);
     const configJson =
@@ -233,7 +256,7 @@ export class AgentRunnerService {
         : {}),
     };
 
-    const cwd = this.resolveRunnerCwd(task, project);
+    const cwd = this.resolveRunnerCwd(task, project, runtimeContext);
 
     return {
       adapter,
@@ -242,15 +265,29 @@ export class AgentRunnerService {
       timeoutMs,
       cwd,
       env,
+      ...(agentToolConfig?.configId
+        ? { agentToolConfigId: agentToolConfig.configId }
+        : {}),
+      ...(agentToolConfig?.configName
+        ? { agentToolConfigName: agentToolConfig.configName }
+        : {}),
     };
   }
 
-  private resolveRunnerCwd(task: Task, project: Project): string {
-    if (!task.gitWorktree?.trim()) {
+  private resolveRunnerCwd(
+    task: Task,
+    project: Project,
+    runtimeContext?: PromptTemplateRuntimeContext,
+  ): string {
+    const worktreePath =
+      this.normalizeOptionalString(runtimeContext?.gitWorktreePath) ??
+      this.normalizeOptionalString(task.gitWorktree);
+
+    if (!worktreePath) {
       return process.cwd();
     }
 
-    const cwd = path.resolve(task.gitWorktree.trim());
+    const cwd = path.resolve(worktreePath);
     const allowedRoot = this.resolveWorktreeAllowedRoot(project);
 
     if (!this.isPathWithinAllowedRoot(cwd, allowedRoot)) {
@@ -596,7 +633,7 @@ export class AgentRunnerService {
     const sanitizedConfig = this.sanitizeAgentToolConfig(adapter, parsedConfig);
 
     return {
-      runnerConfig: this.readRunnerConfigFromRaw(sanitizedConfig),
+      runnerConfig: this.resolveToolRunnerConfig(adapter, sanitizedConfig),
       rawConfig: sanitizedConfig,
       configId: config.id,
       configName: config.name,
@@ -662,7 +699,7 @@ export class AgentRunnerService {
     );
 
     return {
-      runnerConfig: this.readRunnerConfigFromRaw(sanitizedConfig),
+      runnerConfig: this.resolveToolRunnerConfig(adapter, sanitizedConfig),
       rawConfig: sanitizedConfig,
       configId: selected.id,
       configName: selected.name,
@@ -800,6 +837,21 @@ export class AgentRunnerService {
     return sanitized;
   }
 
+  private resolveToolRunnerConfig(
+    adapter: AgentAdapter,
+    raw: Record<string, unknown>,
+  ): RunnerConfigInput {
+    if (adapter === 'codex') {
+      return this.readCodexRunnerConfigFromRaw(raw);
+    }
+
+    if (adapter === 'claude') {
+      return this.readClaudeRunnerConfigFromRaw(raw);
+    }
+
+    return this.readRunnerConfigFromRaw(raw);
+  }
+
   private toAgentAdapter(value?: string): AgentAdapter | null {
     if (!value?.trim()) {
       return null;
@@ -842,6 +894,204 @@ export class AgentRunnerService {
       },
       {},
     );
+  }
+
+  private readCodexRunnerConfigFromRaw(
+    raw: Record<string, unknown>,
+  ): RunnerConfigInput {
+    const env =
+      raw.env && typeof raw.env === 'object'
+        ? this.resolveStringEnv(raw.env as Record<string, unknown>)
+        : undefined;
+
+    return {
+      args: this.buildCodexExecArgs(raw),
+      env,
+    };
+  }
+
+  private readClaudeRunnerConfigFromRaw(
+    raw: Record<string, unknown>,
+  ): RunnerConfigInput {
+    const env =
+      raw.env && typeof raw.env === 'object'
+        ? this.resolveStringEnv(raw.env as Record<string, unknown>)
+        : undefined;
+
+    return {
+      args: this.buildClaudePrintArgs(raw),
+      env,
+    };
+  }
+
+  private buildCodexExecArgs(raw: Record<string, unknown>): string[] {
+    const args = ['exec', '--json', '--skip-git-repo-check'];
+    const model = this.normalizeOptionalString(
+      typeof raw.model === 'string' ? raw.model : null,
+    );
+    const localProvider = this.normalizeOptionalString(
+      typeof raw.local_provider === 'string' ? raw.local_provider : null,
+    );
+    const profile = this.normalizeOptionalString(
+      typeof raw.profile === 'string' ? raw.profile : null,
+    );
+    const sandbox = this.resolveCodexSandbox(raw.sandbox);
+    const executionMode = this.resolveCodexExecutionMode(raw.execution_mode);
+    const configOverrides = this.resolveStringArray(raw.config_overrides) ?? [];
+
+    if (model) {
+      args.push('--model', model);
+    }
+
+    if (raw.oss === true) {
+      args.push('--oss');
+    }
+
+    if (localProvider) {
+      args.push('--local-provider', localProvider);
+    }
+
+    if (profile) {
+      args.push('--profile', profile);
+    }
+
+    if (executionMode === 'full-auto') {
+      args.push('--full-auto');
+    } else if (
+      executionMode === 'dangerously-bypass-approvals-and-sandbox'
+    ) {
+      args.push('--dangerously-bypass-approvals-and-sandbox');
+    } else if (sandbox) {
+      args.push('--sandbox', sandbox);
+    }
+
+    for (const override of configOverrides) {
+      args.push('-c', override);
+    }
+
+    args.push('-');
+
+    return args;
+  }
+
+  private buildClaudePrintArgs(raw: Record<string, unknown>): string[] {
+    const args = ['-p', '--output-format', 'stream-json', '--verbose'];
+    const model = this.normalizeOptionalString(
+      typeof raw.model === 'string' ? raw.model : null,
+    );
+    const effort = this.resolveClaudeEffort(raw.effort);
+    const permissionMode = this.resolveClaudePermissionMode(
+      raw.permission_mode,
+    );
+    const allowedTools = this.resolveStringArray(raw.allowed_tools) ?? [];
+    const disallowedTools = this.resolveStringArray(raw.disallowed_tools) ?? [];
+    const mcpConfig = this.resolveStringArray(raw.mcp_config) ?? [];
+    const settings = this.normalizeOptionalString(
+      typeof raw.settings === 'string' ? raw.settings : null,
+    );
+    const dangerouslySkipPermissions = raw.dangerously_skip_permissions === true;
+
+    if (model) {
+      args.push('--model', model);
+    }
+
+    if (effort) {
+      args.push('--effort', effort);
+    }
+
+    if (dangerouslySkipPermissions) {
+      args.push('--dangerously-skip-permissions');
+    } else if (permissionMode) {
+      args.push('--permission-mode', permissionMode);
+    }
+
+    if (allowedTools.length > 0) {
+      args.push('--allowed-tools', ...allowedTools);
+    }
+
+    if (disallowedTools.length > 0) {
+      args.push('--disallowed-tools', ...disallowedTools);
+    }
+
+    if (settings) {
+      args.push('--settings', settings);
+    }
+
+    if (mcpConfig.length > 0) {
+      args.push('--mcp-config', ...mcpConfig);
+    }
+
+    return args;
+  }
+
+  private resolveCodexExecutionMode(
+    value: unknown,
+  ):
+    | 'standard'
+    | 'full-auto'
+    | 'dangerously-bypass-approvals-and-sandbox' {
+    if (value === 'full-auto') {
+      return 'full-auto';
+    }
+
+    if (value === 'dangerously-bypass-approvals-and-sandbox') {
+      return 'dangerously-bypass-approvals-and-sandbox';
+    }
+
+    return 'standard';
+  }
+
+  private resolveCodexSandbox(
+    value: unknown,
+  ): 'read-only' | 'workspace-write' | 'danger-full-access' | null {
+    if (
+      value === 'read-only' ||
+      value === 'workspace-write' ||
+      value === 'danger-full-access'
+    ) {
+      return value;
+    }
+
+    return null;
+  }
+
+  private resolveClaudeEffort(
+    value: unknown,
+  ): 'low' | 'medium' | 'high' | 'max' | null {
+    if (
+      value === 'low' ||
+      value === 'medium' ||
+      value === 'high' ||
+      value === 'max'
+    ) {
+      return value;
+    }
+
+    return null;
+  }
+
+  private resolveClaudePermissionMode(
+    value: unknown,
+  ):
+    | 'acceptEdits'
+    | 'bypassPermissions'
+    | 'default'
+    | 'dontAsk'
+    | 'plan'
+    | 'auto'
+    | null {
+    if (
+      value === 'acceptEdits' ||
+      value === 'bypassPermissions' ||
+      value === 'default' ||
+      value === 'dontAsk' ||
+      value === 'plan' ||
+      value === 'auto'
+    ) {
+      return value;
+    }
+
+    return null;
   }
 
   private resolveAdapter(configJson: Record<string, unknown>): AgentAdapter {
@@ -963,7 +1213,16 @@ export class AgentRunnerService {
     return defaultArgsMap[adapter];
   }
 
-  private resolvePrompt(task: Task, node: TaskNode): string {
+  private resolvePrompt(
+    task: Task,
+    node: TaskNode,
+    project: Project,
+    config: Pick<
+      AgentRunnerConfig,
+      'adapter' | 'agentToolConfigId' | 'agentToolConfigName'
+    >,
+    runtimeContext?: PromptTemplateRuntimeContext,
+  ): string {
     const input =
       node.input && typeof node.input === 'object'
         ? (node.input as Record<string, unknown>)
@@ -985,16 +1244,23 @@ export class AgentRunnerService {
           : typeof input.instructions === 'string' && input.instructions.trim()
             ? input.instructions.trim()
             : '';
-    const taskInput =
-      typeof input.taskInput === 'string' && input.taskInput.trim()
-        ? input.taskInput.trim()
-        : typeof task.prompt === 'string' && task.prompt.trim()
-          ? task.prompt.trim()
-          : '';
 
-    const sections = [taskInput, nodePrompt, pendingUserMessage].filter(
-      Boolean,
-    );
+    const templateRuntimeContext: PromptTemplateRuntimeContext = {
+      ...runtimeContext,
+      agentAdapter: config.adapter,
+      agentToolConfigId: config.agentToolConfigId ?? null,
+      agentToolConfigName: config.agentToolConfigName ?? null,
+    };
+    const renderedNodePrompt = nodePrompt
+      ? this.promptTemplateService.renderPromptTemplate(nodePrompt, {
+          task,
+          node,
+          project,
+          runtime: templateRuntimeContext,
+        })
+      : '';
+
+    const sections = [renderedNodePrompt, pendingUserMessage].filter(Boolean);
 
     return sections.join('\n\n');
   }

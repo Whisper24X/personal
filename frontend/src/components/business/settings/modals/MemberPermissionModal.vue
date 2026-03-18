@@ -27,6 +27,7 @@ const props = defineProps<{
   inviteLink?: string
   inviteExpiresAt?: string
   errorMessage?: string
+  size?: 'default' | 'large'
 }>()
 
 const emit = defineEmits<{
@@ -54,9 +55,14 @@ const projectRoles = ref<Record<string, ProjectRoleSelection>>({})
 const validationMessage = ref('')
 const copyState = ref<'idle' | 'success' | 'error'>('idle')
 
-
 const modeTitle = computed(() => {
   return props.mode === 'edit' ? '编辑成员权限' : '邀请成员'
+})
+
+const sectionClass = computed(() => {
+  return props.size === 'large'
+    ? 'relative z-10 flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-border bg-background shadow-2xl'
+    : 'relative z-10 flex max-h-[min(88vh,820px)] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-border bg-background shadow-2xl'
 })
 
 const userMap = computed(() => {
@@ -272,9 +278,7 @@ watch(
         @click="close"
       />
 
-      <section
-        class="relative z-10 flex max-h-[min(88vh,820px)] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-border bg-background shadow-2xl"
-      >
+      <section :class="sectionClass">
         <header class="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
           <div class="space-y-1">
             <h2 class="text-base font-semibold text-foreground">{{ modeTitle }}</h2>

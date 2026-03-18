@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { ProjectSkillProvider } from '@/types/api/skills'
 
 const ALLOWED_EXTENSIONS = new Set(['.zip'])
@@ -26,8 +26,9 @@ const props = withDefaults(
     submitting: boolean
     errorMessage?: string
     showTargetSelection?: boolean
+    size?: 'default' | 'large'
   }>(),
-  { showTargetSelection: true },
+  { showTargetSelection: true, size: 'default' },
 )
 
 const emit = defineEmits<{
@@ -62,6 +63,18 @@ const clearAllProviders = () => {
 const close = () => {
   emit('update:open', false)
 }
+
+const sectionClass = computed(() => {
+  return props.size === 'large'
+    ? 'relative z-10 flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl'
+    : 'relative z-10 w-full max-w-md rounded-2xl border border-border bg-background shadow-2xl'
+})
+
+const bodyClass = computed(() => {
+  return props.size === 'large'
+    ? 'max-h-[calc(95vh-56px)] space-y-4 overflow-y-auto px-4 py-4'
+    : 'space-y-4 px-4 py-4'
+})
 
 const isAllowedFileName = (fileName: string) => {
   const lowerCaseName = fileName.toLowerCase()
@@ -154,7 +167,7 @@ watch(
       <section
         aria-modal="true"
         role="dialog"
-        class="relative z-10 w-full max-w-md rounded-2xl border border-border bg-background shadow-2xl"
+        :class="sectionClass"
       >
         <header class="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 class="text-base font-semibold">上传技能</h2>
@@ -182,7 +195,7 @@ watch(
           </button>
         </header>
 
-        <div class="space-y-4 px-4 py-4">
+        <div :class="bodyClass">
           <button
             type="button"
             class="flex h-40 w-full flex-col items-center justify-center rounded-xl border border-dashed px-3 text-sm transition"

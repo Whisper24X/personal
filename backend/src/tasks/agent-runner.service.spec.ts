@@ -93,8 +93,9 @@ describe('AgentRunnerService', () => {
       name: 'Retail Codex',
       description: null,
       configJson: JSON.stringify({
-        base_command_override: 'codex-business',
-        additional_params: ['exec', '--full-auto', '-'],
+        model: 'gpt-5.4',
+        execution_mode: 'full-auto',
+        config_overrides: ['model_reasoning_summary="concise"'],
         env: {
           PROFILE_ENV: 'retail',
         },
@@ -128,8 +129,18 @@ describe('AgentRunnerService', () => {
     );
 
     expect(result.adapter).toBe('codex');
-    expect(result.command).toBe('codex-business');
-    expect(result.args).toEqual(['exec', '--json', '--full-auto', '-']);
+    expect(result.command).toBe('codex-global');
+    expect(result.args).toEqual([
+      'exec',
+      '--json',
+      '--skip-git-repo-check',
+      '--model',
+      'gpt-5.4',
+      '--full-auto',
+      '-c',
+      'model_reasoning_summary="concise"',
+      '-',
+    ]);
     expect(result.env).toMatchObject({
       BASE_ENV: 'base',
       PROFILE_ENV: 'retail',
@@ -149,7 +160,8 @@ describe('AgentRunnerService', () => {
       name: 'Explicit Codex',
       description: null,
       configJson: JSON.stringify({
-        base_command_override: 'codex-explicit',
+        execution_mode: 'dangerously-bypass-approvals-and-sandbox',
+        model: 'gpt-5.4',
       }),
       isDefault: false,
       createdAt: new Date(),
@@ -170,7 +182,16 @@ describe('AgentRunnerService', () => {
       agentCliConfigId: 'cfg-explicit',
     });
 
-    expect(result.command).toBe('codex-explicit');
+    expect(result.command).toBe('codex');
+    expect(result.args).toEqual([
+      'exec',
+      '--json',
+      '--skip-git-repo-check',
+      '--model',
+      'gpt-5.4',
+      '--dangerously-bypass-approvals-and-sandbox',
+      '-',
+    ]);
     expect(result.env.AINATIVE_AGENT_TOOL_CONFIG_ID).toBe('cfg-explicit');
     expect(repositoryMock.findById).toHaveBeenCalledWith('cfg-explicit');
     expect(
@@ -190,7 +211,7 @@ describe('AgentRunnerService', () => {
             name: 'Alias Codex',
             description: null,
             configJson: JSON.stringify({
-              base_command_override: 'codex-alias',
+              profile: 'ops',
             }),
             isDefault: true,
             createdAt: new Date(),
@@ -217,7 +238,15 @@ describe('AgentRunnerService', () => {
       createNode(),
     );
 
-    expect(result.command).toBe('codex-alias');
+    expect(result.command).toBe('codex');
+    expect(result.args).toEqual([
+      'exec',
+      '--json',
+      '--skip-git-repo-check',
+      '--profile',
+      'ops',
+      '-',
+    ]);
     expect(
       repositoryMock.findDefaultByBusinessLineIdAndToolId,
     ).toHaveBeenNthCalledWith(1, 'business-line-1', 'codex');
@@ -243,7 +272,8 @@ describe('AgentRunnerService', () => {
           toolId: 'codex',
           isDefault: true,
           config: {
-            base_command_override: 'codex-legacy',
+            sandbox: 'workspace-write',
+            model: 'gpt-5.4',
           },
         },
       ],
@@ -255,7 +285,17 @@ describe('AgentRunnerService', () => {
       createNode(),
     );
 
-    expect(result.command).toBe('codex-legacy');
+    expect(result.command).toBe('codex');
+    expect(result.args).toEqual([
+      'exec',
+      '--json',
+      '--skip-git-repo-check',
+      '--model',
+      'gpt-5.4',
+      '--sandbox',
+      'workspace-write',
+      '-',
+    ]);
     expect(result.env.AINATIVE_AGENT_TOOL_CONFIG_ID).toBe('cfg-global-codex');
   });
 
@@ -431,9 +471,86 @@ describe('AgentRunnerService', () => {
     ]);
   });
 
-  it('should inject json arg for codex custom args overrides', async () => {
+  it('should compile codex structured config into exec args', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-codex-advanced',
+      businessLineId: 'business-line-1',
+      toolId: 'codex',
+      name: 'Advanced Codex',
+      description: null,
+      configJson: JSON.stringify({
+        model: 'gpt-5.4',
+        oss: true,
+        local_provider: 'ollama',
+        profile: 'workspace',
+        sandbox: 'danger-full-access',
+        execution_mode: 'standard',
+        config_overrides: [
+          'model_reasoning_summary="concise"',
+          'model_reasoning_effort="high"',
+        ],
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const advancedResult = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'codex',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'codex',
+        agentCliConfigId: 'cfg-codex-advanced',
+      },
+    );
+
+    expect(advancedResult.args).toEqual([
+      'exec',
+      '--json',
+      '--skip-git-repo-check',
+      '--model',
+      'gpt-5.4',
+      '--oss',
+      '--local-provider',
+      'ollama',
+      '--profile',
+      'workspace',
+      '--sandbox',
+      'danger-full-access',
+      '-c',
+      'model_reasoning_summary="concise"',
+      '-c',
+      'model_reasoning_effort="high"',
+      '-',
+    ]);
+  });
+
+  it('should ignore codex sandbox when execution mode is dangerous', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-codex-danger',
+      businessLineId: 'business-line-1',
+      toolId: 'codex',
+      name: 'Danger Codex',
+      description: null,
+      configJson: JSON.stringify({
+        sandbox: 'danger-full-access',
+        execution_mode: 'dangerously-bypass-approvals-and-sandbox',
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
 
     const service = new AgentRunnerService(
       repositoryMock as unknown as AgentToolConfigRepository,
@@ -443,21 +560,20 @@ describe('AgentRunnerService', () => {
     const result = await serviceAny.resolveRunnerConfig(
       createProject({
         agentAdapter: 'codex',
-        agentRunner: {
-          args: ['exec', '--dangerously-bypass-approvals', '-'],
-        },
       }),
       createTask(),
       {
         ...createNode(),
         agentCliId: 'codex',
+        agentCliConfigId: 'cfg-codex-danger',
       },
     );
 
     expect(result.args).toEqual([
       'exec',
       '--json',
-      '--dangerously-bypass-approvals',
+      '--skip-git-repo-check',
+      '--dangerously-bypass-approvals-and-sandbox',
       '-',
     ]);
   });
@@ -489,6 +605,113 @@ describe('AgentRunnerService', () => {
       '--output-format',
       'stream-json',
       '--verbose',
+    ]);
+  });
+
+  it('should compile claude structured config into print args', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-claude-advanced',
+      businessLineId: 'business-line-1',
+      toolId: 'claude-code',
+      name: 'Advanced Claude',
+      description: null,
+      configJson: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        effort: 'max',
+        permission_mode: 'plan',
+        dangerously_skip_permissions: false,
+        allowed_tools: ['Read', 'Edit'],
+        disallowed_tools: ['Bash(rm:*)'],
+        settings: '{"theme":"dark"}',
+        mcp_config: ['/tmp/mcp-a.json', '/tmp/mcp-b.json'],
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'claude-code',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'claude-code',
+        agentCliConfigId: 'cfg-claude-advanced',
+      },
+    );
+
+    expect(result.args).toEqual([
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--model',
+      'claude-sonnet-4-6',
+      '--effort',
+      'max',
+      '--permission-mode',
+      'plan',
+      '--allowed-tools',
+      'Read',
+      'Edit',
+      '--disallowed-tools',
+      'Bash(rm:*)',
+      '--settings',
+      '{"theme":"dark"}',
+      '--mcp-config',
+      '/tmp/mcp-a.json',
+      '/tmp/mcp-b.json',
+    ]);
+  });
+
+  it('should ignore claude permission mode when dangerous skip is enabled', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-claude-danger',
+      businessLineId: 'business-line-1',
+      toolId: 'claude-code',
+      name: 'Danger Claude',
+      description: null,
+      configJson: JSON.stringify({
+        permission_mode: 'plan',
+        dangerously_skip_permissions: true,
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'claude-code',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'claude-code',
+        agentCliConfigId: 'cfg-claude-danger',
+      },
+    );
+
+    expect(result.args).toEqual([
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--dangerously-skip-permissions',
     ]);
   });
 
@@ -593,7 +816,7 @@ describe('AgentRunnerService', () => {
     ]);
   });
 
-  it('should apply configured claude resume session when resolving runner args', async () => {
+  it('should ignore configured claude resume session in business-line config', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue({
       id: 'cfg-claude-default',
@@ -630,8 +853,6 @@ describe('AgentRunnerService', () => {
       '--output-format',
       'stream-json',
       '--verbose',
-      '--resume',
-      'claude-session-1',
     ]);
   });
 
@@ -728,36 +949,150 @@ describe('AgentRunnerService', () => {
     );
     const serviceAny = service as any;
 
-    const prompt = serviceAny.resolvePrompt(createTask(), {
-      ...createNode(),
-      agentCliSessionId: 'session-1',
-      runtimeJson: {
-        pendingUserMessage: 'Please continue from the previous result',
+    const prompt = serviceAny.resolvePrompt(
+      createTask(),
+      {
+        ...createNode(),
+        agentCliSessionId: 'session-1',
+        runtimeJson: {
+          pendingUserMessage: 'Please continue from the previous result',
+        },
       },
-    });
+      createProject(),
+      {
+        adapter: 'codex',
+      },
+    );
 
     expect(prompt).toBe('Please continue from the previous result');
   });
 
-  it('should compose task prompt, node prompt, and follow-up message before a session is established', () => {
+  it('should compose node prompt and follow-up message before a session is established', () => {
     const service = new AgentRunnerService(
       createRepositoryMock() as unknown as AgentToolConfigRepository,
     );
     const serviceAny = service as any;
 
-    const prompt = serviceAny.resolvePrompt(createTask(), {
-      ...createNode(),
-      runtimeJson: {
-        pendingUserMessage: 'Please continue from the previous result',
+    const prompt = serviceAny.resolvePrompt(
+      createTask(),
+      {
+        ...createNode(),
+        runtimeJson: {
+          pendingUserMessage: 'Please continue from the previous result',
+        },
       },
-    });
+      createProject(),
+      {
+        adapter: 'codex',
+      },
+    );
 
     expect(prompt).toBe(
-      [
-        'task description',
-        'Run task',
-        'Please continue from the previous result',
-      ].join('\n\n'),
+      ['Run task', 'Please continue from the previous result'].join('\n\n'),
+    );
+  });
+
+  it('should not fall back to task prompt when node prompt is empty', () => {
+    const service = new AgentRunnerService(
+      createRepositoryMock() as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const prompt = serviceAny.resolvePrompt(
+      createTask({
+        prompt: 'Task {{taskId}}',
+      }),
+      {
+        ...createNode(),
+        input: {
+          taskInput: 'Task {{taskId}}',
+          nodeInput: '',
+        },
+      },
+      createProject(),
+      {
+        adapter: 'codex',
+      },
+    );
+
+    expect(prompt).toBe('');
+  });
+
+  it('should render supported prompt template variables before execution', () => {
+    const service = new AgentRunnerService(
+      createRepositoryMock() as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const prompt = serviceAny.resolvePrompt(
+      createTask({
+        title: 'Fix checkout',
+        prompt:
+          'Task {{taskTitle}} on {{gitBranch}} from {{projectName}} in {{gitWorktree}}',
+      }),
+      {
+        ...createNode(),
+        name: 'Review step',
+        input: {
+          taskInput:
+            'Task {{taskTitle}} on {{gitBranch}} from {{projectName}} in {{gitWorktree}}',
+          nodeInput:
+            'Use {{agentAdapter}} with {{agentToolConfigName}} at {{gitWorktreePath}}',
+        },
+      },
+      createProject(),
+      {
+        adapter: 'codex',
+        agentToolConfigId: 'cfg-1',
+        agentToolConfigName: 'Default Codex',
+      },
+      {
+        gitBranch: 'feature/runtime-branch',
+        gitBaseBranch: 'develop',
+        gitWorktree: 'wk-20260318-101500',
+        gitWorktreePath: '/tmp/worktrees/wk-20260318-101500',
+      },
+    );
+
+    expect(prompt).toBe(
+      'Use codex with Default Codex at /tmp/worktrees/wk-20260318-101500',
+    );
+  });
+
+  it('should not render pending follow-up message placeholders', () => {
+    const service = new AgentRunnerService(
+      createRepositoryMock() as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const prompt = serviceAny.resolvePrompt(
+      createTask({
+        prompt: 'Task {{taskId}}',
+      }),
+      {
+        ...createNode(),
+        input: {
+          taskInput: 'Task {{taskId}}',
+          nodeInput: 'Run task',
+        },
+        runtimeJson: {
+          pendingUserMessage: 'Please continue on {{gitBranch}}',
+        },
+      },
+      createProject(),
+      {
+        adapter: 'codex',
+      },
+      {
+        gitBranch: 'feature/runtime-branch',
+        gitBaseBranch: 'develop',
+        gitWorktree: 'wk-20260318-101500',
+        gitWorktreePath: '/tmp/worktrees/wk-20260318-101500',
+      },
+    );
+
+    expect(prompt).toBe(
+      ['Run task', 'Please continue on {{gitBranch}}'].join('\n\n'),
     );
   });
 

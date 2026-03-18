@@ -14,6 +14,7 @@ import { TaskWorkspaceService } from './task-workspace.service';
 import { TaskGitService } from './task-git.service';
 import { TaskTerminalService } from './task-terminal.service';
 import { TerminalGateway } from './terminal.gateway';
+import { PromptTemplateService } from './prompt-template.service';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { TerminalGateway } from './terminal.gateway';
     TaskLogEventsService,
     TaskRuntimeService,
     AgentRunnerService,
+    PromptTemplateService,
     TaskWorkspaceService,
     TaskGitService,
     TaskTerminalService,
