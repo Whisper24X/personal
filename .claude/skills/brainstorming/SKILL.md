@@ -1,164 +1,321 @@
 ---
-name: brainstorming
-description: "You MUST use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation."
+name: brainstorm
+description: 'Explore requirements and approaches through collaborative dialogue before writing a right-sized requirements document and planning implementation. Use for feature ideas, problem framing, when the user says ''let''s brainstorm'', or when they want to think through options before deciding what to build. Also use when a user describes a vague or ambitious feature request, asks ''what should we build'', ''help me think through X'', presents a problem with multiple valid solutions, or seems unsure about scope or direction — even if they don''t explicitly ask to brainstorm.'
+argument-hint: "[feature idea or problem to explore]"
 ---
 
-# Brainstorming Ideas Into Designs
+# Brainstorm a Feature or Improvement
 
-Help turn ideas into fully formed designs and specs through natural collaborative dialogue.
+**Note: The current year is 2026.** Use this when dating requirements documents.
 
-Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and get user approval.
+Brainstorming helps answer **WHAT** to build through collaborative dialogue. It should leave the next design or implementation step with clear product decisions, scope boundaries, and success criteria.
 
-<HARD-GATE>
-Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY project regardless of perceived simplicity.
-</HARD-GATE>
+The durable output of this workflow is a **requirements document**. In other workflows this might be called a lightweight PRD or feature brief. In compound engineering, keep the workflow name `brainstorm`, but make the written artifact strong enough that planning does not need to invent product behavior, scope boundaries, or success criteria.
 
-## Anti-Pattern: "This Is Too Simple To Need A Design"
+This skill does not implement code. It explores, clarifies, and documents decisions for later planning or execution.
 
-Every project goes through this process. A todo list, a single-function utility, a config change — all of them. "Simple" projects are where unexamined assumptions cause the most wasted work. The design can be short (a few sentences for truly simple projects), but you MUST present it and get approval.
+## Core Principles
 
-## Checklist
+1. **Assess scope first** - Match the amount of ceremony to the size and ambiguity of the work.
+2. **Be a thinking partner** - Suggest alternatives, challenge assumptions, and explore what-ifs instead of only extracting requirements.
+3. **Resolve product decisions here** - User-facing behavior, scope boundaries, and success criteria belong in this workflow. Detailed implementation belongs in planning.
+4. **Keep implementation out of the requirements doc by default** - Do not include libraries, schemas, endpoints, file layouts, or code-level design unless the brainstorm itself is inherently about a technical or architectural change.
+5. **Right-size the artifact** - Simple work gets a compact requirements document or brief alignment. Larger work gets a fuller document. Do not add ceremony that does not help planning.
+6. **Apply YAGNI to carrying cost, not coding effort** - Prefer the simplest approach that delivers meaningful value. Avoid speculative complexity and hypothetical future-proofing, but low-cost polish or delight is worth including when its ongoing cost is small and easy to maintain.
 
-You MUST create a task for each of these items and complete them in order:
+## Interaction Rules
 
-1. **Explore project context** — check files, docs, recent commits
-2. **Offer visual companion** (if topic will involve visual questions) — this is its own message, not combined with a clarifying question. See the Visual Companion section below.
-3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
-4. **Propose 2-3 approaches** — with trade-offs and your recommendation
-5. **Present design** — in sections scaled to their complexity, get user approval after each section
-6. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
-7. **Spec review loop** — dispatch spec-document-reviewer subagent with precisely crafted review context (never your session history); fix issues and re-dispatch until approved (max 3 iterations, then surface to human)
-8. **User reviews written spec** — ask user to review the spec file before proceeding
-9. **Transition to implementation** — invoke writing-plans skill to create implementation plan
+1. **Ask one question at a time** - Do not batch several unrelated questions into one message.
+2. **Prefer direct questions over menus** - Ask for the missing decision plainly. Only frame explicit options when comparing real alternatives will reduce ambiguity faster than open text.
+3. **Use grouped options rarely and intentionally** - Only do this for compatible sets such as goals, constraints, non-goals, or success criteria that can all coexist. If prioritization matters, follow up by asking which selected item is primary.
+4. **Fit the active runtime** - In this Codex environment, do not depend on blocking question tools or slash-command workflows. Ask one short plain-text question at a time. Avoid textual multiple-choice unless a forced choice is truly necessary to unblock the brainstorm.
 
-## Process Flow
+## Output Guidance
 
-```dot
-digraph brainstorming {
-    "Explore project context" [shape=box];
-    "Visual questions ahead?" [shape=diamond];
-    "Offer Visual Companion\n(own message, no other content)" [shape=box];
-    "Ask clarifying questions" [shape=box];
-    "Propose 2-3 approaches" [shape=box];
-    "Present design sections" [shape=box];
-    "User approves design?" [shape=diamond];
-    "Write design doc" [shape=box];
-    "Spec review loop" [shape=box];
-    "Spec review passed?" [shape=diamond];
-    "User reviews spec?" [shape=diamond];
-    "Invoke writing-plans skill" [shape=doublecircle];
+- **Keep outputs concise** - Prefer short sections, brief bullets, and only enough detail to support the next decision.
 
-    "Explore project context" -> "Visual questions ahead?";
-    "Visual questions ahead?" -> "Offer Visual Companion\n(own message, no other content)" [label="yes"];
-    "Visual questions ahead?" -> "Ask clarifying questions" [label="no"];
-    "Offer Visual Companion\n(own message, no other content)" -> "Ask clarifying questions";
-    "Ask clarifying questions" -> "Propose 2-3 approaches";
-    "Propose 2-3 approaches" -> "Present design sections";
-    "Present design sections" -> "User approves design?";
-    "User approves design?" -> "Present design sections" [label="no, revise"];
-    "User approves design?" -> "Write design doc" [label="yes"];
-    "Write design doc" -> "Spec review loop";
-    "Spec review loop" -> "Spec review passed?";
-    "Spec review passed?" -> "Spec review loop" [label="issues found,\nfix and re-dispatch"];
-    "Spec review passed?" -> "User reviews spec?" [label="approved"];
-    "User reviews spec?" -> "Write design doc" [label="changes requested"];
-    "User reviews spec?" -> "Invoke writing-plans skill" [label="approved"];
-}
+## Feature Description
+
+<feature_description> #$ARGUMENTS </feature_description>
+
+**If the feature description above is empty, ask the user:** "What would you like to explore? Please describe the feature, problem, or improvement you're thinking about."
+
+Do not proceed until you have a feature description from the user.
+
+## Execution Flow
+
+### Phase 0: Resume, Assess, and Route
+
+#### 0.1 Resume Existing Work When Appropriate
+
+If the user references an existing brainstorm topic or document, or there is an obvious recent matching `*-requirements.md` file in `docs/brainstorms/`:
+- Read the document
+- Confirm with the user before resuming: "Found an existing requirements doc for [topic]. Should I continue from this, or start fresh?"
+- If resuming, summarize the current state briefly, continue from its existing decisions and outstanding questions, and update the existing document instead of creating a duplicate
+
+#### 0.2 Assess Whether Brainstorming Is Needed
+
+**Clear requirements indicators:**
+- Specific acceptance criteria provided
+- Referenced existing patterns to follow
+- Described exact expected behavior
+- Constrained, well-defined scope
+
+**If requirements are already clear:**
+Keep the interaction brief. Confirm understanding and present concise next-step options rather than forcing a long brainstorm. Only write a short requirements document when a durable handoff to later design, implementation, or review would be valuable. Skip Phase 1.1 and 1.2 entirely and go straight to Phase 1.3 or Phase 3.
+
+#### 0.3 Assess Scope
+
+Use the feature description plus a light repo scan to classify the work:
+- **Lightweight** - small, well-bounded, low ambiguity
+- **Standard** - normal feature or bounded refactor with some decisions to make
+- **Deep** - cross-cutting, strategic, or highly ambiguous
+
+If the scope is unclear, ask one targeted question to disambiguate and then proceed.
+
+### Phase 1: Understand the Idea
+
+#### 1.1 Existing Context Scan
+
+Scan the repo before substantive brainstorming. Match depth to scope:
+
+**Lightweight** — Search for the topic, check if something similar already exists, and move on.
+
+**Standard and Deep** — Two passes:
+
+*Constraint Check* — Check project instruction files (`AGENTS.md`, and `CLAUDE.md` only if retained as compatibility context) for workflow, product, or scope constraints that affect the brainstorm. If these add nothing, move on.
+
+*Topic Scan* — Search for relevant terms. Read the most relevant existing artifact if one exists (brainstorm, plan, spec, skill, feature doc). Skim adjacent examples covering similar behavior.
+
+If nothing obvious appears after a short scan, say so and continue. Do not drift into technical planning — avoid inspecting tests, migrations, deployment, or low-level architecture unless the brainstorm is itself about a technical decision.
+
+#### 1.2 Product Pressure Test
+
+Before generating approaches, challenge the request to catch misframing. Match depth to scope:
+
+**Lightweight:**
+- Is this solving the real user problem?
+- Are we duplicating something that already covers this?
+- Is there a clearly better framing with near-zero extra cost?
+
+**Standard:**
+- Is this the right problem, or a proxy for a more important one?
+- What user or business outcome actually matters here?
+- What happens if we do nothing?
+- Is there a nearby framing that creates more user value without more carrying cost? If so, what complexity does it add?
+- Given the current project state, user goal, and constraints, what is the single highest-leverage move right now: the request as framed, a reframing, one adjacent addition, a simplification, or doing nothing?
+- Favor moves that compound value, reduce future carrying cost, or make the product meaningfully more useful or compelling
+- Use the result to sharpen the conversation, not to bulldoze the user's intent
+
+**Deep** — Standard questions plus:
+- What durable capability should this create in 6-12 months?
+- Does this move the product toward that, or is it only a local patch?
+
+#### 1.3 Collaborative Dialogue
+
+Ask the user directly in chat using one short plain-text question at a time. Do not rely on blocking question tools. Do not turn the brainstorm into a survey.
+
+**Guidelines:**
+- Ask questions **one at a time**
+- Prefer direct questions when they will get a clean answer faster
+- If explicit options are necessary, keep them compact and focused on one decision
+- Use grouped options only for compatible sets that can all coexist; if prioritization matters, ask which selected item is primary
+- Start broad (problem, users, value) then narrow (constraints, exclusions, edge cases)
+- Clarify the problem frame, validate assumptions, and ask about success criteria
+- Make requirements concrete enough that planning will not need to invent behavior
+- Surface dependencies or prerequisites only when they materially affect scope
+- Resolve product decisions here; leave technical implementation choices for planning
+- Bring ideas, alternatives, and challenges instead of only interviewing
+
+**Exit condition:** Continue until the idea is clear OR the user explicitly wants to proceed.
+
+### Phase 2: Explore Approaches
+
+If multiple plausible directions remain, propose **2-3 concrete approaches** based on research and conversation. Otherwise state the recommended direction directly.
+
+When useful, include one deliberately higher-upside alternative:
+- Identify what adjacent addition or reframing would most increase usefulness, compounding value, or durability without disproportionate carrying cost. Present it as a challenger option alongside the baseline, not as the default. Omit it when the work is already obviously over-scoped or the baseline request is clearly the right move.
+
+For each approach, provide:
+- Brief description (2-3 sentences)
+- Pros and cons
+- Key risks or unknowns
+- When it's best suited
+
+Lead with your recommendation and explain why. Prefer simpler solutions when added complexity creates real carrying cost, but do not reject low-cost, high-value polish just because it is not strictly necessary.
+
+If one approach is clearly best and alternatives are not meaningful, skip the menu and state the recommendation directly.
+
+If relevant, call out whether the choice is:
+- Reuse an existing pattern
+- Extend an existing capability
+- Build something net new
+
+### Phase 3: Capture the Requirements
+
+Write or update a requirements document only when the conversation produced durable decisions worth preserving.
+
+This document should behave like a lightweight PRD without PRD ceremony. Include what planning needs to execute well, and skip sections that add no value for the scope.
+
+The requirements document is for product definition and scope control. Do **not** include implementation details such as libraries, schemas, endpoints, file layouts, or code structure unless the brainstorm is inherently technical and those details are themselves the subject of the decision.
+
+**Required content for non-trivial work:**
+- Problem frame
+- Concrete requirements or intended behavior with stable IDs
+- Scope boundaries
+- Success criteria
+
+**Include when materially useful:**
+- Key decisions and rationale
+- Dependencies or assumptions
+- Outstanding questions
+- Alternatives considered
+- High-level technical direction only when the work is inherently technical and the direction is part of the product/architecture decision
+
+**Document structure:** Use this template and omit clearly inapplicable optional sections:
+
+```markdown
+---
+date: YYYY-MM-DD
+topic: <kebab-case-topic>
+---
+
+# <Topic Title>
+
+## Problem Frame
+[Who is affected, what is changing, and why it matters]
+
+## Requirements
+- R1. [Concrete user-facing behavior or requirement]
+- R2. [Concrete user-facing behavior or requirement]
+
+## Success Criteria
+- [How we will know this solved the right problem]
+
+## Scope Boundaries
+- [Deliberate non-goal or exclusion]
+
+## Key Decisions
+- [Decision]: [Rationale]
+
+## Dependencies / Assumptions
+- [Only include if material]
+
+## Outstanding Questions
+
+### Resolve Before Planning
+- [Affects R1][User decision] [Question that must be answered before planning can proceed]
+
+### Deferred to Planning
+- [Affects R2][Technical] [Question that should be answered during planning or codebase exploration]
+- [Affects R2][Needs research] [Question that likely requires research during planning]
+
+## Next Steps
+[If `Resolve Before Planning` is empty: `→ Continue with design or implementation planning in the current session`]
+[If `Resolve Before Planning` is not empty: `→ Resume this brainstorm in the current session to resolve blocking questions before planning`]
 ```
 
-**The terminal state is invoking writing-plans.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill. The ONLY skill you invoke after brainstorming is writing-plans.
+For **Standard** and **Deep** brainstorms, a requirements document is usually warranted.
 
-## The Process
+For **Lightweight** brainstorms, keep the document compact. Skip document creation when the user only needs brief alignment and no durable decisions need to be preserved.
 
-**Understanding the idea:**
+For very small requirements docs with only 1-3 simple requirements, plain bullet requirements are acceptable. For **Standard** and **Deep** requirements docs, use stable IDs like `R1`, `R2`, `R3` so planning and later review can refer to them unambiguously.
 
-- Check out the current project state first (files, docs, recent commits)
-- Before asking detailed questions, assess scope: if the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), flag this immediately. Don't spend questions refining details of a project that needs to be decomposed first.
-- If the project is too large for a single spec, help the user decompose into sub-projects: what are the independent pieces, how do they relate, what order should they be built? Then brainstorm the first sub-project through the normal design flow. Each sub-project gets its own spec → plan → implementation cycle.
-- For appropriately-scoped projects, ask questions one at a time to refine the idea
-- Prefer multiple choice questions when possible, but open-ended is fine too
-- Only one question per message - if a topic needs more exploration, break it into multiple questions
-- Focus on understanding: purpose, constraints, success criteria
+When the work is simple, combine sections rather than padding them. A short requirements document is better than a bloated one.
 
-**Exploring approaches:**
+Before finalizing, check:
+- What would the next design or implementation step still have to invent if this brainstorm ended now?
+- Do any requirements depend on something claimed to be out of scope?
+- Are any unresolved items actually product decisions rather than planning questions?
+- Did implementation details leak in when they shouldn't have?
+- Is there a low-cost change that would make this materially more useful?
 
-- Propose 2-3 different approaches with trade-offs
-- Present options conversationally with your recommendation and reasoning
-- Lead with your recommended option and explain why
+If planning would need to invent product behavior, scope boundaries, or success criteria, the brainstorm is not complete yet.
 
-**Presenting the design:**
+Ensure `docs/brainstorms/` directory exists before writing.
 
-- Once you believe you understand what you're building, present the design
-- Scale each section to its complexity: a few sentences if straightforward, up to 200-300 words if nuanced
-- Ask after each section whether it looks right so far
-- Cover: architecture, components, data flow, error handling, testing
-- Be ready to go back and clarify if something doesn't make sense
+If a document contains outstanding questions:
+- Use `Resolve Before Planning` only for questions that truly block planning
+- If `Resolve Before Planning` is non-empty, keep working those questions during the brainstorm by default
+- If the user explicitly wants to proceed anyway, convert each remaining item into an explicit decision, assumption, or `Deferred to Planning` question before proceeding
+- Do not force resolution of technical questions during brainstorming just to remove uncertainty
+- Put technical questions, or questions that require validation or research, under `Deferred to Planning` when they are better answered there
+- Use tags like `[Needs research]` when the planner should likely investigate the question rather than answer it from repo context alone
+- Carry deferred questions forward explicitly rather than treating them as a failure to finish the requirements doc
 
-**Design for isolation and clarity:**
+### Phase 4: Handoff
 
-- Break the system into smaller units that each have one clear purpose, communicate through well-defined interfaces, and can be understood and tested independently
-- For each unit, you should be able to answer: what does it do, how do you use it, and what does it depend on?
-- Can someone understand what a unit does without reading its internals? Can you change the internals without breaking consumers? If not, the boundaries need work.
-- Smaller, well-bounded units are also easier for you to work with - you reason better about code you can hold in context at once, and your edits are more reliable when files are focused. When a file grows large, that's often a signal that it's doing too much.
+#### 4.1 Present Next-Step Options
 
-**Working in existing codebases:**
+Present next steps in plain chat. Do not rely on blocking question tools. Prefer a short recommendation plus one concise follow-up question when user input is needed.
 
-- Explore the current structure before proposing changes. Follow existing patterns.
-- Where existing code has problems that affect the work (e.g., a file that's grown too large, unclear boundaries, tangled responsibilities), include targeted improvements as part of the design - the way a good developer improves code they're working in.
-- Don't propose unrelated refactoring. Stay focused on what serves the current goal.
+If `Resolve Before Planning` contains any items:
+- Ask the blocking questions now, one at a time, by default
+- If the user explicitly wants to proceed anyway, first convert each remaining item into an explicit decision, assumption, or `Deferred to Planning` question
+- If the user chooses to pause instead, present the handoff as paused or blocked rather than complete
+- Do not offer `Proceed to planning` or `Proceed directly to work` while `Resolve Before Planning` remains non-empty
 
-## After the Design
+**Question when no blocking questions remain:** "Brainstorm complete. What would you like to do next?"
 
-**Documentation:**
+**Question when blocking questions remain and user wants to pause:** "Brainstorm paused. Planning is blocked until the remaining questions are resolved. What would you like to do next?"
 
-- Write the validated design (spec) to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`
-  - (User preferences for spec location override this default)
-- Use elements-of-style:writing-clearly-and-concisely skill if available
-- Commit the design document to git
+Present only the options that apply:
+- **Proceed to planning (Recommended)** - Continue in the current session with an implementation plan or technical design based on the finalized brainstorm
+- **Proceed directly to work** - Only offer this when scope is lightweight, success criteria are clear, scope boundaries are clear, and no meaningful technical or research questions remain
+- **Review and refine** - Offer this only when a requirements document exists and would benefit from an inline review in the current session
+- **Ask more questions** - Continue clarifying scope, preferences, or edge cases
+- **Done for now** - Return later
 
-**Spec Review Loop:**
-After writing the spec document:
+If the direct-to-work gate is not satisfied, omit that option entirely.
 
-1. Dispatch spec-document-reviewer subagent (see spec-document-reviewer-prompt.md)
-2. If Issues Found: fix, re-dispatch, repeat until Approved
-3. If loop exceeds 3 iterations, surface to human for guidance
+#### 4.2 Handle the Selected Option
 
-**User Review Gate:**
-After the spec review loop passes, ask the user to review the written spec before proceeding:
+**If user selects "Proceed to planning (Recommended)":**
 
-> "Spec written and committed to `<path>`. Please review it and let me know if you want to make any changes before we start writing out the implementation plan."
+Do not invoke unavailable slash commands. Continue in the current session by turning the finalized brainstorm output into the next artifact the user actually needs:
+- If the user wants a technical solution document and the repo workflow expects it, produce the appropriate design or planning artifact
+- Otherwise, write a concise implementation plan in chat or in the repo, using the requirements document path when one exists
+- Pass forward the finalized decisions, scope boundaries, and success criteria explicitly rather than assuming later steps will rediscover them
+- Do not print the closing summary first
 
-Wait for the user's response. If they request changes, make them and re-run the spec review loop. Only proceed once the user approves.
+**If user selects "Proceed directly to work":**
 
-**Implementation:**
+Do not invoke unavailable slash commands. Continue in the current session using the finalized brainstorm output as execution context. If a compact requirements document exists, treat its path as the source of truth. Do not print the closing summary first.
 
-- Invoke the writing-plans skill to create a detailed implementation plan
-- Do NOT invoke any other skill. writing-plans is the next step.
+**If user selects "Ask more questions":** Return to Phase 1.3 (Collaborative Dialogue) and continue asking the user questions one at a time to further refine the design. Probe deeper into edge cases, constraints, preferences, or areas not yet explored. Continue until the user is satisfied, then return to Phase 4. Do not show the closing summary yet.
 
-## Key Principles
+**If user selects "Review and refine":**
 
-- **One question at a time** - Don't overwhelm with multiple questions
-- **Multiple choice preferred** - Easier to answer than open-ended when possible
-- **YAGNI ruthlessly** - Remove unnecessary features from all designs
-- **Explore alternatives** - Always propose 2-3 approaches before settling
-- **Incremental validation** - Present design, get approval before moving on
-- **Be flexible** - Go back and clarify when something doesn't make sense
+Do the review inline in the current session. Check the requirements document for contradictions, missing scope boundaries, vague success criteria, and product decisions that were accidentally deferred. Apply fixes directly when they are clear; otherwise ask one short question. When the review is complete, return to the normal Phase 4 options and present only the options that still apply. Do not show the closing summary yet.
 
-## Visual Companion
+#### 4.3 Closing Summary
 
-A browser-based companion for showing mockups, diagrams, and visual options during brainstorming. Available as a tool — not a mode. Accepting the companion means it's available for questions that benefit from visual treatment; it does NOT mean every question goes through the browser.
+Use the closing summary only when this run of the workflow is ending or handing off, not when returning to the Phase 4 options.
 
-**Offering the companion:** When you anticipate that upcoming questions will involve visual content (mockups, layouts, diagrams), offer it once for consent:
-> "Some of what we're working on might be easier to explain if I can show it to you in a web browser. I can put together mockups, diagrams, comparisons, and other visuals as we go. This feature is still new and can be token-intensive. Want to try it? (Requires opening a local URL)"
+When complete and ready for planning, display:
 
-**This offer MUST be its own message.** Do not combine it with clarifying questions, context summaries, or any other content. The message should contain ONLY the offer above and nothing else. Wait for the user's response before continuing. If they decline, proceed with text-only brainstorming.
+```text
+Brainstorm complete!
 
-**Per-question decision:** Even after the user accepts, decide FOR EACH QUESTION whether to use the browser or the terminal. The test: **would the user understand this better by seeing it than reading it?**
+Requirements doc: docs/brainstorms/YYYY-MM-DD-<topic>-requirements.md  # if one was created
 
-- **Use the browser** for content that IS visual — mockups, wireframes, layout comparisons, architecture diagrams, side-by-side visual designs
-- **Use the terminal** for content that is text — requirements questions, conceptual choices, tradeoff lists, A/B/C/D text options, scope decisions
+Key decisions:
+- [Decision 1]
+- [Decision 2]
 
-A question about a UI topic is not automatically a visual question. "What does personality mean in this context?" is a conceptual question — use the terminal. "Which wizard layout works better?" is a visual question — use the browser.
+Recommended next step: continue with design or implementation planning in the current session
+```
 
-If they agree to the companion, read the detailed guide before proceeding:
-`skills/brainstorming/visual-companion.md`
+If the user pauses with `Resolve Before Planning` still populated, display:
+
+```text
+Brainstorm paused.
+
+Requirements doc: docs/brainstorms/YYYY-MM-DD-<topic>-requirements.md  # if one was created
+
+Planning is blocked by:
+- [Blocking question 1]
+- [Blocking question 2]
+
+Resume this brainstorm in the current session when ready to resolve these before planning.
+```
