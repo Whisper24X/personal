@@ -1,3 +1,3 @@
 [mcp_servers.dbhub]
 command = "npx"
-args = ["@bytebase/dbhub@latest", "--transport", "stdio", "--dsn", "postgresql://postgres:123456@localhost:5432/ainative_backend"]
+args = ["@bytebase/dbhub@latest", "--transport", "stdio", "--dsn", "postgresql://postgres:7to12pg12@10.8.8.110:5433/yanxue"]
