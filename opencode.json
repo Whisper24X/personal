@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "dbhub": {
+      "type": "local",
+      "command": [
+        "npx",
+        "@bytebase/dbhub@latest",
+        "--transport",
+        "stdio",
+        "--dsn",
+        "postgresql://postgres:123456@localhost:5432/ainative_backend"
+      ],
+      "enabled": true
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "dbhub": {
+      "command": "npx",
+      "args": [
+        "@bytebase/dbhub@latest",
+        "--transport",
+        "stdio",
+        "--dsn",
+        "postgresql://postgres:123456@localhost:5432/ainative_backend"
+      ]
+    }
+  }
+}
