@@ -118,24 +118,20 @@ export class AgentRunnerService {
       'env',
     ]),
     gemini: new Set([
-      'command',
-      'args',
-      'timeoutSeconds',
-      'timeout_seconds',
-      'base_command_override',
-      'additional_params',
-      'resume',
+      'model',
+      'sandbox',
+      'yolo',
+      'approval_mode',
+      'policy',
+      'allowed_mcp_server_names',
+      'extensions',
       'env',
     ]),
     opencode: new Set([
-      'command',
-      'args',
-      'timeoutSeconds',
-      'timeout_seconds',
-      'base_command_override',
-      'additional_params',
-      'continue',
-      'session',
+      'model',
+      'agent',
+      'prompt',
+      'fork',
       'env',
     ]),
   };
@@ -853,6 +849,14 @@ export class AgentRunnerService {
       return this.readCursorRunnerConfigFromRaw(raw);
     }
 
+    if (adapter === 'gemini') {
+      return this.readGeminiRunnerConfigFromRaw(raw);
+    }
+
+    if (adapter === 'opencode') {
+      return this.readOpenCodeRunnerConfigFromRaw(raw);
+    }
+
     return this.readRunnerConfigFromRaw(raw);
   }
 
@@ -1081,6 +1085,101 @@ export class AgentRunnerService {
     return args;
   }
 
+  private readGeminiRunnerConfigFromRaw(
+    raw: Record<string, unknown>,
+  ): RunnerConfigInput {
+    const env =
+      raw.env && typeof raw.env === 'object'
+        ? this.resolveStringEnv(raw.env as Record<string, unknown>)
+        : undefined;
+
+    return {
+      args: this.buildGeminiExecArgs(raw),
+      env,
+    };
+  }
+
+  private buildGeminiExecArgs(raw: Record<string, unknown>): string[] {
+    const args = ['--output-format', 'stream-json'];
+    const model = this.normalizeOptionalString(
+      typeof raw.model === 'string' ? raw.model : null,
+    );
+    const approvalMode = this.resolveGeminiApprovalMode(raw.approval_mode);
+    const policy = this.resolveStringArray(raw.policy) ?? [];
+    const allowedMcpServerNames =
+      this.resolveStringArray(raw.allowed_mcp_server_names) ?? [];
+    const extensions = this.resolveStringArray(raw.extensions) ?? [];
+
+    if (model) {
+      args.push('--model', model);
+    }
+
+    if (raw.sandbox === true) {
+      args.push('--sandbox');
+    }
+
+    if (raw.yolo === true) {
+      args.push('--yolo');
+    } else if (approvalMode) {
+      args.push('--approval-mode', approvalMode);
+    }
+
+    for (const item of policy) {
+      args.push('--policy', item);
+    }
+
+    for (const item of allowedMcpServerNames) {
+      args.push('--allowed-mcp-server-names', item);
+    }
+
+    for (const item of extensions) {
+      args.push('--extensions', item);
+    }
+
+    return args;
+  }
+
+  private readOpenCodeRunnerConfigFromRaw(
+    raw: Record<string, unknown>,
+  ): RunnerConfigInput {
+    const env =
+      raw.env && typeof raw.env === 'object'
+        ? this.resolveStringEnv(raw.env as Record<string, unknown>)
+        : undefined;
+
+    return {
+      args: this.buildOpenCodeRunArgs(raw),
+      env,
+    };
+  }
+
+  private buildOpenCodeRunArgs(raw: Record<string, unknown>): string[] {
+    const args = ['run', '--format', 'json'];
+    const model = this.normalizeOptionalString(
+      typeof raw.model === 'string' ? raw.model : null,
+    );
+    const agent = this.normalizeOptionalString(
+      typeof raw.agent === 'string' ? raw.agent : null,
+    );
+    const prompt = this.normalizeOptionalString(
+      typeof raw.prompt === 'string' ? raw.prompt : null,
+    );
+
+    if (model) {
+      args.push('--model', model);
+    }
+
+    if (agent) {
+      args.push('--agent', agent);
+    }
+
+    if (prompt) {
+      args.push('--prompt', prompt);
+    }
+
+    return args;
+  }
+
   private resolveCodexExecutionMode(
     value: unknown,
   ):
@@ -1159,6 +1258,21 @@ export class AgentRunnerService {
     return null;
   }
 
+  private resolveGeminiApprovalMode(
+    value: unknown,
+  ): 'default' | 'auto_edit' | 'yolo' | 'plan' | null {
+    if (
+      value === 'default' ||
+      value === 'auto_edit' ||
+      value === 'yolo' ||
+      value === 'plan'
+    ) {
+      return value;
+    }
+
+    return null;
+  }
+
   private resolveAdapter(configJson: Record<string, unknown>): AgentAdapter {
     const rawAdapter = configJson.agentAdapter;
     if (typeof rawAdapter === 'string') {
@@ -1229,7 +1343,9 @@ export class AgentRunnerService {
     }
 
     if (adapter === 'opencode') {
-      return [...args, '--continue', '--session', normalizedSessionId];
+      return continuationConfig.fork === true
+        ? [...args, '--continue', '--session', normalizedSessionId, '--fork']
+        : [...args, '--continue', '--session', normalizedSessionId];
     }
 
     return args;
@@ -1239,21 +1355,9 @@ export class AgentRunnerService {
     adapter: AgentAdapter,
     continuationConfig: Record<string, unknown>,
   ): string | null {
-    if (adapter === 'gemini') {
-      return typeof continuationConfig.resume === 'string'
-        ? continuationConfig.resume
-        : null;
-    }
-
     if (adapter === 'claude') {
       return typeof continuationConfig.resume === 'string'
         ? continuationConfig.resume
-        : null;
-    }
-
-    if (adapter === 'opencode') {
-      return typeof continuationConfig.session === 'string'
-        ? continuationConfig.session
         : null;
     }
 

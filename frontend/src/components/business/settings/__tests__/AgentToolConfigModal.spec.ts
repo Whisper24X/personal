@@ -157,4 +157,70 @@ describe('AgentToolConfigModal', () => {
     expect(payload.config.permission_mode).toBe('')
     expect(payload.config.dangerously_skip_permissions).toBe(true)
   })
+
+  it('applies highest-permission Gemini defaults on submit', async () => {
+    const wrapper = mountModal('gemini-cli', 'Gemini CLI')
+
+    await wrapper.find('input[name="agent-cli-config-name"]').setValue('default')
+    await wrapper.find('form').trigger('submit.prevent')
+
+    const payload = wrapper.emitted('submit')?.[0]?.[0] as {
+      config: Record<string, unknown>
+    }
+
+    expect(payload.config.yolo).toBe(true)
+    expect(hasField(wrapper, 'Approval Mode')).toBe(false)
+    expect(hasField(wrapper, 'Resume')).toBe(false)
+    expect(hasField(wrapper, 'Additional Params')).toBe(false)
+    expect(wrapper.text()).toContain('自动接受 Gemini 的所有操作')
+  })
+
+  it('clears Gemini approval mode when yolo is enabled', async () => {
+    const wrapper = mountModal('gemini-cli', 'Gemini CLI', {
+      yolo: false,
+      approval_mode: 'plan',
+    })
+
+    const yoloField = findField(wrapper, 'Yolo')
+    await yoloField.find('input[type="checkbox"]').setValue(true)
+
+    expect(hasField(wrapper, 'Approval Mode')).toBe(false)
+
+    await wrapper.find('input[name="agent-cli-config-name"]').setValue('default')
+    await wrapper.find('form').trigger('submit.prevent')
+
+    const payload = wrapper.emitted('submit')?.[0]?.[0] as {
+      config: Record<string, unknown>
+    }
+
+    expect(payload.config.approval_mode).toBe('')
+    expect(payload.config.yolo).toBe(true)
+  })
+
+  it('submits OpenCode structured fields and hides removed legacy fields', async () => {
+    const wrapper = mountModal('opencode', 'OpenCode', {
+      fork: false,
+    })
+
+    expect(hasField(wrapper, 'Session')).toBe(false)
+    expect(hasField(wrapper, 'Continue')).toBe(false)
+    expect(hasField(wrapper, 'Variant')).toBe(false)
+    expect(hasField(wrapper, 'Auto Approve')).toBe(false)
+
+    await findField(wrapper, 'Model').find('input').setValue('openai/gpt-5')
+    await findField(wrapper, 'Agent').find('input').setValue('builder')
+    await findField(wrapper, 'Fork').find('input[type="checkbox"]').setValue(true)
+    await findField(wrapper, 'Prompt').find('textarea').setValue('Follow repository conventions first.')
+    await wrapper.find('input[name="agent-cli-config-name"]').setValue('default')
+    await wrapper.find('form').trigger('submit.prevent')
+
+    const payload = wrapper.emitted('submit')?.[0]?.[0] as {
+      config: Record<string, unknown>
+    }
+
+    expect(payload.config.model).toBe('openai/gpt-5')
+    expect(payload.config.agent).toBe('builder')
+    expect(payload.config.fork).toBe(true)
+    expect(payload.config.prompt).toBe('Follow repository conventions first.')
+  })
 })

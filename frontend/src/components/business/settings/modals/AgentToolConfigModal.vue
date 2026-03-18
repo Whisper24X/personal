@@ -60,6 +60,13 @@ const CURSOR_SANDBOX_OPTIONS: ConfigFieldOption[] = [
   { value: 'disabled', label: 'Disabled' },
 ]
 
+const GEMINI_APPROVAL_MODE_OPTIONS: ConfigFieldOption[] = [
+  { value: 'default', label: 'Default' },
+  { value: 'auto_edit', label: 'Auto Edit' },
+  { value: 'yolo', label: 'Yolo' },
+  { value: 'plan', label: 'Plan' },
+]
+
 const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
   'claude-code': {
     model: { type: 'string' },
@@ -146,25 +153,47 @@ const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
     env: { type: 'stringMap' },
   },
   'gemini-cli': {
-    append_prompt: { type: 'string', multiline: true },
     model: { type: 'string' },
-    yolo: { type: 'booleanNullable' },
-    resume: { type: 'string' },
-    base_command_override: { type: 'string' },
-    additional_params: { type: 'stringArray' },
+    sandbox: {
+      type: 'boolean',
+      description: '为 Gemini CLI 开启 --sandbox',
+    },
+    yolo: {
+      type: 'boolean',
+      defaultValue: true,
+      description: '默认使用最高权限模式',
+    },
+    approval_mode: {
+      type: 'string',
+      options: GEMINI_APPROVAL_MODE_OPTIONS,
+      description: '仅在未开启 YOLO 时生效',
+    },
+    policy: {
+      type: 'stringArray',
+      description: '每行一个 policy 文件或目录',
+    },
+    allowed_mcp_server_names: {
+      type: 'stringArray',
+      description: '每行一个允许的 MCP server 名称',
+    },
+    extensions: {
+      type: 'stringArray',
+      description: '每行一个 extension 名称',
+    },
     env: { type: 'stringMap' },
   },
   opencode: {
-    append_prompt: { type: 'string', multiline: true },
     model: { type: 'string' },
-    variant: { type: 'string' },
     agent: { type: 'string' },
-    continue: { type: 'booleanNullable' },
-    session: { type: 'string' },
-    auto_approve: { type: 'boolean', defaultValue: true },
-    auto_compact: { type: 'boolean', defaultValue: true },
-    base_command_override: { type: 'string' },
-    additional_params: { type: 'stringArray' },
+    fork: {
+      type: 'boolean',
+      description: '仅在节点已有 session id 时生效',
+    },
+    prompt: {
+      type: 'string',
+      multiline: true,
+      description: '追加到 OpenCode CLI 的固定 prompt，不替代任务 prompt',
+    },
     env: { type: 'stringMap' },
   },
 }
@@ -182,16 +211,8 @@ const ADVANCED_FIELDS_BY_TOOL: Record<string, Set<string>> = {
     'env',
   ]),
   'cursor-agent': new Set(['headers', 'approve_mcps', 'env']),
-  'gemini-cli': new Set(['resume', 'base_command_override', 'additional_params', 'env']),
-  opencode: new Set([
-    'variant',
-    'continue',
-    'session',
-    'auto_compact',
-    'base_command_override',
-    'additional_params',
-    'env',
-  ]),
+  'gemini-cli': new Set(['policy', 'allowed_mcp_server_names', 'extensions', 'env']),
+  opencode: new Set(['prompt', 'env']),
 }
 
 const props = defineProps<{
@@ -242,17 +263,31 @@ const advancedFieldKeys = computed(() => {
   return ADVANCED_FIELDS_BY_TOOL[props.cliToolId] ?? new Set<string>()
 })
 
+const geminiYoloEnabled = computed(() => {
+  return props.cliToolId === 'gemini-cli' && draftConfig.value.yolo === true
+})
+
+const hiddenFieldKeys = computed(() => {
+  const hidden = new Set<string>()
+
+  if (props.cliToolId === 'claude-code' && claudeDangerouslySkipPermissions.value) {
+    hidden.add('permission_mode')
+  }
+
+  if (props.cliToolId === 'gemini-cli' && geminiYoloEnabled.value) {
+    hidden.add('approval_mode')
+  }
+
+  return hidden
+})
+
 const basicFieldEntries = computed(() => {
   return configFieldEntries.value.filter(([fieldKey]) => {
     if (advancedFieldKeys.value.has(fieldKey)) {
       return false
     }
 
-    if (
-      props.cliToolId === 'claude-code' &&
-      fieldKey === 'permission_mode' &&
-      claudeDangerouslySkipPermissions.value
-    ) {
+    if (hiddenFieldKeys.value.has(fieldKey)) {
       return false
     }
 
@@ -261,7 +296,9 @@ const basicFieldEntries = computed(() => {
 })
 
 const advancedFieldEntries = computed(() => {
-  return configFieldEntries.value.filter(([fieldKey]) => advancedFieldKeys.value.has(fieldKey))
+  return configFieldEntries.value.filter(([fieldKey]) => {
+    return advancedFieldKeys.value.has(fieldKey) && !hiddenFieldKeys.value.has(fieldKey)
+  })
 })
 
 const codexExecutionMode = computed(() => {
@@ -311,6 +348,14 @@ const claudeExecutionWarning = computed(() => {
   }
 
   return '当前模式会跳过 Claude Code 的权限检查，仅适用于已由外部环境隔离的执行场景。'
+})
+
+const geminiExecutionWarning = computed(() => {
+  if (!geminiYoloEnabled.value) {
+    return ''
+  }
+
+  return '当前模式会自动接受 Gemini 的所有操作，仅适用于已由外部环境隔离的执行场景。'
 })
 
 const cursorTrustEnabled = computed(() => {
@@ -473,6 +518,13 @@ const normalizeConfigByTool = (
     return {
       ...config,
       permission_mode: '',
+    }
+  }
+
+  if (toolId === 'gemini-cli' && config.yolo === true) {
+    return {
+      ...config,
+      approval_mode: '',
     }
   }
 
@@ -984,6 +1036,12 @@ watch(
               class="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
             >
               {{ claudeExecutionWarning }}
+            </p>
+            <p
+              v-if="geminiExecutionWarning"
+              class="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
+            >
+              {{ geminiExecutionWarning }}
             </p>
             <p
               v-if="cursorExecutionWarning"

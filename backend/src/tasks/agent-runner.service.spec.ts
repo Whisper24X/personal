@@ -385,6 +385,109 @@ describe('AgentRunnerService', () => {
     expect(result.args).toEqual(['--output-format', 'stream-json']);
   });
 
+  it('should compile gemini structured config into headless args', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-gemini-advanced',
+      businessLineId: 'business-line-1',
+      toolId: 'gemini-cli',
+      name: 'Advanced Gemini',
+      description: null,
+      configJson: JSON.stringify({
+        model: 'gemini-2.5-pro',
+        sandbox: true,
+        yolo: false,
+        approval_mode: 'plan',
+        policy: ['/tmp/policy-a', '/tmp/policy-b'],
+        allowed_mcp_server_names: ['figma', 'filesystem'],
+        extensions: ['git', 'web'],
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'gemini-cli',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'gemini-cli',
+        agentCliConfigId: 'cfg-gemini-advanced',
+      },
+    );
+
+    expect(result.args).toEqual([
+      '--output-format',
+      'stream-json',
+      '--model',
+      'gemini-2.5-pro',
+      '--sandbox',
+      '--approval-mode',
+      'plan',
+      '--policy',
+      '/tmp/policy-a',
+      '--policy',
+      '/tmp/policy-b',
+      '--allowed-mcp-server-names',
+      'figma',
+      '--allowed-mcp-server-names',
+      'filesystem',
+      '--extensions',
+      'git',
+      '--extensions',
+      'web',
+    ]);
+  });
+
+  it('should ignore gemini approval mode when yolo is enabled', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-gemini-yolo',
+      businessLineId: 'business-line-1',
+      toolId: 'gemini-cli',
+      name: 'YOLO Gemini',
+      description: null,
+      configJson: JSON.stringify({
+        yolo: true,
+        approval_mode: 'plan',
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'gemini-cli',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'gemini-cli',
+        agentCliConfigId: 'cfg-gemini-yolo',
+      },
+    );
+
+    expect(result.args).toEqual([
+      '--output-format',
+      'stream-json',
+      '--yolo',
+    ]);
+  });
+
   it('should use json run defaults for opencode', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
@@ -408,6 +511,54 @@ describe('AgentRunnerService', () => {
     expect(result.adapter).toBe('opencode');
     expect(result.command).toBe('opencode');
     expect(result.args).toEqual(['run', '--format', 'json']);
+  });
+
+  it('should compile opencode structured config into run args', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-opencode-advanced',
+      businessLineId: 'business-line-1',
+      toolId: 'opencode',
+      name: 'Advanced OpenCode',
+      description: null,
+      configJson: JSON.stringify({
+        model: 'openai/gpt-5',
+        agent: 'builder',
+        prompt: 'Use project conventions first.',
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'opencode',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'opencode',
+        agentCliConfigId: 'cfg-opencode-advanced',
+      },
+    );
+
+    expect(result.args).toEqual([
+      'run',
+      '--format',
+      'json',
+      '--model',
+      'openai/gpt-5',
+      '--agent',
+      'builder',
+      '--prompt',
+      'Use project conventions first.',
+    ]);
   });
 
   it('should use stream-json defaults for cursor agent', async () => {
@@ -876,7 +1027,7 @@ describe('AgentRunnerService', () => {
     expect(result.cwd).toBe(path.join(worktreeRoot, 'wk-20260309-234934'));
   });
 
-  it('should apply configured gemini resume session when resolving runner args', async () => {
+  it('should ignore configured gemini resume session in business-line config', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue({
       id: 'cfg-gemini-default',
@@ -886,6 +1037,8 @@ describe('AgentRunnerService', () => {
       description: null,
       configJson: JSON.stringify({
         resume: 'gemini-session-1',
+        additional_params: ['--bad-flag'],
+        base_command_override: 'gemini-custom',
       }),
       isDefault: true,
       createdAt: new Date(),
@@ -908,12 +1061,8 @@ describe('AgentRunnerService', () => {
       },
     );
 
-    expect(result.args).toEqual([
-      '--output-format',
-      'stream-json',
-      '--resume',
-      'gemini-session-1',
-    ]);
+    expect(result.command).toBe('gemini');
+    expect(result.args).toEqual(['--output-format', 'stream-json']);
   });
 
   it('should ignore configured claude resume session in business-line config', async () => {
@@ -984,6 +1133,86 @@ describe('AgentRunnerService', () => {
       '--continue',
       '--session',
       'opencode-session-1',
+    ]);
+  });
+
+  it('should ignore configured opencode session in business-line config', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue({
+      id: 'cfg-opencode-default',
+      businessLineId: 'business-line-1',
+      toolId: 'opencode',
+      name: 'OpenCode Default',
+      description: null,
+      configJson: JSON.stringify({
+        session: 'opencode-session-1',
+        continue: true,
+      }),
+      isDefault: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'opencode',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'opencode',
+      },
+    );
+
+    expect(result.args).toEqual(['run', '--format', 'json']);
+  });
+
+  it('should append fork when opencode runtime continuation uses a forking config', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue({
+      id: 'cfg-opencode-default',
+      businessLineId: 'business-line-1',
+      toolId: 'opencode',
+      name: 'OpenCode Default',
+      description: null,
+      configJson: JSON.stringify({
+        fork: true,
+      }),
+      isDefault: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'opencode',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'opencode',
+        agentCliSessionId: 'opencode-session-1',
+      },
+    );
+
+    expect(result.args).toEqual([
+      'run',
+      '--format',
+      'json',
+      '--continue',
+      '--session',
+      'opencode-session-1',
+      '--fork',
     ]);
   });
 
