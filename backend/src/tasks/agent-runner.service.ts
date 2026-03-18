@@ -97,13 +97,13 @@ export class AgentRunnerService {
       'env',
     ]),
     cursor: new Set([
-      'command',
-      'args',
-      'timeoutSeconds',
-      'timeout_seconds',
-      'base_command_override',
-      'additional_params',
       'api_key',
+      'model',
+      'headers',
+      'trust',
+      'force',
+      'sandbox',
+      'approve_mcps',
       'env',
     ]),
     claude: new Set([
@@ -849,6 +849,10 @@ export class AgentRunnerService {
       return this.readClaudeRunnerConfigFromRaw(raw);
     }
 
+    if (adapter === 'cursor') {
+      return this.readCursorRunnerConfigFromRaw(raw);
+    }
+
     return this.readRunnerConfigFromRaw(raw);
   }
 
@@ -921,6 +925,24 @@ export class AgentRunnerService {
     return {
       args: this.buildClaudePrintArgs(raw),
       env,
+    };
+  }
+
+  private readCursorRunnerConfigFromRaw(
+    raw: Record<string, unknown>,
+  ): RunnerConfigInput {
+    const env =
+      raw.env && typeof raw.env === 'object'
+        ? this.resolveStringEnv(raw.env as Record<string, unknown>)
+        : undefined;
+    const apiKey =
+      typeof raw.api_key === 'string' && raw.api_key.trim()
+        ? raw.api_key.trim()
+        : undefined;
+
+    return {
+      args: this.buildCursorPrintArgs(raw),
+      env: apiKey ? { ...(env ?? {}), CURSOR_API_KEY: apiKey } : env,
     };
   }
 
@@ -1024,6 +1046,41 @@ export class AgentRunnerService {
     return args;
   }
 
+  private buildCursorPrintArgs(raw: Record<string, unknown>): string[] {
+    const args = ['-p', '--output-format', 'stream-json'];
+    const model = this.normalizeOptionalString(
+      typeof raw.model === 'string' ? raw.model : null,
+    );
+    const headers = this.resolveStringArray(raw.headers) ?? [];
+    const sandbox = this.resolveCursorSandbox(raw.sandbox);
+
+    if (model) {
+      args.push('--model', model);
+    }
+
+    for (const header of headers) {
+      args.push('--header', header);
+    }
+
+    if (raw.trust === true) {
+      args.push('--trust');
+    }
+
+    if (raw.force === true) {
+      args.push('--force');
+    }
+
+    if (sandbox) {
+      args.push('--sandbox', sandbox);
+    }
+
+    if (raw.approve_mcps === true) {
+      args.push('--approve-mcps');
+    }
+
+    return args;
+  }
+
   private resolveCodexExecutionMode(
     value: unknown,
   ):
@@ -1088,6 +1145,14 @@ export class AgentRunnerService {
       value === 'plan' ||
       value === 'auto'
     ) {
+      return value;
+    }
+
+    return null;
+  }
+
+  private resolveCursorSandbox(value: unknown): 'enabled' | 'disabled' | null {
+    if (value === 'enabled' || value === 'disabled') {
       return value;
     }
 
@@ -1174,12 +1239,6 @@ export class AgentRunnerService {
     adapter: AgentAdapter,
     continuationConfig: Record<string, unknown>,
   ): string | null {
-    if (adapter === 'cursor') {
-      return typeof continuationConfig.resume === 'string'
-        ? continuationConfig.resume
-        : null;
-    }
-
     if (adapter === 'gemini') {
       return typeof continuationConfig.resume === 'string'
         ? continuationConfig.resume

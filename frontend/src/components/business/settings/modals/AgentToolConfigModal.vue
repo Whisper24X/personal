@@ -55,19 +55,24 @@ const CLAUDE_PERMISSION_MODE_OPTIONS: ConfigFieldOption[] = [
   { value: 'auto', label: 'Auto' },
 ]
 
+const CURSOR_SANDBOX_OPTIONS: ConfigFieldOption[] = [
+  { value: 'enabled', label: 'Enabled' },
+  { value: 'disabled', label: 'Disabled' },
+]
+
 const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
   'claude-code': {
     model: { type: 'string' },
     effort: { type: 'string', options: CLAUDE_EFFORT_OPTIONS },
-    permission_mode: {
-      type: 'string',
-      options: CLAUDE_PERMISSION_MODE_OPTIONS,
-      description: '仅在未开启危险权限时生效',
-    },
     dangerously_skip_permissions: {
       type: 'boolean',
       defaultValue: true,
       description: '默认使用最高权限',
+    },
+    permission_mode: {
+      type: 'string',
+      options: CLAUDE_PERMISSION_MODE_OPTIONS,
+      description: '仅在未开启危险权限时生效',
     },
     allowed_tools: {
       type: 'stringArray',
@@ -114,12 +119,30 @@ const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
     env: { type: 'stringMap' },
   },
   'cursor-agent': {
-    append_prompt: { type: 'string', multiline: true },
     api_key: { type: 'string' },
-    force: { type: 'booleanNullable' },
-    model: { type: 'string', defaultValue: 'auto' },
-    base_command_override: { type: 'string' },
-    additional_params: { type: 'stringArray' },
+    model: { type: 'string' },
+    sandbox: {
+      type: 'string',
+      options: CURSOR_SANDBOX_OPTIONS,
+    },
+    trust: {
+      type: 'boolean',
+      defaultValue: true,
+      description: '默认信任当前工作区',
+    },
+    force: {
+      type: 'boolean',
+      defaultValue: true,
+      description: '默认强制放行命令执行',
+    },
+    headers: {
+      type: 'stringArray',
+      description: '每行一个 Name: Value',
+    },
+    approve_mcps: {
+      type: 'booleanNullable',
+      description: '自动批准所有 MCP servers',
+    },
     env: { type: 'stringMap' },
   },
   'gemini-cli': {
@@ -158,7 +181,7 @@ const ADVANCED_FIELDS_BY_TOOL: Record<string, Set<string>> = {
     'config_overrides',
     'env',
   ]),
-  'cursor-agent': new Set(['base_command_override', 'additional_params', 'env']),
+  'cursor-agent': new Set(['headers', 'approve_mcps', 'env']),
   'gemini-cli': new Set(['resume', 'base_command_override', 'additional_params', 'env']),
   opencode: new Set([
     'variant',
@@ -220,7 +243,21 @@ const advancedFieldKeys = computed(() => {
 })
 
 const basicFieldEntries = computed(() => {
-  return configFieldEntries.value.filter(([fieldKey]) => !advancedFieldKeys.value.has(fieldKey))
+  return configFieldEntries.value.filter(([fieldKey]) => {
+    if (advancedFieldKeys.value.has(fieldKey)) {
+      return false
+    }
+
+    if (
+      props.cliToolId === 'claude-code' &&
+      fieldKey === 'permission_mode' &&
+      claudeDangerouslySkipPermissions.value
+    ) {
+      return false
+    }
+
+    return true
+  })
 })
 
 const advancedFieldEntries = computed(() => {
@@ -274,6 +311,34 @@ const claudeExecutionWarning = computed(() => {
   }
 
   return '当前模式会跳过 Claude Code 的权限检查，仅适用于已由外部环境隔离的执行场景。'
+})
+
+const cursorTrustEnabled = computed(() => {
+  return props.cliToolId === 'cursor-agent' && draftConfig.value.trust === true
+})
+
+const cursorForceEnabled = computed(() => {
+  return props.cliToolId === 'cursor-agent' && draftConfig.value.force === true
+})
+
+const cursorExecutionWarning = computed(() => {
+  if (props.cliToolId !== 'cursor-agent') {
+    return ''
+  }
+
+  if (cursorTrustEnabled.value && cursorForceEnabled.value) {
+    return '当前配置会信任工作区并强制放行命令执行，仅适用于已由外部环境隔离的执行场景。'
+  }
+
+  if (cursorForceEnabled.value) {
+    return '当前配置会强制放行命令执行，请确认运行环境已隔离。'
+  }
+
+  if (cursorTrustEnabled.value) {
+    return '当前配置会信任工作区，执行前不会再提示工作区确认。'
+  }
+
+  return ''
 })
 
 const sanitizeStringMap = (value: unknown): Record<string, string> => {
@@ -461,6 +526,10 @@ const getFieldDescription = (fieldKey: string, field: ConfigFieldSchema): string
     return '每行一个 key=value'
   }
 
+  if (fieldKey === 'headers') {
+    return '每行一个 Name: Value'
+  }
+
   if (field.type === 'stringArray') {
     return '每行一个参数'
   }
@@ -503,6 +572,30 @@ const getBooleanFieldChecked = (fieldKey: string, field: ConfigFieldSchema): boo
   return (draftConfig.value[fieldKey] ?? field.defaultValue) === true
 }
 
+const getBooleanFieldStatusLabel = (
+  fieldKey: string,
+  field: ConfigFieldSchema,
+): string => {
+  if (fieldKey === 'dangerously_skip_permissions') {
+    return 'Dangerously Skip Permissions'
+  }
+
+  return getBooleanFieldChecked(fieldKey, field) ? '已启用' : '已禁用'
+}
+
+const getBooleanFieldStatusHint = (
+  fieldKey: string,
+  field: ConfigFieldSchema,
+): string => {
+  if (fieldKey === 'dangerously_skip_permissions') {
+    return getBooleanFieldChecked(fieldKey, field)
+      ? '当前会跳过 Claude Code 权限检查'
+      : '当前继续使用显式权限模式'
+  }
+
+  return '点击右侧开关切换当前状态'
+}
+
 const getStringInputName = (fieldKey: string): string => {
   return `agent-cli-${props.cliToolId}-${fieldKey}`
 }
@@ -541,6 +634,15 @@ const validateConfig = (toolId: string, parsed: Record<string, unknown>): string
 
     if (invalidOverride) {
       return 'Config Overrides 需使用 key=value 格式'
+    }
+  }
+
+  if (toolId === 'cursor-agent') {
+    const headers = sanitizeStringArray(parsed.headers)
+    const invalidHeader = headers.find((item) => !item.includes(':'))
+
+    if (invalidHeader) {
+      return 'Headers 需使用 Name: Value 格式'
     }
   }
 
@@ -668,35 +770,57 @@ watch(
         </header>
 
         <form
-          class="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4"
+          class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4"
           autocomplete="off"
           @submit.prevent="submit"
         >
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">当前 CLI</span>
-            <div
-              class="flex h-10 items-center rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            >
-              {{ props.cliToolLabel }}（{{ props.cliToolId }}）
+          <section class="space-y-3 rounded-xl border border-border/70 bg-muted/[0.18] p-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="inline-flex items-center rounded-full border border-border/70 bg-background px-2.5 py-1 text-[11px] font-medium text-foreground">
+                {{ props.cliToolLabel }}
+              </span>
+              <span
+                class="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium"
+                :class="
+                  isDefault
+                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                    : 'bg-foreground/5 text-muted-foreground'
+                "
+              >
+                {{ isDefault ? '默认配置' : '手动选择' }}
+              </span>
             </div>
-          </label>
 
-          <div class="grid gap-3 md:grid-cols-2">
-            <label class="block space-y-1">
-              <span class="text-xs font-semibold text-muted-foreground">配置名称</span>
-              <input
-                v-model="name"
-                type="text"
-                name="agent-cli-config-name"
-                autocomplete="off"
-                autocapitalize="off"
-                autocorrect="off"
-                spellcheck="false"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                placeholder="例如 default"
-              />
-            </label>
+            <div class="grid gap-3 md:grid-cols-2">
+              <label class="block space-y-1">
+                <span class="text-xs font-semibold text-muted-foreground">配置名称</span>
+                <input
+                  v-model="name"
+                  type="text"
+                  name="agent-cli-config-name"
+                  autocomplete="off"
+                  autocapitalize="off"
+                  autocorrect="off"
+                  spellcheck="false"
+                  class="h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground"
+                  placeholder="例如 default"
+                />
+              </label>
 
+              <label class="block space-y-1">
+                <span class="text-xs font-semibold text-muted-foreground">默认配置</span>
+                <select
+                  v-model="isDefault"
+                  class="h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground"
+                >
+                  <option :value="true">是</option>
+                  <option :value="false">否</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <div class="grid gap-3">
             <label class="block space-y-1">
               <span class="text-xs font-semibold text-muted-foreground">描述（可选）</span>
               <input
@@ -707,24 +831,13 @@ watch(
                 autocapitalize="off"
                 autocorrect="off"
                 spellcheck="false"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                class="h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground"
                 placeholder="例如 面向 retail 业务线"
               />
             </label>
           </div>
 
-          <label class="block space-y-1">
-            <span class="text-xs font-semibold text-muted-foreground">默认配置</span>
-            <select
-              v-model="isDefault"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            >
-              <option :value="true">是</option>
-              <option :value="false">否</option>
-            </select>
-          </label>
-
-          <section class="space-y-2 rounded-xl border border-border bg-background/70 p-3">
+          <section class="space-y-2 rounded-xl border border-border/70 bg-muted/[0.12] p-3">
             <p class="text-xs font-semibold text-muted-foreground">基础参数</p>
 
             <div v-if="basicFieldEntries.length === 0" class="text-xs text-muted-foreground">
@@ -735,7 +848,11 @@ watch(
               <div
                 v-for="[fieldKey, field] in basicFieldEntries"
                 :key="`basic-${fieldKey}`"
-                :class="isFieldWide(fieldKey, field) ? 'space-y-2 md:col-span-2' : 'space-y-2'"
+                :class="
+                  isFieldWide(fieldKey, field)
+                    ? 'space-y-2 rounded-lg border border-border/60 bg-background/90 p-3 md:col-span-2'
+                    : 'space-y-2 rounded-lg border border-border/60 bg-background/90 p-3'
+                "
               >
                 <label class="text-sm font-medium">{{ formatFieldLabel(fieldKey) }}</label>
 
@@ -746,7 +863,7 @@ watch(
                     (fieldKey === 'sandbox' && isCodexSandboxDisabled) ||
                     (fieldKey === 'permission_mode' && isClaudePermissionModeDisabled)
                   "
-                  class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                  class="h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground"
                   @change="setDraftFieldValue(fieldKey, ($event.target as HTMLSelectElement).value)"
                 >
                   <option v-if="shouldShowDefaultOption(fieldKey)" value="">Default</option>
@@ -758,7 +875,7 @@ watch(
                 <textarea
                   v-else-if="field.type === 'string' && field.multiline"
                   :value="getStringFieldValue(fieldKey)"
-                  class="min-h-24 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  class="min-h-24 w-full rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-foreground"
                   @input="setDraftFieldValue(fieldKey, ($event.target as HTMLTextAreaElement).value)"
                 />
 
@@ -773,7 +890,7 @@ watch(
                     spellcheck="false"
                     data-1p-ignore="true"
                     data-lpignore="true"
-                    class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                    class="h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground"
                     :class="fieldKey === 'api_key' ? 'pr-10' : ''"
                     @input="setDraftFieldValue(fieldKey, ($event.target as HTMLInputElement).value)"
                   />
@@ -790,21 +907,21 @@ watch(
                 <textarea
                   v-else-if="field.type === 'stringArray'"
                   :value="toStringArrayInput(draftConfig[fieldKey])"
-                  class="min-h-24 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+                  class="min-h-24 w-full rounded-lg border border-border/70 bg-background px-3 py-2 font-mono text-xs text-foreground"
                   @input="setDraftFieldValue(fieldKey, parseStringArrayInput(($event.target as HTMLTextAreaElement).value))"
                 />
 
                 <textarea
                   v-else-if="field.type === 'stringMap'"
                   :value="toStringMapInput(draftConfig[fieldKey])"
-                  class="min-h-24 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+                  class="min-h-24 w-full rounded-lg border border-border/70 bg-background px-3 py-2 font-mono text-xs text-foreground"
                   @input="setDraftFieldValue(fieldKey, parseStringMapInput(($event.target as HTMLTextAreaElement).value))"
                 />
 
                 <select
                   v-else-if="field.type === 'booleanNullable'"
                   :value="getBooleanNullableSelectValue(fieldKey)"
-                  class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                  class="h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground"
                   @change="setDraftFieldValue(fieldKey, ($event.target as HTMLSelectElement).value === 'null' ? null : ($event.target as HTMLSelectElement).value === 'true')"
                 >
                   <option value="null">Default</option>
@@ -814,19 +931,19 @@ watch(
 
                 <label
                   v-else
-                  class="flex min-h-11 cursor-pointer items-center justify-between rounded-lg border px-3 py-2 text-sm transition"
+                  class="flex min-h-12 cursor-pointer items-center justify-between rounded-xl border px-3.5 py-2.5 text-sm transition"
                   :class="
                     getBooleanFieldChecked(fieldKey, field)
-                      ? 'border-emerald-500/40 bg-emerald-500/5'
-                      : 'border-border bg-muted/20 hover:border-border/80 hover:bg-muted/40'
+                      ? 'border-emerald-500/35 bg-emerald-500/[0.06]'
+                      : 'border-border/70 bg-background hover:border-border/90 hover:bg-muted/20'
                   "
                 >
-                  <div class="space-y-0.5">
+                  <div v-if="fieldKey !== 'dangerously_skip_permissions'" class="space-y-0.5">
                     <span class="font-medium text-foreground">
-                      {{ getBooleanFieldChecked(fieldKey, field) ? 'Enabled' : 'Disabled' }}
+                      {{ getBooleanFieldStatusLabel(fieldKey, field) }}
                     </span>
                     <p class="text-xs text-muted-foreground">
-                      {{ getBooleanFieldChecked(fieldKey, field) ? '当前已启用' : '当前已禁用' }}
+                      {{ getBooleanFieldStatusHint(fieldKey, field) }}
                     </p>
                   </div>
                   <span class="relative inline-flex h-6 w-11 shrink-0 items-center">
@@ -868,23 +985,33 @@ watch(
             >
               {{ claudeExecutionWarning }}
             </p>
+            <p
+              v-if="cursorExecutionWarning"
+              class="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
+            >
+              {{ cursorExecutionWarning }}
+            </p>
           </section>
 
-          <section v-if="advancedFieldEntries.length > 0" class="space-y-2 rounded-xl border border-border bg-background/70 p-3">
+          <section v-if="advancedFieldEntries.length > 0" class="space-y-2 rounded-xl border border-border/70 bg-muted/[0.12] p-3">
             <p class="text-xs font-semibold text-muted-foreground">高级参数</p>
 
             <div class="grid gap-3 md:grid-cols-2">
               <div
                 v-for="[fieldKey, field] in advancedFieldEntries"
                 :key="`advanced-${fieldKey}`"
-                :class="isFieldWide(fieldKey, field) ? 'space-y-2 md:col-span-2' : 'space-y-2'"
+                :class="
+                  isFieldWide(fieldKey, field)
+                    ? 'space-y-2 rounded-lg border border-border/60 bg-background/90 p-3 md:col-span-2'
+                    : 'space-y-2 rounded-lg border border-border/60 bg-background/90 p-3'
+                "
               >
                 <label class="text-sm font-medium">{{ formatFieldLabel(fieldKey) }}</label>
 
                 <select
                   v-if="field.type === 'string' && field.options?.length"
                   :value="getStringFieldValue(fieldKey)"
-                  class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                  class="h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground"
                   @change="setDraftFieldValue(fieldKey, ($event.target as HTMLSelectElement).value)"
                 >
                   <option v-if="shouldShowDefaultOption(fieldKey)" value="">Default</option>
@@ -896,7 +1023,7 @@ watch(
                 <textarea
                   v-else-if="field.type === 'string' && field.multiline"
                   :value="getStringFieldValue(fieldKey)"
-                  class="min-h-24 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  class="min-h-24 w-full rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-foreground"
                   @input="setDraftFieldValue(fieldKey, ($event.target as HTMLTextAreaElement).value)"
                 />
 
@@ -911,7 +1038,7 @@ watch(
                     spellcheck="false"
                     data-1p-ignore="true"
                     data-lpignore="true"
-                    class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                    class="h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground"
                     :class="fieldKey === 'api_key' ? 'pr-10' : ''"
                     @input="setDraftFieldValue(fieldKey, ($event.target as HTMLInputElement).value)"
                   />
@@ -928,21 +1055,21 @@ watch(
                 <textarea
                   v-else-if="field.type === 'stringArray'"
                   :value="toStringArrayInput(draftConfig[fieldKey])"
-                  class="min-h-24 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+                  class="min-h-24 w-full rounded-lg border border-border/70 bg-background px-3 py-2 font-mono text-xs text-foreground"
                   @input="setDraftFieldValue(fieldKey, parseStringArrayInput(($event.target as HTMLTextAreaElement).value))"
                 />
 
                 <textarea
                   v-else-if="field.type === 'stringMap'"
                   :value="toStringMapInput(draftConfig[fieldKey])"
-                  class="min-h-24 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+                  class="min-h-24 w-full rounded-lg border border-border/70 bg-background px-3 py-2 font-mono text-xs text-foreground"
                   @input="setDraftFieldValue(fieldKey, parseStringMapInput(($event.target as HTMLTextAreaElement).value))"
                 />
 
                 <select
                   v-else-if="field.type === 'booleanNullable'"
                   :value="getBooleanNullableSelectValue(fieldKey)"
-                  class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                  class="h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground"
                   @change="setDraftFieldValue(fieldKey, ($event.target as HTMLSelectElement).value === 'null' ? null : ($event.target as HTMLSelectElement).value === 'true')"
                 >
                   <option value="null">Default</option>
@@ -952,19 +1079,19 @@ watch(
 
                 <label
                   v-else
-                  class="flex min-h-11 cursor-pointer items-center justify-between rounded-lg border px-3 py-2 text-sm transition"
+                  class="flex min-h-12 cursor-pointer items-center justify-between rounded-xl border px-3.5 py-2.5 text-sm transition"
                   :class="
                     getBooleanFieldChecked(fieldKey, field)
-                      ? 'border-emerald-500/40 bg-emerald-500/5'
-                      : 'border-border bg-muted/20 hover:border-border/80 hover:bg-muted/40'
+                      ? 'border-emerald-500/35 bg-emerald-500/[0.06]'
+                      : 'border-border/70 bg-background hover:border-border/90 hover:bg-muted/20'
                   "
                 >
-                  <div class="space-y-0.5">
+                  <div v-if="fieldKey !== 'dangerously_skip_permissions'" class="space-y-0.5">
                     <span class="font-medium text-foreground">
-                      {{ getBooleanFieldChecked(fieldKey, field) ? 'Enabled' : 'Disabled' }}
+                      {{ getBooleanFieldStatusLabel(fieldKey, field) }}
                     </span>
                     <p class="text-xs text-muted-foreground">
-                      {{ getBooleanFieldChecked(fieldKey, field) ? '当前已启用' : '当前已禁用' }}
+                      {{ getBooleanFieldStatusHint(fieldKey, field) }}
                     </p>
                   </div>
                   <span class="relative inline-flex h-6 w-11 shrink-0 items-center">

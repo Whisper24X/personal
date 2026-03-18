@@ -441,6 +441,64 @@ describe('AgentRunnerService', () => {
     ]);
   });
 
+  it('should compile cursor structured config into print args', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-cursor-advanced',
+      businessLineId: 'business-line-1',
+      toolId: 'cursor-agent',
+      name: 'Advanced Cursor',
+      description: null,
+      configJson: JSON.stringify({
+        api_key: 'crsr_test_key',
+        model: 'sonnet-4',
+        headers: ['X-Trace-Id: 123', 'X-Team: ainative'],
+        trust: true,
+        force: true,
+        sandbox: 'disabled',
+        approve_mcps: true,
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'cursor-agent',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'cursor-agent',
+        agentCliConfigId: 'cfg-cursor-advanced',
+      },
+    );
+
+    expect(result.args).toEqual([
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--model',
+      'sonnet-4',
+      '--header',
+      'X-Trace-Id: 123',
+      '--header',
+      'X-Team: ainative',
+      '--trust',
+      '--force',
+      '--sandbox',
+      'disabled',
+      '--approve-mcps',
+    ]);
+    expect(result.env.CURSOR_API_KEY).toBe('crsr_test_key');
+  });
+
   it('should use json defaults for codex', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
@@ -751,6 +809,48 @@ describe('AgentRunnerService', () => {
     expect(result.adapter).toBe('cursor');
     expect(result.env.CURSOR_API_KEY).toBe('crsr_test_key');
     expect(result.env.AINATIVE_AGENT_TOOL_CONFIG_ID).toBe('cfg-cursor-default');
+  });
+
+  it('should ignore configured cursor resume session in business-line config', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue({
+      id: 'cfg-cursor-default',
+      businessLineId: 'business-line-1',
+      toolId: 'cursor-agent',
+      name: 'Cursor Default',
+      description: null,
+      configJson: JSON.stringify({
+        resume: 'cursor-session-1',
+        additional_params: ['--bad-flag'],
+        base_command_override: 'agent-custom',
+      }),
+      isDefault: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'cursor-agent',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'cursor-agent',
+      },
+    );
+
+    expect(result.command).toBe('agent');
+    expect(result.args).toEqual([
+      '-p',
+      '--output-format',
+      'stream-json',
+    ]);
   });
 
   it('should resolve cwd inside project worktree storage path', async () => {
