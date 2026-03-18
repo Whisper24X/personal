@@ -1,7 +1,8 @@
-import { flushPromises, mount } from '@vue/test-utils'
+import { config, flushPromises, mount, RouterLinkStub } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import BusinessLineModal from '@/components/business/settings/BusinessLineModal.vue'
+import AgentToolConfigModal from '@/components/business/settings/modals/AgentToolConfigModal.vue'
 import McpJsonImportModal from '@/components/business/settings/modals/McpJsonImportModal.vue'
 
 const { authApi, businessLinesApi, projectsApi, usersApi, workflowApi, fetchAllPages } = vi.hoisted(() => ({
@@ -78,6 +79,11 @@ vi.mock('@/api/workflow', () => ({
 vi.mock('@/utils/pagination', () => ({
   fetchAllPages,
 }))
+
+config.global.stubs = {
+  ...(config.global.stubs ?? {}),
+  RouterLink: RouterLinkStub,
+}
 
 const buildProps = (canCreateBusinessLine = true, open = true) => ({
   open,
@@ -333,7 +339,7 @@ describe('BusinessLineModal', () => {
     await projectRoleTab!.trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('项目角色库')
+    expect(wrapper.text()).toContain('角色列表（1）')
     expect(wrapper.text()).toContain('开发者')
   })
 
@@ -494,6 +500,82 @@ describe('BusinessLineModal', () => {
     expect(workflowApi.create).not.toHaveBeenCalled()
   })
 
+  it('creates workflow template with approval enabled by default', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineModal, {
+      props: buildProps(true, false),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    businessLinesApi.listAgentToolConfigs.mockResolvedValue([
+      {
+        id: 'cfg-1',
+        toolId: 'codex',
+        name: '默认 Codex',
+        description: '',
+        isDefault: true,
+        configJson: {},
+      },
+    ])
+
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+
+    const workflowTab = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '工作流')
+    expect(workflowTab).toBeDefined()
+    await workflowTab!.trigger('click')
+    await flushPromises()
+
+    const createButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '创建模板')
+    expect(createButton).toBeDefined()
+    await createButton!.trigger('click')
+    await flushPromises()
+
+    const approvalCheckbox = wrapper.find(
+      '[aria-labelledby="business-line-workflow-create-modal-title"] input[type="checkbox"]',
+    )
+    expect(approvalCheckbox.exists()).toBe(true)
+    expect((approvalCheckbox.element as HTMLInputElement).checked).toBe(true)
+
+    const nameInput = wrapper.find('input[placeholder="例如：业务线默认代码修复流"]')
+    expect(nameInput.exists()).toBe(true)
+    await nameInput.setValue('业务线默认流')
+
+    const workflowForm = wrapper.find('[aria-labelledby="business-line-workflow-create-modal-title"] form')
+    expect(workflowForm.exists()).toBe(true)
+    await workflowForm.trigger('submit')
+    await flushPromises()
+
+    expect(workflowApi.create).toHaveBeenCalledWith({
+      name: '业务线默认流',
+      description: undefined,
+      scope: 'business_line',
+      businessLineId: 'line-1',
+      isActive: true,
+      nodes: [
+        {
+          nodeOrder: 1,
+          name: 'step-1',
+          type: 'agent',
+          requiresApproval: true,
+          input: {
+            agentCliId: 'codex',
+            agentCliConfigId: 'cfg-1',
+          },
+        },
+      ],
+    })
+  })
+
   it('imports local mcps from json payload', async () => {
     const pinia = createPinia()
     const wrapper = mount(BusinessLineModal, {
@@ -592,6 +674,90 @@ describe('BusinessLineModal', () => {
     })
     expect(wrapper.text()).toContain('MCP JSON')
     expect(wrapper.text()).toContain('filesystem')
+  })
+
+  it('prefills create agent cli config with default name and default flag when none exist', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineModal, {
+      props: buildProps(true, false),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    businessLinesApi.listAgentToolConfigs.mockResolvedValueOnce([])
+
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+
+    const agentCliTab = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === 'Agent CLI')
+    expect(agentCliTab).toBeDefined()
+    await agentCliTab!.trigger('click')
+    await flushPromises()
+
+    const createButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '新建配置')
+    expect(createButton).toBeDefined()
+    await createButton!.trigger('click')
+    await flushPromises()
+
+    const agentToolConfigModal = wrapper.findComponent(AgentToolConfigModal)
+    expect(agentToolConfigModal.props('initialName')).toBe('default')
+    expect(agentToolConfigModal.props('initialIsDefault')).toBe(true)
+  })
+
+  it('keeps create agent cli config blank and non-default when default config already exists', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineModal, {
+      props: buildProps(true, false),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    businessLinesApi.listAgentToolConfigs.mockResolvedValueOnce([
+      {
+        id: 'cfg-1',
+        businessLineId: 'line-1',
+        toolId: 'cursor-agent',
+        name: 'Default',
+        description: '',
+        configJson: {},
+        isDefault: true,
+        createdAt: '2026-03-08T00:00:00.000Z',
+        updatedAt: '2026-03-08T00:00:00.000Z',
+      },
+    ])
+
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+
+    const agentCliTab = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === 'Agent CLI')
+    expect(agentCliTab).toBeDefined()
+    await agentCliTab!.trigger('click')
+    await flushPromises()
+
+    const createButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '新建配置')
+    expect(createButton).toBeDefined()
+    await createButton!.trigger('click')
+    await flushPromises()
+
+    const agentToolConfigModal = wrapper.findComponent(AgentToolConfigModal)
+    expect(agentToolConfigModal.props('initialName')).toBe('')
+    expect(agentToolConfigModal.props('initialIsDefault')).toBe(false)
   })
 
   it('edits and saves mcp json from preview modal', async () => {

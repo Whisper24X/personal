@@ -575,7 +575,7 @@ watch(
                 autocorrect="off"
                 spellcheck="false"
                 class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                placeholder="例如 DEFAULT"
+                placeholder="例如 default"
               />
             </label>
 
@@ -601,7 +601,7 @@ watch(
               v-model="isDefault"
               class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
             >
-              <option :value="true">是（同 toolId 只保留一个默认）</option>
+              <option :value="true">是</option>
               <option :value="false">否</option>
             </select>
           </label>

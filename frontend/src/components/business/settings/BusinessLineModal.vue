@@ -73,6 +73,7 @@ const SUPPORTED_CLI_TOOLS: Array<{ id: SupportedCliToolId; label: string }> = [
   { id: 'gemini-cli', label: 'Gemini CLI' },
   { id: 'opencode', label: 'Opencode' },
 ]
+const DEFAULT_AGENT_TOOL_CONFIG_NAME = 'default'
 
 defineOptions({
   name: 'BusinessLineModal',
@@ -216,7 +217,7 @@ const workflowCreateForm = ref<{
       nodeOrder: 1,
       name: 'step-1',
       type: 'agent',
-      requiresApproval: false,
+      requiresApproval: true,
       input: {
         prompt: '',
         agentCliId: '',
@@ -541,8 +542,23 @@ const resetAgentToolConfigForm = () => {
   }
 }
 
+const buildCreateAgentToolConfigForm = () => {
+  const hasNamedDefaultConfig = agentToolConfigs.value.some(
+    (config) => config.name.trim().toLowerCase() === DEFAULT_AGENT_TOOL_CONFIG_NAME,
+  )
+  const hasDefaultConfig = agentToolConfigs.value.some((config) => config.isDefault)
+
+  return {
+    name: hasNamedDefaultConfig ? '' : DEFAULT_AGENT_TOOL_CONFIG_NAME,
+    description: '',
+    isDefault: !hasDefaultConfig,
+    config: {} as Record<string, unknown>,
+  }
+}
+
 const openCreateAgentToolConfig = () => {
   resetAgentToolConfigForm()
+  agentToolConfigForm.value = buildCreateAgentToolConfigForm()
   agentToolConfigModalOpen.value = true
 }
 
@@ -775,7 +791,7 @@ const buildWorkflowNode = (nodeOrder: number): WorkflowTemplateNodeForm => ({
   nodeOrder,
   name: `step-${nodeOrder}`,
   type: 'agent',
-  requiresApproval: false,
+  requiresApproval: true,
   input: resolveWorkflowNodeInput(createEmptyWorkflowNodeInput()),
 })
 
