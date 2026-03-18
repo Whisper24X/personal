@@ -1,12 +1,10 @@
 import type {
   ApproveTaskPayload,
-  CreateTaskArtifactPayload,
   CreateTaskPayload,
   CreateTaskTerminalSessionPayload,
   ReplyTaskPayload,
   RetryTaskPayload,
   Task,
-  TaskArtifact,
   TaskDetail,
   TaskGitActionResult,
   TaskGitBaseBranchPayload,
@@ -100,10 +98,6 @@ export const tasksApi = {
     })
   },
 
-  artifacts(taskId: string) {
-    return apiHttp.get<TaskArtifact[]>(`/tasks/${taskId}/artifacts`)
-  },
-
   worktreeFiles(taskId: string, prefix?: string) {
     return apiHttp.get<string[]>(`/tasks/${taskId}/worktree-files`, {
       prefix,
@@ -115,10 +109,6 @@ export const tasksApi = {
       `/tasks/${taskId}/worktree-files/content`,
       { path },
     )
-  },
-
-  createArtifact(taskId: string, payload: CreateTaskArtifactPayload) {
-    return apiHttp.post<TaskArtifact>(`/tasks/${taskId}/artifacts`, payload)
   },
 
   workspaceTree(taskId: string, params?: { path?: string }) {

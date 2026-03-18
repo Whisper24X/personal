@@ -81,7 +81,7 @@ vi.mock('@/utils/pagination', () => ({
 }))
 
 config.global.stubs = {
-  ...(config.global.stubs ?? {}),
+  ...config.global.stubs,
   RouterLink: RouterLinkStub,
 }
 

@@ -19,7 +19,6 @@ import { TasksModule } from './tasks/tasks.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SkillsModule } from './skills/skills.module';
 import { McpsModule } from './mcps/mcps.module';
-import { ArtifactsModule } from './artifacts/artifacts.module';
 import { QueueModule } from './queue/queue.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { ProjectContextModule } from './project-context/project-context.module';
@@ -53,7 +52,6 @@ function resolveI18nPath(): string {
     NotificationsModule,
     SkillsModule,
     McpsModule,
-    ArtifactsModule,
     QueueModule,
     ObservabilityModule,
     ProjectContextModule,

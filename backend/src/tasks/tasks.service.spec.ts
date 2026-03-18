@@ -2,25 +2,19 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  NotFoundException,
 } from '@nestjs/common';
 import { promises as fs } from 'fs';
+import os from 'os';
 import path from 'path';
 import { DataSource } from 'typeorm';
 import { TaskLogEventsService } from './task-log-events.service';
-import { TaskArtifactType } from './dto/task-artifact-type.enum';
 import { TaskLogLevel } from './dto/task-log-level.enum';
 import { TaskMode } from './dto/task-mode.enum';
 import { TaskStatus } from './dto/task-status.enum';
 import { TasksService } from './tasks.service';
 
-process.env.AINATIVE_DATA_ROOT_DIR = path.resolve(
-  process.cwd(),
-  '..',
-  'tmp',
-  'ainative-test-data',
-);
-const testDataRootDir = process.env.AINATIVE_DATA_ROOT_DIR;
+const originalDataRootDir = process.env.AINATIVE_DATA_ROOT_DIR;
+let testDataRootDir: string | undefined;
 
 const defaultExecutionConfig = {
   agentCliId: 'codex',
@@ -140,10 +134,6 @@ const createTasksService = () => {
     })),
     findByTaskIdSince: jest.fn().mockResolvedValue([]),
   };
-  const taskArtifactRepository = {
-    create: jest.fn(),
-    findByTaskId: jest.fn().mockResolvedValue([]),
-  };
   const projectsService = {
     assertProjectCapability: jest.fn(),
   };
@@ -190,7 +180,6 @@ const createTasksService = () => {
     taskRepository as never,
     taskNodeRepository as never,
     taskLogRepository as never,
-    taskArtifactRepository as never,
     projectsService as never,
     workflowTemplatesService as never,
     taskLogEventsService as TaskLogEventsService,
@@ -207,7 +196,6 @@ const createTasksService = () => {
     taskNodeRepository,
     taskLogRepository,
     taskLogEventsService,
-    taskArtifactRepository,
     taskRuntimeService,
     notificationsService,
     projectsService,
@@ -219,10 +207,30 @@ const createTasksService = () => {
 };
 
 describe('TasksService', () => {
+  beforeAll(async () => {
+    testDataRootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'ainative-test-data-'),
+    );
+    process.env.AINATIVE_DATA_ROOT_DIR = testDataRootDir;
+  });
+
   beforeEach(async () => {
     if (testDataRootDir) {
       await fs.rm(testDataRootDir, { recursive: true, force: true });
     }
+  });
+
+  afterAll(async () => {
+    if (testDataRootDir) {
+      await fs.rm(testDataRootDir, { recursive: true, force: true });
+    }
+
+    if (originalDataRootDir === undefined) {
+      delete process.env.AINATIVE_DATA_ROOT_DIR;
+      return;
+    }
+
+    process.env.AINATIVE_DATA_ROOT_DIR = originalDataRootDir;
   });
 
   it('should create task with normalized git fields', async () => {
@@ -609,7 +617,7 @@ describe('TasksService', () => {
     expect(executeAgentNodeSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('should mark agent node done and create artifact when execution succeeds', async () => {
+  it('should mark agent node done when execution succeeds', async () => {
     const {
       service,
       taskNodeRepository,
@@ -634,10 +642,6 @@ describe('TasksService', () => {
       stderr: '',
       prompt: 'prompt',
     });
-
-    const artifactSpy = jest
-      .spyOn(serviceAny, 'createNodeExecutionArtifact')
-      .mockResolvedValue(undefined);
 
     await serviceAny.executeAgentNode({
       taskId: task.id,
@@ -672,7 +676,6 @@ describe('TasksService', () => {
         }),
       }),
     );
-    expect(artifactSpy).toHaveBeenCalledTimes(1);
   });
 
   it('should persist only stdout json lines into output jsonl', async () => {
@@ -699,10 +702,6 @@ describe('TasksService', () => {
       stderr: '',
       prompt: 'prompt',
     });
-
-    jest
-      .spyOn(serviceAny, 'createNodeExecutionArtifact')
-      .mockResolvedValue(undefined);
 
     await serviceAny.executeAgentNode({
       taskId: task.id,
@@ -771,10 +770,6 @@ describe('TasksService', () => {
         });
       },
     );
-
-    jest
-      .spyOn(serviceAny, 'createNodeExecutionArtifact')
-      .mockResolvedValue(undefined);
 
     await serviceAny.executeAgentNode({
       taskId: task.id,
@@ -871,10 +866,6 @@ describe('TasksService', () => {
       },
     );
 
-    jest
-      .spyOn(serviceAny, 'createNodeExecutionArtifact')
-      .mockResolvedValue(undefined);
-
     await serviceAny.executeAgentNode({
       taskId: task.id,
       nodeId: node.id,
@@ -943,10 +934,6 @@ describe('TasksService', () => {
         });
       },
     );
-
-    jest
-      .spyOn(serviceAny, 'createNodeExecutionArtifact')
-      .mockResolvedValue(undefined);
 
     await serviceAny.executeAgentNode({
       taskId: task.id,
@@ -1017,10 +1004,6 @@ describe('TasksService', () => {
       },
     );
 
-    jest
-      .spyOn(serviceAny, 'createNodeExecutionArtifact')
-      .mockResolvedValue(undefined);
-
     await serviceAny.executeAgentNode({
       taskId: task.id,
       nodeId: node.id,
@@ -1088,10 +1071,6 @@ describe('TasksService', () => {
         });
       },
     );
-
-    jest
-      .spyOn(serviceAny, 'createNodeExecutionArtifact')
-      .mockResolvedValue(undefined);
 
     await serviceAny.executeAgentNode({
       taskId: task.id,
@@ -1183,10 +1162,6 @@ describe('TasksService', () => {
         });
       },
     );
-
-    jest
-      .spyOn(serviceAny, 'createNodeExecutionArtifact')
-      .mockResolvedValue(undefined);
 
     await serviceAny.executeAgentNode({
       taskId: task.id,
@@ -1282,10 +1257,6 @@ describe('TasksService', () => {
         });
       },
     );
-
-    jest
-      .spyOn(serviceAny, 'createNodeExecutionArtifact')
-      .mockResolvedValue(undefined);
 
     await serviceAny.executeAgentNode({
       taskId: task.id,
@@ -1384,10 +1355,6 @@ describe('TasksService', () => {
       prompt: 'prompt',
     });
 
-    const artifactSpy = jest
-      .spyOn(serviceAny, 'createNodeExecutionArtifact')
-      .mockResolvedValue(undefined);
-
     await serviceAny.executeAgentNode({
       taskId: task.id,
       nodeId: node.id,
@@ -1411,7 +1378,6 @@ describe('TasksService', () => {
         runtimeJson: null,
       }),
     );
-    expect(artifactSpy).not.toHaveBeenCalled();
   });
 
   it('should keep final node in_review when approval is required', async () => {
@@ -1446,10 +1412,6 @@ describe('TasksService', () => {
       prompt: 'prompt',
     });
 
-    const artifactSpy = jest
-      .spyOn(serviceAny, 'createNodeExecutionArtifact')
-      .mockResolvedValue(undefined);
-
     await serviceAny.executeAgentNode({
       taskId: task.id,
       nodeId: node.id,
@@ -1465,7 +1427,6 @@ describe('TasksService', () => {
         runtimeJson: null,
       }),
     );
-    expect(artifactSpy).not.toHaveBeenCalled();
   });
 
   it('should mark agent node in_review when execution fails', async () => {
@@ -1539,73 +1500,6 @@ describe('TasksService', () => {
     expect(chunks).toHaveLength(2);
     expect(chunks[0]).toHaveLength(4_000);
     expect(chunks[1]).toHaveLength(500);
-  });
-
-  it('should skip creating duplicated git diff artifact for same node', async () => {
-    const { service, taskArtifactRepository, taskRuntimeService } =
-      createTasksService();
-    const serviceAny = service as any;
-    const task = createTask();
-    const node = createNode();
-    const diffArtifactName = 'task-task-1-changes.diff';
-
-    taskRuntimeService.collectGitDiffArtifact.mockResolvedValue({
-      name: diffArtifactName,
-      content: '# diff',
-      metadata: {
-        gitBranch: 'feature/task-1',
-      },
-    });
-    taskArtifactRepository.findByTaskId.mockResolvedValue([
-      {
-        id: 'artifact-1',
-        taskId: task.id,
-        taskNodeId: node.id,
-        artifactType: TaskArtifactType.diff,
-        name: `node-${node.nodeOrder}-${diffArtifactName}`,
-        content: '# existing',
-        metadata: null,
-      },
-    ]);
-
-    await serviceAny.createGitDiffArtifact({
-      task,
-      taskNode: node,
-    });
-
-    expect(taskArtifactRepository.create).not.toHaveBeenCalled();
-  });
-
-  it('should create git diff artifact when node artifact does not exist', async () => {
-    const { service, taskArtifactRepository, taskRuntimeService } =
-      createTasksService();
-    const serviceAny = service as any;
-    const task = createTask();
-    const node = createNode();
-    const diffArtifactName = 'task-task-1-changes.diff';
-
-    taskRuntimeService.collectGitDiffArtifact.mockResolvedValue({
-      name: diffArtifactName,
-      content: '# diff',
-      metadata: {
-        gitBranch: 'feature/task-1',
-      },
-    });
-    taskArtifactRepository.findByTaskId.mockResolvedValue([]);
-
-    await serviceAny.createGitDiffArtifact({
-      task,
-      taskNode: node,
-    });
-
-    expect(taskArtifactRepository.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        taskId: task.id,
-        taskNodeId: node.id,
-        artifactType: TaskArtifactType.diff,
-        name: `node-${node.nodeOrder}-${diffArtifactName}`,
-      }),
-    );
   });
 
   it('should finalize node as unknown error when node executor throws', async () => {
@@ -1717,6 +1611,7 @@ describe('TasksService', () => {
     expect(notificationsService.notifyTaskStatusChanged).toHaveBeenCalledWith({
       userId: 'user-1',
       taskId: task.id,
+      taskTitle: task.title,
       status: TaskStatus.done,
     });
   });
@@ -1756,6 +1651,7 @@ describe('TasksService', () => {
     expect(notificationsService.notifyTaskStatusChanged).toHaveBeenCalledWith({
       userId: 'user-2',
       taskId: task.id,
+      taskTitle: task.title,
       status: TaskStatus.inReview,
     });
   });
@@ -2152,76 +2048,6 @@ describe('TasksService', () => {
     );
   });
 
-  it('should create artifact and append upload log', async () => {
-    const {
-      service,
-      taskRepository,
-      projectsService,
-      taskArtifactRepository,
-      taskLogRepository,
-    } = createTasksService() as any;
-    const task = createTask();
-    const currentUser = createCurrentUser();
-
-    taskRepository.findById.mockResolvedValue(task);
-    projectsService.assertProjectCapability.mockResolvedValue(createProject());
-    taskArtifactRepository.create.mockResolvedValue({
-      id: 'artifact-1',
-      taskId: task.id,
-      artifactType: TaskArtifactType.report,
-    });
-
-    await service.createArtifact(
-      task.id,
-      {
-        taskNodeId: null,
-        artifactType: TaskArtifactType.report,
-        name: 'summary.md',
-        content: '# summary',
-      } as never,
-      currentUser as never,
-    );
-
-    expect(taskArtifactRepository.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        taskId: task.id,
-        artifactType: TaskArtifactType.report,
-        name: 'summary.md',
-      }),
-    );
-    expect(taskLogRepository.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: 'Task artifact uploaded',
-      }),
-    );
-  });
-
-  it('should reject createArtifact when taskNode does not belong to task', async () => {
-    const { service, taskRepository, taskNodeRepository, projectsService } =
-      createTasksService() as any;
-    const task = createTask();
-    const currentUser = createCurrentUser();
-
-    taskRepository.findById.mockResolvedValue(task);
-    projectsService.assertProjectCapability.mockResolvedValue(createProject());
-    taskNodeRepository.findById.mockResolvedValue({
-      ...createNode(),
-      taskId: 'another-task-id',
-    });
-
-    await expect(
-      service.createArtifact(
-        task.id,
-        {
-          taskNodeId: 'node-1',
-          artifactType: TaskArtifactType.report,
-          name: 'summary.md',
-        } as never,
-        currentUser as never,
-      ),
-    ).rejects.toThrow(NotFoundException);
-  });
-
   it('should open log stream with history and subscribe function', async () => {
     const {
       service,
@@ -2299,30 +2125,6 @@ describe('TasksService', () => {
         currentUser,
       }),
     ).rejects.toThrow(ForbiddenException);
-  });
-
-  it('should list artifacts after permission check', async () => {
-    const { service, taskRepository, projectsService, taskArtifactRepository } =
-      createTasksService() as any;
-    const task = createTask();
-    const currentUser = createCurrentUser();
-    const artifacts = [
-      {
-        id: 'artifact-1',
-        taskId: task.id,
-        artifactType: TaskArtifactType.report,
-        name: 'summary.md',
-      },
-    ];
-
-    taskRepository.findById.mockResolvedValue(task);
-    projectsService.assertProjectCapability.mockResolvedValue(createProject());
-    taskArtifactRepository.findByTaskId.mockResolvedValue(artifacts);
-
-    const result = await service.listArtifacts(task.id, currentUser as never);
-
-    expect(taskArtifactRepository.findByTaskId).toHaveBeenCalledWith(task.id);
-    expect(result).toEqual(artifacts);
   });
 
   it('should list logs with parsed since date', async () => {

@@ -41,8 +41,6 @@ import { RetryTaskDto } from './dto/retry-task.dto';
 import { ApproveTaskDto } from './dto/approve-task.dto';
 import { TaskLog } from './domain/task-log';
 import { FindTaskLogsDto } from './dto/find-task-logs.dto';
-import { TaskArtifact } from './domain/task-artifact';
-import { CreateTaskArtifactDto } from './dto/create-task-artifact.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { ReplyTaskDto } from './dto/reply-task.dto';
 import { TaskMessageDto } from './dto/task-message.dto';
@@ -544,14 +542,6 @@ export class TasksController {
     return this.tasksService.listLogs(id, query, request.user);
   }
 
-  @Get(':id/artifacts')
-  @ApiParam({ name: 'id', type: String, required: true })
-  @ApiOkResponse({ type: TaskArtifact, isArray: true })
-  @HttpCode(HttpStatus.OK)
-  artifacts(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
-    return this.tasksService.listArtifacts(id, request.user);
-  }
-
   @Get(':id/worktree-files')
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: String, isArray: true })
@@ -581,22 +571,6 @@ export class TasksController {
     @Query() query: ReadWorktreeFileDto,
   ) {
     return this.tasksService.readWorktreeFile(id, query.path, request.user);
-  }
-
-  @Post(':id/artifacts')
-  @ApiParam({ name: 'id', type: String, required: true })
-  @ApiCreatedResponse({ type: TaskArtifact })
-  @HttpCode(HttpStatus.CREATED)
-  createArtifact(
-    @Request() request,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() createTaskArtifactDto: CreateTaskArtifactDto,
-  ) {
-    return this.tasksService.createArtifact(
-      id,
-      createTaskArtifactDto,
-      request.user,
-    );
   }
 
   @Sse(':taskId/stream')

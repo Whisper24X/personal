@@ -94,20 +94,6 @@ export type TaskMessage = {
   level?: TaskLogLevel
 }
 
-export type TaskArtifactType = 'diff' | 'report' | 'file' | 'preview'
-
-export type TaskArtifact = {
-  id: string
-  taskId: string
-  taskNodeId?: string | null
-  artifactType: TaskArtifactType
-  name: string
-  downloadUrl?: string | null
-  content?: string | null
-  metadata?: Record<string, unknown> | null
-  createdAt: string
-}
-
 export type TaskWorkspaceEntry = {
   name: string
   path: string
@@ -224,15 +210,6 @@ export type UpdateTaskPayload = {
 
 export type ReplyTaskPayload = {
   message: string
-}
-
-export type CreateTaskArtifactPayload = {
-  taskNodeId?: string
-  artifactType: TaskArtifactType
-  name: string
-  downloadUrl?: string
-  content?: string
-  metadata?: Record<string, unknown>
 }
 
 export type RetryTaskPayload = {

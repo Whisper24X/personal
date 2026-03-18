@@ -30,10 +30,6 @@ import { RetryTaskDto } from './dto/retry-task.dto';
 import { ApproveTaskDto } from './dto/approve-task.dto';
 import { TaskDetailDto } from './dto/task-detail.dto';
 import { FindTaskLogsDto } from './dto/find-task-logs.dto';
-import { TaskArtifactRepository } from './infrastructure/persistence/task-artifact.repository';
-import { TaskArtifact } from './domain/task-artifact';
-import { CreateTaskArtifactDto } from './dto/create-task-artifact.dto';
-import { TaskArtifactType } from './dto/task-artifact-type.enum';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TaskRuntimeService } from './task-runtime.service';
 import { Project } from '../projects/domain/project';
@@ -98,7 +94,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     private readonly taskRepository: TaskRepository,
     private readonly taskNodeRepository: TaskNodeRepository,
     private readonly taskLogRepository: TaskLogRepository,
-    private readonly taskArtifactRepository: TaskArtifactRepository,
     private readonly projectsService: ProjectsService,
     private readonly workflowTemplatesService: WorkflowTemplatesService,
     private readonly taskLogEventsService: TaskLogEventsService,
@@ -912,19 +907,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    // 审批通过后创建产物（节点执行时因 requiresApproval 而跳过了产物创建）
-    const outputSummary =
-      (await this.readNodeOutputSummary(targetNode)) ??
-      `Node ${targetNode.nodeOrder} approved`;
-    const generatedBy = 'agent-runner:approved';
-    await this.createNodeExecutionArtifact({
-      taskId: task.id,
-      task,
-      node: targetNode,
-      summary: outputSummary,
-      generatedBy,
-    });
-
     await this.recalculateTaskStatus(task.id);
     await this.triggerWorkerDispatch();
 
@@ -982,15 +964,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async listArtifacts(
-    taskId: Task['id'],
-    currentUser: JwtPayloadType,
-  ): Promise<TaskArtifact[]> {
-    await this.getTaskOrThrow(taskId, currentUser);
-
-    return this.taskArtifactRepository.findByTaskId(taskId);
-  }
-
   async listWorktreeFiles(
     taskId: Task['id'],
     currentUser: JwtPayloadType,
@@ -1022,51 +995,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
 
     const normalized = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
     return { path: normalized, content };
-  }
-
-  async createArtifact(
-    taskId: Task['id'],
-    createTaskArtifactDto: CreateTaskArtifactDto,
-    currentUser: JwtPayloadType,
-  ): Promise<TaskArtifact> {
-    const task = await this.getTaskOrThrow(
-      taskId,
-      currentUser,
-      'project.task.read',
-    );
-
-    if (createTaskArtifactDto.taskNodeId) {
-      const taskNode = await this.taskNodeRepository.findById(
-        createTaskArtifactDto.taskNodeId,
-      );
-
-      if (!taskNode || taskNode.taskId !== task.id) {
-        throw new NotFoundException('Task node not found');
-      }
-    }
-
-    const artifact = await this.taskArtifactRepository.create({
-      taskId: task.id,
-      taskNodeId: createTaskArtifactDto.taskNodeId ?? null,
-      artifactType: createTaskArtifactDto.artifactType,
-      name: createTaskArtifactDto.name,
-      downloadUrl: createTaskArtifactDto.downloadUrl ?? null,
-      content: createTaskArtifactDto.content ?? null,
-      metadata: createTaskArtifactDto.metadata ?? null,
-    });
-
-    await this.appendLog({
-      taskId: task.id,
-      taskNodeId: createTaskArtifactDto.taskNodeId ?? null,
-      level: TaskLogLevel.info,
-      message: 'Task artifact uploaded',
-      payload: {
-        artifactId: artifact.id,
-        artifactType: artifact.artifactType,
-      },
-    });
-
-    return artifact;
   }
 
   async openLogStream({
@@ -1482,16 +1410,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
-      if (!loopResult.queuedNextLoop && !loopResult.pendingApproval) {
-        await this.createNodeExecutionArtifact({
-          taskId,
-          task,
-          node,
-          summary: fullOutput,
-          generatedBy: `agent-runner:${executionResult.command}`,
-        });
-      }
-
       return;
     }
 
@@ -1764,145 +1682,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         agentCliSessionId ?? latestNode.agentCliSessionId ?? null,
       runtimeJson: null,
     });
-  }
-
-  private async createNodeExecutionArtifact({
-    taskId,
-    task,
-    node,
-    summary,
-    generatedBy,
-  }: {
-    taskId: string;
-    task: Task;
-    node: TaskNode;
-    summary: string;
-    generatedBy: string;
-  }): Promise<void> {
-    const fileCount = await this.createGitDiffArtifact({
-      task,
-      taskNode: node,
-    });
-
-    if (fileCount === 0) {
-      await this.taskArtifactRepository.create({
-        taskId,
-        taskNodeId: node.id,
-        artifactType: TaskArtifactType.report,
-        name: `node-${node.nodeOrder}-summary.md`,
-        downloadUrl: null,
-        content: `# Node ${node.nodeOrder}\n\n${summary}`,
-        metadata: {
-          generatedBy,
-        },
-      });
-    }
-  }
-
-  private async createGitDiffArtifact({
-    task,
-    taskNode,
-  }: {
-    task: Task;
-    taskNode: TaskNode;
-  }): Promise<number> {
-    const diffArtifact =
-      await this.taskRuntimeService.collectGitDiffArtifact(task);
-
-    if (!diffArtifact) {
-      return 0;
-    }
-
-    const fileCount = await this.createFileArtifactsFromWorktree({
-      task,
-      taskNode,
-      changedFiles: diffArtifact.metadata?.changedFiles as string[] | undefined,
-    });
-
-    const existedArtifacts = await this.taskArtifactRepository.findByTaskId(
-      task.id,
-    );
-    const artifactName = `node-${taskNode.nodeOrder}-${diffArtifact.name}`;
-    const hasSameArtifact = existedArtifacts.some((artifact) => {
-      return (
-        artifact.taskNodeId === taskNode.id &&
-        artifact.artifactType === TaskArtifactType.diff &&
-        artifact.name === artifactName
-      );
-    });
-
-    if (!hasSameArtifact) {
-      await this.taskArtifactRepository.create({
-        taskId: task.id,
-        taskNodeId: taskNode.id,
-        artifactType: TaskArtifactType.diff,
-        name: artifactName,
-        downloadUrl: null,
-        content: diffArtifact.content,
-        metadata: diffArtifact.metadata,
-      });
-    }
-
-    return fileCount;
-  }
-
-  private async createFileArtifactsFromWorktree({
-    task,
-    taskNode,
-    changedFiles,
-  }: {
-    task: Task;
-    taskNode: TaskNode;
-    changedFiles?: string[];
-  }): Promise<number> {
-    if (!Array.isArray(changedFiles) || changedFiles.length === 0) {
-      return 0;
-    }
-
-    const existedArtifacts = await this.taskArtifactRepository.findByTaskId(
-      task.id,
-    );
-    const existingFileNames = new Set(
-      existedArtifacts
-        .filter(
-          (a) =>
-            a.taskNodeId === taskNode.id &&
-            a.artifactType === TaskArtifactType.file,
-        )
-        .map((a) => a.name),
-    );
-
-    let created = 0;
-    for (const filePath of changedFiles) {
-      const fileName =
-        typeof filePath === 'string' && filePath.trim()
-          ? filePath.trim()
-          : null;
-      if (!fileName || existingFileNames.has(fileName)) {
-        continue;
-      }
-
-      const content = await this.taskRuntimeService.readFileFromWorktree(
-        task,
-        fileName,
-      );
-      if (content === null) {
-        continue;
-      }
-
-      await this.taskArtifactRepository.create({
-        taskId: task.id,
-        taskNodeId: taskNode.id,
-        artifactType: TaskArtifactType.file,
-        name: fileName,
-        downloadUrl: null,
-        content,
-        metadata: { source: 'worktree' },
-      });
-      existingFileNames.add(fileName);
-      created += 1;
-    }
-    return created;
   }
 
   private async scheduleQueuedNodes(): Promise<void> {

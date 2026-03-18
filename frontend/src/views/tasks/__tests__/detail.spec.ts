@@ -5,12 +5,11 @@ import TaskDetailView from '@/views/tasks/detail.vue'
 import { useMessageStore } from '@/stores/modules/message'
 import { STORAGE_KEYS } from '@/types/common/storage'
 
-const { tasksApi, artifactsApi, authApi, openSseStream } = vi.hoisted(() => ({
+const { tasksApi, authApi, openSseStream } = vi.hoisted(() => ({
   tasksApi: {
     detailWithNodes: vi.fn(),
     logs: vi.fn(),
     messages: vi.fn(),
-    artifacts: vi.fn(),
     update: vi.fn(),
     remove: vi.fn(),
     execute: vi.fn(),
@@ -19,11 +18,6 @@ const { tasksApi, artifactsApi, authApi, openSseStream } = vi.hoisted(() => ({
     cleanupWorktree: vi.fn(),
     retry: vi.fn(),
     approve: vi.fn(),
-    createArtifact: vi.fn(),
-  },
-  artifactsApi: {
-    download: vi.fn(),
-    preview: vi.fn(),
   },
   authApi: {
     access: vi.fn(),
@@ -49,10 +43,6 @@ vi.mock('vue-router', () => ({
 
 vi.mock('@/api/tasks', () => ({
   tasksApi,
-}))
-
-vi.mock('@/api/artifacts', () => ({
-  artifactsApi,
 }))
 
 vi.mock('@/api/auth', () => ({
@@ -104,7 +94,6 @@ beforeEach(() => {
 
   tasksApi.logs.mockResolvedValue([])
   tasksApi.messages.mockResolvedValue([])
-  tasksApi.artifacts.mockResolvedValue([])
   tasksApi.execute.mockRejectedValue(new Error('执行异常'))
   authApi.access.mockResolvedValue({
     capabilities: ['project.task.read'],
@@ -340,8 +329,21 @@ describe('TaskDetailView toasts', () => {
   })
 
   it('renders agent cli chunk text from SSE payload', async () => {
+    vi.useFakeTimers()
+
     const pinia = createPinia()
     setActivePinia(pinia)
+    tasksApi.messages
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          role: 'assistant',
+          content: 'real agent output',
+          createdAt: '2026-02-27T10:00:01.000Z',
+          taskNodeId: null,
+          level: 'info',
+        },
+      ])
 
     openSseStream.mockImplementation(async (_url, _query, options) => {
       options?.onEvent?.({
@@ -375,9 +377,13 @@ describe('TaskDetailView toasts', () => {
     })
 
     await flushPromises()
+    await vi.advanceTimersByTimeAsync(150)
+    await flushPromises()
 
     expect(wrapper.text()).toContain('real agent output')
     expect(wrapper.text()).not.toContain('Agent CLI stdout chunk')
+
+    vi.useRealTimers()
   })
 
   it('uses cli name as execution panel title', async () => {
