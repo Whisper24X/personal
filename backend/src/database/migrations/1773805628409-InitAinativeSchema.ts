@@ -1,17 +1,9 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class InitAinativeSchema1773128939198 implements MigrationInterface {
-  name = 'InitAinativeSchema1773128939198';
+export class InitAinativeSchema1773805628409 implements MigrationInterface {
+  name = 'InitAinativeSchema1773805628409';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
-    await queryRunner.query(
-      `CREATE TABLE "users" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "username" character varying(100) NOT NULL, "password" character varying NOT NULL, "salt" character varying, "nickname" character varying, "avatar" character varying, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, CONSTRAINT "PK_a3ffb1c0c8416b9fc6f907b7433" PRIMARY KEY ("id")); COMMENT ON COLUMN "users"."id" IS '主键（UUID）'; COMMENT ON COLUMN "users"."username" IS '登录用户名'; COMMENT ON COLUMN "users"."password" IS '加密密码'; COMMENT ON COLUMN "users"."salt" IS '密码盐'; COMMENT ON COLUMN "users"."nickname" IS '显示昵称'; COMMENT ON COLUMN "users"."avatar" IS '头像地址'; COMMENT ON COLUMN "users"."createdAt" IS '创建时间'; COMMENT ON COLUMN "users"."updatedAt" IS '更新时间'; COMMENT ON COLUMN "users"."deletedAt" IS '软删除时间'`,
-    );
-    await queryRunner.query(
-      `CREATE UNIQUE INDEX "UQ_users_username" ON "users" ("username") WHERE "deletedAt" IS NULL`,
-    );
-    await queryRunner.query(`COMMENT ON TABLE "users" IS '系统用户'`);
     await queryRunner.query(
       `CREATE TYPE "public"."workflow_template_mode_enum" AS ENUM('conversation', 'workflow')`,
     );
@@ -42,6 +34,13 @@ export class InitAinativeSchema1773128939198 implements MigrationInterface {
     await queryRunner.query(
       `COMMENT ON TABLE "workflow_templates" IS '工作流模板'`,
     );
+    await queryRunner.query(
+      `CREATE TABLE "users" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "username" character varying(100) NOT NULL, "password" character varying NOT NULL, "salt" character varying, "nickname" character varying, "avatar" character varying, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, CONSTRAINT "PK_a3ffb1c0c8416b9fc6f907b7433" PRIMARY KEY ("id")); COMMENT ON COLUMN "users"."id" IS '主键（UUID）'; COMMENT ON COLUMN "users"."username" IS '登录用户名'; COMMENT ON COLUMN "users"."password" IS '加密密码'; COMMENT ON COLUMN "users"."salt" IS '密码盐'; COMMENT ON COLUMN "users"."nickname" IS '显示昵称'; COMMENT ON COLUMN "users"."avatar" IS '头像地址'; COMMENT ON COLUMN "users"."createdAt" IS '创建时间'; COMMENT ON COLUMN "users"."updatedAt" IS '更新时间'; COMMENT ON COLUMN "users"."deletedAt" IS '软删除时间'`,
+    );
+    await queryRunner.query(
+      `CREATE UNIQUE INDEX "UQ_users_username" ON "users" ("username") WHERE "deletedAt" IS NULL`,
+    );
+    await queryRunner.query(`COMMENT ON TABLE "users" IS '系统用户'`);
     await queryRunner.query(
       `CREATE TYPE "public"."task_mode_enum" AS ENUM('conversation', 'workflow')`,
     );
@@ -160,21 +159,6 @@ export class InitAinativeSchema1773128939198 implements MigrationInterface {
       `COMMENT ON TABLE "business_line_roles" IS '业务线角色'`,
     );
     await queryRunner.query(
-      `CREATE TABLE "business_line_invitations" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "businessLineId" uuid NOT NULL, "token" character varying(128) NOT NULL, "roleId" uuid NOT NULL, "projectRoles" jsonb NOT NULL DEFAULT '{}'::jsonb, "createdBy" uuid NOT NULL, "expiresAt" TIMESTAMP NOT NULL, "revokedAt" TIMESTAMP, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_2cd94765894fc2895c60732725b" PRIMARY KEY ("id")); COMMENT ON COLUMN "business_line_invitations"."id" IS '主键（UUID）'; COMMENT ON COLUMN "business_line_invitations"."businessLineId" IS '关联业务线ID'; COMMENT ON COLUMN "business_line_invitations"."token" IS '邀请令牌'; COMMENT ON COLUMN "business_line_invitations"."roleId" IS '业务线角色ID'; COMMENT ON COLUMN "business_line_invitations"."projectRoles" IS '按项目分配的成员角色JSON'; COMMENT ON COLUMN "business_line_invitations"."createdBy" IS '邀请创建者用户ID'; COMMENT ON COLUMN "business_line_invitations"."expiresAt" IS '邀请过期时间'; COMMENT ON COLUMN "business_line_invitations"."revokedAt" IS '邀请撤销时间'; COMMENT ON COLUMN "business_line_invitations"."createdAt" IS '创建时间'; COMMENT ON COLUMN "business_line_invitations"."updatedAt" IS '更新时间'`,
-    );
-    await queryRunner.query(
-      `CREATE INDEX "IDX_business_line_invitation_business_line_id" ON "business_line_invitations" ("businessLineId") `,
-    );
-    await queryRunner.query(
-      `CREATE UNIQUE INDEX "UQ_business_line_invitation_token" ON "business_line_invitations" ("token") `,
-    );
-    await queryRunner.query(
-      `CREATE INDEX "IDX_business_line_invitation_role_id" ON "business_line_invitations" ("roleId") `,
-    );
-    await queryRunner.query(
-      `COMMENT ON TABLE "business_line_invitations" IS '业务线邀请'`,
-    );
-    await queryRunner.query(
       `CREATE TABLE "business_line_members" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "businessLineId" uuid NOT NULL, "userId" uuid NOT NULL, "roleId" uuid NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "UQ_business_line_member_business_line_user" UNIQUE ("businessLineId", "userId"), CONSTRAINT "PK_5380ba4309f72e01608061dccf0" PRIMARY KEY ("id")); COMMENT ON COLUMN "business_line_members"."id" IS '主键（UUID）'; COMMENT ON COLUMN "business_line_members"."businessLineId" IS '关联业务线ID'; COMMENT ON COLUMN "business_line_members"."userId" IS '关联用户ID'; COMMENT ON COLUMN "business_line_members"."roleId" IS '业务线角色ID'; COMMENT ON COLUMN "business_line_members"."createdAt" IS '创建时间'; COMMENT ON COLUMN "business_line_members"."updatedAt" IS '更新时间'`,
     );
     await queryRunner.query(
@@ -188,6 +172,21 @@ export class InitAinativeSchema1773128939198 implements MigrationInterface {
     );
     await queryRunner.query(
       `COMMENT ON TABLE "business_line_members" IS '业务线成员'`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "business_line_invitations" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "businessLineId" uuid NOT NULL, "token" character varying(128) NOT NULL, "roleId" uuid NOT NULL, "projectRoles" jsonb NOT NULL DEFAULT '{}'::jsonb, "createdBy" uuid NOT NULL, "expiresAt" TIMESTAMP NOT NULL, "revokedAt" TIMESTAMP, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_2cd94765894fc2895c60732725b" PRIMARY KEY ("id")); COMMENT ON COLUMN "business_line_invitations"."id" IS '主键（UUID）'; COMMENT ON COLUMN "business_line_invitations"."businessLineId" IS '关联业务线ID'; COMMENT ON COLUMN "business_line_invitations"."token" IS '邀请令牌'; COMMENT ON COLUMN "business_line_invitations"."roleId" IS '业务线角色ID'; COMMENT ON COLUMN "business_line_invitations"."projectRoles" IS '按项目分配的成员角色JSON'; COMMENT ON COLUMN "business_line_invitations"."createdBy" IS '邀请创建者用户ID'; COMMENT ON COLUMN "business_line_invitations"."expiresAt" IS '邀请过期时间'; COMMENT ON COLUMN "business_line_invitations"."revokedAt" IS '邀请撤销时间'; COMMENT ON COLUMN "business_line_invitations"."createdAt" IS '创建时间'; COMMENT ON COLUMN "business_line_invitations"."updatedAt" IS '更新时间'`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_business_line_invitation_business_line_id" ON "business_line_invitations" ("businessLineId") `,
+    );
+    await queryRunner.query(
+      `CREATE UNIQUE INDEX "UQ_business_line_invitation_token" ON "business_line_invitations" ("token") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_business_line_invitation_role_id" ON "business_line_invitations" ("roleId") `,
+    );
+    await queryRunner.query(
+      `COMMENT ON TABLE "business_line_invitations" IS '业务线邀请'`,
     );
     await queryRunner.query(
       `CREATE TABLE "agent_cli_configs" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "businessLineId" uuid NOT NULL, "toolId" character varying(64) NOT NULL, "name" character varying(120) NOT NULL, "description" character varying(255), "configJson" text NOT NULL, "isDefault" boolean NOT NULL DEFAULT false, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_c78a5a8e8c260d468f162d1bb3a" PRIMARY KEY ("id")); COMMENT ON COLUMN "agent_cli_configs"."id" IS '主键（UUID）'; COMMENT ON COLUMN "agent_cli_configs"."businessLineId" IS '关联业务线ID'; COMMENT ON COLUMN "agent_cli_configs"."toolId" IS '工具标识'; COMMENT ON COLUMN "agent_cli_configs"."name" IS '配置名称'; COMMENT ON COLUMN "agent_cli_configs"."description" IS '配置描述'; COMMENT ON COLUMN "agent_cli_configs"."configJson" IS '工具配置JSON'; COMMENT ON COLUMN "agent_cli_configs"."isDefault" IS '是否默认配置'; COMMENT ON COLUMN "agent_cli_configs"."createdAt" IS '创建时间'; COMMENT ON COLUMN "agent_cli_configs"."updatedAt" IS '更新时间'`,
@@ -208,10 +207,10 @@ export class InitAinativeSchema1773128939198 implements MigrationInterface {
       `COMMENT ON TABLE "agent_cli_configs" IS '业务线工具配置'`,
     );
     await queryRunner.query(
-      `CREATE TABLE "automations" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" character varying(120) NOT NULL, "prompt" text NOT NULL, "rrule" character varying(255) NOT NULL, "cwds" jsonb, "status" character varying(20) NOT NULL DEFAULT 'active', "lastRunAt" TIMESTAMP, "nextRunAt" TIMESTAMP, "createdBy" uuid, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, CONSTRAINT "PK_34c2cc382fc780ea36f7c478192" PRIMARY KEY ("id")); COMMENT ON COLUMN "automations"."id" IS '主键（UUID）'; COMMENT ON COLUMN "automations"."name" IS '自动化名称'; COMMENT ON COLUMN "automations"."prompt" IS '自动化提示词内容'; COMMENT ON COLUMN "automations"."rrule" IS '自动化调度规则'; COMMENT ON COLUMN "automations"."cwds" IS '工作目录列表(JSON)'; COMMENT ON COLUMN "automations"."status" IS '自动化状态'; COMMENT ON COLUMN "automations"."lastRunAt" IS '最近执行时间'; COMMENT ON COLUMN "automations"."nextRunAt" IS '下次执行时间'; COMMENT ON COLUMN "automations"."createdBy" IS '创建者用户ID'; COMMENT ON COLUMN "automations"."createdAt" IS '创建时间'; COMMENT ON COLUMN "automations"."updatedAt" IS '更新时间'; COMMENT ON COLUMN "automations"."deletedAt" IS '软删除时间'`,
+      `CREATE TABLE "automations" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "projectId" uuid NOT NULL, "name" character varying(120) NOT NULL, "prompt" text NOT NULL, "rrule" character varying(255) NOT NULL, "cwds" jsonb, "status" character varying(20) NOT NULL DEFAULT 'active', "lastRunAt" TIMESTAMP, "nextRunAt" TIMESTAMP, "createdBy" uuid, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, CONSTRAINT "PK_34c2cc382fc780ea36f7c478192" PRIMARY KEY ("id")); COMMENT ON COLUMN "automations"."id" IS '主键（UUID）'; COMMENT ON COLUMN "automations"."projectId" IS '所属项目ID'; COMMENT ON COLUMN "automations"."name" IS '自动化名称'; COMMENT ON COLUMN "automations"."prompt" IS '自动化提示词内容'; COMMENT ON COLUMN "automations"."rrule" IS '自动化调度规则'; COMMENT ON COLUMN "automations"."cwds" IS '工作目录列表(JSON)'; COMMENT ON COLUMN "automations"."status" IS '自动化状态'; COMMENT ON COLUMN "automations"."lastRunAt" IS '最近执行时间'; COMMENT ON COLUMN "automations"."nextRunAt" IS '下次执行时间'; COMMENT ON COLUMN "automations"."createdBy" IS '创建者用户ID'; COMMENT ON COLUMN "automations"."createdAt" IS '创建时间'; COMMENT ON COLUMN "automations"."updatedAt" IS '更新时间'; COMMENT ON COLUMN "automations"."deletedAt" IS '软删除时间'`,
     );
     await queryRunner.query(
-      `CREATE UNIQUE INDEX "UQ_automations_name" ON "automations" ("name") WHERE "deletedAt" IS NULL`,
+      `CREATE UNIQUE INDEX "UQ_automations_project_name" ON "automations" ("projectId", "name") WHERE "deletedAt" IS NULL`,
     );
     await queryRunner.query(
       `CREATE INDEX "IDX_automations_created_by" ON "automations" ("createdBy") `,
@@ -221,6 +220,9 @@ export class InitAinativeSchema1773128939198 implements MigrationInterface {
     );
     await queryRunner.query(
       `CREATE INDEX "IDX_automations_name" ON "automations" ("name") `,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_automations_project_id" ON "automations" ("projectId") `,
     );
     await queryRunner.query(
       `COMMENT ON TABLE "automations" IS '定时自动化定义'`,
@@ -241,16 +243,16 @@ export class InitAinativeSchema1773128939198 implements MigrationInterface {
       `ALTER TABLE "business_line_roles" ADD CONSTRAINT "FK_db4dd7ddeb3763658fd8d16a816" FOREIGN KEY ("businessLineId") REFERENCES "business_lines"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
     );
     await queryRunner.query(
-      `ALTER TABLE "business_line_invitations" ADD CONSTRAINT "FK_8fc93bc994d44ce778226eec4be" FOREIGN KEY ("businessLineId") REFERENCES "business_lines"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "business_line_invitations" ADD CONSTRAINT "FK_bee220728ae119d9b40ccf2b318" FOREIGN KEY ("roleId") REFERENCES "business_line_roles"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`,
-    );
-    await queryRunner.query(
       `ALTER TABLE "business_line_members" ADD CONSTRAINT "FK_ae8604971b2eccdad4f61131366" FOREIGN KEY ("businessLineId") REFERENCES "business_lines"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
     );
     await queryRunner.query(
       `ALTER TABLE "business_line_members" ADD CONSTRAINT "FK_a9989b25938261a6c8a4fde8acf" FOREIGN KEY ("roleId") REFERENCES "business_line_roles"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "business_line_invitations" ADD CONSTRAINT "FK_8fc93bc994d44ce778226eec4be" FOREIGN KEY ("businessLineId") REFERENCES "business_lines"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "business_line_invitations" ADD CONSTRAINT "FK_bee220728ae119d9b40ccf2b318" FOREIGN KEY ("roleId") REFERENCES "business_line_roles"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`,
     );
     await queryRunner.query(
       `ALTER TABLE "agent_cli_configs" ADD CONSTRAINT "FK_8a1996a8937fe83f2204843fc4e" FOREIGN KEY ("businessLineId") REFERENCES "business_lines"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
@@ -262,16 +264,16 @@ export class InitAinativeSchema1773128939198 implements MigrationInterface {
       `ALTER TABLE "agent_cli_configs" DROP CONSTRAINT "FK_8a1996a8937fe83f2204843fc4e"`,
     );
     await queryRunner.query(
-      `ALTER TABLE "business_line_members" DROP CONSTRAINT "FK_a9989b25938261a6c8a4fde8acf"`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "business_line_members" DROP CONSTRAINT "FK_ae8604971b2eccdad4f61131366"`,
-    );
-    await queryRunner.query(
       `ALTER TABLE "business_line_invitations" DROP CONSTRAINT "FK_bee220728ae119d9b40ccf2b318"`,
     );
     await queryRunner.query(
       `ALTER TABLE "business_line_invitations" DROP CONSTRAINT "FK_8fc93bc994d44ce778226eec4be"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "business_line_members" DROP CONSTRAINT "FK_a9989b25938261a6c8a4fde8acf"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "business_line_members" DROP CONSTRAINT "FK_ae8604971b2eccdad4f61131366"`,
     );
     await queryRunner.query(
       `ALTER TABLE "business_line_roles" DROP CONSTRAINT "FK_db4dd7ddeb3763658fd8d16a816"`,
@@ -289,10 +291,13 @@ export class InitAinativeSchema1773128939198 implements MigrationInterface {
       `ALTER TABLE "task_nodes" DROP CONSTRAINT "FK_319df5722192180982f8bdd048e"`,
     );
     await queryRunner.query(`COMMENT ON TABLE "automations" IS NULL`);
+    await queryRunner.query(`DROP INDEX "public"."IDX_automations_project_id"`);
     await queryRunner.query(`DROP INDEX "public"."IDX_automations_name"`);
     await queryRunner.query(`DROP INDEX "public"."IDX_automations_status"`);
     await queryRunner.query(`DROP INDEX "public"."IDX_automations_created_by"`);
-    await queryRunner.query(`DROP INDEX "public"."UQ_automations_name"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."UQ_automations_project_name"`,
+    );
     await queryRunner.query(`DROP TABLE "automations"`);
     await queryRunner.query(`COMMENT ON TABLE "agent_cli_configs" IS NULL`);
     await queryRunner.query(
@@ -308,17 +313,6 @@ export class InitAinativeSchema1773128939198 implements MigrationInterface {
       `DROP INDEX "public"."UQ_agent_cli_config_default_per_tool"`,
     );
     await queryRunner.query(`DROP TABLE "agent_cli_configs"`);
-    await queryRunner.query(`COMMENT ON TABLE "business_line_members" IS NULL`);
-    await queryRunner.query(
-      `DROP INDEX "public"."IDX_business_line_member_role_id"`,
-    );
-    await queryRunner.query(
-      `DROP INDEX "public"."IDX_business_line_member_user_id"`,
-    );
-    await queryRunner.query(
-      `DROP INDEX "public"."IDX_business_line_member_business_line_id"`,
-    );
-    await queryRunner.query(`DROP TABLE "business_line_members"`);
     await queryRunner.query(
       `COMMENT ON TABLE "business_line_invitations" IS NULL`,
     );
@@ -332,6 +326,17 @@ export class InitAinativeSchema1773128939198 implements MigrationInterface {
       `DROP INDEX "public"."IDX_business_line_invitation_business_line_id"`,
     );
     await queryRunner.query(`DROP TABLE "business_line_invitations"`);
+    await queryRunner.query(`COMMENT ON TABLE "business_line_members" IS NULL`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_business_line_member_role_id"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_business_line_member_user_id"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_business_line_member_business_line_id"`,
+    );
+    await queryRunner.query(`DROP TABLE "business_line_members"`);
     await queryRunner.query(`COMMENT ON TABLE "business_line_roles" IS NULL`);
     await queryRunner.query(
       `DROP INDEX "public"."IDX_business_line_role_business_line_id"`,
@@ -401,6 +406,9 @@ export class InitAinativeSchema1773128939198 implements MigrationInterface {
     await queryRunner.query(`DROP TABLE "tasks"`);
     await queryRunner.query(`DROP TYPE "public"."task_status_enum"`);
     await queryRunner.query(`DROP TYPE "public"."task_mode_enum"`);
+    await queryRunner.query(`COMMENT ON TABLE "users" IS NULL`);
+    await queryRunner.query(`DROP INDEX "public"."UQ_users_username"`);
+    await queryRunner.query(`DROP TABLE "users"`);
     await queryRunner.query(`COMMENT ON TABLE "workflow_templates" IS NULL`);
     await queryRunner.query(
       `DROP INDEX "public"."UQ_workflow_templates_global_name"`,
@@ -425,8 +433,5 @@ export class InitAinativeSchema1773128939198 implements MigrationInterface {
       `DROP TYPE "public"."workflow_template_scope_enum"`,
     );
     await queryRunner.query(`DROP TYPE "public"."workflow_template_mode_enum"`);
-    await queryRunner.query(`COMMENT ON TABLE "users" IS NULL`);
-    await queryRunner.query(`DROP INDEX "public"."UQ_users_username"`);
-    await queryRunner.query(`DROP TABLE "users"`);
   }
 }
