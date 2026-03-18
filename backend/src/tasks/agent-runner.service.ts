@@ -127,13 +127,7 @@ export class AgentRunnerService {
       'extensions',
       'env',
     ]),
-    opencode: new Set([
-      'model',
-      'agent',
-      'prompt',
-      'fork',
-      'env',
-    ]),
+    opencode: new Set(['model', 'agent', 'prompt', 'fork', 'env']),
   };
 
   constructor(
@@ -983,9 +977,7 @@ export class AgentRunnerService {
 
     if (executionMode === 'full-auto') {
       args.push('--full-auto');
-    } else if (
-      executionMode === 'dangerously-bypass-approvals-and-sandbox'
-    ) {
+    } else if (executionMode === 'dangerously-bypass-approvals-and-sandbox') {
       args.push('--dangerously-bypass-approvals-and-sandbox');
     } else if (sandbox) {
       args.push('--sandbox', sandbox);
@@ -1015,7 +1007,8 @@ export class AgentRunnerService {
     const settings = this.normalizeOptionalString(
       typeof raw.settings === 'string' ? raw.settings : null,
     );
-    const dangerouslySkipPermissions = raw.dangerously_skip_permissions === true;
+    const dangerouslySkipPermissions =
+      raw.dangerously_skip_permissions === true;
 
     if (model) {
       args.push('--model', model);
@@ -1182,10 +1175,7 @@ export class AgentRunnerService {
 
   private resolveCodexExecutionMode(
     value: unknown,
-  ):
-    | 'standard'
-    | 'full-auto'
-    | 'dangerously-bypass-approvals-and-sandbox' {
+  ): 'standard' | 'full-auto' | 'dangerously-bypass-approvals-and-sandbox' {
     if (value === 'full-auto') {
       return 'full-auto';
     }

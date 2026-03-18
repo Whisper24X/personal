@@ -481,11 +481,7 @@ describe('AgentRunnerService', () => {
       },
     );
 
-    expect(result.args).toEqual([
-      '--output-format',
-      'stream-json',
-      '--yolo',
-    ]);
+    expect(result.args).toEqual(['--output-format', 'stream-json', '--yolo']);
   });
 
   it('should use json run defaults for opencode', async () => {
@@ -997,11 +993,7 @@ describe('AgentRunnerService', () => {
     );
 
     expect(result.command).toBe('agent');
-    expect(result.args).toEqual([
-      '-p',
-      '--output-format',
-      'stream-json',
-    ]);
+    expect(result.args).toEqual(['-p', '--output-format', 'stream-json']);
   });
 
   it('should resolve cwd inside project worktree storage path', async () => {

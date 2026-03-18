@@ -48,7 +48,6 @@ export class PromptTemplateService {
 
   private buildTemplateValues({
     task,
-    node,
     project,
     runtime,
   }: {
