@@ -1313,7 +1313,18 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
   }): Promise<void> {
     let streamedStdoutLineCount = 0;
     let streamedStderrLineCount = 0;
+    let persistedStdoutJsonlLineCount = 0;
     let streamPersistQueue = Promise.resolve();
+    const isContinuation = !!this.normalizeOptionalString(
+      node.agentCliSessionId,
+    );
+
+    if (!isContinuation) {
+      await this.clearNodeOutputJsonl({
+        task,
+        node,
+      });
+    }
 
     const executionResult = await this.agentRunnerService.executeAgentNode({
       task,
@@ -1331,23 +1342,24 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         onStdoutLine: (line) => {
           streamedStdoutLineCount += 1;
           const lineIndex = streamedStdoutLineCount;
-          streamPersistQueue = streamPersistQueue.then(() => {
-            return this.persistAgentCliStreamLine({
-              taskId,
-              nodeId,
-              task,
-              node,
-              stream: 'stdout',
-              line,
-              lineIndex,
-            });
+          streamPersistQueue = streamPersistQueue.then(async () => {
+            persistedStdoutJsonlLineCount +=
+              await this.persistAgentCliStreamLine({
+                taskId,
+                nodeId,
+                task,
+                node,
+                stream: 'stdout',
+                line,
+                lineIndex,
+              });
           });
         },
         onStderrLine: (line) => {
           streamedStderrLineCount += 1;
           const lineIndex = streamedStderrLineCount;
-          streamPersistQueue = streamPersistQueue.then(() => {
-            return this.persistAgentCliStreamLine({
+          streamPersistQueue = streamPersistQueue.then(async () => {
+            await this.persistAgentCliStreamLine({
               taskId,
               nodeId,
               task,
@@ -1371,10 +1383,6 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       streamedStderrLineCount,
     });
 
-    const isContinuation = !!this.normalizeOptionalString(
-      node.agentCliSessionId,
-    );
-
     if (executionResult.success) {
       const fullOutput =
         executionResult.stdout ??
@@ -1382,24 +1390,25 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       const summary =
         fullOutput.length > 2_000 ? fullOutput.slice(0, 2_000) : fullOutput;
       const finishedAt = new Date().toISOString();
-      const agentClioutput = isContinuation
-        ? this.resolveNodeOutputPath(task, node)
-        : await this.writeNodeOutputJsonl({
-            task,
-            node,
-            output: {
-              summary,
-              stdout: executionResult.stdout,
-              stderr: executionResult.stderr || null,
-              exitCode: executionResult.exitCode,
-              durationMs: executionResult.durationMs,
-              finishedAt,
-              command: executionResult.command,
-              args: executionResult.args,
-              prompt: executionResult.prompt,
-              sessionId: executionResult.sessionId ?? null,
-            },
-          });
+      const agentClioutput =
+        isContinuation || persistedStdoutJsonlLineCount > 0
+          ? this.resolveNodeOutputPath(task, node)
+          : await this.writeNodeOutputJsonl({
+              task,
+              node,
+              output: {
+                summary,
+                stdout: executionResult.stdout,
+                stderr: executionResult.stderr || null,
+                exitCode: executionResult.exitCode,
+                durationMs: executionResult.durationMs,
+                finishedAt,
+                command: executionResult.command,
+                args: executionResult.args,
+                prompt: executionResult.prompt,
+                sessionId: executionResult.sessionId ?? null,
+              },
+            });
 
       const loopResult = await this.finalizeNodeAsSuccess({
         node,
@@ -1429,30 +1438,32 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const agentClioutput = isContinuation
-      ? this.resolveNodeOutputPath(task, node)
-      : await this.writeNodeOutputJsonl({
-          task,
-          node,
-          output: {
-            summary: executionResult.errorMessage ?? 'Agent execution failed',
-            stdout: executionResult.stdout || null,
-            stderr: executionResult.stderr || null,
-            exitCode: executionResult.exitCode,
-            signal: executionResult.signal,
-            durationMs: executionResult.durationMs,
-            timedOut: executionResult.timedOut,
-            finishedAt: new Date().toISOString(),
-            command: executionResult.command,
-            args: executionResult.args,
-            prompt: executionResult.prompt,
-            sessionId: executionResult.sessionId ?? null,
-            error: {
-              code: executionResult.timedOut ? 'TIMEOUT' : 'RUNNER_FAILED',
-              message: executionResult.errorMessage ?? 'Agent execution failed',
+    const agentClioutput =
+      isContinuation || persistedStdoutJsonlLineCount > 0
+        ? this.resolveNodeOutputPath(task, node)
+        : await this.writeNodeOutputJsonl({
+            task,
+            node,
+            output: {
+              summary: executionResult.errorMessage ?? 'Agent execution failed',
+              stdout: executionResult.stdout || null,
+              stderr: executionResult.stderr || null,
+              exitCode: executionResult.exitCode,
+              signal: executionResult.signal,
+              durationMs: executionResult.durationMs,
+              timedOut: executionResult.timedOut,
+              finishedAt: new Date().toISOString(),
+              command: executionResult.command,
+              args: executionResult.args,
+              prompt: executionResult.prompt,
+              sessionId: executionResult.sessionId ?? null,
+              error: {
+                code: executionResult.timedOut ? 'TIMEOUT' : 'RUNNER_FAILED',
+                message:
+                  executionResult.errorMessage ?? 'Agent execution failed',
+              },
             },
-          },
-        });
+          });
 
     await this.finalizeNodeAsFailure({
       nodeId,
@@ -1535,17 +1546,23 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     stream: 'stdout' | 'stderr';
     line: string;
     lineIndex: number;
-  }): Promise<void> {
+  }): Promise<number> {
     const normalizedLine = line.trim();
     if (!normalizedLine) {
-      return;
+      return 0;
     }
 
-    if (stream === 'stdout' && this.isJsonLine(normalizedLine)) {
-      await this.appendNodeOutputJsonlLines({
+    let persistedJsonlLineCount = 0;
+    const stdoutJsonlLines =
+      stream === 'stdout'
+        ? this.extractJsonLinesFromContent(normalizedLine)
+        : [];
+
+    if (stdoutJsonlLines.length) {
+      persistedJsonlLineCount = await this.appendNodeOutputJsonlLines({
         task,
         node,
-        lines: [normalizedLine],
+        lines: stdoutJsonlLines,
       });
     }
 
@@ -1560,6 +1577,8 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
         text: normalizedLine,
       },
     });
+
+    return persistedJsonlLineCount;
   }
 
   private async appendAgentCliStreamLogs({
@@ -2636,6 +2655,21 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     return outputPath;
   }
 
+  private async clearNodeOutputJsonl({
+    task,
+    node,
+  }: {
+    task: Task;
+    node: TaskNode;
+  }): Promise<void> {
+    const outputPath = this.resolveNodeOutputPath(task, node);
+
+    await fs.mkdir(path.dirname(outputPath), {
+      recursive: true,
+    });
+    await fs.writeFile(outputPath, '', 'utf-8');
+  }
+
   private async appendNodeOutputJsonlLines({
     task,
     node,
@@ -2644,22 +2678,22 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     task: Task;
     node: TaskNode;
     lines: string[];
-  }): Promise<string> {
+  }): Promise<number> {
     const normalizedLines = lines.flatMap((line) =>
       this.extractJsonLinesFromContent(line),
     );
 
-    const outputPath = this.resolveNodeOutputPath(task, node);
     if (!normalizedLines.length) {
-      return outputPath;
+      return 0;
     }
 
+    const outputPath = this.resolveNodeOutputPath(task, node);
     await fs.mkdir(path.dirname(outputPath), {
       recursive: true,
     });
     await fs.appendFile(outputPath, `${normalizedLines.join('\n')}\n`, 'utf-8');
 
-    return outputPath;
+    return normalizedLines.length;
   }
 
   private serializeNodeOutputJsonl(output: Record<string, unknown>): string {

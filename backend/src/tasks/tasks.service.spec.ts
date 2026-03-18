@@ -1429,6 +1429,62 @@ describe('TasksService', () => {
     );
   });
 
+  it('should preserve streamed stdout jsonl on success instead of overwriting it with truncated stdout', async () => {
+    const { service, taskNodeRepository, agentRunnerService } =
+      createTasksService();
+    const serviceAny = service as any;
+    const task = createTask();
+    const node = createNode({
+      agentClioutput: '/tmp/stale-output.jsonl',
+    });
+    const project = createProject();
+    const streamedLines = [
+      '{"type":"thread.started","thread_id":"thread-1"}',
+      '{"type":"turn.started"}',
+      '{"type":"item.completed","id":"item-1"}',
+    ];
+
+    agentRunnerService.executeAgentNode.mockImplementation(
+      (params: {
+        callbacks?: {
+          onStdoutLine?: (line: string) => void;
+        };
+      }) => {
+        for (const line of streamedLines) {
+          params.callbacks?.onStdoutLine?.(line);
+        }
+
+        return Promise.resolve({
+          success: true,
+          timedOut: false,
+          exitCode: 0,
+          signal: null,
+          command: 'codex',
+          args: ['exec', '--json', '-'],
+          cwd: '/tmp/worktree-task-1',
+          durationMs: 50,
+          stdout: streamedLines.slice(1).join('\n'),
+          stderr: '',
+          prompt: 'prompt',
+        });
+      },
+    );
+
+    await serviceAny.executeAgentNode({
+      taskId: task.id,
+      nodeId: node.id,
+      task,
+      node,
+      project,
+    });
+
+    const outputPath = taskNodeRepository.update.mock.calls.at(-1)?.[1]
+      ?.agentClioutput as string;
+    const outputContent = await fs.readFile(outputPath, 'utf-8');
+
+    expect(outputContent).toBe(`${streamedLines.join('\n')}\n`);
+  });
+
   it('should mark agent node in_review when execution fails', async () => {
     const {
       service,
@@ -1488,6 +1544,62 @@ describe('TasksService', () => {
         }),
       }),
     );
+  });
+
+  it('should preserve streamed stdout jsonl on failure instead of overwriting it with truncated stdout', async () => {
+    const { service, taskNodeRepository, agentRunnerService } =
+      createTasksService();
+    const serviceAny = service as any;
+    const task = createTask();
+    const node = createNode();
+    const project = createProject();
+    const streamedLines = [
+      '{"type":"thread.started","thread_id":"thread-1"}',
+      '{"type":"turn.started"}',
+      '{"type":"item.completed","id":"item-1"}',
+    ];
+
+    agentRunnerService.executeAgentNode.mockImplementation(
+      (params: {
+        callbacks?: {
+          onStdoutLine?: (line: string) => void;
+        };
+      }) => {
+        for (const line of streamedLines) {
+          params.callbacks?.onStdoutLine?.(line);
+        }
+
+        return Promise.resolve({
+          success: false,
+          timedOut: false,
+          exitCode: 1,
+          signal: null,
+          command: 'codex',
+          args: ['exec', '--json', '-'],
+          cwd: '/tmp/worktree-task-1',
+          durationMs: 50,
+          stdout: streamedLines.slice(1).join('\n'),
+          stderr: 'failed',
+          prompt: 'prompt',
+          errorMessage: 'Agent execution failed',
+        });
+      },
+    );
+    taskNodeRepository.findById.mockResolvedValue(node);
+
+    await serviceAny.executeAgentNode({
+      taskId: task.id,
+      nodeId: node.id,
+      task,
+      node,
+      project,
+    });
+
+    const outputPath = taskNodeRepository.update.mock.calls.at(-1)?.[1]
+      ?.agentClioutput as string;
+    const outputContent = await fs.readFile(outputPath, 'utf-8');
+
+    expect(outputContent).toBe(`${streamedLines.join('\n')}\n`);
   });
 
   it('should split long agent cli output into multiple task log chunks', () => {
