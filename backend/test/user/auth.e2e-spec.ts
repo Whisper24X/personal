@@ -1,19 +1,30 @@
 import request from 'supertest';
-import { APP_URL, TESTER_PASSWORD, TESTER_USERNAME } from '../utils/constants';
+import { APP_URL } from '../utils/constants';
+import { createRegisteredUser } from '../utils/auth-fixtures';
 
 describe('Auth Module', () => {
   const app = APP_URL;
+  const existingUsername = `existing.${Date.now()}`;
   const newUserNickname = `Tester${Date.now()}`;
   const newUsername = `user.${Date.now()}`;
   const newUserPassword = 'secret';
+
+  beforeAll(async () => {
+    await createRegisteredUser({
+      app,
+      username: existingUsername,
+      password: newUserPassword,
+      nickname: 'Existing Tester',
+    });
+  });
 
   describe('Registration', () => {
     it('should fail with existing username: /api/v1/auth/email/register (POST)', () => {
       return request(app)
         .post('/api/v1/auth/email/register')
         .send({
-          username: TESTER_USERNAME,
-          password: TESTER_PASSWORD,
+          username: existingUsername,
+          password: newUserPassword,
           nickname: 'Tester E2E',
         })
         .expect(409);

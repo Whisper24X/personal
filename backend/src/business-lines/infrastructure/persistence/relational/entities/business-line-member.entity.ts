@@ -38,12 +38,14 @@ export class BusinessLineMemberEntity extends EntityRelationalHelper {
   roleId: string;
 
   @ManyToOne(() => BusinessLineEntity, {
+    createForeignKeyConstraints: false,
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'businessLineId' })
   businessLine: BusinessLineEntity;
 
   @ManyToOne(() => BusinessLineCustomRoleEntity, {
+    createForeignKeyConstraints: false,
     onDelete: 'RESTRICT',
   })
   @JoinColumn({ name: 'roleId' })

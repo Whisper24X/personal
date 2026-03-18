@@ -37,6 +37,7 @@ export class ProjectCustomRoleEntity extends EntityRelationalHelper {
   capabilities: string[];
 
   @ManyToOne(() => BusinessLineEntity, {
+    createForeignKeyConstraints: false,
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'businessLineId' })

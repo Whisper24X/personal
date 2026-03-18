@@ -51,6 +51,7 @@ export class AgentToolConfigEntity extends EntityRelationalHelper {
   isDefault: boolean;
 
   @ManyToOne(() => BusinessLineEntity, {
+    createForeignKeyConstraints: false,
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'businessLineId' })

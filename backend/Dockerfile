@@ -34,7 +34,7 @@ ENV PATH="/root/.local/bin:/root/.opencode/bin:${PATH}"
 
 WORKDIR /usr/src/app
 
-# 构建产物与运行时依赖（migration/seed 直接从 dist 运行，无需源码）
+# 构建产物与运行时依赖（migration 直接从 dist 运行，无需源码）
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./

@@ -52,12 +52,6 @@ The database layer follows [Hexagonal Architecture](architecture.md#hexagonal-ar
    npm run migration:run
    ```
 
-1. Run seeds
-
-   ```bash
-   npm run seed:run:relational
-   ```
-
 1. Run app in dev mode
 
    **需要同时启动 API 和 Worker**（任务执行由 Worker 负责）：

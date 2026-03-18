@@ -1,11 +1,9 @@
 import request from 'supertest';
+import { APP_URL } from '../utils/constants';
 import {
-  APP_URL,
-  ADMIN_PASSWORD,
-  ADMIN_USERNAME,
-  TESTER_PASSWORD,
-  TESTER_USERNAME,
-} from '../utils/constants';
+  createAdminSession,
+  createRegisteredUser,
+} from '../utils/auth-fixtures';
 
 describe('Business Lines Module', () => {
   const app = APP_URL;
@@ -13,21 +11,8 @@ describe('Business Lines Module', () => {
   let testerToken: string;
 
   beforeAll(async () => {
-    await request(app)
-      .post('/api/v1/auth/login')
-      .send({ username: ADMIN_USERNAME, password: ADMIN_PASSWORD })
-      .expect(200)
-      .then(({ body }) => {
-        adminToken = body.token;
-      });
-
-    await request(app)
-      .post('/api/v1/auth/login')
-      .send({ username: TESTER_USERNAME, password: TESTER_PASSWORD })
-      .expect(200)
-      .then(({ body }) => {
-        testerToken = body.token;
-      });
+    ({ token: adminToken } = await createAdminSession(app));
+    ({ token: testerToken } = await createRegisteredUser({ app }));
   });
 
   it('should create/list/get/update/delete business line and manage members', async () => {

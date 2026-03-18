@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class InitAinativeSchema1773805628409 implements MigrationInterface {
-  name = 'InitAinativeSchema1773805628409';
+export class InitAinativeSchema1773806731299 implements MigrationInterface {
+  name = 'InitAinativeSchema1773806731299';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
@@ -126,15 +126,6 @@ export class InitAinativeSchema1773805628409 implements MigrationInterface {
     );
     await queryRunner.query(`COMMENT ON TABLE "project_members" IS '项目成员'`);
     await queryRunner.query(
-      `CREATE TABLE "notification_settings" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "userId" uuid NOT NULL, "emailEnabled" boolean NOT NULL DEFAULT false, "emailAddress" character varying(255), "webhookEnabled" boolean NOT NULL DEFAULT false, "webhookUrl" text, "browserEnabled" boolean NOT NULL DEFAULT true, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_d131abd7996c475ef768d4559ba" PRIMARY KEY ("id")); COMMENT ON COLUMN "notification_settings"."id" IS '主键（UUID）'; COMMENT ON COLUMN "notification_settings"."userId" IS '关联用户ID'; COMMENT ON COLUMN "notification_settings"."emailEnabled" IS '是否启用邮件通知'; COMMENT ON COLUMN "notification_settings"."emailAddress" IS '通知邮箱地址'; COMMENT ON COLUMN "notification_settings"."webhookEnabled" IS '是否启用Webhook通知'; COMMENT ON COLUMN "notification_settings"."webhookUrl" IS '回调地址'; COMMENT ON COLUMN "notification_settings"."browserEnabled" IS '是否启用浏览器通知'; COMMENT ON COLUMN "notification_settings"."createdAt" IS '创建时间'; COMMENT ON COLUMN "notification_settings"."updatedAt" IS '更新时间'`,
-    );
-    await queryRunner.query(
-      `CREATE UNIQUE INDEX "UQ_notification_settings_user_id" ON "notification_settings" ("userId") `,
-    );
-    await queryRunner.query(
-      `COMMENT ON TABLE "notification_settings" IS '用户通知偏好设置'`,
-    );
-    await queryRunner.query(
       `CREATE TABLE "notification_events" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "userId" uuid NOT NULL, "taskId" uuid, "eventType" character varying(120) NOT NULL, "title" character varying(200) NOT NULL, "content" text NOT NULL, "payload" jsonb, "readAt" TIMESTAMP, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_5b828caf9bd52c7e580f5768b14" PRIMARY KEY ("id")); COMMENT ON COLUMN "notification_events"."id" IS '主键（UUID）'; COMMENT ON COLUMN "notification_events"."userId" IS '目标用户ID'; COMMENT ON COLUMN "notification_events"."taskId" IS '关联任务ID'; COMMENT ON COLUMN "notification_events"."eventType" IS '通知事件类型'; COMMENT ON COLUMN "notification_events"."title" IS '通知标题'; COMMENT ON COLUMN "notification_events"."content" IS '通知内容'; COMMENT ON COLUMN "notification_events"."payload" IS '通知载荷JSON'; COMMENT ON COLUMN "notification_events"."readAt" IS '已读时间'; COMMENT ON COLUMN "notification_events"."createdAt" IS '创建时间'`,
     );
     await queryRunner.query(
@@ -148,6 +139,15 @@ export class InitAinativeSchema1773805628409 implements MigrationInterface {
     );
     await queryRunner.query(
       `COMMENT ON TABLE "notification_events" IS '用户通知事件'`,
+    );
+    await queryRunner.query(
+      `CREATE TABLE "notification_settings" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "userId" uuid NOT NULL, "emailEnabled" boolean NOT NULL DEFAULT false, "emailAddress" character varying(255), "webhookEnabled" boolean NOT NULL DEFAULT false, "webhookUrl" text, "browserEnabled" boolean NOT NULL DEFAULT true, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_d131abd7996c475ef768d4559ba" PRIMARY KEY ("id")); COMMENT ON COLUMN "notification_settings"."id" IS '主键（UUID）'; COMMENT ON COLUMN "notification_settings"."userId" IS '关联用户ID'; COMMENT ON COLUMN "notification_settings"."emailEnabled" IS '是否启用邮件通知'; COMMENT ON COLUMN "notification_settings"."emailAddress" IS '通知邮箱地址'; COMMENT ON COLUMN "notification_settings"."webhookEnabled" IS '是否启用Webhook通知'; COMMENT ON COLUMN "notification_settings"."webhookUrl" IS '回调地址'; COMMENT ON COLUMN "notification_settings"."browserEnabled" IS '是否启用浏览器通知'; COMMENT ON COLUMN "notification_settings"."createdAt" IS '创建时间'; COMMENT ON COLUMN "notification_settings"."updatedAt" IS '更新时间'`,
+    );
+    await queryRunner.query(
+      `CREATE UNIQUE INDEX "UQ_notification_settings_user_id" ON "notification_settings" ("userId") `,
+    );
+    await queryRunner.query(
+      `COMMENT ON TABLE "notification_settings" IS '用户通知偏好设置'`,
     );
     await queryRunner.query(
       `CREATE TABLE "business_line_roles" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "businessLineId" uuid NOT NULL, "name" character varying(120) NOT NULL, "description" character varying(255), "capabilities" jsonb NOT NULL DEFAULT '[]'::jsonb, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_97a877b75b8db5f5fafa1824dfd" PRIMARY KEY ("id")); COMMENT ON COLUMN "business_line_roles"."id" IS '主键（UUID）'; COMMENT ON COLUMN "business_line_roles"."businessLineId" IS '所属业务线ID'; COMMENT ON COLUMN "business_line_roles"."name" IS '角色名称'; COMMENT ON COLUMN "business_line_roles"."description" IS '角色描述'; COMMENT ON COLUMN "business_line_roles"."capabilities" IS '能力码列表(JSON)'; COMMENT ON COLUMN "business_line_roles"."createdAt" IS '创建时间'; COMMENT ON COLUMN "business_line_roles"."updatedAt" IS '更新时间'`,
@@ -227,69 +227,9 @@ export class InitAinativeSchema1773805628409 implements MigrationInterface {
     await queryRunner.query(
       `COMMENT ON TABLE "automations" IS '定时自动化定义'`,
     );
-    await queryRunner.query(
-      `ALTER TABLE "task_nodes" ADD CONSTRAINT "FK_319df5722192180982f8bdd048e" FOREIGN KEY ("taskId") REFERENCES "tasks"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "project_roles" ADD CONSTRAINT "FK_b98414f6aa99da0b3e1cc344332" FOREIGN KEY ("businessLineId") REFERENCES "business_lines"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "project_members" ADD CONSTRAINT "FK_d19892d8f03928e5bfc7313780c" FOREIGN KEY ("projectId") REFERENCES "projects"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "project_members" ADD CONSTRAINT "FK_91dd6fc1e69a4b682f780a0c437" FOREIGN KEY ("roleId") REFERENCES "project_roles"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "business_line_roles" ADD CONSTRAINT "FK_db4dd7ddeb3763658fd8d16a816" FOREIGN KEY ("businessLineId") REFERENCES "business_lines"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "business_line_members" ADD CONSTRAINT "FK_ae8604971b2eccdad4f61131366" FOREIGN KEY ("businessLineId") REFERENCES "business_lines"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "business_line_members" ADD CONSTRAINT "FK_a9989b25938261a6c8a4fde8acf" FOREIGN KEY ("roleId") REFERENCES "business_line_roles"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "business_line_invitations" ADD CONSTRAINT "FK_8fc93bc994d44ce778226eec4be" FOREIGN KEY ("businessLineId") REFERENCES "business_lines"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "business_line_invitations" ADD CONSTRAINT "FK_bee220728ae119d9b40ccf2b318" FOREIGN KEY ("roleId") REFERENCES "business_line_roles"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "agent_cli_configs" ADD CONSTRAINT "FK_8a1996a8937fe83f2204843fc4e" FOREIGN KEY ("businessLineId") REFERENCES "business_lines"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
-    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `ALTER TABLE "agent_cli_configs" DROP CONSTRAINT "FK_8a1996a8937fe83f2204843fc4e"`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "business_line_invitations" DROP CONSTRAINT "FK_bee220728ae119d9b40ccf2b318"`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "business_line_invitations" DROP CONSTRAINT "FK_8fc93bc994d44ce778226eec4be"`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "business_line_members" DROP CONSTRAINT "FK_a9989b25938261a6c8a4fde8acf"`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "business_line_members" DROP CONSTRAINT "FK_ae8604971b2eccdad4f61131366"`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "business_line_roles" DROP CONSTRAINT "FK_db4dd7ddeb3763658fd8d16a816"`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "project_members" DROP CONSTRAINT "FK_91dd6fc1e69a4b682f780a0c437"`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "project_members" DROP CONSTRAINT "FK_d19892d8f03928e5bfc7313780c"`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "project_roles" DROP CONSTRAINT "FK_b98414f6aa99da0b3e1cc344332"`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "task_nodes" DROP CONSTRAINT "FK_319df5722192180982f8bdd048e"`,
-    );
     await queryRunner.query(`COMMENT ON TABLE "automations" IS NULL`);
     await queryRunner.query(`DROP INDEX "public"."IDX_automations_project_id"`);
     await queryRunner.query(`DROP INDEX "public"."IDX_automations_name"`);
@@ -342,6 +282,11 @@ export class InitAinativeSchema1773805628409 implements MigrationInterface {
       `DROP INDEX "public"."IDX_business_line_role_business_line_id"`,
     );
     await queryRunner.query(`DROP TABLE "business_line_roles"`);
+    await queryRunner.query(`COMMENT ON TABLE "notification_settings" IS NULL`);
+    await queryRunner.query(
+      `DROP INDEX "public"."UQ_notification_settings_user_id"`,
+    );
+    await queryRunner.query(`DROP TABLE "notification_settings"`);
     await queryRunner.query(`COMMENT ON TABLE "notification_events" IS NULL`);
     await queryRunner.query(
       `DROP INDEX "public"."IDX_notification_events_read_at"`,
@@ -353,11 +298,6 @@ export class InitAinativeSchema1773805628409 implements MigrationInterface {
       `DROP INDEX "public"."IDX_notification_events_user_id"`,
     );
     await queryRunner.query(`DROP TABLE "notification_events"`);
-    await queryRunner.query(`COMMENT ON TABLE "notification_settings" IS NULL`);
-    await queryRunner.query(
-      `DROP INDEX "public"."UQ_notification_settings_user_id"`,
-    );
-    await queryRunner.query(`DROP TABLE "notification_settings"`);
     await queryRunner.query(`COMMENT ON TABLE "project_members" IS NULL`);
     await queryRunner.query(
       `DROP INDEX "public"."IDX_project_members_role_id"`,

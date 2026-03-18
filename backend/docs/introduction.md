@@ -11,7 +11,6 @@ Frontend (React, Next.js): <https://github.com/brocoders/extensive-react-boilerp
 ## Features
 
 - [x] Database. Support [TypeORM](https://www.npmjs.com/package/typeorm) and [Mongoose](https://www.npmjs.com/package/mongoose).
-- [x] Seeding.
 - [x] Config Service ([@nestjs/config](https://www.npmjs.com/package/@nestjs/config)).
 - [x] Sign in and sign up via email.
 - [x] Admin and User roles.

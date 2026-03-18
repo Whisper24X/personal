@@ -1,18 +1,13 @@
 import request from 'supertest';
-import { APP_URL, ADMIN_PASSWORD, ADMIN_USERNAME } from '../utils/constants';
+import { APP_URL } from '../utils/constants';
+import { createAdminSession } from '../utils/auth-fixtures';
 
 describe('Projects and Tasks Module', () => {
   const app = APP_URL;
   let adminToken: string;
 
   beforeAll(async () => {
-    await request(app)
-      .post('/api/v1/auth/login')
-      .send({ username: ADMIN_USERNAME, password: ADMIN_PASSWORD })
-      .expect(200)
-      .then(({ body }) => {
-        adminToken = body.token;
-      });
+    ({ token: adminToken } = await createAdminSession(app));
   });
 
   it('should create project/template/task and execute one node', async () => {

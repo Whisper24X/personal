@@ -35,12 +35,14 @@ export class ProjectMemberEntity extends EntityRelationalHelper {
   roleId: string;
 
   @ManyToOne(() => ProjectEntity, {
+    createForeignKeyConstraints: false,
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'projectId' })
   project: ProjectEntity;
 
   @ManyToOne(() => ProjectCustomRoleEntity, {
+    createForeignKeyConstraints: false,
     onDelete: 'RESTRICT',
   })
   @JoinColumn({ name: 'roleId' })

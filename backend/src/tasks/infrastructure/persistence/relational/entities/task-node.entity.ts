@@ -97,6 +97,7 @@ export class TaskNodeEntity extends EntityRelationalHelper {
   finishedAt?: Date | null;
 
   @ManyToOne(() => TaskEntity, {
+    createForeignKeyConstraints: false,
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'taskId' })

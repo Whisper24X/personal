@@ -50,12 +50,14 @@ export class BusinessLineInvitationEntity extends EntityRelationalHelper {
   revokedAt: Date | null;
 
   @ManyToOne(() => BusinessLineEntity, {
+    createForeignKeyConstraints: false,
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'businessLineId' })
   businessLine: BusinessLineEntity;
 
   @ManyToOne(() => BusinessLineCustomRoleEntity, {
+    createForeignKeyConstraints: false,
     onDelete: 'RESTRICT',
   })
   @JoinColumn({ name: 'roleId' })

@@ -1,4 +1,5 @@
-import { APP_URL, ADMIN_PASSWORD, ADMIN_USERNAME } from '../utils/constants';
+import { APP_URL } from '../utils/constants';
+import { createAdminSession } from '../utils/auth-fixtures';
 import request from 'supertest';
 
 describe('Users Module', () => {
@@ -6,12 +7,7 @@ describe('Users Module', () => {
   let apiToken;
 
   beforeAll(async () => {
-    await request(app)
-      .post('/api/v1/auth/email/login')
-      .send({ username: ADMIN_USERNAME, password: ADMIN_PASSWORD })
-      .then(({ body }) => {
-        apiToken = body.token;
-      });
+    ({ token: apiToken } = await createAdminSession(app));
   });
 
   describe('Update', () => {
