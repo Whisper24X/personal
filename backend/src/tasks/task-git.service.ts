@@ -50,7 +50,11 @@ export class TaskGitService {
     );
 
     const [statusResult, branchResult] = await Promise.all([
-      this.runGitCommand(worktreePath, ['status', '--porcelain']),
+      this.runGitCommand(worktreePath, [
+        'status',
+        '--porcelain',
+        '--untracked-files=all',
+      ]),
       this.runGitCommand(worktreePath, ['rev-parse', '--abbrev-ref', 'HEAD']),
     ]);
 
@@ -529,7 +533,7 @@ export class TaskGitService {
         return {
           path: normalizedPath,
           status,
-          staged: status[0] !== ' ',
+          staged: status[0] !== ' ' && status[0] !== '?' && status[0] !== '!',
         };
       });
   }

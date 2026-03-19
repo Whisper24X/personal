@@ -18,11 +18,13 @@ defineOptions({
 const props = withDefaults(
   defineProps<{
     diffText: string
+    fallbackText?: string
     emptyText?: string
     loading?: boolean
     fallbackPath?: string | null
   }>(),
   {
+    fallbackText: '',
     emptyText: '暂无差异',
     loading: false,
     fallbackPath: null,
@@ -31,8 +33,11 @@ const props = withDefaults(
 
 const parsedFiles = computed(() => parseUnifiedDiff(props.diffText))
 const viewMode = ref<'unified' | 'split'>('unified')
+const hasFallbackText = computed(() => Boolean(props.fallbackText.trim()))
+const hasDiffText = computed(() => Boolean(props.diffText.trim()))
+const fallbackContent = computed(() => props.fallbackText || props.diffText)
 const shouldUseFallback = computed(() => {
-  return Boolean(props.diffText.trim()) && parsedFiles.value.length === 0
+  return hasFallbackText.value || (hasDiffText.value && parsedFiles.value.length === 0)
 })
 
 const statusTextMap: Record<TaskDiffFileStatus, string> = {
@@ -161,12 +166,12 @@ function renderSplitCell(
       加载中...
     </div>
 
-    <div v-else-if="!props.diffText.trim()" class="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
+    <div v-else-if="!hasDiffText && !hasFallbackText" class="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
       {{ props.emptyText }}
     </div>
 
     <div v-else-if="shouldUseFallback" class="min-h-0 overflow-auto p-3">
-      <pre class="font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap">{{ props.diffText }}</pre>
+      <pre class="font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap">{{ fallbackContent }}</pre>
     </div>
 
     <div v-else class="space-y-4 p-3">

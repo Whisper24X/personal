@@ -5,6 +5,7 @@ import FileTree from './FileTree.vue'
 import FilePreviewCard from './FilePreviewCard.vue'
 import {
   createFileTreeNodes,
+  findFileTreeNode,
   updateFileTreeChildren,
   type FileTreeNode,
 } from './file-tree'
@@ -104,6 +105,27 @@ const loadPreview = async (path: string) => {
   }
 }
 
+const autoExpandSingleDirChain = async (
+  initialNodes: FileTreeNode[],
+  expanded: Set<string>,
+) => {
+  let nextNodes = initialNodes
+  let currentNodes = initialNodes
+
+  while (currentNodes.length === 1 && currentNodes[0]?.isDir) {
+    const onlyDir = currentNodes[0]
+    expanded.add(onlyDir.path)
+
+    const childResponse = await props.loadTree(onlyDir.path)
+    nextNodes = updateFileTreeChildren(nextNodes, onlyDir.path, childResponse.entries)
+
+    const refreshedNode = findFileTreeNode(nextNodes, onlyDir.path)
+    currentNodes = refreshedNode?.children ?? []
+  }
+
+  return nextNodes
+}
+
 const loadWorkspaceRoot = async (options?: { preserveExpanded?: boolean }) => {
   if (refreshInFlight.value) {
     return
@@ -118,6 +140,11 @@ const loadWorkspaceRoot = async (options?: { preserveExpanded?: boolean }) => {
 
     let nextNodes = createFileTreeNodes(response.entries)
     const expandedSnapshot = [...expandedPaths.value]
+    const nextExpandedPaths = options?.preserveExpanded
+      ? new Set(expandedSnapshot)
+      : new Set<string>()
+
+    nextNodes = await autoExpandSingleDirChain(nextNodes, nextExpandedPaths)
 
     if (options?.preserveExpanded && expandedSnapshot.length > 0) {
       for (const path of expandedSnapshot) {
@@ -131,6 +158,7 @@ const loadWorkspaceRoot = async (options?: { preserveExpanded?: boolean }) => {
     }
 
     treeNodes.value = nextNodes
+    expandedPaths.value = nextExpandedPaths
   } catch (error) {
     treeNodes.value = []
     treeErrorMessage.value = toErrorMessage(error, props.treeLoadErrorText)

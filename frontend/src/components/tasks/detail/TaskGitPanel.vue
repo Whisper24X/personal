@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { tasksApi } from '@/api/tasks'
-import type { TaskGitBranchDiffFile, TaskGitStatus } from '@/types/api/tasks'
+import type { TaskGitBranchDiffFile, TaskGitChangedFile, TaskGitStatus } from '@/types/api/tasks'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import TaskDiffViewer from './TaskDiffViewer.vue'
 
@@ -19,6 +19,7 @@ const loading = ref(false)
 const errorMessage = ref('')
 const statusInfo = ref<TaskGitStatus | null>(null)
 const diffText = ref('')
+const diffFallbackText = ref('')
 const diffLoading = ref(false)
 const selectedFilePath = ref<string | null>(null)
 const activeTab = ref<'changes' | 'compare' | 'log'>('changes')
@@ -58,6 +59,10 @@ const hasStagedFiles = computed(() => {
 
 const conflictFiles = ref<string[]>([])
 
+const findChangedFile = (filePath: string) => {
+  return (statusInfo.value?.files || []).find((file) => file.path === filePath) ?? null
+}
+
 const loadStatus = async () => {
   loading.value = true
   errorMessage.value = ''
@@ -72,14 +77,35 @@ const loadStatus = async () => {
   }
 }
 
-const loadDiff = async (filePath?: string, staged?: boolean) => {
+const loadWorkspaceFallback = async (file: TaskGitChangedFile) => {
+  const preview = await tasksApi.workspacePreview(props.taskId, file.path)
+
+  if (preview.tooLarge) {
+    diffFallbackText.value = '文件过大，暂不支持在 Git 变更面板内预览。'
+    return
+  }
+
+  if (preview.previewType === 'text' && typeof preview.text === 'string') {
+    diffFallbackText.value = preview.text
+    return
+  }
+
+  diffFallbackText.value = '当前文件类型暂不支持在 Git 变更面板内预览。'
+}
+
+const loadDiff = async (file: TaskGitChangedFile) => {
   diffLoading.value = true
+  diffFallbackText.value = ''
   try {
     const response = await tasksApi.gitDiff(props.taskId, {
-      path: filePath,
-      staged,
+      path: file.path,
+      staged: file.staged,
     })
     diffText.value = response.diffText || ''
+
+    if (!response.diffText.trim() && !file.staged && file.status.trim() === '??') {
+      await loadWorkspaceFallback(file)
+    }
   } catch (error) {
     diffText.value = ''
     errorMessage.value = toErrorMessage(error, '加载 diff 失败')
@@ -88,9 +114,9 @@ const loadDiff = async (filePath?: string, staged?: boolean) => {
   }
 }
 
-const selectFile = (filePath: string, staged: boolean) => {
-  selectedFilePath.value = filePath
-  void loadDiff(filePath, staged)
+const selectFile = (file: TaskGitChangedFile) => {
+  selectedFilePath.value = file.path
+  void loadDiff(file)
 }
 
 const loadBranchDiffFiles = async () => {
@@ -157,7 +183,14 @@ const toggleStage = async (filePath: string, staged: boolean) => {
     await loadStatus()
 
     if (selectedFilePath.value === filePath) {
-      await loadDiff(filePath, !staged)
+      const nextFile =
+        findChangedFile(filePath) ?? {
+          path: filePath,
+          status: staged ? '??' : 'A',
+          staged: !staged,
+        }
+
+      await loadDiff(nextFile)
     }
   } catch (error) {
     errorMessage.value = toErrorMessage(error, staged ? '取消暂存失败' : '暂存失败')
@@ -306,6 +339,7 @@ watch(
     selectedFilePath.value = null
     selectedBranchDiffPath.value = null
     diffText.value = ''
+    diffFallbackText.value = ''
     branchDiffText.value = ''
     logText.value = ''
     actionMessage.value = ''
@@ -424,8 +458,8 @@ watch(
                       :class="selectedFilePath === file.path ? 'bg-muted/50 text-foreground' : 'text-muted-foreground'"
                       role="button"
                       tabindex="0"
-                      @click="selectFile(file.path, true)"
-                      @keydown.enter="selectFile(file.path, true)"
+                      @click="selectFile(file)"
+                      @keydown.enter="selectFile(file)"
                     >
                       <span class="w-6 shrink-0 rounded bg-emerald-500/10 px-1 text-center text-[10px] text-emerald-600 dark:text-emerald-400">
                         {{ statusLabel(file.status) }}
@@ -454,8 +488,8 @@ watch(
                       :class="selectedFilePath === file.path ? 'bg-muted/50 text-foreground' : 'text-muted-foreground'"
                       role="button"
                       tabindex="0"
-                      @click="selectFile(file.path, false)"
-                      @keydown.enter="selectFile(file.path, false)"
+                      @click="selectFile(file)"
+                      @keydown.enter="selectFile(file)"
                     >
                       <span class="w-6 shrink-0 rounded bg-muted/30 px-1 text-center text-[10px]">
                         {{ statusLabel(file.status) }}
@@ -503,6 +537,7 @@ watch(
 
           <TaskDiffViewer
             :diff-text="diffText"
+            :fallback-text="diffFallbackText"
             :loading="diffLoading"
             :empty-text="'选择文件查看差异'"
             :fallback-path="selectedFilePath"

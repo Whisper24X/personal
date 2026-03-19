@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "run-p dev:backend dev:frontend",
+    "dev": "sh -c 'pnpm --dir backend run start:dev & backend_pid=$!; trap \"kill $backend_pid\" EXIT INT TERM; until node -e \"fetch(\\\"http://127.0.0.1:9000/\\\").then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))\"; do sleep 1; done; pnpm --dir frontend dev'",
     "dev:backend": "pnpm --dir backend run start:dev",
     "dev:frontend": "pnpm --dir frontend dev",
     "dev:install": "pnpm --dir frontend install && pnpm --dir backend install",
