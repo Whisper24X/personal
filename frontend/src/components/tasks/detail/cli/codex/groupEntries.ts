@@ -37,7 +37,10 @@ function isStandaloneCodexEvent(entry: NormalizedEntry): boolean {
 }
 
 function isStandaloneCodexCard(entry: NormalizedEntry): boolean {
-  return entry.type === 'system_message' && entry.metadata?.codexCardType === 'todo_list'
+  return (
+    entry.type === 'system_message' &&
+    (entry.metadata?.codexCardType === 'todo_list' || entry.metadata?.codexCardType === 'file_change')
+  )
 }
 
 export function groupCodexEntries(entries: NormalizedEntry[]): CodexMessageGroup[] {

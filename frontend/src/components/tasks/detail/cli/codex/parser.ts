@@ -192,6 +192,47 @@ function extractTodoListItems(item: RecordLike): Array<{ text: string; completed
     .filter((entry): entry is { text: string; completed: boolean } => Boolean(entry))
 }
 
+function shortenFilePath(path: string): string {
+  const segments = path.split(/[\\/]+/).filter(Boolean)
+  if (segments.length <= 4) return segments.join('/')
+  return segments.slice(-4).join('/')
+}
+
+function formatFileChangeKind(kind: string | undefined): string {
+  const normalized = kind?.toLowerCase()
+  if (normalized === 'add' || normalized === 'create') return '新增'
+  if (normalized === 'delete' || normalized === 'remove') return '删除'
+  if (normalized === 'rename') return '重命名'
+  if (normalized === 'move') return '移动'
+  if (normalized === 'update' || normalized === 'modify' || normalized === 'edit') return '修改'
+  return '变更'
+}
+
+type CodexFileChange = {
+  path: string
+  kind?: string
+}
+
+function extractFileChanges(item: RecordLike): CodexFileChange[] {
+  const rawChanges = Array.isArray(item.changes) ? item.changes : []
+  const changes: CodexFileChange[] = []
+
+  rawChanges.forEach((raw) => {
+    const record = asRecord(raw)
+    if (!record) return
+
+    const path = getString(record.path)
+    if (!path) return
+
+    changes.push({
+      path,
+      kind: getString(record.kind),
+    })
+  })
+
+  return changes
+}
+
 function createCodexTodoListEntry(
   item: RecordLike,
   timestamp: number,
@@ -216,6 +257,36 @@ function createCodexTodoListEntry(
       todoItems,
       todoCompletedCount: completedCount,
       todoTotalCount: totalCount,
+      status: isCompleted ? 'success' : 'running',
+    },
+  }
+}
+
+function createCodexFileChangeEntry(
+  item: RecordLike,
+  timestamp: number,
+  normalizedType: string | undefined,
+  idBase: string,
+): NormalizedEntry | null {
+  const changes = extractFileChanges(item)
+  if (changes.length === 0) return null
+
+  const isCompleted = normalizedType?.endsWith('_completed') ?? false
+  const heading = isCompleted ? '文件变更' : '文件变更中'
+  const lines = changes.map((change) => `- ${formatFileChangeKind(change.kind)} \`${shortenFilePath(change.path)}\``)
+  const firstLine = lines[0]
+  if (!firstLine) return null
+
+  return {
+    id: idBase,
+    type: 'system_message',
+    timestamp,
+    content: lines.length === 1 ? `${heading} · ${firstLine.slice(2)}` : `${heading} (${lines.length})\n${lines.join('\n')}`,
+    metadata: {
+      codexCardType: 'file_change',
+      codexItemId: getString(item.id),
+      codexItemType: 'file_change',
+      codexChanges: changes,
       status: isCompleted ? 'success' : 'running',
     },
   }
@@ -263,6 +334,10 @@ function parseCodexItemEvent(
 
   if (itemType === 'todo_list') {
     return createCodexTodoListEntry(item, timestamp, normalizedType, idBase)
+  }
+
+  if (itemType === 'file_change') {
+    return createCodexFileChangeEntry(item, timestamp, normalizedType, idBase)
   }
 
   const text = stringifyContent(item.text ?? item.content ?? item.message ?? item.output ?? item.result)

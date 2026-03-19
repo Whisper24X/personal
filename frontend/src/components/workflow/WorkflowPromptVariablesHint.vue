@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { WORKFLOW_PROMPT_VARIABLES } from '@/constants/workflow'
 
 defineOptions({
@@ -24,9 +24,11 @@ const VARIABLE_GROUPS = [
 const props = withDefaults(
   defineProps<{
     variant?: 'card' | 'popover'
+    size?: 'default' | 'sm'
   }>(),
   {
     variant: 'card',
+    size: 'default',
   },
 )
 
@@ -49,6 +51,12 @@ const variableGroups = VARIABLE_GROUPS.map((group) => {
 const closePopover = () => {
   popoverOpen.value = false
 }
+
+const popoverButtonClass = computed(() => {
+  return props.size === 'sm'
+    ? 'inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-background text-[10px] font-semibold text-muted-foreground transition hover:text-foreground hover:shadow-sm'
+    : 'inline-flex h-7 w-7 items-center justify-center rounded-full border border-border bg-background text-xs font-semibold text-muted-foreground transition hover:text-foreground hover:shadow-sm'
+})
 
 const togglePopover = () => {
   popoverOpen.value = !popoverOpen.value
@@ -117,7 +125,7 @@ onBeforeUnmount(() => {
   <div v-else ref="rootRef" class="relative">
     <button
       type="button"
-      class="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border bg-background text-xs font-semibold text-muted-foreground transition hover:text-foreground hover:shadow-sm"
+      :class="popoverButtonClass"
       aria-label="查看工作流 Prompt 变量说明"
       @click="togglePopover"
     >

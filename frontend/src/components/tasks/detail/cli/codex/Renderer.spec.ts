@@ -2,7 +2,6 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import type { TaskMessage } from '@/types/api/tasks'
 import Renderer from './Renderer.vue'
-import TaskGroupCard from './TaskGroupCard.vue'
 
 function createMessage(content: Record<string, unknown>, createdAt = '2026-03-19T02:00:00.000Z'): TaskMessage {
   return {
@@ -91,96 +90,60 @@ describe('CliCodexRenderer', () => {
     expect(wrapper.text()).toContain('归纳问题框架、需求项、边界与待确认问题')
   })
 
-  it('renders json transport errors as structured error cards', () => {
+  it('renders structured errors as collapsed cards with json details', () => {
     const wrapper = mount(Renderer, {
       props: {
         messages: [
-          createMessage({
-            type: 'error',
-            message: 'Reconnecting... 1/5 (stream disconnected before completion: Transport error: network error: error decoding response body)',
-          }),
+          {
+            role: 'error',
+            content:
+              '{"type":"error","message":"Reconnecting... 1/5 (stream disconnected before completion: Transport error: network error: error decoding response body)"}',
+            createdAt: '2026-03-19T07:37:50.000Z',
+          } as TaskMessage,
         ],
       },
     })
 
-    expect(wrapper.text()).toContain('连接异常')
+    const details = wrapper.get('details')
+
+    expect(details.attributes('open')).toBeUndefined()
+    expect(wrapper.text()).toContain('Error')
     expect(wrapper.text()).toContain('Reconnecting... 1/5')
-    expect(wrapper.text()).toContain('error')
+    expect(wrapper.find('summary .uppercase').exists()).toBe(false)
+    expect(wrapper.get('pre').text()).toContain('"type": "error"')
   })
 
-  it('toggles codex task group copy between summary and full content', async () => {
-    const wrapper = mount(TaskGroupCard, {
-      props: {
-        group: {
-          type: 'task',
-          title: '诊断摘要预览',
-          description: '完整诊断说明\n\n- 第一步\n- 第二步',
-          tools: [
-            {
-              id: 'tool-1',
-              type: 'command_run',
-              timestamp: 1,
-              content: 'pwd',
-              metadata: {
-                toolName: 'execute',
-                command: 'pwd',
-                status: 'success',
-              },
-            },
-            {
-              id: 'tool-1-result',
-              type: 'tool_result',
-              timestamp: 2,
-              content: '/tmp/project',
-              metadata: {
-                status: 'success',
-              },
-            },
-          ],
-        },
-      },
-    })
-
-    const button = wrapper.get('button')
-    const chevron = button.get('svg')
-
-    expect(wrapper.text()).toContain('完整诊断说明')
-    expect(wrapper.text()).toContain('第一步')
-    expect(chevron.classes()).toContain('rotate-90')
-
-    await button.trigger('click')
-
-    expect(wrapper.text()).toContain('诊断摘要预览')
-    expect(wrapper.text()).not.toContain('第一步')
-    expect(chevron.classes()).not.toContain('rotate-90')
-  })
-
-  it('keeps completed codex task groups expanded by default', () => {
+  it('renders file change item events as readable card content instead of raw json', async () => {
     const wrapper = mount(Renderer, {
       props: {
         messages: [
           createMessage({
-            type: 'assistant_message',
-            message: 'Run diagnostics with details',
-          }),
-          createMessage({
-            type: 'exec_command_begin',
-            call_id: 'call_1',
-            command: ['pwd'],
-          }),
-          createMessage({
-            type: 'exec_command_end',
-            call_id: 'call_1',
-            exit_code: 0,
-            stdout: '/tmp/project',
+            type: 'item.completed',
+            item: {
+              id: 'item_4',
+              type: 'file_change',
+              changes: [
+                {
+                  path: '/Users/fuzhifei/code/go/src/gitlab.yc345.tv/frontend/ainative/tmp/19d7db85-cd7d-4af5-8e47-98abfd89bab0/projects/7363eab3-aafe-4129-936a-25df742c2dc1/worktrees/wk-20260319-150354/docs/feature/20260319-150354/brainstorm.md',
+                  kind: 'add',
+                },
+              ],
+              status: 'completed',
+            },
           }),
         ],
       },
     })
 
+    expect(wrapper.text()).toContain('文件变更')
     expect(wrapper.text()).toContain('已完成')
-    expect(wrapper.text()).toContain('Run diagnostics with details')
-    expect(wrapper.text()).toContain('pwd')
-    expect(wrapper.get('button svg').classes()).toContain('rotate-90')
+    expect(wrapper.text()).toContain('1')
+    expect(wrapper.text()).toContain('brainstorm.md')
+    expect(wrapper.text()).not.toContain('"type":"item.completed"')
+
+    await wrapper.get('button').trigger('click')
+
+    expect(wrapper.text()).toContain('新增')
+    expect(wrapper.text()).toContain('docs/feature/20260319-150354/brainstorm.md')
   })
 })

@@ -132,4 +132,42 @@ describe('parseCodexMessages', () => {
       }),
     ])
   })
+
+  it('parses file_change item completion events into readable system messages', () => {
+    const entries = parseCodexMessages([
+      createMessage({
+        type: 'item.completed',
+        item: {
+          id: 'item_4',
+          type: 'file_change',
+          changes: [
+            {
+              path: '/Users/fuzhifei/code/go/src/gitlab.yc345.tv/frontend/ainative/tmp/19d7db85-cd7d-4af5-8e47-98abfd89bab0/projects/7363eab3-aafe-4129-936a-25df742c2dc1/worktrees/wk-20260319-150354/docs/feature/20260319-150354/brainstorm.md',
+              kind: 'add',
+            },
+          ],
+          status: 'completed',
+        },
+      }),
+    ])
+
+    expect(entries).toEqual([
+      expect.objectContaining({
+        type: 'system_message',
+        content: '文件变更 · 新增 `docs/feature/20260319-150354/brainstorm.md`',
+        metadata: expect.objectContaining({
+          codexCardType: 'file_change',
+          codexItemId: 'item_4',
+          codexItemType: 'file_change',
+          status: 'success',
+          codexChanges: [
+            {
+              path: '/Users/fuzhifei/code/go/src/gitlab.yc345.tv/frontend/ainative/tmp/19d7db85-cd7d-4af5-8e47-98abfd89bab0/projects/7363eab3-aafe-4129-936a-25df742c2dc1/worktrees/wk-20260319-150354/docs/feature/20260319-150354/brainstorm.md',
+              kind: 'add',
+            },
+          ],
+        }),
+      }),
+    ])
+  })
 })

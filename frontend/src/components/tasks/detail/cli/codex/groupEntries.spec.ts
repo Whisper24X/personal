@@ -169,4 +169,49 @@ describe('groupCodexEntries', () => {
       },
     })
   })
+
+  it('keeps file change cards standalone instead of merging them into task tools', () => {
+    const groups = groupCodexEntries([
+      createEntry({
+        id: 'assistant-1',
+        type: 'assistant_message',
+        timestamp: 1,
+        content: '整理执行计划',
+      }),
+      createEntry({
+        id: 'tool-1',
+        type: 'command_run',
+        timestamp: 2,
+        content: 'pwd',
+        metadata: {
+          status: 'running',
+        },
+      }),
+      createEntry({
+        id: 'file-change-1',
+        type: 'system_message',
+        timestamp: 3,
+        content: '文件变更 · 新增 `docs/feature/20260319-150354/brainstorm.md`',
+        metadata: {
+          codexCardType: 'file_change',
+        },
+      }),
+    ])
+
+    expect(groups).toHaveLength(2)
+    expect(groups[0]).toMatchObject({
+      type: 'task',
+      tools: [
+        expect.objectContaining({
+          id: 'tool-1',
+        }),
+      ],
+    })
+    expect(groups[1]).toMatchObject({
+      type: 'other',
+      entry: {
+        id: 'file-change-1',
+      },
+    })
+  })
 })

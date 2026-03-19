@@ -160,6 +160,7 @@ const workflowConfiguredCliTools = ref<Array<{ id: SupportedCliToolId; label: st
 const loadingWorkflowConfiguredCliTools = ref(false)
 const workflowNodeConfigsByTool = ref<Partial<Record<SupportedCliToolId, AgentToolConfig[]>>>({})
 const workflowNodeConfigLoadingByTool = ref<Partial<Record<SupportedCliToolId, boolean>>>({})
+const workflowEditorActiveNodeIndex = ref(0)
 const workflowCreateForm = ref<{
   name: string
   description: string
@@ -276,6 +277,10 @@ const workflowConfiguredCliToolIdSet = computed(() => {
 
 const workflowTemplateModalTitle = computed(() => {
   return workflowTemplateModalMode.value === 'edit' ? '编辑项目工作流模板' : '创建项目工作流模板'
+})
+
+const activeWorkflowCreateNode = computed(() => {
+  return workflowCreateForm.value.nodes[workflowEditorActiveNodeIndex.value] ?? null
 })
 
 const workflowTemplateSubmitIdleText = computed(() => {
@@ -524,7 +529,7 @@ const buildWorkflowNode = (nodeOrder: number): WorkflowTemplateNodeForm => ({
   nodeOrder,
   name: `step-${nodeOrder}`,
   type: 'agent',
-  requiresApproval: false,
+  requiresApproval: true,
   input: resolveWorkflowNodeInput(createEmptyWorkflowNodeInput()),
 })
 
@@ -602,15 +607,27 @@ const ensureWorkflowCreateNodeShape = () => {
   }
 
   workflowCreateForm.value.nodes = normalizeWorkflowNodes(workflowCreateForm.value.nodes)
+  syncWorkflowEditorActiveNodeIndex()
 }
 
 const resetWorkflowCreateForm = () => {
   workflowValidationMessage.value = ''
+  workflowEditorActiveNodeIndex.value = 0
   workflowCreateForm.value = {
     name: '',
     description: '',
     nodes: [buildWorkflowNode(1)],
   }
+}
+
+const syncWorkflowEditorActiveNodeIndex = (preferredIndex = workflowEditorActiveNodeIndex.value) => {
+  const maxIndex = workflowCreateForm.value.nodes.length - 1
+  workflowEditorActiveNodeIndex.value = Math.min(Math.max(preferredIndex, 0), Math.max(maxIndex, 0))
+}
+
+const formatWorkflowNodeTabLabel = (node: WorkflowTemplateNodeForm, index: number) => {
+  const normalizedName = node.name.trim()
+  return normalizedName || `节点 ${index + 1}`
 }
 
 const buildWorkflowFormNodesFromTemplate = (
@@ -731,16 +748,10 @@ const getWorkflowNodeConfigs = (toolId: SupportedCliToolId | '') => {
 }
 
 const getWorkflowNodeConfigSelectOptions = (toolId: SupportedCliToolId | '') => {
-  return [
-    {
-      label: !toolId ? '请先选择 Agent CLI' : '请选择 Agent CLI 配置',
-      value: '',
-    },
-    ...getWorkflowNodeConfigs(toolId).map((config) => ({
+  return getWorkflowNodeConfigs(toolId).map((config) => ({
       label: config.name,
       value: config.id,
-    })),
-  ]
+    }))
 }
 
 const isWorkflowNodeConfigLoading = (toolId: SupportedCliToolId | '') => {
@@ -833,6 +844,7 @@ const openWorkflowEditModal = (template: WorkflowTemplate) => {
     description: template.description ?? '',
     nodes: buildWorkflowFormNodesFromTemplate(template),
   }
+  workflowEditorActiveNodeIndex.value = 0
   workflowNodeConfigLoadingByTool.value = {}
   workflowCreateModalOpen.value = true
   void loadWorkflowConfiguredCliTools(businessLineId).then(() => preloadWorkflowNodeConfigs())
@@ -848,6 +860,7 @@ const closeWorkflowCreateModal = () => {
 const addWorkflowCreateNode = () => {
   workflowCreateForm.value.nodes.push(buildWorkflowNode(workflowCreateForm.value.nodes.length + 1))
   workflowCreateForm.value.nodes = normalizeWorkflowNodes(workflowCreateForm.value.nodes)
+  workflowEditorActiveNodeIndex.value = workflowCreateForm.value.nodes.length - 1
 }
 
 const removeWorkflowCreateNode = (index: number) => {
@@ -857,6 +870,9 @@ const removeWorkflowCreateNode = (index: number) => {
 
   workflowCreateForm.value.nodes.splice(index, 1)
   workflowCreateForm.value.nodes = normalizeWorkflowNodes(workflowCreateForm.value.nodes)
+  syncWorkflowEditorActiveNodeIndex(
+    workflowEditorActiveNodeIndex.value > index ? workflowEditorActiveNodeIndex.value - 1 : index,
+  )
 }
 
 const closeWorkflowAddMenu = () => {
@@ -2146,7 +2162,6 @@ onBeforeUnmount(() => {
             <section class="space-y-3 rounded-xl border border-border bg-background/60 p-3">
               <div>
                 <p class="text-xs font-semibold text-muted-foreground">模板信息</p>
-                <p class="mt-1 text-[11px] text-muted-foreground">可配置当前项目的工作流模板。</p>
               </div>
               <div class="grid gap-3 md:grid-cols-2">
                 <label class="space-y-1">
@@ -2188,31 +2203,54 @@ onBeforeUnmount(() => {
               </div>
 
               <div class="space-y-3">
+                <div class="flex items-center gap-2 overflow-x-auto pb-1">
+                  <button
+                    v-for="(node, index) in workflowCreateForm.nodes"
+                    :key="`project-workflow-create-node-tab-${index}`"
+                    type="button"
+                    class="inline-flex min-w-0 shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-left transition"
+                    :class="
+                      workflowEditorActiveNodeIndex === index
+                        ? 'border-primary/40 bg-primary/10 text-foreground shadow-sm'
+                        : 'border-border bg-background text-muted-foreground hover:text-foreground'
+                    "
+                    @click="workflowEditorActiveNodeIndex = index"
+                  >
+                    <span class="text-[11px] font-semibold">节点 {{ index + 1 }}</span>
+                    <span class="max-w-[140px] truncate text-xs">
+                      {{ formatWorkflowNodeTabLabel(node, index) }}
+                    </span>
+                  </button>
+                </div>
+
                 <div
-                  v-for="(node, index) in workflowCreateForm.nodes"
-                  :key="`project-workflow-create-node-${index}`"
+                  v-if="activeWorkflowCreateNode"
                   class="space-y-3 rounded-2xl border border-border bg-background/80 p-3.5"
                 >
                   <div class="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <p class="text-[11px] font-semibold text-muted-foreground">
-                        节点 {{ index + 1 }}
+                        当前编辑：节点 {{ workflowEditorActiveNodeIndex + 1 }}
                       </p>
                     </div>
                     <div class="flex items-center gap-2">
                       <label
                         class="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs text-muted-foreground"
                       >
-                        <input v-model="node.requiresApproval" type="checkbox" class="h-4 w-4" />
+                        <input
+                          v-model="activeWorkflowCreateNode.requiresApproval"
+                          type="checkbox"
+                          class="h-4 w-4"
+                        />
                         需要审批
                       </label>
                       <button
                         type="button"
                         class="inline-flex h-8 items-center rounded-lg border border-destructive/40 bg-destructive/10 px-2.5 text-xs font-semibold text-destructive transition hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-60"
                         :disabled="workflowCreateForm.nodes.length <= 1"
-                        @click="removeWorkflowCreateNode(index)"
+                        @click="removeWorkflowCreateNode(workflowEditorActiveNodeIndex)"
                       >
-                        删除
+                        删除当前节点
                       </button>
                     </div>
                   </div>
@@ -2221,7 +2259,7 @@ onBeforeUnmount(() => {
                     <label class="space-y-1 md:col-span-2">
                       <span class="text-[11px] text-muted-foreground">节点名称</span>
                       <input
-                        v-model="node.name"
+                        v-model="activeWorkflowCreateNode.name"
                         class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm"
                         type="text"
                       />
@@ -2230,10 +2268,11 @@ onBeforeUnmount(() => {
                     <label class="space-y-1 md:col-span-2">
                       <span class="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
                         <span>节点 Prompt</span>
-                        <WorkflowPromptVariablesHint variant="popover" />
+                        <WorkflowPromptVariablesHint variant="popover" size="sm" />
                       </span>
                       <WorkflowPromptTextarea
-                        v-model="node.input.prompt"
+                        v-model="activeWorkflowCreateNode.input.prompt"
+                        class="min-h-[180px]"
                         placeholder="输入该节点的提示词，输入 / 可插入变量"
                       />
                     </label>
@@ -2241,7 +2280,7 @@ onBeforeUnmount(() => {
                     <label class="space-y-1">
                       <span class="text-[11px] text-muted-foreground">Agent CLI</span>
                       <AppSelect
-                        v-model="node.input.agentCliId"
+                        v-model="activeWorkflowCreateNode.input.agentCliId"
                         aria-label="Agent CLI"
                         :disabled="
                           loadingWorkflowConfiguredCliTools ||
@@ -2250,21 +2289,25 @@ onBeforeUnmount(() => {
                         :options="workflowCliToolSelectOptions"
                         :panel-z-index="PROJECT_WORKFLOW_SELECT_PANEL_Z_INDEX"
                         trigger-class="h-8 rounded-lg border-border bg-background px-2.5 text-sm shadow-none"
-                        @change="void handleWorkflowNodeCliToolChange(node)"
+                        @change="void handleWorkflowNodeCliToolChange(activeWorkflowCreateNode)"
                       />
                     </label>
 
                     <label class="space-y-1">
                       <span class="text-[11px] text-muted-foreground">Agent CLI 配置</span>
                       <AppSelect
-                        v-model="node.input.agentCliConfigId"
+                        v-model="activeWorkflowCreateNode.input.agentCliConfigId"
                         aria-label="Agent CLI 配置"
+                        placeholder="请选择 Agent CLI 配置"
                         :disabled="
-                          !node.input.agentCliId ||
-                          isWorkflowNodeConfigLoading(node.input.agentCliId)
+                          !activeWorkflowCreateNode.input.agentCliId ||
+                          isWorkflowNodeConfigLoading(activeWorkflowCreateNode.input.agentCliId)
                         "
-                        :options="getWorkflowNodeConfigSelectOptions(node.input.agentCliId)"
+                        :options="
+                          getWorkflowNodeConfigSelectOptions(activeWorkflowCreateNode.input.agentCliId)
+                        "
                         :panel-z-index="PROJECT_WORKFLOW_SELECT_PANEL_Z_INDEX"
+                        panel-placement="top"
                         trigger-class="h-8 rounded-lg border-border bg-background px-2.5 text-sm shadow-none"
                       />
                     </label>
