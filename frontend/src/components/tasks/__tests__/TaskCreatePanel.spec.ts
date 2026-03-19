@@ -11,6 +11,7 @@ const {
   push,
   success,
   error,
+  gitApi,
   tasksApi,
   projectsApi,
   workflowApi,
@@ -20,6 +21,9 @@ const {
   push: vi.fn(),
   success: vi.fn(),
   error: vi.fn(),
+  gitApi: {
+    branches: vi.fn(),
+  },
   tasksApi: {
     create: vi.fn(),
   },
@@ -64,6 +68,10 @@ vi.mock('@/stores/modules/access', () => ({
 
 vi.mock('@/api/tasks', () => ({
   tasksApi,
+}))
+
+vi.mock('@/api/git', () => ({
+  gitApi,
 }))
 
 vi.mock('@/api/projects', () => ({
@@ -114,6 +122,12 @@ describe('TaskCreatePanel', () => {
         isDefault: true,
       },
     ])
+    gitApi.branches.mockResolvedValue({
+      defaultBranch: 'main',
+      currentBranch: 'feature/current',
+      localBranches: ['main', 'feature/current', 'feature/existing'],
+      remoteBranches: ['main', 'feature/existing', 'release/2026.03'],
+    })
     tasksApi.create.mockResolvedValue({
       id: 'task-1',
     })
@@ -136,6 +150,7 @@ describe('TaskCreatePanel', () => {
 
     expect(wrapper.text()).not.toContain('高级参数')
     expect(wrapper.text()).not.toContain('收起高级参数')
+    expect(wrapper.find('input[aria-label="任务分支"]').exists()).toBe(false)
   })
 
   it('should create conversation task with configJson cli config fields', async () => {
@@ -212,5 +227,27 @@ describe('TaskCreatePanel', () => {
       workflowTemplateId: 'wf-1',
       attachments: [],
     })
+  })
+
+  it('should submit selected base branch only', async () => {
+    const wrapper = mount(TaskCreatePanel, {
+      props: {
+        projectId: 'project-1',
+      },
+    })
+
+    await flushPromises()
+
+    await wrapper.find('input[placeholder="标题"]').setValue('修复任务分支选择')
+    await wrapper.find('textarea[placeholder="提示词"]').setValue('请在指定分支上执行任务')
+    await wrapper.find('select[aria-label="分支"]').setValue('release/2026.03')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(tasksApi.create).toHaveBeenCalledTimes(1)
+    const payload = tasksApi.create.mock.calls[0]![0] as Record<string, unknown>
+
+    expect(payload.gitBaseBranch).toBe('release/2026.03')
+    expect('gitBranch' in payload).toBe(false)
   })
 })

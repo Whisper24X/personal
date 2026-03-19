@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { spawn } from 'child_process';
+import { ChildProcess, spawn } from 'child_process';
 import path from 'path';
 import { AgentToolConfig } from '../business-lines/domain/agent-tool-config';
 import { AgentToolConfigRepository } from '../business-lines/infrastructure/persistence/agent-tool-config.repository';
@@ -61,9 +61,16 @@ type AgentRunnerStreamCallbacks = {
   onStderrLine?: (line: string) => void;
 };
 
+type ActiveAgentExecution = {
+  childProcess: ChildProcess;
+  stopReason: 'interrupt' | 'timeout' | null;
+  killTimerRef: NodeJS.Timeout | null;
+};
+
 export type AgentRunnerResult = {
   success: boolean;
   timedOut: boolean;
+  interrupted: boolean;
   exitCode: number | null;
   signal: NodeJS.Signals | null;
   command: string;
@@ -82,9 +89,11 @@ export class AgentRunnerService {
   private readonly logger = new Logger(AgentRunnerService.name);
   private readonly defaultTimeoutMs = 10 * 60 * 1000;
   private readonly maxOutputLength = 100_000;
+  private readonly forcedKillDelayMs = 2_000;
   private readonly defaultDataRootDir = path.resolve(
     resolveAinativeDataRootDir(),
   );
+  private readonly activeExecutions = new Map<string, ActiveAgentExecution>();
 
   constructor(
     private readonly agentToolConfigRepository: AgentToolConfigRepository,
@@ -130,6 +139,17 @@ export class AgentRunnerService {
       },
       callbacks,
     );
+  }
+
+  interruptExecution(nodeId: string): boolean {
+    const activeExecution = this.activeExecutions.get(nodeId);
+
+    if (!activeExecution) {
+      return false;
+    }
+
+    this.requestProcessStop(activeExecution, 'interrupt');
+    return true;
   }
 
   private async resolveRunnerConfig(
@@ -1296,9 +1316,9 @@ export class AgentRunnerService {
     let stdoutByteLength = 0;
     let stderrByteLength = 0;
     let timedOut = false;
+    let interrupted = false;
     let extractedSessionId: string | null = null;
     let timeoutRef: NodeJS.Timeout | null = null;
-    let killTimerRef: NodeJS.Timeout | null = null;
     const captureStdoutLine = (line: string): void => {
       extractedSessionId ??= cliAdapter.extractSessionId(line);
       callbacks?.onStdoutLine?.(line);
@@ -1330,6 +1350,12 @@ export class AgentRunnerService {
         env: mergedEnv,
         stdio: 'pipe',
       });
+      const activeExecution: ActiveAgentExecution = {
+        childProcess,
+        stopReason: null,
+        killTimerRef: null,
+      };
+      this.activeExecutions.set(executionContext.nodeId, activeExecution);
 
       childProcess.stdout?.on('data', (chunk: Buffer | string) => {
         const chunkText = this.toChunkText(chunk);
@@ -1399,11 +1425,7 @@ export class AgentRunnerService {
             }),
           )}`,
         );
-        childProcess.kill('SIGTERM');
-
-        killTimerRef = setTimeout(() => {
-          childProcess.kill('SIGKILL');
-        }, 2_000);
+        this.requestProcessStop(activeExecution, 'timeout');
       }, config.timeoutMs);
 
       if (config.adapter !== 'cursor') {
@@ -1447,9 +1469,7 @@ export class AgentRunnerService {
       if (timeoutRef) {
         clearTimeout(timeoutRef);
       }
-      if (killTimerRef) {
-        clearTimeout(killTimerRef);
-      }
+      this.clearForcedKillTimer(activeExecution);
 
       this.flushTrailingStreamBuffer(stdoutLineBuffer, captureStdoutLine);
       this.flushTrailingStreamBuffer(stderrLineBuffer, captureStderrLine);
@@ -1458,6 +1478,7 @@ export class AgentRunnerService {
       extractedSessionId ??= cliAdapter.extractSessionId(stderr);
 
       const durationMs = Date.now() - startAt;
+      interrupted = activeExecution.stopReason === 'interrupt';
       const success = !timedOut && closeResult.exitCode === 0;
       const resultLogPayload = this.buildResultLogPayload({
         executionContext,
@@ -1470,6 +1491,7 @@ export class AgentRunnerService {
         stdoutByteLength,
         stderrByteLength,
         timedOut,
+        interrupted,
         exitCode: closeResult.exitCode,
         signal: closeResult.signal,
       });
@@ -1487,6 +1509,7 @@ export class AgentRunnerService {
       return {
         success,
         timedOut,
+        interrupted,
         exitCode: closeResult.exitCode,
         signal: closeResult.signal,
         command: config.command,
@@ -1502,15 +1525,21 @@ export class AgentRunnerService {
           : {
               errorMessage: timedOut
                 ? `Agent execution timed out after ${Math.floor(config.timeoutMs / 1000)}s`
-                : `Agent execution exited with code ${closeResult.exitCode ?? 'null'}`,
+                : interrupted
+                  ? 'Agent execution interrupted'
+                  : `Agent execution exited with code ${closeResult.exitCode ?? 'null'}`,
             }),
       };
     } catch (error) {
       if (timeoutRef) {
         clearTimeout(timeoutRef);
       }
-      if (killTimerRef) {
-        clearTimeout(killTimerRef);
+      const activeExecution = this.activeExecutions.get(
+        executionContext.nodeId,
+      );
+      if (activeExecution) {
+        interrupted = activeExecution.stopReason === 'interrupt';
+        this.clearForcedKillTimer(activeExecution);
       }
 
       this.flushTrailingStreamBuffer(stdoutLineBuffer, captureStdoutLine);
@@ -1537,6 +1566,7 @@ export class AgentRunnerService {
             stdoutByteLength,
             stderrByteLength,
             timedOut,
+            interrupted,
             errorMessage,
           }),
         )}`,
@@ -1545,6 +1575,7 @@ export class AgentRunnerService {
       return {
         success: false,
         timedOut,
+        interrupted,
         exitCode: null,
         signal: null,
         command: config.command,
@@ -1557,7 +1588,50 @@ export class AgentRunnerService {
         sessionId: extractedSessionId,
         errorMessage,
       };
+    } finally {
+      const activeExecution = this.activeExecutions.get(
+        executionContext.nodeId,
+      );
+      if (activeExecution) {
+        this.clearForcedKillTimer(activeExecution);
+        this.activeExecutions.delete(executionContext.nodeId);
+      }
     }
+  }
+
+  private requestProcessStop(
+    activeExecution: ActiveAgentExecution,
+    reason: 'interrupt' | 'timeout',
+  ): void {
+    if (activeExecution.stopReason) {
+      return;
+    }
+
+    activeExecution.stopReason = reason;
+
+    try {
+      activeExecution.childProcess.kill('SIGTERM');
+    } catch {
+      return;
+    }
+
+    activeExecution.killTimerRef = setTimeout(() => {
+      try {
+        activeExecution.childProcess.kill('SIGKILL');
+      } catch {
+        return;
+      }
+    }, this.forcedKillDelayMs);
+    activeExecution.killTimerRef.unref?.();
+  }
+
+  private clearForcedKillTimer(activeExecution: ActiveAgentExecution): void {
+    if (!activeExecution.killTimerRef) {
+      return;
+    }
+
+    clearTimeout(activeExecution.killTimerRef);
+    activeExecution.killTimerRef = null;
   }
 
   private normalizeOptionalString(value?: string | null): string | null {
@@ -1706,6 +1780,7 @@ export class AgentRunnerService {
     stdoutByteLength,
     stderrByteLength,
     timedOut,
+    interrupted,
     exitCode,
     signal,
     errorMessage,
@@ -1720,6 +1795,7 @@ export class AgentRunnerService {
     stdoutByteLength: number;
     stderrByteLength: number;
     timedOut: boolean;
+    interrupted?: boolean;
     exitCode?: number | null;
     signal?: NodeJS.Signals | null;
     errorMessage?: string;
@@ -1733,6 +1809,7 @@ export class AgentRunnerService {
       timeoutMs: config.timeoutMs,
       durationMs,
       timedOut,
+      interrupted: interrupted ?? false,
       exitCode: exitCode ?? null,
       signal: signal ?? null,
       stdoutChunkCount,

@@ -17,6 +17,7 @@ import { TaskStatusService } from './task-status.service';
 @Injectable()
 export class TaskNodeExecutionService {
   private readonly agentCliLogChunkLength = 4_000;
+  private readonly cancellationPollIntervalMs = 500;
   private readonly runningNodeSet = new Set<string>();
 
   constructor(
@@ -55,6 +56,7 @@ export class TaskNodeExecutionService {
 
     this.runningNodeSet.add(nodeId);
     let stopLeaseHeartbeat: (() => void) | undefined;
+    let stopCancellationWatcher: (() => void) | undefined;
     let executionTask: Task | null = null;
 
     try {
@@ -103,6 +105,7 @@ export class TaskNodeExecutionService {
         nodeId,
         workerId,
       });
+      stopCancellationWatcher = this.startExecutionCancellationWatcher(nodeId);
 
       await this.executeAgentNode({
         taskId,
@@ -153,6 +156,7 @@ export class TaskNodeExecutionService {
       });
     } finally {
       stopLeaseHeartbeat?.();
+      stopCancellationWatcher?.();
       await this.taskStatusService.recalculateTaskStatus(taskId);
       this.runningNodeSet.delete(nodeId);
       await onSettled?.();
@@ -306,6 +310,25 @@ export class TaskNodeExecutionService {
       return;
     }
 
+    if (executionResult.interrupted) {
+      const latestNode = await this.taskNodeRepository.findById(nodeId);
+
+      if (!latestNode || latestNode.status !== TaskStatus.inProgress) {
+        await this.taskLogService.appendLog({
+          taskId,
+          taskNodeId: nodeId,
+          level: TaskLogLevel.warn,
+          message: 'Agent node execution interrupted after cancellation',
+          payload: {
+            exitCode: executionResult.exitCode,
+            signal: executionResult.signal,
+            durationMs: executionResult.durationMs,
+          },
+        });
+        return;
+      }
+    }
+
     const agentClioutput =
       isContinuation || persistedStdoutJsonlLineCount > 0
         ? this.taskOutputService.resolveNodeOutputPath(task, node)
@@ -349,9 +372,46 @@ export class TaskNodeExecutionService {
         exitCode: executionResult.exitCode,
         signal: executionResult.signal,
         durationMs: executionResult.durationMs,
+        interrupted: executionResult.interrupted,
         stderr: executionResult.stderr || null,
       },
     });
+  }
+
+  private startExecutionCancellationWatcher(nodeId: string): () => void {
+    let stopped = false;
+    let checking = false;
+
+    const inspectNodeState = async (): Promise<void> => {
+      if (stopped || checking) {
+        return;
+      }
+
+      checking = true;
+
+      try {
+        const latestNode = await this.taskNodeRepository.findById(nodeId);
+
+        if (!latestNode || latestNode.status !== TaskStatus.inProgress) {
+          this.agentRunnerService.interruptExecution(nodeId);
+          stopped = true;
+          clearInterval(watcherTimer);
+        }
+      } finally {
+        checking = false;
+      }
+    };
+
+    const watcherTimer = setInterval(() => {
+      void inspectNodeState();
+    }, this.cancellationPollIntervalMs);
+    watcherTimer.unref();
+    void inspectNodeState();
+
+    return () => {
+      stopped = true;
+      clearInterval(watcherTimer);
+    };
   }
 
   private async appendAgentCliProcessLogs({

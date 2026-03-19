@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { useAccessStore } from '@/stores/modules/access'
 import { businessLinesApi, type AgentToolConfig } from '@/api/business-lines'
+import { gitApi } from '@/api/git'
 import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
 import { workflowApi } from '@/api/workflow'
@@ -59,16 +60,19 @@ const accessStore = useAccessStore()
 const loading = ref(false)
 const loadingTemplates = ref(false)
 const loadingAgentConfigs = ref(false)
+const loadingBranches = ref(false)
 const submitting = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const currentHeadline = ref(TASK_HEADLINES[0] ?? '我能为你做什么？')
 let headlineTimer: ReturnType<typeof setInterval> | null = null
+let latestBranchRequestId = 0
 
 const projects = ref<Project[]>([])
 const templates = ref<WorkflowTemplate[]>([])
 const configuredCliTools = ref<Array<{ id: SupportedCliToolId; label: string }>>([])
 const agentToolConfigs = ref<AgentToolConfig[]>([])
 const agentConfigsByTool = ref<Partial<Record<SupportedCliToolId, AgentToolConfig[]>>>({})
+const branchOptions = ref<string[]>([])
 const selectedFiles = ref<File[]>([])
 
 const createForm = reactive({
@@ -77,16 +81,13 @@ const createForm = reactive({
   workflowTemplateId: '',
   agentCliId: '' as SupportedCliToolId | '',
   agentCliConfigId: '',
+  gitBaseBranch: '',
   title: '',
   prompt: '',
 })
 
 const selectedProject = computed(() => {
   return projects.value.find((item) => item.id === createForm.projectId) ?? null
-})
-
-const selectedGitBaseBranch = computed(() => {
-  return selectedProject.value?.defaultBranch?.trim() || '未配置'
 })
 
 const canCreateTask = computed(() => {
@@ -123,12 +124,14 @@ const syncProjectFromContext = () => {
 
 const resetCreateForm = (projectId?: string) => {
   const nextProjectId = projectId || createForm.projectId || projects.value[0]?.id || ''
+  const nextProject = projects.value.find((item) => item.id === nextProjectId)
 
   createForm.projectId = nextProjectId
   createForm.mode = 'conversation'
   createForm.workflowTemplateId = ''
   createForm.agentCliId = configuredCliTools.value[0]?.id ?? ''
   createForm.agentCliConfigId = ''
+  createForm.gitBaseBranch = nextProject?.defaultBranch?.trim() || ''
   createForm.title = ''
   createForm.prompt = ''
   selectedFiles.value = []
@@ -162,6 +165,93 @@ const syncAgentToolConfigsForSelectedTool = () => {
   if (!configs.some((config) => config.id === createForm.agentCliConfigId)) {
     const defaultConfig = configs.find((config) => config.isDefault)
     createForm.agentCliConfigId = defaultConfig?.id ?? configs[0]?.id ?? ''
+  }
+}
+
+const buildBranchOptions = ({
+  localBranches,
+  remoteBranches,
+  preferredBranches,
+}: {
+  localBranches: string[]
+  remoteBranches: string[]
+  preferredBranches: string[]
+}) => {
+  const seen = new Set<string>()
+  const result: string[] = []
+
+  for (const branch of [...preferredBranches, ...localBranches, ...remoteBranches]) {
+    const normalizedBranch = branch.trim()
+
+    if (!normalizedBranch || seen.has(normalizedBranch)) {
+      continue
+    }
+
+    seen.add(normalizedBranch)
+    result.push(normalizedBranch)
+  }
+
+  return result
+}
+
+const loadBranchesForProject = async (projectId: string) => {
+  const requestId = ++latestBranchRequestId
+  const project = projects.value.find((item) => item.id === projectId)
+  const projectDefaultBranch = project?.defaultBranch?.trim() || ''
+
+  if (!projectId) {
+    branchOptions.value = []
+    createForm.gitBaseBranch = ''
+    return
+  }
+
+  loadingBranches.value = true
+
+  try {
+    const branchData = await gitApi.branches(projectId)
+
+    if (requestId !== latestBranchRequestId) {
+      return
+    }
+
+    const nextBranchOptions = buildBranchOptions({
+      localBranches: branchData.localBranches,
+      remoteBranches: branchData.remoteBranches,
+      preferredBranches: [projectDefaultBranch, branchData.defaultBranch],
+    })
+
+    branchOptions.value = nextBranchOptions
+
+    const currentBaseBranch = createForm.gitBaseBranch.trim()
+    const fallbackBaseBranch =
+      nextBranchOptions.find((branch) => branch === projectDefaultBranch) ??
+      nextBranchOptions[0] ??
+      projectDefaultBranch
+
+    createForm.gitBaseBranch =
+      nextBranchOptions.find((branch) => branch === currentBaseBranch) ?? fallbackBaseBranch ?? ''
+  } catch (error) {
+    if (requestId !== latestBranchRequestId) {
+      return
+    }
+
+    const fallbackBranches = buildBranchOptions({
+      localBranches: [],
+      remoteBranches: [],
+      preferredBranches: [projectDefaultBranch],
+    })
+
+    branchOptions.value = fallbackBranches
+
+    if (!fallbackBranches.includes(createForm.gitBaseBranch.trim())) {
+      createForm.gitBaseBranch = fallbackBranches[0] ?? ''
+    }
+
+    message.error(toErrorMessage(error, '加载项目分支失败'))
+  } finally {
+    if (requestId === latestBranchRequestId) {
+      loadingBranches.value = false
+    }
   }
 }
 
@@ -283,6 +373,7 @@ const loadPageData = async () => {
     await Promise.all([
       loadTemplatesForProject(createForm.projectId),
       loadConversationCliOptions(createForm.projectId),
+      loadBranchesForProject(createForm.projectId),
     ])
   } catch (error) {
     message.error(toErrorMessage(error, '加载任务页面失败'))
@@ -397,7 +488,7 @@ const createTask = async () => {
       mode: createForm.mode,
       title: createForm.title.trim(),
       prompt: createForm.prompt.trim(),
-      gitBaseBranch: project?.defaultBranch?.trim() || undefined,
+      gitBaseBranch: createForm.gitBaseBranch.trim() || project?.defaultBranch?.trim() || undefined,
       configJson: {
         ...(createForm.mode === 'workflow'
           ? {
@@ -439,7 +530,11 @@ watch(
     }
 
     await refreshAccessContext(projectId)
-    await Promise.all([loadTemplatesForProject(projectId), loadConversationCliOptions(projectId)])
+    await Promise.all([
+      loadTemplatesForProject(projectId),
+      loadConversationCliOptions(projectId),
+      loadBranchesForProject(projectId),
+    ])
   },
 )
 
@@ -586,8 +681,8 @@ onBeforeUnmount(() => {
             </span>
           </div>
 
-          <div class="border-t border-border px-4 py-3 sm:px-5">
-            <div class="flex flex-wrap items-center gap-2">
+          <div class="overflow-x-auto border-t border-border px-4 py-3 sm:px-5">
+            <div class="flex min-w-full w-max flex-nowrap items-center gap-2 [&>*]:shrink-0">
               <input
                 ref="fileInputRef"
                 type="file"
@@ -665,8 +760,8 @@ onBeforeUnmount(() => {
                     class="mr-2 text-foreground/70"
                     aria-hidden="true"
                   >
-                    <path d="M3 3v5h5" />
-                    <path d="M3 8a9 9 0 1 0 2.9-6.6L3 3" />
+                    <path d="M4 17 10 11 4 5" />
+                    <path d="M12 19h8" />
                   </svg>
                   <select
                     v-model="createForm.agentCliId"
@@ -794,7 +889,7 @@ onBeforeUnmount(() => {
               </template>
 
               <label
-                class="inline-flex h-11 items-center rounded-full border border-border bg-background px-3"
+                class="relative inline-flex h-11 items-center rounded-full border border-border bg-background pl-2.5 pr-7"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -806,7 +901,7 @@ onBeforeUnmount(() => {
                   stroke-width="2"
                   stroke-linecap="round"
                   stroke-linejoin="round"
-                  class="mr-2 text-foreground/70"
+                  class="mr-1.5 text-foreground/70"
                   aria-hidden="true"
                 >
                   <path d="M6 3v12" />
@@ -814,10 +909,31 @@ onBeforeUnmount(() => {
                   <path d="m3 6 3-3 3 3" />
                   <path d="m15 18 3 3 3-3" />
                 </svg>
-                <span class="mr-2 text-xs text-muted-foreground">Base</span>
-                <span class="max-w-40 truncate text-sm font-medium text-foreground">
-                  {{ selectedGitBaseBranch }}
-                </span>
+                <select
+                  v-model="createForm.gitBaseBranch"
+                  aria-label="分支"
+                  class="w-[92px] appearance-none bg-transparent text-sm font-medium text-foreground outline-none"
+                  :disabled="loadingBranches || branchOptions.length === 0"
+                >
+                  <option v-for="branch in branchOptions" :key="branch" :value="branch">
+                    {{ branch }}
+                  </option>
+                </select>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="pointer-events-none absolute right-3 text-foreground/70"
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
               </label>
 
               <button
