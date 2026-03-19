@@ -1057,6 +1057,35 @@ describe('AgentRunnerService', () => {
     expect(result.args).toEqual(['--output-format', 'stream-json']);
   });
 
+  it('should apply node session id for gemini continuation', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'gemini-cli',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'gemini-cli',
+        agentCliSessionId: 'gemini-session-1',
+      },
+    );
+
+    expect(result.args).toEqual([
+      '--output-format',
+      'stream-json',
+      '--resume',
+      'gemini-session-1',
+    ]);
+  });
+
   it('should ignore configured claude resume session in business-line config', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue({
@@ -1264,6 +1293,37 @@ describe('AgentRunnerService', () => {
     ]);
   });
 
+  it('should apply node session id for codex continuation', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'codex',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'codex',
+        agentCliSessionId: '019d03cc-e251-7430-89c0-d3d662e676a9',
+      },
+    );
+
+    expect(result.args).toEqual([
+      'exec',
+      'resume',
+      '--json',
+      '--skip-git-repo-check',
+      '019d03cc-e251-7430-89c0-d3d662e676a9',
+      '-',
+    ]);
+  });
+
   it('should use follow-up message only when resuming an existing cli session', () => {
     const service = new AgentRunnerService(
       createRepositoryMock() as unknown as AgentToolConfigRepository,
@@ -1423,6 +1483,14 @@ describe('AgentRunnerService', () => {
     );
     const serviceAny = service as any;
 
+    expect(
+      serviceAny.extractAgentSessionId(
+        JSON.stringify({
+          type: 'thread.started',
+          thread_id: '019d03cc-e251-7430-89c0-d3d662e676a9',
+        }),
+      ),
+    ).toBe('019d03cc-e251-7430-89c0-d3d662e676a9');
     expect(
       serviceAny.extractAgentSessionId(
         JSON.stringify({

@@ -1,5 +1,8 @@
 import { BaseAgentCliAdapter } from '../agent-cli-adapter.base';
-import { AgentCliRunnerConfigInput } from '../agent-cli-adapter.interface';
+import {
+  AgentCliContinuationOptions,
+  AgentCliRunnerConfigInput,
+} from '../agent-cli-adapter.interface';
 
 export class CodexCliAdapter extends BaseAgentCliAdapter {
   readonly id = 'codex' as const;
@@ -33,6 +36,30 @@ export class CodexCliAdapter extends BaseAgentCliAdapter {
 
   defaultArgs(): string[] {
     return ['exec', '--json', '--skip-git-repo-check', '-'];
+  }
+
+  applyContinuation(
+    args: string[],
+    options: AgentCliContinuationOptions,
+  ): string[] {
+    const normalizedArgs = [...args];
+    const execIndex = normalizedArgs.indexOf('exec');
+
+    if (execIndex === -1) {
+      return ['exec', 'resume', ...normalizedArgs, options.sessionId];
+    }
+
+    const promptIndex = normalizedArgs.lastIndexOf('-');
+    const nextArgs = [...normalizedArgs];
+    nextArgs.splice(execIndex + 1, 0, 'resume');
+
+    const sessionInsertIndex =
+      promptIndex >= 0 && promptIndex > execIndex
+        ? promptIndex + 1
+        : nextArgs.length;
+
+    nextArgs.splice(sessionInsertIndex, 0, options.sessionId);
+    return nextArgs;
   }
 
   normalizeArgs(args: string[]): string[] {

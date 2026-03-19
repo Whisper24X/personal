@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
 import { Task } from '../domain/task';
+import { TaskNode } from '../domain/task-node';
 import { ApproveTaskDto } from '../dto/approve-task.dto';
 import { ReplyTaskDto } from '../dto/reply-task.dto';
 import { RetryTaskDto } from '../dto/retry-task.dto';
@@ -123,11 +124,12 @@ export class TaskInteractionService {
             ),
         });
       } else {
-        const fallbackNode =
-          await this.taskNodeRepository.findFirstByTaskIdAndStatus({
+        const fallbackNodes =
+          await this.taskNodeRepository.findByTaskIdAndStatus({
             taskId: task.id,
             status: TaskStatus.done,
           });
+        const fallbackNode = this.selectReplyFallbackNode(fallbackNodes);
 
         if (!fallbackNode) {
           throw new ConflictException('No node available for reply execution');
@@ -415,6 +417,40 @@ export class TaskInteractionService {
     });
 
     return this.taskQueryService.detailById(task.id, currentUser);
+  }
+
+  private selectReplyFallbackNode(nodes: TaskNode[]): TaskNode | null {
+    if (!nodes.length) {
+      return null;
+    }
+
+    const nodesWithSession = nodes.filter((node) =>
+      this.hasAgentCliSession(node),
+    );
+    const candidates = nodesWithSession.length > 0 ? nodesWithSession : nodes;
+
+    const sortedCandidates = [...candidates].sort((left, right) => {
+      const finishedAtDiff =
+        this.resolveNodeFinishedAtMs(right) -
+        this.resolveNodeFinishedAtMs(left);
+      if (finishedAtDiff !== 0) {
+        return finishedAtDiff;
+      }
+
+      return right.nodeOrder - left.nodeOrder;
+    });
+
+    return sortedCandidates[0] ?? null;
+  }
+
+  private hasAgentCliSession(node: TaskNode): boolean {
+    return typeof node.agentCliSessionId === 'string'
+      ? node.agentCliSessionId.trim().length > 0
+      : false;
+  }
+
+  private resolveNodeFinishedAtMs(node: TaskNode): number {
+    return node.finishedAt instanceof Date ? node.finishedAt.getTime() : 0;
   }
 
   private async markTaskStartedIfNeeded(task: Task): Promise<Task> {
