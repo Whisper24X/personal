@@ -296,9 +296,14 @@ function parseCodexMessage(
     }
 
     if (normalizedType === 'thread_started')
-      return createEntry('system_message', formatThreadStarted(msg), timestamp, makeId(idBase, 'thread'))
+      return createEntry('system_message', formatThreadStarted(msg), timestamp, makeId(idBase, 'thread'), {
+        codexEventType: 'thread_started',
+        threadId: getString(msg.thread_id) || getString(msg.threadId),
+      })
     if (normalizedType === 'turn_started')
-      return createEntry('system_message', 'Turn started', timestamp, makeId(idBase, 'turn-start'))
+      return createEntry('system_message', 'Turn started', timestamp, makeId(idBase, 'turn-start'), {
+        codexEventType: 'turn_started',
+      })
     if (normalizedType === 'turn_completed')
       return createEntry('system_message', formatTurnCompleted(msg), timestamp, makeId(idBase, 'turn-end'), { codexEventType: 'turn_completed' })
 

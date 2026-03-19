@@ -15,6 +15,18 @@ import { TaskGitService } from './task-git.service';
 import { TaskTerminalService } from './task-terminal.service';
 import { TerminalGateway } from './terminal.gateway';
 import { PromptTemplateService } from './prompt-template.service';
+import { TaskConfigResolverService } from './application/task-config-resolver.service';
+import { TaskOutputService } from './application/task-output.service';
+import { TaskLogService } from './application/task-log.service';
+import { TaskStatusService } from './application/task-status.service';
+import { AgentCliAdapterRegistry } from './agent-cli/agent-cli-adapter.registry';
+import { TaskAccessService } from './application/task-access.service';
+import { TaskRuntimeOrchestratorService } from './application/task-runtime-orchestrator.service';
+import { TaskQueryService } from './application/task-query.service';
+import { TaskCommandService } from './application/task-command.service';
+import { TaskInteractionService } from './application/task-interaction.service';
+import { TaskNodeExecutionService } from './application/task-node-execution.service';
+import { TaskSchedulerService } from './application/task-scheduler.service';
 
 @Module({
   imports: [
@@ -35,6 +47,18 @@ import { PromptTemplateService } from './prompt-template.service';
     TaskWorkspaceService,
     TaskGitService,
     TaskTerminalService,
+    TaskConfigResolverService,
+    TaskOutputService,
+    TaskLogService,
+    TaskStatusService,
+    AgentCliAdapterRegistry,
+    TaskAccessService,
+    TaskRuntimeOrchestratorService,
+    TaskQueryService,
+    TaskCommandService,
+    TaskInteractionService,
+    TaskNodeExecutionService,
+    TaskSchedulerService,
     TerminalGateway,
   ],
   exports: [TasksService, TaskRuntimeService, RelationalTaskPersistenceModule],

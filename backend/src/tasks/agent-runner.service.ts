@@ -12,8 +12,13 @@ import {
   PromptTemplateRuntimeContext,
   PromptTemplateService,
 } from './prompt-template.service';
+import { AgentCliAdapterRegistry } from './agent-cli/agent-cli-adapter.registry';
+import {
+  AgentCliAdapterId,
+  AgentCliRunnerConfigInput,
+} from './agent-cli/agent-cli-adapter.interface';
 
-type AgentAdapter = 'codex' | 'cursor' | 'claude' | 'gemini' | 'opencode';
+type AgentAdapter = AgentCliAdapterId;
 
 type AgentRunnerConfig = {
   adapter: AgentAdapter;
@@ -26,12 +31,7 @@ type AgentRunnerConfig = {
   agentToolConfigName?: string;
 };
 
-type RunnerConfigInput = {
-  command?: string;
-  args?: string[];
-  timeoutSeconds?: number;
-  env?: Record<string, string>;
-};
+type RunnerConfigInput = AgentCliRunnerConfigInput;
 
 type AgentToolConfigEntry = {
   id?: string;
@@ -85,55 +85,12 @@ export class AgentRunnerService {
   private readonly defaultDataRootDir = path.resolve(
     resolveAinativeDataRootDir(),
   );
-  private readonly toolConfigAllowedKeys: Record<AgentAdapter, Set<string>> = {
-    codex: new Set([
-      'model',
-      'oss',
-      'local_provider',
-      'sandbox',
-      'profile',
-      'execution_mode',
-      'config_overrides',
-      'env',
-    ]),
-    cursor: new Set([
-      'api_key',
-      'model',
-      'headers',
-      'trust',
-      'force',
-      'sandbox',
-      'approve_mcps',
-      'env',
-    ]),
-    claude: new Set([
-      'model',
-      'effort',
-      'permission_mode',
-      'dangerously_skip_permissions',
-      'allowed_tools',
-      'disallowed_tools',
-      'settings',
-      'mcp_config',
-      'env',
-    ]),
-    gemini: new Set([
-      'model',
-      'sandbox',
-      'yolo',
-      'approval_mode',
-      'policy',
-      'allowed_mcp_server_names',
-      'extensions',
-      'env',
-    ]),
-    opencode: new Set(['model', 'agent', 'prompt', 'fork', 'env']),
-  };
 
   constructor(
     private readonly agentToolConfigRepository: AgentToolConfigRepository,
     private readonly configService: ConfigService = new ConfigService(),
     private readonly promptTemplateService: PromptTemplateService = new PromptTemplateService(),
+    private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry = new AgentCliAdapterRegistry(),
   ) {}
 
   async executeAgentNode({
@@ -486,22 +443,7 @@ export class AgentRunnerService {
   }
 
   private normalizeRunnerArgs(adapter: AgentAdapter, args: string[]): string[] {
-    if (adapter !== 'codex') {
-      return [...args];
-    }
-
-    const normalizedArgs = [...args];
-    if (normalizedArgs.includes('--json')) {
-      return normalizedArgs;
-    }
-
-    const execIndex = normalizedArgs.indexOf('exec');
-    if (execIndex >= 0) {
-      normalizedArgs.splice(execIndex + 1, 0, '--json');
-      return normalizedArgs;
-    }
-
-    return ['exec', '--json', ...normalizedArgs];
+    return this.agentCliAdapterRegistry.getById(adapter).normalizeArgs(args);
   }
 
   private async resolveAgentToolConfig(
@@ -697,23 +639,7 @@ export class AgentRunnerService {
   }
 
   private resolveToolIdCandidates(adapter: AgentAdapter): string[] {
-    if (adapter === 'codex') {
-      return ['codex', 'codex-cli'];
-    }
-
-    if (adapter === 'cursor') {
-      return ['cursor', 'cursor-agent'];
-    }
-
-    if (adapter === 'claude') {
-      return ['claude', 'claude-code'];
-    }
-
-    if (adapter === 'gemini') {
-      return ['gemini', 'gemini-cli'];
-    }
-
-    return ['opencode'];
+    return this.agentCliAdapterRegistry.resolveToolIdCandidates(adapter);
   }
 
   private normalizeAgentToolConfigEntry(
@@ -812,11 +738,8 @@ export class AgentRunnerService {
     adapter: AgentAdapter,
     config: Record<string, unknown>,
   ): Record<string, unknown> {
-    const allowedKeys = this.toolConfigAllowedKeys[adapter];
-    if (!allowedKeys) {
-      return config;
-    }
-
+    const allowedKeys =
+      this.agentCliAdapterRegistry.getById(adapter).toolConfigAllowedKeys;
     const sanitized: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(config)) {
       if (allowedKeys.has(key)) {
@@ -831,57 +754,13 @@ export class AgentRunnerService {
     adapter: AgentAdapter,
     raw: Record<string, unknown>,
   ): RunnerConfigInput {
-    if (adapter === 'codex') {
-      return this.readCodexRunnerConfigFromRaw(raw);
-    }
-
-    if (adapter === 'claude') {
-      return this.readClaudeRunnerConfigFromRaw(raw);
-    }
-
-    if (adapter === 'cursor') {
-      return this.readCursorRunnerConfigFromRaw(raw);
-    }
-
-    if (adapter === 'gemini') {
-      return this.readGeminiRunnerConfigFromRaw(raw);
-    }
-
-    if (adapter === 'opencode') {
-      return this.readOpenCodeRunnerConfigFromRaw(raw);
-    }
-
-    return this.readRunnerConfigFromRaw(raw);
+    return this.agentCliAdapterRegistry
+      .getById(adapter)
+      .buildToolRunnerConfig(raw);
   }
 
   private toAgentAdapter(value?: string): AgentAdapter | null {
-    if (!value?.trim()) {
-      return null;
-    }
-
-    const normalized = value.trim().toLowerCase();
-
-    if (normalized === 'codex' || normalized === 'codex-cli') {
-      return 'codex';
-    }
-
-    if (normalized === 'cursor' || normalized === 'cursor-agent') {
-      return 'cursor';
-    }
-
-    if (normalized === 'claude' || normalized === 'claude-code') {
-      return 'claude';
-    }
-
-    if (normalized === 'gemini' || normalized === 'gemini-cli') {
-      return 'gemini';
-    }
-
-    if (normalized === 'opencode') {
-      return 'opencode';
-    }
-
-    return null;
+    return this.agentCliAdapterRegistry.resolve(value);
   }
 
   private resolveStringEnv(
@@ -1276,28 +1155,13 @@ export class AgentRunnerService {
   }
 
   private resolveDefaultCommand(adapter: AgentAdapter): string {
-    const envCommandMap: Record<AgentAdapter, string | undefined> = {
-      codex: this.readTrimmedEnv('AINATIVE_CODEX_RUNNER_COMMAND'),
-      cursor: this.readTrimmedEnv('AINATIVE_CURSOR_RUNNER_COMMAND'),
-      claude: this.readTrimmedEnv('AINATIVE_CLAUDE_RUNNER_COMMAND'),
-      gemini: this.readTrimmedEnv('AINATIVE_GEMINI_RUNNER_COMMAND'),
-      opencode: this.readTrimmedEnv('AINATIVE_OPENCODE_RUNNER_COMMAND'),
-    };
-
-    const envCommand = envCommandMap[adapter];
+    const cliAdapter = this.agentCliAdapterRegistry.getById(adapter);
+    const envCommand = this.readTrimmedEnv(cliAdapter.runnerCommandEnvKey);
     if (envCommand && envCommand.trim()) {
       return envCommand.trim();
     }
 
-    const defaultCommandMap: Record<AgentAdapter, string> = {
-      codex: 'codex',
-      cursor: 'agent',
-      claude: 'claude',
-      gemini: 'gemini',
-      opencode: 'opencode',
-    };
-
-    return defaultCommandMap[adapter];
+    return cliAdapter.defaultCommand;
   }
 
   private applyContinuationArgs({
@@ -1320,25 +1184,12 @@ export class AgentRunnerService {
       return args;
     }
 
-    if (adapter === 'cursor') {
-      return [...args, '--resume', normalizedSessionId];
-    }
-
-    if (adapter === 'gemini') {
-      return [...args, '--resume', normalizedSessionId];
-    }
-
-    if (adapter === 'claude') {
-      return [...args, '--resume', normalizedSessionId];
-    }
-
-    if (adapter === 'opencode') {
-      return continuationConfig.fork === true
-        ? [...args, '--continue', '--session', normalizedSessionId, '--fork']
-        : [...args, '--continue', '--session', normalizedSessionId];
-    }
-
-    return args;
+    return this.agentCliAdapterRegistry
+      .getById(adapter)
+      .applyContinuation(args, {
+        sessionId: normalizedSessionId,
+        continuationConfig,
+      });
   }
 
   private resolveConfiguredContinuationSession(
@@ -1355,15 +1206,7 @@ export class AgentRunnerService {
   }
 
   private resolveDefaultArgs(adapter: AgentAdapter): string[] {
-    const defaultArgsMap: Record<AgentAdapter, string[]> = {
-      codex: ['exec', '--json', '--skip-git-repo-check', '-'],
-      cursor: ['-p', '--output-format', 'stream-json', '--trust', '--force'],
-      claude: ['-p', '--output-format', 'stream-json', '--verbose'],
-      gemini: ['--output-format', 'stream-json'],
-      opencode: ['run', '--format', 'json'],
-    };
-
-    return defaultArgsMap[adapter];
+    return this.agentCliAdapterRegistry.getById(adapter).defaultArgs();
   }
 
   private resolvePrompt(
@@ -1442,6 +1285,7 @@ export class AgentRunnerService {
     callbacks?: AgentRunnerStreamCallbacks,
   ): Promise<AgentRunnerResult> {
     const startAt = Date.now();
+    const cliAdapter = this.agentCliAdapterRegistry.getById(config.adapter);
 
     let stdout = '';
     let stderr = '';
@@ -1456,11 +1300,11 @@ export class AgentRunnerService {
     let timeoutRef: NodeJS.Timeout | null = null;
     let killTimerRef: NodeJS.Timeout | null = null;
     const captureStdoutLine = (line: string): void => {
-      extractedSessionId ??= this.extractAgentSessionId(line);
+      extractedSessionId ??= cliAdapter.extractSessionId(line);
       callbacks?.onStdoutLine?.(line);
     };
     const captureStderrLine = (line: string): void => {
-      extractedSessionId ??= this.extractAgentSessionId(line);
+      extractedSessionId ??= cliAdapter.extractSessionId(line);
       callbacks?.onStderrLine?.(line);
     };
 
@@ -1610,8 +1454,8 @@ export class AgentRunnerService {
       this.flushTrailingStreamBuffer(stdoutLineBuffer, captureStdoutLine);
       this.flushTrailingStreamBuffer(stderrLineBuffer, captureStderrLine);
 
-      extractedSessionId ??= this.extractAgentSessionId(stdout);
-      extractedSessionId ??= this.extractAgentSessionId(stderr);
+      extractedSessionId ??= cliAdapter.extractSessionId(stdout);
+      extractedSessionId ??= cliAdapter.extractSessionId(stderr);
 
       const durationMs = Date.now() - startAt;
       const success = !timedOut && closeResult.exitCode === 0;
@@ -1672,8 +1516,8 @@ export class AgentRunnerService {
       this.flushTrailingStreamBuffer(stdoutLineBuffer, captureStdoutLine);
       this.flushTrailingStreamBuffer(stderrLineBuffer, captureStderrLine);
 
-      extractedSessionId ??= this.extractAgentSessionId(stdout);
-      extractedSessionId ??= this.extractAgentSessionId(stderr);
+      extractedSessionId ??= cliAdapter.extractSessionId(stdout);
+      extractedSessionId ??= cliAdapter.extractSessionId(stderr);
 
       const durationMs = Date.now() - startAt;
       const errorMessage =
@@ -1769,78 +1613,6 @@ export class AgentRunnerService {
     }
 
     onLine(line);
-  }
-
-  private extractAgentSessionId(content: string): string | null {
-    const normalized = this.normalizeOptionalString(content);
-    if (!normalized) {
-      return null;
-    }
-
-    const jsonMatch = this.extractAgentSessionIdFromJson(normalized);
-    if (jsonMatch) {
-      return jsonMatch;
-    }
-
-    const textMatch =
-      /(?:session|conversation|thread|chat)[_ -]?id["'=: ]+([A-Za-z0-9._:-]+)/i.exec(
-        normalized,
-      );
-
-    return textMatch?.[1] ?? null;
-  }
-
-  private extractAgentSessionIdFromJson(content: string): string | null {
-    try {
-      const parsed = JSON.parse(content) as unknown;
-      return this.findAgentSessionIdInValue(parsed);
-    } catch {
-      return null;
-    }
-  }
-
-  private findAgentSessionIdInValue(value: unknown): string | null {
-    if (!value || typeof value !== 'object') {
-      return null;
-    }
-
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        const found = this.findAgentSessionIdInValue(item);
-        if (found) {
-          return found;
-        }
-      }
-
-      return null;
-    }
-
-    const record = value as Record<string, unknown>;
-    const candidateKeys = [
-      'session_id',
-      'sessionId',
-      'conversation_id',
-      'conversationId',
-      'thread_id',
-      'threadId',
-      'chat_id',
-      'chatId',
-    ];
-
-    for (const key of candidateKeys) {
-      if (typeof record[key] === 'string' && record[key].trim()) {
-        return record[key].trim();
-      }
-    }
-
-    for (const nestedValue of Object.values(record)) {
-      const found = this.findAgentSessionIdInValue(nestedValue);
-      if (found) {
-        return found;
-      }
-    }
-
-    return null;
   }
 
   private buildRunnerEnvironment(
@@ -2024,5 +1796,11 @@ export class AgentRunnerService {
     }
 
     return chunk.toString('utf-8');
+  }
+
+  private extractAgentSessionId(content: string): string | null {
+    return this.agentCliAdapterRegistry
+      .getById('codex')
+      .extractSessionId(content);
   }
 }

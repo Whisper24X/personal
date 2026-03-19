@@ -23,8 +23,24 @@ function isPatchEvent(entry: NormalizedEntry) {
   return t === 'patch_begin' || t === 'patch_end'
 }
 
-function isTurnCompleted(entry: NormalizedEntry) {
-  return getString(entry.metadata?.codexEventType) === 'turn_completed'
+function isLifecycleEvent(entry: NormalizedEntry) {
+  const eventType = getString(entry.metadata?.codexEventType)
+  return eventType === 'thread_started' || eventType === 'turn_started' || eventType === 'turn_completed'
+}
+
+function lifecycleIcon(entry: NormalizedEntry): string {
+  const eventType = getString(entry.metadata?.codexEventType)
+  if (eventType === 'thread_started') return '◎'
+  if (eventType === 'turn_started') return '▶'
+  return '◦'
+}
+
+function lifecycleClass(entry: NormalizedEntry): string {
+  const eventType = getString(entry.metadata?.codexEventType)
+  if (eventType === 'turn_completed') {
+    return 'border-border/30 bg-muted/20 text-muted-foreground'
+  }
+  return 'border-sky-500/20 bg-sky-500/5 text-sky-700'
 }
 
 function patchSuccess(entry: NormalizedEntry): boolean {
@@ -53,12 +69,13 @@ function patchSuccess(entry: NormalizedEntry): boolean {
         <span class="ml-auto text-muted-foreground">{{ formatTime(group.entry.timestamp) }}</span>
       </div>
 
-      <!-- Turn completed with token usage -->
+      <!-- Lifecycle events -->
       <div
-        v-else-if="group.type === 'other' && isTurnCompleted(group.entry)"
-        class="flex items-center gap-2 rounded-md border border-border/30 bg-muted/20 px-3 py-1.5 text-xs text-muted-foreground"
+        v-else-if="group.type === 'other' && isLifecycleEvent(group.entry)"
+        class="flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs"
+        :class="lifecycleClass(group.entry)"
       >
-        <span>📊</span>
+        <span>{{ lifecycleIcon(group.entry) }}</span>
         <span>{{ group.entry.content }}</span>
         <span class="ml-auto">{{ formatTime(group.entry.timestamp) }}</span>
       </div>

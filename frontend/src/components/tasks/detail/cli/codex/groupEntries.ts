@@ -23,6 +23,19 @@ const TOOL_TYPES: Set<NormalizedEntryType> = new Set([
   'thinking',
 ])
 
+const STANDALONE_EVENT_TYPES = new Set([
+  'thread_started',
+  'turn_started',
+  'turn_completed',
+  'patch_begin',
+  'patch_end',
+])
+
+function isStandaloneCodexEvent(entry: NormalizedEntry): boolean {
+  const eventType = typeof entry.metadata?.codexEventType === 'string' ? entry.metadata.codexEventType : null
+  return entry.type === 'system_message' && Boolean(eventType && STANDALONE_EVENT_TYPES.has(eventType))
+}
+
 export function groupCodexEntries(entries: NormalizedEntry[]): CodexMessageGroup[] {
   const groups: CodexMessageGroup[] = []
   let currentTaskGroup: CodexTaskGroup | null = null
@@ -43,6 +56,9 @@ export function groupCodexEntries(entries: NormalizedEntry[]): CodexMessageGroup
         description: entry.content,
         tools: [],
       }
+    } else if (isStandaloneCodexEvent(entry)) {
+      flushTaskGroup()
+      groups.push({ type: 'other', entry })
     } else if (TOOL_TYPES.has(entry.type)) {
       if (!currentTaskGroup) {
         currentTaskGroup = {

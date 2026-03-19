@@ -1,0 +1,565 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
+import path from 'path';
+import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
+import { Project } from '../../projects/domain/project';
+import { ProjectsService } from '../../projects/projects.service';
+import { WorkflowTemplatesService } from '../../workflow-templates/workflow-templates.service';
+import { Task } from '../domain/task';
+import { CreateTaskDto } from '../dto/create-task.dto';
+import { TaskDetailDto } from '../dto/task-detail.dto';
+import { TaskMode } from '../dto/task-mode.enum';
+import { TaskStatus } from '../dto/task-status.enum';
+import { UpdateTaskDto } from '../dto/update-task.dto';
+import {
+  TaskLoopConfig,
+  TaskNodeConfig,
+  TaskNodeInput,
+} from '../types/task-config.type';
+import { TaskRuntimeService } from '../task-runtime.service';
+import { TaskRepository } from '../infrastructure/persistence/task.repository';
+import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
+import { TaskConfigResolverService } from './task-config-resolver.service';
+import { TaskLogService } from './task-log.service';
+import { TaskRuntimeOrchestratorService } from './task-runtime-orchestrator.service';
+import { TaskQueryService } from './task-query.service';
+import { TaskAccessService } from './task-access.service';
+import { TaskLogLevel } from '../dto/task-log-level.enum';
+
+@Injectable()
+export class TaskCommandService {
+  constructor(
+    private readonly taskRepository: TaskRepository,
+    private readonly taskNodeRepository: TaskNodeRepository,
+    private readonly projectsService: ProjectsService,
+    private readonly workflowTemplatesService: WorkflowTemplatesService,
+    private readonly taskRuntimeService: TaskRuntimeService,
+    private readonly taskConfigResolver: TaskConfigResolverService,
+    private readonly taskLogService: TaskLogService,
+    private readonly taskRuntimeOrchestrator: TaskRuntimeOrchestratorService,
+    private readonly taskQueryService: TaskQueryService,
+    private readonly taskAccessService: TaskAccessService,
+  ) {}
+
+  async create(
+    createTaskDto: CreateTaskDto,
+    currentUser: JwtPayloadType,
+  ): Promise<Task> {
+    const project = await this.projectsService.assertProjectCapability(
+      createTaskDto.projectId,
+      currentUser,
+      'project.task.read',
+    );
+
+    let resolvedMode: TaskMode = createTaskDto.mode ?? TaskMode.conversation;
+    const taskConfig = this.taskConfigResolver.mergeTaskConfig(
+      null,
+      this.taskConfigResolver.toObjectRecord(createTaskDto.configJson),
+    );
+    const workflowTemplateId =
+      this.taskConfigResolver.readTaskWorkflowTemplateId(taskConfig);
+    const defaultNodeExecution =
+      this.taskConfigResolver.readNodeExecutionConfig(taskConfig);
+    let nodes: Array<{
+      nodeOrder: number;
+      name: string;
+      input?: TaskNodeInput | null;
+      agentCliId: string;
+      agentCliConfigId: string;
+      configJson: TaskNodeConfig | null;
+      loopJson: TaskLoopConfig | null;
+    }> = [];
+
+    if (workflowTemplateId) {
+      const template = await this.workflowTemplatesService.getTemplateForTask({
+        templateId: workflowTemplateId,
+        projectId: project.id,
+        projectBusinessLineId: project.businessLineId,
+      });
+
+      this.taskConfigResolver.ensureTemplateNodesSupported(template.nodesJson);
+      resolvedMode = TaskMode.workflow;
+
+      nodes = template.nodesJson
+        .map((node) => {
+          const nodeExecution =
+            this.taskConfigResolver.resolveRequiredNodeExecutionConfig(
+              node.input,
+              defaultNodeExecution,
+            );
+
+          return {
+            nodeOrder: node.nodeOrder,
+            name: node.name,
+            input: this.taskConfigResolver.buildTaskNodeInput({
+              taskPrompt: createTaskDto.prompt ?? null,
+              nodeInput: this.taskConfigResolver.readTemplateNodeInput(
+                node.input,
+              ),
+              source: this.taskConfigResolver.toObjectRecord(node.input),
+            }),
+            agentCliId: nodeExecution.agentCliId,
+            agentCliConfigId: nodeExecution.agentCliConfigId,
+            configJson: this.taskConfigResolver.buildTaskNodeConfig(node),
+            loopJson: this.taskConfigResolver.resolveNodeLoopJson(
+              node.input,
+              taskConfig,
+            ),
+          };
+        })
+        .sort((left, right) => left.nodeOrder - right.nodeOrder);
+    } else {
+      if (resolvedMode === TaskMode.workflow) {
+        throw new ConflictException(
+          'Workflow mode requires configJson.workflowTemplateId',
+        );
+      }
+
+      const conversationNodeExecution =
+        this.taskConfigResolver.resolveRequiredNodeExecutionConfig(taskConfig);
+
+      nodes = [
+        {
+          nodeOrder: 1,
+          name: 'conversation-node',
+          input: this.taskConfigResolver.buildTaskNodeInput({
+            taskPrompt: createTaskDto.prompt ?? null,
+            nodeInput: null,
+          }),
+          agentCliId: conversationNodeExecution.agentCliId,
+          agentCliConfigId: conversationNodeExecution.agentCliConfigId,
+          configJson: null,
+          loopJson: this.taskConfigResolver.resolveNodeLoopJson(
+            null,
+            taskConfig,
+          ),
+        },
+      ];
+    }
+
+    if (!nodes.length) {
+      throw new ConflictException('Task must contain at least one node');
+    }
+
+    const normalizedGitBaseBranch = this.normalizeOptionalString(
+      createTaskDto.gitBaseBranch,
+    );
+    const requestedGitWorktree = this.normalizeOptionalString(
+      createTaskDto.gitWorktree,
+    );
+    const taskNameId = this.resolveCreateTaskNameId({
+      gitBranch: createTaskDto.gitBranch,
+      gitBaseBranch: normalizedGitBaseBranch,
+      gitWorktree: requestedGitWorktree,
+      projectDefaultBranch: project.defaultBranch,
+    });
+    const normalizedGitBranch = this.resolveCreateGitBranch({
+      gitBranch: createTaskDto.gitBranch,
+      gitBaseBranch: normalizedGitBaseBranch,
+      projectDefaultBranch: project.defaultBranch,
+      taskNameId,
+    });
+    let normalizedGitWorktree = this.buildDefaultGitWorktree(taskNameId);
+
+    if (requestedGitWorktree) {
+      try {
+        normalizedGitWorktree = await this.normalizeGitWorktree(
+          requestedGitWorktree,
+          project,
+        );
+      } catch (error) {
+        throw new BadRequestException(
+          error instanceof Error ? error.message : 'Invalid git worktree name',
+        );
+      }
+    }
+
+    const existedTask = await this.taskRepository.findByGitWorktree(
+      normalizedGitWorktree,
+    );
+
+    if (existedTask) {
+      throw new ConflictException('Task worktree name already in use');
+    }
+
+    const task = await this.taskRepository.create({
+      projectId: createTaskDto.projectId,
+      businessLineId: project.businessLineId,
+      mode: resolvedMode,
+      title: createTaskDto.title,
+      prompt: createTaskDto.prompt ?? null,
+      status: TaskStatus.todo,
+      gitBranch: normalizedGitBranch,
+      configJson: taskConfig,
+      createdBy: currentUser.sub,
+      gitBaseBranch: normalizedGitBaseBranch,
+      gitWorktree: normalizedGitWorktree,
+      startedAt: null,
+      finishedAt: null,
+    });
+
+    let runtimeTask = task;
+
+    try {
+      const initializedRuntime =
+        await this.taskRuntimeOrchestrator.initializeTaskRuntime(
+          task,
+          project,
+          {
+            forceLog: true,
+          },
+        );
+      runtimeTask = initializedRuntime.task;
+    } catch (error) {
+      await this.taskRuntimeService.cleanupRuntime(task, project).catch(() => ({
+        cleaned: false,
+      }));
+      await this.taskRepository.remove(task.id).catch(() => undefined);
+
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : 'Failed to initialize task runtime';
+
+      throw new ConflictException(
+        `Task runtime initialization failed: ${errorMessage}`,
+      );
+    }
+
+    await this.taskNodeRepository.createMany(
+      nodes.map((node) => ({
+        taskId: runtimeTask.id,
+        nodeOrder: node.nodeOrder,
+        name: node.name,
+        input: node.input ?? null,
+        agentCliId: node.agentCliId,
+        agentCliConfigId: node.agentCliConfigId,
+        agentClioutput: null,
+        agentCliSessionId: null,
+        configJson: node.configJson,
+        loopJson: node.loopJson,
+        runtimeJson: null,
+        status: TaskStatus.todo,
+        startedAt: null,
+        finishedAt: null,
+      })),
+    );
+
+    await this.taskLogService.appendLog({
+      taskId: runtimeTask.id,
+      taskNodeId: null,
+      level: TaskLogLevel.info,
+      message: 'Task created',
+      payload: {
+        mode: resolvedMode,
+        nodeCount: nodes.length,
+      },
+    });
+
+    return runtimeTask;
+  }
+
+  async update(
+    taskId: Task['id'],
+    updateTaskDto: UpdateTaskDto,
+    currentUser: JwtPayloadType,
+  ): Promise<TaskDetailDto> {
+    const task = await this.taskAccessService.getTaskOrThrow(
+      taskId,
+      currentUser,
+      'project.task.read',
+    );
+    const updatePayload: Partial<Task> = {};
+
+    if (updateTaskDto.title !== undefined) {
+      updatePayload.title = updateTaskDto.title;
+    }
+    if (updateTaskDto.prompt !== undefined) {
+      updatePayload.prompt = updateTaskDto.prompt;
+    }
+    if (updateTaskDto.gitBranch !== undefined) {
+      updatePayload.gitBranch = this.normalizeGitBranch(
+        updateTaskDto.gitBranch,
+      );
+    }
+    if (updateTaskDto.gitBaseBranch !== undefined) {
+      updatePayload.gitBaseBranch = this.normalizeOptionalString(
+        updateTaskDto.gitBaseBranch,
+      );
+    }
+    if (updateTaskDto.gitWorktree !== undefined) {
+      const requestedGitWorktree = this.normalizeOptionalString(
+        updateTaskDto.gitWorktree,
+      );
+      if (requestedGitWorktree) {
+        let normalizedGitWorktree: string;
+        try {
+          normalizedGitWorktree = await this.normalizeGitWorktree(
+            requestedGitWorktree,
+            await this.taskAccessService.getProjectByIdOrThrow(task.projectId),
+          );
+        } catch (error) {
+          throw new BadRequestException(
+            error instanceof Error
+              ? error.message
+              : 'Invalid git worktree name',
+          );
+        }
+
+        if (normalizedGitWorktree !== task.gitWorktree) {
+          const existedTask = await this.taskRepository.findByGitWorktree(
+            normalizedGitWorktree,
+          );
+          if (existedTask && existedTask.id !== task.id) {
+            throw new ConflictException('Task worktree name already in use');
+          }
+        }
+
+        updatePayload.gitWorktree = normalizedGitWorktree;
+      } else {
+        updatePayload.gitWorktree = null;
+      }
+    }
+    if (updateTaskDto.configJson !== undefined) {
+      updatePayload.configJson = this.taskConfigResolver.mergeTaskConfig(
+        task.configJson,
+        this.taskConfigResolver.toObjectRecord(updateTaskDto.configJson),
+      );
+    }
+    if (Object.keys(updatePayload).length === 0) {
+      return this.taskQueryService.detailById(task.id, currentUser);
+    }
+
+    const updatedTask = await this.taskRepository.update(
+      task.id,
+      updatePayload,
+    );
+    const effectiveTask = updatedTask ?? task;
+
+    if (
+      updatePayload.configJson !== undefined ||
+      updatePayload.prompt !== undefined
+    ) {
+      const nodes = await this.taskNodeRepository.findByTaskId(task.id);
+      await Promise.all(
+        nodes
+          .filter((node) => node.status !== TaskStatus.done)
+          .map((node) => {
+            const nextNodeExecution =
+              effectiveTask.mode === TaskMode.workflow
+                ? this.taskConfigResolver.resolveRequiredNodeExecutionConfig(
+                    effectiveTask.configJson,
+                    {
+                      agentCliId: node.agentCliId ?? null,
+                      agentCliConfigId: node.agentCliConfigId ?? null,
+                    },
+                  )
+                : this.taskConfigResolver.resolveRequiredNodeExecutionConfig(
+                    effectiveTask.configJson,
+                  );
+
+            return this.taskNodeRepository.update(node.id, {
+              agentCliId: nextNodeExecution.agentCliId,
+              agentCliConfigId: nextNodeExecution.agentCliConfigId,
+              loopJson:
+                effectiveTask.mode === TaskMode.conversation &&
+                node.nodeOrder === 1
+                  ? this.taskConfigResolver.resolveNodeLoopJson(
+                      node.input,
+                      effectiveTask.configJson,
+                      node.loopJson,
+                    )
+                  : node.loopJson,
+              input: this.taskConfigResolver.withTaskInput(
+                node.input,
+                effectiveTask.prompt ?? null,
+              ),
+            });
+          }),
+      );
+    }
+
+    await this.taskLogService.appendLog({
+      taskId: task.id,
+      taskNodeId: null,
+      level: TaskLogLevel.info,
+      message: 'Task info updated',
+      payload: {
+        updatedBy: currentUser.sub,
+        fields: Object.keys(updatePayload),
+      },
+    });
+
+    return this.taskQueryService.detailById(task.id, currentUser);
+  }
+
+  async remove(taskId: Task['id'], currentUser: JwtPayloadType): Promise<void> {
+    const task = await this.taskAccessService.getTaskOrThrow(
+      taskId,
+      currentUser,
+      'project.task.read',
+    );
+    const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
+      task.id,
+    );
+
+    if (runningNode) {
+      throw new ConflictException(
+        'Cannot delete task while execution is in progress',
+      );
+    }
+
+    await this.taskRepository.remove(task.id);
+  }
+
+  private normalizeOptionalString(value?: string | null): string | null {
+    return this.taskConfigResolver.normalizeOptionalString(value);
+  }
+
+  private normalizeGitBranch(value?: string | null): string | null {
+    return this.taskConfigResolver.normalizeGitBranch(value);
+  }
+
+  private resolveCreateTaskNameId({
+    gitBranch,
+    gitBaseBranch,
+    gitWorktree,
+    projectDefaultBranch,
+  }: {
+    gitBranch?: string | null;
+    gitBaseBranch?: string | null;
+    gitWorktree?: string | null;
+    projectDefaultBranch?: string | null;
+  }): string {
+    const normalizedGitBranch = this.normalizeGitBranch(gitBranch);
+    const reservedBranches = new Set(
+      [gitBaseBranch, projectDefaultBranch, 'main', 'master']
+        .map((value) => this.normalizeOptionalString(value))
+        .filter((value): value is string => Boolean(value)),
+    );
+    const gitBranchTaskNameId =
+      normalizedGitBranch && !reservedBranches.has(normalizedGitBranch)
+        ? this.extractTaskNameIdFromGitBranch(normalizedGitBranch)
+        : null;
+    const gitWorktreeTaskNameId = gitWorktree
+      ? this.extractTaskNameIdFromGitWorktree(gitWorktree)
+      : null;
+
+    return (
+      gitWorktreeTaskNameId ?? gitBranchTaskNameId ?? this.buildTaskNameId()
+    );
+  }
+
+  private buildTaskNameId(): string {
+    const now = new Date();
+    const datePrefix = this.formatTaskNameDate(now);
+
+    return `${datePrefix}-${this.formatTaskNameTime(now)}`;
+  }
+
+  private formatTaskNameDate(date: Date): string {
+    const year = date.getFullYear().toString();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+
+    return `${year}${month}${day}`;
+  }
+
+  private formatTaskNameTime(date: Date): string {
+    const hours = `${date.getHours()}`.padStart(2, '0');
+    const minutes = `${date.getMinutes()}`.padStart(2, '0');
+    const seconds = `${date.getSeconds()}`.padStart(2, '0');
+
+    return `${hours}${minutes}${seconds}`;
+  }
+
+  private buildDefaultGitBranch(taskNameId: string): string {
+    return `feature/${taskNameId}`;
+  }
+
+  private buildDefaultGitWorktree(taskNameId: string): string {
+    return `wk-${taskNameId}`;
+  }
+
+  private extractTaskNameIdFromGitBranch(gitBranch: string): string | null {
+    const match = /^feature\/(\d{8}-\d+)$/.exec(gitBranch.trim());
+
+    return match?.[1] ?? null;
+  }
+
+  private extractTaskNameIdFromGitWorktree(gitWorktree: string): string | null {
+    const worktreeName = path.basename(gitWorktree.trim());
+    const match = /^wk-(\d{8}-\d+)$/.exec(worktreeName);
+
+    return match?.[1] ?? null;
+  }
+
+  private resolveCreateGitBranch({
+    gitBranch,
+    gitBaseBranch,
+    projectDefaultBranch,
+    taskNameId,
+  }: {
+    gitBranch?: string | null;
+    gitBaseBranch?: string | null;
+    projectDefaultBranch?: string | null;
+    taskNameId: string;
+  }): string {
+    const normalizedGitBranch = this.normalizeGitBranch(gitBranch);
+
+    if (!normalizedGitBranch) {
+      return this.buildDefaultGitBranch(taskNameId);
+    }
+
+    const reservedBranches = new Set(
+      [gitBaseBranch, projectDefaultBranch, 'main', 'master']
+        .map((value) => this.normalizeOptionalString(value))
+        .filter((value): value is string => Boolean(value)),
+    );
+
+    if (reservedBranches.has(normalizedGitBranch)) {
+      return this.buildDefaultGitBranch(taskNameId);
+    }
+
+    return normalizedGitBranch;
+  }
+
+  private async normalizeGitWorktree(
+    value: string,
+    project: Project,
+  ): Promise<string> {
+    const normalized = this.normalizeOptionalString(value);
+
+    if (!normalized) {
+      throw new Error('gitWorktree cannot be empty');
+    }
+
+    if (path.isAbsolute(normalized)) {
+      const resolvedPath =
+        await this.taskRuntimeService.resolveAndValidateCreateWorktreePath(
+          project,
+          normalized,
+        );
+
+      return path.basename(resolvedPath);
+    }
+
+    const normalizedSegments = normalized
+      .replace(/\\/g, '/')
+      .split('/')
+      .filter(Boolean);
+
+    if (
+      normalizedSegments.length !== 1 ||
+      normalizedSegments[0] === '.' ||
+      normalizedSegments[0] === '..'
+    ) {
+      throw new Error('gitWorktree must be a single directory name');
+    }
+
+    return normalizedSegments[0] ?? normalized;
+  }
+}
