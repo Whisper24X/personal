@@ -4,18 +4,16 @@ describe('TaskGitService', () => {
   it('should expand untracked directories into file paths when reading git status', async () => {
     const service = new TaskGitService({} as any, {} as any);
 
-    jest
-      .spyOn(service as any, 'resolveTaskGitContext')
-      .mockResolvedValue({
-        task: {
-          gitBaseBranch: 'main',
-        },
-        worktreePath: '/tmp/worktree',
-      });
+    jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
+      task: {
+        gitBaseBranch: 'main',
+      },
+      worktreePath: '/tmp/worktree',
+    });
 
     const runGitCommand = jest
       .spyOn(service as any, 'runGitCommand')
-      .mockImplementation(async (_cwd: string, args: string[]) => {
+      .mockImplementation((_cwd: string, args: string[]) => {
         if (args[0] === 'status') {
           expect(args).toEqual([
             'status',
