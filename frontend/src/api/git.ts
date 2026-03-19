@@ -1,4 +1,4 @@
-import type { GitBranches, GitBranchesDetail, GitChangedFiles, GitCheckoutResult, GitCommitDetail, GitCreateBranchResult, GitDeleteBranchResult, GitLog, GitLogPaginated, GitPullMainResult, GitPushResult, GitStatus } from '@/types/api/git'
+import type { GitBranchActionResult, GitBranches, GitBranchesDetail, GitChangedFiles, GitCheckoutResult, GitCommitDetail, GitCreateBranchResult, GitDeleteBranchResult, GitLog, GitLogPaginated, GitPullMainResult, GitPushResult, GitStatus } from '@/types/api/git'
 import { apiHttp } from './http'
 
 export const gitApi = {
@@ -53,7 +53,7 @@ export const gitApi = {
   },
 
   pullBranch(projectId: string, branch: string) {
-    return apiHttp.post<GitPushResult>('/git/pull-branch', { projectId, branch })
+    return apiHttp.post<GitBranchActionResult>('/git/pull-branch', { projectId, branch })
   },
 
   pushBranch(projectId: string, branch: string) {

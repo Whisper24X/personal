@@ -765,7 +765,13 @@ export const useLayout = () => {
   )
 
   watch(
-    () => [route.path, route.query.projectId, selectedProjectId.value] as const,
+    () =>
+      [
+        route.path,
+        route.query.projectId,
+        selectedProjectId.value,
+        menuItems.value.map((item) => item.to).join('|'),
+      ] as const,
     ([path, queryProjectId, selectedProjectId]) => {
       const routeMenuPath = resolveMenuPathFromRoute()
       if (!routeMenuPath) {

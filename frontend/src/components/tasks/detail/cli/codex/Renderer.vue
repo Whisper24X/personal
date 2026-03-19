@@ -61,6 +61,7 @@ function patchSuccess(entry: NormalizedEntry): boolean {
       <UserMessage
         v-else-if="group.type === 'other' && group.entry.type === 'user_message'"
         :entry="group.entry"
+        variant="codex"
       />
 
       <TodoListCard
@@ -76,7 +77,7 @@ function patchSuccess(entry: NormalizedEntry): boolean {
       >
         <span>{{ patchSuccess(group.entry) ? '✓' : '⏳' }}</span>
         <span>{{ group.entry.content }}</span>
-        <span class="ml-auto text-muted-foreground">{{ formatTime(group.entry.timestamp) }}</span>
+        <span class="ml-auto text-[10px] text-muted-foreground/55">{{ formatTime(group.entry.timestamp) }}</span>
       </div>
 
       <!-- Lifecycle events -->
@@ -87,7 +88,7 @@ function patchSuccess(entry: NormalizedEntry): boolean {
       >
         <span>{{ lifecycleIcon(group.entry) }}</span>
         <span>{{ group.entry.content }}</span>
-        <span class="ml-auto">{{ formatTime(group.entry.timestamp) }}</span>
+        <span class="ml-auto text-[10px] opacity-55">{{ formatTime(group.entry.timestamp) }}</span>
       </div>
 
       <!-- Error -->
@@ -98,7 +99,7 @@ function patchSuccess(entry: NormalizedEntry): boolean {
         <div class="flex items-center gap-2 text-xs">
           <span class="text-red-500">⚠</span>
           <span class="font-medium text-red-600">Error</span>
-          <span class="ml-auto text-muted-foreground">{{ formatTime(group.entry.timestamp) }}</span>
+          <span class="ml-auto text-[10px] text-muted-foreground/55">{{ formatTime(group.entry.timestamp) }}</span>
         </div>
         <p class="mt-1 whitespace-pre-wrap text-sm text-red-600">{{ group.entry.content }}</p>
       </div>

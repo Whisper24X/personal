@@ -5,12 +5,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useLayout } from '@/hooks/core/useLayout'
 import { STORAGE_KEYS } from '@/types/common/storage'
 
-const { businessLinesApi, projectsApi, routeState, routerReplace, routerPush } = vi.hoisted(() => ({
+const { businessLinesApi, projectsApi, authApi, routeState, routerReplace, routerPush } = vi.hoisted(() => ({
   businessLinesApi: {
     list: vi.fn(),
   },
   projectsApi: {
     list: vi.fn(),
+  },
+  authApi: {
+    access: vi.fn(),
+    me: vi.fn(),
+    logout: vi.fn(),
   },
   routeState: {
     name: 'dashboard',
@@ -38,6 +43,10 @@ vi.mock('@/api/business-lines', () => ({
 
 vi.mock('@/api/projects', () => ({
   projectsApi,
+}))
+
+vi.mock('@/api/auth', () => ({
+  authApi,
 }))
 
 describe('useLayout business line selection', () => {
@@ -113,6 +122,35 @@ describe('useLayout business line selection', () => {
       hasNextPage: false,
     })
 
+    authApi.access.mockResolvedValue({
+      user: {
+        id: 'user-1',
+        username: 'tester',
+      },
+      currentContext: {
+        businessLineId: 'line-1',
+        businessRole: 'owner',
+        projectId: 'project-1',
+        projectRole: 'owner',
+      },
+      capabilities: [
+        'project.dashboard.read',
+        'project.task.read',
+        'project.kanban.read',
+        'project.automation.read',
+        'project.knowledge.read',
+        'project.workflow.read',
+        'project.skill.read',
+        'project.mcp.read',
+        'project.git.read',
+      ],
+      visibility: {
+        visibleBusinessLineIds: ['line-1', 'line-2'],
+        visibleProjectIds: ['project-1', 'project-2'],
+      },
+    })
+
+    localStorage.setItem(STORAGE_KEYS.authToken, 'token')
     localStorage.setItem(STORAGE_KEYS.lastSelectedProjectId, 'project-1')
   })
 
@@ -334,8 +372,8 @@ describe('useLayout business line selection', () => {
     const wrapper = mount(Harness)
     await flushPromises()
 
-    ;(wrapper.vm as { selectProject: (projectId: string) => void }).selectProject('project-2')
-    await nextTick()
+    await (wrapper.vm as { selectProject: (projectId: string) => Promise<void> }).selectProject('project-2')
+    await flushPromises()
 
     expect(routerPush).toHaveBeenCalledWith({
       path: '/tasks',
@@ -363,8 +401,8 @@ describe('useLayout business line selection', () => {
     const wrapper = mount(Harness)
     await flushPromises()
 
-    ;(wrapper.vm as { selectProject: (projectId: string) => void }).selectProject('project-1')
-    await nextTick()
+    await (wrapper.vm as { selectProject: (projectId: string) => Promise<void> }).selectProject('project-1')
+    await flushPromises()
 
     expect(routerPush).toHaveBeenCalledWith({
       path: '/dashboard',
@@ -465,8 +503,8 @@ describe('useLayout business line selection', () => {
     const wrapper = mount(Harness)
     await flushPromises()
 
-    ;(wrapper.vm as { selectProject: (projectId: string) => void }).selectProject('project-2')
-    await nextTick()
+    await (wrapper.vm as { selectProject: (projectId: string) => Promise<void> }).selectProject('project-2')
+    await flushPromises()
 
     expect(routerPush).toHaveBeenCalledWith({
       path: '/kanban',

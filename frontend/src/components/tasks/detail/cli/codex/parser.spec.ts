@@ -11,6 +11,24 @@ function createMessage(content: Record<string, unknown>, createdAt = '2026-03-19
 }
 
 describe('parseCodexMessages', () => {
+  it('parses injected user prompt records as user messages', () => {
+    const entries = parseCodexMessages([
+      createMessage({
+        type: 'user_message',
+        message: 'Please continue from the previous result',
+        created_at: '2026-03-19T02:00:00.000Z',
+        source: 'ainative_injected_prompt',
+      }),
+    ])
+
+    expect(entries).toEqual([
+      expect.objectContaining({
+        type: 'user_message',
+        content: 'Please continue from the previous result',
+      }),
+    ])
+  })
+
   it('parses thread and turn lifecycle events with explicit metadata', () => {
     const entries = parseCodexMessages([
       createMessage({

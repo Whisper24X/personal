@@ -20,7 +20,7 @@ const branches = ref<GitBranchDetail[]>([])
 const expandedBranch = ref<string | null>(null)
 const branchCommits = ref<Record<string, GitCommitSummary[]>>({})
 const loadingBranchCommits = ref<Record<string, boolean>>({})
-const filterType = ref<'all' | 'local' | 'remote' | 'current'>('all')
+const filterType = ref<'all' | 'local' | 'remote' | 'current'>('current')
 const operatingBranch = ref<string | null>(null)
 const showDeleteConfirm = ref(false)
 const deletingBranchName = ref('')
@@ -84,7 +84,6 @@ const FILTER_TYPE_OPTIONS = [
   { label: '远程分支', value: 'remote' },
 ] as const
 
-
 const formatCommitTime = (value: string) => {
   const parsedDate = new Date(value)
   if (Number.isNaN(parsedDate.getTime())) {
@@ -100,6 +99,38 @@ const formatCommitTime = (value: string) => {
   })
 }
 
+const getBranchMetaItems = (branch: GitBranchDetail) => {
+  const items = [
+    branch.lastCommit.shortSha
+      ? { key: 'sha', label: branch.lastCommit.shortSha, class: 'font-mono' }
+      : null,
+    branch.lastCommit.author
+      ? { key: 'author', label: branch.lastCommit.author, class: '' }
+      : null,
+    branch.lastCommit.committedAt
+      ? { key: 'time', label: formatCommitTime(branch.lastCommit.committedAt), class: '' }
+      : null,
+  ]
+
+  return items.filter((item): item is { key: string; label: string; class: string } => Boolean(item))
+}
+
+const getCommitMetaItems = (commit: GitCommitSummary) => {
+  const items = [
+    commit.shortSha
+      ? { key: 'sha', label: commit.shortSha, class: 'rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]' }
+      : null,
+    commit.authorName
+      ? { key: 'author', label: commit.authorName, class: '' }
+      : null,
+    commit.committedAt
+      ? { key: 'time', label: formatCommitTime(commit.committedAt), class: '' }
+      : null,
+  ]
+
+  return items.filter((item): item is { key: string; label: string; class: string } => Boolean(item))
+}
+
 const loadBranches = async () => {
   const projectId = activeProjectId.value
   if (!projectId) {
@@ -109,67 +140,8 @@ const loadBranches = async () => {
 
   loading.value = true
   try {
-    // 临时方案：使用现有API组合数据，等后端实现 branches-detail API 后替换
-    const [branchData, statusData, logData] = await Promise.all([
-      gitApi.branches(projectId),
-      gitApi.status(projectId),
-      gitApi.log(projectId, { limit: 1 }),
-    ])
-
-    const lastCommit = logData.commits[0] || {
-      sha: '',
-      shortSha: '',
-      message: 'No commits',
-      authorName: '',
-      committedAt: new Date().toISOString(),
-    }
-
-    // 组合本地和远程分支
-    const branchDetails: GitBranchDetail[] = []
-    const localSet = new Set(branchData.localBranches)
-    const remoteSet = new Set(branchData.remoteBranches)
-
-    // 处理本地分支
-    branchData.localBranches.forEach(name => {
-      const hasRemote = remoteSet.has(name) || remoteSet.has(`origin/${name}`)
-      branchDetails.push({
-        name,
-        type: hasRemote ? 'both' : 'local',
-        isCurrent: name === statusData.currentBranch,
-        ahead: 0, // 临时数据，等后端API
-        behind: 0,
-        lastCommit: {
-          sha: lastCommit.sha,
-          shortSha: lastCommit.shortSha,
-          message: lastCommit.message,
-          author: lastCommit.authorName,
-          committedAt: lastCommit.committedAt,
-        },
-      })
-    })
-
-    // 处理仅远程分支
-    branchData.remoteBranches.forEach(name => {
-      const cleanName = name.replace(/^origin\//, '')
-      if (!localSet.has(cleanName)) {
-        branchDetails.push({
-          name,
-          type: 'remote',
-          isCurrent: false,
-          ahead: 0,
-          behind: 0,
-          lastCommit: {
-            sha: lastCommit.sha,
-            shortSha: lastCommit.shortSha,
-            message: lastCommit.message,
-            author: lastCommit.authorName,
-            committedAt: lastCommit.committedAt,
-          },
-        })
-      }
-    })
-
-    branches.value = branchDetails
+    const branchData = await gitApi.branchesDetail(projectId)
+    branches.value = branchData.branches
   } catch (error) {
     message.error(toErrorMessage(error, '读取分支信息失败'))
     branches.value = []
@@ -178,9 +150,21 @@ const loadBranches = async () => {
   }
 }
 
+const canPullBranch = (branch: GitBranchDetail) => {
+  return branch.isCurrent && (branch.type === 'local' || branch.type === 'both') && branch.behind > 0
+}
+
+const isBranchExpanded = (branchName: string) => {
+  return expandedBranch.value === branchName
+}
+
+const getLogToggleLabel = (branchName: string) => {
+  return isBranchExpanded(branchName) ? '收起日志' : '查看日志'
+}
+
 
 const toggleBranchExpand = async (branchName: string) => {
-  if (expandedBranch.value === branchName) {
+  if (isBranchExpanded(branchName)) {
     expandedBranch.value = null
     return
   }
@@ -326,12 +310,11 @@ watch(activeProjectId, () => {
                   {{ branchTypeConfig[branch.type].label }}
                 </span>
               </div>
-              <div class="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                <span class="font-mono">{{ branch.lastCommit.shortSha }}</span>
-                <span>·</span>
-                <span>{{ branch.lastCommit.author }}</span>
-                <span>·</span>
-                <span>{{ formatCommitTime(branch.lastCommit.committedAt) }}</span>
+              <div v-if="getBranchMetaItems(branch).length > 0" class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                <template v-for="(item, index) in getBranchMetaItems(branch)" :key="item.key">
+                  <span v-if="index > 0" aria-hidden="true">·</span>
+                  <span :class="item.class">{{ item.label }}</span>
+                </template>
               </div>
             </div>
 
@@ -343,66 +326,84 @@ watch(activeProjectId, () => {
             </div>
 
             <!-- 操作按钮 -->
-            <div class="flex shrink-0 items-center gap-1">
+            <div class="flex shrink-0 items-center gap-1.5">
               <button
                 v-if="branch.ahead > 0 && (branch.type === 'local' || branch.type === 'both')"
                 type="button"
-                class="rounded-lg border border-border bg-background px-2 py-1 text-xs font-semibold transition hover:bg-muted disabled:opacity-50"
+                class="inline-flex h-8 items-center rounded-full border border-border bg-background px-3 text-xs font-semibold transition hover:bg-muted disabled:opacity-50"
                 :disabled="operatingBranch === branch.name"
                 @click="pushBranch(branch.name)"
               >
                 {{ operatingBranch === branch.name ? '推送中...' : '推送' }}
               </button>
               <button
-                v-if="branch.behind > 0 && (branch.type === 'local' || branch.type === 'both')"
+                v-if="canPullBranch(branch)"
                 type="button"
-                class="rounded-lg border border-border bg-background px-2 py-1 text-xs font-semibold transition hover:bg-muted disabled:opacity-50"
+                class="inline-flex h-8 items-center rounded-full border border-border bg-background px-3 text-xs font-semibold transition hover:bg-muted disabled:opacity-50"
                 :disabled="operatingBranch === branch.name"
                 @click="pullBranch(branch.name)"
               >
                 {{ operatingBranch === branch.name ? '拉取中...' : '拉取' }}
               </button>
               <button
+                type="button"
+                class="inline-flex h-8 items-center gap-1.5 rounded-full border border-border/80 bg-muted/50 px-3 text-xs font-semibold text-muted-foreground transition hover:border-border hover:bg-muted hover:text-foreground"
+                :aria-expanded="isBranchExpanded(branch.name)"
+                :aria-label="isBranchExpanded(branch.name) ? `收起 ${branch.name} 的提交记录` : `展开 ${branch.name} 的提交记录`"
+                @click="toggleBranchExpand(branch.name)"
+              >
+                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h8M8 12h8M8 17h5" />
+                </svg>
+                <span>{{ getLogToggleLabel(branch.name) }}</span>
+                <svg class="h-3.5 w-3.5 transition" :class="isBranchExpanded(branch.name) ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              <button
                 v-if="branch.name !== 'main' && branch.name !== 'master'"
                 type="button"
-                class="rounded-lg border border-border bg-background px-2 py-1 text-xs font-semibold transition hover:bg-muted disabled:opacity-50"
+                class="inline-flex h-8 items-center gap-1.5 rounded-full border border-red-200/70 bg-red-50/70 px-3 text-xs font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100/80 disabled:opacity-50 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300 dark:hover:border-red-400/30 dark:hover:bg-red-500/15"
                 :disabled="operatingBranch === branch.name"
                 @click="openDeleteConfirm(branch.name, branch.type === 'remote')"
               >
-                删除
-              </button>
-              <button
-                type="button"
-                class="rounded-lg border border-border bg-background p-1 transition hover:bg-muted"
-                :aria-expanded="expandedBranch === branch.name"
-                :aria-label="expandedBranch === branch.name ? `收起 ${branch.name} 的提交记录` : `展开 ${branch.name} 的提交记录`"
-                @click="toggleBranchExpand(branch.name)"
-              >
-                <svg class="h-4 w-4 transition" :class="expandedBranch === branch.name ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 7h12M9 7V5h6v2m-7 4v6m4-6v6m4-6v6m-9 3h10a2 2 0 002-2V7H5v11a2 2 0 002 2z" />
                 </svg>
+                删除
               </button>
             </div>
           </div>
 
           <!-- 展开的提交列表 -->
-          <div v-if="expandedBranch === branch.name" class="border-t border-border px-4 py-3">
-            <p class="mb-2 text-xs font-semibold text-muted-foreground">最近提交</p>
+          <div v-if="isBranchExpanded(branch.name)" class="border-t border-border bg-muted/20 px-4 py-3">
+            <div class="mb-3 flex items-center justify-between gap-3">
+              <p class="text-xs font-semibold tracking-[0.12em] text-muted-foreground">最近 5 条提交</p>
+              <span class="rounded-full bg-background px-2 py-1 text-[11px] font-medium text-muted-foreground">
+                {{ branch.name }}
+              </span>
+            </div>
             <div v-if="loadingBranchCommits[branch.name]" class="text-xs text-muted-foreground">加载中...</div>
+            <div v-else-if="branchCommits[branch.name]?.length === 0" class="rounded-xl border border-dashed border-border bg-background/70 px-3 py-4 text-xs text-muted-foreground">
+              暂无提交记录
+            </div>
             <div v-else-if="branchCommits[branch.name]" class="space-y-1">
               <div
                 v-for="commit in branchCommits[branch.name]"
                 :key="commit.sha"
-                class="rounded-lg border border-border/50 bg-background/40 px-3 py-2"
+                class="rounded-xl border border-border/70 bg-background/80 px-3 py-2.5 transition hover:border-border hover:bg-background"
               >
-                <p class="truncate text-xs font-semibold">{{ commit.message }}</p>
-                <p class="mt-0.5 text-xs text-muted-foreground">
-                  <span class="font-mono">{{ commit.shortSha }}</span>
-                  <span class="mx-1">·</span>
-                  <span>{{ commit.authorName }}</span>
-                  <span class="mx-1">·</span>
-                  <span>{{ formatCommitTime(commit.committedAt) }}</span>
-                </p>
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-xs font-semibold text-foreground">{{ commit.message }}</p>
+                    <p v-if="getCommitMetaItems(commit).length > 0" class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      <template v-for="(item, index) in getCommitMetaItems(commit)" :key="item.key">
+                        <span v-if="index > 0" aria-hidden="true">·</span>
+                        <span :class="item.class">{{ item.label }}</span>
+                      </template>
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

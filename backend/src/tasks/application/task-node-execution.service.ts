@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Project } from '../../projects/domain/project';
 import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
+import { AgentCliAdapterRegistry } from '../agent-cli/agent-cli-adapter.registry';
 import { AgentRunnerService } from '../agent-runner.service';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskStatus } from '../dto/task-status.enum';
@@ -30,6 +31,7 @@ export class TaskNodeExecutionService {
     private readonly taskLogService: TaskLogService,
     private readonly taskStatusService: TaskStatusService,
     private readonly taskRuntimeOrchestrator: TaskRuntimeOrchestratorService,
+    private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry = new AgentCliAdapterRegistry(),
   ) {}
 
   async runNode({
@@ -211,6 +213,15 @@ export class TaskNodeExecutionService {
           }
         : undefined,
       callbacks: {
+        onPrepared: async ({ adapter, prompt, preparedAt }) => {
+          await this.appendPreExecutionOutputRecords({
+            task,
+            node,
+            adapter,
+            prompt,
+            preparedAt,
+          });
+        },
         onStdoutLine: (line) => {
           streamedStdoutLineCount += 1;
           const lineIndex = streamedStdoutLineCount;
@@ -569,6 +580,37 @@ export class TaskNodeExecutionService {
     }
 
     return chunks;
+  }
+
+  private async appendPreExecutionOutputRecords({
+    task,
+    node,
+    adapter,
+    prompt,
+    preparedAt,
+  }: {
+    task: Task;
+    node: TaskNode;
+    adapter: Parameters<AgentCliAdapterRegistry['getById']>[0];
+    prompt: string;
+    preparedAt: Date;
+  }): Promise<void> {
+    const records = this.agentCliAdapterRegistry
+      .getById(adapter)
+      .buildPreExecutionOutputRecords({
+        prompt,
+        createdAt: preparedAt,
+      });
+
+    if (!records.length) {
+      return;
+    }
+
+    await this.taskOutputService.appendNodeOutputJsonlRecords({
+      task,
+      node,
+      records,
+    });
   }
 
   private async finalizeNodeAsSuccess({

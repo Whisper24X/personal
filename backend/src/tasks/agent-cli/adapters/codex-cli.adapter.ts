@@ -1,6 +1,7 @@
 import { BaseAgentCliAdapter } from '../agent-cli-adapter.base';
 import {
   AgentCliContinuationOptions,
+  AgentCliPreExecutionOutputInput,
   AgentCliRunnerConfigInput,
 } from '../agent-cli-adapter.interface';
 
@@ -60,6 +61,25 @@ export class CodexCliAdapter extends BaseAgentCliAdapter {
 
     nextArgs.splice(sessionInsertIndex, 0, options.sessionId);
     return nextArgs;
+  }
+
+  buildPreExecutionOutputRecords(
+    input: AgentCliPreExecutionOutputInput,
+  ): Record<string, unknown>[] {
+    const prompt = this.normalizeOptionalString(input.prompt);
+
+    if (!prompt) {
+      return [];
+    }
+
+    return [
+      {
+        type: 'user_message',
+        message: prompt,
+        created_at: input.createdAt.toISOString(),
+        source: 'ainative_injected_prompt',
+      },
+    ];
   }
 
   normalizeArgs(args: string[]): string[] {

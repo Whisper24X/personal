@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { NormalizedEntry } from '../types'
 import { formatTime } from '../utils'
 
@@ -46,11 +46,20 @@ const badgeClass = computed(() =>
     : 'bg-amber-500/10 text-amber-700',
 )
 const iconClass = computed(() => (isCompleted.value ? 'text-emerald-600' : 'text-amber-600'))
+const collapsed = ref(true)
+
+const toggleCollapsed = () => {
+  collapsed.value = !collapsed.value
+}
 </script>
 
 <template>
   <div class="rounded-xl border px-4 py-3 shadow-sm" :class="containerClass">
-    <div class="flex flex-wrap items-center gap-2 text-xs">
+    <button
+      type="button"
+      class="flex w-full flex-wrap items-center gap-2 text-left text-xs"
+      @click="toggleCollapsed"
+    >
       <span class="text-sm font-medium" :class="iconClass">{{ isCompleted ? '✓' : '◌' }}</span>
       <span class="font-medium text-foreground">待办清单</span>
       <span class="rounded-full px-2 py-0.5 text-[11px] font-medium" :class="badgeClass">
@@ -59,10 +68,13 @@ const iconClass = computed(() => (isCompleted.value ? 'text-emerald-600' : 'text
       <span class="rounded-full bg-background/80 px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
         {{ progressText }}
       </span>
-      <span class="ml-auto text-muted-foreground">{{ formatTime(entry.timestamp) }}</span>
-    </div>
+      <span class="ml-auto text-[10px] text-muted-foreground/55">{{ formatTime(entry.timestamp) }}</span>
+      <span class="text-[10px] text-muted-foreground/60">
+        {{ collapsed ? '展开' : '收起' }}
+      </span>
+    </button>
 
-    <ul v-if="todoItems.length > 0" class="mt-3 space-y-2">
+    <ul v-if="!collapsed && todoItems.length > 0" class="mt-3 space-y-2">
       <li
         v-for="(item, index) in todoItems"
         :key="`${entry.id}-${index}`"
@@ -77,7 +89,7 @@ const iconClass = computed(() => (isCompleted.value ? 'text-emerald-600' : 'text
       </li>
     </ul>
 
-    <p v-else class="mt-3 text-sm text-muted-foreground">
+    <p v-else-if="!collapsed" class="mt-3 text-sm text-muted-foreground">
       暂无待办项
     </p>
   </div>

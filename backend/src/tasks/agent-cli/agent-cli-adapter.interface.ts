@@ -18,6 +18,11 @@ export type AgentCliContinuationOptions = {
   continuationConfig: Record<string, unknown>;
 };
 
+export type AgentCliPreExecutionOutputInput = {
+  prompt: string;
+  createdAt: Date;
+};
+
 export interface AgentCliAdapter {
   readonly id: AgentCliAdapterId;
   readonly toolIdAliases: string[];
@@ -34,6 +39,9 @@ export interface AgentCliAdapter {
     args: string[],
     options: AgentCliContinuationOptions,
   ): string[];
+  buildPreExecutionOutputRecords(
+    input: AgentCliPreExecutionOutputInput,
+  ): Record<string, unknown>[];
   extractSessionId(content: string): string | null;
   classifyMessageRole(record: Record<string, unknown>): TaskMessageRole;
 }

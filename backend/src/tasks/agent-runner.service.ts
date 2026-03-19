@@ -56,6 +56,11 @@ type AgentExecutionContext = {
 };
 
 type AgentRunnerStreamCallbacks = {
+  onPrepared?: (input: {
+    adapter: AgentCliAdapterId;
+    prompt: string;
+    preparedAt: Date;
+  }) => Promise<void> | void;
   onStdoutLine?: (line: string) => void;
   onStderrLine?: (line: string) => void;
 };
@@ -125,6 +130,11 @@ export class AgentRunnerService {
       config,
       runtimeContext,
     );
+    await callbacks?.onPrepared?.({
+      adapter: config.adapter,
+      prompt,
+      preparedAt: new Date(),
+    });
     return this.runWithConfig(
       config,
       prompt,

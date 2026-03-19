@@ -80,6 +80,30 @@ export class TaskOutputService {
     return normalizedLines.length;
   }
 
+  async appendNodeOutputJsonlRecords({
+    task,
+    node,
+    records,
+  }: {
+    task: Task;
+    node: TaskNode;
+    records: Record<string, unknown>[];
+  }): Promise<number> {
+    const lines = records
+      .filter((record) => record && !Array.isArray(record))
+      .map((record) => JSON.stringify(record));
+
+    if (!lines.length) {
+      return 0;
+    }
+
+    return this.appendNodeOutputJsonlLines({
+      task,
+      node,
+      lines,
+    });
+  }
+
   serializeNodeOutputJsonl(output: Record<string, unknown>): string {
     const stdout =
       typeof output.stdout === 'string' && output.stdout.trim()

@@ -30,6 +30,12 @@ export type GitPullMainResult = {
   output: string
 }
 
+export type GitBranchActionResult = {
+  success: boolean
+  branch: string
+  output: string
+}
+
 export type GitChangedFile = {
   path: string
   status: 'M' | 'A' | 'D' | '??'

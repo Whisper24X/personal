@@ -1,6 +1,11 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { spawn } from 'child_process';
+import { GitBranchActionResultDto } from './dto/git-branch-action-result.dto';
 import { GitBranchesDto } from './dto/git-branches.dto';
+import {
+  GitBranchDetailDto,
+  GitBranchesDetailDto,
+} from './dto/git-branches-detail.dto';
 import { GitLogDto } from './dto/git-log.dto';
 import { GitPullMainDto } from './dto/git-pull-main.dto';
 import { GitStatusDto } from './dto/git-status.dto';
@@ -36,6 +41,30 @@ export class GitService {
     };
   }
 
+  async listBranchesDetail(
+    projectId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<GitBranchesDetailDto> {
+    const { repositoryRoot, defaultBranch } = await this.resolveProjectContext(
+      projectId,
+      currentUser,
+      { syncRemote: true },
+    );
+    const snapshot = await this.readBranchSnapshot(
+      repositoryRoot,
+      defaultBranch,
+    );
+    const branches = await this.readBranchDetails(
+      repositoryRoot,
+      defaultBranch,
+      snapshot,
+    );
+
+    return {
+      branches,
+    };
+  }
+
   async pullMain(
     projectId: string,
     currentUser: JwtPayloadType,
@@ -66,24 +95,47 @@ export class GitService {
       );
     }
 
-    const pullResult = await this.runCommand([
-      '-C',
+    const pullResult = await this.executePull(
       repositoryRoot,
-      'pull',
-      '--ff-only',
-      'origin',
       defaultBranch,
-    ]);
-
-    if (!pullResult.success) {
-      throw new BadRequestException(
-        this.formatGitFailure(`拉取 ${defaultBranch} 分支失败`, pullResult),
-      );
-    }
+      snapshot,
+    );
 
     return {
       branch: defaultBranch,
-      output: pullResult.stdout || pullResult.stderr || 'Already up to date.',
+      output: pullResult.output,
+    };
+  }
+
+  async pullBranch(
+    projectId: string,
+    branchName: string,
+    currentUser: JwtPayloadType,
+  ): Promise<GitBranchActionResultDto> {
+    const normalizedBranchName = branchName.trim();
+    if (!normalizedBranchName) {
+      throw new BadRequestException('分支名不能为空');
+    }
+
+    const { repositoryRoot, defaultBranch } = await this.resolveProjectContext(
+      projectId,
+      currentUser,
+      { syncRemote: true },
+    );
+    const snapshot = await this.readBranchSnapshot(
+      repositoryRoot,
+      defaultBranch,
+    );
+    const result = await this.executePull(
+      repositoryRoot,
+      normalizedBranchName,
+      snapshot,
+    );
+
+    return {
+      success: true,
+      branch: normalizedBranchName,
+      output: result.output,
     };
   }
 
@@ -254,6 +306,77 @@ export class GitService {
     return normalized;
   }
 
+  private async readBranchDetails(
+    repositoryRoot: string,
+    defaultBranch: string,
+    snapshot: {
+      currentBranch: string | null;
+      localBranches: string[];
+      remoteBranches: string[];
+    },
+  ): Promise<GitBranchDetailDto[]> {
+    const detailsResult = await this.runCommand([
+      '-C',
+      repositoryRoot,
+      'for-each-ref',
+      '--format=%(refname:short)%x1f%(objectname)%x1f%(objectname:short)%x1f%(authorname)%x1f%(committerdate:iso-strict)%x1f%(contents:subject)',
+      'refs/heads',
+      'refs/remotes/origin',
+    ]);
+
+    if (!detailsResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure('读取分支详情失败', detailsResult),
+      );
+    }
+
+    const commitMap = this.parseBranchCommitDetails(detailsResult.stdout);
+    const localBranchSet = new Set(snapshot.localBranches);
+    const remoteBranchSet = new Set(snapshot.remoteBranches);
+    const branchNames = this.sortBranches(
+      [...new Set([...snapshot.localBranches, ...snapshot.remoteBranches])],
+      defaultBranch,
+    );
+
+    return Promise.all(
+      branchNames.map(async (branchName) => {
+        const hasLocal = localBranchSet.has(branchName);
+        const hasRemote = remoteBranchSet.has(branchName);
+        let ahead = 0;
+        let behind = 0;
+        let tracking: string | undefined;
+
+        if (hasLocal && hasRemote) {
+          tracking = `origin/${branchName}`;
+          const divergence = await this.readBranchDivergence(
+            repositoryRoot,
+            branchName,
+            tracking,
+          );
+          ahead = divergence.ahead;
+          behind = divergence.behind;
+        }
+
+        const preferredRef = hasLocal ? branchName : `origin/${branchName}`;
+        const fallbackRef = `origin/${branchName}`;
+        const lastCommit =
+          commitMap.get(preferredRef) ??
+          commitMap.get(fallbackRef) ??
+          this.createEmptyBranchCommit();
+
+        return {
+          name: branchName,
+          type: hasLocal && hasRemote ? 'both' : hasLocal ? 'local' : 'remote',
+          isCurrent: snapshot.currentBranch === branchName,
+          tracking,
+          ahead,
+          behind,
+          lastCommit,
+        };
+      }),
+    );
+  }
+
   private parseBranches(stdout: string): string[] {
     return Array.from(
       new Set(
@@ -290,6 +413,134 @@ export class GitService {
         };
       })
       .filter((commit) => commit.sha && commit.shortSha);
+  }
+
+  private parseBranchCommitDetails(
+    stdout: string,
+  ): Map<string, GitBranchDetailDto['lastCommit']> {
+    const result = new Map<string, GitBranchDetailDto['lastCommit']>();
+
+    for (const line of stdout.split('\n')) {
+      const normalizedLine = line.trim();
+      if (!normalizedLine) {
+        continue;
+      }
+
+      const [refName, sha, shortSha, author, committedAt, ...messageParts] =
+        normalizedLine.split('\x1f');
+
+      if (!refName) {
+        continue;
+      }
+
+      result.set(refName, {
+        sha: sha || '',
+        shortSha: shortSha || '',
+        author: author || '',
+        committedAt: committedAt || '',
+        message: messageParts.join('\x1f') || '',
+      });
+    }
+
+    return result;
+  }
+
+  private createEmptyBranchCommit(): GitBranchDetailDto['lastCommit'] {
+    return {
+      sha: '',
+      shortSha: '',
+      author: '',
+      committedAt: '',
+      message: '',
+    };
+  }
+
+  private async readBranchDivergence(
+    repositoryRoot: string,
+    localRef: string,
+    remoteRef: string,
+  ): Promise<{ ahead: number; behind: number }> {
+    const divergenceResult = await this.runCommand([
+      '-C',
+      repositoryRoot,
+      'rev-list',
+      '--left-right',
+      '--count',
+      `${localRef}...${remoteRef}`,
+    ]);
+
+    if (!divergenceResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure(
+          `读取分支 ${localRef} 同步状态失败`,
+          divergenceResult,
+        ),
+      );
+    }
+
+    const [aheadRaw, behindRaw] = divergenceResult.stdout
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2);
+
+    return {
+      ahead: Number.parseInt(aheadRaw || '0', 10) || 0,
+      behind: Number.parseInt(behindRaw || '0', 10) || 0,
+    };
+  }
+
+  private async executePull(
+    repositoryRoot: string,
+    branchName: string,
+    snapshot: {
+      currentBranch: string | null;
+      localBranches: string[];
+      remoteBranches: string[];
+    },
+  ): Promise<{ output: string }> {
+    const hasLocalBranch = snapshot.localBranches.includes(branchName);
+    const hasRemoteBranch = snapshot.remoteBranches.includes(branchName);
+
+    if (!hasLocalBranch && !hasRemoteBranch) {
+      throw new BadRequestException(`仓库不存在 ${branchName} 分支，无法拉取`);
+    }
+
+    if (!hasLocalBranch) {
+      throw new BadRequestException(
+        `分支 ${branchName} 仅存在于远端，请先检出本地分支后再拉取`,
+      );
+    }
+
+    if (!hasRemoteBranch) {
+      throw new BadRequestException(
+        `分支 ${branchName} 未关联 origin 远端分支，无法执行拉取`,
+      );
+    }
+
+    if (snapshot.currentBranch !== branchName) {
+      throw new BadRequestException(
+        `请先切换到 ${branchName} 分支后再执行拉取，避免误更新当前工作分支`,
+      );
+    }
+
+    const pullResult = await this.runCommand([
+      '-C',
+      repositoryRoot,
+      'pull',
+      '--ff-only',
+      'origin',
+      branchName,
+    ]);
+
+    if (!pullResult.success) {
+      throw new BadRequestException(
+        this.formatGitFailure(`拉取 ${branchName} 分支失败`, pullResult),
+      );
+    }
+
+    return {
+      output: pullResult.stdout || pullResult.stderr || 'Already up to date.',
+    };
   }
 
   private sortBranches(branches: string[], defaultBranch: string): string[] {

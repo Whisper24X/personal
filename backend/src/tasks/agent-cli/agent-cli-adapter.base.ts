@@ -2,6 +2,7 @@ import { TaskMessageRole } from '../dto/task-message.dto';
 import {
   AgentCliAdapter,
   AgentCliContinuationOptions,
+  AgentCliPreExecutionOutputInput,
   AgentCliRunnerConfigInput,
 } from './agent-cli-adapter.interface';
 
@@ -30,6 +31,13 @@ export abstract class BaseAgentCliAdapter implements AgentCliAdapter {
   ): string[] {
     void options;
     return [...args];
+  }
+
+  buildPreExecutionOutputRecords(
+    input: AgentCliPreExecutionOutputInput,
+  ): Record<string, unknown>[] {
+    void input;
+    return [];
   }
 
   extractSessionId(content: string): string | null {
