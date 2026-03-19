@@ -43,15 +43,24 @@ function isStandaloneCodexCard(entry: NormalizedEntry): boolean {
   )
 }
 
+function hasRenderableTaskContent(group: CodexTaskGroup): boolean {
+  if (group.description) return true
+
+  return group.tools.some(
+    (entry) => entry.type !== 'tool_result' && entry.type !== 'system_message',
+  )
+}
+
 export function groupCodexEntries(entries: NormalizedEntry[]): CodexMessageGroup[] {
   const groups: CodexMessageGroup[] = []
   let currentTaskGroup: CodexTaskGroup | null = null
 
   const flushTaskGroup = () => {
-    if (currentTaskGroup && (currentTaskGroup.tools.length > 0 || currentTaskGroup.description)) {
+    if (currentTaskGroup && hasRenderableTaskContent(currentTaskGroup)) {
       groups.push(currentTaskGroup)
-      currentTaskGroup = null
     }
+
+    currentTaskGroup = null
   }
 
   for (const entry of entries) {

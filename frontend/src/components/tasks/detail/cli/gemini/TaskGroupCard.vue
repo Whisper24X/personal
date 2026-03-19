@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { buildClaudeTaskGroupItems, type ClaudeGroupItem, type ClaudeTaskGroup } from './groupEntries'
+import type { GeminiTaskGroup } from './groupEntries'
 import AssistantMessage from './AssistantMessage.vue'
 import ToolItem from './ToolItem.vue'
+import type { NormalizedEntry } from '../types'
 import { formatTime } from '../utils'
 
+type ToolPairItem = { kind: 'tool'; tool: NormalizedEntry; result?: NormalizedEntry }
+type ThinkingItem = { kind: 'thinking'; entry: NormalizedEntry }
+type SystemItem = { kind: 'system'; entry: NormalizedEntry }
+type GeminiGroupItem = ToolPairItem | ThinkingItem | SystemItem
+
 const props = defineProps<{
-  group: ClaudeTaskGroup
+  group: GeminiTaskGroup
 }>()
 
 const isRunning = computed(() =>
@@ -19,7 +25,36 @@ watch(isRunning, (running) => {
   if (running) collapsed.value = false
 })
 
-const groupItems = computed<ClaudeGroupItem[]>(() => buildClaudeTaskGroupItems(props.group))
+const groupItems = computed<GeminiGroupItem[]>(() => {
+  const items: GeminiGroupItem[] = []
+  const tools = props.group.tools
+
+  for (let i = 0; i < tools.length; i += 1) {
+    const entry = tools[i]
+    if (!entry) continue
+
+    if (entry.type === 'tool_result') continue
+
+    if (entry.type === 'thinking') {
+      items.push({ kind: 'thinking', entry })
+      continue
+    }
+
+    if (entry.type === 'system_message') {
+      items.push({ kind: 'system', entry })
+      continue
+    }
+
+    let result: NormalizedEntry | undefined
+    const next = tools[i + 1]
+    if (next && next.type === 'tool_result') {
+      result = next
+    }
+    items.push({ kind: 'tool', tool: entry, result })
+  }
+
+  return items
+})
 
 const toolCount = computed(() => groupItems.value.filter((i) => i.kind === 'tool').length)
 const thinkingCount = computed(() => groupItems.value.filter((i) => i.kind === 'thinking').length)
@@ -35,7 +70,7 @@ const summaryLabel = computed(() => {
   return ''
 })
 
-function getGroupItemKey(item: ClaudeGroupItem): string {
+function getGroupItemKey(item: GeminiGroupItem): string {
   if (item.kind === 'tool') {
     return `${item.tool.id}:${item.result?.id ?? 'pending'}`
   }

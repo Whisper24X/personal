@@ -115,7 +115,11 @@ function createCodexCommandEnd(msg: RecordLike, timestamp: number, idBase: strin
     type: 'tool_result',
     timestamp,
     content: output || '',
-    metadata: { toolUseId: callId, status: exitCode === 0 ? 'success' : 'failed', exitCode },
+    metadata: {
+      toolUseId: callId,
+      status: exitCode === undefined || exitCode === 0 ? 'success' : 'failed',
+      exitCode,
+    },
   }
 }
 
@@ -130,8 +134,9 @@ function createCodexCommandEntry(
   const status = getString(item.status)?.toLowerCase()
   const exitCode = getNumber(item.exit_code)
   const output = stringifyContent(item.aggregated_output) || stringifyContent(item.output) || ''
+  const hasResultData = Boolean(output) || exitCode !== undefined
 
-  if (!command && !output && exitCode === undefined) return null
+  if (!command && !hasResultData) return null
 
   const isStarted = flags.isStarted || status === 'in_progress' || status === 'running'
   const isCompleted = flags.isCompleted || status === 'completed' || exitCode !== undefined
@@ -152,7 +157,11 @@ function createCodexCommandEntry(
       type: 'tool_result',
       timestamp,
       content: output,
-      metadata: { toolUseId, status: exitCode === 0 ? 'success' : 'failed', exitCode },
+      metadata: {
+        toolUseId,
+        status: status === 'failed' || (exitCode !== undefined && exitCode !== 0) ? 'failed' : 'success',
+        exitCode,
+      },
     }
   }
 

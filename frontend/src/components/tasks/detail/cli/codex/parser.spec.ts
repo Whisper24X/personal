@@ -170,4 +170,58 @@ describe('parseCodexMessages', () => {
       }),
     ])
   })
+
+  it('treats completed command events without output and exit code as successful empty results', () => {
+    const entries = parseCodexMessages([
+      createMessage({
+        type: 'item.completed',
+        item: {
+          id: 'item_11',
+          type: 'command_execution',
+          command: 'find /tmp -name playwright',
+          aggregated_output: '',
+          exit_code: null,
+          status: 'completed',
+        },
+      }),
+    ])
+
+    expect(entries).toEqual([
+      expect.objectContaining({
+        type: 'tool_result',
+        content: '',
+        metadata: expect.objectContaining({
+          toolUseId: 'item_11',
+          status: 'success',
+        }),
+      }),
+    ])
+  })
+
+  it('treats completed command output without an exit code as a successful result', () => {
+    const entries = parseCodexMessages([
+      createMessage({
+        type: 'item.completed',
+        item: {
+          id: 'item_11',
+          type: 'command_execution',
+          command: 'wc -c index.html',
+          aggregated_output: '46477 docs/feature/test/prototype/index.html\n',
+          exit_code: null,
+          status: 'completed',
+        },
+      }),
+    ])
+
+    expect(entries).toEqual([
+      expect.objectContaining({
+        type: 'tool_result',
+        content: '46477 docs/feature/test/prototype/index.html\n',
+        metadata: expect.objectContaining({
+          toolUseId: 'item_11',
+          status: 'success',
+        }),
+      }),
+    ])
+  })
 })

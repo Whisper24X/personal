@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { CursorTaskGroup } from './groupEntries'
-import AssistantMessage from '../components/AssistantMessage.vue'
-import ToolItem from '../components/ToolItem.vue'
+import AssistantMessage from './AssistantMessage.vue'
+import ToolItem from './ToolItem.vue'
 import type { NormalizedEntry } from '../types'
 
 const props = defineProps<{

@@ -4,12 +4,12 @@ import type { TaskMessage } from '@/types/api/tasks'
 import { parseCodexMessages } from './parser'
 import { groupCodexEntries } from './groupEntries'
 import TaskGroupCard from './TaskGroupCard.vue'
-import UserMessage from '../components/UserMessage.vue'
-import AssistantMessage from '../components/AssistantMessage.vue'
-import TodoListCard from '../components/TodoListCard.vue'
-import FileChangeCard from '../components/FileChangeCard.vue'
+import UserMessage from './UserMessage.vue'
+import AssistantMessage from './AssistantMessage.vue'
+import TodoListCard from './TodoListCard.vue'
+import FileChangeCard from './FileChangeCard.vue'
 import type { NormalizedEntry } from '../types'
-import { asRecord, formatTime, getString, tryParseJson } from '../utils'
+import { asRecord, getString, tryParseJson } from '../utils'
 
 defineOptions({ name: 'CliCodexRenderer' })
 
@@ -114,7 +114,6 @@ function resolveErrorDisplay(entry: NormalizedEntry): {
       >
         <span>{{ patchSuccess(group.entry) ? '✓' : '⏳' }}</span>
         <span>{{ group.entry.content }}</span>
-        <span class="ml-auto text-[10px] text-muted-foreground/55">{{ formatTime(group.entry.timestamp) }}</span>
       </div>
 
       <!-- Lifecycle events -->
@@ -125,7 +124,6 @@ function resolveErrorDisplay(entry: NormalizedEntry): {
       >
         <span>{{ lifecycleIcon(group.entry) }}</span>
         <span>{{ group.entry.content }}</span>
-        <span class="ml-auto text-[10px] opacity-55">{{ formatTime(group.entry.timestamp) }}</span>
       </div>
 
       <!-- Error -->
@@ -145,7 +143,6 @@ function resolveErrorDisplay(entry: NormalizedEntry): {
                 >
                   {{ resolveErrorDisplay(group.entry).typeLabel }}
                 </span>
-                <span class="ml-auto text-[10px] text-muted-foreground/55">{{ formatTime(group.entry.timestamp) }}</span>
               </div>
               <p class="mt-0.5 pr-4 whitespace-pre-wrap text-sm leading-5 text-red-600">
                 {{ resolveErrorDisplay(group.entry).summary }}

@@ -248,6 +248,45 @@ describe('ProjectsService', () => {
     expect(ensureRepoSpy).toHaveBeenCalledWith(project, { syncRemote: false });
   });
 
+  it('should clone repository with the project default branch checked out', async () => {
+    const { service } = createProjectsService();
+    const serviceAny = service as any;
+    const project = {
+      ...createProject(),
+      defaultBranch: 'develop',
+    };
+    const repositoryRoot = serviceAny.resolveRepositoryRoot(project);
+    const runCommandSpy = jest
+      .spyOn(serviceAny, 'runCommand')
+      .mockResolvedValue({
+        success: true,
+        stdout: '',
+        stderr: '',
+      });
+
+    jest.spyOn(serviceAny, 'pathExists').mockResolvedValue(false);
+
+    const result = await serviceAny.ensureProjectRepository(project);
+
+    expect(result).toBe(repositoryRoot);
+    expect(runCommandSpy).toHaveBeenNthCalledWith(1, 'git', [
+      'clone',
+      '--origin',
+      'origin',
+      '--branch',
+      'develop',
+      project.gitUrl,
+      repositoryRoot,
+    ]);
+    expect(runCommandSpy).toHaveBeenNthCalledWith(2, 'git', [
+      '-C',
+      repositoryRoot,
+      'fetch',
+      '--all',
+      '--prune',
+    ]);
+  });
+
   it('should inspect repository and prioritize master as recommended default branch', async () => {
     const { service, businessLineRepository } = createProjectsService();
     const serviceAny = service as any;

@@ -214,4 +214,36 @@ describe('groupCodexEntries', () => {
       },
     })
   })
+
+  it('drops task groups that only contain orphaned tool results', () => {
+    const groups = groupCodexEntries([
+      createEntry({
+        id: 'tool-result-1',
+        type: 'tool_result',
+        timestamp: 1,
+        content: '',
+        metadata: {
+          toolUseId: 'item_11',
+          status: 'success',
+        },
+      }),
+      createEntry({
+        id: 'turn-end-1',
+        type: 'system_message',
+        timestamp: 2,
+        content: 'Turn completed',
+        metadata: {
+          codexEventType: 'turn_completed',
+        },
+      }),
+    ])
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({
+      type: 'other',
+      entry: {
+        id: 'turn-end-1',
+      },
+    })
+  })
 })

@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { NormalizedEntry } from '../types'
-import { formatTime } from '../utils'
 
-defineOptions({ name: 'CliFileChangeCard' })
+defineOptions({ name: 'CliCodexFileChangeCard' })
 
 type FileChangeItem = {
   path: string
@@ -95,8 +94,7 @@ function toggleCollapsed() {
       <span class="rounded-full bg-background/80 px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
         {{ countText }}
       </span>
-      <span class="ml-auto text-[10px] text-muted-foreground/55">{{ formatTime(entry.timestamp) }}</span>
-      <span class="text-[10px] text-muted-foreground/60">
+      <span class="ml-auto text-[10px] text-muted-foreground/60">
         {{ collapsed ? '展开' : '收起' }}
       </span>
     </button>

@@ -1832,6 +1832,7 @@ export class ProjectsService {
     options: EnsureProjectRepositoryOptions = {},
   ): Promise<string> {
     const repositoryRoot = this.resolveRepositoryRoot(project);
+    const defaultBranch = project.defaultBranch?.trim() || 'main';
     return this.withRepositorySyncLock(repositoryRoot, async () => {
       const gitDirPath = path.join(repositoryRoot, '.git');
       const hasGit = await this.pathExists(gitDirPath);
@@ -1852,6 +1853,8 @@ export class ProjectsService {
           'clone',
           '--origin',
           'origin',
+          '--branch',
+          defaultBranch,
           project.gitUrl,
           repositoryRoot,
         ]);

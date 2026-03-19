@@ -146,4 +146,49 @@ describe('CliCodexRenderer', () => {
     expect(wrapper.text()).toContain('新增')
     expect(wrapper.text()).toContain('docs/feature/20260319-150354/brainstorm.md')
   })
+
+  it('pairs tool results by toolUseId even when non-tool entries appear in between', async () => {
+    const wrapper = mount(Renderer, {
+      props: {
+        messages: [
+          createMessage({
+            type: 'agent_message',
+            text: 'Checking local Playwright availability',
+          }),
+          createMessage({
+            type: 'item.started',
+            item: {
+              id: 'item_10',
+              type: 'command_execution',
+              command: 'find /Users/fuzhifei -path *playwright*package.json',
+              aggregated_output: '',
+              exit_code: null,
+              status: 'in_progress',
+            },
+          }),
+          createMessage({
+            type: 'warning',
+            message: 'stdout buffering delayed the completion record',
+          }),
+          createMessage({
+            type: 'item.completed',
+            item: {
+              id: 'item_10',
+              type: 'command_execution',
+              command: 'find /Users/fuzhifei -path *playwright*package.json',
+              aggregated_output: './.agents/skills/playwright-skill/package.json\n',
+              exit_code: 0,
+              status: 'completed',
+            },
+          }),
+        ],
+      },
+    })
+
+    await wrapper.get('.rounded-lg > .flex.cursor-pointer').trigger('click')
+
+    expect(wrapper.text()).toContain('execute')
+    expect(wrapper.text()).toContain('./.agents/skills/playwright-skill/package.json')
+    expect(wrapper.text()).not.toContain('completed')
+  })
 })

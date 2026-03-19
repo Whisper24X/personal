@@ -1,23 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { CodexTaskGroup } from './groupEntries'
-import AssistantMessage from '../components/AssistantMessage.vue'
+import AssistantMessage from './AssistantMessage.vue'
 import type { NormalizedEntry } from '../types'
 import { asRecord, getString, pickToolInputValue, stringify } from '../utils'
 
 const props = defineProps<{
   group: CodexTaskGroup
 }>()
-
-const isRunning = computed(() =>
-  props.group.tools.some((t) => t.metadata?.status === 'running' || t.metadata?.status === 'pending'),
-)
-
-const collapsed = ref(!isRunning.value)
-
-watch(isRunning, (running) => {
-  if (running) collapsed.value = false
-})
 
 type ToolPairItem = { kind: 'tool'; tool: NormalizedEntry; result?: NormalizedEntry }
 type ThinkingItem = { kind: 'thinking'; entry: NormalizedEntry }
@@ -26,6 +16,19 @@ type GroupItem = ToolPairItem | ThinkingItem
 const groupItems = computed<GroupItem[]>(() => {
   const items: GroupItem[] = []
   const tools = props.group.tools
+  const resultQueues = new Map<string, NormalizedEntry[]>()
+  const consumedResultIds = new Set<string>()
+
+  tools.forEach((entry) => {
+    if (entry.type !== 'tool_result') return
+
+    const toolUseId = getString(entry.metadata?.toolUseId)
+    if (!toolUseId) return
+
+    const queue = resultQueues.get(toolUseId) ?? []
+    queue.push(entry)
+    resultQueues.set(toolUseId, queue)
+  })
 
   for (let i = 0; i < tools.length; i += 1) {
     const entry = tools[i]
@@ -40,13 +43,39 @@ const groupItems = computed<GroupItem[]>(() => {
     }
 
     let result: NormalizedEntry | undefined
+    const toolUseId = getString(entry.metadata?.toolUseId)
+    if (toolUseId) {
+      const queue = resultQueues.get(toolUseId)
+      const nextResult = queue?.shift()
+      if (nextResult) {
+        result = nextResult
+        consumedResultIds.add(nextResult.id)
+      }
+    }
+
     const next = tools[i + 1]
-    if (next && next.type === 'tool_result') {
+    if (!result && next && next.type === 'tool_result' && !consumedResultIds.has(next.id)) {
       result = next
+      consumedResultIds.add(next.id)
     }
     items.push({ kind: 'tool', tool: entry, result })
   }
   return items
+})
+
+const isRunning = computed(() =>
+  groupItems.value.some(
+    (item) =>
+      item.kind === 'tool' &&
+      !item.result &&
+      (item.tool.metadata?.status === 'running' || item.tool.metadata?.status === 'pending'),
+  ),
+)
+
+const collapsed = ref(!isRunning.value)
+
+watch(isRunning, (running) => {
+  if (running) collapsed.value = false
 })
 
 const toolCount = computed(() => groupItems.value.filter((i) => i.kind === 'tool').length)

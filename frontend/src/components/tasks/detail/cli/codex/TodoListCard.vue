@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { NormalizedEntry } from '../types'
-import { formatTime } from '../utils'
 
-defineOptions({ name: 'CliTodoListCard' })
+defineOptions({ name: 'CliCodexTodoListCard' })
 
 type TodoListItem = {
   text: string
@@ -48,7 +47,7 @@ const badgeClass = computed(() =>
 const iconClass = computed(() => (isCompleted.value ? 'text-emerald-600' : 'text-amber-600'))
 const collapsed = ref(true)
 
-const toggleCollapsed = () => {
+function toggleCollapsed() {
   collapsed.value = !collapsed.value
 }
 </script>
@@ -68,8 +67,7 @@ const toggleCollapsed = () => {
       <span class="rounded-full bg-background/80 px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
         {{ progressText }}
       </span>
-      <span class="ml-auto text-[10px] text-muted-foreground/55">{{ formatTime(entry.timestamp) }}</span>
-      <span class="text-[10px] text-muted-foreground/60">
+      <span class="ml-auto text-[10px] text-muted-foreground/60">
         {{ collapsed ? '展开' : '收起' }}
       </span>
     </button>

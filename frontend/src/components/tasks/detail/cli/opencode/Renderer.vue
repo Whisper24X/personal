@@ -4,8 +4,8 @@ import type { TaskMessage } from '@/types/api/tasks'
 import { parseOpencodeMessages } from './parser'
 import { groupOpencodeEntries } from './groupEntries'
 import TaskGroupCard from './TaskGroupCard.vue'
-import UserMessage from '../components/UserMessage.vue'
-import AssistantMessage from '../components/AssistantMessage.vue'
+import UserMessage from './UserMessage.vue'
+import AssistantMessage from './AssistantMessage.vue'
 import { formatTime } from '../utils'
 
 defineOptions({ name: 'CliOpencodeRenderer' })

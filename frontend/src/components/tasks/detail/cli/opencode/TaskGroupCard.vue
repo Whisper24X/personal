@@ -5,8 +5,8 @@ import {
   type OpencodeTaskGroup,
   type OpencodeGroupItem,
 } from './groupEntries'
-import AssistantMessage from '../components/AssistantMessage.vue'
-import ToolItem from '../components/ToolItem.vue'
+import AssistantMessage from './AssistantMessage.vue'
+import ToolItem from './ToolItem.vue'
 
 const props = defineProps<{
   group: OpencodeTaskGroup

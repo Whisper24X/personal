@@ -66,7 +66,7 @@ const fullOutput = computed(() => {
   return output
 })
 
-const toggle = () => {
+function toggle() {
   expanded.value = !expanded.value
 }
 </script>
