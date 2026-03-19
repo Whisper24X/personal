@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { projectsApi } from '@/api/projects'
+import AppSelect from '@/components/core/select'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
 const props = defineProps<{
@@ -49,6 +50,13 @@ const formClass = computed(() => {
   return props.size === 'large'
     ? 'max-h-[calc(95vh-56px)] space-y-3 overflow-y-auto px-4 py-4'
     : 'space-y-3 px-4 py-4'
+})
+
+const branchSelectOptions = computed(() => {
+  return branchOptions.value.map((branch) => ({
+    label: branch,
+    value: branch,
+  }))
 })
 
 const clearInspectTimer = () => {
@@ -317,14 +325,14 @@ onBeforeUnmount(() => {
 
           <label class="block space-y-1">
             <span class="text-xs font-semibold text-muted-foreground">默认分支</span>
-            <select
+            <AppSelect
               v-if="props.mode === 'create' && branchOptions.length > 0"
               v-model="defaultBranch"
-              class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+              aria-label="默认分支"
+              :options="branchSelectOptions"
+              trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
               @change="markDefaultBranchAsEdited"
-            >
-              <option v-for="branch in branchOptions" :key="branch" :value="branch">{{ branch }}</option>
-            </select>
+            />
             <input
               v-else
               v-model="defaultBranch"

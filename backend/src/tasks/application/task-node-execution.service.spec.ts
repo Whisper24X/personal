@@ -119,7 +119,6 @@ describe('TaskNodeExecutionService', () => {
       interruptExecution: jest.fn().mockImplementation(() => {
         resolveExecution?.({
           success: false,
-          timedOut: false,
           interrupted: true,
           exitCode: null,
           signal: 'SIGTERM',

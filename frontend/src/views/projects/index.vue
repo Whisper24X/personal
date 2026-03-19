@@ -5,6 +5,7 @@ import { useMessage } from '@/hooks'
 import { businessLinesApi, type BusinessLine } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
 import type { Project } from '@/types/api/projects'
+import AppSelect from '@/components/core/select'
 import ConfirmActionModal from '@/components/business/settings/modals/ConfirmActionModal.vue'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
@@ -44,6 +45,20 @@ const createForm = reactive({
   description: '',
   gitUrl: '',
   defaultBranch: 'main',
+})
+
+const businessLineSelectOptions = computed(() => {
+  return businessLines.value.map((line) => ({
+    label: line.name,
+    value: line.id,
+  }))
+})
+
+const repositoryBranchSelectOptions = computed(() => {
+  return repositoryBranchOptions.value.map((branch) => ({
+    label: branch,
+    value: branch,
+  }))
 })
 
 const formatDate = (value?: string) => {
@@ -594,14 +609,12 @@ onBeforeUnmount(() => {
           <form class="grid gap-3 px-4 py-4 md:grid-cols-2" @submit.prevent="submitProject">
             <label class="space-y-1">
               <span class="text-xs font-semibold text-muted-foreground">所属业务线</span>
-              <select
+              <AppSelect
                 v-model="createForm.businessLineId"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              >
-                <option v-for="line in businessLines" :key="line.id" :value="line.id">
-                  {{ line.name }}
-                </option>
-              </select>
+                aria-label="所属业务线"
+                :options="businessLineSelectOptions"
+                trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
+              />
             </label>
 
             <label class="space-y-1 md:col-span-2">
@@ -616,16 +629,14 @@ onBeforeUnmount(() => {
 
             <label class="space-y-1">
               <span class="text-xs font-semibold text-muted-foreground">默认分支</span>
-              <select
+              <AppSelect
                 v-if="!isEditingProject && repositoryBranchOptions.length > 0"
                 v-model="createForm.defaultBranch"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                aria-label="默认分支"
+                :options="repositoryBranchSelectOptions"
+                trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
                 @change="handleDefaultBranchInput"
-              >
-                <option v-for="branch in repositoryBranchOptions" :key="branch" :value="branch">
-                  {{ branch }}
-                </option>
-              </select>
+              />
               <input
                 v-else
                 v-model="createForm.defaultBranch"

@@ -1,4 +1,5 @@
 import { DOMWrapper, mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import { describe, expect, it } from 'vitest'
 import AgentToolConfigModal from '@/components/business/settings/modals/AgentToolConfigModal.vue'
 
@@ -38,6 +39,30 @@ const findField = (wrapper: ReturnType<typeof mount>, labelText: string) => {
 
 const hasField = (wrapper: ReturnType<typeof mount>, labelText: string) => {
   return wrapper.findAll('label').some((item) => item.text().trim() === labelText)
+}
+
+const selectOption = async (field: DOMWrapper<Element>, label: string) => {
+  await field.find('button[aria-haspopup="listbox"]').trigger('click')
+  await nextTick()
+
+  const localOption = field.findAll('button[role="option"]').find((button) => {
+    return button.text().includes(label)
+  })
+
+  if (localOption) {
+    await localOption.trigger('click')
+    return
+  }
+
+  const option = Array.from(document.body.querySelectorAll('button[role="option"]')).find(
+    (button) => button.textContent?.includes(label),
+  ) as HTMLButtonElement | undefined
+
+  if (!option) {
+    throw new Error(`Option ${label} not found`)
+  }
+
+  option.click()
 }
 
 describe('AgentToolConfigModal', () => {
@@ -105,12 +130,10 @@ describe('AgentToolConfigModal', () => {
     })
 
     const executionModeField = findField(wrapper, 'Execution Mode')
-    await executionModeField.find('select').setValue(
-      'dangerously-bypass-approvals-and-sandbox',
-    )
+    await selectOption(executionModeField, 'Dangerously Bypass Approvals And Sandbox')
 
     const sandboxField = findField(wrapper, 'Sandbox')
-    expect(sandboxField.find('select').attributes('disabled')).toBeDefined()
+    expect(sandboxField.find('button[aria-haspopup="listbox"]').attributes('disabled')).toBeDefined()
 
     await wrapper.find('input[name="agent-cli-config-name"]').setValue('default')
     await wrapper.find('form').trigger('submit.prevent')

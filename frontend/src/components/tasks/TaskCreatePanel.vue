@@ -8,6 +8,7 @@ import { gitApi } from '@/api/git'
 import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
 import { workflowApi } from '@/api/workflow'
+import AppSelect from '@/components/core/select'
 import type { Project } from '@/types/api/projects'
 import type { WorkflowTemplate } from '@/types/api/workflow'
 import { STORAGE_KEYS } from '@/types/common/storage'
@@ -86,8 +87,32 @@ const createForm = reactive({
   prompt: '',
 })
 
-const selectedProject = computed(() => {
-  return projects.value.find((item) => item.id === createForm.projectId) ?? null
+const configuredCliToolOptions = computed(() => {
+  return configuredCliTools.value.map((tool) => ({
+    label: tool.label,
+    value: tool.id,
+  }))
+})
+
+const agentToolConfigOptions = computed(() => {
+  return agentToolConfigs.value.map((config) => ({
+    label: config.name,
+    value: config.id,
+  }))
+})
+
+const workflowTemplateOptions = computed(() => {
+  return templates.value.map((template) => ({
+    label: template.name,
+    value: template.id,
+  }))
+})
+
+const gitBaseBranchOptions = computed(() => {
+  return branchOptions.value.map((branch) => ({
+    label: branch,
+    value: branch,
+  }))
 })
 
 const canCreateTask = computed(() => {
@@ -744,102 +769,112 @@ onBeforeUnmount(() => {
               </div>
 
               <template v-if="createForm.mode === 'conversation'">
-                <label
-                  class="relative inline-flex h-11 items-center rounded-full border border-border bg-background pl-3 pr-8"
+                <AppSelect
+                  v-model="createForm.agentCliId"
+                  aria-label="Agent CLI"
+                  :block="false"
+                  :options="configuredCliToolOptions"
+                  :disabled="loadingAgentConfigs || configuredCliTools.length === 0"
+                  size="lg"
+                  trigger-class="min-w-[120px] rounded-full border-border bg-background pl-3 pr-3 text-sm font-medium shadow-none"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="mr-2 text-foreground/70"
-                    aria-hidden="true"
-                  >
-                    <path d="M4 17 10 11 4 5" />
-                    <path d="M12 19h8" />
-                  </svg>
-                  <select
-                    v-model="createForm.agentCliId"
-                    class="min-w-[120px] appearance-none bg-transparent text-sm font-medium text-foreground outline-none"
-                    :disabled="loadingAgentConfigs || configuredCliTools.length === 0"
-                  >
-                    <option v-for="tool in configuredCliTools" :key="tool.id" :value="tool.id">
-                      {{ tool.label }}
-                    </option>
-                  </select>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="pointer-events-none absolute right-3 text-foreground/70"
-                    aria-hidden="true"
-                  >
-                    <path d="m6 9 6 6 6-6" />
-                  </svg>
-                </label>
+                  <template #prefix>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="text-foreground/70"
+                      aria-hidden="true"
+                    >
+                      <path d="M4 17 10 11 4 5" />
+                      <path d="M12 19h8" />
+                    </svg>
+                  </template>
+                </AppSelect>
 
-                <label
-                  class="relative inline-flex h-11 items-center rounded-full border border-border bg-background pl-3 pr-8"
+                <AppSelect
+                  v-model="createForm.agentCliConfigId"
+                  aria-label="Agent CLI 配置"
+                  :block="false"
+                  :options="agentToolConfigOptions"
+                  :disabled="loadingAgentConfigs || agentToolConfigs.length === 0"
+                  size="lg"
+                  trigger-class="min-w-[120px] rounded-full border-border bg-background pl-3 pr-3 text-sm font-medium shadow-none"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="mr-2 text-foreground/70"
-                    aria-hidden="true"
-                  >
-                    <path d="M4 7h16" />
-                    <path d="M4 12h16" />
-                    <path d="M4 17h16" />
-                  </svg>
-                  <select
-                    v-model="createForm.agentCliConfigId"
-                    class="min-w-[120px] appearance-none bg-transparent text-sm font-medium text-foreground outline-none"
-                    :disabled="loadingAgentConfigs || agentToolConfigs.length === 0"
-                  >
-                    <option v-for="config in agentToolConfigs" :key="config.id" :value="config.id">
-                      {{ config.name }}
-                    </option>
-                  </select>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="pointer-events-none absolute right-3 text-foreground/70"
-                    aria-hidden="true"
-                  >
-                    <path d="m6 9 6 6 6-6" />
-                  </svg>
-                </label>
+                  <template #prefix>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="text-foreground/70"
+                      aria-hidden="true"
+                    >
+                      <path d="M4 7h16" />
+                      <path d="M4 12h16" />
+                      <path d="M4 17h16" />
+                    </svg>
+                  </template>
+                </AppSelect>
               </template>
 
               <template v-else>
-                <label
-                  class="relative inline-flex h-11 items-center rounded-full border border-border bg-background pl-3 pr-8"
+                <AppSelect
+                  v-model="createForm.workflowTemplateId"
+                  aria-label="工作流模板"
+                  :block="false"
+                  :options="workflowTemplateOptions"
+                  :disabled="loadingTemplates || templates.length === 0"
+                  size="lg"
+                  trigger-class="min-w-[160px] rounded-full border-border bg-background pl-3 pr-3 text-sm font-medium shadow-none"
                 >
+                  <template #prefix>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="text-foreground/70"
+                      aria-hidden="true"
+                    >
+                      <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                      <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+                      <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+                      <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                      <path d="M12 8v8" />
+                      <path d="m9 11 3-3 3 3" />
+                      <path d="m9 13 3 3 3-3" />
+                    </svg>
+                  </template>
+                </AppSelect>
+              </template>
+
+              <AppSelect
+                v-model="createForm.gitBaseBranch"
+                aria-label="分支"
+                :block="false"
+                :options="gitBaseBranchOptions"
+                :disabled="loadingBranches || branchOptions.length === 0"
+                size="lg"
+                trigger-class="w-[92px] rounded-full border-border bg-background pl-2.5 pr-2.5 text-sm font-medium shadow-none"
+              >
+                <template #prefix>
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="16"
@@ -850,91 +885,16 @@ onBeforeUnmount(() => {
                     stroke-width="2"
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    class="mr-2 text-foreground/70"
+                    class="text-foreground/70"
                     aria-hidden="true"
                   >
-                    <path d="M8 3H5a2 2 0 0 0-2 2v3" />
-                    <path d="M16 3h3a2 2 0 0 1 2 2v3" />
-                    <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
-                    <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-                    <path d="M12 8v8" />
-                    <path d="m9 11 3-3 3 3" />
-                    <path d="m9 13 3 3 3-3" />
+                    <path d="M6 3v12" />
+                    <path d="M18 9v12" />
+                    <path d="m3 6 3-3 3 3" />
+                    <path d="m15 18 3 3 3-3" />
                   </svg>
-                  <select
-                    v-model="createForm.workflowTemplateId"
-                    class="min-w-[160px] appearance-none bg-transparent text-sm font-medium text-foreground outline-none"
-                    :disabled="loadingTemplates || templates.length === 0"
-                  >
-                    <option v-for="template in templates" :key="template.id" :value="template.id">
-                      {{ template.name }}
-                    </option>
-                  </select>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="pointer-events-none absolute right-3 text-foreground/70"
-                    aria-hidden="true"
-                  >
-                    <path d="m6 9 6 6 6-6" />
-                  </svg>
-                </label>
-              </template>
-
-              <label
-                class="relative inline-flex h-11 items-center rounded-full border border-border bg-background pl-2.5 pr-7"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="mr-1.5 text-foreground/70"
-                  aria-hidden="true"
-                >
-                  <path d="M6 3v12" />
-                  <path d="M18 9v12" />
-                  <path d="m3 6 3-3 3 3" />
-                  <path d="m15 18 3 3 3-3" />
-                </svg>
-                <select
-                  v-model="createForm.gitBaseBranch"
-                  aria-label="分支"
-                  class="w-[92px] appearance-none bg-transparent text-sm font-medium text-foreground outline-none"
-                  :disabled="loadingBranches || branchOptions.length === 0"
-                >
-                  <option v-for="branch in branchOptions" :key="branch" :value="branch">
-                    {{ branch }}
-                  </option>
-                </select>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="pointer-events-none absolute right-3 text-foreground/70"
-                  aria-hidden="true"
-                >
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
-              </label>
+                </template>
+              </AppSelect>
 
               <button
                 type="submit"

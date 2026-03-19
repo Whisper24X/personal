@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { automationsApi } from '@/api/automations'
+import AppSelect from '@/components/core/select'
 import { useAccessStore } from '@/stores/modules/access'
 import type {
   Automation,
@@ -35,6 +36,11 @@ const AUTOMATION_WEEKDAY_OPTIONS: Array<{ label: string; value: AutomationWeekda
 
 const DEFAULT_AUTOMATION_WEEKDAYS: AutomationWeekday[] = ['MO', 'TU', 'WE', 'TH', 'FR']
 const DEFAULT_AUTOMATION_TIME = '09:00'
+const AUTOMATION_STATUS_FILTER_OPTIONS = [
+  { label: '全部状态', value: 'all' },
+  { label: '运行中', value: 'active' },
+  { label: '已暂停', value: 'paused' },
+] as const
 
 const route = useRoute()
 const message = useMessage()
@@ -486,14 +492,14 @@ watch(
             type="search"
           />
 
-          <select
+          <AppSelect
             v-model="automationStatusFilter"
-            class="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground xl:w-40"
-          >
-            <option value="all">全部状态</option>
-            <option value="active">运行中</option>
-            <option value="paused">已暂停</option>
-          </select>
+            aria-label="计划状态筛选"
+            :block="false"
+            :options="[...AUTOMATION_STATUS_FILTER_OPTIONS]"
+            wrapper-class="xl:w-40"
+            trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
+          />
 
           <div class="flex flex-wrap items-center gap-2">
             <button

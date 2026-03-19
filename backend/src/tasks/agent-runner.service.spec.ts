@@ -1522,7 +1522,6 @@ describe('AgentRunnerService', () => {
         command: 'agent',
         args: ['-p'],
         cwd: '/tmp/worktree',
-        timeoutMs: 1000,
         env: {
           CURSOR_API_KEY: 'crsr_secret',
         },

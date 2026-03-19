@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import AppSelect from '@/components/core/select'
 
 type AgentToolConfigFormPayload = {
   name: string
@@ -66,6 +67,12 @@ const GEMINI_APPROVAL_MODE_OPTIONS: ConfigFieldOption[] = [
   { value: 'yolo', label: 'Yolo' },
   { value: 'plan', label: 'Plan' },
 ]
+
+const BOOLEAN_NULLABLE_FIELD_OPTIONS = [
+  { label: 'Default', value: null },
+  { label: 'Enabled', value: true },
+  { label: 'Disabled', value: false },
+] as const
 
 const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
   'claude-code': {
@@ -601,23 +608,39 @@ const shouldShowDefaultOption = (fieldKey: string): boolean => {
   return true
 }
 
+const getStringFieldSelectOptions = (
+  fieldKey: string,
+  field: ConfigFieldSchema,
+) => {
+  const options = (field.options ?? []).map((option) => ({
+    label: option.label,
+    value: option.value,
+  }))
+
+  if (shouldShowDefaultOption(fieldKey)) {
+    return [{ label: 'Default', value: '' }, ...options]
+  }
+
+  return options
+}
+
 const getStringFieldValue = (fieldKey: string): string => {
   const value = draftConfig.value[fieldKey]
   return typeof value === 'string' ? value : ''
 }
 
-const getBooleanNullableSelectValue = (fieldKey: string): string => {
+const getBooleanNullableFieldValue = (fieldKey: string): boolean | null => {
   const value = draftConfig.value[fieldKey]
 
   if (value === true) {
-    return 'true'
+    return true
   }
 
   if (value === false) {
-    return 'false'
+    return false
   }
 
-  return 'null'
+  return null
 }
 
 const getBooleanFieldChecked = (fieldKey: string, field: ConfigFieldSchema): boolean => {
@@ -861,13 +884,15 @@ watch(
 
               <label class="block space-y-1">
                 <span class="text-xs font-semibold text-muted-foreground">默认配置</span>
-                <select
+                <AppSelect
                   v-model="isDefault"
-                  class="h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground"
-                >
-                  <option :value="true">是</option>
-                  <option :value="false">否</option>
-                </select>
+                  aria-label="默认配置"
+                  :options="[
+                    { label: '是', value: true },
+                    { label: '否', value: false },
+                  ]"
+                  trigger-class="h-10 rounded-lg border-border/70 bg-background px-3 text-sm shadow-none"
+                />
               </label>
             </div>
           </section>
@@ -908,21 +933,18 @@ watch(
               >
                 <label class="text-sm font-medium">{{ formatFieldLabel(fieldKey) }}</label>
 
-                <select
+                <AppSelect
                   v-if="field.type === 'string' && field.options?.length"
-                  :value="getStringFieldValue(fieldKey)"
+                  :model-value="getStringFieldValue(fieldKey)"
                   :disabled="
                     (fieldKey === 'sandbox' && isCodexSandboxDisabled) ||
                     (fieldKey === 'permission_mode' && isClaudePermissionModeDisabled)
                   "
-                  class="h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground"
-                  @change="setDraftFieldValue(fieldKey, ($event.target as HTMLSelectElement).value)"
-                >
-                  <option v-if="shouldShowDefaultOption(fieldKey)" value="">Default</option>
-                  <option v-for="option in field.options" :key="option.value" :value="option.value">
-                    {{ option.label }}
-                  </option>
-                </select>
+                  :options="getStringFieldSelectOptions(fieldKey, field)"
+                  :aria-label="formatFieldLabel(fieldKey)"
+                  trigger-class="h-10 rounded-lg border-border/70 bg-background px-3 text-sm shadow-none"
+                  @change="setDraftFieldValue(fieldKey, $event)"
+                />
 
                 <textarea
                   v-else-if="field.type === 'string' && field.multiline"
@@ -970,16 +992,14 @@ watch(
                   @input="setDraftFieldValue(fieldKey, parseStringMapInput(($event.target as HTMLTextAreaElement).value))"
                 />
 
-                <select
+                <AppSelect
                   v-else-if="field.type === 'booleanNullable'"
-                  :value="getBooleanNullableSelectValue(fieldKey)"
-                  class="h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground"
-                  @change="setDraftFieldValue(fieldKey, ($event.target as HTMLSelectElement).value === 'null' ? null : ($event.target as HTMLSelectElement).value === 'true')"
-                >
-                  <option value="null">Default</option>
-                  <option value="true">Enabled</option>
-                  <option value="false">Disabled</option>
-                </select>
+                  :model-value="getBooleanNullableFieldValue(fieldKey)"
+                  :options="[...BOOLEAN_NULLABLE_FIELD_OPTIONS]"
+                  :aria-label="formatFieldLabel(fieldKey)"
+                  trigger-class="h-10 rounded-lg border-border/70 bg-background px-3 text-sm shadow-none"
+                  @change="setDraftFieldValue(fieldKey, $event)"
+                />
 
                 <label
                   v-else
@@ -1066,17 +1086,14 @@ watch(
               >
                 <label class="text-sm font-medium">{{ formatFieldLabel(fieldKey) }}</label>
 
-                <select
+                <AppSelect
                   v-if="field.type === 'string' && field.options?.length"
-                  :value="getStringFieldValue(fieldKey)"
-                  class="h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground"
-                  @change="setDraftFieldValue(fieldKey, ($event.target as HTMLSelectElement).value)"
-                >
-                  <option v-if="shouldShowDefaultOption(fieldKey)" value="">Default</option>
-                  <option v-for="option in field.options" :key="option.value" :value="option.value">
-                    {{ option.label }}
-                  </option>
-                </select>
+                  :model-value="getStringFieldValue(fieldKey)"
+                  :options="getStringFieldSelectOptions(fieldKey, field)"
+                  :aria-label="formatFieldLabel(fieldKey)"
+                  trigger-class="h-10 rounded-lg border-border/70 bg-background px-3 text-sm shadow-none"
+                  @change="setDraftFieldValue(fieldKey, $event)"
+                />
 
                 <textarea
                   v-else-if="field.type === 'string' && field.multiline"
@@ -1124,16 +1141,14 @@ watch(
                   @input="setDraftFieldValue(fieldKey, parseStringMapInput(($event.target as HTMLTextAreaElement).value))"
                 />
 
-                <select
+                <AppSelect
                   v-else-if="field.type === 'booleanNullable'"
-                  :value="getBooleanNullableSelectValue(fieldKey)"
-                  class="h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground"
-                  @change="setDraftFieldValue(fieldKey, ($event.target as HTMLSelectElement).value === 'null' ? null : ($event.target as HTMLSelectElement).value === 'true')"
-                >
-                  <option value="null">Default</option>
-                  <option value="true">Enabled</option>
-                  <option value="false">Disabled</option>
-                </select>
+                  :model-value="getBooleanNullableFieldValue(fieldKey)"
+                  :options="[...BOOLEAN_NULLABLE_FIELD_OPTIONS]"
+                  :aria-label="formatFieldLabel(fieldKey)"
+                  trigger-class="h-10 rounded-lg border-border/70 bg-background px-3 text-sm shadow-none"
+                  @change="setDraftFieldValue(fieldKey, $event)"
+                />
 
                 <label
                   v-else

@@ -18,6 +18,7 @@ import type {
   WorkflowTemplateNode,
   WorkflowTemplateNodeInput,
 } from '@/types/api/workflow'
+import AppSelect from '@/components/core/select'
 import ConfirmActionModal from '@/components/business/settings/modals/ConfirmActionModal.vue'
 import WorkflowPromptVariablesHint from '@/components/workflow/WorkflowPromptVariablesHint.vue'
 import WorkflowPromptTextarea from '@/components/workflow/WorkflowPromptTextarea.vue'
@@ -291,6 +292,38 @@ const projectRoleOptions = computed(() => {
   return buildProjectRoleAssignmentOptions(projectCustomRoles.value)
 })
 
+const projectRoleSelectOptions = computed(() => {
+  const groups = []
+  const defaultOptions = projectRoleOptions.value
+    .filter((item) => item.source === 'default')
+    .map((item) => ({
+      label: item.label,
+      value: item.key,
+    }))
+  const customOptions = projectRoleOptions.value
+    .filter((item) => item.source === 'custom')
+    .map((item) => ({
+      label: item.label,
+      value: item.key,
+    }))
+
+  if (defaultOptions.length > 0) {
+    groups.push({
+      label: '默认角色',
+      options: defaultOptions,
+    })
+  }
+
+  if (customOptions.length > 0) {
+    groups.push({
+      label: '自定义角色',
+      options: customOptions,
+    })
+  }
+
+  return groups
+})
+
 const preferredProjectRoleKey = computed(() => {
   const developerRole = projectCustomRoles.value.find((role) =>
     isProjectDefaultRole(role, 'developer'),
@@ -339,6 +372,23 @@ watch(
   },
   { immediate: true },
 )
+
+const workflowCliToolSelectOptions = computed(() => {
+  if (!loadingWorkflowConfiguredCliTools.value && workflowConfiguredCliTools.value.length === 0) {
+    return [
+      {
+        label: '当前业务线暂无已配置 Agent CLI',
+        value: '',
+        disabled: true,
+      },
+    ]
+  }
+
+  return workflowConfiguredCliTools.value.map((tool) => ({
+    label: tool.label,
+    value: tool.id,
+  }))
+})
 
 const filteredBusinessLineWorkflowTemplates = computed(() => {
   const keyword = workflowCopyKeyword.value.trim().toLowerCase()
@@ -676,6 +726,19 @@ const getWorkflowNodeConfigs = (toolId: SupportedCliToolId | '') => {
   }
 
   return workflowNodeConfigsByTool.value[toolId] ?? []
+}
+
+const getWorkflowNodeConfigSelectOptions = (toolId: SupportedCliToolId | '') => {
+  return [
+    {
+      label: !toolId ? '请先选择 Agent CLI' : '请选择 Agent CLI 配置',
+      value: '',
+    },
+    ...getWorkflowNodeConfigs(toolId).map((config) => ({
+      label: config.name,
+      value: config.id,
+    })),
+  ]
 }
 
 const isWorkflowNodeConfigLoading = (toolId: SupportedCliToolId | '') => {
@@ -1788,40 +1851,15 @@ onBeforeUnmount(() => {
                   </p>
                 </td>
                 <td class="px-5 py-4">
-                  <select
-                    v-model="memberRoleDrafts[member.userId]"
-                    class="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                  <AppSelect
+                    :model-value="memberRoleDrafts[member.userId] ?? ''"
+                    aria-label="项目成员角色"
                     :disabled="!canManageProjectMembers || updatingMemberId === member.userId"
-                  >
-                    <optgroup
-                      v-if="projectRoleOptions.some((item) => item.source === 'default')"
-                      label="默认角色"
-                    >
-                      <option
-                        v-for="option in projectRoleOptions.filter(
-                          (item) => item.source === 'default',
-                        )"
-                        :key="option.key"
-                        :value="option.key"
-                      >
-                        {{ option.label }}
-                      </option>
-                    </optgroup>
-                    <optgroup
-                      v-if="projectRoleOptions.some((item) => item.source === 'custom')"
-                      label="自定义角色"
-                    >
-                      <option
-                        v-for="option in projectRoleOptions.filter(
-                          (item) => item.source === 'custom',
-                        )"
-                        :key="option.key"
-                        :value="option.key"
-                      >
-                        {{ option.label }}
-                      </option>
-                    </optgroup>
-                  </select>
+                    :block="false"
+                    :options="projectRoleSelectOptions"
+                    trigger-class="h-9 rounded-lg border-border bg-background px-3 text-sm shadow-none"
+                    @update:model-value="memberRoleDrafts[member.userId] = String($event ?? '')"
+                  />
                   <p v-if="member.customRoleName" class="mt-1 text-[11px] text-muted-foreground">
                     当前：{{ member.customRoleName }}
                   </p>
@@ -2200,58 +2238,31 @@ onBeforeUnmount(() => {
 
                     <label class="space-y-1">
                       <span class="text-[11px] text-muted-foreground">Agent CLI</span>
-                      <select
+                      <AppSelect
                         v-model="node.input.agentCliId"
+                        aria-label="Agent CLI"
                         :disabled="
                           loadingWorkflowConfiguredCliTools ||
                           workflowConfiguredCliTools.length === 0
                         "
-                        class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                        :options="workflowCliToolSelectOptions"
+                        trigger-class="h-8 rounded-lg border-border bg-background px-2.5 text-sm shadow-none"
                         @change="void handleWorkflowNodeCliToolChange(node)"
-                      >
-                        <option
-                          v-if="
-                            !loadingWorkflowConfiguredCliTools &&
-                            workflowConfiguredCliTools.length === 0
-                          "
-                          value=""
-                          disabled
-                        >
-                          当前业务线暂无已配置 Agent CLI
-                        </option>
-                        <option
-                          v-for="tool in workflowConfiguredCliTools"
-                          :key="tool.id"
-                          :value="tool.id"
-                        >
-                          {{ tool.label }}
-                        </option>
-                      </select>
+                      />
                     </label>
 
                     <label class="space-y-1">
                       <span class="text-[11px] text-muted-foreground">Agent CLI 配置</span>
-                      <select
+                      <AppSelect
                         v-model="node.input.agentCliConfigId"
+                        aria-label="Agent CLI 配置"
                         :disabled="
                           !node.input.agentCliId ||
                           isWorkflowNodeConfigLoading(node.input.agentCliId)
                         "
-                        class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <option value="">
-                          {{
-                            !node.input.agentCliId ? '请先选择 Agent CLI' : '请选择 Agent CLI 配置'
-                          }}
-                        </option>
-                        <option
-                          v-for="config in getWorkflowNodeConfigs(node.input.agentCliId)"
-                          :key="config.id"
-                          :value="config.id"
-                        >
-                          {{ config.name }}
-                        </option>
-                      </select>
+                        :options="getWorkflowNodeConfigSelectOptions(node.input.agentCliId)"
+                        trigger-class="h-8 rounded-lg border-border bg-background px-2.5 text-sm shadow-none"
+                      />
                     </label>
                   </div>
                 </div>
@@ -2430,35 +2441,12 @@ onBeforeUnmount(() => {
                 {{ user.nickname?.trim() || user.username }}
               </option>
             </datalist>
-            <select
+            <AppSelect
               v-model="newMemberForm.roleKey"
-              class="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-            >
-              <optgroup
-                v-if="projectRoleOptions.some((item) => item.source === 'default')"
-                label="默认角色"
-              >
-                <option
-                  v-for="option in projectRoleOptions.filter((item) => item.source === 'default')"
-                  :key="option.key"
-                  :value="option.key"
-                >
-                  {{ option.label }}
-                </option>
-              </optgroup>
-              <optgroup
-                v-if="projectRoleOptions.some((item) => item.source === 'custom')"
-                label="自定义角色"
-              >
-                <option
-                  v-for="option in projectRoleOptions.filter((item) => item.source === 'custom')"
-                  :key="option.key"
-                  :value="option.key"
-                >
-                  {{ option.label }}
-                </option>
-              </optgroup>
-            </select>
+              aria-label="新成员角色"
+              :options="projectRoleSelectOptions"
+              trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
+            />
             <div class="md:col-span-2 flex justify-end gap-2">
               <button
                 class="h-10 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground"
@@ -2566,13 +2554,15 @@ onBeforeUnmount(() => {
 
             <label class="space-y-1">
               <span class="text-xs font-semibold text-muted-foreground">Git Runtime 开关</span>
-              <select
+              <AppSelect
                 v-model="configForm.gitRuntimeEnabled"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              >
-                <option :value="true">开启（clone/worktree）</option>
-                <option :value="false">关闭（目录沙箱）</option>
-              </select>
+                aria-label="Git Runtime 开关"
+                :options="[
+                  { label: '开启（clone/worktree）', value: true },
+                  { label: '关闭（目录沙箱）', value: false },
+                ]"
+                trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
+              />
             </label>
 
             <label class="space-y-1">

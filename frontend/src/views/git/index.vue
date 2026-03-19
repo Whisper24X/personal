@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { gitApi } from '@/api/git'
+import AppSelect from '@/components/core/select'
 import { useMessage } from '@/hooks'
 import type { GitBranchDetail, GitCommitSummary } from '@/types/api/git'
 import { STORAGE_KEYS } from '@/types/common/storage'
@@ -75,6 +76,13 @@ const getSyncStatus = (branch: GitBranchDetail) => {
   }
   return { text: `↑${branch.ahead}↓${branch.behind}`, class: 'text-red-600 dark:text-red-400' }
 }
+
+const FILTER_TYPE_OPTIONS = [
+  { label: '全部分支', value: 'all' },
+  { label: '当前分支', value: 'current' },
+  { label: '本地分支', value: 'local' },
+  { label: '远程分支', value: 'remote' },
+] as const
 
 
 const formatCommitTime = (value: string) => {
@@ -281,15 +289,13 @@ watch(activeProjectId, () => {
           >
             {{ loading ? '刷新中...' : '刷新' }}
           </button>
-          <select
+          <AppSelect
             v-model="filterType"
-            class="rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold transition hover:bg-muted"
-          >
-            <option value="all">全部分支</option>
-            <option value="current">当前分支</option>
-            <option value="local">本地分支</option>
-            <option value="remote">远程分支</option>
-          </select>
+            aria-label="分支筛选"
+            :block="false"
+            :options="[...FILTER_TYPE_OPTIONS]"
+            trigger-class="rounded-lg border-border bg-background px-3 py-2 text-sm font-semibold shadow-none"
+          />
         </div>
       </div>
     </section>

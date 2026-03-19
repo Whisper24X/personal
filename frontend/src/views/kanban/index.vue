@@ -19,6 +19,8 @@ type KanbanColumnConfig = {
   key: TaskStatus
   name: string
   emptyText: string
+  labelClass: string
+  countClass: string
 }
 
 const loading = ref(false)
@@ -35,29 +37,39 @@ const filters = reactive({
 })
 
 const columnConfig: KanbanColumnConfig[] = [
-  { key: 'todo', name: '待执行', emptyText: '暂无待执行任务' },
-  { key: 'in_progress', name: '执行中', emptyText: '暂无执行中任务' },
-  { key: 'in_review', name: '待处理', emptyText: '暂无待处理任务' },
-  { key: 'done', name: '已完成', emptyText: '暂无已完成任务' },
+  {
+    key: 'todo',
+    name: '待执行',
+    emptyText: '暂无待执行任务',
+    labelClass: 'text-slate-700 dark:text-slate-300',
+    countClass: 'bg-slate-500/10 text-slate-700 dark:text-slate-300',
+  },
+  {
+    key: 'in_progress',
+    name: '执行中',
+    emptyText: '暂无执行中任务',
+    labelClass: 'text-sky-700 dark:text-sky-300',
+    countClass: 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
+  },
+  {
+    key: 'in_review',
+    name: '待处理',
+    emptyText: '暂无待处理任务',
+    labelClass: 'text-amber-700 dark:text-amber-300',
+    countClass: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+  },
+  {
+    key: 'done',
+    name: '已完成',
+    emptyText: '暂无已完成任务',
+    labelClass: 'text-emerald-700 dark:text-emerald-300',
+    countClass: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  },
 ]
-
-const statusLabelMap: Record<TaskStatus, string> = {
-  todo: '待执行',
-  in_progress: '执行中',
-  in_review: '待处理',
-  done: '已完成',
-}
 
 const modeLabelMap: Record<Task['mode'], string> = {
   conversation: '对话',
   workflow: '工作流',
-}
-
-const statusClassMap: Record<TaskStatus, string> = {
-  todo: 'bg-muted text-muted-foreground',
-  in_progress: 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
-  in_review: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
-  done: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
 }
 
 const projectNameMap = computed(() => {
@@ -295,8 +307,8 @@ watch(
     <section v-else class="grid gap-4 xl:grid-cols-4">
       <article v-for="column in groupedColumns" :key="column.key" class="panel-card p-4">
         <div class="flex items-center justify-between border-b border-border pb-3">
-          <h2 class="text-sm font-semibold">{{ column.name }}</h2>
-          <span class="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">
+          <h2 class="text-sm font-semibold" :class="column.labelClass">{{ column.name }}</h2>
+          <span class="rounded-full px-2 py-1 text-[10px] font-semibold" :class="column.countClass">
             {{ column.items.length }}
           </span>
         </div>
@@ -306,21 +318,20 @@ watch(
             v-for="item in column.items"
             :key="item.id"
             :to="taskDetailTo(item)"
-            class="block h-20 rounded-xl border border-border bg-background/75 px-3 py-2 text-sm transition hover:bg-background"
+            class="flex min-h-20 flex-col rounded-xl border border-border bg-background/75 px-3 py-2 text-sm transition hover:bg-background"
           >
-            <div class="flex items-center justify-between gap-2">
-              <p class="font-semibold">{{ item.title }}</p>
-              <span class="rounded-full px-2 py-0.5 text-[10px] font-semibold" :class="statusClassMap[item.status]">
-                {{ statusLabelMap[item.status] }}
-              </span>
+            <p class="min-w-0 break-words font-semibold leading-5 line-clamp-2" :title="item.title">
+              {{ item.title }}
+            </p>
+            <div class="mt-1 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              <span class="min-w-0 truncate">{{ modeLabelMap[item.mode] }}</span>
+              <span class="shrink-0 whitespace-nowrap">{{ formatDate(item.updatedAt ?? item.createdAt) }}</span>
             </div>
-            <p class="mt-1 text-xs text-muted-foreground">{{ modeLabelMap[item.mode] }}</p>
-            <p class="mt-1 text-xs text-muted-foreground">{{ formatDate(item.updatedAt ?? item.createdAt) }}</p>
           </RouterLink>
 
           <div
             v-if="column.items.length === 0"
-            class="flex h-20 items-center justify-center rounded-xl border border-dashed border-border bg-background/30 px-3 text-xs text-muted-foreground"
+            class="flex min-h-20 items-center justify-center rounded-xl border border-dashed border-border bg-background/30 px-3 text-xs text-muted-foreground"
           >
             {{ column.emptyText }}
           </div>

@@ -33,7 +33,8 @@ import CustomRoleModal from '@/components/access/CustomRoleModal.vue'
 import ProjectFormModal from './modals/ProjectFormModal.vue'
 import AgentToolConfigModal from './modals/AgentToolConfigModal.vue'
 import SkillUploadModal from './modals/SkillUploadModal.vue'
-import SkillTreeNodeComponent from '@/components/core/SkillTreeNode.vue'
+import AppSelect from '@/components/core/select'
+import SkillTree from '@/components/skills/SkillTree.vue'
 import McpJsonImportModal from './modals/McpJsonImportModal.vue'
 import WorkflowPromptVariablesHint from '@/components/workflow/WorkflowPromptVariablesHint.vue'
 import WorkflowPromptTextarea from '@/components/workflow/WorkflowPromptTextarea.vue'
@@ -403,6 +404,23 @@ const activeAgentCliToolLabel = computed(() => {
 
 const workflowConfiguredCliToolIdSet = computed(() => {
   return new Set(workflowConfiguredCliTools.value.map((tool) => tool.id))
+})
+
+const workflowCliToolSelectOptions = computed(() => {
+  if (!loadingWorkflowConfiguredCliTools.value && workflowConfiguredCliTools.value.length === 0) {
+    return [
+      {
+        label: '当前业务线暂无已配置 Agent CLI',
+        value: '',
+        disabled: true,
+      },
+    ]
+  }
+
+  return workflowConfiguredCliTools.value.map((tool) => ({
+    label: tool.label,
+    value: tool.id,
+  }))
 })
 
 const workflowTemplateModalTitle = computed(() => {
@@ -968,6 +986,19 @@ const getWorkflowNodeConfigs = (toolId: SupportedCliToolId | '') => {
   }
 
   return workflowNodeConfigsByTool.value[toolId] ?? []
+}
+
+const getWorkflowNodeConfigSelectOptions = (toolId: SupportedCliToolId | '') => {
+  return [
+    {
+      label: !toolId ? '请先选择 Agent CLI' : '请选择 Agent CLI 配置',
+      value: '',
+    },
+    ...getWorkflowNodeConfigs(toolId).map((config) => ({
+      label: config.name,
+      value: config.id,
+    })),
+  ]
 }
 
 const isWorkflowNodeConfigLoading = (toolId: SupportedCliToolId | '') => {
@@ -3943,58 +3974,31 @@ onBeforeUnmount(() => {
 
                     <label class="space-y-1">
                       <span class="text-[11px] text-muted-foreground">Agent CLI</span>
-                      <select
+                      <AppSelect
                         v-model="node.input.agentCliId"
+                        aria-label="Agent CLI"
                         :disabled="
                           loadingWorkflowConfiguredCliTools ||
                           workflowConfiguredCliTools.length === 0
                         "
-                        class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                        :options="workflowCliToolSelectOptions"
+                        trigger-class="h-8 rounded-lg border-border bg-background px-2.5 text-sm shadow-none"
                         @change="void handleWorkflowNodeCliToolChange(node)"
-                      >
-                        <option
-                          v-if="
-                            !loadingWorkflowConfiguredCliTools &&
-                            workflowConfiguredCliTools.length === 0
-                          "
-                          value=""
-                          disabled
-                        >
-                          当前业务线暂无已配置 Agent CLI
-                        </option>
-                        <option
-                          v-for="tool in workflowConfiguredCliTools"
-                          :key="tool.id"
-                          :value="tool.id"
-                        >
-                          {{ tool.label }}
-                        </option>
-                      </select>
+                      />
                     </label>
 
                     <label class="space-y-1">
                       <span class="text-[11px] text-muted-foreground">Agent CLI 配置</span>
-                      <select
+                      <AppSelect
                         v-model="node.input.agentCliConfigId"
+                        aria-label="Agent CLI 配置"
                         :disabled="
                           !node.input.agentCliId ||
                           isWorkflowNodeConfigLoading(node.input.agentCliId)
                         "
-                        class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <option value="">
-                          {{
-                            !node.input.agentCliId ? '请先选择 Agent CLI' : '请选择 Agent CLI 配置'
-                          }}
-                        </option>
-                        <option
-                          v-for="config in getWorkflowNodeConfigs(node.input.agentCliId)"
-                          :key="config.id"
-                          :value="config.id"
-                        >
-                          {{ config.name }}
-                        </option>
-                      </select>
+                        :options="getWorkflowNodeConfigSelectOptions(node.input.agentCliId)"
+                        trigger-class="h-8 rounded-lg border-border bg-background px-2.5 text-sm shadow-none"
+                      />
                     </label>
                   </div>
                 </div>
@@ -4155,16 +4159,16 @@ onBeforeUnmount(() => {
         <section
           aria-modal="true"
           role="dialog"
-          class="relative z-10 flex max-h-[85vh] w-full max-w-5xl flex-col rounded-2xl border border-border bg-background shadow-2xl"
+          class="relative z-10 flex h-[85vh] w-full max-w-5xl flex-col rounded-2xl border border-border bg-background shadow-2xl"
         >
           <header class="flex items-center justify-between border-b border-border px-4 py-3">
-            <div class="space-y-1">
+            <div class="min-w-0 flex-1 space-y-1">
               <h2 class="text-base font-semibold">{{ skillPreviewName || 'Skill' }}</h2>
-              <p class="text-xs text-muted-foreground">
+              <p class="truncate text-xs text-muted-foreground">
                 {{ skillPreviewSelectedPath || '技能目录' }}
               </p>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="ml-4 flex shrink-0 items-center gap-2">
               <button
                 v-if="skillPreviewItem"
                 type="button"
@@ -4209,19 +4213,19 @@ onBeforeUnmount(() => {
             </div>
           </header>
 
-          <div v-if="loadingSkillPreview" class="flex-1 px-4 py-6 text-sm text-muted-foreground">
+          <div v-if="loadingSkillPreview" class="flex min-h-0 flex-1 px-4 py-6 text-sm text-muted-foreground">
             加载中...
           </div>
           <p
             v-else-if="skillPreviewError && skillPreviewTree.length === 0"
-            class="flex-1 px-4 py-6 text-sm text-destructive"
+            class="flex min-h-0 flex-1 px-4 py-6 text-sm text-destructive"
           >
             {{ skillPreviewError }}
           </p>
 
           <div v-else class="flex min-h-0 flex-1">
             <aside class="w-52 flex-shrink-0 overflow-y-auto border-r border-border px-2 py-3">
-              <SkillTreeNodeComponent
+              <SkillTree
                 :nodes="skillPreviewTree"
                 :selected-path="skillPreviewSelectedPath"
                 :expanded-dirs="skillPreviewExpandedDirs"

@@ -90,6 +90,25 @@ vi.mock('@/utils/pagination', () => ({
   fetchAllPages,
 }))
 
+const selectOption = async (
+  wrapper: ReturnType<typeof mount>,
+  ariaLabel: string,
+  optionLabel: string,
+) => {
+  await wrapper.find(`button[aria-label="${ariaLabel}"]`).trigger('click')
+
+  const option = Array.from(document.body.querySelectorAll('button[role="option"]')).find(
+    (button) => button.textContent?.includes(optionLabel),
+  ) as HTMLButtonElement | undefined
+
+  if (!option) {
+    throw new Error(`Option ${optionLabel} not found`)
+  }
+
+  option.click()
+  await flushPromises()
+}
+
 describe('TaskCreatePanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -240,7 +259,7 @@ describe('TaskCreatePanel', () => {
 
     await wrapper.find('input[placeholder="标题"]').setValue('修复任务分支选择')
     await wrapper.find('textarea[placeholder="提示词"]').setValue('请在指定分支上执行任务')
-    await wrapper.find('select[aria-label="分支"]').setValue('release/2026.03')
+    await selectOption(wrapper, '分支', 'release/2026.03')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 

@@ -342,14 +342,13 @@ export class TaskNodeExecutionService {
               exitCode: executionResult.exitCode,
               signal: executionResult.signal,
               durationMs: executionResult.durationMs,
-              timedOut: executionResult.timedOut,
               finishedAt: new Date().toISOString(),
               command: executionResult.command,
               args: executionResult.args,
               prompt: executionResult.prompt,
               sessionId: executionResult.sessionId ?? null,
               error: {
-                code: executionResult.timedOut ? 'TIMEOUT' : 'RUNNER_FAILED',
+                code: 'RUNNER_FAILED',
                 message:
                   executionResult.errorMessage ?? 'Agent execution failed',
               },
@@ -431,7 +430,6 @@ export class TaskNodeExecutionService {
       args: string[];
       exitCode: number | null;
       signal: NodeJS.Signals | null;
-      timedOut: boolean;
     };
     streamedStdoutLineCount?: number;
     streamedStderrLineCount?: number;
@@ -529,7 +527,6 @@ export class TaskNodeExecutionService {
       args: string[];
       exitCode: number | null;
       signal: NodeJS.Signals | null;
-      timedOut: boolean;
     };
   }): Promise<void> {
     const normalizedContent = content.trim();
@@ -555,7 +552,6 @@ export class TaskNodeExecutionService {
           args: executionResult.args,
           exitCode: executionResult.exitCode,
           signal: executionResult.signal,
-          timedOut: executionResult.timedOut,
         },
       });
     }

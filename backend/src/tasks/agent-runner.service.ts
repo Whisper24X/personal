@@ -24,7 +24,6 @@ type AgentRunnerConfig = {
   adapter: AgentAdapter;
   command: string;
   args: string[];
-  timeoutMs: number;
   cwd: string;
   env: Record<string, string>;
   agentToolConfigId?: string;
@@ -63,13 +62,12 @@ type AgentRunnerStreamCallbacks = {
 
 type ActiveAgentExecution = {
   childProcess: ChildProcess;
-  stopReason: 'interrupt' | 'timeout' | null;
+  stopReason: 'interrupt' | null;
   killTimerRef: NodeJS.Timeout | null;
 };
 
 export type AgentRunnerResult = {
   success: boolean;
-  timedOut: boolean;
   interrupted: boolean;
   exitCode: number | null;
   signal: NodeJS.Signals | null;
@@ -87,7 +85,6 @@ export type AgentRunnerResult = {
 @Injectable()
 export class AgentRunnerService {
   private readonly logger = new Logger(AgentRunnerService.name);
-  private readonly defaultTimeoutMs = 10 * 60 * 1000;
   private readonly maxOutputLength = 100_000;
   private readonly forcedKillDelayMs = 2_000;
   private readonly defaultDataRootDir = path.resolve(
@@ -201,12 +198,6 @@ export class AgentRunnerService {
       sessionId: this.normalizeOptionalString(node.agentCliSessionId),
       continuationConfig,
     });
-    const timeoutMs = Math.max(
-      5_000,
-      Math.floor(
-        (runnerConfig.timeoutSeconds ?? this.defaultTimeoutMs / 1000) * 1000,
-      ),
-    );
 
     const env: Record<string, string> = {
       ...(runnerConfig.env ? this.resolveStringEnv(runnerConfig.env) : {}),
@@ -229,7 +220,6 @@ export class AgentRunnerService {
       adapter,
       command,
       args,
-      timeoutMs,
       cwd,
       env,
       ...(agentToolConfig?.configId
@@ -361,7 +351,6 @@ export class AgentRunnerService {
   private readRunnerConfig(configJson: Record<string, unknown>): {
     command?: string;
     args?: string[];
-    timeoutSeconds?: number;
     env?: Record<string, string>;
   } {
     const runner = configJson.agentRunner;
@@ -387,10 +376,6 @@ export class AgentRunnerService {
           ? raw.base_command_override
           : undefined;
 
-    const timeoutSeconds = this.resolveTimeoutSeconds(
-      raw.timeoutSeconds ?? raw.timeout_seconds,
-    );
-
     const env =
       raw.env && typeof raw.env === 'object'
         ? this.resolveStringEnv(raw.env as Record<string, unknown>)
@@ -404,7 +389,6 @@ export class AgentRunnerService {
     return {
       command,
       args,
-      timeoutSeconds,
       env: apiKey ? { ...(env ?? {}), CURSOR_API_KEY: apiKey } : env,
     };
   }
@@ -420,21 +404,6 @@ export class AgentRunnerService {
       .filter(Boolean);
 
     return parsed.length ? parsed : undefined;
-  }
-
-  private resolveTimeoutSeconds(value: unknown): number | undefined {
-    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-      return value;
-    }
-
-    if (typeof value === 'string' && value.trim()) {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed) && parsed > 0) {
-        return parsed;
-      }
-    }
-
-    return undefined;
   }
 
   private mergeRunnerConfig(
@@ -456,8 +425,6 @@ export class AgentRunnerService {
     return {
       command: overrideConfig.command ?? baseConfig.command,
       args: overrideConfig.args ?? baseConfig.args,
-      timeoutSeconds:
-        overrideConfig.timeoutSeconds ?? baseConfig.timeoutSeconds,
       env: mergedEnv,
     };
   }
@@ -1315,10 +1282,8 @@ export class AgentRunnerService {
     let stderrChunkCount = 0;
     let stdoutByteLength = 0;
     let stderrByteLength = 0;
-    let timedOut = false;
     let interrupted = false;
     let extractedSessionId: string | null = null;
-    let timeoutRef: NodeJS.Timeout | null = null;
     const captureStdoutLine = (line: string): void => {
       extractedSessionId ??= cliAdapter.extractSessionId(line);
       callbacks?.onStdoutLine?.(line);
@@ -1407,27 +1372,6 @@ export class AgentRunnerService {
         }
       });
 
-      timeoutRef = setTimeout(() => {
-        timedOut = true;
-        this.logger.warn(
-          `agent_runner_timeout ${JSON.stringify(
-            this.buildResultLogPayload({
-              executionContext,
-              config,
-              durationMs: Date.now() - startAt,
-              stdout,
-              stderr,
-              stdoutChunkCount,
-              stderrChunkCount,
-              stdoutByteLength,
-              stderrByteLength,
-              timedOut,
-            }),
-          )}`,
-        );
-        this.requestProcessStop(activeExecution, 'timeout');
-      }, config.timeoutMs);
-
       if (config.adapter !== 'cursor') {
         childProcess.stdin?.write(prompt);
         childProcess.stdin?.end();
@@ -1450,7 +1394,6 @@ export class AgentRunnerService {
                 stderrChunkCount,
                 stdoutByteLength,
                 stderrByteLength,
-                timedOut,
                 errorMessage: error.message,
               }),
             )}`,
@@ -1466,9 +1409,6 @@ export class AgentRunnerService {
         });
       });
 
-      if (timeoutRef) {
-        clearTimeout(timeoutRef);
-      }
       this.clearForcedKillTimer(activeExecution);
 
       this.flushTrailingStreamBuffer(stdoutLineBuffer, captureStdoutLine);
@@ -1479,7 +1419,7 @@ export class AgentRunnerService {
 
       const durationMs = Date.now() - startAt;
       interrupted = activeExecution.stopReason === 'interrupt';
-      const success = !timedOut && closeResult.exitCode === 0;
+      const success = closeResult.exitCode === 0;
       const resultLogPayload = this.buildResultLogPayload({
         executionContext,
         config,
@@ -1490,7 +1430,6 @@ export class AgentRunnerService {
         stderrChunkCount,
         stdoutByteLength,
         stderrByteLength,
-        timedOut,
         interrupted,
         exitCode: closeResult.exitCode,
         signal: closeResult.signal,
@@ -1508,7 +1447,6 @@ export class AgentRunnerService {
 
       return {
         success,
-        timedOut,
         interrupted,
         exitCode: closeResult.exitCode,
         signal: closeResult.signal,
@@ -1523,17 +1461,12 @@ export class AgentRunnerService {
         ...(success
           ? {}
           : {
-              errorMessage: timedOut
-                ? `Agent execution timed out after ${Math.floor(config.timeoutMs / 1000)}s`
-                : interrupted
-                  ? 'Agent execution interrupted'
-                  : `Agent execution exited with code ${closeResult.exitCode ?? 'null'}`,
+              errorMessage: interrupted
+                ? 'Agent execution interrupted'
+                : `Agent execution exited with code ${closeResult.exitCode ?? 'null'}`,
             }),
       };
     } catch (error) {
-      if (timeoutRef) {
-        clearTimeout(timeoutRef);
-      }
       const activeExecution = this.activeExecutions.get(
         executionContext.nodeId,
       );
@@ -1565,7 +1498,6 @@ export class AgentRunnerService {
             stderrChunkCount,
             stdoutByteLength,
             stderrByteLength,
-            timedOut,
             interrupted,
             errorMessage,
           }),
@@ -1574,7 +1506,6 @@ export class AgentRunnerService {
 
       return {
         success: false,
-        timedOut,
         interrupted,
         exitCode: null,
         signal: null,
@@ -1601,7 +1532,7 @@ export class AgentRunnerService {
 
   private requestProcessStop(
     activeExecution: ActiveAgentExecution,
-    reason: 'interrupt' | 'timeout',
+    reason: 'interrupt',
   ): void {
     if (activeExecution.stopReason) {
       return;
@@ -1741,7 +1672,6 @@ export class AgentRunnerService {
       command: config.command,
       args: config.args,
       cwd: config.cwd,
-      timeoutMs: config.timeoutMs,
       promptLength: prompt.length,
       envKeys: Object.keys(mergedEnv)
         .filter((key) => typeof mergedEnv[key] === 'string')
@@ -1779,7 +1709,6 @@ export class AgentRunnerService {
     stderrChunkCount,
     stdoutByteLength,
     stderrByteLength,
-    timedOut,
     interrupted,
     exitCode,
     signal,
@@ -1794,7 +1723,6 @@ export class AgentRunnerService {
     stderrChunkCount: number;
     stdoutByteLength: number;
     stderrByteLength: number;
-    timedOut: boolean;
     interrupted?: boolean;
     exitCode?: number | null;
     signal?: NodeJS.Signals | null;
@@ -1806,9 +1734,7 @@ export class AgentRunnerService {
       command: config.command,
       args: config.args,
       cwd: config.cwd,
-      timeoutMs: config.timeoutMs,
       durationMs,
-      timedOut,
       interrupted: interrupted ?? false,
       exitCode: exitCode ?? null,
       signal: signal ?? null,

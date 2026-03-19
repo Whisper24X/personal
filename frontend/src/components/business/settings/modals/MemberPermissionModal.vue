@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import AppSelect from '@/components/core/select'
 import type { RoleAssignmentOption } from '@/constants/access'
 import { resolveRoleAssignmentKey } from '@/constants/access'
 import type { User } from '@/types/api/users'
@@ -75,6 +76,32 @@ const defaultRoleOptions = computed(() => {
 
 const customRoleOptions = computed(() => {
   return props.roleOptions.filter((item) => item.source === 'custom')
+})
+
+const businessRoleSelectOptions = computed(() => {
+  const groups = []
+
+  if (defaultRoleOptions.value.length > 0) {
+    groups.push({
+      label: '默认角色',
+      options: defaultRoleOptions.value.map((option) => ({
+        label: option.label,
+        value: option.key,
+      })),
+    })
+  }
+
+  if (customRoleOptions.value.length > 0) {
+    groups.push({
+      label: '自定义角色',
+      options: customRoleOptions.value.map((option) => ({
+        label: option.label,
+        value: option.key,
+      })),
+    })
+  }
+
+  return groups
 })
 
 const selectedRoleOption = computed(() => {
@@ -321,29 +348,12 @@ watch(
 
               <div class="mt-4 space-y-2">
                 <label class="text-xs font-semibold text-muted-foreground">角色</label>
-                <select
+                <AppSelect
                   v-model="selectedRoleKey"
-                  class="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground"
-                >
-                  <optgroup v-if="defaultRoleOptions.length > 0" label="默认角色">
-                    <option
-                      v-for="option in defaultRoleOptions"
-                      :key="option.key"
-                      :value="option.key"
-                    >
-                      {{ option.label }}
-                    </option>
-                  </optgroup>
-                  <optgroup v-if="customRoleOptions.length > 0" label="自定义角色">
-                    <option
-                      v-for="option in customRoleOptions"
-                      :key="option.key"
-                      :value="option.key"
-                    >
-                      {{ option.label }}
-                    </option>
-                  </optgroup>
-                </select>
+                  aria-label="业务线角色"
+                  :options="businessRoleSelectOptions"
+                  trigger-class="h-11 rounded-xl border-border bg-background px-3 text-sm shadow-none"
+                />
                 <p
                   v-if="props.roleOptions.length === 0"
                   class="text-sm text-muted-foreground"
@@ -377,18 +387,15 @@ watch(
                     <div class="truncate text-sm font-semibold text-foreground">{{ project.name }}</div>
                     <div class="mt-1 font-mono text-[11px] text-muted-foreground">{{ project.id }}</div>
                   </div>
-                  <select
-                    v-model="projectRoles[project.id]"
-                    class="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground lg:w-44"
-                  >
-                    <option
-                      v-for="option in props.projectRoleOptions"
-                      :key="option.value"
-                      :value="option.value"
-                    >
-                      {{ option.label }}
-                    </option>
-                  </select>
+                  <AppSelect
+                    :model-value="projectRoles[project.id] ?? ''"
+                    aria-label="项目角色"
+                    :options="props.projectRoleOptions"
+                    :block="false"
+                    wrapper-class="lg:w-44"
+                    trigger-class="h-10 rounded-xl border-border bg-background px-3 text-sm shadow-none"
+                    @update:model-value="projectRoles[project.id] = String($event ?? '')"
+                  />
                 </div>
               </div>
             </section>

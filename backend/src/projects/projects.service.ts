@@ -67,7 +67,6 @@ export class ProjectsService {
   private readonly maxProjectDocDepth = 8;
   private readonly maxQueryContextChars = 24_000;
   private readonly maxQueryDocSnippetChars = 1_600;
-  private readonly defaultQueryTimeoutMs = 120_000;
   private readonly repositorySyncLocks = new Map<
     string,
     { tail: Promise<void>; pending: number }
@@ -1597,12 +1596,6 @@ export class ProjectsService {
 
       let stdout = '';
       let stderr = '';
-      let timedOut = false;
-
-      const timeoutRef = setTimeout(() => {
-        timedOut = true;
-        child.kill('SIGTERM');
-      }, this.defaultQueryTimeoutMs);
 
       child.stdout?.on('data', (chunk) => {
         const text = chunk.toString('utf-8');
@@ -1614,7 +1607,6 @@ export class ProjectsService {
       });
 
       child.on('error', (error) => {
-        clearTimeout(timeoutRef);
         resolve({
           success: false,
           stdout: '',
@@ -1628,13 +1620,10 @@ export class ProjectsService {
       }
 
       child.on('close', (code) => {
-        clearTimeout(timeoutRef);
         resolve({
-          success: !timedOut && code === 0,
+          success: code === 0,
           stdout: stdout.trim(),
-          stderr: timedOut
-            ? 'Agent execution timed out'
-            : stderr.trim() || `Agent exit code ${code ?? 'null'}`,
+          stderr: stderr.trim() || `Agent exit code ${code ?? 'null'}`,
         });
       });
     });

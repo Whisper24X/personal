@@ -7,6 +7,7 @@ import { usersApi } from '@/api/users'
 import type { User } from '@/types/api/users'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
+import AppSelect from '@/components/core/select'
 import BusinessLineFormModal from '@/views/business-lines/components/BusinessLineFormModal.vue'
 import ConfirmActionModal from '@/components/business/settings/modals/ConfirmActionModal.vue'
 
@@ -579,14 +580,14 @@ onMounted(() => {
                     <p class="mt-1 font-mono text-xs text-muted-foreground">{{ member.userId }}</p>
                   </td>
                   <td class="px-4 py-4">
-                    <select
-                      v-model="memberRoleDrafts[member.userId]"
-                      class="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                    >
-                      <option v-for="role in roleOptions" :key="role.value" :value="role.value">
-                        {{ role.label }}
-                      </option>
-                    </select>
+                    <AppSelect
+                      :model-value="memberRoleDrafts[member.userId] ?? ''"
+                      aria-label="成员角色"
+                      :block="false"
+                      :options="roleOptions"
+                      trigger-class="h-9 rounded-lg border-border bg-background px-3 text-sm shadow-none"
+                      @update:model-value="memberRoleDrafts[member.userId] = String($event ?? '')"
+                    />
                   </td>
                   <td class="px-4 py-4 text-muted-foreground">
                     {{ formatDate(member.updatedAt) }}
@@ -694,14 +695,12 @@ onMounted(() => {
 
             <label class="space-y-1">
               <span class="text-xs font-semibold text-muted-foreground">角色</span>
-              <select
+              <AppSelect
                 v-model="memberForm.roleId"
-                class="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-              >
-                <option v-for="role in roleOptions" :key="role.value" :value="role.value">
-                  {{ role.label }}
-                </option>
-              </select>
+                aria-label="业务线角色"
+                :options="roleOptions"
+                trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
+              />
             </label>
 
             <div class="md:col-span-2 flex justify-end gap-2">

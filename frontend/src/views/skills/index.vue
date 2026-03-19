@@ -10,7 +10,7 @@ import { STORAGE_KEYS } from '@/types/common/storage'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
 import SkillUploadModal from '@/components/business/settings/modals/SkillUploadModal.vue'
-import SkillTreeNodeComponent from '@/components/core/SkillTreeNode.vue'
+import SkillTree from '@/components/skills/SkillTree.vue'
 
 defineOptions({
   name: 'SkillsManagementView',
@@ -990,14 +990,16 @@ onBeforeUnmount(() => {
         <section
           aria-modal="true"
           role="dialog"
-          class="relative z-10 flex max-h-[85vh] w-full max-w-5xl flex-col rounded-2xl border border-border bg-background shadow-2xl"
+          class="relative z-10 flex h-[85vh] w-full max-w-5xl flex-col rounded-2xl border border-border bg-background shadow-2xl"
         >
           <header class="flex items-center justify-between border-b border-border px-4 py-3">
-            <div>
+            <div class="min-w-0 flex-1">
               <h2 class="text-base font-semibold">{{ detailSkill.name }}</h2>
-              <p class="text-xs text-muted-foreground">{{ detailSelectedPath || '技能目录' }}</p>
+              <p class="truncate text-xs text-muted-foreground">
+                {{ detailSelectedPath || '技能目录' }}
+              </p>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="ml-4 flex shrink-0 items-center gap-2">
               <button
                 type="button"
                 class="inline-flex h-8 items-center justify-center rounded-md border border-primary/60 bg-primary/5 px-3 text-xs font-semibold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1035,12 +1037,12 @@ onBeforeUnmount(() => {
             </div>
           </header>
 
-          <div v-if="detailLoading" class="flex-1 px-4 py-6 text-sm text-muted-foreground">加载中...</div>
-          <p v-else-if="detailErrorMessage" class="flex-1 px-4 py-6 text-sm text-destructive">{{ detailErrorMessage }}</p>
+          <div v-if="detailLoading" class="flex min-h-0 flex-1 px-4 py-6 text-sm text-muted-foreground">加载中...</div>
+          <p v-else-if="detailErrorMessage" class="flex min-h-0 flex-1 px-4 py-6 text-sm text-destructive">{{ detailErrorMessage }}</p>
 
           <div v-else class="flex min-h-0 flex-1">
             <aside class="w-56 flex-shrink-0 overflow-y-auto border-r border-border px-2 py-3">
-              <SkillTreeNodeComponent
+              <SkillTree
                 :nodes="detailTree"
                 :selected-path="detailSelectedPath"
                 :expanded-dirs="detailExpandedDirs"

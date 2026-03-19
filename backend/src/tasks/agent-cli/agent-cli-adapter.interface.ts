@@ -10,7 +10,6 @@ export type AgentCliAdapterId =
 export type AgentCliRunnerConfigInput = {
   command?: string;
   args?: string[];
-  timeoutSeconds?: number;
   env?: Record<string, string>;
 };
 
