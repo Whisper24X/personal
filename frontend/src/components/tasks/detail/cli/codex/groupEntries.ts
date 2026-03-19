@@ -36,6 +36,10 @@ function isStandaloneCodexEvent(entry: NormalizedEntry): boolean {
   return entry.type === 'system_message' && Boolean(eventType && STANDALONE_EVENT_TYPES.has(eventType))
 }
 
+function isStandaloneCodexCard(entry: NormalizedEntry): boolean {
+  return entry.type === 'system_message' && entry.metadata?.codexCardType === 'todo_list'
+}
+
 export function groupCodexEntries(entries: NormalizedEntry[]): CodexMessageGroup[] {
   const groups: CodexMessageGroup[] = []
   let currentTaskGroup: CodexTaskGroup | null = null
@@ -56,7 +60,7 @@ export function groupCodexEntries(entries: NormalizedEntry[]): CodexMessageGroup
         description: entry.content,
         tools: [],
       }
-    } else if (isStandaloneCodexEvent(entry)) {
+    } else if (isStandaloneCodexEvent(entry) || isStandaloneCodexCard(entry)) {
       flushTaskGroup()
       groups.push({ type: 'other', entry })
     } else if (TOOL_TYPES.has(entry.type)) {

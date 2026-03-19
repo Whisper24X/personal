@@ -59,6 +59,8 @@ const branchSelectOptions = computed(() => {
   }))
 })
 
+const PROJECT_FORM_SELECT_PANEL_Z_INDEX = 130
+
 const clearInspectTimer = () => {
   if (inspectTimer) {
     clearTimeout(inspectTimer)
@@ -330,6 +332,7 @@ onBeforeUnmount(() => {
               v-model="defaultBranch"
               aria-label="默认分支"
               :options="branchSelectOptions"
+              :panel-z-index="PROJECT_FORM_SELECT_PANEL_Z_INDEX"
               trigger-class="h-10 rounded-lg border-border bg-background px-3 text-sm shadow-none"
               @change="markDefaultBranchAsEdited"
             />

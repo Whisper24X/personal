@@ -120,4 +120,53 @@ describe('groupCodexEntries', () => {
       },
     })
   })
+
+  it('keeps todo list cards standalone instead of merging them into task tools', () => {
+    const groups = groupCodexEntries([
+      createEntry({
+        id: 'assistant-1',
+        type: 'assistant_message',
+        timestamp: 1,
+        content: '整理执行计划',
+      }),
+      createEntry({
+        id: 'tool-1',
+        type: 'command_run',
+        timestamp: 2,
+        content: 'pwd',
+        metadata: {
+          status: 'running',
+        },
+      }),
+      createEntry({
+        id: 'todo-1',
+        type: 'system_message',
+        timestamp: 3,
+        content: 'Todo list completed (2/2)',
+        metadata: {
+          codexCardType: 'todo_list',
+          todoItems: [
+            { text: '步骤一', completed: true },
+            { text: '步骤二', completed: true },
+          ],
+        },
+      }),
+    ])
+
+    expect(groups).toHaveLength(2)
+    expect(groups[0]).toMatchObject({
+      type: 'task',
+      tools: [
+        expect.objectContaining({
+          id: 'tool-1',
+        }),
+      ],
+    })
+    expect(groups[1]).toMatchObject({
+      type: 'other',
+      entry: {
+        id: 'todo-1',
+      },
+    })
+  })
 })

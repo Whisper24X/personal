@@ -77,6 +77,7 @@ const SUPPORTED_CLI_TOOLS: Array<{ id: SupportedCliToolId; label: string }> = [
   { id: 'opencode', label: 'Opencode' },
 ]
 const DEFAULT_AGENT_TOOL_CONFIG_NAME = 'default'
+const BUSINESS_LINE_WORKFLOW_SELECT_PANEL_Z_INDEX = 120
 
 defineOptions({
   name: 'BusinessLineModal',
@@ -3982,6 +3983,7 @@ onBeforeUnmount(() => {
                           workflowConfiguredCliTools.length === 0
                         "
                         :options="workflowCliToolSelectOptions"
+                        :panel-z-index="BUSINESS_LINE_WORKFLOW_SELECT_PANEL_Z_INDEX"
                         trigger-class="h-8 rounded-lg border-border bg-background px-2.5 text-sm shadow-none"
                         @change="void handleWorkflowNodeCliToolChange(node)"
                       />
@@ -3997,6 +3999,7 @@ onBeforeUnmount(() => {
                           isWorkflowNodeConfigLoading(node.input.agentCliId)
                         "
                         :options="getWorkflowNodeConfigSelectOptions(node.input.agentCliId)"
+                        :panel-z-index="BUSINESS_LINE_WORKFLOW_SELECT_PANEL_Z_INDEX"
                         trigger-class="h-8 rounded-lg border-border bg-background px-2.5 text-sm shadow-none"
                       />
                     </label>

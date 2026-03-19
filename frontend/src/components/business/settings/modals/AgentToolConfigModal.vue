@@ -74,6 +74,8 @@ const BOOLEAN_NULLABLE_FIELD_OPTIONS = [
   { label: 'Disabled', value: false },
 ] as const
 
+const AGENT_TOOL_CONFIG_SELECT_PANEL_Z_INDEX = 130
+
 const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
   'claude-code': {
     model: { type: 'string' },
@@ -891,6 +893,7 @@ watch(
                     { label: '是', value: true },
                     { label: '否', value: false },
                   ]"
+                  :panel-z-index="AGENT_TOOL_CONFIG_SELECT_PANEL_Z_INDEX"
                   trigger-class="h-10 rounded-lg border-border/70 bg-background px-3 text-sm shadow-none"
                 />
               </label>
@@ -942,6 +945,7 @@ watch(
                   "
                   :options="getStringFieldSelectOptions(fieldKey, field)"
                   :aria-label="formatFieldLabel(fieldKey)"
+                  :panel-z-index="AGENT_TOOL_CONFIG_SELECT_PANEL_Z_INDEX"
                   trigger-class="h-10 rounded-lg border-border/70 bg-background px-3 text-sm shadow-none"
                   @change="setDraftFieldValue(fieldKey, $event)"
                 />
@@ -997,6 +1001,7 @@ watch(
                   :model-value="getBooleanNullableFieldValue(fieldKey)"
                   :options="[...BOOLEAN_NULLABLE_FIELD_OPTIONS]"
                   :aria-label="formatFieldLabel(fieldKey)"
+                  :panel-z-index="AGENT_TOOL_CONFIG_SELECT_PANEL_Z_INDEX"
                   trigger-class="h-10 rounded-lg border-border/70 bg-background px-3 text-sm shadow-none"
                   @change="setDraftFieldValue(fieldKey, $event)"
                 />
@@ -1091,6 +1096,7 @@ watch(
                   :model-value="getStringFieldValue(fieldKey)"
                   :options="getStringFieldSelectOptions(fieldKey, field)"
                   :aria-label="formatFieldLabel(fieldKey)"
+                  :panel-z-index="AGENT_TOOL_CONFIG_SELECT_PANEL_Z_INDEX"
                   trigger-class="h-10 rounded-lg border-border/70 bg-background px-3 text-sm shadow-none"
                   @change="setDraftFieldValue(fieldKey, $event)"
                 />
@@ -1146,6 +1152,7 @@ watch(
                   :model-value="getBooleanNullableFieldValue(fieldKey)"
                   :options="[...BOOLEAN_NULLABLE_FIELD_OPTIONS]"
                   :aria-label="formatFieldLabel(fieldKey)"
+                  :panel-z-index="AGENT_TOOL_CONFIG_SELECT_PANEL_Z_INDEX"
                   trigger-class="h-10 rounded-lg border-border/70 bg-background px-3 text-sm shadow-none"
                   @change="setDraftFieldValue(fieldKey, $event)"
                 />

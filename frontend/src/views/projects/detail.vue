@@ -55,6 +55,8 @@ const SUPPORTED_CLI_TOOLS: Array<{ id: SupportedCliToolId; label: string }> = [
   { id: 'opencode', label: 'Opencode' },
 ]
 
+const PROJECT_WORKFLOW_SELECT_PANEL_Z_INDEX = 130
+
 const route = useRoute()
 const router = useRouter()
 const normalizeRouteParam = (value: unknown) => {
@@ -2246,6 +2248,7 @@ onBeforeUnmount(() => {
                           workflowConfiguredCliTools.length === 0
                         "
                         :options="workflowCliToolSelectOptions"
+                        :panel-z-index="PROJECT_WORKFLOW_SELECT_PANEL_Z_INDEX"
                         trigger-class="h-8 rounded-lg border-border bg-background px-2.5 text-sm shadow-none"
                         @change="void handleWorkflowNodeCliToolChange(node)"
                       />
@@ -2261,6 +2264,7 @@ onBeforeUnmount(() => {
                           isWorkflowNodeConfigLoading(node.input.agentCliId)
                         "
                         :options="getWorkflowNodeConfigSelectOptions(node.input.agentCliId)"
+                        :panel-z-index="PROJECT_WORKFLOW_SELECT_PANEL_Z_INDEX"
                         trigger-class="h-8 rounded-lg border-border bg-background px-2.5 text-sm shadow-none"
                       />
                     </label>

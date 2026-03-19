@@ -36,6 +36,8 @@ const props = withDefaults(
     menuClass?: string
     optionClass?: string
     emptyText?: string
+    panelZIndex?: number | string
+    panelPlacement?: 'auto' | 'top' | 'bottom'
   }>(),
   {
     placeholder: '请选择',
@@ -49,6 +51,8 @@ const props = withDefaults(
     menuClass: '',
     optionClass: '',
     emptyText: '暂无可选项',
+    panelZIndex: 80,
+    panelPlacement: 'auto',
   },
 )
 
@@ -230,7 +234,14 @@ const updatePanelPosition = () => {
   const offset = 8
   const availableBelow = window.innerHeight - triggerRect.bottom - viewportPadding
   const availableAbove = triggerRect.top - viewportPadding
-  const placeAbove = panelHeight > 0 && availableBelow < Math.min(panelHeight, 240) && availableAbove > availableBelow
+  const autoPlaceAbove =
+    panelHeight > 0 && availableBelow < Math.min(panelHeight, 240) && availableAbove > availableBelow
+  const placeAbove =
+    props.panelPlacement === 'top'
+      ? true
+      : props.panelPlacement === 'bottom'
+        ? false
+        : autoPlaceAbove
   const maxHeight = Math.max(
     120,
     Math.floor((placeAbove ? availableAbove : availableBelow) - offset),
@@ -252,7 +263,7 @@ const updatePanelPosition = () => {
     minWidth: `${minWidth}px`,
     maxHeight: `${maxHeight}px`,
     width: props.matchTriggerWidth ? `${minWidth}px` : undefined,
-    zIndex: '80',
+    zIndex: String(props.panelZIndex),
   }
 }
 

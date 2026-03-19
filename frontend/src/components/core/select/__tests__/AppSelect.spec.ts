@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import AppSelect from '@/components/core/select'
 import type { SelectOptionEntry, SelectValue } from '@/components/core/select'
 
+const originalInnerHeight = window.innerHeight
+
 const openSelect = async (wrapper: ReturnType<typeof mount>) => {
   await wrapper.find('button[aria-haspopup="listbox"]').trigger('click')
 }
@@ -16,6 +18,7 @@ const findOptionButton = (label: string) => {
 describe('AppSelect', () => {
   afterEach(() => {
     document.body.innerHTML = ''
+    window.innerHeight = originalInnerHeight
   })
 
   it('renders grouped options and keeps boolean/null values intact', async () => {
@@ -85,5 +88,65 @@ describe('AppSelect', () => {
     await wrapper.vm.$nextTick()
 
     expect(document.body.querySelector('[role="listbox"]')).toBeNull()
+  })
+
+  it('applies custom panel z-index to teleported menu', async () => {
+    const wrapper = mount(AppSelect, {
+      attachTo: document.body,
+      props: {
+        modelValue: 'all',
+        ariaLabel: '项目选择',
+        panelZIndex: 130,
+        options: [
+          { label: '全部项目', value: 'all' },
+          { label: '当前项目', value: 'current' },
+        ],
+      },
+    })
+
+    await openSelect(wrapper)
+
+    const listbox = document.body.querySelector('[role="listbox"]') as HTMLDivElement | null
+
+    expect(listbox).not.toBeNull()
+    expect(listbox?.style.zIndex).toBe('130')
+  })
+
+  it('supports forcing the teleported menu to open upward', async () => {
+    window.innerHeight = 1000
+
+    const wrapper = mount(AppSelect, {
+      attachTo: document.body,
+      props: {
+        modelValue: 'all',
+        ariaLabel: '配置选择',
+        panelPlacement: 'top',
+        options: [
+          { label: '全部配置', value: 'all' },
+          { label: '默认配置', value: 'default' },
+        ],
+      },
+    })
+
+    const trigger = wrapper.find('button[aria-haspopup="listbox"]').element as HTMLButtonElement
+    trigger.getBoundingClientRect = () =>
+      ({
+        top: 400,
+        bottom: 440,
+        left: 120,
+        right: 280,
+        width: 160,
+        height: 40,
+        x: 120,
+        y: 400,
+        toJSON: () => ({}),
+      }) as DOMRect
+
+    await openSelect(wrapper)
+
+    const listbox = document.body.querySelector('[role="listbox"]') as HTMLDivElement | null
+
+    expect(listbox).not.toBeNull()
+    expect(Number.parseFloat(listbox?.style.top ?? '0')).toBeLessThan(400)
   })
 })

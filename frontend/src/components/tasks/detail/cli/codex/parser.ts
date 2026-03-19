@@ -176,6 +176,51 @@ function createCodexToolUseFromItem(item: RecordLike, timestamp: number, idBase:
   }
 }
 
+function extractTodoListItems(item: RecordLike): Array<{ text: string; completed: boolean }> {
+  const rawItems = Array.isArray(item.items) ? item.items : []
+  return rawItems
+    .map((raw) => {
+      const record = asRecord(raw)
+      if (!record) return null
+      const text = getString(record.text) || getString(record.content) || getString(record.label)
+      if (!text) return null
+      return {
+        text,
+        completed: record.completed === true,
+      }
+    })
+    .filter((entry): entry is { text: string; completed: boolean } => Boolean(entry))
+}
+
+function createCodexTodoListEntry(
+  item: RecordLike,
+  timestamp: number,
+  normalizedType: string | undefined,
+  idBase: string,
+): NormalizedEntry {
+  const todoItems = extractTodoListItems(item)
+  const completedCount = todoItems.filter((entry) => entry.completed).length
+  const totalCount = todoItems.length
+  const isCompleted = normalizedType?.endsWith('_completed') ?? false
+  const progressText = totalCount > 0 ? ` (${completedCount}/${totalCount})` : ''
+
+  return {
+    id: idBase,
+    type: 'system_message',
+    timestamp,
+    content: `${isCompleted ? 'Todo list completed' : 'Todo list updated'}${progressText}`,
+    metadata: {
+      codexCardType: 'todo_list',
+      codexItemId: getString(item.id),
+      codexItemType: 'todo_list',
+      todoItems,
+      todoCompletedCount: completedCount,
+      todoTotalCount: totalCount,
+      status: isCompleted ? 'success' : 'running',
+    },
+  }
+}
+
 function extractCodexItem(msg: RecordLike): RecordLike | null {
   const direct = asRecord(msg.item)
   if (direct) return direct
@@ -214,6 +259,10 @@ function parseCodexItemEvent(
 
   if (itemType && itemType.includes('tool')) {
     return createCodexToolUseFromItem(item, timestamp, idBase)
+  }
+
+  if (itemType === 'todo_list') {
+    return createCodexTodoListEntry(item, timestamp, normalizedType, idBase)
   }
 
   const text = stringifyContent(item.text ?? item.content ?? item.message ?? item.output ?? item.result)

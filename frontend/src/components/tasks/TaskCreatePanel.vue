@@ -35,6 +35,8 @@ const TASK_HEADLINES = [
   '输入你的需求，我们马上开始。',
 ]
 const HEADLINE_ROTATE_INTERVAL_MS = 30000
+const TASK_CREATE_SELECT_PANEL_Z_INDEX = 130
+const TASK_CREATE_SELECT_PANEL_PLACEMENT = 'top' as const
 
 const props = withDefaults(
   defineProps<{
@@ -775,6 +777,8 @@ onBeforeUnmount(() => {
                   :block="false"
                   :options="configuredCliToolOptions"
                   :disabled="loadingAgentConfigs || configuredCliTools.length === 0"
+                  :panel-z-index="TASK_CREATE_SELECT_PANEL_Z_INDEX"
+                  :panel-placement="TASK_CREATE_SELECT_PANEL_PLACEMENT"
                   size="lg"
                   trigger-class="min-w-[120px] rounded-full border-border bg-background pl-3 pr-3 text-sm font-medium shadow-none"
                 >
@@ -804,6 +808,8 @@ onBeforeUnmount(() => {
                   :block="false"
                   :options="agentToolConfigOptions"
                   :disabled="loadingAgentConfigs || agentToolConfigs.length === 0"
+                  :panel-z-index="TASK_CREATE_SELECT_PANEL_Z_INDEX"
+                  :panel-placement="TASK_CREATE_SELECT_PANEL_PLACEMENT"
                   size="lg"
                   trigger-class="min-w-[120px] rounded-full border-border bg-background pl-3 pr-3 text-sm font-medium shadow-none"
                 >
@@ -836,6 +842,8 @@ onBeforeUnmount(() => {
                   :block="false"
                   :options="workflowTemplateOptions"
                   :disabled="loadingTemplates || templates.length === 0"
+                  :panel-z-index="TASK_CREATE_SELECT_PANEL_Z_INDEX"
+                  :panel-placement="TASK_CREATE_SELECT_PANEL_PLACEMENT"
                   size="lg"
                   trigger-class="min-w-[160px] rounded-full border-border bg-background pl-3 pr-3 text-sm font-medium shadow-none"
                 >
@@ -871,6 +879,8 @@ onBeforeUnmount(() => {
                 :block="false"
                 :options="gitBaseBranchOptions"
                 :disabled="loadingBranches || branchOptions.length === 0"
+                :panel-z-index="TASK_CREATE_SELECT_PANEL_Z_INDEX"
+                :panel-placement="TASK_CREATE_SELECT_PANEL_PLACEMENT"
                 size="lg"
                 trigger-class="w-[92px] rounded-full border-border bg-background pl-2.5 pr-2.5 text-sm font-medium shadow-none"
               >

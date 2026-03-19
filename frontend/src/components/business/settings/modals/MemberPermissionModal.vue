@@ -55,6 +55,7 @@ const selectedRoleKey = ref('')
 const projectRoles = ref<Record<string, ProjectRoleSelection>>({})
 const validationMessage = ref('')
 const copyState = ref<'idle' | 'success' | 'error'>('idle')
+const MEMBER_PERMISSION_SELECT_PANEL_Z_INDEX = 130
 
 const modeTitle = computed(() => {
   return props.mode === 'edit' ? '编辑成员权限' : '邀请成员'
@@ -352,6 +353,7 @@ watch(
                   v-model="selectedRoleKey"
                   aria-label="业务线角色"
                   :options="businessRoleSelectOptions"
+                  :panel-z-index="MEMBER_PERMISSION_SELECT_PANEL_Z_INDEX"
                   trigger-class="h-11 rounded-xl border-border bg-background px-3 text-sm shadow-none"
                 />
                 <p
@@ -392,6 +394,7 @@ watch(
                     aria-label="项目角色"
                     :options="props.projectRoleOptions"
                     :block="false"
+                    :panel-z-index="MEMBER_PERMISSION_SELECT_PANEL_Z_INDEX"
                     wrapper-class="lg:w-44"
                     trigger-class="h-10 rounded-xl border-border bg-background px-3 text-sm shadow-none"
                     @update:model-value="projectRoles[project.id] = String($event ?? '')"

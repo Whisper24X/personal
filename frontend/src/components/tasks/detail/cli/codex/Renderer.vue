@@ -6,6 +6,7 @@ import { groupCodexEntries } from './groupEntries'
 import TaskGroupCard from './TaskGroupCard.vue'
 import UserMessage from '../components/UserMessage.vue'
 import AssistantMessage from '../components/AssistantMessage.vue'
+import TodoListCard from '../components/TodoListCard.vue'
 import type { NormalizedEntry } from '../types'
 import { formatTime, getString } from '../utils'
 
@@ -21,6 +22,10 @@ const groups = computed(() => groupCodexEntries(entries.value))
 function isPatchEvent(entry: NormalizedEntry) {
   const t = getString(entry.metadata?.codexEventType)
   return t === 'patch_begin' || t === 'patch_end'
+}
+
+function isTodoListEvent(entry: NormalizedEntry) {
+  return getString(entry.metadata?.codexCardType) === 'todo_list'
 }
 
 function isLifecycleEvent(entry: NormalizedEntry) {
@@ -55,6 +60,11 @@ function patchSuccess(entry: NormalizedEntry): boolean {
 
       <UserMessage
         v-else-if="group.type === 'other' && group.entry.type === 'user_message'"
+        :entry="group.entry"
+      />
+
+      <TodoListCard
+        v-else-if="group.type === 'other' && isTodoListEvent(group.entry)"
         :entry="group.entry"
       />
 
