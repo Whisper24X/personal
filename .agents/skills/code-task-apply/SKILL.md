@@ -5,11 +5,13 @@ description: 执行 OpenSpec apply 命令生成代码并完成任务。无状态
 
 # Code Task Apply Executor
 
-执行 执行 openspec-apply-change 技能，完成 `tasks.md` 中的所有任务。
+执行 openspec-apply-change 技能，完成 `tasks.md` 中的所有任务。
 
 ## 输出规范（强制）
 
 > **重要**：以下规范必须严格遵守，不可违反。
+
+**文档路径**：输出路径**必须**从 prompt 获取（如 `docs/{{gitBranch}}/applyResult.md`）。
 
 | 项目           | 规范                                        |
 | -------------- | ------------------------------------------- |
@@ -160,7 +162,7 @@ docker exec $(grep -E '^SANDBOX_NAME=' sandbox/.env | cut -d= -f2-) bash -c "cd 
 
 ### 3. 输出执行结果
 
-执行完成后，**必须**将本次执行结果写入 `docs/code/applyResult.md` 文件。
+执行完成后，**必须**将本次执行结果写入 prompt 指定的路径（如 `docs/{{gitBranch}}/applyResult.md`）。
 
 **文件格式**：
 
@@ -183,7 +185,7 @@ docker exec $(grep -E '^SANDBOX_NAME=' sandbox/.env | cut -d= -f2-) bash -c "cd 
 
 **注意事项**：
 
-- 如果 `docs/code/` 目录不存在，需要先创建
+- 若输出目录不存在，需先创建
 - 每次执行都**覆盖**此文件（不是追加）
 - 文件列表只包含本次执行修改的文件
 - 任务列表只包含本次执行涉及的任务

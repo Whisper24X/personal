@@ -9,10 +9,12 @@ description: 评估代码完整性并修复问题。读取 applyResult.md 获取
 
 ## 输出规范（强制）
 
+**文档路径**：输入、输出路径**必须**从 prompt 获取（如 `docs/{{gitBranch}}/applyResult.md`、`docs/{{gitBranch}}/evaluateResult.md`）。
+
 | 项目         | 规范                                             |
 | ------------ | ------------------------------------------------ |
-| **输入文件** | `docs/code/applyResult.md`（必须存在）           |
-| **输出文件** | `docs/code/evaluateResult.md`                    |
+| **输入文件** | 路径由 prompt 指定（如 `docs/{{gitBranch}}/applyResult.md`） |
+| **输出文件** | 路径由 prompt 指定（如 `docs/{{gitBranch}}/evaluateResult.md`） |
 | **检查范围** | 以 applyResult.md 中的文件为主，可扩展到相关代码 |
 | **修复要求** | 发现问题必须全部修复，不允许标记为未解决         |
 
@@ -20,7 +22,7 @@ description: 评估代码完整性并修复问题。读取 applyResult.md 获取
 
 ### 1. 读取执行结果
 
-读取 `docs/code/applyResult.md` 文件，获取：
+读取 prompt 指定的 applyResult 文件（如 `docs/{{gitBranch}}/applyResult.md`），获取：
 
 - 本次修改的文件列表
 - 本次完成的任务列表
@@ -103,7 +105,7 @@ pnpm type-check  # 或 npm run type-check
 
 ### 5. 输出结果
 
-将评估结果写入 `docs/code/evaluateResult.md` 文件。
+将评估结果写入 prompt 指定的路径（如 `docs/{{gitBranch}}/evaluateResult.md`）。
 
 **完整通过格式**：
 
