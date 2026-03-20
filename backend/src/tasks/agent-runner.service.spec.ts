@@ -1,3 +1,5 @@
+import { spawn } from 'child_process';
+import { EventEmitter } from 'events';
 import path from 'path';
 import { AgentToolConfigRepository } from '../business-lines/infrastructure/persistence/agent-tool-config.repository';
 import { Project } from '../projects/domain/project';
@@ -8,7 +10,13 @@ import { AgentRunnerService } from './agent-runner.service';
 import { TaskMode } from './dto/task-mode.enum';
 import { TaskStatus } from './dto/task-status.enum';
 
+jest.mock('child_process', () => ({
+  spawn: jest.fn(),
+}));
+
 process.env.AINATIVE_DATA_ROOT_DIR ??= path.resolve(process.cwd(), 'tmp');
+
+const spawnMock = spawn as jest.MockedFunction<typeof spawn>;
 
 const worktreeRoot = path.resolve(
   resolveAinativeDataRootDir(),
@@ -84,6 +92,11 @@ const createRepositoryMock = () => ({
 });
 
 describe('AgentRunnerService', () => {
+  afterEach(() => {
+    spawnMock.mockReset();
+    jest.clearAllMocks();
+  });
+
   it('should apply business-line default agent tool config overrides', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue({
@@ -1536,6 +1549,56 @@ describe('AgentRunnerService', () => {
     expect(payload.hasCursorApiKey).toBe(true);
     expect(payload.envKeys).toEqual(['CURSOR_API_KEY', 'PATH']);
     expect(JSON.stringify(payload)).not.toContain('crsr_secret');
+  });
+
+  it('should treat interrupted execution as failed even when process exits with code 0', async () => {
+    const service = new AgentRunnerService(
+      createRepositoryMock() as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const stdout = new EventEmitter();
+    const stderr = new EventEmitter();
+    const childProcess = new EventEmitter() as any;
+    childProcess.stdout = stdout;
+    childProcess.stderr = stderr;
+    childProcess.stdin = {
+      write: jest.fn(),
+      end: jest.fn(),
+    };
+    childProcess.kill = jest.fn().mockReturnValue(true);
+
+    spawnMock.mockReturnValue(childProcess);
+
+    const resultPromise = serviceAny.runWithConfig(
+      {
+        adapter: 'codex',
+        command: 'codex',
+        args: ['exec', '--json', '-'],
+        cwd: '/tmp/worktree',
+        env: {},
+      },
+      'Run task',
+      {
+        taskId: 'task-1',
+        nodeId: 'node-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+      },
+    );
+
+    expect(service.interruptExecution('node-1')).toBe(true);
+    expect(childProcess.kill).toHaveBeenCalledWith('SIGTERM');
+
+    childProcess.emit('close', 0, null);
+
+    await expect(resultPromise).resolves.toMatchObject({
+      success: false,
+      interrupted: true,
+      exitCode: 0,
+      signal: null,
+      errorMessage: 'Agent execution interrupted',
+    });
   });
 
   it('should pass GEMINI_API_KEY from process env into runner environment', () => {

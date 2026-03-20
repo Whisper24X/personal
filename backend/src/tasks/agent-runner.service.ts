@@ -1429,7 +1429,9 @@ export class AgentRunnerService {
 
       const durationMs = Date.now() - startAt;
       interrupted = activeExecution.stopReason === 'interrupt';
-      const success = closeResult.exitCode === 0;
+      // A user-triggered interruption must never be treated as a successful
+      // completion, even if the CLI exits cleanly with code 0 after SIGTERM.
+      const success = !interrupted && closeResult.exitCode === 0;
       const resultLogPayload = this.buildResultLogPayload({
         executionContext,
         config,
