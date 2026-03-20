@@ -52,9 +52,7 @@ func newApp(c *conf.Bootstrap, l log.Logger, r registry.Registrar, hs *http.Serv
 			observer.NewServer(),
 		),
 	}
-	if c.GetEnv() != conf.GO_ENV_local {
-		options = append(options, kratos.Registrar(r))
-	}
+	options = append(options, kratos.Registrar(r))
 	return kratos.New(options...)
 }
 
