@@ -38,6 +38,7 @@ import { FindAllTasksDto } from './dto/find-all-tasks.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { TaskDetailDto } from './dto/task-detail.dto';
 import { RetryTaskDto } from './dto/retry-task.dto';
+import { RepeatNodeDto } from './dto/repeat-node.dto';
 import { ApproveTaskDto } from './dto/approve-task.dto';
 import { TaskLog } from './domain/task-log';
 import { FindTaskLogsDto } from './dto/find-task-logs.dto';
@@ -191,6 +192,30 @@ export class TasksController {
   @HttpCode(HttpStatus.OK)
   execute(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
     return this.tasksService.execute(id, request.user);
+  }
+
+  @Post(':id/repeat')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskDetailDto })
+  @HttpCode(HttpStatus.OK)
+  repeat(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
+    return this.tasksService.repeat(id, request.user);
+  }
+
+  @Post(':id/repeat-node')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskDetailDto })
+  @HttpCode(HttpStatus.OK)
+  repeatNode(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() repeatNodeDto: RepeatNodeDto,
+  ) {
+    return this.tasksService.repeatNode(
+      id,
+      repeatNodeDto.nodeId,
+      request.user,
+    );
   }
 
   @Post(':id/retry')

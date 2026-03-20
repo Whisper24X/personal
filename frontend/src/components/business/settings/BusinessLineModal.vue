@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { authApi } from '@/api/auth'
 import {
@@ -67,6 +67,7 @@ type WorkflowTemplateNodeInputForm = {
 }
 type WorkflowTemplateNodeForm = Omit<WorkflowTemplateNode, 'input'> & {
   input: WorkflowTemplateNodeInputForm
+  maxLoops?: number
 }
 
 const SUPPORTED_CLI_TOOLS: Array<{ id: SupportedCliToolId; label: string }> = [
@@ -98,6 +99,7 @@ const emit = defineEmits<{
   (event: 'select-project', projectId: string): void
   (event: 'request-refresh'): void
 }>()
+const router = useRouter()
 
 const activeLineId = ref('')
 const activeTab = ref<MainTab>('projects')
@@ -809,6 +811,7 @@ const buildWorkflowNode = (nodeOrder: number): WorkflowTemplateNodeForm => ({
   name: `step-${nodeOrder}`,
   type: 'agent',
   requiresApproval: true,
+  maxLoops: 1,
   input: resolveWorkflowNodeInput(createEmptyWorkflowNodeInput()),
 })
 
@@ -820,6 +823,7 @@ const normalizeWorkflowNodes = (nodes: WorkflowTemplateNodeForm[]) => {
       nodeOrder: index + 1,
       name: node.name.trim() || `step-${index + 1}`,
       requiresApproval: Boolean(node.requiresApproval),
+      maxLoops: Math.max(Number(node.maxLoops) || 1, 1),
       input: normalizeWorkflowNodeInput(node.input),
     }))
 }
@@ -848,7 +852,10 @@ const serializeWorkflowNodeInput = (
 const buildWorkflowNodesForSubmit = (nodes: WorkflowTemplateNodeForm[]): WorkflowTemplateNode[] => {
   return normalizeWorkflowNodes(nodes).map((node) => ({
     ...node,
-    input: serializeWorkflowNodeInput(node.input),
+    input: {
+      ...serializeWorkflowNodeInput(node.input),
+      ...(node.maxLoops !== undefined && node.maxLoops > 1 ? { maxLoops: node.maxLoops } : {}),
+    },
   }))
 }
 
@@ -1069,6 +1076,7 @@ const buildWorkflowFormNodesFromTemplate = (
       name: node.name || `step-${index + 1}`,
       type: node.type || 'agent',
       requiresApproval: Boolean(node.requiresApproval),
+      maxLoops: (node.input as WorkflowTemplateNodeInput | undefined)?.maxLoops ?? 1,
       input: normalizeWorkflowNodeInput(node.input),
     })),
   )
@@ -1826,6 +1834,15 @@ const isCurrentProject = (projectId: string) => {
 const selectCurrentProject = (project: ProjectItem) => {
   emit('select-line', project.businessLineId)
   emit('select-project', project.id)
+}
+
+const openProjectConfig = (project: ProjectItem) => {
+  emit('select-line', project.businessLineId)
+  closeModal()
+  void router.push({
+    path: `/projects/${project.id}`,
+    query: { tab: 'config' },
+  })
 }
 
 const loadLineDetail = async (lineId: string) => {
@@ -3094,13 +3111,13 @@ onBeforeUnmount(() => {
                         </div>
 
                         <div class="flex items-center gap-2">
-                          <RouterLink
-                            :to="`/projects/${project.id}`"
+                          <button
+                            type="button"
                             class="inline-flex h-8 items-center justify-center rounded-lg border border-primary/40 bg-primary/10 px-3 text-xs font-semibold text-primary transition hover:bg-primary/20"
-                            @click.stop
+                            @click.stop="openProjectConfig(project)"
                           >
                             项目配置
-                          </RouterLink>
+                          </button>
                           <button
                             v-if="canUpdateProjectItem"
                             type="button"
@@ -3940,6 +3957,18 @@ onBeforeUnmount(() => {
                       >
                         <input v-model="node.requiresApproval" type="checkbox" class="h-4 w-4" />
                         需要审批
+                      </label>
+                      <label
+                        class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs text-muted-foreground"
+                      >
+                        <span class="shrink-0">最多循环</span>
+                        <input
+                          v-model.number="node.maxLoops"
+                          type="number"
+                          min="1"
+                          class="w-12 rounded border-0 bg-transparent px-1 text-center text-xs focus:ring-1 focus:ring-primary"
+                        />
+                        <span class="shrink-0">次</span>
                       </label>
                       <button
                         type="button"
