@@ -55,8 +55,10 @@ describe('TaskGitService', () => {
     const runGitCommand = jest
       .spyOn(service as any, 'runGitCommand')
       .mockImplementation((_cwd: string, args: string[]) => {
-        if (args[0] === 'status') {
+        if (args.includes('status')) {
           expect(args).toEqual([
+            '-c',
+            'core.quotePath=false',
             'status',
             '--porcelain',
             '--untracked-files=all',
@@ -96,6 +98,43 @@ describe('TaskGitService', () => {
         },
       ],
     });
+  });
+
+  it('should decode git C-style octal escapes in porcelain paths to UTF-8', async () => {
+    const service = new TaskGitService({} as any, {} as any);
+
+    jest.spyOn(service as any, 'resolveTaskGitContext').mockResolvedValue({
+      task: {
+        gitBaseBranch: 'main',
+      },
+      worktreePath: '/tmp/worktree',
+    });
+
+    jest.spyOn(service as any, 'runGitCommand').mockImplementation((_cwd: string, args: string[]) => {
+      if (args.includes('status')) {
+        return {
+          success: true,
+          stdout: '?? "\\345\\244\\247\\347\\272\\262.md"',
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+
+      if (args[0] === 'rev-parse') {
+        return {
+          success: true,
+          stdout: 'feature/test-branch',
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+
+      throw new Error(`Unexpected git args: ${args.join(' ')}`);
+    });
+
+    const result = await service.getStatus('task-1', {} as any);
+
+    expect(result.files[0]?.path).toBe('大纲.md');
   });
 
   it('should build an artifact tree from all changed files', async () => {

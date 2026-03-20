@@ -220,6 +220,63 @@ export class TaskInteractionService {
     return this.taskQueryService.detailById(task.id, currentUser);
   }
 
+  /**
+   * Repeat without specifying a node: ensures runtime (worktree), then repeats
+   * the in_review node if any, otherwise the last completed node (by nodeOrder).
+   */
+  async repeat(
+    taskId: Task['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<TaskDetailDto> {
+    let task = await this.taskAccessService.getTaskOrThrow(
+      taskId,
+      currentUser,
+      'project.task.read',
+    );
+    const prepared = await this.taskRuntimeOrchestrator.prepareTaskRuntime(
+      task,
+      currentUser,
+    );
+    task = prepared.task;
+
+    const runningNode =
+      await this.taskNodeRepository.findInProgressByTaskId(task.id);
+    if (runningNode) {
+      throw new ConflictException('Task already has an in-progress node');
+    }
+
+    const nodes = await this.taskNodeRepository.findByTaskId(task.id);
+    const hasInReview = nodes.some((n) => n.status === TaskStatus.inReview);
+    if (task.status !== TaskStatus.done && !hasInReview) {
+      throw new ConflictException(
+        'Task can be repeated only when done or has in_review node',
+      );
+    }
+
+    let targetNode: TaskNode | undefined;
+    if (hasInReview) {
+      targetNode =
+        (await this.taskNodeRepository.findFirstByTaskIdAndStatus({
+          taskId: task.id,
+          status: TaskStatus.inReview,
+        })) ?? undefined;
+    } else {
+      const doneNodes = nodes.filter((n) => n.status === TaskStatus.done);
+      if (doneNodes.length === 0) {
+        throw new ConflictException('No completed node to repeat');
+      }
+      targetNode = doneNodes.reduce((a, b) =>
+        a.nodeOrder > b.nodeOrder ? a : b,
+      );
+    }
+
+    if (!targetNode) {
+      throw new NotFoundException('Task node not found');
+    }
+
+    return this.repeatNode(taskId, targetNode.id, currentUser);
+  }
+
   async repeatNode(
     taskId: Task['id'],
     nodeId: TaskNode['id'],

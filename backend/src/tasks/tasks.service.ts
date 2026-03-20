@@ -109,6 +109,13 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
     return this.taskInteractionService.execute(taskId, currentUser);
   }
 
+  async repeat(
+    taskId: Task['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<TaskDetailDto> {
+    return this.taskInteractionService.repeat(taskId, currentUser);
+  }
+
   async repeatNode(
     taskId: Task['id'],
     nodeId: TaskNode['id'],

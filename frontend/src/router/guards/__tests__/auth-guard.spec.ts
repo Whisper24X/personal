@@ -77,4 +77,19 @@ describe('authGuard', () => {
 
     expect(result).toBe('/tasks')
   })
+
+  it('merges top-level projectId into redirect when URL used a second ? (malformed)', async () => {
+    const result = await authGuard.call(undefined, {
+      path: '/login',
+      fullPath:
+        '/login?redirect=/task-detail/uuid-1?projectId=proj-1',
+      query: {
+        redirect: '/task-detail/uuid-1',
+        projectId: 'proj-1',
+      },
+      meta: { requiresAuth: false },
+    } as never, {} as never, undefined as never)
+
+    expect(result).toBe('/task-detail/uuid-1?projectId=proj-1')
+  })
 })

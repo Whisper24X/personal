@@ -3,7 +3,10 @@ import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/hooks'
 import { useMessage } from '@/hooks'
-import { resolveAuthenticatedRedirectPath } from '@/utils/router/post-auth'
+import {
+  parseLoginRedirectQuery,
+  resolveAuthenticatedRedirectPath,
+} from '@/utils/router/post-auth'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
 type AuthMode = 'login' | 'register'
@@ -74,7 +77,9 @@ const onLogin = async () => {
     password: password.value,
   })
 
-  await router.push(await resolveAuthenticatedRedirectPath(route.query.redirect))
+  await router.push(
+    await resolveAuthenticatedRedirectPath(parseLoginRedirectQuery(route)),
+  )
 }
 
 const onRegister = async () => {
@@ -92,7 +97,9 @@ const onRegister = async () => {
   })
 
   message.success('注册成功，已自动登录')
-  await router.push(await resolveAuthenticatedRedirectPath(route.query.redirect))
+  await router.push(
+    await resolveAuthenticatedRedirectPath(parseLoginRedirectQuery(route)),
+  )
 }
 
 const onLoginSubmit = async () => {
