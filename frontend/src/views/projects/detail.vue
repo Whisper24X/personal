@@ -2256,7 +2256,7 @@ onBeforeUnmount(() => {
                       >
                         <span class="shrink-0">最多循环</span>
                         <input
-                          v-model.number="node.maxLoops"
+                          v-model.number="activeWorkflowCreateNode.maxLoops"
                           type="number"
                           min="1"
                           class="w-12 rounded border-0 bg-transparent px-1 text-center text-xs focus:ring-1 focus:ring-primary"

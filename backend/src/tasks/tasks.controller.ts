@@ -194,14 +194,6 @@ export class TasksController {
     return this.tasksService.execute(id, request.user);
   }
 
-  @Post(':id/repeat')
-  @ApiParam({ name: 'id', type: String, required: true })
-  @ApiOkResponse({ type: TaskDetailDto })
-  @HttpCode(HttpStatus.OK)
-  repeat(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
-    return this.tasksService.repeat(id, request.user);
-  }
-
   @Post(':id/repeat-node')
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: TaskDetailDto })
@@ -211,11 +203,7 @@ export class TasksController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() repeatNodeDto: RepeatNodeDto,
   ) {
-    return this.tasksService.repeatNode(
-      id,
-      repeatNodeDto.nodeId,
-      request.user,
-    );
+    return this.tasksService.repeatNode(id, repeatNodeDto.nodeId, request.user);
   }
 
   @Post(':id/retry')
