@@ -11,10 +11,12 @@ description: 基于 PRD 和 design 文档审查并修正 openspec 规范文件�
 
 > **重要**：审查报告必须写入文件，不是仅输出到终端。
 
+**文档路径**：**必须**从 prompt 中获取 PRD、DESIGN、审查报告输出路径（如 `docs/{{gitBranch}}/` 结构）。
+
 | 项目         | 规范                                                       |
 | ------------ | ---------------------------------------------------------- |
-| **报告文件** | `docs/task/openspecValidatorReport.md`                     |
-| **目录**     | 若 `docs/task/` 不存在，需先创建                           |
+| **报告文件** | 路径由 prompt 指定（如 `docs/{{gitBranch}}/openspecValidatorReport.md`） |
+| **目录**     | 若报告所在目录不存在，需先创建                             |
 | **内容**     | 完整的审查报告（审查范围、审查结果、验证清单、下一步行动） |
 | **时机**     | 审查完成后立即写入，覆盖写入（非追加）                     |
 
@@ -45,11 +47,11 @@ changes/{change-name}/
 读取以下基准文档（按优先级）：
 
 1. **PRD 文档**（最高优先级）
-   - 查找路径：`docs/prd/`
+   - 查找路径：由 prompt 指定（如 `docs/{{gitBranch}}/PRD.md`）
    - 内容：业务需求、用户场景、功能规格
 
-2. **design.md**（技术基准）
-   - 位置：变更目录下的 `docs/design.md`
+2. **DESIGN 文档**（技术基准）
+   - 位置：由 prompt 指定（如 `docs/{{gitBranch}}/DESIGN.md`）
    - 内容：技术决策、架构设计、实现方案
 
 ### 第 3 步：遍历审查所有 openspec 下所有文件
@@ -294,7 +296,7 @@ PRD > design.md > proposal.md > 现有 spec
 
 ## 输出格式
 
-完成审查后，**必须**将报告写入 `docs/task/openspecValidatorReport.md`，报告内容结构如下：
+完成审查后，**必须**将报告写入 prompt 指定的路径，报告内容结构如下：
 
 ```markdown
 ## OpenSpec 审查完成
@@ -347,8 +349,8 @@ PRD > design.md > proposal.md > 现有 spec
 
 **重要**：
 
-1. **必须写入文件**：报告必须写入 `docs/task/openspecValidatorReport.md`，不是仅输出到终端
-2. **确保目录存在**：若 `docs/task/` 不存在，先执行 `mkdir -p docs/task`
+1. **必须写入文件**：报告必须写入 prompt 指定的路径，不是仅输出到终端
+2. **确保目录存在**：若报告所在目录不存在，先创建该目录
 3. **覆盖写入**：每次审查覆盖该文件，不追加
 4. **tasks.md 自动更新**：若第 6 步判定需要更新，在写入报告前完成 tasks.md 的修改
 
@@ -359,7 +361,7 @@ PRD > design.md > proposal.md > 现有 spec
 3. **优先级管理**：先处理冲突，再补充缺失，最后修正错误
 4. **完整性优先**：确保所有 PRD 需求都有对应的规范，即使实现细节待定
 5. **版本意识**：修改时考虑向后兼容性和影响范围
-6. **报告必须落盘**：审查完成后必须将报告写入 `docs/task/openspecValidatorReport.md`，不可仅输出到终端
+6. **报告必须落盘**：审查完成后必须将报告写入 prompt 指定的路径，不可仅输出到终端
 7. **tasks.md 同步**：若本次审查有结构性变更（新建 spec、补充缺失需求），必须执行第 6 步更新 tasks.md
 
 ## 相关技能

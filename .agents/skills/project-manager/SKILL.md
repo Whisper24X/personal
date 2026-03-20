@@ -39,8 +39,12 @@ flowchart TD
 
 - **直接开始**：触发技能后立即执行 Step 1，无需等待用户确认
 - **自动推断变更名称**：若用户未显式指定，从 PRD/Design 内容自动确定 kebab-case 变更名称
-- **自动检测文档**：若 `docs/prd/PRD.md` 或 `docs/design/DESIGN.md` 不存在，按「错误处理」流程中止并提示，不询问用户
+- **自动检测文档**：若 PRD 或 DESIGN 不存在，按「错误处理」流程中止并提示，不询问用户
 - **自动定位变更目录**：Step 2-5 使用 Step 1 生成的变更名称，无需用户指定
+
+**文档路径**：
+
+- **必须**从 prompt 中获取 PRD、DESIGN、审查报告输出路径（与上游 MRD/PRD/DESIGN 的 `docs/{{gitBranch}}/` 结构一致）
 
 ---
 
@@ -48,8 +52,8 @@ flowchart TD
 
 执行 Step 1 前，自动检测以下条件：
 
-- `docs/prd/PRD.md` 已存在且完整
-- `docs/design/DESIGN.md` 已存在且完整
+- PRD 已存在且完整（路径由 prompt 指定，如 `docs/{{gitBranch}}/PRD.md`）
+- DESIGN 已存在且完整（路径由 prompt 指定，如 `docs/{{gitBranch}}/DESIGN.md`）
 - `AGENTS.md` 项目开发指南已存在
 
 若任一条件不满足，按「错误处理」章节中止流程并提示，**不向用户询问**。
@@ -62,7 +66,7 @@ flowchart TD
 
 **执行流程**：
 
-1. **准备输入上下文**：读取 PRD、Design、AGENTS.md、docs/dev-spec/ 等
+1. **准备输入上下文**：读取 PRD、Design（路径见「文档路径」）、AGENTS.md、docs/dev-spec/ 等
 2. **确定变更名称**：根据 PRD/Design 内容**自动**确定 kebab-case 变更名称，不向用户询问；若用户已显式指定则优先使用
 3. **执行 openspec-propose 技能**：读取并执行 openspec-propose 技能，传入变更名称和从 PRD/Design 提取的需求描述
 4. **技能输出**：生成 `openspec/changes/{变更名称}/` 下的 proposal.md、specs/、design.md、tasks.md
@@ -101,13 +105,13 @@ flowchart TD
    - **缺失检查**：PRD/design 中有但规范中缺失的内容
    - **错误检查**：规范内部的逻辑错误
 4. **自动修正**发现的问题
-5. **生成审查报告**：**必须**写入 `docs/task/openspecValidatorReport.md`（覆盖写入，非追加）
+5. **生成审查报告**：**必须**写入 prompt 指定的路径（如 `docs/{{gitBranch}}/openspecValidatorReport.md`），覆盖写入，非追加
 
 **文档优先级**：`PRD > design.md > proposal.md > 现有 spec`
 
 **验收标准**：
 
-- 生成 `docs/task/openspecValidatorReport.md` 审查报告
+- 生成审查报告（路径由 prompt 指定）
 - 所有规范文件与 PRD/Design 一致
 - 若审查有结构性变更（新建 spec、补充缺失需求），同步更新 tasks.md
 
@@ -223,7 +227,7 @@ flowchart TD
 - openspec/changes/{变更名称}/design.md - 技术设计
 - openspec/changes/{变更名称}/specs/ - 规范文件
 - openspec/changes/{变更名称}/tasks.md - 任务清单（含故事点及 Lint 约束）
-- docs/task/openspecValidatorReport.md - 内容审查报告
+- 审查报告（路径由 prompt 指定）
 
 ### 统计信息
 
@@ -253,7 +257,7 @@ flowchart TD
 2. **验证通过才继续**：Step 5 的故事点验证必须通过才能结束
 3. **保持文件一致性**：修改文件时注意与其他文档的一致性
 4. **使用中文输出**：所有输出文件和描述都使用中文
-5. **报告必须落盘**：Step 2 审查报告必须写入 `docs/task/openspecValidatorReport.md`，不可仅输出到终端
+5. **报告必须落盘**：Step 2 审查报告必须写入 prompt 指定的路径，不可仅输出到终端
 6. **禁止人工确认**：严格执行「执行约束」章节，不得在流程中插入需用户确认的步骤
 
 ---
