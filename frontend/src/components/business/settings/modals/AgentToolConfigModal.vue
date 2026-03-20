@@ -78,6 +78,7 @@ const AGENT_TOOL_CONFIG_SELECT_PANEL_Z_INDEX = 130
 
 const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
   'claude-code': {
+    api_key: { type: 'string', description: 'Anthropic API Key，将注入为 ANTHROPIC_API_KEY' },
     model: { type: 'string' },
     effort: { type: 'string', options: CLAUDE_EFFORT_OPTIONS },
     dangerously_skip_permissions: {
@@ -110,6 +111,7 @@ const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
     env: { type: 'stringMap' },
   },
   codex: {
+    api_key: { type: 'string', description: 'OpenAI API Key，将注入为 OPENAI_API_KEY' },
     model: { type: 'string', defaultValue: 'gpt-5.4', description: '默认模型' },
     oss: { type: 'booleanNullable' },
     local_provider: {
@@ -162,6 +164,7 @@ const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
     env: { type: 'stringMap' },
   },
   'gemini-cli': {
+    api_key: { type: 'string', description: 'Gemini API Key，将注入为 GEMINI_API_KEY' },
     model: { type: 'string' },
     sandbox: {
       type: 'boolean',
@@ -192,6 +195,7 @@ const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
     env: { type: 'stringMap' },
   },
   opencode: {
+    api_key: { type: 'string', description: 'API Key，使用 OpenAI 供应商时注入为 OPENAI_API_KEY；其他供应商请在高级 env 中填写对应的 KEY' },
     model: { type: 'string' },
     agent: { type: 'string' },
     fork: {

@@ -245,6 +245,8 @@ describe('AgentRunnerService', () => {
       '--skip-git-repo-check',
       '--profile',
       'ops',
+      '--sandbox',
+      'workspace-write',
       '-',
     ]);
     expect(
@@ -382,7 +384,7 @@ describe('AgentRunnerService', () => {
 
     expect(result.adapter).toBe('gemini');
     expect(result.command).toBe('gemini');
-    expect(result.args).toEqual(['--output-format', 'stream-json']);
+    expect(result.args).toEqual(['--output-format', 'stream-json', '--sandbox', '--yolo']);
   });
 
   it('should compile gemini structured config into headless args', async () => {
@@ -481,7 +483,7 @@ describe('AgentRunnerService', () => {
       },
     );
 
-    expect(result.args).toEqual(['--output-format', 'stream-json', '--yolo']);
+    expect(result.args).toEqual(['--output-format', 'stream-json', '--sandbox', '--yolo']);
   });
 
   it('should use json run defaults for opencode', async () => {
@@ -585,6 +587,8 @@ describe('AgentRunnerService', () => {
       'stream-json',
       '--trust',
       '--force',
+      '--sandbox',
+      'enabled',
     ]);
   });
 
@@ -672,6 +676,7 @@ describe('AgentRunnerService', () => {
       'exec',
       '--json',
       '--skip-git-repo-check',
+      '--full-auto',
       '-',
     ]);
   });
@@ -810,6 +815,8 @@ describe('AgentRunnerService', () => {
       '--output-format',
       'stream-json',
       '--verbose',
+      '--permission-mode',
+      'auto',
     ]);
   });
 
@@ -993,7 +1000,7 @@ describe('AgentRunnerService', () => {
     );
 
     expect(result.command).toBe('agent');
-    expect(result.args).toEqual(['-p', '--output-format', 'stream-json']);
+    expect(result.args).toEqual(['-p', '--output-format', 'stream-json', '--sandbox', 'enabled']);
   });
 
   it('should resolve cwd inside project worktree storage path', async () => {
@@ -1054,7 +1061,7 @@ describe('AgentRunnerService', () => {
     );
 
     expect(result.command).toBe('gemini');
-    expect(result.args).toEqual(['--output-format', 'stream-json']);
+    expect(result.args).toEqual(['--output-format', 'stream-json', '--sandbox']);
   });
 
   it('should apply node session id for gemini continuation', async () => {
@@ -1081,6 +1088,8 @@ describe('AgentRunnerService', () => {
     expect(result.args).toEqual([
       '--output-format',
       'stream-json',
+      '--sandbox',
+      '--yolo',
       '--resume',
       'gemini-session-1',
     ]);
@@ -1123,6 +1132,8 @@ describe('AgentRunnerService', () => {
       '--output-format',
       'stream-json',
       '--verbose',
+      '--permission-mode',
+      'auto',
     ]);
   });
 
@@ -1288,6 +1299,8 @@ describe('AgentRunnerService', () => {
       '--output-format',
       'stream-json',
       '--verbose',
+      '--permission-mode',
+      'auto',
       '--resume',
       'claude-session-1',
     ]);
@@ -1319,6 +1332,7 @@ describe('AgentRunnerService', () => {
       'resume',
       '--json',
       '--skip-git-repo-check',
+      '--full-auto',
       '019d03cc-e251-7430-89c0-d3d662e676a9',
       '-',
     ]);

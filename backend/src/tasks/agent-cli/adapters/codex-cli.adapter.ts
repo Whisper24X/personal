@@ -9,6 +9,7 @@ export class CodexCliAdapter extends BaseAgentCliAdapter {
   readonly id = 'codex' as const;
   readonly toolIdAliases = ['codex', 'codex-cli'];
   readonly toolConfigAllowedKeys = new Set([
+    'api_key',
     'model',
     'oss',
     'local_provider',
@@ -28,15 +29,19 @@ export class CodexCliAdapter extends BaseAgentCliAdapter {
       raw.env && typeof raw.env === 'object'
         ? this.resolveStringEnv(raw.env as Record<string, unknown>)
         : undefined;
+    const apiKey =
+      typeof raw.api_key === 'string' && raw.api_key.trim()
+        ? raw.api_key.trim()
+        : undefined;
 
     return {
       args: this.buildCodexExecArgs(raw),
-      env,
+      env: apiKey ? { ...(env ?? {}), OPENAI_API_KEY: apiKey } : env,
     };
   }
 
   defaultArgs(): string[] {
-    return ['exec', '--json', '--skip-git-repo-check', '-'];
+    return ['exec', '--json', '--skip-git-repo-check', '--full-auto', '-'];
   }
 
   applyContinuation(
@@ -132,8 +137,9 @@ export class CodexCliAdapter extends BaseAgentCliAdapter {
       args.push('--full-auto');
     } else if (executionMode === 'dangerously-bypass-approvals-and-sandbox') {
       args.push('--dangerously-bypass-approvals-and-sandbox');
-    } else if (sandbox) {
-      args.push('--sandbox', sandbox);
+    } else {
+      // Default to workspace-write sandbox; user can override via configJson
+      args.push('--sandbox', sandbox ?? 'workspace-write');
     }
 
     for (const override of configOverrides) {

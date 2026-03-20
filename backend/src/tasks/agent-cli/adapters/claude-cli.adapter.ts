@@ -8,6 +8,7 @@ export class ClaudeCliAdapter extends BaseAgentCliAdapter {
   readonly id = 'claude' as const;
   readonly toolIdAliases = ['claude', 'claude-code'];
   readonly toolConfigAllowedKeys = new Set([
+    'api_key',
     'model',
     'effort',
     'permission_mode',
@@ -28,15 +29,19 @@ export class ClaudeCliAdapter extends BaseAgentCliAdapter {
       raw.env && typeof raw.env === 'object'
         ? this.resolveStringEnv(raw.env as Record<string, unknown>)
         : undefined;
+    const apiKey =
+      typeof raw.api_key === 'string' && raw.api_key.trim()
+        ? raw.api_key.trim()
+        : undefined;
 
     return {
       args: this.buildClaudePrintArgs(raw),
-      env,
+      env: apiKey ? { ...(env ?? {}), ANTHROPIC_API_KEY: apiKey } : env,
     };
   }
 
   defaultArgs(): string[] {
-    return ['-p', '--output-format', 'stream-json', '--verbose'];
+    return ['-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'auto'];
   }
 
   applyContinuation(
@@ -74,8 +79,9 @@ export class ClaudeCliAdapter extends BaseAgentCliAdapter {
 
     if (dangerouslySkipPermissions) {
       args.push('--dangerously-skip-permissions');
-    } else if (permissionMode) {
-      args.push('--permission-mode', permissionMode);
+    } else {
+      // Default to 'auto' for non-interactive pipeline execution
+      args.push('--permission-mode', permissionMode ?? 'auto');
     }
 
     if (allowedTools.length > 0) {

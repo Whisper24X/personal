@@ -8,6 +8,7 @@ export class GeminiCliAdapter extends BaseAgentCliAdapter {
   readonly id = 'gemini' as const;
   readonly toolIdAliases = ['gemini', 'gemini-cli'];
   readonly toolConfigAllowedKeys = new Set([
+    'api_key',
     'model',
     'sandbox',
     'yolo',
@@ -27,15 +28,19 @@ export class GeminiCliAdapter extends BaseAgentCliAdapter {
       raw.env && typeof raw.env === 'object'
         ? this.resolveStringEnv(raw.env as Record<string, unknown>)
         : undefined;
+    const apiKey =
+      typeof raw.api_key === 'string' && raw.api_key.trim()
+        ? raw.api_key.trim()
+        : undefined;
 
     return {
       args: this.buildGeminiExecArgs(raw),
-      env,
+      env: apiKey ? { ...(env ?? {}), GEMINI_API_KEY: apiKey } : env,
     };
   }
 
   defaultArgs(): string[] {
-    return ['--output-format', 'stream-json'];
+    return ['--output-format', 'stream-json', '--sandbox', '--yolo'];
   }
 
   applyContinuation(
@@ -60,7 +65,8 @@ export class GeminiCliAdapter extends BaseAgentCliAdapter {
       args.push('--model', model);
     }
 
-    if (raw.sandbox === true) {
+    // Default to sandbox unless explicitly disabled via configJson: { sandbox: false }
+    if (raw.sandbox !== false) {
       args.push('--sandbox');
     }
 

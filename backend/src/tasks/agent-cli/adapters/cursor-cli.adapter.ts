@@ -39,7 +39,7 @@ export class CursorCliAdapter extends BaseAgentCliAdapter {
   }
 
   defaultArgs(): string[] {
-    return ['-p', '--output-format', 'stream-json', '--trust', '--force'];
+    return ['-p', '--output-format', 'stream-json', '--trust', '--force', '--sandbox', 'enabled'];
   }
 
   applyContinuation(
@@ -55,7 +55,6 @@ export class CursorCliAdapter extends BaseAgentCliAdapter {
       typeof raw.model === 'string' ? raw.model : null,
     );
     const headers = this.resolveStringArray(raw.headers) ?? [];
-    const sandbox = this.resolveCursorSandbox(raw.sandbox);
 
     if (model) {
       args.push('--model', model);
@@ -73,9 +72,9 @@ export class CursorCliAdapter extends BaseAgentCliAdapter {
       args.push('--force');
     }
 
-    if (sandbox) {
-      args.push('--sandbox', sandbox);
-    }
+    // Default to enabled; user can override via configJson: { sandbox: "disabled" }
+    const sandbox = this.resolveCursorSandbox(raw.sandbox) ?? 'enabled';
+    args.push('--sandbox', sandbox);
 
     if (raw.approve_mcps === true) {
       args.push('--approve-mcps');
