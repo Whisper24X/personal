@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { useAccessStore } from '@/stores/modules/access'
@@ -70,6 +70,7 @@ let streamAbortController: AbortController | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let detailRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let messageRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
+let taskDataRequestId = 0
 
 const statusLabelMap: Record<Task['status'], string> = {
   todo: '待执行',
@@ -101,6 +102,7 @@ const cliLabelMap: Record<string, string> = {
 }
 
 const task = computed(() => detail.value?.task ?? null)
+const pageLoading = computed(() => loading.value && !detail.value)
 
 const taskConfig = computed(() => task.value?.configJson ?? null)
 
@@ -479,11 +481,19 @@ const refreshAccessContext = async (projectId: string) => {
   }
 }
 
+const resetTaskState = () => {
+  detail.value = null
+  logs.value = []
+  messages.value = []
+  selectedWorkflowNodeId.value = null
+}
+
 const loadTaskData = async () => {
   if (!taskId.value) {
     return
   }
 
+  const requestId = ++taskDataRequestId
   loading.value = true
 
   try {
@@ -493,7 +503,15 @@ const loadTaskData = async () => {
       tasksApi.messages(taskId.value),
     ])
 
+    if (requestId !== taskDataRequestId) {
+      return
+    }
+
     await refreshAccessContext(detailResponse.task.projectId || queryProjectId.value)
+
+    if (requestId !== taskDataRequestId) {
+      return
+    }
 
     detail.value = detailResponse
     logs.value = [...logResponse].sort((left, right) => {
@@ -503,9 +521,13 @@ const loadTaskData = async () => {
     })
     messages.value = messageResponse
   } catch (error) {
-    message.error(toErrorMessage(error, '加载任务详情失败'))
+    if (requestId === taskDataRequestId) {
+      message.error(toErrorMessage(error, '加载任务详情失败'))
+    }
   } finally {
-    loading.value = false
+    if (requestId === taskDataRequestId) {
+      loading.value = false
+    }
   }
 }
 
@@ -676,9 +698,25 @@ watch(
 
 watch(
   () => taskId.value,
-  async () => {
+  async (nextTaskId, previousTaskId) => {
+    if (!nextTaskId) {
+      disconnectStream()
+      taskDataRequestId += 1
+      resetTaskState()
+      loading.value = false
+      return
+    }
+
+    if (nextTaskId !== previousTaskId) {
+      disconnectStream()
+      resetTaskState()
+    }
+
     await loadTaskData()
     await connectStream()
+  },
+  {
+    immediate: true,
   },
 )
 
@@ -688,11 +726,6 @@ watch(isRightPanelVisible, (visible) => {
   }
 
   localStorage.setItem(STORAGE_KEYS.taskDetailRightPanelVisible, String(visible))
-})
-
-onMounted(async () => {
-  await loadTaskData()
-  await connectStream()
 })
 
 onBeforeUnmount(() => {
@@ -728,7 +761,7 @@ function startDrag(e: MouseEvent) {
 <template>
   <div class="fade-up flex h-full min-h-0 w-full">
     <section
-      v-if="loading"
+      v-if="pageLoading"
       class="panel-card flex h-full w-full items-center justify-center p-6 text-sm text-muted-foreground"
     >
       加载中...
@@ -782,7 +815,7 @@ function startDrag(e: MouseEvent) {
 
           <ExecutionPanel
             :title="executionPanelTitle"
-            :loading="loading"
+            :loading="pageLoading"
             :agent-cli-id="executionCliId"
             :task-status="task?.status || null"
             :task-status-label="taskStatusLabel"

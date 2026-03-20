@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, Teleport, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import type { FileBrowserPreview } from './types'
 import FilePreviewPanel from './FilePreviewPanel.vue'
 import { formatPreviewSize, resolveTaskPreviewTypeLabel } from './preview'

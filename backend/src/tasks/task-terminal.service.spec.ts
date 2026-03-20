@@ -3,9 +3,9 @@ import { TaskTerminalService } from './task-terminal.service';
 describe('TaskTerminalService', () => {
   it('should remove npm-injected variables from terminal env', () => {
     const service = new TaskTerminalService({} as never, {} as never);
-    const buildTerminalEnv = (service as any).buildTerminalEnv.bind(service) as (
-      env: NodeJS.ProcessEnv,
-    ) => Record<string, string>;
+    const buildTerminalEnv = (service as any).buildTerminalEnv.bind(
+      service,
+    ) as (env: NodeJS.ProcessEnv) => Record<string, string>;
 
     const terminalEnv = buildTerminalEnv({
       PATH: '/usr/bin:/bin',

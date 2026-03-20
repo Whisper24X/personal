@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, Teleport, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import { tasksApi } from '@/api/tasks'
 import { buildFileTreeFromPaths } from '@/components/core/file-browser/file-tree'
 import type { TaskGitBranchDiffFile, TaskGitChangedFile, TaskGitStatus } from '@/types/api/tasks'
