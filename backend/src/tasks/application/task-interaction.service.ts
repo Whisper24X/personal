@@ -15,6 +15,7 @@ import { TaskMessageRole } from '../dto/task-message.dto';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
+import { TaskGitService } from '../task-git.service';
 import { TaskRuntimeService } from '../task-runtime.service';
 import { TaskAccessService } from './task-access.service';
 import { TaskConfigResolverService } from './task-config-resolver.service';
@@ -39,6 +40,7 @@ export class TaskInteractionService {
     private readonly taskStatusService: TaskStatusService,
     private readonly taskQueryService: TaskQueryService,
     private readonly taskSchedulerService: TaskSchedulerService,
+    private readonly taskGitService: TaskGitService,
   ) {}
 
   async reply(
@@ -359,6 +361,53 @@ export class TaskInteractionService {
       throw new ConflictException('Only in_review node can be approved');
     }
 
+    const commitMessage = this.buildApproveCommitMessage(targetNode);
+
+    try {
+      const autoCommitResult = await this.taskGitService.commitIfChanged(
+        task.id,
+        commitMessage,
+        currentUser,
+      );
+
+      if (autoCommitResult.committed) {
+        await this.taskLogService.appendLog({
+          taskId: task.id,
+          taskNodeId: targetNode.id,
+          level: TaskLogLevel.info,
+          message: 'Node approval auto-committed staged changes',
+          payload: {
+            nodeOrder: targetNode.nodeOrder,
+            commitSha: autoCommitResult.commitSha ?? null,
+            commitSubject: autoCommitResult.subject ?? commitMessage,
+          },
+        });
+      } else {
+        await this.taskLogService.appendLog({
+          taskId: task.id,
+          taskNodeId: targetNode.id,
+          level: TaskLogLevel.info,
+          message: 'Node approval skipped auto-commit; no workspace changes',
+          payload: {
+            nodeOrder: targetNode.nodeOrder,
+          },
+        });
+      }
+    } catch (error) {
+      await this.taskLogService.appendLog({
+        taskId: task.id,
+        taskNodeId: targetNode.id,
+        level: TaskLogLevel.error,
+        message: 'Node approval auto-commit failed',
+        payload: {
+          nodeOrder: targetNode.nodeOrder,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        },
+      });
+
+      throw error;
+    }
+
     await this.taskNodeRepository.update(targetNode.id, {
       status: TaskStatus.done,
       finishedAt: targetNode.finishedAt ?? new Date(),
@@ -451,6 +500,11 @@ export class TaskInteractionService {
 
   private resolveNodeFinishedAtMs(node: TaskNode): number {
     return node.finishedAt instanceof Date ? node.finishedAt.getTime() : 0;
+  }
+
+  private buildApproveCommitMessage(node: TaskNode): string {
+    const normalizedName = node.name.trim().replace(/\s+/g, ' ');
+    return `chore(task): approve node #${node.nodeOrder} ${normalizedName}`;
   }
 
   private async markTaskStartedIfNeeded(task: Task): Promise<Task> {

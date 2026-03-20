@@ -8,6 +8,7 @@ import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
+import { TaskAccessService } from './application/task-access.service';
 import {
   TaskGitActionResultDto,
   TaskGitBranchDiffFilesDto,
@@ -20,8 +21,13 @@ import {
   TaskGitStatusDto,
 } from './dto/task-git.dto';
 import { Task } from './domain/task';
+import {
+  TaskWorkspaceFileQueryDto,
+  TaskWorkspacePreviewDto,
+  TaskWorkspaceTreeDto,
+  TaskWorkspaceTreeQueryDto,
+} from './dto/task-workspace.dto';
 import { TaskRuntimeService } from './task-runtime.service';
-import { TasksService } from './tasks.service';
 
 type GitExecutionResult = {
   success: boolean;
@@ -30,13 +36,29 @@ type GitExecutionResult = {
   exitCode: number | null;
 };
 
+type GitBinaryExecutionResult = {
+  success: boolean;
+  stdout: Buffer;
+  stderr: string;
+  exitCode: number | null;
+};
+
+export type TaskGitCommitIfChangedResult = {
+  committed: boolean;
+  skippedReason?: 'no_changes';
+  commitSha?: string | null;
+  subject?: string | null;
+};
+
 @Injectable()
 export class TaskGitService {
   private readonly defaultGitTimeoutMs = 90_000;
   private readonly maxDiffTextLength = 180_000;
+  private readonly maxTextPreviewBytes = 256 * 1024;
+  private readonly maxImagePreviewBytes = 4 * 1024 * 1024;
 
   constructor(
-    private readonly tasksService: TasksService,
+    private readonly taskAccessService: TaskAccessService,
     private readonly taskRuntimeService: TaskRuntimeService,
   ) {}
 
@@ -182,6 +204,162 @@ export class TaskGitService {
     };
   }
 
+  async getArtifactTree(
+    taskId: string,
+    query: TaskWorkspaceTreeQueryDto,
+    currentUser: JwtPayloadType,
+  ): Promise<TaskWorkspaceTreeDto> {
+    const { worktreePath } = await this.resolveTaskGitContext(
+      taskId,
+      currentUser,
+    );
+    const cwd = this.normalizeBrowserPath(query.path);
+    const changedFiles = await this.listArtifactFiles(worktreePath);
+
+    return {
+      cwd,
+      entries: this.buildArtifactEntries(changedFiles, cwd),
+    };
+  }
+
+  async getArtifactPreview(
+    taskId: string,
+    query: TaskWorkspaceFileQueryDto,
+    currentUser: JwtPayloadType,
+  ): Promise<TaskWorkspacePreviewDto> {
+    const { worktreePath } = await this.resolveTaskGitContext(
+      taskId,
+      currentUser,
+    );
+    const relativePath = this.normalizeRelativePath(query.path);
+    const fileBuffer = await this.readArtifactBuffer(
+      worktreePath,
+      relativePath,
+    );
+
+    if (!fileBuffer) {
+      throw new NotFoundException('Artifact not found');
+    }
+
+    const mimeType = this.resolveMimeType(relativePath);
+
+    if (mimeType === 'application/pdf') {
+      return {
+        path: relativePath,
+        previewType: 'pdf',
+        tooLarge: false,
+        size: fileBuffer.length,
+        mimeType,
+      };
+    }
+
+    if (mimeType.startsWith('video/')) {
+      return {
+        path: relativePath,
+        previewType: 'video',
+        tooLarge: false,
+        size: fileBuffer.length,
+        mimeType,
+      };
+    }
+
+    if (mimeType.startsWith('audio/')) {
+      return {
+        path: relativePath,
+        previewType: 'audio',
+        tooLarge: false,
+        size: fileBuffer.length,
+        mimeType,
+      };
+    }
+
+    if (mimeType.startsWith('image/')) {
+      if (fileBuffer.length > this.maxImagePreviewBytes) {
+        return {
+          path: relativePath,
+          previewType: 'image',
+          tooLarge: true,
+          size: fileBuffer.length,
+          mimeType,
+          dataUrl: null,
+        };
+      }
+
+      return {
+        path: relativePath,
+        previewType: 'image',
+        tooLarge: false,
+        size: fileBuffer.length,
+        mimeType,
+        dataUrl: `data:${mimeType};base64,${fileBuffer.toString('base64')}`,
+      };
+    }
+
+    if (fileBuffer.length > this.maxTextPreviewBytes) {
+      return {
+        path: relativePath,
+        previewType: this.isTextLikeMime(mimeType) ? 'text' : 'binary',
+        tooLarge: true,
+        size: fileBuffer.length,
+        mimeType,
+      };
+    }
+
+    const isText =
+      this.isTextLikeMime(mimeType) || this.isTextBuffer(fileBuffer);
+
+    if (!isText) {
+      return {
+        path: relativePath,
+        previewType: 'binary',
+        tooLarge: false,
+        size: fileBuffer.length,
+        mimeType,
+      };
+    }
+
+    return {
+      path: relativePath,
+      previewType: 'text',
+      tooLarge: false,
+      size: fileBuffer.length,
+      mimeType,
+      text: fileBuffer.toString('utf-8'),
+    };
+  }
+
+  async getArtifactRawFile(
+    taskId: string,
+    query: TaskWorkspaceFileQueryDto,
+    currentUser: JwtPayloadType,
+  ): Promise<{
+    name: string;
+    mimeType: string;
+    size: number;
+    content: Buffer;
+  }> {
+    const { worktreePath } = await this.resolveTaskGitContext(
+      taskId,
+      currentUser,
+    );
+    const relativePath = this.normalizeRelativePath(query.path);
+    const fileBuffer = await this.readArtifactBuffer(
+      worktreePath,
+      relativePath,
+    );
+
+    if (!fileBuffer) {
+      throw new NotFoundException('Artifact not found');
+    }
+
+    return {
+      name: path.basename(relativePath),
+      mimeType: this.resolveMimeType(relativePath),
+      size: fileBuffer.length,
+      content: fileBuffer,
+    };
+  }
+
   async stageFiles(
     taskId: string,
     payload: TaskGitFilesDto,
@@ -242,21 +420,11 @@ export class TaskGitService {
     payload: TaskGitCommitDto,
     currentUser: JwtPayloadType,
   ): Promise<TaskGitActionResultDto> {
-    const { worktreePath } = await this.resolveTaskGitContext(
+    const result = await this.commitInTaskWorktree(
       taskId,
+      payload.message,
       currentUser,
     );
-
-    const message = payload.message.trim();
-    if (!message) {
-      throw new BadRequestException('Commit message cannot be empty');
-    }
-
-    const result = await this.runGitCommand(worktreePath, [
-      'commit',
-      '-m',
-      message,
-    ]);
 
     if (!result.success) {
       throw this.toGitException('Failed to commit changes', result);
@@ -265,6 +433,57 @@ export class TaskGitService {
     return {
       success: true,
       message: result.stdout || 'Commit completed',
+    };
+  }
+
+  async commitIfChanged(
+    taskId: string,
+    message: string,
+    currentUser: JwtPayloadType,
+  ): Promise<TaskGitCommitIfChangedResult> {
+    const { worktreePath } = await this.resolveTaskGitContext(
+      taskId,
+      currentUser,
+    );
+    const changedFiles = await this.listArtifactFiles(worktreePath);
+
+    if (!changedFiles.length) {
+      return {
+        committed: false,
+        skippedReason: 'no_changes',
+      };
+    }
+
+    const stageResult = await this.runGitCommand(worktreePath, [
+      'add',
+      '-A',
+      '--',
+      '.',
+    ]);
+    if (!stageResult.success) {
+      throw this.toGitException('Failed to stage changed files', stageResult);
+    }
+
+    const result = await this.commitInTaskWorktree(
+      taskId,
+      message,
+      currentUser,
+    );
+    if (!result.success) {
+      throw this.toGitException('Failed to commit changes', result);
+    }
+
+    const [headResult, subjectResult] = await Promise.all([
+      this.runGitCommand(worktreePath, ['rev-parse', 'HEAD']),
+      this.runGitCommand(worktreePath, ['log', '-1', '--pretty=%s']),
+    ]);
+
+    return {
+      committed: true,
+      commitSha: headResult.success ? headResult.stdout.trim() : null,
+      subject: subjectResult.success
+        ? subjectResult.stdout.trim()
+        : message.trim(),
     };
   }
 
@@ -431,7 +650,10 @@ export class TaskGitService {
     currentUser: JwtPayloadType,
   ): Promise<{ task: Task; worktreePath: string }> {
     const { task, project } =
-      await this.tasksService.assertCanAccessTaskProject(taskId, currentUser);
+      await this.taskAccessService.assertCanAccessTaskProject(
+        taskId,
+        currentUser,
+      );
 
     if (!task.gitWorktree?.trim()) {
       throw new ConflictException('Task workspace is not initialized');
@@ -459,6 +681,28 @@ export class TaskGitService {
       task,
       worktreePath,
     };
+  }
+
+  private async commitInTaskWorktree(
+    taskId: string,
+    message: string,
+    currentUser: JwtPayloadType,
+  ): Promise<GitExecutionResult> {
+    const { worktreePath } = await this.resolveTaskGitContext(
+      taskId,
+      currentUser,
+    );
+    const normalizedMessage = message.trim();
+
+    if (!normalizedMessage) {
+      throw new BadRequestException('Commit message cannot be empty');
+    }
+
+    return this.runGitCommand(worktreePath, [
+      'commit',
+      '-m',
+      normalizedMessage,
+    ]);
   }
 
   private async runGitCommand(
@@ -518,6 +762,204 @@ export class TaskGitService {
     });
   }
 
+  private async runGitCommandBuffer(
+    cwd: string,
+    args: string[],
+  ): Promise<GitBinaryExecutionResult> {
+    return new Promise((resolve) => {
+      const processRef = spawn('git', ['-C', cwd, ...args], {
+        stdio: 'pipe',
+        env: process.env,
+      });
+
+      const stdoutChunks: Buffer[] = [];
+      let stderr = '';
+      let settled = false;
+
+      const finish = (result: GitBinaryExecutionResult) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        resolve(result);
+      };
+
+      processRef.stdout?.on('data', (chunk) => {
+        stdoutChunks.push(
+          Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, 'utf-8'),
+        );
+      });
+
+      processRef.stderr?.on('data', (chunk) => {
+        stderr += chunk.toString('utf-8');
+      });
+
+      const timeoutRef = setTimeout(() => {
+        processRef.kill('SIGTERM');
+      }, this.defaultGitTimeoutMs);
+
+      processRef.on('error', (error) => {
+        clearTimeout(timeoutRef);
+        finish({
+          success: false,
+          stdout: Buffer.concat(stdoutChunks),
+          stderr: error.message,
+          exitCode: null,
+        });
+      });
+
+      processRef.on('close', (code) => {
+        clearTimeout(timeoutRef);
+        finish({
+          success: code === 0,
+          stdout: Buffer.concat(stdoutChunks),
+          stderr: stderr.trimEnd(),
+          exitCode: code,
+        });
+      });
+    });
+  }
+
+  private async listArtifactFiles(worktreePath: string): Promise<string[]> {
+    const result = await this.runGitCommand(worktreePath, [
+      'status',
+      '--porcelain',
+      '--untracked-files=all',
+    ]);
+
+    if (!result.success) {
+      throw this.toGitException(
+        'Failed to read changed artifact files',
+        result,
+      );
+    }
+
+    const files = this.parseChangedFiles(result.stdout)
+      .map((file) => this.normalizeRelativePath(file.path))
+      .filter(Boolean);
+
+    return Array.from(new Set(files));
+  }
+
+  private buildArtifactEntries(
+    stagedFiles: string[],
+    cwd: string,
+  ): TaskWorkspaceTreeDto['entries'] {
+    const entriesByPath = new Map<
+      string,
+      { name: string; path: string; isDir: boolean }
+    >();
+
+    for (const filePath of stagedFiles) {
+      const relativePath =
+        cwd === '.' ? filePath : path.posix.relative(cwd, filePath);
+
+      if (
+        !relativePath ||
+        relativePath === '.' ||
+        relativePath.startsWith('../')
+      ) {
+        continue;
+      }
+
+      const [firstSegment, ...remainingSegments] = relativePath
+        .split('/')
+        .filter(Boolean);
+
+      if (!firstSegment) {
+        continue;
+      }
+
+      const entryPath = cwd === '.' ? firstSegment : `${cwd}/${firstSegment}`;
+
+      entriesByPath.set(entryPath, {
+        name: firstSegment,
+        path: entryPath,
+        isDir: remainingSegments.length > 0,
+      });
+    }
+
+    return [...entriesByPath.values()].sort((left, right) => {
+      if (left.isDir && !right.isDir) {
+        return -1;
+      }
+      if (!left.isDir && right.isDir) {
+        return 1;
+      }
+
+      return left.name.localeCompare(right.name, undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
+    });
+  }
+
+  private async readStagedArtifactBuffer(
+    worktreePath: string,
+    relativePath: string,
+  ): Promise<Buffer | null> {
+    const existsResult = await this.runGitCommand(worktreePath, [
+      'cat-file',
+      '-e',
+      `:${relativePath}`,
+    ]);
+
+    if (!existsResult.success) {
+      return null;
+    }
+
+    const contentResult = await this.runGitCommandBuffer(worktreePath, [
+      'show',
+      `:${relativePath}`,
+    ]);
+
+    if (!contentResult.success) {
+      throw this.toGitException('Failed to read staged artifact content', {
+        ...contentResult,
+        stdout: contentResult.stdout.toString('utf-8'),
+      });
+    }
+
+    return contentResult.stdout;
+  }
+
+  private async readArtifactBuffer(
+    worktreePath: string,
+    relativePath: string,
+  ): Promise<Buffer | null> {
+    const workspaceBuffer = await this.readWorkspaceArtifactBuffer(
+      worktreePath,
+      relativePath,
+    );
+
+    if (workspaceBuffer) {
+      return workspaceBuffer;
+    }
+
+    return this.readStagedArtifactBuffer(worktreePath, relativePath);
+  }
+
+  private async readWorkspaceArtifactBuffer(
+    worktreePath: string,
+    relativePath: string,
+  ): Promise<Buffer | null> {
+    const workspaceRoot = path.resolve(worktreePath);
+    const fullPath = path.resolve(workspaceRoot, relativePath);
+    const relative = path.relative(workspaceRoot, fullPath);
+
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new BadRequestException('File path cannot escape workspace root');
+    }
+
+    const stat = await fs.stat(fullPath).catch(() => null);
+    if (!stat || !stat.isFile()) {
+      return null;
+    }
+
+    return fs.readFile(fullPath);
+  }
+
   private parseChangedFiles(statusText: string): TaskGitStatusDto['files'] {
     return statusText
       .split('\n')
@@ -536,6 +978,34 @@ export class TaskGitService {
           staged: status[0] !== ' ' && status[0] !== '?' && status[0] !== '!',
         };
       });
+  }
+
+  private normalizeBrowserPath(value?: string): string {
+    if (!value?.trim()) {
+      return '.';
+    }
+
+    const normalized = value.trim().replaceAll('\\', '/');
+
+    if (path.isAbsolute(normalized)) {
+      throw new BadRequestException('Absolute file path is not allowed');
+    }
+
+    const normalizedPosix = path.posix.normalize(normalized);
+
+    if (
+      normalizedPosix === '.' ||
+      normalizedPosix === '' ||
+      normalizedPosix === './'
+    ) {
+      return '.';
+    }
+
+    if (normalizedPosix === '..' || normalizedPosix.startsWith('../')) {
+      throw new BadRequestException('File path cannot escape workspace root');
+    }
+
+    return normalizedPosix.replace(/\/+$/, '') || '.';
   }
 
   private normalizeRelativePath(value: string): string {
@@ -617,6 +1087,70 @@ export class TaskGitService {
     result: GitExecutionResult,
   ): BadRequestException {
     return new BadRequestException(this.formatGitFailure(summary, result));
+  }
+
+  private isTextBuffer(value: Buffer): boolean {
+    const inspectLength = Math.min(value.length, 8_192);
+
+    for (let index = 0; index < inspectLength; index += 1) {
+      if (value[index] === 0) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private resolveMimeType(filePath: string): string {
+    const ext = path.extname(filePath).toLowerCase();
+
+    const mimeTypeMap: Record<string, string> = {
+      '.txt': 'text/plain',
+      '.md': 'text/markdown',
+      '.json': 'application/json',
+      '.yml': 'text/yaml',
+      '.yaml': 'text/yaml',
+      '.ts': 'text/typescript',
+      '.tsx': 'text/typescript',
+      '.js': 'text/javascript',
+      '.jsx': 'text/javascript',
+      '.vue': 'text/plain',
+      '.css': 'text/css',
+      '.scss': 'text/x-scss',
+      '.html': 'text/html',
+      '.xml': 'application/xml',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.svg': 'image/svg+xml',
+      '.bmp': 'image/bmp',
+      '.ico': 'image/x-icon',
+      '.pdf': 'application/pdf',
+      '.mp4': 'video/mp4',
+      '.webm': 'video/webm',
+      '.mov': 'video/quicktime',
+      '.mp3': 'audio/mpeg',
+      '.wav': 'audio/wav',
+      '.ogg': 'audio/ogg',
+      '.zip': 'application/zip',
+      '.tar': 'application/x-tar',
+      '.gz': 'application/gzip',
+    };
+
+    return mimeTypeMap[ext] ?? 'application/octet-stream';
+  }
+
+  private isTextLikeMime(mimeType: string): boolean {
+    return (
+      mimeType.startsWith('text/') ||
+      mimeType === 'application/json' ||
+      mimeType === 'application/xml' ||
+      mimeType === 'text/yaml' ||
+      mimeType === 'text/typescript' ||
+      mimeType === 'text/javascript'
+    );
   }
 
   private formatGitFailure(

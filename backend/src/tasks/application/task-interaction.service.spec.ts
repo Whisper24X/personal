@@ -61,6 +61,7 @@ const createService = () => {
     findInProgressByTaskId: jest.fn().mockResolvedValue(null),
     findFirstByTaskIdAndStatus: jest.fn().mockResolvedValue(null),
     findByTaskIdAndStatus: jest.fn().mockResolvedValue([]),
+    findById: jest.fn().mockResolvedValue(null),
     update: jest.fn().mockResolvedValue(null),
   };
   const taskRuntimeService = {
@@ -95,6 +96,12 @@ const createService = () => {
   const taskSchedulerService = {
     triggerDispatch: jest.fn().mockResolvedValue(undefined),
   };
+  const taskGitService = {
+    commitIfChanged: jest.fn().mockResolvedValue({
+      committed: false,
+      skippedReason: 'no_changes',
+    }),
+  };
 
   const service = new TaskInteractionService(
     taskRepository as never,
@@ -108,6 +115,7 @@ const createService = () => {
     taskStatusService as never,
     taskQueryService as never,
     taskSchedulerService as never,
+    taskGitService as never,
   );
 
   return {
@@ -122,6 +130,7 @@ const createService = () => {
     taskStatusService,
     taskQueryService,
     taskSchedulerService,
+    taskGitService,
   };
 };
 
@@ -210,5 +219,105 @@ describe('TaskInteractionService', () => {
       runtimeJson:
         taskConfigResolver.buildPendingReplyRuntimeJson('Please continue'),
     });
+  });
+
+  it('should auto-commit workspace changes before approving a node', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskAccessService,
+      taskGitService,
+      taskLogService,
+      taskStatusService,
+      taskSchedulerService,
+    } = createService();
+    const currentUser = createCurrentUser();
+    const inReviewNode = createNode({
+      id: 'node-review',
+      nodeOrder: 2,
+      name: 'Preview build',
+      status: TaskStatus.inReview,
+    });
+
+    taskAccessService.getTaskOrThrow.mockResolvedValue(createTask());
+    taskNodeRepository.findById.mockResolvedValue(inReviewNode);
+    taskGitService.commitIfChanged.mockResolvedValue({
+      committed: true,
+      commitSha: 'abc123',
+      subject: 'chore(task): approve node #2 Preview build',
+    });
+
+    await service.approve(
+      'task-1',
+      { nodeId: 'node-review' } as never,
+      currentUser as never,
+    );
+
+    expect(taskGitService.commitIfChanged).toHaveBeenCalledWith(
+      'task-1',
+      'chore(task): approve node #2 Preview build',
+      currentUser,
+    );
+    expect(taskNodeRepository.update).toHaveBeenCalledWith('node-review', {
+      status: TaskStatus.done,
+      finishedAt: inReviewNode.finishedAt,
+      runtimeJson: null,
+    });
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'task-1',
+        taskNodeId: 'node-review',
+        message: 'Node approval auto-committed staged changes',
+        payload: expect.objectContaining({
+          commitSha: 'abc123',
+        }),
+      }),
+    );
+    expect(taskStatusService.recalculateTaskStatus).toHaveBeenCalledWith(
+      'task-1',
+    );
+    expect(taskSchedulerService.triggerDispatch).toHaveBeenCalled();
+  });
+
+  it('should stop approval when auto-commit fails', async () => {
+    const {
+      service,
+      taskNodeRepository,
+      taskAccessService,
+      taskGitService,
+      taskLogService,
+    } = createService();
+    const currentUser = createCurrentUser();
+    const inReviewNode = createNode({
+      id: 'node-review',
+      status: TaskStatus.inReview,
+    });
+
+    taskAccessService.getTaskOrThrow.mockResolvedValue(createTask());
+    taskNodeRepository.findById.mockResolvedValue(inReviewNode);
+    taskGitService.commitIfChanged.mockRejectedValue(
+      new Error('git commit failed'),
+    );
+
+    await expect(
+      service.approve(
+        'task-1',
+        { nodeId: 'node-review' } as never,
+        currentUser as never,
+      ),
+    ).rejects.toThrow('git commit failed');
+
+    expect(taskNodeRepository.update).not.toHaveBeenCalledWith('node-review', {
+      status: TaskStatus.done,
+      finishedAt: expect.anything(),
+      runtimeJson: null,
+    });
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskNodeId: 'node-review',
+        level: 'error',
+        message: 'Node approval auto-commit failed',
+      }),
+    );
   });
 });
