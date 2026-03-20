@@ -5,7 +5,7 @@ description: 执行 OpenSpec apply 命令生成代码并完成任务。无状态
 
 # Code Task Apply Executor
 
-执行 `/openspec-apply` 命令，完成 `tasks.md` 中的所有任务。
+执行 执行 openspec-apply-change 技能，完成 `tasks.md` 中的所有任务。
 
 ## 输出规范（强制）
 
@@ -13,7 +13,7 @@ description: 执行 OpenSpec apply 命令生成代码并完成任务。无状态
 
 | 项目           | 规范                                        |
 | -------------- | ------------------------------------------- |
-| **执行命令**   | `/openspec-apply`（自动执行，无需手动输入） |
+| **执行技能**   | `openspec-apply-change`（自动执行，无需手动输入） |
 | **任务来源**   | `openspec/changes/*/tasks.md`（必须存在）   |
 | **任务标记**   | 完成后必须在 tasks.md 中标记为 `- [x]`      |
 | **代码完整性** | 禁止 TODO/占位符/空实现/伪代码              |
@@ -91,18 +91,10 @@ description: 执行 OpenSpec apply 命令生成代码并完成任务。无状态
 
 **菜单 SQL 注入（强制）**：若任务涉及生成 `*_menu.sql`（如 `carousel_menu.sql`），在创建 SQL 文件后**必须在沙箱容器内**执行导入。数据库在沙箱内，宿主机执行 `make sqlimport` 无法连接到正确数据库。
 
-**正确执行方式**（二选一）：
-
 ```bash
-# 方式 1：进入沙箱后执行
-./sandbox/sandbox.sh shell
-# 进入容器后：
-cd /workspace/ainative-backend && make sqlimport ./doc/sql/ainative_backend/{module}_menu.sql
-
-# 方式 2：直接 docker exec（沙箱运行时）
-docker exec ainative-workspace-sandbox bash -c "cd /workspace/ainative-backend && make sqlimport ./doc/sql/ainative_backend/{module}_menu.sql"
-# 或使用 psql（不依赖 yc_turbo_kit）：
-docker exec ainative-workspace-sandbox psql -U postgres -d ainative_backend -f /workspace/ainative-backend/doc/sql/ainative_backend/{module}_menu.sql
+# 从 sandbox/.env 读取 SANDBOX_NAME（容器名）和 PG_DB（SQL 目录名），再执行
+# 示例：SANDBOX_NAME=yanxue-main-sandbox, PG_DB=yanxue → doc/sql/yanxue/{module}_menu.sql
+docker exec $(grep -E '^SANDBOX_NAME=' sandbox/.env | cut -d= -f2-) bash -c "cd ainative-backend && make sqlimport ./doc/sql/$(grep -E '^PG_DB=' sandbox/.env | cut -d= -f2-)/{module}_menu.sql"
 ```
 
 **严格禁止**：
