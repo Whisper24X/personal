@@ -61,6 +61,14 @@ export const tasksApi = {
     return apiHttp.post<TaskDetail>(`/tasks/${taskId}/execute`)
   },
 
+  repeat(taskId: string) {
+    return apiHttp.post<TaskDetail>(`/tasks/${taskId}/repeat`)
+  },
+
+  repeatNode(taskId: string, nodeId: string) {
+    return apiHttp.post<TaskDetail>(`/tasks/${taskId}/repeat-node`, { nodeId })
+  },
+
   reply(taskId: string, payload: ReplyTaskPayload) {
     return apiHttp.post<TaskDetail>(`/tasks/${taskId}/reply`, payload)
   },

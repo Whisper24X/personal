@@ -635,8 +635,9 @@ export class TaskNodeExecutionService {
       loopCount: Math.max(currentLoop.loopCount + 1, 1),
       maxLoops: currentLoop.maxLoops,
     };
+    // 下一轮是否排队：仅看已完成次数与 maxLoops，不因 enabled 误判而提前进入审批
     const queuedNextLoop =
-      nextLoopJson.enabled && nextLoopJson.loopCount < nextLoopJson.maxLoops;
+      nextLoopJson.loopCount < nextLoopJson.maxLoops;
     const pendingApproval =
       !queuedNextLoop && this.taskConfigResolver.readNodeRequiresApproval(node);
     const status = queuedNextLoop

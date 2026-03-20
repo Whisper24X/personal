@@ -220,6 +220,61 @@ export class TaskInteractionService {
     return this.taskQueryService.detailById(task.id, currentUser);
   }
 
+  async repeatNode(
+    taskId: Task['id'],
+    nodeId: TaskNode['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<TaskDetailDto> {
+    const task = await this.taskAccessService.getTaskOrThrow(
+      taskId,
+      currentUser,
+      'project.task.read',
+    );
+
+    const runningNode =
+      await this.taskNodeRepository.findInProgressByTaskId(task.id);
+    if (runningNode) {
+      throw new ConflictException('Task already has an in-progress node');
+    }
+
+    const targetNode = await this.taskNodeRepository.findById(nodeId);
+    if (!targetNode || targetNode.taskId !== task.id) {
+      throw new NotFoundException('Task node not found');
+    }
+
+    const nodes = await this.taskNodeRepository.findByTaskId(task.id);
+    const hasInReview = nodes.some((n) => n.status === TaskStatus.inReview);
+    if (task.status !== TaskStatus.done && !hasInReview) {
+      throw new ConflictException(
+        'Task can be repeated only when done or has in_review node',
+      );
+    }
+
+    await this.taskNodeRepository.update(targetNode.id, {
+      status: TaskStatus.todo,
+      finishedAt: null,
+      agentClioutput: null,
+      runtimeJson: null,
+    });
+
+    await this.taskLogService.appendLog({
+      taskId: task.id,
+      taskNodeId: targetNode.id,
+      level: TaskLogLevel.info,
+      message: 'Node repeated by user',
+      payload: {
+        requestedBy: currentUser.sub,
+        requestedAt: new Date().toISOString(),
+        nodeOrder: targetNode.nodeOrder,
+      },
+    });
+
+    await this.taskStatusService.recalculateTaskStatus(task.id);
+    await this.taskSchedulerService.triggerDispatch();
+
+    return this.taskQueryService.detailById(task.id, currentUser);
+  }
+
   async retry(
     taskId: Task['id'],
     retryTaskDto: RetryTaskDto,

@@ -527,6 +527,27 @@ const executeTask = async () => {
   }
 }
 
+const repeatNode = async (nodeId: string) => {
+  const allowed =
+    taskId.value &&
+    hasButtonAccess('executeTask') &&
+    currentReviewNode.value?.id === nodeId
+  if (!allowed) {
+    return
+  }
+
+  actionLoading.value = true
+
+  try {
+    detail.value = await tasksApi.repeatNode(taskId.value, nodeId)
+    rightPanelRefreshToken.value += 1
+    message.success('节点已加入重跑')
+  } catch (error) {
+    message.error(toErrorMessage(error, '重跑节点失败'))
+  } finally {
+    actionLoading.value = false
+  }
+}
 
 const approveNode = async (node: TaskNode) => {
   if (!taskId.value || !canManageReview.value) {
@@ -777,7 +798,10 @@ function startDrag(e: MouseEvent) {
             :node="currentReviewNode"
             :status-label-map="statusLabelMap"
             :can-manage-review="canManageReview"
+            :can-repeat-review-node="canManageReview && !isCliRunning"
+            :repeat-node-loading="actionLoading"
             @approve-node="approveNode"
+            @repeat-node="(node) => repeatNode(node.id)"
           />
 
           <ExecutionPanel
