@@ -164,10 +164,10 @@ const sourceUnsupported = computed(() => {
         </div>
 
         <div
-          v-else-if="props.preview?.previewType === 'markdown' && props.preview.text"
+          v-else-if="props.preview?.previewType === 'markdown'"
           class="flex-1 min-h-0 overflow-auto p-4 bg-background"
         >
-          <MarkdownPreview :content="props.preview.text" />
+          <MarkdownPreview :content="props.preview.text ?? ''" />
         </div>
 
         <CodePreview

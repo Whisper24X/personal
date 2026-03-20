@@ -1,18 +1,23 @@
+# 复制为 backend/.env.development 后按需修改。
+# 与仓库根目录 docker-compose.yml 中 postgres/redis 一致（本机跑 Nest + Docker 起库）。
+
 NODE_ENV=development
-APP_PORT=3000
+# docker-compose backend 映射为 9000；本机直连前端代理时常用 9000
+APP_PORT=9000
 APP_NAME="NestJS API"
 API_PREFIX=api
 APP_FALLBACK_LANGUAGE=en
 APP_HEADER_LANGUAGE=x-custom-lang
-FRONTEND_DOMAIN=http://localhost:3000
-BACKEND_DOMAIN=http://localhost:3000
+FRONTEND_DOMAIN=http://localhost:8000
+BACKEND_DOMAIN=http://localhost:9000
 
 DATABASE_TYPE=postgres
-DATABASE_HOST=postgres
+# 本机 npm run start:dev：连映射端口用 localhost；仅在 backend 容器内跑时用 postgres
+DATABASE_HOST=localhost
 DATABASE_PORT=5432
-DATABASE_USERNAME=root
-DATABASE_PASSWORD=secret
-DATABASE_NAME=api
+DATABASE_USERNAME=postgres
+DATABASE_PASSWORD=yangcong345
+DATABASE_NAME=ainative
 DATABASE_SYNCHRONIZE=false
 DATABASE_LOGGING=false
 DATABASE_MAX_CONNECTIONS=100
@@ -21,6 +26,7 @@ DATABASE_REJECT_UNAUTHORIZED=false
 DATABASE_CA=
 DATABASE_KEY=
 DATABASE_CERT=
+# 若设置 DATABASE_URL，将覆盖上方 DATABASE_*（需与 docker-compose 中账号库名一致）
 DATABASE_URL=
 
 AUTH_JWT_SECRET=secret
@@ -51,6 +57,7 @@ AINATIVE_SMTP_USER=
 AINATIVE_SMTP_PASS=
 AINATIVE_SMTP_FROM=ainative@example.local
 
-WORKER_HOST=redis://redis:6379/1
+# 与 docker-compose redis requirepass 一致；本机连映射端口用 localhost
+WORKER_HOST=redis://:yangcong345@localhost:6379/1
 MAIL_PORT=1025
 MAIL_CLIENT_PORT=1080

@@ -1,7 +1,10 @@
 import type { NavigationGuardWithThis } from 'vue-router'
 import { useUserStore } from '@/stores/modules/user'
 import { STORAGE_KEYS } from '@/types/common/storage'
-import { resolveAuthenticatedRedirectPath } from '@/utils/router/post-auth'
+import {
+  parseLoginRedirectQuery,
+  resolveAuthenticatedRedirectPath,
+} from '@/utils/router/post-auth'
 
 const AUTH_PAGE_PATH = '/login'
 
@@ -49,7 +52,7 @@ export const authGuard: NavigationGuardWithThis<undefined> = async (to) => {
   }
 
   if (to.path === AUTH_PAGE_PATH && userStore.isLogin) {
-    return resolveAuthenticatedRedirectPath(to.query.redirect)
+    return resolveAuthenticatedRedirectPath(parseLoginRedirectQuery(to))
   }
 
   return true

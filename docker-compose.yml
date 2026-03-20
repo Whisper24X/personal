@@ -15,7 +15,11 @@ services:
       TZ: Asia/Shanghai
       POSTGRES_DB: ainative
       POSTGRES_USER: postgres
+      # 仅首次初始化 data volume 时生效；若改密码需删卷或进库改用户口令
       POSTGRES_PASSWORD: yangcong345
+    ports:
+      # 本机运行 Nest（npm run start:dev）时用 localhost:5432 连接
+      - "5432:5432"
     volumes:
       - ainative-postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -32,6 +36,8 @@ services:
     container_name: ainative-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "yangcong345"]
+    ports:
+      - "6379:6379"
     volumes:
       - ainative-redis-data:/data
     healthcheck:

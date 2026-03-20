@@ -72,11 +72,14 @@ export class TaskGitService {
     );
 
     const [statusResult, branchResult] = await Promise.all([
-      this.runGitCommand(worktreePath, [
-        'status',
-        '--porcelain',
-        '--untracked-files=all',
-      ]),
+      this.runGitCommand(
+        worktreePath,
+        this.withGitUtf8Paths([
+          'status',
+          '--porcelain',
+          '--untracked-files=all',
+        ]),
+      ),
       this.runGitCommand(worktreePath, ['rev-parse', '--abbrev-ref', 'HEAD']),
     ]);
 
@@ -105,7 +108,7 @@ export class TaskGitService {
       currentUser,
     );
 
-    const args = ['diff', '--no-color'];
+    const args = this.withGitUtf8Paths(['diff', '--no-color']);
     if (query.staged) {
       args.push('--cached');
     }
@@ -137,11 +140,14 @@ export class TaskGitService {
 
     const baseBranch = this.resolveBaseBranch(task, query.baseBranch);
     const [diffFilesResult, branchResult] = await Promise.all([
-      this.runGitCommand(worktreePath, [
-        'diff',
-        '--name-status',
-        `${baseBranch}...HEAD`,
-      ]),
+      this.runGitCommand(
+        worktreePath,
+        this.withGitUtf8Paths([
+          'diff',
+          '--name-status',
+          `${baseBranch}...HEAD`,
+        ]),
+      ),
       this.runGitCommand(worktreePath, ['rev-parse', '--abbrev-ref', 'HEAD']),
     ]);
 
@@ -165,7 +171,7 @@ export class TaskGitService {
         const rawPath = pathParts[pathParts.length - 1] ?? '';
 
         return {
-          path: rawPath,
+          path: this.decodeGitQuotedPath(rawPath),
           status: statusToken || '?',
         };
       });
@@ -188,7 +194,11 @@ export class TaskGitService {
     );
 
     const baseBranch = this.resolveBaseBranch(task, query.baseBranch);
-    const args = ['diff', '--no-color', `${baseBranch}...HEAD`];
+    const args = this.withGitUtf8Paths([
+      'diff',
+      '--no-color',
+      `${baseBranch}...HEAD`,
+    ]);
 
     if (query.path) {
       args.push('--', this.normalizeRelativePath(query.path));
@@ -822,11 +832,14 @@ export class TaskGitService {
   }
 
   private async listArtifactFiles(worktreePath: string): Promise<string[]> {
-    const result = await this.runGitCommand(worktreePath, [
-      'status',
-      '--porcelain',
-      '--untracked-files=all',
-    ]);
+    const result = await this.runGitCommand(
+      worktreePath,
+      this.withGitUtf8Paths([
+        'status',
+        '--porcelain',
+        '--untracked-files=all',
+      ]),
+    );
 
     if (!result.success) {
       throw this.toGitException(
@@ -973,11 +986,54 @@ export class TaskGitService {
           : rawPath;
 
         return {
-          path: normalizedPath,
+          path: this.decodeGitQuotedPath(normalizedPath),
           status,
           staged: status[0] !== ' ' && status[0] !== '?' && status[0] !== '!',
         };
       });
+  }
+
+  /**
+   * Git may quote non-ASCII paths as C-style octal escapes (e.g. \\345\\244\\247 for UTF-8).
+   * Prefer `-c core.quotePath=false` on commands; this decodes any remaining escaped output.
+   */
+  private decodeGitQuotedPath(input: string): string {
+    const trimmed = input.trim();
+    if (!trimmed.includes('\\')) {
+      return trimmed;
+    }
+
+    let s = trimmed;
+    if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+      s = s.slice(1, -1);
+    }
+
+    const bytes: number[] = [];
+    for (let i = 0; i < s.length; ) {
+      if (s[i] === '\\' && i + 1 < s.length && /[0-7]/.test(s[i + 1])) {
+        let oct = '';
+        let j = i + 1;
+        while (j < s.length && oct.length < 3 && /[0-7]/.test(s[j])) {
+          oct += s[j];
+          j += 1;
+        }
+        bytes.push(parseInt(oct, 8));
+        i = j;
+      } else if (s[i] === '\\') {
+        bytes.push(0x5c);
+        i += 1;
+      } else {
+        bytes.push(s.charCodeAt(i) & 0xff);
+        i += 1;
+      }
+    }
+
+    return Buffer.from(bytes).toString('utf8');
+  }
+
+  /** Avoid Git escaping non-ASCII paths (shows \\345\\244\\247…); keep UTF-8 in stdout. */
+  private withGitUtf8Paths(args: string[]): string[] {
+    return ['-c', 'core.quotePath=false', ...args];
   }
 
   private normalizeBrowserPath(value?: string): string {
@@ -1066,11 +1122,14 @@ export class TaskGitService {
   }
 
   private async readConflictFiles(worktreePath: string): Promise<string[]> {
-    const result = await this.runGitCommand(worktreePath, [
-      'diff',
-      '--name-only',
-      '--diff-filter=U',
-    ]);
+    const result = await this.runGitCommand(
+      worktreePath,
+      this.withGitUtf8Paths([
+        'diff',
+        '--name-only',
+        '--diff-filter=U',
+      ]),
+    );
 
     if (!result.success) {
       return [];
@@ -1079,7 +1138,8 @@ export class TaskGitService {
     return result.stdout
       .split('\n')
       .map((line) => line.trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .map((line) => this.decodeGitQuotedPath(line));
   }
 
   private toGitException(

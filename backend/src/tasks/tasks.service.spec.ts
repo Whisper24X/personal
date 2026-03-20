@@ -36,6 +36,7 @@ const createTasksService = () => {
   const interactionService = {
     reply: jest.fn().mockResolvedValue({ task, nodes: [] }),
     execute: jest.fn().mockResolvedValue({ task, nodes: [] }),
+    repeat: jest.fn().mockResolvedValue({ task, nodes: [] }),
     repeatNode: jest.fn().mockResolvedValue({ task, nodes: [] }),
     retry: jest.fn().mockResolvedValue({ task, nodes: [] }),
     cancel: jest.fn().mockResolvedValue({ task, nodes: [] }),
@@ -172,6 +173,7 @@ describe('TasksService', () => {
       currentUser as never,
     );
     await service.execute('task-1', currentUser as never);
+    await service.repeat('task-1', currentUser as never);
     await service.repeatNode('task-1', 'node-1', currentUser as never);
     await service.retry(
       'task-1',
@@ -194,6 +196,10 @@ describe('TasksService', () => {
     expect(commandService.remove).toHaveBeenCalledWith('task-1', currentUser);
     expect(interactionService.reply).toHaveBeenCalled();
     expect(interactionService.execute).toHaveBeenCalledWith(
+      'task-1',
+      currentUser,
+    );
+    expect(interactionService.repeat).toHaveBeenCalledWith(
       'task-1',
       currentUser,
     );
