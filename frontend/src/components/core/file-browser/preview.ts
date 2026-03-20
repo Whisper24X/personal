@@ -52,6 +52,10 @@ export const resolveTaskPreviewTypeLabel = (preview: FileBrowserPreview | null) 
     return 'Large File'
   }
 
+  if (isTaskHtmlPreview(preview)) {
+    return 'HTML Preview'
+  }
+
   switch (preview.previewType) {
     case 'image':
       return 'Image Preview'
@@ -68,6 +72,14 @@ export const resolveTaskPreviewTypeLabel = (preview: FileBrowserPreview | null) 
     default:
       return 'Binary File'
   }
+}
+
+export const isTaskHtmlPreview = (preview: FileBrowserPreview | null) => {
+  return (
+    preview?.previewType === 'text' &&
+    typeof preview.text === 'string' &&
+    (preview.mimeType?.toLowerCase().includes('html') ?? false)
+  )
 }
 
 export const resolveTaskPreviewTextLines = (preview: FileBrowserPreview | null) => {
@@ -775,6 +787,7 @@ export const highlightTaskCodeLine = (line: string, language: TaskCodeLanguage) 
 
 
 export const formatPreviewSize = formatTaskPreviewSize
+export const isHtmlPreview = isTaskHtmlPreview
 export const resolvePreviewTextLines = resolveTaskPreviewTextLines
 export const resolveCodeLanguage = resolveTaskCodeLanguage
 export const resolveCodeLanguageLabel = resolveTaskCodeLanguageLabel

@@ -6,7 +6,6 @@ const { tasksApi } = vi.hoisted(() => ({
   tasksApi: {
     gitStatus: vi.fn(),
     gitDiff: vi.fn(),
-    workspacePreview: vi.fn(),
     gitBranchDiffFiles: vi.fn(),
     gitBranchDiff: vi.fn(),
     gitLog: vi.fn(),
@@ -37,22 +36,19 @@ describe('TaskGitPanel', () => {
           status: '??',
           staged: false,
         },
+        {
+          path: 'src/modules/demo.ts',
+          status: 'M ',
+          staged: true,
+        },
       ],
     })
     tasksApi.gitDiff.mockResolvedValue({
       diffText: '',
     })
-    tasksApi.workspacePreview.mockResolvedValue({
-      path: 'docs/feature/20260319-111330/brainstorm.md',
-      previewType: 'text',
-      tooLarge: false,
-      size: 12,
-      mimeType: 'text/markdown',
-      text: '# Brainstorm\n\ncontent',
-    })
   })
 
-  it('falls back to workspace preview for untracked files without git diff output', async () => {
+  it('shows a git-only fallback message for untracked files without diff output', async () => {
     const wrapper = mount(TaskGitPanel, {
       props: {
         taskId: 'task-1',
@@ -61,9 +57,15 @@ describe('TaskGitPanel', () => {
 
     await flushPromises()
 
-    const fileRow = wrapper
-      .findAll('[role="button"]')
-      .find((node) => node.text().includes('docs/feature/20260319-111330/brainstorm.md'))
+    expect(wrapper.text()).toContain('docs')
+    expect(wrapper.text()).toContain('feature')
+    expect(wrapper.text()).toContain('20260319-111330')
+    expect(wrapper.text()).toContain('brainstorm.md')
+    expect(wrapper.text()).toContain('src')
+    expect(wrapper.text()).toContain('modules')
+    expect(wrapper.text()).toContain('demo.ts')
+
+    const fileRow = wrapper.findAll('button').find((node) => node.text().includes('brainstorm.md'))
 
     expect(fileRow).toBeDefined()
 
@@ -74,11 +76,6 @@ describe('TaskGitPanel', () => {
       path: 'docs/feature/20260319-111330/brainstorm.md',
       staged: false,
     })
-    expect(tasksApi.workspacePreview).toHaveBeenCalledWith(
-      'task-1',
-      'docs/feature/20260319-111330/brainstorm.md',
-    )
-    expect(wrapper.text()).toContain('# Brainstorm')
-    expect(wrapper.text()).toContain('content')
+    expect(wrapper.text()).toContain('未跟踪文件暂无 diff，可前往文件面板查看原始内容。')
   })
 })

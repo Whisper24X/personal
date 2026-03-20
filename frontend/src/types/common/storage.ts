@@ -8,4 +8,5 @@ export const STORAGE_KEYS = {
   lastSelectedProjectId: 'ainative-last-selected-project-id',
   lastSelectedMenuPath: 'ainative-last-selected-menu-path',
   taskDetailRightPanelVisible: 'ainative-task-detail-right-panel-visible',
+  taskDetailTerminalSessionId: 'ainative-task-detail-terminal-session-id',
 } as const

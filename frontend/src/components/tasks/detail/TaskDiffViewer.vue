@@ -22,17 +22,34 @@ const props = withDefaults(
     emptyText?: string
     loading?: boolean
     fallbackPath?: string | null
+    viewMode?: 'unified' | 'split'
+    showViewModeToolbar?: boolean
   }>(),
   {
     fallbackText: '',
     emptyText: '暂无差异',
     loading: false,
     fallbackPath: null,
+    viewMode: undefined,
+    showViewModeToolbar: true,
   },
 )
 
+const emit = defineEmits<{
+  'update:viewMode': [value: 'unified' | 'split']
+}>()
+
 const parsedFiles = computed(() => parseUnifiedDiff(props.diffText))
-const viewMode = ref<'unified' | 'split'>('unified')
+const internalViewMode = ref<'unified' | 'split'>('unified')
+const viewMode = computed({
+  get: () => props.viewMode ?? internalViewMode.value,
+  set: (value: 'unified' | 'split') => {
+    if (props.viewMode === undefined) {
+      internalViewMode.value = value
+    }
+    emit('update:viewMode', value)
+  },
+})
 const hasFallbackText = computed(() => Boolean(props.fallbackText.trim()))
 const hasDiffText = computed(() => Boolean(props.diffText.trim()))
 const fallbackContent = computed(() => props.fallbackText || props.diffText)
@@ -61,10 +78,7 @@ const statusClassMap: Record<TaskDiffFileStatus, string> = {
 }
 
 function escapeHtml(value: string) {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 }
 
 function formatLineNumber(value: number | null) {
@@ -162,24 +176,39 @@ function renderSplitCell(
 
 <template>
   <div class="min-h-0 flex-1 overflow-auto bg-muted/10">
-    <div v-if="props.loading" class="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
+    <div
+      v-if="props.loading"
+      class="flex h-full items-center justify-center p-6 text-sm text-muted-foreground"
+    >
       加载中...
     </div>
 
-    <div v-else-if="!hasDiffText && !hasFallbackText" class="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
+    <div
+      v-else-if="!hasDiffText && !hasFallbackText"
+      class="flex h-full items-center justify-center p-6 text-sm text-muted-foreground"
+    >
       {{ props.emptyText }}
     </div>
 
     <div v-else-if="shouldUseFallback" class="min-h-0 overflow-auto p-3">
-      <pre class="font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap">{{ fallbackContent }}</pre>
+      <pre class="font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap">{{
+        fallbackContent
+      }}</pre>
     </div>
 
     <div v-else class="space-y-4 p-3">
-      <div class="sticky top-0 z-10 flex justify-end bg-muted/10 pb-2">
+      <div
+        v-if="props.showViewModeToolbar"
+        class="sticky top-0 z-10 flex justify-end bg-muted/10 pb-2"
+      >
         <div class="inline-flex rounded-md border border-border/70 bg-background p-0.5 shadow-sm">
           <button
             class="rounded px-2.5 py-1 text-[11px] transition-colors"
-            :class="viewMode === 'unified' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'"
+            :class="
+              viewMode === 'unified'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-muted'
+            "
             type="button"
             @click="viewMode = 'unified'"
           >
@@ -187,7 +216,11 @@ function renderSplitCell(
           </button>
           <button
             class="rounded px-2.5 py-1 text-[11px] transition-colors"
-            :class="viewMode === 'split' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'"
+            :class="
+              viewMode === 'split'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-muted'
+            "
             type="button"
             @click="viewMode = 'split'"
           >
@@ -209,12 +242,21 @@ function renderSplitCell(
             >
               {{ statusTextMap[file.status] }}
             </span>
-            <code class="min-w-0 truncate font-mono text-xs text-foreground">{{ file.displayPath }}</code>
-            <span class="ml-auto shrink-0 text-[11px] text-emerald-600 dark:text-emerald-400">+{{ file.additions }}</span>
-            <span class="shrink-0 text-[11px] text-rose-600 dark:text-rose-400">-{{ file.deletions }}</span>
+            <code class="min-w-0 truncate font-mono text-xs text-foreground">{{
+              file.displayPath
+            }}</code>
+            <span class="ml-auto shrink-0 text-[11px] text-emerald-600 dark:text-emerald-400"
+              >+{{ file.additions }}</span
+            >
+            <span class="shrink-0 text-[11px] text-rose-600 dark:text-rose-400"
+              >-{{ file.deletions }}</span
+            >
           </div>
 
-          <div v-if="file.status === 'renamed' && file.oldPath && file.newPath" class="mt-1 text-[11px] text-muted-foreground">
+          <div
+            v-if="file.status === 'renamed' && file.oldPath && file.newPath"
+            class="mt-1 text-[11px] text-muted-foreground"
+          >
             {{ file.oldPath }} -> {{ file.newPath }}
           </div>
 
@@ -229,7 +271,9 @@ function renderSplitCell(
             :key="`${file.id}-${hunkIndex}`"
             class="border-b border-border/40 last:border-b-0"
           >
-            <div class="border-b border-border/50 bg-sky-500/8 px-3 py-1.5 font-mono text-[11px] text-sky-700 dark:text-sky-300">
+            <div
+              class="border-b border-border/50 bg-sky-500/8 px-3 py-1.5 font-mono text-[11px] text-sky-700 dark:text-sky-300"
+            >
               {{ hunk.header }}
             </div>
 
@@ -245,7 +289,9 @@ function renderSplitCell(
                 }"
               >
                 <template v-if="line.type === 'meta'">
-                  <div class="col-span-4 border-l-4 border-amber-500/20 px-3 py-0.5 text-[11px] text-muted-foreground">
+                  <div
+                    class="col-span-4 border-l-4 border-amber-500/20 px-3 py-0.5 text-[11px] text-muted-foreground"
+                  >
                     {{ line.raw }}
                   </div>
                 </template>
@@ -291,10 +337,7 @@ function renderSplitCell(
                   {{ row.metaText }}
                 </div>
 
-                <div
-                  v-else
-                  class="grid min-w-full grid-cols-2 divide-x divide-border/40"
-                >
+                <div v-else class="grid min-w-full grid-cols-2 divide-x divide-border/40">
                   <div
                     class="grid min-w-0 grid-cols-[56px_18px_minmax(0,1fr)]"
                     :class="{
@@ -357,7 +400,10 @@ function renderSplitCell(
             v-if="file.hunks.length === 0 && file.metaLines.length > 0"
             class="space-y-1 border-t border-border/40 px-3 py-2 font-mono text-[11px] text-muted-foreground"
           >
-            <div v-for="(metaLine, metaIndex) in file.metaLines" :key="`${file.id}-meta-${metaIndex}`">
+            <div
+              v-for="(metaLine, metaIndex) in file.metaLines"
+              :key="`${file.id}-meta-${metaIndex}`"
+            >
               {{ metaLine }}
             </div>
           </div>

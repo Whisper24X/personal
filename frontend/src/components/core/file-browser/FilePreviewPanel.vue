@@ -4,7 +4,7 @@ import type { FileBrowserPreview } from './types'
 import ImagePreview from './ImagePreview.vue'
 import CodePreview from './CodePreview.vue'
 import PdfPreview from './PdfPreview.vue'
-import { formatPreviewSize, resolvePreviewTextLines } from './preview'
+import { formatPreviewSize, isHtmlPreview, resolvePreviewTextLines } from './preview'
 
 const MarkdownPreview = defineAsyncComponent(
   () => import('@/components/knowledge-base/MarkdownPreview.vue'),
@@ -42,6 +42,7 @@ const previewTextLines = computed(() => resolvePreviewTextLines(props.preview))
 const sourceTextLines = computed(() => {
   return (props.preview?.text || '').split('\n')
 })
+const htmlPreviewEnabled = computed(() => isHtmlPreview(props.preview))
 const sourceUnsupported = computed(() => {
   return props.mode === 'source' && !(props.preview && typeof props.preview.text === 'string')
 })
@@ -125,6 +126,15 @@ const sourceUnsupported = computed(() => {
           v-else-if="props.preview?.previewType === 'pdf' && props.preview.dataUrl"
           class="flex-1 w-full h-full"
           :src="props.preview.dataUrl"
+        />
+
+        <iframe
+          v-else-if="htmlPreviewEnabled"
+          class="h-full w-full border-0 bg-white"
+          sandbox="allow-forms allow-modals allow-pointer-lock allow-popups allow-scripts"
+          referrerpolicy="no-referrer"
+          :srcdoc="props.preview?.text || ''"
+          title="HTML 文件预览"
         />
 
         <div
