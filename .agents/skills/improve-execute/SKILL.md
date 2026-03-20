@@ -1,38 +1,36 @@
 ---
 name: improve-execute
-description: 执行代码改进。读取分析结果和改进需求文件，按优先级修复问题，修复后标记已解决。无状态执行工具，由 ImproveCode Action 循环调用。触发场景：(1) 修复 Bug (2) 优化性能 (3) 改进代码质量 (4) 提升用户体验
+description: 按 improveAnalyzeResult.md 中的 issues 修复代码，并回写 JSON 中各条目的 status。
 ---
 
 # ExecuteCodeImprovement - 执行代码改进
 
-根据分析结果，按优先级逐一修复 `ImproveCode.md` 中的问题，并在文件中标记已解决。
+根据 `improveAnalyzeResult.md` 中的 `issues` 列表，按优先级逐一修复，并在**同一文件**内将对应条目的 `status` 更新为 `resolved`（可选增加 `resolution_note` 字段）。
 
 ## 输出规范（强制）
 
 > **重要**：执行结果必须写入文件，不是输出到终端。
 
+**文档路径**：输入/输出路径**必须**从节点 Prompt 获取（工作流 v2 ImproveCode）；示例：`docs/{{gitBranch}}/improveAnalyzeResult.md`、`docs/{{gitBranch}}/improveExecuteResult.md`。
+
 | 项目         | 规范                                            |
 | ------------ | ----------------------------------------------- |
-| **输入文件** | `docs/code/improveAnalyzeResult.md`（分析结果） |
-| **输入文件** | `docs/code/ImproveCode.md`（改进需求原文）      |
-| **结果文件** | `docs/code/improveExecuteResult.md`             |
-| **文件格式** | 固定两行：第一行状态，第二行原因                |
+| **输入文件** | `docs/{{gitBranch}}/improveAnalyzeResult.md`（分析结果，含 issues） |
+| **结果文件** | `docs/{{gitBranch}}/improveExecuteResult.md`             |
+| **回写文件** | `docs/{{gitBranch}}/improveAnalyzeResult.md`（每修复一项更新 issues[].status） |
+| **文件格式** | 执行结果固定两行：第一行状态，第二行原因                |
 | **状态值**   | `执行成功` / `执行失败`（二选一）               |
 
 ## 执行步骤
 
 ### 1. 读取输入
 
-1. **读取分析结果** `docs/code/improveAnalyzeResult.md`
+1. **读取分析结果** `docs/{{gitBranch}}/improveAnalyzeResult.md`
    - 解析 JSON，获取 `issues` 列表
    - 筛选 `status === "pending"` 的问题
    - 按 `priority` 排序：high → medium → low
 
-2. **读取改进需求原文** `docs/code/ImproveCode.md`
-   - 获取问题的完整上下文描述
-   - 理解每个问题的具体表现和预期修复效果
-
-如果任一文件不存在，输出 `执行失败` 并结束。
+若文件不存在或无法解析为合法 JSON，输出 `执行失败` 并结束。
 
 ### 2. 逐一修复问题
 
@@ -56,30 +54,18 @@ description: 执行代码改进。读取分析结果和改进需求文件，按�
 - 确保修复后代码可编译、可运行
 - 每个修复尽量原子化，便于追踪
 
-### 3. 标记已解决（重要）
+### 3. 回写 JSON（重要）
 
-每修复一个问题后，**必须**在 `docs/code/ImproveCode.md` 中对应问题后添加 `✅ 已解决` 标记。
+每修复一个问题后，**必须**将 `improveAnalyzeResult.md` 中对应 `issue` 的 `status` 设为 `resolved`，并可增加 `resolution_note`（简短说明）。
 
-**标记格式**：
-
-```markdown
-### Bug 1: 登录失败处理不正确 ✅ 已解决
-
-- 已修复错误处理逻辑，增加了用户友好的错误提示
-```
-
-**标记规则**：
-
-- 在问题标题行末尾添加 ` ✅ 已解决`
-- 在问题描述下方添加一行修复说明
-- 如果问题无法修复，不添加标记，保持原状
-- **cursor-agent -p 是无状态的**，每次执行都是全新上下文，必须通过标记避免重复修复
+- 若问题无法修复，保持 `pending`，不修改该项
+- **cursor-agent -p 是无状态的**，每次执行都是全新上下文，必须通过**回写 JSON** 避免重复修复同一项
 
 ### 4. 输出执行结果
 
-将结果写入 `docs/code/improveExecuteResult.md`。
+将结果写入 `docs/{{gitBranch}}/improveExecuteResult.md`。
 
-**确保 `docs/code/` 目录存在**，不存在则先创建。
+**确保 `docs/{{gitBranch}}/` 目录存在**，不存在则先创建。
 
 ### 示例 - 执行成功
 
@@ -99,7 +85,7 @@ description: 执行代码改进。读取分析结果和改进需求文件，按�
 
 ```
 执行失败
-无法读取分析结果文件 docs/code/improveAnalyzeResult.md
+无法读取分析结果文件 docs/{{gitBranch}}/improveAnalyzeResult.md
 ```
 
 ## Sandbox 环境规则
@@ -116,10 +102,10 @@ description: 执行代码改进。读取分析结果和改进需求文件，按�
 
 ## 重要提醒
 
-1. **必须写入文件**：结果必须写入 `docs/code/improveExecuteResult.md`，不是输出到终端
+1. **必须写入文件**：结果必须写入 `docs/{{gitBranch}}/improveExecuteResult.md`，不是输出到终端
 2. **文件格式固定**：只有两行，第一行是状态，第二行是原因
-3. **确保目录存在**：如果 `docs/code/` 目录不存在，需要先创建
-4. **必须标记已解决**：每修复一个问题，必须在 `ImproveCode.md` 中标记 `✅ 已解决`
-5. **不删除 ImproveCode.md**：此 Skill 只标记问题，不删除文件（删除由 improve-verify 负责）
+3. **确保目录存在**：如果 `docs/{{gitBranch}}/` 目录不存在，需要先创建
+4. **必须回写 JSON**：每修复一个问题，必须在 `improveAnalyzeResult.md` 中更新对应 `issue` 的 `status`
+5. **不删除 improveAnalyzeResult.md**：删除由 improve-verify 在全部完成后执行
 6. **每次覆盖写入**：每次执行都覆盖 `improveExecuteResult.md`（不是追加）
 7. **代码完整性**：修复的代码必须完整，禁止 TODO/占位符/空实现/伪代码

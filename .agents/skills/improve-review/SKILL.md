@@ -1,19 +1,21 @@
 ---
 name: improve-review
-description: 对代码库执行 Code Review 扫描。基于 git diff 和 checklist 发现 SOLID 违规、安全风险、代码质量问题、移除候选。输出供 improve-analyze 合并。无状态工具，由 ImproveCode Action 调用。
+description: 基于 git diff 与 checklist 做 Code Review，结果写入 improveReviewResult.md（JSON）。
 ---
 
 # ImproveReview - 代码审查扫描
 
-对 workspace 中的代码执行结构化 Code Review，发现潜在问题并输出结构化结果，供 improve-analyze 与 ImproveCode.md 合并排序。
+对 workspace 中的代码执行结构化 Code Review，发现潜在问题并输出结构化结果，供 improve-analyze 合并排序。
 
 ## 输出规范（强制）
 
 > **重要**：结果必须写入文件，不是输出到终端。
 
+**文档路径**：输出路径**必须**从节点 Prompt 获取（工作流 v2 ImproveCode）；示例：`docs/{{gitBranch}}/improveReviewResult.md`。
+
 | 项目         | 规范                                                     |
 | ------------ | -------------------------------------------------------- |
-| **结果文件** | `docs/code/improveReviewResult.md`                       |
+| **结果文件** | prompt 指定（如 `docs/{{gitBranch}}/improveReviewResult.md`） |
 | **文件格式** | JSON 格式，包含 result、reason、issues 字段              |
 | **优先级**   | P0/P1→high, P2→medium, P3→low（与 improve-analyze 兼容） |
 
@@ -63,9 +65,9 @@ git diff
 
 ### 6. 输出结果
 
-将结果以 JSON 格式写入 `docs/code/improveReviewResult.md`。
+将结果以 JSON 格式写入 prompt 指定路径（如 `docs/{{gitBranch}}/improveReviewResult.md`）。
 
-**确保 `docs/code/` 目录存在**，不存在则先创建。
+**确保 prompt 指定路径的父目录存在**（如 `docs/{{gitBranch}}/`），不存在则先创建。
 
 **优先级映射**：P0/P1 → `high`，P2 → `medium`，P3 → `low`
 
@@ -110,7 +112,7 @@ git diff
 ## 重要提醒
 
 1. **工作目录**：git diff 基于 `ainative-workspace` 目录，不超出该范围
-2. **必须写入文件**：结果必须写入 `docs/code/improveReviewResult.md`
+2. **必须写入文件**：结果必须写入 prompt 指定路径（如 `docs/{{gitBranch}}/improveReviewResult.md`）
 3. **JSON 格式严格**：确保输出合法 JSON，可被程序解析
 4. **不修改源代码**：此 Skill 仅扫描和输出，不执行修复
 5. **不询问用户**：完全自动执行，无需用户确认
