@@ -7,6 +7,7 @@ import ExecutionPanel from '@/components/tasks/detail/ExecutionPanel.vue'
 import ReplyCard from '@/components/tasks/detail/ReplyCard.vue'
 import ReviewCard from '@/components/tasks/detail/ReviewCard.vue'
 import RightPanelSection from '@/components/tasks/detail/RightPanelSection.vue'
+import { removeStepSummaryCacheForTask } from '@/components/tasks/detail/cli/stepSummaryCache'
 import TaskDialogs, { type TaskEditFormValue } from '@/components/tasks/detail/TaskDialogs.vue'
 import TaskExecutionContextBar from '@/components/tasks/detail/TaskExecutionContextBar.vue'
 import WorkflowCard from '@/components/tasks/detail/WorkflowCard.vue'
@@ -249,6 +250,14 @@ const executionCliId = computed(() => {
     sortedNodes.value[0]?.agentCliId ||
     ''
   )
+})
+
+/** 与当前执行区消息 / CLI 解析一致：优先选中工作流节点，否则首个节点（对话模式） */
+const executionTaskNodeId = computed(() => {
+  if (selectedWorkflowNodeId.value) {
+    return selectedWorkflowNodeId.value
+  }
+  return sortedNodes.value[0]?.id ?? null
 })
 
 const executionPanelTitle = computed(() => {
@@ -713,6 +722,7 @@ const removeTask = async () => {
 
   try {
     await tasksApi.remove(taskId.value)
+    removeStepSummaryCacheForTask(taskId.value)
     deleteOpen.value = false
     message.success('任务已删除')
     await router.push(taskListRoute.value)
@@ -869,6 +879,7 @@ function startDrag(e: MouseEvent) {
             :messages="executionMessages"
             :format-date="formatDate"
             :task-id="taskId"
+            :task-node-id="executionTaskNodeId"
             :git-worktree="task?.gitWorktree || null"
             :branch-files-refresh-token="rightPanelRefreshToken"
             @open-artifact="openArtifactFromChip"

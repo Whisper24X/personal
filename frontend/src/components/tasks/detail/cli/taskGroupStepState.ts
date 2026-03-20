@@ -96,13 +96,39 @@ export function taskGroupFullLabel(group: { title: string; description: string }
 
 export function taskGroupLabel(group: { title: string; description: string }, fallbackIndex: number): string {
   const text = taskGroupFullLabel(group, fallbackIndex)
-  if (text.length <= TASK_STEP_LABEL_MAX_CHARS) return text
-  return `${text.slice(0, TASK_STEP_LABEL_MAX_CHARS - 1)}…`
+  return clipStepDisplayLabel(text)
+}
+
+/** 将任意短标题限制为步骤条展示宽度（与 taskGroupLabel 一致） */
+export function clipStepDisplayLabel(text: string): string {
+  const t = text.trim() || '…'
+  if (t.length <= TASK_STEP_LABEL_MAX_CHARS) return t
+  return `${t.slice(0, TASK_STEP_LABEL_MAX_CHARS - 1)}…`
 }
 
 export const ASSISTANT_STEP_BAR_MIN_TASKS = 2
 
 export type StepBarModel = { steps: { label: string; fullLabel: string; state: TaskStepState }[] }
+
+/** 将服务端返回的步骤摘要合并进步骤条模型（hover 仍用原始 fullLabel） */
+export function mergeStepBarLabelsWithSummaries(
+  model: StepBarModel,
+  turnIndex: number,
+  map: Record<string, string> | undefined,
+): StepBarModel {
+  if (!map || Object.keys(map).length === 0) return model
+  return {
+    steps: model.steps.map((step, i) => {
+      const id = `t${turnIndex}-s${i}`
+      const summary = map[id]?.trim()
+      if (!summary) return step
+      return {
+        ...step,
+        label: clipStepDisplayLabel(summary),
+      }
+    }),
+  }
+}
 
 /** 仅「步骤 N」占位标题且无正文，视为无意义开头（与 opencode 默认 title 等） */
 function isPlaceholderStepTitleOnly(title: string, description: string): boolean {

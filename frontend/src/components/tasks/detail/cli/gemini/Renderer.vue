@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 import type { TaskMessage } from '@/types/api/tasks'
 import { parseGeminiMessages } from './parser'
 import { groupGeminiEntries, type GeminiMessageGroup, type GeminiTaskGroup } from './groupEntries'
@@ -12,7 +12,13 @@ import AssistantTurnContentBubble from '../AssistantTurnContentBubble.vue'
 import { mergeAssistantTurns } from '../mergeAssistantTurns'
 import type { NormalizedEntry } from '../types'
 import { collapseDetailWhenTurnDone } from '../taskGroupCollapse'
-import { buildStepBarClaudeLike, prepareTaskGroupsForStepBar, type StepBarModel } from '../taskGroupStepState'
+import { assistantStepSummariesKey } from '../stepSummaryKeys'
+import {
+  buildStepBarClaudeLike,
+  mergeStepBarLabelsWithSummaries,
+  prepareTaskGroupsForStepBar,
+  type StepBarModel,
+} from '../taskGroupStepState'
 import { assistantTurnTimeLabel, getString } from '../utils'
 
 defineOptions({ name: 'CliGeminiRenderer' })
@@ -21,6 +27,8 @@ const props = defineProps<{
   messages: TaskMessage[]
 }>()
 
+const stepSummaries = inject(assistantStepSummariesKey, undefined)
+
 const entries = computed(() => parseGeminiMessages(props.messages))
 const groups = computed(() => groupGeminiEntries(entries.value))
 const turns = computed(() =>
@@ -28,7 +36,12 @@ const turns = computed(() =>
 )
 
 const assistantStepBars = computed(() =>
-  turns.value.map((turn) => (turn.kind === 'assistant' ? geminiStepBarModel(turn.items) : null)),
+  turns.value.map((turn, tIdx) => {
+    if (turn.kind !== 'assistant') return null
+    const model = geminiStepBarModel(turn.items)
+    if (!model) return null
+    return mergeStepBarLabelsWithSummaries(model, tIdx, stepSummaries?.value)
+  }),
 )
 
 function isResultEntry(entry: NormalizedEntry) {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 import type { TaskMessage } from '@/types/api/tasks'
 import { parseOpencodeMessages } from './parser'
 import { groupOpencodeEntries } from './groupEntries'
@@ -12,7 +12,13 @@ import AssistantTurnContentBubble from '../AssistantTurnContentBubble.vue'
 import { mergeAssistantTurns } from '../mergeAssistantTurns'
 import type { OpencodeMessageGroup, OpencodeTaskGroup } from './groupEntries'
 import { collapseDetailWhenTurnDone } from '../taskGroupCollapse'
-import { buildStepBarOpencode, prepareTaskGroupsForStepBar, type StepBarModel } from '../taskGroupStepState'
+import { assistantStepSummariesKey } from '../stepSummaryKeys'
+import {
+  buildStepBarOpencode,
+  mergeStepBarLabelsWithSummaries,
+  prepareTaskGroupsForStepBar,
+  type StepBarModel,
+} from '../taskGroupStepState'
 import { assistantTurnTimeLabel } from '../utils'
 
 defineOptions({ name: 'CliOpencodeRenderer' })
@@ -21,6 +27,8 @@ const props = defineProps<{
   messages: TaskMessage[]
 }>()
 
+const stepSummaries = inject(assistantStepSummariesKey, undefined)
+
 const entries = computed(() => parseOpencodeMessages(props.messages))
 const groups = computed(() => groupOpencodeEntries(entries.value))
 const turns = computed(() =>
@@ -28,7 +36,12 @@ const turns = computed(() =>
 )
 
 const assistantStepBars = computed(() =>
-  turns.value.map((turn) => (turn.kind === 'assistant' ? opencodeStepBarModel(turn.items) : null)),
+  turns.value.map((turn, tIdx) => {
+    if (turn.kind !== 'assistant') return null
+    const model = opencodeStepBarModel(turn.items)
+    if (!model) return null
+    return mergeStepBarLabelsWithSummaries(model, tIdx, stepSummaries?.value)
+  }),
 )
 
 function opencodeStepBarModel(items: OpencodeMessageGroup[]): StepBarModel | null {

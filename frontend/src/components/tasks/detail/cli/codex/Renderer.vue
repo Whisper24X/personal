@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 import type { TaskMessage } from '@/types/api/tasks'
 import { parseCodexMessages } from './parser'
 import { groupCodexEntries } from './groupEntries'
@@ -15,7 +15,13 @@ import { mergeAssistantTurns } from '../mergeAssistantTurns'
 import type { CodexMessageGroup, CodexTaskGroup } from './groupEntries'
 import type { NormalizedEntry } from '../types'
 import { collapseDetailWhenTurnDone } from '../taskGroupCollapse'
-import { buildStepBarCodex, prepareTaskGroupsForStepBar, type StepBarModel } from '../taskGroupStepState'
+import { assistantStepSummariesKey } from '../stepSummaryKeys'
+import {
+  buildStepBarCodex,
+  mergeStepBarLabelsWithSummaries,
+  prepareTaskGroupsForStepBar,
+  type StepBarModel,
+} from '../taskGroupStepState'
 import { asRecord, assistantTurnTimeLabel, formatTime, getString, tryParseJson } from '../utils'
 
 defineOptions({ name: 'CliCodexRenderer' })
@@ -24,6 +30,8 @@ const props = defineProps<{
   messages: TaskMessage[]
 }>()
 
+const stepSummaries = inject(assistantStepSummariesKey, undefined)
+
 const entries = computed(() => parseCodexMessages(props.messages))
 const groups = computed(() => groupCodexEntries(entries.value))
 const turns = computed(() =>
@@ -31,7 +39,12 @@ const turns = computed(() =>
 )
 
 const assistantStepBars = computed(() =>
-  turns.value.map((turn) => (turn.kind === 'assistant' ? codexStepBarModel(turn.items) : null)),
+  turns.value.map((turn, tIdx) => {
+    if (turn.kind !== 'assistant') return null
+    const model = codexStepBarModel(turn.items)
+    if (!model) return null
+    return mergeStepBarLabelsWithSummaries(model, tIdx, stepSummaries?.value)
+  }),
 )
 
 function isPatchEvent(entry: NormalizedEntry) {

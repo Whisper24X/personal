@@ -242,3 +242,30 @@ export type CreateTaskTerminalSessionPayload = {
 export type TaskTerminalInputPayload = {
   input: string
 }
+
+export type StepSummaryRequestItem = {
+  id: string
+  rawText: string
+}
+
+export type StepSummariesPayload = {
+  items: StepSummaryRequestItem[]
+  taskNodeId?: string
+}
+
+export type StepSummariesResponse = {
+  items: Array<{ id: string; summary: string }>
+}
+
+export type SuggestTaskTitlePayload = {
+  projectId: string
+  mode: TaskMode
+  prompt: string
+  agentCliId?: string
+  agentCliConfigId?: string
+  workflowTemplateId?: string
+}
+
+export type SuggestTaskTitleResponse = {
+  title: string
+}

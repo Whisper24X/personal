@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 import type { TaskMessage } from '@/types/api/tasks'
 import { parseClaudeCodeMessages } from './parser'
 import { groupClaudeEntries } from './groupEntries'
@@ -13,7 +13,13 @@ import { mergeAssistantTurns } from '../mergeAssistantTurns'
 import type { ClaudeMessageGroup, ClaudeTaskGroup } from './groupEntries'
 import type { NormalizedEntry } from '../types'
 import { collapseDetailWhenTurnDone } from '../taskGroupCollapse'
-import { buildStepBarClaudeLike, prepareTaskGroupsForStepBar, type StepBarModel } from '../taskGroupStepState'
+import { assistantStepSummariesKey } from '../stepSummaryKeys'
+import {
+  buildStepBarClaudeLike,
+  mergeStepBarLabelsWithSummaries,
+  prepareTaskGroupsForStepBar,
+  type StepBarModel,
+} from '../taskGroupStepState'
 import { assistantTurnTimeLabel, formatTime, getNumber, getString } from '../utils'
 
 defineOptions({ name: 'CliClaudeCodeRenderer' })
@@ -22,6 +28,8 @@ const props = defineProps<{
   messages: TaskMessage[]
 }>()
 
+const stepSummaries = inject(assistantStepSummariesKey, undefined)
+
 const entries = computed(() => parseClaudeCodeMessages(props.messages))
 const groups = computed(() => groupClaudeEntries(entries.value))
 const turns = computed(() =>
@@ -29,7 +37,12 @@ const turns = computed(() =>
 )
 
 const assistantStepBars = computed(() =>
-  turns.value.map((turn) => (turn.kind === 'assistant' ? claudeStepBarModel(turn.items) : null)),
+  turns.value.map((turn, tIdx) => {
+    if (turn.kind !== 'assistant') return null
+    const model = claudeStepBarModel(turn.items)
+    if (!model) return null
+    return mergeStepBarLabelsWithSummaries(model, tIdx, stepSummaries?.value)
+  }),
 )
 
 function isResultEntry(entry: NormalizedEntry) {

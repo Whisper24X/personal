@@ -18,6 +18,7 @@ const { tasksApi, authApi, openSseStream } = vi.hoisted(() => ({
     cleanupWorktree: vi.fn(),
     retry: vi.fn(),
     approve: vi.fn(),
+    stepSummaries: vi.fn().mockResolvedValue({ items: [] }),
   },
   authApi: {
     access: vi.fn(),
@@ -60,6 +61,12 @@ beforeEach(() => {
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
     value: {
+      get length() {
+        return storage.size
+      },
+      key(i: number) {
+        return [...storage.keys()][i] ?? null
+      },
       getItem(key: string) {
         return storage.get(key) ?? null
       },
@@ -520,8 +527,9 @@ describe('TaskDetailView toasts', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Demo task')
     expect(wrapper.text()).toContain('待执行')
+    expect(wrapper.text()).toContain('对话')
+    expect(wrapper.text()).toMatch(/Codex/)
     expect(wrapper.text()).toContain('执行')
     expect(wrapper.text()).not.toContain('分支')
     expect(wrapper.text()).not.toContain('项目 project-1')

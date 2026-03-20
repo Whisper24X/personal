@@ -23,6 +23,8 @@ const props = defineProps<{
   messages: TaskMessage[]
   formatDate: (value?: string) => string
   taskId?: string
+  /** 用于步骤条 AI 短标题：解析节点上的 Agent CLI 配置 */
+  taskNodeId?: string | null
   gitWorktree?: string | null
   branchFilesRefreshToken?: number
 }>()
@@ -100,7 +102,12 @@ onBeforeUnmount(() => {
       <div v-if="props.loading" class="flex h-full items-center justify-center text-sm text-muted-foreground">加载执行内容中...</div>
 
       <template v-else>
-        <CliLogRenderer :agent-cli-id="props.agentCliId" :messages="props.messages" />
+        <CliLogRenderer
+          :agent-cli-id="props.agentCliId"
+          :messages="props.messages"
+          :task-id="props.taskId"
+          :task-node-id="props.taskNodeId ?? null"
+        />
 
         <TaskBranchFileChips
           v-if="props.gitWorktree && props.taskId"
