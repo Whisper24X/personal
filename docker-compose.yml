@@ -16,7 +16,7 @@ services:
       POSTGRES_DB: ainative
       POSTGRES_USER: postgres
       # 仅首次初始化 data volume 时生效；若改密码需删卷或进库改用户口令
-      POSTGRES_PASSWORD: yangcong345
+      POSTGRES_PASSWORD: 123456
     ports:
       # 本机运行 Nest（npm run start:dev）时用 localhost:5432 连接
       - "5432:5432"
@@ -35,13 +35,13 @@ services:
     image: redis:6-alpine
     container_name: ainative-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "yangcong345"]
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "123456"]
     ports:
       - "6379:6379"
     volumes:
       - ainative-redis-data:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a yangcong345 ping | grep PONG"]
+      test: ["CMD-SHELL", "redis-cli -a 123456 ping | grep PONG"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -58,8 +58,8 @@ services:
     env_file: ./backend/.env.development
     environment:
       DATABASE_HOST: postgres
-      DATABASE_PASSWORD: yangcong345
-      WORKER_HOST: redis://:yangcong345@redis:6379/1
+      DATABASE_PASSWORD: 123456
+      WORKER_HOST: redis://:123456@redis:6379/1
       SSH_AUTH_SOCK: ${SSH_AUTH_SOCK:+/ssh-agent}
       GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=no"
     volumes:

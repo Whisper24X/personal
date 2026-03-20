@@ -1,5 +1,6 @@
 # 复制为 backend/.env.development 后按需修改。
 # 与仓库根目录 docker-compose.yml 中 postgres/redis 一致（本机跑 Nest + Docker 起库）。
+# 若只是覆盖你机器上的连接参数，优先放到 `.env.local`，不要改共享默认值。
 
 NODE_ENV=development
 # docker-compose backend 映射为 9000；本机直连前端代理时常用 9000
@@ -16,7 +17,7 @@ DATABASE_TYPE=postgres
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
 DATABASE_USERNAME=postgres
-DATABASE_PASSWORD=yangcong345
+DATABASE_PASSWORD=123456
 DATABASE_NAME=ainative
 DATABASE_SYNCHRONIZE=false
 DATABASE_LOGGING=false
@@ -58,6 +59,6 @@ AINATIVE_SMTP_PASS=
 AINATIVE_SMTP_FROM=ainative@example.local
 
 # 与 docker-compose redis requirepass 一致；本机连映射端口用 localhost
-WORKER_HOST=redis://:yangcong345@localhost:6379/1
+WORKER_HOST=redis://:123456@localhost:6379/1
 MAIL_PORT=1025
 MAIL_CLIENT_PORT=1080

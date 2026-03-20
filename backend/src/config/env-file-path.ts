@@ -2,20 +2,14 @@ import { existsSync } from 'fs';
 import path from 'path';
 
 /**
- * 未设置 NODE_ENV 时优先加载 `.env`，若不存在再回退到 `.env.development`。
+ * 只加载当前环境对应的单个 env 文件。
+ * 未设置 `NODE_ENV` 时，等同于 `local`。
  */
-export function resolveEnvFilePath(): string {
-  const nodeEnv = process.env.NODE_ENV?.trim();
-  if (nodeEnv) {
-    return `.env.${nodeEnv}`;
-  }
-  const envFile = path.join(process.cwd(), '.env');
-  if (existsSync(envFile)) {
-    return '.env';
-  }
-  const devFile = path.join(process.cwd(), '.env.development');
-  if (existsSync(devFile)) {
-    return '.env.development';
-  }
-  return '.env';
+export function resolveEnvFilePath(): string[] {
+  const nodeEnv = process.env.NODE_ENV?.trim() || 'local';
+
+  const envFile = nodeEnv === 'local' ? '.env.local' : `.env.${nodeEnv}`;
+  const absolutePath = path.join(process.cwd(), envFile);
+
+  return existsSync(absolutePath) ? [envFile] : [];
 }

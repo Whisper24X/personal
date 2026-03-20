@@ -27,25 +27,36 @@ describe('resolveEnvFilePath', () => {
   it('should prefer env file matching NODE_ENV when it is set', () => {
     process.env.NODE_ENV = 'test';
 
-    expect(resolveEnvFilePath()).toBe('.env.test');
+    expect(resolveEnvFilePath()).toEqual([]);
   });
 
-  it('should prefer dot env when NODE_ENV is not set', async () => {
-    await fs.writeFile(path.join(tempDir, '.env'), 'DATABASE_HOST=localhost\n');
+  it('should treat empty NODE_ENV as local and prefer dot env local', async () => {
+    await fs.writeFile(path.join(tempDir, '.env.local'), 'APP_PORT=9001\n');
+
+    expect(resolveEnvFilePath()).toEqual(['.env.local']);
+  });
+
+  it('should return empty when matching env file is absent', () => {
+    process.env.NODE_ENV = 'production';
+
+    expect(resolveEnvFilePath()).toEqual([]);
+  });
+
+  it('should load only env specific file outside local', async () => {
+    process.env.NODE_ENV = 'development';
     await fs.writeFile(
       path.join(tempDir, '.env.development'),
       'DATABASE_HOST=127.0.0.1\n',
     );
+    await fs.writeFile(path.join(tempDir, '.env.local'), 'APP_PORT=9001\n');
 
-    expect(resolveEnvFilePath()).toBe('.env');
+    expect(resolveEnvFilePath()).toEqual(['.env.development']);
   });
 
-  it('should fall back to dot env development when dot env is absent', async () => {
-    await fs.writeFile(
-      path.join(tempDir, '.env.development'),
-      'DATABASE_HOST=127.0.0.1\n',
-    );
+  it('should not duplicate dot env local when NODE_ENV is local', async () => {
+    process.env.NODE_ENV = 'local';
+    await fs.writeFile(path.join(tempDir, '.env.local'), 'APP_PORT=9001\n');
 
-    expect(resolveEnvFilePath()).toBe('.env.development');
+    expect(resolveEnvFilePath()).toEqual(['.env.local']);
   });
 });
