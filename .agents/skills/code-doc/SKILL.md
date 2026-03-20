@@ -1,17 +1,19 @@
 ---
 name: code-doc
-description: 扫描当前工作空间的未提交代码改动，生成接口变更清单（供接口自动化使用）和功能变更测试清单（供测试人员了解测试重点），输出到 docs/code/ 目录。触发场景：(1) 部署成功后 (2) 需要梳理本次改动涉及的接口和功能测试范围。输出文件：apiChanges.md 和 moduleChanges.md
+description: 扫描未提交改动，按模板生成 apiChanges.md 与 moduleChanges.md；路径由节点 Prompt 约定（示例 docs/{{gitBranch}}/）。
 ---
 
 # 代码变更清单生成
 
 ## 输出规范（强制）
 
+**文档路径**：两个输出文件的目录**必须**从节点 Prompt 获取；示例：`docs/{{gitBranch}}/apiChanges.md`、`docs/{{gitBranch}}/moduleChanges.md`。
+
 | 项目           | 规范                                                    |
 | -------------- | ------------------------------------------------------- |
 | **输出文件名** | `apiChanges.md` 和 `moduleChanges.md`，不可使用其他名称 |
 | **文件数量**   | 必须同时生成 2 个文件                                   |
-| **输出路径**   | `docs/code/`（相对于当前工作空间根目录）                |
+| **输出路径**   | prompt 指定目录（如 `docs/{{gitBranch}}/`）             |
 
 ## 执行步骤
 
@@ -35,8 +37,8 @@ description: 扫描当前工作空间的未提交代码改动，生成接口变�
 
 ### Step 4：按模板生成两份文件
 
-- 将接口分析结果按 `api-doc-template.md` 的结构填充，输出 `docs/code/apiChanges.md`（供接口自动化使用）
-- 将功能变更分析结果按 `module-doc-template.md` 的结构填充，输出 `docs/code/moduleChanges.md`（供测试人员了解测试重点和回归范围）
+- 将接口分析结果按 `api-doc-template.md` 的结构填充，输出到 prompt 指定路径（如 `docs/{{gitBranch}}/apiChanges.md`）
+- 将功能变更分析结果按 `module-doc-template.md` 的结构填充，输出到 prompt 指定路径（如 `docs/{{gitBranch}}/moduleChanges.md`）
 - 删除模板中的"填写说明"章节，不得保留占位符
 - **生成时间**必须填写当前实际执行时间（精确到秒），不得使用模板中的示例值或占位符
 - `moduleChanges.md` 只列出用户可见或测试可验证的功能变更；纯代码重构、工具函数调整、内部模块导出等对用户无感知的改动**不列入**
@@ -45,4 +47,4 @@ description: 扫描当前工作空间的未提交代码改动，生成接口变�
 
 - ❌ 不得只生成其中一个文件
 - ❌ 不得保留模板中的占位符或"填写说明"章节
-- ❌ 不得输出到 `docs/code/` 以外的目录
+- ❌ 不得输出到节点 Prompt 约定目录以外
