@@ -834,11 +834,7 @@ export class TaskGitService {
   private async listArtifactFiles(worktreePath: string): Promise<string[]> {
     const result = await this.runGitCommand(
       worktreePath,
-      this.withGitUtf8Paths([
-        'status',
-        '--porcelain',
-        '--untracked-files=all',
-      ]),
+      this.withGitUtf8Paths(['status', '--porcelain', '--untracked-files=all']),
     );
 
     if (!result.success) {
@@ -1124,11 +1120,7 @@ export class TaskGitService {
   private async readConflictFiles(worktreePath: string): Promise<string[]> {
     const result = await this.runGitCommand(
       worktreePath,
-      this.withGitUtf8Paths([
-        'diff',
-        '--name-only',
-        '--diff-filter=U',
-      ]),
+      this.withGitUtf8Paths(['diff', '--name-only', '--diff-filter=U']),
     );
 
     if (!result.success) {

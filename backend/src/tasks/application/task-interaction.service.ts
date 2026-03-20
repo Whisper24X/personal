@@ -239,8 +239,9 @@ export class TaskInteractionService {
     );
     task = prepared.task;
 
-    const runningNode =
-      await this.taskNodeRepository.findInProgressByTaskId(task.id);
+    const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
+      task.id,
+    );
     if (runningNode) {
       throw new ConflictException('Task already has an in-progress node');
     }

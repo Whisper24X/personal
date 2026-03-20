@@ -110,27 +110,29 @@ describe('TaskGitService', () => {
       worktreePath: '/tmp/worktree',
     });
 
-    jest.spyOn(service as any, 'runGitCommand').mockImplementation((_cwd: string, args: string[]) => {
-      if (args.includes('status')) {
-        return {
-          success: true,
-          stdout: '?? "\\345\\244\\247\\347\\272\\262.md"',
-          stderr: '',
-          exitCode: 0,
-        };
-      }
+    jest
+      .spyOn(service as any, 'runGitCommand')
+      .mockImplementation((_cwd: string, args: string[]) => {
+        if (args.includes('status')) {
+          return {
+            success: true,
+            stdout: '?? "\\345\\244\\247\\347\\272\\262.md"',
+            stderr: '',
+            exitCode: 0,
+          };
+        }
 
-      if (args[0] === 'rev-parse') {
-        return {
-          success: true,
-          stdout: 'feature/test-branch',
-          stderr: '',
-          exitCode: 0,
-        };
-      }
+        if (args[0] === 'rev-parse') {
+          return {
+            success: true,
+            stdout: 'feature/test-branch',
+            stderr: '',
+            exitCode: 0,
+          };
+        }
 
-      throw new Error(`Unexpected git args: ${args.join(' ')}`);
-    });
+        throw new Error(`Unexpected git args: ${args.join(' ')}`);
+      });
 
     const result = await service.getStatus('task-1', {} as any);
 
