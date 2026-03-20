@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { TaskMessage, TaskStatus } from '@/types/api/tasks'
+import type { TaskGitChangedFile, TaskMessage, TaskStatus } from '@/types/api/tasks'
 import CliLogRenderer from './cli/CliLogRenderer.vue'
+import TaskBranchFileChips from './TaskBranchFileChips.vue'
 
 defineOptions({
   name: 'TaskDetailExecutionPanel',
 })
+
+const emit = defineEmits<{
+  'open-artifact': [file: TaskGitChangedFile]
+}>()
 
 const props = defineProps<{
   title: string
@@ -17,6 +22,9 @@ const props = defineProps<{
   streamConnected: boolean
   messages: TaskMessage[]
   formatDate: (value?: string) => string
+  taskId?: string
+  gitWorktree?: string | null
+  branchFilesRefreshToken?: number
 }>()
 
 const scrollContainer = ref<HTMLDivElement | null>(null)
@@ -42,7 +50,7 @@ const scrollToBottom = () => {
 }
 
 watch(
-  () => props.messages.length,
+  () => [props.messages.length, props.branchFilesRefreshToken] as const,
   async () => {
     if (userScrolledUp.value) return
     await nextTick()
@@ -88,14 +96,20 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div ref="scrollContainer" class="relative min-h-0 flex-1 overflow-y-auto px-3 py-3">
+    <div ref="scrollContainer" class="relative min-h-0 flex-1 overflow-y-auto px-5 py-5">
       <div v-if="props.loading" class="flex h-full items-center justify-center text-sm text-muted-foreground">加载执行内容中...</div>
 
-      <CliLogRenderer
-        v-else
-        :agent-cli-id="props.agentCliId"
-        :messages="props.messages"
-      />
+      <template v-else>
+        <CliLogRenderer :agent-cli-id="props.agentCliId" :messages="props.messages" />
+
+        <TaskBranchFileChips
+          v-if="props.gitWorktree && props.taskId"
+          class="mt-2"
+          :task-id="props.taskId"
+          :refresh-token="props.branchFilesRefreshToken ?? 0"
+          @open-artifact="(f) => emit('open-artifact', f)"
+        />
+      </template>
     </div>
 
     <!-- Scroll to bottom button -->

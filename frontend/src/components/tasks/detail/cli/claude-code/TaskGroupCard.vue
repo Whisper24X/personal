@@ -7,7 +7,17 @@ import { formatTime } from '../utils'
 
 const props = defineProps<{
   group: ClaudeTaskGroup
+  /** 本轮对话已结束：true=折叠详情，false=展开（最后一条 task），undefined=仅按 isRunning */
+  collapseDetailWhenDone?: boolean
+  /** 嵌在外层助手气泡内时去掉独立卡片描边 */
+  embedded?: boolean
 }>()
+
+const rootClass = computed(() =>
+  props.embedded
+    ? 'overflow-hidden rounded-none border-0 bg-transparent'
+    : 'overflow-hidden rounded-lg border border-border/50 bg-background',
+)
 
 const isRunning = computed(() =>
   props.group.tools.some((t) => t.metadata?.status === 'running' || t.metadata?.status === 'pending'),
@@ -15,9 +25,25 @@ const isRunning = computed(() =>
 
 const collapsed = ref(!isRunning.value)
 
-watch(isRunning, (running) => {
-  if (running) collapsed.value = false
-})
+watch(
+  () => [isRunning.value, props.collapseDetailWhenDone] as const,
+  ([running, pref]) => {
+    if (running) {
+      collapsed.value = false
+      return
+    }
+    if (pref === true) {
+      collapsed.value = true
+      return
+    }
+    if (pref === false) {
+      collapsed.value = false
+      return
+    }
+    collapsed.value = true
+  },
+  { immediate: true },
+)
 
 const groupItems = computed<ClaudeGroupItem[]>(() => buildClaudeTaskGroupItems(props.group))
 
@@ -45,7 +71,7 @@ function getGroupItemKey(item: ClaudeGroupItem): string {
 </script>
 
 <template>
-  <div class="overflow-hidden rounded-lg border border-border/50 bg-background">
+  <div :class="rootClass">
     <div
       class="flex cursor-pointer items-start gap-3 px-3 py-3 transition-colors hover:bg-muted/20"
       @click="collapsed = !collapsed"

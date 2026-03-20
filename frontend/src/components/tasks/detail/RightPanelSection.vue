@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import TaskRightPanel from './TaskRightPanel.vue'
+import type { TaskLog } from '@/types/api/tasks'
 
 defineOptions({
   name: 'TaskDetailRightPanelSection',
@@ -12,12 +13,21 @@ const props = withDefaults(
     branchName?: string | null
     baseBranch?: string | null
     refreshToken?: number
+    logs?: TaskLog[]
+    defaultRightTab?: 'artifacts' | 'preview' | 'files'
+    formatDate: (value?: string) => string
+    artifactFilePath?: string | null
+    artifactOpenNonce?: number
   }>(),
   {
     projectId: '',
     branchName: null,
     baseBranch: null,
     refreshToken: 0,
+    logs: () => [],
+    defaultRightTab: 'artifacts',
+    artifactFilePath: null,
+    artifactOpenNonce: 0,
   },
 )
 </script>
@@ -30,6 +40,11 @@ const props = withDefaults(
       :branch-name="props.branchName"
       :base-branch="props.baseBranch"
       :refresh-token="props.refreshToken"
+      :logs="props.logs"
+      :default-right-tab="props.defaultRightTab"
+      :format-date="props.formatDate"
+      :artifact-file-path="props.artifactFilePath ?? null"
+      :artifact-open-nonce="props.artifactOpenNonce ?? 0"
     />
   </div>
 </template>
