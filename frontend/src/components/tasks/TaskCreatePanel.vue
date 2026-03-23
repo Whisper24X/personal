@@ -689,7 +689,9 @@ onBeforeUnmount(() => {
             <textarea
               v-model="createForm.prompt"
               class="min-h-[360px] w-full resize-none border-0 bg-transparent px-1 text-lg text-foreground outline-none placeholder:text-muted-foreground"
-              placeholder="提示词"
+              :placeholder="
+                createForm.mode === 'conversation' ? '解决简单需求...' : '解决复杂需求...'
+              "
             />
           </div>
 
@@ -758,7 +760,7 @@ onBeforeUnmount(() => {
                   "
                   @click="createForm.mode = 'conversation'"
                 >
-                  对话模式
+                  对话
                 </button>
                 <button
                   type="button"
@@ -770,7 +772,7 @@ onBeforeUnmount(() => {
                   "
                   @click="createForm.mode = 'workflow'"
                 >
-                  工作流模式
+                  工作流
                 </button>
               </div>
 
