@@ -6,6 +6,7 @@ import type {
   RetryTaskPayload,
   Task,
   TaskDetail,
+  TaskStatusCounts,
   TaskGitActionResult,
   TaskGitBaseBranchPayload,
   TaskGitBranchDiffFiles,
@@ -23,11 +24,20 @@ import type {
   TaskWorkspacePreview,
   TaskWorkspaceTree,
   UpdateTaskPayload,
+  StepSummariesPayload,
+  StepSummariesResponse,
+  SuggestTaskTitlePayload,
+  SuggestTaskTitleResponse,
 } from '@/types/api/tasks'
 import { apiHttp, buildUrl, type InfinityPaginationResponse } from './http'
 import { STORAGE_KEYS } from '@/types/common/storage'
 
 export const tasksApi = {
+  /** 项目任务按状态聚合（数据库 COUNT，用于仪表盘统计与完成率） */
+  statusCounts(projectId: string) {
+    return apiHttp.get<TaskStatusCounts>('/tasks/stats', { projectId })
+  },
+
   list(params?: { page?: number; limit?: number; projectId?: string; status?: string }) {
     return apiHttp.get<InfinityPaginationResponse<Task>>('/tasks', {
       page: params?.page,
@@ -47,6 +57,10 @@ export const tasksApi = {
 
   create(payload: CreateTaskPayload) {
     return apiHttp.post<Task>('/tasks', payload)
+  },
+
+  suggestTaskTitle(payload: SuggestTaskTitlePayload) {
+    return apiHttp.post<SuggestTaskTitleResponse>('/tasks/suggest-title', payload)
   },
 
   update(taskId: string, payload: UpdateTaskPayload) {
@@ -71,6 +85,10 @@ export const tasksApi = {
 
   messages(taskId: string) {
     return apiHttp.get<TaskMessage[]>(`/tasks/${taskId}/messages`)
+  },
+
+  stepSummaries(taskId: string, payload: StepSummariesPayload) {
+    return apiHttp.post<StepSummariesResponse>(`/tasks/${taskId}/step-summaries`, payload)
   },
 
   retry(taskId: string, payload: RetryTaskPayload) {

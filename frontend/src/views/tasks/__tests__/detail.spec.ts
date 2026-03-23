@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import TaskDetailView from '@/views/tasks/detail.vue'
 import { useMessageStore } from '@/stores/modules/message'
@@ -19,6 +19,7 @@ const { tasksApi, authApi, openSseStream } = vi.hoisted(() => ({
     cleanupWorktree: vi.fn(),
     retry: vi.fn(),
     approve: vi.fn(),
+    stepSummaries: vi.fn().mockResolvedValue({ items: [] }),
   },
   authApi: {
     access: vi.fn(),
@@ -61,6 +62,12 @@ beforeEach(() => {
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
     value: {
+      get length() {
+        return storage.size
+      },
+      key(i: number) {
+        return [...storage.keys()][i] ?? null
+      },
       getItem(key: string) {
         return storage.get(key) ?? null
       },
@@ -109,6 +116,10 @@ beforeEach(() => {
 })
 
 describe('TaskDetailView toasts', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('refreshes detail when SSE reports pending approval', async () => {
     vi.useFakeTimers()
 
@@ -269,13 +280,15 @@ describe('TaskDetailView toasts', () => {
     })
 
     await flushPromises()
-    expect(wrapper.text()).toContain('Demo task')
+    expect(wrapper.text()).toMatch(/待执行/)
+    expect(wrapper.text()).toContain('Codex')
 
     await vi.advanceTimersByTimeAsync(300)
     await flushPromises()
 
     expect(tasksApi.detailWithNodes).toHaveBeenCalledTimes(2)
-    expect(wrapper.text()).toContain('Demo task')
+    expect(wrapper.text()).toMatch(/待执行/)
+    expect(wrapper.text()).toContain('Codex')
     expect(wrapper.text()).not.toContain('加载中...')
 
     expect(resolveRefresh).not.toBeNull()
@@ -299,7 +312,7 @@ describe('TaskDetailView toasts', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Demo task refreshed')
+    expect(wrapper.text()).toContain('执行中')
 
     vi.useRealTimers()
   })
@@ -616,8 +629,9 @@ describe('TaskDetailView toasts', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Demo task')
     expect(wrapper.text()).toContain('待执行')
+    expect(wrapper.text()).toContain('对话')
+    expect(wrapper.text()).toMatch(/Codex/)
     expect(wrapper.text()).toContain('执行')
     expect(wrapper.text()).not.toContain('分支')
     expect(wrapper.text()).not.toContain('项目 project-1')
@@ -882,5 +896,57 @@ describe('TaskDetailView toasts', () => {
 
     expect(selectedButton?.classes()).toContain('ring-2')
     expect(wrapper.text()).toContain('Codex')
+  })
+
+  it('shows only one 重新执行 button when workflow node is pending approval', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce({
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        mode: 'workflow',
+        title: 'Workflow task',
+        status: 'in_review',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'Review node',
+          status: 'in_review',
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        },
+      ],
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const reExecButtons = wrapper
+      .findAll('button')
+      .filter((button) => button.text().trim() === '重新执行')
+    expect(reExecButtons.length).toBe(1)
   })
 })

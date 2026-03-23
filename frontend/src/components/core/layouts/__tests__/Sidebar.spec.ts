@@ -1,90 +1,84 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
+import { h } from 'vue'
 import { RouterLinkStub, mount } from '@vue/test-utils'
 import Sidebar from '@/components/core/layouts/Sidebar.vue'
+import { SidebarProvider } from '@/components/ui/sidebar'
+
+const mountWithProvider = (sidebarProps: Record<string, unknown>) => {
+  return mount(
+    {
+      setup() {
+        return () =>
+          h(SidebarProvider, null, {
+            default: () => h(Sidebar, sidebarProps as never),
+          })
+      },
+    },
+    {
+      global: {
+        stubs: {
+          RouterLink: RouterLinkStub,
+        },
+      },
+    },
+  )
+}
 
 describe('Sidebar menu scope', () => {
-  it('renders project-scoped menu items and triggers settings open', async () => {
-    const openSettings = vi.fn()
-
-    const wrapper = mount(Sidebar, {
-      props: {
-        mobileNavOpen: true,
-        sidebarCollapsed: false,
-        currentBusinessLineName: 'Retail',
-        projectItems: [],
-        menuItems: [
-          { id: 'dashboard', label: '仪表盘', to: '/dashboard' },
-          { id: 'tasks', label: '任务', to: '/tasks' },
-        ],
-        showProjectMenuColumn: true,
-        projectNavigationTo: (projectId: string) => ({ path: '/dashboard', query: { projectId } }),
-        projectItemClass: () => '',
-        menuItemClass: () => '',
-        projectShortLabel: (short: string) => short,
-        menuIconFor: () => [],
-        setMobileNavOpen: () => undefined,
-        toggleMenuCollapsed: () => undefined,
-        showProjectTooltip: () => undefined,
-        showMenuTooltip: () => undefined,
-        hideProjectTooltip: () => undefined,
-        openBusinessLineModal: () => undefined,
-        openSettings,
+  it('renders core nav and business line footer links to manage page', () => {
+    const wrapper = mountWithProvider({
+      currentBusinessLineName: 'Retail',
+      selectedProjectId: 'p1',
+      projectItems: [],
+      hasSelectedProject: true,
+      sidebarCoreTasksKnowledge: {
+        tasks: { id: 'tasks', label: '新建任务', to: '/tasks' },
+        knowledge: { id: 'knowledge', label: '知识库', to: '/knowledge-base' },
       },
-      global: {
-        stubs: {
-          RouterLink: RouterLinkStub,
-        },
-      },
+      projectNavigationTo: (projectId: string) => ({ path: '/dashboard', query: { projectId } }),
+      workbenchNavTo: { path: '/dashboard', query: { projectId: 'p1' } },
+      isWorkbenchNavActive: () => false,
+      isNavActive: () => false,
+      openBusinessLineModal: () => undefined,
+      canCreateProject: true,
+      isBusinessLineManageActive: false,
     })
 
     expect(wrapper.text()).toContain('Retail')
-    expect(wrapper.text()).toContain('AINATIVE')
-    expect(wrapper.text()).toContain('仪表盘')
-    expect(wrapper.text()).toContain('任务')
-    expect(wrapper.text()).not.toContain('用户')
-    expect(wrapper.text()).not.toContain('关于')
+    expect(wrapper.text()).toContain('AINative')
+    expect(wrapper.text()).toContain('工作台')
+    expect(wrapper.text()).toContain('新建任务')
+    expect(wrapper.text()).toContain('知识库')
     expect(wrapper.findAllComponents(RouterLinkStub)[0]?.props('to')).toBe('/home')
 
-    const settingsButton = wrapper.findAll('button').find((button) => button.text() === '设置')
-    expect(settingsButton).toBeDefined()
-    await settingsButton!.trigger('click')
-    expect(openSettings).toHaveBeenCalledTimes(1)
+    const businessLineLink = wrapper
+      .findAllComponents(RouterLinkStub)
+      .find((link) => link.props('to') === '/business-lines')
+    expect(businessLineLink).toBeDefined()
+    expect(businessLineLink?.text()).toContain('业务线')
   })
 
-  it('hides second menu column until a project is selected', () => {
-    const wrapper = mount(Sidebar, {
-      props: {
-        mobileNavOpen: true,
-        sidebarCollapsed: false,
-        currentBusinessLineName: 'Retail',
-        projectItems: [],
-        menuItems: [
-          { id: 'dashboard', label: '仪表盘', to: '/dashboard' },
-          { id: 'tasks', label: '任务', to: '/tasks' },
-        ],
-        showProjectMenuColumn: false,
-        projectNavigationTo: (projectId: string) => ({ path: '/dashboard', query: { projectId } }),
-        projectItemClass: () => '',
-        menuItemClass: () => '',
-        projectShortLabel: (short: string) => short,
-        menuIconFor: () => [],
-        setMobileNavOpen: () => undefined,
-        toggleMenuCollapsed: () => undefined,
-        showProjectTooltip: () => undefined,
-        showMenuTooltip: () => undefined,
-        hideProjectTooltip: () => undefined,
-        openBusinessLineModal: () => undefined,
-        openSettings: () => undefined,
+  it('shows hint when no project is selected', () => {
+    const wrapper = mountWithProvider({
+      currentBusinessLineName: 'Retail',
+      selectedProjectId: '',
+      projectItems: [],
+      hasSelectedProject: false,
+      sidebarCoreTasksKnowledge: {
+        tasks: { id: 'tasks', label: '新建任务', to: '/tasks' },
+        knowledge: { id: 'knowledge', label: '知识库', to: '/knowledge-base' },
       },
-      global: {
-        stubs: {
-          RouterLink: RouterLinkStub,
-        },
-      },
+      projectNavigationTo: (projectId: string) => ({ path: '/dashboard', query: { projectId } }),
+      workbenchNavTo: { path: '/home' },
+      isWorkbenchNavActive: () => false,
+      isNavActive: () => false,
+      openBusinessLineModal: () => undefined,
+      canCreateProject: false,
+      isBusinessLineManageActive: false,
     })
 
     expect(wrapper.text()).toContain('Retail')
+    expect(wrapper.text()).toContain('请先选择项目')
     expect(wrapper.text()).not.toContain('仪表盘')
-    expect(wrapper.text()).not.toContain('任务')
   })
 })

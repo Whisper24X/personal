@@ -1,182 +1,262 @@
 <script setup lang="ts">
-import { RouterLink, type RouteLocationRaw } from 'vue-router'
-import type { MenuItem, ProjectItem } from '@/hooks/core/useLayout'
+import { computed, ref } from 'vue'
+import { RouterLink } from 'vue-router'
+import type { RouteLocationRaw } from 'vue-router'
+import { Building2, BookOpen, LayoutDashboard, ListTodo, Plus } from 'lucide-vue-next'
+import type { ProjectItem } from '@/hooks/core/useLayout'
+import {
+  formatTaskShortTime,
+  taskStatusLabel,
+  useSidebarRecentTasks,
+} from '@/hooks/useSidebarRecentTasks'
 import logoImage from '@/assets/images/logo.svg'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+  SidebarSeparator,
+  useSidebar,
+} from '@/components/ui/sidebar'
+import { Input } from '@/components/ui/input'
 
 defineOptions({
-  name: 'AppSidebar',
+  name: 'AppWorkspaceSidebar',
 })
 
 const props = defineProps<{
-  mobileNavOpen: boolean
-  sidebarCollapsed: boolean
   currentBusinessLineName: string
+  selectedProjectId: string
   projectItems: ProjectItem[]
-  menuItems: MenuItem[]
-  showProjectMenuColumn: boolean
+  hasSelectedProject: boolean
+  sidebarCoreTasksKnowledge: {
+    tasks: { label: string; to: string } | undefined
+    knowledge: { label: string; to: string } | undefined
+  }
   projectNavigationTo: (projectId: string) => RouteLocationRaw
-  projectItemClass: (projectId: string) => string
-  menuItemClass: (to: string) => string
-  projectShortLabel: (short: string) => string
-  menuIconFor: (menuId: MenuItem['id']) => string[]
-  setMobileNavOpen: (open: boolean) => void
-  toggleMenuCollapsed: () => void
-  showProjectTooltip: (event: MouseEvent | FocusEvent, name: string) => void
-  showMenuTooltip: (event: MouseEvent | FocusEvent, label: string) => void
-  hideProjectTooltip: () => void
+  isNavActive: (to: string) => boolean
+  workbenchNavTo: RouteLocationRaw
+  isWorkbenchNavActive: () => boolean
   openBusinessLineModal: () => void
-  openSettings: () => void
+  canCreateProject: boolean
+  isBusinessLineManageActive: boolean
 }>()
+
+const { setOpenMobile } = useSidebar()
+
+const onCreateProject = () => {
+  setOpenMobile(false)
+  props.openBusinessLineModal()
+}
+
+const recentSearchQuery = ref('')
+const { tasks: recentTasks, loading: recentTasksLoading } = useSidebarRecentTasks(
+  () => props.selectedProjectId,
+)
+
+const filteredRecentTasks = computed(() => {
+  const q = recentSearchQuery.value.trim().toLowerCase()
+  if (!q) {
+    return recentTasks.value
+  }
+
+  return recentTasks.value.filter((t) => t.title.toLowerCase().includes(q))
+})
 </script>
 
 <template>
-  <aside
-    id="workspace-nav"
-    class="fixed inset-y-0 left-0 z-50 flex border-r border-sidebar-border bg-sidebar/95 backdrop-blur transition-[width,transform] duration-200 2xl:static 2xl:h-full 2xl:translate-x-0"
-    :class="[
-      props.mobileNavOpen ? 'translate-x-0' : '-translate-x-full',
-      props.showProjectMenuColumn ? (props.sidebarCollapsed ? 'w-[9.25rem]' : 'w-[19rem]') : 'w-[5.25rem]',
-    ]"
-  >
-    <div class="relative z-20 flex h-full min-h-0 w-[5.25rem] flex-col items-center border-r border-sidebar-border px-1">
-      <div class="flex h-16 w-full items-center justify-center border-b border-sidebar-border">
-        <RouterLink
-          to="/home"
-          class="group inline-flex h-11 w-[3.75rem] items-center justify-center rounded-lg transition-transform duration-300 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/55"
-          aria-label="打开首页"
-        >
-          <img
-            :src="logoImage"
-            alt="AINative Logo"
-            class="h-10 w-10 rounded-xl object-contain drop-shadow-sm transition-transform duration-300 group-hover:scale-110"
-          />
-        </RouterLink>
-      </div>
-
-      <div class="w-full flex-1 overflow-y-auto overflow-x-hidden py-2">
-        <div class="flex flex-col items-center gap-1">
-          <RouterLink
-            v-for="item in props.projectItems"
-            :key="item.id"
-            :to="props.projectNavigationTo(item.id)"
-            class="flex h-11 w-[3.75rem] items-center justify-center rounded-lg border text-[11px] font-bold tracking-wider transition-all"
-            :class="props.projectItemClass(item.id)"
-            :aria-label="item.name"
-            :title="item.name"
-            @mouseenter="props.showProjectTooltip($event, item.name)"
-            @mouseleave="props.hideProjectTooltip"
-            @focus="props.showProjectTooltip($event, item.name)"
-            @blur="props.hideProjectTooltip"
-          >
-            {{ props.projectShortLabel(item.short) }}
-          </RouterLink>
-        </div>
-      </div>
-
-      <div class="w-full space-y-2 border-t border-sidebar-border py-2">
-        <button
-          type="button"
-          class="flex w-full items-center justify-center rounded-lg border border-sidebar-border/70 bg-sidebar-accent/40 px-1 py-1.5 text-[10px] font-semibold leading-tight text-sidebar-foreground/80 transition hover:bg-sidebar-accent"
-          :title="`当前业务线：${props.currentBusinessLineName}`"
-          @mouseenter="props.showProjectTooltip($event, props.currentBusinessLineName)"
-          @mouseleave="props.hideProjectTooltip"
-          @focus="props.showProjectTooltip($event, props.currentBusinessLineName)"
-          @blur="props.hideProjectTooltip"
-          @click="props.openBusinessLineModal"
-        >
-          <span class="block text-center">{{ props.currentBusinessLineName }}</span>
-        </button>
-        <button
-          type="button"
-          class="flex h-9 w-full items-center justify-center rounded-lg border border-transparent px-2 text-[11px] font-semibold text-sidebar-foreground/70 transition hover:bg-sidebar-accent hover:text-sidebar-foreground"
-          @click="props.openSettings"
-        >
-          设置
-        </button>
-      </div>
-    </div>
-
-    <div
-      v-if="props.showProjectMenuColumn"
-      class="relative z-10 flex min-h-0 flex-col transition-[width] duration-200"
-      :class="props.sidebarCollapsed ? 'w-16' : 'w-[13.75rem]'"
+  <Sidebar collapsible="icon">
+    <!-- 原型：sidebar-logo — 仅品牌，业务线名放在下方「项目」区 -->
+    <!-- 与顶栏 Header h-14（56px）同高，避免侧栏品牌区约 65px 与主区顶栏错位 -->
+    <SidebarHeader
+      class="h-14 min-h-14 shrink-0 flex-row items-center border-b border-sidebar-border px-2 py-0"
     >
-      <div class="relative flex h-16 items-center border-b border-sidebar-border px-2" :class="props.sidebarCollapsed ? 'justify-center' : 'justify-center px-3'">
-        <div
-          class="inline-flex h-11 cursor-pointer items-center rounded-xl text-sidebar-foreground transition-colors select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-          :class="props.sidebarCollapsed ? 'w-11 justify-center' : 'w-full justify-center px-2'"
-          role="button"
-          tabindex="0"
-          :aria-label="props.sidebarCollapsed ? '展开菜单栏' : '折叠菜单栏'"
-          @click="props.toggleMenuCollapsed"
-          @keydown.enter.prevent="props.toggleMenuCollapsed"
-          @keydown.space.prevent="props.toggleMenuCollapsed"
-        >
-          <span
-            class="font-semibold text-sidebar-foreground"
-            :class="props.sidebarCollapsed ? 'text-base tracking-[0.16em]' : 'text-sm tracking-[0.08em]'"
-          >
-            {{ props.sidebarCollapsed ? 'A' : 'AINATIVE' }}
-          </span>
-        </div>
-        <button
-          class="absolute right-2 inline-flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/60 transition hover:bg-sidebar-accent hover:text-sidebar-foreground 2xl:hidden"
-          type="button"
-          aria-label="关闭菜单"
-          @click="props.setMobileNavOpen(false)"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M18 6L6 18" />
-            <path d="M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-
-      <nav class="flex-1 overflow-y-auto overflow-x-hidden p-2">
-        <div class="space-y-1">
-          <RouterLink
-            v-for="item in props.menuItems"
-            :key="item.id"
-            :to="item.to"
-            class="group relative flex min-h-11 items-center rounded-xl text-sm font-medium transition"
-            :class="[props.menuItemClass(item.to), props.sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-3']"
-            :title="props.sidebarCollapsed ? item.label : undefined"
-            @mouseenter="props.showMenuTooltip($event, item.label)"
-            @mouseleave="props.hideProjectTooltip"
-            @focus="props.showMenuTooltip($event, item.label)"
-            @blur="props.hideProjectTooltip"
-          >
-            <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sidebar-border/70 bg-sidebar-accent/35">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="15"
-                height="15"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
+      <SidebarMenu class="w-full min-w-0">
+        <SidebarMenuItem>
+          <SidebarMenuButton size="lg" as-child>
+            <RouterLink to="/home" class="flex items-center gap-2 overflow-hidden">
+              <div
+                class="flex aspect-square size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"
               >
-                <path v-for="iconPath in props.menuIconFor(item.id)" :key="iconPath" :d="iconPath" />
-              </svg>
-            </span>
-            <span v-if="!props.sidebarCollapsed">{{ item.label }}</span>
-          </RouterLink>
+                <img :src="logoImage" alt="" class="size-6 object-contain" />
+              </div>
+              <span class="truncate font-semibold">AINative</span>
+            </RouterLink>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </SidebarHeader>
+
+    <SidebarContent>
+      <!-- 原型：sidebar-section — 工作台 / 任务 / 知识库 -->
+      <SidebarGroup>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                as-child
+                :is-active="props.isWorkbenchNavActive()"
+                tooltip="工作台（项目仪表盘）"
+              >
+                <RouterLink :to="props.workbenchNavTo">
+                  <LayoutDashboard class="size-4 shrink-0" />
+                  <span>工作台</span>
+                </RouterLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem v-if="props.sidebarCoreTasksKnowledge.tasks">
+              <SidebarMenuButton
+                as-child
+                :is-active="isNavActive(props.sidebarCoreTasksKnowledge.tasks.to)"
+                :tooltip="props.sidebarCoreTasksKnowledge.tasks.label"
+              >
+                <RouterLink :to="props.sidebarCoreTasksKnowledge.tasks.to">
+                  <ListTodo class="size-4 shrink-0" />
+                  <span>{{ props.sidebarCoreTasksKnowledge.tasks.label }}</span>
+                </RouterLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem v-if="props.sidebarCoreTasksKnowledge.knowledge">
+              <SidebarMenuButton
+                as-child
+                :is-active="isNavActive(props.sidebarCoreTasksKnowledge.knowledge.to)"
+                :tooltip="props.sidebarCoreTasksKnowledge.knowledge.label"
+              >
+                <RouterLink :to="props.sidebarCoreTasksKnowledge.knowledge.to">
+                  <BookOpen class="size-4 shrink-0" />
+                  <span>{{ props.sidebarCoreTasksKnowledge.knowledge.label }}</span>
+                </RouterLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      <SidebarSeparator />
+
+      <!-- 原型：sidebar-biz-proj — 「项目 · 业务线名」+ 项目列表 -->
+      <SidebarGroup>
+        <SidebarGroupLabel class="flex flex-wrap items-baseline gap-1">
+          <span>项目</span>
+          <span class="font-normal text-muted-foreground">· {{ props.currentBusinessLineName }}</span>
+        </SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                :disabled="!props.canCreateProject"
+                :title="props.canCreateProject ? '新建项目' : '暂无新建项目权限'"
+                tooltip="新建项目"
+                @click="onCreateProject"
+              >
+                <Plus class="size-4 shrink-0" />
+                <span>新建项目</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem v-for="item in props.projectItems" :key="item.id">
+              <SidebarMenuButton
+                as-child
+                :is-active="props.selectedProjectId === item.id"
+                :tooltip="item.name"
+              >
+                <RouterLink :to="props.projectNavigationTo(item.id)">
+                  <span
+                    class="flex size-6 shrink-0 items-center justify-center rounded-md border border-sidebar-border/70 bg-sidebar-accent/40 text-[10px] font-bold tracking-wide"
+                  >
+                    {{ item.short.slice(0, 4).toUpperCase() }}
+                  </span>
+                  <span class="truncate">{{ item.name }}</span>
+                </RouterLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      <!-- 最近任务：与当前项目同步，可搜索并跳转详情 -->
+      <div
+        class="group-data-[collapsible=icon]:hidden flex min-h-[7rem] w-full min-w-0 flex-1 flex-col gap-2 border-t border-sidebar-border px-2 py-2"
+      >
+        <div class="flex items-center justify-between px-1 pt-1">
+          <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">最近任务</span>
         </div>
-      </nav>
-    </div>
-  </aside>
+        <Input
+          v-model="recentSearchQuery"
+          type="search"
+          placeholder="搜索任务…"
+          class="h-8 border-sidebar-border/80 bg-sidebar-accent/30 text-xs shadow-none md:text-xs"
+          :disabled="!props.hasSelectedProject"
+        />
+        <div class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <p
+            v-if="!props.hasSelectedProject"
+            class="px-1 text-[11px] leading-relaxed text-muted-foreground"
+          >
+            请先选择项目
+          </p>
+          <p
+            v-else-if="recentTasksLoading"
+            class="px-1 text-[11px] text-muted-foreground"
+          >
+            加载中…
+          </p>
+          <p
+            v-else-if="filteredRecentTasks.length === 0"
+            class="px-1 text-[11px] leading-relaxed text-muted-foreground"
+          >
+            {{ recentTasks.length === 0 ? '暂无任务' : '无匹配任务' }}
+          </p>
+          <ul v-else class="flex flex-col gap-0.5">
+            <li v-for="task in filteredRecentTasks" :key="task.id" class="min-w-0">
+              <RouterLink
+                :to="{
+                  name: 'task-detail',
+                  params: { id: task.id },
+                  query: { projectId: task.projectId },
+                }"
+                class="block max-w-full rounded-md px-1.5 py-1.5 text-left transition hover:bg-sidebar-accent"
+                @click="setOpenMobile(false)"
+              >
+                <p
+                  class="line-clamp-2 break-words text-[11px] font-medium leading-snug text-sidebar-foreground"
+                >
+                  {{ task.title }}
+                </p>
+                <p class="mt-0.5 break-words text-[10px] text-muted-foreground">
+                  {{ taskStatusLabel(task.status) }} · {{ formatTaskShortTime(task.updatedAt ?? task.createdAt) }}
+                </p>
+              </RouterLink>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </SidebarContent>
+
+    <!-- 设置已移至顶栏头像下拉；底部仅保留业务线 -->
+    <SidebarFooter class="border-t border-sidebar-border p-2">
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            as-child
+            class="h-9 w-full justify-center gap-1.5 text-xs"
+            :is-active="props.isBusinessLineManageActive"
+          >
+            <RouterLink to="/business-lines" @click="setOpenMobile(false)">
+              <Building2 class="size-3.5 shrink-0" />
+              <span>业务线</span>
+            </RouterLink>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </SidebarFooter>
+
+    <SidebarRail />
+  </Sidebar>
 </template>

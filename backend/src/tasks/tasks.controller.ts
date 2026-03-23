@@ -19,6 +19,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -35,6 +36,8 @@ import {
   InfinityPaginationResponseDto,
 } from '../utils/dto/infinity-pagination-response.dto';
 import { FindAllTasksDto } from './dto/find-all-tasks.dto';
+import { FindTaskStatsDto } from './dto/find-task-stats.dto';
+import { TaskStatusCountsDto } from './dto/task-status-counts.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { TaskDetailDto } from './dto/task-detail.dto';
 import { RetryTaskDto } from './dto/retry-task.dto';
@@ -74,6 +77,16 @@ import { ListWorktreeFilesDto } from './dto/list-worktree-files.dto';
 import { TaskWorkspaceService } from './task-workspace.service';
 import { TaskGitService } from './task-git.service';
 import { TaskTerminalService } from './task-terminal.service';
+import { TaskStepLabelSummaryService } from './application/task-step-label-summary.service';
+import {
+  StepSummariesRequestDto,
+  StepSummariesResponseDto,
+} from './dto/step-summaries.dto';
+import {
+  SuggestTaskTitleRequestDto,
+  SuggestTaskTitleResponseDto,
+} from './dto/suggest-task-title.dto';
+import { TaskTitleSuggestionService } from './application/task-title-suggestion.service';
 
 @ApiTags('Tasks')
 @ApiBearerAuth()
@@ -88,7 +101,20 @@ export class TasksController {
     private readonly taskWorkspaceService: TaskWorkspaceService,
     private readonly taskGitService: TaskGitService,
     private readonly taskTerminalService: TaskTerminalService,
+    private readonly taskStepLabelSummaryService: TaskStepLabelSummaryService,
+    private readonly taskTitleSuggestionService: TaskTitleSuggestionService,
   ) {}
+
+  @Post('suggest-title')
+  @ApiBody({ type: SuggestTaskTitleRequestDto })
+  @ApiOkResponse({ type: SuggestTaskTitleResponseDto })
+  @HttpCode(HttpStatus.OK)
+  suggestTaskTitle(
+    @Request() request,
+    @Body() body: SuggestTaskTitleRequestDto,
+  ): Promise<SuggestTaskTitleResponseDto> {
+    return this.taskTitleSuggestionService.suggestTitle(request.user, body);
+  }
 
   @Post()
   @ApiCreatedResponse({ type: Task })
@@ -124,6 +150,19 @@ export class TasksController {
         page,
         limit,
       },
+    );
+  }
+
+  @Get('stats')
+  @ApiOkResponse({ type: TaskStatusCountsDto })
+  @HttpCode(HttpStatus.OK)
+  async taskStats(
+    @Request() request,
+    @Query() query: FindTaskStatsDto,
+  ): Promise<TaskStatusCountsDto> {
+    return this.tasksService.countByStatusForProject(
+      query.projectId,
+      request.user,
     );
   }
 
@@ -184,6 +223,23 @@ export class TasksController {
   @HttpCode(HttpStatus.OK)
   messages(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
     return this.tasksService.listMessages(id, request.user);
+  }
+
+  @Post(':id/step-summaries')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiBody({ type: StepSummariesRequestDto })
+  @ApiOkResponse({ type: StepSummariesResponseDto })
+  @HttpCode(HttpStatus.OK)
+  summarizeStepLabels(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: StepSummariesRequestDto,
+  ): Promise<StepSummariesResponseDto> {
+    return this.taskStepLabelSummaryService.summarizeStepLabels(
+      id,
+      request.user,
+      body,
+    );
   }
 
   @Post(':id/execute')

@@ -14,7 +14,8 @@ describe('systemRoutes compatibility redirects', () => {
     const usersRoute = findByPath('/users')
     const settingsRoute = findByPath('/settings')
 
-    expect(businessLinesRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'business-lines' } })
+    expect(businessLinesRoute?.name).toBe('business-lines-manage')
+    expect(typeof businessLinesRoute?.component).toBe('function')
     expect(projectsRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'projects' } })
     expect(usersRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'users' } })
     expect(settingsRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'account' } })

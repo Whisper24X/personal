@@ -311,7 +311,7 @@ export const ROUTE_ACCESS_CONFIG = {
     capabilities: [],
   },
   businessLines: {
-    title: '业务线',
+    title: '业务线管理',
     capabilities: [],
   },
   projects: {
@@ -359,7 +359,7 @@ export type ProjectMenuAccessItem = {
 
 export const PROJECT_MENU_ACCESS_CONFIG = [
   { id: 'dashboard', label: '仪表盘', to: '/dashboard', capabilities: ['project.dashboard.read'] },
-  { id: 'tasks', label: '任务', to: '/tasks', capabilities: ['project.task.read'] },
+  { id: 'tasks', label: '新建任务', to: '/tasks', capabilities: ['project.task.read'] },
   { id: 'kanban', label: '看板', to: '/kanban', capabilities: ['project.kanban.read'] },
   { id: 'automations', label: '自动化', to: '/automations', capabilities: ['project.automation.read'] },
   { id: 'knowledge', label: '知识库', to: '/knowledge-base', capabilities: ['project.knowledge.read'] },

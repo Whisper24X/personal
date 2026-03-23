@@ -10,6 +10,7 @@ import { FindTaskLogsDto } from './dto/find-task-logs.dto';
 import { ReplyTaskDto } from './dto/reply-task.dto';
 import { RetryTaskDto } from './dto/retry-task.dto';
 import { TaskDetailDto } from './dto/task-detail.dto';
+import { TaskStatusCountsDto } from './dto/task-status-counts.dto';
 import { TaskMessageDto } from './dto/task-message.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { TaskAccessService } from './application/task-access.service';
@@ -59,6 +60,16 @@ export class TasksService implements OnModuleInit, OnModuleDestroy {
       query,
       currentUser,
     });
+  }
+
+  async countByStatusForProject(
+    projectId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<TaskStatusCountsDto> {
+    return this.taskQueryService.countByStatusForProject(
+      projectId,
+      currentUser,
+    );
   }
 
   async findById(

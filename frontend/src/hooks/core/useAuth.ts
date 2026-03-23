@@ -14,6 +14,8 @@ export const useAuth = () => {
 
     try {
       const result = await authApi.login(payload)
+      const { useAccessStore } = await import('@/stores/modules/access')
+      useAccessStore().clear()
       userStore.setToken(result.token)
       userStore.setProfile(userStore.mapUserToProfile(result.user))
       return result

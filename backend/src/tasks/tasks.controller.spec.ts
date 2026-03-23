@@ -42,12 +42,20 @@ describe('TasksController', () => {
       stopSession: jest.fn(),
       openSessionStream: jest.fn(),
     };
+    const taskStepLabelSummaryService = {
+      summarizeStepLabels: jest.fn(),
+    };
+    const taskTitleSuggestionService = {
+      suggestTitle: jest.fn(),
+    };
 
     const controller = new TasksController(
       tasksService as never,
       taskWorkspaceService as never,
       taskGitService as never,
       taskTerminalService as never,
+      taskStepLabelSummaryService as never,
+      taskTitleSuggestionService as never,
     );
     const observable = await controller.stream(
       {

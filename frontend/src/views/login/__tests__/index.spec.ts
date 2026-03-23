@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import LoginView from '@/views/login/index.vue'
-import { projectsApi } from '@/api/projects'
+import { businessLinesApi } from '@/api/business-lines'
 import { useMessageStore } from '@/stores/modules/message'
 
 const { loginMock, registerMock, pushMock } = vi.hoisted(() => ({
@@ -34,23 +34,20 @@ vi.mock('@/hooks', async (importOriginal) => {
   }
 })
 
-vi.mock('@/api/projects', () => ({
-  projectsApi: {
+vi.mock('@/api/business-lines', () => ({
+  businessLinesApi: {
     list: vi.fn(),
   },
 }))
 
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.mocked(projectsApi.list).mockResolvedValue({
+  vi.mocked(businessLinesApi.list).mockResolvedValue({
     data: [
       {
-        id: 'project-1',
-        name: 'Project 1',
-        businessLineId: 'line-1',
+        id: 'line-1',
+        name: 'Line 1',
         description: '',
-        gitUrl: 'https://git.example.com/p1.git',
-        defaultBranch: 'main',
       },
     ],
     hasNextPage: false,
@@ -131,7 +128,7 @@ describe('LoginView toasts', () => {
     expect(messageStore.items[0]?.text).toBe('注册成功，已自动登录')
   })
 
-  it('redirects to home after login when user has no available project', async () => {
+  it('redirects to home after login when user has no business line', async () => {
     loginMock.mockResolvedValue({
       token: 'token',
       refreshToken: 'refresh',
@@ -142,7 +139,7 @@ describe('LoginView toasts', () => {
         nickname: 'Alice',
       },
     })
-    vi.mocked(projectsApi.list).mockResolvedValue({
+    vi.mocked(businessLinesApi.list).mockResolvedValue({
       data: [],
       hasNextPage: false,
     })

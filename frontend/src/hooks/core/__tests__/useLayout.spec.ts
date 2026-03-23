@@ -154,7 +154,7 @@ describe('useLayout business line selection', () => {
     localStorage.setItem(STORAGE_KEYS.lastSelectedProjectId, 'project-1')
   })
 
-  it('keeps manually selected business line and clears project until user reselects one', async () => {
+  it('keeps manually selected business line and defaults to the first project in that line', async () => {
     setActivePinia(createPinia())
 
     const Harness = defineComponent({
@@ -177,13 +177,13 @@ describe('useLayout business line selection', () => {
     expect(wrapper.get('[data-testid="selected-project"]').text()).toBe('project-1')
     expect(wrapper.get('[data-testid="current-project"]').text()).toBe('Project 1')
 
-    ;(wrapper.vm as { selectBusinessLine: (businessLineId: string) => void }).selectBusinessLine('line-2')
-    await nextTick()
+    await (wrapper.vm as { selectBusinessLine: (businessLineId: string) => Promise<void> }).selectBusinessLine('line-2')
+    await flushPromises()
 
     expect(wrapper.get('[data-testid="active-line"]').text()).toBe('line-2')
-    expect(wrapper.get('[data-testid="selected-project"]').text()).toBe('')
-    expect(wrapper.get('[data-testid="current-project"]').text()).toBe('未选择项目')
-    expect(localStorage.getItem(STORAGE_KEYS.lastSelectedProjectId)).toBeNull()
+    expect(wrapper.get('[data-testid="selected-project"]').text()).toBe('project-2')
+    expect(wrapper.get('[data-testid="current-project"]').text()).toBe('Project 2')
+    expect(localStorage.getItem(STORAGE_KEYS.lastSelectedProjectId)).toBe('project-2')
   })
 
   it('uses unique project short labels when names share the same prefix', async () => {
@@ -331,9 +331,31 @@ describe('useLayout business line selection', () => {
     expect(wrapper.get('[data-testid="current-project"]').text()).toBe('Project 1')
   })
 
-  it('does not auto select the first project when there is no route or stored project', async () => {
+  it('auto selects the first project when single business line and no route or stored project', async () => {
     setActivePinia(createPinia())
     localStorage.removeItem(STORAGE_KEYS.lastSelectedProjectId)
+    localStorage.removeItem(STORAGE_KEYS.lastActiveBusinessLineId)
+
+    businessLinesApi.list.mockResolvedValue({
+      data: [{ id: 'line-1', name: 'Line 1', description: '', owner: '-' }],
+      hasNextPage: false,
+    })
+
+    projectsApi.list.mockResolvedValue({
+      data: [
+        {
+          id: 'project-1',
+          name: 'Project 1',
+          businessLineId: 'line-1',
+          description: '',
+          gitUrl: 'https://git.example.com/p1.git',
+          defaultBranch: 'main',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      hasNextPage: false,
+    })
 
     const Harness = defineComponent({
       setup() {
@@ -352,8 +374,8 @@ describe('useLayout business line selection', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="active-line"]').text()).toBe('line-1')
-    expect(wrapper.get('[data-testid="selected-project"]').text()).toBe('')
-    expect(wrapper.get('[data-testid="has-selected-project"]').text()).toBe('0')
+    expect(wrapper.get('[data-testid="selected-project"]').text()).toBe('project-1')
+    expect(wrapper.get('[data-testid="has-selected-project"]').text()).toBe('1')
   })
 
   it('navigates to stored menu path when selecting project from non-menu route', async () => {

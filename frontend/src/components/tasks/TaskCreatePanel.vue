@@ -85,7 +85,6 @@ const createForm = reactive({
   agentCliId: '' as SupportedCliToolId | '',
   agentCliConfigId: '',
   gitBaseBranch: '',
-  title: '',
   prompt: '',
 })
 
@@ -159,7 +158,6 @@ const resetCreateForm = (projectId?: string) => {
   createForm.agentCliId = configuredCliTools.value[0]?.id ?? ''
   createForm.agentCliConfigId = ''
   createForm.gitBaseBranch = nextProject?.defaultBranch?.trim() || ''
-  createForm.title = ''
   createForm.prompt = ''
   selectedFiles.value = []
   syncAgentToolConfigsForSelectedTool()
@@ -377,31 +375,55 @@ const refreshAccessContext = async (projectId: string) => {
   }
 }
 
+/**
+ * 优先用当前上下文的单个项目详情（与侧栏一致），避免拉全量项目分页。
+ * 无有效 projectId 或 detail 失败时再退回 list。
+ */
+const loadProjectsForForm = async () => {
+  const preferredId = createForm.projectId.trim() || resolveProjectIdFromContext().trim()
+
+  if (preferredId) {
+    try {
+      const project = await projectsApi.detail(preferredId)
+      projects.value = [project]
+      createForm.projectId = project.id
+      return
+    } catch {
+      // detail 不可用（如临时网络错误）时退回全量列表，与旧行为一致
+    }
+  }
+
+  const projectResponse = await fetchAllPages((page, limit) => projectsApi.list({ page, limit }))
+  projects.value = projectResponse
+
+  const contextProjectId = resolveProjectIdFromContext()
+  const hasContextProject = projectResponse.some((project) => project.id === contextProjectId)
+
+  if (hasContextProject) {
+    createForm.projectId = contextProjectId
+  } else if (
+    !createForm.projectId ||
+    !projectResponse.some((project) => project.id === createForm.projectId)
+  ) {
+    createForm.projectId = ''
+  }
+}
+
 const loadPageData = async () => {
   loading.value = true
   try {
-    const projectResponse = await fetchAllPages((page, limit) => projectsApi.list({ page, limit }))
-    projects.value = projectResponse
-
-    const contextProjectId = resolveProjectIdFromContext()
-    const hasContextProject = projectResponse.some((project) => project.id === contextProjectId)
-
-    if (hasContextProject) {
-      createForm.projectId = contextProjectId
-    } else if (
-      !createForm.projectId ||
-      !projectResponse.some((project) => project.id === createForm.projectId)
-    ) {
-      createForm.projectId = ''
-    }
-
+    await loadProjectsForForm()
     await refreshAccessContext(createForm.projectId)
 
-    await Promise.all([
-      loadTemplatesForProject(createForm.projectId),
-      loadConversationCliOptions(createForm.projectId),
-      loadBranchesForProject(createForm.projectId),
-    ])
+    const pid = createForm.projectId
+    const parallel: Promise<unknown>[] = [
+      loadConversationCliOptions(pid),
+      loadBranchesForProject(pid),
+    ]
+    if (createForm.mode === 'workflow') {
+      parallel.push(loadTemplatesForProject(pid))
+    }
+    await Promise.all(parallel)
   } catch (error) {
     message.error(toErrorMessage(error, '加载任务页面失败'))
   } finally {
@@ -479,11 +501,6 @@ const createTask = async () => {
     return
   }
 
-  if (!createForm.title.trim()) {
-    showValidationError('请填写任务标题')
-    return
-  }
-
   if (!createForm.prompt.trim()) {
     showValidationError('请填写提示词')
     return
@@ -510,10 +527,28 @@ const createTask = async () => {
 
   try {
     const project = projects.value.find((item) => item.id === projectIdForSubmit)
+    const suggestPayload =
+      createForm.mode === 'conversation'
+        ? {
+            projectId: projectIdForSubmit,
+            mode: createForm.mode,
+            prompt: createForm.prompt.trim(),
+            agentCliId: createForm.agentCliId || undefined,
+            agentCliConfigId: createForm.agentCliConfigId || undefined,
+          }
+        : {
+            projectId: projectIdForSubmit,
+            mode: createForm.mode,
+            prompt: createForm.prompt.trim(),
+            workflowTemplateId: createForm.workflowTemplateId || undefined,
+          }
+
+    const { title: generatedTitle } = await tasksApi.suggestTaskTitle(suggestPayload)
+
     const task = await tasksApi.create({
       projectId: projectIdForSubmit,
       mode: createForm.mode,
-      title: createForm.title.trim(),
+      title: generatedTitle.trim(),
       prompt: createForm.prompt.trim(),
       gitBaseBranch: createForm.gitBaseBranch.trim() || project?.defaultBranch?.trim() || undefined,
       configJson: {
@@ -557,11 +592,14 @@ watch(
     }
 
     await refreshAccessContext(projectId)
-    await Promise.all([
-      loadTemplatesForProject(projectId),
+    const parallel: Promise<unknown>[] = [
       loadConversationCliOptions(projectId),
       loadBranchesForProject(projectId),
-    ])
+    ]
+    if (createForm.mode === 'workflow') {
+      parallel.push(loadTemplatesForProject(projectId))
+    }
+    await Promise.all(parallel)
   },
 )
 
@@ -592,12 +630,14 @@ watch(
 
 watch(
   () => createForm.mode,
-  (mode) => {
+  async (mode) => {
     if (mode === 'conversation') {
       createForm.workflowTemplateId = ''
       syncAgentToolConfigsForSelectedTool()
       return
     }
+
+    await loadTemplatesForProject(createForm.projectId)
 
     if (!createForm.workflowTemplateId && templates.value.length > 0) {
       createForm.workflowTemplateId = templates.value[0]?.id ?? ''
@@ -675,17 +715,12 @@ onBeforeUnmount(() => {
           @submit.prevent="createTask"
         >
           <div class="px-5 pt-5 sm:px-6 sm:pt-6">
-            <input
-              v-model="createForm.title"
-              type="text"
-              class="h-14 w-full border-0 border-b border-border bg-transparent px-1 text-2xl font-semibold text-foreground outline-none placeholder:text-muted-foreground/85"
-              placeholder="标题"
-            />
-
             <textarea
               v-model="createForm.prompt"
-              class="mt-4 min-h-[320px] w-full resize-none border-0 bg-transparent px-1 text-lg text-foreground outline-none placeholder:text-muted-foreground"
-              placeholder="提示词"
+              class="min-h-[360px] w-full resize-none border-0 bg-transparent px-1 text-lg text-foreground outline-none placeholder:text-muted-foreground"
+              :placeholder="
+                createForm.mode === 'conversation' ? '解决简单需求...' : '解决复杂需求...'
+              "
             />
           </div>
 
@@ -754,7 +789,7 @@ onBeforeUnmount(() => {
                   "
                   @click="createForm.mode = 'conversation'"
                 >
-                  对话模式
+                  对话
                 </button>
                 <button
                   type="button"
@@ -766,7 +801,7 @@ onBeforeUnmount(() => {
                   "
                   @click="createForm.mode = 'workflow'"
                 >
-                  工作流模式
+                  工作流
                 </button>
               </div>
 
@@ -933,10 +968,34 @@ onBeforeUnmount(() => {
         </form>
       </template>
     </div>
+
+    <Teleport to="body">
+      <Transition name="create-task-overlay">
+        <div
+          v-if="submitting"
+          class="fixed inset-0 z-[200] flex items-center justify-center bg-background/85 backdrop-blur-sm"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <p class="px-6 text-center text-base font-medium text-foreground">正在创建任务，请稍后...</p>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
+.create-task-overlay-enter-active,
+.create-task-overlay-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.create-task-overlay-enter-from,
+.create-task-overlay-leave-to {
+  opacity: 0;
+}
+
 .headline-fade-enter-active,
 .headline-fade-leave-active {
   transition: opacity 0.45s ease;

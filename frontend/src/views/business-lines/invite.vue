@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { businessLinesApi } from '@/api/business-lines'
 import { useMessage } from '@/hooks'
-import { SETTINGS_QUERY_KEY } from '@/types/common/settings'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
 defineOptions({
@@ -49,12 +48,7 @@ const acceptInvite = async () => {
 }
 
 const goToBusinessLineSettings = () => {
-  void router.push({
-    path: '/dashboard',
-    query: {
-      [SETTINGS_QUERY_KEY]: 'business-lines',
-    },
-  })
+  void router.push({ name: 'business-lines-manage' })
 }
 </script>
 

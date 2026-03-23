@@ -1,13 +1,25 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 import type { TaskMessage } from '@/types/api/tasks'
 import { parseGeminiMessages } from './parser'
-import { groupGeminiEntries, type GeminiMessageGroup } from './groupEntries'
+import { groupGeminiEntries, type GeminiMessageGroup, type GeminiTaskGroup } from './groupEntries'
 import TaskGroupCard from './TaskGroupCard.vue'
 import UserMessage from './UserMessage.vue'
 import AssistantMessage from './AssistantMessage.vue'
+import AssistantMessageShell from '../AssistantMessageShell.vue'
+import AssistantTaskStepBar from '../AssistantTaskStepBar.vue'
+import AssistantTurnContentBubble from '../AssistantTurnContentBubble.vue'
+import { mergeAssistantTurns } from '../mergeAssistantTurns'
 import type { NormalizedEntry } from '../types'
-import { formatTime, getString } from '../utils'
+import { collapseDetailWhenTurnDone } from '../taskGroupCollapse'
+import { assistantStepSummariesKey } from '../stepSummaryKeys'
+import {
+  buildStepBarClaudeLike,
+  mergeStepBarLabelsWithSummaries,
+  prepareTaskGroupsForStepBar,
+  type StepBarModel,
+} from '../taskGroupStepState'
+import { assistantTurnTimeLabel, getString } from '../utils'
 
 defineOptions({ name: 'CliGeminiRenderer' })
 
@@ -15,8 +27,22 @@ const props = defineProps<{
   messages: TaskMessage[]
 }>()
 
+const stepSummaries = inject(assistantStepSummariesKey, undefined)
+
 const entries = computed(() => parseGeminiMessages(props.messages))
 const groups = computed(() => groupGeminiEntries(entries.value))
+const turns = computed(() =>
+  mergeAssistantTurns(groups.value, (g: GeminiMessageGroup) => g.type === 'other' && g.entry.type === 'user_message'),
+)
+
+const assistantStepBars = computed(() =>
+  turns.value.map((turn, tIdx) => {
+    if (turn.kind !== 'assistant') return null
+    const model = geminiStepBarModel(turn.items)
+    if (!model) return null
+    return mergeStepBarLabelsWithSummaries(model, tIdx, stepSummaries?.value)
+  }),
+)
 
 function isResultEntry(entry: NormalizedEntry) {
   return entry.metadata?.isResult === true
@@ -31,65 +57,85 @@ function formatStatus(entry: NormalizedEntry): string {
   return status ? status.replace(/[_-]+/g, ' ') : 'completed'
 }
 
-function getGroupKey(group: GeminiMessageGroup): string {
-  return group.id
+function geminiStepBarModel(items: GeminiMessageGroup[]): StepBarModel | null {
+  const allTasks = items.filter((g): g is GeminiTaskGroup => g.type === 'task')
+  const hasSessionResult = items.some((g) => g.type === 'other' && isResultEntry(g.entry))
+  const tasks = prepareTaskGroupsForStepBar(allTasks, hasSessionResult)
+  return buildStepBarClaudeLike(tasks)
 }
+
+function geminiTurnFinished(items: GeminiMessageGroup[]): boolean {
+  return items.some((g) => g.type === 'other' && isResultEntry(g.entry))
+}
+
 </script>
 
 <template>
   <div v-if="groups.length > 0" class="space-y-3">
-    <template v-for="group in groups" :key="getGroupKey(group)">
-      <TaskGroupCard v-if="group.type === 'task'" :group="group" />
+    <template v-for="(turn, tIdx) in turns" :key="tIdx">
+      <UserMessage v-if="turn.kind === 'user' && turn.item.type === 'other'" :entry="turn.item.entry" />
 
-      <UserMessage
-        v-else-if="group.type === 'other' && group.entry.type === 'user_message'"
-        :entry="group.entry"
-      />
-
-      <div
-        v-else-if="group.type === 'other' && group.entry.type === 'assistant_message'"
-        class="rounded-lg border border-border/50 bg-background px-3 py-2.5"
+      <AssistantMessageShell
+        v-else-if="turn.kind === 'assistant'"
+        :time-label="assistantTurnTimeLabel(turn.items)"
+        :wrap-body="false"
       >
-        <AssistantMessage :content="group.entry.content" />
-      </div>
+        <div class="space-y-3">
+          <AssistantTurnContentBubble>
+            <template v-for="(group, idx) in turn.items" :key="idx">
+              <TaskGroupCard
+                v-if="group.type === 'task'"
+                embedded
+                :group="group"
+                :collapse-detail-when-done="collapseDetailWhenTurnDone(geminiTurnFinished(turn.items), idx, turn.items)"
+              />
 
-      <div
-        v-else-if="group.type === 'other' && isResultEntry(group.entry)"
-        class="flex flex-wrap items-center gap-2 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-600"
-      >
-        <span>✓</span>
-        <span class="font-medium">Completed</span>
-        <span class="text-muted-foreground">{{ formatStatus(group.entry) }}</span>
-        <span class="ml-auto text-muted-foreground">{{ formatTime(group.entry.timestamp) }}</span>
-      </div>
+              <div
+                v-else-if="group.type === 'other' && group.entry.type === 'assistant_message'"
+                class="border-0 bg-muted/30 p-3.5 text-sm leading-relaxed text-foreground"
+              >
+                <AssistantMessage :content="group.entry.content" />
+              </div>
 
-      <div
-        v-else-if="group.type === 'other' && isInitEntry(group.entry)"
-        class="flex flex-wrap items-center gap-2 rounded-md border border-border/30 bg-muted/20 px-3 py-2 text-xs text-muted-foreground"
-      >
-        <span>⚙</span>
-        <span class="font-medium text-foreground">{{ group.entry.content }}</span>
-        <span class="ml-auto">{{ formatTime(group.entry.timestamp) }}</span>
-      </div>
+              <div
+                v-else-if="group.type === 'other' && isResultEntry(group.entry)"
+                class="flex flex-wrap items-center gap-2 border-0 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-600"
+              >
+              <span>✓</span>
+              <span class="font-medium">Completed</span>
+              <span class="text-muted-foreground">{{ formatStatus(group.entry) }}</span>
+              </div>
 
-      <div
-        v-else-if="group.type === 'other' && group.entry.type === 'error'"
-        class="rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2"
-      >
-        <div class="flex items-center gap-2 text-xs">
-          <span class="text-red-500">⚠</span>
-          <span class="font-medium text-red-600">Error</span>
-          <span class="ml-auto text-muted-foreground">{{ formatTime(group.entry.timestamp) }}</span>
+              <div
+                v-else-if="group.type === 'other' && isInitEntry(group.entry)"
+                class="flex flex-wrap items-center gap-2 border-0 bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
+              >
+              <span>⚙</span>
+              <span class="font-medium text-foreground">{{ group.entry.content }}</span>
+              </div>
+
+              <div
+                v-else-if="group.type === 'other' && group.entry.type === 'error'"
+                class="border-0 bg-red-500/5 px-3 py-2"
+              >
+              <div class="flex items-center gap-2 text-xs">
+                <span class="text-red-500">⚠</span>
+                <span class="font-medium text-red-600">Error</span>
+              </div>
+              <p class="mt-1 whitespace-pre-wrap text-sm text-red-600">{{ group.entry.content }}</p>
+              </div>
+
+              <div
+                v-else-if="group.type === 'other'"
+                class="border-0 bg-muted/30 p-3.5 text-sm leading-relaxed text-foreground"
+              >
+                <AssistantMessage :content="group.entry.content" />
+              </div>
+            </template>
+          </AssistantTurnContentBubble>
+          <AssistantTaskStepBar v-if="assistantStepBars[tIdx]" v-bind="assistantStepBars[tIdx]!" />
         </div>
-        <p class="mt-1 whitespace-pre-wrap text-sm text-red-600">{{ group.entry.content }}</p>
-      </div>
-
-      <div
-        v-else-if="group.type === 'other'"
-        class="px-2 py-1 text-xs text-muted-foreground"
-      >
-        <AssistantMessage :content="group.entry.content" />
-      </div>
+      </AssistantMessageShell>
     </template>
   </div>
   <div v-else class="flex h-full items-center justify-center text-sm text-muted-foreground">

@@ -50,6 +50,7 @@ export const useUserStore = defineStore('user', () => {
     await authApi.logout()
     const { useAccessStore } = await import('./access')
     useAccessStore().clear()
+    localStorage.removeItem(STORAGE_KEYS.lastActiveBusinessLineId)
     setToken(null)
     setProfile(null)
   }

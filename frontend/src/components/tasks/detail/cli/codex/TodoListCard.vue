@@ -11,6 +11,7 @@ type TodoListItem = {
 
 const props = defineProps<{
   entry: NormalizedEntry
+  embedded?: boolean
 }>()
 
 const todoItems = computed<TodoListItem[]>(() => {
@@ -34,11 +35,14 @@ const totalCount = computed(() => todoItems.value.length)
 const isCompleted = computed(() => props.entry.metadata?.status === 'success')
 const progressText = computed(() => `${completedCount.value}/${totalCount.value}`)
 const statusText = computed(() => (isCompleted.value ? '已完成' : '进行中'))
-const containerClass = computed(() =>
-  isCompleted.value
+const containerClass = computed(() => {
+  if (props.embedded) {
+    return isCompleted.value ? 'bg-emerald-500/5' : 'bg-amber-500/5'
+  }
+  return isCompleted.value
     ? 'border-emerald-500/20 bg-emerald-500/5'
-    : 'border-amber-500/20 bg-amber-500/5',
-)
+    : 'border-amber-500/20 bg-amber-500/5'
+})
 const badgeClass = computed(() =>
   isCompleted.value
     ? 'bg-emerald-500/10 text-emerald-700'
@@ -53,7 +57,13 @@ function toggleCollapsed() {
 </script>
 
 <template>
-  <div class="rounded-xl border px-4 py-3 shadow-sm" :class="containerClass">
+  <div
+    class="px-4 py-3"
+    :class="[
+      embedded ? 'rounded-none border-0 px-3 py-3 shadow-none' : 'rounded-xl border shadow-sm',
+      containerClass,
+    ]"
+  >
     <button
       type="button"
       class="flex w-full flex-wrap items-center gap-2 text-left text-xs"

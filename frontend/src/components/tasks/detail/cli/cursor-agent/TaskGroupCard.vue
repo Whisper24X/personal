@@ -7,7 +7,15 @@ import type { NormalizedEntry } from '../types'
 
 const props = defineProps<{
   group: CursorTaskGroup
+  collapseDetailWhenDone?: boolean
+  embedded?: boolean
 }>()
+
+const rootClass = computed(() =>
+  props.embedded
+    ? 'rounded-none border-0 bg-transparent shadow-none'
+    : 'rounded-lg border border-border/50 bg-background',
+)
 
 const isRunning = computed(() =>
   props.group.tools.some((t) => t.metadata?.status === 'running' || t.metadata?.status === 'pending'),
@@ -15,9 +23,26 @@ const isRunning = computed(() =>
 
 const collapsed = ref(!isRunning.value)
 
-watch(isRunning, (running) => {
-  if (running) collapsed.value = false
-})
+watch(
+  () => [isRunning.value, props.collapseDetailWhenDone] as const,
+  ([running, pref]) => {
+    // 本轮已结束：优先折叠，避免历史日志里残留的 running/pending 在刷新后把卡片撑开
+    if (pref === true) {
+      collapsed.value = true
+      return
+    }
+    if (running) {
+      collapsed.value = false
+      return
+    }
+    if (pref === false) {
+      collapsed.value = false
+      return
+    }
+    collapsed.value = true
+  },
+  { immediate: true },
+)
 
 type ToolPairItem = { kind: 'tool'; tool: NormalizedEntry; result?: NormalizedEntry }
 type ThinkingItem = { kind: 'thinking'; entry: NormalizedEntry }
@@ -56,7 +81,7 @@ const thinkingExpanded = ref(false)
 </script>
 
 <template>
-  <div class="rounded-lg border border-border/50 bg-background">
+  <div :class="rootClass">
     <div
       class="flex cursor-pointer items-start gap-2 px-3 py-2.5"
       @click="collapsed = !collapsed"

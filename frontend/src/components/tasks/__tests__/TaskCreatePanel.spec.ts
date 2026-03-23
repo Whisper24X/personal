@@ -26,9 +26,11 @@ const {
   },
   tasksApi: {
     create: vi.fn(),
+    suggestTaskTitle: vi.fn().mockResolvedValue({ title: 'AI 生成的标题' }),
   },
   projectsApi: {
     list: vi.fn(),
+    detail: vi.fn(),
   },
   workflowApi: {
     list: vi.fn(),
@@ -115,16 +117,16 @@ describe('TaskCreatePanel', () => {
     routeState.query = {}
     routeState.params = {}
 
+    const sampleProject = {
+      id: 'project-1',
+      businessLineId: 'line-1',
+      name: 'AINative',
+      gitUrl: 'git@example.com:group/ainative.git',
+      defaultBranch: 'main',
+    }
+    projectsApi.detail.mockResolvedValue(sampleProject)
     projectsApi.list.mockResolvedValue({
-      data: [
-        {
-          id: 'project-1',
-          businessLineId: 'line-1',
-          name: 'AINative',
-          gitUrl: 'git@example.com:group/ainative.git',
-          defaultBranch: 'main',
-        },
-      ],
+      data: [sampleProject],
       hasNextPage: false,
     })
     workflowApi.list.mockResolvedValue({
@@ -181,15 +183,16 @@ describe('TaskCreatePanel', () => {
 
     await flushPromises()
 
-    await wrapper.find('input[placeholder="标题"]').setValue('实现任务字段补齐')
-    await wrapper.find('textarea[placeholder="提示词"]').setValue('请补齐创建任务字段')
+    await wrapper.find('textarea[placeholder*="提示词"]').setValue('请补齐创建任务字段')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
+    expect(tasksApi.suggestTaskTitle).toHaveBeenCalledTimes(1)
     expect(tasksApi.create).toHaveBeenCalledTimes(1)
     const payload = tasksApi.create.mock.calls[0]![0] as Record<string, unknown>
 
     expect(payload.projectId).toBe('project-1')
+    expect(payload.title).toBe('AI 生成的标题')
     expect(payload.mode).toBe('conversation')
     expect(payload.gitBaseBranch).toBe('main')
 
@@ -233,11 +236,11 @@ describe('TaskCreatePanel', () => {
     await workflowModeButton!.trigger('click')
     await flushPromises()
 
-    await wrapper.find('input[placeholder="标题"]').setValue('分析项目')
-    await wrapper.find('textarea[placeholder="提示词"]').setValue('请先分析项目结构')
+    await wrapper.find('textarea[placeholder*="提示词"]').setValue('请先分析项目结构')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
+    expect(tasksApi.suggestTaskTitle).toHaveBeenCalledTimes(1)
     expect(tasksApi.create).toHaveBeenCalledTimes(1)
     const payload = tasksApi.create.mock.calls[0]![0] as Record<string, unknown>
 
@@ -257,8 +260,7 @@ describe('TaskCreatePanel', () => {
 
     await flushPromises()
 
-    await wrapper.find('input[placeholder="标题"]').setValue('修复任务分支选择')
-    await wrapper.find('textarea[placeholder="提示词"]').setValue('请在指定分支上执行任务')
+    await wrapper.find('textarea[placeholder*="提示词"]').setValue('请在指定分支上执行任务')
     await selectOption(wrapper, '分支', 'release/2026.03')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
