@@ -31,6 +31,8 @@ RUN curl -fsSL https://opencode.ai/install | bash \
 RUN npm i -g @anthropic-ai/claude-code@latest @openai/codex@latest @google/gemini-cli@latest
 
 ENV PATH="/root/.local/bin:/root/.opencode/bin:${PATH}"
+# Go 编译的 CLI（OpenCode、Codex）需要显式指定 CA 证书路径
+ENV SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
 
 WORKDIR /usr/src/app
 

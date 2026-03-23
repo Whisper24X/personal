@@ -258,6 +258,8 @@ describe('AgentRunnerService', () => {
       '--skip-git-repo-check',
       '--profile',
       'ops',
+      '--sandbox',
+      'workspace-write',
       '-',
     ]);
     expect(
@@ -395,7 +397,7 @@ describe('AgentRunnerService', () => {
 
     expect(result.adapter).toBe('gemini');
     expect(result.command).toBe('gemini');
-    expect(result.args).toEqual(['--output-format', 'stream-json']);
+    expect(result.args).toEqual(['--output-format', 'stream-json', '--yolo']);
   });
 
   it('should compile gemini structured config into headless args', async () => {
@@ -497,6 +499,93 @@ describe('AgentRunnerService', () => {
     expect(result.args).toEqual(['--output-format', 'stream-json', '--yolo']);
   });
 
+  it('should inject gemini base_url and bearer auth when base_url is set', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-gemini-gateway',
+      businessLineId: 'business-line-1',
+      toolId: 'gemini-cli',
+      name: 'Gemini Gateway',
+      description: null,
+      configJson: JSON.stringify({
+        api_key: 'gemini-key-123',
+        base_url: 'https://my-gateway.example.com',
+        model: 'gemini-2.5-flash',
+        yolo: true,
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'gemini-cli',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'gemini-cli',
+        agentCliConfigId: 'cfg-gemini-gateway',
+      },
+    );
+
+    expect(result.env).toMatchObject({
+      GEMINI_API_KEY: 'gemini-key-123',
+      GOOGLE_GEMINI_BASE_URL: 'https://my-gateway.example.com',
+      GEMINI_API_KEY_AUTH_MECHANISM: 'bearer',
+    });
+    expect(result.args).toContain('--model');
+    expect(result.args).toContain('gemini-2.5-flash');
+  });
+
+  it('should not inject bearer auth when gemini base_url is empty', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-gemini-official',
+      businessLineId: 'business-line-1',
+      toolId: 'gemini-cli',
+      name: 'Gemini Official',
+      description: null,
+      configJson: JSON.stringify({
+        api_key: 'AIzaSyXXX',
+        model: 'gemini-2.5-flash',
+        yolo: true,
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'gemini-cli',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'gemini-cli',
+        agentCliConfigId: 'cfg-gemini-official',
+      },
+    );
+
+    expect(result.env).toMatchObject({
+      GEMINI_API_KEY: 'AIzaSyXXX',
+    });
+    expect(result.env).not.toHaveProperty('GOOGLE_GEMINI_BASE_URL');
+    expect(result.env).not.toHaveProperty('GEMINI_API_KEY_AUTH_MECHANISM');
+  });
+
   it('should use json run defaults for opencode', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
@@ -570,6 +659,135 @@ describe('AgentRunnerService', () => {
     ]);
   });
 
+  it('should inject opencode base_url as OPENAI_BASE_URL when base_url is set', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-opencode-gateway',
+      businessLineId: 'business-line-1',
+      toolId: 'opencode',
+      name: 'OpenCode Gateway',
+      description: null,
+      configJson: JSON.stringify({
+        api_key: 'sk-gateway-key',
+        base_url: 'https://my-gateway.example.com/v1',
+        model: 'openai/gpt-5.4',
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'opencode',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'opencode',
+        agentCliConfigId: 'cfg-opencode-gateway',
+      },
+    );
+
+    expect(result.env).toMatchObject({
+      OPENAI_API_KEY: 'sk-gateway-key',
+      OPENAI_BASE_URL: 'https://my-gateway.example.com/v1',
+    });
+    expect(result.args).toContain('--model');
+    expect(result.args).toContain('openai/gpt-5.4');
+  });
+
+  it('should not inject OPENAI_BASE_URL when opencode base_url is empty', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-opencode-direct',
+      businessLineId: 'business-line-1',
+      toolId: 'opencode',
+      name: 'OpenCode Direct',
+      description: null,
+      configJson: JSON.stringify({
+        api_key: 'sk-direct-key',
+        model: 'openai/gpt-5.4',
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'opencode',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'opencode',
+        agentCliConfigId: 'cfg-opencode-direct',
+      },
+    );
+
+    expect(result.env).toMatchObject({
+      OPENAI_API_KEY: 'sk-direct-key',
+    });
+    expect(result.env).not.toHaveProperty('OPENAI_BASE_URL');
+  });
+
+  it('should inject opencode anthropic provider env vars when provider is anthropic', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-opencode-anthropic',
+      businessLineId: 'business-line-1',
+      toolId: 'opencode',
+      name: 'OpenCode Anthropic',
+      description: null,
+      configJson: JSON.stringify({
+        provider: 'anthropic',
+        api_key: 'sk-anthropic-key',
+        base_url: 'https://my-gateway.example.com/v1',
+        model: 'anthropic/claude-opus-4-6',
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'opencode',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'opencode',
+        agentCliConfigId: 'cfg-opencode-anthropic',
+      },
+    );
+
+    expect(result.env).toMatchObject({
+      ANTHROPIC_API_KEY: 'sk-anthropic-key',
+      ANTHROPIC_BASE_URL: 'https://my-gateway.example.com/v1',
+    });
+    expect(result.env).not.toHaveProperty('OPENAI_API_KEY');
+    expect(result.env).not.toHaveProperty('OPENAI_BASE_URL');
+    expect(result.args).toContain('--model');
+    expect(result.args).toContain('anthropic/claude-opus-4-6');
+  });
+
   it('should use stream-json defaults for cursor agent', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
@@ -598,6 +816,8 @@ describe('AgentRunnerService', () => {
       'stream-json',
       '--trust',
       '--force',
+      '--sandbox',
+      'enabled',
     ]);
   });
 
@@ -685,6 +905,7 @@ describe('AgentRunnerService', () => {
       'exec',
       '--json',
       '--skip-git-repo-check',
+      '--full-auto',
       '-',
     ]);
   });
@@ -796,6 +1017,112 @@ describe('AgentRunnerService', () => {
     ]);
   });
 
+  it('should inject codex base_url via auto-generated provider when provider_name is empty', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-codex-baseurl',
+      businessLineId: 'business-line-1',
+      toolId: 'codex',
+      name: 'Codex BaseURL',
+      description: null,
+      configJson: JSON.stringify({
+        api_key: 'sk-test-key',
+        base_url: 'https://my-gateway.example.com',
+        model: 'gpt-5.4',
+        execution_mode: 'dangerously-bypass-approvals-and-sandbox',
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({ agentAdapter: 'codex' }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'codex',
+        agentCliConfigId: 'cfg-codex-baseurl',
+      },
+    );
+
+    expect(result.env).toMatchObject({
+      OPENAI_API_KEY: 'sk-test-key',
+    });
+    expect(result.env).not.toHaveProperty('OPENAI_BASE_URL');
+    expect(result.args).toContain('-c');
+    expect(result.args).toContain('model_provider="ainative"');
+    expect(result.args).toContain(
+      'model_providers.ainative.base_url="https://my-gateway.example.com"',
+    );
+    expect(result.args).toContain(
+      'model_providers.ainative.env_key="OPENAI_API_KEY"',
+    );
+    expect(result.args).toContain(
+      'model_providers.ainative.requires_openai_auth=true',
+    );
+  });
+
+  it('should generate codex -c provider overrides when provider_name is set', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-codex-provider',
+      businessLineId: 'business-line-1',
+      toolId: 'codex',
+      name: 'Codex Provider',
+      description: null,
+      configJson: JSON.stringify({
+        api_key: 'sk-test-key',
+        base_url: 'https://my-gateway.example.com',
+        provider_name: 'mygateway',
+        model: 'gpt-5.4',
+        execution_mode: 'dangerously-bypass-approvals-and-sandbox',
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({ agentAdapter: 'codex' }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'codex',
+        agentCliConfigId: 'cfg-codex-provider',
+      },
+    );
+
+    expect(result.args).toContain('-c');
+    expect(result.args).toContain('model_provider="mygateway"');
+    expect(result.args).toContain(
+      'model_providers.mygateway.base_url="https://my-gateway.example.com"',
+    );
+    expect(result.args).toContain(
+      'model_providers.mygateway.wire_api="responses"',
+    );
+    expect(result.args).toContain(
+      'model_providers.mygateway.requires_openai_auth=true',
+    );
+    expect(result.args).toContain(
+      'model_providers.mygateway.env_key="OPENAI_API_KEY"',
+    );
+    expect(result.env).toMatchObject({
+      OPENAI_API_KEY: 'sk-test-key',
+    });
+    expect(result.env).not.toHaveProperty('OPENAI_BASE_URL');
+  });
+
   it('should use stream-json defaults for claude code', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findDefaultByBusinessLineIdAndToolId.mockResolvedValue(null);
@@ -823,6 +1150,8 @@ describe('AgentRunnerService', () => {
       '--output-format',
       'stream-json',
       '--verbose',
+      '--permission-mode',
+      'auto',
     ]);
   });
 
@@ -933,6 +1262,87 @@ describe('AgentRunnerService', () => {
     ]);
   });
 
+  it('should pass claude env map including auth token and base url', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-claude-env',
+      businessLineId: 'business-line-1',
+      toolId: 'claude-code',
+      name: 'Claude with env',
+      description: null,
+      configJson: JSON.stringify({
+        auth_type: 'ANTHROPIC_AUTH_TOKEN',
+        auth_token: '',
+        base_url: '',
+        dangerously_skip_permissions: true,
+        env: {
+          ANTHROPIC_AUTH_TOKEN: 'sk-test-token',
+          ANTHROPIC_BASE_URL: 'https://custom-gateway.example.com',
+        },
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'claude-code',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'claude-code',
+        agentCliConfigId: 'cfg-claude-env',
+      },
+    );
+
+    expect(result.env.ANTHROPIC_AUTH_TOKEN).toBe('sk-test-token');
+    expect(result.env.ANTHROPIC_BASE_URL).toBe('https://custom-gateway.example.com');
+  });
+
+  it('should handle legacy claude api_key field for backward compatibility', async () => {
+    const repositoryMock = createRepositoryMock();
+    repositoryMock.findById.mockResolvedValue({
+      id: 'cfg-claude-legacy',
+      businessLineId: 'business-line-1',
+      toolId: 'claude-code',
+      name: 'Claude legacy',
+      description: null,
+      configJson: JSON.stringify({
+        api_key: 'sk-legacy-key',
+        dangerously_skip_permissions: true,
+      }),
+      isDefault: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.resolveRunnerConfig(
+      createProject({
+        agentAdapter: 'claude-code',
+      }),
+      createTask(),
+      {
+        ...createNode(),
+        agentCliId: 'claude-code',
+        agentCliConfigId: 'cfg-claude-legacy',
+      },
+    );
+
+    expect(result.env.ANTHROPIC_API_KEY).toBe('sk-legacy-key');
+  });
+
   it('should pass cursor api_key from persisted config as CURSOR_API_KEY env', async () => {
     const repositoryMock = createRepositoryMock();
     repositoryMock.findById.mockResolvedValue({
@@ -1006,7 +1416,7 @@ describe('AgentRunnerService', () => {
     );
 
     expect(result.command).toBe('agent');
-    expect(result.args).toEqual(['-p', '--output-format', 'stream-json']);
+    expect(result.args).toEqual(['-p', '--output-format', 'stream-json', '--sandbox', 'enabled']);
   });
 
   it('should resolve cwd inside project worktree storage path', async () => {
@@ -1094,6 +1504,7 @@ describe('AgentRunnerService', () => {
     expect(result.args).toEqual([
       '--output-format',
       'stream-json',
+      '--yolo',
       '--resume',
       'gemini-session-1',
     ]);
@@ -1136,6 +1547,8 @@ describe('AgentRunnerService', () => {
       '--output-format',
       'stream-json',
       '--verbose',
+      '--permission-mode',
+      'auto',
     ]);
   });
 
@@ -1301,6 +1714,8 @@ describe('AgentRunnerService', () => {
       '--output-format',
       'stream-json',
       '--verbose',
+      '--permission-mode',
+      'auto',
       '--resume',
       'claude-session-1',
     ]);
@@ -1332,6 +1747,7 @@ describe('AgentRunnerService', () => {
       'resume',
       '--json',
       '--skip-git-repo-check',
+      '--full-auto',
       '019d03cc-e251-7430-89c0-d3d662e676a9',
       '-',
     ]);
