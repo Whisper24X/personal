@@ -4,6 +4,7 @@ import {
   asRecord,
   createEntry,
   extractMessageText,
+  extractReadablePlainText,
   getBoolean,
   getString,
   makeId,
@@ -132,7 +133,11 @@ function parseGeminiStructuredAssistantContent(
       return
     }
 
-    const thought = getString(record.thought) || getString(record.reasoning)
+    const thought =
+      getString(record.thought) ||
+      getString(record.reasoning) ||
+      extractReadablePlainText(record.thought) ||
+      extractReadablePlainText(record.reasoning)
     if (thought) {
       thinkingParts.push(thought)
     }

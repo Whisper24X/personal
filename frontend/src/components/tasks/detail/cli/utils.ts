@@ -30,6 +30,61 @@ export function stringify(value: unknown): string {
   }
 }
 
+/**
+ * 从嵌套对象/JSON 字符串中提取可读自然语言，避免在 UI 中直接展示原始 JSON。
+ */
+export function extractReadablePlainText(value: unknown, depth = 0): string | undefined {
+  if (value === null || value === undefined) return undefined
+  if (depth > 6) return undefined
+
+  if (typeof value === 'string') {
+    const t = value.trim()
+    if (!t) return undefined
+    if (t.startsWith('{') || t.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(t) as unknown
+        const inner = extractReadablePlainText(parsed, depth + 1)
+        if (inner) return inner
+      } catch {
+        /* keep outer string */
+      }
+    }
+    return t
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((item) => extractReadablePlainText(item, depth + 1))
+      .filter((p): p is string => Boolean(p))
+    return parts.length > 0 ? parts.join('\n') : undefined
+  }
+
+  const r = asRecord(value)
+  if (!r) return undefined
+
+  const direct =
+    getString(r.text) ||
+    getString(r.content) ||
+    getString(r.thought) ||
+    getString(r.reasoning) ||
+    getString(r.summary) ||
+    getString(r.message) ||
+    getString(r.delta)
+  if (direct) return direct
+
+  for (const v of Object.values(r)) {
+    if (typeof v === 'string' && v.trim()) return v.trim()
+    const nested = extractReadablePlainText(v, depth + 1)
+    if (nested) return nested
+  }
+
+  return undefined
+}
+
 export function makeId(base: string, suffix: string | number): string {
   return `${base}-${suffix}`
 }

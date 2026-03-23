@@ -16,9 +16,15 @@ const props = withDefaults(
   defineProps<{
     taskId: string
     refreshToken?: number
+    /** 从执行区文件芯片打开时传入，用于选中并预览 */
+    artifactFilePath?: string | null
+    /** 递增时应用 artifactFilePath */
+    artifactOpenNonce?: number
   }>(),
   {
     refreshToken: 0,
+    artifactFilePath: null,
+    artifactOpenNonce: 0,
   },
 )
 
@@ -106,10 +112,19 @@ const loadFiles = async () => {
     const nextFiles = status.files ?? []
     files.value = nextFiles
 
+    const preferred = props.artifactFilePath?.trim()
+    const preferredInList = Boolean(preferred && nextFiles.some((f) => f.path === preferred))
+
     const selectedStillExists = selectedPath.value
       ? nextFiles.some((file) => file.path === selectedPath.value)
       : false
-    const nextSelectedPath = selectedStillExists ? selectedPath.value : (nextFiles[0]?.path ?? null)
+    const nextSelectedPath = preferredInList
+      ? preferred!
+      : preferred && nextFiles.length === 0
+        ? preferred
+        : selectedStillExists
+          ? selectedPath.value
+          : (nextFiles[0]?.path ?? null)
 
     selectedPath.value = nextSelectedPath
 
@@ -150,6 +165,17 @@ watch(
   {
     immediate: true,
   },
+)
+
+watch(
+  () => [props.artifactOpenNonce, props.artifactFilePath] as const,
+  async ([nonce, path]) => {
+    if (!nonce || nonce <= 0) return
+    const trimmed = path?.trim()
+    if (!trimmed) return
+    await selectFile(trimmed)
+  },
+  { flush: 'post', immediate: true },
 )
 </script>
 

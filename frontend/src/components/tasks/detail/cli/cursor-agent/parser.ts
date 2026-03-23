@@ -3,6 +3,7 @@ import type { TaskMessage } from '@/types/api/tasks'
 import {
   asRecord,
   createEntry,
+  extractReadablePlainText,
   getBoolean,
   getNumber,
   getString,
@@ -152,6 +153,52 @@ function parseToolCall(
   })
 }
 
+/**
+ * Cursor thinking 行可能使用 message.content[]（含 thinking 字段）、顶层 text/delta，或 JSON 字符串。
+ */
+function extractThinkingText(msg: RecordLike): string | null {
+  const message = asRecord(msg.message)
+  if (message) {
+    const content = message.content
+    if (Array.isArray(content)) {
+      const parts: string[] = []
+      for (const item of content) {
+        if (typeof item === 'string') {
+          parts.push(item)
+          continue
+        }
+        const rec = asRecord(item)
+        if (!rec) continue
+        const t =
+          getString(rec.thinking) ||
+          getString(rec.text) ||
+          getString(rec.content) ||
+          getString(rec.delta)
+        if (t) parts.push(t)
+      }
+      const joined = parts.join('').trim()
+      if (joined) return joined
+    }
+    if (typeof content === 'string' && content.trim()) {
+      return content.trim()
+    }
+  }
+
+  const direct = getString(msg.text) || getString(msg.delta) || getString(msg.content)
+  if (direct) {
+    const plain = extractReadablePlainText(direct) ?? direct
+    return plain.trim() || null
+  }
+
+  const rawContent = msg.content
+  if (rawContent && typeof rawContent === 'object' && !Array.isArray(rawContent)) {
+    const plain = extractReadablePlainText(rawContent)
+    if (plain) return plain.trim() || null
+  }
+
+  return null
+}
+
 function extractContentParts(msg: RecordLike): string | null {
   const message = asRecord(msg.message)
   if (!message) return getString(msg.content) || null
@@ -176,6 +223,29 @@ function extractContentParts(msg: RecordLike): string | null {
   }
 
   return null
+}
+
+/**
+ * 解析结果为 null 时，若本行是「无内容的 thinking / assistant」等可忽略事件，则不要落为 system_message，
+ * 否则会把整行 JSON 刷到执行日志里。
+ */
+function shouldSkipUnparsedCursorLine(line: string): boolean {
+  try {
+    const msg = JSON.parse(line) as RecordLike
+    const type = getString(msg.type)?.toLowerCase()
+    if (type === 'thinking') {
+      return true
+    }
+    if (type === 'assistant') {
+      const text = extractContentParts(msg)
+      if (!text?.trim()) {
+        return true
+      }
+    }
+  } catch {
+    return false
+  }
+  return false
 }
 
 function parseSystemInit(msg: RecordLike, timestamp: number, idBase: string): NormalizedEntry {
@@ -238,7 +308,7 @@ function parseCursorAgentLine(
     // type=thinking
     if (type === 'thinking') {
       if (subtype === 'completed') return null
-      const text = getString(msg.text) || getString(msg.content) || ''
+      const text = extractThinkingText(msg)
       if (!text) return null
       return createEntry('thinking', text, timestamp, `${idBase}-thinking`)
     }
@@ -294,6 +364,10 @@ export function parseCursorAgentMessages(messages: TaskMessage[]): NormalizedEnt
     const parsed = parseCursorAgentLine(content, timestamp, idBase)
     if (parsed) {
       entries.push(parsed)
+      return
+    }
+
+    if (shouldSkipUnparsedCursorLine(content)) {
       return
     }
 
