@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
 import { ChildProcess, spawn } from 'child_process';
 import path from 'path';
 import { AgentToolConfig } from '../business-lines/domain/agent-tool-config';
@@ -12,6 +13,7 @@ import {
   PromptTemplateRuntimeContext,
   PromptTemplateService,
 } from './prompt-template.service';
+import { TaskRuntimeService } from './task-runtime.service';
 import { AgentCliAdapterRegistry } from './agent-cli/agent-cli-adapter.registry';
 import {
   AgentCliAdapterId,
@@ -102,6 +104,7 @@ export class AgentRunnerService {
     private readonly configService: ConfigService = new ConfigService(),
     private readonly promptTemplateService: PromptTemplateService = new PromptTemplateService(),
     private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry = new AgentCliAdapterRegistry(),
+    @Optional() private readonly taskRuntimeService?: TaskRuntimeService,
   ) {}
 
   async executeAgentNode({
@@ -145,6 +148,42 @@ export class AgentRunnerService {
         businessLineId: project.businessLineId,
       },
       callbacks,
+    );
+  }
+
+  /**
+   * 使用与节点执行相同的 CLI 配置，但传入自定义 prompt（如步骤标题摘要）。
+   * 使用随机 nodeId 注册子进程，避免与正在执行的 Agent 在 activeExecutions 中冲突。
+   */
+  async runWithCustomPrompt({
+    task,
+    node,
+    project,
+    runtimeContext,
+    prompt,
+  }: {
+    task: Task;
+    node: TaskNode;
+    project: Project;
+    runtimeContext?: PromptTemplateRuntimeContext;
+    prompt: string;
+  }): Promise<AgentRunnerResult> {
+    const config = await this.resolveRunnerConfig(
+      project,
+      task,
+      node,
+      runtimeContext,
+    );
+    return this.runWithConfig(
+      config,
+      prompt,
+      {
+        taskId: task.id,
+        nodeId: randomUUID(),
+        projectId: project.id,
+        businessLineId: project.businessLineId,
+      },
+      undefined,
     );
   }
 
@@ -246,15 +285,32 @@ export class AgentRunnerService {
     project: Project,
     runtimeContext?: PromptTemplateRuntimeContext,
   ): string {
-    const worktreePath =
-      this.normalizeOptionalString(runtimeContext?.gitWorktreePath) ??
-      this.normalizeOptionalString(task.gitWorktree);
+    const runtimeWorktreePath = this.normalizeOptionalString(
+      runtimeContext?.gitWorktreePath,
+    );
+    if (runtimeWorktreePath) {
+      const cwd = path.resolve(runtimeWorktreePath);
+      const allowedRoot = this.resolveWorktreeAllowedRoot(project);
+      if (!this.isPathWithinAllowedRoot(cwd, allowedRoot)) {
+        throw new Error(
+          `Task worktree path ${cwd} is outside allowed root ${allowedRoot}`,
+        );
+      }
+      return cwd;
+    }
 
-    if (!worktreePath) {
+    const taskWorktree = this.normalizeOptionalString(task.gitWorktree);
+    if (!taskWorktree) {
       return process.cwd();
     }
 
-    const cwd = path.resolve(worktreePath);
+    /** 与 TaskRuntimeService 一致：相对目录名需拼到项目 worktrees 根下，不能对 process.cwd() 做 path.resolve */
+    const cwd = path.isAbsolute(taskWorktree)
+      ? path.resolve(taskWorktree)
+      : this.taskRuntimeService
+        ? this.taskRuntimeService.resolveTaskWorktreePath(task, project)
+        : path.join(this.resolveProjectWorktreeBaseDir(project), taskWorktree);
+
     const allowedRoot = this.resolveWorktreeAllowedRoot(project);
 
     if (!this.isPathWithinAllowedRoot(cwd, allowedRoot)) {

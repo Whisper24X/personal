@@ -5,6 +5,9 @@ import TaskPreviewPanel from './TaskPreviewPanel.vue'
 import TaskFilesPanel from './TaskFilesPanel.vue'
 import TaskGitPanel from './TaskGitPanel.vue'
 import TaskTerminalPanel from './TaskTerminalPanel.vue'
+import TaskLogsPanel from './TaskLogsPanel.vue'
+import TaskArtifactsPanel from './TaskArtifactsPanel.vue'
+import type { TaskLog } from '@/types/api/tasks'
 
 defineOptions({
   name: 'TaskDetailRightPanel',
@@ -17,12 +20,23 @@ const props = withDefaults(
     branchName?: string | null
     baseBranch?: string | null
     refreshToken?: number
+    logs?: TaskLog[]
+    defaultRightTab?: 'artifacts' | 'preview' | 'files'
+    formatDate: (value?: string) => string
+    /** 产物面板当前展示的文件路径（工作区预览） */
+    artifactFilePath?: string | null
+    /** 递增则切到「产物」Tab 并刷新预览 */
+    artifactOpenNonce?: number
   }>(),
   {
     projectId: '',
     branchName: null,
     baseBranch: null,
     refreshToken: 0,
+    logs: () => [],
+    defaultRightTab: 'artifacts',
+    artifactFilePath: null,
+    artifactOpenNonce: 0,
   },
 )
 
@@ -32,7 +46,23 @@ const activeTab = ref<'artifact' | 'preview' | 'files' | 'git' | 'terminal'>('ar
 <template>
   <div class="flex h-full min-h-0 min-w-0 flex-col">
     <div class="border-border/70 border-b px-3 py-2">
-      <div class="flex gap-1">
+      <div class="flex flex-wrap gap-1">
+        <button
+          class="h-8 rounded-md px-3 text-xs font-semibold transition"
+          :class="activeTab === 'artifacts' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'"
+          type="button"
+          @click="activeTab = 'artifacts'"
+        >
+          产物
+        </button>
+        <button
+          class="h-8 rounded-md px-3 text-xs font-semibold transition"
+          :class="activeTab === 'preview' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'"
+          type="button"
+          @click="activeTab = 'preview'"
+        >
+          预览
+        </button>
         <button
           class="h-8 rounded-md px-3 text-xs font-semibold transition"
           :class="
@@ -93,6 +123,14 @@ const activeTab = ref<'artifact' | 'preview' | 'files' | 'git' | 'terminal'>('ar
         >
           终端
         </button>
+        <button
+          class="h-8 rounded-md px-3 text-xs font-semibold transition"
+          :class="activeTab === 'logs' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'"
+          type="button"
+          @click="activeTab = 'logs'"
+        >
+          日志
+        </button>
       </div>
     </div>
 
@@ -122,7 +160,9 @@ const activeTab = ref<'artifact' | 'preview' | 'files' | 'git' | 'terminal'>('ar
         :base-branch="props.baseBranch"
       />
 
-      <TaskTerminalPanel v-else :task-id="props.taskId" />
+      <TaskTerminalPanel v-else-if="activeTab === 'terminal'" :task-id="props.taskId" />
+
+      <TaskLogsPanel v-else :logs="props.logs" :format-date="props.formatDate" />
     </div>
   </div>
 </template>

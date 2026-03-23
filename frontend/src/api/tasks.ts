@@ -23,6 +23,10 @@ import type {
   TaskWorkspacePreview,
   TaskWorkspaceTree,
   UpdateTaskPayload,
+  StepSummariesPayload,
+  StepSummariesResponse,
+  SuggestTaskTitlePayload,
+  SuggestTaskTitleResponse,
 } from '@/types/api/tasks'
 import { apiHttp, buildUrl, type InfinityPaginationResponse } from './http'
 import { STORAGE_KEYS } from '@/types/common/storage'
@@ -49,6 +53,10 @@ export const tasksApi = {
     return apiHttp.post<Task>('/tasks', payload)
   },
 
+  suggestTaskTitle(payload: SuggestTaskTitlePayload) {
+    return apiHttp.post<SuggestTaskTitleResponse>('/tasks/suggest-title', payload)
+  },
+
   update(taskId: string, payload: UpdateTaskPayload) {
     return apiHttp.patch<TaskDetail>(`/tasks/${taskId}`, payload)
   },
@@ -71,6 +79,10 @@ export const tasksApi = {
 
   messages(taskId: string) {
     return apiHttp.get<TaskMessage[]>(`/tasks/${taskId}/messages`)
+  },
+
+  stepSummaries(taskId: string, payload: StepSummariesPayload) {
+    return apiHttp.post<StepSummariesResponse>(`/tasks/${taskId}/step-summaries`, payload)
   },
 
   retry(taskId: string, payload: RetryTaskPayload) {

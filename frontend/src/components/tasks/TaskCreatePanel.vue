@@ -85,7 +85,6 @@ const createForm = reactive({
   agentCliId: '' as SupportedCliToolId | '',
   agentCliConfigId: '',
   gitBaseBranch: '',
-  title: '',
   prompt: '',
 })
 
@@ -159,7 +158,6 @@ const resetCreateForm = (projectId?: string) => {
   createForm.agentCliId = configuredCliTools.value[0]?.id ?? ''
   createForm.agentCliConfigId = ''
   createForm.gitBaseBranch = nextProject?.defaultBranch?.trim() || ''
-  createForm.title = ''
   createForm.prompt = ''
   selectedFiles.value = []
   syncAgentToolConfigsForSelectedTool()
@@ -479,11 +477,6 @@ const createTask = async () => {
     return
   }
 
-  if (!createForm.title.trim()) {
-    showValidationError('请填写任务标题')
-    return
-  }
-
   if (!createForm.prompt.trim()) {
     showValidationError('请填写提示词')
     return
@@ -510,10 +503,28 @@ const createTask = async () => {
 
   try {
     const project = projects.value.find((item) => item.id === projectIdForSubmit)
+    const suggestPayload =
+      createForm.mode === 'conversation'
+        ? {
+            projectId: projectIdForSubmit,
+            mode: createForm.mode,
+            prompt: createForm.prompt.trim(),
+            agentCliId: createForm.agentCliId || undefined,
+            agentCliConfigId: createForm.agentCliConfigId || undefined,
+          }
+        : {
+            projectId: projectIdForSubmit,
+            mode: createForm.mode,
+            prompt: createForm.prompt.trim(),
+            workflowTemplateId: createForm.workflowTemplateId || undefined,
+          }
+
+    const { title: generatedTitle } = await tasksApi.suggestTaskTitle(suggestPayload)
+
     const task = await tasksApi.create({
       projectId: projectIdForSubmit,
       mode: createForm.mode,
-      title: createForm.title.trim(),
+      title: generatedTitle.trim(),
       prompt: createForm.prompt.trim(),
       gitBaseBranch: createForm.gitBaseBranch.trim() || project?.defaultBranch?.trim() || undefined,
       configJson: {
@@ -675,17 +686,12 @@ onBeforeUnmount(() => {
           @submit.prevent="createTask"
         >
           <div class="px-5 pt-5 sm:px-6 sm:pt-6">
-            <input
-              v-model="createForm.title"
-              type="text"
-              class="h-14 w-full border-0 border-b border-border bg-transparent px-1 text-2xl font-semibold text-foreground outline-none placeholder:text-muted-foreground/85"
-              placeholder="标题"
-            />
-
             <textarea
               v-model="createForm.prompt"
-              class="mt-4 min-h-[320px] w-full resize-none border-0 bg-transparent px-1 text-lg text-foreground outline-none placeholder:text-muted-foreground"
-              placeholder="提示词"
+              class="min-h-[360px] w-full resize-none border-0 bg-transparent px-1 text-lg text-foreground outline-none placeholder:text-muted-foreground"
+              :placeholder="
+                createForm.mode === 'conversation' ? '解决简单需求...' : '解决复杂需求...'
+              "
             />
           </div>
 
@@ -754,7 +760,7 @@ onBeforeUnmount(() => {
                   "
                   @click="createForm.mode = 'conversation'"
                 >
-                  对话模式
+                  对话
                 </button>
                 <button
                   type="button"
@@ -766,7 +772,7 @@ onBeforeUnmount(() => {
                   "
                   @click="createForm.mode = 'workflow'"
                 >
-                  工作流模式
+                  工作流
                 </button>
               </div>
 
@@ -933,10 +939,34 @@ onBeforeUnmount(() => {
         </form>
       </template>
     </div>
+
+    <Teleport to="body">
+      <Transition name="create-task-overlay">
+        <div
+          v-if="submitting"
+          class="fixed inset-0 z-[200] flex items-center justify-center bg-background/85 backdrop-blur-sm"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <p class="px-6 text-center text-base font-medium text-foreground">正在创建任务，请稍后...</p>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
+.create-task-overlay-enter-active,
+.create-task-overlay-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.create-task-overlay-enter-from,
+.create-task-overlay-leave-to {
+  opacity: 0;
+}
+
 .headline-fade-enter-active,
 .headline-fade-leave-active {
   transition: opacity 0.45s ease;
