@@ -412,6 +412,47 @@ export class TaskCommandService {
       );
     }
 
+    if (task.gitWorktree?.trim()) {
+      const project = await this.taskAccessService.getProjectByIdOrThrow(
+        task.projectId,
+      );
+      const cleanupResult = await this.taskRuntimeService.cleanupRuntime(
+        task,
+        project,
+      );
+
+      if (!cleanupResult.cleaned) {
+        await this.taskLogService.appendLog({
+          taskId: task.id,
+          taskNodeId: null,
+          level: TaskLogLevel.warn,
+          message: 'Task deletion blocked because worktree cleanup failed',
+          payload: {
+            deletedBy: currentUser.sub,
+            gitWorktree: task.gitWorktree,
+            errorMessage: cleanupResult.errorMessage ?? null,
+          },
+        });
+
+        throw new ConflictException(
+          `Task deletion blocked because worktree cleanup failed: ${
+            cleanupResult.errorMessage ?? 'unknown cleanup error'
+          }`,
+        );
+      }
+    }
+
+    await this.taskLogService.appendLog({
+      taskId: task.id,
+      taskNodeId: null,
+      level: TaskLogLevel.info,
+      message: 'Task deleted',
+      payload: {
+        deletedBy: currentUser.sub,
+        gitWorktree: task.gitWorktree ?? null,
+      },
+    });
+
     await this.taskRepository.remove(task.id);
   }
 

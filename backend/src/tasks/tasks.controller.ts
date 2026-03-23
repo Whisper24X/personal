@@ -39,6 +39,7 @@ import { FindAllTasksDto } from './dto/find-all-tasks.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { TaskDetailDto } from './dto/task-detail.dto';
 import { RetryTaskDto } from './dto/retry-task.dto';
+import { RepeatNodeDto } from './dto/repeat-node.dto';
 import { ApproveTaskDto } from './dto/approve-task.dto';
 import { TaskLog } from './domain/task-log';
 import { FindTaskLogsDto } from './dto/find-task-logs.dto';
@@ -234,6 +235,18 @@ export class TasksController {
     return this.tasksService.execute(id, request.user);
   }
 
+  @Post(':id/repeat-node')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskDetailDto })
+  @HttpCode(HttpStatus.OK)
+  repeatNode(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() repeatNodeDto: RepeatNodeDto,
+  ) {
+    return this.tasksService.repeatNode(id, repeatNodeDto.nodeId, request.user);
+  }
+
   @Post(':id/retry')
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: TaskDetailDto })
@@ -355,6 +368,49 @@ export class TasksController {
     @Query() query: TaskGitDiffQueryDto,
   ) {
     return this.taskGitService.getDiff(id, query, request.user);
+  }
+
+  @Get(':id/git/artifacts/tree')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskWorkspaceTreeDto })
+  @HttpCode(HttpStatus.OK)
+  gitArtifactsTree(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: TaskWorkspaceTreeQueryDto,
+  ) {
+    return this.taskGitService.getArtifactTree(id, query, request.user);
+  }
+
+  @Get(':id/git/artifacts/raw')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @HttpCode(HttpStatus.OK)
+  async gitArtifactRaw(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: TaskWorkspaceFileQueryDto,
+    @Res() res: Response,
+  ) {
+    const { content, mimeType, size, name } =
+      await this.taskGitService.getArtifactRawFile(id, query, request.user);
+    res.set({
+      'Content-Type': mimeType,
+      'Content-Length': size,
+      'Content-Disposition': `inline; filename="${encodeURIComponent(name)}"`,
+    });
+    res.send(content);
+  }
+
+  @Get(':id/git/artifacts/preview')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskWorkspacePreviewDto })
+  @HttpCode(HttpStatus.OK)
+  gitArtifactPreview(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: TaskWorkspaceFileQueryDto,
+  ) {
+    return this.taskGitService.getArtifactPreview(id, query, request.user);
   }
 
   @Get(':id/git/branch-diff-files')

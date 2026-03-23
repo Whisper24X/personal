@@ -73,19 +73,12 @@ export class TaskTerminalService implements OnModuleDestroy {
     const sessionId = randomUUID();
     const now = new Date();
 
-    const sanitizedEnv: Record<string, string> = {};
-    for (const [key, value] of Object.entries(process.env)) {
-      if (value !== undefined) {
-        sanitizedEnv[key] = value;
-      }
-    }
-
     const ptyProcess = pty.spawn(shell, [], {
       name: 'xterm-256color',
       cols,
       rows,
       cwd: workspacePath,
-      env: sanitizedEnv,
+      env: this.buildTerminalEnv(process.env),
     });
 
     const session: TerminalSessionInternal = {
@@ -358,6 +351,29 @@ export class TaskTerminalService implements OnModuleDestroy {
     }
 
     return '/bin/bash';
+  }
+
+  private buildTerminalEnv(
+    sourceEnv: NodeJS.ProcessEnv,
+  ): Record<string, string> {
+    const sanitizedEnv: Record<string, string> = {};
+
+    for (const [key, value] of Object.entries(sourceEnv)) {
+      if (value === undefined || this.shouldOmitTerminalEnvKey(key)) {
+        continue;
+      }
+
+      sanitizedEnv[key] = value;
+    }
+
+    return sanitizedEnv;
+  }
+
+  private shouldOmitTerminalEnvKey(key: string): boolean {
+    const normalizedKey = key.toLowerCase();
+
+    // Interactive shells should not inherit npm's process-scoped variables.
+    return normalizedKey === 'init_cwd' || normalizedKey.startsWith('npm_');
   }
 
   private async resolveTaskWorkspace(

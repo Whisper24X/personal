@@ -81,6 +81,8 @@ describe('TaskRuntimeService', () => {
   const originalGitRuntimeEnabled = process.env.AINATIVE_GIT_RUNTIME_ENABLED;
 
   afterEach(async () => {
+    jest.restoreAllMocks();
+
     if (originalGitRuntimeEnabled === undefined) {
       delete process.env.AINATIVE_GIT_RUNTIME_ENABLED;
     } else {
@@ -148,6 +150,38 @@ describe('TaskRuntimeService', () => {
     expect(cleanupResult.cleaned).toBeTruthy();
 
     await expect(fs.access(worktreePath)).rejects.toThrow();
+  });
+
+  it('should report cleanup failure when directory removal fails and the path remains', async () => {
+    const project = createProject();
+    const worktreeBase = path.resolve(
+      resolveAinativeDataRootDir(),
+      project.businessLineId,
+      'projects',
+      project.id,
+      'worktrees',
+    );
+    const worktreePath = path.join(
+      worktreeBase,
+      `wk-cleanup-fail-${Date.now()}`,
+    );
+    await fs.mkdir(worktreePath, { recursive: true });
+    createdDirectories.push(path.dirname(worktreePath));
+
+    const removeSpy = jest
+      .spyOn(fs, 'rm')
+      .mockRejectedValueOnce(new Error('rm blocked'));
+
+    const cleanupResult = await service.cleanupRuntime(
+      createTask({ gitWorktree: worktreePath }),
+      project,
+    );
+
+    removeSpy.mockRestore();
+
+    expect(cleanupResult.cleaned).toBe(false);
+    expect(cleanupResult.errorMessage).toContain('rm blocked');
+    await expect(fs.access(worktreePath)).resolves.toBeUndefined();
   });
 
   it('should resolve default repository and worktree paths under tmp tree', () => {

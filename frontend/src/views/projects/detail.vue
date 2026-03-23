@@ -45,6 +45,7 @@ type WorkflowTemplateNodeInputForm = {
 }
 type WorkflowTemplateNodeForm = Omit<WorkflowTemplateNode, 'input'> & {
   input: WorkflowTemplateNodeInputForm
+  maxLoops?: number
 }
 
 const SUPPORTED_CLI_TOOLS: Array<{ id: SupportedCliToolId; label: string }> = [
@@ -530,6 +531,7 @@ const buildWorkflowNode = (nodeOrder: number): WorkflowTemplateNodeForm => ({
   name: `step-${nodeOrder}`,
   type: 'agent',
   requiresApproval: true,
+  maxLoops: 1,
   input: resolveWorkflowNodeInput(createEmptyWorkflowNodeInput()),
 })
 
@@ -541,6 +543,7 @@ const normalizeWorkflowNodes = (nodes: WorkflowTemplateNodeForm[]) => {
       nodeOrder: index + 1,
       name: node.name.trim() || `step-${index + 1}`,
       requiresApproval: Boolean(node.requiresApproval),
+      maxLoops: Math.max(Number(node.maxLoops) || 1, 1),
       input: normalizeWorkflowNodeInput(node.input),
     }))
 }
@@ -569,7 +572,10 @@ const serializeWorkflowNodeInput = (
 const buildWorkflowNodesForSubmit = (nodes: WorkflowTemplateNodeForm[]): WorkflowTemplateNode[] => {
   return normalizeWorkflowNodes(nodes).map((node) => ({
     ...node,
-    input: serializeWorkflowNodeInput(node.input),
+    input: {
+      ...serializeWorkflowNodeInput(node.input),
+      ...(node.maxLoops !== undefined && node.maxLoops > 1 ? { maxLoops: node.maxLoops } : {}),
+    },
   }))
 }
 
@@ -641,6 +647,7 @@ const buildWorkflowFormNodesFromTemplate = (
       name: node.name || `step-${index + 1}`,
       type: node.type || 'agent',
       requiresApproval: Boolean(node.requiresApproval),
+      maxLoops: (node.input as WorkflowTemplateNodeInput | undefined)?.maxLoops ?? 1,
       input: normalizeWorkflowNodeInput(node.input),
     })),
   )
@@ -2243,6 +2250,18 @@ onBeforeUnmount(() => {
                           class="h-4 w-4"
                         />
                         需要审批
+                      </label>
+                      <label
+                        class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs text-muted-foreground"
+                      >
+                        <span class="shrink-0">最多循环</span>
+                        <input
+                          v-model.number="activeWorkflowCreateNode.maxLoops"
+                          type="number"
+                          min="1"
+                          class="w-12 rounded border-0 bg-transparent px-1 text-center text-xs focus:ring-1 focus:ring-primary"
+                        />
+                        <span class="shrink-0">次</span>
                       </label>
                       <button
                         type="button"

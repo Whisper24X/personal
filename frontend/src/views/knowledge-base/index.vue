@@ -157,13 +157,17 @@ const loadSelectedDoc = async () => {
       20_000,
       '读取文档超时，请稍后重试',
     )
+    const withMediaUrl = { ...raw }
     if (['pdf', 'video', 'audio'].includes(raw.previewType) && !raw.tooLarge) {
-      raw.dataUrl = projectsApi.getDocsFileRawUrl(projectId, filePath)
+      withMediaUrl.dataUrl = projectsApi.getDocsFileRawUrl(projectId, filePath)
     }
+    // 后端可能将 .md 标成 text/plain；按扩展名兜底为 Markdown 渲染
     const isMarkdown =
-      raw.previewType === 'text' && raw.mimeType === 'text/markdown'
+      raw.previewType === 'text' &&
+      (raw.mimeType === 'text/markdown' ||
+        /\.(md|mdx|markdown)$/i.test(filePath))
     preview.value = {
-      ...raw,
+      ...withMediaUrl,
       previewType: isMarkdown ? 'markdown' : raw.previewType,
     }
   } catch (error) {

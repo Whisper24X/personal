@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
+import TaskArtifactsPanel from './TaskArtifactsPanel.vue'
 import TaskPreviewPanel from './TaskPreviewPanel.vue'
 import TaskFilesPanel from './TaskFilesPanel.vue'
 import TaskGitPanel from './TaskGitPanel.vue'
@@ -39,32 +40,7 @@ const props = withDefaults(
   },
 )
 
-type TabKey = 'artifacts' | 'preview' | 'files' | 'git' | 'terminal' | 'logs'
-
-const activeTab = ref<TabKey>('artifacts')
-
-watch(
-  () => [props.taskId, props.defaultRightTab] as const,
-  ([, def]) => {
-    if (def === 'preview') {
-      activeTab.value = 'preview'
-    } else if (def === 'files') {
-      activeTab.value = 'files'
-    } else {
-      activeTab.value = 'artifacts'
-    }
-  },
-  { immediate: true },
-)
-
-watch(
-  () => props.artifactOpenNonce,
-  (next, prev) => {
-    if (next > 0 && next !== prev) {
-      activeTab.value = 'artifacts'
-    }
-  },
-)
+const activeTab = ref<'artifact' | 'preview' | 'files' | 'git' | 'terminal'>('artifact')
 </script>
 
 <template>
@@ -89,7 +65,35 @@ watch(
         </button>
         <button
           class="h-8 rounded-md px-3 text-xs font-semibold transition"
-          :class="activeTab === 'files' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'"
+          :class="
+            activeTab === 'artifact'
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-background text-muted-foreground hover:text-foreground'
+          "
+          type="button"
+          @click="activeTab = 'artifact'"
+        >
+          产物
+        </button>
+        <button
+          class="h-8 rounded-md px-3 text-xs font-semibold transition"
+          :class="
+            activeTab === 'preview'
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-background text-muted-foreground hover:text-foreground'
+          "
+          type="button"
+          @click="activeTab = 'preview'"
+        >
+          预览
+        </button>
+        <button
+          class="h-8 rounded-md px-3 text-xs font-semibold transition"
+          :class="
+            activeTab === 'files'
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-background text-muted-foreground hover:text-foreground'
+          "
           type="button"
           @click="activeTab = 'files'"
         >
@@ -97,7 +101,11 @@ watch(
         </button>
         <button
           class="h-8 rounded-md px-3 text-xs font-semibold transition"
-          :class="activeTab === 'git' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'"
+          :class="
+            activeTab === 'git'
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-background text-muted-foreground hover:text-foreground'
+          "
           type="button"
           @click="activeTab = 'git'"
         >
@@ -105,7 +113,11 @@ watch(
         </button>
         <button
           class="h-8 rounded-md px-3 text-xs font-semibold transition"
-          :class="activeTab === 'terminal' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'"
+          :class="
+            activeTab === 'terminal'
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-background text-muted-foreground hover:text-foreground'
+          "
           type="button"
           @click="activeTab = 'terminal'"
         >
@@ -124,13 +136,16 @@ watch(
 
     <div class="min-h-0 flex-1 overflow-hidden">
       <TaskArtifactsPanel
-        v-if="activeTab === 'artifacts'"
+        v-if="activeTab === 'artifact'"
         :task-id="props.taskId"
-        :file-path="props.artifactFilePath ?? null"
-        :open-nonce="props.artifactOpenNonce ?? 0"
+        :refresh-token="props.refreshToken"
       />
 
-      <TaskPreviewPanel v-else-if="activeTab === 'preview'" :task-id="props.taskId" :project-id="props.projectId" />
+      <TaskPreviewPanel
+        v-else-if="activeTab === 'preview'"
+        :task-id="props.taskId"
+        :project-id="props.projectId"
+      />
 
       <TaskFilesPanel
         v-else-if="activeTab === 'files'"
@@ -139,7 +154,11 @@ watch(
         :refresh-token="props.refreshToken"
       />
 
-      <TaskGitPanel v-else-if="activeTab === 'git'" :task-id="props.taskId" :base-branch="props.baseBranch" />
+      <TaskGitPanel
+        v-else-if="activeTab === 'git'"
+        :task-id="props.taskId"
+        :base-branch="props.baseBranch"
+      />
 
       <TaskTerminalPanel v-else-if="activeTab === 'terminal'" :task-id="props.taskId" />
 

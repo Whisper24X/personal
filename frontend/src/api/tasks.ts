@@ -32,12 +32,7 @@ import { apiHttp, buildUrl, type InfinityPaginationResponse } from './http'
 import { STORAGE_KEYS } from '@/types/common/storage'
 
 export const tasksApi = {
-  list(params?: {
-    page?: number
-    limit?: number
-    projectId?: string
-    status?: string
-  }) {
+  list(params?: { page?: number; limit?: number; projectId?: string; status?: string }) {
     return apiHttp.get<InfinityPaginationResponse<Task>>('/tasks', {
       page: params?.page,
       limit: params?.limit,
@@ -72,6 +67,10 @@ export const tasksApi = {
 
   execute(taskId: string) {
     return apiHttp.post<TaskDetail>(`/tasks/${taskId}/execute`)
+  },
+
+  repeatNode(taskId: string, nodeId: string) {
+    return apiHttp.post<TaskDetail>(`/tasks/${taskId}/repeat-node`, { nodeId })
   },
 
   reply(taskId: string, payload: ReplyTaskPayload) {
@@ -129,19 +128,36 @@ export const tasksApi = {
     })
   },
 
+  gitArtifactsTree(taskId: string, params?: { path?: string }) {
+    return apiHttp.get<TaskWorkspaceTree>(`/tasks/${taskId}/git/artifacts/tree`, {
+      path: params?.path,
+    })
+  },
+
   workspaceFile(taskId: string, path: string) {
     return apiHttp.get<TaskWorkspaceFile>(`/tasks/${taskId}/workspace/file`, {
       path,
     })
   },
 
-  
   getWorkspaceFileRawUrl(taskId: string, path: string) {
     const token = localStorage.getItem(STORAGE_KEYS.authToken)
     return buildUrl(`/tasks/${taskId}/workspace/file/raw`, { path, token }).toString()
   },
+
+  getGitArtifactRawUrl(taskId: string, path: string) {
+    const token = localStorage.getItem(STORAGE_KEYS.authToken)
+    return buildUrl(`/tasks/${taskId}/git/artifacts/raw`, { path, token }).toString()
+  },
+
   workspacePreview(taskId: string, path: string) {
     return apiHttp.get<TaskWorkspacePreview>(`/tasks/${taskId}/workspace/preview`, {
+      path,
+    })
+  },
+
+  gitArtifactPreview(taskId: string, path: string) {
+    return apiHttp.get<TaskWorkspacePreview>(`/tasks/${taskId}/git/artifacts/preview`, {
       path,
     })
   },

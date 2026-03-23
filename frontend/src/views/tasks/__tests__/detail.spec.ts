@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import TaskDetailView from '@/views/tasks/detail.vue'
 import { useMessageStore } from '@/stores/modules/message'
 import { STORAGE_KEYS } from '@/types/common/storage'
+import type { TaskDetail } from '@/types/api/tasks'
 
 const { tasksApi, authApi, openSseStream } = vi.hoisted(() => ({
   tasksApi: {
@@ -211,6 +212,101 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.text()).toContain('节点待审批')
     expect(wrapper.findComponent({ name: 'TaskDetailReviewCard' }).exists()).toBe(true)
     expect(wrapper.findComponent({ name: 'TaskDetailWorkflowCard' }).text()).not.toContain('节点待审批')
+
+    vi.useRealTimers()
+  })
+
+  it('keeps existing content visible while SSE-triggered detail refresh is pending', async () => {
+    vi.useFakeTimers()
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    let resolveRefresh: ((value: TaskDetail) => void) | null = null
+
+    tasksApi.detailWithNodes
+      .mockResolvedValueOnce({
+        task: {
+          id: 'task-1',
+          projectId: 'project-1',
+          mode: 'conversation',
+          title: 'Demo task',
+          status: 'todo',
+          configJson: {
+            agentCliId: 'codex',
+          },
+          createdAt: '2026-02-27T10:00:00.000Z',
+          updatedAt: '2026-02-27T10:00:00.000Z',
+        },
+        nodes: [],
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRefresh = resolve
+          }),
+      )
+
+    openSseStream.mockImplementation(async (_url, _query, options) => {
+      options?.onEvent?.({
+        data: JSON.stringify({
+          id: 'log-1',
+          taskId: 'task-1',
+          taskNodeId: null,
+          level: 'info',
+          message: 'Task completed; worktree preserved',
+          payload: {},
+          createdAt: '2026-02-27T10:00:01.000Z',
+        }),
+      })
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+    expect(wrapper.text()).toContain('Demo task')
+
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+
+    expect(tasksApi.detailWithNodes).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('Demo task')
+    expect(wrapper.text()).not.toContain('加载中...')
+
+    expect(resolveRefresh).not.toBeNull()
+
+    resolveRefresh!({
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+        mode: 'conversation',
+        title: 'Demo task refreshed',
+        status: 'in_progress',
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:01.000Z',
+      },
+      nodes: [],
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Demo task refreshed')
 
     vi.useRealTimers()
   })

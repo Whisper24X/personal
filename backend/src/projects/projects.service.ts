@@ -2039,6 +2039,8 @@ export class ProjectsService {
     const mimeMap: Record<string, string> = {
       '.txt': 'text/plain',
       '.md': 'text/markdown',
+      '.mdx': 'text/markdown',
+      '.markdown': 'text/markdown',
       '.json': 'application/json',
       '.yml': 'text/yaml',
       '.yaml': 'text/yaml',

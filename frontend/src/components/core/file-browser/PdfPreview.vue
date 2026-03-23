@@ -77,6 +77,13 @@ const handleError = (error: unknown) => {
         @load="handleLoaded"
         @error="handleError"
       />
+      <div
+        v-else
+        class="flex min-h-[200px] flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground"
+      >
+        <p class="font-medium text-foreground">缺少 PDF 预览地址</p>
+        <p>请刷新页面或重新选择文件；若问题持续，检查接口是否返回 raw 下载 URL。</p>
+      </div>
     </div>
   </div>
 </template>
