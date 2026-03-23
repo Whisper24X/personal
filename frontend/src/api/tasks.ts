@@ -6,6 +6,7 @@ import type {
   RetryTaskPayload,
   Task,
   TaskDetail,
+  TaskStatusCounts,
   TaskGitActionResult,
   TaskGitBaseBranchPayload,
   TaskGitBranchDiffFiles,
@@ -23,17 +24,21 @@ import type {
   TaskWorkspacePreview,
   TaskWorkspaceTree,
   UpdateTaskPayload,
+  StepSummariesPayload,
+  StepSummariesResponse,
+  SuggestTaskTitlePayload,
+  SuggestTaskTitleResponse,
 } from '@/types/api/tasks'
 import { apiHttp, buildUrl, type InfinityPaginationResponse } from './http'
 import { STORAGE_KEYS } from '@/types/common/storage'
 
 export const tasksApi = {
-  list(params?: {
-    page?: number
-    limit?: number
-    projectId?: string
-    status?: string
-  }) {
+  /** 项目任务按状态聚合（数据库 COUNT，用于仪表盘统计与完成率） */
+  statusCounts(projectId: string) {
+    return apiHttp.get<TaskStatusCounts>('/tasks/stats', { projectId })
+  },
+
+  list(params?: { page?: number; limit?: number; projectId?: string; status?: string }) {
     return apiHttp.get<InfinityPaginationResponse<Task>>('/tasks', {
       page: params?.page,
       limit: params?.limit,
@@ -54,6 +59,10 @@ export const tasksApi = {
     return apiHttp.post<Task>('/tasks', payload)
   },
 
+  suggestTaskTitle(payload: SuggestTaskTitlePayload) {
+    return apiHttp.post<SuggestTaskTitleResponse>('/tasks/suggest-title', payload)
+  },
+
   update(taskId: string, payload: UpdateTaskPayload) {
     return apiHttp.patch<TaskDetail>(`/tasks/${taskId}`, payload)
   },
@@ -66,12 +75,20 @@ export const tasksApi = {
     return apiHttp.post<TaskDetail>(`/tasks/${taskId}/execute`)
   },
 
+  repeatNode(taskId: string, nodeId: string) {
+    return apiHttp.post<TaskDetail>(`/tasks/${taskId}/repeat-node`, { nodeId })
+  },
+
   reply(taskId: string, payload: ReplyTaskPayload) {
     return apiHttp.post<TaskDetail>(`/tasks/${taskId}/reply`, payload)
   },
 
   messages(taskId: string) {
     return apiHttp.get<TaskMessage[]>(`/tasks/${taskId}/messages`)
+  },
+
+  stepSummaries(taskId: string, payload: StepSummariesPayload) {
+    return apiHttp.post<StepSummariesResponse>(`/tasks/${taskId}/step-summaries`, payload)
   },
 
   retry(taskId: string, payload: RetryTaskPayload) {
@@ -117,19 +134,36 @@ export const tasksApi = {
     })
   },
 
+  gitArtifactsTree(taskId: string, params?: { path?: string }) {
+    return apiHttp.get<TaskWorkspaceTree>(`/tasks/${taskId}/git/artifacts/tree`, {
+      path: params?.path,
+    })
+  },
+
   workspaceFile(taskId: string, path: string) {
     return apiHttp.get<TaskWorkspaceFile>(`/tasks/${taskId}/workspace/file`, {
       path,
     })
   },
 
-  
   getWorkspaceFileRawUrl(taskId: string, path: string) {
     const token = localStorage.getItem(STORAGE_KEYS.authToken)
     return buildUrl(`/tasks/${taskId}/workspace/file/raw`, { path, token }).toString()
   },
+
+  getGitArtifactRawUrl(taskId: string, path: string) {
+    const token = localStorage.getItem(STORAGE_KEYS.authToken)
+    return buildUrl(`/tasks/${taskId}/git/artifacts/raw`, { path, token }).toString()
+  },
+
   workspacePreview(taskId: string, path: string) {
     return apiHttp.get<TaskWorkspacePreview>(`/tasks/${taskId}/workspace/preview`, {
+      path,
+    })
+  },
+
+  gitArtifactPreview(taskId: string, path: string) {
+    return apiHttp.get<TaskWorkspacePreview>(`/tasks/${taskId}/git/artifacts/preview`, {
       path,
     })
   },

@@ -3,6 +3,7 @@ import type { TaskMessage } from '@/types/api/tasks'
 import {
   asRecord,
   createEntry,
+  extractReadablePlainText,
   getBoolean,
   getNumber,
   getString,
@@ -79,12 +80,16 @@ function parseClaudeAssistantMessage(
       const itemType = getString(item.type)
       if (itemType === 'text' && getString(item.text) && item.text !== '(no content)') {
         entries.push(createEntry('assistant_message', String(item.text), timestamp, makeId(idBase, `text-${index}`)))
-      } else if (itemType === 'thinking' && getString(item.thinking)) {
-        entries.push(
-          createEntry('thinking', String(item.thinking).trim(), timestamp, makeId(idBase, `thinking-${index}`), {
-            signature: getString(item.signature),
-          }),
-        )
+      } else if (itemType === 'thinking') {
+        const thinkingText =
+          getString(item.thinking) || extractReadablePlainText(item.thinking)
+        if (thinkingText) {
+          entries.push(
+            createEntry('thinking', thinkingText.trim(), timestamp, makeId(idBase, `thinking-${index}`), {
+              signature: getString(item.signature),
+            }),
+          )
+        }
       } else if (itemType === 'tool_use' && getString(item.name)) {
         const toolInput = asRecord(item.input) || undefined
         entries.push(

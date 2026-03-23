@@ -5,6 +5,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { tasksApi } from '@/api/tasks'
+import { STORAGE_KEYS } from '@/types/common/storage'
 import type { TaskTerminalSession } from '@/types/api/tasks'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { TerminalWsConnection } from '@/utils/ws/terminal-ws'
@@ -26,6 +27,24 @@ let fitAddon: FitAddon | null = null
 let resizeObserver: ResizeObserver | null = null
 let wsConnection: TerminalWsConnection | null = null
 let wsReady = false
+
+const getTaskTerminalSessionStorageKey = (taskId: string) => {
+  return `${STORAGE_KEYS.taskDetailTerminalSessionId}:${taskId}`
+}
+
+const persistActiveSessionId = (taskId: string, sessionId: string | null) => {
+  const storageKey = getTaskTerminalSessionStorageKey(taskId)
+  if (sessionId) {
+    sessionStorage.setItem(storageKey, sessionId)
+    return
+  }
+
+  sessionStorage.removeItem(storageKey)
+}
+
+const restoreActiveSessionId = (taskId: string) => {
+  return sessionStorage.getItem(getTaskTerminalSessionStorageKey(taskId))
+}
 
 const initTerminal = () => {
   if (terminal) {
@@ -135,6 +154,11 @@ const loadSessions = async ({ autoCreate = false } = {}) => {
     const response = await tasksApi.listTerminalSessions(props.taskId)
     sessions.value = response.sessions
     const firstSession = response.sessions[0] ?? null
+    const persistedSessionId = restoreActiveSessionId(props.taskId)
+
+    if (!activeSessionId.value && persistedSessionId) {
+      activeSessionId.value = persistedSessionId
+    }
 
     if (!activeSessionId.value && firstSession) {
       activeSessionId.value = firstSession.id
@@ -146,6 +170,8 @@ const loadSessions = async ({ autoCreate = false } = {}) => {
     ) {
       activeSessionId.value = firstSession?.id || null
     }
+
+    persistActiveSessionId(props.taskId, activeSessionId.value)
 
     if (autoCreate && sessions.value.length === 0) {
       loading.value = false
@@ -188,6 +214,8 @@ const closeSession = async (sessionId: string) => {
   if (activeSessionId.value === sessionId) {
     activeSessionId.value = sessions.value[0]?.id ?? null
   }
+
+  persistActiveSessionId(props.taskId, activeSessionId.value)
 }
 
 watch(
@@ -206,6 +234,8 @@ watch(
 watch(
   () => activeSessionId.value,
   (sessionId) => {
+    persistActiveSessionId(props.taskId, sessionId)
+
     if (!sessionId) {
       wsConnection?.detach()
       terminal?.clear()
@@ -219,20 +249,6 @@ watch(
 onBeforeUnmount(() => {
   disconnectWs()
   disposeTerminal()
-
-  const runningSessionIds = sessions.value
-    .filter((session) => session.status === 'running')
-    .map((session) => session.id)
-
-  if (runningSessionIds.length === 0) {
-    return
-  }
-
-  void Promise.allSettled(
-    runningSessionIds.map((sessionId) => {
-      return tasksApi.terminalStop(props.taskId, sessionId)
-    }),
-  )
 })
 </script>
 

@@ -73,7 +73,6 @@ export class TaskStatusService {
       );
       return (
         node.status === TaskStatus.todo &&
-        loopJson.enabled &&
         loopJson.loopCount > 0 &&
         loopJson.loopCount < loopJson.maxLoops
       );

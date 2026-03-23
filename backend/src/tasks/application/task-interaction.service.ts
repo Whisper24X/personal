@@ -15,6 +15,7 @@ import { TaskMessageRole } from '../dto/task-message.dto';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
+import { TaskGitService } from '../task-git.service';
 import { TaskRuntimeService } from '../task-runtime.service';
 import { TaskAccessService } from './task-access.service';
 import { TaskConfigResolverService } from './task-config-resolver.service';
@@ -39,6 +40,7 @@ export class TaskInteractionService {
     private readonly taskStatusService: TaskStatusService,
     private readonly taskQueryService: TaskQueryService,
     private readonly taskSchedulerService: TaskSchedulerService,
+    private readonly taskGitService: TaskGitService,
   ) {}
 
   async reply(
@@ -218,6 +220,120 @@ export class TaskInteractionService {
     return this.taskQueryService.detailById(task.id, currentUser);
   }
 
+  /**
+   * Repeat without specifying a node: ensures runtime (worktree), then repeats
+   * the in_review node if any, otherwise the last completed node (by nodeOrder).
+   */
+  async repeat(
+    taskId: Task['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<TaskDetailDto> {
+    let task = await this.taskAccessService.getTaskOrThrow(
+      taskId,
+      currentUser,
+      'project.task.read',
+    );
+    const prepared = await this.taskRuntimeOrchestrator.prepareTaskRuntime(
+      task,
+      currentUser,
+    );
+    task = prepared.task;
+
+    const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
+      task.id,
+    );
+    if (runningNode) {
+      throw new ConflictException('Task already has an in-progress node');
+    }
+
+    const nodes = await this.taskNodeRepository.findByTaskId(task.id);
+    const hasInReview = nodes.some((n) => n.status === TaskStatus.inReview);
+    if (task.status !== TaskStatus.done && !hasInReview) {
+      throw new ConflictException(
+        'Task can be repeated only when done or has in_review node',
+      );
+    }
+
+    let targetNode: TaskNode | undefined;
+    if (hasInReview) {
+      targetNode =
+        (await this.taskNodeRepository.findFirstByTaskIdAndStatus({
+          taskId: task.id,
+          status: TaskStatus.inReview,
+        })) ?? undefined;
+    } else {
+      const doneNodes = nodes.filter((n) => n.status === TaskStatus.done);
+      if (doneNodes.length === 0) {
+        throw new ConflictException('No completed node to repeat');
+      }
+      targetNode = doneNodes.reduce((a, b) =>
+        a.nodeOrder > b.nodeOrder ? a : b,
+      );
+    }
+
+    if (!targetNode) {
+      throw new NotFoundException('Task node not found');
+    }
+
+    return this.repeatNode(taskId, targetNode.id, currentUser);
+  }
+
+  async repeatNode(
+    taskId: Task['id'],
+    nodeId: TaskNode['id'],
+    currentUser: JwtPayloadType,
+  ): Promise<TaskDetailDto> {
+    const task = await this.taskAccessService.getTaskOrThrow(
+      taskId,
+      currentUser,
+      'project.task.read',
+    );
+
+    const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
+      task.id,
+    );
+    if (runningNode) {
+      throw new ConflictException('Task already has an in-progress node');
+    }
+
+    const targetNode = await this.taskNodeRepository.findById(nodeId);
+    if (!targetNode || targetNode.taskId !== task.id) {
+      throw new NotFoundException('Task node not found');
+    }
+
+    const nodes = await this.taskNodeRepository.findByTaskId(task.id);
+    const hasInReview = nodes.some((n) => n.status === TaskStatus.inReview);
+    if (task.status !== TaskStatus.done && !hasInReview) {
+      throw new ConflictException(
+        'Task can be repeated only when done or has in_review node',
+      );
+    }
+
+    await this.taskNodeRepository.update(targetNode.id, {
+      status: TaskStatus.todo,
+      finishedAt: null,
+      agentClioutput: null,
+      runtimeJson: null,
+    });
+
+    await this.taskLogService.appendLog({
+      taskId: task.id,
+      taskNodeId: targetNode.id,
+      level: TaskLogLevel.info,
+      message: 'Node repeated by user',
+      payload: {
+        requestedBy: currentUser.sub,
+        requestedAt: new Date().toISOString(),
+        nodeOrder: targetNode.nodeOrder,
+      },
+    });
+
+    await this.taskStatusService.recalculateTaskStatus(task.id);
+    await this.taskSchedulerService.triggerDispatch();
+
+    return this.taskQueryService.detailById(task.id, currentUser);
+  }
+
   async retry(
     taskId: Task['id'],
     retryTaskDto: RetryTaskDto,
@@ -359,6 +475,53 @@ export class TaskInteractionService {
       throw new ConflictException('Only in_review node can be approved');
     }
 
+    const commitMessage = this.buildApproveCommitMessage(targetNode);
+
+    try {
+      const autoCommitResult = await this.taskGitService.commitIfChanged(
+        task.id,
+        commitMessage,
+        currentUser,
+      );
+
+      if (autoCommitResult.committed) {
+        await this.taskLogService.appendLog({
+          taskId: task.id,
+          taskNodeId: targetNode.id,
+          level: TaskLogLevel.info,
+          message: 'Node approval auto-committed staged changes',
+          payload: {
+            nodeOrder: targetNode.nodeOrder,
+            commitSha: autoCommitResult.commitSha ?? null,
+            commitSubject: autoCommitResult.subject ?? commitMessage,
+          },
+        });
+      } else {
+        await this.taskLogService.appendLog({
+          taskId: task.id,
+          taskNodeId: targetNode.id,
+          level: TaskLogLevel.info,
+          message: 'Node approval skipped auto-commit; no workspace changes',
+          payload: {
+            nodeOrder: targetNode.nodeOrder,
+          },
+        });
+      }
+    } catch (error) {
+      await this.taskLogService.appendLog({
+        taskId: task.id,
+        taskNodeId: targetNode.id,
+        level: TaskLogLevel.error,
+        message: 'Node approval auto-commit failed',
+        payload: {
+          nodeOrder: targetNode.nodeOrder,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        },
+      });
+
+      throw error;
+    }
+
     await this.taskNodeRepository.update(targetNode.id, {
       status: TaskStatus.done,
       finishedAt: targetNode.finishedAt ?? new Date(),
@@ -451,6 +614,11 @@ export class TaskInteractionService {
 
   private resolveNodeFinishedAtMs(node: TaskNode): number {
     return node.finishedAt instanceof Date ? node.finishedAt.getTime() : 0;
+  }
+
+  private buildApproveCommitMessage(node: TaskNode): string {
+    const normalizedName = node.name.trim().replace(/\s+/g, ' ');
+    return `chore(task): approve node #${node.nodeOrder} ${normalizedName}`;
   }
 
   private async markTaskStartedIfNeeded(task: Task): Promise<Task> {

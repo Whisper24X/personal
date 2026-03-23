@@ -10,14 +10,39 @@ import ToolItem from './ToolItem.vue'
 
 const props = defineProps<{
   group: OpencodeTaskGroup
+  collapseDetailWhenDone?: boolean
+  embedded?: boolean
 }>()
+
+const rootClass = computed(() =>
+  props.embedded
+    ? 'overflow-hidden rounded-none border-0 bg-transparent shadow-none'
+    : 'overflow-hidden rounded-xl border border-border/50 bg-card/80 shadow-sm',
+)
 
 const isRunning = computed(() => props.group.status === 'running')
 const collapsed = ref(!isRunning.value)
 
-watch(isRunning, (running) => {
-  if (running) collapsed.value = false
-})
+watch(
+  () => [isRunning.value, props.collapseDetailWhenDone] as const,
+  ([running, pref]) => {
+    // 本轮已结束：优先折叠，避免历史日志里残留的 running 状态在刷新后把卡片撑开
+    if (pref === true) {
+      collapsed.value = true
+      return
+    }
+    if (running) {
+      collapsed.value = false
+      return
+    }
+    if (pref === false) {
+      collapsed.value = false
+      return
+    }
+    collapsed.value = true
+  },
+  { immediate: true },
+)
 
 const groupItems = computed<OpencodeGroupItem[]>(() => buildOpencodeTaskGroupItems(props.group))
 const toolCount = computed(() => groupItems.value.filter((item) => item.kind === 'tool').length)
@@ -49,7 +74,7 @@ const statusMeta = computed(() => {
 </script>
 
 <template>
-  <div class="overflow-hidden rounded-xl border border-border/50 bg-card/80 shadow-sm">
+  <div :class="rootClass">
     <button
       type="button"
       class="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/20"

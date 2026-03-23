@@ -21,6 +21,9 @@ const props = withDefaults(
     loadTree: FileBrowserLoadTree
     loadPreview: FileBrowserLoadPreview
     headerTitle?: string | null
+    hideHeader?: boolean
+    hideHeaderTitle?: boolean
+    hideRefreshButton?: boolean
     rootPath?: string
     refreshToken?: number
     emptyText?: string
@@ -30,6 +33,9 @@ const props = withDefaults(
   }>(),
   {
     headerTitle: null,
+    hideHeader: false,
+    hideHeaderTitle: false,
+    hideRefreshButton: false,
     rootPath: '.',
     refreshToken: 0,
     emptyText: '当前工作区为空',
@@ -105,10 +111,7 @@ const loadPreview = async (path: string) => {
   }
 }
 
-const autoExpandSingleDirChain = async (
-  initialNodes: FileTreeNode[],
-  expanded: Set<string>,
-) => {
+const autoExpandSingleDirChain = async (initialNodes: FileTreeNode[], expanded: Set<string>) => {
   let nextNodes = initialNodes
   let currentNodes = initialNodes
 
@@ -235,12 +238,16 @@ watch(
 <template>
   <div class="flex h-full min-h-0 min-w-0 overflow-hidden">
     <aside class="border-border/70 flex min-h-0 w-80 shrink-0 flex-col border-r bg-muted/10">
-      <header class="border-border/70 flex h-12 items-center justify-between border-b bg-background/80 px-3 text-xs backdrop-blur">
-        <div class="min-w-0">
+      <header
+        v-if="!props.hideHeader"
+        class="border-border/70 flex h-12 items-center justify-between border-b bg-background/80 px-3 text-xs backdrop-blur"
+      >
+        <div v-if="!props.hideHeaderTitle" class="min-w-0">
           <p class="truncate text-foreground">{{ props.headerTitle || '-' }}</p>
         </div>
 
         <button
+          v-if="!props.hideRefreshButton"
           class="h-7 rounded-md border border-border bg-background px-2 text-xs text-foreground"
           type="button"
           @click="refreshTree"
@@ -252,7 +259,9 @@ watch(
       <div class="min-h-0 flex-1 overflow-auto px-1.5 py-2">
         <div class="space-y-2 text-xs">
           <p v-if="treeErrorMessage" class="px-2 text-destructive">{{ treeErrorMessage }}</p>
-          <p v-else-if="!treeLoading && treeNodes.length === 0" class="px-2 text-muted-foreground">{{ props.emptyText }}</p>
+          <p v-else-if="!treeLoading && treeNodes.length === 0" class="px-2 text-muted-foreground">
+            {{ props.emptyText }}
+          </p>
 
           <FileTree
             v-else-if="treeNodes.length > 0"

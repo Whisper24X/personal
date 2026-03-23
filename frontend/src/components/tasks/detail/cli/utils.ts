@@ -30,6 +30,61 @@ export function stringify(value: unknown): string {
   }
 }
 
+/**
+ * 从嵌套对象/JSON 字符串中提取可读自然语言，避免在 UI 中直接展示原始 JSON。
+ */
+export function extractReadablePlainText(value: unknown, depth = 0): string | undefined {
+  if (value === null || value === undefined) return undefined
+  if (depth > 6) return undefined
+
+  if (typeof value === 'string') {
+    const t = value.trim()
+    if (!t) return undefined
+    if (t.startsWith('{') || t.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(t) as unknown
+        const inner = extractReadablePlainText(parsed, depth + 1)
+        if (inner) return inner
+      } catch {
+        /* keep outer string */
+      }
+    }
+    return t
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((item) => extractReadablePlainText(item, depth + 1))
+      .filter((p): p is string => Boolean(p))
+    return parts.length > 0 ? parts.join('\n') : undefined
+  }
+
+  const r = asRecord(value)
+  if (!r) return undefined
+
+  const direct =
+    getString(r.text) ||
+    getString(r.content) ||
+    getString(r.thought) ||
+    getString(r.reasoning) ||
+    getString(r.summary) ||
+    getString(r.message) ||
+    getString(r.delta)
+  if (direct) return direct
+
+  for (const v of Object.values(r)) {
+    if (typeof v === 'string' && v.trim()) return v.trim()
+    const nested = extractReadablePlainText(v, depth + 1)
+    if (nested) return nested
+  }
+
+  return undefined
+}
+
 export function makeId(base: string, suffix: string | number): string {
   return `${base}-${suffix}`
 }
@@ -226,4 +281,30 @@ export function formatTime(timestamp: number): string {
     minute: '2-digit',
     second: '2-digit',
   })
+}
+
+/** 任务组内最早一条日志的时间，用于助手侧时间行展示 */
+export function earliestTimestampInEntries(tools: NormalizedEntry[]): number | undefined {
+  if (!tools.length) return undefined
+  return Math.min(...tools.map((t) => t.timestamp))
+}
+
+export function formatTaskGroupTimeLabel(tools: NormalizedEntry[]): string {
+  const ts = earliestTimestampInEntries(tools)
+  return ts !== undefined ? formatTime(ts) : ''
+}
+
+/** 助手轮次时间行：从该批第一条可解析时间的分组取时间 */
+export function assistantTurnTimeLabel(
+  items: Array<{ type: 'task'; tools: NormalizedEntry[] } | { type: 'other'; entry: NormalizedEntry }>,
+): string {
+  for (const g of items) {
+    if (g.type === 'task') {
+      const label = formatTaskGroupTimeLabel(g.tools)
+      if (label) return label
+      continue
+    }
+    return formatTime(g.entry.timestamp)
+  }
+  return ''
 }

@@ -19,6 +19,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -35,9 +36,12 @@ import {
   InfinityPaginationResponseDto,
 } from '../utils/dto/infinity-pagination-response.dto';
 import { FindAllTasksDto } from './dto/find-all-tasks.dto';
+import { FindTaskStatsDto } from './dto/find-task-stats.dto';
+import { TaskStatusCountsDto } from './dto/task-status-counts.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { TaskDetailDto } from './dto/task-detail.dto';
 import { RetryTaskDto } from './dto/retry-task.dto';
+import { RepeatNodeDto } from './dto/repeat-node.dto';
 import { ApproveTaskDto } from './dto/approve-task.dto';
 import { TaskLog } from './domain/task-log';
 import { FindTaskLogsDto } from './dto/find-task-logs.dto';
@@ -73,6 +77,16 @@ import { ListWorktreeFilesDto } from './dto/list-worktree-files.dto';
 import { TaskWorkspaceService } from './task-workspace.service';
 import { TaskGitService } from './task-git.service';
 import { TaskTerminalService } from './task-terminal.service';
+import { TaskStepLabelSummaryService } from './application/task-step-label-summary.service';
+import {
+  StepSummariesRequestDto,
+  StepSummariesResponseDto,
+} from './dto/step-summaries.dto';
+import {
+  SuggestTaskTitleRequestDto,
+  SuggestTaskTitleResponseDto,
+} from './dto/suggest-task-title.dto';
+import { TaskTitleSuggestionService } from './application/task-title-suggestion.service';
 
 @ApiTags('Tasks')
 @ApiBearerAuth()
@@ -87,7 +101,20 @@ export class TasksController {
     private readonly taskWorkspaceService: TaskWorkspaceService,
     private readonly taskGitService: TaskGitService,
     private readonly taskTerminalService: TaskTerminalService,
+    private readonly taskStepLabelSummaryService: TaskStepLabelSummaryService,
+    private readonly taskTitleSuggestionService: TaskTitleSuggestionService,
   ) {}
+
+  @Post('suggest-title')
+  @ApiBody({ type: SuggestTaskTitleRequestDto })
+  @ApiOkResponse({ type: SuggestTaskTitleResponseDto })
+  @HttpCode(HttpStatus.OK)
+  suggestTaskTitle(
+    @Request() request,
+    @Body() body: SuggestTaskTitleRequestDto,
+  ): Promise<SuggestTaskTitleResponseDto> {
+    return this.taskTitleSuggestionService.suggestTitle(request.user, body);
+  }
 
   @Post()
   @ApiCreatedResponse({ type: Task })
@@ -123,6 +150,19 @@ export class TasksController {
         page,
         limit,
       },
+    );
+  }
+
+  @Get('stats')
+  @ApiOkResponse({ type: TaskStatusCountsDto })
+  @HttpCode(HttpStatus.OK)
+  async taskStats(
+    @Request() request,
+    @Query() query: FindTaskStatsDto,
+  ): Promise<TaskStatusCountsDto> {
+    return this.tasksService.countByStatusForProject(
+      query.projectId,
+      request.user,
     );
   }
 
@@ -185,12 +225,41 @@ export class TasksController {
     return this.tasksService.listMessages(id, request.user);
   }
 
+  @Post(':id/step-summaries')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiBody({ type: StepSummariesRequestDto })
+  @ApiOkResponse({ type: StepSummariesResponseDto })
+  @HttpCode(HttpStatus.OK)
+  summarizeStepLabels(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: StepSummariesRequestDto,
+  ): Promise<StepSummariesResponseDto> {
+    return this.taskStepLabelSummaryService.summarizeStepLabels(
+      id,
+      request.user,
+      body,
+    );
+  }
+
   @Post(':id/execute')
   @ApiParam({ name: 'id', type: String, required: true })
   @ApiOkResponse({ type: TaskDetailDto })
   @HttpCode(HttpStatus.OK)
   execute(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
     return this.tasksService.execute(id, request.user);
+  }
+
+  @Post(':id/repeat-node')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskDetailDto })
+  @HttpCode(HttpStatus.OK)
+  repeatNode(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() repeatNodeDto: RepeatNodeDto,
+  ) {
+    return this.tasksService.repeatNode(id, repeatNodeDto.nodeId, request.user);
   }
 
   @Post(':id/retry')
@@ -314,6 +383,49 @@ export class TasksController {
     @Query() query: TaskGitDiffQueryDto,
   ) {
     return this.taskGitService.getDiff(id, query, request.user);
+  }
+
+  @Get(':id/git/artifacts/tree')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskWorkspaceTreeDto })
+  @HttpCode(HttpStatus.OK)
+  gitArtifactsTree(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: TaskWorkspaceTreeQueryDto,
+  ) {
+    return this.taskGitService.getArtifactTree(id, query, request.user);
+  }
+
+  @Get(':id/git/artifacts/raw')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @HttpCode(HttpStatus.OK)
+  async gitArtifactRaw(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: TaskWorkspaceFileQueryDto,
+    @Res() res: Response,
+  ) {
+    const { content, mimeType, size, name } =
+      await this.taskGitService.getArtifactRawFile(id, query, request.user);
+    res.set({
+      'Content-Type': mimeType,
+      'Content-Length': size,
+      'Content-Disposition': `inline; filename="${encodeURIComponent(name)}"`,
+    });
+    res.send(content);
+  }
+
+  @Get(':id/git/artifacts/preview')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({ type: TaskWorkspacePreviewDto })
+  @HttpCode(HttpStatus.OK)
+  gitArtifactPreview(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: TaskWorkspaceFileQueryDto,
+  ) {
+    return this.taskGitService.getArtifactPreview(id, query, request.user);
   }
 
   @Get(':id/git/branch-diff-files')

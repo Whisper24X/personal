@@ -134,6 +134,32 @@ export class TaskRelationalRepository implements TaskRepository {
     return entities.map((entity) => TaskMapper.toDomain(entity));
   }
 
+  async countByStatusForProject(
+    projectId: string,
+  ): Promise<Record<TaskStatus, number>> {
+    const rows = await this.taskRepository
+      .createQueryBuilder('task')
+      .select('task.status', 'status')
+      .addSelect('COUNT(task.id)', 'count')
+      .where('task.deletedAt IS NULL')
+      .andWhere('task.projectId = :projectId', { projectId })
+      .groupBy('task.status')
+      .getRawMany<{ status: TaskStatus; count: string }>();
+
+    const empty: Record<TaskStatus, number> = {
+      [TaskStatus.todo]: 0,
+      [TaskStatus.inProgress]: 0,
+      [TaskStatus.inReview]: 0,
+      [TaskStatus.done]: 0,
+    };
+
+    for (const row of rows) {
+      empty[row.status] = Number(row.count ?? 0);
+    }
+
+    return empty;
+  }
+
   async countRunningTasks(at: Date = new Date()): Promise<number> {
     const result = await this.taskRepository
       .createQueryBuilder('task')

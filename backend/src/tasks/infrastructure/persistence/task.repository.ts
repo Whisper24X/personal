@@ -29,6 +29,11 @@ export abstract class TaskRepository {
     status?: TaskStatus;
   }): Promise<Task[]>;
 
+  /** 按状态分组计数（未删除、指定项目） */
+  abstract countByStatusForProject(
+    projectId: string,
+  ): Promise<Record<TaskStatus, number>>;
+
   abstract countRunningTasks(at?: Date): Promise<number>;
 
   abstract countRunningTasksByProjectIds(

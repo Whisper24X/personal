@@ -7,6 +7,8 @@ import vueJsx from '@vitejs/plugin-vue-jsx'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vite.dev/config/
+// API 请求 /api 会代理到后端。后端默认端口 9000（见 backend/.env.development APP_PORT）。
+// 若后端跑在其他端口，在 frontend 目录下设置 VITE_API_PROXY_TARGET=http://localhost:<端口>
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiProxyTarget = env.VITE_API_PROXY_TARGET || 'http://localhost:9000'

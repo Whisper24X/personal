@@ -1,13 +1,26 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 import type { TaskMessage } from '@/types/api/tasks'
 import { parseClaudeCodeMessages } from './parser'
 import { groupClaudeEntries } from './groupEntries'
 import TaskGroupCard from './TaskGroupCard.vue'
 import UserMessage from './UserMessage.vue'
 import AssistantMessage from './AssistantMessage.vue'
+import AssistantMessageShell from '../AssistantMessageShell.vue'
+import AssistantTaskStepBar from '../AssistantTaskStepBar.vue'
+import AssistantTurnContentBubble from '../AssistantTurnContentBubble.vue'
+import { mergeAssistantTurns } from '../mergeAssistantTurns'
+import type { ClaudeMessageGroup, ClaudeTaskGroup } from './groupEntries'
 import type { NormalizedEntry } from '../types'
-import { formatTime, getNumber, getString } from '../utils'
+import { collapseDetailWhenTurnDone } from '../taskGroupCollapse'
+import { assistantStepSummariesKey } from '../stepSummaryKeys'
+import {
+  buildStepBarClaudeLike,
+  mergeStepBarLabelsWithSummaries,
+  prepareTaskGroupsForStepBar,
+  type StepBarModel,
+} from '../taskGroupStepState'
+import { assistantTurnTimeLabel, getNumber, getString } from '../utils'
 
 defineOptions({ name: 'CliClaudeCodeRenderer' })
 
@@ -15,8 +28,22 @@ const props = defineProps<{
   messages: TaskMessage[]
 }>()
 
+const stepSummaries = inject(assistantStepSummariesKey, undefined)
+
 const entries = computed(() => parseClaudeCodeMessages(props.messages))
 const groups = computed(() => groupClaudeEntries(entries.value))
+const turns = computed(() =>
+  mergeAssistantTurns(groups.value, (g: ClaudeMessageGroup) => g.type === 'other' && g.entry.type === 'user_message'),
+)
+
+const assistantStepBars = computed(() =>
+  turns.value.map((turn, tIdx) => {
+    if (turn.kind !== 'assistant') return null
+    const model = claudeStepBarModel(turn.items)
+    if (!model) return null
+    return mergeStepBarLabelsWithSummaries(model, tIdx, stepSummaries?.value)
+  }),
+)
 
 function isResultEntry(entry: NormalizedEntry) {
   return entry.metadata?.isResult === true
@@ -78,76 +105,99 @@ function formatInitMeta(entry: NormalizedEntry): string {
   if (version) parts.push(`v${version}`)
   return parts.join(' · ')
 }
+
+function claudeStepBarModel(items: ClaudeMessageGroup[]): StepBarModel | null {
+  const allTasks = items.filter((g): g is ClaudeTaskGroup => g.type === 'task')
+  const hasSessionResult = items.some((g) => g.type === 'other' && isResultEntry(g.entry))
+  const tasks = prepareTaskGroupsForStepBar(allTasks, hasSessionResult)
+  return buildStepBarClaudeLike(tasks)
+}
+
+function claudeTurnFinished(items: ClaudeMessageGroup[]): boolean {
+  return items.some((g) => g.type === 'other' && isResultEntry(g.entry))
+}
 </script>
 
 <template>
   <div v-if="groups.length > 0" class="space-y-3">
-    <template v-for="(group, idx) in groups" :key="idx">
-      <TaskGroupCard v-if="group.type === 'task'" :group="group" />
+    <template v-for="(turn, tIdx) in turns" :key="tIdx">
+      <UserMessage v-if="turn.kind === 'user' && turn.item.type === 'other'" :entry="turn.item.entry" />
 
-      <UserMessage
-        v-else-if="group.type === 'other' && group.entry.type === 'user_message'"
-        :entry="group.entry"
-      />
-
-      <!-- Result summary with cost/duration -->
-      <div
-        v-else-if="group.type === 'other' && isResultEntry(group.entry)"
-        class="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs"
-        :class="isSuccess(group.entry) ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-600' : 'border-red-500/20 bg-red-500/5 text-red-600'"
+      <AssistantMessageShell
+        v-else-if="turn.kind === 'assistant'"
+        :time-label="assistantTurnTimeLabel(turn.items)"
+        :wrap-body="false"
       >
-        <span>{{ isSuccess(group.entry) ? '✓' : '✗' }}</span>
-        <span class="font-medium">Completed</span>
-        <span v-if="formatDuration(group.entry)" class="text-muted-foreground">
-          in {{ formatDuration(group.entry) }}
-        </span>
-        <span v-if="formatCost(group.entry)" class="text-muted-foreground">
-          ({{ formatCost(group.entry) }})
-        </span>
-        <span v-if="formatTurns(group.entry)" class="rounded bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-          {{ formatTurns(group.entry) }}
-        </span>
-        <span v-if="formatUsage(group.entry)" class="rounded bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-          {{ formatUsage(group.entry) }}
-        </span>
-        <span v-if="formatStopReason(group.entry)" class="text-muted-foreground">
-          {{ formatStopReason(group.entry) }}
-        </span>
-        <span class="ml-auto text-muted-foreground">{{ formatTime(group.entry.timestamp) }}</span>
-      </div>
+        <div class="space-y-3">
+          <AssistantTurnContentBubble>
+            <template v-for="(group, idx) in turn.items" :key="idx">
+              <TaskGroupCard
+                v-if="group.type === 'task'"
+                embedded
+                :group="group"
+                :collapse-detail-when-done="collapseDetailWhenTurnDone(claudeTurnFinished(turn.items), idx, turn.items)"
+              />
 
-      <div
-        v-else-if="group.type === 'other' && isInitEntry(group.entry)"
-        class="flex flex-wrap items-center gap-2 rounded-md border border-border/30 bg-muted/20 px-3 py-2 text-xs text-muted-foreground"
-      >
-        <span>⚙</span>
-        <span class="font-medium text-foreground">{{ group.entry.content }}</span>
-        <span v-if="formatInitMeta(group.entry)" class="rounded bg-background/70 px-1.5 py-0.5 font-mono text-[10px]">
-          {{ formatInitMeta(group.entry) }}
-        </span>
-        <span class="ml-auto">{{ formatTime(group.entry.timestamp) }}</span>
-      </div>
+              <!-- Result summary with cost/duration -->
+              <div
+                v-else-if="group.type === 'other' && isResultEntry(group.entry)"
+                class="flex flex-wrap items-center gap-2 border-0 px-3 py-2 text-xs"
+                :class="isSuccess(group.entry) ? 'bg-emerald-500/5 text-emerald-600' : 'bg-red-500/5 text-red-600'"
+              >
+              <span>{{ isSuccess(group.entry) ? '✓' : '✗' }}</span>
+              <span class="font-medium">Completed</span>
+              <span v-if="formatDuration(group.entry)" class="text-muted-foreground">
+                in {{ formatDuration(group.entry) }}
+              </span>
+              <span v-if="formatCost(group.entry)" class="text-muted-foreground">
+                ({{ formatCost(group.entry) }})
+              </span>
+              <span v-if="formatTurns(group.entry)" class="rounded bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                {{ formatTurns(group.entry) }}
+              </span>
+              <span v-if="formatUsage(group.entry)" class="rounded bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                {{ formatUsage(group.entry) }}
+              </span>
+              <span v-if="formatStopReason(group.entry)" class="text-muted-foreground">
+                {{ formatStopReason(group.entry) }}
+              </span>
+              </div>
 
-      <!-- Error -->
-      <div
-        v-else-if="group.type === 'other' && group.entry.type === 'error'"
-        class="rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2"
-      >
-        <div class="flex items-center gap-2 text-xs">
-          <span class="text-red-500">⚠</span>
-          <span class="font-medium text-red-600">Error</span>
-          <span class="ml-auto text-muted-foreground">{{ formatTime(group.entry.timestamp) }}</span>
+              <div
+                v-else-if="group.type === 'other' && isInitEntry(group.entry)"
+                class="flex flex-wrap items-center gap-2 border-0 bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
+              >
+              <span>⚙</span>
+              <span class="font-medium text-foreground">{{ group.entry.content }}</span>
+              <span v-if="formatInitMeta(group.entry)" class="rounded bg-background/70 px-1.5 py-0.5 font-mono text-[10px]">
+                {{ formatInitMeta(group.entry) }}
+              </span>
+              </div>
+
+              <!-- Error -->
+              <div
+                v-else-if="group.type === 'other' && group.entry.type === 'error'"
+                class="border-0 bg-red-500/5 px-3 py-2"
+              >
+              <div class="flex items-center gap-2 text-xs">
+                <span class="text-red-500">⚠</span>
+                <span class="font-medium text-red-600">Error</span>
+              </div>
+              <p class="mt-1 whitespace-pre-wrap text-sm text-red-600">{{ group.entry.content }}</p>
+              </div>
+
+              <!-- System message -->
+              <div
+                v-else-if="group.type === 'other'"
+                class="border-0 bg-muted/30 p-3.5 text-sm leading-relaxed text-foreground"
+              >
+                <AssistantMessage :content="group.entry.content" />
+              </div>
+            </template>
+          </AssistantTurnContentBubble>
+          <AssistantTaskStepBar v-if="assistantStepBars[tIdx]" v-bind="assistantStepBars[tIdx]!" />
         </div>
-        <p class="mt-1 whitespace-pre-wrap text-sm text-red-600">{{ group.entry.content }}</p>
-      </div>
-
-      <!-- System message -->
-      <div
-        v-else-if="group.type === 'other'"
-        class="px-2 py-1 text-xs text-muted-foreground"
-      >
-        <AssistantMessage :content="group.entry.content" />
-      </div>
+      </AssistantMessageShell>
     </template>
   </div>
   <div v-else class="flex h-full items-center justify-center text-sm text-muted-foreground">

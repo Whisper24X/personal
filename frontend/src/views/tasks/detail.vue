@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { useAccessStore } from '@/stores/modules/access'
@@ -7,12 +7,21 @@ import ExecutionPanel from '@/components/tasks/detail/ExecutionPanel.vue'
 import ReplyCard from '@/components/tasks/detail/ReplyCard.vue'
 import ReviewCard from '@/components/tasks/detail/ReviewCard.vue'
 import RightPanelSection from '@/components/tasks/detail/RightPanelSection.vue'
-import TaskCard from '@/components/tasks/detail/TaskCard.vue'
+import { removeStepSummaryCacheForTask } from '@/components/tasks/detail/cli/stepSummaryCache'
 import TaskDialogs, { type TaskEditFormValue } from '@/components/tasks/detail/TaskDialogs.vue'
+import TaskExecutionContextBar from '@/components/tasks/detail/TaskExecutionContextBar.vue'
 import WorkflowCard from '@/components/tasks/detail/WorkflowCard.vue'
 import { openSseStream } from '@/api/http'
 import { tasksApi } from '@/api/tasks'
-import type { Task, TaskDetail, TaskLog, TaskMessage, TaskNode } from '@/types/api/tasks'
+import type {
+  RetryTaskPayload,
+  Task,
+  TaskDetail,
+  TaskGitChangedFile,
+  TaskLog,
+  TaskMessage,
+  TaskNode,
+} from '@/types/api/tasks'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import { BUTTON_ACCESS_CONFIG, hasSomeAccess } from '@/constants/access-control'
 import { toErrorMessage } from '@/utils/http/to-error-message'
@@ -43,7 +52,10 @@ const actionLoading = ref(false)
 const streamConnected = ref(false)
 const isRightPanelVisible = ref(resolveStoredRightPanelVisible())
 const rightPanelRefreshToken = ref(0)
-const leftPanelWidth = ref(33.3333)
+/** 右栏「产物」面板：工作区文件预览路径 */
+const artifactFilePath = ref<string | null>(null)
+const artifactOpenNonce = ref(0)
+const leftPanelWidth = ref(50)
 const isDragging = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
 
@@ -70,6 +82,7 @@ let streamAbortController: AbortController | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let detailRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let messageRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
+let taskDataRequestId = 0
 
 const statusLabelMap: Record<Task['status'], string> = {
   todo: '待执行',
@@ -101,6 +114,7 @@ const cliLabelMap: Record<string, string> = {
 }
 
 const task = computed(() => detail.value?.task ?? null)
+const pageLoading = computed(() => loading.value && !detail.value)
 
 const taskConfig = computed(() => task.value?.configJson ?? null)
 
@@ -195,6 +209,39 @@ const canInterruptExecution = computed(() => {
   return isCliRunning.value && hasButtonAccess('cancelTask')
 })
 
+const canAbortWorkflow = computed(() => {
+  return task.value?.mode === 'workflow' && canInterruptExecution.value
+})
+
+const canReExecute = computed(() => {
+  if (!task.value || !hasButtonAccess('executeTask') || actionLoading.value) {
+    return false
+  }
+  if (task.value.status === 'in_progress' || task.value.status === 'todo') {
+    return false
+  }
+  if (task.value.mode === 'conversation') {
+    return task.value.status === 'in_review' || task.value.status === 'done'
+  }
+  return task.value.status === 'in_review'
+})
+
+/** ReviewCard 已展示「重新执行」时，不在下方上下文条重复展示 */
+const canReExecuteInContextBar = computed(() => {
+  if (!canReExecute.value) {
+    return false
+  }
+  if (
+    task.value?.mode === 'workflow' &&
+    currentReviewNode.value &&
+    canManageReview.value &&
+    !isCliRunning.value
+  ) {
+    return false
+  }
+  return true
+})
+
 const replyDisabled = computed(() => {
   return !task.value || actionLoading.value || isCliRunning.value
 })
@@ -231,9 +278,30 @@ const executionCliId = computed(() => {
   )
 })
 
+/** 与当前执行区消息 / CLI 解析一致：优先选中工作流节点，否则首个节点（对话模式） */
+const executionTaskNodeId = computed(() => {
+  if (selectedWorkflowNodeId.value) {
+    return selectedWorkflowNodeId.value
+  }
+  return sortedNodes.value[0]?.id ?? null
+})
+
 const executionPanelTitle = computed(() => {
   const cliId = executionCliId.value
   return cliLabelMap[cliId] || cliId || 'Execution'
+})
+
+const contextSubtitle = computed(() => {
+  if (!task.value) {
+    return ''
+  }
+  if (task.value.mode === 'workflow') {
+    const n = sortedNodes.value.length
+    const cur = sortedNodes.value.find((node) => node.status === 'in_progress' || node.status === 'in_review')
+    const tail = cur?.name ? ` · 当前：${cur.name}` : ''
+    return `共 ${n} 个节点${tail}`
+  }
+  return executionPanelTitle.value
 })
 
 const formatDate = (value?: string) => {
@@ -479,11 +547,19 @@ const refreshAccessContext = async (projectId: string) => {
   }
 }
 
+const resetTaskState = () => {
+  detail.value = null
+  logs.value = []
+  messages.value = []
+  selectedWorkflowNodeId.value = null
+}
+
 const loadTaskData = async () => {
   if (!taskId.value) {
     return
   }
 
+  const requestId = ++taskDataRequestId
   loading.value = true
 
   try {
@@ -493,7 +569,15 @@ const loadTaskData = async () => {
       tasksApi.messages(taskId.value),
     ])
 
+    if (requestId !== taskDataRequestId) {
+      return
+    }
+
     await refreshAccessContext(detailResponse.task.projectId || queryProjectId.value)
+
+    if (requestId !== taskDataRequestId) {
+      return
+    }
 
     detail.value = detailResponse
     logs.value = [...logResponse].sort((left, right) => {
@@ -503,9 +587,13 @@ const loadTaskData = async () => {
     })
     messages.value = messageResponse
   } catch (error) {
-    message.error(toErrorMessage(error, '加载任务详情失败'))
+    if (requestId === taskDataRequestId) {
+      message.error(toErrorMessage(error, '加载任务详情失败'))
+    }
   } finally {
-    loading.value = false
+    if (requestId === taskDataRequestId) {
+      loading.value = false
+    }
   }
 }
 
@@ -527,6 +615,49 @@ const executeTask = async () => {
   }
 }
 
+const reExecuteTask = async () => {
+  if (!taskId.value || !canReExecute.value) {
+    return
+  }
+
+  actionLoading.value = true
+
+  try {
+    const payload: RetryTaskPayload = {}
+    if (task.value?.mode === 'workflow' && executionTaskNodeId.value) {
+      payload.nodeId = executionTaskNodeId.value
+    }
+    detail.value = await tasksApi.retry(taskId.value, payload)
+    rightPanelRefreshToken.value += 1
+    message.success('任务已重新执行')
+  } catch (error) {
+    message.error(toErrorMessage(error, '重新执行失败'))
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+const repeatNode = async (nodeId: string) => {
+  const allowed =
+    taskId.value &&
+    hasButtonAccess('executeTask') &&
+    currentReviewNode.value?.id === nodeId
+  if (!allowed) {
+    return
+  }
+
+  actionLoading.value = true
+
+  try {
+    detail.value = await tasksApi.repeatNode(taskId.value, nodeId)
+    rightPanelRefreshToken.value += 1
+    message.success('节点已加入重跑')
+  } catch (error) {
+    message.error(toErrorMessage(error, '重跑节点失败'))
+  } finally {
+    actionLoading.value = false
+  }
+}
 
 const approveNode = async (node: TaskNode) => {
   if (!taskId.value || !canManageReview.value) {
@@ -649,6 +780,7 @@ const removeTask = async () => {
 
   try {
     await tasksApi.remove(taskId.value)
+    removeStepSummaryCacheForTask(taskId.value)
     deleteOpen.value = false
     message.success('任务已删除')
     await router.push(taskListRoute.value)
@@ -674,11 +806,33 @@ watch(
   },
 )
 
+function openArtifactFromChip(file: TaskGitChangedFile) {
+  artifactFilePath.value = file.path
+  artifactOpenNonce.value += 1
+  isRightPanelVisible.value = true
+}
+
 watch(
   () => taskId.value,
-  async () => {
+  async (nextTaskId, previousTaskId) => {
+    if (!nextTaskId) {
+      disconnectStream()
+      taskDataRequestId += 1
+      resetTaskState()
+      loading.value = false
+      return
+    }
+
+    if (nextTaskId !== previousTaskId) {
+      disconnectStream()
+      resetTaskState()
+    }
+
     await loadTaskData()
     await connectStream()
+  },
+  {
+    immediate: true,
   },
 )
 
@@ -688,11 +842,6 @@ watch(isRightPanelVisible, (visible) => {
   }
 
   localStorage.setItem(STORAGE_KEYS.taskDetailRightPanelVisible, String(visible))
-})
-
-onMounted(async () => {
-  await loadTaskData()
-  await connectStream()
 })
 
 onBeforeUnmount(() => {
@@ -709,7 +858,7 @@ function startDrag(e: MouseEvent) {
     if (!containerRef.value) return
     const rect = containerRef.value.getBoundingClientRect()
     const pct = ((event.clientX - rect.left) / rect.width) * 100
-    leftPanelWidth.value = Math.min(Math.max(pct, 20), 80)
+    leftPanelWidth.value = Math.min(Math.max(pct, 30), 70)
   }
 
   const onMouseUp = () => {
@@ -728,7 +877,7 @@ function startDrag(e: MouseEvent) {
 <template>
   <div class="fade-up flex h-full min-h-0 w-full">
     <section
-      v-if="loading"
+      v-if="pageLoading"
       class="panel-card flex h-full w-full items-center justify-center p-6 text-sm text-muted-foreground"
     >
       加载中...
@@ -749,23 +898,7 @@ function startDrag(e: MouseEvent) {
           maxWidth: isRightPanelVisible ? `${leftPanelWidth}%` : undefined,
         }"
       >
-        <div class="flex min-h-0 w-full flex-1 flex-col">
-          <TaskCard
-            :task="task"
-            :status-label="taskStatusLabel"
-            :status-class="taskStatusClass"
-            :mode-label="taskModeLabel"
-            :branch-label="task?.gitBranch ?? '-'"
-            :action-loading="actionLoading"
-            :can-execute="canExecute"
-            :can-remove="canRemove"
-            :right-panel-visible="isRightPanelVisible"
-            @execute="executeTask"
-            @refresh="loadTaskData"
-            @remove="deleteOpen = true"
-            @toggle-right-panel="isRightPanelVisible = !isRightPanelVisible"
-          />
-
+        <div class="flex min-h-0 w-full flex-1 flex-col gap-2">
           <WorkflowCard
             v-if="showWorkflowCard"
             :nodes="sortedNodes"
@@ -777,12 +910,37 @@ function startDrag(e: MouseEvent) {
             :node="currentReviewNode"
             :status-label-map="statusLabelMap"
             :can-manage-review="canManageReview"
+            :can-repeat-review-node="canManageReview && !isCliRunning"
+            :repeat-node-loading="actionLoading"
             @approve-node="approveNode"
+            @repeat-node="(node) => repeatNode(node.id)"
+          />
+
+          <TaskExecutionContextBar
+            v-if="task"
+            :mode="task.mode"
+            :status="task.status"
+            :status-label="taskStatusLabel"
+            :status-class="taskStatusClass"
+            :mode-label="taskModeLabel"
+            :subtitle="contextSubtitle"
+            :action-loading="actionLoading"
+            :can-execute="canExecute"
+            :can-re-execute="canReExecuteInContextBar"
+            :can-abort-workflow="canAbortWorkflow"
+            :can-remove="canRemove"
+            :right-panel-visible="isRightPanelVisible"
+            @execute="executeTask"
+            @re-execute="reExecuteTask"
+            @abort-workflow="interruptExecution"
+            @refresh="loadTaskData"
+            @remove="deleteOpen = true"
+            @toggle-right-panel="isRightPanelVisible = !isRightPanelVisible"
           />
 
           <ExecutionPanel
             :title="executionPanelTitle"
-            :loading="loading"
+            :loading="pageLoading"
             :agent-cli-id="executionCliId"
             :task-status="task?.status || null"
             :task-status-label="taskStatusLabel"
@@ -790,6 +948,11 @@ function startDrag(e: MouseEvent) {
             :stream-connected="streamConnected"
             :messages="executionMessages"
             :format-date="formatDate"
+            :task-id="taskId"
+            :task-node-id="executionTaskNodeId"
+            :git-worktree="task?.gitWorktree || null"
+            :branch-files-refresh-token="rightPanelRefreshToken"
+            @open-artifact="openArtifactFromChip"
           />
 
           <ReplyCard
@@ -806,7 +969,7 @@ function startDrag(e: MouseEvent) {
 
       <div
         v-if="isRightPanelVisible"
-        class="bg-border/50 h-full w-1 shrink-0 cursor-col-resize transition-colors hover:bg-primary/50"
+        class="bg-border/50 h-full w-1.5 min-w-1.5 shrink-0 cursor-col-resize transition-colors hover:bg-primary/50"
         :class="{ 'bg-primary/50': isDragging }"
         @mousedown.prevent="startDrag"
       />
@@ -818,6 +981,11 @@ function startDrag(e: MouseEvent) {
         :branch-name="task?.gitBranch || null"
         :base-branch="task?.gitBaseBranch || null"
         :refresh-token="rightPanelRefreshToken"
+        :logs="logs"
+        default-right-tab="artifacts"
+        :format-date="formatDate"
+        :artifact-file-path="artifactFilePath"
+        :artifact-open-nonce="artifactOpenNonce"
       />
     </section>
 
