@@ -12,7 +12,10 @@ const props = defineProps<{
 }>()
 
 const entries = computed(() => parseFallbackMessages(props.messages))
-const shellTimeLabel = computed(() => (entries.value.length ? formatTime(entries.value[0].timestamp) : ''))
+const shellTimeLabel = computed(() => {
+  const first = entries.value[0]
+  return first ? formatTime(first.timestamp) : ''
+})
 </script>
 
 <template>

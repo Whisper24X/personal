@@ -73,10 +73,10 @@ function geminiTurnFinished(items: GeminiMessageGroup[]): boolean {
 <template>
   <div v-if="groups.length > 0" class="space-y-3">
     <template v-for="(turn, tIdx) in turns" :key="tIdx">
-      <UserMessage v-if="turn.kind === 'user'" :entry="turn.item.entry" />
+      <UserMessage v-if="turn.kind === 'user' && turn.item.type === 'other'" :entry="turn.item.entry" />
 
       <AssistantMessageShell
-        v-else
+        v-else-if="turn.kind === 'assistant'"
         :time-label="assistantTurnTimeLabel(turn.items)"
         :wrap-body="false"
       >

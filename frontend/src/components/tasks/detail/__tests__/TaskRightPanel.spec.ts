@@ -7,6 +7,7 @@ describe('TaskRightPanel', () => {
     const wrapper = mount(TaskRightPanel, {
       props: {
         taskId: 'task-1',
+        formatDate: () => '',
       },
       global: {
         stubs: {
@@ -26,13 +27,16 @@ describe('TaskRightPanel', () => {
           TaskTerminalPanel: {
             template: '<div data-test="terminal-panel">terminal</div>',
           },
+          TaskLogsPanel: {
+            template: '<div data-test="logs-panel">logs</div>',
+          },
         },
       },
     })
 
     const tabs = wrapper.findAll('button').map((node) => node.text().trim())
 
-    expect(tabs).toEqual(['产物', '预览', '文件', 'Git', '终端'])
+    expect(tabs).toEqual(['产物', '预览', '文件', 'Git', '终端', '日志'])
     expect(wrapper.find('[data-test="artifacts-panel"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="preview-panel"]').exists()).toBe(false)
   })

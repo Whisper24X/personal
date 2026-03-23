@@ -6,7 +6,6 @@ import TaskFilesPanel from './TaskFilesPanel.vue'
 import TaskGitPanel from './TaskGitPanel.vue'
 import TaskTerminalPanel from './TaskTerminalPanel.vue'
 import TaskLogsPanel from './TaskLogsPanel.vue'
-import TaskArtifactsPanel from './TaskArtifactsPanel.vue'
 import type { TaskLog } from '@/types/api/tasks'
 
 defineOptions({
@@ -40,29 +39,13 @@ const props = withDefaults(
   },
 )
 
-const activeTab = ref<'artifact' | 'preview' | 'files' | 'git' | 'terminal'>('artifact')
+const activeTab = ref<'artifact' | 'preview' | 'files' | 'git' | 'terminal' | 'logs'>('artifact')
 </script>
 
 <template>
   <div class="flex h-full min-h-0 min-w-0 flex-col">
     <div class="border-border/70 border-b px-3 py-2">
       <div class="flex flex-wrap gap-1">
-        <button
-          class="h-8 rounded-md px-3 text-xs font-semibold transition"
-          :class="activeTab === 'artifacts' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'"
-          type="button"
-          @click="activeTab = 'artifacts'"
-        >
-          产物
-        </button>
-        <button
-          class="h-8 rounded-md px-3 text-xs font-semibold transition"
-          :class="activeTab === 'preview' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'"
-          type="button"
-          @click="activeTab = 'preview'"
-        >
-          预览
-        </button>
         <button
           class="h-8 rounded-md px-3 text-xs font-semibold transition"
           :class="
@@ -162,7 +145,11 @@ const activeTab = ref<'artifact' | 'preview' | 'files' | 'git' | 'terminal'>('ar
 
       <TaskTerminalPanel v-else-if="activeTab === 'terminal'" :task-id="props.taskId" />
 
-      <TaskLogsPanel v-else :logs="props.logs" :format-date="props.formatDate" />
+      <TaskLogsPanel
+        v-else-if="activeTab === 'logs'"
+        :logs="props.logs"
+        :format-date="props.formatDate"
+      />
     </div>
   </div>
 </template>

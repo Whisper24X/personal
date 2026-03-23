@@ -13,7 +13,15 @@ import TaskExecutionContextBar from '@/components/tasks/detail/TaskExecutionCont
 import WorkflowCard from '@/components/tasks/detail/WorkflowCard.vue'
 import { openSseStream } from '@/api/http'
 import { tasksApi } from '@/api/tasks'
-import type { Task, TaskDetail, TaskGitChangedFile, TaskLog, TaskMessage, TaskNode } from '@/types/api/tasks'
+import type {
+  RetryTaskPayload,
+  Task,
+  TaskDetail,
+  TaskGitChangedFile,
+  TaskLog,
+  TaskMessage,
+  TaskNode,
+} from '@/types/api/tasks'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import { BUTTON_ACCESS_CONFIG, hasSomeAccess } from '@/constants/access-control'
 import { toErrorMessage } from '@/utils/http/to-error-message'
@@ -216,6 +224,22 @@ const canReExecute = computed(() => {
     return task.value.status === 'in_review' || task.value.status === 'done'
   }
   return task.value.status === 'in_review'
+})
+
+/** ReviewCard 已展示「重新执行」时，不在下方上下文条重复展示 */
+const canReExecuteInContextBar = computed(() => {
+  if (!canReExecute.value) {
+    return false
+  }
+  if (
+    task.value?.mode === 'workflow' &&
+    currentReviewNode.value &&
+    canManageReview.value &&
+    !isCliRunning.value
+  ) {
+    return false
+  }
+  return true
 })
 
 const replyDisabled = computed(() => {
@@ -591,6 +615,28 @@ const executeTask = async () => {
   }
 }
 
+const reExecuteTask = async () => {
+  if (!taskId.value || !canReExecute.value) {
+    return
+  }
+
+  actionLoading.value = true
+
+  try {
+    const payload: RetryTaskPayload = {}
+    if (task.value?.mode === 'workflow' && executionTaskNodeId.value) {
+      payload.nodeId = executionTaskNodeId.value
+    }
+    detail.value = await tasksApi.retry(taskId.value, payload)
+    rightPanelRefreshToken.value += 1
+    message.success('任务已重新执行')
+  } catch (error) {
+    message.error(toErrorMessage(error, '重新执行失败'))
+  } finally {
+    actionLoading.value = false
+  }
+}
+
 const repeatNode = async (nodeId: string) => {
   const allowed =
     taskId.value &&
@@ -880,13 +926,13 @@ function startDrag(e: MouseEvent) {
             :subtitle="contextSubtitle"
             :action-loading="actionLoading"
             :can-execute="canExecute"
-            :can-re-execute="canReExecute"
+            :can-re-execute="canReExecuteInContextBar"
             :can-abort-workflow="canAbortWorkflow"
             :can-remove="canRemove"
             :right-panel-visible="isRightPanelVisible"
             @execute="executeTask"
             @re-execute="reExecuteTask"
-            @abort-workflow="abortWorkflow"
+            @abort-workflow="interruptExecution"
             @refresh="loadTaskData"
             @remove="deleteOpen = true"
             @toggle-right-panel="isRightPanelVisible = !isRightPanelVisible"
