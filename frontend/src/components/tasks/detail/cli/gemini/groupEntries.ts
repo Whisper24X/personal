@@ -33,6 +33,11 @@ function isStandaloneOtherEntry(entry: NormalizedEntry): boolean {
   )
 }
 
+function isThinkingOnlyTaskGroup(group: GeminiTaskGroup | null): boolean {
+  if (!group || group.tools.length === 0) return false
+  return group.tools.every((e) => e.type === 'thinking')
+}
+
 export function groupGeminiEntries(entries: NormalizedEntry[]): GeminiMessageGroup[] {
   const groups: GeminiMessageGroup[] = []
   let currentTaskGroup: GeminiTaskGroup | null = null
@@ -46,13 +51,20 @@ export function groupGeminiEntries(entries: NormalizedEntry[]): GeminiMessageGro
 
   for (const entry of entries) {
     if (entry.type === 'assistant_message') {
+      const leadingThinking =
+        currentTaskGroup && isThinkingOnlyTaskGroup(currentTaskGroup)
+          ? [...currentTaskGroup.tools]
+          : null
+      if (leadingThinking) {
+        currentTaskGroup = null
+      }
       flushTaskGroup()
       currentTaskGroup = {
         id: entry.id,
         type: 'task',
         title: entry.content.length > 80 ? `${entry.content.slice(0, 80)}...` : entry.content,
         description: entry.content,
-        tools: [],
+        tools: leadingThinking ?? [],
       }
     } else if (TOOL_TYPES.has(entry.type)) {
       if (!currentTaskGroup) {

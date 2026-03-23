@@ -23,6 +23,11 @@ const TOOL_TYPES: Set<NormalizedEntryType> = new Set([
   'thinking',
 ])
 
+function isThinkingOnlyTaskGroup(group: CursorTaskGroup | null): boolean {
+  if (!group || group.tools.length === 0) return false
+  return group.tools.every((e) => e.type === 'thinking')
+}
+
 export function groupCursorEntries(entries: NormalizedEntry[]): CursorMessageGroup[] {
   const groups: CursorMessageGroup[] = []
   let currentTaskGroup: CursorTaskGroup | null = null
@@ -36,12 +41,19 @@ export function groupCursorEntries(entries: NormalizedEntry[]): CursorMessageGro
 
   for (const entry of entries) {
     if (entry.type === 'assistant_message') {
+      const leadingThinking =
+        currentTaskGroup && isThinkingOnlyTaskGroup(currentTaskGroup)
+          ? [...currentTaskGroup.tools]
+          : null
+      if (leadingThinking) {
+        currentTaskGroup = null
+      }
       flushTaskGroup()
       currentTaskGroup = {
         type: 'task',
         title: entry.content.length > 80 ? `${entry.content.slice(0, 80)}...` : entry.content,
         description: entry.content,
-        tools: [],
+        tools: leadingThinking ?? [],
       }
     } else if (TOOL_TYPES.has(entry.type)) {
       if (!currentTaskGroup) {

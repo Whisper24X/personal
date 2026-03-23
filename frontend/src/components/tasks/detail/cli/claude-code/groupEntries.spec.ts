@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildClaudeTaskGroupItems, type ClaudeTaskGroup } from './groupEntries'
+import { buildClaudeTaskGroupItems, groupClaudeEntries, type ClaudeTaskGroup } from './groupEntries'
 import type { NormalizedEntry } from '../types'
 
 function createEntry(
@@ -10,6 +10,73 @@ function createEntry(
     ...overrides,
   }
 }
+
+describe('groupClaudeEntries', () => {
+  it('merges leading thinking-only into the assistant task group', () => {
+    const groups = groupClaudeEntries([
+      createEntry({
+        id: 'think-1',
+        type: 'thinking',
+        timestamp: 1,
+        content: 'Need to read the file first.',
+      }),
+      createEntry({
+        id: 'assistant-1',
+        type: 'assistant_message',
+        timestamp: 2,
+        content: 'I will read AGENTS.md.',
+      }),
+      createEntry({
+        id: 'tool-1',
+        type: 'file_read',
+        timestamp: 3,
+        content: '/tmp/AGENTS.md',
+        metadata: { toolName: 'Read', toolUseId: 'toolu_1' },
+      }),
+    ])
+
+    expect(groups).toHaveLength(1)
+    const task = groups[0] as ClaudeTaskGroup
+    expect(task.type).toBe('task')
+    expect(task.description).toBe('I will read AGENTS.md.')
+    expect(task.tools).toHaveLength(2)
+    expect(task.tools[0]?.type).toBe('thinking')
+    expect(task.tools[0]?.content).toBe('Need to read the file first.')
+    expect(task.tools[1]?.type).toBe('file_read')
+  })
+
+  it('does not merge when current group mixes thinking with tools before assistant', () => {
+    const groups = groupClaudeEntries([
+      createEntry({
+        id: 'think-1',
+        type: 'thinking',
+        timestamp: 1,
+        content: 'Plan',
+      }),
+      createEntry({
+        id: 'tool-1',
+        type: 'file_read',
+        timestamp: 2,
+        content: '/x',
+        metadata: { toolName: 'Read' },
+      }),
+      createEntry({
+        id: 'assistant-1',
+        type: 'assistant_message',
+        timestamp: 3,
+        content: 'Done reading.',
+      }),
+    ])
+
+    expect(groups).toHaveLength(2)
+    const first = groups[0] as ClaudeTaskGroup
+    const second = groups[1] as ClaudeTaskGroup
+    expect(first.tools.some((e) => e.type === 'thinking')).toBe(true)
+    expect(first.tools.some((e) => e.type === 'file_read')).toBe(true)
+    expect(second.description).toBe('Done reading.')
+    expect(second.tools).toHaveLength(0)
+  })
+})
 
 describe('buildClaudeTaskGroupItems', () => {
   it('matches tool results by toolUseId instead of adjacency', () => {

@@ -13,7 +13,7 @@
 一键启动 PostgreSQL + Redis + 后端(NestJS watch) + 前端(Vite dev server)：
 
 ```bash
-pnpm run install:all   # 首次需要安装依赖
+pnpm run dev:install   # 首次需要安装依赖
 pnpm run dev           # 一键启动开发环境
 ```
 
@@ -33,8 +33,9 @@ pnpm run docker        # 一键启动 Docker 全栈环境
 ```
 
 启动后：
-- 前端: http://localhost:8000
-- 后端: http://localhost:9000
+
+- 前端: [http://localhost:8000](http://localhost:8000)
+- 后端: [http://localhost:9000](http://localhost:9000)
 
 其他 Docker 命令：
 
@@ -51,3 +52,4 @@ pnpm run docker:clean   # 停止并清除数据卷
 ```bash
 pnpm run               # 查看完整脚本列表
 ```
+

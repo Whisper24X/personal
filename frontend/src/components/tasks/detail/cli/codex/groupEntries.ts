@@ -51,6 +51,11 @@ function hasRenderableTaskContent(group: CodexTaskGroup): boolean {
   )
 }
 
+function isThinkingOnlyTaskGroup(group: CodexTaskGroup | null): boolean {
+  if (!group || group.tools.length === 0) return false
+  return group.tools.every((e) => e.type === 'thinking')
+}
+
 export function groupCodexEntries(entries: NormalizedEntry[]): CodexMessageGroup[] {
   const groups: CodexMessageGroup[] = []
   let currentTaskGroup: CodexTaskGroup | null = null
@@ -65,12 +70,19 @@ export function groupCodexEntries(entries: NormalizedEntry[]): CodexMessageGroup
 
   for (const entry of entries) {
     if (entry.type === 'assistant_message') {
+      const leadingThinking =
+        currentTaskGroup && isThinkingOnlyTaskGroup(currentTaskGroup)
+          ? [...currentTaskGroup.tools]
+          : null
+      if (leadingThinking) {
+        currentTaskGroup = null
+      }
       flushTaskGroup()
       currentTaskGroup = {
         type: 'task',
         title: entry.content.length > 80 ? `${entry.content.slice(0, 80)}...` : entry.content,
         description: entry.content,
-        tools: [],
+        tools: leadingThinking ?? [],
       }
     } else if (isStandaloneCodexEvent(entry) || isStandaloneCodexCard(entry)) {
       flushTaskGroup()

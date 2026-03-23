@@ -215,6 +215,40 @@ describe('groupCodexEntries', () => {
     })
   })
 
+  it('merges leading thinking-only into the assistant task group', () => {
+    const groups = groupCodexEntries([
+      createEntry({
+        id: 'think-1',
+        type: 'thinking',
+        timestamp: 1,
+        content: 'Reasoning before reply.',
+      }),
+      createEntry({
+        id: 'assistant-1',
+        type: 'assistant_message',
+        timestamp: 2,
+        content: 'Running pwd next.',
+      }),
+      createEntry({
+        id: 'tool-1',
+        type: 'command_run',
+        timestamp: 3,
+        content: 'pwd',
+        metadata: { status: 'running' },
+      }),
+    ])
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({
+      type: 'task',
+      description: 'Running pwd next.',
+    })
+    const task = groups[0] as { type: 'task'; tools: NormalizedEntry[] }
+    expect(task.tools[0]?.type).toBe('thinking')
+    expect(task.tools[0]?.content).toBe('Reasoning before reply.')
+    expect(task.tools[1]?.type).toBe('command_run')
+  })
+
   it('drops task groups that only contain orphaned tool results', () => {
     const groups = groupCodexEntries([
       createEntry({
