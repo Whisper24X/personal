@@ -36,6 +36,8 @@ import {
   InfinityPaginationResponseDto,
 } from '../utils/dto/infinity-pagination-response.dto';
 import { FindAllTasksDto } from './dto/find-all-tasks.dto';
+import { FindTaskStatsDto } from './dto/find-task-stats.dto';
+import { TaskStatusCountsDto } from './dto/task-status-counts.dto';
 import { infinityPagination } from '../utils/infinity-pagination';
 import { TaskDetailDto } from './dto/task-detail.dto';
 import { RetryTaskDto } from './dto/retry-task.dto';
@@ -148,6 +150,19 @@ export class TasksController {
         page,
         limit,
       },
+    );
+  }
+
+  @Get('stats')
+  @ApiOkResponse({ type: TaskStatusCountsDto })
+  @HttpCode(HttpStatus.OK)
+  async taskStats(
+    @Request() request,
+    @Query() query: FindTaskStatsDto,
+  ): Promise<TaskStatusCountsDto> {
+    return this.tasksService.countByStatusForProject(
+      query.projectId,
+      request.user,
     );
   }
 

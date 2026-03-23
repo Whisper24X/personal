@@ -2,6 +2,7 @@ import type { NavigationGuardWithThis } from 'vue-router'
 import { useAccessStore } from '@/stores/modules/access'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import { ROUTE_ACCESS_CONFIG, hasSomeAccess } from '@/constants/access-control'
+import { resolveNoPermissionFallbackRoute } from '@/utils/router/post-auth'
 
 const normalizeRouteValue = (value: unknown) => {
   if (typeof value === 'string') {
@@ -50,7 +51,7 @@ export const permissionGuard: NavigationGuardWithThis<undefined> = async (to) =>
       }
     }
 
-    return '/home'
+    return await resolveNoPermissionFallbackRoute()
   }
 
   return true

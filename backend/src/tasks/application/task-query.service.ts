@@ -10,6 +10,8 @@ import { Task } from '../domain/task';
 import { TaskLog } from '../domain/task-log';
 import { FindAllTasksDto } from '../dto/find-all-tasks.dto';
 import { FindTaskLogsDto } from '../dto/find-task-logs.dto';
+import { TaskStatus } from '../dto/task-status.enum';
+import { TaskStatusCountsDto } from '../dto/task-status-counts.dto';
 import { TaskDetailDto } from '../dto/task-detail.dto';
 import { TaskMessageDto } from '../dto/task-message.dto';
 import { TaskLogEventsService } from '../task-log-events.service';
@@ -67,6 +69,29 @@ export class TaskQueryService {
       projectId: query.projectId,
       status: query.status,
     });
+  }
+
+  async countByStatusForProject(
+    projectId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<TaskStatusCountsDto> {
+    await this.projectsService.assertProjectCapability(
+      projectId,
+      currentUser,
+      'project.task.read',
+    );
+
+    const counts = await this.taskRepository.countByStatusForProject(projectId);
+    const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
+
+    return {
+      projectId,
+      todo: counts[TaskStatus.todo],
+      in_progress: counts[TaskStatus.inProgress],
+      in_review: counts[TaskStatus.inReview],
+      done: counts[TaskStatus.done],
+      total,
+    };
   }
 
   async findById(

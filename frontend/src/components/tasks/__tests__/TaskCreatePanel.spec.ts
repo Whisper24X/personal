@@ -30,6 +30,7 @@ const {
   },
   projectsApi: {
     list: vi.fn(),
+    detail: vi.fn(),
   },
   workflowApi: {
     list: vi.fn(),
@@ -116,16 +117,16 @@ describe('TaskCreatePanel', () => {
     routeState.query = {}
     routeState.params = {}
 
+    const sampleProject = {
+      id: 'project-1',
+      businessLineId: 'line-1',
+      name: 'AINative',
+      gitUrl: 'git@example.com:group/ainative.git',
+      defaultBranch: 'main',
+    }
+    projectsApi.detail.mockResolvedValue(sampleProject)
     projectsApi.list.mockResolvedValue({
-      data: [
-        {
-          id: 'project-1',
-          businessLineId: 'line-1',
-          name: 'AINative',
-          gitUrl: 'git@example.com:group/ainative.git',
-          defaultBranch: 'main',
-        },
-      ],
+      data: [sampleProject],
       hasNextPage: false,
     })
     workflowApi.list.mockResolvedValue({

@@ -1,5 +1,5 @@
 import type { RouteLocationNormalized } from 'vue-router'
-import { projectsApi } from '@/api/projects'
+import { businessLinesApi } from '@/api/business-lines'
 import { appSettings } from '@/config/setting'
 
 export const HOME_ROUTE_PATH = '/home'
@@ -52,23 +52,48 @@ const normalizeRedirectPath = (candidate: unknown) => {
   return normalizedPath
 }
 
-const hasAvailableProject = async () => {
-  const response = await projectsApi.list({ page: 1, limit: 1 })
+/** 至少存在一条业务线（欢迎页仅在没有业务线时展示） */
+export const hasAvailableBusinessLine = async () => {
+  const response = await businessLinesApi.list({ page: 1, limit: 1 })
   return response.data.length > 0
+}
+
+/**
+ * 无路由权限时的回退。
+ * 不可再跳转到 `defaultRoute`（通常为 /dashboard），否则与 permissionGuard 形成无限重定向。
+ */
+export const resolveNoPermissionFallbackRoute = async (): Promise<string> => {
+  return HOME_ROUTE_PATH
 }
 
 export const resolveAuthenticatedRedirectPath = async (redirectPath?: unknown) => {
   const normalizedRedirectPath = normalizeRedirectPath(redirectPath)
 
   try {
-    const hasProject = await hasAvailableProject()
-    if (!hasProject) {
+    const hasBl = await hasAvailableBusinessLine()
+    if (!hasBl) {
       return HOME_ROUTE_PATH
     }
   } catch (error) {
     void error
   }
 
-  return normalizedRedirectPath || appSettings.defaultRoute
+  if (normalizedRedirectPath) {
+    return normalizedRedirectPath
+  }
+
+  const { useAccessStore } = await import('@/stores/modules/access')
+  const accessStore = useAccessStore()
+  try {
+    await accessStore.loadContext({})
+  } catch {
+    accessStore.clear()
+  }
+
+  if (accessStore.hasCapability('project.dashboard.read')) {
+    return appSettings.defaultRoute
+  }
+
+  return HOME_ROUTE_PATH
 }
 

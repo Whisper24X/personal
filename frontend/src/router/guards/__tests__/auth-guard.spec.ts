@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { authGuard } from '@/router/guards/auth-guard'
 
-const { loadMeMock, setTokenMock, setProfileMock, projectsListMock, storeState } = vi.hoisted(() => ({
+const { loadMeMock, setTokenMock, setProfileMock, businessLinesListMock, storeState } = vi.hoisted(() => ({
   loadMeMock: vi.fn(),
   setTokenMock: vi.fn(),
   setProfileMock: vi.fn(),
-  projectsListMock: vi.fn(),
+  businessLinesListMock: vi.fn(),
   storeState: {
     token: 'token',
     profile: { id: 'user-1' },
@@ -24,9 +24,9 @@ vi.mock('@/stores/modules/user', () => ({
   }),
 }))
 
-vi.mock('@/api/projects', () => ({
-  projectsApi: {
-    list: projectsListMock,
+vi.mock('@/api/business-lines', () => ({
+  businessLinesApi: {
+    list: businessLinesListMock,
   },
 }))
 
@@ -36,23 +36,20 @@ describe('authGuard', () => {
     storeState.token = 'token'
     storeState.profile = { id: 'user-1' }
     storeState.isLogin = true
-    projectsListMock.mockResolvedValue({
+    businessLinesListMock.mockResolvedValue({
       data: [
         {
-          id: 'project-1',
-          name: 'Project 1',
-          businessLineId: 'line-1',
+          id: 'line-1',
+          name: 'Line 1',
           description: '',
-          gitUrl: 'https://git.example.com/p1.git',
-          defaultBranch: 'main',
         },
       ],
       hasNextPage: false,
     })
   })
 
-  it('redirects logged-in users away from login to home when no project is available', async () => {
-    projectsListMock.mockResolvedValue({
+  it('redirects logged-in users away from login to home when no business line is available', async () => {
+    businessLinesListMock.mockResolvedValue({
       data: [],
       hasNextPage: false,
     })

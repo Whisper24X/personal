@@ -1596,7 +1596,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="space-y-6 fade-up">
+  <div class="fade-up w-full min-h-0 space-y-6 pb-8 md:pb-10">
     <section v-if="!workflowOnlyMode" class="space-y-2">
       <div class="flex items-center gap-2 text-xs text-muted-foreground">
         <RouterLink to="/projects" class="hover:text-foreground hover:underline"

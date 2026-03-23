@@ -375,31 +375,55 @@ const refreshAccessContext = async (projectId: string) => {
   }
 }
 
+/**
+ * 优先用当前上下文的单个项目详情（与侧栏一致），避免拉全量项目分页。
+ * 无有效 projectId 或 detail 失败时再退回 list。
+ */
+const loadProjectsForForm = async () => {
+  const preferredId = createForm.projectId.trim() || resolveProjectIdFromContext().trim()
+
+  if (preferredId) {
+    try {
+      const project = await projectsApi.detail(preferredId)
+      projects.value = [project]
+      createForm.projectId = project.id
+      return
+    } catch {
+      // detail 不可用（如临时网络错误）时退回全量列表，与旧行为一致
+    }
+  }
+
+  const projectResponse = await fetchAllPages((page, limit) => projectsApi.list({ page, limit }))
+  projects.value = projectResponse
+
+  const contextProjectId = resolveProjectIdFromContext()
+  const hasContextProject = projectResponse.some((project) => project.id === contextProjectId)
+
+  if (hasContextProject) {
+    createForm.projectId = contextProjectId
+  } else if (
+    !createForm.projectId ||
+    !projectResponse.some((project) => project.id === createForm.projectId)
+  ) {
+    createForm.projectId = ''
+  }
+}
+
 const loadPageData = async () => {
   loading.value = true
   try {
-    const projectResponse = await fetchAllPages((page, limit) => projectsApi.list({ page, limit }))
-    projects.value = projectResponse
-
-    const contextProjectId = resolveProjectIdFromContext()
-    const hasContextProject = projectResponse.some((project) => project.id === contextProjectId)
-
-    if (hasContextProject) {
-      createForm.projectId = contextProjectId
-    } else if (
-      !createForm.projectId ||
-      !projectResponse.some((project) => project.id === createForm.projectId)
-    ) {
-      createForm.projectId = ''
-    }
-
+    await loadProjectsForForm()
     await refreshAccessContext(createForm.projectId)
 
-    await Promise.all([
-      loadTemplatesForProject(createForm.projectId),
-      loadConversationCliOptions(createForm.projectId),
-      loadBranchesForProject(createForm.projectId),
-    ])
+    const pid = createForm.projectId
+    const parallel: Promise<unknown>[] = [
+      loadConversationCliOptions(pid),
+      loadBranchesForProject(pid),
+    ]
+    if (createForm.mode === 'workflow') {
+      parallel.push(loadTemplatesForProject(pid))
+    }
+    await Promise.all(parallel)
   } catch (error) {
     message.error(toErrorMessage(error, '加载任务页面失败'))
   } finally {
@@ -568,11 +592,14 @@ watch(
     }
 
     await refreshAccessContext(projectId)
-    await Promise.all([
-      loadTemplatesForProject(projectId),
+    const parallel: Promise<unknown>[] = [
       loadConversationCliOptions(projectId),
       loadBranchesForProject(projectId),
-    ])
+    ]
+    if (createForm.mode === 'workflow') {
+      parallel.push(loadTemplatesForProject(projectId))
+    }
+    await Promise.all(parallel)
   },
 )
 
@@ -603,12 +630,14 @@ watch(
 
 watch(
   () => createForm.mode,
-  (mode) => {
+  async (mode) => {
     if (mode === 'conversation') {
       createForm.workflowTemplateId = ''
       syncAgentToolConfigsForSelectedTool()
       return
     }
+
+    await loadTemplatesForProject(createForm.projectId)
 
     if (!createForm.workflowTemplateId && templates.value.length > 0) {
       createForm.workflowTemplateId = templates.value[0]?.id ?? ''

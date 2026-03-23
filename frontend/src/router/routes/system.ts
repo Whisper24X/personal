@@ -76,8 +76,11 @@ export const systemRoutes: AppRouteRecord[] = [
   },
   {
     path: '/business-lines',
-    redirect: toDashboardSettings('business-lines'),
-    meta: buildRouteAccessMeta('businessLines'),
+    name: 'business-lines-manage',
+    component: () => import('@/views/business-lines/manage.vue'),
+    meta: buildRouteAccessMeta('businessLines', {
+      contentMode: 'full',
+    }),
   },
   {
     path: '/projects',
@@ -88,13 +91,17 @@ export const systemRoutes: AppRouteRecord[] = [
     path: '/projects/workflows',
     name: 'project-workflows',
     component: () => import('@/views/projects/detail.vue'),
-    meta: buildRouteAccessMeta('projectWorkflows'),
+    meta: buildRouteAccessMeta('projectWorkflows', {
+      contentMode: 'full',
+    }),
   },
   {
     path: '/projects/:id',
     name: 'project-detail',
     component: () => import('@/views/projects/detail.vue'),
-    meta: buildRouteAccessMeta('projectDetail'),
+    meta: buildRouteAccessMeta('projectDetail', {
+      contentMode: 'full',
+    }),
   },
   {
     path: '/projects/:id/workflows',

@@ -1,5 +1,15 @@
 export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done'
 
+/** GET /tasks/stats 项目任务按状态聚合 */
+export type TaskStatusCounts = {
+  projectId: string
+  todo: number
+  in_progress: number
+  in_review: number
+  done: number
+  total: number
+}
+
 export type TaskMode = 'conversation' | 'workflow'
 
 export type TaskNodeType = 'agent' | 'skill' | 'mcp' | 'manual'

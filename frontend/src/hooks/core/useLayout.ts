@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import { businessLinesApi } from '@/api/business-lines'
 import { projectsApi } from '@/api/projects'
@@ -125,24 +125,26 @@ const loadStoredSelectedMenuPath = () => {
   return localStorage.getItem(STORAGE_KEYS.lastSelectedMenuPath) ?? ''
 }
 
+const loadStoredActiveBusinessLineId = () => {
+  return localStorage.getItem(STORAGE_KEYS.lastActiveBusinessLineId)?.trim() ?? ''
+}
+
+const persistActiveBusinessLineId = (businessLineId: string) => {
+  if (businessLineId.trim()) {
+    localStorage.setItem(STORAGE_KEYS.lastActiveBusinessLineId, businessLineId.trim())
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.lastActiveBusinessLineId)
+  }
+}
+
 export const useLayout = () => {
   const route = useRoute()
   const router = useRouter()
   const accessStore = useAccessStore()
   const userStore = useUserStore()
 
-  const mobileNavOpen = ref(false)
-  const isDesktop = ref(false)
-  const businessLineModalOpen = ref(false)
-  const menuCollapsed = ref(false)
-  const projectTooltipVisible = ref(false)
-  const projectTooltipText = ref('')
   const settingsModalOpen = ref(false)
   const settingsSection = ref<SettingsSection>('account')
-  const projectTooltipStyle = ref({
-    left: '0px',
-    top: '0px',
-  })
 
   const businessLines = ref<BusinessLine[]>([])
   const activeBusinessLineId = ref('')
@@ -322,7 +324,13 @@ export const useLayout = () => {
           activeBusinessLineId.value = fallbackBusinessLine.id
         }
       } else {
-        activeBusinessLineId.value = businessLines.value[0]?.id ?? ''
+        const firstLine = businessLines.value[0]
+        activeBusinessLineId.value = firstLine?.id ?? ''
+        if (firstLine?.projects?.length) {
+          setSelectedProjectId(firstLine.projects[0]!.id)
+        } else {
+          setSelectedProjectId('')
+        }
       }
 
       return
@@ -342,7 +350,11 @@ export const useLayout = () => {
       return
     }
 
-    setSelectedProjectId('')
+    if (currentProjects.length > 0) {
+      setSelectedProjectId(currentProjects[0]!.id)
+    } else {
+      setSelectedProjectId('')
+    }
   }
 
   const syncBusinessLineFromRoute = () => {
@@ -404,9 +416,16 @@ export const useLayout = () => {
       if (routeMatchedBusinessLine) {
         activeBusinessLineId.value = routeMatchedBusinessLine.id
       } else {
-        const hasCurrentActive = nextBusinessLines.some((line) => line.id === activeBusinessLineId.value)
-        if (!hasCurrentActive) {
-          activeBusinessLineId.value = nextBusinessLines[0]?.id ?? ''
+        const storedId = loadStoredActiveBusinessLineId()
+        const storedValid = storedId && nextBusinessLines.some((line) => line.id === storedId)
+        if (storedValid) {
+          activeBusinessLineId.value = storedId
+        } else if (nextBusinessLines.length === 1) {
+          activeBusinessLineId.value = nextBusinessLines[0]!.id
+        } else if (nextBusinessLines.length > 1) {
+          activeBusinessLineId.value = ''
+        } else {
+          activeBusinessLineId.value = ''
         }
       }
 
@@ -424,7 +443,12 @@ export const useLayout = () => {
   }
 
   const currentBusinessLine = computed(() => {
-    return businessLines.value.find((line) => line.id === activeBusinessLineId.value) ?? businessLines.value[0]
+    const id = activeBusinessLineId.value.trim()
+    if (!id) {
+      return undefined
+    }
+
+    return businessLines.value.find((line) => line.id === id)
   })
 
   const businessLineItems = computed<BusinessLineItem[]>(() => {
@@ -438,7 +462,15 @@ export const useLayout = () => {
   })
 
   const currentBusinessLineName = computed(() => {
-    return currentBusinessLine.value?.name ?? '未分组业务线'
+    if (currentBusinessLine.value) {
+      return currentBusinessLine.value.name
+    }
+
+    if (businessLines.value.length > 0) {
+      return '请选择业务线'
+    }
+
+    return '未分组业务线'
   })
 
   const projectItems = computed<ProjectItem[]>(() => {
@@ -469,6 +501,8 @@ export const useLayout = () => {
     return !layoutDataLoading.value && hasSelectedProject.value
   })
 
+  const hasAnyBusinessLine = computed(() => businessLines.value.length > 0)
+
   const ensureAccessibleRoute = async (projectId?: string) => {
     const requiredCapabilities = (route.meta.capabilities as string[] | undefined) ?? []
     if (requiredCapabilities.length === 0) {
@@ -484,8 +518,11 @@ export const useLayout = () => {
     const fallbackMenuPath = menuItems.value[0]?.to ?? '/home'
 
     if (fallbackMenuPath === '/home' || !normalizedProjectId) {
-      if (route.path !== '/home') {
-        await router.replace('/home')
+      const canDashboard = accessStore.hasCapability('project.dashboard.read')
+      const targetPath =
+        hasAnyBusinessLine.value && canDashboard ? '/dashboard' : '/home'
+      if (route.path !== targetPath) {
+        await router.replace(targetPath)
       }
       return
     }
@@ -534,6 +571,13 @@ export const useLayout = () => {
     )
   })
 
+  const canCreateProject = computed(() => {
+    return hasSomeAccess(
+      BUTTON_ACCESS_CONFIG.createProjectItem.capabilities,
+      (capability) => accessStore.hasCapability(capability),
+    )
+  })
+
   const refreshLayoutData = async () => {
     await loadLayoutData()
   }
@@ -561,6 +605,7 @@ export const useLayout = () => {
     }
 
     if (route.name === 'home') return ['工作区', '首页']
+    if (route.name === 'business-lines-manage') return ['工作区', '业务线管理']
     if (route.name === 'dashboard') return ['项目菜单', '仪表盘']
     if (route.name === 'project-workflows') return ['项目菜单', '工作流']
     if (route.name === 'project-workflows-by-id') return ['项目菜单', '工作流']
@@ -569,8 +614,8 @@ export const useLayout = () => {
     if (route.name === 'skills') return ['项目菜单', 'Skills']
     if (route.name === 'mcp') return ['项目菜单', 'MCP']
     if (route.name === 'automations') return ['项目菜单', '自动化']
-    if (route.name === 'tasks') return ['项目菜单', '任务']
-    if (route.name === 'task-detail') return ['项目菜单', '任务', '任务详情']
+    if (route.name === 'tasks') return ['项目菜单', '新建任务']
+    if (route.name === 'task-detail') return ['项目菜单', '新建任务', '任务详情']
     return ['项目菜单']
   })
 
@@ -582,6 +627,72 @@ export const useLayout = () => {
 
     return route.path === to || route.path.startsWith(`${to}/`)
   }
+
+  /** 侧栏/顶栏链接高亮（项目内菜单路径与路由 path 对齐） */
+  const isNavActive = (to: string) => {
+    return isRouteActive(to)
+  }
+
+  /**
+   * 侧栏「工作台」：有项目时进入项目仪表盘；无项目时，
+   * 多业务线且尚未选择时进 `/home`；否则有业务线进 `/dashboard`，无业务线进 `/home`。
+   */
+  const workbenchNavTo = computed((): RouteLocationRaw => {
+    const pid = selectedProjectId.value.trim()
+    if (pid) {
+      return { path: '/dashboard', query: { projectId: pid } }
+    }
+
+    if (hasAnyBusinessLine.value && !activeBusinessLineId.value.trim()) {
+      return { path: '/home' }
+    }
+
+    if (hasAnyBusinessLine.value) {
+      return { path: '/dashboard' }
+    }
+
+    return { path: '/home' }
+  })
+
+  const isWorkbenchNavActive = () => {
+    const pid = selectedProjectId.value.trim()
+    if (pid) {
+      return route.name === 'dashboard'
+    }
+
+    if (hasAnyBusinessLine.value && !activeBusinessLineId.value.trim()) {
+      return route.name === 'home' || route.path === '/home'
+    }
+
+    if (hasAnyBusinessLine.value) {
+      return route.name === 'dashboard'
+    }
+
+    return route.name === 'home' || route.path === '/home'
+  }
+
+  /** 顶栏工具区：与侧栏解耦，固定为工作流 / Skills / 自动化 / MCP / Git（按权限过滤） */
+  const HEADER_TOOL_MENU_ORDER: readonly ProjectMenuId[] = [
+    'workflow',
+    'skills',
+    'automations',
+    'mcp',
+    'git',
+  ]
+
+  const headerToolMenuItems = computed(() => {
+    const byId = new Map(menuItems.value.map((item) => [item.id, item]))
+    return HEADER_TOOL_MENU_ORDER.map((id) => byId.get(id)).filter((item): item is MenuItem =>
+      Boolean(item),
+    )
+  })
+
+  const sidebarCoreTasksKnowledge = computed(() => {
+    return {
+      tasks: menuItems.value.find((item) => item.id === 'tasks'),
+      knowledge: menuItems.value.find((item) => item.id === 'knowledge'),
+    }
+  })
 
   const menuItemClass = (to: string) => {
     if (isRouteActive(to)) {
@@ -601,60 +712,9 @@ export const useLayout = () => {
 
   const projectShortLabel = (short: string) => short.trim().slice(0, 4).toUpperCase()
   const menuIconFor = (menuId: MenuItem['id']) => menuIconPaths[menuId]
-  const sidebarCollapsed = computed(() => isDesktop.value && menuCollapsed.value)
-
-  const setMobileNavOpen = (open: boolean) => {
-    mobileNavOpen.value = open
-  }
-
-  const setBusinessLineModalOpen = (open: boolean) => {
-    businessLineModalOpen.value = open
-  }
-
-  const toggleMobileNav = () => {
-    mobileNavOpen.value = !mobileNavOpen.value
-  }
-
-  const toggleMenuCollapsed = () => {
-    menuCollapsed.value = !menuCollapsed.value
-  }
-
-  const showProjectTooltip = (event: MouseEvent | FocusEvent, name: string) => {
-    const target = event.currentTarget as HTMLElement | null
-    if (!target) return
-
-    const rect = target.getBoundingClientRect()
-    projectTooltipText.value = name
-    projectTooltipStyle.value = {
-      left: `${rect.right + 10}px`,
-      top: `${rect.top + rect.height / 2}px`,
-    }
-    projectTooltipVisible.value = true
-  }
-
-  const hideProjectTooltip = () => {
-    projectTooltipVisible.value = false
-  }
-
-  const showMenuTooltip = (event: MouseEvent | FocusEvent, label: string) => {
-    if (!sidebarCollapsed.value) return
-    showProjectTooltip(event, label)
-  }
 
   const openBusinessLineModal = () => {
-    businessLineModalOpen.value = true
-    settingsModalOpen.value = false
-    mobileNavOpen.value = false
-    hideProjectTooltip()
-
-    const nextQuery = { ...route.query }
-    if (nextQuery[SETTINGS_QUERY_KEY]) {
-      delete nextQuery[SETTINGS_QUERY_KEY]
-      void router.replace({
-        path: route.path,
-        query: nextQuery,
-      })
-    }
+    void router.push({ name: 'business-lines-manage' })
   }
 
   const selectBusinessLine = async (businessLineId: string) => {
@@ -664,7 +724,6 @@ export const useLayout = () => {
     activeBusinessLineId.value = matchedBusinessLine.id
     syncProjectSelection({ preserveCurrentBusinessLine: true })
     await refreshAccessContext({ businessLineId: matchedBusinessLine.id })
-    hideProjectTooltip()
   }
 
   const selectProject = async (projectId: string) => {
@@ -697,7 +756,6 @@ export const useLayout = () => {
       })
     }
 
-    hideProjectTooltip()
   }
 
   const updateSettingsQuery = (section: SettingsSection) => {
@@ -716,9 +774,6 @@ export const useLayout = () => {
   }
 
   const openSettings = (section?: SettingsSection) => {
-    mobileNavOpen.value = false
-    hideProjectTooltip()
-    businessLineModalOpen.value = false
     settingsSection.value = resolveSettingsSection(section ?? route.query[SETTINGS_QUERY_KEY])
     settingsModalOpen.value = true
     updateSettingsQuery(settingsSection.value)
@@ -741,22 +796,9 @@ export const useLayout = () => {
     updateSettingsQuery(nextSection)
   }
 
-  const onKeydown = (event: KeyboardEvent) => {
-    if (!mobileNavOpen.value) return
-    if (event.key !== 'Escape') return
-    mobileNavOpen.value = false
-  }
-
-  const onWindowGeometryChange = () => {
-    hideProjectTooltip()
-  }
-
   watch(
     () => route.fullPath,
     () => {
-      mobileNavOpen.value = false
-      businessLineModalOpen.value = false
-      hideProjectTooltip()
       syncSelectedMenuPath()
       syncBusinessLineFromRoute()
       syncProjectSelection()
@@ -831,25 +873,8 @@ export const useLayout = () => {
     }
   })
 
-  let previousBodyOverflow = ''
-  watch(mobileNavOpen, (open) => {
-    if (open && !isDesktop.value) {
-      previousBodyOverflow = document.body.style.overflow
-      document.body.style.overflow = 'hidden'
-      return
-    }
-
-    document.body.style.overflow = previousBodyOverflow
-  })
-
-  let desktopMediaQuery: MediaQueryList | null = null
-  const syncDesktop = () => {
-    isDesktop.value = desktopMediaQuery?.matches ?? false
-  }
-
-  watch(isDesktop, (desktop) => {
-    if (!desktop) return
-    mobileNavOpen.value = false
+  watch(activeBusinessLineId, (id) => {
+    persistActiveBusinessLineId(id)
   })
 
   onMounted(() => {
@@ -857,28 +882,9 @@ export const useLayout = () => {
 
     syncSelectedMenuPath()
     void refreshLayoutData()
-
-    desktopMediaQuery = window.matchMedia('(min-width: 1100px)')
-    syncDesktop()
-    desktopMediaQuery.addEventListener('change', syncDesktop)
-
-    window.addEventListener('keydown', onKeydown)
-    window.addEventListener('scroll', onWindowGeometryChange, true)
-    window.addEventListener('resize', onWindowGeometryChange)
-  })
-
-  onBeforeUnmount(() => {
-    window.removeEventListener('keydown', onKeydown)
-    window.removeEventListener('scroll', onWindowGeometryChange, true)
-    window.removeEventListener('resize', onWindowGeometryChange)
-    desktopMediaQuery?.removeEventListener('change', syncDesktop)
-    document.body.style.overflow = previousBodyOverflow
   })
 
   return {
-    mobileNavOpen,
-    sidebarCollapsed,
-    businessLineModalOpen,
     settingsModalOpen,
     settingsSection,
     availableSettingsSections,
@@ -890,9 +896,7 @@ export const useLayout = () => {
     showCurrentProjectName,
     currentBusinessLineName,
     canCreateBusinessLine,
-    projectTooltipVisible,
-    projectTooltipText,
-    projectTooltipStyle,
+    canCreateProject,
     projectItems,
     menuItems,
     pageTitle,
@@ -902,13 +906,12 @@ export const useLayout = () => {
     projectNavigationTo,
     projectShortLabel,
     menuIconFor,
-    setMobileNavOpen,
-    setBusinessLineModalOpen,
-    toggleMobileNav,
-    toggleMenuCollapsed,
-    showProjectTooltip,
-    hideProjectTooltip,
-    showMenuTooltip,
+    isRouteActive,
+    isNavActive,
+    workbenchNavTo,
+    isWorkbenchNavActive,
+    headerToolMenuItems,
+    sidebarCoreTasksKnowledge,
     refreshLayoutData,
     openBusinessLineModal,
     openSettings,
@@ -916,5 +919,7 @@ export const useLayout = () => {
     setSettingsSection,
     selectBusinessLine,
     selectProject,
+    hasAnyBusinessLine,
+    layoutDataLoading,
   }
 }

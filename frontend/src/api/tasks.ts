@@ -6,6 +6,7 @@ import type {
   RetryTaskPayload,
   Task,
   TaskDetail,
+  TaskStatusCounts,
   TaskGitActionResult,
   TaskGitBaseBranchPayload,
   TaskGitBranchDiffFiles,
@@ -32,6 +33,11 @@ import { apiHttp, buildUrl, type InfinityPaginationResponse } from './http'
 import { STORAGE_KEYS } from '@/types/common/storage'
 
 export const tasksApi = {
+  /** 项目任务按状态聚合（数据库 COUNT，用于仪表盘统计与完成率） */
+  statusCounts(projectId: string) {
+    return apiHttp.get<TaskStatusCounts>('/tasks/stats', { projectId })
+  },
+
   list(params?: { page?: number; limit?: number; projectId?: string; status?: string }) {
     return apiHttp.get<InfinityPaginationResponse<Task>>('/tasks', {
       page: params?.page,
