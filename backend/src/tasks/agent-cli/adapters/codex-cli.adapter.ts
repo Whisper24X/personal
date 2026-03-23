@@ -10,6 +10,8 @@ export class CodexCliAdapter extends BaseAgentCliAdapter {
   readonly toolIdAliases = ['codex', 'codex-cli'];
   readonly toolConfigAllowedKeys = new Set([
     'api_key',
+    'base_url',
+    'provider_name',
     'model',
     'oss',
     'local_provider',
@@ -33,10 +35,24 @@ export class CodexCliAdapter extends BaseAgentCliAdapter {
       typeof raw.api_key === 'string' && raw.api_key.trim()
         ? raw.api_key.trim()
         : undefined;
+    const baseUrl =
+      typeof raw.base_url === 'string' && raw.base_url.trim()
+        ? raw.base_url.trim()
+        : undefined;
+    const providerName =
+      typeof raw.provider_name === 'string' && raw.provider_name.trim()
+        ? raw.provider_name.trim()
+        : undefined;
+
+    const resolvedEnv: Record<string, string> = { ...(env ?? {}) };
+    if (apiKey) {
+      resolvedEnv['OPENAI_API_KEY'] = apiKey;
+    }
+    delete resolvedEnv['OPENAI_BASE_URL'];
 
     return {
       args: this.buildCodexExecArgs(raw),
-      env: apiKey ? { ...(env ?? {}), OPENAI_API_KEY: apiKey } : env,
+      env: Object.keys(resolvedEnv).length > 0 ? resolvedEnv : undefined,
     };
   }
 
@@ -113,6 +129,12 @@ export class CodexCliAdapter extends BaseAgentCliAdapter {
     const profile = this.normalizeOptionalString(
       typeof raw.profile === 'string' ? raw.profile : null,
     );
+    const providerName = this.normalizeOptionalString(
+      typeof raw.provider_name === 'string' ? raw.provider_name : null,
+    );
+    const baseUrl = this.normalizeOptionalString(
+      typeof raw.base_url === 'string' ? raw.base_url : null,
+    );
     const sandbox = this.resolveCodexSandbox(raw.sandbox);
     const executionMode = this.resolveCodexExecutionMode(raw.execution_mode);
     const configOverrides = this.resolveStringArray(raw.config_overrides) ?? [];
@@ -138,8 +160,56 @@ export class CodexCliAdapter extends BaseAgentCliAdapter {
     } else if (executionMode === 'dangerously-bypass-approvals-and-sandbox') {
       args.push('--dangerously-bypass-approvals-and-sandbox');
     } else {
-      // Default to workspace-write sandbox; user can override via configJson
       args.push('--sandbox', sandbox ?? 'workspace-write');
+    }
+
+    if (providerName) {
+      args.push('-c', `model_provider="${providerName}"`);
+      args.push(
+        '-c',
+        `model_providers.${providerName}.name="${providerName}"`,
+      );
+      args.push(
+        '-c',
+        `model_providers.${providerName}.wire_api="responses"`,
+      );
+      args.push(
+        '-c',
+        `model_providers.${providerName}.requires_openai_auth=true`,
+      );
+      args.push(
+        '-c',
+        `model_providers.${providerName}.env_key="OPENAI_API_KEY"`,
+      );
+      if (baseUrl) {
+        args.push(
+          '-c',
+          `model_providers.${providerName}.base_url="${baseUrl}"`,
+        );
+      }
+    } else if (baseUrl) {
+      const defaultProvider = 'ainative';
+      args.push('-c', `model_provider="${defaultProvider}"`);
+      args.push(
+        '-c',
+        `model_providers.${defaultProvider}.name="${defaultProvider}"`,
+      );
+      args.push(
+        '-c',
+        `model_providers.${defaultProvider}.wire_api="responses"`,
+      );
+      args.push(
+        '-c',
+        `model_providers.${defaultProvider}.requires_openai_auth=true`,
+      );
+      args.push(
+        '-c',
+        `model_providers.${defaultProvider}.env_key="OPENAI_API_KEY"`,
+      );
+      args.push(
+        '-c',
+        `model_providers.${defaultProvider}.base_url="${baseUrl}"`,
+      );
     }
 
     for (const override of configOverrides) {

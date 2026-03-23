@@ -72,8 +72,8 @@ export class CursorCliAdapter extends BaseAgentCliAdapter {
       args.push('--force');
     }
 
-    // Default to enabled; user can override via configJson: { sandbox: "disabled" }
-    const sandbox = this.resolveCursorSandbox(raw.sandbox) ?? 'enabled';
+    const isRoot = process.getuid?.() === 0;
+    const sandbox = this.resolveCursorSandbox(raw.sandbox) ?? (isRoot ? 'disabled' : 'enabled');
     args.push('--sandbox', sandbox);
 
     if (raw.approve_mcps === true) {

@@ -9,6 +9,9 @@ export class ClaudeCliAdapter extends BaseAgentCliAdapter {
   readonly toolIdAliases = ['claude', 'claude-code'];
   readonly toolConfigAllowedKeys = new Set([
     'api_key',
+    'auth_type',
+    'auth_token',
+    'base_url',
     'model',
     'effort',
     'permission_mode',
@@ -29,14 +32,21 @@ export class ClaudeCliAdapter extends BaseAgentCliAdapter {
       raw.env && typeof raw.env === 'object'
         ? this.resolveStringEnv(raw.env as Record<string, unknown>)
         : undefined;
-    const apiKey =
+
+    // Backward compatibility: old configs may still carry api_key
+    const legacyApiKey =
       typeof raw.api_key === 'string' && raw.api_key.trim()
         ? raw.api_key.trim()
         : undefined;
 
+    const resolvedEnv =
+      legacyApiKey && !env?.['ANTHROPIC_API_KEY'] && !env?.['ANTHROPIC_AUTH_TOKEN']
+        ? { ...(env ?? {}), ANTHROPIC_API_KEY: legacyApiKey }
+        : env;
+
     return {
       args: this.buildClaudePrintArgs(raw),
-      env: apiKey ? { ...(env ?? {}), ANTHROPIC_API_KEY: apiKey } : env,
+      env: resolvedEnv,
     };
   }
 
@@ -77,10 +87,13 @@ export class ClaudeCliAdapter extends BaseAgentCliAdapter {
       args.push('--effort', effort);
     }
 
-    if (dangerouslySkipPermissions) {
+    if (process.getuid?.() === 0) {
+      // Root (Docker): both --dangerously-skip-permissions and bypassPermissions are rejected.
+      // Use 'auto' which is the most permissive mode allowed under root.
+      args.push('--permission-mode', 'auto');
+    } else if (dangerouslySkipPermissions) {
       args.push('--dangerously-skip-permissions');
     } else {
-      // Default to 'auto' for non-interactive pipeline execution
       args.push('--permission-mode', permissionMode ?? 'auto');
     }
 

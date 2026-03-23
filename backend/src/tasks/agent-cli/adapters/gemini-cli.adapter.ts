@@ -1,3 +1,6 @@
+import { mkdirSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 import { BaseAgentCliAdapter } from '../agent-cli-adapter.base';
 import {
   AgentCliContinuationOptions,
@@ -5,10 +8,12 @@ import {
 } from '../agent-cli-adapter.interface';
 
 export class GeminiCliAdapter extends BaseAgentCliAdapter {
+  private static geminiDirEnsured = false;
   readonly id = 'gemini' as const;
   readonly toolIdAliases = ['gemini', 'gemini-cli'];
   readonly toolConfigAllowedKeys = new Set([
     'api_key',
+    'base_url',
     'model',
     'sandbox',
     'yolo',
@@ -24,6 +29,8 @@ export class GeminiCliAdapter extends BaseAgentCliAdapter {
   buildToolRunnerConfig(
     raw: Record<string, unknown>,
   ): AgentCliRunnerConfigInput {
+    GeminiCliAdapter.ensureGeminiDir();
+
     const env =
       raw.env && typeof raw.env === 'object'
         ? this.resolveStringEnv(raw.env as Record<string, unknown>)
@@ -32,15 +39,28 @@ export class GeminiCliAdapter extends BaseAgentCliAdapter {
       typeof raw.api_key === 'string' && raw.api_key.trim()
         ? raw.api_key.trim()
         : undefined;
+    const baseUrl =
+      typeof raw.base_url === 'string' && raw.base_url.trim()
+        ? raw.base_url.trim()
+        : undefined;
+
+    const resolvedEnv: Record<string, string> = { ...(env ?? {}) };
+    if (apiKey) {
+      resolvedEnv['GEMINI_API_KEY'] = apiKey;
+    }
+    if (baseUrl) {
+      resolvedEnv['GOOGLE_GEMINI_BASE_URL'] = baseUrl;
+      resolvedEnv['GEMINI_API_KEY_AUTH_MECHANISM'] = 'bearer';
+    }
 
     return {
       args: this.buildGeminiExecArgs(raw),
-      env: apiKey ? { ...(env ?? {}), GEMINI_API_KEY: apiKey } : env,
+      env: Object.keys(resolvedEnv).length > 0 ? resolvedEnv : undefined,
     };
   }
 
   defaultArgs(): string[] {
-    return ['--output-format', 'stream-json', '--sandbox', '--yolo'];
+    return ['--output-format', 'stream-json', '--yolo'];
   }
 
   applyContinuation(
@@ -65,8 +85,7 @@ export class GeminiCliAdapter extends BaseAgentCliAdapter {
       args.push('--model', model);
     }
 
-    // Default to sandbox unless explicitly disabled via configJson: { sandbox: false }
-    if (raw.sandbox !== false) {
+    if (raw.sandbox === true) {
       args.push('--sandbox');
     }
 
@@ -104,5 +123,15 @@ export class GeminiCliAdapter extends BaseAgentCliAdapter {
     }
 
     return null;
+  }
+
+  private static ensureGeminiDir(): void {
+    if (GeminiCliAdapter.geminiDirEnsured) return;
+    try {
+      mkdirSync(join(homedir(), '.gemini'), { recursive: true });
+    } catch {
+      // best-effort; ignore if it fails
+    }
+    GeminiCliAdapter.geminiDirEnsured = true;
   }
 }

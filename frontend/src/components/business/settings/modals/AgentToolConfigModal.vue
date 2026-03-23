@@ -40,6 +40,11 @@ const CODEX_EXECUTION_MODE_OPTIONS: ConfigFieldOption[] = [
   },
 ]
 
+const CLAUDE_AUTH_TYPE_OPTIONS: ConfigFieldOption[] = [
+  { value: 'ANTHROPIC_API_KEY', label: 'API Key (ANTHROPIC_API_KEY)' },
+  { value: 'ANTHROPIC_AUTH_TOKEN', label: 'Auth Token (ANTHROPIC_AUTH_TOKEN)' },
+]
+
 const CLAUDE_EFFORT_OPTIONS: ConfigFieldOption[] = [
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Medium' },
@@ -68,6 +73,24 @@ const GEMINI_APPROVAL_MODE_OPTIONS: ConfigFieldOption[] = [
   { value: 'plan', label: 'Plan' },
 ]
 
+const OPENCODE_PROVIDER_OPTIONS: ConfigFieldOption[] = [
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'google', label: 'Google' },
+  { value: 'openrouter', label: 'OpenRouter' },
+  { value: 'mistral', label: 'Mistral' },
+  { value: 'xai', label: 'xAI' },
+]
+
+const OPENCODE_PROVIDER_ENV_MAP: Record<string, { apiKeyEnv: string; baseUrlEnv?: string }> = {
+  openai: { apiKeyEnv: 'OPENAI_API_KEY', baseUrlEnv: 'OPENAI_BASE_URL' },
+  anthropic: { apiKeyEnv: 'ANTHROPIC_API_KEY', baseUrlEnv: 'ANTHROPIC_BASE_URL' },
+  google: { apiKeyEnv: 'GOOGLE_GENERATIVE_AI_API_KEY' },
+  openrouter: { apiKeyEnv: 'OPENROUTER_API_KEY', baseUrlEnv: 'OPENROUTER_BASE_URL' },
+  mistral: { apiKeyEnv: 'MISTRAL_API_KEY', baseUrlEnv: 'MISTRAL_BASE_URL' },
+  xai: { apiKeyEnv: 'XAI_API_KEY', baseUrlEnv: 'XAI_BASE_URL' },
+}
+
 const BOOLEAN_NULLABLE_FIELD_OPTIONS = [
   { label: 'Default', value: null },
   { label: 'Enabled', value: true },
@@ -78,7 +101,14 @@ const AGENT_TOOL_CONFIG_SELECT_PANEL_Z_INDEX = 130
 
 const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
   'claude-code': {
-    api_key: { type: 'string', description: 'Anthropic API Key，将注入为 ANTHROPIC_API_KEY' },
+    auth_type: {
+      type: 'string',
+      options: CLAUDE_AUTH_TYPE_OPTIONS,
+      defaultValue: 'ANTHROPIC_AUTH_TOKEN',
+      description: '选择认证环境变量名',
+    },
+    auth_token: { type: 'string', description: '认证密钥，修改后自动写入 env' },
+    base_url: { type: 'string', description: '自定义 API 地址（ANTHROPIC_BASE_URL），修改后自动写入 env' },
     model: { type: 'string' },
     effort: { type: 'string', options: CLAUDE_EFFORT_OPTIONS },
     dangerously_skip_permissions: {
@@ -112,6 +142,8 @@ const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
   },
   codex: {
     api_key: { type: 'string', description: 'OpenAI API Key，将注入为 OPENAI_API_KEY' },
+    base_url: { type: 'string', description: '自定义 API 地址，通过 -c openai_base_url 或 -c model_providers.*.base_url 注入' },
+    provider_name: { type: 'string', description: '自定义 Provider 名称（可选），设置后自动生成 -c model_provider 及 model_providers 配置' },
     model: { type: 'string', defaultValue: 'gpt-5.4', description: '默认模型' },
     oss: { type: 'booleanNullable' },
     local_provider: {
@@ -165,10 +197,12 @@ const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
   },
   'gemini-cli': {
     api_key: { type: 'string', description: 'Gemini API Key，将注入为 GEMINI_API_KEY' },
+    base_url: { type: 'string', description: '自定义网关地址（不带 /v1），注入为 GOOGLE_GEMINI_BASE_URL，同时自动启用 bearer 认证' },
     model: { type: 'string' },
     sandbox: {
       type: 'boolean',
-      description: '为 Gemini CLI 开启 --sandbox',
+      defaultValue: false,
+      description: '为 Gemini CLI 开启 --sandbox（需要容器内有 Docker）',
     },
     yolo: {
       type: 'boolean',
@@ -195,8 +229,15 @@ const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
     env: { type: 'stringMap' },
   },
   opencode: {
-    api_key: { type: 'string', description: 'API Key，使用 OpenAI 供应商时注入为 OPENAI_API_KEY；其他供应商请在高级 env 中填写对应的 KEY' },
-    model: { type: 'string' },
+    provider: {
+      type: 'string',
+      options: OPENCODE_PROVIDER_OPTIONS,
+      defaultValue: 'openai',
+      description: '选择 AI 供应商，决定注入的环境变量名称',
+    },
+    api_key: { type: 'string', description: 'API Key，根据供应商自动注入对应环境变量' },
+    base_url: { type: 'string', description: '自定义网关地址（含 /v1），根据供应商自动注入对应环境变量' },
+    model: { type: 'string', description: '格式为 provider/model，如 openai/gpt-5.4、anthropic/claude-opus-4-6' },
     agent: { type: 'string' },
     fork: {
       type: 'boolean',
@@ -287,8 +328,11 @@ const hiddenFieldKeys = computed(() => {
     hidden.add('permission_mode')
   }
 
-  if (props.cliToolId === 'gemini-cli' && geminiYoloEnabled.value) {
-    hidden.add('approval_mode')
+  if (props.cliToolId === 'gemini-cli') {
+    if (geminiYoloEnabled.value) {
+      hidden.add('approval_mode')
+    }
+    hidden.add('sandbox')
   }
 
   return hidden
@@ -424,6 +468,10 @@ const sanitizeStringArray = (value: unknown): string[] => {
 }
 
 const formatFieldLabel = (key: string): string => {
+  if (key === 'auth_token' && props.cliToolId === 'claude-code') {
+    return draftConfig.value.auth_type === 'ANTHROPIC_API_KEY' ? 'Api Key' : 'Auth Token'
+  }
+
   return key
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -573,16 +621,35 @@ const sanitizeConfigBySchema = (
   return normalizeConfigByTool(toolId, sanitized)
 }
 
+const SECRET_FIELD_KEYS = new Set(['api_key', 'auth_token'])
+
 const isFieldWide = (fieldKey: string, field: ConfigFieldSchema): boolean => {
   return (
     field.type === 'stringArray' ||
     field.type === 'stringMap' ||
     (field.type === 'string' && Boolean(field.multiline)) ||
-    fieldKey === 'api_key'
+    SECRET_FIELD_KEYS.has(fieldKey)
   )
 }
 
 const getFieldDescription = (fieldKey: string, field: ConfigFieldSchema): string => {
+  if (fieldKey === 'auth_token' && props.cliToolId === 'claude-code') {
+    const envKey = getClaudeAuthEnvKey(draftConfig.value)
+    return `修改后自动写入 env.${envKey}`
+  }
+
+  if (props.cliToolId === 'opencode' && (fieldKey === 'api_key' || fieldKey === 'base_url')) {
+    const mapping = getOpencodeEnvMapping(draftConfig.value)
+    if (fieldKey === 'api_key') {
+      return `修改后自动写入 env.${mapping.apiKeyEnv}`
+    }
+    if (fieldKey === 'base_url') {
+      return mapping.baseUrlEnv
+        ? `修改后自动写入 env.${mapping.baseUrlEnv}`
+        : '当前供应商不支持自定义 Base URL'
+    }
+  }
+
   if (field.description) {
     return field.description
   }
@@ -608,6 +675,10 @@ const getFieldDescription = (fieldKey: string, field: ConfigFieldSchema): string
 
 const shouldShowDefaultOption = (fieldKey: string): boolean => {
   if (props.cliToolId === 'codex' && fieldKey === 'execution_mode') {
+    return false
+  }
+
+  if (props.cliToolId === 'claude-code' && fieldKey === 'auth_type') {
     return false
   }
 
@@ -681,15 +752,235 @@ const getStringInputName = (fieldKey: string): string => {
   return `agent-cli-${props.cliToolId}-${fieldKey}`
 }
 
+const isSecretField = (fieldKey: string): boolean => {
+  return SECRET_FIELD_KEYS.has(fieldKey)
+}
+
 const getStringInputAutocomplete = (fieldKey: string): string => {
-  return fieldKey === 'api_key' ? 'new-password' : 'off'
+  return isSecretField(fieldKey) ? 'new-password' : 'off'
+}
+
+const CLAUDE_AUTH_ENV_KEYS = new Set(['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'])
+
+const getClaudeAuthEnvKey = (config: Record<string, unknown>): string => {
+  return config.auth_type === 'ANTHROPIC_API_KEY'
+    ? 'ANTHROPIC_API_KEY'
+    : 'ANTHROPIC_AUTH_TOKEN'
+}
+
+const syncClaudeFieldToEnv = (config: Record<string, unknown>, changedField: string) => {
+  const env = sanitizeStringMap(config.env)
+
+  if (changedField === 'auth_token' || changedField === 'auth_type') {
+    const envKey = getClaudeAuthEnvKey(config)
+    const tokenValue = typeof config.auth_token === 'string' ? config.auth_token : ''
+
+    for (const key of CLAUDE_AUTH_ENV_KEYS) {
+      delete env[key]
+    }
+
+    if (tokenValue) {
+      env[envKey] = tokenValue
+    }
+  }
+
+  if (changedField === 'base_url') {
+    const baseUrl = typeof config.base_url === 'string' ? config.base_url : ''
+    if (baseUrl) {
+      env['ANTHROPIC_BASE_URL'] = baseUrl
+    } else {
+      delete env['ANTHROPIC_BASE_URL']
+    }
+  }
+
+  config.env = env
+}
+
+const syncClaudeEnvToFields = (config: Record<string, unknown>) => {
+  const env = sanitizeStringMap(config.env)
+
+  if (env['ANTHROPIC_AUTH_TOKEN']) {
+    config.auth_type = 'ANTHROPIC_AUTH_TOKEN'
+    config.auth_token = env['ANTHROPIC_AUTH_TOKEN']
+  } else if (env['ANTHROPIC_API_KEY']) {
+    config.auth_type = 'ANTHROPIC_API_KEY'
+    config.auth_token = env['ANTHROPIC_API_KEY']
+  } else {
+    config.auth_token = ''
+  }
+
+  config.base_url = env['ANTHROPIC_BASE_URL'] ?? ''
+}
+
+const syncCodexFieldToEnv = (config: Record<string, unknown>, changedField: string) => {
+  const env = sanitizeStringMap(config.env)
+
+  if (changedField === 'api_key') {
+    const apiKey = typeof config.api_key === 'string' ? config.api_key : ''
+    if (apiKey) {
+      env['OPENAI_API_KEY'] = apiKey
+    } else {
+      delete env['OPENAI_API_KEY']
+    }
+  }
+
+  delete env['OPENAI_BASE_URL']
+
+  config.env = env
+}
+
+const syncCodexEnvToFields = (config: Record<string, unknown>) => {
+  const env = sanitizeStringMap(config.env)
+
+  if (env['OPENAI_API_KEY']) {
+    config.api_key = env['OPENAI_API_KEY']
+  } else {
+    config.api_key = ''
+  }
+}
+
+const CODEX_SYNC_FIELDS = new Set(['api_key', 'base_url', 'provider_name'])
+
+const GEMINI_SYNC_FIELDS = new Set(['api_key', 'base_url'])
+
+const OPENCODE_SYNC_FIELDS = new Set(['provider', 'api_key', 'base_url'])
+
+const syncGeminiFieldToEnv = (config: Record<string, unknown>, changedField: string) => {
+  const env = sanitizeStringMap(config.env)
+
+  if (changedField === 'api_key') {
+    const apiKey = typeof config.api_key === 'string' ? config.api_key : ''
+    if (apiKey) {
+      env['GEMINI_API_KEY'] = apiKey
+    } else {
+      delete env['GEMINI_API_KEY']
+    }
+  }
+
+  if (changedField === 'base_url') {
+    const baseUrl = typeof config.base_url === 'string' ? config.base_url : ''
+    if (baseUrl) {
+      env['GOOGLE_GEMINI_BASE_URL'] = baseUrl
+      env['GEMINI_API_KEY_AUTH_MECHANISM'] = 'bearer'
+    } else {
+      delete env['GOOGLE_GEMINI_BASE_URL']
+      delete env['GEMINI_API_KEY_AUTH_MECHANISM']
+    }
+  }
+
+  config.env = env
+}
+
+const syncGeminiEnvToFields = (config: Record<string, unknown>) => {
+  const env = sanitizeStringMap(config.env)
+
+  if (env['GEMINI_API_KEY']) {
+    config.api_key = env['GEMINI_API_KEY']
+  } else {
+    config.api_key = ''
+  }
+
+  config.base_url = env['GOOGLE_GEMINI_BASE_URL'] ?? ''
+}
+
+const ALL_OPENCODE_API_KEY_ENVS = new Set(
+  Object.values(OPENCODE_PROVIDER_ENV_MAP).map((m) => m.apiKeyEnv),
+)
+const ALL_OPENCODE_BASE_URL_ENVS = new Set(
+  Object.values(OPENCODE_PROVIDER_ENV_MAP)
+    .map((m) => m.baseUrlEnv)
+    .filter(Boolean) as string[],
+)
+
+const OPENCODE_FALLBACK_MAPPING: { apiKeyEnv: string; baseUrlEnv?: string } = {
+  apiKeyEnv: 'OPENAI_API_KEY',
+  baseUrlEnv: 'OPENAI_BASE_URL',
+}
+
+const getOpencodeEnvMapping = (config: Record<string, unknown>): { apiKeyEnv: string; baseUrlEnv?: string } => {
+  const provider = typeof config.provider === 'string' ? config.provider : 'openai'
+  return OPENCODE_PROVIDER_ENV_MAP[provider] ?? OPENCODE_FALLBACK_MAPPING
+}
+
+const syncOpencodeFieldToEnv = (config: Record<string, unknown>, changedField: string) => {
+  const env = sanitizeStringMap(config.env)
+  const mapping = getOpencodeEnvMapping(config)
+
+  if (changedField === 'provider' || changedField === 'api_key') {
+    for (const key of ALL_OPENCODE_API_KEY_ENVS) {
+      delete env[key]
+    }
+    const apiKey = typeof config.api_key === 'string' ? config.api_key : ''
+    if (apiKey) {
+      env[mapping.apiKeyEnv] = apiKey
+    }
+  }
+
+  if (changedField === 'provider' || changedField === 'base_url') {
+    for (const key of ALL_OPENCODE_BASE_URL_ENVS) {
+      delete env[key]
+    }
+    const baseUrl = typeof config.base_url === 'string' ? config.base_url : ''
+    if (baseUrl && mapping.baseUrlEnv) {
+      env[mapping.baseUrlEnv] = baseUrl
+    }
+  }
+
+  config.env = env
+}
+
+const syncOpencodeEnvToFields = (config: Record<string, unknown>) => {
+  const env = sanitizeStringMap(config.env)
+
+  for (const [providerId, mapping] of Object.entries(OPENCODE_PROVIDER_ENV_MAP)) {
+    if (env[mapping.apiKeyEnv]) {
+      config.provider = providerId
+      config.api_key = env[mapping.apiKeyEnv]
+      config.base_url = mapping.baseUrlEnv ? (env[mapping.baseUrlEnv] ?? '') : ''
+      return
+    }
+  }
+
+  config.api_key = ''
+  config.base_url = ''
 }
 
 const setDraftFieldValue = (fieldKey: string, value: unknown) => {
-  draftConfig.value = sanitizeConfigBySchema(props.cliToolId, {
-    ...draftConfig.value,
-    [fieldKey]: value,
-  })
+  const newConfig = { ...draftConfig.value, [fieldKey]: value }
+
+  if (props.cliToolId === 'claude-code') {
+    if (fieldKey === 'auth_token' || fieldKey === 'base_url' || fieldKey === 'auth_type') {
+      syncClaudeFieldToEnv(newConfig, fieldKey)
+    } else if (fieldKey === 'env') {
+      syncClaudeEnvToFields(newConfig)
+    }
+  }
+
+  if (props.cliToolId === 'codex') {
+    if (CODEX_SYNC_FIELDS.has(fieldKey)) {
+      syncCodexFieldToEnv(newConfig, fieldKey)
+    } else if (fieldKey === 'env') {
+      syncCodexEnvToFields(newConfig)
+    }
+  }
+
+  if (props.cliToolId === 'gemini-cli') {
+    if (GEMINI_SYNC_FIELDS.has(fieldKey)) {
+      syncGeminiFieldToEnv(newConfig, fieldKey)
+    } else if (fieldKey === 'env') {
+      syncGeminiEnvToFields(newConfig)
+    }
+  }
+
+  if (props.cliToolId === 'opencode') {
+    if (OPENCODE_SYNC_FIELDS.has(fieldKey)) {
+      syncOpencodeFieldToEnv(newConfig, fieldKey)
+    } else if (fieldKey === 'env') {
+      syncOpencodeEnvToFields(newConfig)
+    }
+  }
+
+  draftConfig.value = sanitizeConfigBySchema(props.cliToolId, newConfig)
 }
 
 const validateConfig = (toolId: string, parsed: Record<string, unknown>): string | null => {
@@ -730,6 +1021,31 @@ const validateConfig = (toolId: string, parsed: Record<string, unknown>): string
   return null
 }
 
+const migrateClaudeConfig = (seed: Record<string, unknown>): Record<string, unknown> => {
+  const migrated = { ...seed }
+
+  if (migrated.api_key && !migrated.auth_token) {
+    migrated.auth_token = migrated.api_key
+    migrated.auth_type = 'ANTHROPIC_API_KEY'
+  }
+  delete migrated.api_key
+
+  const env = sanitizeStringMap(migrated.env)
+  if (env['ANTHROPIC_AUTH_TOKEN'] && !migrated.auth_token) {
+    migrated.auth_type = 'ANTHROPIC_AUTH_TOKEN'
+    migrated.auth_token = env['ANTHROPIC_AUTH_TOKEN']
+  } else if (env['ANTHROPIC_API_KEY'] && !migrated.auth_token) {
+    migrated.auth_type = 'ANTHROPIC_API_KEY'
+    migrated.auth_token = env['ANTHROPIC_API_KEY']
+  }
+
+  if (env['ANTHROPIC_BASE_URL'] && !migrated.base_url) {
+    migrated.base_url = env['ANTHROPIC_BASE_URL']
+  }
+
+  return migrated
+}
+
 const syncFormValues = () => {
   name.value = props.initialName
   description.value = props.initialDescription
@@ -737,15 +1053,55 @@ const syncFormValues = () => {
   isApiKeyVisible.value = false
   validationMessage.value = ''
 
-  const seed =
+  let seed =
     props.initialConfig && typeof props.initialConfig === 'object' && !Array.isArray(props.initialConfig)
       ? (props.initialConfig as Record<string, unknown>)
       : {}
 
-  draftConfig.value = sanitizeConfigBySchema(props.cliToolId, {
+  if (props.cliToolId === 'claude-code') {
+    seed = migrateClaudeConfig(seed)
+  }
+
+  const merged = {
     ...createConfigTemplate(props.cliToolId),
     ...seed,
-  })
+  }
+
+  if (props.cliToolId === 'claude-code') {
+    syncClaudeFieldToEnv(merged, 'auth_token')
+    syncClaudeFieldToEnv(merged, 'base_url')
+  }
+
+  if (props.cliToolId === 'codex') {
+    const env = sanitizeStringMap(merged.env)
+    if (env['OPENAI_API_KEY'] && !merged.api_key) {
+      merged.api_key = env['OPENAI_API_KEY']
+    }
+    syncCodexFieldToEnv(merged, 'api_key')
+  }
+
+  if (props.cliToolId === 'gemini-cli') {
+    const env = sanitizeStringMap(merged.env)
+    if (env['GEMINI_API_KEY'] && !merged.api_key) {
+      merged.api_key = env['GEMINI_API_KEY']
+    }
+    if (env['GOOGLE_GEMINI_BASE_URL'] && !merged.base_url) {
+      merged.base_url = env['GOOGLE_GEMINI_BASE_URL']
+    }
+    syncGeminiFieldToEnv(merged, 'api_key')
+    syncGeminiFieldToEnv(merged, 'base_url')
+  }
+
+  if (props.cliToolId === 'opencode') {
+    const env = sanitizeStringMap(merged.env)
+    if (!merged.api_key) {
+      syncOpencodeEnvToFields(merged)
+    }
+    syncOpencodeFieldToEnv(merged, 'api_key')
+    syncOpencodeFieldToEnv(merged, 'base_url')
+  }
+
+  draftConfig.value = sanitizeConfigBySchema(props.cliToolId, merged)
 }
 
 const close = () => {
@@ -963,7 +1319,7 @@ watch(
 
                 <div v-else-if="field.type === 'string'" class="relative">
                   <input
-                    :type="fieldKey === 'api_key' && !isApiKeyVisible ? 'password' : 'text'"
+                    :type="isSecretField(fieldKey) && !isApiKeyVisible ? 'password' : 'text'"
                     :value="getStringFieldValue(fieldKey)"
                     :name="getStringInputName(fieldKey)"
                     :autocomplete="getStringInputAutocomplete(fieldKey)"
@@ -973,11 +1329,11 @@ watch(
                     data-1p-ignore="true"
                     data-lpignore="true"
                     class="h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground"
-                    :class="fieldKey === 'api_key' ? 'pr-10' : ''"
+                    :class="isSecretField(fieldKey) ? 'pr-10' : ''"
                     @input="setDraftFieldValue(fieldKey, ($event.target as HTMLInputElement).value)"
                   />
                   <button
-                    v-if="fieldKey === 'api_key'"
+                    v-if="isSecretField(fieldKey)"
                     type="button"
                     class="absolute inset-y-0 right-2 inline-flex items-center text-xs text-muted-foreground"
                     @click="isApiKeyVisible = !isApiKeyVisible"
@@ -1114,7 +1470,7 @@ watch(
 
                 <div v-else-if="field.type === 'string'" class="relative">
                   <input
-                    :type="fieldKey === 'api_key' && !isApiKeyVisible ? 'password' : 'text'"
+                    :type="isSecretField(fieldKey) && !isApiKeyVisible ? 'password' : 'text'"
                     :value="getStringFieldValue(fieldKey)"
                     :name="getStringInputName(fieldKey)"
                     :autocomplete="getStringInputAutocomplete(fieldKey)"
@@ -1124,11 +1480,11 @@ watch(
                     data-1p-ignore="true"
                     data-lpignore="true"
                     class="h-10 w-full rounded-lg border border-border/70 bg-background px-3 text-sm text-foreground"
-                    :class="fieldKey === 'api_key' ? 'pr-10' : ''"
+                    :class="isSecretField(fieldKey) ? 'pr-10' : ''"
                     @input="setDraftFieldValue(fieldKey, ($event.target as HTMLInputElement).value)"
                   />
                   <button
-                    v-if="fieldKey === 'api_key'"
+                    v-if="isSecretField(fieldKey)"
                     type="button"
                     class="absolute inset-y-0 right-2 inline-flex items-center text-xs text-muted-foreground"
                     @click="isApiKeyVisible = !isApiKeyVisible"

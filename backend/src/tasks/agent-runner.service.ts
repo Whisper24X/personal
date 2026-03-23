@@ -1229,9 +1229,14 @@ export class AgentRunnerService {
       return pendingUserMessage;
     }
 
-    const nodePrompt =
-      typeof input.nodeInput === 'string' && input.nodeInput.trim()
-        ? input.nodeInput.trim()
+    const hasExplicitNodeInput =
+      input.nodeInput !== undefined && input.nodeInput !== null;
+    const nodePrompt = hasExplicitNodeInput
+      ? (typeof input.nodeInput === 'string' && input.nodeInput.trim()
+          ? input.nodeInput.trim()
+          : '')
+      : typeof input.taskInput === 'string' && input.taskInput.trim()
+        ? input.taskInput.trim()
         : typeof input.prompt === 'string' && input.prompt.trim()
           ? input.prompt.trim()
           : typeof input.instructions === 'string' && input.instructions.trim()
@@ -1816,4 +1821,5 @@ export class AgentRunnerService {
       .getById('codex')
       .extractSessionId(content);
   }
+
 }
