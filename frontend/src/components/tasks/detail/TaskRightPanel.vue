@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import TaskArtifactsPanel from './TaskArtifactsPanel.vue'
 import TaskPreviewPanel from './TaskPreviewPanel.vue'
 import TaskFilesPanel from './TaskFilesPanel.vue'
@@ -40,6 +40,15 @@ const props = withDefaults(
 )
 
 const activeTab = ref<'artifact' | 'preview' | 'files' | 'git' | 'terminal' | 'logs'>('artifact')
+
+watch(
+  () => props.artifactOpenNonce,
+  (next, prev) => {
+    if (next > 0 && next !== (prev ?? 0)) {
+      activeTab.value = 'artifact'
+    }
+  },
+)
 </script>
 
 <template>
@@ -122,6 +131,8 @@ const activeTab = ref<'artifact' | 'preview' | 'files' | 'git' | 'terminal' | 'l
         v-if="activeTab === 'artifact'"
         :task-id="props.taskId"
         :refresh-token="props.refreshToken"
+        :artifact-file-path="props.artifactFilePath ?? null"
+        :artifact-open-nonce="props.artifactOpenNonce ?? 0"
       />
 
       <TaskPreviewPanel

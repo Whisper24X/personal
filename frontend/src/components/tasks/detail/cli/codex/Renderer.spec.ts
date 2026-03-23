@@ -185,7 +185,7 @@ describe('CliCodexRenderer', () => {
       },
     })
 
-    await wrapper.get('.rounded-lg > .flex.cursor-pointer').trigger('click')
+    await wrapper.get('.rounded-lg .flex.cursor-pointer').trigger('click')
 
     expect(wrapper.text()).toContain('execute')
     expect(wrapper.text()).toContain('./.agents/skills/playwright-skill/package.json')
