@@ -39,7 +39,15 @@ export class CursorCliAdapter extends BaseAgentCliAdapter {
   }
 
   defaultArgs(): string[] {
-    return ['-p', '--output-format', 'stream-json', '--trust', '--force', '--sandbox', 'enabled'];
+    return [
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--trust',
+      '--force',
+      '--sandbox',
+      'enabled',
+    ];
   }
 
   applyContinuation(
@@ -73,7 +81,9 @@ export class CursorCliAdapter extends BaseAgentCliAdapter {
     }
 
     const isRoot = process.getuid?.() === 0;
-    const sandbox = this.resolveCursorSandbox(raw.sandbox) ?? (isRoot ? 'disabled' : 'enabled');
+    const sandbox =
+      this.resolveCursorSandbox(raw.sandbox) ??
+      (isRoot ? 'disabled' : 'enabled');
     args.push('--sandbox', sandbox);
 
     if (raw.approve_mcps === true) {

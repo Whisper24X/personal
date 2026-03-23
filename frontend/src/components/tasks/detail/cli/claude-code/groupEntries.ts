@@ -46,7 +46,7 @@ export function groupClaudeEntries(entries: NormalizedEntry[]): ClaudeMessageGro
 
   for (const entry of entries) {
     if (entry.type === 'assistant_message') {
-      const leadingThinking =
+      const leadingThinking: NormalizedEntry[] | null =
         currentTaskGroup && isThinkingOnlyTaskGroup(currentTaskGroup)
           ? [...currentTaskGroup.tools]
           : null
@@ -99,7 +99,8 @@ export function buildClaudeTaskGroupItems(group: ClaudeTaskGroup): ClaudeGroupIt
     if (toolUseId) {
       for (let index = startIndex + 1; index < tools.length; index += 1) {
         const candidate = tools[index]
-        if (!candidate || candidate.type !== 'tool_result' || usedResultIds.has(candidate.id)) continue
+        if (!candidate || candidate.type !== 'tool_result' || usedResultIds.has(candidate.id))
+          continue
         if (candidate.metadata?.toolUseId === toolUseId) {
           usedResultIds.add(candidate.id)
           return candidate

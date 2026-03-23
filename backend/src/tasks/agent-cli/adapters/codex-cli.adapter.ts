@@ -35,14 +35,6 @@ export class CodexCliAdapter extends BaseAgentCliAdapter {
       typeof raw.api_key === 'string' && raw.api_key.trim()
         ? raw.api_key.trim()
         : undefined;
-    const baseUrl =
-      typeof raw.base_url === 'string' && raw.base_url.trim()
-        ? raw.base_url.trim()
-        : undefined;
-    const providerName =
-      typeof raw.provider_name === 'string' && raw.provider_name.trim()
-        ? raw.provider_name.trim()
-        : undefined;
 
     const resolvedEnv: Record<string, string> = { ...(env ?? {}) };
     if (apiKey) {
@@ -165,14 +157,8 @@ export class CodexCliAdapter extends BaseAgentCliAdapter {
 
     if (providerName) {
       args.push('-c', `model_provider="${providerName}"`);
-      args.push(
-        '-c',
-        `model_providers.${providerName}.name="${providerName}"`,
-      );
-      args.push(
-        '-c',
-        `model_providers.${providerName}.wire_api="responses"`,
-      );
+      args.push('-c', `model_providers.${providerName}.name="${providerName}"`);
+      args.push('-c', `model_providers.${providerName}.wire_api="responses"`);
       args.push(
         '-c',
         `model_providers.${providerName}.requires_openai_auth=true`,
