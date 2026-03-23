@@ -22,7 +22,7 @@ import {
   prepareTaskGroupsForStepBar,
   type StepBarModel,
 } from '../taskGroupStepState'
-import { asRecord, assistantTurnTimeLabel, formatTime, getString, tryParseJson } from '../utils'
+import { asRecord, assistantTurnTimeLabel, getString, tryParseJson } from '../utils'
 
 defineOptions({ name: 'CliCodexRenderer' })
 
@@ -70,14 +70,6 @@ function lifecycleIcon(entry: NormalizedEntry): string {
   if (eventType === 'thread_started') return '◎'
   if (eventType === 'turn_started') return '▶'
   return '◦'
-}
-
-function lifecycleClass(entry: NormalizedEntry): string {
-  const eventType = getString(entry.metadata?.codexEventType)
-  if (eventType === 'turn_completed') {
-    return 'border-border/30 bg-muted/20 text-muted-foreground'
-  }
-  return 'border-sky-500/20 bg-sky-500/5 text-sky-700'
 }
 
 /** 嵌在外层助手气泡内：无独立描边，仅保留底色与字色 */

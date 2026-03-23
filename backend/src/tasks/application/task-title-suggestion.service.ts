@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
 import { ProjectsService } from '../../projects/projects.service';
@@ -57,8 +53,10 @@ export class TaskTitleSuggestionService {
         ? `${prompt.slice(0, MAX_PROMPT_IN_PROMPT)}…`
         : prompt;
 
-    const { agentCliId, agentCliConfigId } =
-      await this.resolveTargetAgents(project, input);
+    const { agentCliId, agentCliConfigId } = await this.resolveTargetAgents(
+      project,
+      input,
+    );
 
     const now = new Date();
     const taskId = randomUUID();
@@ -246,8 +244,7 @@ export class TaskTitleSuggestionService {
         continue;
       }
       const rec = obj as Record<string, unknown>;
-      const type =
-        typeof rec.type === 'string' ? rec.type.toLowerCase() : '';
+      const type = typeof rec.type === 'string' ? rec.type.toLowerCase() : '';
       if (type === 'assistant') {
         const text = this.extractAssistantMessageText(rec);
         if (text) {

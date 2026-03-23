@@ -30,7 +30,10 @@ export class TaskStepLabelSummaryService {
     dto: StepSummariesRequestDto,
   ): Promise<StepSummariesResponseDto> {
     const { task, project } =
-      await this.taskAccessService.assertCanAccessTaskProject(taskId, currentUser);
+      await this.taskAccessService.assertCanAccessTaskProject(
+        taskId,
+        currentUser,
+      );
 
     const items = (dto.items ?? []).slice(0, MAX_ITEMS).map((item) => ({
       id: item.id.trim(),
@@ -48,7 +51,9 @@ export class TaskStepLabelSummaryService {
 
     const node = await this.resolveNodeForSummary(task, dto.taskNodeId);
     if (!node) {
-      throw new BadRequestException('No task node available for step summaries');
+      throw new BadRequestException(
+        'No task node available for step summaries',
+      );
     }
 
     const prompt = this.buildPrompt(items);
@@ -106,9 +111,7 @@ export class TaskStepLabelSummaryService {
     return sorted[0] ?? null;
   }
 
-  private buildPrompt(
-    items: Array<{ id: string; rawText: string }>,
-  ): string {
+  private buildPrompt(items: Array<{ id: string; rawText: string }>): string {
     const lines = items.map((item) => `${item.id}\t${item.rawText}`);
     return [
       '你是步骤标题压缩助手。请将下列每条「步骤说明」压缩为不超过9个汉字的简短标题，用于界面步骤条展示。',
@@ -189,8 +192,7 @@ export class TaskStepLabelSummaryService {
         continue;
       }
       const rec = obj as Record<string, unknown>;
-      const type =
-        typeof rec.type === 'string' ? rec.type.toLowerCase() : '';
+      const type = typeof rec.type === 'string' ? rec.type.toLowerCase() : '';
       if (type === 'assistant') {
         const text = this.extractAssistantMessageText(rec);
         if (text) {

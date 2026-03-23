@@ -20,7 +20,7 @@ import {
   prepareTaskGroupsForStepBar,
   type StepBarModel,
 } from '../taskGroupStepState'
-import { assistantTurnTimeLabel, formatTime, getNumber, getString } from '../utils'
+import { assistantTurnTimeLabel, getNumber, getString } from '../utils'
 
 defineOptions({ name: 'CliCursorAgentRenderer' })
 

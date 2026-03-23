@@ -134,9 +134,9 @@ export class TaskRelationalRepository implements TaskRepository {
     return entities.map((entity) => TaskMapper.toDomain(entity));
   }
 
-  async countByStatusForProject(projectId: string): Promise<
-    Record<TaskStatus, number>
-  > {
+  async countByStatusForProject(
+    projectId: string,
+  ): Promise<Record<TaskStatus, number>> {
     const rows = await this.taskRepository
       .createQueryBuilder('task')
       .select('task.status', 'status')

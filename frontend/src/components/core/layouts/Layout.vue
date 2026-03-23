@@ -45,7 +45,6 @@ const {
   canCreateBusinessLine,
   canCreateProject,
   projectItems,
-  menuItems,
   pageTitle,
   breadcrumbs,
   projectNavigationTo,
