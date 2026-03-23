@@ -2,7 +2,7 @@
 /**
  * 通过代理安装 Playwright Chromium，便于在另一台设备或网络受限环境下使用。
  *
- * 用法（在 skills/playwright-skill/skills/playwright-skill 目录下）：
+ * 用法（在 skills/playwright-skill 目录下）：
  *   # 方式一：命令行传入代理
  *   node install-chromium-with-proxy.js http://127.0.0.1:7890
  *

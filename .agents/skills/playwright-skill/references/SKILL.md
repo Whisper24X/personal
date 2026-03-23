@@ -15,26 +15,25 @@ Write and execute custom Playwright automation for any browser task via the univ
 
 ### 执行前必做（顺序不可省略）
 
-1. **抽取 ID 列表** — 匹配标题行：`#### TC-F-001`…、`#### TC-E-001`…、`#### TC-B-001`…（正则：`/^####\s+(TC-[FEB]-\d+)/m`）。去重后得到有序列表。属性表 **「类型」** 为 **管理后台** 的用例为 Shadow 自动化主集；**小程序** 等不生成 `by-id` 脚本（与 `extract-tc-ids.js --type 管理后台` 对齐）。可用本技能辅助脚本核对：
+1. **抽取 ID 列表** — 匹配标题行：`#### TC-F-001`…、`#### TC-E-001`…、`#### TC-B-001`…（正则：`/^####\s+(TC-[FEB]-\d+)/m`）。去重后得到有序列表。可用本技能辅助脚本核对：
    ```bash
    node "$SKILL_DIR/scripts/extract-tc-ids.js" /path/to/TEST.md
-   node "$SKILL_DIR/scripts/extract-tc-ids.js" /path/to/TEST.md --json --type 管理后台
    ```
 2. **分类**（写入 `AUTOMATED_TEST.md` 总表前，先标注每 ID）：
    - **可自动化（Shadow Web）**：管理后台、单浏览器、`page.route` 可模拟的失败场景。
    - **需第二账号**（如越权）：需要 `LOGIN_USER_B` / `LOGIN_PASSWORD_B`（或文档约定的 env）；未配置则总表状态 **`skipped`**，备注「缺角色 B 凭据」。
    - **需双浏览器 / 双上下文**（如并发编辑）：当前默认标 **`out_of_scope`** 或 **`skipped`**「需双 context」，除非按 [references/SUITE_TEMPLATE.md](references/SUITE_TEMPLATE.md) 扩展为双 `browser.newContext()`。
    - **小程序 / 非 Shadow Web**：标 **`out_of_scope`**（真机、开发者工具链），不要用桌面浏览器冒充覆盖。
-3. **生成脚本** — **默认仅「类型 | 管理后台」**（与 TEST.md 属性表一致）；不对「小程序」等生成 `by-id` 文件。条目数与 `extract-tc-ids.js --type 管理后台` 一致。**默认采用备选 B**：在 `docs/.../artifacts/playwright/by-id/` 下为每个 ID 生成 `playwright-test-<TC-ID>.js`，先写 `/tmp` 再同步留档；可 **`scripts/generate-tc-stubs.js ... --type 管理后台`**。**「重新执行」若只调 `run.js`，不会自动生成或补全 `by-id`**。若项目显式要求单文件 suite，再用推荐 A。
-4. **校验** — **备选 B**：`node "$SKILL_DIR/scripts/validate-tc-by-id-dir.js" /path/to/TEST.md /path/to/artifacts/playwright/by-id --type 管理后台`（与生成范围一致）。**推荐 A**：`validate-tc-coverage.js --check-functions`。通过后再写入 `AUTOMATED_TEST.md` 总表。
+3. **生成脚本** — **条目数必须与 TEST.md 中 `TC-*` 个数一致**（见下「脚本代码与数量对账」）。**默认采用备选 B**（每用例一文件，见下）：在 `docs/.../artifacts/playwright/by-id/` 下为每个 ID 生成 `playwright-test-<TC-ID>.js`，先写 `/tmp` 再同步留档；未实现的可为占位（见 [references/BY_ID_LAYOUT.md](references/BY_ID_LAYOUT.md)）。可先用 **`scripts/generate-tc-stubs.js`** 批量写出最小占位，再逐条补全。**「重新执行」流水线若只调 `run.js`，不会自动生成 `by-id` 文件**，须单独完成本步。若项目显式要求单文件 suite，再用推荐 A。
+4. **校验** — **备选 B**：`node "$SKILL_DIR/scripts/validate-tc-by-id-dir.js" /path/to/TEST.md /path/to/artifacts/playwright/by-id`。**推荐 A**：`node "$SKILL_DIR/scripts/validate-tc-coverage.js" /path/to/TEST.md /tmp/your-suite.js --check-functions`。通过后再写入 `AUTOMATED_TEST.md` 总表。
 5. **更新总表** — 见下文「产出物契约」。
 
 ### 脚本代码与数量对账（避免「只生成一两个用例」）
 
 **默认：备选 B（每用例一文件）**
 
-- **与 `extract-tc-ids.js --type 管理后台` 输出个数相同**（若仅生成管理后台脚本）：`by-id/` 下 N 个 `playwright-test-<TC-ID>.js`，见 [references/BY_ID_LAYOUT.md](references/BY_ID_LAYOUT.md)。
-- 使用 **`scripts/validate-tc-by-id-dir.js`**，建议加 **`--type 管理后台`** 与生成范围一致。
+- **与 `extract-tc-ids.js` 输出个数相同**：`docs/<branch>/artifacts/playwright/by-id/` 下须有 **`playwright-test-<TC-ID>.js`** 共 N 个文件（N = 用例数），见 [references/BY_ID_LAYOUT.md](references/BY_ID_LAYOUT.md)。
+- 使用 **`scripts/validate-tc-by-id-dir.js`** 校验目录与 TEST.md 一致。
 
 **可选：推荐 A（单文件 suite）**
 
@@ -42,7 +41,7 @@ Write and execute custom Playwright automation for any browser task via the univ
 
 ### 脚本组织（二选一勿混用；**默认备选 B**）
 
-- **备选 B：每用例一文件（默认）** — 目录 `docs/<branch>/artifacts/playwright/by-id/`，文件名 **`playwright-test-TC-F-001.js`**。**默认只含「类型 | 管理后台」用例**；文件数 = `extract-tc-ids.js --type 管理后台` 的 count。按 TEST.md 顺序**批量执行**时用 **`scripts/run-by-id-sequential.js`**（勿只跑单条除非调试）。详见 [references/BY_ID_LAYOUT.md](references/BY_ID_LAYOUT.md)。
+- **备选 B：每用例一文件（默认）** — 目录 `docs/<branch>/artifacts/playwright/by-id/`，文件名 **`playwright-test-TC-F-001.js`** 形式（含完整用例 ID）。**文件数 = `extract-tc-ids.js` 的 count**；总表「脚本位置」列逐行指向 `by-id/...`。未实现的可为仅占位脚本，**不得**少文件。详见 [references/BY_ID_LAYOUT.md](references/BY_ID_LAYOUT.md)。
 - **推荐 A：单文件 suite** — 一个 `/tmp/playwright-test-<feature>-suite.js`，内含 `PLAYWRIGHT_TC_IDS` + 等量 `async function tc_*`。留档可到 `artifacts/playwright/` 根下。模板见 [references/SUITE_TEMPLATE.md](references/SUITE_TEMPLATE.md)。
 
 ### 数据与执行顺序
@@ -63,7 +62,7 @@ Write and execute custom Playwright automation for any browser task via the univ
 | 脚本或 § | suite 内函数名、留档路径，或「见 TEST.md 假设 A-x」 |
 | 备注 | 失败原因、依赖 env、截图文件名等 |
 
-**总行数必须等于** `extract-tc-ids.js` 输出的用例个数；若 **by-id 仅含管理后台**，对账时用 `extract-tc-ids.js … --type 管理后台`（与 TEST.md 增删同步时可重跑脚本对账）。
+**总行数必须等于** `extract-tc-ids.js` 输出的用例个数（与 TEST.md 增删同步时可重跑脚本对账）。
 
 ---
 
@@ -75,7 +74,7 @@ Write and execute custom Playwright automation for any browser task via the univ
 
 1. **生成** — 按上文「从 TEST.md 生成自动化」：抽取 ID → 分类 → **默认**为每个 ID 编写 `/tmp/playwright-test-<TC-ID>.js` 并同步到 `docs/.../artifacts/playwright/by-id/` → `validate-tc-by-id-dir.js`（单文件 suite 时用 `validate-tc-coverage.js`）→ 更新 `AUTOMATED_TEST.md`。
 2. **再探测 URL（按需）** — 若 `TARGET_URL` 已由 `LOGIN_ACCOUNT.md` / 环境变量确定，可跳过；否则运行 `detectDevServers` 或询问用户，**不得**用探测结果覆盖已配置的 Shadow 入口（见 Tips）。
-3. **执行** — 单条调试：`cd $SKILL_DIR && node run.js /path/to/playwright-test-TC-xxx.js`。按 **TEST.md 顺序跑满管理后台 by-id**（非只跑一条）：`node "$SKILL_DIR/scripts/run-by-id-sequential.js" /path/to/TEST.md /path/to/by-id --type 管理后台`；需**逐条弹出 Chromium 窗口**时追加 **`--headed`**（会取消 `PLAYWRIGHT_HEADLESS`）。`run.js` 会 **await** 脚本 `module.exports` 的 Promise，保证单条跑完再退出。
+3. **执行** — `cd $SKILL_DIR && node run.js /tmp/playwright-test-*.js`。
 
 ---
 

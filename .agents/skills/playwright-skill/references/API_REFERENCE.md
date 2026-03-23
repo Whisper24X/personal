@@ -160,6 +160,67 @@ await page.locator('#submit').click(); // Avoid
 await page.locator('div.container > form > button').click(); // Fragile
 ```
 
+**Fallback when getByRole fails:** Vue/Element Plus 等框架的组件可能未暴露正确 ARIA role，`getByRole('link')` 会超时。此时可用 `.or()` 组合 getByText / menuitem / 框架类名作为回退：
+
+```javascript
+// 侧栏菜单：link 或 menuitem 或 el-menu-item
+const menuLocator = page.getByRole('link', { name: '订单管理' })
+  .or(page.locator('a:has-text("订单管理"), [role="menuitem"]:has-text("订单管理"), .el-menu-item:has-text("订单管理")').first());
+await menuLocator.waitFor({ state: 'visible' });
+await menuLocator.click();
+```
+
+**多弹窗场景（Element Plus）：** 页面上存在多个 dialog 时，`locator('[role="dialog"]')` 会触发 strict mode violation（匹配到多个元素）。必须用 `getByRole('dialog', { name: '弹窗标题' })` 精确定位：
+
+```javascript
+// 错误：匹配到 18 个 dialog
+await page.locator('[role="dialog"], .el-dialog').waitFor({ state: 'visible' });
+
+// 正确：按 aria-label 或标题定位
+const csvDialog = page.getByRole('dialog', { name: 'CSV文件映射配置' });
+await csvDialog.waitFor({ state: 'visible' });
+await csvDialog.getByText('其他').click();
+```
+
+**表单项 + 文本过滤：** 避免在 CSS 选择器中使用 `:has-text("中文")`，易触发解析错误。改用 `locator().filter({ hasText: '...' })`：
+
+```javascript
+// 错误：Unexpected token "=" while parsing css selector
+page.locator('.el-form-item:has-text("购买渠道") .el-select')
+
+// 正确
+page.locator('.el-form-item').filter({ hasText: '购买渠道' }).locator('.el-select')
+```
+
+**等待策略：禁止固定 timeout：** 不要写 `timeout: 10000`、`timeout: 5000` 等。省略 timeout 参数，使用 Playwright 默认（通常 30s），让慢速环境也能通过。禁止 `page.waitForTimeout(ms)` 固定休眠。
+
+**Element Plus 下拉选项（Portal）：** 下拉内容（.el-select-dropdown、.el-popper）渲染在 body 的 portal 中，不在 dialog 内部。定位下拉选项时必须在 page 级别查找，用 `.last()` 取最近打开的下拉：
+
+```javascript
+// 错误：在 dialog 内找，下拉在 body 中会 element is not visible
+dialog.locator('.el-select-dropdown').getByText('其他')
+
+// 正确：page 级别 + last() 取当前打开的下拉
+await selectTrigger.click();
+await page.locator('.el-select-dropdown, .el-popper').last().waitFor({ state: 'visible' });
+await page.locator('.el-select-dropdown, .el-popper').last().getByText('其他').click();
+```
+
+**Element Plus Tab：** Tab 头用 `.el-tabs__item` 定位更稳定，点击前等待可见：
+
+```javascript
+const otherTab = dialog.locator('.el-tabs__item').filter({ hasText: '其他' });
+await otherTab.waitFor({ state: 'visible' });
+await otherTab.click();
+```
+
+**弹窗内按钮被遮挡：** 先 `scrollIntoViewIfNeeded()` 再点击：
+
+```javascript
+await dialog.locator('button:has-text("添加字段映射")').scrollIntoViewIfNeeded();
+await dialog.locator('button:has-text("添加字段映射")').click();
+```
+
 ### Advanced Locator Patterns
 
 ```javascript
