@@ -79,6 +79,7 @@ export const systemRoutes: AppRouteRecord[] = [
     name: 'business-lines-manage',
     component: () => import('@/views/business-lines/manage.vue'),
     meta: buildRouteAccessMeta('businessLines', {
+      layout: 'workspace-page',
       contentMode: 'full',
     }),
   },
@@ -135,7 +136,11 @@ export const systemRoutes: AppRouteRecord[] = [
   },
   {
     path: '/settings',
-    redirect: toDashboardSettings('account'),
-    meta: buildRouteAccessMeta('settings'),
+    name: 'settings',
+    component: () => import('@/views/settings/index.vue'),
+    meta: buildRouteAccessMeta('settings', {
+      layout: 'workspace-page',
+      contentMode: 'full',
+    }),
   },
 ]

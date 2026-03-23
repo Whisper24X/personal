@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { RouteLocationRaw } from 'vue-router'
-import { Building2, BookOpen, LayoutDashboard, ListTodo, Plus } from 'lucide-vue-next'
+import { Building2, BookOpen, LayoutDashboard, ListTodo, Settings2 } from 'lucide-vue-next'
 import type { ProjectItem } from '@/hooks/core/useLayout'
 import {
   formatTaskShortTime,
@@ -44,17 +44,11 @@ const props = defineProps<{
   isNavActive: (to: string) => boolean
   workbenchNavTo: RouteLocationRaw
   isWorkbenchNavActive: () => boolean
-  openBusinessLineModal: () => void
-  canCreateProject: boolean
   isBusinessLineManageActive: boolean
+  isSettingsActive: boolean
 }>()
 
 const { setOpenMobile } = useSidebar()
-
-const onCreateProject = () => {
-  setOpenMobile(false)
-  props.openBusinessLineModal()
-}
 
 const recentSearchQuery = ref('')
 const { tasks: recentTasks, loading: recentTasksLoading } = useSidebarRecentTasks(
@@ -149,17 +143,6 @@ const filteredRecentTasks = computed(() => {
         </SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                :disabled="!props.canCreateProject"
-                :title="props.canCreateProject ? '新建项目' : '暂无新建项目权限'"
-                tooltip="新建项目"
-                @click="onCreateProject"
-              >
-                <Plus class="size-4 shrink-0" />
-                <span>新建项目</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
             <SidebarMenuItem v-for="item in props.projectItems" :key="item.id">
               <SidebarMenuButton
                 as-child
@@ -167,11 +150,6 @@ const filteredRecentTasks = computed(() => {
                 :tooltip="item.name"
               >
                 <RouterLink :to="props.projectNavigationTo(item.id)">
-                  <span
-                    class="flex size-6 shrink-0 items-center justify-center rounded-md border border-sidebar-border/70 bg-sidebar-accent/40 text-[10px] font-bold tracking-wide"
-                  >
-                    {{ item.short.slice(0, 4).toUpperCase() }}
-                  </span>
                   <span class="truncate">{{ item.name }}</span>
                 </RouterLink>
               </SidebarMenuButton>
@@ -239,9 +217,8 @@ const filteredRecentTasks = computed(() => {
       </div>
     </SidebarContent>
 
-    <!-- 设置已移至顶栏头像下拉；底部仅保留业务线 -->
     <SidebarFooter class="border-t border-sidebar-border p-2">
-      <SidebarMenu>
+      <SidebarMenu class="grid grid-cols-2 gap-1">
         <SidebarMenuItem>
           <SidebarMenuButton
             as-child
@@ -251,6 +228,18 @@ const filteredRecentTasks = computed(() => {
             <RouterLink to="/business-lines" @click="setOpenMobile(false)">
               <Building2 class="size-3.5 shrink-0" />
               <span>业务线</span>
+            </RouterLink>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            as-child
+            class="h-9 w-full justify-center gap-1.5 text-xs"
+            :is-active="props.isSettingsActive"
+          >
+            <RouterLink to="/settings" @click="setOpenMobile(false)">
+              <Settings2 class="size-3.5 shrink-0" />
+              <span>设置</span>
             </RouterLink>
           </SidebarMenuButton>
         </SidebarMenuItem>

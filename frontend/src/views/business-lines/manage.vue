@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { inject } from 'vue'
-import BusinessLineModal from '@/components/business/settings/BusinessLineModal.vue'
+import BusinessLineManagementPanel from '@/components/business/settings/BusinessLineManagementPanel.vue'
 import { layoutWorkspaceKey } from '@/keys/layout-workspace'
 
 defineOptions({
@@ -11,11 +11,10 @@ const workspace = inject(layoutWorkspaceKey, null)
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col">
-    <BusinessLineModal
+  <div class="flex h-full min-h-0 flex-col bg-background">
+    <BusinessLineManagementPanel
       v-if="workspace"
-      embedded
-      :open="true"
+      mode="page"
       :lines="workspace.businessLineItems.value"
       :projects="workspace.projectItems.value"
       :active-business-line-id="workspace.activeBusinessLineId.value"

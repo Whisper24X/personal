@@ -14,12 +14,10 @@ import {
   applyAppearanceMode,
   applyBackgroundStyle,
   applyThemeColor,
-  applyUiLocale,
   loadUiPreferencesFromStorage,
   type AppearanceMode,
   type BackgroundStyle,
   type ThemeColor,
-  type UiLocale,
 } from '@/utils/ui-preferences'
 
 const router = useRouter()
@@ -32,11 +30,6 @@ defineOptions({
 type PersonalSettingsTab = 'appearance' | 'profile' | 'security' | 'notifications'
 type PanelType = 'account' | 'appearance' | 'notifications'
 type BrowserPermissionState = NotificationPermission | 'unsupported'
-
-const LANGUAGE_OPTIONS: Array<{ value: UiLocale; label: string }> = [
-  { value: 'zh-CN', label: '简体中文' },
-  { value: 'en-US', label: 'English' },
-]
 
 const THEME_COLOR_OPTIONS: Array<{ value: ThemeColor; label: string }> = [
   { value: 'amber', label: '琥珀' },
@@ -73,7 +66,6 @@ const props = defineProps<{
   externalTab?: PersonalSettingsTab
 }>()
 
-const locale = ref<UiLocale>('zh-CN')
 const themeColor = ref<ThemeColor>('amber')
 const appearanceMode = ref<AppearanceMode>('light')
 const backgroundStyle = ref<BackgroundStyle>('grid')
@@ -268,12 +260,6 @@ watch(logoutConfirmOpen, async (open) => {
   await nextTick()
   logoutConfirmButtonRef.value?.focus()
 })
-
-const applyLocaleSetting = (nextLocale: UiLocale) => {
-  locale.value = nextLocale
-  storage.set(STORAGE_KEYS.locale, nextLocale)
-  applyUiLocale(nextLocale)
-}
 
 const applyThemeColorSetting = (nextThemeColor: ThemeColor) => {
   themeColor.value = nextThemeColor
@@ -759,7 +745,6 @@ const confirmLogout = async () => {
 
 onMounted(() => {
   const storedPreferences = loadUiPreferencesFromStorage()
-  applyLocaleSetting(storedPreferences.locale)
   applyAppearanceSetting(storedPreferences.appearanceMode)
   applyThemeColorSetting(storedPreferences.themeColor)
   applyBackgroundStyleSetting(storedPreferences.backgroundStyle)
@@ -833,23 +818,6 @@ onMounted(() => {
       </section>
 
       <section v-else-if="activePanel === 'appearance'" class="space-y-3">
-        <article class="rounded-xl border border-border bg-card/40 p-4">
-          <p class="text-sm font-semibold">语言</p>
-          <p class="mt-2 text-xs text-muted-foreground">仅切换界面语言偏好，当前支持中英两种语言。</p>
-          <div class="mt-4 flex flex-wrap gap-2">
-            <button
-              v-for="option in LANGUAGE_OPTIONS"
-              :key="option.value"
-              class="rounded-lg border px-3 py-1.5 text-xs font-semibold transition"
-              :class="optionButtonClass(locale === option.value)"
-              type="button"
-              @click="applyLocaleSetting(option.value)"
-            >
-              {{ option.label }}
-            </button>
-          </div>
-        </article>
-
         <article class="rounded-xl border border-border bg-card/40 p-4">
           <p class="text-sm font-semibold">主题色</p>
           <p class="mt-2 text-xs text-muted-foreground">调整全局强调色与交互高亮风格。</p>

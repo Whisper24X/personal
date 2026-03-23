@@ -26,7 +26,6 @@ export type ProjectItem = {
   id: string
   name: string
   to: string
-  short: string
   businessLineId: string
   description?: string | null
   gitUrl: string
@@ -60,61 +59,6 @@ const normalizeQueryValue = (queryValue: unknown) => {
   if (typeof queryValue === 'string') return queryValue
   if (Array.isArray(queryValue)) return queryValue[0] ?? ''
   return ''
-}
-
-const normalizeProjectShort = (projectName: string) => {
-  const normalizedName = projectName
-    .trim()
-    .replace(/\s+/g, '')
-  const short = normalizedName.slice(0, 4).toUpperCase()
-  return short || 'PRJ'
-}
-
-const buildDisambiguatedProjectShort = (baseShort: string, index: number) => {
-  const base36Index = index.toString(36).toUpperCase()
-
-  if (base36Index.length === 1) {
-    return `${baseShort.slice(0, 3).padEnd(3, 'X')}${base36Index}`
-  }
-
-  if (base36Index.length === 2) {
-    return `${baseShort.slice(0, 2).padEnd(2, 'X')}${base36Index}`
-  }
-
-  return `${baseShort.slice(0, 1).padEnd(1, 'X')}${base36Index.slice(-3)}`
-}
-
-const assignUniqueProjectShorts = (projects: ProjectItem[]) => {
-  const shortGroups = new Map<string, ProjectItem[]>()
-
-  for (const project of projects) {
-    const baseShort = normalizeProjectShort(project.name)
-    const groupedProjects = shortGroups.get(baseShort) ?? []
-    groupedProjects.push(project)
-    shortGroups.set(baseShort, groupedProjects)
-  }
-
-  for (const [baseShort, groupedProjects] of shortGroups) {
-    if (groupedProjects.length <= 1) {
-      groupedProjects[0]!.short = baseShort
-      continue
-    }
-
-    const sortedProjects = [...groupedProjects].sort((left, right) => {
-      const compareByName = left.name.localeCompare(right.name)
-      if (compareByName !== 0) {
-        return compareByName
-      }
-
-      return left.id.localeCompare(right.id)
-    })
-
-    sortedProjects.forEach((project, index) => {
-      project.short = buildDisambiguatedProjectShort(baseShort, index + 1)
-    })
-  }
-
-  return projects
 }
 
 const loadStoredSelectedProjectId = () => {
@@ -269,7 +213,6 @@ export const useLayout = () => {
     id: project.id,
     name: project.name,
     to: `/projects/${project.id}`,
-    short: normalizeProjectShort(project.name),
     businessLineId: project.businessLineId,
     description: project.description ?? null,
     gitUrl: project.gitUrl,
@@ -400,9 +343,7 @@ export const useLayout = () => {
       const nextBusinessLines = Array.from(lineMap.values())
         .map((line) => ({
           ...line,
-          projects: assignUniqueProjectShorts(
-            [...line.projects].sort((left, right) => left.name.localeCompare(right.name)),
-          ),
+          projects: [...line.projects].sort((left, right) => left.name.localeCompare(right.name)),
         }))
         .sort((left, right) => left.name.localeCompare(right.name))
 
@@ -702,15 +643,6 @@ export const useLayout = () => {
     return 'text-sidebar-foreground/75 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
   }
 
-  const projectItemClass = (projectId: string) => {
-    if (projectId === selectedProjectId.value) {
-      return 'border-primary/45 bg-primary text-primary-foreground shadow-md ring-2 ring-primary/35'
-    }
-
-    return 'border-sidebar-border/60 bg-sidebar-accent/30 text-sidebar-foreground/80 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground'
-  }
-
-  const projectShortLabel = (short: string) => short.trim().slice(0, 4).toUpperCase()
   const menuIconFor = (menuId: MenuItem['id']) => menuIconPaths[menuId]
 
   const openBusinessLineModal = () => {
@@ -902,9 +834,7 @@ export const useLayout = () => {
     pageTitle,
     breadcrumbs,
     menuItemClass,
-    projectItemClass,
     projectNavigationTo,
-    projectShortLabel,
     menuIconFor,
     isRouteActive,
     isNavActive,

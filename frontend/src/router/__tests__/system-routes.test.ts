@@ -16,9 +16,14 @@ describe('systemRoutes compatibility redirects', () => {
 
     expect(businessLinesRoute?.name).toBe('business-lines-manage')
     expect(typeof businessLinesRoute?.component).toBe('function')
+    expect(businessLinesRoute?.meta?.layout).toBe('workspace-page')
+    expect(businessLinesRoute?.meta?.contentMode).toBe('full')
     expect(projectsRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'projects' } })
     expect(usersRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'users' } })
-    expect(settingsRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'account' } })
+    expect(settingsRoute?.name).toBe('settings')
+    expect(typeof settingsRoute?.component).toBe('function')
+    expect(settingsRoute?.meta?.layout).toBe('workspace-page')
+    expect(settingsRoute?.meta?.contentMode).toBe('full')
   })
 
   it('uses configured default route and registers home page', () => {
