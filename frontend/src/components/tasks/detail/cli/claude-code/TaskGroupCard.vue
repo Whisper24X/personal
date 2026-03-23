@@ -7,7 +7,7 @@ import { formatTime } from '../utils'
 
 const props = defineProps<{
   group: ClaudeTaskGroup
-  /** 本轮对话已结束：true=折叠详情，false=展开（最后一条 task），undefined=仅按 isRunning */
+  /** 本轮对话已结束：true=折叠详情（优先于 isRunning，避免刷新后陈旧状态撑开）；false=展开；undefined=仅按 isRunning */
   collapseDetailWhenDone?: boolean
   /** 嵌在外层助手气泡内时去掉独立卡片描边 */
   embedded?: boolean
@@ -28,12 +28,13 @@ const collapsed = ref(!isRunning.value)
 watch(
   () => [isRunning.value, props.collapseDetailWhenDone] as const,
   ([running, pref]) => {
-    if (running) {
-      collapsed.value = false
-      return
-    }
+    // 本轮已结束：优先折叠，避免历史日志里残留的 running/pending 在刷新后把卡片撑开
     if (pref === true) {
       collapsed.value = true
+      return
+    }
+    if (running) {
+      collapsed.value = false
       return
     }
     if (pref === false) {
