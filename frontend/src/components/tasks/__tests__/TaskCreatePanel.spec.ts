@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import TaskCreatePanel from '@/components/tasks/TaskCreatePanel.vue'
+import { initialTitleFromPrompt } from '@/utils/task-title-placeholder'
 
 const routeState = {
   query: {},
@@ -26,7 +27,6 @@ const {
   },
   tasksApi: {
     create: vi.fn(),
-    suggestTaskTitle: vi.fn().mockResolvedValue({ title: 'AI 生成的标题' }),
   },
   projectsApi: {
     list: vi.fn(),
@@ -236,12 +236,11 @@ describe('TaskCreatePanel', () => {
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
-    expect(tasksApi.suggestTaskTitle).toHaveBeenCalledTimes(1)
     expect(tasksApi.create).toHaveBeenCalledTimes(1)
     const payload = tasksApi.create.mock.calls[0]![0] as Record<string, unknown>
 
     expect(payload.projectId).toBe('project-1')
-    expect(payload.title).toBe('AI 生成的标题')
+    expect(payload.title).toBe(initialTitleFromPrompt('请补齐创建任务字段'))
     expect(payload.mode).toBe('conversation')
     expect(payload.gitBaseBranch).toBe('main')
 
@@ -289,10 +288,10 @@ describe('TaskCreatePanel', () => {
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
-    expect(tasksApi.suggestTaskTitle).toHaveBeenCalledTimes(1)
     expect(tasksApi.create).toHaveBeenCalledTimes(1)
     const payload = tasksApi.create.mock.calls[0]![0] as Record<string, unknown>
 
+    expect(payload.title).toBe(initialTitleFromPrompt('请先分析项目结构'))
     expect(payload.mode).toBe('workflow')
     expect(payload.configJson).toEqual({
       workflowTemplateId: 'wf-1',

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import path from 'path';
 import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
@@ -27,10 +28,14 @@ import { TaskLogService } from './task-log.service';
 import { TaskRuntimeOrchestratorService } from './task-runtime-orchestrator.service';
 import { TaskQueryService } from './task-query.service';
 import { TaskAccessService } from './task-access.service';
+import { TaskTitleSuggestionService } from './task-title-suggestion.service';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
+import { initialTitleFromPrompt } from '../utils/task-title-placeholder';
 
 @Injectable()
 export class TaskCommandService {
+  private readonly logger = new Logger(TaskCommandService.name);
+
   constructor(
     private readonly taskRepository: TaskRepository,
     private readonly taskNodeRepository: TaskNodeRepository,
@@ -42,6 +47,7 @@ export class TaskCommandService {
     private readonly taskRuntimeOrchestrator: TaskRuntimeOrchestratorService,
     private readonly taskQueryService: TaskQueryService,
     private readonly taskAccessService: TaskAccessService,
+    private readonly taskTitleSuggestionService: TaskTitleSuggestionService,
   ) {}
 
   async create(
@@ -185,11 +191,16 @@ export class TaskCommandService {
       throw new ConflictException('Task worktree name already in use');
     }
 
+    const promptTrimmed = createTaskDto.prompt?.trim() ?? '';
+    const titleForCreate = initialTitleFromPrompt(
+      promptTrimmed || createTaskDto.title?.trim() || '',
+    );
+
     const task = await this.taskRepository.create({
       projectId: createTaskDto.projectId,
       businessLineId: project.businessLineId,
       mode: resolvedMode,
-      title: createTaskDto.title,
+      title: titleForCreate,
       prompt: createTaskDto.prompt ?? null,
       status: TaskStatus.todo,
       gitBranch: normalizedGitBranch,
@@ -258,6 +269,14 @@ export class TaskCommandService {
         nodeCount: nodes.length,
       },
     });
+
+    void this.taskTitleSuggestionService
+      .regenerateTitleAfterCreate(runtimeTask.id, currentUser)
+      .catch((error) => {
+        this.logger.warn(
+          `regenerate_title_after_create_schedule_failed ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
 
     return runtimeTask;
   }

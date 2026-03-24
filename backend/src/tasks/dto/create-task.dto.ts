@@ -22,9 +22,10 @@ export class CreateTaskDto {
   @IsEnum(TaskMode)
   mode?: TaskMode;
 
-  @ApiProperty({ type: String })
+  @ApiProperty({ type: String, maxLength: 160 })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(160)
   title: string;
 
   @ApiPropertyOptional({ type: String })

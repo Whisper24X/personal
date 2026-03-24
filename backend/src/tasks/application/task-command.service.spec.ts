@@ -117,6 +117,9 @@ const createService = () => {
     getTaskOrThrow: jest.fn(),
     getProjectByIdOrThrow: jest.fn(),
   };
+  const taskTitleSuggestionService = {
+    regenerateTitleAfterCreate: jest.fn().mockResolvedValue(undefined),
+  };
 
   const service = new TaskCommandService(
     taskRepository as never,
@@ -129,6 +132,7 @@ const createService = () => {
     taskRuntimeOrchestrator as never,
     taskQueryService as never,
     taskAccessService as never,
+    taskTitleSuggestionService as never,
   );
 
   return {
