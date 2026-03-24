@@ -742,7 +742,7 @@ onBeforeUnmount(() => {
               v-model="createForm.prompt"
               class="min-h-[360px] w-full resize-none border-0 bg-transparent px-1 text-lg text-foreground outline-none placeholder:text-muted-foreground"
               :placeholder="
-                createForm.mode === 'conversation' ? '解决简单需求...' : '解决复杂需求...'
+                createForm.mode === 'conversation' ? '分配任务，或直接提出问题' : '解决复杂需求...'
               "
             />
           </div>
