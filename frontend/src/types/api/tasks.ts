@@ -39,6 +39,7 @@ export type TaskConfig = {
 export type Task = {
   id: string
   projectId: string
+  goalId?: string | null
   businessLineId: string
   mode: TaskMode
   title: string
@@ -77,9 +78,23 @@ export type TaskNode = {
   status: TaskStatus
 }
 
+export type TaskGoalSummary = {
+  id: string
+  title: string
+  status:
+    | 'draft'
+    | 'prd_generated'
+    | 'prd_confirmed'
+    | 'planned'
+    | 'in_progress'
+    | 'done'
+    | 'archived'
+}
+
 export type TaskDetail = {
   task: Task
   nodes: TaskNode[]
+  goalSummary?: TaskGoalSummary | null
 }
 
 export type TaskLogLevel = 'info' | 'warn' | 'error' | 'debug'

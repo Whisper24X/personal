@@ -31,6 +31,10 @@ export class TaskEntity extends EntityRelationalHelper {
   @Column({ type: 'uuid', comment: '关联项目ID' })
   projectId: string;
 
+  @Index('IDX_tasks_goal_id')
+  @Column({ type: 'uuid', nullable: true, comment: '所属 Goal ID' })
+  goalId?: string | null;
+
   @Column({
     type: 'enum',
     enum: TaskMode,

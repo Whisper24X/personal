@@ -17,6 +17,14 @@ export class CreateTaskDto {
   @IsUUID()
   projectId: string;
 
+  @ApiPropertyOptional({
+    type: String,
+    description: '所属 Goal（可选，由 Goal 物化写入）',
+  })
+  @IsOptional()
+  @IsUUID()
+  goalId?: string;
+
   @ApiPropertyOptional({ enum: TaskMode, enumName: 'TaskMode' })
   @IsOptional()
   @IsEnum(TaskMode)

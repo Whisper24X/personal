@@ -201,6 +201,25 @@ export const useLayout = () => {
       }
     }
 
+    if (route.name === 'goal-detail') {
+      const storedMenuPath = loadStoredSelectedMenuPath()
+      const rememberedGoalMenuPath = menuItems.value.find((item) => {
+        if (item.to !== storedMenuPath) {
+          return false
+        }
+        return item.id === 'goals' || item.id === 'tasks'
+      })?.to
+
+      if (rememberedGoalMenuPath) {
+        return rememberedGoalMenuPath
+      }
+
+      const goalsMenuPath = menuItems.value.find((item) => item.id === 'goals')?.to
+      if (goalsMenuPath) {
+        return goalsMenuPath
+      }
+    }
+
     return resolveMenuPathFromPath(route.path)
   }
 
@@ -257,6 +276,7 @@ export const useLayout = () => {
     dashboard: ['M3 3h8v8H3z', 'M13 3h8v5h-8z', 'M13 10h8v11h-8z', 'M3 13h8v8H3z'],
     workflow: ['M5 6h14', 'M5 18h14', 'M12 6v12', 'm8 10 4-4 4 4', 'm8 14 4 4 4-4'],
     tasks: ['m9 11 2 2 4-4', 'M5 11h.01', 'M5 18h.01', 'm9 18 2 2 4-4', 'M14 11h5', 'M14 18h5', 'M3 6h18'],
+    goals: ['M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2', 'M12 8v8', 'M8 12h8'],
     knowledge: ['M4 19.5A2.5 2.5 0 0 1 6.5 17H20', 'M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z', 'M8 7h8', 'M8 11h8'],
     kanban: ['M4 5h6v14H4z', 'M14 5h6v8h-6z', 'M14 15h6v4h-6z'],
     automations: ['M12 7v5l3 3', 'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z'],
@@ -616,6 +636,8 @@ export const useLayout = () => {
     if (route.name === 'automations') return ['项目菜单', '自动化']
     if (route.name === 'tasks') return ['项目菜单', '新建任务']
     if (route.name === 'task-detail') return ['项目菜单', '新建任务', '任务详情']
+    if (route.name === 'goal-create') return ['项目菜单', '新建 Goal']
+    if (route.name === 'goal-detail') return ['项目菜单', '新建 Goal', 'Goal 详情']
     return ['项目菜单']
   })
 
@@ -689,6 +711,7 @@ export const useLayout = () => {
 
   const sidebarCoreTasksKnowledge = computed(() => {
     return {
+      goals: menuItems.value.find((item) => item.id === 'goals'),
       tasks: menuItems.value.find((item) => item.id === 'tasks'),
       knowledge: menuItems.value.find((item) => item.id === 'knowledge'),
     }

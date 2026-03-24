@@ -33,6 +33,7 @@ describe('Sidebar menu scope', () => {
       hasSelectedProject: true,
       sidebarCoreTasksKnowledge: {
         tasks: { id: 'tasks', label: '新建任务', to: '/tasks' },
+        goals: { id: 'goals', label: '新建 Goal', to: '/goals' },
         knowledge: { id: 'knowledge', label: '知识库', to: '/knowledge-base' },
       },
       projectNavigationTo: (projectId: string) => ({ path: '/dashboard', query: { projectId } }),
@@ -66,6 +67,7 @@ describe('Sidebar menu scope', () => {
       hasSelectedProject: false,
       sidebarCoreTasksKnowledge: {
         tasks: { id: 'tasks', label: '新建任务', to: '/tasks' },
+        goals: { id: 'goals', label: '新建 Goal', to: '/goals' },
         knowledge: { id: 'knowledge', label: '知识库', to: '/knowledge-base' },
       },
       projectNavigationTo: (projectId: string) => ({ path: '/dashboard', query: { projectId } }),

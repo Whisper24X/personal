@@ -3,9 +3,11 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { QueryFailedError } from 'typeorm';
@@ -40,6 +42,7 @@ import { UsersService } from '../users/users.service';
 import { ProjectMemberRole } from './dto/project-member-role.enum';
 import { resolveAinativeDataRootDir } from '../utils/workspace-paths';
 import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
+import { AgentRunnerService } from '../tasks/agent-runner.service';
 import { AccessService } from '../access/access.service';
 import { ProjectCustomRoleRepository } from './infrastructure/persistence/project-custom-role.repository';
 import { ProjectCustomRole } from './domain/project-custom-role';
@@ -86,6 +89,8 @@ export class ProjectsService {
     private readonly workflowTemplateRepository: WorkflowTemplateRepository,
     private readonly accessService: AccessService,
     private readonly configService: ConfigService = new ConfigService(),
+    @Inject(forwardRef(() => AgentRunnerService))
+    private readonly agentRunnerService: AgentRunnerService,
   ) {}
 
   async create(
@@ -1240,6 +1245,44 @@ export class ProjectsService {
     await fs.unlink(absolutePath);
   }
 
+  /**
+   * 递归删除 docs/goals/{goalId}/ 下全部内容（PRD、task-plan、input 等）。
+   * goalId 须为合法 UUID；目录不存在时直接返回。
+   */
+  async removeGoalDocsSubtree(
+    projectId: Project['id'],
+    goalId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    const trimmed = goalId?.trim();
+    if (
+      !trimmed ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        trimmed,
+      )
+    ) {
+      throw new BadRequestException('Invalid goal id');
+    }
+
+    const { repositoryRoot } = await this.ensureProjectRepositoryReady(
+      projectId,
+      currentUser,
+      { syncRemote: false },
+    );
+    const docsRoot = path.join(repositoryRoot, 'docs');
+    const relativePath = this.normalizeProjectDocPath(`goals/${trimmed}`);
+    const absolutePath = this.resolveProjectDocAbsolutePath(
+      docsRoot,
+      relativePath,
+    );
+    const stat = await fs.stat(absolutePath).catch(() => null);
+    if (!stat) {
+      return;
+    }
+
+    await fs.rm(absolutePath, { recursive: true, force: true });
+  }
+
   async queryDocs(
     projectId: Project['id'],
     payload: QueryProjectDocsDto,
@@ -1629,6 +1672,54 @@ export class ProjectsService {
     });
   }
 
+  /**
+   * 在已就绪的项目仓库上下文中执行 Agent。
+   * 若同时传入 agentCliId + agentCliConfigId，则与对话任务节点一致走 AgentRunner（业务线工具配置、api key 等）；
+   * 否则回退为项目级 agentAdapter 的 codex/cursor spawn（与知识问答相同）。
+   */
+  async executeProjectAgentPrompt(
+    projectId: Project['id'],
+    prompt: string,
+    currentUser: JwtPayloadType,
+    options?: {
+      agentCliId?: string;
+      agentCliConfigId?: string;
+    },
+  ): Promise<{ success: boolean; stdout: string; stderr: string }> {
+    const { project, repositoryRoot } = await this.ensureProjectRepositoryReady(
+      projectId,
+      currentUser,
+      { syncRemote: false },
+    );
+
+    const cliId = options?.agentCliId?.trim();
+    const cliConfigId = options?.agentCliConfigId?.trim();
+
+    if (cliId && cliConfigId) {
+      const agentResult = await this.agentRunnerService.executeGoalPrompt({
+        project,
+        repositoryRoot,
+        prompt,
+        agentCliId: cliId,
+        agentCliConfigId: cliConfigId,
+      });
+      const stderr =
+        [agentResult.stderr, agentResult.errorMessage].filter(Boolean).join('\n') ||
+        '';
+      return {
+        success: agentResult.success,
+        stdout: agentResult.stdout.trim(),
+        stderr: stderr.trim(),
+      };
+    }
+
+    return this.executeKnowledgeAgent({
+      project,
+      repositoryRoot,
+      prompt,
+    });
+  }
+
   private buildFallbackAnswer(
     citations: Array<{ path: string; snippet: string }>,
     errorMessage: string,
@@ -1962,7 +2053,7 @@ export class ProjectsService {
     return path.resolve(cacheBaseDir, `${repositoryDirName}-${project.id}`);
   }
 
-  private normalizeProjectDocPath(value: string): string {
+  normalizeProjectDocPath(value: string): string {
     const raw = value?.trim();
     if (!raw) {
       throw new BadRequestException('Project doc path is required');

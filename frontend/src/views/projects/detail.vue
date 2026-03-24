@@ -1699,12 +1699,20 @@ onBeforeUnmount(() => {
               <p class="text-sm font-semibold">最近任务</p>
               <p class="text-xs text-muted-foreground">按任务状态快速查看执行进度</p>
             </div>
-            <RouterLink
-              :to="`/tasks?projectId=${project.id}`"
-              class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
-            >
-              查看全部
-            </RouterLink>
+            <div class="flex flex-wrap gap-2">
+              <RouterLink
+                :to="`/projects/${project.id}/goals`"
+                class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
+              >
+                Goal 目标
+              </RouterLink>
+              <RouterLink
+                :to="`/tasks?projectId=${project.id}`"
+                class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
+              >
+                查看全部任务
+              </RouterLink>
+            </div>
           </div>
 
           <div class="mt-4 space-y-2">

@@ -336,9 +336,15 @@ watch(
                 </p>
                 <p v-if="refreshing" class="text-xs text-primary">刷新中...</p>
               </div>
-              <div class="shrink-0 text-right text-[11px] text-muted-foreground">
-                <div>{{ welcomeClock.date }}</div>
-                <div class="mt-0.5">{{ welcomeClock.weekday }}</div>
+              <div class="flex shrink-0 flex-col items-end text-[11px] text-muted-foreground">
+                <div class="text-right">{{ welcomeClock.date }}</div>
+                <div class="mt-0.5 text-right">{{ welcomeClock.weekday }}</div>
+                <RouterLink
+                  :to="{ name: 'project-goals', params: { projectId: project.id } }"
+                  class="mt-2 inline-flex h-7 items-center rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30"
+                >
+                  Goal 目标
+                </RouterLink>
               </div>
             </div>
           </CardContent>

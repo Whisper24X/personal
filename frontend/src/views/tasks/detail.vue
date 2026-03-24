@@ -899,6 +899,20 @@ function startDrag(e: MouseEvent) {
         }"
       >
         <div class="flex min-h-0 w-full flex-1 flex-col gap-2">
+          <div
+            v-if="detail?.goalSummary"
+            class="border-border/60 bg-muted/30 text-foreground flex flex-wrap items-center gap-2 rounded-lg border px-4 py-2 text-xs"
+          >
+            <span class="text-muted-foreground">所属 Goal</span>
+            <RouterLink
+              :to="{ name: 'goal-detail', params: { goalId: detail.goalSummary.id } }"
+              class="text-primary font-medium hover:underline"
+            >
+              {{ detail.goalSummary.title }}
+            </RouterLink>
+            <span class="text-muted-foreground">（{{ detail.goalSummary.status }}）</span>
+          </div>
+
           <WorkflowCard
             v-if="showWorkflowCard"
             :nodes="sortedNodes"
