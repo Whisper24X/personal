@@ -112,12 +112,9 @@ export class NotificationsController {
   }
 
   @Sse('events/stream')
-  async streamEvents(
-    @Request() request,
-  ): Promise<Observable<MessageEvent>> {
+  async streamEvents(@Request() request): Promise<Observable<MessageEvent>> {
     const userId: string = request.user.sub;
-    const { count } =
-      await this.notificationsService.countUnreadEvents(userId);
+    const { count } = await this.notificationsService.countUnreadEvents(userId);
 
     return new Observable<MessageEvent>((subscriber) => {
       subscriber.next({

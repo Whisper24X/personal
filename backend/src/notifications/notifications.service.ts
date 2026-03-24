@@ -341,7 +341,9 @@ export class NotificationsService {
   private isFeishuUrl(url: string): boolean {
     try {
       const hostname = new URL(url).hostname;
-      return hostname.endsWith('feishu.cn') || hostname.endsWith('larksuite.com');
+      return (
+        hostname.endsWith('feishu.cn') || hostname.endsWith('larksuite.com')
+      );
     } catch {
       return false;
     }
@@ -372,11 +374,7 @@ export class NotificationsService {
       : null;
 
     const statusLabel =
-      status === 'done'
-        ? '已完成'
-        : status === 'in_review'
-          ? '待处理'
-          : status;
+      status === 'done' ? '已完成' : status === 'in_review' ? '待处理' : status;
 
     const lines: Record<string, unknown>[][] = [
       [{ tag: 'text', text: content }],

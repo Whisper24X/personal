@@ -382,9 +382,7 @@ describe('NotificationsService', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toBe(
-      'https://open.feishu.cn/open-apis/bot/v2/hook/abc',
-    );
+    expect(url).toBe('https://open.feishu.cn/open-apis/bot/v2/hook/abc');
     const body = JSON.parse(options.body);
     expect(body.msg_type).toBe('post');
     const zhCn = body.content.post.zh_cn;
