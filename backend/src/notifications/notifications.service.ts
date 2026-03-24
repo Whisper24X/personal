@@ -10,7 +10,6 @@ import { NotificationEventRepository } from './infrastructure/persistence/notifi
 import { UpdateNotificationSettingDto } from './dto/update-notification-setting.dto';
 import { NotificationEvent } from './domain/notification-event';
 import { FindNotificationEventsDto } from './dto/find-notification-events.dto';
-import { NotificationEmailService } from './notification-email.service';
 
 @Injectable()
 export class NotificationsService {
@@ -24,7 +23,6 @@ export class NotificationsService {
   constructor(
     private readonly notificationSettingRepository: NotificationSettingRepository,
     private readonly notificationEventRepository: NotificationEventRepository,
-    private readonly notificationEmailService: NotificationEmailService,
   ) {}
 
   async getMySetting(userId: string): Promise<NotificationSetting> {
@@ -37,8 +35,6 @@ export class NotificationsService {
 
     return this.notificationSettingRepository.create({
       userId,
-      emailEnabled: false,
-      emailAddress: null,
       webhookEnabled: false,
       webhookUrl: null,
       browserEnabled: true,
@@ -50,24 +46,12 @@ export class NotificationsService {
     updateDto: UpdateNotificationSettingDto,
   ): Promise<NotificationSetting> {
     const existedSetting = await this.getMySetting(userId);
-    const nextEmailEnabled =
-      updateDto.emailEnabled ?? existedSetting.emailEnabled;
-    const nextEmailAddress =
-      updateDto.emailAddress !== undefined
-        ? updateDto.emailAddress?.trim() || null
-        : existedSetting.emailAddress?.trim() || null;
     const nextWebhookEnabled =
       updateDto.webhookEnabled ?? existedSetting.webhookEnabled;
     const nextWebhookUrl =
       updateDto.webhookUrl !== undefined
         ? updateDto.webhookUrl?.trim() || null
         : existedSetting.webhookUrl?.trim() || null;
-
-    if (nextEmailEnabled && !nextEmailAddress) {
-      throw new BadRequestException(
-        'emailAddress is required when emailEnabled is true',
-      );
-    }
 
     if (nextWebhookEnabled && !nextWebhookUrl?.trim()) {
       throw new BadRequestException(
@@ -78,12 +62,6 @@ export class NotificationsService {
     const updatedSetting = await this.notificationSettingRepository.update(
       existedSetting.id,
       {
-        ...(updateDto.emailEnabled !== undefined
-          ? { emailEnabled: updateDto.emailEnabled }
-          : {}),
-        ...(updateDto.emailAddress !== undefined
-          ? { emailAddress: nextEmailAddress }
-          : {}),
         ...(updateDto.webhookEnabled !== undefined
           ? { webhookEnabled: updateDto.webhookEnabled }
           : {}),
@@ -207,20 +185,6 @@ export class NotificationsService {
       });
     }
 
-    const recipientEmail = setting.emailAddress?.trim() || null;
-    if (setting.emailEnabled && recipientEmail) {
-      void this.sendEmailNotification({
-        recipientEmail,
-        userId,
-        taskId,
-        eventType,
-        status,
-        title,
-        content,
-        occurredAt,
-      });
-    }
-
     if (!setting.browserEnabled) {
       return null;
     }
@@ -307,43 +271,6 @@ export class NotificationsService {
       void lastError;
     } finally {
       this.webhookInFlight.delete(dedupeKey);
-    }
-  }
-
-  private async sendEmailNotification({
-    recipientEmail,
-    userId,
-    taskId,
-    eventType,
-    status,
-    title,
-    content,
-    occurredAt,
-  }: {
-    recipientEmail: string;
-    userId: string;
-    taskId: string;
-    eventType: string;
-    status: string;
-    title: string;
-    content: string;
-    occurredAt: string;
-  }): Promise<void> {
-    try {
-      await this.notificationEmailService.sendTaskStatusEmail({
-        to: recipientEmail,
-        userId,
-        taskId,
-        eventType,
-        status,
-        title,
-        content,
-        occurredAt,
-      });
-    } catch (error) {
-      this.logger.warn(
-        `Failed to send task email notification: ${error instanceof Error ? error.message : 'unknown error'}`,
-      );
     }
   }
 

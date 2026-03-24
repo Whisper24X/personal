@@ -7,12 +7,6 @@ export class NotificationSetting {
   @ApiProperty({ type: String })
   userId: string;
 
-  @ApiProperty({ type: Boolean, default: true })
-  emailEnabled: boolean;
-
-  @ApiProperty({ type: String, required: false, nullable: true })
-  emailAddress?: string | null;
-
   @ApiProperty({ type: Boolean, default: false })
   webhookEnabled: boolean;
 

@@ -20,17 +20,6 @@ export class NotificationSettingEntity extends EntityRelationalHelper {
   @Column({ type: 'uuid', comment: '关联用户ID' })
   userId: string;
 
-  @Column({ type: 'boolean', default: false, comment: '是否启用邮件通知' })
-  emailEnabled: boolean;
-
-  @Column({
-    type: String,
-    length: 255,
-    nullable: true,
-    comment: '通知邮箱地址',
-  })
-  emailAddress?: string | null;
-
   @Column({ type: 'boolean', default: false, comment: '是否启用Webhook通知' })
   webhookEnabled: boolean;
 

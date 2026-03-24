@@ -6,8 +6,6 @@ export class NotificationSettingMapper {
     const domainEntity = new NotificationSetting();
     domainEntity.id = raw.id;
     domainEntity.userId = raw.userId;
-    domainEntity.emailEnabled = raw.emailEnabled;
-    domainEntity.emailAddress = raw.emailAddress;
     domainEntity.webhookEnabled = raw.webhookEnabled;
     domainEntity.webhookUrl = raw.webhookUrl;
     domainEntity.browserEnabled = raw.browserEnabled;
@@ -27,8 +25,6 @@ export class NotificationSettingMapper {
     }
 
     persistenceEntity.userId = domainEntity.userId;
-    persistenceEntity.emailEnabled = domainEntity.emailEnabled;
-    persistenceEntity.emailAddress = domainEntity.emailAddress;
     persistenceEntity.webhookEnabled = domainEntity.webhookEnabled;
     persistenceEntity.webhookUrl = domainEntity.webhookUrl;
     persistenceEntity.browserEnabled = domainEntity.browserEnabled;
