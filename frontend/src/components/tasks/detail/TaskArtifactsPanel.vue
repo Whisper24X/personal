@@ -181,7 +181,9 @@ watch(
 
 <template>
   <div class="flex h-full min-h-0 min-w-0 overflow-hidden">
-    <aside class="border-border/70 flex min-h-0 w-72 shrink-0 flex-col border-r bg-muted/10">
+    <aside
+      class="border-border/70 flex min-h-0 w-[200px] shrink-0 flex-col border-r bg-muted/10"
+    >
       <div class="min-h-0 flex-1 overflow-auto px-1.5 py-1.5">
         <div class="space-y-1.5 text-xs">
           <p v-if="errorMessage" class="px-1.5 text-destructive">{{ errorMessage }}</p>
