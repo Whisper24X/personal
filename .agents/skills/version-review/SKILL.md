@@ -1,6 +1,6 @@
 ---
 name: version-review
-description: Conducts a 5-round interactive version review to validate version ideas against system knowledge base (business rules, PRD/MRD history, terminology, tech constraints). Generates targeted questions via Cursor CLI, supports frontend API polling and state machine. Use when performing version review, version consistency check, validating version ideas, or when user requests version verification.
+description: Conducts a 5-round interactive version review to validate version ideas against system knowledge base (business rules, PRD/MRD history, terminology, tech constraints). Generates targeted questions based on retrieved knowledge and advances through direct question-and-answer conversation. Use when performing version review, version consistency check, validating version ideas, or when user requests version verification.
 ---
 
 # 版本评审
@@ -9,15 +9,14 @@ description: Conducts a 5-round interactive version review to validate version i
 
 **重要说明**：
 
-- 问题与文档生成使用 **Cursor CLI 工具**（任意环境可用）
-- 用户交互通过 **前端 API 接口** + 轮询机制完成
-- 评审状态由状态机管理并持久化到数据库
+- 问题与文档生成基于检索到的知识上下文完成
+- 用户交互采用**逐轮提问 -> 用户回答 -> 继续下一轮**的方式
+- 每轮问答完成后即时写入增量文档，5 轮结束后再生成总结文档
 
 ## Quick Reference
 
 - 知识库检索：见 [references/knowledge-types.md](references/knowledge-types.md)
 - 问题模板：见 [references/question-templates.md](references/question-templates.md)
-- API 集成：见 [references/api-integration.md](references/api-integration.md)
 - 检查清单：见 [references/checklist.md](references/checklist.md)
 - 示例：见 [examples.md](examples.md)
 
@@ -41,12 +40,12 @@ description: Conducts a 5-round interactive version review to validate version i
 
 ## 快速开始
 
-1. 前端调用 `POST /api/projects/:id/versions/:versionId/review/start` 启动评审
-2. 前端轮询 `GET /api/projects/:id/versions/:versionId/review/status` 获取状态
-3. 当状态为 `waiting_answer` 时，前端展示问题并等待用户输入
-4. 前端调用 `POST /api/projects/:id/versions/:versionId/review/answer` 提交回答
-5. 系统自动生成下一题或评审文档
-6. 重复步骤 2-5，直到 5 轮结束
+1. 收集输入信息：`projectId`、`versionId`、`versionName`、`versionIdea`、`workspaceRoot`
+2. 检索当前版本评审所需的知识上下文
+3. 生成第 1 轮问题并直接向用户提问
+4. 用户回答后，基于回答和已有上下文生成下一轮问题
+5. 每轮完成后将 Q&A 追加写入增量文档
+6. 5 轮结束后生成总结文档
 
 ---
 
@@ -62,20 +61,20 @@ description: Conducts a 5-round interactive version review to validate version i
 
 在评审开始前，必须检索结构化知识上下文。详见 [references/knowledge-types.md](references/knowledge-types.md)。
 
-### 状态机
+### 轮次推进
 
-- `pending`：未开始
-- `generating_question`：通过 CLI 生成问题
-- `waiting_answer`：问题已生成，等待用户回答
-- `generating_document`：问题完成，生成评审文档
-- `completed`：评审完成，文档已生成
-- `failed`：评审过程发生错误
+- 第 1 轮开始前，必须先完成知识检索
+- 每一轮都遵循：**生成问题 -> 向用户提问 -> 获取回答 -> 记录 Q&A -> 进入下一轮**
+- 第 5 轮回答完成后，进入总结文档生成
+- 任一轮缺少必要知识或无法形成基于事实的问题时，评审应中止并明确报错，不得使用臆测内容继续
 
-```
-pending → generating_question → waiting_answer → generating_question → ... → generating_document → completed
-                                                                                    ↓
-                                                                                 failed
-```
+### 交互要求
+
+- 先确认评审输入：`projectId`、`versionId`、`versionName`、`versionIdea`、`workspaceRoot`
+- 每次只提当前轮次的一个问题
+- 第 2-5 轮的问题必须带上前序问答结论
+- 用户回答后才能进入下一轮，不得跳轮
+- 每轮完成后必须将 `问题 + 回答 + 引用来源` 追加写入增量文档
 
 ### Step 2-6: 5 轮评审执行
 
@@ -186,7 +185,7 @@ pending → generating_question → waiting_answer → generating_question → .
 | 架构、接口、API | 系统结构、对接方式（或具体说明业务含义） |
 | 字段、表结构    | 数据项、信息项                           |
 
-**知识类型中文映射**：BUSINESS_RULES→业务规则，HISTORY_PRD→历史需求文档，TERMINOLOGY→术语词典，TECH_CONSTRAINTS→系统限制，DEV_SPEC→开发规范
+**知识类型中文映射**：BUSINESS_RULES→业务规则，HISTORY_PRD→历史需求文档，HISTORY_MRD→历史市场调研文档，TERMINOLOGY→术语词典，TECH_CONSTRAINTS→系统限制，DEV_SPEC→开发规范
 
 ### 原则
 
@@ -300,13 +299,11 @@ pending → generating_question → waiting_answer → generating_question → .
 
 ---
 
-## 集成说明
+## 执行说明
 
-- `RAGService`：知识检索
-- `CLIExecutor`：通过 Cursor CLI 生成问题与文档
-- `ProjectVersionRepository`：评审状态持久化到数据库元数据
-- 前端 API：用户交互
-
-评审过程为**异步**：问题与文档异步生成，需要前端轮询。API 详情与错误处理见 [references/api-integration.md](references/api-integration.md)。
+- 知识检索：先收集业务规则、历史需求、术语词典、系统限制、开发规范
+- 提问方式：按 5 轮顺序直接向用户提问，每次只问当前轮次的一个问题
+- 文档写入：每轮回答后追加到增量文档，全部完成后再生成总结文档
+- 失败处理：缺少必要知识、问题无法基于事实生成、文档生成失败时立即停止，并明确说明失败原因
 
 **增量写入**：每轮问答完成后会**即时**将 Q&A 追加到 `docs/version-review/{versionName}-review.md`；5 轮全部完成后，**新建**总结文件 `docs/version-review/{versionName}-review-summary.md`（含评审结论、冲突分析、建议、行动项），**不覆盖**增量文件。
