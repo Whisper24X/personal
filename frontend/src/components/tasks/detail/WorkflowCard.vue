@@ -79,7 +79,7 @@ const nodeDotClass = (node: TaskNode) => {
                 @click="emit('selectNode', node.id)"
               >
                 <span class="h-2 w-2 rounded-full shrink-0" :class="nodeDotClass(node)" />
-                <span class="max-w-[96px] truncate">{{ node.name || `节点 ${index + 1}` }}</span>
+                <span class="whitespace-nowrap">{{ node.name || `节点 ${index + 1}` }}</span>
                 <span
                   v-if="nodeLoopBadge(node)"
                   class="text-muted-foreground shrink-0 font-mono text-[10px] opacity-90"
