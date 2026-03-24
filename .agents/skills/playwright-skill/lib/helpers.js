@@ -42,7 +42,8 @@ function getExtraHeadersFromEnv() {
  */
 async function launchBrowser(browserType = 'chromium', options = {}) {
   const defaultOptions = {
-    headless: process.env.HEADLESS !== 'false',
+    // 默认调起可见窗口；仅当 HEADLESS=true 时无头（与 SKILL.md 一致）
+    headless: process.env.HEADLESS === 'true',
     slowMo: process.env.SLOW_MO ? parseInt(process.env.SLOW_MO) : 0,
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   };
@@ -53,7 +54,7 @@ async function launchBrowser(browserType = 'chromium', options = {}) {
   if (!browser) {
     throw new Error(`Invalid browser type: ${browserType}`);
   }
-
+  
   return await browser.launch({ ...defaultOptions, ...options });
 }
 
@@ -371,8 +372,8 @@ async function createContext(browser, options = {}) {
 
 /**
  * Detect running dev servers on common ports
- * @param {Array} customPorts - Additional ports to check
- * @returns {Promise} Array of detected server URLs
+ * @param {Array<number>} customPorts - Additional ports to check
+ * @returns {Promise<Array>} Array of detected server URLs
  */
 async function detectDevServers(customPorts = []) {
   const http = require('http');
@@ -397,7 +398,7 @@ async function detectDevServers(customPorts = []) {
         }, (res) => {
           if (res.statusCode < 500) {
             detectedServers.push(`http://localhost:${port}`);
-            console.log(` ✅ Found server on port ${port}`);
+            console.log(`  ✅ Found server on port ${port}`);
           }
           resolve();
         });
@@ -416,10 +417,25 @@ async function detectDevServers(customPorts = []) {
   }
 
   if (detectedServers.length === 0) {
-    console.log(' ❌ No dev servers detected');
+    console.log('  ❌ No dev servers detected');
   }
 
   return detectedServers;
+}
+
+/**
+ * 点击侧栏菜单项（兼容 link / menuitem / el-menu-item）
+ * 用于管理后台（Element Plus 等）侧栏导航，不依赖 role=link
+ * @param {import('playwright').Page} page - Playwright page
+ * @param {string} menuText - 菜单文案，如 '订单管理'、'渠道订单管理'
+ * @param {number} timeout - 等待可见超时 ms，默认 15000
+ */
+async function clickSidebarMenu(page, menuText, timeout = 15000) {
+  const locator = page
+    .getByRole('link', { name: menuText })
+    .or(page.locator(`a:has-text("${menuText}"), [role="menuitem"]:has-text("${menuText}"), .el-menu-item:has-text("${menuText}")`).first());
+  await locator.waitFor({ state: 'visible', timeout });
+  await locator.click();
 }
 
 module.exports = {
@@ -437,5 +453,6 @@ module.exports = {
   retryWithBackoff,
   createContext,
   detectDevServers,
-  getExtraHeadersFromEnv
+  getExtraHeadersFromEnv,
+  clickSidebarMenu
 };
