@@ -77,7 +77,6 @@ const passwordSaving = ref(false)
 const webhookSaving = ref(false)
 const profileModalOpen = ref(false)
 const passwordModalOpen = ref(false)
-const emailModalOpen = ref(false)
 const webhookModalOpen = ref(false)
 const browserModalOpen = ref(false)
 const logoutConfirmOpen = ref(false)
@@ -86,30 +85,24 @@ const browserPermissionSaving = ref(false)
 const logoutSubmitting = ref(false)
 const profileServerError = ref('')
 const passwordServerError = ref('')
-const emailServerError = ref('')
-const emailFieldError = ref('')
 const webhookServerError = ref('')
 const webhookFieldError = ref('')
 
 const profileFirstFieldRef = ref<HTMLInputElement | null>(null)
 const passwordFirstFieldRef = ref<HTMLInputElement | null>(null)
-const emailFirstFieldRef = ref<HTMLInputElement | null>(null)
 const webhookFirstFieldRef = ref<HTMLInputElement | null>(null)
 const browserFirstFieldRef = ref<HTMLButtonElement | null>(null)
 const logoutConfirmButtonRef = ref<HTMLButtonElement | null>(null)
 
 const settingForm = reactive({
-  emailEnabled: false,
-  emailAddress: '',
   webhookEnabled: false,
   webhookUrl: '',
+  webhookSecret: '',
   browserEnabled: true,
 })
 const webhookDraft = reactive({
   url: '',
-})
-const emailDraft = reactive({
-  address: '',
+  secret: '',
 })
 
 const profileForm = reactive({
@@ -201,7 +194,6 @@ watch(
 watch(activePanel, () => {
   closeProfileModal()
   closePasswordModal()
-  closeEmailModal()
   closeWebhookModal()
   closeBrowserModal()
   closeLogoutConfirm()
@@ -223,15 +215,6 @@ watch(passwordModalOpen, async (open) => {
 
   await nextTick()
   passwordFirstFieldRef.value?.focus()
-})
-
-watch(emailModalOpen, async (open) => {
-  if (!open) {
-    return
-  }
-
-  await nextTick()
-  emailFirstFieldRef.value?.focus()
 })
 
 watch(webhookModalOpen, async (open) => {
@@ -297,21 +280,12 @@ const clearWebhookErrors = () => {
   webhookFieldError.value = ''
 }
 
-const clearEmailErrors = () => {
-  emailServerError.value = ''
-  emailFieldError.value = ''
-}
-
 const detectBrowserPermission = (): BrowserPermissionState => {
   if (typeof window === 'undefined' || !('Notification' in window)) {
     return 'unsupported'
   }
 
   return Notification.permission
-}
-
-const isValidEmail = (email: string) => {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
 const isValidUrl = (url: string) => {
@@ -324,19 +298,15 @@ const isValidUrl = (url: string) => {
 }
 
 const syncSettingForm = (setting: NotificationSetting) => {
-  settingForm.emailEnabled = setting.emailEnabled
-  settingForm.emailAddress = setting.emailAddress ?? ''
   settingForm.webhookEnabled = setting.webhookEnabled
   settingForm.webhookUrl = setting.webhookUrl ?? ''
+  settingForm.webhookSecret = setting.webhookSecret ?? ''
   settingForm.browserEnabled = setting.browserEnabled
 }
 
 const syncWebhookDraftFromForm = () => {
   webhookDraft.url = settingForm.webhookUrl
-}
-
-const syncEmailDraftFromForm = () => {
-  emailDraft.address = settingForm.emailAddress
+  webhookDraft.secret = settingForm.webhookSecret
 }
 
 const syncProfileForm = (profile: UserInfo) => {
@@ -394,17 +364,6 @@ const openWebhookModal = () => {
 const closeWebhookModal = () => {
   webhookModalOpen.value = false
   clearWebhookErrors()
-}
-
-const openEmailModal = () => {
-  clearEmailErrors()
-  syncEmailDraftFromForm()
-  emailModalOpen.value = true
-}
-
-const closeEmailModal = () => {
-  emailModalOpen.value = false
-  clearEmailErrors()
 }
 
 const closeBrowserModal = () => {
@@ -538,20 +497,9 @@ const savePassword = async () => {
 
 const persistNotificationSetting = async (options?: {
   skipWebhookValidation?: boolean
-  skipEmailValidation?: boolean
   successMessage?: string
 }) => {
-  const normalizedEmailAddress = settingForm.emailAddress.trim()
   const normalizedWebhookUrl = settingForm.webhookUrl.trim()
-  if (!options?.skipEmailValidation && settingForm.emailEnabled && !normalizedEmailAddress) {
-    message.error('邮件通知已启用，请先填写通知邮箱')
-    return false
-  }
-
-  if (!options?.skipEmailValidation && normalizedEmailAddress && !isValidEmail(normalizedEmailAddress)) {
-    message.error('通知邮箱格式不正确')
-    return false
-  }
 
   if (!options?.skipWebhookValidation && settingForm.webhookEnabled && !normalizedWebhookUrl) {
     message.error('Webhook 已启用，请先通过“配置 Webhook”填写回调地址')
@@ -567,10 +515,9 @@ const persistNotificationSetting = async (options?: {
 
   try {
     const setting = await notificationsApi.updateSetting({
-      emailEnabled: settingForm.emailEnabled,
-      emailAddress: normalizedEmailAddress || null,
       webhookEnabled: settingForm.webhookEnabled,
       webhookUrl: normalizedWebhookUrl || null,
+      webhookSecret: settingForm.webhookSecret.trim() || null,
       browserEnabled: settingForm.browserEnabled,
     })
 
@@ -585,29 +532,9 @@ const persistNotificationSetting = async (options?: {
   }
 }
 
-const toggleEmailNotification = async () => {
-  const previousValue = !settingForm.emailEnabled
-  if (settingForm.emailEnabled && !settingForm.emailAddress.trim()) {
-    settingForm.emailEnabled = false
-    openEmailModal()
-    message.warning('请先在弹窗中填写通知邮箱，再启用邮件通知')
-    return
-  }
-
-  const isSaved = await persistNotificationSetting({
-    skipWebhookValidation: true,
-    successMessage: '邮件通知已更新',
-  })
-
-  if (!isSaved) {
-    settingForm.emailEnabled = previousValue
-  }
-}
-
 const toggleBrowserNotification = async () => {
   const previousValue = !settingForm.browserEnabled
   const isSaved = await persistNotificationSetting({
-    skipEmailValidation: true,
     skipWebhookValidation: true,
     successMessage: '浏览器通知已更新',
   })
@@ -627,7 +554,6 @@ const toggleWebhookNotification = async () => {
   }
 
   const isSaved = await persistNotificationSetting({
-    skipEmailValidation: true,
     skipWebhookValidation: false,
     successMessage: 'Webhook 通知状态已更新',
   })
@@ -655,10 +581,9 @@ const saveWebhookSetting = async () => {
 
   try {
     const setting = await notificationsApi.updateSetting({
-      emailEnabled: settingForm.emailEnabled,
-      emailAddress: settingForm.emailAddress.trim() || null,
       webhookEnabled: settingForm.webhookEnabled,
       webhookUrl: normalizedWebhookUrl || null,
+      webhookSecret: webhookDraft.secret.trim() || null,
       browserEnabled: settingForm.browserEnabled,
     })
 
@@ -669,41 +594,6 @@ const saveWebhookSetting = async () => {
     webhookServerError.value = toErrorMessage(error, '保存 Webhook 设置失败')
   } finally {
     webhookSaving.value = false
-  }
-}
-
-const saveEmailAddress = async () => {
-  clearEmailErrors()
-  const normalizedEmailAddress = emailDraft.address.trim()
-
-  if (!normalizedEmailAddress) {
-    emailFieldError.value = '通知邮箱不能为空'
-    return
-  }
-
-  if (!isValidEmail(normalizedEmailAddress)) {
-    emailFieldError.value = '通知邮箱格式不正确'
-    return
-  }
-
-  notificationSaving.value = true
-
-  try {
-    const setting = await notificationsApi.updateSetting({
-      emailEnabled: settingForm.emailEnabled,
-      emailAddress: normalizedEmailAddress,
-      webhookEnabled: settingForm.webhookEnabled,
-      webhookUrl: settingForm.webhookUrl.trim() || null,
-      browserEnabled: settingForm.browserEnabled,
-    })
-    syncSettingForm(setting)
-    closeEmailModal()
-    message.success('通知邮箱已更新')
-  } catch (error) {
-    emailServerError.value = toErrorMessage(error, '保存通知邮箱失败')
-    return
-  } finally {
-    notificationSaving.value = false
   }
 }
 
@@ -916,47 +806,6 @@ onMounted(() => {
           <article class="rounded-xl border border-border bg-card/40 p-4">
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p class="text-sm font-semibold">邮件通知</p>
-                <p class="mt-1 text-xs text-muted-foreground">任务状态和关键事件通过邮件发送到你配置的通知邮箱。</p>
-              </div>
-
-              <div class="flex items-center gap-2">
-                <button
-                  class="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
-                  :disabled="notificationSaving"
-                  type="button"
-                  @click="openEmailModal"
-                >
-                  编辑
-                </button>
-                <label
-                  class="inline-flex items-center"
-                  :class="notificationSaving ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'"
-                >
-                  <input
-                    v-model="settingForm.emailEnabled"
-                    aria-label="切换邮件通知"
-                    class="peer sr-only"
-                    :disabled="notificationSaving"
-                    type="checkbox"
-                    @change="toggleEmailNotification"
-                  />
-                  <span
-                    class="relative h-6 w-11 rounded-full bg-muted transition-colors peer-checked:bg-primary peer-focus-visible:ring-2 peer-focus-visible:ring-primary/40 after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-5"
-                  />
-                </label>
-              </div>
-            </div>
-
-            <dl class="mt-4 grid grid-cols-[72px_1fr] items-start gap-y-2 text-xs">
-              <dt class="text-muted-foreground">投递邮箱</dt>
-              <dd class="break-all text-foreground">{{ settingForm.emailAddress || '未设置邮箱' }}</dd>
-            </dl>
-          </article>
-
-          <article class="rounded-xl border border-border bg-card/40 p-4">
-            <div class="flex flex-wrap items-start justify-between gap-3">
-              <div>
                 <p class="text-sm font-semibold">浏览器通知</p>
                 <p class="mt-1 text-xs text-muted-foreground">在浏览器中接收系统提醒，可在弹窗内检查授权状态。</p>
               </div>
@@ -1019,6 +868,8 @@ onMounted(() => {
             <dl class="mt-4 grid grid-cols-[72px_1fr] items-start gap-y-2 text-xs">
               <dt class="text-muted-foreground">回调地址</dt>
               <dd class="break-all text-foreground">{{ settingForm.webhookUrl || '-' }}</dd>
+              <dt class="text-muted-foreground">签名密钥</dt>
+              <dd class="text-foreground">{{ settingForm.webhookSecret ? '已配置' : '未配置' }}</dd>
             </dl>
           </article>
         </template>
@@ -1195,71 +1046,6 @@ onMounted(() => {
 
   <Teleport to="body">
     <div
-      v-if="emailModalOpen"
-      class="fixed inset-0 z-[95] flex items-center justify-center p-4"
-      @keydown.esc.prevent.stop="closeEmailModal"
-    >
-      <button class="absolute inset-0 bg-black/45" type="button" @click="closeEmailModal" />
-      <section
-        aria-modal="true"
-        class="relative z-10 w-[min(520px,96vw)] max-h-[85vh] overflow-hidden rounded-2xl border border-border bg-background p-5 shadow-2xl"
-        role="dialog"
-      >
-        <div class="flex items-center justify-between">
-          <h3 class="text-base font-semibold">编辑通知邮箱</h3>
-          <button
-            aria-label="关闭通知邮箱弹窗"
-            class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-foreground/70 transition hover:bg-muted hover:text-foreground"
-            type="button"
-            @click="closeEmailModal"
-          >
-            ×
-          </button>
-        </div>
-
-        <form class="mt-4 flex max-h-[calc(85vh-6rem)] flex-col" @submit.prevent="saveEmailAddress">
-          <div class="space-y-3 overflow-y-auto pr-1">
-            <p v-if="emailServerError" class="text-sm text-destructive">{{ emailServerError }}</p>
-
-            <label class="space-y-1">
-              <span class="text-xs text-muted-foreground">通知邮箱</span>
-              <input
-                ref="emailFirstFieldRef"
-                v-model="emailDraft.address"
-                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
-                :class="emailFieldError ? 'border-destructive ring-1 ring-destructive/20' : ''"
-                placeholder="user@example.com"
-                type="email"
-              />
-              <p v-if="emailFieldError" class="text-xs text-destructive">{{ emailFieldError }}</p>
-            </label>
-
-            <p class="text-xs text-muted-foreground">开启邮件通知时，该邮箱将作为唯一投递地址。</p>
-          </div>
-
-          <div class="mt-4 flex justify-end gap-2 border-t border-border pt-3">
-            <button
-              class="h-9 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground transition hover:shadow-md"
-              type="button"
-              @click="closeEmailModal"
-            >
-              取消
-            </button>
-            <button
-              class="h-9 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="notificationSaving"
-              type="submit"
-            >
-              {{ notificationSaving ? '保存中...' : '保存' }}
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>
-  </Teleport>
-
-  <Teleport to="body">
-    <div
       v-if="logoutConfirmOpen"
       class="fixed inset-0 z-[95] flex items-center justify-center p-4"
       @keydown.esc.prevent.stop="closeLogoutConfirm"
@@ -1390,10 +1176,21 @@ onMounted(() => {
                 v-model="webhookDraft.url"
                 class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
                 :class="webhookFieldError ? 'border-destructive ring-1 ring-destructive/20' : ''"
-                placeholder="https://example.com/hook"
+                placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
                 type="text"
               />
               <p v-if="webhookFieldError" class="text-xs text-destructive">{{ webhookFieldError }}</p>
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs text-muted-foreground">签名密钥（可选，飞书机器人安全设置中获取）</span>
+              <input
+                v-model="webhookDraft.secret"
+                autocomplete="off"
+                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="飞书机器人签名校验密钥"
+                type="password"
+              />
             </label>
           </div>
 

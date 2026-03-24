@@ -1,11 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 
+const mockConfigService = { get: () => undefined } as never;
+
 const createSetting = (overrides?: Partial<any>) => ({
   id: 'setting-1',
   userId: 'user-1',
-  emailEnabled: false,
-  emailAddress: null,
   webhookEnabled: false,
   webhookUrl: null,
   browserEnabled: true,
@@ -37,10 +37,6 @@ const flushPromises = async (): Promise<void> => {
 
 describe('NotificationsService', () => {
   const originalFetch = global.fetch;
-  const createNotificationEmailService = (overrides?: Partial<any>) => ({
-    sendTaskStatusEmail: jest.fn().mockResolvedValue(undefined),
-    ...(overrides ?? {}),
-  });
 
   afterEach(() => {
     jest.clearAllMocks();
@@ -59,46 +55,18 @@ describe('NotificationsService', () => {
       findById: jest.fn(),
       markRead: jest.fn(),
     };
-    const notificationEmailService = createNotificationEmailService();
 
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
-      notificationEmailService as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     await expect(
       service.updateMySetting('user-1', {
         webhookEnabled: true,
         webhookUrl: '',
-      }),
-    ).rejects.toThrow(BadRequestException);
-  });
-
-  it('should reject enabling email without email address', async () => {
-    const notificationSettingRepository = {
-      findByUserId: jest.fn().mockResolvedValue(createSetting()),
-      create: jest.fn(),
-      update: jest.fn(),
-    };
-    const notificationEventRepository = {
-      create: jest.fn(),
-      findByUserId: jest.fn(),
-      findById: jest.fn(),
-      markRead: jest.fn(),
-    };
-    const notificationEmailService = createNotificationEmailService();
-
-    const service = new NotificationsService(
-      notificationSettingRepository as never,
-      notificationEventRepository as never,
-      notificationEmailService as never,
-    );
-
-    await expect(
-      service.updateMySetting('user-1', {
-        emailEnabled: true,
-        emailAddress: null,
       }),
     ).rejects.toThrow(BadRequestException);
   });
@@ -121,7 +89,6 @@ describe('NotificationsService', () => {
       findById: jest.fn(),
       markRead: jest.fn(),
     };
-    const notificationEmailService = createNotificationEmailService();
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -131,7 +98,8 @@ describe('NotificationsService', () => {
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
-      notificationEmailService as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     const event = await service.notifyTaskStatusChanged({
@@ -150,7 +118,6 @@ describe('NotificationsService', () => {
         method: 'POST',
       }),
     );
-    expect(notificationEmailService.sendTaskStatusEmail).not.toHaveBeenCalled();
   });
 
   it('should dedupe webhook by user/task/event type within 60 seconds', async () => {
@@ -171,7 +138,6 @@ describe('NotificationsService', () => {
       findById: jest.fn(),
       markRead: jest.fn(),
     };
-    const notificationEmailService = createNotificationEmailService();
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -181,7 +147,8 @@ describe('NotificationsService', () => {
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
-      notificationEmailService as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     await service.notifyTaskStatusChanged({
@@ -203,92 +170,6 @@ describe('NotificationsService', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('should send email notification when emailAddress is configured', async () => {
-    const notificationSettingRepository = {
-      findByUserId: jest.fn().mockResolvedValue(
-        createSetting({
-          emailEnabled: true,
-          emailAddress: 'dev@example.com',
-          webhookEnabled: false,
-          browserEnabled: false,
-        }),
-      ),
-      create: jest.fn(),
-      update: jest.fn(),
-    };
-    const notificationEventRepository = {
-      create: jest.fn(),
-      findByUserId: jest.fn(),
-      findById: jest.fn(),
-      markRead: jest.fn(),
-    };
-    const notificationEmailService = createNotificationEmailService();
-
-    const service = new NotificationsService(
-      notificationSettingRepository as never,
-      notificationEventRepository as never,
-      notificationEmailService as never,
-    );
-
-    const event = await service.notifyTaskStatusChanged({
-      userId: 'user-1',
-      taskId: 'task-1',
-      taskTitle: '测试任务',
-      status: 'done',
-    });
-    await flushPromises();
-
-    expect(event).toBeNull();
-    expect(notificationEmailService.sendTaskStatusEmail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: 'dev@example.com',
-        eventType: 'task.done',
-      }),
-    );
-    expect(notificationEventRepository.create).not.toHaveBeenCalled();
-  });
-
-  it('should keep browser event when email delivery fails', async () => {
-    const notificationSettingRepository = {
-      findByUserId: jest.fn().mockResolvedValue(
-        createSetting({
-          emailEnabled: true,
-          emailAddress: 'dev@example.com',
-          webhookEnabled: false,
-          browserEnabled: true,
-        }),
-      ),
-      create: jest.fn(),
-      update: jest.fn(),
-    };
-    const notificationEventRepository = {
-      create: jest.fn().mockResolvedValue(createEvent()),
-      findByUserId: jest.fn(),
-      findById: jest.fn(),
-      markRead: jest.fn(),
-    };
-    const notificationEmailService = createNotificationEmailService({
-      sendTaskStatusEmail: jest.fn().mockRejectedValue(new Error('smtp down')),
-    });
-
-    const service = new NotificationsService(
-      notificationSettingRepository as never,
-      notificationEventRepository as never,
-      notificationEmailService as never,
-    );
-
-    const event = await service.notifyTaskStatusChanged({
-      userId: 'user-1',
-      taskId: 'task-1',
-      taskTitle: '测试任务',
-      status: 'in_review',
-    });
-    await flushPromises();
-
-    expect(event).toEqual(expect.objectContaining({ id: 'event-1' }));
-    expect(notificationEventRepository.create).toHaveBeenCalledTimes(1);
-  });
-
   it('should use taskTitle in notification content', async () => {
     const notificationSettingRepository = {
       findByUserId: jest
@@ -306,12 +187,12 @@ describe('NotificationsService', () => {
       deleteReadByUserId: jest.fn(),
       countUnreadByUserId: jest.fn(),
     };
-    const notificationEmailService = createNotificationEmailService();
 
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
-      notificationEmailService as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     await service.notifyTaskStatusChanged({
@@ -345,12 +226,12 @@ describe('NotificationsService', () => {
       deleteReadByUserId: jest.fn(),
       countUnreadByUserId: jest.fn(),
     };
-    const notificationEmailService = createNotificationEmailService();
 
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
-      notificationEmailService as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     await service.notifyTaskStatusChanged({
@@ -381,12 +262,12 @@ describe('NotificationsService', () => {
       deleteReadByUserId: jest.fn(),
       countUnreadByUserId: jest.fn(),
     };
-    const notificationEmailService = createNotificationEmailService();
 
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
-      notificationEmailService as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     const result = await service.markAllEventsRead('user-1');
@@ -412,12 +293,12 @@ describe('NotificationsService', () => {
       deleteReadByUserId: jest.fn().mockResolvedValue(5),
       countUnreadByUserId: jest.fn(),
     };
-    const notificationEmailService = createNotificationEmailService();
 
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
-      notificationEmailService as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     const result = await service.deleteReadEvents('user-1');
@@ -443,12 +324,12 @@ describe('NotificationsService', () => {
       deleteReadByUserId: jest.fn(),
       countUnreadByUserId: jest.fn().mockResolvedValue(7),
     };
-    const notificationEmailService = createNotificationEmailService();
 
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
-      notificationEmailService as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     const result = await service.countUnreadEvents('user-1');
@@ -459,11 +340,81 @@ describe('NotificationsService', () => {
     ).toHaveBeenCalledWith('user-1');
   });
 
+  it('should send feishu-formatted webhook when URL contains feishu.cn', async () => {
+    const notificationSettingRepository = {
+      findByUserId: jest.fn().mockResolvedValue(
+        createSetting({
+          webhookEnabled: true,
+          webhookUrl: 'https://open.feishu.cn/open-apis/bot/v2/hook/abc',
+          webhookSecret: 'test-secret',
+          browserEnabled: false,
+        }),
+      ),
+      create: jest.fn(),
+      update: jest.fn(),
+    };
+    const notificationEventRepository = {
+      create: jest.fn(),
+      findByUserId: jest.fn(),
+      findById: jest.fn(),
+      markRead: jest.fn(),
+    };
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+    } as Response);
+    global.fetch = fetchMock;
+
+    const service = new NotificationsService(
+      notificationSettingRepository as never,
+      notificationEventRepository as never,
+      { emit: jest.fn() } as never,
+      { get: () => 'http://localhost:8000' } as never,
+    );
+
+    await service.notifyTaskStatusChanged({
+      userId: 'user-1',
+      taskId: 'task-1',
+      taskTitle: '测试任务',
+      status: 'done',
+    });
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe(
+      'https://open.feishu.cn/open-apis/bot/v2/hook/abc',
+    );
+    const body = JSON.parse(options.body);
+    expect(body.msg_type).toBe('post');
+    const zhCn = body.content.post.zh_cn;
+    expect(zhCn.title).toBe('任务执行完成');
+    expect(zhCn.content[0][0]).toEqual({
+      tag: 'text',
+      text: expect.stringContaining('测试任务'),
+    });
+    expect(zhCn.content[2]).toEqual([
+      { tag: 'text', text: '事件类型: ' },
+      { tag: 'text', text: 'task.done' },
+    ]);
+    expect(zhCn.content[3]).toEqual([
+      { tag: 'text', text: '任务状态: ' },
+      { tag: 'text', text: '已完成' },
+    ]);
+    const lastLine = zhCn.content[zhCn.content.length - 1];
+    expect(lastLine[0]).toEqual({
+      tag: 'a',
+      text: '>> 查看任务详情',
+      href: 'http://localhost:8000/task-detail/task-1',
+    });
+    expect(body.timestamp).toBeDefined();
+    expect(body.sign).toBeDefined();
+  });
+
   it('should skip browser event when browser channel is disabled', async () => {
     const notificationSettingRepository = {
       findByUserId: jest.fn().mockResolvedValue(
         createSetting({
-          emailEnabled: false,
           webhookEnabled: false,
           browserEnabled: false,
         }),
@@ -477,12 +428,12 @@ describe('NotificationsService', () => {
       findById: jest.fn(),
       markRead: jest.fn(),
     };
-    const notificationEmailService = createNotificationEmailService();
 
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
-      notificationEmailService as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     const event = await service.notifyTaskStatusChanged({

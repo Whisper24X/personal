@@ -1,10 +1,9 @@
 export type NotificationSetting = {
   id: string
   userId: string
-  emailEnabled: boolean
-  emailAddress?: string | null
   webhookEnabled: boolean
   webhookUrl?: string | null
+  webhookSecret?: string | null
   browserEnabled: boolean
 }
 
@@ -21,9 +20,8 @@ export type NotificationEvent = {
 }
 
 export type UpdateNotificationSettingPayload = Partial<{
-  emailEnabled: boolean
-  emailAddress: string | null
   webhookEnabled: boolean
   webhookUrl: string | null
+  webhookSecret: string | null
   browserEnabled: boolean
 }>

@@ -4,13 +4,16 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createHmac } from 'crypto';
+import { AllConfigType } from '../config/config.type';
 import { NotificationSetting } from './domain/notification-setting';
 import { NotificationSettingRepository } from './infrastructure/persistence/notification-setting.repository';
 import { NotificationEventRepository } from './infrastructure/persistence/notification-event.repository';
 import { UpdateNotificationSettingDto } from './dto/update-notification-setting.dto';
 import { NotificationEvent } from './domain/notification-event';
 import { FindNotificationEventsDto } from './dto/find-notification-events.dto';
-import { NotificationEmailService } from './notification-email.service';
+import { NotificationEventsEmitterService } from './notification-events-emitter.service';
 
 @Injectable()
 export class NotificationsService {
@@ -24,7 +27,8 @@ export class NotificationsService {
   constructor(
     private readonly notificationSettingRepository: NotificationSettingRepository,
     private readonly notificationEventRepository: NotificationEventRepository,
-    private readonly notificationEmailService: NotificationEmailService,
+    private readonly notificationEventsEmitter: NotificationEventsEmitterService,
+    private readonly configService: ConfigService<AllConfigType>,
   ) {}
 
   async getMySetting(userId: string): Promise<NotificationSetting> {
@@ -37,10 +41,9 @@ export class NotificationsService {
 
     return this.notificationSettingRepository.create({
       userId,
-      emailEnabled: false,
-      emailAddress: null,
       webhookEnabled: false,
       webhookUrl: null,
+      webhookSecret: null,
       browserEnabled: true,
     });
   }
@@ -50,24 +53,12 @@ export class NotificationsService {
     updateDto: UpdateNotificationSettingDto,
   ): Promise<NotificationSetting> {
     const existedSetting = await this.getMySetting(userId);
-    const nextEmailEnabled =
-      updateDto.emailEnabled ?? existedSetting.emailEnabled;
-    const nextEmailAddress =
-      updateDto.emailAddress !== undefined
-        ? updateDto.emailAddress?.trim() || null
-        : existedSetting.emailAddress?.trim() || null;
     const nextWebhookEnabled =
       updateDto.webhookEnabled ?? existedSetting.webhookEnabled;
     const nextWebhookUrl =
       updateDto.webhookUrl !== undefined
         ? updateDto.webhookUrl?.trim() || null
         : existedSetting.webhookUrl?.trim() || null;
-
-    if (nextEmailEnabled && !nextEmailAddress) {
-      throw new BadRequestException(
-        'emailAddress is required when emailEnabled is true',
-      );
-    }
 
     if (nextWebhookEnabled && !nextWebhookUrl?.trim()) {
       throw new BadRequestException(
@@ -78,17 +69,14 @@ export class NotificationsService {
     const updatedSetting = await this.notificationSettingRepository.update(
       existedSetting.id,
       {
-        ...(updateDto.emailEnabled !== undefined
-          ? { emailEnabled: updateDto.emailEnabled }
-          : {}),
-        ...(updateDto.emailAddress !== undefined
-          ? { emailAddress: nextEmailAddress }
-          : {}),
         ...(updateDto.webhookEnabled !== undefined
           ? { webhookEnabled: updateDto.webhookEnabled }
           : {}),
         ...(updateDto.webhookUrl !== undefined
           ? { webhookUrl: nextWebhookUrl }
+          : {}),
+        ...(updateDto.webhookSecret !== undefined
+          ? { webhookSecret: updateDto.webhookSecret?.trim() || null }
           : {}),
         ...(updateDto.browserEnabled !== undefined
           ? { browserEnabled: updateDto.browserEnabled }
@@ -204,20 +192,7 @@ export class NotificationsService {
         content,
         occurredAt,
         webhookUrl: setting.webhookUrl.trim(),
-      });
-    }
-
-    const recipientEmail = setting.emailAddress?.trim() || null;
-    if (setting.emailEnabled && recipientEmail) {
-      void this.sendEmailNotification({
-        recipientEmail,
-        userId,
-        taskId,
-        eventType,
-        status,
-        title,
-        content,
-        occurredAt,
+        webhookSecret: setting.webhookSecret?.trim() || null,
       });
     }
 
@@ -225,7 +200,7 @@ export class NotificationsService {
       return null;
     }
 
-    return this.notificationEventRepository.create({
+    const createdEvent = await this.notificationEventRepository.create({
       userId,
       taskId,
       eventType,
@@ -235,6 +210,10 @@ export class NotificationsService {
         status,
       },
     });
+
+    this.notificationEventsEmitter.emit(userId, createdEvent);
+
+    return createdEvent;
   }
 
   private async sendWebhookNotification({
@@ -246,6 +225,7 @@ export class NotificationsService {
     content,
     occurredAt,
     webhookUrl,
+    webhookSecret,
   }: {
     userId: string;
     taskId: string;
@@ -255,6 +235,7 @@ export class NotificationsService {
     content: string;
     occurredAt: string;
     webhookUrl: string;
+    webhookSecret: string | null;
   }): Promise<void> {
     const dedupeKey = `${userId}:${taskId}:${eventType}`;
     const now = Date.now();
@@ -267,15 +248,17 @@ export class NotificationsService {
 
     this.webhookInFlight.add(dedupeKey);
 
-    const payload = {
-      eventType,
-      taskId,
-      status,
-      title,
-      content,
-      occurredAt,
-      userId,
-    };
+    const payload = this.isFeishuUrl(webhookUrl)
+      ? this.buildFeishuPayload({
+          title,
+          content,
+          taskId,
+          eventType,
+          status,
+          occurredAt,
+          webhookSecret,
+        })
+      : { eventType, taskId, status, title, content, occurredAt, userId };
 
     try {
       let lastError: unknown = null;
@@ -307,43 +290,6 @@ export class NotificationsService {
       void lastError;
     } finally {
       this.webhookInFlight.delete(dedupeKey);
-    }
-  }
-
-  private async sendEmailNotification({
-    recipientEmail,
-    userId,
-    taskId,
-    eventType,
-    status,
-    title,
-    content,
-    occurredAt,
-  }: {
-    recipientEmail: string;
-    userId: string;
-    taskId: string;
-    eventType: string;
-    status: string;
-    title: string;
-    content: string;
-    occurredAt: string;
-  }): Promise<void> {
-    try {
-      await this.notificationEmailService.sendTaskStatusEmail({
-        to: recipientEmail,
-        userId,
-        taskId,
-        eventType,
-        status,
-        title,
-        content,
-        occurredAt,
-      });
-    } catch (error) {
-      this.logger.warn(
-        `Failed to send task email notification: ${error instanceof Error ? error.message : 'unknown error'}`,
-      );
     }
   }
 
@@ -390,6 +336,98 @@ export class NotificationsService {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  private isFeishuUrl(url: string): boolean {
+    try {
+      const hostname = new URL(url).hostname;
+      return hostname.endsWith('feishu.cn') || hostname.endsWith('larksuite.com');
+    } catch {
+      return false;
+    }
+  }
+
+  private buildFeishuPayload({
+    title,
+    content,
+    taskId,
+    eventType,
+    status,
+    occurredAt,
+    webhookSecret,
+  }: {
+    title: string;
+    content: string;
+    taskId: string;
+    eventType: string;
+    status: string;
+    occurredAt: string;
+    webhookSecret: string | null;
+  }): Record<string, unknown> {
+    const frontendDomain = this.configService.get('app.frontendDomain', {
+      infer: true,
+    });
+    const taskUrl = frontendDomain
+      ? `${frontendDomain}/task-detail/${taskId}`
+      : null;
+
+    const statusLabel =
+      status === 'done'
+        ? '已完成'
+        : status === 'in_review'
+          ? '待处理'
+          : status;
+
+    const lines: Record<string, unknown>[][] = [
+      [{ tag: 'text', text: content }],
+      [],
+      [
+        { tag: 'text', text: '事件类型: ' },
+        { tag: 'text', text: eventType },
+      ],
+      [
+        { tag: 'text', text: '任务状态: ' },
+        { tag: 'text', text: statusLabel },
+      ],
+      [
+        { tag: 'text', text: '任务 ID: ' },
+        { tag: 'text', text: taskId },
+      ],
+      [
+        { tag: 'text', text: '发生时间: ' },
+        { tag: 'text', text: occurredAt },
+      ],
+    ];
+
+    if (taskUrl) {
+      lines.push([]);
+      lines.push([{ tag: 'a', text: '>> 查看任务详情', href: taskUrl }]);
+    }
+
+    const payload: Record<string, unknown> = {
+      msg_type: 'post',
+      content: {
+        post: {
+          zh_cn: {
+            title,
+            content: lines,
+          },
+        },
+      },
+    };
+
+    if (webhookSecret) {
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+      payload.timestamp = timestamp;
+      payload.sign = this.signFeishu(webhookSecret, timestamp);
+    }
+
+    return payload;
+  }
+
+  private signFeishu(secret: string, timestamp: string): string {
+    const stringToSign = `${timestamp}\n${secret}`;
+    return createHmac('sha256', stringToSign).update('').digest('base64');
   }
 
   private delay(ms: number): Promise<void> {

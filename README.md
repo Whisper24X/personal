@@ -53,3 +53,15 @@ pnpm run docker:clean   # 停止并清除数据卷
 pnpm run               # 查看完整脚本列表
 ```
 
+### 数据库迁移
+
+当拉取到新代码包含数据库结构变更时（`backend/src/database/migrations/` 目录下有新文件），需要执行迁移命令以同步数据库：
+
+```bash
+cd backend
+npm run migration:run
+```
+
+此操作仅新增或变更表结构，不会删除已有数据。已执行过的迁移会自动跳过，可重复运行。
+
+> 执行前请确保 PostgreSQL 容器已启动（`pnpm run dev` 或 `docker compose up -d postgres`）。
