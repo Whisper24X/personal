@@ -5,7 +5,9 @@ FROM golang:1.23-bookworm AS go-toolchain
 FROM node:22.21.1-bookworm-slim AS build
 
 # node-pty 等原生模块需要编译工具链
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
         python3 make g++ \
     && rm -rf /var/lib/apt/lists/*
 
@@ -13,7 +15,8 @@ WORKDIR /app
 
 # 先复制依赖清单，利用 Docker 层缓存
 COPY package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm ci
 
 # 复制源码并构建
 COPY . .
@@ -29,6 +32,7 @@ COPY --from=go-toolchain /usr/local/go /usr/local/go
 # ============================================================
 
 ENV TZ=Asia/Shanghai \
+    DEBIAN_FRONTEND=noninteractive \
     GOROOT=/usr/local/go \
     GOPATH=/go \
     GO_ENV=development \
@@ -49,7 +53,9 @@ ENV TZ=Asia/Shanghai \
 # supervisor/nginx    — 进程管理 + 反向代理
 # nodejs/npm          — 前端构建（glibc 兼容 Taro binding）
 # cmake               — 构建 librdkafka（confluent-kafka-go 需 v2.3+，Debian 自带版本过旧）
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     bash curl git make vim jq cmake python3 \
     openssh-client netcat-openbsd \
     supervisor nginx \
@@ -83,7 +89,12 @@ RUN cd /tmp \
 # SSH + Git（用于拉取 gitlab.yc345.tv 私有依赖）
 # ============================================================
 
-RUN git config --global url."git@gitlab.yc345.tv:".insteadOf "https://gitlab.yc345.tv/"
+COPY ssh/id_rsa /root/.ssh/id_rsa
+COPY ssh/known_hosts /root/.ssh/known_hosts
+RUN chmod 700 /root/.ssh \
+    && chmod 600 /root/.ssh/id_rsa \
+    && chmod 644 /root/.ssh/known_hosts \
+    && git config --global url."git@gitlab.yc345.tv:".insteadOf "https://gitlab.yc345.tv/"
 
 # ============================================================
 # Go 工具链
@@ -95,8 +106,8 @@ RUN git config --global url."git@gitlab.yc345.tv:".insteadOf "https://gitlab.yc3
 # wire            — 依赖注入
 # go-enum         — 枚举生成
 # goimports       — 代码格式化
-RUN --mount=type=ssh \
-    GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" \
+RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
+    --mount=type=cache,target=/go/pkg/mod,sharing=locked \
     go install github.com/air-verse/air@v1.61.7 \
     && go install github.com/go-kratos/kratos/cmd/kratos/v2@a7bae93 \
     && go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.1 \
@@ -110,14 +121,14 @@ RUN --mount=type=ssh \
     && go install golang.org/x/tools/cmd/goimports@v0.23.0 \
     && go install gitlab.yc345.tv/backend/protoc-gen-go-errors@v0.0.4 \
     && go install gitlab.yc345.tv/backend/yc_turbo_kit@latest \
-    && go install github.com/securego/gosec/v2/cmd/gosec@v2.22.4 \
-    && rm -rf /root/.cache/go-build /go/pkg/mod/cache
+    && go install github.com/securego/gosec/v2/cmd/gosec@v2.22.4
 
 # ============================================================
 # Node / pnpm（前端构建）
 # ============================================================
 
-RUN npm install -g pnpm@9 @anthropic-ai/claude-code@latest @openai/codex@latest @google/gemini-cli@latest \
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm install -g pnpm@9 @anthropic-ai/claude-code@latest @openai/codex@latest @google/gemini-cli@latest \
     && pnpm config set registry https://registry.npmmirror.com
 
 # CLI tools (curl-based): OpenCode, Cursor
