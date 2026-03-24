@@ -16,9 +16,14 @@ describe('systemRoutes compatibility redirects', () => {
 
     expect(businessLinesRoute?.name).toBe('business-lines-manage')
     expect(typeof businessLinesRoute?.component).toBe('function')
+    expect(businessLinesRoute?.meta?.layout).toBe('workspace-page')
+    expect(businessLinesRoute?.meta?.contentMode).toBe('full')
     expect(projectsRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'projects' } })
     expect(usersRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'users' } })
-    expect(settingsRoute?.redirect).toEqual({ path: '/dashboard', query: { [SETTINGS_QUERY_KEY]: 'account' } })
+    expect(settingsRoute?.name).toBe('settings')
+    expect(typeof settingsRoute?.component).toBe('function')
+    expect(settingsRoute?.meta?.layout).toBe('workspace-page')
+    expect(settingsRoute?.meta?.contentMode).toBe('full')
   })
 
   it('uses configured default route and registers home page', () => {
@@ -36,9 +41,21 @@ describe('systemRoutes compatibility redirects', () => {
     expect(gitRoute?.meta?.requiresAuth).toBe(true)
   })
 
-  it('renders project detail page at /projects/:id', () => {
+  it('redirects /projects/:id to dashboard with projectId', () => {
     const projectDetailRoute = findByPath('/projects/:id')
     expect(projectDetailRoute?.name).toBe('project-detail')
-    expect(projectDetailRoute?.component).toBeDefined()
+    expect(typeof projectDetailRoute?.redirect).toBe('function')
+
+    const redirect = projectDetailRoute?.redirect as ((to: { params: { id: string } }) => unknown) | undefined
+    expect(redirect).toBeTypeOf('function')
+
+    const redirectResult = redirect!({
+      params: { id: 'project-1' },
+    })
+
+    expect(redirectResult).toEqual({
+      path: '/dashboard',
+      query: { projectId: 'project-1' },
+    })
   })
 })

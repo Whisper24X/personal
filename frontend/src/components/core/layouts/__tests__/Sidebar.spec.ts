@@ -29,7 +29,12 @@ describe('Sidebar menu scope', () => {
     const wrapper = mountWithProvider({
       currentBusinessLineName: 'Retail',
       selectedProjectId: 'p1',
-      projectItems: [],
+      projectItems: [
+        {
+          id: 'p1',
+          name: 'AINative Workspace',
+        },
+      ],
       hasSelectedProject: true,
       sidebarCoreTasksKnowledge: {
         tasks: { id: 'tasks', label: '新建任务', to: '/tasks' },
@@ -39,9 +44,8 @@ describe('Sidebar menu scope', () => {
       workbenchNavTo: { path: '/dashboard', query: { projectId: 'p1' } },
       isWorkbenchNavActive: () => false,
       isNavActive: () => false,
-      openBusinessLineModal: () => undefined,
-      canCreateProject: true,
       isBusinessLineManageActive: false,
+      isSettingsActive: false,
     })
 
     expect(wrapper.text()).toContain('Retail')
@@ -49,6 +53,8 @@ describe('Sidebar menu scope', () => {
     expect(wrapper.text()).toContain('工作台')
     expect(wrapper.text()).toContain('新建任务')
     expect(wrapper.text()).toContain('知识库')
+    expect(wrapper.text()).toContain('AINative Workspace')
+    expect(wrapper.text()).not.toContain('新建项目')
     expect(wrapper.findAllComponents(RouterLinkStub)[0]?.props('to')).toBe('/home')
 
     const businessLineLink = wrapper
@@ -56,6 +62,12 @@ describe('Sidebar menu scope', () => {
       .find((link) => link.props('to') === '/business-lines')
     expect(businessLineLink).toBeDefined()
     expect(businessLineLink?.text()).toContain('业务线')
+
+    const settingsLink = wrapper
+      .findAllComponents(RouterLinkStub)
+      .find((link) => link.props('to') === '/settings')
+    expect(settingsLink).toBeDefined()
+    expect(settingsLink?.text()).toContain('设置')
   })
 
   it('shows hint when no project is selected', () => {
@@ -72,9 +84,8 @@ describe('Sidebar menu scope', () => {
       workbenchNavTo: { path: '/home' },
       isWorkbenchNavActive: () => false,
       isNavActive: () => false,
-      openBusinessLineModal: () => undefined,
-      canCreateProject: false,
       isBusinessLineManageActive: false,
+      isSettingsActive: false,
     })
 
     expect(wrapper.text()).toContain('Retail')

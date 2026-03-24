@@ -174,6 +174,55 @@ describe('TaskCreatePanel', () => {
     expect(wrapper.find('input[aria-label="任务分支"]').exists()).toBe(false)
   })
 
+  it('should only load branch data once during initial mount', async () => {
+    mount(TaskCreatePanel, {
+      props: {
+        projectId: 'project-1',
+      },
+    })
+
+    await flushPromises()
+
+    expect(gitApi.branches).toHaveBeenCalledTimes(1)
+  })
+
+  it('should render form while branch loading is pending', async () => {
+    gitApi.branches.mockReturnValue(new Promise(() => undefined))
+
+    const wrapper = mount(TaskCreatePanel, {
+      props: {
+        projectId: 'project-1',
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('form').exists()).toBe(true)
+    expect(wrapper.find('textarea').exists()).toBe(true)
+  })
+
+  it('should fallback to project list when detail request times out', async () => {
+    vi.useFakeTimers()
+    projectsApi.detail.mockReturnValue(new Promise(() => undefined))
+
+    try {
+      const wrapper = mount(TaskCreatePanel, {
+        props: {
+          projectId: 'project-1',
+        },
+      })
+
+      await vi.advanceTimersByTimeAsync(5000)
+      await flushPromises()
+
+      expect(fetchAllPages).toHaveBeenCalledTimes(1)
+      expect(projectsApi.list).toHaveBeenCalledTimes(1)
+      expect(wrapper.find('form').exists()).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('should create conversation task with configJson cli config fields', async () => {
     const wrapper = mount(TaskCreatePanel, {
       props: {
@@ -183,7 +232,7 @@ describe('TaskCreatePanel', () => {
 
     await flushPromises()
 
-    await wrapper.find('textarea[placeholder*="提示词"]').setValue('请补齐创建任务字段')
+    await wrapper.find('textarea').setValue('请补齐创建任务字段')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
@@ -230,13 +279,13 @@ describe('TaskCreatePanel', () => {
 
     const workflowModeButton = wrapper
       .findAll('button')
-      .find((button) => button.text() === '工作流模式')
+      .find((button) => button.text() === '工作流')
 
     expect(workflowModeButton).toBeTruthy()
     await workflowModeButton!.trigger('click')
     await flushPromises()
 
-    await wrapper.find('textarea[placeholder*="提示词"]').setValue('请先分析项目结构')
+    await wrapper.find('textarea').setValue('请先分析项目结构')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
 
@@ -260,7 +309,7 @@ describe('TaskCreatePanel', () => {
 
     await flushPromises()
 
-    await wrapper.find('textarea[placeholder*="提示词"]').setValue('请在指定分支上执行任务')
+    await wrapper.find('textarea').setValue('请在指定分支上执行任务')
     await selectOption(wrapper, '分支', 'release/2026.03')
     await wrapper.find('form').trigger('submit.prevent')
     await flushPromises()
