@@ -186,14 +186,14 @@ describe('useLayout business line selection', () => {
     expect(localStorage.getItem(STORAGE_KEYS.lastSelectedProjectId)).toBe('project-2')
   })
 
-  it('uses unique project short labels when names share the same prefix', async () => {
+  it('sorts project items by name within the current business line', async () => {
     setActivePinia(createPinia())
 
     projectsApi.list.mockResolvedValue({
       data: [
         {
           id: 'project-1',
-          name: 'test1',
+          name: 'Zoo',
           businessLineId: 'line-1',
           description: '',
           gitUrl: 'https://git.example.com/p1.git',
@@ -203,7 +203,7 @@ describe('useLayout business line selection', () => {
         },
         {
           id: 'project-2',
-          name: 'test2',
+          name: 'Alpha',
           businessLineId: 'line-1',
           description: '',
           gitUrl: 'https://git.example.com/p2.git',
@@ -213,7 +213,7 @@ describe('useLayout business line selection', () => {
         },
         {
           id: 'project-3',
-          name: 'test3',
+          name: 'Beta',
           businessLineId: 'line-1',
           description: '',
           gitUrl: 'https://git.example.com/p3.git',
@@ -231,7 +231,7 @@ describe('useLayout business line selection', () => {
       },
       template: `
         <div>
-          <p data-testid="project-shorts">{{ projectItems.map((item) => item.short).join(',') }}</p>
+          <p data-testid="project-names">{{ projectItems.map((item) => item.name).join(',') }}</p>
         </div>
       `,
     })
@@ -239,7 +239,7 @@ describe('useLayout business line selection', () => {
     const wrapper = mount(Harness)
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="project-shorts"]').text()).toBe('TES1,TES2,TES3')
+    expect(wrapper.get('[data-testid="project-names"]').text()).toBe('Alpha,Beta,Zoo')
   })
 
   it('includes git entry in sidebar menu items', async () => {

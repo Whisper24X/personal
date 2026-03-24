@@ -7,7 +7,7 @@
     "dev:backend": "pnpm --dir backend run start:dev",
     "dev:frontend": "pnpm --dir frontend dev",
     "dev:install": "pnpm --dir frontend install && pnpm --dir backend install",
-    "docker": "docker compose up -d && echo '\\n✅ 全栈服务已启动：\\n   前端: http://localhost:8000\\n   后端: http://localhost:9000'",
+    "docker": "docker compose up -d",
     "docker:build": "docker compose build",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",

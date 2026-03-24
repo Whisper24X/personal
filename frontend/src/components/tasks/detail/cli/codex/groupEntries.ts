@@ -32,14 +32,18 @@ const STANDALONE_EVENT_TYPES = new Set([
 ])
 
 function isStandaloneCodexEvent(entry: NormalizedEntry): boolean {
-  const eventType = typeof entry.metadata?.codexEventType === 'string' ? entry.metadata.codexEventType : null
-  return entry.type === 'system_message' && Boolean(eventType && STANDALONE_EVENT_TYPES.has(eventType))
+  const eventType =
+    typeof entry.metadata?.codexEventType === 'string' ? entry.metadata.codexEventType : null
+  return (
+    entry.type === 'system_message' && Boolean(eventType && STANDALONE_EVENT_TYPES.has(eventType))
+  )
 }
 
 function isStandaloneCodexCard(entry: NormalizedEntry): boolean {
   return (
     entry.type === 'system_message' &&
-    (entry.metadata?.codexCardType === 'todo_list' || entry.metadata?.codexCardType === 'file_change')
+    (entry.metadata?.codexCardType === 'todo_list' ||
+      entry.metadata?.codexCardType === 'file_change')
   )
 }
 
@@ -70,7 +74,7 @@ export function groupCodexEntries(entries: NormalizedEntry[]): CodexMessageGroup
 
   for (const entry of entries) {
     if (entry.type === 'assistant_message') {
-      const leadingThinking =
+      const leadingThinking: NormalizedEntry[] | null =
         currentTaskGroup && isThinkingOnlyTaskGroup(currentTaskGroup)
           ? [...currentTaskGroup.tools]
           : null

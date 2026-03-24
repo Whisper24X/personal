@@ -1303,7 +1303,9 @@ describe('AgentRunnerService', () => {
     );
 
     expect(result.env.ANTHROPIC_AUTH_TOKEN).toBe('sk-test-token');
-    expect(result.env.ANTHROPIC_BASE_URL).toBe('https://custom-gateway.example.com');
+    expect(result.env.ANTHROPIC_BASE_URL).toBe(
+      'https://custom-gateway.example.com',
+    );
   });
 
   it('should handle legacy claude api_key field for backward compatibility', async () => {
@@ -1416,7 +1418,13 @@ describe('AgentRunnerService', () => {
     );
 
     expect(result.command).toBe('agent');
-    expect(result.args).toEqual(['-p', '--output-format', 'stream-json', '--sandbox', 'enabled']);
+    expect(result.args).toEqual([
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--sandbox',
+      'enabled',
+    ]);
   });
 
   it('should resolve cwd inside project worktree storage path', async () => {

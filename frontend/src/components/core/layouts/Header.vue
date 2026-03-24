@@ -1,18 +1,9 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
-import { ChevronDown, GitBranch, Puzzle, Server, Settings2, Workflow, Zap } from 'lucide-vue-next'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { GitBranch, Puzzle, Server, Workflow, Zap } from 'lucide-vue-next'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
 import type { MenuItem } from '@/hooks/core/useLayout'
-import { SETTINGS_SECTION_LABELS, type SettingsSection } from '@/types/common/settings'
 
 defineOptions({
   name: 'AppHeaderBar',
@@ -26,10 +17,7 @@ const props = defineProps<{
   selectedProjectId: string
   isNavActive: (to: string) => boolean
   userAvatarInitial: string
-  /** 下拉菜单标题（与 Layout 中用户资料一致） */
   userDisplayName: string
-  availableSettingsSections: SettingsSection[]
-  openSettings: (section?: SettingsSection) => void
 }>()
 
 const headerToolIcon = (id: MenuItem['id']) => {
@@ -40,9 +28,6 @@ const headerToolIcon = (id: MenuItem['id']) => {
   return Server
 }
 
-const onOpenSettingsSection = (section: SettingsSection) => {
-  props.openSettings(section)
-}
 </script>
 
 <template>
@@ -93,35 +78,17 @@ const onOpenSettingsSection = (section: SettingsSection) => {
           </template>
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            class="inline-flex h-9 max-w-[min(100%,14rem)] shrink-0 items-center gap-1 rounded-full border border-border bg-background pl-1 pr-1.5 text-left outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            aria-label="账号与设置"
+        <div
+          class="inline-flex h-10 shrink-0 items-center rounded-2xl border border-border/80 bg-card/85 px-1.5 shadow-sm backdrop-blur-sm"
+          :title="props.userDisplayName"
+          aria-label="账号头像"
+        >
+          <div
+            class="flex h-7.5 w-7.5 shrink-0 items-center justify-center rounded-xl border border-white/40 bg-gradient-to-br from-primary via-primary to-primary/75 text-[11px] font-bold text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_6px_16px_-10px_rgba(15,23,42,0.5)] dark:border-white/10"
           >
-            <div
-              class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-gradient-to-br from-primary/15 to-primary/5 text-xs font-semibold text-primary"
-              :title="props.userDisplayName"
-            >
-              {{ props.userAvatarInitial }}
-            </div>
-            <ChevronDown class="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-          </DropdownMenuTrigger>
-
-          <DropdownMenuContent align="end" :side-offset="6" class="min-w-[12rem]">
-            <DropdownMenuLabel class="text-xs font-normal text-muted-foreground">
-              {{ props.userDisplayName }}
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              v-for="section in props.availableSettingsSections"
-              :key="section"
-              @select="onOpenSettingsSection(section)"
-            >
-              <Settings2 class="size-3.5 shrink-0 text-muted-foreground" />
-              <span>{{ SETTINGS_SECTION_LABELS[section] }}</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            {{ props.userAvatarInitial }}
+          </div>
+        </div>
       </div>
     </div>
   </header>

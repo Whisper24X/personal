@@ -40,7 +40,9 @@ export class ClaudeCliAdapter extends BaseAgentCliAdapter {
         : undefined;
 
     const resolvedEnv =
-      legacyApiKey && !env?.['ANTHROPIC_API_KEY'] && !env?.['ANTHROPIC_AUTH_TOKEN']
+      legacyApiKey &&
+      !env?.['ANTHROPIC_API_KEY'] &&
+      !env?.['ANTHROPIC_AUTH_TOKEN']
         ? { ...(env ?? {}), ANTHROPIC_API_KEY: legacyApiKey }
         : env;
 
@@ -51,7 +53,14 @@ export class ClaudeCliAdapter extends BaseAgentCliAdapter {
   }
 
   defaultArgs(): string[] {
-    return ['-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'auto'];
+    return [
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--permission-mode',
+      'auto',
+    ];
   }
 
   applyContinuation(

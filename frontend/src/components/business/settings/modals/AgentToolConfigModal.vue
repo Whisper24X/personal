@@ -108,7 +108,10 @@ const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
       description: '选择认证环境变量名',
     },
     auth_token: { type: 'string', description: '认证密钥，修改后自动写入 env' },
-    base_url: { type: 'string', description: '自定义 API 地址（ANTHROPIC_BASE_URL），修改后自动写入 env' },
+    base_url: {
+      type: 'string',
+      description: '自定义 API 地址（ANTHROPIC_BASE_URL），修改后自动写入 env',
+    },
     model: { type: 'string' },
     effort: { type: 'string', options: CLAUDE_EFFORT_OPTIONS },
     dangerously_skip_permissions: {
@@ -142,8 +145,15 @@ const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
   },
   codex: {
     api_key: { type: 'string', description: 'OpenAI API Key，将注入为 OPENAI_API_KEY' },
-    base_url: { type: 'string', description: '自定义 API 地址，通过 -c openai_base_url 或 -c model_providers.*.base_url 注入' },
-    provider_name: { type: 'string', description: '自定义 Provider 名称（可选），设置后自动生成 -c model_provider 及 model_providers 配置' },
+    base_url: {
+      type: 'string',
+      description: '自定义 API 地址，通过 -c openai_base_url 或 -c model_providers.*.base_url 注入',
+    },
+    provider_name: {
+      type: 'string',
+      description:
+        '自定义 Provider 名称（可选），设置后自动生成 -c model_provider 及 model_providers 配置',
+    },
     model: { type: 'string', defaultValue: 'gpt-5.4', description: '默认模型' },
     oss: { type: 'booleanNullable' },
     local_provider: {
@@ -197,7 +207,11 @@ const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
   },
   'gemini-cli': {
     api_key: { type: 'string', description: 'Gemini API Key，将注入为 GEMINI_API_KEY' },
-    base_url: { type: 'string', description: '自定义网关地址（不带 /v1），注入为 GOOGLE_GEMINI_BASE_URL，同时自动启用 bearer 认证' },
+    base_url: {
+      type: 'string',
+      description:
+        '自定义网关地址（不带 /v1），注入为 GOOGLE_GEMINI_BASE_URL，同时自动启用 bearer 认证',
+    },
     model: { type: 'string' },
     sandbox: {
       type: 'boolean',
@@ -236,8 +250,14 @@ const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
       description: '选择 AI 供应商，决定注入的环境变量名称',
     },
     api_key: { type: 'string', description: 'API Key，根据供应商自动注入对应环境变量' },
-    base_url: { type: 'string', description: '自定义网关地址（含 /v1），根据供应商自动注入对应环境变量' },
-    model: { type: 'string', description: '格式为 provider/model，如 openai/gpt-5.4、anthropic/claude-opus-4-6' },
+    base_url: {
+      type: 'string',
+      description: '自定义网关地址（含 /v1），根据供应商自动注入对应环境变量',
+    },
+    model: {
+      type: 'string',
+      description: '格式为 provider/model，如 openai/gpt-5.4、anthropic/claude-opus-4-6',
+    },
     agent: { type: 'string' },
     fork: {
       type: 'boolean',
@@ -253,17 +273,8 @@ const TOOL_CONFIG_SCHEMAS: Record<string, Record<string, ConfigFieldSchema>> = {
 }
 
 const ADVANCED_FIELDS_BY_TOOL: Record<string, Set<string>> = {
-  'claude-code': new Set([
-    'allowed_tools',
-    'disallowed_tools',
-    'settings',
-    'mcp_config',
-    'env',
-  ]),
-  codex: new Set([
-    'config_overrides',
-    'env',
-  ]),
+  'claude-code': new Set(['allowed_tools', 'disallowed_tools', 'settings', 'mcp_config', 'env']),
+  codex: new Set(['config_overrides', 'env']),
   'cursor-agent': new Set(['headers', 'approve_mcps', 'env']),
   'gemini-cli': new Set(['policy', 'allowed_mcp_server_names', 'extensions', 'env']),
   opencode: new Set(['prompt', 'env']),
@@ -562,8 +573,7 @@ const normalizeConfigByTool = (
   config: Record<string, unknown>,
 ): Record<string, unknown> => {
   if (toolId === 'codex') {
-    const executionMode =
-      typeof config.execution_mode === 'string' ? config.execution_mode : ''
+    const executionMode = typeof config.execution_mode === 'string' ? config.execution_mode : ''
 
     if (executionMode !== 'standard') {
       return {
@@ -613,10 +623,13 @@ const sanitizeConfigBySchema = (
     return parsed
   }
 
-  const sanitized = Object.entries(schema).reduce<Record<string, unknown>>((accumulator, [key, field]) => {
-    accumulator[key] = sanitizeFieldByType(field.type, parsed[key], field.defaultValue)
-    return accumulator
-  }, {})
+  const sanitized = Object.entries(schema).reduce<Record<string, unknown>>(
+    (accumulator, [key, field]) => {
+      accumulator[key] = sanitizeFieldByType(field.type, parsed[key], field.defaultValue)
+      return accumulator
+    },
+    {},
+  )
 
   return normalizeConfigByTool(toolId, sanitized)
 }
@@ -685,10 +698,7 @@ const shouldShowDefaultOption = (fieldKey: string): boolean => {
   return true
 }
 
-const getStringFieldSelectOptions = (
-  fieldKey: string,
-  field: ConfigFieldSchema,
-) => {
+const getStringFieldSelectOptions = (fieldKey: string, field: ConfigFieldSchema) => {
   const options = (field.options ?? []).map((option) => ({
     label: option.label,
     value: option.value,
@@ -724,10 +734,7 @@ const getBooleanFieldChecked = (fieldKey: string, field: ConfigFieldSchema): boo
   return (draftConfig.value[fieldKey] ?? field.defaultValue) === true
 }
 
-const getBooleanFieldStatusLabel = (
-  fieldKey: string,
-  field: ConfigFieldSchema,
-): string => {
+const getBooleanFieldStatusLabel = (fieldKey: string, field: ConfigFieldSchema): string => {
   if (fieldKey === 'dangerously_skip_permissions') {
     return 'Dangerously Skip Permissions'
   }
@@ -735,10 +742,7 @@ const getBooleanFieldStatusLabel = (
   return getBooleanFieldChecked(fieldKey, field) ? '已启用' : '已禁用'
 }
 
-const getBooleanFieldStatusHint = (
-  fieldKey: string,
-  field: ConfigFieldSchema,
-): string => {
+const getBooleanFieldStatusHint = (fieldKey: string, field: ConfigFieldSchema): string => {
   if (fieldKey === 'dangerously_skip_permissions') {
     return getBooleanFieldChecked(fieldKey, field)
       ? '当前会跳过 Claude Code 权限检查'
@@ -763,9 +767,7 @@ const getStringInputAutocomplete = (fieldKey: string): string => {
 const CLAUDE_AUTH_ENV_KEYS = new Set(['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'])
 
 const getClaudeAuthEnvKey = (config: Record<string, unknown>): string => {
-  return config.auth_type === 'ANTHROPIC_API_KEY'
-    ? 'ANTHROPIC_API_KEY'
-    : 'ANTHROPIC_AUTH_TOKEN'
+  return config.auth_type === 'ANTHROPIC_API_KEY' ? 'ANTHROPIC_API_KEY' : 'ANTHROPIC_AUTH_TOKEN'
 }
 
 const syncClaudeFieldToEnv = (config: Record<string, unknown>, changedField: string) => {
@@ -897,7 +899,9 @@ const OPENCODE_FALLBACK_MAPPING: { apiKeyEnv: string; baseUrlEnv?: string } = {
   baseUrlEnv: 'OPENAI_BASE_URL',
 }
 
-const getOpencodeEnvMapping = (config: Record<string, unknown>): { apiKeyEnv: string; baseUrlEnv?: string } => {
+const getOpencodeEnvMapping = (
+  config: Record<string, unknown>,
+): { apiKeyEnv: string; baseUrlEnv?: string } => {
   const provider = typeof config.provider === 'string' ? config.provider : 'openai'
   return OPENCODE_PROVIDER_ENV_MAP[provider] ?? OPENCODE_FALLBACK_MAPPING
 }
@@ -1054,7 +1058,9 @@ const syncFormValues = () => {
   validationMessage.value = ''
 
   let seed =
-    props.initialConfig && typeof props.initialConfig === 'object' && !Array.isArray(props.initialConfig)
+    props.initialConfig &&
+    typeof props.initialConfig === 'object' &&
+    !Array.isArray(props.initialConfig)
       ? (props.initialConfig as Record<string, unknown>)
       : {}
 
@@ -1093,7 +1099,6 @@ const syncFormValues = () => {
   }
 
   if (props.cliToolId === 'opencode') {
-    const env = sanitizeStringMap(merged.env)
     if (!merged.api_key) {
       syncOpencodeEnvToFields(merged)
     }
@@ -1175,11 +1180,7 @@ watch(
         @click="close"
       />
 
-      <section
-        aria-modal="true"
-        role="dialog"
-        :class="sectionClass"
-      >
+      <section aria-modal="true" role="dialog" :class="sectionClass">
         <header class="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 class="text-sm font-semibold">{{ modalTitle }}</h2>
           <button
@@ -1213,7 +1214,9 @@ watch(
         >
           <section class="space-y-3 rounded-xl border border-border/70 bg-muted/[0.18] p-3">
             <div class="flex flex-wrap items-center gap-2">
-              <span class="inline-flex items-center rounded-full border border-border/70 bg-background px-2.5 py-1 text-[11px] font-medium text-foreground">
+              <span
+                class="inline-flex items-center rounded-full border border-border/70 bg-background px-2.5 py-1 text-[11px] font-medium text-foreground"
+              >
                 {{ props.cliToolLabel }}
               </span>
               <span
@@ -1314,7 +1317,9 @@ watch(
                   v-else-if="field.type === 'string' && field.multiline"
                   :value="getStringFieldValue(fieldKey)"
                   class="min-h-24 w-full rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-foreground"
-                  @input="setDraftFieldValue(fieldKey, ($event.target as HTMLTextAreaElement).value)"
+                  @input="
+                    setDraftFieldValue(fieldKey, ($event.target as HTMLTextAreaElement).value)
+                  "
                 />
 
                 <div v-else-if="field.type === 'string'" class="relative">
@@ -1346,14 +1351,24 @@ watch(
                   v-else-if="field.type === 'stringArray'"
                   :value="toStringArrayInput(draftConfig[fieldKey])"
                   class="min-h-24 w-full rounded-lg border border-border/70 bg-background px-3 py-2 font-mono text-xs text-foreground"
-                  @input="setDraftFieldValue(fieldKey, parseStringArrayInput(($event.target as HTMLTextAreaElement).value))"
+                  @input="
+                    setDraftFieldValue(
+                      fieldKey,
+                      parseStringArrayInput(($event.target as HTMLTextAreaElement).value),
+                    )
+                  "
                 />
 
                 <textarea
                   v-else-if="field.type === 'stringMap'"
                   :value="toStringMapInput(draftConfig[fieldKey])"
                   class="min-h-24 w-full rounded-lg border border-border/70 bg-background px-3 py-2 font-mono text-xs text-foreground"
-                  @input="setDraftFieldValue(fieldKey, parseStringMapInput(($event.target as HTMLTextAreaElement).value))"
+                  @input="
+                    setDraftFieldValue(
+                      fieldKey,
+                      parseStringMapInput(($event.target as HTMLTextAreaElement).value),
+                    )
+                  "
                 />
 
                 <AppSelect
@@ -1388,7 +1403,9 @@ watch(
                       type="checkbox"
                       class="peer sr-only"
                       :checked="getBooleanFieldChecked(fieldKey, field)"
-                      @change="setDraftFieldValue(fieldKey, ($event.target as HTMLInputElement).checked)"
+                      @change="
+                        setDraftFieldValue(fieldKey, ($event.target as HTMLInputElement).checked)
+                      "
                     />
                     <span
                       class="absolute inset-0 rounded-full transition-colors"
@@ -1405,7 +1422,12 @@ watch(
                 </label>
 
                 <p class="text-[11px] text-muted-foreground">
-                  {{ fieldKey }}{{ getFieldDescription(fieldKey, field) ? ` · ${getFieldDescription(fieldKey, field)}` : '' }}
+                  {{ fieldKey
+                  }}{{
+                    getFieldDescription(fieldKey, field)
+                      ? ` · ${getFieldDescription(fieldKey, field)}`
+                      : ''
+                  }}
                 </p>
               </div>
             </div>
@@ -1436,7 +1458,10 @@ watch(
             </p>
           </section>
 
-          <section v-if="advancedFieldEntries.length > 0" class="space-y-2 rounded-xl border border-border/70 bg-muted/[0.12] p-3">
+          <section
+            v-if="advancedFieldEntries.length > 0"
+            class="space-y-2 rounded-xl border border-border/70 bg-muted/[0.12] p-3"
+          >
             <p class="text-xs font-semibold text-muted-foreground">高级参数</p>
 
             <div class="grid gap-3 md:grid-cols-2">
@@ -1465,7 +1490,9 @@ watch(
                   v-else-if="field.type === 'string' && field.multiline"
                   :value="getStringFieldValue(fieldKey)"
                   class="min-h-24 w-full rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-foreground"
-                  @input="setDraftFieldValue(fieldKey, ($event.target as HTMLTextAreaElement).value)"
+                  @input="
+                    setDraftFieldValue(fieldKey, ($event.target as HTMLTextAreaElement).value)
+                  "
                 />
 
                 <div v-else-if="field.type === 'string'" class="relative">
@@ -1497,14 +1524,24 @@ watch(
                   v-else-if="field.type === 'stringArray'"
                   :value="toStringArrayInput(draftConfig[fieldKey])"
                   class="min-h-24 w-full rounded-lg border border-border/70 bg-background px-3 py-2 font-mono text-xs text-foreground"
-                  @input="setDraftFieldValue(fieldKey, parseStringArrayInput(($event.target as HTMLTextAreaElement).value))"
+                  @input="
+                    setDraftFieldValue(
+                      fieldKey,
+                      parseStringArrayInput(($event.target as HTMLTextAreaElement).value),
+                    )
+                  "
                 />
 
                 <textarea
                   v-else-if="field.type === 'stringMap'"
                   :value="toStringMapInput(draftConfig[fieldKey])"
                   class="min-h-24 w-full rounded-lg border border-border/70 bg-background px-3 py-2 font-mono text-xs text-foreground"
-                  @input="setDraftFieldValue(fieldKey, parseStringMapInput(($event.target as HTMLTextAreaElement).value))"
+                  @input="
+                    setDraftFieldValue(
+                      fieldKey,
+                      parseStringMapInput(($event.target as HTMLTextAreaElement).value),
+                    )
+                  "
                 />
 
                 <AppSelect
@@ -1539,7 +1576,9 @@ watch(
                       type="checkbox"
                       class="peer sr-only"
                       :checked="getBooleanFieldChecked(fieldKey, field)"
-                      @change="setDraftFieldValue(fieldKey, ($event.target as HTMLInputElement).checked)"
+                      @change="
+                        setDraftFieldValue(fieldKey, ($event.target as HTMLInputElement).checked)
+                      "
                     />
                     <span
                       class="absolute inset-0 rounded-full transition-colors"
@@ -1556,14 +1595,21 @@ watch(
                 </label>
 
                 <p class="text-[11px] text-muted-foreground">
-                  {{ fieldKey }}{{ getFieldDescription(fieldKey, field) ? ` · ${getFieldDescription(fieldKey, field)}` : '' }}
+                  {{ fieldKey
+                  }}{{
+                    getFieldDescription(fieldKey, field)
+                      ? ` · ${getFieldDescription(fieldKey, field)}`
+                      : ''
+                  }}
                 </p>
               </div>
             </div>
           </section>
 
           <p v-if="validationMessage" class="text-sm text-destructive">{{ validationMessage }}</p>
-          <p v-else-if="props.errorMessage" class="text-sm text-destructive">{{ props.errorMessage }}</p>
+          <p v-else-if="props.errorMessage" class="text-sm text-destructive">
+            {{ props.errorMessage }}
+          </p>
 
           <div class="flex justify-end gap-2 pt-1">
             <button
@@ -1578,7 +1624,9 @@ watch(
               class="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
               :disabled="props.submitting"
             >
-              {{ props.submitting ? '保存中...' : props.mode === 'create' ? '创建配置' : '保存修改' }}
+              {{
+                props.submitting ? '保存中...' : props.mode === 'create' ? '创建配置' : '保存修改'
+              }}
             </button>
           </div>
         </form>
