@@ -45,7 +45,7 @@ const props = withDefaults(
     disabled: false,
     block: true,
     size: 'md',
-    matchTriggerWidth: true,
+    matchTriggerWidth: false,
     wrapperClass: '',
     triggerClass: '',
     menuClass: '',
@@ -255,6 +255,8 @@ const updatePanelPosition = () => {
     window.innerWidth - minWidth - viewportPadding,
   )
   const left = Math.min(Math.max(triggerRect.left, viewportPadding), maxLeft)
+  const availableWidth = Math.max(0, window.innerWidth - left - viewportPadding)
+  const panelMaxWidth = Math.max(minWidth, availableWidth)
 
   panelStyle.value = {
     position: 'fixed',
@@ -262,7 +264,8 @@ const updatePanelPosition = () => {
     left: `${left}px`,
     minWidth: `${minWidth}px`,
     maxHeight: `${maxHeight}px`,
-    width: props.matchTriggerWidth ? `${minWidth}px` : undefined,
+    maxWidth: `${panelMaxWidth}px`,
+    width: props.matchTriggerWidth ? `${minWidth}px` : 'max-content',
     zIndex: String(props.panelZIndex),
   }
 }
@@ -610,7 +613,7 @@ onBeforeUnmount(() => {
                   @focus="highlightedIndex = option.flatIndex"
                   @keydown="void handleOptionKeydown($event, option)"
                 >
-                  <span class="min-w-0 flex-1 truncate">{{ option.label }}</span>
+                  <span class="min-w-0 flex-1 whitespace-normal break-words text-left">{{ option.label }}</span>
                   <svg
                     v-if="Object.is(option.value, props.modelValue)"
                     xmlns="http://www.w3.org/2000/svg"
@@ -651,7 +654,7 @@ onBeforeUnmount(() => {
               @focus="highlightedIndex = entry.option.flatIndex"
               @keydown="void handleOptionKeydown($event, entry.option)"
             >
-              <span class="min-w-0 flex-1 truncate">{{ entry.option.label }}</span>
+              <span class="min-w-0 flex-1 whitespace-normal break-words text-left">{{ entry.option.label }}</span>
               <svg
                 v-if="Object.is(entry.option.value, props.modelValue)"
                 xmlns="http://www.w3.org/2000/svg"

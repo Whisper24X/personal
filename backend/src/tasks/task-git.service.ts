@@ -56,6 +56,10 @@ export class TaskGitService {
   private readonly maxDiffTextLength = 180_000;
   private readonly maxTextPreviewBytes = 256 * 1024;
   private readonly maxImagePreviewBytes = 4 * 1024 * 1024;
+  private readonly fallbackCommitAuthorName =
+    process.env.AINATIVE_GIT_USER_NAME?.trim() || 'Ainative Bot';
+  private readonly fallbackCommitAuthorEmail =
+    process.env.AINATIVE_GIT_USER_EMAIL?.trim() || 'ainative@example.com';
 
   constructor(
     private readonly taskAccessService: TaskAccessService,
@@ -708,11 +712,58 @@ export class TaskGitService {
       throw new BadRequestException('Commit message cannot be empty');
     }
 
+    await this.ensureCommitIdentityConfigured(worktreePath);
+
     return this.runGitCommand(worktreePath, [
       'commit',
       '-m',
       normalizedMessage,
     ]);
+  }
+
+  private async ensureCommitIdentityConfigured(
+    worktreePath: string,
+  ): Promise<void> {
+    const [nameResult, emailResult] = await Promise.all([
+      this.runGitCommand(worktreePath, ['config', '--get', 'user.name']),
+      this.runGitCommand(worktreePath, ['config', '--get', 'user.email']),
+    ]);
+
+    const updates: Promise<GitExecutionResult>[] = [];
+
+    if (!nameResult.success || !nameResult.stdout.trim()) {
+      updates.push(
+        this.runGitCommand(worktreePath, [
+          'config',
+          'user.name',
+          this.fallbackCommitAuthorName,
+        ]),
+      );
+    }
+
+    if (!emailResult.success || !emailResult.stdout.trim()) {
+      updates.push(
+        this.runGitCommand(worktreePath, [
+          'config',
+          'user.email',
+          this.fallbackCommitAuthorEmail,
+        ]),
+      );
+    }
+
+    if (!updates.length) {
+      return;
+    }
+
+    const results = await Promise.all(updates);
+    const failedResult = results.find((result) => !result.success);
+
+    if (failedResult) {
+      throw this.toGitException(
+        'Failed to configure git commit identity',
+        failedResult,
+      );
+    }
   }
 
   private async runGitCommand(
