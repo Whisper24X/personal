@@ -36,6 +36,12 @@ const preview = ref<FileBrowserPreview | null>(null)
 const previewLoading = ref(false)
 const previewErrorMessage = ref('')
 const emptyPaths = new Set<string>()
+const ARTIFACT_PANEL_MIN_WIDTH = 160
+const ARTIFACT_PANEL_MAX_WIDTH = 280
+const ARTIFACT_PANEL_CHROME_WIDTH = 72
+const FILE_NAME_FONT = '12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+
+let measureCanvas: HTMLCanvasElement | null = null
 
 const flatFiles = computed(() => {
   return [...files.value].sort((left, right) => {
@@ -57,6 +63,30 @@ const flatFiles = computed(() => {
       sensitivity: 'base',
     })
   })
+})
+
+const measureFileNameWidth = (fileName: string) => {
+  if (typeof document === 'undefined') {
+    return fileName.length * 7.25
+  }
+
+  measureCanvas ??= document.createElement('canvas')
+  const context = measureCanvas.getContext('2d')
+  if (!context) {
+    return fileName.length * 7.25
+  }
+
+  context.font = FILE_NAME_FONT
+  return context.measureText(fileName).width
+}
+
+const artifactsPanelWidth = computed(() => {
+  const widestFileName = flatFiles.value.reduce((widest, file) => {
+    return Math.max(widest, measureFileNameWidth(resolveFileName(file.path)))
+  }, 0)
+
+  const nextWidth = Math.ceil(widestFileName + ARTIFACT_PANEL_CHROME_WIDTH)
+  return `${Math.min(ARTIFACT_PANEL_MAX_WIDTH, Math.max(ARTIFACT_PANEL_MIN_WIDTH, nextWidth))}px`
 })
 
 const fileNodes = computed(() => {
@@ -182,7 +212,8 @@ watch(
 <template>
   <div class="flex h-full min-h-0 min-w-0 overflow-hidden">
     <aside
-      class="border-border/70 flex min-h-0 w-[200px] shrink-0 flex-col border-r bg-muted/10"
+      :style="{ width: artifactsPanelWidth }"
+      class="border-border/70 flex min-h-0 shrink-0 flex-col border-r bg-muted/10"
     >
       <div class="min-h-0 flex-1 overflow-auto px-1.5 py-1.5">
         <div class="space-y-1.5 text-xs">

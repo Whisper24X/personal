@@ -279,12 +279,6 @@ const applyBackgroundStyleSetting = (nextBackgroundStyle: BackgroundStyle) => {
   applyBackgroundStyle(nextBackgroundStyle)
 }
 
-const optionButtonClass = (active: boolean) => {
-  return active
-    ? 'border-primary bg-primary text-primary-foreground'
-    : 'border-border bg-background text-foreground hover:shadow-md'
-}
-
 const clearProfileErrors = () => {
   profileFieldErrors.username = ''
   profileFieldErrors.avatar = ''

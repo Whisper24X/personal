@@ -39,10 +39,13 @@ const loadPreview: FileBrowserLoadPreview = async (path) => {
 
 <template>
   <FileBrowserPanel
+    adaptive-tree-width
     :source-key="props.taskId"
     :header-title="props.branchName"
     :refresh-token="props.refreshToken"
     :load-tree="loadTree"
     :load-preview="loadPreview"
+    :tree-min-width="180"
+    :tree-max-width="280"
   />
 </template>

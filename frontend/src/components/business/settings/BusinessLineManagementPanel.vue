@@ -456,25 +456,6 @@ const canDeleteLine = computed(() => {
   )
 })
 
-const hasNestedModalOpen = computed(() => {
-  return (
-    lineFormModalOpen.value ||
-    projectFormModalOpen.value ||
-    memberPermissionModalOpen.value ||
-    agentToolConfigModalOpen.value ||
-    permissionProjectRoleModalOpen.value ||
-    workflowCreateModalOpen.value ||
-    uploadSkillModalOpen.value ||
-    mcpJsonImportModalOpen.value ||
-    mcpJsonPreviewModalOpen.value ||
-    skillPreviewModalOpen.value ||
-    projectDeleteModalOpen.value ||
-    memberRemoveModalOpen.value ||
-    lineDeleteModalOpen.value ||
-    lineDeleteFinalModalOpen.value
-  )
-})
-
 const filteredProjects = computed(() => {
   const query = projectQuery.value.trim().toLowerCase()
   if (!query) {
@@ -1815,23 +1796,6 @@ const closeModal = () => {
 
 const goToMainPage = () => {
   void router.push({ name: 'home' })
-}
-
-const closeNestedModals = () => {
-  lineFormModalOpen.value = false
-  projectFormModalOpen.value = false
-  memberPermissionModalOpen.value = false
-  agentToolConfigModalOpen.value = false
-  permissionProjectRoleModalOpen.value = false
-  workflowCreateModalOpen.value = false
-  uploadSkillModalOpen.value = false
-  mcpJsonImportModalOpen.value = false
-  resetSkillPreviewState()
-  resetMcpJsonPreviewState()
-  projectDeleteModalOpen.value = false
-  memberRemoveModalOpen.value = false
-  lineDeleteModalOpen.value = false
-  lineDeleteFinalModalOpen.value = false
 }
 
 const isCurrentProject = (projectId: string) => {

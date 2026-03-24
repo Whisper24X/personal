@@ -46,7 +46,10 @@ describe('systemRoutes compatibility redirects', () => {
     expect(projectDetailRoute?.name).toBe('project-detail')
     expect(typeof projectDetailRoute?.redirect).toBe('function')
 
-    const redirectResult = (projectDetailRoute?.redirect as ((to: { params: { id: string } }) => unknown))({
+    const redirect = projectDetailRoute?.redirect as ((to: { params: { id: string } }) => unknown) | undefined
+    expect(redirect).toBeTypeOf('function')
+
+    const redirectResult = redirect!({
       params: { id: 'project-1' },
     })
 

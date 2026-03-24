@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import FileTree from './FileTree.vue'
 import FilePreviewCard from './FilePreviewCard.vue'
@@ -30,6 +30,9 @@ const props = withDefaults(
     treeLoadErrorText?: string
     dirLoadErrorText?: string
     previewLoadErrorText?: string
+    adaptiveTreeWidth?: boolean
+    treeMinWidth?: number
+    treeMaxWidth?: number
   }>(),
   {
     headerTitle: null,
@@ -42,6 +45,9 @@ const props = withDefaults(
     treeLoadErrorText: '加载文件树失败',
     dirLoadErrorText: '加载目录失败',
     previewLoadErrorText: '加载文件预览失败',
+    adaptiveTreeWidth: false,
+    treeMinWidth: 200,
+    treeMaxWidth: 320,
   },
 )
 
@@ -55,6 +61,11 @@ const preview = ref<FileBrowserPreview | null>(null)
 const previewLoading = ref(false)
 const previewErrorMessage = ref('')
 const refreshInFlight = ref(false)
+const TREE_ROW_BASE_WIDTH = 72
+const TREE_ROW_DEPTH_WIDTH = 10
+const FILE_NAME_FONT = '12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+
+let measureCanvas: HTMLCanvasElement | null = null
 
 const updateLoadingPath = (path: string, isLoading: boolean) => {
   const next = new Set(loadingPaths.value)
@@ -96,6 +107,46 @@ const normalizePreviewType = (raw: FileBrowserPreview): FileBrowserPreview => {
   }
   return raw
 }
+
+const measureLabelWidth = (label: string) => {
+  if (typeof document === 'undefined') {
+    return label.length * 7.25
+  }
+
+  measureCanvas ??= document.createElement('canvas')
+  const context = measureCanvas.getContext('2d')
+  if (!context) {
+    return label.length * 7.25
+  }
+
+  context.font = FILE_NAME_FONT
+  return context.measureText(label).width
+}
+
+const collectVisibleNodes = (nodes: FileTreeNode[], depth = 0): Array<{ name: string; depth: number }> => {
+  return nodes.flatMap((node) => {
+    const visibleNodes = [{ name: node.name, depth }]
+    if (node.isDir && node.childrenLoaded && expandedPaths.value.has(node.path)) {
+      visibleNodes.push(...collectVisibleNodes(node.children ?? [], depth + 1))
+    }
+    return visibleNodes
+  })
+}
+
+const treePanelWidth = computed(() => {
+  if (!props.adaptiveTreeWidth) {
+    return null
+  }
+
+  const visibleNodes = collectVisibleNodes(treeNodes.value)
+  const widestVisibleNode = visibleNodes.reduce((widest, node) => {
+    const nodeWidth = measureLabelWidth(node.name) + TREE_ROW_BASE_WIDTH + node.depth * TREE_ROW_DEPTH_WIDTH
+    return Math.max(widest, nodeWidth)
+  }, 0)
+
+  const nextWidth = Math.ceil(widestVisibleNode)
+  return `${Math.min(props.treeMaxWidth, Math.max(props.treeMinWidth, nextWidth))}px`
+})
 
 const loadPreview = async (path: string) => {
   previewLoading.value = true
@@ -236,58 +287,65 @@ watch(
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 min-w-0 overflow-hidden">
-    <aside class="border-border/70 flex min-h-0 w-80 shrink-0 flex-col border-r bg-muted/10">
-      <header
-        v-if="!props.hideHeader"
-        class="border-border/70 flex h-12 items-center justify-between border-b bg-background/80 px-3 text-xs backdrop-blur"
-      >
-        <div v-if="!props.hideHeaderTitle" class="min-w-0">
-          <p class="truncate text-foreground">{{ props.headerTitle || '-' }}</p>
-        </div>
+  <div class="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+    <header
+      v-if="!props.hideHeader"
+      class="border-border/70 flex items-center justify-between gap-2 border-b px-3 py-2"
+    >
+      <div v-if="!props.hideHeaderTitle" class="min-w-0 flex-1">
+        <p class="truncate text-xs text-foreground">{{ props.headerTitle || '-' }}</p>
+      </div>
 
+      <div v-if="!props.hideRefreshButton" class="flex shrink-0 items-center gap-1">
         <button
-          v-if="!props.hideRefreshButton"
-          class="h-7 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+          class="h-6 rounded-md border border-border/60 bg-background px-2 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           type="button"
           @click="refreshTree"
         >
           刷新
         </button>
-      </header>
-
-      <div class="min-h-0 flex-1 overflow-auto px-1.5 py-2">
-        <div class="space-y-2 text-xs">
-          <p v-if="treeErrorMessage" class="px-2 text-destructive">{{ treeErrorMessage }}</p>
-          <p v-else-if="!treeLoading && treeNodes.length === 0" class="px-2 text-muted-foreground">
-            {{ props.emptyText }}
-          </p>
-
-          <FileTree
-            v-else-if="treeNodes.length > 0"
-            :nodes="treeNodes"
-            :selected-path="selectedPath"
-            :expanded-paths="expandedPaths"
-            :loading-paths="loadingPaths"
-            @toggle-dir="handleToggleDir"
-            @select-file="handleSelectFile"
-          />
-        </div>
       </div>
-    </aside>
+    </header>
 
-    <FilePreviewCard
-      :selected-path="selectedPath"
-      :preview="preview"
-      :loading="previewLoading"
-      :error-message="previewErrorMessage"
-    >
-      <template v-if="$slots.actions" #actions>
-        <slot name="actions" />
-      </template>
-      <template v-if="$slots.footer" #footer>
-        <slot name="footer" />
-      </template>
-    </FilePreviewCard>
+    <div class="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      <aside
+        :style="treePanelWidth ? { width: treePanelWidth } : undefined"
+        class="border-border/70 flex min-h-0 shrink-0 flex-col border-r bg-muted/10"
+        :class="treePanelWidth ? undefined : 'w-80'"
+      >
+        <div class="min-h-0 flex-1 overflow-auto px-1.5 py-2">
+          <div class="space-y-2 text-xs">
+            <p v-if="treeErrorMessage" class="px-2 text-destructive">{{ treeErrorMessage }}</p>
+            <p v-else-if="!treeLoading && treeNodes.length === 0" class="px-2 text-muted-foreground">
+              {{ props.emptyText }}
+            </p>
+
+            <FileTree
+              v-else-if="treeNodes.length > 0"
+              :nodes="treeNodes"
+              :selected-path="selectedPath"
+              :expanded-paths="expandedPaths"
+              :loading-paths="loadingPaths"
+              @toggle-dir="handleToggleDir"
+              @select-file="handleSelectFile"
+            />
+          </div>
+        </div>
+      </aside>
+
+      <FilePreviewCard
+        :selected-path="selectedPath"
+        :preview="preview"
+        :loading="previewLoading"
+        :error-message="previewErrorMessage"
+      >
+        <template v-if="$slots.actions" #actions>
+          <slot name="actions" />
+        </template>
+        <template v-if="$slots.footer" #footer>
+          <slot name="footer" />
+        </template>
+      </FilePreviewCard>
+    </div>
   </div>
 </template>
