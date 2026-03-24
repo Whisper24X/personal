@@ -37,6 +37,7 @@ const TASK_HEADLINES = [
 const HEADLINE_ROTATE_INTERVAL_MS = 30000
 const TASK_CREATE_SELECT_PANEL_Z_INDEX = 130
 const TASK_CREATE_SELECT_PANEL_PLACEMENT = 'top' as const
+const PROJECT_DETAIL_FALLBACK_TIMEOUT_MS = 5000
 
 const props = withDefaults(
   defineProps<{
@@ -67,6 +68,7 @@ const loadingBranches = ref(false)
 const submitting = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const currentHeadline = ref(TASK_HEADLINES[0] ?? '我能为你做什么？')
+const initializingProjectDependencies = ref(false)
 let headlineTimer: ReturnType<typeof setInterval> | null = null
 let latestBranchRequestId = 0
 
@@ -146,6 +148,24 @@ const syncProjectFromContext = () => {
   if (projectId) {
     createForm.projectId = projectId
   }
+}
+
+const withRequestTimeout = <T,>(promise: Promise<T>, timeoutMs: number) => {
+  return new Promise<T | null>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      resolve(null)
+    }, timeoutMs)
+
+    promise
+      .then((result) => {
+        clearTimeout(timeoutId)
+        resolve(result)
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId)
+        reject(error)
+      })
+  })
 }
 
 const resetCreateForm = (projectId?: string) => {
@@ -366,6 +386,19 @@ const loadConversationCliOptions = async (projectId: string) => {
   }
 }
 
+const loadProjectDependencies = async (projectId: string) => {
+  const parallel: Promise<unknown>[] = [
+    loadConversationCliOptions(projectId),
+    loadBranchesForProject(projectId),
+  ]
+
+  if (createForm.mode === 'workflow') {
+    parallel.push(loadTemplatesForProject(projectId))
+  }
+
+  await Promise.all(parallel)
+}
+
 const refreshAccessContext = async (projectId: string) => {
   try {
     await accessStore.loadContext(projectId ? { projectId } : {})
@@ -384,10 +417,15 @@ const loadProjectsForForm = async () => {
 
   if (preferredId) {
     try {
-      const project = await projectsApi.detail(preferredId)
-      projects.value = [project]
-      createForm.projectId = project.id
-      return
+      const project = await withRequestTimeout(
+        projectsApi.detail(preferredId),
+        PROJECT_DETAIL_FALLBACK_TIMEOUT_MS,
+      )
+      if (project) {
+        projects.value = [project]
+        createForm.projectId = project.id
+        return
+      }
     } catch {
       // detail 不可用（如临时网络错误）时退回全量列表，与旧行为一致
     }
@@ -411,22 +449,15 @@ const loadProjectsForForm = async () => {
 
 const loadPageData = async () => {
   loading.value = true
+  initializingProjectDependencies.value = true
   try {
     await loadProjectsForForm()
     await refreshAccessContext(createForm.projectId)
-
-    const pid = createForm.projectId
-    const parallel: Promise<unknown>[] = [
-      loadConversationCliOptions(pid),
-      loadBranchesForProject(pid),
-    ]
-    if (createForm.mode === 'workflow') {
-      parallel.push(loadTemplatesForProject(pid))
-    }
-    await Promise.all(parallel)
+    void loadProjectDependencies(createForm.projectId)
   } catch (error) {
     message.error(toErrorMessage(error, '加载任务页面失败'))
   } finally {
+    initializingProjectDependencies.value = false
     loading.value = false
   }
 }
@@ -587,19 +618,12 @@ const createTask = async () => {
 watch(
   () => createForm.projectId,
   async (projectId, previousProjectId) => {
-    if (projectId === previousProjectId) {
+    if (projectId === previousProjectId || initializingProjectDependencies.value) {
       return
     }
 
     await refreshAccessContext(projectId)
-    const parallel: Promise<unknown>[] = [
-      loadConversationCliOptions(projectId),
-      loadBranchesForProject(projectId),
-    ]
-    if (createForm.mode === 'workflow') {
-      parallel.push(loadTemplatesForProject(projectId))
-    }
-    await Promise.all(parallel)
+    await loadProjectDependencies(projectId)
   },
 )
 
@@ -661,7 +685,6 @@ onMounted(() => {
   headlineTimer = setInterval(() => {
     pickRandomHeadline()
   }, HEADLINE_ROTATE_INTERVAL_MS)
-  syncProjectFromContext()
   void loadPageData()
 })
 

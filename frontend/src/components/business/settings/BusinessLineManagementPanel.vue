@@ -543,7 +543,7 @@ const mapProjectItem = (project: Project): ProjectItem => {
   return {
     id: project.id,
     name: project.name,
-    to: `/projects/${project.id}`,
+    to: `/dashboard?projectId=${encodeURIComponent(project.id)}`,
     businessLineId: project.businessLineId,
     description: project.description ?? null,
     gitUrl: project.gitUrl,
@@ -1843,18 +1843,6 @@ const selectCurrentProject = (project: ProjectItem) => {
   emit('select-project', project.id)
 }
 
-const openProjectConfig = (project: ProjectItem) => {
-  emit('select-line', project.businessLineId)
-  if (isModalMode.value) {
-    closeModal()
-  }
-
-  void router.push({
-    path: `/projects/${project.id}`,
-    query: { tab: 'config' },
-  })
-}
-
 const loadLineDetail = async (lineId: string) => {
   if (!lineId) {
     lineDetail.value = null
@@ -3104,13 +3092,6 @@ watch(
                         </div>
 
                         <div class="flex items-center gap-2">
-                          <button
-                            type="button"
-                            class="inline-flex h-8 items-center justify-center rounded-lg border border-primary/40 bg-primary/10 px-3 text-xs font-semibold text-primary transition hover:bg-primary/20"
-                            @click.stop="openProjectConfig(project)"
-                          >
-                            项目配置
-                          </button>
                           <button
                             v-if="canUpdateProjectItem"
                             type="button"

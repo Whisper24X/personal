@@ -41,9 +41,18 @@ describe('systemRoutes compatibility redirects', () => {
     expect(gitRoute?.meta?.requiresAuth).toBe(true)
   })
 
-  it('renders project detail page at /projects/:id', () => {
+  it('redirects /projects/:id to dashboard with projectId', () => {
     const projectDetailRoute = findByPath('/projects/:id')
     expect(projectDetailRoute?.name).toBe('project-detail')
-    expect(projectDetailRoute?.component).toBeDefined()
+    expect(typeof projectDetailRoute?.redirect).toBe('function')
+
+    const redirectResult = (projectDetailRoute?.redirect as ((to: { params: { id: string } }) => unknown))({
+      params: { id: 'project-1' },
+    })
+
+    expect(redirectResult).toEqual({
+      path: '/dashboard',
+      query: { projectId: 'project-1' },
+    })
   })
 })

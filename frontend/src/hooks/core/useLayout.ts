@@ -212,7 +212,7 @@ export const useLayout = () => {
   const mapProjectItem = (project: Project): ProjectItem => ({
     id: project.id,
     name: project.name,
-    to: `/projects/${project.id}`,
+    to: `/dashboard?projectId=${encodeURIComponent(project.id)}`,
     businessLineId: project.businessLineId,
     description: project.description ?? null,
     gitUrl: project.gitUrl,
