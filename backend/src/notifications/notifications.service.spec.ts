@@ -1,6 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 
+const mockConfigService = { get: () => undefined } as never;
+
 const createSetting = (overrides?: Partial<any>) => ({
   id: 'setting-1',
   userId: 'user-1',
@@ -57,6 +59,8 @@ describe('NotificationsService', () => {
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     await expect(
@@ -94,6 +98,8 @@ describe('NotificationsService', () => {
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     const event = await service.notifyTaskStatusChanged({
@@ -141,6 +147,8 @@ describe('NotificationsService', () => {
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     await service.notifyTaskStatusChanged({
@@ -183,6 +191,8 @@ describe('NotificationsService', () => {
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     await service.notifyTaskStatusChanged({
@@ -220,6 +230,8 @@ describe('NotificationsService', () => {
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     await service.notifyTaskStatusChanged({
@@ -254,6 +266,8 @@ describe('NotificationsService', () => {
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     const result = await service.markAllEventsRead('user-1');
@@ -283,6 +297,8 @@ describe('NotificationsService', () => {
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     const result = await service.deleteReadEvents('user-1');
@@ -312,6 +328,8 @@ describe('NotificationsService', () => {
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     const result = await service.countUnreadEvents('user-1');
@@ -320,6 +338,77 @@ describe('NotificationsService', () => {
     expect(
       notificationEventRepository.countUnreadByUserId,
     ).toHaveBeenCalledWith('user-1');
+  });
+
+  it('should send feishu-formatted webhook when URL contains feishu.cn', async () => {
+    const notificationSettingRepository = {
+      findByUserId: jest.fn().mockResolvedValue(
+        createSetting({
+          webhookEnabled: true,
+          webhookUrl: 'https://open.feishu.cn/open-apis/bot/v2/hook/abc',
+          webhookSecret: 'test-secret',
+          browserEnabled: false,
+        }),
+      ),
+      create: jest.fn(),
+      update: jest.fn(),
+    };
+    const notificationEventRepository = {
+      create: jest.fn(),
+      findByUserId: jest.fn(),
+      findById: jest.fn(),
+      markRead: jest.fn(),
+    };
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+    } as Response);
+    global.fetch = fetchMock;
+
+    const service = new NotificationsService(
+      notificationSettingRepository as never,
+      notificationEventRepository as never,
+      { emit: jest.fn() } as never,
+      { get: () => 'http://localhost:8000' } as never,
+    );
+
+    await service.notifyTaskStatusChanged({
+      userId: 'user-1',
+      taskId: 'task-1',
+      taskTitle: '测试任务',
+      status: 'done',
+    });
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe(
+      'https://open.feishu.cn/open-apis/bot/v2/hook/abc',
+    );
+    const body = JSON.parse(options.body);
+    expect(body.msg_type).toBe('post');
+    const zhCn = body.content.post.zh_cn;
+    expect(zhCn.title).toBe('任务执行完成');
+    expect(zhCn.content[0][0]).toEqual({
+      tag: 'text',
+      text: expect.stringContaining('测试任务'),
+    });
+    expect(zhCn.content[2]).toEqual([
+      { tag: 'text', text: '事件类型: ' },
+      { tag: 'text', text: 'task.done' },
+    ]);
+    expect(zhCn.content[3]).toEqual([
+      { tag: 'text', text: '任务状态: ' },
+      { tag: 'text', text: '已完成' },
+    ]);
+    const lastLine = zhCn.content[zhCn.content.length - 1];
+    expect(lastLine[0]).toEqual({
+      tag: 'a',
+      text: '>> 查看任务详情',
+      href: 'http://localhost:8000/task-detail/task-1',
+    });
+    expect(body.timestamp).toBeDefined();
+    expect(body.sign).toBeDefined();
   });
 
   it('should skip browser event when browser channel is disabled', async () => {
@@ -343,6 +432,8 @@ describe('NotificationsService', () => {
     const service = new NotificationsService(
       notificationSettingRepository as never,
       notificationEventRepository as never,
+      { emit: jest.fn() } as never,
+      mockConfigService,
     );
 
     const event = await service.notifyTaskStatusChanged({

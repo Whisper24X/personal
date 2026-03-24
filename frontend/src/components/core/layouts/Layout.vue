@@ -8,10 +8,13 @@ import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { useLayout } from '@/hooks/core/useLayout'
 import { layoutWorkspaceKey } from '@/keys/layout-workspace'
 import { useUserStore } from '@/stores/modules/user'
+import { useBrowserNotification } from '@/hooks/core/useBrowserNotification'
 
 defineOptions({
   name: 'AppLayout',
 })
+
+useBrowserNotification()
 
 const route = useRoute()
 const userStore = useUserStore()

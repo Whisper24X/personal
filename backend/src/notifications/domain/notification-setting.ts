@@ -13,6 +13,9 @@ export class NotificationSetting {
   @ApiProperty({ type: String, required: false, nullable: true })
   webhookUrl?: string | null;
 
+  @ApiProperty({ type: String, required: false, nullable: true })
+  webhookSecret?: string | null;
+
   @ApiProperty({ type: Boolean, default: true })
   browserEnabled: boolean;
 

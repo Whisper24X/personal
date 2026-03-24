@@ -26,6 +26,9 @@ export class NotificationSettingEntity extends EntityRelationalHelper {
   @Column({ type: 'text', nullable: true, comment: '回调地址' })
   webhookUrl?: string | null;
 
+  @Column({ type: 'text', nullable: true, comment: '飞书等平台 Webhook 签名密钥' })
+  webhookSecret?: string | null;
+
   @Column({ type: 'boolean', default: true, comment: '是否启用浏览器通知' })
   browserEnabled: boolean;
 

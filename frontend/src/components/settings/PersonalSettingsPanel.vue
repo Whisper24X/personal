@@ -97,10 +97,12 @@ const logoutConfirmButtonRef = ref<HTMLButtonElement | null>(null)
 const settingForm = reactive({
   webhookEnabled: false,
   webhookUrl: '',
+  webhookSecret: '',
   browserEnabled: true,
 })
 const webhookDraft = reactive({
   url: '',
+  secret: '',
 })
 
 const profileForm = reactive({
@@ -298,11 +300,13 @@ const isValidUrl = (url: string) => {
 const syncSettingForm = (setting: NotificationSetting) => {
   settingForm.webhookEnabled = setting.webhookEnabled
   settingForm.webhookUrl = setting.webhookUrl ?? ''
+  settingForm.webhookSecret = setting.webhookSecret ?? ''
   settingForm.browserEnabled = setting.browserEnabled
 }
 
 const syncWebhookDraftFromForm = () => {
   webhookDraft.url = settingForm.webhookUrl
+  webhookDraft.secret = settingForm.webhookSecret
 }
 
 const syncProfileForm = (profile: UserInfo) => {
@@ -513,6 +517,7 @@ const persistNotificationSetting = async (options?: {
     const setting = await notificationsApi.updateSetting({
       webhookEnabled: settingForm.webhookEnabled,
       webhookUrl: normalizedWebhookUrl || null,
+      webhookSecret: settingForm.webhookSecret.trim() || null,
       browserEnabled: settingForm.browserEnabled,
     })
 
@@ -578,6 +583,7 @@ const saveWebhookSetting = async () => {
     const setting = await notificationsApi.updateSetting({
       webhookEnabled: settingForm.webhookEnabled,
       webhookUrl: normalizedWebhookUrl || null,
+      webhookSecret: webhookDraft.secret.trim() || null,
       browserEnabled: settingForm.browserEnabled,
     })
 
@@ -862,6 +868,8 @@ onMounted(() => {
             <dl class="mt-4 grid grid-cols-[72px_1fr] items-start gap-y-2 text-xs">
               <dt class="text-muted-foreground">回调地址</dt>
               <dd class="break-all text-foreground">{{ settingForm.webhookUrl || '-' }}</dd>
+              <dt class="text-muted-foreground">签名密钥</dt>
+              <dd class="text-foreground">{{ settingForm.webhookSecret ? '已配置' : '未配置' }}</dd>
             </dl>
           </article>
         </template>
@@ -1168,10 +1176,21 @@ onMounted(() => {
                 v-model="webhookDraft.url"
                 class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
                 :class="webhookFieldError ? 'border-destructive ring-1 ring-destructive/20' : ''"
-                placeholder="https://example.com/hook"
+                placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
                 type="text"
               />
               <p v-if="webhookFieldError" class="text-xs text-destructive">{{ webhookFieldError }}</p>
+            </label>
+
+            <label class="space-y-1">
+              <span class="text-xs text-muted-foreground">签名密钥（可选，飞书机器人安全设置中获取）</span>
+              <input
+                v-model="webhookDraft.secret"
+                autocomplete="off"
+                class="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="飞书机器人签名校验密钥"
+                type="password"
+              />
             </label>
           </div>
 

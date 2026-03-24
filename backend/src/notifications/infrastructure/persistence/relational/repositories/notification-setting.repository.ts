@@ -34,6 +34,7 @@ export class NotificationSettingRelationalRepository
         userId: data.userId,
         webhookEnabled: data.webhookEnabled,
         webhookUrl: data.webhookUrl,
+        webhookSecret: data.webhookSecret,
         browserEnabled: data.browserEnabled,
       }),
     );
