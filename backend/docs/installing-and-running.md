@@ -54,14 +54,10 @@ The database layer follows [Hexagonal Architecture](architecture.md#hexagonal-ar
 
 1. Run app in dev mode
 
-   **需要同时启动 API 和 Worker**（任务执行由 Worker 负责）：
+   当前默认只需启动 API 服务，任务调度由应用进程内的调度器负责：
 
    ```bash
-   # 终端 1 - API 服务
    npm run start:dev
-
-   # 终端 2 - Worker 进程（执行任务节点）
-   npm run start:worker:dev
    ```
 
 1. Open <http://localhost:3000>
