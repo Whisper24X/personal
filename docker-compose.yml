@@ -4,7 +4,10 @@ networks:
 
 services:
   backend:
-    image: docker.yc345.tv/devices/ainative-backend:${IMAGE_TAG:-latest}
+    image: ainative/backend:dev
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: ainative-backend
     restart: unless-stopped
     env_file: ./backend/.env.development
@@ -30,7 +33,10 @@ services:
       - ainative
 
   frontend:
-    image: docker.yc345.tv/devices/ainative-frontend:${IMAGE_TAG:-latest}
+    image: ainative/frontend:dev
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     container_name: ainative-frontend
     restart: unless-stopped
     environment:

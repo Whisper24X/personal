@@ -26,21 +26,13 @@ pnpm run dev:frontend  # 仅启动前端
 
 ### 2. Docker 环境（全栈容器化）
 
-默认模式为“从私有镜像仓库拉取镜像后启动”，其他人无需本地重新编译。
-基础镜像地址已固定为 `docker.yc345.tv/devices/ainative-backend` 和 `docker.yc345.tv/devices/ainative-frontend`，默认 tag 为 `latest`。
+当前 Docker 模式只支持本地构建镜像后启动。
 
-拉取并启动所有服务：
-
-```bash
-pnpm run docker:pull   # 拉取私有镜像
-pnpm run docker        # 启动 Docker 全栈环境
-```
-
-如果要拉取指定版本，可以在命令前临时指定 tag：
+构建并启动所有服务：
 
 ```bash
-IMAGE_TAG=2026-03-25 pnpm run docker:pull
-IMAGE_TAG=2026-03-25 pnpm run docker
+pnpm run docker        # 本地 build 后启动 Docker 全栈环境
+pnpm run docker:build  # 仅本地构建镜像
 ```
 
 启动后：
@@ -55,51 +47,6 @@ pnpm run docker:down     # 停止容器
 pnpm run docker:logs     # 查看日志
 pnpm run docker:restart  # 重启容器
 pnpm run docker:clean    # 停止并清除数据卷
-```
-
-### 3. Docker 开发模式（本地构建）
-
-需要本地重新构建镜像时，使用开发覆盖文件：
-
-```bash
-pnpm run docker:dev      # 本地 build 后启动
-pnpm run docker:build    # 仅本地构建镜像
-pnpm run docker:dev:down # 停止开发模式容器
-```
-
-### 4. 发布镜像到私有仓库
-
-发布前先登录私有仓库：
-
-```bash
-docker login docker.yc345.tv
-```
-
-统一发布前后端镜像：
-
-```bash
-pnpm run docker:release
-```
-
-这个命令会：
-
-- 使用 `git rev-parse --short HEAD` 作为版本 tag
-- 构建并推送 `docker.yc345.tv/devices/ainative-frontend:<git-sha>`
-- 构建并推送 `docker.yc345.tv/devices/ainative-backend:<git-sha>`
-- 同步更新两个镜像的 `latest`
-
-如果只想单独发布某一侧：
-
-```bash
-pnpm run docker:release:frontend
-pnpm run docker:release:backend
-```
-
-如果拉取刚发布的指定版本：
-
-```bash
-IMAGE_TAG=$(git rev-parse --short HEAD) pnpm run docker:pull
-IMAGE_TAG=$(git rev-parse --short HEAD) pnpm run docker
 ```
 
 ### 所有可用命令
