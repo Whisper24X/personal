@@ -2,7 +2,7 @@ import type { GoalPlanItem } from '@/types/api/goals'
 
 type PlanNodeClassName = 'planApproved' | 'planMaterialized' | 'planDraft' | 'planCancelled'
 
-/** Mermaid class 名：已确认（黄）、已物化（绿）、草稿、已取消 */
+/** Mermaid class 名：已确认（黄）、已创建任务（绿）、草稿、已取消 */
 function planItemNodeClass(status: GoalPlanItem['status']): PlanNodeClassName {
   switch (status) {
     case 'task_created':
@@ -108,7 +108,7 @@ export function buildPlanDependencyMermaid(items: GoalPlanItem[]): string | null
   }
   const ids = new Set(items.map((i) => i.id))
   const lines: string[] = [
-    '%%{init: {"themeVariables": {"fontSize": "11px"}}}%%',
+    '%%{init: {"themeVariables": {"fontSize": "11px", "fontFamily": "ui-sans-serif, system-ui, sans-serif"}, "flowchart": {"curve": "basis", "padding": 6, "diagramPadding": 8, "nodeSpacing": 40, "rankSpacing": 44, "useMaxWidth": true}}}%%',
     'flowchart LR',
   ]
   for (const item of items) {
@@ -124,10 +124,10 @@ export function buildPlanDependencyMermaid(items: GoalPlanItem[]): string | null
   }
 
   lines.push(
-    '  classDef planApproved fill:#fef08a,stroke:#ca8a04,stroke-width:1.5px,color:#422006',
-    '  classDef planMaterialized fill:#86efac,stroke:#15803d,stroke-width:1.5px,color:#052e16',
-    '  classDef planDraft fill:#f3f4f6,stroke:#9ca3af,stroke-width:1px,color:#374151',
-    '  classDef planCancelled fill:#e5e7eb,stroke:#6b7280,stroke-width:1px,color:#4b5563',
+    '  classDef planApproved fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f',
+    '  classDef planMaterialized fill:#d1fae5,stroke:#059669,stroke-width:1.5px,color:#064e3b',
+    '  classDef planDraft fill:#f8fafc,stroke:#94a3b8,stroke-width:1.5px,color:#475569',
+    '  classDef planCancelled fill:#f1f5f9,stroke:#94a3b8,stroke-width:1.5px,color:#64748b,stroke-dasharray: 4 3',
   )
 
   const byClass: Record<PlanNodeClassName, string[]> = {
@@ -145,6 +145,8 @@ export function buildPlanDependencyMermaid(items: GoalPlanItem[]): string | null
       lines.push(`  class ${nodeIds.join(',')} ${className}`)
     }
   }
+
+  lines.push('  linkStyle default stroke:#94a3b8,stroke-width:1.5px')
 
   return lines.join('\n')
 }

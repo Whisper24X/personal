@@ -3,7 +3,6 @@ import GoalDetailHeader from '@/components/goals/detail/GoalDetailHeader.vue'
 import GoalDetailPlanPanel from '@/components/goals/detail/GoalDetailPlanPanel.vue'
 import GoalDetailPrdPanel from '@/components/goals/detail/GoalDetailPrdPanel.vue'
 import GoalDetailTabs from '@/components/goals/detail/GoalDetailTabs.vue'
-import GoalDetailTasksPanel from '@/components/goals/detail/GoalDetailTasksPanel.vue'
 import GoalPlanItemSheet from '@/components/goals/detail/GoalPlanItemSheet.vue'
 import GoalPrdEditorSheet from '@/components/goals/detail/GoalPrdEditorSheet.vue'
 import { useGoalDetail } from '@/hooks'
@@ -21,7 +20,6 @@ const {
   generatingPlan,
   generatingPrd,
   goBack,
-  goTask,
   goTaskFromSheet,
   goalHasPlanItems,
   goalHasPrd,
@@ -90,6 +88,9 @@ const {
         :plan-progress-total="planProgressTotal"
         :plan-progress-percent="planProgressPercent"
         :plan-dependency-edge-count="planDependencyEdgeCount"
+        :plan-deps-has-cycle="planDepsHasCycle"
+        :plan-deps-graph-key="planDepsGraphKey"
+        :plan-deps-markdown="planDepsMarkdown"
         @back="goBack"
         @generate-prd="runGeneratePrd"
         @generate-plan="runGeneratePlan"
@@ -111,9 +112,6 @@ const {
       <GoalDetailPlanPanel
         v-else-if="tab === 'plan'"
         :detail="detail"
-        :plan-deps-has-cycle="planDepsHasCycle"
-        :plan-deps-graph-key="planDepsGraphKey"
-        :plan-deps-markdown="planDepsMarkdown"
         :loading-workflow-templates="loadingWorkflowTemplates"
         :workflow-templates="workflowTemplates"
         :loading-branches="loadingBranches"
@@ -129,12 +127,6 @@ const {
         @set-plan-item-workflow="setPlanItemWorkflow($event.item, $event.workflowTemplateId)"
         @set-plan-item-git-base-branch="setPlanItemGitBaseBranch($event.item, $event.gitBaseBranch)"
         @approve-item="approveItem"
-      />
-
-      <GoalDetailTasksPanel
-        v-else-if="tab === 'tasks'"
-        :tasks="detail.tasks"
-        @go-task="goTask"
       />
 
       <GoalPlanItemSheet

@@ -52,7 +52,7 @@ export class PatchPlanItemDto {
   status?: GoalPlanItemStatus;
 
   @ApiPropertyOptional({
-    description: '物化该计划项时使用的项目工作流模板 ID',
+    description: '从该计划项新建任务时使用的项目工作流模板 ID',
   })
   @IsOptional()
   @IsUUID()
@@ -60,7 +60,7 @@ export class PatchPlanItemDto {
 
   @ApiPropertyOptional({
     description:
-      '物化任务时使用的 Git 基准分支（与 CreateTaskDto.gitBaseBranch 一致）',
+      '从计划项新建任务时使用的 Git 基准分支（与 CreateTaskDto.gitBaseBranch 一致）',
   })
   @IsOptional()
   @IsString()

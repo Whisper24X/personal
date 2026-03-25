@@ -12,13 +12,13 @@ import { EntityRelationalHelper } from '../../../../../utils/relational-entity-h
 import { GoalPlanItemStatus } from '../../../../dto/goal-plan-item-status.enum';
 import { GoalEntity } from './goal.entity';
 
-@Entity({ name: 'goal_plan_items', comment: 'Goal 拆解计划项' })
+@Entity({ name: 'goal_plan_items', comment: '任务计划项' })
 export class GoalPlanItemEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Index('IDX_goal_plan_items_goal_id')
-  @Column({ type: 'uuid', comment: '所属 Goal' })
+  @Column({ type: 'uuid', comment: '所属需求' })
   goalId: string;
 
   @ManyToOne(() => GoalEntity, {
@@ -51,7 +51,7 @@ export class GoalPlanItemEntity extends EntityRelationalHelper {
   itemOrder: number;
 
   @Index('IDX_goal_plan_items_task_id')
-  @Column({ type: 'uuid', nullable: true, comment: '物化后的 Task' })
+  @Column({ type: 'uuid', nullable: true, comment: '新建任务后的 Task' })
   taskId?: string | null;
 
   @Column({
@@ -66,7 +66,7 @@ export class GoalPlanItemEntity extends EntityRelationalHelper {
   @Column({
     type: 'uuid',
     nullable: true,
-    comment: '物化该计划项时使用的项目工作流模板 ID',
+    comment: '从该计划项新建任务时使用的项目工作流模板 ID',
   })
   workflowTemplateId?: string | null;
 
@@ -74,7 +74,7 @@ export class GoalPlanItemEntity extends EntityRelationalHelper {
     type: String,
     length: 120,
     nullable: true,
-    comment: '物化任务时使用的 Git 基准分支',
+    comment: '从计划项新建任务时使用的 Git 基准分支',
   })
   gitBaseBranch?: string | null;
 

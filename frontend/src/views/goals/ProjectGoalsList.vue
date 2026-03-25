@@ -60,7 +60,7 @@ async function load() {
     })
     goals.value = res.data
   } catch (e) {
-    message.error(toErrorMessage(e, '加载 Goal 列表失败'))
+    message.error(toErrorMessage(e, '加载需求列表失败'))
   } finally {
     loading.value = false
   }
@@ -110,7 +110,7 @@ async function confirmRemoveGoal() {
     setDeleteConfirmOpen(false)
     await load()
   } catch (e) {
-    message.error(toErrorMessage(e, '删除 Goal 失败'))
+    message.error(toErrorMessage(e, '删除需求失败'))
   } finally {
     deletingId.value = null
   }
@@ -120,7 +120,7 @@ async function confirmRemoveGoal() {
 <template>
   <div class="flex h-full min-h-0 flex-col gap-5 p-4 md:p-6">
     <header class="space-y-1">
-      <h1 class="text-xl font-semibold tracking-tight text-foreground">Goal 目标</h1>
+      <h1 class="text-xl font-semibold tracking-tight text-foreground">需求</h1>
     </header>
 
     <Card class="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden p-0 shadow-sm">
@@ -151,7 +151,7 @@ async function confirmRemoveGoal() {
           @update:model-value="onStatusFilterChange"
         />
         <Button type="button" class="shrink-0 sm:ml-auto" @click="goCreateGoal">
-          新建 Goal
+          新建需求
         </Button>
       </div>
 
@@ -208,8 +208,8 @@ async function confirmRemoveGoal() {
             </tr>
             <tr v-if="goals.length === 0">
               <td colspan="4" class="px-4 py-14 text-center">
-                <p class="text-muted-foreground text-sm">暂无 Goal</p>
-                <p class="text-muted-foreground/80 mt-1 text-xs">点击上方「新建 Goal」开始</p>
+                <p class="text-muted-foreground text-sm">暂无需求</p>
+                <p class="text-muted-foreground/80 mt-1 text-xs">点击上方「新建需求」开始</p>
               </td>
             </tr>
           </tbody>
@@ -219,8 +219,8 @@ async function confirmRemoveGoal() {
 
     <ConfirmActionModal
       :open="deleteConfirmOpen"
-      title="删除 Goal"
-      :description="`确认删除目标「${deletingGoalTarget?.title ?? ''}」吗？删除后将无法从列表中恢复。`"
+      title="删除需求"
+      :description="`确认删除需求「${deletingGoalTarget?.title ?? ''}」吗？删除后将无法从列表中恢复。`"
       confirm-text="删除"
       :confirming="deletingId === (deletingGoalTarget?.id ?? '')"
       @update:open="setDeleteConfirmOpen"

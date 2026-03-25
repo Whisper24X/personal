@@ -18,7 +18,7 @@ import { fetchAllPages } from '@/utils/pagination'
 export const GOAL_SELECT_PANEL_Z_INDEX = 130
 export const GOAL_SELECT_PANEL_PLACEMENT = 'top' as const
 
-export type GoalDetailTab = 'prd' | 'plan' | 'tasks'
+export type GoalDetailTab = 'prd' | 'plan'
 
 export function useGoalDetailData() {
   const route = useRoute()
@@ -145,7 +145,7 @@ export function useGoalDetailData() {
         loadBranchesForProject(projectId),
       ])
     } catch (e) {
-      message.error(toErrorMessage(e, '加载 Goal 失败'))
+      message.error(toErrorMessage(e, '加载需求失败'))
     } finally {
       if (!silent) {
         loading.value = false
@@ -181,7 +181,7 @@ export function useGoalDetailData() {
     const goal = detail.value?.goal
     if (!goal?.agentCliId?.trim() || !goal?.agentCliConfigId?.trim()) {
       message.warning(
-        '缺少业务线 Agent 配置，无法生成 PRD。创建 Goal 时需选择 CLI 与工具配置，或更新 Goal 后重试。',
+        '缺少业务线 Agent 配置，无法生成 PRD。创建需求时需选择 CLI 与工具配置，或更新需求后重试。',
       )
       return
     }
@@ -209,11 +209,11 @@ export function useGoalDetailData() {
     const goal = detail.value?.goal
     if (!goal?.agentCliId?.trim() || !goal?.agentCliConfigId?.trim()) {
       message.warning(
-        '缺少业务线 Agent 配置，无法生成拆解计划。创建 Goal 时需选择 CLI 与工具配置，或更新 Goal 后重试。',
+        '缺少业务线 Agent 配置，无法生成任务计划。创建需求时需选择 CLI 与工具配置，或更新需求后重试。',
       )
       return
     }
-    message.info('拆解计划生成中，预计需数十秒，请稍候…', {
+    message.info('任务计划生成中，预计需数十秒，请稍候…', {
       duration: 12_000,
       dedupeKey: 'goal-generate-plan',
     })
@@ -225,10 +225,10 @@ export function useGoalDetailData() {
         ...goalGenerationAgentPayload(),
       })
       tab.value = 'plan'
-      message.success('拆解计划已生成')
+      message.success('任务计划已生成')
       await load({ silent: true })
     } catch (e) {
-      message.error(toErrorMessage(e, '生成拆解计划失败'))
+      message.error(toErrorMessage(e, '生成任务计划失败'))
     } finally {
       generatingPlan.value = false
     }

@@ -10,7 +10,7 @@ import {
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
 import { GoalStatus } from '../../../../dto/goal-status.enum';
 
-@Entity({ name: 'goals', comment: 'Goal 目标' })
+@Entity({ name: 'goals', comment: '需求' })
 export class GoalEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -47,7 +47,7 @@ export class GoalEntity extends EntityRelationalHelper {
     type: String,
     length: 500,
     nullable: true,
-    comment: '拆解计划文档相对路径',
+    comment: '任务计划文档相对路径',
   })
   planDocPath?: string | null;
 
@@ -58,14 +58,14 @@ export class GoalEntity extends EntityRelationalHelper {
     type: String,
     length: 64,
     nullable: true,
-    comment: '生成 PRD/拆解计划时默认使用的 Agent CLI 工具 ID',
+    comment: '生成 PRD/任务计划时默认使用的 Agent CLI 工具 ID',
   })
   agentCliId?: string | null;
 
   @Column({
     type: 'uuid',
     nullable: true,
-    comment: '生成 PRD/拆解计划时默认使用的业务线 Agent 工具配置 ID',
+    comment: '生成 PRD/任务计划时默认使用的业务线 Agent 工具配置 ID',
   })
   agentCliConfigId?: string | null;
 

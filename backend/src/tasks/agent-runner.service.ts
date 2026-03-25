@@ -190,7 +190,7 @@ export class AgentRunnerService {
   }
 
   /**
-   * Goal PRD/拆解计划生成：与对话任务相同的 CLI + 业务线 Agent 工具配置（api key 等）。
+   * 需求 PRD/任务计划生成：与对话任务相同的 CLI + 业务线 Agent 工具配置（api key 等）。
    */
   async executeGoalPrompt(params: {
     project: Project;

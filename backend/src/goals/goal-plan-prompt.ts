@@ -8,7 +8,7 @@ const granularityHint: Record<PlanGranularity, string> = {
 };
 
 /**
- * 拆解计划生成：工作流风格短提示 + 上下文注入；方法论与 JSON 契约见 `.agents/skills/goal-plan/SKILL.md`。
+ * 任务计划生成：工作流风格短提示 + 上下文注入；方法论与 JSON 契约见 `.agents/skills/goal-plan/SKILL.md`。
  */
 export function buildPlanGenerationPrompt(params: {
   goalTitle: string;
@@ -19,9 +19,9 @@ export function buildPlanGenerationPrompt(params: {
   const g = params.granularity ?? PlanGranularity.standard;
 
   return [
-    '使用 goal-plan 技能，根据下列已确认的 PRD 生成拆解计划。请严格按技能中的计划项要求与 JSON 输出契约执行。',
+    '使用 goal-plan 技能，根据下列已确认的 PRD 生成任务计划。请严格按技能中的计划项要求与 JSON 输出契约执行。',
     '',
-    `【Goal】${params.goalTitle}`,
+    `【需求】${params.goalTitle}`,
     params.goalSummary ? `【摘要】${params.goalSummary}` : '',
     `【拆解粒度】${granularityHint[g]}`,
     '',

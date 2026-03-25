@@ -1,5 +1,5 @@
 /**
- * 物化任务时的创建顺序：仅考虑 targetIds 之间的依赖，前置任务必须先于后继创建。
+ * 从计划项新建任务时的创建顺序：仅考虑 targetIds 之间的依赖，前置任务必须先于后继创建。
  * 与 backend/src/goals/goal-plan-dag.ts 中 topologicalMaterializeOrder 保持一致。
  */
 export function topologicalMaterializeOrder(

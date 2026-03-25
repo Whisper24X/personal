@@ -84,7 +84,7 @@ function resolveGoalAgentCliOptions(dto: {
   );
 }
 
-/** 请求体优先；若请求未带成对 Agent 参数，则回退到 Goal 上保存的默认值 */
+/** 请求体优先；若请求未带成对 Agent 参数，则回退到需求上保存的默认值 */
 function resolveGoalAgentCliForGeneration(
   dto: { agentCliId?: string; agentCliConfigId?: string },
   goal: Pick<Goal, 'agentCliId' | 'agentCliConfigId'>,
@@ -106,14 +106,14 @@ function resolveGoalAgentCliForGeneration(
 }
 
 /**
- * 生成 PRD/拆解计划须走业务线 AgentRunner（含 MCP 等与任务一致的配置），禁止退回到 executeKnowledgeAgent。
+ * 生成 PRD/任务计划须走业务线 AgentRunner（含 MCP 等与任务一致的配置），禁止退回到 executeKnowledgeAgent。
  */
 function assertGoalAgentCliForGeneration(
   agentCli: { agentCliId: string; agentCliConfigId: string } | undefined,
 ): asserts agentCli is { agentCliId: string; agentCliConfigId: string } {
   if (!agentCli) {
     throw new BadRequestException(
-      '生成 PRD 或拆解计划需要配置业务线 Agent：请在 Goal 上保存 agentCliId 与 agentCliConfigId，或在请求中同时传入二者。',
+      '生成 PRD 或任务计划需要配置业务线 Agent：请在需求上保存 agentCliId 与 agentCliConfigId，或在请求中同时传入二者。',
     );
   }
 }
@@ -398,7 +398,7 @@ export class GoalsService {
   ): Promise<Goal> {
     const goal = await this.goalRepository.findById(goalId);
     if (!goal) {
-      throw new NotFoundException('Goal not found');
+      throw new NotFoundException('未找到需求');
     }
     await this.projectsService.assertProjectCapability(
       goal.projectId,
@@ -511,7 +511,7 @@ export class GoalsService {
     }
     const updated = await this.goalRepository.update(id, dto);
     if (!updated) {
-      throw new NotFoundException('Goal not found');
+      throw new NotFoundException('未找到需求');
     }
     return updated;
   }
@@ -569,7 +569,7 @@ export class GoalsService {
       throw new BadRequestException('仅支持解压 .zip 文件');
     }
     if (!normalizedZipPath.startsWith(inputPrefix)) {
-      throw new BadRequestException('zip 须位于该 Goal 的 input 目录下');
+      throw new BadRequestException('zip 须位于该需求的 input 目录下');
     }
 
     const { repositoryRoot } =
@@ -844,7 +844,7 @@ export class GoalsService {
       status: GoalStatus.prdGenerated,
     });
     if (!updated) {
-      throw new NotFoundException('Goal not found');
+      throw new NotFoundException('未找到需求');
     }
     return { goal: updated, markdownLength: markdown.length };
   }
@@ -861,7 +861,7 @@ export class GoalsService {
       goal.status !== GoalStatus.planned
     ) {
       throw new BadRequestException(
-        '请先生成并确认 PRD，或在 prd_confirmed / planned 状态下生成拆解计划',
+        '请先生成并确认 PRD，或在 prd_confirmed / planned 状态下生成任务计划',
       );
     }
     if (!goal.prdDocPath) {
@@ -869,7 +869,7 @@ export class GoalsService {
     }
     const overwrite = dto.overwrite !== false;
     if (!overwrite && goal.planDocPath) {
-      throw new ConflictException('拆解计划已存在，如需覆盖请设置 overwrite');
+      throw new ConflictException('任务计划已存在，如需覆盖请设置 overwrite');
     }
 
     let prdContent = '';
@@ -940,7 +940,7 @@ export class GoalsService {
     if (!markdown || !rawItems.length) {
       this.goalsMetrics.incrementPlanGeneration(false);
       throw new BadRequestException(
-        `拆解计划生成失败：${lastErr || 'empty items'}`,
+        `任务计划生成失败：${lastErr || 'empty items'}`,
       );
     }
     this.goalsMetrics.incrementPlanGeneration(true);
@@ -1013,7 +1013,7 @@ export class GoalsService {
       status: GoalStatus.planned,
     });
     if (!updated) {
-      throw new NotFoundException('Goal not found');
+      throw new NotFoundException('未找到需求');
     }
     return { goal: updated, itemCount: planItems.length };
   }
@@ -1027,7 +1027,7 @@ export class GoalsService {
     await this.assertGoalAccess(goalId, currentUser);
     const existing = await this.goalRepository.findPlanItem(goalId, itemId);
     if (!existing) {
-      throw new NotFoundException('Plan item not found');
+      throw new NotFoundException('未找到计划项');
     }
 
     if (
@@ -1050,7 +1050,7 @@ export class GoalsService {
           !pred.taskId?.trim()
         ) {
           throw new BadRequestException(
-            `请先物化前置计划项「${pred.title}」后再确认本项`,
+            `请先为前置计划项「${pred.title}」创建任务后再确认本项`,
           );
         }
       }
@@ -1058,7 +1058,7 @@ export class GoalsService {
 
     const next = await this.goalRepository.updatePlanItem(goalId, itemId, dto);
     if (!next) {
-      throw new NotFoundException('Plan item not found');
+      throw new NotFoundException('未找到计划项');
     }
     const all = await this.goalRepository.listPlanItems(goalId);
     const idSet = new Set(all.map((i) => i.id));
@@ -1084,7 +1084,7 @@ export class GoalsService {
       goal.status !== GoalStatus.planned &&
       goal.status !== GoalStatus.inProgress
     ) {
-      throw new BadRequestException('当前状态不允许物化任务');
+      throw new BadRequestException('当前状态不允许新建任务');
     }
 
     const results: { planItemId: string; taskId: string }[] = [];
@@ -1101,7 +1101,7 @@ export class GoalsService {
       );
     } catch {
       throw new BadRequestException(
-        '计划项依赖存在环，无法按顺序物化（请检查拆解计划依赖）',
+        '计划项依赖存在环，无法按顺序新建任务（请检查任务计划依赖）',
       );
     }
 
@@ -1119,13 +1119,13 @@ export class GoalsService {
       }
       if (item.status !== GoalPlanItemStatus.approved) {
         throw new BadRequestException(
-          `计划项须为已确认(approved)状态才可物化: ${item.title}`,
+          `计划项须为已确认(approved)状态才可新建任务: ${item.title}`,
         );
       }
 
       if (!item.workflowTemplateId?.trim()) {
         throw new BadRequestException(
-          `计划项「${item.title}」未配置工作流模板，请先在拆解计划中为其选择模板后再物化`,
+          `计划项「${item.title}」未配置工作流模板，请先在任务计划中为其选择模板后再新建任务`,
         );
       }
 
@@ -1136,7 +1136,7 @@ export class GoalsService {
         }
         if (!predItem.taskId?.trim()) {
           throw new BadRequestException(
-            `请先物化前置计划项「${predItem.title}」后再物化本项`,
+            `请先为前置计划项「${predItem.title}」创建任务后再为本项新建任务`,
           );
         }
         const predTask = await this.taskRepository.findById(predItem.taskId);
@@ -1147,7 +1147,7 @@ export class GoalsService {
         }
         if (predTask.status !== TaskStatus.done) {
           throw new BadRequestException(
-            `前置任务「${predTask.title}」未完成，请完成后再物化本项`,
+            `前置任务「${predTask.title}」未完成，请完成后再为本项新建任务`,
           );
         }
       }
@@ -1236,7 +1236,7 @@ export class GoalsService {
     return { ok: true as const };
   }
 
-  /** Task 详情补充：返回 Goal 摘要信息 */
+  /** Task 详情补充：返回需求摘要信息 */
   async getGoalSummaryForTask(
     goalId: string,
     currentUser: JwtPayloadType,

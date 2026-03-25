@@ -33,7 +33,7 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
   const planItemStatusLabel: Record<GoalPlanItem['status'], string> = {
     draft: '草稿',
     approved: '已确认',
-    task_created: '已物化',
+    task_created: '已创建任务',
     cancelled: '已取消',
   }
 
@@ -109,7 +109,7 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
         continue
       }
       if (predecessor.status !== 'task_created' || !predecessor.taskId?.trim()) {
-        return `请先物化前置计划项「${predecessor.title}」后再确认本项`
+        return `请先为前置计划项「${predecessor.title}」创建任务后再确认本项`
       }
     }
     return null
@@ -127,14 +127,14 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
         continue
       }
       if (!predecessor.taskId?.trim()) {
-        return `请先物化前置计划项「${predecessor.title}」后再物化本项`
+        return `请先为前置计划项「${predecessor.title}」创建任务后再为本项新建任务`
       }
       const task = detail.tasks.find((entry) => entry.id === predecessor.taskId)
       if (!task) {
         return '前置任务数据缺失，请刷新后重试'
       }
       if (task.status !== 'done') {
-        return `前置任务「${task.title}」未完成，请完成后再物化本项`
+        return `前置任务「${task.title}」未完成，请完成后再为本项新建任务`
       }
     }
     return null
@@ -284,14 +284,14 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
       .filter((item) => item.status === 'approved' && !item.taskId)
       .map((item) => item.id)
     if (rawIds.length === 0) {
-      message.warning('没有可物化的已确认计划项')
+      message.warning('没有待新建任务的已确认计划项')
       return
     }
     let orderedIds: string[]
     try {
       orderedIds = topologicalMaterializeOrder(rawIds, detail.planItems)
     } catch {
-      message.error('计划项依赖成环，无法按顺序物化')
+      message.error('计划项依赖成环，无法按顺序新建任务')
       return
     }
 
@@ -299,7 +299,7 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
       const item = detail.planItems.find((entry) => entry.id === planItemId)
       if (!item?.workflowTemplateId?.trim()) {
         message.warning(
-          `请先在「拆解计划」中为「${item?.title ?? planItemId}」配置工作流后再物化`,
+          `请先在「任务计划」中为「${item?.title ?? planItemId}」配置工作流后再新建任务`,
         )
         return
       }
@@ -320,7 +320,7 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
       )
       await options.load()
     } catch (e) {
-      message.error(toErrorMessage(e, '物化任务失败'))
+      message.error(toErrorMessage(e, '新建任务失败'))
     } finally {
       materializing.value = false
     }

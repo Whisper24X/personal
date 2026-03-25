@@ -3,7 +3,7 @@ defineOptions({
   name: 'GoalDetailTabs',
 })
 
-type GoalDetailTab = 'prd' | 'plan' | 'tasks'
+type GoalDetailTab = 'prd' | 'plan'
 
 const props = defineProps<{
   modelValue: GoalDetailTab
@@ -15,8 +15,7 @@ const emit = defineEmits<{
 
 const tabs: Array<{ value: GoalDetailTab; label: string }> = [
   { value: 'prd', label: 'PRD' },
-  { value: 'plan', label: '拆解计划' },
-  { value: 'tasks', label: '任务' },
+  { value: 'plan', label: '任务计划' },
 ]
 </script>
 
@@ -24,7 +23,7 @@ const tabs: Array<{ value: GoalDetailTab; label: string }> = [
   <div
     class="border-border flex flex-wrap gap-1 border-b text-sm"
     role="tablist"
-    aria-label="Goal 内容分区"
+    aria-label="需求内容分区"
   >
     <button
       v-for="tab in tabs"

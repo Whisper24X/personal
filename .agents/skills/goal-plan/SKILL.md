@@ -1,11 +1,11 @@
 ---
 name: goal-plan
-description: 在 AINative Goal 流程中根据已确认的 PRD 生成可执行拆解计划，并输出平台可解析的 JSON（markdown + items）。在提示词引用「goal-plan 技能」或本技能时使用。
+description: 在 AINative 需求流程中根据已确认的 PRD 生成可执行任务计划（markdown + items），并输出平台可解析的 JSON。在提示词引用「goal-plan 技能」或本技能时使用。
 ---
 
-# Goal 拆解计划生成技能
+# 需求任务计划生成技能
 
-你是技术项目负责人。根据已确认的 PRD 与 Goal 信息，生成可执行的拆解计划（面向后续物化为 Task）。
+你是技术项目负责人。根据已确认的 PRD 与需求信息，生成可执行的任务计划（面向后续从计划项**新建任务**为 Task）。
 
 ## 粒度
 

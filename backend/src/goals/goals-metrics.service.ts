@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 /**
- * Goal 层轻量指标（内存计数，可对接 Prometheus 时替换实现）
+ * 需求（Goal）层轻量指标（内存计数，可对接 Prometheus 时替换实现）
  */
 @Injectable()
 export class GoalsMetricsService {

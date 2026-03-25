@@ -636,8 +636,8 @@ export const useLayout = () => {
     if (route.name === 'automations') return ['项目菜单', '自动化']
     if (route.name === 'tasks') return ['项目菜单', '新建任务']
     if (route.name === 'task-detail') return ['项目菜单', '新建任务', '任务详情']
-    if (route.name === 'goal-create') return ['项目菜单', '新建 Goal']
-    if (route.name === 'goal-detail') return ['项目菜单', '新建 Goal', 'Goal 详情']
+    if (route.name === 'goal-create') return ['项目菜单', '新建需求']
+    if (route.name === 'goal-detail') return ['项目菜单', '新建需求', '需求详情']
     return ['项目菜单']
   })
 

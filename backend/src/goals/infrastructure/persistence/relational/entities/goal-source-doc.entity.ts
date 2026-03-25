@@ -11,13 +11,13 @@ import { EntityRelationalHelper } from '../../../../../utils/relational-entity-h
 import { GoalSourceDocType } from '../../../../dto/goal-source-doc-type.enum';
 import { GoalEntity } from './goal.entity';
 
-@Entity({ name: 'goal_source_docs', comment: 'Goal 输入资料' })
+@Entity({ name: 'goal_source_docs', comment: '需求输入资料' })
 export class GoalSourceDocEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Index('IDX_goal_source_docs_goal_id')
-  @Column({ type: 'uuid', comment: '所属 Goal' })
+  @Column({ type: 'uuid', comment: '所属需求' })
   goalId: string;
 
   @ManyToOne(() => GoalEntity, {

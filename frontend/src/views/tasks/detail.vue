@@ -903,7 +903,7 @@ function startDrag(e: MouseEvent) {
             v-if="detail?.goalSummary"
             class="border-border/60 bg-muted/30 text-foreground flex flex-wrap items-center gap-2 rounded-lg border px-4 py-2 text-xs"
           >
-            <span class="text-muted-foreground">所属 Goal</span>
+            <span class="text-muted-foreground">所属需求</span>
             <RouterLink
               :to="{ name: 'goal-detail', params: { goalId: detail.goalSummary.id } }"
               class="text-primary font-medium hover:underline"

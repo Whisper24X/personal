@@ -1,8 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import AppSelect from '@/components/core/select'
 import { Button } from '@/components/ui/button'
-import GoalPlanDependenciesDialog from './GoalPlanDependenciesDialog.vue'
 import type { GoalDetail, GoalPlanItem } from '@/types/api/goals'
 import type { WorkflowTemplate } from '@/types/api/workflow'
 
@@ -17,9 +15,6 @@ type SelectOption = {
 
 const props = defineProps<{
   detail: GoalDetail
-  planDepsHasCycle: boolean
-  planDepsGraphKey: string
-  planDepsMarkdown: string
   loadingWorkflowTemplates: boolean
   workflowTemplates: WorkflowTemplate[]
   loadingBranches: boolean
@@ -39,17 +34,10 @@ const emit = defineEmits<{
   setPlanItemGitBaseBranch: [payload: { item: GoalPlanItem; gitBaseBranch: string }]
   approveItem: [item: GoalPlanItem]
 }>()
-
-const planDependenciesDialogOpen = ref(false)
 </script>
 
 <template>
   <div class="min-h-0 flex-1 overflow-auto">
-    <div v-if="props.detail.planItems.length > 0" class="mb-4 flex items-center justify-between gap-2">
-      <Button type="button" variant="outline" size="sm" @click="planDependenciesDialogOpen = true">
-        查看依赖图
-      </Button>
-    </div>
     <p
       v-if="!props.loadingWorkflowTemplates && props.workflowTemplates.length === 0"
       class="text-muted-foreground mb-3 text-xs text-amber-600 dark:text-amber-500"
@@ -113,7 +101,7 @@ const planDependenciesDialogOpen = ref(false)
                 />
               </template>
               <span v-else-if="item.taskId" class="text-muted-foreground whitespace-nowrap">
-                已物化
+                已创建任务
               </span>
               <span v-else class="text-muted-foreground">—</span>
             </td>
@@ -170,13 +158,5 @@ const planDependenciesDialogOpen = ref(false)
         </tbody>
       </table>
     </div>
-
-    <GoalPlanDependenciesDialog
-      :open="planDependenciesDialogOpen"
-      :plan-deps-has-cycle="props.planDepsHasCycle"
-      :plan-deps-graph-key="props.planDepsGraphKey"
-      :plan-deps-markdown="props.planDepsMarkdown"
-      @update:open="planDependenciesDialogOpen = $event"
-    />
   </div>
 </template>

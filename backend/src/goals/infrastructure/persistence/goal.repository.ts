@@ -22,7 +22,7 @@ export abstract class GoalRepository {
 
   abstract softRemove(id: Goal['id']): Promise<void>;
 
-  /** 物理删除 Goal 关联的 source_docs / plan_items（Goal 软删前调用） */
+  /** 物理删除需求关联的 source_docs / plan_items（需求软删前调用） */
   abstract deleteSourceDocsAndPlanItemsByGoalId(goalId: string): Promise<void>;
 
   abstract findMany(params: {

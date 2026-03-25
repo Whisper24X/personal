@@ -304,12 +304,12 @@ const submit = async () => {
       accessStore.hasCapability(capability),
     )
   ) {
-    message.error('当前项目暂无创建 Goal 权限')
+    message.error('当前项目暂无创建需求权限')
     return
   }
   const projectIdForSubmit = resolveProjectIdFromContext().trim() || form.projectId.trim()
   if (!projectIdForSubmit) {
-    message.error('请先在左侧栏选择项目后再创建 Goal')
+    message.error('请先在左侧栏选择项目后再创建需求')
     return
   }
   if (!form.title.trim()) {
@@ -366,21 +366,21 @@ const submit = async () => {
     }
 
     if (files.length === 0) {
-      message.success('已创建 Goal')
+      message.success('已创建需求')
     } else if (uploadFailCount === 0) {
-      message.success('已创建 Goal，已关联资料')
+      message.success('已创建需求，已关联资料')
     } else if (uploadFailCount === files.length) {
-      message.warning('Goal 已创建，但资料未能上传，请稍后在项目知识库或详情中补充')
+      message.warning('需求已创建，但资料未能上传，请稍后在项目知识库或详情中补充')
     } else {
       message.warning(
-        `Goal 已创建，有 ${uploadFailCount} 个文件未能关联，其余已保存；可在知识库或稍后重试`,
+        `需求已创建，有 ${uploadFailCount} 个文件未能关联，其余已保存；可在知识库或稍后重试`,
       )
     }
 
     selectedFiles.value = []
     await router.push({ name: 'goal-detail', params: { goalId: goal.id } })
   } catch (error) {
-    message.error(toErrorMessage(error, '创建 Goal 失败'))
+    message.error(toErrorMessage(error, '创建需求失败'))
   } finally {
     submitting.value = false
   }
@@ -618,7 +618,7 @@ onBeforeUnmount(() => {
                   type="submit"
                   class="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-full bg-muted text-foreground transition hover:bg-primary hover:text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
                   :disabled="submitting || !canSubmit"
-                  aria-label="创建 Goal"
+                  aria-label="创建需求"
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -652,7 +652,7 @@ onBeforeUnmount(() => {
           aria-live="polite"
           aria-busy="true"
         >
-          <p class="px-6 text-center text-base font-medium text-foreground">正在创建 Goal，请稍后...</p>
+          <p class="px-6 text-center text-base font-medium text-foreground">正在创建需求，请稍后...</p>
         </div>
       </Transition>
     </Teleport>

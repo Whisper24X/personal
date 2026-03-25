@@ -43,27 +43,47 @@ const forwarded = useForwardPropsEmits(rootProps, emit)
       <DialogContent
         :class="
           cn(
-            'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed top-1/2 left-1/2 z-50 grid w-[min(92vw,960px)] max-h-[85vh] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-hidden rounded-lg border p-6 shadow-lg duration-200 data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+            'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed top-1/2 left-1/2 z-50 grid w-[min(92vw,960px)] max-h-[85vh] -translate-x-1/2 -translate-y-1/2 gap-3 overflow-hidden rounded-lg border p-5 shadow-lg duration-200 data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
             props.contentClass,
           )
         "
         v-bind="$attrs"
       >
         <div class="flex items-start justify-between gap-4 pr-8">
-          <div>
-            <DialogTitle class="text-base font-semibold">计划依赖图</DialogTitle>
-            <p class="text-muted-foreground mt-1 text-sm">
-              拆解计划项之间的依赖关系，黄色表示已确认，绿色表示已物化
-            </p>
+          <div class="min-w-0 flex-1 space-y-2">
+            <div>
+              <DialogTitle class="text-base font-semibold">计划依赖图</DialogTitle>
+              <p class="text-muted-foreground mt-0.5 text-sm leading-snug">
+                箭头方向表示「前置 → 后续」；同一前置完成后方可开始后续项。
+              </p>
+            </div>
+            <div class="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
+              <span class="inline-flex items-center gap-1.5">
+                <span class="size-2.5 shrink-0 rounded-sm border border-amber-600 bg-amber-100 dark:border-amber-500 dark:bg-amber-950/80" />
+                已确认
+              </span>
+              <span class="inline-flex items-center gap-1.5">
+                <span class="size-2.5 shrink-0 rounded-sm border border-emerald-600 bg-emerald-100 dark:border-emerald-500 dark:bg-emerald-950/80" />
+                已创建任务
+              </span>
+              <span class="inline-flex items-center gap-1.5">
+                <span class="size-2.5 shrink-0 rounded-sm border border-slate-300 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/60" />
+                草稿
+              </span>
+              <span class="inline-flex items-center gap-1.5">
+                <span class="size-2.5 shrink-0 rounded-sm border border-dashed border-slate-400 bg-slate-100 dark:border-slate-500 dark:bg-slate-900/40" />
+                已取消
+              </span>
+            </div>
           </div>
         </div>
 
         <p v-if="props.planDepsHasCycle" class="text-destructive text-sm">
-          检测到计划项依赖存在环，请修正后再物化。
+          检测到计划项依赖存在环，请修正后再新建任务。
         </p>
 
         <div
-          class="bg-muted/20 min-h-0 flex-1 overflow-auto rounded-md border border-border p-3 [&_.markdown-preview]:text-sm"
+          class="bg-muted/15 dark:bg-muted/25 from-muted/30 to-muted/5 min-h-[min(48vh,380px)] flex-1 overflow-auto rounded-lg border border-border/80 bg-gradient-to-b p-2 shadow-inner [&_.markdown-preview]:text-sm [&_.markdown-preview_.mermaid]:flex [&_.markdown-preview_.mermaid]:justify-center [&_.markdown-preview_.mermaid]:py-0 [&_.markdown-preview_.mermaid_svg]:max-h-[min(52vh,440px)] [&_.markdown-preview_.mermaid_svg]:max-w-full [&_.markdown-preview_.mermaid_svg]:h-auto"
         >
           <MarkdownPreview :key="props.planDepsGraphKey" :content="props.planDepsMarkdown" />
         </div>

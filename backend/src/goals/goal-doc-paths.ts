@@ -1,4 +1,4 @@
-/** 项目 docs 下与 Goal 相关的固定相对路径（不含 docs/ 前缀） */
+/** 项目 docs 下与需求（Goal）相关的固定相对路径（不含 docs/ 前缀） */
 export function goalPrdRelativePath(goalId: string): string {
   return `goals/${goalId}/PRD.md`;
 }

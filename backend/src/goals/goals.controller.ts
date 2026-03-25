@@ -64,7 +64,7 @@ export class GoalsController {
   /** 软删除（POST 与 DELETE 等价；部分环境对 DELETE 支持不佳） */
   @Post(':id/remove')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiNoContentResponse({ description: '软删除 Goal' })
+  @ApiNoContentResponse({ description: '软删除需求' })
   removeByPost(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
     return this.goalsService.remove(id, request.user);
   }
@@ -87,7 +87,7 @@ export class GoalsController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiNoContentResponse({ description: '软删除 Goal' })
+  @ApiNoContentResponse({ description: '软删除需求' })
   remove(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
     return this.goalsService.remove(id, request.user);
   }
@@ -124,7 +124,7 @@ export class GoalsController {
   }
 
   @Post(':id/generate-plan')
-  @ApiOkResponse({ description: '生成拆解计划' })
+  @ApiOkResponse({ description: '生成任务计划' })
   generatePlan(
     @Request() request,
     @Param('id', ParseUUIDPipe) id: string,

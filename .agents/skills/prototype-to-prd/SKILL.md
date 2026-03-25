@@ -84,15 +84,15 @@ description: >-
 5. 生成多个输出文件
 6. 在第 7 节以外的位置写 TBD 或待确认内容
 
-## AINative Goal PRD 生成（平台集成，与上文「写 PRD.md 文件」二选一）
+## AINative 需求 PRD 生成（平台集成，与上文「写 PRD.md 文件」二选一）
 
-当提示词引用 **prototype-to-prd 技能**且场景为 **AINative Goal 生成 PRD**（Agent 在项目仓库根目录执行、平台从 stdout 解析 JSON）时，**不得**在项目内写入 `<root>/PRD.md`；必须按下列约定执行。
+当提示词引用 **prototype-to-prd 技能**且场景为 **AINative 需求生成 PRD**（Agent 在项目仓库根目录执行、平台从 stdout 解析 JSON）时，**不得**在项目内写入 `<root>/PRD.md`；必须按下列约定执行。
 
 ### 输入根目录
 
-- **固定路径**（相对仓库根目录）：`docs/goals/<goalId>/input`
+- **固定路径**（相对仓库根目录）：`docs/goals/<goalId>/input`（`goalId` 为平台内「需求」实体的 ID，与仓库目录约定一致）
 - `<goalId>` 由提示词给出。须先 **Glob / 列出** 该目录下全部文件（含子目录，如 `…/input/<uuid>-unpacked/...`），再按上文 Step 1–3 的规则选取原型与上下文文档。
-- 若目录为空或无可读原型/上下文文件，仅基于 Goal 标题与摘要做最小推导，并在第 7 节与 `uncertainPoints` 中标注假设。
+- 若目录为空或无可读原型/上下文文件，仅基于需求标题与摘要做最小推导，并在第 7 节与 `uncertainPoints` 中标注假设。
 
 ### 文档结构
 
@@ -117,7 +117,7 @@ description: >-
 | 场景 | 输出方式 |
 | --- | --- |
 | 本地/通用：用户指定 `<root>` 且需落盘 | 写入 `<root>/PRD.md` |
-| AINative Goal | **仅** stdout 输出上述 JSON，**不写文件** |
+| AINative 需求 | **仅** stdout 输出上述 JSON，**不写文件** |
 
 ## 与下游流程衔接
 

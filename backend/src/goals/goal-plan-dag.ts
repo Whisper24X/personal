@@ -54,7 +54,7 @@ export function directedGraphHasCycle(
 }
 
 /**
- * 物化任务时的创建顺序：仅考虑 targetIds 之间的依赖，前置计划项必须先于后继创建。
+ * 从计划项新建任务时的创建顺序：仅考虑 targetIds 之间的依赖，前置计划项必须先于后继创建。
  * 与 frontend/src/utils/goal-plan-materialize-order.ts 保持一致。
  */
 export function topologicalMaterializeOrder(

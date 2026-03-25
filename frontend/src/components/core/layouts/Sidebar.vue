@@ -96,7 +96,7 @@ const filteredRecentTasks = computed(() => {
     </SidebarHeader>
 
     <SidebarContent>
-      <!-- 原型：sidebar-section — 工作台 / Goal / 任务 / 知识库 -->
+      <!-- 原型：sidebar-section — 工作台 / 需求 / 任务 / 知识库 -->
       <SidebarGroup>
         <SidebarGroupContent>
           <SidebarMenu>

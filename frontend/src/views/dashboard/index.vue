@@ -343,7 +343,7 @@ watch(
                   :to="{ name: 'project-goals', params: { projectId: project.id } }"
                   class="mt-2 inline-flex h-7 items-center rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30"
                 >
-                  Goal 目标
+                  需求
                 </RouterLink>
               </div>
             </div>

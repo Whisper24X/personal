@@ -19,7 +19,7 @@ export class CreateTaskDto {
 
   @ApiPropertyOptional({
     type: String,
-    description: '所属 Goal（可选，由 Goal 物化写入）',
+    description: '所属需求（可选，由任务计划项新建任务时写入）',
   })
   @IsOptional()
   @IsUUID()

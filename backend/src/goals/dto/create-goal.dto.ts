@@ -24,7 +24,7 @@ export class CreateGoalDto {
   summary?: string;
 
   @ApiPropertyOptional({
-    description: '物化 Task 时默认使用的工作流模板 ID',
+    description: '从计划项新建 Task 时默认使用的工作流模板 ID',
   })
   @IsOptional()
   @IsUUID()
@@ -32,7 +32,7 @@ export class CreateGoalDto {
 
   @ApiPropertyOptional({
     description:
-      '生成 PRD/拆解计划时默认使用的 Agent CLI 工具 ID（须与 agentCliConfigId 同时传或同时省略）',
+      '生成 PRD/任务计划时默认使用的 Agent CLI 工具 ID（须与 agentCliConfigId 同时传或同时省略）',
   })
   @IsOptional()
   @IsString()
@@ -41,7 +41,7 @@ export class CreateGoalDto {
 
   @ApiPropertyOptional({
     description:
-      '生成 PRD/拆解计划时默认使用的业务线 Agent 工具配置 ID（须与 agentCliId 同时传或同时省略）',
+      '生成 PRD/任务计划时默认使用的业务线 Agent 工具配置 ID（须与 agentCliId 同时传或同时省略）',
   })
   @IsOptional()
   @IsUUID()

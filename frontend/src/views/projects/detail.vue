@@ -1704,7 +1704,7 @@ onBeforeUnmount(() => {
                 :to="`/projects/${project.id}/goals`"
                 class="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:shadow-md"
               >
-                Goal 目标
+                需求
               </RouterLink>
               <RouterLink
                 :to="`/tasks?projectId=${project.id}`"

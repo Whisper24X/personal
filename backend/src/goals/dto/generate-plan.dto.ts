@@ -8,7 +8,7 @@ export class GeneratePlanDto {
   @IsEnum(PlanGranularity)
   granularity?: PlanGranularity;
 
-  @ApiPropertyOptional({ description: '覆盖已有拆解计划与计划项' })
+  @ApiPropertyOptional({ description: '覆盖已有任务计划与计划项' })
   @IsOptional()
   @IsBoolean()
   overwrite?: boolean;

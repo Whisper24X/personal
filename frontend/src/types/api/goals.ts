@@ -19,7 +19,7 @@ export type Goal = {
   prdDocPath?: string | null
   planDocPath?: string | null
   defaultWorkflowTemplateId?: string | null
-  /** 生成 PRD/拆解计划时默认使用的 Agent CLI */
+  /** 生成 PRD/任务计划时默认使用的 Agent CLI */
   agentCliId?: string | null
   agentCliConfigId?: string | null
   createdBy?: string | null
@@ -51,9 +51,9 @@ export type GoalPlanItem = {
   dependsOnItemIds: string[]
   itemOrder: number
   taskId?: string | null
-  /** 物化该计划项时使用的项目工作流模板 ID */
+  /** 从该计划项新建任务时使用的项目工作流模板 ID */
   workflowTemplateId?: string | null
-  /** 物化任务时使用的 Git 基准分支；未设置则与新建任务一致使用项目默认 */
+  /** 从计划项新建任务时使用的 Git 基准分支；未设置则与新建任务一致使用项目默认 */
   gitBaseBranch?: string | null
   status: GoalPlanItemStatus
   createdAt: string

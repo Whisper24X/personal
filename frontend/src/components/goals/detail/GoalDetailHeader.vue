@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { goalStatusLabel } from '@/constants/goal-status-labels'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import GoalPlanDependenciesDialog from '@/components/goals/detail/GoalPlanDependenciesDialog.vue'
 import type { GoalDetail } from '@/types/api/goals'
 
 defineOptions({
@@ -19,7 +21,12 @@ const props = defineProps<{
   planProgressTotal: number
   planProgressPercent: number
   planDependencyEdgeCount: number
+  planDepsHasCycle: boolean
+  planDepsGraphKey: string
+  planDepsMarkdown: string
 }>()
+
+const planDependenciesDialogOpen = ref(false)
 
 const emit = defineEmits<{
   back: []
@@ -68,7 +75,7 @@ const emit = defineEmits<{
             :aria-valuenow="Math.round(props.planProgressPercent)"
             aria-valuemin="0"
             aria-valuemax="100"
-            :aria-label="`已完成任务 ${props.planProgressDone} / 拆解计划 ${props.planProgressTotal}，约 ${Math.round(props.planProgressPercent)}%`"
+            :aria-label="`已完成任务 ${props.planProgressDone} / 任务计划 ${props.planProgressTotal}，约 ${Math.round(props.planProgressPercent)}%`"
           >
             <div
               class="bg-primary h-full rounded-full transition-[width] duration-300 ease-out"
@@ -81,7 +88,7 @@ const emit = defineEmits<{
       </div>
       <div class="flex max-w-xl flex-col items-end gap-2">
         <p class="max-w-md text-right text-xs text-muted-foreground">
-          物化前请在「拆解计划」中为每条已确认项配置工作流。
+          新建任务前请在「任务计划」中为每条已确认项配置工作流。
         </p>
         <div class="flex flex-wrap justify-end gap-2">
           <Button
@@ -102,7 +109,7 @@ const emit = defineEmits<{
             :disabled="props.generatingPrd || props.generatingPlan"
             @click="emit('generatePlan')"
           >
-            {{ props.generatingPlan ? '拆解计划生成中…' : '生成拆解计划' }}
+            {{ props.generatingPlan ? '任务计划生成中…' : '生成任务计划' }}
           </Button>
           <Button
             v-else
@@ -112,9 +119,26 @@ const emit = defineEmits<{
             :disabled="props.materializing || props.generatingPrd || props.generatingPlan"
             @click="emit('materializeSelected')"
           >
-            {{ props.materializing ? '物化中…' : '物化已确认项' }}
+            {{ props.materializing ? '新建任务中…' : '新建任务' }}
           </Button>
         </div>
+        <Button
+          v-if="props.goalHasPlanItems"
+          type="button"
+          variant="outline"
+          size="sm"
+          class="text-xs"
+          @click="planDependenciesDialogOpen = true"
+        >
+          计划依赖图
+        </Button>
+        <GoalPlanDependenciesDialog
+          :open="planDependenciesDialogOpen"
+          :plan-deps-has-cycle="props.planDepsHasCycle"
+          :plan-deps-graph-key="props.planDepsGraphKey"
+          :plan-deps-markdown="props.planDepsMarkdown"
+          @update:open="planDependenciesDialogOpen = $event"
+        />
       </div>
     </div>
   </Card>

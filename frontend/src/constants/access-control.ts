@@ -335,15 +335,15 @@ export const ROUTE_ACCESS_CONFIG = {
     capabilities: ['project.task.read'],
   },
   goalCreate: {
-    title: '新建 Goal',
+    title: '新建需求',
     capabilities: ['project.task.read'],
   },
   projectGoals: {
-    title: 'Goal 目标',
+    title: '需求',
     capabilities: ['project.task.read'],
   },
   goalDetail: {
-    title: 'Goal 详情',
+    title: '需求详情',
     capabilities: ['project.task.read'],
   },
   taskDetail: {
@@ -381,7 +381,7 @@ export type ProjectMenuAccessItem = {
 
 export const PROJECT_MENU_ACCESS_CONFIG = [
   { id: 'dashboard', label: '仪表盘', to: '/dashboard', capabilities: ['project.dashboard.read'] },
-  { id: 'goals', label: '新建 Goal', to: '/goals', capabilities: ['project.task.read'] },
+  { id: 'goals', label: '新建需求', to: '/goals', capabilities: ['project.task.read'] },
   { id: 'tasks', label: '新建任务', to: '/tasks', capabilities: ['project.task.read'] },
   { id: 'kanban', label: '看板', to: '/kanban', capabilities: ['project.kanban.read'] },
   { id: 'automations', label: '自动化', to: '/automations', capabilities: ['project.automation.read'] },

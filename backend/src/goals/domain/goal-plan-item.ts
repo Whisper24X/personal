@@ -35,7 +35,7 @@ export class GoalPlanItem {
   @ApiProperty({
     required: false,
     nullable: true,
-    description: '物化该计划项时使用的项目工作流模板 ID',
+    description: '从该计划项新建任务时使用的项目工作流模板 ID',
   })
   workflowTemplateId?: string | null;
 
@@ -43,7 +43,7 @@ export class GoalPlanItem {
     required: false,
     nullable: true,
     description:
-      '物化任务时使用的 Git 基准分支（与新建任务 gitBaseBranch 一致）',
+      '从计划项新建任务时使用的 Git 基准分支（与新建任务 gitBaseBranch 一致）',
   })
   gitBaseBranch?: string | null;
 

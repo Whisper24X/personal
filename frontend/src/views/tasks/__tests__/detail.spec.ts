@@ -642,7 +642,7 @@ describe('TaskDetailView toasts', () => {
     expect(wrapper.text()).not.toContain('停止')
     expect(wrapper.text()).not.toContain('清理工作区')
     expect(wrapper.text()).not.toContain('编辑')
-    expect(wrapper.text()).not.toContain('任务列表')
+    expect(wrapper.text()).not.toContain('任务计划')
     expect(wrapper.text()).not.toContain('项目详情')
   })
 
