@@ -25,6 +25,7 @@ import type {
 import { STORAGE_KEYS } from '@/types/common/storage'
 import { BUTTON_ACCESS_CONFIG, hasSomeAccess } from '@/constants/access-control'
 import { toErrorMessage } from '@/utils/http/to-error-message'
+import { refreshSidebarRecentTasks } from '@/utils/sidebar-recent-tasks-refresh'
 
 defineOptions({
   name: 'TaskDetailView',
@@ -81,6 +82,7 @@ const message = useMessage()
 let streamAbortController: AbortController | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let detailRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
+let sidebarRecentTasksDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let messageRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let taskDataRequestId = 0
 
@@ -398,6 +400,7 @@ const shouldRefreshTaskDetailForLog = (log: TaskLog) => {
     'Task completed; worktree preserved',
     'Agent node execution failed',
     'Node approved and marked as done',
+    'Task title generated',
   ]
 
   return refreshMessages.some((messageText) => log.message?.includes(messageText))
@@ -439,6 +442,10 @@ const disconnectStream = () => {
   if (detailRefreshDebounceTimer) {
     clearTimeout(detailRefreshDebounceTimer)
     detailRefreshDebounceTimer = null
+  }
+  if (sidebarRecentTasksDebounceTimer) {
+    clearTimeout(sidebarRecentTasksDebounceTimer)
+    sidebarRecentTasksDebounceTimer = null
   }
 
   if (streamAbortController) {
@@ -498,6 +505,13 @@ const connectStream = async () => {
               detailRefreshDebounceTimer = setTimeout(() => {
                 detailRefreshDebounceTimer = null
                 void loadTaskData()
+              }, 300)
+            }
+            if (payload.message?.includes('Task title generated')) {
+              if (sidebarRecentTasksDebounceTimer) clearTimeout(sidebarRecentTasksDebounceTimer)
+              sidebarRecentTasksDebounceTimer = setTimeout(() => {
+                sidebarRecentTasksDebounceTimer = null
+                void refreshSidebarRecentTasks()
               }, 300)
             }
           } catch {
@@ -783,6 +797,7 @@ const removeTask = async () => {
     removeStepSummaryCacheForTask(taskId.value)
     deleteOpen.value = false
     message.success('任务已删除')
+    void refreshSidebarRecentTasks()
     await router.push(taskListRoute.value)
   } catch (error) {
     message.error(toErrorMessage(error, '删除任务失败'))

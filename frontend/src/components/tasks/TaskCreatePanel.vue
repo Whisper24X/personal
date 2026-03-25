@@ -15,6 +15,8 @@ import { STORAGE_KEYS } from '@/types/common/storage'
 import { BUTTON_ACCESS_CONFIG, hasSomeAccess } from '@/constants/access-control'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
+import { initialTitleFromPrompt } from '@/utils/task-title-placeholder'
+import { refreshSidebarRecentTasks } from '@/utils/sidebar-recent-tasks-refresh'
 
 type SupportedCliToolId = 'claude-code' | 'codex' | 'gemini-cli' | 'cursor-agent' | 'opencode'
 
@@ -558,29 +560,14 @@ const createTask = async () => {
 
   try {
     const project = projects.value.find((item) => item.id === projectIdForSubmit)
-    const suggestPayload =
-      createForm.mode === 'conversation'
-        ? {
-            projectId: projectIdForSubmit,
-            mode: createForm.mode,
-            prompt: createForm.prompt.trim(),
-            agentCliId: createForm.agentCliId || undefined,
-            agentCliConfigId: createForm.agentCliConfigId || undefined,
-          }
-        : {
-            projectId: projectIdForSubmit,
-            mode: createForm.mode,
-            prompt: createForm.prompt.trim(),
-            workflowTemplateId: createForm.workflowTemplateId || undefined,
-          }
-
-    const { title: generatedTitle } = await tasksApi.suggestTaskTitle(suggestPayload)
+    const promptTrimmed = createForm.prompt.trim()
+    const initialTitle = initialTitleFromPrompt(promptTrimmed)
 
     const task = await tasksApi.create({
       projectId: projectIdForSubmit,
       mode: createForm.mode,
-      title: generatedTitle.trim(),
-      prompt: createForm.prompt.trim(),
+      title: initialTitle,
+      prompt: promptTrimmed,
       gitBaseBranch: createForm.gitBaseBranch.trim() || project?.defaultBranch?.trim() || undefined,
       configJson: {
         ...(createForm.mode === 'workflow'
@@ -603,6 +590,7 @@ const createTask = async () => {
     message.success('创建任务成功，正在跳转详情')
     resetCreateForm(projectIdForSubmit)
     emit('created', task.id)
+    void refreshSidebarRecentTasks()
     await router.push({
       name: 'task-detail',
       params: { id: task.id },
@@ -991,34 +979,10 @@ onBeforeUnmount(() => {
         </form>
       </template>
     </div>
-
-    <Teleport to="body">
-      <Transition name="create-task-overlay">
-        <div
-          v-if="submitting"
-          class="fixed inset-0 z-[200] flex items-center justify-center bg-background/85 backdrop-blur-sm"
-          role="status"
-          aria-live="polite"
-          aria-busy="true"
-        >
-          <p class="px-6 text-center text-base font-medium text-foreground">正在创建任务，请稍后...</p>
-        </div>
-      </Transition>
-    </Teleport>
   </div>
 </template>
 
 <style scoped>
-.create-task-overlay-enter-active,
-.create-task-overlay-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.create-task-overlay-enter-from,
-.create-task-overlay-leave-to {
-  opacity: 0;
-}
-
 .headline-fade-enter-active,
 .headline-fade-leave-active {
   transition: opacity 0.45s ease;

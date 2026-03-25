@@ -8,11 +8,19 @@ import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
 import { TaskMode } from '../dto/task-mode.enum';
 import { TaskStatus } from '../dto/task-status.enum';
+import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { AgentRunnerService } from '../agent-runner.service';
+import { TaskRepository } from '../infrastructure/persistence/task.repository';
+import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskConfigResolverService } from './task-config-resolver.service';
+import { TaskLogService } from './task-log.service';
+import { TaskAccessService } from './task-access.service';
 import { SuggestTaskTitleResponseDto } from '../dto/suggest-task-title.dto';
+import {
+  MAX_TASK_TITLE_DB,
+  initialTitleFromPrompt,
+} from '../utils/task-title-placeholder';
 
-const MAX_TITLE_DB = 160;
 const MAX_PROMPT_IN_PROMPT = 8000;
 
 @Injectable()
@@ -24,6 +32,10 @@ export class TaskTitleSuggestionService {
     private readonly workflowTemplatesService: WorkflowTemplatesService,
     private readonly taskConfigResolver: TaskConfigResolverService,
     private readonly agentRunnerService: AgentRunnerService,
+    private readonly taskRepository: TaskRepository,
+    private readonly taskNodeRepository: TaskNodeRepository,
+    private readonly taskLogService: TaskLogService,
+    private readonly taskAccessService: TaskAccessService,
   ) {}
 
   async suggestTitle(
@@ -110,9 +122,86 @@ export class TaskTitleSuggestionService {
       updatedAt: now,
     };
 
+    const title = await this.generateTitleFromClampedPrompt(
+      project,
+      syntheticTask,
+      syntheticNode,
+      clampedPrompt,
+    );
+
+    return { title };
+  }
+
+  /**
+   * 创建任务成功后异步生成标题并写库；失败仅打日志，不抛错。
+   */
+  async regenerateTitleAfterCreate(
+    taskId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    try {
+      const task = await this.taskAccessService.getTaskOrThrow(
+        taskId,
+        currentUser,
+        'project.task.read',
+      );
+      const promptText = task.prompt?.trim() ?? '';
+      if (!promptText) {
+        return;
+      }
+      if (task.title !== initialTitleFromPrompt(promptText)) {
+        return;
+      }
+      const project = await this.projectsService.assertProjectCapability(
+        task.projectId,
+        currentUser,
+        'project.task.read',
+      );
+      const nodes = await this.taskNodeRepository.findByTaskId(taskId);
+      const sorted = [...nodes].sort((left, right) => left.nodeOrder - right.nodeOrder);
+      const firstNode = sorted[0];
+      if (!firstNode) {
+        return;
+      }
+      const clampedPrompt =
+        promptText.length > MAX_PROMPT_IN_PROMPT
+          ? `${promptText.slice(0, MAX_PROMPT_IN_PROMPT)}…`
+          : promptText;
+      const generatedTitle = await this.generateTitleFromClampedPrompt(
+        project,
+        task,
+        firstNode,
+        clampedPrompt,
+      );
+      if (generatedTitle === task.title) {
+        return;
+      }
+      await this.taskRepository.update(task.id, { title: generatedTitle });
+      await this.taskLogService.appendLog({
+        taskId: task.id,
+        taskNodeId: null,
+        level: TaskLogLevel.info,
+        message: 'Task title generated',
+        payload: null,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `task_title_regenerate_after_create_error taskId=${taskId} ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  private async generateTitleFromClampedPrompt(
+    project: Project,
+    task: Task,
+    node: TaskNode,
+    clampedPrompt: string,
+  ): Promise<string> {
     const llmPrompt = [
       '你是任务标题生成助手。根据用户的任务说明，生成一个简短、清晰的中文任务标题。',
-      `标题长度不超过 ${Math.min(30, MAX_TITLE_DB)} 个字符。`,
+      `标题长度不超过 ${Math.min(30, MAX_TASK_TITLE_DB)} 个字符。`,
       '只输出一行 JSON，不要 markdown、不要解释。格式：{"title":"你的标题"}',
       '',
       '用户说明：',
@@ -122,8 +211,8 @@ export class TaskTitleSuggestionService {
     let result;
     try {
       result = await this.agentRunnerService.runWithCustomPrompt({
-        task: syntheticTask,
-        node: syntheticNode,
+        task,
+        node,
         project,
         prompt: llmPrompt,
       });
@@ -131,22 +220,20 @@ export class TaskTitleSuggestionService {
       this.logger.warn(
         `task_title_suggest_runner_error ${error instanceof Error ? error.message : String(error)}`,
       );
-      return { title: this.fallbackTitle(clampedPrompt) };
+      return this.fallbackTitle(clampedPrompt);
     }
 
     if (!result.success) {
       this.logger.warn(
         `task_title_suggest_runner_failed exit=${result.exitCode} stderr=${result.stderr.slice(0, 400)}`,
       );
-      return { title: this.fallbackTitle(clampedPrompt) };
+      return this.fallbackTitle(clampedPrompt);
     }
 
     const parsed = this.parseTitleFromStdout(result.stdout);
-    const title = parsed
+    return parsed
       ? this.clipTitle(parsed)
       : this.fallbackTitle(clampedPrompt);
-
-    return { title };
   }
 
   private async resolveTargetAgents(
@@ -365,10 +452,10 @@ export class TaskTitleSuggestionService {
     if (!t) {
       return '新建任务';
     }
-    if (t.length <= MAX_TITLE_DB) {
+    if (t.length <= MAX_TASK_TITLE_DB) {
       return t;
     }
-    return `${t.slice(0, MAX_TITLE_DB - 1)}…`;
+    return `${t.slice(0, MAX_TASK_TITLE_DB - 1)}…`;
   }
 
   private fallbackTitle(prompt: string): string {
