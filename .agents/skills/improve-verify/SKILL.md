@@ -18,8 +18,8 @@ description: 校验 issues 与代码质量；完成时归档 improveAnalyzeResul
 | **输入文件** | `docs/{{gitBranch}}/improveAnalyzeResult.md`（issues 及 status） |
 | **输入文件** | `docs/{{gitBranch}}/improveExecuteResult.md`（执行结果）    |
 | **结果文件** | `docs/{{gitBranch}}/improveVerifyResult.md`                 |
-| **文件格式** | JSON 格式，包含 result、reason、details 字段       |
-| **状态值**   | `已完成` / `未完成` / `验证失败`（三选一）         |
+| **文件格式** | **纯文本固定三行**（见下文「三行格式」）           |
+| **状态值**   | 第 1 行：`已完成` / `未完成` / `验证失败`（三选一） |
 
 ## 执行步骤
 
@@ -127,76 +127,54 @@ date '+%Y-%m-%d %H:%M:%S'
 
 ### 5. 输出验证结果
 
-将结果以 JSON 格式写入 `docs/{{gitBranch}}/improveVerifyResult.md`。
+将结果以**纯文本**写入 `docs/{{gitBranch}}/improveVerifyResult.md`。
+
+**三行格式（强制）**：
+
+1. **第 1 行**：状态，仅为 `已完成`、`未完成`、`验证失败` 之一（无前后空格）。
+2. **第 2 行**：原因摘要（单行，行内禁止换行）。
+3. **第 3 行**：详情摘要（单行）：可含 issue 统计、待办摘要、代码质量/构建/lint 结论等；无补充信息时写 `无`。
+
+文件共 **恰好三行**（第 3 行后可跟一个结尾换行符）；不要输出 JSON、不要额外空行。
 
 **确保 `docs/{{gitBranch}}/` 目录存在**，不存在则先创建。
 
 ### 示例 - 已完成
 
-```json
-{
-  "result": "已完成",
-  "reason": "所有问题已解决，代码质量检查通过，improveAnalyzeResult.md 已归档并删除",
-  "details": {
-    "total_issues": 5,
-    "resolved_issues": 5,
-    "pending_issues": 0,
-    "code_quality": "通过",
-    "build_check": "通过",
-    "lint_check": "通过"
-  }
-}
+```
+已完成
+所有问题已解决，代码质量检查通过，improveAnalyzeResult.md 已归档并删除
+issues 总计 5、已解决 5、待处理 0；代码质量：通过；构建：通过；lint：通过
 ```
 
 ### 示例 - 未完成（仍有未解决问题）
 
-```json
-{
-  "result": "未完成",
-  "reason": "仍有 2 个问题未解决",
-  "details": {
-    "total_issues": 5,
-    "resolved_issues": 3,
-    "pending_issues": 2,
-    "pending_list": [
-      { "id": 2, "title": "列表加载超过 3 秒", "priority": "medium" },
-      { "id": 3, "title": "变量命名不规范", "priority": "low" }
-    ],
-    "code_quality": "通过"
-  }
-}
+```
+未完成
+仍有 2 个问题未解决
+issues 总计 5、已解决 3、待处理 2（#2 列表加载超过 3 秒 medium；#3 变量命名不规范 low）；代码质量：通过
 ```
 
 ### 示例 - 未完成（代码质量不通过）
 
-```json
-{
-  "result": "未完成",
-  "reason": "所有问题已在 JSON 中标记解决，但代码构建失败",
-  "details": {
-    "total_issues": 3,
-    "resolved_issues": 3,
-    "pending_issues": 0,
-    "code_quality": "未通过",
-    "build_check": "失败：TypeScript 编译错误 2 处",
-    "lint_check": "通过"
-  }
-}
+```
+未完成
+所有问题已在 JSON 中标记解决，但代码构建失败
+issues 总计 3、已解决 3、待处理 0；代码质量：未通过；构建：失败 TypeScript 编译错误 2 处；lint：通过
 ```
 
 ### 示例 - 验证失败
 
-```json
-{
-  "result": "验证失败",
-  "reason": "docs/{{gitBranch}}/improveAnalyzeResult.md 不存在或无法解析"
-}
+```
+验证失败
+docs/{{gitBranch}}/improveAnalyzeResult.md 不存在或无法解析
+无
 ```
 
 ## 重要提醒
 
 1. **必须写入文件**：结果必须写入 `docs/{{gitBranch}}/improveVerifyResult.md`，不是输出到终端
-2. **JSON 格式严格**：确保输出的是合法 JSON，可被程序解析
+2. **三行纯文本**：严格三行，第 2、3 行内不换行；下游按行读取第 1 行即可得状态
 3. **确保目录存在**：如果 `docs/{{gitBranch}}/` 目录不存在，需要先创建
 4. **已完成时必须先追加历史再删除 improveAnalyzeResult.md**：顺序不能反
 5. **历史文件是追加写入**：`docs/{{gitBranch}}/improveHistory.md` 每次追加新条目，不是覆盖
