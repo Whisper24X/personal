@@ -220,6 +220,44 @@ describe('TaskDetailView toasts', () => {
     vi.useRealTimers()
   })
 
+  it('refreshes the right panel when SSE reports a node status change', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    openSseStream.mockImplementation(async (_url, _query, options) => {
+      options?.onEvent?.({
+        data: JSON.stringify({
+          id: 'log-1',
+          taskId: 'task-1',
+          taskNodeId: 'node-1',
+          level: 'info',
+          message: 'Node execution started',
+          payload: {},
+          createdAt: '2026-02-27T10:00:01.000Z',
+        }),
+      })
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            props: ['refreshToken'],
+            template: '<div data-testid="right-panel" :data-refresh-token="String(refreshToken)" />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="right-panel"]').attributes('data-refresh-token')).toBe('1')
+  })
+
   it('keeps existing content visible while SSE-triggered detail refresh is pending', async () => {
     vi.useFakeTimers()
 

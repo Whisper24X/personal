@@ -86,6 +86,24 @@ let sidebarRecentTasksDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let messageRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let taskDataRequestId = 0
 
+const TASK_DETAIL_REFRESH_LOG_MESSAGES = [
+  'Node execution started',
+  'Agent node completed; pending approval',
+  'Agent node completed successfully',
+  'Task completed; worktree preserved',
+  'Agent node execution failed',
+  'Node approved and marked as done',
+  'Task title generated',
+] as const
+
+const NODE_STATUS_CHANGE_LOG_MESSAGES = [
+  'Node execution started',
+  'Agent node completed; pending approval',
+  'Agent node completed successfully',
+  'Agent node execution failed',
+  'Node approved and marked as done',
+] as const
+
 const statusLabelMap: Record<Task['status'], string> = {
   todo: '待执行',
   in_progress: '执行中',
@@ -393,17 +411,11 @@ const upsertLog = (nextLog: TaskLog) => {
 }
 
 const shouldRefreshTaskDetailForLog = (log: TaskLog) => {
-  const refreshMessages = [
-    'Node execution started',
-    'Agent node completed; pending approval',
-    'Agent node completed successfully',
-    'Task completed; worktree preserved',
-    'Agent node execution failed',
-    'Node approved and marked as done',
-    'Task title generated',
-  ]
+  return TASK_DETAIL_REFRESH_LOG_MESSAGES.some((messageText) => log.message?.includes(messageText))
+}
 
-  return refreshMessages.some((messageText) => log.message?.includes(messageText))
+const shouldRefreshRightPanelForNodeStatusLog = (log: TaskLog) => {
+  return NODE_STATUS_CHANGE_LOG_MESSAGES.some((messageText) => log.message?.includes(messageText))
 }
 
 const clearReconnectTimer = () => {
@@ -499,6 +511,9 @@ const connectStream = async () => {
             upsertLog(payload)
             if (isAgentOutputLog(payload) || shouldRefreshTaskDetailForLog(payload)) {
               scheduleRefreshMessages()
+            }
+            if (shouldRefreshRightPanelForNodeStatusLog(payload)) {
+              rightPanelRefreshToken.value += 1
             }
             if (shouldRefreshTaskDetailForLog(payload)) {
               if (detailRefreshDebounceTimer) clearTimeout(detailRefreshDebounceTimer)
