@@ -1,9 +1,14 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class GoalLayerSchema1742850000000 implements MigrationInterface {
-  name = 'GoalLayerSchema1742850000000';
+/**
+ * Goal 层相关 schema（合并原 GoalLayerSchema / GoalAgentCliColumns /
+ * GoalPlanItemWorkflowTemplate / GoalPlanItemGitBaseBranch），须在 InitAinativeSchema 之后执行。
+ */
+export class GoalSchema1774428115491 implements MigrationInterface {
+  name = 'GoalSchema1774428115491';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // ── 原 GoalLayerSchema1742850000000 ──
     await queryRunner.query(
       `CREATE TYPE "public"."goal_status_enum" AS ENUM('draft', 'prd_generated', 'prd_confirmed', 'planned', 'in_progress', 'done', 'archived')`,
     );
@@ -90,9 +95,50 @@ export class GoalLayerSchema1742850000000 implements MigrationInterface {
     await queryRunner.query(
       `ALTER TABLE "goals" ADD CONSTRAINT "FK_goals_project" FOREIGN KEY ("projectId") REFERENCES "projects"("id") ON DELETE CASCADE ON UPDATE NO ACTION`,
     );
+
+    // ── 原 GoalAgentCliColumns1742860000000 ──
+    await queryRunner.query(
+      `ALTER TABLE "goals" ADD "agentCliId" character varying(64)`,
+    );
+    await queryRunner.query(
+      `COMMENT ON COLUMN "goals"."agentCliId" IS '生成 PRD/拆解计划时默认使用的 Agent CLI 工具 ID'`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "goals" ADD "agentCliConfigId" uuid`,
+    );
+    await queryRunner.query(
+      `COMMENT ON COLUMN "goals"."agentCliConfigId" IS '生成 PRD/拆解计划时默认使用的业务线 Agent 工具配置 ID'`,
+    );
+
+    // ── 原 GoalPlanItemWorkflowTemplate1742870000000 ──
+    await queryRunner.query(
+      `ALTER TABLE "goal_plan_items" ADD "workflowTemplateId" uuid`,
+    );
+    await queryRunner.query(
+      `COMMENT ON COLUMN "goal_plan_items"."workflowTemplateId" IS '物化该计划项时使用的项目工作流模板 ID'`,
+    );
+
+    // ── 原 GoalPlanItemGitBaseBranch1742880000000 ──
+    await queryRunner.query(
+      `ALTER TABLE "goal_plan_items" ADD "gitBaseBranch" character varying(120)`,
+    );
+    await queryRunner.query(
+      `COMMENT ON COLUMN "goal_plan_items"."gitBaseBranch" IS '物化任务时使用的 Git 基准分支（与 CreateTaskDto.gitBaseBranch 一致）'`,
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(
+      `ALTER TABLE "goal_plan_items" DROP COLUMN "gitBaseBranch"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "goal_plan_items" DROP COLUMN "workflowTemplateId"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "goals" DROP COLUMN "agentCliConfigId"`,
+    );
+    await queryRunner.query(`ALTER TABLE "goals" DROP COLUMN "agentCliId"`);
+
     await queryRunner.query(
       `ALTER TABLE "goals" DROP CONSTRAINT "FK_goals_project"`,
     );

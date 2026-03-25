@@ -46,7 +46,7 @@ export function groupClaudeEntries(entries: NormalizedEntry[]): ClaudeMessageGro
 
   for (const entry of entries) {
     if (entry.type === 'assistant_message') {
-      const leadingThinking =
+      const leadingThinking: NormalizedEntry[] | null =
         currentTaskGroup && isThinkingOnlyTaskGroup(currentTaskGroup)
           ? [...currentTaskGroup.tools]
           : null

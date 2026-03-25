@@ -70,7 +70,7 @@ export function groupCodexEntries(entries: NormalizedEntry[]): CodexMessageGroup
 
   for (const entry of entries) {
     if (entry.type === 'assistant_message') {
-      const leadingThinking =
+      const leadingThinking: NormalizedEntry[] | null =
         currentTaskGroup && isThinkingOnlyTaskGroup(currentTaskGroup)
           ? [...currentTaskGroup.tools]
           : null

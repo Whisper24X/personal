@@ -303,6 +303,9 @@ const submit = async () => {
     let uploadFailCount = 0
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
+      if (!file) {
+        continue
+      }
       const relativePath = `${goalInputDirRelativePath(goal.id)}/${crypto.randomUUID()}-${sanitizeGoalInputBasename(file.name)}`
       try {
         await createOrUpdateProjectDoc(projectIdForSubmit, relativePath, file)
