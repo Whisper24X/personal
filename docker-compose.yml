@@ -9,8 +9,10 @@ services:
       dockerfile: Dockerfile
     container_name: ainative-backend
     restart: unless-stopped
-    env_file: ./backend/.env.development
+    env_file:
+      - ./backend/.env.${NODE_ENV:?NODE_ENV is required}
     environment:
+      NODE_ENV: ${NODE_ENV:?NODE_ENV is required}
       AINATIVE_DATA_ROOT_DIR: ${PWD}/tmp
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

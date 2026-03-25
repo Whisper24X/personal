@@ -12,7 +12,14 @@
 项目统一使用 [docker-compose.yml](./docker-compose.yml) 进行本地构建和运行。
 
 ```bash
-pnpm run docker
+NODE_ENV=development pnpm run docker
+```
+
+必须显式设置 `NODE_ENV`。Compose 会加载 `backend/.env.${NODE_ENV}`，并把同一个 `NODE_ENV` 传给后端容器；如果没有这个环境变量，`docker compose` 会直接报错。
+
+```bash
+NODE_ENV=production pnpm run docker
+NODE_ENV=local pnpm run docker
 ```
 
 该命令会执行：
@@ -29,7 +36,13 @@ pnpm run docker
 如果只想预先构建镜像：
 
 ```bash
-pnpm run docker:build
+NODE_ENV=development pnpm run docker:build
+```
+
+同样支持通过 `NODE_ENV` 选择对应的后端配置文件：
+
+```bash
+NODE_ENV=test pnpm run docker:build
 ```
 
 ## 3. 常用运行命令
