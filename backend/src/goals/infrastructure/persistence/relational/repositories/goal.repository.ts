@@ -64,7 +64,10 @@ export class GoalRelationalRepository extends GoalRepository {
     return row ? GoalMapper.goalToDomain(row) : null;
   }
 
-  async update(id: string, payload: Partial<Goal>): Promise<NullableType<Goal>> {
+  async update(
+    id: string,
+    payload: Partial<Goal>,
+  ): Promise<NullableType<Goal>> {
     const patch: Record<string, unknown> = { updatedAt: new Date() };
     if (payload.title !== undefined) {
       patch.title = payload.title;
@@ -258,7 +261,9 @@ export class GoalRelationalRepository extends GoalRepository {
     return row ? GoalMapper.planItemToDomain(row) : null;
   }
 
-  async listTaskDependenciesForGoal(goalId: string): Promise<TaskDependencyEdge[]> {
+  async listTaskDependenciesForGoal(
+    goalId: string,
+  ): Promise<TaskDependencyEdge[]> {
     const tasks = await this.taskRepo.find({
       where: { goalId, deletedAt: IsNull() },
       select: ['id'],
@@ -309,7 +314,10 @@ export class GoalRelationalRepository extends GoalRepository {
         }
       }
       for (const edge of edges) {
-        if (!ids.has(edge.predecessorTaskId) || !ids.has(edge.successorTaskId)) {
+        if (
+          !ids.has(edge.predecessorTaskId) ||
+          !ids.has(edge.successorTaskId)
+        ) {
           continue;
         }
         if (edge.predecessorTaskId === edge.successorTaskId) {

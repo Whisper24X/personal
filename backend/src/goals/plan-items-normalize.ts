@@ -128,11 +128,7 @@ export function normalizePlanItemsFromAgent(
       );
     }
 
-    const localId = pickFirstNonEmptyString(raw, [
-      'localId',
-      'local_id',
-      'id',
-    ]);
+    const localId = pickFirstNonEmptyString(raw, ['localId', 'local_id', 'id']);
     const title = pickFirstNonEmptyString(raw, [
       'title',
       'name',
@@ -181,7 +177,11 @@ export function normalizePlanItemsFromAgent(
   return out;
 }
 
-const TEXT_FIELD_KEYS = ['summary', 'acceptanceCriteria', 'suggestedPrompt'] as const;
+const TEXT_FIELD_KEYS = [
+  'summary',
+  'acceptanceCriteria',
+  'suggestedPrompt',
+] as const;
 
 /**
  * 若任一项缺少非空 summary / acceptanceCriteria / suggestedPrompt，返回首个缺口；否则 null。

@@ -11,7 +11,10 @@ export const GOAL_UNPACK_MAX_FILES = 500;
 /** extract-zip / yauzl 条目最小字段 */
 export type ZipEntryLike = { fileName: string };
 
-export function assertSafeZipEntry(targetDir: string, entry: ZipEntryLike): void {
+export function assertSafeZipEntry(
+  targetDir: string,
+  entry: ZipEntryLike,
+): void {
   const name = entry.fileName.replace(/\\/g, '/');
   if (!name || name.endsWith('/')) {
     return;

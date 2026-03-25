@@ -154,10 +154,7 @@ export class GoalsController {
 
   @Get(':id/tasks')
   @ApiOkResponse({ type: Task, isArray: true })
-  listGoalTasks(
-    @Request() request,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
+  listGoalTasks(@Request() request, @Param('id', ParseUUIDPipe) id: string) {
     return this.goalsService.listGoalTasks(id, request.user);
   }
 

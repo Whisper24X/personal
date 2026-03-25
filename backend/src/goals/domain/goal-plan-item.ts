@@ -42,7 +42,8 @@ export class GoalPlanItem {
   @ApiProperty({
     required: false,
     nullable: true,
-    description: '物化任务时使用的 Git 基准分支（与新建任务 gitBaseBranch 一致）',
+    description:
+      '物化任务时使用的 Git 基准分支（与新建任务 gitBaseBranch 一致）',
   })
   gitBaseBranch?: string | null;
 

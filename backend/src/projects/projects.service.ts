@@ -1753,8 +1753,9 @@ export class ProjectsService {
         agentCliConfigId: cliConfigId,
       });
       const stderr =
-        [agentResult.stderr, agentResult.errorMessage].filter(Boolean).join('\n') ||
-        '';
+        [agentResult.stderr, agentResult.errorMessage]
+          .filter(Boolean)
+          .join('\n') || '';
       return {
         success: agentResult.success,
         stdout: agentResult.stdout.trim(),

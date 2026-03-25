@@ -20,7 +20,10 @@ export class GoalSourceDocEntity extends EntityRelationalHelper {
   @Column({ type: 'uuid', comment: '所属 Goal' })
   goalId: string;
 
-  @ManyToOne(() => GoalEntity, { onDelete: 'CASCADE', createForeignKeyConstraints: false })
+  @ManyToOne(() => GoalEntity, {
+    onDelete: 'CASCADE',
+    createForeignKeyConstraints: false,
+  })
   @JoinColumn({ name: 'goalId' })
   goal?: GoalEntity;
 

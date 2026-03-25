@@ -11,7 +11,10 @@ export class TaskDependencyEdge {
   @ApiProperty()
   successorTaskId: string;
 
-  @ApiProperty({ enum: TaskDependencyRelation, enumName: 'TaskDependencyRelation' })
+  @ApiProperty({
+    enum: TaskDependencyRelation,
+    enumName: 'TaskDependencyRelation',
+  })
   relationType: TaskDependencyRelation;
 
   @ApiProperty()

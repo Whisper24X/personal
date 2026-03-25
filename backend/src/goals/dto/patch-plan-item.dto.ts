@@ -1,5 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsEnum, IsInt, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsArray,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 import { GoalPlanItemStatus } from './goal-plan-item-status.enum';
 
 export class PatchPlanItemDto {
@@ -35,7 +43,10 @@ export class PatchPlanItemDto {
   @IsInt()
   itemOrder?: number;
 
-  @ApiPropertyOptional({ enum: GoalPlanItemStatus, enumName: 'GoalPlanItemStatus' })
+  @ApiPropertyOptional({
+    enum: GoalPlanItemStatus,
+    enumName: 'GoalPlanItemStatus',
+  })
   @IsOptional()
   @IsEnum(GoalPlanItemStatus)
   status?: GoalPlanItemStatus;
@@ -48,7 +59,8 @@ export class PatchPlanItemDto {
   workflowTemplateId?: string;
 
   @ApiPropertyOptional({
-    description: '物化任务时使用的 Git 基准分支（与 CreateTaskDto.gitBaseBranch 一致）',
+    description:
+      '物化任务时使用的 Git 基准分支（与 CreateTaskDto.gitBaseBranch 一致）',
   })
   @IsOptional()
   @IsString()

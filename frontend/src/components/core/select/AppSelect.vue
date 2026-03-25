@@ -42,6 +42,11 @@ const props = withDefaults(
     emptyText?: string
     panelZIndex?: number | string
     panelPlacement?: 'auto' | 'top' | 'bottom'
+    /**
+     * 为 false 时不限制下拉面板高度、不使用内部滚动，适合选项少、标签较短的列表。
+     * 默认可限制高度以避免长列表撑出视口。
+     */
+    clampPanelHeight?: boolean
   }>(),
   {
     placeholder: '请选择',
@@ -59,6 +64,7 @@ const props = withDefaults(
     emptyText: '暂无可选项',
     panelZIndex: 80,
     panelPlacement: 'auto',
+    clampPanelHeight: true,
   },
 )
 
@@ -196,7 +202,9 @@ const triggerClasses = computed(() => {
 
 const menuClasses = computed(() => {
   return [
-    'overflow-auto rounded-xl border border-border bg-background/95 p-1 shadow-2xl backdrop-blur-sm',
+    props.clampPanelHeight
+      ? 'overflow-auto rounded-xl border border-border bg-background/95 p-1 shadow-2xl backdrop-blur-sm'
+      : 'overflow-visible rounded-xl border border-border bg-background/95 p-1 shadow-2xl backdrop-blur-sm',
     props.menuClass,
   ]
 })
@@ -263,16 +271,19 @@ const updatePanelPosition = () => {
   )
   const left = Math.min(Math.max(triggerRect.left, viewportPadding), maxLeft)
 
-  panelStyle.value = {
+  const style: CSSProperties = {
     position: 'fixed',
     top: `${top}px`,
     left: `${left}px`,
     minWidth: `${minWidth}px`,
-    maxHeight: `${maxHeight}px`,
     maxWidth: props.matchTriggerWidth ? undefined : `${panelMaxWidth}px`,
     width: props.matchTriggerWidth ? `${minWidth}px` : 'max-content',
     zIndex: String(props.panelZIndex),
   }
+  if (props.clampPanelHeight) {
+    style.maxHeight = `${maxHeight}px`
+  }
+  panelStyle.value = style
 }
 
 const closeDropdown = ({ focus = true } = {}) => {

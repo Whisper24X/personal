@@ -43,7 +43,10 @@ export abstract class GoalRepository {
 
   abstract listPlanItems(goalId: string): Promise<GoalPlanItem[]>;
 
-  abstract replacePlanItems(goalId: string, items: GoalPlanItem[]): Promise<void>;
+  abstract replacePlanItems(
+    goalId: string,
+    items: GoalPlanItem[],
+  ): Promise<void>;
 
   abstract updatePlanItem(
     goalId: string,
@@ -56,11 +59,15 @@ export abstract class GoalRepository {
     itemId: string,
   ): Promise<NullableType<GoalPlanItem>>;
 
-  abstract listTaskDependenciesForGoal(goalId: string): Promise<TaskDependencyEdge[]>;
+  abstract listTaskDependenciesForGoal(
+    goalId: string,
+  ): Promise<TaskDependencyEdge[]>;
 
   abstract replaceTaskDependenciesForGoal(
     goalId: string,
-    edges: Array<Pick<TaskDependencyEdge, 'predecessorTaskId' | 'successorTaskId'>>,
+    edges: Array<
+      Pick<TaskDependencyEdge, 'predecessorTaskId' | 'successorTaskId'>
+    >,
   ): Promise<void>;
 
   abstract insertTaskDependency(

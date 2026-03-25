@@ -13,7 +13,10 @@ export class TaskDependencyEdgeDto {
 }
 
 export class ReplaceTaskDependenciesDto {
-  @ApiProperty({ type: [TaskDependencyEdgeDto], description: '空数组表示清除全部依赖边' })
+  @ApiProperty({
+    type: [TaskDependencyEdgeDto],
+    description: '空数组表示清除全部依赖边',
+  })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => TaskDependencyEdgeDto)

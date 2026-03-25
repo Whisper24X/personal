@@ -46,7 +46,7 @@ describe('GoalsService.remove', () => {
     };
   };
 
-  it('deletes tasks, goal docs subtree, child rows, then soft-removes goal', async () => {
+  it('should delete tasks, goal docs subtree, child rows, then soft-remove goal', async () => {
     const {
       service,
       goalRepository,
@@ -91,7 +91,7 @@ describe('GoalsService.remove', () => {
     expect(goalRepository.softRemove).toHaveBeenCalledWith('goal-1');
   });
 
-  it('still removes docs and goal when there are no tasks', async () => {
+  it('should still remove docs and goal when there are no tasks', async () => {
     const {
       service,
       goalRepository,

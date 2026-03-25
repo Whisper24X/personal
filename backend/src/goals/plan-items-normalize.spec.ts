@@ -5,7 +5,7 @@ import {
 } from './plan-items-normalize';
 
 describe('normalizePlanItemsFromAgent', () => {
-  it('accepts canonical localId and title', () => {
+  it('should accept canonical localId and title', () => {
     const r = normalizePlanItemsFromAgent([
       {
         localId: 'A',
@@ -22,7 +22,7 @@ describe('normalizePlanItemsFromAgent', () => {
     ]);
   });
 
-  it('maps id and name to localId and title', () => {
+  it('should map id and name to localId and title', () => {
     const r = normalizePlanItemsFromAgent([
       { id: 'FE-001', name: '登录页' },
       {
@@ -38,7 +38,7 @@ describe('normalizePlanItemsFromAgent', () => {
     expect(r[1].summary).toBe('x');
   });
 
-  it('trims localId and title', () => {
+  it('should trim localId and title', () => {
     const r = normalizePlanItemsFromAgent([
       { localId: '  a  ', title: '  b  ' },
     ]);
@@ -46,7 +46,7 @@ describe('normalizePlanItemsFromAgent', () => {
     expect(r[0].title).toBe('b');
   });
 
-  it('normalizes dependsOnLocalIds aliases', () => {
+  it('should normalize dependsOnLocalIds aliases', () => {
     const r = normalizePlanItemsFromAgent([
       {
         localId: 'B',
@@ -57,21 +57,21 @@ describe('normalizePlanItemsFromAgent', () => {
     expect(r[0].dependsOnLocalIds).toEqual(['A', '2']);
   });
 
-  it('throws BadRequest with index when title missing', () => {
+  it('should throw BadRequest with index when title is missing', () => {
     expect(() => normalizePlanItemsFromAgent([{ localId: 'x' }])).toThrow(
       /items\[0\].*localId 或 title/,
     );
   });
 
-  it('throws when items is not an array', () => {
+  it('should throw when items is not an array', () => {
     expect(() => normalizePlanItemsFromAgent({})).toThrow(BadRequestException);
   });
 
-  it('throws when items is empty', () => {
+  it('should throw when items is empty', () => {
     expect(() => normalizePlanItemsFromAgent([])).toThrow(BadRequestException);
   });
 
-  it('joins acceptanceCriteria from string array alias acceptance', () => {
+  it('should join acceptanceCriteria from string array alias acceptance', () => {
     const r = normalizePlanItemsFromAgent([
       {
         localId: 'a',
@@ -87,7 +87,7 @@ describe('normalizePlanItemsFromAgent', () => {
 });
 
 describe('findFirstMissingPlanItemTextField', () => {
-  it('returns null when summary, acceptanceCriteria, suggestedPrompt are non-empty', () => {
+  it('should return null when summary, acceptanceCriteria, and suggestedPrompt are non-empty', () => {
     expect(
       findFirstMissingPlanItemTextField([
         {
@@ -102,7 +102,7 @@ describe('findFirstMissingPlanItemTextField', () => {
     ).toBeNull();
   });
 
-  it('returns first missing field index', () => {
+  it('should return the first missing field index', () => {
     expect(
       findFirstMissingPlanItemTextField([
         {

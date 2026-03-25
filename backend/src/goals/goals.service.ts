@@ -775,11 +775,7 @@ export class GoalsService {
     const sourceDocs = await this.goalRepository.listSourceDocs(goalId);
     const hasSourceDocs =
       sourceDocs.length > 0 ||
-      (await this.goalInputDirHasAnyFile(
-        goal.projectId,
-        goalId,
-        currentUser,
-      ));
+      (await this.goalInputDirHasAnyFile(goal.projectId, goalId, currentUser));
 
     const agentCli = resolveGoalAgentCliForGeneration(dto, goal);
     assertGoalAgentCliForGeneration(agentCli);

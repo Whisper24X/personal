@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { useAccessStore } from '@/stores/modules/access'
@@ -33,6 +33,17 @@ const SUPPORTED_CLI_TOOLS: Array<{ id: SupportedCliToolId; label: string }> = [
 const GOAL_CREATE_SELECT_PANEL_Z_INDEX = 130
 const GOAL_CREATE_SELECT_PANEL_PLACEMENT = 'top' as const
 
+/** 与 TaskCreatePanel 标题区一致 */
+const TASK_HEADLINES = [
+  '我能为你做什么？',
+  '告诉我目标，我来帮你推进。',
+  '给我一句描述，我帮你拆解成可执行任务。',
+  '从一个想法开始，把它落地成结果。',
+  '想清楚方向后，剩下的交给我。',
+  '输入你的需求，我们马上开始。',
+]
+const HEADLINE_ROTATE_INTERVAL_MS = 30000
+
 const props = withDefaults(
   defineProps<{
     projectId?: string
@@ -54,6 +65,8 @@ const accessStore = useAccessStore()
 const loading = ref(false)
 const loadingAgentConfigs = ref(false)
 const submitting = ref(false)
+const currentHeadline = ref(TASK_HEADLINES[0] ?? '我能为你做什么？')
+let headlineTimer: ReturnType<typeof setInterval> | null = null
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const selectedFiles = ref<File[]>([])
 
@@ -124,6 +137,25 @@ function isZipFile(file: File): boolean {
 
 const openFilePicker = () => {
   fileInputRef.value?.click()
+}
+
+const pickRandomHeadline = () => {
+  if (TASK_HEADLINES.length === 0) {
+    currentHeadline.value = '我能为你做什么？'
+    return
+  }
+
+  if (TASK_HEADLINES.length === 1) {
+    currentHeadline.value = TASK_HEADLINES[0] ?? '我能为你做什么？'
+    return
+  }
+
+  let nextHeadline = currentHeadline.value
+  while (nextHeadline === currentHeadline.value) {
+    const index = Math.floor(Math.random() * TASK_HEADLINES.length)
+    nextHeadline = TASK_HEADLINES[index] ?? currentHeadline.value
+  }
+  currentHeadline.value = nextHeadline
 }
 
 const onFilesSelected = (event: Event) => {
@@ -386,8 +418,19 @@ watch(
 )
 
 onMounted(() => {
+  pickRandomHeadline()
+  headlineTimer = setInterval(() => {
+    pickRandomHeadline()
+  }, HEADLINE_ROTATE_INTERVAL_MS)
   syncProjectFromContext()
   void loadPageData()
+})
+
+onBeforeUnmount(() => {
+  if (headlineTimer !== null) {
+    clearInterval(headlineTimer)
+    headlineTimer = null
+  }
 })
 </script>
 
@@ -395,162 +438,245 @@ onMounted(() => {
   <div
     class="fade-up flex min-h-[calc(var(--app-viewport-height)-8rem)] items-center justify-center px-4 py-8 sm:px-8"
   >
-    <div class="w-full max-w-[720px]">
+    <div class="w-full max-w-[1120px]">
       <div v-if="loading" class="py-24 text-center text-sm text-muted-foreground">加载中...</div>
 
       <template v-else>
-        <header class="mb-8 text-center sm:mb-10">
-          <h1 class="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-            新建 Goal
-          </h1>
-          <p class="mt-2 text-sm text-muted-foreground">
-            填写目标并配置用于生成 PRD 与拆解计划的 Agent CLI
-          </p>
+        <header class="mb-8 flex flex-col items-center text-center sm:mb-10">
+          <div
+            class="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted text-foreground/80"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 3 9.5 9.5 3 12l6.5 2.5L12 21l2.5-6.5L21 12l-6.5-2.5z" />
+            </svg>
+          </div>
+          <Transition name="headline-fade" mode="out-in">
+            <h1
+              :key="currentHeadline"
+              class="text-4xl font-semibold tracking-tight text-foreground sm:text-6xl"
+            >
+              {{ currentHeadline }}
+            </h1>
+          </Transition>
         </header>
 
         <form
-          class="space-y-5 overflow-hidden rounded-3xl border border-border bg-card/90 p-6 shadow-[0_8px_30px_rgba(15,23,42,0.08)]"
+          class="overflow-hidden rounded-3xl border border-border bg-card/90 shadow-[0_8px_30px_rgba(15,23,42,0.08)]"
           @submit.prevent="submit"
         >
-          <div>
-            <label class="mb-1.5 block text-sm font-medium text-foreground">目标</label>
+          <div
+            class="flex min-h-[360px] flex-col px-5 pt-5 sm:px-6 sm:pt-6"
+          >
             <input
               v-model="form.title"
               type="text"
               maxlength="200"
               placeholder="输入你的目标"
-              class="border-input bg-background focus-visible:ring-ring w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus-visible:ring-2"
+              class="w-full shrink-0 border-0 bg-transparent text-lg font-medium text-foreground outline-none placeholder:text-muted-foreground"
             />
-          </div>
-
-          <div>
-            <label class="mb-1.5 block text-sm font-medium text-foreground">摘要（可选）</label>
             <textarea
               v-model="form.summary"
-              rows="3"
-              placeholder="简要描述目标背景或范围"
-              class="border-input bg-background focus-visible:ring-ring w-full resize-y rounded-xl border px-3 py-2.5 text-sm outline-none focus-visible:ring-2"
+              class="mt-4 min-h-0 flex-1 resize-none border-0 bg-transparent px-1 text-lg text-foreground outline-none placeholder:text-muted-foreground"
+              placeholder="摘要（可选）"
             />
           </div>
 
-          <div>
-            <label class="mb-1.5 block text-sm font-medium text-foreground">关联资料（可选）</label>
-            <p class="mb-2 text-xs text-muted-foreground">
-              请上传含页面或原型文件的 .zip；上传 Markdown（.md）补充说明。
-            </p>
-            <div v-if="selectedFiles.length > 0" class="mb-2 flex flex-wrap gap-2">
-              <span
-                v-for="(file, index) in selectedFiles"
-                :key="`${file.name}-${file.size}-${file.lastModified}`"
-                class="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs text-foreground"
-              >
-                <span class="max-w-[220px] truncate">{{ file.name }}</span>
-                <span class="text-muted-foreground">{{ formatFileSize(file.size) }}</span>
-                <button
-                  type="button"
-                  class="rounded-full text-muted-foreground transition hover:text-foreground"
-                  aria-label="移除文件"
-                  @click="removeFile(index)"
-                >
-                  ×
-                </button>
-              </span>
-            </div>
-            <div class="flex items-center gap-2">
-              <input
-                ref="fileInputRef"
-                type="file"
-                multiple
-                accept=".zip,.md,.markdown,application/zip,text/markdown"
-                class="hidden"
-                @change="onFilesSelected"
-              />
+          <div v-if="selectedFiles.length > 0" class="mx-5 mb-2 flex flex-wrap gap-2 sm:mx-6">
+            <span
+              v-for="(file, index) in selectedFiles"
+              :key="`${file.name}-${file.size}-${file.lastModified}`"
+              class="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs text-foreground"
+            >
+              <span class="max-w-[220px] truncate">{{ file.name }}</span>
+              <span class="text-muted-foreground">{{ formatFileSize(file.size) }}</span>
               <button
                 type="button"
-                class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-background text-foreground/80 transition hover:bg-muted"
-                aria-label="添加文件"
-                @click="openFilePicker"
+                class="rounded-full text-muted-foreground transition hover:text-foreground"
+                aria-label="移除文件"
+                @click="removeFile(index)"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M12 5v14" />
-                  <path d="M5 12h14" />
-                </svg>
+                ×
               </button>
-              <span class="text-xs text-muted-foreground">可多选</span>
-            </div>
+            </span>
           </div>
 
-          <div>
-            <span class="mb-2 block text-sm font-medium text-foreground">Agent CLI</span>
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <AppSelect
-                v-model="form.agentCliId"
-                aria-label="Agent CLI"
-                :block="true"
-                :match-trigger-width="false"
-                :trigger-label-truncate="false"
-                :option-label-truncate="false"
-                :options="configuredCliToolOptions"
-                :disabled="loadingAgentConfigs || configuredCliTools.length === 0"
-                :panel-z-index="GOAL_CREATE_SELECT_PANEL_Z_INDEX"
-                :panel-placement="GOAL_CREATE_SELECT_PANEL_PLACEMENT"
-                size="lg"
-                wrapper-class="min-w-0"
-                trigger-class="w-full min-w-0 rounded-full border border-border bg-background px-3 py-2 text-sm font-medium shadow-none"
-              />
-              <AppSelect
-                v-model="form.agentCliConfigId"
-                aria-label="Agent CLI 配置"
-                :block="true"
-                :match-trigger-width="false"
-                :trigger-label-truncate="false"
-                :option-label-truncate="false"
-                :options="agentToolConfigOptions"
-                :disabled="loadingAgentConfigs || agentToolConfigs.length === 0"
-                :panel-z-index="GOAL_CREATE_SELECT_PANEL_Z_INDEX"
-                :panel-placement="GOAL_CREATE_SELECT_PANEL_PLACEMENT"
-                size="lg"
-                wrapper-class="min-w-0"
-                trigger-class="w-full min-w-0 rounded-full border border-border bg-background px-3 py-2 text-sm font-medium shadow-none"
-              />
-            </div>
-          </div>
-          <p
-            v-if="!loadingAgentConfigs && form.projectId && configuredCliTools.length === 0"
-            class="text-xs text-amber-600 dark:text-amber-500"
-          >
-            当前业务线暂无可用 Agent CLI 配置，请先在业务线设置中配置。
-          </p>
+          <div class="border-t border-border">
+            <div class="overflow-x-auto px-4 py-3 sm:px-5">
+              <div class="flex min-w-full w-max flex-nowrap items-center gap-2 [&>*]:shrink-0">
+                <input
+                  ref="fileInputRef"
+                  type="file"
+                  multiple
+                  accept=".zip,.md,.markdown,application/zip,text/markdown"
+                  class="hidden"
+                  @change="onFilesSelected"
+                />
+                <button
+                  type="button"
+                  class="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-background text-foreground/80 transition hover:bg-muted"
+                  aria-label="添加文件"
+                  @click="openFilePicker"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
+                  </svg>
+                </button>
 
-          <div class="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              class="border-input bg-background hover:bg-muted h-10 rounded-xl border px-4 text-sm font-medium"
-              @click="router.back()"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              class="bg-primary text-primary-foreground hover:bg-primary/90 h-10 rounded-xl px-5 text-sm font-medium disabled:opacity-50"
-              :disabled="submitting || !canSubmit"
-            >
-              {{ submitting ? '创建中…' : '创建' }}
-            </button>
+                <AppSelect
+                  v-model="form.agentCliId"
+                  aria-label="Agent CLI"
+                  :block="false"
+                  :match-trigger-width="false"
+                  :trigger-label-truncate="false"
+                  :option-label-truncate="false"
+                  :options="configuredCliToolOptions"
+                  :disabled="loadingAgentConfigs || configuredCliTools.length === 0"
+                  :panel-z-index="GOAL_CREATE_SELECT_PANEL_Z_INDEX"
+                  :panel-placement="GOAL_CREATE_SELECT_PANEL_PLACEMENT"
+                  size="lg"
+                  trigger-class="min-w-[120px] rounded-full border-border bg-background pl-3 pr-3 text-sm font-medium shadow-none"
+                >
+                  <template #prefix>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="text-foreground/70"
+                      aria-hidden="true"
+                    >
+                      <path d="M4 17 10 11 4 5" />
+                      <path d="M12 19h8" />
+                    </svg>
+                  </template>
+                </AppSelect>
+
+                <AppSelect
+                  v-model="form.agentCliConfigId"
+                  aria-label="Agent CLI 配置"
+                  :block="false"
+                  :match-trigger-width="false"
+                  :trigger-label-truncate="false"
+                  :option-label-truncate="false"
+                  :options="agentToolConfigOptions"
+                  :disabled="loadingAgentConfigs || agentToolConfigs.length === 0"
+                  :panel-z-index="GOAL_CREATE_SELECT_PANEL_Z_INDEX"
+                  :panel-placement="GOAL_CREATE_SELECT_PANEL_PLACEMENT"
+                  size="lg"
+                  trigger-class="min-w-[120px] rounded-full border-border bg-background pl-3 pr-3 text-sm font-medium shadow-none"
+                >
+                  <template #prefix>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="text-foreground/70"
+                      aria-hidden="true"
+                    >
+                      <path d="M4 7h16" />
+                      <path d="M4 12h16" />
+                      <path d="M4 17h16" />
+                    </svg>
+                  </template>
+                </AppSelect>
+
+                <button
+                  type="submit"
+                  class="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-full bg-muted text-foreground transition hover:bg-primary hover:text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                  :disabled="submitting || !canSubmit"
+                  aria-label="创建 Goal"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="m12 19 0-14" />
+                    <path d="m5 12 7-7 7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
         </form>
       </template>
     </div>
+
+    <Teleport to="body">
+      <Transition name="create-goal-overlay">
+        <div
+          v-if="submitting"
+          class="fixed inset-0 z-[200] flex items-center justify-center bg-background/85 backdrop-blur-sm"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <p class="px-6 text-center text-base font-medium text-foreground">正在创建 Goal，请稍后...</p>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
+
+<style scoped>
+.create-goal-overlay-enter-active,
+.create-goal-overlay-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.create-goal-overlay-enter-from,
+.create-goal-overlay-leave-to {
+  opacity: 0;
+}
+
+.headline-fade-enter-active,
+.headline-fade-leave-active {
+  transition: opacity 0.45s ease;
+}
+
+.headline-fade-enter-from,
+.headline-fade-leave-to {
+  opacity: 0;
+}
+</style>

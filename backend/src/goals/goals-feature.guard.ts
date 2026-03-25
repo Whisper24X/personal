@@ -12,7 +12,8 @@ import { AllConfigType } from '../config/config.type';
 export class GoalsFeatureGuard implements CanActivate {
   constructor(private readonly configService: ConfigService<AllConfigType>) {}
 
-  canActivate(_context: ExecutionContext): boolean {
+  canActivate(context: ExecutionContext): boolean {
+    void context;
     const app = this.configService.get<AppConfig>('app', { infer: true });
     const enabled = app?.goalsEnabled ?? true;
     if (!enabled) {

@@ -38,9 +38,7 @@ export class GoalSchema1774428115491 implements MigrationInterface {
       `COMMENT ON TABLE "goals" IS 'Goal 目标（大需求规划层）'`,
     );
 
-    await queryRunner.query(
-      `ALTER TABLE "tasks" ADD "goalId" uuid`,
-    );
+    await queryRunner.query(`ALTER TABLE "tasks" ADD "goalId" uuid`);
     await queryRunner.query(
       `CREATE INDEX "IDX_tasks_goal_id" ON "tasks" ("goalId") `,
     );
@@ -103,9 +101,7 @@ export class GoalSchema1774428115491 implements MigrationInterface {
     await queryRunner.query(
       `COMMENT ON COLUMN "goals"."agentCliId" IS '生成 PRD/拆解计划时默认使用的 Agent CLI 工具 ID'`,
     );
-    await queryRunner.query(
-      `ALTER TABLE "goals" ADD "agentCliConfigId" uuid`,
-    );
+    await queryRunner.query(`ALTER TABLE "goals" ADD "agentCliConfigId" uuid`);
     await queryRunner.query(
       `COMMENT ON COLUMN "goals"."agentCliConfigId" IS '生成 PRD/拆解计划时默认使用的业务线 Agent 工具配置 ID'`,
     );
@@ -166,7 +162,9 @@ export class GoalSchema1774428115491 implements MigrationInterface {
     await queryRunner.query(`DROP INDEX "public"."IDX_tasks_goal_id"`);
     await queryRunner.query(`ALTER TABLE "tasks" DROP COLUMN "goalId"`);
     await queryRunner.query(`DROP TABLE "goals"`);
-    await queryRunner.query(`DROP TYPE "public"."task_dependency_relation_enum"`);
+    await queryRunner.query(
+      `DROP TYPE "public"."task_dependency_relation_enum"`,
+    );
     await queryRunner.query(`DROP TYPE "public"."goal_source_doc_type_enum"`);
     await queryRunner.query(`DROP TYPE "public"."goal_plan_item_status_enum"`);
     await queryRunner.query(`DROP TYPE "public"."goal_status_enum"`);
