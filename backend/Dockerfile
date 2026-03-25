@@ -24,7 +24,7 @@ COPY . .
 RUN npm run build \
     && npm prune --omit=dev \
     && npm cache clean --force \
-    && rm -rf /root/.npm /root/.cache \
+    && rm -rf /root/.cache \
     && find node_modules \
         \( -path '*/prebuilds/darwin-*' -o -path '*/prebuilds/win32-*' -o -path '*/build/Release/obj.target' \) \
         -prune -exec rm -rf '{}' +
@@ -157,7 +157,7 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm install -g pnpm@9 @anthropic-ai/claude-code@latest @openai/codex@latest @google/gemini-cli@latest \
     && pnpm config set registry https://registry.npmmirror.com \
     && npm cache clean --force \
-    && rm -rf /root/.npm /root/.cache
+    && rm -rf /root/.cache
 
 # CLI tools (curl-based): OpenCode, Cursor
 RUN curl -fsSL https://opencode.ai/install | bash \
