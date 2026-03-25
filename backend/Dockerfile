@@ -52,7 +52,7 @@ ENV TZ=Asia/Shanghai \
 # openssh-client      — 拉取 gitlab 私有仓库
 # netcat-openbsd      — 健康检查 / 端口探测
 # supervisor/nginx    — 进程管理 + 反向代理
-# docker.io           — Docker CLI（通过宿主机 docker.sock 控制宿主机 Docker）
+# docker CLI          — Docker 官方静态 CLI（通过宿主机 docker.sock 控制宿主机 Docker）
 # docker compose      — 官方 Compose plugin，支持 `up --wait`
 # nodejs/npm          — 前端构建（glibc 兼容 Taro binding）
 # cmake               — 构建 librdkafka（confluent-kafka-go 需 v2.3+，Debian 自带版本过旧）
@@ -63,12 +63,22 @@ RUN --mount=type=cache,id=backend-runtime-apt-cache,target=/var/cache/apt,sharin
     openssh-client netcat-openbsd \
     supervisor nginx \
     ca-certificates \
-    docker.io \
     unzip \
     gcc g++ \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
+
+ARG DOCKER_CLI_VERSION=29.2.1
+RUN ARCH=$(uname -m) \
+    && case "$ARCH" in aarch64) DOCKER_ARCH=aarch64;; x86_64) DOCKER_ARCH=x86_64;; *) echo "unsupported arch: $ARCH" && exit 1;; esac \
+    && curl --retry 5 --retry-all-errors --retry-delay 2 -fL \
+      "https://download.docker.com/linux/static/stable/${DOCKER_ARCH}/docker-${DOCKER_CLI_VERSION}.tgz" \
+      -o /tmp/docker.tgz \
+    && tar -xzf /tmp/docker.tgz -C /tmp docker/docker \
+    && install -m 0755 /tmp/docker/docker /usr/local/bin/docker \
+    && rm -rf /tmp/docker /tmp/docker.tgz \
+    && docker --version
 
 ARG DOCKER_COMPOSE_VERSION=v5.1.1
 RUN mkdir -p /usr/local/lib/docker/cli-plugins \
