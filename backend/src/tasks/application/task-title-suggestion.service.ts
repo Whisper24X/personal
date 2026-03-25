@@ -158,7 +158,9 @@ export class TaskTitleSuggestionService {
         'project.task.read',
       );
       const nodes = await this.taskNodeRepository.findByTaskId(taskId);
-      const sorted = [...nodes].sort((left, right) => left.nodeOrder - right.nodeOrder);
+      const sorted = [...nodes].sort(
+        (left, right) => left.nodeOrder - right.nodeOrder,
+      );
       const firstNode = sorted[0];
       if (!firstNode) {
         return;
@@ -231,9 +233,7 @@ export class TaskTitleSuggestionService {
     }
 
     const parsed = this.parseTitleFromStdout(result.stdout);
-    return parsed
-      ? this.clipTitle(parsed)
-      : this.fallbackTitle(clampedPrompt);
+    return parsed ? this.clipTitle(parsed) : this.fallbackTitle(clampedPrompt);
   }
 
   private async resolveTargetAgents(
