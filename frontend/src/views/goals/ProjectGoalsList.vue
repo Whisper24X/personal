@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { goalsApi } from '@/api/goals'
+import ConfirmActionModal from '@/components/business/settings/modals/ConfirmActionModal.vue'
 import AppSelect from '@/components/core/select'
 import type { SelectOption } from '@/components/core/select/types'
 import { Button } from '@/components/ui/button'
@@ -31,6 +32,8 @@ const goals = ref<Goal[]>([])
 const statusFilter = ref<GoalStatus | ''>('')
 const titleSearch = ref('')
 const deletingId = ref<string | null>(null)
+const deleteConfirmOpen = ref(false)
+const deletingGoalTarget = ref<Goal | null>(null)
 
 const statusFilterOptions = computed<SelectOption[]>(() => [
   { label: '全部状态', value: '' },
@@ -78,15 +81,33 @@ function onStatusFilterChange(v: string | number | boolean | null) {
   void load()
 }
 
-async function removeGoal(g: Goal, e: MouseEvent) {
+function setDeleteConfirmOpen(open: boolean) {
+  deleteConfirmOpen.value = open
+  if (!open && deletingId.value === null) {
+    deletingGoalTarget.value = null
+  }
+}
+
+function removeGoal(g: Goal, e: MouseEvent) {
   e.stopPropagation()
-  if (!window.confirm(`确定删除「${g.title}」吗？删除后无法从此列表恢复。`)) {
+  if (deletingId.value === g.id) {
     return
   }
-  deletingId.value = g.id
+  deletingGoalTarget.value = g
+  deleteConfirmOpen.value = true
+}
+
+async function confirmRemoveGoal() {
+  const goal = deletingGoalTarget.value
+  if (!goal) {
+    return
+  }
+
+  deletingId.value = goal.id
   try {
-    await goalsApi.remove(g.id)
+    await goalsApi.remove(goal.id)
     message.success('已删除')
+    setDeleteConfirmOpen(false)
     await load()
   } catch (e) {
     message.error(toErrorMessage(e, '删除 Goal 失败'))
@@ -195,5 +216,15 @@ async function removeGoal(g: Goal, e: MouseEvent) {
         </table>
       </div>
     </Card>
+
+    <ConfirmActionModal
+      :open="deleteConfirmOpen"
+      title="删除 Goal"
+      :description="`确认删除目标「${deletingGoalTarget?.title ?? ''}」吗？删除后将无法从列表中恢复。`"
+      confirm-text="删除"
+      :confirming="deletingId === (deletingGoalTarget?.id ?? '')"
+      @update:open="setDeleteConfirmOpen"
+      @confirm="confirmRemoveGoal"
+    />
   </div>
 </template>
