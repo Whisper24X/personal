@@ -5,8 +5,8 @@ FROM golang:1.23-bookworm AS go-toolchain
 FROM node:22.21.1-bookworm-slim AS build
 
 # node-pty 等原生模块需要编译工具链
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+RUN --mount=type=cache,id=backend-build-apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=backend-build-apt-lib,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
         python3 make g++ \
     && rm -rf /var/lib/apt/lists/*
@@ -35,6 +35,7 @@ ENV TZ=Asia/Shanghai \
     DEBIAN_FRONTEND=noninteractive \
     GOROOT=/usr/local/go \
     GOPATH=/go \
+    DOCKER_CONFIG=/root/.docker \
     GO_ENV=development \
     GOPROXY=https://goproxy.cn,direct \
     GOPRIVATE=gitlab.yc345.tv \
@@ -51,10 +52,12 @@ ENV TZ=Asia/Shanghai \
 # openssh-client      — 拉取 gitlab 私有仓库
 # netcat-openbsd      — 健康检查 / 端口探测
 # supervisor/nginx    — 进程管理 + 反向代理
+# docker.io           — Docker CLI（通过宿主机 docker.sock 控制宿主机 Docker）
+# docker compose      — 官方 Compose plugin，支持 `up --wait`
 # nodejs/npm          — 前端构建（glibc 兼容 Taro binding）
 # cmake               — 构建 librdkafka（confluent-kafka-go 需 v2.3+，Debian 自带版本过旧）
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+RUN --mount=type=cache,id=backend-runtime-apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=backend-runtime-apt-lib,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     bash curl git make vim jq cmake python3 \
     openssh-client netcat-openbsd \
@@ -66,6 +69,16 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
+
+ARG DOCKER_COMPOSE_VERSION=v5.1.1
+RUN mkdir -p /usr/local/lib/docker/cli-plugins \
+    && ARCH=$(uname -m) \
+    && case "$ARCH" in aarch64) COMPOSE_ARCH=aarch64;; x86_64) COMPOSE_ARCH=x86_64;; *) echo "unsupported arch: $ARCH" && exit 1;; esac \
+    && curl --retry 5 --retry-all-errors --retry-delay 2 -fL \
+      "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-${COMPOSE_ARCH}" \
+      -o /usr/local/lib/docker/cli-plugins/docker-compose \
+    && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose \
+    && docker compose version
 
 # protoc 锁定 3.21.9
 RUN ARCH=$(uname -m) \
