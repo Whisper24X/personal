@@ -7,3 +7,4 @@ Add new specs here by domain. Keep each rule in its own focused document and use
 ## Domains
 
 - Frontend: `docs/dev-spec/frontend/README.md`
+- Repo: `docs/dev-spec/repo/README.md`

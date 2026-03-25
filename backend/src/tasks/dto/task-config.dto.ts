@@ -65,7 +65,10 @@ export class TaskConfigDto {
   @Min(1)
   maxLoops?: number;
 
-  @ApiPropertyOptional({ type: String, description: 'Early-exit marker file name without extension' })
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Early-exit marker file name without extension',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(64)
@@ -108,7 +111,10 @@ export class TaskNodeConfigDto {
   @Min(1)
   maxLoops?: number;
 
-  @ApiPropertyOptional({ type: String, description: 'Early-exit marker file name without extension' })
+  @ApiPropertyOptional({
+    type: String,
+    description: 'Early-exit marker file name without extension',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(64)

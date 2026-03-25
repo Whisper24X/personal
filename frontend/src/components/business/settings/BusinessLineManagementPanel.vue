@@ -82,6 +82,14 @@ const SUPPORTED_CLI_TOOLS: Array<{ id: SupportedCliToolId; label: string }> = [
 const DEFAULT_AGENT_TOOL_CONFIG_NAME = 'default'
 const BUSINESS_LINE_WORKFLOW_SELECT_PANEL_Z_INDEX = 120
 
+const createEmptyWorkflowNodeInput = (): WorkflowTemplateNodeInputForm => ({
+  prompt: '',
+  agentCliId: '',
+  agentCliConfigId: '',
+  earlyExitMarkerEnabled: false,
+  earlyExitMarkerFileName: '',
+})
+
 defineOptions({
   name: 'BusinessLineManagementPanel',
 })
@@ -234,11 +242,7 @@ const workflowCreateForm = ref<{
       name: 'step-1',
       type: 'agent',
       requiresApproval: true,
-      input: {
-        prompt: '',
-        agentCliId: '',
-        agentCliConfigId: '',
-      },
+      input: createEmptyWorkflowNodeInput(),
     },
   ],
 })
@@ -712,14 +716,6 @@ const removeAgentToolConfig = async (configId: string) => {
     deletingAgentToolConfigId.value = ''
   }
 }
-
-const createEmptyWorkflowNodeInput = (): WorkflowTemplateNodeInputForm => ({
-  prompt: '',
-  agentCliId: '',
-  agentCliConfigId: '',
-  earlyExitMarkerEnabled: false,
-  earlyExitMarkerFileName: '',
-})
 
 const isSupportedCliToolId = (toolId: string): toolId is SupportedCliToolId => {
   return SUPPORTED_CLI_TOOLS.some((tool) => tool.id === toolId)

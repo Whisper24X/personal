@@ -708,9 +708,8 @@ export class TaskNodeExecutionService {
     reason: string | null;
     sourceFile: string | null;
   }> {
-    const markerConfig = this.taskConfigResolver.readNodeEarlyExitMarkerConfig(
-      node,
-    );
+    const markerConfig =
+      this.taskConfigResolver.readNodeEarlyExitMarkerConfig(node);
     if (!markerConfig.enabled || !markerConfig.fileName) {
       return { completed: false, reason: null, sourceFile: null };
     }
@@ -837,11 +836,7 @@ export class TaskNodeExecutionService {
     }
 
     const markerRelativePathCandidates = [
-      path.join(
-        'docs',
-        ...gitBranchSegments,
-        `${markerFileName}.md`,
-      ),
+      path.join('docs', ...gitBranchSegments, `${markerFileName}.md`),
     ];
     const safePrefix = `${rootPath}${path.sep}`;
     const dedupedRelativePaths = Array.from(
