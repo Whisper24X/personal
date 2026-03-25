@@ -20,7 +20,14 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
 
 # 复制源码并构建
 COPY . .
-RUN npm run build
+# 运行镜像只保留生产依赖和当前 Linux 平台需要的原生模块产物
+RUN npm run build \
+    && npm prune --omit=dev \
+    && npm cache clean --force \
+    && rm -rf /root/.npm /root/.cache \
+    && find node_modules \
+        \( -path '*/prebuilds/darwin-*' -o -path '*/prebuilds/win32-*' -o -path '*/build/Release/obj.target' \) \
+        -prune -exec rm -rf '{}' +
 
 # ── 运行阶段 ──
 FROM node:22.21.1-bookworm-slim
@@ -48,10 +55,8 @@ ENV TZ=Asia/Shanghai \
 # ============================================================
 
 # bash/curl/git/make  — 基础构建工具
-# vim/jq              — 调试辅助
 # openssh-client      — 拉取 gitlab 私有仓库
 # netcat-openbsd      — 健康检查 / 端口探测
-# supervisor/nginx    — 进程管理 + 反向代理
 # docker CLI          — Docker 官方静态 CLI（通过宿主机 docker.sock 控制宿主机 Docker）
 # docker compose      — 官方 Compose plugin，支持 `up --wait`
 # nodejs/npm          — 前端构建（glibc 兼容 Taro binding）
@@ -59,11 +64,9 @@ ENV TZ=Asia/Shanghai \
 RUN --mount=type=cache,id=backend-runtime-apt-cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=backend-runtime-apt-lib,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
-    bash curl git make vim jq cmake python3 \
-    openssh-client netcat-openbsd \
-    supervisor nginx \
+    bash curl git make cmake python3 \
+    openssh-client netcat-openbsd zip unzip \
     ca-certificates \
-    unzip \
     gcc g++ \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
@@ -152,7 +155,9 @@ RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
 
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm install -g pnpm@9 @anthropic-ai/claude-code@latest @openai/codex@latest @google/gemini-cli@latest \
-    && pnpm config set registry https://registry.npmmirror.com
+    && pnpm config set registry https://registry.npmmirror.com \
+    && npm cache clean --force \
+    && rm -rf /root/.npm /root/.cache
 
 # CLI tools (curl-based): OpenCode, Cursor
 RUN curl -fsSL https://opencode.ai/install | bash \
