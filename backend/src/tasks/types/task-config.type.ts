@@ -17,12 +17,16 @@ export type TaskConfig = Record<string, unknown> & {
   agentCliConfigId?: string | null;
   loopEnabled?: boolean | null;
   maxLoops?: number | null;
+  earlyExitMarkerFileName?: string | null;
+  earlyExitMarkerEnabled?: boolean | null;
   attachments?: TaskAttachmentConfig[] | null;
 };
 
 export type TaskNodeInput = Record<string, unknown> & {
   taskInput?: string | null;
   nodeInput?: string | null;
+  earlyExitMarkerFileName?: string | null;
+  earlyExitMarkerEnabled?: boolean | null;
 };
 
 export type TaskNodeConfig = Record<string, unknown> & {

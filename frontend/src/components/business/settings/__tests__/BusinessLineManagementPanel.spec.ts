@@ -598,6 +598,91 @@ describe('BusinessLineManagementPanel', () => {
     })
   })
 
+  it('submits early-exit marker config when enabled for a node', async () => {
+    const pinia = createPinia()
+    const wrapper = mount(BusinessLineManagementPanel, {
+      props: buildProps(true),
+      global: {
+        plugins: [pinia],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    businessLinesApi.listAgentToolConfigs.mockResolvedValue([
+      {
+        id: 'cfg-1',
+        toolId: 'codex',
+        name: '默认 Codex',
+        description: '',
+        isDefault: true,
+        configJson: {},
+      },
+    ])
+
+    await flushPromises()
+
+    const workflowTab = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '工作流')
+    expect(workflowTab).toBeDefined()
+    await workflowTab!.trigger('click')
+    await flushPromises()
+
+    const createButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().trim() === '创建模板')
+    expect(createButton).toBeDefined()
+    await createButton!.trigger('click')
+    await flushPromises()
+
+    const markerToggle = wrapper
+      .findAll('label')
+      .find((label) => label.text().includes('marker 提前退出'))
+      ?.find('input[type="checkbox"]')
+    expect(markerToggle?.exists()).toBe(true)
+    await markerToggle!.setValue(true)
+
+    const markerFileNameInput = wrapper.find(
+      'input[placeholder="例如：taskResult（会读取 docs/code/taskResult.md）"]',
+    )
+    expect(markerFileNameInput.exists()).toBe(true)
+    await markerFileNameInput.setValue('taskResult')
+
+    const nameInput = wrapper.find('input[placeholder="例如：业务线默认代码修复流"]')
+    expect(nameInput.exists()).toBe(true)
+    await nameInput.setValue('带 marker 的模板')
+
+    const workflowForm = wrapper.find('[aria-labelledby="business-line-workflow-create-modal-title"] form')
+    expect(workflowForm.exists()).toBe(true)
+    await workflowForm.trigger('submit')
+    await flushPromises()
+
+    expect(workflowApi.create).toHaveBeenCalledWith({
+      name: '带 marker 的模板',
+      description: undefined,
+      scope: 'business_line',
+      businessLineId: 'line-1',
+      isActive: true,
+      nodes: [
+        {
+          nodeOrder: 1,
+          name: 'step-1',
+          type: 'agent',
+          maxLoops: 1,
+          requiresApproval: true,
+          input: {
+            agentCliId: 'codex',
+            agentCliConfigId: 'cfg-1',
+            earlyExitMarkerEnabled: true,
+            earlyExitMarkerFileName: 'taskResult',
+          },
+        },
+      ],
+    })
+  })
+
   it('imports local mcps from json payload', async () => {
     const pinia = createPinia()
     const wrapper = mount(BusinessLineManagementPanel, {

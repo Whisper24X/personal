@@ -134,6 +134,7 @@ export class TaskCommandService {
           input: this.taskConfigResolver.buildTaskNodeInput({
             taskPrompt: createTaskDto.prompt ?? null,
             nodeInput: null,
+            source: this.taskConfigResolver.toObjectRecord(taskConfig),
           }),
           agentCliId: conversationNodeExecution.agentCliId,
           agentCliConfigId: conversationNodeExecution.agentCliConfigId,

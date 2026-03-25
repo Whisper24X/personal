@@ -8,6 +8,8 @@ export type WorkflowTemplateNodeInput = Record<string, unknown> & {
   agentCliConfigId?: string
   loopEnabled?: boolean
   maxLoops?: number
+  earlyExitMarkerFileName?: string
+  earlyExitMarkerEnabled?: boolean
 }
 
 export type WorkflowTemplateNode = {

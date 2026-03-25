@@ -64,6 +64,8 @@ type WorkflowTemplateNodeInputForm = {
   prompt: string
   agentCliId: SupportedCliToolId | ''
   agentCliConfigId: string
+  earlyExitMarkerEnabled: boolean
+  earlyExitMarkerFileName: string
 }
 type WorkflowTemplateNodeForm = Omit<WorkflowTemplateNode, 'input'> & {
   input: WorkflowTemplateNodeInputForm
@@ -715,6 +717,8 @@ const createEmptyWorkflowNodeInput = (): WorkflowTemplateNodeInputForm => ({
   prompt: '',
   agentCliId: '',
   agentCliConfigId: '',
+  earlyExitMarkerEnabled: false,
+  earlyExitMarkerFileName: '',
 })
 
 const isSupportedCliToolId = (toolId: string): toolId is SupportedCliToolId => {
@@ -739,11 +743,18 @@ const normalizeWorkflowNodeInput = (
       : typeof rawInput.agentToolConfigId === 'string'
         ? rawInput.agentToolConfigId.trim()
         : ''
+  const earlyExitMarkerEnabled = Boolean(rawInput.earlyExitMarkerEnabled)
+  const earlyExitMarkerFileName =
+    typeof rawInput.earlyExitMarkerFileName === 'string'
+      ? rawInput.earlyExitMarkerFileName.trim()
+      : ''
 
   return {
     prompt,
     agentCliId: normalizedCliToolId,
     agentCliConfigId: normalizedCliToolId ? rawAgentCliConfigId : '',
+    earlyExitMarkerEnabled,
+    earlyExitMarkerFileName,
   }
 }
 
@@ -817,6 +828,7 @@ const serializeWorkflowNodeInput = (
 ): WorkflowTemplateNodeInput | undefined => {
   const normalizedPrompt = input.prompt.trim()
   const normalizedConfigId = input.agentCliConfigId.trim()
+  const normalizedMarkerFileName = input.earlyExitMarkerFileName.trim()
   const payload: WorkflowTemplateNodeInput = {}
 
   if (normalizedPrompt) {
@@ -828,6 +840,11 @@ const serializeWorkflowNodeInput = (
     if (normalizedConfigId) {
       payload.agentCliConfigId = normalizedConfigId
     }
+  }
+
+  if (input.earlyExitMarkerEnabled && normalizedMarkerFileName) {
+    payload.earlyExitMarkerEnabled = true
+    payload.earlyExitMarkerFileName = normalizedMarkerFileName
   }
 
   return Object.keys(payload).length > 0 ? payload : undefined
@@ -865,6 +882,10 @@ const validateWorkflowNodes = (nodes: WorkflowTemplateNode[]) => {
 
     if (!workflowConfiguredCliToolIdSet.value.has(nodeInput.agentCliId)) {
       return `节点 #${index + 1} 的 Agent CLI 不可用，请重新选择`
+    }
+
+    if (nodeInput.earlyExitMarkerEnabled && !nodeInput.earlyExitMarkerFileName.trim()) {
+      return `节点 #${index + 1} 已启用 marker 提前退出，请填写 marker 文件名`
     }
   }
 
@@ -3897,6 +3918,12 @@ watch(
                         需要审批
                       </label>
                       <label
+                        class="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs text-muted-foreground"
+                      >
+                        <input v-model="node.input.earlyExitMarkerEnabled" type="checkbox" class="h-4 w-4" />
+                        marker 提前退出
+                      </label>
+                      <label
                         class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs text-muted-foreground"
                       >
                         <span class="shrink-0">最多循环</span>
@@ -3937,6 +3964,15 @@ watch(
                       <WorkflowPromptTextarea
                         v-model="node.input.prompt"
                         placeholder="输入该节点的提示词，输入 / 可插入变量"
+                      />
+                    </label>
+                    <label v-if="node.input.earlyExitMarkerEnabled" class="space-y-1 md:col-span-2">
+                      <span class="text-[11px] text-muted-foreground">Marker 文件名</span>
+                      <input
+                        v-model="node.input.earlyExitMarkerFileName"
+                        class="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-sm"
+                        type="text"
+                        placeholder="例如：taskResult（会读取 docs/code/taskResult.md）"
                       />
                     </label>
 
