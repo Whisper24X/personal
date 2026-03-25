@@ -12,6 +12,7 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiProxyTarget = env.VITE_API_PROXY_TARGET || 'http://localhost:9000'
+  const frontendPort = 8000
 
   return {
     plugins: [
@@ -27,6 +28,8 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: true,
+      port: frontendPort,
+      strictPort: true,
       proxy: {
         '/api': {
           target: apiProxyTarget,
@@ -38,6 +41,11 @@ export default defineConfig(({ mode }) => {
           ws: true,
         },
       },
+    },
+    preview: {
+      host: true,
+      port: frontendPort,
+      strictPort: true,
     },
   }
 })
