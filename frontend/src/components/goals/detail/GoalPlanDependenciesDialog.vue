@@ -43,7 +43,7 @@ const forwarded = useForwardPropsEmits(rootProps, emit)
       <DialogContent
         :class="
           cn(
-            'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed top-1/2 left-1/2 z-50 grid w-[min(92vw,960px)] max-h-[85vh] -translate-x-1/2 -translate-y-1/2 gap-3 overflow-hidden rounded-lg border p-5 shadow-lg duration-200 data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+            'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed top-1/2 left-1/2 z-50 flex max-h-[85vh] w-[min(92vw,960px)] -translate-x-1/2 -translate-y-1/2 flex-col gap-3 overflow-hidden rounded-lg border p-5 shadow-lg duration-200 data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
             props.contentClass,
           )
         "
@@ -83,7 +83,7 @@ const forwarded = useForwardPropsEmits(rootProps, emit)
         </p>
 
         <div
-          class="bg-muted/15 dark:bg-muted/25 from-muted/30 to-muted/5 min-h-[min(48vh,380px)] flex-1 overflow-auto rounded-lg border border-border/80 bg-gradient-to-b p-2 shadow-inner [&_.markdown-preview]:text-sm [&_.markdown-preview_.mermaid]:flex [&_.markdown-preview_.mermaid]:justify-center [&_.markdown-preview_.mermaid]:py-0 [&_.markdown-preview_.mermaid_svg]:max-h-[min(52vh,440px)] [&_.markdown-preview_.mermaid_svg]:max-w-full [&_.markdown-preview_.mermaid_svg]:h-auto"
+          class="bg-muted/15 dark:bg-muted/25 from-muted/30 to-muted/5 max-h-[min(78vh,calc(85vh-9rem))] w-full min-h-0 overflow-auto rounded-lg border border-border/80 bg-gradient-to-b p-2 shadow-inner [&_.markdown-preview]:text-sm [&_.markdown-preview_.mermaid]:flex [&_.markdown-preview_.mermaid]:justify-center [&_.markdown-preview_.mermaid]:py-0 [&_.markdown-preview_.mermaid_svg]:max-w-full [&_.markdown-preview_.mermaid_svg]:h-auto"
         >
           <MarkdownPreview :key="props.planDepsGraphKey" :content="props.planDepsMarkdown" />
         </div>
