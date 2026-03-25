@@ -67,6 +67,14 @@ export class GoalPlanItemEntity extends EntityRelationalHelper {
   })
   workflowTemplateId?: string | null;
 
+  @Column({
+    type: String,
+    length: 120,
+    nullable: true,
+    comment: '物化任务时使用的 Git 基准分支',
+  })
+  gitBaseBranch?: string | null;
+
   @CreateDateColumn({ comment: '创建时间' })
   createdAt: Date;
 

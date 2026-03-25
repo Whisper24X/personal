@@ -17,6 +17,7 @@ import {
   formatFileSize,
   sanitizeGoalInputBasename,
 } from '@/utils/project-doc-upload'
+import type { GoalSourceDocType } from '@/types/api/goals'
 import { fetchAllPages } from '@/utils/pagination'
 
 type SupportedCliToolId = 'claude-code' | 'codex' | 'gemini-cli' | 'cursor-agent' | 'opencode'
@@ -104,6 +105,21 @@ const syncProjectFromContext = () => {
   if (projectId) {
     form.projectId = projectId
   }
+}
+
+function docTypeForGoalSourceFile(file: File): GoalSourceDocType {
+  const name = file.name.toLowerCase()
+  if (name.endsWith('.zip')) {
+    return 'prototype'
+  }
+  if (name.endsWith('.md') || name.endsWith('.markdown')) {
+    return 'requirement'
+  }
+  return 'requirement'
+}
+
+function isZipFile(file: File): boolean {
+  return file.name.toLowerCase().endsWith('.zip')
 }
 
 const openFilePicker = () => {
@@ -292,9 +308,23 @@ const submit = async () => {
         await createOrUpdateProjectDoc(projectIdForSubmit, relativePath, file)
         await goalsApi.addSourceDoc(goal.id, {
           projectDocPath: relativePath,
-          docType: 'requirement',
+          docType: docTypeForGoalSourceFile(file),
           sortOrder: i,
         })
+        if (isZipFile(file)) {
+          try {
+            const unpackResult = await goalsApi.unpackInputZip(goal.id, {
+              projectDocPath: relativePath,
+            })
+            if (unpackResult.extractedFileCount === 0) {
+              uploadFailCount += 1
+              message.warning('压缩包内没有可登记的有效文件，请更换后重试')
+            }
+          } catch (unpackError) {
+            uploadFailCount += 1
+            message.error(toErrorMessage(unpackError, '压缩包处理失败'))
+          }
+        }
       } catch {
         uploadFailCount += 1
       }
@@ -403,7 +433,7 @@ onMounted(() => {
           <div>
             <label class="mb-1.5 block text-sm font-medium text-foreground">关联资料（可选）</label>
             <p class="mb-2 text-xs text-muted-foreground">
-              暂时只支持上传md文件, 将保存到项目文档并用于生成 PRD
+              请上传含页面或原型文件的 .zip；上传 Markdown（.md）补充说明。
             </p>
             <div v-if="selectedFiles.length > 0" class="mb-2 flex flex-wrap gap-2">
               <span
@@ -428,6 +458,7 @@ onMounted(() => {
                 ref="fileInputRef"
                 type="file"
                 multiple
+                accept=".zip,.md,.markdown,application/zip,text/markdown"
                 class="hidden"
                 @change="onFilesSelected"
               />
@@ -457,30 +488,40 @@ onMounted(() => {
             </div>
           </div>
 
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="w-full text-sm font-medium text-foreground">Agent CLI</span>
-            <AppSelect
-              v-model="form.agentCliId"
-              aria-label="Agent CLI"
-              :block="false"
-              :options="configuredCliToolOptions"
-              :disabled="loadingAgentConfigs || configuredCliTools.length === 0"
-              :panel-z-index="GOAL_CREATE_SELECT_PANEL_Z_INDEX"
-              :panel-placement="GOAL_CREATE_SELECT_PANEL_PLACEMENT"
-              size="lg"
-              trigger-class="min-w-[140px] rounded-full border border-border bg-background px-3 py-2 text-sm font-medium shadow-none"
-            />
-            <AppSelect
-              v-model="form.agentCliConfigId"
-              aria-label="Agent CLI 配置"
-              :block="false"
-              :options="agentToolConfigOptions"
-              :disabled="loadingAgentConfigs || agentToolConfigs.length === 0"
-              :panel-z-index="GOAL_CREATE_SELECT_PANEL_Z_INDEX"
-              :panel-placement="GOAL_CREATE_SELECT_PANEL_PLACEMENT"
-              size="lg"
-              trigger-class="min-w-[160px] rounded-full border border-border bg-background px-3 py-2 text-sm font-medium shadow-none"
-            />
+          <div>
+            <span class="mb-2 block text-sm font-medium text-foreground">Agent CLI</span>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <AppSelect
+                v-model="form.agentCliId"
+                aria-label="Agent CLI"
+                :block="true"
+                :match-trigger-width="false"
+                :trigger-label-truncate="false"
+                :option-label-truncate="false"
+                :options="configuredCliToolOptions"
+                :disabled="loadingAgentConfigs || configuredCliTools.length === 0"
+                :panel-z-index="GOAL_CREATE_SELECT_PANEL_Z_INDEX"
+                :panel-placement="GOAL_CREATE_SELECT_PANEL_PLACEMENT"
+                size="lg"
+                wrapper-class="min-w-0"
+                trigger-class="w-full min-w-0 rounded-full border border-border bg-background px-3 py-2 text-sm font-medium shadow-none"
+              />
+              <AppSelect
+                v-model="form.agentCliConfigId"
+                aria-label="Agent CLI 配置"
+                :block="true"
+                :match-trigger-width="false"
+                :trigger-label-truncate="false"
+                :option-label-truncate="false"
+                :options="agentToolConfigOptions"
+                :disabled="loadingAgentConfigs || agentToolConfigs.length === 0"
+                :panel-z-index="GOAL_CREATE_SELECT_PANEL_Z_INDEX"
+                :panel-placement="GOAL_CREATE_SELECT_PANEL_PLACEMENT"
+                size="lg"
+                wrapper-class="min-w-0"
+                trigger-class="w-full min-w-0 rounded-full border border-border bg-background px-3 py-2 text-sm font-medium shadow-none"
+              />
+            </div>
           </div>
           <p
             v-if="!loadingAgentConfigs && form.projectId && configuredCliTools.length === 0"

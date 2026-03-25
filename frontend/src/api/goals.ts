@@ -70,6 +70,13 @@ export const goalsApi = {
     return apiHttp.post<GoalSourceDoc>(`/goals/${goalId}/source-docs`, payload)
   },
 
+  unpackInputZip(goalId: string, payload: { projectDocPath: string }) {
+    return apiHttp.post<{ extractedFileCount: number; paths: string[] }>(
+      `/goals/${goalId}/unpack-input-zip`,
+      payload,
+    )
+  },
+
   generatePrd(
     goalId: string,
     payload?: {

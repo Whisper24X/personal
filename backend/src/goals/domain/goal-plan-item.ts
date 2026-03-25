@@ -39,6 +39,13 @@ export class GoalPlanItem {
   })
   workflowTemplateId?: string | null;
 
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    description: '物化任务时使用的 Git 基准分支（与新建任务 gitBaseBranch 一致）',
+  })
+  gitBaseBranch?: string | null;
+
   @ApiProperty()
   createdAt: Date;
 

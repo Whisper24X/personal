@@ -1134,6 +1134,55 @@ export class ProjectsService {
     };
   }
 
+  /**
+   * Writes raw bytes from multipart upload (upsert). Avoids JSON + base64 size limits.
+   */
+  async uploadProjectDoc(
+    projectId: Project['id'],
+    rawPath: string,
+    file: Buffer,
+    currentUser: JwtPayloadType,
+  ): Promise<{
+    path: string;
+    name: string;
+    size: number;
+    updatedAt: Date;
+    content: string;
+  }> {
+    const { repositoryRoot } = await this.ensureProjectRepositoryReady(
+      projectId,
+      currentUser,
+      { syncRemote: false },
+    );
+    const docsRoot = path.join(repositoryRoot, 'docs');
+    const relativePath = this.normalizeProjectDocPath(rawPath);
+    const absolutePath = this.resolveProjectDocAbsolutePath(
+      docsRoot,
+      relativePath,
+    );
+
+    const existing = await fs.stat(absolutePath).catch(() => null);
+    if (existing?.isDirectory()) {
+      throw new ConflictException('Project doc path is a directory');
+    }
+
+    const parentDir = path.dirname(absolutePath);
+    const parentStat = await fs.stat(parentDir).catch(() => null);
+    if (parentStat?.isFile()) {
+      const parentRelative = path
+        .relative(docsRoot, parentDir)
+        .replace(/\\/g, '/');
+      throw new ConflictException(
+        `路径「${parentRelative}」已存在为文件，无法在其下创建子文件。请删除该文件或选择其他路径。`,
+      );
+    }
+
+    await fs.mkdir(parentDir, { recursive: true });
+    await fs.writeFile(absolutePath, file);
+
+    return this.readDoc(projectId, relativePath, currentUser);
+  }
+
   async createDoc(
     projectId: Project['id'],
     payload: SaveProjectDocDto,

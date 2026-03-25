@@ -15,6 +15,7 @@ import { STORAGE_KEYS } from '@/types/common/storage'
 import { BUTTON_ACCESS_CONFIG, hasSomeAccess } from '@/constants/access-control'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
+import { buildBranchOptions } from '@/utils/git-branch-options'
 
 type SupportedCliToolId = 'claude-code' | 'codex' | 'gemini-cli' | 'cursor-agent' | 'opencode'
 
@@ -191,32 +192,6 @@ const syncAgentToolConfigsForSelectedTool = () => {
     const defaultConfig = configs.find((config) => config.isDefault)
     createForm.agentCliConfigId = defaultConfig?.id ?? configs[0]?.id ?? ''
   }
-}
-
-const buildBranchOptions = ({
-  localBranches,
-  remoteBranches,
-  preferredBranches,
-}: {
-  localBranches: string[]
-  remoteBranches: string[]
-  preferredBranches: string[]
-}) => {
-  const seen = new Set<string>()
-  const result: string[] = []
-
-  for (const branch of [...preferredBranches, ...localBranches, ...remoteBranches]) {
-    const normalizedBranch = branch.trim()
-
-    if (!normalizedBranch || seen.has(normalizedBranch)) {
-      continue
-    }
-
-    seen.add(normalizedBranch)
-    result.push(normalizedBranch)
-  }
-
-  return result
 }
 
 const loadBranchesForProject = async (projectId: string) => {

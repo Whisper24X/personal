@@ -18,6 +18,7 @@ import type { ProjectDocCitation } from '@/types/api/project-docs'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import { HttpError } from '@/utils/http/error'
 import { toErrorMessage } from '@/utils/http/to-error-message'
+import { createOrUpdateProjectDoc } from '@/utils/project-doc-upload'
 
 defineOptions({
   name: 'KnowledgeBaseView',
@@ -569,62 +570,6 @@ const normalizeUploadPath = (file: File) => {
   return normalized
 }
 
-const TEXT_EXTENSIONS = new Set([
-  'txt',
-  'md',
-  'markdown',
-  'json',
-  'yml',
-  'yaml',
-  'xml',
-  'csv',
-  'ts',
-  'tsx',
-  'js',
-  'jsx',
-  'vue',
-  'css',
-  'scss',
-  'sass',
-  'less',
-  'html',
-  'htm',
-  'sql',
-  'sh',
-  'bash',
-  'zsh',
-  'py',
-  'java',
-  'go',
-  'rs',
-  'c',
-  'cc',
-  'cpp',
-  'h',
-  'hpp',
-])
-
-const isBinaryFile = (file: File) => {
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
-  const mimeType = (file.type || '').toLowerCase()
-  if (!mimeType) {
-    return !TEXT_EXTENSIONS.has(ext)
-  }
-
-  if (mimeType.startsWith('text/')) {
-    return false
-  }
-  if (
-    mimeType === 'application/json' ||
-    mimeType === 'application/xml' ||
-    mimeType === 'application/x-yaml'
-  ) {
-    return false
-  }
-
-  return true
-}
-
 const uploadFiles = async (fileLikeList: FileList | File[]) => {
   const projectId = activeProjectId.value
   if (!projectId) return
@@ -645,25 +590,7 @@ const uploadFiles = async (fileLikeList: FileList | File[]) => {
       }
 
       try {
-        let payload: { path: string; content?: string; contentBase64?: string }
-        if (isBinaryFile(file)) {
-          const buf = await file.arrayBuffer()
-          const bytes = new Uint8Array(buf)
-          let binary = ''
-          const chunkSize = 8192
-          for (let i = 0; i < bytes.length; i += chunkSize) {
-            binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
-          }
-          payload = { path: nextPath, contentBase64: btoa(binary) }
-        } else {
-          const content = await file.text()
-          payload = { path: nextPath, content }
-        }
-        try {
-          await projectsApi.createDoc(projectId, payload)
-        } catch {
-          await projectsApi.updateDoc(projectId, payload)
-        }
+        await createOrUpdateProjectDoc(projectId, nextPath, file)
         successCount += 1
       } catch {
         failCount += 1

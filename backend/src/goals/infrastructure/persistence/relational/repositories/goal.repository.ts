@@ -190,6 +190,7 @@ export class GoalRelationalRepository extends GoalRepository {
           taskId: item.taskId ?? null,
           status: item.status ?? GoalPlanItemStatus.draft,
           workflowTemplateId: item.workflowTemplateId ?? null,
+          gitBaseBranch: item.gitBaseBranch ?? null,
           createdAt: item.createdAt ?? new Date(),
           updatedAt: item.updatedAt ?? new Date(),
         });
@@ -236,6 +237,9 @@ export class GoalRelationalRepository extends GoalRepository {
     }
     if (payload.workflowTemplateId !== undefined) {
       patch.workflowTemplateId = payload.workflowTemplateId;
+    }
+    if (payload.gitBaseBranch !== undefined) {
+      patch.gitBaseBranch = payload.gitBaseBranch;
     }
     await this.planItemRepo.update({ id: itemId, goalId }, patch);
     const next = await this.planItemRepo.findOne({

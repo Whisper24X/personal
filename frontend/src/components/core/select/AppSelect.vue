@@ -31,6 +31,10 @@ const props = withDefaults(
     block?: boolean
     size?: keyof typeof SIZE_CLASSES
     matchTriggerWidth?: boolean
+    /** false：触发器内选中项可换行，避免长文案被截断 */
+    triggerLabelTruncate?: boolean
+    /** false：下拉项可换行，配合 matchTriggerWidth=false 时面板可随内容变宽 */
+    optionLabelTruncate?: boolean
     wrapperClass?: string
     triggerClass?: string
     menuClass?: string
@@ -46,6 +50,8 @@ const props = withDefaults(
     block: true,
     size: 'md',
     matchTriggerWidth: true,
+    triggerLabelTruncate: true,
+    optionLabelTruncate: true,
     wrapperClass: '',
     triggerClass: '',
     menuClass: '',
@@ -250,6 +256,7 @@ const updatePanelPosition = () => {
     ? Math.max(viewportPadding, triggerRect.top - panelHeight - offset)
     : Math.min(window.innerHeight - viewportPadding, triggerRect.bottom + offset)
   const minWidth = Math.round(triggerRect.width)
+  const panelMaxWidth = Math.min(window.innerWidth - viewportPadding * 2, 42 * 16)
   const maxLeft = Math.max(
     viewportPadding,
     window.innerWidth - minWidth - viewportPadding,
@@ -262,7 +269,8 @@ const updatePanelPosition = () => {
     left: `${left}px`,
     minWidth: `${minWidth}px`,
     maxHeight: `${maxHeight}px`,
-    width: props.matchTriggerWidth ? `${minWidth}px` : undefined,
+    maxWidth: props.matchTriggerWidth ? undefined : `${panelMaxWidth}px`,
+    width: props.matchTriggerWidth ? `${minWidth}px` : 'max-content',
     zIndex: String(props.panelZIndex),
   }
 }
@@ -551,7 +559,15 @@ onBeforeUnmount(() => {
     >
       <span class="flex min-w-0 items-center gap-2">
         <slot name="prefix" />
-        <span class="truncate">{{ selectedLabel }}</span>
+        <span
+          :class="
+            triggerLabelTruncate
+              ? 'truncate'
+              : 'whitespace-normal break-words text-left'
+          "
+        >
+          {{ selectedLabel }}
+        </span>
       </span>
       <span class="pointer-events-none shrink-0 text-muted-foreground">
         <svg
@@ -610,7 +626,16 @@ onBeforeUnmount(() => {
                   @focus="highlightedIndex = option.flatIndex"
                   @keydown="void handleOptionKeydown($event, option)"
                 >
-                  <span class="min-w-0 flex-1 truncate">{{ option.label }}</span>
+                  <span
+                    class="min-w-0 flex-1"
+                    :class="
+                      optionLabelTruncate
+                        ? 'truncate'
+                        : 'whitespace-normal break-words text-left'
+                    "
+                  >
+                    {{ option.label }}
+                  </span>
                   <svg
                     v-if="Object.is(option.value, props.modelValue)"
                     xmlns="http://www.w3.org/2000/svg"
@@ -651,7 +676,16 @@ onBeforeUnmount(() => {
               @focus="highlightedIndex = entry.option.flatIndex"
               @keydown="void handleOptionKeydown($event, entry.option)"
             >
-              <span class="min-w-0 flex-1 truncate">{{ entry.option.label }}</span>
+              <span
+                class="min-w-0 flex-1"
+                :class="
+                  optionLabelTruncate
+                    ? 'truncate'
+                    : 'whitespace-normal break-words text-left'
+                "
+              >
+                {{ entry.option.label }}
+              </span>
               <svg
                 v-if="Object.is(entry.option.value, props.modelValue)"
                 xmlns="http://www.w3.org/2000/svg"

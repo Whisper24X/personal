@@ -26,6 +26,7 @@ import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
 import { FindGoalsDto } from './dto/find-goals.dto';
 import { AddSourceDocDto } from './dto/add-source-doc.dto';
+import { UnpackGoalInputZipDto } from './dto/unpack-goal-input-zip.dto';
 import { GeneratePrdDto } from './dto/generate-prd.dto';
 import { GeneratePlanDto } from './dto/generate-plan.dto';
 import { PatchPlanItemDto } from './dto/patch-plan-item.dto';
@@ -99,6 +100,17 @@ export class GoalsController {
     @Body() dto: AddSourceDocDto,
   ) {
     return this.goalsService.addSourceDoc(id, dto, request.user);
+  }
+
+  @Post(':id/unpack-input-zip')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ description: '解压 input 目录下的 zip 并登记资料' })
+  unpackInputZip(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UnpackGoalInputZipDto,
+  ) {
+    return this.goalsService.unpackInputZip(id, dto, request.user);
   }
 
   @Post(':id/generate-prd')

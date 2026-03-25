@@ -77,20 +77,15 @@ export async function createOrUpdateProjectDoc(
   relativePath: string,
   file: File,
 ): Promise<void> {
-  let payload: { path: string; content?: string; contentBase64?: string }
   if (isBinaryFile(file)) {
-    const buf = await file.arrayBuffer()
-    const bytes = new Uint8Array(buf)
-    let binary = ''
-    const chunkSize = 8192
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
-    }
-    payload = { path: relativePath, contentBase64: btoa(binary) }
-  } else {
-    const content = await file.text()
-    payload = { path: relativePath, content }
+    const formData = new FormData()
+    formData.append('path', relativePath)
+    formData.append('file', file)
+    await projectsApi.uploadDoc(projectId, formData)
+    return
   }
+  const content = await file.text()
+  const payload = { path: relativePath, content }
   try {
     await projectsApi.createDoc(projectId, payload)
   } catch {

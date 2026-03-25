@@ -29,6 +29,8 @@ export function buildPlanGenerationPrompt(params: {
     params.prdMarkdown,
     '',
     '【输出】只输出一个 JSON 对象，键为 markdown、items（字段含义见技能）。不要输出 JSON 以外的文字。',
+    '【items 必填】每一项必须包含且非空：localId、title、summary、acceptanceCriteria、suggestedPrompt，以及 dependsOnLocalIds（数组，可无前置依赖时为空数组）。summary/acceptanceCriteria/suggestedPrompt 须根据 PRD 写实质内容，禁止省略或仅写「见 PRD」。',
+    '【字段名】请使用契约中的英文键名；不要使用 id、name 代替 localId、title（平台会对常见别名做兼容，但建议与契约一致）。',
   ]
     .filter((line) => line !== '')
     .join('\n');

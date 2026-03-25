@@ -53,6 +53,8 @@ export type GoalPlanItem = {
   taskId?: string | null
   /** 物化该计划项时使用的项目工作流模板 ID */
   workflowTemplateId?: string | null
+  /** 物化任务时使用的 Git 基准分支；未设置则与新建任务一致使用项目默认 */
+  gitBaseBranch?: string | null
   status: GoalPlanItemStatus
   createdAt: string
   updatedAt: string

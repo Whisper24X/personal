@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { goalsApi } from '@/api/goals'
+import { gitApi } from '@/api/git'
 import { projectsApi } from '@/api/projects'
 import { workflowApi } from '@/api/workflow'
 import type { GoalDetail as GoalDetailType, GoalPlanItem } from '@/types/api/goals'
@@ -9,6 +10,7 @@ import type { WorkflowTemplate } from '@/types/api/workflow'
 import { useMessage } from '@/hooks'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
+import { buildBranchOptions } from '@/utils/git-branch-options'
 import { topologicalMaterializeOrder } from '@/utils/goal-plan-materialize-order'
 import {
   planDependencyMermaidMarkdown,
@@ -43,12 +45,19 @@ const goalId = computed(() => String(route.params.goalId ?? ''))
 const loading = ref(false)
 const deleting = ref(false)
 const materializing = ref(false)
+const generatingPrd = ref(false)
+const generatingPlan = ref(false)
 const detail = ref<GoalDetailType | null>(null)
 const tab = ref<'prd' | 'plan' | 'tasks'>('prd')
 
 const workflowTemplates = ref<WorkflowTemplate[]>([])
 const loadingWorkflowTemplates = ref(false)
 const savingPlanItemWorkflowId = ref<string | null>(null)
+
+let latestBranchRequestId = 0
+const loadingBranches = ref(false)
+const branchOptions = ref<string[]>([])
+const savingPlanItemGitBaseBranchId = ref<string | null>(null)
 
 const planItemDetailOpen = ref(false)
 const selectedPlanItem = ref<GoalPlanItem | null>(null)
@@ -359,6 +368,20 @@ function workflowOptionsForPlanItem(workflowTemplateId: string | null | undefine
   return base
 }
 
+const branchSelectOptionsBase = computed(() =>
+  branchOptions.value.map((branch) => ({ label: branch, value: branch })),
+)
+
+function branchOptionsForPlanItem(gitBaseBranch: string | null | undefined) {
+  const base = branchSelectOptionsBase.value
+  const id = gitBaseBranch?.trim()
+  const rest =
+    id && !base.some((option) => option.value === id)
+      ? [{ label: `（当前：${id}）`, value: id }, ...base]
+      : base
+  return [{ label: '未选择（项目默认）', value: '' }, ...rest]
+}
+
 const loadWorkflowTemplatesForProject = async (projectId: string) => {
   if (!projectId) {
     workflowTemplates.value = []
@@ -383,17 +406,56 @@ const loadWorkflowTemplatesForProject = async (projectId: string) => {
   }
 }
 
-async function load() {
+const loadBranchesForProject = async (projectId: string) => {
+  const requestId = ++latestBranchRequestId
+  if (!projectId) {
+    branchOptions.value = []
+    return
+  }
+  loadingBranches.value = true
+  try {
+    const [project, branchData] = await Promise.all([
+      projectsApi.detail(projectId),
+      gitApi.branches(projectId),
+    ])
+    if (requestId !== latestBranchRequestId) {
+      return
+    }
+    const projectDefaultBranch = project.defaultBranch?.trim() || ''
+    branchOptions.value = buildBranchOptions({
+      localBranches: branchData.localBranches,
+      remoteBranches: branchData.remoteBranches,
+      preferredBranches: [projectDefaultBranch, branchData.defaultBranch],
+    })
+  } catch (error) {
+    if (requestId !== latestBranchRequestId) {
+      return
+    }
+    branchOptions.value = []
+    message.error(toErrorMessage(error, '加载项目分支失败'))
+  } finally {
+    if (requestId === latestBranchRequestId) {
+      loadingBranches.value = false
+    }
+  }
+}
+
+async function load(options?: { silent?: boolean }) {
   if (!goalId.value) return
-  loading.value = true
+  const silent = options?.silent === true
+  if (!silent) {
+    loading.value = true
+  }
   try {
     detail.value = await goalsApi.get(goalId.value)
     const pid = detail.value.goal.projectId
-    await loadWorkflowTemplatesForProject(pid)
+    await Promise.all([loadWorkflowTemplatesForProject(pid), loadBranchesForProject(pid)])
   } catch (e) {
     message.error(toErrorMessage(e, '加载 Goal 失败'))
   } finally {
-    loading.value = false
+    if (!silent) {
+      loading.value = false
+    }
     if (tab.value === 'prd' && detail.value?.goal.prdDocPath?.trim()) {
       void loadPrdPreview()
     }
@@ -434,15 +496,20 @@ async function runGeneratePrd() {
     message.warning('缺少业务线 Agent 配置，无法生成 PRD。创建 Goal 时需选择 CLI 与工具配置，或更新 Goal 后重试。')
     return
   }
+  message.info('PRD 生成中，预计需数十秒，请稍候…', { duration: 12_000, dedupeKey: 'goal-generate-prd' })
+  generatingPrd.value = true
   try {
     await goalsApi.generatePrd(goalId.value, {
       overwrite: true,
       ...goalGenerationAgentPayload(),
     })
+    tab.value = 'prd'
     message.success('PRD 已生成')
-    await load()
+    await load({ silent: true })
   } catch (e) {
     message.error(toErrorMessage(e, '生成 PRD 失败'))
+  } finally {
+    generatingPrd.value = false
   }
 }
 
@@ -452,16 +519,21 @@ async function runGeneratePlan() {
     message.warning('缺少业务线 Agent 配置，无法生成拆解计划。创建 Goal 时需选择 CLI 与工具配置，或更新 Goal 后重试。')
     return
   }
+  message.info('拆解计划生成中，预计需数十秒，请稍候…', { duration: 12_000, dedupeKey: 'goal-generate-plan' })
+  generatingPlan.value = true
   try {
     await goalsApi.generatePlan(goalId.value, {
       granularity: 'standard',
       overwrite: true,
       ...goalGenerationAgentPayload(),
     })
+    tab.value = 'plan'
     message.success('拆解计划已生成')
-    await load()
+    await load({ silent: true })
   } catch (e) {
     message.error(toErrorMessage(e, '生成拆解计划失败'))
+  } finally {
+    generatingPlan.value = false
   }
 }
 
@@ -502,6 +574,30 @@ async function setPlanItemWorkflow(item: GoalPlanItem, workflowTemplateId: strin
     message.error(toErrorMessage(e, '保存工作流失败'))
   } finally {
     savingPlanItemWorkflowId.value = null
+  }
+}
+
+async function setPlanItemGitBaseBranch(item: GoalPlanItem, value: string) {
+  if (!goalId.value || !detail.value) return
+  const trimmed = String(value ?? '').trim()
+  const nextStored: string | null = trimmed === '' ? null : trimmed
+  const current = item.gitBaseBranch?.trim() ?? null
+  if (current === nextStored) {
+    return
+  }
+  savingPlanItemGitBaseBranchId.value = item.id
+  try {
+    const updated = await goalsApi.patchPlanItem(goalId.value, item.id, {
+      gitBaseBranch: nextStored,
+    })
+    const idx = detail.value.planItems.findIndex((p) => p.id === item.id)
+    if (idx >= 0) {
+      detail.value.planItems[idx] = updated
+    }
+  } catch (e) {
+    message.error(toErrorMessage(e, '保存基准分支失败'))
+  } finally {
+    savingPlanItemGitBaseBranchId.value = null
   }
 }
 
@@ -631,24 +727,26 @@ async function removeGoal() {
             <button
               v-if="!goalHasPrd"
               type="button"
-              class="border-input bg-background h-9 rounded-md border px-3 text-sm"
+              class="border-input bg-background h-9 rounded-md border px-3 text-sm disabled:opacity-50"
+              :disabled="generatingPrd || generatingPlan"
               @click="runGeneratePrd"
             >
-              生成 PRD
+              {{ generatingPrd ? 'PRD 生成中…' : '生成 PRD' }}
             </button>
             <button
               v-else-if="goalHasPrd && !goalHasPlanItems"
               type="button"
-              class="border-input bg-background h-9 rounded-md border px-3 text-sm"
+              class="border-input bg-background h-9 rounded-md border px-3 text-sm disabled:opacity-50"
+              :disabled="generatingPrd || generatingPlan"
               @click="runGeneratePlan"
             >
-              生成拆解计划
+              {{ generatingPlan ? '拆解计划生成中…' : '生成拆解计划' }}
             </button>
             <button
               v-else
               type="button"
               class="bg-primary text-primary-foreground h-9 rounded-md px-3 text-sm disabled:opacity-50"
-              :disabled="materializing"
+              :disabled="materializing || generatingPrd || generatingPlan"
               @click="materializeSelected"
             >
               {{ materializing ? '物化中…' : '物化已确认项' }}
@@ -705,7 +803,7 @@ async function removeGoal() {
             检测到计划项依赖存在环，请修正后再物化。
           </p>
           <div
-            class="bg-muted/20 max-h-44 overflow-x-auto overflow-y-auto rounded-md border border-border p-2 [&_.markdown-preview]:text-xs"
+            class="bg-muted/20 rounded-md border border-border p-2 [&_.markdown-preview]:text-xs"
           >
             <MarkdownPreview :key="planDepsGraphKey" :content="planDepsMarkdown" />
           </div>
@@ -716,30 +814,45 @@ async function removeGoal() {
         >
           当前项目暂无启用的工作流，请先在项目下创建并启用后再为计划项配置工作流。
         </p>
-        <table class="w-full text-left text-xs">
-          <thead class="bg-muted/50">
-            <tr>
-              <th class="p-2">标题</th>
-              <th class="p-2">状态</th>
-              <th class="min-w-[200px] p-2">配置工作流</th>
-              <th class="p-2">操作</th>
-            </tr>
-          </thead>
-          <tbody>
+        <div class="-mx-1 overflow-x-auto px-1">
+          <table class="w-full min-w-[52rem] text-left text-xs">
+            <thead class="bg-muted/50">
+              <tr>
+                <th class="w-10 min-w-[2.5rem] whitespace-nowrap p-2 text-center tabular-nums">
+                  顺序
+                </th>
+                <th class="min-w-[8rem] p-2">标题</th>
+                <th class="min-w-[5.5rem] whitespace-nowrap p-2">状态</th>
+                <th class="min-w-[16rem] p-2">配置工作流</th>
+                <th class="min-w-[14rem] p-2">基准分支</th>
+                <th class="min-w-[4rem] whitespace-nowrap p-2">操作</th>
+              </tr>
+            </thead>
+            <tbody>
             <tr
               v-for="item in detail.planItems"
               :key="item.id"
               class="hover:bg-muted/50 cursor-pointer border-b"
               @click="openPlanItemDetail(item)"
             >
-              <td class="hover:text-primary p-2 hover:underline">{{ item.title }}</td>
-              <td class="p-2">{{ planItemStatusLabel[item.status] }}</td>
-              <td class="p-2 align-middle" @click.stop>
+              <td
+                class="text-muted-foreground w-10 min-w-[2.5rem] whitespace-nowrap p-2 text-center tabular-nums align-middle"
+              >
+                {{ item.itemOrder + 1 }}
+              </td>
+              <td class="hover:text-primary break-words p-2 hover:underline">{{ item.title }}</td>
+              <td class="min-w-[5.5rem] whitespace-nowrap p-2 align-middle">
+                {{ planItemStatusLabel[item.status] }}
+              </td>
+              <td class="min-w-[16rem] max-w-[28rem] p-2 align-top" @click.stop>
                 <template v-if="item.status === 'approved' && !item.taskId">
                   <AppSelect
                     :model-value="item.workflowTemplateId ?? ''"
                     aria-label="计划项配置工作流"
                     :block="true"
+                    :match-trigger-width="false"
+                    :trigger-label-truncate="false"
+                    :option-label-truncate="false"
                     :options="workflowOptionsForPlanItem(item.workflowTemplateId)"
                     :disabled="
                       loadingWorkflowTemplates ||
@@ -749,14 +862,43 @@ async function removeGoal() {
                     :panel-z-index="GOAL_SELECT_PANEL_Z_INDEX"
                     :panel-placement="GOAL_SELECT_PANEL_PLACEMENT"
                     size="sm"
-                    trigger-class="min-w-[180px] rounded-md border border-border bg-background px-2 py-1.5 text-left text-sm"
+                    trigger-class="min-w-0 w-full rounded-md border border-border bg-background px-2 py-1.5 text-left text-sm"
                     @update:model-value="(v) => setPlanItemWorkflow(item, String(v ?? ''))"
                   />
                 </template>
-                <span v-else-if="item.taskId" class="text-muted-foreground">已物化</span>
+                <span v-else-if="item.taskId" class="text-muted-foreground whitespace-nowrap">已物化</span>
                 <span v-else class="text-muted-foreground">—</span>
               </td>
-              <td class="p-2" @click.stop>
+              <td class="min-w-[14rem] max-w-[28rem] p-2 align-top" @click.stop>
+                <template v-if="item.status === 'approved' && !item.taskId">
+                  <AppSelect
+                    :model-value="item.gitBaseBranch ?? ''"
+                    aria-label="计划项基准分支"
+                    :block="true"
+                    :match-trigger-width="false"
+                    :trigger-label-truncate="false"
+                    :option-label-truncate="false"
+                    :options="branchOptionsForPlanItem(item.gitBaseBranch)"
+                    :disabled="
+                      loadingBranches || savingPlanItemGitBaseBranchId === item.id
+                    "
+                    :panel-z-index="GOAL_SELECT_PANEL_Z_INDEX"
+                    :panel-placement="GOAL_SELECT_PANEL_PLACEMENT"
+                    size="sm"
+                    trigger-class="min-w-0 w-full rounded-md border border-border bg-background px-2 py-1.5 text-left text-sm"
+                    @update:model-value="(v) => setPlanItemGitBaseBranch(item, String(v ?? ''))"
+                  />
+                </template>
+                <span
+                  v-else-if="item.taskId"
+                  class="text-muted-foreground block break-words"
+                  :title="item.gitBaseBranch?.trim() || undefined"
+                >
+                  {{ item.gitBaseBranch?.trim() || '—' }}
+                </span>
+                <span v-else class="text-muted-foreground">—</span>
+              </td>
+              <td class="min-w-[4rem] whitespace-nowrap p-2 align-middle" @click.stop>
                 <button
                   v-if="item.status === 'draft'"
                   type="button"
@@ -771,6 +913,7 @@ async function removeGoal() {
             </tr>
           </tbody>
         </table>
+        </div>
       </div>
 
       <div v-else-if="tab === 'tasks'" class="min-h-0 flex-1 overflow-auto">

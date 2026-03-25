@@ -46,4 +46,12 @@ export class PatchPlanItemDto {
   @IsOptional()
   @IsUUID()
   workflowTemplateId?: string;
+
+  @ApiPropertyOptional({
+    description: '物化任务时使用的 Git 基准分支（与 CreateTaskDto.gitBaseBranch 一致）',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  gitBaseBranch?: string;
 }

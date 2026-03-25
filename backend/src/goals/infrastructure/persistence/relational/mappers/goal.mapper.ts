@@ -74,6 +74,7 @@ export class GoalMapper {
     p.taskId = raw.taskId ?? null;
     p.status = raw.status;
     p.workflowTemplateId = raw.workflowTemplateId ?? null;
+    p.gitBaseBranch = raw.gitBaseBranch ?? null;
     p.createdAt = raw.createdAt;
     p.updatedAt = raw.updatedAt;
     return p;
