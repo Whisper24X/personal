@@ -23,7 +23,7 @@ const initializeRepository = async (
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'ainative-git-'));
 
   runGit(['init'], directory);
-  runGit(['config', 'user.name', 'AINative Test'], directory);
+  runGit(['config', 'user.name', 'AINative'], directory);
   runGit(['config', 'user.email', 'ainative@example.com'], directory);
 
   await fs.writeFile(path.join(directory, 'README.md'), '# test\n');

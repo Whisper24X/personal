@@ -1,7 +1,6 @@
 networks:
   ainative:
     driver: bridge
-
 services:
   backend:
     image: ainative/backend:dev
