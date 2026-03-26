@@ -14,6 +14,9 @@ import {
   PromptTemplateService,
 } from './prompt-template.service';
 import { TaskRuntimeService } from './task-runtime.service';
+import { AgentProcessLauncherService } from '../containers/agent-process-launcher.service';
+import { ContainerExecutionConfigService } from '../containers/container-execution-config.service';
+import { IsolatedRunnerContainerService } from '../containers/isolated-runner-container.service';
 import { AgentCliAdapterRegistry } from './agent-cli/agent-cli-adapter.registry';
 import {
   AgentCliAdapterId,
@@ -105,6 +108,12 @@ export class AgentRunnerService {
     private readonly promptTemplateService: PromptTemplateService = new PromptTemplateService(),
     private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry = new AgentCliAdapterRegistry(),
     @Optional() private readonly taskRuntimeService?: TaskRuntimeService,
+    @Optional()
+    private readonly containerExecutionConfig?: ContainerExecutionConfigService,
+    @Optional()
+    private readonly agentProcessLauncher?: AgentProcessLauncherService,
+    @Optional()
+    private readonly isolatedRunnerContainer?: IsolatedRunnerContainerService,
   ) {}
 
   async executeAgentNode({
@@ -113,12 +122,15 @@ export class AgentRunnerService {
     project,
     runtimeContext,
     callbacks,
+    containerExecRef,
   }: {
     task: Task;
     node: TaskNode;
     project: Project;
     runtimeContext?: PromptTemplateRuntimeContext;
     callbacks?: AgentRunnerStreamCallbacks;
+    /** Docker container id or name for `docker exec`; host mode ignores */
+    containerExecRef?: string;
   }): Promise<AgentRunnerResult> {
     const config = await this.resolveRunnerConfig(
       project,
@@ -138,6 +150,9 @@ export class AgentRunnerService {
       prompt,
       preparedAt: new Date(),
     });
+    const resolvedRef =
+      containerExecRef ?? (await this.resolveContainerExecRefForTask(task));
+
     return this.runWithConfig(
       config,
       prompt,
@@ -148,6 +163,7 @@ export class AgentRunnerService {
         businessLineId: project.businessLineId,
       },
       callbacks,
+      resolvedRef ?? undefined,
     );
   }
 
@@ -174,6 +190,8 @@ export class AgentRunnerService {
       node,
       runtimeContext,
     );
+    const resolvedRef = await this.resolveContainerExecRefForTask(task);
+
     return this.runWithConfig(
       config,
       prompt,
@@ -184,6 +202,7 @@ export class AgentRunnerService {
         businessLineId: project.businessLineId,
       },
       undefined,
+      resolvedRef ?? undefined,
     );
   }
 
@@ -1336,11 +1355,28 @@ export class AgentRunnerService {
     );
   }
 
+  private async resolveContainerExecRefForTask(
+    task: Task,
+  ): Promise<string | null> {
+    if (!this.containerExecutionConfig?.isDockerMode()) {
+      return null;
+    }
+    if (!this.isolatedRunnerContainer) {
+      return null;
+    }
+    const containerName =
+      this.containerExecutionConfig.resolveContainerName(task);
+    const inspection =
+      await this.isolatedRunnerContainer.inspect(containerName);
+    return inspection?.running ? inspection.id : null;
+  }
+
   private async runWithConfig(
     config: AgentRunnerConfig,
     prompt: string,
     executionContext: AgentExecutionContext,
     callbacks?: AgentRunnerStreamCallbacks,
+    containerExecRef?: string,
   ): Promise<AgentRunnerResult> {
     const startAt = Date.now();
     const cliAdapter = this.agentCliAdapterRegistry.getById(config.adapter);
@@ -1381,11 +1417,41 @@ export class AgentRunnerService {
         )}`,
       );
 
-      const childProcess = spawn(config.command, spawnArgs, {
-        cwd: config.cwd,
-        env: mergedEnv,
-        stdio: 'pipe',
-      });
+      const useDockerExec =
+        !!containerExecRef &&
+        !!this.containerExecutionConfig?.isDockerMode() &&
+        !!this.agentProcessLauncher;
+
+      if (
+        this.containerExecutionConfig?.isDockerMode() &&
+        this.containerExecutionConfig.isStrictMode() &&
+        !useDockerExec
+      ) {
+        const missingReasons: string[] = [];
+        if (!containerExecRef) {
+          missingReasons.push('containerExecRef is missing');
+        }
+        if (!this.agentProcessLauncher) {
+          missingReasons.push('AgentProcessLauncherService is unavailable');
+        }
+        throw new Error(
+          `Docker execution mode (strict) requires docker exec handoff, but ${missingReasons.join(', ') || 'the task container is not runnable'} (taskId=${executionContext.taskId}, nodeId=${executionContext.nodeId}, cwd=${config.cwd})`,
+        );
+      }
+
+      const childProcess = useDockerExec
+        ? this.agentProcessLauncher!.spawnViaDockerExec({
+            containerRef: containerExecRef,
+            command: config.command,
+            args: spawnArgs,
+            cwd: this.containerExecutionConfig!.getRunnerWorkspace(),
+            env: mergedEnv as NodeJS.ProcessEnv,
+          })
+        : spawn(config.command, spawnArgs, {
+            cwd: config.cwd,
+            env: mergedEnv,
+            stdio: 'pipe',
+          });
       const activeExecution: ActiveAgentExecution = {
         childProcess,
         stopReason: null,

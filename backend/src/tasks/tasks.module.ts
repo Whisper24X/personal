@@ -29,10 +29,12 @@ import { TaskNodeExecutionService } from './application/task-node-execution.serv
 import { TaskSchedulerService } from './application/task-scheduler.service';
 import { TaskStepLabelSummaryService } from './application/task-step-label-summary.service';
 import { TaskTitleSuggestionService } from './application/task-title-suggestion.service';
+import { ContainersModule } from '../containers/containers.module';
 
 @Module({
   imports: [
     RelationalTaskPersistenceModule,
+    ContainersModule,
     ProjectsModule,
     WorkflowTemplatesModule,
     NotificationsModule,

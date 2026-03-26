@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Project } from '../../projects/domain/project';
@@ -16,6 +16,8 @@ import { TaskLogService } from './task-log.service';
 import { TaskOutputService } from './task-output.service';
 import { TaskRuntimeOrchestratorService } from './task-runtime-orchestrator.service';
 import { TaskStatusService } from './task-status.service';
+import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
+import { ContainerExecutionConfigService } from '../../containers/container-execution-config.service';
 
 @Injectable()
 export class TaskNodeExecutionService {
@@ -33,6 +35,9 @@ export class TaskNodeExecutionService {
     private readonly taskLogService: TaskLogService,
     private readonly taskStatusService: TaskStatusService,
     private readonly taskRuntimeOrchestrator: TaskRuntimeOrchestratorService,
+    private readonly containerOrchestration: ContainerOrchestrationService,
+    @Optional()
+    private readonly containerExecutionConfig?: ContainerExecutionConfigService,
     private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry = new AgentCliAdapterRegistry(),
   ) {}
 
@@ -111,6 +116,20 @@ export class TaskNodeExecutionService {
       });
       stopCancellationWatcher = this.startExecutionCancellationWatcher(nodeId);
 
+      const containerBundle = await this.containerOrchestration.ensureContainer(
+        {
+          task: executionTask,
+          worktreePath: runtime.worktreePath,
+        },
+      );
+      const containerExecRef = containerBundle?.containerId;
+      await this.assertStrictDockerHandoff({
+        task: executionTask,
+        nodeId,
+        worktreePath: runtime.worktreePath,
+        containerExecRef,
+      });
+
       await this.executeAgentNode({
         taskId,
         nodeId,
@@ -118,6 +137,7 @@ export class TaskNodeExecutionService {
         node: runningNode,
         project,
         runtimeContext: runtime,
+        containerExecRef,
       });
     } catch (error) {
       const errorMessage =
@@ -167,6 +187,42 @@ export class TaskNodeExecutionService {
     }
   }
 
+  private async assertStrictDockerHandoff({
+    task,
+    nodeId,
+    worktreePath,
+    containerExecRef,
+  }: {
+    task: Task;
+    nodeId: string;
+    worktreePath: string;
+    containerExecRef?: string;
+  }): Promise<void> {
+    if (
+      !this.containerExecutionConfig?.isDockerMode() ||
+      !this.containerExecutionConfig.isStrictMode() ||
+      containerExecRef
+    ) {
+      return;
+    }
+
+    const containerName =
+      this.containerExecutionConfig.resolveContainerName(task);
+    await this.taskLogService.appendLog({
+      taskId: task.id,
+      taskNodeId: nodeId,
+      level: TaskLogLevel.error,
+      message: 'Strict Docker handoff failed before agent launch',
+      payload: {
+        containerName,
+        worktreePath,
+      },
+    });
+    throw new Error(
+      `Strict Docker orchestration did not provide a runnable task container (taskId=${task.id}, nodeId=${nodeId}, containerName=${containerName}, worktreePath=${worktreePath})`,
+    );
+  }
+
   private async executeAgentNode({
     taskId,
     nodeId,
@@ -174,6 +230,7 @@ export class TaskNodeExecutionService {
     node,
     project,
     runtimeContext,
+    containerExecRef,
   }: {
     taskId: string;
     nodeId: string;
@@ -186,6 +243,7 @@ export class TaskNodeExecutionService {
       gitWorktree: string;
       worktreePath: string;
     };
+    containerExecRef?: string;
   }): Promise<void> {
     let streamedStdoutLineCount = 0;
     let streamedStderrLineCount = 0;
@@ -206,6 +264,7 @@ export class TaskNodeExecutionService {
       task,
       node,
       project,
+      containerExecRef,
       runtimeContext: runtimeContext
         ? {
             gitBranch: runtimeContext.gitBranch,

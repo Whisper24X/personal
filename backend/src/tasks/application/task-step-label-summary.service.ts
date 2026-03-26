@@ -66,21 +66,35 @@ export class TaskStepLabelSummaryService {
         prompt,
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
-        `step_summary_runner_error task=${taskId} ${error instanceof Error ? error.message : String(error)}`,
+        this.isRunnerUnavailableError(message)
+          ? `step_summary_runner_unavailable task=${taskId} ${message}`
+          : `step_summary_runner_error task=${taskId} ${message}`,
       );
       return { items: this.fallbackItems(items) };
     }
 
     if (!result.success) {
+      const diagnostic =
+        `${result.errorMessage ?? ''} ${result.stderr.slice(0, 500)}`.trim();
       this.logger.warn(
-        `step_summary_runner_failed task=${taskId} exit=${result.exitCode} stderr=${result.stderr.slice(0, 500)}`,
+        this.isRunnerUnavailableError(diagnostic)
+          ? `step_summary_runner_unavailable task=${taskId} ${diagnostic}`
+          : `step_summary_runner_failed task=${taskId} exit=${result.exitCode} stderr=${result.stderr.slice(0, 500)}`,
       );
       return { items: this.fallbackItems(items) };
     }
 
     const parsed = this.parseModelOutput(result.stdout, items);
     return { items: parsed };
+  }
+
+  private isRunnerUnavailableError(message: string): boolean {
+    return (
+      message.includes('requires docker exec handoff') ||
+      message.includes('runnable task container')
+    );
   }
 
   private clampRawText(raw: string): string {

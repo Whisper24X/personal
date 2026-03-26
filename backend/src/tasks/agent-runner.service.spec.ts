@@ -2049,4 +2049,123 @@ describe('AgentRunnerService', () => {
       }
     }
   });
+
+  it('should return a diagnostic strict docker error when docker exec handoff is incomplete', async () => {
+    const repositoryMock = createRepositoryMock();
+    const containerExecutionConfig = {
+      isDockerMode: jest.fn().mockReturnValue(true),
+      isStrictMode: jest.fn().mockReturnValue(true),
+    };
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+      undefined as any,
+      undefined as any,
+      undefined as any,
+      undefined,
+      containerExecutionConfig as any,
+    );
+    const serviceAny = service as any;
+
+    const result = await serviceAny.runWithConfig(
+      {
+        adapter: 'codex',
+        command: 'codex',
+        args: ['exec', '--json', '-'],
+        cwd: '/tmp/worktree',
+        env: {},
+      },
+      'Run task',
+      {
+        taskId: 'task-1',
+        nodeId: 'node-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.errorMessage).toContain(
+      'Docker execution mode (strict) requires docker exec handoff',
+    );
+    expect(result.errorMessage).toContain('containerExecRef is missing');
+    expect(result.errorMessage).toContain(
+      'AgentProcessLauncherService is unavailable',
+    );
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it('should use docker exec launcher when strict docker handoff is complete', async () => {
+    const repositoryMock = createRepositoryMock();
+    const stdout = new EventEmitter();
+    const stderr = new EventEmitter();
+    const childProcess = new EventEmitter() as any;
+    childProcess.stdout = stdout;
+    childProcess.stderr = stderr;
+    childProcess.stdin = {
+      write: jest.fn(),
+      end: jest.fn(),
+    };
+    childProcess.kill = jest.fn().mockReturnValue(true);
+
+    const launcher = {
+      spawnViaDockerExec: jest.fn().mockReturnValue(childProcess),
+    };
+    const containerExecutionConfig = {
+      isDockerMode: jest.fn().mockReturnValue(true),
+      isStrictMode: jest.fn().mockReturnValue(true),
+      getRunnerWorkspace: jest.fn().mockReturnValue('/workspace'),
+    };
+    const service = new AgentRunnerService(
+      repositoryMock as unknown as AgentToolConfigRepository,
+      undefined as any,
+      undefined as any,
+      undefined as any,
+      undefined,
+      containerExecutionConfig as any,
+      launcher as any,
+    );
+    const serviceAny = service as any;
+
+    const resultPromise = serviceAny.runWithConfig(
+      {
+        adapter: 'codex',
+        command: 'codex',
+        args: ['exec', '--json', '-'],
+        cwd: '/tmp/worktree',
+        env: {
+          OPENAI_API_KEY: 'sk-test',
+        },
+      },
+      'Run task',
+      {
+        taskId: 'task-1',
+        nodeId: 'node-1',
+        projectId: 'project-1',
+        businessLineId: 'business-line-1',
+      },
+      undefined,
+      'container-123',
+    );
+
+    stdout.emit(
+      'data',
+      '{"event":"session.started","session_id":"session-1"}\n',
+    );
+    childProcess.emit('close', 0, null);
+
+    await expect(resultPromise).resolves.toMatchObject({
+      success: true,
+      exitCode: 0,
+      sessionId: 'session-1',
+    });
+    expect(launcher.spawnViaDockerExec).toHaveBeenCalledWith(
+      expect.objectContaining({
+        containerRef: 'container-123',
+        command: 'codex',
+        args: ['exec', '--json', '-'],
+        cwd: '/workspace',
+      }),
+    );
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
 });

@@ -20,6 +20,14 @@ const featureBranch = ref<string | null>(null)
 const logContainer = ref<HTMLElement | null>(null)
 let abortController: AbortController | null = null
 
+const getErrorStatus = (error: unknown) => {
+  if (typeof error !== 'object' || error === null || !('status' in error)) {
+    return null
+  }
+
+  return typeof error.status === 'number' ? error.status : null
+}
+
 const scrollToBottom = () => {
   nextTick(() => {
     if (logContainer.value) {
@@ -109,11 +117,11 @@ const startDeploy = async () => {
       },
       signal: abortController.signal,
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof DOMException && error.name === 'AbortError') return
     if (status.value === 'running') {
       status.value = 'failed'
-      if (error?.status === 409) {
+      if (getErrorStatus(error) === 409 && error instanceof Error) {
         appendLog(error.message)
       } else {
         appendLog(`请求失败: ${error instanceof Error ? error.message : '未知错误'}`)

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { Task } from '../domain/task';
 import { TaskNode } from '../domain/task-node';
 import { AgentRunnerResult } from '../agent-runner.service';
+import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskMode } from '../dto/task-mode.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskRuntimeService } from '../task-runtime.service';
@@ -79,6 +80,11 @@ const createNode = (status: TaskStatus): TaskNode => ({
   updatedAt: new Date('2026-03-19T10:05:00.000Z'),
 });
 
+const containerOrchestrationStub = {
+  ensureContainer: jest.fn().mockResolvedValue(null),
+  onNodeFinished: jest.fn().mockResolvedValue(undefined),
+};
+
 describe('TaskNodeExecutionService', () => {
   afterEach(() => {
     jest.useRealTimers();
@@ -99,6 +105,7 @@ describe('TaskNodeExecutionService', () => {
     };
     const taskNodeRepository = {
       findById: jest.fn().mockResolvedValue(runningNode),
+      findByTaskId: jest.fn().mockResolvedValue([runningNode]),
       update: jest.fn().mockResolvedValue(undefined),
     };
     const taskRuntimeService = {
@@ -186,6 +193,7 @@ describe('TaskNodeExecutionService', () => {
       taskLogService as never,
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
+      containerOrchestrationStub as never,
     );
 
     const executionPromise = service.runNode({
@@ -228,6 +236,7 @@ describe('TaskNodeExecutionService', () => {
     };
     const taskNodeRepository = {
       findById: jest.fn().mockResolvedValue(runningNode),
+      findByTaskId: jest.fn().mockResolvedValue([runningNode]),
       update: jest.fn().mockResolvedValue(undefined),
     };
     const taskRuntimeService = {
@@ -315,6 +324,7 @@ describe('TaskNodeExecutionService', () => {
       taskLogService as never,
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
+      containerOrchestrationStub as never,
     );
 
     const executionPromise = service.runNode({
@@ -355,6 +365,7 @@ describe('TaskNodeExecutionService', () => {
     };
     const taskNodeRepository = {
       findById: jest.fn().mockResolvedValue(runningNode),
+      findByTaskId: jest.fn().mockResolvedValue([runningNode]),
       update: jest.fn().mockResolvedValue(undefined),
     };
     const taskRuntimeService = {
@@ -422,6 +433,7 @@ describe('TaskNodeExecutionService', () => {
       taskLogService as never,
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
+      containerOrchestrationStub as never,
     );
 
     const executionPromise = service.runNode({
@@ -465,6 +477,7 @@ describe('TaskNodeExecutionService', () => {
     };
     const taskNodeRepository = {
       findById: jest.fn().mockResolvedValue(runningNode),
+      findByTaskId: jest.fn().mockResolvedValue([runningNode]),
       update: jest.fn().mockResolvedValue(undefined),
     };
     const taskRuntimeService = {
@@ -532,6 +545,7 @@ describe('TaskNodeExecutionService', () => {
       taskLogService as never,
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
+      containerOrchestrationStub as never,
     );
 
     const executionPromise = service.runNode({
@@ -578,6 +592,7 @@ describe('TaskNodeExecutionService', () => {
     };
     const taskNodeRepository = {
       findById: jest.fn().mockResolvedValue(runningNode),
+      findByTaskId: jest.fn().mockResolvedValue([runningNode]),
       update: jest.fn().mockResolvedValue(undefined),
     };
     const taskRuntimeService = {
@@ -645,6 +660,7 @@ describe('TaskNodeExecutionService', () => {
       taskLogService as never,
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
+      containerOrchestrationStub as never,
     );
 
     const executionPromise = service.runNode({
@@ -689,6 +705,7 @@ describe('TaskNodeExecutionService', () => {
     };
     const taskNodeRepository = {
       findById: jest.fn().mockResolvedValue(runningNode),
+      findByTaskId: jest.fn().mockResolvedValue([runningNode]),
       update: jest.fn().mockResolvedValue(undefined),
     };
     const taskRuntimeService = {
@@ -756,6 +773,7 @@ describe('TaskNodeExecutionService', () => {
       taskLogService as never,
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
+      containerOrchestrationStub as never,
     );
 
     const executionPromise = service.runNode({
@@ -799,6 +817,7 @@ describe('TaskNodeExecutionService', () => {
     };
     const taskNodeRepository = {
       findById: jest.fn().mockResolvedValue(runningNode),
+      findByTaskId: jest.fn().mockResolvedValue([runningNode]),
       update: jest.fn().mockResolvedValue(undefined),
     };
     const taskRuntimeService = {
@@ -866,6 +885,7 @@ describe('TaskNodeExecutionService', () => {
       taskLogService as never,
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
+      containerOrchestrationStub as never,
     );
 
     const executionPromise = service.runNode({
@@ -906,6 +926,7 @@ describe('TaskNodeExecutionService', () => {
         .mockResolvedValueOnce(runningNode)
         .mockResolvedValueOnce(cancelledNode)
         .mockResolvedValueOnce(cancelledNode),
+      findByTaskId: jest.fn().mockResolvedValue([runningNode]),
       update: jest.fn(),
     };
     const taskRuntimeService = {
@@ -975,6 +996,7 @@ describe('TaskNodeExecutionService', () => {
       taskLogService as never,
       taskStatusService as never,
       taskRuntimeOrchestrator as never,
+      containerOrchestrationStub as never,
     );
 
     const executionPromise = service.runNode({
@@ -1005,6 +1027,307 @@ describe('TaskNodeExecutionService', () => {
       expect.objectContaining({
         message: 'Agent node execution failed',
       }),
+    );
+  });
+
+  it('should fail before agent launch when strict docker handoff has no container ref', async () => {
+    jest.useFakeTimers();
+
+    const task = createTask();
+    const project = createProject();
+    const runningNode = createNode(TaskStatus.inProgress);
+
+    const taskRepository = {
+      findById: jest.fn().mockResolvedValue(task),
+    };
+    const taskNodeRepository = {
+      findById: jest.fn().mockResolvedValue(runningNode),
+      findByTaskId: jest.fn().mockResolvedValue([runningNode]),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRuntimeService = {
+      ensureRuntime: jest.fn().mockResolvedValue({
+        gitBranch: 'feature/task-1',
+        gitBaseBranch: 'main',
+        gitWorktree: 'wk-task-1',
+        worktreePath: '/tmp/worktrees/wk-task-1',
+      }),
+    };
+    const agentRunnerService = {
+      executeAgentNode: jest.fn(),
+      interruptExecution: jest.fn(),
+    };
+    const taskConfigResolver = {
+      normalizeOptionalString: jest.fn().mockReturnValue(null),
+      readNodeEarlyExitMarkerConfig: jest
+        .fn()
+        .mockReturnValue({ enabled: false, fileName: null }),
+    };
+    const taskOutputService = {
+      clearNodeOutputJsonl: jest.fn().mockResolvedValue(undefined),
+      writeNodeOutputJsonl: jest.fn().mockResolvedValue('/tmp/node-1.jsonl'),
+      resolveNodeOutputPath: jest.fn().mockReturnValue('/tmp/node-1.jsonl'),
+      extractJsonLinesFromContent: jest.fn().mockReturnValue([]),
+      appendNodeOutputJsonlLines: jest.fn().mockResolvedValue(0),
+    };
+    const taskLogService = {
+      appendLog: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskStatusService = {
+      recalculateTaskStatus: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRuntimeOrchestrator = {
+      createRuntimeTaskSnapshot: jest.fn().mockImplementation(() => task),
+    };
+    const containerOrchestration = {
+      ensureContainer: jest.fn().mockResolvedValue(null),
+      onNodeFinished: jest.fn().mockResolvedValue(undefined),
+    };
+    const containerExecutionConfig = {
+      isDockerMode: jest.fn().mockReturnValue(true),
+      isStrictMode: jest.fn().mockReturnValue(true),
+      resolveContainerName: jest.fn().mockReturnValue('ainative-task-task-1'),
+    };
+
+    const service = new TaskNodeExecutionService(
+      taskRepository as never,
+      taskNodeRepository as never,
+      taskRuntimeService as unknown as TaskRuntimeService,
+      agentRunnerService as never,
+      taskConfigResolver as never,
+      taskOutputService as never,
+      taskLogService as never,
+      taskStatusService as never,
+      taskRuntimeOrchestrator as never,
+      containerOrchestration as never,
+      containerExecutionConfig as never,
+    );
+
+    const executionPromise = service.runNode({
+      taskId: task.id,
+      nodeId: runningNode.id,
+      project,
+    });
+
+    await jest.advanceTimersByTimeAsync(150);
+    await executionPromise;
+
+    expect(containerOrchestration.ensureContainer).toHaveBeenCalledTimes(1);
+    expect(agentRunnerService.executeAgentNode).not.toHaveBeenCalled();
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: task.id,
+        taskNodeId: runningNode.id,
+        level: TaskLogLevel.error,
+        message: 'Strict Docker handoff failed before agent launch',
+        payload: expect.objectContaining({
+          containerName: 'ainative-task-task-1',
+          worktreePath: '/tmp/worktrees/wk-task-1',
+        }),
+      }),
+    );
+    expect(taskOutputService.writeNodeOutputJsonl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        output: expect.objectContaining({
+          summary: expect.stringContaining(
+            'Strict Docker orchestration did not provide a runnable task container',
+          ),
+        }),
+      }),
+    );
+  });
+
+  it('should preserve orchestration startup errors in task logs', async () => {
+    jest.useFakeTimers();
+
+    const task = createTask();
+    const project = createProject();
+    const runningNode = createNode(TaskStatus.inProgress);
+    const startupError =
+      'Container ainative-task-task-1 reached running state but readiness probe http://127.0.0.1:8080/health did not pass within 300000ms';
+
+    const taskRepository = {
+      findById: jest.fn().mockResolvedValue(task),
+    };
+    const taskNodeRepository = {
+      findById: jest.fn().mockResolvedValue(runningNode),
+      findByTaskId: jest.fn().mockResolvedValue([runningNode]),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRuntimeService = {
+      ensureRuntime: jest.fn().mockResolvedValue({
+        gitBranch: 'feature/task-1',
+        gitBaseBranch: 'main',
+        gitWorktree: 'wk-task-1',
+        worktreePath: '/tmp/worktrees/wk-task-1',
+      }),
+    };
+    const agentRunnerService = {
+      executeAgentNode: jest.fn(),
+      interruptExecution: jest.fn(),
+    };
+    const taskConfigResolver = {
+      normalizeOptionalString: jest.fn().mockReturnValue(null),
+      readNodeEarlyExitMarkerConfig: jest
+        .fn()
+        .mockReturnValue({ enabled: false, fileName: null }),
+    };
+    const taskOutputService = {
+      clearNodeOutputJsonl: jest.fn().mockResolvedValue(undefined),
+      writeNodeOutputJsonl: jest.fn().mockResolvedValue('/tmp/node-1.jsonl'),
+      resolveNodeOutputPath: jest.fn().mockReturnValue('/tmp/node-1.jsonl'),
+      extractJsonLinesFromContent: jest.fn().mockReturnValue([]),
+      appendNodeOutputJsonlLines: jest.fn().mockResolvedValue(0),
+    };
+    const taskLogService = {
+      appendLog: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskStatusService = {
+      recalculateTaskStatus: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRuntimeOrchestrator = {
+      createRuntimeTaskSnapshot: jest.fn().mockImplementation(() => task),
+    };
+    const containerOrchestration = {
+      ensureContainer: jest.fn().mockRejectedValue(new Error(startupError)),
+      onNodeFinished: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new TaskNodeExecutionService(
+      taskRepository as never,
+      taskNodeRepository as never,
+      taskRuntimeService as unknown as TaskRuntimeService,
+      agentRunnerService as never,
+      taskConfigResolver as never,
+      taskOutputService as never,
+      taskLogService as never,
+      taskStatusService as never,
+      taskRuntimeOrchestrator as never,
+      containerOrchestration as never,
+    );
+
+    const executionPromise = service.runNode({
+      taskId: task.id,
+      nodeId: runningNode.id,
+      project,
+    });
+
+    await jest.advanceTimersByTimeAsync(150);
+    await executionPromise;
+
+    expect(agentRunnerService.executeAgentNode).not.toHaveBeenCalled();
+    expect(taskLogService.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: task.id,
+        taskNodeId: runningNode.id,
+        level: TaskLogLevel.error,
+        message: 'Node execution failed',
+        payload: expect.objectContaining({
+          errorMessage: startupError,
+        }),
+      }),
+    );
+  });
+
+  it('should not depend on per-node container cleanup after execution settles', async () => {
+    jest.useFakeTimers();
+
+    const task = createTask();
+    const project = createProject();
+    const runningNode = createNode(TaskStatus.inProgress);
+
+    const taskRepository = {
+      findById: jest.fn().mockResolvedValue(task),
+    };
+    const taskNodeRepository = {
+      findById: jest.fn().mockResolvedValue(runningNode),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRuntimeService = {
+      ensureRuntime: jest.fn().mockResolvedValue({
+        gitBranch: 'feature/task-1',
+        gitBaseBranch: 'main',
+        gitWorktree: 'wk-task-1',
+        worktreePath: '/tmp/worktrees/wk-task-1',
+      }),
+    };
+    const agentRunnerService = {
+      executeAgentNode: jest.fn().mockResolvedValue({
+        success: true,
+        interrupted: false,
+        exitCode: 0,
+        signal: null,
+        command: 'codex',
+        args: ['exec', '--json'],
+        cwd: '/tmp/worktrees/wk-task-1',
+        durationMs: 250,
+        stdout: '',
+        stderr: '',
+        prompt: 'Run task',
+        sessionId: 'thread-1',
+      } satisfies AgentRunnerResult),
+      interruptExecution: jest.fn(),
+    };
+    const taskConfigResolver = {
+      normalizeOptionalString: jest.fn().mockReturnValue(null),
+      readNodeLoopConfig: jest.fn().mockReturnValue({
+        enabled: false,
+        loopCount: 0,
+        maxLoops: 1,
+      }),
+      readNodeRequiresApproval: jest.fn().mockReturnValue(true),
+      readNodeEarlyExitMarkerConfig: jest
+        .fn()
+        .mockReturnValue({ enabled: false, fileName: null }),
+    };
+    const taskOutputService = {
+      clearNodeOutputJsonl: jest.fn().mockResolvedValue(undefined),
+      appendNodeOutputJsonlRecords: jest.fn().mockResolvedValue(0),
+      extractJsonLinesFromContent: jest.fn().mockReturnValue([]),
+      appendNodeOutputJsonlLines: jest.fn().mockResolvedValue(0),
+      resolveNodeOutputPath: jest.fn().mockReturnValue('/tmp/node-1.jsonl'),
+      writeNodeOutputJsonl: jest.fn().mockResolvedValue('/tmp/node-1.jsonl'),
+    };
+    const taskLogService = {
+      appendLog: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskStatusService = {
+      recalculateTaskStatus: jest.fn().mockResolvedValue(undefined),
+    };
+    const taskRuntimeOrchestrator = {
+      createRuntimeTaskSnapshot: jest.fn().mockImplementation(() => task),
+    };
+    const containerOrchestration = {
+      ensureContainer: jest
+        .fn()
+        .mockResolvedValue({ containerId: 'container-1' }),
+    };
+
+    const service = new TaskNodeExecutionService(
+      taskRepository as never,
+      taskNodeRepository as never,
+      taskRuntimeService as unknown as TaskRuntimeService,
+      agentRunnerService as never,
+      taskConfigResolver as never,
+      taskOutputService as never,
+      taskLogService as never,
+      taskStatusService as never,
+      taskRuntimeOrchestrator as never,
+      containerOrchestration as never,
+    );
+
+    const executionPromise = service.runNode({
+      taskId: task.id,
+      nodeId: runningNode.id,
+      project,
+    });
+
+    await jest.advanceTimersByTimeAsync(150);
+    await executionPromise;
+
+    expect(containerOrchestration.ensureContainer).toHaveBeenCalledTimes(1);
+    expect(taskStatusService.recalculateTaskStatus).toHaveBeenCalledWith(
+      task.id,
     );
   });
 });

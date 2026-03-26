@@ -14,6 +14,9 @@ import { TaskLogService } from './task-log.service';
 import { TaskNodeExecutionService } from './task-node-execution.service';
 import { TaskOutputService } from './task-output.service';
 import { TaskStatusService } from './task-status.service';
+import { ContainerExecutionConfigService } from '../../containers/container-execution-config.service';
+import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
+import { ProjectExecutionSlotRepository } from '../../containers/infrastructure/persistence/relational/repositories/project-execution-slot.repository';
 
 @Injectable()
 export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
@@ -60,6 +63,9 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
     private readonly taskLogService: TaskLogService,
     private readonly taskStatusService: TaskStatusService,
     private readonly taskConfigResolver: TaskConfigResolverService,
+    private readonly containerExecutionConfig: ContainerExecutionConfigService,
+    private readonly projectExecutionSlotRepository: ProjectExecutionSlotRepository,
+    private readonly containerOrchestration: ContainerOrchestrationService,
     private readonly configService: ConfigService = new ConfigService(),
   ) {}
 
@@ -161,12 +167,40 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
             continue;
           }
 
+          let claimedNewProjectSlot = false;
+          if (this.containerExecutionConfig.isDockerMode()) {
+            const existingSlot =
+              await this.projectExecutionSlotRepository.findByProjectId(
+                task.projectId,
+              );
+            if (existingSlot && existingSlot.taskId !== task.id) {
+              continue;
+            }
+            if (!existingSlot) {
+              const claimed =
+                await this.projectExecutionSlotRepository.tryClaimSlot(
+                  task.projectId,
+                  task.id,
+                  this.containerExecutionConfig.getSlotTtlMs(),
+                );
+              if (!claimed) {
+                continue;
+              }
+              claimedNewProjectSlot = true;
+            }
+          }
+
           const claimedNode = await this.taskNodeRepository.claimFirstTodoNode(
             task.id,
             this.workerId,
             new Date(Date.now() + this.nodeLeaseTtlMs),
           );
           if (!claimedNode) {
+            if (claimedNewProjectSlot) {
+              await this.projectExecutionSlotRepository.releaseSlot(
+                task.projectId,
+              );
+            }
             continue;
           }
 
@@ -275,6 +309,20 @@ export class TaskSchedulerService implements OnModuleInit, OnModuleDestroy {
           });
 
           await this.taskStatusService.recalculateTaskStatus(latestNode.taskId);
+        }
+
+        if (this.containerExecutionConfig.isDockerMode()) {
+          await this.containerOrchestration.recoverExpiredSlots(
+            async ({ taskId }) => {
+              await this.taskLogService.appendLog({
+                taskId,
+                taskNodeId: null,
+                level: TaskLogLevel.error,
+                message: 'Container slot expired and recovered',
+                payload: {},
+              });
+            },
+          );
         }
       });
     } finally {

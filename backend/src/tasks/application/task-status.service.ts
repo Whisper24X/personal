@@ -8,6 +8,8 @@ import { TaskRepository } from '../infrastructure/persistence/task.repository';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskConfigResolverService } from './task-config-resolver.service';
 import { TaskLogService } from './task-log.service';
+import { ContainerExecutionConfigService } from '../../containers/container-execution-config.service';
+import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
 
 @Injectable()
 export class TaskStatusService {
@@ -17,6 +19,8 @@ export class TaskStatusService {
     private readonly notificationsService: NotificationsService,
     private readonly taskLogService: TaskLogService,
     private readonly taskConfigResolver: TaskConfigResolverService,
+    private readonly containerExecutionConfig: ContainerExecutionConfigService,
+    private readonly containerOrchestration: ContainerOrchestrationService,
   ) {}
 
   async recalculateTaskStatus(taskId: string): Promise<void> {
@@ -99,6 +103,19 @@ export class TaskStatusService {
     gitWorktree: string | null | undefined,
     status: TaskStatus,
   ): Promise<void> {
+    if (
+      this.containerExecutionConfig.isDockerMode() &&
+      status === TaskStatus.done
+    ) {
+      const task = await this.taskRepository.findById(taskId);
+      if (task) {
+        await this.containerOrchestration.removeContainerForTask(
+          taskId,
+          task.projectId,
+        );
+      }
+    }
+
     if (status === TaskStatus.inReview && gitWorktree) {
       await this.taskLogService.appendLog({
         taskId,

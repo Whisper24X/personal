@@ -219,21 +219,35 @@ export class TaskTitleSuggestionService {
         prompt: llmPrompt,
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
-        `task_title_suggest_runner_error ${error instanceof Error ? error.message : String(error)}`,
+        this.isRunnerUnavailableError(message)
+          ? `task_title_suggest_runner_unavailable ${message}`
+          : `task_title_suggest_runner_error ${message}`,
       );
       return this.fallbackTitle(clampedPrompt);
     }
 
     if (!result.success) {
+      const diagnostic =
+        `${result.errorMessage ?? ''} ${result.stderr.slice(0, 400)}`.trim();
       this.logger.warn(
-        `task_title_suggest_runner_failed exit=${result.exitCode} stderr=${result.stderr.slice(0, 400)}`,
+        this.isRunnerUnavailableError(diagnostic)
+          ? `task_title_suggest_runner_unavailable ${diagnostic}`
+          : `task_title_suggest_runner_failed exit=${result.exitCode} stderr=${result.stderr.slice(0, 400)}`,
       );
       return this.fallbackTitle(clampedPrompt);
     }
 
     const parsed = this.parseTitleFromStdout(result.stdout);
     return parsed ? this.clipTitle(parsed) : this.fallbackTitle(clampedPrompt);
+  }
+
+  private isRunnerUnavailableError(message: string): boolean {
+    return (
+      message.includes('requires docker exec handoff') ||
+      message.includes('runnable task container')
+    );
   }
 
   private async resolveTargetAgents(

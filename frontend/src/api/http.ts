@@ -122,7 +122,6 @@ const consumeSseResponse = async (
   response: Response,
   callbacks: SseCallbacks,
 ) => {
-
   if (!response.ok || !response.body) {
     let message = `SSE request failed with status ${response.status}`
     try {
@@ -133,8 +132,8 @@ const consumeSseResponse = async (
     } catch {
       /* ignore parse error */
     }
-    const err = new Error(message)
-    ;(err as any).status = response.status
+    const err = new Error(message) as Error & { status: number }
+    err.status = response.status
     throw err
   }
 
