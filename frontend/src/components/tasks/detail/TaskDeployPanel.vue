@@ -18,6 +18,7 @@ const logLines = ref<string[]>([])
 const exitCode = ref<number | null>(null)
 const featureBranch = ref<string | null>(null)
 const logContainer = ref<HTMLElement | null>(null)
+const showConfirm = ref(false)
 let abortController: AbortController | null = null
 
 const scrollToBottom = () => {
@@ -40,8 +41,16 @@ const appendLog = (text: string, prefix?: string) => {
 
 const confirmAndDeploy = () => {
   if (status.value === 'running' || !command.value.trim()) return
-  if (!confirm(`确认执行部署命令？\n\n${command.value.trim()}`)) return
+  showConfirm.value = true
+}
+
+const onConfirmed = () => {
+  showConfirm.value = false
   startDeploy()
+}
+
+const onCancelConfirm = () => {
+  showConfirm.value = false
 }
 
 const startDeploy = async () => {
@@ -188,23 +197,42 @@ const statusClass: Record<DeployStatus, string> = {
       </div>
 
       <div class="flex items-center gap-3">
-        <button
-          v-if="status !== 'running'"
-          type="button"
-          class="h-9 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-          :disabled="!command.trim()"
-          @click="confirmAndDeploy"
-        >
-          部署到测试环境
-        </button>
-        <button
-          v-else
-          type="button"
-          class="h-9 rounded-lg border border-destructive bg-background px-4 text-xs font-semibold text-destructive transition hover:bg-destructive/10"
-          @click="cancelDeploy"
-        >
-          取消部署
-        </button>
+        <template v-if="status === 'running'">
+          <button
+            type="button"
+            class="h-9 rounded-lg border border-destructive bg-background px-4 text-xs font-semibold text-destructive transition hover:bg-destructive/10"
+            @click="cancelDeploy"
+          >
+            取消部署
+          </button>
+        </template>
+        <template v-else-if="showConfirm">
+          <span class="text-xs font-medium text-yellow-500">确认执行部署？</span>
+          <button
+            type="button"
+            class="h-8 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:opacity-90"
+            @click="onConfirmed"
+          >
+            确认
+          </button>
+          <button
+            type="button"
+            class="h-8 rounded-md border border-border bg-background px-3 text-xs font-medium text-muted-foreground transition hover:text-foreground"
+            @click="onCancelConfirm"
+          >
+            取消
+          </button>
+        </template>
+        <template v-else>
+          <button
+            type="button"
+            class="h-9 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="!command.trim()"
+            @click="confirmAndDeploy"
+          >
+            部署到测试环境
+          </button>
+        </template>
 
         <span v-if="status !== 'idle'" class="text-xs font-medium" :class="statusClass[status]">
           {{ statusLabel[status] }}
