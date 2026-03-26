@@ -22,6 +22,10 @@ export type Goal = {
   /** 生成 PRD/任务计划时默认使用的 Agent CLI */
   agentCliId?: string | null
   agentCliConfigId?: string | null
+  /** 创建时选择的 Git 基准分支 */
+  gitBaseBranch: string
+  /** 为本需求创建的需求分支名 */
+  gitBranch: string
   createdBy?: string | null
   createdAt: string
   updatedAt: string
@@ -39,8 +43,14 @@ export type GoalSourceDoc = {
   createdAt: string
 }
 
-export type GoalPlanItemStatus = 'draft' | 'approved' | 'task_created' | 'cancelled'
+export type GoalPlanItemStatus =
+  | 'draft'
+  | 'approved'
+  | 'task_created'
+  | 'completed'
+  | 'cancelled'
 
+/** 功能组（父级），不直接物化为 Task */
 export type GoalPlanItem = {
   id: string
   goalId: string
@@ -50,11 +60,26 @@ export type GoalPlanItem = {
   suggestedPrompt?: string | null
   dependsOnItemIds: string[]
   itemOrder: number
+  /** 该功能组对应的 Git 分支（确认子任务创建前可为空） */
+  gitBranch: string | null
+  createdAt: string
+  updatedAt: string
+  /** 详情接口嵌套的子任务 */
+  subTasks?: GoalPlanSubTask[]
+}
+
+/** 计划子任务（唯一可新建 Task 的单元） */
+export type GoalPlanSubTask = {
+  id: string
+  goalPlanItemId: string
+  title: string
+  summary?: string | null
+  acceptanceCriteria?: string | null
+  suggestedPrompt?: string | null
+  dependsOnSubTaskIds: string[]
+  itemOrder: number
   taskId?: string | null
-  /** 从该计划项新建任务时使用的项目工作流模板 ID */
   workflowTemplateId?: string | null
-  /** 从计划项新建任务时使用的 Git 基准分支；未设置则与新建任务一致使用项目默认 */
-  gitBaseBranch?: string | null
   status: GoalPlanItemStatus
   createdAt: string
   updatedAt: string
@@ -68,6 +93,7 @@ export type TaskDependencyEdge = {
   createdAt: string
 }
 
+/** 子任务维度：总数不含已取消；完成数 = 已物化且对应 Task 为 done 的子任务 */
 export type GoalProgress = {
   totalTasks: number
   doneTasks: number
@@ -82,4 +108,15 @@ export type GoalDetail = {
   tasks: Task[]
   taskDependencies: TaskDependencyEdge[]
   progress: GoalProgress
+}
+
+/** 用于依赖图：子任务列表，边为 dependsOnSubTaskIds */
+export function flattenGoalPlanSubTasks(detail: GoalDetail): GoalPlanSubTask[] {
+  const out: GoalPlanSubTask[] = []
+  for (const g of detail.planItems) {
+    for (const st of g.subTasks ?? []) {
+      out.push(st)
+    }
+  }
+  return out
 }

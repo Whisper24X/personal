@@ -73,6 +73,20 @@ export class GoalEntity extends EntityRelationalHelper {
   @Column({ type: 'uuid', nullable: true, comment: '创建者' })
   createdBy?: string | null;
 
+  @Column({
+    type: String,
+    length: 255,
+    comment: '创建需求时用户选择的 Git 基准分支',
+  })
+  gitBaseBranch: string;
+
+  @Column({
+    type: String,
+    length: 255,
+    comment: '为本需求在仓库中创建的需求分支名',
+  })
+  gitBranch: string;
+
   @CreateDateColumn({ comment: '创建时间' })
   createdAt: Date;
 

@@ -30,9 +30,12 @@ import { UnpackGoalInputZipDto } from './dto/unpack-goal-input-zip.dto';
 import { GeneratePrdDto } from './dto/generate-prd.dto';
 import { GeneratePlanDto } from './dto/generate-plan.dto';
 import { PatchPlanItemDto } from './dto/patch-plan-item.dto';
+import { PatchPlanSubTaskDto } from './dto/patch-plan-sub-task.dto';
 import { MaterializeTasksDto } from './dto/materialize-tasks.dto';
 import { ReplaceTaskDependenciesDto } from './dto/replace-task-dependencies.dto';
+import { GoalPlanItemPrLinkDto } from './dto/goal-plan-item-pr-link.dto';
 import { Goal } from './domain/goal';
+import { GoalPlanSubTask } from './domain/goal-plan-sub-task';
 import { GoalDetailDto } from './dto/goal-detail.dto';
 import { InfinityPaginationResponse } from '../utils/dto/infinity-pagination-response.dto';
 import { Task } from '../tasks/domain/task';
@@ -133,6 +136,17 @@ export class GoalsController {
     return this.goalsService.generatePlan(id, dto, request.user);
   }
 
+  @Post(':id/plan-items/:itemId/pr-link')
+  @ApiOkResponse({ type: GoalPlanItemPrLinkDto })
+  @HttpCode(HttpStatus.OK)
+  getPlanItemPrLink(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+  ) {
+    return this.goalsService.getPlanItemPrLink(id, itemId, request.user);
+  }
+
   @Patch(':id/plan-items/:itemId')
   patchPlanItem(
     @Request() request,
@@ -141,6 +155,17 @@ export class GoalsController {
     @Body() dto: PatchPlanItemDto,
   ) {
     return this.goalsService.patchPlanItem(id, itemId, dto, request.user);
+  }
+
+  @Patch(':id/plan-sub-tasks/:subTaskId')
+  @ApiOkResponse({ type: GoalPlanSubTask })
+  patchPlanSubTask(
+    @Request() request,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('subTaskId', ParseUUIDPipe) subTaskId: string,
+    @Body() dto: PatchPlanSubTaskDto,
+  ) {
+    return this.goalsService.patchPlanSubTask(id, subTaskId, dto, request.user);
   }
 
   @Post(':id/materialize-tasks')

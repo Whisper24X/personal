@@ -57,13 +57,21 @@ const emit = defineEmits<{
             goalStatusLabel[props.detail.goal.status]
           }}
         </p>
+        <p class="text-muted-foreground mt-1 max-w-3xl font-mono text-xs">
+          需求分支 {{ props.detail.goal.gitBranch }} · 基准 {{ props.detail.goal.gitBaseBranch }}
+        </p>
         <p
           class="text-muted-foreground mt-1 flex max-w-3xl flex-wrap items-center gap-x-2 gap-y-1 text-xs"
         >
-          <span>进度：{{ props.planProgressDone }} / {{ props.planProgressTotal }} 已完成</span>
+          <span>进度：{{ props.planProgressDone }} / {{ props.planProgressTotal }} 子任务已完成</span>
           <span aria-hidden="true">·</span>
           <span>
-            关联资料 {{ props.detail.sourceDocs.length }} 条 · 计划项 {{ props.detail.planItems.length }} 条
+            关联资料 {{ props.detail.sourceDocs.length }} 条 · 功能组
+            {{ props.detail.planItems.length }} · 子任务
+            {{
+              props.detail.planItems.reduce((n, g) => n + (g.subTasks?.length ?? 0), 0)
+            }}
+            条
           </span>
           <span aria-hidden="true">·</span>
           <span>计划依赖边数 {{ props.planDependencyEdgeCount }}</span>
@@ -75,7 +83,7 @@ const emit = defineEmits<{
             :aria-valuenow="Math.round(props.planProgressPercent)"
             aria-valuemin="0"
             aria-valuemax="100"
-            :aria-label="`已完成任务 ${props.planProgressDone} / 任务计划 ${props.planProgressTotal}，约 ${Math.round(props.planProgressPercent)}%`"
+            :aria-label="`已完成子任务 ${props.planProgressDone} / 子任务 ${props.planProgressTotal}，约 ${Math.round(props.planProgressPercent)}%`"
           >
             <div
               class="bg-primary h-full rounded-full transition-[width] duration-300 ease-out"

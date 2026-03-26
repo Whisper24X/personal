@@ -1,6 +1,17 @@
 import { BadRequestException } from '@nestjs/common';
+import { buildPlanItemAdjacency, directedGraphHasCycle } from './goal-plan-dag';
 
-/** Agent 输出经别名与 trim 后的计划项，供 generatePlan 落库 */
+/** 子任务（Agent 输出规范化后） */
+export type NormalizedPlanSubTaskFromAgent = {
+  subLocalId: string;
+  title: string;
+  summary?: string;
+  acceptanceCriteria?: string;
+  suggestedPrompt?: string;
+  dependsOnSubLocalIds: string[];
+};
+
+/** 顶层功能组 + 子任务 */
 export type NormalizedPlanItemFromAgent = {
   localId: string;
   title: string;
@@ -8,6 +19,7 @@ export type NormalizedPlanItemFromAgent = {
   acceptanceCriteria?: string;
   suggestedPrompt?: string;
   dependsOnLocalIds: string[];
+  subTasks: NormalizedPlanSubTaskFromAgent[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -52,7 +64,6 @@ function optionalTrimmedString(
   return undefined;
 }
 
-/** 字符串或字符串数组（验收标准等）；数组元素会合并为「；」分隔 */
 function optionalTextFieldStringOrArray(
   o: Record<string, unknown>,
   keys: string[],
@@ -105,8 +116,68 @@ function normalizeDependsArray(raw: unknown): string[] {
   return out;
 }
 
+function normalizeSubTaskFromRaw(
+  raw: unknown,
+  itemIndex: number,
+  subIndex: number,
+): NormalizedPlanSubTaskFromAgent {
+  if (!isRecord(raw)) {
+    throw new BadRequestException(
+      `计划项 items[${itemIndex}].subTasks[${subIndex}] 不是对象`,
+    );
+  }
+  const subLocalId = pickFirstNonEmptyString(raw, [
+    'subLocalId',
+    'sub_local_id',
+    'localId',
+    'id',
+  ]);
+  const title = pickFirstNonEmptyString(raw, [
+    'title',
+    'name',
+    'taskTitle',
+    'task_title',
+  ]);
+  if (!subLocalId || !title) {
+    throw new BadRequestException(
+      `items[${itemIndex}].subTasks[${subIndex}] 缺少 subLocalId 或 title`,
+    );
+  }
+  const dependsOnSubLocalIds = normalizeDependsArray(
+    raw.dependsOnSubLocalIds ??
+      raw.depends_on_sub_local_ids ??
+      raw.dependsOnLocalIds,
+  );
+  return {
+    subLocalId,
+    title,
+    summary: optionalTrimmedString(raw, [
+      'summary',
+      'description',
+      'overview',
+      'brief',
+    ]),
+    acceptanceCriteria: optionalTextFieldStringOrArray(raw, [
+      'acceptanceCriteria',
+      'acceptance_criteria',
+      'acceptance',
+      'criteria',
+    ]),
+    suggestedPrompt: optionalTrimmedString(raw, [
+      'suggestedPrompt',
+      'suggested_prompt',
+      'prompt',
+      'executionPrompt',
+      'execution_prompt',
+      'agentPrompt',
+      'agent_prompt',
+    ]),
+    dependsOnSubLocalIds,
+  };
+}
+
 /**
- * 将 Agent 返回的 items 规范为平台字段：支持 id/name 等别名，并对缺项给出带下标的 400。
+ * 将 Agent 返回的 items 规范为平台字段（含双层 subTasks）。
  */
 export function normalizePlanItemsFromAgent(
   items: unknown,
@@ -124,7 +195,7 @@ export function normalizePlanItemsFromAgent(
     const raw = items[i];
     if (!isRecord(raw)) {
       throw new BadRequestException(
-        `计划项 items[${i}] 不是对象（每项需含 localId、title；勿仅用 id/name 作为唯一标识时遗漏映射字段）`,
+        `计划项 items[${i}] 不是对象（每项需含 localId、title、subTasks）`,
       );
     }
 
@@ -138,8 +209,20 @@ export function normalizePlanItemsFromAgent(
 
     if (!localId || !title) {
       throw new BadRequestException(
-        `计划项 items[${i}] 缺少可用的 localId 或 title（请使用 localId、title；勿仅用 id/name 代替）`,
+        `计划项 items[${i}] 缺少可用的 localId 或 title`,
       );
+    }
+
+    const subRaw = raw.subTasks ?? raw.sub_tasks;
+    if (!Array.isArray(subRaw) || subRaw.length === 0) {
+      throw new BadRequestException(
+        `计划项 items[${i}] 须包含非空 subTasks 数组`,
+      );
+    }
+
+    const subTasks: NormalizedPlanSubTaskFromAgent[] = [];
+    for (let j = 0; j < subRaw.length; j++) {
+      subTasks.push(normalizeSubTaskFromRaw(subRaw[j], i, j));
     }
 
     const dependsOnLocalIds = normalizeDependsArray(
@@ -171,31 +254,125 @@ export function normalizePlanItemsFromAgent(
         'agent_prompt',
       ]),
       dependsOnLocalIds,
+      subTasks,
     });
   }
+
+  validateSubLocalIdsUniqueAndRefs(out);
+  validateSubtaskGraphNoCycle(out);
+  validateParentItemGraphNoCycle(out);
 
   return out;
 }
 
-const TEXT_FIELD_KEYS = [
+function validateParentItemGraphNoCycle(items: NormalizedPlanItemFromAgent[]) {
+  const localToUuid = new Map<string, string>();
+  for (const it of items) {
+    localToUuid.set(it.localId, it.localId);
+  }
+  const pseudo = items.map((it) => ({
+    id: it.localId,
+    dependsOnItemIds: it.dependsOnLocalIds.filter((lid) =>
+      localToUuid.has(lid),
+    ),
+  }));
+  const idSet = new Set(pseudo.map((p) => p.id));
+  const adj = buildPlanItemAdjacency(pseudo);
+  if (directedGraphHasCycle(idSet, adj)) {
+    throw new BadRequestException('顶层功能组 dependsOnLocalIds 存在环');
+  }
+}
+
+function validateSubLocalIdsUniqueAndRefs(
+  items: NormalizedPlanItemFromAgent[],
+) {
+  const seen = new Set<string>();
+  const allIds = new Set<string>();
+  for (const it of items) {
+    for (const st of it.subTasks) {
+      if (seen.has(st.subLocalId)) {
+        throw new BadRequestException(
+          `子任务 subLocalId 重复: ${st.subLocalId}（须全局唯一）`,
+        );
+      }
+      seen.add(st.subLocalId);
+      allIds.add(st.subLocalId);
+    }
+  }
+  for (const it of items) {
+    for (const st of it.subTasks) {
+      for (const dep of st.dependsOnSubLocalIds) {
+        if (!allIds.has(dep)) {
+          throw new BadRequestException(
+            `子任务 ${st.subLocalId} 依赖未知 subLocalId: ${dep}`,
+          );
+        }
+        if (dep === st.subLocalId) {
+          throw new BadRequestException(`子任务 ${st.subLocalId} 不能依赖自身`);
+        }
+      }
+    }
+  }
+}
+
+function validateSubtaskGraphNoCycle(items: NormalizedPlanItemFromAgent[]) {
+  const flat: { id: string; dependsOnItemIds: string[] }[] = [];
+  for (const it of items) {
+    for (const st of it.subTasks) {
+      flat.push({
+        id: st.subLocalId,
+        dependsOnItemIds: st.dependsOnSubLocalIds,
+      });
+    }
+  }
+  const idSet = new Set(flat.map((x) => x.id));
+  const adj = buildPlanItemAdjacency(flat);
+  if (directedGraphHasCycle(idSet, adj)) {
+    throw new BadRequestException('子任务 dependsOnSubLocalIds 存在环');
+  }
+}
+
+const PARENT_TEXT_KEYS = [
+  'summary',
+  'acceptanceCriteria',
+  'suggestedPrompt',
+] as const;
+
+const SUB_TEXT_KEYS = [
   'summary',
   'acceptanceCriteria',
   'suggestedPrompt',
 ] as const;
 
 /**
- * 若任一项缺少非空 summary / acceptanceCriteria / suggestedPrompt，返回首个缺口；否则 null。
- * 用于 generatePlan 在模型漏填时触发重试。
+ * 若任一项顶层或子任务缺少非空 summary / acceptanceCriteria / suggestedPrompt，返回首个缺口。
  */
 export function findFirstMissingPlanItemTextField(
   items: NormalizedPlanItemFromAgent[],
-): { index: number; field: (typeof TEXT_FIELD_KEYS)[number] } | null {
+):
+  | { kind: 'parent'; index: number; field: (typeof PARENT_TEXT_KEYS)[number] }
+  | {
+      kind: 'subtask';
+      itemIndex: number;
+      subIndex: number;
+      field: (typeof SUB_TEXT_KEYS)[number];
+    }
+  | null {
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
-    for (const field of TEXT_FIELD_KEYS) {
+    for (const field of PARENT_TEXT_KEYS) {
       const v = it[field];
       if (typeof v !== 'string' || !v.trim()) {
-        return { index: i, field };
+        return { kind: 'parent', index: i, field };
+      }
+    }
+    for (let j = 0; j < it.subTasks.length; j++) {
+      const st = it.subTasks[j];
+      for (const field of SUB_TEXT_KEYS) {
+        const v = st[field];
+        if (typeof v !== 'string' || !v.trim()) {
+          return { kind: 'subtask', itemIndex: i, subIndex: j, field };
+        }
       }
     }
   }

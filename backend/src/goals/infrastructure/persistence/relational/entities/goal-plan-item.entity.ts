@@ -9,10 +9,9 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
-import { GoalPlanItemStatus } from '../../../../dto/goal-plan-item-status.enum';
 import { GoalEntity } from './goal.entity';
 
-@Entity({ name: 'goal_plan_items', comment: '任务计划项' })
+@Entity({ name: 'goal_plan_items', comment: '任务计划功能组（父级，不物化）' })
 export class GoalPlanItemEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -43,40 +42,20 @@ export class GoalPlanItemEntity extends EntityRelationalHelper {
   @Column({
     type: 'jsonb',
     default: () => "'[]'",
-    comment: '依赖的计划项 ID 列表',
+    comment: '依赖的其他功能组 ID',
   })
   dependsOnItemIds: string[];
 
   @Column({ type: 'int', default: 0, comment: '顺序' })
   itemOrder: number;
 
-  @Index('IDX_goal_plan_items_task_id')
-  @Column({ type: 'uuid', nullable: true, comment: '新建任务后的 Task' })
-  taskId?: string | null;
-
-  @Column({
-    type: 'enum',
-    enum: GoalPlanItemStatus,
-    enumName: 'goal_plan_item_status_enum',
-    default: GoalPlanItemStatus.draft,
-    comment: '状态',
-  })
-  status: GoalPlanItemStatus;
-
-  @Column({
-    type: 'uuid',
-    nullable: true,
-    comment: '从该计划项新建任务时使用的项目工作流模板 ID',
-  })
-  workflowTemplateId?: string | null;
-
   @Column({
     type: String,
-    length: 120,
+    length: 255,
     nullable: true,
-    comment: '从计划项新建任务时使用的 Git 基准分支',
+    comment: '该功能组对应的 Git 分支名（首次确认子任务时创建后写入）',
   })
-  gitBaseBranch?: string | null;
+  gitBranch: string | null;
 
   @CreateDateColumn({ comment: '创建时间' })
   createdAt: Date;

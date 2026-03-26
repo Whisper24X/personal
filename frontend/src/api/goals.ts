@@ -2,6 +2,7 @@ import type {
   Goal,
   GoalDetail,
   GoalPlanItem,
+  GoalPlanSubTask,
   GoalSourceDoc,
 } from '@/types/api/goals'
 import type { Task } from '@/types/api/tasks'
@@ -33,6 +34,7 @@ export const goalsApi = {
   create(payload: {
     projectId: string
     title: string
+    gitBaseBranch: string
     summary?: string
     defaultWorkflowTemplateId?: string
     agentCliId?: string
@@ -101,7 +103,7 @@ export const goalsApi = {
       agentCliConfigId?: string
     },
   ) {
-    return apiHttp.post<{ goal: Goal; itemCount: number }>(
+    return apiHttp.post<{ goal: Goal; itemCount: number; subTaskCount: number }>(
       `/goals/${goalId}/generate-plan`,
       payload ?? {},
     )
@@ -118,10 +120,28 @@ export const goalsApi = {
     )
   },
 
-  materializeTasks(goalId: string, planItemIds: string[]) {
-    return apiHttp.post<{ tasks: { planItemId: string; taskId: string }[] }>(
+  getPlanItemPrLink(goalId: string, planItemId: string) {
+    return apiHttp.post<{ url: string | null }>(
+      `/goals/${goalId}/plan-items/${planItemId}/pr-link`,
+      {},
+    )
+  },
+
+  patchPlanSubTask(
+    goalId: string,
+    subTaskId: string,
+    payload: Record<string, unknown>,
+  ) {
+    return apiHttp.patch<GoalPlanSubTask>(
+      `/goals/${goalId}/plan-sub-tasks/${subTaskId}`,
+      payload,
+    )
+  },
+
+  materializeTasks(goalId: string, planSubTaskIds: string[]) {
+    return apiHttp.post<{ tasks: { planSubTaskId: string; taskId: string }[] }>(
       `/goals/${goalId}/materialize-tasks`,
-      { planItemIds },
+      { planSubTaskIds },
     )
   },
 

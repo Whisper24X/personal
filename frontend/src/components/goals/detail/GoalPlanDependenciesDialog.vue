@@ -54,7 +54,7 @@ const forwarded = useForwardPropsEmits(rootProps, emit)
             <div>
               <DialogTitle class="text-base font-semibold">计划依赖图</DialogTitle>
               <p class="text-muted-foreground mt-0.5 text-sm leading-snug">
-                箭头方向表示「前置 → 后续」；同一前置完成后方可开始后续项。
+                箭头方向表示「前置 → 后续」；同一前置完成后方可开始后续项。虚线框内为同一功能组下的子任务。
               </p>
             </div>
             <div class="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">

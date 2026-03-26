@@ -1,15 +1,16 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
 } from 'class-validator';
+import { GoalPlanItemStatus } from './goal-plan-item-status.enum';
 
-/** 仅功能组（父级）字段；执行态在子任务上 */
-export class PatchPlanItemDto {
+export class PatchPlanSubTaskDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -35,10 +36,25 @@ export class PatchPlanItemDto {
   @IsOptional()
   @IsArray()
   @IsUUID('4', { each: true })
-  dependsOnItemIds?: string[];
+  dependsOnSubTaskIds?: string[];
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsInt()
   itemOrder?: number;
+
+  @ApiPropertyOptional({
+    enum: GoalPlanItemStatus,
+    enumName: 'GoalPlanItemStatus',
+  })
+  @IsOptional()
+  @IsEnum(GoalPlanItemStatus)
+  status?: GoalPlanItemStatus;
+
+  @ApiPropertyOptional({
+    description: '物化该子任务时使用的项目工作流模板 ID',
+  })
+  @IsOptional()
+  @IsUUID()
+  workflowTemplateId?: string;
 }

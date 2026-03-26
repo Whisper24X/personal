@@ -7,6 +7,7 @@ import { RelationalGoalPersistenceModule } from './infrastructure/persistence/re
 import { ProjectsModule } from '../projects/projects.module';
 import { RelationalTaskPersistenceModule } from '../tasks/infrastructure/persistence/relational/relational-persistence.module';
 import { TasksModule } from '../tasks/tasks.module';
+import { GitModule } from '../git/git.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { TasksModule } from '../tasks/tasks.module';
     forwardRef(() => ProjectsModule),
     RelationalTaskPersistenceModule,
     forwardRef(() => TasksModule),
+    GitModule,
   ],
   controllers: [GoalsController],
   providers: [GoalsService, GoalsMetricsService, GoalsFeatureGuard],

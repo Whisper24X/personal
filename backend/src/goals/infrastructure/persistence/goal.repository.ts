@@ -2,6 +2,7 @@ import { NullableType } from '../../../utils/types/nullable.type';
 import { IPaginationOptions } from '../../../utils/types/pagination-options';
 import { Goal } from '../../domain/goal';
 import { GoalPlanItem } from '../../domain/goal-plan-item';
+import { GoalPlanSubTask } from '../../domain/goal-plan-sub-task';
 import { GoalSourceDoc } from '../../domain/goal-source-doc';
 import { TaskDependencyEdge } from '../../domain/task-dependency-edge';
 import { GoalStatus } from '../../dto/goal-status.enum';
@@ -22,7 +23,7 @@ export abstract class GoalRepository {
 
   abstract softRemove(id: Goal['id']): Promise<void>;
 
-  /** 物理删除需求关联的 source_docs / plan_items（需求软删前调用） */
+  /** 物理删除需求关联的 source_docs / plan_items / plan_sub_tasks（需求软删前调用） */
   abstract deleteSourceDocsAndPlanItemsByGoalId(goalId: string): Promise<void>;
 
   abstract findMany(params: {
@@ -41,11 +42,16 @@ export abstract class GoalRepository {
 
   abstract removeSourceDoc(id: string, goalId: string): Promise<void>;
 
+  /** 功能组列表（不含子任务） */
   abstract listPlanItems(goalId: string): Promise<GoalPlanItem[]>;
+
+  /** 功能组 + 嵌套子任务（详情用） */
+  abstract listPlanItemsWithSubTasks(goalId: string): Promise<GoalPlanItem[]>;
 
   abstract replacePlanItems(
     goalId: string,
     items: GoalPlanItem[],
+    subTasks: GoalPlanSubTask[],
   ): Promise<void>;
 
   abstract updatePlanItem(
@@ -58,6 +64,17 @@ export abstract class GoalRepository {
     goalId: string,
     itemId: string,
   ): Promise<NullableType<GoalPlanItem>>;
+
+  abstract findPlanSubTask(
+    goalId: string,
+    subTaskId: string,
+  ): Promise<NullableType<GoalPlanSubTask>>;
+
+  abstract updatePlanSubTask(
+    goalId: string,
+    subTaskId: string,
+    payload: Partial<GoalPlanSubTask>,
+  ): Promise<NullableType<GoalPlanSubTask>>;
 
   abstract listTaskDependenciesForGoal(
     goalId: string,
@@ -75,4 +92,12 @@ export abstract class GoalRepository {
   ): Promise<TaskDependencyEdge>;
 
   abstract removeTaskDependency(id: string): Promise<void>;
+
+  /**
+   * 按物化后的 Task ID 同步计划子任务状态：Task 完成则 task_created→completed，否则 completed→task_created。
+   */
+  abstract syncPlanSubTaskStatusByLinkedTaskId(
+    taskId: string,
+    isDone: boolean,
+  ): Promise<void>;
 }

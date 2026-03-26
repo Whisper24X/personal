@@ -2,9 +2,10 @@ import { PlanGranularity } from './dto/plan-granularity.enum';
 
 const granularityHint: Record<PlanGranularity, string> = {
   [PlanGranularity.conservative]:
-    '拆解偏保守，计划项数量较少，每项覆盖面较大。',
-  [PlanGranularity.standard]: '标准粒度，平衡数量与可交付边界。',
-  [PlanGranularity.fine]: '拆解偏细，计划项数量较多，每项聚焦单一可交付结果。',
+    '拆解偏保守：顶层功能组较少，每组内子任务可略多以覆盖较大范围。',
+  [PlanGranularity.standard]: '标准粒度：功能组数量与子任务密度平衡。',
+  [PlanGranularity.fine]:
+    '拆解偏细：顶层功能组偏多或每组内子任务更细（实现步骤更碎）。',
 };
 
 /**
@@ -19,7 +20,7 @@ export function buildPlanGenerationPrompt(params: {
   const g = params.granularity ?? PlanGranularity.standard;
 
   return [
-    '使用 goal-plan 技能，根据下列已确认的 PRD 生成任务计划。请严格按技能中的计划项要求与 JSON 输出契约执行。',
+    '使用 goal-plan 技能，根据下列已确认的 PRD 生成双层任务计划（顶层为功能组，仅子任务可物化为 Task）。请严格按技能中的要求与 JSON 输出契约执行。',
     '',
     `【需求】${params.goalTitle}`,
     params.goalSummary ? `【摘要】${params.goalSummary}` : '',
@@ -28,9 +29,11 @@ export function buildPlanGenerationPrompt(params: {
     '【PRD 全文】',
     params.prdMarkdown,
     '',
-    '【输出】只输出一个 JSON 对象，键为 markdown、items（字段含义见技能）。不要输出 JSON 以外的文字。',
-    '【items 必填】每一项必须包含且非空：localId、title、summary、acceptanceCriteria、suggestedPrompt，以及 dependsOnLocalIds（数组，可无前置依赖时为空数组）。summary/acceptanceCriteria/suggestedPrompt 须根据 PRD 写实质内容，禁止省略或仅写「见 PRD」。',
-    '【字段名】请使用契约中的英文键名；不要使用 id、name 代替 localId、title（平台会对常见别名做兼容，但建议与契约一致）。',
+    '【输出】只输出一个 JSON 对象，键为 markdown、items。不要输出 JSON 以外的文字。',
+    '【items】每项须含 localId、title、summary、acceptanceCriteria、suggestedPrompt、dependsOnLocalIds，以及非空数组 subTasks。',
+    '【subTasks】每项须含 subLocalId（全局唯一）、title、summary、acceptanceCriteria、suggestedPrompt、dependsOnSubLocalIds；子任务才是后续新建 Task 的单元。',
+    '【实质内容】summary/acceptanceCriteria/suggestedPrompt 须根据 PRD 撰写，禁止省略或仅写「见 PRD」。',
+    '【字段名】请使用契约中的英文键名；不要使用 id、name 代替 localId、title（平台会对常见别名做兼容，但建议一致）。',
   ]
     .filter((line) => line !== '')
     .join('\n');

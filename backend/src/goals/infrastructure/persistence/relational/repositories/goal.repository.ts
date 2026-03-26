@@ -5,14 +5,16 @@ import { IPaginationOptions } from '../../../../../utils/types/pagination-option
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { Goal } from '../../../../domain/goal';
 import { GoalPlanItem } from '../../../../domain/goal-plan-item';
+import { GoalPlanSubTask } from '../../../../domain/goal-plan-sub-task';
 import { GoalSourceDoc } from '../../../../domain/goal-source-doc';
 import { TaskDependencyEdge } from '../../../../domain/task-dependency-edge';
+import { GoalPlanItemStatus } from '../../../../dto/goal-plan-item-status.enum';
 import { GoalStatus } from '../../../../dto/goal-status.enum';
 import { GoalRepository } from '../../goal.repository';
 import { GoalMapper } from '../mappers/goal.mapper';
 import { GoalEntity } from '../entities/goal.entity';
 import { GoalPlanItemEntity } from '../entities/goal-plan-item.entity';
-import { GoalPlanItemStatus } from '../../../../dto/goal-plan-item-status.enum';
+import { GoalPlanSubTaskEntity } from '../entities/goal-plan-sub-task.entity';
 import { GoalSourceDocEntity } from '../entities/goal-source-doc.entity';
 import { TaskDependencyEntity } from '../entities/task-dependency.entity';
 import { TaskDependencyRelation } from '../../../../dto/task-dependency-relation.enum';
@@ -27,6 +29,8 @@ export class GoalRelationalRepository extends GoalRepository {
     private readonly sourceDocRepo: Repository<GoalSourceDocEntity>,
     @InjectRepository(GoalPlanItemEntity)
     private readonly planItemRepo: Repository<GoalPlanItemEntity>,
+    @InjectRepository(GoalPlanSubTaskEntity)
+    private readonly planSubTaskRepo: Repository<GoalPlanSubTaskEntity>,
     @InjectRepository(TaskDependencyEntity)
     private readonly depRepo: Repository<TaskDependencyEntity>,
     @InjectRepository(TaskEntity)
@@ -51,6 +55,8 @@ export class GoalRelationalRepository extends GoalRepository {
         defaultWorkflowTemplateId: data.defaultWorkflowTemplateId ?? null,
         agentCliId: data.agentCliId ?? null,
         agentCliConfigId: data.agentCliConfigId ?? null,
+        gitBaseBranch: data.gitBaseBranch,
+        gitBranch: data.gitBranch,
         createdBy: data.createdBy ?? null,
       }),
     );
@@ -92,6 +98,12 @@ export class GoalRelationalRepository extends GoalRepository {
     }
     if (payload.agentCliConfigId !== undefined) {
       patch.agentCliConfigId = payload.agentCliConfigId;
+    }
+    if (payload.gitBaseBranch !== undefined) {
+      patch.gitBaseBranch = payload.gitBaseBranch;
+    }
+    if (payload.gitBranch !== undefined) {
+      patch.gitBranch = payload.gitBranch;
     }
     await this.goalRepo.update({ id, deletedAt: IsNull() }, patch);
     return this.findById(id);
@@ -177,7 +189,34 @@ export class GoalRelationalRepository extends GoalRepository {
     return rows.map((r) => GoalMapper.planItemToDomain(r));
   }
 
-  async replacePlanItems(goalId: string, items: GoalPlanItem[]): Promise<void> {
+  async listPlanItemsWithSubTasks(goalId: string): Promise<GoalPlanItem[]> {
+    const items = await this.listPlanItems(goalId);
+    if (items.length === 0) {
+      return [];
+    }
+    const itemIds = items.map((i) => i.id);
+    const subs = await this.planSubTaskRepo.find({
+      where: { goalPlanItemId: In(itemIds) },
+      order: { itemOrder: 'ASC', createdAt: 'ASC' },
+    });
+    const byParent = new Map<string, GoalPlanSubTask[]>();
+    for (const row of subs) {
+      const d = GoalMapper.planSubTaskToDomain(row);
+      const list = byParent.get(d.goalPlanItemId) ?? [];
+      list.push(d);
+      byParent.set(d.goalPlanItemId, list);
+    }
+    return items.map((it) => {
+      it.subTasks = byParent.get(it.id) ?? [];
+      return it;
+    });
+  }
+
+  async replacePlanItems(
+    goalId: string,
+    items: GoalPlanItem[],
+    subTasks: GoalPlanSubTask[],
+  ): Promise<void> {
     await this.planItemRepo.manager.transaction(async (em) => {
       await em.delete(GoalPlanItemEntity, { goalId });
       for (const item of items) {
@@ -190,12 +229,27 @@ export class GoalRelationalRepository extends GoalRepository {
           suggestedPrompt: item.suggestedPrompt ?? null,
           dependsOnItemIds: item.dependsOnItemIds ?? [],
           itemOrder: item.itemOrder,
-          taskId: item.taskId ?? null,
-          status: item.status ?? GoalPlanItemStatus.draft,
-          workflowTemplateId: item.workflowTemplateId ?? null,
-          gitBaseBranch: item.gitBaseBranch ?? null,
+          gitBranch: item.gitBranch ?? null,
           createdAt: item.createdAt ?? new Date(),
           updatedAt: item.updatedAt ?? new Date(),
+        });
+        await em.save(row);
+      }
+      for (const st of subTasks) {
+        const row = em.create(GoalPlanSubTaskEntity, {
+          id: st.id,
+          goalPlanItemId: st.goalPlanItemId,
+          title: st.title,
+          summary: st.summary ?? null,
+          acceptanceCriteria: st.acceptanceCriteria ?? null,
+          suggestedPrompt: st.suggestedPrompt ?? null,
+          dependsOnSubTaskIds: st.dependsOnSubTaskIds ?? [],
+          itemOrder: st.itemOrder,
+          taskId: st.taskId ?? null,
+          status: st.status,
+          workflowTemplateId: st.workflowTemplateId ?? null,
+          createdAt: st.createdAt ?? new Date(),
+          updatedAt: st.updatedAt ?? new Date(),
         });
         await em.save(row);
       }
@@ -232,17 +286,8 @@ export class GoalRelationalRepository extends GoalRepository {
     if (payload.itemOrder !== undefined) {
       patch.itemOrder = payload.itemOrder;
     }
-    if (payload.status !== undefined) {
-      patch.status = payload.status;
-    }
-    if (payload.taskId !== undefined) {
-      patch.taskId = payload.taskId;
-    }
-    if (payload.workflowTemplateId !== undefined) {
-      patch.workflowTemplateId = payload.workflowTemplateId;
-    }
-    if (payload.gitBaseBranch !== undefined) {
-      patch.gitBaseBranch = payload.gitBaseBranch;
+    if (payload.gitBranch !== undefined) {
+      patch.gitBranch = payload.gitBranch;
     }
     await this.planItemRepo.update({ id: itemId, goalId }, patch);
     const next = await this.planItemRepo.findOne({
@@ -259,6 +304,69 @@ export class GoalRelationalRepository extends GoalRepository {
       where: { id: itemId, goalId },
     });
     return row ? GoalMapper.planItemToDomain(row) : null;
+  }
+
+  async findPlanSubTask(
+    goalId: string,
+    subTaskId: string,
+  ): Promise<NullableType<GoalPlanSubTask>> {
+    const row = await this.planSubTaskRepo.findOne({
+      where: { id: subTaskId },
+    });
+    if (!row) {
+      return null;
+    }
+    const parent = await this.planItemRepo.findOne({
+      where: { id: row.goalPlanItemId, goalId },
+    });
+    if (!parent) {
+      return null;
+    }
+    return GoalMapper.planSubTaskToDomain(row);
+  }
+
+  async updatePlanSubTask(
+    goalId: string,
+    subTaskId: string,
+    payload: Partial<GoalPlanSubTask>,
+  ): Promise<NullableType<GoalPlanSubTask>> {
+    const existing = await this.findPlanSubTask(goalId, subTaskId);
+    if (!existing) {
+      return null;
+    }
+    const patch: Record<string, unknown> = { updatedAt: new Date() };
+    if (payload.title !== undefined) {
+      patch.title = payload.title;
+    }
+    if (payload.summary !== undefined) {
+      patch.summary = payload.summary;
+    }
+    if (payload.acceptanceCriteria !== undefined) {
+      patch.acceptanceCriteria = payload.acceptanceCriteria;
+    }
+    if (payload.suggestedPrompt !== undefined) {
+      patch.suggestedPrompt = payload.suggestedPrompt;
+    }
+    if (payload.dependsOnSubTaskIds !== undefined) {
+      patch.dependsOnSubTaskIds = payload.dependsOnSubTaskIds;
+    }
+    if (payload.itemOrder !== undefined) {
+      patch.itemOrder = payload.itemOrder;
+    }
+    if (payload.status !== undefined) {
+      patch.status = payload.status;
+    }
+    if (payload.taskId !== undefined) {
+      patch.taskId = payload.taskId;
+    }
+    if (payload.workflowTemplateId !== undefined) {
+      patch.workflowTemplateId = payload.workflowTemplateId;
+    }
+    await this.planSubTaskRepo.update({ id: subTaskId }, patch);
+    const next = await this.planSubTaskRepo.findOne({
+      where: { id: subTaskId },
+    });
+    return next ? GoalMapper.planSubTaskToDomain(next) : null;
   }
 
   async listTaskDependenciesForGoal(
@@ -349,5 +457,33 @@ export class GoalRelationalRepository extends GoalRepository {
 
   async removeTaskDependency(id: string): Promise<void> {
     await this.depRepo.delete({ id });
+  }
+
+  async syncPlanSubTaskStatusByLinkedTaskId(
+    taskId: string,
+    isDone: boolean,
+  ): Promise<void> {
+    const rows = await this.planSubTaskRepo.find({ where: { taskId } });
+    for (const row of rows) {
+      if (isDone) {
+        if (row.status === GoalPlanItemStatus.taskCreated) {
+          await this.planSubTaskRepo.update(
+            { id: row.id },
+            {
+              status: GoalPlanItemStatus.completed,
+              updatedAt: new Date(),
+            },
+          );
+        }
+      } else if (row.status === GoalPlanItemStatus.completed) {
+        await this.planSubTaskRepo.update(
+          { id: row.id },
+          {
+            status: GoalPlanItemStatus.taskCreated,
+            updatedAt: new Date(),
+          },
+        );
+      }
+    }
   }
 }

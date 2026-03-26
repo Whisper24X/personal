@@ -9,6 +9,7 @@ import {
 import { GitLogDto } from './dto/git-log.dto';
 import { GitPullMainDto } from './dto/git-pull-main.dto';
 import { GitStatusDto } from './dto/git-status.dto';
+import { GitCreateBranchResultDto } from './dto/git-create-branch-result.dto';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { ProjectsService } from '../projects/projects.service';
 
@@ -137,6 +138,45 @@ export class GitService {
       branch: normalizedBranchName,
       output: result.output,
     };
+  }
+
+  async createBranch(
+    projectId: string,
+    name: string,
+    fromRef: string,
+    currentUser: JwtPayloadType,
+  ): Promise<GitCreateBranchResultDto> {
+    const normalizedName = this.normalizeAndAssertBranchName(name, '新分支名');
+    const normalizedFrom = this.normalizeAndAssertBranchRef(
+      fromRef,
+      '基准 ref',
+    );
+
+    return this.projectsService.runWithProjectRepositoryLock(
+      projectId,
+      currentUser,
+      { syncRemote: true },
+      async ({ repositoryRoot }) => {
+        const branchResult = await this.runCommand([
+          '-C',
+          repositoryRoot,
+          'branch',
+          normalizedName,
+          normalizedFrom,
+        ]);
+
+        if (!branchResult.success) {
+          throw new BadRequestException(
+            this.formatGitFailure('创建分支失败', branchResult),
+          );
+        }
+
+        return {
+          success: true,
+          branch: normalizedName,
+        };
+      },
+    );
   }
 
   async readStatus(
@@ -574,6 +614,63 @@ export class GitService {
     }
 
     return 3;
+  }
+
+  private normalizeAndAssertBranchName(value: string, label: string): string {
+    const normalized = value.trim();
+    if (!normalized) {
+      throw new BadRequestException(`${label}不能为空`);
+    }
+    this.assertSafeGitRefName(normalized, label, 255);
+    return normalized;
+  }
+
+  private normalizeAndAssertBranchRef(value: string, label: string): string {
+    const normalized = value.trim();
+    if (!normalized) {
+      throw new BadRequestException(`${label}不能为空`);
+    }
+    this.assertSafeGitRefName(normalized, label, 512);
+    return normalized;
+  }
+
+  /**
+   * Rejects obviously invalid or unsafe ref names (injection via odd bytes, path tricks).
+   * Aligns loosely with git check-ref-format for branch-like names.
+   */
+  private assertSafeGitRefName(
+    value: string,
+    label: string,
+    maxLen: number,
+  ): void {
+    if (value.length > maxLen) {
+      throw new BadRequestException(`${label}过长`);
+    }
+    if (value.includes('..') || value.includes('//')) {
+      throw new BadRequestException(`${label}包含非法序列`);
+    }
+    if (/[\s\x00-\x1f\x7f]/.test(value)) {
+      throw new BadRequestException(`${label}不能包含空白或控制字符`);
+    }
+    if (value.startsWith('-')) {
+      throw new BadRequestException(`${label}不能以 - 开头`);
+    }
+    if (value.endsWith('.') || value.endsWith('/')) {
+      throw new BadRequestException(`${label}不能以 . 或 / 结尾`);
+    }
+    if (value.includes('\\') || value.includes('~') || value.includes('^')) {
+      throw new BadRequestException(`${label}包含非法字符`);
+    }
+    const reserved = new Set([
+      'HEAD',
+      'FETCH_HEAD',
+      'ORIG_HEAD',
+      'MERGE_HEAD',
+      'CHERRY_PICK_HEAD',
+    ]);
+    if (reserved.has(value)) {
+      throw new BadRequestException(`${label}不能使用保留名`);
+    }
   }
 
   private formatGitFailure(

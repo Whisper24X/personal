@@ -1,13 +1,11 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { goalsApi } from '@/api/goals'
-import { gitApi } from '@/api/git'
-import { projectsApi } from '@/api/projects'
 import { workflowApi } from '@/api/workflow'
 import { useMessage } from '@/hooks'
 import type { GoalDetail as GoalDetailType } from '@/types/api/goals'
+import { flattenGoalPlanSubTasks } from '@/types/api/goals'
 import type { WorkflowTemplate } from '@/types/api/workflow'
-import { buildBranchOptions } from '@/utils/git-branch-options'
 import {
   planDependencyMermaidMarkdown,
   planItemsDependencyHasCycle,
@@ -35,40 +33,60 @@ export function useGoalDetailData() {
   const workflowTemplates = ref<WorkflowTemplate[]>([])
   const loadingWorkflowTemplates = ref(false)
 
-  let latestBranchRequestId = 0
-  const loadingBranches = ref(false)
-  const branchOptions = ref<string[]>([])
-
   const planDepsMarkdown = computed(() => {
-    const items = detail.value?.planItems ?? []
-    void items.map((item) => `${item.id}:${item.status}`)
-    return planDependencyMermaidMarkdown(items)
+    const d = detail.value
+    if (!d) {
+      return ''
+    }
+    return planDependencyMermaidMarkdown(d.planItems ?? [])
   })
 
-  const planDepsGraphKey = computed(() =>
-    (detail.value?.planItems ?? []).map((item) => `${item.id}:${item.status}`).join('|'),
-  )
+  const planDepsGraphKey = computed(() => {
+    const d = detail.value
+    if (!d) {
+      return ''
+    }
+    return flattenGoalPlanSubTasks(d)
+      .map((s) => `${s.id}:${s.status}`)
+      .join('|')
+  })
 
-  const planDepsHasCycle = computed(() =>
-    planItemsDependencyHasCycle(detail.value?.planItems ?? []),
-  )
+  const planDepsHasCycle = computed(() => {
+    const d = detail.value
+    if (!d) {
+      return false
+    }
+    const subs = flattenGoalPlanSubTasks(d)
+    return planItemsDependencyHasCycle(
+      subs.map((s) => ({
+        id: s.id,
+        dependsOnItemIds: s.dependsOnSubTaskIds ?? [],
+      })),
+    )
+  })
 
   const goalHasPrd = computed(() => Boolean(detail.value?.goal.prdDocPath?.trim()))
-  const goalHasPlanItems = computed(() => (detail.value?.planItems.length ?? 0) > 0)
-
-  const planProgressTotal = computed(() => detail.value?.planItems.length ?? 0)
-  const planProgressDone = computed(() => detail.value?.progress.doneTasks ?? 0)
-  const planProgressPercent = computed(() => {
-    const total = planProgressTotal.value
-    if (total <= 0) {
-      return 0
+  const goalHasPlanItems = computed(() => {
+    const d = detail.value
+    if (!d) {
+      return false
     }
-    return Math.min(100, Math.max(0, (planProgressDone.value / total) * 100))
+    return flattenGoalPlanSubTasks(d).length > 0
   })
 
+  const planProgressTotal = computed(() => detail.value?.progress.totalTasks ?? 0)
+  const planProgressDone = computed(() => detail.value?.progress.doneTasks ?? 0)
+  const planProgressPercent = computed(() => detail.value?.progress.percent ?? 0)
+
   const planDependencyEdgeCount = computed(() => {
-    const items = detail.value?.planItems ?? []
-    return items.reduce((sum, item) => sum + (item.dependsOnItemIds?.length ?? 0), 0)
+    const d = detail.value
+    if (!d) {
+      return 0
+    }
+    return flattenGoalPlanSubTasks(d).reduce(
+      (sum, s) => sum + (s.dependsOnSubTaskIds?.length ?? 0),
+      0,
+    )
   })
 
   const loadWorkflowTemplatesForProject = async (projectId: string) => {
@@ -95,40 +113,6 @@ export function useGoalDetailData() {
     }
   }
 
-  const loadBranchesForProject = async (projectId: string) => {
-    const requestId = ++latestBranchRequestId
-    if (!projectId) {
-      branchOptions.value = []
-      return
-    }
-    loadingBranches.value = true
-    try {
-      const [project, branchData] = await Promise.all([
-        projectsApi.detail(projectId),
-        gitApi.branches(projectId),
-      ])
-      if (requestId !== latestBranchRequestId) {
-        return
-      }
-      const projectDefaultBranch = project.defaultBranch?.trim() || ''
-      branchOptions.value = buildBranchOptions({
-        localBranches: branchData.localBranches,
-        remoteBranches: branchData.remoteBranches,
-        preferredBranches: [projectDefaultBranch, branchData.defaultBranch],
-      })
-    } catch (error) {
-      if (requestId !== latestBranchRequestId) {
-        return
-      }
-      branchOptions.value = []
-      message.error(toErrorMessage(error, '加载项目分支失败'))
-    } finally {
-      if (requestId === latestBranchRequestId) {
-        loadingBranches.value = false
-      }
-    }
-  }
-
   async function load(options?: { silent?: boolean }) {
     if (!goalId.value) {
       return
@@ -140,10 +124,7 @@ export function useGoalDetailData() {
     try {
       detail.value = await goalsApi.get(goalId.value)
       const projectId = detail.value.goal.projectId
-      await Promise.all([
-        loadWorkflowTemplatesForProject(projectId),
-        loadBranchesForProject(projectId),
-      ])
+      await loadWorkflowTemplatesForProject(projectId)
     } catch (e) {
       message.error(toErrorMessage(e, '加载需求失败'))
     } finally {
@@ -237,7 +218,6 @@ export function useGoalDetailData() {
   onMounted(load)
 
   return {
-    branchOptions,
     detail,
     generatingPlan,
     generatingPrd,
@@ -248,7 +228,6 @@ export function useGoalDetailData() {
     goTask,
     load,
     loading,
-    loadingBranches,
     loadingWorkflowTemplates,
     planDependencyEdgeCount,
     planDepsGraphKey,

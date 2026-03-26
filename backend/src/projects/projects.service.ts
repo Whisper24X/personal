@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
   Inject,
   Injectable,
   InternalServerErrorException,
@@ -59,7 +60,7 @@ import {
   normalizeProjectCapabilities,
 } from '../access/access.constants';
 
-type EnsureProjectRepositoryOptions = {
+export type EnsureProjectRepositoryOptions = {
   syncRemote?: boolean;
 };
 
@@ -795,6 +796,41 @@ export class ProjectsService {
         repositoryRoot,
       };
     } catch (error) {
+      throw new BadRequestException(
+        this.formatGitSyncFailureMessage(error, project.gitUrl),
+      );
+    }
+  }
+
+  /**
+   * Runs an operation while holding the per-repository sync lock, after clone/fetch.
+   * Use for mutating git commands (e.g. create branch) so they serialize with clone/fetch.
+   */
+  async runWithProjectRepositoryLock<T>(
+    projectId: Project['id'],
+    currentUser: JwtPayloadType,
+    options: EnsureProjectRepositoryOptions = {},
+    operation: (ctx: {
+      project: Project;
+      repositoryRoot: string;
+    }) => Promise<T>,
+  ): Promise<T> {
+    const project = await this.ensureCanAccessProject(projectId, currentUser);
+    const repositoryRoot = this.resolveRepositoryRoot(project);
+
+    try {
+      return await this.withRepositorySyncLock(repositoryRoot, async () => {
+        await this.syncProjectRepositoryContent(
+          project,
+          repositoryRoot,
+          options,
+        );
+        return operation({ project, repositoryRoot });
+      });
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       throw new BadRequestException(
         this.formatGitSyncFailureMessage(error, project.gitUrl),
       );
@@ -1968,72 +2004,79 @@ export class ProjectsService {
     );
   }
 
+  private async syncProjectRepositoryContent(
+    project: Project,
+    repositoryRoot: string,
+    options: EnsureProjectRepositoryOptions = {},
+  ): Promise<void> {
+    const defaultBranch = project.defaultBranch?.trim() || 'main';
+    const gitDirPath = path.join(repositoryRoot, '.git');
+    const hasGit = await this.pathExists(gitDirPath);
+    const shouldSyncRemote = options.syncRemote ?? true;
+
+    if (!hasGit) {
+      try {
+        await fs.mkdir(path.dirname(repositoryRoot), { recursive: true });
+      } catch (mkdirError) {
+        const msg =
+          mkdirError instanceof Error ? mkdirError.message : 'Unknown error';
+        throw new Error(
+          `Cannot create project repository directory: ${this.truncateError(msg)}`,
+        );
+      }
+
+      const cloneResult = await this.runCommand('git', [
+        'clone',
+        '--origin',
+        'origin',
+        '--branch',
+        defaultBranch,
+        project.gitUrl,
+        repositoryRoot,
+      ]);
+
+      if (!cloneResult.success) {
+        throw new Error(
+          cloneResult.stderr || `git clone failed for ${project.gitUrl}`,
+        );
+      }
+    } else if (shouldSyncRemote) {
+      const setUrlResult = await this.runCommand('git', [
+        '-C',
+        repositoryRoot,
+        'remote',
+        'set-url',
+        'origin',
+        project.gitUrl,
+      ]);
+
+      if (!setUrlResult.success) {
+        throw new Error(setUrlResult.stderr || 'git remote set-url failed');
+      }
+    }
+
+    if (shouldSyncRemote) {
+      const fetchResult = await this.runCommand('git', [
+        '-C',
+        repositoryRoot,
+        'fetch',
+        '--all',
+        '--prune',
+      ]);
+
+      if (!fetchResult.success) {
+        throw new Error(fetchResult.stderr || 'git fetch failed');
+      }
+    }
+  }
+
   private async ensureProjectRepository(
     project: Project,
     options: EnsureProjectRepositoryOptions = {},
   ): Promise<string> {
     const repositoryRoot = this.resolveRepositoryRoot(project);
-    const defaultBranch = project.defaultBranch?.trim() || 'main';
     return this.withRepositorySyncLock(repositoryRoot, async () => {
-      const gitDirPath = path.join(repositoryRoot, '.git');
-      const hasGit = await this.pathExists(gitDirPath);
-      const shouldSyncRemote = options.syncRemote ?? true;
-
-      if (!hasGit) {
-        try {
-          await fs.mkdir(path.dirname(repositoryRoot), { recursive: true });
-        } catch (mkdirError) {
-          const msg =
-            mkdirError instanceof Error ? mkdirError.message : 'Unknown error';
-          throw new Error(
-            `Cannot create project repository directory: ${this.truncateError(msg)}`,
-          );
-        }
-
-        const cloneResult = await this.runCommand('git', [
-          'clone',
-          '--origin',
-          'origin',
-          '--branch',
-          defaultBranch,
-          project.gitUrl,
-          repositoryRoot,
-        ]);
-
-        if (!cloneResult.success) {
-          throw new Error(
-            cloneResult.stderr || `git clone failed for ${project.gitUrl}`,
-          );
-        }
-      } else if (shouldSyncRemote) {
-        const setUrlResult = await this.runCommand('git', [
-          '-C',
-          repositoryRoot,
-          'remote',
-          'set-url',
-          'origin',
-          project.gitUrl,
-        ]);
-
-        if (!setUrlResult.success) {
-          throw new Error(setUrlResult.stderr || 'git remote set-url failed');
-        }
-      }
-
-      if (shouldSyncRemote) {
-        const fetchResult = await this.runCommand('git', [
-          '-C',
-          repositoryRoot,
-          'fetch',
-          '--all',
-          '--prune',
-        ]);
-
-        if (!fetchResult.success) {
-          throw new Error(fetchResult.stderr || 'git fetch failed');
-        }
-      }
-
+      await this.syncProjectRepositoryContent(project, repositoryRoot, options);
       return repositoryRoot;
     });
   }

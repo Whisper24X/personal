@@ -8,7 +8,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import type { GoalPlanItem } from '@/types/api/goals'
+import type { GoalPlanSubTask } from '@/types/api/goals'
 
 defineOptions({
   name: 'GoalPlanItemSheet',
@@ -16,8 +16,9 @@ defineOptions({
 
 const props = defineProps<{
   open: boolean
-  selectedPlanItem: GoalPlanItem | null
-  planItemStatusLabel: Record<GoalPlanItem['status'], string>
+  selectedPlanGroupTitle: string
+  selectedPlanItem: GoalPlanSubTask | null
+  planItemStatusLabel: Record<GoalPlanSubTask['status'], string>
   planItemEditSummary: string
   planItemEditAcceptance: string
   planItemEditSuggestedPrompt: string
@@ -63,6 +64,12 @@ const planItemReadonly = computed(() => props.selectedPlanItem?.status !== 'draf
       <template v-if="props.selectedPlanItem">
         <SheetHeader class="border-border bg-background px-6 py-5 text-left border-b">
           <div class="space-y-4 pr-8">
+            <p
+              v-if="props.selectedPlanGroupTitle"
+              class="text-muted-foreground text-xs font-normal"
+            >
+              {{ props.selectedPlanGroupTitle }}
+            </p>
             <SheetTitle class="text-xl leading-8 font-semibold tracking-tight">
               {{ props.selectedPlanItem.title }}
             </SheetTitle>
@@ -132,7 +139,7 @@ const planItemReadonly = computed(() => props.selectedPlanItem?.status !== 'draf
                 v-if="planItemReadonly"
                 class="text-muted-foreground bg-muted/25 mb-4 rounded-xl border border-dashed border-border/70 px-4 py-3 text-sm"
               >
-                当前计划项已确认或已进入后续状态，内容已锁定，不能再编辑。
+                当前子任务已确认或已进入后续状态，内容已锁定，不能再编辑。
               </div>
               <div class="space-y-4">
                 <div class="space-y-2">
@@ -198,7 +205,7 @@ const planItemReadonly = computed(() => props.selectedPlanItem?.status !== 'draf
                 v-else
                 class="text-muted-foreground bg-muted/20 rounded-xl border border-dashed border-border/70 px-4 py-6 text-center text-sm"
               >
-                无依赖计划项
+                无前置子任务依赖
               </div>
             </section>
           </div>

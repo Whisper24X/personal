@@ -15,7 +15,6 @@ const {
   GOAL_SELECT_PANEL_PLACEMENT,
   GOAL_SELECT_PANEL_Z_INDEX,
   approveItem,
-  branchOptionsForPlanItem,
   detail,
   generatingPlan,
   generatingPrd,
@@ -24,13 +23,15 @@ const {
   goalHasPlanItems,
   goalHasPrd,
   loading,
-  loadingBranches,
   loadingWorkflowTemplates,
   materializeSelected,
   materializing,
+  creatingPrGroupId,
+  onCreateGroupPr,
   onPlanItemSheetOpen,
   onPrdEditorOpen,
   openPlanItemDetail,
+  selectedPlanGroupTitle,
   openPrdEditor,
   planDependencyEdgeCount,
   planDepsGraphKey,
@@ -57,13 +58,11 @@ const {
   runGeneratePrd,
   savePlanItemText,
   savePrdEditor,
-  savingPlanItemGitBaseBranchId,
   savingPlanItemText,
   savingPlanItemWorkflowId,
   selectedPlanItem,
   selectedPlanItemDependencyTitles,
   selectedPlanItemWorkflowName,
-  setPlanItemGitBaseBranch,
   setPlanItemWorkflow,
   tab,
   workflowOptionsForPlanItem,
@@ -114,23 +113,22 @@ const {
         :detail="detail"
         :loading-workflow-templates="loadingWorkflowTemplates"
         :workflow-templates="workflowTemplates"
-        :loading-branches="loadingBranches"
         :saving-plan-item-workflow-id="savingPlanItemWorkflowId"
-        :saving-plan-item-git-base-branch-id="savingPlanItemGitBaseBranchId"
+        :creating-pr-group-id="creatingPrGroupId"
         :plan-item-status-label="planItemStatusLabel"
         :workflow-options-for-plan-item="workflowOptionsForPlanItem"
-        :branch-options-for-plan-item="branchOptionsForPlanItem"
         :plan-item-approve-blocked-reason="planItemApproveBlockedReason"
         :select-panel-z-index="GOAL_SELECT_PANEL_Z_INDEX"
         :select-panel-placement="GOAL_SELECT_PANEL_PLACEMENT"
-        @open-plan-item-detail="openPlanItemDetail"
+        @open-plan-item-detail="(sub, title) => openPlanItemDetail(sub, title)"
         @set-plan-item-workflow="setPlanItemWorkflow($event.item, $event.workflowTemplateId)"
-        @set-plan-item-git-base-branch="setPlanItemGitBaseBranch($event.item, $event.gitBaseBranch)"
         @approve-item="approveItem"
+        @create-group-pr="onCreateGroupPr"
       />
 
       <GoalPlanItemSheet
         :open="planItemDetailOpen"
+        :selected-plan-group-title="selectedPlanGroupTitle"
         :selected-plan-item="selectedPlanItem"
         :plan-item-status-label="planItemStatusLabel"
         :plan-item-edit-summary="planItemEditSummary"

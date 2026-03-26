@@ -28,10 +28,12 @@ describe('GoalsService.remove', () => {
       remove: jest.fn(),
     };
     const goalsMetrics = {} as GoalsMetricsService;
+    const gitService = {};
 
     const service = new GoalsService(
       goalRepository as never,
       projectsService as never,
+      gitService as never,
       taskRepository as never,
       tasksService as never,
       goalsMetrics,
@@ -64,6 +66,10 @@ describe('GoalsService.remove', () => {
       prdDocPath: null,
       planDocPath: null,
       defaultWorkflowTemplateId: null,
+      agentCliId: null,
+      agentCliConfigId: null,
+      gitBaseBranch: 'main',
+      gitBranch: 'feature/goal-x',
       createdBy: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -109,6 +115,10 @@ describe('GoalsService.remove', () => {
       prdDocPath: null,
       planDocPath: null,
       defaultWorkflowTemplateId: null,
+      agentCliId: null,
+      agentCliConfigId: null,
+      gitBaseBranch: 'main',
+      gitBranch: 'feature/goal-y',
       createdBy: null,
       createdAt: new Date(),
       updatedAt: new Date(),

@@ -1,13 +1,17 @@
 import { computed, ref, watch, type Ref } from 'vue'
 import { goalsApi } from '@/api/goals'
 import { useMessage } from '@/hooks'
-import type { GoalDetail as GoalDetailType, GoalPlanItem } from '@/types/api/goals'
+import type {
+  GoalDetail as GoalDetailType,
+  GoalPlanItem,
+  GoalPlanSubTask,
+} from '@/types/api/goals'
+import { flattenGoalPlanSubTasks } from '@/types/api/goals'
 import type { WorkflowTemplate } from '@/types/api/workflow'
 import { topologicalMaterializeOrder } from '@/utils/goal-plan-materialize-order'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 
 type UseGoalDetailPlanItemsOptions = {
-  branchOptions: Ref<string[]>
   detail: Ref<GoalDetailType | null>
   goalId: Ref<string>
   goTask: (taskId: string) => void
@@ -20,39 +24,42 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
 
   const materializing = ref(false)
   const savingPlanItemWorkflowId = ref<string | null>(null)
-  const savingPlanItemGitBaseBranchId = ref<string | null>(null)
 
   const planItemDetailOpen = ref(false)
-  const selectedPlanItem = ref<GoalPlanItem | null>(null)
+  const selectedPlanSubTask = ref<GoalPlanSubTask | null>(null)
+  const selectedPlanGroupTitle = ref('')
 
   const planItemEditSummary = ref('')
   const planItemEditAcceptance = ref('')
   const planItemEditSuggestedPrompt = ref('')
   const savingPlanItemText = ref(false)
 
-  const planItemStatusLabel: Record<GoalPlanItem['status'], string> = {
+  const planItemStatusLabel: Record<GoalPlanSubTask['status'], string> = {
     draft: '草稿',
     approved: '已确认',
     task_created: '已创建任务',
+    completed: '已完成',
     cancelled: '已取消',
   }
 
-  function openPlanItemDetail(item: GoalPlanItem) {
-    selectedPlanItem.value = item
+  function openPlanItemDetail(sub: GoalPlanSubTask, groupTitle: string) {
+    selectedPlanSubTask.value = sub
+    selectedPlanGroupTitle.value = groupTitle
     planItemDetailOpen.value = true
   }
 
   function onPlanItemSheetOpen(open: boolean) {
     planItemDetailOpen.value = open
     if (!open) {
-      selectedPlanItem.value = null
+      selectedPlanSubTask.value = null
+      selectedPlanGroupTitle.value = ''
     }
   }
 
   watch(
-    () => [planItemDetailOpen.value, selectedPlanItem.value?.id] as const,
+    () => [planItemDetailOpen.value, selectedPlanSubTask.value?.id] as const,
     () => {
-      const item = selectedPlanItem.value
+      const item = selectedPlanSubTask.value
       if (!planItemDetailOpen.value || !item) {
         return
       }
@@ -63,7 +70,7 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
   )
 
   function resetPlanItemTextDraft() {
-    const item = selectedPlanItem.value
+    const item = selectedPlanSubTask.value
     if (!item) {
       return
     }
@@ -72,11 +79,11 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     planItemEditSuggestedPrompt.value = item.suggestedPrompt ?? ''
   }
 
-  function isPlanItemEditable(item: GoalPlanItem | null): boolean {
+  function isPlanItemEditable(item: GoalPlanSubTask | null): boolean {
     return item?.status === 'draft'
   }
 
-  function workflowNameForPlanItem(item: GoalPlanItem): string {
+  function workflowNameForPlanItem(item: GoalPlanSubTask): string {
     const id = item.workflowTemplateId?.trim()
     if (!id) {
       return ''
@@ -85,16 +92,54 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     return template?.name ?? id
   }
 
-  function dependencyTitlesForPlanItem(item: GoalPlanItem): string[] {
+  function dependencyTitlesForPlanItem(item: GoalPlanSubTask): string[] {
     const detail = options.detail.value
     if (!detail) {
       return []
     }
-    const byId = new Map(detail.planItems.map((planItem) => [planItem.id, planItem]))
-    return item.dependsOnItemIds.map((depId) => byId.get(depId)?.title ?? depId)
+    const byId = new Map(
+      flattenGoalPlanSubTasks(detail).map((st) => [st.id, st]),
+    )
+    return item.dependsOnSubTaskIds.map((depId) => byId.get(depId)?.title ?? depId)
   }
 
-  function planItemApproveBlockedReason(item: GoalPlanItem): string | null {
+  /** 功能组 dependsOnItemIds：前置组内全部子任务对应 Task 须已存在且均为 done（与后端一致） */
+  function planItemGroupDependencyBlockedReason(item: GoalPlanSubTask): string | null {
+    const detail = options.detail.value
+    if (!detail) {
+      return null
+    }
+    const groupById = new Map(detail.planItems.map((g) => [g.id, g]))
+    const parent = groupById.get(item.goalPlanItemId)
+    if (!parent) {
+      return null
+    }
+    for (const predId of parent.dependsOnItemIds ?? []) {
+      const predGroup = groupById.get(predId)
+      if (!predGroup) {
+        continue
+      }
+      const subs = predGroup.subTasks ?? []
+      if (subs.length === 0) {
+        return `前置功能组「${predGroup.title}」无子任务，无法处理本组子任务`
+      }
+      for (const st of subs) {
+        if (!st.taskId?.trim()) {
+          return `请先为前置功能组「${predGroup.title}」的全部子任务创建任务后再继续`
+        }
+        const task = detail.tasks.find((entry) => entry.id === st.taskId)
+        if (!task) {
+          return '前置任务数据缺失，请刷新后重试'
+        }
+        if (task.status !== 'done') {
+          return `请先完成前置功能组「${predGroup.title}」的全部子任务（「${st.title}」对应任务未完成）`
+        }
+      }
+    }
+    return null
+  }
+
+  function planItemApproveBlockedReason(item: GoalPlanSubTask): string | null {
     if (item.status !== 'draft') {
       return null
     }
@@ -102,32 +147,48 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     if (!detail) {
       return null
     }
-    const byId = new Map(detail.planItems.map((planItem) => [planItem.id, planItem]))
-    for (const predId of item.dependsOnItemIds ?? []) {
+    const groupBlocked = planItemGroupDependencyBlockedReason(item)
+    if (groupBlocked) {
+      return groupBlocked
+    }
+    const byId = new Map(
+      flattenGoalPlanSubTasks(detail).map((st) => [st.id, st]),
+    )
+    for (const predId of item.dependsOnSubTaskIds ?? []) {
       const predecessor = byId.get(predId)
       if (!predecessor) {
         continue
       }
-      if (predecessor.status !== 'task_created' || !predecessor.taskId?.trim()) {
-        return `请先为前置计划项「${predecessor.title}」创建任务后再确认本项`
+      const predMaterialized =
+        (predecessor.status === 'task_created' ||
+          predecessor.status === 'completed') &&
+        !!predecessor.taskId?.trim()
+      if (!predMaterialized) {
+        return `请先为前置子任务「${predecessor.title}」创建任务后再确认本项`
       }
     }
     return null
   }
 
-  function planItemMaterializeBlockedReason(item: GoalPlanItem): string | null {
+  function planItemMaterializeBlockedReason(item: GoalPlanSubTask): string | null {
     const detail = options.detail.value
     if (!detail) {
       return null
     }
-    const planById = new Map(detail.planItems.map((planItem) => [planItem.id, planItem]))
-    for (const predId of item.dependsOnItemIds ?? []) {
+    const groupBlocked = planItemGroupDependencyBlockedReason(item)
+    if (groupBlocked) {
+      return groupBlocked
+    }
+    const planById = new Map(
+      flattenGoalPlanSubTasks(detail).map((st) => [st.id, st]),
+    )
+    for (const predId of item.dependsOnSubTaskIds ?? []) {
       const predecessor = planById.get(predId)
       if (!predecessor) {
         continue
       }
       if (!predecessor.taskId?.trim()) {
-        return `请先为前置计划项「${predecessor.title}」创建任务后再为本项新建任务`
+        return `请先为前置子任务「${predecessor.title}」创建任务后再为本项新建任务`
       }
       const task = detail.tasks.find((entry) => entry.id === predecessor.taskId)
       if (!task) {
@@ -141,40 +202,43 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
   }
 
   const selectedPlanItemDependencyTitles = computed(() =>
-    selectedPlanItem.value ? dependencyTitlesForPlanItem(selectedPlanItem.value) : [],
+    selectedPlanSubTask.value ? dependencyTitlesForPlanItem(selectedPlanSubTask.value) : [],
   )
 
   const selectedPlanItemWorkflowName = computed(() =>
-    selectedPlanItem.value ? workflowNameForPlanItem(selectedPlanItem.value) : '',
+    selectedPlanSubTask.value ? workflowNameForPlanItem(selectedPlanSubTask.value) : '',
   )
 
   async function savePlanItemText() {
     const detail = options.detail.value
-    const item = selectedPlanItem.value
+    const item = selectedPlanSubTask.value
     const goalId = options.goalId.value
     if (!detail || !item || !goalId) {
       return
     }
     if (!isPlanItemEditable(item)) {
-      message.warning('当前计划项已确认或已进入后续状态，不能再编辑')
+      message.warning('当前子任务已确认或已进入后续状态，不能再编辑')
       resetPlanItemTextDraft()
       return
     }
     savingPlanItemText.value = true
     try {
-      const updated = await goalsApi.patchPlanItem(goalId, item.id, {
+      const updated = await goalsApi.patchPlanSubTask(goalId, item.id, {
         summary: planItemEditSummary.value,
         acceptanceCriteria: planItemEditAcceptance.value,
         suggestedPrompt: planItemEditSuggestedPrompt.value,
       })
-      const idx = detail.planItems.findIndex((planItem) => planItem.id === updated.id)
-      if (idx >= 0) {
-        detail.planItems[idx] = updated
+      for (const g of detail.planItems) {
+        const idx = g.subTasks?.findIndex((st) => st.id === updated.id) ?? -1
+        if (idx >= 0 && g.subTasks) {
+          g.subTasks[idx] = updated
+          break
+        }
       }
-      selectedPlanItem.value = updated
+      selectedPlanSubTask.value = updated
       message.success('已保存')
     } catch (e) {
-      message.error(toErrorMessage(e, '保存计划项失败'))
+      message.error(toErrorMessage(e, '保存失败'))
     } finally {
       savingPlanItemText.value = false
     }
@@ -192,37 +256,27 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     return base
   }
 
-  function branchOptionsForPlanItem(gitBaseBranch: string | null | undefined) {
-    const base = options.branchOptions.value.map((branch) => ({ label: branch, value: branch }))
-    const id = gitBaseBranch?.trim()
-    const rest =
-      id && !base.some((option) => option.value === id)
-        ? [{ label: `（当前：${id}）`, value: id }, ...base]
-        : base
-    return [{ label: '未选择（项目默认）', value: '' }, ...rest]
-  }
-
-  async function approveItem(item: GoalPlanItem) {
+  async function approveItem(item: GoalPlanSubTask) {
     const blocked = planItemApproveBlockedReason(item)
     if (blocked) {
       message.warning(blocked)
       return
     }
     try {
-      await goalsApi.patchPlanItem(options.goalId.value, item.id, { status: 'approved' })
-      message.success('已确认计划项')
+      await goalsApi.patchPlanSubTask(options.goalId.value, item.id, { status: 'approved' })
+      message.success('已确认子任务')
       await options.load()
     } catch (e) {
-      message.error(toErrorMessage(e, '确认计划项失败'))
+      message.error(toErrorMessage(e, '确认失败'))
     }
   }
 
-  async function setPlanItemWorkflow(item: GoalPlanItem, workflowTemplateId: string) {
+  async function setPlanItemWorkflow(item: GoalPlanSubTask, workflowTemplateId: string) {
     if (!options.goalId.value || !options.detail.value) {
       return
     }
     if (!workflowTemplateId.trim()) {
-      message.warning('请先为计划项配置工作流')
+      message.warning('请先配置工作流')
       return
     }
     if ((item.workflowTemplateId ?? '') === workflowTemplateId) {
@@ -230,43 +284,21 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     }
     savingPlanItemWorkflowId.value = item.id
     try {
-      const updated = await goalsApi.patchPlanItem(options.goalId.value, item.id, {
+      const updated = await goalsApi.patchPlanSubTask(options.goalId.value, item.id, {
         workflowTemplateId,
       })
-      const idx = options.detail.value.planItems.findIndex((planItem) => planItem.id === item.id)
-      if (idx >= 0) {
-        options.detail.value.planItems[idx] = updated
+      const detail = options.detail.value
+      for (const g of detail.planItems) {
+        const idx = g.subTasks?.findIndex((st) => st.id === updated.id) ?? -1
+        if (idx >= 0 && g.subTasks) {
+          g.subTasks[idx] = updated
+          break
+        }
       }
     } catch (e) {
       message.error(toErrorMessage(e, '保存工作流失败'))
     } finally {
       savingPlanItemWorkflowId.value = null
-    }
-  }
-
-  async function setPlanItemGitBaseBranch(item: GoalPlanItem, value: string) {
-    if (!options.goalId.value || !options.detail.value) {
-      return
-    }
-    const trimmed = String(value ?? '').trim()
-    const nextStored: string | null = trimmed === '' ? null : trimmed
-    const current = item.gitBaseBranch?.trim() ?? null
-    if (current === nextStored) {
-      return
-    }
-    savingPlanItemGitBaseBranchId.value = item.id
-    try {
-      const updated = await goalsApi.patchPlanItem(options.goalId.value, item.id, {
-        gitBaseBranch: nextStored,
-      })
-      const idx = options.detail.value.planItems.findIndex((planItem) => planItem.id === item.id)
-      if (idx >= 0) {
-        options.detail.value.planItems[idx] = updated
-      }
-    } catch (e) {
-      message.error(toErrorMessage(e, '保存基准分支失败'))
-    } finally {
-      savingPlanItemGitBaseBranchId.value = null
     }
   }
 
@@ -280,26 +312,33 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     if (!detail) {
       return
     }
-    const rawIds = detail.planItems
+    const rawIds = flattenGoalPlanSubTasks(detail)
       .filter((item) => item.status === 'approved' && !item.taskId)
       .map((item) => item.id)
     if (rawIds.length === 0) {
-      message.warning('没有待新建任务的已确认计划项')
+      message.warning('没有待新建任务的已确认子任务')
       return
     }
+    const allSubs = flattenGoalPlanSubTasks(detail)
     let orderedIds: string[]
     try {
-      orderedIds = topologicalMaterializeOrder(rawIds, detail.planItems)
+      orderedIds = topologicalMaterializeOrder(
+        rawIds,
+        allSubs.map((s) => ({
+          id: s.id,
+          dependsOnItemIds: s.dependsOnSubTaskIds ?? [],
+        })),
+      )
     } catch {
-      message.error('计划项依赖成环，无法按顺序新建任务')
+      message.error('子任务依赖成环，无法按顺序新建任务')
       return
     }
 
-    for (const planItemId of orderedIds) {
-      const item = detail.planItems.find((entry) => entry.id === planItemId)
+    for (const subTaskId of orderedIds) {
+      const item = allSubs.find((st) => st.id === subTaskId)
       if (!item?.workflowTemplateId?.trim()) {
         message.warning(
-          `请先在「任务计划」中为「${item?.title ?? planItemId}」配置工作流后再新建任务`,
+          `请先在「任务计划」中为「${item?.title ?? subTaskId}」配置工作流后再新建任务`,
         )
         return
       }
@@ -312,8 +351,8 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
 
     materializing.value = true
     try {
-      for (const planItemId of orderedIds) {
-        await goalsApi.materializeTasks(options.goalId.value, [planItemId])
+      for (const subTaskId of orderedIds) {
+        await goalsApi.materializeTasks(options.goalId.value, [subTaskId])
       }
       message.success(
         orderedIds.length === 1 ? '已创建任务' : `已依次创建 ${orderedIds.length} 个任务`,
@@ -326,12 +365,35 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     }
   }
 
+  const creatingPrGroupId = ref<string | null>(null)
+
+  async function onCreateGroupPr(group: GoalPlanItem) {
+    creatingPrGroupId.value = group.id
+    try {
+      const res = await goalsApi.getPlanItemPrLink(
+        options.goalId.value,
+        group.id,
+      )
+      if (!res.url) {
+        message.warning('未能生成 PR 链接')
+        return
+      }
+      window.open(res.url, '_blank', 'noopener,noreferrer')
+      message.success('已打开 PR 链接')
+    } catch (e) {
+      message.error(toErrorMessage(e, '生成 PR 链接失败'))
+    } finally {
+      creatingPrGroupId.value = null
+    }
+  }
+
   return {
     approveItem,
-    branchOptionsForPlanItem,
     goTaskFromSheet,
     materializeSelected,
+    creatingPrGroupId,
     materializing,
+    onCreateGroupPr,
     onPlanItemSheetOpen,
     openPlanItemDetail,
     planItemApproveBlockedReason,
@@ -339,16 +401,16 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     planItemEditAcceptance,
     planItemEditSuggestedPrompt,
     planItemEditSummary,
+    planItemMaterializeBlockedReason,
     planItemStatusLabel,
     resetPlanItemTextDraft,
     savePlanItemText,
-    savingPlanItemGitBaseBranchId,
     savingPlanItemText,
     savingPlanItemWorkflowId,
-    selectedPlanItem,
+    selectedPlanItem: selectedPlanSubTask,
+    selectedPlanGroupTitle,
     selectedPlanItemDependencyTitles,
     selectedPlanItemWorkflowName,
-    setPlanItemGitBaseBranch,
     setPlanItemWorkflow,
     workflowOptionsForPlanItem,
   }

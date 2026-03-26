@@ -43,6 +43,12 @@ export class Goal {
   @ApiProperty({ required: false, nullable: true })
   createdBy?: string | null;
 
+  @ApiProperty({ description: '创建需求时用户选择的 Git 基准分支' })
+  gitBaseBranch: string;
+
+  @ApiProperty({ description: '为本需求在仓库中创建的需求分支名' })
+  gitBranch: string;
+
   @ApiProperty()
   createdAt: Date;
 

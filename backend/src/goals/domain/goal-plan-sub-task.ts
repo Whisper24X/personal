@@ -1,13 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { GoalPlanSubTask } from './goal-plan-sub-task';
+import { GoalPlanItemStatus } from '../dto/goal-plan-item-status.enum';
 
-/** 计划功能组（父级）：不物化为 Task */
-export class GoalPlanItem {
+/** 计划子任务：唯一可物化为 Task 的单元 */
+export class GoalPlanSubTask {
   @ApiProperty()
   id: string;
 
   @ApiProperty()
-  goalId: string;
+  goalPlanItemId: string;
 
   @ApiProperty()
   title: string;
@@ -22,25 +22,27 @@ export class GoalPlanItem {
   suggestedPrompt?: string | null;
 
   @ApiProperty({ type: [String] })
-  dependsOnItemIds: string[];
+  dependsOnSubTaskIds: string[];
 
   @ApiProperty()
   itemOrder: number;
 
+  @ApiProperty({ required: false, nullable: true })
+  taskId?: string | null;
+
+  @ApiProperty({ enum: GoalPlanItemStatus, enumName: 'GoalPlanItemStatus' })
+  status: GoalPlanItemStatus;
+
   @ApiProperty({
     required: false,
     nullable: true,
-    description: '该功能组 Git 分支名；确认子任务前可为空',
+    description: '物化该子任务时使用的项目工作流模板 ID',
   })
-  gitBranch: string | null;
+  workflowTemplateId?: string | null;
 
   @ApiProperty()
   createdAt: Date;
 
   @ApiProperty()
   updatedAt: Date;
-
-  /** 详情接口填充，非父表列 */
-  @ApiProperty({ type: GoalPlanSubTask, isArray: true, required: false })
-  subTasks?: GoalPlanSubTask[];
 }

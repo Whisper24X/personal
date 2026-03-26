@@ -7,12 +7,14 @@ import {
   NotFoundException,
   forwardRef,
 } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { randomInt, randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
 import extractZip from 'extract-zip';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { ProjectsService } from '../projects/projects.service';
+import { buildPullRequestUrl } from '../git/pull-request-url.util';
+import { GitService } from '../git/git.service';
 import { TasksService } from '../tasks/tasks.service';
 import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
 import { TaskMode } from '../tasks/dto/task-mode.enum';
@@ -20,6 +22,7 @@ import { TaskStatus } from '../tasks/dto/task-status.enum';
 import { GoalRepository } from './infrastructure/persistence/goal.repository';
 import { Goal } from './domain/goal';
 import { GoalPlanItem } from './domain/goal-plan-item';
+import { GoalPlanSubTask } from './domain/goal-plan-sub-task';
 import { GoalStatus } from './dto/goal-status.enum';
 import { GoalPlanItemStatus } from './dto/goal-plan-item-status.enum';
 import { CreateGoalDto } from './dto/create-goal.dto';
@@ -30,6 +33,7 @@ import { UnpackGoalInputZipDto } from './dto/unpack-goal-input-zip.dto';
 import { GeneratePrdDto } from './dto/generate-prd.dto';
 import { GeneratePlanDto } from './dto/generate-plan.dto';
 import { PatchPlanItemDto } from './dto/patch-plan-item.dto';
+import { PatchPlanSubTaskDto } from './dto/patch-plan-sub-task.dto';
 import { MaterializeTasksDto } from './dto/materialize-tasks.dto';
 import { ReplaceTaskDependenciesDto } from './dto/replace-task-dependencies.dto';
 import {
@@ -66,6 +70,37 @@ import {
 
 const PRD_MAX_ATTEMPTS = 3;
 const PLAN_MAX_ATTEMPTS = 3;
+
+/** 需求分支：feature/goal-<YYYYMMDD>-<HHMMSS + 毫秒(3) + 随机 4 位> */
+function buildGoalGitBranchName(): string {
+  const now = new Date();
+  const y = now.getFullYear().toString();
+  const mo = `${now.getMonth() + 1}`.padStart(2, '0');
+  const d = `${now.getDate()}`.padStart(2, '0');
+  const datePrefix = `${y}${mo}${d}`;
+  const hh = `${now.getHours()}`.padStart(2, '0');
+  const mm = `${now.getMinutes()}`.padStart(2, '0');
+  const ss = `${now.getSeconds()}`.padStart(2, '0');
+  const timePart = `${hh}${mm}${ss}`;
+  const ms = `${now.getMilliseconds()}`.padStart(3, '0');
+  const salt = randomInt(0, 10_000).toString().padStart(4, '0');
+  const secondSegment = `${timePart}${ms}${salt}`;
+  return `feature/goal-${datePrefix}-${secondSegment}`.slice(0, 255);
+}
+
+/** 功能组分支：需求分支名 + `-g<顺序>`（顺序从 1 起），总长不超过 255。 */
+function buildPlanItemGitBranchName(
+  goalGitBranch: string,
+  itemOrder: number,
+): string {
+  const tail = `-g${itemOrder + 1}`;
+  const base = goalGitBranch.trim();
+  const maxLen = 255;
+  if (base.length + tail.length <= maxLen) {
+    return `${base}${tail}`;
+  }
+  return `${base.slice(0, Math.max(0, maxLen - tail.length))}${tail}`;
+}
 
 function resolveGoalAgentCliOptions(dto: {
   agentCliId?: string;
@@ -386,6 +421,7 @@ export class GoalsService {
   constructor(
     private readonly goalRepository: GoalRepository,
     private readonly projectsService: ProjectsService,
+    private readonly gitService: GitService,
     private readonly taskRepository: TaskRepository,
     @Inject(forwardRef(() => TasksService))
     private readonly tasksService: TasksService,
@@ -408,6 +444,97 @@ export class GoalsService {
     return goal;
   }
 
+  /**
+   * 功能组 dependsOnItemIds：本组子任务在确认/物化前，每个前置功能组内全部子任务对应 Task 须已存在且已完成。
+   */
+  private async assertPredecessorGroupsFulfilledForSubTask(
+    goalPlanItemId: string,
+    groups: GoalPlanItem[],
+  ): Promise<void> {
+    const groupById = new Map(groups.map((g) => [g.id, g]));
+    const parent = groupById.get(goalPlanItemId);
+    if (!parent) {
+      return;
+    }
+    for (const predId of parent.dependsOnItemIds ?? []) {
+      const predGroup = groupById.get(predId);
+      if (!predGroup) {
+        continue;
+      }
+      const subs = predGroup.subTasks ?? [];
+      if (subs.length === 0) {
+        throw new BadRequestException(
+          `前置功能组「${predGroup.title}」无子任务，无法处理本组子任务`,
+        );
+      }
+      for (const st of subs) {
+        if (!st.taskId?.trim()) {
+          throw new BadRequestException(
+            `请先为前置功能组「${predGroup.title}」的全部子任务创建任务后再继续`,
+          );
+        }
+        const predTask = await this.taskRepository.findById(st.taskId);
+        if (!predTask) {
+          throw new BadRequestException(
+            `前置任务不存在，请刷新后重试（功能组「${predGroup.title}」·「${st.title}」）`,
+          );
+        }
+        if (predTask.status !== TaskStatus.done) {
+          throw new BadRequestException(
+            `请先完成前置功能组「${predGroup.title}」的全部子任务（「${st.title}」对应任务未完成）`,
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * 首次确认功能组下子任务时，若功能组尚无 Git 分支则在仓库创建并落库。
+   */
+  private async ensurePlanItemGitBranchIfMissing(
+    goal: Goal,
+    goalId: string,
+    planItemId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<void> {
+    let parent = await this.goalRepository.findPlanItem(goalId, planItemId);
+    if (!parent) {
+      throw new NotFoundException('未找到计划功能组');
+    }
+    if (parent.gitBranch?.trim()) {
+      return;
+    }
+    if (!goal.gitBranch?.trim()) {
+      throw new BadRequestException('需求未配置 Git 分支，无法创建功能组分支');
+    }
+    const base = goal.gitBranch.trim();
+    const name = buildPlanItemGitBranchName(base, parent.itemOrder);
+    try {
+      await this.gitService.createBranch(
+        goal.projectId,
+        name,
+        base,
+        currentUser,
+      );
+    } catch (e) {
+      parent = await this.goalRepository.findPlanItem(goalId, planItemId);
+      if (parent?.gitBranch?.trim()) {
+        return;
+      }
+      throw e;
+    }
+    const updated = await this.goalRepository.updatePlanItem(
+      goalId,
+      planItemId,
+      {
+        gitBranch: name,
+      },
+    );
+    if (!updated) {
+      throw new NotFoundException('未找到计划功能组');
+    }
+  }
+
   async create(dto: CreateGoalDto, currentUser: JwtPayloadType): Promise<Goal> {
     await this.projectsService.assertProjectCapability(
       dto.projectId,
@@ -418,7 +545,19 @@ export class GoalsService {
       agentCliId: dto.agentCliId,
       agentCliConfigId: dto.agentCliConfigId,
     });
+    const goalId = randomUUID();
+    const gitBaseBranch = dto.gitBaseBranch.trim();
+    const gitBranch = buildGoalGitBranchName();
+
+    await this.gitService.createBranch(
+      dto.projectId,
+      gitBranch,
+      gitBaseBranch,
+      currentUser,
+    );
+
     const g = await this.goalRepository.create({
+      id: goalId,
       projectId: dto.projectId,
       title: dto.title,
       summary: dto.summary ?? null,
@@ -428,6 +567,8 @@ export class GoalsService {
       defaultWorkflowTemplateId: dto.defaultWorkflowTemplateId ?? null,
       agentCliId: storedAgent?.agentCliId ?? null,
       agentCliConfigId: storedAgent?.agentCliConfigId ?? null,
+      gitBaseBranch,
+      gitBranch,
       createdBy: currentUser.sub,
     });
     this.goalsMetrics.incrementGoalCreated();
@@ -467,7 +608,7 @@ export class GoalsService {
     const goal = await this.assertGoalAccess(id, currentUser);
     const [sourceDocs, planItems, tasks, deps] = await Promise.all([
       this.goalRepository.listSourceDocs(id),
-      this.goalRepository.listPlanItems(id),
+      this.goalRepository.listPlanItemsWithSubTasks(id),
       this.taskRepository.findByGoalId(id),
       this.goalRepository.listTaskDependenciesForGoal(id),
     ]);
@@ -480,8 +621,26 @@ export class GoalsService {
     for (const t of tasks) {
       statusCounts[t.status] += 1;
     }
-    const done = statusCounts[TaskStatus.done];
-    const total = tasks.length;
+
+    const taskById = new Map(tasks.map((t) => [t.id, t]));
+    let subTotal = 0;
+    let subDone = 0;
+    for (const pi of planItems) {
+      for (const st of pi.subTasks ?? []) {
+        if (st.status === GoalPlanItemStatus.cancelled) {
+          continue;
+        }
+        subTotal += 1;
+        const tid = st.taskId?.trim();
+        if (tid) {
+          const linked = taskById.get(tid);
+          if (linked?.status === TaskStatus.done) {
+            subDone += 1;
+          }
+        }
+      }
+    }
+
     return {
       goal,
       sourceDocs,
@@ -489,10 +648,10 @@ export class GoalsService {
       tasks,
       taskDependencies: deps,
       progress: {
-        totalTasks: total,
-        doneTasks: done,
+        totalTasks: subTotal,
+        doneTasks: subDone,
         statusCounts,
-        percent: total > 0 ? Math.round((done / total) * 100) : 0,
+        percent: subTotal > 0 ? Math.round((subDone / subTotal) * 100) : 0,
       },
     };
   }
@@ -853,7 +1012,7 @@ export class GoalsService {
     goalId: string,
     dto: GeneratePlanDto,
     currentUser: JwtPayloadType,
-  ): Promise<{ goal: Goal; itemCount: number }> {
+  ): Promise<{ goal: Goal; itemCount: number; subTaskCount: number }> {
     const goal = await this.assertGoalAccess(goalId, currentUser);
     if (
       goal.status !== GoalStatus.prdConfirmed &&
@@ -866,6 +1025,9 @@ export class GoalsService {
     }
     if (!goal.prdDocPath) {
       throw new BadRequestException('缺少 PRD 文档路径');
+    }
+    if (!goal.gitBranch?.trim()) {
+      throw new BadRequestException('需求未配置 Git 分支，无法生成任务计划');
     }
     const overwrite = dto.overwrite !== false;
     if (!overwrite && goal.planDocPath) {
@@ -931,7 +1093,10 @@ export class GoalsService {
       }
       const missingText = findFirstMissingPlanItemTextField(rawItems);
       if (missingText) {
-        lastErr = `plan item items[${missingText.index}] missing or empty ${missingText.field}`;
+        lastErr =
+          missingText.kind === 'parent'
+            ? `plan item items[${missingText.index}] missing or empty ${missingText.field}`
+            : `plan item items[${missingText.itemIndex}].subTasks[${missingText.subIndex}] missing or empty ${missingText.field}`;
         this.logger.warn(`Plan text fields attempt ${attempt}: ${lastErr}`);
         continue;
       }
@@ -945,17 +1110,23 @@ export class GoalsService {
     }
     this.goalsMetrics.incrementPlanGeneration(true);
 
-    const localToUuid = new Map<string, string>();
+    const itemLocalToUuid = new Map<string, string>();
     for (const it of rawItems) {
-      localToUuid.set(it.localId, randomUUID());
+      itemLocalToUuid.set(it.localId, randomUUID());
+    }
+    const subLocalToUuid = new Map<string, string>();
+    for (const it of rawItems) {
+      for (const st of it.subTasks) {
+        subLocalToUuid.set(st.subLocalId, randomUUID());
+      }
     }
 
     const planItems: GoalPlanItem[] = [];
     let order = 0;
     for (const it of rawItems) {
-      const id = localToUuid.get(it.localId)!;
+      const id = itemLocalToUuid.get(it.localId)!;
       const depUuids = it.dependsOnLocalIds
-        .map((lid) => localToUuid.get(lid))
+        .map((lid) => itemLocalToUuid.get(lid))
         .filter((x): x is string => Boolean(x));
       const item = new GoalPlanItem();
       item.id = id;
@@ -966,13 +1137,37 @@ export class GoalsService {
       item.suggestedPrompt = it.suggestedPrompt ?? null;
       item.dependsOnItemIds = depUuids;
       item.itemOrder = order++;
-      item.taskId = null;
-      item.status = GoalPlanItemStatus.draft;
-      item.workflowTemplateId = null;
-      item.gitBaseBranch = null;
+      item.gitBranch = null;
       item.createdAt = new Date();
       item.updatedAt = new Date();
       planItems.push(item);
+    }
+
+    const subTasksFlat: GoalPlanSubTask[] = [];
+    for (const it of rawItems) {
+      const parentId = itemLocalToUuid.get(it.localId)!;
+      let subOrder = 0;
+      for (const st of it.subTasks) {
+        const sid = subLocalToUuid.get(st.subLocalId)!;
+        const depUuids = st.dependsOnSubLocalIds
+          .map((lid) => subLocalToUuid.get(lid))
+          .filter((x): x is string => Boolean(x));
+        const row = new GoalPlanSubTask();
+        row.id = sid;
+        row.goalPlanItemId = parentId;
+        row.title = st.title;
+        row.summary = st.summary ?? null;
+        row.acceptanceCriteria = st.acceptanceCriteria ?? null;
+        row.suggestedPrompt = st.suggestedPrompt ?? null;
+        row.dependsOnSubTaskIds = depUuids;
+        row.itemOrder = subOrder++;
+        row.taskId = null;
+        row.status = GoalPlanItemStatus.draft;
+        row.workflowTemplateId = null;
+        row.createdAt = new Date();
+        row.updatedAt = new Date();
+        subTasksFlat.push(row);
+      }
     }
 
     const idSet = new Set(planItems.map((p) => p.id));
@@ -984,7 +1179,20 @@ export class GoalsService {
     );
     if (directedGraphHasCycle(idSet, adj)) {
       throw new BadRequestException(
-        '模型输出的计划项依赖存在环，请重试或手工编辑',
+        '模型输出的功能组依赖存在环，请重试或手工编辑',
+      );
+    }
+
+    const subIdSet = new Set(subTasksFlat.map((s) => s.id));
+    const subAdj = buildPlanItemAdjacency(
+      subTasksFlat.map((s) => ({
+        id: s.id,
+        dependsOnItemIds: s.dependsOnSubTaskIds,
+      })),
+    );
+    if (directedGraphHasCycle(subIdSet, subAdj)) {
+      throw new BadRequestException(
+        '模型输出的子任务依赖存在环，请重试或手工编辑',
       );
     }
 
@@ -1007,7 +1215,7 @@ export class GoalsService {
       }
     }
 
-    await this.goalRepository.replacePlanItems(goalId, planItems);
+    await this.goalRepository.replacePlanItems(goalId, planItems, subTasksFlat);
     const updated = await this.goalRepository.update(goalId, {
       planDocPath: planRel,
       status: GoalStatus.planned,
@@ -1015,7 +1223,11 @@ export class GoalsService {
     if (!updated) {
       throw new NotFoundException('未找到需求');
     }
-    return { goal: updated, itemCount: planItems.length };
+    return {
+      goal: updated,
+      itemCount: planItems.length,
+      subTaskCount: subTasksFlat.length,
+    };
   }
 
   async patchPlanItem(
@@ -1028,32 +1240,6 @@ export class GoalsService {
     const existing = await this.goalRepository.findPlanItem(goalId, itemId);
     if (!existing) {
       throw new NotFoundException('未找到计划项');
-    }
-
-    if (
-      dto.status === GoalPlanItemStatus.approved &&
-      existing.status !== GoalPlanItemStatus.approved
-    ) {
-      const depIds =
-        dto.dependsOnItemIds !== undefined
-          ? dto.dependsOnItemIds
-          : (existing.dependsOnItemIds ?? []);
-      const allPlan = await this.goalRepository.listPlanItems(goalId);
-      const byId = new Map(allPlan.map((i) => [i.id, i]));
-      for (const predId of depIds) {
-        const pred = byId.get(predId);
-        if (!pred) {
-          continue;
-        }
-        if (
-          pred.status !== GoalPlanItemStatus.taskCreated ||
-          !pred.taskId?.trim()
-        ) {
-          throw new BadRequestException(
-            `请先为前置计划项「${pred.title}」创建任务后再确认本项`,
-          );
-        }
-      }
     }
 
     const next = await this.goalRepository.updatePlanItem(goalId, itemId, dto);
@@ -1069,7 +1255,75 @@ export class GoalsService {
       })),
     );
     if (directedGraphHasCycle(idSet, adj)) {
-      throw new BadRequestException('依赖关系存在环');
+      throw new BadRequestException('功能组依赖关系存在环');
+    }
+    return next;
+  }
+
+  async patchPlanSubTask(
+    goalId: string,
+    subTaskId: string,
+    dto: PatchPlanSubTaskDto,
+    currentUser: JwtPayloadType,
+  ): Promise<GoalPlanSubTask> {
+    const goal = await this.assertGoalAccess(goalId, currentUser);
+    const existing = await this.goalRepository.findPlanSubTask(
+      goalId,
+      subTaskId,
+    );
+    if (!existing) {
+      throw new NotFoundException('未找到计划子任务');
+    }
+
+    if (dto.status === GoalPlanItemStatus.completed) {
+      throw new BadRequestException(
+        '计划子任务「已完成」状态由系统在关联任务完成时自动同步，不可手动设置',
+      );
+    }
+
+    if (
+      dto.status === GoalPlanItemStatus.approved &&
+      existing.status !== GoalPlanItemStatus.approved
+    ) {
+      const groupsWithSubs =
+        await this.goalRepository.listPlanItemsWithSubTasks(goalId);
+      await this.assertPredecessorGroupsFulfilledForSubTask(
+        existing.goalPlanItemId,
+        groupsWithSubs,
+      );
+      await this.ensurePlanItemGitBranchIfMissing(
+        goal,
+        goalId,
+        existing.goalPlanItemId,
+        currentUser,
+      );
+    }
+
+    const next = await this.goalRepository.updatePlanSubTask(
+      goalId,
+      subTaskId,
+      dto,
+    );
+    if (!next) {
+      throw new NotFoundException('未找到计划子任务');
+    }
+
+    const groups = await this.goalRepository.listPlanItemsWithSubTasks(goalId);
+    const flat: GoalPlanSubTask[] = [];
+    for (const g of groups) {
+      for (const st of g.subTasks ?? []) {
+        flat.push(st);
+      }
+    }
+    const idSet = new Set(flat.map((s) => s.id));
+    const adj = buildPlanItemAdjacency(
+      flat.map((s) => ({
+        id: s.id,
+        dependsOnItemIds: s.dependsOnSubTaskIds,
+      })),
+    );
+    if (directedGraphHasCycle(idSet, adj)) {
+      throw new BadRequestException('子任务依赖关系存在环');
     }
     return next;
   }
@@ -1078,7 +1332,7 @@ export class GoalsService {
     goalId: string,
     dto: MaterializeTasksDto,
     currentUser: JwtPayloadType,
-  ): Promise<{ tasks: { planItemId: string; taskId: string }[] }> {
+  ): Promise<{ tasks: { planSubTaskId: string; taskId: string }[] }> {
     const goal = await this.assertGoalAccess(goalId, currentUser);
     if (
       goal.status !== GoalStatus.planned &&
@@ -1087,62 +1341,91 @@ export class GoalsService {
       throw new BadRequestException('当前状态不允许新建任务');
     }
 
-    const results: { planItemId: string; taskId: string }[] = [];
-    const localItemById = new Map(
-      (await this.goalRepository.listPlanItems(goalId)).map((i) => [i.id, i]),
+    const groups = await this.goalRepository.listPlanItemsWithSubTasks(goalId);
+    const planItemGitBranchById = new Map(
+      groups.map((g) => [g.id, g.gitBranch]),
+    );
+    const flat: GoalPlanSubTask[] = [];
+    for (const g of groups) {
+      for (const st of g.subTasks ?? []) {
+        flat.push(st);
+      }
+    }
+    const localSubById = new Map(flat.map((s) => [s.id, s]));
+
+    const forOrder = new Map(
+      flat.map((s) => [
+        s.id,
+        { dependsOnItemIds: s.dependsOnSubTaskIds ?? [] },
+      ]),
     );
 
-    const uniquePlanItemIds = [...new Set(dto.planItemIds)];
-    let orderedPlanItemIds: string[];
+    const uniqueIds = [...new Set(dto.planSubTaskIds)];
+    let orderedIds: string[];
     try {
-      orderedPlanItemIds = topologicalMaterializeOrder(
-        uniquePlanItemIds,
-        localItemById,
-      );
+      orderedIds = topologicalMaterializeOrder(uniqueIds, forOrder);
     } catch {
       throw new BadRequestException(
-        '计划项依赖存在环，无法按顺序新建任务（请检查任务计划依赖）',
+        '子任务依赖存在环，无法按顺序新建任务（请检查任务计划依赖）',
       );
     }
 
-    for (const planItemId of orderedPlanItemIds) {
-      const item = localItemById.get(planItemId);
-      if (!item || item.goalId !== goalId) {
-        throw new BadRequestException(`计划项不存在: ${planItemId}`);
+    const results: { planSubTaskId: string; taskId: string }[] = [];
+
+    for (const subTaskId of orderedIds) {
+      const item = localSubById.get(subTaskId);
+      if (!item) {
+        throw new BadRequestException(`计划子任务不存在: ${subTaskId}`);
       }
-      if (item.status === GoalPlanItemStatus.taskCreated && item.taskId) {
-        results.push({ planItemId, taskId: item.taskId });
+      if (
+        (item.status === GoalPlanItemStatus.taskCreated ||
+          item.status === GoalPlanItemStatus.completed) &&
+        item.taskId
+      ) {
+        results.push({ planSubTaskId: subTaskId, taskId: item.taskId });
         continue;
       }
       if (item.status === GoalPlanItemStatus.cancelled) {
-        throw new BadRequestException(`计划项已取消: ${planItemId}`);
+        throw new BadRequestException(`计划子任务已取消: ${subTaskId}`);
       }
       if (item.status !== GoalPlanItemStatus.approved) {
         throw new BadRequestException(
-          `计划项须为已确认(approved)状态才可新建任务: ${item.title}`,
+          `子任务须为已确认(approved)状态才可新建任务: ${item.title}`,
         );
       }
 
       if (!item.workflowTemplateId?.trim()) {
         throw new BadRequestException(
-          `计划项「${item.title}」未配置工作流模板，请先在任务计划中为其选择模板后再新建任务`,
+          `子任务「${item.title}」未配置工作流模板，请先在任务计划中为其选择模板后再新建任务`,
         );
       }
 
-      for (const predItemId of item.dependsOnItemIds ?? []) {
-        const predItem = localItemById.get(predItemId);
+      const groupGitBranch = planItemGitBranchById.get(item.goalPlanItemId);
+      if (!groupGitBranch?.trim()) {
+        throw new BadRequestException(
+          `功能组尚未创建 Git 分支，请先确认该功能组下至少一条子任务后再物化「${item.title}」`,
+        );
+      }
+
+      await this.assertPredecessorGroupsFulfilledForSubTask(
+        item.goalPlanItemId,
+        groups,
+      );
+
+      for (const predId of item.dependsOnSubTaskIds ?? []) {
+        const predItem = localSubById.get(predId);
         if (!predItem) {
           continue;
         }
         if (!predItem.taskId?.trim()) {
           throw new BadRequestException(
-            `请先为前置计划项「${predItem.title}」创建任务后再为本项新建任务`,
+            `请先为前置子任务「${predItem.title}」创建任务后再为本项新建任务`,
           );
         }
         const predTask = await this.taskRepository.findById(predItem.taskId);
         if (!predTask) {
           throw new BadRequestException(
-            `前置任务不存在，请刷新后重试（计划项「${predItem.title}」）`,
+            `前置任务不存在，请刷新后重试（子任务「${predItem.title}」）`,
           );
         }
         if (predTask.status !== TaskStatus.done) {
@@ -1167,7 +1450,7 @@ export class GoalsService {
           mode: TaskMode.workflow,
           title: item.title,
           prompt,
-          gitBaseBranch: item.gitBaseBranch?.trim() || undefined,
+          gitBaseBranch: groupGitBranch.trim(),
           configJson: {
             workflowTemplateId: item.workflowTemplateId,
           },
@@ -1175,28 +1458,33 @@ export class GoalsService {
         currentUser,
       );
 
-      await this.goalRepository.updatePlanItem(goalId, planItemId, {
+      await this.goalRepository.updatePlanSubTask(goalId, subTaskId, {
         taskId: created.id,
         status: GoalPlanItemStatus.taskCreated,
       });
 
-      results.push({ planItemId, taskId: created.id });
+      item.taskId = created.id;
+      item.status = GoalPlanItemStatus.taskCreated;
+      localSubById.set(subTaskId, item);
+
+      results.push({ planSubTaskId: subTaskId, taskId: created.id });
     }
 
-    const itemToTask = new Map(
-      (await this.goalRepository.listPlanItems(goalId))
-        .filter((i) => i.taskId)
-        .map((i) => [i.id, i.taskId!]),
+    const subToTask = new Map(
+      (await this.goalRepository.listPlanItemsWithSubTasks(goalId))
+        .flatMap((g) => g.subTasks ?? [])
+        .filter((s) => s.taskId)
+        .map((s) => [s.id, s.taskId!]),
     );
 
-    for (const planItemId of orderedPlanItemIds) {
-      const item = localItemById.get(planItemId)!;
-      const succTaskId = itemToTask.get(planItemId);
+    for (const subTaskId of orderedIds) {
+      const st = localSubById.get(subTaskId)!;
+      const succTaskId = subToTask.get(subTaskId);
       if (!succTaskId) {
         continue;
       }
-      for (const predItemId of item.dependsOnItemIds ?? []) {
-        const predTaskId = itemToTask.get(predItemId);
+      for (const predId of st.dependsOnSubTaskIds ?? []) {
+        const predTaskId = subToTask.get(predId);
         if (!predTaskId || predTaskId === succTaskId) {
           continue;
         }
@@ -1224,6 +1512,53 @@ export class GoalsService {
   async listGoalTasks(goalId: string, currentUser: JwtPayloadType) {
     await this.assertGoalAccess(goalId, currentUser);
     return this.taskRepository.findByGoalId(goalId);
+  }
+
+  /**
+   * 功能组分支 → 需求分支 的托管平台「新建 PR」链接（与任务 worktree 无关）。
+   */
+  async getPlanItemPrLink(
+    goalId: string,
+    planItemId: string,
+    currentUser: JwtPayloadType,
+  ): Promise<{ url: string | null }> {
+    const goal = await this.assertGoalAccess(goalId, currentUser);
+    const planItem = await this.goalRepository.findPlanItem(goalId, planItemId);
+    if (!planItem) {
+      throw new NotFoundException('未找到计划功能组');
+    }
+    const baseBranch = goal.gitBranch?.trim();
+    const headBranch = planItem.gitBranch?.trim();
+    if (!baseBranch) {
+      throw new BadRequestException('需求尚未设置需求分支，无法生成 PR 链接');
+    }
+    if (!headBranch) {
+      throw new BadRequestException(
+        '功能组尚未创建 Git 分支，无法生成 PR 链接',
+      );
+    }
+    const project = await this.projectsService.findById(
+      goal.projectId,
+      currentUser,
+    );
+    if (!project) {
+      throw new NotFoundException('未找到项目');
+    }
+    const url = buildPullRequestUrl(project.gitUrl, baseBranch, headBranch);
+    return { url: url ?? null };
+  }
+
+  /**
+   * 关联 Task 聚合状态变化时由 TaskStatusService 调用，同步计划子任务 completed / 回退。
+   */
+  async syncPlanSubTaskStatusFromLinkedTask(
+    taskId: string,
+    taskStatus: TaskStatus,
+  ): Promise<void> {
+    await this.goalRepository.syncPlanSubTaskStatusByLinkedTaskId(
+      taskId,
+      taskStatus === TaskStatus.done,
+    );
   }
 
   async replaceTaskDependencies(

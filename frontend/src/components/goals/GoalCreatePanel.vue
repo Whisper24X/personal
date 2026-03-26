@@ -5,6 +5,7 @@ import { useMessage } from '@/hooks'
 import { useAccessStore } from '@/stores/modules/access'
 import { businessLinesApi, type AgentToolConfig } from '@/api/business-lines'
 import { goalsApi } from '@/api/goals'
+import { gitApi } from '@/api/git'
 import { projectsApi } from '@/api/projects'
 import AppSelect from '@/components/core/select'
 import { BUTTON_ACCESS_CONFIG, hasSomeAccess } from '@/constants/access-control'
@@ -19,6 +20,7 @@ import {
 } from '@/utils/project-doc-upload'
 import type { GoalSourceDocType } from '@/types/api/goals'
 import { fetchAllPages } from '@/utils/pagination'
+import { buildBranchOptions } from '@/utils/git-branch-options'
 
 type SupportedCliToolId = 'claude-code' | 'codex' | 'gemini-cli' | 'cursor-agent' | 'opencode'
 
@@ -64,6 +66,9 @@ const accessStore = useAccessStore()
 
 const loading = ref(false)
 const loadingAgentConfigs = ref(false)
+let latestBranchRequestId = 0
+const loadingBranches = ref(false)
+const branchOptions = ref<string[]>([])
 const submitting = ref(false)
 const currentHeadline = ref(TASK_HEADLINES[0] ?? '我能为你做什么？')
 let headlineTimer: ReturnType<typeof setInterval> | null = null
@@ -79,6 +84,7 @@ const form = reactive({
   projectId: '',
   title: '',
   summary: '',
+  gitBaseBranch: '',
   agentCliId: '' as SupportedCliToolId | '',
   agentCliConfigId: '',
 })
@@ -91,10 +97,15 @@ const agentToolConfigOptions = computed(() =>
   agentToolConfigs.value.map((config) => ({ label: config.name, value: config.id })),
 )
 
+const gitBaseBranchOptions = computed(() =>
+  branchOptions.value.map((branch) => ({ label: branch, value: branch })),
+)
+
 const canSubmit = computed(() => {
   return (
     Boolean(form.projectId?.trim()) &&
     Boolean(form.title?.trim()) &&
+    Boolean(form.gitBaseBranch?.trim()) &&
     Boolean(form.agentCliId) &&
     Boolean(form.agentCliConfigId) &&
     hasSomeAccess(BUTTON_ACCESS_CONFIG.createTask.capabilities, (capability) =>
@@ -189,6 +200,57 @@ const removeFile = (index: number) => {
 
 const isSupportedCliToolId = (toolId: string): toolId is SupportedCliToolId =>
   SUPPORTED_CLI_TOOLS.some((tool) => tool.id === toolId)
+
+const loadBranchesForProject = async (projectId: string) => {
+  const requestId = ++latestBranchRequestId
+  const project = projects.value.find((item) => item.id === projectId)
+  const projectDefaultBranch = project?.defaultBranch?.trim() || ''
+
+  if (!projectId) {
+    branchOptions.value = []
+    form.gitBaseBranch = ''
+    return
+  }
+
+  loadingBranches.value = true
+  try {
+    const branchData = await gitApi.branches(projectId)
+    if (requestId !== latestBranchRequestId) {
+      return
+    }
+    const nextBranchOptions = buildBranchOptions({
+      localBranches: branchData.localBranches,
+      remoteBranches: branchData.remoteBranches,
+      preferredBranches: [projectDefaultBranch, branchData.defaultBranch],
+    })
+    branchOptions.value = nextBranchOptions
+    const currentBaseBranch = form.gitBaseBranch.trim()
+    const fallbackBaseBranch =
+      nextBranchOptions.find((branch) => branch === projectDefaultBranch) ??
+      nextBranchOptions[0] ??
+      projectDefaultBranch
+    form.gitBaseBranch =
+      nextBranchOptions.find((branch) => branch === currentBaseBranch) ?? fallbackBaseBranch ?? ''
+  } catch (error) {
+    if (requestId !== latestBranchRequestId) {
+      return
+    }
+    const fallbackBranches = buildBranchOptions({
+      localBranches: [],
+      remoteBranches: [],
+      preferredBranches: [projectDefaultBranch],
+    })
+    branchOptions.value = fallbackBranches
+    if (!fallbackBranches.includes(form.gitBaseBranch.trim())) {
+      form.gitBaseBranch = fallbackBranches[0] ?? ''
+    }
+    message.error(toErrorMessage(error, '加载项目分支失败'))
+  } finally {
+    if (requestId === latestBranchRequestId) {
+      loadingBranches.value = false
+    }
+  }
+}
 
 const syncAgentToolConfigsForSelectedTool = () => {
   if (!form.agentCliId) {
@@ -291,6 +353,7 @@ const loadPageData = async () => {
     await loadProjectsForForm()
     await refreshAccessContext(form.projectId)
     await loadConversationCliOptions(form.projectId)
+    await loadBranchesForProject(form.projectId)
   } catch (error) {
     message.error(toErrorMessage(error, '加载失败'))
   } finally {
@@ -316,6 +379,10 @@ const submit = async () => {
     message.error('请填写目标')
     return
   }
+  if (!form.gitBaseBranch.trim()) {
+    message.error('请选择 Git 基准分支')
+    return
+  }
   if (!form.agentCliId || !form.agentCliConfigId) {
     message.error('请先在业务线配置 Agent CLI，并选择 CLI 与配置')
     return
@@ -326,6 +393,7 @@ const submit = async () => {
     const goal = await goalsApi.create({
       projectId: projectIdForSubmit,
       title: form.title.trim(),
+      gitBaseBranch: form.gitBaseBranch.trim(),
       summary: form.summary.trim() || undefined,
       agentCliId: form.agentCliId,
       agentCliConfigId: form.agentCliConfigId,
@@ -392,6 +460,7 @@ watch(
     if (projectId === prev) return
     await refreshAccessContext(projectId)
     await loadConversationCliOptions(projectId)
+    await loadBranchesForProject(projectId)
   },
 )
 
@@ -575,6 +644,42 @@ onBeforeUnmount(() => {
                     >
                       <path d="M4 17 10 11 4 5" />
                       <path d="M12 19h8" />
+                    </svg>
+                  </template>
+                </AppSelect>
+
+                <AppSelect
+                  v-model="form.gitBaseBranch"
+                  aria-label="Git 基准分支"
+                  :block="false"
+                  :match-trigger-width="false"
+                  :trigger-label-truncate="false"
+                  :option-label-truncate="false"
+                  :options="gitBaseBranchOptions"
+                  :disabled="loadingBranches || branchOptions.length === 0"
+                  :panel-z-index="GOAL_CREATE_SELECT_PANEL_Z_INDEX"
+                  :panel-placement="GOAL_CREATE_SELECT_PANEL_PLACEMENT"
+                  size="lg"
+                  trigger-class="min-w-[120px] max-w-[200px] rounded-full border-border bg-background pl-3 pr-3 text-sm font-medium shadow-none"
+                >
+                  <template #prefix>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="text-foreground/70"
+                      aria-hidden="true"
+                    >
+                      <line x1="6" x2="6" y1="3" y2="15" />
+                      <circle cx="18" cy="6" r="3" />
+                      <circle cx="6" cy="18" r="3" />
+                      <path d="M18 9a9 9 0 0 1-9 9" />
                     </svg>
                   </template>
                 </AppSelect>

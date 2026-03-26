@@ -18,6 +18,14 @@ export class CreateGoalDto {
   @MaxLength(200)
   title: string;
 
+  @ApiProperty({
+    description: '创建需求时在仓库中作为起点的 Git 基准分支（须已存在）',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
+  gitBaseBranch: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

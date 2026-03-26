@@ -13,7 +13,6 @@ export function useGoalDetail() {
     tab: data.tab,
   })
   const planItems = useGoalDetailPlanItems({
-    branchOptions: data.branchOptions,
     detail: data.detail,
     goalId: data.goalId,
     goTask: data.goTask,

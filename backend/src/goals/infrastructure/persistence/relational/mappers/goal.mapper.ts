@@ -1,10 +1,12 @@
 import { Goal } from '../../../../domain/goal';
 import { GoalSourceDoc } from '../../../../domain/goal-source-doc';
 import { GoalPlanItem } from '../../../../domain/goal-plan-item';
+import { GoalPlanSubTask } from '../../../../domain/goal-plan-sub-task';
 import { TaskDependencyEdge } from '../../../../domain/task-dependency-edge';
 import { GoalEntity } from '../entities/goal.entity';
 import { GoalSourceDocEntity } from '../entities/goal-source-doc.entity';
 import { GoalPlanItemEntity } from '../entities/goal-plan-item.entity';
+import { GoalPlanSubTaskEntity } from '../entities/goal-plan-sub-task.entity';
 import { TaskDependencyEntity } from '../entities/task-dependency.entity';
 
 export class GoalMapper {
@@ -20,6 +22,8 @@ export class GoalMapper {
     g.defaultWorkflowTemplateId = raw.defaultWorkflowTemplateId ?? null;
     g.agentCliId = raw.agentCliId ?? null;
     g.agentCliConfigId = raw.agentCliConfigId ?? null;
+    g.gitBaseBranch = raw.gitBaseBranch;
+    g.gitBranch = raw.gitBranch;
     g.createdBy = raw.createdBy ?? null;
     g.createdAt = raw.createdAt;
     g.updatedAt = raw.updatedAt;
@@ -41,6 +45,8 @@ export class GoalMapper {
     e.defaultWorkflowTemplateId = domain.defaultWorkflowTemplateId ?? null;
     e.agentCliId = domain.agentCliId ?? null;
     e.agentCliConfigId = domain.agentCliConfigId ?? null;
+    e.gitBaseBranch = domain.gitBaseBranch;
+    e.gitBranch = domain.gitBranch;
     e.createdBy = domain.createdBy ?? null;
     e.createdAt = domain.createdAt;
     e.updatedAt = domain.updatedAt;
@@ -71,13 +77,30 @@ export class GoalMapper {
       ? raw.dependsOnItemIds
       : [];
     p.itemOrder = raw.itemOrder;
-    p.taskId = raw.taskId ?? null;
-    p.status = raw.status;
-    p.workflowTemplateId = raw.workflowTemplateId ?? null;
-    p.gitBaseBranch = raw.gitBaseBranch ?? null;
+    p.gitBranch = raw.gitBranch ?? null;
     p.createdAt = raw.createdAt;
     p.updatedAt = raw.updatedAt;
     return p;
+  }
+
+  static planSubTaskToDomain(raw: GoalPlanSubTaskEntity): GoalPlanSubTask {
+    const s = new GoalPlanSubTask();
+    s.id = raw.id;
+    s.goalPlanItemId = raw.goalPlanItemId;
+    s.title = raw.title;
+    s.summary = raw.summary ?? null;
+    s.acceptanceCriteria = raw.acceptanceCriteria ?? null;
+    s.suggestedPrompt = raw.suggestedPrompt ?? null;
+    s.dependsOnSubTaskIds = Array.isArray(raw.dependsOnSubTaskIds)
+      ? raw.dependsOnSubTaskIds
+      : [];
+    s.itemOrder = raw.itemOrder;
+    s.taskId = raw.taskId ?? null;
+    s.status = raw.status;
+    s.workflowTemplateId = raw.workflowTemplateId ?? null;
+    s.createdAt = raw.createdAt;
+    s.updatedAt = raw.updatedAt;
+    return s;
   }
 
   static dependencyToDomain(raw: TaskDependencyEntity): TaskDependencyEdge {

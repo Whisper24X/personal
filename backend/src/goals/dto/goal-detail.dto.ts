@@ -7,10 +7,10 @@ import { GoalSourceDoc } from '../domain/goal-source-doc';
 import { TaskDependencyEdge } from '../domain/task-dependency-edge';
 
 export class GoalProgressDto {
-  @ApiProperty()
+  @ApiProperty({ description: '任务计划子任务总数（不含已取消）' })
   totalTasks: number;
 
-  @ApiProperty()
+  @ApiProperty({ description: '对应 Task 已完成的子任务数' })
   doneTasks: number;
 
   @ApiProperty()
