@@ -184,6 +184,109 @@ describe('TaskRuntimeService', () => {
     await expect(fs.access(worktreePath)).resolves.toBeUndefined();
   });
 
+  it('should reuse existing worktree without syncing repository again', async () => {
+    const allowedRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'ainative-runtime-worktree-root-'),
+    );
+    createdDirectories.push(allowedRoot);
+    const canonicalAllowedRoot = await fs.realpath(allowedRoot);
+
+    const project = createProject(
+      {},
+      {
+        worktreeAllowedRoot: canonicalAllowedRoot,
+      },
+    );
+    const worktreePath = path.join(canonicalAllowedRoot, 'wk-existing-runtime');
+
+    await fs.mkdir(worktreePath, { recursive: true });
+    await fs.writeFile(path.join(worktreePath, '.git'), 'gitdir: mocked\n');
+
+    const ensureProjectRepositorySpy = jest.spyOn(
+      service as any,
+      'ensureProjectRepository',
+    );
+
+    await (service as any).ensureGitWorktree({
+      project,
+      worktreePath,
+      allowedRoot: canonicalAllowedRoot,
+      branch: 'feature/runtime-test',
+      gitBaseBranch: 'main',
+    });
+
+    expect(ensureProjectRepositorySpy).not.toHaveBeenCalled();
+  });
+
+  it('should sync repository before creating a missing worktree', async () => {
+    const allowedRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'ainative-runtime-worktree-root-'),
+    );
+    createdDirectories.push(allowedRoot);
+    const canonicalAllowedRoot = await fs.realpath(allowedRoot);
+
+    const project = createProject(
+      {},
+      {
+        worktreeAllowedRoot: canonicalAllowedRoot,
+      },
+    );
+    const worktreePath = path.join(canonicalAllowedRoot, 'wk-create-runtime');
+    const repositoryRoot = path.join(canonicalAllowedRoot, 'repo-cache');
+
+    const ensureProjectRepositorySpy = jest
+      .spyOn(service as any, 'ensureProjectRepository')
+      .mockResolvedValue(repositoryRoot);
+    const resolveBaseRefSpy = jest
+      .spyOn(service as any, 'resolveBaseRef')
+      .mockResolvedValue('origin/main');
+    const runCommandSpy = jest
+      .spyOn(service as any, 'runCommand')
+      .mockImplementation(async (command: string, args: string[]) => {
+        if (
+          command === 'git' &&
+          args[0] === '-C' &&
+          args[1] === repositoryRoot &&
+          args[2] === 'worktree' &&
+          args[3] === 'add'
+        ) {
+          await fs.mkdir(worktreePath, { recursive: true });
+          await fs.writeFile(
+            path.join(worktreePath, '.git'),
+            'gitdir: mocked\n',
+          );
+        }
+
+        return {
+          success: true,
+          stdout: '',
+          stderr: '',
+        };
+      });
+
+    await (service as any).ensureGitWorktree({
+      project,
+      worktreePath,
+      allowedRoot: canonicalAllowedRoot,
+      branch: 'feature/runtime-test',
+      gitBaseBranch: 'main',
+    });
+
+    expect(ensureProjectRepositorySpy).toHaveBeenCalledWith(project);
+    expect(resolveBaseRefSpy).toHaveBeenCalledWith(repositoryRoot, 'main');
+    expect(runCommandSpy).toHaveBeenCalledWith('git', [
+      '-C',
+      repositoryRoot,
+      'worktree',
+      'add',
+      '--force',
+      '-B',
+      'feature/runtime-test',
+      worktreePath,
+      'origin/main',
+    ]);
+  });
+
   it('should resolve default repository and worktree paths under tmp tree', () => {
     const project = createProject();
     const task = createTask();

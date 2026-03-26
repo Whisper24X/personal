@@ -62,7 +62,7 @@ export class TaskRuntimeService {
       await this.enforceRuntimeDirectorySecurity(gitWorktree, allowedRoot);
     } else {
       await this.ensureGitWorktree({
-        repositoryRoot: await this.ensureProjectRepository(project),
+        project,
         worktreePath: gitWorktree,
         allowedRoot,
         branch: gitBranch,
@@ -530,13 +530,13 @@ export class TaskRuntimeService {
   }
 
   private async ensureGitWorktree({
-    repositoryRoot,
+    project,
     worktreePath,
     allowedRoot,
     branch,
     gitBaseBranch,
   }: {
-    repositoryRoot: string;
+    project: Project;
     worktreePath: string;
     allowedRoot: string;
     branch: string;
@@ -555,6 +555,7 @@ export class TaskRuntimeService {
     await fs.rm(worktreePath, { recursive: true, force: true });
     await fs.mkdir(path.dirname(worktreePath), { recursive: true });
 
+    const repositoryRoot = await this.ensureProjectRepository(project);
     const baseRef = await this.resolveBaseRef(repositoryRoot, gitBaseBranch);
 
     const addResult = await this.runCommand('git', [
