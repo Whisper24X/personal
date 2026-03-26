@@ -5,8 +5,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Goal 与功能组 Git 分支列；功能组分支可延后创建故 gitBranch 可为空）。
  * 须在 InitAinativeSchema 之后执行。
  */
-export class GoalSchema1774517723056 implements MigrationInterface {
-  name = 'GoalSchema1774517723056';
+export class GoalSchema1774945000000 implements MigrationInterface {
+  name = 'GoalSchema1774945000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
