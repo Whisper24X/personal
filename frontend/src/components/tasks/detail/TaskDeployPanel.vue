@@ -2,7 +2,7 @@
 import { ref, onBeforeUnmount, onMounted, nextTick } from 'vue'
 import { projectsApi } from '@/api/projects'
 
-const DEFAULT_DEPLOY_COMMAND = 'make push-test'
+const DEFAULT_DEPLOY_COMMAND = ''
 
 const props = defineProps<{
   taskId: string
@@ -36,6 +36,12 @@ const appendLog = (text: string, prefix?: string) => {
     }
   }
   scrollToBottom()
+}
+
+const confirmAndDeploy = () => {
+  if (status.value === 'running' || !command.value.trim()) return
+  if (!confirm(`确认执行部署命令？\n\n${command.value.trim()}`)) return
+  startDeploy()
 }
 
 const startDeploy = async () => {
@@ -170,7 +176,7 @@ const statusClass: Record<DeployStatus, string> = {
           :disabled="status === 'running'"
           type="text"
           class="h-8 w-full rounded-md border border-border bg-background px-3 font-mono text-xs text-foreground disabled:opacity-50"
-          placeholder="make push-test"
+          placeholder="请输入部署命令，例如: make push-test"
         />
         <p v-if="featureBranch" class="text-[11px] text-muted-foreground/80">
           当前分支: <span class="font-mono font-semibold text-foreground/90">{{ featureBranch }}</span>
@@ -187,7 +193,7 @@ const statusClass: Record<DeployStatus, string> = {
           type="button"
           class="h-9 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           :disabled="!command.trim()"
-          @click="startDeploy"
+          @click="confirmAndDeploy"
         >
           部署到测试环境
         </button>
