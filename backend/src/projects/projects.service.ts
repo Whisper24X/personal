@@ -486,8 +486,7 @@ export class ProjectsService {
 
         await this.runCommand('git', ['-C', mainRepoPath, 'fetch', '--all']);
 
-        const currentMainBranch =
-          await this.resolveCurrentBranch(mainRepoPath);
+        const currentMainBranch = await this.resolveCurrentBranch(mainRepoPath);
         const reset = await this.runCommand('git', [
           '-C',
           mainRepoPath,

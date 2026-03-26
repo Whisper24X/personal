@@ -1,4 +1,5 @@
 import { http } from '@/utils/http'
+import { HttpError } from '@/utils/http/error'
 import { STORAGE_KEYS } from '@/types/common/storage'
 
 const API_PREFIX = '/api/v1'
@@ -122,7 +123,6 @@ const consumeSseResponse = async (
   response: Response,
   callbacks: SseCallbacks,
 ) => {
-
   if (!response.ok || !response.body) {
     let message = `SSE request failed with status ${response.status}`
     try {
@@ -133,9 +133,8 @@ const consumeSseResponse = async (
     } catch {
       /* ignore parse error */
     }
-    const err = new Error(message)
-    ;(err as any).status = response.status
-    throw err
+
+    throw new HttpError(message, response.status)
   }
 
   const reader = response.body.getReader()

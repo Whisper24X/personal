@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onBeforeUnmount, onMounted, nextTick } from 'vue'
 import { projectsApi } from '@/api/projects'
+import { HttpError } from '@/utils/http/error'
 
 const DEFAULT_DEPLOY_COMMAND = ''
 
@@ -124,11 +125,11 @@ const startDeploy = async () => {
       },
       signal: abortController.signal,
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof DOMException && error.name === 'AbortError') return
     if (status.value === 'running') {
       status.value = 'failed'
-      if (error?.status === 409) {
+      if (error instanceof HttpError && error.status === 409) {
         appendLog(error.message)
       } else {
         appendLog(`请求失败: ${error instanceof Error ? error.message : '未知错误'}`)
