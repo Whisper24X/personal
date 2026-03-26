@@ -160,13 +160,9 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     && rm -rf /root/.cache
 
 # CLI tools (curl-based): OpenCode, Cursor
-RUN curl -fsSL https://opencode.ai/install | bash \
-    && ARCH=$(uname -m) \
-    && if [ "$ARCH" = "x86_64" ]; then \
-        curl -fsSL https://cursor.com/install | bash; \
-      else \
-        echo "Skipping Cursor install on unsupported architecture: $ARCH"; \
-      fi
+RUN curl -fsSL https://opencode.ai/install | bash || true
+
+RUN curl -fsSL https://cursor.com/install | bash || true
 
 # Go 编译的 CLI（OpenCode、Codex）需要显式指定 CA 证书路径
 ENV SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
