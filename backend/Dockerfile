@@ -61,6 +61,11 @@ ENV TZ=Asia/Shanghai \
 # docker compose      — 官方 Compose plugin，支持 `up --wait`
 # nodejs/npm          — 前端构建（glibc 兼容 Taro binding）
 # cmake               — 构建 librdkafka（confluent-kafka-go 需 v2.3+，Debian 自带版本过旧）
+# ripgrep / fd-find   — AI agent 代码搜索（rg、fd；Debian fd 命令为 fdfind，链到 fd）
+# jq                  — JSON 处理
+# tree / less / bat   — 目录结构 / 分页 / 语法高亮查看（AI agent 高频调用）
+# procps              — ps / top，agent 需查看和管理进程
+# patch / wget        — 应用补丁 / 下载文件
 RUN --mount=type=cache,id=backend-runtime-apt-cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=backend-runtime-apt-lib,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
@@ -68,7 +73,10 @@ RUN --mount=type=cache,id=backend-runtime-apt-cache,target=/var/cache/apt,sharin
     openssh-client netcat-openbsd zip unzip \
     ca-certificates \
     gcc g++ \
+    ripgrep fd-find jq tree less bat procps patch wget fzf gh \
     && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
+    && ln -sf /usr/bin/batcat /usr/local/bin/bat \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
 
