@@ -39,12 +39,16 @@ export class ClaudeCliAdapter extends BaseAgentCliAdapter {
         ? raw.api_key.trim()
         : undefined;
 
-    const resolvedEnv =
+    let resolvedEnv =
       legacyApiKey &&
       !env?.['ANTHROPIC_API_KEY'] &&
       !env?.['ANTHROPIC_AUTH_TOKEN']
         ? { ...(env ?? {}), ANTHROPIC_API_KEY: legacyApiKey }
         : env;
+
+    if (raw.dangerously_skip_permissions === true && process.getuid?.() === 0) {
+      resolvedEnv = { ...(resolvedEnv ?? {}), IS_SANDBOX: '1' };
+    }
 
     return {
       args: this.buildClaudePrintArgs(raw),
@@ -96,12 +100,10 @@ export class ClaudeCliAdapter extends BaseAgentCliAdapter {
       args.push('--effort', effort);
     }
 
-    if (process.getuid?.() === 0) {
-      // Root (Docker): both --dangerously-skip-permissions and bypassPermissions are rejected.
-      // Use 'auto' which is the most permissive mode allowed under root.
-      args.push('--permission-mode', 'auto');
-    } else if (dangerouslySkipPermissions) {
+    if (dangerouslySkipPermissions) {
       args.push('--dangerously-skip-permissions');
+    } else if (process.getuid?.() === 0) {
+      args.push('--permission-mode', 'auto');
     } else {
       args.push('--permission-mode', permissionMode ?? 'auto');
     }

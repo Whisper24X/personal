@@ -535,6 +535,7 @@ const mapProjectItem = (project: Project): ProjectItem => {
     description: project.description ?? null,
     gitUrl: project.gitUrl,
     defaultBranch: project.defaultBranch,
+    configJson: project.configJson ?? null,
   }
 }
 

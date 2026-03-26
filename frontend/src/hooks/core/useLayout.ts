@@ -30,6 +30,7 @@ export type ProjectItem = {
   description?: string | null
   gitUrl: string
   defaultBranch: string
+  configJson?: Record<string, unknown> | null
 }
 
 export type BusinessLineItem = {
@@ -217,6 +218,7 @@ export const useLayout = () => {
     description: project.description ?? null,
     gitUrl: project.gitUrl,
     defaultBranch: project.defaultBranch,
+    configJson: project.configJson ?? null,
   })
 
   const findBusinessLineByProjectId = (projectId: string) => {
