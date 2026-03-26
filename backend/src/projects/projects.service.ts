@@ -485,6 +485,22 @@ export class ProjectsService {
         }
 
         await this.runCommand('git', ['-C', mainRepoPath, 'fetch', '--all']);
+
+        const currentMainBranch =
+          await this.resolveCurrentBranch(mainRepoPath);
+        const reset = await this.runCommand('git', [
+          '-C',
+          mainRepoPath,
+          'reset',
+          '--hard',
+          `origin/${currentMainBranch}`,
+        ]);
+        if (!reset.success) {
+          emit('stdout', {
+            text: '[pre-deploy] 主仓库状态异常，无法对齐远程，部署中止\n',
+          });
+          throw new BadRequestException('主仓库状态异常，请联系管理员');
+        }
       }
 
       const originalBranch = await this.resolveCurrentBranch(execCwd);
