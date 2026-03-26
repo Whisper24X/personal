@@ -4,11 +4,13 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { createServer } from 'net';
 import { Task } from '../tasks/domain/task';
 import { TaskStatus } from '../tasks/dto/task-status.enum';
 import { TaskRepository } from '../tasks/infrastructure/persistence/task.repository';
 import { ContainerExecutionConfigService } from './container-execution-config.service';
 import { IsolatedRunnerContainerService } from './isolated-runner-container.service';
+import { SlotAccessMetadata } from './domain/project-execution-slot';
 import { ProjectExecutionSlotRepository } from './infrastructure/persistence/relational/repositories/project-execution-slot.repository';
 
 @Injectable()
@@ -17,6 +19,7 @@ export class ContainerOrchestrationService
 {
   private readonly logger = new Logger(ContainerOrchestrationService.name);
   private readonly slotHeartbeatTimers = new Map<string, NodeJS.Timeout>();
+  private readonly maxPortAllocationAttempts = 8;
   private destroyed = false;
 
   constructor(
@@ -60,6 +63,7 @@ export class ContainerOrchestrationService
 
     const { task, worktreePath } = params;
     const containerName = this.config.resolveContainerName(task);
+    const runtimeExposure = this.resolveRuntimeExposure();
     const existing = await this.isolatedRunner.inspect(containerName);
     this.logger.log(
       `ensure_runner_container ${JSON.stringify({
@@ -98,22 +102,24 @@ export class ContainerOrchestrationService
           })}`,
         );
       }
-      const { containerId } = await this.isolatedRunner.run({
-        containerName,
-        image: this.config.getRunnerImage(),
-        worktreePath,
-        workspaceMount: this.config.getRunnerWorkspace(),
-        command: this.config.usesSandboxEntrypoint()
-          ? ['/usr/local/bin/ainative-runner-entrypoint']
-          : ['sleep', 'infinity'],
-        anonymousVolumeMounts: this.config.getRunnerAnonymousVolumeMounts(
-          this.config.getRunnerWorkspace(),
-        ),
-        resourceLimits: this.config.resourceLimitsForProfile(),
-        readinessProbeUrl: this.config.getRunnerReadinessProbeUrl(),
-        startTimeoutMs: this.config.getRunnerStartTimeoutMs(),
-      });
-      await this.slotRepository.updateContainerId(task.projectId, containerId);
+      const { containerId, accessMetadata } = await this.startRunnerWithRetries(
+        {
+          containerName,
+          worktreePath,
+          runtimeExposure,
+        },
+      );
+      if (accessMetadata) {
+        await this.slotRepository.updateContainerRuntime(task.projectId, {
+          containerId,
+          accessMetadata,
+        });
+      } else {
+        await this.slotRepository.updateContainerId(
+          task.projectId,
+          containerId,
+        );
+      }
       this.ensureSlotHeartbeat(task.projectId);
       this.logger.log(
         `runner_container_ready ${JSON.stringify({
@@ -121,6 +127,7 @@ export class ContainerOrchestrationService
           projectId: task.projectId,
           containerName,
           containerId,
+          accessMetadata: accessMetadata ?? null,
         })}`,
       );
       return { containerId };
@@ -289,4 +296,145 @@ export class ContainerOrchestrationService
     this.stopSlotHeartbeat(projectId);
     await this.slotRepository.releaseSlot(projectId);
   }
+
+  private async startRunnerWithRetries(params: {
+    containerName: string;
+    worktreePath: string;
+    runtimeExposure: RuntimeExposure;
+  }): Promise<{
+    containerId: string;
+    accessMetadata: SlotAccessMetadata | null;
+  }> {
+    const retries = params.runtimeExposure ? this.maxPortAllocationAttempts : 1;
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < retries; attempt += 1) {
+      const publishedPorts =
+        params.runtimeExposure &&
+        this.config.getRunnerNetworkMode() === 'bridge' &&
+        this.config.shouldExposeSandboxPort()
+          ? [
+              {
+                hostIp: params.runtimeExposure.bindHostIp,
+                hostPort: await this.allocatePublishedPort(
+                  params.runtimeExposure.bindHostIp,
+                ),
+                containerPort: params.runtimeExposure.containerPort,
+              },
+            ]
+          : [];
+
+      try {
+        const result = await this.isolatedRunner.run({
+          containerName: params.containerName,
+          image: this.config.getRunnerImage(),
+          worktreePath: params.worktreePath,
+          workspaceMount: this.config.getRunnerWorkspace(),
+          command: this.config.usesSandboxEntrypoint()
+            ? ['/usr/local/bin/ainative-runner-entrypoint']
+            : ['sleep', 'infinity'],
+          anonymousVolumeMounts: this.config.getRunnerAnonymousVolumeMounts(
+            this.config.getRunnerWorkspace(),
+          ),
+          resourceLimits: this.config.resourceLimitsForProfile(),
+          readinessProbeUrl: this.config.getRunnerReadinessProbeUrl(),
+          startTimeoutMs: this.config.getRunnerStartTimeoutMs(),
+          networkMode: this.config.getRunnerNetworkMode(),
+          publishedPorts,
+        });
+        const mapping = result.publishedPorts[0];
+        return {
+          containerId: result.containerId,
+          accessMetadata: mapping
+            ? {
+                hostIp:
+                  params.runtimeExposure?.advertisedHostIp ?? mapping.hostIp,
+                hostPort: mapping.hostPort,
+                containerPort: mapping.containerPort,
+                previewAddress: `${params.runtimeExposure?.advertisedHostIp ?? mapping.hostIp}:${mapping.hostPort}`,
+                baseUrl: `http://${params.runtimeExposure?.advertisedHostIp ?? mapping.hostIp}:${mapping.hostPort}`,
+                networkMode: this.config.getRunnerNetworkMode(),
+              }
+            : null,
+        };
+      } catch (error) {
+        lastError = error;
+        const message = error instanceof Error ? error.message : String(error);
+        if (!this.isPortAllocationError(message) || attempt >= retries - 1) {
+          throw error;
+        }
+        this.logger.warn(
+          `runner_container_port_conflict retrying start for ${params.containerName}: ${message}`,
+        );
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('Failed to start runner container');
+  }
+
+  private resolveRuntimeExposure(): RuntimeExposure {
+    if (!this.config.shouldExposeSandboxPort()) {
+      return null;
+    }
+    if (this.config.getRunnerNetworkMode() !== 'bridge') {
+      return null;
+    }
+    return {
+      bindHostIp: '0.0.0.0',
+      advertisedHostIp: this.config.getRunnerExposeHostIp(),
+      containerPort: this.config.getRunnerExposeContainerPort(),
+    };
+  }
+
+  private async allocatePublishedPort(hostIp: string): Promise<number> {
+    const range = this.config.getRunnerExposePortRange();
+    const size = range.end - range.start + 1;
+    if (size <= 0) {
+      throw new Error(
+        `Invalid runner expose port range: ${range.start}-${range.end}`,
+      );
+    }
+
+    const startOffset = Math.floor(Math.random() * size);
+    for (let index = 0; index < size; index += 1) {
+      const port = range.start + ((startOffset + index) % size);
+      const available = await this.isPortAvailable(hostIp, port);
+      if (available) {
+        return port;
+      }
+    }
+    throw new Error(
+      `No available host port in range ${range.start}-${range.end}`,
+    );
+  }
+
+  private async isPortAvailable(
+    hostIp: string,
+    port: number,
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      const server = createServer();
+      server.unref();
+      server.once('error', () => resolve(false));
+      server.listen(port, hostIp, () => {
+        server.close(() => resolve(true));
+      });
+    });
+  }
+
+  private isPortAllocationError(message: string): boolean {
+    const normalized = message.toLowerCase();
+    return (
+      normalized.includes('port is already allocated') ||
+      normalized.includes('address already in use')
+    );
+  }
 }
+
+type RuntimeExposure = {
+  bindHostIp: string;
+  advertisedHostIp: string;
+  containerPort: number;
+} | null;

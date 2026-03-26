@@ -21,6 +21,9 @@ export class ProjectExecutionSlotEntity extends EntityRelationalHelper {
   @Column({ type: 'text', nullable: true, comment: 'Docker 容器 ID' })
   containerId?: string | null;
 
+  @Column({ type: 'jsonb', nullable: true, comment: '容器访问元数据' })
+  accessMetadata?: Record<string, unknown> | null;
+
   @Column({ type: 'timestamp', comment: '占用时间' })
   claimedAt: Date;
 

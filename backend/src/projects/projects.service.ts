@@ -47,6 +47,8 @@ import { ProjectCustomRole } from './domain/project-custom-role';
 import { CreateProjectCustomRoleDto } from './dto/create-project-custom-role.dto';
 import { UpdateProjectCustomRoleDto } from './dto/update-project-custom-role.dto';
 import { WorkflowTemplateRepository } from '../workflow-templates/infrastructure/persistence/workflow-template.repository';
+import { ContainerExecutionConfigService } from '../containers/container-execution-config.service';
+import { ProjectExecutionSlotRepository } from '../containers/infrastructure/persistence/relational/repositories/project-execution-slot.repository';
 import {
   ALL_PROJECT_CAPABILITIES,
   PROJECT_DEFAULT_ROLE_TEMPLATES,
@@ -88,6 +90,8 @@ export class ProjectsService {
     private readonly projectCustomRoleRepository: ProjectCustomRoleRepository,
     private readonly workflowTemplateRepository: WorkflowTemplateRepository,
     private readonly accessService: AccessService,
+    private readonly slotRepository: ProjectExecutionSlotRepository,
+    private readonly containerConfig: ContainerExecutionConfigService,
     private readonly configService: ConfigService = new ConfigService(),
   ) {}
 
@@ -289,7 +293,8 @@ export class ProjectsService {
     id: Project['id'],
     currentUser: JwtPayloadType,
   ): Promise<Project | null> {
-    return this.ensureCanAccessProject(id, currentUser);
+    const project = await this.ensureCanAccessProject(id, currentUser);
+    return this.applyRuntimePreviewUrl(project);
   }
 
   async update(
@@ -1992,6 +1997,63 @@ export class ProjectsService {
       projectId,
       'project.dashboard.read',
     );
+  }
+
+  private async applyRuntimePreviewUrl(project: Project): Promise<Project> {
+    if (!this.containerConfig.isDockerMode()) {
+      return project;
+    }
+
+    const configJson =
+      project.configJson && typeof project.configJson === 'object'
+        ? { ...(project.configJson as Record<string, unknown>) }
+        : {};
+    const preview =
+      configJson.preview && typeof configJson.preview === 'object'
+        ? { ...(configJson.preview as Record<string, unknown>) }
+        : {};
+
+    if (typeof preview.url === 'string' && preview.url.trim()) {
+      return project;
+    }
+
+    const slot = await this.slotRepository.findByProjectId(project.id);
+    const access = slot?.accessMetadata;
+    if (!access) {
+      return project;
+    }
+
+    const normalizedAddress =
+      typeof access.previewAddress === 'string' && access.previewAddress.trim()
+        ? access.previewAddress.trim()
+        : this.composePreviewAddress(access.hostIp, access.hostPort);
+    if (!normalizedAddress) {
+      return project;
+    }
+
+    return {
+      ...project,
+      configJson: {
+        ...configJson,
+        preview: {
+          ...preview,
+          url: normalizedAddress,
+        },
+      },
+    };
+  }
+
+  private composePreviewAddress(
+    hostIp?: string | null,
+    hostPort?: number | null,
+  ): string | null {
+    if (!hostIp || !hostIp.trim()) {
+      return null;
+    }
+    if (!hostPort || !Number.isFinite(hostPort) || hostPort <= 0) {
+      return null;
+    }
+    return `${hostIp.trim()}:${Math.floor(hostPort)}`;
   }
 
   private async ensureCanManageProject(

@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ProjectExecutionSlot } from '../../../../domain/project-execution-slot';
+import {
+  ProjectExecutionSlot,
+  SlotAccessMetadata,
+} from '../../../../domain/project-execution-slot';
 import { ProjectExecutionSlotEntity } from '../entities/project-execution-slot.entity';
 import { ProjectExecutionSlotMapper } from '../mappers/project-execution-slot.mapper';
 
@@ -37,6 +40,22 @@ export class ProjectExecutionSlotRepository {
     containerId: string,
   ): Promise<void> {
     await this.repo.update({ projectId }, { containerId });
+  }
+
+  async updateContainerRuntime(
+    projectId: string,
+    params: {
+      containerId: string;
+      accessMetadata?: SlotAccessMetadata | null;
+    },
+  ): Promise<void> {
+    await this.repo.update(
+      { projectId },
+      {
+        containerId: params.containerId,
+        accessMetadata: params.accessMetadata ?? null,
+      },
+    );
   }
 
   async releaseSlot(projectId: string): Promise<void> {

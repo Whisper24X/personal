@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { spawn } from 'child_process';
+import { RunnerNetworkMode } from './container-execution-config.service';
 
 export type ContainerInspectResult = {
   id: string;
@@ -9,6 +10,11 @@ export type ContainerInspectResult = {
 
 export type ContainerListItem = { name: string; id: string };
 type ReadinessProbeResult = { ready: boolean; reason?: string };
+export type PublishedPortMapping = {
+  hostIp: string;
+  hostPort: number;
+  containerPort: number;
+};
 
 @Injectable()
 export class IsolatedRunnerContainerService {
@@ -25,8 +31,13 @@ export class IsolatedRunnerContainerService {
     anonymousVolumeMounts?: string[];
     readinessProbeUrl?: string | null;
     startTimeoutMs?: number;
-  }): Promise<{ containerId: string }> {
+    networkMode?: RunnerNetworkMode;
+    publishedPorts?: PublishedPortMapping[];
+  }): Promise<{ containerId: string; publishedPorts: PublishedPortMapping[] }> {
     const startTimeoutMs = params.startTimeoutMs ?? 30_000;
+    const networkMode = params.networkMode ?? 'host';
+    const publishedPorts =
+      networkMode === 'bridge' ? (params.publishedPorts ?? []) : [];
     this.logger.log(
       `runner_container_start ${JSON.stringify({
         containerName: params.containerName,
@@ -38,6 +49,8 @@ export class IsolatedRunnerContainerService {
         resourceLimits: params.resourceLimits ?? {},
         readinessProbeUrl: params.readinessProbeUrl ?? null,
         startTimeoutMs,
+        networkMode,
+        publishedPorts,
       })}`,
     );
     const args = [
@@ -46,10 +59,16 @@ export class IsolatedRunnerContainerService {
       '--name',
       params.containerName,
       '--network',
-      'host',
+      networkMode,
       '-v',
       `${params.worktreePath}:${params.workspaceMount}`,
     ];
+    for (const mapping of publishedPorts) {
+      args.push(
+        '-p',
+        `${mapping.hostIp}:${mapping.hostPort}:${mapping.containerPort}`,
+      );
+    }
 
     if (params.resourceLimits?.memoryMb) {
       args.push('--memory', `${params.resourceLimits.memoryMb}m`);
@@ -105,7 +124,7 @@ export class IsolatedRunnerContainerService {
             continue;
           }
         }
-        return { containerId };
+        return { containerId, publishedPorts };
       }
       await this.delay(300);
     }

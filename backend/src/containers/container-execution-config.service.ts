@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { networkInterfaces } from 'os';
 import { Task } from '../tasks/domain/task';
 
 export type SandboxProfile = 'runner-only' | 'preview-web' | 'full-dev-sandbox';
+export type RunnerNetworkMode = 'host' | 'bridge';
 
 @Injectable()
 export class ContainerExecutionConfigService {
@@ -99,6 +101,63 @@ export class ContainerExecutionConfigService {
     ];
   }
 
+  getRunnerNetworkMode(): RunnerNetworkMode {
+    const mode = this.configService
+      .get<string>('AINATIVE_RUNNER_NETWORK_MODE', { infer: true })
+      ?.trim()
+      .toLowerCase();
+    if (mode === 'host' || mode === 'bridge') {
+      return mode;
+    }
+    return this.usesSandboxEntrypoint() ? 'bridge' : 'host';
+  }
+
+  shouldExposeSandboxPort(): boolean {
+    if (!this.usesSandboxEntrypoint()) {
+      return false;
+    }
+    const raw = this.configService
+      .get<string>('AINATIVE_RUNNER_EXPOSE_LOCAL', { infer: true })
+      ?.trim()
+      .toLowerCase();
+    if (raw === 'false' || raw === '0') {
+      return false;
+    }
+    return true;
+  }
+
+  getRunnerExposeHostIp(): string {
+    const configured = this.configService
+      .get<string>('AINATIVE_RUNNER_EXPOSE_HOST_IP', { infer: true })
+      ?.trim();
+    if (configured) {
+      return configured;
+    }
+    return this.detectHostLanIp() ?? '127.0.0.1';
+  }
+
+  getRunnerExposeContainerPort(): number {
+    return this.readPositiveNumberFromEnv(
+      'AINATIVE_RUNNER_EXPOSE_CONTAINER_PORT',
+      8080,
+    );
+  }
+
+  getRunnerExposePortRange(): { start: number; end: number } {
+    const start = this.readPositiveNumberFromEnv(
+      'AINATIVE_RUNNER_EXPOSE_PORT_RANGE_START',
+      38080,
+    );
+    const end = this.readPositiveNumberFromEnv(
+      'AINATIVE_RUNNER_EXPOSE_PORT_RANGE_END',
+      38999,
+    );
+    if (start > end) {
+      return { start: end, end: start };
+    }
+    return { start, end };
+  }
+
   getSlotTtlMs(): number {
     return this.readPositiveNumberFromEnv('AINATIVE_SLOT_TTL_MS', 300_000);
   }
@@ -143,6 +202,23 @@ export class ContainerExecutionConfigService {
 
   private sanitizeContainerName(name: string): string {
     return name.replace(/[^a-zA-Z0-9_.-]/g, '-').slice(0, 120);
+  }
+
+  private detectHostLanIp(): string | null {
+    const interfaces = networkInterfaces();
+    for (const values of Object.values(interfaces)) {
+      for (const item of values ?? []) {
+        if (item.family !== 'IPv4' || item.internal) {
+          continue;
+        }
+        const address = item.address?.trim();
+        if (!address) {
+          continue;
+        }
+        return address;
+      }
+    }
+    return null;
   }
 
   private readPositiveNumberFromEnv(key: string, defaultValue: number): number {

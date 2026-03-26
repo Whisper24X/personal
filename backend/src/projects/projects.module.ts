@@ -7,12 +7,14 @@ import { BusinessLinesModule } from '../business-lines/business-lines.module';
 import { RelationalTaskPersistenceModule } from '../tasks/infrastructure/persistence/relational/relational-persistence.module';
 import { AccessModule } from '../access/access.module';
 import { RelationalWorkflowTemplatePersistenceModule } from '../workflow-templates/infrastructure/persistence/relational/relational-persistence.module';
+import { ContainersModule } from '../containers/containers.module';
 
 @Module({
   imports: [
     RelationalProjectPersistenceModule,
     RelationalTaskPersistenceModule,
     RelationalWorkflowTemplatePersistenceModule,
+    ContainersModule,
     UsersModule,
     BusinessLinesModule,
     AccessModule,

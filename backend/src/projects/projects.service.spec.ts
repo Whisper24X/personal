@@ -74,6 +74,12 @@ const createProjectsService = () => {
     hasBusinessLineCapability: jest.fn(),
     hasProjectCapability: jest.fn(),
   };
+  const slotRepository = {
+    findByProjectId: jest.fn().mockResolvedValue(null),
+  };
+  const containerConfig = {
+    isDockerMode: jest.fn().mockReturnValue(true),
+  };
 
   const service = new ProjectsService(
     projectRepository as never,
@@ -85,6 +91,8 @@ const createProjectsService = () => {
     projectCustomRoleRepository as never,
     workflowTemplateRepository as never,
     accessService as never,
+    slotRepository as never,
+    containerConfig as never,
   );
 
   return {
@@ -97,6 +105,8 @@ const createProjectsService = () => {
     projectCustomRoleRepository,
     workflowTemplateRepository,
     accessService,
+    slotRepository,
+    containerConfig,
   };
 };
 
@@ -393,5 +403,48 @@ describe('ProjectsService', () => {
       projectId: currentProject.id,
       businessLineId: 'business-line-2',
     });
+  });
+
+  it('should inject runtime preview url when project config has no preview url', async () => {
+    const { service, accessService, slotRepository } = createProjectsService();
+    const currentUser = createCurrentUser();
+    const project = createProject();
+
+    accessService.assertProjectCapability.mockResolvedValue(project);
+    slotRepository.findByProjectId.mockResolvedValue({
+      projectId: project.id,
+      accessMetadata: {
+        hostIp: '192.168.1.9',
+        hostPort: 38123,
+        containerPort: 8080,
+        previewAddress: '192.168.1.9:38123',
+        baseUrl: 'http://192.168.1.9:38123',
+        networkMode: 'bridge',
+      },
+    });
+
+    const result = await service.findById(project.id, currentUser);
+
+    expect(result?.configJson).toMatchObject({
+      preview: { url: '192.168.1.9:38123' },
+    });
+  });
+
+  it('should keep configured preview url unchanged', async () => {
+    const { service, accessService, slotRepository } = createProjectsService();
+    const currentUser = createCurrentUser();
+    const project = {
+      ...createProject(),
+      configJson: {
+        preview: { url: 'my-preview.local:3000' },
+      },
+    };
+
+    accessService.assertProjectCapability.mockResolvedValue(project);
+
+    const result = await service.findById(project.id, currentUser);
+
+    expect(slotRepository.findByProjectId).not.toHaveBeenCalled();
+    expect(result?.configJson).toEqual(project.configJson);
   });
 });
