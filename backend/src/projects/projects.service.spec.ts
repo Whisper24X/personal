@@ -76,9 +76,17 @@ const createProjectsService = () => {
   };
   const slotRepository = {
     findByProjectId: jest.fn().mockResolvedValue(null),
+    updateContainerRuntime: jest.fn().mockResolvedValue(undefined),
   };
   const containerConfig = {
     isDockerMode: jest.fn().mockReturnValue(true),
+    shouldExposeSandboxPort: jest.fn().mockReturnValue(true),
+    getRunnerNetworkMode: jest.fn().mockReturnValue('bridge'),
+    getRunnerExposeHostIp: jest.fn().mockReturnValue('127.0.0.1'),
+    getRunnerExposeContainerPort: jest.fn().mockReturnValue(8080),
+  };
+  const isolatedRunner = {
+    inspect: jest.fn().mockResolvedValue(null),
   };
 
   const service = new ProjectsService(
@@ -93,6 +101,7 @@ const createProjectsService = () => {
     accessService as never,
     slotRepository as never,
     containerConfig as never,
+    isolatedRunner as never,
   );
 
   return {
@@ -107,6 +116,7 @@ const createProjectsService = () => {
     accessService,
     slotRepository,
     containerConfig,
+    isolatedRunner,
   };
 };
 
@@ -426,11 +436,14 @@ describe('ProjectsService', () => {
     const result = await service.findById(project.id, currentUser);
 
     expect(result?.configJson).toMatchObject({
-      preview: { url: '192.168.1.9:38123' },
+      preview: {
+        url: '192.168.1.9:38123',
+        runtimeUrl: '192.168.1.9:38123',
+      },
     });
   });
 
-  it('should keep configured preview url unchanged', async () => {
+  it('should keep configured preview url unchanged while adding runtime preview url', async () => {
     const { service, accessService, slotRepository } = createProjectsService();
     const currentUser = createCurrentUser();
     const project = {
@@ -441,10 +454,83 @@ describe('ProjectsService', () => {
     };
 
     accessService.assertProjectCapability.mockResolvedValue(project);
+    slotRepository.findByProjectId.mockResolvedValue({
+      projectId: project.id,
+      accessMetadata: {
+        hostIp: '127.0.0.1',
+        hostPort: 48080,
+        containerPort: 8080,
+        previewAddress: '127.0.0.1:48080',
+        baseUrl: 'http://127.0.0.1:48080',
+        networkMode: 'bridge',
+      },
+    });
 
     const result = await service.findById(project.id, currentUser);
 
-    expect(slotRepository.findByProjectId).not.toHaveBeenCalled();
-    expect(result?.configJson).toEqual(project.configJson);
+    expect(slotRepository.findByProjectId).toHaveBeenCalledWith(project.id);
+    expect(result?.configJson).toEqual({
+      preview: {
+        url: 'my-preview.local:3000',
+        runtimeUrl: '127.0.0.1:48080',
+      },
+    });
+  });
+
+  it('should recover runtime preview url from inspected container when slot metadata is missing', async () => {
+    const {
+      service,
+      accessService,
+      slotRepository,
+      isolatedRunner,
+      containerConfig,
+    } = createProjectsService();
+    const currentUser = createCurrentUser();
+    const project = createProject();
+
+    accessService.assertProjectCapability.mockResolvedValue(project);
+    slotRepository.findByProjectId.mockResolvedValue({
+      projectId: project.id,
+      containerId: 'container-1',
+      accessMetadata: null,
+    });
+    isolatedRunner.inspect.mockResolvedValue({
+      id: 'container-1',
+      status: 'running',
+      running: true,
+      image: 'ainative/runner:fresh',
+      publishedPorts: [
+        {
+          hostIp: '0.0.0.0',
+          hostPort: 38123,
+          containerPort: 8080,
+        },
+      ],
+    });
+    containerConfig.getRunnerExposeHostIp.mockReturnValue('192.168.1.9');
+
+    const result = await service.findById(project.id, currentUser);
+
+    expect(isolatedRunner.inspect).toHaveBeenCalledWith('container-1');
+    expect(slotRepository.updateContainerRuntime).toHaveBeenCalledWith(
+      project.id,
+      {
+        containerId: 'container-1',
+        accessMetadata: {
+          hostIp: '192.168.1.9',
+          hostPort: 38123,
+          containerPort: 8080,
+          previewAddress: '192.168.1.9:38123',
+          baseUrl: 'http://192.168.1.9:38123',
+          networkMode: 'bridge',
+        },
+      },
+    );
+    expect(result?.configJson).toMatchObject({
+      preview: {
+        url: '192.168.1.9:38123',
+        runtimeUrl: '192.168.1.9:38123',
+      },
+    });
   });
 });

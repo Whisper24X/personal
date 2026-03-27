@@ -1,15 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import {
+  chmod,
   mkdtemp,
   mkdir,
   rm,
   writeFile,
-  copyFile,
-  access,
   readFile,
 } from 'node:fs/promises';
-import { constants as fsConstants, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -22,25 +21,39 @@ export type ProjectRunnerTemplateConfig = {
   sandboxSupervisordConf?: string;
 };
 
+type RunnerAssetBundle = {
+  dockerfileRunner: string;
+  sandboxNginxConf: string;
+  sandboxSupervisordConf: string;
+  entrypointSh: string;
+  sshIdEd25519: string | null;
+  sshKnownHosts: string | null;
+};
+
 @Injectable()
 export class ProjectRunnerImageService {
   private readonly logger = new Logger(ProjectRunnerImageService.name);
   private readonly buildLocks = new Map<string, Promise<string>>();
-  private defaultRunnerTemplatePromise: Promise<ProjectRunnerTemplateConfig> | null =
-    null;
 
   constructor(
     private readonly containerConfig: ContainerExecutionConfigService,
   ) {}
 
   async resolveRunnerImage(project?: Project | null): Promise<string> {
-    const runnerTemplate =
-      await this.resolveEffectiveRunnerTemplateConfig(project);
+    const runnerAssets = await this.readRunnerAssetBundle();
+    const runnerTemplate = this.resolveEffectiveRunnerTemplateConfig(
+      project,
+      runnerAssets,
+    );
     if (!project?.id || !runnerTemplate) {
       return this.containerConfig.getRunnerImage();
     }
 
-    const imageTag = this.buildProjectImageTag(project.id, runnerTemplate);
+    const imageTag = this.buildProjectImageTag(
+      project.id,
+      runnerTemplate,
+      runnerAssets,
+    );
     const existingBuild = this.buildLocks.get(imageTag);
     if (existingBuild) {
       return existingBuild;
@@ -49,6 +62,7 @@ export class ProjectRunnerImageService {
     const buildPromise = this.ensureProjectRunnerImage(
       imageTag,
       runnerTemplate,
+      runnerAssets,
     );
     this.buildLocks.set(imageTag, buildPromise);
 
@@ -95,15 +109,20 @@ export class ProjectRunnerImageService {
     };
   }
 
-  private async resolveEffectiveRunnerTemplateConfig(
+  private resolveEffectiveRunnerTemplateConfig(
     project?: Project | null,
-  ): Promise<ProjectRunnerTemplateConfig | null> {
+    runnerAssets?: RunnerAssetBundle,
+  ): ProjectRunnerTemplateConfig | null {
     const projectTemplate = this.readProjectRunnerTemplateConfig(project);
     if (!projectTemplate) {
       return null;
     }
 
-    const defaultTemplate = await this.readDefaultRunnerTemplateConfig();
+    if (!runnerAssets) {
+      throw new Error('Runner assets are required to resolve template config');
+    }
+
+    const defaultTemplate = runnerAssets;
     return {
       dockerfileRunner:
         projectTemplate.dockerfileRunner ?? defaultTemplate.dockerfileRunner,
@@ -118,6 +137,7 @@ export class ProjectRunnerImageService {
   private async ensureProjectRunnerImage(
     imageTag: string,
     runnerTemplate: ProjectRunnerTemplateConfig,
+    runnerAssets: RunnerAssetBundle,
   ): Promise<string> {
     if (await this.dockerImageExists(imageTag)) {
       return imageTag;
@@ -128,7 +148,11 @@ export class ProjectRunnerImageService {
     );
 
     try {
-      await this.populateBuildContext(buildContext, runnerTemplate);
+      await this.populateBuildContext(
+        buildContext,
+        runnerTemplate,
+        runnerAssets,
+      );
       await this.execDockerBuild(buildContext, imageTag);
       return imageTag;
     } finally {
@@ -139,6 +163,7 @@ export class ProjectRunnerImageService {
   private async populateBuildContext(
     buildContext: string,
     runnerTemplate: ProjectRunnerTemplateConfig,
+    runnerAssets: RunnerAssetBundle,
   ): Promise<void> {
     const runnerDir = path.join(buildContext, 'backend', 'runner');
     await mkdir(path.join(runnerDir, 'ssh'), { recursive: true });
@@ -158,20 +183,20 @@ export class ProjectRunnerImageService {
       runnerTemplate.sandboxSupervisordConf ?? '',
       'utf-8',
     );
-
-    const sourceRunnerDir = this.resolveRunnerAssetSourceDir();
-    await copyFile(
-      path.join(sourceRunnerDir, 'entrypoint.sh'),
+    await writeFile(
       path.join(runnerDir, 'entrypoint.sh'),
+      runnerAssets.entrypointSh,
+      'utf-8',
     );
+    await chmod(path.join(runnerDir, 'entrypoint.sh'), 0o755);
 
-    await this.copyOptionalFile(
-      path.join(sourceRunnerDir, 'ssh', 'id_ed25519'),
+    await this.writeOptionalFile(
       path.join(runnerDir, 'ssh', 'id_ed25519'),
+      runnerAssets.sshIdEd25519,
     );
-    await this.copyOptionalFile(
-      path.join(sourceRunnerDir, 'ssh', 'known_hosts'),
+    await this.writeOptionalFile(
       path.join(runnerDir, 'ssh', 'known_hosts'),
+      runnerAssets.sshKnownHosts,
     );
   }
 
@@ -193,49 +218,57 @@ export class ProjectRunnerImageService {
     throw new Error('Runner asset directory not found for project image build');
   }
 
-  private async readDefaultRunnerTemplateConfig(): Promise<ProjectRunnerTemplateConfig> {
-    if (!this.defaultRunnerTemplatePromise) {
-      this.defaultRunnerTemplatePromise =
-        this.loadDefaultRunnerTemplateConfig();
-    }
-    return this.defaultRunnerTemplatePromise;
-  }
-
-  private async loadDefaultRunnerTemplateConfig(): Promise<ProjectRunnerTemplateConfig> {
+  private async readRunnerAssetBundle(): Promise<RunnerAssetBundle> {
     const sourceRunnerDir = this.resolveRunnerAssetSourceDir();
-    const [dockerfileRunner, sandboxNginxConf, sandboxSupervisordConf] =
-      await Promise.all([
-        readFile(path.join(sourceRunnerDir, 'Dockerfile.runner'), 'utf-8'),
-        readFile(path.join(sourceRunnerDir, 'sandbox.nginx.conf'), 'utf-8'),
-        readFile(
-          path.join(sourceRunnerDir, 'sandbox.supervisord.conf'),
-          'utf-8',
-        ),
-      ]);
+    const [
+      dockerfileRunner,
+      sandboxNginxConf,
+      sandboxSupervisordConf,
+      entrypointSh,
+      sshIdEd25519,
+      sshKnownHosts,
+    ] = await Promise.all([
+      readFile(path.join(sourceRunnerDir, 'Dockerfile.runner'), 'utf-8'),
+      readFile(path.join(sourceRunnerDir, 'sandbox.nginx.conf'), 'utf-8'),
+      readFile(path.join(sourceRunnerDir, 'sandbox.supervisord.conf'), 'utf-8'),
+      readFile(path.join(sourceRunnerDir, 'entrypoint.sh'), 'utf-8'),
+      this.readOptionalFile(path.join(sourceRunnerDir, 'ssh', 'id_ed25519')),
+      this.readOptionalFile(path.join(sourceRunnerDir, 'ssh', 'known_hosts')),
+    ]);
 
     return {
       dockerfileRunner,
       sandboxNginxConf,
       sandboxSupervisordConf,
+      entrypointSh,
+      sshIdEd25519,
+      sshKnownHosts,
     };
   }
 
-  private async copyOptionalFile(
-    sourcePath: string,
-    targetPath: string,
-  ): Promise<void> {
+  private async readOptionalFile(sourcePath: string): Promise<string | null> {
     try {
-      await access(sourcePath, fsConstants.F_OK);
+      return await readFile(sourcePath, 'utf-8');
     } catch {
+      return null;
+    }
+  }
+
+  private async writeOptionalFile(
+    targetPath: string,
+    content: string | null,
+  ): Promise<void> {
+    if (content === null) {
       return;
     }
 
-    await copyFile(sourcePath, targetPath);
+    await writeFile(targetPath, content, 'utf-8');
   }
 
   private buildProjectImageTag(
     projectId: string,
     runnerTemplate: ProjectRunnerTemplateConfig,
+    runnerAssets: RunnerAssetBundle,
   ): string {
     const hash = createHash('sha256')
       .update(runnerTemplate.dockerfileRunner ?? '')
@@ -243,6 +276,12 @@ export class ProjectRunnerImageService {
       .update(runnerTemplate.sandboxNginxConf ?? '')
       .update('\n--supervisord--\n')
       .update(runnerTemplate.sandboxSupervisordConf ?? '')
+      .update('\n--entrypoint--\n')
+      .update(runnerAssets.entrypointSh)
+      .update('\n--ssh-id-ed25519--\n')
+      .update(runnerAssets.sshIdEd25519 ?? '<missing>')
+      .update('\n--ssh-known-hosts--\n')
+      .update(runnerAssets.sshKnownHosts ?? '<missing>')
       .digest('hex')
       .slice(0, 20);
 

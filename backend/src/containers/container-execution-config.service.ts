@@ -85,7 +85,8 @@ export class ContainerExecutionConfigService {
   }
 
   usesSandboxEntrypoint(project?: Project | null): boolean {
-    return this.getSandboxProfile(project) !== 'runner-only';
+    void project;
+    return true;
   }
 
   getRunnerStartTimeoutMs(project?: Project | null): number {
@@ -141,25 +142,11 @@ export class ContainerExecutionConfigService {
     if (mode === 'host' || mode === 'bridge') {
       return mode;
     }
-    return this.usesSandboxEntrypoint(project) ? 'bridge' : 'host';
+    return 'bridge';
   }
 
   shouldExposeSandboxPort(project?: Project | null): boolean {
-    if (!this.usesSandboxEntrypoint(project)) {
-      return false;
-    }
-    const projectConfig = this.readProjectContainerRuntimeConfig(project);
-    if (typeof projectConfig?.exposeLocal === 'boolean') {
-      return projectConfig.exposeLocal;
-    }
-
-    const raw = this.configService
-      .get<string>('AINATIVE_RUNNER_EXPOSE_LOCAL', { infer: true })
-      ?.trim()
-      .toLowerCase();
-    if (raw === 'false' || raw === '0') {
-      return false;
-    }
+    void project;
     return true;
   }
 

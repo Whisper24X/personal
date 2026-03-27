@@ -13,6 +13,7 @@ defineOptions({
 type PreviewConfig = {
   command?: string
   url?: string
+  runtimeUrl?: string
 }
 
 const props = withDefaults(
@@ -29,6 +30,7 @@ const props = withDefaults(
 
 const command = ref('')
 const previewUrl = ref('')
+const runtimePreviewUrl = ref('')
 const iframeSrc = ref('')
 const errorMessage = ref('')
 const running = ref(false)
@@ -63,7 +65,7 @@ const stripAnsi = (text: string): string => {
 }
 
 const applyUrl = () => {
-  const rawUrl = previewUrl.value.trim()
+  const rawUrl = runtimePreviewUrl.value.trim() || previewUrl.value.trim()
   if (!rawUrl) {
     iframeSrc.value = ''
     return
@@ -97,6 +99,7 @@ const clearLog = () => {
 const resetPreviewConfig = () => {
   command.value = ''
   previewUrl.value = ''
+  runtimePreviewUrl.value = ''
   iframeSrc.value = ''
 }
 
@@ -116,6 +119,7 @@ const loadConfig = async () => {
 
     command.value = typeof preview?.command === 'string' ? preview.command : ''
     previewUrl.value = typeof preview?.url === 'string' ? preview.url : ''
+    runtimePreviewUrl.value = typeof preview?.runtimeUrl === 'string' ? preview.runtimeUrl : ''
     applyUrl()
   } catch {
     resetPreviewConfig()

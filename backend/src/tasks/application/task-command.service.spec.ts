@@ -120,6 +120,12 @@ const createService = () => {
   const taskTitleSuggestionService = {
     regenerateTitleAfterCreate: jest.fn().mockResolvedValue(undefined),
   };
+  const containerOrchestration = {
+    removeContainerForTask: jest.fn().mockResolvedValue(undefined),
+  };
+  const projectExecutionSlotRepository = {
+    findByProjectId: jest.fn().mockResolvedValue(null),
+  };
 
   const service = new TaskCommandService(
     taskRepository as never,
@@ -133,6 +139,8 @@ const createService = () => {
     taskQueryService as never,
     taskAccessService as never,
     taskTitleSuggestionService as never,
+    containerOrchestration as never,
+    projectExecutionSlotRepository as never,
   );
 
   return {
@@ -142,6 +150,8 @@ const createService = () => {
     taskRuntimeService,
     taskLogService,
     taskAccessService,
+    containerOrchestration,
+    projectExecutionSlotRepository,
   };
 };
 
@@ -153,6 +163,7 @@ describe('TaskCommandService.remove', () => {
       taskRuntimeService,
       taskLogService,
       taskAccessService,
+      containerOrchestration,
     } = createService();
     const task = createTask();
     const project = createProject();
@@ -171,7 +182,13 @@ describe('TaskCommandService.remove', () => {
     expect(taskRuntimeService.cleanupRuntime).toHaveBeenCalledWith(
       task,
       project,
+      {
+        deleteBranch: true,
+      },
     );
+    expect(
+      containerOrchestration.removeContainerForTask,
+    ).not.toHaveBeenCalled();
     expect(taskLogService.appendLog).toHaveBeenCalledWith({
       taskId: task.id,
       taskNodeId: null,
@@ -180,12 +197,71 @@ describe('TaskCommandService.remove', () => {
       payload: {
         deletedBy: currentUser.sub,
         gitWorktree: task.gitWorktree,
+        gitBranch: task.gitBranch,
       },
     });
     expect(taskRepository.remove).toHaveBeenCalledWith(task.id);
     expect(
       taskRuntimeService.cleanupRuntime.mock.invocationCallOrder[0],
     ).toBeLessThan(taskRepository.remove.mock.invocationCallOrder[0]);
+  });
+
+  it('should remove the runner when the project slot is still owned by the task', async () => {
+    const {
+      service,
+      taskRepository,
+      taskRuntimeService,
+      taskAccessService,
+      containerOrchestration,
+      projectExecutionSlotRepository,
+    } = createService();
+    const task = createTask();
+    const project = createProject();
+    const currentUser = createCurrentUser();
+
+    taskAccessService.getTaskOrThrow.mockResolvedValue(task);
+    taskAccessService.getProjectByIdOrThrow.mockResolvedValue(project);
+    projectExecutionSlotRepository.findByProjectId.mockResolvedValue({
+      projectId: task.projectId,
+      taskId: task.id,
+      expiresAt: new Date('2026-03-20T00:30:00.000Z'),
+    });
+
+    await service.remove(task.id, currentUser as never);
+
+    expect(containerOrchestration.removeContainerForTask).toHaveBeenCalledWith(
+      task.id,
+      task.projectId,
+    );
+    expect(taskRuntimeService.cleanupRuntime).toHaveBeenCalledWith(
+      task,
+      project,
+      {
+        deleteBranch: true,
+      },
+    );
+    expect(taskRepository.remove).toHaveBeenCalledWith(task.id);
+  });
+
+  it('should log cleanup decisions when skipping runner removal', async () => {
+    const { service, taskAccessService, taskRepository } = createService();
+    const task = createTask({ gitWorktree: null, gitBranch: null });
+    const currentUser = createCurrentUser();
+    const loggerLog = jest
+      .spyOn((service as any).logger, 'log')
+      .mockImplementation(() => undefined);
+
+    taskAccessService.getTaskOrThrow.mockResolvedValue(task);
+
+    await service.remove(task.id, currentUser as never);
+
+    expect(taskRepository.remove).toHaveBeenCalledWith(task.id);
+    expect(loggerLog).toHaveBeenCalledWith(
+      expect.stringContaining('task_delete_cleanup_decision '),
+    );
+    expect(loggerLog).not.toHaveBeenCalledWith(
+      expect.stringContaining('task_delete_remove_runner '),
+    );
   });
 
   it('should block deletion when worktree cleanup fails', async () => {
@@ -195,6 +271,7 @@ describe('TaskCommandService.remove', () => {
       taskRuntimeService,
       taskLogService,
       taskAccessService,
+      containerOrchestration,
     } = createService();
     const task = createTask();
     const project = createProject();
@@ -209,7 +286,7 @@ describe('TaskCommandService.remove', () => {
 
     await expect(service.remove(task.id, currentUser as never)).rejects.toThrow(
       new ConflictException(
-        'Task deletion blocked because worktree cleanup failed: git worktree remove failed',
+        'Task deletion blocked because runtime cleanup failed: git worktree remove failed',
       ),
     );
 
@@ -217,17 +294,21 @@ describe('TaskCommandService.remove', () => {
       taskId: task.id,
       taskNodeId: null,
       level: TaskLogLevel.warn,
-      message: 'Task deletion blocked because worktree cleanup failed',
+      message: 'Task deletion blocked because runtime cleanup failed',
       payload: {
         deletedBy: currentUser.sub,
         gitWorktree: task.gitWorktree,
+        gitBranch: task.gitBranch,
         errorMessage: 'git worktree remove failed',
       },
     });
+    expect(
+      containerOrchestration.removeContainerForTask,
+    ).not.toHaveBeenCalled();
     expect(taskRepository.remove).not.toHaveBeenCalled();
   });
 
-  it('should reject deletion while task execution is in progress', async () => {
+  it('should remove the runner before deleting a task that is still executing', async () => {
     const {
       service,
       taskRepository,
@@ -235,24 +316,49 @@ describe('TaskCommandService.remove', () => {
       taskRuntimeService,
       taskLogService,
       taskAccessService,
+      containerOrchestration,
     } = createService();
     const task = createTask();
+    const project = createProject();
     const currentUser = createCurrentUser();
 
     taskAccessService.getTaskOrThrow.mockResolvedValue(task);
+    taskAccessService.getProjectByIdOrThrow.mockResolvedValue(project);
     taskNodeRepository.findInProgressByTaskId.mockResolvedValue({
       id: 'node-1',
     });
+    const loggerLog = jest
+      .spyOn((service as any).logger, 'log')
+      .mockImplementation(() => undefined);
 
-    await expect(service.remove(task.id, currentUser as never)).rejects.toThrow(
-      new ConflictException(
-        'Cannot delete task while execution is in progress',
-      ),
+    await service.remove(task.id, currentUser as never);
+
+    expect(containerOrchestration.removeContainerForTask).toHaveBeenCalledWith(
+      task.id,
+      task.projectId,
     );
-
-    expect(taskRuntimeService.cleanupRuntime).not.toHaveBeenCalled();
-    expect(taskLogService.appendLog).not.toHaveBeenCalled();
-    expect(taskRepository.remove).not.toHaveBeenCalled();
+    expect(taskRuntimeService.cleanupRuntime).toHaveBeenCalledWith(
+      task,
+      project,
+      {
+        deleteBranch: true,
+      },
+    );
+    expect(taskLogService.appendLog).toHaveBeenCalledWith({
+      taskId: task.id,
+      taskNodeId: null,
+      level: TaskLogLevel.info,
+      message: 'Task deleted',
+      payload: {
+        deletedBy: currentUser.sub,
+        gitWorktree: task.gitWorktree,
+        gitBranch: task.gitBranch,
+      },
+    });
+    expect(loggerLog).toHaveBeenCalledWith(
+      expect.stringContaining('task_delete_remove_runner '),
+    );
+    expect(taskRepository.remove).toHaveBeenCalledWith(task.id);
   });
 
   it('should delete tasks without a stored worktree identifier', async () => {
@@ -262,8 +368,9 @@ describe('TaskCommandService.remove', () => {
       taskRuntimeService,
       taskLogService,
       taskAccessService,
+      containerOrchestration,
     } = createService();
-    const task = createTask({ gitWorktree: null });
+    const task = createTask({ gitWorktree: null, gitBranch: null });
     const currentUser = createCurrentUser();
 
     taskAccessService.getTaskOrThrow.mockResolvedValue(task);
@@ -279,8 +386,12 @@ describe('TaskCommandService.remove', () => {
       payload: {
         deletedBy: currentUser.sub,
         gitWorktree: null,
+        gitBranch: null,
       },
     });
+    expect(
+      containerOrchestration.removeContainerForTask,
+    ).not.toHaveBeenCalled();
     expect(taskRepository.remove).toHaveBeenCalledWith(task.id);
   });
 });

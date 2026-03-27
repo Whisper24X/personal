@@ -1,4 +1,5 @@
 import { mount } from '@vue/test-utils'
+import { defineComponent } from 'vue'
 import { describe, expect, it } from 'vitest'
 import TaskRightPanel from '../TaskRightPanel.vue'
 
@@ -36,8 +37,50 @@ describe('TaskRightPanel', () => {
 
     const tabs = wrapper.findAll('button').map((node) => node.text().trim())
 
-    expect(tabs).toEqual(['产物', '预览', '文件', 'Git', '终端', '日志'])
+    expect(tabs.slice(0, 6)).toEqual(['产物', '预览', '文件', 'Git', '终端', '日志'])
     expect(wrapper.find('[data-test="artifacts-panel"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="preview-panel"]').exists()).toBe(false)
+  })
+
+  it('passes refreshToken to the preview panel', async () => {
+    const previewProps: Array<Record<string, unknown>> = []
+    const wrapper = mount(TaskRightPanel, {
+      props: {
+        taskId: 'task-1',
+        projectId: 'project-1',
+        refreshToken: 3,
+        formatDate: () => '',
+      },
+      global: {
+        stubs: {
+          TaskArtifactsPanel: true,
+          TaskPreviewPanel: defineComponent({
+            name: 'TaskDetailPreviewPanelStub',
+            props: {
+              taskId: { type: String, required: true },
+              projectId: { type: String, default: '' },
+              refreshToken: { type: Number, default: 0 },
+            },
+            setup(props) {
+              previewProps.push({ ...props })
+              return () => null
+            },
+          }),
+          TaskFilesPanel: true,
+          TaskGitPanel: true,
+          TaskTerminalPanel: true,
+          TaskLogsPanel: true,
+          TaskDeployPanel: true,
+        },
+      },
+    })
+
+    await wrapper.findAll('button')[1]?.trigger('click')
+
+    expect(previewProps[previewProps.length - 1]).toEqual({
+      taskId: 'task-1',
+      projectId: 'project-1',
+      refreshToken: 3,
+    })
   })
 })

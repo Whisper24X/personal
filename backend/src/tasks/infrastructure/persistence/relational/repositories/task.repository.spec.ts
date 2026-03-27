@@ -5,6 +5,7 @@ const createQueryBuilder = () => {
   const builder = {
     select: jest.fn(),
     addSelect: jest.fn(),
+    innerJoin: jest.fn(),
     where: jest.fn(),
     andWhere: jest.fn(),
     orderBy: jest.fn(),
@@ -17,6 +18,7 @@ const createQueryBuilder = () => {
 
   builder.select.mockReturnValue(builder);
   builder.addSelect.mockReturnValue(builder);
+  builder.innerJoin.mockReturnValue(builder);
   builder.where.mockReturnValue(builder);
   builder.andWhere.mockReturnValue(builder);
   builder.orderBy.mockReturnValue(builder);
@@ -27,6 +29,37 @@ const createQueryBuilder = () => {
 };
 
 describe('TaskRelationalRepository', () => {
+  it('should treat any in-progress task in the project as running', async () => {
+    const queryBuilder = createQueryBuilder();
+    queryBuilder.getRawOne.mockResolvedValue({ '?column?': 1 });
+
+    const typeormRepository = {
+      createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+    };
+
+    const repository = new TaskRelationalRepository(typeormRepository as never);
+
+    const result = await repository.hasRunningTaskInProject('project-1', {
+      excludeTaskId: 'task-1',
+    });
+
+    expect(result).toBe(true);
+    expect(queryBuilder.innerJoin).toHaveBeenCalledWith(
+      'task_nodes',
+      'node',
+      'node."taskId" = task.id AND node.status = :status',
+      {
+        status: TaskStatus.inProgress,
+      },
+    );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      'task.id <> :excludeTaskId',
+      {
+        excludeTaskId: 'task-1',
+      },
+    );
+  });
+
   it('should only mark tasks ready for dispatch when the next todo node is unblocked', async () => {
     const queryBuilder = createQueryBuilder();
     queryBuilder.getMany.mockResolvedValue([]);

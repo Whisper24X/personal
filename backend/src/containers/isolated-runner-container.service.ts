@@ -6,6 +6,8 @@ export type ContainerInspectResult = {
   id: string;
   status: string;
   running: boolean;
+  image: string | null;
+  publishedPorts: PublishedPortMapping[];
 };
 
 export type ContainerListItem = { name: string; id: string };
@@ -163,6 +165,13 @@ export class IsolatedRunnerContainerService {
       const parsed = JSON.parse(json) as {
         Id?: string;
         State?: { Status?: string; Running?: boolean };
+        Config?: { Image?: string };
+        NetworkSettings?: {
+          Ports?: Record<
+            string,
+            Array<{ HostIp?: string; HostPort?: string }> | null
+          >;
+        };
       };
       const id = parsed.Id ?? '';
       const running = parsed.State?.Running === true;
@@ -170,7 +179,13 @@ export class IsolatedRunnerContainerService {
       if (!id) {
         return null;
       }
-      return { id, status, running };
+      return {
+        id,
+        status,
+        running,
+        image: parsed.Config?.Image?.trim() || null,
+        publishedPorts: this.parsePublishedPorts(parsed.NetworkSettings?.Ports),
+      };
     } catch {
       return null;
     }
@@ -215,6 +230,49 @@ export class IsolatedRunnerContainerService {
     containerId: string,
   ): Promise<ContainerInspectResult | null> {
     return this.inspect(containerId);
+  }
+
+  private parsePublishedPorts(
+    ports?: Record<
+      string,
+      Array<{ HostIp?: string; HostPort?: string }> | null
+    >,
+  ): PublishedPortMapping[] {
+    if (!ports) {
+      return [];
+    }
+
+    const mappings: PublishedPortMapping[] = [];
+    for (const [containerPortWithProto, hostBindings] of Object.entries(
+      ports,
+    )) {
+      const containerPort = this.parseContainerPort(containerPortWithProto);
+      if (!containerPort || !hostBindings?.length) {
+        continue;
+      }
+      for (const binding of hostBindings) {
+        const hostPort = Number.parseInt(binding.HostPort ?? '', 10);
+        if (!Number.isFinite(hostPort) || hostPort <= 0) {
+          continue;
+        }
+        mappings.push({
+          hostIp: binding.HostIp?.trim() || '0.0.0.0',
+          hostPort,
+          containerPort,
+        });
+      }
+    }
+
+    return mappings;
+  }
+
+  private parseContainerPort(value: string): number | null {
+    const raw = value.split('/')[0]?.trim() ?? '';
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return null;
+    }
+    return parsed;
   }
 
   private async probeReadiness(

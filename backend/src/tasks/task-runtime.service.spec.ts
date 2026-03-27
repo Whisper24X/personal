@@ -184,6 +184,33 @@ describe('TaskRuntimeService', () => {
     await expect(fs.access(worktreePath)).resolves.toBeUndefined();
   });
 
+  it('should delete the task branch during runtime cleanup when requested', async () => {
+    const repositoryPath = await initializeRepository();
+    createdDirectories.push(repositoryPath);
+    runGit(['branch', 'feature/runtime-test'], repositoryPath);
+
+    const cleanupResult = await service.cleanupRuntime(
+      createTask({
+        gitWorktree: null,
+        gitBranch: 'feature/runtime-test',
+      }),
+      createProject(
+        {},
+        {
+          repoLocalPath: repositoryPath,
+        },
+      ),
+      {
+        deleteBranch: true,
+      },
+    );
+
+    expect(cleanupResult.cleaned).toBe(true);
+    expect(
+      runGit(['branch', '--list', 'feature/runtime-test'], repositoryPath),
+    ).toBe('');
+  });
+
   it('should reuse existing worktree without syncing repository again', async () => {
     const allowedRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), 'ainative-runtime-worktree-root-'),

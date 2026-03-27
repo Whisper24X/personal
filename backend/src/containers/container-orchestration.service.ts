@@ -71,13 +71,15 @@ export class ContainerOrchestrationService
     const sandboxProfile = this.config.getSandboxProfile(project);
     const readinessProbeUrl = this.config.getRunnerReadinessProbeUrl(project);
     const startTimeoutMs = this.config.getRunnerStartTimeoutMs(project);
+    const runnerImage =
+      await this.projectRunnerImageService.resolveRunnerImage(project);
     const existing = await this.isolatedRunner.inspect(containerName);
     this.logger.log(
       `ensure_runner_container ${JSON.stringify({
         taskId: task.id,
         projectId: task.projectId,
         containerName,
-        image: existing?.running ? null : 'pending-resolution',
+        image: runnerImage,
         worktreePath,
         sandboxProfile,
         networkMode: this.config.getRunnerNetworkMode(project),
@@ -87,21 +89,77 @@ export class ContainerOrchestrationService
     );
 
     if (existing?.running) {
-      await this.slotRepository.updateContainerId(task.projectId, existing.id);
-      this.ensureSlotHeartbeat(task.projectId);
-      this.logger.log(
-        `reuse_runner_container ${JSON.stringify({
+      if (existing.image === runnerImage) {
+        const existingSlot = await this.slotRepository.findByProjectId(
+          task.projectId,
+        );
+        const existingAccessMetadata =
+          existingSlot?.accessMetadata ??
+          this.buildAccessMetadata({
+            project,
+            runtimeExposure,
+            publishedPort: this.selectPublishedPort(
+              existing.publishedPorts,
+              runtimeExposure,
+            ),
+          });
+        if (existingAccessMetadata) {
+          await this.slotRepository.updateContainerRuntime(task.projectId, {
+            containerId: existing.id,
+            accessMetadata: existingAccessMetadata,
+          });
+          this.logger.log(
+            `reuse_runner_container_runtime_metadata ${JSON.stringify({
+              taskId: task.id,
+              projectId: task.projectId,
+              containerName,
+              containerId: existing.id,
+              accessMetadata: existingAccessMetadata,
+              source: existingSlot?.accessMetadata
+                ? 'slot'
+                : 'container_inspect',
+            })}`,
+          );
+        } else {
+          await this.slotRepository.updateContainerId(
+            task.projectId,
+            existing.id,
+          );
+          this.logger.warn(
+            `reuse_runner_container_metadata_missing ${JSON.stringify({
+              taskId: task.id,
+              projectId: task.projectId,
+              containerName,
+              containerId: existing.id,
+              runtimeExposure: runtimeExposure ?? null,
+              publishedPorts: existing.publishedPorts,
+            })}`,
+          );
+        }
+        this.ensureSlotHeartbeat(task.projectId);
+        this.logger.log(
+          `reuse_runner_container ${JSON.stringify({
+            taskId: task.id,
+            projectId: task.projectId,
+            containerName,
+            containerId: existing.id,
+            image: runnerImage,
+          })}`,
+        );
+        return { containerId: existing.id };
+      }
+
+      this.logger.warn(
+        `runner_container_image_mismatch ${JSON.stringify({
           taskId: task.id,
           projectId: task.projectId,
           containerName,
-          containerId: existing.id,
+          currentImage: existing.image ?? null,
+          desiredImage: runnerImage,
         })}`,
       );
-      return { containerId: existing.id };
+      await this.isolatedRunner.remove(containerName);
     }
-
-    const runnerImage =
-      await this.projectRunnerImageService.resolveRunnerImage(project);
 
     try {
       if (existing && !existing.running) {
@@ -113,10 +171,22 @@ export class ContainerOrchestrationService
             existing,
           })}`,
         );
+      } else if (existing?.running) {
+        this.logger.warn(
+          `runner_container_replaced ${JSON.stringify({
+            taskId: task.id,
+            projectId: task.projectId,
+            containerName,
+            previousContainerId: existing.id,
+            previousImage: existing.image ?? null,
+            image: runnerImage,
+          })}`,
+        );
       }
       const { containerId, accessMetadata } = await this.startRunnerWithRetries(
         {
           containerName,
+          runnerImage,
           project,
           worktreePath,
           runtimeExposure,
@@ -183,13 +253,35 @@ export class ContainerOrchestrationService
 
     const task = await this.taskRepository.findById(taskId);
     if (!task) {
+      this.logger.log(
+        `remove_runner_container_task_missing ${JSON.stringify({
+          taskId,
+          projectId,
+          action: 'release_slot_only',
+        })}`,
+      );
       await this.releaseSlotAndStopHeartbeat(projectId);
       return;
     }
 
     const containerName = this.config.resolveContainerName(task);
+    this.logger.log(
+      `remove_runner_container ${JSON.stringify({
+        taskId,
+        projectId,
+        containerName,
+      })}`,
+    );
     await this.isolatedRunner.remove(containerName);
     await this.releaseSlotAndStopHeartbeat(projectId);
+    this.logger.log(
+      `remove_runner_container_done ${JSON.stringify({
+        taskId,
+        projectId,
+        containerName,
+        slotReleased: true,
+      })}`,
+    );
   }
 
   async recoverOrphanContainers(): Promise<void> {
@@ -312,6 +404,7 @@ export class ContainerOrchestrationService
 
   private async startRunnerWithRetries(params: {
     containerName: string;
+    runnerImage: string;
     project: Project;
     worktreePath: string;
     runtimeExposure: RuntimeExposure;
@@ -321,9 +414,6 @@ export class ContainerOrchestrationService
   }> {
     const retries = params.runtimeExposure ? this.maxPortAllocationAttempts : 1;
     let lastError: unknown;
-    const runnerImage = await this.projectRunnerImageService.resolveRunnerImage(
-      params.project,
-    );
 
     for (let attempt = 0; attempt < retries; attempt += 1) {
       const publishedPorts =
@@ -344,7 +434,7 @@ export class ContainerOrchestrationService
       try {
         const result = await this.isolatedRunner.run({
           containerName: params.containerName,
-          image: runnerImage,
+          image: params.runnerImage,
           worktreePath: params.worktreePath,
           workspaceMount: this.config.getRunnerWorkspace(),
           command: this.config.usesSandboxEntrypoint(params.project)
@@ -366,17 +456,11 @@ export class ContainerOrchestrationService
         const mapping = result.publishedPorts[0];
         return {
           containerId: result.containerId,
-          accessMetadata: mapping
-            ? {
-                hostIp:
-                  params.runtimeExposure?.advertisedHostIp ?? mapping.hostIp,
-                hostPort: mapping.hostPort,
-                containerPort: mapping.containerPort,
-                previewAddress: `${params.runtimeExposure?.advertisedHostIp ?? mapping.hostIp}:${mapping.hostPort}`,
-                baseUrl: `http://${params.runtimeExposure?.advertisedHostIp ?? mapping.hostIp}:${mapping.hostPort}`,
-                networkMode: this.config.getRunnerNetworkMode(params.project),
-              }
-            : null,
+          accessMetadata: this.buildAccessMetadata({
+            project: params.project,
+            runtimeExposure: params.runtimeExposure,
+            publishedPort: mapping,
+          }),
         };
       } catch (error) {
         lastError = error;
@@ -399,14 +483,100 @@ export class ContainerOrchestrationService
     if (!this.config.shouldExposeSandboxPort(project)) {
       return null;
     }
-    if (this.config.getRunnerNetworkMode(project) !== 'bridge') {
-      return null;
-    }
     return {
-      bindHostIp: '0.0.0.0',
+      bindHostIp:
+        this.config.getRunnerNetworkMode(project) === 'bridge'
+          ? '0.0.0.0'
+          : this.config.getRunnerExposeHostIp(project),
       advertisedHostIp: this.config.getRunnerExposeHostIp(project),
       containerPort: this.config.getRunnerExposeContainerPort(project),
     };
+  }
+
+  private buildAccessMetadata(params: {
+    project: Project;
+    runtimeExposure: RuntimeExposure;
+    publishedPort?: {
+      hostIp: string;
+      hostPort: number;
+      containerPort: number;
+    };
+  }): SlotAccessMetadata | null {
+    if (!params.runtimeExposure) {
+      return null;
+    }
+
+    const networkMode = this.config.getRunnerNetworkMode(params.project);
+    const hostIp =
+      params.runtimeExposure.advertisedHostIp ||
+      params.publishedPort?.hostIp ||
+      null;
+    const hostPort =
+      networkMode === 'host'
+        ? params.runtimeExposure.containerPort
+        : (params.publishedPort?.hostPort ?? null);
+    const containerPort =
+      networkMode === 'host'
+        ? params.runtimeExposure.containerPort
+        : (params.publishedPort?.containerPort ??
+          params.runtimeExposure.containerPort);
+
+    if (!hostIp || !hostIp.trim()) {
+      return null;
+    }
+    if (!hostPort || !Number.isFinite(hostPort) || hostPort <= 0) {
+      return null;
+    }
+    if (
+      !containerPort ||
+      !Number.isFinite(containerPort) ||
+      containerPort <= 0
+    ) {
+      return null;
+    }
+
+    const normalizedHostIp = hostIp.trim();
+    const normalizedHostPort = Math.floor(hostPort);
+    const normalizedContainerPort = Math.floor(containerPort);
+
+    return {
+      hostIp: normalizedHostIp,
+      hostPort: normalizedHostPort,
+      containerPort: normalizedContainerPort,
+      previewAddress: `${normalizedHostIp}:${normalizedHostPort}`,
+      baseUrl: `http://${normalizedHostIp}:${normalizedHostPort}`,
+      networkMode,
+    };
+  }
+
+  private selectPublishedPort(
+    publishedPorts: Array<{
+      hostIp: string;
+      hostPort: number;
+      containerPort: number;
+    }> = [],
+    runtimeExposure: RuntimeExposure,
+  ):
+    | {
+        hostIp: string;
+        hostPort: number;
+        containerPort: number;
+      }
+    | undefined {
+    if (!publishedPorts.length) {
+      return undefined;
+    }
+
+    const expectedContainerPort = runtimeExposure?.containerPort ?? null;
+    if (!expectedContainerPort) {
+      return publishedPorts[0];
+    }
+
+    return (
+      publishedPorts.find(
+        (mapping) => mapping.containerPort === expectedContainerPort,
+      ) ?? publishedPorts[0]
+    );
   }
 
   private async allocatePublishedPort(hostIp: string): Promise<number> {

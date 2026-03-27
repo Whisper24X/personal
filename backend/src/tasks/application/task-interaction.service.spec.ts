@@ -56,6 +56,7 @@ const createService = () => {
       ...task,
       ...payload,
     })),
+    hasRunningTaskInProject: jest.fn().mockResolvedValue(false),
   };
   const taskNodeRepository = {
     findInProgressByTaskId: jest.fn().mockResolvedValue(null),
@@ -96,6 +97,9 @@ const createService = () => {
   const taskSchedulerService = {
     triggerDispatch: jest.fn().mockResolvedValue(undefined),
   };
+  const projectExecutionSlotRepository = {
+    findByProjectId: jest.fn().mockResolvedValue(null),
+  };
   const taskGitService = {
     commitIfChanged: jest.fn().mockResolvedValue({
       committed: false,
@@ -115,6 +119,7 @@ const createService = () => {
     taskStatusService as never,
     taskQueryService as never,
     taskSchedulerService as never,
+    projectExecutionSlotRepository as never,
     taskGitService as never,
   );
 
@@ -130,6 +135,7 @@ const createService = () => {
     taskStatusService,
     taskQueryService,
     taskSchedulerService,
+    projectExecutionSlotRepository,
     taskGitService,
   };
 };
@@ -277,6 +283,63 @@ describe('TaskInteractionService', () => {
       'task-1',
     );
     expect(taskSchedulerService.triggerDispatch).toHaveBeenCalled();
+  });
+
+  it('should reject execution when another task is already running in the same project', async () => {
+    const {
+      service,
+      taskRepository,
+      taskNodeRepository,
+      taskSchedulerService,
+    } = createService();
+    const currentUser = createCurrentUser();
+
+    taskNodeRepository.findInProgressByTaskId.mockResolvedValue(null);
+    taskRepository.hasRunningTaskInProject.mockResolvedValue(true);
+
+    await expect(
+      service.execute('task-1', currentUser as never),
+    ).rejects.toThrow(
+      '当前项目有任务在执行，本次执行失败，需要等待正在执行的任务完成或者删除该任务再继续',
+    );
+
+    expect(taskRepository.hasRunningTaskInProject).toHaveBeenCalledWith(
+      'project-1',
+      {
+        excludeTaskId: 'task-1',
+      },
+    );
+    expect(taskSchedulerService.triggerDispatch).not.toHaveBeenCalled();
+  });
+
+  it('should reject execution when another task already occupies the project slot', async () => {
+    const {
+      service,
+      taskRepository,
+      taskNodeRepository,
+      taskSchedulerService,
+      projectExecutionSlotRepository,
+    } = createService();
+    const currentUser = createCurrentUser();
+
+    taskNodeRepository.findInProgressByTaskId.mockResolvedValue(null);
+    taskRepository.hasRunningTaskInProject.mockResolvedValue(false);
+    projectExecutionSlotRepository.findByProjectId.mockResolvedValue({
+      projectId: 'project-1',
+      taskId: 'task-2',
+    });
+
+    await expect(
+      service.execute('task-1', currentUser as never),
+    ).rejects.toThrow(
+      '当前项目有任务在执行，本次执行失败，需要等待正在执行的任务完成或者删除该任务再继续',
+    );
+
+    expect(projectExecutionSlotRepository.findByProjectId).toHaveBeenCalledWith(
+      'project-1',
+    );
+    expect(taskRepository.hasRunningTaskInProject).not.toHaveBeenCalled();
+    expect(taskSchedulerService.triggerDispatch).not.toHaveBeenCalled();
   });
 
   it('should stop approval when auto-commit fails', async () => {

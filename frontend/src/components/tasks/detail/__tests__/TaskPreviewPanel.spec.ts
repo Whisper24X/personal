@@ -80,7 +80,8 @@ describe('TaskPreviewPanel', () => {
         keep: 'value',
         preview: {
           command: 'npm run dev',
-          url: 'localhost:3000',
+          url: 'manual.local:3000',
+          runtimeUrl: 'runtime.local:38080',
         },
       },
     })
@@ -98,7 +99,7 @@ describe('TaskPreviewPanel', () => {
     tasksApi.terminalRemove.mockResolvedValue(undefined)
   })
 
-  it('loads preview config from project settings', async () => {
+  it('prefers runtime preview url from project settings', async () => {
     const wrapper = mount(TaskPreviewPanel, {
       props: {
         taskId: 'task-1',
@@ -109,8 +110,36 @@ describe('TaskPreviewPanel', () => {
     await flushPromises()
 
     expect(projectsApi.detail).toHaveBeenCalledWith('project-1')
-    expect(wrapper.text()).toContain('http://localhost:3000')
-    expect(wrapper.find('iframe').attributes('src')).toBe('http://localhost:3000')
+    expect(wrapper.text()).toContain('http://runtime.local:38080')
+    expect(wrapper.find('iframe').attributes('src')).toBe(
+      'http://runtime.local:38080',
+    )
+  })
+
+  it('renders runtime preview url even when manual preview url is absent', async () => {
+    projectsApi.detail.mockResolvedValueOnce({
+      id: 'project-1',
+      configJson: {
+        preview: {
+          command: 'npm run dev',
+          runtimeUrl: 'runtime.local:39090',
+        },
+      },
+    })
+
+    const wrapper = mount(TaskPreviewPanel, {
+      props: {
+        taskId: 'task-1',
+        projectId: 'project-1',
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('http://runtime.local:39090')
+    expect(wrapper.find('iframe').attributes('src')).toBe(
+      'http://runtime.local:39090',
+    )
   })
 
   it('restarts preview service with the configured command', async () => {
@@ -139,5 +168,37 @@ describe('TaskPreviewPanel', () => {
     })
     expect(wsInstance.attach).toHaveBeenCalledWith('task-1', 'session-1')
     expect(wsInstance.input).toHaveBeenCalledWith('exec npm run dev\n')
+  })
+
+  it('reloads preview config when refreshToken changes', async () => {
+    const wrapper = mount(TaskPreviewPanel, {
+      props: {
+        taskId: 'task-1',
+        projectId: 'project-1',
+        refreshToken: 0,
+      },
+    })
+
+    await flushPromises()
+    expect(projectsApi.detail).toHaveBeenCalledTimes(1)
+
+    projectsApi.detail.mockResolvedValueOnce({
+      id: 'project-1',
+      configJson: {
+        preview: {
+          command: 'npm run dev',
+          url: 'manual.local:4000',
+          runtimeUrl: 'runtime.local:48080',
+        },
+      },
+    })
+
+    await wrapper.setProps({
+      refreshToken: 1,
+    })
+    await flushPromises()
+
+    expect(projectsApi.detail).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('http://runtime.local:48080')
   })
 })

@@ -9,6 +9,8 @@ import { JwtPayloadType } from '../../auth/strategies/types/jwt-payload.type';
 import { Project } from '../../projects/domain/project';
 import { ProjectsService } from '../../projects/projects.service';
 import { WorkflowTemplatesService } from '../../workflow-templates/workflow-templates.service';
+import { ContainerOrchestrationService } from '../../containers/container-orchestration.service';
+import { ProjectExecutionSlotRepository } from '../../containers/infrastructure/persistence/relational/repositories/project-execution-slot.repository';
 import { Task } from '../domain/task';
 import { CreateTaskDto } from '../dto/create-task.dto';
 import { TaskDetailDto } from '../dto/task-detail.dto';
@@ -48,6 +50,8 @@ export class TaskCommandService {
     private readonly taskQueryService: TaskQueryService,
     private readonly taskAccessService: TaskAccessService,
     private readonly taskTitleSuggestionService: TaskTitleSuggestionService,
+    private readonly containerOrchestration: ContainerOrchestrationService,
+    private readonly projectExecutionSlotRepository: ProjectExecutionSlotRepository,
   ) {}
 
   async create(
@@ -425,20 +429,66 @@ export class TaskCommandService {
     const runningNode = await this.taskNodeRepository.findInProgressByTaskId(
       task.id,
     );
+    const existingSlot =
+      await this.projectExecutionSlotRepository.findByProjectId(task.projectId);
+    const slotOwnedByTask = existingSlot?.taskId === task.id;
 
-    if (runningNode) {
-      throw new ConflictException(
-        'Cannot delete task while execution is in progress',
-      );
-    }
+    const shouldAttemptRuntimeCleanup = Boolean(
+      runningNode ||
+        slotOwnedByTask ||
+        task.gitWorktree?.trim() ||
+        task.gitBranch?.trim(),
+    );
+    const shouldRemoveContainer = Boolean(runningNode || slotOwnedByTask);
 
-    if (task.gitWorktree?.trim()) {
+    this.logger.log(
+      `task_delete_cleanup_decision ${JSON.stringify({
+        taskId: task.id,
+        projectId: task.projectId,
+        runningNodeId: runningNode?.id ?? null,
+        gitWorktree: task.gitWorktree?.trim() || null,
+        gitBranch: task.gitBranch?.trim() || null,
+        slotTaskId: existingSlot?.taskId ?? null,
+        slotOwnedByTask,
+        shouldRemoveContainer,
+        shouldAttemptRuntimeCleanup,
+      })}`,
+    );
+
+    if (shouldAttemptRuntimeCleanup) {
       const project = await this.taskAccessService.getProjectByIdOrThrow(
         task.projectId,
       );
+
+      if (shouldRemoveContainer) {
+        this.logger.log(
+          `task_delete_remove_runner ${JSON.stringify({
+            taskId: task.id,
+            projectId: task.projectId,
+            runningNodeId: runningNode?.id ?? null,
+            slotTaskId: existingSlot?.taskId ?? null,
+          })}`,
+        );
+        await this.containerOrchestration.removeContainerForTask(
+          task.id,
+          task.projectId,
+        );
+      } else {
+        this.logger.log(
+          `task_delete_skip_runner_cleanup ${JSON.stringify({
+            taskId: task.id,
+            projectId: task.projectId,
+            reason: 'no_running_node_or_owned_slot',
+          })}`,
+        );
+      }
+
       const cleanupResult = await this.taskRuntimeService.cleanupRuntime(
         task,
         project,
+        {
+          deleteBranch: true,
+        },
       );
 
       if (!cleanupResult.cleaned) {
@@ -446,16 +496,17 @@ export class TaskCommandService {
           taskId: task.id,
           taskNodeId: null,
           level: TaskLogLevel.warn,
-          message: 'Task deletion blocked because worktree cleanup failed',
+          message: 'Task deletion blocked because runtime cleanup failed',
           payload: {
             deletedBy: currentUser.sub,
             gitWorktree: task.gitWorktree,
+            gitBranch: task.gitBranch ?? null,
             errorMessage: cleanupResult.errorMessage ?? null,
           },
         });
 
         throw new ConflictException(
-          `Task deletion blocked because worktree cleanup failed: ${
+          `Task deletion blocked because runtime cleanup failed: ${
             cleanupResult.errorMessage ?? 'unknown cleanup error'
           }`,
         );
@@ -470,6 +521,7 @@ export class TaskCommandService {
       payload: {
         deletedBy: currentUser.sub,
         gitWorktree: task.gitWorktree ?? null,
+        gitBranch: task.gitBranch ?? null,
       },
     });
 

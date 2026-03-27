@@ -25,16 +25,22 @@ describe('ContainerExecutionConfigService', () => {
     deletedAt: null,
   });
 
-  it('should keep runner-only profile on sleep entrypoint defaults', () => {
+  it('should give runner-only profile the shared preview runtime defaults', () => {
     const service = createService({});
 
     expect(service.getSandboxProfile()).toBe('runner-only');
-    expect(service.usesSandboxEntrypoint()).toBe(false);
-    expect(service.getRunnerNetworkMode()).toBe('host');
-    expect(service.shouldExposeSandboxPort()).toBe(false);
-    expect(service.getRunnerReadinessProbeUrl()).toBeNull();
+    expect(service.usesSandboxEntrypoint()).toBe(true);
+    expect(service.getRunnerNetworkMode()).toBe('bridge');
+    expect(service.shouldExposeSandboxPort()).toBe(true);
+    expect(service.getRunnerReadinessProbeUrl()).toBe(
+      'http://127.0.0.1:8080/health',
+    );
     expect(service.getRunnerStartTimeoutMs()).toBe(30_000);
-    expect(service.getRunnerAnonymousVolumeMounts('/workspace')).toEqual([]);
+    expect(service.getRunnerAnonymousVolumeMounts('/workspace')).toEqual([
+      '/workspace/backend/node_modules',
+      '/workspace/frontend/node_modules',
+      '/workspace/logs',
+    ]);
   });
 
   it('should use sandbox defaults for full-dev-sandbox profile', () => {
@@ -114,7 +120,7 @@ describe('ContainerExecutionConfigService', () => {
     expect(service.getSandboxProfile(project as never)).toBe('preview-web');
     expect(service.usesSandboxEntrypoint(project as never)).toBe(true);
     expect(service.getRunnerNetworkMode(project as never)).toBe('bridge');
-    expect(service.shouldExposeSandboxPort(project as never)).toBe(false);
+    expect(service.shouldExposeSandboxPort(project as never)).toBe(true);
     expect(service.getRunnerExposeHostIp(project as never)).toBe(
       '192.168.50.8',
     );

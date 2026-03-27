@@ -213,6 +213,38 @@ export class TaskRelationalRepository implements TaskRepository {
     }, {});
   }
 
+  async hasRunningTaskInProject(
+    projectId: string,
+    options?: {
+      excludeTaskId?: Task['id'];
+      at?: Date;
+    },
+  ): Promise<boolean> {
+    const query = this.taskRepository
+      .createQueryBuilder('task')
+      .select('1')
+      .innerJoin(
+        'task_nodes',
+        'node',
+        `node."taskId" = task.id AND node.status = :status`,
+        {
+          status: TaskStatus.inProgress,
+        },
+      )
+      .where('task."deletedAt" IS NULL')
+      .andWhere('task."projectId" = :projectId', { projectId })
+      .limit(1);
+
+    if (options?.excludeTaskId) {
+      query.andWhere('task.id <> :excludeTaskId', {
+        excludeTaskId: options.excludeTaskId,
+      });
+    }
+
+    const row = await query.getRawOne();
+    return Boolean(row);
+  }
+
   async countQueuedTasksByProjectIds(
     projectIds: string[],
     at: Date = new Date(),

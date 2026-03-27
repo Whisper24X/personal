@@ -148,6 +148,7 @@ watch(
         v-else-if="activeTab === 'preview'"
         :task-id="props.taskId"
         :project-id="props.projectId"
+        :refresh-token="props.refreshToken"
       />
 
       <TaskFilesPanel

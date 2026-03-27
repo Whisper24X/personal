@@ -17,6 +17,7 @@ import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repo
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
 import { TaskGitService } from '../task-git.service';
 import { TaskRuntimeService } from '../task-runtime.service';
+import { ProjectExecutionSlotRepository } from '../../containers/infrastructure/persistence/relational/repositories/project-execution-slot.repository';
 import { TaskAccessService } from './task-access.service';
 import { TaskConfigResolverService } from './task-config-resolver.service';
 import { TaskLogService } from './task-log.service';
@@ -40,6 +41,7 @@ export class TaskInteractionService {
     private readonly taskStatusService: TaskStatusService,
     private readonly taskQueryService: TaskQueryService,
     private readonly taskSchedulerService: TaskSchedulerService,
+    private readonly projectExecutionSlotRepository: ProjectExecutionSlotRepository,
     private readonly taskGitService: TaskGitService,
   ) {}
 
@@ -190,6 +192,8 @@ export class TaskInteractionService {
       throw new ConflictException('Task already has an in-progress node');
     }
 
+    await this.ensureProjectExecutionIsIdle(task);
+
     const nextTodoNode =
       await this.taskNodeRepository.findFirstByTaskIdAndStatus({
         taskId: task.id,
@@ -218,6 +222,26 @@ export class TaskInteractionService {
     await this.taskSchedulerService.triggerDispatch();
 
     return this.taskQueryService.detailById(task.id, currentUser);
+  }
+
+  private async ensureProjectExecutionIsIdle(task: Task): Promise<void> {
+    const existingSlot =
+      await this.projectExecutionSlotRepository.findByProjectId(task.projectId);
+    if (existingSlot && existingSlot.taskId !== task.id) {
+      throw new ConflictException(
+        '当前项目有任务在执行，本次执行失败，需要等待正在执行的任务完成或者删除该任务再继续',
+      );
+    }
+
+    const projectHasRunningTask =
+      await this.taskRepository.hasRunningTaskInProject(task.projectId, {
+        excludeTaskId: task.id,
+      });
+    if (projectHasRunningTask) {
+      throw new ConflictException(
+        '当前项目有任务在执行，本次执行失败，需要等待正在执行的任务完成或者删除该任务再继续',
+      );
+    }
   }
 
   /**

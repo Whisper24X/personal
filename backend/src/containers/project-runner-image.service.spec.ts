@@ -58,13 +58,14 @@ describe('ProjectRunnerImageService', () => {
 
   it('should build and cache a project runner image tag from runner templates', async () => {
     const service = createService();
-    jest
-      .spyOn(service as any, 'readDefaultRunnerTemplateConfig')
-      .mockResolvedValue({
-        dockerfileRunner: 'FROM node:20',
-        sandboxNginxConf: 'events {}',
-        sandboxSupervisordConf: '[supervisord]',
-      });
+    jest.spyOn(service as any, 'readRunnerAssetBundle').mockResolvedValue({
+      dockerfileRunner: 'FROM node:20',
+      sandboxNginxConf: 'events {}',
+      sandboxSupervisordConf: '[supervisord]',
+      entrypointSh: '#!/bin/sh\nexit 0\n',
+      sshIdEd25519: null,
+      sshKnownHosts: null,
+    });
     const ensureProjectRunnerImage = jest
       .spyOn(service as any, 'ensureProjectRunnerImage')
       .mockImplementation((imageTag: string) => Promise.resolve(imageTag));
@@ -80,6 +81,44 @@ describe('ProjectRunnerImageService', () => {
 
     expect(firstImage).toMatch(/^ainative\/runner-project-project-1:/);
     expect(secondImage).toBe(firstImage);
+    expect(ensureProjectRunnerImage).toHaveBeenCalledTimes(2);
+  });
+
+  it('should include bundled runner assets in the image tag fingerprint', async () => {
+    const service = createService();
+    const ensureProjectRunnerImage = jest
+      .spyOn(service as any, 'ensureProjectRunnerImage')
+      .mockImplementation((imageTag: string) => Promise.resolve(imageTag));
+    const readRunnerAssetBundle = jest
+      .spyOn(service as any, 'readRunnerAssetBundle')
+      .mockResolvedValueOnce({
+        dockerfileRunner: 'FROM node:20',
+        sandboxNginxConf: 'events {}',
+        sandboxSupervisordConf: '[supervisord]',
+        entrypointSh: '#!/bin/sh\necho first\n',
+        sshIdEd25519: null,
+        sshKnownHosts: null,
+      })
+      .mockResolvedValueOnce({
+        dockerfileRunner: 'FROM node:20',
+        sandboxNginxConf: 'events {}',
+        sandboxSupervisordConf: '[supervisord]',
+        entrypointSh: '#!/bin/sh\necho second\n',
+        sshIdEd25519: null,
+        sshKnownHosts: null,
+      });
+
+    const project = createProject({
+      runnerTemplate: {
+        sandboxNginxConf: 'events { worker_connections 1024; }',
+      },
+    });
+
+    const firstImage = await service.resolveRunnerImage(project as never);
+    const secondImage = await service.resolveRunnerImage(project as never);
+
+    expect(firstImage).not.toBe(secondImage);
+    expect(readRunnerAssetBundle).toHaveBeenCalledTimes(2);
     expect(ensureProjectRunnerImage).toHaveBeenCalledTimes(2);
   });
 });

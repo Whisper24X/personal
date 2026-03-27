@@ -41,6 +41,14 @@ export abstract class TaskRepository {
     at?: Date,
   ): Promise<Record<string, number>>;
 
+  abstract hasRunningTaskInProject(
+    projectId: string,
+    options?: {
+      excludeTaskId?: Task['id'];
+      at?: Date;
+    },
+  ): Promise<boolean>;
+
   abstract countQueuedTasksByProjectIds(
     projectIds: string[],
     at?: Date,

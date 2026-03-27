@@ -81,77 +81,117 @@ export class TaskRuntimeService {
   async cleanupRuntime(
     task: Task,
     project: Project,
+    options?: {
+      deleteBranch?: boolean;
+    },
   ): Promise<CleanupTaskRuntimeResult> {
     const worktreeIdentifier = task.gitWorktree?.trim();
-    if (!worktreeIdentifier) {
-      return {
-        cleaned: false,
-      };
-    }
-
-    const worktreePath = this.resolveGitWorktreePath(task, project);
-    const cleanupErrors: string[] = [];
-    const allowedRoot = await this.resolveCanonicalPath(
-      this.resolveWorktreeAllowedRoot(project),
+    const shouldDeleteBranch = this.shouldDeleteTaskBranch(
+      task,
+      project,
+      options,
     );
-    const resolvedWorktreePath = await this.resolveCanonicalPath(worktreePath);
 
-    if (!this.isPathWithinAllowedRoot(resolvedWorktreePath, allowedRoot)) {
+    if (!worktreeIdentifier && !shouldDeleteBranch) {
       return {
-        cleaned: false,
-        errorMessage: 'cleanup rejected: worktree path is outside allowed root',
+        cleaned: options?.deleteBranch === true,
       };
     }
 
-    const hasWorktreePath = await this.pathExists(worktreePath);
-    if (hasWorktreePath) {
-      try {
-        const resolvedRealPath = await fs.realpath(worktreePath);
+    const cleanupErrors: string[] = [];
+    let worktreeCleaned = !worktreeIdentifier;
 
-        if (!this.isPathWithinAllowedRoot(resolvedRealPath, allowedRoot)) {
+    if (worktreeIdentifier) {
+      const worktreePath = this.resolveGitWorktreePath(task, project);
+      let worktreeRemoveError: string | null = null;
+      const allowedRoot = await this.resolveCanonicalPath(
+        this.resolveWorktreeAllowedRoot(project),
+      );
+      const resolvedWorktreePath =
+        await this.resolveCanonicalPath(worktreePath);
+
+      if (!this.isPathWithinAllowedRoot(resolvedWorktreePath, allowedRoot)) {
+        return {
+          cleaned: false,
+          errorMessage:
+            'cleanup rejected: worktree path is outside allowed root',
+        };
+      }
+
+      const hasWorktreePath = await this.pathExists(worktreePath);
+      if (hasWorktreePath) {
+        try {
+          const resolvedRealPath = await fs.realpath(worktreePath);
+
+          if (!this.isPathWithinAllowedRoot(resolvedRealPath, allowedRoot)) {
+            return {
+              cleaned: false,
+              errorMessage:
+                'cleanup rejected: worktree realpath is outside allowed root',
+            };
+          }
+        } catch {
           return {
             cleaned: false,
             errorMessage:
-              'cleanup rejected: worktree realpath is outside allowed root',
+              'cleanup rejected: unable to resolve worktree realpath',
           };
         }
-      } catch {
-        return {
-          cleaned: false,
-          errorMessage: 'cleanup rejected: unable to resolve worktree realpath',
-        };
+      }
+
+      if (this.isGitRuntimeEnabled(project)) {
+        const repositoryRoot = this.resolveRepositoryRoot(project);
+        const removeResult = await this.runCommand('git', [
+          '-C',
+          repositoryRoot,
+          'worktree',
+          'remove',
+          '--force',
+          worktreePath,
+        ]);
+
+        if (!removeResult.success) {
+          worktreeRemoveError =
+            removeResult.stderr || 'git worktree remove failed';
+        }
+      }
+
+      try {
+        await fs.rm(worktreePath, {
+          recursive: true,
+          force: true,
+        });
+      } catch (error) {
+        cleanupErrors.push(
+          error instanceof Error ? error.message : 'Failed to cleanup worktree',
+        );
+      }
+
+      worktreeCleaned = !(await this.pathExists(worktreePath));
+      if (!worktreeCleaned) {
+        if (worktreeRemoveError) {
+          cleanupErrors.push(worktreeRemoveError);
+        }
+        if (cleanupErrors.length === 0) {
+          cleanupErrors.push('Failed to cleanup worktree');
+        }
       }
     }
 
-    if (this.isGitRuntimeEnabled(project)) {
-      const repositoryRoot = this.resolveRepositoryRoot(project);
-      const removeResult = await this.runCommand('git', [
-        '-C',
-        repositoryRoot,
-        'worktree',
-        'remove',
-        '--force',
-        worktreePath,
-      ]);
-
-      if (!removeResult.success) {
-        cleanupErrors.push(removeResult.stderr || 'git worktree remove failed');
+    if (shouldDeleteBranch) {
+      if (!worktreeCleaned) {
+        cleanupErrors.push(
+          'git branch cleanup skipped because worktree cleanup failed',
+        );
+      } else {
+        const branchCleanupError = await this.deleteTaskBranch(task, project);
+        if (branchCleanupError) {
+          cleanupErrors.push(branchCleanupError);
+        }
       }
     }
 
-    try {
-      await fs.rm(worktreePath, {
-        recursive: true,
-        force: true,
-      });
-    } catch (error) {
-      cleanupErrors.push(
-        error instanceof Error ? error.message : 'Failed to cleanup worktree',
-      );
-    }
-
-    const stillExists = await this.pathExists(worktreePath);
-    if (!stillExists) {
+    if (cleanupErrors.length === 0) {
       return {
         cleaned: true,
       };
@@ -159,7 +199,7 @@ export class TaskRuntimeService {
 
     return {
       cleaned: false,
-      errorMessage: cleanupErrors.join('; ') || 'Failed to cleanup worktree',
+      errorMessage: cleanupErrors.join('; '),
     };
   }
 
@@ -298,6 +338,31 @@ export class TaskRuntimeService {
 
     const prefix = this.sanitizeSegment(project.name) || 'ainative';
     return `feature/${prefix}-${task.id.slice(0, 8)}`;
+  }
+
+  private shouldDeleteTaskBranch(
+    task: Task,
+    project: Project,
+    options?: {
+      deleteBranch?: boolean;
+    },
+  ): boolean {
+    if (!options?.deleteBranch || !this.isGitRuntimeEnabled(project)) {
+      return false;
+    }
+
+    const branch = task.gitBranch?.trim();
+    if (!branch) {
+      return false;
+    }
+
+    const protectedBranches = new Set(
+      [task.gitBaseBranch, project.defaultBranch, 'main', 'master']
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value)),
+    );
+
+    return !protectedBranches.has(branch);
   }
 
   private resolveGitBaseBranch(task: Task, project: Project): string {
@@ -527,6 +592,48 @@ export class TaskRuntimeService {
     }
 
     return repositoryRoot;
+  }
+
+  private async deleteTaskBranch(
+    task: Task,
+    project: Project,
+  ): Promise<string | null> {
+    const branch = task.gitBranch?.trim();
+    if (!branch) {
+      return null;
+    }
+
+    const repositoryRoot = this.resolveRepositoryRoot(project);
+    const hasRepository = await this.pathExists(
+      path.join(repositoryRoot, '.git'),
+    );
+    if (!hasRepository) {
+      return null;
+    }
+
+    const branchExistsResult = await this.runCommand('git', [
+      '-C',
+      repositoryRoot,
+      'rev-parse',
+      '--verify',
+      `refs/heads/${branch}`,
+    ]);
+    if (!branchExistsResult.success) {
+      return null;
+    }
+
+    const deleteResult = await this.runCommand('git', [
+      '-C',
+      repositoryRoot,
+      'branch',
+      '-D',
+      branch,
+    ]);
+    if (deleteResult.success) {
+      return null;
+    }
+
+    return deleteResult.stderr || `git branch -D ${branch} failed`;
   }
 
   private async ensureGitWorktree({
