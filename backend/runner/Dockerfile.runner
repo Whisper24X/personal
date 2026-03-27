@@ -43,14 +43,17 @@ ENV TZ=Asia/Shanghai \
 # gcc/g++             — 编译原生依赖（librdkafka、node-gyp 等）
 # cmake               — 构建 librdkafka（confluent-kafka-go 需 v2.3+，Debian 自带版本过旧）
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash curl git make vim jq cmake \
+    bash curl git make vim jq cmake python3 \
     openssh-client netcat-openbsd \
     supervisor nginx \
     ca-certificates \
-    unzip \
+    zip unzip \
     xz-utils \
     gcc g++ \
+    ripgrep fd-find tree less bat procps patch wget fzf gh \
     && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
+    && ln -sf /usr/bin/batcat /usr/local/bin/bat \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
 
