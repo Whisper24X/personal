@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Project } from '../../projects/domain/project';
@@ -38,6 +38,7 @@ export class TaskNodeExecutionService {
     private readonly taskLogService: TaskLogService,
     private readonly taskStatusService: TaskStatusService,
     private readonly taskRuntimeOrchestrator: TaskRuntimeOrchestratorService,
+    @Inject(TaskGitService)
     private readonly taskGitService: Pick<
       TaskGitService,
       'commitIfChangedForTask'
