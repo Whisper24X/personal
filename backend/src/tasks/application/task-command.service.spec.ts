@@ -121,6 +121,9 @@ const createService = () => {
   const taskTitleSuggestionService = {
     regenerateTitleAfterCreate: jest.fn().mockResolvedValue(undefined),
   };
+  const taskWorkspaceWatchService = {
+    syncTaskWatch: jest.fn().mockResolvedValue(undefined),
+  };
 
   const service = new TaskCommandService(
     taskRepository as never,
@@ -134,6 +137,7 @@ const createService = () => {
     taskQueryService as never,
     taskAccessService as never,
     taskTitleSuggestionService as never,
+    taskWorkspaceWatchService as never,
   );
 
   return {
@@ -143,18 +147,92 @@ const createService = () => {
     taskRuntimeService,
     taskLogService,
     taskAccessService,
+    taskConfigResolver,
+    projectsService,
+    taskRuntimeOrchestrator,
   };
 };
 
-describe('TaskCommandService.remove', () => {
-  it('should clean up task runtime before soft deleting the task', async () => {
+describe('TaskCommandService.create', () => {
+  it('should persist title from createTaskDto when prompt is longer (goal plan materialize)', async () => {
     const {
       service,
       taskRepository,
-      taskRuntimeService,
-      taskLogService,
-      taskAccessService,
+      projectsService,
+      taskConfigResolver,
+      taskRuntimeOrchestrator,
     } = createService();
+    const project = createProject();
+    const currentUser = createCurrentUser();
+
+    projectsService.assertProjectCapability.mockResolvedValue(project);
+
+    taskConfigResolver.mergeTaskConfig.mockReturnValue({
+      agentCliId: 'cli-1',
+      agentCliConfigId: 'cfg-1',
+    });
+    taskConfigResolver.toObjectRecord.mockImplementation((value) =>
+      value && typeof value === 'object' ? (value as object) : {},
+    );
+    taskConfigResolver.readTaskWorkflowTemplateId.mockReturnValue(null);
+    taskConfigResolver.readNodeExecutionConfig.mockReturnValue({
+      agentCliId: 'cli-1',
+      agentCliConfigId: 'cfg-1',
+    });
+    taskConfigResolver.resolveRequiredNodeExecutionConfig.mockReturnValue({
+      agentCliId: 'cli-1',
+      agentCliConfigId: 'cfg-1',
+    });
+    taskConfigResolver.buildTaskNodeInput.mockReturnValue({});
+    taskConfigResolver.resolveNodeLoopJson.mockReturnValue(null);
+    taskConfigResolver.normalizeOptionalString.mockImplementation((value) =>
+      typeof value === 'string' ? value.trim() || null : null,
+    );
+    taskConfigResolver.normalizeGitBranch.mockImplementation((value) =>
+      typeof value === 'string' ? value.trim() || null : null,
+    );
+
+    taskRepository.findByGitWorktree.mockResolvedValue(null);
+    const createdTask = createTask({
+      id: 'new-task',
+      title: '计划子任务标题',
+      prompt: 'long',
+    });
+    taskRepository.create.mockResolvedValue(createdTask);
+    taskRuntimeOrchestrator.initializeTaskRuntime.mockResolvedValue({
+      task: createdTask,
+    });
+
+    const longPrompt = `${'x'.repeat(180)} prompt body`;
+
+    await service.create(
+      {
+        projectId: project.id,
+        mode: TaskMode.conversation,
+        title: '计划子任务标题',
+        prompt: longPrompt,
+        gitBaseBranch: 'main',
+        configJson: {
+          agentCliId: 'cli-1',
+          agentCliConfigId: 'cfg-1',
+        },
+      } as never,
+      currentUser as never,
+    );
+
+    expect(taskRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: '计划子任务标题',
+        prompt: longPrompt,
+      }),
+    );
+  });
+});
+
+describe('TaskCommandService.remove', () => {
+  it('should clean up task runtime before soft deleting the task', async () => {
+    const { service, taskRepository, taskRuntimeService, taskAccessService } =
+      createService();
     const task = createTask();
     const project = createProject();
     const currentUser = createCurrentUser();
@@ -251,13 +329,8 @@ describe('TaskCommandService.remove', () => {
   });
 
   it('should delete tasks without a stored worktree identifier', async () => {
-    const {
-      service,
-      taskRepository,
-      taskRuntimeService,
-      taskLogService,
-      taskAccessService,
-    } = createService();
+    const { service, taskRepository, taskRuntimeService, taskAccessService } =
+      createService();
     const task = createTask({ gitWorktree: null });
     const project = createProject();
     const currentUser = createCurrentUser();

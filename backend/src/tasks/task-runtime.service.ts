@@ -149,9 +149,7 @@ export class TaskRuntimeService {
         ]);
 
         if (!branchResult.success) {
-          cleanupErrors.push(
-            branchResult.stderr || 'git branch -D failed',
-          );
+          cleanupErrors.push(branchResult.stderr || 'git branch -D failed');
         }
       }
     }
@@ -180,10 +178,7 @@ export class TaskRuntimeService {
     };
   }
 
-  async cleanupTaskDataDir(
-    task: Task,
-    project: Project,
-  ): Promise<void> {
+  async cleanupTaskDataDir(task: Task, project: Project): Promise<void> {
     if (!task.id?.trim()) {
       return;
     }
@@ -876,9 +871,7 @@ export class TaskRuntimeService {
   private isProtectedBranch(branchName: string): boolean {
     const protected_names = ['main', 'master', 'develop', 'dev', 'release'];
     const lower = branchName.toLowerCase();
-    return (
-      protected_names.includes(lower) || lower.startsWith('release/')
-    );
+    return protected_names.includes(lower) || lower.startsWith('release/');
   }
 
   private isPathWithinAllowedRoot(

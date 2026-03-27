@@ -197,7 +197,7 @@ export class TaskCommandService {
 
     const promptTrimmed = createTaskDto.prompt?.trim() ?? '';
     const titleForCreate = initialTitleFromPrompt(
-      promptTrimmed || createTaskDto.title?.trim() || '',
+      createTaskDto.title?.trim() || promptTrimmed || '',
     );
 
     const task = await this.taskRepository.create({
