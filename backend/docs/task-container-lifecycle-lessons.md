@@ -49,7 +49,7 @@
 | `AINATIVE_TASK_EXECUTION_MODE` | `docker`：Agent 走隔离容器；`host` 或未设置：在 Nest 进程所在环境直接 `spawn`。 |
 | `AINATIVE_DOCKER_STRICT_EXECUTION` | 在 `docker` 模式下为 `true`/`1` 时，**不允许**在无法使用 runner 时静默回到宿主执行；缺少运行中容器时会直接失败。 |
 | `AINATIVE_TASK_ISOLATION_SCOPE` | `task`（默认）或 `workflow_run`，见上一节。 |
-| `AINATIVE_RUNNER_IMAGE` | Runner 镜像名，默认 `ainative/runner:latest`，由仓库根目录用 `backend/Dockerfile.runner` 构建。 |
+| `AINATIVE_RUNNER_IMAGE` | Runner 镜像名，默认 `ainative/runner:latest`，由仓库根目录用 `backend/runner/Dockerfile.runner` 构建。 |
 | `AINATIVE_RUNNER_WORKSPACE` | 容器内工作区挂载点，默认 `/workspace`，须与 `docker run -v` 一致。 |
 | `AINATIVE_TASK_SANDBOX_PROFILE` | `runner-only`（默认）、`preview-web`、`full-dev-sandbox`，见下一节。 |
 | `AINATIVE_RUNNER_START_TIMEOUT_MS` | 等待容器就绪的最长时间；轻量画像与带 entrypoint 的画像默认值不同（见 `ContainerExecutionConfigService`）。 |
@@ -129,6 +129,6 @@
 - 任务终态清理容器：**`backend/src/tasks/application/task-status.service.ts`**
 - 节点执行不在收尾拆容器：**`backend/src/tasks/application/task-node-execution.service.ts`**
 - 槽位表迁移：**`backend/src/database/migrations/`** 下创建 `project_execution_slots` 的迁移
-- Runner 镜像定义：**`backend/Dockerfile.runner`**；可选沙箱入口脚本：**`backend/runner/entrypoint.sh`**，以及 **`backend/runner/sandbox.*.conf`**
+- Runner 镜像定义：**`backend/runner/Dockerfile.runner`**；可选沙箱入口脚本：**`backend/runner/entrypoint.sh`**，以及 **`backend/runner/sandbox.*.conf`**
 
 以上即当前「任务隔离容器」方案的完整轮廓：轻量默认可 exec、可选全沙箱画像、宿主控制面 + 容器执行面、槽位与心跳、以及 **仅在 `done` 时回收** 的生命周期。

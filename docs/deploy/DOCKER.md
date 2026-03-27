@@ -65,8 +65,8 @@ pnpm run docker:clean
 
 后端镜像构建依赖以下文件：
 
-- `backend/ssh/id_rsa`
-- `backend/ssh/known_hosts`
+- `backend/runner/ssh/id_rsa`
+- `backend/runner/ssh/known_hosts`
 
 如果缺少这些文件，后端镜像构建会直接失败。
 
@@ -76,6 +76,6 @@ pnpm run docker:clean
 
 优先检查：
 
-- `backend/ssh/id_rsa` 是否存在
-- `backend/ssh/known_hosts` 是否存在
+- `backend/runner/ssh/id_rsa` 是否存在
+- `backend/runner/ssh/known_hosts` 是否存在
 - 构建机是否具备访问私有依赖仓库的权限
