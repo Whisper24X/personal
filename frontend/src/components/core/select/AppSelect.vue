@@ -473,9 +473,13 @@ const handleDocumentPointerDown = (event: Event) => {
   }
 
   const clickedInsideTrigger = triggerRef.value?.contains(event.target) ?? false
-  const clickedInsidePanel = panelRef.value?.contains(event.target) ?? false
+  const t = event.target
+  const el = t instanceof Element ? t : t.parentElement
+  const clickedInsidePanelTree =
+    (panelRef.value?.contains(event.target) ?? false) ||
+    Boolean(el?.closest('[data-app-select-panel]'))
 
-  if (!clickedInsideTrigger && !clickedInsidePanel) {
+  if (!clickedInsideTrigger && !clickedInsidePanelTree) {
     closeDropdown({ focus: false })
   }
 }
@@ -604,6 +608,8 @@ onBeforeUnmount(() => {
       <div
         v-if="isOpen"
         ref="panelRef"
+        data-app-select-panel=""
+        class="pointer-events-auto"
         :class="menuClasses"
         :style="panelStyle"
         role="listbox"

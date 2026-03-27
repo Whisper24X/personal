@@ -381,7 +381,7 @@ export type ProjectMenuAccessItem = {
 
 export const PROJECT_MENU_ACCESS_CONFIG = [
   { id: 'dashboard', label: '仪表盘', to: '/dashboard', capabilities: ['project.dashboard.read'] },
-  { id: 'goals', label: '新建需求', to: '/goals', capabilities: ['project.task.read'] },
+  { id: 'goals', label: '需求', to: '/dashboard', capabilities: ['project.task.read'] },
   { id: 'tasks', label: '新建任务', to: '/tasks', capabilities: ['project.task.read'] },
   { id: 'kanban', label: '看板', to: '/kanban', capabilities: ['project.kanban.read'] },
   { id: 'automations', label: '自动化', to: '/automations', capabilities: ['project.automation.read'] },

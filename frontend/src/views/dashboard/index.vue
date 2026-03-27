@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { projectsApi } from '@/api/projects'
 import { tasksApi } from '@/api/tasks'
@@ -339,12 +339,6 @@ watch(
               <div class="flex shrink-0 flex-col items-end text-[11px] text-muted-foreground">
                 <div class="text-right">{{ welcomeClock.date }}</div>
                 <div class="mt-0.5 text-right">{{ welcomeClock.weekday }}</div>
-                <RouterLink
-                  :to="{ name: 'project-goals', params: { projectId: project.id } }"
-                  class="mt-2 inline-flex h-7 items-center rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30"
-                >
-                  需求
-                </RouterLink>
               </div>
             </div>
           </CardContent>

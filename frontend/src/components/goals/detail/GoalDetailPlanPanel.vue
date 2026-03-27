@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import AppSelect from '@/components/core/select'
 import { Button } from '@/components/ui/button'
 import type { GoalDetail, GoalPlanItem, GoalPlanSubTask } from '@/types/api/goals'
 import type { WorkflowTemplate } from '@/types/api/workflow'
@@ -8,28 +7,19 @@ defineOptions({
   name: 'GoalDetailPlanPanel',
 })
 
-type SelectOption = {
-  label: string
-  value: string
-}
-
 const props = defineProps<{
   detail: GoalDetail
   loadingWorkflowTemplates: boolean
   workflowTemplates: WorkflowTemplate[]
-  savingPlanItemWorkflowId: string | null
   creatingPrGroupId: string | null
+  materializing: boolean
   planItemStatusLabel: Record<GoalPlanSubTask['status'], string>
-  workflowOptionsForPlanItem: (workflowTemplateId: string | null | undefined) => SelectOption[]
   planItemApproveBlockedReason: (item: GoalPlanSubTask) => string | null
-  selectPanelZIndex: number
-  selectPanelPlacement: 'top'
 }>()
 
 const emit = defineEmits<{
   openPlanItemDetail: [sub: GoalPlanSubTask, groupTitle: string]
-  setPlanItemWorkflow: [payload: { item: GoalPlanSubTask; workflowTemplateId: string }]
-  approveItem: [item: GoalPlanSubTask]
+  materializePlanItem: [item: GoalPlanSubTask]
   createGroupPr: [group: GoalPlanItem]
 }>()
 
@@ -44,6 +34,16 @@ function planGroupAllSubTasksCompleted(group: GoalPlanItem): boolean {
   }
   return subs.every((s) => s.status === 'completed')
 }
+
+/** 列表仅展示，配置在侧栏完成 */
+function workflowDisplayLabel(item: GoalPlanSubTask): string {
+  const id = item.workflowTemplateId?.trim()
+  if (!id) {
+    return '未配置'
+  }
+  const t = props.workflowTemplates.find((w) => w.id === id)
+  return t?.name ?? id
+}
 </script>
 
 <template>
@@ -52,17 +52,24 @@ function planGroupAllSubTasksCompleted(group: GoalPlanItem): boolean {
       v-if="!props.loadingWorkflowTemplates && props.workflowTemplates.length === 0"
       class="text-muted-foreground mb-3 text-xs text-amber-600 dark:text-amber-500"
     >
-      当前项目暂无启用的工作流，请先在项目下创建并启用后再为子任务配置工作流。
+      当前项目暂无启用的工作流，请先在项目下创建并启用后，在子任务侧栏内为待确认项配置工作流。
     </p>
     <div class="min-w-0 px-0">
       <table class="w-full table-fixed border-collapse text-left text-xs">
+        <colgroup>
+          <col style="width: 2.5rem" />
+          <col style="min-width: 9rem; max-width: min(52%, 36rem); width: 42%" />
+          <col style="width: 4.75rem" />
+          <col style="min-width: 6.5rem; max-width: min(28%, 18rem); width: 24%" />
+          <col style="width: 6.5rem" />
+        </colgroup>
         <thead class="bg-muted/50">
           <tr>
-            <th class="w-10 whitespace-nowrap p-2 text-center tabular-nums">顺序</th>
+            <th class="whitespace-nowrap p-2 text-center tabular-nums">顺序</th>
             <th class="min-w-0 p-2">标题</th>
-            <th class="w-[4.5rem] whitespace-nowrap p-2">状态</th>
-            <th class="min-w-0 w-[18%] p-2">配置工作流</th>
-            <th class="w-28 whitespace-nowrap p-2">操作</th>
+            <th class="whitespace-nowrap p-2">状态</th>
+            <th class="min-w-0 p-2">工作流</th>
+            <th class="whitespace-nowrap p-2">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -78,7 +85,7 @@ function planGroupAllSubTasksCompleted(group: GoalPlanItem): boolean {
                   </span>
                 </div>
               </td>
-              <td class="w-28 whitespace-nowrap p-2 align-middle" @click.stop>
+              <td class="whitespace-nowrap p-2 align-middle" @click.stop>
                 <Button
                   v-if="planGroupAllSubTasksCompleted(group)"
                   type="button"
@@ -98,53 +105,33 @@ function planGroupAllSubTasksCompleted(group: GoalPlanItem): boolean {
             <tr
               v-for="(item, sidx) in group.subTasks ?? []"
               :key="item.id"
-              class="hover:bg-muted/50 cursor-pointer border-b"
-              @click="emit('openPlanItemDetail', item, group.title)"
+              class="hover:bg-muted/50 border-b"
             >
               <td
-                class="text-muted-foreground w-10 whitespace-nowrap p-2 text-center tabular-nums align-middle"
+                class="text-muted-foreground whitespace-nowrap p-2 text-center tabular-nums align-middle"
               >
                 {{ group.itemOrder + 1 }}.{{ sidx + 1 }}
               </td>
-              <td class="min-w-0 break-words p-2 hover:text-primary hover:underline">
+              <td class="min-w-0 break-words p-2">
                 {{ item.title }}
               </td>
-              <td class="w-[4.5rem] whitespace-nowrap p-2 align-middle">
+              <td class="whitespace-nowrap p-2 align-middle">
                 {{ props.planItemStatusLabel[item.status] }}
               </td>
-              <td class="min-w-0 w-[18%] p-2 align-top" @click.stop>
-                <template v-if="item.status === 'approved' && !item.taskId">
-                  <AppSelect
-                    :model-value="item.workflowTemplateId ?? ''"
-                    aria-label="子任务配置工作流"
-                    :block="true"
-                    :match-trigger-width="false"
-                    :trigger-label-truncate="false"
-                    :option-label-truncate="false"
-                    :options="props.workflowOptionsForPlanItem(item.workflowTemplateId)"
-                    :disabled="
-                      props.loadingWorkflowTemplates ||
-                      props.workflowTemplates.length === 0 ||
-                      props.savingPlanItemWorkflowId === item.id
-                    "
-                    :panel-z-index="props.selectPanelZIndex"
-                    :panel-placement="props.selectPanelPlacement"
-                    size="sm"
-                    trigger-class="min-w-0 w-full rounded-md border border-border bg-background px-2 py-1.5 text-left text-sm"
-                    @update:model-value="
-                      (value) =>
-                        emit('setPlanItemWorkflow', {
-                          item,
-                          workflowTemplateId: String(value ?? ''),
-                        })
-                    "
-                  />
+              <td class="min-w-0 break-words p-2 align-middle">
+                <template
+                  v-if="(item.status === 'draft' || item.status === 'approved') && !item.taskId"
+                >
+                  <span class="text-muted-foreground break-words" :title="workflowDisplayLabel(item)">
+                    {{ workflowDisplayLabel(item) }}
+                  </span>
                 </template>
                 <span
                   v-else-if="item.taskId && item.status !== 'completed'"
-                  class="text-muted-foreground whitespace-nowrap"
+                  class="text-muted-foreground break-words"
+                  :title="workflowDisplayLabel(item)"
                 >
-                  已创建任务
+                  {{ workflowDisplayLabel(item) }}
                 </span>
                 <span
                   v-else-if="item.status === 'completed'"
@@ -154,19 +141,43 @@ function planGroupAllSubTasksCompleted(group: GoalPlanItem): boolean {
                 </span>
                 <span v-else class="text-muted-foreground">—</span>
               </td>
-              <td class="w-28 whitespace-nowrap p-2 align-middle" @click.stop>
-                <Button
-                  v-if="item.status === 'draft'"
-                  type="button"
-                  variant="link"
-                  size="sm"
-                  class="h-auto px-0 text-xs"
-                  :disabled="!!props.planItemApproveBlockedReason(item)"
-                  :title="props.planItemApproveBlockedReason(item) ?? undefined"
-                  @click="emit('approveItem', item)"
-                >
-                  确认
-                </Button>
+              <td class="whitespace-nowrap p-2 align-middle" @click.stop>
+                <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <Button
+                    v-if="item.status === 'draft'"
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    class="h-auto px-0 text-xs"
+                    :disabled="!!props.planItemApproveBlockedReason(item)"
+                    :title="props.planItemApproveBlockedReason(item) ?? undefined"
+                    @click="emit('openPlanItemDetail', item, group.title)"
+                  >
+                    确认
+                  </Button>
+                  <template v-else>
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      class="h-auto px-0 text-xs"
+                      @click="emit('openPlanItemDetail', item, group.title)"
+                    >
+                      查看
+                    </Button>
+                    <Button
+                      v-if="item.status === 'approved' && !item.taskId"
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      class="h-auto px-0 text-xs"
+                      :disabled="props.materializing"
+                      @click="emit('materializePlanItem', item)"
+                    >
+                      {{ props.materializing ? '创建中…' : '创建任务' }}
+                    </Button>
+                  </template>
+                </div>
               </td>
             </tr>
           </template>

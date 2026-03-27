@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import AppSelect from '@/components/core/select'
 import { Button } from '@/components/ui/button'
 import {
   Sheet,
@@ -9,10 +10,16 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import type { GoalPlanSubTask } from '@/types/api/goals'
+import type { WorkflowTemplate } from '@/types/api/workflow'
 
 defineOptions({
   name: 'GoalPlanItemSheet',
 })
+
+type SelectOption = {
+  label: string
+  value: string
+}
 
 const props = defineProps<{
   open: boolean
@@ -24,6 +31,12 @@ const props = defineProps<{
   planItemEditSuggestedPrompt: string
   dependencyTitles: string[]
   workflowName: string
+  loadingWorkflowTemplates: boolean
+  workflowTemplates: WorkflowTemplate[]
+  workflowOptionsForPlanItem: (workflowTemplateId: string | null | undefined) => SelectOption[]
+  savingPlanItemWorkflowId: string | null
+  selectPanelZIndex: number
+  selectPanelPlacement: 'top'
   savingPlanItemText: boolean
 }>()
 
@@ -33,8 +46,9 @@ const emit = defineEmits<{
   'update:planItemEditAcceptance': [value: string]
   'update:planItemEditSuggestedPrompt': [value: string]
   reset: []
-  save: []
+  confirm: []
   goTask: [taskId: string]
+  setPlanItemWorkflow: [payload: { item: GoalPlanSubTask; workflowTemplateId: string }]
 }>()
 
 const summaryModel = computed({
@@ -53,6 +67,15 @@ const suggestedPromptModel = computed({
 })
 
 const planItemReadonly = computed(() => props.selectedPlanItem?.status !== 'draft')
+
+/** 待确认 / 已确认未物化：仅在侧栏配置工作流 */
+const showWorkflowPicker = computed(
+  () =>
+    props.selectedPlanItem &&
+    (props.selectedPlanItem.status === 'draft' ||
+      props.selectedPlanItem.status === 'approved') &&
+    !props.selectedPlanItem.taskId,
+)
 </script>
 
 <template>
@@ -100,7 +123,46 @@ const planItemReadonly = computed(() => props.selectedPlanItem?.status !== 'draf
                 <h3 class="text-sm font-semibold">基本信息</h3>
               </div>
               <dl class="grid gap-3 sm:grid-cols-2">
-                <div class="bg-muted/35 rounded-xl border border-border/60 px-4 py-3">
+                <div
+                  v-if="showWorkflowPicker"
+                  class="bg-muted/35 rounded-xl border border-border/60 px-4 py-3 sm:col-span-2"
+                >
+                  <dt class="text-muted-foreground text-[11px] font-medium tracking-[0.08em]">
+                    配置工作流
+                  </dt>
+                  <dd class="mt-2">
+                    <AppSelect
+                      :model-value="props.selectedPlanItem.workflowTemplateId ?? ''"
+                      aria-label="子任务配置工作流"
+                      :block="true"
+                      :match-trigger-width="false"
+                      :trigger-label-truncate="false"
+                      :option-label-truncate="false"
+                      :options="
+                        props.workflowOptionsForPlanItem(
+                          props.selectedPlanItem.workflowTemplateId,
+                        )
+                      "
+                      :disabled="
+                        props.loadingWorkflowTemplates ||
+                        props.workflowTemplates.length === 0 ||
+                        props.savingPlanItemWorkflowId === props.selectedPlanItem.id
+                      "
+                      :panel-z-index="props.selectPanelZIndex"
+                      :panel-placement="props.selectPanelPlacement"
+                      size="sm"
+                      trigger-class="min-w-0 w-full rounded-md border border-border bg-background px-2 py-1.5 text-left text-sm"
+                      @update:model-value="
+                        (value) =>
+                          emit('setPlanItemWorkflow', {
+                            item: props.selectedPlanItem!,
+                            workflowTemplateId: String(value ?? ''),
+                          })
+                      "
+                    />
+                  </dd>
+                </div>
+                <div v-else class="bg-muted/35 rounded-xl border border-border/60 px-4 py-3">
                   <dt class="text-muted-foreground text-[11px] font-medium tracking-[0.08em]">
                     配置工作流
                   </dt>
@@ -139,7 +201,7 @@ const planItemReadonly = computed(() => props.selectedPlanItem?.status !== 'draf
                 v-if="planItemReadonly"
                 class="text-muted-foreground bg-muted/25 mb-4 rounded-xl border border-dashed border-border/70 px-4 py-3 text-sm"
               >
-                当前子任务已确认或已进入后续状态，内容已锁定，不能再编辑。
+                当前子任务已非待确认状态，内容已锁定，不能再编辑。
               </div>
               <div class="space-y-4">
                 <div class="space-y-2">
@@ -222,8 +284,8 @@ const planItemReadonly = computed(() => props.selectedPlanItem?.status !== 'draf
           >
             取消
           </Button>
-          <Button type="button" :disabled="props.savingPlanItemText" @click="emit('save')">
-            {{ props.savingPlanItemText ? '保存中…' : '保存' }}
+          <Button type="button" :disabled="props.savingPlanItemText" @click="emit('confirm')">
+            {{ props.savingPlanItemText ? '确认中…' : '确认' }}
           </Button>
         </SheetFooter>
       </template>

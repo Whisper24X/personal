@@ -68,7 +68,7 @@ const forwarded = useForwardPropsEmits(rootProps, emit)
               </span>
               <span class="inline-flex items-center gap-1.5">
                 <span class="size-2.5 shrink-0 rounded-sm border border-slate-300 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/60" />
-                草稿
+                待确认
               </span>
               <span class="inline-flex items-center gap-1.5">
                 <span class="size-2.5 shrink-0 rounded-sm border border-dashed border-slate-400 bg-slate-100 dark:border-slate-500 dark:bg-slate-900/40" />
@@ -79,7 +79,7 @@ const forwarded = useForwardPropsEmits(rootProps, emit)
         </div>
 
         <p v-if="props.planDepsHasCycle" class="text-destructive text-sm">
-          检测到计划项依赖存在环，请修正后再新建任务。
+          检测到计划项依赖存在环，请修正后再继续。
         </p>
 
         <div

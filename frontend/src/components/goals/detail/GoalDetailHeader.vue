@@ -16,7 +16,6 @@ const props = defineProps<{
   goalHasPlanItems: boolean
   generatingPrd: boolean
   generatingPlan: boolean
-  materializing: boolean
   planProgressDone: number
   planProgressTotal: number
   planProgressPercent: number
@@ -32,7 +31,6 @@ const emit = defineEmits<{
   back: []
   generatePrd: []
   generatePlan: []
-  materializeSelected: []
 }>()
 </script>
 
@@ -95,9 +93,6 @@ const emit = defineEmits<{
         </div>
       </div>
       <div class="flex max-w-xl flex-col items-end gap-2">
-        <p class="max-w-md text-right text-xs text-muted-foreground">
-          新建任务前请在「任务计划」中为每条已确认项配置工作流。
-        </p>
         <div class="flex flex-wrap justify-end gap-2">
           <Button
             v-if="!props.goalHasPrd"
@@ -118,16 +113,6 @@ const emit = defineEmits<{
             @click="emit('generatePlan')"
           >
             {{ props.generatingPlan ? '任务计划生成中…' : '生成任务计划' }}
-          </Button>
-          <Button
-            v-else
-            type="button"
-            variant="default"
-            size="default"
-            :disabled="props.materializing || props.generatingPrd || props.generatingPlan"
-            @click="emit('materializeSelected')"
-          >
-            {{ props.materializing ? '新建任务中…' : '新建任务' }}
           </Button>
         </div>
         <Button

@@ -14,7 +14,7 @@ defineOptions({
 const {
   GOAL_SELECT_PANEL_PLACEMENT,
   GOAL_SELECT_PANEL_Z_INDEX,
-  approveItem,
+  confirmPlanItemFromSheet,
   detail,
   generatingPlan,
   generatingPrd,
@@ -24,7 +24,7 @@ const {
   goalHasPrd,
   loading,
   loadingWorkflowTemplates,
-  materializeSelected,
+  materializeSingleSubTask,
   materializing,
   creatingPrGroupId,
   onCreateGroupPr,
@@ -56,7 +56,6 @@ const {
   resetPlanItemTextDraft,
   runGeneratePlan,
   runGeneratePrd,
-  savePlanItemText,
   savePrdEditor,
   savingPlanItemText,
   savingPlanItemWorkflowId,
@@ -82,7 +81,6 @@ const {
         :goal-has-plan-items="goalHasPlanItems"
         :generating-prd="generatingPrd"
         :generating-plan="generatingPlan"
-        :materializing="materializing"
         :plan-progress-done="planProgressDone"
         :plan-progress-total="planProgressTotal"
         :plan-progress-percent="planProgressPercent"
@@ -93,7 +91,6 @@ const {
         @back="goBack"
         @generate-prd="runGeneratePrd"
         @generate-plan="runGeneratePlan"
-        @materialize-selected="materializeSelected"
       />
 
       <GoalDetailTabs v-model="tab" />
@@ -113,16 +110,12 @@ const {
         :detail="detail"
         :loading-workflow-templates="loadingWorkflowTemplates"
         :workflow-templates="workflowTemplates"
-        :saving-plan-item-workflow-id="savingPlanItemWorkflowId"
         :creating-pr-group-id="creatingPrGroupId"
+        :materializing="materializing"
         :plan-item-status-label="planItemStatusLabel"
-        :workflow-options-for-plan-item="workflowOptionsForPlanItem"
         :plan-item-approve-blocked-reason="planItemApproveBlockedReason"
-        :select-panel-z-index="GOAL_SELECT_PANEL_Z_INDEX"
-        :select-panel-placement="GOAL_SELECT_PANEL_PLACEMENT"
         @open-plan-item-detail="(sub, title) => openPlanItemDetail(sub, title)"
-        @set-plan-item-workflow="setPlanItemWorkflow($event.item, $event.workflowTemplateId)"
-        @approve-item="approveItem"
+        @materialize-plan-item="materializeSingleSubTask"
         @create-group-pr="onCreateGroupPr"
       />
 
@@ -136,14 +129,21 @@ const {
         :plan-item-edit-suggested-prompt="planItemEditSuggestedPrompt"
         :dependency-titles="selectedPlanItemDependencyTitles"
         :workflow-name="selectedPlanItemWorkflowName"
+        :loading-workflow-templates="loadingWorkflowTemplates"
+        :workflow-templates="workflowTemplates"
+        :workflow-options-for-plan-item="workflowOptionsForPlanItem"
+        :saving-plan-item-workflow-id="savingPlanItemWorkflowId"
+        :select-panel-z-index="GOAL_SELECT_PANEL_Z_INDEX"
+        :select-panel-placement="GOAL_SELECT_PANEL_PLACEMENT"
         :saving-plan-item-text="savingPlanItemText"
         @update:open="onPlanItemSheetOpen"
         @update:plan-item-edit-summary="planItemEditSummary = $event"
         @update:plan-item-edit-acceptance="planItemEditAcceptance = $event"
         @update:plan-item-edit-suggested-prompt="planItemEditSuggestedPrompt = $event"
         @reset="resetPlanItemTextDraft"
-        @save="savePlanItemText"
+        @confirm="confirmPlanItemFromSheet"
         @go-task="goTaskFromSheet"
+        @set-plan-item-workflow="setPlanItemWorkflow($event.item, $event.workflowTemplateId)"
       />
 
       <GoalPrdEditorSheet

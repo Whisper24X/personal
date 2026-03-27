@@ -170,9 +170,22 @@ export const useLayout = () => {
   }))
 
   const menuItems = computed<MenuItem[]>(() => {
-    return baseMenuItems.filter((item) => {
-      return hasSomeAccess(item.capabilities, (capability) => accessStore.hasCapability(capability))
-    })
+    const pid = selectedProjectId.value.trim()
+    const goalsListTo = pid ? `/projects/${pid}/goals` : '/dashboard'
+
+    return baseMenuItems
+      .filter((item) => {
+        return hasSomeAccess(item.capabilities, (capability) => accessStore.hasCapability(capability))
+      })
+      .map((item) => {
+        if (item.id === 'goals') {
+          return {
+            ...item,
+            to: goalsListTo,
+          }
+        }
+        return item
+      })
   })
 
   const resolveMenuPathFromPath = (path: string) => {
@@ -198,6 +211,21 @@ export const useLayout = () => {
       const tasksMenuPath = menuItems.value.find((item) => item.id === 'tasks')?.to
       if (tasksMenuPath) {
         return tasksMenuPath
+      }
+    }
+
+    if (route.name === 'goal-create') {
+      const pid = normalizeQueryValue(route.query.projectId).trim()
+      if (pid) {
+        return `/projects/${pid}/goals`
+      }
+    }
+
+    if (route.name === 'project-goals') {
+      const raw = route.params.projectId
+      const pid = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw[0] ?? '' : ''
+      if (pid) {
+        return `/projects/${pid}/goals`
       }
     }
 
@@ -255,13 +283,26 @@ export const useLayout = () => {
     return menuItems.value[0]?.to ?? '/home'
   }
 
-  const projectNavigationTo = (projectId: string): RouteLocationRaw => {
+  const PROJECT_GOALS_LIST_PATH = /^\/projects\/[^/]+\/goals$/
+
+  const buildProjectNavigationTarget = (projectId: string, menuPath: string): RouteLocationRaw => {
+    if (PROJECT_GOALS_LIST_PATH.test(menuPath)) {
+      return {
+        name: 'project-goals',
+        params: { projectId },
+      }
+    }
+
     return {
-      path: resolveProjectMenuPath(),
+      path: menuPath,
       query: {
         projectId,
       },
     }
+  }
+
+  const projectNavigationTo = (projectId: string): RouteLocationRaw => {
+    return buildProjectNavigationTarget(projectId, resolveProjectMenuPath())
   }
 
   const availableSettingsSections = computed<SettingsSection[]>(() => {
@@ -547,17 +588,22 @@ export const useLayout = () => {
       return
     }
 
+    if (PROJECT_GOALS_LIST_PATH.test(fallbackMenuPath)) {
+      const currentProjectId = getProjectIdFromRoute()
+      if (route.name === 'project-goals' && currentProjectId === normalizedProjectId) {
+        return
+      }
+
+      await router.replace(buildProjectNavigationTarget(normalizedProjectId, fallbackMenuPath))
+      return
+    }
+
     const currentProjectId = normalizeQueryValue(route.query.projectId).trim()
     if (route.path === fallbackMenuPath && currentProjectId === normalizedProjectId) {
       return
     }
 
-    await router.replace({
-      path: fallbackMenuPath,
-      query: {
-        projectId: normalizedProjectId,
-      },
-    })
+    await router.replace(buildProjectNavigationTarget(normalizedProjectId, fallbackMenuPath))
   }
 
   const refreshAccessContext = async (context?: { businessLineId?: string; projectId?: string }) => {
@@ -636,8 +682,9 @@ export const useLayout = () => {
     if (route.name === 'automations') return ['项目菜单', '自动化']
     if (route.name === 'tasks') return ['项目菜单', '新建任务']
     if (route.name === 'task-detail') return ['项目菜单', '新建任务', '任务详情']
-    if (route.name === 'goal-create') return ['项目菜单', '新建需求']
-    if (route.name === 'goal-detail') return ['项目菜单', '新建需求', '需求详情']
+    if (route.name === 'project-goals') return ['项目菜单', '需求']
+    if (route.name === 'goal-create') return ['项目菜单', '需求', '新建需求']
+    if (route.name === 'goal-detail') return ['项目菜单', '需求', '需求详情']
     return ['项目菜单']
   })
 
@@ -771,12 +818,7 @@ export const useLayout = () => {
 
     const currentProjectId = normalizeQueryValue(route.query.projectId)
     if (route.path !== targetMenuPath || currentProjectId !== projectId) {
-      void router.push({
-        path: targetMenuPath,
-        query: {
-          projectId,
-        },
-      })
+      void router.push(buildProjectNavigationTarget(projectId, targetMenuPath))
     }
 
   }

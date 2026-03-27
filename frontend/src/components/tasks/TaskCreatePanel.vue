@@ -16,6 +16,7 @@ import { BUTTON_ACCESS_CONFIG, hasSomeAccess } from '@/constants/access-control'
 import { toErrorMessage } from '@/utils/http/to-error-message'
 import { fetchAllPages } from '@/utils/pagination'
 import { buildBranchOptions } from '@/utils/git-branch-options'
+import { requestSidebarRecentTasksRefresh } from '@/hooks/useSidebarRecentTasks'
 
 type SupportedCliToolId = 'claude-code' | 'codex' | 'gemini-cli' | 'cursor-agent' | 'opencode'
 
@@ -544,6 +545,7 @@ const createTask = async () => {
       },
     })
 
+    requestSidebarRecentTasksRefresh()
     message.success('创建任务成功，正在跳转详情')
     resetCreateForm(projectIdForSubmit)
     emit('created', task.id)
