@@ -35,6 +35,8 @@ const selectedPath = ref<string | null>(null)
 const preview = ref<FileBrowserPreview | null>(null)
 const previewLoading = ref(false)
 const previewErrorMessage = ref('')
+const refreshInFlight = ref(false)
+const pendingRefresh = ref(false)
 const emptyPaths = new Set<string>()
 const ARTIFACT_PANEL_MIN_WIDTH = 160
 const ARTIFACT_PANEL_MAX_WIDTH = 280
@@ -133,7 +135,7 @@ const loadPreview = async (path: string) => {
   }
 }
 
-const loadFiles = async () => {
+const performLoadFiles = async () => {
   loading.value = true
   errorMessage.value = ''
 
@@ -171,6 +173,24 @@ const loadFiles = async () => {
     errorMessage.value = toErrorMessage(error, '加载产物列表失败')
   } finally {
     loading.value = false
+  }
+}
+
+const loadFiles = async () => {
+  if (refreshInFlight.value) {
+    pendingRefresh.value = true
+    return
+  }
+
+  refreshInFlight.value = true
+
+  try {
+    do {
+      pendingRefresh.value = false
+      await performLoadFiles()
+    } while (pendingRefresh.value)
+  } finally {
+    refreshInFlight.value = false
   }
 }
 

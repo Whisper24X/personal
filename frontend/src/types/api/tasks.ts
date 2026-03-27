@@ -98,6 +98,19 @@ export type TaskLog = {
   createdAt: string
 }
 
+export type TaskWorkspaceChangeKind = 'add' | 'change' | 'unlink'
+
+export type TaskWorkspaceChange = {
+  id: string
+  taskId: string
+  changedAt: string
+  changes: Array<{
+    path: string
+    kind: TaskWorkspaceChangeKind
+  }>
+  truncated: boolean
+}
+
 export type TaskMessageRole = 'user' | 'assistant' | 'system' | 'error'
 
 export type TaskMessage = {

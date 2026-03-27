@@ -7,6 +7,7 @@ import { TaskRepository } from '../infrastructure/persistence/task.repository';
 import { TaskRuntimeService } from '../task-runtime.service';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskLogService } from './task-log.service';
+import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
 
 type TaskRuntimeSnapshot = {
   gitBranch: string;
@@ -21,6 +22,7 @@ export class TaskRuntimeOrchestratorService {
     private readonly taskRepository: TaskRepository,
     private readonly taskRuntimeService: TaskRuntimeService,
     private readonly taskLogService: TaskLogService,
+    private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
   ) {}
 
   async prepareTaskRuntime(
@@ -81,6 +83,8 @@ export class TaskRuntimeOrchestratorService {
         },
       });
     }
+
+    await this.taskWorkspaceWatchService.syncTaskWatch(task.id);
 
     return {
       task: runtimeTask,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import type { RouteLocationRaw } from 'vue-router'
 import { Building2, BookOpen, LayoutDashboard, ListTodo, Settings2 } from 'lucide-vue-next'
 import type { ProjectItem } from '@/hooks/core/useLayout'
@@ -48,6 +48,7 @@ const props = defineProps<{
   isSettingsActive: boolean
 }>()
 
+const route = useRoute()
 const { setOpenMobile } = useSidebar()
 
 const recentSearchQuery = ref('')
@@ -63,6 +64,23 @@ const filteredRecentTasks = computed(() => {
 
   return recentTasks.value.filter((t) => t.title.toLowerCase().includes(q))
 })
+
+const activeRecentTaskId = computed(() => {
+  if (route.name !== 'task-detail') {
+    return ''
+  }
+
+  const routeTaskId = route.params.id
+  if (typeof routeTaskId === 'string') {
+    return routeTaskId
+  }
+
+  return Array.isArray(routeTaskId) ? routeTaskId[0] ?? '' : ''
+})
+
+const isRecentTaskActive = (taskId: string) => {
+  return activeRecentTaskId.value === taskId
+}
 </script>
 
 <template>
@@ -199,15 +217,33 @@ const filteredRecentTasks = computed(() => {
                   params: { id: task.id },
                   query: { projectId: task.projectId },
                 }"
-                class="block max-w-full rounded-md px-1.5 py-1.5 text-left transition hover:bg-sidebar-accent"
+                class="block max-w-full rounded-md px-1.5 py-1.5 text-left transition"
+                :class="
+                  isRecentTaskActive(task.id)
+                    ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
+                    : 'hover:bg-sidebar-accent/60'
+                "
+                :aria-current="isRecentTaskActive(task.id) ? 'page' : undefined"
                 @click="setOpenMobile(false)"
               >
                 <p
-                  class="line-clamp-2 break-words text-[11px] font-medium leading-snug text-sidebar-foreground"
+                  class="line-clamp-2 break-words text-[11px] leading-snug"
+                  :class="
+                    isRecentTaskActive(task.id)
+                      ? 'font-medium text-sidebar-accent-foreground'
+                      : 'font-medium text-sidebar-foreground'
+                  "
                 >
                   {{ task.title }}
                 </p>
-                <p class="mt-0.5 break-words text-[10px] text-muted-foreground">
+                <p
+                  class="mt-0.5 break-words text-[10px]"
+                  :class="
+                    isRecentTaskActive(task.id)
+                      ? 'text-sidebar-accent-foreground'
+                      : 'text-muted-foreground'
+                  "
+                >
                   {{ taskStatusLabel(task.status) }} · {{ formatTaskShortTime(task.updatedAt ?? task.createdAt) }}
                 </p>
               </RouterLink>

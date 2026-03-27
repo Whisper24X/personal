@@ -29,6 +29,7 @@ import { TaskRuntimeOrchestratorService } from './task-runtime-orchestrator.serv
 import { TaskQueryService } from './task-query.service';
 import { TaskAccessService } from './task-access.service';
 import { TaskTitleSuggestionService } from './task-title-suggestion.service';
+import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
 import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { initialTitleFromPrompt } from '../utils/task-title-placeholder';
 
@@ -48,6 +49,7 @@ export class TaskCommandService {
     private readonly taskQueryService: TaskQueryService,
     private readonly taskAccessService: TaskAccessService,
     private readonly taskTitleSuggestionService: TaskTitleSuggestionService,
+    private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
   ) {}
 
   async create(
@@ -358,6 +360,10 @@ export class TaskCommandService {
       updatePayload,
     );
     const effectiveTask = updatedTask ?? task;
+
+    if (updatePayload.gitWorktree !== undefined) {
+      await this.taskWorkspaceWatchService.syncTaskWatch(task.id);
+    }
 
     if (
       updatePayload.configJson !== undefined ||

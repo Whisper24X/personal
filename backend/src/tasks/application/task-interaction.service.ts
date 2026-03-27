@@ -18,6 +18,10 @@ import { TaskRepository } from '../infrastructure/persistence/task.repository';
 import { TaskGitService } from '../task-git.service';
 import { TaskRuntimeService } from '../task-runtime.service';
 import { TaskAccessService } from './task-access.service';
+import {
+  buildApproveCommitMessage,
+  commitNodeWorkspaceIfChanged,
+} from './task-node-auto-commit';
 import { TaskConfigResolverService } from './task-config-resolver.service';
 import { TaskLogService } from './task-log.service';
 import { TaskOutputService } from './task-output.service';
@@ -25,6 +29,7 @@ import { TaskQueryService } from './task-query.service';
 import { TaskRuntimeOrchestratorService } from './task-runtime-orchestrator.service';
 import { TaskSchedulerService } from './task-scheduler.service';
 import { TaskStatusService } from './task-status.service';
+import { TaskWorkspaceWatchService } from './task-workspace-watch.service';
 
 @Injectable()
 export class TaskInteractionService {
@@ -41,6 +46,7 @@ export class TaskInteractionService {
     private readonly taskQueryService: TaskQueryService,
     private readonly taskSchedulerService: TaskSchedulerService,
     private readonly taskGitService: TaskGitService,
+    private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
   ) {}
 
   async reply(
@@ -475,52 +481,25 @@ export class TaskInteractionService {
       throw new ConflictException('Only in_review node can be approved');
     }
 
-    const commitMessage = this.buildApproveCommitMessage(targetNode);
+    const commitMessage = buildApproveCommitMessage(targetNode);
 
-    try {
-      const autoCommitResult = await this.taskGitService.commitIfChanged(
-        task.id,
-        commitMessage,
-        currentUser,
-      );
-
-      if (autoCommitResult.committed) {
-        await this.taskLogService.appendLog({
-          taskId: task.id,
-          taskNodeId: targetNode.id,
-          level: TaskLogLevel.info,
-          message: 'Node approval auto-committed staged changes',
-          payload: {
-            nodeOrder: targetNode.nodeOrder,
-            commitSha: autoCommitResult.commitSha ?? null,
-            commitSubject: autoCommitResult.subject ?? commitMessage,
-          },
-        });
-      } else {
-        await this.taskLogService.appendLog({
-          taskId: task.id,
-          taskNodeId: targetNode.id,
-          level: TaskLogLevel.info,
-          message: 'Node approval skipped auto-commit; no workspace changes',
-          payload: {
-            nodeOrder: targetNode.nodeOrder,
-          },
-        });
-      }
-    } catch (error) {
-      await this.taskLogService.appendLog({
-        taskId: task.id,
-        taskNodeId: targetNode.id,
-        level: TaskLogLevel.error,
-        message: 'Node approval auto-commit failed',
-        payload: {
-          nodeOrder: targetNode.nodeOrder,
-          errorMessage: error instanceof Error ? error.message : String(error),
-        },
-      });
-
-      throw error;
-    }
+    await commitNodeWorkspaceIfChanged({
+      taskId: task.id,
+      node: targetNode,
+      commitMessage,
+      currentUser,
+      commitIfChanged: (message, commitUser) =>
+        this.taskGitService.commitIfChanged(
+          task.id,
+          message,
+          commitUser as JwtPayloadType,
+        ),
+      taskLogService: this.taskLogService,
+      committedLogMessage: 'Node approval auto-committed staged changes',
+      skippedLogMessage:
+        'Node approval skipped auto-commit; no workspace changes',
+      failedLogMessage: 'Node approval auto-commit failed',
+    });
 
     await this.taskNodeRepository.update(targetNode.id, {
       status: TaskStatus.done,
@@ -565,6 +544,7 @@ export class TaskInteractionService {
     await this.taskRepository.update(task.id, {
       ...(cleanupResult.cleaned ? { gitWorktree: null } : {}),
     });
+    await this.taskWorkspaceWatchService.syncTaskWatch(task.id);
 
     await this.taskLogService.appendLog({
       taskId: task.id,
@@ -614,11 +594,6 @@ export class TaskInteractionService {
 
   private resolveNodeFinishedAtMs(node: TaskNode): number {
     return node.finishedAt instanceof Date ? node.finishedAt.getTime() : 0;
-  }
-
-  private buildApproveCommitMessage(node: TaskNode): string {
-    const normalizedName = node.name.trim().replace(/\s+/g, ' ');
-    return `chore(task): approve node #${node.nodeOrder} ${normalizedName}`;
   }
 
   private async markTaskStartedIfNeeded(task: Task): Promise<Task> {

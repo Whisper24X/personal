@@ -10,9 +10,14 @@ import { TaskLogLevel } from '../dto/task-log-level.enum';
 import { TaskStatus } from '../dto/task-status.enum';
 import { TaskNodeRepository } from '../infrastructure/persistence/task-node.repository';
 import { TaskRepository } from '../infrastructure/persistence/task.repository';
+import { TaskGitService } from '../task-git.service';
 import { TaskRuntimeService } from '../task-runtime.service';
 import { TaskConfigResolverService } from './task-config-resolver.service';
 import { TaskLogService } from './task-log.service';
+import {
+  buildCompleteCommitMessage,
+  commitNodeWorkspaceIfChanged,
+} from './task-node-auto-commit';
 import { TaskOutputService } from './task-output.service';
 import { TaskRuntimeOrchestratorService } from './task-runtime-orchestrator.service';
 import { TaskStatusService } from './task-status.service';
@@ -33,6 +38,16 @@ export class TaskNodeExecutionService {
     private readonly taskLogService: TaskLogService,
     private readonly taskStatusService: TaskStatusService,
     private readonly taskRuntimeOrchestrator: TaskRuntimeOrchestratorService,
+    private readonly taskGitService: Pick<
+      TaskGitService,
+      'commitIfChangedForTask'
+    > = {
+      commitIfChangedForTask: () =>
+        Promise.resolve({
+          committed: false,
+          skippedReason: 'no_changes',
+        }),
+    },
     private readonly agentCliAdapterRegistry: AgentCliAdapterRegistry = new AgentCliAdapterRegistry(),
   ) {}
 
@@ -296,6 +311,9 @@ export class TaskNodeExecutionService {
             });
 
       const loopResult = await this.finalizeNodeAsSuccess({
+        taskId,
+        task,
+        project,
         node,
         agentClioutput,
         agentCliSessionId: executionResult.sessionId ?? null,
@@ -625,11 +643,17 @@ export class TaskNodeExecutionService {
   }
 
   private async finalizeNodeAsSuccess({
+    taskId,
+    task,
+    project,
     node,
     agentClioutput,
     agentCliSessionId,
     earlyExitDecision,
   }: {
+    taskId: string;
+    task: Task;
+    project: Project;
     node: TaskNode;
     agentClioutput: string;
     agentCliSessionId?: string | null;
@@ -666,6 +690,21 @@ export class TaskNodeExecutionService {
       : pendingApproval
         ? TaskStatus.inReview
         : TaskStatus.done;
+
+    if (!queuedNextLoop && !pendingApproval) {
+      await commitNodeWorkspaceIfChanged({
+        taskId,
+        node,
+        commitMessage: buildCompleteCommitMessage(node),
+        commitIfChanged: (message) =>
+          this.taskGitService.commitIfChangedForTask(task, project, message),
+        taskLogService: this.taskLogService,
+        committedLogMessage: 'Node completion auto-committed staged changes',
+        skippedLogMessage:
+          'Node completion skipped auto-commit; no workspace changes',
+        failedLogMessage: 'Node completion auto-commit failed',
+      });
+    }
 
     await this.taskNodeRepository.update(node.id, {
       status,

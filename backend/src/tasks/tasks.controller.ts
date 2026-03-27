@@ -87,6 +87,7 @@ import {
   SuggestTaskTitleResponseDto,
 } from './dto/suggest-task-title.dto';
 import { TaskTitleSuggestionService } from './application/task-title-suggestion.service';
+import { TaskWorkspaceWatchService } from './application/task-workspace-watch.service';
 
 @ApiTags('Tasks')
 @ApiBearerAuth()
@@ -103,6 +104,7 @@ export class TasksController {
     private readonly taskTerminalService: TaskTerminalService,
     private readonly taskStepLabelSummaryService: TaskStepLabelSummaryService,
     private readonly taskTitleSuggestionService: TaskTitleSuggestionService,
+    private readonly taskWorkspaceWatchService: TaskWorkspaceWatchService,
   ) {}
 
   @Post('suggest-title')
@@ -714,9 +716,20 @@ export class TasksController {
           data: log,
         });
       });
+      const unsubscribeWorkspace = this.taskWorkspaceWatchService.subscribe(
+        taskId,
+        (event) => {
+          subscriber.next({
+            id: event.id,
+            type: 'task-workspace-change',
+            data: event,
+          });
+        },
+      );
 
       return () => {
         unsubscribe();
+        unsubscribeWorkspace();
       };
     });
   }

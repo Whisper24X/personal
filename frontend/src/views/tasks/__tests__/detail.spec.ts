@@ -57,6 +57,7 @@ vi.mock('@/api/http', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  Element.prototype.scrollIntoView = vi.fn()
 
   const storage = new Map<string, string>()
   Object.defineProperty(globalThis, 'localStorage', {
@@ -256,6 +257,52 @@ describe('TaskDetailView toasts', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="right-panel"]').attributes('data-refresh-token')).toBe('1')
+  })
+
+  it('refreshes the right panel when SSE reports workspace changes', async () => {
+    vi.useFakeTimers()
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    openSseStream.mockImplementation(async (_url, _query, options) => {
+      options?.onEvent?.({
+        event: 'task-workspace-change',
+        data: JSON.stringify({
+          id: 'workspace-1',
+          taskId: 'task-1',
+          changedAt: '2026-03-27T10:00:01.000Z',
+          changes: [{ path: 'src/app.ts', kind: 'change' }],
+          truncated: false,
+        }),
+      })
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            props: ['refreshToken'],
+            template: '<div data-testid="right-panel" :data-refresh-token="String(refreshToken)" />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="right-panel"]').attributes('data-refresh-token')).toBe('0')
+
+    await vi.advanceTimersByTimeAsync(250)
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="right-panel"]').attributes('data-refresh-token')).toBe('1')
+
+    vi.useRealTimers()
   })
 
   it('keeps existing content visible while SSE-triggered detail refresh is pending', async () => {
@@ -986,5 +1033,217 @@ describe('TaskDetailView toasts', () => {
       .findAll('button')
       .filter((button) => button.text().trim() === '重新执行')
     expect(reExecButtons.length).toBe(1)
+  })
+
+  it('keeps a manually selected workflow node when detail refresh does not change node statuses', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const initialDetail = {
+      task: {
+        id: 'task-1',
+        projectId: 'project-1',
+        mode: 'workflow' as const,
+        title: 'Workflow task',
+        status: 'in_review' as const,
+        configJson: {
+          agentCliId: 'codex',
+        },
+        createdAt: '2026-02-27T10:00:00.000Z',
+        updatedAt: '2026-02-27T10:00:00.000Z',
+      },
+      nodes: [
+        {
+          id: 'node-1',
+          taskId: 'task-1',
+          nodeOrder: 1,
+          name: 'Current review',
+          status: 'in_review' as const,
+          agentCliId: 'codex',
+          agentCliConfigId: 'cfg-1',
+        },
+        {
+          id: 'node-2',
+          taskId: 'task-1',
+          nodeOrder: 2,
+          name: 'Second node',
+          status: 'todo' as const,
+          agentCliId: 'cursor-agent',
+          agentCliConfigId: 'cfg-2',
+        },
+      ],
+    }
+
+    tasksApi.detailWithNodes.mockResolvedValueOnce(initialDetail)
+    tasksApi.reply.mockResolvedValueOnce({
+      ...initialDetail,
+      task: {
+        ...initialDetail.task,
+        updatedAt: '2026-02-27T10:00:01.000Z',
+      },
+      nodes: initialDetail.nodes.map((node) => ({ ...node })),
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+    const secondNodeButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Second node'))
+
+    expect(secondNodeButton).toBeDefined()
+    await secondNodeButton!.trigger('click')
+    await flushPromises()
+
+    await wrapper.get('textarea[aria-label="回复内容"]').setValue('keep selection')
+    await wrapper.get('textarea[aria-label="回复内容"]').trigger('keydown', {
+      key: 'Enter',
+      shiftKey: false,
+      isComposing: false,
+      preventDefault: () => undefined,
+    })
+    await flushPromises()
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(secondNodeButton?.classes()).toContain('ring-2')
+  })
+
+  it('reselects and scrolls to the current workflow node when node statuses change', async () => {
+    vi.useFakeTimers()
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    tasksApi.detailWithNodes
+      .mockResolvedValueOnce({
+        task: {
+          id: 'task-1',
+          projectId: 'project-1',
+          mode: 'workflow',
+          title: 'Workflow task',
+          status: 'in_progress',
+          configJson: {
+            agentCliId: 'codex',
+          },
+          createdAt: '2026-02-27T10:00:00.000Z',
+          updatedAt: '2026-02-27T10:00:00.000Z',
+        },
+        nodes: [
+          {
+            id: 'node-1',
+            taskId: 'task-1',
+            nodeOrder: 1,
+            name: 'First node',
+            status: 'in_progress',
+            agentCliId: 'codex',
+            agentCliConfigId: 'cfg-1',
+          },
+          {
+            id: 'node-2',
+            taskId: 'task-1',
+            nodeOrder: 2,
+            name: 'Second node',
+            status: 'todo',
+            agentCliId: 'cursor-agent',
+            agentCliConfigId: 'cfg-2',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        task: {
+          id: 'task-1',
+          projectId: 'project-1',
+          mode: 'workflow',
+          title: 'Workflow task',
+          status: 'in_progress',
+          configJson: {
+            agentCliId: 'codex',
+          },
+          createdAt: '2026-02-27T10:00:00.000Z',
+          updatedAt: '2026-02-27T10:00:01.000Z',
+        },
+        nodes: [
+          {
+            id: 'node-1',
+            taskId: 'task-1',
+            nodeOrder: 1,
+            name: 'First node',
+            status: 'done',
+            agentCliId: 'codex',
+            agentCliConfigId: 'cfg-1',
+          },
+          {
+            id: 'node-2',
+            taskId: 'task-1',
+            nodeOrder: 2,
+            name: 'Second node',
+            status: 'in_progress',
+            agentCliId: 'cursor-agent',
+            agentCliConfigId: 'cfg-2',
+          },
+        ],
+      })
+
+    openSseStream.mockImplementation(async (_url, _query, options) => {
+      options?.onEvent?.({
+        data: JSON.stringify({
+          id: 'log-1',
+          taskId: 'task-1',
+          taskNodeId: 'node-2',
+          level: 'info',
+          message: 'Node execution started',
+          payload: {},
+          createdAt: '2026-02-27T10:00:01.000Z',
+        }),
+      })
+    })
+
+    const wrapper = mount(TaskDetailView, {
+      global: {
+        plugins: [pinia],
+        stubs: {
+          RightPanelSection: {
+            template: '<div />',
+          },
+          TaskDialogs: {
+            template: '<div />',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+
+    const selectedButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('Second node'))
+
+    expect(selectedButton?.classes()).toContain('ring-2')
+
+    vi.useRealTimers()
   })
 })

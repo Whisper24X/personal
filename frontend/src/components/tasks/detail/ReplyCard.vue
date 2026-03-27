@@ -101,7 +101,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 <template>
   <section class="border-border/50 bg-background shrink-0 rounded-xl border shadow-sm">
     <div
-      class="border-border/60 flex items-end gap-2 border-t-0 px-3 py-2.5 transition-colors"
+      class="border-border/60 flex items-stretch gap-2 border-t-0 px-3 py-2.5 transition-colors"
       :class="isFocused ? 'ring-2 ring-primary/10 ring-offset-0 ring-offset-background' : ''"
     >
       <div
@@ -121,7 +121,7 @@ const handleKeydown = (event: KeyboardEvent) => {
         />
       </div>
       <button
-        class="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-primary-foreground transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        class="inline-flex w-11 shrink-0 self-stretch items-center justify-center rounded-md text-primary-foreground transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         :class="props.running ? 'bg-amber-500 hover:bg-amber-500/90' : 'bg-primary'"
         :aria-label="actionAriaLabel"
         :disabled="!canTriggerAction"

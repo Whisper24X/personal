@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from '@/hooks'
 import { useAccessStore } from '@/stores/modules/access'
@@ -21,6 +21,7 @@ import type {
   TaskLog,
   TaskMessage,
   TaskNode,
+  TaskWorkspaceChange,
 } from '@/types/api/tasks'
 import { STORAGE_KEYS } from '@/types/common/storage'
 import { BUTTON_ACCESS_CONFIG, hasSomeAccess } from '@/constants/access-control'
@@ -64,6 +65,8 @@ const detail = ref<TaskDetail | null>(null)
 const logs = ref<TaskLog[]>([])
 const messages = ref<TaskMessage[]>([])
 const selectedWorkflowNodeId = ref<string | null>(null)
+const workflowCardRef = ref<{ scrollToNode: (nodeId: string) => Promise<void> | void } | null>(null)
+const lastWorkflowAutoSyncSignature = ref<string | null>(null)
 
 const editOpen = ref(false)
 const deleteOpen = ref(false)
@@ -84,6 +87,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let detailRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let sidebarRecentTasksDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let messageRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
+let rightPanelWorkspaceRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let taskDataRequestId = 0
 
 const TASK_DETAIL_REFRESH_LOG_MESSAGES = [
@@ -199,6 +203,16 @@ const taskModeLabel = computed(() => {
 
 const showWorkflowCard = computed(() => {
   return task.value?.mode === 'workflow' && sortedNodes.value.length > 0
+})
+
+const workflowNodeStatusSignature = computed(() => {
+  if (task.value?.mode !== 'workflow' || sortedNodes.value.length === 0) {
+    return null
+  }
+
+  return sortedNodes.value
+    .map((node) => `${node.id}:${node.nodeOrder}:${node.status}`)
+    .join('|')
 })
 
 const currentReviewNode = computed(() => {
@@ -436,6 +450,15 @@ const clearMessageRefreshTimer = () => {
   messageRefreshDebounceTimer = null
 }
 
+const clearRightPanelWorkspaceRefreshTimer = () => {
+  if (!rightPanelWorkspaceRefreshDebounceTimer) {
+    return
+  }
+
+  clearTimeout(rightPanelWorkspaceRefreshDebounceTimer)
+  rightPanelWorkspaceRefreshDebounceTimer = null
+}
+
 const scheduleRefreshMessages = (delay = 120) => {
   if (!taskId.value) {
     return
@@ -448,9 +471,22 @@ const scheduleRefreshMessages = (delay = 120) => {
   }, delay)
 }
 
+const scheduleRightPanelWorkspaceRefresh = (delay = 250) => {
+  if (!taskId.value || !isRightPanelVisible.value) {
+    return
+  }
+
+  clearRightPanelWorkspaceRefreshTimer()
+  rightPanelWorkspaceRefreshDebounceTimer = setTimeout(() => {
+    rightPanelWorkspaceRefreshDebounceTimer = null
+    rightPanelRefreshToken.value += 1
+  }, delay)
+}
+
 const disconnectStream = () => {
   clearReconnectTimer()
   clearMessageRefreshTimer()
+  clearRightPanelWorkspaceRefreshTimer()
   if (detailRefreshDebounceTimer) {
     clearTimeout(detailRefreshDebounceTimer)
     detailRefreshDebounceTimer = null
@@ -502,6 +538,18 @@ const connectStream = async () => {
       {
         signal: streamAbortController.signal,
         onEvent: (event) => {
+          if (event.event === 'task-workspace-change') {
+            try {
+              const payload = JSON.parse(event.data) as TaskWorkspaceChange
+              if (payload.changes.length > 0 || payload.truncated) {
+                scheduleRightPanelWorkspaceRefresh()
+              }
+            } catch {
+              // ignore malformed task-workspace-change payload
+            }
+            return
+          }
+
           if (event.event && event.event !== 'task-log') {
             return
           }
@@ -581,6 +629,7 @@ const resetTaskState = () => {
   logs.value = []
   messages.value = []
   selectedWorkflowNodeId.value = null
+  lastWorkflowAutoSyncSignature.value = null
 }
 
 const loadTaskData = async () => {
@@ -734,6 +783,38 @@ const resolveAutoSelectedWorkflowNodeId = (nodes: TaskNode[]) => {
   return nodes[0]?.id || null
 }
 
+const syncWorkflowSelectionIfNeeded = async (force = false) => {
+  const signature = workflowNodeStatusSignature.value
+  if (!signature || sortedNodes.value.length === 0) {
+    selectedWorkflowNodeId.value = null
+    if (!signature) {
+      lastWorkflowAutoSyncSignature.value = null
+    }
+    return
+  }
+
+  const shouldAutoSync =
+    force ||
+    lastWorkflowAutoSyncSignature.value === null ||
+    lastWorkflowAutoSyncSignature.value !== signature
+
+  if (!shouldAutoSync) {
+    return
+  }
+
+  lastWorkflowAutoSyncSignature.value = signature
+
+  const nextNodeId = resolveAutoSelectedWorkflowNodeId(sortedNodes.value)
+  selectedWorkflowNodeId.value = nextNodeId
+
+  if (!nextNodeId) {
+    return
+  }
+
+  await nextTick()
+  await workflowCardRef.value?.scrollToNode(nextNodeId)
+}
+
 const handleReply = async (replyMessage: string) => {
   if (!taskId.value || replyDisabled.value) {
     return
@@ -822,14 +903,15 @@ const removeTask = async () => {
 }
 
 watch(
-  () => sortedNodes.value,
-  (nodes) => {
-    if (nodes.length === 0) {
+  [() => task.value?.mode, workflowNodeStatusSignature],
+  async ([mode]) => {
+    if (mode !== 'workflow') {
       selectedWorkflowNodeId.value = null
+      lastWorkflowAutoSyncSignature.value = null
       return
     }
 
-    selectedWorkflowNodeId.value = resolveAutoSelectedWorkflowNodeId(nodes)
+    await syncWorkflowSelectionIfNeeded()
   },
   {
     immediate: true,
@@ -931,6 +1013,7 @@ function startDrag(e: MouseEvent) {
         <div class="flex min-h-0 w-full flex-1 flex-col gap-2">
           <WorkflowCard
             v-if="showWorkflowCard"
+            ref="workflowCardRef"
             :nodes="sortedNodes"
             :selected-node-id="selectedWorkflowNodeId"
             @select-node="handleSelectWorkflowNode"

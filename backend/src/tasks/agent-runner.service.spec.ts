@@ -1761,19 +1761,21 @@ describe('AgentRunnerService', () => {
     ]);
   });
 
-  it('should use follow-up message only when resuming an existing cli session', () => {
+  it('should use rendered follow-up message only when resuming an existing cli session', () => {
     const service = new AgentRunnerService(
       createRepositoryMock() as unknown as AgentToolConfigRepository,
     );
     const serviceAny = service as any;
 
     const prompt = serviceAny.resolvePrompt(
-      createTask(),
+      createTask({
+        gitBranch: 'feature/runtime-branch',
+      }),
       {
         ...createNode(),
         agentCliSessionId: 'session-1',
         runtimeJson: {
-          pendingUserMessage: 'Please continue from the previous result',
+          pendingUserMessage: 'Please continue from {{gitBranch}}',
         },
       },
       createProject(),
@@ -1782,7 +1784,7 @@ describe('AgentRunnerService', () => {
       },
     );
 
-    expect(prompt).toBe('Please continue from the previous result');
+    expect(prompt).toBe('Please continue from feature/runtime-branch');
   });
 
   it('should compose node prompt and follow-up message before a session is established', () => {
@@ -1877,7 +1879,7 @@ describe('AgentRunnerService', () => {
     );
   });
 
-  it('should not render pending follow-up message placeholders', () => {
+  it('should render pending follow-up message placeholders before execution', () => {
     const service = new AgentRunnerService(
       createRepositoryMock() as unknown as AgentToolConfigRepository,
     );
@@ -1910,7 +1912,7 @@ describe('AgentRunnerService', () => {
     );
 
     expect(prompt).toBe(
-      ['Run task', 'Please continue on {{gitBranch}}'].join('\n\n'),
+      ['Run task', 'Please continue on feature/runtime-branch'].join('\n\n'),
     );
   });
 

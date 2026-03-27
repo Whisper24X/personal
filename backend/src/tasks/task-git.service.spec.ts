@@ -305,6 +305,37 @@ describe('TaskGitService', () => {
     );
   });
 
+  it('should commit changed files for a resolved runtime task worktree', async () => {
+    const repositoryPath = await initializeRepository();
+    createdDirectories.push(repositoryPath);
+
+    await fs.writeFile(
+      path.join(repositoryPath, 'README.md'),
+      '# updated from runtime task\n',
+    );
+
+    const service = new TaskGitService({} as any, {} as any);
+    jest
+      .spyOn(service as any, 'resolveTaskGitWorktreePath')
+      .mockResolvedValue(repositoryPath);
+
+    const result = await service.commitIfChangedForTask(
+      {} as never,
+      {} as never,
+      'chore(task): complete node #1 Node 1',
+    );
+
+    expect(result).toEqual({
+      committed: true,
+      commitSha: expect.any(String),
+      subject: 'chore(task): complete node #1 Node 1',
+    });
+    expect(runGit(['status', '--short'], repositoryPath)).toBe('');
+    expect(runGit(['log', '-1', '--pretty=%s'], repositoryPath)).toBe(
+      'chore(task): complete node #1 Node 1',
+    );
+  });
+
   it('should configure fallback git identity before committing when missing', async () => {
     const repositoryPath = await initializeRepository({
       removeIdentityAfterInit: true,

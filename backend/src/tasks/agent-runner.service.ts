@@ -1278,13 +1278,6 @@ export class AgentRunnerService {
         : {};
     const pendingUserMessage = this.readPendingUserMessage(node);
 
-    if (
-      pendingUserMessage &&
-      this.normalizeOptionalString(node.agentCliSessionId)
-    ) {
-      return pendingUserMessage;
-    }
-
     const hasExplicitNodeInput =
       input.nodeInput !== undefined && input.nodeInput !== null;
     const nodePrompt = hasExplicitNodeInput
@@ -1305,6 +1298,15 @@ export class AgentRunnerService {
       agentToolConfigId: config.agentToolConfigId ?? null,
       agentToolConfigName: config.agentToolConfigName ?? null,
     };
+    const renderedPendingUserMessage = pendingUserMessage
+      ? this.promptTemplateService.renderPromptTemplate(pendingUserMessage, {
+          task,
+          node,
+          project,
+          runtime: templateRuntimeContext,
+        })
+      : '';
+
     const renderedNodePrompt = nodePrompt
       ? this.promptTemplateService.renderPromptTemplate(nodePrompt, {
           task,
@@ -1314,7 +1316,16 @@ export class AgentRunnerService {
         })
       : '';
 
-    const sections = [renderedNodePrompt, pendingUserMessage].filter(Boolean);
+    if (
+      renderedPendingUserMessage &&
+      this.normalizeOptionalString(node.agentCliSessionId)
+    ) {
+      return renderedPendingUserMessage;
+    }
+
+    const sections = [renderedNodePrompt, renderedPendingUserMessage].filter(
+      Boolean,
+    );
 
     return sections.join('\n\n');
   }
