@@ -88,6 +88,7 @@ const createService = () => {
   const taskRuntimeService = {
     ensureRuntime: jest.fn(),
     cleanupRuntime: jest.fn().mockResolvedValue({ cleaned: true }),
+    cleanupTaskDataDir: jest.fn().mockResolvedValue(undefined),
   };
   const taskConfigResolver = {
     mergeTaskConfig: jest.fn(),
@@ -172,17 +173,11 @@ describe('TaskCommandService.remove', () => {
       task,
       project,
     );
-    expect(taskLogService.appendLog).toHaveBeenCalledWith({
-      taskId: task.id,
-      taskNodeId: null,
-      level: TaskLogLevel.info,
-      message: 'Task deleted',
-      payload: {
-        deletedBy: currentUser.sub,
-        gitWorktree: task.gitWorktree,
-      },
-    });
     expect(taskRepository.remove).toHaveBeenCalledWith(task.id);
+    expect(taskRuntimeService.cleanupTaskDataDir).toHaveBeenCalledWith(
+      task,
+      project,
+    );
     expect(
       taskRuntimeService.cleanupRuntime.mock.invocationCallOrder[0],
     ).toBeLessThan(taskRepository.remove.mock.invocationCallOrder[0]);
@@ -264,23 +259,19 @@ describe('TaskCommandService.remove', () => {
       taskAccessService,
     } = createService();
     const task = createTask({ gitWorktree: null });
+    const project = createProject();
     const currentUser = createCurrentUser();
 
     taskAccessService.getTaskOrThrow.mockResolvedValue(task);
+    taskAccessService.getProjectByIdOrThrow.mockResolvedValue(project);
 
     await service.remove(task.id, currentUser as never);
 
     expect(taskRuntimeService.cleanupRuntime).not.toHaveBeenCalled();
-    expect(taskLogService.appendLog).toHaveBeenCalledWith({
-      taskId: task.id,
-      taskNodeId: null,
-      level: TaskLogLevel.info,
-      message: 'Task deleted',
-      payload: {
-        deletedBy: currentUser.sub,
-        gitWorktree: null,
-      },
-    });
     expect(taskRepository.remove).toHaveBeenCalledWith(task.id);
+    expect(taskRuntimeService.cleanupTaskDataDir).toHaveBeenCalledWith(
+      task,
+      project,
+    );
   });
 });

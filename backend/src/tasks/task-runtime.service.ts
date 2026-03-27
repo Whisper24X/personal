@@ -137,6 +137,23 @@ export class TaskRuntimeService {
       if (!removeResult.success) {
         cleanupErrors.push(removeResult.stderr || 'git worktree remove failed');
       }
+
+      const branchName = task.gitBranch?.trim();
+      if (branchName && !this.isProtectedBranch(branchName)) {
+        const branchResult = await this.runCommand('git', [
+          '-C',
+          repositoryRoot,
+          'branch',
+          '-D',
+          branchName,
+        ]);
+
+        if (!branchResult.success) {
+          cleanupErrors.push(
+            branchResult.stderr || 'git branch -D failed',
+          );
+        }
+      }
     }
 
     try {
@@ -161,6 +178,32 @@ export class TaskRuntimeService {
       cleaned: false,
       errorMessage: cleanupErrors.join('; ') || 'Failed to cleanup worktree',
     };
+  }
+
+  async cleanupTaskDataDir(
+    task: Task,
+    project: Project,
+  ): Promise<void> {
+    if (!task.id?.trim()) {
+      return;
+    }
+
+    const taskDataDir = path.resolve(
+      this.resolveProjectStorageBaseDir(project),
+      'tasks',
+      task.id,
+    );
+
+    const allowedRoot = this.resolveProjectStorageBaseDir(project);
+    if (!taskDataDir.startsWith(`${allowedRoot}${path.sep}`)) {
+      return;
+    }
+
+    try {
+      await fs.rm(taskDataDir, { recursive: true, force: true });
+    } catch {
+      // Non-blocking: task data cleanup failure must not prevent task deletion
+    }
   }
 
   async collectGitDiffArtifact(task: Task): Promise<GitDiffArtifact | null> {
@@ -828,6 +871,14 @@ export class TaskRuntimeService {
         `worktree path ${targetPath} is outside allowed root ${allowedRoot}`,
       );
     }
+  }
+
+  private isProtectedBranch(branchName: string): boolean {
+    const protected_names = ['main', 'master', 'develop', 'dev', 'release'];
+    const lower = branchName.toLowerCase();
+    return (
+      protected_names.includes(lower) || lower.startsWith('release/')
+    );
   }
 
   private isPathWithinAllowedRoot(
