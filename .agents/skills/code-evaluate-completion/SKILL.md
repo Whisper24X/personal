@@ -60,10 +60,10 @@ description: 评估代码完整性并修复问题。读取 applyResult.md 获取
 
 | 项目类型     | 构建命令         | 说明                      |
 | ------------ | ---------------- | ------------------------- |
-| 有 Makefile  | `make build`     | 在 sandbox 内执行（如有） |
-| 前端（pnpm） | `pnpm build`     | 检查 TypeScript 编译      |
-| 前端（npm）  | `npm run build`  | 检查 TypeScript 编译      |
-| Go 项目      | `go build ./...` | 在 sandbox 内执行（如有） |
+| 有 Makefile  | `make build`     | 直接执行             |
+| 前端（pnpm） | `pnpm build`     | 检查 TypeScript 编译 |
+| 前端（npm）  | `npm run build`  | 检查 TypeScript 编译 |
+| Go 项目      | `go build ./...` | 直接执行             |
 
 3. **执行 Lint 检查**（必须执行）：
 
@@ -81,7 +81,6 @@ pnpm type-check  # 或 npm run type-check
 
 **注意事项**：
 
-- 如果 sandbox 存在，后端命令必须在 sandbox 内执行
 - Lint 检查能够发现语法错误（如 Missing semicolon）、类型错误等
 - 如果项目没有配置 lint 脚本，至少执行构建检查
 
@@ -149,5 +148,4 @@ pnpm type-check  # 或 npm run type-check
 2. **修复尽可能小**：只修复发现的问题，不进行大范围重构
 3. **必须全部修复**：发现的问题必须全部修复，不允许标记为"未解决"或跳过
 4. **修复后验证**：修复代码后必须重新执行构建检查，确保没有引入新问题
-5. **sandbox 环境**：构建命令必须在 sandbox 内执行（如果 sandbox 存在）
-6. **任务状态**：本 Skill 不修改 tasks.md 中的任务状态，任务标记由 code-task-apply 负责
+5. **任务状态**：本 Skill 不修改 tasks.md 中的任务状态，任务标记由 code-task-apply 负责

@@ -84,12 +84,6 @@ flowchart TD
 - 任务描述必须包含：**生成 `{module}_menu.sql` 并执行 `make sqlimport` 导入**
 - 验收标准必须包含：**执行 `make sqlimport ./doc/sql/{PG_DB}/{module}_menu.sql` 成功**（PG_DB 从 sandbox/.env 读取）
 
-**Docker 沙箱环境要求**：
-
-- 数据库表创建、数据库迁移等操作必须在 Docker 沙箱环境中运行
-- 使用 `make sandbox` 启动沙箱容器，`make sandbox-shell` 进入沙箱执行命令
-- ⚠️ 所有数据库操作都应在容器内执行，不要在宿主机直接操作数据库
-
 ---
 
 ## Step 2: 验证提案内容（openspec-validator）

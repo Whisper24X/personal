@@ -88,18 +88,6 @@ description: 按 improveAnalyzeResult.md 中的 issues 修复代码，并回写 
 无法读取分析结果文件 docs/{{gitBranch}}/improveAnalyzeResult.md
 ```
 
-## Sandbox 环境规则
-
-**检查 Sandbox 环境**：
-
-1. 检查项目根目录是否有 `Makefile` 且包含 `sandbox` 目标
-2. 检查 `sandbox/sandbox.sh` 脚本是否存在
-
-| 条件           | 执行方式                              |
-| -------------- | ------------------------------------- |
-| **有 Sandbox** | 所有构建命令**必须**在 sandbox 内执行 |
-| **无 Sandbox** | 直接执行                              |
-
 ## 重要提醒
 
 1. **必须写入文件**：结果必须写入 `docs/{{gitBranch}}/improveExecuteResult.md`，不是输出到终端

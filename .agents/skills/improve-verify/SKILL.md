@@ -66,11 +66,6 @@ description: 校验 issues 与代码质量；完成时归档 improveAnalyzeResul
 | Go 项目      | `make lint` / `go build ./...`   | 代码规范/编译检查 |
 | 有 Makefile  | `make build`                     | 项目构建检查      |
 
-**Sandbox 环境规则**：
-
-- 有 Sandbox → 所有构建命令在 sandbox 内执行
-- 无 Sandbox → 直接执行
-
 ### 3. 判定是否完成
 
 **"已完成"必须同时满足以下所有条件**：

@@ -7,6 +7,12 @@ description: 执行 OpenSpec apply 命令生成代码并完成任务。无状态
 
 执行 openspec-apply-change 技能，完成 `tasks.md` 中的所有任务。
 
+## 执行约束（禁止跳过与假完成）
+
+1. **禁止用「环境/部署/待确认」代替执行**：凡 tasks 要求在本仓库或当前可用环境中完成的步骤（如 `sqlimport`、约定构建、为联调写入配置等），**必须在当轮实际执行**；**禁止**以「留给目标环境」「用户稍后导入」「仅先生成 SQL」等理由**跳过**可执行的步骤。做不到则保持 `tasks.md` 为 `- [ ]`，并继续尝试或写明客观失败原因，而不是假装已交付。
+2. **禁止假完成**：**禁止**未完成却在 `tasks.md` 标 `- [x]`；勾选必须与真实执行结果一致。
+3. **禁止谎称成功**：未全部完成时，**禁止**在对话或流程结论中声称本轮已全部成功。
+
 ## 输出规范（强制）
 
 > **重要**：以下规范必须严格遵守，不可违反。
@@ -32,27 +38,7 @@ description: 执行 OpenSpec apply 命令生成代码并完成任务。无状态
 
 ### 1. 代码实现
 
-#### 1.1 环境检查（第一步，强制执行）
-
-**检查 Sandbox 环境**：
-
-1. 检查项目根目录是否有 `Makefile` 且包含 `sandbox` 目标
-2. 检查 `sandbox/sandbox.sh` 脚本是否存在
-
-**Sandbox 执行规则（强制）**：
-
-| 条件           | 执行方式                              | 示例                                  |
-| -------------- | ------------------------------------- | ------------------------------------- |
-| **有 Sandbox** | 所有构建命令**必须**在 sandbox 内执行 | `make sandbox-shell` 然后 `make gorm` |
-| **无 Sandbox** | 直接执行，失败则安装依赖后重试        | `make gorm`（如失败安装 gorm 工具）   |
-
-**严格禁止**：
-
-- ❌ 跳过 sandbox 检查
-- ❌ 在 sandbox 外执行构建命令（当 sandbox 存在时）
-- ❌ 报告"工具未安装"然后手动创建文件
-
-#### 1.2 Skills 查询（优先复用）
+#### 1.1 Skills 查询（优先复用）
 
 查询项目中的所有可用 Skills，判断是否有专门的 Skill 可以完成当前任务。
 
@@ -65,7 +51,7 @@ description: 执行 OpenSpec apply 命令生成代码并完成任务。无状态
 
 优先使用专门 Skill，只有在没有合适 Skill 时才自己编写代码。
 
-#### 1.3 模板替换（如有初始模板）
+#### 1.2 模板替换（如有初始模板）
 
 **检查位置**：`ainative-pc/src/views/`、`ainative-app/src/`、`ainative-mobile/src/`、`ainative-shadow/src/views/`
 
@@ -89,31 +75,41 @@ grep -rn 'HelloWorld\|TheWelcome\|欢迎使用YC-vue3模版\|AINative Workspace\
 
 若扫描仍有命中，说明替换不完整，**必须继续清理直到零命中**。
 
-#### 1.4 代码生成
+#### 1.3 代码生成
 
 根据 tasks.md 中的任务类型自行判断执行顺序，通常按依赖关系：数据层 → API层 → 业务层 → 前端层。
 
 **代码生成工具命令执行规则表**：
 
-| 命令类型          | 示例           | 有 Sandbox                | 无 Sandbox | 工具缺失处理         |
-| ----------------- | -------------- | ------------------------- | ---------- | -------------------- |
-| **GORM 生成**     | `make gorm`    | sandbox 内执行            | 直接执行   | 安装 gorm 工具后重试 |
-| **Proto 生成**    | `make sqltopb` | sandbox 内执行            | 直接执行   | 安装 sqltopb 后重试  |
-| **API 生成**      | `make api`     | sandbox 内执行            | 直接执行   | 检查 protoc 安装     |
-| **依赖注入**      | `make wire`    | sandbox 内执行            | 直接执行   | 安装 wire 后重试     |
-| **菜单 SQL 注入** | 见下方说明     | **必须在 sandbox 内执行** | -          | -                    |
+| 命令类型          | 示例           | 执行方式 | 工具缺失处理         |
+| ----------------- | -------------- | -------- | -------------------- |
+| **GORM 生成**     | `make gorm`    | 直接执行 | 安装 gorm 工具后重试 |
+| **Proto 生成**    | `make sqltopb` | 直接执行 | 安装 sqltopb 后重试  |
+| **API 生成**      | `make api`     | 直接执行 | 检查 protoc 安装     |
+| **依赖注入**      | `make wire`    | 直接执行 | 安装 wire 后重试     |
+| **菜单 SQL 注入** | 见下方说明     | 直接执行 | -                    |
 
-**菜单 SQL 注入（强制）**：若任务涉及生成 `*_menu.sql`（如 `carousel_menu.sql`），在创建 SQL 文件后**必须在沙箱容器内**执行导入。数据库在沙箱内，宿主机执行 `make sqlimport` 无法连接到正确数据库。
+**管理后台菜单模式判断（强制，新增菜单页时必须执行）**：
+
+凡向管理后台（shadow/admin 类前端）添加新菜单页面时，**禁止仅凭「注册静态路由」视为完成**。必须先判断该项目的菜单数据来源模式：
+
+1. 查看管理后台项目的 `.env` 文件，找到菜单模式控制变量（常见名称：`VITE_ACCESS_MODE`、`VITE_MENU_MODE` 等）
+2. 若变量名不确定，搜索项目中 `useAppMode`、`getMenuList`、`sysAdminPermission` 等关键词，确认菜单实际从哪里加载（前端静态路由 or 后端接口）
+
+判断结论：
+- **frontend / 前端模式**：在 `routeModules` / `asyncRoutes` 注册静态路由即可，菜单从代码读取
+- **backend / 后端模式**：静态路由**单独不够**，必须额外向数据库 `sys_menu` / `sys_role_menu` 注入菜单数据并执行 sqlimport，否则管理后台界面不会显示该菜单
+
+**菜单 SQL 注入（强制）**：若任务涉及生成 `*_menu.sql`（如 `carousel_menu.sql`），在创建 SQL 文件后必须执行导入（PG_DB 从 `sandbox/.env` 读取）：
 
 ```bash
-# 从 sandbox/.env 读取 SANDBOX_NAME（容器名）和 PG_DB（SQL 目录名），再执行
-# 示例：SANDBOX_NAME=yanxue-main-sandbox, PG_DB=yanxue → doc/sql/yanxue/{module}_menu.sql
-docker exec $(grep -E '^SANDBOX_NAME=' sandbox/.env | cut -d= -f2-) bash -c "cd ainative-backend && make sqlimport ./doc/sql/$(grep -E '^PG_DB=' sandbox/.env | cut -d= -f2-)/{module}_menu.sql"
+PG_DB=$(grep -E '^PG_DB=' sandbox/.env | cut -d= -f2-)
+cd ainative-backend && make sqlimport ./doc/sql/${PG_DB}/{module}_menu.sql
 ```
 
 **菜单 SQL 注入后必须验证（强制）**：sqlimport 执行后，必须完成以下两步验证，不可跳过：
 
-1. **验证数据入库**：在 sandbox 内查询 `sys_menu` 和 `sys_role_menu`，确认新增记录存在
+1. **验证数据入库**：查询 `sys_menu` 和 `sys_role_menu`，确认新增记录存在
 2. **清理 Redis 菜单缓存**：后端对菜单权限数据有 Redis 缓存层，sqlimport 直接写 DB 不会自动失效缓存，必须主动删除相关 key：
 
 ```bash
@@ -133,10 +129,15 @@ redis-cli -h ${REDIS_ADDR%:*} -p ${REDIS_ADDR#*:} -n <REDIS_DB> \
 - ❌ 绕过代码生成命令，手动创建文件
 - ❌ sqlimport 后不验证数据入库即标记完成
 - ❌ sqlimport 后不清理菜单相关 Redis 缓存即标记完成
+- ❌ 以任何形式将 sqlimport 推迟或转交给人工，包括但不限于以下措辞：
+  - "SQL 已提供，导入需在目标环境执行"
+  - "已生成 SQL，待手动导入"
+  - "SQL 文件已就绪，请在部署时执行"
+  - "导入操作属于部署步骤"
 
 **代码标准**：完整实现（非空函数）、包含错误处理和参数验证、依赖正确引入可编译、禁止 TODO/占位符/空实现/伪代码
 
-#### 1.5 前端 HTTP 请求前置检查（强制）
+#### 1.4 前端 HTTP 请求前置检查（强制）
 
 **凡涉及新增前端 HTTP 请求代码（API 文件、fetch/axios 调用）时，必须在动笔前完成以下三项检查，检查结果须体现在实现中：**
 
@@ -162,7 +163,7 @@ redis-cli -h ${REDIS_ADDR%:*} -p ${REDIS_ADDR#*:} -n <REDIS_DB> \
 
 若路径无对应规则，需调整请求路径（以已有业务 API 文件的前缀为准），**不得新增 nginx location 规则来迁就错误的前端路径**。
 
-若项目的 API 域名通过运行时配置注入（而非相对路径），则请求路径不经过 sandbox nginx，只需确认路径格式与后端路由注解一致即可。
+若项目的 API 域名通过运行时配置注入（而非相对路径），则请求路径不经过 nginx 代理，只需确认路径格式与后端路由注解一致即可。
 
 ### 2. 任务标记与验证
 
@@ -182,11 +183,12 @@ redis-cli -h ${REDIS_ADDR%:*} -p ${REDIS_ADDR#*:} -n <REDIS_DB> \
 - ❌ `⚠️ 项目未配置 lint 脚本`
 - ❌ 仅创建 API 定义/接口就打勾
 - ❌ 未完全完成就打勾
+- ❌ `✅ 已完整实现（SQL 已提供，导入需在目标环境执行）` —— sqlimport 未执行即为**未完成**，禁止标记 `✅`
 
 **正确处理方式**：
 
-- **工具缺失**：在 sandbox 内或安装工具后执行，完成后标记 `✅ 已完成`
-- **私有仓库问题**：尝试在 sandbox 内执行，如仍失败则标记 `📝 私有仓库访问问题，需配置凭证`（保持未完成状态）
+- **工具缺失**：安装工具后执行，完成后标记 `✅ 已完成`
+- **私有仓库问题**：尝试执行，如仍失败则标记 `📝 私有仓库访问问题，需配置凭证`（保持未完成状态）
 - **Lint 脚本缺失**：执行基本代码检查（编译、语法检查、手动审查），标记 `✅ 已完成基本代码检查`
 
 #### 2.2 代码质量检查
@@ -207,19 +209,19 @@ redis-cli -h ${REDIS_ADDR%:*} -p ${REDIS_ADDR#*:} -n <REDIS_DB> \
 
 **验证清单**：
 
-- [ ] Sandbox 环境已检查，所有命令在 sandbox 内执行（如有）
 - [ ] 专门 Skills 已查询并优先使用
 - [ ] 代码生成命令已执行（无手动创建）
 - [ ] 初始模板已识别并替换（如有），替换后 `grep` 确认模板关键词零命中
 - [ ] 所有文件内容完整，无 TODO/占位符
 - [ ] 代码质量检查已执行（至少编译检查）
-- [ ] 私有仓库问题已在 sandbox 内尝试解决
+- [ ] 私有仓库问题已尝试解决
 - [ ] 所有完成的任务确实完成，未完成的保持未完成状态
 - [ ] `tasks.md` 标记准确，无禁止标记
-- [ ] （含菜单 SQL）sqlimport 已在 sandbox 内执行，数据入库已验证，相关 Redis 缓存已清理
+- [ ] （含菜单 SQL）sqlimport 已执行，数据入库已验证，相关 Redis 缓存已清理
 - [ ] （含前端 HTTP 请求）已探索现有封装模式并复用，未自造新封装
 - [ ] （含前端 HTTP 请求）所用 env 变量已在 .env.* 中确认存在
 - [ ] （含前端 HTTP 请求）API 路径已对照 nginx.conf 或运行时域名配置确认可正确路由到后端
+- [ ] 遵守上文「执行约束（禁止跳过与假完成）」：该跑的命令与配置已跑，未以环境/部署为由跳过
 
 ### 3. 输出执行结果
 
@@ -251,3 +253,4 @@ redis-cli -h ${REDIS_ADDR%:*} -p ${REDIS_ADDR#*:} -n <REDIS_DB> \
 - 每次执行都**覆盖**此文件（不是追加）
 - 文件列表只包含本次执行修改的文件
 - 任务列表只包含本次执行涉及的任务
+- applyResult 如实反映当轮**执行结果**；格式沿用上述三个 `##` 区块即可（执行未跳过、未假完成时，自然不需要「假设与待确认」类章节）

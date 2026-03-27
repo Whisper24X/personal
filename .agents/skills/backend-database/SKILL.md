@@ -94,12 +94,10 @@ cd ainative-backend && make sqldump TABLES={table}
 
 1. 在 `ainative-backend/doc/sql/ainative_backend/` 下创建 `{module}_menu.sql`（如 `carousel_menu.sql`）
 2. SQL 内容：向 `sys_menu` 插入菜单项，向 `sys_role_menu` 绑定 super 角色，使用 `INSERT...SELECT...WHERE NOT EXISTS` 保证幂等
-3. **必须执行导入**：数据库在沙箱容器内，**必须在沙箱内**执行（宿主机执行无法连接）：
+3. **必须执行导入**（PG_DB 从 `sandbox/.env` 读取）：
    ```bash
-   # 进入沙箱后执行
-   cd /workspace/ainative-backend && make sqlimport ./doc/sql/ainative_backend/{module}_menu.sql
-   # 或从宿主机直接执行（沙箱运行时）：
-   docker exec ainative-workspace-sandbox psql -U postgres -d ainative_backend -f /workspace/ainative-backend/doc/sql/ainative_backend/{module}_menu.sql
+   PG_DB=$(grep -E '^PG_DB=' sandbox/.env | cut -d= -f2-)
+   cd ainative-backend && make sqlimport ./doc/sql/${PG_DB}/{module}_menu.sql
    ```
 4. 验证：检查输出无报错，登录 Shadow 确认菜单已显示
 
@@ -120,7 +118,7 @@ cd ainative-backend && make sqldump TABLES={table}
 
 完整模板见 [references/schema-guide.md#菜单-sql-模板](references/schema-guide.md#菜单-sql-模板)。
 
-> **重要**：`init.sql` 仅沙箱首次启动时执行，菜单 SQL 不会自动纳入。**编码环节必须在沙箱内执行 sqlimport**，否则 Shadow 界面不会显示新菜单。
+> **重要**：`init.sql` 仅首次启动时执行，菜单 SQL 不会自动纳入。**编码环节必须执行 sqlimport**，否则 Shadow 界面不会显示新菜单。
 
 ## 参考资料
 
