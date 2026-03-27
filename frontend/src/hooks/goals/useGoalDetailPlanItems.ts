@@ -2,6 +2,7 @@ import { computed, ref, watch, type Ref } from 'vue'
 import { goalsApi } from '@/api/goals'
 import { useMessage } from '@/hooks'
 import { requestSidebarRecentTasksRefresh } from '@/hooks/useSidebarRecentTasks'
+import { refreshSidebarRecentTasks } from '@/utils/sidebar-recent-tasks-refresh'
 import type {
   GoalDetail as GoalDetailType,
   GoalPlanItem,
@@ -260,8 +261,10 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
 
       await goalsApi.materializeTasks(goalId, [item.id])
       requestSidebarRecentTasksRefresh()
+      void refreshSidebarRecentTasks()
       message.success('已确认并创建任务')
       await options.load()
+      await refreshSidebarRecentTasks()
       onPlanItemSheetOpen(false)
     } catch (e) {
       message.error(toErrorMessage(e, '创建任务失败'))
@@ -364,8 +367,10 @@ export function useGoalDetailPlanItems(options: UseGoalDetailPlanItemsOptions) {
     try {
       await goalsApi.materializeTasks(goalId, [item.id])
       requestSidebarRecentTasksRefresh()
+      void refreshSidebarRecentTasks()
       message.success('已创建任务')
       await options.load()
+      await refreshSidebarRecentTasks()
     } catch (e) {
       message.error(toErrorMessage(e, '创建任务失败'))
     } finally {
