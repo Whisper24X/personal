@@ -19,7 +19,6 @@ const { tasksApi, authApi, openSseStream } = vi.hoisted(() => ({
     cleanupWorktree: vi.fn(),
     retry: vi.fn(),
     approve: vi.fn(),
-    stepSummaries: vi.fn().mockResolvedValue({ items: [] }),
   },
   authApi: {
     access: vi.fn(),

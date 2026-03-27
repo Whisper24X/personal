@@ -27,7 +27,6 @@ import { TaskCommandService } from './application/task-command.service';
 import { TaskInteractionService } from './application/task-interaction.service';
 import { TaskNodeExecutionService } from './application/task-node-execution.service';
 import { TaskSchedulerService } from './application/task-scheduler.service';
-import { TaskStepLabelSummaryService } from './application/task-step-label-summary.service';
 import { TaskTitleSuggestionService } from './application/task-title-suggestion.service';
 import { TaskWorkspaceWatchService } from './application/task-workspace-watch.service';
 import { GoalsModule } from '../goals/goals.module';
@@ -64,7 +63,6 @@ import { GoalsModule } from '../goals/goals.module';
     TaskInteractionService,
     TaskNodeExecutionService,
     TaskSchedulerService,
-    TaskStepLabelSummaryService,
     TaskTitleSuggestionService,
     TaskWorkspaceWatchService,
     TerminalGateway,
